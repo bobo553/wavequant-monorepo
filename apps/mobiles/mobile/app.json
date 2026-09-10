@@ -1,0 +1,47 @@
+{
+    "expo": {
+        "name": "Mobile",
+        "slug": "mobile",
+        "scheme": "mobile",
+        "version": "1.0.0",
+        "orientation": "portrait",
+        "userInterfaceStyle": "dark",
+        "newArchEnabled": true,
+        "icon": "./assets/icon.png",
+        "ios": {
+            "supportsTablet": true,
+            "bundleIdentifier": "com.template.mobile"
+        },
+        "android": {
+            "adaptiveIcon": {
+                "foregroundImage": "./assets/adaptive-icon.png",
+                "backgroundColor": "#0F131F"
+            },
+            "package": "com.template.mobile"
+        },
+        "web": {
+            "bundler": "metro",
+            "favicon": "./assets/favicon.png"
+        },
+        "plugins": [
+            [
+                "expo-router",
+                {
+                    "root": "./src/app"
+                }
+            ],
+            "expo-font",
+            [
+                "expo-splash-screen",
+                {
+                    "backgroundColor": "#0F131F",
+                    "image": "./assets/splash.png",
+                    "resizeMode": "cover"
+                }
+            ]
+        ],
+        "experiments": {
+            "typedRoutes": true
+        }
+    }
+}

@@ -1,0 +1,31 @@
+@import "@repo/design-system-web/globals.css";
+
+@source "../";
+
+@theme inline {
+    --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+@layer base {
+    html {
+        background: var(--color-background);
+    }
+
+    body {
+        min-height: 100vh;
+        background: var(--color-background);
+        color: var(--color-foreground);
+        font-family: var(--font-sans);
+    }
+
+    ::selection {
+        background: var(--color-accent-500);
+        color: white;
+    }
+
+    button,
+    a,
+    input {
+        outline-offset: 2px;
+    }
+}

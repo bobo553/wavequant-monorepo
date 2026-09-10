@@ -1,0 +1,10 @@
+{
+    "extends": "@repo/typescript/next.json",
+    "compilerOptions": {
+        "plugins": [{ "name": "next" }],
+        "paths": { "@/*": ["./src/*"] },
+        "types": ["vitest/globals", "@testing-library/jest-dom"]
+    },
+    "include": ["**/*.ts", "**/*.css", "**/*.tsx", "next-env.d.ts", "next.config.ts", ".next/types/**/*.ts"],
+    "exclude": ["node_modules"]
+}

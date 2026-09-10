@@ -1,0 +1,55 @@
+{
+    "name": "@repo/vitest",
+    "version": "1.0.0",
+    "type": "module",
+    "private": true,
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsup"
+    },
+    "exports": {
+        "./base": {
+            "types": "./dist/base.d.ts",
+            "import": "./dist/base.mjs",
+            "require": "./dist/base.cjs"
+        },
+        "./next": {
+            "types": "./dist/next.d.ts",
+            "import": "./dist/next.mjs",
+            "require": "./dist/next.cjs"
+        },
+        "./nest": {
+            "types": "./dist/nest.d.ts",
+            "import": "./dist/nest.mjs",
+            "require": "./dist/nest.cjs"
+        },
+        "./nest-e2e": {
+            "types": "./dist/nest-e2e.d.ts",
+            "import": "./dist/nest-e2e.mjs",
+            "require": "./dist/nest-e2e.cjs"
+        },
+        "./expo": {
+            "types": "./dist/expo.d.ts",
+            "import": "./dist/expo.mjs",
+            "require": "./dist/expo.cjs"
+        }
+    },
+    "dependencies": {
+        "@vitejs/plugin-react": "^6.0.2",
+        "unplugin-swc": "^1.4.0",
+        "vite": "^8.0.0"
+    },
+    "peerDependencies": {
+        "@swc/core": "^1.0.0",
+        "vitest": "^4.0.0"
+    },
+    "devDependencies": {
+        "@repo/tsup": "workspace:*",
+        "@repo/typescript": "workspace:*",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.7"
+    }
+}

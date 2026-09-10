@@ -1,0 +1,22 @@
+packages:
+    - apps/servers/*
+    - apps/mobiles/*
+    - apps/webs/*
+    - apps/tools/*
+    - packages/*
+    - packages/config/*
+    - packages/design-system/*
+
+onlyBuiltDependencies:
+    - "@nestjs/core"
+    - "@scarf/scarf"
+    - "@swc/core"
+    - "@tailwindcss/oxide"
+    - esbuild
+    - sharp
+    - unrs-resolver
+
+patchedDependencies:
+    expo-modules-core@3.0.30: patches/expo-modules-core@3.0.30.patch
+    react-native-reanimated@4.1.7: patches/react-native-reanimated@4.1.7.patch
+    react-native-screens@4.16.0: patches/react-native-screens@4.16.0.patch

@@ -1,0 +1,17 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 6b73a69d82ae9b04dd41e22b2d115019cf7eae14..ec4c00e8a4f3ae71d29c6fcf5acc490f0772e3b1 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -215,6 +215,12 @@ android {
+         cmake {
+             version = System.getenv("CMAKE_VERSION") ?: "3.22.1"
+             path "CMakeLists.txt"
++
++            // Windows 的 CMake/Ninja 对目标文件路径仍有限制；使用系统短目录承载可持久化的原生构建中间文件。
++            if (System.getProperty("os.name").toLowerCase().contains("windows")) {
++                def projectPathHash = Math.abs(rootProject.projectDir.absolutePath.hashCode())
++                buildStagingDirectory "${System.getProperty('java.io.tmpdir')}/monorepo-template-reanimated-${projectPathHash}"
++            }
+         }
+     }
+     buildTypes {

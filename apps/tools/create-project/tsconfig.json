@@ -1,0 +1,7 @@
+{
+    "extends": "@repo/typescript/base.json",
+    "compilerOptions": {
+        "types": ["node", "vitest/globals"]
+    },
+    "include": ["src/**/*.ts", "tests/**/*.ts", "tsup.config.ts", "vitest.config.ts"]
+}

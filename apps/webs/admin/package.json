@@ -1,0 +1,52 @@
+{
+    "name": "admin",
+    "version": "1.0.0",
+    "description": "Reusable Next.js B2B admin dashboard template",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "next dev --turbopack --port 3002",
+        "build": "next build --turbopack",
+        "start": "next start --port 3002",
+        "lint": "eslint",
+        "lint:fix": "eslint --fix",
+        "prettier:fix": "prettier --write .",
+        "format": "pnpm lint:fix && pnpm prettier:fix",
+        "typecheck": "tsc --noEmit",
+        "test:unit": "vitest run --passWithNoTests",
+        "test:unit:coverage": "vitest run --coverage",
+        "test:unit:watch": "vitest",
+        "pretest:e2e": "playwright install chromium",
+        "test:e2e": "playwright test",
+        "test:e2e:ui": "playwright test --ui",
+        "test:all": "pnpm test:unit && pnpm test:e2e"
+    },
+    "dependencies": {
+        "@repo/design-system-web": "workspace:*",
+        "@tabler/icons-react": "^3.44.0",
+        "echarts": "^6.0.0",
+        "next": "^16.2.6",
+        "next-themes": "^0.4.6",
+        "react": "^19.2.6",
+        "react-dom": "^19.2.6"
+    },
+    "devDependencies": {
+        "@playwright/test": "^1.60.0",
+        "@repo/eslint": "workspace:*",
+        "@repo/playwright": "workspace:*",
+        "@repo/typescript": "workspace:*",
+        "@repo/vitest": "workspace:*",
+        "@tailwindcss/postcss": "^4.3.0",
+        "@testing-library/jest-dom": "^6.9.1",
+        "@testing-library/react": "^16.3.2",
+        "@types/node": "^25.8.0",
+        "@types/react": "19.2.14",
+        "@types/react-dom": "19.2.3",
+        "@vitest/coverage-v8": "^4.1.7",
+        "eslint": "^10.2.1",
+        "jsdom": "^29.1.1",
+        "tailwindcss": "^4.3.0",
+        "typescript": "6.0.3",
+        "vitest": "^4.1.7"
+    }
+}

@@ -1,0 +1,80 @@
+{
+    "name": "wavequant-monorepo",
+    "description": "WaveQuant full-stack monorepo.",
+    "author": "Arthur Lobo",
+    "private": true,
+    "version": "1.0.0",
+    "license": "MIT",
+    "scripts": {
+        "commit": "cz",
+        "changeset": "changeset",
+        "changeset:version": "changeset version && pnpm install --lockfile-only",
+        "changeset:publish": "pnpm build && changeset publish",
+        "changeset:status": "changeset status",
+        "prepare": "husky",
+        "build": "turbo run build",
+        "build:packages": "pnpm --filter \"./packages/**\" build",
+        "create:project": "pnpm --filter @repo/create-project run create",
+        "harness:check": "node scripts/harness/validate-state.mjs",
+        "verify:quick": "pnpm harness:check && pnpm lint && pnpm typecheck && pnpm test:unit",
+        "verify": "pnpm verify:quick && pnpm build",
+        "dev": "pnpm env::dev turbo run dev",
+        "start:dev": "pnpm env::dev turbo run start",
+        "start:staging": "pnpm env::staging turbo run start",
+        "start:production": "pnpm env::production turbo run start",
+        "lint": "turbo run lint",
+        "lint:fix": "turbo run lint:fix",
+        "prettier:fix": "turbo run prettier:fix",
+        "format": "turbo run format",
+        "typecheck": "turbo run typecheck",
+        "test:unit": "turbo run test:unit",
+        "test:e2e": "turbo run test:e2e",
+        "test:all": "turbo run test:all",
+        "migrate:generate:dev": "pnpm env::dev pnpm --filter=api migrate:generate",
+        "migrate:up:dev": "pnpm env::dev pnpm --filter=api migrate:up",
+        "migrate:up:staging": "pnpm env::staging pnpm --filter=api migrate:up",
+        "migrate:up:production": "pnpm env::production pnpm --filter=api migrate:up",
+        "migrate:down:dev": "pnpm env::dev pnpm --filter=api migrate:down",
+        "migrate:down:staging": "pnpm env::staging pnpm --filter=api migrate:down",
+        "clear:db:dev": "pnpm env::dev pnpm --filter=api clear:db",
+        "docker:dev": "docker compose -f docker-compose.development.yaml --env-file .env.development up -d",
+        "docker:test": "docker compose -f docker-compose.test.yaml --env-file .env.test up -d",
+        "docker:staging": "docker compose -f docker-compose.staging.yaml --env-file .env.staging up -d",
+        "docker:production": "docker compose -f docker-compose.production.yaml --env-file .env.production up -d",
+        "env::dev": "cross-env NODE_ENV=development",
+        "env::staging": "cross-env NODE_ENV=staging",
+        "env::production": "cross-env NODE_ENV=production"
+    },
+    "devDependencies": {
+        "@changesets/cli": "^2.27.12",
+        "@commitlint/cli": "^21.0.1",
+        "@commitlint/config-conventional": "^21.0.1",
+        "@repo/typescript": "workspace:*",
+        "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+        "commitizen": "^4.3.1",
+        "cross-env": "^10.1.0",
+        "cz-conventional-changelog": "^3.3.0",
+        "husky": "^9.1.7",
+        "lint-staged": "^17.0.5",
+        "prettier": "^3.8.3",
+        "prettier-plugin-tailwindcss": "^0.8.0",
+        "turbo": "^2.9.14",
+        "typescript": "6.0.3"
+    },
+    "lint-staged": {
+        "**/*.{ts,tsx,js,jsx}": [
+            "eslint --fix",
+            "prettier --write"
+        ],
+        "**/*.{json,md,css,yaml}": "prettier --write"
+    },
+    "packageManager": "pnpm@10.26.2",
+    "engines": {
+        "node": ">=22"
+    },
+    "config": {
+        "commitizen": {
+            "path": "./node_modules/cz-conventional-changelog"
+        }
+    }
+}

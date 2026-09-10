@@ -1,0 +1,332 @@
+{
+    "$schema": "./feature-list.schema.json",
+    "schemaVersion": 1,
+    "activeFeature": null,
+    "features": [
+        {
+            "id": "MONOREPO-001",
+            "name": "workspace-structure-and-rules",
+            "description": "按声明式 workspace 布局迁移应用，并建立可验证、可恢复的仓库协作规范。",
+            "title": "重构 workspace 目录并建立工程规范",
+            "scope": "按 pnpm-workspace.yaml 迁移现有应用，同步路径、规则、状态与验证入口。",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "应用位于 servers、mobiles、webs、tools 分类目录中",
+                "所有配置、Docker、文档与锁文件使用新路径",
+                "AGENTS.md 和按领域加载的工程规范可用",
+                "Harness、lint、类型检查、测试与构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm install",
+                    "status": "passed",
+                    "summary": "依赖安装成功，锁文件已按 12 个 workspace 和现有补丁重新生成。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "功能状态、依赖关系及 12 个 workspace 的进度文件校验通过。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "lint、TypeScript、单元测试和生产构建全部通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-002",
+            "name": "complete-agent-rules-migration",
+            "description": "迁移 Astar 项目的完整 Agent 规则分类，并适配当前 TypeScript、NestJS、Next.js 与 Expo 技术栈。",
+            "title": "迁移完整 Agent 工程规范",
+            "scope": "覆盖 architecture、algorithms、backend、frontend、data-warehouse、operations 与 ai 规则，更新上下文路由并移除源项目专属约束。",
+            "dependencies": ["MONOREPO-001"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "源 docs/agent 的全部规则领域在当前项目均有对应文件",
+                "Go、游戏、微信支付及不存在包路径已适配或移除",
+                "根 AGENTS.md 与 docs/agent/README.md 路由完整且可渐进加载",
+                "文档格式、链接、Harness 与完整仓库验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "2 个功能、12 个 workspace、28 份 Agent 规则及其 Markdown 路由校验通过。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "lint、TypeScript、单元测试、NestJS 构建和 Next.js 构建全部通过。"
+                },
+                {
+                    "command": "harness-creator validate-harness",
+                    "status": "passed",
+                    "summary": "通用 Harness 结构审计保持 100/100。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-003",
+            "name": "publish-to-monorepo-template-repository",
+            "description": "切换项目仓库标识与链接，并将已验证代码推送到新的 GitHub 仓库。",
+            "title": "迁移 GitHub 远端仓库",
+            "scope": "更新仓库元数据和应用内 GitHub 链接，保留旧远端为 upstream，并推送 main 到新 origin。",
+            "dependencies": ["MONOREPO-002"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "package 和页面中的仓库链接指向 bobo553/monorepo-template",
+                "旧仓库保留为 upstream，新仓库配置为 origin",
+                "验证通过后提交并推送 main",
+                "本地 HEAD 与新 origin/main 一致"
+            ],
+            "verification": [
+                {
+                    "command": "repository reference scan",
+                    "status": "passed",
+                    "summary": "仓库元数据、Web、Mobile 和测试中的旧 GitHub 地址已全部清除。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "仓库名称与链接变更后，Harness、lint、类型检查、单元测试及生产构建全部通过。"
+                },
+                {
+                    "command": "git push -u origin main",
+                    "status": "passed",
+                    "summary": "main 已成功创建并推送到 git@github.com:bobo553/monorepo-template.git。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-004",
+            "name": "admin-dashboard-template",
+            "description": "参考 next-shadcn-dashboard-starter 建立符合当前仓库规范的 B 端管理后台模板。",
+            "title": "新增 B 端管理后台模板",
+            "scope": "新增 apps/webs/admin，复用共享设计系统，提供响应式应用壳、仪表盘、图表、列表、状态页与验证入口。",
+            "dependencies": ["MONOREPO-001", "MONOREPO-002"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "管理后台作为独立 Next.js workspace 可运行和构建",
+                "响应式侧栏、顶部工具区、主题切换与主要导航可用",
+                "仪表盘包含指标、趋势图、渠道分布和最近订单，并覆盖加载、空、错误状态",
+                "共享 UI 原语位于 @repo/design-system-web，应用内无重复 components/ui",
+                "Harness、lint、类型检查、单元测试、E2E 与生产构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter admin test:e2e",
+                    "status": "passed",
+                    "summary": "Chromium 中的桌面概览、业务导航和移动端侧栏 3 条端到端流程全部通过。"
+                },
+                {
+                    "command": "desktop visual inspection at 1440x1000",
+                    "status": "passed",
+                    "summary": "实际浏览器渲染中侧栏、指标卡、趋势图、渠道环图和订单表格布局正常。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "13 个 workspace 的 Harness、ESLint 10/React 19 规则、类型检查、无弃用运行时告警的单元测试与生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm install",
+                    "status": "passed",
+                    "summary": "锁文件重新生成，React 19.1、React DOM 类型与 ESLint 10 依赖图不再产生 peer dependency 冲突。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-005",
+            "name": "python-engineering-rules",
+            "description": "新增基于 Python、PyPA、Ruff、mypy 与 pytest 官方最佳实践的 Python 工程规范。",
+            "title": "新增 Python 工程规范",
+            "scope": "新增 Python 通用、测试与打包规则，更新根路由、规则索引、Harness 和仓库进度。",
+            "dependencies": ["MONOREPO-002"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "Python 任务可从根 AGENTS.md 路由到独立规则域",
+                "规则覆盖环境依赖、代码结构、类型、异常、日志、并发、安全与质量门禁",
+                "pytest 测试和 PyPA 打包规则可按任务渐进加载",
+                "规则使用稳定官方建议且不绑定易过时的固定工具版本",
+                "Markdown 格式、链接、Harness 状态与通用 Harness 结构审计通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "5 个功能、13 个 workspace、31 份 Agent 规则及 Markdown 内部路由校验通过。"
+                },
+                {
+                    "command": "pnpm verify:quick",
+                    "status": "passed",
+                    "summary": "Harness、13 个 workspace 的 lint、类型检查及 18 个单元测试全部通过。"
+                },
+                {
+                    "command": "official documentation link check",
+                    "status": "passed",
+                    "summary": "Python、PyPA、Ruff、mypy 与 pytest 的 11 个官方参考链接均可访问。"
+                },
+                {
+                    "command": "harness-creator validate-harness",
+                    "status": "passed",
+                    "summary": "通用 Harness 结构审计保持 100/100。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-006",
+            "name": "pc-web-rules-generalization",
+            "description": "将偏 Admin 的 Web 模板规则扩展为适用于各类 PC Web 页面，并保留管理后台专项约束。",
+            "title": "优化 PC Web 与 Admin 模板规则",
+            "scope": "新增 PC Web 页面专项规范，更新 Web 目录、前端、设计系统、根路由、Harness 与仓库进度。",
+            "dependencies": ["MONOREPO-002", "MONOREPO-004"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "apps/webs 明确覆盖官网、内容、门户、业务应用与 Admin 等 PC Web 场景",
+                "通用 PC 页面布局和 Admin 高密度交互规则边界清晰",
+                "shadcn 与设计系统规则适用于全部 PC Web 消费者而非仅 B 端",
+                "Next.js Server/Client、数据并行、序列化和重型组件加载规则可执行",
+                "Web workspace 验证命令不再写死单一应用且 Harness 校验通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "6 个功能、13 个 workspace、32 份 Agent 规则及 Markdown 内部路由校验通过。"
+                },
+                {
+                    "command": "pnpm --filter h5 --filter admin --filter @repo/design-system-web lint && typecheck && build",
+                    "status": "passed",
+                    "summary": "H5、Admin 及共享 Web 设计系统的 lint、类型检查与生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter h5 --filter admin test:unit",
+                    "status": "passed",
+                    "summary": "H5 与 Admin 共 5 个单元测试全部通过。"
+                },
+                {
+                    "command": "official guidance link check",
+                    "status": "passed",
+                    "summary": "Next.js、React、WCAG 2.2 与 WAI-ARIA Grid 的官方参考链接均可访问。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-007",
+            "name": "project-template-cli",
+            "description": "新增仓库内 CLI，根据现有 H5、Admin、API 与 Mobile 模板安全创建项目。",
+            "title": "新增模板项目创建 CLI",
+            "scope": "新增 apps/tools/create-project workspace、根命令、模板复制与改写逻辑、测试、文档、Harness 和进度记录。",
+            "dependencies": ["MONOREPO-001", "MONOREPO-004", "MONOREPO-006"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "CLI 支持 h5、admin、api 与 mobile 模板并提供交互和非交互用法",
+                "生成项目进入正确 apps 分类并使用合法且不冲突的 workspace 名称",
+                "复制过程排除依赖、构建、缓存、覆盖率和真实环境文件且不覆盖已有目录",
+                "生成 package、README、progress、H5/Admin 端口与 Expo 标识按新项目改写",
+                "支持模板列表、帮助和 dry-run，并为成功与拒绝路径提供自动化测试",
+                "CLI workspace、Harness、锁文件及受影响仓库门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @repo/create-project lint && typecheck && test:unit && build",
+                    "status": "passed",
+                    "summary": "CLI lint、严格类型检查、13 个单元测试和 ESM 可执行文件构建全部通过。"
+                },
+                {
+                    "command": "pnpm create:project -- --template <h5|admin|api|mobile> --name <smoke-name> --dry-run",
+                    "status": "passed",
+                    "summary": "四种真实模板均解析到正确 apps 分类，H5/Admin 自动选择可用端口且未写入文件。"
+                },
+                {
+                    "command": "unsafe project name rejection",
+                    "status": "passed",
+                    "summary": "公开 CLI 对 ../unsafe 返回退出码 1，没有创建越界目录。"
+                },
+                {
+                    "command": "pnpm verify:quick && pnpm build",
+                    "status": "passed",
+                    "summary": "7 个功能、14 个 workspace、32 份规则的 Harness、lint、类型检查、31 个单元测试和全仓构建通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-008",
+            "name": "rename-web-template-to-h5",
+            "description": "将面向用户、分享和移动浏览器场景的通用 Web 模板明确命名为 H5。",
+            "title": "将通用 Web 模板重命名为 H5",
+            "scope": "将通用 Web 模板迁移并重命名为 apps/webs/h5，同步 workspace、环境变量、部署、脚手架、规则、文档和状态。",
+            "dependencies": ["MONOREPO-001", "MONOREPO-004", "MONOREPO-007"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "apps/webs 保持扁平 workspace 布局，Admin 继续位于 apps/webs/admin",
+                "面向用户的移动 Web 模板位于 apps/webs/h5，workspace 名称为 h5",
+                "CLI 使用 h5 模板 ID，生成项目仍进入 apps/webs",
+                "pnpm、环境变量、Docker、脚手架、Harness 和文档不再引用旧 Web 名称",
+                "Harness、lint、类型检查、单元测试和生产构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm install",
+                    "status": "passed",
+                    "summary": "pnpm 识别 14 个 workspace，锁文件 importer 已从旧 Web 路径切换到 apps/webs/h5。"
+                },
+                {
+                    "command": "pnpm --filter h5 --filter admin --filter @repo/create-project --filter @repo/env lint; pnpm --filter h5 --filter admin --filter @repo/create-project --filter @repo/env typecheck; pnpm --filter h5 --filter admin --filter @repo/create-project test:unit; pnpm --filter h5 --filter admin --filter @repo/create-project --filter @repo/env build",
+                    "status": "passed",
+                    "summary": "H5、Admin、CLI 与环境包的 lint、严格类型检查、18 个相关单元测试和生产构建通过。"
+                },
+                {
+                    "command": "pnpm create:project -- --template <h5|admin> --name <smoke-name> --dry-run",
+                    "status": "passed",
+                    "summary": "H5 与 Admin 模板分别解析到 apps/webs/smoke-h5 和 apps/webs/smoke-admin，未写入文件。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "8 个功能、14 个 workspace、32 份规则的 Harness、lint、类型检查、31 个单元测试及全仓生产构建通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-009",
+            "name": "public-project-roadmap",
+            "description": "建立面向用户与贡献者的公开 Roadmap，并与机器可校验的 Feature 状态保持单一事实来源。",
+            "title": "新增公开项目 Roadmap",
+            "scope": "新增 ROADMAP.md，明确 Now、Next、Later 与 Delivered 边界，更新入口文档、智能体规则和 Harness 引用校验。",
+            "dependencies": ["MONOREPO-002", "MONOREPO-007", "MONOREPO-008"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "ROADMAP.md 面向公开读者说明项目方向、当前重点、候选方向和已交付基础",
+                "Roadmap 不重复维护 Feature 的精确状态、依赖、验收条件或验证证据",
+                "获准执行的 Roadmap 项必须引用 feature_list.json 中存在的 Feature ID",
+                "README、AGENTS.md 和会话交接清晰说明 Roadmap 与 Feature List 的职责边界",
+                "Harness 能校验 Roadmap 的必要结构和 Feature ID 引用，相关文档与仓库门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm exec prettier --check ROADMAP.md README.md AGENTS.md progress.md session-handoff.md scripts/harness/validate-state.mjs feature_list.json",
+                    "status": "passed",
+                    "summary": "中文路线图、入口文档、状态文件和 Harness 校验脚本均符合仓库格式规范。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "9 个功能、14 个 workspace、32 份规则以及中文路线图必要章节和 Feature ID 引用校验通过。"
+                },
+                {
+                    "command": "pnpm verify:quick",
+                    "status": "passed",
+                    "summary": "Harness、全仓 lint、类型检查和 31 个单元测试全部通过。"
+                },
+                {
+                    "command": "harness-creator validate-harness",
+                    "status": "passed",
+                    "summary": "Instructions、State、Verification、Scope 与 Lifecycle 五个子系统均保持 5/5。"
+                }
+            ]
+        }
+    ]
+}

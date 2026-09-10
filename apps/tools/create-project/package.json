@@ -1,0 +1,35 @@
+{
+    "name": "@repo/create-project",
+    "version": "1.0.0",
+    "description": "Create monorepo workspaces from the repository templates",
+    "private": true,
+    "type": "module",
+    "bin": {
+        "repo-create": "./dist/cli.mjs"
+    },
+    "scripts": {
+        "build": "tsup",
+        "create": "pnpm build && node dist/cli.mjs",
+        "lint": "eslint",
+        "lint:fix": "eslint --fix",
+        "prettier:fix": "prettier --write .",
+        "format": "pnpm lint:fix && pnpm prettier:fix",
+        "typecheck": "tsc --noEmit",
+        "test:unit": "vitest run",
+        "test:unit:coverage": "vitest run --coverage",
+        "test:unit:watch": "vitest",
+        "test:all": "pnpm test:unit"
+    },
+    "devDependencies": {
+        "@repo/eslint": "workspace:*",
+        "@repo/tsup": "workspace:*",
+        "@repo/typescript": "workspace:*",
+        "@types/node": "^25.8.0",
+        "@vitest/coverage-v8": "^4.1.7",
+        "eslint": "^10.2.1",
+        "prettier": "^3.8.3",
+        "tsup": "^8.5.1",
+        "typescript": "6.0.3",
+        "vitest": "^4.1.7"
+    }
+}

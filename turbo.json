@@ -1,0 +1,53 @@
+{
+    "$schema": "https://turborepo.com/schema.json",
+    "ui": "tui",
+    "globalEnv": ["NODE_ENV", "CI", "NEXT_PUBLIC_API_URL", "EXPO_PUBLIC_API_URL"],
+    "tasks": {
+        "build": {
+            "dependsOn": ["^build"],
+            "inputs": ["$TURBO_DEFAULT$", ".env*"],
+            "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+        },
+        "dev": {
+            "cache": false,
+            "persistent": true,
+            "dependsOn": ["^build"]
+        },
+        "start": {
+            "cache": false,
+            "persistent": true,
+            "dependsOn": ["build"]
+        },
+        "lint": {
+            "dependsOn": ["^build"]
+        },
+        "lint:fix": {
+            "dependsOn": ["^build"]
+        },
+        "prettier:fix": {},
+        "format": {},
+        "typecheck": {
+            "dependsOn": ["^build"]
+        },
+        "test:unit": {
+            "dependsOn": ["^build"],
+            "inputs": ["$TURBO_DEFAULT$"],
+            "outputs": [],
+            "cache": true
+        },
+        "test:unit:coverage": {
+            "dependsOn": ["^build"],
+            "inputs": ["$TURBO_DEFAULT$"],
+            "outputs": ["coverage/**"],
+            "cache": true
+        },
+        "test:e2e": {
+            "dependsOn": ["^build"],
+            "cache": false
+        },
+        "test:all": {
+            "dependsOn": ["^build"],
+            "cache": false
+        }
+    }
+}
