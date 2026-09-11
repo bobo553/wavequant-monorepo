@@ -1,0 +1,18 @@
+{
+  "train": ["2018-01-01", "2021-12-31"],
+  "validation": ["2022-01-01", "2023-12-31"],
+  "test": ["2024-01-01", null],
+  "retracement_grid": [0.33, 0.5, 0.618, 0.667],
+  "rvol_grid": [1.0, 1.2, 1.5],
+  "selection": "Highest training daily Sharpe among candidates with at least 20 closed trades; deterministic grid order tie break. If none eligible, use defaults. Validation and test never select parameters.",
+  "minimum_training_trades": 20,
+  "research_gate": {
+    "minimum_test_trades": 30,
+    "minimum_test_sharpe": 0.5,
+    "maximum_test_drawdown": 0.2,
+    "positive_validation_return": true,
+    "positive_test_return": true,
+    "positive_cost_stress_return": true
+  },
+  "warning": "Exploratory historical out-of-time split, not prospectively untouched data. This is not a production approval gate. Do not modify the protocol after viewing test results to improve the same test."
+}

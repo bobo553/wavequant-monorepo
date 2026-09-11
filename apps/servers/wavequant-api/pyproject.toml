@@ -1,0 +1,44 @@
+[project]
+name = "wavequant-api"
+version = "0.4.0"
+description = "Loopback HTTP adapter for the WaveQuant research workbench"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "wavequant-core==0.4.0",
+    "PyMySQL>=1.1,<2",
+    "redis>=6,<8",
+    "SQLAlchemy>=2.0,<3",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.2,<4"]
+
+[project.scripts]
+wavequant-api = "wavequant_api.cli:main"
+
+[build-system]
+requires = ["setuptools>=80,<81"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
+testpaths = ["tests"]
+markers = ["integration: requires externally configured MySQL and Redis services"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true

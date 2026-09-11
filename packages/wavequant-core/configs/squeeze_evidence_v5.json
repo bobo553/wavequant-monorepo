@@ -1,0 +1,21 @@
+{
+  "version": "squeeze_evidence_v5_fixed_hypotheses_20260908",
+  "purpose": "Falsifiable development study, not a guarantee of profitable or independently validated performance",
+  "data_start": "2018-01-01",
+  "data_end": "2026-09-07",
+  "universe": {"size": 64, "seed": "squeeze-evidence-v5-before-outcomes", "selection": "earliest_local_record_before_start_then_sha256_symbol", "include_existing_ten": true},
+  "periods": {"development": ["2018-01-01", "2021-12-31"], "validation": ["2022-01-01", "2023-12-31"], "diagnostic": ["2024-01-01", "2026-09-07"]},
+  "strategy": {"entry_policy": "transitioned_squeeze", "preflight_reward_risk": true, "squeeze_pullback_entries": true, "pivot_width": 2, "pattern_ttl": 60, "structure_window": 120, "volume_lookback": 20, "minimum_rvol": 1.2, "minimum_reward_risk": 1.5, "max_counter_ratio": 0.6666666666666666, "shadow_fraction": 0.5},
+  "candidates": {
+    "proxy_control": {"changes": {"pivot_mode": "confirmed_fractal_proxy"}, "hypothesis": "Unchanged v4 daily proxy control; not the strict lecture polyline"},
+    "proxy_context_252": {"changes": {"pivot_mode": "confirmed_fractal_proxy", "structure_window": 252}, "hypothesis": "One-year structural context reduces arbitrary expiry of slower trend reversals while retaining frozen key breaks and same-episode permission"},
+    "proxy_volume_1": {"changes": {"pivot_mode": "confirmed_fractal_proxy", "minimum_rvol": 1.0}, "hypothesis": "Volume not below its past mean is sufficient; test incremental value of the empirical 1.2 cutoff without removing volume evidence"},
+    "proxy_rr_1": {"changes": {"pivot_mode": "confirmed_fractal_proxy", "minimum_reward_risk": 1.0}, "hypothesis": "A net 1:1 minimum is an alternative economic assumption; retain the actual structural stop and first unhit target, never fabricate narrower risk"}
+  },
+  "strict_reference": {"pivot_mode": "strict_polyline"},
+  "execution": {"max_hold_bars": 40, "risk_fraction": 0.005, "max_positions": 5, "max_position_weight": 0.2, "commission_bps_per_side": 3, "slippage_bps_per_side": 5, "max_participation": 0.01, "entry_ttl_bars": 1, "max_entry_gap": 0.05, "allow_same_day_exit": false},
+  "statistics": {"seed": 20260908, "replications": 2000, "block_sessions": 20, "alpha": 0.05, "minimum_closed_trades": 30, "minimum_symbols_with_closed_trades": 5, "minimum_active_sessions": 60},
+  "promotion": "none_automatic; requires independent data, full historical security metadata, annotations and additional forward observation",
+  "selection_rule": "development only: eligible candidates with >=30 closed trades, >=5 traded symbols, positive mean net daily return and positive 2x-cost return; choose largest net return, name tie-break; otherwise retain CASH",
+  "limitations": ["Existing ten stocks and historical periods have already been inspected.", "Hash-selected local files are not a historical point-in-time all-market universe.", "Trial-family statistics cover only these four recorded candidates, not every historical manual experiment.", "All daily candidates are proxies; strict lecture strategy remains a separately reported reference."]
+}

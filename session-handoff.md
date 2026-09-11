@@ -2,7 +2,7 @@
 
 ## Active Work
 
-当前没有跨会话中的活动工作；功能状态以 `feature_list.json` 为准。
+当前没有跨会话中的活动工作；MONOREPO-012 已完成，功能状态以 `feature_list.json` 为准。
 
 ## Blockers
 
@@ -12,6 +12,9 @@
 
 - `AGENTS.md`
 - `feature_list.json`
+- `packages/wavequant-core/progress.md`
+- `apps/servers/wavequant-api/progress.md`
+- `apps/webs/wavequant-web/progress.md`
 - 各 workspace 的 `progress.md`
 
 ## Recommended Next Step（Next Session）

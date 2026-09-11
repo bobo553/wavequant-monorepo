@@ -12,9 +12,15 @@
 - **`apps/webs/admin`**: B2B admin dashboard with responsive navigation, ECharts, dark mode, Vitest, and Playwright
 - **`apps/mobiles/mobile`**: Expo + React Native + TypeScript + NativeWind + Vitest
 - **`apps/servers/api`**: NestJS 11 + TypeScript + TypeORM + PostgreSQL + Zod + Vitest + Supertest
+- **`apps/servers/wavequant-api`**: Loopback-only Python HTTP adapter with optional MySQL/PostgreSQL metadata storage and Redis caching
 - **`apps/tools/create-project`**: Interactive CLI for creating workspaces from the H5, Admin, API, and Mobile templates
+- **`apps/webs/wavequant-web`**: Read-only WaveQuant browser research workbench with Lightweight Charts
 
 ### Packages
+
+- **`packages/wavequant-core`**: Framework-independent Python strategy, research, backtest, data, and operations core
+
+WaveQuant 的边界、数据库选型、依赖方向和迁移取舍见 [WaveQuant Workspace Architecture](docs/wavequant-architecture.md)。
 
 - **`@repo/design-system-web`**: Web UI primitives (Tailwind CSS v4 + shadcn/ui)
 - **`@repo/design-system-mobile`**: Mobile UI primitives (NativeWind + React Native)
@@ -102,15 +108,18 @@ pnpm --filter api dev           # API only
 wavequant-monorepo/
 ├── apps/
 │   ├── servers/
-│   │   └── api/            # NestJS 11
+│   │   ├── api/            # NestJS 11
+│   │   └── wavequant-api/  # Python read-only HTTP adapter
 │   ├── mobiles/
 │   │   └── mobile/         # Expo + React Native
 │   ├── webs/
 │   │   ├── admin/          # B-side admin dashboard template
-│   │   └── h5/             # C-side mobile Web and share-page template
+│   │   ├── h5/             # C-side mobile Web and share-page template
+│   │   └── wavequant-web/  # Quantitative research workbench
 │   └── tools/
 │       └── create-project/ # Template project creation CLI
 ├── packages/
+│   ├── wavequant-core/     # Python strategy, research and backtest core
 │   ├── contracts/          # Shared Zod schemas and TypeScript types
 │   ├── design-system/
 │   │   ├── web/            # @repo/design-system-web (shadcn + Tailwind v4)
@@ -153,6 +162,14 @@ pnpm lint:fix           # Fix lint across all workspaces
 pnpm format             # Fix lint and formatting across all workspaces
 pnpm typecheck          # Type-check all workspaces
 pnpm create:project     # Create a workspace from an existing template
+pnpm --filter @wavequant/core test:unit # Run WaveQuant core tests
+pnpm --filter wavequant-api test:unit   # Run WaveQuant API contract tests
+pnpm --filter wavequant-web test:unit   # Run WaveQuant Web unit tests
+pnpm --filter wavequant-api dashboard   # Start the local read-only workbench
+pnpm --filter wavequant-api infra:up    # Start WaveQuant MySQL and Redis locally
+pnpm --filter wavequant-api infra:init  # Explicitly initialize the configured SQL schema
+pnpm --filter wavequant-api infra:index # Upsert sealed local run metadata into SQL
+pnpm --filter wavequant-api infra:check # Check configured SQL and Redis health
 ```
 
 ### Start (production build)

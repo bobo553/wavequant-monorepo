@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>WaveQuant · 主控研究工作台</title>
+        <link rel="stylesheet" href="/styles.css" />
+        <script src="/vendor/lightweight-charts.js" defer></script>
+        <script type="module" src="/app.js"></script>
+    </head>
+    <body>
+        <aside class="sidebar">
+            <a class="brand" href="/"
+                ><span class="brand-icon">∿</span><span>WaveQuant<small>主控量化研究</small></span></a
+            >
+            <div class="nav-label">RESEARCH WORKSPACE</div>
+            <nav aria-label="工作台导航">
+                <button class="nav-item active" data-page="workspace"><span>⌁</span> K 线复盘</button>
+                <button class="nav-item" data-page="performance"><span>▥</span> 策略绩效</button>
+                <button class="nav-item" data-page="orders"><span>≡</span> 订单与信号</button>
+                <button class="nav-item" data-page="health"><span>◉</span> 系统状态</button>
+            </nav>
+            <div class="sidebar-bottom">
+                <span class="status-dot"></span> 本地 · 只读模式
+                <p>通达信日线 / 无实盘路由</p>
+                <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer"
+                    >Charts by TradingView ↗</a
+                ><a href="/vendor/NOTICE" target="_blank">开源署名与 NOTICE</a
+                ><a href="/vendor/LICENSE" target="_blank">Apache 2.0 License</a>
+            </div>
+        </aside>
+        <main>
+            <header class="topbar">
+                <div class="breadcrumb">研究中心 <span>/</span> <b id="page-title">K 线复盘</b></div>
+                <div class="top-actions">
+                    <span class="pill">● 离线历史数据</span
+                    ><button id="reload" class="icon-button" title="刷新当前视图">↻ 刷新</button>
+                </div>
+            </header>
+            <section class="heading">
+                <div>
+                    <div class="eyebrow">STRATEGY RESEARCH / 主控波浪</div>
+                    <h1>让每一个信号，都有据可循<span class="accent">.</span></h1>
+                    <p>N 字结构、趋势交替与轧空信号，在同一张图上复核。</p>
+                </div>
+                <div class="sdk-badge">TradingView<small>Lightweight Charts 5.2.1</small></div>
+            </section>
+            <div class="filters panel">
+                <label
+                    >数据 / 结果口径<select id="result-scope" aria-label="结果口径">
+                        <option value="tdx">通达信 · 全部 A 股行情</option>
+                        <option value="tdx-backtest">通达信 · 当前股票回测</option>
+                        <option value="stock">个股独立回测 · 封存样本</option>
+                        <option value="portfolio">原封存组合</option>
+                    </select></label
+                >
+                <label>实验快照<select id="run-select" aria-label="实验快照"></select></label>
+                <label
+                    >策略 / 幅度方案<select id="variant-select" aria-label="策略版本">
+                        <option value="lecture_v3">V3 · 第一类 >1/2 / 第二类 ≤1/3</option>
+                        <option value="lecture_v3_d67_c33">V3 · 第一类 >2/3 / 第二类 ≤1/3</option>
+                        <option value="lecture_v3_d50_c50">V3 · 第一类 >1/2 / 第二类 ≤1/2</option>
+                        <option value="lecture_v3_d67_c50">V3 · 第一类 >2/3 / 第二类 ≤1/2</option>
+                        <option value="lecture_v2">分级双买点 V2 · 旧规则对照</option>
+                        <option value="lecture_v1">讲义因果版 V1 · 研究对照</option>
+                        <option value="strict_full">旧严格折线版 · 研究对照</option>
+                        <option value="proxy_full">日线代理版 · 研究对照</option>
+                    </select></label
+                >
+                <label
+                    >成本场景<select id="scenario-select" aria-label="成本场景">
+                        <option value="base">原费用</option>
+                        <option value="cost_2x">2 倍成本</option>
+                        <option value="cost_3x">3 倍成本</option>
+                        <option value="capacity_half">半容量</option>
+                    </select></label
+                >
+                <div class="filter-context">
+                    <span class="tiny-dot"></span><span id="data-range">读取已封存实验…</span>
+                </div>
+            </div>
+            <div class="backtest-toolbar panel">
+                <label
+                    >回测起点 <input type="date" id="backtest-start" value="2018-01-01" aria-label="回测起点"
+                /></label>
+                <button id="run-stock-backtest">运行当前股票回测</button
+                ><button id="download-backtest" disabled>导出回测账本</button>
+                <span>终点为回放日期 · 沪深主板非 ST 研究模型 · 其他板块仅行情浏览</span>
+            </div>
+            <div id="error" class="message error" role="alert" hidden></div>
+            <section class="panel note-card" aria-label="幅度方案对比">
+                <button id="compare-ratios" disabled>对比四组幅度</button
+                ><button id="cancel-ratios" disabled>取消对比</button>
+                <p id="ratio-status" role="status">
+                    当前股票 · 相同回测区间和成本。准确率按扣费后已平仓交易胜率统计；无样本不记为 0%。
+                </p>
+                <div style="overflow-x: auto">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>第一类 / 第二类</th>
+                                <th>买点数</th>
+                                <th>买入成交</th>
+                                <th>已平仓</th>
+                                <th>扣费胜率</th>
+                                <th>净收益</th>
+                                <th>最大回撤</th>
+                                <th>复盘</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ratio-results"></tbody>
+                    </table>
+                </div>
+                <p class="muted">
+                    第一类用交替低点，第二类用整段最低收盘；历史样本内对比不等于样本外有效性，也不自动推荐最高胜率方案。
+                </p>
+            </section>
+            <div id="loading" class="loading-line" role="status">正在校验并读取本地结果…</div>
+            <div id="evidence" class="evidence-banner">研究结果不构成交易建议，工程通过不等于策略有效。</div>
+            <section class="metric-grid" aria-label="组合指标">
+                <article class="metric panel">
+                    <span><b id="metric-scope-label">个股净收益</b> <small>截至回放日期</small></span
+                    ><strong id="metric-return">—</strong>
+                    <p>资金曲线含费用、未平仓估值</p>
+                </article>
+                <article class="metric panel">
+                    <span>最大回撤 <small>截至回放日期</small></span
+                    ><strong id="metric-dd">—</strong>
+                    <p>从初始资金与历史峰值计算</p>
+                </article>
+                <article class="metric panel">
+                    <span>已平仓交易 <small id="trade-scope-label">当前股票</small></span
+                    ><strong id="metric-trades">—</strong>
+                    <p>信号 ≠ 委托 ≠ 成交</p>
+                </article>
+                <article class="metric panel">
+                    <span>平均仓位 <small>截至回放日期</small></span
+                    ><strong id="metric-exposure">—</strong>
+                    <p>市值 / 账户净值的日均值</p>
+                </article>
+            </section>
+            <p class="comparison">
+                同比 / 环比 N/A：独立历史实验。通过成本场景比较相同日期区间，不将不同实验当作连续运营指标。
+            </p>
+            <section id="page-workspace" class="page">
+                <div id="backtest-details" class="panel note-card" hidden></div>
+                <div class="workspace-grid">
+                    <article class="panel chart-card">
+                        <div class="card-header">
+                            <div class="symbol-title">
+                                <select id="symbol-select" aria-label="股票"></select
+                                ><span class="tag">日 K</span><span id="price-basis" class="muted tag">因果复权</span>
+                            </div>
+                            <button id="focus-fill" class="subtle-button">定位最近成交 ↗</button>
+                        </div>
+                        <div class="chart-legend">
+                            <label><input id="show-volume" type="checkbox" checked /> 成交量（股）</label
+                            ><label><input id="show-markers" type="checkbox" checked /> 买卖信号</label
+                            ><label><input id="show-fills" type="checkbox" checked /> B / S 成交</label
+                            ><label><input id="show-rules" type="checkbox" checked /> 规则标识</label
+                            ><label><input id="show-diagnostics" type="checkbox" /> 筛选 / 中断</label
+                            ><label><input id="show-theory" type="checkbox" checked /> 折线 / N 字</label
+                            ><label><input id="show-levels" type="checkbox" checked /> 选中点位线</label
+                            ><span id="theory-status">等待标注</span>
+                        </div>
+                        <div class="marker-key">
+                            <label
+                                >折线口径
+                                <select id="drawing-mode" aria-label="折线口径">
+                                    <option value="lecture">讲义完整绘图</option>
+                                    <option value="strategy">策略已确认拐点</option>
+                                </select></label
+                            ><span style="color: #ffd36d">黄虚线：普通高低 · 无端点圆圈</span
+                            ><label style="color: #50dfd2"
+                                ><input id="show-teaching" type="checkbox" checked /> 子母段青色强调（不拆线）</label
+                            ><span class="key-rule">■ 规则确认</span><span class="key-signal">● 买入信号</span
+                            ><span class="key-exit">● 退出信号 ≠ 卖出</span><span class="key-buy">↑ B 买入成交价</span
+                            ><span class="key-sell">↓ S 卖出成交价</span>
+                        </div>
+                        <p id="drawing-status" class="drawing-status">讲义绘图保留同棒顺序；未给出的母子规则不补线。</p>
+                        <div class="trend-controls">
+                            <label><input id="show-trend" type="checkbox" checked /> 一级趋势线</label
+                            ><small
+                                >浅蓝实线连续连接已确认端点 · 跨小拐点 · 未解路径间仅作显示衔接（点击线段查看） ·
+                                未确认尾端不延伸</small
+                            >
+                        </div>
+                        <p id="trend-summary" class="trend-summary">等待一级趋势线结构…</p>
+                        <div class="trend-controls secondary-controls">
+                            <label><input id="show-secondary-trend" type="checkbox" checked /> 二级趋势线</label
+                            ><small
+                                >紫色实线首尾衔接 · 基于一级线翻空为多／翻多为空 · 同类端点经一级反向极值连接 ·
+                                衔接仅用于显示</small
+                            >
+                        </div>
+                        <p id="secondary-trend-summary" class="trend-summary">等待二级趋势线结构…</p>
+                        <div class="trend-controls tertiary-controls">
+                            <label><input id="show-tertiary-trend" type="checkbox" checked /> 三级趋势线</label
+                            ><small>橙色实线 Ⅲ·L ↔ Ⅲ·H · 基于二级线翻空为多／翻多为空 · 跨二级拐点</small>
+                        </div>
+                        <p id="tertiary-trend-summary" class="trend-summary">等待三级趋势线结构…</p>
+                        <div id="ohlc" class="ohlc" aria-live="off">鼠标移动至 K 线查看价格</div>
+                        <div id="price-chart" class="price-chart" aria-label="TradingView K线与成交量图"></div>
+                        <div class="replay">
+                            <div class="replay-title">
+                                <span>历史回放</span><strong id="asof-label">—</strong
+                                ><span id="replay-mode" class="tag">最新截面</span>
+                            </div>
+                            <div class="replay-controls">
+                                <button id="previous" aria-label="前一根K线">‹</button
+                                ><input
+                                    id="replay-slider"
+                                    type="range"
+                                    min="0"
+                                    max="0"
+                                    value="0"
+                                    aria-label="回放日期"
+                                /><button id="next" aria-label="后一根K线">›</button><button id="latest">到最新</button>
+                            </div>
+                            <p>按收盘截面回放 · 只呈现当时已确认的信息 · 不模拟盘中高低先后</p>
+                        </div>
+                    </article>
+                    <aside class="panel stock-browser" aria-label="股票列表">
+                        <div class="stock-tabs" aria-label="股票列表类型">
+                            <button id="all-stocks-tab" aria-pressed="true">全部股票</button
+                            ><button id="buy-points-tab" aria-pressed="false">符合买点</button>
+                        </div>
+                        <div class="stock-browser-header">
+                            <div>
+                                <h2>股票列表 <small id="stock-count" role="status">读取中…</small></h2>
+                                <p id="stock-source-notice">通达信本地沪深北 A 股目录</p>
+                            </div>
+                            <div class="stock-search-controls" id="stock-search-controls">
+                                <label for="stock-search" class="sr-only">搜索股票</label
+                                ><input
+                                    id="stock-search"
+                                    type="search"
+                                    placeholder="中文名 / 代码 / SH、SZ、BJ"
+                                    autocomplete="off"
+                                    aria-controls="stock-list"
+                                /><button id="stock-search-clear" aria-label="清空搜索" type="button" disabled>
+                                    清空
+                                </button>
+                            </div>
+                        </div>
+                        <div id="stock-list" class="stock-list"><p class="stock-empty">正在读取股票列表…</p></div>
+                        <section id="buy-points-panel" hidden aria-label="符合买点的股票">
+                            <label
+                                >信号窗口
+                                <select id="scan-lookback" aria-label="买点信号窗口">
+                                    <option value="1">回放当天 · 新信号</option>
+                                    <option value="5">近 5 根 · 历史信号</option>
+                                    <option value="20">近 20 根 · 历史信号</option>
+                                </select></label
+                            >
+                            <div class="scan-actions">
+                                <button id="scan-start" disabled>扫描买点</button
+                                ><button id="scan-cancel" disabled>取消扫描</button>
+                            </div>
+                            <p id="scan-status" role="status">沿用上方策略、成本和回放日期，点击开始扫描。</p>
+                            <div id="buy-points-list"></div>
+                            <p class="scan-note">
+                                买入信号 ≠
+                                可以成交。次开盘仍需检查跳空、价格限制、仓位和费用后盈亏比。严格版不自动切换为代理版。
+                            </p>
+                        </section>
+                        <p id="selected-stock-summary" class="selected-stock-summary" role="status">
+                            选择股票查看对应行情，切换保留回放日期。
+                        </p>
+                    </aside>
+                    <aside class="panel insight">
+                        <div class="card-header">
+                            <h2>决策证据</h2>
+                            <span class="tag cyan">可追溯</span>
+                        </div>
+                        <div id="selection-info" class="selection-info">点击图上标识或下方记录，查看规则和点位。</div>
+                        <div class="section-label" id="annotation-count">当前图窗标注</div>
+                        <div id="events" class="event-list"><p class="empty">正在读取结构事件…</p></div>
+                    </aside>
+                </div>
+                <article class="panel ledger-card">
+                    <div class="card-header">
+                        <h2>B / S 成交账本 <small>点击查看当时条件，含尚未平仓的买入</small></h2>
+                        <button id="fills-only">仅看成交标识</button>
+                    </div>
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>决定日期</th>
+                                    <th>成交日期</th>
+                                    <th>B / S</th>
+                                    <th>图表等价价</th>
+                                    <th>原始模拟价 / 元</th>
+                                    <th>等价份额</th>
+                                    <th>费用 / 元</th>
+                                    <th>入场条件 / 退出原因</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fills-body"></tbody>
+                        </table>
+                    </div>
+                    <p id="fills-empty" class="empty">没有模拟成交。信号圆点不会被转换成 B / S。</p>
+                </article>
+                <article class="panel ledger-card">
+                    <div class="card-header">
+                        <h2>成交复核 <small>点击记录定位 K 线</small></h2>
+                        <span id="trade-count" class="tag">—</span>
+                    </div>
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>证券</th>
+                                    <th>买入日期</th>
+                                    <th>卖出日期</th>
+                                    <th>持有 K 数</th>
+                                    <th>净盈亏 / 元</th>
+                                    <th>交易费用 / 元</th>
+                                    <th>复盘</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trades-body"></tbody>
+                        </table>
+                    </div>
+                    <p id="trades-empty" class="empty" hidden>该截面没有已平仓交易。没有交易证据，不代表风险为零。</p>
+                </article>
+            </section>
+            <article class="panel stock-results" id="stock-results" hidden>
+                <div class="card-header">
+                    <h2>全部股票 · 独立回测结果</h2>
+                    <span id="backtest-summary-status" class="tag">等待回测</span>
+                </div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>股票</th>
+                                <th>截至日期</th>
+                                <th>净收益</th>
+                                <th>最大回撤</th>
+                                <th>买入成交</th>
+                                <th>已平仓</th>
+                                <th>胜率</th>
+                                <th>费用 / 元</th>
+                                <th>查看</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stock-results-body"></tbody>
+                    </table>
+                </div>
+                <p class="note-card">
+                    每只股票使用独立账户、相同资金及原风控参数；不可把这些收益直接相加当作组合收益。无交易不代表策略有效。
+                </p>
+            </article>
+            <section id="page-performance" class="page" hidden>
+                <article class="panel">
+                    <div class="card-header">
+                        <h2>账户净值 <small>初始资金归一化为 1</small></h2>
+                        <span id="curve-scope-label" class="tag">个股独立净值</span>
+                    </div>
+                    <div id="equity-chart" class="performance-chart" aria-label="账户净值图"></div>
+                </article>
+                <div class="two-col">
+                    <article class="panel">
+                        <div class="card-header">
+                            <h2>回撤曲线 <small>%</small></h2>
+                        </div>
+                        <div id="drawdown-chart" class="small-chart" aria-label="回撤图"></div>
+                    </article>
+                    <article class="panel">
+                        <div class="card-header">
+                            <h2>仓位使用 <small>%</small></h2>
+                        </div>
+                        <div id="exposure-chart" class="small-chart" aria-label="仓位图"></div>
+                    </article>
+                </div>
+                <div class="panel note-card">
+                    收益和回撤遵循上方“结果口径”，个股独立账户与原封存组合分开。仅使用回放日期之前的数据；没有把日线代理结果标成严格讲义策略。
+                </div>
+            </section>
+            <section id="page-orders" class="page" hidden>
+                <article class="panel">
+                    <div class="card-header">
+                        <h2>委托与成交明细 <small id="orders-scope-label">当前股票 / 截至回放日期</small></h2>
+                        <button id="export-orders">导出当前明细</button>
+                    </div>
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>日期</th>
+                                    <th>证券</th>
+                                    <th>方向</th>
+                                    <th>状态</th>
+                                    <th>价格 / 复权等价</th>
+                                    <th>数量 / 等价份额</th>
+                                    <th>原因</th>
+                                    <th>定位</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orders-body"></tbody>
+                        </table>
+                    </div>
+                    <p id="orders-empty" class="empty" hidden>没有委托记录。请在 K 线页查看前置筛选与结构中断事件。</p>
+                </article>
+                <article class="panel">
+                    <div class="card-header">
+                        <h2>策略信号 <small>当前股票 / 最近 100 条</small></h2>
+                    </div>
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>日期</th>
+                                    <th>类型</th>
+                                    <th>参考价</th>
+                                    <th>失效位</th>
+                                    <th>盘态</th>
+                                    <th>原因</th>
+                                </tr>
+                            </thead>
+                            <tbody id="signals-body"></tbody>
+                        </table>
+                    </div>
+                </article>
+            </section>
+            <section id="page-health" class="page" hidden>
+                <article class="panel">
+                    <div class="card-header">
+                        <h2>运行与数据门禁</h2>
+                        <span class="pill">真实订单关闭</span>
+                    </div>
+                    <div id="health-summary" class="note-card"></div>
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>验收项</th>
+                                    <th>状态</th>
+                                    <th>说明</th>
+                                </tr>
+                            </thead>
+                            <tbody id="health-body"></tbody>
+                        </table>
+                    </div>
+                </article>
+                <article class="panel">
+                    <div class="card-header">
+                        <h2>本地告警 <small>只读展示；确认操作请使用 CLI</small></h2>
+                    </div>
+                    <div id="alerts" class="alerts"></div>
+                </article>
+            </section>
+            <footer>
+                <span
+                    >TradingView Lightweight Charts™ · Copyright (с) 2025
+                    <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer"
+                        >TradingView, Inc.</a
+                    ></span
+                ><span>本机数据 · 无外部行情请求 · 不提供买卖操作</span>
+            </footer>
+        </main>
+    </body>
+</html>

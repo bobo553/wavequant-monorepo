@@ -1,0 +1,32 @@
+{
+    "name": "wavequant-api",
+    "version": "0.4.0",
+    "description": "Loopback HTTP adapter for the WaveQuant research workbench",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "python": "node scripts/run-python.mjs",
+        "dashboard": "node scripts/run-python.mjs -m wavequant_api.cli --root ../../../packages/wavequant-core/results/operations_v1 --port 8765",
+        "infra:check": "node scripts/run-python.mjs -m wavequant_api.cli --check-infrastructure",
+        "infra:init": "node scripts/run-python.mjs -m wavequant_api.cli --init-database",
+        "infra:index": "node scripts/run-python.mjs -m wavequant_api.cli --index-runs --root ../../../packages/wavequant-core/results/operations_v1",
+        "infra:up": "docker compose --env-file .env.infrastructure -f compose.yaml up -d",
+        "infra:down": "docker compose --env-file .env.infrastructure -f compose.yaml down",
+        "build": "node scripts/run-python.mjs -m build --no-isolation",
+        "lint": "node scripts/run-python.mjs -m ruff check src tests",
+        "lint:fix": "node scripts/run-python.mjs -m ruff check --fix src tests",
+        "prettier:fix": "prettier --write package.json progress.md README.md",
+        "format": "pnpm lint:fix && pnpm prettier:fix",
+        "typecheck": "node scripts/run-python.mjs -m mypy --strict src/wavequant_api/infrastructure src/wavequant_api/cli.py",
+        "test:unit": "node scripts/run-python.mjs -m pytest",
+        "test:integration": "node scripts/run-python.mjs -m pytest -m integration",
+        "test:all": "pnpm test:unit"
+    },
+    "dependencies": {
+        "@wavequant/core": "workspace:*",
+        "wavequant-web": "workspace:*"
+    },
+    "devDependencies": {
+        "prettier": "^3.8.3"
+    }
+}

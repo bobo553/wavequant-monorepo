@@ -1,0 +1,17 @@
+{
+  "version": "transitioned_squeeze_v3_preflight_frozen_20260908",
+  "data_end": "2026-09-07",
+  "periods": {"train": ["2018-01-01", "2021-12-31"], "validation": ["2022-01-01", "2023-12-31"], "diagnostic": ["2024-01-01", "2026-09-07"]},
+  "primary": "strict_full",
+  "selection": "One preregistered workflow correction: price-infeasible observations do not consume the N entry. No search, no minimum fill target, no risk or volume relaxation.",
+  "warning": "Previously inspected ten-stock historical data, not a fresh holdout. No fills is insufficient strategy evidence, not a pass or a reason to force trades.",
+  "variants": {
+    "strict_full": {"pivot_mode": "strict_polyline"},
+    "proxy_full": {"pivot_mode": "confirmed_fractal_proxy"},
+    "proxy_v2_control": {"pivot_mode": "confirmed_fractal_proxy", "preflight_reward_risk": false},
+    "proxy_no_volume": {"pivot_mode": "confirmed_fractal_proxy", "volume_filter": false}
+  },
+  "strategy": {"entry_policy": "transitioned_squeeze", "preflight_reward_risk": true, "pivot_width": 2, "pattern_ttl": 60, "structure_window": 120, "volume_lookback": 20, "minimum_rvol": 1.2, "minimum_reward_risk": 1.5, "max_counter_ratio": 0.6666666666666666, "shadow_fraction": 0.5},
+  "execution": {"max_hold_bars": 40, "risk_fraction": 0.005, "max_positions": 5, "max_position_weight": 0.2, "commission_bps_per_side": 3, "slippage_bps_per_side": 5, "max_participation": 0.01, "entry_ttl_bars": 1, "max_entry_gap": 0.05, "allow_same_day_exit": false},
+  "gate": {"minimum_train_trades": 20, "minimum_diagnostic_trades": 20, "minimum_sharpe": 0.5, "maximum_drawdown": 0.2}
+}

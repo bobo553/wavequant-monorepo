@@ -12,6 +12,7 @@ node_modules
 .env.staging
 .env.production
 .env.local
+.env.infrastructure
 
 # Testing
 coverage
@@ -20,6 +21,7 @@ playwright-report
 
 # Turbo
 .turbo
+.migration-cache/
 
 # Vercel
 .vercel

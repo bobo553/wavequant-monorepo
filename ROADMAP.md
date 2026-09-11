@@ -9,7 +9,7 @@
 | 负责人       | 仓库维护者             |
 | 受众         | 用户、贡献者和维护者   |
 | 适用范围     | 产品方向与里程碑级意图 |
-| 最后审查日期 | 2026-09-10             |
+| 最后审查日期 | 2026-09-11             |
 
 ## 项目方向
 
@@ -35,7 +35,7 @@
 
 ## 现在（Now）
 
-当前没有正在交付的公开事项。请以 [`feature_list.json`](./feature_list.json) 中的 `activeFeature` 为准。
+当前没有已批准且正在交付的工作。精确状态以 [`feature_list.json`](./feature_list.json) 为准。
 
 ## 下一步（Next）
 
@@ -65,6 +65,7 @@
 - **Web 与多端应用模板：**[`MONOREPO-004`](./feature_list.json)、[`MONOREPO-006`](./feature_list.json) 和 [`MONOREPO-008`](./feature_list.json)。
 - **仓库发布与项目创建工具：**[`MONOREPO-003`](./feature_list.json) 和 [`MONOREPO-007`](./feature_list.json)。
 - **公开计划边界与路线图自动校验：**[`MONOREPO-009`](./feature_list.json)。
+- **WaveQuant 量化研究工作台、Web/API/Core 边界及 SQL/Redis 基础设施：**[`MONOREPO-010`](./feature_list.json)、[`MONOREPO-011`](./feature_list.json) 和 [`MONOREPO-012`](./feature_list.json)。
 
 ## 贡献与推进流程
 

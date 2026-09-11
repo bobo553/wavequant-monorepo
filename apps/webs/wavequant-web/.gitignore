@@ -1,0 +1,4 @@
+node_modules/
+dist/
+results/
+.playwright-mcp/

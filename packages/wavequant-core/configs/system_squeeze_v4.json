@@ -1,0 +1,17 @@
+{
+  "version": "transitioned_squeeze_v4_resumption_frozen_20260908",
+  "data_end": "2026-09-07",
+  "periods": {"train": ["2018-01-01", "2021-12-31"], "validation": ["2022-01-01", "2023-12-31"], "diagnostic": ["2024-01-01", "2026-09-07"]},
+  "primary": "strict_full",
+  "selection": "Theory-derived held-defense pullback resumption, separately labelled from record confirmation. Evaluated after v3 showed no complete-strategy fills; exploratory follow-up, not an independent holdout or selected profitable model.",
+  "warning": "Previously inspected ten-stock historical data. Same volume, risk, target and sequential bullish transition constraints. No guarantee of trades or returns.",
+  "variants": {
+    "strict_full": {"pivot_mode": "strict_polyline"},
+    "proxy_full": {"pivot_mode": "confirmed_fractal_proxy"},
+    "proxy_record_control": {"pivot_mode": "confirmed_fractal_proxy", "squeeze_pullback_entries": false},
+    "proxy_v2_control": {"pivot_mode": "confirmed_fractal_proxy", "squeeze_pullback_entries": false, "preflight_reward_risk": false}
+  },
+  "strategy": {"entry_policy": "transitioned_squeeze", "preflight_reward_risk": true, "squeeze_pullback_entries": true, "pivot_width": 2, "pattern_ttl": 60, "structure_window": 120, "volume_lookback": 20, "minimum_rvol": 1.2, "minimum_reward_risk": 1.5, "max_counter_ratio": 0.6666666666666666, "shadow_fraction": 0.5},
+  "execution": {"max_hold_bars": 40, "risk_fraction": 0.005, "max_positions": 5, "max_position_weight": 0.2, "commission_bps_per_side": 3, "slippage_bps_per_side": 5, "max_participation": 0.01, "entry_ttl_bars": 1, "max_entry_gap": 0.05, "allow_same_day_exit": false},
+  "gate": {"minimum_train_trades": 20, "minimum_diagnostic_trades": 20, "minimum_sharpe": 0.5, "maximum_drawdown": 0.2}
+}

@@ -1,0 +1,21 @@
+{
+  "created": "2026-09-08",
+  "future_start": "2026-09-09",
+  "train": ["2018-01-01", "2021-12-31"],
+  "validation": ["2022-01-01", "2023-12-31"],
+  "diagnostic": ["2024-01-01", "2026-09-07"],
+  "selection": "Highest train Sharpe among structural variants with >=20 closed trades. No historical diagnostic-period selection. No fallback promotion.",
+  "warning": "Historical data already inspected during v1 research. These are exploratory fixed ablations, NOT a fresh out-of-sample test or proof of alpha. Future data must be evaluated separately without revising this protocol.",
+  "variants": {
+    "N_base": {},
+    "N_two_thirds": {"max_retracement": 0.6666666666666666},
+    "N_volume": {"volume_filter": true},
+    "N_ma66": {"ma66_filter": true},
+    "N_weekly": {"weekly_filter": true},
+    "N_P4": {"p_filter": true},
+    "N_tide": {"target_mode": "tide"},
+    "N_burst_target": {"target_mode": "burst", "p_filter": true},
+    "N_tide_RR2": {"target_mode": "tide", "minimum_reward_risk": 2.0},
+    "N_tide_RR4": {"target_mode": "tide", "minimum_reward_risk": 4.0}
+  }
+}

@@ -76,6 +76,8 @@ if (!existsSync(roadmapPath)) {
 }
 
 const workspacePackagePaths = [];
+const pythonWorkspacePaths = [];
+const workspaceDirectories = new Set();
 const collectPackages = (directory, remainingDepth) => {
     if (!existsSync(directory) || remainingDepth < 0) return;
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -83,13 +85,32 @@ const collectPackages = (directory, remainingDepth) => {
             continue;
         const childDirectory = join(directory, entry.name);
         const packagePath = join(childDirectory, "package.json");
-        if (existsSync(packagePath)) workspacePackagePaths.push(packagePath);
+        if (existsSync(packagePath)) {
+            workspacePackagePaths.push(packagePath);
+            workspaceDirectories.add(childDirectory);
+        }
         collectPackages(childDirectory, remainingDepth - 1);
+    }
+};
+
+const collectPythonProjects = (directory, remainingDepth) => {
+    if (!existsSync(directory) || remainingDepth < 0) return;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (!entry.isDirectory() || [".git", ".venv", "build", "dist", "node_modules"].includes(entry.name)) continue;
+        const childDirectory = join(directory, entry.name);
+        const projectPath = join(childDirectory, "pyproject.toml");
+        if (existsSync(projectPath)) {
+            pythonWorkspacePaths.push(projectPath);
+            workspaceDirectories.add(childDirectory);
+        }
+        collectPythonProjects(childDirectory, remainingDepth - 1);
     }
 };
 
 collectPackages(join(repositoryRoot, "apps"), 2);
 collectPackages(join(repositoryRoot, "packages"), 2);
+collectPythonProjects(join(repositoryRoot, "apps"), 2);
+collectPythonProjects(join(repositoryRoot, "packages"), 2);
 
 const progressHeadings = [
     "# Progress",
@@ -98,8 +119,7 @@ const progressHeadings = [
     "## Verification",
     "## Risks and Next Steps",
 ];
-for (const packagePath of workspacePackagePaths) {
-    const workspaceDirectory = dirname(packagePath);
+for (const workspaceDirectory of workspaceDirectories) {
     const progressPath = join(workspaceDirectory, "progress.md");
     if (!existsSync(progressPath)) {
         failures.push(`${relative(repositoryRoot, workspaceDirectory)} 缺少 progress.md`);
@@ -183,5 +203,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-    `Harness validation passed: ${features.length} feature(s), ${workspacePackagePaths.length} workspace(s), ${requiredAgentRules.length} agent rule(s).`,
+    `Harness validation passed: ${features.length} feature(s), ${workspacePackagePaths.length} Node workspace(s), ${pythonWorkspacePaths.length} Python workspace(s), ${requiredAgentRules.length} agent rule(s).`,
 );

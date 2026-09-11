@@ -1,0 +1,38 @@
+services:
+    mysql:
+        image: mysql:8.4
+        restart: unless-stopped
+        environment:
+            MYSQL_DATABASE: ${WAVEQUANT_MYSQL_DATABASE:-wavequant}
+            MYSQL_USER: ${WAVEQUANT_MYSQL_USER:-wavequant}
+            MYSQL_PASSWORD: ${WAVEQUANT_MYSQL_PASSWORD:?set WAVEQUANT_MYSQL_PASSWORD}
+            MYSQL_ROOT_PASSWORD: ${WAVEQUANT_MYSQL_ROOT_PASSWORD:?set WAVEQUANT_MYSQL_ROOT_PASSWORD}
+        ports:
+            - "127.0.0.1:${WAVEQUANT_MYSQL_PORT:-3306}:3306"
+        command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+        volumes:
+            - wavequant_mysql:/var/lib/mysql
+        healthcheck:
+            test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$${MYSQL_ROOT_PASSWORD} --silent"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 30s
+
+    redis:
+        image: redis:8-alpine
+        restart: unless-stopped
+        ports:
+            - "127.0.0.1:${WAVEQUANT_REDIS_PORT:-6379}:6379"
+        command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+        volumes:
+            - wavequant_redis:/data
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 5s
+            timeout: 3s
+            retries: 10
+
+volumes:
+    wavequant_mysql: {}
+    wavequant_redis: {}

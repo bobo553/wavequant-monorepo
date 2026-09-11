@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-09-10
+2026-09-11
 
 ## Current Objective
 
@@ -16,6 +16,9 @@
 - Web 规则区分移动优先 H5 与 PC 管理后台，Admin 作为桌面专项场景追加约束。
 - 模板项目创建 CLI 已支持 H5、Admin、API 和 Mobile 四类 workspace。
 - 公开 Roadmap 使用 Now、Next、Later 与 Delivered 表达方向，精确执行状态继续由 `feature_list.json` 独占维护。
+- WaveQuant 已拆分为 `packages/wavequant-core`、`apps/servers/wavequant-api` 与 `apps/webs/wavequant-web` 三个独立边界，并纳入 pnpm、Python 与 CI 质量门禁。
+- WaveQuant API 已具备可选 SQLAlchemy 与 Redis Infrastructure 层；SQLite 封存证据、共享 SQL 元数据和可重建 Redis 缓存保持职责分离。
+- Harness 可同时发现并验证 Node 与 Python workspace 的进度文件。
 - 详细进度由各 pnpm workspace 根目录的 `progress.md` 维护。
 
 ## What Completed
@@ -33,6 +36,9 @@
 - 完成 MONOREPO-007：新增 `@repo/create-project` CLI，提供交互/参数化创建、模板列表、dry-run、安全复制、端口分配和模板字段改写。
 - 完成 MONOREPO-008：将通用 Web 模板重命名为 `apps/webs/h5`，统一 workspace、环境变量、Docker、脚手架和文档命名，同时保留扁平 Web 目录。
 - 完成 MONOREPO-009：新增中文公开 `ROADMAP.md`，使用现在、下一步、未来与已交付基础表达方向，并通过 Harness 校验必要章节和 Feature ID 引用。
+- 完成 MONOREPO-010：将 WaveQuant 当前未忽略工作树迁入 `apps/tools/wavequant`，采用 Python `src` 布局、pnpm 管理浏览器依赖，并接入统一脚本、CI、Harness 与文档。
+- 完成 MONOREPO-011：核心研究、HTTP 适配器和浏览器工作台已按职责拆分，建立单向依赖、独立构建和统一本地启动入口。
+- 完成 MONOREPO-012：WaveQuant API 新增 MySQL/PostgreSQL 共享运行索引、Redis 缓存与锁、健康检查、显式初始化/索引命令和本地 Compose 环境。
 
 ## Verification Evidence
 
@@ -54,6 +60,13 @@
 - 新增 CLI 后 `pnpm verify:quick` 与全仓构建通过，Harness 覆盖 7 个功能、14 个 workspace 和 32 份规则，全仓共 31 个单元测试。
 - MONOREPO-008 的 H5/Admin 模板 dry-run 均解析到 `apps/webs/*` 正确目标；相关 workspace 门禁和 `pnpm verify` 通过，Harness 覆盖 8 个功能。
 - MONOREPO-009 中文化后的文档格式、`pnpm harness:check` 与 `pnpm verify:quick` 通过；Harness 通用结构审计五个子系统均保持 5/5。
+- MONOREPO-010 迁移前基线：505 项 Python 测试与 37 项 Web 单元测试全部通过。
+- MONOREPO-010 workspace 门禁：Ruff、渐进式严格 mypy、Web 语法检查、505 项 Python 测试、37 项 Web 单元测试及 sdist/wheel 构建全部通过。
+- MONOREPO-010 完成后的 `pnpm verify`：10 个功能、15 个 Node workspace、1 个 Python workspace 和 32 份规则的 Harness、全仓 lint、类型检查、单元测试及构建全部通过。
+- MONOREPO-011 的 workspace 门禁：核心 483 项、API 23 项、Web 37 项测试通过，三个 workspace 的 lint、类型检查和构建通过。
+- MONOREPO-011 完成后的 `pnpm verify`：11 个功能、17 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、全仓 lint、类型检查、单元测试及构建全部通过。
+- MONOREPO-012 workspace 门禁：Ruff、严格 mypy、31 项测试和 Python 构建通过；Compose 静态解析及显式建表/健康检查冒烟通过。
+- MONOREPO-012 完成后的 `pnpm verify`：12 个功能、17 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、全仓 lint、类型检查、单元测试及构建全部通过。
 
 ## Blockers
 

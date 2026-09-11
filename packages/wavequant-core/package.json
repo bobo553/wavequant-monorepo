@@ -1,0 +1,21 @@
+{
+    "name": "@wavequant/core",
+    "version": "0.4.0",
+    "description": "Framework-independent WaveQuant Python research core",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "python": "node scripts/run-python.mjs",
+        "build": "node scripts/run-python.mjs -m build --no-isolation",
+        "lint": "node scripts/run-python.mjs -m ruff check src tests scripts examples",
+        "lint:fix": "node scripts/run-python.mjs -m ruff check --fix src tests scripts examples",
+        "prettier:fix": "prettier --write package.json progress.md README.md",
+        "format": "pnpm lint:fix && pnpm prettier:fix",
+        "typecheck": "node scripts/run-python.mjs -m mypy --strict src/wavequant/project_paths.py",
+        "test:unit": "node scripts/run-python.mjs -m pytest",
+        "test:all": "pnpm test:unit"
+    },
+    "devDependencies": {
+        "prettier": "^3.8.3"
+    }
+}

@@ -1,0 +1,25 @@
+{
+    "name": "wavequant-web",
+    "version": "0.4.0",
+    "description": "WaveQuant read-only browser research workbench",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "node scripts/build.mjs",
+        "lint": "node scripts/check-web.mjs && prettier --check src tests package.json progress.md README.md",
+        "lint:fix": "prettier --write src tests package.json progress.md README.md",
+        "prettier:fix": "prettier --write src tests package.json progress.md README.md",
+        "format": "pnpm prettier:fix",
+        "typecheck": "node scripts/check-web.mjs",
+        "test:unit": "node --test tests/*.test.mjs",
+        "test:e2e": "node tests/e2e.cjs && node tests/buy-points-live.e2e.cjs && node tests/ratio-comparison.e2e.cjs && node tests/secondary-continuity.e2e.cjs",
+        "test:all": "pnpm test:unit && pnpm test:e2e"
+    },
+    "dependencies": {
+        "lightweight-charts": "5.2.1"
+    },
+    "devDependencies": {
+        "playwright": "^1.60.0",
+        "prettier": "^3.8.3"
+    }
+}

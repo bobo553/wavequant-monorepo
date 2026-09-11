@@ -327,6 +327,125 @@
                     "summary": "Instructions、State、Verification、Scope 与 Lifecycle 五个子系统均保持 5/5。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-010",
+            "name": "migrate-wavequant-research-workbench",
+            "description": "将现有 WaveQuant Python 量化研究与浏览器工作台迁入统一 monorepo，并接入仓库状态、质量和 CI 门禁。",
+            "title": "迁移 WaveQuant 量化研究工作台",
+            "scope": "迁移 E:/WorkSpace/股票 当前工作树到 apps/tools/wavequant，采用 Python src 布局、pnpm workspace、统一依赖与验证入口，并保留研究行为。",
+            "dependencies": ["MONOREPO-005", "MONOREPO-007", "MONOREPO-009"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "源项目当前受版本控制及未忽略的工作树内容完整迁入 apps/tools/wavequant，且不复制 Git 历史、虚拟环境、缓存、数据和结果产物",
+                "Python 包采用 src 布局并由 pyproject.toml 定义依赖、Ruff、mypy、pytest、构建与 CLI 边界",
+                "浏览器工作台作为同一工具 workspace 使用 pnpm 锁定依赖，并提供 lint、typecheck、test:unit、test:e2e 和 build 脚本",
+                "根 Harness、CI、README、workspace progress 和运行文档能够发现并正确验证 Python workspace",
+                "Python 测试、Web 单元测试、workspace 门禁、Harness 与全仓回归验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "source baseline: python -m unittest discover -s tests -v && node --test web/tests/*.test.mjs",
+                    "status": "passed",
+                    "summary": "迁移前源工作树的 505 项 Python 测试与 37 项 Web 单元测试全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant lint && pnpm --filter wavequant typecheck && pnpm --filter wavequant test:unit && pnpm --filter wavequant build",
+                    "status": "passed",
+                    "summary": "Ruff、渐进式严格 mypy、Web 语法检查、505 项 Python 测试、37 项 Web 测试以及 Python sdist/wheel 构建全部通过。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "10 个功能、15 个 Node workspace、1 个 Python workspace 与 32 份 Agent 规则校验通过。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "全仓 Harness、lint、类型检查、单元测试和所有 workspace 生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant python -- -m wavequant.cli --help",
+                    "status": "passed",
+                    "summary": "迁移后的 CLI 可从 workspace 环境启动，浏览器工作台使用的本地 Lightweight Charts SDK 路径存在。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-011",
+            "name": "split-wavequant-product-workspaces",
+            "description": "将 WaveQuant 本地工具拆分为独立 Web、API 与 Python 核心 workspace，并保持现有研究行为和本地运行体验。",
+            "title": "拆分 WaveQuant Web、API 与核心包",
+            "scope": "把静态数据工作台迁入 apps/webs/wavequant-web，把 Python HTTP 服务迁入 apps/servers/wavequant-api，把研究领域与 CLI 迁入 packages/wavequant-core，建立单向依赖、独立门禁和统一启动文档。",
+            "dependencies": ["MONOREPO-010"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "WaveQuant Web、API 和核心研究能力分别位于 apps/webs、apps/servers 与 packages，旧 apps/tools/wavequant workspace 不再存在",
+                "Web 通过 HTTP 契约访问 API，API 导入核心包；本地组合可由 API 读取 Web workspace 资源，但核心包不依赖 Web 静态资源或 HTTP Server",
+                "三个 workspace 均提供 progress、README 及适用的 lint、typecheck、test:unit 和 build 门禁",
+                "本地 dashboard 可由 API workspace 启动并正确加载 Web workspace 构建资源与 Lightweight Charts",
+                "核心 Python 测试、API 契约测试、Web 单元测试、Harness 与全仓验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint && pnpm --filter @wavequant/core typecheck && pnpm --filter @wavequant/core test:unit && pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "核心包 Ruff、渐进式严格 mypy、483 项 Python 测试以及 sdist/wheel 构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格入口类型检查、23 项 HTTP/安全/跨 workspace 资源测试以及 sdist/wheel 构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "Web 语法与格式检查、37 项单元测试以及包含本地 Lightweight Charts 的静态构建通过。"
+                },
+                {
+                    "command": "dependency boundary scan and API CLI smoke",
+                    "status": "passed",
+                    "summary": "核心包不再导入 HTTP Server、API 或 Web 路径；wavequant_api CLI 帮助与默认 Web workspace 资源集成通过。"
+                },
+                {
+                    "command": "pnpm harness:check && pnpm verify",
+                    "status": "passed",
+                    "summary": "11 个功能、17 个 Node workspace、2 个 Python workspace、32 份规则及全仓 lint、类型检查、单元测试和构建全部通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-012",
+            "name": "wavequant-sql-redis-infrastructure",
+            "description": "为 WaveQuant API 增加可切换 SQL 持久化与 Redis 缓存基础设施，并提供 MySQL 本地运行环境。",
+            "title": "新增 WaveQuant MySQL 与 Redis 能力",
+            "scope": "在 apps/servers/wavequant-api 中新增数据库配置、研究运行记录仓储、Redis JSON 缓存与健康检查，提供显式初始化命令、MySQL/Redis Compose、本地配置示例和架构选型说明；保留核心包 SQLite 离线证据库。",
+            "dependencies": ["MONOREPO-011"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "WaveQuant API 支持通过环境变量连接 MySQL，并以可移植 SQLAlchemy 模型读写研究运行记录",
+                "Redis 提供带命名空间和 TTL 的 JSON 缓存，连接失败不影响核心只读研究查询",
+                "数据库结构仅通过显式初始化命令创建，配置校验和健康响应不泄露凭据",
+                "MySQL 与 Redis 可通过独立 Compose 环境启动，PostgreSQL 作为推荐生产数据库保留可切换驱动",
+                "单元测试、类型检查、构建、Harness 与全仓回归验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "Ruff、严格 mypy、31 项单元/契约测试和 Python sdist/wheel 构建通过；另 1 项真实外部服务测试按未配置环境正常跳过。"
+                },
+                {
+                    "command": "wavequant-api infra:init/infra:check smoke and docker compose config --quiet",
+                    "status": "passed",
+                    "summary": "显式 SQLite 建表冒烟、未配置服务的安全健康输出以及 MySQL 8.4 + Redis 8 Compose 静态解析通过。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "12 个功能、17 个 Node workspace、2 个 Python workspace、32 份规则及全仓 lint、类型检查、单元测试和构建全部通过。"
+                }
+            ]
         }
     ]
 }

@@ -1,0 +1,7 @@
+{
+  "root": "../results/operations_v1",
+  "csv": "../data/tdx_system_20260908.csv",
+  "protocol": "system_squeeze_v4.json",
+  "run_research": true,
+  "mode": "offline"
+}
