@@ -46,7 +46,7 @@
         "env::production": "cross-env NODE_ENV=production"
     },
     "devDependencies": {
-        "@changesets/cli": "^2.27.12",
+        "@changesets/cli": "^3.0.2",
         "@commitlint/cli": "^21.0.1",
         "@commitlint/config-conventional": "^21.0.1",
         "@repo/typescript": "workspace:*",
