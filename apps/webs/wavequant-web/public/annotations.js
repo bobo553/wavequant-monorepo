@@ -158,14 +158,27 @@ export function reversalWindowSummary(strokes, from, to, marketBars = []) {
             }
         }
     }
-    // 无行情 K 线的纯规则调用继续使用同级点，以保持该函数可独立核验趋势结构。
-    const structuralBreakout =
+    // 同级高点只在低点已知之后、图窗截止日前完成确认时才可作为结构突破，
+    // 发生日决定虚线终点，available_at 负责阻止使用当时尚不可知的未来信息。
+    const structuralPoint =
         lowPosition >= 0 && lastFallHigh
             ? path.points
                   .slice(lowPosition + 1)
-                  .find((p) => p.time <= to && p.kind === "H" && p.value > lastFallHigh.value) || null
+                  .find(
+                      (p) =>
+                          p.time <= to &&
+                          p.available_at >= breakoutStart &&
+                          p.available_at <= to &&
+                          p.kind === "H" &&
+                          p.value > lastFallHigh.value,
+                  ) || null
             : null;
-    const lastFallHighBreakout = marketBars.length ? marketBreakout : structuralBreakout;
+    const structuralBreakout = structuralPoint
+        ? { ...structuralPoint, breakout_basis: "confirmed_same_level_high" }
+        : null;
+    // 市场首次收盘严格穿越是优先证据；没有收盘突破时，已确认且严格高于
+    // 关键位的同级 H 仍是正式结构突破，不能因为传入了行情 K 线就被屏蔽。
+    const lastFallHighBreakout = marketBreakout || structuralBreakout;
     const monotone = (sign) =>
         [highs, lows].every((seq) => seq.slice(1).every((p, i) => sign * (p.value - seq[i].value) > 0));
     const windowTrend =

@@ -64,6 +64,50 @@ test("Huaxia Bank level-two last-fall-high reanchors after the old low close bre
     expect(failedRequests).toEqual([]);
 });
 
+test("Minsheng Bank level-one guide reaches the confirmed same-level breakout bar", async ({ page }) => {
+    const pageErrors: string[] = [];
+    const failedRequests: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.locator("#symbol-select").selectOption("sh.600016");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#error")).toBeHidden();
+    await expect(page.locator("#trend-summary")).toContainText("视窗末跌高 3.65");
+
+    const state = await page.evaluate(async () => {
+        const [theory, view, annotations] = await Promise.all([
+            fetch("/api/tdx-theory?symbol=sh.600016&asof=2026-09-07").then((response) => response.json()),
+            fetch("/api/tdx-view?symbol=sh.600016&asof=2026-09-07").then((response) => response.json()),
+            new Function("return import('/annotations.js')")(),
+        ]);
+        const stroke = theory.reversal_trends.strokes.find((candidate: { points: { time: string }[] }) =>
+            candidate.points.some((point) => point.time === "2026-06-15"),
+        );
+        const summary = annotations.reversalWindowSummary(
+            stroke ? [stroke] : [],
+            "2026-06-01",
+            "2026-09-07",
+            view.bars,
+        );
+        const breakoutBar = view.bars.find((bar: { time: string }) => bar.time === "2026-08-03");
+        return { key: summary.lastFallHigh, low: summary.low, breakout: summary.lastFallHighBreakout, breakoutBar };
+    });
+    expect(state.key).toMatchObject({ time: "2026-06-15", value: 3.65 });
+    expect(state.low).toMatchObject({ time: "2026-06-30", value: 3.2 });
+    expect(state.breakout).toMatchObject({
+        time: "2026-08-03",
+        value: 3.67,
+        available_at: "2026-08-11",
+        breakout_basis: "confirmed_same_level_high",
+    });
+    expect(state.breakoutBar.close).toBe(3.65);
+    expect(pageErrors).toEqual([]);
+    expect(failedRequests).toEqual([]);
+});
+
 test("the shared dashboard shell works on desktop and mobile", async ({ page }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));

@@ -150,6 +150,35 @@ test("last-fall-high guide ends at the first close breakout bar after the select
         "an intraday high or equal close must not extend the guide",
     );
 });
+test("confirmed same-level high remains a breakout fallback when no market close crosses", () => {
+    const points = [
+            { index: 100, time: "2026-06-15", kind: "H", value: 3.65, label: "H293", available_at: "2026-06-24" },
+            { index: 110, time: "2026-06-30", kind: "L", value: 3.2, label: "L294", available_at: "2026-07-17" },
+            { index: 120, time: "2026-08-03", kind: "H", value: 3.67, label: "H294", available_at: "2026-08-11" },
+        ],
+        bars = [
+            { time: "2026-07-17", high: 3.49, close: 3.46 },
+            { time: "2026-07-30", high: 3.63, close: 3.63 },
+            { time: "2026-08-03", high: 3.67, close: 3.65 },
+            { time: "2026-08-10", high: 3.57, close: 3.53 },
+        ],
+        strokes = [{ id: "reversal-minsheng", points }];
+    const summary = reversalWindowSummary(strokes, "2026-06-01", "2026-09-07", bars);
+
+    assert.equal(summary.lastFallHigh.time, "2026-06-15");
+    assert.equal(summary.low.time, "2026-06-30");
+    assert.equal(summary.lastFallHighBreakout.time, "2026-08-03");
+    assert.equal(summary.lastFallHighBreakout.value, 3.67);
+    assert.equal(summary.lastFallHighBreakout.breakout_basis, "confirmed_same_level_high");
+    assert.equal(
+        reversalWindowSummary(strokes, "2026-06-01", "2026-08-10", bars).lastFallHighBreakout,
+        null,
+        "the August 3 pivot must not be used before its August 11 confirmation date",
+    );
+    const annotation = lastFallHighAnnotations([{ level: 1, summary }])[0];
+    assert.equal(annotation.raw.breakout.time, "2026-08-03");
+    assert.match(annotation.description, /H294（2026-08-03，3\.67）首次严格突破/);
+});
 test("continuous level-one display path uses the bridge low and its preceding bridge high", () => {
     const points = [
         { index: 1, time: "2026-05-22", kind: "L", value: 3.04, label: "L7", available_at: "2026-05-25" },
