@@ -5,8 +5,8 @@
 本版把已有理论、历史诊断、纸面执行与新增运行控制接成一个命令。它是单机、单写、显式调用的离线系统，不是交易服务器。没有启用真实券商订单、后台定时任务、邮件、Webhook 或云端部署。
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli system-run --config configs/operations.json --run-id acceptance_20260908
-.venv\Scripts\python.exe -m wavequant.cli system-status --root results/operations_v1
+.venv\Scripts\python.exe -m wavequant.interfaces.cli system-run --config configs/operations.json --run-id acceptance_20260908
+.venv\Scripts\python.exe -m wavequant.interfaces.cli system-status --root results/operations_v1
 ```
 
 流程：冻结配置、源码和输入 → 全量自动测试 → 数据审计 → 原规则严格版/日线代理版分别做滚动和成本/容量诊断 → 合成纸面故障验收 → 账户归因守恒 → 输入及账户备份与恢复 → 状态门禁报告 → 产物哈希封存。
@@ -42,7 +42,7 @@ Windows 字节锁／POSIX flock 在整个运行期间持有，进程退出由操
 `operations.sqlite` 的 ALERT_OPENED / ALERT_ACKNOWLEDGED / ALERT_RESOLVED 是持久收件箱。相同作用域与同一问题不重复开告警；问题恢复后再出现会产生新的告警。确认不代表健康恢复。
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli system-alert-ack --root results/operations_v1 --id <告警ID> --reason "已阅读，等待外部证券状态数据"
+.venv\Scripts\python.exe -m wavequant.interfaces.cli system-alert-ack --root results/operations_v1 --id <告警ID> --reason "已阅读，等待外部证券状态数据"
 ```
 
 失败事件只保存异常类型与完成阶段，不把潜在含密钥的异常正文自动发往通知系统。详细错误保留在命令输出；无网络通知传输。状态检查会验证成功运行的产物哈希，并列出失败、未结束任务和告警。它是检查命令，不是后台心跳服务。
@@ -50,8 +50,8 @@ Windows 字节锁／POSIX flock 在整个运行期间持有，进程退出由操
 ## 备份与恢复
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli system-backup --root results/operations_v1 --destination results/operations_backup_20260908
-.venv\Scripts\python.exe -m wavequant.cli system-restore --bundle results/operations_backup_20260908 --destination results/operations_restored_20260908
+.venv\Scripts\python.exe -m wavequant.interfaces.cli system-backup --root results/operations_v1 --destination results/operations_backup_20260908
+.venv\Scripts\python.exe -m wavequant.interfaces.cli system-restore --bundle results/operations_backup_20260908 --destination results/operations_restored_20260908
 ```
 
 要求目标不存在、与源目录不重叠。链接、目录逃逸、未登记文件、哈希不符均拒绝。SQLite 使用 backup API 包含已提交 WAL 事务，不直接复制活跃主库。不删除或覆盖文件；失败备份目录也保留以供调查，下一次使用新路径。
@@ -69,7 +69,7 @@ Windows 字节锁／POSIX flock 在整个运行期间持有，进程退出由操
 - `account-report` 按指定时刻重建 FIFO 成本、现金、冻结资金、费用、公司行动现金、分股已实现/未实现盈亏，并核对 NAV 守恒。买入费用进入成本，不能再次从归因中重复扣除。股份调整保留成本。
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli account-report results/operations_v1/runs/acceptance_20260908/paper/account.sqlite --asof 2026-01-13T09:30:00+08:00 --output results/account_example.json
+.venv\Scripts\python.exe -m wavequant.interfaces.cli account-report results/operations_v1/runs/acceptance_20260908/paper/account.sqlite --asof 2026-01-13T09:30:00+08:00 --output results/account_example.json
 ```
 
 该例使用合成纸面账户，不是市场收益。缺少或过期持仓价格时净值与总盈亏返回 null；已知现金和历史费用仍可报告。本报告不是税务账单，不支持外部入出金、融资融券或多币种。

@@ -5,14 +5,14 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from wavequant.backtest import run_backtest
-from wavequant.config import StrategyConfig
-from wavequant.model import Bar
-from wavequant.notion import inventory_notes
-from wavequant.notion import run_notion
-from wavequant.research import write_rows
+from wavequant.application.analytics.backtest import run_backtest
+from wavequant.domain.models.config import StrategyConfig
+from wavequant.domain.models.model import Bar
+from wavequant.application.analytics.notion import inventory_notes
+from wavequant.application.analytics.notion import run_notion
+from wavequant.application.analytics.research import write_rows
 from unittest.mock import patch
-from wavequant.structure import (StructureConfig, candle_evidence, completed_weekly_context,
+from wavequant.domain.market_structure.structure import (StructureConfig, candle_evidence, completed_weekly_context,
                                  structural_signals, volume_votes)
 
 
@@ -155,7 +155,7 @@ class NotionTests(unittest.TestCase):
                           variants={'N_tide':{'target_mode':'tide'}})
             p=root/'protocol.json'
             p.write_text(json.dumps(protocol),encoding='utf-8')
-            with patch('wavequant.notion.block_bootstrap',return_value={'fixture':True}), patch('builtins.print'):
+            with patch('wavequant.application.analytics.notion.block_bootstrap',return_value={'fixture':True}), patch('builtins.print'):
                 r=run_notion(csv,notes,root/'output',p,StrategyConfig())
             self.assertFalse(r['production_ready'])
             self.assertIsNone(r['selected_by_train'])

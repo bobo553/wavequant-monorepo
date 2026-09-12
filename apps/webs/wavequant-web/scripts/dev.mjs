@@ -8,6 +8,7 @@ const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const monorepoRoot = resolve(workspaceRoot, "../../..");
 const pnpmCli = process.env.npm_execpath;
 const apiPort = process.env.WAVEQUANT_API_PORT || "8765";
+const webOrigin = "http://127.0.0.1:3003";
 const firstExisting = (...candidates) => candidates.find((candidate) => candidate && existsSync(candidate));
 const resultsRoot = firstExisting(
     process.env.WAVEQUANT_RESULTS_ROOT,
@@ -39,10 +40,12 @@ if (resultsRoot) {
         "--port",
         apiPort,
         "--api-only",
+        "--web-url",
+        webOrigin,
+        "--allow-origin",
+        webOrigin,
         "--allow-origin",
         "http://localhost:3003",
-        "--allow-origin",
-        "http://127.0.0.1:3003",
     ];
     if (tdxRoot) apiArguments.push("--tdx-root", tdxRoot);
     console.log(`[wavequant-web] API data: ${resultsRoot}`);

@@ -11,8 +11,8 @@ from threading import Thread
 import unittest
 from unittest.mock import patch
 
-from wavequant.event_store import EventStore
-from wavequant.visualization import ChartRepository, day, metrics_at, confirmed_polyline_segments
+from wavequant.infrastructure.persistence.event_store import EventStore
+from wavequant.interfaces.charts.visualization import ChartRepository, day, metrics_at, confirmed_polyline_segments
 from wavequant_api.server import make_server
 
 
@@ -152,8 +152,8 @@ class VisualizationTests(unittest.TestCase):
         self.assertAlmostEqual(v["metrics"]["total_return"], 0.1)
 
     def test_four_whole_wave_profiles_are_distinct_and_do_not_inherit_results(self):
-        from wavequant.strategy_profiles import WAVE_PROFILES
-        from wavequant.visualization import VARIANTS
+        from wavequant.domain.strategies.strategy_profiles import WAVE_PROFILES
+        from wavequant.interfaces.charts.visualization import VARIANTS
 
         source = {
             "variants": {
@@ -196,7 +196,7 @@ class VisualizationTests(unittest.TestCase):
         self.assertEqual(order["status"], "deferred")
 
     def test_n_rule_levels_reuse_existing_projection_and_known_date(self):
-        from wavequant.model import Bar
+        from wavequant.domain.models.model import Bar
         from types import SimpleNamespace
 
         bars = [
@@ -221,8 +221,8 @@ class VisualizationTests(unittest.TestCase):
         )
         with (
             patch.object(self.repo, "selection", return_value=bars),
-            patch("wavequant.visualization.generate_system_signals", return_value=result),
-            patch("wavequant.visualization.pivot_history", return_value=([[], [], [], []], [0, 0, 0, 0], [], set())),
+            patch("wavequant.interfaces.charts.visualization.generate_system_signals", return_value=result),
+            patch("wavequant.interfaces.charts.visualization.pivot_history", return_value=([[], [], [], []], [0, 0, 0, 0], [], set())),
         ):
             theory = self.repo.theory("example", "proxy_full", "TEST", "2026-01-04")
         event = theory["events"][0]
@@ -263,7 +263,7 @@ class VisualizationTests(unittest.TestCase):
         from types import SimpleNamespace
 
         with patch(
-            "wavequant.visualization.generate_system_signals", return_value=SimpleNamespace(signals=[], counts={})
+            "wavequant.interfaces.charts.visualization.generate_system_signals", return_value=SimpleNamespace(signals=[], counts={})
         ) as generate:
             self.repo.stock_view("example", "proxy_full", "TEST", "2026-01-02")
             self.assertEqual(len(generate.call_args.args[0]), 2)
@@ -314,8 +314,8 @@ class VisualizationTests(unittest.TestCase):
             counts={},
         )
         with (
-            patch("wavequant.visualization.generate_system_signals", return_value=result) as engine,
-            patch("wavequant.visualization.pivot_history", return_value=([[], []], [0, 0], [], set())),
+            patch("wavequant.interfaces.charts.visualization.generate_system_signals", return_value=result) as engine,
+            patch("wavequant.interfaces.charts.visualization.pivot_history", return_value=([[], []], [0, 0], [], set())),
         ):
             theory = self.repo.theory("example", "proxy_full", "TEST", "2026-01-02")
         self.assertEqual(len(engine.call_args.args[0]), 2)
@@ -326,7 +326,7 @@ class VisualizationTests(unittest.TestCase):
 
     def test_polyline_preserves_old_segments_without_bridging_ambiguity(self):
         from types import SimpleNamespace as S
-        from wavequant.polyline import PointKind
+        from wavequant.domain.market_structure.polyline import PointKind
 
         bars = [S(timestamp=datetime(2026, 1, i)) for i in range(1, 7)]
 
@@ -466,6 +466,13 @@ class VisualizationTests(unittest.TestCase):
             make_server(self.repo, host="0.0.0.0", port=0)
         with self.assertRaisesRegex(ValueError, "Web build missing"):
             make_server(self.repo, port=0, web_root=self.root / "missing")
+        for invalid_url in (
+            "https://127.0.0.1:3003",
+            "http://example.com:3003",
+            "http://127.0.0.1:3003/research",
+        ):
+            with self.subTest(invalid_url=invalid_url), self.assertRaisesRegex(ValueError, "loopback HTTP origin"):
+                make_server(self.repo, port=0, serve_static=False, web_url=invalid_url)
 
     def test_api_only_mode_does_not_require_web_build_and_accepts_explicit_loopback_proxy(self):
         server = make_server(
@@ -474,6 +481,7 @@ class VisualizationTests(unittest.TestCase):
             web_root=self.root / "missing",
             serve_static=False,
             allowed_origins=("http://127.0.0.1:3003",),
+            web_url="http://127.0.0.1:3003",
         )
         thread = Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -487,6 +495,17 @@ class VisualizationTests(unittest.TestCase):
         finally:
             connection.close()
         self.assertEqual(response.status, 200)
+
+        connection = HTTPConnection("127.0.0.1", server.server_port)
+        try:
+            connection.request("GET", "/")
+            response = connection.getresponse()
+            body = response.read()
+        finally:
+            connection.close()
+        self.assertEqual(response.status, 307)
+        self.assertEqual(response.getheader("Location"), "http://127.0.0.1:3003/")
+        self.assertEqual(body, b"")
 
         connection = HTTPConnection("127.0.0.1", server.server_port)
         try:

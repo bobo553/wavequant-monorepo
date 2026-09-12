@@ -1,0 +1,431 @@
+"""Observe window-scoped swings and frozen-key trend-transition evidence."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from decimal import Decimal
+from enum import Enum
+from typing import Sequence
+
+from ..models.model import Bar
+from .polyline import PointKind, ReversalPoint
+from .price_action import (AttackBasis, AttackEvidence, Direction, KeyLevel, LevelKind,
+                           _index, _ordered_pair, _validate_bar, observe_attack)
+
+
+class StructuralTrend(str, Enum):
+    BULL = '多头趋势'
+    BEAR = '空头趋势'
+    MIXED = '高低点不同向或相等'
+    UNKNOWN = '已确认拐点不足'
+
+
+@dataclass(frozen=True)
+class StructureContext:
+    symbol: str
+    timeframe: str
+    window_start: int
+    asof_index: int
+    points: tuple[ReversalPoint, ...]
+    trend: StructuralTrend
+    higher_high: bool | None
+    higher_low: bool | None
+    lower_high: bool | None
+    lower_low: bool | None
+    window_low: ReversalPoint | None
+    window_high: ReversalPoint | None
+    last_fall_high: KeyLevel | None
+    last_rise_low: KeyLevel | None
+    window_trend: StructuralTrend
+
+
+def _known_points(
+    points: Sequence[ReversalPoint], start: int, end: int
+) -> tuple[ReversalPoint, ...]:
+    """Return pivots that were observable inside the requested causal window.
+
+    ``point.index`` is the date drawn on the chart while ``confirmed_index`` is
+    the date on which the reversal became knowable. Both constraints matter:
+    accepting a visually earlier pivot before its confirmation date would leak
+    future information into a backtest.
+    """
+
+    known: list[ReversalPoint] = []
+    for point in points:
+        if not isinstance(point, ReversalPoint):
+            raise ValueError('ReversalPoint sequence required')
+        if point.confirmed_index > end:
+            continue
+        if point.point.index < start:
+            continue
+        if known:
+            previous = known[-1]
+            if (
+                (point.point.index, point.point.ordinal)
+                <= (previous.point.index, previous.point.ordinal)
+                or point.point.kind == previous.point.kind
+                or point.confirmed_index < previous.confirmed_index
+            ):
+                raise ValueError('ordered alternating causally confirmed points required')
+            if (
+                point.point.kind == PointKind.HIGH
+                and point.point.price <= previous.point.price
+                or point.point.kind == PointKind.LOW
+                and point.point.price >= previous.point.price
+            ):
+                raise ValueError('nonzero alternating high/low legs required')
+        known.append(point)
+    return tuple(known)
+
+
+def preceding_turn(points: Sequence[ReversalPoint], target: ReversalPoint) -> ReversalPoint | None:
+    """Find the nearest opposite reversal strictly to the target's left.
+
+    This is the shared definition behind ``末跌高`` and ``末升低``. It is
+    intentionally relative to one selected extreme; it is neither the latest
+    pivot on the chart nor the highest/lowest pivot in the whole window.
+
+    Raises:
+        ValueError: If ``target`` is not part of the confirmed sequence.
+    """
+
+    try:
+        index = points.index(target)
+    except ValueError as exc:
+        raise ValueError('target must belong to the confirmed sequence') from exc
+    return next((p for p in reversed(points[:index]) if p.point.kind != target.point.kind), None)
+
+
+def _key_from_preceding_turn(
+    points: Sequence[ReversalPoint],
+    target: ReversalPoint | None,
+    *,
+    symbol: str,
+    timeframe: str,
+    kind: LevelKind,
+    window_start: int,
+    asof_index: int,
+) -> KeyLevel | None:
+    """Materialize a frozen key while preserving source and knowledge dates."""
+
+    if target is None:
+        return None
+    preceding = preceding_turn(points, target)
+    if preceding is None:
+        # Missing left context is an unknown result, not permission to invent a
+        # key from an unrelated candle or from a later pivot.
+        return None
+    return KeyLevel(
+        symbol,
+        timeframe,
+        kind,
+        preceding.point.price,
+        preceding.point.index,
+        asof_index,
+        f'window_{window_start}_through_{asof_index}_preceding_extreme',
+    )
+
+
+def observe_structure(
+    points: Sequence[ReversalPoint],
+    *,
+    symbol: str,
+    timeframe: str,
+    window_start: int,
+    asof_index: int,
+) -> StructureContext:
+    """Observe trend direction and frozen reversal keys as of one bar.
+
+    The function compares the two latest confirmed highs and lows for the local
+    trend, and all same-kind pivots for the full-window trend. The window's
+    earliest equal low/high remains the anchor so a later touch cannot silently
+    rewrite historical context.
+    """
+
+    _index(window_start, 'window_start')
+    _index(asof_index, 'asof_index')
+    if (window_start > asof_index or not isinstance(symbol, str) or not symbol.strip()
+            or not isinstance(timeframe, str) or not timeframe.strip()):
+        raise ValueError('explicit symbol, timeframe and ordered window required')
+    known_points = _known_points(points, window_start, asof_index)
+    highs = [point for point in known_points if point.point.kind == PointKind.HIGH]
+    lows = [point for point in known_points if point.point.kind == PointKind.LOW]
+
+    higher_high = highs[-1].point.price > highs[-2].point.price if len(highs) >= 2 else None
+    lower_high = highs[-1].point.price < highs[-2].point.price if len(highs) >= 2 else None
+    higher_low = lows[-1].point.price > lows[-2].point.price if len(lows) >= 2 else None
+    lower_low = lows[-1].point.price < lows[-2].point.price if len(lows) >= 2 else None
+
+    if higher_high is None or higher_low is None:
+        trend = StructuralTrend.UNKNOWN
+    elif higher_high and higher_low:
+        trend = StructuralTrend.BULL
+    elif lower_high and lower_low:
+        trend = StructuralTrend.BEAR
+    else:
+        trend = StructuralTrend.MIXED
+
+    all_up = all(
+        current.point.price > previous.point.price
+        for same_kind_points in (highs, lows)
+        for previous, current in zip(same_kind_points, same_kind_points[1:])
+    )
+    all_down = all(
+        current.point.price < previous.point.price
+        for same_kind_points in (highs, lows)
+        for previous, current in zip(same_kind_points, same_kind_points[1:])
+    )
+    if higher_high is None or higher_low is None:
+        window_trend = StructuralTrend.UNKNOWN
+    elif all_up:
+        window_trend = StructuralTrend.BULL
+    elif all_down:
+        window_trend = StructuralTrend.BEAR
+    else:
+        window_trend = StructuralTrend.MIXED
+
+    # Earliest equal extreme wins; a touch does not silently replace the anchor.
+    window_low = min(lows, key=lambda point: point.point.price) if lows else None
+    window_high = max(highs, key=lambda point: point.point.price) if highs else None
+    last_fall_high = _key_from_preceding_turn(
+        known_points,
+        window_low,
+        symbol=symbol,
+        timeframe=timeframe,
+        kind=LevelKind.RESISTANCE,
+        window_start=window_start,
+        asof_index=asof_index,
+    )
+    last_rise_low = _key_from_preceding_turn(
+        known_points,
+        window_high,
+        symbol=symbol,
+        timeframe=timeframe,
+        kind=LevelKind.SUPPORT,
+        window_start=window_start,
+        asof_index=asof_index,
+    )
+    return StructureContext(
+        symbol,
+        timeframe,
+        window_start,
+        asof_index,
+        known_points,
+        trend,
+        higher_high,
+        higher_low,
+        lower_high,
+        lower_low,
+        window_low,
+        window_high,
+        last_fall_high,
+        last_rise_low,
+        window_trend,
+    )
+
+
+@dataclass(frozen=True)
+class RetracementEvidence:
+    impulse: float
+    countermove: float
+    ratio: float
+    below_67_percent: bool
+    below_33_percent: bool
+    partial: bool
+
+
+def retracement_evidence(origin: float, extreme: float, counter: float, *,
+                         direction: Direction) -> RetracementEvidence:
+    from .price_action import _positive
+    if not isinstance(direction, Direction):
+        raise ValueError('Direction required')
+    for value in (origin, extreme, counter):
+        _positive(value, 'price')
+    a, b, c = (Decimal(str(v)) for v in (origin, extreme, counter))
+    sign = 1 if direction == Direction.UP else -1
+    impulse, move = sign*(b-a), sign*(b-c)
+    if impulse <= 0 or move < 0:
+        raise ValueError('positive impulse and nonnegative counter move required')
+    return RetracementEvidence(float(impulse), float(move), float(move/impulse),
+        move < impulse*Decimal('.67'), move < impulse*Decimal('.33'), 0 < move < impulse)
+
+
+@dataclass(frozen=True)
+class ABCEvidence:
+    direction: Direction
+    first_leg: float
+    third_leg: float
+    equal_wave_or_more: bool
+    observed_at_index: int
+
+
+def observe_abc(points: Sequence[ReversalPoint], *, direction: Direction,
+                asof_index: int) -> ABCEvidence | None:
+    """Exactly four confirmed vertices = three countertrend legs, no inferred abc."""
+    _index(asof_index, 'asof_index')
+    if not isinstance(direction, Direction):
+        raise ValueError('Direction required')
+    known = _known_points(points, 0, asof_index)
+    if len(known) != 4:
+        return None
+    expected = PointKind.LOW if direction == Direction.UP else PointKind.HIGH
+    if known[0].point.kind != expected:
+        raise ValueError('ABC starting kind differs from direction')
+    a, b, c, d = (Decimal(str(p.point.price)) for p in known)
+    sign = 1 if direction == Direction.UP else -1
+    first, retrace, third = sign*(b-a), sign*(b-c), sign*(d-c)
+    if not 0 < retrace < first or third <= 0:
+        return None
+    return ABCEvidence(direction, float(first), float(third), third >= first,
+                       known[-1].confirmed_index)
+
+
+class TransitionStage(str, Enum):
+    WATCHING = 'watching_frozen_key'
+    SUSPICION = 'head_or_bottom_suspicion'
+    KEY_BROKEN = 'key_broken_await_confirmed_countermove'
+    ALTERNATION = 'countermove_below_67_percent'
+    DEEP_COUNTERMOVE = 'countermove_not_below_67_percent'
+    INVALIDATED = 'original_extreme_breached'
+
+
+@dataclass(frozen=True)
+class TrendTransition:
+    asof_index: int
+    direction: Direction
+    stage: TransitionStage
+    key: KeyLevel
+    suspicion_index: int | None = None
+    attack: AttackEvidence | None = None
+    impulse_origin: ReversalPoint | None = None
+    impulse_extreme: ReversalPoint | None = None
+    counterturn: ReversalPoint | None = None
+    retracement: RetracementEvidence | None = None
+    invalidated_index: int | None = None
+    alternation_confirmed_index: int | None = None
+    rule_version: str = 'frozen_extreme_key_decimal_67_v1'
+
+    @property
+    def suspicion_name(self):
+        return '底部疑虑' if self.direction == Direction.UP else '头部疑虑'
+
+    @property
+    def break_name(self):
+        return '翻空为多' if self.direction == Direction.UP else '翻多为空'
+
+    @property
+    def formation_name(self):
+        return ('底部成形' if self.direction == Direction.UP else '头部成形') if self.attack else None
+
+    @property
+    def alternation_name(self):
+        return '空多交替' if self.direction == Direction.UP else '多空交替'
+
+
+def observe_trend_transition(bars: Sequence[Bar], points: Sequence[ReversalPoint], *,
+                             context: StructureContext, attack_basis: AttackBasis,
+                             asof_index: int | None = None) -> TrendTransition:
+    """One frozen bull/bear context -> break -> first confirmed retracement.
+
+    Separate from local HH/HL comparisons. No automatic buy/sell, abc or N.
+    Confirmed pivots need their real availability indices, not drawing dates.
+    """
+    if not isinstance(context, StructureContext) or context.trend not in (StructuralTrend.BULL, StructuralTrend.BEAR):
+        raise ValueError('explicit previously bullish or bearish context required')
+    if not isinstance(attack_basis, AttackBasis):
+        raise ValueError('explicit AttackBasis required')
+    end = len(bars)-1 if asof_index is None else asof_index
+    _index(end, 'asof_index')
+    if end >= len(bars) or end < context.asof_index:
+        raise ValueError('available asof at or after frozen context required')
+    up = context.trend == StructuralTrend.BEAR
+    direction = Direction.UP if up else Direction.DOWN
+    sign = 1 if up else -1
+    key = context.last_fall_high if up else context.last_rise_low
+    anchor = context.window_low if up else context.window_high
+    if key is None or anchor is None:
+        raise ValueError('known frozen extreme and preceding key required')
+    known = _known_points(points, context.window_start, end)
+    original = observe_structure(points, symbol=context.symbol, timeframe=context.timeframe,
+                                 window_start=context.window_start, asof_index=context.asof_index)
+    if original != context:
+        raise ValueError('supplied points changed the frozen context')
+    for i in range(end+1):
+        _validate_bar(bars[i])
+        if bars[i].symbol != context.symbol:
+            raise ValueError('symbol mismatch')
+        if i:
+            _ordered_pair(bars[i-1], bars[i])
+    for p in known:
+        bar = bars[p.point.index]
+        price = bar.high if p.point.kind == PointKind.HIGH else bar.low
+        if p.point.price != price:
+            raise ValueError('pivot price differs from source bar and adjustment basis')
+    attack = None
+    invalidated = None
+    for i in range(context.asof_index+1, end+1):
+        bar = bars[i]
+        adverse = bar.low if up else bar.high
+        if sign*(adverse-anchor.point.price) < 0:
+            invalidated = i
+            break
+        if attack is None:
+            # Cheap candidate screen; canonical primitive verifies the crossing
+            # once. Avoid repeatedly revalidating every historical bar (O(n^2)).
+            value = bar.close if attack_basis == AttackBasis.CLOSE else bar.high if up else bar.low
+            if sign*(bars[i-1].close-key.price) <= 0 and sign*(value-key.price) > 0:
+                evidence = observe_attack(bars, i, key, timeframe=context.timeframe)
+                if evidence.qualifies(attack_basis):
+                    attack = evidence
+    # Suspicion requires the weak rebound/retest to have itself reversed, i.e.
+    # the third pivot is CONFIRMED. Equality at the old extreme is a retest.
+    suspicion = None
+    start = known.index(anchor)
+    for j in range(start+2, len(known)):
+        a, b, c = known[j-2:j+1]
+        if (a.point.kind == anchor.point.kind and c.point.kind == anchor.point.kind
+                and sign*(c.point.price-a.point.price) >= 0
+                and sign*(b.point.price-key.price) < 0
+                and sign*(c.point.price-anchor.point.price) >= 0
+                and c.confirmed_index > context.asof_index
+                and (attack is None or c.confirmed_index < attack.bar_index)
+                and (invalidated is None or c.confirmed_index < invalidated)):
+            suspicion = c.confirmed_index
+            break
+    stage = TransitionStage.SUSPICION if suspicion is not None else TransitionStage.WATCHING
+    origin = extreme = counter = ratio = None
+    alternation_index = None
+    if attack is not None:
+        stage = TransitionStage.KEY_BROKEN
+        extreme_kind = PointKind.HIGH if up else PointKind.LOW
+        for j, p in enumerate(known):
+            if (p.point.kind == extreme_kind and p.point.index >= attack.bar_index
+                    and p.confirmed_index >= attack.bar_index and j > 0):
+                origin, extreme = known[j-1], p
+                # Do not merge sub-bar legs into a fictitious daily impulse.
+                if not origin.point.index < attack.bar_index <= extreme.point.index:
+                    origin = extreme = None
+                    break
+                if j+1 < len(known):
+                    counter = known[j+1]
+                    if counter.point.index <= extreme.point.index:
+                        counter = None
+                        break
+                    ratio = retracement_evidence(origin.point.price, extreme.point.price,
+                        counter.point.price, direction=direction)
+                    if ratio.partial and ratio.below_67_percent:
+                        stage = TransitionStage.ALTERNATION
+                        alternation_index = counter.confirmed_index
+                    else:
+                        stage = TransitionStage.DEEP_COUNTERMOVE
+                break
+    if invalidated is not None:
+        stage = TransitionStage.INVALIDATED
+        # Preserve earlier confirmed facts, never manufacture one after failure.
+        if alternation_index is not None and alternation_index >= invalidated:
+            alternation_index = None
+        if extreme is not None and extreme.confirmed_index >= invalidated:
+            origin = extreme = counter = ratio = None
+        elif counter is not None and counter.confirmed_index >= invalidated:
+            counter = ratio = None
+    return TrendTransition(end, direction, stage, key, suspicion, attack, origin,
+        extreme, counter, ratio, invalidated, alternation_index)

@@ -3,11 +3,11 @@ from datetime import datetime, timedelta
 import unittest
 from unittest.mock import patch
 
-from wavequant.model import Bar
-from wavequant.polyline import LinePoint, PointKind, ReversalPoint
-from wavequant.bull_eligibility import BullPermission, bull_permission_history
-from wavequant.integrated_strategy import SystemStrategy, generate_system_signals
-from wavequant.market_regime import MarketRegime, observe_market_regime
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.polyline import LinePoint, PointKind, ReversalPoint
+from wavequant.domain.strategies.bull_eligibility import BullPermission, bull_permission_history
+from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
+from wavequant.domain.market_state.market_regime import MarketRegime, observe_market_regime
 from tests.test_integrated_strategy import fixture, config
 
 
@@ -97,7 +97,7 @@ class BullEligibilityTests(unittest.TestCase):
         # Gate wiring test; actual transition mathematics is tested above.
         for ready, expected in [(6,True), (7,False), (8,False)]:
             permission = BullPermission(0,0,10,1,2,ready)
-            with patch('wavequant.integrated_strategy.bull_permission_history',
+            with patch('wavequant.domain.strategies.integrated_strategy.bull_permission_history',
                        return_value=({i:permission for i in range(13)}, [])):
                 result = generate_system_signals(fixture(), config(entry_policy='transitioned_squeeze'))
             self.assertEqual(any(s.side=='LONG' for s in result.signals), expected)
@@ -111,9 +111,9 @@ class BullEligibilityTests(unittest.TestCase):
             result = observe_market_regime(*args, **kw)
             return replace(result, frames=tuple(replace(f, regime=MarketRegime.GRIND_UP)
                 if f.regime is not None else f for f in result.frames))
-        with patch('wavequant.integrated_strategy.bull_permission_history',
+        with patch('wavequant.domain.strategies.integrated_strategy.bull_permission_history',
                    return_value=({i:permission for i in range(13)}, [])), \
-             patch('wavequant.integrated_strategy.observe_market_regime', side_effect=grind):
+             patch('wavequant.domain.strategies.integrated_strategy.observe_market_regime', side_effect=grind):
             result = generate_system_signals(fixture(), config(entry_policy='transitioned_squeeze'))
         self.assertFalse(any(s.side=='LONG' for s in result.signals))
         self.assertTrue(any(e.get('reason')=='not_squeeze_regime' for e in result.audit))
@@ -122,7 +122,7 @@ class BullEligibilityTests(unittest.TestCase):
         permission = BullPermission(0,0,10,1,2,6)
         history = {i:permission for i in range(13)}
         history[7] = None
-        with patch('wavequant.integrated_strategy.bull_permission_history', return_value=(history, [])):
+        with patch('wavequant.domain.strategies.integrated_strategy.bull_permission_history', return_value=(history, [])):
             result = generate_system_signals(fixture(), config(entry_policy='transitioned_squeeze'))
         self.assertFalse(any(s.side=='LONG' for s in result.signals))
         self.assertTrue(any(e.get('reason')=='attack_not_in_same_bullish_episode' for e in result.audit))

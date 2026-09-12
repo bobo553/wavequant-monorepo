@@ -3,9 +3,9 @@ from datetime import datetime,timedelta
 from types import SimpleNamespace
 import unittest
 
-from wavequant.config import StrategyConfig
-from wavequant.model import Bar,Signal
-from wavequant.stock_backtest import single_stock_result
+from wavequant.domain.models.config import StrategyConfig
+from wavequant.domain.models.model import Bar,Signal
+from wavequant.interfaces.research_tools.stock_backtest import single_stock_result
 
 
 class StockBacktestTests(unittest.TestCase):

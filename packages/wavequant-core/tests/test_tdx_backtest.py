@@ -5,13 +5,13 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from wavequant.config import StrategyConfig
-from wavequant.data import fingerprint
-from wavequant.integrated_strategy import SystemStrategy,SystemResult
-from wavequant.model import Signal
-from wavequant.tdx import RECORD
-from wavequant.tdx_browser import TdxBrowser
-from wavequant.tdx_backtest import TdxBacktester
+from wavequant.domain.models.config import StrategyConfig
+from wavequant.infrastructure.market_data.data import fingerprint
+from wavequant.domain.strategies.integrated_strategy import SystemStrategy,SystemResult
+from wavequant.domain.models.model import Signal
+from wavequant.infrastructure.market_data.tdx import RECORD
+from wavequant.interfaces.charts.tdx_browser import TdxBrowser
+from wavequant.interfaces.research_tools.tdx_backtest import TdxBacktester
 
 
 class TdxBacktestTests(unittest.TestCase):
@@ -45,8 +45,8 @@ class TdxBacktestTests(unittest.TestCase):
         return SystemResult(signals,audit,dict(long_signals=sum(s.side=='LONG' for s in signals)))
 
     def run_fixture(self,end=None):
-        with patch('wavequant.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))), \
-             patch('wavequant.tdx_backtest.generate_system_signals',side_effect=self.generated):
+        with patch('wavequant.interfaces.research_tools.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))), \
+             patch('wavequant.interfaces.research_tools.tdx_backtest.generate_system_signals',side_effect=self.generated):
             return self.service.run('sh.600000','2020-01-01',end or self.days[-1].isoformat(),self.strategy,self.execution)
 
     def test_unified_adjusted_prices_and_entry_exit_evidence(self):
@@ -139,12 +139,12 @@ class TdxBacktestTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'重启'):self.run_fixture()
 
     def test_disk_restart_reuses_identical_signals_ledger_and_screening(self):
-        from wavequant.buy_scanner import buy_match
-        from wavequant.screening_funnel import funnel
+        from wavequant.interfaces.screening.buy_scanner import buy_match
+        from wavequant.application.analytics.screening_funnel import funnel
         bars,g,before=self.run_fixture()
         self.service=TdxBacktester(self.browser,self.service.cache)
-        with patch('wavequant.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))), \
-             patch('wavequant.tdx_backtest.generate_system_signals',side_effect=AssertionError('must reuse')):
+        with patch('wavequant.interfaces.research_tools.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))), \
+             patch('wavequant.interfaces.research_tools.tdx_backtest.generate_system_signals',side_effect=AssertionError('must reuse')):
             b,g2,after=self.service.run('sh.600000','2020-01-01',self.days[-1].isoformat(),self.strategy,self.execution)
             self.assertEqual(after['performance']['cache'],'disk')
             self.assertEqual(b,bars);self.assertEqual(g,g2)
@@ -160,7 +160,7 @@ class TdxBacktestTests(unittest.TestCase):
     def test_execution_change_reuses_signal_artifact_only(self):
         _,_,before=self.run_fixture()
         self.execution['slippage_bps_per_side']=10
-        with patch('wavequant.tdx_backtest.generate_system_signals',side_effect=AssertionError('must reuse')):
+        with patch('wavequant.interfaces.research_tools.tdx_backtest.generate_system_signals',side_effect=AssertionError('must reuse')):
             _,_,after=self.service.run('sh.600000','2020-01-01',self.days[-1].isoformat(),self.strategy,self.execution)
         self.assertEqual(after['performance']['cache'],'signals_disk')
         self.assertNotEqual(before['run_id'],after['run_id'])
@@ -172,12 +172,12 @@ class TdxBacktestTests(unittest.TestCase):
         for strategy,start,end in ((dict(self.strategy,volume_lookback=10),'2020-01-01',self.days[-1].isoformat()),
                                   (self.strategy,self.days[22].isoformat(),self.days[-1].isoformat()),
                                   (self.strategy,'2020-01-01',self.days[-2].isoformat())):
-            with patch('wavequant.tdx_backtest.generate_system_signals',side_effect=self.generated) as compute:
+            with patch('wavequant.interfaces.research_tools.tdx_backtest.generate_system_signals',side_effect=self.generated) as compute:
                 self.service.run('sh.600000',start,end,strategy,self.execution)
                 self.assertEqual(compute.call_count,1)
         self.action_path.write_bytes(b'new-actions')
-        with patch('wavequant.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))), \
-             patch('wavequant.tdx_backtest.generate_system_signals',side_effect=self.generated) as compute:
+        with patch('wavequant.interfaces.research_tools.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))), \
+             patch('wavequant.interfaces.research_tools.tdx_backtest.generate_system_signals',side_effect=self.generated) as compute:
             self.service.run('sh.600000','2020-01-01',self.days[-1].isoformat(),self.strategy,self.execution)
             self.assertEqual(compute.call_count,1)
 
@@ -194,8 +194,8 @@ class TdxBacktestTests(unittest.TestCase):
 
     def test_actions_decode_once_and_catalog_not_scanned_per_stock(self):
         with patch.object(self.browser,'catalog',side_effect=AssertionError('full market scan')), \
-             patch('wavequant.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))) as decode, \
-             patch('wavequant.tdx_backtest.generate_system_signals',side_effect=self.generated):
+             patch('wavequant.interfaces.research_tools.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))) as decode, \
+             patch('wavequant.interfaces.research_tools.tdx_backtest.generate_system_signals',side_effect=self.generated):
             for end in self.days[-3:]:
                 self.service.run('sh.600000','2020-01-01',end.isoformat(),self.strategy,self.execution)
             self.assertEqual(decode.call_count,1)
@@ -208,8 +208,8 @@ class TdxBacktestTests(unittest.TestCase):
         def slow(bars,config):
             if bars[0].symbol=='sh.600000':entered.set();release.wait(5)
             return self.generated(bars,config)
-        with patch('wavequant.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))), \
-             patch('wavequant.tdx_backtest.generate_system_signals',side_effect=slow), \
+        with patch('wavequant.interfaces.research_tools.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))), \
+             patch('wavequant.interfaces.research_tools.tdx_backtest.generate_system_signals',side_effect=slow), \
              ThreadPoolExecutor(max_workers=2) as pool:
             first=pool.submit(self.service.run,'sh.600000','2020-01-01',self.days[-1].isoformat(),self.strategy,self.execution)
             try:
@@ -221,7 +221,7 @@ class TdxBacktestTests(unittest.TestCase):
 
     def test_deferred_exit_retains_original_decision_day(self):
         from dataclasses import replace
-        from wavequant.backtest import run_portfolio
+        from wavequant.application.analytics.backtest import run_portfolio
         bars,generated,_=self.run_fixture()
         bars[5]=replace(bars[5],sellable=False)
         result=run_portfolio({bars[0].symbol:bars},generated.signals,StrategyConfig(**self.execution))
@@ -233,7 +233,7 @@ class TdxBacktestTests(unittest.TestCase):
 
     def test_stop_observation_does_not_fake_same_day_stop_fill(self):
         from dataclasses import replace
-        from wavequant.backtest import run_portfolio
+        from wavequant.application.analytics.backtest import run_portfolio
         bars,generated,_=self.run_fixture();signals=[s for s in generated.signals if s.side=='LONG']
         bars[4]=replace(bars[4],low=7)
         result=run_portfolio({bars[0].symbol:bars},signals,StrategyConfig(**self.execution))

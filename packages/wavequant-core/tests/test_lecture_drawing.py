@@ -1,7 +1,7 @@
 from datetime import datetime
 import unittest
-from wavequant.model import Bar
-from wavequant.lecture_drawing import lecture_drawing
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
 
 
 def bars(rows):
@@ -145,8 +145,8 @@ class LectureDrawingTests(unittest.TestCase):
         self.assertEqual([p['index'] for p in drawing['strokes'][0]['points']],[0,1,2,3,4])
 
     def test_inside_drawing_does_not_relax_strict_strategy_polyline(self):
-        from wavequant.polyline import observe_polyline
-        from wavequant.price_action import Direction
+        from wavequant.domain.market_structure.polyline import observe_polyline
+        from wavequant.domain.market_structure.price_action import Direction
         bs=bars([(9,11,8,10),(10,14,9,13),(11,13,10,12)])
         self.assertEqual(len(lecture_drawing(bs)['strokes']),1)
         strict=observe_polyline(bs,symbol='TEST',timeframe='1d',initial_direction=Direction.UP,start_index=0)

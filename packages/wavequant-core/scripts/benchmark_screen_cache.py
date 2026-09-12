@@ -11,9 +11,9 @@ import subprocess
 import sys
 import time
 
-from wavequant.data import dump_json
-from wavequant.integrated_strategy import SystemStrategy,generate_system_signals
-from wavequant.visualization import ChartRepository
+from wavequant.infrastructure.market_data.data import dump_json
+from wavequant.domain.strategies.integrated_strategy import SystemStrategy,generate_system_signals
+from wavequant.interfaces.charts.visualization import ChartRepository
 
 
 def benchmark(output,phase):
@@ -24,7 +24,7 @@ def benchmark(output,phase):
     rows=[]
     original=None
     if phase=='cold':
-        import wavequant.integrated_strategy as module
+        import wavequant.domain.strategies.integrated_strategy as module
         # Reference executes the SAME current rules, with the pre-optimization
         # list + repeated-validation path. It does not change live module code.
         source=inspect.getsource(generate_system_signals)

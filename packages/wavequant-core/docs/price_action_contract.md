@@ -1,6 +1,6 @@
 # 价格行为基础接口
 
-本模块只定义突破、跌破、抵抗及三笔观察顺序，作为以后 N 字、盘态、量能条件与交易规则的共同输入。统一入口是 `wavequant/price_action.py`，也可从 `wavequant.foundations` 导入这些新接口。
+本模块只定义突破、跌破、抵抗及三笔观察顺序，作为以后 N 字、盘态、量能条件与交易规则的共同输入。统一入口是 `wavequant/domain/market_structure/price_action.py`，也可从 `wavequant.domain.market_structure.foundations` 导入这些新接口。
 
 ## 边界
 
@@ -89,7 +89,7 @@
 完整可执行示例见 `examples/price_action_basics.py`，使用手工样例而非市场盈利证据。
 
 ```python
-from wavequant.price_action import (
+from wavequant.domain.market_structure.price_action import (
     KeyLevel, LevelKind, AttackBasis, observe_sequence,
 )
 

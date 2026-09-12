@@ -2,11 +2,11 @@ from dataclasses import FrozenInstanceError, replace
 from datetime import datetime, timedelta
 import unittest
 
-from wavequant.model import Bar
-from wavequant.price_action import Direction, LevelKind
-from wavequant.n_shape import NSetup, PivotRef, BoxAnchorMode, MilestoneBasis, NStatus
-from wavequant.control_bar import observe_control_bar
-from wavequant.washout import WashoutPolicy, WashoutStage as S, observe_washout
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.price_action import Direction, LevelKind
+from wavequant.domain.market_structure.n_shape import NSetup, PivotRef, BoxAnchorMode, MilestoneBasis, NStatus
+from wavequant.domain.market_state.control_bar import observe_control_bar
+from wavequant.domain.market_state.washout import WashoutPolicy, WashoutStage as S, observe_washout
 
 
 def fixture():

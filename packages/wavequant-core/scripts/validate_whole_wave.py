@@ -1,11 +1,11 @@
 """Four fixed whole-wave ratio plans; independent accounts, not a profitability proof."""
 from pathlib import Path
 
-from wavequant.visualization import ChartRepository
-from wavequant.strategy_profiles import WAVE_PROFILES
-from wavequant.integrated_strategy import SystemStrategy,generate_system_signals
-from wavequant.whole_wave_entry import price,threshold
-from wavequant.data import dump_json
+from wavequant.interfaces.charts.visualization import ChartRepository
+from wavequant.domain.strategies.strategy_profiles import WAVE_PROFILES
+from wavequant.domain.strategies.integrated_strategy import SystemStrategy,generate_system_signals
+from wavequant.domain.strategies.whole_wave_entry import price,threshold
+from wavequant.infrastructure.market_data.data import dump_json
 
 
 def validate(output):

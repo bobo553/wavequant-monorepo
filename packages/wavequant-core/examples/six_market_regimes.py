@@ -3,10 +3,10 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 import sys
 
-from wavequant.model import Bar
-from wavequant.n_shape import BoxAnchorMode, NSetup, PivotRef
-from wavequant.price_action import Direction, ShadowPolicy
-from wavequant.market_regime import RegimePolicy, WaveBoundary, observe_market_regime
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.n_shape import BoxAnchorMode, NSetup, PivotRef
+from wavequant.domain.market_structure.price_action import Direction, ShadowPolicy
+from wavequant.domain.market_state.market_regime import RegimePolicy, WaveBoundary, observe_market_regime
 
 
 def main():

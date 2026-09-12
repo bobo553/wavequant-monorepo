@@ -9,7 +9,7 @@ import mimetypes
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from wavequant.visualization import ChartRepository
+from wavequant.interfaces.charts.visualization import ChartRepository
 
 from .infrastructure import Infrastructure, InfrastructureSettings
 
@@ -17,6 +17,34 @@ from .infrastructure import Infrastructure, InfrastructureSettings
 APPS_ROOT = Path(__file__).resolve().parents[4]
 WEB_WORKSPACE_ROOT = APPS_ROOT / "webs" / "wavequant-web"
 DEFAULT_WEB_ROOT = WEB_WORKSPACE_ROOT / "out"
+
+
+def normalize_loopback_web_url(value: str | None) -> str | None:
+    """Validate the optional development UI target used by the API root.
+
+    The API is deliberately loopback-only. Accepting an arbitrary redirect
+    target here would turn a trusted local URL into an open redirect, so the
+    target must be a plain HTTP origin on the same loopback host family.
+    """
+    if value is None:
+        return None
+    parsed = urlsplit(value)
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("Web URL must contain a valid port") from exc
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname not in {"127.0.0.1", "localhost"}
+        or port is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("Web URL must be a loopback HTTP origin with an explicit port")
+    return f"http://{parsed.hostname}:{port}/"
 
 
 def make_server(
@@ -28,6 +56,7 @@ def make_server(
     infrastructure=None,
     serve_static=True,
     allowed_origins=(),
+    web_url=None,
 ):
     if host not in ("127.0.0.1", "localhost"):
         raise ValueError("dashboard binds to loopback only")
@@ -43,6 +72,7 @@ def make_server(
         if market_page.is_file():
             static_routes["/market"] = market_page
     proxy_origins = set(allowed_origins)
+    web_redirect = normalize_loopback_web_url(web_url)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -66,6 +96,15 @@ def make_server(
                 self.wfile.write(body)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass
+
+        def redirect(self, location):
+            """Send a non-cacheable development redirect without a response body."""
+            self.send_response(307)
+            self.send_header("Location", location)
+            self.send_header("Content-Length", "0")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
 
         def do_GET(self):
             host_header = self.headers.get("Host", "")
@@ -93,6 +132,9 @@ def make_server(
                         )
                     )
                     self.send(200, path.read_bytes(), mime + "; charset=utf-8")
+                    return
+                if request_path == "/" and web_redirect is not None:
+                    self.redirect(web_redirect)
                     return
                 if url.path == "/api/catalog":
                     catalog = (
@@ -226,6 +268,7 @@ def serve_dashboard(
     infrastructure: Infrastructure | None = None,
     serve_static: bool = True,
     allowed_origins: tuple[str, ...] = (),
+    web_url: str | None = None,
 ) -> None:
     repository = ChartRepository(root, tdx_root=tdx_root)
     services = infrastructure or Infrastructure.from_settings(InfrastructureSettings.from_env())
@@ -236,6 +279,7 @@ def serve_dashboard(
         infrastructure=services,
         serve_static=serve_static,
         allowed_origins=allowed_origins,
+        web_url=web_url,
     )
     print(f"WaveQuant read-only dashboard: http://127.0.0.1:{server.server_port}", flush=True)
     try:

@@ -1,10 +1,10 @@
 """Causal, dependency-free research tools for the 主控波浪 framework."""
 
-from .backtest import BacktestResult, run_backtest
-from .config import StrategyConfig
-from .features import compute_features
-from .io import load_bars
-from .strategy import generate_signals
+from wavequant.application.analytics.backtest import BacktestResult, run_backtest
+from wavequant.domain.models.config import StrategyConfig
+from wavequant.domain.strategies.features import compute_features
+from wavequant.domain.strategies.strategy import generate_signals
+from wavequant.infrastructure.market_data.io import load_bars
 
 __all__ = [
     "BacktestResult",

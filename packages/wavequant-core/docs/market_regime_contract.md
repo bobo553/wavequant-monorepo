@@ -1,6 +1,6 @@
 # 六大盘态：N 字后的抵抗与延续
 
-依据用户提供的六态文字、配图，以及既有突破／跌破和 N 形定义。对应实现 `wavequant/market_regime.py`，规则版本 `six_regimes_v1_close_record_defense_breach`。
+依据用户提供的六态文字、配图，以及既有突破／跌破和 N 形定义。对应实现 `wavequant/domain/market_state/market_regime.py`，规则版本 `six_regimes_v1_close_record_defense_breach`。
 
 这是可复现的**形态研究口径**，不是讲义已经证明的交易规律。特别是“抵抗成功”、延续确认和强势防守的数值判据，是本项目明确选择的工程解释；不能把识别六态等同于证明收益或识别真实主力意图。
 
@@ -82,10 +82,10 @@ N 字的双锚点实／虚完成口径不变；这里更严格的收盘新纪录
 ## 6. 调用与返回
 
 ```python
-from wavequant.market_regime import (
+from wavequant.domain.market_state.market_regime import (
     RegimePolicy, WaveBoundary, observe_market_regime,
 )
-from wavequant.price_action import ShadowPolicy
+from wavequant.domain.market_structure.price_action import ShadowPolicy
 
 # bars 是同股票、同周期、同复权口径的已收盘 Bar 序列。
 # setup 是 n_shape.NSetup，包含来源和事先确认的 A/B/C 引用。

@@ -3,11 +3,11 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timedelta
 
-from wavequant.backtest import run_backtest
-from wavequant.config import StrategyConfig
-from wavequant.features import compute_features
-from wavequant.model import Bar, Signal
-from wavequant.strategy import generate_signals
+from wavequant.application.analytics.backtest import run_backtest
+from wavequant.domain.models.config import StrategyConfig
+from wavequant.domain.strategies.features import compute_features
+from wavequant.domain.models.model import Bar, Signal
+from wavequant.domain.strategies.strategy import generate_signals
 
 
 def bar(day: int, close: float, volume: float = 100.0, *, hour: int = 15) -> Bar:

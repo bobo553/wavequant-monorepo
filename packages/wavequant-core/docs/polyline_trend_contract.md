@@ -1,6 +1,6 @@
 # 高低折线、结构趋势与多空交替
 
-实现：`wavequant/polyline.py`、`wavequant/trend_structure.py`。依据用户提供的图 008、基本术语和折线连接文字；本次不改动旧策略、旧报告或旧 `foundations.swing_context` 的行为。
+实现：`wavequant/domain/market_structure/polyline.py`、`wavequant/domain/market_structure/trend_structure.py`。依据用户提供的图 008、基本术语和折线连接文字；本次不改动旧策略、旧报告或旧 `foundations.swing_context` 的行为。
 
 本层描述可观察的价格结构，不证明筹码已被某个主力吸纳、真实成本、趋势必然持续或买卖收益。原文的买卖提示没有直接变成订单。
 

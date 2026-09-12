@@ -7,10 +7,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from wavequant.artifact_cache import ArtifactCache
-from wavequant.model import Bar
-from wavequant.validated_bars import ValidatedBars
-from wavequant.wave_strength import validate_prefix
+from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
+from wavequant.domain.models.model import Bar
+from wavequant.domain.models.validated_bars import ValidatedBars
+from wavequant.domain.market_state.wave_strength import validate_prefix
 
 
 class ArtifactTests(unittest.TestCase):
@@ -65,7 +65,7 @@ class ValidatedBarsTests(unittest.TestCase):
         bars[0]=replace(bars[0],high=5)
         self.assertEqual(seq[0].high,12)
         self.assertIsInstance(seq[1:3],ValidatedBars)
-        with patch('wavequant.wave_strength._validate_bar',side_effect=AssertionError('repeated validation')):
+        with patch('wavequant.domain.market_state.wave_strength._validate_bar',side_effect=AssertionError('repeated validation')):
             validate_prefix(seq[1:3],symbol='x',end=1)
         for invalid in (bars,list(reversed(seq)),[seq[0],replace(seq[1],symbol='y')]):
             with self.assertRaises(ValueError):ValidatedBars(invalid)

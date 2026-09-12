@@ -133,7 +133,7 @@
 复现命令（必须使用新的输出目录，避免覆盖）：
 
 ```powershell
-.venv/Scripts/python.exe -m wavequant.validate_lecture_profile --tdx-root D:/TDX --output results/lecture_v1_validation_new_run
+.venv/Scripts/python.exe -m wavequant.interfaces.research_tools.validate_lecture_profile --tdx-root D:/TDX --output results/lecture_v1_validation_new_run
 .venv/Scripts/python.exe -m unittest discover -s tests -q
 ```
 

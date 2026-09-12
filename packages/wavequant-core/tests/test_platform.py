@@ -8,18 +8,18 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from wavequant.event_store import EventStore
-from wavequant.security_master import SecurityFact, SecurityMaster
-from wavequant.order_service import OrderService, PortfolioLimits, reserved_cash
-from wavequant.paper_venue import PaperVenue, PaperBridge, OpeningTick
-from wavequant.stream_runtime import StrategyRuntime
-from wavequant.experiment_registry import ExperimentRegistry
-from wavequant.validation_suite import walk_forward_folds, audit_annotations
-from wavequant.data import fingerprint
-from wavequant.data_catalog import register_dataset
-from wavequant.intent_execution import PaperIntentExecutor
+from wavequant.infrastructure.persistence.event_store import EventStore
+from wavequant.infrastructure.market_data.security_master import SecurityFact, SecurityMaster
+from wavequant.application.trading.order_service import OrderService, PortfolioLimits, reserved_cash
+from wavequant.application.trading.paper_venue import PaperVenue, PaperBridge, OpeningTick
+from wavequant.application.trading.stream_runtime import StrategyRuntime
+from wavequant.infrastructure.persistence.experiment_registry import ExperimentRegistry
+from wavequant.application.analytics.validation_suite import walk_forward_folds, audit_annotations
+from wavequant.infrastructure.market_data.data import fingerprint
+from wavequant.infrastructure.market_data.data_catalog import register_dataset
+from wavequant.application.trading.intent_execution import PaperIntentExecutor
 from tests.test_integrated_strategy import fixture, config
-from wavequant.integrated_strategy import generate_system_signals
+from wavequant.domain.strategies.integrated_strategy import generate_system_signals
 
 T='2026-01-01T09:30:00+08:00'
 S='2025-12-31T15:00:00+08:00'
@@ -289,7 +289,7 @@ class RuntimeTests(unittest.TestCase):
     def test_crash_between_bar_and_intent_commit_recovers(self):
         b=replace(fixture()[0],timestamp=datetime.fromisoformat(T))
         runtime=StrategyRuntime(self.store,config())
-        with patch('wavequant.stream_runtime.generate_system_signals',side_effect=RuntimeError('crash')):
+        with patch('wavequant.application.trading.stream_runtime.generate_system_signals',side_effect=RuntimeError('crash')):
             with self.assertRaises(RuntimeError): runtime.on_bar(b,available_at=T)
         self.assertEqual([e['kind'] for e in self.store.events()],['BAR'])
         runtime.on_bar(b,available_at=T)

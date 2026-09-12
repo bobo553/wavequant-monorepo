@@ -16,7 +16,7 @@
 
 ## 重跑与产物
 
-`python -m wavequant.stock_backtest --root results/operations_v1 --run acceptance_20260908_verified --output <全新目录>`
+`python -m wavequant.interfaces.research_tools.stock_backtest --root results/operations_v1 --run acceptance_20260908_verified --output <全新目录>`
 
 拒绝覆盖已有目录。保存 10 股票 × 2 策略 × 4 成本场景的 80 份 JSON，含指标、净值、信号、成交价、费用、拒单、未平仓及策略／执行参数。`report.json` 记录来源快照清单哈希、代码哈希与逐股汇总，`artifacts.json` 记录产物哈希。图表接口 `/api/stock-view` 与 `/api/stock-summary` 使用同一计算函数；只读 GET 不会向券商发单。
 

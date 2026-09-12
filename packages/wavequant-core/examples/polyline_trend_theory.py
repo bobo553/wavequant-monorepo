@@ -3,13 +3,13 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 import sys
 
-from wavequant.model import Bar
-from wavequant.polyline import (LinePoint, PointKind as K, ReversalPoint,
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.polyline import (LinePoint, PointKind as K, ReversalPoint,
     child_mother_path, n_setup_from_polyline, observe_polyline)
-from wavequant.price_action import AttackBasis, Direction
-from wavequant.n_shape import BoxAnchorMode, MilestoneBasis, observe_n
-from wavequant.market_regime import RegimePolicy, WaveBoundary, observe_market_regime
-from wavequant.trend_structure import observe_structure, observe_trend_transition
+from wavequant.domain.market_structure.price_action import AttackBasis, Direction
+from wavequant.domain.market_structure.n_shape import BoxAnchorMode, MilestoneBasis, observe_n
+from wavequant.domain.market_state.market_regime import RegimePolicy, WaveBoundary, observe_market_regime
+from wavequant.domain.market_structure.trend_structure import observe_structure, observe_trend_transition
 
 
 def make_bars(rows):

@@ -3,14 +3,14 @@ from datetime import datetime, timedelta
 from fractions import Fraction
 import unittest
 
-from wavequant.model import Bar
-from wavequant.polyline import LinePoint, PointKind as K, ReversalPoint
-from wavequant.price_action import Direction as D, AttackBasis as B, KeyLevel, LevelKind
-from wavequant.market_regime import MarketRegime, RegimePolicy, WaveBoundary, observe_market_regime
-from wavequant.n_shape import NSetup, PivotRef, BoxAnchorMode
-from wavequant.wave_strength import (StrengthScale as Scale, CounterStrength as C,
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.polyline import LinePoint, PointKind as K, ReversalPoint
+from wavequant.domain.market_structure.price_action import Direction as D, AttackBasis as B, KeyLevel, LevelKind
+from wavequant.domain.market_state.market_regime import MarketRegime, RegimePolicy, WaveBoundary, observe_market_regime
+from wavequant.domain.market_structure.n_shape import NSetup, PivotRef, BoxAnchorMode
+from wavequant.domain.market_state.wave_strength import (StrengthScale as Scale, CounterStrength as C,
     measure_strength, observe_wave_strength)
-from wavequant.market_turn import (MinorLine, RegimeContext, TurnSetup, TurnPolicy,
+from wavequant.domain.market_state.market_turn import (MinorLine, RegimeContext, TurnSetup, TurnPolicy,
     TurnThreshold as Threshold, TurnStage as S, freeze_minor_line, line_break_on_bar,
     observe_market_turn, context_from_regime)
 

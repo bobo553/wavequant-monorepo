@@ -2,8 +2,8 @@ import copy
 import unittest
 
 from tests.test_secondary_trend import fixture
-from wavequant.secondary_trend import _structural_reversals
-from wavequant.tertiary_trend import tertiary_trends
+from wavequant.domain.market_structure.secondary_trend import _structural_reversals
+from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
 
 
 class TertiaryTrendTests(unittest.TestCase):

@@ -4,11 +4,11 @@
 
 本页是项目的基础教材和实现约定。讲义描述、代码采用的工程定义、尚需验证的交易假设分开记录。学会识别形态与证明交易优势是两个不同的验收目标。
 
-更新：突破、跌破、抵抗及三笔顺序已单独建立统一基础接口 `wavequant/price_action.py`，具体契约见 `docs/price_action_contract.md`。下文 `resistance_evidence` 的 50% 默认值和六态三棒分类属于旧研究代理，不是新基础定义。新接口不默认配置长影阈值，也不擅自定义抵抗成功/失败。
+更新：突破、跌破、抵抗及三笔顺序已单独建立统一基础接口 `wavequant/domain/market_structure/price_action.py`，具体契约见 `docs/price_action_contract.md`。下文 `resistance_evidence` 的 50% 默认值和六态三棒分类属于旧研究代理，不是新基础定义。新接口不默认配置长影阈值，也不擅自定义抵抗成功/失败。
 
-N 形事件层现位于 `wavequant/n_shape.py`，契约见 `docs/n_shape_contract.md`。图 006 的“虚过的虚高 b”以完成棒虚拟极值为一种明确解释，旧颈线箱体算法作为显式替代保留；新层负责完成时间、防守位冻结和等浪/1P/2T 的阶段观测。
+N 形事件层现位于 `wavequant/domain/market_structure/n_shape.py`，契约见 `docs/n_shape_contract.md`。图 006 的“虚过的虚高 b”以完成棒虚拟极值为一种明确解释，旧颈线箱体算法作为显式替代保留；新层负责完成时间、防守位冻结和等浪/1P/2T 的阶段观测。
 
-六态新事件层现位于 `wavequant/market_regime.py`，契约见 `docs/market_regime_contract.md`。它消费完整 N、允许第三笔以后确认，显式定义抵抗结果，保留未知／待定／失效。下文旧三棒代理并未替换，历史报告也未重新解释为新口径。
+六态新事件层现位于 `wavequant/domain/market_state/market_regime.py`，契约见 `docs/market_regime_contract.md`。它消费完整 N、允许第三笔以后确认，显式定义抵抗结果，保留未知／待定／失效。下文旧三棒代理并未替换，历史报告也未重新解释为新口径。
 
 ## 1. 基本价格语言
 
@@ -89,7 +89,7 @@ N 形事件层现位于 `wavequant/n_shape.py`，契约见 `docs/n_shape_contrac
 
 ## 5. 高低折线、趋势和关键转折点
 
-更新：新独立层 `wavequant/polyline.py` 与 `wavequant/trend_structure.py` 已实现下述术语、连接法和分阶段交替证据，完整口径见 `docs/polyline_trend_contract.md`。本节旧 `swing_context` 描述保留用于历史复现；它取最近高低点前驱，不等同于新层按显式窗口极值选取并冻结关键位的规则。
+更新：新独立层 `wavequant/domain/market_structure/polyline.py` 与 `wavequant/domain/market_structure/trend_structure.py` 已实现下述术语、连接法和分阶段交替证据，完整口径见 `docs/polyline_trend_contract.md`。本节旧 `swing_context` 描述保留用于历史复现；它取最近高低点前驱，不等同于新层按显式窗口极值选取并冻结关键位的规则。
 
 第 16–23 页的基础关系：
 
@@ -135,7 +135,7 @@ N 形事件层现位于 `wavequant/n_shape.py`，契约见 `docs/n_shape_contrac
 
 ## 7. 三分力道与六分力道
 
-更新：独立 `wavequant/wave_strength.py` 已实现本次精确定义，契约见 `docs/wave_strength_turn_contract.md`。新层保留字面区间缺口、边界及精确六分／印刷小数两种尺度，图 011 的价格高度与回档深度分开。下文旧 `force_profile` 不修改，以保持历史复现。
+更新：独立 `wavequant/domain/market_state/wave_strength.py` 已实现本次精确定义，契约见 `docs/wave_strength_turn_contract.md`。新层保留字面区间缺口、边界及精确六分／印刷小数两种尺度，图 011 的价格高度与回档深度分开。下文旧 `force_profile` 不修改，以保持历史复现。
 
 统一先算反向幅度占原波段幅度的比例 r。
 
@@ -156,7 +156,7 @@ N 形事件层现位于 `wavequant/n_shape.py`，契约见 `docs/n_shape_contrac
 
 ## 8. 盘势正扭转、负扭转和洗盘描述
 
-更新：`wavequant/market_turn.py` 现提供四个已确认拐点、六态背景、末跌高／末升低及可计算次级斜线的完整分阶段接口，保留负扭转破末升低的 OR 分支。明确使用组合之后的新越线、严格阈值和冻结点延伸检查，不再依赖旧 `turning_evidence` 的单个外部布尔值；旧代理行为保持不变。
+更新：`wavequant/domain/market_state/market_turn.py` 现提供四个已确认拐点、六态背景、末跌高／末升低及可计算次级斜线的完整分阶段接口，保留负扭转破末升低的 OR 分支。明确使用组合之后的新越线、严格阈值和冻结点延伸检查，不再依赖旧 `turning_evidence` 的单个外部布尔值；旧代理行为保持不变。
 
 第 34–35 页强调分阶段证据：
 
@@ -167,7 +167,7 @@ N 形事件层现位于 `wavequant/n_shape.py`，契约见 `docs/n_shape_contrac
 
 第 29–31 页把底部洗盘描述为突破、达到目标区、回撤消化、再次 N 字攻击，头部则对称。项目可描述这些价格阶段，但没有资金身份和订单数据，不能把“洗盘”“诱空”或“进货出货”当作已观测事实。
 
-更新：`wavequant/control_bar.py` 已提供 N 主控棒、量增证据与冻结防守跟踪；`wavequant/washout.py` 已实现图 009 的独立新 N 时序模板及头部镜像。详细开区间、退出、同棒歧义和只做多边界见 `docs/control_washout_contract.md`。这些新观察层没有改写旧策略或历史收益。
+更新：`wavequant/domain/market_state/control_bar.py` 已提供 N 主控棒、量增证据与冻结防守跟踪；`wavequant/domain/market_state/washout.py` 已实现图 009 的独立新 N 时序模板及头部镜像。详细开区间、退出、同棒歧义和只做多边界见 `docs/control_washout_contract.md`。这些新观察层没有改写旧策略或历史收益。
 
 讲义中的 80% 抵抗概率、70% 目标区出货概率未提供样本、统计口径和可复核来源，本项目不将它们作为胜率或模型先验。
 
@@ -182,14 +182,14 @@ N 形事件层现位于 `wavequant/n_shape.py`，契约见 `docs/n_shape_contrac
 | 旧盘态过滤和严格 N 策略 | 新增独立基础模块与有前置条件的六态代理 | 否                 |
 | 回撤率单个阈值          | 增加原始比率、六分区间与边界标志       | 否                 |
 
-新增文件 `wavequant/foundations.py`、`wavequant/foundation_audit.py`、`tests/test_foundations.py`。旧策略仍在 `structure.py`，不是本讲义的完整自动化实现。本次没有修改历史协议或根据讲义重新筛出一个“最赚钱”组合。
+新增文件 `wavequant/domain/market_structure/foundations.py`、`wavequant/application/analytics/foundation_audit.py`、`tests/test_foundations.py`。旧策略仍在 `structure.py`，不是本讲义的完整自动化实现。本次没有修改历史协议或根据讲义重新筛出一个“最赚钱”组合。
 
 ## 10. 实际运行
 
 在项目根目录使用已有通达信数据快照：
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli foundation-audit data/tdx_rerun_20260908_01.csv --output-dir results/foundations_lecture
+.venv\Scripts\python.exe -m wavequant.interfaces.cli foundation-audit data/tdx_rerun_20260908_01.csv --output-dir results/foundations_lecture
 ```
 
 命令先运行全部自动测试，再输出基础关系计数、每股逐日虚拟高低点及形状明细。相邻棒的抵抗形状仅是基础证据，不能脱离先前攻击上下文来分类六大盘态。

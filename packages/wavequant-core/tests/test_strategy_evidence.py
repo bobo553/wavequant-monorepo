@@ -8,12 +8,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from wavequant.evidence_statistics import joint_block_test, equity_returns, choose_development, evidence_gate
-from wavequant.research_panel import freeze_universe
-from wavequant.strategy_evidence import strategy_configs, _evaluate_symbol, run_strategy_evidence
-from wavequant.data import write_dataset, dump_json
-from wavequant.tdx import RECORD
-from wavequant.integrated_strategy import generate_system_signals
+from wavequant.application.analytics.evidence_statistics import joint_block_test, equity_returns, choose_development, evidence_gate
+from wavequant.interfaces.research_tools.research_panel import freeze_universe
+from wavequant.interfaces.research_tools.strategy_evidence import strategy_configs, _evaluate_symbol, run_strategy_evidence
+from wavequant.infrastructure.market_data.data import write_dataset, dump_json
+from wavequant.infrastructure.market_data.tdx import RECORD
+from wavequant.domain.strategies.integrated_strategy import generate_system_signals
 from tests.test_integrated_strategy import fixture
 
 
@@ -154,8 +154,8 @@ class ChallengerTests(unittest.TestCase):
                   test=['2026-01-09','2026-01-13'],gap_sessions=0,test_sessions=5)
         with tempfile.TemporaryDirectory() as d:
             root=Path(d); protocol=root/'protocol.json'; dump_json(protocol,p)
-            with patch('wavequant.strategy_evidence.build_research_panel',side_effect=panel), \
-                 patch('wavequant.strategy_evidence.walk_forward_folds',return_value=[fold]),contextlib.redirect_stdout(io.StringIO()):
+            with patch('wavequant.interfaces.research_tools.strategy_evidence.build_research_panel',side_effect=panel), \
+                 patch('wavequant.interfaces.research_tools.strategy_evidence.walk_forward_folds',return_value=[fold]),contextlib.redirect_stdout(io.StringIO()):
                 r=run_strategy_evidence(root,protocol,root/'out',{'status':'passed'},workers=1)
             self.assertEqual(r['rolling'][0]['test'],fold['test'])
             self.assertIn('test_metrics',r['rolling'][0]); self.assertFalse(r['validated'])

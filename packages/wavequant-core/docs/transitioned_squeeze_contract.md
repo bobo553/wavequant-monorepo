@@ -37,7 +37,7 @@
 - `proxy_legacy`：旧版完整代理对照，允许盘坚且无交替先决条件，不是新策略。
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli system-research --csv data/tdx_system_20260908.csv --protocol configs/system_squeeze_v2.json --output-dir results/system_squeeze_v2_20260908
+.venv\Scripts\python.exe -m wavequant.interfaces.cli system-research --csv data/tdx_system_20260908.csv --protocol configs/system_squeeze_v2.json --output-dir results/system_squeeze_v2_20260908
 ```
 
 默认命令也指向 v2。复跑请换空输出目录。旧协议未指定 `entry_policy` 时，研究入口按旧语义解释，历史文件和原结果不覆盖。

@@ -10,6 +10,8 @@
 
 ## Completed
 
+- API-only 开发模式支持受限的 loopback Web 根地址：访问 8765 根路由时以非缓存 `307` 跳转到 Next.js，外部主机、路径、查询和无显式端口的重定向目标均拒绝。
+
 - HTTP Server 与 Dashboard 启动入口已从核心包移入本 workspace。
 - API 仅依赖核心包，并从独立 Web workspace 读取静态资源。
 - 新增 `/research`、`/market.css` 与 `/market.js` 的受限静态资源映射和 HTTP 契约测试。
@@ -21,6 +23,9 @@
 - 新增 `--api-only` 与可重复的 `--allow-origin` 参数；GET 与买点扫描 POST 统一校验显式回环代理来源。
 
 ## Verification
+
+- API-only 根路由回归通过：`GET http://127.0.0.1:8765/` 返回 `307` 和受限的 `Location: http://127.0.0.1:3003/`；跟随跳转得到 `200 text/html`，`/api/catalog` 继续返回 `200`。
+- 本次修复通过 API Ruff、严格 mypy 与 pytest（33 项通过，1 项外部环境跳过）。
 
 - Ruff、严格入口类型检查、23 项 pytest 和 sdist/wheel 构建通过。
 - API CLI 帮助、默认 Web workspace 页面、Lightweight Charts 与第三方声明资源集成测试通过。

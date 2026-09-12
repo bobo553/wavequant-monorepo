@@ -75,7 +75,7 @@
 
 ```powershell
 .venv/Scripts/python.exe -m unittest discover -s tests -q
-.venv/Scripts/python.exe -m wavequant.validate_hierarchical_profile --output results/lecture_v2_new_validation
+.venv/Scripts/python.exe -m wavequant.interfaces.research_tools.validate_hierarchical_profile --output results/lecture_v2_new_validation
 ```
 
 输出目录必须为新目录；程序不覆盖已有回测记录。

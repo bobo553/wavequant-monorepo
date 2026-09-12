@@ -2,7 +2,7 @@
 
 本文件保留 v1 历史规则。**当前默认入场已更新为 v2：翻空为多 → 空多交替 → 多头趋势 → 后续新 N 的轧空／强轧空**，见 `transitioned_squeeze_contract.md`。下文盘坚入场仅适用于旧版对照，执行与退出规则继续沿用。
 
-版本 `integrated_v1_frozen_20260908`。代码 `integrated_strategy.py`、`system_research.py`，入口 `wavequant.cli system-research`。本协议在集成回测前冻结，不对结果做参数择优。
+版本 `integrated_v1_frozen_20260908`。代码 `integrated_strategy.py`、`system_research.py`，入口 `wavequant.interfaces.cli system-research`。本协议在集成回测前冻结，不对结果做参数择优。
 
 ## 1. 系统分层
 
@@ -113,10 +113,10 @@
 
 ```powershell
 # 新导入快照不会覆盖以前文件；如已存在，请使用新的文件名。
-.venv\Scripts\python.exe -m wavequant.cli import-tdx --tdx-root D:\TDX --csv data\tdx_system_20260908.csv --end 2026-09-07
+.venv\Scripts\python.exe -m wavequant.interfaces.cli import-tdx --tdx-root D:\TDX --csv data\tdx_system_20260908.csv --end 2026-09-07
 
 # 先跑工程测试，再校验数据哈希、冻结协议并回测；输出目录必须为空。
-.venv\Scripts\python.exe -m wavequant.cli system-research --csv data\tdx_system_20260908.csv --output-dir results\system_v1_20260908
+.venv\Scripts\python.exe -m wavequant.interfaces.cli system-research --csv data\tdx_system_20260908.csv --output-dir results\system_v1_20260908
 ```
 
 再次运行应换一个输出目录，旧报告不覆盖。新日期数据要另建协议，命令拒绝在旧协议内静默滚入未来日期。

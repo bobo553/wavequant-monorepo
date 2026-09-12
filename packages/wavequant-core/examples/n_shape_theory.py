@@ -4,9 +4,9 @@ from datetime import datetime, timedelta
 import json
 import sys
 
-from wavequant.model import Bar
-from wavequant.price_action import Direction
-from wavequant.n_shape import BoxAnchorMode, MilestoneBasis, NSetup, PivotRef, observe_n
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.price_action import Direction
+from wavequant.domain.market_structure.n_shape import BoxAnchorMode, MilestoneBasis, NSetup, PivotRef, observe_n
 
 
 def main():

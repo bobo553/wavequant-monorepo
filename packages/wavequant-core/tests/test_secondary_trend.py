@@ -2,8 +2,8 @@ import copy
 from datetime import datetime, timedelta
 import unittest
 
-from wavequant.model import Bar
-from wavequant.secondary_trend import _structural_reversals, secondary_trends
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.secondary_trend import _structural_reversals, secondary_trends
 
 
 def fixture(values, first='L'):

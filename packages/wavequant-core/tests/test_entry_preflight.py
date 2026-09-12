@@ -6,14 +6,14 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from wavequant.model import Bar, Signal
-from wavequant.config import StrategyConfig
-from wavequant.backtest import run_portfolio
-from wavequant.bull_eligibility import BullPermission
-from wavequant.polyline import LinePoint, PointKind, ReversalPoint
-from wavequant.integrated_strategy import SystemStrategy, generate_system_signals
-from wavequant.execution_diagnostics import execution_diagnostics
-from wavequant.research import save_result
+from wavequant.domain.models.model import Bar, Signal
+from wavequant.domain.models.config import StrategyConfig
+from wavequant.application.analytics.backtest import run_portfolio
+from wavequant.domain.strategies.bull_eligibility import BullPermission
+from wavequant.domain.market_structure.polyline import LinePoint, PointKind, ReversalPoint
+from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
+from wavequant.application.analytics.execution_diagnostics import execution_diagnostics
+from wavequant.application.analytics.research import save_result
 
 
 def bars_and_points():
@@ -35,9 +35,9 @@ def generate(bars, points, enabled=True):
                      preflight_reward_risk=enabled)
     # Isolate event workflow with known anchors. N, six-state, milestones,
     # preflight and trading engine below run their real implementations.
-    with patch('wavequant.integrated_strategy.pivot_history',return_value=(snapshots,
+    with patch('wavequant.domain.strategies.integrated_strategy.pivot_history',return_value=(snapshots,
                {i:0 for i in range(n)},{i:n-1 for i in range(n)},set())), \
-         patch('wavequant.integrated_strategy.bull_permission_history',
+         patch('wavequant.domain.strategies.integrated_strategy.bull_permission_history',
                return_value=({i:permission for i in range(n)},[])):
         return generate_system_signals(bars,c)
 

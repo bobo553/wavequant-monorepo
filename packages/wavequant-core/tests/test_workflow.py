@@ -9,9 +9,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from wavequant.config import StrategyConfig
-from wavequant.data import dump_json, synthetic_dataset
-from wavequant.research import benchmark, run_research
+from wavequant.domain.models.config import StrategyConfig
+from wavequant.infrastructure.market_data.data import dump_json, synthetic_dataset
+from wavequant.application.analytics.research import benchmark, run_research
 
 
 def protocol():
@@ -25,13 +25,13 @@ class WorkflowTests(unittest.TestCase):
     def test_cli_demo_validate_backtest(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
-            result=subprocess.run([sys.executable,'-m','wavequant.cli','demo','--output-dir',tmp],
+            result=subprocess.run([sys.executable,'-m','wavequant.interfaces.cli','demo','--output-dir',tmp],
                                   capture_output=True,text=True,encoding='utf-8')
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual(json.loads(result.stdout)['kind'],'synthetic_engineering_only')
             for args in (['validate',str(root/'synthetic.csv')],
                          ['backtest',str(root/'synthetic.csv'),'--output-dir',str(root/'backtest')]):
-                r=subprocess.run([sys.executable,'-m','wavequant.cli',*args],capture_output=True,text=True,encoding='utf-8')
+                r=subprocess.run([sys.executable,'-m','wavequant.interfaces.cli',*args],capture_output=True,text=True,encoding='utf-8')
                 self.assertEqual(r.returncode,0,r.stderr)
                 json.loads(r.stdout)
             self.assertTrue((root/'backtest/equity.csv').exists())
@@ -66,7 +66,7 @@ class WorkflowTests(unittest.TestCase):
             for row in rows:
                 if row['timestamp']>='2018-05-01':
                     for key in ('open','high','low','close'): row[key]=float(row[key])*2
-            from wavequant.data import write_dataset
+            from wavequant.infrastructure.market_data.data import write_dataset
             write_dataset(source,rows,{'kind':'synthetic_modified_test_only'})
             b=run_research(source,root/'b',StrategyConfig(),spec)
             self.assertEqual(a['selected_config'],b['selected_config'])
@@ -88,7 +88,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_equal_weight_benchmark_matches_hand_calculation(self):
         from datetime import datetime
-        from wavequant.model import Bar
+        from wavequant.domain.models.model import Bar
         grouped={'A':[Bar(datetime(2025,1,2),'A',10,20,10,20,100)],
                  'B':[Bar(datetime(2025,1,2),'B',10,10,5,5,100)]}
         result=benchmark(grouped,'2025-01-01','2025-01-03',1000)

@@ -2,8 +2,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from wavequant.tdx import RECORD
-from wavequant.tdx_browser import TdxBrowser, read_names
+from wavequant.infrastructure.market_data.tdx import RECORD
+from wavequant.interfaces.charts.tdx_browser import TdxBrowser, read_names
 
 
 class TdxBrowserTests(unittest.TestCase):
@@ -60,7 +60,7 @@ class TdxBrowserTests(unittest.TestCase):
         from unittest.mock import patch
         first=self.browser.theory('sh.600104','2026-01-05')
         self.browser=TdxBrowser(self.root,self.root/'cache')
-        with patch('wavequant.tdx_browser.lecture_drawing',side_effect=AssertionError('disk must be reused')):
+        with patch('wavequant.interfaces.charts.tdx_browser.lecture_drawing',side_effect=AssertionError('disk must be reused')):
             self.assertEqual(self.browser.theory('sh.600104','2026-01-05'),first)
         self.day.write_bytes(RECORD.pack(20260102,1000,1200,900,1100,1000,100,0)+RECORD.pack(20260105,1100,1400,1000,1300,1000,100,0))
         second=self.browser.theory('sh.600104','2026-01-05')
@@ -68,5 +68,5 @@ class TdxBrowserTests(unittest.TestCase):
 
     def test_raw_theory_engine_change_cannot_relabel_old_imported_code(self):
         from unittest.mock import patch
-        with patch('wavequant.tdx_backtest.TdxBacktester._engine_hashes',return_value={'changed':'code'}):
+        with patch('wavequant.interfaces.research_tools.tdx_backtest.TdxBacktester._engine_hashes',return_value={'changed':'code'}):
             with self.assertRaisesRegex(ValueError,'重启'):self.browser.theory('sh.600104','2026-01-05')

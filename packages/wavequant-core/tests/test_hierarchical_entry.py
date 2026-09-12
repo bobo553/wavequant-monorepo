@@ -2,11 +2,11 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 import unittest
 
-from wavequant.model import Bar
-from wavequant.hierarchical_entry import (EntryContext, _LevelState, hierarchical_history,
+from wavequant.domain.models.model import Bar
+from wavequant.domain.strategies.hierarchical_entry import (EntryContext, _LevelState, hierarchical_history,
                                           context_history, select_entry)
-from wavequant.integrated_strategy import SystemStrategy, generate_system_signals
-from wavequant.strategy_profiles import hierarchical_profile, research_profile
+from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
+from wavequant.domain.strategies.strategy_profiles import hierarchical_profile, research_profile
 from tests.test_lecture_strategy import history
 
 

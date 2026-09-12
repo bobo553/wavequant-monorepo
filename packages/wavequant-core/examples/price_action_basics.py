@@ -3,8 +3,8 @@ from dataclasses import asdict
 from datetime import datetime
 import json
 
-from wavequant.model import Bar
-from wavequant.price_action import AttackBasis, KeyLevel, LevelKind, observe_sequence
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.price_action import AttackBasis, KeyLevel, LevelKind, observe_sequence
 
 
 def main():

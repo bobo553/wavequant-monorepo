@@ -50,7 +50,7 @@ v3 使用明确的三阶段：**形态候选 → 收盘价格预检查 → 一�
 没有扩大股票篮子、提高风险预算、取消 100 股整手、降低盈亏比或用未来拐点制造成交。旧 v1/v2 配置与报告保留，缺省未声明预检查的历史协议按关闭解释。
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli system-research --protocol configs/system_squeeze_v3.json --output-dir results/system_squeeze_v3_20260908
+.venv\Scripts\python.exe -m wavequant.interfaces.cli system-research --protocol configs/system_squeeze_v3.json --output-dir results/system_squeeze_v3_20260908
 ```
 
 工程用例验证“首次不合格观察不会耗尽、目标确实推进后产生非空信号并在下一开盘成交”，同时验证未推进目标不能跳级、前缀不变、零手原因及零成交状态。真实回测是否成交／盈利，必须另看本次结果，不能由测试通过推断。
@@ -74,7 +74,7 @@ v4 为这条原文分支增加独立策略观察 `squeeze_pullback_resume`，底
 这是在看到 v3 结果后的、依据理论补充的探索性策略假设，不是新的独立样本外，也不宣称是唯一正确的六态解释。v4 的固定组为严格完整、代理完整、仅创新高路径对照（v3）、原发单方式对照（v2），全部保留量能。
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli system-research --protocol configs/system_squeeze_v4.json --output-dir results/system_squeeze_v4_20260908
+.venv\Scripts\python.exe -m wavequant.interfaces.cli system-research --protocol configs/system_squeeze_v4.json --output-dir results/system_squeeze_v4_20260908
 ```
 
 当前默认命令指向 v4；重跑必须更换空目录。原 v2/v3 的协议、报告及已有结果不覆盖。

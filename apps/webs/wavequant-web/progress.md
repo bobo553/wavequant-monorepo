@@ -13,6 +13,8 @@
 
 ## Completed
 
+- 联合开发命令为独立 API 配置显式 Next.js 根地址，使旧的 8765 浏览器入口跳转到唯一 3003 页面进程，不恢复第二套 Shell 或静态页面服务。
+
 - 根据 WaveQuant v2 设计稿还原默认全景看盘页，并将内联原型拆分为符合现有 CSP 的 HTML、CSS 与 JavaScript 静态资源。
 - 保留原有服务端研究工作台到 `/research`，并增加市场总览、涨停阶梯及响应式布局的自动验证。
 - 静态页面、交互模块、第三方声明和浏览器测试已从工具 workspace 迁入本 workspace。
@@ -38,6 +40,8 @@
 - 研究兼容样式不再固定深色背景和青色强调色，现由全局背景、卡片、边框、文字与主色 Token 驱动；Lightweight Charts 监听根主题属性并即时更新画布、网格、坐标文字和主趋势色。
 
 ## Verification
+
+- 8765 旧入口真实 HTTP 回归通过：临时跳转到唯一 3003 Next.js 页面后返回 `200 text/html`；Web ESLint、TypeScript、6 项 Vitest 与 41 项 Node 契约测试通过。
 
 - Web 语法、Prettier、40 项单元测试与自包含静态构建通过。
 - API 跨 workspace 测试验证默认页面、Lightweight Charts 和第三方声明可被正确提供。

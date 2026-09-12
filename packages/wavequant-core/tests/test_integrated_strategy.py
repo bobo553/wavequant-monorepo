@@ -5,11 +5,11 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from wavequant.model import Bar
-from wavequant.config import StrategyConfig
-from wavequant.backtest import run_portfolio
-from wavequant.integrated_strategy import SystemStrategy, generate_system_signals, pivot_history
-from wavequant.system_research import run_system_research
+from wavequant.domain.models.model import Bar
+from wavequant.domain.models.config import StrategyConfig
+from wavequant.application.analytics.backtest import run_portfolio
+from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals, pivot_history
+from wavequant.application.analytics.system_research import run_system_research
 
 
 def fixture():

@@ -1,6 +1,6 @@
 # 多空力道、三分／六分与盘势正负扭转
 
-实现：`wavequant/wave_strength.py`、`wavequant/market_turn.py`。依据用户本次提供的图 010／011 和正文。新增独立可验证定义，不改动旧 `force_profile`、`turning_evidence` 或历史策略。
+实现：`wavequant/domain/market_state/wave_strength.py`、`wavequant/domain/market_state/market_turn.py`。依据用户本次提供的图 010／011 和正文。新增独立可验证定义，不改动旧 `force_profile`、`turning_evidence` 或历史策略。
 
 ## 1. 比例究竟量什么
 

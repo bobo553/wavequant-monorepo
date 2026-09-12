@@ -1,9 +1,9 @@
 from datetime import datetime,timedelta
 import unittest
 
-from wavequant.model import Bar
-from wavequant.lecture_trend import reversal_trends,_annotate,_wave_reversals
-from wavequant.lecture_drawing import lecture_drawing
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.lecture_trend import reversal_trends,_annotate,_wave_reversals
+from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
 
 
 def fixture(values):

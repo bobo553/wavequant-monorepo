@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 import json
 import unittest
 
-from wavequant.model import Bar
-from wavequant.price_action import (AttackBasis, Direction, KeyLevel, LevelKind, Phase,
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.price_action import (AttackBasis, Direction, KeyLevel, LevelKind, Phase,
                                     ShadowPolicy, observe_attack, observe_resistance, observe_sequence)
 
 

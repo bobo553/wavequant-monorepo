@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from wavequant.visualization import ChartRepository  # type: ignore[import-untyped]
+from wavequant.interfaces.charts.visualization import ChartRepository  # type: ignore[import-untyped]
 
 from .infrastructure import Infrastructure, InfrastructureSettings, ResearchRun
 from .server import serve_dashboard
@@ -20,6 +20,10 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--tdx-root", type=Path, default=Path("D:/TDX"))
     value.add_argument("--web-root", type=Path)
     value.add_argument("--api-only", action="store_true", help="serve API routes without requiring a built Web workspace")
+    value.add_argument(
+        "--web-url",
+        help="loopback Next.js origin opened when the root of an API-only development server is requested",
+    )
     value.add_argument(
         "--allow-origin",
         action="append",
@@ -77,6 +81,7 @@ def main() -> None:
         args.web_root,
         serve_static=not args.api_only,
         allowed_origins=tuple(args.allow_origin),
+        web_url=args.web_url,
     )
 
 

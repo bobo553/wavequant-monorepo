@@ -1,6 +1,6 @@
 # N 形理论与代码契约
 
-本页依据用户提供的正 N、倒 N、等浪和一饱二吐四张图，明确理论定义、图示解释与工程边界。实现位于 `wavequant/n_shape.py`，使用之前的 `price_action` 基础接口。它是形态与测幅模块，不是盈利策略。
+本页依据用户提供的正 N、倒 N、等浪和一饱二吐四张图，明确理论定义、图示解释与工程边界。实现位于 `wavequant/domain/market_structure/n_shape.py`，使用之前的 `price_action` 基础接口。它是形态与测幅模块，不是盈利策略。
 
 ## 1. 标准 N 的结构
 
@@ -137,8 +137,8 @@ A、B、C 都有所在索引和确认索引，确认时间不得早于所在时�
 ## 8. 调用与运行
 
 ```python
-from wavequant.price_action import Direction
-from wavequant.n_shape import (
+from wavequant.domain.market_structure.price_action import Direction
+from wavequant.domain.market_structure.n_shape import (
     NSetup, PivotRef, BoxAnchorMode, MilestoneBasis, observe_n,
 )
 

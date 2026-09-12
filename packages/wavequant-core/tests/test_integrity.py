@@ -7,14 +7,14 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from wavequant.backtest import run_backtest, run_portfolio, transaction_fee
-from wavequant.config import StrategyConfig
-from wavequant.data import opening_permissions, synthetic_dataset
-from wavequant.features import compute_features
-from wavequant.io import load_bars
-from wavequant.model import Bar, Signal
-from wavequant.strategy import generate_signals
-from wavequant.tdx import RECORD, adjust_rows, ex_reference, read_day
+from wavequant.application.analytics.backtest import run_backtest, run_portfolio, transaction_fee
+from wavequant.domain.models.config import StrategyConfig
+from wavequant.infrastructure.market_data.data import opening_permissions, synthetic_dataset
+from wavequant.domain.strategies.features import compute_features
+from wavequant.infrastructure.market_data.io import load_bars
+from wavequant.domain.models.model import Bar, Signal
+from wavequant.domain.strategies.strategy import generate_signals
+from wavequant.infrastructure.market_data.tdx import RECORD, adjust_rows, ex_reference, read_day
 
 
 def fixture(count=6, symbol='TEST'):

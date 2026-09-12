@@ -1,10 +1,10 @@
 from datetime import datetime,timedelta
 import random
 import unittest
-from wavequant.model import Bar
-from wavequant.integrated_strategy import SystemStrategy,generate_system_signals,pivot_history
-from wavequant.lecture_drawing import lecture_drawing
-from wavequant.strategy_profiles import research_profile
+from wavequant.domain.models.model import Bar
+from wavequant.domain.strategies.integrated_strategy import SystemStrategy,generate_system_signals,pivot_history
+from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
+from wavequant.domain.strategies.strategy_profiles import research_profile
 
 
 def history(seed=901,n=100):

@@ -51,7 +51,7 @@
 
 ## 当前实现的严格定义
 
-代码入口：`wavequant/structure.py`；完整默认值由每次实验的 `resolved_variants.json` 存档。
+代码入口：`wavequant/domain/market_structure/structure.py`；完整默认值由每次实验的 `resolved_variants.json` 存档。
 
 - 枢轴：左右各 2 根严格极值；右侧第 2 根收盘后才可使用。同侧连续极值只更新当前结构，不回写已经产生的信号；同时满足高低极值的外包 K 与并列极值不作枢轴。
 - 结构：最近交替的 L1→H1→L2，总长度最多 66 根日 K；L2 高于 L1，回撤比满足组内阈值；收盘从不高于 H1 变为高于 H1 才算触发。

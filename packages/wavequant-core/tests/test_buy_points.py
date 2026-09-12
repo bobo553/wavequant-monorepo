@@ -6,8 +6,8 @@ import time
 import unittest
 from unittest.mock import Mock
 
-from wavequant.buy_scanner import BuyScanner,buy_match
-from wavequant.screening_funnel import funnel
+from wavequant.interfaces.screening.buy_scanner import BuyScanner,buy_match
+from wavequant.application.analytics.screening_funnel import funnel
 
 
 def view():

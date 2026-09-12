@@ -2,10 +2,10 @@ from dataclasses import FrozenInstanceError, replace
 from datetime import datetime, timedelta
 import unittest
 
-from wavequant.model import Bar
-from wavequant.polyline import LinePoint, PointKind as K, ReversalPoint
-from wavequant.price_action import AttackBasis, Direction
-from wavequant.trend_structure import (StructuralTrend as T, TransitionStage as S,
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.polyline import LinePoint, PointKind as K, ReversalPoint
+from wavequant.domain.market_structure.price_action import AttackBasis, Direction
+from wavequant.domain.market_structure.trend_structure import (StructuralTrend as T, TransitionStage as S,
     observe_structure, observe_trend_transition, preceding_turn,
     retracement_evidence, observe_abc)
 

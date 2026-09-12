@@ -15,7 +15,7 @@ try {
         & $taskPython -m pip install -e '.[tdx]'
         if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
     }
-    & $taskPython -m wavequant.cli run-tdx --tdx-root $TdxRoot --output-dir $OutputDir
+    & $taskPython -m wavequant.interfaces.cli run-tdx --tdx-root $TdxRoot --output-dir $OutputDir
     if ($LASTEXITCODE -ne 0) { throw 'Pipeline failed. Review the error and test log.' }
     Write-Host "Report: $(Join-Path $OutputDir 'report.html')"
 }

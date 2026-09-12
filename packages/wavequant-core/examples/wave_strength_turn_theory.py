@@ -3,12 +3,12 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 import sys
 
-from wavequant.model import Bar
-from wavequant.polyline import LinePoint, PointKind as K, ReversalPoint
-from wavequant.price_action import Direction as D, AttackBasis, KeyLevel, LevelKind
-from wavequant.market_regime import MarketRegime
-from wavequant.wave_strength import StrengthScale, measure_strength
-from wavequant.market_turn import (TurnThreshold, TurnPolicy, TurnSetup, RegimeContext,
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.polyline import LinePoint, PointKind as K, ReversalPoint
+from wavequant.domain.market_structure.price_action import Direction as D, AttackBasis, KeyLevel, LevelKind
+from wavequant.domain.market_state.market_regime import MarketRegime
+from wavequant.domain.market_state.wave_strength import StrengthScale, measure_strength
+from wavequant.domain.market_state.market_turn import (TurnThreshold, TurnPolicy, TurnSetup, RegimeContext,
                                   freeze_minor_line, observe_market_turn)
 
 

@@ -2,11 +2,11 @@ from dataclasses import replace
 import unittest
 
 from tests.test_entry_preflight import bars_and_points, generate
-from wavequant.n_shape import NSetup, PivotRef, BoxAnchorMode
-from wavequant.price_action import Direction, ShadowPolicy
-from wavequant.market_regime import observe_market_regime, RegimePolicy, WaveBoundary, MarketRegime
-from wavequant.squeeze_state import observe_squeeze_resumption
-from wavequant.integrated_strategy import SystemStrategy
+from wavequant.domain.market_structure.n_shape import NSetup, PivotRef, BoxAnchorMode
+from wavequant.domain.market_structure.price_action import Direction, ShadowPolicy
+from wavequant.domain.market_state.market_regime import observe_market_regime, RegimePolicy, WaveBoundary, MarketRegime
+from wavequant.domain.market_state.squeeze_state import observe_squeeze_resumption
+from wavequant.domain.strategies.integrated_strategy import SystemStrategy
 
 
 class SqueezeResumptionTests(unittest.TestCase):

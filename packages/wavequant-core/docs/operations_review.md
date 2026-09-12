@@ -32,12 +32,12 @@
 
 ## 已修改文件
 
-- wavequant/operations.py、operational_store.py：统一运行与本地告警。
-- wavequant/backup_bundle.py：备份与新目录恢复。
-- wavequant/account_report.py：账户归因与过期价格边界。
-- wavequant/order_service.py、paper_venue.py：拒单、撤单投递和独立权益记账。
-- wavequant/data_catalog.py：快照日历范围修复。
-- wavequant/cli.py、configs/operations.json：可执行入口。
+- wavequant/application/governance/operations.py、operational_store.py：统一运行与本地告警。
+- wavequant/infrastructure/filesystem/backup_bundle.py：备份与新目录恢复。
+- wavequant/application/trading/account_report.py：账户归因与过期价格边界。
+- wavequant/application/trading/order_service.py、paper_venue.py：拒单、撤单投递和独立权益记账。
+- wavequant/infrastructure/market_data/data_catalog.py：快照日历范围修复。
+- wavequant/interfaces/cli.py、configs/operations.json：可执行入口。
 - tests/test_operations.py：新增故障与已知答案验证。
 
 最终执行结果以 runs/<ID>/test_log.txt、report.json、artifacts.json 和 operations.sqlite 为准，不把本说明当成测试已执行的证据。

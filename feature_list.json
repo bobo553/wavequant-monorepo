@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": null,
+    "activeFeature": "MONOREPO-020",
     "features": [
         {
             "id": "MONOREPO-001",
@@ -365,7 +365,7 @@
                     "summary": "全仓 Harness、lint、类型检查、单元测试和所有 workspace 生产构建全部通过。"
                 },
                 {
-                    "command": "pnpm --filter wavequant python -- -m wavequant.cli --help",
+                    "command": "pnpm --filter wavequant python -- -m wavequant.interfaces.cli --help",
                     "status": "passed",
                     "summary": "迁移后的 CLI 可从 workspace 环境启动，浏览器工作台使用的本地 Lightweight Charts SDK 路径存在。"
                 }
@@ -727,6 +727,44 @@
                     "command": "1440x1000 browser visual inspection and WCAG contrast audit",
                     "status": "passed",
                     "summary": "证券蓝深浅主题视觉层级正常；主色前景对比度分别为 7.10:1 与 5.43:1，均满足 WCAG 2.2 AA 普通文本 4.5:1。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-020",
+            "name": "wavequant-core-layered-architecture",
+            "description": "将 wavequant-core 的扁平 Python 模块重构为四层、十三个功能子域，并将仓库消费者升级到唯一规范导入路径。",
+            "title": "重构 WaveQuant Core 分层架构",
+            "scope": "按业务职责整理 src/wavequant，在 domain、application、infrastructure、interfaces 四层内继续拆分模型、市场结构、市场状态、策略、研究、交易、运维、行情、持久化、文件系统、图表、研究工具和筛选子域；将普通导入、延迟导入、测试 patch 和 CLI 升级到唯一规范路径，删除扁平兼容模块，不改变既有策略、研究、回测、执行与数据行为。",
+            "dependencies": ["MONOREPO-019"],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "核心实现按 domain、application、infrastructure、interfaces 分层，并在每层按功能子域继续细分",
+                "仓库内所有消费者使用 wavequant.<layer>.<feature>.<module>，包根和层级根目录不再保留重复模块",
+                "关键趋势、策略和用例模块具有说明职责、输入输出、因果边界与业务不变量的注释",
+                "新增架构边界测试，防止领域层反向依赖应用、基础设施或接口层",
+                "Core lint、类型检查、501 项单元测试、构建和 Harness 通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint && pnpm --filter @wavequant/core typecheck && pnpm --filter @wavequant/core test:unit && pnpm --filter @wavequant/core build",
+                    "status": "passed",
+      "summary": "四层十三个功能子域重构后的 Ruff、渐进式严格 mypy、501 项 pytest 以及 sdist/wheel 构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core python -- -m wavequant.interfaces.cli --help && pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+      "summary": "CLI 已切换到 wavequant.interfaces.cli；API 消费方 Ruff、严格 mypy、33 项通过/1 项环境跳过的 pytest 和 Python 构建全部通过。"
+    },
+    {
+      "command": "检查 wavequant-core wheel 顶层布局并从 wheel 直接导入 14 个代表性规范模块",
+      "status": "passed",
+      "summary": "wheel 仅包含 85 个新分层 Python 文件；包根和各层根目录无兼容模块，旧 wavequant.model 导入已按升级约定失效。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "blocked",
+                    "summary": "本功能状态一致；门禁被任务开始前已存在、未跟踪且不属于本次范围的 packages/async-ui/progress.md 缺少 Harness 章节阻断。"
                 }
             ]
         }

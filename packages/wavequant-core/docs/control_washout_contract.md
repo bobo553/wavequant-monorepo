@@ -1,6 +1,6 @@
 # 主控 K 棒、轧空低／杀多高与波段洗盘
 
-实现为两个独立观察模块：`wavequant/control_bar.py`、`wavequant/washout.py`。依据本次用户提供的正文、图 009，以及已建立的突破、N 字、六态和折线结构契约。本层不改动原有回测策略或历史报告。
+实现为两个独立观察模块：`wavequant/domain/market_state/control_bar.py`、`wavequant/domain/market_state/washout.py`。依据本次用户提供的正文、图 009，以及已建立的突破、N 字、六态和折线结构契约。本层不改动原有回测策略或历史报告。
 
 ## 1. 先区分价格事实与讲义解释
 
@@ -139,10 +139,10 @@
 ## 10. 调用和验证
 
 ```python
-from wavequant.control_bar import observe_control_bar
-from wavequant.washout import WashoutPolicy, observe_washout
-from wavequant.n_shape import MilestoneBasis
-from wavequant.price_action import ShadowPolicy
+from wavequant.domain.market_state.control_bar import observe_control_bar
+from wavequant.domain.market_state.washout import WashoutPolicy, observe_washout
+from wavequant.domain.market_structure.n_shape import MilestoneBasis
+from wavequant.domain.market_structure.price_action import ShadowPolicy
 
 control = observe_control_bar(
     bars, initial_setup, timeframe="1d",

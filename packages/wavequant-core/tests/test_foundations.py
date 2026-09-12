@@ -4,15 +4,15 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from wavequant.foundation_audit import audit_foundations
-from wavequant.foundations import (SwingPoint, bar_relations, force_profile, measured_targets,
+from wavequant.application.analytics.foundation_audit import audit_foundations
+from wavequant.domain.market_structure.foundations import (SwingPoint, bar_relations, force_profile, measured_targets,
                                    n_break_evidence, resistance_evidence, swing_context,
                                    three_bar_state, turning_evidence)
-from wavequant.research import write_rows
+from wavequant.application.analytics.research import write_rows
 
 
 def bar(i,o,h,l,c):
-    from wavequant.model import Bar
+    from wavequant.domain.models.model import Bar
     return Bar(datetime(2020,1,1)+timedelta(days=i),'TEST',o,h,l,c,1_000_000)
 
 

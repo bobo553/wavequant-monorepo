@@ -2,11 +2,11 @@ from dataclasses import FrozenInstanceError, replace
 from datetime import datetime, timedelta
 import unittest
 
-from wavequant.model import Bar
-from wavequant.price_action import Direction
-from wavequant.n_shape import BoxAnchorMode, MilestoneBasis, NStatus, observe_n
-from wavequant.market_regime import RegimePolicy, WaveBoundary, observe_market_regime
-from wavequant.polyline import (BarPathEvidence, LinePoint, PointKind as K,
+from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.price_action import Direction
+from wavequant.domain.market_structure.n_shape import BoxAnchorMode, MilestoneBasis, NStatus, observe_n
+from wavequant.domain.market_state.market_regime import RegimePolicy, WaveBoundary, observe_market_regime
+from wavequant.domain.market_structure.polyline import (BarPathEvidence, LinePoint, PointKind as K,
     child_mother_path, n_setup_from_polyline, observe_bar_relations, observe_polyline)
 
 

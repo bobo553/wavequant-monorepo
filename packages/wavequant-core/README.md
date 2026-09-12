@@ -4,6 +4,8 @@
 
 本项目位于 monorepo 的 `packages/wavequant-core`，只负责领域、研究、回测、数据与运维能力，不启动 HTTP Server，也不读取 Web 静态资源。HTTP 适配器位于 `apps/servers/wavequant-api`，浏览器界面位于 `apps/webs/wavequant-web`。
 
+源码先按 `domain → application → infrastructure/interfaces` 划分依赖方向，再按市场结构、市场状态、策略、研究、交易、运维、行情和持久化等功能子域组织。完整目录职责、规范入口和关键领域不变量见 [分层架构说明](docs/architecture.md)。仓库代码统一使用最细功能模块；已移除扁平子模块入口，稳定的包级公共 API 仍可从 `wavequant` 导入。
+
 ## TradingView 可视化工作台
 
 ```powershell
@@ -16,8 +18,8 @@ pnpm --filter wavequant-api dashboard
 ## v0.4：统一运行、故障验收和恢复
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli system-run --config configs/operations.json --run-id acceptance_20260908
-.venv\Scripts\python.exe -m wavequant.cli system-status --root results/operations_v1
+.venv\Scripts\python.exe -m wavequant.interfaces.cli system-run --config configs/operations.json --run-id acceptance_20260908
+.venv\Scripts\python.exe -m wavequant.interfaces.cli system-status --root results/operations_v1
 ```
 
 一个入口执行：冻结输入／源码 → 全量测试 → 数据状态与新鲜度审计 → 原策略严格版／日线代理分别滚动及成本／容量诊断 → 纸面故障验收 → FIFO 账户归因守恒 → 备份恢复演练 → 产物封存。
@@ -29,7 +31,7 @@ pnpm --filter wavequant-api dashboard
 ## v5：可证伪的策略改进研究
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli strategy-evidence --output-dir results/squeeze_evidence_v5_20260908
+.venv\Scripts\python.exe -m wavequant.interfaces.cli strategy-evidence --output-dir results/squeeze_evidence_v5_20260908
 ```
 
 协议 `configs/squeeze_evidence_v5.json` 冻结四个候选：原代理版对照、252 日结构上下文、1.0 相对量能、1.0 费用后盈亏比。后三者一次只改变一个经验参数，均保留用户的完整翻多／交替／多头趋势／轧空链条；不自动替换 v4 默认策略。严格讲义折线另作参考。
@@ -44,9 +46,9 @@ pnpm --filter wavequant-api dashboard
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests -v
-.venv\Scripts\python.exe -m wavequant.cli platform-audit --output-dir results/platform_v1_20260908
-.venv\Scripts\python.exe -m wavequant.cli paper-demo --output-dir results/paper_demo
-.venv\Scripts\python.exe -m wavequant.cli journal-check results/paper_demo/account.sqlite
+.venv\Scripts\python.exe -m wavequant.interfaces.cli platform-audit --output-dir results/platform_v1_20260908
+.venv\Scripts\python.exe -m wavequant.interfaces.cli paper-demo --output-dir results/paper_demo
+.venv\Scripts\python.exe -m wavequant.interfaces.cli journal-check results/paper_demo/account.sqlite
 ```
 
 `platform-audit` 先跑完整测试，再审计现有通达信 CSV、验证纸面执行并运行原参数的历史诊断；输出目录不得已存在内容。可传入 `--security-master` 和 `--calendar` JSON，格式及运行边界见 `docs/platform_contract.md`。`--engineering-only` 只跳过历史收益诊断，不跳过真实数据覆盖审计。
@@ -61,52 +63,52 @@ pnpm --filter wavequant-api dashboard
 
 当前 v4 保留 v3 的发单前价格预检查，并补充原文“已确认轧空、回压不破轧空低后恢复上涨”的独立入场路径，不能只靠历史标签入场。真正发单后仍在次日开盘复核费用后盈亏比与整手风险。完整定义与零成交排查见 `docs/squeeze_zero_fill_diagnosis.md`。零手原因、盈亏比数值、买入／平仓数及零成交状态均单独输出。
 
-运行 `.venv\Scripts\python.exe -m wavequant.cli system-research`，默认协议 `configs/system_squeeze_v4.json`，读取 `data/tdx_system_20260908.csv`，输出到 `results/system_squeeze_v4_20260908`。已有输出不会覆盖，复跑请换 `--output-dir`。原 v1/v2/v3 协议与结果保留，新回测含 v2/v3 对照。这是已看过历史的探索诊断，不是新锁箱或自动挑选高收益策略。
+运行 `.venv\Scripts\python.exe -m wavequant.interfaces.cli system-research`，默认协议 `configs/system_squeeze_v4.json`，读取 `data/tdx_system_20260908.csv`，输出到 `results/system_squeeze_v4_20260908`。已有输出不会覆盖，复跑请换 `--output-dir`。原 v1/v2/v3 协议与结果保留，新回测含 v2/v3 对照。这是已看过历史的探索诊断，不是新锁箱或自动挑选高收益策略。
 
 ## 统一价格行为基础
 
-突破、跌破、抵抗和三笔顺序的独立底层定义位于 `wavequant/price_action.py`，说明见 `docs/price_action_contract.md`。关键点必须事先确认并显式传入；分别记录盘中/收盘越过；长影默认不设阈值；第三笔只记录确认事实，不替上层判断抵抗成功或趋势反转。
+突破、跌破、抵抗和三笔顺序的独立底层定义位于 `wavequant/domain/market_structure/price_action.py`，说明见 `docs/price_action_contract.md`。关键点必须事先确认并显式传入；分别记录盘中/收盘越过；长影默认不设阈值；第三笔只记录确认事实，不替上层判断抵抗成功或趋势反转。
 
 可运行示例：`.venv\Scripts\python.exe -m examples.price_action_basics`。后续 N 字、六态、量能和交易模块可消费这些不可修改的观测结果；旧研究代理保留兼容行为，尚未全部迁移。
 
 ## N 形理论层
 
-`wavequant/n_shape.py` 在已确认 A/B/C 拐点与价格行为基础层上，记录正倒 N 的同棒实虚完成、冻结轧空低/杀多高、等浪/1P/2T 以及首次达到时间。箱体锚点和达到口径必须显式选择；没有自动拐点选择、量能过滤或买卖指令，也未编造五顶十满公式。
+`wavequant/domain/market_structure/n_shape.py` 在已确认 A/B/C 拐点与价格行为基础层上，记录正倒 N 的同棒实虚完成、冻结轧空低/杀多高、等浪/1P/2T 以及首次达到时间。箱体锚点和达到口径必须显式选择；没有自动拐点选择、量能过滤或买卖指令，也未编造五顶十满公式。
 
 完整定义和边界见 `docs/n_shape_contract.md`。运行示例：`.venv\Scripts\python.exe -m examples.n_shape_theory`。本轮价格 N 的事件跟踪与指标/均线的几何测幅接口分开，不能将指标值伪装成价格 OHLC。
 
 ## 六大盘态层
 
-`wavequant/market_regime.py` 消费已完成 N 字，区分抵抗出现、局部成功、失败、未知及强／普通／盘整六态。至少第三笔才确认，允许多棒回调；逐棒证据和历史确认分开，波段失效不能自动变成反向盘态。
+`wavequant/domain/market_state/market_regime.py` 消费已完成 N 字，区分抵抗出现、局部成功、失败、未知及强／普通／盘整六态。至少第三笔才确认，允许多棒回调；逐棒证据和历史确认分开，波段失效不能自动变成反向盘态。
 
 定义、工程假设和边界见 `docs/market_regime_contract.md`。演示：`.venv\Scripts\python.exe -m examples.six_market_regimes`。长影阈值与波段边界必须显式选择；本层无量能或买卖过滤，旧策略、旧三棒代理与既有报告保持不变。
 
 ## 高低折线与趋势结构层
 
-`wavequant/polyline.py` 定义六个基本术语、带确认时间的正负反转、普通高低连接与显式子母教学路径。缺少内外包高低先后证据时暂停；未确认端点不作为 N 锚点。
+`wavequant/domain/market_structure/polyline.py` 定义六个基本术语、带确认时间的正负反转、普通高低连接与显式子母教学路径。缺少内外包高低先后证据时暂停；未确认端点不作为 N 锚点。
 
-`wavequant/trend_structure.py` 定义显式窗口内的末跌高／末升低、局部与全窗口多空趋势、头底疑虑、冻结关键位翻转、严格 67% 交替及独立 abc 等浪核验。完整定义见 `docs/polyline_trend_contract.md`；运行 `.venv\Scripts\python.exe -m examples.polyline_trend_theory` 可核验折线 → N → 六态及多空交替样例。
+`wavequant/domain/market_structure/trend_structure.py` 定义显式窗口内的末跌高／末升低、局部与全窗口多空趋势、头底疑虑、冻结关键位翻转、严格 67% 交替及独立 abc 等浪核验。完整定义见 `docs/polyline_trend_contract.md`；运行 `.venv\Scripts\python.exe -m examples.polyline_trend_theory` 可核验折线 → N → 六态及多空交替样例。
 
 ## 主控 K 棒与波段洗盘观察层
 
-`wavequant/control_bar.py` 复用 N 完成棒的轧空低／杀多高，记录攻击量、次笔抵抗、防守盘中越过／收盘失守和收回，不把虚拟价当作真实主力成本。
+`wavequant/domain/market_state/control_bar.py` 复用 N 完成棒的轧空低／杀多高，记录攻击量、次笔抵抗、防守盘中越过／收盘失守和收回，不把虚拟价当作真实主力成本。
 
-`wavequant/washout.py` 实现图 009 严格时序：首次 N → 1P／2T 之间 → 后续颈线／1P 之间 → 独立新 N，并提供头部镜像。两个方向都不生成订单，头部只作为持多风险观察，70% 概率保持未知。定义见 `docs/control_washout_contract.md`；运行 `.venv\Scripts\python.exe -m examples.control_washout_theory`。
+`wavequant/domain/market_state/washout.py` 实现图 009 严格时序：首次 N → 1P／2T 之间 → 后续颈线／1P 之间 → 独立新 N，并提供头部镜像。两个方向都不生成订单，头部只作为持多风险观察，70% 概率保持未知。定义见 `docs/control_washout_contract.md`；运行 `.venv\Scripts\python.exe -m examples.control_washout_theory`。
 
 ## 多空力道与盘势扭转层
 
-`wavequant/wave_strength.py` 定义反弹／回档的三分与六分比例，分开反向力度和原趋势承压，保留原文未定义区间、严格边界、图 011 的互补坐标及分数／小数版本。
+`wavequant/domain/market_state/wave_strength.py` 定义反弹／回档的三分与六分比例，分开反向力度和原趋势承压，保留原文未定义区间、严格边界、图 011 的互补坐标及分数／小数版本。
 
-`wavequant/market_turn.py` 连接已确认折线、冻结六态背景和末跌高／末升低：疑虑 → 第二反向幅度组合 → 最后两高／两低的次级斜线新越线。保留负扭转“或跌破末升低”分支，不从未知次级数据推断确认。定义见 `docs/wave_strength_turn_contract.md`；运行 `.venv\Scripts\python.exe -m examples.wave_strength_turn_theory`。
+`wavequant/domain/market_state/market_turn.py` 连接已确认折线、冻结六态背景和末跌高／末升低：疑虑 → 第二反向幅度组合 → 最后两高／两低的次级斜线新越线。保留负扭转“或跌破末升低”分支，不从未知次级数据推断确认。定义见 `docs/wave_strength_turn_contract.md`；运行 `.venv\Scripts\python.exe -m examples.wave_strength_turn_theory`。
 
 ## 基础讲义版
 
-根据用户提供的 35 页《主控战略N形理论》补齐了基础教材 `docs/n_foundations.md`，并增加独立的 `wavequant/foundations.py`：虚拟高低点、实/虚双锚点突破、六个 K 线术语、三棒六态代理、等浪/1P/2T、已确认拐点、力度分层和正负扭转证据。
+根据用户提供的 35 页《主控战略N形理论》补齐了基础教材 `docs/n_foundations.md`，并增加独立的 `wavequant/domain/market_structure/foundations.py`：虚拟高低点、实/虚双锚点突破、六个 K 线术语、三棒六态代理、等浪/1P/2T、已确认拐点、力度分层和正负扭转证据。
 
 旧策略和历史回测协议未修改。基础规则核验可执行：
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli foundation-audit data/tdx_rerun_20260908_01.csv --output-dir results/foundations_lecture
+.venv\Scripts\python.exe -m wavequant.interfaces.cli foundation-audit data/tdx_rerun_20260908_01.csv --output-dir results/foundations_lecture
 ```
 
 该命令先运行测试，再生成每股日线标注和汇总；它不生成交易收益。母子线盘中顺序、自动颈线选择和主力身份推断不在本基础接口的能力范围。
@@ -118,7 +120,7 @@ pnpm --filter wavequant-api dashboard
 使用已有通达信快照，一条命令跑自动测试和全部 12 个固定对照组：
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli notion-research
+.venv\Scripts\python.exe -m wavequant.interfaces.cli notion-research
 ```
 
 输出 `results/notion_v2/report.html`、`report.md`、完整参数/源码哈希/逐笔/净值及 `notes_inventory.json`。可用 `--notes-dir` 指定导出目录，`--output-dir` 换目录保留不同运行；本命令不联网、不重新下载行情、不覆盖旧版 `results/tdx`。
@@ -138,7 +140,7 @@ pnpm --filter wavequant-api dashboard
 首次需要 Python 3.11+；脚本创建本项目 `.venv`，缺少依赖时安装 `.[tdx]`，随后自动执行测试、只读导入和研究。已有依赖和数据时不需要联网。若系统禁止运行 PowerShell 脚本，无须修改安全策略，直接执行：
 
 ```powershell
-.venv\Scripts\python.exe -m wavequant.cli run-tdx --tdx-root D:\TDX --output-dir results\tdx
+.venv\Scripts\python.exe -m wavequant.interfaces.cli run-tdx --tdx-root D:\TDX --output-dir results\tdx
 ```
 
 新环境手动安装：
@@ -166,17 +168,17 @@ python -m venv .venv
 
 ```powershell
 # 只导入（默认十只成熟沪深主板样本；显式指定可更换，禁止事后按收益选股）
-.venv\Scripts\python.exe -m wavequant.cli import-tdx --tdx-root D:\TDX --csv data\tdx_daily.csv
+.venv\Scripts\python.exe -m wavequant.interfaces.cli import-tdx --tdx-root D:\TDX --csv data\tdx_daily.csv
 
 # 只校验 / 只运行既有快照，不重新导入
-.venv\Scripts\python.exe -m wavequant.cli validate data\tdx_daily.csv
-.venv\Scripts\python.exe -m wavequant.cli research data\tdx_daily.csv --output-dir results\snapshot
+.venv\Scripts\python.exe -m wavequant.interfaces.cli validate data\tdx_daily.csv
+.venv\Scripts\python.exe -m wavequant.interfaces.cli research data\tdx_daily.csv --output-dir results\snapshot
 
 # 单参数全样本回测：只能用于探索，不能叫样本外结果
-.venv\Scripts\python.exe -m wavequant.cli backtest data\tdx_daily.csv --config configs\mvp.json
+.venv\Scripts\python.exe -m wavequant.interfaces.cli backtest data\tdx_daily.csv --config configs\mvp.json
 
 # 无第三方依赖的离线模拟冒烟测试，不是真实市场收益
-python -m wavequant.cli demo
+python -m wavequant.interfaces.cli demo
 python -m unittest discover -s tests -v
 ```
 

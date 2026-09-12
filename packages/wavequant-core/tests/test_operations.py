@@ -4,17 +4,17 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from wavequant.backup_bundle import create_bundle, restore_bundle, verify_bundle
-from wavequant.data import dump_json, write_dataset, fingerprint
-from wavequant.data_catalog import register_dataset
-from wavequant.event_store import EventStore
-from wavequant.operational_store import (workspace_lock, identifier, acknowledge_alert, synchronize_alerts)
-from wavequant.operations import OperationsConfig, run_operations, operations_status, check_freshness
-from wavequant.io import load_bars
-from wavequant.security_master import SecurityMaster
+from wavequant.infrastructure.filesystem.backup_bundle import create_bundle, restore_bundle, verify_bundle
+from wavequant.infrastructure.market_data.data import dump_json, write_dataset, fingerprint
+from wavequant.infrastructure.market_data.data_catalog import register_dataset
+from wavequant.infrastructure.persistence.event_store import EventStore
+from wavequant.infrastructure.persistence.operational_store import (workspace_lock, identifier, acknowledge_alert, synchronize_alerts)
+from wavequant.application.governance.operations import OperationsConfig, run_operations, operations_status, check_freshness
+from wavequant.infrastructure.market_data.io import load_bars
+from wavequant.infrastructure.market_data.security_master import SecurityMaster
 from tests.test_platform import fact, T, T2, T3, S
-from wavequant.order_service import OrderService
-from wavequant.paper_venue import PaperVenue, PaperBridge, OpeningTick
+from wavequant.application.trading.order_service import OrderService
+from wavequant.application.trading.paper_venue import PaperVenue, PaperBridge, OpeningTick
 
 
 def passed(output):
@@ -83,7 +83,7 @@ class OperationsTests(unittest.TestCase):
         self.assertTrue(report['recovery_drill_passed'])
         self.assertFalse(report['live_orders_enabled']); self.assertFalse(report['strategy_validated'])
         self.assertIsNone(report['research_summary'])
-        with patch('wavequant.operations._test_checkout',side_effect=AssertionError('must not rerun')):
+        with patch('wavequant.application.governance.operations._test_checkout',side_effect=AssertionError('must not rerun')):
             self.assertEqual(report,run_operations(self.cfg,'acceptance'))
         status=operations_status(self.cfg.root)
         self.assertEqual(status['runs']['acceptance']['status'],'COMPLETED')
@@ -132,13 +132,13 @@ class OperationsTests(unittest.TestCase):
             run_operations(self.cfg,'bad_data',test_runner=passed)
 
     def test_future_data_fails_closed(self):
-        with patch('wavequant.operations.now',return_value=T):
+        with patch('wavequant.application.governance.operations.now',return_value=T):
             with self.assertRaisesRegex(ValueError,'not-yet-available'):
                 run_operations(self.cfg,'future_data',test_runner=passed)
 
     def test_full_research_branch_dispatch(self):
         research=dict(variants={'strict_full':{'scenarios':{'base':{'metrics':{'total_return':0,'trades':0}}}}})
-        with patch('wavequant.validation_suite.run_validation_suite',return_value=research) as run:
+        with patch('wavequant.application.analytics.validation_suite.run_validation_suite',return_value=research) as run:
             report=run_operations(replace(self.cfg,run_research=True),'research',test_runner=passed)
         run.assert_called_once()
         self.assertEqual(report['research_summary']['strict_full']['base']['trades'],0)
@@ -279,7 +279,7 @@ class VenueLifecycleTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.venue.reject('unknown',T3,reason='unknown')
 
     def test_fifo_report_asof_stale_marks_and_conservation(self):
-        from wavequant.account_report import account_report
+        from wavequant.application.trading.account_report import account_report
         self.venue.match(OpeningTick('fill','TEST',T,'10',200,True,True)); self.bridge.receive()
         report=account_report(self.s,T)
         self.assertTrue(report['pnl_conserved'])
@@ -299,7 +299,7 @@ class VenueLifecycleTests(unittest.TestCase):
         self.assertEqual(flat['realized_pnl'],'22.98')
 
     def test_fifo_report_stale_mark_no_false_nav(self):
-        from wavequant.account_report import account_report
+        from wavequant.application.trading.account_report import account_report
         self.venue.match(OpeningTick('fill','TEST',T,'10',200,True,True)); self.bridge.receive()
         self.assertIsNone(account_report(self.s,T3)['equity'])
         self.assertEqual(account_report(self.s,T3)['unmarked_symbols'],['TEST'])

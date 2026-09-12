@@ -20,6 +20,8 @@ pnpm --filter wavequant-api dashboard
 
 默认打开 `http://127.0.0.1:8765`，进入从原 `E:\WorkSpace\股票\web` 迁移的研究工作台；同一页面也可通过 `/research` 访问。Next.js 全景市场看盘保留在 `/market`。API 只从 `apps/webs/wavequant-web/out` 建立静态文件清单，不提供目录浏览或工作区外文件。研究结果从 `packages/wavequant-core/results/operations_v1` 读取，可通过 `--root`、`--tdx-root`、`--port` 与 `--web-root` 覆盖。
 
+通过 `wavequant-web dev` 联合启动时，8765 保持为独立 API 进程；访问其根地址会以 `307` 临时重定向到 `http://127.0.0.1:3003/`，API 路由仍由 Next.js 同源代理。重定向目标必须通过 `--web-url` 显式配置，且只接受带端口的 loopback HTTP origin，避免开放重定向。
+
 复用迁移前机器上的现有封存结果与通达信行情时，可显式指定数据目录：
 
 ```powershell
