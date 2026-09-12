@@ -2,6 +2,7 @@
 
 ## Current State
 
+- `MONOREPO-038` 已完成：API 透明返回 Core 生成的二级高点交替升级证据和最终因果可用日。
 - `MONOREPO-037` 已完成：API 透明返回 Core 生成的二级发展路径、内部转折数和待决尾部点数。
 - `MONOREPO-036` 已完成：API 透明返回 Core 生成的二级开放尾段末跌高换锚事件及其一级确认低点证据。
 - `MONOREPO-035` 已完成：API 透明返回完整三级发展路径、内部转折数与待决尾部点数。
@@ -29,6 +30,7 @@
 - MONOREPO-035 延续透明消费边界：`developing_point_count`、`nested_turn_count`、`pending_point_count` 及逐点角色由 Core 生成，HTTP 层不压缩或补点。
 - MONOREPO-036 延续透明消费边界：二级换锚事件的旧低、跌破日、新高、确认低点、来源级别与因果可用日均由 Core 生成，HTTP 层不补点或重算趋势。
 - MONOREPO-037 延续透明消费边界：`secondary_trends.developing_strokes` 的来源位置、角色、计数和因果日期均由 Core 生成，HTTP 层不压缩、不补点、不把它传入三级趋势。
+- MONOREPO-038 延续透明消费边界：`alternation`、`provisional_reversal`、旧二级关键位和 `available_at` 均由 Core 生成，HTTP 层不复制升级算法。
 
 ## Verification
 
@@ -48,6 +50,7 @@
 - MONOREPO-035 API 消费方门禁通过 Ruff、严格 mypy、33 项 pytest（另 1 项外部环境测试跳过）和 Python 构建；最新上海电力接口返回 14 个发展点、8 个已确认内部转折及 4 个待决尾部点。
 - MONOREPO-036 API 消费方门禁通过 Ruff、严格 mypy、33 项 pytest（另 1 项外部环境测试跳过）和 Python 构建；上海电力真实接口在 `2026-07-16` 尚未换锚、于 `2026-07-17` 因果可见地换锚到 `2026-05-29 H27 22.35`。
 - MONOREPO-037 API 消费方门禁通过 Ruff、严格 mypy、33 项 pytest（另 1 项外部环境测试跳过）和 Python 构建；中大力德真实接口返回 17 个正式二级点与独立的 30 点发展路径，三级正式点仍为 3 个。
+- MONOREPO-038 API 消费方门禁通过 Ruff、严格 mypy、33 项 pytest（另 1 项外部环境测试跳过）和 Python 构建；中大力德真实接口在 `2023-02-06` 首次返回升级后的 `2022-08-03 H70 49.56` 及完整三段证据。
 
 ## Risks and Next Steps
 

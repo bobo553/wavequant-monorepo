@@ -6,7 +6,7 @@
 
 ## Current Objective
 
-当前没有进行中的 Feature；MONOREPO-017 已完成，原股票项目 Web 工作台已由 `apps/webs/wavequant-web` 的 Next.js App Router 与 React 直接渲染，并可由单一开发命令连同本机 API 启动。
+当前没有进行中的 Feature；MONOREPO-038 已完成，二级高点可在突破旧二级末跌高、完成场景回撤并出现已确认非正式二级反转点后因果升级。
 
 ## Current State
 
@@ -45,6 +45,7 @@
 - 完成 MONOREPO-015：补齐 Next.js 八个看盘视图的共享上下文、搜索、钻取、观察组、异动雷达、多股同屏、复盘、导出和个性化设置，并保留原始 v2 六大模块的完整兼容入口。
 - MONOREPO-016 已完成实现与专项验收：源项目 505 项 Python、37 项 Web 契约全部建立目标映射，原 Web 恢复为默认入口，全景页迁至 `/market`，API 补齐 `wavequant-core[tdx]` 现场回测运行依赖。
 - 完成 MONOREPO-017：原研究页拆分为 React 业务组件与客户端运行时边界；`wavequant-web dev` 同时启动 Next.js 与只读 API，并修复开发代理下买点扫描 POST 的本机来源校验。
+- 完成 MONOREPO-038：中大力德 `2022-08-03 H70 49.56` 在旧二级末跌高突破、54.42% 场景回撤和非正式二级低点确认三项证据齐备后，于 `2023-02-06` 升级为正式二级高点。
 
 ## Verification Evidence
 
@@ -88,6 +89,7 @@
 - MONOREPO-016 完成后的 `pnpm verify`：16 个功能、17 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、全仓 lint、类型检查、单元测试及 15 个生产构建任务全部通过。
 - MONOREPO-017 真实数据 Chromium 验收：23 项完整工作台、4 项幅度比较、6 项慢扫描传输、3 项二级趋势连续性和 4 项 Next 页面流程全部通过。
 - MONOREPO-017 完成后的 `pnpm verify`：17 个功能、17 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、全仓 lint、类型检查、单元测试及 15 个生产构建任务全部通过。
+- MONOREPO-038 的全仓 `pnpm verify:quick` 通过；Core 510 项、API 33 项（另 1 项环境跳过）、Web 56 项单测及 9 条 Chromium 主流程通过。
 
 ## Blockers
 

@@ -139,7 +139,7 @@ test("Shanghai Electric Power shows the complete level-three development path af
     await expect(page.locator("#price-chart")).toHaveAttribute("data-tertiary-developing-points", "14");
     await expect(page.locator("#secondary-trend-summary")).toContainText("二级末跌高 22.35");
     await expect(page.locator("#tertiary-trend-summary")).toContainText("完整发展路径 14 点");
-    await expect(page.locator("#tertiary-trend-summary")).toContainText("2026-05-29 H27 22.35");
+    await expect(page.locator("#tertiary-trend-summary")).toContainText("2026-05-29 H28 22.35");
 
     const latestState = await page.evaluate(async () => {
         const theory = await fetch("/api/tdx-theory?symbol=sh.600021&asof=2026-09-07").then((response) =>
@@ -185,7 +185,7 @@ test("Shanghai Electric Power shows the complete level-three development path af
     await expect(page.locator("#asof-label")).toHaveText("2015-07-15");
     await expect(page.locator("#price-chart")).toHaveAttribute("data-tertiary-developing-points", "2");
     await expect(page.locator("#tertiary-trend-summary")).toContainText("完整发展路径 2 点");
-    await expect(page.locator("#tertiary-trend-summary")).toContainText("当前上涨候选 2015-06-02 H12 34.5");
+    await expect(page.locator("#tertiary-trend-summary")).toContainText("当前上涨候选 2015-06-02 H13 34.5");
 
     const state = await page.evaluate(async () => {
         const theory = await fetch("/api/tdx-theory?symbol=sh.600021&asof=2015-07-15").then((response) =>
@@ -210,7 +210,7 @@ test("Shanghai Electric Power shows the complete level-three development path af
     expect(failedRequests).toEqual([]);
 });
 
-test("Zhongda Leader level-two line continues as a causal developing path after May 2022", async ({ page }) => {
+test("Zhongda Leader promotes the August 2022 high only after causal alternation evidence", async ({ page }) => {
     const pageErrors: string[] = [];
     const failedRequests: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -226,17 +226,20 @@ test("Zhongda Leader level-two line continues as a causal developing path after 
     await theoryResponse;
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#error")).toBeHidden();
-    await expect(page.locator("#price-chart")).toHaveAttribute("data-secondary-developing-points", "30");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-secondary-developing-points", "2");
     await expect(page.locator("#secondary-trend-summary")).toContainText("发展路径");
-    await expect(page.locator("#secondary-trend-summary")).toContainText("2022-05-27 L9 13.16");
-    await expect(page.locator("#secondary-trend-summary")).toContainText("2026-09-01 H129 66.07");
+    await expect(page.locator("#secondary-trend-summary")).toContainText("2026-07-06 H23 88.60");
+    await expect(page.locator("#secondary-trend-summary")).toContainText("2026-07-30 L128 58.51");
 
     const state = await page.evaluate(async () => {
-        const theory = await fetch("/api/tdx-theory?symbol=sz.002896&asof=2026-09-07").then((response) =>
-            response.json(),
-        );
+        const [theory, beforePromotion, atPromotion] = await Promise.all([
+            fetch("/api/tdx-theory?symbol=sz.002896&asof=2026-09-07").then((response) => response.json()),
+            fetch("/api/tdx-theory?symbol=sz.002896&asof=2023-02-03").then((response) => response.json()),
+            fetch("/api/tdx-theory?symbol=sz.002896&asof=2023-02-06").then((response) => response.json()),
+        ]);
         const formal = theory.secondary_trends.strokes[0].points;
         const developing = theory.secondary_trends.developing_strokes[0];
+        const promoted = formal.find((point: { time: string }) => point.time === "2022-08-03");
         return {
             formalCount: theory.secondary_trends.confirmed_wave_count,
             formalEnd: formal.at(-1),
@@ -244,13 +247,33 @@ test("Zhongda Leader level-two line continues as a causal developing path after 
             developingStart: developing.points[0],
             developingEnd: developing.points.at(-1),
             developing,
+            promoted,
+            beforePromotionCount: beforePromotion.secondary_trends.confirmed_wave_count,
+            atPromotionCount: atPromotion.secondary_trends.confirmed_wave_count,
+            atPromotionEnd: atPromotion.secondary_trends.strokes[0].points.at(-1),
         };
     });
-    expect(state.formalCount).toBe(17);
-    expect(state.formalEnd).toMatchObject({ time: "2022-05-27", kind: "L", value: 13.16 });
-    expect(state.developingCount).toBe(30);
-    expect(state.developingStart).toMatchObject({ time: "2022-05-27", kind: "L", value: 13.16 });
-    expect(state.developingEnd).toMatchObject({ time: "2026-09-01", kind: "H", value: 66.07 });
+    expect(state.formalCount).toBe(46);
+    expect(state.formalEnd).toMatchObject({ time: "2026-07-06", kind: "H", value: 88.6 });
+    expect(state.developingCount).toBe(2);
+    expect(state.developingStart).toMatchObject({ time: "2026-07-06", kind: "H", value: 88.6 });
+    expect(state.developingEnd).toMatchObject({ time: "2026-07-30", kind: "L", value: 58.51 });
+    expect(state.beforePromotionCount).toBe(17);
+    expect(state.atPromotionCount).toBe(18);
+    expect(state.atPromotionEnd).toMatchObject({ time: "2022-08-03", kind: "H", value: 49.56 });
+    expect(state.promoted).toMatchObject({
+        time: "2022-08-03",
+        kind: "H",
+        value: 49.56,
+        available_at: "2023-02-06",
+        confirmation_rule: "level1_old_level2_key_break_alternation_and_nested_reversal",
+        broken_key: { time: "2021-12-01", value: 27.71 },
+        alternation: {
+            point: { time: "2022-08-30", value: 29.75 },
+        },
+        provisional_reversal: { time: "2022-12-23", value: 22.06 },
+    });
+    expect(state.promoted.alternation.retracement_ratio).toBeCloseTo(0.5442307692, 8);
     expect(state.developing).toMatchObject({
         kind: "secondary-developing",
         source_level: 1,

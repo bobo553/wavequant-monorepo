@@ -794,6 +794,37 @@ test("secondary is a continuous purple solid line with distinct labels and evide
     assert.match(item.description, /突破末跌高/);
 });
 
+test("promoted secondary high explains old key, scene pullback, and provisional reversal", () => {
+    const overlay = new LectureOverlay({ dataset: {} });
+    const point = {
+        time: "2022-08-03",
+        value: 49.56,
+        kind: "H",
+        label: "H9",
+        available_at: "2023-02-06",
+        flip: "空多交替高点升级",
+        confirmation_rule: "level1_old_level2_key_break_alternation_and_nested_reversal",
+        broken_key: { label: "H8", value: 27.71 },
+        confirmed_by: { label: "H77", value: 27.68 },
+        alternation: {
+            point: { label: "L71", value: 29.75 },
+            retracement_ratio: 0.544230769230769,
+        },
+        provisional_reversal: { label: "L76", value: 22.06 },
+        levels: [],
+    };
+    overlay.strokes = [{ id: "secondary-promoted", kind: "secondary", points: [point] }];
+
+    const item = overlay.annotation("drawing:secondary-promoted:0");
+
+    assert.match(item.title, /空多交替高点升级/);
+    assert.match(item.description, /旧二级末跌高 H8（27.71）/);
+    assert.match(item.description, /54.42% 的场景回撤/);
+    assert.match(item.description, /非正式二级低点 L76（22.06）/);
+    assert.match(item.description, /2023-02-06 完成确认/);
+    assert.match(item.description, /不倒填/);
+});
+
 test("tertiary solid line and annotation use level-two evidence", () => {
     const overlay = new LectureOverlay({ dataset: {} }),
         segments = [],

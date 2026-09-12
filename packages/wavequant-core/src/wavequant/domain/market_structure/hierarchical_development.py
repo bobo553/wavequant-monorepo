@@ -1,9 +1,10 @@
 """Build display-only development paths between confirmed trend levels.
 
-Formal points at level N only exist after a source-level structural key break.
-When that key remains unbroken for years, hiding all confirmed source points
-makes the chart look truncated.  This module exposes the intervening evidence
-without promoting it to formal level-N structure.
+Formal points at level N normally exist after a source-level structural key
+break.  Level 2 may additionally promote a breakout high after its separate
+alternation evidence is complete.  While neither route is complete, hiding all
+confirmed source points makes the chart look truncated.  This module exposes
+the intervening evidence without itself promoting level-N structure.
 """
 
 from .lecture_trend import _ref, _wave_reversals

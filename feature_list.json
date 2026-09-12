@@ -1388,6 +1388,49 @@
                     "summary": "37 个 Feature、18 个 Node workspace、2 个 Python workspace 与 32 份规则校验通过。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-038",
+            "name": "wavequant-level-two-alternation-promotion",
+            "description": "突破旧二级末跌高后，以场景回撤和已确认的非正式二级反转点升级突破高点。",
+            "title": "补充二级高点交替升级规则",
+            "scope": "由 wavequant-core 在既有一级结构严格突破规则之外，增加仅适用于二级趋势的因果升级通道：翻空为多的一级高点必须先突破上一正式二级末跌高，随后完成严格小于 2/3 的较高回撤，并由一级结构确认出非正式二级反转低点，才能升级为正式二级高点；Web 只展示 Python 返回的证据。",
+            "dependencies": ["MONOREPO-031", "MONOREPO-037"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "中大力德 2022-08-03 H70 49.56 突破 2021-12-01 正式二级末跌高 H8 27.71 后进入升级候选",
+                "2022-08-30 L71 29.75 的回撤比例约 54.42%，严格小于 2/3 且高于 2022-05-27 L9 13.16，完成场景回撤",
+                "2022-12-23 L76 22.06 在 2023-02-06 确认为非正式二级反转低点后，H70 才升级为正式二级高点，不得倒填到突破日或回撤发生日",
+                "未突破上一正式二级末跌高、回撤达到或超过 2/3、回撤跌破起点或尚无已确认非正式二级反转点时不得升级",
+                "既有严格一级关键位突破通道、三级趋势输入、历史前缀因果性及 Core/API/Web/Harness 回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core test:unit && pnpm --filter @wavequant/core lint && pnpm --filter @wavequant/core typecheck && pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "Core 510 项测试、Ruff、严格路径 mypy 与 sdist/wheel 构建通过；覆盖旧二级末跌高突破、严格 2/3 边界、非正式反转确认和历史前缀因果性。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、33 项通过/1 项环境跳过的 pytest 与 Python 构建通过；HTTP 原样返回 Core 的升级证据。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "Web ESLint、严格 TypeScript、6 项 Vitest、56 项 Node 契约与 Next.js 生产构建通过；点击说明覆盖旧关键位、场景回撤、非正式反转及确认日期。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --workers=1",
+                    "status": "passed",
+                    "summary": "9 条 Chromium 流程通过；中大力德在 2023-02-03 仍为 17 个正式二级点，2023-02-06 才把 2022-08-03 H70 49.56 升级并继续后续正式二级递推。"
+                },
+                {
+                    "command": "pnpm verify:quick",
+                    "status": "passed",
+                    "summary": "38 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则的全仓 Harness、lint、类型检查及单元测试通过。"
+                }
+            ]
         }
     ]
 }

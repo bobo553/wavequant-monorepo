@@ -45,6 +45,60 @@ class SecondaryTrendTests(unittest.TestCase):
         for end in range(len(turns)+1):
             self.assertEqual(_structural_reversals(turns[:end]),[p for p in full if p['confirmed_on_level1']<end])
 
+    def test_breakout_high_promotes_after_shallow_pullback_and_nested_reversal(self):
+        """A new bull leg may formalize its high without first losing its origin low.
+
+        The level-1 high at position 17 both confirms the preceding formal
+        level-2 low and exceeds the preceding formal level-2 high (the old
+        level-2 last-fall-high).  Position 18 is the first confirmed pullback:
+        ``(50 - 36) / (50 - 24) = 7 / 13 < 2/3``.  The nested level-1 reducer
+        later confirms position 24 as an informal level-2 low at position 26.
+        Only that final proof may promote position 17 to a formal level-2 high.
+        """
+        values=[20,30,10,20,14,26,18,35,28,45,36,42,30,36,24,31,26,
+                50,36,42,35,40,34,39,33,41,36,43,37,42]
+        _,source=fixture(values); turns=source['strokes'][0]['points']
+
+        before=_structural_reversals(turns[:26])
+        confirmed=_structural_reversals(turns[:27])
+
+        self.assertEqual([(p['kind'],p['value']) for p in before],
+                         [('L',10),('H',45),('L',24)])
+        self.assertEqual([(p['kind'],p['value']) for p in confirmed],
+                         [('L',10),('H',45),('L',24),('H',50)])
+        promoted=confirmed[-1]
+        self.assertEqual(promoted['source_level1_position'],17)
+        self.assertEqual(promoted['confirmed_on_level1'],26)
+        self.assertEqual(promoted['available_at'],turns[26]['available_at'])
+        self.assertEqual(promoted['confirmation_rule'],
+                         'level1_old_level2_key_break_alternation_and_nested_reversal')
+        self.assertEqual((promoted['broken_key']['kind'],promoted['broken_key']['value']),('H',45))
+        self.assertEqual((promoted['alternation']['point']['kind'],
+                          promoted['alternation']['point']['value']),('L',36))
+        self.assertAlmostEqual(promoted['alternation']['retracement_ratio'],7/13)
+        self.assertEqual((promoted['provisional_reversal']['kind'],
+                          promoted['provisional_reversal']['value']),('L',33))
+        full=_structural_reversals(turns)
+        for end in range(len(turns)+1):
+            self.assertEqual(_structural_reversals(turns[:end]),
+                             [p for p in full if p['confirmed_on_level1']<end])
+
+    def test_alternation_promotion_rejects_missing_key_break_and_two_thirds_boundary(self):
+        """Both the old level-2 key break and strict retracement gate are required."""
+        base=[20,30,10,20,14,26,18,35,28,45,36,42,30,36,24,31,26]
+        tail=[42,35,40,34,39,33,41,36,43,37,42]
+
+        # 44 confirms the prior L24 through its level-1 key, but it remains below
+        # the old formal level-2 high 45 and therefore cannot use this route.
+        _,source=fixture([*base,44,34,*tail[1:]])
+        self.assertEqual([(p['kind'],p['value']) for p in _structural_reversals(source['strokes'][0]['points'])],
+                         [('L',10),('H',45),('L',24)])
+
+        # Equality at 2/3 is not a valid scene pullback; the rule is strict.
+        _,source=fixture([*base,48,32,*tail[1:]])
+        self.assertEqual([(p['kind'],p['value']) for p in _structural_reversals(source['strokes'][0]['points'])],
+                         [('L',10),('H',45),('L',24)])
+
     def test_developing_path_keeps_confirmed_points_immutable_and_exposes_long_tail(self):
         """A wide frozen key must not hide confirmed level-1 development."""
         values=[20,30,10,20,14,26,18,35,28,45,36,42,30,36,24,31,26,38,30,42,

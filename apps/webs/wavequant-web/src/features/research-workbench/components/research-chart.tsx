@@ -71,7 +71,7 @@ export function ResearchChart(): JSX.Element {
                 summaryId="secondary-trend-summary"
                 className="trend-controls secondary-controls"
                 label="二级趋势线"
-                description="紫色实线首尾衔接 · 基于一级线翻空为多／翻多为空 · 同类端点经一级反向极值连接 · 衔接仅用于显示"
+                description="紫色实线首尾衔接 · 基于一级关键位转换，或突破旧二级末跌高后由场景回撤与非正式二级反转确认升级 · 同类端点经一级反向极值连接 · 衔接仅用于显示"
                 waiting="等待二级趋势线结构…"
             />
             <TrendControl
