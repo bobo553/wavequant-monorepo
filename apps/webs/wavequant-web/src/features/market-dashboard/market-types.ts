@@ -1,6 +1,7 @@
 export type TMarketTabId = "overview" | "sectors" | "themes" | "ladder" | "leaders" | "radar" | "multi" | "review";
 
 export type TMarketTheme = "dark" | "light";
+export type TMarketColorTheme = "market-blue" | "wavequant-teal";
 export type TMarketDensity = "comfortable" | "compact";
 export type TStockPool = "sealed" | "broken" | "touched" | "yesterday" | "down";
 export type TSortDirection = "asc" | "desc" | "none";

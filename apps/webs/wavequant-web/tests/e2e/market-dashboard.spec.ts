@@ -15,14 +15,59 @@ test("the original stock project Web workbench is the default page", async ({ pa
     await expect(page.getByRole("button", { name: "对比四组幅度" })).toBeVisible();
 
     for (const [pageName, title] of [
-        ["策略绩效", "策略绩效"],
-        ["订单与信号", "订单与信号"],
-        ["系统状态", "系统状态"],
-        ["K 线复盘", "K 线复盘"],
+        ["策略回测", "策略绩效"],
+        ["模拟交易", "订单与信号"],
+        ["系统与设置", "系统状态"],
+        ["行情与复盘", "K 线复盘"],
     ] as const) {
         await page.getByRole("button", { name: new RegExp(pageName) }).click();
         await expect(page.locator("#page-title")).toHaveText(title);
     }
+    expect(pageErrors).toEqual([]);
+});
+
+test("the shared dashboard shell works on desktop and mobile", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await page.goto("/market");
+    await page.locator("[data-shell-structure='market']").evaluate((shell) => {
+        shell.setAttribute("data-stability-probe", "preserved");
+    });
+    await page.locator('a[href="/research?page=workspace"]').first().click();
+    await expect(page).toHaveURL(/\/research\?page=workspace/);
+    await expect(page.locator("[data-shell-structure='market']")).toHaveAttribute("data-stability-probe", "preserved");
+    await expect(page.locator("[data-shell-structure='market']")).toHaveAttribute("data-shell-variant", "research");
+    await expect(page.getByText("Market & Research")).toBeVisible();
+    await expect(page.getByText("Trading & Control")).toBeVisible();
+    await expect(page.locator("header").getByText("本地研究")).toBeVisible();
+    await expect(page.getByRole("button", { name: /搜索股票/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "查看通知" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "界面设置" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "刷新当前视图" })).toBeVisible();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#error")).toBeHidden();
+    await expect(page.getByRole("button", { name: "运行当前股票回测" })).toBeVisible();
+    await page.getByRole("button", { name: /搜索股票/ }).click();
+    await expect(page.getByRole("dialog", { name: "搜索股票或题材" })).toBeVisible();
+    await page.getByRole("button", { name: "关闭对话框" }).click();
+    await page.getByRole("button", { name: "刷新当前视图" }).click();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.getByRole("button", { name: "界面设置" }).click();
+    await expect(page.getByRole("dialog", { name: "工作区对话框" })).toBeVisible();
+    await page.getByRole("button", { name: "关闭对话框" }).click();
+    await page.getByRole("button", { name: "收起侧栏" }).click();
+    await expect(page.getByRole("button", { name: "展开侧栏" })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("wavequant.sidebar.collapsed.v1"))).toBe("true");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/research?page=performance");
+    await page.getByRole("button", { name: "打开侧栏" }).click();
+    await expect(page.locator("#wavequant-mobile-sidebar")).toBeVisible();
+    await page.getByRole("button", { name: "系统与设置" }).click();
+    await expect(page.locator("#page-title")).toHaveText("系统状态");
+    await expect(page).toHaveURL(/page=health/);
+    await expect(page.locator("#wavequant-mobile-sidebar")).toHaveCount(0);
     expect(pageErrors).toEqual([]);
 });
 
@@ -31,6 +76,7 @@ test("market overview and limit-up ladder remain usable across desktop and narro
     page.on("pageerror", (error) => pageErrors.push(error.message));
 
     await page.goto("/market");
+    await expect(page.locator("[data-shell-structure='market']")).toHaveAttribute("data-shell-variant", "market");
     await expect(page.getByRole("heading", { name: "市场看盘" })).toBeVisible();
     await expect(page.getByText("大盘与市场广度")).toBeVisible();
     await expect(page.getByText("1,060.36")).toBeVisible();
@@ -104,12 +150,45 @@ test("all original market workflows remain interactive after the Next.js migrati
     await expect((await report).suggestedFilename()).toContain("盘中观察");
 
     await page.getByRole("button", { name: "界面设置" }).click();
-    await page.getByLabel("主题").selectOption("light");
+    await page.getByLabel("UI 主题色").selectOption("market-blue");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "market-blue");
+    await expect
+        .poll(() =>
+            page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()),
+        )
+        .toBe("#4ea1ff");
+    await page.getByLabel("主题", { exact: true }).selectOption("light");
     await expect(page.locator("html")).toHaveClass(/light/);
     await page.getByRole("button", { name: "关闭对话框" }).click();
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "market-blue");
+    await expect(page.locator("html")).toHaveClass(/light/);
 
     await expect(page.locator('a[href="/research?page=workspace"]').first()).toContainText("行情与复盘");
     await expect(page.locator('a[href="/research?page=performance"]').first()).toContainText("策略回测");
+    await page.locator('a[href="/research?page=workspace"]').first().click();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect
+        .poll(() => page.locator(".research-content").evaluate((element) => getComputedStyle(element).backgroundColor))
+        .toBe("rgb(243, 246, 250)");
+    await expect
+        .poll(() =>
+            page
+                .locator(".panel")
+                .first()
+                .evaluate((element) => getComputedStyle(element).backgroundColor),
+        )
+        .toBe("rgb(255, 255, 255)");
+    await page.getByRole("button", { name: "界面设置" }).click();
+    await page.getByLabel("UI 主题色", { exact: true }).selectOption("wavequant-teal");
+    await expect
+        .poll(() => page.locator(".eyebrow").evaluate((element) => getComputedStyle(element).color))
+        .toBe("rgb(8, 127, 114)");
+    await page.getByLabel("UI 主题色", { exact: true }).selectOption("market-blue");
+    await expect
+        .poll(() => page.locator(".eyebrow").evaluate((element) => getComputedStyle(element).color))
+        .toBe("rgb(29, 100, 216)");
+    await page.getByRole("button", { name: "关闭对话框" }).click();
     expect(pageErrors).toEqual([]);
 });
 

@@ -2,24 +2,13 @@
 
 import type { JSX } from "react";
 
-import Link from "next/link";
-
 import { Badge, Button } from "@repo/design-system-web/components";
-import { IconBell, IconMenu2, IconSearch, IconSettings } from "@tabler/icons-react";
+import { IconBell, IconRefresh, IconSearch, IconSettings } from "@tabler/icons-react";
 
 import { useMarketWorkspace } from "@/features/market-dashboard/market-workspace-context";
 
-const legacyNavigation = [
-    ["行情与复盘", "/research?page=workspace"],
-    ["策略回测", "/research?page=performance"],
-    ["模拟交易", "/research?page=orders"],
-    ["信号中心", "/research?page=orders"],
-    ["系统与设置", "/research?page=health"],
-    ["完整 v2 原型", "/wavequant-v2-classic.html"],
-] as const;
-
 /** 承载全局搜索、提醒、设置和窄屏模块入口。 */
-export function MarketHeaderActions(): JSX.Element {
+export function MarketHeaderActions({ researchMode = false }: { researchMode?: boolean }): JSX.Element {
     const { openNotifications, openSearch, openSettings } = useMarketWorkspace();
     return (
         <>
@@ -35,35 +24,26 @@ export function MarketHeaderActions(): JSX.Element {
                 </kbd>
             </Button>
             <div className="ml-auto flex items-center gap-1.5">
-                <details className="relative lg:hidden">
-                    <summary
-                        className="hover:bg-accent grid size-8 cursor-pointer list-none place-items-center rounded-md"
-                        aria-label="打开模块导航"
-                    >
-                        <IconMenu2 aria-hidden="true" />
-                    </summary>
-                    <nav
-                        className="border-border bg-card absolute top-10 right-0 z-30 w-48 rounded-lg border p-2 shadow-xl"
-                        aria-label="移动端模块导航"
-                    >
-                        <Button asChild variant="secondary" className="w-full justify-start">
-                            <Link href="/">市场看盘</Link>
-                        </Button>
-                        {legacyNavigation.map(([label, href]) => (
-                            <Button key={label} asChild variant="ghost" className="w-full justify-start">
-                                <Link href={href}>{label}</Link>
-                            </Button>
-                        ))}
-                    </nav>
-                </details>
                 <Badge variant="warning" className="hidden rounded-md sm:inline-flex">
-                    演示环境
+                    {researchMode ? "本地研究" : "演示环境"}
                 </Badge>
                 <Button variant="ghost" size="icon-sm" onClick={openSearch} className="md:hidden" aria-label="搜索股票">
                     <IconSearch aria-hidden="true" />
                 </Button>
                 <Button variant="ghost" size="icon-sm" onClick={openNotifications} aria-label="查看通知">
                     <IconBell aria-hidden="true" />
+                </Button>
+                <Button
+                    id="reload"
+                    variant="ghost"
+                    size="icon-sm"
+                    title="刷新当前视图"
+                    aria-label="刷新当前视图"
+                    aria-hidden={!researchMode}
+                    tabIndex={researchMode ? undefined : -1}
+                    className={researchMode ? undefined : "hidden"}
+                >
+                    <IconRefresh aria-hidden="true" />
                 </Button>
                 <Button variant="ghost" size="icon-sm" onClick={openSettings} aria-label="界面设置">
                     <IconSettings aria-hidden="true" />

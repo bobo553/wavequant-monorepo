@@ -10,12 +10,14 @@ const publicRoot = join(workspaceRoot, "public");
 
 test("default page renders the React research workbench and market remains a Next.js route", () => {
     const page = readFileSync(join(sourceRoot, "app", "page.tsx"), "utf8");
+    const layout = readFileSync(join(sourceRoot, "app", "layout.tsx"), "utf8");
     const marketPage = readFileSync(join(sourceRoot, "app", "market", "page.tsx"), "utf8");
     const dashboard = readFileSync(join(sourceRoot, "features", "market-dashboard", "market-dashboard.tsx"), "utf8");
     const packageJson = JSON.parse(readFileSync(join(workspaceRoot, "package.json"), "utf8"));
     assert.match(page, /ResearchWorkbench/);
     assert.doesNotMatch(page, /httpEquiv|research\.html/);
-    assert.match(marketPage, /MarketShell/);
+    assert.match(layout, /WaveQuantShell/);
+    assert.doesNotMatch(marketPage, /MarketShell|MarketWorkspaceProvider/);
     assert.match(marketPage, /MarketDashboard/);
     assert.match(dashboard, /"use client"/);
     assert.equal(packageJson.dependencies.next, "^16.2.6");
@@ -35,6 +37,7 @@ test("feature modules retain the overview, ladder, responsive and chart boundari
     assert.match(chart, /ResizeObserver/);
     assert.match(chart, /echarts\/core/);
     assert.match(styles, /@repo\/design-system-web\/globals\.css/);
+    assert.match(styles, /data-theme="market-blue"/);
     for (const component of [
         "sector-view",
         "theme-view",
@@ -64,6 +67,8 @@ test("the complete server-backed research workbench is composed from React featu
     const featureRoot = join(sourceRoot, "features", "research-workbench");
     const workbench = readFileSync(join(featureRoot, "research-workbench.tsx"), "utf8");
     const runtime = readFileSync(join(featureRoot, "runtime", "research-runtime.tsx"), "utf8");
+    const legacyStyles = readFileSync(join(publicRoot, "styles.css"), "utf8");
+    const legacyCharts = readFileSync(join(publicRoot, "charts.js"), "utf8");
     const components =
         readFileSync(join(featureRoot, "components", "research-secondary-pages.tsx"), "utf8") +
         readFileSync(join(featureRoot, "components", "research-controls.tsx"), "utf8") +
@@ -74,6 +79,10 @@ test("the complete server-backed research workbench is composed from React featu
     assert.match(workbench, /StockBrowser/);
     assert.match(workbench, /ResearchRuntime/);
     assert.match(runtime, /"\/app\.js"/);
+    assert.match(legacyStyles, /--bg: var\(--background\)/);
+    assert.match(legacyStyles, /--cyan: var\(--primary\)/);
+    assert.match(legacyCharts, /new MutationObserver\(refreshChartThemes\)/);
+    assert.match(legacyCharts, /token\("--card"/);
     for (const id of [
         "price-chart",
         "run-stock-backtest",

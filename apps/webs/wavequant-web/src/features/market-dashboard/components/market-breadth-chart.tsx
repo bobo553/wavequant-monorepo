@@ -8,14 +8,17 @@ import { type EChartsCoreOption, init, use as registerECharts } from "echarts/co
 import { CanvasRenderer } from "echarts/renderers";
 
 import { chartSeries } from "@/features/market-dashboard/market-data";
+import { useMarketWorkspace } from "@/features/market-dashboard/market-workspace-context";
 
 registerECharts([LineChart, GridComponent, TooltipComponent, AriaComponent, CanvasRenderer]);
 
-function buildMarketBreadthOption(): EChartsCoreOption {
+function buildMarketBreadthOption(colorTheme: "market-blue" | "wavequant-teal"): EChartsCoreOption {
+    const lineColor = colorTheme === "market-blue" ? "#4ea1ff" : "#48d6c4";
+    const areaColor = colorTheme === "market-blue" ? "rgba(78, 161, 255, .1)" : "rgba(72, 214, 196, .08)";
     return {
         aria: { enabled: true },
         animation: false,
-        color: ["#48d6c4"],
+        color: [lineColor],
         grid: { top: 14, right: 16, bottom: 28, left: 52 },
         tooltip: { trigger: "axis", valueFormatter: (value: unknown) => `${String(value)}%` },
         xAxis: {
@@ -57,7 +60,7 @@ function buildMarketBreadthOption(): EChartsCoreOption {
                 smooth: 0.25,
                 showSymbol: false,
                 lineStyle: { width: 2 },
-                areaStyle: { color: "rgba(72, 214, 196, .08)" },
+                areaStyle: { color: areaColor },
             },
         ],
     };
@@ -65,8 +68,9 @@ function buildMarketBreadthOption(): EChartsCoreOption {
 
 /** 绘制大盘等权涨幅时间序列，并随容器尺寸变化重排。 */
 export function MarketBreadthChart(): JSX.Element {
+    const { colorTheme } = useMarketWorkspace();
     const chartRef = useRef<HTMLDivElement>(null);
-    const option = useMemo(() => buildMarketBreadthOption(), []);
+    const option = useMemo(() => buildMarketBreadthOption(colorTheme), [colorTheme]);
 
     useEffect(() => {
         if (!chartRef.current) return;

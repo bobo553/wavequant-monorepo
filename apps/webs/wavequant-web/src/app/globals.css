@@ -63,6 +63,37 @@
     color-scheme: light;
 }
 
+/* 证券蓝：交互主色与红涨绿跌语义解耦，完整覆盖 shadcn 与旧研究工作台 token。 */
+html[data-theme="market-blue"] {
+    --primary: #4ea1ff;
+    --primary-foreground: #06111f;
+    --accent: #173255;
+    --accent-foreground: #eff6ff;
+    --ring: #75b8ff;
+    --sidebar-primary: #4ea1ff;
+    --sidebar-primary-foreground: #06111f;
+    --sidebar-accent: #112b4a;
+    --sidebar-accent-foreground: #eaf3ff;
+    --sidebar-ring: #75b8ff;
+    --chart-1: #4ea1ff;
+    --cyan: #4ea1ff;
+}
+
+html[data-theme="market-blue"].light {
+    --primary: #1d64d8;
+    --primary-foreground: #ffffff;
+    --accent: #dceaff;
+    --accent-foreground: #102a56;
+    --ring: #256fe5;
+    --sidebar-primary: #1d64d8;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #d8e7fb;
+    --sidebar-accent-foreground: #102a56;
+    --sidebar-ring: #256fe5;
+    --chart-1: #1d64d8;
+    --cyan: #1d64d8;
+}
+
 @theme inline {
     --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }

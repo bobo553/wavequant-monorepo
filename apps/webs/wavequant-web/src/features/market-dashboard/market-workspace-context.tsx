@@ -2,51 +2,26 @@
 
 import { type JSX, type ReactNode, createContext, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { stockQuotes } from "@/features/market-dashboard/market-data";
 import type {
+    TMarketColorTheme,
     TMarketDensity,
     TMarketDialog,
     TMarketTabId,
     TMarketTheme,
     TWatchGroup,
 } from "@/features/market-dashboard/market-types";
+import {
+    type IMarketWorkspaceState,
+    defaultWorkspaceState,
+    marketDates,
+    marketTimes,
+    restoreWorkspaceState,
+} from "@/features/market-dashboard/market-workspace-state";
 
 const STORAGE_KEY = "wavequant.market.v2";
-export const marketDates = ["2026-09-03", "2026-09-04", "2026-09-07"] as const;
-export const marketTimes = [
-    "09:20",
-    "09:25",
-    "09:30",
-    "10:00",
-    "10:30",
-    "11:30",
-    "13:00",
-    "13:30",
-    "14:00",
-    "14:30",
-    "14:57",
-    "15:00",
-] as const;
+export { marketDates, marketTimes };
 
-interface IWorkspaceState {
-    activeTab: TMarketTabId;
-    date: string;
-    density: TMarketDensity;
-    favorites: string[];
-    includeRisk: boolean;
-    multiCodes: string[];
-    note: string;
-    palette: "classic" | "accessible";
-    radarPaused: boolean;
-    readEvents: string[];
-    scope: string;
-    selectedSector: string;
-    theme: TMarketTheme;
-    timeIndex: number;
-    watchGroups: Partial<Record<string, TWatchGroup[]>>;
-}
-
-interface IMarketWorkspaceContext extends IWorkspaceState {
+interface IMarketWorkspaceContext extends IMarketWorkspaceState {
     closeDialog: () => void;
     dialog: TMarketDialog;
     downloadCsv: (name: string, rows: ReadonlyArray<ReadonlyArray<string | number>>) => void;
@@ -62,6 +37,7 @@ interface IMarketWorkspaceContext extends IWorkspaceState {
     replaceMultiStock: (index: number, code: string) => void;
     saveNote: () => void;
     setActiveTab: (tab: TMarketTabId) => void;
+    setColorTheme: (theme: TMarketColorTheme) => void;
     setDate: (date: string) => void;
     setDensity: (density: TMarketDensity) => void;
     setIncludeRisk: (include: boolean) => void;
@@ -81,61 +57,7 @@ interface IMarketWorkspaceContext extends IWorkspaceState {
     toggleWatchGroup: (code: string, group: TWatchGroup) => void;
 }
 
-const defaultState: IWorkspaceState = {
-    activeTab: "overview",
-    date: marketDates[2],
-    density: "comfortable",
-    favorites: ["SIM001", "SIM009"],
-    includeRisk: false,
-    multiCodes: stockQuotes.slice(0, 4).map((stock) => stock.code),
-    note: "",
-    palette: "classic",
-    radarPaused: false,
-    readEvents: [],
-    scope: "全样本市场",
-    selectedSector: "全部题材",
-    theme: "dark",
-    timeIndex: 9,
-    watchGroups: { SIM001: ["core"], SIM009: ["verify"] },
-};
-
 const MarketWorkspaceContext = createContext<IMarketWorkspaceContext | null>(null);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function restoreState(value: unknown): IWorkspaceState {
-    if (!isRecord(value) || value.version !== 2 || !isRecord(value.state)) return defaultState;
-    const saved = value.state;
-    return {
-        ...defaultState,
-        date:
-            typeof saved.date === "string" && marketDates.includes(saved.date as (typeof marketDates)[number])
-                ? saved.date
-                : defaultState.date,
-        density: saved.density === "compact" ? "compact" : "comfortable",
-        favorites: Array.isArray(saved.favorites)
-            ? saved.favorites.filter((item): item is string => typeof item === "string")
-            : defaultState.favorites,
-        includeRisk: typeof saved.includeRisk === "boolean" ? saved.includeRisk : defaultState.includeRisk,
-        multiCodes: Array.isArray(saved.multiCodes)
-            ? saved.multiCodes.filter((item): item is string => typeof item === "string").slice(0, 9)
-            : defaultState.multiCodes,
-        note: typeof saved.note === "string" ? saved.note : "",
-        palette: saved.palette === "accessible" ? "accessible" : "classic",
-        scope: typeof saved.scope === "string" ? saved.scope : defaultState.scope,
-        selectedSector: typeof saved.selectedSector === "string" ? saved.selectedSector : defaultState.selectedSector,
-        theme: saved.theme === "light" ? "light" : "dark",
-        timeIndex:
-            typeof saved.timeIndex === "number"
-                ? Math.max(0, Math.min(marketTimes.length - 1, saved.timeIndex))
-                : defaultState.timeIndex,
-        watchGroups: isRecord(saved.watchGroups)
-            ? (saved.watchGroups as IWorkspaceState["watchGroups"])
-            : defaultState.watchGroups,
-    };
-}
 
 function triggerDownload(name: string, type: string, content: string): void {
     const blob = new Blob([content], { type });
@@ -149,9 +71,10 @@ function triggerDownload(name: string, type: string, content: string): void {
 
 /** 保存并共享看盘日期、时点、范围、观察组和用户偏好。 */
 export function MarketWorkspaceProvider({ children }: { children: ReactNode }): JSX.Element {
-    const [state, setState] = useState<IWorkspaceState>(defaultState);
+    const [state, setState] = useState<IMarketWorkspaceState>(defaultWorkspaceState);
     const [dialog, setDialog] = useState<TMarketDialog>(null);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [restored, setRestored] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
     const restoredRef = useRef(false);
     const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -166,11 +89,12 @@ export function MarketWorkspaceProvider({ children }: { children: ReactNode }): 
         const timer = window.setTimeout(() => {
             try {
                 const raw = localStorage.getItem(STORAGE_KEY);
-                if (raw) setState(restoreState(JSON.parse(raw) as unknown));
+                if (raw) setState(restoreWorkspaceState(JSON.parse(raw) as unknown));
             } catch {
                 notify("本地设置读取失败，已使用默认工作区");
             } finally {
                 restoredRef.current = true;
+                setRestored(true);
             }
         }, 0);
         return () => window.clearTimeout(timer);
@@ -186,11 +110,13 @@ export function MarketWorkspaceProvider({ children }: { children: ReactNode }): 
     }, [notify, state]);
 
     useEffect(() => {
+        if (!restored) return;
         document.documentElement.classList.toggle("light", state.theme === "light");
         document.documentElement.classList.toggle("dark", state.theme === "dark");
+        document.documentElement.dataset.theme = state.colorTheme;
         document.documentElement.dataset.palette = state.palette;
         document.documentElement.dataset.density = state.density;
-    }, [state.density, state.palette, state.theme]);
+    }, [restored, state.colorTheme, state.density, state.palette, state.theme]);
 
     useEffect(() => {
         function handleShortcut(event: KeyboardEvent): void {
@@ -225,9 +151,12 @@ export function MarketWorkspaceProvider({ children }: { children: ReactNode }): 
         [],
     );
 
-    const update = useCallback(<Key extends keyof IWorkspaceState>(key: Key, value: IWorkspaceState[Key]): void => {
-        setState((current) => ({ ...current, [key]: value }));
-    }, []);
+    const update = useCallback(
+        <Key extends keyof IMarketWorkspaceState>(key: Key, value: IMarketWorkspaceState[Key]): void => {
+            setState((current) => ({ ...current, [key]: value }));
+        },
+        [],
+    );
 
     const downloadCsv = useCallback(
         (name: string, rows: ReadonlyArray<ReadonlyArray<string | number>>): void => {
@@ -285,6 +214,7 @@ export function MarketWorkspaceProvider({ children }: { children: ReactNode }): 
                 update("activeTab", tab);
                 setIsPlaying(false);
             },
+            setColorTheme: (theme) => update("colorTheme", theme),
             setDate: (date) => update("date", date),
             setDensity: (density) => update("density", density),
             setIncludeRisk: (include) => update("includeRisk", include),

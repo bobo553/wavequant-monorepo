@@ -10,26 +10,85 @@ import { LectureOverlay, reversalConnections, secondaryConnections } from "./lec
 
 const L = window.LightweightCharts;
 if (!L) throw new Error("TradingView SDK 未加载，请检查本地 npm 依赖。");
-const colors = { up: "#ef7180", down: "#3fba97", cyan: "#4dc8c2", muted: "#738aa5" };
-function base(container) {
-    return L.createChart(container, {
-        autoSize: true,
+const colors = { up: "#ef7180", down: "#3fba97" };
+const themedCharts = new Set();
+const themedSeries = new Set();
+
+function themePalette() {
+    const root = document.documentElement;
+    const styles = getComputedStyle(root);
+    const token = (name, fallback) => styles.getPropertyValue(name).trim() || fallback;
+    const light = root.classList.contains("light");
+    return {
+        accent: token("--primary", light ? "#087f72" : "#48d6c4"),
+        background: token("--card", light ? "#ffffff" : "#111d2d"),
+        border: token("--input", light ? "#cbd8e4" : "#263850"),
+        crosshair: light ? "#71839a" : "#536e8f",
+        crosshairLabel: light ? "#52677f" : "#2d485f",
+        grid: light ? "#dce4ed" : "#1a2839",
+        text: token("--muted-foreground", light ? "#607087" : "#8291aa"),
+    };
+}
+
+function themeOptions() {
+    const palette = themePalette();
+    return {
         layout: {
-            background: { type: "solid", color: "#121c29" },
-            textColor: "#7188a3",
+            background: { type: "solid", color: palette.background },
+            textColor: palette.text,
+        },
+        grid: { vertLines: { color: palette.grid }, horzLines: { color: palette.grid } },
+        rightPriceScale: { borderColor: palette.border },
+        timeScale: { borderColor: palette.border },
+        crosshair: {
+            vertLine: { color: palette.crosshair, labelBackgroundColor: palette.crosshairLabel },
+            horzLine: { color: palette.crosshair, labelBackgroundColor: palette.crosshairLabel },
+        },
+    };
+}
+
+function withOpacity(color, opacity) {
+    if (/^#[0-9a-f]{6}$/i.test(color)) {
+        return `${color}${Math.round(opacity * 255)
+            .toString(16)
+            .padStart(2, "0")}`;
+    }
+    return color;
+}
+
+function refreshChartThemes() {
+    const options = themeOptions();
+    themedCharts.forEach((chart) => chart.applyOptions(options));
+    const palette = themePalette();
+    themedSeries.forEach(({ index, series }) => {
+        if (index !== 0) return;
+        series.applyOptions({ lineColor: palette.accent, topColor: withOpacity(palette.accent, 0.19) });
+    });
+}
+
+new MutationObserver(refreshChartThemes).observe(document.documentElement, {
+    attributeFilter: ["class", "data-theme"],
+    attributes: true,
+});
+
+function base(container) {
+    const chart = L.createChart(container, {
+        autoSize: true,
+        ...themeOptions(),
+        layout: {
+            ...themeOptions().layout,
             fontSize: 10,
             attributionLogo: true,
         },
-        grid: { vertLines: { color: "#1a2839" }, horzLines: { color: "#1a2839" } },
-        rightPriceScale: { borderColor: "#26364b" },
-        timeScale: { borderColor: "#26364b", rightOffset: 5, barSpacing: 7, timeVisible: false },
+        timeScale: { ...themeOptions().timeScale, rightOffset: 5, barSpacing: 7, timeVisible: false },
         crosshair: {
+            ...themeOptions().crosshair,
             mode: 0,
-            vertLine: { color: "#536e8f", labelBackgroundColor: "#2d485f" },
-            horzLine: { color: "#536e8f", labelBackgroundColor: "#2d485f" },
         },
         localization: { locale: "zh-CN" },
     });
+    themedCharts.add(chart);
+    return chart;
 }
 export class PriceChart {
     constructor(container, onHover, onSelect = () => {}, onVisible = () => {}) {
@@ -355,6 +414,7 @@ export class PriceChart {
     destroy() {
         if (this.frame) cancelAnimationFrame(this.frame);
         this.tooltip.remove();
+        themedCharts.delete(this.chart);
         this.chart.remove();
     }
 }
@@ -364,13 +424,15 @@ export class PerformanceCharts {
             const chart = base(c);
             // Daily portfolio histories must fit even in a narrow half-width panel.
             chart.applyOptions({ timeScale: { minBarSpacing: 0.01 } });
+            const palette = themePalette();
             const series = chart.addSeries(L.AreaSeries, {
-                lineColor: i === 1 ? "#ec7c8a" : i === 2 ? "#829ddd" : colors.cyan,
-                topColor: i === 1 ? "#ec7c8a30" : i === 2 ? "#829ddd30" : "#4dc8c230",
-                bottomColor: "#121c2900",
+                lineColor: i === 1 ? "#ec7c8a" : i === 2 ? "#829ddd" : palette.accent,
+                topColor: i === 1 ? "#ec7c8a30" : i === 2 ? "#829ddd30" : withOpacity(palette.accent, 0.19),
+                bottomColor: "#00000000",
                 lineWidth: 2,
                 priceFormat: { type: "custom", formatter: (p) => (i ? `${p.toFixed(2)}%` : p.toFixed(4)) },
             });
+            themedSeries.add({ index: i, series });
             chart.timeScale().subscribeSizeChange(() => chart.timeScale().fitContent());
             chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
                 if (range) {

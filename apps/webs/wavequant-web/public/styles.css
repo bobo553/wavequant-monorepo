@@ -1,16 +1,25 @@
-:root {
-    color-scheme: dark;
-    --bg: #0c121c;
-    --panel: #121c29;
-    --panel-hover: #182434;
-    --border: #223043;
-    --text: #e7edf5;
-    --muted: #8292a9;
-    --cyan: #4dc8c2;
+[data-wavequant-react-workbench] {
+    color-scheme: inherit;
+    --bg: var(--background);
+    --panel: var(--card);
+    --panel-hover: var(--secondary);
+    --border: var(--input);
+    --text: var(--foreground);
+    --muted: var(--muted-foreground);
+    --cyan: var(--primary);
     --red: #ef7180;
     --green: #3fba97;
     --amber: #d5af71;
     --font: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+    --research-control: color-mix(in srgb, var(--panel) 92%, var(--text));
+    --research-control-hover: color-mix(in srgb, var(--panel) 82%, var(--text));
+    --research-subtle: color-mix(in srgb, var(--panel) 96%, var(--text));
+    --research-text-soft: color-mix(in srgb, var(--text) 72%, var(--bg));
+    --research-text-faint: color-mix(in srgb, var(--text) 52%, var(--bg));
+    --research-accent-soft: color-mix(in srgb, var(--cyan) 14%, var(--panel));
+    --research-accent-border: color-mix(in srgb, var(--cyan) 42%, var(--border));
+    --research-warning-soft: color-mix(in srgb, var(--amber) 14%, var(--panel));
+    --research-danger-soft: color-mix(in srgb, var(--red) 13%, var(--panel));
 }
 .stock-tabs {
     display: flex;
@@ -289,59 +298,60 @@
 }
 body {
     margin: 0;
-    background: var(--bg);
+}
+[data-wavequant-react-workbench] {
     color: var(--text);
     font-family: var(--font);
     font-size: 13px;
 }
-button,
-input,
-select {
+[data-wavequant-react-workbench] button,
+[data-wavequant-react-workbench] input,
+[data-wavequant-react-workbench] select {
     font: inherit;
 }
-button,
-select {
+[data-wavequant-react-workbench] button,
+[data-wavequant-react-workbench] select {
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: 6px;
     background: #172334;
     padding: 8px 11px;
 }
-button {
+[data-wavequant-react-workbench] button {
     cursor: pointer;
     transition: background 0.15s;
 }
-button:hover {
+[data-wavequant-react-workbench] button:hover {
     background: #24364c;
 }
-button:disabled {
+[data-wavequant-react-workbench] button:disabled {
     opacity: 0.4;
     cursor: not-allowed;
 }
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-a:focus-visible {
+[data-wavequant-react-workbench] button:focus-visible,
+[data-wavequant-react-workbench] input:focus-visible,
+[data-wavequant-react-workbench] select:focus-visible,
+[data-wavequant-react-workbench] a:focus-visible {
     outline: 2px solid var(--cyan);
     outline-offset: 3px;
 }
-select {
+[data-wavequant-react-workbench] select {
     cursor: pointer;
 }
-a {
+[data-wavequant-react-workbench] a {
     color: var(--cyan);
     text-decoration: none;
 }
-h1,
-h2,
-p {
+[data-wavequant-react-workbench] h1,
+[data-wavequant-react-workbench] h2,
+[data-wavequant-react-workbench] p {
     margin: 0;
 }
-h2 {
+[data-wavequant-react-workbench] h2 {
     font-size: 14px;
     font-weight: 600;
 }
-small {
+[data-wavequant-react-workbench] small {
     font-weight: 400;
     color: var(--muted);
 }
@@ -455,10 +465,12 @@ small {
 .status-dot {
     box-shadow: 0 0 0 4px #15322f;
 }
-main {
-    margin-left: 190px;
+.research-content {
+    min-height: 100%;
+    background: var(--bg);
     padding: 0 30px 16px;
     max-width: 2100px;
+    margin: 0 auto;
 }
 .topbar {
     height: 67px;
@@ -509,12 +521,12 @@ main {
     color: var(--cyan);
     margin-bottom: 10px;
 }
-h1 {
+.heading h1 {
     font-size: 25px;
     letter-spacing: 0.6px;
     font-weight: 560;
 }
-h1 .accent {
+.heading h1 .accent {
     margin-left: 3px;
 }
 .heading p {
@@ -818,27 +830,27 @@ h1 .accent {
 .table-scroll {
     overflow: auto;
 }
-table {
+[data-wavequant-react-workbench] table {
     width: 100%;
     border-collapse: collapse;
     text-align: left;
     font-size: 11px;
     white-space: nowrap;
 }
-th {
+[data-wavequant-react-workbench] th {
     background: #101a27;
     color: #6e87a2;
     font-size: 10px;
     font-weight: 500;
     padding: 11px 17px;
 }
-td {
+[data-wavequant-react-workbench] td {
     padding: 13px 17px;
     border-top: 1px solid #1e2b3d;
     color: #adc0d5;
     font-variant-numeric: tabular-nums;
 }
-td button {
+[data-wavequant-react-workbench] td button {
     font-size: 10px;
     padding: 4px 9px;
     color: var(--cyan);
@@ -904,7 +916,7 @@ tbody tr:hover {
     background: #36212b;
     color: #e88696;
 }
-footer {
+[data-wavequant-react-workbench] footer {
     display: flex;
     justify-content: space-between;
     font-size: 9px;
@@ -1114,13 +1126,116 @@ footer {
         grid-template-columns: minmax(0, 1fr) 340px;
     }
 }
+
+/* 将旧研究工作台接入全局 shadcn 主题；结构与运行时契约保持不变。 */
+[data-wavequant-react-workbench] button,
+[data-wavequant-react-workbench] select {
+    background: var(--research-control);
+}
+[data-wavequant-react-workbench] button:hover {
+    background: var(--research-control-hover);
+}
+[data-wavequant-react-workbench] .icon-button,
+[data-wavequant-react-workbench] .subtle-button,
+[data-wavequant-react-workbench] .event-row,
+[data-wavequant-react-workbench] td button {
+    background: transparent;
+}
+[data-wavequant-react-workbench] .stock-item,
+[data-wavequant-react-workbench] th,
+[data-wavequant-react-workbench] .replay {
+    background: var(--research-subtle);
+}
+[data-wavequant-react-workbench] .stock-tabs [aria-pressed="true"],
+[data-wavequant-react-workbench] .stock-item[aria-pressed="true"],
+[data-wavequant-react-workbench] .buy-point-item,
+[data-wavequant-react-workbench] .nav-item.active,
+[data-wavequant-react-workbench] .pill,
+[data-wavequant-react-workbench] .selection-info,
+[data-wavequant-react-workbench] #run-stock-backtest {
+    border-color: var(--research-accent-border);
+    background: var(--research-accent-soft);
+    color: var(--cyan);
+}
+[data-wavequant-react-workbench] .stock-tabs [aria-pressed="true"],
+[data-wavequant-react-workbench] .stock-item[aria-pressed="true"] strong,
+[data-wavequant-react-workbench] .buy-point-item strong,
+[data-wavequant-react-workbench] #scan-status,
+[data-wavequant-react-workbench] .selection-info b,
+[data-wavequant-react-workbench] .decision-timeline {
+    color: var(--cyan);
+}
+[data-wavequant-react-workbench] .status-dot {
+    box-shadow: 0 0 0 4px var(--research-accent-soft);
+}
+[data-wavequant-react-workbench] .brand-icon {
+    border-color: var(--research-accent-border);
+    background: var(--research-accent-soft);
+}
+[data-wavequant-react-workbench] .stock-item span,
+[data-wavequant-react-workbench] .selected-stock-summary,
+[data-wavequant-react-workbench] .sdk-badge,
+[data-wavequant-react-workbench] .filter-context,
+[data-wavequant-react-workbench] .metric > span,
+[data-wavequant-react-workbench] .chart-legend,
+[data-wavequant-react-workbench] .ohlc,
+[data-wavequant-react-workbench] .replay-title strong,
+[data-wavequant-react-workbench] .selection-info,
+[data-wavequant-react-workbench] .event-row strong,
+[data-wavequant-react-workbench] td,
+[data-wavequant-react-workbench] .note-card,
+[data-wavequant-react-workbench] .alert-row,
+[data-wavequant-react-workbench] .backtest-toolbar input,
+[data-wavequant-react-workbench] .trend-summary {
+    color: var(--research-text-soft);
+}
+[data-wavequant-react-workbench] .nav-label,
+[data-wavequant-react-workbench] .nav-item,
+[data-wavequant-react-workbench] .sidebar-bottom,
+[data-wavequant-react-workbench] .sidebar-bottom p,
+[data-wavequant-react-workbench] .sidebar-bottom a,
+[data-wavequant-react-workbench] .metric small,
+[data-wavequant-react-workbench] .metric p,
+[data-wavequant-react-workbench] .comparison,
+[data-wavequant-react-workbench] .chart-legend > span,
+[data-wavequant-react-workbench] .replay-title,
+[data-wavequant-react-workbench] .replay p,
+[data-wavequant-react-workbench] .section-label,
+[data-wavequant-react-workbench] .event-row time,
+[data-wavequant-react-workbench] .empty,
+[data-wavequant-react-workbench] footer,
+[data-wavequant-react-workbench] .annotation-source,
+[data-wavequant-react-workbench] .chart-tooltip small {
+    color: var(--research-text-faint);
+}
+[data-wavequant-react-workbench] .event-row,
+[data-wavequant-react-workbench] td {
+    border-color: var(--border);
+}
+[data-wavequant-react-workbench] .backtest-toolbar input {
+    border-color: var(--border);
+    background: var(--bg);
+    color-scheme: inherit;
+}
+[data-wavequant-react-workbench] .evidence-banner,
+[data-wavequant-react-workbench] .badge {
+    background: var(--research-warning-soft);
+}
+[data-wavequant-react-workbench] .message,
+[data-wavequant-react-workbench] .badge.bad {
+    background: var(--research-danger-soft);
+}
+[data-wavequant-react-workbench] .chart-tooltip {
+    border-color: var(--border);
+    background: color-mix(in srgb, var(--panel) 96%, transparent);
+    color: var(--text);
+}
 @media (max-width: 1200px) {
     .sidebar {
         width: 165px;
         padding: 25px 11px;
     }
-    main {
-        margin-left: 165px;
+    .research-content {
         padding: 0 20px;
     }
     .brand {
@@ -1178,8 +1293,7 @@ footer {
     .brand-icon {
         width: 40px;
     }
-    main {
-        margin-left: 66px;
+    .research-content {
         padding: 0 16px;
     }
     .workspace-grid {
@@ -1219,7 +1333,7 @@ footer {
     .brand {
         display: none;
     }
-    nav {
+    .sidebar nav {
         display: flex;
         width: 100%;
         justify-content: space-around;
@@ -1234,8 +1348,7 @@ footer {
     .nav-item span {
         font-size: 15px;
     }
-    main {
-        margin-left: 0;
+    .research-content {
         padding: 0 12px;
     }
     .topbar {

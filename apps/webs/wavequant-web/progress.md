@@ -8,6 +8,8 @@
 - `MONOREPO-015` 已完成：原型八个看盘视图的交互和原研究、回测、模拟交易、信号、设置模块入口均已保留。
 - `MONOREPO-016` 已完成：原 `E:\WorkSpace\股票\web` 完整研究工作台恢复为默认入口，Next.js 全景页保留在 `/market`。
 - `MONOREPO-017` 已完成：默认 `/` 与 `/research` 直接由 Next.js App Router 和 React 渲染完整研究工作台，单一开发命令同时提供页面与本机 API。
+- `MONOREPO-018` 已完成：研究工作台与全景市场已统一到参考 shadcn dashboard 模板改造的响应式应用壳。
+- `MONOREPO-019` 已完成：在保留 WaveQuant 青的基础上新增证券蓝主题，并与涨跌语义、明暗模式和信息密度解耦。
 
 ## Completed
 
@@ -24,6 +26,16 @@
 - 原研究工作台的页面结构拆为 `features/research-workbench/components` React 组件；经完整行为回归的图表、扫描和回测适配器限定在 `runtime` 客户端边界。
 - 新增开发编排脚本：自动发现封存结果和通达信数据，同时启动 Next.js `3003` 与 API `8765`，并将 `/api/*` 保持为同源调用。
 - 修复 Next 开发代理下扫描 POST 的显式回环来源校验，买点扫描、取消及上下文失效流程可通过 React 页面使用。
+- 新增共享 `WaveQuantShell`，统一可折叠桌面侧栏、移动抽屉、sticky 顶栏、面包屑、环境状态和内容滚动边界。
+- 侧栏折叠偏好使用可恢复的本地状态并支持 `Ctrl/Cmd+B`；移动抽屉支持遮罩关闭与 `Escape`，导航配置按市场和研究模式保留原有命名与入口。
+- 研究工作台继续保留 `data-page`、`page-title`、`reload` 等运行时契约，动态移动导航通过事件委托接入原图表、回测、扫描和系统状态控制器。
+- 原研究样式的全局元素选择器已收口到工作台作用域，避免从 `/research` 导航到 `/market` 后污染 shadcn 壳层、表格与页脚。
+- `/research` 与 `/market` 现在使用完全相同的 market 导航分组、双层顶部栏、侧栏状态和底部状态栏；研究页原有页面切换、刷新、图表及 API 行为映射到统一导航命名。
+- 唯一 `WaveQuantShell` 已提升到 App Router 根布局，市场与研究路由仅替换业务内容；研究样式随根布局预载，跨页不再卸载侧栏与头部或等待样式块。
+- 研究页头部补齐与市场页共用的股票搜索、通知、界面设置和研究员入口，同时保留原 `reload` 刷新契约及完整研究运行时逻辑。
+- 参考 dashboard 模板的 `data-theme` 与 CSS token 机制新增“证券蓝（推荐）”；蓝色仅用于操作、选中、焦点和中性趋势线，红涨绿跌及无障碍蓝橙方案保持独立。
+- 证券蓝覆盖深色、浅色、shadcn 组件、共享侧栏和 ECharts 趋势线；选择结果复用 `wavequant.market.v2` 本地空间，并在 React 水合前恢复，避免刷新时主题闪烁。
+- 研究兼容样式不再固定深色背景和青色强调色，现由全局背景、卡片、边框、文字与主色 Token 驱动；Lightweight Charts 监听根主题属性并即时更新画布、网格、坐标文字和主趋势色。
 
 ## Verification
 
@@ -34,6 +46,8 @@
 - MONOREPO-014 Web 门禁通过 ESLint、严格类型检查、1 项 React 组件测试、40 项兼容单元测试、Playwright E2E 和 Next.js 静态导出。
 - MONOREPO-015 Web 门禁通过 ESLint、严格类型检查、2 项 React 组件测试、41 项兼容/结构测试和 Next.js 静态导出。
 - MONOREPO-015 Playwright 3 条流程覆盖 Next.js 八视图关键交互、搜索/设置/导出/复盘、390 窄屏，以及经典 v2 六大模块和八个市场页签；无页面异常。
+- MONOREPO-018 复验通过 ESLint、严格类型检查、4 项 React 组件测试、41 项兼容契约、5 项 Playwright 流程与 Next.js 生产构建；真实浏览器确认 `/market` 和 `/research` 的应用骨架一致。
+- 唯一 Shell 回归通过 DOM 稳定性探针：从 `/market` 切到 `/research?page=workspace` 后原 Shell 节点保持连接，搜索、设置、刷新和研究数据加载均正常。
 - 原始 v2 文件与 `/wavequant-v2-classic.html` 规范化文本逐字相同，均为 219695 个字符。
 - MONOREPO-015 完成后的根 `pnpm verify` 通过 15 个 Feature、17 个 Node workspace、2 个 Python workspace 和 32 份规则的全仓门禁。
 - MONOREPO-016 Web 门禁通过 ESLint、严格类型检查、2 项 Vitest、41 项 Node 契约、4 项 Playwright 页面回归和 Next.js 静态导出。
@@ -41,6 +55,12 @@
 - MONOREPO-017 Web 门禁通过 ESLint、严格类型检查、2 项 Vitest、41 项 Node 契约、4 项 Playwright 页面回归和 Next.js 静态导出。
 - MONOREPO-017 真实 Next 入口通过 23 项完整工作台、4 项幅度比较、6 项买点慢扫描和 3 项二级趋势连续性检查。
 - MONOREPO-017 完成后的根 `pnpm verify` 已通过全部 workspace 的 Harness、lint、类型检查、单元测试和生产构建。
+- MONOREPO-018 Web 门禁通过 ESLint、严格类型检查、4 项 React 组件测试、41 项兼容契约和 Next.js 静态生产构建。
+- MONOREPO-018 Playwright 5 条流程覆盖桌面折叠持久化、390px 移动抽屉、完整研究工作台、市场八视图与经典 v2；1440px 实际浏览器检查无 Console 错误或警告。
+- MONOREPO-018 完成后的根 `pnpm verify` 通过 18 个 Feature、17 个 Node workspace、2 个 Python workspace、32 份规则和 15 个生产构建任务。
+- MONOREPO-019 Web 门禁通过 ESLint、严格类型检查、6 项 Vitest、41 项 Node 契约、5 项 Playwright 流程和 Next.js 静态生产构建。
+- 证券蓝浏览器验收通过深色 `#4ea1ff`、浅色 `#1d64d8` 的即时切换与刷新持久化；主色前景对比度分别为 7.10:1 和 5.43:1，满足 WCAG 2.2 AA 普通文本要求。
+- 研究页主题同步回归通过：浅色背景为 `rgb(243, 246, 250)`、卡片为白色、证券蓝强调色为 `rgb(29, 100, 216)`，图表画布同步为白色；5 项 Playwright 保持全部通过。
 
 ## Risks and Next Steps
 

@@ -649,6 +649,86 @@
                     "summary": "17 个功能、17 个 Node workspace、2 个 Python workspace、32 份规则及全仓 lint、类型检查、单元测试和 15 个生产构建任务全部通过。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-018",
+            "name": "wavequant-dashboard-shell-refresh",
+            "description": "参考 next-shadcn-dashboard-starter 的信息架构改造 WaveQuant Web 应用壳，同时保持研究工作台与全景市场功能完整。",
+            "title": "改造 WaveQuant Dashboard 布局与应用壳",
+            "scope": "在 apps/webs/wavequant-web 内统一可折叠侧栏、移动端抽屉、顶部工具栏、面包屑和内容滚动边界，复用共享 shadcn 原语，并保持所有现有路由、DOM 契约和业务交互。",
+            "dependencies": ["MONOREPO-017"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "研究工作台与全景市场使用统一的响应式 Dashboard 应用壳",
+                "研究页与市场页展示相同的导航分组、双层顶部栏和底部状态栏骨架",
+                "市场与研究路由切换时共享 Shell 保持挂载，研究页头部具备搜索、通知、设置和刷新操作",
+                "桌面侧栏可折叠，窄屏侧栏可打开与关闭，导航状态和面包屑正确",
+                "原研究工作台 data-page、page-title、reload 与全部图表和数据交互契约保持可用",
+                "市场八视图、搜索、设置、通知和经典 v2 入口保持可用",
+                "应用继续只复用 @repo/design-system-web 原语，不复制模板的 UI 组件或无关依赖",
+                "workspace lint、类型检查、单元测试、Playwright、生产构建和 Harness 通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "WaveQuant Web 的 ESLint、严格类型检查、4 项 React 组件测试、41 项兼容契约和 Next.js 静态生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "5 项 Chromium 验收覆盖唯一 Shell 跨路由保持挂载、研究页共享搜索/通知/设置/刷新、桌面折叠、390px 移动抽屉、完整研究逻辑、市场八视图和经典 v2，全部通过。"
+                },
+                {
+                    "command": "1440x1000 browser visual inspection and console audit",
+                    "status": "passed",
+                    "summary": "研究页与市场页展示相同的双分组侧栏、双层顶部栏、内容边界和底部状态栏；业务内容各自独立且视觉层级正常。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "18 个功能、17 个 Node workspace、2 个 Python workspace、32 份规则以及全仓 lint、类型检查、单元测试和 15 个构建任务全部通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-019",
+            "name": "wavequant-market-blue-theme",
+            "description": "参考 next-shadcn-dashboard-starter 的 data-theme 机制，为 WaveQuant 增加与涨跌语义解耦的证券蓝 UI 主题色。",
+            "title": "新增适合股票行情的证券蓝主题色",
+            "scope": "在 wavequant-web 的现有设置、状态持久化、shadcn token、旧研究工作台 token 与市场图表中增加证券蓝主题，保持明暗模式和涨跌配色逻辑独立。",
+            "dependencies": ["MONOREPO-018"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "界面设置提供 WaveQuant 青和证券蓝两套 UI 主题色",
+                "证券蓝只用于操作、选中、焦点和中性趋势线，红绿涨跌语义保持不变",
+                "主题覆盖深色和浅色模式，并通过 data-theme 与 CSS token 驱动共享组件和研究页面",
+                "研究工作台的表面、控件、文字、强调色与 Lightweight Charts 随全局主题同步变化",
+                "选择结果持久化，刷新与跨市场、研究路由后保持一致且不产生主题闪烁",
+                "workspace lint、类型检查、单元测试、Playwright 和生产构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、严格类型检查、6 项 Vitest、41 项 Node 契约与 Next.js 静态生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "5 项 Chromium 流程覆盖原研究工作台、唯一共享 Shell、市场八视图、主题切换、研究页浅色表面与强调色、刷新持久化，全部通过。"
+                },
+                {
+                    "command": "research light/market-blue computed-style, canvas pixel and console audit",
+                    "status": "passed",
+                    "summary": "研究内容背景、卡片、控件和文字同步为浅色主题，强调色同步为证券蓝；Lightweight Charts 画布背景为白色且 Console 无错误。"
+                },
+                {
+                    "command": "1440x1000 browser visual inspection and WCAG contrast audit",
+                    "status": "passed",
+                    "summary": "证券蓝深浅主题视觉层级正常；主色前景对比度分别为 7.10:1 与 5.43:1，均满足 WCAG 2.2 AA 普通文本 4.5:1。"
+                }
+            ]
         }
     ]
 }

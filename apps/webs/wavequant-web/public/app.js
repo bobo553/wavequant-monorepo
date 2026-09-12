@@ -744,7 +744,10 @@ async function loadHealth() {
         $("health-summary").textContent = "运行状态读取失败：" + e.message;
     }
 }
-document.querySelectorAll("[data-page]").forEach((b) => b.addEventListener("click", () => showPage(b.dataset.page)));
+document.addEventListener("click", (event) => {
+    const button = event.target.closest?.("[data-page]");
+    if (button?.dataset.page) showPage(button.dataset.page);
+});
 $("run-select").addEventListener("change", () => {
     state.pendingFocus = null;
     fillSymbols();
