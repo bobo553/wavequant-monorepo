@@ -1345,6 +1345,49 @@
                     "summary": "36 个 Feature、18 个 Node workspace、2 个 Python workspace 与 32 份规则校验通过。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-037",
+            "name": "wavequant-level-two-developing-path",
+            "description": "正式二级反转长期未完成时，完整显示其后已经确认可知的一级结构演化与当前候选端点。",
+            "title": "补全二级趋势发展路径",
+            "scope": "保留二级正式结构的冻结关键位与严格突破规则；Core 生成最后一个正式二级点之后的只读发展路径，Web 使用同色虚线渲染并明确区分正式二级反转点。",
+            "dependencies": ["MONOREPO-031", "MONOREPO-035"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "中大力德正式二级线保持结束于 2022-05-27 L9 13.16，不能伪造后续正式二级反转点",
+                "二级发展路径从 L9 开始，使用其后已确认一级点继续到当前可知端点，并保存来源位置与因果日期",
+                "Web 以紫色虚线显示二级发展路径，摘要和点击说明明确其为只读发展状态",
+                "历史回放不得提前显示尚未确认的一级点，正式二级计数、三级输入、策略和回测保持不变",
+                "Core、API、Web、Harness 与真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint && pnpm --filter @wavequant/core typecheck && pnpm --filter @wavequant/core test:unit && pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "Core Ruff、严格路径 mypy、508 项 pytest 与 sdist/wheel 构建通过；二、三级共用层级发展路径生成器，来源坐标、因果日期、正式点隔离和不变性均有契约覆盖。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、33 项通过/1 项环境跳过的 pytest 与构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build && pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --workers=1",
+                    "status": "passed",
+                    "summary": "Web ESLint、严格类型检查、6 项 Vitest、55 项 Node 契约、Next.js 生产构建与串行 9 条 Playwright 流程通过。"
+                },
+                {
+                    "command": "GET /api/tdx-theory?symbol=sz.002896&asof=2022-08-08|2022-08-09|2026-09-07 + Chromium audit",
+                    "status": "passed",
+                    "summary": "中大力德在 2022-08-09 确认 L9 后开始新发展路径；最新正式二级点仍为 17 个，发展路径含 30 点、20 个内部转折和 8 个待决尾部点，从 2022-05-27 L9 13.16 延伸至 2026-09-01 H129 66.07，页面无错误或失败请求。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "37 个 Feature、18 个 Node workspace、2 个 Python workspace 与 32 份规则校验通过。"
+                }
+            ]
         }
     ]
 }

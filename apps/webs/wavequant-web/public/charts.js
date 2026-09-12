@@ -230,6 +230,12 @@ export class PriceChart {
             this.showSecondaryTrend && this.drawingMode === "lecture" && this.polylineEnabled
                 ? reversalWindowSummary(this.theory?.secondary_trends?.strokes || [], from, to, bars)
                 : null;
+        const secondaryDeveloping =
+            this.showSecondaryTrend && this.drawingMode === "lecture" && this.polylineEnabled
+                ? (this.theory?.secondary_trends?.developing_strokes || [])
+                      .filter((stroke) => stroke.points[0].time <= to && stroke.points.at(-1).time >= from)
+                      .at(-1) || null
+                : null;
         const tertiaryTrend =
             this.showTertiaryTrend && this.drawingMode === "lecture" && this.polylineEnabled
                 ? reversalWindowSummary(this.theory?.tertiary_trends?.strokes || [], from, to, bars)
@@ -256,7 +262,7 @@ export class PriceChart {
         this.container.dataset.lastFallHighCount = String(trendKeys.length);
         this.onVisible(
             this.groups.flatMap((g) => g.items),
-            { from, to, trend, secondaryTrend, tertiaryTrend, tertiaryDeveloping },
+            { from, to, trend, secondaryTrend, secondaryDeveloping, tertiaryTrend, tertiaryDeveloping },
         );
         this.renderPolyline(from, to);
     }
@@ -407,6 +413,9 @@ export class PriceChart {
         const lecture = this.drawingMode === "lecture" && this.theory.lecture_drawing;
         const first = this.showTrend ? this.theory.reversal_trends?.strokes || [] : [];
         const second = this.showSecondaryTrend ? this.theory?.secondary_trends?.strokes || [] : [];
+        const secondaryDeveloping = this.showSecondaryTrend
+            ? this.theory?.secondary_trends?.developing_strokes || []
+            : [];
         const tertiaryDeveloping = this.showTertiaryTrend
             ? this.theory.tertiary_trends?.developing_strokes || []
             : [];
@@ -417,6 +426,9 @@ export class PriceChart {
                   ...first,
                   ...secondaryConnections(second, this.theory.reversal_trends?.strokes || []),
                   ...second,
+                  // Development paths remain separate from formal points so
+                  // level 3 never consumes an unfinished level-2 reversal.
+                  ...secondaryDeveloping,
                   // Python owns the active level-3 endpoint.  Rendering its
                   // display-only stroke here avoids a second browser rule.
                   ...tertiaryDeveloping,

@@ -6,6 +6,7 @@ No retracement/alternation threshold is required to confirm a flip.
 """
 from zoneinfo import ZoneInfo
 
+from .hierarchical_development import hierarchical_developing_path
 from .lecture_trend import _annotate, _ref
 
 
@@ -153,7 +154,7 @@ def _structural_reversals(points, *, source_level=1):
 def secondary_trends(level1,bars):
     dates={(b.timestamp.astimezone(ZoneInfo('Asia/Shanghai')) if b.timestamp.tzinfo else b.timestamp).date().isoformat():i
            for i,b in enumerate(bars)}
-    strokes=[]
+    strokes=[]; developing_strokes=[]
     for source in level1['strokes']:
         points=_structural_reversals(source['points'])
         if not points:
@@ -165,11 +166,18 @@ def secondary_trends(level1,bars):
         strokes.append(dict(id='secondary-'+source['id'],source_path=source['id'],kind='secondary',
                             trend_level=2,points=points,input_turn_count=len(source['points']),
                             key_transitions=transitions))
+        tail=hierarchical_developing_path(source,points,trend_level=2,source_level=1,kind='secondary')
+        if tail:
+            developing_strokes.append(tail)
     return dict(name='二级趋势线',trend_level=2,source_level=1,strokes=strokes,
+                developing_strokes=developing_strokes,
                 input_turn_count=sum(len(s['points']) for s in level1['strokes']),
                 confirmed_wave_count=sum(len(s['points']) for s in strokes),
+                developing_wave_count=len(developing_strokes),
+                developing_point_count=sum(len(s['points']) for s in developing_strokes),
                 key_transition_count=sum(len(s['key_transitions']) for s in strokes),
                 aggregation_rule='level1_structural_key_break',scope='lecture_level2_not_strategy_confirmation',
                 note='一级点突破末跌高确认整段低点，跌破末升低确认整段高点；旧二级低点被市场收盘严格跌破后，'
                      '末跌高换锚到后续已确认二级低点左侧高点；开放尾部尚无下一二级低点时，可用已确认二级高点及其'
-                     '一级确认低点换锚，但不把一级点升级为二级点；不等待67%交替，不跨原路径断点，不绘制未确认尾端。')
+                     '一级确认低点换锚，但不把一级点升级为二级点；最后一个正式二级点之后的已确认一级演化另作'
+                     '纯显示发展路径，不进入正式点、三级趋势、策略或回测；不等待67%交替，不跨原路径断点。')

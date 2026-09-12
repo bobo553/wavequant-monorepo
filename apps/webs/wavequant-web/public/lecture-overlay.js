@@ -313,6 +313,9 @@ export class LectureOverlay {
         this.container.dataset.secondaryPoints = this.strokes
             .filter((s) => s.kind === "secondary")
             .reduce((n, s) => n + s.points.length, 0);
+        this.container.dataset.secondaryDevelopingPoints = this.strokes
+            .filter((s) => s.kind === "secondary-developing")
+            .reduce((n, s) => n + s.points.length, 0);
         this.container.dataset.secondaryConnections = this.strokes.filter(
             (s) => s.kind === "secondary-connection",
         ).length;
@@ -332,9 +335,11 @@ export class LectureOverlay {
             const levelOneLabels = new Map();
             for (const { stroke, points } of this.projected) {
                 const connection = stroke.kind === "reversal-connection" || stroke.kind === "secondary-connection";
-                const tertiaryDeveloping = stroke.kind === "tertiary-developing",
+                const secondaryDeveloping = stroke.kind === "secondary-developing",
+                    tertiaryDeveloping = stroke.kind === "tertiary-developing",
                     tertiary = stroke.kind === "tertiary" || tertiaryDeveloping,
-                    secondary = stroke.kind === "secondary" || stroke.kind === "secondary-connection",
+                    secondary =
+                        stroke.kind === "secondary" || stroke.kind === "secondary-connection" || secondaryDeveloping,
                     reversal = stroke.kind === "reversal" || connection || secondary || tertiary;
                 ctx.lineWidth = tertiary ? 3.5 : secondary ? 3 : reversal ? 2 : 2.5;
                 for (let i = 1; i < points.length; i++) {
@@ -351,9 +356,9 @@ export class LectureOverlay {
                             : this.highlightTeaching && teaching
                               ? "#50dfd2"
                               : "#ffd36d";
-                    // 发展路径会随已确认二级结构继续延伸，虚线用于避免把
-                    // 其中的内部转折误读成正式三级反转点。
-                    ctx.setLineDash(tertiaryDeveloping ? [7, 4] : reversal ? [] : [5, 3]);
+                    // 发展路径会随已确认的下一级结构继续延伸，虚线用于
+                    // 避免把内部转折误读成正式二级或三级反转点。
+                    ctx.setLineDash(secondaryDeveloping || tertiaryDeveloping ? [7, 4] : reversal ? [] : [5, 3]);
                     ctx.beginPath();
                     ctx.moveTo(a.x, a.y);
                     ctx.lineTo(b.x, b.y);
@@ -458,7 +463,13 @@ export class LectureOverlay {
                 },
             };
         }
-        if (stroke.kind === "tertiary-developing") {
+        if (stroke.kind === "secondary-developing" || stroke.kind === "tertiary-developing") {
+            const secondary = stroke.kind === "secondary-developing",
+                level = secondary ? 2 : 3,
+                sourceLevel = level - 1,
+                prefix = secondary ? "Ⅱ·" : "Ⅲ·",
+                name = secondary ? "二级" : "三级",
+                sourceName = secondary ? "一级" : "二级";
             const start = stroke.points[0],
                 endpoint = stroke.points.at(-1),
                 rising = stroke.wave_direction === "up",
@@ -471,11 +482,11 @@ export class LectureOverlay {
                 kind: "trend",
                 category: "rules",
                 price: p.value,
-                title: `Ⅲ·完整发展路径 · 当前${rising ? "上涨" : "下跌"}候选`,
-                description: `正式三级${start.kind === "L" ? "低点" : "高点"} ${start.label}（${start.time}，${start.value}）确认后，Python 继续串联 ${nestedCount} 个已确认二级内部转折，并保留 ${pendingCount} 个待决尾部二级点，直到当前 ${endpoint.label}（${endpoint.time}，${endpoint.value}）。所有点均按各自确认日期可见；它们是三级发展检查路径，不是正式三级反转点，不参与后续级别、策略或回测。`,
-                sourceLabel: "三级趋势线 · Python 完整发展路径（仅显示）",
+                title: `${prefix}完整发展路径 · 当前${rising ? "上涨" : "下跌"}候选`,
+                description: `正式${name}${start.kind === "L" ? "低点" : "高点"} ${start.label}（${start.time}，${start.value}）确认后，Python 继续串联 ${nestedCount} 个已确认${sourceName}内部转折，并保留 ${pendingCount} 个待决尾部${sourceName}点，直到当前 ${endpoint.label}（${endpoint.time}，${endpoint.value}）。所有点均按各自确认日期可见；它们是${name}发展检查路径，不是正式${name}反转点，不参与后续级别、策略或回测。`,
+                sourceLabel: `${name}趋势线 · Python 完整发展路径（仅显示）`,
                 levels: [],
-                raw: { stroke, trend_level: 3, source_level: 2, scope: "display_only_developing_path" },
+                raw: { stroke, trend_level: level, source_level: sourceLevel, scope: "display_only_developing_path" },
             };
         }
         if (stroke.kind === "secondary" || stroke.kind === "tertiary") {

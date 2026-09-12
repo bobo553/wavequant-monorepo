@@ -210,6 +210,57 @@ test("Shanghai Electric Power shows the complete level-three development path af
     expect(failedRequests).toEqual([]);
 });
 
+test("Zhongda Leader level-two line continues as a causal developing path after May 2022", async ({ page }) => {
+    const pageErrors: string[] = [];
+    const failedRequests: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    const theoryResponse = page.waitForResponse(
+        (response) => response.url().includes("/api/tdx-theory?symbol=sz.002896") && response.ok(),
+        { timeout: 60_000 },
+    );
+    await page.locator("#symbol-select").selectOption("sz.002896");
+    await theoryResponse;
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#error")).toBeHidden();
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-secondary-developing-points", "30");
+    await expect(page.locator("#secondary-trend-summary")).toContainText("发展路径");
+    await expect(page.locator("#secondary-trend-summary")).toContainText("2022-05-27 L9 13.16");
+    await expect(page.locator("#secondary-trend-summary")).toContainText("2026-09-01 H129 66.07");
+
+    const state = await page.evaluate(async () => {
+        const theory = await fetch("/api/tdx-theory?symbol=sz.002896&asof=2026-09-07").then((response) =>
+            response.json(),
+        );
+        const formal = theory.secondary_trends.strokes[0].points;
+        const developing = theory.secondary_trends.developing_strokes[0];
+        return {
+            formalCount: theory.secondary_trends.confirmed_wave_count,
+            formalEnd: formal.at(-1),
+            developingCount: theory.secondary_trends.developing_point_count,
+            developingStart: developing.points[0],
+            developingEnd: developing.points.at(-1),
+            developing,
+        };
+    });
+    expect(state.formalCount).toBe(17);
+    expect(state.formalEnd).toMatchObject({ time: "2022-05-27", kind: "L", value: 13.16 });
+    expect(state.developingCount).toBe(30);
+    expect(state.developingStart).toMatchObject({ time: "2022-05-27", kind: "L", value: 13.16 });
+    expect(state.developingEnd).toMatchObject({ time: "2026-09-01", kind: "H", value: 66.07 });
+    expect(state.developing).toMatchObject({
+        kind: "secondary-developing",
+        source_level: 1,
+        trend_level: 2,
+        display_only: true,
+    });
+    expect(pageErrors).toEqual([]);
+    expect(failedRequests).toEqual([]);
+});
+
 test("the shared dashboard shell works on desktop and mobile", async ({ page }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));

@@ -45,6 +45,36 @@ class SecondaryTrendTests(unittest.TestCase):
         for end in range(len(turns)+1):
             self.assertEqual(_structural_reversals(turns[:end]),[p for p in full if p['confirmed_on_level1']<end])
 
+    def test_developing_path_keeps_confirmed_points_immutable_and_exposes_long_tail(self):
+        """A wide frozen key must not hide confirmed level-1 development."""
+        values=[20,30,10,20,14,26,18,35,28,45,36,42,30,36,24,31,26,38,30,42,
+                35,40,34,39,33,41,36,43,37,42]
+        bars,source=fixture(values)
+        before=copy.deepcopy(source)
+
+        result=secondary_trends(source,bars)
+        formal=result['strokes'][0]['points']
+        path=result['developing_strokes'][0]['points']
+
+        self.assertEqual(source,before)
+        self.assertEqual([(p['kind'],p['value']) for p in formal],[('L',10),('H',45),('L',24)])
+        self.assertEqual([(p['kind'],p['value']) for p in path],
+                         [('L',24),('H',42),('L',33),('H',41),('L',36),
+                          ('H',43),('L',37),('H',42)])
+        self.assertEqual([p['source_level1_position'] for p in path],[14,19,24,25,26,27,28,29])
+        self.assertEqual([p['development_role'] for p in path],
+                         ['formal_start','confirmed_nested_turn','confirmed_nested_turn','pending_evidence',
+                          'pending_evidence','pending_evidence','pending_evidence','active_endpoint'])
+        self.assertEqual(result['confirmed_wave_count'],3)
+        self.assertEqual(result['developing_point_count'],8)
+        self.assertTrue(all(p['display_only'] for p in path))
+        self.assertTrue(all(left['available_at']<=right['available_at'] for left,right in zip(path,path[1:])))
+        for point in path[1:]:
+            original=source['strokes'][0]['points'][point['source_level1_position']]
+            for field in ['time','index','ordinal','kind','value']:
+                self.assertEqual(point[field],original[field])
+            self.assertGreaterEqual(point['available_at'],original['available_at'])
+
     def test_mirrored_bull_and_bear_rules(self):
         _,a=fixture(self.values); _,b=fixture([100-v for v in self.values],first='H')
         up=_structural_reversals(a['strokes'][0]['points']); down=_structural_reversals(b['strokes'][0]['points'])
@@ -75,6 +105,7 @@ class SecondaryTrendTests(unittest.TestCase):
 
     def test_empty_mixed_equal_or_unbroken_tail_has_no_extra_line(self):
         self.assertEqual(secondary_trends(dict(strokes=[]),[])['strokes'],[])
+        self.assertEqual(secondary_trends(dict(strokes=[]),[])['developing_strokes'],[])
         for values in [[10],[10,20,10,20,10,20],[10,20,12,22,14,24]]:
             bars,source=fixture(values)
             self.assertEqual(secondary_trends(source,bars)['strokes'],[])

@@ -405,9 +405,17 @@ function renderVisibleAnnotations(items, range) {
         ? `一级趋势线 · 视窗：${t.windowTrend} · 最新局部：${t.trend}（至 ${t.latestKnown}）｜视窗末跌高 ${num(t.lastFallHigh?.value)} · 末升低 ${num(t.lastRiseLow?.value)} · 点击一级转折点查看依据`
         : "一级趋势线：当前无已确认波段，或图层已关闭；未确认尾端不计入。";
     const s = range.secondaryTrend;
+    const secondaryDeveloping = range.secondaryDeveloping,
+        secondaryDevelopingStart = secondaryDeveloping?.points[0],
+        secondaryDevelopingEnd = secondaryDeveloping?.points.at(-1),
+        secondaryDevelopmentText = secondaryDeveloping
+            ? `｜发展路径 ${secondaryDeveloping.points.length} 点：${secondaryDevelopingStart.time} ${secondaryDevelopingStart.label} ${num(secondaryDevelopingStart.value)} → 当前${secondaryDeveloping.wave_direction === "up" ? "上涨" : "下跌"}候选 ${secondaryDevelopingEnd.time} ${secondaryDevelopingEnd.label} ${num(secondaryDevelopingEnd.value)}`
+            : "";
     $("secondary-trend-summary").textContent = s
-        ? `二级趋势线 · 视窗：${s.windowTrend} · 最新局部：${s.trend}（至 ${s.latestKnown}）｜二级末跌高 ${num(s.lastFallHigh?.value)} · 末升低 ${num(s.lastRiseLow?.value)} · 点击二级转折点查看一级突破依据`
-        : "二级趋势线：当前无已确认波段，或图层已关闭；等待一级末跌高／末升低被突破。";
+        ? `二级趋势线 · 视窗：${s.windowTrend} · 最新局部：${s.trend}（至 ${s.latestKnown}）｜二级末跌高 ${num(s.lastFallHigh?.value)} · 末升低 ${num(s.lastRiseLow?.value)}${secondaryDevelopmentText} · 点击二级转折点查看一级突破依据`
+        : secondaryDeveloping
+          ? `二级趋势线 · 发展路径 ${secondaryDeveloping.points.length} 点：${secondaryDevelopingStart.time} ${secondaryDevelopingStart.label} ${num(secondaryDevelopingStart.value)} → 当前${secondaryDeveloping.wave_direction === "up" ? "上涨" : "下跌"}候选 ${secondaryDevelopingEnd.time} ${secondaryDevelopingEnd.label} ${num(secondaryDevelopingEnd.value)}｜紫色虚线点均来自已确认一级结构，不升级为正式二级反转`
+          : "二级趋势线：当前无已确认波段，或图层已关闭；等待一级末跌高／末升低被突破。";
     const u = range.tertiaryTrend;
     const developing = range.tertiaryDeveloping,
         developingStart = developing?.points[0],

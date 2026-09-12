@@ -920,6 +920,70 @@ test("tertiary developing path draws every nested turn and remains display-only"
     assert.match(item.description, /不是正式三级反转点/);
 });
 
+test("secondary developing path is dashed and remains separate from formal level-two points", () => {
+    const overlay = new LectureOverlay({ dataset: {} }),
+        segments = [];
+    let dash, start, end;
+    const ctx = {
+        save() {},
+        restore() {},
+        setLineDash(value) {
+            dash = value;
+        },
+        beginPath() {},
+        moveTo(x, y) {
+            start = [x, y];
+        },
+        lineTo(x, y) {
+            end = [x, y];
+        },
+        stroke() {
+            segments.push({ dash: [...dash], start, end, color: this.strokeStyle });
+        },
+        fillText() {},
+    };
+    const points = [
+        { time: "2022-05-27", value: 13.16, kind: "L", label: "L9", available_at: "2022-08-09" },
+        {
+            time: "2022-08-03",
+            value: 49.56,
+            kind: "H",
+            label: "H70",
+            available_at: "2022-08-09",
+            state: "developing",
+        },
+        { time: "2024-02-06", value: 21.74, kind: "L", label: "L92", available_at: "2024-02-22" },
+    ];
+    const stroke = {
+        id: "secondary-developing-test",
+        kind: "secondary-developing",
+        wave_direction: "down",
+        display_only: true,
+        nested_turn_count: 1,
+        pending_point_count: 1,
+        points,
+    };
+    overlay.strokes = [stroke];
+    overlay.projected = [
+        {
+            stroke,
+            points: points.map((point, index) => ({ point, index, x: index * 100, y: point.value })),
+        },
+    ];
+    overlay.draw({ useMediaCoordinateSpace: (fn) => fn({ context: ctx }) });
+    assert.deepEqual(segments, [
+        { dash: [7, 4], start: [0, 13.16], end: [100, 49.56], color: "#d6a3ff" },
+        { dash: [7, 4], start: [100, 49.56], end: [200, 21.74], color: "#d6a3ff" },
+    ]);
+    const item = overlay.annotation("drawing:secondary-developing-test:2");
+    assert.equal(item.raw.scope, "display_only_developing_path");
+    assert.equal(item.raw.trend_level, 2);
+    assert.match(item.title, /Ⅱ·完整发展路径/);
+    assert.match(item.description, /1 个已确认一级内部转折/);
+    assert.match(item.description, /1 个待决尾部一级点/);
+    assert.match(item.description, /不是正式二级反转点/);
+});
+
 test("mixed main path shares junction coordinates and emphasis never removes legs", () => {
     const overlay = new LectureOverlay({ dataset: {} }),
         segments = [];
