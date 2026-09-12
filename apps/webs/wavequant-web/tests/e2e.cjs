@@ -346,7 +346,10 @@ const results = [];
                 asof: "2026-09-07",
             });
             const theory = await (await context.request.get(base + "/api/theory?" + q)).json();
-            assert.equal(theory.reversal_trends.aggregation_rule, "HH_HL_or_LH_LL_switch_mixed_holds");
+            assert.equal(
+                theory.reversal_trends.aggregation_rule,
+                "HH_HL_or_LH_LL_switch_with_confirmed_cross_path_extremes",
+            );
             assert.equal(theory.secondary_trends.aggregation_rule, "level1_structural_key_break");
             assert.equal(theory.secondary_trends.source_level, 1);
             assert.equal(theory.tertiary_trends.source_level, 2);

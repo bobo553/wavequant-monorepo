@@ -33,9 +33,14 @@ class TdxBacktester:
 
     @staticmethod
     def _engine_hashes():
-        paths=sorted(Path(__file__).parent.glob('*.py'))
-        versions=tuple((str(p),s.st_mtime_ns,s.st_ctime_ns,s.st_size) for p in paths for s in [p.stat()])
-        return dict(_hashed_engine(versions))
+        # Raw chart theory depends on domain reducers as well as this adapter.
+        # Hash the complete package with relative keys so a reducer change cannot
+        # silently reuse an artifact produced by older trend rules.
+        package_root=Path(__file__).parents[2]
+        paths=sorted(package_root.rglob('*.py'))
+        versions=tuple((str(path),stat.st_mtime_ns,stat.st_ctime_ns,stat.st_size)
+                       for path in paths for stat in [path.stat()])
+        return dict(_hashed_engine(str(package_root),versions))
 
     def _actions(self,path):
         digest=fingerprint(path)
@@ -189,8 +194,10 @@ class TdxBacktester:
 
 
 @lru_cache(maxsize=4)
-def _hashed_engine(versions):
-    return tuple((Path(p).name,fingerprint(Path(p))) for p,*_ in versions)
+def _hashed_engine(package_root,versions):
+    root=Path(package_root)
+    return tuple((Path(path).relative_to(root).as_posix(),fingerprint(Path(path)))
+                 for path,*_ in versions)
 
 
 def encode_research(bars,generated):

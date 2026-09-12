@@ -59,6 +59,124 @@ def _wave_reversals(turns):
     return selected
 
 
+def _point_order(point):
+    """Return the stable source order, including multiple vertices on one bar."""
+    return point['index'],point.get('ordinal',0)
+
+
+def _is_alternating_leg(left,right):
+    """Require both alternating H/L kinds and the matching price direction."""
+    return left['kind']!=right['kind'] and (
+        right['value']>left['value'] if left['kind']=='L' else right['value']<left['value'])
+
+
+def _continuity_proof(point):
+    """Keep only stable evidence fields; local labels are assigned after merging."""
+    return {key:point[key] for key in ('index','ordinal','kind','value','time','available_at')}
+
+
+def _formal_bridge_point(source,known,left,right):
+    """Promote a confirmed base extreme to a causally confirmed level-1 point.
+
+    The source extreme can occur well before the right level-1 endpoint.  It only
+    becomes a level-1 continuity point once both surrounding level-1 endpoints
+    are known, so ``available_at`` must not reuse the earlier base confirmation.
+    """
+    point=dict(source)
+    point.update(state='reversal',source_state=source.get('state'),source_kind=source['kind'],
+                 source_reversal_available_at=source['available_at'],available_at=known,
+                 confirmation_rule='cross_path_confirmed_base_extreme',cross_path=True,
+                 confirmed_by=[_continuity_proof(left),_continuity_proof(right)])
+    return point
+
+
+def _alternating_pair_bridge(left,right,candidates):
+    """Find real H/L extremes when unlike endpoints have an invalid price leg."""
+    first_kind=right['kind']; first_sign=1 if first_kind=='H' else -1
+    best_first=best_pair=None; best_score=float('-inf')
+    for point in candidates:
+        if point['kind']==first_kind and _is_alternating_leg(left,point):
+            if best_first is None or first_sign*(point['value']-best_first['value'])>0:
+                best_first=point
+            continue
+        if (point['kind']!=left['kind'] or best_first is None or
+                not _is_alternating_leg(best_first,point) or not _is_alternating_leg(point,right)):
+            continue
+        score=(abs(best_first['value']-left['value'])+abs(point['value']-best_first['value'])+
+               abs(right['value']-point['value']))
+        if score>best_score:
+            best_score=score; best_pair=[best_first,point]
+    return best_pair
+
+
+def _continuity_bridge(left,right,source_points):
+    """Return zero, one, or two confirmed base extremes joining two level-1 paths."""
+    if _point_order(left)>=_point_order(right):
+        return None
+    known=max(left['available_at'],right['available_at'])
+    candidates=[p for p in source_points if _point_order(left)<_point_order(p)<_point_order(right)
+                and p.get('state') in ('confirmed','teaching') and p['available_at']<=known]
+    if left['kind']==right['kind']:
+        kind='H' if left['kind']=='L' else 'L'; sign=1 if kind=='H' else -1
+        eligible=[p for p in candidates if p['kind']==kind and
+                  sign*(p['value']-left['value'])>0 and sign*(p['value']-right['value'])>0]
+        if not eligible:
+            return None
+        # Strict replacement preserves the earlier point when extremes are equal.
+        extreme=eligible[0]
+        for point in eligible[1:]:
+            if sign*(point['value']-extreme['value'])>0:
+                extreme=point
+        return [_formal_bridge_point(extreme,known,left,right)]
+    if _is_alternating_leg(left,right):
+        return []
+    pair=_alternating_pair_bridge(left,right,candidates)
+    return None if pair is None else [_formal_bridge_point(p,known,left,right) for p in pair]
+
+
+def _connect_reversal_strokes(strokes,source_strokes):
+    """Merge level-1 paths with the same evidence used by the chart.
+
+    Undefined base-bar ordering still splits the base lecture drawing.  A later
+    pair of confirmed level-1 endpoints may nevertheless identify real,
+    confirmed base extremes between those paths.  Promoting those extremes here
+    gives rendering and higher trend levels one authoritative point sequence.
+    """
+    paths=sorted((dict(stroke,points=[dict(p) for p in stroke['points']]) for stroke in strokes
+                  if stroke['points']),key=lambda stroke:_point_order(stroke['points'][0]))
+    if not paths:
+        return []
+    source_points=sorted((dict(p,source_path=stroke['id']) for stroke in source_strokes
+                          for p in stroke['points']),key=_point_order)
+
+    def begin(path):
+        source=path.get('source_path',path['id'])
+        return dict(path,points=[dict(p) for p in path['points']],source_path=source,source_paths=[source])
+
+    def finish(path):
+        if len(path['source_paths'])>1:
+            first,last=path['source_paths'][0],path['source_paths'][-1]
+            path['id']=f'reversal-continuous-{first}-{last}'
+            path['source_path']='→'.join(path['source_paths'])
+            path['continuity_rule']='confirmed_base_extreme_across_path_boundary'
+        return path
+
+    merged=[]; current=begin(paths[0])
+    for path in paths[1:]:
+        bridge=_continuity_bridge(current['points'][-1],path['points'][0],source_points)
+        if bridge is None:
+            merged.append(finish(current)); current=begin(path); continue
+        for point in [*bridge,*path['points']]:
+            previous=current['points'][-1]
+            if (_point_order(previous),previous['kind'],previous['value'])!=(
+                    _point_order(point),point['kind'],point['value']):
+                current['points'].append(dict(point))
+        current['source_paths'].append(path.get('source_path',path['id']))
+        current['input_turn_count']=current.get('input_turn_count',0)+path.get('input_turn_count',0)
+    merged.append(finish(current))
+    return merged
+
+
 def _annotate(points, symbol, dates):
     known=[]; high_count=low_count=0
     background=None; anchor=key=attack=None; suspicion=False
@@ -131,15 +249,17 @@ def reversal_trends(drawing, bars):
     from zoneinfo import ZoneInfo
     dates={(b.timestamp.astimezone(ZoneInfo('Asia/Shanghai')) if b.timestamp.tzinfo else b.timestamp).date().isoformat():i
            for i,b in enumerate(bars)}
-    result=[]; local_count=0
+    result=[]; source_strokes=[]; local_count=0
     for stroke in drawing['strokes']:
-        raw=stroke['points']; counts=Counter(p['time'] for p in raw); ranks=Counter(); compact=[]
+        raw=stroke['points']; counts=Counter(p['time'] for p in raw); ranks=Counter(); compact=[]; projected=[]
         for source in raw:
             p=dict(source,projection_count=counts[source['time']],projection_rank=ranks[source['time']])
             ranks[source['time']]+=1
+            projected.append(dict(p))
             if compact and p['value']==compact[-1]['value']:
                 continue  # Earliest equal extreme wins; no zero-length reversal.
             compact.append(p)
+        source_strokes.append(dict(id=stroke['id'],points=projected))
         turns=[]
         for left,p,right in zip(compact,compact[1:],compact[2:]):
             if p['state'] in ('seed','developing'):
@@ -152,11 +272,13 @@ def reversal_trends(drawing, bars):
         local_count+=len(turns)
         waves=_wave_reversals(turns)
         if waves:
-            _annotate(waves,bars[0].symbol,dates)
             result.append(dict(id=f'reversal-{stroke["id"]}',source_path=stroke['id'],kind='reversal',points=waves,
                                input_turn_count=len(turns)))
+    result=_connect_reversal_strokes(result,source_strokes)
+    for stroke in result:
+        _annotate(stroke['points'],bars[0].symbol,dates)
     return dict(strokes=result,trend_level=1,name='一级趋势线',scope='lecture_wave_structure_not_strategy_confirmation',
-                aggregation_rule='HH_HL_or_LH_LL_switch_mixed_holds',input_turn_count=local_count,
+                aggregation_rule='HH_HL_or_LH_LL_switch_with_confirmed_cross_path_extremes',input_turn_count=local_count,
                 confirmed_wave_count=sum(len(s['points']) for s in result),
                 break_basis='confirmed_polyline_extreme',retracement_threshold=.67,
-                note='先按原折线高低点确认短期多空，再在方向转换时取整段极值；实线可以跨多个小拐点，未完成波段不画实线。编号仅为顺序，不照搬图008。')
+                note='先按原折线高低点确认短期多空，再在方向转换时取整段极值；相邻分段以真实已确认原折线极值正式衔接，并作为二级输入；未完成波段不画实线。')

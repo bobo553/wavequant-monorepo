@@ -1059,6 +1059,82 @@
                     "summary": "首创环保 2026-06-03 L 3.21 到 2026-06-04 H 3.29 的讲义虚线已连续；连接为 display_only，理论响应未被修改，一级末跌高仍为 2026-06-02 H 3.28，Console 与失败请求均为 0。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-030",
+            "name": "wavequant-last-fall-high-market-bar-breakout",
+            "description": "让各级末跌高水平虚线延长到市场价格首次实际突破的 K 线，而不是等待新的同级趋势高点。",
+            "title": "按实际 K 线延长末跌高虚线",
+            "scope": "研究图表使用当前行情 K 线，在对应低点可知后寻找首根收盘价严格由末跌高下方穿越到上方的 K 线作为显示终点；只调整图表标识，不改变一二三级趋势确认、策略或回测。",
+            "dependencies": ["MONOREPO-024"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "皖通高速二级末跌高 2025-06-20 H3 18.58 的虚线延长到 2026-07-20 K 线",
+                "突破使用前收盘不高于关键位且当日收盘严格高于关键位，相等或仅盘中上影越线不算",
+                "只在对应低点已知之后且当前图窗范围内寻找首根突破 K 线",
+                "图表详情区分市场 K 线突破与同级趋势点确认，且不修改服务端趋势数据",
+                "wavequant-web lint、类型检查、单元测试、构建与真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、严格类型检查、50 项 Node 契约、6 项 Vitest 与 Next.js 静态生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "5 条 Chromium 页面流程全部通过。"
+                },
+                {
+                    "command": "sh.600012 level-two last-fall-high market breakout browser audit",
+                    "status": "passed",
+                    "summary": "皖通高速二级末跌高 H3 18.58 的虚线从 2025-06-20 延长到 2026-07-20 首根收盘突破 K 线（收盘 18.78、最高 18.85）；理论响应未修改，Console 与失败请求均为 0。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-031",
+            "name": "wavequant-formal-level-one-path-continuity",
+            "description": "将一级趋势跨讲义路径衔接统一到 Python 领域层，使图表展示与二、三级趋势使用同一组正式一级点。",
+            "title": "统一一级趋势显示与分级计算",
+            "scope": "把已有的跨路径真实来源极值衔接规则迁入 wavequant-core，保留因果确认时间和来源元数据；Web 只渲染服务端正式一级点。",
+            "dependencies": ["MONOREPO-026", "MONOREPO-028"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "华夏银行 2026-01-23 的 6.32 作为正式一级趋势低点返回",
+                "二级趋势计算读取跨路径补齐后的正式一级点，不再跳过 2026-01-23",
+                "跨路径连接保持高低类型、价格方向、来源日期和因果确认时间有效",
+                "前端不再生成独立于 Python 领域数据的一级业务点",
+                "Core、API、Web 单元测试、构建、Harness 与真实接口验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-core lint && pnpm --filter wavequant-core typecheck && pnpm --filter wavequant-core test:unit && pnpm --filter wavequant-core build",
+                    "status": "passed",
+                    "summary": "Core Ruff、严格 mypy、503 项 pytest 与 Python sdist/wheel 构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、33 项通过/1 项环境跳过的 pytest 与 Python 构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build && pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "Web ESLint、严格类型检查、6 项 Vitest、50 项 Node 契约、Next.js 生产构建与 5 条 Playwright 流程全部通过。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "31 个 Feature、18 个 Node workspace、2 个 Python workspace 与 32 份规则校验通过。"
+                },
+                {
+                    "command": "GET /api/tdx-theory?symbol=sh.600015&asof=2026-09-07 + /research?page=workspace browser inspection",
+                    "status": "passed",
+                    "summary": "华夏银行正式一级返回 2026-01-23 L 6.32（因果可用日 2026-03-23），二级序列从该点起算；Web 仅渲染 567 个服务端一级点，不再创建前端一级业务连接对象。"
+                }
+            ]
         }
     ]
 }

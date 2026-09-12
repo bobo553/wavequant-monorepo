@@ -63,7 +63,7 @@ export function ResearchChart(): JSX.Element {
                 summaryId="trend-summary"
                 className="trend-controls"
                 label="一级趋势线"
-                description="浅蓝实线按价格方向严格高低交替 · 跨小拐点 · 未解路径间仅用真实来源极值衔接（点击线段查看） · 未确认尾端不延伸"
+                description="浅蓝实线按价格方向严格高低交替 · 跨小拐点 · 路径间以真实已确认极值正式衔接并进入二级计算 · 未确认尾端不延伸"
                 waiting="等待一级趋势线结构…"
             />
             <TrendControl

@@ -65,6 +65,54 @@ test("last-fall-high breakout is the first later confirmed high strictly above t
         "a breakout outside the current chart window must not extend the guide early",
     );
 });
+test("last-fall-high guide ends at the first close breakout bar after the selected low is known", () => {
+    const points = [
+            { index: 5384, time: "2025-06-20", kind: "H", value: 18.58, label: "H3", available_at: "2025-07-02" },
+            {
+                index: 5451,
+                time: "2025-09-23",
+                kind: "L",
+                value: 12.73,
+                label: "L3",
+                available_at: "2026-06-08",
+            },
+            { index: 5613, time: "2026-06-02", kind: "H", value: 17.68, label: "H4", available_at: "2026-06-30" },
+            { index: 5629, time: "2026-06-25", kind: "L", value: 15.23, label: "L4", available_at: "2026-08-14" },
+        ],
+        bars = [
+            { time: "2026-06-07", high: 19, close: 18.9 },
+            { time: "2026-07-17", high: 18.85, close: 17.25 },
+            { time: "2026-07-18", high: 18.7, close: 18.58 },
+            { time: "2026-07-20", high: 18.85, close: 18.78 },
+            { time: "2026-07-21", high: 19.57, close: 18.06 },
+        ];
+    const summary = reversalWindowSummary(
+        [{ id: "secondary-wantong", kind: "secondary", points }],
+        "2025-05-01",
+        "2026-09-07",
+        bars,
+    );
+
+    assert.equal(summary.lastFallHigh.time, "2025-06-20");
+    assert.equal(summary.low.time, "2025-09-23");
+    assert.equal(summary.lastFallHighBreakout.time, "2026-07-20");
+    assert.equal(summary.lastFallHighBreakout.value, 18.78);
+    assert.equal(summary.lastFallHighBreakout.breakout_basis, "close_cross");
+    assert.equal(summary.lastFallHighBreakout.label, "收盘突破 K线");
+    const annotation = lastFallHighAnnotations([{ level: 2, summary }])[0];
+    assert.equal(annotation.raw.breakout.time, "2026-07-20");
+    assert.match(annotation.description, /K 线收盘 18\.78 首次从关键位下方严格突破/);
+    assert.equal(
+        reversalWindowSummary(
+            [{ id: "secondary-wantong", kind: "secondary", points }],
+            "2025-05-01",
+            "2026-07-18",
+            bars,
+        ).lastFallHighBreakout,
+        null,
+        "an intraday high or equal close must not extend the guide",
+    );
+});
 test("continuous level-one display path uses the bridge low and its preceding bridge high", () => {
     const points = [
         { index: 1, time: "2026-05-22", kind: "L", value: 3.04, label: "L7", available_at: "2026-05-25" },

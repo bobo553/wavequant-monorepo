@@ -80,7 +80,7 @@ export function reasonText(reason) {
         .map((r) => REASONS[r] || r)
         .join("；");
 }
-export function reversalWindowSummary(strokes, from, to) {
+export function reversalWindowSummary(strokes, from, to, marketBars = []) {
     const path = [...strokes].reverse().find((s) => s.points.some((p) => p.time >= from && p.time <= to));
     if (!path) return null;
     const points = path.points.filter((p) => p.time >= from && p.time <= to),
@@ -105,13 +105,46 @@ export function reversalWindowSummary(strokes, from, to) {
                   .reverse()
                   .find((point) => point.kind === "L") || high.preceding_turn
             : null;
-    // 末跌高只被对应低点之后首个严格更高的同级已确认 H 突破；相等仍是触碰。
-    const lastFallHighBreakout =
+    // 图上虚线表达市场价格何时实际越过关键位，而非等待该 K 线日后被确认为新的同级 H。
+    // 收盘必须从不高于关键位严格穿越到上方；盘中上影越线或相等收盘仍不算突破。
+    const breakoutStart = low ? (low.available_at > low.time ? low.available_at : low.time) : null;
+    let marketBreakout = null;
+    if (lowPosition >= 0 && lastFallHigh && breakoutStart && marketBars.length) {
+        for (let index = 1; index < marketBars.length; index++) {
+            const previous = marketBars[index - 1],
+                current = marketBars[index],
+                previousClose = Number(previous.close),
+                close = Number(current.close);
+            if (
+                current.time >= breakoutStart &&
+                current.time <= to &&
+                Number.isFinite(previousClose) &&
+                Number.isFinite(close) &&
+                previousClose <= lastFallHigh.value &&
+                close > lastFallHigh.value
+            ) {
+                marketBreakout = {
+                    index: current.index ?? index,
+                    time: current.time,
+                    available_at: current.time,
+                    kind: "K",
+                    label: "收盘突破 K线",
+                    value: close,
+                    high: Number(current.high),
+                    breakout_basis: "close_cross",
+                };
+                break;
+            }
+        }
+    }
+    // 无行情 K 线的纯规则调用继续使用同级点，以保持该函数可独立核验趋势结构。
+    const structuralBreakout =
         lowPosition >= 0 && lastFallHigh
             ? path.points
                   .slice(lowPosition + 1)
                   .find((p) => p.time <= to && p.kind === "H" && p.value > lastFallHigh.value) || null
             : null;
+    const lastFallHighBreakout = marketBars.length ? marketBreakout : structuralBreakout;
     const monotone = (sign) =>
         [highs, lows].every((seq) => seq.slice(1).every((p, i) => sign * (p.value - seq[i].value) > 0));
     const windowTrend =
@@ -156,6 +189,11 @@ export function lastFallHighAnnotations(levelSummaries) {
             breakout = summary?.lastFallHighBreakout,
             displaySummary = Boolean(summary?.displaySummary);
         if (!spec || !key || !low) return [];
+        const breakoutText = breakout
+            ? breakout.breakout_basis === "close_cross"
+                ? `随后 ${breakout.time} K 线收盘 ${num(breakout.value)} 首次从关键位下方严格突破，水平虚线延长到这根 K 线；盘中上影越线或收盘相等不算突破。`
+                : `随后 ${breakout.label}（${breakout.time}，${num(breakout.value)}）首次严格突破该末跌高，水平虚线延长到这根 K 线。`
+            : null;
         return [
             {
                 id: `last-fall-high:${level}:${summary.path}:${low.index}:${key.index}:${breakout?.index ?? "open"}`,
@@ -166,8 +204,8 @@ export function lastFallHighAnnotations(levelSummaries) {
                 price: key.value,
                 title: `${spec.numeral} 末跌高 · ${key.label} ${num(key.value)}`,
                 description: displaySummary
-                    ? `${spec.label}趋势线当前图窗按连续显示路径，以最低已确认来源低点 ${low.label}（${low.time}，${num(low.value)}）为分析低点；它左侧最近的交替高点 ${key.label}（${key.time}，${num(key.value)}）是图上末跌高。显示桥只统一图线与标注口径，不写回服务端趋势、二三级、策略或回测。${breakout ? `随后 ${breakout.label}（${breakout.time}，${num(breakout.value)}）首次严格突破该末跌高，水平虚线延长到这根 K 线。` : "截至当前图窗尚无后续高点严格突破，触碰不算突破。"}`
-                    : `${spec.label}趋势线当前图窗以最低已确认低点 ${low.label}（${low.time}，${num(low.value)}）为分析低点；它左侧最近的同级已确认高点 ${key.label}（${key.time}，${num(key.value)}）就是该低点的末跌高。该低点到 ${low.available_at} 才确认；窗口最高点和后续普通反弹都不会替换此定义。${breakout ? `随后 ${breakout.label}（${breakout.time}，${num(breakout.value)}）首次严格突破该末跌高，水平虚线延长到这根 K 线。` : "截至当前图窗尚无已确认同级高点严格突破，触碰不算突破。"}`,
+                    ? `${spec.label}趋势线当前图窗按连续显示路径，以最低已确认来源低点 ${low.label}（${low.time}，${num(low.value)}）为分析低点；它左侧最近的交替高点 ${key.label}（${key.time}，${num(key.value)}）是图上末跌高。显示桥只统一图线与标注口径，不写回服务端趋势、二三级、策略或回测。${breakoutText || "截至当前图窗尚无收盘价严格突破，盘中上影越线或收盘相等不算突破。"}`
+                    : `${spec.label}趋势线当前图窗以最低已确认低点 ${low.label}（${low.time}，${num(low.value)}）为分析低点；它左侧最近的同级已确认高点 ${key.label}（${key.time}，${num(key.value)}）就是该低点的末跌高。该低点到 ${low.available_at} 才确认；窗口最高点和后续普通反弹都不会替换此定义。${breakoutText || "截至当前图窗尚无收盘价严格突破，盘中上影越线或收盘相等不算突破。"}`,
                 sourceLabel: `${spec.label}趋势线${displaySummary ? "连续显示路径" : ""} · 末跌高定义核验`,
                 priority: 145 - level,
                 color: spec.color,

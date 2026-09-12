@@ -2,8 +2,14 @@ from datetime import datetime,timedelta
 import unittest
 
 from wavequant.domain.models.model import Bar
-from wavequant.domain.market_structure.lecture_trend import reversal_trends,_annotate,_wave_reversals
+from wavequant.domain.market_structure.lecture_trend import (
+    _annotate,
+    _connect_reversal_strokes,
+    _wave_reversals,
+    reversal_trends,
+)
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
+from wavequant.domain.market_structure.secondary_trend import secondary_trends
 
 
 def fixture(values):
@@ -109,6 +115,37 @@ class LectureTrendTests(unittest.TestCase):
         self.assertEqual(result['trend_level'],1)
         self.assertEqual(result['name'],'一级趋势线')
         self.assertGreater(result['input_turn_count'],result['confirmed_wave_count'])
+
+    def test_cross_path_base_extreme_becomes_formal_level_one_and_secondary_input(self):
+        """A displayed H-L-H bridge must not disappear at the next trend level."""
+        bars=[Bar(datetime(2026,1,1)+timedelta(days=i),'TEST',8,9,6,8,100) for i in range(16)]
+
+        def point(index,kind,value,state='reversal'):
+            return dict(index=index,ordinal=0,time=bars[index].timestamp.date().isoformat(),value=value,
+                        kind=kind,state=state,available_at=bars[index+1].timestamp.date().isoformat())
+
+        left=dict(id='reversal-before',source_path='before',kind='reversal',points=[
+            point(0,'L',6.43),point(1,'H',7.13),point(2,'L',6.76),
+            point(3,'H',7.08),point(4,'L',6.75),point(5,'H',6.91),
+        ])
+        right=dict(id='reversal-after',source_path='after',kind='reversal',points=[
+            point(8,'H',7.29),point(9,'L',6.92),point(10,'H',7.52),point(11,'L',6.52),
+            point(12,'H',7.01),point(13,'L',6.34),point(14,'H',7.16),
+        ])
+        sources=[dict(id='gap',points=[point(6,'L',6.32,'confirmed'),point(7,'L',6.31,'seed')])]
+
+        merged=_connect_reversal_strokes([left,right],sources)
+        self.assertEqual(len(merged),1)
+        bridge=merged[0]['points'][6]
+        self.assertEqual((bridge['index'],bridge['kind'],bridge['value']),(6,'L',6.32))
+        self.assertEqual(bridge['available_at'],right['points'][0]['available_at'])
+        self.assertEqual(bridge['confirmation_rule'],'cross_path_confirmed_base_extreme')
+        self.assertNotIn(6.31,[p['value'] for p in merged[0]['points']])
+
+        dates={bar.timestamp.date().isoformat():i for i,bar in enumerate(bars)}
+        _annotate(merged[0]['points'],'TEST',dates)
+        level2=secondary_trends(dict(strokes=merged),bars)
+        self.assertEqual([p['value'] for p in level2['strokes'][0]['points']],[6.32,7.52,6.34])
 
 
 if __name__=='__main__':unittest.main()

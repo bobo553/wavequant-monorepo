@@ -7,13 +7,7 @@ import {
     visibleAnnotations,
 } from "./annotations.js";
 import { num } from "./labels.js";
-import {
-    LectureOverlay,
-    connectedTrendStrokes,
-    lectureConnections,
-    reversalConnections,
-    secondaryConnections,
-} from "./lecture-overlay.js";
+import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
 
 const L = window.LightweightCharts;
 if (!L) throw new Error("TradingView SDK 未加载，请检查本地 npm 依赖。");
@@ -224,20 +218,21 @@ export class PriceChart {
             from = bars[Math.max(0, Math.floor(range?.from || 0))]?.time || bars[0].time;
         const to = bars[Math.min(bars.length - 1, Math.ceil(range?.to ?? bars.length - 1))]?.time || bars.at(-1).time;
         const span = range ? range.to - range.from : 140;
-        const levelOneStrokes = this.theory?.reversal_trends?.strokes || [],
-            levelOneConnections = reversalConnections(levelOneStrokes, this.theory?.lecture_drawing?.strokes || []),
-            levelOneDisplayStrokes = connectedTrendStrokes(levelOneStrokes, levelOneConnections);
+        // Python returns the authoritative continuous level-1 paths.  Rebuilding
+        // business pivots in the browser would make level-2 input disagree with
+        // the line and last-fall-high that the user is inspecting.
+        const levelOneStrokes = this.theory?.reversal_trends?.strokes || [];
         const trend =
             this.showTrend && this.drawingMode === "lecture" && this.polylineEnabled
-                ? reversalWindowSummary(levelOneDisplayStrokes, from, to)
+                ? reversalWindowSummary(levelOneStrokes, from, to, bars)
                 : null;
         const secondaryTrend =
             this.showSecondaryTrend && this.drawingMode === "lecture" && this.polylineEnabled
-                ? reversalWindowSummary(this.theory?.secondary_trends?.strokes || [], from, to)
+                ? reversalWindowSummary(this.theory?.secondary_trends?.strokes || [], from, to, bars)
                 : null;
         const tertiaryTrend =
             this.showTertiaryTrend && this.drawingMode === "lecture" && this.polylineEnabled
-                ? reversalWindowSummary(this.theory?.tertiary_trends?.strokes || [], from, to)
+                ? reversalWindowSummary(this.theory?.tertiary_trends?.strokes || [], from, to, bars)
                 : null;
         const trendKeys = lastFallHighAnnotations([
             { level: 1, summary: trend },
@@ -405,14 +400,11 @@ export class PriceChart {
         if (!this.polylineEnabled || !this.theory) return;
         const lecture = this.drawingMode === "lecture" && this.theory.lecture_drawing;
         const first = this.showTrend ? this.theory.reversal_trends?.strokes || [] : [];
-        // Connect before viewport filtering, so a gap with both anchors off-screen
-        // still has its crossing edge. These links never enter theory data.
         const second = this.showSecondaryTrend ? this.theory?.secondary_trends?.strokes || [] : [];
         const all = lecture
             ? [
                   ...this.theory.lecture_drawing.strokes,
                   ...lectureConnections(this.theory.lecture_drawing.strokes),
-                  ...reversalConnections(first, this.theory.lecture_drawing.strokes),
                   ...first,
                   ...secondaryConnections(second, this.theory.reversal_trends?.strokes || []),
                   ...second,

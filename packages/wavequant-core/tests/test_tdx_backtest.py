@@ -44,6 +44,11 @@ class TdxBacktestTests(unittest.TestCase):
                     bullish_index=1,attack=2))
         return SystemResult(signals,audit,dict(long_signals=sum(s.side=='LONG' for s in signals)))
 
+    def test_engine_fingerprint_includes_domain_trend_reducers(self):
+        hashes=TdxBacktester._engine_hashes()
+        self.assertIn('domain/market_structure/lecture_trend.py',hashes)
+        self.assertIn('domain/market_structure/secondary_trend.py',hashes)
+
     def run_fixture(self,end=None):
         with patch('wavequant.interfaces.research_tools.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))), \
              patch('wavequant.interfaces.research_tools.tdx_backtest.generate_system_signals',side_effect=self.generated):
