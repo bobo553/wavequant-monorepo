@@ -795,6 +795,39 @@
                     "summary": "Harness 通过 21 个功能、18 个 Node workspace、2 个 Python workspace 和 32 份规则检查。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-022",
+            "name": "wavequant-last-fall-high-chart-audit",
+            "description": "在研究 K 线图中按一级、二级和三级趋势结构标识当前图窗末跌高，帮助直接核验结构定义。",
+            "title": "标识各级末跌高定义",
+            "scope": "复用既有分级趋势返回值，在来源高点绘制分级标签，并以水平引导线连接其对应的图窗最低已确认低点；不修改趋势算法、策略和回测。",
+            "dependencies": ["MONOREPO-020"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "一级、二级和三级末跌高使用各自趋势线中图窗最低已确认低点的 preceding_turn",
+                "图中标签落在来源高点，水平引导线止于对应低点，颜色与三级趋势线一致",
+                "没有已确认结构的级别不补画，末跌高图层可以独立关闭",
+                "点击标签可查看来源高点、对应低点、确认日期和不使用窗口最高点的定义",
+                "wavequant-web lint、类型检查、单元测试、构建及真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、严格类型检查、42 项 Node 契约、6 项 Vitest 与 Next.js 静态生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "5 条 Chromium 流程覆盖共享 Shell、完整研究工作台、市场交互、主题与经典页面兼容页，全部通过。"
+                },
+                {
+                    "command": "sh.600519 local TDX browser audit at 2026-09-07",
+                    "status": "passed",
+                    "summary": "茅台当前图窗显示一级 H12 1295 与二级 H2 1568 两个末跌高标签及引导线；三级无已确认结构不补画，独立开关可清空图层，Console 与 Network 无错误。"
+                }
+            ]
         }
     ]
 }

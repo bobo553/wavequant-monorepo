@@ -1054,6 +1054,9 @@ tbody tr:hover {
 .key-rule {
     color: #b69af5;
 }
+.key-last-fall-high {
+    color: #8fb8ff;
+}
 .key-signal {
     color: #49d5dc;
 }

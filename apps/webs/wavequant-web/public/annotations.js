@@ -109,6 +109,51 @@ export function reversalWindowSummary(strokes, from, to) {
         windowTrend,
     };
 }
+
+const LAST_FALL_HIGH_LEVELS = {
+    1: { color: "#8fb8ff", label: "一级", numeral: "Ⅰ" },
+    2: { color: "#d6a3ff", label: "二级", numeral: "Ⅱ" },
+    3: { color: "#ffad72", label: "三级", numeral: "Ⅲ" },
+};
+
+/**
+ * 将视窗趋势摘要转换成可核验的末跌高标识。
+ *
+ * 标识固定落在“图窗最低已确认 L 左侧最近的同级已确认 H”上，并保留
+ * 对应低点及其确认日。这里不使用窗口最高点，也不从未确认尾端补点。
+ */
+export function lastFallHighAnnotations(levelSummaries) {
+    return levelSummaries.flatMap(({ level, summary }) => {
+        const spec = LAST_FALL_HIGH_LEVELS[level],
+            key = summary?.lastFallHigh,
+            low = summary?.low;
+        if (!spec || !key || !low) return [];
+        return [
+            {
+                id: `last-fall-high:${level}:${summary.path}:${low.index}:${key.index}`,
+                time: key.time,
+                sourceTime: key.time,
+                kind: "trend-key",
+                category: "trend-keys",
+                price: key.value,
+                title: `${spec.numeral} 末跌高 · ${key.label} ${num(key.value)}`,
+                description: `${spec.label}趋势线当前图窗以最低已确认低点 ${low.label}（${low.time}，${num(low.value)}）为分析低点；它左侧最近的同级已确认高点 ${key.label}（${key.time}，${num(key.value)}）就是该低点的末跌高。该低点到 ${low.available_at} 才确认；窗口最高点和后续普通反弹都不会替换此定义。`,
+                sourceLabel: `${spec.label}趋势线 · 末跌高定义核验`,
+                priority: 145 - level,
+                color: spec.color,
+                levels: [],
+                raw: {
+                    trend_level: level,
+                    definition: "nearest_confirmed_same_level_high_left_of_selected_low",
+                    key,
+                    selected_low: low,
+                    path: summary.path,
+                    known_at: low.available_at,
+                },
+            },
+        ];
+    });
+}
 export function ruleTitle(e) {
     if (e.event === "n_completed") return e.direction === "up" ? "正 N · 突破" : "倒 N · 跌破";
     if (e.event === "regime_confirmation") return e.regime || "盘态确认";
@@ -185,7 +230,9 @@ export function visibleAnnotations(items, options) {
                 ? options.fills && options.diagnostics
                 : m.category === "diagnostic"
                   ? options.rules && options.diagnostics
-                  : options.rules,
+                  : m.category === "trend-keys"
+                    ? options.trendKeys
+                    : options.rules,
     );
 }
 export function markerGroups(items, options, span = 140) {
@@ -208,6 +255,7 @@ export function markerGroups(items, options, span = 140) {
             const item = g.items[0],
                 isFill = item.kind === "fill",
                 isRule = item.kind === "rule",
+                isTrendKey = item.kind === "trend-key",
                 buy = item.side === "BUY" || item.side === "LONG";
             const text = isFill
                 ? `${buy ? "B 买入" : "S 卖出"} ${num(item.price)}`
@@ -220,7 +268,7 @@ export function markerGroups(items, options, span = 140) {
                     id: g.id,
                     time: g.time,
                     position:
-                        isFill && Number.isFinite(item.price)
+                        (isFill || isTrendKey) && Number.isFinite(item.price)
                             ? buy
                                 ? "atPriceBottom"
                                 : "atPriceTop"
@@ -229,23 +277,41 @@ export function markerGroups(items, options, span = 140) {
                               : buy
                                 ? "belowBar"
                                 : "aboveBar",
-                    ...(isFill && Number.isFinite(item.price) ? { price: item.price } : {}),
+                    ...((isFill || isTrendKey) && Number.isFinite(item.price) ? { price: item.price } : {}),
                     color: isFill
                         ? buy
                             ? "#ff7d8c"
                             : "#40d6a3"
-                        : isRule
-                          ? item.category === "diagnostic"
+                        : isTrendKey
+                          ? item.color
+                          : isRule
+                            ? item.category === "diagnostic"
+                                ? "#8292a9"
+                                : "#b69af5"
+                            : item.kind === "order"
                               ? "#8292a9"
-                              : "#b69af5"
-                          : item.kind === "order"
-                            ? "#8292a9"
-                            : buy
-                              ? "#49d5dc"
-                              : "#e6ba64",
-                    shape: isFill ? (buy ? "arrowUp" : "arrowDown") : isRule ? "square" : "circle",
+                              : buy
+                                ? "#49d5dc"
+                                : "#e6ba64",
+                    shape: isFill
+                        ? buy
+                            ? "arrowUp"
+                            : "arrowDown"
+                        : isTrendKey
+                          ? "arrowDown"
+                          : isRule
+                            ? "square"
+                            : "circle",
                     text: isRule && span > 70 && index % Math.ceil(span / 70) !== 0 ? "" : text,
-                    size: isFill ? 1.5 : isRule ? 0.65 : item.kind === "signal" && item.side === "EXIT" ? 0.45 : 1,
+                    size: isFill
+                        ? 1.5
+                        : isTrendKey
+                          ? 0.8
+                          : isRule
+                            ? 0.65
+                            : item.kind === "signal" && item.side === "EXIT"
+                              ? 0.45
+                              : 1,
                 },
             };
         });

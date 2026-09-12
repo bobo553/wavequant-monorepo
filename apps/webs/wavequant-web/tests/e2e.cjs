@@ -247,6 +247,16 @@ const results = [];
             await page.waitForFunction(
                 () => Number(document.querySelector("#price-chart").dataset.secondaryPoints) > 0,
             );
+            await page.waitForFunction(
+                () => Number(document.querySelector("#price-chart").dataset.lastFallHighGuides) > 0,
+            );
+            assert.ok(Number(await page.locator("#price-chart").getAttribute("data-last-fall-high-count")) > 0);
+            await page.getByRole("checkbox", { name: "各级末跌高", exact: true }).uncheck();
+            assert.equal(await page.locator("#price-chart").getAttribute("data-last-fall-high-guides"), "0");
+            await page.getByRole("checkbox", { name: "各级末跌高", exact: true }).check();
+            await page.waitForFunction(
+                () => Number(document.querySelector("#price-chart").dataset.lastFallHighGuides) > 0,
+            );
             const level1Count = await page.locator("#price-chart").getAttribute("data-reversal-points");
             const level2Count = await page.locator("#price-chart").getAttribute("data-secondary-points");
             await page.getByRole("checkbox", { name: "二级趋势线", exact: true }).uncheck();

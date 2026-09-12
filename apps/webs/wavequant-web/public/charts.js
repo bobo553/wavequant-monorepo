@@ -1,6 +1,7 @@
 import {
     avoidLabelCollisions,
     buildAnnotations,
+    lastFallHighAnnotations,
     markerGroups,
     reversalWindowSummary,
     visibleAnnotations,
@@ -115,10 +116,20 @@ export class PriceChart {
         this.polylineEnabled = false;
         this.polylineKey = "";
         this.levelLines = [];
+        this.lastFallHighLines = [];
+        this.lastFallHighLineKey = "";
+        this.windowAnnotations = [];
         this.data = null;
         this.theory = null;
         this.annotations = [];
-        this.options = { signals: true, fills: true, rules: true, diagnostics: false, levels: true };
+        this.options = {
+            signals: true,
+            fills: true,
+            rules: true,
+            diagnostics: false,
+            levels: true,
+            trendKeys: true,
+        };
         this.showTeaching = true;
         this.drawingMode = "lecture";
         this.showTrend = true;
@@ -207,10 +218,6 @@ export class PriceChart {
             from = bars[Math.max(0, Math.floor(range?.from || 0))]?.time || bars[0].time;
         const to = bars[Math.min(bars.length - 1, Math.ceil(range?.to ?? bars.length - 1))]?.time || bars.at(-1).time;
         const span = range ? range.to - range.from : 140;
-        this.groups = markerGroups(this.annotations, this.options, span).filter((g) => g.time >= from && g.time <= to);
-        avoidLabelCollisions(this.groups, (time) => this.chart.timeScale().timeToCoordinate(time));
-        this.markers.setMarkers(this.groups.map((g) => g.marker));
-        this.container.dataset.markerCount = this.groups.length;
         const trend =
             this.showTrend && this.drawingMode === "lecture" && this.polylineEnabled
                 ? reversalWindowSummary(this.theory?.reversal_trends?.strokes || [], from, to)
@@ -223,6 +230,20 @@ export class PriceChart {
             this.showTertiaryTrend && this.drawingMode === "lecture" && this.polylineEnabled
                 ? reversalWindowSummary(this.theory?.tertiary_trends?.strokes || [], from, to)
                 : null;
+        const trendKeys = lastFallHighAnnotations([
+            { level: 1, summary: trend },
+            { level: 2, summary: secondaryTrend },
+            { level: 3, summary: tertiaryTrend },
+        ]);
+        this.windowAnnotations = [...this.annotations, ...trendKeys];
+        this.groups = markerGroups(this.windowAnnotations, this.options, span).filter(
+            (g) => g.time >= from && g.time <= to,
+        );
+        avoidLabelCollisions(this.groups, (time) => this.chart.timeScale().timeToCoordinate(time));
+        this.markers.setMarkers(this.groups.map((g) => g.marker));
+        this.drawLastFallHighGuides(trendKeys);
+        this.container.dataset.markerCount = this.groups.length;
+        this.container.dataset.lastFallHighCount = String(trendKeys.length);
         this.onVisible(
             this.groups.flatMap((g) => g.items),
             { from, to, trend, secondaryTrend, tertiaryTrend },
@@ -241,7 +262,7 @@ export class PriceChart {
         );
     }
     selectAnnotation(id, focus = true, items = null) {
-        const selected = this.annotations.find((m) => m.id === id) || this.lectureOverlay.annotation(id);
+        const selected = this.windowAnnotations.find((m) => m.id === id) || this.lectureOverlay.annotation(id);
         if (!selected) return;
         this.selected = selected;
         if (focus) this.focus(selected.time);
@@ -252,6 +273,40 @@ export class PriceChart {
         for (const s of this.levelLines) this.chart.removeSeries(s);
         this.levelLines = [];
         this.container.dataset.levelCount = "0";
+    }
+    clearLastFallHighGuides() {
+        for (const series of this.lastFallHighLines) this.chart.removeSeries(series);
+        this.lastFallHighLines = [];
+        this.lastFallHighLineKey = "";
+        this.container.dataset.lastFallHighGuides = "0";
+    }
+    drawLastFallHighGuides(items) {
+        const visible = this.options.trendKeys ? items : [];
+        const key = visible.map((item) => item.id).join("|");
+        if (key === this.lastFallHighLineKey) return;
+        this.clearLastFallHighGuides();
+        this.lastFallHighLineKey = key;
+        for (const item of visible) {
+            const low = item.raw.selected_low;
+            if (!low || item.time >= low.time) continue;
+            const series = this.chart.addSeries(L.LineSeries, {
+                color: withOpacity(item.color, 0.78),
+                lineStyle: 3,
+                lineWidth: 1,
+                title: item.title.split(" · ")[0],
+                lastValueVisible: true,
+                priceLineVisible: false,
+                crosshairMarkerVisible: false,
+                pointMarkersVisible: false,
+                autoscaleInfoProvider: () => null,
+            });
+            series.setData([
+                { time: item.time, value: item.price },
+                { time: low.time, value: item.price },
+            ]);
+            this.lastFallHighLines.push(series);
+        }
+        this.container.dataset.lastFallHighGuides = String(this.lastFallHighLines.length);
     }
     drawLevels() {
         this.clearLevels();
@@ -291,6 +346,9 @@ export class PriceChart {
     clearTheory() {
         for (const series of this.lines) this.chart.removeSeries(series);
         this.lines = [];
+        this.windowAnnotations = [];
+        this.clearLastFallHighGuides();
+        this.container.dataset.lastFallHighCount = "0";
         this.polylineEnabled = false;
         this.clearPolyline();
     }

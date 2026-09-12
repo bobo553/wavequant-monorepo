@@ -4,6 +4,7 @@ import test from "node:test";
 import {
     avoidLabelCollisions,
     buildAnnotations,
+    lastFallHighAnnotations,
     markerGroups,
     reasonText,
     reversalWindowSummary,
@@ -37,6 +38,36 @@ test("window key follows extreme predecessor, not latest opposite pivot", () => 
     assert.equal(summary.low.time, "b");
     assert.equal(summary.high.time, "c");
     assert.equal(reversalWindowSummary([], "a", "z"), null);
+});
+test("last-fall-high labels identify each level at the source high and retain the selected low", () => {
+    const makeSummary = (level) => ({
+        path: `level-${level}`,
+        lastFallHigh: { index: level, label: `H${level}`, time: `2026-0${level}-01`, value: 100 + level },
+        low: {
+            available_at: `2026-0${level}-10`,
+            index: level + 10,
+            kind: "L",
+            label: `L${level}`,
+            time: `2026-0${level}-05`,
+            value: 90 - level,
+        },
+    });
+    const items = lastFallHighAnnotations([1, 2, 3].map((level) => ({ level, summary: makeSummary(level) })));
+    assert.deepEqual(
+        items.map((item) => [item.raw.trend_level, item.time, item.price, item.raw.selected_low.label]),
+        [
+            [1, "2026-01-01", 101, "L1"],
+            [2, "2026-02-01", 102, "L2"],
+            [3, "2026-03-01", 103, "L3"],
+        ],
+    );
+    assert.match(items[0].description, /左侧最近的同级已确认高点/);
+    assert.deepEqual(lastFallHighAnnotations([{ level: 1, summary: null }]), []);
+    const marker = markerGroups(items, { ...options, trendKeys: true })[0].marker;
+    assert.equal(marker.position, "atPriceTop");
+    assert.equal(marker.price, 101);
+    assert.match(marker.text, /Ⅰ 末跌高/);
+    assert.equal(visibleAnnotations(items, { ...options, trendKeys: false }).length, 0);
 });
 const view = {
     asof: "2026-01-03",
