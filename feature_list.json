@@ -1026,6 +1026,39 @@
                     "summary": "首创环保一级视窗摘要和图上标识均改为 2026-06-02 H·桥 3.28，对应最低点 2026-06-30 L·桥 2.68；8 月 4 日 3.01 不再标为当前末跌高，后续无严格突破，Console 与 Network 无错误。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-029",
+            "name": "wavequant-lecture-path-gap-connection",
+            "description": "修复首创环保讲义折线在相邻来源路径边界处遗漏连接的问题。",
+            "title": "连接相邻讲义折线路径",
+            "scope": "仅在浏览器图表中为时间相邻、端点高低类型交替且价格方向成立的讲义路径补充 display_only 虚线连接；不修改服务端讲义路径、一级趋势、末跌高、策略或回测。",
+            "dependencies": ["MONOREPO-028"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "首创环保 2026-06-03 L 3.21 与 2026-06-04 H 3.29 之间显示连续的讲义虚线",
+                "只连接按来源索引相邻且满足 L→H 上涨或 H→L 下跌的路径端点",
+                "同类端点、价格方向错误、重叠路径和缺失来源点保持断开",
+                "连接保持 display_only，不进入一级趋势、末跌高、二三级、策略或回测",
+                "wavequant-web lint、类型检查、单元测试、构建与真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、严格类型检查、49 项 Node 契约、6 项 Vitest 与 Next.js 静态生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "5 条 Chromium 页面流程全部通过。"
+                },
+                {
+                    "command": "sh.600008 adjacent lecture path browser audit",
+                    "status": "passed",
+                    "summary": "首创环保 2026-06-03 L 3.21 到 2026-06-04 H 3.29 的讲义虚线已连续；连接为 display_only，理论响应未被修改，一级末跌高仍为 2026-06-02 H 3.28，Console 与失败请求均为 0。"
+                }
+            ]
         }
     ]
 }

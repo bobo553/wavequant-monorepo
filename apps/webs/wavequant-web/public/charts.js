@@ -7,7 +7,13 @@ import {
     visibleAnnotations,
 } from "./annotations.js";
 import { num } from "./labels.js";
-import { LectureOverlay, connectedTrendStrokes, reversalConnections, secondaryConnections } from "./lecture-overlay.js";
+import {
+    LectureOverlay,
+    connectedTrendStrokes,
+    lectureConnections,
+    reversalConnections,
+    secondaryConnections,
+} from "./lecture-overlay.js";
 
 const L = window.LightweightCharts;
 if (!L) throw new Error("TradingView SDK 未加载，请检查本地 npm 依赖。");
@@ -405,6 +411,7 @@ export class PriceChart {
         const all = lecture
             ? [
                   ...this.theory.lecture_drawing.strokes,
+                  ...lectureConnections(this.theory.lecture_drawing.strokes),
                   ...reversalConnections(first, this.theory.lecture_drawing.strokes),
                   ...first,
                   ...secondaryConnections(second, this.theory.reversal_trends?.strokes || []),

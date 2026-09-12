@@ -12,6 +12,38 @@ export function formatPivotPrice(value) {
     return Number.isFinite(price) ? pivotPriceFormatter.format(price) : "";
 }
 
+/**
+ * 为被服务端规则边界拆开的相邻讲义路径补一条纯显示边。
+ * 只接受相邻 K 线上几何方向成立的 H/L 端点，避免用前端连线掩盖缺失交易日、
+ * 同类端点或错误价格方向；连接不会写回讲义结构，也不会成为上级趋势输入。
+ */
+export function lectureConnections(strokes) {
+    const order = (a, b) => a.index - b.index || (a.ordinal ?? 0) - (b.ordinal ?? 0);
+    const paths = strokes
+        .filter((stroke) => !stroke.display_only && stroke.points.length)
+        .slice()
+        .sort((a, b) => order(a.points[0], b.points[0]));
+    const links = [];
+    for (let index = 1; index < paths.length; index++) {
+        const left = paths[index - 1],
+            right = paths[index],
+            from = left.points.at(-1),
+            to = right.points[0];
+        if (to.index - from.index !== 1 || !isAlternatingTrendLeg(from, to)) continue;
+        links.push({
+            id: `lecture-connection-${left.id}-${right.id}`,
+            kind: "lecture-connection",
+            source_paths: [left.id, right.id],
+            display_only: true,
+            source_level: 0,
+            available_at: from.available_at > to.available_at ? from.available_at : to.available_at,
+            connection_rule: "adjacent_opposite_endpoints",
+            points: [from, to],
+        });
+    }
+    return links;
+}
+
 export function reversalConnections(strokes, baseStrokes = []) {
     return trendConnections(strokes, baseStrokes, 1);
 }
@@ -277,6 +309,7 @@ export class LectureOverlay {
         this.container.dataset.reversalConnections = this.strokes.filter(
             (s) => s.kind === "reversal-connection",
         ).length;
+        this.container.dataset.lectureConnections = this.strokes.filter((s) => s.kind === "lecture-connection").length;
         this.container.dataset.secondaryPoints = this.strokes
             .filter((s) => s.kind === "secondary")
             .reduce((n, s) => n + s.points.length, 0);

@@ -5,10 +5,54 @@ import {
     LectureOverlay,
     connectedTrendStrokes,
     formatPivotPrice,
+    lectureConnections,
     projectStroke,
     reversalConnections,
     secondaryConnections,
 } from "../public/lecture-overlay.js";
+
+test("adjacent lecture paths keep a display-only L-H edge across their source boundary", () => {
+    const point = (index, time, kind, value) => ({
+        index,
+        ordinal: 0,
+        time,
+        available_at: time,
+        kind,
+        value,
+        state: "confirmed",
+    });
+    const juneSecondHigh = point(6229, "2026-06-02", "H", 3.28),
+        juneThirdLow = point(6230, "2026-06-03", "L", 3.21),
+        juneFourthHigh = point(6231, "2026-06-04", "H", 3.29),
+        juneEighthLow = point(6233, "2026-06-08", "L", 3.05);
+    const paths = [
+            { id: "lecture-6033", kind: "path", points: [juneSecondHigh, juneThirdLow] },
+            { id: "lecture-6231", kind: "ordinary", points: [juneFourthHigh, juneEighthLow] },
+        ],
+        before = structuredClone(paths),
+        links = lectureConnections(paths);
+
+    assert.deepEqual(paths, before);
+    assert.equal(links.length, 1);
+    assert.deepEqual(links[0].source_paths, ["lecture-6033", "lecture-6231"]);
+    assert.deepEqual(links[0].points, [juneThirdLow, juneFourthHigh]);
+    assert.equal(links[0].kind, "lecture-connection");
+    assert.equal(links[0].display_only, true);
+    assert.equal(links[0].connection_rule, "adjacent_opposite_endpoints");
+});
+
+test("lecture path links reject non-adjacent, same-kind and wrong-direction endpoints", () => {
+    const path = (id, index, kind, value) => ({
+        id,
+        kind: "ordinary",
+        points: [{ index, ordinal: 0, time: `d${index}`, available_at: `d${index}`, kind, value }],
+    });
+
+    assert.deepEqual(lectureConnections([path("a", 1, "L", 10), path("b", 3, "H", 12)]), []);
+    assert.deepEqual(lectureConnections([path("a", 1, "L", 10), path("b", 2, "L", 9)]), []);
+    assert.deepEqual(lectureConnections([path("a", 1, "L", 10), path("b", 2, "H", 9)]), []);
+    assert.deepEqual(lectureConnections([path("a", 1, "H", 10), path("b", 2, "L", 11)]), []);
+});
 
 test("level-two links use confirmed level-one extremes, not raw or display-only points", () => {
     const p = (i, kind, value, known = i) => ({
