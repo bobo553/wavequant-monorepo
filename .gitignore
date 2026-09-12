@@ -18,6 +18,7 @@ node_modules
 coverage
 test-results
 playwright-report
+results/
 
 # Turbo
 .turbo
@@ -31,6 +32,7 @@ playwright-report
 out/
 build
 dist
+apps/webs/wavequant-web/public/vendor/
 
 
 # Debug

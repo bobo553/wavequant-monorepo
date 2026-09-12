@@ -37,7 +37,7 @@ fs.mkdirSync(output, { recursive: true });
         console.log("PASS " + name);
     }
     try {
-        await page.goto(base);
+        await page.goto(base + "/research");
         await loaded();
         await test("four selectable V3 plans and fresh context", async () => {
             assert.equal(

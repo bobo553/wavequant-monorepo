@@ -19,6 +19,13 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--port", type=int, default=8765)
     value.add_argument("--tdx-root", type=Path, default=Path("D:/TDX"))
     value.add_argument("--web-root", type=Path)
+    value.add_argument("--api-only", action="store_true", help="serve API routes without requiring a built Web workspace")
+    value.add_argument(
+        "--allow-origin",
+        action="append",
+        default=[],
+        help="additional exact loopback Web origin accepted by the API proxy",
+    )
     actions = value.add_mutually_exclusive_group()
     actions.add_argument("--check-infrastructure", action="store_true", help="check configured SQL and Redis services")
     actions.add_argument("--init-database", action="store_true", help="create the initial SQL schema")
@@ -63,7 +70,14 @@ def main() -> None:
             return
         finally:
             infrastructure.close()
-    serve_dashboard(args.root, args.port, args.tdx_root, args.web_root)
+    serve_dashboard(
+        args.root,
+        args.port,
+        args.tdx_root,
+        args.web_root,
+        serve_static=not args.api_only,
+        allowed_origins=tuple(args.allow_origin),
+    )
 
 
 if __name__ == "__main__":

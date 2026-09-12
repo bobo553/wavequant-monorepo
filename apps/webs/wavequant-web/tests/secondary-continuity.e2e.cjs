@@ -16,7 +16,7 @@ fs.mkdirSync(output, { recursive: true });
         checks = [];
     page.on("pageerror", (e) => errors.push(e.message));
     try {
-        await page.goto(base);
+        await page.goto(base + "/research");
         await page.waitForFunction(
             () => document.querySelector("#loading").hidden && document.querySelector("#error").hidden,
         );

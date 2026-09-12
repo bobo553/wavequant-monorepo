@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { comparisonValues, ratioContextKey, ratioPlans } from "../src/ratio-comparison.js";
+import { comparisonValues, ratioContextKey, ratioPlans } from "../public/ratio-comparison.js";
 
 test("four explicit independent ratios and empty sample is not a zero win rate", () => {
     assert.equal(new Set(ratioPlans.map((p) => p[0])).size, 4);

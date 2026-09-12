@@ -1,7 +1,16 @@
 {
     "$schema": "https://turborepo.com/schema.json",
     "ui": "tui",
-    "globalEnv": ["NODE_ENV", "CI", "NEXT_PUBLIC_API_URL", "EXPO_PUBLIC_API_URL"],
+    "globalEnv": [
+        "NODE_ENV",
+        "CI",
+        "NEXT_PUBLIC_API_URL",
+        "EXPO_PUBLIC_API_URL",
+        "npm_execpath",
+        "WAVEQUANT_API_PORT",
+        "WAVEQUANT_RESULTS_ROOT",
+        "WAVEQUANT_TDX_ROOT"
+    ],
     "tasks": {
         "build": {
             "dependsOn": ["^build"],

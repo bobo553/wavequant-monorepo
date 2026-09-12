@@ -9,7 +9,7 @@ import {
     reversalWindowSummary,
     ruleTitle,
     visibleAnnotations,
-} from "../src/annotations.js";
+} from "../public/annotations.js";
 
 const options = { signals: true, fills: true, rules: true, diagnostics: false };
 test("sizing rejection and structural cutoff have explicit Chinese explanations", () => {

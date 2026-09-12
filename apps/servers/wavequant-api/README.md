@@ -14,10 +14,19 @@ API 还提供可选的 SQL 与 Redis 基础设施：
 在 monorepo 根目录完成依赖初始化后执行：
 
 ```powershell
+pnpm --filter wavequant-web build
 pnpm --filter wavequant-api dashboard
 ```
 
-默认打开 `http://127.0.0.1:8765`。研究结果从 `packages/wavequant-core/results/operations_v1` 读取，可通过 `--root`、`--tdx-root`、`--port` 与 `--web-root` 覆盖。
+默认打开 `http://127.0.0.1:8765`，进入从原 `E:\WorkSpace\股票\web` 迁移的研究工作台；同一页面也可通过 `/research` 访问。Next.js 全景市场看盘保留在 `/market`。API 只从 `apps/webs/wavequant-web/out` 建立静态文件清单，不提供目录浏览或工作区外文件。研究结果从 `packages/wavequant-core/results/operations_v1` 读取，可通过 `--root`、`--tdx-root`、`--port` 与 `--web-root` 覆盖。
+
+复用迁移前机器上的现有封存结果与通达信行情时，可显式指定数据目录：
+
+```powershell
+pnpm --filter wavequant-api python -- -m wavequant_api.cli --root "E:\WorkSpace\股票\results\operations_v1" --tdx-root "D:\TDX" --port 8765
+```
+
+API 直接依赖 `wavequant-core[tdx]`，完整安装会包含现场复权回测所需的 `pytdx` 与 `pandas`。
 
 ## MySQL 与 Redis
 

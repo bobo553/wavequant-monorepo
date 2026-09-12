@@ -26,6 +26,7 @@ function universe() {
     return isLocal() ? state.tdx?.stocks || [] : currentRun().symbols;
 }
 const titles = { workspace: "K 线复盘", performance: "策略绩效", orders: "订单与信号", health: "系统状态" };
+const requestedPage = new URLSearchParams(window.location.search).get("page");
 function cell(text, cls = "") {
     const td = document.createElement("td");
     td.textContent = text;
@@ -855,6 +856,7 @@ async function start() {
         for (const r of state.catalog.runs) option($("run-select"), r.id, r.id.replace("acceptance_", ""));
         fillSymbols();
         await loadView();
+        if (requestedPage && Object.hasOwn(titles, requestedPage)) showPage(requestedPage);
     } catch (e) {
         stockList.setStocks([], "");
         $("stock-count").textContent = "不可用";

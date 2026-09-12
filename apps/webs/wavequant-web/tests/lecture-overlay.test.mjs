@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { LectureOverlay, projectStroke, reversalConnections, secondaryConnections } from "../src/lecture-overlay.js";
+import { LectureOverlay, projectStroke, reversalConnections, secondaryConnections } from "../public/lecture-overlay.js";
 
 test("level-two links use confirmed level-one extremes, not raw or display-only points", () => {
     const p = (i, kind, value, known = i) => ({

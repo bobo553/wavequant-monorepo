@@ -1,0 +1,88 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const workspaceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const sourceRoot = join(workspaceRoot, "src");
+const publicRoot = join(workspaceRoot, "public");
+
+test("default page renders the React research workbench and market remains a Next.js route", () => {
+    const page = readFileSync(join(sourceRoot, "app", "page.tsx"), "utf8");
+    const marketPage = readFileSync(join(sourceRoot, "app", "market", "page.tsx"), "utf8");
+    const dashboard = readFileSync(join(sourceRoot, "features", "market-dashboard", "market-dashboard.tsx"), "utf8");
+    const packageJson = JSON.parse(readFileSync(join(workspaceRoot, "package.json"), "utf8"));
+    assert.match(page, /ResearchWorkbench/);
+    assert.doesNotMatch(page, /httpEquiv|research\.html/);
+    assert.match(marketPage, /MarketShell/);
+    assert.match(marketPage, /MarketDashboard/);
+    assert.match(dashboard, /"use client"/);
+    assert.equal(packageJson.dependencies.next, "^16.2.6");
+    assert.equal(packageJson.dependencies.react, "^19.2.6");
+    assert.equal(packageJson.dependencies["@repo/design-system-web"], "workspace:*");
+});
+
+test("feature modules retain the overview, ladder, responsive and chart boundaries", () => {
+    const dashboard = readFileSync(join(sourceRoot, "features", "market-dashboard", "market-dashboard.tsx"), "utf8");
+    const chart = readFileSync(
+        join(sourceRoot, "features", "market-dashboard", "components", "market-breadth-chart.tsx"),
+        "utf8",
+    );
+    const styles = readFileSync(join(sourceRoot, "app", "globals.css"), "utf8");
+    assert.match(dashboard, /OverviewView/);
+    assert.match(dashboard, /LadderView/);
+    assert.match(chart, /ResizeObserver/);
+    assert.match(chart, /echarts\/core/);
+    assert.match(styles, /@repo\/design-system-web\/globals\.css/);
+    for (const component of [
+        "sector-view",
+        "theme-view",
+        "leader-view",
+        "radar-view",
+        "multi-stock-view",
+        "review-view",
+    ]) {
+        assert.match(
+            readFileSync(join(sourceRoot, "features", "market-dashboard", "components", `${component}.tsx`), "utf8"),
+            /export function/,
+        );
+    }
+});
+
+test("the complete classic v2 interaction prototype remains available as a compatibility route", () => {
+    const html = readFileSync(join(publicRoot, "wavequant-v2-classic.html"), "utf8");
+    for (const navigation of ["market", "research", "backtest", "trading", "signals", "settings"]) {
+        assert.match(html, new RegExp(`data-nav="${navigation}"`));
+    }
+    for (const behavior of ["mOverview", "mSectorView", "mLadderView", "mRadarView", "mMultiView", "mReviewView"]) {
+        assert.match(html, new RegExp(`function ${behavior}`));
+    }
+});
+
+test("the complete server-backed research workbench is composed from React feature components", () => {
+    const featureRoot = join(sourceRoot, "features", "research-workbench");
+    const workbench = readFileSync(join(featureRoot, "research-workbench.tsx"), "utf8");
+    const runtime = readFileSync(join(featureRoot, "runtime", "research-runtime.tsx"), "utf8");
+    const components =
+        readFileSync(join(featureRoot, "components", "research-secondary-pages.tsx"), "utf8") +
+        readFileSync(join(featureRoot, "components", "research-controls.tsx"), "utf8") +
+        readFileSync(join(featureRoot, "components", "research-chart.tsx"), "utf8") +
+        readFileSync(join(featureRoot, "components", "stock-browser.tsx"), "utf8");
+    assert.match(workbench, /data-wavequant-react-workbench/);
+    assert.match(workbench, /ResearchChart/);
+    assert.match(workbench, /StockBrowser/);
+    assert.match(workbench, /ResearchRuntime/);
+    assert.match(runtime, /"\/app\.js"/);
+    for (const id of [
+        "price-chart",
+        "run-stock-backtest",
+        "scan-start",
+        "ratio-results",
+        "equity-chart",
+        "orders-body",
+        "health-body",
+    ]) {
+        assert.match(components, new RegExp(`(?:id|bodyId)="${id}"`));
+    }
+});

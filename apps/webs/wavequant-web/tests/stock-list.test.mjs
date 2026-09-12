@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { filterStocks, stockInfo } from "../src/stock-list.js";
+import { filterStocks, stockInfo } from "../public/stock-list.js";
 
 const stocks = ["sh.600519", "sh.600036", "sz.000858", "sz.000333"].map((symbol) => ({
     symbol,

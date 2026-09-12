@@ -2,11 +2,11 @@
 
 ## Last Updated
 
-2026-09-11
+2026-09-12
 
 ## Current Objective
 
-当前没有进行中的功能；功能状态以 `feature_list.json` 为准。
+当前没有进行中的 Feature；MONOREPO-017 已完成，原股票项目 Web 工作台已由 `apps/webs/wavequant-web` 的 Next.js App Router 与 React 直接渲染，并可由单一开发命令连同本机 API 启动。
 
 ## Current State
 
@@ -18,6 +18,7 @@
 - 公开 Roadmap 使用 Now、Next、Later 与 Delivered 表达方向，精确执行状态继续由 `feature_list.json` 独占维护。
 - WaveQuant 已拆分为 `packages/wavequant-core`、`apps/servers/wavequant-api` 与 `apps/webs/wavequant-web` 三个独立边界，并纳入 pnpm、Python 与 CI 质量门禁。
 - WaveQuant API 已具备可选 SQLAlchemy 与 Redis Infrastructure 层；SQLite 封存证据、共享 SQL 元数据和可重建 Redis 缓存保持职责分离。
+- WaveQuant Web 的 `/` 与 `/research` 由 Next.js App Router 和 React 19 直接渲染完整研究工作台；Tailwind CSS 4、共享 shadcn 原语和 ECharts 全景市场页保留在 `/market`。
 - Harness 可同时发现并验证 Node 与 Python workspace 的进度文件。
 - 详细进度由各 pnpm workspace 根目录的 `progress.md` 维护。
 
@@ -39,6 +40,11 @@
 - 完成 MONOREPO-010：将 WaveQuant 当前未忽略工作树迁入 `apps/tools/wavequant`，采用 Python `src` 布局、pnpm 管理浏览器依赖，并接入统一脚本、CI、Harness 与文档。
 - 完成 MONOREPO-011：核心研究、HTTP 适配器和浏览器工作台已按职责拆分，建立单向依赖、独立构建和统一本地启动入口。
 - 完成 MONOREPO-012：WaveQuant API 新增 MySQL/PostgreSQL 共享运行索引、Redis 缓存与锁、健康检查、显式初始化/索引命令和本地 Compose 环境。
+- 完成 MONOREPO-013：按 WaveQuant v2 设计稿还原全景市场看盘页，将原型拆为 CSP 兼容的同源资源，并保留 `/research` 工作台。
+- 完成 MONOREPO-014：参考 Admin 工程结构，将全景市场看盘迁移到 Next.js App Router、共享设计系统和 features 分层，并让 API 安全提供静态导出产物。
+- 完成 MONOREPO-015：补齐 Next.js 八个看盘视图的共享上下文、搜索、钻取、观察组、异动雷达、多股同屏、复盘、导出和个性化设置，并保留原始 v2 六大模块的完整兼容入口。
+- MONOREPO-016 已完成实现与专项验收：源项目 505 项 Python、37 项 Web 契约全部建立目标映射，原 Web 恢复为默认入口，全景页迁至 `/market`，API 补齐 `wavequant-core[tdx]` 现场回测运行依赖。
+- 完成 MONOREPO-017：原研究页拆分为 React 业务组件与客户端运行时边界；`wavequant-web dev` 同时启动 Next.js 与只读 API，并修复开发代理下买点扫描 POST 的本机来源校验。
 
 ## Verification Evidence
 
@@ -67,6 +73,21 @@
 - MONOREPO-011 完成后的 `pnpm verify`：11 个功能、17 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、全仓 lint、类型检查、单元测试及构建全部通过。
 - MONOREPO-012 workspace 门禁：Ruff、严格 mypy、31 项测试和 Python 构建通过；Compose 静态解析及显式建表/健康检查冒烟通过。
 - MONOREPO-012 完成后的 `pnpm verify`：12 个功能、17 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、全仓 lint、类型检查、单元测试及构建全部通过。
+- MONOREPO-013 Chromium 验收：1920 桌面市场总览与涨停阶梯切换通过，390 窄屏无整页横向溢出，且无页面异常和外部网络请求。
+- MONOREPO-013 workspace 门禁：Web 40 项单元测试、API 31 项测试通过且 1 项外部服务测试按配置跳过，两个 workspace 的 lint、类型检查与构建全部通过。
+- MONOREPO-013 完成后的 `pnpm verify`：13 个功能、17 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、全仓 lint、类型检查、单元测试及构建全部通过。
+- MONOREPO-014 Web 门禁：ESLint、严格类型检查、1 项 React 组件测试、40 项兼容单元测试、Next.js 静态导出和 Playwright 端到端验证全部通过。
+- MONOREPO-014 API 门禁：Ruff、严格 mypy、31 项测试通过且 1 项按环境跳过，Next.js `out`、研究兼容页和路径遍历保护契约通过。
+- MONOREPO-014 完成后的 `pnpm verify`：14 个功能、17 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、全仓 lint、类型检查、单元测试及构建全部通过。
+- MONOREPO-015 Web 门禁：ESLint、严格类型检查、2 项 React 组件测试、41 项兼容/结构测试和 Next.js 静态导出全部通过。
+- MONOREPO-015 Chromium 验收：3 条流程覆盖 Next.js 八视图关键交互、搜索、设置、导出、复盘、390 窄屏，以及经典 v2 六大模块和八个市场页签，全程无页面异常。
+- 原始 `WaveQuant_全景看盘_v2.html` 与 `/wavequant-v2-classic.html` 规范化文本逐字相同，均为 219695 个字符。
+- MONOREPO-015 完成后的 `pnpm verify`：15 个功能、17 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、全仓 lint、类型检查、单元测试及 15 个生产构建任务全部通过。
+- MONOREPO-016 源基线：`E:\WorkSpace\股票` 的 505 项 Python 测试与 37 项 Web 测试全部通过；目标测试按 Core 483 项、API HTTP/可视化契约和 Web 兼容契约覆盖。
+- MONOREPO-016 真实数据 Chromium 验收：23 项完整工作台流程、4 项幅度比较、6 项慢扫描传输与 3 项二级趋势连续性全部通过；使用 5,895 只有日线数据的本地股票和源封存结果，无外部网络依赖。
+- MONOREPO-016 完成后的 `pnpm verify`：16 个功能、17 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、全仓 lint、类型检查、单元测试及 15 个生产构建任务全部通过。
+- MONOREPO-017 真实数据 Chromium 验收：23 项完整工作台、4 项幅度比较、6 项慢扫描传输、3 项二级趋势连续性和 4 项 Next 页面流程全部通过。
+- MONOREPO-017 完成后的 `pnpm verify`：17 个功能、17 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、全仓 lint、类型检查、单元测试及 15 个生产构建任务全部通过。
 
 ## Blockers
 

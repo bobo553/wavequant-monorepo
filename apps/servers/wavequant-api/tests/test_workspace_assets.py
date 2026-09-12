@@ -4,10 +4,15 @@ from http.client import HTTPConnection
 from threading import Thread
 import unittest
 
+from pytdx.reader.gbbq_reader import GbbqReader
+
 from wavequant_api.server import make_server
 
 
 class WorkspaceAssetTests(unittest.TestCase):
+    def test_runtime_includes_the_tdx_corporate_action_reader(self) -> None:
+        self.assertIsNotNone(GbbqReader)
+
     def test_default_web_workspace_serves_page_and_vendored_chart_sdk(self) -> None:
         server = make_server(object(), port=0)
         thread = Thread(target=server.serve_forever, daemon=True)
@@ -18,6 +23,8 @@ class WorkspaceAssetTests(unittest.TestCase):
 
         for path, expected_content_type in (
             ("/", "text/html"),
+            ("/research", "text/html"),
+            ("/market", "text/html"),
             ("/vendor/lightweight-charts.js", "text/javascript"),
             ("/vendor/NOTICE", "text/plain"),
         ):

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { funnelLines, profileName, scanContextKey, sortedMatches } from "../src/buy-points.js";
+import { funnelLines, profileName, scanContextKey, sortedMatches } from "../public/buy-points.js";
 
 test("version labels and gate units distinguish stock totals from repeated evaluations", () => {
     assert.equal(profileName("lecture_v1"), "讲义因果版 V1");

@@ -54,7 +54,7 @@ const results = [];
         console.log("PASS " + name);
     }
     try {
-        await page.goto(base);
+        await page.goto(base + "/research");
         await loaded();
         const catalog = await (await context.request.get(base + "/api/catalog")).json();
         const run = catalog.runs[0];
@@ -496,7 +496,7 @@ const results = [];
                 { times: 1 },
             );
             await page.getByRole("button", { name: "刷新", exact: false }).click();
-            await page.getByRole("alert").waitFor({ state: "visible" });
+            await page.locator("#error").waitFor({ state: "visible" });
             assert.ok(await page.locator("#price-chart").isHidden());
             assert.ok((await page.locator("#selected-stock-summary").textContent()).includes("加载失败"));
             await page.getByRole("button", { name: "策略绩效" }).click();

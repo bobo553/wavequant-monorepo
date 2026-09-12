@@ -5,8 +5,9 @@ from __future__ import annotations
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import logging
+import mimetypes
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from wavequant.visualization import ChartRepository
 
@@ -15,46 +16,33 @@ from .infrastructure import Infrastructure, InfrastructureSettings
 
 APPS_ROOT = Path(__file__).resolve().parents[4]
 WEB_WORKSPACE_ROOT = APPS_ROOT / "webs" / "wavequant-web"
-DEFAULT_WEB_ROOT = WEB_WORKSPACE_ROOT / "src"
+DEFAULT_WEB_ROOT = WEB_WORKSPACE_ROOT / "out"
 
 
-def make_server(repository, *, host="127.0.0.1", port=8765, web_root=None, infrastructure=None):
+def make_server(
+    repository,
+    *,
+    host="127.0.0.1",
+    port=8765,
+    web_root=None,
+    infrastructure=None,
+    serve_static=True,
+    allowed_origins=(),
+):
     if host not in ("127.0.0.1", "localhost"):
         raise ValueError("dashboard binds to loopback only")
-    assets = Path(web_root).resolve() if web_root else DEFAULT_WEB_ROOT
-    sdk_candidates = (
-        (assets / "node_modules/lightweight-charts",)
-        if web_root
-        else (WEB_WORKSPACE_ROOT / "node_modules/lightweight-charts",)
-    )
-    sdk = next(
-        (
-            candidate
-            for candidate in sdk_candidates
-            if (candidate / "dist/lightweight-charts.standalone.production.js").is_file()
-        ),
-        sdk_candidates[0],
-    )
-    allowed = {
-        "/": assets / "index.html",
-        "/app.js": assets / "app.js",
-        "/charts.js": assets / "charts.js",
-        "/styles.css": assets / "styles.css",
-        "/labels.js": assets / "labels.js",
-        "/annotations.js": assets / "annotations.js",
-        "/lecture-overlay.js": assets / "lecture-overlay.js",
-        "/stock-list.js": assets / "stock-list.js",
-        "/trade-review.js": assets / "trade-review.js",
-        "/buy-points.js": assets / "buy-points.js",
-        "/ratio-comparison.js": assets / "ratio-comparison.js",
-        "/vendor/lightweight-charts.js": sdk / "dist/lightweight-charts.standalone.production.js",
-        "/vendor/NOTICE": (
-            assets / "THIRD_PARTY_NOTICE.txt" if web_root else WEB_WORKSPACE_ROOT / "THIRD_PARTY_NOTICE.txt"
-        ),
-        "/vendor/LICENSE": sdk / "LICENSE",
-    }
-    if not allowed["/vendor/lightweight-charts.js"].is_file():
-        raise ValueError("TradingView SDK missing: run pnpm install at the monorepo root")
+    static_routes = {}
+    if serve_static:
+        assets = Path(web_root).resolve() if web_root else DEFAULT_WEB_ROOT
+        if not (assets / "index.html").is_file():
+            raise ValueError("WaveQuant Web build missing: run pnpm --filter wavequant-web build")
+        static_routes = {"/" + path.relative_to(assets).as_posix(): path for path in assets.rglob("*") if path.is_file()}
+        static_routes["/"] = assets / "index.html"
+        static_routes["/research"] = assets / "research.html"
+        market_page = assets / "market.html"
+        if market_page.is_file():
+            static_routes["/market"] = market_page
+    proxy_origins = set(allowed_origins)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -71,7 +59,7 @@ def make_server(repository, *, host="127.0.0.1", port=8765, web_root=None, infra
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+                "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
             )
             self.end_headers()
             try:
@@ -86,7 +74,7 @@ def make_server(repository, *, host="127.0.0.1", port=8765, web_root=None, infra
                 self.send(403, {"error": "loopback Host required"})
                 return
             origin = self.headers.get("Origin")
-            if origin and origin not in {f"http://{h}" for h in valid}:
+            if origin and origin not in {f"http://{h}" for h in valid} | proxy_origins:
                 self.send(403, {"error": "cross-origin access denied"})
                 return
             url = urlsplit(self.path)
@@ -94,10 +82,15 @@ def make_server(repository, *, host="127.0.0.1", port=8765, web_root=None, infra
                 self.send(204, b"", "image/x-icon")
                 return
             try:
-                if url.path in allowed:
-                    path = allowed[url.path]
-                    mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}.get(
-                        path.suffix, "text/plain"
+                request_path = unquote(url.path)
+                if request_path in static_routes:
+                    path = static_routes[request_path]
+                    mime = (
+                        "text/plain"
+                        if path.name in {"LICENSE", "NOTICE"}
+                        else {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}.get(
+                            path.suffix.lower(), mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+                        )
                     )
                     self.send(200, path.read_bytes(), mime + "; charset=utf-8")
                     return
@@ -194,10 +187,8 @@ def make_server(repository, *, host="127.0.0.1", port=8765, web_root=None, infra
                 self.send(405, {"error": "read-only server: mutations disabled"})
                 return
             valid = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
-            if self.headers.get("Host") not in valid or self.headers.get("Origin") not in {
-                None,
-                *("http://" + h for h in valid),
-            }:
+            valid_origins = {f"http://{host}" for host in valid} | proxy_origins
+            if self.headers.get("Host") not in valid or self.headers.get("Origin") not in {None, *valid_origins}:
                 self.send(403, {"error": "loopback same-origin required"})
                 return
             try:
@@ -233,10 +224,19 @@ def serve_dashboard(
     tdx_root: str | Path | None = None,
     web_root: str | Path | None = None,
     infrastructure: Infrastructure | None = None,
+    serve_static: bool = True,
+    allowed_origins: tuple[str, ...] = (),
 ) -> None:
     repository = ChartRepository(root, tdx_root=tdx_root)
     services = infrastructure or Infrastructure.from_settings(InfrastructureSettings.from_env())
-    server = make_server(repository, port=port, web_root=web_root, infrastructure=services)
+    server = make_server(
+        repository,
+        port=port,
+        web_root=web_root,
+        infrastructure=services,
+        serve_static=serve_static,
+        allowed_origins=allowed_origins,
+    )
     print(f"WaveQuant read-only dashboard: http://127.0.0.1:{server.server_port}", flush=True)
     try:
         server.serve_forever()

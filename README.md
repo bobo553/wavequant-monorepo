@@ -14,7 +14,7 @@
 - **`apps/servers/api`**: NestJS 11 + TypeScript + TypeORM + PostgreSQL + Zod + Vitest + Supertest
 - **`apps/servers/wavequant-api`**: Loopback-only Python HTTP adapter with optional MySQL/PostgreSQL metadata storage and Redis caching
 - **`apps/tools/create-project`**: Interactive CLI for creating workspaces from the H5, Admin, API, and Mobile templates
-- **`apps/webs/wavequant-web`**: Read-only WaveQuant browser research workbench with Lightweight Charts
+- **`apps/webs/wavequant-web`**: complete WaveQuant research workbench migrated from `E:\WorkSpace\股票\web`, plus a Next.js panoramic market dashboard at `/market`
 
 ### Packages
 
@@ -93,12 +93,14 @@ Supported templates are `h5`, `admin`, `api`, and `mobile`. The CLI creates the 
 pnpm dev                        # All apps
 pnpm --filter h5 dev            # H5 only
 pnpm --filter admin dev         # Admin dashboard only
+pnpm --filter wavequant-web dev # WaveQuant static workbench shell and /market dashboard
 pnpm --filter mobile start      # Mobile only (Expo)
 pnpm --filter api dev           # API only
 ```
 
 - H5: <http://localhost:3000>
 - Admin: <http://localhost:3002>
+- WaveQuant Web: <http://localhost:3003>
 - API: <http://localhost:3001>
 - API docs: <http://localhost:3001/api/docs>
 

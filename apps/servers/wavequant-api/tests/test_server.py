@@ -346,11 +346,17 @@ class VisualizationTests(unittest.TestCase):
 
     def http_server(self, infrastructure=None):
         assets = self.root / "web"
-        sdk = assets / "node_modules/lightweight-charts/dist"
+        sdk = assets / "vendor"
         sdk.mkdir(parents=True)
-        (sdk / "lightweight-charts.standalone.production.js").write_text("// test SDK fixture")
+        next_static = assets / "_next/static"
+        next_static.mkdir(parents=True)
+        (sdk / "lightweight-charts.js").write_text("// test SDK fixture")
+        (sdk / "LICENSE").write_text("license fixture")
+        (sdk / "NOTICE").write_text("notice fixture")
+        (next_static / "app.js").write_text("// next fixture")
         (assets / "index.html").write_text("<html>fixture</html>")
-        (assets / "THIRD_PARTY_NOTICE.txt").write_text("TradingView notice fixture")
+        (assets / "market.html").write_text("<html>market fixture</html>")
+        (assets / "research.html").write_text("<html>research fixture</html>")
         server = make_server(self.repo, port=0, web_root=assets, infrastructure=infrastructure)
         thread = Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -373,6 +379,12 @@ class VisualizationTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("frame-ancestors 'none'", headers["Content-Security-Policy"])
         self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(request("/research")[0], 200)
+        self.assertEqual(request("/research.html")[0], 200)
+        self.assertEqual(request("/market")[0], 200)
+        self.assertEqual(request("/market.html")[0], 200)
+        self.assertEqual(request("/_next/static/app.js")[0], 200)
+        self.assertEqual(request("/../../package.json")[0], 404)
         self.assertEqual(request("/vendor/NOTICE")[0], 200)
         self.assertEqual(request("/snapshot/daily.csv")[0], 404)
         self.assertEqual(request("/api/catalog", "POST")[0], 405)
@@ -449,11 +461,46 @@ class VisualizationTests(unittest.TestCase):
         self.assertEqual(post("/api/buy-scan/cancel", {"id": "missing"})[0], 400)
         self.assertEqual(post("/api/buy-scan", {}, method="DELETE")[0], 405)
 
-    def test_network_bind_and_missing_sdk_rejected(self):
+    def test_network_bind_and_missing_web_build_rejected(self):
         with self.assertRaises(ValueError):
             make_server(self.repo, host="0.0.0.0", port=0)
-        with self.assertRaisesRegex(ValueError, "SDK missing"):
+        with self.assertRaisesRegex(ValueError, "Web build missing"):
             make_server(self.repo, port=0, web_root=self.root / "missing")
+
+    def test_api_only_mode_does_not_require_web_build_and_accepts_explicit_loopback_proxy(self):
+        server = make_server(
+            self.repo,
+            port=0,
+            web_root=self.root / "missing",
+            serve_static=False,
+            allowed_origins=("http://127.0.0.1:3003",),
+        )
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(lambda: (server.shutdown(), server.server_close(), thread.join()))
+
+        connection = HTTPConnection("127.0.0.1", server.server_port)
+        try:
+            connection.request("GET", "/api/catalog", headers={"Origin": "http://127.0.0.1:3003"})
+            response = connection.getresponse()
+            response.read()
+        finally:
+            connection.close()
+        self.assertEqual(response.status, 200)
+
+        connection = HTTPConnection("127.0.0.1", server.server_port)
+        try:
+            connection.request(
+                "POST",
+                "/api/buy-scan",
+                json.dumps({}),
+                headers={"Content-Type": "application/json", "Origin": "http://127.0.0.1:3003"},
+            )
+            response = connection.getresponse()
+            response.read()
+        finally:
+            connection.close()
+        self.assertEqual(response.status, 400)
 
     def test_http_scan_revision_allows_partial_and_terminal_snapshots(self):
         server = self.http_server()

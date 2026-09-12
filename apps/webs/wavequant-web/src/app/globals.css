@@ -1,0 +1,119 @@
+@import "@repo/design-system-web/globals.css";
+
+@source "../";
+
+:root,
+.dark {
+    --background: #08101b;
+    --foreground: #e8eef8;
+    --card: #111d2d;
+    --card-foreground: #e8eef8;
+    --popover: #111d2d;
+    --popover-foreground: #e8eef8;
+    --primary: #48d6c4;
+    --primary-foreground: #061815;
+    --secondary: #18263a;
+    --secondary-foreground: #dce7f6;
+    --muted: #18263a;
+    --muted-foreground: #8291aa;
+    --accent: #1b2b40;
+    --accent-foreground: #e8eef8;
+    --destructive: #ff6170;
+    --destructive-foreground: #ffffff;
+    --input: #263850;
+    --ring: #48d6c4;
+    --surface-700: #111d2d;
+    --surface-600: #18263a;
+    --surface-500: #22334b;
+    --surface-400: #2d405a;
+    --surface-300: #3b506c;
+    --surface-200: #63738b;
+    --surface-100: #8291aa;
+    --sidebar: #0d1725;
+    --sidebar-foreground: #a4b0c3;
+    --sidebar-primary: #48d6c4;
+    --sidebar-primary-foreground: #061815;
+    --sidebar-accent: #14263a;
+    --sidebar-accent-foreground: #e8eef8;
+    --sidebar-border: #223047;
+    --sidebar-ring: #48d6c4;
+    --radius: 0.4rem;
+}
+
+.light {
+    --background: #f3f6fa;
+    --foreground: #172235;
+    --card: #ffffff;
+    --card-foreground: #172235;
+    --popover: #ffffff;
+    --popover-foreground: #172235;
+    --primary: #087f72;
+    --primary-foreground: #ffffff;
+    --secondary: #e5edf4;
+    --secondary-foreground: #172235;
+    --muted: #e5edf4;
+    --muted-foreground: #607087;
+    --accent: #dce9f0;
+    --accent-foreground: #172235;
+    --input: #cbd8e4;
+    --ring: #087f72;
+    --sidebar: #eaf0f5;
+    --sidebar-foreground: #42536a;
+    --sidebar-border: #cbd8e4;
+    color-scheme: light;
+}
+
+@theme inline {
+    --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+@layer base {
+    html {
+        background: var(--background);
+        color-scheme: dark;
+    }
+
+    body {
+        min-width: 320px;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: var(--font-sans);
+    }
+
+    button:not(:disabled),
+    [role="button"]:not(:disabled) {
+        cursor: pointer;
+    }
+
+    ::selection {
+        background: var(--primary);
+        color: var(--primary-foreground);
+    }
+}
+
+.market-range {
+    accent-color: var(--primary);
+}
+
+html[data-palette="accessible"] .text-rose-400,
+html[data-palette="accessible"] .text-rose-300 {
+    color: #f59e0b;
+}
+
+html[data-palette="accessible"] .text-emerald-400 {
+    color: #38bdf8;
+}
+
+html[data-density="compact"] main {
+    --spacing: 0.22rem;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: #2b3d56;
+}

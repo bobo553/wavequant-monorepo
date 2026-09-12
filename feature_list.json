@@ -446,6 +446,209 @@
                     "summary": "12 个功能、17 个 Node workspace、2 个 Python workspace、32 份规则及全仓 lint、类型检查、单元测试和构建全部通过。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-013",
+            "name": "wavequant-panoramic-market-dashboard",
+            "description": "根据 WaveQuant v2 设计稿还原全景市场看盘与涨停阶梯页面，并保留原有服务端研究工作台。",
+            "title": "还原 WaveQuant 全景市场看盘页面",
+            "scope": "在 apps/webs/wavequant-web 中将提供的离线原型拆分为 CSP 兼容的 HTML、CSS 与 JavaScript 默认页面，保留原有研究工作台到 /research，扩展 Python 静态资源白名单及 Web/API 自动验证。",
+            "dependencies": ["MONOREPO-011"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "默认根页面高保真呈现市场总览、涨停阶梯及设计稿中的全景看盘信息架构",
+                "原型内联样式与脚本拆为同源静态资源，兼容现有 Content Security Policy",
+                "原有连接本地 API 的研究工作台可通过 /research 继续访问，既有浏览器回归入口同步迁移",
+                "默认页面在 1920 桌面视口与 390 窄屏无整页横向溢出，关键交互无未处理脚本异常或外部网络请求",
+                "Web、API、Harness 与全仓验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "node tests/market-dashboard.e2e.cjs",
+                    "status": "passed",
+                    "summary": "Chromium 在 1920 桌面视口完成市场总览与涨停阶梯切换，在 390 窄屏确认无整页横向溢出；全程无页面异常和外部网络请求。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "Web 静态检查、格式检查、40 项单元测试以及包含全景看盘、研究工作台和本地资源的构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、31 项通过且 1 项按环境跳过的 pytest，以及新增静态资源路由后的 Python 构建全部通过。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "13 个功能、17 个 Node workspace、2 个 Python workspace、32 份规则的 Harness、lint、类型检查、单元测试及生产构建全部通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-014",
+            "name": "wavequant-nextjs-dashboard-migration",
+            "description": "将 WaveQuant 全景看盘从独立静态原型迁移为符合仓库规范的 React、Next.js App Router 与共享 shadcn 设计系统应用。",
+            "title": "将 WaveQuant 看盘页迁移到 Next.js",
+            "scope": "参考 apps/webs/admin 的工程结构重建 apps/webs/wavequant-web，使用 Server/Client Component 边界、features 分层、@repo/design-system-web 原语、Tailwind CSS、ECharts、Vitest 与 Playwright，并保留原研究工作台的 API 访问路径。",
+            "dependencies": ["MONOREPO-013"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "wavequant-web 使用 Next.js App Router、React 19、Tailwind CSS 4 和共享 @repo/design-system-web，不在应用内复制 shadcn UI 原语",
+                "页面按 app、features、shared 分层，默认 Server Component，仅将市场视图切换和图表等交互下沉到 Client Component",
+                "市场总览和涨停阶梯在桌面端高保真呈现，并在窄屏无整页横向溢出",
+                "Next.js 静态导出可由本地 WaveQuant API 安全提供，原研究工作台继续通过 /research 访问",
+                "workspace lint、类型检查、单元测试、Playwright、构建、API 契约和全仓 Harness 验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "Next.js Web 的 ESLint、严格类型检查、1 项 React 组件测试与 40 项兼容单元测试，以及静态导出生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "Playwright 在 1920 桌面视口验证市场总览、ECharts 和涨停阶梯切换，在 390 窄屏确认无整页横向溢出，全程无页面异常。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、31 项通过且 1 项按环境跳过的 pytest，以及 Next.js out、研究兼容页和路径遍历保护契约均通过。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "14 个功能、17 个 Node workspace、2 个 Python workspace、32 份规则的 Harness、lint、类型检查、单元测试及生产构建全部通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-015",
+            "name": "wavequant-v2-functional-parity",
+            "description": "补齐 Next.js 版本相对 WaveQuant 全景看盘 v2 原型缺失的功能与跨模块入口，确保迁移不造成行为退化。",
+            "title": "补齐 WaveQuant v2 原型功能",
+            "scope": "以原始单文件原型、使用说明和验收报告为行为基线，补齐共享时间/范围上下文、搜索、钻取、观察组、异动、多屏、复盘、导出、设置和原量化模块导航，并增加可重复的组件与浏览器回归。",
+            "dependencies": ["MONOREPO-014"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "市场看盘八个视图均保留原型的主要动作，不以静态占位卡替代交互",
+                "日期、时点、范围、题材、股票与事件上下文在相关视图间正确联动并可恢复",
+                "搜索、三态排序、个股查看、观察组、雷达暂停/已读、4/6/9 同屏、复盘笔记及 JSON/CSV/Markdown 导出可用",
+                "原研究、回测、模拟交易、信号和设置入口可达且不因 Next.js 首页迁移退化",
+                "键盘、窄屏、存储失败、空结果、数据状态及无页面异常等关键边界有自动化验证",
+                "Web workspace 与全仓质量门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "Next.js Web 的 ESLint、严格类型检查、2 项 React 组件测试、41 项兼容/结构测试和静态导出生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "3 项 Chromium 验收覆盖 Next.js 八视图关键交互、搜索/设置/导出/复盘、390 窄屏，以及经典 v2 六大模块和八个市场页签，全程无页面异常。"
+                },
+                {
+                    "command": "规范化 CRLF/LF 并移除尾部空行后逐字比较原始 v2 与 public/wavequant-v2-classic.html",
+                    "status": "passed",
+                    "summary": "原始 v2 原型与兼容入口按规范化文本逐字相同，均为 219695 个字符；原型完整行为未在迁移中丢失。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "15 个功能、17 个 Node workspace、2 个 Python workspace、32 份规则的 Harness、全仓 lint、类型检查、单元测试及 15 个生产构建任务全部通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-016",
+            "name": "wavequant-source-project-complete-parity",
+            "description": "以 E:\\WorkSpace\\股票 当前完整工作树及其 web 页面为唯一迁移基线，确认核心、服务和页面功能在 monorepo 中无缺失。",
+            "title": "完整迁移股票项目及原 Web 工作台",
+            "scope": "逐项核对源项目 Python 模块、CLI、配置、文档、脚本、505 项测试和 web 工作台 37 项行为契约；将原 web 工作台恢复为默认产品入口，同时保留全景市场页为独立路由。",
+            "dependencies": ["MONOREPO-015"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "源项目当前未忽略工作树中的 Python 研究、回测、数据、纸面执行、运维、可视化和 CLI 能力均映射到 core 或 API，不遗漏源测试契约",
+                "E:\\WorkSpace\\股票\\web\\index.html 的页面结构、样式、脚本模块和全部既有交互在 wavequant-web 中保持可用",
+                "默认入口进入原 Web 研究工作台，全景市场看盘保留在独立 /market 路由，不互相覆盖",
+                "源项目 505 项 Python 与 37 项 Web 单元契约建立可重复的迁移对照，目标 Core、API 和 Web 测试通过",
+                "原工作台的 K 线、回放、股票搜索、买点扫描、幅度对比、回测、绩效、订单信号和系统状态关键流程通过真实浏览器验证",
+                "相关 workspace 和全仓质量门禁通过，迁移映射与剩余运行环境依赖有明确记录"
+            ],
+            "verification": [
+                {
+                    "command": "E:\\WorkSpace\\股票\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v && node --test web/tests/*.test.mjs",
+                    "status": "passed",
+                    "summary": "迁移源当前工作树的 505 项 Python 测试与 37 项 Web 行为契约全部通过。"
+                },
+                {
+                    "command": "源/目标模块、测试名称以及格式化后的 web/index.html 与 styles.css 对照",
+                    "status": "passed",
+                    "summary": "67 个源 Python 模块完整映射；源 505 项契约拆为 Core 483 项与 API 可视化/HTTP 契约，原研究页结构和样式保持一致。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e && node tests/e2e.cjs && node tests/ratio-comparison.e2e.cjs && node tests/buy-points-live.e2e.cjs && node tests/secondary-continuity.e2e.cjs",
+                    "status": "passed",
+                    "summary": "4 项 Next.js 页面回归、23 项真实研究工作台流程、4 项幅度比较、6 项慢扫描传输和 3 项二级趋势连续性全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、32 项通过且 1 项环境跳过的 pytest、TDX 运行依赖契约和 Python 构建全部通过。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "16 个功能、17 个 Node workspace、2 个 Python workspace、32 份规则的 Harness、全仓 lint、类型检查、单元测试及 15 个生产构建任务全部通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-017",
+            "name": "wavequant-research-nextjs-react-migration",
+            "description": "将原股票项目 Web 研究工作台从 public 静态兼容页迁移为可直接启动的 Next.js App Router 与 React 功能页面。",
+            "title": "将完整研究工作台迁移为 Next.js React 页面",
+            "scope": "以 E:\\WorkSpace\\股票\\web 为功能和页面基线，在 apps/webs/wavequant-web 内建立 React 页面编排、业务组件、运行时适配和开发期 API 启动链路，保留全部 DOM/HTTP 行为契约并移除默认静态页跳转。",
+            "dependencies": ["MONOREPO-016"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "默认 / 与 /research 均由 Next.js App Router 直接渲染 React 研究工作台，不再跳转 public/research.html",
+                "研究工作台按 App Router、features/components/runtime 分层，命令式图表能力限定在客户端运行时边界",
+                "K 线、回放、搜索、买点扫描、幅度比较、回测、绩效、订单信号、系统状态和导出功能全部保留",
+                "启动 wavequant-web 开发命令时同时提供 Next 页面与同源 API 代理，不要求用户手工拼接页面 URL",
+                "Next.js 全景市场页继续保留在 /market，原 v2 兼容页继续可达",
+                "Web、API、真实数据浏览器回归、Harness 与全仓质量门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "Next.js Web 的 ESLint、严格类型检查、2 项 Vitest、41 项 Node 契约和包含 /、/research、/market 的静态导出全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "4 项 Playwright 流程验证默认 React 工作台、全景市场八视图、经典 v2 入口和窄屏布局。"
+                },
+                {
+                    "command": "DASHBOARD_URL=http://127.0.0.1:3003 node tests/e2e.cjs && node tests/ratio-comparison.e2e.cjs && node tests/buy-points-live.e2e.cjs && node tests/secondary-continuity.e2e.cjs",
+                    "status": "passed",
+                    "summary": "真实 Next 入口通过 23 项完整工作台、4 项幅度比较、6 项慢扫描传输与 3 项二级趋势连续性验收。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、33 项通过且 1 项按环境跳过的 pytest、开发代理 POST 安全契约和 Python 构建全部通过。"
+                },
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "17 个功能、17 个 Node workspace、2 个 Python workspace、32 份规则及全仓 lint、类型检查、单元测试和 15 个生产构建任务全部通过。"
+                }
+            ]
         }
     ]
 }
