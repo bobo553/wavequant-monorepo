@@ -2,6 +2,7 @@
 
 ## Current State
 
+- `MONOREPO-032` 已完成：二级旧低被收盘严格跌破后，由 Python 生成可追溯的末跌高换锚事实。
 - `MONOREPO-031` 已完成：一级趋势跨路径衔接已提升为 Python 领域层正式数据，图表与二、三级趋势统一读取同一组趋势点。
 - `MONOREPO-011` 已完成：WaveQuant 已拆分为 Web、API 与核心包。
 - 本 workspace 只保留 Python 领域、研究、回测、数据、运维与研究 CLI，不再启动 HTTP Server 或读取 Web 静态资源。
@@ -24,6 +25,7 @@
 - 领域层细分为 `models`、`market_structure`、`market_state`、`strategies`；应用层细分为 `analytics`、`trading`、`governance`；基础设施细分为 `market_data`、`persistence`、`filesystem`；接口层细分为 `charts`、`research_tools`、`screening` 与 CLI。
 - MONOREPO-031 将相邻一级讲义路径之间已确认的真实高低极值纳入正式趋势路径，保留来源日期与因果确认时间；华夏银行 `2026-01-23 L 6.32` 已成为正式一级低点，并进入二级趋势计算。
 - 理论结果缓存版本改为覆盖整个 `wavequant` Python 包，领域规则变化后不会继续复用旧的理论响应。
+- MONOREPO-032 为二级结构增加收盘严格跌破旧低的因果换锚事件：盘中下影越线和收盘相等不成立，且新低必须在跌破日之前已经确认为二级点；华夏银行从 `2025-07-10 H33 8.72 / 2026-01-23 L34 6.32` 换锚到 `2026-04-02 H34 7.52 / 2026-06-29 L35 6.34`。
 
 ## Verification
 
@@ -43,6 +45,7 @@
 - API 最终消费方门禁：Ruff、严格 mypy、33 项通过/1 项环境跳过的测试与构建全部通过。
 - MONOREPO-031 Core 门禁通过 Ruff、严格 mypy、503 项测试和 sdist/wheel 构建；华夏银行真实接口返回一级 `2026-01-23 L 6.32`（因果可用日 `2026-03-23`），二级序列从该点起算。
 - MONOREPO-031 API 消费方门禁通过 Ruff、严格 mypy、33 项通过/1 项环境跳过的测试与构建；根 Harness 校验 31 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则通过。
+- MONOREPO-032 Core 门禁通过 Ruff、严格路径 mypy、504 项测试和 sdist/wheel 构建；API 消费方通过 Ruff、严格 mypy、33 项通过/1 项环境跳过的测试与构建；根 Harness 校验 32 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则通过。
 
 ## Risks and Next Steps
 

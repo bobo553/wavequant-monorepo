@@ -26,6 +26,44 @@ test("the original stock project Web workbench is the default page", async ({ pa
     expect(pageErrors).toEqual([]);
 });
 
+test("Huaxia Bank level-two last-fall-high reanchors after the old low close break", async ({ page }) => {
+    const pageErrors: string[] = [];
+    const failedRequests: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.locator("#symbol-select").selectOption("sh.600015");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#error")).toBeHidden();
+    await expect(page.locator("#secondary-trend-summary")).toContainText("二级末跌高 7.52");
+
+    const state = await page.evaluate(async () => {
+        const [theory, annotations] = await Promise.all([
+            fetch("/api/tdx-theory?symbol=sh.600015&asof=2026-09-07").then((response) => response.json()),
+            new Function("return import('/annotations.js')")(),
+        ]);
+        const stroke = theory.secondary_trends.strokes.find((candidate: { points: { time: string }[] }) =>
+            candidate.points.some((point) => point.time === "2026-01-23"),
+        );
+        const summary = annotations.reversalWindowSummary([stroke], "2025-01-01", "2026-09-07");
+        return {
+            transition: stroke.key_transitions.find(
+                (event: { broken_low: { time: string } }) => event.broken_low.time === "2026-01-23",
+            ),
+            low: summary.low,
+            key: summary.lastFallHigh,
+        };
+    });
+    expect(state.transition.available_at).toBe("2026-08-31");
+    expect(state.transition.confirmed_by.value).toBe(6.23);
+    expect(state.low).toMatchObject({ time: "2026-06-29", value: 6.34 });
+    expect(state.key).toMatchObject({ time: "2026-04-02", value: 7.52 });
+    expect(pageErrors).toEqual([]);
+    expect(failedRequests).toEqual([]);
+});
+
 test("the shared dashboard shell works on desktop and mobile", async ({ page }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));

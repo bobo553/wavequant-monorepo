@@ -1135,6 +1135,49 @@
                     "summary": "华夏银行正式一级返回 2026-01-23 L 6.32（因果可用日 2026-03-23），二级序列从该点起算；Web 仅渲染 567 个服务端一级点，不再创建前端一级业务连接对象。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-032",
+            "name": "wavequant-level-two-last-fall-high-reanchor",
+            "description": "二级结构旧低被市场收盘严格跌破后，将当前末跌高迁移到后续已确认二级低点左侧的二级高点。",
+            "title": "修正二级末跌高下移",
+            "scope": "由 wavequant-core 根据二级点和行情收盘生成可追溯的旧低跌破换锚事件，Web 只按服务端事件选择当前二级低点与末跌高；不修改二级趋势点本身、策略或回测。",
+            "dependencies": ["MONOREPO-030", "MONOREPO-031"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "华夏银行 2026-01-23 L34 6.32 在 2026-08-31 收盘 6.23 严格跌破后失去当前二级低点锚点",
+                "当前二级结构切换到 2026-06-29 L35，其左侧 2026-04-02 H34 7.52 成为末跌高",
+                "盘中最低价越线但收盘未跌破不触发换锚，换锚只使用当时已经确认的二级点",
+                "换锚事实由 Python 领域层返回，Web 不自行推导一套独立业务规则",
+                "Core、API、Web 测试、构建、Harness 与真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint && pnpm --filter @wavequant/core typecheck && pnpm --filter @wavequant/core test:unit && pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "Core Ruff、严格路径 mypy、504 项 pytest 与 Python sdist/wheel 构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、33 项通过/1 项环境跳过的 pytest 与 Python 构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build && pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "Web ESLint、严格类型检查、6 项 Vitest、51 项 Node 契约、Next.js 生产构建与 6 条 Playwright 流程全部通过。"
+                },
+                {
+                    "command": "GET /api/tdx-theory?symbol=sh.600015&asof=2026-09-07 + Playwright Chromium audit",
+                    "status": "passed",
+                    "summary": "华夏银行 2026-01-23 L34 6.32 于 2026-08-31 收盘 6.23 严格跌破；服务端把活跃低点切换到 2026-06-29 L35 6.34，图上二级末跌高显示为 2026-04-02 H34 7.52，浏览器无页面错误和失败请求。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "32 个 Feature、18 个 Node workspace、2 个 Python workspace 与 32 份规则校验通过。"
+                }
+            ]
         }
     ]
 }

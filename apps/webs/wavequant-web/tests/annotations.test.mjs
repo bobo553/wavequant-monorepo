@@ -39,6 +39,43 @@ test("window key follows extreme predecessor, not latest opposite pivot", () => 
     assert.equal(summary.high.time, "c");
     assert.equal(reversalWindowSummary([], "a", "z"), null);
 });
+test("server close-break event moves level-two last-fall-high to the next confirmed segment", () => {
+    const points = [
+            { index: 10, time: "2025-07-10", kind: "H", value: 8.72, label: "H33", available_at: "2025-08-26" },
+            { index: 20, time: "2026-01-23", kind: "L", value: 6.32, label: "L34", available_at: "2026-03-23" },
+            { index: 30, time: "2026-04-02", kind: "H", value: 7.52, label: "H34", available_at: "2026-05-22" },
+            { index: 40, time: "2026-06-29", kind: "L", value: 6.34, label: "L35", available_at: "2026-08-04" },
+        ],
+        transition = {
+            kind: "last_fall_high_reanchor",
+            available_at: "2026-08-31",
+            previous_key: points[0],
+            broken_low: points[1],
+            new_key: points[2],
+            active_low: points[3],
+            confirmed_by: { time: "2026-08-31", value: 6.23, previous_close: 6.55, break_basis: "close_cross" },
+        },
+        strokes = [{ id: "secondary-huaxia", points, key_transitions: [transition] }];
+
+    const before = reversalWindowSummary(strokes, "2025-01-01", "2026-08-30");
+    assert.equal(before.low.time, "2026-01-23");
+    assert.equal(before.lastFallHigh.time, "2025-07-10");
+    assert.equal(before.lastFallHighReanchor, undefined);
+
+    const after = reversalWindowSummary(strokes, "2025-01-01", "2026-09-07");
+    assert.equal(after.low.time, "2026-06-29");
+    assert.equal(after.low.value, 6.34);
+    assert.equal(after.lowestLow.time, "2026-01-23");
+    assert.equal(after.lastFallHigh.time, "2026-04-02");
+    assert.equal(after.lastFallHigh.value, 7.52);
+    assert.equal(after.lastFallHighReanchor.available_at, "2026-08-31");
+    const annotation = lastFallHighAnnotations([{ level: 2, summary: after }])[0];
+    assert.equal(annotation.time, "2026-04-02");
+    assert.equal(annotation.raw.definition, "server_confirmed_close_break_reanchor");
+    assert.equal(annotation.raw.displaced_low.time, "2026-01-23");
+    assert.match(annotation.description, /2026-08-31 被收盘 6\.23 严格跌破/);
+    assert.match(annotation.description, /2026-04-02/);
+});
 test("last-fall-high breakout is the first later confirmed high strictly above the key", () => {
     const points = [
         { index: 1, time: "a", kind: "H", value: 30, available_at: "a" },

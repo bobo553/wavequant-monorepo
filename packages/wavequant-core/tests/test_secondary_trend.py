@@ -3,7 +3,11 @@ from datetime import datetime, timedelta
 import unittest
 
 from wavequant.domain.models.model import Bar
-from wavequant.domain.market_structure.secondary_trend import _structural_reversals, secondary_trends
+from wavequant.domain.market_structure.secondary_trend import (
+    _structural_reversals,
+    last_fall_high_reanchors,
+    secondary_trends,
+)
 
 
 def fixture(values, first='L'):
@@ -74,6 +78,38 @@ class SecondaryTrendTests(unittest.TestCase):
         for values in [[10],[10,20,10,20,10,20],[10,20,12,22,14,24]]:
             bars,source=fixture(values)
             self.assertEqual(secondary_trends(source,bars)['strokes'],[])
+
+    def test_close_break_of_old_low_reanchors_last_fall_high_to_next_segment(self):
+        """A wick/touch holds the old key; the first strict close break moves it."""
+        def point(index,time,kind,value,label,available_at):
+            return dict(index=index,ordinal=0,time=time,kind=kind,value=value,
+                        label=label,available_at=available_at)
+
+        points=[
+            point(10,'2025-07-10','H',8.72,'H33','2025-08-26'),
+            point(20,'2026-01-23','L',6.32,'L34','2026-03-23'),
+            point(30,'2026-04-02','H',7.52,'H34','2026-05-22'),
+            point(40,'2026-06-29','L',6.34,'L35','2026-08-04'),
+        ]
+        bars=[
+            # Intraday 6.20 is lower than 6.32, but the 6.50 close does not break it.
+            Bar(datetime(2026,8,27),'TEST',6.45,6.60,6.20,6.50,100),
+            # An equal close is a touch and remains on the old side of the key.
+            Bar(datetime(2026,8,28),'TEST',6.50,6.55,6.30,6.32,100),
+            Bar(datetime(2026,8,31),'TEST',6.13,6.24,6.12,6.23,100),
+        ]
+
+        events=last_fall_high_reanchors(points,bars,trend_level=2)
+        self.assertEqual(len(events),1)
+        event=events[0]
+        self.assertEqual(event['available_at'],'2026-08-31')
+        self.assertEqual((event['broken_low']['time'],event['broken_low']['value']),('2026-01-23',6.32))
+        self.assertEqual((event['previous_key']['time'],event['previous_key']['value']),('2025-07-10',8.72))
+        self.assertEqual((event['active_low']['time'],event['active_low']['value']),('2026-06-29',6.34))
+        self.assertEqual((event['new_key']['time'],event['new_key']['value']),('2026-04-02',7.52))
+        self.assertEqual(event['confirmed_by']['value'],6.23)
+        self.assertEqual(event['confirmed_by']['previous_close'],6.32)
+        self.assertEqual(event['confirmed_by']['break_basis'],'close_cross')
 
 
 if __name__=='__main__':

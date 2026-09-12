@@ -87,17 +87,38 @@ export function reversalWindowSummary(strokes, from, to, marketBars = []) {
         highs = points.filter((p) => p.kind === "H"),
         lows = points.filter((p) => p.kind === "L");
     const high = highs.reduce((best, p) => (!best || p.value > best.value ? p : best), null);
-    const low = lows.reduce((best, p) => (!best || p.value < best.value ? p : best), null);
+    const lowestLow = lows.reduce((best, p) => (!best || p.value < best.value ? p : best), null);
+    // The Python domain layer owns close-break re-anchoring.  The browser only
+    // selects an event that is already knowable by the visible window end and
+    // resolves its referenced formal point; it does not reconstruct the rule.
+    const lastFallHighReanchor = (path.key_transitions || [])
+        .filter(
+            (event) =>
+                event.kind === "last_fall_high_reanchor" &&
+                event.available_at <= to &&
+                event.broken_low?.index === lowestLow?.index,
+        )
+        .sort((a, b) => a.available_at.localeCompare(b.available_at))
+        .at(-1);
+    const reanchoredLow = lastFallHighReanchor
+        ? points.find(
+              (point) =>
+                  point.index === lastFallHighReanchor.active_low?.index &&
+                  point.kind === lastFallHighReanchor.active_low?.kind,
+          )
+        : null;
+    const low = reanchoredLow || lowestLow;
     const lowPosition = low ? path.points.indexOf(low) : -1,
         highPosition = high ? path.points.indexOf(high) : -1;
     // 连续显示路径可包含有真实来源的桥点；按图上交替顺序找相邻关键点，避免标注与折线口径分裂。
-    const lastFallHigh =
-        lowPosition >= 0
-            ? path.points
-                  .slice(0, lowPosition)
-                  .reverse()
-                  .find((point) => point.kind === "H") || low.preceding_turn
-            : null;
+    const lastFallHigh = lastFallHighReanchor
+        ? lastFallHighReanchor.new_key
+        : lowPosition >= 0
+          ? path.points
+                .slice(0, lowPosition)
+                .reverse()
+                .find((point) => point.kind === "H") || low.preceding_turn
+          : null;
     const lastRiseLow =
         highPosition >= 0
             ? path.points
@@ -159,9 +180,11 @@ export function reversalWindowSummary(strokes, from, to, marketBars = []) {
         trend: points.at(-1).trend,
         lastFallHigh,
         lastFallHighBreakout,
+        lastFallHighReanchor,
         lastRiseLow,
         high,
         low,
+        lowestLow,
         path: path.id,
         displaySummary: Boolean(path.display_summary),
         latestKnown: points.at(-1).available_at,
@@ -187,6 +210,7 @@ export function lastFallHighAnnotations(levelSummaries) {
             key = summary?.lastFallHigh,
             low = summary?.low,
             breakout = summary?.lastFallHighBreakout,
+            reanchor = summary?.lastFallHighReanchor,
             displaySummary = Boolean(summary?.displaySummary);
         if (!spec || !key || !low) return [];
         const breakoutText = breakout
@@ -194,27 +218,36 @@ export function lastFallHighAnnotations(levelSummaries) {
                 ? `随后 ${breakout.time} K 线收盘 ${num(breakout.value)} 首次从关键位下方严格突破，水平虚线延长到这根 K 线；盘中上影越线或收盘相等不算突破。`
                 : `随后 ${breakout.label}（${breakout.time}，${num(breakout.value)}）首次严格突破该末跌高，水平虚线延长到这根 K 线。`
             : null;
+        const reanchorText = reanchor
+            ? `原二级低点 ${reanchor.broken_low.label}（${reanchor.broken_low.time}，${num(reanchor.broken_low.value)}）在 ${reanchor.available_at} 被收盘 ${num(reanchor.confirmed_by.value)} 严格跌破；Python 领域规则把当前段切换到 ${reanchor.active_low.label}（${reanchor.active_low.time}，${num(reanchor.active_low.value)}），其左侧 ${reanchor.new_key.label}（${reanchor.new_key.time}，${num(reanchor.new_key.value)}）成为新的末跌高。`
+            : null;
         return [
             {
-                id: `last-fall-high:${level}:${summary.path}:${low.index}:${key.index}:${breakout?.index ?? "open"}`,
+                id: `last-fall-high:${level}:${summary.path}:${low.index}:${key.index}:${reanchor?.available_at ?? "base"}:${breakout?.index ?? "open"}`,
                 time: key.time,
                 sourceTime: key.time,
                 kind: "trend-key",
                 category: "trend-keys",
                 price: key.value,
                 title: `${spec.numeral} 末跌高 · ${key.label} ${num(key.value)}`,
-                description: displaySummary
-                    ? `${spec.label}趋势线当前图窗按连续显示路径，以最低已确认来源低点 ${low.label}（${low.time}，${num(low.value)}）为分析低点；它左侧最近的交替高点 ${key.label}（${key.time}，${num(key.value)}）是图上末跌高。显示桥只统一图线与标注口径，不写回服务端趋势、二三级、策略或回测。${breakoutText || "截至当前图窗尚无收盘价严格突破，盘中上影越线或收盘相等不算突破。"}`
-                    : `${spec.label}趋势线当前图窗以最低已确认低点 ${low.label}（${low.time}，${num(low.value)}）为分析低点；它左侧最近的同级已确认高点 ${key.label}（${key.time}，${num(key.value)}）就是该低点的末跌高。该低点到 ${low.available_at} 才确认；窗口最高点和后续普通反弹都不会替换此定义。${breakoutText || "截至当前图窗尚无收盘价严格突破，盘中上影越线或收盘相等不算突破。"}`,
+                description: reanchorText
+                    ? `${spec.label}趋势线当前末跌高已发生因果换锚。${reanchorText}${breakoutText || "新的末跌高截至当前图窗尚无收盘价严格突破。"}`
+                    : displaySummary
+                      ? `${spec.label}趋势线当前图窗按连续显示路径，以最低已确认来源低点 ${low.label}（${low.time}，${num(low.value)}）为分析低点；它左侧最近的交替高点 ${key.label}（${key.time}，${num(key.value)}）是图上末跌高。显示桥只统一图线与标注口径，不写回服务端趋势、二三级、策略或回测。${breakoutText || "截至当前图窗尚无收盘价严格突破，盘中上影越线或收盘相等不算突破。"}`
+                      : `${spec.label}趋势线当前图窗以最低已确认低点 ${low.label}（${low.time}，${num(low.value)}）为分析低点；它左侧最近的同级已确认高点 ${key.label}（${key.time}，${num(key.value)}）就是该低点的末跌高。该低点到 ${low.available_at} 才确认；窗口最高点和后续普通反弹都不会替换此定义。${breakoutText || "截至当前图窗尚无收盘价严格突破，盘中上影越线或收盘相等不算突破。"}`,
                 sourceLabel: `${spec.label}趋势线${displaySummary ? "连续显示路径" : ""} · 末跌高定义核验`,
                 priority: 145 - level,
                 color: spec.color,
                 levels: [],
                 raw: {
                     trend_level: level,
-                    definition: "nearest_confirmed_same_level_high_left_of_selected_low",
+                    definition: reanchor
+                        ? "server_confirmed_close_break_reanchor"
+                        : "nearest_confirmed_same_level_high_left_of_selected_low",
                     key,
                     selected_low: low,
+                    displaced_low: reanchor?.broken_low || null,
+                    reanchor: reanchor || null,
                     breakout,
                     path: summary.path,
                     display_summary: displaySummary,
