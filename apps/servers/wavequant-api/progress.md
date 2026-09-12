@@ -2,6 +2,9 @@
 
 ## Current State
 
+- `MONOREPO-036` 已完成：API 透明返回 Core 生成的二级开放尾段末跌高换锚事件及其一级确认低点证据。
+- `MONOREPO-035` 已完成：API 透明返回完整三级发展路径、内部转折数与待决尾部点数。
+- `MONOREPO-034` 已完成：API 原样提供 Core 生成的发展中三级尾段，不在 HTTP 层重算结构规则。
 - `MONOREPO-012` 已完成：本 workspace 具备可切换 SQL 持久化与 Redis 缓存基础设施。
 - `MONOREPO-013` 已完成：静态资源白名单支持默认全景看盘页，并保留原研究工作台 `/research` 路由。
 - `MONOREPO-014` 已完成：静态服务读取 Next.js `out` 清单，并继续将 `/research` 映射到兼容工作台。
@@ -21,6 +24,9 @@
 - 新增回环绑定的 MySQL 8.4 + Redis 8 Compose 环境，以及显式建表和健康检查命令。
 - 将 `wavequant-core[tdx]` 设为 API 必需依赖，保证安装 API 后即可读取通达信除权除息并运行现场复权回测。
 - 新增 `--api-only` 与可重复的 `--allow-origin` 参数；GET 与买点扫描 POST 统一校验显式回环代理来源。
+- MONOREPO-034 保持 API 为透明消费边界：`tertiary_trends.developing_strokes` 与正式三级结构一同返回，字段、因果日期和显示语义均来自 Core。
+- MONOREPO-035 延续透明消费边界：`developing_point_count`、`nested_turn_count`、`pending_point_count` 及逐点角色由 Core 生成，HTTP 层不压缩或补点。
+- MONOREPO-036 延续透明消费边界：二级换锚事件的旧低、跌破日、新高、确认低点、来源级别与因果可用日均由 Core 生成，HTTP 层不补点或重算趋势。
 
 ## Verification
 
@@ -36,6 +42,9 @@
 - MONOREPO-014 workspace 验证已通过 Ruff、严格 mypy、31 项测试（另 1 项外部服务集成测试按配置跳过）和 Python 构建；Next.js 资源、研究兼容页及路径遍历保护契约通过。
 - MONOREPO-016 使用源封存结果和 `D:\TDX` 验证 5,895 只带日线股票、贵州茅台 2018–2026 现场回测、买点扫描、幅度比较与同源静态页面；工作台浏览器专项全部通过。
 - MONOREPO-017 workspace 验证通过 Ruff、严格 mypy、33 项 pytest（另 1 项外部服务集成测试按配置跳过）和 Python 构建；Next `3003` 代理的扫描 POST 契约已覆盖。
+- MONOREPO-034 API 消费方门禁通过 Ruff、严格 mypy、33 项 pytest（另 1 项外部环境测试跳过）和 Python 构建；真实接口在最新日与 `2015-07-15` 回放日均返回上海电力同一条因果可见的发展中三级尾段。
+- MONOREPO-035 API 消费方门禁通过 Ruff、严格 mypy、33 项 pytest（另 1 项外部环境测试跳过）和 Python 构建；最新上海电力接口返回 14 个发展点、8 个已确认内部转折及 4 个待决尾部点。
+- MONOREPO-036 API 消费方门禁通过 Ruff、严格 mypy、33 项 pytest（另 1 项外部环境测试跳过）和 Python 构建；上海电力真实接口在 `2026-07-16` 尚未换锚、于 `2026-07-17` 因果可见地换锚到 `2026-05-29 H27 22.35`。
 
 ## Risks and Next Steps
 

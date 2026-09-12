@@ -76,6 +76,46 @@ test("server close-break event moves level-two last-fall-high to the next confir
     assert.match(annotation.description, /2026-08-31 被收盘 6\.23 严格跌破/);
     assert.match(annotation.description, /2026-04-02/);
 });
+test("server tail reanchor uses the confirmed source low without inventing a level-two point", () => {
+    const points = [
+            { index: 5241, time: "2026-01-26", kind: "H", value: 24.85, label: "H26", available_at: "2026-03-05" },
+            { index: 5300, time: "2026-04-28", kind: "L", value: 16.73, label: "L26", available_at: "2026-06-04" },
+            { index: 5320, time: "2026-05-29", kind: "H", value: 22.35, label: "H27", available_at: "2026-07-17" },
+        ],
+        activeLow = {
+            index: 5351,
+            time: "2026-07-14",
+            kind: "L",
+            value: 13.26,
+            label: "L283",
+            available_at: "2026-07-17",
+        },
+        transition = {
+            kind: "last_fall_high_reanchor",
+            available_at: "2026-07-17",
+            active_low_source_level: 1,
+            previous_key: points[0],
+            broken_low: points[1],
+            new_key: points[2],
+            active_low: activeLow,
+            confirmed_by: { time: "2026-06-23", value: 16.29, previous_close: 16.74, break_basis: "close_cross" },
+        },
+        summary = reversalWindowSummary(
+            [{ id: "secondary-shanghai-power", points, key_transitions: [transition] }],
+            "2026-01-01",
+            "2026-09-07",
+        );
+
+    assert.equal(summary.low.time, "2026-07-14");
+    assert.equal(summary.low.value, 13.26);
+    assert.equal(summary.lowestLow.time, "2026-04-28");
+    assert.equal(summary.lastFallHigh.time, "2026-05-29");
+    assert.equal(summary.lastFallHigh.value, 22.35);
+    const annotation = lastFallHighAnnotations([{ level: 2, summary }])[0];
+    assert.equal(annotation.raw.selected_low.time, "2026-07-14");
+    assert.match(annotation.description, /一级确认低点 L283/);
+    assert.match(annotation.description, /2026-05-29/);
+});
 test("last-fall-high breakout is the first later confirmed high strictly above the key", () => {
     const points = [
         { index: 1, time: "a", kind: "H", value: 30, available_at: "a" },

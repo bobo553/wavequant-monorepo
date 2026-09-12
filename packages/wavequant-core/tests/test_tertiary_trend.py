@@ -24,6 +24,14 @@ class TertiaryTrendTests(unittest.TestCase):
         self.assertEqual([(p['kind'],p['value']) for p in points],[('L',10),('H',45),('L',24)])
         self.assertEqual([p['source_level2_position'] for p in points],[2,9,14])
         self.assertEqual([p['confirmed_on_level2'] for p in points],[7,14,17])
+        tail=result['developing_strokes'][0]
+        self.assertEqual((tail['kind'],tail['state'],tail['display_only']),
+                         ('tertiary-developing','developing',True))
+        self.assertEqual([(p['kind'],p['value']) for p in tail['points']],[('L',24),('H',42)])
+        self.assertEqual(tail['points'][-1]['source_level2_position'],19)
+        self.assertEqual(result['developing_wave_count'],1)
+        self.assertEqual(result['developing_point_count'],2)
+        self.assertEqual(result['confirmed_wave_count'],3)
         for p in points:
             original=raw[p['source_level2_position']]; proof=raw[p['confirmed_on_level2']]
             self.assertEqual(p['available_at'],proof['available_at'])
@@ -42,6 +50,7 @@ class TertiaryTrendTests(unittest.TestCase):
             self.assertEqual([p for s in result['strokes'] for p in s['points']],
                              [p for p in full if p['confirmed_on_level2']<end])
         self.assertEqual(tertiary_trends(dict(strokes=[]),[])['strokes'],[])
+        self.assertEqual(tertiary_trends(dict(strokes=[]),[])['developing_strokes'],[])
 
     def test_source_level_parameter_preserves_existing_algorithm(self):
         _,source=self.source(); points=source['strokes'][0]['points']
@@ -53,7 +62,7 @@ class TertiaryTrendTests(unittest.TestCase):
                 self.assertEqual(a[field],b[field])
         self.assertEqual(len(old),len(third))
 
-    def test_no_cross_path_or_unconfirmed_tail(self):
+    def test_no_cross_path_and_each_source_owns_its_developing_path(self):
         bars,source=self.source()
         source['strokes'].append(dict(source['strokes'][0],id='secondary-other'))
         result=tertiary_trends(source,bars)
@@ -62,6 +71,44 @@ class TertiaryTrendTests(unittest.TestCase):
         for s in result['strokes']:
             self.assertEqual(len(s['points']),3)
             self.assertLess(s['points'][-1]['source_level2_position'],len(source['strokes'][0]['points'])-1)
+        self.assertEqual(len(result['developing_strokes']),2)
+        self.assertTrue(all(s['display_only'] for s in result['developing_strokes']))
+
+    def test_developing_path_keeps_nested_turns_and_current_endpoint(self):
+        """A wide formal key must not hide years of confirmed level-2 evidence."""
+        values=[20,30,10,20,14,26,18,35,28,45,36,42,30,36,24,31,26,38,30,42,
+                35,40,34,39,33,41,36,43,37,42]
+        bars,source=fixture(values)
+        source.update(trend_level=2,name='二级趋势线')
+        source['strokes'][0].update(id='secondary-long-tail',kind='secondary',trend_level=2)
+
+        result=tertiary_trends(source,bars)
+        formal=result['strokes'][0]['points']
+        path=result['developing_strokes'][0]['points']
+        self.assertEqual([(p['kind'],p['value']) for p in formal],[('L',10),('H',45),('L',24)])
+        self.assertEqual([(p['kind'],p['value']) for p in path],
+                         [('L',24),('H',42),('L',33),('H',41),('L',36),
+                          ('H',43),('L',37),('H',42)])
+        self.assertEqual([p['source_level2_position'] for p in path],[14,19,24,25,26,27,28,29])
+        self.assertEqual([p['development_role'] for p in path],
+                         ['formal_start','confirmed_nested_turn','confirmed_nested_turn','pending_evidence',
+                          'pending_evidence','pending_evidence','pending_evidence','active_endpoint'])
+        self.assertEqual(result['confirmed_wave_count'],3)
+        self.assertEqual(result['developing_point_count'],8)
+        self.assertTrue(all(p['display_only'] for p in path))
+        self.assertTrue(all(left['available_at']<=right['available_at'] for left,right in zip(path,path[1:])))
+
+    def test_developing_tail_keeps_earliest_equal_extreme_and_never_changes_confirmed_points(self):
+        bars,source=self.source()
+        first_equal_time=source['strokes'][0]['points'][-1]['time']
+        source['strokes'][0]['points'].append(dict(source['strokes'][0]['points'][-1],
+                                                   index=20,time='d20',available_at='d21',value=42,label='H11'))
+        result=tertiary_trends(source,bars)
+        tail=result['developing_strokes'][0]
+        self.assertEqual(tail['points'][-1]['time'],first_equal_time)
+        self.assertEqual(tail['points'][-1]['value'],42)
+        self.assertEqual(len(result['strokes'][0]['points']),3)
+        self.assertNotIn(tail['points'][-1],result['strokes'][0]['points'])
 
 
 if __name__=='__main__':

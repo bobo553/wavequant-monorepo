@@ -1211,6 +1211,140 @@
                     "summary": "33 个 Feature、18 个 Node workspace、2 个 Python workspace 与 32 份规则校验通过。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-034",
+            "name": "wavequant-tertiary-developing-tail",
+            "description": "三级末跌高被二级高点突破并确认三级低点后，继续显示从该低点到当前二级极值的发展中三级尾段。",
+            "title": "补齐三级趋势发展尾段",
+            "scope": "由 wavequant-core 从已确认二级点生成纯显示、可因果回放的发展中三级尾段；Web 只渲染服务端返回的尾段并明确区分正式三级反转点。正式三级点、四级输入、策略和回测保持不变。",
+            "dependencies": ["MONOREPO-020", "MONOREPO-033"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "上海电力 2007-05-30 三级末跌高 H1 12.97 被 2015-06-02 二级 H12 34.50 突破后，显示 2008-11-06 三级 L2 2.68 到 H12 34.50 的发展中上涨尾段",
+                "发展端点只取最后一个正式三级点之后、已经确认可知的同方向二级极值，相等价格使用最早出现点",
+                "尾段明确标记 display_only/developing，不写入正式三级 points、confirmed_wave_count、策略或回测",
+                "Web 使用区别于正式三级实线的橙色虚线展示，并提供可点击的规则说明",
+                "Core、API、Web 测试、构建、Harness 与真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-core lint && pnpm --filter wavequant-core typecheck && pnpm --filter wavequant-core test:unit && pnpm --filter wavequant-core build",
+                    "status": "passed",
+                    "summary": "Core Ruff、严格路径 mypy、505 项 pytest 与 sdist/wheel 构建通过；发展尾段的方向、因果日期、相等极值最早保留及正式点隔离均有契约覆盖。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、33 项通过/1 项环境跳过的 pytest 与构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web test:e2e && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "Web ESLint、严格类型检查、6 项 Vitest、53 项 Node 契约、8 条 Playwright 流程与 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "GET /api/tdx-theory?symbol=sh.600021&asof=2015-07-15 + Playwright Chromium audit",
+                    "status": "passed",
+                    "summary": "上海电力正式三级点保持 3 个；页面显示 2008-11-06 L2 2.68 到 2015-06-02 H12 34.50 的纯显示发展中上涨段，端点于 2015-07-15 可知，浏览器无页面错误和失败请求。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "34 个 Feature、18 个 Node workspace、2 个 Python workspace与 32 份规则校验通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-035",
+            "name": "wavequant-tertiary-developing-path",
+            "description": "三级正式反转长期未完成时，完整显示其后已经确认可知的二级结构演化与当前候选端点。",
+            "title": "补全三级趋势发展路径",
+            "scope": "保留三级正式结构突破规则；Core 参照分层趋势的确认与发展边界，从最后一个正式三级点开始生成只读发展路径，Web 完整渲染而不自行选点。",
+            "dependencies": ["MONOREPO-034"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "上海电力三级发展路径不再截止于 2015-06-02，而是覆盖其后已确认二级结构并延伸到当前已确认候选点",
+                "发展路径只使用二级正式点及其因果确认日期，不读取原始 K 线重新定义三级结构",
+                "正式三级 strokes、confirmed_wave_count、末跌高、策略和回测结果保持不变",
+                "Web 以橙色虚线完整绘制发展路径，端点与说明可核验且关闭三级图层后同步隐藏",
+                "Core、API、Web、Harness 与真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint && pnpm --filter @wavequant/core typecheck && pnpm --filter @wavequant/core test:unit && pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "Core Ruff、严格路径 mypy、506 项 pytest 与 sdist/wheel 构建通过；完整发展路径、待决尾部、来源位置、角色和因果日期均有契约覆盖。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、33 项通过/1 项环境跳过的 pytest 与构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web test:e2e && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "Web ESLint、严格类型检查、6 项 Vitest、53 项 Node 契约、8 条 Playwright 流程与 Next.js 生产构建通过；真实股票用例显式等待理论响应，消除并发读取旧摘要的竞态。"
+                },
+                {
+                    "command": "GET /api/tdx-theory?symbol=sh.600021&asof=2026-09-07 + Playwright Chromium visual audit",
+                    "status": "passed",
+                    "summary": "上海电力正式三级点保持 3 个；完整发展路径包含 14 点、8 个已确认内部转折和 4 个待决尾部点，结束于 2026-05-29 H27 22.35；浏览器图线覆盖当前视窗且无页面错误或失败请求。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "35 个 Feature、18 个 Node workspace、2 个 Python workspace 与 32 份规则校验通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-036",
+            "name": "wavequant-level-two-tail-last-fall-high-reanchor",
+            "description": "二级趋势尾部的旧低被收盘严格跌破且后续二级高点已确认时，将末跌高换锚到该高点。",
+            "title": "修正二级尾部末跌高下移",
+            "scope": "由 wavequant-core 扩展二级末跌高的因果换锚规则：没有后续正式二级低点时，允许使用已经确认的后续二级高点及其一级确认低点作为当前尾部证据；Web 只消费服务端事件，不自行重算业务规则。",
+            "dependencies": ["MONOREPO-032", "MONOREPO-035"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "上海电力二级 L26 2026-04-28 16.73 被 2026-06-23 收盘 16.29 严格跌破后失去当前低点锚点",
+                "H27 2026-05-29 22.35 在 2026-07-17 完成确认后成为新的二级末跌高",
+                "换锚可用日不得早于旧低跌破日及新高确认日，盘中跌破或未确认高点不得提前换锚",
+                "已有后续正式二级低点的华夏银行换锚规则保持不变",
+                "Core、Web、API、Harness 与真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint && pnpm --filter @wavequant/core typecheck && pnpm --filter @wavequant/core test:unit && pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "Core Ruff、严格路径 mypy、507 项 pytest 与 sdist/wheel 构建通过；开放尾段换锚、严格收盘跌破、确认低点来源和因果日期均有契约覆盖。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、33 项通过/1 项环境跳过的 pytest 与构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build && pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --workers=1",
+                    "status": "passed",
+                    "summary": "Web ESLint、严格类型检查、6 项 Vitest、54 项 Node 契约、Next.js 生产构建与串行 8 条 Playwright 流程通过。"
+                },
+                {
+                    "command": "GET /api/tdx-theory?symbol=sh.600021&asof=2026-07-16|2026-07-17|2026-09-07 + Chromium visual audit",
+                    "status": "passed",
+                    "summary": "上海电力在 2026-07-16 尚未换锚；2026-07-17 起换锚到 2026-05-29 H27 22.35，确认低点证据为 2026-07-14 L283 13.26；页面摘要和图上标签一致且无 Console 警告。"
+                },
+                {
+                    "command": "GET /api/tdx-theory?symbol=sh.600015&asof=2026-09-07",
+                    "status": "passed",
+                    "summary": "华夏银行既有正式二级低点分支保持不变：末跌高仍为 2026-04-02 H34 7.52，当前二级低点仍为 2026-06-29 L35 6.34。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "36 个 Feature、18 个 Node workspace、2 个 Python workspace 与 32 份规则校验通过。"
+                }
+            ]
         }
     ]
 }

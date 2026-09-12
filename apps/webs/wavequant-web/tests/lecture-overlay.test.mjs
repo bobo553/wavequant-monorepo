@@ -854,6 +854,72 @@ test("tertiary solid line and annotation use level-two evidence", () => {
     assert.match(item.title, /三级低点/);
 });
 
+test("tertiary developing path draws every nested turn and remains display-only", () => {
+    const overlay = new LectureOverlay({ dataset: {} }),
+        segments = [];
+    let dash, start, end;
+    const ctx = {
+        save() {},
+        restore() {},
+        setLineDash(v) {
+            dash = v;
+        },
+        beginPath() {},
+        moveTo(x, y) {
+            start = [x, y];
+        },
+        lineTo(x, y) {
+            end = [x, y];
+        },
+        stroke() {
+            segments.push({ dash: [...dash], start, end, color: this.strokeStyle });
+        },
+        fillText() {},
+    };
+    const points = [
+        { time: "2008-11-06", value: 2.68, kind: "L", label: "L2", available_at: "2015-07-15" },
+        {
+            time: "2015-06-02",
+            value: 34.5,
+            kind: "H",
+            label: "H12",
+            available_at: "2015-07-15",
+            state: "developing",
+        },
+        { time: "2018-10-19", value: 6.15, kind: "L", label: "L14", available_at: "2019-05-14" },
+        { time: "2019-04-15", value: 9.95, kind: "H", label: "H16", available_at: "2019-09-06" },
+    ];
+    const stroke = {
+        id: "tertiary-developing-test",
+        kind: "tertiary-developing",
+        wave_direction: "up",
+        display_only: true,
+        nested_turn_count: 1,
+        pending_point_count: 1,
+        points,
+    };
+    overlay.strokes = [stroke];
+    overlay.projected = [
+        {
+            stroke,
+            points: points.map((point, index) => ({ point, index, x: index * 100, y: point.value })),
+        },
+    ];
+    overlay.draw({ useMediaCoordinateSpace: (fn) => fn({ context: ctx }) });
+    assert.deepEqual(segments, [
+        { dash: [7, 4], start: [0, 2.68], end: [100, 34.5], color: "#ffad72" },
+        { dash: [7, 4], start: [100, 34.5], end: [200, 6.15], color: "#ffad72" },
+        { dash: [7, 4], start: [200, 6.15], end: [300, 9.95], color: "#ffad72" },
+    ]);
+    const item = overlay.annotation("drawing:tertiary-developing-test:2");
+    assert.equal(item.raw.scope, "display_only_developing_path");
+    assert.equal(item.time, "2019-09-06");
+    assert.match(item.title, /完整发展路径/);
+    assert.match(item.description, /1 个已确认二级内部转折/);
+    assert.match(item.description, /1 个待决尾部二级点/);
+    assert.match(item.description, /不是正式三级反转点/);
+});
+
 test("mixed main path shares junction coordinates and emphasis never removes legs", () => {
     const overlay = new LectureOverlay({ dataset: {} }),
         segments = [];

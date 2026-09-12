@@ -319,6 +319,9 @@ export class LectureOverlay {
         this.container.dataset.tertiaryPoints = this.strokes
             .filter((s) => s.kind === "tertiary")
             .reduce((n, s) => n + s.points.length, 0);
+        this.container.dataset.tertiaryDevelopingPoints = this.strokes
+            .filter((s) => s.kind === "tertiary-developing")
+            .reduce((n, s) => n + s.points.length, 0);
     }
     draw(target) {
         target.useMediaCoordinateSpace(({ context: ctx }) => {
@@ -329,7 +332,8 @@ export class LectureOverlay {
             const levelOneLabels = new Map();
             for (const { stroke, points } of this.projected) {
                 const connection = stroke.kind === "reversal-connection" || stroke.kind === "secondary-connection";
-                const tertiary = stroke.kind === "tertiary",
+                const tertiaryDeveloping = stroke.kind === "tertiary-developing",
+                    tertiary = stroke.kind === "tertiary" || tertiaryDeveloping,
                     secondary = stroke.kind === "secondary" || stroke.kind === "secondary-connection",
                     reversal = stroke.kind === "reversal" || connection || secondary || tertiary;
                 ctx.lineWidth = tertiary ? 3.5 : secondary ? 3 : reversal ? 2 : 2.5;
@@ -347,7 +351,9 @@ export class LectureOverlay {
                             : this.highlightTeaching && teaching
                               ? "#50dfd2"
                               : "#ffd36d";
-                    ctx.setLineDash(reversal ? [] : [5, 3]);
+                    // 发展路径会随已确认二级结构继续延伸，虚线用于避免把
+                    // 其中的内部转折误读成正式三级反转点。
+                    ctx.setLineDash(tertiaryDeveloping ? [7, 4] : reversal ? [] : [5, 3]);
                     ctx.beginPath();
                     ctx.moveTo(a.x, a.y);
                     ctx.lineTo(b.x, b.y);
@@ -450,6 +456,26 @@ export class LectureOverlay {
                     scope: "display_only_connection",
                     stroke,
                 },
+            };
+        }
+        if (stroke.kind === "tertiary-developing") {
+            const start = stroke.points[0],
+                endpoint = stroke.points.at(-1),
+                rising = stroke.wave_direction === "up",
+                nestedCount = stroke.nested_turn_count ?? Math.max(0, stroke.points.length - 2),
+                pendingCount = stroke.pending_point_count ?? 0;
+            return {
+                id,
+                time: endpoint.available_at,
+                sourceTime: p.time,
+                kind: "trend",
+                category: "rules",
+                price: p.value,
+                title: `Ⅲ·完整发展路径 · 当前${rising ? "上涨" : "下跌"}候选`,
+                description: `正式三级${start.kind === "L" ? "低点" : "高点"} ${start.label}（${start.time}，${start.value}）确认后，Python 继续串联 ${nestedCount} 个已确认二级内部转折，并保留 ${pendingCount} 个待决尾部二级点，直到当前 ${endpoint.label}（${endpoint.time}，${endpoint.value}）。所有点均按各自确认日期可见；它们是三级发展检查路径，不是正式三级反转点，不参与后续级别、策略或回测。`,
+                sourceLabel: "三级趋势线 · Python 完整发展路径（仅显示）",
+                levels: [],
+                raw: { stroke, trend_level: 3, source_level: 2, scope: "display_only_developing_path" },
             };
         }
         if (stroke.kind === "secondary" || stroke.kind === "tertiary") {

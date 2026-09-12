@@ -34,7 +34,12 @@ test("Huaxia Bank level-two last-fall-high reanchors after the old low close bre
 
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    const huaxiaTheory = page.waitForResponse(
+        (response) => response.url().includes("/api/tdx-theory?symbol=sh.600015") && response.ok(),
+        { timeout: 60_000 },
+    );
     await page.locator("#symbol-select").selectOption("sh.600015");
+    await huaxiaTheory;
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#error")).toBeHidden();
     await expect(page.locator("#secondary-trend-summary")).toContainText("二级末跌高 7.52");
@@ -72,7 +77,12 @@ test("Minsheng Bank level-one guide reaches the confirmed same-level breakout ba
 
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    const minshengTheory = page.waitForResponse(
+        (response) => response.url().includes("/api/tdx-theory?symbol=sh.600016") && response.ok(),
+        { timeout: 60_000 },
+    );
     await page.locator("#symbol-select").selectOption("sh.600016");
+    await minshengTheory;
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#error")).toBeHidden();
     await expect(page.locator("#trend-summary")).toContainText("视窗末跌高 3.65");
@@ -104,6 +114,98 @@ test("Minsheng Bank level-one guide reaches the confirmed same-level breakout ba
         breakout_basis: "confirmed_same_level_high",
     });
     expect(state.breakoutBar.close).toBe(3.65);
+    expect(pageErrors).toEqual([]);
+    expect(failedRequests).toEqual([]);
+});
+
+test("Shanghai Electric Power shows the complete level-three development path after its key break", async ({
+    page,
+}) => {
+    const pageErrors: string[] = [];
+    const failedRequests: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    const shanghaiPowerTheory = page.waitForResponse(
+        (response) => response.url().includes("/api/tdx-theory?symbol=sh.600021") && response.ok(),
+        { timeout: 60_000 },
+    );
+    await page.locator("#symbol-select").selectOption("sh.600021");
+    await shanghaiPowerTheory;
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#error")).toBeHidden();
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-tertiary-developing-points", "14");
+    await expect(page.locator("#secondary-trend-summary")).toContainText("二级末跌高 22.35");
+    await expect(page.locator("#tertiary-trend-summary")).toContainText("完整发展路径 14 点");
+    await expect(page.locator("#tertiary-trend-summary")).toContainText("2026-05-29 H27 22.35");
+
+    const latestState = await page.evaluate(async () => {
+        const theory = await fetch("/api/tdx-theory?symbol=sh.600021&asof=2026-09-07").then((response) =>
+            response.json(),
+        );
+        return {
+            confirmedCount: theory.tertiary_trends.confirmed_wave_count,
+            developingPointCount: theory.tertiary_trends.developing_point_count,
+            path: theory.tertiary_trends.developing_strokes[0].points,
+            transition: theory.secondary_trends.strokes[0].key_transitions.find(
+                (event: { broken_low: { time: string } }) => event.broken_low.time === "2026-04-28",
+            ),
+        };
+    });
+    expect(latestState.confirmedCount).toBe(3);
+    expect(latestState.developingPointCount).toBe(14);
+    expect(latestState.path.slice(-4)).toMatchObject([
+        { time: "2025-12-16", kind: "L", value: 18.96, development_role: "pending_evidence" },
+        { time: "2026-01-26", kind: "H", value: 24.85, development_role: "pending_evidence" },
+        { time: "2026-04-28", kind: "L", value: 16.73, development_role: "pending_evidence" },
+        { time: "2026-05-29", kind: "H", value: 22.35, development_role: "active_endpoint" },
+    ]);
+    expect(latestState.transition).toMatchObject({
+        available_at: "2026-07-17",
+        active_low_source_level: 1,
+        broken_low: { time: "2026-04-28", kind: "L", value: 16.73 },
+        new_key: { time: "2026-05-29", kind: "H", value: 22.35 },
+        active_low: { time: "2026-07-14", kind: "L", value: 13.26 },
+        confirmed_by: { time: "2026-06-23", value: 16.29 },
+    });
+
+    const replayIndex = await page.evaluate(async () => {
+        const view = await fetch("/api/tdx-view?symbol=sh.600021&asof=2026-09-07").then((response) => response.json());
+        return view.bars.findIndex((bar: { time: string }) => bar.time === "2015-07-15");
+    });
+    expect(replayIndex).toBeGreaterThan(0);
+    await page.locator("#replay-slider").evaluate((slider, index) => {
+        (slider as HTMLInputElement).value = String(index);
+        slider.dispatchEvent(new Event("change", { bubbles: true }));
+    }, replayIndex);
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#error")).toBeHidden();
+    await expect(page.locator("#asof-label")).toHaveText("2015-07-15");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-tertiary-developing-points", "2");
+    await expect(page.locator("#tertiary-trend-summary")).toContainText("完整发展路径 2 点");
+    await expect(page.locator("#tertiary-trend-summary")).toContainText("当前上涨候选 2015-06-02 H12 34.5");
+
+    const state = await page.evaluate(async () => {
+        const theory = await fetch("/api/tdx-theory?symbol=sh.600021&asof=2015-07-15").then((response) =>
+            response.json(),
+        );
+        return {
+            confirmedCount: theory.tertiary_trends.confirmed_wave_count,
+            tail: theory.tertiary_trends.developing_strokes[0],
+        };
+    });
+    expect(state.confirmedCount).toBe(3);
+    expect(state.tail).toMatchObject({
+        kind: "tertiary-developing",
+        wave_direction: "up",
+        display_only: true,
+        points: [
+            { time: "2008-11-06", kind: "L", value: 2.68 },
+            { time: "2015-06-02", kind: "H", value: 34.5, state: "developing" },
+        ],
+    });
     expect(pageErrors).toEqual([]);
     expect(failedRequests).toEqual([]);
 });

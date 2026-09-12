@@ -409,9 +409,14 @@ function renderVisibleAnnotations(items, range) {
         ? `二级趋势线 · 视窗：${s.windowTrend} · 最新局部：${s.trend}（至 ${s.latestKnown}）｜二级末跌高 ${num(s.lastFallHigh?.value)} · 末升低 ${num(s.lastRiseLow?.value)} · 点击二级转折点查看一级突破依据`
         : "二级趋势线：当前无已确认波段，或图层已关闭；等待一级末跌高／末升低被突破。";
     const u = range.tertiaryTrend;
+    const developing = range.tertiaryDeveloping,
+        developingStart = developing?.points[0],
+        developingEnd = developing?.points.at(-1);
     $("tertiary-trend-summary").textContent = u
         ? `三级趋势线 · 视窗：${u.windowTrend} · 最新局部：${u.trend}（至 ${u.latestKnown}）｜三级末跌高 ${num(u.lastFallHigh?.value)} · 末升低 ${num(u.lastRiseLow?.value)} · 点击三级转折点查看二级突破依据`
-        : "三级趋势线：当前无已确认波段，或图层已关闭；等待二级末跌高／末升低被突破。";
+        : developing
+          ? `三级趋势线 · 完整发展路径 ${developing.points.length} 点：${developingStart.time} ${developingStart.label} ${num(developingStart.value)} → 当前${developing.wave_direction === "up" ? "上涨" : "下跌"}候选 ${developingEnd.time} ${developingEnd.label} ${num(developingEnd.value)}｜橙色虚线点均来自已确认二级结构，不升级为正式三级反转`
+          : "三级趋势线：当前无已确认波段，或图层已关闭；等待二级末跌高／末升低被突破。";
     $("annotation-count").textContent = `当前图窗 ${range.from} — ${range.to} · ${items.length} 项`;
     $("events").replaceChildren();
     if (!items.length) {

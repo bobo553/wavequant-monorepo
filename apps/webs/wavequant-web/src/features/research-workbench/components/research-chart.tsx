@@ -79,7 +79,7 @@ export function ResearchChart(): JSX.Element {
                 summaryId="tertiary-trend-summary"
                 className="trend-controls tertiary-controls"
                 label="三级趋势线"
-                description="橙色实线 Ⅲ·L ↔ Ⅲ·H · 基于二级趋势线翻空为多／翻多为空 · 跨二级拐点"
+                description="橙色实线为正式 Ⅲ·L ↔ Ⅲ·H；橙色虚线串联已确认的二级内部转折，并保留待决尾部全部二级点直到最新点，不升级为正式三级点"
                 waiting="等待三级趋势线结构…"
             />
             <div id="ohlc" className="ohlc" aria-live="off">

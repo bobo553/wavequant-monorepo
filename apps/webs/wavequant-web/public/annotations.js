@@ -105,7 +105,7 @@ export function reversalWindowSummary(strokes, from, to, marketBars = []) {
               (point) =>
                   point.index === lastFallHighReanchor.active_low?.index &&
                   point.kind === lastFallHighReanchor.active_low?.kind,
-          )
+          ) || lastFallHighReanchor.active_low
         : null;
     const low = reanchoredLow || lowestLow;
     const lowPosition = low ? path.points.indexOf(low) : -1,
@@ -130,7 +130,7 @@ export function reversalWindowSummary(strokes, from, to, marketBars = []) {
     // 收盘必须从不高于关键位严格穿越到上方；盘中上影越线或相等收盘仍不算突破。
     const breakoutStart = low ? (low.available_at > low.time ? low.available_at : low.time) : null;
     let marketBreakout = null;
-    if (lowPosition >= 0 && lastFallHigh && breakoutStart && marketBars.length) {
+    if (low && lastFallHigh && breakoutStart && marketBars.length) {
         for (let index = 1; index < marketBars.length; index++) {
             const previous = marketBars[index - 1],
                 current = marketBars[index],
@@ -231,9 +231,15 @@ export function lastFallHighAnnotations(levelSummaries) {
                 ? `随后 ${breakout.time} K 线收盘 ${num(breakout.value)} 首次从关键位下方严格突破，水平虚线延长到这根 K 线；盘中上影越线或收盘相等不算突破。`
                 : `随后 ${breakout.label}（${breakout.time}，${num(breakout.value)}）首次严格突破该末跌高，水平虚线延长到这根 K 线。`
             : null;
-        const reanchorText = reanchor
-            ? `原二级低点 ${reanchor.broken_low.label}（${reanchor.broken_low.time}，${num(reanchor.broken_low.value)}）在 ${reanchor.available_at} 被收盘 ${num(reanchor.confirmed_by.value)} 严格跌破；Python 领域规则把当前段切换到 ${reanchor.active_low.label}（${reanchor.active_low.time}，${num(reanchor.active_low.value)}），其左侧 ${reanchor.new_key.label}（${reanchor.new_key.time}，${num(reanchor.new_key.value)}）成为新的末跌高。`
-            : null;
+        const activeLowLevel = LAST_FALL_HIGH_LEVELS[reanchor?.active_low_source_level]?.label,
+            activeLowText = reanchor
+                ? reanchor.active_low_source_level === level
+                    ? `把当前段切换到 ${reanchor.active_low.label}（${reanchor.active_low.time}，${num(reanchor.active_low.value)}）`
+                    : `以${activeLowLevel || "下一级"}确认低点 ${reanchor.active_low.label}（${reanchor.active_low.time}，${num(reanchor.active_low.value)}）作为当前尾部低点证据`
+                : null,
+            reanchorText = reanchor
+                ? `原${spec.label}低点 ${reanchor.broken_low.label}（${reanchor.broken_low.time}，${num(reanchor.broken_low.value)}）在 ${reanchor.confirmed_by.time} 被收盘 ${num(reanchor.confirmed_by.value)} 严格跌破；Python 领域规则${activeLowText}，其左侧 ${reanchor.new_key.label}（${reanchor.new_key.time}，${num(reanchor.new_key.value)}）成为新的末跌高，换锚从 ${reanchor.available_at} 起可知。`
+                : null;
         return [
             {
                 id: `last-fall-high:${level}:${summary.path}:${low.index}:${key.index}:${reanchor?.available_at ?? "base"}:${breakout?.index ?? "open"}`,

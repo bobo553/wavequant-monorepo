@@ -111,6 +111,34 @@ class SecondaryTrendTests(unittest.TestCase):
         self.assertEqual(event['confirmed_by']['previous_close'],6.32)
         self.assertEqual(event['confirmed_by']['break_basis'],'close_cross')
 
+    def test_close_break_at_open_tail_reanchors_to_later_confirmed_high(self):
+        """A confirmed tail high becomes the key even before the next level-2 low."""
+        def point(index,time,kind,value,label,available_at,**evidence):
+            return dict(index=index,ordinal=0,time=time,kind=kind,value=value,
+                        label=label,available_at=available_at,**evidence)
+
+        confirming_low=point(5351,'2026-07-14','L',13.26,'L283','2026-07-17')
+        points=[
+            point(5241,'2026-01-26','H',24.85,'H26','2026-03-05'),
+            point(5300,'2026-04-28','L',16.73,'L26','2026-06-04'),
+            point(5320,'2026-05-29','H',22.35,'H27','2026-07-17',confirmed_by=confirming_low),
+        ]
+        bars=[
+            Bar(datetime(2026,6,22),'TEST',16.59,16.75,16.11,16.74,100),
+            Bar(datetime(2026,6,23),'TEST',16.75,16.95,16.26,16.29,100),
+        ]
+
+        events=last_fall_high_reanchors(points,bars,trend_level=2)
+        self.assertEqual(len(events),1)
+        event=events[0]
+        self.assertEqual(event['available_at'],'2026-07-17')
+        self.assertEqual((event['broken_low']['time'],event['broken_low']['value']),('2026-04-28',16.73))
+        self.assertEqual((event['previous_key']['time'],event['previous_key']['value']),('2026-01-26',24.85))
+        self.assertEqual((event['new_key']['time'],event['new_key']['value']),('2026-05-29',22.35))
+        self.assertEqual((event['active_low']['time'],event['active_low']['value']),('2026-07-14',13.26))
+        self.assertEqual(event['active_low_source_level'],1)
+        self.assertEqual(event['confirmed_by']['time'],'2026-06-23')
+
 
 if __name__=='__main__':
     unittest.main()

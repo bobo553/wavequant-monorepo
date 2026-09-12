@@ -46,12 +46,17 @@ def last_fall_high_reanchors(points,bars,*,trend_level=2):
 
     The lowest confirmed point remains the structural anchor while price stays
     above it.  Once a market close strictly crosses below that old low, the
-    active segment advances to the latest *already confirmed* same-level low to
-    its right.  That low's nearest preceding same-level high is the new 末跌高.
+    active segment advances to the next confirmed structure on its right.  A
+    formal same-level low is preferred.  At an open tail, the confirming
+    source-level low of an already-confirmed same-level high supplies the
+    causal low evidence, so the key can move without inventing a future formal
+    low.  In both cases the intervening same-level high is the new 末跌高.
 
     Only evidence is returned; confirmed trend points are never mutated or
     synthesized.  Consumers can therefore replay the transition at
-    ``available_at`` without changing the historical level-2 polyline.
+    ``available_at`` without changing the historical level-2 polyline.  The
+    transition date is never earlier than both the market break and the point
+    that makes the replacement key knowable.
     """
     events=[]
     for position,broken_low in enumerate(points):
@@ -60,20 +65,45 @@ def last_fall_high_reanchors(points,bars,*,trend_level=2):
         broken_at=_first_close_break_below(bars,broken_low)
         if broken_at is None:
             continue
-        successors=[(index,point) for index,point in enumerate(points[position+1:],position+1)
-                    if point['kind']=='L' and point['available_at']<=broken_at['time']]
-        if not successors:
-            continue
-        active_position,active_low=successors[-1]
         previous_key=next((point for point in reversed(points[:position]) if point['kind']=='H'),None)
-        new_key=next((point for point in reversed(points[:active_position]) if point['kind']=='H'),None)
+        if previous_key is None:
+            continue
+
+        # Preserve the established rule when a later formal low already exists:
+        # only a low already known at the break is allowed to move the segment.
+        # This keeps historical events stable and confines the fallback below
+        # to the one genuinely open tail at the end of the confirmed sequence.
+        later_lows=[(index,point) for index,point in enumerate(points[position+1:],position+1)
+                    if point['kind']=='L']
+        known_lows=[item for item in later_lows if item[1]['available_at']<=broken_at['time']]
+        formal_low=known_lows[-1] if known_lows else None
+        if formal_low:
+            active_position,active_low=formal_low
+            new_key=next((point for point in reversed(points[:active_position]) if point['kind']=='H'),None)
+            active_low_source_level=trend_level
+        else:
+            # A last H can be fully confirmed by a lower source-level L while
+            # the corresponding next same-level L is still developing.  This
+            # is exactly the live-tail state: use the proof already attached to
+            # H, but do not append that proof to the formal level-2 polyline.
+            if position!=len(points)-2 or points[-1]['kind']!='H':
+                continue
+            new_key=points[-1]
+            active_low=new_key.get('confirmed_by')
+            if (not isinstance(active_low,dict) or active_low.get('kind')!='L'
+                    or active_low.get('value')>=broken_low['value']):
+                continue
+            active_low_source_level=trend_level-1
+
         if previous_key is None or new_key is None or new_key['index']==previous_key['index']:
             continue
+        available_at=max(broken_at['time'],new_key['available_at'],active_low['available_at'])
         events.append(dict(
             id=f'level{trend_level}-last-fall-high-reanchor-{broken_low["index"]}-'
-               f'{active_low["index"]}-{broken_at["time"]}',
-            kind='last_fall_high_reanchor',trend_level=trend_level,available_at=broken_at['time'],
-            confirmation_rule='market_close_strictly_below_previous_structural_low',
+               f'{active_low["index"]}-{available_at}',
+            kind='last_fall_high_reanchor',trend_level=trend_level,available_at=available_at,
+            confirmation_rule='market_close_break_and_confirmed_replacement_key',
+            active_low_source_level=active_low_source_level,
             previous_key=_ref(previous_key),broken_low=_ref(broken_low),
             active_low=_ref(active_low),new_key=_ref(new_key),confirmed_by=broken_at))
     return events
@@ -140,4 +170,6 @@ def secondary_trends(level1,bars):
                 confirmed_wave_count=sum(len(s['points']) for s in strokes),
                 key_transition_count=sum(len(s['key_transitions']) for s in strokes),
                 aggregation_rule='level1_structural_key_break',scope='lecture_level2_not_strategy_confirmation',
-                note='一级点突破末跌高确认整段低点，跌破末升低确认整段高点；旧二级低点被市场收盘严格跌破后，末跌高换锚到后续已确认二级低点左侧高点；不等待67%交替，不跨原路径断点，不绘制未确认尾端。')
+                note='一级点突破末跌高确认整段低点，跌破末升低确认整段高点；旧二级低点被市场收盘严格跌破后，'
+                     '末跌高换锚到后续已确认二级低点左侧高点；开放尾部尚无下一二级低点时，可用已确认二级高点及其'
+                     '一级确认低点换锚，但不把一级点升级为二级点；不等待67%交替，不跨原路径断点，不绘制未确认尾端。')
