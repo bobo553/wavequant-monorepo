@@ -1,0 +1,52 @@
+{
+    "name": "@repo/async-ui",
+    "version": "1.0.0",
+    "type": "module",
+    "private": true,
+    "sideEffects": false,
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "tsup",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "prettier:fix": "prettier --write .",
+        "format": "pnpm lint:fix && pnpm prettier:fix",
+        "typecheck": "tsc --noEmit",
+        "test:unit": "vitest run"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.cjs"
+        },
+        "./webpack": {
+            "types": "./dist/webpack/index.d.ts",
+            "import": "./dist/webpack/index.mjs",
+            "require": "./dist/webpack/index.cjs"
+        }
+    },
+    "peerDependencies": {
+        "react": "^19.0.0"
+    },
+    "devDependencies": {
+        "@repo/eslint": "workspace:*",
+        "@repo/tsup": "workspace:*",
+        "@repo/typescript": "workspace:*",
+        "@repo/vitest": "workspace:*",
+        "@testing-library/react": "^16.3.2",
+        "@types/node": "^25.8.0",
+        "@types/react": "19.2.14",
+        "@types/react-dom": "19.2.3",
+        "eslint": "^10.2.1",
+        "jsdom": "^29.1.1",
+        "react": "^19.2.6",
+        "react-dom": "^19.2.6",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.7"
+    }
+}

@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-020",
+    "activeFeature": null,
     "features": [
         {
             "id": "MONOREPO-001",
@@ -737,7 +737,7 @@
             "title": "重构 WaveQuant Core 分层架构",
             "scope": "按业务职责整理 src/wavequant，在 domain、application、infrastructure、interfaces 四层内继续拆分模型、市场结构、市场状态、策略、研究、交易、运维、行情、持久化、文件系统、图表、研究工具和筛选子域；将普通导入、延迟导入、测试 patch 和 CLI 升级到唯一规范路径，删除扁平兼容模块，不改变既有策略、研究、回测、执行与数据行为。",
             "dependencies": ["MONOREPO-019"],
-            "status": "in-progress",
+            "status": "done",
             "acceptanceCriteria": [
                 "核心实现按 domain、application、infrastructure、interfaces 分层，并在每层按功能子域继续细分",
                 "仓库内所有消费者使用 wavequant.<layer>.<feature>.<module>，包根和层级根目录不再保留重复模块",
@@ -749,22 +749,50 @@
                 {
                     "command": "pnpm --filter @wavequant/core lint && pnpm --filter @wavequant/core typecheck && pnpm --filter @wavequant/core test:unit && pnpm --filter @wavequant/core build",
                     "status": "passed",
-      "summary": "四层十三个功能子域重构后的 Ruff、渐进式严格 mypy、501 项 pytest 以及 sdist/wheel 构建全部通过。"
+                    "summary": "四层十三个功能子域重构后的 Ruff、渐进式严格 mypy、501 项 pytest 以及 sdist/wheel 构建全部通过。"
                 },
                 {
                     "command": "pnpm --filter @wavequant/core python -- -m wavequant.interfaces.cli --help && pnpm --filter wavequant-api lint && pnpm --filter wavequant-api typecheck && pnpm --filter wavequant-api test:unit && pnpm --filter wavequant-api build",
                     "status": "passed",
-      "summary": "CLI 已切换到 wavequant.interfaces.cli；API 消费方 Ruff、严格 mypy、33 项通过/1 项环境跳过的 pytest 和 Python 构建全部通过。"
-    },
-    {
-      "command": "检查 wavequant-core wheel 顶层布局并从 wheel 直接导入 14 个代表性规范模块",
-      "status": "passed",
-      "summary": "wheel 仅包含 85 个新分层 Python 文件；包根和各层根目录无兼容模块，旧 wavequant.model 导入已按升级约定失效。"
+                    "summary": "CLI 已切换到 wavequant.interfaces.cli；API 消费方 Ruff、严格 mypy、33 项通过/1 项环境跳过的 pytest 和 Python 构建全部通过。"
+                },
+                {
+                    "command": "检查 wavequant-core wheel 顶层布局并从 wheel 直接导入 14 个代表性规范模块",
+                    "status": "passed",
+                    "summary": "wheel 仅包含 85 个新分层 Python 文件；包根和各层根目录无兼容模块，旧 wavequant.model 导入已按升级约定失效。"
                 },
                 {
                     "command": "pnpm harness:check",
-                    "status": "blocked",
-                    "summary": "本功能状态一致；门禁被任务开始前已存在、未跟踪且不属于本次范围的 packages/async-ui/progress.md 缺少 Harness 章节阻断。"
+                    "status": "passed",
+                    "summary": "async-ui workspace 完成规范接入后，Harness 通过 20 个功能、18 个 Node workspace、2 个 Python workspace 和 32 份规则检查。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-021",
+            "name": "shared-async-ui-runtime",
+            "description": "将可复用的 React 异步视图、弹框调度与 Webpack 资源治理能力接入 monorepo 共享包。",
+            "title": "接入共享 Async UI 运行时",
+            "scope": "纳入 @repo/async-ui workspace，提供可取消的异步加载状态机、类型化弹框注册与调度、唯一 PopupHost、稳定优先级队列及独立 Webpack 清单和预算检查入口。",
+            "dependencies": ["MONOREPO-001"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "异步 loader 支持并发复用、超时、重试、取消、终态失败和显式 reset",
+                "弹框注册、业务 Props 与关闭结果保持端到端类型推导，串行队列稳定且显式叠加互不混淆",
+                "Webpack 入口可生成确定性清单并检查 initial graph、静态穿透、资源冲突和 gzip 预算",
+                "workspace 依赖写入 pnpm 锁文件，进度文档符合仓库 Harness 规范",
+                "包级 lint、类型检查、19 项单元测试、双入口构建与 Harness 通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @repo/async-ui lint && pnpm --filter @repo/async-ui typecheck && pnpm --filter @repo/async-ui test:unit && pnpm --filter @repo/async-ui build",
+                    "status": "passed",
+                    "summary": "ESLint、严格 TypeScript、6 个测试文件共 19 项 Vitest 以及 ESM/CJS/声明文件双入口构建全部通过。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "Harness 通过 21 个功能、18 个 Node workspace、2 个 Python workspace 和 32 份规则检查。"
                 }
             ]
         }

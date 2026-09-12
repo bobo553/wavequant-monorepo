@@ -4,7 +4,7 @@
 
 - `MONOREPO-011` 已完成：WaveQuant 已拆分为 Web、API 与核心包。
 - 本 workspace 只保留 Python 领域、研究、回测、数据、运维与研究 CLI，不再启动 HTTP Server 或读取 Web 静态资源。
-- `MONOREPO-020` 正在收尾：四层实现已细分为 13 个功能子域，仓库消费者已统一到唯一规范导入路径，扁平兼容模块已经移除。
+- `MONOREPO-020` 已完成：四层实现已细分为 13 个功能子域，仓库消费者已统一到唯一规范导入路径，扁平兼容模块已经移除。
 
 ## Completed
 
@@ -44,4 +44,4 @@
 - 真实数据不提交 Git；其他机器运行浏览器 E2E 前需通过 API 的 `--root` 与 `--tdx-root` 显式提供封存结果和通达信目录。
 - 既有 Python 模块保留历史代码风格；Ruff 先执行 Pyflakes 级检查，mypy 对新增路径模块启用严格模式，后续可按变更范围逐步扩大严格检查。
 - 包根只允许 `__init__.py`，层级根目录只允许有意维护的入口；架构测试会阻止扁平模块重新出现。
-- 本次仓库级 Harness 被用户现有未跟踪 workspace `packages/async-ui/progress.md` 缺少规定章节阻断；未修改或纳入该目录，Core 与 API 的相关门禁不受影响。
+- `packages/async-ui` 已按当前仓库规范接入 workspace 锁文件和进度结构，仓库级 Harness 阻塞已经解除。

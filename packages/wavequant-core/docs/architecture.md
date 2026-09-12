@@ -2,7 +2,7 @@
 
 Owner：WaveQuant Core 维护者
 适用范围：`packages/wavequant-core/src/wavequant`
-最后验证：2026-09-12；Core 与 API 消费方门禁通过。仓库 Harness 仍被本任务范围外的 `packages/async-ui/progress.md` 格式问题阻断。
+最后验证：2026-09-12；Core、API 消费方与仓库 Harness 门禁通过。
 
 ## 目标
 
