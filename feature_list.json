@@ -828,6 +828,204 @@
                     "summary": "茅台当前图窗显示一级 H12 1295 与二级 H2 1568 两个末跌高标签及引导线；三级无已确认结构不补画，独立开关可清空图层，Console 与 Network 无错误。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-023",
+            "name": "wavequant-level-one-pivot-price-labels",
+            "description": "在研究 K 线图中为一级趋势线的已确认高低点显示紧凑价格标签。",
+            "title": "显示一级趋势端点价格",
+            "scope": "仅在一级趋势线 Canvas 图层标注端点价格，高点置于上方、低点置于下方，限制字号与小数位，不修改趋势算法和其他图层。",
+            "dependencies": ["MONOREPO-022"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "一级趋势线所有当前可见的已确认 H/L 端点显示价格",
+                "价格最多显示两位小数并使用紧凑小字号，不显示冗余 H/L 编号",
+                "高点价格位于端点上方，低点价格位于端点下方",
+                "原折线以及二、三级趋势线不新增价格标签",
+                "wavequant-web lint、类型检查、单元测试、构建与真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、严格类型检查、43 项 Node 契约、6 项 Vitest 与 Next.js 静态生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "5 条 Chromium 页面流程全部通过。"
+                },
+                {
+                    "command": "sh.600519 level-one endpoint price browser audit",
+                    "status": "passed",
+                    "summary": "茅台当前图窗的 33 个一级已确认端点均显示 9px 紧凑价格；高点在上、低点在下，二三级不标价，Console 与 Network 无错误。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-024",
+            "name": "wavequant-last-fall-high-breakout-extension",
+            "description": "末跌高被同级已确认高点严格突破后，将图中水平虚线延长到突破 K 线。",
+            "title": "延长末跌高虚线到突破 K 线",
+            "scope": "在现有视窗末跌高标识中识别对应低点之后首个严格越过关键位的同级已确认 H，并调整显示终点；不改变趋势、策略和回测算法。",
+            "dependencies": ["MONOREPO-022"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "突破点必须位于对应低点之后、属于同一路径且为已确认同级 H",
+                "价格严格大于末跌高才算突破，相等不算",
+                "已突破的末跌高虚线延长到首个突破 K 线，未突破时保持原终点",
+                "标签详情展示突破点、价格和日期",
+                "wavequant-web lint、类型检查、单元测试、构建与真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、严格类型检查、44 项 Node 契约、6 项 Vitest 与 Next.js 静态生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "5 条 Chromium 页面流程全部通过。"
+                },
+                {
+                    "command": "sh.600519 last-fall-high breakout browser audit",
+                    "status": "passed",
+                    "summary": "茅台一级末跌高 H12 1295 的虚线延长到首个严格突破点 H14（2026-07-21，1344.70）；二级 H2 1568 尚未突破，仍止于对应低点；Console 与 Network 无错误。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-025",
+            "name": "wavequant-level-one-price-visibility-toggle",
+            "description": "为一级趋势线端点价格数字提供独立的显示开关。",
+            "title": "切换一级点位价格数字",
+            "scope": "在研究图表图层设置中增加默认开启的一级点位价格开关，只控制 9px 价格文字，并在本地保存偏好；不改变一级趋势线、端点、末跌高、策略和回测逻辑。",
+            "dependencies": ["MONOREPO-023"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "研究图表提供一级点位价格复选框且默认开启",
+                "关闭后清空一级端点价格数字但保留一级趋势线和端点",
+                "重新开启后恢复当前可见一级端点价格数字",
+                "刷新页面后保留价格数字开关状态，切换一级趋势线本身不覆盖该独立状态",
+                "wavequant-web lint、类型检查、单元测试、构建与真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、严格类型检查、44 项 Node 契约、6 项 Vitest 与 Next.js 静态生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "5 条 Chromium 页面流程全部通过。"
+                },
+                {
+                    "command": "sh.600519 level-one price visibility browser audit",
+                    "status": "passed",
+                    "summary": "关闭开关后价格标签从 33 变为 0、一级端点仍为 33；刷新后保持关闭，重新开启恢复 33 个价格标签，Console 与 Network 无错误。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-026",
+            "name": "wavequant-level-one-geometric-alternation",
+            "description": "修复首创环保一级趋势线跨路径衔接中价格方向错误的伪低低线。",
+            "title": "保证一级趋势衔接高低交替",
+            "scope": "跨一级路径显示衔接除 H/L 类型交替外还必须满足 L→H 上涨、H→L 下跌；直接方向不成立时使用期间已知的确认来源极值补成四点交替桥，没有真实证据则断开。不改变趋势确认、末跌高、策略和回测逻辑。",
+            "dependencies": ["MONOREPO-023"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "所有一级跨路径显示衔接同时满足端点类型和价格方向交替",
+                "首创环保 2026-05-22 L7 3.04 不再直接连接更低的 2026-08-04 H1 3.01",
+                "该区间使用真实已确认来源点补成 L 3.04→H 3.28→L 2.68→H 3.01",
+                "桥接保持纯显示属性且不修改服务端理论数据与策略逻辑",
+                "wavequant-web lint、类型检查、单元测试、构建与真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、严格类型检查、45 项 Node 契约、6 项 Vitest 与 Next.js 静态生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "5 条 Chromium 页面流程全部通过。"
+                },
+                {
+                    "command": "sh.600008 level-one alternation browser audit",
+                    "status": "passed",
+                    "summary": "首创环保原 L 3.04→更低 H 3.01 直连已替换为 L 3.04→H 3.28→L 2.68→H 3.01；所有显示衔接的类型和价格方向均交替，非法腿为 0，Console 与 Network 无错误。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-027",
+            "name": "wavequant-level-one-bridge-price-labels",
+            "description": "显示一级跨路径桥接节点的价格并保持正式趋势点语义不变。",
+            "title": "显示一级桥接节点价格",
+            "scope": "一级点位价格开启时，同时标注正式一级反转端点和显示桥采用的真实来源极值；连接首尾去重。桥接点仍为 display_only，不参与末跌高、二三级趋势、策略或回测。",
+            "dependencies": ["MONOREPO-025", "MONOREPO-026"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "首创环保 2026-06-02 显示价格 3.28，2026-06-30 显示价格 2.68",
+                "正式一级端点与显示桥共享的节点价格只绘制一次",
+                "价格开关同时控制正式一级端点和显示桥节点价格",
+                "显示桥节点不升级为正式一级点，当前一级末跌高仍按同路径已确认点定义",
+                "wavequant-web lint、类型检查、单元测试、构建与真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、严格类型检查、46 项 Node 契约、6 项 Vitest 与 Next.js 静态生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "5 条 Chromium 页面流程全部通过。"
+                },
+                {
+                    "command": "sh.600008 June bridge price and semantics browser audit",
+                    "status": "passed",
+                    "summary": "首创环保显示桥节点 2026-06-02 H 3.28 与 2026-06-30 L 2.68 均显示紧凑价格；正式一级点 17 个、去重后标签 19 个，当前末跌高仍为同路径 H1 3.01；Console 与 Network 无错误。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-028",
+            "name": "wavequant-display-path-last-fall-high",
+            "description": "让一级末跌高标注与页面连续显示路径采用同一组高低点。",
+            "title": "统一一级显示路径与末跌高",
+            "scope": "仅在浏览器图表的一级视窗摘要中，将正式一级分段与有真实来源的 display_only 桥拼成连续显示路径；最低显示低点左侧最近交替高点作为图上末跌高。服务端理论数据、二三级趋势、策略与回测保持不变。",
+            "dependencies": ["MONOREPO-026", "MONOREPO-027"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "首创环保当前视窗最低显示低点为 2026-06-30 L 2.68",
+                "该低点对应的图上一级末跌高为 2026-06-02 H 3.28，不再显示 2026-08-04 H1 3.01",
+                "水平虚线从 2026-06-02 延伸到 2026-06-30，后续未严格突破 3.28 时不继续延长",
+                "标注详情明确这是连续显示路径口径且不写回服务端策略数据",
+                "wavequant-web lint、类型检查、单元测试、构建与真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、严格类型检查、47 项 Node 契约、6 项 Vitest 与 Next.js 静态生产构建全部通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e",
+                    "status": "passed",
+                    "summary": "5 条 Chromium 页面流程全部通过。"
+                },
+                {
+                    "command": "sh.600008 display-path last-fall-high browser audit",
+                    "status": "passed",
+                    "summary": "首创环保一级视窗摘要和图上标识均改为 2026-06-02 H·桥 3.28，对应最低点 2026-06-30 L·桥 2.68；8 月 4 日 3.01 不再标为当前末跌高，后续无严格突破，Console 与 Network 无错误。"
+                }
+            ]
         }
     ]
 }

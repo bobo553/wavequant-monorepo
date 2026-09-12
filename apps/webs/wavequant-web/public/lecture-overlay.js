@@ -1,11 +1,119 @@
 // TradingView series primitive: preserves (date, ordinal), unlike LineSeries.
 // Display-only links. Keep source sessions separate for level-2/3 inference.
+const pivotPriceFormatter = new Intl.NumberFormat("zh-CN", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    useGrouping: false,
+});
+
+/** 一级趋势端点使用无千分位、最多两位小数的紧凑价格文本。 */
+export function formatPivotPrice(value) {
+    const price = Number(value);
+    return Number.isFinite(price) ? pivotPriceFormatter.format(price) : "";
+}
+
 export function reversalConnections(strokes, baseStrokes = []) {
     return trendConnections(strokes, baseStrokes, 1);
 }
 
 export function secondaryConnections(strokes, levelOneStrokes = []) {
     return trendConnections(strokes, levelOneStrokes, 2);
+}
+
+/**
+ * 将正式趋势分段与纯显示连接拼成连续的“图上路径”，只供视窗摘要和标注使用。
+ * 中间桥点保留真实来源日期、价格和确认状态，并显式标记 display_bridge；返回新对象，
+ * 不写回服务端理论数据，也不作为二级趋势、策略或回测输入。
+ */
+export function connectedTrendStrokes(strokes, connections) {
+    const order = (a, b) => a.index - b.index || (a.ordinal ?? 0) - (b.ordinal ?? 0),
+        pointKey = (point) => `${point.index}:${point.ordinal ?? 0}:${point.kind}:${point.value}`;
+    const paths = strokes
+        .filter((stroke) => !stroke.display_only && stroke.points.length)
+        .slice()
+        .sort((a, b) => order(a.points[0], b.points[0]));
+    if (!paths.length) return [];
+    const links = new Map(connections.map((link) => [`${link.source_paths?.[0]}→${link.source_paths?.[1]}`, link]));
+    const result = [];
+    let current = {
+        id: `display-${paths[0].id}`,
+        kind: paths[0].kind,
+        display_summary: true,
+        source_paths: [paths[0].id],
+        points: paths[0].points.map((point) => ({ ...point })),
+    };
+    const append = (point, displayBridge = false) => {
+        const next = {
+            ...point,
+            ...(displayBridge ? { display_bridge: true, label: point.label || `${point.kind}·桥` } : {}),
+        };
+        if (pointKey(current.points.at(-1)) !== pointKey(next)) current.points.push(next);
+    };
+    for (let index = 1; index < paths.length; index++) {
+        const previous = paths[index - 1],
+            next = paths[index],
+            link = links.get(`${previous.id}→${next.id}`);
+        if (!link) {
+            result.push(current);
+            current = {
+                id: `display-${next.id}`,
+                kind: next.kind,
+                display_summary: true,
+                source_paths: [next.id],
+                points: next.points.map((point) => ({ ...point })),
+            };
+            continue;
+        }
+        for (const point of link.points.slice(1, -1)) append(point, true);
+        for (const point of next.points) append(point);
+        current.id += `+${next.id}`;
+        current.source_paths.push(next.id);
+    }
+    result.push(current);
+    return result;
+}
+
+/**
+ * 趋势腿必须同时满足端点类型交替和价格方向：L→H 必须上涨，H→L 必须下跌。
+ * 仅检查 H/L 名称会把“更低的 H”直接接到前一个 L，视觉上形成伪低低线。
+ */
+function isAlternatingTrendLeg(a, b) {
+    return a.kind !== b.kind && (a.kind === "L" ? b.value > a.value : b.value < a.value);
+}
+
+/**
+ * 前后端点类型虽不同、但直接连接方向错误时，寻找两个按时间有序的来源极值。
+ * 例如 L(3.04) 与更低的 H(3.01) 之间必须补成 L→H→L→H；桥接只用于显示，
+ * 不进入一级/二级趋势确认，也不会改变末跌高、策略或回测证据。
+ */
+function alternatingPairBridge(a, b, candidates) {
+    const firstKind = b.kind,
+        firstSign = firstKind === "H" ? 1 : -1;
+    let bestFirst = null,
+        bestPair = null,
+        bestScore = -Infinity;
+    for (const point of candidates) {
+        if (point.kind === firstKind && isAlternatingTrendLeg(a, point)) {
+            if (!bestFirst || firstSign * (point.value - bestFirst.value) > 0) bestFirst = point;
+            continue;
+        }
+        if (
+            point.kind !== a.kind ||
+            !bestFirst ||
+            !isAlternatingTrendLeg(bestFirst, point) ||
+            !isAlternatingTrendLeg(point, b)
+        )
+            continue;
+        const score =
+            Math.abs(bestFirst.value - a.value) +
+            Math.abs(point.value - bestFirst.value) +
+            Math.abs(b.value - point.value);
+        if (score > bestScore) {
+            bestScore = score;
+            bestPair = [bestFirst, point];
+        }
+    }
+    return bestPair;
 }
 
 function trendConnections(strokes, sourceStrokes, level) {
@@ -42,28 +150,30 @@ function trendConnections(strokes, sourceStrokes, level) {
             b = right.points[0];
         if (order(a, b) >= 0) continue;
         const known = a.available_at > b.available_at ? a.available_at : b.available_at;
-        let points = [a, b];
+        const candidates = raw.filter(
+            (p) =>
+                order(a, p) < 0 &&
+                order(p, b) < 0 &&
+                (level === 1
+                    ? ["confirmed", "teaching"].includes(p.state)
+                    : !["seed", "developing"].includes(p.state)) &&
+                p.available_at <= known,
+        );
+        let points;
         if (a.kind === b.kind) {
             const kind = a.kind === "L" ? "H" : "L",
                 sign = kind === "H" ? 1 : -1;
-            const candidates = raw.filter(
-                (p) =>
-                    order(a, p) < 0 &&
-                    order(p, b) < 0 &&
-                    p.kind === kind &&
-                    (level === 1
-                        ? ["confirmed", "teaching"].includes(p.state)
-                        : !["seed", "developing"].includes(p.state)) &&
-                    p.available_at <= known &&
-                    sign * (p.value - a.value) > 0 &&
-                    sign * (p.value - b.value) > 0,
-            );
-            const extreme = candidates.reduce(
-                (best, p) => (!best || sign * (p.value - best.value) > 0 ? p : best),
-                null,
-            );
+            const extreme = candidates
+                .filter((p) => p.kind === kind && sign * (p.value - a.value) > 0 && sign * (p.value - b.value) > 0)
+                .reduce((best, p) => (!best || sign * (p.value - best.value) > 0 ? p : best), null);
             if (!extreme) continue; // No L-L/H-H shortcut, and no invented price/date.
             points = [a, extreme, b];
+        } else if (isAlternatingTrendLeg(a, b)) {
+            points = [a, b];
+        } else {
+            const bridge = alternatingPairBridge(a, b, candidates);
+            if (!bridge) continue; // 没有真实来源极值时宁可断开，也不画伪交替线。
+            points = [a, ...bridge, b];
         }
         links.push({
             id: `${level === 1 ? "connection" : "secondary-connection"}-${left.id}-${right.id}`,
@@ -78,7 +188,11 @@ function trendConnections(strokes, sourceStrokes, level) {
                     ? level === 1
                         ? "opposite_base_extreme"
                         : "opposite_level1_extreme"
-                    : "opposite_endpoints",
+                    : points.length === 4
+                      ? level === 1
+                          ? "alternating_base_extreme_pair"
+                          : "alternating_level1_extreme_pair"
+                      : "opposite_endpoints",
             points,
         });
     }
@@ -107,6 +221,7 @@ export class LectureOverlay {
         this.projected = [];
         this.views = [this];
         this.highlightTeaching = true;
+        this.showReversalPrices = true;
     }
     attached({ chart, series, requestUpdate }) {
         this.chart = chart;
@@ -130,6 +245,12 @@ export class LectureOverlay {
     setTeachingHighlight(show) {
         this.highlightTeaching = show;
         this.container.dataset.teachingHighlight = String(show);
+        this.requestUpdate?.();
+    }
+    /** 独立控制一级趋势端点价格，不改变趋势线、端点或点击证据。 */
+    setReversalPriceLabelsVisible(show) {
+        this.showReversalPrices = show;
+        if (!show) this.container.dataset.reversalPriceLabels = "0";
         this.requestUpdate?.();
     }
     updateAllViews() {
@@ -171,6 +292,8 @@ export class LectureOverlay {
             ctx.save();
             ctx.lineWidth = 2.5;
             ctx.font = "10px sans-serif";
+            // Map 同时收集正式一级端点和一级显示桥节点；连接首尾与正式端点重合时只画一次。
+            const levelOneLabels = new Map();
             for (const { stroke, points } of this.projected) {
                 const connection = stroke.kind === "reversal-connection" || stroke.kind === "secondary-connection";
                 const tertiary = stroke.kind === "tertiary",
@@ -198,9 +321,38 @@ export class LectureOverlay {
                     ctx.stroke();
                 }
                 ctx.setLineDash([]);
-                // No H/L or child-mother ordinal labels on any line layer. Keep all
-                // vertices and hit targets intact for the evidence panel.
+                if (this.showReversalPrices && (stroke.kind === "reversal" || stroke.kind === "reversal-connection")) {
+                    for (const point of points) {
+                        if (
+                            point.x !== null &&
+                            point.y !== null &&
+                            ["H", "L"].includes(point.point.kind) &&
+                            formatPivotPrice(point.point.value)
+                        )
+                            levelOneLabels.set(
+                                `${point.point.index}:${point.point.ordinal ?? 0}:${point.point.kind}:${point.point.value}`,
+                                point,
+                            );
+                    }
+                }
             }
+            // 价格只属于一级已确认端点；小字号与上下分置减少对 K 线的遮挡。
+            const light = typeof document !== "undefined" && document.documentElement.classList.contains("light");
+            ctx.font = "500 9px ui-monospace, SFMono-Regular, Consolas, monospace";
+            ctx.textAlign = "center";
+            ctx.lineJoin = "round";
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = light ? "rgba(255,255,255,0.92)" : "rgba(8,16,27,0.9)";
+            ctx.fillStyle = light ? "#365b89" : "#d3e0f5";
+            for (const point of levelOneLabels.values()) {
+                const high = point.point.kind === "H",
+                    text = formatPivotPrice(point.point.value),
+                    y = point.y + (high ? -4 : 4);
+                ctx.textBaseline = high ? "bottom" : "top";
+                ctx.strokeText?.(text, point.x, y);
+                ctx.fillText(text, point.x, y);
+            }
+            this.container.dataset.reversalPriceLabels = String(levelOneLabels.size);
             ctx.restore();
         });
     }
@@ -253,7 +405,9 @@ export class LectureOverlay {
                 description:
                     (stroke.points.length === 3
                         ? `同类端点之间，经${source} ${stroke.points[1].time} 的${stroke.points[1].kind === "H" ? "最高" : "最低"}点 ${stroke.points[1].value} 衔接，不直连两个低点或两个高点。`
-                        : `连接前后两段异类${name}端点。`) +
+                        : stroke.points.length === 4
+                          ? `前后异类端点的价格方向不成立，经${source} ${stroke.points[1].time} 的 ${stroke.points[1].kind} ${stroke.points[1].value} 与 ${stroke.points[2].time} 的 ${stroke.points[2].kind} ${stroke.points[2].value} 补成严格高低交替，不绘制伪低低或伪高高线。`
+                          : `连接前后两段异类${name}端点。`) +
                     `中间${source}路径分段；此线不证明期间方向连续，不新增反转，不参与末跌高、末升低、后续趋势级别或买卖判断。`,
                 sourceLabel: "显示衔接 · 非已确认趋势段",
                 levels: [],

@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { LectureOverlay, projectStroke, reversalConnections, secondaryConnections } from "../public/lecture-overlay.js";
+import {
+    LectureOverlay,
+    connectedTrendStrokes,
+    formatPivotPrice,
+    projectStroke,
+    reversalConnections,
+    secondaryConnections,
+} from "../public/lecture-overlay.js";
 
 test("level-two links use confirmed level-one extremes, not raw or display-only points", () => {
     const p = (i, kind, value, known = i) => ({
@@ -234,6 +241,78 @@ test("low-low bridge uses the highest known intermediate high, with earliest equ
     assert.deepEqual(reversalConnections(paths, [{ id: "bad", points: [p(3, "H", 8)] }]), []);
 });
 
+test("a low to a lower high is bridged as a geometrically valid L-H-L-H sequence", () => {
+    const p = (index, kind, value, state = "confirmed", known = index) => ({
+        index,
+        ordinal: 0,
+        time: `2026-0${index < 5 ? 5 : index < 8 ? 6 : 8}-${String(index).padStart(2, "0")}`,
+        available_at: `2026-08-${String(known).padStart(2, "0")}`,
+        kind,
+        value,
+        state,
+    });
+    const a = p(1, "L", 3.04),
+        b = p(9, "H", 3.01, "confirmed", 10);
+    const link = reversalConnections(
+        [
+            { id: "before", kind: "reversal", points: [a] },
+            { id: "after", kind: "reversal", points: [b] },
+        ],
+        [
+            {
+                id: "source",
+                points: [
+                    a,
+                    p(2, "H", 3.28),
+                    p(3, "L", 3.05),
+                    p(4, "H", 3.29, "developing"),
+                    p(5, "L", 2.86),
+                    p(6, "H", 3.02),
+                    p(7, "L", 2.68),
+                    p(8, "H", 3.2, "confirmed", 11),
+                    b,
+                ],
+            },
+        ],
+    )[0];
+    assert.equal(link.connection_rule, "alternating_base_extreme_pair");
+    assert.deepEqual(
+        link.points.map((point) => [point.index, point.kind, point.value]),
+        [
+            [1, "L", 3.04],
+            [2, "H", 3.28],
+            [7, "L", 2.68],
+            [9, "H", 3.01],
+        ],
+    );
+    assert.ok(
+        link.points.slice(1).every((point, index) => {
+            const previous = link.points[index];
+            return (
+                previous.kind !== point.kind &&
+                (previous.kind === "L" ? point.value > previous.value : point.value < previous.value)
+            );
+        }),
+    );
+    const display = connectedTrendStrokes(
+        [
+            { id: "before", kind: "reversal", points: [a] },
+            { id: "after", kind: "reversal", points: [b] },
+        ],
+        [link],
+    )[0];
+    assert.deepEqual(
+        display.points.map((point) => [point.kind, point.value, Boolean(point.display_bridge)]),
+        [
+            ["L", 3.04, false],
+            ["H", 3.28, true],
+            ["L", 2.68, true],
+            ["H", 3.01, false],
+        ],
+    );
+    assert.equal(display.display_summary, true);
+});
+
 test("same-bar intermediate point retains original ordinal and projected position", () => {
     const p = (ordinal, kind, value) => ({
         index: 2,
@@ -294,7 +373,8 @@ test("both legs of a three-point bridge are drawable and clickable; no low-low s
             (v) => 100 - v,
         ),
     }));
-    const lines = [];
+    const lines = [],
+        labels = [];
     let start, end;
     const ctx = {
         save() {},
@@ -310,8 +390,8 @@ test("both legs of a three-point bridge are drawable and clickable; no low-low s
         stroke() {
             lines.push([start, end]);
         },
-        fillText() {
-            assert.fail("no H/L labels");
+        fillText(text) {
+            labels.push(text);
         },
     };
     o.draw({ useMediaCoordinateSpace: (fn) => fn({ context: ctx }) });
@@ -325,6 +405,7 @@ test("both legs of a three-point bridge are drawable and clickable; no low-low s
             [200, 92],
         ],
     ]);
+    assert.deepEqual(labels, ["10", "20", "8"]);
     assert.ok(o.hitTest(50, 85));
     const hit = o.hitTest(150, 86);
     assert.ok(hit);
@@ -380,7 +461,7 @@ test("level-one connection is solid, continuous and explicitly display-only on h
     };
     overlay.draw({ useMediaCoordinateSpace: (fn) => fn({ context: ctx }) });
     assert.deepEqual(segments, [{ start: [0, 100], end: [100, 50], dash: [], color: "#b7cdf4" }]);
-    assert.deepEqual(labels, []);
+    assert.deepEqual(labels, ["10", "5"]);
     const hit = overlay.hitTest(50, 75),
         info = overlay.annotation(hit.externalId);
     assert.equal(info.time, "d");
@@ -435,6 +516,95 @@ test("filtered reversal keeps its original same-bar coordinate", () => {
         10,
     );
     assert.equal(p[0].x, 101.5);
+});
+
+test("level-one reversal endpoints use compact prices above highs and below lows", () => {
+    assert.equal(formatPivotPrice(1568), "1568");
+    assert.equal(formatPivotPrice(1151.016), "1151.02");
+    assert.equal(formatPivotPrice(undefined), "");
+    const overlay = new LectureOverlay({ dataset: {} }),
+        labels = [];
+    const ctx = {
+        save() {},
+        restore() {},
+        setLineDash() {},
+        beginPath() {},
+        moveTo() {},
+        lineTo() {},
+        stroke() {},
+        fillText(text, x, y) {
+            labels.push({ baseline: this.textBaseline, font: this.font, text, x, y });
+        },
+    };
+    overlay.projected = [
+        {
+            stroke: { kind: "reversal" },
+            points: [
+                { x: 10, y: 20, point: { kind: "H", value: 1568 } },
+                { x: 30, y: 80, point: { kind: "L", value: 1151.016 } },
+            ],
+        },
+        {
+            stroke: { kind: "secondary" },
+            points: [
+                { x: 10, y: 10, point: { kind: "H", value: 2000 } },
+                { x: 30, y: 90, point: { kind: "L", value: 1000 } },
+            ],
+        },
+    ];
+    overlay.draw({ useMediaCoordinateSpace: (draw) => draw({ context: ctx }) });
+    assert.deepEqual(
+        labels.map(({ baseline, text, x, y }) => ({ baseline, text, x, y })),
+        [
+            { baseline: "bottom", text: "1568", x: 10, y: 16 },
+            { baseline: "top", text: "1151.02", x: 30, y: 84 },
+        ],
+    );
+    assert.ok(labels.every((label) => label.font.includes("9px")));
+    assert.equal(overlay.container.dataset.reversalPriceLabels, "2");
+    labels.length = 0;
+    overlay.setReversalPriceLabelsVisible(false);
+    overlay.draw({ useMediaCoordinateSpace: (draw) => draw({ context: ctx }) });
+    assert.deepEqual(labels, []);
+    assert.equal(overlay.container.dataset.reversalPriceLabels, "0");
+    overlay.setReversalPriceLabelsVisible(true);
+    overlay.draw({ useMediaCoordinateSpace: (draw) => draw({ context: ctx }) });
+    assert.equal(labels.length, 2);
+});
+
+test("level-one display bridge anchors show prices once without becoming confirmed reversal points", () => {
+    const overlay = new LectureOverlay({ dataset: {} }),
+        labels = [];
+    const point = (index, kind, value, x, y) => ({
+        x,
+        y,
+        point: { index, ordinal: 0, kind, value },
+    });
+    const low = point(1, "L", 3.04, 10, 70),
+        high = point(4, "H", 3.01, 70, 30);
+    overlay.projected = [
+        { stroke: { kind: "reversal" }, points: [low, high] },
+        {
+            stroke: { kind: "reversal-connection" },
+            points: [low, point(2, "H", 3.28, 30, 10), point(3, "L", 2.68, 50, 90), high],
+        },
+    ];
+    const ctx = {
+        save() {},
+        restore() {},
+        setLineDash() {},
+        beginPath() {},
+        moveTo() {},
+        lineTo() {},
+        stroke() {},
+        fillText(text) {
+            labels.push(text);
+        },
+    };
+    overlay.draw({ useMediaCoordinateSpace: (draw) => draw({ context: ctx }) });
+    assert.deepEqual(labels, ["3.04", "3.01", "3.28", "2.68"]);
+    assert.equal(overlay.container.dataset.reversalPriceLabels, "4");
+    assert.equal(overlay.strokes.length, 0, "price rendering must not promote bridge anchors into theory strokes");
 });
 
 test("reversal overlay connects points with solid strokes and no circles", () => {

@@ -240,10 +240,34 @@ const results = [];
                 () => Number(document.querySelector("#price-chart").dataset.lectureVertices) > 0,
             );
             await page.waitForFunction(() => Number(document.querySelector("#price-chart").dataset.reversalPoints) > 0);
+            await page.waitForFunction(
+                () => Number(document.querySelector("#price-chart").dataset.reversalPriceLabels) > 0,
+            );
+            await page.getByRole("checkbox", { name: "一级点位价格", exact: true }).uncheck();
+            await page.waitForFunction(
+                () => document.querySelector("#price-chart").dataset.reversalPriceLabels === "0",
+            );
+            assert.ok(Number(await page.locator("#price-chart").getAttribute("data-reversal-points")) > 0);
+            assert.equal(
+                await page.evaluate(
+                    () => JSON.parse(localStorage.getItem("wavequant.research.chart.v1")).showTrendPrices,
+                ),
+                false,
+            );
+            await page.getByRole("checkbox", { name: "一级点位价格", exact: true }).check();
+            await page.waitForFunction(
+                () => Number(document.querySelector("#price-chart").dataset.reversalPriceLabels) > 0,
+            );
             await page.locator("#show-trend").uncheck();
             assert.equal(await page.locator("#price-chart").getAttribute("data-reversal-points"), "0");
+            await page.waitForFunction(
+                () => document.querySelector("#price-chart").dataset.reversalPriceLabels === "0",
+            );
             await page.locator("#show-trend").check();
             await page.waitForFunction(() => Number(document.querySelector("#price-chart").dataset.reversalPoints) > 0);
+            await page.waitForFunction(
+                () => Number(document.querySelector("#price-chart").dataset.reversalPriceLabels) > 0,
+            );
             await page.waitForFunction(
                 () => Number(document.querySelector("#price-chart").dataset.secondaryPoints) > 0,
             );

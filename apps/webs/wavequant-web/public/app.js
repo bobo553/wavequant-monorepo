@@ -7,6 +7,16 @@ import { StockList } from "./stock-list.js";
 import { appendTradeEvidence } from "./trade-review.js";
 
 const $ = (id) => document.getElementById(id);
+const chartPreferenceKey = "wavequant.research.chart.v1";
+let chartPreferences = {};
+try {
+    const saved = JSON.parse(localStorage.getItem(chartPreferenceKey) || "null");
+    if (saved && typeof saved === "object" && !Array.isArray(saved)) chartPreferences = saved;
+} catch {
+    // 损坏或不可用的本地偏好不应阻断研究工作台启动。
+}
+if (typeof chartPreferences.showTrendPrices === "boolean")
+    $("show-trend-prices").checked = chartPreferences.showTrendPrices;
 const state = {
     catalog: null,
     view: null,
@@ -106,6 +116,7 @@ function describeBar(b) {
         `${b.time}　开 ${num(b.open)}　高 ${num(b.high)}　低 ${num(b.low)}　收 ${num(b.close)}　量 ${num(b.volume, 0)} 股　原始收盘 ${num(b.raw_close)} 元`;
 }
 const chart = new PriceChart($("price-chart"), describeBar, showAnnotationDetails, renderVisibleAnnotations);
+chart.setTrendPriceLabelsVisible($("show-trend-prices").checked);
 const performance = new PerformanceCharts(["equity-chart", "drawdown-chart", "exposure-chart"].map($));
 const stockList = new StockList({
     list: $("stock-list"),
@@ -800,6 +811,15 @@ $("show-theory").addEventListener("change", (e) => {
 for (const id of ["drawing-mode", "show-teaching"])
     $(id).addEventListener("change", () => chart.setDrawingMode($("drawing-mode").value, $("show-teaching").checked));
 $("show-trend").addEventListener("change", (e) => chart.setTrendVisible(e.target.checked));
+$("show-trend-prices").addEventListener("change", (e) => {
+    chart.setTrendPriceLabelsVisible(e.target.checked);
+    chartPreferences = { ...chartPreferences, showTrendPrices: e.target.checked };
+    try {
+        localStorage.setItem(chartPreferenceKey, JSON.stringify(chartPreferences));
+    } catch {
+        // 隐私模式或存储配额异常时，当前会话内的开关仍然有效。
+    }
+});
 $("show-secondary-trend").addEventListener("change", (e) => chart.setSecondaryTrendVisible(e.target.checked));
 $("show-tertiary-trend").addEventListener("change", (e) => chart.setTertiaryTrendVisible(e.target.checked));
 for (const id of ["show-fills", "show-rules", "show-diagnostics", "show-levels", "show-last-fall-high"])

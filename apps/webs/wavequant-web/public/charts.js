@@ -7,7 +7,7 @@ import {
     visibleAnnotations,
 } from "./annotations.js";
 import { num } from "./labels.js";
-import { LectureOverlay, reversalConnections, secondaryConnections } from "./lecture-overlay.js";
+import { LectureOverlay, connectedTrendStrokes, reversalConnections, secondaryConnections } from "./lecture-overlay.js";
 
 const L = window.LightweightCharts;
 if (!L) throw new Error("TradingView SDK 未加载，请检查本地 npm 依赖。");
@@ -218,9 +218,12 @@ export class PriceChart {
             from = bars[Math.max(0, Math.floor(range?.from || 0))]?.time || bars[0].time;
         const to = bars[Math.min(bars.length - 1, Math.ceil(range?.to ?? bars.length - 1))]?.time || bars.at(-1).time;
         const span = range ? range.to - range.from : 140;
+        const levelOneStrokes = this.theory?.reversal_trends?.strokes || [],
+            levelOneConnections = reversalConnections(levelOneStrokes, this.theory?.lecture_drawing?.strokes || []),
+            levelOneDisplayStrokes = connectedTrendStrokes(levelOneStrokes, levelOneConnections);
         const trend =
             this.showTrend && this.drawingMode === "lecture" && this.polylineEnabled
-                ? reversalWindowSummary(this.theory?.reversal_trends?.strokes || [], from, to)
+                ? reversalWindowSummary(levelOneDisplayStrokes, from, to)
                 : null;
         const secondaryTrend =
             this.showSecondaryTrend && this.drawingMode === "lecture" && this.polylineEnabled
@@ -287,8 +290,8 @@ export class PriceChart {
         this.clearLastFallHighGuides();
         this.lastFallHighLineKey = key;
         for (const item of visible) {
-            const low = item.raw.selected_low;
-            if (!low || item.time >= low.time) continue;
+            const end = item.raw.breakout || item.raw.selected_low;
+            if (!end || item.time >= end.time) continue;
             const series = this.chart.addSeries(L.LineSeries, {
                 color: withOpacity(item.color, 0.78),
                 lineStyle: 3,
@@ -302,7 +305,7 @@ export class PriceChart {
             });
             series.setData([
                 { time: item.time, value: item.price },
-                { time: low.time, value: item.price },
+                { time: end.time, value: item.price },
             ]);
             this.lastFallHighLines.push(series);
         }
@@ -368,6 +371,9 @@ export class PriceChart {
         }
         this.clearPolyline();
         this.refreshMarkers();
+    }
+    setTrendPriceLabelsVisible(show) {
+        this.lectureOverlay.setReversalPriceLabelsVisible(show);
     }
     setSecondaryTrendVisible(show) {
         this.showSecondaryTrend = show;

@@ -7,6 +7,7 @@ const chartLayers = [
     ["show-rules", "规则标识", true],
     ["show-diagnostics", "筛选 / 中断", false],
     ["show-theory", "折线 / N 字", true],
+    ["show-trend-prices", "一级点位价格", true],
     ["show-last-fall-high", "各级末跌高", true],
     ["show-levels", "选中点位线", true],
 ] as const;
@@ -62,7 +63,7 @@ export function ResearchChart(): JSX.Element {
                 summaryId="trend-summary"
                 className="trend-controls"
                 label="一级趋势线"
-                description="浅蓝实线连续连接已确认端点 · 跨小拐点 · 未解路径间仅作显示衔接（点击线段查看） · 未确认尾端不延伸"
+                description="浅蓝实线按价格方向严格高低交替 · 跨小拐点 · 未解路径间仅用真实来源极值衔接（点击线段查看） · 未确认尾端不延伸"
                 waiting="等待一级趋势线结构…"
             />
             <TrendControl

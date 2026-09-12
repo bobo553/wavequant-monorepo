@@ -39,6 +39,72 @@ test("window key follows extreme predecessor, not latest opposite pivot", () => 
     assert.equal(summary.high.time, "c");
     assert.equal(reversalWindowSummary([], "a", "z"), null);
 });
+test("last-fall-high breakout is the first later confirmed high strictly above the key", () => {
+    const points = [
+        { index: 1, time: "a", kind: "H", value: 30, available_at: "a" },
+        {
+            index: 2,
+            time: "b",
+            kind: "L",
+            value: 10,
+            preceding_turn: { index: 1, time: "a", kind: "H", value: 30 },
+            available_at: "b",
+        },
+        { index: 3, time: "c", kind: "H", value: 30, available_at: "c" },
+        { index: 4, time: "d", kind: "L", value: 12, available_at: "d" },
+        { index: 5, time: "e", kind: "H", value: 31, available_at: "e", trend: "多头趋势" },
+        { index: 6, time: "f", kind: "H", value: 35, available_at: "f" },
+    ];
+    const summary = reversalWindowSummary([{ id: "p", points }], "a", "f");
+    assert.equal(summary.lastFallHigh.value, 30);
+    assert.equal(summary.lastFallHighBreakout.time, "e");
+    assert.notEqual(summary.lastFallHighBreakout.time, "c", "equal-price touch is not a breakout");
+    assert.equal(
+        reversalWindowSummary([{ id: "p", points }], "a", "d").lastFallHighBreakout,
+        null,
+        "a breakout outside the current chart window must not extend the guide early",
+    );
+});
+test("continuous level-one display path uses the bridge low and its preceding bridge high", () => {
+    const points = [
+        { index: 1, time: "2026-05-22", kind: "L", value: 3.04, label: "L7", available_at: "2026-05-25" },
+        {
+            index: 2,
+            time: "2026-06-02",
+            kind: "H",
+            value: 3.28,
+            label: "H·桥",
+            available_at: "2026-06-03",
+            display_bridge: true,
+        },
+        {
+            index: 3,
+            time: "2026-06-30",
+            kind: "L",
+            value: 2.68,
+            label: "L·桥",
+            available_at: "2026-07-01",
+            display_bridge: true,
+        },
+        { index: 4, time: "2026-08-04", kind: "H", value: 3.01, label: "H1", available_at: "2026-08-04" },
+        { index: 5, time: "2026-08-17", kind: "L", value: 2.79, label: "L1", available_at: "2026-08-18" },
+    ];
+    const summary = reversalWindowSummary(
+        [{ id: "display-level-one", display_summary: true, points }],
+        "2026-05-01",
+        "2026-09-07",
+    );
+    assert.equal(summary.low.time, "2026-06-30");
+    assert.equal(summary.lastFallHigh.time, "2026-06-02");
+    assert.equal(summary.lastFallHigh.value, 3.28);
+    assert.equal(summary.lastFallHighBreakout, null);
+    assert.equal(summary.displaySummary, true);
+    const annotation = lastFallHighAnnotations([{ level: 1, summary }])[0];
+    assert.equal(annotation.time, "2026-06-02");
+    assert.equal(annotation.raw.selected_low.time, "2026-06-30");
+    assert.equal(annotation.raw.display_summary, true);
+    assert.match(annotation.description, /连续显示路径/);
+});
 test("last-fall-high labels identify each level at the source high and retain the selected low", () => {
     const makeSummary = (level) => ({
         path: `level-${level}`,
@@ -52,7 +118,15 @@ test("last-fall-high labels identify each level at the source high and retain th
             value: 90 - level,
         },
     });
-    const items = lastFallHighAnnotations([1, 2, 3].map((level) => ({ level, summary: makeSummary(level) })));
+    const summaries = [1, 2, 3].map((level) => ({ level, summary: makeSummary(level) }));
+    summaries[0].summary.lastFallHighBreakout = {
+        index: 21,
+        kind: "H",
+        label: "H-break",
+        time: "2026-01-08",
+        value: 108,
+    };
+    const items = lastFallHighAnnotations(summaries);
     assert.deepEqual(
         items.map((item) => [item.raw.trend_level, item.time, item.price, item.raw.selected_low.label]),
         [
@@ -62,6 +136,8 @@ test("last-fall-high labels identify each level at the source high and retain th
         ],
     );
     assert.match(items[0].description, /左侧最近的同级已确认高点/);
+    assert.match(items[0].description, /水平虚线延长到这根 K 线/);
+    assert.equal(items[0].raw.breakout.label, "H-break");
     assert.deepEqual(lastFallHighAnnotations([{ level: 1, summary: null }]), []);
     const marker = markerGroups(items, { ...options, trendKeys: true })[0].marker;
     assert.equal(marker.position, "atPriceTop");
