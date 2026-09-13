@@ -218,28 +218,59 @@ test("Zhongda Leader promotes the August 2022 high only after causal alternation
 
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
-    const theoryResponse = page.waitForResponse(
-        (response) => response.url().includes("/api/tdx-theory?symbol=sz.002896") && response.ok(),
-        { timeout: 60_000 },
-    );
-    await page.locator("#symbol-select").selectOption("sz.002896");
-    await theoryResponse;
+    const symbolSelect = page.locator("#symbol-select");
+    if ((await symbolSelect.inputValue()) !== "sz.002896") {
+        await symbolSelect.selectOption("sz.002896");
+    }
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#error")).toBeHidden();
+    await expect(page.locator("#selection-info")).toContainText("002896 中大力德");
     await expect(page.locator("#price-chart")).toHaveAttribute("data-secondary-developing-points", "2");
     await expect(page.locator("#secondary-trend-summary")).toContainText("发展路径");
     await expect(page.locator("#secondary-trend-summary")).toContainText("2026-07-06 H23 88.60");
     await expect(page.locator("#secondary-trend-summary")).toContainText("2026-07-30 L128 58.51");
 
+    const flipReplayIndex = await page.evaluate(async () => {
+        const view = await fetch("/api/tdx-view?symbol=sz.002896&asof=2026-09-07").then((response) => response.json());
+        return view.bars.findIndex((bar: { time: string }) => bar.time === "2022-08-09");
+    });
+    expect(flipReplayIndex).toBeGreaterThan(0);
+    await page.locator("#replay-slider").evaluate((slider, index) => {
+        (slider as HTMLInputElement).value = String(index);
+        slider.dispatchEvent(new Event("change", { bubbles: true }));
+    }, flipReplayIndex);
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#error")).toBeHidden();
+    await expect(page.locator("#asof-label")).toHaveText("2022-08-09");
+    await expect.poll(() => page.locator("#price-chart").getAttribute("data-bear-to-bull-high-count")).not.toBe("0");
+    const levelTwoFlipHigh = page.locator('[data-annotation-id^="bear-to-bull-high:2:"]').filter({
+        hasText: "Ⅱ 空翻多高点 · H70 49.56",
+    });
+    await expect(levelTwoFlipHigh).toBeVisible();
+    await levelTwoFlipHigh.click();
+    await expect(page.locator("#selection-info")).toContainText("L9（2022-05-27，13.16）");
+    await expect(page.locator("#selection-info")).toContainText("H69（2022-05-24，18.28）");
+    await page.getByRole("checkbox", { name: "各级空翻多高点", exact: true }).uncheck();
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-bear-to-bull-high-count", "0");
+    await page.getByRole("checkbox", { name: "各级空翻多高点", exact: true }).check();
+    await expect.poll(() => page.locator("#price-chart").getAttribute("data-bear-to-bull-high-count")).not.toBe("0");
+
     const state = await page.evaluate(async () => {
-        const [theory, beforePromotion, atPromotion] = await Promise.all([
+        const [theory, beforeFlip, atFlip, beforePromotion, atPromotion] = await Promise.all([
             fetch("/api/tdx-theory?symbol=sz.002896&asof=2026-09-07").then((response) => response.json()),
+            fetch("/api/tdx-theory?symbol=sz.002896&asof=2022-08-08").then((response) => response.json()),
+            fetch("/api/tdx-theory?symbol=sz.002896&asof=2022-08-09").then((response) => response.json()),
             fetch("/api/tdx-theory?symbol=sz.002896&asof=2023-02-03").then((response) => response.json()),
             fetch("/api/tdx-theory?symbol=sz.002896&asof=2023-02-06").then((response) => response.json()),
         ]);
         const formal = theory.secondary_trends.strokes[0].points;
         const developing = theory.secondary_trends.developing_strokes[0];
         const promoted = formal.find((point: { time: string }) => point.time === "2022-08-03");
+        const landmarkLevels = [
+            theory.reversal_trends.bear_to_bull_highs,
+            theory.secondary_trends.bear_to_bull_highs,
+            theory.tertiary_trends.bear_to_bull_highs,
+        ];
         return {
             formalCount: theory.secondary_trends.confirmed_wave_count,
             formalEnd: formal.at(-1),
@@ -248,9 +279,27 @@ test("Zhongda Leader promotes the August 2022 high only after causal alternation
             developingEnd: developing.points.at(-1),
             developing,
             promoted,
+            flipHigh: theory.secondary_trends.bear_to_bull_highs.find(
+                (point: { time: string }) => point.time === "2022-08-03",
+            ),
+            beforeFlipHigh: beforeFlip.secondary_trends.bear_to_bull_highs.find(
+                (point: { time: string }) => point.time === "2022-08-03",
+            ),
+            atFlipHigh: atFlip.secondary_trends.bear_to_bull_highs.find(
+                (point: { time: string }) => point.time === "2022-08-03",
+            ),
             beforePromotionCount: beforePromotion.secondary_trends.confirmed_wave_count,
             atPromotionCount: atPromotion.secondary_trends.confirmed_wave_count,
             atPromotionEnd: atPromotion.secondary_trends.strokes[0].points.at(-1),
+            landmarkCounts: landmarkLevels.map((landmarks) => landmarks.length),
+            allLandmarksStrictlyBreakTheirKey: landmarkLevels
+                .flat()
+                .every(
+                    (landmark) =>
+                        landmark.kind === "H" &&
+                        landmark.broken_key?.kind === "H" &&
+                        landmark.value > landmark.broken_key.value,
+                ),
         };
     });
     expect(state.formalCount).toBe(46);
@@ -261,6 +310,8 @@ test("Zhongda Leader promotes the August 2022 high only after causal alternation
     expect(state.beforePromotionCount).toBe(17);
     expect(state.atPromotionCount).toBe(18);
     expect(state.atPromotionEnd).toMatchObject({ time: "2022-08-03", kind: "H", value: 49.56 });
+    expect(state.landmarkCounts).toEqual([6, 23, 2]);
+    expect(state.allLandmarksStrictlyBreakTheirKey).toBe(true);
     expect(state.promoted).toMatchObject({
         time: "2022-08-03",
         kind: "H",
@@ -274,6 +325,23 @@ test("Zhongda Leader promotes the August 2022 high only after causal alternation
         provisional_reversal: { time: "2022-12-23", value: 22.06 },
     });
     expect(state.promoted.alternation.retracement_ratio).toBeCloseTo(0.5442307692, 8);
+    expect(state.beforeFlipHigh).toBeUndefined();
+    expect(state.atFlipHigh).toMatchObject({
+        time: "2022-08-03",
+        kind: "H",
+        value: 49.56,
+        available_at: "2022-08-09",
+        confirmed_low: { time: "2022-05-27", kind: "L", value: 13.16 },
+        broken_key: { time: "2022-05-24", kind: "H", value: 18.28 },
+    });
+    expect(state.flipHigh).toMatchObject({
+        time: state.atFlipHigh.time,
+        kind: state.atFlipHigh.kind,
+        value: state.atFlipHigh.value,
+        available_at: state.atFlipHigh.available_at,
+        confirmed_low: state.atFlipHigh.confirmed_low,
+        broken_key: state.atFlipHigh.broken_key,
+    });
     expect(state.developing).toMatchObject({
         kind: "secondary-developing",
         source_level: 1,

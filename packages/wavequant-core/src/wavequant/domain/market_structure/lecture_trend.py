@@ -8,6 +8,7 @@ from collections import Counter
 
 from .polyline import LinePoint, PointKind, ReversalPoint
 from .price_action import Direction
+from .trend_landmarks import bear_to_bull_highs
 from .trend_structure import observe_structure, StructuralTrend, retracement_evidence
 
 
@@ -224,8 +225,9 @@ def _annotate(points, symbol, dates):
                     observation('底部疑虑' if up else '头部疑虑',key=_ref(key)); suspicion=True
             if p['kind']==extreme_kind and sign*(p['value']-key['value'])>0 and previous:
                 attack=dict(origin=previous,extreme=p,anchor=anchor,key=key,checked=False)
+                confirmed_extreme={'confirmed_low':_ref(anchor)} if up else {'confirmed_high':_ref(anchor)}
                 observation('翻空为多' if up else '翻多为空',key=_ref(key),
-                            formation='底部成形' if up else '头部成形')
+                            formation='底部成形' if up else '头部成形',**confirmed_extreme)
         elif p['kind']!=extreme_kind and not attack['checked']:
             ratio=retracement_evidence(attack['origin']['value'],attack['extreme']['value'],p['value'],
                                        direction=Direction.UP if up else Direction.DOWN)
@@ -278,6 +280,7 @@ def reversal_trends(drawing, bars):
     for stroke in result:
         _annotate(stroke['points'],bars[0].symbol,dates)
     return dict(strokes=result,trend_level=1,name='一级趋势线',scope='lecture_wave_structure_not_strategy_confirmation',
+                bear_to_bull_highs=bear_to_bull_highs(result,trend_level=1),
                 aggregation_rule='HH_HL_or_LH_LL_switch_with_confirmed_cross_path_extremes',input_turn_count=local_count,
                 confirmed_wave_count=sum(len(s['points']) for s in result),
                 break_basis='confirmed_polyline_extreme',retracement_threshold=.67,

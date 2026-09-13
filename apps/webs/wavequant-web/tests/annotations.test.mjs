@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
     avoidLabelCollisions,
+    bearToBullHighAnnotations,
     buildAnnotations,
     lastFallHighAnnotations,
     markerGroups,
@@ -298,6 +299,33 @@ test("last-fall-high labels identify each level at the source high and retain th
     assert.equal(marker.price, 101);
     assert.match(marker.text, /Ⅰ 末跌高/);
     assert.equal(visibleAnnotations(items, { ...options, trendKeys: false }).length, 0);
+});
+
+test("bear-to-bull high labels use Python landmarks and respect their causal availability", () => {
+    const landmark = {
+        id: "level2-bear-to-bull-high-1195",
+        time: "2022-08-03",
+        available_at: "2022-08-09",
+        index: 1195,
+        kind: "H",
+        label: "H70",
+        value: 49.56,
+        trend_level: 2,
+        source_path: "secondary-sample",
+        confirmed_low: { time: "2022-05-27", label: "L9", value: 13.16 },
+        broken_key: { time: "2021-12-01", label: "H8", value: 27.71 },
+    };
+
+    assert.deepEqual(bearToBullHighAnnotations([{ level: 2, landmarks: [landmark] }], "2022-05-01", "2022-08-08"), []);
+    const [item] = bearToBullHighAnnotations([{ level: 2, landmarks: [landmark] }], "2022-05-01", "2022-08-09");
+    assert.equal(item.time, "2022-08-03");
+    assert.equal(item.price, 49.56);
+    assert.equal(item.category, "trend-flip-highs");
+    assert.match(item.title, /Ⅱ 空翻多高点 · H70 49.56/);
+    assert.match(item.description, /L9（2022-05-27，13.16）/);
+    assert.match(item.description, /H8（2021-12-01，27.71）/);
+    assert.equal(visibleAnnotations([item], { ...options, bullFlipHighs: false }).length, 0);
+    assert.equal(visibleAnnotations([item], { ...options, bullFlipHighs: true }).length, 1);
 });
 const view = {
     asof: "2026-01-03",

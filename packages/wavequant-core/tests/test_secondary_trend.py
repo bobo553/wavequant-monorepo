@@ -38,6 +38,11 @@ class SecondaryTrendTests(unittest.TestCase):
         self.assertEqual(result['trend_level'],2)
         self.assertEqual(result['source_level'],1)
         self.assertLess(result['confirmed_wave_count'],result['input_turn_count'])
+        self.assertEqual(
+            [(p['value'],p['confirmed_low']['value'],p['available_at']) for p in result['bear_to_bull_highs']],
+            [(35,10,level1['strokes'][0]['points'][7]['available_at']),
+             (38,24,level1['strokes'][0]['points'][17]['available_at'])],
+        )
 
     def test_prefix_stability_no_future_repainting(self):
         bars,source=fixture(self.values)

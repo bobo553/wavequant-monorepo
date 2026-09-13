@@ -350,6 +350,7 @@ function annotationOptions() {
         diagnostics: $("show-diagnostics").checked,
         levels: $("show-levels").checked,
         trendKeys: $("show-last-fall-high").checked,
+        bullFlipHighs: $("show-bear-to-bull-highs").checked,
     };
 }
 function showAnnotationDetails(items) {
@@ -835,7 +836,14 @@ $("show-trend-prices").addEventListener("change", (e) => {
 });
 $("show-secondary-trend").addEventListener("change", (e) => chart.setSecondaryTrendVisible(e.target.checked));
 $("show-tertiary-trend").addEventListener("change", (e) => chart.setTertiaryTrendVisible(e.target.checked));
-for (const id of ["show-fills", "show-rules", "show-diagnostics", "show-levels", "show-last-fall-high"])
+for (const id of [
+    "show-fills",
+    "show-rules",
+    "show-diagnostics",
+    "show-levels",
+    "show-last-fall-high",
+    "show-bear-to-bull-highs",
+])
     $(id).addEventListener("change", () => {
         chart.setAnnotationOptions(annotationOptions());
         if ($("show-rules").checked && !state.theory && !state.loading && !state.error)

@@ -1431,6 +1431,92 @@
                     "summary": "38 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则的全仓 Harness、lint、类型检查及单元测试通过。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-039",
+            "name": "wavequant-bear-to-bull-high-landmarks",
+            "description": "计算各级翻空为多结构的确认高点，并在研究 K 线图中提供可核验标识。",
+            "title": "标识各级空翻多确认高点",
+            "scope": "由 wavequant-core 从每一级正式趋势的翻空为多确认链中生成高点地标，保存来源低点、被冻结的末跌高、确认日和路径；Web 参考末跌高标识按当前图窗展示，不按窗口最高价重算业务点。",
+            "dependencies": ["MONOREPO-022", "MONOREPO-038"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "一级、二级和三级趋势均由 Core 输出翻空为多确认高点，且每个高点可追溯到正式低点、突破依据和因果可用日",
+                "中大力德二级翻空为多确认高点为 2022-08-03 H70 49.56，并且只能从 2022-08-09 起在历史回放中可见",
+                "Web 使用独立且默认开启的各级空翻多高点图层，在高点价格处显示带级别的紧凑标识并支持点击查看定义",
+                "切换一级、二级或三级趋势图层时，只显示对应级别的翻多高点；关闭独立开关后不影响趋势线、末跌高、策略或回测",
+                "Core、API、Web、Harness 与真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Core Ruff、严格路径 mypy、512 项 pytest 与 sdist/wheel 构建通过；覆盖三级地标、稳定 ID 和因果可见性。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、33 项 pytest（另 1 项环境跳过）与构建通过；三个真实截面原样返回 Core 地标。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Web ESLint、TypeScript、6 项 Vitest、57 项 Node 契约与 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --workers=1",
+                    "status": "passed",
+                    "summary": "串行 9 条 Chromium 主流程通过；中大力德 H70 只能从 2022-08-09 起显示，详情和独立开关可用。"
+                },
+                {
+                    "command": "pnpm verify:quick",
+                    "status": "passed",
+                    "summary": "39 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则的全仓 Harness、lint、类型检查及单元测试通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-040",
+            "name": "wavequant-strict-bear-to-bull-breakout-landmarks",
+            "description": "修正空翻多高点资格，所有级别都必须有冻结末跌高且由确认高点严格突破。",
+            "title": "严格校验空翻多末跌高突破",
+            "scope": "Core 统一校验一级、二级、三级空翻多地标：一级只消费真实翻空为多观察事件，二三级只消费带完整突破证据的正式低点；确认高点必须严格高于冻结末跌高。Web 继续只展示 Core 合格结果。",
+            "dependencies": ["MONOREPO-039"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "普通 down-to-up 波向切换不再自动生成一级空翻多高点",
+                "一级地标必须来自翻空为多观察事件，并保留确认低点、冻结末跌高与可用日",
+                "一、二、三级确认高点必须严格高于对应冻结末跌高；缺失关键位、相等或低于关键位均拒绝",
+                "中大力德二级 2022-08-03 H70 49.56 合法地标保持不变",
+                "Core、API、Web、Harness 与真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Core Ruff、严格路径 mypy、514 项 pytest 与 sdist/wheel 构建通过；缺关键位、相等、未突破和普通波向切换均有拒绝测试。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、33 项 pytest（另 1 项环境跳过）与构建通过；四只真实股票三个级别的非法地标计数均为 0。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Web ESLint、TypeScript、6 项 Vitest、57 项 Node 契约与 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --workers=1",
+                    "status": "passed",
+                    "summary": "串行 9 条 Chromium 主流程通过；中大力德最新截面的 6/23/2 个三级地标全部严格突破各自冻结末跌高。"
+                },
+                {
+                    "command": "pnpm verify:quick",
+                    "status": "passed",
+                    "summary": "40 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则的全仓 Harness、lint、类型检查及单元测试通过。"
+                }
+            ]
         }
     ]
 }

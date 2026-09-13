@@ -37,6 +37,8 @@ class LectureTrendTests(unittest.TestCase):
         for pivot,title in expected.items():
             self.assertIn(title,[e['title'] for e in mapping[pivot]['observations']])
         self.assertEqual(mapping['H4']['observations'][0]['key']['value'],30)
+        self.assertEqual(mapping['H4']['observations'][0]['confirmed_low']['kind'],'L')
+        self.assertGreater(mapping['H4']['value'],mapping['H4']['observations'][0]['key']['value'])
         self.assertEqual(mapping['L7']['observations'][0]['key']['value'],28)
         self.assertAlmostEqual(mapping['L4']['observations'][0]['ratio'],7/17)
         self.assertFalse(mapping['L4']['observations'][0]['abc_confirmed'])
@@ -115,6 +117,10 @@ class LectureTrendTests(unittest.TestCase):
         self.assertEqual(result['trend_level'],1)
         self.assertEqual(result['name'],'一级趋势线')
         self.assertGreater(result['input_turn_count'],result['confirmed_wave_count'])
+        self.assertIn('bear_to_bull_highs',result)
+        self.assertTrue(all(point['trend_level']==1 for point in result['bear_to_bull_highs']))
+        self.assertTrue(all(point['value']>point['broken_key']['value']
+                            for point in result['bear_to_bull_highs']))
 
     def test_cross_path_base_extreme_becomes_formal_level_one_and_secondary_input(self):
         """A displayed H-L-H bridge must not disappear at the next trend level."""

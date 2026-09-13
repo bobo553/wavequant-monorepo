@@ -1,5 +1,6 @@
 import {
     avoidLabelCollisions,
+    bearToBullHighAnnotations,
     buildAnnotations,
     lastFallHighAnnotations,
     markerGroups,
@@ -129,6 +130,7 @@ export class PriceChart {
             diagnostics: false,
             levels: true,
             trendKeys: true,
+            bullFlipHighs: true,
         };
         this.showTeaching = true;
         this.drawingMode = "lecture";
@@ -251,7 +253,25 @@ export class PriceChart {
             { level: 2, summary: secondaryTrend },
             { level: 3, summary: tertiaryTrend },
         ]);
-        this.windowAnnotations = [...this.annotations, ...trendKeys];
+        const bullFlipHighs = bearToBullHighAnnotations(
+            [
+                {
+                    level: 1,
+                    landmarks: this.showTrend ? this.theory?.reversal_trends?.bear_to_bull_highs || [] : [],
+                },
+                {
+                    level: 2,
+                    landmarks: this.showSecondaryTrend ? this.theory?.secondary_trends?.bear_to_bull_highs || [] : [],
+                },
+                {
+                    level: 3,
+                    landmarks: this.showTertiaryTrend ? this.theory?.tertiary_trends?.bear_to_bull_highs || [] : [],
+                },
+            ],
+            from,
+            to,
+        );
+        this.windowAnnotations = [...this.annotations, ...trendKeys, ...bullFlipHighs];
         this.groups = markerGroups(this.windowAnnotations, this.options, span).filter(
             (g) => g.time >= from && g.time <= to,
         );
@@ -260,6 +280,9 @@ export class PriceChart {
         this.drawLastFallHighGuides(trendKeys);
         this.container.dataset.markerCount = this.groups.length;
         this.container.dataset.lastFallHighCount = String(trendKeys.length);
+        this.container.dataset.bearToBullHighCount = String(
+            this.options.bullFlipHighs ? bullFlipHighs.length : 0,
+        );
         this.onVisible(
             this.groups.flatMap((g) => g.items),
             { from, to, trend, secondaryTrend, secondaryDeveloping, tertiaryTrend, tertiaryDeveloping },
@@ -365,6 +388,7 @@ export class PriceChart {
         this.windowAnnotations = [];
         this.clearLastFallHighGuides();
         this.container.dataset.lastFallHighCount = "0";
+        this.container.dataset.bearToBullHighCount = "0";
         this.polylineEnabled = false;
         this.clearPolyline();
     }

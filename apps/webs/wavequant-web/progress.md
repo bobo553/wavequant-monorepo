@@ -116,6 +116,9 @@
 - MONOREPO-036 Web 门禁通过 ESLint、严格类型检查、54 项 Node 契约、6 项 Vitest、串行 8 条 Playwright 流程和 Next.js 生产构建；上海电力页面二级摘要与图上标签均显示 `2026-05-29 H27 22.35`，图表保留 53 个正式二级点且无页面错误或 Console 警告。
 - MONOREPO-037 Web 门禁通过 ESLint、严格类型检查、55 项 Node 契约、6 项 Vitest、串行 9 条 Playwright 流程和 Next.js 生产构建；中大力德页面显示 30 点紫色虚线，从 `2022-05-27 L9 13.16` 延伸到 `2026-09-01 H129 66.07`，无页面错误和失败请求。
 - MONOREPO-038 Web 门禁通过 ESLint、严格类型检查、56 项 Node 契约、6 项 Vitest、串行 9 条 Playwright 流程和 Next.js 生产构建；中大力德二级实线已越过 2022 年断点，最新保留 2 点紫色发展尾段，浏览器无页面错误或失败请求。
+- MONOREPO-039 新增默认开启的“各级空翻多高点”图层：仅消费 Core 地标，在高点价格处显示分级标识，点击可查看正式低点、旧末跌高和可用日；关闭后不影响其他图层与研究逻辑。
+- MONOREPO-039 Web 门禁通过 ESLint、严格类型检查、57 项 Node 契约、6 项 Vitest、串行 9 条 Playwright 流程和 Next.js 生产构建；中大力德二级标识与独立开关在真实浏览器中通过。
+- MONOREPO-040 Web 继续只消费 Core 合格地标；串行 9 条 Playwright 流程断言中大力德一级、二级、三级共 `6/23/2` 个地标全部严格突破对应末跌高，页面原有逻辑保持通过。
 
 ## Risks and Next Steps
 

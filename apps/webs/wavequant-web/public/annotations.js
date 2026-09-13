@@ -276,6 +276,52 @@ export function lastFallHighAnnotations(levelSummaries) {
         ];
     });
 }
+
+/**
+ * 将 Python 已确认的翻空为多高点转换为图表标识。
+ *
+ * 领域层决定哪个来源 H 完成了同级翻多以及何时可知；浏览器只按当前
+ * 图窗和因果日期筛选，不使用窗口最高价替换服务端地标。
+ */
+export function bearToBullHighAnnotations(levelLandmarks, from, to) {
+    return levelLandmarks.flatMap(({ level, landmarks = [] }) => {
+        const spec = LAST_FALL_HIGH_LEVELS[level];
+        if (!spec) return [];
+        return landmarks
+            .filter(
+                (landmark) =>
+                    landmark.kind === "H" &&
+                    landmark.time >= from &&
+                    landmark.time <= to &&
+                    landmark.available_at <= to,
+            )
+            .map((landmark) => {
+                const low = landmark.confirmed_low,
+                    key = landmark.broken_key,
+                    keyText = key
+                        ? `；该高点严格突破当时冻结的末跌高 ${key.label}（${key.time}，${num(key.value)}）`
+                        : "";
+                return {
+                    id: `bear-to-bull-high:${level}:${landmark.id}`,
+                    time: landmark.time,
+                    sourceTime: landmark.time,
+                    kind: "trend-key",
+                    category: "trend-flip-highs",
+                    price: landmark.value,
+                    title: `${spec.numeral} 空翻多高点 · ${landmark.label} ${num(landmark.value)}`,
+                    description: `${spec.label}趋势线正式低点 ${low.label}（${low.time}，${num(low.value)}）确认由空翻多时，${landmark.label}（${landmark.time}，${num(landmark.value)}）是完成转换的确认高点${keyText}。整条证据到 ${landmark.available_at} 才可知；它不是浏览器按当前窗口选择的最高价，也不等于买卖信号。`,
+                    sourceLabel: `${spec.label}趋势线 · Python 空翻多确认高点`,
+                    priority: 150 - level,
+                    color: spec.color,
+                    levels: key ? [{ name: `${spec.label}冻结末跌高`, price: key.value }] : [],
+                    raw: {
+                        ...landmark,
+                        definition: "python_confirmed_bear_to_bull_source_high",
+                    },
+                };
+            });
+    });
+}
 export function ruleTitle(e) {
     if (e.event === "n_completed") return e.direction === "up" ? "正 N · 突破" : "倒 N · 跌破";
     if (e.event === "regime_confirmation") return e.regime || "盘态确认";
@@ -354,6 +400,8 @@ export function visibleAnnotations(items, options) {
                   ? options.rules && options.diagnostics
                   : m.category === "trend-keys"
                     ? options.trendKeys
+                    : m.category === "trend-flip-highs"
+                      ? options.bullFlipHighs
                     : options.rules,
     );
 }
