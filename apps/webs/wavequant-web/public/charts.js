@@ -1,9 +1,11 @@
 import {
     avoidLabelCollisions,
+    bearBullAlternationLowAnnotations,
     bearToBullHighAnnotations,
     buildAnnotations,
     lastFallHighAnnotations,
     markerGroups,
+    postAlternationBullHighAnnotations,
     reversalWindowSummary,
     visibleAnnotations,
 } from "./annotations.js";
@@ -131,6 +133,8 @@ export class PriceChart {
             levels: true,
             trendKeys: true,
             bullFlipHighs: true,
+            bullAlternationLows: true,
+            postAlternationBullHighs: true,
         };
         this.showTeaching = true;
         this.drawingMode = "lecture";
@@ -271,7 +275,58 @@ export class PriceChart {
             from,
             to,
         );
-        this.windowAnnotations = [...this.annotations, ...trendKeys, ...bullFlipHighs];
+        const bullAlternationLows = bearBullAlternationLowAnnotations(
+            [
+                {
+                    level: 1,
+                    landmarks: this.showTrend ? this.theory?.reversal_trends?.bear_bull_alternation_lows || [] : [],
+                },
+                {
+                    level: 2,
+                    landmarks: this.showSecondaryTrend
+                        ? this.theory?.secondary_trends?.bear_bull_alternation_lows || []
+                        : [],
+                },
+                {
+                    level: 3,
+                    landmarks: this.showTertiaryTrend
+                        ? this.theory?.tertiary_trends?.bear_bull_alternation_lows || []
+                        : [],
+                },
+            ],
+            from,
+            to,
+            this.theory?.asof || this.data.asof,
+        );
+        const postAlternationBullHighs = postAlternationBullHighAnnotations(
+            [
+                {
+                    level: 1,
+                    landmarks: this.showTrend ? this.theory?.reversal_trends?.post_alternation_bull_highs || [] : [],
+                },
+                {
+                    level: 2,
+                    landmarks: this.showSecondaryTrend
+                        ? this.theory?.secondary_trends?.post_alternation_bull_highs || []
+                        : [],
+                },
+                {
+                    level: 3,
+                    landmarks: this.showTertiaryTrend
+                        ? this.theory?.tertiary_trends?.post_alternation_bull_highs || []
+                        : [],
+                },
+            ],
+            from,
+            to,
+        );
+        this.windowAnnotations = [
+            ...this.annotations,
+            ...trendKeys,
+            ...bullFlipHighs,
+            ...bullAlternationLows,
+            ...postAlternationBullHighs,
+        ];
         this.groups = markerGroups(this.windowAnnotations, this.options, span).filter(
             (g) => g.time >= from && g.time <= to,
         );
@@ -280,8 +335,12 @@ export class PriceChart {
         this.drawLastFallHighGuides(trendKeys);
         this.container.dataset.markerCount = this.groups.length;
         this.container.dataset.lastFallHighCount = String(trendKeys.length);
-        this.container.dataset.bearToBullHighCount = String(
-            this.options.bullFlipHighs ? bullFlipHighs.length : 0,
+        this.container.dataset.bearToBullHighCount = String(this.options.bullFlipHighs ? bullFlipHighs.length : 0);
+        this.container.dataset.bearBullAlternationLowCount = String(
+            this.options.bullAlternationLows ? bullAlternationLows.length : 0,
+        );
+        this.container.dataset.postAlternationBullHighCount = String(
+            this.options.postAlternationBullHighs ? postAlternationBullHighs.length : 0,
         );
         this.onVisible(
             this.groups.flatMap((g) => g.items),
@@ -389,6 +448,8 @@ export class PriceChart {
         this.clearLastFallHighGuides();
         this.container.dataset.lastFallHighCount = "0";
         this.container.dataset.bearToBullHighCount = "0";
+        this.container.dataset.bearBullAlternationLowCount = "0";
+        this.container.dataset.postAlternationBullHighCount = "0";
         this.polylineEnabled = false;
         this.clearPolyline();
     }
@@ -440,9 +501,7 @@ export class PriceChart {
         const secondaryDeveloping = this.showSecondaryTrend
             ? this.theory?.secondary_trends?.developing_strokes || []
             : [];
-        const tertiaryDeveloping = this.showTertiaryTrend
-            ? this.theory.tertiary_trends?.developing_strokes || []
-            : [];
+        const tertiaryDeveloping = this.showTertiaryTrend ? this.theory.tertiary_trends?.developing_strokes || [] : [];
         const all = lecture
             ? [
                   ...this.theory.lecture_drawing.strokes,

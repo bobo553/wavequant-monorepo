@@ -2,11 +2,11 @@
 
 ## Last Updated
 
-2026-09-12
+2026-09-14
 
 ## Current Objective
 
-当前没有进行中的 Feature；MONOREPO-038 已完成，二级高点可在突破旧二级末跌高、完成场景回撤并出现已确认非正式二级反转点后因果升级。
+当前没有进行中的 Feature；MONOREPO-051 已完成：已确认的空多交替低点按当前回放截面判断可见性，并始终标在真实低点日期。
 
 ## Current State
 
@@ -20,9 +20,19 @@
 - WaveQuant API 已具备可选 SQLAlchemy 与 Redis Infrastructure 层；SQLite 封存证据、共享 SQL 元数据和可重建 Redis 缓存保持职责分离。
 - WaveQuant Web 的 `/` 与 `/research` 由 Next.js App Router 和 React 19 直接渲染完整研究工作台；Tailwind CSS 4、共享 shadcn 原语和 ECharts 全景市场页保留在 `/market`。
 - Harness 可同时发现并验证 Node 与 Python workspace 的进度文件。
+- 结构搜索复用 Core 已确认地标，支持任一/单类结构、一级至三级、最近 1/5/20 个交易日，并保持发生日与确认可用日分离。
+- 结构信号读模型同时绑定通达信数据指纹与 Core 全包算法指纹；行情或算法任一变化都会生成新快照，失败计算不会覆盖已完成版本。
+- 市场数据仓库以 AkShare 为默认主源，按交易日从备用源补齐缺失结果；重复日期保留主源值，并对外提供实际来源与补齐数量。
+- 买点与结构信号分别使用 `wavequant_buy_signal_snapshots`、`wavequant_structure_signal_snapshots` 事实表和 `signal:buy:v1:*`、`signal:structure:v3:*` Redis 缓存；结构缓存按市场组合隔离，前端不能启动计算任务。
 - 详细进度由各 pnpm workspace 根目录的 `progress.md` 维护。
 
 ## What Completed
+
+- MONOREPO-051 将空多交替低点的历史图窗范围与因果可知截止日分离；真实 AkShare 查询中，贤丰控股二级低点从无标识恢复为 `Ⅱ 空多交替低点 · L28 2.98`，并保留 2026-08-17 确认日证据。
+
+- MONOREPO-050 为结构读模型增加五类 A 股市场多选，默认上证、深证、创业板；市场归属、名称含 `*`/`＊` 排除和缓存隔离均由 API 完成。真实 Chromium 请求返回 200，覆盖 2,419 只已发布股票，默认组合发现 9 个结构且无 Console/Network 错误。
+
+- MONOREPO-049 将 AkShare 结构快照按股票原子发布并在服务端聚合为市场级列表；结构查询不带当前股票且跨买点策略复用。真实 Chromium 在 `lecture_v3` 下返回 200 ready、无 Console/Network 错误，全目录 Worker 覆盖数持续增长并能隔离单股失败。
 
 - 完成 MONOREPO-001：目录重构与工程规范整理。
 - 同步 Docker、CI、文档、Metro、Tailwind、补丁与锁文件路径。
@@ -48,9 +58,19 @@
 - 完成 MONOREPO-038：中大力德 `2022-08-03 H70 49.56` 在旧二级末跌高突破、54.42% 场景回撤和非正式二级低点确认三项证据齐备后，于 `2023-02-06` 升级为正式二级高点。
 - 完成 MONOREPO-039：Core 为一、二、三级正式空翻多结构输出因果确认高点，Web 在图上提供默认开启且可独立关闭的分级标识；中大力德 `2022-08-03 H70 49.56` 从 `2022-08-09` 起可见。
 - 完成 MONOREPO-040：空翻多地标统一要求确认高点严格突破冻结末跌高；一级不再把普通 `down → up` 波向切换误标为空翻多。
+- 完成 MONOREPO-041：Core 输出各级已确认空多交替低点及完整前置证据，Web 在低点价格下方提供默认开启且可独立关闭的分级标识。
+- 完成 MONOREPO-043：新增独立可取消的结构搜索任务与工作台入口，可搜索空翻多高点或空多交替低点并点击定位图表证据。
+- 完成 MONOREPO-044：新增结构信号后台 Worker、SQL 完成快照、Redis 查询缓存与只读 GET；前端不再逐股计算或轮询任务。
+- 完成 MONOREPO-047：增加统一市场数据端口及 AkShare/通达信适配器，目录、行情、讲义折线与多级趋势共用稳定仓库契约，并在主源不可用或滞后时安全补齐。
+- 完成 MONOREPO-048 实现：新增买点/结构双读模型、行情与算法因果版本、完成后原子发布、一次刷新/周期 Worker 和只读查询 API；AkShare 按显式股票范围执行有界任务。
 
 ## Verification Evidence
 
+- MONOREPO-048 专项门禁：Core 538 项、API 45 项（另 1 项外部集成跳过）、Web 6 项 Vitest 与 64 项 Node 契约通过，三端 lint/严格类型检查与生产构建通过；真实 MySQL/Redis 健康检查、显式建表、贵州茅台双信号发布及 3003 代理查询通过。
+
+- MONOREPO-047 三端门禁与 `pnpm verify:quick` 通过：Core Ruff、严格 mypy、538 项测试及构建；API Ruff、严格 mypy、41 项测试（另 1 项环境跳过）及构建；Web ESLint、TypeScript、6 项 Vitest、63 项 Node 契约、Next.js 构建和 11 条 Chromium 主流程。真实贵州茅台请求确认 AkShare/TDX 均使用同一领域结构契约，AkShare 主目录由 TDX 补充 342 只证券。
+- MONOREPO-045 全仓 `pnpm verify:quick` 通过；Core 531 项、API 41 项（另 1 项环境跳过）、Web 6 项 Vitest 与 63 项 Node 契约通过，三端生产构建通过。真实 AkShare 1.18.94 目录返回 5,562 只沪深京 A 股，贵州茅台在线原始不复权日线共 6,003 根、更新至 2026-09-11；浏览器确认数据源标识、按需目录、成交量单位及回测/扫描禁用边界。
+- MONOREPO-045 AkShare 延迟修复：主接口探测收紧为 3 秒并熔断 10 分钟，优先回退官方新浪日线、腾讯接口保留为最终兜底；真实 API 首次请求 2.85 秒、后续请求 0.98 秒，浏览器确认格力电器 7,009 根日线、29,800,684 股成交量并且无错误。全仓 `pnpm verify:quick` 再次通过，Core 532 项、API 41 项（另 1 项跳过）、Web 6+63 项测试通过。
 - MONOREPO-001 的 `pnpm verify`：通过目录重构后的 lint、类型检查、单元测试及生产构建。
 - MONOREPO-002 的 `pnpm harness:check`：通过，覆盖 2 个功能、12 个 workspace 和 28 份规则。
 - MONOREPO-002 的 `pnpm verify`：通过 lint、类型检查、单元测试及生产构建。
@@ -95,6 +115,11 @@
 - MONOREPO-039 的真实 API 回放确认中大力德二级空翻多高点在 `2022-08-08` 不可见、`2022-08-09` 首次可见；浏览器可显示、查看证据并独立开关该标识。
 - MONOREPO-039 workspace 门禁：Core 512 项、API 33 项（另 1 项环境跳过）、Web 6 项 Vitest 与 57 项 Node 契约通过；三端 lint、类型检查和生产构建通过，串行 9 条 Chromium 主流程通过。
 - MONOREPO-040 真实接口审计覆盖中大力德、首创环保、华夏银行和上海电力：三个级别所有地标均有末跌高且严格突破，非法计数均为 0；中大力德一级错误候选由 128 个收敛为 6 个真实突破点。
+- MONOREPO-041 全仓快速门禁通过；Core 516 项、API 33 项（另 1 项环境跳过）、Web 6 项 Vitest 与 58 项 Node 契约通过，串行 9 条 Chromium 主流程验证中大力德 L71 只能从 `2022-09-01` 起显示。
+- MONOREPO-042 全仓门禁通过；Core 518 项、API 33 项（另 1 项环境跳过）、Web 6 项 Vitest 与 59 项 Node 契约通过，串行 9 条 Chromium 主流程验证中大力德 `H71 33.89` 只能从 `2022-09-08` 起显示。
+- MONOREPO-044 全仓快速门禁通过；Core 525 项、API 40 项（另 1 项环境跳过）、Web 6 项 Vitest 与 61 项 Node 契约通过，三端构建及串行 10 条 Chromium 主流程通过。
+- MONOREPO-046 已启用 AkShare 当前股票买点与结构信号分析；真实 API 对贵州茅台分别完成 1/1，Chromium 点击回归通过且无页面异常或失败请求。
+- MONOREPO-046 完成后的 `pnpm verify` 通过；Core 534 项、API 41 项（另 1 项环境跳过）、Web 6 项 Vitest 与 63 项 Node 契约及全仓生产构建全部通过。
 
 ## Blockers
 

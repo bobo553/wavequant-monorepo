@@ -17,6 +17,16 @@ export function filterStocks(stocks, query = "") {
         .filter((s) => tokens.every((t) => `${s.symbol} ${s.exchange}${s.code} ${s.name}`.toLowerCase().includes(t)));
 }
 
+export function stockCoverageText(stock) {
+    if (stock.has_data === false) {
+        return stock.status === "invalid_daily" ? "本地日线异常" : "尚未下载日线";
+    }
+    if (stock.status === "available_on_demand" || stock.bar_count == null) {
+        return "按需读取 · 最新交易日以返回为准";
+    }
+    return `${stock.bar_count ?? stock.sessions?.length ?? 0} 根日线 · 至 ${stock.last || stock.sessions?.at(-1) || "—"}`;
+}
+
 export class StockList {
     constructor({ list, search, count, clear, onSelect }) {
         Object.assign(this, { list, search, count, clear, onSelect });
@@ -86,12 +96,7 @@ export class StockList {
             const code = document.createElement("span");
             code.textContent = `${s.code} · ${s.exchange}`;
             const coverage = document.createElement("small");
-            coverage.textContent =
-                s.has_data === false
-                    ? s.status === "invalid_daily"
-                        ? "本地日线异常"
-                        : "尚未下载日线"
-                    : `${s.bar_count ?? s.sessions?.length ?? 0} 根日线 · 至 ${s.last || s.sessions?.at(-1) || "—"}`;
+            coverage.textContent = stockCoverageText(s);
             b.append(name, code, coverage);
             b.addEventListener("click", () => this.onSelect(s.symbol));
             this.list.append(b);

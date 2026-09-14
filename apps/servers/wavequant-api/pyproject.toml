@@ -5,7 +5,7 @@ description = "Loopback HTTP adapter for the WaveQuant research workbench"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "wavequant-core[tdx]==0.4.0",
+    "wavequant-core[akshare,tdx]==0.4.0",
     "PyMySQL>=1.1,<2",
     "redis>=6,<8",
     "SQLAlchemy>=2.0,<3",

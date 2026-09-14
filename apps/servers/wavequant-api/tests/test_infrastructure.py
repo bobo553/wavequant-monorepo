@@ -13,11 +13,13 @@ from sqlalchemy import create_engine
 
 from wavequant_api.infrastructure import (
     ConfigurationError,
+    BuySignalSnapshot,
     Infrastructure,
     InfrastructureSettings,
     RedisJsonCache,
     ResearchRun,
     ResearchRunRepository,
+    StructureSnapshot,
 )
 from wavequant_api.cli import index_runs
 
@@ -106,6 +108,105 @@ class InfrastructureTests(unittest.TestCase):
             repository.save(ResearchRun("run", "RUNNING", {"value": math.nan}))
         with self.assertRaises(ValueError):
             repository.list_recent(0)
+
+    def test_structure_snapshot_is_published_idempotently_and_selected_by_versions(self) -> None:
+        repository = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))
+        self.addCleanup(repository.close)
+        repository.initialize()
+        snapshot = StructureSnapshot(
+            snapshot_id="c" * 64,
+            run_id="run-001",
+            variant="lecture_v1",
+            source="tdx",
+            asof="2026-09-07",
+            algorithm_version="a" * 64,
+            data_version="b" * 64,
+            payload={"results": [{"id": "first"}]},
+            total=5_549,
+            skipped=355,
+            failed=0,
+        )
+        repository.save_structure_snapshot(snapshot)
+        repository.save_structure_snapshot(
+            StructureSnapshot(**{**snapshot.__dict__, "payload": {"results": [{"id": "updated"}]}})
+        )
+
+        current = repository.find_structure_snapshot(
+            "run-001", "lecture_v1", "tdx", "2026-09-07", "a" * 64, data_version="b" * 64
+        )
+        self.assertEqual(current.payload["results"] if current else None, [{"id": "updated"}])
+        self.assertIsNone(repository.find_structure_snapshot("run-001", "lecture_v1", "tdx", "2026-09-07", "d" * 64))
+
+    def test_buy_and_structure_signals_use_distinct_tables_and_scopes(self) -> None:
+        repository = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))
+        self.addCleanup(repository.close)
+        repository.initialize()
+        buy = BuySignalSnapshot(
+            snapshot_id="e" * 64,
+            run_id="run-001",
+            variant="lecture_v1",
+            scenario="base",
+            source="akshare",
+            scope_symbol="sh.600519",
+            asof="2026-09-07",
+            start="2020-01-01",
+            algorithm_version="a" * 64,
+            data_version="b" * 64,
+            payload={"results": [{"symbol": "sh.600519", "session_age": 1}]},
+            total=1,
+            skipped=0,
+            failed=0,
+        )
+        repository.save_buy_signal_snapshot(buy)
+        current = repository.find_buy_signal_snapshot(
+            "run-001",
+            "lecture_v1",
+            "base",
+            "akshare",
+            "2026-09-07",
+            "2020-01-01",
+            "a" * 64,
+            scope_symbol="sh.600519",
+        )
+        self.assertEqual(current.payload if current else None, buy.payload)
+        self.assertIsNone(
+            repository.find_structure_snapshot(
+                "run-001", "lecture_v1", "akshare", "2026-09-07", "a" * 64, scope_symbol="sh.600519"
+            )
+        )
+
+    def test_structure_shards_list_only_the_newest_snapshot_per_symbol(self) -> None:
+        repository = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))
+        self.addCleanup(repository.close)
+        repository.initialize()
+        for snapshot_id, symbol, data_version in (
+            ("1" * 64, "sh.600519", "b" * 64),
+            ("2" * 64, "sh.600519", "c" * 64),
+            ("3" * 64, "sz.000001", "d" * 64),
+        ):
+            repository.save_structure_snapshot(
+                StructureSnapshot(
+                    snapshot_id=snapshot_id,
+                    run_id="run-001",
+                    variant="lecture_v1",
+                    source="akshare",
+                    scope_symbol=symbol,
+                    asof="2026-09-07",
+                    algorithm_version="a" * 64,
+                    data_version=data_version,
+                    payload={"results": [{"symbol": symbol}]},
+                    total=1,
+                    skipped=0,
+                    failed=0,
+                )
+            )
+
+        snapshots = repository.list_structure_snapshots(
+            "run-001", "lecture_v1", "akshare", "2026-09-07", "a" * 64
+        )
+
+        self.assertEqual([snapshot.scope_symbol for snapshot in snapshots], ["sh.600519", "sz.000001"])
+        self.assertEqual(snapshots[0].data_version, "c" * 64)
 
     def test_catalog_index_is_explicit_and_idempotent(self) -> None:
         repository = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))

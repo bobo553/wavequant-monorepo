@@ -10,6 +10,8 @@ const chartLayers = [
     ["show-trend-prices", "一级点位价格", true],
     ["show-last-fall-high", "各级末跌高", true],
     ["show-bear-to-bull-highs", "各级空翻多高点", true],
+    ["show-bear-bull-alternation-lows", "各级空多交替低点", true],
+    ["show-post-alternation-bull-highs", "各级交替后多头段高点", true],
     ["show-levels", "选中点位线", true],
 ] as const;
 
@@ -48,6 +50,8 @@ export function ResearchChart(): JSX.Element {
                 <span style={{ color: "#ffd36d" }}>黄虚线：普通高低 · 无端点圆圈</span>
                 <span className="key-last-fall-high">Ⅰ/Ⅱ/Ⅲ 末跌高：来源 H → 对应图窗最低 L</span>
                 <span className="key-bear-to-bull-high">Ⅰ/Ⅱ/Ⅲ 空翻多高点：Python 确认 H</span>
+                <span className="key-bear-bull-alternation-low">Ⅰ/Ⅱ/Ⅲ 空多交替低点：Python 确认 L</span>
+                <span className="key-post-alternation-bull-high">Ⅰ/Ⅱ/Ⅲ 交替后多头段高点：Python 确认 H</span>
                 <label style={{ color: "#50dfd2" }}>
                     <input id="show-teaching" type="checkbox" defaultChecked /> 子母段青色强调（不拆线）
                 </label>

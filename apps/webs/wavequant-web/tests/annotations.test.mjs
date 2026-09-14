@@ -3,10 +3,12 @@ import test from "node:test";
 
 import {
     avoidLabelCollisions,
+    bearBullAlternationLowAnnotations,
     bearToBullHighAnnotations,
     buildAnnotations,
     lastFallHighAnnotations,
     markerGroups,
+    postAlternationBullHighAnnotations,
     reasonText,
     reversalWindowSummary,
     ruleTitle,
@@ -326,6 +328,97 @@ test("bear-to-bull high labels use Python landmarks and respect their causal ava
     assert.match(item.description, /H8（2021-12-01，27.71）/);
     assert.equal(visibleAnnotations([item], { ...options, bullFlipHighs: false }).length, 0);
     assert.equal(visibleAnnotations([item], { ...options, bullFlipHighs: true }).length, 1);
+});
+
+test("confirmed bear-bull alternation lows render below price and preserve causal evidence", () => {
+    const landmark = {
+        id: "level1-bear-bull-alternation-low-1195-1203",
+        time: "2022-08-30",
+        available_at: "2022-09-01",
+        index: 1203,
+        kind: "L",
+        label: "L71",
+        value: 29.75,
+        trend_level: 1,
+        source_path: "reversal-sample",
+        retracement_ratio: 0.5442307692,
+        confirmed_flip_high: { time: "2022-08-03", label: "H70", value: 49.56 },
+        confirmed_bear_low: { time: "2022-05-27", label: "L70", value: 13.16 },
+        broken_key: { time: "2022-05-24", label: "H69", value: 18.28 },
+        retracement_origin: { time: "2022-05-27", label: "L70", value: 13.16 },
+    };
+
+    assert.deepEqual(
+        bearBullAlternationLowAnnotations([{ level: 1, landmarks: [landmark] }], "2022-05-01", "2022-08-31"),
+        [],
+    );
+    assert.deepEqual(
+        bearBullAlternationLowAnnotations(
+            [{ level: 1, landmarks: [landmark] }],
+            "2022-05-01",
+            "2022-08-31",
+            "2022-08-31",
+        ),
+        [],
+        "当前回放截面尚未到确认日时不得显示",
+    );
+    const [historicalViewportItem] = bearBullAlternationLowAnnotations(
+        [{ level: 1, landmarks: [landmark] }],
+        "2022-05-01",
+        "2022-08-31",
+        "2022-09-01",
+    );
+    assert.equal(historicalViewportItem.time, "2022-08-30");
+    const [item] = bearBullAlternationLowAnnotations([{ level: 1, landmarks: [landmark] }], "2022-05-01", "2022-09-01");
+    assert.equal(item.time, "2022-08-30");
+    assert.equal(item.price, 29.75);
+    assert.equal(item.category, "trend-alternation-lows");
+    assert.match(item.title, /Ⅰ 空多交替低点 · L71 29.75/);
+    assert.match(item.description, /H70（2022-08-03，49.56）/);
+    assert.match(item.description, /54.42%/);
+    assert.equal(visibleAnnotations([item], { ...options, bullAlternationLows: false }).length, 0);
+    const marker = markerGroups([item], { ...options, bullAlternationLows: true })[0].marker;
+    assert.equal(marker.position, "atPriceBottom");
+    assert.equal(marker.shape, "arrowUp");
+    assert.equal(marker.price, 29.75);
+});
+
+test("post-alternation bull high marks the first confirmed rising leg endpoint", () => {
+    const landmark = {
+        id: "level1-post-alternation-bull-high-1203-1204",
+        time: "2022-09-01",
+        available_at: "2022-09-08",
+        index: 1204,
+        kind: "H",
+        label: "H71",
+        value: 33.89,
+        trend_level: 1,
+        source_path: "reversal-sample",
+        confirmed_alternation_low: { time: "2022-08-30", label: "L71", value: 29.75 },
+        confirmed_flip_high: { time: "2022-08-03", label: "H70", value: 49.56 },
+        broken_key: { time: "2022-05-24", label: "H69", value: 18.28 },
+    };
+
+    assert.deepEqual(
+        postAlternationBullHighAnnotations([{ level: 1, landmarks: [landmark] }], "2022-05-01", "2022-09-07"),
+        [],
+    );
+    const [item] = postAlternationBullHighAnnotations(
+        [{ level: 1, landmarks: [landmark] }],
+        "2022-05-01",
+        "2022-09-08",
+    );
+    assert.equal(item.time, "2022-09-01");
+    assert.equal(item.price, 33.89);
+    assert.equal(item.category, "trend-post-alternation-bull-highs");
+    assert.match(item.title, /Ⅰ 交替后多头段高点 · H71 33.89/);
+    assert.match(item.description, /L71（2022-08-30，29.75）/);
+    assert.match(item.description, /第一个 L→H 高点/);
+    assert.equal(visibleAnnotations([item], { ...options, postAlternationBullHighs: false }).length, 0);
+    const marker = markerGroups([item], { ...options, postAlternationBullHighs: true })[0].marker;
+    assert.equal(marker.position, "atPriceTop");
+    assert.equal(marker.shape, "arrowDown");
+    assert.equal(marker.price, 33.89);
 });
 const view = {
     asof: "2026-01-03",

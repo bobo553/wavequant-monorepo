@@ -155,9 +155,22 @@ class ScannerTests(unittest.TestCase):
         self.assertEqual(job['failed'],2);self.assertEqual(job['results'],[])
         self.assertEqual(len(job['errors']),2)
 
+    def test_akshare_scans_only_requested_online_symbol_without_execution(self):
+        self.repo.akshare=SimpleNamespace(catalog=lambda:{'stocks':[{'symbol':'sh.600000','name':'在线样本'}]})
+        self.repo.market_data=SimpleNamespace(catalog=lambda source:self.repo.akshare.catalog())
+        self.repo.akshare_signal_view=Mock(return_value=view())
+        params=dict(self.params,source='akshare',symbol='sh.600000')
+        job=self.wait(self.scanner.start(params)['id'])
+        self.assertEqual(job['status'],'completed');self.assertEqual(job['total'],1)
+        self.assertEqual(job['results'][0]['name'],'在线样本')
+        self.repo.akshare_signal_view.assert_called_once_with(
+            'test','strict_full','sh.600000','2026-01-06','base','2020-01-01')
+        self.repo.stock_view.assert_not_called()
+
     def test_input_guards(self):
         for bad in (dict(self.params,lookback=0),dict(self.params,lookback=True),dict(self.params,source='all'),
-                    dict(self.params,start='2027-01-01'),dict(self.params,path='/secret')):
+                    dict(self.params,start='2027-01-01'),dict(self.params,path='/secret'),
+                    dict(self.params,source='akshare'),dict(self.params,symbol='sh.600000')):
             with self.assertRaises(ValueError):self.scanner.start(bad)
         with self.assertRaises(ValueError):self.scanner.get('missing')
 

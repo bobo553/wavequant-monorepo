@@ -1,5 +1,5 @@
 // Presentation-only mappings. Strategy conditions remain in the Python engine.
-import { label, num } from "./labels.js";
+import { label, num, pct } from "./labels.js";
 
 const RULES = {
     hierarchy_alternation_ready: ["分级空多交替", "一级及以上的翻多后确认更高低点；V2 不使用交替回撤比例过滤。", 94],
@@ -322,6 +322,108 @@ export function bearToBullHighAnnotations(levelLandmarks, from, to) {
             });
     });
 }
+
+/**
+ * 将 Python 已确认的空多交替回档低点转换为图表标识。
+ *
+ * Core 已保存此前的空翻多高点、冻结末跌高和回档判定；浏览器只做
+ * 图窗与回放截面过滤。确认日可以晚于低点所在图窗，但不能晚于当前
+ * 回放截面；绝不从 K 线最低价猜测一个尚未确认的交替低点。
+ */
+export function bearBullAlternationLowAnnotations(levelLandmarks, from, to, knownAt = to) {
+    return levelLandmarks.flatMap(({ level, landmarks = [] }) => {
+        const spec = LAST_FALL_HIGH_LEVELS[level];
+        if (!spec) return [];
+        return landmarks
+            .filter(
+                (landmark) =>
+                    landmark.kind === "L" &&
+                    landmark.time >= from &&
+                    landmark.time <= to &&
+                    landmark.available_at <= knownAt,
+            )
+            .map((landmark) => {
+                const high = landmark.confirmed_flip_high,
+                    bearLow = landmark.confirmed_bear_low,
+                    key = landmark.broken_key,
+                    origin = landmark.retracement_origin;
+                return {
+                    id: `bear-bull-alternation-low:${level}:${landmark.id}`,
+                    time: landmark.time,
+                    sourceTime: landmark.time,
+                    kind: "trend-key",
+                    category: "trend-alternation-lows",
+                    price: landmark.value,
+                    markerPosition: "atPriceBottom",
+                    markerShape: "arrowUp",
+                    title: `${spec.numeral} 空多交替低点 · ${landmark.label} ${num(landmark.value)}`,
+                    description: `${spec.label}趋势线在 ${high.label}（${high.time}，${num(high.value)}）严格突破冻结末跌高 ${key.label}（${key.time}，${num(key.value)}）完成空翻多后，${landmark.label}（${landmark.time}，${num(landmark.value)}）相对 ${origin.label}（${origin.time}，${num(origin.value)}）形成 ${pct(landmark.retracement_ratio)} 回档，并保持高于原空头低点 ${bearLow.label}（${bearLow.time}，${num(bearLow.value)}）。该低点到 ${landmark.available_at} 才完成空多交替确认；未确认回档、达到三分之二或跌破原低点都不会标记。`,
+                    sourceLabel: `${spec.label}趋势线 · Python 已确认空多交替低点`,
+                    priority: 145 - level,
+                    color: spec.color,
+                    levels: [
+                        { name: `${spec.label}空翻多高点`, price: high.value },
+                        { name: `${spec.label}冻结末跌高`, price: key.value },
+                        { name: `${spec.label}原空头低点`, price: bearLow.value },
+                    ],
+                    raw: {
+                        ...landmark,
+                        definition: "python_confirmed_bear_bull_alternation_low",
+                    },
+                };
+            });
+    });
+}
+
+/**
+ * 将空多交替后第一段已确认上涨趋势的终点高点转换为图表标识。
+ *
+ * 高点和对应交替低点均由 Core 选择；浏览器只负责因果日期与图窗过滤，
+ * 不从后续 K 线或当前视窗最高价重算“多头段高点”。
+ */
+export function postAlternationBullHighAnnotations(levelLandmarks, from, to) {
+    return levelLandmarks.flatMap(({ level, landmarks = [] }) => {
+        const spec = LAST_FALL_HIGH_LEVELS[level];
+        if (!spec) return [];
+        return landmarks
+            .filter(
+                (landmark) =>
+                    landmark.kind === "H" &&
+                    landmark.time >= from &&
+                    landmark.time <= to &&
+                    landmark.available_at <= to,
+            )
+            .map((landmark) => {
+                const low = landmark.confirmed_alternation_low,
+                    flipHigh = landmark.confirmed_flip_high,
+                    key = landmark.broken_key;
+                return {
+                    id: `post-alternation-bull-high:${level}:${landmark.id}`,
+                    time: landmark.time,
+                    sourceTime: landmark.time,
+                    kind: "trend-key",
+                    category: "trend-post-alternation-bull-highs",
+                    price: landmark.value,
+                    markerPosition: "atPriceTop",
+                    markerShape: "arrowDown",
+                    title: `${spec.numeral} 交替后多头段高点 · ${landmark.label} ${num(landmark.value)}`,
+                    description: `${spec.label}趋势线在 ${low.label}（${low.time}，${num(low.value)}）完成空多交替后，紧接着的同级上涨段以 ${landmark.label}（${landmark.time}，${num(landmark.value)}）结束。该点是 Core 沿同一路径确认的第一个 L→H 高点，到 ${landmark.available_at} 才可知；此前空翻多高点为 ${flipHigh.label}（${flipHigh.time}，${num(flipHigh.value)}），冻结末跌高为 ${key.label}（${key.time}，${num(key.value)}）。浏览器不会跳过下一结构点去选择更远或更高的点。`,
+                    sourceLabel: `${spec.label}趋势线 · Python 交替后首段多头高点`,
+                    priority: 142 - level,
+                    color: spec.color,
+                    levels: [
+                        { name: `${spec.label}空多交替低点`, price: low.value },
+                        { name: `${spec.label}此前空翻多高点`, price: flipHigh.value },
+                        { name: `${spec.label}冻结末跌高`, price: key.value },
+                    ],
+                    raw: {
+                        ...landmark,
+                        definition: "python_confirmed_post_alternation_first_bull_leg_high",
+                    },
+                };
+            });
+    });
+}
 export function ruleTitle(e) {
     if (e.event === "n_completed") return e.direction === "up" ? "正 N · 突破" : "倒 N · 跌破";
     if (e.event === "regime_confirmation") return e.regime || "盘态确认";
@@ -402,7 +504,11 @@ export function visibleAnnotations(items, options) {
                     ? options.trendKeys
                     : m.category === "trend-flip-highs"
                       ? options.bullFlipHighs
-                    : options.rules,
+                      : m.category === "trend-alternation-lows"
+                        ? options.bullAlternationLows
+                        : m.category === "trend-post-alternation-bull-highs"
+                          ? options.postAlternationBullHighs
+                          : options.rules,
     );
 }
 export function markerGroups(items, options, span = 140) {
@@ -438,7 +544,8 @@ export function markerGroups(items, options, span = 140) {
                     id: g.id,
                     time: g.time,
                     position:
-                        (isFill || isTrendKey) && Number.isFinite(item.price)
+                        item.markerPosition ||
+                        ((isFill || isTrendKey) && Number.isFinite(item.price)
                             ? buy
                                 ? "atPriceBottom"
                                 : "atPriceTop"
@@ -446,7 +553,7 @@ export function markerGroups(items, options, span = 140) {
                               ? "aboveBar"
                               : buy
                                 ? "belowBar"
-                                : "aboveBar",
+                                : "aboveBar"),
                     ...((isFill || isTrendKey) && Number.isFinite(item.price) ? { price: item.price } : {}),
                     color: isFill
                         ? buy
@@ -468,7 +575,7 @@ export function markerGroups(items, options, span = 140) {
                             ? "arrowUp"
                             : "arrowDown"
                         : isTrendKey
-                          ? "arrowDown"
+                          ? item.markerShape || "arrowDown"
                           : isRule
                             ? "square"
                             : "circle",

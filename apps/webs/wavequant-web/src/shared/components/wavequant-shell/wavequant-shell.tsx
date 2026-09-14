@@ -161,8 +161,8 @@ function ShellStatusStrip({ variant }: { variant: TWaveQuantShellVariant }): JSX
             ) : (
                 <>
                     <strong className="text-primary">本地研究</strong>
-                    <span>· 离线历史数据，只读模式</span>
-                    <span className="hidden sm:inline">通达信日线与封存回测结果</span>
+                    <span>· 本地 / 在线历史数据，只读模式</span>
+                    <span className="hidden sm:inline">通达信、AkShare 与封存回测结果</span>
                     <span className="ml-auto hidden sm:inline">无实盘路由 · 不构成投资建议</span>
                 </>
             )}
@@ -176,7 +176,7 @@ function ShellFooter({ variant }: { variant: TWaveQuantShellVariant }): JSX.Elem
             {variant === "market" ? (
                 <MarketContextStatus kind="footer" />
             ) : (
-                <span className="text-primary font-medium">● 主控量化研究 · 本地数据</span>
+                <span className="text-primary font-medium">● 主控量化研究 · 只读模式</span>
             )}
             {variant === "market" ? (
                 <span className="hidden sm:inline">价格：元 · 数量：股 / 手 · 本地原型 · 不连接券商</span>
@@ -191,8 +191,8 @@ function ShellFooter({ variant }: { variant: TWaveQuantShellVariant }): JSX.Elem
                     >
                         TradingView
                     </a>{" "}
-                    · <a href="/vendor/NOTICE">NOTICE</a> · <a href="/vendor/LICENSE">Apache 2.0 License</a> · 本机数据
-                    · 无外部行情请求 · 不提供买卖操作
+                    · <a href="/vendor/NOTICE">NOTICE</a> · <a href="/vendor/LICENSE">Apache 2.0 License</a> · 只读行情
+                    · 无实盘路由 · 不提供买卖操作
                 </span>
             )}
         </footer>

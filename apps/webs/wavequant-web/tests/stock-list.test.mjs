@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { filterStocks, stockInfo } from "../public/stock-list.js";
+import { filterStocks, stockCoverageText, stockInfo } from "../public/stock-list.js";
 
 const stocks = ["sh.600519", "sh.600036", "sz.000858", "sz.000333"].map((symbol) => ({
     symbol,
@@ -32,4 +32,11 @@ test("filtering never mutates stock universe or session history", () => {
     const before = structuredClone(stocks);
     filterStocks(stocks, "茅台");
     assert.deepEqual(stocks, before);
+});
+test("online catalogs describe on-demand history without claiming zero bars", () => {
+    assert.equal(
+        stockCoverageText({ status: "available_on_demand", bar_count: null }),
+        "按需读取 · 最新交易日以返回为准",
+    );
+    assert.equal(stockCoverageText({ bar_count: 6003, last: "2026-09-11" }), "6003 根日线 · 至 2026-09-11");
 });

@@ -5,6 +5,7 @@ filter bars, fills and closed trades as of the selected Shanghai daily session.
 Theory is computed from that prefix, not by hiding future candles afterwards.
 """
 
+from dataclasses import asdict
 from datetime import date, datetime
 from functools import lru_cache
 import csv
@@ -132,10 +133,23 @@ def metrics_at(equity, trades, capital):
 
 
 class ChartRepository:
-    def __init__(self, root, tdx_root=None):
+    def __init__(self, root, tdx_root=None, *, akshare_enabled=True, akshare_timeout=30.0):
+        from wavequant.interfaces.charts.akshare_browser import AkShareBrowser
+        from wavequant.interfaces.charts.market_data_repository import (
+            AkShareMarketDataAdapter,
+            MarketDataRepository,
+            TdxMarketDataAdapter,
+        )
         from wavequant.interfaces.charts.tdx_browser import TdxBrowser
 
         self.tdx = TdxBrowser(tdx_root) if tdx_root else None
+        self.akshare = AkShareBrowser(timeout=akshare_timeout) if akshare_enabled else None
+        adapters = []
+        if self.akshare is not None:
+            adapters.append(AkShareMarketDataAdapter(self.akshare))
+        if self.tdx is not None:
+            adapters.append(TdxMarketDataAdapter(self.tdx))
+        self.market_data = MarketDataRepository(adapters, default_source="akshare")
         self.root = Path(root).resolve()
         self.runs = {}
         self.cache = {}
@@ -146,8 +160,10 @@ class ChartRepository:
         self.tdx_backtester = TdxBacktester(self.tdx, project_path("data", "cache")) if self.tdx else None
         self.refresh()
         from wavequant.interfaces.screening.buy_scanner import BuyScanner
+        from wavequant.interfaces.screening.structure_scanner import StructureScanner
 
         self.buy_scanner = BuyScanner(self)
+        self.structure_scanner = StructureScanner(self)
 
     def refresh(self):
         path = self.root / "operations.sqlite"
@@ -422,6 +438,87 @@ class ChartRepository:
             audit=result["audit"],
             evidence="个股独立回测：" + ("无平仓交易证据" if not result["trades"] else "已有成交样本，不代表策略有效"),
             comparison="相同资金与风控的独立账户，不是共享组合结果的拆分。",
+        )
+
+    def akshare_signal_view(self, rid, variant, symbol, asof, scenario="base", start="1990-01-01"):
+        """Generate signal evidence for one online symbol without simulating fills."""
+        self._run(rid)
+        if variant not in VARIANTS or scenario not in SCENARIOS:
+            raise ValueError("unknown strategy or scenario")
+        if self.akshare is None:
+            raise ValueError("AkShare 数据源未配置")
+        if date.fromisoformat(start).isoformat() != start or date.fromisoformat(asof).isoformat() != asof:
+            raise ValueError("use YYYY-MM-DD date")
+        if start > asof:
+            raise ValueError("回测起点不能晚于回放日期")
+        selection = self.market_data.window("akshare", symbol, asof)
+        bars = [bar for bar in selection.bars if bar.timestamp.date().isoformat() >= start]
+        if not bars:
+            raise ValueError("所选起点后没有 AkShare 日线")
+        config = self.strategy_config(rid, variant)
+        generated = generate_system_signals(bars, SystemStrategy(**config["strategy"]))
+
+        def serial(value):
+            return json.loads(
+                json.dumps(value, default=lambda item: item.isoformat() if isinstance(item, datetime) else str(item))
+            )
+
+        signals = [
+            dict(serial(asdict(signal)), time=signal.timestamp.date().isoformat()) for signal in generated.signals
+        ]
+        audit = serial(generated.audit)
+        for event in audit:
+            if not event.get("buy_point_type"):
+                continue
+            for key in (
+                "flip_index",
+                "alternation_index",
+                "maturity_index",
+                "attack",
+                "pullback_index",
+                "flip_high_index",
+                "alternation_low_index",
+                "impulse_origin_index",
+                "impulse_high_index",
+                "origin_index",
+                "peak_index",
+                "minimum_close_index",
+                "eligibility_frozen_at",
+            ):
+                index = event.get(key)
+                if isinstance(index, int) and 0 <= index <= event["bar_index"]:
+                    event[key + "_date"] = bars[index].timestamp.date().isoformat()
+        return dict(
+            run_id=rid,
+            variant=variant,
+            scenario=scenario,
+            symbol=symbol,
+            asof=bars[-1].timestamp.date().isoformat(),
+            result_scope="akshare_signal_only",
+            data_source=selection.requested_source,
+            resolved_source=selection.resolved_source,
+            providers=list(selection.providers),
+            supplemented_bars=selection.supplemented_bars,
+            source_fallback=selection.resolved_source != selection.requested_source,
+            source_warning=selection.primary_error,
+            price_basis="raw_unadjusted",
+            bars=[
+                dict(
+                    time=bar.timestamp.date().isoformat(),
+                    open=bar.open,
+                    high=bar.high,
+                    low=bar.low,
+                    close=bar.close,
+                    volume=bar.volume,
+                    factor=1,
+                    raw_close=bar.close,
+                )
+                for bar in bars
+            ],
+            signals=signals,
+            orders=[],
+            audit=audit,
+            backtest={"source": "akshare_online_raw_signal_only"},
         )
 
     @lru_cache(maxsize=12)

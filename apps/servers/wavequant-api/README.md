@@ -28,7 +28,9 @@ pnpm --filter wavequant-api dashboard
 pnpm --filter wavequant-api python -- -m wavequant_api.cli --root "E:\WorkSpace\股票\results\operations_v1" --tdx-root "D:\TDX" --port 8765
 ```
 
-API 直接依赖 `wavequant-core[tdx]`，完整安装会包含现场复权回测所需的 `pytdx` 与 `pandas`。
+API 直接依赖 `wavequant-core[akshare,tdx]`，完整安装会包含现场复权回测所需的 `pytdx`、`pandas`，以及在线行情浏览使用的 AkShare。AkShare 提供只读行情、讲义结构绘图和当前股票信号分析；不会逐股抓取在线全市场，也不进入封存回测或交易证据。可用 `--akshare-timeout 30` 调整单次调用上限，或用 `--disable-akshare` 显式关闭。历史日线先短时探测 `stock_zh_a_hist`；该上游不可用时优先回退到速度更快的官方 `stock_zh_a_daily`，最后才使用按年份请求的 `stock_zh_a_hist_tx`。响应会标明实际接口。
+
+AkShare 路由为 `GET /api/akshare-catalog`、`GET /api/akshare-view?symbol=sh.600519&asof=YYYY-MM-DD` 和 `GET /api/akshare-theory?...`。信号查询统一使用只读 `GET /api/structure-signals` 与 `GET /api/buy-signals`；AkShare 买点仍要求 `symbol`，结构查询则是跨股票市场列表。结构查询可通过 `markets=shanghai,shenzhen,chinext,star,beijing` 选择市场，缺省为上证、深证、创业板，并统一排除名称含 `*` 或 `＊` 的股票。HTTP 请求只读取已发布快照，不抓行情、不运行理论算法，也不能通过 POST 启动扫描。快照缺失时响应 `503`，由独立 Worker 补算。
 
 ## MySQL 与 Redis
 
@@ -51,6 +53,38 @@ pnpm --filter wavequant-api dashboard
 ```
 
 `infra:init` 是显式、可重复执行的初始建表动作，服务导入或启动不会擅自修改数据库结构。`infra:index` 把已封存本地运行的紧凑目录幂等写入共享 SQL，CSV、行情和其他大型产物仍留在文件存储。本地容器的数据位于具名 Volume；`infra:down` 不删除 Volume。
+
+### 买点与结构信号预计算
+
+买点与结构信号采用独立后台读模型，不在浏览器请求中抓行情或运行 Core。首次部署或需要立即刷新通达信全市场时运行一次：
+
+```powershell
+pnpm --filter wavequant-api signals:refresh
+```
+
+服务器长期运行下面的独立 Worker。它默认每 300 秒检查一次通达信日线目录；没有变化时只比较轻量指纹，不重复计算，发现新交易日或文件版本变化后自动生成新快照：
+
+```powershell
+pnpm --filter wavequant-api signals:watch
+```
+
+生产环境应由 systemd、Windows 服务、Supervisor 或容器编排器同时托管 API 与 Worker。也可以由外部调度器在行情落库完成后调用 `signals:refresh`。可通过 `--structure-refresh-interval 60..86400` 调整检查间隔，通过 `--structure-run`、`--structure-variant`、`--structure-asof`、`--signal-scenario` 和 `--signal-start` 明确计算口径。AkShare 结构 Worker 默认遍历完整目录，每只股票完成后独立原子发布，因此中断后可直接复用已完成分片：
+
+```powershell
+pnpm --filter wavequant-api structures:watch:akshare
+```
+
+临时验证或定向补算时可重复传入 `--signal-symbol` 限定股票子集；AkShare 买点仍要求显式股票范围，避免意外启动高成本全市场买点计算。
+
+每份快照同时绑定：
+
+- 行情指纹：证券代码、名称、最新交易日以及日线文件的修改时间和大小；
+- 算法指纹：`wavequant-core` 全部 Python 源码的内容摘要；
+- 查询口径：运行、策略版本、数据源、股票范围、执行场景、回放日期和回测起点。
+
+因此每日行情更新会产生新快照；部署包含算法或策略配置变更的代码并重启 Worker 后，也会因算法指纹不同主动重建。通达信全市场结果一次性原子发布；AkShare 按股票分片原子发布，市场查询聚合每只股票的最新完成版本，任何中断都不会暴露半份股票结果。结构结果写入 `wavequant_structure_signal_snapshots`，买点结果写入 `wavequant_buy_signal_snapshots`。Redis 分别使用 `signal:structure:v2:*` 与 `signal:buy:v1:*` 命名空间，且始终可以由 SQL 重建。
+
+前端通过只读接口按最近 1/5/20 个交易日过滤同一份 20 日完整快照；结构接口还可按信号类型和趋势级别缩小范围。AkShare 结构查询不接收当前股票作为筛选范围，而是返回服务器已发布覆盖范围内所有匹配股票。若当天或当前算法版本尚无任何完成分片，接口返回带 Worker 操作提示的 `503`，不会悄悄回退到在线计算。
 
 若采用推荐的 PostgreSQL，在 API 虚拟环境中安装 `postgres` extra，并使用显式 psycopg 3 URL：
 

@@ -4,6 +4,7 @@ import { PerformanceCharts, PriceChart } from "./charts.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
 import { StockList } from "./stock-list.js";
+import { StructureSignals } from "./structure-signals.js";
 import { appendTradeEvidence } from "./trade-review.js";
 
 const $ = (id) => document.getElementById(id);
@@ -27,13 +28,17 @@ const state = {
     error: false,
     controller: null,
     pendingFocus: null,
+    pendingStructureAnnotation: null,
 };
 state.tdxSessions = {};
+state.akshareSessions = {};
 const isTdx = () => $("result-scope").value === "tdx";
+const isAkShare = () => $("result-scope").value === "akshare";
 const isTdxBacktest = () => $("result-scope").value === "tdx-backtest";
 const isLocal = () => isTdx() || isTdxBacktest();
+const isMarketBrowse = () => isTdx() || isAkShare();
 function universe() {
-    return isLocal() ? state.tdx?.stocks || [] : currentRun().symbols;
+    return isAkShare() ? state.akshare?.stocks || [] : isLocal() ? state.tdx?.stocks || [] : currentRun().symbols;
 }
 const titles = { workspace: "K 线复盘", performance: "策略绩效", orders: "订单与信号", health: "系统状态" };
 const requestedPage = new URLSearchParams(window.location.search).get("page");
@@ -76,9 +81,11 @@ function currentRun() {
 }
 function sessions() {
     const symbol = $("symbol-select").value;
-    return isLocal()
-        ? state.tdxSessions[symbol] || [universe().find((s) => s.symbol === symbol)?.last].filter(Boolean)
-        : currentRun()?.symbols.find((s) => s.symbol === symbol)?.sessions || [];
+    return isAkShare()
+        ? state.akshareSessions[symbol] || [universe().find((s) => s.symbol === symbol)?.last].filter(Boolean)
+        : isLocal()
+          ? state.tdxSessions[symbol] || [universe().find((s) => s.symbol === symbol)?.last].filter(Boolean)
+          : currentRun()?.symbols.find((s) => s.symbol === symbol)?.sessions || [];
 }
 async function api(path, params = {}, signal, method = "GET") {
     const timeout = AbortSignal.timeout(path === "/api/stock-summary" ? 180000 : 45000);
@@ -133,13 +140,14 @@ const buyPoints = new BuyPoints({
             run: p.run,
             variant: p.variant,
             scenario: p.scenario,
-            source: isLocal() ? "tdx" : "snapshot",
+            source: isAkShare() ? "akshare" : isLocal() ? "tdx" : "snapshot",
+            ...(isAkShare() ? { symbol: p.symbol } : {}),
             asof: p.asof,
-            start: isLocal() ? $("backtest-start").value : currentRun().start,
+            start: isLocal() || isAkShare() ? $("backtest-start").value : currentRun().start,
         };
     },
     onSelect: async (match, p) => {
-        $("result-scope").value = p.source === "tdx" ? "tdx-backtest" : "stock";
+        $("result-scope").value = p.source === "akshare" ? "akshare" : p.source === "tdx" ? "tdx-backtest" : "stock";
         fillSymbols();
         $("symbol-select").value = match.symbol;
         preserveCutoff(p.asof);
@@ -150,6 +158,13 @@ const buyPoints = new BuyPoints({
         showPage("workspace");
         await loadView();
         if (state.error || state.view?.symbol !== match.symbol) return;
+        if (p.source === "akshare") {
+            detail(
+                "AkShare 当前股票买点信号",
+                `原始不复权在线日线仅用于信号研究；${match.signal_date} · ${match.regime} · 参考 ${num(match.raw_reference_price)} 元 · 相对量 ${num(match.rvol)} · 未模拟成交。`,
+            );
+            return;
+        }
         if (match.run_id !== state.view.run_id) {
             detail("扫描记录已过期", "行情或策略版本已变化；当前图为新结果，请重新扫描后再复核。");
             return;
@@ -176,6 +191,65 @@ const buyPoints = new BuyPoints({
         }
     },
 });
+const structureSignals = new StructureSignals({
+    api,
+    getContext: () => {
+        const params = select();
+        return {
+            run: params.run,
+            variant: params.variant,
+            source: isAkShare() ? "akshare" : isLocal() ? "tdx" : "snapshot",
+            asof: params.asof,
+        };
+    },
+    onSelect: async (match, params) => {
+        $("result-scope").value = params.source === "akshare" ? "akshare" : params.source === "tdx" ? "tdx" : "stock";
+        fillSymbols();
+        $("symbol-select").value = match.symbol;
+        preserveCutoff(params.asof);
+        state.pendingFocus = {
+            time: match.event_date,
+            description: `${match.trend_level} 级 ${match.signal_type === "bear_to_bull" ? "空翻多高点" : "空多交替低点"} · 发生 ${match.event_date} · ${match.available_at} 确认`,
+        };
+        state.pendingStructureAnnotation = {
+            symbol: match.symbol,
+            asof: params.asof,
+            checkbox:
+                match.signal_type === "bear_to_bull" ? "show-bear-to-bull-highs" : "show-bear-bull-alternation-lows",
+            annotationId:
+                match.signal_type === "bear_to_bull"
+                    ? `bear-to-bull-high:${match.trend_level}:${match.id}`
+                    : `bear-bull-alternation-low:${match.trend_level}:${match.id}`,
+        };
+        showPage("workspace");
+        await loadView();
+    },
+});
+
+function activeStockBrowserTab() {
+    return $("buy-points-tab").getAttribute("aria-pressed") === "true"
+        ? "buy"
+        : $("structure-signals-tab").getAttribute("aria-pressed") === "true"
+          ? "structure"
+          : "all";
+}
+function activateStockBrowserTab(tab) {
+    $("stock-list").hidden = tab !== "all";
+    $("stock-search-controls").hidden = tab !== "all";
+    $("buy-points-panel").hidden = tab !== "buy";
+    $("structure-signals-panel").hidden = tab !== "structure";
+    $("all-stocks-tab").setAttribute("aria-pressed", String(tab === "all"));
+    $("buy-points-tab").setAttribute("aria-pressed", String(tab === "buy"));
+    $("structure-signals-tab").setAttribute("aria-pressed", String(tab === "structure"));
+    for (const field of ["run-select", "variant-select", "scenario-select"])
+        $(field).disabled = isMarketBrowse() && tab === "all";
+}
+for (const [id, tab] of [
+    ["all-stocks-tab", "all"],
+    ["buy-points-tab", "buy"],
+    ["structure-signals-tab", "structure"],
+])
+    $(id).addEventListener("click", () => activateStockBrowserTab(tab));
 function fillSymbols() {
     const previous = $("symbol-select").value,
         stocks = universe(),
@@ -189,10 +263,19 @@ function fillSymbols() {
           : available[0]?.symbol || "";
     resetSlider();
     stockList.setStocks(stocks, $("symbol-select").value);
-    $("stock-source-notice").textContent = isLocal()
-        ? `${state.tdx.with_daily} 只有本地日线 · 沪深北 A 股 · 只读`
-        : "当前封存样本 · 非全市场";
-    for (const id of ["run-select", "variant-select", "scenario-select"]) $(id).disabled = isTdx();
+    $("stock-source-notice").textContent = isAkShare()
+        ? `${state.akshare.with_daily} 只在线目录 · 沪深北 A 股 · 买点与结构仅读服务器预计算结果`
+        : isLocal()
+          ? `${state.tdx.with_daily} 只有本地日线 · 沪深北 A 股 · 只读`
+          : "当前封存样本 · 非全市场";
+    for (const id of ["buy-points-tab", "structure-signals-tab"]) $(id).disabled = false;
+    $("scan-start").textContent = isAkShare() ? "查询当前股票买点" : "查询买点结果";
+    $("structure-scan-start").textContent = isAkShare() ? "查询全市场结构" : "读取预计算结果";
+    if (isAkShare()) {
+        $("scan-status").textContent = "使用当前股票的 AkShare 原始不复权日线计算策略信号，不模拟成交。";
+        $("structure-scan-status").textContent = "读取服务器提前计算的 AkShare 覆盖股票列表；切换当前股票不会改变筛选范围。";
+    }
+    for (const id of ["run-select", "variant-select", "scenario-select"]) $(id).disabled = isMarketBrowse();
 }
 function syncProfileScope() {
     const portfolio = $("result-scope").value === "portfolio";
@@ -220,7 +303,10 @@ function preserveCutoff(asof) {
     const days = sessions();
     $("replay-slider").max = days.length - 1;
     const i = days.findLastIndex((d) => d <= asof);
-    state.noSessionBefore = isLocal() && !state.tdxSessions[$("symbol-select").value] ? asof : i < 0 ? asof : null;
+    const sessionsLoaded = isAkShare()
+        ? state.akshareSessions[$("symbol-select").value]
+        : state.tdxSessions[$("symbol-select").value];
+    state.noSessionBefore = isMarketBrowse() && !sessionsLoaded ? asof : i < 0 ? asof : null;
     $("replay-slider").value = Math.max(0, i);
     syncDate();
     return i >= 0;
@@ -240,12 +326,12 @@ function setMetric(id, value, type) {
     if (type === "return" && value !== 0) el.classList.add(value > 0 ? "positive" : "negative");
 }
 function renderMetrics() {
-    if (state.view.result_scope === "tdx") {
+    if (["tdx", "akshare"].includes(state.view.result_scope)) {
         document.querySelector(".metric-grid").hidden = true;
         $("evidence").textContent = state.view.evidence;
         $("backtest-details").hidden = false;
         $("backtest-details").textContent =
-            "当前为通达信全股票行情浏览，未运行个股回测。要查看已有回测，请切换“个股独立回测 · 封存样本”。";
+            `${state.view.result_scope === "akshare" ? "当前为 AkShare 在线行情浏览" : "当前为通达信全股票行情浏览"}，未运行个股回测。要查看已有回测，请切换“个股独立回测 · 封存样本”。`;
         $("curve-scope-label").textContent = "当前仅行情，无回测净值";
         $("orders-scope-label").textContent = "当前仅行情，无委托";
         return;
@@ -351,6 +437,8 @@ function annotationOptions() {
         levels: $("show-levels").checked,
         trendKeys: $("show-last-fall-high").checked,
         bullFlipHighs: $("show-bear-to-bull-highs").checked,
+        bullAlternationLows: $("show-bear-bull-alternation-lows").checked,
+        postAlternationBullHighs: $("show-post-alternation-bull-highs").checked,
     };
 }
 function showAnnotationDetails(items) {
@@ -530,14 +618,21 @@ async function loadTheory(request, sequence) {
         const data = isTdxBacktest()
             ? state.view.theory
             : await api(
-                  isTdx() ? "/api/tdx-theory" : "/api/theory",
-                  isTdx()
+                  isAkShare() ? "/api/akshare-theory" : isTdx() ? "/api/tdx-theory" : "/api/theory",
+                  isMarketBrowse()
                       ? { symbol: request.symbol, asof: request.asof }
                       : { run: request.run, variant: request.variant, symbol: request.symbol, asof: request.asof },
               );
         if (sequence !== state.sequence) return;
         state.theory = data;
         chart.setTheory(data, $("show-theory").checked);
+        const pending = state.pendingStructureAnnotation;
+        if (pending && pending.symbol === request.symbol && pending.asof === request.asof) {
+            $(pending.checkbox).checked = true;
+            chart.setAnnotationOptions(annotationOptions());
+            chart.selectAnnotation(pending.annotationId);
+            state.pendingStructureAnnotation = null;
+        }
         $("drawing-status").textContent =
             `讲义绘图：${data.lecture_drawing?.teaching_paths?.length || 0} 组子母三点、${data.lecture_drawing?.inside_connections?.length || 0} 处母子缩头／缩脚衔接；${data.lecture_drawing?.issues.length || 0} 处十字星／初始方向待确认。${data.strategy_pivot_mode === "lecture_causal" ? "新版从同一递推器提取收盘确认点；绘图连接不直接等于交易信号。" : "显示结构与所选旧策略／行情浏览独立。"}母子顺序是讲义约定，不代表已知真实日内路径。`;
         $("theory-status").textContent = data.interrupted ? "当前结构未解" : "已确认结构";
@@ -572,9 +667,11 @@ async function loadView() {
     $("loading").hidden = false;
     $("loading").textContent = isTdxBacktest()
         ? "正在校验除权数据、运行策略并生成成交账本…"
-        : isTdx()
-          ? "读取通达信本地日线…"
-          : "读取已封存行情与交易记录…";
+        : isAkShare()
+          ? "正在从 AkShare 读取在线日线…"
+          : isTdx()
+            ? "读取通达信本地日线…"
+            : "读取已封存行情与交易记录…";
     $("price-chart").setAttribute("aria-busy", "true");
     document.querySelector(".metric-grid").hidden = true;
     showPage(state.page);
@@ -582,23 +679,26 @@ async function loadView() {
     const request = select();
     state.requestedAsOf = request.asof;
     buyPoints.contextChanged();
+    structureSignals.contextChanged();
     ratioComparison.contextChanged();
     for (const field of ["run-select", "variant-select", "scenario-select"])
-        $(field).disabled = isTdx() && $("buy-points-panel").hidden;
+        $(field).disabled = isMarketBrowse() && activeStockBrowserTab() === "all";
     stockList.setSelected(request.symbol);
     $("selected-stock-summary").textContent = `${symbolName(request.symbol)} · 正在读取 ${request.asof} 截面…`;
     try {
         const data = await api(
             isTdxBacktest()
                 ? "/api/tdx-backtest"
-                : isTdx()
-                  ? "/api/tdx-view"
-                  : $("result-scope").value === "stock"
-                    ? "/api/stock-view"
-                    : "/api/view",
+                : isAkShare()
+                  ? "/api/akshare-view"
+                  : isTdx()
+                    ? "/api/tdx-view"
+                    : $("result-scope").value === "stock"
+                      ? "/api/stock-view"
+                      : "/api/view",
             isTdxBacktest()
                 ? { ...request, start: $("backtest-start").value }
-                : isTdx()
+                : isMarketBrowse()
                   ? { symbol: request.symbol, asof: request.asof }
                   : request,
             state.controller.signal,
@@ -608,6 +708,10 @@ async function loadView() {
         state.loading = false;
         if (data.result_scope === "tdx" || data.data_source === "tdx") {
             state.tdxSessions[data.symbol] = data.sessions;
+            preserveCutoff(data.asof);
+        }
+        if (data.result_scope === "akshare" || data.data_source === "akshare") {
+            state.akshareSessions[data.symbol] = data.sessions;
             preserveCutoff(data.asof);
         }
         document.querySelector(".metric-grid").hidden = false;
@@ -630,8 +734,11 @@ async function loadView() {
             $("backtest-details").append(p);
         }
         $("download-backtest").disabled = !data.backtest;
+        // 行情浏览源只决定主数据适配器；只要本地公司行为数据可用，
+        // 当前股票回测始终可进入其明确标识的通达信因果复权口径。
         $("run-stock-backtest").disabled = !state.tdx?.with_daily;
-        $("price-basis").textContent = data.result_scope === "tdx" ? "原始不复权" : "因果复权";
+        $("run-stock-backtest").title = isAkShare() ? "回测将切换到通达信因果复权口径" : "";
+        $("price-basis").textContent = ["tdx", "akshare"].includes(data.result_scope) ? "原始不复权" : "因果复权";
         chart.setData(data, {
             volume: $("show-volume").checked,
             markers: $("show-markers").checked,
@@ -640,12 +747,29 @@ async function loadView() {
         describeBar(data.bars.at(-1));
         performance.update(data.curve);
         const last = data.bars.at(-1);
+        const providerNames = { akshare: "AkShare", tdx: "通达信" };
+        const sourceSummary = data.source_fallback
+            ? `首选 ${providerNames[data.data_source] || data.data_source}，已回退到 ${providerNames[data.resolved_source] || data.resolved_source}。`
+            : data.supplemented_bars
+              ? `${providerNames[data.data_source] || data.data_source} 为主，${data.providers
+                    .slice(1)
+                    .map((source) => providerNames[source] || source)
+                    .join("、")}补齐 ${data.supplemented_bars} 个缺失交易日。`
+              : data.result_scope === "akshare"
+                ? `AkShare 在线日线（v${data.provider_version}），未回测。`
+                : data.result_scope === "tdx"
+                  ? "通达信本地日线，未回测。"
+                  : data.result_scope === "stock"
+                    ? "收益、仓位、成交账本均为该股独立回测。"
+                    : "上方收益／仓位指标及交易账本仍为全组合。";
         $("selected-stock-summary").textContent =
-            `${symbolName(data.symbol)} · ${data.asof} 截面｜原始收盘 ${num(last.raw_close)} 元 · 成交量 ${num(last.volume, 0)} 股。${data.result_scope === "tdx" ? "通达信本地日线，未回测。" : data.result_scope === "stock" ? "收益、仓位、成交账本均为该股独立回测。" : "上方收益／仓位指标及交易账本仍为全组合。"}`;
+            `${symbolName(data.symbol)} · ${data.asof} 截面｜原始收盘 ${num(last.raw_close)} 元 · 成交量 ${num(last.volume, 0)} 股。${sourceSummary}`;
         $("price-chart").dataset.symbol = data.symbol;
-        $("data-range").textContent = isLocal()
-            ? `通达信 · ${universe().length} 只 · 最新 ${state.tdx.latest}`
-            : `${currentRun().start} — ${currentRun().end} · ${currentRun().symbols.length} 只`;
+        $("data-range").textContent = isAkShare()
+            ? `AkShare · ${universe().length} 只 · 当前个股最新 ${data.sessions.at(-1)}`
+            : isLocal()
+              ? `通达信 · ${universe().length} 只 · 最新 ${state.tdx.latest}`
+              : `${currentRun().start} — ${currentRun().end} · ${currentRun().symbols.length} 只`;
         $("loading").hidden = true;
         $("price-chart").setAttribute("aria-busy", "false");
         if (state.pendingFocus) {
@@ -717,13 +841,9 @@ const ratioComparison = new RatioComparison({
 });
 $("backtest-start").addEventListener("change", () => {
     buyPoints.contextChanged();
+    structureSignals.contextChanged();
     ratioComparison.contextChanged();
 });
-for (const id of ["buy-points-tab", "all-stocks-tab"])
-    $(id).addEventListener("click", () => {
-        for (const field of ["run-select", "variant-select", "scenario-select"])
-            $(field).disabled = isTdx() && $("buy-points-panel").hidden;
-    });
 $("run-stock-backtest").addEventListener("click", () => {
     const cutoff = state.requestedAsOf || state.view?.asof || state.tdx.latest;
     $("result-scope").value = "tdx-backtest";
@@ -843,6 +963,8 @@ for (const id of [
     "show-levels",
     "show-last-fall-high",
     "show-bear-to-bull-highs",
+    "show-bear-bull-alternation-lows",
+    "show-post-alternation-bull-highs",
 ])
     $(id).addEventListener("change", () => {
         chart.setAnnotationOptions(annotationOptions());
@@ -888,15 +1010,28 @@ $("export-orders").addEventListener("click", () => {
 });
 async function start() {
     try {
-        state.catalog = await api("/api/catalog");
-        state.tdx = await api("/api/tdx-catalog").catch((e) => ({ available: false, stocks: [], error: e.message }));
+        const akshareOption = $("result-scope").querySelector('[value="akshare"]');
+        akshareOption.disabled = true;
+        akshareOption.textContent = "AkShare · 正在连接…";
+        [state.catalog, state.tdx, state.akshare] = await Promise.all([
+            api("/api/catalog"),
+            api("/api/tdx-catalog").catch((e) => ({ available: false, stocks: [], error: e.message })),
+            api("/api/akshare-catalog").catch((e) => ({
+                available: false,
+                stocks: [],
+                with_daily: 0,
+                error: e.message,
+            })),
+        ]);
         for (const s of state.tdx.stocks) if (s.name) names[s.symbol] = s.name;
+        for (const s of state.akshare.stocks) if (s.name) names[s.symbol] = s.name;
         const tdxOption = $("result-scope").querySelector('[value="tdx"]');
         tdxOption.disabled = !state.tdx.with_daily;
-        if (!state.tdx.with_daily) {
-            $("result-scope").value = "stock";
-            tdxOption.textContent = "通达信目录不可用";
-        }
+        if (!state.tdx.with_daily) tdxOption.textContent = "通达信目录不可用";
+        akshareOption.disabled = !state.akshare.with_daily;
+        akshareOption.textContent = state.akshare.with_daily ? "AkShare · 在线 A 股行情" : "AkShare 数据源不可用";
+        // AkShare 是默认实时浏览口径；上游不可用时才按本地数据、封存样本的顺序降级。
+        $("result-scope").value = state.akshare.with_daily ? "akshare" : state.tdx.with_daily ? "tdx" : "stock";
         $("run-select").replaceChildren();
         for (const r of state.catalog.runs) option($("run-select"), r.id, r.id.replace("acceptance_", ""));
         fillSymbols();

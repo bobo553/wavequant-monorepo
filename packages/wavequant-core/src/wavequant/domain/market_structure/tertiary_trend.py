@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from .hierarchical_development import hierarchical_developing_path
 from .lecture_trend import _annotate
 from .secondary_trend import _structural_reversals
-from .trend_landmarks import bear_to_bull_highs
+from .trend_landmarks import bear_bull_alternation_lows, bear_to_bull_highs, post_alternation_bull_highs
 
 
 def tertiary_trends(level2,bars):
@@ -31,6 +31,8 @@ def tertiary_trends(level2,bars):
             developing_strokes.append(tail)
     return dict(name='三级趋势线',trend_level=3,source_level=2,strokes=strokes,
                 bear_to_bull_highs=bear_to_bull_highs(strokes,trend_level=3),
+                bear_bull_alternation_lows=bear_bull_alternation_lows(strokes,trend_level=3),
+                post_alternation_bull_highs=post_alternation_bull_highs(strokes,trend_level=3),
                 developing_strokes=developing_strokes,
                 input_turn_count=sum(len(s['points']) for s in level2['strokes']),
                 confirmed_wave_count=sum(len(s['points']) for s in strokes),

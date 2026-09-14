@@ -11,7 +11,7 @@
         "lint:fix": "node scripts/run-python.mjs -m ruff check --fix src tests scripts examples",
         "prettier:fix": "prettier --write package.json progress.md README.md",
         "format": "pnpm lint:fix && pnpm prettier:fix",
-        "typecheck": "node scripts/run-python.mjs -m mypy --strict src/wavequant/infrastructure/filesystem/project_paths.py",
+        "typecheck": "node scripts/run-python.mjs -m mypy --strict src/wavequant/infrastructure/filesystem/project_paths.py src/wavequant/infrastructure/market_data/akshare.py src/wavequant/interfaces/charts/akshare_browser.py src/wavequant/interfaces/charts/market_data_repository.py",
         "test:unit": "node scripts/run-python.mjs -m pytest",
         "test:all": "pnpm test:unit"
     },

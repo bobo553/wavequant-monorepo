@@ -36,6 +36,7 @@ def buy_match(view,asof,lookback):
             'awaiting_next_open' if day==asof else 'historical_unfilled')
         if lookback==1 and status!='awaiting_next_open': continue
         bar=next(b for b in bars if b['time']==day)
+        eligible_sessions=[b['time'] for b in bars if b['time']<=asof]
         risk=signal['reference_price']-signal['invalidation_price']
         target=signal.get('target_price')
         evidence=[e for e in view.get('audit',[]) if e['timestamp']==when and
@@ -49,7 +50,10 @@ def buy_match(view,asof,lookback):
             fill_date=fill['timestamp'][:10] if fill else None,evidence=evidence,
             buy_point_type=proof.get('buy_point_type'),priority=proof.get('priority',0),trend_level=proof.get('trend_level'),
             price_basis=view['price_basis'],run_id=view.get('run_id'),
-            source=view.get('backtest',{}).get('source'),asof=asof),None
+            source=view.get('backtest',{}).get('source'),data_source=view.get('data_source'),
+            resolved_source=view.get('resolved_source'),providers=view.get('providers',[]),
+            supplemented_bars=view.get('supplemented_bars',0),asof=asof,
+            session_age=len(eligible_sessions)-eligible_sessions.index(day)),None
     return None,None
 
 
@@ -61,13 +65,16 @@ class BuyScanner:
         self.engine_hashes=TdxBacktester._engine_hashes;self.engine=self.engine_hashes()
 
     def start(self,params):
-        if set(params)!={'run','variant','scenario','source','asof','start','lookback'}:
+        expected={'run','variant','scenario','source','asof','start','lookback'}
+        if set(params) not in (expected,expected|{'symbol'}):
             raise ValueError('invalid screening arguments')
         from wavequant.interfaces.charts.visualization import VARIANTS,SCENARIOS
         if self.engine_hashes()!=self.engine: raise ValueError('策略代码已变更，请重启服务后再扫描')
         p=dict(params);repo=self.repository;repo._run(p['run'])
-        if p['variant'] not in VARIANTS or p['scenario'] not in SCENARIOS or p['source'] not in ('tdx','snapshot'):
+        if p['variant'] not in VARIANTS or p['scenario'] not in SCENARIOS or p['source'] not in ('tdx','snapshot','akshare'):
             raise ValueError('invalid screening source or strategy')
+        if (p['source']=='akshare') != ('symbol' in p):
+            raise ValueError('AkShare screening requires exactly one symbol')
         if type(p['lookback']) is not int or p['lookback'] not in (1,5,20): raise ValueError('lookback must be 1, 5 or 20')
         for key in ('start','asof'):
             if not isinstance(p[key],str) or date.fromisoformat(p[key]).isoformat()!=p[key]: raise ValueError('invalid date')
@@ -90,9 +97,14 @@ class BuyScanner:
                 if reason: skipped[reason]+=1;continue
                 stat=repo.tdx._path(s['symbol']).stat();versions[s['symbol']]=(stat.st_mtime_ns,stat.st_size)
                 stocks.append(dict(symbol=s['symbol'],name=s.get('name')))
-        else:
+        elif p['source']=='snapshot':
             if p['asof']>repo.runs[p['run']]['report']['data']['end']: raise ValueError('回放日超出封存样本')
             stocks=[dict(symbol=s,name=None) for s in sorted(repo.bars(p['run']))]
+        else:
+            if repo.akshare is None: raise ValueError('AkShare 数据源未配置')
+            stock=next((item for item in repo.market_data.catalog('akshare')['stocks'] if item['symbol']==p['symbol']),None)
+            if stock is None: raise ValueError('AkShare 股票不在可用目录')
+            stocks=[dict(symbol=p['symbol'],name=stock.get('name'))]
         with self.lock:
             for job in self.jobs.values():
                 if job['status'] in ('running','cancelling'):
@@ -104,7 +116,9 @@ class BuyScanner:
             job=dict(id=ident,params=p,status='running',revision=0,total=len(stocks),processed=0,failed=0,stale=0,
                 skipped=sum(skipped.values()),skip_reasons=dict(skipped),results=[],errors=[],current=None,
                 created_at=datetime.now().astimezone().isoformat(),error=None,
-                notice='仅筛选当时策略信号，次开盘仍须通过执行风控；历史信号不代表当前可买。')
+                notice=('AkShare 只分析当前股票的原始不复权信号，不模拟成交；结果不代表当前可买。'
+                    if p['source']=='akshare' else
+                    '仅筛选当时策略信号，次开盘仍须通过执行风控；历史信号不代表当前可买。'))
             job['funnel']=dict(stocks={},events={},rejections={})
             job['performance']=dict(cache_hits=0,recomputed=0,elapsed_seconds=0)
             self.jobs[ident]=job;self.stops[ident]=stop
@@ -132,9 +146,14 @@ class BuyScanner:
                         with self.lock:
                             field='recomputed' if summary['performance']['cache']=='computed' else 'cache_hits'
                             self.jobs[ident]['performance'][field]+=1
-                    else:
+                    elif p['source']=='snapshot':
                         end=repo.bars(p['run'])[symbol][-1].timestamp.date().isoformat()
                         view=repo.stock_view(p['run'],p['variant'],symbol,min(end,p['asof']),p['scenario'])
+                        match,skip=buy_match(view,p['asof'],p['lookback'])
+                        gates=funnel(view,p['lookback'])
+                    else:
+                        view=repo.akshare_signal_view(
+                            p['run'],p['variant'],symbol,p['asof'],p['scenario'],p['start'])
                         match,skip=buy_match(view,p['asof'],p['lookback'])
                         gates=funnel(view,p['lookback'])
                     with self.lock:

@@ -2,6 +2,14 @@
 
 ## Current State
 
+- `MONOREPO-050` 已完成：结构快照查询按上证、深证、创业板、科创板、北京市场组合过滤，默认前三类，并在服务端排除名称含半角或全角星号的股票。
+- `MONOREPO-049` 已完成：AkShare 结构查询聚合服务器已发布的逐股分片，跨买点策略复用同一结构算法版本；全目录 Worker 隔离单股失败并继续后续股票。
+- `MONOREPO-048` 已完成：买点和结构信号各自拥有 SQL 完成快照与 Redis 查询缓存，HTTP 只读已发布版本且不再暴露启动/取消扫描的写接口。
+- `MONOREPO-047` 已完成：既有 AkShare/通达信 HTTP 端点保持兼容，但统一委托 Core 市场数据仓库并返回请求源、实际源、补齐来源和数据版本。
+- `MONOREPO-044` 已完成：API 通过后台 Worker 生成带行情/算法版本的 SQL 结构快照，查询端点只读取完成版本并以 Redis 加速。
+- `MONOREPO-043` 已完成：API 提供独立的结构搜索启动、增量查询和取消端点，HTTP 层不复制地标判断规则。
+- `MONOREPO-042` 已完成：API 透明返回 Core 生成的各级交替后首段多头高点与完整前置证据。
+- `MONOREPO-041` 已完成：API 透明返回 Core 生成的各级已确认空多交替低点及其因果证据。
 - `MONOREPO-038` 已完成：API 透明返回 Core 生成的二级高点交替升级证据和最终因果可用日。
 - `MONOREPO-037` 已完成：API 透明返回 Core 生成的二级发展路径、内部转折数和待决尾部点数。
 - `MONOREPO-036` 已完成：API 透明返回 Core 生成的二级开放尾段末跌高换锚事件及其一级确认低点证据。
@@ -14,6 +22,14 @@
 - `MONOREPO-017` 已完成：API 支持不依赖静态构建的开发模式，并接受显式声明的本机 Next.js 代理来源。
 
 ## Completed
+
+- MONOREPO-050 API 门禁通过 Ruff、严格 mypy、49 项 pytest（另 1 项外部集成跳过）和 sdist/wheel 构建；市场组合进入 `signal:structure:v3:*` 缓存键，空值、未知值和重复值均被拒绝。
+
+- MONOREPO-049 API 门禁通过 Ruff、严格 mypy、47 项 pytest（另 1 项外部集成跳过）和 sdist/wheel 构建；真实 AkShare Worker 在单股失败后继续发布，页面当前 `lecture_v3` 查询跨策略命中市场快照。
+
+- 新增 `wavequant_buy_signal_snapshots` 与 `wavequant_structure_signal_snapshots`，按运行、策略、场景、来源、股票范围、日期、数据版本和算法版本建立确定性快照；不修改旧表，显式 `infra:init` 以加法方式建表。
+- 新增 `signals:refresh` / `signals:watch`：通达信按全市场版本刷新，AkShare 要求显式股票列表；数据或算法未变化时幂等复用，计算失败时不覆盖上一完成版本。
+- 新增只读 `GET /api/buy-signals`，并统一 AkShare/TDX `GET /api/structure-signals` 走 SQL/Redis；旧扫描 POST/轮询端点不再公开。
 
 - API-only 开发模式支持受限的 loopback Web 根地址：访问 8765 根路由时以非缓存 `307` 跳转到 Next.js，外部主机、路径、查询和无显式端口的重定向目标均拒绝。
 
@@ -31,9 +47,17 @@
 - MONOREPO-036 延续透明消费边界：二级换锚事件的旧低、跌破日、新高、确认低点、来源级别与因果可用日均由 Core 生成，HTTP 层不补点或重算趋势。
 - MONOREPO-037 延续透明消费边界：`secondary_trends.developing_strokes` 的来源位置、角色、计数和因果日期均由 Core 生成，HTTP 层不压缩、不补点、不把它传入三级趋势。
 - MONOREPO-038 延续透明消费边界：`alternation`、`provisional_reversal`、旧二级关键位和 `available_at` 均由 Core 生成，HTTP 层不复制升级算法。
+- MONOREPO-041 延续透明消费边界：`bear_bull_alternation_lows` 的前置高点、原低点、冻结末跌高、回档比例和可用日均由 Core 生成，HTTP 层不重算或补点。
+- MONOREPO-044 新增 `wavequant_structure_snapshots` 事实表、完成后原子发布和 `GET /api/structure-signals`；一次性刷新与常驻检查命令会在行情或 Core 算法指纹变化后重建，Redis 故障不影响 SQL 发布或读取。
 
 ## Verification
 
+- MONOREPO-048 API 门禁通过 Ruff、严格 mypy、45 项 pytest（另 1 项外部集成跳过）和 sdist/wheel 构建；真实 MySQL 8.4、Redis 8 的建表与健康检查通过，贵州茅台买点/结构快照独立发布并命中带 TTL 的分离缓存键。
+
+- MONOREPO-047 API 门禁通过 Ruff、严格 mypy、41 项 pytest（另 1 项环境跳过）和 sdist/wheel 构建；HTTP 层不复制来源选择、补齐或结构算法。
+- MONOREPO-045 API 门禁通过 Ruff、严格 mypy、41 项 pytest（另 1 项环境跳过）和 sdist/wheel 构建；目录、行情、理论三个只读端点覆盖精确参数校验、禁用状态与上游故障 503。重启服务后真实目录返回 5,562 只 A 股，贵州茅台返回 6,003 根日线并标明 `stock_zh_a_hist_tx` 官方回退来源。
+- MONOREPO-044 API 门禁通过 Ruff、严格 mypy、40 项 pytest（另 1 项环境跳过）和构建；SQLite HTTP/仓储测试覆盖幂等发布、版本变化重建、查询过滤和缺失快照 503 失败关闭。
+- MONOREPO-043 API 门禁通过 Ruff、严格 mypy、34 项 pytest（另 1 项环境跳过）和构建；真实通达信任务启动、增量查询与取消通过。
 - API-only 根路由回归通过：`GET http://127.0.0.1:8765/` 返回 `307` 和受限的 `Location: http://127.0.0.1:3003/`；跟随跳转得到 `200 text/html`，`/api/catalog` 继续返回 `200`。
 - 本次修复通过 API Ruff、严格 mypy 与 pytest（33 项通过，1 项外部环境跳过）。
 
@@ -54,6 +78,10 @@
 - MONOREPO-039 延续透明消费边界：API 原样返回三个趋势级别的 `bear_to_bull_highs`，不在 HTTP 层选择窗口高点或重算确认日期；真实回放在 `2022-08-09` 首次返回中大力德 H70 地标。
 - MONOREPO-039 API 门禁通过 Ruff、严格 mypy、33 项 pytest（另 1 项环境跳过）和 Python 构建；`2022-08-08`/`2022-08-09`/最新日三个真实截面通过因果可见性核验。
 - MONOREPO-040 API 透明返回收紧后的 Core 地标；中大力德、首创环保、华夏银行、上海电力的一级、二级、三级真实结果均通过“高点严格大于冻结末跌高”审计，非法计数为 0。
+- MONOREPO-041 API 门禁通过 Ruff、严格 mypy、33 项 pytest（另 1 项环境跳过）和 Python 构建；中大力德真实接口在 `2022-08-31` 无 L71 地标，于 `2022-09-01` 首次返回完整证据。
+- MONOREPO-042 API 门禁通过 Ruff、严格 mypy、33 项 pytest（另 1 项环境跳过）和 Python 构建；中大力德真实接口在 `2022-09-07` 无 H71 地标，于 `2022-09-08` 首次透明返回完整证据。
+- MONOREPO-045 服务重启后真实 AkShare API 验证通过：中国平安首次回退 2.85 秒，美的集团后续回退 0.98 秒，均返回 2026-09-11 的原始不复权日线和股单位成交量；API 41 项通过、1 项环境跳过。
+- MONOREPO-046 的买点 POST 支持 `source=akshare` 与单一 `symbol`，结构 GET 支持当前股票即时分析；贵州茅台真实请求均完成 1/1、失败 0，API 41 项测试通过、1 项环境跳过，Ruff、严格 mypy 与构建通过。
 
 ## Risks and Next Steps
 

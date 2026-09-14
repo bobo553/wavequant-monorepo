@@ -9,8 +9,15 @@ import mimetypes
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from wavequant.infrastructure.market_data.akshare import AkShareUnavailable
 from wavequant.interfaces.charts.visualization import ChartRepository
 
+from .application import (
+    BuySignalSnapshotService,
+    BuySignalSnapshotUnavailable,
+    StructureSnapshotService,
+    StructureSnapshotUnavailable,
+)
 from .infrastructure import Infrastructure, InfrastructureSettings
 
 
@@ -65,7 +72,9 @@ def make_server(
         assets = Path(web_root).resolve() if web_root else DEFAULT_WEB_ROOT
         if not (assets / "index.html").is_file():
             raise ValueError("WaveQuant Web build missing: run pnpm --filter wavequant-web build")
-        static_routes = {"/" + path.relative_to(assets).as_posix(): path for path in assets.rglob("*") if path.is_file()}
+        static_routes = {
+            "/" + path.relative_to(assets).as_posix(): path for path in assets.rglob("*") if path.is_file()
+        }
         static_routes["/"] = assets / "index.html"
         static_routes["/research"] = assets / "research.html"
         market_page = assets / "market.html"
@@ -73,6 +82,8 @@ def make_server(
             static_routes["/market"] = market_page
     proxy_origins = set(allowed_origins)
     web_redirect = normalize_loopback_web_url(web_url)
+    structure_snapshots = StructureSnapshotService(repository, infrastructure) if infrastructure is not None else None
+    buy_snapshots = BuySignalSnapshotService(repository, infrastructure) if infrastructure is not None else None
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -161,27 +172,68 @@ def make_server(
                 if url.path == "/api/tdx-catalog":
                     self.send(
                         200,
-                        repository.tdx.catalog()
+                        repository.market_data.catalog("tdx")
                         if repository.tdx
                         else dict(available=False, stocks=[], with_daily=0, notice="未配置通达信目录"),
                     )
                     return
-                q = parse_qs(url.query, strict_parsing=True)
+                if url.path == "/api/akshare-catalog":
+                    if url.query:
+                        raise ValueError("AkShare catalog does not accept query arguments")
+                    if repository.akshare is None:
+                        self.send(200, dict(available=False, stocks=[], with_daily=0, notice="AkShare 数据源已禁用"))
+                    else:
+                        self.send(200, repository.market_data.catalog("akshare"))
+                    return
+                q = parse_qs(url.query, strict_parsing=True, keep_blank_values=True)
                 if any(len(v) != 1 for v in q.values()):
                     raise ValueError("duplicate query arguments")
-                if url.path == "/api/buy-scan":
-                    if set(q) not in ({"id"}, {"id", "after"}):
-                        raise ValueError("scan id and optional revision required")
-                    after = int(q["after"][0]) if "after" in q else None
-                    self.send(200, repository.buy_scanner.get(q["id"][0], after=after))
+                if url.path == "/api/structure-signals":
+                    expected = {"run", "variant", "source", "asof", "lookback", "signal_type", "trend_level"}
+                    optional = {"symbol", "markets"}
+                    if not expected.issubset(q) or not set(q).issubset(expected | optional):
+                        raise ValueError("invalid precomputed structure query")
+                    params = {key: q[key][0] for key in set(q)}
+                    params["lookback"] = int(params["lookback"])
+                    params["trend_level"] = int(params["trend_level"])
+                    if "symbol" in q and params["source"] != "akshare":
+                        raise ValueError("symbol is only accepted for legacy AkShare clients")
+                    if structure_snapshots is None:
+                        raise StructureSnapshotUnavailable("结构读模型未配置")
+                    self.send(200, structure_snapshots.query(params))
+                    return
+                if url.path == "/api/buy-signals":
+                    expected = {"run", "variant", "scenario", "source", "asof", "start", "lookback"}
+                    online_expected = expected | {"symbol"}
+                    if set(q) not in (expected, online_expected):
+                        raise ValueError("invalid precomputed buy signal query")
+                    params = {key: q[key][0] for key in set(q)}
+                    params["lookback"] = int(params["lookback"])
+                    if (params["source"] == "akshare") != (set(q) == online_expected):
+                        raise ValueError("AkShare buy query requires one symbol")
+                    if buy_snapshots is None:
+                        raise BuySignalSnapshotUnavailable("买点读模型未配置")
+                    self.send(200, buy_snapshots.query(params))
                     return
                 if url.path in ("/api/tdx-view", "/api/tdx-theory"):
                     if set(q) != {"symbol", "asof"}:
                         raise ValueError("invalid TDX arguments")
                     if repository.tdx is None:
                         raise ValueError("通达信目录未配置")
-                    method = repository.tdx.view if url.path == "/api/tdx-view" else repository.tdx.theory
-                    self.send(200, method(q["symbol"][0], q["asof"][0]))
+                    method = repository.market_data.view if url.path == "/api/tdx-view" else repository.market_data.theory
+                    self.send(200, method("tdx", q["symbol"][0], q["asof"][0]))
+                    return
+                if url.path in ("/api/akshare-view", "/api/akshare-theory"):
+                    if set(q) != {"symbol", "asof"}:
+                        raise ValueError("invalid AkShare arguments")
+                    if repository.akshare is None:
+                        raise AkShareUnavailable("AkShare 数据源已禁用")
+                    method = (
+                        repository.market_data.view
+                        if url.path == "/api/akshare-view"
+                        else repository.market_data.theory
+                    )
+                    self.send(200, method("akshare", q["symbol"][0], q["asof"][0]))
                     return
                 if url.path == "/api/health":
                     if set(q) != {"run"}:
@@ -218,6 +270,8 @@ def make_server(
                     else repository.theory(*args)
                 )
                 self.send(200, result)
+            except (BuySignalSnapshotUnavailable, StructureSnapshotUnavailable, AkShareUnavailable) as exc:
+                self.send(503, {"error": str(exc)})
             except (ValueError, KeyError, FileNotFoundError) as exc:
                 self.send(400, {"error": str(exc) if isinstance(exc, ValueError) else "required result unavailable"})
             except Exception:
@@ -225,33 +279,10 @@ def make_server(
                 self.send(500, {"error": "chart service error; check server logs"})
 
         def do_POST(self):
-            if self.path not in ("/api/buy-scan", "/api/buy-scan/cancel"):
-                self.send(405, {"error": "read-only server: mutations disabled"})
-                return
-            valid = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
-            valid_origins = {f"http://{host}" for host in valid} | proxy_origins
-            if self.headers.get("Host") not in valid or self.headers.get("Origin") not in {None, *valid_origins}:
-                self.send(403, {"error": "loopback same-origin required"})
-                return
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 4096 or self.headers.get("Content-Type") != "application/json":
-                    raise ValueError("small JSON body required")
-                body = json.loads(self.rfile.read(length))
-                if not isinstance(body, dict):
-                    raise ValueError("JSON object required")
-                if self.path.endswith("/cancel"):
-                    if set(body) != {"id"}:
-                        raise ValueError("scan id required")
-                    result = repository.buy_scanner.cancel(body["id"])
-                else:
-                    result = repository.buy_scanner.start(body)
-                self.send(200, result)
-            except (ValueError, KeyError, TypeError, OSError) as exc:
-                self.send(400, {"error": str(exc) if isinstance(exc, ValueError) else "invalid screening request"})
+            self.send(405, {"error": "read-only server: signal calculations run only in background workers"})
 
         def reject_mutation(self):
-            self.send(405, {"error": "read-only data; only screening jobs supported"})
+            self.send(405, {"error": "read-only server: mutations disabled"})
 
         do_PUT = reject_mutation
         do_DELETE = reject_mutation
@@ -269,8 +300,15 @@ def serve_dashboard(
     serve_static: bool = True,
     allowed_origins: tuple[str, ...] = (),
     web_url: str | None = None,
+    akshare_enabled: bool = True,
+    akshare_timeout: float = 30.0,
 ) -> None:
-    repository = ChartRepository(root, tdx_root=tdx_root)
+    repository = ChartRepository(
+        root,
+        tdx_root=tdx_root,
+        akshare_enabled=akshare_enabled,
+        akshare_timeout=akshare_timeout,
+    )
     services = infrastructure or Infrastructure.from_settings(InfrastructureSettings.from_env())
     server = make_server(
         repository,

@@ -11,8 +11,18 @@ from threading import Thread
 import unittest
 from unittest.mock import patch
 
+from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
+
+from wavequant.infrastructure.market_data.akshare import AkShareUnavailable
 from wavequant.infrastructure.persistence.event_store import EventStore
 from wavequant.interfaces.charts.visualization import ChartRepository, day, metrics_at, confirmed_polyline_segments
+from wavequant_api.infrastructure import (
+    Infrastructure,
+    InfrastructureSettings,
+    ResearchRunRepository,
+    StructureSnapshot,
+)
 from wavequant_api.server import make_server
 
 
@@ -222,7 +232,10 @@ class VisualizationTests(unittest.TestCase):
         with (
             patch.object(self.repo, "selection", return_value=bars),
             patch("wavequant.interfaces.charts.visualization.generate_system_signals", return_value=result),
-            patch("wavequant.interfaces.charts.visualization.pivot_history", return_value=([[], [], [], []], [0, 0, 0, 0], [], set())),
+            patch(
+                "wavequant.interfaces.charts.visualization.pivot_history",
+                return_value=([[], [], [], []], [0, 0, 0, 0], [], set()),
+            ),
         ):
             theory = self.repo.theory("example", "proxy_full", "TEST", "2026-01-04")
         event = theory["events"][0]
@@ -263,7 +276,8 @@ class VisualizationTests(unittest.TestCase):
         from types import SimpleNamespace
 
         with patch(
-            "wavequant.interfaces.charts.visualization.generate_system_signals", return_value=SimpleNamespace(signals=[], counts={})
+            "wavequant.interfaces.charts.visualization.generate_system_signals",
+            return_value=SimpleNamespace(signals=[], counts={}),
         ) as generate:
             self.repo.stock_view("example", "proxy_full", "TEST", "2026-01-02")
             self.assertEqual(len(generate.call_args.args[0]), 2)
@@ -315,7 +329,9 @@ class VisualizationTests(unittest.TestCase):
         )
         with (
             patch("wavequant.interfaces.charts.visualization.generate_system_signals", return_value=result) as engine,
-            patch("wavequant.interfaces.charts.visualization.pivot_history", return_value=([[], []], [0, 0], [], set())),
+            patch(
+                "wavequant.interfaces.charts.visualization.pivot_history", return_value=([[], []], [0, 0], [], set())
+            ),
         ):
             theory = self.repo.theory("example", "proxy_full", "TEST", "2026-01-02")
         self.assertEqual(len(engine.call_args.args[0]), 2)
@@ -401,9 +417,81 @@ class VisualizationTests(unittest.TestCase):
         self.assertEqual(request("/api/catalog", headers={"Host": "evil.example"})[0], 403)
         self.assertEqual(request("/api/catalog", headers={"Origin": "https://evil.example"})[0], 403)
         self.assertEqual(request("/api/catalog")[0], 200)
+        self.assertEqual(
+            request(
+                "/api/structure-signals?run=example&variant=lecture_v1&source=tdx&asof=2026-01-03&lookback=1&signal_type=any&trend_level=0"
+            )[0],
+            503,
+        )
         self.assertEqual(request("/api/health?run=example&run=example")[0], 400)
         self.assertEqual(request("/api/view?run=example")[0], 400)
         self.assertEqual(request("/api/health?run=example")[0], 200)
+
+    def test_akshare_routes_are_read_only_strict_and_report_provider_failures(self):
+        class AkShare:
+            def catalog(self):
+                return {"available": True, "with_daily": 1, "stocks": [{"symbol": "sh.600519"}]}
+
+            def view(self, symbol, asof):
+                return {"symbol": symbol, "asof": asof, "result_scope": "akshare"}
+
+            def theory(self, symbol, asof):
+                return {"symbol": symbol, "asof": asof, "computed_from": "akshare_raw_prefix_display_only"}
+
+        class MarketData:
+            def __init__(self, source):
+                self.source = source
+
+            def catalog(self, source):
+                self.assert_source(source)
+                return self.source.catalog()
+
+            def view(self, source, symbol, asof):
+                self.assert_source(source)
+                return self.source.view(symbol, asof)
+
+            def theory(self, source, symbol, asof):
+                self.assert_source(source)
+                return self.source.theory(symbol, asof)
+
+            @staticmethod
+            def assert_source(source):
+                if source != "akshare":
+                    raise AssertionError("unexpected source")
+
+        self.repo.akshare = AkShare()
+        self.repo.market_data = MarketData(self.repo.akshare)
+        server = self.http_server()
+
+        def request(path):
+            conn = HTTPConnection("127.0.0.1", server.server_port)
+            try:
+                conn.request("GET", path)
+                response = conn.getresponse()
+                return response.status, json.loads(response.read())
+            finally:
+                conn.close()
+
+        self.assertEqual(request("/api/akshare-catalog")[0], 200)
+        self.assertEqual(request("/api/akshare-catalog?unexpected=1")[0], 400)
+        status, view = request("/api/akshare-view?symbol=sh.600519&asof=2026-01-02")
+        self.assertEqual(status, 200)
+        self.assertEqual(view["result_scope"], "akshare")
+        self.assertEqual(request("/api/akshare-view?symbol=sh.600519")[0], 400)
+
+        status, structure = request(
+            "/api/structure-signals?run=example&variant=lecture_v1&source=akshare&asof=2026-01-02&lookback=5&signal_type=any&trend_level=0"
+        )
+        self.assertEqual(status, 503)
+        self.assertIn("读模型", structure["error"])
+
+        def unavailable():
+            raise AkShareUnavailable("AkShare 上游请求超时，请稍后重试")
+
+        self.repo.akshare.catalog = unavailable
+        status, body = request("/api/akshare-catalog")
+        self.assertEqual(status, 503)
+        self.assertEqual(body["error"], "AkShare 上游请求超时，请稍后重试")
 
     def test_infrastructure_health_is_secret_safe_and_catalog_uses_cache(self):
         class Services:
@@ -440,7 +528,7 @@ class VisualizationTests(unittest.TestCase):
         self.assertEqual(request("/api/catalog")[0], 200)
         self.assertEqual(services.keys, ["api:catalog:v1"])
 
-    def test_screen_job_post_requires_json_and_same_origin(self):
+    def test_interactive_scan_mutations_are_disabled(self):
         server = self.http_server()
 
         def post(path, body, headers=None, method="POST"):
@@ -453,13 +541,109 @@ class VisualizationTests(unittest.TestCase):
             finally:
                 conn.close()
 
-        self.assertEqual(
-            post("/api/buy-scan", {}, {"Content-Type": "application/json", "Origin": "https://evil.example"})[0], 403
-        )
-        self.assertEqual(post("/api/buy-scan", {}, {"Content-Type": "text/plain"})[0], 400)
-        self.assertEqual(post("/api/buy-scan", {"path": "/secret"})[0], 400)
-        self.assertEqual(post("/api/buy-scan/cancel", {"id": "missing"})[0], 400)
+        self.assertEqual(post("/api/buy-scan", {})[0], 405)
+        self.assertEqual(post("/api/buy-scan", {}, {"Content-Type": "text/plain"})[0], 405)
+        self.assertEqual(post("/api/buy-scan", {"path": "/secret"})[0], 405)
+        self.assertEqual(post("/api/buy-scan/cancel", {"id": "missing"})[0], 405)
+        self.assertEqual(post("/api/structure-scan", {"path": "/secret"})[0], 405)
+        self.assertEqual(post("/api/structure-scan/cancel", {"id": "missing"})[0], 405)
         self.assertEqual(post("/api/buy-scan", {}, method="DELETE")[0], 405)
+
+    def test_precomputed_structure_endpoint_reads_completed_sql_snapshot(self):
+        database = ResearchRunRepository(
+            create_engine(
+                "sqlite+pysqlite:///:memory:",
+                connect_args={"check_same_thread": False},
+                poolclass=StaticPool,
+            )
+        )
+        database.initialize()
+        infrastructure = Infrastructure(InfrastructureSettings(), database=database)
+        self.addCleanup(infrastructure.close)
+        algorithm_version = self.repo.structure_scanner.algorithm_version()
+        database.save_structure_snapshot(
+            StructureSnapshot(
+                snapshot_id="c" * 64,
+                run_id="example",
+                variant="lecture_v1",
+                source="tdx",
+                asof="2026-01-03",
+                algorithm_version=algorithm_version,
+                data_version="b" * 64,
+                payload={
+                    "results": [
+                        {
+                            "id": "confirmed-low",
+                            "symbol": "sh.600000",
+                            "signal_type": "bear_bull_alternation",
+                            "trend_level": 2,
+                            "event_date": "2026-01-01",
+                            "available_at": "2026-01-03",
+                            "session_age": 1,
+                        }
+                    ],
+                    "stale": 0,
+                    "skip_reasons": {},
+                    "errors": [],
+                },
+                total=5_549,
+                skipped=355,
+                failed=0,
+            )
+        )
+        server = self.http_server(infrastructure)
+        connection = HTTPConnection("127.0.0.1", server.server_port)
+        try:
+            connection.request(
+                "GET",
+                "/api/structure-signals?run=example&variant=lecture_v1&source=tdx&asof=2026-01-03&lookback=1&signal_type=any&trend_level=0&markets=shanghai",
+            )
+            response = connection.getresponse()
+            body = json.loads(response.read())
+        finally:
+            connection.close()
+        self.assertEqual(response.status, 200)
+        self.assertEqual(body["status"], "ready")
+        self.assertEqual(body["processed"], 5_549)
+        self.assertEqual(body["results"][0]["id"], "confirmed-low")
+        self.assertEqual(body["params"]["markets"], "shanghai")
+
+        connection = HTTPConnection("127.0.0.1", server.server_port)
+        try:
+            connection.request(
+                "GET",
+                "/api/structure-signals?run=example&variant=lecture_v1&source=tdx&asof=2026-01-03&lookback=1&signal_type=any&trend_level=0&markets=",
+            )
+            invalid_response = connection.getresponse()
+            invalid_response.read()
+        finally:
+            connection.close()
+        self.assertEqual(invalid_response.status, 400)
+
+    def test_precomputed_structure_endpoint_returns_503_until_worker_publishes(self):
+        database = ResearchRunRepository(
+            create_engine(
+                "sqlite+pysqlite:///:memory:",
+                connect_args={"check_same_thread": False},
+                poolclass=StaticPool,
+            )
+        )
+        database.initialize()
+        infrastructure = Infrastructure(InfrastructureSettings(), database=database)
+        self.addCleanup(infrastructure.close)
+        server = self.http_server(infrastructure)
+        connection = HTTPConnection("127.0.0.1", server.server_port)
+        try:
+            connection.request(
+                "GET",
+                "/api/structure-signals?run=example&variant=lecture_v1&source=tdx&asof=2026-01-03&lookback=1&signal_type=any&trend_level=0",
+            )
+            response = connection.getresponse()
+            body = json.loads(response.read())
+        finally:
+            connection.close()
+        self.assertEqual(response.status, 503)
+        self.assertIn("后台 Worker", body["error"])
 
     def test_network_bind_and_missing_web_build_rejected(self):
         with self.assertRaises(ValueError):
@@ -519,9 +703,9 @@ class VisualizationTests(unittest.TestCase):
             response.read()
         finally:
             connection.close()
-        self.assertEqual(response.status, 400)
+        self.assertEqual(response.status, 405)
 
-    def test_http_scan_revision_allows_partial_and_terminal_snapshots(self):
+    def test_legacy_scan_job_routes_are_not_public(self):
         server = self.http_server()
         self.repo.buy_scanner.jobs["partial-test"] = dict(
             status="running", revision=3, processed=1, total=3, results=[{"symbol": "sh.600000"}]
@@ -537,19 +721,28 @@ class VisualizationTests(unittest.TestCase):
                 conn.close()
 
         status, body = request("id=partial-test&after=2")
-        self.assertEqual(status, 200)
-        self.assertEqual(body["processed"], 1)
-        self.assertEqual(body["status"], "running")
-        self.assertEqual(len(body["results"]), 1)
-        for query in (
-            "id=partial-test&after=-1",
-            "id=partial-test&after=4",
-            "id=partial-test&after=no",
-            "id=partial-test&after=2&unexpected=1",
-        ):
-            self.assertEqual(request(query)[0], 400)
-        self.repo.buy_scanner.jobs["partial-test"]["status"] = "completed"
-        self.assertEqual(request("id=partial-test&after=3")[0], 200)
+        self.assertEqual(status, 404)
+        self.assertEqual(body["error"], "not found")
+
+    def test_legacy_structure_job_route_is_not_public(self):
+        server = self.http_server()
+        self.repo.structure_scanner.jobs["structure-partial"] = dict(
+            status="running",
+            revision=2,
+            processed=1,
+            total=2,
+            results=[{"symbol": "sh.600000", "signal_type": "bear_to_bull"}],
+        )
+
+        connection = HTTPConnection("127.0.0.1", server.server_port, timeout=2)
+        try:
+            connection.request("GET", "/api/structure-scan?id=structure-partial&after=1")
+            response = connection.getresponse()
+            body = json.loads(response.read())
+        finally:
+            connection.close()
+        self.assertEqual(response.status, 404)
+        self.assertEqual(body["error"], "not found")
 
 
 if __name__ == "__main__":

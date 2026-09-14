@@ -1,7 +1,7 @@
 """Database and cache adapters owned by the WaveQuant API boundary."""
 
 from .cache import RedisJsonCache
-from .database import ResearchRun, ResearchRunRepository
+from .database import BuySignalSnapshot, ResearchRun, ResearchRunRepository, StructureSnapshot
 from .services import Infrastructure
 from .settings import ConfigurationError, InfrastructureSettings
 
@@ -10,6 +10,8 @@ __all__ = [
     "Infrastructure",
     "InfrastructureSettings",
     "RedisJsonCache",
+    "BuySignalSnapshot",
     "ResearchRun",
     "ResearchRunRepository",
+    "StructureSnapshot",
 ]

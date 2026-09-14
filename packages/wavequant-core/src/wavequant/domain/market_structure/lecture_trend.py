@@ -8,7 +8,7 @@ from collections import Counter
 
 from .polyline import LinePoint, PointKind, ReversalPoint
 from .price_action import Direction
-from .trend_landmarks import bear_to_bull_highs
+from .trend_landmarks import bear_bull_alternation_lows, bear_to_bull_highs, post_alternation_bull_highs
 from .trend_structure import observe_structure, StructuralTrend, retracement_evidence
 
 
@@ -234,7 +234,9 @@ def _annotate(points, symbol, dates):
             attack['checked']=True
             if ratio.partial and ratio.below_67_percent:
                 observation('空多交替' if up else '多空交替',ratio=ratio.ratio,
-                            weak_countermove=ratio.below_33_percent,abc_confirmed=False)
+                            weak_countermove=ratio.below_33_percent,abc_confirmed=False,
+                            **(dict(flip_high=_ref(attack['extreme']),confirmed_bear_low=_ref(attack['anchor']),
+                                    broken_key=_ref(attack['key']),origin=_ref(attack['origin'])) if up else {}))
                 background=StructuralTrend.BULL if up else StructuralTrend.BEAR
                 anchor,key=attack['extreme'],attack['origin']; attack=None; suspicion=False
             else:
@@ -281,6 +283,8 @@ def reversal_trends(drawing, bars):
         _annotate(stroke['points'],bars[0].symbol,dates)
     return dict(strokes=result,trend_level=1,name='一级趋势线',scope='lecture_wave_structure_not_strategy_confirmation',
                 bear_to_bull_highs=bear_to_bull_highs(result,trend_level=1),
+                bear_bull_alternation_lows=bear_bull_alternation_lows(result,trend_level=1),
+                post_alternation_bull_highs=post_alternation_bull_highs(result,trend_level=1),
                 aggregation_rule='HH_HL_or_LH_LL_switch_with_confirmed_cross_path_extremes',input_turn_count=local_count,
                 confirmed_wave_count=sum(len(s['points']) for s in result),
                 break_basis='confirmed_polyline_extreme',retracement_threshold=.67,

@@ -10,7 +10,7 @@
             "title": "重构 workspace 目录并建立工程规范",
             "scope": "按 pnpm-workspace.yaml 迁移现有应用，同步路径、规则、状态与验证入口。",
             "dependencies": [],
-            "status": "done",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "应用位于 servers、mobiles、webs、tools 分类目录中",
                 "所有配置、Docker、文档与锁文件使用新路径",
@@ -1515,6 +1515,468 @@
                     "command": "pnpm verify:quick",
                     "status": "passed",
                     "summary": "40 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则的全仓 Harness、lint、类型检查及单元测试通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-041",
+            "name": "wavequant-confirmed-bear-bull-alternation-low-landmarks",
+            "description": "计算各级空翻多之后已经确认的空多交替低点，并在研究 K 线图中提供可核验标识。",
+            "title": "标识已确认空多交替低点",
+            "scope": "由 wavequant-core 从每一级真实空翻多观察链中生成已确认的回档低点地标，保存空翻多高点、原空头低点、冻结末跌高、回档比例与可用日；Web 只按图窗和因果日期展示。",
+            "dependencies": ["MONOREPO-040"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "低点必须来自 Core 已确认的空多交替观察，且严格发生在合格空翻多高点之后",
+                "每个低点可追溯到空翻多高点、原空头低点、被冻结的末跌高、回档比例与因果可用日",
+                "一级、二级和三级分别输出地标；未确认、回档失败、证据缺失或空翻多未严格突破末跌高时不得输出",
+                "Web 使用默认开启的独立图层在低点价格处显示分级标识，关闭后不影响趋势线、空翻多高点、末跌高、策略或回测",
+                "Core、API、Web、Harness 与真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Core Ruff、严格路径 mypy、516 项 pytest 与 sdist/wheel 构建通过；显式确认、证据缺失、关键位未突破和 2/3 边界均有回归覆盖。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、33 项 pytest（另 1 项环境跳过）与构建通过，HTTP 层透明返回 Core 地标。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Web ESLint、TypeScript、6 项 Vitest、58 项 Node 契约与 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --workers=1",
+                    "status": "passed",
+                    "summary": "串行 9 条 Chromium 主流程通过；中大力德 L71 地标、详情、因果回放和独立开关均通过。"
+                },
+                {
+                    "command": "GET /api/tdx-theory?symbol=sz.002896&asof=2022-08-31|2022-09-01|2026-09-07",
+                    "status": "passed",
+                    "summary": "中大力德 2022-08-30 L71 29.75 在 2022-08-31 尚不可见，于 2022-09-01 首次返回；确认高点、原低点、冻结末跌高和 54.42% 回档证据完整。"
+                },
+                {
+                    "command": "pnpm verify:quick",
+                    "status": "passed",
+                    "summary": "41 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则的全仓 Harness、lint、类型检查及单元测试通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-042",
+            "name": "wavequant-post-alternation-bull-leg-high-landmarks",
+            "description": "标识各级空多交替低点之后第一段已确认多头上涨趋势的高点。",
+            "title": "标识空多交替后的多头段高点",
+            "scope": "由 wavequant-core 在每个已确认空多交替低点之后，仅选择同一路径中第一个已确认、价格上涨的同级高点，并保存交替低点、前置空翻多证据和因果可用日；Web 只按图窗与回放日期显示。",
+            "dependencies": ["MONOREPO-041"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "高点必须是已确认空多交替低点之后同一路径的第一个同级点，且类型为 H、价格严格高于交替低点",
+                "每个高点保留对应交替低点、此前空翻多高点、冻结末跌高与最终可用日，缺失证据或尚未确认时不得输出",
+                "一级、二级、三级分别输出；历史回放只能从高点自身确认日及全部前置证据可知日的最晚日期起显示",
+                "Web 在高点价格处提供默认开启的独立分级标识，关闭后不影响趋势线及其他地标",
+                "Core、API、Web、Harness 与真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Core Ruff、严格路径 mypy、518 项 pytest 与 sdist/wheel 构建通过；覆盖首个后继高点、严格上涨、证据继承和不跳过非法下一点。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、33 项 pytest（另 1 项环境跳过）与构建通过，HTTP 层透明返回 Core 地标。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Web ESLint、TypeScript、6 项 Vitest、59 项 Node 契约与 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --workers=1",
+                    "status": "passed",
+                    "summary": "串行 9 条 Chromium 主流程通过；中大力德 H71 地标、详情、独立开关与因果回放均通过。"
+                },
+                {
+                    "command": "GET /api/tdx-theory?symbol=sz.002896&asof=2022-09-07|2022-09-08|2026-09-07",
+                    "status": "passed",
+                    "summary": "中大力德 2022-09-01 H71 33.89 在 2022-09-07 尚不可见，于 2022-09-08 首次返回；对应 L71、H70、H69 证据完整，后续 H72 未替换首段终点。"
+                },
+                {
+                    "command": "pnpm verify:quick",
+                    "status": "passed",
+                    "summary": "42 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则的全仓 Harness、lint、类型检查及单元测试通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-043",
+            "name": "wavequant-structure-landmark-screening",
+            "description": "按回放日期、确认窗口和趋势级别搜索近期出现空翻多或空多交替低点的股票。",
+            "title": "新增转多与空多交替低点搜索",
+            "scope": "复用 Core 已确认的各级结构地标，对本地通达信或封存样本执行可取消的逐股搜索；以地标可用日而非事后发生日匹配窗口，Web 提供信号类型、级别和窗口筛选并可定位到原图复核。",
+            "dependencies": ["MONOREPO-041", "MONOREPO-042"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "支持搜索空翻多高点和空多交替低点，并可选择全部、一级、二级或三级趋势",
+                "搜索窗口按回放截面的交易日及地标 available_at 匹配，未确认事件不能提前进入结果",
+                "本地通达信结构搜索不套用买点策略、复权成交或主板限制，封存样本保持相同结构口径",
+                "搜索过程可取消、可增量展示结果，并明确区分事件发生日与确认可用日",
+                "点击结果打开对应股票与回放截面并定位事件，现有股票搜索、买点扫描和图表逻辑保持不变",
+                "Core、API、Web、Harness 与真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Core Ruff、配置的严格 mypy、525 项 pytest 与 sdist/wheel 构建通过；覆盖确认日窗口、任一结构、分级过滤、非交易日拒绝和非主板搜索。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、34 项 pytest（另 1 项环境跳过）与构建通过；结构搜索拥有独立任务存储和受保护的启动、查询、取消端点。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Web ESLint、TypeScript、6 项 Vitest、61 项 Node 契约与 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --workers=1",
+                    "status": "passed",
+                    "summary": "串行 10 条 Chromium 主流程通过；结构条件、发生日与确认日、增量结果和点击回图证据均通过。"
+                },
+                {
+                    "command": "POST/GET/POST /api/structure-scan on D:/TDX",
+                    "status": "passed",
+                    "summary": "真实通达信目录成功创建 5706 只股票的只读结构搜索任务，增量处理 2 只后可正常取消，任务无失败且最终进入 cancelled。"
+                },
+                {
+                    "command": "pnpm verify:quick",
+                    "status": "passed",
+                    "summary": "43 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则的全仓 Harness、lint、类型检查及单元测试通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-044",
+            "name": "wavequant-precomputed-structure-signal-read-model",
+            "description": "在行情或结构算法版本变化后后台重建结构信号读模型，前端请求只读取已完成快照。",
+            "title": "结构信号每日预计算与直接查询",
+            "scope": "为结构信号增加带行情指纹和 Core 算法指纹的持久化快照、幂等刷新 Worker、定时变更检测和只读查询 API；MySQL/PostgreSQL 保存事实快照，Redis 缓存查询，前端不再在请求链路逐股计算。",
+            "dependencies": ["MONOREPO-012", "MONOREPO-043"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "后台一次计算全部类型、全部级别和最近 20 个交易日的结构地标，1/5/20 日查询复用同一快照",
+                "快照同时绑定行情数据指纹与 Core 算法指纹，任一变化都会触发新版本重建",
+                "重建采用幂等任务和完成后发布，计算中或失败时不覆盖上一份可用快照",
+                "MySQL/PostgreSQL 保存可重建事实快照，Redis 仅缓存只读查询且缓存失效不会改变事实结果",
+                "前端结构查询不再启动逐股计算或轮询任务，直接接收已完成结果并展示数据日期、计算时间和新鲜度",
+                "提供一次性刷新和常驻自动刷新命令，并覆盖 Core、API、Web、Harness 与浏览器回归"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Core Ruff、配置的严格 mypy、525 项 pytest 与 sdist/wheel 构建通过；确认窗口复用、session_age、行情指纹和算法指纹均有覆盖。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、40 项 pytest（另 1 项环境跳过）与构建通过；覆盖 SQL 幂等发布、数据/算法变更重建、缺失快照 503 和只读 HTTP 查询。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Web ESLint、TypeScript、6 项 Vitest、61 项 Node 契约与 Next.js 生产构建通过；结构搜索只发送一次预计算 GET。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --workers=1",
+                    "status": "passed",
+                    "summary": "重启统一开发服务后，串行 10 条 Chromium 主流程通过；快照元数据、筛选结果和点击回图均通过。"
+                },
+                {
+                    "command": "pnpm verify:quick",
+                    "status": "passed",
+                    "summary": "44 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则的全仓 Harness、lint、类型检查及单元测试通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-045",
+            "name": "wavequant-akshare-market-data-source",
+            "description": "增加 AkShare 沪深京 A 股列表与日线行情数据源，并复用现有只读图表和结构分析能力。",
+            "title": "接入 AkShare A 股数据源",
+            "scope": "在 Core 增加可注入、可缓存的 AkShare 适配器，API 提供独立目录、行情和理论端点，Web 可切换 AkShare 浏览；联网数据不进入封存回测、买点扫描或持久研究证据。",
+            "dependencies": ["MONOREPO-044"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "AkShare 依赖版本与许可证明确记录，并通过 API workspace 的独立 Python 环境安装",
+                "Core 将 AkShare A 股代码、名称和日线字段校验并映射为统一 Bar，不让第三方 DataFrame 泄漏到领域层",
+                "API 提供只读 AkShare 可用性、股票目录、日线视图与结构理论端点，参数错误和上游故障返回安全错误",
+                "Web 可在数据口径中选择 AkShare，处理加载、不可用和请求失败状态，并保持通达信与封存数据行为不变",
+                "联网 AkShare 行情明确标识来源、刷新时间、复权口径和非封存边界，不参与回测或扫描",
+                "Core、API、Web、Harness 与真实浏览器联调通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm verify:quick",
+                    "status": "passed",
+                    "summary": "45 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、lint、类型检查及单元测试通过；Core 532 项、API 41 项（另 1 项环境跳过）、Web 6 项 Vitest 与 63 项 Node 契约通过。"
+                },
+                {
+                    "command": "AkShare 1.18.94 real API and browser smoke",
+                    "status": "passed",
+                    "summary": "真实目录返回 5,562 只沪深京 A 股；贵州茅台返回 6,003 根原始不复权日线至 2026-09-11，页面显示收盘 1,275.16 元、成交量 3,480,100 股，回测与扫描入口保持禁用。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core build / pnpm --filter wavequant-api build / pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "Core sdist/wheel、API sdist/wheel 与 Next.js 生产构建通过；AkShare 主接口短时失败后优先使用官方新浪日线，腾讯历史接口作为最后兜底。"
+                },
+                {
+                    "command": "AkShare fallback latency regression and live browser smoke",
+                    "status": "passed",
+                    "summary": "主接口探测限制为 3 秒并设置 10 分钟熔断；真实 API 首次回退 2.85 秒、后续股票 0.98 秒。浏览器显示格力电器 7,009 根日线至 2026-09-11、成交量 29,800,684 股，图表完成且无 Console 错误或警告。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-046",
+            "name": "wavequant-akshare-current-stock-screening",
+            "description": "允许在 AkShare 行情口径下分析当前股票的买点和结构信号。",
+            "title": "启用 AkShare 当前股票信号分析",
+            "scope": "复用已缓存的 AkShare 当前股票日线，按所选策略计算买点信号并按确认窗口筛选结构地标；不对在线全市场逐股抓取，不执行回测成交或交易。",
+            "dependencies": ["MONOREPO-045"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "AkShare 口径下符合买点和结构信号标签可操作，并明确范围是当前股票",
+                "买点分析复用当前股票在线原始不复权日线与所选策略，不模拟成交或误用封存样本",
+                "结构分析复用当前股票 AkShare 理论地标，按信号类型、级别和确认窗口筛选",
+                "切换结果后保持 AkShare 口径并可定位发生日期，错误、空结果和加载状态清晰",
+                "Core、API、Web、Harness 与真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm verify",
+                    "status": "passed",
+                    "summary": "46 个 Feature、18 个 Node workspace、2 个 Python workspace 和 32 份规则的 Harness、lint、类型检查、534 项 Core 测试、41 项 API 测试（另 1 项环境跳过）、Web 单元测试及生产构建全部通过。"
+                },
+                {
+                    "command": "AkShare current-stock real API smoke",
+                    "status": "passed",
+                    "summary": "贵州茅台 6,003 根日线至 2026-09-11；结构端点返回当前股票 ready 1/1，买点任务完成 1/1、失败 0，并明确仅输出原始不复权信号、不模拟成交。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --grep AkShare current stock",
+                    "status": "passed",
+                    "summary": "真实 Chromium 完成 AkShare 数据源切换、买点按钮和结构按钮点击，两个当前股票分析均完成 1/1，页面异常与失败请求为 0。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-047",
+            "name": "wavequant-canonical-market-data-repository",
+            "description": "以统一适配器隔离 AkShare、通达信等行情源，使来源切换不影响图表、结构和信号领域逻辑。",
+            "title": "统一行情数据适配器与规范仓库",
+            "scope": "在 Core 建立稳定的市场数据端口、AkShare/通达信适配器和规范仓库；目录与日线缺失由备用源补齐，重复日期保留主源值，并向 API/Web 提供完整来源证据。",
+            "dependencies": ["MONOREPO-045", "MONOREPO-046"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "AkShare 与通达信实现相同的目录、日线和元数据适配器端口，第三方结构不进入领域算法",
+                "默认优先 AkShare，切换数据源只改变采集优先级，讲义折线及一级至三级趋势使用同一计算入口",
+                "主源不可用或滞后时按证券和交易日补齐，重复交易日严格保留主源 OHLCV",
+                "目录缺少证券或名称时由备用目录补充，响应明确请求源、实际源、参与来源、补齐数量和数据版本",
+                "既有 API 路径和研究工作台逻辑保持兼容，Core、API、Web 与浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Ruff、严格 mypy、538 项 pytest 与 sdist/wheel 构建通过；覆盖目录补全、主源失败回退、滞后交易日补齐、重复日主源优先和跨来源结构一致。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、41 项 pytest（另 1 项环境跳过）与构建通过，既有 AkShare/TDX HTTP 路径统一委托规范仓库。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Web ESLint、TypeScript、6 项 Vitest、63 项 Node 契约和 Next.js 生产构建通过；默认 AkShare 并可展示回退/补齐证据。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --workers=1",
+                    "status": "passed",
+                    "summary": "重启统一开发服务后，11 条真实 Chromium 主流程通过；默认 AkShare、当前股票分析、TDX 结构回归以及完整市场/研究页面均正常。"
+                },
+                {
+                    "command": "real AkShare/TDX repository smoke and pnpm verify:quick",
+                    "status": "passed",
+                    "summary": "贵州茅台两种请求源均返回相同领域结构契约；AkShare 目录为主并由 TDX 补充 342 只证券，全仓 47 个 Feature 快速门禁通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-048",
+            "name": "wavequant-precomputed-signal-read-models",
+            "description": "将买点与结构信号提前计算并分别持久化，交互查询只读取 SQL/Redis 读模型。",
+            "title": "统一信号预计算与分表缓存",
+            "scope": "为买点和结构信号建立独立的 SQL 快照表与 Redis 命名空间；后台 Worker 根据行情数据版本和算法版本幂等重建、完成后原子发布，Web 查询链路不再执行信号计算。",
+            "dependencies": ["MONOREPO-044", "MONOREPO-046", "MONOREPO-047"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "买点信号和结构信号分别保存到独立 SQL 表，数据库是事实来源，Redis 仅保存有 TTL 的可重建查询缓存",
+                "每份读模型绑定来源、行情日期、数据版本、算法版本、策略和参数，数据或逻辑变化会生成并发布新版本",
+                "后台刷新幂等且仅在完整计算成功后发布，失败或计算中不覆盖上一份可用结果",
+                "买点与结构查询 API 只读取已发布 SQL/Redis 结果，不调用 Core 计算、外部行情或启动扫描任务",
+                "Worker 支持一次刷新和周期检测，按来源控制有界批次，并明确 AkShare 上游失败与部分数据策略",
+                "Web 改为直接查询预计算结果，并覆盖空、未就绪、过期和缓存降级状态",
+                "API、数据库、Redis、Web、Harness 与浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core/API/Web scoped lint, typecheck and unit tests",
+                    "status": "passed",
+                    "summary": "Core 538 项、API 45 项（另 1 项外部集成跳过）、Web 6 项 Vitest 与 64 项 Node 契约全部通过。"
+                },
+                {
+                    "command": "pnpm harness:check and three production builds",
+                    "status": "passed",
+                    "summary": "48 个 Feature、18 个 Node workspace、2 个 Python workspace、32 份规则校验通过；Core/API wheel 与 Web Next.js 静态构建通过。"
+                },
+                {
+                    "command": "MySQL/Redis/AkShare live read-model smoke",
+                    "status": "passed",
+                    "summary": "真实 MySQL 8.4 与 Redis 8 健康；贵州茅台买点和结构快照分表发布，3003 代理只读查询命中，两个 Redis 命名空间均带 TTL。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e -- --workers=1",
+                    "status": "passed",
+                    "summary": "11 条 Chromium 流程全部通过；专项验证买点与结构入口只发 GET 并展示预计算快照状态。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-049",
+            "name": "wavequant-akshare-market-structure-read-model",
+            "description": "将 AkShare 结构信号从当前股票快照改为服务器预计算覆盖范围内的市场级股票列表。",
+            "title": "修复 AkShare 全市场结构信号查询",
+            "scope": "保留按股票可恢复的后台计算分片，在查询层聚合相同运行、行情日与结构算法版本的已发布 AkShare 分片；结构地标跨买点策略复用，前端筛选不再绑定当前股票，并明确预计算覆盖与空结果状态。",
+            "dependencies": ["MONOREPO-048"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "AkShare 结构信号查询不携带当前股票，返回服务器已预计算覆盖范围内所有满足筛选条件的股票列表",
+                "交互请求只读取 SQL/Redis，不调用 AkShare、Core 计算或启动后台任务",
+                "AkShare 后台刷新默认覆盖完整目录，也支持显式股票子集并可在中断后复用已发布分片",
+                "没有任何 AkShare 分片时返回可执行的未就绪提示，有已发布分片时不再错误显示当前快照不可用",
+                "API、Web、Harness 与真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-api lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、47 项 pytest（另 1 项外部集成跳过）与 sdist/wheel 构建通过；覆盖跨策略 AkShare 分片聚合、最新逐股版本选择和单股失败隔离。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Web ESLint、TypeScript、6 项 Vitest、64 项 Node 契约和 Next.js 生产构建通过；结构上下文不再受当前股票影响。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e -- --workers=1",
+                    "status": "passed",
+                    "summary": "11 条 Chromium 流程通过；AkShare 结构请求只发 GET、不含 symbol，并显示服务器市场快照覆盖数。"
+                },
+                {
+                    "command": "live AkShare market snapshot and worker smoke",
+                    "status": "passed",
+                    "summary": "真实页面在 lecture_v3 下由原 503 恢复为 200 ready，结构请求无 symbol、Console 与失败请求均为 0；全目录 Worker 已启动，覆盖从 1 增至 34 只并在单股失败后继续。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-050",
+            "name": "wavequant-structure-market-filters",
+            "description": "为预计算市场结构查询增加板块多选，并在服务端排除名称包含星号的风险警示股票。",
+            "title": "增加市场结构板块筛选",
+            "scope": "支持上证主板、深证主板、创业板、科创板和北京市场多选，默认上证主板、深证主板、创业板；服务端只过滤已发布快照，统一去掉名称包含 * 或全角星号的股票，并按市场组合隔离 Redis 缓存。",
+            "dependencies": ["MONOREPO-049"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "结构信号页面支持上证、深证、创业板、科创板和北京市场多选，默认选中上证、深证和创业板",
+                "市场筛选随只读 GET 请求发送，服务端只查询 SQL/Redis 已发布快照且不绑定当前股票",
+                "服务端根据标准证券代码归属筛选市场，并统一排除名称包含 * 或全角星号的股票",
+                "市场组合进入 Redis 缓存键，非法或空市场选择返回明确的 400 错误",
+                "API、Web、Harness 与真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-api lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "API Ruff、严格 mypy、49 项 pytest（另 1 项外部集成跳过）及 sdist/wheel 构建通过；覆盖五类市场归属、默认组合、星号名称排除、缓存隔离及非法参数。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint / typecheck / test:unit / build",
+                    "status": "passed",
+                    "summary": "Web ESLint、TypeScript、6 项 Vitest、65 项 Node 契约和 Next.js 生产构建通过；覆盖默认勾选、稳定市场键与查询上下文失效。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:e2e -- --workers=1",
+                    "status": "passed",
+                    "summary": "11 条 Chromium 流程通过；默认请求为 shanghai,shenzhen,chinext，切换科创板和北京后变为 star,beijing，且始终不携带 symbol。"
+                },
+                {
+                    "command": "live AkShare market-filter browser smoke",
+                    "status": "passed",
+                    "summary": "真实 lecture_v3 页面返回 200，默认三市场勾选正确，请求命中 2,419 只已发布股票的服务端快照并返回 9 个结构；页面无 Console 或失败请求。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "50 个 Feature、18 个 Node workspace、2 个 Python workspace 与 32 份规则校验通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-051",
+            "name": "wavequant-alternation-low-marker-visibility",
+            "description": "修复确认日明显晚于发生日时，空多交替低点在历史图窗中被错误隐藏的问题。",
+            "title": "补齐空多交替低点标识",
+            "scope": "将空多交替低点的图窗范围与因果可知截止日分离：标识位置继续使用真实低点日期，是否可见使用当前行情回放截面判断；查询结果定位后自动选中对应分级标识。",
+            "dependencies": ["MONOREPO-050"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "已在当前回放截面确认的空多交替低点，即使确认日晚于当前历史图窗右边界也显示在真实低点日期",
+                "确认日晚于当前回放截面的低点仍不可见，不引入未来信息",
+                "从结构查询结果点击发生日与确认日跨度较大的低点后，对应分级标识可见并自动选中",
+                "Web 单元测试、浏览器回归、生产构建与 Harness 通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web test:unit",
+                    "status": "passed",
+                    "summary": "6 项 Vitest 与 65 项 Node 契约通过；新增回归覆盖图窗结束早于确认日、但当前回放截面已到确认日时显示真实低点，并保持确认日前不可见。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint / typecheck / test:e2e / build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、11 条 Chromium 流程与 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "live AkShare delayed alternation-low browser smoke",
+                    "status": "passed",
+                    "summary": "真实查询点击贤丰控股二级空多交替结果后，标识计数由修复前 0 变为 1，并自动选中 L28 2.98；发生日 2026-06-08、确认日 2026-08-17，Console 与失败请求均为 0。"
+                },
+                {
+                    "command": "pnpm harness:check",
+                    "status": "passed",
+                    "summary": "51 个 Feature、18 个 Node workspace、2 个 Python workspace 与 32 份规则校验通过。"
                 }
             ]
         }

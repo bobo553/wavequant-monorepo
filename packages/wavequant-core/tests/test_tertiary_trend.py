@@ -36,6 +36,8 @@ class TertiaryTrendTests(unittest.TestCase):
             [(p['value'],p['confirmed_low']['value']) for p in result['bear_to_bull_highs']],
             [(35,10),(38,24)],
         )
+        self.assertIn('bear_bull_alternation_lows',result)
+        self.assertIn('post_alternation_bull_highs',result)
         for p in points:
             original=raw[p['source_level2_position']]; proof=raw[p['confirmed_on_level2']]
             self.assertEqual(p['available_at'],proof['available_at'])
@@ -56,6 +58,8 @@ class TertiaryTrendTests(unittest.TestCase):
         self.assertEqual(tertiary_trends(dict(strokes=[]),[])['strokes'],[])
         self.assertEqual(tertiary_trends(dict(strokes=[]),[])['developing_strokes'],[])
         self.assertEqual(tertiary_trends(dict(strokes=[]),[])['bear_to_bull_highs'],[])
+        self.assertEqual(tertiary_trends(dict(strokes=[]),[])['bear_bull_alternation_lows'],[])
+        self.assertEqual(tertiary_trends(dict(strokes=[]),[])['post_alternation_bull_highs'],[])
 
     def test_source_level_parameter_preserves_existing_algorithm(self):
         _,source=self.source(); points=source['strokes'][0]['points']

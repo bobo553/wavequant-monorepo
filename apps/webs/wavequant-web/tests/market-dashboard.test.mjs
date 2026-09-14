@@ -25,6 +25,30 @@ test("default page renders the React research workbench and market remains a Nex
     assert.equal(packageJson.dependencies["@repo/design-system-web"], "workspace:*");
 });
 
+test("research workbench exposes AkShare as a read-only online market source", () => {
+    const controls = readFileSync(
+        join(sourceRoot, "features", "research-workbench", "components", "research-controls.tsx"),
+        "utf8",
+    );
+    const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
+    assert.match(controls, /defaultValue="akshare"/);
+    assert.ok(controls.indexOf('value="akshare"') < controls.indexOf('value="tdx"'));
+    assert.match(controls, /value="akshare">AkShare · 在线 A 股行情/);
+    assert.match(runtime, /\/api\/akshare-catalog/);
+    assert.match(runtime, /\/api\/akshare-view/);
+    assert.match(runtime, /\/api\/akshare-theory/);
+    assert.match(runtime, /state\.akshareSessions/);
+    assert.match(runtime, /source: isAkShare\(\) \? "akshare"/);
+    assert.match(runtime, /查询当前股票买点/);
+    assert.match(runtime, /查询全市场结构/);
+    assert.match(runtime, /买点与结构仅读服务器预计算结果/);
+    assert.match(runtime, /state\.akshare\.with_daily \? "akshare" : state\.tdx\.with_daily \? "tdx" : "stock"/);
+    assert.match(runtime, /data\.source_fallback/);
+    assert.match(runtime, /data\.supplemented_bars/);
+    assert.doesNotMatch(runtime, /run-stock-backtest"\)\.disabled = !state\.tdx\?\.with_daily \|\| isAkShare/);
+    assert.doesNotMatch(runtime, /if \(isAkShare\(\) && tab !== "all"\) return/);
+});
+
 test("feature modules retain the overview, ladder, responsive and chart boundaries", () => {
     const dashboard = readFileSync(join(sourceRoot, "features", "market-dashboard", "market-dashboard.tsx"), "utf8");
     const chart = readFileSync(
@@ -94,4 +118,13 @@ test("the complete server-backed research workbench is composed from React featu
     ]) {
         assert.match(components, new RegExp(`(?:id|bodyId)="${id}"`));
     }
+    for (const market of ["shanghai", "shenzhen", "chinext", "star", "beijing"]) {
+        assert.match(components, new RegExp(`name="structure-market" value="${market}"`));
+    }
+    assert.equal(
+        (components.match(/name="structure-market" value="(?:shanghai|shenzhen|chinext)" defaultChecked/g) || [])
+            .length,
+        3,
+    );
+    assert.match(components, /名称含 \* 的股票会被排除/);
 });

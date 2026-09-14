@@ -42,6 +42,10 @@ class LectureTrendTests(unittest.TestCase):
         self.assertEqual(mapping['L7']['observations'][0]['key']['value'],28)
         self.assertAlmostEqual(mapping['L4']['observations'][0]['ratio'],7/17)
         self.assertFalse(mapping['L4']['observations'][0]['abc_confirmed'])
+        self.assertEqual(mapping['L4']['observations'][0]['flip_high']['value'],35)
+        self.assertEqual(mapping['L4']['observations'][0]['confirmed_bear_low']['value'],10)
+        self.assertEqual(mapping['L4']['observations'][0]['broken_key']['value'],30)
+        self.assertEqual(mapping['L4']['observations'][0]['origin']['value'],18)
 
     def test_no_seed_developing_or_same_direction_middle_points(self):
         bars,drawing=fixture([8,10,12,15,11,16])
@@ -118,6 +122,8 @@ class LectureTrendTests(unittest.TestCase):
         self.assertEqual(result['name'],'一级趋势线')
         self.assertGreater(result['input_turn_count'],result['confirmed_wave_count'])
         self.assertIn('bear_to_bull_highs',result)
+        self.assertIn('bear_bull_alternation_lows',result)
+        self.assertIn('post_alternation_bull_highs',result)
         self.assertTrue(all(point['trend_level']==1 for point in result['bear_to_bull_highs']))
         self.assertTrue(all(point['value']>point['broken_key']['value']
                             for point in result['bear_to_bull_highs']))

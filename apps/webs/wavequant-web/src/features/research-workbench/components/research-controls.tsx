@@ -7,7 +7,8 @@ export function ResearchControls(): JSX.Element {
             <div className="filters panel">
                 <label>
                     数据 / 结果口径
-                    <select id="result-scope" aria-label="结果口径" defaultValue="tdx">
+                    <select id="result-scope" aria-label="结果口径" defaultValue="akshare">
+                        <option value="akshare">AkShare · 在线 A 股行情</option>
                         <option value="tdx">通达信 · 全部 A 股行情</option>
                         <option value="tdx-backtest">通达信 · 当前股票回测</option>
                         <option value="stock">个股独立回测 · 封存样本</option>

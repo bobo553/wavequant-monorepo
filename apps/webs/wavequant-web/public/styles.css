@@ -36,15 +36,46 @@
     border-color: #2a655c;
     background: #173b38;
 }
-#buy-points-panel {
+#buy-points-panel,
+#structure-signals-panel {
     overflow: auto;
     min-height: 160px;
     font-size: 11px;
 }
-#buy-points-panel select {
+#buy-points-panel select,
+#structure-signals-panel select {
     max-width: 100%;
     padding: 5px;
     font-size: 10px;
+}
+#structure-signals-panel > label {
+    display: grid;
+    grid-template-columns: minmax(74px, auto) minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 7px;
+}
+.structure-market-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin: 0 0 9px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+.structure-market-filter legend {
+    padding: 0 4px;
+    color: var(--research-text-soft);
+}
+.structure-market-filter label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+.structure-market-filter input {
+    margin: 0;
 }
 .scan-actions {
     display: flex;
@@ -54,13 +85,15 @@
 .scan-actions button {
     font-size: 10px;
 }
-#scan-status {
+#scan-status,
+#structure-scan-status {
     white-space: pre-line;
     line-height: 1.8;
     color: #a2c8c4;
     margin-bottom: 10px;
 }
-.buy-point-item {
+.buy-point-item,
+.structure-signal-item {
     display: flex;
     flex-direction: column;
     text-align: left;
@@ -70,12 +103,15 @@
     background: #122d2b;
     border-color: #294d46;
 }
-.buy-point-item strong {
+.buy-point-item strong,
+.structure-signal-item strong {
     color: #83e4d6;
     font-size: 12px;
 }
 .buy-point-item span,
-.buy-point-item small {
+.buy-point-item small,
+.structure-signal-item span,
+.structure-signal-item small {
     font-size: 10px;
     white-space: normal;
     line-height: 1.6;
@@ -86,7 +122,8 @@
     color: var(--muted);
     margin: 10px 0;
 }
-#buy-points-list details {
+#buy-points-list details,
+#structure-signal-list details {
     font-size: 10px;
     line-height: 1.8;
     overflow-wrap: anywhere;
@@ -1060,6 +1097,12 @@ tbody tr:hover {
 .key-bear-to-bull-high {
     color: #d6a3ff;
 }
+.key-bear-bull-alternation-low {
+    color: #76d8b6;
+}
+.key-post-alternation-bull-high {
+    color: #8bb8ff;
+}
 .key-signal {
     color: #49d5dc;
 }
@@ -1155,6 +1198,7 @@ tbody tr:hover {
 [data-wavequant-react-workbench] .stock-tabs [aria-pressed="true"],
 [data-wavequant-react-workbench] .stock-item[aria-pressed="true"],
 [data-wavequant-react-workbench] .buy-point-item,
+[data-wavequant-react-workbench] .structure-signal-item,
 [data-wavequant-react-workbench] .nav-item.active,
 [data-wavequant-react-workbench] .pill,
 [data-wavequant-react-workbench] .selection-info,
@@ -1166,7 +1210,9 @@ tbody tr:hover {
 [data-wavequant-react-workbench] .stock-tabs [aria-pressed="true"],
 [data-wavequant-react-workbench] .stock-item[aria-pressed="true"] strong,
 [data-wavequant-react-workbench] .buy-point-item strong,
+[data-wavequant-react-workbench] .structure-signal-item strong,
 [data-wavequant-react-workbench] #scan-status,
+[data-wavequant-react-workbench] #structure-scan-status,
 [data-wavequant-react-workbench] .selection-info b,
 [data-wavequant-react-workbench] .decision-timeline {
     color: var(--cyan);

@@ -43,6 +43,8 @@ class SecondaryTrendTests(unittest.TestCase):
             [(35,10,level1['strokes'][0]['points'][7]['available_at']),
              (38,24,level1['strokes'][0]['points'][17]['available_at'])],
         )
+        self.assertIn('bear_bull_alternation_lows',result)
+        self.assertIn('post_alternation_bull_highs',result)
 
     def test_prefix_stability_no_future_repainting(self):
         bars,source=fixture(self.values)

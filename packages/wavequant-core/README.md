@@ -13,7 +13,7 @@
 pnpm --filter wavequant-api dashboard
 ```
 
-打开 `http://127.0.0.1:8765`：K 线与理论结构、历史回放、成交定位、净值／回撤／仓位、订单／信号和只读运行状态。API 使用本包提供的只读查询服务，Web 使用本地 TradingView Lightweight Charts 5.2.1；严格版与代理版分开，回放不返回未来退出盈亏。详见 [可视化契约与验收说明](docs/visualization.md)。
+打开 `http://127.0.0.1:8765`：K 线与理论结构、历史回放、成交定位、净值／回撤／仓位、订单／信号和只读运行状态。API 使用本包提供的只读查询服务，Web 使用本地 TradingView Lightweight Charts 5.2.1；严格版与代理版分开，回放不返回未来退出盈亏。AkShare 当前股票可复用相同策略与结构算法生成只读信号证据，但不模拟订单、成交或在线全市场扫描。详见 [可视化契约与验收说明](docs/visualization.md)。
 
 ## v0.4：统一运行、故障验收和恢复
 
@@ -147,10 +147,10 @@ pnpm --filter wavequant-api dashboard
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install -e ".[dev,tdx]"
+.venv\Scripts\python.exe -m pip install -e ".[akshare,dev,tdx]"
 ```
 
-`requirements-lock.txt` 记录本次 Windows/Python 3.14 的确切依赖版本；跨 Python 版本优先使用上面的最小依赖安装。每次运行写入指定结果目录，覆盖同名生成报告，不修改通达信文件。需要保留旧实验，请换一个 `--output-dir`，导入快照也可用 `--csv data/tdx_日期.csv` 分开保存。
+`requirements-lock.txt` 记录本次 Windows/Python 3.14 的确切依赖版本；跨 Python 版本优先使用上面的最小依赖安装。`akshare` extra 仅供 HTTP 适配器按需读取在线 A 股目录与不复权日线，Core 导入时不会联网。每次运行写入指定结果目录，覆盖同名生成报告，不修改通达信文件。需要保留旧实验，请换一个 `--output-dir`，导入快照也可用 `--csv data/tdx_日期.csv` 分开保存。
 
 ## 看哪里
 
@@ -185,6 +185,10 @@ python -m unittest discover -s tests -v
 `run-tdx` / `import-tdx` 支持 `--start`、`--end`、`--symbols sh.600036 sz.000651 ...`。更换起始期后，研究协议的三个区间也须有数据覆盖。研究命令使用 `configs/research_protocol.json`，可用 `--protocol` 指定另一个预先声明的实验。
 
 ## 数据口径
+
+行情浏览、讲义折线和多级趋势统一经过 `MarketDataRepository`。AkShare 与通达信分别实现同一个适配器端口，第三方字段先校验并转换成统一 `Bar`，领域算法不判断数据源。默认优先 AkShare；主源不可用或截至所选日期数据滞后时，仓库按证券代码和交易日从备用源补齐，重复交易日始终保留主源 OHLCV，禁止备用源静默覆盖。响应会返回 `data_source`、`resolved_source`、`providers`、`supplemented_bars`、`data_version`，便于复核实际来源和补齐范围。
+
+目录采用同样的合并规则：主源缺少股票名称、可用状态或整只证券时，备用目录补充缺失字段/证券并标记来源。适配器只负责采集，图表序列化、讲义折线、一级/二级/三级趋势计算均由统一仓库执行；新增数据源只需实现目录、日线加载和安全元数据三个接口。
 
 读取 `D:\TDX\vipdoc\sh\lday\shXXXXXX.day`、深市对应文件，以及 `T0002\hq_cache\gbbq` 除权事件。日线是 32 字节小端记录；OHLC 转元，成交量按股。解码除权文件的首次运行约需半分钟，之后以文件 SHA-256 缓存。
 

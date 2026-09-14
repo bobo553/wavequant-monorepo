@@ -1,6 +1,10 @@
 import unittest
 
-from wavequant.domain.market_structure.trend_landmarks import bear_to_bull_highs
+from wavequant.domain.market_structure.trend_landmarks import (
+    bear_bull_alternation_lows,
+    bear_to_bull_highs,
+    post_alternation_bull_highs,
+)
 
 
 def point(index, kind, value, available_at, **extra):
@@ -17,6 +21,145 @@ def point(index, kind, value, available_at, **extra):
 
 
 class TrendLandmarkTests(unittest.TestCase):
+    def test_first_confirmed_high_after_alternation_ends_the_first_bull_leg(self):
+        frozen_key = point(1, "H", 18.28, "2022-05-26")
+        bear_low = point(2, "L", 13.16, "2022-06-01")
+        flip_high = point(3, "H", 49.56, "2022-08-09")
+        alternation_low = point(
+            4,
+            "L",
+            29.75,
+            "2022-09-01",
+            observations=[
+                {
+                    "title": "空多交替",
+                    "available_at": "2022-09-01",
+                    "ratio": 0.5442,
+                    "flip_high": flip_high,
+                    "confirmed_bear_low": bear_low,
+                    "broken_key": frozen_key,
+                    "origin": bear_low,
+                }
+            ],
+        )
+        first_bull_high = point(5, "H", 33.89, "2022-09-08")
+        later_high = point(7, "H", 38.28, "2022-10-14")
+        strokes = [
+            {
+                "id": "level-one",
+                "points": [bear_low, flip_high, alternation_low, first_bull_high, point(6, "L", 28.76, "2022-09-15"), later_high],
+            }
+        ]
+
+        landmarks = post_alternation_bull_highs(strokes, trend_level=1)
+
+        self.assertEqual([(item["index"], item["value"]) for item in landmarks], [(5, 33.89)])
+        self.assertEqual(landmarks[0]["available_at"], "2022-09-08")
+        self.assertEqual(landmarks[0]["confirmed_alternation_low"]["value"], 29.75)
+        self.assertEqual(landmarks[0]["confirmed_flip_high"]["value"], 49.56)
+        self.assertEqual(landmarks[0]["broken_key"]["value"], 18.28)
+
+    def test_post_alternation_high_does_not_skip_an_invalid_next_vertex(self):
+        frozen_key = point(1, "H", 20, "2026-01-03")
+        bear_low = point(2, "L", 10, "2026-01-08")
+        flip_high = point(3, "H", 30, "2026-01-09")
+        alternation_low = point(
+            4,
+            "L",
+            18,
+            "2026-01-12",
+            observations=[
+                {
+                    "title": "空多交替",
+                    "available_at": "2026-01-12",
+                    "ratio": 0.6,
+                    "flip_high": flip_high,
+                    "confirmed_bear_low": bear_low,
+                    "broken_key": frozen_key,
+                    "origin": bear_low,
+                }
+            ],
+        )
+        invalid_next = point(5, "L", 17, "2026-01-13")
+        later_high = point(6, "H", 25, "2026-01-15")
+
+        self.assertEqual(
+            post_alternation_bull_highs(
+                [{"id": "malformed", "points": [bear_low, flip_high, alternation_low, invalid_next, later_high]}],
+                trend_level=1,
+            ),
+            [],
+        )
+
+    def test_confirmed_alternation_low_keeps_the_full_bear_to_bull_chain(self):
+        frozen_key = point(1, "H", 27.71, "2026-01-03")
+        bear_low = point(2, "L", 13.16, "2026-01-08")
+        flip_high = point(3, "H", 49.56, "2026-01-09")
+        pullback_origin = point(2, "L", 13.16, "2026-01-08")
+        alternation_low = point(
+            4,
+            "L",
+            29.75,
+            "2026-01-12",
+            observations=[
+                {
+                    "title": "空多交替",
+                    "available_at": "2026-01-12",
+                    "ratio": 0.5442,
+                    "weak_countermove": False,
+                    "flip_high": flip_high,
+                    "confirmed_bear_low": bear_low,
+                    "broken_key": frozen_key,
+                    "origin": pullback_origin,
+                }
+            ],
+        )
+
+        landmarks = bear_bull_alternation_lows(
+            [{"id": "level-one", "points": [bear_low, flip_high, alternation_low]}],
+            trend_level=1,
+        )
+
+        self.assertEqual([(item["time"], item["value"]) for item in landmarks], [("2026-01-05", 29.75)])
+        self.assertEqual(landmarks[0]["available_at"], "2026-01-12")
+        self.assertEqual(landmarks[0]["confirmed_flip_high"]["value"], 49.56)
+        self.assertEqual(landmarks[0]["confirmed_bear_low"]["value"], 13.16)
+        self.assertEqual(landmarks[0]["broken_key"]["value"], 27.71)
+        self.assertAlmostEqual(landmarks[0]["retracement_ratio"], 0.5442)
+
+    def test_unconfirmed_or_malformed_alternation_low_is_rejected(self):
+        frozen_key = point(1, "H", 30, "2026-01-03")
+        bear_low = point(2, "L", 18, "2026-01-08")
+        valid_high = point(3, "H", 35, "2026-01-09")
+
+        def candidate(index, title="空多交替", **overrides):
+            event = {
+                "title": title,
+                "available_at": "2026-01-12",
+                "ratio": 0.4,
+                "flip_high": valid_high,
+                "confirmed_bear_low": bear_low,
+                "broken_key": frozen_key,
+                "origin": bear_low,
+                **overrides,
+            }
+            return point(index, "L", 24, "2026-01-12", observations=[event])
+
+        invalid = [
+            candidate(4, title="回档未通过交替条件"),
+            candidate(5, flip_high=point(3, "H", 30, "2026-01-09")),
+            candidate(6, broken_key=None),
+            candidate(7, ratio=2 / 3),
+            candidate(8, origin=None),
+            candidate(9, flip_high={"index": 3, "kind": "H", "value": 35}),
+            candidate(10, confirmed_bear_low={"index": 2, "kind": "L", "value": 18}),
+        ]
+
+        self.assertEqual(
+            bear_bull_alternation_lows([{"id": "invalid", "points": invalid}], trend_level=1),
+            [],
+        )
+
     def test_bear_to_bull_high_uses_the_confirming_high_and_formal_low_availability(self):
         first_high = point(3, "H", 35, "2026-01-05")
         second_high = point(7, "H", 49.56, "2026-01-09")

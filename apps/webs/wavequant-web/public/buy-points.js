@@ -1,6 +1,6 @@
 import { num, symbolName } from "./labels.js";
 
-/** @typedef {{run:string,variant:string,scenario:string,source:'tdx'|'snapshot',asof:string,start:string,lookback:number}} ScanParams */
+/** @typedef {{run:string,variant:string,scenario:string,source:'tdx'|'snapshot'|'akshare',symbol?:string,asof:string,start:string,lookback:number}} ScanParams */
 /** @typedef {{id:string,revision:number,params:ScanParams,status:string,total:number,processed:number,failed:number,stale:number,skipped:number,results:Array<object>,errors:Array<object>,error:string|null,performance?:{cache_hits:number,recomputed:number,elapsed_seconds:number}}} ScanJob */
 const statusNames = {
     awaiting_next_open: "当日新信号 · 待次开盘验证",
@@ -59,7 +59,16 @@ export function funnelLines(f) {
     ];
 }
 export const scanContextKey = (p) =>
-    JSON.stringify([p.run, p.variant, p.scenario, p.source, p.asof, p.start, p.lookback]);
+    JSON.stringify([
+        p.run,
+        p.variant,
+        p.scenario,
+        p.source,
+        p.source === "akshare" ? p.symbol : null,
+        p.asof,
+        p.start,
+        p.lookback,
+    ]);
 export function sortedMatches(rows) {
     return [...rows].sort(
         (a, b) =>
@@ -75,103 +84,39 @@ export class BuyPoints {
         this.$ = (id) => document.getElementById(id);
         this.generation = 0;
         this.$("scan-start").addEventListener("click", () => this.start());
-        this.$("scan-cancel").addEventListener("click", () => this.cancel());
         this.$("scan-lookback").addEventListener("change", () => this.contextChanged());
-        for (const buy of [false, true])
-            this.$(buy ? "buy-points-tab" : "all-stocks-tab").addEventListener("click", () => {
-                this.$("stock-list").hidden = buy;
-                this.$("stock-search-controls").hidden = buy;
-                this.$("buy-points-panel").hidden = !buy;
-                this.$("buy-points-tab").setAttribute("aria-pressed", String(buy));
-                this.$("all-stocks-tab").setAttribute("aria-pressed", String(!buy));
-            });
     }
     params() {
         return { ...this.getContext(), lookback: Number(this.$("scan-lookback").value) };
     }
     contextChanged() {
         if (this.key && this.key !== scanContextKey(this.params())) {
-            const old = this.job;
             this.generation++;
-            clearTimeout(this.timer);
-            this.pollController?.abort();
             this.job = null;
             this.key = null;
             this.$("buy-points-list").replaceChildren();
-            this.$("scan-status").textContent = "日期、策略或数据范围已变化，请重新扫描。";
+            this.$("scan-status").textContent = "日期、策略或数据范围已变化，请重新查询。";
             this.$("scan-start").disabled = false;
-            this.$("scan-cancel").disabled = true;
-            if (old && ["running", "cancelling"].includes(old.status))
-                this.api("/api/buy-scan/cancel", { id: old.id }, undefined, "POST").catch(() => {});
         }
         if (!this.job) this.$("scan-start").disabled = false;
     }
     async start() {
         const generation = ++this.generation;
-        clearTimeout(this.timer);
-        this.pollController?.abort();
         this.job = null;
         const params = this.params();
         this.key = scanContextKey(params);
         this.$("scan-start").disabled = true;
-        this.$("scan-status").textContent = "正在准备股票范围…";
+        this.$("scan-status").textContent = "正在读取服务器预计算结果…";
         this.$("buy-points-list").replaceChildren();
         try {
-            const job = await this.api("/api/buy-scan", params, undefined, "POST");
-            if (generation !== this.generation) {
-                if (job.status === "running")
-                    this.api("/api/buy-scan/cancel", { id: job.id }, undefined, "POST").catch(() => {});
-                return;
-            }
+            const job = await this.api("/api/buy-signals", params);
+            if (generation !== this.generation) return;
             this.job = job;
             this.render();
-            this.poll(generation);
         } catch (e) {
             if (generation !== this.generation) return;
-            this.$("scan-status").textContent = "扫描启动失败：" + e.message;
+            this.$("scan-status").textContent = "预计算结果暂不可用：" + e.message;
             this.$("scan-start").disabled = false;
-        }
-    }
-    async poll(generation) {
-        if (generation !== this.generation || !["running", "cancelling"].includes(this.job?.status)) return;
-        this.pollController = new AbortController();
-        try {
-            // Server waits at most 20 seconds, but returns immediately on any result
-            // or progress change. No polling interval delays newly matched stocks.
-            const job = await this.api(
-                "/api/buy-scan",
-                { id: this.job.id, after: this.job.revision },
-                this.pollController.signal,
-            );
-            if (generation !== this.generation) return;
-            if (job.revision >= this.job.revision) {
-                this.job = job;
-                this.render();
-            }
-            this.poll(generation);
-        } catch (e) {
-            if (generation !== this.generation || e.name === "AbortError") return;
-            this.$("scan-status").textContent = "实时更新中断（已显示结果保留，正在重连）：" + e.message;
-            this.$("scan-start").disabled = false;
-            this.timer = setTimeout(() => this.poll(generation), 1500);
-        }
-    }
-    async cancel() {
-        if (!this.job) return;
-        const generation = this.generation;
-        this.$("scan-cancel").disabled = true;
-        try {
-            const job = await this.api("/api/buy-scan/cancel", { id: this.job.id }, undefined, "POST");
-            if (generation !== this.generation) return;
-            if (job.revision >= this.job.revision) {
-                this.job = job;
-                this.render();
-            }
-        } catch (e) {
-            if (generation === this.generation) {
-                this.$("scan-status").textContent = "取消失败：" + e.message;
-                this.$("scan-cancel").disabled = false;
-            }
         }
     }
     render() {
@@ -179,16 +124,16 @@ export class BuyPoints {
             p = j.params,
             active = ["running", "cancelling"].includes(j.status);
         this.$("scan-start").disabled = active;
-        this.$("scan-cancel").disabled = !active || j.status === "cancelling";
         const stages = {
             running: "扫描中（部分结果）",
             cancelling: "正在取消",
             cancelled: "已取消（部分结果）",
             completed: "扫描完成",
+            ready: "预计算结果已就绪",
             failed: "扫描失败，结果作废",
         };
         this.$("scan-status").textContent =
-            `${p.asof} · ${profileName(p.variant)} · ${p.source === "tdx" ? "通达信主板" : "封存样本"}\n${stages[j.status]} ${j.processed} / ${j.total}，已发现并展示 ${j.results.length} 只（匹配）；跳过 ${j.skipped}，过期 ${j.stale}，失败 ${j.failed}。${active ? "找到即展示，可直接点击复盘。" : ""}${j.current ? `当前计算 ${j.current}。` : ""}${j.error || ""}`;
+            `${p.asof} · ${profileName(p.variant)} · ${p.source === "tdx" ? "通达信主板" : p.source === "akshare" ? "AkShare 当前股票" : "封存样本"}\n${stages[j.status] || j.status} ${j.processed} / ${j.total}，命中 ${j.results.length} 只；跳过 ${j.skipped}，过期 ${j.stale}，失败 ${j.failed}。${j.snapshot?.computed_at ? `后台计算于 ${j.snapshot.computed_at}。` : ""}${j.error || ""}`;
         if (j.performance && p.source === "tdx")
             this.$("scan-status").textContent +=
                 `\n缓存复用 ${j.performance.cache_hits} 只 · 新算 ${j.performance.recomputed} 只 · 用时 ${j.performance.elapsed_seconds.toFixed(1)} 秒（首次及行情更新后需重算）。`;
@@ -227,7 +172,7 @@ export class BuyPoints {
             empty.className = "stock-empty";
             empty.textContent = active
                 ? "正在逐股计算，请勿把暂时为空当成扫描结论。"
-                : j.status === "completed"
+                : ["completed", "ready"].includes(j.status)
                   ? "已处理范围内没有匹配信号；失败和跳过的股票不属于已验证范围。"
                   : "未获得完整筛选结果。";
             list.append(empty);

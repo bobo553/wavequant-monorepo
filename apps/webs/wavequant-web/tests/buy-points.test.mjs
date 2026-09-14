@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { funnelLines, profileName, scanContextKey, sortedMatches } from "../public/buy-points.js";
+
+test("buy-point UI reads published snapshots and cannot start interactive scans", async () => {
+    const source = await readFile(new URL("../public/buy-points.js", import.meta.url), "utf8");
+    assert.match(source, /\/api\/buy-signals/);
+    assert.doesNotMatch(source, /\/api\/buy-scan/);
+    assert.doesNotMatch(source, /method.*POST/);
+});
 
 test("version labels and gate units distinguish stock totals from repeated evaluations", () => {
     assert.equal(profileName("lecture_v1"), "讲义因果版 V1");
@@ -13,7 +21,7 @@ test("version labels and gate units distinguish stock totals from repeated evalu
     assert.deepEqual(funnelLines(null), []);
 });
 
-test("scan context changes with date, strategy, scope, costs, start and window but not selected symbol", () => {
+test("scan context ignores selected symbol for market scans but tracks it for AkShare", () => {
     const p = {
         run: "r",
         variant: "strict_full",
@@ -25,6 +33,8 @@ test("scan context changes with date, strategy, scope, costs, start and window b
     };
     for (const key of Object.keys(p)) assert.notEqual(scanContextKey(p), scanContextKey({ ...p, [key]: "changed" }));
     assert.equal(scanContextKey(p), scanContextKey({ ...p, symbol: "sh.600519" }));
+    const akshare = { ...p, source: "akshare", symbol: "sh.600519" };
+    assert.notEqual(scanContextKey(akshare), scanContextKey({ ...akshare, symbol: "sz.000651" }));
 });
 test("recent dates sort first; stable symbol ordering and input is immutable", () => {
     const rows = [
