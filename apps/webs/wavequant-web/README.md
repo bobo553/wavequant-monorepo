@@ -24,7 +24,7 @@ pnpm --filter wavequant-web build
 pnpm --filter wavequant-web dev
 ```
 
-该命令同时启动 Next.js（`http://localhost:3003`）和只读 WaveQuant API（默认 `8765`），并代理 `/api/*`。它会优先读取 `WAVEQUANT_RESULTS_ROOT` 与 `WAVEQUANT_TDX_ROOT`；当前迁移机器未设置变量时会回退到 `E:\WorkSpace\股票\results\operations_v1` 和 `D:\TDX`。研究页可从“数据 / 结果口径”选择 AkShare 或通达信；图表仍按需读取行情，但“符合买点”和“结构信号”只查询服务器预先发布到 SQL/Redis 的结果。AkShare 结构入口展示服务器预计算覆盖范围内的市场级匹配列表，不随当前图表股票变化；支持上证、深证、创业板、科创板和北京市场多选，默认前三项，名称含星号的股票由服务端排除。没有任何完成分片时页面才显示带 Worker 提示的暂不可用状态。
+该命令同时启动 Next.js（`http://localhost:3003`）和只读 WaveQuant API（默认 `8765`），并代理 `/api/*`。它会优先读取 `WAVEQUANT_RESULTS_ROOT` 与 `WAVEQUANT_TDX_ROOT`；当前迁移机器未设置变量时会回退到 `E:\WorkSpace\股票\results\operations_v1` 和 `D:\TDX`。研究页可从“数据 / 结果口径”选择 AkShare 或通达信，并在图表标题区切换日、周、月、季、年 K 线；趋势、结构标识和历史回放会使用同一服务器周期，最后一个未完成周期会明确提示。封存样本与策略回测仍锁定日线，避免聚合行情改变成交语义。图表仍按需读取行情，但“符合买点”和“结构信号”只查询服务器预先发布到 SQL/Redis 的日线结果。AkShare 结构入口展示服务器预计算覆盖范围内的市场级匹配列表，不随当前图表股票变化；支持上证、深证、创业板、科创板和北京市场多选，默认前三项，名称含星号的股票由服务端排除。没有任何完成分片时页面才显示带 Worker 提示的暂不可用状态。
 
 开发态直接打开 `http://127.0.0.1:8765/` 时，API 会临时重定向到 Next.js 的 `http://127.0.0.1:3003/`；这既保留了旧入口，也避免由两个进程分别提供两份页面。
 

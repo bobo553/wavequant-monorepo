@@ -137,10 +137,15 @@ class AkShareBrowserTests(unittest.TestCase):
 
     def test_history_uses_tencent_when_primary_and_sina_are_unavailable(self):
         class TencentFallbackClient(Client):
+            def __init__(self):
+                super().__init__()
+                self.sina_calls = 0
+
             def stock_zh_a_hist(self, **kwargs):
                 raise ConnectionError("primary unavailable")
 
             def stock_zh_a_daily(self, **kwargs):
+                self.sina_calls += 1
                 raise ConnectionError("sina unavailable")
 
             def stock_zh_a_hist_tx(self, **kwargs):
@@ -164,6 +169,12 @@ class AkShareBrowserTests(unittest.TestCase):
         self.assertEqual(view["history_endpoint"], "stock_zh_a_hist_tx")
         self.assertEqual(view["bars"][0]["volume"], 12_300)
         self.assertEqual(client.history_calls[0]["symbol"], "sh600519")
+        self.assertNotEqual(client.history_calls[0]["start_date"], "19900101")
+        self.assertEqual(len(client.history_calls[0]["start_date"]), 8)
+        second = browser.view("sz.000001", "2026-01-03")
+        self.assertEqual(second["history_endpoint"], "stock_zh_a_hist_tx")
+        self.assertEqual(client.sina_calls, 1)
+        self.assertEqual(client.history_calls[1]["symbol"], "sz000001")
 
     def test_provider_hides_upstream_exception_details(self):
         class FailedClient:

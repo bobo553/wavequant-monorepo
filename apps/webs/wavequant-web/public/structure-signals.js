@@ -1,9 +1,10 @@
 import { num, pct, symbolName } from "./labels.js";
 
 const signalNames = {
-    any: "空翻多 / 空多交替",
+    any: "空翻多 / 空多交替 / 转多",
     bear_to_bull: "空翻多高点",
     bear_bull_alternation: "空多交替低点",
+    bullish_turn: "转多信号",
 };
 const levelNames = { 1: "Ⅰ 一级", 2: "Ⅱ 二级", 3: "Ⅲ 三级" };
 const marketOrder = ["shanghai", "shenzhen", "chinext", "star", "beijing"];
@@ -18,6 +19,31 @@ const marketNames = {
 /** 将任意勾选顺序规整为服务端缓存使用的稳定市场键。 */
 export const normalizeStructureMarkets = (markets) =>
     marketOrder.filter((market) => markets.includes(market)).join(",");
+
+function structureMarket(symbol) {
+    const normalized = typeof symbol === "string" ? symbol.toLowerCase() : "";
+    const code = normalized.split(".")[1] || "";
+    if (normalized.startsWith("bj.")) return "beijing";
+    if (normalized.startsWith("sh.")) return code.startsWith("688") || code.startsWith("689") ? "star" : "shanghai";
+    if (normalized.startsWith("sz.")) return code.startsWith("300") || code.startsWith("301") ? "chinext" : "shenzhen";
+    return null;
+}
+
+/** 使用页面启动时已加载的目录解释预计算进度，不触发新的行情或信号请求。 */
+export function structureUniverseCoverage(stocks, markets) {
+    const selected = new Set((markets || "").split(",").filter(Boolean));
+    const catalog = Array.isArray(stocks)
+        ? stocks.filter(
+              (stock) =>
+                  structureMarket(stock?.symbol) && (!stock.catalog_source || stock.catalog_source === "akshare"),
+          )
+        : [];
+    const selectedStocks = catalog.filter((stock) => {
+        const name = typeof stock.name === "string" ? stock.name : "";
+        return selected.has(structureMarket(stock.symbol)) && !name.includes("*") && !name.includes("＊");
+    }).length;
+    return { catalogStocks: catalog.length, selectedStocks };
+}
 
 /** 结构筛选始终读取服务器发布的市场级读模型，与当前图表股票无关。 */
 export const structureScanContextKey = (params) =>
@@ -46,8 +72,8 @@ export function sortedStructureMatches(rows) {
 
 /** 查询后台已发布的结构读模型；浏览器请求绝不触发逐股计算。 */
 export class StructureSignals {
-    constructor({ api, getContext, onSelect }) {
-        Object.assign(this, { api, getContext, onSelect });
+    constructor({ api, getContext, getUniverse = () => [], onSelect }) {
+        Object.assign(this, { api, getContext, getUniverse, onSelect });
         this.$ = (id) => document.getElementById(id);
         this.generation = 0;
         this.$("structure-scan-start").addEventListener("click", () => this.start());
@@ -122,13 +148,17 @@ export class StructureSignals {
         this.$("structure-scan-start").disabled = false;
         const online = params.source === "akshare";
         const publishedStocks = response.coverage?.published_stocks ?? response.processed;
+        const { catalogStocks, selectedStocks } = structureUniverseCoverage(this.getUniverse(), params.markets);
+        const akshareCoverage = catalogStocks
+            ? `AkShare ${publishedStocks >= catalogStocks ? "全市场快照已就绪" : "后台重建中"}：已发布 ${publishedStocks} / ${catalogStocks} 只；当前筛选市场 ${selectedStocks} 只`
+            : `AkShare 市场快照已发布 ${publishedStocks} 只`;
         const selectedMarkets = (params.markets || "shanghai,shenzhen,chinext")
             .split(",")
             .map((market) => marketNames[market] || market)
             .join("、");
         this.$("structure-scan-status").textContent =
             `${params.asof} · ${selectedMarkets} · ${signalNames[params.signal_type]} · ${params.trend_level ? levelNames[params.trend_level] : "全部级别"}\n` +
-            `${online ? `AkShare 市场快照已覆盖 ${publishedStocks} 只股票` : "全市场快照已就绪"}，发现 ${response.results.length} 个已确认结构（${matchedStocks} 只股票）；跳过 ${response.skipped}，过期 ${response.stale}，失败 ${response.failed}。\n` +
+            `${online ? akshareCoverage : "全市场快照已就绪"}，发现 ${response.results.length} 个已确认结构（${matchedStocks} 只股票）；跳过 ${response.skipped}，过期 ${response.stale}，失败 ${response.failed}。\n` +
             `已排除名称含 * 的股票 · 预计算完成 ${calculated} · 行情 ${snapshot.data_version.slice(0, 8)} · 算法 ${snapshot.algorithm_version.slice(0, 8)}`;
 
         const list = this.$("structure-signal-list");
@@ -160,7 +190,9 @@ export class StructureSignals {
                 evidence.textContent =
                     result.signal_type === "bear_to_bull"
                         ? `严格突破末跌高 ${num(result.evidence?.broken_key?.value)} 元`
-                        : `由 ${result.evidence?.confirmed_flip_high?.label || "翻多高点"} 回档 ${pct(result.evidence?.retracement_ratio)} 确认`;
+                        : result.signal_type === "bullish_turn"
+                          ? `收盘 ${num(result.evidence?.previous_close)} → ${num(result.value)}，严格突破空翻多高点 ${num(result.evidence?.breakout_level)} 元`
+                          : `由 ${result.evidence?.confirmed_flip_high?.label || "翻多高点"} 回档 ${pct(result.evidence?.retracement_ratio)} 确认`;
                 button.append(name, status, timing, evidence);
                 button.addEventListener("click", () => this.onSelect(result, params));
             }

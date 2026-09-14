@@ -202,7 +202,7 @@ class InfrastructureTests(unittest.TestCase):
             )
 
         snapshots = repository.list_structure_snapshots(
-            "run-001", "lecture_v1", "akshare", "2026-09-07", "a" * 64
+            "run-001", "lecture_v1", "akshare", "2026-09-07", "a" * 64, limit=2
         )
 
         self.assertEqual([snapshot.scope_symbol for snapshot in snapshots], ["sh.600519", "sz.000001"])

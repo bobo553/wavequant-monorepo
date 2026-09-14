@@ -235,7 +235,11 @@ class MarketDataRepository:
         complete_by_day = {bar.timestamp.date(): bar for bar in primary_complete}
         # Only a stale/failed preferred source needs supplementation.  This
         # avoids turning a healthy local read into an unnecessary network call.
-        needs_supplement = resolved_source != selected or primary_prefix[-1].timestamp.date() < requested
+        needs_supplement = (
+            resolved_source != selected
+            or primary_prefix[-1].timestamp.date() < requested
+            or len(primary_complete) < 250
+        )
         if needs_supplement:
             for candidate in order:
                 if candidate == resolved_source or (candidate == selected and primary_error is not None):

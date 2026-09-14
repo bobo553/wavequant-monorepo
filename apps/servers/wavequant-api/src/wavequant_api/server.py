@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hashlib
 import json
 import logging
 import mimetypes
@@ -15,6 +16,7 @@ from wavequant.interfaces.charts.visualization import ChartRepository
 from .application import (
     BuySignalSnapshotService,
     BuySignalSnapshotUnavailable,
+    MarketTimeframeService,
     StructureSnapshotService,
     StructureSnapshotUnavailable,
 )
@@ -84,20 +86,32 @@ def make_server(
     web_redirect = normalize_loopback_web_url(web_url)
     structure_snapshots = StructureSnapshotService(repository, infrastructure) if infrastructure is not None else None
     buy_snapshots = BuySignalSnapshotService(repository, infrastructure) if infrastructure is not None else None
+    market_data = getattr(repository, "market_data", None)
+    market_timeframes = MarketTimeframeService(market_data) if market_data is not None else None
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
             pass
 
-        def send(self, status, body, content_type="application/json; charset=utf-8"):
+        def send(
+            self,
+            status,
+            body,
+            content_type="application/json; charset=utf-8",
+            *,
+            cache_control="no-store",
+            headers=None,
+        ):
             if not isinstance(body, bytes):
                 body = json.dumps(body, ensure_ascii=False, allow_nan=False).encode()
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", cache_control)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
             self.send_header(
                 "Content-Security-Policy",
                 "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
@@ -107,6 +121,21 @@ def make_server(
                 self.wfile.write(body)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass
+
+        def send_versioned_catalog(self, catalog):
+            body = json.dumps(
+                catalog,
+                ensure_ascii=False,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+            etag = f'"{hashlib.sha256(body).hexdigest()}"'
+            headers = {"ETag": etag}
+            if self.headers.get("If-None-Match") == etag:
+                self.send(304, b"", cache_control="private, no-cache", headers=headers)
+                return
+            self.send(200, body, cache_control="private, no-cache", headers=headers)
 
         def redirect(self, location):
             """Send a non-cacheable development redirect without a response body."""
@@ -170,8 +199,7 @@ def make_server(
                     )
                     return
                 if url.path == "/api/tdx-catalog":
-                    self.send(
-                        200,
+                    self.send_versioned_catalog(
                         repository.market_data.catalog("tdx")
                         if repository.tdx
                         else dict(available=False, stocks=[], with_daily=0, notice="未配置通达信目录"),
@@ -181,9 +209,11 @@ def make_server(
                     if url.query:
                         raise ValueError("AkShare catalog does not accept query arguments")
                     if repository.akshare is None:
-                        self.send(200, dict(available=False, stocks=[], with_daily=0, notice="AkShare 数据源已禁用"))
+                        self.send_versioned_catalog(
+                            dict(available=False, stocks=[], with_daily=0, notice="AkShare 数据源已禁用")
+                        )
                     else:
-                        self.send(200, repository.market_data.catalog("akshare"))
+                        self.send_versioned_catalog(repository.market_data.catalog("akshare"))
                     return
                 q = parse_qs(url.query, strict_parsing=True, keep_blank_values=True)
                 if any(len(v) != 1 for v in q.values()):
@@ -216,24 +246,24 @@ def make_server(
                     self.send(200, buy_snapshots.query(params))
                     return
                 if url.path in ("/api/tdx-view", "/api/tdx-theory"):
-                    if set(q) != {"symbol", "asof"}:
+                    if set(q) not in ({"symbol", "asof"}, {"symbol", "asof", "timeframe"}):
                         raise ValueError("invalid TDX arguments")
                     if repository.tdx is None:
                         raise ValueError("通达信目录未配置")
-                    method = repository.market_data.view if url.path == "/api/tdx-view" else repository.market_data.theory
-                    self.send(200, method("tdx", q["symbol"][0], q["asof"][0]))
+                    if market_timeframes is None:
+                        raise ValueError("行情仓库未配置")
+                    method = market_timeframes.view if url.path == "/api/tdx-view" else market_timeframes.theory
+                    self.send(200, method("tdx", q["symbol"][0], q["asof"][0], q.get("timeframe", ["1d"])[0]))
                     return
                 if url.path in ("/api/akshare-view", "/api/akshare-theory"):
-                    if set(q) != {"symbol", "asof"}:
+                    if set(q) not in ({"symbol", "asof"}, {"symbol", "asof", "timeframe"}):
                         raise ValueError("invalid AkShare arguments")
                     if repository.akshare is None:
                         raise AkShareUnavailable("AkShare 数据源已禁用")
-                    method = (
-                        repository.market_data.view
-                        if url.path == "/api/akshare-view"
-                        else repository.market_data.theory
-                    )
-                    self.send(200, method("akshare", q["symbol"][0], q["asof"][0]))
+                    if market_timeframes is None:
+                        raise ValueError("行情仓库未配置")
+                    method = market_timeframes.view if url.path == "/api/akshare-view" else market_timeframes.theory
+                    self.send(200, method("akshare", q["symbol"][0], q["asof"][0], q.get("timeframe", ["1d"])[0]))
                     return
                 if url.path == "/api/health":
                     if set(q) != {"run"}:

@@ -9,7 +9,7 @@ import json
 import re
 from typing import Any
 
-from sqlalchemy import JSON, Column, DateTime, Index, Integer, MetaData, String, Table, create_engine, select
+from sqlalchemy import JSON, Column, DateTime, Index, Integer, MetaData, String, Table, create_engine, func, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -339,27 +339,35 @@ class ResearchRunRepository:
             raise ValueError("asof must use YYYY-MM-DD")
         if type(limit) is not int or not 1 <= limit <= 20_000:
             raise ValueError("limit must be between 1 and 20000")
-        statement = select(structure_signal_snapshots).where(
+        filters = [
             structure_signal_snapshots.c.run_id == run_id,
             structure_signal_snapshots.c.source == source,
             structure_signal_snapshots.c.scope_symbol.is_not(None),
             structure_signal_snapshots.c.asof == asof,
             structure_signal_snapshots.c.algorithm_version == algorithm_version,
-        )
+        ]
         if variant is not None:
-            statement = statement.where(structure_signal_snapshots.c.variant == variant)
-        statement = statement.order_by(
-            structure_signal_snapshots.c.scope_symbol,
-            structure_signal_snapshots.c.updated_at.desc(),
-        ).limit(limit)
+            filters.append(structure_signal_snapshots.c.variant == variant)
+        ranked = (
+            select(
+                *structure_signal_snapshots.c,
+                func.row_number()
+                .over(
+                    partition_by=structure_signal_snapshots.c.scope_symbol,
+                    order_by=structure_signal_snapshots.c.updated_at.desc(),
+                )
+                .label("scope_rank"),
+            )
+            .where(*filters)
+            .subquery()
+        )
+        # Rank before applying the caller's scope limit. Limiting raw history
+        # rows first can silently drop symbols that sort after stocks with many
+        # data-version snapshots.
+        statement = select(ranked).where(ranked.c.scope_rank == 1).order_by(ranked.c.scope_symbol).limit(limit)
         with self.engine.connect() as connection:
             rows = connection.execute(statement).mappings().all()
-        newest: dict[str, StructureSnapshot] = {}
-        for row in rows:
-            snapshot = self._structure_from_row(row)
-            if snapshot.scope_symbol is not None and snapshot.scope_symbol not in newest:
-                newest[snapshot.scope_symbol] = snapshot
-        return [newest[symbol] for symbol in sorted(newest)]
+        return [self._structure_from_row(row) for row in rows]
 
     def save_buy_signal_snapshot(self, snapshot: BuySignalSnapshot) -> BuySignalSnapshot:
         """Atomically publish a completed buy-signal snapshot."""

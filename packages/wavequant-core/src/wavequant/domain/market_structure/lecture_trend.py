@@ -8,8 +8,13 @@ from collections import Counter
 
 from .polyline import LinePoint, PointKind, ReversalPoint
 from .price_action import Direction
-from .trend_landmarks import bear_bull_alternation_lows, bear_to_bull_highs, post_alternation_bull_highs
-from .trend_structure import observe_structure, StructuralTrend, retracement_evidence
+from .trend_landmarks import (
+    bear_bull_alternation_lows,
+    bear_to_bull_highs,
+    bullish_turn_signals,
+    post_alternation_bull_highs,
+)
+from .trend_structure import StructuralTrend, retracement_evidence
 
 
 def _ref(p):
@@ -179,7 +184,8 @@ def _connect_reversal_strokes(strokes,source_strokes):
 
 
 def _annotate(points, symbol, dates):
-    known=[]; high_count=low_count=0
+    highs=[]; lows=[]; previous_known=None; all_up=all_down=True
+    high_count=low_count=0
     background=None; anchor=key=attack=None; suspicion=False
     for j,p in enumerate(points):
         if p['kind']=='H': high_count+=1; p['label']=f'H{high_count}'
@@ -191,12 +197,37 @@ def _annotate(points, symbol, dates):
             name='末升低' if p['kind']=='H' else '末跌高'
             p['preceding_turn']=_ref(previous)
             p['levels'].append(dict(name=f'{p["label"]} 的{name}',price=previous['value']))
-        known.append(ReversalPoint(LinePoint(p['index'],p['ordinal'],PointKind(p['kind']),p['value']),
-                                   dates[p['available_at']],'lecture_geometric_turn_not_strategy'))
-        context=observe_structure(known,symbol=symbol,timeframe='1d',window_start=known[0].point.index,
-                                  asof_index=known[-1].confirmed_index)
-        p['trend']=context.trend.value
-        p['window_trend']=context.window_trend.value
+        current=ReversalPoint(LinePoint(p['index'],p['ordinal'],PointKind(p['kind']),p['value']),
+                              dates[p['available_at']],'lecture_geometric_turn_not_strategy')
+        if previous_known:
+            if ((current.point.index,current.point.ordinal)<=
+                    (previous_known.point.index,previous_known.point.ordinal)
+                    or current.point.kind==previous_known.point.kind
+                    or current.confirmed_index<previous_known.confirmed_index):
+                raise ValueError('ordered alternating causally confirmed points required')
+            if ((current.point.kind==PointKind.HIGH and current.point.price<=previous_known.point.price)
+                    or (current.point.kind==PointKind.LOW and current.point.price>=previous_known.point.price)):
+                raise ValueError('nonzero alternating high/low legs required')
+        same_kind=highs if current.point.kind==PointKind.HIGH else lows
+        if same_kind:
+            all_up=all_up and current.point.price>same_kind[-1].point.price
+            all_down=all_down and current.point.price<same_kind[-1].point.price
+        same_kind.append(current)
+        previous_known=current
+
+        if len(highs)<2 or len(lows)<2:
+            trend=window_trend=StructuralTrend.UNKNOWN
+        else:
+            higher_high=highs[-1].point.price>highs[-2].point.price
+            higher_low=lows[-1].point.price>lows[-2].point.price
+            lower_high=highs[-1].point.price<highs[-2].point.price
+            lower_low=lows[-1].point.price<lows[-2].point.price
+            trend=(StructuralTrend.BULL if higher_high and higher_low else
+                   StructuralTrend.BEAR if lower_high and lower_low else StructuralTrend.MIXED)
+            window_trend=(StructuralTrend.BULL if all_up else
+                          StructuralTrend.BEAR if all_down else StructuralTrend.MIXED)
+        p['trend']=trend.value
+        p['window_trend']=window_trend.value
 
         def observation(title, **extra):
             p['observations'].append(dict(title=title,available_at=p['available_at'],
@@ -206,8 +237,8 @@ def _annotate(points, symbol, dates):
                 p['levels'].append(dict(name='转换依据：'+('末跌高' if ref['kind']=='H' else '末升低'),price=ref['value']))
 
         if background is None:
-            if context.trend in (StructuralTrend.BULL,StructuralTrend.BEAR):
-                background=context.trend
+            if trend in (StructuralTrend.BULL,StructuralTrend.BEAR):
+                background=trend
                 anchor,key=_context_key(points[:j+1],background==StructuralTrend.BULL)
             continue
         if key is None:
@@ -285,6 +316,7 @@ def reversal_trends(drawing, bars):
                 bear_to_bull_highs=bear_to_bull_highs(result,trend_level=1),
                 bear_bull_alternation_lows=bear_bull_alternation_lows(result,trend_level=1),
                 post_alternation_bull_highs=post_alternation_bull_highs(result,trend_level=1),
+                bullish_turn_signals=bullish_turn_signals(result,bars,trend_level=1),
                 aggregation_rule='HH_HL_or_LH_LL_switch_with_confirmed_cross_path_extremes',input_turn_count=local_count,
                 confirmed_wave_count=sum(len(s['points']) for s in result),
                 break_basis='confirmed_polyline_extreme',retracement_threshold=.67,

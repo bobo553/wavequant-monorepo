@@ -98,6 +98,24 @@ class MarketDataRepositoryTests(unittest.TestCase):
         self.assertTrue(view["source_fallback"])
         self.assertEqual(len(view["bars"]), 2)
 
+    def test_short_online_history_is_backfilled_from_local_without_overwriting_online_values(self):
+        online = FakeAdapter(
+            "akshare",
+            {"sh.600000": [bar(2, 12), bar(3, 13)]},
+            [{"symbol": "sh.600000", "name": "浦发银行", "has_data": True}],
+        )
+        local = FakeAdapter(
+            "tdx",
+            {"sh.600000": [bar(1, 10), bar(2, 99)]},
+            [{"symbol": "sh.600000", "name": "浦发银行", "has_data": True}],
+        )
+
+        window = MarketDataRepository([online, local]).window("akshare", "sh.600000", "2026-01-03")
+
+        self.assertEqual(window.providers, ("akshare", "tdx"))
+        self.assertEqual(window.supplemented_bars, 1)
+        self.assertEqual([value.close for value in window.bars], [10, 12, 13])
+
     def test_provider_switches_share_the_same_domain_theory_contract(self):
         rows = [bar(1, 10), bar(2, 12), bar(3, 11), bar(4, 13)]
         stocks = [{"symbol": "sh.600000", "name": "浦发银行", "has_data": True}]

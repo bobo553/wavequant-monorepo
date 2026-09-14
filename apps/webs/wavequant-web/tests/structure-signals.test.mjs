@@ -5,6 +5,7 @@ import {
     normalizeStructureMarkets,
     sortedStructureMatches,
     structureScanContextKey,
+    structureUniverseCoverage,
 } from "../public/structure-signals.js";
 
 test("structure context ignores the selected stock for every market source", () => {
@@ -32,6 +33,28 @@ test("structure markets use a stable server cache order", () => {
         "shanghai,chinext,star,beijing",
     );
     assert.equal(normalizeStructureMarkets([]), "");
+});
+
+test("AkShare coverage distinguishes the full catalog from the selected eligible universe", () => {
+    const stocks = [
+        { symbol: "sh.600000", name: "浦发银行" },
+        { symbol: "sh.688001", name: "科创样本" },
+        { symbol: "sz.000001", name: "平安银行" },
+        { symbol: "sz.300001", name: "创业样本" },
+        { symbol: "bj.430001", name: "北交样本" },
+        { symbol: "sh.600001", name: "*ST 沪股" },
+        { symbol: "sh.600002", name: "退市样本", catalog_source: "tdx" },
+        { symbol: "invalid", name: "无效代码" },
+    ];
+
+    assert.deepEqual(structureUniverseCoverage(stocks, "shanghai,shenzhen,chinext"), {
+        catalogStocks: 6,
+        selectedStocks: 3,
+    });
+    assert.deepEqual(structureUniverseCoverage(stocks, "star,beijing"), {
+        catalogStocks: 6,
+        selectedStocks: 2,
+    });
 });
 
 test("structure results sort by confirmation date, level, event date and symbol without mutation", () => {

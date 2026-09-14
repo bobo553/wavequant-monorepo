@@ -7,6 +7,8 @@ became knowable. Consumers may filter landmarks for display, but must not
 replace them with locally selected market highs.
 """
 
+from zoneinfo import ZoneInfo
+
 
 def _reference(point):
     """Copy stable evidence fields without exposing a mutable trend point."""
@@ -54,6 +56,14 @@ def _point_order(point):
     if not isinstance(point, dict):
         return -1, -1
     return point.get("index", -1), point.get("ordinal", 0)
+
+
+def _bar_date(bar):
+    """Return one market bar's Shanghai exchange date."""
+    timestamp = bar.timestamp
+    if timestamp.tzinfo:
+        timestamp = timestamp.astimezone(ZoneInfo("Asia/Shanghai"))
+    return timestamp.date().isoformat()
 
 
 def _complete_reference(point, *, kind):
@@ -333,4 +343,70 @@ def post_alternation_bull_highs(strokes, *, trend_level):
     return sorted(
         landmarks,
         key=lambda item: (item["index"], item.get("ordinal", 0), item["available_at"], item["source_path"]),
+    )
+
+
+def bullish_turn_signals(strokes, bars, *, trend_level):
+    """Return the first strict close breakout after each confirmed alternation.
+
+    The corresponding bear-to-bull high is frozen by Core evidence.  A signal
+    exists only when a later session moves from a previous close at or below
+    that price to a close strictly above it.  Intraday highs, equality and
+    crosses occurring before the alternation became knowable do not qualify.
+    """
+    alternation_lows = bear_bull_alternation_lows(strokes, trend_level=trend_level)
+    market = [(_bar_date(bar), index, bar) for index, bar in enumerate(bars)]
+    landmarks = []
+    for low in alternation_lows:
+        flip_high = low.get("confirmed_flip_high")
+        if not _complete_reference(flip_high, kind="H"):
+            continue
+        try:
+            breakout_level = flip_high["value"]
+            candidate = next(
+                (date, index, previous, current)
+                for (date, index, current), (_, _, previous) in zip(market[1:], market)
+                if date > low["available_at"]
+                and previous.close <= breakout_level < current.close
+            )
+        except (KeyError, TypeError, StopIteration):
+            continue
+
+        date, index, previous, current = candidate
+        landmarks.append(
+            dict(
+                id=(
+                    f'level{trend_level}-bullish-turn-signal-'
+                    f'{low["index"]}-{low.get("ordinal", 0)}-{index}-{date}'
+                ),
+                index=index,
+                ordinal=0,
+                time=date,
+                kind="K",
+                value=current.close,
+                available_at=date,
+                label=f"K{index + 1}·转多",
+                trend_level=trend_level,
+                source_level=trend_level,
+                source_path=low["source_path"],
+                source_available_at=date,
+                flip="转多信号",
+                confirmation_rule="first_strict_close_cross_above_flip_high_after_confirmed_alternation",
+                breakout_level=breakout_level,
+                previous_close=previous.close,
+                open=current.open,
+                high=current.high,
+                low=current.low,
+                close=current.close,
+                confirmed_alternation_low=_reference(low),
+                confirmed_flip_high=_reference(flip_high),
+                confirmed_bear_low=low["confirmed_bear_low"],
+                broken_key=low["broken_key"],
+                retracement_origin=low["retracement_origin"],
+                retracement_ratio=low["retracement_ratio"],
+            )
+        )
+    return sorted(
+        landmarks,
+        key=lambda item: (item["index"], item["available_at"], item["source_path"], item["id"]),
     )

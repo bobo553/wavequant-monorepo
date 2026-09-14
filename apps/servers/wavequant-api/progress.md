@@ -2,6 +2,11 @@
 
 ## Current State
 
+- `MONOREPO-056` 已完成：AkShare 与通达信 view/theory GET 接口接受可选 `timeframe`，缺省日线并拒绝未知周期；HTTP 层保持薄适配，API 应用服务聚合 Core 规范日线并把结果交给相同的结构算法。
+- `MONOREPO-055` 已完成：八个稳定动态分片已处理页面日期 2026-09-07 的 5,562 / 5,562 只当前有效 AkShare 股票；停牌股票保持统一市场基准日，截止日后上市股票发布明确空快照，当前分区完成后 Worker 空闲等待新行情日或算法版本。
+- `MONOREPO-054` 已完成：AkShare 与通达信股票目录响应包含基于规范 JSON 的稳定 ETag；匹配 `If-None-Match` 时返回 304/空响应体，目录变化时返回 200 和新版本。
+- `MONOREPO-053` 已完成：2026-09-07 AkShare 全目录结构 Worker 已从既有 296 个完成分片恢复断点续算；查询继续只聚合 SQL/Redis 已发布版本，不因页面读取触发计算。
+- `MONOREPO-052` 已完成：结构快照接受 `bullish_turn` 并直接过滤已发布的转多事件；查询不调用 Core 计算，算法变化后由 Worker 以新指纹逐股重建 AkShare 分片。
 - `MONOREPO-050` 已完成：结构快照查询按上证、深证、创业板、科创板、北京市场组合过滤，默认前三类，并在服务端排除名称含半角或全角星号的股票。
 - `MONOREPO-049` 已完成：AkShare 结构查询聚合服务器已发布的逐股分片，跨买点策略复用同一结构算法版本；全目录 Worker 隔离单股失败并继续后续股票。
 - `MONOREPO-048` 已完成：买点和结构信号各自拥有 SQL 完成快照与 Redis 查询缓存，HTTP 只读已发布版本且不再暴露启动/取消扫描的写接口。
@@ -22,6 +27,16 @@
 - `MONOREPO-017` 已完成：API 支持不依赖静态构建的开发模式，并接受显式声明的本机 Next.js 代理来源。
 
 ## Completed
+
+- MONOREPO-056 API 为 `/api/tdx-view`、`/api/tdx-theory`、`/api/akshare-view`、`/api/akshare-theory` 增加兼容的周期参数传递，旧请求继续按 `1d` 返回。
+
+- MONOREPO-055 API 消除逐股合并目录扫描，支持 1–16 个稳定互斥分片、未发布断点续算、统一市场基准日、截止日后上市空快照、先按股票取最新版本再分页和合法 Redis 市场组合键；真实覆盖 5,562 / 5,562，失败 0、跳过 4，Ruff、严格 mypy、53 项 pytest（另 1 项跳过）和构建通过。
+
+- MONOREPO-054 API 门禁通过 Ruff、严格 mypy、49 项 pytest（另 1 项跳过）和构建；真实 AkShare 目录首次响应约 1.24 MB，匹配 ETag 的二次请求返回 304、0 字节。
+
+- MONOREPO-053 真实 Worker 固定 `2026-09-07`、`lecture_v3` 与当前结构算法指纹运行，覆盖由 296 增至 342 后继续增长；同日只读 API 保持 `ready`，后台计算和交互查询边界未改变。
+
+- MONOREPO-052 API 门禁通过 Ruff、严格 mypy、49 项 pytest（另 1 项外部集成跳过）和 sdist/wheel 构建；真实 AkShare `bullish_turn` GET 在 2026-09-14 截面返回新算法版本 `ready`，命中永兴股份、星网锐捷、深物业 A、中国石化和中远通，常驻结构 Worker 已重启并继续扩展覆盖。
 
 - MONOREPO-050 API 门禁通过 Ruff、严格 mypy、49 项 pytest（另 1 项外部集成跳过）和 sdist/wheel 构建；市场组合进入 `signal:structure:v3:*` 缓存键，空值、未知值和重复值均被拒绝。
 
@@ -51,6 +66,8 @@
 - MONOREPO-044 新增 `wavequant_structure_snapshots` 事实表、完成后原子发布和 `GET /api/structure-signals`；一次性刷新与常驻检查命令会在行情或 Core 算法指纹变化后重建，Redis 故障不影响 SQL 发布或读取。
 
 ## Verification
+
+- MONOREPO-056 API 门禁通过 Ruff、严格 mypy、58 项 pytest（另 1 项跳过）和 sdist/wheel 构建；真实通达信五周期 view/theory 数据版本逐一一致，AkShare 周线可用，未知周期返回 400。
 
 - MONOREPO-048 API 门禁通过 Ruff、严格 mypy、45 项 pytest（另 1 项外部集成跳过）和 sdist/wheel 构建；真实 MySQL 8.4、Redis 8 的建表与健康检查通过，贵州茅台买点/结构快照独立发布并命中带 TTL 的分离缓存键。
 

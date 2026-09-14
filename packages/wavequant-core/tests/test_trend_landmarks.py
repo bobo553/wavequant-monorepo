@@ -1,8 +1,11 @@
+from datetime import datetime
 import unittest
 
+from wavequant.domain.models.model import Bar
 from wavequant.domain.market_structure.trend_landmarks import (
     bear_bull_alternation_lows,
     bear_to_bull_highs,
+    bullish_turn_signals,
     post_alternation_bull_highs,
 )
 
@@ -21,6 +24,75 @@ def point(index, kind, value, available_at, **extra):
 
 
 class TrendLandmarkTests(unittest.TestCase):
+    def test_first_strict_close_cross_after_confirmed_alternation_is_bullish_turn(self):
+        frozen_key = point(1, "H", 20, "2026-01-03")
+        bear_low = point(2, "L", 10, "2026-01-04")
+        flip_high = point(3, "H", 30, "2026-01-05")
+        alternation_low = point(
+            4,
+            "L",
+            18,
+            "2026-01-08",
+            observations=[{
+                "title": "空多交替",
+                "available_at": "2026-01-08",
+                "ratio": 0.6,
+                "flip_high": flip_high,
+                "confirmed_bear_low": bear_low,
+                "broken_key": frozen_key,
+                "origin": bear_low,
+            }],
+        )
+        bars = [
+            Bar(datetime(2026, 1, day), "sh.600000", 28, high, 27, close, 1000)
+            for day, high, close in ((7, 31, 29), (8, 32, 31), (9, 31, 30), (10, 33, 30), (11, 35, 31))
+        ]
+
+        signals = bullish_turn_signals(
+            [{"id": "level-one", "points": [bear_low, flip_high, alternation_low]}],
+            bars,
+            trend_level=1,
+        )
+
+        self.assertEqual([(item["time"], item["value"]) for item in signals], [("2026-01-11", 31)])
+        self.assertEqual(signals[0]["previous_close"], 30)
+        self.assertEqual(signals[0]["breakout_level"], 30)
+        self.assertEqual(signals[0]["confirmed_flip_high"]["time"], "2026-01-04")
+        self.assertEqual(signals[0]["confirmed_alternation_low"]["time"], "2026-01-05")
+
+    def test_intraday_touch_equality_and_pre_confirmation_cross_do_not_turn_bullish(self):
+        frozen_key = point(1, "H", 20, "2026-01-03")
+        bear_low = point(2, "L", 10, "2026-01-04")
+        flip_high = point(3, "H", 30, "2026-01-05")
+        alternation_low = point(
+            4,
+            "L",
+            18,
+            "2026-01-10",
+            observations=[{
+                "title": "空多交替",
+                "available_at": "2026-01-10",
+                "ratio": 0.6,
+                "flip_high": flip_high,
+                "confirmed_bear_low": bear_low,
+                "broken_key": frozen_key,
+                "origin": bear_low,
+            }],
+        )
+        bars = [
+            Bar(datetime(2026, 1, day), "sh.600000", 28, high, 27, close, 1000)
+            for day, high, close in ((8, 29, 29), (9, 35, 31), (10, 31, 30), (11, 35, 30), (12, 35, 29))
+        ]
+
+        self.assertEqual(
+            bullish_turn_signals(
+                [{"id": "level-one", "points": [bear_low, flip_high, alternation_low]}],
+                bars,
+                trend_level=1,
+            ),
+            [],
+        )
+
     def test_first_confirmed_high_after_alternation_ends_the_first_bull_leg(self):
         frozen_key = point(1, "H", 18.28, "2022-05-26")
         bear_low = point(2, "L", 13.16, "2022-06-01")

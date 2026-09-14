@@ -30,7 +30,7 @@ pnpm --filter wavequant-api python -- -m wavequant_api.cli --root "E:\WorkSpace\
 
 API 直接依赖 `wavequant-core[akshare,tdx]`，完整安装会包含现场复权回测所需的 `pytdx`、`pandas`，以及在线行情浏览使用的 AkShare。AkShare 提供只读行情、讲义结构绘图和当前股票信号分析；不会逐股抓取在线全市场，也不进入封存回测或交易证据。可用 `--akshare-timeout 30` 调整单次调用上限，或用 `--disable-akshare` 显式关闭。历史日线先短时探测 `stock_zh_a_hist`；该上游不可用时优先回退到速度更快的官方 `stock_zh_a_daily`，最后才使用按年份请求的 `stock_zh_a_hist_tx`。响应会标明实际接口。
 
-AkShare 路由为 `GET /api/akshare-catalog`、`GET /api/akshare-view?symbol=sh.600519&asof=YYYY-MM-DD` 和 `GET /api/akshare-theory?...`。信号查询统一使用只读 `GET /api/structure-signals` 与 `GET /api/buy-signals`；AkShare 买点仍要求 `symbol`，结构查询则是跨股票市场列表。结构查询可通过 `markets=shanghai,shenzhen,chinext,star,beijing` 选择市场，缺省为上证、深证、创业板，并统一排除名称含 `*` 或 `＊` 的股票。HTTP 请求只读取已发布快照，不抓行情、不运行理论算法，也不能通过 POST 启动扫描。快照缺失时响应 `503`，由独立 Worker 补算。
+AkShare 路由为 `GET /api/akshare-catalog`、`GET /api/akshare-view?symbol=sh.600519&asof=YYYY-MM-DD&timeframe=1d` 和 `GET /api/akshare-theory?...`；通达信行情与理论路由接受相同的可选 `timeframe`。周期支持 `1d`、`1w`、`1mo`、`3mo`、`1y`，缺省保持日线。周/月/季/年由服务器从规范日线按自然周期聚合，使用首开、最高、最低、末收、成交量求和，并以周期内最后一个实际交易日作为时间。信号查询统一使用只读 `GET /api/structure-signals` 与 `GET /api/buy-signals`；AkShare 买点仍要求 `symbol`，结构查询则是跨股票市场列表。结构查询可通过 `markets=shanghai,shenzhen,chinext,star,beijing` 选择市场，缺省为上证、深证、创业板，并统一排除名称含 `*` 或 `＊` 的股票。HTTP 请求只读取已发布快照，不抓行情、不运行理论算法，也不能通过 POST 启动扫描。快照缺失时响应 `503`，由独立 Worker 补算。
 
 ## MySQL 与 Redis
 

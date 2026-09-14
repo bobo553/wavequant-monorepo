@@ -18,6 +18,7 @@ from uuid import uuid4
 LANDMARK_FIELDS = {
     "bear_to_bull": "bear_to_bull_highs",
     "bear_bull_alternation": "bear_bull_alternation_lows",
+    "bullish_turn": "bullish_turn_signals",
 }
 LEVEL_FIELDS = {
     1: "reversal_trends",
@@ -134,12 +135,13 @@ class StructureScanner:
             raise ValueError("invalid date")
         if self.repository.akshare is None:
             raise ValueError("AkShare 数据源未配置")
+        # The full market-data catalog also merges the TDX fallback catalog.
+        # Rebuilding that union here would rescan thousands of local ``.day``
+        # files once per stock whenever its short metadata TTL expires.  The
+        # AkShare worker has already limited its scope to the live AkShare
+        # universe, whose provider catalog is cached independently for an hour.
         stock = next(
-            (
-                item
-                for item in self.repository.market_data.catalog("akshare")["stocks"]
-                if item["symbol"] == request["symbol"]
-            ),
+            (item for item in self.repository.akshare.catalog()["stocks"] if item["symbol"] == request["symbol"]),
             None,
         )
         if stock is None:

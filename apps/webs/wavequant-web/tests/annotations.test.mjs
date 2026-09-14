@@ -6,6 +6,7 @@ import {
     bearBullAlternationLowAnnotations,
     bearToBullHighAnnotations,
     buildAnnotations,
+    bullishTurnSignalAnnotations,
     lastFallHighAnnotations,
     markerGroups,
     postAlternationBullHighAnnotations,
@@ -419,6 +420,45 @@ test("post-alternation bull high marks the first confirmed rising leg endpoint",
     assert.equal(marker.position, "atPriceTop");
     assert.equal(marker.shape, "arrowDown");
     assert.equal(marker.price, 33.89);
+});
+
+test("bullish-turn signal marks the breakout close and retains its dashed-guide anchors", () => {
+    const landmark = {
+        id: "level1-bullish-turn-signal-1203-1250",
+        time: "2022-11-01",
+        available_at: "2022-11-01",
+        index: 1250,
+        kind: "K",
+        label: "K1251·转多",
+        value: 50.1,
+        previous_close: 49.56,
+        breakout_level: 49.56,
+        trend_level: 1,
+        source_path: "reversal-sample",
+        confirmed_alternation_low: { time: "2022-08-30", label: "L71", value: 29.75 },
+        confirmed_flip_high: { time: "2022-08-03", label: "H70", value: 49.56 },
+    };
+
+    assert.deepEqual(
+        bullishTurnSignalAnnotations([{ level: 1, landmarks: [landmark] }], "2022-05-01", "2022-10-31"),
+        [],
+    );
+    const [item] = bullishTurnSignalAnnotations(
+        [{ level: 1, landmarks: [landmark] }],
+        "2022-05-01",
+        "2022-11-01",
+    );
+    assert.equal(item.time, "2022-11-01");
+    assert.equal(item.price, 50.1);
+    assert.equal(item.category, "trend-bullish-turn-signals");
+    assert.equal(item.raw.confirmed_flip_high.time, "2022-08-03");
+    assert.match(item.title, /Ⅰ 转多信号 · K1251·转多 50.1/);
+    assert.match(item.description, /首次从下向上严格突破/);
+    assert.equal(visibleAnnotations([item], { ...options, bullishTurnSignals: false }).length, 0);
+    const marker = markerGroups([item], { ...options, bullishTurnSignals: true })[0].marker;
+    assert.equal(marker.position, "atPriceBottom");
+    assert.equal(marker.shape, "arrowUp");
+    assert.equal(marker.price, 50.1);
 });
 const view = {
     asof: "2026-01-03",

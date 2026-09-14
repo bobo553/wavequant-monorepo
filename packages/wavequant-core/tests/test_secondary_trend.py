@@ -45,6 +45,7 @@ class SecondaryTrendTests(unittest.TestCase):
         )
         self.assertIn('bear_bull_alternation_lows',result)
         self.assertIn('post_alternation_bull_highs',result)
+        self.assertIn('bullish_turn_signals',result)
 
     def test_prefix_stability_no_future_repainting(self):
         bars,source=fixture(self.values)

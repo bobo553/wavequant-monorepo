@@ -49,6 +49,29 @@ test("research workbench exposes AkShare as a read-only online market source", (
     assert.doesNotMatch(runtime, /if \(isAkShare\(\) && tab !== "all"\) return/);
 });
 
+test("market browsing exposes server-backed daily through yearly candle timeframes", () => {
+    const chart = readFileSync(
+        join(sourceRoot, "features", "research-workbench", "components", "research-chart.tsx"),
+        "utf8",
+    );
+    const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
+
+    for (const [value, label] of [
+        ["1d", "日线"],
+        ["1w", "周线"],
+        ["1mo", "月线"],
+        ["3mo", "季线"],
+        ["1y", "年线"],
+    ]) {
+        assert.match(chart, new RegExp(`\\["${value}", "${label}"\\]`));
+    }
+    assert.match(chart, /id="timeframe-select"/);
+    assert.match(runtime, /timeframe: request\.timeframe/);
+    assert.match(runtime, /state\.akshareSessions\[`\$\{data\.symbol\}:\$\{data\.timeframe/);
+    assert.match(runtime, /封存样本与策略回测保持日线口径/);
+    assert.match(runtime, /is_partial_last_bar/);
+});
+
 test("feature modules retain the overview, ladder, responsive and chart boundaries", () => {
     const dashboard = readFileSync(join(sourceRoot, "features", "market-dashboard", "market-dashboard.tsx"), "utf8");
     const chart = readFileSync(
@@ -107,6 +130,9 @@ test("the complete server-backed research workbench is composed from React featu
     assert.match(legacyStyles, /--cyan: var\(--primary\)/);
     assert.match(legacyCharts, /new MutationObserver\(refreshChartThemes\)/);
     assert.match(legacyCharts, /token\("--card"/);
+    assert.match(components, /value="bullish_turn">转多信号：突破空翻多高点/);
+    assert.match(components, /"show-bullish-turn-signals", "各级转多信号"/);
+    assert.match(legacyCharts, /drawBullishTurnGuides/);
     for (const id of [
         "price-chart",
         "run-stock-backtest",

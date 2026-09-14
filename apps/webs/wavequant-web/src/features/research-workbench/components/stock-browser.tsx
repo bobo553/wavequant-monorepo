@@ -85,9 +85,10 @@ export function StockBrowser(): JSX.Element {
                 <label>
                     结构类型
                     <select id="structure-signal-type" aria-label="结构信号类型" defaultValue="any">
-                        <option value="any">任一：空翻多或空多交替</option>
+                        <option value="any">任一：空翻多、空多交替或转多</option>
                         <option value="bear_to_bull">出现空翻多高点</option>
                         <option value="bear_bull_alternation">出现空多交替低点</option>
+                        <option value="bullish_turn">转多信号：突破空翻多高点</option>
                     </select>
                 </label>
                 <label>

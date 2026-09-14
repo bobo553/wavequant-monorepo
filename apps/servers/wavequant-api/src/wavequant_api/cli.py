@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -75,6 +76,8 @@ def parser() -> argparse.ArgumentParser:
         default=[],
         help="optional AkShare symbol subset; structure-only refresh defaults to the complete catalog",
     )
+    value.add_argument("--signal-shard-count", type=int, default=1, help="AkShare 全目录并行分片总数（1-16）")
+    value.add_argument("--signal-shard-index", type=int, default=0, help="当前 AkShare 全目录分片编号（从 0 开始）")
     value.add_argument("--signal-scenario", default="base")
     value.add_argument("--signal-start", default="2018-01-01")
     return value
@@ -110,6 +113,27 @@ def _structure_run(repository: ChartRepository, requested: str | None) -> str:
     return identifier
 
 
+def _akshare_scope_priority(scope: str | None) -> int:
+    """Build the default selected markets before slower optional boards."""
+    if scope is None:
+        return 5
+    normalized = scope.lower()
+    code = normalized.partition(".")[2]
+    if normalized.startswith("sh."):
+        return 3 if code.startswith(("688", "689")) else 0
+    if normalized.startswith("sz."):
+        return 2 if code.startswith(("300", "301")) else 1
+    if normalized.startswith("bj."):
+        return 4
+    return 5
+
+
+def _akshare_scope_shard(scope: str | None, count: int) -> int:
+    """Assign a symbol to one deterministic worker partition."""
+    encoded = (scope or "").encode()
+    return int.from_bytes(hashlib.sha256(encoded).digest()[:8], "big") % count
+
+
 def refresh_structures(
     infrastructure: Infrastructure,
     repository: ChartRepository,
@@ -138,8 +162,14 @@ def refresh_signals(
     start: str,
     asof: str | None,
     family: str,
+    shard_count: int = 1,
+    shard_index: int = 0,
 ) -> list[dict[str, object]]:
     """Refresh independently published scopes so interrupted runs are resumable."""
+    if not 1 <= shard_count <= 16 or not 0 <= shard_index < shard_count:
+        raise ValueError("signal shard must use count 1-16 and index 0..count-1")
+    if (shard_count, shard_index) != (1, 0) and (source != "akshare" or symbols or family != "structure"):
+        raise ValueError("signal sharding only supports the AkShare full-catalog structure worker")
     resolved_run = _structure_run(repository, run)
     scopes: list[str | None]
     if source == "akshare":
@@ -154,7 +184,9 @@ def refresh_signals(
                 dict.fromkeys(
                     stock["symbol"]
                     for stock in stocks
-                    if isinstance(stock, dict) and isinstance(stock.get("symbol"), str)
+                    if isinstance(stock, dict)
+                    and isinstance(stock.get("symbol"), str)
+                    and stock.get("catalog_source", "akshare") == "akshare"
                 )
             )
             if not scopes:
@@ -180,6 +212,31 @@ def refresh_signals(
     results: list[dict[str, object]] = []
     structure_service = StructureSnapshotService(repository, infrastructure) if family in {"all", "structure"} else None
     buy_service = BuySignalSnapshotService(repository, infrastructure) if family in {"all", "buy"} else None
+    database = getattr(infrastructure, "database", None)
+    if source == "akshare" and family in {"all", "structure"} and not symbols:
+        scopes = [scope for scope in scopes if _akshare_scope_shard(scope, shard_count) == shard_index]
+        published: set[str | None] = set()
+        if selected_asof is not None and structure_service is not None and database is not None:
+            published = {
+                snapshot.scope_symbol
+                for snapshot in database.list_structure_snapshots(
+                    resolved_run,
+                    None,
+                    source,
+                    selected_asof,
+                    structure_service.algorithm_version,
+                )
+                if snapshot.scope_symbol is not None
+            }
+        # A market date and algorithm version are immutable publication
+        # partitions. Rebuild only missing scopes; a new date or algorithm
+        # naturally has an empty published set. This keeps the resident
+        # workers idle after completion instead of saturating the provider and
+        # delaying interactive catalog requests.
+        scopes = [scope for scope in scopes if scope not in published]
+        # Main boards and ChiNext match the default UI scope, so build them
+        # before STAR and Beijing without excluding either optional market.
+        scopes.sort(key=_akshare_scope_priority)
     for symbol in scopes:
         if family in {"all", "structure"}:
             if source == "snapshot":
@@ -287,6 +344,8 @@ def main() -> None:
                                 start=args.signal_start,
                                 asof=args.structure_asof,
                                 family=args.signal_family,
+                                shard_count=args.signal_shard_count,
+                                shard_index=args.signal_shard_index,
                             )
                         )
                         print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)

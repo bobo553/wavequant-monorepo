@@ -2,6 +2,9 @@
 
 ## Current State
 
+- `MONOREPO-056` Core 保持规范日线与信号算法版本不变；API 从公开日线视图派生多周期行情，并把聚合后的 `Bar` 交回相同的一至三级结构算法。
+- `MONOREPO-055` 已完成：AkShare 单股扫描直接复用当前目录，腾讯只取近期行情并以本地 TDX 补齐历史；讲义趋势前缀改为等价增量状态，新浪失败进入全 Provider 熔断。
+- `MONOREPO-052` 已完成：各级空多交替确认后，Core 以原空翻多高点为冻结阈值，输出首个从下向上严格收盘突破的 `bullish_turn_signals` 及完整证据链。
 - `MONOREPO-048` 已完成：买点结果增加相对回放交易日 `session_age`，使后台保存的一份 20 日宽快照可直接回答 1/5/20 日只读查询。
 - `MONOREPO-048` 正在收尾验证：买点结果新增因果交易日年龄，使后台 20 日宽快照可直接回答 1/5/20 日查询而无需重新运行策略。
 - `MONOREPO-047` 已完成：AkShare、通达信通过统一市场数据适配器进入规范仓库，切换来源不再改变图表和多级结构算法，主源缺失时按交易日安全补齐并保留来源证据。
@@ -21,6 +24,10 @@
 - `MONOREPO-020` 已完成：四层实现已细分为 13 个功能子域，仓库消费者已统一到唯一规范导入路径，扁平兼容模块已经移除。
 
 ## Completed
+
+- MONOREPO-056 通过 Core 消费方回归确认规范日线、结构算法与既有全市场快照版本保持不变；多周期聚合限定在 API 展示用例，不污染策略、回测或预计算读模型。
+
+- MONOREPO-055 移除每只股票重复构建合并目录和每个趋势前缀重复扫描完整历史的热点；主行情不足 250 根时以本地 TDX 补齐且在线重复日期优先，Core Ruff、严格 mypy、542 项 pytest 与构建通过。
 
 - 已将源项目当前未忽略工作树复制到 `apps/tools/wavequant`，未复制源 Git 历史和本地生成数据。
 - Python 包目录已迁移到 `src/wavequant`，Web 依赖改由 pnpm workspace 管理。
@@ -47,6 +54,10 @@
 - MONOREPO-044 为每个结构匹配增加 `session_age`，让同一份 20 日宽快照可因果过滤 1/5/20 日；通达信证券版本与全部 Core Python 内容摘要分别形成数据、算法指纹，计算期间版本漂移会拒绝发布。
 
 ## Verification
+
+- MONOREPO-056 Core 门禁通过 Ruff、严格 mypy、542 项 pytest 和 sdist/wheel 构建；多周期实现未修改 Core 源码，既有日线算法指纹及全市场快照继续有效。
+
+- MONOREPO-052 Core 门禁通过 Ruff、541 项 pytest（另 22 个子测试）和 sdist/wheel 构建；覆盖确认前突破、盘中越线、收盘相等、首次严格收盘上穿以及 `bullish_turn` 扫描过滤。
 
 - MONOREPO-048 Core 门禁通过 Ruff、严格 mypy、538 项 pytest 和 sdist/wheel 构建；买点结果的 `session_age` 与结构快照采用相同交易日窗口语义。
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import hashlib
 import json
 import re
@@ -24,6 +24,8 @@ _COLUMNS = ("日期", "开盘", "最高", "最低", "收盘", "成交量")
 _PRIMARY_PROBE_TIMEOUT = 3.0
 _SINA_FALLBACK_TIMEOUT = 10.0
 _PRIMARY_RETRY_DELAY = 600.0
+_SINA_RETRY_DELAY = 600.0
+_TENCENT_LOOKBACK_DAYS = 180
 
 
 def _symbol(code: str) -> str | None:
@@ -80,6 +82,7 @@ class AkShareBrowser:
         self._history_endpoint: dict[str, str] = {}
         self._theory: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._primary_retry_at = 0.0
+        self._sina_retry_at = 0.0
         self._lock = Lock()
 
     def catalog(self) -> dict[str, Any]:
@@ -144,7 +147,9 @@ class AkShareBrowser:
 
         def fallback() -> tuple[str, Any]:
             compact_symbol = symbol.replace(".", "")
-            if not symbol.startswith("bj."):
+            with self._lock:
+                use_sina = time.monotonic() >= self._sina_retry_at
+            if not symbol.startswith("bj.") and use_sina:
                 try:
                     return (
                         "stock_zh_a_daily",
@@ -158,13 +163,17 @@ class AkShareBrowser:
                         ),
                     )
                 except AkShareUnavailable:
-                    pass
+                    # Sina availability is normally provider-wide.  Do not
+                    # spend the same timeout again for every stock in a full
+                    # market rebuild; Tencent remains the bounded fallback.
+                    with self._lock:
+                        self._sina_retry_at = time.monotonic() + _SINA_RETRY_DELAY
             return (
                 "stock_zh_a_hist_tx",
                 self.provider.call(
                     "stock_zh_a_hist_tx",
                     symbol=compact_symbol,
-                    start_date="19900101",
+                    start_date=(date.today() - timedelta(days=_TENCENT_LOOKBACK_DAYS)).strftime("%Y%m%d"),
                     end_date=date.today().strftime("%Y%m%d"),
                     adjust="",
                 ),

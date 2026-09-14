@@ -37,6 +37,99 @@ test("the original stock project Web workbench is the default page", async ({ pa
     expect(pageErrors).toEqual([]);
 });
 
+test("market candle timeframe switches server data, replay sessions and theory together", async ({ page }) => {
+    const pageErrors: string[] = [];
+    const requests: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("request", (request) => {
+        const url = new URL(request.url());
+        if (["/api/tdx-view", "/api/tdx-theory"].includes(url.pathname) && url.searchParams.get("timeframe") === "1w") {
+            requests.push(url.pathname);
+        }
+    });
+
+    await page.goto("/research");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await selectTdx(page);
+    await expect(page.getByLabel("K线周期")).toBeEnabled();
+    await expect(page.getByLabel("K线周期").locator("option")).toHaveText(["日线", "周线", "月线", "季线", "年线"]);
+
+    await page.getByLabel("K线周期").selectOption("1w");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#timeframe-tag")).toHaveText("周 K");
+    await expect(page.locator("#selected-stock-summary")).toContainText("周线截面");
+    await expect.poll(() => requests).toContain("/api/tdx-view");
+    await expect.poll(() => requests).toContain("/api/tdx-theory");
+
+    const [weekly, daily] = await page.evaluate(async () => {
+        const [weeklyResponse, dailyResponse] = await Promise.all([
+            fetch("/api/tdx-view?symbol=sh.600519&asof=2026-09-07&timeframe=1w"),
+            fetch("/api/tdx-view?symbol=sh.600519&asof=2026-09-07&timeframe=1d"),
+        ]);
+        return Promise.all([weeklyResponse.json(), dailyResponse.json()]);
+    });
+    expect(weekly.timeframe).toBe("1w");
+    expect(weekly.timeframe_label).toBe("周线");
+    expect(weekly.bars.length).toBeLessThan(daily.bars.length);
+    expect(
+        await page.evaluate(() => JSON.parse(localStorage.getItem("wavequant.research.chart.v1") || "null").timeframe),
+    ).toBe("1w");
+
+    await page.reload();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.getByLabel("K线周期")).toHaveValue("1w");
+    await expect(page.locator("#timeframe-tag")).toHaveText("周 K");
+
+    await page.locator("#result-scope").selectOption("stock");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.getByLabel("K线周期")).toBeDisabled();
+    await expect(page.getByLabel("K线周期")).toHaveValue("1d");
+    expect(pageErrors).toEqual([]);
+});
+
+test("stock catalogs persist in IndexedDB and only transfer again after an ETag change", async ({ page }) => {
+    const responses: Array<{ path: string; status: number }> = [];
+    page.on("response", (response) => {
+        const path = new URL(response.url()).pathname;
+        if (path === "/api/tdx-catalog" || path === "/api/akshare-catalog") {
+            responses.push({ path, status: response.status() });
+        }
+    });
+
+    await page.goto("/research");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#stock-source-notice")).toContainText("IndexedDB 缓存已更新");
+    const cached = await page.evaluate(
+        () =>
+            new Promise<Array<{ source: string; etag: string; count: number }>>((resolve, reject) => {
+                const request = indexedDB.open("wavequant-market-data", 1);
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    const database = request.result;
+                    const transaction = database.transaction("stock-catalogs", "readonly");
+                    const entries = transaction.objectStore("stock-catalogs").getAll();
+                    entries.onerror = () => reject(entries.error);
+                    entries.onsuccess = () =>
+                        resolve(
+                            entries.result.map((entry) => ({
+                                source: entry.source,
+                                etag: entry.etag,
+                                count: entry.catalog.stocks.length,
+                            })),
+                        );
+                };
+            }),
+    );
+    expect(cached.map((entry) => entry.source).sort()).toEqual(["akshare", "tdx"]);
+    expect(cached.every((entry) => entry.etag.startsWith('"') && entry.count > 5_000)).toBe(true);
+
+    await page.reload();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#stock-source-notice")).toContainText("IndexedDB 缓存已校验");
+    expect(responses.filter((response) => response.status === 200)).toHaveLength(2);
+    expect(responses.filter((response) => response.status === 304)).toHaveLength(2);
+});
+
 test("AkShare current-stock buy points and market structure signals are operable", async ({ page }) => {
     const pageErrors: string[] = [];
     const failedRequests: string[] = [];
@@ -45,6 +138,7 @@ test("AkShare current-stock buy points and market structure signals are operable
     const signalRequests: string[] = [];
     let structureSymbol: string | null = "not-requested";
     const structureMarkets: Array<string | null> = [];
+    const structureSignalTypes: Array<string | null> = [];
     await page.route("**/api/buy-signals?**", async (route) => {
         signalRequests.push(`${route.request().method()} buy`);
         const query = Object.fromEntries(new URL(route.request().url()).searchParams);
@@ -70,6 +164,7 @@ test("AkShare current-stock buy points and market structure signals are operable
         const query = Object.fromEntries(new URL(route.request().url()).searchParams);
         structureSymbol = new URL(route.request().url()).searchParams.get("symbol");
         structureMarkets.push(new URL(route.request().url()).searchParams.get("markets"));
+        structureSignalTypes.push(new URL(route.request().url()).searchParams.get("signal_type"));
         await route.fulfill({
             json: {
                 status: "ready",
@@ -120,9 +215,10 @@ test("AkShare current-stock buy points and market structure signals are operable
     const structureButton = page.getByRole("button", { name: "查询全市场结构" });
     await expect(structureButton).toBeEnabled();
     await structureButton.click();
-    await expect(page.locator("#structure-scan-status")).toContainText("AkShare 市场快照已覆盖 128 只股票", {
+    await expect(page.locator("#structure-scan-status")).toContainText("AkShare 后台重建中：已发布 128 /", {
         timeout: 60_000,
     });
+    await expect(page.locator("#structure-scan-status")).toContainText("当前筛选市场");
     await expect(page.locator("#structure-scan-status")).toContainText("预计算完成");
     await expect(page.locator("#structure-scan-status")).toContainText("上证、深证、创业板");
     await page.getByLabel("上证").uncheck();
@@ -130,11 +226,14 @@ test("AkShare current-stock buy points and market structure signals are operable
     await page.getByLabel("创业板").uncheck();
     await page.getByLabel("科创板").check();
     await page.getByLabel("北京").check();
+    await page.getByLabel("结构信号类型").selectOption("bullish_turn");
     await structureButton.click();
     await expect(page.locator("#structure-scan-status")).toContainText("科创板、北京");
+    await expect(page.locator("#structure-scan-status")).toContainText("转多信号");
     await expect(page.locator("#structure-scan-status")).toContainText("已排除名称含 * 的股票");
     expect(signalRequests).toEqual(["GET buy", "GET structure", "GET structure"]);
     expect(structureMarkets).toEqual(["shanghai,shenzhen,chinext", "star,beijing"]);
+    expect(structureSignalTypes).toEqual(["any", "bullish_turn"]);
     expect(structureSymbol).toBeNull();
     expect(pageErrors).toEqual([]);
     expect(failedRequests).toEqual([]);
@@ -529,6 +628,56 @@ test("Zhongda Leader promotes the August 2022 high only after causal alternation
     await expect
         .poll(() => page.locator("#price-chart").getAttribute("data-post-alternation-bull-high-count"))
         .not.toBe("0");
+
+    const bullishTurnReplayIndex = await page.evaluate(async () => {
+        const view = await fetch("/api/tdx-view?symbol=sz.002896&asof=2026-09-07").then((response) => response.json());
+        return view.bars.findIndex((bar: { time: string }) => bar.time === "2025-01-24");
+    });
+    await page.locator("#replay-slider").evaluate((slider, index) => {
+        (slider as HTMLInputElement).value = String(index);
+        slider.dispatchEvent(new Event("change", { bubbles: true }));
+    }, bullishTurnReplayIndex);
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#asof-label")).toHaveText("2025-01-24");
+    await expect.poll(() => page.locator("#price-chart").getAttribute("data-bullish-turn-signal-count")).not.toBe("0");
+    await expect.poll(() => page.locator("#price-chart").getAttribute("data-bullish-turn-guides")).not.toBe("0");
+    const levelOneBullishTurn = page.locator('[data-annotation-id^="bullish-turn-signal:1:"]').filter({
+        hasText: "Ⅰ 转多信号",
+    });
+    await expect(levelOneBullishTurn).toBeVisible();
+    await levelOneBullishTurn.click();
+    await expect(page.locator("#selection-info")).toContainText("首次从下向上严格突破此前空翻多高点");
+    await page.getByRole("checkbox", { name: "各级转多信号", exact: true }).uncheck();
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-bullish-turn-signal-count", "0");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-bullish-turn-guides", "0");
+    await page.getByRole("checkbox", { name: "各级转多信号", exact: true }).check();
+    await expect.poll(() => page.locator("#price-chart").getAttribute("data-bullish-turn-signal-count")).not.toBe("0");
+    await expect.poll(() => page.locator("#price-chart").getAttribute("data-bullish-turn-guides")).not.toBe("0");
+
+    const bullishTurnCausality = await page.evaluate(async () => {
+        const [before, at] = await Promise.all([
+            fetch("/api/tdx-theory?symbol=sz.002896&asof=2025-01-23").then((response) => response.json()),
+            fetch("/api/tdx-theory?symbol=sz.002896&asof=2025-01-24").then((response) => response.json()),
+        ]);
+        return {
+            before: before.reversal_trends.bullish_turn_signals.find(
+                (signal: { time: string }) => signal.time === "2025-01-24",
+            ),
+            at: at.reversal_trends.bullish_turn_signals.find(
+                (signal: { time: string }) => signal.time === "2025-01-24",
+            ),
+        };
+    });
+    expect(bullishTurnCausality.before).toBeUndefined();
+    expect(bullishTurnCausality.at).toMatchObject({
+        time: "2025-01-24",
+        kind: "K",
+        value: 54.21,
+        previous_close: 49.28,
+        breakout_level: 49.56,
+        confirmed_alternation_low: { time: "2022-08-30", value: 29.75 },
+        confirmed_flip_high: { time: "2022-08-03", value: 49.56 },
+    });
 
     const state = await page.evaluate(async () => {
         const [

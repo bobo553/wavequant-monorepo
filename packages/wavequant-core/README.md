@@ -186,7 +186,7 @@ python -m unittest discover -s tests -v
 
 ## 数据口径
 
-行情浏览、讲义折线和多级趋势统一经过 `MarketDataRepository`。AkShare 与通达信分别实现同一个适配器端口，第三方字段先校验并转换成统一 `Bar`，领域算法不判断数据源。默认优先 AkShare；主源不可用或截至所选日期数据滞后时，仓库按证券代码和交易日从备用源补齐，重复交易日始终保留主源 OHLCV，禁止备用源静默覆盖。响应会返回 `data_source`、`resolved_source`、`providers`、`supplemented_bars`、`data_version`，便于复核实际来源和补齐范围。
+行情浏览、讲义折线和多级趋势统一经过 `MarketDataRepository`。AkShare 与通达信分别实现同一个适配器端口，第三方字段先校验并转换成统一 `Bar`，领域算法不判断数据源。默认优先 AkShare；主源不可用或截至所选日期数据滞后时，仓库按证券代码和交易日从备用源补齐，重复交易日始终保留主源 OHLCV，禁止备用源静默覆盖。Core 继续输出唯一的规范日线；API 展示服务可从这份日线生成 `1w`、`1mo`、`3mo`、`1y` 视图并调用相同结构算法，不让图表周期改动误触发全市场日线信号快照重建。Core 响应的 `data_source`、`resolved_source`、`providers`、`supplemented_bars` 与 `data_version` 便于 API 继续保留来源证据。
 
 目录采用同样的合并规则：主源缺少股票名称、可用状态或整只证券时，备用目录补充缺失字段/证券并标记来源。适配器只负责采集，图表序列化、讲义折线、一级/二级/三级趋势计算均由统一仓库执行；新增数据源只需实现目录、日线加载和安全元数据三个接口。
 

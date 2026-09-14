@@ -404,7 +404,14 @@ class VisualizationTests(unittest.TestCase):
         self.assertEqual(request("/vendor/NOTICE")[0], 200)
         self.assertEqual(request("/snapshot/daily.csv")[0], 404)
         self.assertEqual(request("/api/catalog", "POST")[0], 405)
-        self.assertEqual(request("/api/tdx-catalog")[0], 200)
+        status, catalog_headers, _body = request("/api/tdx-catalog")
+        self.assertEqual(status, 200)
+        self.assertIn("ETag", catalog_headers)
+        self.assertEqual(catalog_headers["Cache-Control"], "private, no-cache")
+        self.assertEqual(
+            request("/api/tdx-catalog", headers={"If-None-Match": catalog_headers["ETag"]})[0],
+            304,
+        )
         self.assertEqual(request("/api/tdx-view?symbol=sh.600104&asof=2026-01-02")[0], 400)
         self.assertEqual(request("/api/tdx-view?symbol=../x&asof=2026-01-02&path=/secret")[0], 400)
         self.assertEqual(
@@ -433,7 +440,29 @@ class VisualizationTests(unittest.TestCase):
                 return {"available": True, "with_daily": 1, "stocks": [{"symbol": "sh.600519"}]}
 
             def view(self, symbol, asof):
-                return {"symbol": symbol, "asof": asof, "result_scope": "akshare"}
+                return {
+                    "symbol": symbol,
+                    "asof": asof,
+                    "requested_asof": asof,
+                    "result_scope": "akshare",
+                    "data_source": "akshare",
+                    "data_version": "fake-daily",
+                    "price_basis": "raw_unadjusted",
+                    "sessions": [asof],
+                    "bars": [
+                        {
+                            "time": asof,
+                            "open": 10,
+                            "high": 12,
+                            "low": 9,
+                            "close": 11,
+                            "raw_close": 11,
+                            "volume": 1000,
+                            "factor": 1,
+                        }
+                    ],
+                    "evidence": "测试日线。",
+                }
 
             def theory(self, symbol, asof):
                 return {"symbol": symbol, "asof": asof, "computed_from": "akshare_raw_prefix_display_only"}
@@ -446,13 +475,13 @@ class VisualizationTests(unittest.TestCase):
                 self.assert_source(source)
                 return self.source.catalog()
 
-            def view(self, source, symbol, asof):
+            def view(self, source, symbol, asof, timeframe="1d"):
                 self.assert_source(source)
-                return self.source.view(symbol, asof)
+                return {**self.source.view(symbol, asof), "timeframe": timeframe}
 
-            def theory(self, source, symbol, asof):
+            def theory(self, source, symbol, asof, timeframe="1d"):
                 self.assert_source(source)
-                return self.source.theory(symbol, asof)
+                return {**self.source.theory(symbol, asof), "timeframe": timeframe}
 
             @staticmethod
             def assert_source(source):
@@ -474,9 +503,44 @@ class VisualizationTests(unittest.TestCase):
 
         self.assertEqual(request("/api/akshare-catalog")[0], 200)
         self.assertEqual(request("/api/akshare-catalog?unexpected=1")[0], 400)
+        conn = HTTPConnection("127.0.0.1", server.server_port)
+        try:
+            conn.request("GET", "/api/akshare-catalog")
+            response = conn.getresponse()
+            etag = response.getheader("ETag")
+            response.read()
+        finally:
+            conn.close()
+        self.assertIsNotNone(etag)
+        conn = HTTPConnection("127.0.0.1", server.server_port)
+        try:
+            conn.request("GET", "/api/akshare-catalog", headers={"If-None-Match": etag})
+            response = conn.getresponse()
+            self.assertEqual(response.status, 304)
+            self.assertEqual(response.read(), b"")
+        finally:
+            conn.close()
+        self.repo.akshare.catalog = lambda: {
+            "available": True,
+            "with_daily": 2,
+            "stocks": [{"symbol": "sh.600519"}, {"symbol": "sz.000001"}],
+        }
+        conn = HTTPConnection("127.0.0.1", server.server_port)
+        try:
+            conn.request("GET", "/api/akshare-catalog", headers={"If-None-Match": etag})
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertNotEqual(response.getheader("ETag"), etag)
+            response.read()
+        finally:
+            conn.close()
         status, view = request("/api/akshare-view?symbol=sh.600519&asof=2026-01-02")
         self.assertEqual(status, 200)
         self.assertEqual(view["result_scope"], "akshare")
+        self.assertEqual(view["timeframe"], "1d")
+        status, weekly = request("/api/akshare-view?symbol=sh.600519&asof=2026-01-02&timeframe=1w")
+        self.assertEqual(status, 200)
+        self.assertEqual(weekly["timeframe"], "1w")
         self.assertEqual(request("/api/akshare-view?symbol=sh.600519")[0], 400)
 
         status, structure = request(

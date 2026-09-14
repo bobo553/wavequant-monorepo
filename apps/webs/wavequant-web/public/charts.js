@@ -3,6 +3,7 @@ import {
     bearBullAlternationLowAnnotations,
     bearToBullHighAnnotations,
     buildAnnotations,
+    bullishTurnSignalAnnotations,
     lastFallHighAnnotations,
     markerGroups,
     postAlternationBullHighAnnotations,
@@ -121,6 +122,8 @@ export class PriceChart {
         this.levelLines = [];
         this.lastFallHighLines = [];
         this.lastFallHighLineKey = "";
+        this.bullishTurnGuideLines = [];
+        this.bullishTurnGuideKey = "";
         this.windowAnnotations = [];
         this.data = null;
         this.theory = null;
@@ -135,6 +138,7 @@ export class PriceChart {
             bullFlipHighs: true,
             bullAlternationLows: true,
             postAlternationBullHighs: true,
+            bullishTurnSignals: true,
         };
         this.showTeaching = true;
         this.drawingMode = "lecture";
@@ -320,12 +324,35 @@ export class PriceChart {
             from,
             to,
         );
+        const bullishTurnSignals = bullishTurnSignalAnnotations(
+            [
+                {
+                    level: 1,
+                    landmarks: this.showTrend ? this.theory?.reversal_trends?.bullish_turn_signals || [] : [],
+                },
+                {
+                    level: 2,
+                    landmarks: this.showSecondaryTrend
+                        ? this.theory?.secondary_trends?.bullish_turn_signals || []
+                        : [],
+                },
+                {
+                    level: 3,
+                    landmarks: this.showTertiaryTrend
+                        ? this.theory?.tertiary_trends?.bullish_turn_signals || []
+                        : [],
+                },
+            ],
+            from,
+            to,
+        );
         this.windowAnnotations = [
             ...this.annotations,
             ...trendKeys,
             ...bullFlipHighs,
             ...bullAlternationLows,
             ...postAlternationBullHighs,
+            ...bullishTurnSignals,
         ];
         this.groups = markerGroups(this.windowAnnotations, this.options, span).filter(
             (g) => g.time >= from && g.time <= to,
@@ -333,6 +360,7 @@ export class PriceChart {
         avoidLabelCollisions(this.groups, (time) => this.chart.timeScale().timeToCoordinate(time));
         this.markers.setMarkers(this.groups.map((g) => g.marker));
         this.drawLastFallHighGuides(trendKeys);
+        this.drawBullishTurnGuides(bullishTurnSignals);
         this.container.dataset.markerCount = this.groups.length;
         this.container.dataset.lastFallHighCount = String(trendKeys.length);
         this.container.dataset.bearToBullHighCount = String(this.options.bullFlipHighs ? bullFlipHighs.length : 0);
@@ -341,6 +369,9 @@ export class PriceChart {
         );
         this.container.dataset.postAlternationBullHighCount = String(
             this.options.postAlternationBullHighs ? postAlternationBullHighs.length : 0,
+        );
+        this.container.dataset.bullishTurnSignalCount = String(
+            this.options.bullishTurnSignals ? bullishTurnSignals.length : 0,
         );
         this.onVisible(
             this.groups.flatMap((g) => g.items),
@@ -406,6 +437,40 @@ export class PriceChart {
         }
         this.container.dataset.lastFallHighGuides = String(this.lastFallHighLines.length);
     }
+    clearBullishTurnGuides() {
+        for (const series of this.bullishTurnGuideLines) this.chart.removeSeries(series);
+        this.bullishTurnGuideLines = [];
+        this.bullishTurnGuideKey = "";
+        this.container.dataset.bullishTurnGuides = "0";
+    }
+    drawBullishTurnGuides(items) {
+        const visible = this.options.bullishTurnSignals ? items : [];
+        const key = visible.map((item) => item.id).join("|");
+        if (key === this.bullishTurnGuideKey) return;
+        this.clearBullishTurnGuides();
+        this.bullishTurnGuideKey = key;
+        for (const item of visible) {
+            const start = item.raw.confirmed_flip_high;
+            if (!start || start.time >= item.time || !Number.isFinite(start.value)) continue;
+            const series = this.chart.addSeries(L.LineSeries, {
+                color: withOpacity(item.color, 0.82),
+                lineStyle: 3,
+                lineWidth: 1,
+                title: `${item.raw.trend_level}级转多突破`,
+                lastValueVisible: false,
+                priceLineVisible: false,
+                crosshairMarkerVisible: false,
+                pointMarkersVisible: false,
+                autoscaleInfoProvider: () => null,
+            });
+            series.setData([
+                { time: start.time, value: start.value },
+                { time: item.time, value: start.value },
+            ]);
+            this.bullishTurnGuideLines.push(series);
+        }
+        this.container.dataset.bullishTurnGuides = String(this.bullishTurnGuideLines.length);
+    }
     drawLevels() {
         this.clearLevels();
         const item = this.selected;
@@ -446,10 +511,12 @@ export class PriceChart {
         this.lines = [];
         this.windowAnnotations = [];
         this.clearLastFallHighGuides();
+        this.clearBullishTurnGuides();
         this.container.dataset.lastFallHighCount = "0";
         this.container.dataset.bearToBullHighCount = "0";
         this.container.dataset.bearBullAlternationLowCount = "0";
         this.container.dataset.postAlternationBullHighCount = "0";
+        this.container.dataset.bullishTurnSignalCount = "0";
         this.polylineEnabled = false;
         this.clearPolyline();
     }

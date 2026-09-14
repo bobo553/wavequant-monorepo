@@ -12,7 +12,16 @@ const chartLayers = [
     ["show-bear-to-bull-highs", "各级空翻多高点", true],
     ["show-bear-bull-alternation-lows", "各级空多交替低点", true],
     ["show-post-alternation-bull-highs", "各级交替后多头段高点", true],
+    ["show-bullish-turn-signals", "各级转多信号", true],
     ["show-levels", "选中点位线", true],
+] as const;
+
+const chartTimeframes = [
+    ["1d", "日线"],
+    ["1w", "周线"],
+    ["1mo", "月线"],
+    ["3mo", "季线"],
+    ["1y", "年线"],
 ] as const;
 
 /** Lightweight Charts 容器及所有原有图层、趋势和历史回放控制。 */
@@ -22,7 +31,22 @@ export function ResearchChart(): JSX.Element {
             <div className="card-header">
                 <div className="symbol-title">
                     <select id="symbol-select" aria-label="股票" />
-                    <span className="tag">日 K</span>
+                    <label className="timeframe-control">
+                        <span>周期</span>
+                        <select id="timeframe-select" aria-label="K线周期" defaultValue="1d">
+                            {chartTimeframes.map(([value, label]) => (
+                                <option key={value} value={value}>
+                                    {label}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                    <span id="timeframe-tag" className="tag">
+                        日 K
+                    </span>
+                    <span id="partial-timeframe" className="tag timeframe-partial" hidden>
+                        周期未收完
+                    </span>
                     <span id="price-basis" className="muted tag">
                         因果复权
                     </span>
@@ -52,6 +76,7 @@ export function ResearchChart(): JSX.Element {
                 <span className="key-bear-to-bull-high">Ⅰ/Ⅱ/Ⅲ 空翻多高点：Python 确认 H</span>
                 <span className="key-bear-bull-alternation-low">Ⅰ/Ⅱ/Ⅲ 空多交替低点：Python 确认 L</span>
                 <span className="key-post-alternation-bull-high">Ⅰ/Ⅱ/Ⅲ 交替后多头段高点：Python 确认 H</span>
+                <span className="key-bullish-turn-signal">Ⅰ/Ⅱ/Ⅲ 转多信号：交替后收盘突破空翻多高点</span>
                 <label style={{ color: "#50dfd2" }}>
                     <input id="show-teaching" type="checkbox" defaultChecked /> 子母段青色强调（不拆线）
                 </label>

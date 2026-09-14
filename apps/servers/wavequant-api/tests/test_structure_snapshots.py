@@ -65,6 +65,15 @@ class FakeStructureScanner:
                     "available_at": "2026-09-01",
                     "session_age": 5,
                 },
+                {
+                    "id": "old-bullish-turn",
+                    "symbol": "sz.000002",
+                    "signal_type": "bullish_turn",
+                    "trend_level": 1,
+                    "event_date": "2026-09-01",
+                    "available_at": "2026-09-01",
+                    "session_age": 5,
+                },
             ],
         }
 
@@ -98,10 +107,19 @@ class FakeMarketData:
     def __init__(self, scanner: FakeStructureScanner) -> None:
         self.scanner = scanner
         self.reads = 0
+        self.resolved_asof: str | None = None
+        self.unavailable_through: str | None = None
+        self.future_first_session: str | None = None
+
+    def catalog(self, source: str) -> dict[str, object]:
+        return {"source": source, "latest": "2026-09-14"}
 
     def view(self, source: str, symbol: str, asof: str) -> dict[str, object]:
         self.reads += 1
-        return {"data_version": self.scanner.data, "asof": asof}
+        if self.unavailable_through is not None and asof <= self.unavailable_through:
+            raise RuntimeError("akshare 数据暂不可用")
+        bars = [{"time": self.future_first_session}] if self.future_first_session is not None else []
+        return {"data_version": self.scanner.data, "asof": self.resolved_asof or asof, "bars": bars}
 
 
 class FakeCache:
@@ -147,8 +165,12 @@ class StructureSnapshotServiceTests(unittest.TestCase):
         five_day_level_two = self.service.query(
             {**self.params, "lookback": 5, "signal_type": "bear_bull_alternation", "trend_level": 2}
         )
+        five_day_bullish_turn = self.service.query(
+            {**self.params, "lookback": 5, "signal_type": "bullish_turn", "trend_level": 1}
+        )
         self.assertEqual([row["id"] for row in one_day["results"]], ["new-flip"])
         self.assertEqual([row["id"] for row in five_day_level_two["results"]], ["old-low"])
+        self.assertEqual([row["id"] for row in five_day_bullish_turn["results"]], ["old-bullish-turn"])
         self.assertEqual(self.scanner.starts, 1, "interactive queries must never invoke Core calculation")
         self.assertTrue(all(key.startswith("signal:structure:v3:") for key in self.cache.keys))
 
@@ -194,6 +216,34 @@ class StructureSnapshotServiceTests(unittest.TestCase):
         self.assertEqual(self.scanner.online_calculations, 2)
         self.assertEqual(self.market_data.reads, reads_after_refresh)
 
+    def test_akshare_suspended_stock_stays_in_requested_market_date_partition(self) -> None:
+        self.market_data.resolved_asof = "2026-09-04"
+
+        refresh = self.service.refresh(
+            "run-001", "lecture_v1", source="akshare", symbol="sh.600519", asof="2026-09-07"
+        )
+        result = self.service.query({**self.params, "source": "akshare"})
+
+        self.assertEqual(refresh["asof"], "2026-09-07")
+        self.assertEqual(result["coverage"], {"scope": "akshare_market", "published_stocks": 1})
+        self.assertEqual([row["symbol"] for row in result["results"]], ["sh.600519"])
+
+    def test_akshare_stock_listed_after_cutoff_publishes_an_explicit_empty_scope(self) -> None:
+        self.market_data.unavailable_through = "2026-09-07"
+        self.market_data.future_first_session = "2026-09-11"
+
+        refresh = self.service.refresh(
+            "run-001", "lecture_v1", source="akshare", symbol="sh.688801", asof="2026-09-07"
+        )
+        result = self.service.query({**self.params, "source": "akshare"})
+
+        self.assertEqual(refresh["status"], "published")
+        self.assertEqual(result["coverage"], {"scope": "akshare_market", "published_stocks": 1})
+        self.assertEqual(result["results"], [])
+        self.assertEqual(result["skipped"], 1)
+        self.assertEqual(result["skip_reasons"], {"not_listed_asof": 1})
+        self.assertEqual(self.scanner.online_calculations, 0)
+
     def test_market_filters_use_symbol_boards_and_exclude_starred_names(self) -> None:
         stocks = {
             "sh.600000": "浦发银行",
@@ -227,6 +277,8 @@ class StructureSnapshotServiceTests(unittest.TestCase):
         self.assertEqual(star_and_beijing["filters"]["markets"], ["star", "beijing"])
         self.assertNotIn("sh.600001", {row["symbol"] for row in default_result["results"]})
         self.assertNotEqual(self.cache.keys[-1], self.cache.keys[-2])
+        self.assertNotIn(",", self.cache.keys[-1])
+        self.assertTrue(self.cache.keys[-1].endswith(":star-beijing"))
 
     def test_market_filter_rejects_empty_unknown_and_duplicate_values(self) -> None:
         for markets in ("", "shanghai,unknown", "star,star"):

@@ -712,6 +712,24 @@ body {
     padding: 0 20px 0 0;
     min-width: 130px;
 }
+.symbol-title .timeframe-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--muted);
+    font-size: 10px;
+    white-space: nowrap;
+}
+.symbol-title #timeframe-select {
+    min-width: 70px;
+    padding-right: 18px;
+    color: var(--text);
+    font-size: 12px;
+}
+.timeframe-partial {
+    color: var(--amber);
+    border-color: color-mix(in srgb, var(--amber) 45%, transparent);
+}
 .tag {
     font-size: 9px;
     padding: 4px 6px;
@@ -1102,6 +1120,9 @@ tbody tr:hover {
 }
 .key-post-alternation-bull-high {
     color: #8bb8ff;
+}
+.key-bullish-turn-signal {
+    color: #67dfc2;
 }
 .key-signal {
     color: #49d5dc;

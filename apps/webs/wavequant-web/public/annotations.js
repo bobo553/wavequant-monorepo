@@ -308,6 +308,8 @@ export function bearToBullHighAnnotations(levelLandmarks, from, to) {
                     kind: "trend-key",
                     category: "trend-flip-highs",
                     price: landmark.value,
+                    markerPosition: "atPriceTop",
+                    markerShape: "arrowDown",
                     title: `${spec.numeral} 空翻多高点 · ${landmark.label} ${num(landmark.value)}`,
                     description: `${spec.label}趋势线正式低点 ${low.label}（${low.time}，${num(low.value)}）确认由空翻多时，${landmark.label}（${landmark.time}，${num(landmark.value)}）是完成转换的确认高点${keyText}。整条证据到 ${landmark.available_at} 才可知；它不是浏览器按当前窗口选择的最高价，也不等于买卖信号。`,
                     sourceLabel: `${spec.label}趋势线 · Python 空翻多确认高点`,
@@ -424,6 +426,50 @@ export function postAlternationBullHighAnnotations(levelLandmarks, from, to) {
             });
     });
 }
+
+/** 将 Core 预计算的交替后首次收盘突破转换为突破 K 标识。 */
+export function bullishTurnSignalAnnotations(levelLandmarks, from, to) {
+    return levelLandmarks.flatMap(({ level, landmarks = [] }) => {
+        const spec = LAST_FALL_HIGH_LEVELS[level];
+        if (!spec) return [];
+        return landmarks
+            .filter(
+                (landmark) =>
+                    landmark.kind === "K" &&
+                    landmark.time >= from &&
+                    landmark.time <= to &&
+                    landmark.available_at <= to,
+            )
+            .map((landmark) => {
+                const flipHigh = landmark.confirmed_flip_high,
+                    alternationLow = landmark.confirmed_alternation_low;
+                return {
+                    id: `bullish-turn-signal:${level}:${landmark.id}`,
+                    time: landmark.time,
+                    sourceTime: landmark.time,
+                    kind: "trend-key",
+                    side: "LONG",
+                    category: "trend-bullish-turn-signals",
+                    price: landmark.value,
+                    markerPosition: "atPriceBottom",
+                    markerShape: "arrowUp",
+                    title: `${spec.numeral} 转多信号 · ${landmark.label} ${num(landmark.value)}`,
+                    description: `${spec.label}趋势线在 ${alternationLow.label}（${alternationLow.time}，${num(alternationLow.value)}）完成空多交替后，${landmark.label}（${landmark.time}）收盘 ${num(landmark.previous_close)} → ${num(landmark.value)}，首次从下向上严格突破此前空翻多高点 ${flipHigh.label}（${flipHigh.time}，${num(flipHigh.value)}）。盘中触碰、收盘相等或交替确认前的突破均不产生转多信号。`,
+                    sourceLabel: `${spec.label}趋势线 · Python 预计算转多信号`,
+                    priority: 148 - level,
+                    color: spec.color,
+                    levels: [
+                        { name: `${spec.label}空翻多高点`, price: flipHigh.value },
+                        { name: `${spec.label}空多交替低点`, price: alternationLow.value },
+                    ],
+                    raw: {
+                        ...landmark,
+                        definition: "python_precomputed_first_close_cross_after_confirmed_alternation",
+                    },
+                };
+            });
+    });
+}
 export function ruleTitle(e) {
     if (e.event === "n_completed") return e.direction === "up" ? "正 N · 突破" : "倒 N · 跌破";
     if (e.event === "regime_confirmation") return e.regime || "盘态确认";
@@ -508,6 +554,8 @@ export function visibleAnnotations(items, options) {
                         ? options.bullAlternationLows
                         : m.category === "trend-post-alternation-bull-highs"
                           ? options.postAlternationBullHighs
+                          : m.category === "trend-bullish-turn-signals"
+                            ? options.bullishTurnSignals
                           : options.rules,
     );
 }

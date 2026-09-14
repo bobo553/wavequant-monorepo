@@ -124,6 +124,7 @@ class LectureTrendTests(unittest.TestCase):
         self.assertIn('bear_to_bull_highs',result)
         self.assertIn('bear_bull_alternation_lows',result)
         self.assertIn('post_alternation_bull_highs',result)
+        self.assertIn('bullish_turn_signals',result)
         self.assertTrue(all(point['trend_level']==1 for point in result['bear_to_bull_highs']))
         self.assertTrue(all(point['value']>point['broken_key']['value']
                             for point in result['bear_to_bull_highs']))

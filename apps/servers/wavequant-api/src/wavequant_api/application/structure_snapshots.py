@@ -66,16 +66,42 @@ class StructureSnapshotService:
             if not isinstance(catalog_latest, str):
                 raise RuntimeError("AkShare 目录未返回有效最新日期")
             selected_asof = catalog_latest
-        source_state = (
-            scanner.describe_tdx(selected_asof)
-            if source == "tdx"
-            else self.repository.market_data.view("akshare", symbol, selected_asof)
-        )
+        not_listed_asof = False
+        try:
+            source_state = (
+                scanner.describe_tdx(selected_asof)
+                if source == "tdx"
+                else self.repository.market_data.view("akshare", symbol, selected_asof)
+            )
+        except (ValueError, RuntimeError, OSError):
+            if source != "akshare" or symbol is None:
+                raise
+            catalog_latest = self.repository.market_data.catalog("akshare").get("latest")
+            if not isinstance(catalog_latest, str) or catalog_latest <= selected_asof:
+                raise
+            future_state = self.repository.market_data.view("akshare", symbol, catalog_latest)
+            future_bars = future_state.get("bars")
+            first_bar = future_bars[0] if isinstance(future_bars, list) and future_bars else None
+            first_session = first_bar.get("time") if isinstance(first_bar, dict) else None
+            if not isinstance(first_session, str) or first_session <= selected_asof:
+                raise
+            data_version = hashlib.sha256(
+                json.dumps(
+                    ["not_listed_asof", symbol, selected_asof, first_session],
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest()
+            source_state = {"asof": selected_asof, "data_version": data_version}
+            not_listed_asof = True
         if source == "akshare":
             resolved_asof = source_state.get("asof")
             if not isinstance(resolved_asof, str):
                 raise RuntimeError("AkShare 未返回有效行情日期")
-            selected_asof = resolved_asof
+            # Keep every stock in the requested market-date partition. A
+            # suspended stock can legitimately resolve to an older last bar;
+            # using that per-stock date as the snapshot key would make it
+            # disappear from an otherwise complete market snapshot.
         algorithm_version = self.algorithm_version
         data_version = source_state["data_version"]
         existing = database.find_structure_snapshot(
@@ -92,6 +118,30 @@ class StructureSnapshotService:
 
         snapshot_id = self._snapshot_id(run, variant, source, symbol, selected_asof, algorithm_version, data_version)
         started = perf_counter()
+        if not_listed_asof:
+            stored = database.save_structure_snapshot(
+                StructureSnapshot(
+                    snapshot_id=snapshot_id,
+                    run_id=run,
+                    variant=variant,
+                    source=source,
+                    scope_symbol=symbol,
+                    asof=selected_asof,
+                    algorithm_version=algorithm_version,
+                    data_version=data_version,
+                    payload={
+                        "results": [],
+                        "stale": 0,
+                        "skip_reasons": {"not_listed_asof": 1},
+                        "errors": [],
+                        "elapsed_seconds": perf_counter() - started,
+                    },
+                    total=1,
+                    skipped=1,
+                    failed=0,
+                )
+            )
+            return self._refresh_result(stored, "published")
         request = {
             "run": run,
             "variant": variant,
@@ -151,6 +201,7 @@ class StructureSnapshotService:
         compatibility_symbol = query_params.pop("symbol", None)
         selected_markets = self._parse_markets(query_params.get("markets"))
         market_key = ",".join(selected_markets)
+        cache_market_key = "-".join(selected_markets)
         query_params["markets"] = market_key
         run = params["run"]
         variant = params["variant"]
@@ -200,7 +251,7 @@ class StructureSnapshotService:
         snapshot = market_snapshot
 
         cache_key = (
-            f"signal:structure:v3:{snapshot.snapshot_id}:{signal_type}:{trend_level}:{lookback}:{market_key}"
+            f"signal:structure:v3:{snapshot.snapshot_id}:{signal_type}:{trend_level}:{lookback}:{cache_market_key}"
         )
 
         def load() -> dict[str, object]:

@@ -34,12 +34,23 @@ def theory():
                     value=10.2,
                 )
             ],
+            bullish_turn_signals=[
+                landmark(
+                    "level1-bullish-turn",
+                    event_date="2026-01-05",
+                    available_at="2026-01-05",
+                    level=1,
+                    kind="K",
+                    value=13.1,
+                )
+            ],
         ),
         secondary_trends=dict(
             bear_to_bull_highs=[landmark("level2-flip", event_date="2026-01-02", available_at="2026-01-05", level=2)],
             bear_bull_alternation_lows=[],
+            bullish_turn_signals=[],
         ),
-        tertiary_trends=dict(bear_to_bull_highs=[], bear_bull_alternation_lows=[]),
+        tertiary_trends=dict(bear_to_bull_highs=[], bear_bull_alternation_lows=[], bullish_turn_signals=[]),
     )
 
 
@@ -89,7 +100,7 @@ class StructureMatchTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in alternation], ["level1-alternation"])
         self.assertEqual(level_two[0]["session_age"], 1)
 
-    def test_any_signal_type_returns_both_confirmed_contracts(self):
+    def test_any_signal_type_returns_all_confirmed_contracts(self):
         matches, _ = structure_matches(
             theory(),
             self.sessions,
@@ -100,7 +111,24 @@ class StructureMatchTests(unittest.TestCase):
             signal_type="any",
             trend_level=1,
         )
-        self.assertEqual({item["signal_type"] for item in matches}, {"bear_to_bull", "bear_bull_alternation"})
+        self.assertEqual(
+            {item["signal_type"] for item in matches},
+            {"bear_to_bull", "bear_bull_alternation", "bullish_turn"},
+        )
+
+    def test_bullish_turn_filter_returns_only_breakout_k_signal(self):
+        matches, _ = structure_matches(
+            theory(),
+            self.sessions,
+            symbol="sh.600000",
+            name=None,
+            asof="2026-01-05",
+            lookback=1,
+            signal_type="bullish_turn",
+            trend_level=0,
+        )
+        self.assertEqual([item["id"] for item in matches], ["level1-bullish-turn"])
+        self.assertEqual(matches[0]["kind"], "K")
 
     def test_non_session_cutoff_is_stale_and_never_backfills_a_match(self):
         matches, stale = structure_matches(
@@ -245,6 +273,7 @@ class StructureScannerTests(unittest.TestCase):
         self.assertEqual(response["snapshot"]["source"], "akshare")
         self.assertEqual(response["snapshot"]["resolved_source"], "akshare")
         self.assertEqual(response["snapshot"]["providers"], ["akshare"])
+        market_data.catalog.assert_not_called()
         market_data.window.assert_called_once_with("akshare", "sh.600000", "2026-01-05")
         market_data.theory.assert_called_once_with("akshare", "sh.600000", "2026-01-05")
 
