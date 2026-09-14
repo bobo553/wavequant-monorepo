@@ -443,11 +443,7 @@ test("bullish-turn signal marks the breakout close and retains its dashed-guide 
         bullishTurnSignalAnnotations([{ level: 1, landmarks: [landmark] }], "2022-05-01", "2022-10-31"),
         [],
     );
-    const [item] = bullishTurnSignalAnnotations(
-        [{ level: 1, landmarks: [landmark] }],
-        "2022-05-01",
-        "2022-11-01",
-    );
+    const [item] = bullishTurnSignalAnnotations([{ level: 1, landmarks: [landmark] }], "2022-05-01", "2022-11-01");
     assert.equal(item.time, "2022-11-01");
     assert.equal(item.price, 50.1);
     assert.equal(item.category, "trend-bullish-turn-signals");
