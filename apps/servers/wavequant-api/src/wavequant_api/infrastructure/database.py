@@ -68,6 +68,15 @@ structure_signal_snapshots = Table(
         "algorithm_version",
         "updated_at",
     ),
+    Index(
+        "ix_wavequant_structure_generation_lookup",
+        "run_id",
+        "source",
+        "asof",
+        "algorithm_version",
+        "scope_symbol",
+        "updated_at",
+    ),
 )
 
 buy_signal_snapshots = Table(
@@ -98,6 +107,34 @@ buy_signal_snapshots = Table(
         "scope_symbol",
         "asof",
         "start",
+        "algorithm_version",
+        "updated_at",
+    ),
+)
+
+# Materialized chart bundles are a read model, not another source of truth.  A
+# row is immutable for one (input data, algorithm) version and can therefore be
+# safely addressed by its snapshot_id from HTTP and browser caches.
+market_timeframe_snapshots = Table(
+    "wavequant_market_timeframe_snapshots",
+    metadata,
+    Column("snapshot_id", String(64), primary_key=True),
+    Column("source", String(32), nullable=False),
+    Column("symbol", String(32), nullable=False),
+    Column("timeframe", String(16), nullable=False),
+    Column("requested_asof", String(10), nullable=False),
+    Column("resolved_asof", String(10), nullable=False),
+    Column("algorithm_version", String(64), nullable=False),
+    Column("data_version", String(64), nullable=False),
+    Column("payload", JSON().with_variant(JSONB(), "postgresql"), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Index(
+        "ix_wavequant_market_timeframe_lookup",
+        "source",
+        "symbol",
+        "timeframe",
+        "requested_asof",
         "algorithm_version",
         "updated_at",
     ),
@@ -157,6 +194,23 @@ class BuySignalSnapshot:
     skipped: int
     failed: int
     scope_symbol: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class MarketTimeframeSnapshot:
+    """Precomputed candles and matching drawing overlays for one period."""
+
+    snapshot_id: str
+    source: str
+    symbol: str
+    timeframe: str
+    requested_asof: str
+    resolved_asof: str
+    algorithm_version: str
+    data_version: str
+    payload: Mapping[str, Any]
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -369,6 +423,70 @@ class ResearchRunRepository:
             rows = connection.execute(statement).mappings().all()
         return [self._structure_from_row(row) for row in rows]
 
+    def list_structure_snapshot_generations(
+        self,
+        run_id: str,
+        source: str,
+        asof: str,
+        *,
+        limit: int = 100,
+    ) -> Sequence[Mapping[str, Any]]:
+        """Describe published per-symbol generations at or before a requested market date.
+
+        A generation is the immutable ``(asof, algorithm_version)`` partition.
+        Counting distinct symbols keeps historical data-version rewrites and
+        strategy variants from inflating its coverage.
+        """
+        for value, name in ((run_id, "run_id"), (source, "source")):
+            self._validate_identifier(value, name)
+        if date.fromisoformat(asof).isoformat() != asof:
+            raise ValueError("asof must use YYYY-MM-DD")
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        statement = (
+            select(
+                structure_signal_snapshots.c.asof,
+                structure_signal_snapshots.c.algorithm_version,
+                func.count(func.distinct(structure_signal_snapshots.c.scope_symbol)).label("published_stocks"),
+                func.max(structure_signal_snapshots.c.updated_at).label("updated_at"),
+            )
+            .where(
+                structure_signal_snapshots.c.run_id == run_id,
+                structure_signal_snapshots.c.source == source,
+                structure_signal_snapshots.c.scope_symbol.is_not(None),
+                structure_signal_snapshots.c.asof <= asof,
+            )
+            .group_by(
+                structure_signal_snapshots.c.asof,
+                structure_signal_snapshots.c.algorithm_version,
+            )
+            .order_by(structure_signal_snapshots.c.asof.desc(), func.max(structure_signal_snapshots.c.updated_at).desc())
+            .limit(limit)
+        )
+        generations: list[dict[str, Any]] = []
+        with self.engine.connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+            for row in rows:
+                generation = dict(row)
+                payload = connection.execute(
+                    select(structure_signal_snapshots.c.payload)
+                    .where(
+                        structure_signal_snapshots.c.run_id == run_id,
+                        structure_signal_snapshots.c.source == source,
+                        structure_signal_snapshots.c.scope_symbol.is_not(None),
+                        structure_signal_snapshots.c.asof == generation["asof"],
+                        structure_signal_snapshots.c.algorithm_version == generation["algorithm_version"],
+                    )
+                    .order_by(structure_signal_snapshots.c.updated_at.desc())
+                    .limit(1)
+                ).scalar_one_or_none()
+                market_total = payload.get("market_total") if isinstance(payload, dict) else None
+                generation["market_total"] = (
+                    market_total if type(market_total) is int and market_total > 0 else None
+                )
+                generations.append(generation)
+        return generations
+
     def save_buy_signal_snapshot(self, snapshot: BuySignalSnapshot) -> BuySignalSnapshot:
         """Atomically publish a completed buy-signal snapshot."""
         values = self._buy_values(snapshot)
@@ -432,8 +550,72 @@ class ResearchRunRepository:
             row = connection.execute(statement).mappings().one_or_none()
         return self._buy_from_row(row) if row is not None else None
 
-    def _upsert_snapshot(self, table: Table, values: dict[str, object]) -> None:
-        update_fields = ("payload", "total", "skipped", "failed", "updated_at")
+    def save_market_timeframe_snapshot(
+        self, snapshot: MarketTimeframeSnapshot
+    ) -> MarketTimeframeSnapshot:
+        """Atomically publish one complete chart bundle."""
+
+        values = self._market_timeframe_values(snapshot)
+        self._upsert_snapshot(
+            market_timeframe_snapshots,
+            values,
+            update_fields=("payload", "resolved_asof", "updated_at"),
+        )
+        stored = self.find_market_timeframe_snapshot(
+            snapshot.source,
+            snapshot.symbol,
+            snapshot.timeframe,
+            snapshot.requested_asof,
+            snapshot.algorithm_version,
+            data_version=snapshot.data_version,
+        )
+        if stored is None:
+            raise RuntimeError("database did not return the saved market timeframe snapshot")
+        return stored
+
+    def find_market_timeframe_snapshot(
+        self,
+        source: str,
+        symbol: str,
+        timeframe: str,
+        requested_asof: str,
+        algorithm_version: str,
+        *,
+        data_version: str | None = None,
+    ) -> MarketTimeframeSnapshot | None:
+        """Return the newest complete bundle for the requested causal version."""
+
+        for value, name in (
+            (source, "source"),
+            (symbol, "symbol"),
+            (timeframe, "timeframe"),
+        ):
+            self._validate_identifier(value, name)
+        self._validate_digest(algorithm_version, "algorithm_version")
+        if date.fromisoformat(requested_asof).isoformat() != requested_asof:
+            raise ValueError("requested_asof must use YYYY-MM-DD")
+        statement = select(market_timeframe_snapshots).where(
+            market_timeframe_snapshots.c.source == source,
+            market_timeframe_snapshots.c.symbol == symbol,
+            market_timeframe_snapshots.c.timeframe == timeframe,
+            market_timeframe_snapshots.c.requested_asof == requested_asof,
+            market_timeframe_snapshots.c.algorithm_version == algorithm_version,
+        )
+        if data_version is not None:
+            self._validate_digest(data_version, "data_version")
+            statement = statement.where(market_timeframe_snapshots.c.data_version == data_version)
+        statement = statement.order_by(market_timeframe_snapshots.c.updated_at.desc()).limit(1)
+        with self.engine.connect() as connection:
+            row = connection.execute(statement).mappings().one_or_none()
+        return self._market_timeframe_from_row(row) if row is not None else None
+
+    def _upsert_snapshot(
+        self,
+        table: Table,
+        values: dict[str, object],
+        *,
+        update_fields: Sequence[str] = ("payload", "total", "skipped", "failed", "updated_at"),
+    ) -> None:
         dialect = self.engine.dialect.name
         with self.engine.begin() as connection:
             if dialect == "mysql":
@@ -562,6 +744,40 @@ class ResearchRunRepository:
             "updated_at": snapshot.updated_at or now,
         }
 
+    @classmethod
+    def _market_timeframe_values(cls, snapshot: MarketTimeframeSnapshot) -> dict[str, object]:
+        for value, name in (
+            (snapshot.snapshot_id, "snapshot_id"),
+            (snapshot.source, "source"),
+            (snapshot.symbol, "symbol"),
+            (snapshot.timeframe, "timeframe"),
+        ):
+            cls._validate_identifier(value, name)
+        cls._validate_digest(snapshot.algorithm_version, "algorithm_version")
+        cls._validate_digest(snapshot.data_version, "data_version")
+        for value, name in (
+            (snapshot.requested_asof, "requested_asof"),
+            (snapshot.resolved_asof, "resolved_asof"),
+        ):
+            if date.fromisoformat(value).isoformat() != value:
+                raise ValueError(f"{name} must use YYYY-MM-DD")
+        payload = dict(snapshot.payload)
+        json.dumps(payload, ensure_ascii=False, allow_nan=False)
+        now = datetime.now(timezone.utc)
+        return {
+            "snapshot_id": snapshot.snapshot_id,
+            "source": snapshot.source,
+            "symbol": snapshot.symbol,
+            "timeframe": snapshot.timeframe,
+            "requested_asof": snapshot.requested_asof,
+            "resolved_asof": snapshot.resolved_asof,
+            "algorithm_version": snapshot.algorithm_version,
+            "data_version": snapshot.data_version,
+            "payload": payload,
+            "created_at": snapshot.created_at or now,
+            "updated_at": snapshot.updated_at or now,
+        }
+
     @staticmethod
     def _validate_identifier(value: str, name: str) -> None:
         if not _IDENTIFIER.fullmatch(value):
@@ -619,6 +835,22 @@ class ResearchRunRepository:
             total=row["total"],
             skipped=row["skipped"],
             failed=row["failed"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    @staticmethod
+    def _market_timeframe_from_row(row: RowMapping) -> MarketTimeframeSnapshot:
+        return MarketTimeframeSnapshot(
+            snapshot_id=row["snapshot_id"],
+            source=row["source"],
+            symbol=row["symbol"],
+            timeframe=row["timeframe"],
+            requested_asof=row["requested_asof"],
+            resolved_asof=row["resolved_asof"],
+            algorithm_version=row["algorithm_version"],
+            data_version=row["data_version"],
+            payload=row["payload"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

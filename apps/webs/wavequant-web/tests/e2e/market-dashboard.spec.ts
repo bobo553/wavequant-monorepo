@@ -38,53 +38,176 @@ test("the original stock project Web workbench is the default page", async ({ pa
 });
 
 test("market candle timeframe switches server data, replay sessions and theory together", async ({ page }) => {
+    test.setTimeout(90_000);
     const pageErrors: string[] = [];
     const requests: string[] = [];
+    const responseStatuses: number[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     page.on("request", (request) => {
         const url = new URL(request.url());
-        if (["/api/tdx-view", "/api/tdx-theory"].includes(url.pathname) && url.searchParams.get("timeframe") === "1w") {
+        if (url.pathname === "/api/market-timeframe" && url.searchParams.get("timeframe") === "1w") {
             requests.push(url.pathname);
+        }
+    });
+    page.on("response", (response) => {
+        const url = new URL(response.url());
+        if (url.pathname === "/api/market-timeframe" && url.searchParams.get("timeframe") === "1w") {
+            responseStatuses.push(response.status());
         }
     });
 
     await page.goto("/research");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await selectTdx(page);
-    await expect(page.getByLabel("K线周期")).toBeEnabled();
-    await expect(page.getByLabel("K线周期").locator("option")).toHaveText(["日线", "周线", "月线", "季线", "年线"]);
+    const timeframeTabs = page.getByRole("tablist", { name: "K线周期" });
+    await expect(timeframeTabs).toBeVisible();
+    await expect(timeframeTabs.getByRole("tab")).toHaveText(["日", "周", "月", "季", "年"]);
 
-    await page.getByLabel("K线周期").selectOption("1w");
+    await timeframeTabs.getByRole("tab", { name: "周" }).click();
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#timeframe-tag")).toHaveText("周 K");
     await expect(page.locator("#selected-stock-summary")).toContainText("周线截面");
-    await expect.poll(() => requests).toContain("/api/tdx-view");
-    await expect.poll(() => requests).toContain("/api/tdx-theory");
+    await expect.poll(() => requests).toContain("/api/market-timeframe");
+
+    await timeframeTabs.getByRole("tab", { name: "周" }).press("ArrowRight");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(timeframeTabs.getByRole("tab", { name: "月" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#selected-stock-summary")).toContainText("月线截面");
+    await timeframeTabs.getByRole("tab", { name: "月" }).press("ArrowLeft");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(timeframeTabs.getByRole("tab", { name: "周" })).toHaveAttribute("aria-selected", "true");
 
     const [weekly, daily] = await page.evaluate(async () => {
         const [weeklyResponse, dailyResponse] = await Promise.all([
-            fetch("/api/tdx-view?symbol=sh.600519&asof=2026-09-07&timeframe=1w"),
-            fetch("/api/tdx-view?symbol=sh.600519&asof=2026-09-07&timeframe=1d"),
+            fetch("/api/market-timeframe?source=tdx&symbol=sh.600519&asof=2026-09-07&timeframe=1w"),
+            fetch("/api/market-timeframe?source=tdx&symbol=sh.600519&asof=2026-09-07&timeframe=1d"),
         ]);
         return Promise.all([weeklyResponse.json(), dailyResponse.json()]);
     });
     expect(weekly.timeframe).toBe("1w");
-    expect(weekly.timeframe_label).toBe("周线");
-    expect(weekly.bars.length).toBeLessThan(daily.bars.length);
+    expect(weekly.view.timeframe_label).toBe("周线");
+    expect(weekly.view.bars.length).toBeLessThan(daily.view.bars.length);
+    expect(weekly.theory.data_version).toBe(weekly.view.data_version);
     expect(
         await page.evaluate(() => JSON.parse(localStorage.getItem("wavequant.research.chart.v1") || "null").timeframe),
     ).toBe("1w");
 
     await page.reload();
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
-    await expect(page.getByLabel("K线周期")).toHaveValue("1w");
+    await expect(page.getByRole("tab", { name: "周" })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator("#timeframe-tag")).toHaveText("周 K");
+    await expect.poll(() => responseStatuses).toContain(304);
+
+    const cachedPeriods = await page.evaluate(async () => {
+        const request = indexedDB.open("wavequant-market-data", 2);
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        const transaction = database.transaction("market-timeframes", "readonly");
+        const all = transaction.objectStore("market-timeframes").getAll();
+        const rows = await new Promise<Array<{ timeframe: string }>>((resolve, reject) => {
+            all.onsuccess = () => resolve(all.result);
+            all.onerror = () => reject(all.error);
+        });
+        database.close();
+        return rows.map((row) => row.timeframe);
+    });
+    expect(cachedPeriods).toContain("1w");
 
     await page.locator("#result-scope").selectOption("stock");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
-    await expect(page.getByLabel("K线周期")).toBeDisabled();
-    await expect(page.getByLabel("K线周期")).toHaveValue("1d");
+    for (const tab of await timeframeTabs.getByRole("tab").all()) await expect(tab).toBeDisabled();
+    await expect(page.getByRole("tab", { name: "日" })).toHaveAttribute("aria-selected", "true");
     expect(pageErrors).toEqual([]);
+});
+
+test("chart tools reveal detailed overlays without reducing the candle viewport", async ({ page }) => {
+    test.setTimeout(90_000);
+    const pageErrors: string[] = [];
+    const consoleErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+        if (message.type() === "error") consoleErrors.push(message.text());
+    });
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/research");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+
+    const chartCard = await page.locator(".chart-card").boundingBox();
+    const chartHeader = await page.locator(".chart-card-header").boundingBox();
+    const ohlc = await page.locator("#ohlc").boundingBox();
+    const candleViewport = await page.locator("#price-chart").boundingBox();
+    const replay = await page.locator(".chart-card .replay").boundingBox();
+    expect(chartCard).not.toBeNull();
+    expect(chartHeader).not.toBeNull();
+    expect(ohlc).not.toBeNull();
+    expect(candleViewport).not.toBeNull();
+    expect(replay).not.toBeNull();
+    expect(candleViewport!.y - chartCard!.y).toBeLessThan(115);
+    expect(chartCard!.height).toBeGreaterThanOrEqual(874);
+    expect(candleViewport!.height).toBeGreaterThan(650);
+    expect(
+        Math.abs(chartCard!.height - chartHeader!.height - ohlc!.height - candleViewport!.height - replay!.height - 2),
+    ).toBeLessThanOrEqual(2);
+    await expect
+        .poll(() =>
+            page.locator("#price-chart > .tv-lightweight-charts").evaluate((element) => ({
+                host: element.parentElement?.getBoundingClientRect().height,
+                chart: element.getBoundingClientRect().height,
+            })),
+        )
+        .toEqual({ host: candleViewport!.height, chart: candleViewport!.height });
+
+    const layersTrigger = page.getByRole("button", { name: /图层/ });
+    const layersPopover = page.locator("#chart-layers-popover");
+    await expect(layersPopover).toBeHidden();
+    await layersTrigger.hover();
+    await expect(layersPopover).toBeVisible();
+    await expect(layersTrigger).toHaveAttribute("aria-expanded", "true");
+    expect(await layersPopover.evaluate((element) => getComputedStyle(element).position)).toBe("fixed");
+    expect((await page.locator("#price-chart").boundingBox())!.y).toBe(candleViewport!.y);
+
+    const bullishTurnLayer = layersPopover.locator(".layer-option", { hasText: "各级转多信号" });
+    await bullishTurnLayer.hover();
+    await expect(bullishTurnLayer.getByRole("tooltip")).toContainText("首次收盘严格突破");
+    await expect(bullishTurnLayer.getByRole("tooltip")).toBeVisible();
+
+    await layersTrigger.click();
+    await layersPopover.locator("#show-diagnostics").check();
+    await expect(page.locator("#layer-toggle-count")).toHaveText("17/17");
+    await page.locator("#ohlc").click();
+    await expect(layersPopover).toBeHidden();
+
+    await layersTrigger.focus();
+    await expect(layersPopover).toBeVisible();
+    await layersPopover.locator("#show-volume").focus();
+    await page.keyboard.press("Escape");
+    await expect(layersPopover).toBeHidden();
+    await expect(layersTrigger).toBeFocused();
+
+    const guideTrigger = page.getByRole("button", { name: "图例 ?" });
+    await guideTrigger.hover();
+    await expect(page.locator("#chart-guide-popover")).toBeVisible();
+    await expect(page.locator("#drawing-status")).toContainText("讲义绘图");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator("#ohlc").click();
+    const narrowCard = await page.locator(".chart-card").boundingBox();
+    const narrowViewport = await page.locator("#price-chart").boundingBox();
+    expect(narrowCard).not.toBeNull();
+    expect(narrowViewport).not.toBeNull();
+    expect(narrowCard!.height).toBeGreaterThanOrEqual(818);
+    expect(narrowViewport!.height).toBeGreaterThan(500);
+    await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth))
+        .toBe(true);
+    await expect(layersTrigger).toBeVisible();
+    await expect(page.getByRole("button", { name: "图例 ?" })).toBeVisible();
+
+    expect(pageErrors).toEqual([]);
+    expect(consoleErrors).toEqual([]);
 });
 
 test("stock catalogs persist in IndexedDB and only transfer again after an ETag change", async ({ page }) => {
@@ -102,7 +225,7 @@ test("stock catalogs persist in IndexedDB and only transfer again after an ETag 
     const cached = await page.evaluate(
         () =>
             new Promise<Array<{ source: string; etag: string; count: number }>>((resolve, reject) => {
-                const request = indexedDB.open("wavequant-market-data", 1);
+                const request = indexedDB.open("wavequant-market-data", 2);
                 request.onerror = () => reject(request.error);
                 request.onsuccess = () => {
                     const database = request.result;
@@ -325,9 +448,10 @@ test("confirmed structure search distinguishes event and availability dates and 
     });
 
     await page.getByRole("button", { name: "结构信号" }).click();
-    await page.getByLabel("结构信号类型").selectOption("bear_bull_alternation");
-    await page.getByLabel("结构趋势级别").selectOption("1");
-    await page.getByLabel("结构确认窗口").selectOption("1");
+    await page.getByRole("checkbox", { name: "转多信号" }).uncheck();
+    await page.getByRole("checkbox", { name: "空多交替" }).check();
+    await page.getByRole("radio", { name: "Ⅰ 一级" }).check();
+    await page.getByRole("radio", { name: "当天" }).check();
     await page.getByRole("button", { name: "读取预计算结果" }).click();
     await expect(page.locator("#structure-scan-status")).toContainText("全市场快照已就绪");
     await expect(page.locator("#structure-scan-status")).toContainText("算法 aaaaaaaa");
@@ -352,7 +476,10 @@ test("Huaxia Bank level-two last-fall-high reanchors after the old low close bre
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await selectTdx(page);
     const huaxiaTheory = page.waitForResponse(
-        (response) => response.url().includes("/api/tdx-theory?symbol=sh.600015") && response.ok(),
+        (response) =>
+            response.url().includes("/api/market-timeframe?") &&
+            response.url().includes("symbol=sh.600015") &&
+            response.ok(),
         { timeout: 60_000 },
     );
     await page.locator("#symbol-select").selectOption("sh.600015");
@@ -396,7 +523,10 @@ test("Minsheng Bank level-one guide reaches the confirmed same-level breakout ba
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await selectTdx(page);
     const minshengTheory = page.waitForResponse(
-        (response) => response.url().includes("/api/tdx-theory?symbol=sh.600016") && response.ok(),
+        (response) =>
+            response.url().includes("/api/market-timeframe?") &&
+            response.url().includes("symbol=sh.600016") &&
+            response.ok(),
         { timeout: 60_000 },
     );
     await page.locator("#symbol-select").selectOption("sh.600016");
@@ -448,7 +578,10 @@ test("Shanghai Electric Power shows the complete level-three development path af
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await selectTdx(page);
     const shanghaiPowerTheory = page.waitForResponse(
-        (response) => response.url().includes("/api/tdx-theory?symbol=sh.600021") && response.ok(),
+        (response) =>
+            response.url().includes("/api/market-timeframe?") &&
+            response.url().includes("symbol=sh.600021") &&
+            response.ok(),
         { timeout: 60_000 },
     );
     await page.locator("#symbol-select").selectOption("sh.600021");
@@ -529,11 +662,88 @@ test("Shanghai Electric Power shows the complete level-three development path af
     expect(failedRequests).toEqual([]);
 });
 
-test("Zhongda Leader promotes the August 2022 high only after causal alternation evidence", async ({ page }) => {
+test("Guofang Group cancels bull-flip highs only after their preceding lows are broken", async ({ page }) => {
+    test.setTimeout(90_000);
     const pageErrors: string[] = [];
     const failedRequests: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await selectTdx(page);
+    await page.locator("#symbol-select").selectOption("sh.601086");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#error")).toBeHidden();
+    await expect(page.locator("#selection-info")).toContainText("601086 国芳集团");
+
+    const state = await page.evaluate(async () => {
+        type TBullFlip = { time: string; confirmed_low?: { value: number } };
+        type TFormalPoint = { time: string; flip: string; confirmed_by: { value: number } };
+        type TTheory = {
+            secondary_trends: {
+                bear_to_bull_highs: TBullFlip[];
+                strokes: Array<{ points: TFormalPoint[] }>;
+            };
+        };
+        const fetchTheory = (asof: string) =>
+            fetch(`/api/tdx-theory?symbol=sh.601086&asof=${asof}`).then(
+                async (response) => (await response.json()) as TTheory,
+            );
+        const [beforeFirstBreak, atFirstBreak, beforeSecondBreak, atSecondBreak, latest] = await Promise.all([
+            fetchTheory("2026-05-06"),
+            fetchTheory("2026-05-07"),
+            fetchTheory("2026-07-14"),
+            fetchTheory("2026-07-15"),
+            fetchTheory("2026-09-14"),
+        ]);
+        const findFlip = (theory: TTheory, time: string) =>
+            theory.secondary_trends.bear_to_bull_highs.find((point) => point.time === time);
+        const formal = latest.secondary_trends.strokes.flatMap((stroke) => stroke.points);
+        return {
+            firstBefore: findFlip(beforeFirstBreak, "2026-04-21"),
+            firstAt: findFlip(atFirstBreak, "2026-04-21"),
+            secondBefore: findFlip(beforeSecondBreak, "2026-05-14"),
+            secondAt: findFlip(atSecondBreak, "2026-05-14"),
+            latestFirst: findFlip(latest, "2026-04-21"),
+            latestSecond: findFlip(latest, "2026-05-14"),
+            converted: formal
+                .filter((point) => ["2026-04-21", "2026-05-14"].includes(point.time))
+                .map((point) => ({
+                    time: point.time,
+                    flip: point.flip,
+                    confirmingLow: point.confirmed_by.value,
+                })),
+        };
+    });
+
+    expect(state.firstBefore).toMatchObject({ time: "2026-04-21", confirmed_low: { value: 8.15 } });
+    expect(state.firstAt).toBeUndefined();
+    expect(state.secondBefore).toMatchObject({ time: "2026-05-14", confirmed_low: { value: 8.03 } });
+    expect(state.secondAt).toBeUndefined();
+    expect(state.latestFirst).toBeUndefined();
+    expect(state.latestSecond).toBeUndefined();
+    expect(state.converted).toEqual([
+        { time: "2026-04-21", flip: "翻多为空", confirmingLow: 8.03 },
+        { time: "2026-05-14", flip: "翻多为空", confirmingLow: 6.38 },
+    ]);
+    expect(pageErrors).toEqual([]);
+    expect(failedRequests).toEqual([]);
+});
+
+test("Zhongda Leader promotes the August 2022 high only after causal alternation evidence", async ({ page }) => {
+    test.setTimeout(90_000);
+    const pageErrors: string[] = [];
+    const failedRequests: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+
+    const layersPopover = page.locator("#chart-layers-popover");
+    const openChartLayers = async () => {
+        if (!(await layersPopover.isVisible())) {
+            await page.locator("#chart-layers-trigger").click();
+        }
+    };
 
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
@@ -570,9 +780,11 @@ test("Zhongda Leader promotes the August 2022 high only after causal alternation
     await levelTwoFlipHigh.click();
     await expect(page.locator("#selection-info")).toContainText("L9（2022-05-27，13.16）");
     await expect(page.locator("#selection-info")).toContainText("H69（2022-05-24，18.28）");
-    await page.getByRole("checkbox", { name: "各级空翻多高点", exact: true }).uncheck();
+    await openChartLayers();
+    await layersPopover.locator("#show-bear-to-bull-highs").setChecked(false, { force: true });
     await expect(page.locator("#price-chart")).toHaveAttribute("data-bear-to-bull-high-count", "0");
-    await page.getByRole("checkbox", { name: "各级空翻多高点", exact: true }).check();
+    await openChartLayers();
+    await layersPopover.locator("#show-bear-to-bull-highs").setChecked(true, { force: true });
     await expect.poll(() => page.locator("#price-chart").getAttribute("data-bear-to-bull-high-count")).not.toBe("0");
 
     const alternationReplayIndex = await page.evaluate(async () => {
@@ -595,9 +807,11 @@ test("Zhongda Leader promotes the August 2022 high only after causal alternation
     await levelOneAlternationLow.click();
     await expect(page.locator("#selection-info")).toContainText("H70（2022-08-03，49.56）");
     await expect(page.locator("#selection-info")).toContainText("54.42% 回档");
-    await page.getByRole("checkbox", { name: "各级空多交替低点", exact: true }).uncheck();
+    await openChartLayers();
+    await layersPopover.locator("#show-bear-bull-alternation-lows").setChecked(false, { force: true });
     await expect(page.locator("#price-chart")).toHaveAttribute("data-bear-bull-alternation-low-count", "0");
-    await page.getByRole("checkbox", { name: "各级空多交替低点", exact: true }).check();
+    await openChartLayers();
+    await layersPopover.locator("#show-bear-bull-alternation-lows").setChecked(true, { force: true });
     await expect
         .poll(() => page.locator("#price-chart").getAttribute("data-bear-bull-alternation-low-count"))
         .not.toBe("0");
@@ -622,9 +836,11 @@ test("Zhongda Leader promotes the August 2022 high only after causal alternation
     await levelOneBullLegHigh.click();
     await expect(page.locator("#selection-info")).toContainText("L71（2022-08-30，29.75）");
     await expect(page.locator("#selection-info")).toContainText("第一个 L→H 高点");
-    await page.getByRole("checkbox", { name: "各级交替后多头段高点", exact: true }).uncheck();
+    await openChartLayers();
+    await layersPopover.locator("#show-post-alternation-bull-highs").setChecked(false, { force: true });
     await expect(page.locator("#price-chart")).toHaveAttribute("data-post-alternation-bull-high-count", "0");
-    await page.getByRole("checkbox", { name: "各级交替后多头段高点", exact: true }).check();
+    await openChartLayers();
+    await layersPopover.locator("#show-post-alternation-bull-highs").setChecked(true, { force: true });
     await expect
         .poll(() => page.locator("#price-chart").getAttribute("data-post-alternation-bull-high-count"))
         .not.toBe("0");
@@ -647,10 +863,12 @@ test("Zhongda Leader promotes the August 2022 high only after causal alternation
     await expect(levelOneBullishTurn).toBeVisible();
     await levelOneBullishTurn.click();
     await expect(page.locator("#selection-info")).toContainText("首次从下向上严格突破此前空翻多高点");
-    await page.getByRole("checkbox", { name: "各级转多信号", exact: true }).uncheck();
+    await openChartLayers();
+    await layersPopover.locator("#show-bullish-turn-signals").setChecked(false, { force: true });
     await expect(page.locator("#price-chart")).toHaveAttribute("data-bullish-turn-signal-count", "0");
     await expect(page.locator("#price-chart")).toHaveAttribute("data-bullish-turn-guides", "0");
-    await page.getByRole("checkbox", { name: "各级转多信号", exact: true }).check();
+    await openChartLayers();
+    await layersPopover.locator("#show-bullish-turn-signals").setChecked(true, { force: true });
     await expect.poll(() => page.locator("#price-chart").getAttribute("data-bullish-turn-signal-count")).not.toBe("0");
     await expect.poll(() => page.locator("#price-chart").getAttribute("data-bullish-turn-guides")).not.toBe("0");
 
@@ -760,7 +978,7 @@ test("Zhongda Leader promotes the August 2022 high only after causal alternation
     expect(state.beforePromotionCount).toBe(17);
     expect(state.atPromotionCount).toBe(18);
     expect(state.atPromotionEnd).toMatchObject({ time: "2022-08-03", kind: "H", value: 49.56 });
-    expect(state.landmarkCounts).toEqual([6, 23, 2]);
+    expect(state.landmarkCounts).toEqual([1, 6, 1]);
     expect(state.allLandmarksStrictlyBreakTheirKey).toBe(true);
     expect(state.promoted).toMatchObject({
         time: "2022-08-03",

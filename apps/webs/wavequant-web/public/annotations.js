@@ -451,7 +451,7 @@ export function bullishTurnSignalAnnotations(levelLandmarks, from, to) {
                     side: "LONG",
                     category: "trend-bullish-turn-signals",
                     price: landmark.value,
-                    markerPosition: "atPriceBottom",
+                    markerPosition: "belowBar",
                     markerShape: "arrowUp",
                     title: `${spec.numeral} 转多信号 · ${landmark.label} ${num(landmark.value)}`,
                     description: `${spec.label}趋势线在 ${alternationLow.label}（${alternationLow.time}，${num(alternationLow.value)}）完成空多交替后，${landmark.label}（${landmark.time}）收盘 ${num(landmark.previous_close)} → ${num(landmark.value)}，首次从下向上严格突破此前空翻多高点 ${flipHigh.label}（${flipHigh.time}，${num(flipHigh.value)}）。盘中触碰、收盘相等或交替确认前的突破均不产生转多信号。`,
@@ -585,24 +585,29 @@ export function markerGroups(items, options, span = 140) {
                 ? `${buy ? "B 买入" : "S 卖出"} ${num(item.price)}`
                 : isRule
                   ? `${item.title}${g.items.length > 1 ? " +" + (g.items.length - 1) : ""}`
-                  : item.title;
+                   : item.title;
+            const markerPosition =
+                item.markerPosition ||
+                ((isFill || isTrendKey) && Number.isFinite(item.price)
+                    ? buy
+                        ? "atPriceBottom"
+                        : "atPriceTop"
+                    : isRule
+                      ? "aboveBar"
+                      : buy
+                        ? "belowBar"
+                        : "aboveBar");
             return {
                 ...g,
                 marker: {
                     id: g.id,
                     time: g.time,
-                    position:
-                        item.markerPosition ||
-                        ((isFill || isTrendKey) && Number.isFinite(item.price)
-                            ? buy
-                                ? "atPriceBottom"
-                                : "atPriceTop"
-                            : isRule
-                              ? "aboveBar"
-                              : buy
-                                ? "belowBar"
-                                : "aboveBar"),
-                    ...((isFill || isTrendKey) && Number.isFinite(item.price) ? { price: item.price } : {}),
+                    position: markerPosition,
+                    ...((isFill || isTrendKey) &&
+                    Number.isFinite(item.price) &&
+                    markerPosition.startsWith("atPrice")
+                        ? { price: item.price }
+                        : {}),
                     color: isFill
                         ? buy
                             ? "#ff7d8c"

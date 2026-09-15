@@ -13,7 +13,9 @@ from collections import OrderedDict
 from datetime import date, datetime
 import hashlib
 import json
+import logging
 from threading import Lock
+from types import CodeType
 from typing import Any, Protocol, Sequence, cast
 
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing  # type: ignore[import-untyped]
@@ -30,6 +32,10 @@ TIMEFRAME_LABELS = {
     "3mo": "季线",
     "1y": "年线",
 }
+TIMEFRAME_SNAPSHOT_SCHEMA_VERSION = 1
+TIMEFRAME_ALGORITHM_VERSION_SEED = (
+    b"wavequant-market-timeframes:v3:calendar-aggregation+lecture-drawing+invalidated-bull-flips"
+)
 
 
 class DailyMarketDataRepository(Protocol):
@@ -42,19 +48,89 @@ class DailyMarketDataRepository(Protocol):
         """Return canonical daily display theory."""
 
 
+class MarketTimeframeSnapshotStore(Protocol):
+    """Durable store contract kept small so aggregation remains testable."""
+
+    def find_market_timeframe_snapshot(
+        self,
+        source: str,
+        symbol: str,
+        timeframe: str,
+        requested_asof: str,
+        algorithm_version: str,
+        *,
+        data_version: str | None = None,
+    ) -> Any | None: ...
+
+    def save_market_timeframe_snapshot(self, snapshot: Any) -> Any: ...
+
+
+class MarketTimeframeCache(Protocol):
+    """Replaceable hot-cache contract; SQL remains the durable read model."""
+
+    def get_json(self, key: str) -> Any | None: ...
+
+    def set_json(self, key: str, value: object, *, ttl_seconds: int | None = None) -> None: ...
+
+
 class MarketTimeframeService:
     """Aggregate validated daily views and compute matching display theory."""
 
-    def __init__(self, repository: DailyMarketDataRepository):
+    def __init__(
+        self,
+        repository: DailyMarketDataRepository,
+        snapshots: MarketTimeframeSnapshotStore | None = None,
+        cache: MarketTimeframeCache | None = None,
+        algorithm_version: str | None = None,
+    ):
         self.repository = repository
+        self.snapshots = snapshots
+        self.cache = cache
+        self.algorithm_version = algorithm_version or self._algorithm_digest()
         self._theory: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._lock = Lock()
+
+    @classmethod
+    def _algorithm_digest(cls) -> str:
+        """Bind snapshots to executable aggregation and drawing logic."""
+
+        digest = hashlib.sha256(TIMEFRAME_ALGORITHM_VERSION_SEED)
+
+        def update_code(code: CodeType) -> None:
+            # Hash executable semantics without filenames or line numbers, so
+            # unrelated formatting does not invalidate the entire catalog.
+            digest.update(code.co_code)
+            digest.update(repr(code.co_names).encode())
+            for constant in code.co_consts:
+                if isinstance(constant, CodeType):
+                    update_code(constant)
+                else:
+                    digest.update(repr(constant).encode())
+
+        for callback in (
+            cls._view_from_daily,
+            cls._aggregate_bars,
+            cls._aggregate_sessions,
+            cls._is_partial_last_bar,
+            cls._theory_from_view,
+            lecture_drawing,
+            reversal_trends,
+            secondary_trends,
+            tertiary_trends,
+        ):
+            code = getattr(callback, "__code__", None)
+            if isinstance(code, CodeType):
+                update_code(code)
+        return digest.hexdigest()
 
     def view(self, source: str, symbol: str, asof: str, timeframe: str = "1d") -> dict[str, Any]:
         """Return one market view at the requested supported timeframe."""
 
         self._validate_timeframe(timeframe)
         daily = self.repository.view(source, symbol, asof)
+        return self._view_from_daily(daily, timeframe)
+
+    def _view_from_daily(self, daily: dict[str, Any], timeframe: str) -> dict[str, Any]:
         if timeframe == "1d":
             return {
                 **daily,
@@ -99,6 +175,166 @@ class MarketTimeframeService:
             }
 
         view = self.view(source, symbol, asof, timeframe)
+        return self._theory_from_view(source, symbol, asof, timeframe, view)
+
+    def bundle(
+        self,
+        source: str,
+        symbol: str,
+        asof: str,
+        timeframe: str = "1d",
+        *,
+        compute_if_missing: bool = True,
+    ) -> dict[str, Any]:
+        """Read a precomputed display bundle, with a safe rollout fallback."""
+
+        self._validate_timeframe(timeframe)
+        if self.snapshots is not None:
+            stored = self.snapshots.find_market_timeframe_snapshot(
+                source, symbol, timeframe, asof, self.algorithm_version
+            )
+            if stored is not None:
+                hot = self._read_hot_cache(stored.snapshot_id)
+                payload = hot or dict(stored.payload)
+                if hot is None:
+                    self._write_hot_cache(stored.snapshot_id, payload)
+                return {**payload, "cache_state": "precomputed"}
+        if not compute_if_missing:
+            raise LookupError("该股票周期快照尚未预计算")
+        daily = self.repository.view(source, symbol, asof)
+        payload = self._build_bundle(source, symbol, asof, timeframe, daily)
+        stored = self._publish(payload)
+        return {**payload, "cache_state": "computed_on_demand" if stored is None else "precomputed"}
+
+    def precompute(
+        self,
+        source: str,
+        symbol: str,
+        asof: str,
+        timeframes: Sequence[str] = tuple(TIMEFRAME_LABELS),
+    ) -> dict[str, Any]:
+        """Idempotently materialize every requested period from one daily read."""
+
+        if self.snapshots is None:
+            raise RuntimeError("周期预计算需要配置持久化数据库")
+        requested = tuple(dict.fromkeys(timeframes))
+        for timeframe in requested:
+            self._validate_timeframe(timeframe)
+        daily = self.repository.view(source, symbol, asof)
+        published: list[str] = []
+        unchanged: list[str] = []
+        for timeframe in requested:
+            view = self._view_from_daily(daily, timeframe)
+            data_version = str(view["data_version"])
+            current = self.snapshots.find_market_timeframe_snapshot(
+                source,
+                symbol,
+                timeframe,
+                asof,
+                self.algorithm_version,
+                data_version=data_version,
+            )
+            if current is not None:
+                unchanged.append(timeframe)
+                continue
+            payload = self._build_bundle(source, symbol, asof, timeframe, daily, view=view)
+            self._publish(payload)
+            published.append(timeframe)
+        return {
+            "source": source,
+            "symbol": symbol,
+            "requested_asof": asof,
+            "published": published,
+            "unchanged": unchanged,
+        }
+
+    def _build_bundle(
+        self,
+        source: str,
+        symbol: str,
+        asof: str,
+        timeframe: str,
+        daily: dict[str, Any],
+        *,
+        view: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        current_view = view or self._view_from_daily(daily, timeframe)
+        data_version = str(current_view["data_version"])
+        if timeframe == "1d":
+            theory = {**self.theory(source, symbol, asof, timeframe), "data_version": data_version}
+        else:
+            theory = self._theory_from_view(source, symbol, asof, timeframe, current_view)
+        identity = ":".join((source, symbol, timeframe, asof, data_version, self.algorithm_version))
+        snapshot_id = hashlib.sha256(identity.encode()).hexdigest()
+        return {
+            "schema_version": TIMEFRAME_SNAPSHOT_SCHEMA_VERSION,
+            "snapshot_id": snapshot_id,
+            "source": source,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "requested_asof": asof,
+            "resolved_asof": str(current_view["asof"]),
+            "algorithm_version": self.algorithm_version,
+            "data_version": data_version,
+            "view": current_view,
+            "theory": theory,
+        }
+
+    def _publish(self, payload: dict[str, Any]) -> Any | None:
+        if self.snapshots is None:
+            return None
+        # Local import prevents the application service from importing the
+        # SQLAlchemy module until persistence is actually configured.
+        from wavequant_api.infrastructure.database import MarketTimeframeSnapshot
+
+        stored = self.snapshots.save_market_timeframe_snapshot(
+            MarketTimeframeSnapshot(
+                snapshot_id=str(payload["snapshot_id"]),
+                source=str(payload["source"]),
+                symbol=str(payload["symbol"]),
+                timeframe=str(payload["timeframe"]),
+                requested_asof=str(payload["requested_asof"]),
+                resolved_asof=str(payload["resolved_asof"]),
+                algorithm_version=str(payload["algorithm_version"]),
+                data_version=str(payload["data_version"]),
+                payload=payload,
+            )
+        )
+        self._write_hot_cache(str(payload["snapshot_id"]), payload)
+        return stored
+
+    @staticmethod
+    def _cache_key(snapshot_id: str) -> str:
+        return f"market:timeframe:v1:{snapshot_id}"
+
+    def _read_hot_cache(self, snapshot_id: str) -> dict[str, Any] | None:
+        if self.cache is None:
+            return None
+        try:
+            value = self.cache.get_json(self._cache_key(snapshot_id))
+            return cast(dict[str, Any], value) if isinstance(value, dict) else None
+        except Exception as exc:
+            logging.warning("market timeframe Redis read failed (%s); using SQL", type(exc).__name__)
+            return None
+
+    def _write_hot_cache(self, snapshot_id: str, payload: dict[str, Any]) -> None:
+        if self.cache is None:
+            return
+        try:
+            self.cache.set_json(self._cache_key(snapshot_id), payload)
+        except Exception as exc:
+            logging.warning("market timeframe Redis write failed (%s); SQL remains authoritative", type(exc).__name__)
+
+    def _theory_from_view(
+        self,
+        source: str,
+        symbol: str,
+        asof: str,
+        timeframe: str,
+        view: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Compute matching overlays from an already aggregated view."""
+
         data_version = str(view["data_version"])
         key = f"{source}:{symbol}:{view['asof']}:{timeframe}:{data_version}"
         with self._lock:
@@ -106,7 +342,6 @@ class MarketTimeframeService:
             if cached is not None:
                 self._theory.move_to_end(key)
                 return cached
-
         bars = [self._to_bar(symbol, row) for row in self._bars(view)]
         drawing = lecture_drawing(bars)
         first = reversal_trends(drawing, bars)
@@ -124,7 +359,7 @@ class MarketTimeframeService:
             "timeframe": timeframe,
             "timeframe_label": TIMEFRAME_LABELS[timeframe],
             "is_partial_last_bar": view["is_partial_last_bar"],
-            "timeframe_source": "server_aggregated_from_daily",
+            "timeframe_source": view.get("timeframe_source", "server_aggregated_from_daily"),
             "points": [],
             "polyline_segments": [],
             "events": [],

@@ -14,6 +14,8 @@
         "structures:watch": "node scripts/run-python.mjs -m wavequant_api.cli --watch-structures --tdx-root D:/TDX",
         "signals:refresh": "node scripts/run-python.mjs -m wavequant_api.cli --refresh-signals --tdx-root D:/TDX",
         "signals:watch": "node scripts/run-python.mjs -m wavequant_api.cli --watch-signals --tdx-root D:/TDX",
+        "timeframes:refresh": "node scripts/run-python.mjs -m wavequant_api.cli --refresh-timeframes --tdx-root D:/TDX",
+        "timeframes:watch": "node scripts/run-python.mjs -m wavequant_api.cli --watch-timeframes --tdx-root D:/TDX",
         "structures:watch:akshare": "node scripts/run-python.mjs -m wavequant_api.cli --watch-signals --signal-family structure --signal-source akshare --tdx-root D:/TDX",
         "infra:up": "docker compose --env-file .env.infrastructure -f compose.yaml up -d",
         "infra:down": "docker compose --env-file .env.infrastructure -f compose.yaml down",

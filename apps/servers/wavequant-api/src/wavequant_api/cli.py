@@ -12,7 +12,7 @@ import time
 
 from wavequant.interfaces.charts.visualization import ChartRepository  # type: ignore[import-untyped]
 
-from .application import BuySignalSnapshotService, StructureSnapshotService
+from .application import BuySignalSnapshotService, MarketTimeframeService, StructureSnapshotService
 from .infrastructure import Infrastructure, InfrastructureSettings, ResearchRun
 from .server import serve_dashboard
 
@@ -64,6 +64,12 @@ def parser() -> argparse.ArgumentParser:
     )
     actions.add_argument("--refresh-signals", action="store_true", help="precompute and publish signal read models")
     actions.add_argument("--watch-signals", action="store_true", help="watch causal versions and refresh signals")
+    actions.add_argument(
+        "--refresh-timeframes", action="store_true", help="precompute all chart periods for a market catalog"
+    )
+    actions.add_argument(
+        "--watch-timeframes", action="store_true", help="watch market data and refresh changed chart periods"
+    )
     value.add_argument("--structure-run", help="sealed run providing the structure strategy configuration")
     value.add_argument("--structure-variant", default="lecture_v1")
     value.add_argument("--structure-asof", help="optional fixed YYYY-MM-DD cutoff; defaults to latest TDX market date")
@@ -80,6 +86,13 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--signal-shard-index", type=int, default=0, help="当前 AkShare 全目录分片编号（从 0 开始）")
     value.add_argument("--signal-scenario", default="base")
     value.add_argument("--signal-start", default="2018-01-01")
+    value.add_argument("--timeframe-source", choices=("tdx", "akshare"), default="akshare")
+    value.add_argument(
+        "--timeframe-symbol", action="append", default=[], help="optional symbol subset; defaults to the full catalog"
+    )
+    value.add_argument("--timeframe-asof", help="optional YYYY-MM-DD cutoff; defaults to catalog latest")
+    value.add_argument("--timeframe-shard-count", type=int, default=1, help="周期快照并行分片总数（1-16）")
+    value.add_argument("--timeframe-shard-index", type=int, default=0, help="当前周期快照分片编号（从 0 开始）")
     return value
 
 
@@ -172,6 +185,7 @@ def refresh_signals(
         raise ValueError("signal sharding only supports the AkShare full-catalog structure worker")
     resolved_run = _structure_run(repository, run)
     scopes: list[str | None]
+    market_total: int | None = None
     if source == "akshare":
         if symbols:
             scopes = list(dict.fromkeys(symbols))
@@ -191,6 +205,7 @@ def refresh_signals(
             )
             if not scopes:
                 raise ValueError("AkShare 目录没有可预计算股票")
+            market_total = len(scopes)
         else:
             raise ValueError("AkShare 买点预计算必须至少传一个 --signal-symbol")
     else:
@@ -201,14 +216,12 @@ def refresh_signals(
     if source == "akshare" and selected_asof is None:
         catalog = repository.market_data.catalog("akshare")
         latest = catalog.get("latest")
-        reference_symbol = scopes[0] if scopes else None
-        if not isinstance(latest, str) or not isinstance(reference_symbol, str):
+        if not isinstance(latest, str):
             raise ValueError("AkShare 目录未返回可解析的最新行情范围")
-        reference = repository.market_data.view("akshare", reference_symbol, latest)
-        resolved_asof = reference.get("asof")
-        if not isinstance(resolved_asof, str):
-            raise ValueError("AkShare 参考股票未返回有效行情日期")
-        selected_asof = resolved_asof
+        # The partition belongs to the market date, not to the first shard's
+        # last tradable bar. Suspended stocks may legitimately resolve earlier
+        # and must not move the whole market worker onto a stale date forever.
+        selected_asof = latest
     results: list[dict[str, object]] = []
     structure_service = StructureSnapshotService(repository, infrastructure) if family in {"all", "structure"} else None
     buy_service = BuySignalSnapshotService(repository, infrastructure) if family in {"all", "buy"} else None
@@ -245,7 +258,14 @@ def refresh_signals(
                 raise RuntimeError("结构预计算服务未初始化")
             try:
                 results.append(
-                    structure_service.refresh(resolved_run, variant, source=source, symbol=symbol, asof=selected_asof)
+                    structure_service.refresh(
+                        resolved_run,
+                        variant,
+                        source=source,
+                        symbol=symbol,
+                        asof=selected_asof,
+                        market_total=market_total,
+                    )
                 )
             except (ValueError, RuntimeError, OSError) as exc:
                 if source != "akshare":
@@ -289,6 +309,66 @@ def refresh_signals(
     return results
 
 
+def refresh_timeframes(
+    infrastructure: Infrastructure,
+    repository: ChartRepository,
+    *,
+    source: str,
+    symbols: list[str],
+    asof: str | None,
+    shard_count: int = 1,
+    shard_index: int = 0,
+) -> dict[str, object]:
+    """Materialize all chart periods, skipping unchanged data versions."""
+
+    if infrastructure.database is None:
+        raise ValueError("周期预计算需要配置 WAVEQUANT_DATABASE_URL")
+    if not 1 <= shard_count <= 16 or not 0 <= shard_index < shard_count:
+        raise ValueError("timeframe shard must use count 1-16 and index 0..count-1")
+    catalog = repository.market_data.catalog(source)
+    selected_asof = asof or catalog.get("latest")
+    if not isinstance(selected_asof, str):
+        raise ValueError("行情目录未返回可解析的最新日期")
+    scopes = list(dict.fromkeys(symbols))
+    if not scopes:
+        stocks = catalog.get("stocks")
+        if not isinstance(stocks, list):
+            raise ValueError("行情目录未返回股票列表")
+        scopes = list(
+            dict.fromkeys(
+                item["symbol"]
+                for item in stocks
+                if isinstance(item, dict) and isinstance(item.get("symbol"), str)
+            )
+        )
+    scopes = [scope for scope in scopes if _akshare_scope_shard(scope, shard_count) == shard_index]
+    service = MarketTimeframeService(
+        repository.market_data,
+        snapshots=infrastructure.database,
+        cache=getattr(infrastructure, "cache", None),
+    )
+    published = 0
+    unchanged = 0
+    failed: list[dict[str, str]] = []
+    for symbol in scopes:
+        try:
+            result = service.precompute(source, symbol, selected_asof)
+            published += len(result["published"])
+            unchanged += len(result["unchanged"])
+        except (ValueError, RuntimeError, OSError) as exc:
+            failed.append({"symbol": symbol, "error": str(exc)})
+    return {
+        "source": source,
+        "requested_asof": selected_asof,
+        "symbols": len(scopes),
+        "published_periods": published,
+        "unchanged_periods": unchanged,
+        "failed": failed[:20],
+        "failed_count": len(failed),
+        "shard": {"count": shard_count, "index": shard_index},
+    }
+
+
 def main() -> None:
     """Start the loopback-only dashboard API."""
     args = parser().parse_args()
@@ -302,6 +382,8 @@ def main() -> None:
         or args.watch_structures
         or args.refresh_signals
         or args.watch_signals
+        or args.refresh_timeframes
+        or args.watch_timeframes
     ):
         infrastructure = Infrastructure.from_settings(InfrastructureSettings.from_env())
         try:
@@ -313,7 +395,14 @@ def main() -> None:
                 count = index_runs(infrastructure, ChartRepository(args.root).catalog())
                 print(f"Indexed {count} sealed WaveQuant run(s).")
                 return
-            if args.refresh_structures or args.watch_structures or args.refresh_signals or args.watch_signals:
+            if (
+                args.refresh_structures
+                or args.watch_structures
+                or args.refresh_signals
+                or args.watch_signals
+                or args.refresh_timeframes
+                or args.watch_timeframes
+            ):
                 if not 60 <= args.structure_refresh_interval <= 86_400:
                     raise ValueError("--structure-refresh-interval must be between 60 and 86400 seconds")
                 repository = ChartRepository(
@@ -347,15 +436,25 @@ def main() -> None:
                                 shard_count=args.signal_shard_count,
                                 shard_index=args.signal_shard_index,
                             )
+                            if args.refresh_signals or args.watch_signals
+                            else refresh_timeframes(
+                                infrastructure,
+                                repository,
+                                source=args.timeframe_source,
+                                symbols=args.timeframe_symbol,
+                                asof=args.timeframe_asof,
+                                shard_count=args.timeframe_shard_count,
+                                shard_index=args.timeframe_shard_index,
+                            )
                         )
                         print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
                     except (ValueError, RuntimeError, OSError):
-                        if args.refresh_structures or args.refresh_signals:
+                        if args.refresh_structures or args.refresh_signals or args.refresh_timeframes:
                             raise
                         logging.exception(
                             "structure snapshot refresh failed; the last published snapshot remains active"
                         )
-                    if args.refresh_structures or args.refresh_signals:
+                    if args.refresh_structures or args.refresh_signals or args.refresh_timeframes:
                         return
                     time.sleep(args.structure_refresh_interval)
             health = infrastructure.health()

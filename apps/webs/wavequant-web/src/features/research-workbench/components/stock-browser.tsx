@@ -82,32 +82,64 @@ export function StockBrowser(): JSX.Element {
                         <input type="checkbox" name="structure-market" value="beijing" /> 北京
                     </label>
                 </fieldset>
-                <label>
-                    结构类型
-                    <select id="structure-signal-type" aria-label="结构信号类型" defaultValue="any">
-                        <option value="any">任一：空翻多、空多交替或转多</option>
-                        <option value="bear_to_bull">出现空翻多高点</option>
-                        <option value="bear_bull_alternation">出现空多交替低点</option>
-                        <option value="bullish_turn">转多信号：突破空翻多高点</option>
-                    </select>
-                </label>
-                <label>
-                    趋势级别
-                    <select id="structure-trend-level" aria-label="结构趋势级别" defaultValue="0">
-                        <option value="0">全部级别</option>
-                        <option value="1">Ⅰ 一级趋势</option>
-                        <option value="2">Ⅱ 二级趋势</option>
-                        <option value="3">Ⅲ 三级趋势</option>
-                    </select>
-                </label>
-                <label>
-                    确认窗口
-                    <select id="structure-scan-lookback" aria-label="结构确认窗口" defaultValue="1">
-                        <option value="1">回放当天确认</option>
-                        <option value="5">近 5 根确认</option>
-                        <option value="20">近 20 根确认</option>
-                    </select>
-                </label>
+                <fieldset className="structure-option-filter" aria-label="结构信号类型">
+                    <legend>结构类型</legend>
+                    <div className="structure-filter-choices">
+                        <label title="筛选确认出现空翻多高点的结构">
+                            <input type="checkbox" name="structure-signal-type" value="bear_to_bull" />
+                            <span>空翻多</span>
+                        </label>
+                        <label title="筛选空翻多后已确认回档低点的结构">
+                            <input type="checkbox" name="structure-signal-type" value="bear_bull_alternation" />
+                            <span>空多交替</span>
+                        </label>
+                        <label title="筛选收盘价突破空翻多高点的转多信号">
+                            <input type="checkbox" name="structure-signal-type" value="bullish_turn" defaultChecked />
+                            <span>转多信号</span>
+                        </label>
+                    </div>
+                </fieldset>
+                <fieldset className="structure-option-filter" aria-label="结构趋势级别">
+                    <legend>趋势级别</legend>
+                    <div className="structure-filter-choices">
+                        {[
+                            ["0", "全部", "同时查询一级、二级和三级趋势"],
+                            ["1", "Ⅰ 一级", "仅查询一级趋势中的结构"],
+                            ["2", "Ⅱ 二级", "仅查询二级趋势中的结构"],
+                            ["3", "Ⅲ 三级", "仅查询三级趋势中的结构"],
+                        ].map(([value, label, tip]) => (
+                            <label key={value} title={tip}>
+                                <input
+                                    type="radio"
+                                    name="structure-trend-level"
+                                    value={value}
+                                    defaultChecked={value === "2"}
+                                />
+                                <span>{label}</span>
+                            </label>
+                        ))}
+                    </div>
+                </fieldset>
+                <fieldset className="structure-option-filter" aria-label="结构确认窗口">
+                    <legend>确认窗口</legend>
+                    <div className="structure-filter-choices">
+                        {[
+                            ["1", "当天", "仅查询回放当天确认的结构"],
+                            ["5", "近5根", "查询最近 5 根 K 线内确认的结构"],
+                            ["20", "近20根", "查询最近 20 根 K 线内确认的结构"],
+                        ].map(([value, label, tip]) => (
+                            <label key={value} title={tip}>
+                                <input
+                                    type="radio"
+                                    name="structure-scan-lookback"
+                                    value={value}
+                                    defaultChecked={value === "20"}
+                                />
+                                <span>{label}</span>
+                            </label>
+                        ))}
+                    </div>
+                </fieldset>
                 <div className="scan-actions">
                     <button id="structure-scan-start" disabled>
                         读取预计算结果

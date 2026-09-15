@@ -305,6 +305,65 @@ class TrendLandmarkTests(unittest.TestCase):
         self.assertEqual(landmarks[0]["broken_key"]["value"], 30)
         self.assertEqual(landmarks[0]["confirmed_low"]["value"], 18)
 
+    def test_later_same_level_lower_low_invalidates_bull_flip_at_every_level(self):
+        frozen_key = point(1, "H", 27.71, "2026-01-03")
+        confirmed_low = point(2, "L", 13.16, "2026-01-08")
+        flip_high = point(
+            3,
+            "H",
+            35,
+            "2026-01-09",
+            observations=[
+                {
+                    "title": "翻空为多",
+                    "available_at": "2026-01-09",
+                    "key": frozen_key,
+                    "confirmed_low": confirmed_low,
+                }
+            ],
+        )
+        equal_low = point(4, "L", 13.16, "2026-01-10")
+        lower_low = point(5, "L", 12.8, "2026-01-12")
+
+        for trend_level in (1, 2, 3):
+            with self.subTest(trend_level=trend_level):
+                if trend_level == 1:
+                    valid_points = [confirmed_low, flip_high, equal_low]
+                else:
+                    structural_low = {
+                        **confirmed_low,
+                        "flip": "翻空为多",
+                        "broken_key": frozen_key,
+                        "confirmed_by": flip_high,
+                    }
+                    valid_points = [structural_low, flip_high, equal_low]
+
+                self.assertEqual(
+                    [item["time"] for item in bear_to_bull_highs([{"id": "sample", "points": valid_points}], trend_level=trend_level)],
+                    ["2026-01-04"],
+                )
+                self.assertEqual(
+                    bear_to_bull_highs(
+                        [{"id": "sample", "points": [*valid_points, lower_low]}],
+                        trend_level=trend_level,
+                    ),
+                    [],
+                )
+                if trend_level > 1:
+                    converted_high = {
+                        **flip_high,
+                        "flip": "翻多为空",
+                        "broken_key": equal_low,
+                        "confirmed_by": lower_low,
+                    }
+                    self.assertEqual(
+                        bear_to_bull_highs(
+                            [{"id": "sample", "points": [valid_points[0], converted_high]}],
+                            trend_level=trend_level,
+                        ),
+                        [],
+                    )
+
     def test_missing_equal_or_unbroken_last_fall_high_is_rejected(self):
         invalid_lows = [
             point(

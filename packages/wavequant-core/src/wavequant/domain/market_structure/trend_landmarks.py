@@ -58,6 +58,52 @@ def _point_order(point):
     return point.get("index", -1), point.get("ordinal", 0)
 
 
+def _active_bear_to_bull_highs(strokes, landmarks):
+    """Drop a bull-flip high after its confirmed low is strictly broken.
+
+    A later same-level low below the low that preceded ``翻空为多`` proves the
+    attempted bullish transition failed.  The old high then belongs to the
+    renewed bearish segment as its last-fall-high evidence, so publishing it as
+    an active bull-flip landmark would describe both regimes at once.  Equal
+    lows are retests and remain valid.  Because callers provide one causal
+    prefix, replay still shows the landmark until the breaking low is confirmed.
+    """
+    points_by_path = {
+        stroke.get("id"): [point for point in stroke.get("points", []) if isinstance(point, dict)]
+        for stroke in strokes
+        if isinstance(stroke, dict)
+    }
+    active = []
+    for landmark in landmarks:
+        confirmed_low = landmark.get("confirmed_low")
+        if not _complete_reference(confirmed_low, kind="L"):
+            continue
+        try:
+            path_points = points_by_path.get(landmark.get("source_path"), [])
+            current_high = next(
+                (point for point in path_points if _point_order(point) == _point_order(landmark)),
+                None,
+            )
+            confirming_low = current_high.get("confirmed_by") if isinstance(current_high, dict) else None
+            converted_to_last_fall_high = (
+                isinstance(current_high, dict)
+                and current_high.get("flip") == "翻多为空"
+                and _complete_reference(confirming_low, kind="L")
+                and confirming_low["value"] < confirmed_low["value"]
+            )
+            invalidated = converted_to_last_fall_high or any(
+                point.get("kind") == "L"
+                and _point_order(point) > _point_order(landmark)
+                and point["value"] < confirmed_low["value"]
+                for point in path_points
+            )
+        except (KeyError, TypeError):
+            continue
+        if not invalidated:
+            active.append(landmark)
+    return active
+
+
 def _bar_date(bar):
     """Return one market bar's Shanghai exchange date."""
     timestamp = bar.timestamp
@@ -186,7 +232,7 @@ def bear_to_bull_highs(strokes, *, trend_level):
     its transition proof were both knowable.
     """
     if trend_level == 1:
-        landmarks = _level_one_bear_to_bull_highs(strokes)
+        landmarks = _active_bear_to_bull_highs(strokes, _level_one_bear_to_bull_highs(strokes))
         return sorted(
             landmarks,
             key=lambda item: (item["index"], item.get("ordinal", 0), item["available_at"], item["source_path"]),
@@ -213,7 +259,7 @@ def bear_to_bull_highs(strokes, *, trend_level):
                 )
             )
     return sorted(
-        landmarks,
+        _active_bear_to_bull_highs(strokes, landmarks),
         key=lambda item: (item["index"], item.get("ordinal", 0), item["available_at"], item["source_path"]),
     )
 

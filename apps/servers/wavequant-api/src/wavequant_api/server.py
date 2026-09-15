@@ -87,7 +87,13 @@ def make_server(
     structure_snapshots = StructureSnapshotService(repository, infrastructure) if infrastructure is not None else None
     buy_snapshots = BuySignalSnapshotService(repository, infrastructure) if infrastructure is not None else None
     market_data = getattr(repository, "market_data", None)
-    market_timeframes = MarketTimeframeService(market_data) if market_data is not None else None
+    snapshot_database = getattr(infrastructure, "database", None) if infrastructure is not None else None
+    snapshot_cache = getattr(infrastructure, "cache", None) if infrastructure is not None else None
+    market_timeframes = (
+        MarketTimeframeService(market_data, snapshots=snapshot_database, cache=snapshot_cache)
+        if market_data is not None
+        else None
+    )
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -131,6 +137,17 @@ def make_server(
                 separators=(",", ":"),
             ).encode()
             etag = f'"{hashlib.sha256(body).hexdigest()}"'
+            headers = {"ETag": etag}
+            if self.headers.get("If-None-Match") == etag:
+                self.send(304, b"", cache_control="private, no-cache", headers=headers)
+                return
+            self.send(200, body, cache_control="private, no-cache", headers=headers)
+
+        def send_versioned_payload(self, payload, version):
+            """Serve a materialized read model with conditional revalidation."""
+
+            body = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode()
+            etag = f'"{version}"'
             headers = {"ETag": etag}
             if self.headers.get("If-None-Match") == etag:
                 self.send(304, b"", cache_control="private, no-cache", headers=headers)
@@ -218,6 +235,26 @@ def make_server(
                 q = parse_qs(url.query, strict_parsing=True, keep_blank_values=True)
                 if any(len(v) != 1 for v in q.values()):
                     raise ValueError("duplicate query arguments")
+                if url.path == "/api/market-timeframe":
+                    if set(q) != {"source", "symbol", "asof", "timeframe"}:
+                        raise ValueError("invalid market timeframe arguments")
+                    source = q["source"][0]
+                    if source not in {"tdx", "akshare"}:
+                        raise ValueError("source must be tdx or akshare")
+                    if source == "tdx" and repository.tdx is None:
+                        raise ValueError("通达信目录未配置")
+                    if source == "akshare" and repository.akshare is None:
+                        raise AkShareUnavailable("AkShare 数据源已禁用")
+                    if market_timeframes is None:
+                        raise ValueError("行情仓库未配置")
+                    bundle = market_timeframes.bundle(
+                        source,
+                        q["symbol"][0],
+                        q["asof"][0],
+                        q["timeframe"][0],
+                    )
+                    self.send_versioned_payload(bundle, bundle["snapshot_id"])
+                    return
                 if url.path == "/api/structure-signals":
                     expected = {"run", "variant", "source", "asof", "lookback", "signal_type", "trend_level"}
                     optional = {"symbol", "markets"}
@@ -300,7 +337,7 @@ def make_server(
                     else repository.theory(*args)
                 )
                 self.send(200, result)
-            except (BuySignalSnapshotUnavailable, StructureSnapshotUnavailable, AkShareUnavailable) as exc:
+            except (BuySignalSnapshotUnavailable, StructureSnapshotUnavailable, AkShareUnavailable, LookupError) as exc:
                 self.send(503, {"error": str(exc)})
             except (ValueError, KeyError, FileNotFoundError) as exc:
                 self.send(400, {"error": str(exc) if isinstance(exc, ValueError) else "required result unavailable"})

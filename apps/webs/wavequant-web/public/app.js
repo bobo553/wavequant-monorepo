@@ -1,6 +1,6 @@
 import { reasonText } from "./annotations.js";
 import { BuyPoints } from "./buy-points.js";
-import { loadStockCatalog } from "./catalog-cache.js";
+import { loadMarketTimeframeSnapshot, loadStockCatalog } from "./catalog-cache.js";
 import { PerformanceCharts, PriceChart } from "./charts.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
@@ -26,7 +26,124 @@ try {
 }
 if (typeof chartPreferences.showTrendPrices === "boolean")
     $("show-trend-prices").checked = chartPreferences.showTrendPrices;
-if (Object.hasOwn(timeframes, chartPreferences.timeframe)) $("timeframe-select").value = chartPreferences.timeframe;
+const timeframeTabs = [...$("timeframe-select").querySelectorAll("[role=tab][data-timeframe]")];
+const selectedTimeframe = () => $("timeframe-select").dataset.value || "1d";
+function setTimeframe(timeframe, { focus = false } = {}) {
+    const value = Object.hasOwn(timeframes, timeframe) ? timeframe : "1d";
+    $("timeframe-select").dataset.value = value;
+    timeframeTabs.forEach((tab) => {
+        const selected = tab.dataset.timeframe === value;
+        tab.setAttribute("aria-selected", String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+        if (selected && focus) tab.focus();
+    });
+    $("timeframe-tag").textContent = timeframes[value].tag;
+}
+function setTimeframeDisabled(disabled) {
+    timeframeTabs.forEach((tab) => (tab.disabled = disabled));
+    $("timeframe-select").title = disabled ? "封存样本与策略回测保持日线口径" : "";
+}
+setTimeframe(Object.hasOwn(timeframes, chartPreferences.timeframe) ? chartPreferences.timeframe : "1d");
+
+const chartLayerToggles = [...document.querySelectorAll("[data-chart-layer-toggle]")];
+function updateLayerToggleCount() {
+    const active = chartLayerToggles.filter((control) => control.checked).length;
+    $("layer-toggle-count").textContent = `${active}/${chartLayerToggles.length}`;
+}
+chartLayerToggles.forEach((control) => control.addEventListener("change", updateLayerToggleCount));
+updateLayerToggleCount();
+
+const chartPopoverControllers = [];
+function createChartPopoverController(triggerId, panelId) {
+    const trigger = $(triggerId);
+    const panel = $(panelId);
+    let pinned = false;
+    let hideTimer = 0;
+    let restoringFocus = false;
+
+    const isOpen = () => panel.matches(":popover-open");
+    const position = () => {
+        if (!isOpen()) return;
+        const triggerBox = trigger.getBoundingClientRect();
+        const panelBox = panel.getBoundingClientRect();
+        const left = Math.max(12, Math.min(triggerBox.right - panelBox.width, window.innerWidth - panelBox.width - 12));
+        const top = Math.max(12, Math.min(triggerBox.bottom + 8, window.innerHeight - panelBox.height - 12));
+        panel.style.left = `${left}px`;
+        panel.style.top = `${top}px`;
+    };
+    const close = (restoreFocus = false) => {
+        window.clearTimeout(hideTimer);
+        pinned = false;
+        if (isOpen()) panel.hidePopover();
+        trigger.setAttribute("aria-expanded", "false");
+        if (restoreFocus) {
+            restoringFocus = true;
+            trigger.focus();
+            restoringFocus = false;
+        }
+    };
+    const open = (pin = false) => {
+        window.clearTimeout(hideTimer);
+        chartPopoverControllers.forEach((controller) => {
+            if (controller.panel !== panel) controller.close();
+        });
+        pinned = pinned || pin;
+        if (!isOpen()) panel.showPopover();
+        trigger.setAttribute("aria-expanded", "true");
+        requestAnimationFrame(position);
+    };
+    const scheduleClose = () => {
+        window.clearTimeout(hideTimer);
+        hideTimer = window.setTimeout(() => {
+            const keepsFocus = trigger.matches(":focus") || panel.contains(document.activeElement);
+            if (!pinned && !keepsFocus) close();
+        }, 140);
+    };
+
+    trigger.addEventListener("mouseenter", () => open());
+    trigger.addEventListener("mouseleave", scheduleClose);
+    trigger.addEventListener("focus", () => {
+        if (!restoringFocus) open();
+    });
+    trigger.addEventListener("blur", scheduleClose);
+    trigger.addEventListener("click", () => {
+        if (pinned && isOpen()) close();
+        else open(true);
+    });
+    panel.addEventListener("mouseenter", () => window.clearTimeout(hideTimer));
+    panel.addEventListener("mouseleave", scheduleClose);
+    panel.addEventListener("focusin", () => window.clearTimeout(hideTimer));
+    panel.addEventListener("focusout", scheduleClose);
+    panel.addEventListener("toggle", () => {
+        if (!isOpen()) {
+            pinned = false;
+            trigger.setAttribute("aria-expanded", "false");
+        }
+    });
+
+    const controller = { close, isOpen, panel, position, trigger };
+    chartPopoverControllers.push(controller);
+    return controller;
+}
+
+createChartPopoverController("chart-layers-trigger", "chart-layers-popover");
+createChartPopoverController("chart-guide-trigger", "chart-guide-popover");
+document.addEventListener("pointerdown", (event) => {
+    chartPopoverControllers.forEach((controller) => {
+        if (!controller.trigger.contains(event.target) && !controller.panel.contains(event.target)) controller.close();
+    });
+});
+document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const active = chartPopoverControllers.find((controller) => controller.isOpen());
+    if (active) {
+        event.preventDefault();
+        active.close(true);
+    }
+});
+window.addEventListener("resize", () => chartPopoverControllers.forEach((controller) => controller.position()));
+document.addEventListener("scroll", () => chartPopoverControllers.forEach((controller) => controller.position()), true);
+
 const state = {
     catalog: null,
     view: null,
@@ -46,7 +163,7 @@ const isAkShare = () => $("result-scope").value === "akshare";
 const isTdxBacktest = () => $("result-scope").value === "tdx-backtest";
 const isLocal = () => isTdx() || isTdxBacktest();
 const isMarketBrowse = () => isTdx() || isAkShare();
-const activeTimeframe = () => (isMarketBrowse() ? $("timeframe-select").value : "1d");
+const activeTimeframe = () => (isMarketBrowse() ? selectedTimeframe() : "1d");
 const sessionCacheKey = (symbol) => `${symbol}:${activeTimeframe()}`;
 function universe() {
     return isAkShare() ? state.akshare?.stocks || [] : isLocal() ? state.tdx?.stocks || [] : currentRun().symbols;
@@ -102,7 +219,9 @@ function sessions() {
           : currentRun()?.symbols.find((s) => s.symbol === symbol)?.sessions || [];
 }
 async function api(path, params = {}, signal, method = "GET") {
-    const timeout = AbortSignal.timeout(path === "/api/stock-summary" ? 180000 : 45000);
+    const timeoutMs =
+        path === "/api/tdx-backtest" ? 300000 : path === "/api/stock-summary" ? 180000 : 45000;
+    const timeout = AbortSignal.timeout(timeoutMs);
     try {
         const response = await fetch(path + (method === "GET" ? "?" + new URLSearchParams(params) : ""), {
             method,
@@ -111,11 +230,28 @@ async function api(path, params = {}, signal, method = "GET") {
                 : {}),
             signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
         });
-        const body = await response.json();
+        const text = await response.text();
+        let body = {};
+        if (text) {
+            try {
+                body = JSON.parse(text);
+            } catch {
+                if (!response.ok) {
+                    throw new Error(`服务暂时不可用（HTTP ${response.status} ${response.statusText || "错误"}）`);
+                }
+                throw new Error("服务返回格式异常，请稍后重试");
+            }
+        }
         if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
         return body;
     } catch (e) {
-        if (e.name === "TimeoutError") throw new Error("请求超时，请稍后刷新重试");
+        if (e.name === "TimeoutError") {
+            throw new Error(
+                path === "/api/tdx-backtest"
+                    ? "首次回测计算超时，后台可能仍在生成缓存，请稍后重试"
+                    : "请求超时，请稍后刷新重试",
+            );
+        }
         throw e;
     }
 }
@@ -162,7 +298,7 @@ const buyPoints = new BuyPoints({
     },
     onSelect: async (match, p) => {
         $("result-scope").value = p.source === "akshare" ? "akshare" : p.source === "tdx" ? "tdx-backtest" : "stock";
-        $("timeframe-select").value = "1d";
+        setTimeframe("1d");
         fillSymbols();
         $("symbol-select").value = match.symbol;
         preserveCutoff(p.asof);
@@ -238,7 +374,7 @@ const structureSignals = new StructureSignals({
         }[match.signal_type];
         if (!structurePresentation) return;
         $("result-scope").value = params.source === "akshare" ? "akshare" : params.source === "tdx" ? "tdx" : "stock";
-        $("timeframe-select").value = "1d";
+        setTimeframe("1d");
         fillSymbols();
         $("symbol-select").value = match.symbol;
         preserveCutoff(params.asof);
@@ -282,10 +418,8 @@ for (const [id, tab] of [
 ])
     $(id).addEventListener("click", () => activateStockBrowserTab(tab));
 function fillSymbols() {
-    const timeframeSelect = $("timeframe-select");
-    timeframeSelect.disabled = !isMarketBrowse();
-    timeframeSelect.title = isMarketBrowse() ? "" : "封存样本与策略回测保持日线口径";
-    if (!isMarketBrowse()) timeframeSelect.value = "1d";
+    setTimeframeDisabled(!isMarketBrowse());
+    if (!isMarketBrowse()) setTimeframe("1d");
     $("timeframe-tag").textContent = timeframes[activeTimeframe()].tag;
     $("partial-timeframe").hidden = true;
     const previous = $("symbol-select").value,
@@ -656,21 +790,24 @@ function renderTables() {
 function renderEvents() {
     chart.refreshMarkers();
 }
-async function loadTheory(request, sequence) {
+async function loadTheory(request, sequence, preloaded = null) {
+    if (preloaded) state.theory = preloaded;
     if (!$("show-theory").checked && !$("show-rules").checked) {
         $("theory-status").textContent = "规则与折线已关闭";
         return;
     }
     $("theory-status").textContent = "按历史截面计算…";
     try {
-        const data = isTdxBacktest()
-            ? state.view.theory
-            : await api(
-                  isAkShare() ? "/api/akshare-theory" : isTdx() ? "/api/tdx-theory" : "/api/theory",
-                  isMarketBrowse()
-                      ? { symbol: request.symbol, asof: request.asof, timeframe: request.timeframe }
-                      : { run: request.run, variant: request.variant, symbol: request.symbol, asof: request.asof },
-              );
+        const data =
+            preloaded ||
+            (isTdxBacktest()
+                ? state.view.theory
+                : await api(
+                      isAkShare() ? "/api/akshare-theory" : isTdx() ? "/api/tdx-theory" : "/api/theory",
+                      isMarketBrowse()
+                          ? { symbol: request.symbol, asof: request.asof, timeframe: request.timeframe }
+                          : { run: request.run, variant: request.variant, symbol: request.symbol, asof: request.asof },
+                  ));
         if (sequence !== state.sequence) return;
         state.theory = data;
         chart.setTheory(data, $("show-theory").checked);
@@ -689,7 +826,7 @@ async function loadTheory(request, sequence) {
                 data.interrupted ? "严格结构中断" : "点击标识查看规则",
                 data.interrupted
                     ? "缺少次级路径，不把未解折线标成已确认形态。可开启“筛选 / 中断”查看具体日期。"
-                    : "规则方块标在可知日期；信号圆点不等于成交。B / S 箭头标在实际成交价。点击标识可显示颈线、防守位与目标投影。",
+                    : `${symbolName(request.symbol)} · ${data.asof}。规则方块标在可知日期；信号圆点不等于成交。B / S 箭头标在实际成交价。点击标识可显示颈线、防守位与目标投影。`,
             );
     } catch (error) {
         if (sequence !== state.sequence) return;
@@ -716,9 +853,9 @@ async function loadView() {
     $("loading").textContent = isTdxBacktest()
         ? "正在校验除权数据、运行策略并生成成交账本…"
         : isAkShare()
-          ? `正在从 AkShare 读取在线行情并生成${timeframes[activeTimeframe()].label}…`
+          ? `正在读取 AkShare ${timeframes[activeTimeframe()].label}预计算快照…`
           : isTdx()
-            ? `读取通达信本地行情并生成${timeframes[activeTimeframe()].label}…`
+            ? `正在读取通达信${timeframes[activeTimeframe()].label}预计算快照…`
             : "读取已封存行情与交易记录…";
     $("price-chart").setAttribute("aria-busy", "true");
     document.querySelector(".metric-grid").hidden = true;
@@ -734,36 +871,38 @@ async function loadView() {
     stockList.setSelected(request.symbol);
     $("selected-stock-summary").textContent = `${symbolName(request.symbol)} · 正在读取 ${request.asof} 截面…`;
     try {
-        const data = await api(
-            isTdxBacktest()
-                ? "/api/tdx-backtest"
-                : isAkShare()
-                  ? "/api/akshare-view"
-                  : isTdx()
-                    ? "/api/tdx-view"
-                    : $("result-scope").value === "stock"
-                      ? "/api/stock-view"
-                      : "/api/view",
-            isTdxBacktest()
-                ? {
-                      run: request.run,
-                      variant: request.variant,
-                      scenario: request.scenario,
-                      symbol: request.symbol,
-                      asof: request.asof,
-                      start: $("backtest-start").value,
-                  }
-                : isMarketBrowse()
-                  ? { symbol: request.symbol, asof: request.asof, timeframe: request.timeframe }
-                  : {
-                        run: request.run,
-                        variant: request.variant,
-                        scenario: request.scenario,
-                        symbol: request.symbol,
-                        asof: request.asof,
-                    },
-            state.controller.signal,
-        );
+        let timeframeBundle = null;
+        const data = isMarketBrowse()
+            ? (timeframeBundle = await loadMarketTimeframeSnapshot(
+                  isAkShare() ? "akshare" : "tdx",
+                  request.symbol,
+                  request.asof,
+                  request.timeframe,
+              )).view
+            : await api(
+                  isTdxBacktest()
+                      ? "/api/tdx-backtest"
+                      : $("result-scope").value === "stock"
+                        ? "/api/stock-view"
+                        : "/api/view",
+                  isTdxBacktest()
+                      ? {
+                            run: request.run,
+                            variant: request.variant,
+                            scenario: request.scenario,
+                            symbol: request.symbol,
+                            asof: request.asof,
+                            start: $("backtest-start").value,
+                        }
+                      : {
+                            run: request.run,
+                            variant: request.variant,
+                            scenario: request.scenario,
+                            symbol: request.symbol,
+                            asof: request.asof,
+                        },
+                  state.controller.signal,
+              );
         if (sequence !== state.sequence) return;
         state.view = data;
         state.loading = false;
@@ -825,8 +964,15 @@ async function loadView() {
                   : data.result_scope === "stock"
                     ? "收益、仓位、成交账本均为该股独立回测。"
                     : "上方收益／仓位指标及交易账本仍为全组合。";
+        const cacheSummary = timeframeBundle
+            ? timeframeBundle.browser_cache === "validated"
+                ? " 浏览器周期缓存已校验。"
+                : timeframeBundle.browser_cache === "offline"
+                  ? " 服务器暂不可用，使用浏览器周期缓存。"
+                  : " 浏览器周期缓存已同步。"
+            : "";
         $("selected-stock-summary").textContent =
-            `${symbolName(data.symbol)} · ${data.asof} ${data.timeframe_label || "日线"}截面｜原始收盘 ${num(last.raw_close)} 元 · 周期成交量 ${num(last.volume, 0)} 股。${sourceSummary}${data.is_partial_last_bar ? " 当前最后一根周期 K 线尚未收完。" : ""}`;
+            `${symbolName(data.symbol)} · ${data.asof} ${data.timeframe_label || "日线"}截面｜原始收盘 ${num(last.raw_close)} 元 · 周期成交量 ${num(last.volume, 0)} 股。${sourceSummary}${cacheSummary}${data.is_partial_last_bar ? " 当前最后一根周期 K 线尚未收完。" : ""}`;
         $("price-chart").dataset.symbol = data.symbol;
         $("data-range").textContent = isAkShare()
             ? `AkShare · ${universe().length} 只 · ${data.timeframe_label || "日线"} · 当前个股最新 ${data.sessions.at(-1)}`
@@ -844,7 +990,7 @@ async function loadView() {
                 `${symbolName(data.symbol)} · ${data.asof}。青色圆点为信号，红色向上箭头为买入成交，绿色向下箭头为卖出成交。`,
             );
         renderEvents();
-        loadTheory(request, sequence);
+        loadTheory(request, sequence, timeframeBundle?.theory || null);
         loadStockSummary(request, sequence);
     } catch (error) {
         if (error.name === "AbortError" || sequence !== state.sequence) return;
@@ -973,9 +1119,11 @@ $("result-scope").addEventListener("change", () => {
     loadView();
 });
 $("symbol-select").addEventListener("change", () => chooseSymbol($("symbol-select").value));
-$("timeframe-select").addEventListener("change", () => {
+function activateTimeframe(timeframe, focus = false) {
+    if (!isMarketBrowse() || timeframe === activeTimeframe()) return;
     const cutoff = state.requestedAsOf || state.view?.asof || currentRun().end;
-    chartPreferences = { ...chartPreferences, timeframe: $("timeframe-select").value };
+    setTimeframe(timeframe, { focus });
+    chartPreferences = { ...chartPreferences, timeframe };
     try {
         localStorage.setItem(chartPreferenceKey, JSON.stringify(chartPreferences));
     } catch {
@@ -985,6 +1133,24 @@ $("timeframe-select").addEventListener("change", () => {
     state.noSessionBefore = cutoff;
     state.pendingFocus = null;
     loadView();
+}
+$("timeframe-select").addEventListener("click", (event) => {
+    const tab = event.target.closest?.("[role=tab][data-timeframe]");
+    if (tab && !tab.disabled) activateTimeframe(tab.dataset.timeframe);
+});
+$("timeframe-select").addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const enabled = timeframeTabs.filter((tab) => !tab.disabled);
+    if (!enabled.length) return;
+    event.preventDefault();
+    const current = enabled.findIndex((tab) => tab.dataset.timeframe === activeTimeframe());
+    const index =
+        event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? enabled.length - 1
+              : (current + (event.key === "ArrowRight" ? 1 : -1) + enabled.length) % enabled.length;
+    activateTimeframe(enabled[index].dataset.timeframe, true);
 });
 $("replay-slider").addEventListener("input", () => {
     $("asof-label").textContent = `待加载 ${sessions()[Number($("replay-slider").value)]}`;

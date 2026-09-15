@@ -1,7 +1,17 @@
 # Progress
 
+- `MONOREPO-064` 已完成：结构查询在后台重建时展示上一份完整快照、目标日期及当前发布进度，不再以不可用错误中断。
+
+- `MONOREPO-063` 已完成：统一服务已重启并加载最新策略引擎；TDX 回测请求使用独立五分钟时限，代理纯文本错误会转换为可读 HTTP 服务错误，不再暴露 JSON 解析异常。
+
 ## Current State
 
+- `MONOREPO-062` 已完成：图表消费 Core 过滤后的有效空翻多地标；真实 Chromium 确认国芳集团两个二级旧标记按跌破确认日依次消失，中大力德未失效标记保持显示。
+- `MONOREPO-061` 已完成：转多信号箭头使用 `belowBar` 跟随对应突破 K 线最低点下方，保留收盘价详情与空翻多高点虚线。
+- `MONOREPO-060` 已完成：统一开发启动器加载 SQL/Redis 本地配置、等待依赖健康并幂等建表，持续托管 API 与可自动恢复的结构预计算 Worker。
+- `MONOREPO-059` 已完成：图表卡片采用纵向弹性布局，K 线宿主填满标题、OHLC 与历史回放之外的剩余高度，并随桌面与窄屏视口自适应。
+- `MONOREPO-058` 已完成：五周期使用单行可访问 Tab；K 线与对应画线按来源、股票、截止日、周期和版本写入有界 IndexedDB，并通过 ETag 只同步服务端变化。
+- `MONOREPO-057` 已完成：图表图层、图例和趋势说明改用顶部单行工具栏与渐进披露浮层，详细定义通过悬停、聚焦或点击展示，不再持续挤压 K 线高度。
 - `MONOREPO-056` 已完成：行情浏览标题区可切换日、周、月、季、年 K 线，周期驱动行情、理论图层和回放日期，并保存用户选择；封存样本和策略回测自动回到日线。
 - `MONOREPO-055` 已完成：结构查询总量只统计 5,562 只当前有效 AkShare 股票；2026-09-07 真实服务完成后页面从“后台重建中”切换为全市场快照就绪。
 - `MONOREPO-054` 已完成：股票列表使用 IndexedDB 分来源持久化；页面启动时读取缓存并携带 ETag 条件校验，目录未变复用缓存、变化时替换、服务暂不可用时离线降级。
@@ -46,6 +56,24 @@
 - `MONOREPO-033` 已完成：末跌高虚线优先结束在首次收盘严格突破 K 线；若不存在收盘突破，则结束在 Python 已确认且届时可知的同级 H 严格突破 K 线，避免传入行情后屏蔽正式结构突破。
 
 ## Completed
+
+- MONOREPO-064 Web 状态区明确区分当前服务快照与重建目标：真实浏览器在请求 2026-09-14 二级转多时展示 2026-09-07 完整快照和 0 / 5,562 目标进度，并正常返回 9 只股票。
+
+- MONOREPO-064 Web 门禁通过 ESLint、TypeScript、6 项 Vitest、82 项 Node 契约和 Next.js 生产构建。
+
+- MONOREPO-063 Web 门禁通过 ESLint、TypeScript、6 项 Vitest、81 项 Node 契约、Next.js 生产构建和 Harness；真实浏览器成功加载贵州茅台 V3 当前股票回测，个股指标、证据与导出均可用。
+
+- MONOREPO-060 Web 启动器不覆盖终端显式配置且不输出凭据；本地 loopback MySQL/Redis 自动 Compose `up --wait`，API 与 TDX + 8 个 AkShare Worker 共用同一配置。真实重启后结构查询返回 200、覆盖 5,562 / 5,562 只，Web 全门禁和专项 Chromium 通过。
+
+- MONOREPO-059 Web 门禁通过 ESLint、TypeScript、6 项 Vitest、75 项 Node 契约、Next.js 生产构建和专项 Chromium 回归；1440×900 下 K 线由 355px 增至 672px，390×844 下为 569.22px，实际 Lightweight Charts 容器与宿主等高且无横向溢出、Console 错误或失败请求。
+
+- MONOREPO-058 Web 用日/周/月/季/年 Tab 替代下拉框，支持方向键与 Home/End；统一读取服务端 candle+theory bundle，IndexedDB v2 新增 `market-timeframes` 表和 40 条 LRU 上限，使用 ETag 校验、变化替换及离线整包降级。
+
+- MONOREPO-058 Web 门禁通过 ESLint、TypeScript、6 项 Vitest、75 项 Node 契约、Next.js 生产构建和串行 14 条 Chromium 流程；真实浏览器确认周期切换、画线版本、IndexedDB 与 304。
+
+- MONOREPO-057 将 17 项图层开关集中到可固定的顶层浮层，工具栏实时显示启用数量；每项含鼠标/键盘提示，三级趋势保留实时摘要，图例独立按需展示，并支持外部点击、Escape 与焦点恢复。
+
+- MONOREPO-057 Web 门禁通过 ESLint、TypeScript、6 项 Vitest、72 项 Node 契约、Next.js 生产构建与 14 条 Chromium 流程；真实浏览器测得工具栏 37px、K 线距卡片顶 95px，390px 窄屏无横向溢出且浮层不改变图表位置。
 
 - MONOREPO-056 Web 新增五档周期选择、动态 K 线标签、周期成交量与未完成周期状态；行情和理论请求携带相同 `timeframe`，各周期会话独立缓存，结构/买点结果定位继续回到日线以匹配预计算快照。
 
@@ -164,6 +192,8 @@
 - MONOREPO-042 Web 门禁通过 ESLint、严格类型检查、6 项 Vitest、59 项 Node 契约、Next.js 生产构建与串行 9 条 Playwright 流程；中大力德 H71 地标和历史回放因果边界通过。
 - MONOREPO-045 重启统一开发服务后，真实浏览器切换 AkShare 并加载格力电器 7,009 根日线至 2026-09-11，收盘 38.74 元、成交量 29,800,684 股；图表 `aria-busy=false` 且无 Console 错误或警告，Web 6 项 Vitest 与 63 项 Node 契约通过。
 - MONOREPO-046 在 AkShare 口径下启用“符合买点”和“结构信号”，按钮明确为当前股票分析，切换结果保持 AkShare 口径；真实 Chromium 两项分析均完成 1/1、无页面异常和失败请求，Web 6 项 Vitest、63 项 Node 契约、专项 Playwright 与生产构建通过。
+
+- MONOREPO-061 Web 门禁通过 ESLint、TypeScript、6 项 Vitest、79 项 Node 契约、Next.js 生产构建与中大力德专项 Chromium；真实页面 2025-01-24 转多信号和虚线均存在，Console 无错误或警告。
 
 ## Risks and Next Steps
 

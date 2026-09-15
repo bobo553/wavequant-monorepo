@@ -35,8 +35,7 @@ test("research workbench exposes AkShare as a read-only online market source", (
     assert.ok(controls.indexOf('value="akshare"') < controls.indexOf('value="tdx"'));
     assert.match(controls, /value="akshare">AkShare · 在线 A 股行情/);
     assert.match(runtime, /\/api\/akshare-catalog/);
-    assert.match(runtime, /\/api\/akshare-view/);
-    assert.match(runtime, /\/api\/akshare-theory/);
+    assert.match(runtime, /loadMarketTimeframeSnapshot/);
     assert.match(runtime, /state\.akshareSessions/);
     assert.match(runtime, /source: isAkShare\(\) \? "akshare"/);
     assert.match(runtime, /查询当前股票买点/);
@@ -57,19 +56,62 @@ test("market browsing exposes server-backed daily through yearly candle timefram
     const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
 
     for (const [value, label] of [
-        ["1d", "日线"],
-        ["1w", "周线"],
-        ["1mo", "月线"],
-        ["3mo", "季线"],
-        ["1y", "年线"],
+        ["1d", "日"],
+        ["1w", "周"],
+        ["1mo", "月"],
+        ["3mo", "季"],
+        ["1y", "年"],
     ]) {
         assert.match(chart, new RegExp(`\\["${value}", "${label}"\\]`));
     }
     assert.match(chart, /id="timeframe-select"/);
+    assert.match(chart, /role="tablist"/);
+    assert.match(chart, /role="tab"/);
+    assert.match(runtime, /loadMarketTimeframeSnapshot/);
     assert.match(runtime, /timeframe: request\.timeframe/);
     assert.match(runtime, /state\.akshareSessions\[`\$\{data\.symbol\}:\$\{data\.timeframe/);
     assert.match(runtime, /封存样本与策略回测保持日线口径/);
     assert.match(runtime, /is_partial_last_bar/);
+});
+
+test("current-stock backtests tolerate cold computation and report non-JSON proxy failures clearly", () => {
+    const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
+
+    assert.match(runtime, /path === "\/api\/tdx-backtest" \? 300000/);
+    assert.match(runtime, /const text = await response\.text\(\)/);
+    assert.match(runtime, /body = JSON\.parse\(text\)/);
+    assert.match(runtime, /服务暂时不可用（HTTP/);
+    assert.match(runtime, /首次回测计算超时，后台可能仍在生成缓存/);
+    assert.doesNotMatch(runtime, /const body = await response\.json\(\)/);
+});
+
+test("chart controls use top-layer progressive disclosure without consuming candle height", () => {
+    const chart = readFileSync(
+        join(sourceRoot, "features", "research-workbench", "components", "research-chart.tsx"),
+        "utf8",
+    );
+    const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
+    const styles = readFileSync(join(publicRoot, "styles.css"), "utf8");
+
+    assert.match(chart, /id="chart-layers-trigger"/);
+    assert.match(chart, /id="chart-guide-trigger"/);
+    assert.equal((chart.match(/popover="manual"/g) || []).length, 2);
+    assert.match(chart, /data-chart-layer-toggle="true"/);
+    assert.match(chart, /role="tooltip"/);
+    assert.match(chart, /aria-describedby={helpId}/);
+    assert.doesNotMatch(chart, /className="chart-legend"/);
+    assert.doesNotMatch(chart, /className="trend-controls/);
+
+    assert.match(runtime, /createChartPopoverController/);
+    assert.match(runtime, /showPopover\(\)/);
+    assert.match(runtime, /event\.key !== "Escape"/);
+    assert.match(runtime, /layer-toggle-count/);
+    assert.match(styles, /\.chart-tool-popover\[popover\]/);
+    assert.match(styles, /position: fixed/);
+    assert.match(styles, /:popover-open/);
+    assert.match(styles, /\.chart-card \{[\s\S]*display: flex;[\s\S]*flex-direction: column;/);
+    assert.match(styles, /min-height: max\(560px, calc\(100svh - 24px\)\)/);
+    assert.match(styles, /\.price-chart \{[\s\S]*flex: 1 1 355px;[\s\S]*height: auto;/);
 });
 
 test("feature modules retain the overview, ladder, responsive and chart boundaries", () => {
@@ -130,8 +172,9 @@ test("the complete server-backed research workbench is composed from React featu
     assert.match(legacyStyles, /--cyan: var\(--primary\)/);
     assert.match(legacyCharts, /new MutationObserver\(refreshChartThemes\)/);
     assert.match(legacyCharts, /token\("--card"/);
-    assert.match(components, /value="bullish_turn">转多信号：突破空翻多高点/);
-    assert.match(components, /"show-bullish-turn-signals", "各级转多信号"/);
+    assert.match(components, /name="structure-signal-type"[\s\S]*value="bullish_turn"[\s\S]*defaultChecked/);
+    assert.match(components, /id: "show-bullish-turn-signals"/);
+    assert.match(components, /label: "各级转多信号"/);
     assert.match(legacyCharts, /drawBullishTurnGuides/);
     for (const id of [
         "price-chart",

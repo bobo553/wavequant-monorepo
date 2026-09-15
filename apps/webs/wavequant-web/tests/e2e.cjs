@@ -48,6 +48,14 @@ const results = [];
         await loaded();
         return data;
     }
+    async function openChartLayers() {
+        const open = await page
+            .locator("#chart-layers-popover")
+            .evaluate((element) => element.matches(":popover-open"));
+        if (!open) {
+            await page.locator("#chart-layers-trigger").click();
+        }
+    }
     async function test(name, fn) {
         await fn();
         results.push({ name, status: "PASS" });
@@ -211,6 +219,7 @@ const results = [];
             await change("结果口径", "portfolio");
         });
         await test("strict default, empty-state and local SDK", async () => {
+            await openChartLayers();
             assert.equal(
                 await page.getByRole("combobox", { name: "策略版本", exact: true }).inputValue(),
                 "strict_full",
@@ -431,6 +440,7 @@ const results = [];
         await test("filled trade focuses chart and toggles work", async () => {
             await page.getByRole("button", { name: "复盘 ↗", exact: true }).first().click();
             await loaded();
+            await openChartLayers();
             await page.waitForFunction(() => document.querySelector("#selection-info").textContent.includes("已定位"));
             for (const id of ["show-volume", "show-markers", "show-theory"]) {
                 await page.locator("#" + id).uncheck();
@@ -450,6 +460,7 @@ const results = [];
             await page.screenshot({ path: path.join(output, "desktop-trade.png"), fullPage: true });
         });
         await test("annotation selection, exact fill levels and independent layer filters", async () => {
+            await openChartLayers();
             const buy = page.locator('#events .event-row[data-kind="fill"]').filter({ hasText: "B 买入成交" }).first();
             await buy.click();
             assert.ok((await page.locator("#selection-info").textContent()).includes("实际成交价"));

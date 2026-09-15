@@ -542,6 +542,32 @@ class VisualizationTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(weekly["timeframe"], "1w")
         self.assertEqual(request("/api/akshare-view?symbol=sh.600519")[0], 400)
+        conn = HTTPConnection("127.0.0.1", server.server_port)
+        try:
+            conn.request(
+                "GET",
+                "/api/market-timeframe?source=akshare&symbol=sh.600519&asof=2026-01-02&timeframe=1d",
+            )
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            snapshot_etag = response.getheader("ETag")
+            bundle = json.loads(response.read())
+            self.assertEqual(bundle["view"]["timeframe"], "1d")
+            self.assertEqual(bundle["theory"]["timeframe"], "1d")
+        finally:
+            conn.close()
+        conn = HTTPConnection("127.0.0.1", server.server_port)
+        try:
+            conn.request(
+                "GET",
+                "/api/market-timeframe?source=akshare&symbol=sh.600519&asof=2026-01-02&timeframe=1d",
+                headers={"If-None-Match": snapshot_etag},
+            )
+            response = conn.getresponse()
+            self.assertEqual(response.status, 304)
+            self.assertEqual(response.read(), b"")
+        finally:
+            conn.close()
 
         status, structure = request(
             "/api/structure-signals?run=example&variant=lecture_v1&source=akshare&asof=2026-01-02&lookback=5&signal_type=any&trend_level=0"

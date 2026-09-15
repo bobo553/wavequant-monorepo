@@ -422,7 +422,7 @@ test("post-alternation bull high marks the first confirmed rising leg endpoint",
     assert.equal(marker.price, 33.89);
 });
 
-test("bullish-turn signal marks the breakout close and retains its dashed-guide anchors", () => {
+test("bullish-turn signal renders below the breakout candle and retains its dashed-guide anchors", () => {
     const landmark = {
         id: "level1-bullish-turn-signal-1203-1250",
         time: "2022-11-01",
@@ -452,9 +452,9 @@ test("bullish-turn signal marks the breakout close and retains its dashed-guide 
     assert.match(item.description, /首次从下向上严格突破/);
     assert.equal(visibleAnnotations([item], { ...options, bullishTurnSignals: false }).length, 0);
     const marker = markerGroups([item], { ...options, bullishTurnSignals: true })[0].marker;
-    assert.equal(marker.position, "atPriceBottom");
+    assert.equal(marker.position, "belowBar");
     assert.equal(marker.shape, "arrowUp");
-    assert.equal(marker.price, 50.1);
+    assert.equal(marker.price, undefined);
 });
 const view = {
     asof: "2026-01-03",

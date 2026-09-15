@@ -6,6 +6,7 @@ const signalNames = {
     bear_bull_alternation: "空多交替低点",
     bullish_turn: "转多信号",
 };
+const signalOrder = ["bear_to_bull", "bear_bull_alternation", "bullish_turn"];
 const levelNames = { 1: "Ⅰ 一级", 2: "Ⅱ 二级", 3: "Ⅲ 三级" };
 const marketOrder = ["shanghai", "shenzhen", "chinext", "star", "beijing"];
 const marketNames = {
@@ -19,6 +20,9 @@ const marketNames = {
 /** 将任意勾选顺序规整为服务端缓存使用的稳定市场键。 */
 export const normalizeStructureMarkets = (markets) =>
     marketOrder.filter((market) => markets.includes(market)).join(",");
+
+/** 将结构多选按稳定顺序编码，用于查询上下文和客户端过滤。 */
+export const normalizeStructureSignalTypes = (types) => signalOrder.filter((signalType) => types.includes(signalType));
 
 function structureMarket(symbol) {
     const normalized = typeof symbol === "string" ? symbol.toLowerCase() : "";
@@ -43,6 +47,23 @@ export function structureUniverseCoverage(stocks, markets) {
         return selected.has(structureMarket(stock.symbol)) && !name.includes("*") && !name.includes("＊");
     }).length;
     return { catalogStocks: catalog.length, selectedStocks };
+}
+
+/** 在重建期间明确区分“正在服务的完整快照”和“目标代际进度”。 */
+export function structureCoverageStatus(response, catalogStocks, selectedStocks) {
+    const params = response.params;
+    const snapshot = response.snapshot;
+    const publishedStocks = response.coverage?.published_stocks ?? response.processed;
+    const buildingStocks = response.coverage?.building_stocks ?? publishedStocks;
+    const expectedStocks = response.coverage?.expected_stocks ?? catalogStocks;
+    if (response.status === "rebuilding") {
+        return snapshot.is_fallback
+            ? `AkShare 后台更新中：当前展示 ${snapshot.asof} 完整快照；目标 ${params.asof} 已发布 ${buildingStocks} / ${expectedStocks} 只；当前筛选市场 ${selectedStocks} 只`
+            : `AkShare 首次重建中：目标 ${params.asof} 已发布 ${buildingStocks} / ${expectedStocks} 只；当前展示已完成部分`;
+    }
+    return catalogStocks
+        ? `AkShare ${publishedStocks >= expectedStocks ? "全市场快照已就绪" : "后台重建中"}：已发布 ${publishedStocks} / ${expectedStocks} 只；当前筛选市场 ${selectedStocks} 只`
+        : `AkShare 市场快照已发布 ${publishedStocks} 只`;
 }
 
 /** 结构筛选始终读取服务器发布的市场级读模型，与当前图表股票无关。 */
@@ -77,18 +98,25 @@ export class StructureSignals {
         this.$ = (id) => document.getElementById(id);
         this.generation = 0;
         this.$("structure-scan-start").addEventListener("click", () => this.start());
-        for (const id of ["structure-signal-type", "structure-trend-level", "structure-scan-lookback"])
-            this.$(id).addEventListener("change", () => this.contextChanged());
+        for (const input of document.querySelectorAll(
+            'input[name="structure-signal-type"], input[name="structure-trend-level"], input[name="structure-scan-lookback"]',
+        ))
+            input.addEventListener("change", () => this.contextChanged());
         for (const checkbox of document.querySelectorAll('input[name="structure-market"]'))
             checkbox.addEventListener("change", () => this.contextChanged());
     }
 
     params() {
+        const signalTypes = normalizeStructureSignalTypes(
+            [...document.querySelectorAll('input[name="structure-signal-type"]:checked')].map(
+                (checkbox) => checkbox.value,
+            ),
+        );
         return {
             ...this.getContext(),
-            signal_type: this.$("structure-signal-type").value,
-            trend_level: Number(this.$("structure-trend-level").value),
-            lookback: Number(this.$("structure-scan-lookback").value),
+            signal_type: signalTypes.join(","),
+            trend_level: Number(document.querySelector('input[name="structure-trend-level"]:checked')?.value),
+            lookback: Number(document.querySelector('input[name="structure-scan-lookback"]:checked')?.value),
             markets: normalizeStructureMarkets(
                 [...document.querySelectorAll('input[name="structure-market"]:checked')].map(
                     (checkbox) => checkbox.value,
@@ -115,6 +143,11 @@ export class StructureSignals {
         this.controller?.abort();
         this.response = null;
         const params = this.params();
+        if (!params.signal_type) {
+            this.$("structure-scan-status").textContent = "请至少选择一种结构类型。";
+            this.$("structure-scan-start").disabled = false;
+            return;
+        }
         if (!params.markets) {
             this.$("structure-scan-status").textContent = "请至少选择一个查询市场。";
             this.$("structure-scan-start").disabled = false;
@@ -126,8 +159,16 @@ export class StructureSignals {
         this.$("structure-signal-list").replaceChildren();
         this.controller = new AbortController();
         try {
-            const response = await this.api("/api/structure-signals", params, this.controller.signal);
+            const selectedSignalTypes = params.signal_type.split(",");
+            const requestParams = {
+                ...params,
+                signal_type: selectedSignalTypes.length === 1 ? selectedSignalTypes[0] : "any",
+            };
+            const response = await this.api("/api/structure-signals", requestParams, this.controller.signal);
             if (generation !== this.generation) return;
+            response.results = response.results.filter((row) => selectedSignalTypes.includes(row.signal_type));
+            response.matched_stocks = new Set(response.results.map((row) => row.symbol)).size;
+            response.params.signal_type = params.signal_type;
             this.response = response;
             this.render();
         } catch (error) {
@@ -147,17 +188,17 @@ export class StructureSignals {
             : "—";
         this.$("structure-scan-start").disabled = false;
         const online = params.source === "akshare";
-        const publishedStocks = response.coverage?.published_stocks ?? response.processed;
         const { catalogStocks, selectedStocks } = structureUniverseCoverage(this.getUniverse(), params.markets);
-        const akshareCoverage = catalogStocks
-            ? `AkShare ${publishedStocks >= catalogStocks ? "全市场快照已就绪" : "后台重建中"}：已发布 ${publishedStocks} / ${catalogStocks} 只；当前筛选市场 ${selectedStocks} 只`
-            : `AkShare 市场快照已发布 ${publishedStocks} 只`;
+        const akshareCoverage = structureCoverageStatus(response, catalogStocks, selectedStocks);
         const selectedMarkets = (params.markets || "shanghai,shenzhen,chinext")
             .split(",")
             .map((market) => marketNames[market] || market)
             .join("、");
         this.$("structure-scan-status").textContent =
-            `${params.asof} · ${selectedMarkets} · ${signalNames[params.signal_type]} · ${params.trend_level ? levelNames[params.trend_level] : "全部级别"}\n` +
+            `${params.asof} · ${selectedMarkets} · ${params.signal_type
+                .split(",")
+                .map((type) => signalNames[type])
+                .join("、")} · ${params.trend_level ? levelNames[params.trend_level] : "全部级别"}\n` +
             `${online ? akshareCoverage : "全市场快照已就绪"}，发现 ${response.results.length} 个已确认结构（${matchedStocks} 只股票）；跳过 ${response.skipped}，过期 ${response.stale}，失败 ${response.failed}。\n` +
             `已排除名称含 * 的股票 · 预计算完成 ${calculated} · 行情 ${snapshot.data_version.slice(0, 8)} · 算法 ${snapshot.algorithm_version.slice(0, 8)}`;
 

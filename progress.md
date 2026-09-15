@@ -2,11 +2,11 @@
 
 ## Last Updated
 
-2026-09-14
+2026-09-15
 
 ## Current Objective
 
-当前没有进行中的 Feature；MONOREPO-056 已完成：AkShare 与通达信可切换日、周、月、季、年 K 线，服务器聚合、结构理论、回放与页面周期状态保持一致。
+MONOREPO-064 已完成：AkShare 结构快照在后台重建期间持续可用，并在完整发布后原子切换。
 
 ## Current State
 
@@ -28,6 +28,20 @@
 - 详细进度由各 pnpm workspace 根目录的 `progress.md` 维护。
 
 ## What Completed
+
+- MONOREPO-064 修正 AkShare Worker 的市场分区日期，逐分片写入全市场预期数量；结构查询在行情日或算法重建时持续服务最近一份不晚于请求日的完整代际，新代际完整后才原子切换。首次建库从零分片起即返回 rebuilding 空结果或已发布部分，不在交互请求中计算结构。
+
+- MONOREPO-063 完整重启统一开发服务以加载最新策略引擎，并将 TDX 当前股票回测从普通 45 秒请求上限拆分为独立五分钟时限；代理纯文本错误现在显示稳定 HTTP 服务错误，不再暴露 JSON 解析异常。
+
+- MONOREPO-062 在 Core 统一地标发布层撤销确认前低被后续低点严格跌破的一级至三级空翻多高点；等低重测保留、因果回放在跌破确认前保留。国芳集团 2026-04-21 与 2026-05-14 二级高点已按 2026-05-07、2026-07-15 的确认截面依次失效，结构/多周期快照版本同步更新并由常驻 Worker 重建。
+
+- MONOREPO-060 修复 `wavequant-web dev` 未加载 `.env.infrastructure` 的根因；统一启动现在等待本地 MySQL/Redis 健康、幂等建表，并持续托管 API、TDX 信号 Worker 与八个 AkShare 结构分片 Worker。
+
+- MONOREPO-059 将研究图表卡片改为纵向弹性布局，K 线宿主填满标题、OHLC 与历史回放之外的剩余高度；Lightweight Charts 的实际根容器由 autoSize 同步跟随宿主。
+
+- MONOREPO-058 将日、周、月、季、年改为可点击和键盘操作的单行 Tab；服务端以数据/算法版本发布 K 线与画线完整快照到独立 SQL 表和 Redis 热缓存，Worker 支持全目录、指定股票与稳定分片；Web IndexedDB 以 ETag 增量同步并保留 40 份最近 bundle，离线时不会混配画线。
+
+- MONOREPO-057 将 17 项图层开关、图例、折线口径和三级趋势摘要整合到图表顶部单行工具栏；详细定义通过悬停/聚焦提示和可固定顶层浮层呈现，支持外部点击与 Escape 关闭、焦点恢复和窄屏自适应，不再持续占用 K 线高度。
 
 - MONOREPO-056 为 AkShare 与通达信行情浏览增加日、周、月、季、年 K 线；服务器按自然周期聚合首开、最高、最低、末收与成交量并使用最后实际交易日，理论结构读取同一聚合序列；Web 保存周期偏好、同步回放与未完成周期提示，封存回测保持日线。
 
@@ -76,6 +90,16 @@
 - 完成 MONOREPO-048 实现：新增买点/结构双读模型、行情与算法因果版本、完成后原子发布、一次刷新/周期 Worker 和只读查询 API；AkShare 按显式股票范围执行有界任务。
 
 ## Verification Evidence
+
+- MONOREPO-063 Web ESLint、TypeScript、6 项 Vitest、81 项 Node 契约、Next.js 生产构建、Harness 与补丁空白检查通过；真实浏览器成功加载贵州茅台 V3 2026-01-01 至 2026-09-07 当前股票回测。
+
+- MONOREPO-060 Web 门禁通过 ESLint、TypeScript、6 项 Vitest、79 项 Node 契约、Next.js 构建及专项 Chromium；真实重启后基础设施为 `ok`，同源结构查询返回 200，覆盖 5,562 / 5,562 只并返回 91 条结果，Console 与失败请求为 0。
+
+- MONOREPO-059 Web 门禁通过 ESLint、TypeScript、6 项 Vitest、75 项 Node 契约、Next.js 生产构建和专项 Chromium 回归；1440×900 下图表卡片 876px、K 线宿主及实际图表均 672px，390×844 下 K 线 569.22px，Console、失败请求和横向溢出均为 0。
+
+- MONOREPO-058 门禁通过：API Ruff、严格 mypy、61 项 pytest（另 1 项外部集成跳过）和 Python 构建；Web ESLint、TypeScript、6 项 Vitest、75 项 Node 契约、Next.js 构建及串行 14 条 Chromium 流程。真实 MySQL/Redis 建表与健康检查通过，贵州茅台首次发布五周期，重复刷新发布 0、幂等跳过 5、失败 0；浏览器验证周期键盘切换、view/theory 版本一致、IndexedDB 写入和 304 复用。
+
+- MONOREPO-057 Web 门禁通过 ESLint、TypeScript、6 项 Vitest、72 项 Node 契约、生产构建与 14 条 Chromium 流程；真实浏览器确认桌面工具栏高 37px、K 线距卡片顶 95px，fixed 顶层浮层开关前后不改变图表位置，390px 窄屏无整页横向溢出且 Console 无错误。
 
 - MONOREPO-056 三端门禁通过：Core Ruff、严格 mypy、542 项 pytest 和构建；API Ruff、严格 mypy、58 项 pytest（另 1 项跳过）和构建；Web ESLint、TypeScript、6 项 Vitest、71 项 Node 契约、生产构建及 13 条 Chromium 流程通过。真实通达信五周期返回 5999/1263/301/101/26 根 K 线，AkShare 周线返回 1263 根，5,562 只结构快照保持 `ready`。
 
@@ -135,6 +159,8 @@
 - MONOREPO-044 全仓快速门禁通过；Core 525 项、API 40 项（另 1 项环境跳过）、Web 6 项 Vitest 与 61 项 Node 契约通过，三端构建及串行 10 条 Chromium 主流程通过。
 - MONOREPO-046 已启用 AkShare 当前股票买点与结构信号分析；真实 API 对贵州茅台分别完成 1/1，Chromium 点击回归通过且无页面异常或失败请求。
 - MONOREPO-046 完成后的 `pnpm verify` 通过；Core 534 项、API 41 项（另 1 项环境跳过）、Web 6 项 Vitest 与 63 项 Node 契约及全仓生产构建全部通过。
+
+- MONOREPO-061 将转多信号从突破收盘价的精确价格锚点改为 `belowBar`，箭头随对应 K 线最低点定位；收盘价详情与空翻多高点虚线保持不变，Web 门禁、专项 Chromium 和真实页面检查通过。
 
 ## Blockers
 

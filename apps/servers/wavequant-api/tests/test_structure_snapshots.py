@@ -172,7 +172,7 @@ class StructureSnapshotServiceTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in five_day_level_two["results"]], ["old-low"])
         self.assertEqual([row["id"] for row in five_day_bullish_turn["results"]], ["old-bullish-turn"])
         self.assertEqual(self.scanner.starts, 1, "interactive queries must never invoke Core calculation")
-        self.assertTrue(all(key.startswith("signal:structure:v3:") for key in self.cache.keys))
+        self.assertTrue(all(key.startswith("signal:structure:v4:") for key in self.cache.keys))
 
     def test_data_or_algorithm_change_creates_a_new_snapshot(self) -> None:
         first = self.service.refresh("run-001", "lecture_v1")
@@ -211,7 +211,15 @@ class StructureSnapshotServiceTests(unittest.TestCase):
 
         self.assertEqual(refresh["status"], "published")
         self.assertEqual({row["symbol"] for row in result["results"]}, {"sh.600519", "sz.000001"})
-        self.assertEqual(result["coverage"], {"scope": "akshare_market", "published_stocks": 2})
+        self.assertEqual(
+            result["coverage"],
+            {
+                "scope": "akshare_market",
+                "published_stocks": 2,
+                "building_stocks": 2,
+                "expected_stocks": 2,
+            },
+        )
         self.assertNotIn("symbol", result["params"])
         self.assertEqual(self.scanner.online_calculations, 2)
         self.assertEqual(self.market_data.reads, reads_after_refresh)
@@ -225,8 +233,121 @@ class StructureSnapshotServiceTests(unittest.TestCase):
         result = self.service.query({**self.params, "source": "akshare"})
 
         self.assertEqual(refresh["asof"], "2026-09-07")
-        self.assertEqual(result["coverage"], {"scope": "akshare_market", "published_stocks": 1})
+        self.assertEqual(
+            result["coverage"],
+            {
+                "scope": "akshare_market",
+                "published_stocks": 1,
+                "building_stocks": 1,
+                "expected_stocks": 1,
+            },
+        )
         self.assertEqual([row["symbol"] for row in result["results"]], ["sh.600519"])
+
+    def test_akshare_rebuild_serves_last_complete_generation_until_atomic_switch(self) -> None:
+        symbols = ("sh.600519", "sz.000001")
+        for symbol in symbols:
+            self.service.refresh(
+                "run-001",
+                "lecture_v1",
+                source="akshare",
+                symbol=symbol,
+                asof="2026-09-07",
+                market_total=2,
+            )
+
+        self.scanner.algorithm = "c" * 64
+        current = StructureSnapshotService(
+            SimpleNamespace(structure_scanner=self.scanner, market_data=self.market_data),
+            Infrastructure(InfrastructureSettings(), database=self.database, cache=self.cache),
+        )
+        params = {**self.params, "source": "akshare", "asof": "2026-09-14"}
+        calculations_before_queries = self.scanner.online_calculations
+
+        no_current_shards = current.query(params)
+        current.refresh(
+            "run-001",
+            "lecture_v1",
+            source="akshare",
+            symbol=symbols[0],
+            asof="2026-09-14",
+            market_total=3,
+        )
+        one_current_shard = current.query(params)
+        current.refresh(
+            "run-001",
+            "lecture_v1",
+            source="akshare",
+            symbol=symbols[1],
+            asof="2026-09-14",
+            market_total=3,
+        )
+        two_current_shards = current.query(params)
+
+        for rebuilding, published, expected in (
+            (no_current_shards, 0, 2),
+            (one_current_shard, 1, 3),
+            (two_current_shards, 2, 3),
+        ):
+            self.assertEqual(rebuilding["status"], "rebuilding")
+            self.assertEqual(rebuilding["snapshot"]["asof"], "2026-09-07")
+            self.assertTrue(rebuilding["snapshot"]["is_fallback"])
+            self.assertEqual(rebuilding["coverage"]["building_stocks"], published)
+            self.assertEqual(rebuilding["coverage"]["expected_stocks"], expected)
+            self.assertEqual(rebuilding["coverage"]["published_stocks"], 2)
+        current.refresh(
+            "run-001",
+            "lecture_v1",
+            source="akshare",
+            symbol="sz.300001",
+            asof="2026-09-14",
+            market_total=3,
+        )
+        complete_current_generation = current.query(params)
+        self.assertEqual(complete_current_generation["status"], "ready")
+        self.assertEqual(complete_current_generation["snapshot"]["asof"], "2026-09-14")
+        self.assertFalse(complete_current_generation["snapshot"]["is_fallback"])
+        self.assertEqual(complete_current_generation["coverage"]["building_stocks"], 3)
+        self.assertEqual(
+            self.scanner.online_calculations,
+            calculations_before_queries + 3,
+            "interactive reads must not run Core calculations",
+        )
+
+    def test_first_akshare_generation_returns_published_partial_shards_without_calculating(self) -> None:
+        self.service.refresh(
+            "run-001",
+            "lecture_v1",
+            source="akshare",
+            symbol="sh.600519",
+            asof="2026-09-14",
+            market_total=2,
+        )
+        calculations_after_refresh = self.scanner.online_calculations
+
+        result = self.service.query({**self.params, "source": "akshare", "asof": "2026-09-14"})
+
+        self.assertEqual(result["status"], "rebuilding")
+        self.assertEqual(result["snapshot"]["asof"], "2026-09-14")
+        self.assertFalse(result["snapshot"]["is_fallback"])
+        self.assertEqual(result["coverage"]["published_stocks"], 1)
+        self.assertEqual(result["coverage"]["building_stocks"], 1)
+        self.assertEqual(result["coverage"]["expected_stocks"], 2)
+        self.assertEqual(self.scanner.online_calculations, calculations_after_refresh)
+
+    def test_empty_akshare_database_returns_rebuilding_without_calculating(self) -> None:
+        calculations_before_query = self.scanner.online_calculations
+
+        result = self.service.query({**self.params, "source": "akshare", "asof": "2026-09-14"})
+
+        self.assertEqual(result["status"], "rebuilding")
+        self.assertEqual(result["snapshot"]["asof"], "2026-09-14")
+        self.assertFalse(result["snapshot"]["is_fallback"])
+        self.assertEqual(result["results"], [])
+        self.assertEqual(result["coverage"]["published_stocks"], 0)
+        self.assertEqual(result["coverage"]["building_stocks"], 0)
+        self.assertIsNone(result["coverage"]["expected_stocks"])
+        self.assertEqual(self.scanner.online_calculations, calculations_before_query)
 
     def test_akshare_stock_listed_after_cutoff_publishes_an_explicit_empty_scope(self) -> None:
         self.market_data.unavailable_through = "2026-09-07"
@@ -238,7 +359,15 @@ class StructureSnapshotServiceTests(unittest.TestCase):
         result = self.service.query({**self.params, "source": "akshare"})
 
         self.assertEqual(refresh["status"], "published")
-        self.assertEqual(result["coverage"], {"scope": "akshare_market", "published_stocks": 1})
+        self.assertEqual(
+            result["coverage"],
+            {
+                "scope": "akshare_market",
+                "published_stocks": 1,
+                "building_stocks": 1,
+                "expected_stocks": 1,
+            },
+        )
         self.assertEqual(result["results"], [])
         self.assertEqual(result["skipped"], 1)
         self.assertEqual(result["skip_reasons"], {"not_listed_asof": 1})

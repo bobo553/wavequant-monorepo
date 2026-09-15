@@ -48,6 +48,7 @@ class StructureSnapshotService:
         source: str = "tdx",
         symbol: str | None = None,
         asof: str | None = None,
+        market_total: int | None = None,
     ) -> dict[str, object]:
         database = self.infrastructure.database
         if database is None:
@@ -57,6 +58,8 @@ class StructureSnapshotService:
             raise ValueError("结构预计算仅支持 tdx 或 akshare")
         if (source == "akshare") != (symbol is not None):
             raise ValueError("AkShare 结构预计算需要且只允许一个 symbol")
+        if market_total is not None and (source != "akshare" or type(market_total) is not int or market_total < 1):
+            raise ValueError("market_total 仅允许 AkShare 使用正整数")
         if asof is not None:
             selected_asof = asof
         elif source == "tdx":
@@ -134,6 +137,7 @@ class StructureSnapshotService:
                         "stale": 0,
                         "skip_reasons": {"not_listed_asof": 1},
                         "errors": [],
+                        **({"market_total": market_total} if market_total is not None else {}),
                         "elapsed_seconds": perf_counter() - started,
                     },
                     total=1,
@@ -171,6 +175,7 @@ class StructureSnapshotService:
             "stale": job["stale"],
             "skip_reasons": job["skip_reasons"],
             "errors": job["errors"],
+            **({"market_total": market_total} if market_total is not None else {}),
             "elapsed_seconds": perf_counter() - started,
         }
         stored = database.save_structure_snapshot(
@@ -235,12 +240,103 @@ class StructureSnapshotService:
             # Structure landmarks depend on market data and the structure
             # engine, not on the selected buy-strategy profile. Reuse shards
             # across variants to avoid false unavailable states.
-            shards = database.list_structure_snapshots(run, None, source, asof, self.algorithm_version)
-            if not shards:
-                raise StructureSnapshotUnavailable(
-                    "AkShare 市场结构快照尚未生成；请保持结构预计算 Worker 运行，已完成股票会自动发布"
+            current_shards = database.list_structure_snapshots(run, None, source, asof, self.algorithm_version)
+            generations = database.list_structure_snapshot_generations(run, source, asof)
+            advertised_totals = {
+                value
+                for shard in current_shards
+                if type(value := shard.payload.get("market_total")) is int and value > 0
+            }
+            legacy_expected = max(
+                (
+                    int(generation["published_stocks"])
+                    for generation in generations
+                    if generation.get("market_total") is None
+                ),
+                default=0,
+            )
+            historical_total = max(
+                (
+                    int(generation.get("market_total") or generation["published_stocks"])
+                    for generation in generations
+                ),
+                default=0,
+            )
+            expected_stocks = max(advertised_totals, default=historical_total or len(current_shards))
+            current_published = len(current_shards)
+            serving_shards = current_shards
+            serving_status = "ready"
+            if not current_shards or current_published < expected_stocks:
+                complete_generations = [
+                    generation
+                    for generation in generations
+                    if int(generation["published_stocks"])
+                    >= int(generation.get("market_total") or legacy_expected)
+                ]
+                complete_generations.sort(
+                    key=lambda generation: (
+                        generation["algorithm_version"] == self.algorithm_version,
+                        str(generation["asof"]),
+                        str(generation["updated_at"] or ""),
+                    ),
+                    reverse=True,
                 )
-            market_snapshot = self._aggregate_akshare_shards(run, variant, asof, shards)
+                if complete_generations:
+                    selected = complete_generations[0]
+                    serving_shards = database.list_structure_snapshots(
+                        run,
+                        None,
+                        source,
+                        str(selected["asof"]),
+                        str(selected["algorithm_version"]),
+                    )
+                serving_status = "rebuilding"
+            if not serving_shards:
+                pending_id = hashlib.sha256(
+                    json.dumps(
+                        {"run": run, "source": source, "asof": asof, "algorithm": self.algorithm_version},
+                        sort_keys=True,
+                    ).encode("utf-8")
+                ).hexdigest()
+                return {
+                    "status": "rebuilding",
+                    "params": query_params,
+                    "snapshot": {
+                        "id": pending_id,
+                        "asof": asof,
+                        "requested_asof": asof,
+                        "is_fallback": False,
+                        "computed_at": None,
+                        "algorithm_version": self.algorithm_version,
+                        "data_version": "pending",
+                    },
+                    "total": 0,
+                    "processed": 0,
+                    "skipped": 0,
+                    "failed": 0,
+                    "stale": 0,
+                    "skip_reasons": {},
+                    "errors": [],
+                    "results": [],
+                    "matched_stocks": 0,
+                    "coverage": {
+                        "scope": "akshare_market",
+                        "published_stocks": 0,
+                        "building_stocks": 0,
+                        "expected_stocks": None,
+                    },
+                    "filters": {
+                        "markets": list(selected_markets),
+                        "excluded_name_markers": ["*", "＊"],
+                    },
+                    "notice": "首份结构快照正在后台生成；当前尚无已发布结果，结构出现不构成买卖建议。",
+                }
+            market_snapshot = self._aggregate_akshare_shards(
+                run,
+                variant,
+                serving_shards[0].asof,
+                serving_shards,
+            )
         else:
             stored_snapshot = database.find_structure_snapshot(run, variant, source, asof, self.algorithm_version)
             if stored_snapshot is None:
@@ -248,10 +344,14 @@ class StructureSnapshotService:
                     "该行情日或当前算法版本尚无完成快照；后台 Worker 将在检测到变化后自动重建"
                 )
             market_snapshot = stored_snapshot
+            serving_status = "ready"
+            current_published = market_snapshot.total
+            expected_stocks = market_snapshot.total
         snapshot = market_snapshot
 
         cache_key = (
-            f"signal:structure:v3:{snapshot.snapshot_id}:{signal_type}:{trend_level}:{lookback}:{cache_market_key}"
+            f"signal:structure:v4:{snapshot.snapshot_id}:{current_published}:{expected_stocks}:"
+            f"{signal_type}:{trend_level}:{lookback}:{cache_market_key}"
         )
 
         def load() -> dict[str, object]:
@@ -281,11 +381,13 @@ class StructureSnapshotService:
             )
             computed_at = snapshot.updated_at or snapshot.created_at
             return {
-                "status": "ready",
+                "status": serving_status,
                 "params": query_params,
                 "snapshot": {
                     "id": snapshot.snapshot_id,
                     "asof": snapshot.asof,
+                    "requested_asof": asof,
+                    "is_fallback": snapshot.asof != asof or snapshot.algorithm_version != self.algorithm_version,
                     "computed_at": computed_at.astimezone(timezone.utc).isoformat() if computed_at else None,
                     "algorithm_version": snapshot.algorithm_version,
                     "data_version": snapshot.data_version,
@@ -302,12 +404,18 @@ class StructureSnapshotService:
                 "coverage": {
                     "scope": "akshare_market" if source == "akshare" else "tdx_market",
                     "published_stocks": snapshot.total,
+                    "building_stocks": current_published,
+                    "expected_stocks": expected_stocks,
                 },
                 "filters": {
                     "markets": list(selected_markets),
                     "excluded_name_markers": ["*", "＊"],
                 },
-                "notice": "结果由后台按行情与算法版本预计算；结构出现不构成买卖建议。",
+                "notice": (
+                    "新结构快照正在后台重建，当前持续提供上一份完整读模型；结构出现不构成买卖建议。"
+                    if serving_status == "rebuilding"
+                    else "结果由后台按行情与算法版本预计算；结构出现不构成买卖建议。"
+                ),
             }
 
         cached = self.infrastructure.cached_json(cache_key, load)
@@ -397,7 +505,7 @@ class StructureSnapshotService:
             variant=variant,
             source="akshare",
             asof=asof,
-            algorithm_version=self.algorithm_version,
+            algorithm_version=ordered[0].algorithm_version,
             data_version=data_version,
             payload={
                 "results": results,

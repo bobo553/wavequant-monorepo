@@ -16,6 +16,7 @@ from wavequant_api.infrastructure import (
     BuySignalSnapshot,
     Infrastructure,
     InfrastructureSettings,
+    MarketTimeframeSnapshot,
     RedisJsonCache,
     ResearchRun,
     ResearchRunRepository,
@@ -175,6 +176,36 @@ class InfrastructureTests(unittest.TestCase):
             )
         )
 
+    def test_market_timeframe_bundle_is_versioned_and_published_idempotently(self) -> None:
+        repository = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))
+        self.addCleanup(repository.close)
+        repository.initialize()
+        snapshot = MarketTimeframeSnapshot(
+            snapshot_id="f" * 64,
+            source="akshare",
+            symbol="sh.600519",
+            timeframe="1w",
+            requested_asof="2026-09-07",
+            resolved_asof="2026-09-04",
+            algorithm_version="a" * 64,
+            data_version="b" * 64,
+            payload={"view": {"bars": []}, "theory": {"lecture_drawing": {}}},
+        )
+        repository.save_market_timeframe_snapshot(snapshot)
+        repository.save_market_timeframe_snapshot(
+            MarketTimeframeSnapshot(**{**snapshot.__dict__, "payload": {"view": {"bars": [1]}, "theory": {}}})
+        )
+
+        current = repository.find_market_timeframe_snapshot(
+            "akshare", "sh.600519", "1w", "2026-09-07", "a" * 64, data_version="b" * 64
+        )
+        self.assertEqual(current.payload["view"]["bars"] if current else None, [1])
+        self.assertIsNone(
+            repository.find_market_timeframe_snapshot(
+                "akshare", "sh.600519", "1mo", "2026-09-07", "a" * 64
+            )
+        )
+
     def test_structure_shards_list_only_the_newest_snapshot_per_symbol(self) -> None:
         repository = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))
         self.addCleanup(repository.close)
@@ -194,7 +225,7 @@ class InfrastructureTests(unittest.TestCase):
                     asof="2026-09-07",
                     algorithm_version="a" * 64,
                     data_version=data_version,
-                    payload={"results": [{"symbol": symbol}]},
+                    payload={"results": [{"symbol": symbol}], "market_total": 2},
                     total=1,
                     skipped=0,
                     failed=0,
@@ -207,6 +238,13 @@ class InfrastructureTests(unittest.TestCase):
 
         self.assertEqual([snapshot.scope_symbol for snapshot in snapshots], ["sh.600519", "sz.000001"])
         self.assertEqual(snapshots[0].data_version, "c" * 64)
+
+        generations = repository.list_structure_snapshot_generations("run-001", "akshare", "2026-09-14")
+        self.assertEqual(len(generations), 1)
+        self.assertEqual(generations[0]["asof"], "2026-09-07")
+        self.assertEqual(generations[0]["algorithm_version"], "a" * 64)
+        self.assertEqual(generations[0]["published_stocks"], 2)
+        self.assertEqual(generations[0]["market_total"], 2)
 
     def test_catalog_index_is_explicit_and_idempotent(self) -> None:
         repository = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))

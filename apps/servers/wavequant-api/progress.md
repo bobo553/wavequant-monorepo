@@ -1,7 +1,12 @@
 # Progress
 
+- `MONOREPO-064` 已完成：AkShare Worker 使用市场目录日期，结构读模型在新代际重建时持续服务上一完整代际，并在发布完整后原子切换。
+
 ## Current State
 
+- `MONOREPO-062` 已完成：Core 空翻多失效语义已进入结构算法指纹，多周期快照版本种子同步提升；2026-09-07 AkShare 新版本已由八分片 Worker 发布 5,562 / 5,562，常驻进程会继续响应新行情日。
+- `MONOREPO-060` 已完成：Web 统一开发入口向 API 和 Worker 注入基础设施配置，在启动页面前等待本地 MySQL/Redis 健康并幂等建表。
+- `MONOREPO-058` 已完成：多周期行情和结构画线作为独立版本化只读快照持久化，并提供幂等预计算 Worker、Redis 热缓存与 ETag 条件读取。
 - `MONOREPO-056` 已完成：AkShare 与通达信 view/theory GET 接口接受可选 `timeframe`，缺省日线并拒绝未知周期；HTTP 层保持薄适配，API 应用服务聚合 Core 规范日线并把结果交给相同的结构算法。
 - `MONOREPO-055` 已完成：八个稳定动态分片已处理页面日期 2026-09-07 的 5,562 / 5,562 只当前有效 AkShare 股票；停牌股票保持统一市场基准日，截止日后上市股票发布明确空快照，当前分区完成后 Worker 空闲等待新行情日或算法版本。
 - `MONOREPO-054` 已完成：AkShare 与通达信股票目录响应包含基于规范 JSON 的稳定 ETag；匹配 `If-None-Match` 时返回 304/空响应体，目录变化时返回 200 和新版本。
@@ -27,6 +32,16 @@
 - `MONOREPO-017` 已完成：API 支持不依赖静态构建的开发模式，并接受显式声明的本机 Next.js 代理来源。
 
 ## Completed
+
+- MONOREPO-064 增加结构代际聚合索引和完整度查询，分片持久化 `market_total`；读路径优先当前完整代际，否则返回最近完整代际，首次生成从零分片起返回明确的 rebuilding 空结果或已发布部分。真实 MySQL/Redis 请求在重建期间对 2026-09-14、2026-09-15 均返回 HTTP 200，而非 503。
+
+- MONOREPO-064 API 门禁通过 Ruff、严格 mypy、65 项 pytest（另 1 项跳过）和 sdist/wheel 构建；测试覆盖行情日不降级、空库重建响应、上一完整代际回退、部分首代可读及完整后原子切换。
+
+- MONOREPO-060 真实联合启动确认 API 基础设施状态为 `ok`，MySQL/Redis 均健康；既有 AkShare 结构快照可在服务重启后直接读取，Worker 继续负责行情或算法变化后的后台重建。
+
+- MONOREPO-058 新增 `wavequant_market_timeframe_snapshots`，以来源、股票、请求/实际截止日、周期、数据版本和可执行算法指纹发布完整 view+theory bundle；`timeframes:refresh/watch` 支持全目录、定向股票与 1–16 分片，Redis `market:timeframe:v1:*` 可由 SQL 重建。
+
+- MONOREPO-058 API 门禁通过 Ruff、严格 mypy、61 项 pytest（另 1 项跳过）和构建；真实 MySQL/Redis 初始化、健康检查及贵州茅台五周期幂等预计算通过。
 
 - MONOREPO-056 API 为 `/api/tdx-view`、`/api/tdx-theory`、`/api/akshare-view`、`/api/akshare-theory` 增加兼容的周期参数传递，旧请求继续按 `1d` 返回。
 

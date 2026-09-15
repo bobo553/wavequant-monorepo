@@ -6,6 +6,8 @@ from datetime import date
 import unittest
 
 from wavequant_api.application.market_timeframes import MarketTimeframeService
+from wavequant_api.infrastructure import ResearchRunRepository
+from sqlalchemy import create_engine
 
 
 def row(value: str, open_: float, high: float, low: float, close: float, volume: float) -> dict[str, object]:
@@ -47,7 +49,7 @@ class FakeDailyRepository:
             "supplemented_bars": 0,
             "source_fallback": False,
             "source_warning": None,
-            "data_version": "daily-version",
+            "data_version": "d" * 64,
             "price_basis": "raw_unadjusted",
             "sessions": [str(item["time"]) for item in self.rows],
             "bars": bars,
@@ -118,12 +120,28 @@ class MarketTimeframeServiceTests(unittest.TestCase):
         self.assertEqual(theory["data_version"], weekly["data_version"])
         self.assertEqual(theory["timeframe"], "1w")
         self.assertEqual(theory["computed_from"], "api_calendar_timeframe_from_canonical_daily")
-        self.assertEqual(daily["data_version"], "daily-version")
+        self.assertEqual(daily["data_version"], "d" * 64)
         self.assertEqual(daily_theory["computed_from"], "daily")
 
     def test_unknown_timeframe_is_rejected_before_reading_market_data(self) -> None:
         with self.assertRaisesRegex(ValueError, "周期仅支持"):
             self.service.view("tdx", "sh.600000", date.today().isoformat(), "5m")
+
+    def test_precompute_publishes_five_periods_and_second_run_is_idempotent(self) -> None:
+        snapshots = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))
+        self.addCleanup(snapshots.close)
+        snapshots.initialize()
+        service = MarketTimeframeService(FakeDailyRepository(), snapshots=snapshots)
+
+        first = service.precompute("tdx", "sh.600000", "2026-04-01")
+        second = service.precompute("tdx", "sh.600000", "2026-04-01")
+        bundle = service.bundle("tdx", "sh.600000", "2026-04-01", "3mo", compute_if_missing=False)
+
+        self.assertEqual(first["published"], ["1d", "1w", "1mo", "3mo", "1y"])
+        self.assertEqual(second["unchanged"], ["1d", "1w", "1mo", "3mo", "1y"])
+        self.assertEqual(bundle["view"]["timeframe"], "3mo")
+        self.assertEqual(bundle["theory"]["data_version"], bundle["data_version"])
+        self.assertEqual(bundle["cache_state"], "precomputed")
 
 
 if __name__ == "__main__":

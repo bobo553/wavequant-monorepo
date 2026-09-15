@@ -3,10 +3,17 @@ import test from "node:test";
 
 import {
     normalizeStructureMarkets,
+    normalizeStructureSignalTypes,
     sortedStructureMatches,
+    structureCoverageStatus,
     structureScanContextKey,
     structureUniverseCoverage,
 } from "../public/structure-signals.js";
+
+test("structure signal selections use a stable order and support subsets", () => {
+    assert.deepEqual(normalizeStructureSignalTypes(["bullish_turn", "bear_to_bull"]), ["bear_to_bull", "bullish_turn"]);
+    assert.deepEqual(normalizeStructureSignalTypes([]), []);
+});
 
 test("structure context ignores the selected stock for every market source", () => {
     const params = {
@@ -55,6 +62,23 @@ test("AkShare coverage distinguishes the full catalog from the selected eligible
         catalogStocks: 6,
         selectedStocks: 2,
     });
+});
+
+test("AkShare rebuilding keeps the last complete snapshot visible with target progress", () => {
+    const base = {
+        status: "rebuilding",
+        params: { asof: "2026-09-14" },
+        snapshot: { asof: "2026-09-07", is_fallback: true },
+        coverage: { published_stocks: 5_562, building_stocks: 128, expected_stocks: 5_565 },
+    };
+    assert.equal(
+        structureCoverageStatus(base, 5_565, 5_100),
+        "AkShare 后台更新中：当前展示 2026-09-07 完整快照；目标 2026-09-14 已发布 128 / 5565 只；当前筛选市场 5100 只",
+    );
+    assert.equal(
+        structureCoverageStatus({ ...base, snapshot: { asof: "2026-09-14", is_fallback: false } }, 5_565, 5_100),
+        "AkShare 首次重建中：目标 2026-09-14 已发布 128 / 5565 只；当前展示已完成部分",
+    );
 });
 
 test("structure results sort by confirmation date, level, event date and symbol without mutation", () => {
