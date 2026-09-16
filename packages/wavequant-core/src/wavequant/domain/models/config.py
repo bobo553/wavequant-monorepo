@@ -45,6 +45,9 @@ class StrategyConfig:
     max_position_weight: float = 0.20
     risk_fraction: float = 0.01
     lot_size: int = 100
+    # Exchange minimum for a new position.  It is separate from ``lot_size``:
+    # STAR/BSE allow increments smaller than their minimum opening order.
+    minimum_entry_shares: int = 1
     liquidity_lookback: int = 20
     max_participation: float = 0.01
     entry_ttl_bars: int = 1
@@ -84,6 +87,7 @@ class StrategyConfig:
             "max_hold_bars": self.max_hold_bars,
             "max_positions": self.max_positions,
             "lot_size": self.lot_size,
+            "minimum_entry_shares": self.minimum_entry_shares,
             "liquidity_lookback": self.liquidity_lookback,
             "entry_ttl_bars": self.entry_ttl_bars,
         }

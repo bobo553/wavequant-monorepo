@@ -443,6 +443,9 @@ export function bullishTurnSignalAnnotations(levelLandmarks, from, to) {
             .map((landmark) => {
                 const flipHigh = landmark.confirmed_flip_high,
                     alternationLow = landmark.confirmed_alternation_low;
+                const confirmationText = alternationLow
+                    ? `${spec.label}趋势线在 ${alternationLow.label}（${alternationLow.time}，${num(alternationLow.value)}）完成空多交替后，`
+                    : `${spec.label}趋势线的空翻多高点已在 ${flipHigh.available_at || flipHigh.time} 完成确认；当前没有发布合格的同级空多交替低点。`;
                 return {
                     id: `bullish-turn-signal:${level}:${landmark.id}`,
                     time: landmark.time,
@@ -454,13 +457,15 @@ export function bullishTurnSignalAnnotations(levelLandmarks, from, to) {
                     markerPosition: "belowBar",
                     markerShape: "arrowUp",
                     title: `${spec.numeral} 转多信号 · ${landmark.label} ${num(landmark.value)}`,
-                    description: `${spec.label}趋势线在 ${alternationLow.label}（${alternationLow.time}，${num(alternationLow.value)}）完成空多交替后，${landmark.label}（${landmark.time}）收盘 ${num(landmark.previous_close)} → ${num(landmark.value)}，首次从下向上严格突破此前空翻多高点 ${flipHigh.label}（${flipHigh.time}，${num(flipHigh.value)}）。盘中触碰、收盘相等或交替确认前的突破均不产生转多信号。`,
+                    description: `${confirmationText}${landmark.label}（${landmark.time}）收盘 ${num(landmark.previous_close)} → ${num(landmark.value)}，首次从下向上严格突破此前空翻多高点 ${flipHigh.label}（${flipHigh.time}，${num(flipHigh.value)}）。盘中触碰、收盘相等或该高点确认前的突破均不产生转多信号。`,
                     sourceLabel: `${spec.label}趋势线 · Python 预计算转多信号`,
                     priority: 148 - level,
                     color: spec.color,
                     levels: [
                         { name: `${spec.label}空翻多高点`, price: flipHigh.value },
-                        { name: `${spec.label}空多交替低点`, price: alternationLow.value },
+                        ...(alternationLow
+                            ? [{ name: `${spec.label}空多交替低点`, price: alternationLow.value }]
+                            : []),
                     ],
                     raw: {
                         ...landmark,
@@ -582,7 +587,9 @@ export function markerGroups(items, options, span = 140) {
                 isTrendKey = item.kind === "trend-key",
                 buy = item.side === "BUY" || item.side === "LONG";
             const text = isFill
-                ? `${buy ? "B 买入" : "S 卖出"} ${num(item.price)}`
+                ? buy
+                    ? "B"
+                    : "S"
                 : isRule
                   ? `${item.title}${g.items.length > 1 ? " +" + (g.items.length - 1) : ""}`
                    : item.title;
@@ -630,7 +637,7 @@ export function markerGroups(items, options, span = 140) {
                         : isTrendKey
                           ? item.markerShape || "arrowDown"
                           : isRule
-                            ? "square"
+                          ? "circle"
                             : "circle",
                     text: isRule && span > 70 && index % Math.ceil(span / 70) !== 0 ? "" : text,
                     size: isFill

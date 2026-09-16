@@ -11,6 +11,8 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
+from wavequant.domain.models.a_share_security import a_share_security_spec
+
 from .io import load_bars
 
 
@@ -44,17 +46,25 @@ def write_dataset(path: Path, rows: list[dict], metadata: dict) -> dict:
     return metadata
 
 
-def opening_permissions(row: dict) -> tuple[bool, bool]:
-    """Main-board policy: skip new ST entries; reject opens at either daily limit.
+def opening_permissions(row: dict, symbol: str | None = None) -> tuple[bool, bool]:
+    """Reject suspended and limit-locked opens using the security's board rules.
 
     Uses open and official preclose, never the day's closing price or volume to
-    infer whether an opening order could have filled. No queue simulation.
+    infer whether an opening order could have filled.  ``symbol`` is optional
+    only for legacy main-board fixture rows; real adapters must always pass it.
+    No queue simulation or IPO no-limit-window inference is attempted.
     """
     if row["tradestatus"] != "1":
         return False, False
     d = date.fromisoformat(row["date"])
     st = row["isST"] == "1"
-    rate = Decimal("0.05") if st and d < date(2026, 7, 6) else Decimal("0.10")
+    spec = a_share_security_spec(symbol or "sh.600000", d)
+    if st and spec.board in ("sh_main", "sz_main"):
+        rate = Decimal("0.05") if d < date(2026, 7, 6) else Decimal("0.10")
+    elif st and spec.board == "chinext" and d < date(2020, 8, 24):
+        rate = Decimal("0.05")
+    else:
+        rate = spec.price_limit_rate
     previous = Decimal(row["preclose"])
     upper = (previous * (1 + rate)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     lower = (previous * (1 - rate)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -114,7 +124,7 @@ def fetch_baostock(path: Path, symbols: list[str], start: str, end: str,
                 raw = raw_by_day[adjusted["date"]]
                 if not raw["close"] or not adjusted["close"]:
                     raise ValueError(f"{symbol} {raw['date']}: missing price; import a validated suspension mark")
-                buyable, sellable = opening_permissions(raw)
+                buyable, sellable = opening_permissions(raw, symbol)
                 factor = float(adjusted["close"]) / float(raw["close"])
                 row = {name: adjusted[name] for name in ("open", "high", "low", "close")}
                 row.update({"timestamp": raw["date"], "symbol": symbol, "volume": raw["volume"] or 0,

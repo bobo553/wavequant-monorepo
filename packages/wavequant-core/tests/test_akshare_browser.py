@@ -1,5 +1,6 @@
-from datetime import date
+from datetime import date, datetime
 import unittest
+from zoneinfo import ZoneInfo
 
 from wavequant.infrastructure.market_data.akshare import AkShareProvider, AkShareUnavailable
 from wavequant.interfaces.charts.akshare_browser import AkShareBrowser
@@ -34,6 +35,15 @@ class Client:
             ]
         )
 
+    def tool_trade_date_hist_sina(self):
+        return Frame(
+            [
+                {"trade_date": date(2026, 9, 11)},
+                {"trade_date": date(2026, 9, 14)},
+                {"trade_date": date(2026, 9, 15)},
+            ]
+        )
+
     def stock_zh_a_hist(self, **kwargs):
         self.history_calls.append(kwargs)
         return Frame(
@@ -57,6 +67,25 @@ class AkShareBrowserTests(unittest.TestCase):
         self.assertEqual(self.client.catalog_calls, 1)
         self.assertEqual([row["symbol"] for row in first["stocks"]], ["sh.600519", "sz.000001", "bj.920001"])
         self.assertEqual(first["provider_version"], "1.18.94")
+
+    def test_catalog_latest_is_last_completed_china_market_session(self):
+        before_ready = AkShareBrowser(
+            self.provider,
+            clock=lambda: datetime(2026, 9, 15, 16, 59, tzinfo=ZoneInfo("Asia/Shanghai")),
+        ).catalog()
+        after_ready = AkShareBrowser(
+            self.provider,
+            clock=lambda: datetime(2026, 9, 15, 17, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        ).catalog()
+        tokyo_midnight = AkShareBrowser(
+            self.provider,
+            clock=lambda: datetime(2026, 9, 16, 0, 30, tzinfo=ZoneInfo("Asia/Tokyo")),
+        ).catalog()
+
+        self.assertEqual(before_ready["latest"], "2026-09-14")
+        self.assertEqual(after_ready["latest"], "2026-09-15")
+        self.assertEqual(tokyo_midnight["latest"], "2026-09-15")
+        self.assertTrue(all(stock["last"] == "2026-09-15" for stock in tokyo_midnight["stocks"]))
 
     def test_view_uses_unadjusted_daily_data_and_converts_lots_to_shares(self):
         view = self.browser.view("sh.600519", "2026-01-03")

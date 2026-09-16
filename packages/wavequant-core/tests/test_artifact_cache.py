@@ -4,6 +4,7 @@ from dataclasses import FrozenInstanceError, replace
 from datetime import datetime, timedelta
 import sqlite3
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -55,6 +56,19 @@ class ArtifactTests(unittest.TestCase):
         with closing(sqlite3.connect(cache.path)) as db:
             self.assertLessEqual(db.execute('SELECT SUM(size) FROM artifacts').fetchone()[0],250)
         self.assertEqual(cache.get('test',9),dict(i=9))
+
+    def test_busy_writer_does_not_block_interactive_result_for_thirty_seconds(self):
+        self.cache.put('seed',{},dict(ok=True))
+        locked=sqlite3.connect(self.cache.path,timeout=1,isolation_level=None)
+        self.addCleanup(locked.close)
+        locked.execute('BEGIN IMMEDIATE')
+        started=time.perf_counter()
+        with self.assertLogs(level='WARNING'):
+            self.assertFalse(self.cache.put('interactive',{},dict(valid=True)))
+        self.assertLess(time.perf_counter()-started,2)
+        locked.execute('ROLLBACK')
+        self.assertTrue(self.cache.put('interactive',{},dict(valid=True)))
+        self.assertEqual(self.cache.get('interactive',{}),dict(valid=True))
 
 
 class ValidatedBarsTests(unittest.TestCase):

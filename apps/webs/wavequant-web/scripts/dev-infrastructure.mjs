@@ -40,7 +40,10 @@ export function isInfrastructureConfigured(environment = process.env) {
 /** Keep the full-catalog AkShare refresh bounded while allowing local overrides. */
 export function resolveStructureWorkerCount(environment = process.env) {
     if (disabledValues.has(String(environment.WAVEQUANT_DEV_STRUCTURE_WORKERS || "").toLowerCase())) return 0;
-    const value = Number(environment.WAVEQUANT_DEV_STRUCTURE_WORKERS || 8);
+    // Full-market rebuilds are background work. Two local shards keep them
+    // progressing without starving the API, chart rendering and backtests.
+    // Faster build agents can still opt into a larger explicit value.
+    const value = Number(environment.WAVEQUANT_DEV_STRUCTURE_WORKERS || 2);
     if (!Number.isInteger(value) || value < 1 || value > 16) {
         throw new Error("WAVEQUANT_DEV_STRUCTURE_WORKERS must be 1-16 or false");
     }

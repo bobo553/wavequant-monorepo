@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime, timezone
+from decimal import Decimal
 import hashlib
 import json
 from time import perf_counter
@@ -236,17 +237,21 @@ class StructureSnapshotService:
         database = self.infrastructure.database
         if database is None:
             raise StructureSnapshotUnavailable("结构读模型未配置；请启动 MySQL/PostgreSQL 并运行结构预计算 Worker")
+        rejected_current = False
         if source == "akshare":
             # Structure landmarks depend on market data and the structure
             # engine, not on the selected buy-strategy profile. Reuse shards
             # across variants to avoid false unavailable states.
-            current_shards = database.list_structure_snapshots(run, None, source, asof, self.algorithm_version)
             generations = database.list_structure_snapshot_generations(run, source, asof)
-            advertised_totals = {
-                value
-                for shard in current_shards
-                if type(value := shard.payload.get("market_total")) is int and value > 0
-            }
+            current_generation = next(
+                (
+                    generation
+                    for generation in generations
+                    if generation["asof"] == asof
+                    and generation["algorithm_version"] == self.algorithm_version
+                ),
+                None,
+            )
             legacy_expected = max(
                 (
                     int(generation["published_stocks"])
@@ -262,35 +267,57 @@ class StructureSnapshotService:
                 ),
                 default=0,
             )
-            expected_stocks = max(advertised_totals, default=historical_total or len(current_shards))
-            current_published = len(current_shards)
-            serving_shards = current_shards
-            serving_status = "ready"
-            if not current_shards or current_published < expected_stocks:
-                complete_generations = [
-                    generation
-                    for generation in generations
-                    if int(generation["published_stocks"])
-                    >= int(generation.get("market_total") or legacy_expected)
-                ]
-                complete_generations.sort(
-                    key=lambda generation: (
-                        generation["algorithm_version"] == self.algorithm_version,
-                        str(generation["asof"]),
-                        str(generation["updated_at"] or ""),
-                    ),
-                    reverse=True,
+            current_published = int(current_generation["published_stocks"]) if current_generation else 0
+            current_market_total = current_generation.get("market_total") if current_generation else None
+            expected_stocks = (
+                int(current_market_total)
+                if type(current_market_total) is int and current_market_total > 0
+                else historical_total or current_published
+            )
+            current_complete = current_generation is not None and current_published >= expected_stocks
+            current_healthy = current_complete and self._akshare_generation_summary_is_healthy(current_generation)
+            rejected_current = current_complete and not current_healthy
+            complete_healthy_generations = [
+                generation
+                for generation in generations
+                if int(generation["published_stocks"])
+                >= int(generation.get("market_total") or legacy_expected)
+                and self._akshare_generation_summary_is_healthy(generation)
+            ]
+            complete_healthy_generations.sort(
+                key=lambda generation: (
+                    generation["algorithm_version"] == self.algorithm_version,
+                    str(generation["asof"]),
+                    str(generation["updated_at"] or ""),
+                ),
+                reverse=True,
+            )
+            selected_generation = current_generation if current_healthy else next(iter(complete_healthy_generations), None)
+            if selected_generation is not None:
+                serving_shards = database.list_structure_snapshots(
+                    run,
+                    None,
+                    source,
+                    str(selected_generation["asof"]),
+                    str(selected_generation["algorithm_version"]),
                 )
-                if complete_generations:
-                    selected = complete_generations[0]
-                    serving_shards = database.list_structure_snapshots(
-                        run,
-                        None,
-                        source,
-                        str(selected["asof"]),
-                        str(selected["algorithm_version"]),
-                    )
-                serving_status = "rebuilding"
+            elif current_generation is not None and not current_complete:
+                # Preserve first-generation progressive results while no
+                # complete healthy fallback exists yet.
+                serving_shards = database.list_structure_snapshots(
+                    run,
+                    None,
+                    source,
+                    asof,
+                    self.algorithm_version,
+                )
+            else:
+                # A numerically complete generation whose vast majority of
+                # stocks have no target-session candle is not a usable read
+                # model. Never turn that systemic date error into a valid
+                # empty signal result.
+                serving_shards = []
+            serving_status = "ready" if current_healthy else "rebuilding"
             if not serving_shards:
                 pending_id = hashlib.sha256(
                     json.dumps(
@@ -412,7 +439,9 @@ class StructureSnapshotService:
                     "excluded_name_markers": ["*", "＊"],
                 },
                 "notice": (
-                    "新结构快照正在后台重建，当前持续提供上一份完整读模型；结构出现不构成买卖建议。"
+                    "当前目标快照的行情日期一致性校验失败，已继续提供上一份完整健康读模型；结构出现不构成买卖建议。"
+                    if rejected_current
+                    else "新结构快照正在后台重建，当前持续提供上一份完整读模型；结构出现不构成买卖建议。"
                     if serving_status == "rebuilding"
                     else "结果由后台按行情与算法版本预计算；结构出现不构成买卖建议。"
                 ),
@@ -457,6 +486,30 @@ class StructureSnapshotService:
     def _has_starred_name(row: dict[str, object]) -> bool:
         name = row.get("name")
         return isinstance(name, str) and ("*" in name or "＊" in name)
+
+    @staticmethod
+    def _akshare_generation_summary_is_healthy(generation: Any) -> bool:
+        """Require a market-date majority before serving an AkShare generation.
+
+        Individual stocks can be suspended and legitimately lack the market's
+        newest candle.  A majority cannot: when at least half the published
+        universe is stale, the partition date came from a clock/calendar or
+        provider-readiness error rather than an actual completed market day.
+        """
+        if not isinstance(generation, dict):
+            return False
+        published = generation.get("published_stocks")
+        stale = generation.get("stale_stocks")
+        if (
+            isinstance(published, bool)
+            or not isinstance(published, (int, Decimal))
+            or isinstance(stale, bool)
+            or not isinstance(stale, (int, Decimal))
+        ):
+            return False
+        published_count = int(published)
+        stale_count = int(stale)
+        return published_count > 0 and stale_count * 2 < published_count
 
     def _aggregate_akshare_shards(
         self,

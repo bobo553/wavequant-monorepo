@@ -48,6 +48,49 @@ test("research workbench exposes AkShare as a read-only online market source", (
     assert.doesNotMatch(runtime, /if \(isAkShare\(\) && tab !== "all"\) return/);
 });
 
+test("research workbench provides categorized local watchlists and structure-result shortcuts", () => {
+    const browser = readFileSync(
+        join(sourceRoot, "features", "research-workbench", "components", "stock-browser.tsx"),
+        "utf8",
+    );
+    const chart = readFileSync(
+        join(sourceRoot, "features", "research-workbench", "components", "research-chart.tsx"),
+        "utf8",
+    );
+    const rail = readFileSync(
+        join(sourceRoot, "features", "research-workbench", "components", "watchlist-rail.tsx"),
+        "utf8",
+    );
+    const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
+    const watchlists = readFileSync(join(publicRoot, "watchlists.js"), "utf8");
+    const structures = readFileSync(join(publicRoot, "structure-signals.js"), "utf8");
+
+    for (const id of [
+        "watchlist-group-select",
+        "watchlist-group-add",
+        "watchlist-group-rename",
+        "watchlist-group-delete",
+        "structure-watchlist-add-all",
+    ])
+        assert.match(browser + rail, new RegExp(`id="${id}"`));
+    assert.match(rail, /id="watchlist-rail"/);
+    assert.match(rail, /id="watchlist-rail-toggle"/);
+    assert.match(chart, /id="watchlist-toggle-current"/);
+    assert.doesNotMatch(browser, /watchlists-tab|watchlists-panel|watchlist-add-current/);
+    assert.match(runtime, /new Watchlists/);
+    assert.match(runtime, /await watchlists\.init\(\)/);
+    assert.match(runtime, /watchlists\.setUniverse/);
+    assert.match(structures, /structure-watchlist-add/);
+    assert.match(structures, /button\.textContent = added \? "★" : "☆"/);
+    assert.match(structures, /this\.watchlists\.remove\(result\.symbol\)/);
+    assert.match(watchlists, /remove\.textContent = "★"/);
+    assert.doesNotMatch(watchlists, /remove\.textContent = "移除"/);
+    assert.match(structures, /addAllToWatchlist/);
+    assert.match(watchlists, /wavequant-user-data/);
+    assert.match(watchlists, /keyPath: \["groupId", "symbol"\]/);
+    assert.match(watchlists, /默认分类不能删除/);
+});
+
 test("market browsing exposes server-backed daily through yearly candle timeframes", () => {
     const chart = readFileSync(
         join(sourceRoot, "features", "research-workbench", "components", "research-chart.tsx"),
@@ -114,6 +157,31 @@ test("chart controls use top-layer progressive disclosure without consuming cand
     assert.match(styles, /\.price-chart \{[\s\S]*flex: 1 1 355px;[\s\S]*height: auto;/);
 });
 
+test("trade letters render above trend series and chart drawing primitives", () => {
+    const chartRuntime = readFileSync(join(publicRoot, "charts.js"), "utf8");
+    const appRuntime = readFileSync(join(publicRoot, "app.js"), "utf8");
+    const ledgers = readFileSync(
+        join(sourceRoot, "features", "research-workbench", "components", "research-ledgers.tsx"),
+        "utf8",
+    );
+    assert.doesNotMatch(chartRuntime, /this\.tradeMarkers|createSeriesMarkers\(this\.candles, \[\], \{ zOrder: "top" \}\)/);
+    assert.match(chartRuntime, /this\.candles\.attachPrimitive\(this\.tradeMarkerOverlay\)/);
+    assert.match(chartRuntime, /this\.tradeMarkerOverlay\.setMarkers\(/);
+    assert.match(chartRuntime, /g\.items\[0\]\.kind !== "fill"/);
+    assert.match(appRuntime, /\$\("fills-only"\)\.disabled = markers\.length === 0/);
+    assert.match(appRuntime, /\$\("fills-only"\)\.addEventListener\("click",[\s\S]*chart\.selectAnnotation\(marker\.id\);[\s\S]*requestAnimationFrame\(\(\) => \$\("price-chart"\)\.scrollIntoView/);
+    assert.match(ledgers, /id="fills-only">仅看并定位成交/);
+});
+
+test("running a current-stock backtest focuses its latest actual B/S fill", () => {
+    const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
+    assert.match(runtime, /\$\("run-stock-backtest"\)\.addEventListener\("click",[\s\S]*loadView\(\{ focusLatestFill: true \}\)/);
+    assert.match(runtime, /const latestFill = data\.markers\.filter\(\(marker\) => marker\.kind === "fill"\)\.at\(-1\)/);
+    assert.match(runtime, /chart\.selectAnnotation\(latestFill\.id\)/);
+    assert.match(runtime, /\$\("price-chart"\)\.scrollIntoView\(\{ block: "center", behavior: "instant" \}\)/);
+    assert.match(runtime, /本次回测没有模拟成交/);
+});
+
 test("feature modules retain the overview, ladder, responsive and chart boundaries", () => {
     const dashboard = readFileSync(join(sourceRoot, "features", "market-dashboard", "market-dashboard.tsx"), "utf8");
     const chart = readFileSync(
@@ -156,6 +224,7 @@ test("the complete server-backed research workbench is composed from React featu
     const featureRoot = join(sourceRoot, "features", "research-workbench");
     const workbench = readFileSync(join(featureRoot, "research-workbench.tsx"), "utf8");
     const runtime = readFileSync(join(featureRoot, "runtime", "research-runtime.tsx"), "utf8");
+    const legacyRuntime = readFileSync(join(publicRoot, "app.js"), "utf8");
     const legacyStyles = readFileSync(join(publicRoot, "styles.css"), "utf8");
     const legacyCharts = readFileSync(join(publicRoot, "charts.js"), "utf8");
     const components =
@@ -176,6 +245,13 @@ test("the complete server-backed research workbench is composed from React featu
     assert.match(components, /id: "show-bullish-turn-signals"/);
     assert.match(components, /label: "各级转多信号"/);
     assert.match(legacyCharts, /drawBullishTurnGuides/);
+    assert.match(components, /className="loading-slot"/);
+    assert.match(components, /id="chart-loading-overlay"/);
+    assert.match(components, /className="chart-loading-spinner"/);
+    assert.doesNotMatch(legacyRuntime, /el\.hidden = state\.loading \|\| state\.error/);
+    assert.match(legacyRuntime, /const hasRenderedView = Boolean\(state\.view\)/);
+    assert.match(legacyRuntime, /\$\("chart-loading-overlay"\)\.hidden = false/);
+    assert.equal((legacyRuntime.match(/\$\("chart-loading-overlay"\)\.hidden = true/g) || []).length, 2);
     for (const id of [
         "price-chart",
         "run-stock-backtest",

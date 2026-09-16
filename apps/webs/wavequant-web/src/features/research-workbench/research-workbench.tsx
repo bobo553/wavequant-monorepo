@@ -8,6 +8,7 @@ import { ResearchLedgers, StockBacktestResults } from "./components/research-led
 import { ResearchMetrics } from "./components/research-metrics";
 import { HealthPage, OrdersPage, PerformancePage } from "./components/research-secondary-pages";
 import { StockBrowser } from "./components/stock-browser";
+import { WatchlistRail } from "./components/watchlist-rail";
 import { ResearchRuntime } from "./runtime/research-runtime";
 
 /**
@@ -27,6 +28,7 @@ export function ResearchWorkbench(): JSX.Element {
                     <section id="page-workspace" className="page">
                         <div id="backtest-details" className="panel note-card" hidden />
                         <div className="workspace-grid">
+                            <WatchlistRail />
                             <ResearchChart />
                             <StockBrowser />
                             <ResearchEvidence />

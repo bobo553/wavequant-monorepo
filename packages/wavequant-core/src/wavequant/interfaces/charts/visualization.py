@@ -133,7 +133,15 @@ def metrics_at(equity, trades, capital):
 
 
 class ChartRepository:
-    def __init__(self, root, tdx_root=None, *, akshare_enabled=True, akshare_timeout=30.0):
+    def __init__(
+        self,
+        root,
+        tdx_root=None,
+        *,
+        akshare_enabled=True,
+        akshare_timeout=30.0,
+        artifact_cache_scope=None,
+    ):
         from wavequant.interfaces.charts.akshare_browser import AkShareBrowser
         from wavequant.interfaces.charts.market_data_repository import (
             AkShareMarketDataAdapter,
@@ -142,7 +150,18 @@ class ChartRepository:
         )
         from wavequant.interfaces.charts.tdx_browser import TdxBrowser
 
-        self.tdx = TdxBrowser(tdx_root) if tdx_root else None
+        shared_cache_root = project_path("data", "cache")
+        cache_root = shared_cache_root
+        if artifact_cache_scope is not None:
+            if (
+                not isinstance(artifact_cache_scope, str)
+                or not artifact_cache_scope
+                or len(artifact_cache_scope) > 48
+                or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789-" for character in artifact_cache_scope)
+            ):
+                raise ValueError("invalid artifact cache scope")
+            cache_root /= artifact_cache_scope
+        self.tdx = TdxBrowser(tdx_root, cache=cache_root) if tdx_root else None
         self.akshare = AkShareBrowser(timeout=akshare_timeout) if akshare_enabled else None
         adapters = []
         if self.akshare is not None:
@@ -157,7 +176,9 @@ class ChartRepository:
         self.stock_lock = Lock()
         from wavequant.interfaces.research_tools.tdx_backtest import TdxBacktester
 
-        self.tdx_backtester = TdxBacktester(self.tdx, project_path("data", "cache")) if self.tdx else None
+        self.tdx_backtester = (
+            TdxBacktester(self.tdx, cache_root, actions_cache=shared_cache_root) if self.tdx else None
+        )
         self.refresh()
         from wavequant.interfaces.screening.buy_scanner import BuyScanner
         from wavequant.interfaces.screening.structure_scanner import StructureScanner

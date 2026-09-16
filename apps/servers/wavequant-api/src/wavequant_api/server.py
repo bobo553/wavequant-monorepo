@@ -375,6 +375,7 @@ def serve_dashboard(
         tdx_root=tdx_root,
         akshare_enabled=akshare_enabled,
         akshare_timeout=akshare_timeout,
+        artifact_cache_scope="api",
     )
     services = infrastructure or Infrastructure.from_settings(InfrastructureSettings.from_env())
     server = make_server(

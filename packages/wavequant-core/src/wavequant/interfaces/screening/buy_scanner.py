@@ -4,11 +4,11 @@ from copy import deepcopy
 from datetime import date, datetime
 from threading import Condition, Event, Lock, Thread
 from uuid import uuid4
-import re
 from time import perf_counter
 
 from wavequant.infrastructure.market_data.data import fingerprint
 from wavequant.application.analytics.screening_funnel import funnel
+from wavequant.domain.models.a_share_security import is_supported_a_share
 
 
 def buy_match(view,asof,lookback):
@@ -90,7 +90,7 @@ class BuyScanner:
             action_hash=fingerprint(action_path)
             catalog=repo.tdx.catalog()['stocks']
             for s in catalog:
-                reason=('unsupported_board' if not re.fullmatch(r'(sh\.60\d{4}|sz\.00\d{4})',s['symbol']) else
+                reason=('unsupported_board' if not is_supported_a_share(s['symbol']) else
                         'no_daily' if not s.get('has_data') else
                         'current_st_or_delisted' if any(t in (s.get('name') or '').upper() for t in ('ST','退')) else
                         'stale_daily' if s.get('last','')<p['asof'] else None)

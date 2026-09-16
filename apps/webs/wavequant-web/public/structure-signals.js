@@ -93,11 +93,13 @@ export function sortedStructureMatches(rows) {
 
 /** 查询后台已发布的结构读模型；浏览器请求绝不触发逐股计算。 */
 export class StructureSignals {
-    constructor({ api, getContext, getUniverse = () => [], onSelect }) {
-        Object.assign(this, { api, getContext, getUniverse, onSelect });
+    constructor({ api, getContext, getUniverse = () => [], onSelect, watchlists = null }) {
+        Object.assign(this, { api, getContext, getUniverse, onSelect, watchlists });
         this.$ = (id) => document.getElementById(id);
         this.generation = 0;
         this.$("structure-scan-start").addEventListener("click", () => this.start());
+        this.$("structure-watchlist-add-all").addEventListener("click", () => void this.addAllToWatchlist());
+        window.addEventListener("wavequant:watchlists-changed", () => this.syncWatchlistActions());
         for (const input of document.querySelectorAll(
             'input[name="structure-signal-type"], input[name="structure-trend-level"], input[name="structure-scan-lookback"]',
         ))
@@ -134,6 +136,7 @@ export class StructureSignals {
             this.$("structure-signal-list").replaceChildren();
             this.$("structure-scan-status").textContent = "日期、结构类型、级别或数据范围已变化，请重新读取快照。";
             this.$("structure-scan-start").disabled = false;
+            this.syncWatchlistActions();
         }
         if (!this.response) this.$("structure-scan-start").disabled = false;
     }
@@ -142,6 +145,7 @@ export class StructureSignals {
         const generation = ++this.generation;
         this.controller?.abort();
         this.response = null;
+        this.syncWatchlistActions();
         const params = this.params();
         if (!params.signal_type) {
             this.$("structure-scan-status").textContent = "请至少选择一种结构类型。";
@@ -175,6 +179,45 @@ export class StructureSignals {
             if (generation !== this.generation || error.name === "AbortError") return;
             this.$("structure-scan-status").textContent = "结构快照不可用：" + error.message;
             this.$("structure-scan-start").disabled = false;
+            this.syncWatchlistActions();
+        }
+    }
+
+    async addAllToWatchlist() {
+        if (!this.watchlists || !this.response) return;
+        const unique = new Map();
+        for (const result of this.response.results)
+            if (!unique.has(result.symbol)) unique.set(result.symbol, { symbol: result.symbol, name: result.name || "" });
+        await this.watchlists.addStocks([...unique.values()]);
+        this.syncWatchlistActions();
+    }
+
+    syncWatchlistActions() {
+        const target = this.$("structure-watchlist-target");
+        const addAll = this.$("structure-watchlist-add-all");
+        if (!target || !addAll) return;
+        const ready = Boolean(this.watchlists?.available);
+        const group = this.watchlists?.selectedGroup;
+        target.textContent = group?.name || "自选股不可用";
+        const symbols = [...new Set((this.response?.results || []).map((result) => result.symbol))];
+        const allAdded = symbols.length > 0 && symbols.every((symbol) => this.watchlists.has(symbol));
+        addAll.disabled = !ready || !symbols.length || allAdded;
+        addAll.textContent = allAdded ? "当前结果已全部加入" : `当前结果全部加入${symbols.length ? `（${symbols.length}）` : ""}`;
+        for (const button of document.querySelectorAll(".structure-watchlist-add")) {
+            const added = ready && this.watchlists.has(button.dataset.symbol);
+            const stockName = button.dataset.name || button.dataset.symbol;
+            button.disabled = !ready;
+            button.setAttribute("aria-pressed", String(added));
+            button.textContent = added ? "★" : "☆";
+            button.setAttribute(
+                "aria-label",
+                added
+                    ? `从“${group?.name || "我的自选"}”移除 ${stockName}`
+                    : `将 ${stockName} 加入“${group?.name || "我的自选"}”`,
+            );
+            button.title = added
+                ? `已收藏到“${group?.name || "我的自选"}”，点击移除`
+                : `收藏到“${group?.name || "我的自选"}”`;
         }
     }
 
@@ -206,19 +249,21 @@ export class StructureSignals {
         const focused = document.activeElement;
         const scrollTop = list.scrollTop;
         const existing = new Map(
-            [...list.querySelectorAll(".structure-signal-item")].map((button) => [button.dataset.resultId, button]),
+            [...list.querySelectorAll(".structure-signal-card")].map((card) => [card.dataset.resultId, card]),
         );
         const rows = sortedStructureMatches(response.results);
-        for (const child of [...list.children]) if (!child.classList.contains("structure-signal-item")) child.remove();
+        for (const child of [...list.children]) if (!child.classList.contains("structure-signal-card")) child.remove();
         for (const [index, result] of rows.entries()) {
             const resultId = `${result.symbol}:${result.id}`;
-            let button = existing.get(resultId);
+            let card = existing.get(resultId);
             existing.delete(resultId);
-            if (!button) {
-                button = document.createElement("button");
+            if (!card) {
+                card = document.createElement("div");
+                card.className = "structure-signal-card";
+                card.dataset.resultId = resultId;
+                const button = document.createElement("button");
                 button.type = "button";
                 button.className = "structure-signal-item";
-                button.dataset.resultId = resultId;
                 const name = document.createElement("strong");
                 name.textContent = result.name
                     ? `${result.symbol.split(".")[1]} ${result.name}`
@@ -236,10 +281,23 @@ export class StructureSignals {
                           : `由 ${result.evidence?.confirmed_flip_high?.label || "翻多高点"} 回档 ${pct(result.evidence?.retracement_ratio)} 确认`;
                 button.append(name, status, timing, evidence);
                 button.addEventListener("click", () => this.onSelect(result, params));
+                const add = document.createElement("button");
+                add.type = "button";
+                add.className = "structure-watchlist-add";
+                add.dataset.symbol = result.symbol;
+                add.dataset.name = result.name || result.symbol;
+                add.setAttribute("aria-pressed", "false");
+                add.setAttribute("aria-label", `将 ${result.name || result.symbol} 加入自选股`);
+                add.addEventListener("click", async () => {
+                    if (this.watchlists?.has(result.symbol)) await this.watchlists.remove(result.symbol);
+                    else await this.watchlists?.addStocks([{ symbol: result.symbol, name: result.name || "" }]);
+                    this.syncWatchlistActions();
+                });
+                card.append(button, add);
             }
-            if (list.children[index] !== button) list.insertBefore(button, list.children[index] || null);
+            if (list.children[index] !== card) list.insertBefore(card, list.children[index] || null);
         }
-        for (const button of existing.values()) button.remove();
+        for (const card of existing.values()) card.remove();
         if (focused?.isConnected && list.contains(focused) && document.activeElement !== focused)
             focused.focus({ preventScroll: true });
         list.scrollTop = scrollTop;
@@ -251,6 +309,7 @@ export class StructureSignals {
             list.append(empty);
         }
         if (response.errors.length || response.skipped) this.appendDiagnostics(list, response);
+        this.syncWatchlistActions();
     }
 
     appendDiagnostics(list, job) {

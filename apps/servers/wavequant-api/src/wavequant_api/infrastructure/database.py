@@ -443,12 +443,23 @@ class ResearchRunRepository:
             raise ValueError("asof must use YYYY-MM-DD")
         if type(limit) is not int or not 1 <= limit <= 500:
             raise ValueError("limit must be between 1 and 500")
-        statement = (
+        ranked = (
             select(
                 structure_signal_snapshots.c.asof,
                 structure_signal_snapshots.c.algorithm_version,
-                func.count(func.distinct(structure_signal_snapshots.c.scope_symbol)).label("published_stocks"),
-                func.max(structure_signal_snapshots.c.updated_at).label("updated_at"),
+                structure_signal_snapshots.c.scope_symbol,
+                structure_signal_snapshots.c.payload,
+                structure_signal_snapshots.c.updated_at,
+                func.row_number()
+                .over(
+                    partition_by=(
+                        structure_signal_snapshots.c.asof,
+                        structure_signal_snapshots.c.algorithm_version,
+                        structure_signal_snapshots.c.scope_symbol,
+                    ),
+                    order_by=structure_signal_snapshots.c.updated_at.desc(),
+                )
+                .label("scope_rank"),
             )
             .where(
                 structure_signal_snapshots.c.run_id == run_id,
@@ -456,36 +467,25 @@ class ResearchRunRepository:
                 structure_signal_snapshots.c.scope_symbol.is_not(None),
                 structure_signal_snapshots.c.asof <= asof,
             )
-            .group_by(
-                structure_signal_snapshots.c.asof,
-                structure_signal_snapshots.c.algorithm_version,
+            .subquery()
+        )
+        statement = (
+            select(
+                ranked.c.asof,
+                ranked.c.algorithm_version,
+                func.count().label("published_stocks"),
+                func.max(ranked.c.updated_at).label("updated_at"),
+                func.max(ranked.c.payload["market_total"].as_integer()).label("market_total"),
+                func.coalesce(func.sum(ranked.c.payload["stale"].as_integer()), 0).label("stale_stocks"),
             )
-            .order_by(structure_signal_snapshots.c.asof.desc(), func.max(structure_signal_snapshots.c.updated_at).desc())
+            .where(ranked.c.scope_rank == 1)
+            .group_by(ranked.c.asof, ranked.c.algorithm_version)
+            .order_by(ranked.c.asof.desc(), func.max(ranked.c.updated_at).desc())
             .limit(limit)
         )
-        generations: list[dict[str, Any]] = []
         with self.engine.connect() as connection:
             rows = connection.execute(statement).mappings().all()
-            for row in rows:
-                generation = dict(row)
-                payload = connection.execute(
-                    select(structure_signal_snapshots.c.payload)
-                    .where(
-                        structure_signal_snapshots.c.run_id == run_id,
-                        structure_signal_snapshots.c.source == source,
-                        structure_signal_snapshots.c.scope_symbol.is_not(None),
-                        structure_signal_snapshots.c.asof == generation["asof"],
-                        structure_signal_snapshots.c.algorithm_version == generation["algorithm_version"],
-                    )
-                    .order_by(structure_signal_snapshots.c.updated_at.desc())
-                    .limit(1)
-                ).scalar_one_or_none()
-                market_total = payload.get("market_total") if isinstance(payload, dict) else None
-                generation["market_total"] = (
-                    market_total if type(market_total) is int and market_total > 0 else None
-                )
-                generations.append(generation)
-        return generations
+        return [dict(row) for row in rows]
 
     def save_buy_signal_snapshot(self, snapshot: BuySignalSnapshot) -> BuySignalSnapshot:
         """Atomically publish a completed buy-signal snapshot."""

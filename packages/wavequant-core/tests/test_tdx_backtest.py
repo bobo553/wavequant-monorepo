@@ -126,14 +126,28 @@ class TdxBacktestTests(unittest.TestCase):
         self.assertNotEqual(before['run_id'],after['run_id'])
         self.assertNotEqual(before['bars'][-1]['close'],after['bars'][-1]['close'])
 
-    def test_missing_actions_unsupported_actions_board_dates_and_st_blocked(self):
-        with self.assertRaisesRegex(ValueError,'主板'):self.service.run('sz.300750','2020-01-01','2020-02-01',self.strategy,self.execution)
+    def test_missing_actions_unsupported_actions_dates_and_st_blocked(self):
         with self.assertRaises(ValueError):self.service.run('sh.600000','2020-03-01','2020-02-01',self.strategy,self.execution)
         self.events[0]['category']=11
         with self.assertRaisesRegex(ValueError,'unsupported'):self.run_fixture()
         self.action_path.unlink()
         with self.assertRaisesRegex(ValueError,'gbbq'):
             self.service.run('sh.600000','2020-01-01','2020-02-01',self.strategy,self.execution)
+
+    def test_chinext_star_and_bse_use_board_specific_execution(self):
+        # Fixture ends before the 2020-08-24 ChiNext reform, so its published
+        # as-of spec is the historical 10% rule; row-level adapters switch to
+        # 20% on and after the reform date (covered by integrity tests).
+        fixtures=(('sz.300750','sz',100,.10),('sh.688001','sh',200,.20),('bj.920001','bj',100,.30))
+        for symbol,market,minimum,limit in fixtures:
+            target=self.browser.root/f'vipdoc/{market}/lday/{market}{symbol[3:]}.day'
+            target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(self.day.read_bytes())
+            with patch('wavequant.interfaces.research_tools.tdx_backtest.read_actions',return_value=([],fingerprint(self.action_path))), \
+                 patch('wavequant.interfaces.research_tools.tdx_backtest.generate_system_signals',side_effect=self.generated):
+                bars,_,view=self.service.run(symbol,'2020-01-01',self.days[-1].isoformat(),self.strategy,self.execution)
+            self.assertTrue(bars)
+            self.assertEqual(view['backtest']['execution']['minimum_entry_shares'],minimum)
+            self.assertEqual(view['backtest']['security_spec']['price_limit_rate'],limit)
 
     def test_current_st_guard(self):
         with patch.object(self.browser,'stock_metadata',return_value=dict(symbol='sh.600000',name='*ST测试')):

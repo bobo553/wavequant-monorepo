@@ -456,6 +456,37 @@ test("bullish-turn signal renders below the breakout candle and retains its dash
     assert.equal(marker.shape, "arrowUp");
     assert.equal(marker.price, undefined);
 });
+
+test("bullish-turn signal can explain a confirmed flip re-break without inventing alternation", () => {
+    const landmark = {
+        id: "level3-bullish-turn-signal-3420-3782",
+        time: "2026-09-14",
+        available_at: "2026-09-14",
+        index: 3782,
+        kind: "K",
+        label: "K3783·转多",
+        value: 13.74,
+        previous_close: 12.63,
+        breakout_level: 13.35,
+        trend_level: 3,
+        source_path: "tertiary-sz.300154",
+        confirmed_alternation_low: null,
+        confirmed_flip_high: {
+            time: "2025-03-20",
+            available_at: "2026-08-26",
+            label: "H3",
+            value: 13.35,
+        },
+    };
+
+    const [item] = bullishTurnSignalAnnotations([{ level: 3, landmarks: [landmark] }], "2025-01-01", "2026-09-15");
+
+    assert.equal(item.time, "2026-09-14");
+    assert.equal(item.raw.confirmed_flip_high.time, "2025-03-20");
+    assert.deepEqual(item.levels, [{ name: "三级空翻多高点", price: 13.35 }]);
+    assert.match(item.description, /没有发布合格的同级空多交替低点/);
+    assert.match(item.description, /2026-09-14/);
+});
 const view = {
     asof: "2026-01-03",
     bars: [1, 2, 3].map((i) => ({ time: `2026-01-0${i}` })),
@@ -493,17 +524,29 @@ test("rules are dated at availability, not their historical pivot", () => {
     assert.equal(item.time, "2026-01-02");
     assert.equal(item.sourceTime, "2026-01-01");
 });
-test("actual fill markers use exact price coordinates", () => {
+test("actual fill markers use compact B and S labels at exact execution prices", () => {
     const groups = markerGroups(buildAnnotations(view, theory), options);
-    const marker = groups.find((g) => g.id === "o1").marker;
-    assert.equal(marker.price, 10.1);
-    assert.equal(marker.position, "atPriceBottom");
-    assert.match(marker.text, /B 买入 10.10/);
+    const buyMarker = groups.find((g) => g.id === "o1").marker;
+    assert.equal(buyMarker.price, 10.1);
+    assert.equal(buyMarker.position, "atPriceBottom");
+    assert.equal(buyMarker.shape, "arrowUp");
+    assert.equal(buyMarker.text, "B");
+
+    const sellView = {
+        ...view,
+        markers: [{ id: "sell", time: "2026-01-03", kind: "fill", side: "SELL", price: 11.2 }],
+    };
+    const sellMarker = markerGroups(buildAnnotations(sellView, null), options)[0].marker;
+    assert.equal(sellMarker.price, 11.2);
+    assert.equal(sellMarker.position, "atPriceTop");
+    assert.equal(sellMarker.shape, "arrowDown");
+    assert.equal(sellMarker.text, "S");
 });
 test("same-day rules grouped, no evidence lost", () => {
     const rules = markerGroups(buildAnnotations(view, theory), options).filter((g) => g.items[0].kind === "rule");
     assert.equal(rules.length, 1);
     assert.equal(rules[0].items.length, 2);
+    assert.equal(rules[0].marker.shape, "circle");
     assert.match(rules[0].marker.text, /\+1/);
 });
 test("all six regimes retain their exact names", () => {

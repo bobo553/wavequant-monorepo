@@ -18,6 +18,7 @@ class FakeStructureScanner:
         self.starts = 0
         self.online_calculations = 0
         self.names: dict[str, str] = {}
+        self.stale = 0
 
     def algorithm_version(self) -> str:
         return self.algorithm
@@ -85,7 +86,7 @@ class FakeStructureScanner:
             "total": 1,
             "skipped": 0,
             "failed": 0,
-            "stale": 0,
+            "stale": self.stale,
             "skip_reasons": {},
             "errors": [],
             "results": [
@@ -313,6 +314,38 @@ class StructureSnapshotServiceTests(unittest.TestCase):
             calculations_before_queries + 3,
             "interactive reads must not run Core calculations",
         )
+
+    def test_complete_but_market_date_stale_generation_keeps_last_healthy_snapshot(self) -> None:
+        symbols = ("sh.600519", "sz.000001")
+        for symbol in symbols:
+            self.service.refresh(
+                "run-001",
+                "lecture_v1",
+                source="akshare",
+                symbol=symbol,
+                asof="2026-09-07",
+                market_total=2,
+            )
+
+        self.scanner.stale = 1
+        for symbol in symbols:
+            self.service.refresh(
+                "run-001",
+                "lecture_v1",
+                source="akshare",
+                symbol=symbol,
+                asof="2026-09-14",
+                market_total=2,
+            )
+
+        result = self.service.query({**self.params, "source": "akshare", "asof": "2026-09-14"})
+
+        self.assertEqual(result["status"], "rebuilding")
+        self.assertEqual(result["snapshot"]["asof"], "2026-09-07")
+        self.assertTrue(result["snapshot"]["is_fallback"])
+        self.assertEqual(result["stale"], 0)
+        self.assertEqual({row["symbol"] for row in result["results"]}, set(symbols))
+        self.assertIn("行情日期一致性校验失败", result["notice"])
 
     def test_first_akshare_generation_returns_published_partial_shards_without_calculating(self) -> None:
         self.service.refresh(

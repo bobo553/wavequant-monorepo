@@ -21,7 +21,7 @@ export function ResearchLedgers(): JSX.Element {
                     <h2>
                         B / S 成交账本 <small>点击查看当时条件，含尚未平仓的买入</small>
                     </h2>
-                    <button id="fills-only">仅看成交标识</button>
+                    <button id="fills-only">仅看并定位成交</button>
                 </div>
                 <ResearchTable headers={fillHeaders} bodyId="fills-body" />
                 <p id="fills-empty" className="empty">

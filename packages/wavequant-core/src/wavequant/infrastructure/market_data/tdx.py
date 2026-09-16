@@ -3,14 +3,22 @@ from __future__ import annotations
 
 import json
 import math
-import re
 import struct
 from datetime import date, datetime
 from pathlib import Path
 
 from .data import DEFAULT_SYMBOLS, dump_json, fingerprint, opening_permissions, write_dataset
+from wavequant.domain.models.a_share_security import is_supported_a_share
 
 RECORD = struct.Struct('<5If2I')
+
+
+def action_symbol(market: int, code: str) -> str:
+    """Translate TDX gbbq market ids, including market 2 (Beijing)."""
+    prefix={0:'sz',1:'sh',2:'bj'}.get(int(market))
+    if prefix is None:
+        raise ValueError(f'unsupported TDX corporate-action market {market}')
+    return f'{prefix}.{code}'
 
 
 def read_day(path: Path) -> list[dict]:
@@ -49,7 +57,7 @@ def read_actions(path: Path, cache: Path) -> tuple[list[dict], str]:
     for row in frame.itertuples(index=False):
         if int(row.category) not in (1, 11, 12):
             continue
-        events.append(dict(symbol=('sh.' if row.market == 1 else 'sz.') + str(row.code),
+        events.append(dict(symbol=action_symbol(row.market,str(row.code)),
                            date=datetime.strptime(str(row.datetime), '%Y%m%d').date().isoformat(),
                            category=int(row.category), cash=float(row.hongli_panqianliutong),
                            rights_price=float(row.peigujia_qianzongguben),
@@ -78,7 +86,8 @@ def adjust_rows(raw: list[dict], events: list[dict], start: date, end: date, sym
             reference = new_reference
             cursor += 1
         can_buy, can_sell = opening_permissions(dict(date=r['date'].isoformat(), isST='0',
-                                                    tradestatus='1', preclose=str(reference), open=str(r['open'])))
+                                                    tradestatus='1', preclose=str(reference), open=str(r['open'])),
+                                                    symbol)
         row = {key: r[key] * factor for key in ('open','high','low','close')}
         row.update(timestamp=r['date'].isoformat(), symbol=symbol, volume=r['volume'],
                    buyable=int(can_buy), sellable=int(can_sell), adjustment_factor=factor)
@@ -96,8 +105,8 @@ def import_tdx(root: Path, output: Path, start: str = '2018-01-01', end: str | N
     actions, digest = read_actions(root/'T0002/hq_cache/gbbq', output.parent/'cache')
     rows, sources = [], []
     for symbol in symbols:
-        if not re.fullmatch(r'(sh\.60\d{4}|sz\.00\d{4})', symbol):
-            raise ValueError('Initial importer supports established SH/SZ main-board shares only')
+        if not is_supported_a_share(symbol):
+            raise ValueError('TDX importer supports established SH/SZ/BJ A shares only')
         market, code = symbol.split('.')
         path = root / 'vipdoc' / market / 'lday' / f'{market}{code}.day'
         raw = read_day(path)
@@ -114,7 +123,7 @@ def import_tdx(root: Path, output: Path, start: str = '2018-01-01', end: str | N
          frequency='daily', requested_start=start, requested_end=end,
          start=min(r['timestamp'] for r in rows), end=max(r['timestamp'] for r in rows),
          sources=sources, gbbq_sha256=digest, price_basis='causal multiplicative adjusted equivalent units',
-         limitations=['Fixed 10-stock convenience universe: selection/survival bias; not all-market evidence.',
-                      'No point-in-time ST history in .day; permissions assume non-ST established main board.',
+         limitations=['Fixed convenience universe: selection/survival bias; not all-market evidence.',
+                      'No point-in-time ST history in .day; permissions assume established non-ST ordinary shares.',
                       'Corporate actions modeled as adjusted equivalent units, not cash-dividend tax/rights cash ledger.',
                       'No auction queue; opens at daily limits rejected; no minute execution claims.']))

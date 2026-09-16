@@ -189,16 +189,21 @@ def _landmark(stroke, *, high, low, broken_key, trend_level, known_at):
     return high_reference
 
 
-def _level_one_bear_to_bull_highs(strokes):
-    """Read actual level-one key-break observations produced by ``_annotate``.
+def _observed_bear_to_bull_highs(strokes, *, trend_level):
+    """Read same-level key-break observations produced by ``_annotate``.
 
-    Level-one wave points also carry local ``down -> up`` aggregation metadata,
-    but that metadata alone does not prove a last-fall-high break. Only the
-    explicit ``翻空为多`` observation owns the frozen key and confirmed bear low.
+    Every hierarchy is annotated only after its formal points are known.  The
+    explicit ``翻空为多`` observation on a high therefore owns the correct
+    *same-level* frozen last-fall-high and bearish low.  A higher-level low's
+    aggregation metadata instead describes which lower-level key confirmed
+    that low; treating that lower-level proof as the higher-level flip can
+    publish an earlier, incorrect high.
     """
     landmarks = []
     for stroke in strokes:
         for high in stroke.get("points", []):
+            if high.get("kind") != "H":
+                continue
             for event in high.get("observations", []):
                 if event.get("title") != "翻空为多":
                     continue
@@ -208,14 +213,19 @@ def _level_one_bear_to_bull_highs(strokes):
                     continue
                 if not _strictly_breaks_last_fall_high(high, broken_key):
                     continue
-                known_at = max(high["available_at"], event.get("available_at", high["available_at"]))
+                known_at = max(
+                    high["available_at"],
+                    event.get("available_at", high["available_at"]),
+                    low.get("available_at", high["available_at"]),
+                    broken_key.get("available_at", high["available_at"]),
+                )
                 landmarks.append(
                     _landmark(
                         stroke,
                         high=high,
                         low=low,
                         broken_key=broken_key,
-                        trend_level=1,
+                        trend_level=trend_level,
                         known_at=known_at,
                     )
                 )
@@ -231,8 +241,9 @@ def bear_to_bull_highs(strokes, *, trend_level):
     low, while ``available_at`` remains the later date when the formal low and
     its transition proof were both knowable.
     """
+    observed = _observed_bear_to_bull_highs(strokes, trend_level=trend_level)
     if trend_level == 1:
-        landmarks = _active_bear_to_bull_highs(strokes, _level_one_bear_to_bull_highs(strokes))
+        landmarks = _active_bear_to_bull_highs(strokes, observed)
         return sorted(
             landmarks,
             key=lambda item: (item["index"], item.get("ordinal", 0), item["available_at"], item["source_path"]),
@@ -258,6 +269,23 @@ def bear_to_bull_highs(strokes, *, trend_level):
                     known_at=known_at,
                 )
             )
+    # Before a path has enough formal same-level context, the hierarchical
+    # reducer can still expose a useful provisional flip from the low's
+    # lower-level confirmation chain.  Preserve that backwards-compatible
+    # evidence only when no explicit same-level observation owns the same
+    # bearish low.  Once such an observation exists it is authoritative: for
+    # example, a level-3 low may be confirmed by a level-2 high months before a
+    # later level-3 high actually breaks the frozen level-3 last-fall-high.
+    observed_lows = {
+        (item["source_path"], _point_order(item.get("confirmed_low")))
+        for item in observed
+    }
+    landmarks = [
+        item
+        for item in landmarks
+        if (item["source_path"], _point_order(item.get("confirmed_low"))) not in observed_lows
+    ]
+    landmarks.extend(observed)
     return sorted(
         _active_bear_to_bull_highs(strokes, landmarks),
         key=lambda item: (item["index"], item.get("ordinal", 0), item["available_at"], item["source_path"]),
@@ -393,18 +421,47 @@ def post_alternation_bull_highs(strokes, *, trend_level):
 
 
 def bullish_turn_signals(strokes, bars, *, trend_level):
-    """Return the first strict close breakout after each confirmed alternation.
+    """Return the first causal strict-close re-break of each bull-flip high.
 
-    The corresponding bear-to-bull high is frozen by Core evidence.  A signal
-    exists only when a later session moves from a previous close at or below
-    that price to a close strictly above it.  Intraday highs, equality and
-    crosses occurring before the alternation became knowable do not qualify.
+    A confirmed same-level alternation remains the preferred starting point.
+    Some formal higher-level highs, however, become knowable from a confirmed
+    lower-level pullback that is too deep to qualify as ``空多交替``.  The
+    already-confirmed ``翻空为多`` high is still real evidence, so its first
+    later close cross is published without inventing an alternation low.
+    Intraday highs, equality and crosses before the selected evidence became
+    knowable never qualify.
     """
     alternation_lows = bear_bull_alternation_lows(strokes, trend_level=trend_level)
+    flip_highs = bear_to_bull_highs(strokes, trend_level=trend_level)
+    alternated_highs = {
+        (low["source_path"], _point_order(low.get("confirmed_flip_high")))
+        for low in alternation_lows
+    }
+    contexts = [
+        {
+            "anchor": low,
+            "flip_high": low.get("confirmed_flip_high"),
+            "known_at": low["available_at"],
+            "alternation_low": low,
+        }
+        for low in alternation_lows
+    ]
+    contexts.extend(
+        {
+            "anchor": high,
+            "flip_high": high,
+            "known_at": high["available_at"],
+            "alternation_low": None,
+        }
+        for high in flip_highs
+        if (high["source_path"], _point_order(high)) not in alternated_highs
+    )
     market = [(_bar_date(bar), index, bar) for index, bar in enumerate(bars)]
     landmarks = []
-    for low in alternation_lows:
-        flip_high = low.get("confirmed_flip_high")
+    for context in contexts:
+        anchor = context["anchor"]
+        flip_high = context["flip_high"]
+        alternation_low = context["alternation_low"]
         if not _complete_reference(flip_high, kind="H"):
             continue
         try:
@@ -412,7 +469,7 @@ def bullish_turn_signals(strokes, bars, *, trend_level):
             candidate = next(
                 (date, index, previous, current)
                 for (date, index, current), (_, _, previous) in zip(market[1:], market)
-                if date > low["available_at"]
+                if date > context["known_at"]
                 and previous.close <= breakout_level < current.close
             )
         except (KeyError, TypeError, StopIteration):
@@ -423,7 +480,7 @@ def bullish_turn_signals(strokes, bars, *, trend_level):
             dict(
                 id=(
                     f'level{trend_level}-bullish-turn-signal-'
-                    f'{low["index"]}-{low.get("ordinal", 0)}-{index}-{date}'
+                    f'{anchor["index"]}-{anchor.get("ordinal", 0)}-{index}-{date}'
                 ),
                 index=index,
                 ordinal=0,
@@ -434,22 +491,38 @@ def bullish_turn_signals(strokes, bars, *, trend_level):
                 label=f"K{index + 1}·转多",
                 trend_level=trend_level,
                 source_level=trend_level,
-                source_path=low["source_path"],
+                source_path=anchor["source_path"],
                 source_available_at=date,
                 flip="转多信号",
-                confirmation_rule="first_strict_close_cross_above_flip_high_after_confirmed_alternation",
+                confirmation_rule=(
+                    "first_strict_close_cross_above_flip_high_after_confirmed_alternation"
+                    if alternation_low is not None
+                    else "first_strict_close_cross_above_confirmed_flip_high"
+                ),
                 breakout_level=breakout_level,
                 previous_close=previous.close,
                 open=current.open,
                 high=current.high,
                 low=current.low,
                 close=current.close,
-                confirmed_alternation_low=_reference(low),
+                confirmed_alternation_low=_reference(alternation_low) if alternation_low is not None else None,
                 confirmed_flip_high=_reference(flip_high),
-                confirmed_bear_low=low["confirmed_bear_low"],
-                broken_key=low["broken_key"],
-                retracement_origin=low["retracement_origin"],
-                retracement_ratio=low["retracement_ratio"],
+                confirmed_bear_low=(
+                    alternation_low["confirmed_bear_low"]
+                    if alternation_low is not None
+                    else flip_high["confirmed_low"]
+                ),
+                broken_key=(
+                    alternation_low["broken_key"]
+                    if alternation_low is not None
+                    else flip_high["broken_key"]
+                ),
+                retracement_origin=(
+                    alternation_low["retracement_origin"] if alternation_low is not None else None
+                ),
+                retracement_ratio=(
+                    alternation_low["retracement_ratio"] if alternation_low is not None else None
+                ),
             )
         )
     return sorted(

@@ -61,8 +61,8 @@ test("structure read models are enabled only when a database URL is present", ()
     assert.equal(isInfrastructureConfigured({ WAVEQUANT_DATABASE_URL: "sqlite+pysqlite:///:memory:" }), true);
 });
 
-test("AkShare structure workers default to eight bounded shards", () => {
-    assert.equal(resolveStructureWorkerCount({}), 8);
+test("AkShare structure workers default to two foreground-safe bounded shards", () => {
+    assert.equal(resolveStructureWorkerCount({}), 2);
     assert.equal(resolveStructureWorkerCount({ WAVEQUANT_DEV_STRUCTURE_WORKERS: "4" }), 4);
     assert.equal(resolveStructureWorkerCount({ WAVEQUANT_DEV_STRUCTURE_WORKERS: "off" }), 0);
     assert.throws(() => resolveStructureWorkerCount({ WAVEQUANT_DEV_STRUCTURE_WORKERS: "17" }), /must be 1-16/);

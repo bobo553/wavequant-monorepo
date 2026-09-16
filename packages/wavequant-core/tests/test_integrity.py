@@ -153,6 +153,35 @@ class DataTests(unittest.TestCase):
         self.assertEqual(opening_permissions(r),(False,True))
         self.assertEqual(opening_permissions(dict(r,open='9')),(True,False))
         self.assertEqual(opening_permissions(dict(r,tradestatus='0')),(False,False))
+        # The same 10% opening move is tradable on 20% boards, while a 20%
+        # locked open is not.  BSE uses its own 30% band.
+        self.assertEqual(opening_permissions(r,'sz.300750'),(True,True))
+        self.assertEqual(opening_permissions(dict(r,open='12'),'sz.300750'),(False,True))
+        self.assertEqual(opening_permissions(dict(r,open='12'),'sh.688001'),(False,True))
+        self.assertEqual(opening_permissions(dict(r,open='12'),'bj.920001'),(True,True))
+        self.assertEqual(opening_permissions(dict(r,open='13'),'bj.920001'),(False,True))
+
+    def test_a_share_board_specs_include_all_supported_markets(self):
+        from wavequant.domain.models.a_share_security import a_share_security_spec
+        cases={
+            'sh.600000':('sh_main',.10,100,100),
+            'sz.000001':('sz_main',.10,100,100),
+            'sz.300750':('chinext',.20,100,100),
+            'sh.688001':('star',.20,200,1),
+            'bj.920001':('bse',.30,100,1),
+            'bj.820001':('bse',.30,100,1),
+        }
+        for symbol,(board,limit,minimum,step) in cases.items():
+            spec=a_share_security_spec(symbol,date(2025,1,2))
+            self.assertEqual((spec.board,float(spec.price_limit_rate),spec.minimum_buy_shares,spec.buy_share_step),
+                             (board,limit,minimum,step))
+        self.assertEqual(float(a_share_security_spec('sz.300750',date(2020,8,21)).price_limit_rate),.10)
+
+    def test_tdx_corporate_action_market_two_is_beijing(self):
+        from wavequant.infrastructure.market_data.tdx import action_symbol
+        self.assertEqual(action_symbol(0,'000001'),'sz.000001')
+        self.assertEqual(action_symbol(1,'600000'),'sh.600000')
+        self.assertEqual(action_symbol(2,'920001'),'bj.920001')
 
     def test_csv_rejects_nonfinite_duplicate_and_bad_ohlc(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -180,7 +209,7 @@ class DataTests(unittest.TestCase):
                     self.assertEqual(generate_signals(prefix,c),[s for s in signals if s.bar_index<length])
 
     def test_invalid_config(self):
-        for values in (dict(lot_size=True),dict(max_positions=0),dict(initial_capital=math.nan),
+        for values in (dict(lot_size=True),dict(minimum_entry_shares=0),dict(max_positions=0),dict(initial_capital=math.nan),
                        dict(max_participation=2),dict(allow_same_day_exit=1)):
             with self.assertRaises(ValueError): replace(StrategyConfig(),**values).validate()
 

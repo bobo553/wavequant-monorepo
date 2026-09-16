@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as wall_time, timedelta
 import hashlib
 import json
 import re
 from threading import Lock
 import time
-from typing import Any
+from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
 from wavequant.domain.market_structure.lecture_trend import reversal_trends
@@ -26,6 +27,51 @@ _SINA_FALLBACK_TIMEOUT = 10.0
 _PRIMARY_RETRY_DELAY = 600.0
 _SINA_RETRY_DELAY = 600.0
 _TENCENT_LOOKBACK_DAYS = 180
+_CHINA_MARKET_TIMEZONE = ZoneInfo("Asia/Shanghai")
+# AkShare's daily endpoints do not publish a completed candle at the 15:00
+# closing auction instant.  The two-hour buffer keeps the nightly worker from
+# advertising a market date while upstream daily files are still converging.
+_DAILY_DATA_READY_AT = wall_time(17, 0)
+
+
+def _calendar_session(value: object) -> date:
+    """Normalize AkShare calendar values without depending on pandas types."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value).split()[0])
+
+
+def _latest_completed_session(frame: Any, now: datetime) -> date:
+    """Return the latest exchange session whose daily bars should be ready."""
+    if now.tzinfo is None:
+        raise ValueError("AkShare market clock must be timezone-aware")
+    market_now = now.astimezone(_CHINA_MARKET_TIMEZONE)
+    cutoff = market_now.date() if market_now.time() >= _DAILY_DATA_READY_AT else market_now.date() - timedelta(days=1)
+    sessions = [
+        _calendar_session(row["trade_date"])
+        for row in _records(frame, {"trade_date"}, limit=20_000)
+    ]
+    eligible = [session for session in sessions if session <= cutoff]
+    if not eligible:
+        raise ValueError("AkShare 交易日历没有已完成交易日")
+    return max(eligible)
+
+
+def _weekday_fallback_session(now: datetime) -> date:
+    """Conservative fallback used only when the exchange calendar is down."""
+    if now.tzinfo is None:
+        raise ValueError("AkShare market clock must be timezone-aware")
+    market_now = now.astimezone(_CHINA_MARKET_TIMEZONE)
+    candidate = (
+        market_now.date()
+        if market_now.time() >= _DAILY_DATA_READY_AT
+        else market_now.date() - timedelta(days=1)
+    )
+    while candidate.weekday() >= 5:
+        candidate -= timedelta(days=1)
+    return candidate
 
 
 def _symbol(code: str) -> str | None:
@@ -72,10 +118,12 @@ class AkShareBrowser:
         timeout: float = 30.0,
         catalog_ttl: float = 3600.0,
         history_ttl: float = 300.0,
+        clock: Callable[[], datetime] | None = None,
     ):
         self.provider = provider or AkShareProvider(timeout=timeout)
         self.catalog_ttl = catalog_ttl
         self.history_ttl = history_ttl
+        self._clock = clock or (lambda: datetime.now(_CHINA_MARKET_TIMEZONE))
         self._catalog: dict[str, Any] | None = None
         self._catalog_loaded_at = 0.0
         self._history: OrderedDict[str, tuple[float, list[Bar]]] = OrderedDict()
@@ -116,16 +164,32 @@ class AkShareBrowser:
             )
         if not stocks:
             raise ValueError("AkShare 未返回有效 A 股目录")
+        warnings = []
+        try:
+            calendar = self.provider.call(
+                "tool_trade_date_hist_sina",
+                call_timeout=min(self.provider.timeout, 10.0),
+            )
+            latest_session = _latest_completed_session(calendar, self._clock())
+        except (AkShareUnavailable, ValueError, TypeError, OverflowError):
+            # Catalog browsing must remain available during a calendar-provider
+            # outage.  The snapshot health gate independently prevents this
+            # weekday approximation from being published as a bad generation.
+            latest_session = _weekday_fallback_session(self._clock())
+            warnings.append("AkShare 交易日历暂不可用，最新日期按中国市场工作日保守估算。")
+        latest = latest_session.isoformat()
+        for stock in stocks:
+            stock["last"] = latest
         catalog = dict(
             stocks=stocks,
-            source="AkShare stock_info_a_code_name",
+            source="AkShare stock_info_a_code_name + tool_trade_date_hist_sina",
             available=True,
-            latest=date.today().isoformat(),
+            latest=latest,
             with_daily=len(stocks),
             scope="online_SH_SZ_BJ_A_shares",
             provider_version=self.provider.version,
-            warnings=[],
-            notice="AkShare 在线沪深北 A 股目录；行情按需拉取，实际最新交易日以个股返回为准。",
+            warnings=warnings,
+            notice="AkShare 在线沪深北 A 股目录；最新日期按中国市场交易日历和日线就绪时点确定。",
         )
         with self._lock:
             self._catalog = catalog

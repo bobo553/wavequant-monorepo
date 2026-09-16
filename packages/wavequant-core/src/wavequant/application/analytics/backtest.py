@@ -202,13 +202,14 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             detail['one_lot_price_risk'] = risk*lot
             lots = math.floor(units/lot)
             quantity = max(0, lots)*lot
+            minimum_quantity = config.minimum_entry_shares/bar.adjustment_factor
             fee = transaction_fee(price*quantity, when, False, config)
             while lots > 0 and price*quantity+fee > cash:
                 lots -= 1
                 quantity = lots*lot
                 fee = transaction_fee(price*quantity, when, False, config)
-            if lots <= 0:
-                constraint = min(caps, key=caps.get) if units < lot else 'cash_after_fees'
+            if lots <= 0 or quantity+1e-8 < minimum_quantity:
+                constraint = min(caps, key=caps.get) if units < max(lot,minimum_quantity) else 'cash_after_fees'
                 log(when, symbol, 'BUY', 'cancelled', constraint+'_below_one_lot', **detail)
                 continue
             # Evaluate reward/risk at the actual slipped opening price and sized

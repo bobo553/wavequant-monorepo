@@ -280,6 +280,79 @@ class TrendLandmarkTests(unittest.TestCase):
         )
         self.assertEqual(landmarks[0]["trend_level"], 2)
 
+    def test_same_level_flip_observation_supersedes_lower_level_confirmation_high(self):
+        """A formal level-3 low does not itself prove the level-3 key broke."""
+        old_level_three_key = point(1, "H", 9.24, "2021-03-15")
+        lower_level_key = point(2, "H", 7.56, "2024-02-27")
+        confirmed_bear_low = point(
+            3,
+            "L",
+            3.99,
+            "2025-03-07",
+            flip="翻空为多",
+            broken_key=lower_level_key,
+            confirmed_by=point(4, "H", 12.46, "2025-03-07"),
+        )
+        same_level_flip_high = point(
+            5,
+            "H",
+            13.35,
+            "2026-08-26",
+            flip="翻多为空",
+            confirmed_by=point(6, "L", 6.85, "2026-08-26"),
+            observations=[
+                {
+                    "title": "翻空为多",
+                    "available_at": "2026-08-26",
+                    "key": old_level_three_key,
+                    "confirmed_low": confirmed_bear_low,
+                }
+            ],
+        )
+
+        landmarks = bear_to_bull_highs(
+            [{"id": "tertiary-same-level-proof", "points": [old_level_three_key, confirmed_bear_low, same_level_flip_high]}],
+            trend_level=3,
+        )
+
+        self.assertEqual([(item["value"], item["broken_key"]["value"]) for item in landmarks], [(13.35, 9.24)])
+        self.assertEqual(landmarks[0]["confirmed_low"]["value"], 3.99)
+        self.assertEqual(landmarks[0]["available_at"], "2026-08-26")
+
+    def test_confirmed_flip_without_alternation_marks_first_later_close_breakout(self):
+        old_level_three_key = point(1, "H", 9.24, "2021-03-15")
+        confirmed_bear_low = point(2, "L", 3.99, "2025-03-07")
+        flip_high = point(
+            3,
+            "H",
+            13.35,
+            "2026-08-26",
+            observations=[
+                {
+                    "title": "翻空为多",
+                    "available_at": "2026-08-26",
+                    "key": old_level_three_key,
+                    "confirmed_low": confirmed_bear_low,
+                }
+            ],
+        )
+        bars = [
+            Bar(datetime(2026, 9, day), "sz.300154", 12, high, 11, close, 1000)
+            for day, high, close in ((10, 13.75, 13.14), (11, 13.35, 12.63), (14, 14.10, 13.74), (15, 14.15, 13.75))
+        ]
+
+        signals = bullish_turn_signals(
+            [{"id": "tertiary-direct-rebreak", "points": [confirmed_bear_low, flip_high]}],
+            bars,
+            trend_level=3,
+        )
+
+        self.assertEqual([(item["time"], item["value"]) for item in signals], [("2026-09-14", 13.74)])
+        self.assertEqual(signals[0]["breakout_level"], 13.35)
+        self.assertIsNone(signals[0]["confirmed_alternation_low"])
+        self.assertEqual(signals[0]["confirmed_flip_high"]["value"], 13.35)
+        self.assertEqual(signals[0]["confirmation_rule"], "first_strict_close_cross_above_confirmed_flip_high")
+
     def test_level_one_uses_the_real_key_break_observation(self):
         frozen_key = point(3, "H", 30, "2026-01-05")
         bear_low = point(4, "L", 18, "2026-01-06")

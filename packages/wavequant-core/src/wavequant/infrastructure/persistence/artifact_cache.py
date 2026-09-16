@@ -21,6 +21,13 @@ def canonical(value):
 
 class ArtifactCache:
     SCHEMA = 1
+    # Reads use WAL snapshots and can wait for transient filesystem pressure.
+    # Writes are disposable optimizations: a busy background precomputation
+    # must never make an interactive chart/backtest wait 30 seconds per
+    # artifact.  On contention the caller keeps its valid computed result and
+    # a later request or worker may populate the cache.
+    READ_TIMEOUT_SECONDS = 30.0
+    WRITE_TIMEOUT_SECONDS = 0.5
 
     def __init__(self, root, *, max_bytes=4 * 1024**3):
         self.path = Path(root) / 'artifacts-v1.sqlite'
@@ -43,7 +50,7 @@ class ArtifactCache:
                 self.locks[key] = lock
             return lock
 
-    def _connect(self):
+    def _connect(self, *, timeout_seconds=READ_TIMEOUT_SECONDS):
         with self.init_lock:
             if not self.ready:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -60,7 +67,7 @@ class ArtifactCache:
                         # WAL initialization alone can race across fresh processes.
                         time.sleep(.02*(attempt+1))
                 self.ready = True
-        return sqlite3.connect(self.path, timeout=30)
+        return sqlite3.connect(self.path, timeout=timeout_seconds)
 
     def get(self, namespace, inputs):
         key = self.key(namespace, inputs)
@@ -86,7 +93,7 @@ class ArtifactCache:
         if len(packed) > self.max_bytes:
             return False
         try:
-            with closing(self._connect()) as db, db:
+            with closing(self._connect(timeout_seconds=self.WRITE_TIMEOUT_SECONDS)) as db, db:
                 db.execute('INSERT OR REPLACE INTO artifacts VALUES (?,?,?,?,?,?)',
                            (key, namespace, packed, hashlib.sha256(packed).hexdigest(), len(packed), time.time()))
                 total = db.execute('SELECT COALESCE(SUM(size),0) FROM artifacts').fetchone()[0]

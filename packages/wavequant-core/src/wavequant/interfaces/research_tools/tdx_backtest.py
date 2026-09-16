@@ -9,8 +9,8 @@ from datetime import date, datetime
 from functools import lru_cache
 import hashlib
 import json
+import math
 from pathlib import Path
-import re
 from threading import Lock
 from time import perf_counter
 
@@ -21,11 +21,18 @@ from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
 from wavequant.interfaces.research_tools.stock_backtest import single_stock_result
 from wavequant.infrastructure.market_data.tdx import read_day, read_actions, adjust_rows
 from wavequant.application.analytics.trade_evidence import result_markers
+from wavequant.domain.models.a_share_security import a_share_security_spec
+from wavequant.domain.models.config import StrategyConfig
 
 
 class TdxBacktester:
-    def __init__(self,browser,cache):
+    def __init__(self,browser,cache,*,actions_cache=None):
         self.browser=browser; self.cache=Path(cache)
+        # The decoded gbbq file is immutable by its source fingerprint and is
+        # safe to share across API/worker cache scopes. Keeping it shared avoids
+        # a costly full corporate-action decode on the first request in every
+        # role-specific artifact database.
+        self.actions_cache=Path(actions_cache) if actions_cache is not None else self.cache
         self.memory=OrderedDict();self.memory_lock=Lock()
         self.artifacts=ArtifactCache(self.cache)
         self.actions_lock=Lock(); self.actions_hash=None; self.actions_by_symbol={}
@@ -46,7 +53,7 @@ class TdxBacktester:
         digest=fingerprint(path)
         with self.actions_lock:
             if digest!=self.actions_hash:
-                actions,decoded_hash=read_actions(path,self.cache)
+                actions,decoded_hash=read_actions(path,self.actions_cache)
                 if digest!=decoded_hash or fingerprint(path)!=digest:
                     raise ValueError('通达信除权文件正在更新，请更新结束后重新运行')
                 indexed={}
@@ -74,13 +81,16 @@ class TdxBacktester:
         first,last=date.fromisoformat(start),date.fromisoformat(asof)
         if first.isoformat()!=start or last.isoformat()!=asof or first>last:
             raise ValueError('回测起止日期无效，请使用 YYYY-MM-DD')
-        if not re.fullmatch(r'(sh\.60\d{4}|sz\.00\d{4})',symbol):
-            raise ValueError('当前回测执行模型仅支持沪深主板非 ST 股票；创业板、科创板、北交所仍可浏览，不能套用主板规则回测')
+        try:
+            security = a_share_security_spec(symbol, last)
+        except ValueError as exc:
+            raise ValueError('当前回测执行模型仅支持沪深北 A 股股票') from exc
         metadata=self.browser.stock_metadata(symbol)
         if metadata and any(tag in (metadata.get('name') or '').upper() for tag in ('ST','退')):
             raise ValueError('当前为风险警示或退市名称，缺少历史状态记录，暂不生成回测成交')
         path=self.browser._path(symbol);actions_path=self.browser.root/'T0002/hq_cache/gbbq'
         if not actions_path.is_file(): raise ValueError('缺少通达信 gbbq 除权数据，不能把未复权行情当作回测行情')
+        execution=self._execution_for_security(execution,security)
         engine=self._engine_hashes()
         if engine!=self.engine: raise ValueError('策略代码已变更，请重启图表服务后再运行，避免新版本标识对应旧引擎')
         day_hash=fingerprint(path);actions,action_hash=self._actions(actions_path)
@@ -121,6 +131,19 @@ class TdxBacktester:
             if _screening is not None:
                 return dict(summary[str(_screening)],source=summary['source'],performance=performance)
             return bars,generated,dict(view,performance=performance)
+
+    @staticmethod
+    def _execution_for_security(execution,security):
+        """Merge user sizing preferences with non-negotiable exchange minima.
+
+        A user may choose a coarser research lot, but never a finer increment
+        than the board accepts and never an opening order below its minimum.
+        """
+        source=StrategyConfig(**execution);source.validate()
+        value=source.to_dict()
+        value['lot_size']=math.lcm(source.lot_size,security.buy_share_step)
+        value['minimum_entry_shares']=max(source.minimum_entry_shares,security.minimum_buy_shares)
+        return value
 
     def _run(self,key,events):
         inputs=json.loads(key)
@@ -168,6 +191,7 @@ class TdxBacktester:
 
     def _view(self,key,inputs,bars,result,sessions):
         symbol=inputs['symbol']
+        security=a_share_security_spec(symbol,date.fromisoformat(inputs['asof']))
         from wavequant.interfaces.charts.visualization import metrics_at
         _,curve=metrics_at(result['equity'],result['trades'],result['backtest']['initial_capital'])
         run_id='tdx-'+hashlib.sha256(key.encode()).hexdigest()[:24]
@@ -176,8 +200,9 @@ class TdxBacktester:
             source=dict(day_sha256=inputs['day_sha256'],gbbq_sha256=inputs['gbbq_sha256'],engine=inputs['engine'],
                         decoded_actions_sha256=inputs['decoded_actions_sha256']),
             adjustment='固定起点、逐日累乘除权因子；成交等价价 ÷ 当日因子 = 模拟原始成交价',
-            limitations=['仅沪深主板；跳过本地最早 20 个交易日，不模拟新股上市规则。',
-                '日线无历史 ST / 退市状态，按历史非 ST 主板研究假设运行，非完整可交易性证明。',
+            security_spec=security.to_dict(),
+            limitations=[f'{security.board_label}普通股票规则；跳过本地最早 20 个交易日，不模拟新股上市无涨跌幅限制阶段。',
+                '日线无历史 ST / 退市状态，按历史非 ST 普通股票研究假设运行，非完整可交易性证明。',
                 '除权采用等价份额近似，不是现金分红税、配股缴款的真实现金账本。',
                 '日线收盘观察、下一根可交易开盘模拟成交；无集合竞价排队、逐笔成交或盘中止损保证。',
                 '旧严格版遇包含线中断；新版母子顺序来自讲义约定，不等于真实盘中路径；代理版是独立对照。',

@@ -152,6 +152,17 @@ export function ResearchChart(): JSX.Element {
             <div className="card-header chart-card-header">
                 <div className="symbol-title">
                     <select id="symbol-select" aria-label="股票" />
+                    <button
+                        id="watchlist-toggle-current"
+                        className="watchlist-star"
+                        type="button"
+                        aria-label="将当前股票加入自选股"
+                        aria-pressed="false"
+                        title="将当前股票加入自选股"
+                        disabled
+                    >
+                        <span aria-hidden="true">☆</span>
+                    </button>
                     <div id="timeframe-select" className="timeframe-tabs" role="tablist" aria-label="K线周期">
                         {chartTimeframes.map(([value, label], index) => (
                             <button
@@ -248,11 +259,11 @@ export function ResearchChart(): JSX.Element {
                     <span className="key-bear-bull-alternation-low">Ⅰ/Ⅱ/Ⅲ 空多交替低点 · Python 确认 L</span>
                     <span className="key-post-alternation-bull-high">Ⅰ/Ⅱ/Ⅲ 交替后多头段高点 · Python 确认 H</span>
                     <span className="key-bullish-turn-signal">Ⅰ/Ⅱ/Ⅲ 转多信号 · 收盘突破空翻多高点</span>
-                    <span className="key-rule">■ 规则确认</span>
+                    <span className="key-rule">● 规则确认</span>
                     <span className="key-signal">● 买入信号</span>
                     <span className="key-exit">● 退出信号 ≠ 卖出</span>
-                    <span className="key-buy">↑ B 买入成交价</span>
-                    <span className="key-sell">↓ S 卖出成交价</span>
+                    <span className="key-buy">B · 买入成交，价格见详情</span>
+                    <span className="key-sell">S · 卖出成交，价格见详情</span>
                 </div>
                 <p id="drawing-status" className="drawing-status">
                     讲义绘图保留同棒顺序；未给出的母子规则不补线。
@@ -263,6 +274,10 @@ export function ResearchChart(): JSX.Element {
                 鼠标移动至 K 线查看价格
             </div>
             <div id="price-chart" className="price-chart" aria-label="TradingView K线与成交量图" />
+            <div id="chart-loading-overlay" className="chart-loading-overlay" role="status" aria-live="polite" hidden>
+                <span className="chart-loading-spinner" aria-hidden="true" />
+                <span>正在加载股票数据…</span>
+            </div>
             <div className="replay">
                 <div className="replay-title">
                     <span>历史回放</span>

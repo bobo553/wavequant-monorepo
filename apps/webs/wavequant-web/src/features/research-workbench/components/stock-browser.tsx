@@ -145,13 +145,21 @@ export function StockBrowser(): JSX.Element {
                         读取预计算结果
                     </button>
                 </div>
+                <div className="structure-watchlist-toolbar" aria-label="结构结果自选操作">
+                    <span>
+                        收藏到 <strong id="structure-watchlist-target">我的自选</strong>
+                    </span>
+                    <button id="structure-watchlist-add-all" type="button" disabled>
+                        当前结果全部加入
+                    </button>
+                </div>
                 <p id="structure-scan-status" role="status">
                     服务器在行情或算法变化后自动重建；这里按确认可用日直接读取完成快照。
                 </p>
                 <div id="structure-signal-list" />
                 <p className="scan-note">
                     名称含 * 的股票会被排除。结构出现 ≠
-                    买入信号。点击结果可回到对应股票与回放截面，核验末跌高、确认链和图上标识。
+                    买入信号。结果卡片右上角星标用于收藏或移除；点击结果可回到对应股票与回放截面，核验末跌高、确认链和图上标识。
                 </p>
             </section>
             <p id="selected-stock-summary" className="selected-stock-summary" role="status">

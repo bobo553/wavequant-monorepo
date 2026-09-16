@@ -410,6 +410,13 @@ def main() -> None:
                     tdx_root=args.tdx_root,
                     akshare_enabled=not args.disable_akshare,
                     akshare_timeout=args.akshare_timeout,
+                    artifact_cache_scope=(
+                        f"signals-{args.signal_family}-{args.signal_source}-{args.signal_shard_index}"
+                        if args.refresh_signals or args.watch_signals
+                        else f"timeframes-{args.timeframe_source}-{args.timeframe_shard_index}"
+                        if args.refresh_timeframes or args.watch_timeframes
+                        else "structures"
+                    ),
                 )
                 while True:
                     try:

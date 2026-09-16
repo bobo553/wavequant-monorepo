@@ -245,6 +245,7 @@ class InfrastructureTests(unittest.TestCase):
         self.assertEqual(generations[0]["algorithm_version"], "a" * 64)
         self.assertEqual(generations[0]["published_stocks"], 2)
         self.assertEqual(generations[0]["market_total"], 2)
+        self.assertEqual(generations[0]["stale_stocks"], 0)
 
     def test_catalog_index_is_explicit_and_idempotent(self) -> None:
         repository = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))

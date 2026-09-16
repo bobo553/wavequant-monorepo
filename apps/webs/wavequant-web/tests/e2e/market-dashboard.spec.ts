@@ -37,6 +37,29 @@ test("the original stock project Web workbench is the default page", async ({ pa
     expect(pageErrors).toEqual([]);
 });
 
+test("running a stock backtest immediately reveals its B/S executions", async ({ page }) => {
+    test.setTimeout(180_000);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.locator("#symbol-select").selectOption("sh.600519");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.getByRole("button", { name: "运行当前股票回测" }).click();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
+
+    await expect(page.locator("#result-scope")).toHaveValue("tdx-backtest");
+    await expect(page.locator("#show-fills")).toBeChecked();
+    await expect(page.locator("#fills-body tr")).toHaveCount(2);
+    await expect
+        .poll(async () => Number(await page.locator("#price-chart").getAttribute("data-trade-label-count")))
+        .toBeGreaterThan(0);
+    await expect(page.locator("#selection-info")).toHaveAttribute("data-annotation-id", /^stock-order-/);
+    await expect(page.locator("#price-chart")).toBeInViewport({ ratio: 0.2 });
+    expect(pageErrors).toEqual([]);
+});
+
 test("market candle timeframe switches server data, replay sessions and theory together", async ({ page }) => {
     test.setTimeout(90_000);
     const pageErrors: string[] = [];
@@ -349,14 +372,14 @@ test("AkShare current-stock buy points and market structure signals are operable
     await page.getByLabel("创业板").uncheck();
     await page.getByLabel("科创板").check();
     await page.getByLabel("北京").check();
-    await page.getByLabel("结构信号类型").selectOption("bullish_turn");
+    await page.getByRole("checkbox", { name: "转多信号" }).setChecked(true, { force: true });
     await structureButton.click();
     await expect(page.locator("#structure-scan-status")).toContainText("科创板、北京");
     await expect(page.locator("#structure-scan-status")).toContainText("转多信号");
     await expect(page.locator("#structure-scan-status")).toContainText("已排除名称含 * 的股票");
     expect(signalRequests).toEqual(["GET buy", "GET structure", "GET structure"]);
     expect(structureMarkets).toEqual(["shanghai,shenzhen,chinext", "star,beijing"]);
-    expect(structureSignalTypes).toEqual(["any", "bullish_turn"]);
+    expect(structureSignalTypes).toEqual(["bullish_turn", "bullish_turn"]);
     expect(structureSymbol).toBeNull();
     expect(pageErrors).toEqual([]);
     expect(failedRequests).toEqual([]);
@@ -448,15 +471,31 @@ test("confirmed structure search distinguishes event and availability dates and 
     });
 
     await page.getByRole("button", { name: "结构信号" }).click();
-    await page.getByRole("checkbox", { name: "转多信号" }).uncheck();
-    await page.getByRole("checkbox", { name: "空多交替" }).check();
-    await page.getByRole("radio", { name: "Ⅰ 一级" }).check();
-    await page.getByRole("radio", { name: "当天" }).check();
+    await page.getByRole("checkbox", { name: "转多信号" }).setChecked(false, { force: true });
+    await page.getByRole("checkbox", { name: "空多交替" }).setChecked(true, { force: true });
+    await page.getByRole("radio", { name: "Ⅰ 一级" }).setChecked(true, { force: true });
+    await page.getByRole("radio", { name: "当天" }).setChecked(true, { force: true });
     await page.getByRole("button", { name: "读取预计算结果" }).click();
     await expect(page.locator("#structure-scan-status")).toContainText("全市场快照已就绪");
     await expect(page.locator("#structure-scan-status")).toContainText("算法 aaaaaaaa");
     const result = page.locator(".structure-signal-item").filter({ hasText: "中大力德" });
     await expect(result).toContainText("发生 2022-08-30 · 确认可用 2022-09-01");
+    const favorite = page.locator(".structure-watchlist-add");
+    await favorite.click();
+    await expect(favorite).toHaveText("★");
+    await expect(favorite).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#watchlist-stock-list")).toContainText("中大力德");
+    await favorite.click();
+    await expect(favorite).toHaveText("☆");
+    await expect(favorite).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator("#watchlist-stock-list")).not.toContainText("中大力德");
+    await favorite.click();
+    const railFavorite = page.locator(".watchlist-stock-remove");
+    await expect(railFavorite).toHaveText("★");
+    await expect(railFavorite).toHaveAttribute("aria-pressed", "true");
+    await railFavorite.click();
+    await expect(favorite).toHaveText("☆");
+    await expect(page.locator("#watchlist-stock-list")).not.toContainText("中大力德");
     await result.click();
 
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
@@ -464,6 +503,76 @@ test("confirmed structure search distinguishes event and availability dates and 
     await expect(page.locator("#selection-info")).toContainText("空多交替低点");
     await expect(page.locator("#selection-info")).toContainText("54.42% 回档");
     expect(pageErrors).toEqual([]);
+});
+
+test("categorized watchlists persist locally and preserve members when a category is deleted", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+
+    await expect(page.locator("#watchlist-rail")).toBeVisible();
+    await page.getByRole("button", { name: "收起自选股列表" }).click();
+    await expect(page.locator("#watchlist-rail-body")).toBeHidden();
+    await page.reload();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#watchlist-rail-body")).toBeHidden();
+    await page.getByRole("button", { name: "展开自选股列表" }).click();
+    await expect(page.getByRole("button", { name: "新建" })).toBeEnabled();
+    await page.getByRole("button", { name: "新建" }).click();
+    await page.locator("#watchlist-group-name").fill("重点跟踪");
+    await page.locator("#watchlist-group-form").getByRole("button", { name: "保存" }).click();
+    await expect(page.locator("#watchlist-group-select")).toContainText("重点跟踪（0）");
+    await expect(page.locator("#watchlist-group-select")).not.toHaveValue("default");
+
+    const selectedSymbol = await page.locator("#symbol-select").inputValue();
+    await expect(page.locator("#watchlist-toggle-current")).toHaveAttribute("aria-pressed", "false");
+    await page.locator("#watchlist-toggle-current").click();
+    await expect(page.locator("#watchlist-toggle-current")).toHaveAttribute("aria-pressed", "true");
+    await page.locator("#watchlist-toggle-current").click();
+    await expect(page.locator("#watchlist-toggle-current")).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator("#watchlist-count")).toHaveText("0 只");
+    await page.locator("#watchlist-toggle-current").click();
+    await expect(page.locator("#watchlist-toggle-current")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#watchlist-count")).toHaveText("1 只");
+    await expect(page.locator("#watchlist-stock-list")).toContainText(selectedSymbol);
+
+    await page.reload();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#watchlist-group-select")).toContainText("重点跟踪（1）");
+    await expect(page.locator("#watchlist-stock-list")).toContainText(selectedSymbol);
+
+    await page.getByRole("button", { name: "重命名" }).click();
+    await page.locator("#watchlist-group-name").fill("核心观察");
+    await page.locator("#watchlist-group-form").getByRole("button", { name: "保存" }).click();
+    await expect(page.locator("#watchlist-group-select")).toContainText("核心观察（1）");
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "删除", exact: true }).click();
+    await expect(page.locator("#watchlist-group-select")).toHaveValue("default");
+    await expect(page.locator("#watchlist-stock-list")).toContainText(selectedSymbol);
+    await expect(page.getByRole("button", { name: "重命名" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "删除", exact: true })).toBeDisabled();
+    expect(pageErrors).toEqual([]);
+});
+
+test("switching stocks shows a spinner until the new chart data is ready", async ({ page }) => {
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+
+    await page.route("**/api/market-timeframe?**", async (route) => {
+        if (route.request().url().includes("symbol=sh.600015")) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        await route.continue();
+    });
+
+    const overlay = page.locator("#chart-loading-overlay");
+    await page.locator("#symbol-select").selectOption("sh.600015");
+    await expect(overlay).toBeVisible();
+    await expect(overlay).toContainText("正在加载股票数据…");
+    await expect(overlay).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-symbol", "sh.600015");
 });
 
 test("Huaxia Bank level-two last-fall-high reanchors after the old low close break", async ({ page }) => {

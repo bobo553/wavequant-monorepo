@@ -12,6 +12,7 @@ import {
 } from "./annotations.js";
 import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
+import { TradeMarkerOverlay } from "./trade-marker-overlay.js";
 
 const L = window.LightweightCharts;
 if (!L) throw new Error("TradingView SDK 未加载，请检查本地 npm 依赖。");
@@ -115,6 +116,7 @@ export class PriceChart {
         });
         this.volume.priceScale().applyOptions({ scaleMargins: { top: 0.83, bottom: 0 } });
         this.markers = L.createSeriesMarkers(this.candles, []);
+        // 普通规则仍使用库标记；真实成交只由顶层文字图层绘制，避免箭头缩成圆点。
         this.lines = [];
         this.polylineLines = [];
         this.polylineEnabled = false;
@@ -147,6 +149,8 @@ export class PriceChart {
         this.showTertiaryTrend = true;
         this.lectureOverlay = new LectureOverlay(container);
         this.candles.attachPrimitive(this.lectureOverlay);
+        this.tradeMarkerOverlay = new TradeMarkerOverlay(container);
+        this.candles.attachPrimitive(this.tradeMarkerOverlay);
         this.tooltip = document.createElement("div");
         this.tooltip.className = "chart-tooltip";
         this.tooltip.hidden = true;
@@ -358,7 +362,16 @@ export class PriceChart {
             (g) => g.time >= from && g.time <= to,
         );
         avoidLabelCollisions(this.groups, (time) => this.chart.timeScale().timeToCoordinate(time));
-        this.markers.setMarkers(this.groups.map((g) => g.marker));
+        const tradeGroups = this.groups.filter((g) => g.items[0].kind === "fill");
+        this.markers.setMarkers(this.groups.filter((g) => g.items[0].kind !== "fill").map((g) => g.marker));
+        this.tradeMarkerOverlay.setMarkers(
+            tradeGroups.map((g) => ({
+                id: g.id,
+                time: g.time,
+                side: g.items[0].side,
+                price: g.items[0].price,
+            })),
+        );
         this.drawLastFallHighGuides(trendKeys);
         this.drawBullishTurnGuides(bullishTurnSignals);
         this.container.dataset.markerCount = this.groups.length;

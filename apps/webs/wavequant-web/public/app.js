@@ -7,6 +7,7 @@ import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
 import { StockList } from "./stock-list.js";
 import { StructureSignals } from "./structure-signals.js";
 import { appendTradeEvidence } from "./trade-review.js";
+import { Watchlists } from "./watchlists.js";
 
 const $ = (id) => document.getElementById(id);
 const chartPreferenceKey = "wavequant.research.chart.v1";
@@ -219,8 +220,7 @@ function sessions() {
           : currentRun()?.symbols.find((s) => s.symbol === symbol)?.sessions || [];
 }
 async function api(path, params = {}, signal, method = "GET") {
-    const timeoutMs =
-        path === "/api/tdx-backtest" ? 300000 : path === "/api/stock-summary" ? 180000 : 45000;
+    const timeoutMs = path === "/api/tdx-backtest" ? 300000 : path === "/api/stock-summary" ? 180000 : 45000;
     const timeout = AbortSignal.timeout(timeoutMs);
     try {
         const response = await fetch(path + (method === "GET" ? "?" + new URLSearchParams(params) : ""), {
@@ -258,11 +258,8 @@ async function api(path, params = {}, signal, method = "GET") {
 function showPage(page) {
     state.page = page;
     $("page-title").textContent = titles[page];
-    document
-        .querySelectorAll(".page")
-        .forEach((el) => (el.hidden = state.loading || state.error || el.id !== `page-${page}`));
-    $("stock-results").hidden =
-        state.loading || state.error || page !== "workspace" || $("result-scope").value !== "stock";
+    document.querySelectorAll(".page").forEach((el) => (el.hidden = state.error || el.id !== `page-${page}`));
+    $("stock-results").hidden = state.error || page !== "workspace" || $("result-scope").value !== "stock";
     document.querySelectorAll("[data-page]").forEach((b) => b.classList.toggle("active", b.dataset.page === page));
     if (page === "performance") requestAnimationFrame(() => performance.resize());
     if (page === "health") loadHealth();
@@ -280,6 +277,9 @@ const stockList = new StockList({
     search: $("stock-search"),
     count: $("stock-count"),
     clear: $("stock-search-clear"),
+    onSelect: (symbol) => chooseSymbol(symbol, true),
+});
+const watchlists = new Watchlists({
     onSelect: (symbol) => chooseSymbol(symbol, true),
 });
 const buyPoints = new BuyPoints({
@@ -344,6 +344,7 @@ const buyPoints = new BuyPoints({
 });
 const structureSignals = new StructureSignals({
     api,
+    watchlists,
     getUniverse: () => state.akshare?.stocks || [],
     getContext: () => {
         const params = select();
@@ -443,6 +444,7 @@ function fillSymbols() {
           : available[0]?.symbol || "";
     resetSlider();
     stockList.setStocks(stocks, $("symbol-select").value);
+    watchlists.setUniverse(stocks, $("symbol-select").value);
     $("stock-source-notice").textContent = isAkShare()
         ? `${state.akshare.with_daily} 只在线目录 · 沪深北 A 股 · 买点与结构仅读服务器预计算结果${cacheLabel ? ` · ${cacheLabel}` : ""}`
         : isLocal()
@@ -468,6 +470,7 @@ function chooseSymbol(symbol, workspace = false) {
     if (!universe().some((s) => s.symbol === symbol && s.has_data !== false)) return;
     const cutoff = state.requestedAsOf || state.view?.asof || currentRun().end;
     $("symbol-select").value = symbol;
+    watchlists.setSelected(symbol);
     state.pendingFocus = null;
     preserveCutoff(cutoff);
     if (workspace) showPage("workspace");
@@ -750,6 +753,7 @@ function renderTables() {
             ]),
         );
     $("fills-empty").hidden = markers.length > 0;
+    $("fills-only").disabled = markers.length === 0;
     for (const t of [...v.trades].reverse())
         $("trades-body").append(
             row([
@@ -826,7 +830,7 @@ async function loadTheory(request, sequence, preloaded = null) {
                 data.interrupted ? "严格结构中断" : "点击标识查看规则",
                 data.interrupted
                     ? "缺少次级路径，不把未解折线标成已确认形态。可开启“筛选 / 中断”查看具体日期。"
-                    : `${symbolName(request.symbol)} · ${data.asof}。规则方块标在可知日期；信号圆点不等于成交。B / S 箭头标在实际成交价。点击标识可显示颈线、防守位与目标投影。`,
+                    : `${symbolName(request.symbol)} · ${data.asof}。规则圆点标在可知日期；信号圆点不等于成交。B / S 字母锚定实际成交价，点击可查看价格、颈线、防守位与目标投影。`,
             );
     } catch (error) {
         if (sequence !== state.sequence) return;
@@ -835,8 +839,9 @@ async function loadTheory(request, sequence, preloaded = null) {
         renderEvents();
     }
 }
-async function loadView() {
+async function loadView({ focusLatestFill = false } = {}) {
     syncProfileScope();
+    const hasRenderedView = Boolean(state.view);
     const sequence = ++state.sequence;
     state.controller?.abort();
     state.controller = new AbortController();
@@ -857,11 +862,13 @@ async function loadView() {
           : isTdx()
             ? `正在读取通达信${timeframes[activeTimeframe()].label}预计算快照…`
             : "读取已封存行情与交易记录…";
+    $("chart-loading-overlay").hidden = false;
     $("price-chart").setAttribute("aria-busy", "true");
-    document.querySelector(".metric-grid").hidden = true;
+    if (!hasRenderedView) document.querySelector(".metric-grid").hidden = true;
     showPage(state.page);
     syncDate();
     const request = select();
+    if (focusLatestFill) $("show-fills").checked = true;
     state.requestedAsOf = request.asof;
     buyPoints.contextChanged();
     structureSignals.contextChanged();
@@ -869,6 +876,7 @@ async function loadView() {
     for (const field of ["run-select", "variant-select", "scenario-select"])
         $(field).disabled = isMarketBrowse() && activeStockBrowserTab() === "all";
     stockList.setSelected(request.symbol);
+    watchlists.setSelected(request.symbol);
     $("selected-stock-summary").textContent = `${symbolName(request.symbol)} · 正在读取 ${request.asof} 截面…`;
     try {
         let timeframeBundle = null;
@@ -980,14 +988,23 @@ async function loadView() {
               ? `通达信 · ${universe().length} 只 · ${data.timeframe_label || "日线"} · 最新 ${state.tdx.latest}`
               : `${currentRun().start} — ${currentRun().end} · ${currentRun().symbols.length} 只`;
         $("loading").hidden = true;
+        $("chart-loading-overlay").hidden = true;
         $("price-chart").setAttribute("aria-busy", "false");
         if (state.pendingFocus) {
             chart.focus(state.pendingFocus.time);
             detail("已定位", state.pendingFocus.description);
+        } else if (focusLatestFill) {
+            const latestFill = data.markers.filter((marker) => marker.kind === "fill").at(-1);
+            if (latestFill) {
+                chart.selectAnnotation(latestFill.id);
+                requestAnimationFrame(() => $("price-chart").scrollIntoView({ block: "center", behavior: "instant" }));
+            } else {
+                detail("本次回测没有模拟成交", "图上的圆点是结构或策略信号，不是买卖成交；只有成交账本中的真实模拟买卖才显示 B / S。");
+            }
         } else
             detail(
                 "按所选日期复核",
-                `${symbolName(data.symbol)} · ${data.asof}。青色圆点为信号，红色向上箭头为买入成交，绿色向下箭头为卖出成交。`,
+                `${symbolName(data.symbol)} · ${data.asof}。青色圆点为信号；红色 B、绿色 S 字母分别表示实际模拟买入和卖出。`,
             );
         renderEvents();
         loadTheory(request, sequence, timeframeBundle?.theory || null);
@@ -997,6 +1014,7 @@ async function loadView() {
         state.loading = false;
         state.error = true;
         $("loading").hidden = true;
+        $("chart-loading-overlay").hidden = true;
         $("error").hidden = false;
         $("error").textContent = `加载失败：${error.message}。旧图已隐藏，请检查结果文件后重试。`;
         $("selected-stock-summary").textContent =
@@ -1059,13 +1077,18 @@ $("run-stock-backtest").addEventListener("click", () => {
     state.pendingFocus = null;
     fillSymbols();
     preserveCutoff(cutoff);
-    loadView();
+    loadView({ focusLatestFill: true });
 });
 $("fills-only").addEventListener("click", () => {
     $("show-fills").checked = true;
     $("show-markers").checked = false;
     $("show-rules").checked = false;
     chart.setAnnotationOptions(annotationOptions());
+    const marker = state.view?.markers.filter((m) => m.kind === "fill").at(-1);
+    if (marker) {
+        chart.selectAnnotation(marker.id);
+        requestAnimationFrame(() => $("price-chart").scrollIntoView({ block: "center", behavior: "instant" }));
+    }
 });
 async function loadHealth() {
     if (!state.catalog) return;
@@ -1273,6 +1296,7 @@ async function start() {
         ]);
         for (const s of state.tdx.stocks) if (s.name) names[s.symbol] = s.name;
         for (const s of state.akshare.stocks) if (s.name) names[s.symbol] = s.name;
+        await watchlists.init();
         const tdxOption = $("result-scope").querySelector('[value="tdx"]');
         tdxOption.disabled = !state.tdx.with_daily;
         if (!state.tdx.with_daily) tdxOption.textContent = "通达信目录不可用";
@@ -1287,6 +1311,7 @@ async function start() {
         if (requestedPage && Object.hasOwn(titles, requestedPage)) showPage(requestedPage);
     } catch (e) {
         stockList.setStocks([], "");
+        watchlists.setUniverse([], "");
         $("stock-count").textContent = "不可用";
         $("selected-stock-summary").textContent = "股票列表读取失败，请刷新重试。";
         $("loading").hidden = true;

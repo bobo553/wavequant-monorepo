@@ -18,7 +18,7 @@ from wavequant.infrastructure.filesystem.project_paths import project_path
 
 def is_stock(market, code):
     return bool(re.fullmatch({'sh': r'(60|68)\d{4}', 'sz': r'(00|30)\d{4}',
-                              'bj': r'(43|83|87|88|92)\d{4}'}[market], code))
+                              'bj': r'(43|82|83|87|88|92)\d{4}'}[market], code))
 
 
 def read_names(path):

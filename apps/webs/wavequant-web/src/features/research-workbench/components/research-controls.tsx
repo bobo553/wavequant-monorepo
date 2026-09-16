@@ -54,7 +54,7 @@ export function ResearchControls(): JSX.Element {
                 <button id="download-backtest" disabled>
                     导出回测账本
                 </button>
-                <span>终点为回放日期 · 沪深主板非 ST 研究模型 · 其他板块仅行情浏览</span>
+                <span>终点为回放日期 · 沪深京普通 A 股按板块规则回测 · ST / 退市暂不生成成交</span>
             </div>
             <div id="error" className="message error" role="alert" hidden />
             <section className="panel note-card" aria-label="幅度方案对比">
@@ -92,8 +92,10 @@ export function ResearchControls(): JSX.Element {
                     第一类用交替低点，第二类用整段最低收盘；历史样本内对比不等于样本外有效性，也不自动推荐最高胜率方案。
                 </p>
             </section>
-            <div id="loading" className="loading-line" role="status">
-                正在校验并读取本地结果…
+            <div className="loading-slot">
+                <div id="loading" className="loading-line" role="status">
+                    正在校验并读取本地结果…
+                </div>
             </div>
             <div id="evidence" className="evidence-banner">
                 研究结果不构成交易建议，工程通过不等于策略有效。
