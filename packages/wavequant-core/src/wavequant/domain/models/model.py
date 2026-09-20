@@ -69,3 +69,4 @@ class Trade:
     exit_reason: str
     pnl: float = 0.0
     fees: float = 0.0
+    position_closed: bool = True

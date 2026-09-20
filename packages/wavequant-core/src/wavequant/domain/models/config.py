@@ -37,6 +37,8 @@ class StrategyConfig:
 
     max_hold_bars: int = 20
     take_profit_r: float = 2.0
+    # V3 uses measured targets for entry sizing/reward, not automatic liquidation.
+    exit_on_target: bool = True
     commission_bps_per_side: float = 3.0
     slippage_bps_per_side: float = 5.0
     allow_same_day_exit: bool = False
@@ -54,6 +56,15 @@ class StrategyConfig:
     max_entry_gap: float = 0.05
     minimum_commission: float = 5.0
     a_share_taxes: bool = True
+    # Preserve sealed/library callers; the interactive backtest explicitly
+    # selects its unchecked (False) default at the request boundary.
+    net_reward_risk_filter: bool = True
+    staged_exit_enabled: bool = False
+    staged_exit_same_day: bool = False
+    staged_exit_intraday: bool = False
+    missing_minute_daily_fallback: bool = False
+    inverse_n_after_reduction: bool = False
+    initial_reduction_fraction: float = 0.5
 
     @classmethod
     def from_json(cls, path: str | Path) -> "StrategyConfig":
@@ -73,7 +84,7 @@ class StrategyConfig:
         for name, value in self.to_dict().items():
             if isinstance(value, (int, float)) and not math.isfinite(value):
                 raise ValueError(f"{name} must be finite")
-        for name in ("require_non_bearish_regime", "allow_same_day_exit", "a_share_taxes"):
+        for name in ("require_non_bearish_regime", "allow_same_day_exit", "a_share_taxes", "staged_exit_enabled", "net_reward_risk_filter", "staged_exit_same_day", "staged_exit_intraday", "missing_minute_daily_fallback", "inverse_n_after_reduction", "exit_on_target"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be boolean")
         positive_ints = {
@@ -98,6 +109,8 @@ class StrategyConfig:
             raise ValueError("min_confirm_bars must not exceed confirm_window")
         if not 0.0 < self.max_retracement < 1.0:
             raise ValueError("max_retracement must be between 0 and 1")
+        if type(self.initial_reduction_fraction) not in (int, float) or not 0 < self.initial_reduction_fraction < 1:
+            raise ValueError("initial_reduction_fraction must be between 0 and 1")
         if not 0.0 <= self.min_close_location <= 1.0:
             raise ValueError("min_close_location must be between 0 and 1")
         if self.min_rvol < 0.0:

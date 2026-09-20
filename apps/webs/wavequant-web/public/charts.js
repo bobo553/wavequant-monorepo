@@ -10,8 +10,11 @@ import {
     reversalWindowSummary,
     visibleAnnotations,
 } from "./annotations.js";
+import { candleDetails } from "./candle-details.js";
+import { FocusFlashOverlay } from "./focus-flash-overlay.js";
 import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
+import { tertiaryRetracementGuides } from "./retracement-guides.js";
 import { TradeMarkerOverlay } from "./trade-marker-overlay.js";
 
 const L = window.LightweightCharts;
@@ -97,7 +100,7 @@ function base(container) {
     return chart;
 }
 export class PriceChart {
-    constructor(container, onHover, onSelect = () => {}, onVisible = () => {}) {
+    constructor(container, onHover, onSelect = () => {}, onVisible = () => {}, onCopyCandle = () => {}) {
         this.container = container;
         this.onSelect = onSelect;
         this.onVisible = onVisible;
@@ -126,6 +129,8 @@ export class PriceChart {
         this.lastFallHighLineKey = "";
         this.bullishTurnGuideLines = [];
         this.bullishTurnGuideKey = "";
+        this.tertiaryRetracementLines = [];
+        this.tertiaryRetracementKey = "";
         this.windowAnnotations = [];
         this.data = null;
         this.theory = null;
@@ -133,6 +138,7 @@ export class PriceChart {
         this.options = {
             signals: true,
             fills: true,
+            candidateRejections: true,
             rules: true,
             diagnostics: false,
             levels: true,
@@ -141,6 +147,8 @@ export class PriceChart {
             bullAlternationLows: true,
             postAlternationBullHighs: true,
             bullishTurnSignals: true,
+            tertiaryRetracement: true,
+            tertiaryAbc: true,
         };
         this.showTeaching = true;
         this.drawingMode = "lecture";
@@ -151,32 +159,104 @@ export class PriceChart {
         this.candles.attachPrimitive(this.lectureOverlay);
         this.tradeMarkerOverlay = new TradeMarkerOverlay(container);
         this.candles.attachPrimitive(this.tradeMarkerOverlay);
+        this.focusFlashOverlay = new FocusFlashOverlay(container);
+        this.candles.attachPrimitive(this.focusFlashOverlay);
         this.tooltip = document.createElement("div");
         this.tooltip.className = "chart-tooltip";
         this.tooltip.hidden = true;
+        this.tooltipHovered = false;
+        this.tooltipHideTimer = null;
+        this.tooltipBarTime = null;
+        this.tooltip.addEventListener("pointerenter", () => {
+            this.tooltipHovered = true;
+            clearTimeout(this.tooltipHideTimer);
+        });
+        this.tooltip.addEventListener("pointerleave", () => {
+            this.tooltipHovered = false;
+            this.tooltip.hidden = true;
+        });
+        this.tooltip.addEventListener("focusin", () => clearTimeout(this.tooltipHideTimer));
+        this.tooltip.addEventListener("focusout", () => {
+            if (!this.tooltipHovered) this.tooltip.hidden = true;
+        });
         container.append(this.tooltip);
         this.chart.subscribeCrosshairMove((p) => {
             if (!this.data) return;
-            onHover(this.data.bars.find((b) => b.time === p.time) || this.data.bars.at(-1));
+            // 鼠标进入卡片时保留当前 K 线，不让图表的离开事件清空卡片。
+            if (this.tooltipHovered || this.tooltip.contains(document.activeElement)) return;
+            const bar = this.data.bars.find((candidate) => candidate.time === p.time);
+            if (bar) onHover(bar);
             const items = this.itemsAt(p.time, p.hoveredObjectId);
-            this.tooltip.hidden = !p.point || !items.length;
-            if (this.tooltip.hidden) return;
+            if (!p.point || !bar) {
+                clearTimeout(this.tooltipHideTimer);
+                this.tooltipHideTimer = setTimeout(() => {
+                    if (!this.tooltipHovered && !this.tooltip.contains(document.activeElement))
+                        this.tooltip.hidden = true;
+                }, 150);
+                return;
+            }
+            clearTimeout(this.tooltipHideTimer);
+            // Keep the tooltip still while traversing the chart-to-card gap. If it
+            // follows every pointer move, its copy button continually escapes the cursor.
+            const positionTooltip = this.tooltip.hidden || this.tooltipBarTime !== bar.time;
+            this.tooltipBarTime = bar.time;
+            this.tooltip.hidden = false;
             this.tooltip.replaceChildren();
-            const heading = document.createElement("b");
-            heading.textContent = `${p.time} · ${items.length} 项标注`;
+            const heading = document.createElement("div");
+            heading.className = "chart-tooltip-heading";
+            const title = document.createElement("b");
+            title.textContent = `${bar.time} · K 线`;
+            const shortcut = document.createElement("button");
+            shortcut.type = "button";
+            shortcut.className = "chart-tooltip-shortcut";
+            shortcut.textContent = "Ctrl+C 复制";
+            shortcut.dataset.copyLabel = shortcut.textContent;
+            shortcut.setAttribute("aria-label", `复制 ${bar.time} K 线数据，也可按 Ctrl+C`);
+            shortcut.addEventListener("click", () => onCopyCandle(bar, shortcut));
+            heading.append(title, shortcut);
             this.tooltip.append(heading);
-            for (const item of items.slice(0, 5)) {
+            for (const [label, value] of candleDetails(bar).slice(1)) {
                 const line = document.createElement("div");
-                line.textContent = `${item.title} · ${num(item.price)}${item.kind === "fill" ? " 成交价" : " 参考价"}`;
+                line.className = "chart-tooltip-price";
+                const name = document.createElement("span");
+                name.textContent = label;
+                const amount = document.createElement("span");
+                amount.textContent = value;
+                line.append(name, amount);
                 this.tooltip.append(line);
             }
+            if (items.length) {
+                const annotationHeading = document.createElement("b");
+                annotationHeading.className = "chart-tooltip-annotations";
+                annotationHeading.textContent = `${items.length} 项标注`;
+                this.tooltip.append(annotationHeading);
+            }
+            for (const item of items.slice(0, items[0]?.category === "entry-rejections" ? items.length : 5)) {
+                const line = document.createElement("div");
+                line.textContent = `${item.title} · ${num(item.price)}${item.category === "entry-rejections" ? " 收盘参考价（未下单）" : item.category === "risk-rejections" ? " 拟买价（未成交）" : item.kind === "fill" ? " 成交价" : " 参考价"}`;
+                this.tooltip.append(line);
+                if (item.category === "entry-rejections" || item.category === "risk-rejections") {
+                    const reason = document.createElement("small");
+                    reason.textContent = item.description;
+                    this.tooltip.append(reason);
+                }
+                for (const rejection of item.executionRiskRejections || []) {
+                    const execution = document.createElement("div");
+                    execution.textContent = `${rejection.time} 执行风控未通过 · 拟买价 ${num(rejection.price)} 元（未成交）`;
+                    const reason = document.createElement("small");
+                    reason.textContent = rejection.description;
+                    this.tooltip.append(execution, reason);
+                }
+            }
             const hint = document.createElement("small");
-            hint.textContent = "点击标识或 K 线查看规则与点位";
+            hint.textContent = items.length ? "点击标识查看规则 · 提示文字可选中复制" : "选中提示文字可单独复制";
             this.tooltip.append(hint);
-            this.tooltip.style.left =
-                Math.max(4, Math.min(p.point.x + 16, container.clientWidth - this.tooltip.offsetWidth - 4)) + "px";
-            this.tooltip.style.top =
-                Math.max(4, Math.min(p.point.y + 12, container.clientHeight - this.tooltip.offsetHeight - 4)) + "px";
+            if (positionTooltip) {
+                this.tooltip.style.left =
+                    Math.max(4, Math.min(p.point.x + 16, container.clientWidth - this.tooltip.offsetWidth - 4)) + "px";
+                this.tooltip.style.top =
+                    Math.max(4, Math.min(p.point.y + 12, container.clientHeight - this.tooltip.offsetHeight - 4)) + "px";
+            }
         });
         this.chart.subscribeClick((p) => {
             const items = this.itemsAt(p.time, p.hoveredObjectId);
@@ -185,6 +265,10 @@ export class PriceChart {
         this.chart.timeScale().subscribeVisibleLogicalRangeChange(() => this.scheduleMarkers());
     }
     setData(data, options = {}) {
+        this.focusFlashOverlay.clear();
+        clearTimeout(this.tooltipHideTimer);
+        this.tooltipHovered = false;
+        this.tooltipBarTime = null;
         this.data = data;
         this.theory = null;
         this.selected = null;
@@ -282,6 +366,7 @@ export class PriceChart {
             ],
             from,
             to,
+            this.theory?.asof || this.data.asof,
         );
         const bullAlternationLows = bearBullAlternationLowAnnotations(
             [
@@ -336,22 +421,22 @@ export class PriceChart {
                 },
                 {
                     level: 2,
-                    landmarks: this.showSecondaryTrend
-                        ? this.theory?.secondary_trends?.bullish_turn_signals || []
-                        : [],
+                    landmarks: this.showSecondaryTrend ? this.theory?.secondary_trends?.bullish_turn_signals || [] : [],
                 },
                 {
                     level: 3,
-                    landmarks: this.showTertiaryTrend
-                        ? this.theory?.tertiary_trends?.bullish_turn_signals || []
-                        : [],
+                    landmarks: this.showTertiaryTrend ? this.theory?.tertiary_trends?.bullish_turn_signals || [] : [],
                 },
             ],
             from,
             to,
         );
         this.windowAnnotations = [
-            ...this.annotations,
+            ...this.annotations.filter(
+                (item) =>
+                    item.category !== "tertiary-abc" ||
+                    (this.showTertiaryTrend && item.time <= (this.theory?.asof || this.data.asof)),
+            ),
             ...trendKeys,
             ...bullFlipHighs,
             ...bullAlternationLows,
@@ -374,7 +459,11 @@ export class PriceChart {
         );
         this.drawLastFallHighGuides(trendKeys);
         this.drawBullishTurnGuides(bullishTurnSignals);
+        this.drawTertiaryRetracementGuides(to);
         this.container.dataset.markerCount = this.groups.length;
+        this.container.dataset.tertiaryAbcCount = String(
+            this.groups.flatMap((group) => group.items).filter((item) => item.category === "tertiary-abc").length,
+        );
         this.container.dataset.lastFallHighCount = String(trendKeys.length);
         this.container.dataset.bearToBullHighCount = String(this.options.bullFlipHighs ? bullFlipHighs.length : 0);
         this.container.dataset.bearBullAlternationLowCount = String(
@@ -394,11 +483,18 @@ export class PriceChart {
     }
     itemsAt(time, id) {
         const drawing = this.lectureOverlay.annotation(id);
-        if (drawing) return [drawing];
+        if (drawing) {
+            // A development vertex can occupy the exact confirmed landmark.
+            // Preserve the confirmed evidence when the polyline wins hit testing.
+            const landmarks = this.groups
+                .flatMap((group) => group.items)
+                .filter((item) => item.kind === "trend-key" && item.time === time && item.price === drawing.price);
+            return [...landmarks, drawing];
+        }
         const group = this.groups?.find((g) => g.id === id);
         return (
             group?.items ||
-            visibleAnnotations(this.annotations, this.options)
+            visibleAnnotations(this.windowAnnotations || this.annotations, this.options)
                 .filter((m) => m.time === time)
                 .sort((a, b) => b.priority - a.priority)
         );
@@ -410,6 +506,10 @@ export class PriceChart {
         if (focus) this.focus(selected.time);
         this.drawLevels();
         this.onSelect(items || [selected]);
+    }
+    flashSelectedAnnotation(id, stage) {
+        if (this.selected?.id !== id) return;
+        this.focusFlashOverlay.flash(this.selected, stage);
     }
     clearLevels() {
         for (const s of this.levelLines) this.chart.removeSeries(s);
@@ -484,11 +584,60 @@ export class PriceChart {
         }
         this.container.dataset.bullishTurnGuides = String(this.bullishTurnGuideLines.length);
     }
+    clearTertiaryRetracementGuides() {
+        for (const series of this.tertiaryRetracementLines) this.chart.removeSeries(series);
+        this.tertiaryRetracementLines = [];
+        this.tertiaryRetracementKey = "";
+        this.container.dataset.tertiaryRetracementGuides = "0";
+    }
+    drawTertiaryRetracementGuides(to) {
+        const guides =
+            this.options.tertiaryRetracement && this.showTertiaryTrend && this.polylineEnabled
+                ? tertiaryRetracementGuides(this.theory, this.data?.bars, to)
+                : [];
+        const key = JSON.stringify(guides);
+        if (key === this.tertiaryRetracementKey) return;
+        this.clearTertiaryRetracementGuides();
+        this.tertiaryRetracementKey = key;
+        for (const guide of guides) {
+            const series = this.chart.addSeries(L.LineSeries, {
+                color: "#d98638",
+                lineStyle: 2,
+                lineWidth: 1,
+                title: guide.title,
+                lastValueVisible: true,
+                priceLineVisible: false,
+                crosshairMarkerVisible: false,
+                pointMarkersVisible: false,
+                autoscaleInfoProvider: () => null,
+            });
+            series.setData([
+                { time: guide.start, value: guide.price },
+                { time: guide.end, value: guide.price },
+            ]);
+            this.tertiaryRetracementLines.push(series);
+        }
+        this.container.dataset.tertiaryRetracementGuides = String(this.tertiaryRetracementLines.length);
+    }
     drawLevels() {
         this.clearLevels();
         const item = this.selected;
-        if (!item || !this.data || !this.options.levels || !visibleAnnotations([item], this.options).length) return;
-        for (const [i, level] of item.levels.entries()) {
+        // 拒单不产生常驻图标；从右侧账本主动定位时，仅临时标示对应 K 线的参考价。
+        const blockedOrder = item?.kind === "order" && item.status === "cancelled";
+        const blockedCandidate = item?.kind === "candidate";
+        if (
+            !item ||
+            !this.data ||
+            !this.options.levels ||
+            (!blockedOrder && !blockedCandidate && !visibleAnnotations([item], this.options).length)
+        )
+            return;
+        const levels = blockedOrder
+            ? item.levels.slice(0, 1)
+            : blockedCandidate
+              ? [{ name: "候选参考价（未下单）", price: item.price }]
+              : item.levels;
+        for (const [i, level] of levels.entries()) {
             if (!Number.isFinite(level.price)) continue;
             const s = this.chart.addSeries(L.LineSeries, {
                 color: ["#ebbc70", "#a29ce0", "#5ebeb0"][i % 3],
@@ -500,10 +649,13 @@ export class PriceChart {
                 crosshairMarkerVisible: false,
                 pointMarkersVisible: item.kind !== "trend",
                 pointMarkersRadius: 2,
-                autoscaleInfoProvider: () => null,
+                // Selected N targets must remain visible even above the candle
+                // range; deselection removes these series and restores scaling.
+                ...(item.raw?.event === "n_completed" ? {} : { autoscaleInfoProvider: () => null }),
             });
-            const points = [{ time: item.time, value: level.price }];
-            if (item.time < this.data.bars.at(-1).time)
+            const start = level.available_at && level.available_at > item.time ? level.available_at : item.time;
+            const points = [{ time: start, value: level.price }];
+            if (start < this.data.bars.at(-1).time)
                 points.push({ time: this.data.bars.at(-1).time, value: level.price });
             s.setData(points);
             this.levelLines.push(s);
@@ -525,6 +677,7 @@ export class PriceChart {
         this.windowAnnotations = [];
         this.clearLastFallHighGuides();
         this.clearBullishTurnGuides();
+        this.clearTertiaryRetracementGuides();
         this.container.dataset.lastFallHighCount = "0";
         this.container.dataset.bearToBullHighCount = "0";
         this.container.dataset.bearBullAlternationLowCount = "0";
@@ -565,7 +718,11 @@ export class PriceChart {
     }
     setTertiaryTrendVisible(show) {
         this.showTertiaryTrend = show;
-        if (!show && this.selected?.kind === "trend" && this.selected.raw.trend_level === 3) {
+        if (
+            !show &&
+            (this.selected?.kind === "trend" || this.selected?.category === "tertiary-abc") &&
+            this.selected.raw.trend_level === 3
+        ) {
             this.selected = null;
             this.clearLevels();
             this.tooltip.hidden = true;
@@ -663,6 +820,8 @@ export class PriceChart {
     }
     destroy() {
         if (this.frame) cancelAnimationFrame(this.frame);
+        clearTimeout(this.tooltipHideTimer);
+        this.focusFlashOverlay.clear();
         this.tooltip.remove();
         themedCharts.delete(this.chart);
         this.chart.remove();

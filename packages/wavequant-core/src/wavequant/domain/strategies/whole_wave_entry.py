@@ -17,7 +17,8 @@ def threshold(value):
 
 
 def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
-                      deep_ratio=.5, shallow_ratio=1/3, **unused):
+                      deep_ratio=.5, shallow_ratio=1/3, first_basis='alternation_low',
+                      second_inclusive=True, **unused):
     if not 0 <= low_index < attack <= asof < len(bars):
         return None, 'wave_invalid_n_sequence'
     live = {c.episode:c for c in current}; eligible=[]; reasons=[]
@@ -26,7 +27,7 @@ def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
     for ctx in at_attack:
         if ctx.episode not in live:
             reasons.append('wave_context_no_longer_live');continue
-        if not ctx.flip_index < ctx.alternation_index < attack:
+        if not (ctx.flip_index <= ctx.alternation_index < attack):
             reasons.append('wave_alternation_not_before_n');continue
         l0,h0=price(ctx.origin_price),price(ctx.flip_high_price)
         if h0 <= l0:
@@ -35,18 +36,36 @@ def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
             reasons.append('wave_flip_origin_broken');continue
         common=dict(asdict(ctx),definition='whole_flip_wave_v3',
                     counter_filter_applied=True,flip_origin_price=float(l0),
-                    local_n_ratio=unused.get('ratio'),eligibility_frozen_at=attack)
+                    local_n_ratio=unused.get('ratio'),
+                    eligibility_frozen_at=attack)
         # Maturation on the attack bar does not retroactively change its class.
         if ctx.maturity_index is None or ctx.maturity_index >= attack:
-            a=price(ctx.alternation_low_price);r=(h0-a)/(h0-l0)
+            if ctx.trend_level not in (2, 3):
+                reasons.append('first_buy_requires_level_two_or_three');continue
+            a=price(ctx.alternation_low_price)
             if not l0 <= a < h0:
                 reasons.append('wave_alternation_origin_broken');continue
-            if not r > threshold(deep_ratio):
+            close_index=None
+            counter=a
+            if first_basis=='minimum_close':
+                if not 0<=ctx.flip_high_index<=ctx.alternation_low_index<attack:
+                    reasons.append('wave_alternation_not_before_n');continue
+                # Freeze the first decline at the confirmed alternation pivot;
+                # later closes cannot retroactively qualify that episode.
+                close_index=min(range(ctx.flip_high_index,ctx.alternation_low_index+1),
+                                key=lambda j:bars[j].close)
+                counter=price(bars[close_index].close)
+            r=(h0-counter)/(h0-l0)
+            if deep_ratio is not None and not r > threshold(deep_ratio):
                 reasons.append('wave_first_pullback_not_deep');continue
             eligible.append(dict(common,buy_point_type='transition_squeeze',priority=1,
+                counter_filter_applied=deep_ratio is not None,
                 counter_ratio=float(r),counter_exact_ratio=str(r),counter_limit=deep_ratio,
-                counter_operator='>',counter_basis='alternation_low_over_whole_flip',
-                ratio_high_price=float(h0),ratio_low_price=float(l0),counter_price=float(a)))
+                counter_operator='>' if deep_ratio is not None else None,counter_basis=('minimum_close_from_flip_high_to_alternation'
+                                                    if first_basis=='minimum_close' else
+                                                    'alternation_low_over_whole_flip'),
+                ratio_high_price=float(h0),ratio_low_price=float(l0),counter_price=float(counter),
+                **({'minimum_close_index':close_index} if close_index is not None else {})))
             continue
         # The known pre-attack peak must follow the close-confirmed breakout.
         peak_index=max(range(ctx.maturity_index,attack),key=lambda j:bars[j].high)
@@ -58,11 +77,14 @@ def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
         close_index=min(range(peak_index,asof+1),key=lambda j:bars[j].close)
         close=price(bars[close_index].close)
         r=max(Fraction(0),peak-close)/(peak-l0)
-        if r > threshold(shallow_ratio):
+        limit=threshold(shallow_ratio)
+        too_deep=r>limit if second_inclusive else r>=limit
+        if too_deep:
             reasons.append('wave_second_close_pullback_too_deep');continue
         eligible.append(dict(common,buy_point_type='mature_shallow_squeeze',priority=2,
             counter_ratio=float(r),counter_exact_ratio=str(r),counter_limit=shallow_ratio,
-            counter_operator='<=',counter_basis='minimum_close_over_peak_minus_flip_origin',
+            counter_operator='<=' if second_inclusive else '<',
+            counter_basis='minimum_close_over_peak_minus_flip_origin',
             ratio_high_price=float(peak),ratio_low_price=float(l0),counter_price=float(close),
             peak_index=peak_index,peak_price=float(peak),minimum_close_index=close_index,
             pullback_index=low_index,impulse_high_index=peak_index,impulse_origin_index=ctx.origin_index))

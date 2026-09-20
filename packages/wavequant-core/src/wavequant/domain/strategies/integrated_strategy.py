@@ -15,6 +15,7 @@ from ..market_state.market_regime import MarketRegime, RegimePolicy, WaveBoundar
 from ..market_state.control_bar import observe_control_bar
 from ..market_structure.trend_structure import observe_structure
 from .bull_eligibility import bull_permission_history
+from .attack_quality import v3_positive_n_attack_rejection
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.wave_strength import StrengthScale, measure_strength
 from ..market_state.washout import WashoutPolicy, WashoutStage, observe_washout
@@ -39,7 +40,9 @@ class SystemStrategy:
     squeeze_pullback_entries: bool = True
     mature_shallow_ratio: float = 1/3
     buy_point_definition: str = 'legacy_v2'
-    first_pullback_threshold: float = .5
+    first_pullback_threshold: float | None = .5
+    first_pullback_basis: str = 'alternation_low'
+    mature_shallow_inclusive: bool = True
 
     def validate(self):
         import math
@@ -58,8 +61,13 @@ class SystemStrategy:
             raise ValueError('invalid mature pullback threshold')
         if self.buy_point_definition not in ('legacy_v2','whole_flip_wave_v3'):
             raise ValueError('explicit buy point definition required')
-        if type(self.first_pullback_threshold) not in (float,int) or self.first_pullback_threshold not in (.5,2/3):
+        if self.first_pullback_threshold is not None and (type(self.first_pullback_threshold) not in (float,int)
+                or self.first_pullback_threshold not in (.5,2/3)):
             raise ValueError('first pullback threshold must be 1/2 or 2/3')
+        if self.first_pullback_basis not in ('alternation_low','minimum_close'):
+            raise ValueError('first pullback basis must be an alternation low or minimum close')
+        if type(self.mature_shallow_inclusive) is not bool:
+            raise ValueError('mature shallow inclusive must be boolean')
         if self.buy_point_definition=='whole_flip_wave_v3' and (
                 self.entry_policy!='hierarchical_two_buy_points' or self.mature_shallow_ratio not in (1/3,.5)):
             raise ValueError('whole wave entries require hierarchical policy and close threshold 1/3 or 1/2')
@@ -165,13 +173,6 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
     hierarchy_permissions = {}
     hierarchical = config.entry_policy == 'hierarchical_two_buy_points'
     whole_wave = config.buy_point_definition == 'whole_flip_wave_v3'
-    if hierarchical:
-        from .hierarchical_entry import hierarchical_history, context_history, select_entry
-        levels, level_epochs = hierarchical_history(bars)
-        hierarchy_permissions, hierarchy_events = context_history(bars, levels, level_epochs, whole_wave=whole_wave)
-        for event in hierarchy_events:
-            row = dict(event); j, kind = row.pop('bar_index'), row.pop('event')
-            log(j, kind, **row); counts[kind] += 1
     if config.entry_policy == 'transitioned_squeeze':
         permissions, permission_events = bull_permission_history(
             bars, snapshots, epochs, blocked, config.structure_window,
@@ -204,7 +205,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         direction = Direction.UP if a.point.kind == PointKind.LOW else Direction.DOWN
         setup = NSetup(bars[0].symbol, '1d', direction,
             *(PivotRef(p.point.index, p.confirmed_index) for p in (a, b, c)),
-            config.pivot_mode, BoxAnchorMode.ATTACK_VIRTUAL_EXTREME)
+            config.pivot_mode, BoxAnchorMode.ATTACK_VIRTUAL_EXTREME,
+            allow_confirmation_bar=whole_wave and direction == Direction.DOWN)
         offset = max(0, a.point.index-config.volume_lookback)
         finish = min(len(bars)-1, limits[i], i+config.pattern_ttl)
         local, data = _local_setup(setup, offset), bars[offset:finish+1]
@@ -224,6 +226,14 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         attack_keys.add((direction, t))
         control = observe_control_bar(data, local, timeframe='1d', volume_lookback=config.volume_lookback,
                                       shadow_policy=ShadowPolicy(config.shadow_fraction))
+        if whole_wave and direction == Direction.UP:
+            rejection = v3_positive_n_attack_rejection(bars[t], control.volume)
+            if rejection is not None:
+                counts['rejected_v3_positive_n_attack'] += 1
+                log(t, 'n_attack_rejected', direction=direction.value, reason=rejection,
+                    known_at=i, previous_volume=bars[t-1].volume, attack_volume=bars[t].volume,
+                    open=bars[t].open, high=bars[t].high, low=bars[t].low, close=bars[t].close)
+                continue
         regime = observe_market_regime(data, local, timeframe='1d',
             policy=RegimePolicy(ShadowPolicy(config.shadow_fraction), WaveBoundary.ORIGIN))
         force = measure_strength(n.anchors.origin, n.anchors.neckline_extreme, n.anchors.pullback,
@@ -251,6 +261,47 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                         prior_confirmation=resume.prior_confirmation_index,
                         local_resistance=resume.local_resistance, defense=resume.defense,
                         classification='held_squeeze_defense_and_fresh_pullback_rebound')
+    # Projection outlives the entry candidate TTL, but never its frozen defense.
+    # It remains available in the audit even when this N already emitted LONG.
+    if whole_wave:
+        from dataclasses import asdict
+        from ..market_structure.wave_projection import WaveProjectionSetup, wave_projection_history
+        for candidate in candidates:
+            if candidate['setup'].direction != Direction.UP:
+                continue
+            n = candidate['n']
+            squeeze = next((candidate['start'] + f.bar_index for f in candidate['regime'].frames
+                            if f.regime in (MarketRegime.BULL, MarketRegime.STRONG_BULL)), None)
+            if squeeze is None:
+                continue
+            projection_setup = WaveProjectionSetup(
+                candidate['setup'].origin.index, candidate['attack'], squeeze,
+                n.anchors.origin, n.targets.box_anchor, n.targets.two_t, n.completion.defense)
+            projection = wave_projection_history(bars, projection_setup)
+            candidate['wave_projection'] = projection
+            # Five/ten are larger structural goals. Entry feasibility continues
+            # to use the nearest rung, never a farther goal to inflate reward.
+            candidate['entry_wave_projection'] = wave_projection_history(
+                bars, projection_setup, target_policy='nearest_box')
+            for event in projection:
+                row = asdict(event)
+                j, kind = row.pop('bar_index'), row.pop('event')
+                row['projection_label'] = {'stacking': '叠箱', 'pushing': '堆箱',
+                    'ready': '二吐完成，等待转浪', 'pullback': 'B浪回调，等待再攻击',
+                    'invalidated': '轧空低失守，转浪失效'}[event.state]
+                log(j, kind, **row)
+                counts[kind] += 1
+    if hierarchical:
+        from .hierarchical_entry import hierarchical_history, context_history, select_entry
+        if whole_wave:
+            from .chart_entry_history import chart_entry_history
+            hierarchy_permissions, hierarchy_events = chart_entry_history(bars, audit=audit)
+        else:
+            levels, level_epochs = hierarchical_history(bars)
+            hierarchy_permissions, hierarchy_events = context_history(bars, levels, level_epochs, whole_wave=False)
+        for event in hierarchy_events:
+            row = dict(event); j, kind = row.pop('bar_index'), row.pop('event')
+            log(j, kind, **row); counts[kind] += 1
     # Optional opportunity tags use their own confirmation dates, not future shape labels.
     wash_tags = {}
     for new in sorted(candidates, key=lambda c: c['attack']):
@@ -328,7 +379,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         if whole_wave:
             from .whole_wave_entry import select_wave_entry
             return select_wave_entry(hierarchy_permissions.get(i,()),hierarchy_permissions.get(c['attack'],()),
-                bars=bars,deep_ratio=config.first_pullback_threshold,**params)
+                bars=bars,deep_ratio=config.first_pullback_threshold,first_basis=config.first_pullback_basis,
+                second_inclusive=config.mature_shallow_inclusive,**params)
         return select_entry(hierarchy_permissions.get(i,()),hierarchy_permissions.get(c['attack'],()),**params)
     emitted_attacks = set()
     bearish_attacks = {c['attack']: c for c in candidates if c['setup'].direction == Direction.DOWN}
@@ -397,6 +449,11 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             hit = {m.name for m in n.milestones if m.bar_index+c['start'] <= i}
             targets = [getattr(n.targets, name) for name in ('equal_wave', 'one_p', 'two_t')
                        if name not in hit and getattr(n.targets, name) is not None and getattr(n.targets, name) > bar.close]
+            projection = next((event for event in reversed(c.get('entry_wave_projection', ()))
+                               if event.bar_index <= i), None)
+            if (not targets and 'two_t' in hit and projection is not None
+                    and projection.target is not None and projection.target > bar.close):
+                targets = [projection.target]
             if stop >= bar.close or not targets:
                 log(i, 'entry_rejected', reason='no_live_structural_risk_reward', attack=c['attack'])
                 continue
@@ -423,7 +480,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 entry_regime.value if entry_regime else 'n_only_ablation', targets[0], config.minimum_reward_risk))
             emitted_attacks.add(c['attack'])
             log(i, 'long_signal', channel=tag, attack=c['attack'], stop=stop, target=targets[0], rvol=rvol,
-                gross_reward_risk=gross_rr)
+                gross_reward_risk=gross_rr,
+                **({'target_source': projection.state if projection is not None and projection.target == targets[0]
+                    else 'n_measured_target'} if whole_wave else {}))
             if permission is not None:
                 log(i, 'long_transition_evidence', attack=c['attack'], regime=entry_regime.value,
                     confirmation_source='pullback_resumption' if resumed else 'canonical_record_event',

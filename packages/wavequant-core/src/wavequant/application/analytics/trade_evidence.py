@@ -3,7 +3,7 @@ from collections import Counter
 
 
 def enrich_ledger(bars, result, generated, strategy):
-    by_time={b.timestamp.isoformat(): b for b in bars}
+    by_time={b.timestamp.date().isoformat(): b for b in bars}
     signals={(s.timestamp.isoformat(),s.side):s for s in generated.signals}
     audit=getattr(generated,'audit',[])
     dated={}
@@ -11,7 +11,7 @@ def enrich_ledger(bars, result, generated, strategy):
         dated.setdefault(event['timestamp'],[]).append(event)
     active=None; serial=0
     for order in result.orders:
-        bar=by_time[order['timestamp']]
+        bar=by_time[order['timestamp'][:10]]
         order.update(price_basis='causal_adjusted_equivalent',adjustment_factor=bar.adjustment_factor)
         if order.get('price') is not None: order['raw_price']=order['price']/bar.adjustment_factor
         if order.get('quantity') is not None: order['raw_shares']=order['quantity']*bar.adjustment_factor
@@ -52,7 +52,7 @@ def enrich_ledger(bars, result, generated, strategy):
                       if order.get('net_reward_risk') is not None else None)]
             if strategy.get('entry_policy')=='hierarchical_two_buy_points':
                 second=bool(proof) and proof.get('buy_point_type')=='mature_shallow_squeeze'
-                chain=bool(proof) and proof['flip_index']<proof['alternation_index']<proof['attack']<=signal.bar_index
+                chain=bool(proof) and proof['flip_index']<=proof['alternation_index']<proof['attack']<=signal.bar_index
                 if second:
                     chain=chain and (proof['alternation_index']<proof['maturity_index']<=proof['impulse_high_index']
                         <proof['pullback_index']<proof['attack'])
@@ -64,18 +64,23 @@ def enrich_ledger(bars, result, generated, strategy):
                 if proof and proof.get('definition')=='whole_flip_wave_v3':
                     from wavequant.domain.strategies.whole_wave_entry import threshold
                     from fractions import Fraction
-                    ratio=Fraction(proof['counter_exact_ratio']);limit=threshold(proof['counter_limit'])
+                    ratio=Fraction(proof['counter_exact_ratio'])
+                    limit=threshold(proof['counter_limit']) if proof['counter_limit'] is not None else None
                     order['entry_conditions'][0]=check('分级双买点证据',proof,
                         '交替 → 收盘再破 H0 → 阶段最高 H1 → 收盘浅回撤 → 正 N → 轧空' if second else
-                        '翻多 → 不破 L0 的深回撤交替 → 正 N → 轧空（攻击时冻结类别）',chain)
-                    order['entry_conditions'][2]=check('整段收盘回撤' if second else '交替深回撤',
-                        proof['counter_ratio'],f"{proof['counter_operator']} {proof['counter_limit']}",
-                        ratio<=limit if second else ratio>limit)
+                        '二级或三级空多交替 → 新正 N → 轧空 / 强轧空（攻击时冻结类别）',chain)
+                    order['entry_conditions'][2]=check('整段收盘回撤' if second else
+                        '交替回撤（仅展示）' if limit is None else
+                        '交替收盘深回撤' if proof['counter_basis']=='minimum_close_from_flip_high_to_alternation' else
+                        '交替深回撤',
+                        proof['counter_ratio'],f"{proof['counter_operator']} {proof['counter_limit']}" if limit is not None else '不附加深回撤过滤',
+                        None if limit is None else (ratio<=limit if proof['counter_operator']=='<=' else
+                         ratio<limit if proof['counter_operator']=='<' else ratio>limit))
             order['trigger_timestamp']=signal.trigger_timestamp.isoformat()
         if order['status']=='filled':
             if order['side']=='BUY': serial+=1;active=f'{bar.symbol}-trade-{serial}'
             order['trade_id']=active
-            if order['side']=='SELL': active=None
+            if order['side']=='SELL' and order.get('position_closed', True): active=None
     rejected=Counter(e.get('reason','unknown') for e in audit
                      if e['event'] in ('entry_rejected','entry_preflight_rejected'))
     return dict(rejection_reasons=dict(rejected),events=Counter(e['event'] for e in audit))

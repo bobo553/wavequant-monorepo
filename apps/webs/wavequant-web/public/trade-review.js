@@ -1,5 +1,6 @@
 import { reasonText } from "./annotations.js";
 import { num } from "./labels.js";
+import { closedPositionLabel } from "./trade-position.js";
 
 // All conditions come from the dated engine ledger, never re-inferred from a chart.
 export function appendTradeEvidence(panel, item) {
@@ -18,7 +19,7 @@ export function appendTradeEvidence(panel, item) {
         );
         if (proof.definition === "whole_flip_wave_v3")
             add(
-                `整段锚点：L0 ${num(proof.ratio_low_price)} · ${proof.priority === 2 ? "H1" : "H0"} ${num(proof.ratio_high_price)} · ${proof.priority === 2 ? "回撤最低收盘" : "交替低点"} ${num(proof.counter_price)}。局部 N 回撤 ${num(proof.local_n_ratio * 100)}% 仅作对照，不用作本条门槛。`,
+                `整段锚点：L0 ${num(proof.ratio_low_price)} · ${proof.priority === 2 ? "H1" : "H0"} ${num(proof.ratio_high_price)} · ${proof.priority === 2 ? "回撤最低收盘" : proof.counter_basis === "minimum_close_from_flip_high_to_alternation" ? "交替前最低收盘" : "交替低点"} ${num(proof.counter_price)}。局部 N 回撤 ${num(proof.local_n_ratio * 100)}% 仅作对照，不用作本条门槛。`,
             );
         const d = (k) => proof[k + "_date"] || `第 ${proof[k] + 1} 根 K 线（可知日）`;
         add(
@@ -27,13 +28,18 @@ export function appendTradeEvidence(panel, item) {
     }
     if (item.kind !== "fill" && item.kind !== "order") return;
     add(
-        `决定日 ${item.signal_time || "旧记录未提供"} → ${item.kind === "fill" ? "模拟成交日" : "委托评估日"} ${item.time}`,
+        `决定 ${item.decision_timestamp || item.signal_time || "旧记录未提供"} → ${item.kind === "fill" ? "模拟成交" : "委托评估"} ${item.timestamp || item.time}`,
         "decision-timeline",
     );
     add(
         `图表价 ${num(item.price, 4)} ÷ 当日因子 ${num(item.adjustment_factor, 6)} = 原始模拟价 ${num(item.raw_price, 4)} 元`,
     );
-    add("B / S 为回测引擎的模拟成交，不是券商真实成交；日线条件收盘观察，后续可交易开盘执行。");
+    add(item.execution_model === "intraday_5m_next_open"
+        ? `已完成五分钟 K 线判定，下一根五分钟线开盘原价 ${num(item.minute_next_open_raw, 4)} 元，计入回测滑点后模拟成交；非逐笔成交或券商回报。`
+        : item.execution_model === "same_day_close"
+        ? "本笔按触发当日收盘价计算回测成交，未还原尾盘分钟路径，不是券商成交回报。"
+        : "B / S 为回测引擎的模拟成交，不是券商真实成交；本笔条件收盘观察，后续可交易开盘执行。");
+    if (item.minute_fallback) add("当日缺少完整同源分钟线，已按日线收盘价模拟成交。");
     if (item.side === "BUY") {
         for (const condition of item.entry_conditions || []) {
             const status =
@@ -61,6 +67,12 @@ export function appendTradeEvidence(panel, item) {
         );
     } else {
         add(`退出原因：${reasonText(item.decision_reason || item.reason)}`);
+        if (item.kind === "fill") add(closedPositionLabel(item));
+        if (item.support_date) {
+            add(`回踩参照 ${item.support_date}：最低 ${num(item.support_low, 4)}、收盘 ${num(item.support_close, 4)}`);
+            add(`冻结下跌段 ${item.decline_high_date} 高 ${num(item.decline_high, 4)} → ${item.breakdown_date} 低 ${num(item.breakdown_low, 4)}；反弹最高价须突破 ${num(item.rebound_threshold, 4)}（2/3 位）`);
+        }
+        if (item.position_closed === false) add(`本次为减仓；成交后仍持有 ${num(item.remaining_quantity)} 等价份额。`);
         add(
             `触发时：最低 ${num(item.observed_low)} · 最高 ${num(item.observed_high)} · 收盘 ${num(item.observed_close)} · 止损参考 ${num(item.stop)} · 目标 ${num(item.target)}`,
         );

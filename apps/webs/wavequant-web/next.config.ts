@@ -8,6 +8,9 @@ export default function configureNext(phase: string): NextConfig {
         allowedDevOrigins: development ? ["127.0.0.1"] : undefined,
         output: development ? undefined : "export",
         transpilePackages: ["@repo/design-system-web"],
+        // A cold backtest may take longer than Next.js's 30s development rewrite default.
+        // Keep the proxy alive slightly beyond the client's 300s backtest deadline.
+        experimental: development ? { proxyTimeout: 305_000 } : undefined,
         ...(development
             ? {
                   async rewrites() {

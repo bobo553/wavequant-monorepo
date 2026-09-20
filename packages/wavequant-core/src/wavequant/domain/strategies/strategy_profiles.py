@@ -1,12 +1,27 @@
 """Define versioned research profiles while preserving sealed historical profiles."""
 from copy import deepcopy
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from .integrated_strategy import SystemStrategy
 
 PROFILE_ID='lecture_v1'
 HIERARCHICAL_PROFILE_ID='lecture_v2'
-WAVE_PROFILES={'lecture_v3':(.5,1/3),'lecture_v3_d67_c33':(2/3,1/3),
-               'lecture_v3_d50_c50':(.5,.5),'lecture_v3_d67_c50':(2/3,.5)}
+
+
+@dataclass(frozen=True)
+class WaveThresholds:
+    first: float | None
+    second: float
+    first_basis: str = 'alternation_low'
+    second_inclusive: bool = True
+
+
+WAVE_PROFILES={
+    'lecture_v3':WaveThresholds(None,1/3),
+    'lecture_v3_d67_c33':WaveThresholds(2/3,1/3),
+    'lecture_v3_d50_c50':WaveThresholds(.5,.5),
+    'lecture_v3_d67_c50':WaveThresholds(2/3,.5),
+    'lecture_v3_close_d50_c50':WaveThresholds(.5,.5,'minimum_close',False),
+}
 
 
 def hierarchical_profile(legacy):
@@ -19,6 +34,7 @@ def hierarchical_profile(legacy):
         channels=['transition_squeeze','mature_shallow_squeeze'],
         preferred_channel='mature_shallow_squeeze',
         trend_levels=[1,2,3], level_combination='any_not_all',
+        first_buy_trend_levels=[2,3],
         alternation='confirmed_higher_low_above_flip_origin_no_fraction_filter',
         maturity='later_daily_close_above_frozen_flip_high_after_alternation_known',
         first_buy='alternation_then_new_n_then_squeeze_no_counter_ratio_filter',
@@ -32,15 +48,74 @@ def hierarchical_profile(legacy):
 
 
 def whole_wave_profile(legacy,variant='lecture_v3'):
-    deep,shallow=WAVE_PROFILES[variant]
+    thresholds=WAVE_PROFILES[variant]
     config=hierarchical_profile(legacy)
-    config['strategy'].update(buy_point_definition='whole_flip_wave_v3',first_pullback_threshold=deep,mature_shallow_ratio=shallow)
+    for scenario in config['scenarios'].values():
+        scenario['execution'].update(staged_exit_enabled=True, staged_exit_same_day=False,
+                                     staged_exit_intraday=True, missing_minute_daily_fallback=True, inverse_n_after_reduction=True, initial_reduction_fraction=0.65,
+                                     exit_on_target=False)
+    config['strategy'].update(buy_point_definition='whole_flip_wave_v3',preflight_reward_risk=False,
+        first_pullback_threshold=thresholds.first,mature_shallow_ratio=thresholds.second,
+        first_pullback_basis=thresholds.first_basis,mature_shallow_inclusive=thresholds.second_inclusive)
     config['profile_version']='whole_flip_wave_v3_'+variant
     config['definition'].update(alternation='confirmed_low_at_or_above_whole_flip_origin',
-        first_buy='(H0-A)/(H0-L0)>deep_then_positive_n_then_squeeze',
-        second_buy='maturity_then_H1_then_pullback_(H1-min_close)/(H1-L0)<=shallow_then_positive_n_then_squeeze',
-        first_threshold=deep,second_threshold=shallow,first_class_frozen_at_n_attack=True,
+        first_buy=('level_2_or_3_confirmed_alternation_then_new_positive_n_then_squeeze'
+                   if thresholds.first is None else
+                   '(H0-min_close_H0_to_A)/(H0-L0)>deep_then_positive_n_then_squeeze'
+                   if thresholds.first_basis=='minimum_close' else
+                   '(H0-A)/(H0-L0)>deep_then_positive_n_then_squeeze'),
+        second_buy=('maturity_then_H1_then_pullback_(H1-min_close)/(H1-L0)<shallow_then_positive_n_then_squeeze'
+                    if not thresholds.second_inclusive else
+                    'maturity_then_H1_then_pullback_(H1-min_close)/(H1-L0)<=shallow_then_positive_n_then_squeeze'),
+        first_threshold=thresholds.first,second_threshold=thresholds.second,first_class_frozen_at_n_attack=True,
         primary_filters=['level_ge_1_transition','squeeze_regime','whole_wave_ratios','rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
+    if thresholds.first is None:
+        config['profile_version'] = 'confirmed_chart_alternation_v3'
+        config['definition'].update(
+            alternation='shared_chart_confirmed_higher_pullback_strictly_below_two_thirds',
+            first_buy_trend_levels=[2,3],
+            confirmation='formal_flip_high_and_confirmed_source_pullback_may_be_known_together',
+            primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
+                             'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
+    config['profile_version'] = 'inverse_n_confirmation_close_v13_' + variant
+    config['definition']['exits'] = [
+        rule for rule in config['definition']['exits'] if rule != 'target_observed_then_next_open'
+    ]
+    config['definition']['primary_filters'] = [
+        name for name in config['definition']['primary_filters'] if name != 'gross_rr_1_5'
+    ]
+    config['definition']['primary_filters'] += [
+        'attack_volume_strictly_above_previous', 'bullish_attack_body_ge_2pct_open_and_half_range',
+        'alternation_confirmed_before_n_attack',
+    ]
+    config['definition'].update(
+        signal_timing='qualified_positive_n_squeeze_confirmation_close',
+        reward_risk_policy='next_open_execution_gate_only_not_signal_preflight',
+        alternation='shared_chart_formal_or_qualified_b_positive_n_squeeze',
+        staged_exit='verified_5m_closing_window_low_break_35_low_and_price_break_65_next_interval_open_then_weak_rebound_clear',
+        missing_minute_policy='same_source_daily_close_with_explicit_fallback_evidence',
+        inverse_n_after_reduction='cumulative_90_percent_of_initial_holding_other_full_risk_exits_take_priority',
+        confirmation='qualified_b_then_positive_n_squeeze_or_existing_formal_confirmation',
+        alternation_price_path='b_low>=a_high-(a_high-a_low)*2/3',
+        alternation_time_path='b_duration>a_duration_and_b_min_close<a_high-(a_high-a_low)/2',
+        alternation_invalidation='b_low_broken_before_close_above_a_high',
+        confirming_n_can_enter=False,
+        minimum_attack_body_open_fraction=0.02,
+        minimum_attack_body_range_fraction=0.5,
+        attack_volume_vs_previous='strictly_greater',
+        drawing_annotations='shared_causal_alternation_evidence',
+        target_policy='nearest_unhit_n_target_then_confirmed_two_t_wave_projection',
+        target_exit_policy='measured_targets_are_milestones_not_exit_orders',
+        wave_projection=dict(
+            activation='qualified_positive_n_squeeze_and_two_t_reached_with_defense_held',
+            stacking='叠箱五顶：box_anchor+5*(box_anchor-origin)',
+            pushing='堆箱五顶：B_low+3*(box_anchor-origin)',
+            ten_full='五顶满足后，以已观察五顶段高点-origin放大；叠箱从高点加，堆箱从新B低加',
+            invalidation='strict_low_below_frozen_squeeze_defense',
+            role='conditional_targets_not_automatic_orders_or_elliott_wave_count',
+        ),
+    )
+
     return config
 
 
@@ -53,6 +128,8 @@ def research_profile(legacy):
     config['strategy'].pop('mature_shallow_ratio')  # V1 definition remains byte-for-byte compatible.
     config['strategy'].pop('buy_point_definition')
     config['strategy'].pop('first_pullback_threshold')
+    config['strategy'].pop('first_pullback_basis')
+    config['strategy'].pop('mature_shallow_inclusive')
     config['profile_version']='lecture_causal_squeeze_v1'
     config['definition']=dict(
         structure='same_lecture_reducer_close_confirmed_only',

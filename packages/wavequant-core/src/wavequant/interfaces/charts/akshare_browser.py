@@ -118,11 +118,13 @@ class AkShareBrowser:
         timeout: float = 30.0,
         catalog_ttl: float = 3600.0,
         history_ttl: float = 300.0,
+        pinned_history: bool = False,
         clock: Callable[[], datetime] | None = None,
     ):
         self.provider = provider or AkShareProvider(timeout=timeout)
         self.catalog_ttl = catalog_ttl
         self.history_ttl = history_ttl
+        self.pinned_history = pinned_history
         self._clock = clock or (lambda: datetime.now(_CHINA_MARKET_TIMEZONE))
         self._catalog: dict[str, Any] | None = None
         self._catalog_loaded_at = 0.0
@@ -243,7 +245,13 @@ class AkShareBrowser:
                 ),
             )
 
-        if use_primary:
+        if self.pinned_history:
+            if symbol.startswith('bj.'):
+                raise AkShareUnavailable('当前统一行情源为 AKShare / 新浪，暂不支持北交所历史回测')
+            endpoint = 'stock_zh_a_daily'
+            frame = self.provider.call(endpoint, symbol=symbol.replace('.', ''), start_date='19900101',
+                                       end_date=date.today().strftime('%Y%m%d'), adjust='')
+        elif use_primary:
             try:
                 frame = self.provider.call(
                     endpoint,

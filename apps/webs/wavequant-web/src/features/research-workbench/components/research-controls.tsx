@@ -9,6 +9,7 @@ export function ResearchControls(): JSX.Element {
                     数据 / 结果口径
                     <select id="result-scope" aria-label="结果口径" defaultValue="akshare">
                         <option value="akshare">AkShare · 在线 A 股行情</option>
+                        <option value="akshare-backtest">AkShare · 同源股票回测</option>
                         <option value="tdx">通达信 · 全部 A 股行情</option>
                         <option value="tdx-backtest">通达信 · 当前股票回测</option>
                         <option value="stock">个股独立回测 · 封存样本</option>
@@ -22,10 +23,13 @@ export function ResearchControls(): JSX.Element {
                 <label>
                     策略 / 幅度方案
                     <select id="variant-select" aria-label="策略版本" defaultValue="lecture_v3">
-                        <option value="lecture_v3">V3 · 第一类 &gt;1/2 / 第二类 ≤1/3</option>
+                        <option value="lecture_v3">V3 · 二/三级交替后 N 轧空 / 第二类 ≤1/3</option>
                         <option value="lecture_v3_d67_c33">V3 · 第一类 &gt;2/3 / 第二类 ≤1/3</option>
                         <option value="lecture_v3_d50_c50">V3 · 第一类 &gt;1/2 / 第二类 ≤1/2</option>
                         <option value="lecture_v3_d67_c50">V3 · 第一类 &gt;2/3 / 第二类 ≤1/2</option>
+                        <option value="lecture_v3_close_d50_c50">
+                            V3 · 第一类最低收盘 &gt;1/2 / 第二类最低收盘 &lt;1/2
+                        </option>
                         <option value="lecture_v2">分级双买点 V2 · 旧规则对照</option>
                         <option value="lecture_v1">讲义因果版 V1 · 研究对照</option>
                         <option value="strict_full">旧严格折线版 · 研究对照</option>
@@ -50,6 +54,20 @@ export function ResearchControls(): JSX.Element {
                 <label>
                     回测起点 <input type="date" id="backtest-start" defaultValue="2018-01-01" aria-label="回测起点" />
                 </label>
+                <label
+                    className="backtest-volume-filter"
+                    title="勾选后，N 字攻击日成交量必须达到此前 20 个交易日日均量的 1.2 倍；取消后仅跳过这项量能门槛。"
+                >
+                    <input type="checkbox" id="backtest-volume-filter" />
+                    启用量能过滤（攻击日量比 ≥ 1.2）
+                </label>
+                <label
+                    className="backtest-volume-filter"
+                    title="默认关闭。勾选后，次开盘计入滑点和费用的净盈亏比低于策略门槛时不买入；适用于当前股票回测与五组幅度对比。"
+                >
+                    <input type="checkbox" id="backtest-net-reward-risk-filter" />
+                    启用次开盘含费净盈亏比过滤
+                </label>
                 <button id="run-stock-backtest">运行当前股票回测</button>
                 <button id="download-backtest" disabled>
                     导出回测账本
@@ -59,7 +77,7 @@ export function ResearchControls(): JSX.Element {
             <div id="error" className="message error" role="alert" hidden />
             <section className="panel note-card" aria-label="幅度方案对比">
                 <button id="compare-ratios" disabled>
-                    对比四组幅度
+                    对比五组幅度
                 </button>
                 <button id="cancel-ratios" disabled>
                     取消对比
@@ -89,7 +107,7 @@ export function ResearchControls(): JSX.Element {
                     </table>
                 </div>
                 <p className="muted">
-                    第一类用交替低点，第二类用整段最低收盘；历史样本内对比不等于样本外有效性，也不自动推荐最高胜率方案。
+                    第一类旧方案用交替低点，新方案用交替前最低收盘；第二类均用整段最低收盘。历史样本内对比不等于样本外有效性，也不自动推荐最高胜率方案。
                 </p>
             </section>
             <div className="loading-slot">

@@ -201,10 +201,26 @@ def _observed_bear_to_bull_highs(strokes, *, trend_level):
     """
     landmarks = []
     for stroke in strokes:
+        points = stroke.get("points", [])
+        # A reduced H -> L -> H already carries a confirmed bearish-wave
+        # reversal on L. Waiting for two formal lows loses an entire first
+        # higher-level alternation on short chart prefixes.
+        inferred = {}
+        if trend_level > 1:
+            for key, low, high in zip(points, points[1:], points[2:]):
+                if (low.get("kind") == "L" and low.get("flip") == "翻空为多"
+                        and _strictly_breaks_last_fall_high(high, key)
+                        and _point_order(key) < _point_order(low) < _point_order(high)):
+                    inferred[_point_order(high)] = dict(
+                        title="翻空为多", key=key, confirmed_low=low,
+                        available_at=max(key["available_at"], low["available_at"], high["available_at"]))
         for high in stroke.get("points", []):
             if high.get("kind") != "H":
                 continue
-            for event in high.get("observations", []):
+            observations = high.get("observations", [])
+            if not any(event.get("title") == "翻空为多" for event in observations):
+                observations = [*observations, *([inferred[_point_order(high)]] if _point_order(high) in inferred else [])]
+            for event in observations:
                 if event.get("title") != "翻空为多":
                     continue
                 broken_key = event.get("key")
@@ -292,15 +308,14 @@ def bear_to_bull_highs(strokes, *, trend_level):
     )
 
 
-def bear_bull_alternation_lows(strokes, *, trend_level):
+def bear_bull_alternation_lows(strokes, *, trend_level, source_strokes=()):
     """Return same-level lows that formally completed bear/bull alternation.
 
-    The low is emitted only from an explicit ``空多交替`` observation produced
-    by the trend annotator.  Its full predecessor chain must still prove that
-    the preceding high strictly broke the frozen last-fall-high and that this
-    low is a partial, strictly-below-two-thirds higher pullback.  ``available_at``
-    is the latest date in that chain, so historical replay never reveals the
-    landmark before all of its evidence was confirmed.
+    Read explicit ``空多交替`` observations or the confirmed source pullback
+    attached to a formal higher-level flip high. A deeper *higher* pullback
+    also qualifies when its own confirmed next high strictly re-breaks that
+    flip high. Both routes require the original frozen last-fall-high break;
+    ``available_at`` is the latest confirmation date in the selected chain.
     """
     landmarks = []
     for stroke in strokes:
@@ -345,13 +360,118 @@ def bear_bull_alternation_lows(strokes, *, trend_level):
                     retracement_origin=_reference(origin),
                 )
                 landmarks.append(reference)
+    # The source low that confirmed a formal flip high is itself confirmed.
+    # It can complete the higher-level pullback without waiting for a later
+    # key break to promote that low to a formal higher-level polyline vertex.
+    # Keep that source level explicit; never append it to the formal strokes.
+    if trend_level > 1:
+        by_path = {stroke["id"]: stroke for stroke in strokes}
+        existing = {(item["source_path"], _point_order(item["confirmed_flip_high"])) for item in landmarks}
+        for high in _observed_bear_to_bull_highs(strokes, trend_level=trend_level):
+            stroke = by_path[high["source_path"]]
+            formal_high = next(p for p in stroke["points"] if _point_order(p) == _point_order(high))
+            low = formal_high.get("confirmed_by")
+            origin = high["confirmed_low"]
+            if ((stroke["id"], _point_order(high)) in existing
+                    or not _complete_reference(low, kind="L")
+                    or _point_order(low) <= _point_order(high)):
+                continue
+            amplitude = high["value"] - origin["value"]
+            if amplitude <= 0:
+                continue
+            event = dict(title="空多交替", ratio=(high["value"] - low["value"]) / amplitude,
+                         flip_high=high, confirmed_bear_low=origin, broken_key=high["broken_key"], origin=origin)
+            if not _valid_alternation(low, event):
+                continue
+            known_at = max(high["available_at"], low["available_at"])
+            landmarks.append(dict(
+                _reference(low),
+                id=f'level{trend_level}-bear-bull-alternation-low-{high["index"]}-{high.get("ordinal", 0)}-'
+                   f'{low["index"]}-{low.get("ordinal", 0)}-{known_at}',
+                trend_level=trend_level, source_level=trend_level-1, source_path=stroke["id"],
+                source_available_at=low["available_at"], available_at=known_at, flip="空多交替",
+                confirmation_rule="confirmed_source_pullback_after_same_level_flip",
+                retracement_ratio=event["ratio"], weak_countermove=event["ratio"] < 1/3,
+                confirmed_flip_high=_reference(high), confirmed_bear_low=_reference(origin),
+                broken_key=_reference(high["broken_key"]), retracement_origin=_reference(origin)))
+    # A confirmed pullback may exceed 2/3 yet still establish a higher low
+    # before its next confirmed high re-breaks the original flip high. For
+    # levels 2/3 the pullback is often still a source-level vertex, so follow
+    # the reducer's source_path instead of promoting it into a formal stroke.
+    source_by_path = {stroke.get("id"): stroke for stroke in source_strokes}
+    existing = {(item["source_path"], _point_order(item["confirmed_flip_high"])) for item in landmarks}
+    for high in bear_to_bull_highs(strokes, trend_level=trend_level):
+        path = high["source_path"]
+        if (path, _point_order(high)) in existing:
+            continue
+        stroke = next((item for item in strokes if item.get("id") == path), None)
+        if stroke is None:
+            continue
+        points = stroke.get("points", [])
+        formal_high = next((point for point in points if _point_order(point) == _point_order(high)), None)
+        if formal_high is None:
+            continue
+        if trend_level == 1:
+            # The immediate next same-level L owns its HH/HL confirmation.
+            position = points.index(formal_high)
+            low = points[position + 1] if position + 1 < len(points) else None
+            if not _complete_reference(low, kind="L"):
+                continue
+            source_level = 1
+        else:
+            # The formal H carries only a reference to the confirming source L.
+            # Resolve that exact source vertex to inspect its own confirmation
+            # high; matching coordinates prevents cross-path or stale reuse.
+            low_ref = formal_high.get("confirmed_by")
+            source = source_by_path.get(stroke.get("source_path"), {})
+            low = next(
+                (
+                    point for point in source.get("points", [])
+                    if _point_order(point) == _point_order(low_ref)
+                    and point.get("kind") == "L"
+                    and point.get("value") == low_ref.get("value")
+                    and point.get("time") == low_ref.get("time")
+                ),
+                None,
+            ) if _complete_reference(low_ref, kind="L") else None
+            source_level = trend_level - 1
+        rebreak = _confirmation_high(low.get("confirmed_by")) if isinstance(low, dict) else None
+        origin = high.get("confirmed_low")
+        if (
+            not _complete_reference(low, kind="L")
+            or not _complete_reference(origin, kind="L")
+            or not _complete_reference(rebreak, kind="H")
+            or not _strictly_breaks_last_fall_high(high, high.get("broken_key"))
+            or not _strictly_breaks_last_fall_high(rebreak, high)
+            or not _point_order(high) < _point_order(low) < _point_order(rebreak)
+        ):
+            continue
+        amplitude = high["value"] - origin["value"]
+        if amplitude <= 0 or not origin["value"] < low["value"] < high["value"]:
+            continue
+        ratio = (high["value"] - low["value"]) / amplitude
+        if ratio <= 0 or ratio >= 1:
+            continue
+        known_at = max(high["available_at"], low["available_at"], rebreak["available_at"])
+        landmarks.append(dict(
+            _reference(low),
+            id=f'level{trend_level}-bear-bull-alternation-low-{high["index"]}-{high.get("ordinal", 0)}-'
+               f'{low["index"]}-{low.get("ordinal", 0)}-{known_at}',
+            trend_level=trend_level, source_level=source_level, source_path=path,
+            source_available_at=low["available_at"], available_at=known_at, flip="空多交替",
+            confirmation_rule="confirmed_higher_pullback_then_confirmed_flip_high_rebreak",
+            retracement_ratio=ratio, weak_countermove=ratio < 1/3,
+            confirmed_flip_high=_reference(high), confirmed_bear_low=_reference(origin),
+            broken_key=_reference(high["broken_key"]), retracement_origin=_reference(origin),
+            confirmed_rebreak_high=_reference(rebreak)))
+        existing.add((path, _point_order(high)))
     return sorted(
         landmarks,
         key=lambda item: (item["index"], item.get("ordinal", 0), item["available_at"], item["source_path"]),
     )
 
 
-def post_alternation_bull_highs(strokes, *, trend_level):
+def post_alternation_bull_highs(strokes, *, trend_level, source_strokes=()):
     """Return the confirmed high ending the first bull leg after alternation.
 
     One confirmed ``空多交替`` low changes the same-level background to bull.
@@ -361,7 +481,7 @@ def post_alternation_bull_highs(strokes, *, trend_level):
     function never skips an invalid next vertex to select a later convenient
     high and never searches raw bars or a consumer's current chart window.
     """
-    alternation_lows = bear_bull_alternation_lows(strokes, trend_level=trend_level)
+    alternation_lows = bear_bull_alternation_lows(strokes, trend_level=trend_level, source_strokes=source_strokes)
     lows_by_path = {}
     for low in alternation_lows:
         lows_by_path.setdefault(low["source_path"], []).append(low)
@@ -420,18 +540,18 @@ def post_alternation_bull_highs(strokes, *, trend_level):
     )
 
 
-def bullish_turn_signals(strokes, bars, *, trend_level):
+def bullish_turn_signals(strokes, bars, *, trend_level, source_strokes=()):
     """Return the first causal strict-close re-break of each bull-flip high.
 
     A confirmed same-level alternation remains the preferred starting point.
     Some formal higher-level highs, however, become knowable from a confirmed
-    lower-level pullback that is too deep to qualify as ``空多交替``.  The
-    already-confirmed ``翻空为多`` high is still real evidence, so its first
+    lower-level pullback that has not completed either alternation proof route.
+    The already-confirmed ``翻空为多`` high is still real evidence, so its first
     later close cross is published without inventing an alternation low.
     Intraday highs, equality and crosses before the selected evidence became
     knowable never qualify.
     """
-    alternation_lows = bear_bull_alternation_lows(strokes, trend_level=trend_level)
+    alternation_lows = bear_bull_alternation_lows(strokes, trend_level=trend_level, source_strokes=source_strokes)
     flip_highs = bear_to_bull_highs(strokes, trend_level=trend_level)
     alternated_highs = {
         (low["source_path"], _point_order(low.get("confirmed_flip_high")))

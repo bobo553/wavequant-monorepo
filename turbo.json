@@ -52,6 +52,7 @@
         },
         "test:e2e": {
             "dependsOn": ["^build"],
+            "env": ["WAVEQUANT_E2E_API_URL"],
             "cache": false
         },
         "test:all": {

@@ -15,6 +15,7 @@ export const profileName = (id) =>
         lecture_v3_d67_c33: "整段双买点 V3 >2/3 / ≤1/3",
         lecture_v3_d50_c50: "整段双买点 V3 >1/2 / ≤1/2",
         lecture_v3_d67_c50: "整段双买点 V3 >2/3 / ≤1/2",
+        lecture_v3_close_d50_c50: "整段双买点 V3 收盘 >1/2 / 收盘 <1/2",
         lecture_v2: "分级双买点 V2",
         lecture_v1: "讲义因果版 V1",
         strict_full: "旧严格折线版",
@@ -41,11 +42,12 @@ export function funnelLines(f) {
     };
     Object.assign(rejects, {
         wave_no_alternation_at_attack: "N 攻击时尚无已确认空多交替",
+        first_buy_requires_level_two_or_three: "第一类仅限二级或三级空多交替",
         wave_context_no_longer_live: "N 所属趋势阶段已失效或被修订",
         wave_alternation_not_before_n: "交替确认不早于 N 攻击",
         wave_first_pullback_not_deep: "第一类整段回撤未严格超过所选门槛",
         wave_second_peak_pullback_sequence: "第二类再突破、高点、回撤、N 顺序未满足",
-        wave_second_close_pullback_too_deep: "第二类整段收盘回撤超过所选上限",
+        wave_second_close_pullback_too_deep: "第二类整段收盘回撤未满足所选上限",
         wave_flip_origin_broken: "价格已跌破翻多最低点 L0",
     });
     return [

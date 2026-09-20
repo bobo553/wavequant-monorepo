@@ -20,6 +20,7 @@ from wavequant.domain.models.model import Bar, Signal
 from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
 from wavequant.interfaces.research_tools.stock_backtest import single_stock_result
 from wavequant.infrastructure.market_data.tdx import read_day, read_actions, adjust_rows
+from wavequant.infrastructure.market_data.minute import TdxMinuteSource
 from wavequant.application.analytics.trade_evidence import result_markers
 from wavequant.domain.models.a_share_security import a_share_security_spec
 from wavequant.domain.models.config import StrategyConfig
@@ -66,6 +67,8 @@ class TdxBacktester:
     def _verify(self,inputs):
         if self._engine_hashes()!=inputs['engine']:
             raise ValueError('运行中策略代码已变更，请重启服务后重试')
+        if 'minute_sha256' in inputs and self._minute_fingerprint(inputs['symbol']) != inputs['minute_sha256']:
+            raise ValueError('通达信分钟文件正在更新，请重新运行回测')
         if (fingerprint(self.browser._path(inputs['symbol']))!=inputs['day_sha256'] or
                 fingerprint(self.browser.root/'T0002/hq_cache/gbbq')!=inputs['gbbq_sha256']):
             with self.memory_lock:self.memory.clear()
@@ -99,6 +102,8 @@ class TdxBacktester:
         # behind a different stock's cold calculation.
         with self.artifacts.lock(self.artifacts.key('stock',symbol)):
             key=json.dumps(dict(symbol=symbol,start=start,asof=asof,strategy=strategy,execution=execution,
+                minute_sha256=self._minute_fingerprint(symbol),
+                minute_data_policy='tdx_native_5m_v1' if execution['staged_exit_intraday'] else None,
                 day_sha256=day_hash,gbbq_sha256=action_hash,engine=engine,
                 decoded_actions_sha256=hashlib.sha256(json.dumps(events).encode()).hexdigest()),sort_keys=True)
             inputs=json.loads(key)
@@ -145,6 +150,10 @@ class TdxBacktester:
         value['minimum_entry_shares']=max(source.minimum_entry_shares,security.minimum_buy_shares)
         return value
 
+    def _minute_fingerprint(self, symbol):
+        path = TdxMinuteSource(self.browser.root).path(symbol)
+        return fingerprint(path) if path.is_file() else None
+
     def _run(self,key,events):
         inputs=json.loads(key)
         cached=self.artifacts.get('backtest',inputs)
@@ -163,8 +172,11 @@ class TdxBacktester:
         else:
             bars,generated=decode_research(research)
         strategy=SystemStrategy(**inputs['strategy']);strategy.validate()
-        result=single_stock_result(bars,asdict(strategy),inputs['execution'],generated)
-        view=self._view(key,inputs,bars,result,research['sessions'])
+        minute_source=TdxMinuteSource(self.browser.root) if inputs['execution']['staged_exit_intraday'] else None
+        result=single_stock_result(bars,asdict(strategy),inputs['execution'],generated,
+                                   minute_loader=minute_source.get if minute_source else None)
+        view=self._view(key,inputs,bars,result,research['sessions'],
+                        minute_source.provenance() if minute_source else None)
         self._verify(inputs)
         self.artifacts.put('backtest',inputs,dict(research=research,view=view))
         return bars,generated,view,'signals_disk' if signal_hit else 'computed'
@@ -189,7 +201,7 @@ class TdxBacktester:
         cached_geometry(self.artifacts,bars,'causal_adjusted_equivalent',inputs['engine'])
         return bars,generated,all_raw,start
 
-    def _view(self,key,inputs,bars,result,sessions):
+    def _view(self,key,inputs,bars,result,sessions,minute_source=None):
         symbol=inputs['symbol']
         security=a_share_security_spec(symbol,date.fromisoformat(inputs['asof']))
         from wavequant.interfaces.charts.visualization import metrics_at
@@ -198,13 +210,15 @@ class TdxBacktester:
         result['backtest'].update(provenance='current_engine_on_local_tdx_prefix',run_id=run_id,
             requested_start=inputs['start'],price_basis='causal_adjusted_equivalent',
             source=dict(day_sha256=inputs['day_sha256'],gbbq_sha256=inputs['gbbq_sha256'],engine=inputs['engine'],
-                        decoded_actions_sha256=inputs['decoded_actions_sha256']),
+                        minute_sha256=inputs.get('minute_sha256'),
+                        decoded_actions_sha256=inputs['decoded_actions_sha256'],minute=minute_source),
             adjustment='固定起点、逐日累乘除权因子；成交等价价 ÷ 当日因子 = 模拟原始成交价',
             security_spec=security.to_dict(),
             limitations=[f'{security.board_label}普通股票规则；跳过本地最早 20 个交易日，不模拟新股上市无涨跌幅限制阶段。',
                 '日线无历史 ST / 退市状态，按历史非 ST 普通股票研究假设运行，非完整可交易性证明。',
                 '除权采用等价份额近似，不是现金分红税、配股缴款的真实现金账本。',
-                '日线收盘观察、下一根可交易开盘模拟成交；无集合竞价排队、逐笔成交或盘中止损保证。',
+                ('尾盘减仓使用已完成的五分钟线判定、下一根五分钟线开盘价模拟成交；日线和分钟线均来自通达信本地文件，时段及 OHLCV 严格核验；缺失时不混用其他数据源。无逐笔或券商成交保证。'
+                 if minute_source else '入场与原有风控退出使用日线次开盘；无逐笔或券商成交保证。'),
                 '旧严格版遇包含线中断；新版母子顺序来自讲义约定，不等于真实盘中路径；代理版是独立对照。',
                 '日线面板未提供次级周期转折，正负扭转的次级趋势线确认不参与当前入场或退出。'])
         view=dict(run_id=run_id,symbol=symbol,asof=inputs['asof'],result_scope='stock',data_source='tdx',

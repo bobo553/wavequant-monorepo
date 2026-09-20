@@ -24,6 +24,79 @@ def point(index, kind, value, available_at, **extra):
 
 
 class TrendLandmarkTests(unittest.TestCase):
+    def test_confirmed_flip_high_rebreak_qualifies_a_deeper_higher_low_at_every_level(self):
+        """The second proof route uses confirmed vertices, not a viewport peak."""
+        key = point(1, "H", 36, "2025-09-12", time="2023-08-11")
+        origin = point(2, "L", 15.20, "2025-09-12", time="2024-02-08")
+        breaker = point(5, "H", 39.98, "2026-09-07", time="2026-08-20")
+        low = point(4, "L", 21.88, "2026-09-07", time="2026-07-21", confirmed_by=breaker)
+        high = point(
+            3, "H", 36.98, "2026-09-07", time="2025-08-11", confirmed_by=low,
+            observations=[{
+                "title": "翻空为多", "available_at": "2026-09-07",
+                "key": key, "confirmed_low": origin,
+            }],
+        )
+        for level in (1, 2, 3):
+            with self.subTest(level=level):
+                source = [{"id": "source", "points": [low]}] if level > 1 else []
+                strokes = [{
+                    "id": "target", "source_path": "source",
+                    "points": [key, origin, high] if level > 1 else [key, origin, high, low],
+                }]
+                result = bear_bull_alternation_lows(strokes, trend_level=level, source_strokes=source)
+                self.assertEqual(len(result), 1)
+                self.assertEqual((result[0]["time"], result[0]["source_level"]), ("2026-07-21", max(1, level - 1)))
+                self.assertEqual(result[0]["confirmation_rule"], "confirmed_higher_pullback_then_confirmed_flip_high_rebreak")
+                self.assertEqual(result[0]["confirmed_rebreak_high"]["value"], 39.98)
+                self.assertGreater(result[0]["retracement_ratio"], 2 / 3)
+                self.assertEqual(result[0]["available_at"], "2026-09-07")
+                self.assertEqual(len(bear_to_bull_highs(strokes, trend_level=level)), 1)
+                self.assertEqual(
+                    bear_bull_alternation_lows(strokes, trend_level=level, source_strokes=source),
+                    result,
+                )
+
+                for rejected_low in (
+                    dict(low, confirmed_by=dict(breaker, value=36.98)),  # touch is not a break
+                    dict(low, confirmed_by=dict(breaker, value=36.97)),
+                    dict(low, value=15.20),  # original bear low was not held
+                    dict(low, confirmed_by=dict(breaker, index=3)),  # no later confirmed high
+                ):
+                    with self.subTest(rejected_low=rejected_low):
+                        bad_high = dict(high, confirmed_by=rejected_low)
+                        bad_source = [{"id": "source", "points": [rejected_low]}] if level > 1 else []
+                        bad_strokes = [{
+                            "id": "target", "source_path": "source",
+                            "points": [key, origin, bad_high] if level > 1 else [key, origin, bad_high, rejected_low],
+                        }]
+                        self.assertEqual(
+                            bear_bull_alternation_lows(bad_strokes, trend_level=level, source_strokes=bad_source),
+                            [],
+                        )
+
+    def test_first_tertiary_alternation_uses_same_level_wave_and_confirmed_source_low(self):
+        key = point(1, "H", 10.35, "2021-03-15")
+        origin = point(2, "L", 4.84, "2025-03-07", flip="翻空为多",
+                       broken_key=point(1, "H", 9.16, "2024-02-27"),
+                       confirmed_by=point(3, "H", 15.68, "2025-03-07"))
+        low = point(5, "L", 9, "2026-08-26")
+        high = point(4, "H", 16.8, "2026-08-26", confirmed_by=low)
+        stroke = dict(id="tertiary", points=[key, origin, high])
+        self.assertEqual(bear_bull_alternation_lows([dict(stroke, points=[key, origin])], trend_level=3), [])
+        flip = bear_to_bull_highs([stroke], trend_level=3)
+        self.assertEqual([(p['value'], p['broken_key']['value']) for p in flip], [(16.8, 10.35)])
+        result = bear_bull_alternation_lows([stroke], trend_level=3)
+        self.assertEqual(len(result), 1)
+        self.assertAlmostEqual(result[0]['retracement_ratio'], 7.8 / 11.96)
+        self.assertEqual((result[0]['trend_level'], result[0]['source_level']), (3, 2))
+        self.assertEqual(result[0]['available_at'], '2026-08-26')
+        self.assertEqual(stroke['points'], [key, origin, high])
+        for value in (8.8, 4.84, 4):
+            with self.subTest(value=value):
+                invalid = dict(stroke, points=[key, origin, dict(high, confirmed_by=dict(low, value=value))])
+                self.assertEqual(bear_bull_alternation_lows([invalid], trend_level=3), [])
+
     def test_first_strict_close_cross_after_confirmed_alternation_is_bullish_turn(self):
         frozen_key = point(1, "H", 20, "2026-01-03")
         bear_low = point(2, "L", 10, "2026-01-04")

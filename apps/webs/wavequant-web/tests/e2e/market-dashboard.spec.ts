@@ -5,6 +5,296 @@ async function selectTdx(page: import("@playwright/test").Page): Promise<void> {
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
 }
 
+async function selectSymbol(page: import("@playwright/test").Page, symbol: string): Promise<void> {
+    await page.locator("#symbol-select").evaluate((field, value) => {
+        (field as HTMLInputElement).value = value;
+        field.dispatchEvent(new Event("change", { bubbles: true }));
+    }, symbol);
+}
+
+test("hovering a candle shows its prices and copies the selected bar", async ({ page, context }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    const chart = page.locator("#price-chart");
+    await chart.scrollIntoViewIfNeeded();
+    const viewport = await chart.boundingBox();
+    expect(viewport).not.toBeNull();
+    await page.mouse.move(viewport!.x + viewport!.width * 0.55, viewport!.y + viewport!.height * 0.4);
+
+    const tooltip = chart.locator(".chart-tooltip");
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText("开盘");
+    await expect(tooltip).toContainText("最高");
+    await expect(tooltip).toContainText("最低");
+    await expect(tooltip).toContainText("收盘");
+    await expect(tooltip).toContainText("成交量");
+    const hoveredDate = (await tooltip.locator("b").first().textContent())!.split(" · ")[0];
+    await expect(page.locator("#copy-candle")).toHaveAttribute("aria-label", `复制 ${hoveredDate} K 线数据`);
+
+    await page.evaluate(() => navigator.clipboard.writeText("other clipboard content"));
+    await page.keyboard.press("ControlOrMeta+C");
+    await expect(page.locator("#candle-copy-feedback")).toContainText(`已复制 ${hoveredDate}`);
+    const shortcutCopied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(shortcutCopied).toContain("股票：600519 贵州茅台（sh.600519）");
+    expect(shortcutCopied).toContain(`日期：${hoveredDate}`);
+    expect(shortcutCopied).toContain("成交量：");
+
+    const tooltipCopy = tooltip.getByRole("button", { name: `复制 ${hoveredDate} K 线数据，也可按 Ctrl+C` });
+    await expect(tooltipCopy).toHaveText("Ctrl+C 复制");
+    expect(await tooltip.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe("auto");
+    expect(await tooltip.evaluate((element) => getComputedStyle(element).userSelect)).toBe("text");
+    const anchoredPosition = await tooltip.evaluate((element) => ({
+        left: element.style.left,
+        top: element.style.top,
+    }));
+    await tooltipCopy.click();
+    await expect(tooltipCopy).toHaveText("已复制");
+    await expect(page.locator("#candle-copy-feedback")).toContainText(`已复制 ${hoveredDate}`);
+    const clickedCopy = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clickedCopy).toContain("股票：600519 贵州茅台（sh.600519）");
+    expect(clickedCopy).toContain(`日期：${hoveredDate}`);
+    expect(await tooltip.evaluate((element) => ({ left: element.style.left, top: element.style.top }))).toEqual(
+        anchoredPosition,
+    );
+    await tooltip.locator(".chart-tooltip-price span").first().click({ clickCount: 3 });
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toContain("开盘");
+    await page.keyboard.press("ControlOrMeta+C");
+    const selectedText = await page.evaluate(() => navigator.clipboard.readText());
+    expect(selectedText).toContain("开盘");
+    expect(selectedText).not.toContain("日期：");
+
+    await page.locator("#copy-candle").click();
+    await expect(page.locator("#candle-copy-feedback")).toContainText(`已复制 ${hoveredDate}`);
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copied).toContain("股票：600519 贵州茅台（sh.600519）");
+    expect(copied).toContain(`日期：${hoveredDate}`);
+    for (const field of ["开盘", "最高", "最低", "收盘", "成交量"]) {
+        expect(copied).toContain(`${field}：`);
+    }
+    const search = page.locator("#stock-search");
+    await search.fill("copy native input");
+    await search.selectText();
+    await page.keyboard.press("ControlOrMeta+C");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("copy native input");
+    await page.setViewportSize({ width: 390, height: 844 });
+    const copyButton = page.locator("#copy-candle");
+    await copyButton.scrollIntoViewIfNeeded();
+    await expect(copyButton).toBeVisible();
+    await copyButton.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#candle-copy-feedback")).toContainText(`已复制 ${hoveredDate}`);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(copied);
+    expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+    ).toBe(true);
+    expect(pageErrors).toEqual([]);
+});
+
+test("experiment and strategy selectors remain usable across market tabs and scopes", async ({ page }) => {
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    const run = page.locator("#run-select");
+    const variant = page.locator("#variant-select");
+    await expect(page.locator("#result-scope")).toHaveValue("akshare");
+    await expect(page.locator("#all-stocks-tab")).toHaveCount(0);
+    await expect(page.locator("#stock-picker-toggle")).toHaveAttribute("aria-expanded", "true");
+    await expect(run).toBeEnabled();
+    await expect(variant).toBeEnabled();
+
+    const alternateRun = await run.locator("option").nth(1).getAttribute("value");
+    expect(alternateRun).toBeTruthy();
+    await run.selectOption(alternateRun!);
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await variant.selectOption("lecture_v2");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.locator("#buy-points-tab").click();
+    await page.locator("#stock-picker-toggle").click();
+    await expect(page.locator("#stock-picker-panel")).toBeVisible();
+    await expect(run).toBeEnabled();
+    await expect(variant).toBeEnabled();
+    await expect(run).toHaveValue(alternateRun!);
+    await expect(variant).toHaveValue("lecture_v2");
+
+    await page.locator("#result-scope").selectOption("stock");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(run).toBeEnabled();
+    await expect(variant).toBeEnabled();
+    await page.locator("#result-scope").selectOption("portfolio");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(variant).toBeEnabled();
+    await expect(variant).toHaveValue("strict_full");
+    await expect(variant.locator('option[value="lecture_v2"]')).toHaveAttribute("disabled", "");
+});
+
+test("AkShare stock selection keeps its data source until backtest is requested", async ({ page }) => {
+    test.setTimeout(180_000);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#all-stocks-tab")).toHaveCount(0);
+    await expect(page.locator("#stock-picker-panel")).toBeVisible();
+
+    await page.locator("#stock-search").fill("600519");
+    await page.locator("#stock-search").press("Enter");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#result-scope")).toHaveValue("akshare");
+    await expect(page.locator("#trade-nodes-tab")).toBeHidden();
+    await expect(page.locator("#stock-picker-current")).toContainText("600519");
+
+    const backtest = page.waitForResponse(
+        (response) =>
+            response.url().includes("/api/tdx-backtest?") &&
+            response.url().includes("symbol=sh.600519") &&
+            response.ok(),
+        { timeout: 180_000 },
+    );
+    await page.getByRole("button", { name: "运行当前股票回测" }).click();
+    await backtest;
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
+    await expect(page.locator("#result-scope")).toHaveValue("tdx-backtest");
+    await expect(page.locator("#trade-nodes-tab")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#stock-picker-panel")).toBeHidden();
+    await expect(page.locator("#stock-picker-current")).toContainText("600519");
+
+    await page.locator("#stock-picker-toggle").click();
+    await expect(page.locator("#stock-search")).toBeVisible();
+    await page.locator("#stock-search").focus();
+    await expect(page.locator("#stock-search")).toBeFocused();
+
+    await page.locator("#watchlist-toggle-current").click();
+    await page.locator("#buy-points-tab").click();
+    const watchlistBacktest = page.waitForRequest(
+        (request) => request.url().includes("/api/tdx-backtest?") && request.url().includes("symbol=sh.600519"),
+    );
+    await page.locator("#watchlist-stock-list .watchlist-stock-open").click();
+    await watchlistBacktest;
+    await expect(page.locator("#result-scope")).toHaveValue("tdx-backtest");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const rail = await page.locator(".stock-browser").boundingBox();
+    expect(rail?.width).toBeLessThanOrEqual(390);
+    expect(pageErrors).toEqual([]);
+});
+
+test("a stock without local TDX history stays in market browsing with a clear explanation", async ({ page }) => {
+    const backtestRequests: string[] = [];
+    page.on("request", (request) => {
+        if (request.url().includes("/api/tdx-backtest?")) backtestRequests.push(request.url());
+    });
+    await page.route("**/api/tdx-catalog", async (route) => {
+        const response = await route.fetch();
+        const catalog = await response.json();
+        catalog.stocks = catalog.stocks.filter((stock: { symbol: string }) => stock.symbol !== "sh.600519");
+        await route.fulfill({ response, json: catalog });
+    });
+
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.locator("#stock-search").fill("600519");
+    await page.locator("#stock-search").press("Enter");
+    await expect(page.locator("#stock-picker-feedback")).toContainText("暂无通达信本地日线");
+    await expect(page.locator("#result-scope")).toHaveValue("akshare");
+    await expect(page.locator("#run-stock-backtest")).toBeDisabled();
+    expect(backtestRequests).toEqual([]);
+});
+
+test("close-based half-wave profile reaches the current-stock backtest", async ({ page }) => {
+    test.setTimeout(180_000);
+    // Keep catalog loading deterministic; the backtest itself still goes to
+    // the real API with a local TDX stock.
+    const catalog = {
+        available: true,
+        latest: "2026-09-07",
+        with_daily: 1,
+        stocks: [
+            {
+                symbol: "sh.600519",
+                name: "贵州茅台",
+                has_data: true,
+                last: "2026-09-07",
+                bar_count: 2000,
+                source: "tdx",
+            },
+        ],
+    };
+    await page.route("**/api/tdx-catalog", (route) => route.fulfill({ json: catalog }));
+    await page.route("**/api/akshare-catalog", (route) => route.fulfill({ json: catalog }));
+    await page.route("**/api/market-timeframe?source=akshare&**", async (route) => {
+        const response = await route.fetch({ url: route.request().url().replace("source=akshare", "source=tdx") });
+        await route.fulfill({ response });
+    });
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.locator("#variant-select").selectOption("lecture_v3_close_d50_c50");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    const backtest = page.waitForResponse(
+        (response) =>
+            response.url().includes("/api/tdx-backtest?") &&
+            response.url().includes("variant=lecture_v3_close_d50_c50") &&
+            response.ok(),
+        { timeout: 180_000 },
+    );
+    await page.getByRole("button", { name: "运行当前股票回测" }).click();
+    const view = await (await backtest).json();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
+    await expect(page.locator("#result-scope")).toHaveValue("tdx-backtest");
+    await expect(page.locator("#variant-select")).toHaveValue("lecture_v3_close_d50_c50");
+    expect(view.backtest.strategy.first_pullback_basis).toBe("minimum_close");
+    expect(view.backtest.strategy.mature_shallow_inclusive).toBe(false);
+    await expect(page.locator("#backtest-details")).toContainText("最低收盘价");
+    await expect(page.locator("#backtest-details")).toContainText("< 50.00%");
+    const expectedCandidates = view.theory.events.filter(
+        (event: { event: string }) => event.event === "entry_rejected" || event.event === "entry_preflight_rejected",
+    ).length;
+    expect(expectedCandidates).toBeGreaterThan(0);
+    const blockedDates = new Set([
+        ...view.theory.events
+            .filter(
+                (event: { event: string }) =>
+                    event.event === "entry_rejected" || event.event === "entry_preflight_rejected",
+            )
+            .map((event: { available_at: string }) => event.available_at),
+        ...view.markers
+            .filter(
+                (marker: { kind: string; status?: string }) => marker.kind === "order" && marker.status === "cancelled",
+            )
+            .map((marker: { time: string }) => marker.time),
+    ]);
+    await expect(page.locator("#trade-nodes-blocked-count")).toHaveText(String(blockedDates.size));
+    await page.locator("#trade-nodes-blocked-tab").click();
+    await expect(page.locator("#trade-nodes-blocked-list .trade-node-item")).toHaveCount(blockedDates.size);
+    const candidate = page.locator('#trade-nodes-blocked-list [data-blocked-stage="screening"]').first();
+    await candidate.click();
+    await expect(page.locator("#selection-info")).toContainText("未提交买单");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-level-count", "1");
+});
+
+test("chart stock label replaces the dropdown and copies the selected stock", async ({ page, context }) => {
+    test.setTimeout(120_000);
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 90_000 });
+    await expect(page.locator("select#symbol-select")).toHaveCount(0);
+
+    await page.locator("#stock-search").fill("600015");
+    await page.locator("#stock-search").press("Enter");
+    await expect(page.locator("#symbol-copy-text")).toContainText("600015");
+    const displayed = (await page.locator("#symbol-copy-text").textContent())?.trim();
+    expect(displayed).toMatch(/^600015\s+\S+/);
+    await page.locator("#symbol-copy").click();
+    await expect(page.locator("#symbol-copy-feedback")).toHaveText(`已复制：${displayed}`);
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(displayed);
+    await page.locator("#symbol-copy").focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#symbol-copy")).toHaveAttribute("data-copy-state", "success");
+});
+
 test("the original stock project Web workbench is the default page", async ({ page }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -23,7 +313,7 @@ test("the original stock project Web workbench is the default page", async ({ pa
     );
     await page.getByRole("button", { name: "符合买点" }).click();
     await expect(page.getByRole("button", { name: "查询当前股票买点" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "对比四组幅度" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "对比五组幅度" })).toBeVisible();
 
     for (const [pageName, title] of [
         ["策略回测", "策略绩效"],
@@ -37,26 +327,385 @@ test("the original stock project Web workbench is the default page", async ({ pa
     expect(pageErrors).toEqual([]);
 });
 
-test("running a stock backtest immediately reveals its B/S executions", async ({ page }) => {
+test("running a stock backtest reveals the trade journal and any B/S executions", async ({ page }) => {
     test.setTimeout(180_000);
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
 
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
-    await page.locator("#symbol-select").selectOption("sh.600519");
+    await selectSymbol(page, "sh.600519");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await page.getByRole("button", { name: "运行当前股票回测" }).click();
     await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
 
     await expect(page.locator("#result-scope")).toHaveValue("tdx-backtest");
     await expect(page.locator("#show-fills")).toBeChecked();
-    await expect(page.locator("#fills-body tr")).toHaveCount(2);
-    await expect
-        .poll(async () => Number(await page.locator("#price-chart").getAttribute("data-trade-label-count")))
-        .toBeGreaterThan(0);
+    await expect(page.locator("#all-stocks-tab")).toHaveCount(0);
+    await expect(page.locator("#trade-nodes-tab")).toBeVisible();
+    await expect(page.locator("#trade-nodes-tab")).toHaveAttribute("aria-pressed", "true");
+    expect((await page.locator("#trade-nodes-tab").boundingBox())?.y).toBeGreaterThan(60);
+    await expect(page.locator("#trade-nodes-panel")).toBeVisible();
+    const fillCount = await page.locator("#fills-body tr").count();
+    await expect(page.locator("#trade-nodes-list .trade-node-button")).toHaveCount(fillCount);
+    if (fillCount) {
+        const buyCount = Number(await page.locator("#trade-nodes-buy-count").textContent());
+        await page.locator('[data-trade-node-filter="BUY"]').click();
+        await expect(page.locator("#trade-nodes-list .trade-node-item:visible")).toHaveCount(buyCount);
+        await page.locator('[data-trade-node-filter="all"]').click();
+        await page.locator("#trade-nodes-list .trade-node-button").first().click();
+        await expect(page.locator("#trade-nodes-list .trade-node-button").first()).toHaveAttribute(
+            "aria-current",
+            "true",
+        );
+        const selectedFillId = await page
+            .locator("#trade-nodes-list .trade-node-button")
+            .first()
+            .getAttribute("data-trade-marker-id");
+        if (!selectedFillId) throw new Error("买卖成交节点缺少图表标识");
+        await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-active", "true");
+        await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-id", selectedFillId);
+        const flashPoint = await page.locator("#price-chart").evaluate((element) => ({
+            x: Number(element.dataset.focusFlashX),
+            y: Number(element.dataset.focusFlashY),
+            width: element.clientWidth,
+            height: element.clientHeight,
+        }));
+        expect(flashPoint.x).toBeGreaterThan(0);
+        expect(flashPoint.x).toBeLessThan(flashPoint.width);
+        expect(flashPoint.y).toBeGreaterThan(0);
+        expect(flashPoint.y).toBeLessThan(flashPoint.height);
+        if (fillCount > 1) {
+            const earlierFill = page.locator("#trade-nodes-list .trade-node-button").last();
+            const earlierFillId = await earlierFill.getAttribute("data-trade-marker-id");
+            if (!earlierFillId) throw new Error("较早成交节点缺少图表标识");
+            await earlierFill.click();
+            await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-id", earlierFillId);
+        }
+        await expect
+            .poll(async () => Number(await page.locator("#price-chart").getAttribute("data-trade-label-count")))
+            .toBeGreaterThan(0);
+        await expect(page.locator("#selection-info")).toHaveAttribute("data-annotation-id", /^stock-order-/);
+        await expect(page.locator("#price-chart")).toBeInViewport({ ratio: 0.2 });
+    } else {
+        await expect(page.locator("#trade-nodes-empty")).toContainText("没有模拟成交");
+    }
+    await page.locator("#buy-points-tab").click();
+    await expect(page.locator("#trade-nodes-panel")).toBeHidden();
+    await expect(page.locator("#buy-points-panel")).toBeVisible();
+    await page.locator("#trade-nodes-tab").click();
+    await expect(page.locator("#trade-nodes-panel")).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(
+        page.locator(fillCount ? "#trade-nodes-list .trade-node-button" : "#trade-nodes-empty").first(),
+    ).toBeVisible();
+    const railBounds = await page.locator(".stock-browser").boundingBox();
+    expect(railBounds?.width).toBeLessThanOrEqual(390);
+    await page.locator("#result-scope").selectOption("akshare");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#trade-nodes-tab")).toBeHidden();
+    await expect(page.locator("#stock-picker-toggle")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator("#stock-list")).toBeVisible();
+    expect(pageErrors).toEqual([]);
+});
+
+test("each buy shows its own entry weight while average exposure stays a full-period metric", async ({ page }) => {
+    test.setTimeout(180_000);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.route("**/api/tdx-backtest?*", async (route) => {
+        const target = new URL(route.request().url());
+        if (process.env.WAVEQUANT_API_PORT) {
+            target.hostname = "127.0.0.1";
+            target.port = process.env.WAVEQUANT_API_PORT;
+        }
+        const response = await route.fetch({ url: target.toString() });
+        if (!response.ok()) throw new Error(`回测测试数据接口返回 ${response.status()}`);
+        const view = await response.json();
+        const bars = view.bars;
+        const dates = [bars.at(-8).time, bars.at(-7).time, bars.at(-4).time, bars.at(-3).time];
+        const fills = [
+            {
+                side: "BUY",
+                time: dates[0],
+                price: 20,
+                quantity: 6035,
+                equity_at_open: 1_000_000,
+                fee: 0,
+                entry_position_weight: 0.1207,
+                trade_id: "fixture-1",
+            },
+            { side: "SELL", time: dates[1], price: 22, quantity: 6035, fee: 0, trade_id: "fixture-1" },
+            {
+                side: "BUY",
+                time: dates[2],
+                price: 25,
+                quantity: 2188,
+                equity_at_open: 1_000_000,
+                fee: 0,
+                trade_id: "fixture-2",
+            },
+            { side: "SELL", time: dates[3], price: 27, quantity: 2188, fee: 0, trade_id: "fixture-2" },
+        ].map((fill, index) => ({
+            ...fill,
+            id: `stock-order-${index}`,
+            timestamp: `${fill.time}T00:00:00`,
+            signal_time: fill.time,
+            status: "filled",
+            kind: "fill",
+            reason: "fixture_entry_or_exit",
+            raw_price: fill.price,
+            symbol: view.symbol,
+        }));
+        view.markers = fills;
+        view.orders = fills;
+        view.trades = [
+            [dates[0], dates[1]],
+            [dates[2], dates[3]],
+        ].map(([entry, exit]) => ({
+            symbol: view.symbol,
+            entry_time: `${entry}T00:00:00`,
+            exit_time: `${exit}T00:00:00`,
+            bars_held: 1,
+            pnl: 100,
+            net_return: 0.01,
+            fees: 0,
+            entry_reason: "fixture",
+        }));
+        view.metrics = { ...view.metrics, entry_fills: 2, trades: 2, open_positions: 0, average_exposure: 0.0004 };
+        await route.fulfill({ json: view });
+    });
+
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await selectSymbol(page, "sh.600519");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.getByRole("button", { name: "运行当前股票回测" }).click();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
+    await expect(page.locator("#metric-exposure")).toHaveText("0.04%");
+    await expect(page.locator('#trade-nodes-list .trade-node-item[data-side="BUY"]')).toHaveCount(2);
+    await expect(page.locator('#trade-nodes-list .trade-node-item[data-side="BUY"]')).toContainText([
+        "买入后仓位 5.47%",
+        "买入后仓位 12.07%",
+    ]);
+    await expect(page.locator("#fills-body tr").filter({ hasText: "B 买入" })).toContainText(["5.47%", "12.07%"]);
+    expect(pageErrors).toEqual([]);
+});
+
+test("backtest right rail distinguishes an empty trade journal from strategy signals", async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.route("**/api/tdx-backtest?*", async (route) => {
+        const response = await route.fetch();
+        if (!response.ok())
+            throw new Error(`当前股票回测接口返回 ${response.status()}：${(await response.text()).slice(0, 300)}`);
+        const data = await response.json();
+        data.markers = data.markers.filter(
+            (marker: { kind: string; status?: string }) =>
+                marker.kind !== "fill" && !(marker.kind === "order" && marker.status === "cancelled"),
+        );
+        data.theory.events = data.theory.events.filter(
+            (event: { event: string }) =>
+                event.event !== "entry_rejected" && event.event !== "entry_preflight_rejected",
+        );
+        data.trades = [];
+        data.metrics = { ...data.metrics, entry_fills: 0, trades: 0, open_positions: 0 };
+        await route.fulfill({ response, json: data });
+    });
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.getByRole("button", { name: "运行当前股票回测" }).click();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
+    await expect(page.locator("#trade-nodes-tab")).toBeVisible();
+    await expect(page.locator("#trade-nodes-list .trade-node-item")).toHaveCount(0);
+    await expect(page.locator("#trade-nodes-empty")).toContainText("没有模拟成交");
+    await page.locator("#trade-nodes-blocked-tab").click();
+    await expect(page.locator("#trade-nodes-blocked-list .trade-node-item")).toHaveCount(0);
+    await expect(page.locator("#trade-nodes-blocked-empty")).toContainText("没有被拦截的候选或委托");
+    await expect(page.locator("#trade-nodes-copy-all")).toBeDisabled();
+    await expect(page.locator("#all-stocks-tab")).toHaveCount(0);
+});
+
+test("blocked order tab explains a rejected buy and locates its attempted candle", async ({ page }) => {
+    test.setTimeout(180_000);
+    const pageErrors: string[] = [];
+    let duplicatedDate = "";
+    let groupedDateCount = 0;
+    let blockedEventCount = 0;
+    let duplicatedDateCount = 0;
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.route("**/api/tdx-backtest?*", async (route) => {
+        const response = await route.fetch();
+        if (!response.ok())
+            throw new Error(`当前股票回测接口返回 ${response.status()}：${(await response.text()).slice(0, 300)}`);
+        const data = await response.json();
+        const candidate = data.theory.events.find(
+            (event: { event: string }) =>
+                event.event === "entry_rejected" || event.event === "entry_preflight_rejected",
+        );
+        if (!candidate) throw new Error("测试样本缺少被筛选的候选");
+        duplicatedDate = candidate.available_at.slice(0, 10);
+        data.theory.events.push({
+            ...candidate,
+            id: `${candidate.id}-same-day-check`,
+            reason:
+                candidate.reason === "attack_volume_unavailable_or_low"
+                    ? "not_squeeze_regime"
+                    : "attack_volume_unavailable_or_low",
+        });
+        const dates = [
+            ...data.theory.events
+                .filter(
+                    (event: { event: string }) =>
+                        event.event === "entry_rejected" || event.event === "entry_preflight_rejected",
+                )
+                .map((event: { available_at: string }) => event.available_at.slice(0, 10)),
+            ...data.markers
+                .filter(
+                    (marker: { kind: string; status?: string }) =>
+                        marker.kind === "order" && marker.status === "cancelled",
+                )
+                .map((marker: { time: string }) => marker.time.slice(0, 10)),
+        ];
+        blockedEventCount = dates.length;
+        groupedDateCount = new Set(dates).size;
+        duplicatedDateCount = dates.filter((date) => date === duplicatedDate).length;
+        await route.fulfill({ response, json: data });
+    });
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await selectSymbol(page, "sh.600519");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.locator("#variant-select").selectOption("lecture_v3_d67_c50");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.getByRole("button", { name: "运行当前股票回测" }).click();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
+    await expect(page.locator("#fills-body tr")).toHaveCount(0);
+    await expect(page.locator("#trade-nodes-filled-tab")).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#trade-nodes-empty")).toContainText("没有模拟成交");
+    await expect(page.locator("#trade-nodes-blocked-count")).toHaveText(String(groupedDateCount));
+
+    await page.locator("#trade-nodes-blocked-tab").click();
+    await expect(page.locator("#trade-nodes-blocked-panel")).toBeVisible();
+    await expect(page.locator("#trade-nodes-filled-panel")).toBeHidden();
+    await expect(page.locator("#trade-nodes-blocked-list .trade-node-item")).toHaveCount(groupedDateCount);
+    await expect(page.locator("#trade-nodes-blocked-summary")).toContainText(`${blockedEventCount} 次`);
+    const sameDayCard = page.locator(`#trade-nodes-blocked-list .trade-node-item[data-date="${duplicatedDate}"]`);
+    await expect(sameDayCard).toHaveCount(1);
+    await expect(sameDayCard).toContainText("量能不足或无法计算");
+    await sameDayCard.locator("summary").click();
+    await expect(sameDayCard.locator("details button")).toHaveCount(duplicatedDateCount);
+    const injectedEvent = sameDayCard.locator('details button[data-trade-marker-id$="-same-day-check"]');
+    await injectedEvent.click();
+    await expect(sameDayCard.locator(".trade-node-button")).toHaveAttribute("aria-current", "true");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-id", /same-day-check$/);
+    const blocked = page.locator('#trade-nodes-blocked-list .trade-node-button[data-blocked-stage="execution"]');
+    await expect(blocked).toHaveCount(1);
+    await expect(blocked).toContainText("2022-07-06");
+    await expect(blocked).toContainText("决定 2022-07-05");
+    await expect(blocked).toContainText("单笔风险预算不足以买入一手");
+    await blocked.click();
+    await expect(blocked).toHaveAttribute("aria-current", "true");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-active", "true");
+    const blockedId = await blocked.getAttribute("data-trade-marker-id");
+    if (blockedId === null) throw new Error("被拦截委托缺少图表标识");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-id", blockedId);
+    const flashPoint = await page.locator("#price-chart").evaluate((element) => ({
+        x: Number(element.dataset.focusFlashX),
+        y: Number(element.dataset.focusFlashY),
+        width: element.clientWidth,
+        height: element.clientHeight,
+    }));
+    expect(flashPoint.x).toBeGreaterThan(0);
+    expect(flashPoint.x).toBeLessThan(flashPoint.width);
+    expect(flashPoint.y).toBeGreaterThan(0);
+    expect(flashPoint.y).toBeLessThan(flashPoint.height);
     await expect(page.locator("#selection-info")).toHaveAttribute("data-annotation-id", /^stock-order-/);
+    await expect(page.locator("#selection-info")).toContainText("2022-07-06");
+    await expect(page.locator("#selection-info")).toContainText("单笔风险预算不足以买入一手");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-level-count", "1");
     await expect(page.locator("#price-chart")).toBeInViewport({ ratio: 0.2 });
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-active", "false", { timeout: 5_000 });
+    await blocked.click();
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-active", "true");
+    const candidate = page
+        .locator('#trade-nodes-blocked-list .trade-node-button[data-blocked-stage="screening"]')
+        .first();
+    await expect(candidate).toContainText("筛 · 未下单");
+    await candidate.click();
+    await expect(candidate).toHaveAttribute("aria-current", "true");
+    const candidateId = await candidate.getAttribute("data-trade-marker-id");
+    if (candidateId === null) throw new Error("被拦截候选缺少图表标识");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-id", candidateId);
+    await expect(page.locator("#selection-info")).toContainText("当日入场候选未通过策略筛选");
+    await expect(page.locator("#selection-info")).toContainText("未提交买单");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-level-count", "1");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await candidate.click();
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-motion", "static");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-active", "false", { timeout: 5_000 });
+    await page.locator("#trade-nodes-blocked-tab").focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(page.locator("#trade-nodes-filled-tab")).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#trade-nodes-empty")).toContainText("没有模拟成交");
+    await expect(page.locator("#trade-nodes-blocked-panel")).toBeHidden();
+    await page.keyboard.press("ArrowRight");
+    await expect(page.locator("#trade-nodes-blocked-panel")).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(blocked).toBeVisible();
+    expect((await page.locator(".stock-browser").boundingBox())?.width).toBeLessThanOrEqual(390);
+    await candidate.click();
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-active", "true");
+    await page.locator("#result-scope").selectOption("akshare");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-active", "false");
+    expect(pageErrors).toEqual([]);
+});
+
+test("blocked date cards and the complete list copy their underlying evidence", async ({ page, context }) => {
+    test.setTimeout(180_000);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await selectSymbol(page, "sh.600519");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.locator("#variant-select").selectOption("lecture_v3_d67_c50");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.getByRole("button", { name: "运行当前股票回测" }).click();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
+    await page.locator("#trade-nodes-blocked-tab").click();
+    const cards = page.locator("#trade-nodes-blocked-list .trade-node-item");
+    const cardCount = await cards.count();
+    expect(cardCount).toBeGreaterThan(0);
+    const firstCard = cards.first();
+    const firstDate = await firstCard.getAttribute("data-date");
+    expect(firstDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const selectedBefore = await page.locator("#selection-info").getAttribute("data-annotation-id");
+    await firstCard.locator(".trade-node-copy").click();
+    await expect(page.locator("#trade-nodes-copy-feedback")).toContainText(`已复制${firstDate}`);
+    const oneDayCopy = await page.evaluate(() => navigator.clipboard.readText());
+    expect(oneDayCopy).toContain("股票：600519 贵州茅台（sh.600519）");
+    expect(oneDayCopy).toContain(`${firstDate} ·`);
+    expect(oneDayCopy).toContain("拦截原因：");
+    expect(oneDayCopy).toContain("事件 ID：");
+    expect(await page.locator("#selection-info").getAttribute("data-annotation-id")).toBe(selectedBefore);
+
+    await page.locator("#trade-nodes-copy-all").click();
+    await expect(page.locator("#trade-nodes-copy-feedback")).toContainText("已复制全部日期");
+    const allCopy = await page.evaluate(() => navigator.clipboard.readText());
+    expect(allCopy).toContain(`被拦截：${cardCount} 日`);
+    expect((allCopy.match(/事件 ID：/g) || []).length).toBeGreaterThanOrEqual(cardCount);
+    expect(allCopy.length).toBeGreaterThanOrEqual(oneDayCopy.length);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const copyButton = firstCard.locator(".trade-node-copy");
+    await expect(copyButton).toBeVisible();
+    await copyButton.scrollIntoViewIfNeeded();
+    await expect(copyButton).toBeInViewport();
+    await copyButton.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#trade-nodes-copy-feedback")).toContainText(`已复制${firstDate}`);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(oneDayCopy);
     expect(pageErrors).toEqual([]);
 });
 
@@ -160,19 +809,29 @@ test("chart tools reveal detailed overlays without reducing the candle viewport"
 
     const chartCard = await page.locator(".chart-card").boundingBox();
     const chartHeader = await page.locator(".chart-card-header").boundingBox();
+    const chartViewTabs = await page.locator(".chart-view-tabs").boundingBox();
     const ohlc = await page.locator("#ohlc").boundingBox();
     const candleViewport = await page.locator("#price-chart").boundingBox();
     const replay = await page.locator(".chart-card .replay").boundingBox();
     expect(chartCard).not.toBeNull();
     expect(chartHeader).not.toBeNull();
+    expect(chartViewTabs).not.toBeNull();
     expect(ohlc).not.toBeNull();
     expect(candleViewport).not.toBeNull();
     expect(replay).not.toBeNull();
-    expect(candleViewport!.y - chartCard!.y).toBeLessThan(115);
+    expect(candleViewport!.y - chartCard!.y - chartViewTabs!.height).toBeLessThan(115);
     expect(chartCard!.height).toBeGreaterThanOrEqual(874);
-    expect(candleViewport!.height).toBeGreaterThan(650);
+    expect(candleViewport!.height + chartViewTabs!.height).toBeGreaterThan(650);
     expect(
-        Math.abs(chartCard!.height - chartHeader!.height - ohlc!.height - candleViewport!.height - replay!.height - 2),
+        Math.abs(
+            chartCard!.height -
+                chartHeader!.height -
+                chartViewTabs!.height -
+                ohlc!.height -
+                candleViewport!.height -
+                replay!.height -
+                2,
+        ),
     ).toBeLessThanOrEqual(2);
     await expect
         .poll(() =>
@@ -199,7 +858,7 @@ test("chart tools reveal detailed overlays without reducing the candle viewport"
 
     await layersTrigger.click();
     await layersPopover.locator("#show-diagnostics").check();
-    await expect(page.locator("#layer-toggle-count")).toHaveText("17/17");
+    await expect(page.locator("#layer-toggle-count")).toHaveText("20/20");
     await page.locator("#ohlc").click();
     await expect(layersPopover).toBeHidden();
 
@@ -398,7 +1057,7 @@ test("confirmed structure search distinguishes event and availability dates and 
         const view = await fetch("/api/tdx-view?symbol=sz.002896&asof=2026-09-07").then((response) => response.json());
         return view.bars.findIndex((bar: { time: string }) => bar.time === "2022-09-01");
     });
-    await page.locator("#symbol-select").selectOption("sz.002896");
+    await selectSymbol(page, "sz.002896");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await page.locator("#replay-slider").evaluate((slider, index) => {
         (slider as HTMLInputElement).value = String(index);
@@ -482,24 +1141,25 @@ test("confirmed structure search distinguishes event and availability dates and 
     await expect(result).toContainText("发生 2022-08-30 · 确认可用 2022-09-01");
     const favorite = page.locator(".structure-watchlist-add");
     await favorite.click();
-    await expect(favorite).toHaveText("★");
+    await expect(favorite.locator("svg.tabler-icon-star-filled")).toHaveCount(1);
     await expect(favorite).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("#watchlist-stock-list")).toContainText("中大力德");
     await favorite.click();
-    await expect(favorite).toHaveText("☆");
+    await expect(favorite.locator("svg.tabler-icon-star")).toHaveCount(1);
     await expect(favorite).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("#watchlist-stock-list")).not.toContainText("中大力德");
     await favorite.click();
     const railFavorite = page.locator(".watchlist-stock-remove");
-    await expect(railFavorite).toHaveText("★");
+    await expect(railFavorite.locator("svg.tabler-icon-star-filled")).toHaveCount(1);
     await expect(railFavorite).toHaveAttribute("aria-pressed", "true");
     await railFavorite.click();
-    await expect(favorite).toHaveText("☆");
+    await expect(favorite.locator("svg.tabler-icon-star")).toHaveCount(1);
     await expect(page.locator("#watchlist-stock-list")).not.toContainText("中大力德");
     await result.click();
 
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#price-chart")).toHaveAttribute("data-symbol", "sz.002896");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-focus-flash-id", /^bear-bull-alternation-low:/);
     await expect(page.locator("#selection-info")).toContainText("空多交替低点");
     await expect(page.locator("#selection-info")).toContainText("54.42% 回档");
     expect(pageErrors).toEqual([]);
@@ -537,10 +1197,14 @@ test("categorized watchlists persist locally and preserve members when a categor
     await expect(page.locator("#watchlist-count")).toHaveText("1 只");
     await expect(page.locator("#watchlist-stock-list")).toContainText(selectedSymbol);
 
+    await page.locator("#stock-search").fill("600015");
+    await page.locator("#stock-search").press("Enter");
+    await expect(page.locator("#symbol-select")).toHaveValue("sh.600015");
     await page.reload();
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#watchlist-group-select")).toContainText("重点跟踪（1）");
     await expect(page.locator("#watchlist-stock-list")).toContainText(selectedSymbol);
+    await expect(page.locator("#symbol-select")).toHaveValue(selectedSymbol);
 
     await page.getByRole("button", { name: "重命名" }).click();
     await page.locator("#watchlist-group-name").fill("核心观察");
@@ -556,6 +1220,44 @@ test("categorized watchlists persist locally and preserve members when a categor
     expect(pageErrors).toEqual([]);
 });
 
+test("watchlist rows show one-line names and codes with borderless icon stars", async ({ page }, testInfo) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+
+    const chartStar = page.locator("#watchlist-toggle-current");
+    await expect(chartStar.locator("svg")).toHaveCount(1);
+    await chartStar.click();
+    const row = page.locator("#watchlist-stock-list .watchlist-stock-row");
+    await expect(row).toHaveCount(1);
+    await expect(row).not.toContainText("点击查看");
+    await expect(row.locator(".watchlist-stock-remove svg")).toHaveCount(1);
+    await expect(chartStar.locator("svg")).toHaveCount(1);
+    await page.locator("#watchlist-rail").screenshot({ path: testInfo.outputPath("watchlist-rail.png") });
+
+    for (const width of [1920, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        const layout = await row.evaluate((element) => {
+            const name = element.querySelector("strong")!.getBoundingClientRect();
+            const code = element.querySelector("small")!.getBoundingClientRect();
+            const star = element.querySelector(".watchlist-stock-remove")!;
+            return {
+                sameLine: Math.abs(name.y + name.height / 2 - (code.y + code.height / 2)) < 6,
+                rowBorder: getComputedStyle(element).borderTopWidth,
+                starBorder: getComputedStyle(star).borderTopWidth,
+            };
+        });
+        expect(layout).toEqual({ sameLine: true, rowBorder: "0px", starBorder: "0px" });
+    }
+
+    await row.locator(".watchlist-stock-remove").click();
+    await expect(row).toHaveCount(0);
+    await expect(chartStar).toHaveAttribute("aria-pressed", "false");
+    expect(pageErrors).toEqual([]);
+});
+
 test("switching stocks shows a spinner until the new chart data is ready", async ({ page }) => {
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
@@ -568,7 +1270,7 @@ test("switching stocks shows a spinner until the new chart data is ready", async
     });
 
     const overlay = page.locator("#chart-loading-overlay");
-    await page.locator("#symbol-select").selectOption("sh.600015");
+    await selectSymbol(page, "sh.600015");
     await expect(overlay).toBeVisible();
     await expect(overlay).toContainText("正在加载股票数据…");
     await expect(overlay).toBeHidden({ timeout: 60_000 });
@@ -591,7 +1293,7 @@ test("Huaxia Bank level-two last-fall-high reanchors after the old low close bre
             response.ok(),
         { timeout: 60_000 },
     );
-    await page.locator("#symbol-select").selectOption("sh.600015");
+    await selectSymbol(page, "sh.600015");
     await huaxiaTheory;
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#error")).toBeHidden();
@@ -638,7 +1340,7 @@ test("Minsheng Bank level-one guide reaches the confirmed same-level breakout ba
             response.ok(),
         { timeout: 60_000 },
     );
-    await page.locator("#symbol-select").selectOption("sh.600016");
+    await selectSymbol(page, "sh.600016");
     await minshengTheory;
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#error")).toBeHidden();
@@ -693,7 +1395,7 @@ test("Shanghai Electric Power shows the complete level-three development path af
             response.ok(),
         { timeout: 60_000 },
     );
-    await page.locator("#symbol-select").selectOption("sh.600021");
+    await selectSymbol(page, "sh.600021");
     await shanghaiPowerTheory;
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#error")).toBeHidden();
@@ -781,7 +1483,7 @@ test("Guofang Group cancels bull-flip highs only after their preceding lows are 
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await selectTdx(page);
-    await page.locator("#symbol-select").selectOption("sh.601086");
+    await selectSymbol(page, "sh.601086");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#error")).toBeHidden();
     await expect(page.locator("#selection-info")).toContainText("601086 国芳集团");
@@ -859,7 +1561,7 @@ test("Zhongda Leader promotes the August 2022 high only after causal alternation
     await selectTdx(page);
     const symbolSelect = page.locator("#symbol-select");
     if ((await symbolSelect.inputValue()) !== "sz.002896") {
-        await symbolSelect.selectOption("sz.002896");
+        await selectSymbol(page, "sz.002896");
     }
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#error")).toBeHidden();

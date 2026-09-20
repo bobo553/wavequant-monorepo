@@ -73,8 +73,11 @@ class NSetup:
     source: str
     # No default: the caller must acknowledge the box-anchor interpretation.
     box_anchor_mode: BoxAnchorMode
+    allow_confirmation_bar: bool = False
 
     def __post_init__(self):
+        if type(self.allow_confirmation_bar) is not bool:
+            raise ValueError('allow_confirmation_bar must be boolean')
         for name in ('symbol','timeframe','source'):
             if not isinstance(getattr(self,name),str) or not getattr(self,name).strip():
                 raise ValueError(f'{name} is required')
@@ -226,15 +229,23 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     project_n_targets(a,b,c,box_anchor=b,direction=setup.direction,domain=ValueDomain.PRICE)
     anchors = NAnchors(a,b,bb.close,c,known,(b-c)/(b-a))
     kind = LevelKind.RESISTANCE if up else LevelKind.SUPPORT
-    real_key = KeyLevel(setup.symbol,timeframe,kind,bb.close,setup.neckline.index,known,setup.source)
-    virtual_key = KeyLevel(setup.symbol,timeframe,kind,b,setup.neckline.index,known,setup.source)
+    # B can already be known when today's close confirms a historical C.
+    # This is a close-time observation, never an intraday order using future C.
+    same_confirmation = (setup.allow_confirmation_bar and setup.pullback.index < known
+                         and setup.neckline.confirmed_index < known)
+    key_known = setup.neckline.confirmed_index if same_confirmation else known
+    real_key = KeyLevel(setup.symbol,timeframe,kind,bb.close,setup.neckline.index,key_known,setup.source)
+    virtual_key = KeyLevel(setup.symbol,timeframe,kind,b,setup.neckline.index,key_known,setup.source)
     # Validate supplied pivot prices against the visible structural legs. We do
     # not choose alternative pivots or invent an intrabar order on the B candle.
     adverse_value = lambda bar: bar.low if up else bar.high
     forward_value = lambda bar: bar.high if up else bar.low
     if any(sign*(adverse_value(bars[i])-a)<0 for i in range(setup.origin.index,setup.pullback.index+1)):
         raise ValueError('origin is not a valid boundary of the supplied structure')
-    if any(sign*(forward_value(bars[i])-b)>0 for i in range(setup.origin.index,setup.pullback.index+1)):
+    # The lecture path starts at A's terminal low/high. Its opposite wick
+    # belongs to the preceding leg, not the subsequent A-B impulse.
+    neckline_start = setup.origin.index + (setup.source == 'lecture_causal')
+    if any(sign*(forward_value(bars[i])-b)>0 for i in range(neckline_start,setup.pullback.index+1)):
         raise ValueError('neckline is not the extreme of the supplied A-B-C structure')
     if any(sign*(adverse_value(bars[i])-c)<0 for i in range(setup.neckline.index+1,setup.pullback.index+1)):
         raise ValueError('C is not the pullback extreme of the supplied structure')
@@ -245,7 +256,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         if sign*(adverse-c) < 0:
             raise ValueError('supplied pullback pivot was exceeded before its confirmation')
     completion = None
-    for i in range(known+1,end+1):
+    for i in range(known if same_confirmation else known+1,end+1):
         bar = bars[i]
         adverse = bar.low if up else bar.high
         if sign*(adverse-a) < 0:

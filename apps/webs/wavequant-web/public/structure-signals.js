@@ -1,4 +1,5 @@
 import { num, pct, symbolName } from "./labels.js";
+import { setWatchlistStarIcon } from "./watchlists.js";
 
 const signalNames = {
     any: "空翻多 / 空多交替 / 转多",
@@ -208,7 +209,7 @@ export class StructureSignals {
             const stockName = button.dataset.name || button.dataset.symbol;
             button.disabled = !ready;
             button.setAttribute("aria-pressed", String(added));
-            button.textContent = added ? "★" : "☆";
+            setWatchlistStarIcon(button, added);
             button.setAttribute(
                 "aria-label",
                 added
@@ -278,7 +279,9 @@ export class StructureSignals {
                         ? `严格突破末跌高 ${num(result.evidence?.broken_key?.value)} 元`
                         : result.signal_type === "bullish_turn"
                           ? `收盘 ${num(result.evidence?.previous_close)} → ${num(result.value)}，严格突破空翻多高点 ${num(result.evidence?.breakout_level)} 元`
-                          : `由 ${result.evidence?.confirmed_flip_high?.label || "翻多高点"} 回档 ${pct(result.evidence?.retracement_ratio)} 确认`;
+                          : result.evidence?.confirmed_rebreak_high
+                            ? `由 ${result.evidence?.confirmed_flip_high?.label || "翻多高点"} 回档 ${pct(result.evidence?.retracement_ratio)}，随后确认高点 ${num(result.evidence.confirmed_rebreak_high.value)} 元严格再突破`
+                            : `由 ${result.evidence?.confirmed_flip_high?.label || "翻多高点"} 回档 ${pct(result.evidence?.retracement_ratio)} 确认`;
                 button.append(name, status, timing, evidence);
                 button.addEventListener("click", () => this.onSelect(result, params));
                 const add = document.createElement("button");

@@ -48,6 +48,7 @@ class TdxBacktestTests(unittest.TestCase):
         hashes=TdxBacktester._engine_hashes()
         self.assertIn('domain/market_structure/lecture_trend.py',hashes)
         self.assertIn('domain/market_structure/secondary_trend.py',hashes)
+        self.assertIn('domain/strategies/attack_quality.py',hashes)
 
     def run_fixture(self,end=None):
         with patch('wavequant.interfaces.research_tools.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))), \
@@ -185,6 +186,16 @@ class TdxBacktestTests(unittest.TestCase):
         self.assertNotEqual(before['run_id'],after['run_id'])
         self.assertEqual(before['signals'],after['signals'])
         self.assertNotEqual(before['metrics']['total_return'],after['metrics']['total_return'])
+
+    def test_net_reward_risk_filter_keeps_signals_but_separates_execution_cache(self):
+        _,_,before=self.run_fixture()
+        self.execution['net_reward_risk_filter']=False
+        with patch('wavequant.interfaces.research_tools.tdx_backtest.generate_system_signals',side_effect=AssertionError('must reuse')):
+            _,_,after=self.service.run('sh.600000','2020-01-01',self.days[-1].isoformat(),self.strategy,self.execution)
+        self.assertEqual(after['performance']['cache'],'signals_disk')
+        self.assertNotEqual(before['run_id'],after['run_id'])
+        self.assertEqual(before['signals'],after['signals'])
+        self.assertIs(after['backtest']['execution']['net_reward_risk_filter'],False)
 
     def test_strategy_start_prefix_and_actions_invalidate(self):
         self.run_fixture()

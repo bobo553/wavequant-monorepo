@@ -3,7 +3,7 @@ import type { JSX } from "react";
 const metrics = [
     ["metric-return", "个股净收益", "资金曲线含费用、未平仓估值"],
     ["metric-dd", "最大回撤", "从初始资金与历史峰值计算"],
-    ["metric-trades", "已平仓交易", "信号 ≠ 委托 ≠ 成交"],
+    ["metric-trades", "卖出成交", "含减仓；按已实现份额统计"],
     ["metric-exposure", "平均仓位", "市值 / 账户净值的日均值"],
 ] as const;
 

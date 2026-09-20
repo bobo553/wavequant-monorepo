@@ -4,10 +4,14 @@ from __future__ import annotations
 import math
 import statistics
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, time
+from typing import Callable
 
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
+from wavequant.domain.strategies.staged_exit import StagedExitState, observe_intraday_staged_exit, observe_staged_exit
+from wavequant.infrastructure.market_data.minute import MinuteBar
+from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageError
 
 
 @dataclass
@@ -17,6 +21,7 @@ class BacktestResult:
     equity: list[dict] = field(default_factory=list)
     orders: list[dict] = field(default_factory=list)
     open_positions: list[dict] = field(default_factory=list)
+    minute_fallbacks: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -30,6 +35,8 @@ class _Position:
     initial_stop: float
     target: float
     reason: str
+    staged_exit: StagedExitState = field(default_factory=StagedExitState)
+    initial_quantity: float = 0.0
 
 
 def transaction_fee(notional: float, when: datetime, sell: bool, config: StrategyConfig) -> float:
@@ -74,14 +81,18 @@ def run_backtest(bars: list[Bar], signals: list[Signal], config: StrategyConfig)
 
 
 def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: StrategyConfig,
-                  start: str | None = None, end: str | None = None) -> BacktestResult:
-    """Orders use only prior bars plus the next opening price. No terminal forced sale.
+                  start: str | None = None, end: str | None = None,
+                  minute_loader: Callable[[Bar], list[MinuteBar]] | None = None) -> BacktestResult:
+    """Entries use next-open prices; staged exits use selected daily or minute matching.
 
     Volume capacity is a prior-bar estimate, not an auction fill guarantee. Adjusted
     units approximate reinvested corporate actions, not a cash dividend ledger.
-    Stops/targets observed in OHLC request next-open exits; they are NOT stop fills.
+    Stops (and targets when enabled) observed in OHLC request next-open exits;
+    they are NOT stop fills. V3 measured milestones do not liquidate holdings.
     """
     config.validate()
+    if config.staged_exit_intraday and minute_loader is None:
+        raise ValueError('五分钟精确减仓需要完整分钟行情来源')
     calendar: dict[datetime, dict[str, tuple[int, Bar]]] = {}
     for symbol, bars in grouped.items():
         for i, bar in enumerate(bars):
@@ -111,6 +122,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
     exit_evidence: dict[str, dict] = {}
     marks, mark_times = {}, {}
     trades, curve, orders = [], [], []
+    minute_fallbacks = []
     total_fees = turnover = 0.0
     slip = config.slippage_bps_per_side / 10000
 
@@ -125,8 +137,60 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
         orders.append(dict(timestamp=when.isoformat(), symbol=symbol, side=side,
                            status=status, reason=reason, **extra))
 
+    def execute_exit(symbol, i, bar, when, reference_price, execution_model):
+        nonlocal cash, total_fees, turnover
+        pos = positions[symbol]
+        evidence = exit_evidence.get(symbol, {})
+        fraction = evidence.get('exit_fraction', 1.0)
+        lot = config.lot_size / bar.adjustment_factor
+        quantity = pos.quantity if fraction == 1 else math.floor(pos.quantity * fraction / lot) * lot
+        if 'exit_target_fraction' in evidence:
+            desired = pos.initial_quantity * evidence['exit_target_fraction']
+            already_sold = pos.initial_quantity - pos.quantity
+            quantity = max(0.0, math.floor((desired - already_sold) / lot + 1e-9) * lot)
+        # A holding smaller than two sale lots cannot be split as requested.
+        if quantity <= 0:
+            if 'exit_target_fraction' in evidence:
+                log(when, symbol, 'SELL', 'deferred', 'reduction_below_one_lot')
+                return False
+            quantity = pos.quantity
+        reason = ('T+1' if not config.allow_same_day_exit and when.date() == pos.entry_time.date()
+                  else 'not_sellable' if not bar.sellable else
+                  'liquidity_capacity' if quantity > capacity(symbol, i, bar) + 1e-8 else '')
+        if reason:
+            log(when, symbol, 'SELL', 'deferred', reason)
+            return False
+        price = reference_price * (1-slip)
+        notional = price * quantity
+        fee = transaction_fee(notional, when, True, config)
+        allocated_entry_fee = pos.entry_fee * quantity / pos.quantity
+        cost = pos.entry_price * quantity + allocated_entry_fee
+        pnl = notional - fee - cost
+        remaining = max(0.0, pos.quantity - quantity)
+        closed = remaining < 1e-8
+        trades.append(Trade(symbol, pos.entry_time, when, pos.entry_price, price,
+                            pos.initial_stop, quantity, price/pos.entry_price-1,
+                            pnl/cost, i-pos.entry_index, pos.reason, pending_exit[symbol],
+                            pnl, fee+allocated_entry_fee, position_closed=closed))
+        cash += notional-fee
+        total_fees += fee
+        turnover += notional
+        log(when, symbol, 'SELL', 'filled', pending_exit[symbol], quantity=quantity, price=price, fee=fee,
+            remaining_quantity=remaining, position_closed=closed,
+            position_quantity_before=pos.quantity, closed_position_fraction=quantity/pos.quantity,
+            execution_model=execution_model)
+        if closed:
+            del positions[symbol]
+        else:
+            pos.quantity = remaining
+            pos.entry_fee -= allocated_entry_fee
+        del pending_exit[symbol]
+        exit_evidence.pop(symbol, None)
+        return True
+
     for tick, when in enumerate(sorted(calendar)):
         current = calendar[when]
+        daily_fallback = {}
         for symbol, (_, bar) in current.items():
             marks[symbol], mark_times[symbol] = bar.open, when.isoformat()
         # Free cash from eligible exits before sizing new entries at this open.
@@ -137,28 +201,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             if symbol not in current:
                 continue
             i, bar = current[symbol]
-            pos = positions[symbol]
-            reason = ('T+1' if not config.allow_same_day_exit and when.date() == pos.entry_time.date()
-                      else 'not_sellable' if not bar.sellable else
-                      'liquidity_capacity' if pos.quantity > capacity(symbol, i, bar) + 1e-8 else '')
-            if reason:
-                log(when, symbol, 'SELL', 'deferred', reason)
-                continue
-            price = bar.open * (1-slip)
-            notional = price * pos.quantity
-            fee = transaction_fee(notional, when, True, config)
-            cost = pos.entry_price * pos.quantity + pos.entry_fee
-            pnl = notional - fee - cost
-            trades.append(Trade(symbol, pos.entry_time, when, pos.entry_price, price,
-                                pos.initial_stop, pos.quantity, price/pos.entry_price-1,
-                                pnl/cost, i-pos.entry_index, pos.reason, pending_exit[symbol],
-                                pnl, fee+pos.entry_fee))
-            cash += notional-fee
-            total_fees += fee
-            turnover += notional
-            log(when, symbol, 'SELL', 'filled', pending_exit[symbol], quantity=pos.quantity, price=price, fee=fee)
-            del positions[symbol], pending_exit[symbol]
-            exit_evidence.pop(symbol, None)
+            if exit_evidence.get(symbol, {}).get('execution_model') not in ('same_day_close', 'intraday_5m_next_open'):
+                execute_exit(symbol, i, bar, when, bar.open, 'next_open')
         ranked = sorted(pending_entry, key=lambda s: (-(pending_entry[s][0].rvol or 0), s))
         for symbol in ranked:
             signal, created = pending_entry[symbol]
@@ -185,6 +229,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             detail = dict(signal_timestamp=signal.timestamp.isoformat(), reference_price=signal.reference_price,
                 price=price, stop_price=signal.invalidation_price, target_price=target,
                 gross_reward_risk=(target-price)/risk, required_reward_risk=signal.minimum_reward_risk,
+                net_reward_risk_filter=config.net_reward_risk_filter,
                 adjustment_factor=bar.adjustment_factor, equity_at_open=equity,
                 cash_at_open=cash, risk_budget=equity*config.risk_fraction,
                 raw_lot_size=config.lot_size)
@@ -220,43 +265,145 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 signal.invalidation_price*(1-slip)*quantity, when, True, config)
             detail.update(quantity=quantity, raw_shares=quantity*bar.adjustment_factor,
                 fee=fee, expected_net_reward=reward, expected_net_loss=loss, net_reward_risk=reward/loss)
-            if signal.minimum_reward_risk and reward/loss < signal.minimum_reward_risk:
+            if config.net_reward_risk_filter and signal.minimum_reward_risk and reward/loss < signal.minimum_reward_risk:
                 log(when, symbol, 'BUY', 'cancelled', 'insufficient_net_reward_risk', **detail)
                 continue
+            # At execution price, buying exchanges cash for shares; only the fee reduces account equity.
+            entry_position_value = price * quantity
+            account_equity_after_fill = equity - fee
+            detail.update(
+                entry_position_value=entry_position_value,
+                account_equity_after_fill=account_equity_after_fill,
+                entry_position_weight=entry_position_value / account_equity_after_fill,
+            )
             cash -= price*quantity+fee
             total_fees += fee
             turnover += price*quantity
             positions[symbol] = _Position(i, when, price, quantity, fee,
                                           signal.invalidation_price, signal.invalidation_price,
-                                          target, signal.reason)
+                                          target, signal.reason, initial_quantity=quantity)
             log(when, symbol, 'BUY', 'filled', signal.reason, **detail)
+        # Minute decisions use only completed bars; the next interval's opening
+        # price is a modeled fill, not a broker acknowledgement.
+        if config.staged_exit_intraday:
+            assert minute_loader is not None
+            for symbol in sorted(list(positions)):
+                if symbol not in current or symbol in pending_exit:
+                    continue
+                i, bar = current[symbol]
+                pos = positions[symbol]
+                state = pos.staged_exit
+                if state.recovered or state.exit_requested or state.reduction_target >= 0.65:
+                    continue
+                if state.support_index is None:
+                    support = next((j for j in range(i - 2, 0, -1)
+                                    if grouped[symbol][j].low < min(grouped[symbol][j - 1].low,
+                                                                      grouped[symbol][j + 1].low)), None)
+                    if support is None or bar.low >= grouped[symbol][support].low:
+                        continue
+                elif bar.low >= grouped[symbol][state.support_index].low:
+                    continue
+                try:
+                    minute = minute_loader(bar)
+                except MinuteCoverageError as exc:
+                    if not config.missing_minute_daily_fallback:
+                        raise
+                    evidence = dict(symbol=symbol, date=bar.timestamp.date().isoformat(),
+                                    reason='minute_history_missing', coverage=exc.coverage,
+                                    execution_model='same_day_close')
+                    daily_fallback[symbol] = evidence
+                    minute_fallbacks.append(evidence)
+                    continue
+                day_low = math.inf
+                day_high = 0.0
+                for offset, observed in enumerate(minute[:-1]):
+                    day_low = min(day_low, observed.low * bar.adjustment_factor)
+                    day_high = max(day_high, observed.high * bar.adjustment_factor)
+                    if not time(14, 30) <= observed.timestamp.time() < time(15):
+                        continue
+                    price = observed.close * bar.adjustment_factor
+                    previous_target = state.reduction_target
+                    decision = observe_intraday_staged_exit(grouped[symbol], i, state, day_low, price)
+                    if decision is None:
+                        continue
+                    following = minute[offset + 1]
+                    pending_exit[symbol] = decision['reason']
+                    exit_evidence[symbol] = dict(
+                        signal_timestamp=observed.timestamp.isoformat(),
+                        decision_timestamp=observed.timestamp.isoformat(),
+                        **{key: value for key, value in decision.items() if key != 'reason'},
+                        decision_reason=decision['reason'], stop_price=pos.stop, target_price=pos.target,
+                        observed_low=day_low, observed_high=day_high, observed_close=price,
+                        minute_next_open_raw=following.open,
+                        decision_source='completed_five_minute_bar',
+                        execution_model='intraday_5m_next_open',
+                    )
+                    filled = execute_exit(symbol, i, bar, observed.timestamp,
+                                          following.open * bar.adjustment_factor, 'intraday_5m_next_open')
+                    if not filled:
+                        state.reduction_target = previous_target
+                if exit_evidence.get(symbol, {}).get('execution_model') == 'intraday_5m_next_open':
+                    pending_exit.pop(symbol, None)
+                    exit_evidence.pop(symbol, None)
         # Old stop applies to today's bar. Newly observed trailing levels apply tomorrow.
         for symbol, pos in positions.items():
-            if symbol not in current or symbol in pending_exit:
+            if symbol not in current or (symbol in pending_exit and exit_evidence[symbol].get('exit_fraction', 1) == 1):
                 continue
             i, bar = current[symbol]
+            hard_reason = None
             if bar.low <= pos.stop:
-                pending_exit[symbol] = 'structural_stop_observed'
-            elif bar.high >= pos.target:
-                pending_exit[symbol] = 'target_observed'
+                hard_reason = 'structural_stop_observed'
+            elif config.exit_on_target and bar.high >= pos.target:
+                hard_reason = 'target_observed'
             elif i-pos.entry_index >= config.max_hold_bars:
-                pending_exit[symbol] = 'time_exit'
-            if symbol in pending_exit:
+                hard_reason = 'time_exit'
+            if hard_reason:
+                pending_exit[symbol] = hard_reason
                 exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
                     decision_reason=pending_exit[symbol], stop_price=pos.stop, target_price=pos.target,
                     observed_low=bar.low, observed_high=bar.high, observed_close=bar.close,
                     bars_held=i-pos.entry_index, decision_source='close_observed_risk_control')
+            elif config.staged_exit_enabled:
+                decision = observe_staged_exit(grouped[symbol], i, pos.staged_exit, config.initial_reduction_fraction,
+                    tiered=symbol in daily_fallback or (config.staged_exit_same_day and not config.staged_exit_intraday)) if (
+                        symbol in daily_fallback or not config.staged_exit_intraday or pos.staged_exit.breakdown_index is not None) else None
+                if decision is not None:
+                    pending_exit[symbol] = decision['reason']
+                    exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
+                        **{key: value for key, value in decision.items() if key != 'reason'},
+                        decision_reason=decision['reason'], stop_price=pos.stop, target_price=pos.target,
+                        observed_low=bar.low, observed_high=bar.high, observed_close=bar.close,
+                        decision_source='staged_support_break',
+                        execution_model='same_day_close' if config.staged_exit_same_day or symbol in daily_fallback else 'next_open',
+                        **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}))
+        # Daily close matching is explicit; it does not reconstruct a 14:30 quote.
+        for symbol in sorted(list(pending_exit)):
+            if symbol in positions and symbol in current and exit_evidence.get(symbol, {}).get('execution_model') == 'same_day_close':
+                i, bar = current[symbol]
+                execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
         for signal in signal_map.get(when, []):
             symbol = signal.symbol
             if signal.side == 'EXIT':
                 pending_entry.pop(symbol, None)
                 if symbol in positions:
-                    if symbol not in pending_exit:
-                        pending_exit[symbol] = signal.reason
+                    if symbol not in pending_exit or exit_evidence[symbol].get('exit_fraction', 1) < 1:
+                        pos = positions[symbol]
+                        inverse_reduction = (config.inverse_n_after_reduction
+                            and signal.reason == 'inverse_n_risk_exit'
+                            and pos.staged_exit.breakdown_index is not None
+                            and pos.quantity < pos.initial_quantity - 1e-8)
+                        if inverse_reduction:
+                            lot = config.lot_size / current[symbol][1].adjustment_factor
+                            remaining_to_sell = pos.initial_quantity * 0.9 - (pos.initial_quantity - pos.quantity)
+                            if math.floor(remaining_to_sell / lot + 1e-9) <= 0:
+                                continue
+                        pending_exit[symbol] = 'inverse_n_after_reduction_90' if inverse_reduction else signal.reason
                         exit_evidence[symbol] = dict(signal_timestamp=signal.timestamp.isoformat(),
                             decision_reason=signal.reason, stop_price=positions[symbol].stop,
                             target_price=positions[symbol].target, observed_close=signal.reference_price,
-                            decision_source='strategy_exit_signal')
+                            decision_source='strategy_exit_signal',
+                            **(dict(exit_fraction=0.9, exit_target_fraction=0.9,
+                                    original_signal_reason=signal.reason) if inverse_reduction else {}))
             elif symbol in positions:
                 pos = positions[symbol]
                 if pos.stop < signal.invalidation_price < current[symbol][1].close:
@@ -284,4 +431,4 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
     entries = sum(o['side']=='BUY' and o['status']=='filled' for o in orders)
     metrics.update(entry_fills=entries, evidence_status=(
         'no_entry_fills' if not entries else 'open_positions_only' if not trades else 'closed_trades_observed'))
-    return BacktestResult(trades, metrics, curve, orders, opened)
+    return BacktestResult(trades, metrics, curve, orders, opened, minute_fallbacks)

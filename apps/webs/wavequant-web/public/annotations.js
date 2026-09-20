@@ -2,12 +2,18 @@
 import { label, num, pct } from "./labels.js";
 
 const RULES = {
+    squeeze_alternation_confirmed: ["空多交替确认 · 正 N 轧空", "回调合格后，正 N 与轧空或强轧空确认 b 低点。", 168],
+    squeeze_alternation_breakout: ["空多交替后突破 a 高点", "收盘严格突破 a 高点，解除突破前的 b 低点失效条件。", 169],
+    squeeze_alternation_invalidated: ["空多交替低点失效", "尚未收盘突破 a 高点，最低价先跌破 b 低点。", 169],
+    tertiary_c_candidate: ["Ⅲ c 段启动候选", "正 N 与轧空确认后的三级结构观察。", 168],
+    tertiary_c_breakout: ["Ⅲ c 突破 a 高点", "收盘严格突破 a 段高点。", 169],
+    tertiary_c_invalidated: ["Ⅲ c 候选失效", "最低价跌破原 b 段低点。", 169],
     hierarchy_alternation_ready: ["分级空多交替", "一级及以上的翻多后确认更高低点；V2 不使用交替回撤比例过滤。", 94],
     hierarchy_bull_matured: ["分级完整多头", "交替已知后的后续收盘超过冻结翻多高点，之后按浅回撤买点筛选。", 93],
     hierarchy_context_invalidated: ["分级多头失效", "结构防守被破坏，原分级入场依据失效。", 80],
     n_completed: ["N 字完成", "实过与虚过（或实破与虚破）完成；防守点取攻击棒虚拟低／高。", 100],
     bear_to_bull_flip: ["翻空为多", "收盘突破此前冻结的末跌高；只是趋势转换的第一步。", 95],
-    bear_bull_alternation: ["空多交替", "翻多之后的回档比例与结构通过交替判定。", 94],
+    bear_bull_alternation: ["空多交替", "翻多后确认更高回档低点，并通过浅回档或随后确认高点再次突破的结构判定。", 94],
     bullish_entry_permission_confirmed: [
         "多头趋势确认",
         "翻多、交替及高低点多头结构成立；之后的新 N 字才有入场资格。",
@@ -36,7 +42,7 @@ const RULES = {
 const REASONS = {
     system_squeeze_pullback_resume: "轧空回压后恢复上涨",
     system_n_continuation: "N 字延续",
-    system_transition_squeeze: "第一类：交替后正 N 轧空（不限制回撤比例）",
+    system_transition_squeeze: "第一类：交替后正 N 轧空",
     system_mature_shallow_squeeze: "第二类 · 重点：完整多头浅回撤后正 N 轧空",
     hierarchy_transition_not_ready: "一级及以上翻多交替未齐备",
     mature_pullback_sequence_not_ready: "完整多头之后的新回撤时序未齐备",
@@ -45,6 +51,11 @@ const REASONS = {
     system_washout_reattack: "洗盘后的再次攻击",
     target_observed: "上一根已观察到目标到达",
     structural_stop_observed: "上一根已观察到结构止损条件",
+    support_low_close_break_reduce: "最低价与收盘分别跌破前回踩 K 线，首次减仓",
+    inverse_n_after_reduction_90: "首次减仓后确认倒 N，累计减仓至原持仓 90%",
+    support_low_break_reduce: "最低价跌破前回踩 K 线，收盘未跌破，减仓至 35%",
+    reduction_below_one_lot: "目标减仓数量不足一手，未成交",
+    weak_rebound_two_thirds_exit: "反弹最高价未突破下跌段 2/3，收盘再破破位低点清仓",
     last_rise_low_close_broken: "收盘跌破末升低",
     inverse_n_risk_exit: "倒 N 字风险退出",
     negative_turn_risk_exit: "负扭转风险退出",
@@ -57,6 +68,14 @@ const REASONS = {
     attack_volume_unavailable_or_low: "量能不足或无法计算",
     no_live_structural_risk_reward: "没有有效结构止损或未达目标",
     insufficient_close_gross_reward_risk: "收盘参考盈亏比不足",
+    wave_no_alternation_at_attack: "N 字攻击时尚无已确认的空多交替",
+    first_buy_requires_level_two_or_three: "第一类买点需要二级或三级空多交替，一级不符合",
+    wave_second_close_pullback_too_deep: "第二类买点的收盘回撤超过当前方案阈值",
+    wave_context_no_longer_live: "攻击时的多头结构已失效",
+    wave_alternation_not_before_n: "空多交替尚未先于 N 字攻击确认",
+    wave_flip_origin_broken: "翻多起点已被跌破",
+    wave_first_pullback_not_deep: "第一类买点的交替回撤未达到当前方案阈值",
+    wave_second_peak_pullback_sequence: "第二类买点的高点与回撤时序未成立",
     risk_budget_below_one_lot: "单笔风险预算不足以买入一手",
     position_weight_below_one_lot: "单股仓位上限不足以买入一手",
     liquidity_below_one_lot: "流动性限额不足以买入一手",
@@ -74,6 +93,21 @@ const REASONS = {
     countermove_not_below_exact_two_thirds: "回档不小于精确的三分之二",
     same_bar_vertices_require_lower_timeframe_n: "同日高低点不能组成日线 N，须提供次级周期数据",
 };
+// These orders reached the execution layer after a strategy signal, but a
+// portfolio/price risk guard prevented the simulated buy. Expiry and duplicate
+// holdings are separate diagnostics, not evidence that risk sizing failed.
+const EXECUTION_RISK_REASONS = new Set([
+    "position_limit",
+    "invalidated_at_open",
+    "entry_gap",
+    "target_exhausted_at_open",
+    "risk_budget_below_one_lot",
+    "position_weight_below_one_lot",
+    "liquidity_below_one_lot",
+    "cash_below_one_lot",
+    "cash_after_fees_below_one_lot",
+    "insufficient_net_reward_risk",
+]);
 export function reasonText(reason) {
     return (reason || "")
         .split("|")
@@ -283,7 +317,7 @@ export function lastFallHighAnnotations(levelSummaries) {
  * 领域层决定哪个来源 H 完成了同级翻多以及何时可知；浏览器只按当前
  * 图窗和因果日期筛选，不使用窗口最高价替换服务端地标。
  */
-export function bearToBullHighAnnotations(levelLandmarks, from, to) {
+export function bearToBullHighAnnotations(levelLandmarks, from, to, knownAt = to) {
     return levelLandmarks.flatMap(({ level, landmarks = [] }) => {
         const spec = LAST_FALL_HIGH_LEVELS[level];
         if (!spec) return [];
@@ -293,7 +327,7 @@ export function bearToBullHighAnnotations(levelLandmarks, from, to) {
                     landmark.kind === "H" &&
                     landmark.time >= from &&
                     landmark.time <= to &&
-                    landmark.available_at <= to,
+                    landmark.available_at <= knownAt,
             )
             .map((landmark) => {
                 const low = landmark.confirmed_low,
@@ -348,7 +382,16 @@ export function bearBullAlternationLowAnnotations(levelLandmarks, from, to, know
                 const high = landmark.confirmed_flip_high,
                     bearLow = landmark.confirmed_bear_low,
                     key = landmark.broken_key,
-                    origin = landmark.retracement_origin;
+                    origin = landmark.retracement_origin,
+                    rebreak = landmark.confirmed_rebreak_high;
+                const squeeze = landmark.confirmation_rule === "positive_n_and_squeeze_after_qualified_b";
+                const invalidated = landmark.invalidated_at && landmark.invalidated_at <= knownAt;
+                const brokenOut = landmark.breakout_at && landmark.breakout_at <= knownAt;
+                const confirmationText = squeeze
+                    ? `价格或时间回调条件合格后，正 N + ${landmark.confirmation_evidence.regime}于 ${landmark.available_at} 确认 b 低点。${invalidated ? `${landmark.invalidated_at} 尚未收盘突破 a 高点就跌破 b 低点，本次交替低点已失效。` : brokenOut ? `${landmark.breakout_at} 收盘已严格突破 a 高点，解除突破前先跌破 b 的失效条件。` : "尚未收盘突破 a 高点前，若最低价跌破 b 低点，本次交替低点失效。"}`
+                    : rebreak
+                      ? `虽回档 ${pct(landmark.retracement_ratio)}，但随后已确认的 ${rebreak.label}（${rebreak.time}，${num(rebreak.value)}）严格突破原空翻多高点；完整证据到 ${landmark.available_at} 才可知。`
+                      : `回档严格小于三分之二，完整证据到 ${landmark.available_at} 才可知。`;
                 return {
                     id: `bear-bull-alternation-low:${level}:${landmark.id}`,
                     time: landmark.time,
@@ -358,11 +401,13 @@ export function bearBullAlternationLowAnnotations(levelLandmarks, from, to, know
                     price: landmark.value,
                     markerPosition: "atPriceBottom",
                     markerShape: "arrowUp",
-                    title: `${spec.numeral} 空多交替低点 · ${landmark.label} ${num(landmark.value)}`,
-                    description: `${spec.label}趋势线在 ${high.label}（${high.time}，${num(high.value)}）严格突破冻结末跌高 ${key.label}（${key.time}，${num(key.value)}）完成空翻多后，${landmark.label}（${landmark.time}，${num(landmark.value)}）相对 ${origin.label}（${origin.time}，${num(origin.value)}）形成 ${pct(landmark.retracement_ratio)} 回档，并保持高于原空头低点 ${bearLow.label}（${bearLow.time}，${num(bearLow.value)}）。该低点到 ${landmark.available_at} 才完成空多交替确认；未确认回档、达到三分之二或跌破原低点都不会标记。`,
-                    sourceLabel: `${spec.label}趋势线 · Python 已确认空多交替低点`,
-                    priority: 145 - level,
-                    color: spec.color,
+                    title: `${spec.numeral} 空多交替低点${invalidated ? "（已失效）" : ""} · ${landmark.label} ${num(landmark.value)}`,
+                    description: squeeze
+                        ? `${spec.label} a 段：${origin.time} ${num(origin.value)} → ${high.time} ${num(high.value)}；b 低点发生于 ${landmark.time}，回档 ${pct(landmark.retracement_ratio)}。${confirmationText}${squeezeConditionText(landmark.confirmation_evidence)}低点日期与确认日期分开记录，结构确认不等于买入成交。`
+                        : `${spec.label}趋势线在 ${high.label}（${high.time}，${num(high.value)}）严格突破冻结末跌高 ${key.label}（${key.time}，${num(key.value)}）完成空翻多后，${landmark.label}（${landmark.time}，${num(landmark.value)}）相对 ${origin.label}（${origin.time}，${num(origin.value)}）形成 ${pct(landmark.retracement_ratio)} 回档，并保持高于原空头低点 ${bearLow.label}（${bearLow.time}，${num(bearLow.value)}）。${confirmationText}未确认回档或跌破原低点不会标记。`,
+                    sourceLabel: `${spec.label}趋势线 · Python 已确认空多交替低点${squeeze ? "（正 N 轧空确认）" : landmark.source_level < level ? `（${LAST_FALL_HIGH_LEVELS[landmark.source_level]?.label || landmark.source_level}已确认回档证据）` : ""}`,
+                    priority: 170 - level,
+                    color: invalidated ? "#8292a9" : spec.color,
                     levels: [
                         { name: `${spec.label}空翻多高点`, price: high.value },
                         { name: `${spec.label}冻结末跌高`, price: key.value },
@@ -370,6 +415,8 @@ export function bearBullAlternationLowAnnotations(levelLandmarks, from, to, know
                     ],
                     raw: {
                         ...landmark,
+                        invalidated_at: invalidated ? landmark.invalidated_at : undefined,
+                        breakout_at: brokenOut ? landmark.breakout_at : undefined,
                         definition: "python_confirmed_bear_bull_alternation_low",
                     },
                 };
@@ -463,9 +510,7 @@ export function bullishTurnSignalAnnotations(levelLandmarks, from, to) {
                     color: spec.color,
                     levels: [
                         { name: `${spec.label}空翻多高点`, price: flipHigh.value },
-                        ...(alternationLow
-                            ? [{ name: `${spec.label}空多交替低点`, price: alternationLow.value }]
-                            : []),
+                        ...(alternationLow ? [{ name: `${spec.label}空多交替低点`, price: alternationLow.value }] : []),
                     ],
                     raw: {
                         ...landmark,
@@ -481,12 +526,45 @@ export function ruleTitle(e) {
     if (e.event === "turn_confirmed") return e.direction === "up" ? "正扭转确认" : "负扭转确认";
     return RULES[e.event]?.[0] || label(e.event);
 }
+function squeezeConditionText(event) {
+    const paths = [];
+    if (event.price_path)
+        paths.push(`价格条件：b 最低价 ${num(event.b_low_price)} ≥ 2/3 回撤价 ${num(event.two_thirds_price)}`);
+    if (event.time_path)
+        paths.push(
+            `时间条件：b ${event.b_duration} 根 > a ${event.a_duration} 根，且 b 最低收盘 ${num(event.b_minimum_close)} < 1/2 回撤价 ${num(event.half_price)}`,
+        );
+    return `${paths.join("；")}。`;
+}
+
+function abcDescription(event, view) {
+    const date = (index) => view.bars[index]?.time || "—";
+    const outcome =
+        event.event === "squeeze_alternation_confirmed"
+            ? "b 低点确认为空多交替低点；此 N 只用于确认交替，须等待后续合格正 N 才能筛选买点。"
+            : event.event === "squeeze_alternation_breakout"
+              ? "收盘已严格突破 a 高点，解除突破前先跌破 b 的交替失效条件。"
+              : event.event === "squeeze_alternation_invalidated"
+                ? "尚未收盘突破 a 高点就先跌破 b 低点，本次交替低点失效，撤销其入场许可。"
+                : event.event === "tertiary_c_candidate"
+                  ? "b 回调可能结束、c 段可能启动，尚不保证突破 a 高点。"
+                  : event.event === "tertiary_c_breakout"
+                    ? "当前收盘已严格突破 a 高点，c 段突破得到确认。"
+                    : "当前最低价已跌破原 b 低点，这次 c 启动候选失效。";
+    return `a：${date(event.a_origin_index)} ${num(event.a_origin_price)} → ${date(event.a_high_index)} ${num(event.a_high_price)}；b 低点：${date(event.b_low_index)} ${num(event.b_low_price)}。${squeezeConditionText(event)}时间按交易 K 线间隔计算，b 截止低点，不含等待 N 的时间。${date(event.attack)} 正 N，${date(event.candidate_index)} ${event.regime}确认。${outcome}结构、策略买入信号与实际成交分别判断。`;
+}
+
 export function buildAnnotations(view, theory) {
     if (!view) return [];
     const marketDates = new Set(view.bars.map((b) => b.time));
     const items = view.markers.map((m) => {
         const fill = m.kind === "fill",
-            signal = m.kind === "signal";
+            signal = m.kind === "signal",
+            riskRejection =
+                m.kind === "order" &&
+                m.side === "BUY" &&
+                m.status === "cancelled" &&
+                EXECUTION_RISK_REASONS.has(m.reason);
         const title = fill
             ? m.side === "BUY"
                 ? "B 买入成交"
@@ -495,18 +573,30 @@ export function buildAnnotations(view, theory) {
               ? m.side === "LONG"
                   ? "买入信号"
                   : "退出信号"
-              : `委托${label(m.status)}`;
+              : riskRejection
+                ? "风控未通过 · 买入未成交"
+                : `委托${label(m.status)}`;
         const levels = [];
-        if (Number.isFinite(m.price)) levels.push({ name: fill ? "成交价" : "信号参考价", price: m.price });
+        if (Number.isFinite(m.price))
+            levels.push({ name: fill ? "成交价" : riskRejection ? "拟买价（未成交）" : "信号参考价", price: m.price });
         if (Number.isFinite(m.stop)) levels.push({ name: "原始失效参考", price: m.stop });
         if (Number.isFinite(m.target)) levels.push({ name: "原始目标投影", price: m.target });
+        const signalDate = m.signal_time || m.signal_timestamp?.slice(0, 10);
+        const riskComparison =
+            m.reason === "risk_budget_below_one_lot" &&
+            Number.isFinite(m.risk_budget) &&
+            Number.isFinite(m.one_lot_price_risk)
+                ? `单笔风险预算 ${num(m.risk_budget)} 元，一手预估风险 ${num(m.one_lot_price_risk)} 元。`
+                : "";
         return {
             ...m,
             title,
             levels,
-            category: fill ? "fills" : signal ? "signals" : "orders",
-            priority: fill ? 200 : 150,
-            description: reasonText(m.reason) + (m.side === "EXIT" ? "。空仓时也可能出现，不代表已卖出。" : ""),
+            category: fill ? "fills" : signal ? "signals" : riskRejection ? "risk-rejections" : "orders",
+            priority: fill ? 200 : riskRejection ? 160 : 150,
+            description: riskRejection
+                ? `${signalDate ? `${signalDate} 产生买入信号，` : ""}${m.time} 尝试买入时被执行风控拒绝：${reasonText(m.reason)}。${riskComparison}未实际买入。`
+                : reasonText(m.reason) + (m.side === "EXIT" ? "。空仓时也可能出现，不代表已卖出。" : ""),
             sourceLabel:
                 m.source === "single_stock_backtest"
                     ? signal
@@ -520,26 +610,74 @@ export function buildAnnotations(view, theory) {
     });
     for (const event of theory?.events || []) {
         const spec = RULES[event.event];
+        const abc = ["tertiary_c_candidate", "tertiary_c_breakout", "tertiary_c_invalidated"].includes(event.event);
+        const squeezeAlternation = event.event.startsWith("squeeze_alternation_");
+        const candidateRejection = event.event === "entry_rejected" || event.event === "entry_preflight_rejected";
+        const eventLevels = (event.levels || []).filter(
+            (level) =>
+                !level.available_at ||
+                (level.available_at <= view.asof && level.available_at <= (theory.asof || view.asof)),
+        );
+        const attackDate = Number.isInteger(event.attack) ? view.bars[event.attack]?.time : null;
+        const riskRatio =
+            event.event === "entry_preflight_rejected" && Number.isFinite(event.gross_reward_risk)
+                ? `收盘收益风险比 ${num(event.gross_reward_risk)}，要求至少 ${num(event.required_reward_risk)}。`
+                : "";
         items.push({
             id: event.id,
             time: event.available_at,
             sourceTime: event.time,
-            kind: "rule",
-            side: event.direction,
+            kind: abc ? "trend-key" : candidateRejection ? "candidate" : "rule",
+            side: candidateRejection ? "LONG" : event.direction,
             price: event.price,
-            title: ruleTitle(event),
-            description: spec?.[1] || "当前引擎已记录的规则事件。",
-            category: spec?.[3] || "rules",
-            priority: spec?.[2] || 10,
-            levels: event.levels || [],
-            sourceLabel: "当前引擎 · 所选历史前缀重算",
+            title: candidateRejection ? "入场候选未通过" : ruleTitle(event),
+            description:
+                abc || squeezeAlternation
+                    ? abcDescription(event, view)
+                    : candidateRejection
+                      ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}未产生买入信号，也未提交买单。`
+                      : spec?.[1] || "当前引擎已记录的规则事件。",
+            category: abc ? "tertiary-abc" : candidateRejection ? "entry-rejections" : spec?.[3] || "rules",
+            priority: candidateRejection ? 155 : spec?.[2] || 10,
+            levels: eventLevels,
+            sourceLabel: abc
+                ? "三级 a/b/c 结构观察 · 非成交"
+                : candidateRejection
+                  ? "当前引擎 · 策略入场候选评估"
+                  : "当前引擎 · 所选历史前缀重算",
+            ...(abc
+                ? {
+                      color: event.event === "tertiary_c_invalidated" ? "#8292a9" : "#ffad72",
+                      markerPosition: "atPriceBottom",
+                      markerShape: "circle",
+                  }
+                : {}),
             reason: event.reason,
-            raw: event,
+            raw: { ...event, levels: eventLevels },
         });
     }
-    return items
+    const knownItems = items
         .filter((m) => m.time <= view.asof && marketDates.has(m.time))
         .sort((a, b) => a.time.localeCompare(b.time) || b.priority - a.priority || a.id.localeCompare(b.id));
+    const longSignalsByDate = new Map();
+    for (const item of knownItems) {
+        if (item.kind !== "signal" || item.side !== "LONG") continue;
+        if (!longSignalsByDate.has(item.time)) longSignalsByDate.set(item.time, []);
+        longSignalsByDate.get(item.time).push(item);
+    }
+    for (const rejection of knownItems.filter((item) => item.category === "risk-rejections")) {
+        const signalDate = rejection.raw.signal_time || rejection.raw.signal_timestamp?.slice(0, 10);
+        const candidates = longSignalsByDate.get(signalDate) || [];
+        const priceMatches = candidates.filter(
+            (signal) =>
+                Number.isFinite(rejection.raw.reference_price) &&
+                Math.abs(signal.price - rejection.raw.reference_price) < 0.000001,
+        );
+        // 执行在次日开盘发生，只把已知证据挂到明确对应的原买入信号；歧义时不猜测归属。
+        const signal = priceMatches.length === 1 ? priceMatches[0] : candidates.length === 1 ? candidates[0] : null;
+        if (signal) (signal.executionRiskRejections ||= []).push(rejection);
+    }
+    return knownItems;
 }
 export function visibleAnnotations(items, options) {
     return items.filter((m) =>
@@ -547,35 +685,45 @@ export function visibleAnnotations(items, options) {
             ? options.fills
             : m.category === "signals"
               ? options.signals
-              : m.category === "orders"
-                ? options.fills && options.diagnostics
-                : m.category === "diagnostic"
-                  ? options.rules && options.diagnostics
-                  : m.category === "trend-keys"
-                    ? options.trendKeys
-                    : m.category === "trend-flip-highs"
-                      ? options.bullFlipHighs
-                      : m.category === "trend-alternation-lows"
-                        ? options.bullAlternationLows
-                        : m.category === "trend-post-alternation-bull-highs"
-                          ? options.postAlternationBullHighs
-                          : m.category === "trend-bullish-turn-signals"
-                            ? options.bullishTurnSignals
-                          : options.rules,
+              : m.category === "entry-rejections"
+                ? options.candidateRejections
+                : m.category === "risk-rejections"
+                  ? false
+                  : m.category === "orders"
+                    ? options.fills && options.diagnostics
+                    : m.category === "diagnostic"
+                      ? options.rules && options.diagnostics
+                      : m.category === "trend-keys"
+                        ? options.trendKeys
+                        : m.category === "trend-flip-highs"
+                          ? options.bullFlipHighs
+                          : m.category === "trend-alternation-lows"
+                            ? options.bullAlternationLows
+                            : m.category === "trend-post-alternation-bull-highs"
+                              ? options.postAlternationBullHighs
+                              : m.category === "trend-bullish-turn-signals"
+                                ? options.bullishTurnSignals
+                                : m.category === "tertiary-abc"
+                                  ? options.tertiaryAbc
+                                  : options.rules,
     );
 }
 export function markerGroups(items, options, span = 140) {
     const groups = [];
     const rules = new Map();
+    const candidates = new Map();
     for (const item of visibleAnnotations(items, options)) {
-        if (item.kind === "rule") {
-            const key = item.time;
-            if (!rules.has(key)) rules.set(key, []);
-            rules.get(key).push(item);
+        if (item.kind === "rule" || item.category === "entry-rejections") {
+            const grouped = item.category === "entry-rejections" ? candidates : rules;
+            if (!grouped.has(item.time)) grouped.set(item.time, []);
+            grouped.get(item.time).push(item);
         } else groups.push({ id: item.id, time: item.time, items: [item] });
     }
     for (const [time, entries] of rules) {
         entries.sort((a, b) => b.priority - a.priority);
+        groups.push({ id: entries[0].id, time, items: entries });
+    }
+    for (const [time, entries] of candidates) {
         groups.push({ id: entries[0].id, time, items: entries });
     }
     return groups
@@ -585,17 +733,20 @@ export function markerGroups(items, options, span = 140) {
                 isFill = item.kind === "fill",
                 isRule = item.kind === "rule",
                 isTrendKey = item.kind === "trend-key",
+                isCandidateRejection = item.category === "entry-rejections",
                 buy = item.side === "BUY" || item.side === "LONG";
-            const text = isFill
-                ? buy
-                    ? "B"
-                    : "S"
-                : isRule
-                  ? `${item.title}${g.items.length > 1 ? " +" + (g.items.length - 1) : ""}`
-                   : item.title;
+            const text = isCandidateRejection
+                ? ""
+                : isFill
+                  ? buy
+                      ? "B"
+                      : "S"
+                  : isRule
+                    ? `${item.title}${g.items.length > 1 ? " +" + (g.items.length - 1) : ""}`
+                    : item.title;
             const markerPosition =
                 item.markerPosition ||
-                ((isFill || isTrendKey) && Number.isFinite(item.price)
+                ((isFill || isTrendKey || isCandidateRejection) && Number.isFinite(item.price)
                     ? buy
                         ? "atPriceBottom"
                         : "atPriceTop"
@@ -610,7 +761,7 @@ export function markerGroups(items, options, span = 140) {
                     id: g.id,
                     time: g.time,
                     position: markerPosition,
-                    ...((isFill || isTrendKey) &&
+                    ...((isFill || isTrendKey || isCandidateRejection) &&
                     Number.isFinite(item.price) &&
                     markerPosition.startsWith("atPrice")
                         ? { price: item.price }
@@ -619,17 +770,21 @@ export function markerGroups(items, options, span = 140) {
                         ? buy
                             ? "#ff7d8c"
                             : "#40d6a3"
-                        : isTrendKey
-                          ? item.color
-                          : isRule
-                            ? item.category === "diagnostic"
+                        : isCandidateRejection
+                          ? "#8c9db599"
+                          : isTrendKey
+                            ? item.color
+                            : isRule
+                              ? item.category === "diagnostic"
+                                  ? "#8292a9"
+                                  : item.raw?.event === "n_completed" && item.side === "down"
+                                    ? "#40d6a3"
+                                    : "#b69af5"
+                              : item.kind === "order"
                                 ? "#8292a9"
-                                : "#b69af5"
-                            : item.kind === "order"
-                              ? "#8292a9"
-                              : buy
-                                ? "#49d5dc"
-                                : "#e6ba64",
+                                : buy
+                                  ? "#49d5dc"
+                                  : "#e6ba64",
                     shape: isFill
                         ? buy
                             ? "arrowUp"
@@ -637,18 +792,20 @@ export function markerGroups(items, options, span = 140) {
                         : isTrendKey
                           ? item.markerShape || "arrowDown"
                           : isRule
-                          ? "circle"
+                            ? "circle"
                             : "circle",
                     text: isRule && span > 70 && index % Math.ceil(span / 70) !== 0 ? "" : text,
                     size: isFill
                         ? 1.5
-                        : isTrendKey
+                        : isCandidateRejection
                           ? 0.8
-                          : isRule
-                            ? 0.65
-                            : item.kind === "signal" && item.side === "EXIT"
-                              ? 0.45
-                              : 1,
+                          : isTrendKey
+                            ? 0.8
+                            : isRule
+                              ? 0.65
+                              : item.kind === "signal" && item.side === "EXIT"
+                                ? 0.45
+                                : 1,
                 },
             };
         });

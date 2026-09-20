@@ -4,6 +4,131 @@
     "activeFeature": null,
     "features": [
         {
+            "id": "MONOREPO-112",
+            "name": "inverse-n-confirmation-bar",
+            "title": "修复倒 N 在 C 确认当日漏报",
+            "description": "V3 倒 N 允许历史 C 在当前收盘确认且同棒首次破颈线；不前移信号、不更改正 N 入场。",
+            "scope": "N 时序、V3 接入、真实瑞凌回归与完整回测。",
+            "dependencies": [
+                "MONOREPO-111"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "瑞凌 2025-05-19 确认倒 N 并产生 EXIT，05-20 补卖九成",
+                "仅历史 C 和事先已知 B 允许确认当日攻击，禁止未确认或未来数据",
+                "前缀结果稳定，正 N 与旧版默认确认语义兼容"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest/lint/typecheck/build; API test:unit; targeted Web ESLint",
+                    "status": "passed",
+                    "summary": "685 项核心测试全部通过；API 68 Python+4 Node（1 跳过）；Ruff、类型、构建与变更测试 ESLint 通过。回归覆盖历史 C 确认当棒、B 未知拒绝、旧默认兼容、前缀一致和成交次开盘。"
+                },
+                {
+                    "command": "Live sz.300154 2018-01-02..2026-09-18; Playwright built pages on 9365",
+                    "status": "passed",
+                    "summary": "真实 V13 回测及 2 项浏览器回归通过：05-19 独立倒 N 信号，05-20 补卖 1829.45850054 等价份额，余 715.87506543，累计九成。05-23 止损清余仓；未硬编码证券或日期。 仅截取截至 05-19 的真实日线重算，所有信号与完整回测此前部分完全一致，倒 N 不依赖未来数据。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-111",
+            "name": "inverse-n-after-reduction",
+            "title": "首次减仓后倒 N 累计减仓九成",
+            "description": "V3 首次支撑减仓后，确认倒 N 将累计减仓补至原持仓 90%；其他清仓风控优先。",
+            "scope": "Core 执行配置与累计数量、成交解释、回归及瑞凌实测。",
+            "dependencies": [
+                "MONOREPO-110"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "已发生支撑减仓后，独立倒 N 信号仅补卖到原持仓九成",
+                "重复信号不重复减仓；无首次减仓保持原退出；其他全仓风控优先",
+                "真实瑞凌时间证据可复核，不把未来倒 N 前移"
+            ],
+            "verification": [
+                {
+                    "command": "Core test:unit, focused staged-exit regression, lint, typecheck, config mypy, build; API test:unit; Web unit/type/build + targeted ESLint",
+                    "status": "passed",
+                    "summary": "Core 全量 682 项通过，追加结构止损优先测试后相关 23 项通过。API 68+4（1 跳过），Web 9+121、类型与构建通过；变更测试文件 ESLint 通过。 全量 Web lint 另受未修改的 market-dashboard.spec.ts:50 格式错误影响，详细限制见 workspace progress；本功能定向门禁通过。"
+                },
+                {
+                    "command": "GET /api/akshare-backtest sz.300154 2018-01-02..2026-09-18; Playwright against built pages on 9365",
+                    "status": "passed",
+                    "summary": "V12 完整回测成功；2025-05-23 已结构止损清仓，倒 N 05-30 确认。2026-06-10 倒 N 决定，06-11 实际补卖 304.871358 等价份额，余 177.553814，06-25 止损清余仓。构建页面 2 项浏览器回归通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-110",
+            "name": "missing-minute-daily-fills",
+            "title": "分钟缺失按当日日线成交",
+            "description": "按交易日自动选择分钟或日线收盘撮合，保留同源与成交证据。",
+            "scope": "Core 执行与数据覆盖、V3 配置、Web 说明和真实回测验证。",
+            "dependencies": [
+                "MONOREPO-109"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "缺少当天分钟时使用当日日线收盘撮合，其他交易日仍优先分钟",
+                "缺失原因及实际撮合方式记录；数据矛盾不得当作缺失",
+                "保留退出信号、风控、费用与 T+1，真实瑞凌全区间完成"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest + lint + typecheck + build; API test:unit; Web lint + typecheck + unit + build",
+                    "status": "passed",
+                    "summary": "Core 677 pytest；API 68 Python +4 Node（1 跳过）；Web 9 Vitest +121 Node。新增 35%/65% 缺失回退、严格模式拒绝、损坏数据不回退测试；完整分钟优先用例通过。"
+                },
+                {
+                    "command": "GET /api/akshare-backtest sz.300154 2018-01-02..2026-09-07; Playwright n-extension-levels.spec.mjs",
+                    "status": "passed",
+                    "summary": "真实完整回测返回 complete，2107 日、3 次买入、4 次卖出、9 个日期记录日线回退判断；08-07 无目标卖出。2 项浏览器回归验证完整账本、日线说明、可下载结果与目标线回放。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-109",
+            "name": "v3-target-milestones-without-forced-exit",
+            "title": "V3 目标退出修正与同源行情回测",
+            "description": "V3 到达测幅目标不自动清仓；在线日线、分钟线及复权因子统一 AKShare / 新浪，数据不足保留推演并明确标记未完成回测。",
+            "scope": "Core 退出配置、固定上游行情与分钟校验、API 同源回测端点、Web 来源保持和覆盖说明、回归及真实瑞凌验证。",
+            "dependencies": [
+                "MONOREPO-108"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "全部 V3 方案关闭仅因测幅目标到达而清仓，V1/V2 和默认执行行为保持兼容",
+                "策略 EXIT、结构止损、35%/65% 减仓、弱反弹退出和最长持仓风控继续有效",
+                "入场目标和盈亏比口径不变，回放不读未来目标，配置和缓存明确版本化",
+                "瑞凌 2026-08-07 target_observed 退出回归消除；历史分钟不足时不声称完整账户回测完成",
+                "在线日线、五分钟、复权因子固定 AKShare / 新浪；大周期同源聚合，不自动混入通达信或 BaoStock",
+                "点击回测保留来源，缺失分钟返回覆盖区间、保留日线推演并清空部分账本；可用区间正常完成"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint; typecheck; test:unit -- -q; build; mypy src/wavequant/domain/models/config.py; ruff format --check tests/test_target_exit_policy.py",
+                    "status": "passed",
+                    "summary": "669 项 pytest 与 43 子测试、Ruff、配置类型及配置模块 mypy、sdist/wheel 构建通过。新增回归覆盖瑞凌 8 月 7 日目标退出、全部 V3 配置、策略 EXIT、止损/时间风控、部分减仓、前缀和旧版本兼容。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api test:unit; real adjusted-history isolated holding replay from 2026-08-04 signal",
+                    "status": "passed",
+                    "summary": "API 4 项 Node、68 项 Python 通过，1 项环境跳过。原 2018 起点复权历史及已生成信号单独回放 8 月持仓，8 月 5 日买入 3046.10766657 等价份额，8 月 7 日无 SELL，至 9 月 7 日仍持有且无待卖；不代表全账户重算结果。"
+                },
+                {
+                    "command": "Core pytest; API pytest/Node; Web unit; lint/typecheck/build; strict mypy new modules",
+                    "status": "passed",
+                    "summary": "Core 669 原有测试与 5 项新增同源回归通过；API 68 Python +4 Node、1 跳过；Web 9 Vitest +121 Node；三个 workspace lint/typecheck/build 和新增模块严格类型通过。"
+                },
+                {
+                    "command": "Playwright n-extension-levels.spec.mjs; live /api/akshare-backtest sz.300154",
+                    "status": "passed",
+                    "summary": "2 项浏览器回归通过：保留 AKShare 来源、覆盖不足提示、禁止下载不完整结果、N 目标线及回放。2018 起点需要 2025-05-15 分钟，而当前完整源范围 2026-07-24 至 09-18；正确返回 data_unavailable、无账本和收益。2026-07-24 至 09-07 返回 complete，32 根日线、零成交。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-001",
             "name": "workspace-structure-and-rules",
             "description": "按声明式 workspace 布局迁移应用，并建立可验证、可恢复的仓库协作规范。",
@@ -41,7 +166,9 @@
             "description": "迁移 Astar 项目的完整 Agent 规则分类，并适配当前 TypeScript、NestJS、Next.js 与 Expo 技术栈。",
             "title": "迁移完整 Agent 工程规范",
             "scope": "覆盖 architecture、algorithms、backend、frontend、data-warehouse、operations 与 ai 规则，更新上下文路由并移除源项目专属约束。",
-            "dependencies": ["MONOREPO-001"],
+            "dependencies": [
+                "MONOREPO-001"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "源 docs/agent 的全部规则领域在当前项目均有对应文件",
@@ -73,7 +200,9 @@
             "description": "切换项目仓库标识与链接，并将已验证代码推送到新的 GitHub 仓库。",
             "title": "迁移 GitHub 远端仓库",
             "scope": "更新仓库元数据和应用内 GitHub 链接，保留旧远端为 upstream，并推送 main 到新 origin。",
-            "dependencies": ["MONOREPO-002"],
+            "dependencies": [
+                "MONOREPO-002"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "package 和页面中的仓库链接指向 bobo553/monorepo-template",
@@ -105,7 +234,10 @@
             "description": "参考 next-shadcn-dashboard-starter 建立符合当前仓库规范的 B 端管理后台模板。",
             "title": "新增 B 端管理后台模板",
             "scope": "新增 apps/webs/admin，复用共享设计系统，提供响应式应用壳、仪表盘、图表、列表、状态页与验证入口。",
-            "dependencies": ["MONOREPO-001", "MONOREPO-002"],
+            "dependencies": [
+                "MONOREPO-001",
+                "MONOREPO-002"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "管理后台作为独立 Next.js workspace 可运行和构建",
@@ -143,7 +275,9 @@
             "description": "新增基于 Python、PyPA、Ruff、mypy 与 pytest 官方最佳实践的 Python 工程规范。",
             "title": "新增 Python 工程规范",
             "scope": "新增 Python 通用、测试与打包规则，更新根路由、规则索引、Harness 和仓库进度。",
-            "dependencies": ["MONOREPO-002"],
+            "dependencies": [
+                "MONOREPO-002"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "Python 任务可从根 AGENTS.md 路由到独立规则域",
@@ -181,7 +315,10 @@
             "description": "将偏 Admin 的 Web 模板规则扩展为适用于各类 PC Web 页面，并保留管理后台专项约束。",
             "title": "优化 PC Web 与 Admin 模板规则",
             "scope": "新增 PC Web 页面专项规范，更新 Web 目录、前端、设计系统、根路由、Harness 与仓库进度。",
-            "dependencies": ["MONOREPO-002", "MONOREPO-004"],
+            "dependencies": [
+                "MONOREPO-002",
+                "MONOREPO-004"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "apps/webs 明确覆盖官网、内容、门户、业务应用与 Admin 等 PC Web 场景",
@@ -219,7 +356,11 @@
             "description": "新增仓库内 CLI，根据现有 H5、Admin、API 与 Mobile 模板安全创建项目。",
             "title": "新增模板项目创建 CLI",
             "scope": "新增 apps/tools/create-project workspace、根命令、模板复制与改写逻辑、测试、文档、Harness 和进度记录。",
-            "dependencies": ["MONOREPO-001", "MONOREPO-004", "MONOREPO-006"],
+            "dependencies": [
+                "MONOREPO-001",
+                "MONOREPO-004",
+                "MONOREPO-006"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "CLI 支持 h5、admin、api 与 mobile 模板并提供交互和非交互用法",
@@ -258,7 +399,11 @@
             "description": "将面向用户、分享和移动浏览器场景的通用 Web 模板明确命名为 H5。",
             "title": "将通用 Web 模板重命名为 H5",
             "scope": "将通用 Web 模板迁移并重命名为 apps/webs/h5，同步 workspace、环境变量、部署、脚手架、规则、文档和状态。",
-            "dependencies": ["MONOREPO-001", "MONOREPO-004", "MONOREPO-007"],
+            "dependencies": [
+                "MONOREPO-001",
+                "MONOREPO-004",
+                "MONOREPO-007"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "apps/webs 保持扁平 workspace 布局，Admin 继续位于 apps/webs/admin",
@@ -296,7 +441,11 @@
             "description": "建立面向用户与贡献者的公开 Roadmap，并与机器可校验的 Feature 状态保持单一事实来源。",
             "title": "新增公开项目 Roadmap",
             "scope": "新增 ROADMAP.md，明确 Now、Next、Later 与 Delivered 边界，更新入口文档、智能体规则和 Harness 引用校验。",
-            "dependencies": ["MONOREPO-002", "MONOREPO-007", "MONOREPO-008"],
+            "dependencies": [
+                "MONOREPO-002",
+                "MONOREPO-007",
+                "MONOREPO-008"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "ROADMAP.md 面向公开读者说明项目方向、当前重点、候选方向和已交付基础",
@@ -334,7 +483,11 @@
             "description": "将现有 WaveQuant Python 量化研究与浏览器工作台迁入统一 monorepo，并接入仓库状态、质量和 CI 门禁。",
             "title": "迁移 WaveQuant 量化研究工作台",
             "scope": "迁移 E:/WorkSpace/股票 当前工作树到 apps/tools/wavequant，采用 Python src 布局、pnpm workspace、统一依赖与验证入口，并保留研究行为。",
-            "dependencies": ["MONOREPO-005", "MONOREPO-007", "MONOREPO-009"],
+            "dependencies": [
+                "MONOREPO-005",
+                "MONOREPO-007",
+                "MONOREPO-009"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "源项目当前受版本控制及未忽略的工作树内容完整迁入 apps/tools/wavequant，且不复制 Git 历史、虚拟环境、缓存、数据和结果产物",
@@ -377,7 +530,9 @@
             "description": "将 WaveQuant 本地工具拆分为独立 Web、API 与 Python 核心 workspace，并保持现有研究行为和本地运行体验。",
             "title": "拆分 WaveQuant Web、API 与核心包",
             "scope": "把静态数据工作台迁入 apps/webs/wavequant-web，把 Python HTTP 服务迁入 apps/servers/wavequant-api，把研究领域与 CLI 迁入 packages/wavequant-core，建立单向依赖、独立门禁和统一启动文档。",
-            "dependencies": ["MONOREPO-010"],
+            "dependencies": [
+                "MONOREPO-010"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "WaveQuant Web、API 和核心研究能力分别位于 apps/webs、apps/servers 与 packages，旧 apps/tools/wavequant workspace 不再存在",
@@ -420,7 +575,9 @@
             "description": "为 WaveQuant API 增加可切换 SQL 持久化与 Redis 缓存基础设施，并提供 MySQL 本地运行环境。",
             "title": "新增 WaveQuant MySQL 与 Redis 能力",
             "scope": "在 apps/servers/wavequant-api 中新增数据库配置、研究运行记录仓储、Redis JSON 缓存与健康检查，提供显式初始化命令、MySQL/Redis Compose、本地配置示例和架构选型说明；保留核心包 SQLite 离线证据库。",
-            "dependencies": ["MONOREPO-011"],
+            "dependencies": [
+                "MONOREPO-011"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "WaveQuant API 支持通过环境变量连接 MySQL，并以可移植 SQLAlchemy 模型读写研究运行记录",
@@ -453,7 +610,9 @@
             "description": "根据 WaveQuant v2 设计稿还原全景市场看盘与涨停阶梯页面，并保留原有服务端研究工作台。",
             "title": "还原 WaveQuant 全景市场看盘页面",
             "scope": "在 apps/webs/wavequant-web 中将提供的离线原型拆分为 CSP 兼容的 HTML、CSS 与 JavaScript 默认页面，保留原有研究工作台到 /research，扩展 Python 静态资源白名单及 Web/API 自动验证。",
-            "dependencies": ["MONOREPO-011"],
+            "dependencies": [
+                "MONOREPO-011"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "默认根页面高保真呈现市场总览、涨停阶梯及设计稿中的全景看盘信息架构",
@@ -491,7 +650,9 @@
             "description": "将 WaveQuant 全景看盘从独立静态原型迁移为符合仓库规范的 React、Next.js App Router 与共享 shadcn 设计系统应用。",
             "title": "将 WaveQuant 看盘页迁移到 Next.js",
             "scope": "参考 apps/webs/admin 的工程结构重建 apps/webs/wavequant-web，使用 Server/Client Component 边界、features 分层、@repo/design-system-web 原语、Tailwind CSS、ECharts、Vitest 与 Playwright，并保留原研究工作台的 API 访问路径。",
-            "dependencies": ["MONOREPO-013"],
+            "dependencies": [
+                "MONOREPO-013"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "wavequant-web 使用 Next.js App Router、React 19、Tailwind CSS 4 和共享 @repo/design-system-web，不在应用内复制 shadcn UI 原语",
@@ -529,7 +690,9 @@
             "description": "补齐 Next.js 版本相对 WaveQuant 全景看盘 v2 原型缺失的功能与跨模块入口，确保迁移不造成行为退化。",
             "title": "补齐 WaveQuant v2 原型功能",
             "scope": "以原始单文件原型、使用说明和验收报告为行为基线，补齐共享时间/范围上下文、搜索、钻取、观察组、异动、多屏、复盘、导出、设置和原量化模块导航，并增加可重复的组件与浏览器回归。",
-            "dependencies": ["MONOREPO-014"],
+            "dependencies": [
+                "MONOREPO-014"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "市场看盘八个视图均保留原型的主要动作，不以静态占位卡替代交互",
@@ -568,7 +731,9 @@
             "description": "以 E:\\WorkSpace\\股票 当前完整工作树及其 web 页面为唯一迁移基线，确认核心、服务和页面功能在 monorepo 中无缺失。",
             "title": "完整迁移股票项目及原 Web 工作台",
             "scope": "逐项核对源项目 Python 模块、CLI、配置、文档、脚本、505 项测试和 web 工作台 37 项行为契约；将原 web 工作台恢复为默认产品入口，同时保留全景市场页为独立路由。",
-            "dependencies": ["MONOREPO-015"],
+            "dependencies": [
+                "MONOREPO-015"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "源项目当前未忽略工作树中的 Python 研究、回测、数据、纸面执行、运维、可视化和 CLI 能力均映射到 core 或 API，不遗漏源测试契约",
@@ -612,7 +777,9 @@
             "description": "将原股票项目 Web 研究工作台从 public 静态兼容页迁移为可直接启动的 Next.js App Router 与 React 功能页面。",
             "title": "将完整研究工作台迁移为 Next.js React 页面",
             "scope": "以 E:\\WorkSpace\\股票\\web 为功能和页面基线，在 apps/webs/wavequant-web 内建立 React 页面编排、业务组件、运行时适配和开发期 API 启动链路，保留全部 DOM/HTTP 行为契约并移除默认静态页跳转。",
-            "dependencies": ["MONOREPO-016"],
+            "dependencies": [
+                "MONOREPO-016"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "默认 / 与 /research 均由 Next.js App Router 直接渲染 React 研究工作台，不再跳转 public/research.html",
@@ -656,7 +823,9 @@
             "description": "参考 next-shadcn-dashboard-starter 的信息架构改造 WaveQuant Web 应用壳，同时保持研究工作台与全景市场功能完整。",
             "title": "改造 WaveQuant Dashboard 布局与应用壳",
             "scope": "在 apps/webs/wavequant-web 内统一可折叠侧栏、移动端抽屉、顶部工具栏、面包屑和内容滚动边界，复用共享 shadcn 原语，并保持所有现有路由、DOM 契约和业务交互。",
-            "dependencies": ["MONOREPO-017"],
+            "dependencies": [
+                "MONOREPO-017"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "研究工作台与全景市场使用统一的响应式 Dashboard 应用壳",
@@ -697,7 +866,9 @@
             "description": "参考 next-shadcn-dashboard-starter 的 data-theme 机制，为 WaveQuant 增加与涨跌语义解耦的证券蓝 UI 主题色。",
             "title": "新增适合股票行情的证券蓝主题色",
             "scope": "在 wavequant-web 的现有设置、状态持久化、shadcn token、旧研究工作台 token 与市场图表中增加证券蓝主题，保持明暗模式和涨跌配色逻辑独立。",
-            "dependencies": ["MONOREPO-018"],
+            "dependencies": [
+                "MONOREPO-018"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "界面设置提供 WaveQuant 青和证券蓝两套 UI 主题色",
@@ -736,7 +907,9 @@
             "description": "将 wavequant-core 的扁平 Python 模块重构为四层、十三个功能子域，并将仓库消费者升级到唯一规范导入路径。",
             "title": "重构 WaveQuant Core 分层架构",
             "scope": "按业务职责整理 src/wavequant，在 domain、application、infrastructure、interfaces 四层内继续拆分模型、市场结构、市场状态、策略、研究、交易、运维、行情、持久化、文件系统、图表、研究工具和筛选子域；将普通导入、延迟导入、测试 patch 和 CLI 升级到唯一规范路径，删除扁平兼容模块，不改变既有策略、研究、回测、执行与数据行为。",
-            "dependencies": ["MONOREPO-019"],
+            "dependencies": [
+                "MONOREPO-019"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "核心实现按 domain、application、infrastructure、interfaces 分层，并在每层按功能子域继续细分",
@@ -774,7 +947,9 @@
             "description": "将可复用的 React 异步视图、弹框调度与 Webpack 资源治理能力接入 monorepo 共享包。",
             "title": "接入共享 Async UI 运行时",
             "scope": "纳入 @repo/async-ui workspace，提供可取消的异步加载状态机、类型化弹框注册与调度、唯一 PopupHost、稳定优先级队列及独立 Webpack 清单和预算检查入口。",
-            "dependencies": ["MONOREPO-001"],
+            "dependencies": [
+                "MONOREPO-001"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "异步 loader 支持并发复用、超时、重试、取消、终态失败和显式 reset",
@@ -802,7 +977,9 @@
             "description": "在研究 K 线图中按一级、二级和三级趋势结构标识当前图窗末跌高，帮助直接核验结构定义。",
             "title": "标识各级末跌高定义",
             "scope": "复用既有分级趋势返回值，在来源高点绘制分级标签，并以水平引导线连接其对应的图窗最低已确认低点；不修改趋势算法、策略和回测。",
-            "dependencies": ["MONOREPO-020"],
+            "dependencies": [
+                "MONOREPO-020"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "一级、二级和三级末跌高使用各自趋势线中图窗最低已确认低点的 preceding_turn",
@@ -835,7 +1012,9 @@
             "description": "在研究 K 线图中为一级趋势线的已确认高低点显示紧凑价格标签。",
             "title": "显示一级趋势端点价格",
             "scope": "仅在一级趋势线 Canvas 图层标注端点价格，高点置于上方、低点置于下方，限制字号与小数位，不修改趋势算法和其他图层。",
-            "dependencies": ["MONOREPO-022"],
+            "dependencies": [
+                "MONOREPO-022"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "一级趋势线所有当前可见的已确认 H/L 端点显示价格",
@@ -868,7 +1047,9 @@
             "description": "末跌高被同级已确认高点严格突破后，将图中水平虚线延长到突破 K 线。",
             "title": "延长末跌高虚线到突破 K 线",
             "scope": "在现有视窗末跌高标识中识别对应低点之后首个严格越过关键位的同级已确认 H，并调整显示终点；不改变趋势、策略和回测算法。",
-            "dependencies": ["MONOREPO-022"],
+            "dependencies": [
+                "MONOREPO-022"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "突破点必须位于对应低点之后、属于同一路径且为已确认同级 H",
@@ -901,7 +1082,9 @@
             "description": "为一级趋势线端点价格数字提供独立的显示开关。",
             "title": "切换一级点位价格数字",
             "scope": "在研究图表图层设置中增加默认开启的一级点位价格开关，只控制 9px 价格文字，并在本地保存偏好；不改变一级趋势线、端点、末跌高、策略和回测逻辑。",
-            "dependencies": ["MONOREPO-023"],
+            "dependencies": [
+                "MONOREPO-023"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "研究图表提供一级点位价格复选框且默认开启",
@@ -934,7 +1117,9 @@
             "description": "修复首创环保一级趋势线跨路径衔接中价格方向错误的伪低低线。",
             "title": "保证一级趋势衔接高低交替",
             "scope": "跨一级路径显示衔接除 H/L 类型交替外还必须满足 L→H 上涨、H→L 下跌；直接方向不成立时使用期间已知的确认来源极值补成四点交替桥，没有真实证据则断开。不改变趋势确认、末跌高、策略和回测逻辑。",
-            "dependencies": ["MONOREPO-023"],
+            "dependencies": [
+                "MONOREPO-023"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "所有一级跨路径显示衔接同时满足端点类型和价格方向交替",
@@ -967,7 +1152,10 @@
             "description": "显示一级跨路径桥接节点的价格并保持正式趋势点语义不变。",
             "title": "显示一级桥接节点价格",
             "scope": "一级点位价格开启时，同时标注正式一级反转端点和显示桥采用的真实来源极值；连接首尾去重。桥接点仍为 display_only，不参与末跌高、二三级趋势、策略或回测。",
-            "dependencies": ["MONOREPO-025", "MONOREPO-026"],
+            "dependencies": [
+                "MONOREPO-025",
+                "MONOREPO-026"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "首创环保 2026-06-02 显示价格 3.28，2026-06-30 显示价格 2.68",
@@ -1000,7 +1188,10 @@
             "description": "让一级末跌高标注与页面连续显示路径采用同一组高低点。",
             "title": "统一一级显示路径与末跌高",
             "scope": "仅在浏览器图表的一级视窗摘要中，将正式一级分段与有真实来源的 display_only 桥拼成连续显示路径；最低显示低点左侧最近交替高点作为图上末跌高。服务端理论数据、二三级趋势、策略与回测保持不变。",
-            "dependencies": ["MONOREPO-026", "MONOREPO-027"],
+            "dependencies": [
+                "MONOREPO-026",
+                "MONOREPO-027"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "首创环保当前视窗最低显示低点为 2026-06-30 L 2.68",
@@ -1033,7 +1224,9 @@
             "description": "修复首创环保讲义折线在相邻来源路径边界处遗漏连接的问题。",
             "title": "连接相邻讲义折线路径",
             "scope": "仅在浏览器图表中为时间相邻、端点高低类型交替且价格方向成立的讲义路径补充 display_only 虚线连接；不修改服务端讲义路径、一级趋势、末跌高、策略或回测。",
-            "dependencies": ["MONOREPO-028"],
+            "dependencies": [
+                "MONOREPO-028"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "首创环保 2026-06-03 L 3.21 与 2026-06-04 H 3.29 之间显示连续的讲义虚线",
@@ -1066,7 +1259,9 @@
             "description": "让各级末跌高水平虚线延长到市场价格首次实际突破的 K 线，而不是等待新的同级趋势高点。",
             "title": "按实际 K 线延长末跌高虚线",
             "scope": "研究图表使用当前行情 K 线，在对应低点可知后寻找首根收盘价严格由末跌高下方穿越到上方的 K 线作为显示终点；只调整图表标识，不改变一二三级趋势确认、策略或回测。",
-            "dependencies": ["MONOREPO-024"],
+            "dependencies": [
+                "MONOREPO-024"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "皖通高速二级末跌高 2025-06-20 H3 18.58 的虚线延长到 2026-07-20 K 线",
@@ -1099,7 +1294,10 @@
             "description": "将一级趋势跨讲义路径衔接统一到 Python 领域层，使图表展示与二、三级趋势使用同一组正式一级点。",
             "title": "统一一级趋势显示与分级计算",
             "scope": "把已有的跨路径真实来源极值衔接规则迁入 wavequant-core，保留因果确认时间和来源元数据；Web 只渲染服务端正式一级点。",
-            "dependencies": ["MONOREPO-026", "MONOREPO-028"],
+            "dependencies": [
+                "MONOREPO-026",
+                "MONOREPO-028"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "华夏银行 2026-01-23 的 6.32 作为正式一级趋势低点返回",
@@ -1142,7 +1340,10 @@
             "description": "二级结构旧低被市场收盘严格跌破后，将当前末跌高迁移到后续已确认二级低点左侧的二级高点。",
             "title": "修正二级末跌高下移",
             "scope": "由 wavequant-core 根据二级点和行情收盘生成可追溯的旧低跌破换锚事件，Web 只按服务端事件选择当前二级低点与末跌高；不修改二级趋势点本身、策略或回测。",
-            "dependencies": ["MONOREPO-030", "MONOREPO-031"],
+            "dependencies": [
+                "MONOREPO-030",
+                "MONOREPO-031"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "华夏银行 2026-01-23 L34 6.32 在 2026-08-31 收盘 6.23 严格跌破后失去当前二级低点锚点",
@@ -1185,7 +1386,10 @@
             "description": "没有收盘突破时，末跌高虚线仍可延伸到服务端已确认的同级高点严格突破 K 线。",
             "title": "补齐已确认高点突破虚线",
             "scope": "图表末跌高虚线优先采用市场收盘严格突破；若不存在，则采用 Python 已确认同级趋势高点的严格价格突破，并校验该点在图窗截止日已经可知；不修改趋势点、策略或回测。",
-            "dependencies": ["MONOREPO-030", "MONOREPO-032"],
+            "dependencies": [
+                "MONOREPO-030",
+                "MONOREPO-032"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "民生银行一级末跌高 2026-06-15 H293 3.65 的虚线延伸到 2026-08-03 H294 3.67 K 线",
@@ -1218,7 +1422,10 @@
             "description": "三级末跌高被二级高点突破并确认三级低点后，继续显示从该低点到当前二级极值的发展中三级尾段。",
             "title": "补齐三级趋势发展尾段",
             "scope": "由 wavequant-core 从已确认二级点生成纯显示、可因果回放的发展中三级尾段；Web 只渲染服务端返回的尾段并明确区分正式三级反转点。正式三级点、四级输入、策略和回测保持不变。",
-            "dependencies": ["MONOREPO-020", "MONOREPO-033"],
+            "dependencies": [
+                "MONOREPO-020",
+                "MONOREPO-033"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "上海电力 2007-05-30 三级末跌高 H1 12.97 被 2015-06-02 二级 H12 34.50 突破后，显示 2008-11-06 三级 L2 2.68 到 H12 34.50 的发展中上涨尾段",
@@ -1261,7 +1468,9 @@
             "description": "三级正式反转长期未完成时，完整显示其后已经确认可知的二级结构演化与当前候选端点。",
             "title": "补全三级趋势发展路径",
             "scope": "保留三级正式结构突破规则；Core 参照分层趋势的确认与发展边界，从最后一个正式三级点开始生成只读发展路径，Web 完整渲染而不自行选点。",
-            "dependencies": ["MONOREPO-034"],
+            "dependencies": [
+                "MONOREPO-034"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "上海电力三级发展路径不再截止于 2015-06-02，而是覆盖其后已确认二级结构并延伸到当前已确认候选点",
@@ -1304,7 +1513,10 @@
             "description": "二级趋势尾部的旧低被收盘严格跌破且后续二级高点已确认时，将末跌高换锚到该高点。",
             "title": "修正二级尾部末跌高下移",
             "scope": "由 wavequant-core 扩展二级末跌高的因果换锚规则：没有后续正式二级低点时，允许使用已经确认的后续二级高点及其一级确认低点作为当前尾部证据；Web 只消费服务端事件，不自行重算业务规则。",
-            "dependencies": ["MONOREPO-032", "MONOREPO-035"],
+            "dependencies": [
+                "MONOREPO-032",
+                "MONOREPO-035"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "上海电力二级 L26 2026-04-28 16.73 被 2026-06-23 收盘 16.29 严格跌破后失去当前低点锚点",
@@ -1352,7 +1564,10 @@
             "description": "正式二级反转长期未完成时，完整显示其后已经确认可知的一级结构演化与当前候选端点。",
             "title": "补全二级趋势发展路径",
             "scope": "保留二级正式结构的冻结关键位与严格突破规则；Core 生成最后一个正式二级点之后的只读发展路径，Web 使用同色虚线渲染并明确区分正式二级反转点。",
-            "dependencies": ["MONOREPO-031", "MONOREPO-035"],
+            "dependencies": [
+                "MONOREPO-031",
+                "MONOREPO-035"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "中大力德正式二级线保持结束于 2022-05-27 L9 13.16，不能伪造后续正式二级反转点",
@@ -1395,7 +1610,10 @@
             "description": "突破旧二级末跌高后，以场景回撤和已确认的非正式二级反转点升级突破高点。",
             "title": "补充二级高点交替升级规则",
             "scope": "由 wavequant-core 在既有一级结构严格突破规则之外，增加仅适用于二级趋势的因果升级通道：翻空为多的一级高点必须先突破上一正式二级末跌高，随后完成严格小于 2/3 的较高回撤，并由一级结构确认出非正式二级反转低点，才能升级为正式二级高点；Web 只展示 Python 返回的证据。",
-            "dependencies": ["MONOREPO-031", "MONOREPO-037"],
+            "dependencies": [
+                "MONOREPO-031",
+                "MONOREPO-037"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "中大力德 2022-08-03 H70 49.56 突破 2021-12-01 正式二级末跌高 H8 27.71 后进入升级候选",
@@ -1438,7 +1656,10 @@
             "description": "计算各级翻空为多结构的确认高点，并在研究 K 线图中提供可核验标识。",
             "title": "标识各级空翻多确认高点",
             "scope": "由 wavequant-core 从每一级正式趋势的翻空为多确认链中生成高点地标，保存来源低点、被冻结的末跌高、确认日和路径；Web 参考末跌高标识按当前图窗展示，不按窗口最高价重算业务点。",
-            "dependencies": ["MONOREPO-022", "MONOREPO-038"],
+            "dependencies": [
+                "MONOREPO-022",
+                "MONOREPO-038"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "一级、二级和三级趋势均由 Core 输出翻空为多确认高点，且每个高点可追溯到正式低点、突破依据和因果可用日",
@@ -1481,7 +1702,9 @@
             "description": "修正空翻多高点资格，所有级别都必须有冻结末跌高且由确认高点严格突破。",
             "title": "严格校验空翻多末跌高突破",
             "scope": "Core 统一校验一级、二级、三级空翻多地标：一级只消费真实翻空为多观察事件，二三级只消费带完整突破证据的正式低点；确认高点必须严格高于冻结末跌高。Web 继续只展示 Core 合格结果。",
-            "dependencies": ["MONOREPO-039"],
+            "dependencies": [
+                "MONOREPO-039"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "普通 down-to-up 波向切换不再自动生成一级空翻多高点",
@@ -1524,7 +1747,9 @@
             "description": "计算各级空翻多之后已经确认的空多交替低点，并在研究 K 线图中提供可核验标识。",
             "title": "标识已确认空多交替低点",
             "scope": "由 wavequant-core 从每一级真实空翻多观察链中生成已确认的回档低点地标，保存空翻多高点、原空头低点、冻结末跌高、回档比例与可用日；Web 只按图窗和因果日期展示。",
-            "dependencies": ["MONOREPO-040"],
+            "dependencies": [
+                "MONOREPO-040"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "低点必须来自 Core 已确认的空多交替观察，且严格发生在合格空翻多高点之后",
@@ -1572,7 +1797,9 @@
             "description": "标识各级空多交替低点之后第一段已确认多头上涨趋势的高点。",
             "title": "标识空多交替后的多头段高点",
             "scope": "由 wavequant-core 在每个已确认空多交替低点之后，仅选择同一路径中第一个已确认、价格上涨的同级高点，并保存交替低点、前置空翻多证据和因果可用日；Web 只按图窗与回放日期显示。",
-            "dependencies": ["MONOREPO-041"],
+            "dependencies": [
+                "MONOREPO-041"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "高点必须是已确认空多交替低点之后同一路径的第一个同级点，且类型为 H、价格严格高于交替低点",
@@ -1620,7 +1847,10 @@
             "description": "按回放日期、确认窗口和趋势级别搜索近期出现空翻多或空多交替低点的股票。",
             "title": "新增转多与空多交替低点搜索",
             "scope": "复用 Core 已确认的各级结构地标，对本地通达信或封存样本执行可取消的逐股搜索；以地标可用日而非事后发生日匹配窗口，Web 提供信号类型、级别和窗口筛选并可定位到原图复核。",
-            "dependencies": ["MONOREPO-041", "MONOREPO-042"],
+            "dependencies": [
+                "MONOREPO-041",
+                "MONOREPO-042"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "支持搜索空翻多高点和空多交替低点，并可选择全部、一级、二级或三级趋势",
@@ -1669,7 +1899,10 @@
             "description": "在行情或结构算法版本变化后后台重建结构信号读模型，前端请求只读取已完成快照。",
             "title": "结构信号每日预计算与直接查询",
             "scope": "为结构信号增加带行情指纹和 Core 算法指纹的持久化快照、幂等刷新 Worker、定时变更检测和只读查询 API；MySQL/PostgreSQL 保存事实快照，Redis 缓存查询，前端不再在请求链路逐股计算。",
-            "dependencies": ["MONOREPO-012", "MONOREPO-043"],
+            "dependencies": [
+                "MONOREPO-012",
+                "MONOREPO-043"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "后台一次计算全部类型、全部级别和最近 20 个交易日的结构地标，1/5/20 日查询复用同一快照",
@@ -1713,7 +1946,9 @@
             "description": "增加 AkShare 沪深京 A 股列表与日线行情数据源，并复用现有只读图表和结构分析能力。",
             "title": "接入 AkShare A 股数据源",
             "scope": "在 Core 增加可注入、可缓存的 AkShare 适配器，API 提供独立目录、行情和理论端点，Web 可切换 AkShare 浏览；联网数据不进入封存回测、买点扫描或持久研究证据。",
-            "dependencies": ["MONOREPO-044"],
+            "dependencies": [
+                "MONOREPO-044"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 依赖版本与许可证明确记录，并通过 API workspace 的独立 Python 环境安装",
@@ -1752,7 +1987,9 @@
             "description": "允许在 AkShare 行情口径下分析当前股票的买点和结构信号。",
             "title": "启用 AkShare 当前股票信号分析",
             "scope": "复用已缓存的 AkShare 当前股票日线，按所选策略计算买点信号并按确认窗口筛选结构地标；不对在线全市场逐股抓取，不执行回测成交或交易。",
-            "dependencies": ["MONOREPO-045"],
+            "dependencies": [
+                "MONOREPO-045"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 口径下符合买点和结构信号标签可操作，并明确范围是当前股票",
@@ -1785,7 +2022,10 @@
             "description": "以统一适配器隔离 AkShare、通达信等行情源，使来源切换不影响图表、结构和信号领域逻辑。",
             "title": "统一行情数据适配器与规范仓库",
             "scope": "在 Core 建立稳定的市场数据端口、AkShare/通达信适配器和规范仓库；目录与日线缺失由备用源补齐，重复日期保留主源值，并向 API/Web 提供完整来源证据。",
-            "dependencies": ["MONOREPO-045", "MONOREPO-046"],
+            "dependencies": [
+                "MONOREPO-045",
+                "MONOREPO-046"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 与通达信实现相同的目录、日线和元数据适配器端口，第三方结构不进入领域算法",
@@ -1828,7 +2068,11 @@
             "description": "将买点与结构信号提前计算并分别持久化，交互查询只读取 SQL/Redis 读模型。",
             "title": "统一信号预计算与分表缓存",
             "scope": "为买点和结构信号建立独立的 SQL 快照表与 Redis 命名空间；后台 Worker 根据行情数据版本和算法版本幂等重建、完成后原子发布，Web 查询链路不再执行信号计算。",
-            "dependencies": ["MONOREPO-044", "MONOREPO-046", "MONOREPO-047"],
+            "dependencies": [
+                "MONOREPO-044",
+                "MONOREPO-046",
+                "MONOREPO-047"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "买点信号和结构信号分别保存到独立 SQL 表，数据库是事实来源，Redis 仅保存有 TTL 的可重建查询缓存",
@@ -1868,7 +2112,9 @@
             "description": "将 AkShare 结构信号从当前股票快照改为服务器预计算覆盖范围内的市场级股票列表。",
             "title": "修复 AkShare 全市场结构信号查询",
             "scope": "保留按股票可恢复的后台计算分片，在查询层聚合相同运行、行情日与结构算法版本的已发布 AkShare 分片；结构地标跨买点策略复用，前端筛选不再绑定当前股票，并明确预计算覆盖与空结果状态。",
-            "dependencies": ["MONOREPO-048"],
+            "dependencies": [
+                "MONOREPO-048"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 结构信号查询不携带当前股票，返回服务器已预计算覆盖范围内所有满足筛选条件的股票列表",
@@ -1906,7 +2152,9 @@
             "description": "为预计算市场结构查询增加板块多选，并在服务端排除名称包含星号的风险警示股票。",
             "title": "增加市场结构板块筛选",
             "scope": "支持上证主板、深证主板、创业板、科创板和北京市场多选，默认上证主板、深证主板、创业板；服务端只过滤已发布快照，统一去掉名称包含 * 或全角星号的股票，并按市场组合隔离 Redis 缓存。",
-            "dependencies": ["MONOREPO-049"],
+            "dependencies": [
+                "MONOREPO-049"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "结构信号页面支持上证、深证、创业板、科创板和北京市场多选，默认选中上证、深证和创业板",
@@ -1949,7 +2197,9 @@
             "description": "修复确认日明显晚于发生日时，空多交替低点在历史图窗中被错误隐藏的问题。",
             "title": "补齐空多交替低点标识",
             "scope": "将空多交替低点的图窗范围与因果可知截止日分离：标识位置继续使用真实低点日期，是否可见使用当前行情回放截面判断；查询结果定位后自动选中对应分级标识。",
-            "dependencies": ["MONOREPO-050"],
+            "dependencies": [
+                "MONOREPO-050"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "已在当前回放截面确认的空多交替低点，即使确认日晚于当前历史图窗右边界也显示在真实低点日期",
@@ -1986,7 +2236,9 @@
             "description": "把空多交替确认后首次收盘突破空翻多高点发布为可查询的转多信号，并补齐图表标识与证据连线。",
             "title": "增加转多结构信号",
             "scope": "Core 按各级已确认空多交替及原空翻多高点，在交替可知日之后识别收盘价首次从下向上严格突破；API 只查询预计算快照；Web 以与空翻多标识一致的分级样式展示交替低点和突破 K，并从空翻多高点绘制虚线到突破 K。",
-            "dependencies": ["MONOREPO-051"],
+            "dependencies": [
+                "MONOREPO-051"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "空多交替低点按空翻多标识的分级颜色、箭头和价格锚点对称展示",
@@ -2024,7 +2276,9 @@
             "description": "修复 AkShare 市场结构覆盖数被误解为市场总量的问题，并恢复指定回放日的全目录后台补算。",
             "title": "明确 AkShare 全市场预计算进度",
             "scope": "结构查询继续只读取已发布快照；Web 使用已加载的 AkShare 目录展示已发布数、全目录总数和当前板块筛选规模，并在未完成时标明后台重建中；常驻 Worker 固定补算 2026-09-07 全目录。",
-            "dependencies": ["MONOREPO-052"],
+            "dependencies": [
+                "MONOREPO-052"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "页面将已发布快照数与 AkShare 全目录总数明确区分，不再把 296 显示成全市场总量",
@@ -2062,7 +2316,9 @@
             "description": "将股票目录持久化到浏览器 IndexedDB，并仅在服务端目录版本变化时同步替换。",
             "title": "增加股票列表 IndexedDB 缓存",
             "scope": "为通达信与 AkShare 股票目录提供稳定 ETag；Web 启动时读取 IndexedDB 并发起条件校验，304 复用缓存、200 原子更新，服务不可用时降级使用已有缓存。",
-            "dependencies": ["MONOREPO-053"],
+            "dependencies": [
+                "MONOREPO-053"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "通达信和 AkShare 股票目录分别保存到 IndexedDB，不写入 localStorage",
@@ -2105,7 +2361,9 @@
             "description": "让 AkShare 全目录结构 Worker 以稳定并行分片完成当前有效股票的服务端预计算，并消除重复目录扫描和逐股上游超时。",
             "title": "加速 AkShare 全市场断点续算",
             "scope": "Worker 仅覆盖 AkShare 当前有效目录，支持按证券代码稳定分片并行；同一行情日与算法版本只处理尚未发布的股票，默认市场优先；慢速备用接口只拉近期增量并由本地通达信补齐历史；单股计算不再重建合并目录，趋势前缀状态增量维护，失效的新浪源采用熔断；停牌股票仍归入统一市场基准日；市场组合使用合法 Redis 缓存键。",
-            "dependencies": ["MONOREPO-054"],
+            "dependencies": [
+                "MONOREPO-054"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 结构全目录刷新将未发布股票排在已发布股票之前",
@@ -2157,7 +2415,9 @@
             "description": "为行情浏览增加日、周、月、季、年 K 线，并让服务器聚合、结构图层和历史回放使用同一周期口径。",
             "title": "增加多周期 K 线与联动功能",
             "scope": "AkShare 与通达信行情浏览支持 1 日、1 周、1 月、1 季、1 年周期；API 展示服务从 Core 规范日线确定性聚合 OHLCV，理论结构按所选周期重新计算，Web 同步周期标签、回放日期、图层、状态和偏好；封存回测及日线信号快照保持原口径和算法版本。",
-            "dependencies": ["MONOREPO-055"],
+            "dependencies": [
+                "MONOREPO-055"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "研究图表提供日线、周线、月线、季线和年线选项，默认日线并保存用户偏好",
@@ -2201,7 +2461,9 @@
             "description": "把占用图表高度的图层开关、图例和趋势说明改为图表顶部的渐进披露工具，并为每项提供可访问的详细提示。",
             "title": "优化图表工具与说明交互",
             "scope": "保留既有图层 ID、计算与显示语义；将图层、折线口径和图例说明集中到图表标题栏，使用悬停、键盘聚焦和点击固定的浮层展示详细定义与实时趋势摘要，适配桌面和窄屏且不持续占用 K 线高度。",
-            "dependencies": ["MONOREPO-056"],
+            "dependencies": [
+                "MONOREPO-056"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "图层开关、折线口径与图例入口位于图表顶部工具栏，不再以多行常驻内容挤压 K 线高度",
@@ -2240,7 +2502,9 @@
             "description": "将周期选择升级为单行 Tab，并为服务端预计算的多周期 K 线与结构画线建立版本化 SQL/Redis 和浏览器 IndexedDB 缓存。",
             "title": "预计算并缓存多周期行情与画线",
             "scope": "日、周、月、季、年使用可键盘操作的单行周期 Tab；API 以股票、来源、回放截止日、周期、数据版本和算法版本发布完整行情/理论只读快照，提供条件请求；Web 按相同维度在 IndexedDB 保存有界缓存，ETag 未变化复用、变化时原子替换、离线时明确降级。",
-            "dependencies": ["MONOREPO-057"],
+            "dependencies": [
+                "MONOREPO-057"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "周期选择以日、周、月、季、年单行 Tab 展示，支持点击、方向键、Home/End、可见焦点和禁用状态",
@@ -2284,7 +2548,9 @@
             "description": "让研究工作台 K 线画布随图表卡片和视口高度自适应，消除固定像素高度造成的可视区域浪费。",
             "title": "让 K 线画布填满图表卡片",
             "scope": "仅调整研究图表卡片与 K 线宿主的弹性高度约束；保留标题、OHLC、历史回放、图层交互和行情绘制语义。",
-            "dependencies": ["MONOREPO-058"],
+            "dependencies": [
+                "MONOREPO-058"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "图表卡片使用纵向弹性布局，K 线宿主填满标题、OHLC 和回放区之外的剩余高度",
@@ -2322,7 +2588,9 @@
             "description": "让统一开发命令自动加载结构读模型基础设施配置、等待依赖健康并托管预计算 Worker。",
             "title": "保证结构快照随页面服务可用",
             "scope": "修复 wavequant-web 开发启动器未向 API 注入 .env.infrastructure 的问题；仅在本地 loopback MySQL/Redis 配置下管理 Compose，幂等初始化数据库，并托管通达信与 AkShare 结构 Worker。",
-            "dependencies": ["MONOREPO-059"],
+            "dependencies": [
+                "MONOREPO-059"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "统一开发命令加载本地 SQL/Redis 配置但不覆盖终端显式环境变量，且不输出连接凭据",
@@ -2360,7 +2628,9 @@
             "description": "让转多信号箭头始终显示在对应突破 K 线最低点下方。",
             "title": "将转多标记移到 K 线低点下方",
             "scope": "仅调整转多信号的图表标记定位；保留突破日期、收盘价详情、空翻多高点虚线和服务器预计算语义。",
-            "dependencies": ["MONOREPO-060"],
+            "dependencies": [
+                "MONOREPO-060"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "转多信号使用跟随蜡烛最低价的 belowBar 定位，不再锚定突破收盘价",
@@ -2396,7 +2666,9 @@
             "description": "当前低点跌破空翻多前低后，撤销已失效的空翻多高点并沿用新的末跌高结构。",
             "title": "撤销前低跌破后的空翻多高点",
             "scope": "在 Core 统一地标发布层为一级、二级、三级增加严格前低跌破失效规则；同步提升多周期快照算法版本并触发后台结构快照重建，不针对个股硬编码。",
-            "dependencies": ["MONOREPO-061"],
+            "dependencies": [
+                "MONOREPO-061"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "任一级别空翻多高点在其确认前低被后续同级低点严格跌破后不再发布",
@@ -2444,7 +2716,9 @@
             "description": "消除策略服务重启后的当前股票冷回测误失败，并为代理异常提供稳定可读的错误信息。",
             "title": "修复当前股票回测冷启动失败",
             "scope": "完整重启统一图表/API 服务以加载最新策略引擎；仅为 TDX 当前股票回测配置独立长时限，并稳健处理 Next.js 代理返回的非 JSON 错误。",
-            "dependencies": ["MONOREPO-062"],
+            "dependencies": [
+                "MONOREPO-062"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "统一服务重启后当前策略引擎与结果版本一致，不再触发策略代码已变更保护",
@@ -2477,7 +2751,9 @@
             "description": "让 AkShare 结构查询在行情日或算法版本重建期间持续读取上一份完整快照，并在新分区完整后自动切换。",
             "title": "彻底消除 AkShare 结构快照不可用窗口",
             "scope": "修正 AkShare Worker 的市场日期选择；为分片写入全市场预期数量，基于 SQL 已发布代际选择完整读模型，并在 Web 明确展示上一完整快照与当前重建进度。",
-            "dependencies": ["MONOREPO-063"],
+            "dependencies": [
+                "MONOREPO-063"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare Worker 始终使用目录市场最新日作为分区日期，不再被首只股票的停牌或最后交易日降级",
@@ -2511,7 +2787,9 @@
             "description": "为研究工作台增加可分类、持久化且可从结构信号快速收集股票的自选股功能。",
             "title": "增加分类自选股与结构信号快捷收藏",
             "scope": "在 Web 独立 IndexedDB 用户数据域中维护自选分类和成员，提供分类增删改、当前股票增删、结构结果单只及批量加入，并完成桌面与窄屏交互回归。",
-            "dependencies": ["MONOREPO-064"],
+            "dependencies": [
+                "MONOREPO-064"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "自选股使用独立版本化 IndexedDB 存储，不与可清理的行情缓存共用生命周期",
@@ -2550,7 +2828,9 @@
             "description": "将分类自选股改为独立可收缩侧栏，并为当前股票提供直观星标收藏入口。",
             "title": "增加自选股侧栏与股票星标",
             "scope": "把自选股从右侧股票筛选页签移到工作区左列，支持折叠持久化；在图表标题区提供可访问的星标收藏状态与切换交互。",
-            "dependencies": ["MONOREPO-065"],
+            "dependencies": [
+                "MONOREPO-065"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桌面工作区左侧提供独立自选股列，分类、列表、增删改与切股功能完整保留",
@@ -2589,7 +2869,9 @@
             "description": "修复 AkShare 全市场结构快照使用服务器自然日导致绝大多数股票过期、结构信号结果为空的问题。",
             "title": "修复 AkShare 结构信号全市场空结果",
             "scope": "按中国市场交易日历和数据就绪时点确定最后已完成交易日；把全市场日期一致性纳入快照健康判断，异常代际不再替换上一份健康快照。",
-            "dependencies": ["MONOREPO-064"],
+            "dependencies": [
+                "MONOREPO-064"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 目录 latest 不再依赖服务器所在时区的 date.today()",
@@ -2623,7 +2905,10 @@
             "description": "补齐三级空翻多高点及其后首次严格收盘突破的结构证据和图表引导线。",
             "title": "补齐三级空翻多高点突破标识",
             "scope": "由 Core 统一生成各级显式空翻多高点，允许已确认高点在没有后续空多交替低点时直接识别首次严格收盘再突破；Web 仅消费证据并绘制高点到突破 K 线的虚线。",
-            "dependencies": ["MONOREPO-052", "MONOREPO-062"],
+            "dependencies": [
+                "MONOREPO-052",
+                "MONOREPO-062"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "三级显式翻空为多观察可替换同一确认低点产生的临时低级别地标",
@@ -2652,7 +2937,10 @@
             "description": "让沪深主板、创业板、科创板和北交所使用各自交易制度执行当前股票回测。",
             "title": "支持全部 A 股板块回测",
             "scope": "建立板块证券规格模型，按代码、交易日适配涨跌幅限制、最小申报数量和数量步长；扩展 TDX 数据、除权事件与回测入口的沪深京市场识别，同时继续拒绝缺少历史时点状态证据的 ST/退市股票。",
-            "dependencies": ["MONOREPO-047", "MONOREPO-063"],
+            "dependencies": [
+                "MONOREPO-047",
+                "MONOREPO-063"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "沪深主板、创业板、科创板和北交所代码均可进入回测执行模型",
@@ -2681,7 +2969,9 @@
             "description": "用卡片右上角统一星标替代收藏和移除文字按钮。",
             "title": "统一收藏与移除为右上角星标",
             "scope": "结构结果卡片与自选列表行采用同一个空心/实心星标切换收藏状态，保留键盘、读屏和提示文本，并避免图标遮挡股票信息。",
-            "dependencies": ["MONOREPO-066"],
+            "dependencies": [
+                "MONOREPO-066"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "结构结果卡片右上角以空心星标表示未收藏、实心星标表示已收藏",
@@ -2715,7 +3005,9 @@
             "description": "修复后台全市场计算与共享研究缓存争用导致当前股票回测长时间无响应的问题。",
             "title": "恢复当前股票回测的前台响应",
             "scope": "将 API、TDX 信号 Worker 和 AkShare 分片的研究工件拆到独立缓存域，并让可丢弃写入短等待降级，避免每个缓存阶段因 SQLite 写锁阻塞 30 秒；降低本地 AkShare 默认分片并发，同时修正全部板块已支持回测后的旧页面说明。",
-            "dependencies": ["MONOREPO-069"],
+            "dependencies": [
+                "MONOREPO-069"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "后台 Worker 占用研究缓存写锁时，有效回测结果不再因每次缓存写入等待 30 秒",
@@ -2751,7 +3043,9 @@
             "description": "将策略模拟成交点在 K 线上简洁标为 B 和 S，并去掉规则确认的方块图形。",
             "title": "统一图表买卖点 B/S 标识",
             "scope": "仅调整研究图表成交标识的分层、形状、文字及图例；真实成交由独立顶层 B/S 字母显示，保留成交价格坐标、信号与规则的不同语义，以及点击复核能力。",
-            "dependencies": ["MONOREPO-071"],
+            "dependencies": [
+                "MONOREPO-071"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "真实模拟买入和卖出分别显示紧凑 B、S，仍定位到实际成交价且可点击查看详情",
@@ -2780,6 +3074,1213 @@
                     "command": "pnpm harness:check && git diff --check",
                     "status": "passed",
                     "summary": "72 个 Feature 状态、18 个 Node workspace、2 个 Python workspace 和 32 份规则校验通过，补丁无空白错误。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-073",
+            "name": "wavequant-inverse-n-rule-marker-green",
+            "description": "当前股票回测图表中的倒 N 规则圆点使用绿色，与其他规则圆点区分。",
+            "title": "倒 N 规则圆点改为绿色",
+            "scope": "只调整倒 N 完成事件的图表标识颜色及图例，不改变规则判定、位置、形状和其他标识。",
+            "dependencies": [
+                "MONOREPO-072"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "倒 N 完成事件的圆点显示绿色，正 N 和其他规则仍保持原色",
+                "规则标识开关、点击复核及回测结果不受影响",
+                "图例说明颜色语义，Web 自动化检查与真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、6 项 Vitest、92 项 Node 契约和 Next.js 生产构建通过；新增倒 N 绿色及正 N/其他规则紫色的回归测试。"
+                },
+                {
+                    "command": "Chromium 当前股票回测及浏览器图表模块核验",
+                    "status": "passed",
+                    "summary": "真实页面点击运行茅台当前股票回测后，浏览器模块对回测响应中的 69 个倒 N 完成圆点均生成绿色；近期窗口含 5 个倒 N，图例为同色绿色，Console 无警告或错误，API 请求无失败。"
+                },
+                {
+                    "command": "pnpm harness:check && git diff --check",
+                    "status": "passed",
+                    "summary": "73 个 Feature、18 个 Node workspace、2 个 Python workspace、32 份规则校验通过，补丁无空白错误。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-074",
+            "name": "wavequant-risk-rejection-chart-markers",
+            "description": "在当前股票回测图上标出执行风控拒绝的买入尝试，并悬停说明未成交原因。",
+            "title": "风控拒单半透明点与原因提示",
+            "scope": "复用回测响应已有取消委托证据；仅为执行风控拒单添加独立图层、半透明圆点、悬停提示和可点击复核，不改变策略或成交计算。",
+            "dependencies": [
+                "MONOREPO-073"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "风控拒绝的买入委托在尝试日期与拟买价显示半透明圆点，默认可见且不带 B/S",
+                "悬停提示展示中文拒单原因；一手风险限制可同时看到预算和一手风险，点击可查看原始证据",
+                "其他取消原因、真实成交、信号与规则标识不被误分类；图层开关与只看成交行为保持独立",
+                "图例、单元测试、真实浏览器交互和 Web 门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、6 项 Vitest、93 项 Node 契约和 Next.js 生产构建通过；风控拒单、其他取消委托和 B/S 语义独立。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/risk-rejection.spec.mjs --workers=1",
+                    "status": "passed",
+                    "summary": "Chromium 使用茅台真实取消委托数据，验证半透明拟买价圆点、中文悬停原因、一手风险数字、点击选中及只看成交隐藏该点。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --grep \"running a stock backtest|chart tools reveal\" --workers=1",
+                    "status": "passed",
+                    "summary": "2 项 Chromium 回归通过，真实 B/S 成交、图层计数和图表弹窗保持正常。"
+                },
+                {
+                    "command": "pnpm harness:check && git diff --check",
+                    "status": "passed",
+                    "summary": "74 个 Feature、18 个 Node workspace、2 个 Python workspace 与 32 份规则校验通过，补丁无空白错误。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-075",
+            "name": "wavequant-chart-symbol-copy-label",
+            "description": "将研究图表标题里的股票下拉选择改为可点击复制的股票文本。",
+            "title": "图表股票名称点击复制",
+            "scope": "仅修改图表标题股票展示与复制反馈；保留股票列表、自选股和结构结果中的切股流程。",
+            "dependencies": [
+                "MONOREPO-074"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "图表标题不再显示股票下拉框，当前股票代码和名称以文本显示并随切股更新",
+                "点击或键盘激活股票文本可复制显示内容，成功与失败有可访问反馈",
+                "现有股票列表、自选股和结构结果切股功能不回退，Web 检查和真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、6 项 Vitest、93 项 Node 契约和 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts tests/e2e/risk-rejection.spec.mjs --grep \"chart stock label replaces|categorized watchlists persist|switching stocks shows|running a stock backtest|current-stock risk rejection\" --workers=1",
+                    "status": "passed",
+                    "summary": "5 项 Chromium 回归通过：侧栏切股后的标题文本及剪贴板、键盘复制、回测、自选股、切股加载与风控标记正常。"
+                },
+                {
+                    "command": "pnpm harness:check && git diff --check",
+                    "status": "passed",
+                    "summary": "75 个 Feature 和补丁空白检查通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-076",
+            "name": "wavequant-watchlist-row-visual-polish",
+            "description": "优化自选股列表星标和股票行的视觉密度。",
+            "title": "自选股单行与无边框图标",
+            "scope": "仅调整自选股星标和侧栏股票行展示，不改变 IndexedDB 数据或收藏与切股语义。",
+            "dependencies": [
+                "MONOREPO-075"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "自选股相关星标使用现有图标库图标，移除星标按钮边框",
+                "侧栏股票行移除双层外框和“点击查看”文字，名称与代码同排且长名称可截断",
+                "当前选中、不可用、收藏移除及键盘交互在桌面与窄屏保持可用"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、6 项 Vitest、93 项 Node 契约和 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --grep \"chart stock label replaces|confirmed structure search|categorized watchlists persist|watchlist rows show\" --workers=1",
+                    "status": "passed",
+                    "summary": "4 项 Chromium 回归通过；Tabler 星标收藏、结构结果与侧栏互通、单行布局、桌面和 390px 无边框排版、键盘可访问状态均保持正常。"
+                },
+                {
+                    "command": "pnpm harness:check && git diff --check",
+                    "status": "passed",
+                    "summary": "76 个 Feature 状态校验与补丁空白检查通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-077",
+            "name": "wavequant-entry-candidate-hover-reasons",
+            "description": "在个股回测图上显示每次未通过策略入场筛选的候选评估，悬停复核原因。",
+            "title": "入场候选点与筛选原因提示",
+            "scope": "只消费回测理论事件的候选拒绝证据；同日候选合并图点但保留逐项原因，不改变策略计算或成交。",
+            "dependencies": [
+                "MONOREPO-076"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "所有入场候选拒绝事件都可在独立默认开启的图层查看；同日候选不因图点重叠丢失",
+                "悬停显示中文筛选原因、对应 N 字攻击日期和未下单说明，点击可查看原始证据",
+                "策略筛除与执行风控拒单、买入信号、B/S 成交保持不同语义和独立开关",
+                "单元测试、真实浏览器悬停和 Web 门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "6 项 Vitest、94 项 Node 契约、ESLint、TypeScript 和 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/candidate-rejection.spec.mjs --workers=1",
+                    "status": "passed",
+                    "summary": "真实瑞凌股份数据同日两个候选点合并展示，悬停同时显示两条中文未通过原因。"
+                },
+                {
+                    "command": "Chromium 研究工作台与图表 API 核验",
+                    "status": "passed",
+                    "summary": "回测图层默认启用；瑞凌股份 151 次候选拒绝转为 151 条记录、106 个同日合并图点，Console 无错误警告，相关请求均成功。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-078",
+            "name": "wavequant-default-first-watchlist-stock",
+            "description": "研究工作台首次打开时默认展示当前自选分类中的第一只可用股票。",
+            "title": "默认展示首只自选股",
+            "scope": "仅调整初始选股；无可用自选股时沿用原默认值，后续切股和数据源切换不变。",
+            "dependencies": [
+                "MONOREPO-066"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "首次加载按当前自选分类列表顺序展示第一只在当前数据源可用的股票",
+                "当前分类为空或股票在当前数据源不可用时保留现有默认选择",
+                "刷新、手动切股、分类持久化和自选行状态回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、6 项 Vitest、95 项 Node 测试与 Next.js 构建通过；排序、不可用股票和空分类有单元覆盖。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --grep \"categorized watchlists persist\" --workers=1",
+                    "status": "passed",
+                    "summary": "Chromium 验证手动切到非自选股票后刷新，重新默认展示已保存分类的首只自选股。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-079",
+            "name": "wavequant-backtest-trade-timeline-rail",
+            "description": "个股回测结果就绪后右侧切换为可定位 K 线的交易时间线，普通行情仍保留股票目录。",
+            "title": "回测后右侧展示交易节点",
+            "scope": "仅调整研究工作台右侧面板的回测状态展示和交互，不修改 Python 回测策略或成交数据。",
+            "dependencies": [
+                "MONOREPO-072"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "个股回测结果就绪后隐藏全部股票页签，默认显示交易节点；行情浏览恢复全部股票页签",
+                "交易节点按成交日期倒序展示 B/S、决定日、成交价、份额、费用和已平仓盈亏，点击定位图表成交点",
+                "保留买点和结构信号入口，支持 B/S 筛选、无成交空状态以及窄屏阅读",
+                "ESLint、类型检查、单元测试、生产构建和真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、6 项 Vitest、95 项 Node 契约和 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm exec playwright test tests/e2e/market-dashboard.spec.ts --grep 'running a stock backtest|backtest right rail distinguishes'",
+                    "status": "passed",
+                    "summary": "真实茅台回测验证页签替换、倒序 B/S、筛选、图表定位、买点页签、窄屏和返回行情；无成交结果验证空状态。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-080",
+            "name": "wavequant-risk-rejection-in-signal-tooltip",
+            "description": "将执行风控未通过原因归入原买入信号点提示，不再额外绘制拒单点。",
+            "title": "风控拒单归入原信号提示",
+            "scope": "仅调整研究图表的标识、提示和图层说明；保留 Python 回测结果、B/S 成交与入场候选点。",
+            "dependencies": [
+                "MONOREPO-074",
+                "MONOREPO-079"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "执行风控拒单不再产生独立圆点，原买入信号点悬停可见尝试日期、拟买价、中文拒单原因和未成交说明",
+                "信号与拒单以信号日期及参考价关联，历史截面不提前显示尚未发生的拒单",
+                "移除无意义的独立风控拒单图层和图例，保留入场候选点、B/S 成交及只看成交行为",
+                "单元测试、Chromium 悬停回归和 Web 门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、6 项 Vitest、95 项 Node 契约和 Next.js 生产构建通过；信号与拒单关联及历史截面无前视有单元覆盖。"
+                },
+                {
+                    "command": "pnpm exec playwright test tests/e2e/risk-rejection.spec.mjs tests/e2e/candidate-rejection.spec.mjs tests/e2e/market-dashboard.spec.ts --grep 'current-stock risk rejection|rejected entry candidates|running a stock backtest' --workers=1",
+                    "status": "passed",
+                    "summary": "3 项 Chromium 回归通过：茅台原买入信号点悬停显示风控原因且没有独立拒单点，候选拒绝点及 B/S 成交保持原语义。"
+                },
+                {
+                    "command": "Chrome DevTools 研究工作台运行时检查",
+                    "status": "passed",
+                    "summary": "独立风控图层和图例已移除、图层计数为 17/18，Console 无错误或警告；研究工作台可加载。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-081",
+            "name": "wavequant-research-selectors-stay-usable",
+            "description": "研究工作台切换股票页签和行情口径时，实验快照与策略版本选择不再被错误禁用。",
+            "title": "修复研究快照与策略下拉框",
+            "scope": "仅修复研究页控制状态及交互回归，不改动策略计算或数据源。",
+            "dependencies": [
+                "MONOREPO-079"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "默认 AkShare 全部股票状态下可选择实验快照和策略版本",
+                "切换右侧页签与数据口径后，选择值和可用状态保持一致",
+                "原封存组合仍禁止不支持的研究版策略选项",
+                "真实浏览器回归、Web 门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、6 项 Vitest、95 项 Node 测试与 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --grep 'experiment and strategy selectors remain usable|the original stock project Web workbench|running a stock backtest immediately reveals' --workers=1",
+                    "status": "passed",
+                    "summary": "3 项 Chromium 回归通过；先确认旧状态下实验快照被禁用，修复后验证 AkShare、页签、封存样本和组合口径均可选择且原有回测不受影响。"
+                },
+                {
+                    "command": "pnpm harness:check && Chrome DevTools / Playwright 运行时检查",
+                    "status": "passed",
+                    "summary": "Harness 通过；真实页面两个选择框可用，Console 无错误和警告，相关 API 请求成功。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-082",
+            "name": "wavequant-close-based-half-wave-profile",
+            "description": "增加第一类按最低收盘价严格深于半幅、第二类按最低收盘价严格浅于半幅的独立双买点方案。",
+            "title": "新增收盘价半幅双买点策略",
+            "scope": "仅新增独立策略配置、Python 判定与证据、Web 选择和对比入口；原四组、数据源及退出规则不变。",
+            "dependencies": [
+                "MONOREPO-081"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "第一类从 H0 到已确认交替低点的最低收盘价计算整段跌幅，严格大于 1/2 才通过，恰等于不通过",
+                "第二类沿用 H1 到确认日的最低收盘价计算整段回撤，严格小于 1/2 才通过，恰等于不通过",
+                "新策略独立标识与配置贯通回测、买点查询、证据和页面选择；原四组结果语义不变",
+                "Python、API、Web 测试与真实浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "packages/wavequant-core: pytest -q; apps/servers/wavequant-api: pytest -q",
+                    "status": "passed",
+                    "summary": "Core 552 项与 API 66 项通过；第一类、第二类严格半幅边界和旧方案兼容性覆盖在内。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、6 项 Vitest、95 项 Node 测试及 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --grep 'close-based half-wave profile'",
+                    "status": "passed",
+                    "summary": "真实 Chromium 中选择新方案，运行当前股票回测，核对 API 策略参数及页面严格半幅说明。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-083",
+            "name": "wavequant-blocked-order-trade-node-tab",
+            "description": "在当前股票回测的交易节点中区分已成交、策略筛选拒绝和执行层取消，支持原因查看与 K 线定位。",
+            "title": "交易节点展示被拦截候选和委托",
+            "scope": "仅扩展 Web 交易节点侧栏与图表定位，不改变 Python 信号、风控、成交或常驻图点规则。",
+            "dependencies": [
+                "MONOREPO-079",
+                "MONOREPO-080"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "当前股票回测的交易节点可在已成交与被拦截两个子 Tab 间切换，原成交列表和 B/S 筛选不回归",
+                "被拦截列表区分未下单的策略候选与执行层取消的委托，逐项提供判定日或尝试日、参考价及中文拦截原因；空状态准确",
+                "点击被拦截节点聚焦相应 K 线和参考价，展示原有证据而不新增常驻拒单图点",
+                "真实无成交与有成交回测、键盘和窄屏浏览器回归及 Web 门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、6 项 Vitest、95 项 Node 单测及 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --grep 'close-based half-wave profile|running a stock backtest immediately reveals|backtest right rail distinguishes|blocked order tab explains' --workers=1",
+                    "status": "passed",
+                    "summary": "4 项真实 Chromium 回归通过：收盘价半幅方案、有成交、空成交/空拦截，以及茅台候选筛选与风控拒单的原因、K 线价格定位、键盘切换和 390px 窄屏。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-084",
+            "name": "wavequant-blocked-node-candle-flash",
+            "description": "点击被拦截候选或取消委托时，在对应 K 线参考价处短暂闪烁提示点位。",
+            "title": "被拦截节点定位闪烁提示",
+            "scope": "仅扩展 Web 图表的瞬时定位反馈，不修改策略、风控、成交或常驻标记。",
+            "dependencies": [
+                "MONOREPO-083"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "点击筛选未通过候选和执行层取消委托后，在对应 K 线价格坐标处出现明显但短暂的闪烁提示",
+                "重复点击会重启动画，切换股票或结果会清理旧提示，动画结束不留常驻拒单点",
+                "尊重系统减少动态效果设置，原有交易节点选择与证据展示保持不变",
+                "Web 门禁及真实浏览器桌面、窄屏回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "Web ESLint、TypeScript、6 项 Vitest、95 项 Node 测试及 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --grep 'blocked order tab explains'",
+                    "status": "passed",
+                    "summary": "真实 Chromium 验证筛选候选和取消委托的精确坐标闪烁、结束清理、重复点击、减少动态效果、切换数据源清理及 390px 视口；另 4 项相邻回归通过，并人工检查闪烁截图。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-085",
+            "name": "wavequant-higher-level-alternation-entry",
+            "description": "修复瑞凌股份交替低点漏标，并按二三级交替后的正 N 轧空定义第一类买点。",
+            "title": "修复二三级交替低点与第一类买点",
+            "scope": "Core 交替证据、第一类买点级别及 Web 标识说明和回归。",
+            "dependencies": [
+                "MONOREPO-082",
+                "MONOREPO-084"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "复核瑞凌股份 2026-07-21 的低点、波段锚点与因果确认日",
+                "第一类买点仅允许二级或三级交替之后的新正 N 轧空或强轧空",
+                "图表标识和策略证据保持一致，并通过前缀与真实浏览器回归"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core test:unit; lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "557 项 Core 测试、Ruff、渐进式 mypy、sdist/wheel 构建通过；最后格式调整后新增历史与第一类回归 14 项再次通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api test:unit",
+                    "status": "passed",
+                    "summary": "66 项通过；1 项外部基础设施测试按既有环境跳过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、6 项 Vitest、97 项 Node 单测及 Next.js 构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/tertiary-alternation.spec.mjs --workers=1; market-dashboard.spec.ts --grep \"close-based half-wave profile\"",
+                    "status": "passed",
+                    "summary": "真实 Chromium 验证瑞凌股份复权回测三级 7/21 9.00 交替标签、65.23% 证据、同价发展线悬停、确认日前隐藏、390px；收盘半幅对照相邻回归通过。本地 API 已重载最终引擎。"
+                },
+                {
+                    "command": "real adjusted Ruiling 2026-08-25 / 2026-08-26 prefix replay; pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "真实行情下图表、结构匹配和默认策略在 8/25 均无该三级交替，8/26 一致确认；策略完整历史与两个前缀完全一致。未修改不复权行情口径；原四组显式深回撤对照保留各自定义。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-086",
+            "name": "wavequant-blocked-trade-nodes-by-date",
+            "description": "把同一交易日的策略候选拒绝和执行层取消合并为一条侧栏记录，同时保留原因与逐条图表定位。",
+            "title": "被拦截交易节点按日期合并",
+            "scope": "仅调整 Web 当前股票回测交易节点的被拦截列表呈现，不改变策略、风控、成交或图表常驻标记。",
+            "dependencies": [
+                "MONOREPO-083",
+                "MONOREPO-084"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "被拦截子标签按交易日计数和展示，同日仅有一张卡，跨日倒序不变",
+                "同日所有筛选与执行拦截原因可查看，展开后可精确选择原始事件并定位图表",
+                "空状态、已成交子标签、键盘与窄屏布局不受影响，Web 单元测试、类型检查与生产构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "6 项 Vitest、97 项 Node 测试、TypeScript 检查与 Next.js 生产构建通过；新增同日多原因、跨日期及空数据分组测试。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec eslint tests/e2e/market-dashboard.spec.ts src/features/research-workbench/components/stock-browser.tsx",
+                    "status": "passed",
+                    "summary": "本功能涉及的 TypeScript/TSX 文件通过 ESLint。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-087",
+            "name": "wavequant-fill-candle-focus-feedback",
+            "description": "点击回测 B/S 成交点时，在对应 K 线成交价处显示短暂定位提示。",
+            "title": "回测买卖点增加 K 线定位效果",
+            "scope": "仅扩展 Web 回测成交标记与交易节点的交互反馈，不改变成交数据和常驻图层。",
+            "dependencies": [
+                "MONOREPO-084",
+                "MONOREPO-086"
+            ],
+            "status": "backlog",
+            "acceptanceCriteria": [
+                "点击右侧 B/S 交易节点或图上的 B/S 成交标记，聚焦对应 K 线并显示短暂定位效果",
+                "买入和卖出使用现有语义色，重复点击可重启提示，减少动态效果设置和切换结果清理保持有效",
+                "真实浏览器回归、Web 门禁与 Harness 通过"
+            ],
+            "verification": []
+        },
+        {
+            "id": "MONOREPO-088",
+            "name": "wavequant-tradingview-advanced-widget",
+            "description": "在保留本地研究图的同时增加独立的 TradingView Advanced Real-Time Chart 绘图视图。",
+            "title": "加入 TradingView 完整绘图视图",
+            "scope": "仅扩展 Web 研究图表视图与官方嵌入组件，不替换现有图表、回测逻辑或本地行情数据源。",
+            "dependencies": [
+                "MONOREPO-086"
+            ],
+            "status": "blocked",
+            "acceptanceCriteria": [
+                "本地研究图及原有图层、历史回放和回测交互保持可用，用户可切换到独立 TradingView 绘图视图",
+                "星网锐捷等沪深股票与 TradingView 代码正确映射，绘图工具栏显示，外部脚本按需加载并提供失败反馈",
+                "界面明确区分 TradingView 行情与本地因果复权/策略结果，不把外部图表误认为本地回测图",
+                "桌面、窄屏、键盘、主题和关键浏览器回归以及 Web 门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "Web ESLint、TypeScript、6 项 Vitest、99 项 Node 测试及 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/tradingview-chart.spec.ts --workers=1",
+                    "status": "passed",
+                    "summary": "受控官方脚本替身下 2 项真实 Chromium 流程通过，覆盖星网锐捷代码映射、懒加载、绘图侧栏配置、显式同步、原图保留、键盘、浅色、390px 和断网恢复入口。"
+                },
+                {
+                    "command": "Playwright 浏览器直连 https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js",
+                    "status": "failed",
+                    "summary": "当前机器浏览器返回 net::ERR_TIMED_OUT；PowerShell HEAD 同样超时。官方 iframe 的真实绘图操作仍待该域名可达后验收。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-089",
+            "name": "wavequant-buy-fill-position-weight",
+            "description": "在每笔买入成交记录中展示成交后账户仓位，区别于全回测期间的日均仓位。",
+            "title": "买入成交列表显示单笔仓位",
+            "scope": "Core 买入成交账本字段及 Web 交易节点和 B/S 成交账本，不改变策略下单或平均仓位计算。",
+            "dependencies": [
+                "MONOREPO-084",
+                "MONOREPO-086"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "每笔已成交买单保存成交额、费用后的账户权益及买入后仓位比例",
+                "右侧交易节点与 B/S 成交账本分别展示每笔买入仓位，旧账本可由原始成交字段还原",
+                "平均仓位仍是全回测期间日均值，浏览器验证两个不同买入仓位与日均值同时正确显示"
+            ],
+            "verification": [
+                {
+                    "command": "packages/wavequant-core/.venv/Scripts/python.exe -m pytest -q; ruff check affected files",
+                    "status": "passed",
+                    "summary": "557 项 Core 测试和 28 项子测试通过；单笔仓位口径及成交标记透传回归、受影响文件 Ruff 检查通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web typecheck; test:unit; build; eslint affected TS/TSX files; node --check public/app.js",
+                    "status": "passed",
+                    "summary": "类型、6 项 Vitest、99 项 Node 测试、生产构建及受影响文件 lint/语法检查通过。"
+                },
+                {
+                    "command": "WAVEQUANT_API_PORT=8766 pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts -g 'each buy shows its own entry weight'",
+                    "status": "passed",
+                    "summary": "独立当前代码版 API 与真实 Chromium 下，两笔买入分别显示 12.07%、5.47%，B/S 成交账本一致，日均仓位仍为 0.04%。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-090",
+            "name": "wavequant-cold-backtest-dev-proxy-timeout",
+            "description": "修复本地开发代理在冷回测计算超过 30 秒时提前断开并向页面返回 HTTP 500。",
+            "title": "冷回测不再被开发代理提前中断",
+            "scope": "仅调整 wavequant-web 开发环境的 API rewrite 超时，不改变回测算法、生产静态导出或其他 API 契约。",
+            "dependencies": [
+                "MONOREPO-089"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "开发代理等待时间长于前端回测请求的 300 秒截止时间",
+                "未缓存回测耗时超过 30 秒时，同源页面 API 仍返回 200 而非代理 HTTP 500",
+                "生产静态导出没有开发代理配置，当前股票回测在真实浏览器中正常加载"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、8 项 Vitest、99 项 Node 测试和 Next.js 静态构建通过；新增配置回归测试先失败后通过。"
+                },
+                {
+                    "command": "GET /api/tdx-backtest?symbol=sz.002396&start=2018-01-03 via :3003; browser current-stock backtest",
+                    "status": "passed",
+                    "summary": "未缓存同源代理请求耗时 33.23 秒后返回 200 与 2,793,438 字节 JSON；真实浏览器运行贵州茅台当前股票回测正常加载。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-091",
+            "name": "wavequant-tertiary-retracement-thirds",
+            "description": "以三级空翻多整段的同口径低高锚点绘制三分回撤参考线，并提供持久化显示开关。",
+            "title": "三级空翻多三分回撤参考线",
+            "scope": "Web 本地研究图水平辅助线与图层设置，不改变地标或策略判定。",
+            "dependencies": [
+                "MONOREPO-085"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "瑞凌股份 2024-02-06 至 2025-03-20 整段显示 1/3、2/3 回撤线并延伸到回档区",
+                "按服务端同口径锚点与可用日绘制，回放不使用未来锚点，切股清除旧线",
+                "图层开关可关闭和恢复，刷新保持偏好，真实浏览器与 Web 门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、8 项 Vitest、104 项 Node 测试和 Next.js 生产构建通过；覆盖整段三分价格、同口径锚点、未来确认与无效波段。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/tertiary-retracement.spec.mjs tests/e2e/tertiary-alternation.spec.mjs --workers=1; playwright test tests/e2e/market-dashboard.spec.ts --grep \"chart tools reveal\" --workers=1",
+                    "status": "passed",
+                    "summary": "真实瑞凌股份回测的 12.81 / 8.82 水平线、原交替标识、刷新偏好、键盘、三级趋势联动、切股与回放清理、深浅色及 390px 通过；原图层布局测试补计既有 TradingView 切换栏高度后通过。"
+                },
+                {
+                    "command": "pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "功能状态及改动格式校验通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-092",
+            "name": "wavequant-blocked-trade-copy",
+            "description": "在回测被拦截交易节点中复制单日或全部原始拦截信息，保留同日多事件证据。",
+            "title": "被拦截交易记录一键复制",
+            "scope": "仅扩展 Web 回测侧栏的文本导出和交互反馈，不改变策略、成交或图表定位逻辑。",
+            "dependencies": [
+                "MONOREPO-086"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "每个日期卡可一键复制该日全部原始拦截事件，列表可复制当前回测全部日期",
+                "文本包含股票、策略、回测区间、事件日期、类型、价格、中文原因、判定或决定信息及事件 ID",
+                "复制不触发 K 线定位或改变卡片展开状态；空列表禁用，失败给出可见反馈",
+                "桌面、窄屏和键盘浏览器回归以及 Web 门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web typecheck; test:unit; build; eslint affected TSX/E2E files",
+                    "status": "passed",
+                    "summary": "TypeScript、8 项 Vitest、104 项 Node 测试、Next.js 构建及本次触及的 TSX/E2E ESLint 通过；全量 lint 被并行改动中的 research-chart.tsx 格式问题阻挡。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --grep 'blocked date cards and the complete list copy' --workers=1",
+                    "status": "passed",
+                    "summary": "真实 Chromium 验证单日与全部复制内容、未触发图表定位、390px 窄屏和键盘 Enter；原有闪烁长回归末尾另有 Canvas 负半径异常，与复制无关。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-094",
+            "name": "wavequant-confirmed-flip-rebreak-alternation",
+            "description": "各级空翻多之后的已确认较高回档低点可由随后已确认高点严格再突破原空翻多高点完成空多交替，并修复历史图窗漏显晚确认高点。",
+            "title": "空翻多高点再突破确认各级交替低点",
+            "scope": "Core 一级至三级结构地标、结构搜索结果及 Web 标记说明；不改变正式趋势折线和独立回测策略的交易门槛。",
+            "dependencies": [
+                "MONOREPO-085"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "西点药业 2025-08-11 三级空翻多高点 36.98 在确认后可见，2026-07-21 的 21.88 低点由 2026-08-20 已确认高点 39.98 再突破确认",
+                "同一通用规则覆盖一级、二级、三级，拒绝触碰相等、低于原空头低点、缺确认高点和未来泄漏",
+                "图表回看高点与低点均以全局回放确认日门控；结构结果与提示展示再突破证据",
+                "Core、Web 门禁和真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "Ruff、配置的严格 mypy、558 项 pytest 与 sdist/wheel 构建通过；三级西点药业 TDX 实际日线重算得到 2025-08-11 高点和 2026-07-21 交替低点。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build; playwright test tests/e2e/westpoint-tertiary-alternation.spec.mjs",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、8 项 Vitest、106 项 Node 测试、静态构建及真实 Chromium 验证；重启后的 3003 同源 API 返回两个地标，回放前不显示且历史图窗保留晚确认标记。"
+                },
+                {
+                    "command": "pnpm harness:check; git diff --check; structure_matches(sz.301130, 2026-09-07)",
+                    "status": "passed",
+                    "summary": "Harness 校验 94 项功能；结构搜索统一从 Core 地标得到 2026-07-21 的三级交替低点，确认可用日 2026-09-07。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-093",
+            "name": "wavequant-select-stock-auto-backtest",
+            "description": "在研究工作台选择可回测股票后立即运行当前股票回测，移除右侧全部股票标签并保留可搜索的选股入口。",
+            "title": "选股即运行当前股票回测",
+            "scope": "仅调整 Web 研究工作台的显式切股交互和右侧选股面板，不改变行情、信号复核或回测算法。",
+            "dependencies": [
+                "MONOREPO-092"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "全市场列表、自选股等显式切股入口选中可回测股票后自动发起当前股票回测，连续切换只展示最新选择",
+                "右侧不显示全部股票标签，仍能通过独立的可搜索选股入口选择其他股票",
+                "无通达信日线的股票保留行情查看并明确提示不能回测；买点和结构结果的定位流程不被强制改成回测",
+                "桌面、窄屏、键盘和真实浏览器回归以及 Web 门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、8 项 Vitest、106 项 Node 测试和 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "playwright test tests/e2e/market-dashboard.spec.ts tests/e2e/tradingview-chart.spec.ts (targeted cases)",
+                    "status": "passed",
+                    "summary": "真实 Chromium 覆盖选股自动回测、自选股再次切股、无通达信日线提示、390px、复制股票名称、手动回测、AkShare 买点与结构定位及 TradingView 切股。"
+                },
+                {
+                    "command": "pnpm harness:check; git diff --check; HTTP GET /research; /api/infrastructure/health",
+                    "status": "passed",
+                    "summary": "Harness 校验 95 项功能；工作树差异无空白错误；页面与基础设施健康接口均返回 HTTP 200。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-095",
+            "name": "wavequant-candle-hover-copy",
+            "description": "本地研究图悬停 K 线时展示日期、开高低收和成交量，并可复制当前选中的 K 线数据。",
+            "title": "K 线悬停信息与一键复制",
+            "scope": "仅扩展 Web 本地研究图的信息提示和复制交互，保留原有标注详情与行情口径。",
+            "dependencies": [
+                "MONOREPO-092"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "普通 K 线悬停显示日期、开高低收、成交量及可用时的原始收盘价，原有标注提示继续可见",
+                "复制按钮保留当前悬停 K 线，复制文本与所显示日期和价格一致，并提供成功或失败反馈",
+                "桌面、390px 窄屏、键盘及原标注悬浮浏览器回归与 Web 门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、8 项 Vitest、106 项 Node 测试和 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts -g 'hovering a candle shows its prices' --workers=1",
+                    "status": "passed",
+                    "summary": "真实 Chromium 验证普通 K 线悬浮价格、复制选中日期和 OHLC/成交量、390px 无横向溢出与键盘 Enter。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/candidate-rejection.spec.mjs --workers=1",
+                    "status": "passed",
+                    "summary": "原有入场候选标注悬浮说明继续显示，页面无异常。"
+                },
+                {
+                    "command": "pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "95 项功能的状态及工作区规则校验通过，改动无空白错误。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-096",
+            "name": "wavequant-tertiary-abc-candidate",
+            "description": "三级 a/b/c 候选支持最低价三分之二或长时间且最低收盘低于半幅两条路径，在正 N 轧空确认后提示 c 启动并跟踪突破和失效。",
+            "title": "三级 a/b/c 启动候选与时间回调条件",
+            "scope": "Core 结构观察与 Web 图表证据，候选与正式交替、策略 LONG、成交分开表达。",
+            "dependencies": [
+                "MONOREPO-091",
+                "MONOREPO-094"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "价格路径为 b 最低价 ≥ a 的 2/3 回撤价，时间路径为 b 交易棒数 > a 且 b 最低收盘价 < a 的 1/2 回撤价，两者取或",
+                "已知三级 a 锚点之后的新正 N 经轧空或强轧空确认后才提示 c 候选；收盘突破 a 高点与跌破 b 低点另记事件",
+                "图表可查看 a/b 点位、价格和时间证据，回放无未来泄漏，Core 与 Web 门禁及浏览器通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint; typecheck; test:unit; build; python -m pytest tests/test_abc_candidate.py -q; mypy --strict abc_candidate.py",
+                    "status": "passed",
+                    "summary": "Core 全量 568 项测试通过；最终口径补充的 11 项 ABC 专项通过，覆盖价格等于 2/3、时间严格大于、最低收盘严格小于半幅、A 当日排除、N/盘态确认、前缀一致、收盘突破与候选失效。Ruff、新模块严格 mypy、项目类型检查和 sdist/wheel 通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、8 项 Vitest、108 项 Node 测试、Next.js 生产构建通过；ABC 注释明确严格小于、候选与成交区分及回放门控。"
+                },
+                {
+                    "command": "playwright test tests/e2e/tertiary-abc.spec.mjs; playwright test tests/e2e/tertiary-retracement.spec.mjs tests/e2e/market-dashboard.spec.ts --grep \"Ruiling thirds|chart tools reveal\"",
+                    "status": "passed",
+                    "summary": "三级 ABC 受控边界样本经真实浏览器验证候选与突破、证据、回放、键盘、图层联动、清理选中参考线和 390px；同时访问真实瑞凌股份回测，原三分线及图层完整流程通过。初次共享服务中断后，在独立端口及恢复的同源 API 下完成复验。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api test:unit; pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "API 68 项通过、1 项外部基础设施测试跳过；功能状态与差异格式检查通过，同源基础设施健康接口 HTTP 200。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-097",
+            "name": "squeeze-confirms-alternation",
+            "title": "正 N 轧空确认空多交替并跟踪失效",
+            "description": "价格或时间回调合格后，以正 N 轧空确认二三级 b 低点，统一 V3 图表与交易证据，未突破 a 高点先破 b 则失效。",
+            "scope": "Core 交替识别、V3 策略入口与图表状态证据；保留既有突破确认路径。",
+            "dependencies": [
+                "MONOREPO-094",
+                "MONOREPO-096"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "回调条件保持价格含等于、时间及最低收盘严格比较，新增 N 轧空确认路径",
+                "确认 N 可进入买点筛选；未突破 a 前跌破 b 撤销许可，历史确认不倒填不删除",
+                "真实瑞凌历史截面及合成边界、前缀一致、策略与图表回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "最终 Core 全量 577 项通过，覆盖严格比较、确认 N 当日许可、无未来泄漏、先破 b 撤销、触及保留、先破 a、等待确认期间突破、同日事件顺序及排除显示用源点。Ruff、配置 mypy、sdist/wheel 通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、9 项 Vitest、110 项 Node 测试及 Next.js 生产构建通过；交替标记保留确认与失效日期，回放不提前透露后续状态。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/tertiary-alternation.spec.mjs --workers=1; dated API prefix replay",
+                    "status": "passed",
+                    "summary": "最终同源 API 与真实 Chromium 通过：瑞凌 d50_c50 的 7/21 b 低点只在 8/7 正 N 轧空确认后出现，8/6 截面无该确认；a 为 4.836290→16.798013，拦截改为量能门槛。图标、悬浮、回放及 390px 均通过，本地 9365 服务已更新。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api test:unit; pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "API 68 项通过、1 项外部基础设施测试跳过；功能状态和差异格式门禁通过。CodeGraph 已同步。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-098",
+            "name": "staged-exit-and-trade-copy",
+            "title": "成交节点复制与首次破位分批退出",
+            "description": "成交节点右侧复制成交和 K 线信息；V3 首次低价与收盘分别破位减仓，最高价未突破反弹 2/3 后收盘再破低点清仓。",
+            "scope": "Web 成交节点及证据；Core V3 执行、部分卖出账本及 CSV 导出。",
+            "dependencies": [
+                "MONOREPO-095",
+                "MONOREPO-097"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "成交节点复制包含成交原因、数量、剩余持仓、判定锚点与 K 线，支持键盘和窄屏",
+                "首次减仓默认 50% 按整手取整，分摊手续费并保留余仓与交易链身份",
+                "按最高价严格突破 2/3 判断，冻结锚点、无未来数据，原有风控继续有效",
+                "瑞凌股份 05-15 决定减仓、05-16 成交；当日最高已越阈值，不伪造弱反弹清仓"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest; Ruff; configured mypy; build",
+                    "status": "passed",
+                    "summary": "584 项测试和 43 项子测试通过；新增 7 项覆盖分批数量/费用/盈亏守恒、前缀因果、最高价与等值边界、延迟卖出、原有风控和整手。Ruff、配置类型检查、sdist/wheel 通过。"
+                },
+                {
+                    "command": "Web lint; typecheck; test:unit; build; filled-trade-copy.spec.mjs",
+                    "status": "passed",
+                    "summary": "9 项 Vitest、111 项 Node 测试、生产构建通过；真实 Chromium 验证瑞凌 05-16 减仓节点、复制锚点、最高价口径、键盘、390px 且不改变图表选择。"
+                },
+                {
+                    "command": "API test:unit; local TDX backtest sz.300154 lecture_v3_d50_c50 volume_filter=false",
+                    "status": "passed",
+                    "summary": "API 68 项通过、1 项环境跳过；真实回测 05-16 卖出 4600 原始股，05-23 止损清掉剩余 4700 股；反弹门槛 12.964459，05-16 高点 12.985430。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-099",
+            "name": "python-strategy-dev-auto-restart",
+            "title": "策略源码变更自动重启图表服务与预计算 Worker",
+            "description": "开发环境中监测 Core/API Python 源码变化，稳定保存后重启长驻 API 和 Worker，避免旧进程引擎指纹导致回测失败。",
+            "scope": "调整 wavequant-api 的本地开发 Python 启动包装和 Web 当前股票回测的短暂恢复重试；不放宽回测引擎的版本一致性校验或修改生产进程。",
+            "dependencies": [
+                "MONOREPO-098"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "本地长驻 API 与信号/结构 Worker 在策略或 API Python 源码稳定变更后自动重启，快速连续保存只产生一次重启",
+                "重启会结束旧 Python 进程树并等待退出后再启动，避免端口占用和新旧引擎并存；生产和一次性 CLI 不启用监听",
+                "失败启动有有界退避，Ctrl+C 清理监听与子进程；撞上重启窗口的当前股票回测短暂自动重试，可取消且不重复其他请求",
+                "新增进程/文件变更回归测试，API 门禁及真实页面/接口复核通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-api lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "Ruff、配置 mypy、sdist/wheel、4 项 Node 进程/监听测试与 68 项 pytest 通过；1 项外部基础设施测试按既有环境跳过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build; playwright test tests/e2e/strategy-reload.spec.ts --workers=1",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、9 项 Vitest、114 项 Node 测试、Next.js 生产构建及真实 Chromium 首次引擎版本拒绝后自动恢复回测通过。"
+                },
+                {
+                    "command": "local dev source add/remove probe; GET /api/infrastructure/health; GET /api/tdx-backtest; pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "真实 9365 API 和三个 Worker 随 Python 源码稳定变化自动换进程，临时探针已移除；3003 同源健康与瑞凌股份回测均为 HTTP 200，浏览器 Console 无错误，Harness 校验通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-100",
+            "name": "closing-window-tiered-reduction",
+            "title": "尾盘 35% / 65% 分档减仓",
+            "description": "最低价跌破减 35%，最新价也跌破参照收盘减到原持仓 65%；尾盘当日执行。",
+            "scope": "V3 五分钟行情核验、尾盘分档判定与回测成交、来源追踪、Web 时间和复制信息；真实券商通道另行接入。",
+            "dependencies": [
+                "MONOREPO-098"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "14:30 至 15:00 使用当时可见价格判断，等于不算跌破",
+                "35% 升级 65% 只补差额，扣除已成交与全部未完成卖单，遵守可卖与整手",
+                "使用完整且与日线一致的五分钟历史，触发后按下一五分钟开盘价回测，记录决定及成交时间，不伪造券商成交回报",
+                "分钟数据缺失或不一致时拒绝精确回测；瑞凌 2025-05-15 14:30 双破位回放通过"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_support_break_reduction.py tests/test_staged_exit.py; ruff check",
+                    "status": "passed",
+                    "summary": "26 项通过；19 项新测试覆盖档位、时间/时区、等值、累计目标、未成交预留、可卖及整手，7 项原回归通过。"
+                },
+                {
+                    "command": "intraday backtest and execution integration",
+                    "status": "passed",
+                    "summary": "BaoStock 不复权 5 分钟线核对完整时段、日线 OHLC 与成交量后参与回测；瑞凌 2018 起点回放 2025-05-15 14:30 判定 65%，下一五分钟开盘原价 9.97，滑点后原始成交价 9.965015，卖出 5800 原始股、余 3200。真实券商通道未接入。"
+                },
+                {
+                    "command": "Core 627 pytest; Ruff; strict mypy minute.py; Core/API build; API 68 pytest + 4 Node; Web 9 Vitest + 118 Node; Web typecheck/lint/build; Playwright filled-trade-copy.spec.mjs",
+                    "status": "passed",
+                    "summary": "验证分档补差、分钟数据缺失拒绝、真实瑞凌触发时间、逐笔复制与窄屏键盘流程；分钟数据未覆盖的交易日不制造日线成交。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-101",
+            "name": "ruiling-squeeze-buy-signal",
+            "title": "修复正 N 轧空买点触发",
+            "description": "修正讲义折线 N 起点反向影线校验，V3 轧空确认买点不再被收盘盈亏比预筛选隐藏。",
+            "scope": "Core N 几何校验、V3 策略配置、回归与策略说明；下一开盘执行风控保留。",
+            "dependencies": [
+                "MONOREPO-097"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "7 月 27 日突破 7 月 22 日颈线形成正 N，8 月 4 日轧空触发 LONG",
+                "正倒 N 对称，起点之后的越界仍拒绝，严格折线口径保留，逐日前缀一致",
+                "V3 五种方案不做收盘毛盈亏比预筛选，信号携带原盈亏比门槛供下一开盘执行"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint; typecheck; test:unit -- -q; build",
+                    "status": "passed",
+                    "summary": "Ruff、配置 mypy、611 项测试及 43 项子测试、sdist/wheel 通过；新增 8 项回归覆盖 N 几何、买点时点、去重、前缀与执行拒单。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api test:unit",
+                    "status": "passed",
+                    "summary": "4 项 Node 测试、68 项 Python 测试通过，1 项基础设施测试按环境跳过。"
+                },
+                {
+                    "command": "local adjusted sz.300154 replay, lecture_v3_d50_c50, volume_filter=false",
+                    "status": "passed",
+                    "summary": "8 月 4 日 LONG 关联 7 月 27 日 N，收盘 10.794103、止损 9.257716、目标 11.148654；全历史与截至当日前缀一致。8 月 5 日执行净盈亏比 0.163586 低于 1.5，保留信号并记录拒单。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-102",
+            "name": "optional-net-reward-risk-filter",
+            "title": "次开盘含费净盈亏比过滤默认关闭选项",
+            "description": "按用户澄清，将次开盘含费净盈亏比不足的执行门槛改为可选，当前股票回测默认不勾选；交替确认规则保持原有实现。",
+            "scope": "Core 执行配置、当前股票回测 API、Web 回测选项、幅度比较及缓存隔离。",
+            "dependencies": [
+                "MONOREPO-101"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "默认不勾选且当前股票回测 API 缺省不执行净盈亏比门槛",
+                "开启时保留原含费净盈亏比判定，关闭仅跳过该过滤，开平仓费用及其他约束保留",
+                "配置贯通回测、幅度比较、导出及执行缓存，单元和浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "612 项 Core 测试通过；新增过滤关闭后成交且保留费用、目标耗尽仍拒绝、开关隔离执行缓存并复用信号。Ruff、配置 mypy 及 sdist/wheel 通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "API 4 项 Node、68 项 Python 通过，1 项基础设施测试跳过；缺省关闭、true/false、重复和非法参数、执行配置传递通过，Ruff、10 文件 mypy 和构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build; playwright test tests/e2e/net-reward-risk-option.spec.mjs --workers=1",
+                    "status": "passed",
+                    "summary": "Web 9 项 Vitest、117 项 Node、ESLint、类型及生产构建通过；真实瑞凌浏览器验证默认未勾选、键盘开启恢复拒单、关闭消除该拒单、同信号不同执行结果、回切缓存、五组对比传参和 390px 无溢出。"
+                },
+                {
+                    "command": "pnpm harness:check; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "状态与差异格式校验通过，索引同步。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-103",
+            "name": "akshare-default-research-scope",
+            "title": "选股时保持默认 AkShare 行情口径",
+            "description": "研究工作台默认使用 AkShare；从 AkShare 股票列表或自选股切换股票时不隐式改为通达信回测，显式回测仍可切换。",
+            "scope": "仅调整 wavequant-web 研究工作台选股交互、对应回归与使用说明，不改变行情或回测计算。",
+            "dependencies": [
+                "MONOREPO-093",
+                "MONOREPO-102"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "首次进入研究工作台默认选择可用的 AkShare 行情",
+                "AkShare 股票列表与自选股切股保持 AkShare K 线，不隐式进入通达信回测",
+                "显式运行当前股票回测与通达信口径下的原有回测行为保持可用",
+                "Web 门禁及真实浏览器主流程通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "ESLint、TypeScript、9 项 Vitest、117 项 Node 测试和 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts tests/e2e/tradingview-chart.spec.ts --grep 'AkShare stock selection keeps|without local TDX history|TradingView drawing view is lazy|original stock project Web workbench is the default page' --workers=1",
+                    "status": "passed",
+                    "summary": "4 条真实 Chromium 流程验证默认 AkShare、选股口径、显式回测、无本地日线提示、TradingView 切股和页面无异常。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-104",
+            "name": "same-day-reduction-and-position-ratio",
+            "title": "当日分档减仓成交与实际平仓比例",
+            "description": "V3 日线当日收盘撮合，35% / 65% 累计目标，卖出前单股持仓中的实际平仓比例。",
+            "scope": "Core 分批退出及共享成交记账、V3 配置、Web 节点详情复制和回归。",
+            "dependencies": [
+                "MONOREPO-098",
+                "MONOREPO-101"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "瑞凌 05-15 对比 05-09 双破位，当日卖出；仅低点破位目标 35%，双破位 65%",
+                "累计基数为原持仓，只补差额，整手及可卖限制生效，费用和余仓守恒",
+                "节点、详情及复制显示实际平仓比例，目标比例独立显示，清仓 100%",
+                "明确日线当日收盘撮合，不宣称分钟路径或券商成交"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest; Ruff; configured mypy; build",
+                    "status": "passed",
+                    "summary": "615 项测试/43 子测试通过，涵盖 65% 同日成交、35 升级补差额、前缀、费用盈亏、不可卖及不足一手。Ruff、配置 mypy、sdist/wheel 通过。"
+                },
+                {
+                    "command": "Web lint; test:unit; build; playwright filled-trade-copy.spec.mjs",
+                    "status": "passed",
+                    "summary": "9 项 Vitest、117 项 Node、ESLint、含类型检查的构建通过。真实瑞凌 lecture_v3 验证 05-15 同日决定及卖出、65% 目标、按实际数量计算的比例、复制、键盘、390px。"
+                },
+                {
+                    "command": "API test:unit; current local TDX sz.300154 backtest",
+                    "status": "passed",
+                    "summary": "4 项 Node、68 项 Python 通过，1 项环境跳过。完整历史 lecture_v3/关闭量能：05-15 目标 65%，8800 原始股卖 5700、实际 64.77%，余 3100 股于 05-23 原止损清仓。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-105",
+            "name": "v3-confirmed-alternation-and-attack-quality",
+            "title": "V3 正 N 入场要求先确认交替及合格突破棒",
+            "description": "阻止尚未确认的空多交替使用同一正 N 入场；突破日成交量须严格超过前一交易日，阳线实体须足够大。",
+            "scope": "Core V3 正 N 候选门槛、交替时序、版本，Web 交替提示与回归；不改变原始 N 几何和旧策略。",
+            "dependencies": [
+                "MONOREPO-097",
+                "MONOREPO-104"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "确认交替的正 N 只能确认交替，不能反向获得当日新许可；后续新正 N 才可入场",
+                "V3 正 N 突破日成交量严格大于前一交易日，阳线实体至少为开盘价 2% 且至少为当日振幅 50%",
+                "瑞凌股份 2019-10-14 不合格突破不触发 2019-10-17 买入，关闭可选相对量能过滤也不绕过硬门槛",
+                "交替标记提示说明确认 N 不可直接入场",
+                "Core 回归、版本隔离和真实 API 截面验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core test:unit; lint; typecheck; build; mypy --strict attack_quality.py",
+                    "status": "passed",
+                    "summary": "623 项 Core 测试通过；Ruff、配置类型检查、新模块严格 mypy 和 sdist/wheel 构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api test:unit; live /api/tdx-backtest sz.300154 asof=2019-10-17",
+                    "status": "passed",
+                    "summary": "API 4 项 Node、68 项 Python 通过（1 项环境跳过）；真实截面确认 10-14 突破被拒、10-16 无 LONG、10-17 无 BUY，新策略版本生效。"
+                },
+                {
+                    "command": "pnpm harness:check; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "状态校验、差异格式与索引同步通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web typecheck; test:unit; build; prettier --check public/app.js public/annotations.js tests/annotations.test.mjs; eslint . --ignore-pattern tests/e2e/filled-trade-copy.spec.mjs",
+                    "status": "passed",
+                    "summary": "Web 类型、9 项 Vitest、118 项 Node、生产构建、本次改动文件 Prettier 与其余仓库 ESLint 通过。全仓 Web lint 因既有 filled-trade-copy.spec.mjs 格式问题未通过，未改动该无关文件。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-106",
+            "name": "two-t-wave-projection",
+            "title": "主控 N 二吐后叠箱与堆箱持续推演",
+            "description": "正 N 确认轧空且满足二吐后，持续推演叠箱与回调再攻击的堆箱等浪目标。",
+            "scope": "Core V3 转浪观察、入场目标续接、配置版本、审计和策略说明；保留原持仓退出规则。",
+            "dependencies": [
+                "MONOREPO-105"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "二吐完成并守住轧空低后观察转浪；不回续涨为叠箱，回调守低再攻击为堆箱",
+                "叠箱以原 N 固定箱高连续推演，堆箱目标为 B低加A浪幅度，回调暂停旧目标",
+                "轧空低严格跌破失效、等于仍守住，同棒歧义保守处理，事件无未来泄漏",
+                "V3 原目标耗尽后可使用已确认转浪目标，保持其他门槛及 V1/V2 行为",
+                "专项、Core 全量和 API 消费者验证通过并同步说明"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint; typecheck; test:unit -- -q; build; ruff format --check wave_projection.py test_wave_projection.py; mypy --strict --follow-imports=silent wave_projection.py",
+                    "status": "passed",
+                    "summary": "20 项转浪专项和完整 647 项测试、43 子测试通过；Ruff、新文件格式、配置及新模块严格类型检查、sdist/wheel 通过。覆盖叠箱、堆箱、等值、同棒歧义、失效、超大跳空、TTL 与逐日前缀。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api test:unit; GET /api/tdx-backtest sz.300154 lecture_v3 start=2025-01-01 asof=2026-09-07 and 2026-08-26 volume_filter=false",
+                    "status": "passed",
+                    "summary": "API 4 项 Node、68 项 Python 通过，1 项外部基础设施测试按环境跳过。真实回测返回 v8、14 项转浪事件及目标参考线；8 月 26 日前缀的 13 项事件与完整历史截取完全一致，包含 A/B 锚点、叠箱/堆箱名称和失效。"
+                },
+                {
+                    "command": "pnpm harness:check; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "106 项功能状态及差异检查通过，代码索引已同步；保留其他任务的 MONOREPO-100 activeFeature。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-107",
+            "name": "tertiary-retracement-stop-at-first-break",
+            "title": "三级三分回撤线停在首次跌破 K 线",
+            "description": "三级趋势线 1/3 与 2/3 回撤参考线分别在后续最低价首次严格跌破各自价格的 K 线终止，不继续延长。",
+            "scope": "仅 Web 三级回撤辅助线数据生成、图表回归与说明；不改服务端结构或交易策略。",
+            "dependencies": [
+                "MONOREPO-091"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "1/3 和 2/3 分别停在各自首次最低价严格跌破的 K 线，触线不截断、后续反弹不恢复延伸",
+                "未跌破的参考线继续延至当前可见历史截止；回放不读取未来 K 线",
+                "窗口截断、缺失低价与仅单根可见 K 线不产生无效重复时间点",
+                "Web 单测、构建及真实浏览器图表验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web test:unit; typecheck; lint; build; prettier --check public/retracement-guides.js tests/retracement-guides.test.mjs tests/e2e/tertiary-retracement.spec.mjs",
+                    "status": "passed",
+                    "summary": "9 项 Vitest、121 项 Node 测试、TypeScript、ESLint、改动文件格式及 Next.js 生产构建通过；覆盖分别跌破、触线、回放、缺失低价与窗口截断。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/tertiary-retracement.spec.mjs --workers=1",
+                    "status": "passed",
+                    "summary": "真实 Chromium 瑞凌股份验证 1/3 线止于 2025-04-07 首次跌破棒、2/3 线未跌破继续延伸；图层开关、回放清理、深浅色与 390px 保持正常。"
+                },
+                {
+                    "command": "pnpm harness:check; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "功能状态、差异格式和代码索引同步通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-108",
+            "name": "n-five-top-ten-full-lines",
+            "title": "原 N 字点击展示五顶十满递推目标线",
+            "description": "按用户明确的叠箱/堆箱公式生成五顶，五顶满足后放大至十满，并关联原 N 字详情与参考线。",
+            "scope": "Core 命名目标与图表契约、Web 日期门控/价格轴/说明、真实瑞凌验证；原最近入场目标保持兼容。",
+            "dependencies": [
+                "MONOREPO-106"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "叠箱五顶=X+5H，堆箱五顶=B+3H；五顶满足后按起涨点至五顶段实际高点放大十满",
+                "原 N 字节点展示所属五顶和十满目标、状态、生效日，回放不提前显示",
+                "远端目标在选中 N 后进入价格轴范围，参考线从生效日开始且可清理",
+                "瑞凌 2026-07-27 实际 K 线数据、点击、键盘、窄屏及策略/Web/API 门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core lint; typecheck; test:unit -- -q; build; mypy --strict --follow-imports=silent wave_projection.py",
+                    "status": "passed",
+                    "summary": "650 项 Core 测试与 43 子测试、Ruff、配置类型及模块严格 mypy、sdist/wheel 构建通过。覆盖命名阶段放大、最近入场目标兼容、原 N 目标关联和逐日前缀。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api test:unit; GET /api/tdx-backtest sz.300154 lecture_v3 start=2018-01-01 asof=2026-09-07 volume_filter=false",
+                    "status": "passed",
+                    "summary": "API 4 项 Node、68 项 Python 通过，1 项环境跳过。真实 v9 回测的 7 月 27 日 N 返回堆箱五顶 15.25881718（已满足）和十满 22.32357075（回调暂停），复权 K 线与用户数据一致。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build; playwright test tests/e2e/n-extension-levels.spec.mjs --workers=1",
+                    "status": "passed",
+                    "summary": "Web lint、类型、9 项 Vitest、121 项 Node、生产构建及 2 条 Chromium 通过。验证真实瑞凌详情、鼠标点击 N、键盘、390px、远端目标价格轴、历史日期门控与图层清理。"
                 }
             ]
         }

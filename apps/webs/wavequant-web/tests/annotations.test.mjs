@@ -16,7 +16,13 @@ import {
     visibleAnnotations,
 } from "../public/annotations.js";
 
-const options = { signals: true, fills: true, rules: true, diagnostics: false };
+const options = {
+    signals: true,
+    fills: true,
+    rules: true,
+    diagnostics: false,
+    candidateRejections: true,
+};
 test("sizing rejection and structural cutoff have explicit Chinese explanations", () => {
     assert.equal(reasonText("risk_budget_below_one_lot"), "单笔风险预算不足以买入一手");
     assert.equal(reasonText("insufficient_net_reward_risk"), "开盘含费净盈亏比不足");
@@ -320,6 +326,12 @@ test("bear-to-bull high labels use Python landmarks and respect their causal ava
     };
 
     assert.deepEqual(bearToBullHighAnnotations([{ level: 2, landmarks: [landmark] }], "2022-05-01", "2022-08-08"), []);
+    assert.equal(
+        bearToBullHighAnnotations([{ level: 2, landmarks: [landmark] }], "2022-08-01", "2022-08-05", "2022-08-09")
+            .length,
+        1,
+        "a historical viewport must retain a later-confirmed high when the replay date is already known",
+    );
     const [item] = bearToBullHighAnnotations([{ level: 2, landmarks: [landmark] }], "2022-05-01", "2022-08-09");
     assert.equal(item.time, "2022-08-03");
     assert.equal(item.price, 49.56);
@@ -382,6 +394,30 @@ test("confirmed bear-bull alternation lows render below price and preserve causa
     assert.equal(marker.position, "atPriceBottom");
     assert.equal(marker.shape, "arrowUp");
     assert.equal(marker.price, 29.75);
+});
+
+test("deep alternation explains the confirmed re-break rather than claiming a shallow pullback", () => {
+    const landmark = {
+        id: "level3-westpoint-alternation",
+        time: "2026-07-21",
+        available_at: "2026-09-07",
+        kind: "L",
+        label: "L",
+        value: 21.88,
+        source_level: 2,
+        retracement_ratio: (36.98 - 21.88) / (36.98 - 15.2),
+        confirmed_flip_high: { time: "2025-08-11", label: "H", value: 36.98 },
+        confirmed_bear_low: { time: "2024-02-08", label: "L", value: 15.2 },
+        broken_key: { time: "2023-08-11", label: "H", value: 36 },
+        retracement_origin: { time: "2024-02-08", label: "L", value: 15.2 },
+        confirmed_rebreak_high: { time: "2026-08-20", label: "H", value: 39.98 },
+    };
+    const rows = [{ level: 3, landmarks: [landmark] }];
+    assert.deepEqual(bearBullAlternationLowAnnotations(rows, "2026-07-01", "2026-08-01", "2026-09-06"), []);
+    const [item] = bearBullAlternationLowAnnotations(rows, "2026-07-01", "2026-08-01", "2026-09-07");
+    assert.match(item.description, /69\.33%/);
+    assert.match(item.description, /2026-08-20，39\.98/);
+    assert.doesNotMatch(item.description, /严格小于三分之二/);
 });
 
 test("post-alternation bull high marks the first confirmed rising leg endpoint", () => {
@@ -524,6 +560,25 @@ test("rules are dated at availability, not their historical pivot", () => {
     assert.equal(item.time, "2026-01-02");
     assert.equal(item.sourceTime, "2026-01-01");
 });
+test("squeeze confirmation tooltip does not promise a buy from the confirming N", () => {
+    const event = {
+        id: "squeeze-confirmed",
+        event: "squeeze_alternation_confirmed",
+        time: "2026-01-01",
+        available_at: "2026-01-02",
+        price: 10.1,
+        a_origin_index: 0,
+        a_high_index: 1,
+        b_low_index: 0,
+        attack: 1,
+        candidate_index: 1,
+        regime: "轧空",
+    };
+    const item = buildAnnotations({ ...view, markers: [] }, { events: [event] }).find((entry) => entry.id === event.id);
+    assert.match(item.description, /此 N 只用于确认交替/);
+    assert.match(item.description, /后续合格正 N/);
+    assert.doesNotMatch(item.description, /此 N 可进入买点筛选/);
+});
 test("actual fill markers use compact B and S labels at exact execution prices", () => {
     const groups = markerGroups(buildAnnotations(view, theory), options);
     const buyMarker = groups.find((g) => g.id === "o1").marker;
@@ -542,12 +597,171 @@ test("actual fill markers use compact B and S labels at exact execution prices",
     assert.equal(sellMarker.shape, "arrowDown");
     assert.equal(sellMarker.text, "S");
 });
+test("failed execution risk attempts enrich the original buy signal without adding a dot", () => {
+    const rejectedView = {
+        asof: "2026-01-03",
+        bars: view.bars,
+        markers: [
+            {
+                id: "risk-signal",
+                time: "2026-01-01",
+                kind: "signal",
+                side: "LONG",
+                price: 20.1,
+            },
+            {
+                id: "risk-order",
+                time: "2026-01-02",
+                signal_time: "2026-01-01",
+                reference_price: 20.1,
+                kind: "order",
+                side: "BUY",
+                status: "cancelled",
+                reason: "risk_budget_below_one_lot",
+                price: 19.8,
+                risk_budget: 5000,
+                one_lot_price_risk: 7304.5,
+            },
+            {
+                id: "expired-order",
+                time: "2026-01-03",
+                kind: "order",
+                side: "BUY",
+                status: "cancelled",
+                reason: "expired",
+                price: 20,
+            },
+        ],
+    };
+    const items = buildAnnotations(rejectedView, null);
+    const riskItem = items.find((item) => item.id === "risk-order");
+    assert.equal(riskItem.category, "risk-rejections");
+    assert.match(riskItem.description, /单笔风险预算不足以买入一手/);
+    assert.match(riskItem.description, /5,000\.00/);
+    assert.match(riskItem.description, /7,304\.50/);
+    assert.match(riskItem.description, /未实际买入/);
+    assert.equal(items.find((item) => item.id === "expired-order").category, "orders");
+
+    const signal = items.find((item) => item.id === "risk-signal");
+    assert.deepEqual(
+        signal.executionRiskRejections.map((item) => item.id),
+        ["risk-order"],
+    );
+    const groups = markerGroups(items, options);
+    assert.deepEqual(
+        groups.map((group) => group.id),
+        ["risk-signal"],
+    );
+    assert.equal(groups[0].marker.position, "belowBar");
+    assert.equal(groups[0].marker.color, "#49d5dc");
+    assert.equal(groups[0].marker.shape, "circle");
+    assert.equal(markerGroups(items, { ...options, signals: false }).length, 0);
+    assert.deepEqual(
+        markerGroups(items, { ...options, diagnostics: true }).map((group) => group.id),
+        ["risk-signal", "expired-order"],
+    );
+    const beforeExecution = buildAnnotations({ ...rejectedView, asof: "2026-01-01" }, null);
+    assert.equal(beforeExecution.find((item) => item.id === "risk-signal").executionRiskRejections, undefined);
+});
+test("each rejected entry evaluation keeps its reason when same-day candidates share one dot", () => {
+    const candidateView = {
+        asof: "2026-01-03",
+        bars: [{ time: "2026-01-01" }, { time: "2026-01-02" }, { time: "2026-01-03" }],
+        markers: [],
+    };
+    const candidateTheory = {
+        events: [
+            {
+                id: "candidate-a",
+                event: "entry_rejected",
+                time: "2026-01-03",
+                available_at: "2026-01-03",
+                price: 11,
+                attack: 0,
+                reason: "wave_no_alternation_at_attack",
+            },
+            {
+                id: "candidate-b",
+                event: "entry_preflight_rejected",
+                time: "2026-01-03",
+                available_at: "2026-01-03",
+                price: 11,
+                attack: 1,
+                reason: "insufficient_close_gross_reward_risk",
+                gross_reward_risk: 1.2,
+                required_reward_risk: 1.5,
+            },
+        ],
+    };
+    const items = buildAnnotations(candidateView, candidateTheory);
+    const groups = markerGroups(items, options);
+    assert.equal(groups.length, 1);
+    assert.deepEqual(
+        groups[0].items.map((item) => item.id),
+        ["candidate-a", "candidate-b"],
+    );
+    assert.match(groups[0].items[0].description, /N 字攻击时尚无已确认的空多交替/);
+    assert.match(groups[0].items[0].description, /2026-01-01/);
+    assert.match(groups[0].items[1].description, /收盘收益风险比 1\.20，要求至少 1\.50/);
+    assert.match(groups[0].items[1].description, /未提交买单/);
+    assert.deepEqual(groups[0].marker, {
+        id: "candidate-a",
+        time: "2026-01-03",
+        position: "atPriceBottom",
+        price: 11,
+        color: "#8c9db599",
+        shape: "circle",
+        text: "",
+        size: 0.8,
+    });
+    assert.equal(markerGroups(items, { ...options, candidateRejections: false }).length, 0);
+    assert.equal(markerGroups(items, { ...options, rules: false, diagnostics: false }).length, 1);
+});
 test("same-day rules grouped, no evidence lost", () => {
     const rules = markerGroups(buildAnnotations(view, theory), options).filter((g) => g.items[0].kind === "rule");
     assert.equal(rules.length, 1);
     assert.equal(rules[0].items.length, 2);
     assert.equal(rules[0].marker.shape, "circle");
     assert.match(rules[0].marker.text, /\+1/);
+});
+test("inverse N completion uses a green circle without recoloring positive N or other rules", () => {
+    const ruleView = { ...view, markers: [] };
+    const ruleTheory = {
+        events: [
+            {
+                id: "down-n",
+                event: "n_completed",
+                direction: "down",
+                time: "2026-01-01",
+                available_at: "2026-01-01",
+                price: 10,
+            },
+            {
+                id: "up-n",
+                event: "n_completed",
+                direction: "up",
+                time: "2026-01-02",
+                available_at: "2026-01-02",
+                price: 11,
+            },
+            {
+                id: "other-rule",
+                event: "regime_confirmation",
+                time: "2026-01-03",
+                available_at: "2026-01-03",
+                price: 12,
+            },
+        ],
+    };
+    const groups = markerGroups(buildAnnotations(ruleView, ruleTheory), options);
+    const inverseN = groups.find((group) => group.id === "down-n");
+    assert.equal(inverseN.marker.color, "#40d6a3");
+    assert.equal(inverseN.marker.shape, "circle");
+    assert.equal(inverseN.marker.position, "aboveBar");
+    assert.match(inverseN.marker.text, /倒 N/);
+    assert.equal(groups.find((group) => group.id === "up-n").marker.color, "#b69af5");
+    assert.equal(groups.find((group) => group.id === "other-rule").marker.color, "#b69af5");
+    assert.equal(markerGroups(buildAnnotations(ruleView, ruleTheory), { ...options, rules: false }).length, 0);
 });
 test("all six regimes retain their exact names", () => {
     for (const regime of ["轧空", "强轧空", "盘坚", "盘跌", "追杀", "强追杀"])
@@ -569,11 +783,13 @@ test("signal, fill, rule and diagnostic filters independent", () => {
     );
     assert.equal(
         visibleAnnotations(items, options).some((m) => m.id === "r3"),
-        false,
+        true,
     );
     assert.equal(
-        visibleAnnotations(items, { ...options, diagnostics: true }).some((m) => m.id === "r3"),
-        true,
+        visibleAnnotations(items, { ...options, candidateRejections: false, diagnostics: true }).some(
+            (m) => m.id === "r3",
+        ),
+        false,
     );
 });
 test("a deferred order is never rendered as an actual fill", () => {

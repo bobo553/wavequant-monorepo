@@ -27,6 +27,7 @@ from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
 from wavequant.domain.market_structure.lecture_trend import reversal_trends
 from wavequant.domain.market_structure.secondary_trend import secondary_trends
 from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
+from wavequant.domain.market_structure.abc_candidate import AbcAnchor, tertiary_abc_observations
 from wavequant.interfaces.research_tools.stock_backtest import single_stock_result
 from wavequant.application.analytics.trade_evidence import result_markers
 from wavequant.domain.strategies.strategy_profiles import research_profile, PROFILE_ID, hierarchical_profile, HIERARCHICAL_PROFILE_ID
@@ -62,6 +63,7 @@ VARIANTS.update(
         "lecture_v3_d67_c33": "整段双买点 V3 · 深 >2/3 / 收盘 ≤1/3",
         "lecture_v3_d50_c50": "整段双买点 V3 · 深 >1/2 / 收盘 ≤1/2",
         "lecture_v3_d67_c50": "整段双买点 V3 · 深 >2/3 / 收盘 ≤1/2",
+        "lecture_v3_close_d50_c50": "整段双买点 V3 · 第一类收盘 >1/2 / 第二类收盘 <1/2",
     }
 )
 SCENARIOS = {"base": "原费用", "cost_2x": "2 倍成本", "cost_3x": "3 倍成本", "capacity_half": "半容量"}
@@ -162,13 +164,14 @@ class ChartRepository:
                 raise ValueError("invalid artifact cache scope")
             cache_root /= artifact_cache_scope
         self.tdx = TdxBrowser(tdx_root, cache=cache_root) if tdx_root else None
-        self.akshare = AkShareBrowser(timeout=akshare_timeout) if akshare_enabled else None
+        self.akshare = AkShareBrowser(timeout=akshare_timeout, pinned_history=True) if akshare_enabled else None
         adapters = []
         if self.akshare is not None:
             adapters.append(AkShareMarketDataAdapter(self.akshare))
         if self.tdx is not None:
             adapters.append(TdxMarketDataAdapter(self.tdx))
-        self.market_data = MarketDataRepository(adapters, default_source="akshare")
+        self.market_data = MarketDataRepository(adapters, default_source="akshare",
+            fallback_order={adapter.source: () for adapter in adapters})
         self.root = Path(root).resolve()
         self.runs = {}
         self.cache = {}
@@ -179,6 +182,8 @@ class ChartRepository:
         self.tdx_backtester = (
             TdxBacktester(self.tdx, cache_root, actions_cache=shared_cache_root) if self.tdx else None
         )
+        from wavequant.interfaces.research_tools.akshare_backtest import AkShareBacktester
+        self.akshare_backtester = AkShareBacktester(self.akshare, cache_root / 'akshare') if self.akshare else None
         self.refresh()
         from wavequant.interfaces.screening.buy_scanner import BuyScanner
         from wavequant.interfaces.screening.structure_scanner import StructureScanner
@@ -586,15 +591,23 @@ class ChartRepository:
         result = self._stock_signals(rid, variant, symbol, asof)
         return self.render_theory(bars, config, result, asof)
 
-    def tdx_backtest(self, rid, variant, symbol, asof, scenario, start):
+    def tdx_backtest(self, rid, variant, symbol, asof, scenario, start, *, volume_filter=True, net_reward_risk_filter=False):
         self._run(rid)
         if variant not in VARIANTS or scenario not in SCENARIOS:
             raise ValueError("unknown strategy or scenario")
+        if type(volume_filter) is not bool:
+            raise ValueError("volume_filter must be a boolean")
+        if type(net_reward_risk_filter) is not bool:
+            raise ValueError("net_reward_risk_filter must be a boolean")
         if self.tdx_backtester is None:
             raise ValueError("通达信目录未配置")
         config = self.strategy_config(rid, variant)
+        # Never mutate a sealed profile: the effective strategy is the cache key,
+        # so checked and unchecked backtests remain independently reproducible.
+        strategy = dict(config["strategy"], volume_filter=volume_filter)
+        execution = dict(config["scenarios"][scenario]["execution"], net_reward_risk_filter=net_reward_risk_filter)
         bars, result, view = self.tdx_backtester.run(
-            symbol, start, asof, config["strategy"], config["scenarios"][scenario]["execution"]
+            symbol, start, asof, strategy, execution
         )
         cache = self.tdx_backtester.artifacts
         key = dict(
@@ -602,7 +615,7 @@ class ChartRepository:
             symbol=symbol,
             start=start,
             asof=asof,
-            strategy=config["strategy"],
+            strategy=strategy,
             price_basis=view["price_basis"],
         )
         with cache.lock(cache.key("adjusted_theory", key)):
@@ -611,10 +624,23 @@ class ChartRepository:
                 from .chart_geometry import cached_geometry
 
                 geometry = cached_geometry(cache, bars, view["price_basis"], view["backtest"]["source"]["engine"])
-                theory = self.render_theory(bars, SystemStrategy(**config["strategy"]), result, asof, geometry=geometry)
+                theory = self.render_theory(bars, SystemStrategy(**strategy), result, asof, geometry=geometry)
                 self.tdx_backtester._verify(dict(view["backtest"]["source"], symbol=symbol))
                 cache.put("adjusted_theory", key, theory)
         theory = dict(theory, price_basis=view["price_basis"], run_id=view["run_id"])
+        definition = dict(config.get("definition", {}))
+        definition["net_reward_risk_filter"] = net_reward_risk_filter
+        definition["reward_risk_policy"] = (
+            "next_open_net_reward_risk_gate_enabled" if net_reward_risk_filter else "next_open_net_reward_risk_gate_disabled"
+        )
+        if not net_reward_risk_filter and "primary_filters" in definition:
+            definition["primary_filters"] = [
+                name for name in definition["primary_filters"] if name != "next_open_net_rr_1_5"
+            ]
+        if not volume_filter and "primary_filters" in definition:
+            definition["primary_filters"] = [
+                filter_name for filter_name in definition["primary_filters"] if filter_name != "rvol_1_2"
+            ]
         return dict(
             view,
             variant=variant,
@@ -622,9 +648,33 @@ class ChartRepository:
             parameter_source_run=rid,
             theory=theory,
             strategy_profile=dict(
-                id=variant, version=config.get("profile_version", variant), definition=config.get("definition", {})
+                id=variant, version=config.get("profile_version", variant), definition=definition
             ),
         )
+
+    def akshare_backtest(self, rid, variant, symbol, asof, scenario, start, *, volume_filter=True, net_reward_risk_filter=False):
+        self._run(rid)
+        if variant not in VARIANTS or scenario not in SCENARIOS:
+            raise ValueError('unknown strategy or scenario')
+        if type(volume_filter) is not bool or type(net_reward_risk_filter) is not bool:
+            raise ValueError('backtest filters must be boolean')
+        if self.akshare_backtester is None:
+            raise ValueError('AKShare 数据源未配置')
+        profile = self.strategy_config(rid, variant)
+        strategy = dict(profile['strategy'], volume_filter=volume_filter)
+        execution = dict(profile['scenarios'][scenario]['execution'], net_reward_risk_filter=net_reward_risk_filter)
+        bars, generated, view = self.akshare_backtester.run(symbol, start, asof, strategy, execution)
+        theory = self.render_theory(bars, SystemStrategy(**strategy), generated, view['asof'])
+        theory.update(price_basis=view['price_basis'], data_source='akshare', upstream='sina', run_id=view['run_id'])
+        definition = dict(profile.get('definition', {}), net_reward_risk_filter=net_reward_risk_filter)
+        definition['reward_risk_policy'] = (
+            'next_open_net_reward_risk_gate_enabled' if net_reward_risk_filter else 'next_open_net_reward_risk_gate_disabled'
+        )
+        if 'primary_filters' in definition:
+            definition['primary_filters'] = [name for name in definition['primary_filters']
+                if (volume_filter or name != 'rvol_1_2') and (net_reward_risk_filter or name != 'next_open_net_rr_1_5')]
+        return dict(view, variant=variant, scenario=scenario, parameter_source_run=rid, theory=theory,
+                    strategy_profile=dict(id=variant, version=profile.get('profile_version', variant), definition=definition))
 
     def render_theory(self, bars, config, result, asof, *, geometry=None):
         snapshots, epochs, limits, blocked = pivot_history(bars, config)
@@ -641,6 +691,29 @@ class ChartRepository:
         ]
         events = []
         shapes = []
+        # Join later, dated projections back to the N the user selects. Keep
+        # fulfilled targets for review and label suspended targets explicitly.
+        extension_levels = {}
+        for row in result.audit:
+            if not row['event'].startswith('wave_projection_') or row['bar_index'] > i:
+                continue
+            levels = extension_levels.setdefault(row['attack'], {})
+            reached = row.get('reached_stage')
+            if reached in levels:
+                levels[reached]['status'] = '已满足'
+            stage = row.get('target_stage')
+            if stage not in ('five_top', 'ten_full'):
+                continue
+            if row.get('target') is not None:
+                levels[stage] = dict(
+                    stage=stage, price=row['target'], status='推演中',
+                    mode='叠箱' if row['state'] == 'stacking' else '堆箱',
+                    available_at=day(bars[row['bar_index']].timestamp.isoformat()),
+                    projection_span=row['projection_span'], a_origin=row['a_origin'],
+                    a_high=row['a_high'], b_low=row.get('b_low'),
+                )
+            elif stage in levels and row['state'] in ('pullback', 'invalidated'):
+                levels[stage]['status'] = '回调暂停' if row['state'] == 'pullback' else '已失效'
         for r in result.audit:
             available = max(r["bar_index"], r.get("known_at", r["bar_index"]))
             if available > i:
@@ -693,6 +766,9 @@ class ChartRepository:
                     for key, title in (("equal_wave", "等浪投影"), ("one_p", "1P 投影"), ("two_t", "2T 投影"))
                     if getattr(targets, key) is not None
                 ]
+                for level in extension_levels.get(r['bar_index'], {}).values():
+                    title = '五顶' if level['stage'] == 'five_top' else '十满'
+                    event['levels'].append(dict(level, name=f"{title}（{level['mode']} · {level['status']}）"))
                 shapes.append(
                     dict(
                         points=coords,
@@ -714,6 +790,43 @@ class ChartRepository:
                 secondary_trends=level2,
                 tertiary_trends=tertiary_trends(level2, bars),
             )
+        from ...domain.market_structure.squeeze_alternation import squeeze_landmarks
+        geometry = dict(geometry)
+        for level, name in ((2, "secondary_trends"), (3, "tertiary_trends")):
+            if name not in geometry:
+                continue
+            additions = squeeze_landmarks(bars, result.audit, level)
+            identities = {(p["confirmed_bear_low"]["index"], p["confirmed_flip_high"]["index"], p["index"])
+                          for p in additions}
+            ordinary = [p for p in geometry[name].get("bear_bull_alternation_lows", [])
+                        if (p["confirmed_bear_low"]["index"], p["confirmed_flip_high"]["index"], p["index"])
+                        not in identities]
+            geometry[name] = dict(geometry[name], bear_bull_alternation_lows=[*ordinary, *additions])
+        dates = {day(bar.timestamp.isoformat()): index for index, bar in enumerate(bars)}
+        anchors = [
+            AbcAnchor(
+                high["confirmed_low"]["index"], high["index"],
+                dates[high["available_at"]], high["confirmed_low"]["value"],
+                high["value"], high["source_path"],
+            )
+            for high in geometry["tertiary_trends"].get("bear_to_bull_highs", [])
+            if high["available_at"] in dates
+        ]
+        for observation in tertiary_abc_observations(bars, anchors, result.audit):
+            index = observation["bar_index"]
+            date = day(bars[index].timestamp.isoformat())
+            events.append(dict(
+                observation, id=(f"rule-abc-{observation['source_path']}-"
+                                 f"{observation['a_high_index']}-{observation['b_low_index']}-"
+                                 f"{observation['attack']}-{observation['event']}"),
+                time=date, available_at=date,
+                price=bars[index].close,
+                levels=[dict(name=title, price=observation[key]) for key, title in (
+                    ("a_origin_price", "a 起点"), ("a_high_price", "a 高点 / c 突破参考"),
+                    ("b_low_price", "b 低点 / c 候选失效参考"),
+                    ("two_thirds_price", "a 的 2/3 回撤价"), ("half_price", "a 的 1/2 回撤价"),
+                )],
+            ))
         return dict(
             asof=asof,
             points=points,

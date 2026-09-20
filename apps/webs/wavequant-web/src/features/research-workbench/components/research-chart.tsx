@@ -1,5 +1,9 @@
 import type { JSX } from "react";
 
+import { IconStar } from "@tabler/icons-react";
+
+import { TradingViewChartView } from "./tradingview-chart-view";
+
 interface IChartLayer {
     checked: boolean;
     description: string;
@@ -25,7 +29,7 @@ const chartLayers: readonly IChartLayer[] = [
         id: "show-markers",
         label: "买卖信号",
         checked: true,
-        description: "显示策略或结构产生的买入、退出信号；信号用于研究，不等同于实际成交。",
+        description: "显示策略或结构产生的买入、退出信号；买入信号悬停可查看其执行风控结果，信号不等同于实际成交。",
         tone: "cyan",
     },
     {
@@ -34,6 +38,14 @@ const chartLayers: readonly IChartLayer[] = [
         checked: true,
         description: "显示回测账本中的实际模拟成交价；B 为买入，S 为卖出。",
         tone: "orange",
+    },
+    {
+        id: "show-entry-rejections",
+        label: "入场候选未通过",
+        checked: true,
+        description:
+            "半透明点显示每次策略入场候选评估；悬停查看对应 N 字攻击日期和未通过的条件。同日多个候选合并显示，不代表已发单。",
+        tone: "base",
     },
     {
         id: "show-rules",
@@ -105,6 +117,22 @@ const chartLayers: readonly IChartLayer[] = [
         description: "点击图表标识或证据记录后，显示所选价格水平的辅助定位线。",
         tone: "base",
     },
+    {
+        id: "show-tertiary-retracement",
+        label: "三级空翻多三分线",
+        checked: true,
+        description:
+            "将图窗内最近一段已确认三级空翻多的整段涨幅三等分，标出从高点回撤 1/3、2/3 的价格，并延伸至当前数据日。用于对照回档深度；交替成立仍以确认标识为准。需开启三级趋势线与折线 / N 字。",
+        tone: "orange",
+    },
+    {
+        id: "show-tertiary-abc",
+        label: "三级 a/b/c 观察",
+        checked: true,
+        description:
+            "b 最低价不低于 a 的 2/3 回撤价，或者 b 耗时长于 a 且 b 最低收盘低于 a 的 1/2 回撤价，再由正 N 与轧空确认提示 c 启动候选。收盘突破 a 高点、跌破 b 低点另行标记；点击可查看完整证据。",
+        tone: "orange",
+    },
 ];
 
 const trendLayers: readonly ITrendLayer[] = [
@@ -151,7 +179,21 @@ export function ResearchChart(): JSX.Element {
         <article className="panel chart-card">
             <div className="card-header chart-card-header">
                 <div className="symbol-title">
-                    <select id="symbol-select" aria-label="股票" />
+                    <input id="symbol-select" type="hidden" />
+                    <button
+                        id="symbol-copy"
+                        className="symbol-copy"
+                        type="button"
+                        title="点击复制股票代码和名称"
+                        aria-label="复制当前股票代码和名称"
+                        disabled
+                    >
+                        <span id="symbol-copy-text">读取股票…</span>
+                        <span className="symbol-copy-icon" aria-hidden="true">
+                            ⧉
+                        </span>
+                    </button>
+                    <span id="symbol-copy-feedback" className="sr-only" role="status" aria-live="polite" />
                     <button
                         id="watchlist-toggle-current"
                         className="watchlist-star"
@@ -161,7 +203,7 @@ export function ResearchChart(): JSX.Element {
                         title="将当前股票加入自选股"
                         disabled
                     >
-                        <span aria-hidden="true">☆</span>
+                        <IconStar size={20} stroke={1.8} aria-hidden="true" />
                     </button>
                     <div id="timeframe-select" className="timeframe-tabs" role="tablist" aria-label="K线周期">
                         {chartTimeframes.map(([value, label], index) => (
@@ -200,7 +242,7 @@ export function ResearchChart(): JSX.Element {
                         controls="chart-layers-popover"
                         id="chart-layers-trigger"
                         label="图层"
-                        meta="16/17"
+                        meta="19/20"
                         metaId="layer-toggle-count"
                     />
                     <ChartToolTrigger controls="chart-guide-popover" id="chart-guide-trigger" label="图例" meta="?" />
@@ -209,6 +251,8 @@ export function ResearchChart(): JSX.Element {
                     </button>
                 </div>
             </div>
+
+            <TradingViewChartView />
 
             <div id="chart-layers-popover" className="chart-tool-popover chart-layers-popover" popover="manual">
                 <div className="chart-popover-header">
@@ -259,11 +303,13 @@ export function ResearchChart(): JSX.Element {
                     <span className="key-bear-bull-alternation-low">Ⅰ/Ⅱ/Ⅲ 空多交替低点 · Python 确认 L</span>
                     <span className="key-post-alternation-bull-high">Ⅰ/Ⅱ/Ⅲ 交替后多头段高点 · Python 确认 H</span>
                     <span className="key-bullish-turn-signal">Ⅰ/Ⅱ/Ⅲ 转多信号 · 收盘突破空翻多高点</span>
-                    <span className="key-rule">● 规则确认</span>
-                    <span className="key-signal">● 买入信号</span>
+                    <span className="key-rule">● 其他规则确认</span>
+                    <span className="key-inverse-n">● 倒 N · 跌破确认</span>
+                    <span className="key-signal">● 买入信号 · 悬停看风控结果</span>
                     <span className="key-exit">● 退出信号 ≠ 卖出</span>
                     <span className="key-buy">B · 买入成交，价格见详情</span>
                     <span className="key-sell">S · 卖出成交，价格见详情</span>
+                    <span className="key-entry-rejection">● 半透明 · 入场候选未通过，悬停看筛选原因</span>
                 </div>
                 <p id="drawing-status" className="drawing-status">
                     讲义绘图保留同棒顺序；未给出的母子规则不补线。
@@ -271,7 +317,11 @@ export function ResearchChart(): JSX.Element {
             </div>
 
             <div id="ohlc" className="ohlc" aria-live="off">
-                鼠标移动至 K 线查看价格
+                <span id="ohlc-text">鼠标移动至 K 线查看价格</span>
+                <button id="copy-candle" type="button" aria-label="复制当前 K 线数据" disabled>
+                    复制 K 线
+                </button>
+                <span id="candle-copy-feedback" className="candle-copy-feedback" role="status" aria-live="polite" />
             </div>
             <div id="price-chart" className="price-chart" aria-label="TradingView K线与成交量图" />
             <div id="chart-loading-overlay" className="chart-loading-overlay" role="status" aria-live="polite" hidden>

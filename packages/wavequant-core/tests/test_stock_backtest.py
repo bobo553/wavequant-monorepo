@@ -3,6 +3,7 @@ from datetime import datetime,timedelta
 from types import SimpleNamespace
 import unittest
 
+from wavequant.application.analytics.trade_evidence import result_markers
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar,Signal
 from wavequant.interfaces.research_tools.stock_backtest import single_stock_result
@@ -49,6 +50,17 @@ class StockBacktestTests(unittest.TestCase):
         costly=single_stock_result(self.bars,{},dict(self.config,commission_bps_per_side=30),self.generated)
         self.assertGreater(costly['metrics']['fees'],0)
         self.assertLess(costly['metrics']['total_return'],base['metrics']['total_return'])
+        buy = next(o for o in costly['orders'] if o['side'] == 'BUY' and o['status'] == 'filled')
+        self.assertAlmostEqual(buy['entry_position_value'], buy['price'] * buy['quantity'])
+        self.assertAlmostEqual(buy['account_equity_after_fill'], buy['equity_at_open'] - buy['fee'])
+        self.assertAlmostEqual(
+            buy['entry_position_weight'],
+            buy['entry_position_value'] / buy['account_equity_after_fill'],
+        )
+        self.assertAlmostEqual(
+            next(m for m in result_markers(costly) if m['kind'] == 'fill' and m['side'] == 'BUY')['entry_position_weight'],
+            buy['entry_position_weight'],
+        )
         rejected=single_stock_result(self.bars,{},dict(self.config,lot_size=100000),self.generated)
         self.assertEqual(rejected['metrics']['entry_fills'],0)
         self.assertTrue(rejected['backtest']['diagnostics']['rejection_reasons'])

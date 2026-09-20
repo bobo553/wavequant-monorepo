@@ -15,6 +15,16 @@ export const DEFAULT_WATCHLIST_GROUP = Object.freeze({
     protected: true,
 });
 
+export function setWatchlistStarIcon(button, filled) {
+    const source = document.getElementById(`watchlist-star-${filled ? "filled" : "outline"}-icon`);
+    const icon = source?.cloneNode(true);
+    if (icon) {
+        icon.removeAttribute("id");
+        icon.setAttribute("aria-hidden", "true");
+        button.replaceChildren(icon);
+    }
+}
+
 function validGroup(group) {
     return (
         group &&
@@ -170,6 +180,21 @@ export function removeWatchlistMember(state, groupId, symbol) {
     };
 }
 
+function orderedMembers(state, groupId, universe) {
+    const universeBySymbol = new Map(universe.map((stock) => [stock.symbol, stock]));
+    return state.memberships
+        .filter((membership) => membership.groupId === groupId)
+        .map((membership) => ({ ...membership, stock: universeBySymbol.get(membership.symbol) }))
+        .sort((left, right) => (left.name || left.symbol).localeCompare(right.name || right.symbol, "zh-CN"));
+}
+
+export function firstAvailableWatchlistSymbol(state, groupId, universe) {
+    return (
+        orderedMembers(state, groupId, universe).find((member) => member.stock?.has_data !== false && member.stock)
+            ?.symbol || ""
+    );
+}
+
 function openWatchlistDatabase(indexedDBFactory = globalThis.indexedDB) {
     if (!indexedDBFactory) return Promise.reject(new Error("当前浏览器不支持 IndexedDB"));
     return new Promise((resolve, reject) => {
@@ -322,6 +347,10 @@ export class Watchlists {
 
     get selectedGroup() {
         return this.state.groups.find((group) => group.id === this.selectedGroupId) || this.state.groups[0];
+    }
+
+    firstAvailableSymbol(stocks) {
+        return firstAvailableWatchlistSymbol(this.state, this.selectedGroup.id, stocks);
     }
 
     rememberSelectedGroup() {
@@ -493,13 +522,9 @@ export class Watchlists {
                 : `将 ${currentStock?.name || currentStock?.symbol || "当前股票"} 加入“${group.name}”`,
         );
         star.title = alreadyAdded ? `已在“${group.name}”中，点击移除` : `加入“${group.name}”`;
-        star.querySelector("span").textContent = alreadyAdded ? "★" : "☆";
+        setWatchlistStarIcon(star, alreadyAdded);
 
-        const universeBySymbol = new Map(this.universe.map((stock) => [stock.symbol, stock]));
-        const members = this.state.memberships
-            .filter((membership) => membership.groupId === group.id)
-            .map((membership) => ({ ...membership, stock: universeBySymbol.get(membership.symbol) }))
-            .sort((left, right) => (left.name || left.symbol).localeCompare(right.name || right.symbol, "zh-CN"));
+        const members = orderedMembers(this.state, group.id, this.universe);
         this.$("watchlist-count").textContent = `${members.length} 只`;
         this.renderRailState();
         const list = this.$("watchlist-stock-list");
@@ -518,18 +543,23 @@ export class Watchlists {
             open.type = "button";
             open.className = "watchlist-stock-open";
             open.setAttribute("aria-pressed", String(member.symbol === this.selectedSymbol));
-            open.disabled = member.stock?.has_data === false || !member.stock;
-            open.setAttribute("aria-label", `查看 ${member.name || member.symbol}`);
+            const canOpen = Boolean(member.stock && member.stock.has_data !== false);
+            open.disabled = !canOpen;
+            open.setAttribute(
+                "aria-label",
+                canOpen ? `切换到 ${member.name || member.symbol}` : `${member.name || member.symbol}，当前数据源不可用`,
+            );
+            if (!canOpen) open.title = "当前数据源不可用";
             const name = document.createElement("strong");
             name.textContent = member.stock?.name || member.name || member.symbol;
             const code = document.createElement("small");
-            code.textContent = member.stock ? `${member.symbol} · 点击查看` : `${member.symbol} · 当前数据源不可用`;
+            code.textContent = member.symbol;
             open.append(name, code);
             open.addEventListener("click", () => this.onSelect(member.symbol));
             const remove = document.createElement("button");
             remove.type = "button";
             remove.className = "watchlist-stock-remove";
-            remove.textContent = "★";
+            setWatchlistStarIcon(remove, true);
             remove.setAttribute("aria-pressed", "true");
             remove.setAttribute("aria-label", `从“${group.name}”移除 ${member.name || member.symbol}`);
             remove.title = `已收藏到“${group.name}”，点击移除`;

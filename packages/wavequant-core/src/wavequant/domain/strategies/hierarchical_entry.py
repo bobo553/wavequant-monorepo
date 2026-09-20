@@ -83,6 +83,7 @@ class EntryContext:
     alternation_low_index: int
     alternation_low_price: float
     maturity_index: int | None = None
+    confirmation_attack: int | None = None
 
     @property
     def episode(self):
@@ -235,9 +236,11 @@ Once mature, this level cannot fall back to the unfiltered type 1 route.
     live = {c.episode:c for c in current}; eligible = []; reasons = []
     asof = attack if asof is None else asof
     for ctx in at_attack:
-        if ctx.episode not in live or not ctx.flip_index < ctx.alternation_index < attack:
+        if ctx.episode not in live or not ctx.flip_index <= ctx.alternation_index < attack:
             continue
         if ctx.maturity_index is None or ctx.maturity_index >= attack:
+            if ctx.trend_level not in (2, 3):
+                reasons.append('first_buy_requires_level_two_or_three'); continue
             # An early N cannot retain the unfiltered route indefinitely after
             # the live context matures. Same-close maturation is the boundary;
             # from the next bar onward a NEW post-maturity pullback is required.

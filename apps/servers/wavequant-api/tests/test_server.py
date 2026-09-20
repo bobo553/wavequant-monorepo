@@ -1,6 +1,7 @@
 """Independent sealed fixtures: no dependency on the user's local market data."""
 
 from datetime import datetime, timezone
+from contextlib import nullcontext
 import csv
 import hashlib
 from http.client import HTTPConnection
@@ -8,6 +9,7 @@ import json
 from pathlib import Path
 import tempfile
 from threading import Thread
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -161,7 +163,7 @@ class VisualizationTests(unittest.TestCase):
         self.assertEqual(v["metrics"]["win_rate"], 1)
         self.assertAlmostEqual(v["metrics"]["total_return"], 0.1)
 
-    def test_four_whole_wave_profiles_are_distinct_and_do_not_inherit_results(self):
+    def test_five_whole_wave_profiles_are_distinct_and_do_not_inherit_results(self):
         from wavequant.domain.strategies.strategy_profiles import WAVE_PROFILES
         from wavequant.interfaces.charts.visualization import VARIANTS
 
@@ -176,7 +178,7 @@ class VisualizationTests(unittest.TestCase):
         }
         with patch.object(self.repo, "_json", return_value=source):
             configs = [self.repo.strategy_config("example", v) for v in WAVE_PROFILES]
-        self.assertEqual(len({json.dumps(c["strategy"], sort_keys=True) for c in configs}), 4)
+        self.assertEqual(len({json.dumps(c["strategy"], sort_keys=True) for c in configs}), 5)
         for v, c in zip(WAVE_PROFILES, configs):
             self.assertIn(v, VARIANTS)
             self.assertNotIn("folds", c)
@@ -433,6 +435,87 @@ class VisualizationTests(unittest.TestCase):
         self.assertEqual(request("/api/health?run=example&run=example")[0], 400)
         self.assertEqual(request("/api/view?run=example")[0], 400)
         self.assertEqual(request("/api/health?run=example")[0], 200)
+
+    def test_tdx_backtest_volume_filter_is_optional_and_strictly_typed(self):
+        server = self.http_server()
+        base = (
+            "/api/tdx-backtest?run=example&variant=lecture_v3&symbol=sz.300154"
+            "&asof=2026-09-07&scenario=base&start=2018-01-02"
+        )
+
+        def request(suffix=""):
+            conn = HTTPConnection("127.0.0.1", server.server_port)
+            try:
+                conn.request("GET", base + suffix)
+                response = conn.getresponse()
+                return response.status, json.loads(response.read())
+            finally:
+                conn.close()
+
+        with patch.object(self.repo, "tdx_backtest", return_value={"ok": True}) as backtest:
+            self.assertEqual(request()[0], 200)
+            self.assertIs(backtest.call_args.kwargs["volume_filter"], True)
+            self.assertIs(backtest.call_args.kwargs["net_reward_risk_filter"], False)
+            self.assertEqual(request("&net_reward_risk_filter=true")[0], 200)
+            self.assertIs(backtest.call_args.kwargs["net_reward_risk_filter"], True)
+            self.assertEqual(request("&net_reward_risk_filter=false")[0], 200)
+            self.assertIs(backtest.call_args.kwargs["net_reward_risk_filter"], False)
+            self.assertEqual(request("&volume_filter=false")[0], 200)
+            self.assertIs(backtest.call_args.kwargs["volume_filter"], False)
+            self.assertEqual(request("&volume_filter=true")[0], 200)
+            self.assertIs(backtest.call_args.kwargs["volume_filter"], True)
+            before = backtest.call_count
+            self.assertEqual(request("&net_reward_risk_filter=1")[0], 400)
+            self.assertEqual(request("&net_reward_risk_filter=")[0], 400)
+            self.assertEqual(request("&net_reward_risk_filter=true&net_reward_risk_filter=false")[0], 400)
+            self.assertEqual(request("&volume_filter=0")[0], 400)
+            self.assertEqual(request("&volume_filter=")[0], 400)
+            self.assertEqual(request("&volume_filter=true&volume_filter=false")[0], 400)
+            self.assertEqual(request("&volume_filter=false&unexpected=1")[0], 400)
+            self.assertEqual(backtest.call_count, before)
+
+    def test_tdx_backtest_volume_setting_is_part_of_strategy_and_theory_cache_key(self):
+        profile = {
+            "strategy": {"pivot_mode": "lecture_causal", "volume_filter": True},
+            "scenarios": {"base": {"execution": {}}},
+            "definition": {"primary_filters": ["rvol_1_2", "gross_rr_1_5"]},
+        }
+        strategies, executions, keys = [], [], []
+
+        class Cache:
+            def key(self, kind, value):
+                keys.append((kind, value))
+                return kind
+
+            def lock(self, _key):
+                return nullcontext()
+
+            def get(self, _kind, _key):
+                return {}  # Cached theory keeps this test focused on strategy plumbing.
+
+        def run(_symbol, _start, _asof, strategy, _execution):
+            strategies.append(strategy.copy())
+            executions.append(_execution.copy())
+            return [], None, {
+                "price_basis": "causal_adjusted_equivalent",
+                "run_id": "test-run",
+                "backtest": {"source": {"engine": "test"}, "strategy": strategy.copy()},
+            }
+
+        self.repo.tdx_backtester = SimpleNamespace(run=run, artifacts=Cache())
+        with patch.object(self.repo, "strategy_config", return_value=profile):
+            enabled = self.repo.tdx_backtest("example", "lecture_v3", "sz.300154", "2026-09-07", "base", "2018-01-02")
+            disabled = self.repo.tdx_backtest(
+                "example", "lecture_v3", "sz.300154", "2026-09-07", "base", "2018-01-02",
+                volume_filter=False, net_reward_risk_filter=True,
+            )
+        self.assertEqual([e["net_reward_risk_filter"] for e in executions], [False, True])
+        self.assertNotIn("net_reward_risk_filter", profile["scenarios"]["base"]["execution"])
+        self.assertEqual([strategy["volume_filter"] for strategy in strategies], [True, False])
+        self.assertNotEqual(keys[0][1]["strategy"], keys[1][1]["strategy"])
+        self.assertTrue(profile["strategy"]["volume_filter"])
+        self.assertIn("rvol_1_2", enabled["strategy_profile"]["definition"]["primary_filters"])
+        self.assertNotIn("rvol_1_2", disabled["strategy_profile"]["definition"]["primary_filters"])
 
     def test_akshare_routes_are_read_only_strict_and_report_provider_failures(self):
         class AkShare:

@@ -126,7 +126,7 @@ def write_trades(path: str | Path, trades: Iterable[Trade]) -> None:
     columns = [
         "symbol", "entry_time", "exit_time", "entry_price", "exit_price",
         "stop_price", "quantity", "gross_return", "net_return", "bars_held",
-        "entry_reason", "exit_reason", "pnl", "fees",
+        "entry_reason", "exit_reason", "pnl", "fees", "position_closed",
     ]
     with target.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)

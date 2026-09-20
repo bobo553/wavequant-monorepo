@@ -25,7 +25,7 @@
         "prettier:fix": "prettier --write package.json progress.md README.md",
         "format": "pnpm lint:fix && pnpm prettier:fix",
         "typecheck": "node scripts/run-python.mjs -m mypy --strict src/wavequant_api/infrastructure src/wavequant_api/application src/wavequant_api/cli.py",
-        "test:unit": "node scripts/run-python.mjs -m pytest",
+        "test:unit": "node --test tests/*.test.mjs && node scripts/run-python.mjs -m pytest",
         "test:integration": "node scripts/run-python.mjs -m pytest -m integration",
         "test:all": "pnpm test:unit"
     },

@@ -32,6 +32,16 @@ def mirror(bar):
 
 
 class NShapeTests(unittest.TestCase):
+    def test_explicit_close_confirmation_can_complete_a_historical_c(self):
+        bars = list(map(mirror, fixture()))
+        s = setup(direction=Direction.DOWN, pullback=PivotRef(2,3), allow_confirmation_bar=True)
+        self.assertEqual(run(bars[:3], s).status, NStatus.AWAIT_ANCHORS)
+        self.assertEqual(run(bars[:4], s).completion.bar_index, 3)
+        self.assertEqual(run(bars, s).completion, run(bars[:4], s).completion)
+        # Default users retain their stricter timing. B must already be known.
+        self.assertIsNone(run(bars, replace(s, allow_confirmation_bar=False)).completion)
+        self.assertIsNone(run(bars[:4], replace(s, neckline=PivotRef(1,3))).completion)
+
     def test_basic_positive_completion_and_virtual_defense(self):
         r=run(fixture()[:4])
         self.assertEqual(r.status,NStatus.COMPLETED)

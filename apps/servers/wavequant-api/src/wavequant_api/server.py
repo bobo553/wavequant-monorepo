@@ -312,13 +312,25 @@ def make_server(
                         raise ValueError("invalid summary arguments")
                     self.send(200, repository.stock_summary(*(q[k][0] for k in ("run", "variant", "asof", "scenario"))))
                     return
-                if url.path == "/api/tdx-backtest":
-                    if set(q) != {"run", "variant", "symbol", "asof", "scenario", "start"}:
+                if url.path in ("/api/tdx-backtest", "/api/akshare-backtest"):
+                    required = {"run", "variant", "symbol", "asof", "scenario", "start"}
+                    if not required <= set(q) or set(q) - required - {"volume_filter", "net_reward_risk_filter"}:
                         raise ValueError("invalid TDX backtest arguments")
+                    filter_values = q.get("volume_filter", ["true"])
+                    if len(filter_values) != 1:
+                        raise ValueError("volume_filter must be provided once")
+                    volume_filter = filter_values[0]
+                    if volume_filter not in ("true", "false"):
+                        raise ValueError("volume_filter must be true or false")
+                    risk_values = q.get("net_reward_risk_filter", ["false"])
+                    if len(risk_values) != 1 or risk_values[0] not in ("true", "false"):
+                        raise ValueError("net_reward_risk_filter must be true or false and provided once")
                     self.send(
                         200,
-                        repository.tdx_backtest(
-                            *(q[k][0] for k in ("run", "variant", "symbol", "asof", "scenario", "start"))
+                        (repository.akshare_backtest if url.path == "/api/akshare-backtest" else repository.tdx_backtest)(
+                            *(q[k][0] for k in ("run", "variant", "symbol", "asof", "scenario", "start")),
+                            volume_filter=volume_filter == "true",
+                            net_reward_risk_filter=risk_values[0] == "true",
                         ),
                     )
                     return

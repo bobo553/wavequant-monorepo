@@ -22,6 +22,8 @@ pnpm --filter wavequant-api dashboard
 
 通过 `wavequant-web dev` 联合启动时，开发启动器会加载本 workspace 的 `.env.infrastructure`、等待本地 Compose MySQL/Redis 健康、幂等建表，并同时托管 API、通达信信号 Worker 和 AkShare 结构分片 Worker。8765 保持为独立 API 进程；访问其根地址会以 `307` 临时重定向到 `http://127.0.0.1:3003/`，API 路由仍由 Next.js 同源代理。重定向目标必须通过 `--web-url` 显式配置，且只接受带端口的 loopback HTTP origin，避免开放重定向。
 
+本地长驻 API 与 Worker 会监听 `wavequant-core` 和本 API 的 Python 源码。连续保存稳定约 2 秒后，启动包装器先结束其拥有的旧 Python 进程树，再启动新进程；策略版本一致性校验仍保留。生产和预发布环境不启用源码监听。一次性初始化、刷新、测试和构建命令不受影响。修改启动包装器本身后需手动重启一次开发命令，以加载新的包装器。
+
 复用迁移前机器上的现有封存结果与通达信行情时，可显式指定数据目录：
 
 ```powershell
@@ -119,3 +121,5 @@ $env:WAVEQUANT_DATABASE_URL = "postgresql+psycopg://wavequant:<password>@127.0.0
 - 数据库连接池、SQL 仓储、Redis 缓存和外部依赖健康检查属于本 workspace 的 Infrastructure 层。
 - 策略、回测、行情读取和查询模型属于 `packages/wavequant-core`。
 - 页面和浏览器测试属于 `apps/webs/wavequant-web`。
+
+`GET /api/tdx-backtest` 支持可选 `net_reward_risk_filter=true|false`（缺省 `false`，不接受重复或非布尔字符串）；写入执行配置和回测缓存键，仅控制次开盘含费净盈亏比不足的拒单门槛，不改变信号或除权价格。

@@ -1,13 +1,25 @@
 import { num, pct } from "./labels.js";
 
 export const ratioPlans = [
-    ["lecture_v3", ">1/2 / ≤1/3"],
+    ["lecture_v3", "二/三级交替后 N 轧空 / ≤1/3"],
     ["lecture_v3_d67_c33", ">2/3 / ≤1/3"],
     ["lecture_v3_d50_c50", ">1/2 / ≤1/2"],
     ["lecture_v3_d67_c50", ">2/3 / ≤1/2"],
+    ["lecture_v3_close_d50_c50", "收盘 >1/2 / 收盘 <1/2"],
 ];
-/** @typedef {{run:string,symbol:string,asof:string,start:string,scenario:string,local:boolean}} RatioContext */
-export const ratioContextKey = (p) => JSON.stringify([p.run, p.symbol, p.asof, p.start, p.scenario, p.local]);
+/** @typedef {{run:string,symbol:string,asof:string,start:string,scenario:string,volume_filter:boolean,net_reward_risk_filter:boolean,local:boolean,source?:string}} RatioContext */
+export const ratioContextKey = (p) =>
+    JSON.stringify([
+        p.run,
+        p.symbol,
+        p.asof,
+        p.start,
+        p.scenario,
+        p.volume_filter,
+        p.net_reward_risk_filter ?? false,
+        p.local,
+        p.source ?? "tdx",
+    ]);
 export function comparisonValues(view) {
     const m = view.metrics;
     return [
@@ -61,12 +73,22 @@ export class RatioComparison {
         for (const [variant, title] of ratioPlans) {
             if (generation !== this.generation) return;
             this.$("ratio-status").textContent =
-                `${p.symbol} · ${p.start} — ${p.asof} · ${p.scenario}：已完成 ${completed}/4，正在计算 ${title}…`;
+                `${p.symbol} · ${p.start} — ${p.asof} · ${p.scenario}：已完成 ${completed}/${ratioPlans.length}，正在计算 ${title}…`;
             const tr = document.createElement("tr");
             try {
-                const { local, ...params } = p;
-                const view = await this.api("/api/tdx-backtest", { ...params, variant }, this.controller.signal);
+                const { local, source = "tdx", volume_filter, net_reward_risk_filter = false, ...params } = p;
+                const view = await this.api(
+                    source === "akshare" ? "/api/akshare-backtest" : "/api/tdx-backtest",
+                    {
+                        ...params,
+                        volume_filter: String(volume_filter),
+                        net_reward_risk_filter: String(net_reward_risk_filter),
+                        variant,
+                    },
+                    this.controller.signal,
+                );
                 if (generation !== this.generation) return;
+                if (view.backtest?.status === "data_unavailable") throw new Error(view.evidence);
                 for (const value of [title, ...comparisonValues(view)]) {
                     const td = document.createElement("td");
                     td.textContent = value;
@@ -93,6 +115,6 @@ export class RatioComparison {
         this.$("compare-ratios").disabled = false;
         this.$("cancel-ratios").disabled = true;
         this.$("ratio-status").textContent =
-            `${p.symbol} · ${p.start} — ${p.asof} · ${p.scenario}：四组对比结束，失败 ${failed} 组。胜率仅统计已平仓净盈利交易；未平仓不计入胜率。`;
+            `${p.symbol} · ${p.start} — ${p.asof} · ${p.scenario}：${ratioPlans.length} 组对比结束，失败 ${failed} 组。胜率仅统计已平仓净盈利交易；未平仓不计入胜率。`;
     }
 }

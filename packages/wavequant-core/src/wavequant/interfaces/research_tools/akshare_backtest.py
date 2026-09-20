@@ -1,0 +1,179 @@
+"""Single-source online research with honest unavailable-minute results."""
+
+from dataclasses import replace
+from datetime import date
+import hashlib
+import json
+from pathlib import Path
+from typing import Any
+
+from wavequant.domain.models.config import StrategyConfig
+from wavequant.domain.models.a_share_security import a_share_security_spec
+from wavequant.domain.strategies.integrated_strategy import SystemStrategy, SystemResult, generate_system_signals
+from wavequant.domain.models.model import Bar
+from wavequant.interfaces.charts.akshare_browser import AkShareBrowser
+from wavequant.infrastructure.market_data.akshare_history import AkShareMinuteSource, MinuteCoverageError, sina_factors
+from wavequant.infrastructure.market_data.data import opening_permissions
+from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
+from wavequant.application.analytics.trade_evidence import result_markers
+from .stock_backtest import single_stock_result
+from .tdx_backtest import TdxBacktester
+
+
+class AkShareBacktester:
+    def __init__(self, browser: AkShareBrowser, cache: str | Path):
+        self.browser = browser
+        self.artifacts = ArtifactCache(cache)  # type: ignore[no-untyped-call]  # Legacy cache boundary.
+
+    def run(
+        self, symbol: str, start: str, asof: str, strategy: dict[str, Any], execution: dict[str, Any]
+    ) -> tuple[list[Bar], SystemResult, dict[str, Any]]:
+        if date.fromisoformat(start) > date.fromisoformat(asof):
+            raise ValueError("回测起始日期不能晚于结束日期")
+        if not self.browser.pinned_history:
+            raise ValueError("回测必须固定 AKShare 的同一上游")
+        raw, _ = self.browser.bars(symbol, asof)
+        factors = sina_factors(self.browser.provider, symbol)
+        # Skip the first twenty listed sessions as in the local execution model.
+        if len(raw) < 22:
+            raise ValueError("历史日线不足 22 个交易日")
+        first = max(start, raw[20].timestamp.date().isoformat())
+        bars: list[Bar] = []
+        cursor = 0
+        current: float | None = None
+        base: float | None = None
+        previous: float | None = None
+        for bar in raw:
+            day = bar.timestamp.date().isoformat()
+            old_factor = current
+            while cursor < len(factors) and factors[cursor][0] <= day:
+                current = factors[cursor][1]
+                cursor += 1
+            if current is None:
+                raise ValueError("AKShare / 新浪缺少历史复权起始因子")
+            if day < first:
+                previous = bar.close
+                continue
+            if base is None:
+                base = current
+            factor = current / base
+            reference = previous * (old_factor or current) / current if previous is not None else bar.open
+            buyable, sellable = opening_permissions(
+                dict(date=day, isST="0", tradestatus="1", preclose=str(reference), open=str(bar.open)), symbol
+            )
+            bars.append(
+                replace(
+                    bar,
+                    **{key: getattr(bar, key) * factor for key in ("open", "high", "low", "close")},
+                    buyable=bool(buyable),
+                    sellable=bool(sellable),
+                    adjustment_factor=factor,
+                )
+            )
+            previous = bar.close
+        if not bars:
+            raise ValueError("所选区间没有同源日线")
+        config = SystemStrategy(**strategy)
+        config.validate()  # type: ignore[no-untyped-call]  # Legacy strategy boundary.
+        execution = TdxBacktester._execution_for_security(  # type: ignore[no-untyped-call]  # Shared execution rules.
+            execution, a_share_security_spec(symbol, date.fromisoformat(asof))
+        )
+        minute = AkShareMinuteSource(self.browser.provider, self.artifacts, symbol)
+        source: dict[str, Any] = dict(
+            provider="akshare",
+            upstream="sina",
+            daily_endpoint="stock_zh_a_daily",
+            factor_endpoint="stock_zh_a_daily:hfq-factor",
+            provider_version=self.browser.provider.version,
+            price_basis="causal_adjusted_equivalent",
+            volume_unit="shares",
+        )
+        payload = [
+            [bar.timestamp.isoformat(), bar.open, bar.high, bar.low, bar.close, bar.volume, bar.adjustment_factor]
+            for bar in bars
+        ]
+        source["daily_sha256"] = hashlib.sha256(json.dumps(payload).encode()).hexdigest()
+        source["engine"] = TdxBacktester._engine_hashes()  # type: ignore[no-untyped-call]  # Shared package fingerprint.
+        identity = hashlib.sha256(json.dumps([source, strategy, execution], sort_keys=True).encode()).hexdigest()
+        with self.artifacts.lock("akshare-backtest-" + identity):  # type: ignore[no-untyped-call]  # Legacy cache boundary.
+            generated = generate_system_signals(bars, config)
+            coverage = None
+            try:
+                result = single_stock_result(  # type: ignore[no-untyped-call]  # Existing simulation boundary.
+                    bars,
+                    strategy,
+                    execution,
+                    generated,
+                    minute_loader=minute.get if execution["staged_exit_intraday"] else None,
+                )
+            except MinuteCoverageError as exc:
+                # Discard partial simulation, but preserve the valid daily theory.
+                coverage = dict(exc.coverage, message=str(exc))
+                result = dict(
+                    metrics=None,
+                    equity=[],
+                    orders=[],
+                    trades=[],
+                    signals=[],
+                    audit=generated.audit,
+                    backtest=dict(
+                        start=first,
+                        end=asof,
+                        execution=execution,
+                        strategy=strategy,
+                        initial_capital=StrategyConfig(**execution).initial_capital,
+                        counts=generated.counts,
+                    ),
+                )
+            source["minute"] = minute.provenance()
+            from wavequant.interfaces.charts.visualization import metrics_at
+
+            _, curve = metrics_at(result["equity"], result["trades"], result["backtest"]["initial_capital"])  # type: ignore[no-untyped-call]  # Shared chart normalization.
+            result["backtest"].update(
+                status="data_unavailable" if coverage else "complete",
+                coverage=coverage,
+                source=source,
+                requested_start=start,
+                price_basis="causal_adjusted_equivalent",
+                limitations=[
+                    "日线、五分钟线和复权因子统一为 AKShare / 新浪；不跨源补齐。",
+                    "周、月等较大周期由同源日线聚合；启用日线回退时，缺少当日分钟按当日日线收盘撮合，并记录回退日期。",
+                    "按普通非 ST 股票研究假设执行，跳过最早 20 个交易日；无完整历史 ST 状态。",
+                    "模拟账户采用复权等价份额；并非券商成交回报。",
+                ],
+            )
+            view = dict(
+                run_id="akshare-" + identity[:24],
+                symbol=symbol,
+                asof=bars[-1].timestamp.date().isoformat(),
+                result_scope="akshare" if coverage else "stock",
+                data_source="akshare",
+                resolved_source="akshare",
+                upstream="sina",
+                provider_version=self.browser.provider.version,
+                price_basis="causal_adjusted_equivalent",
+                sessions=[bar.timestamp.date().isoformat() for bar in bars],
+                bars=[
+                    dict(
+                        time=bar.timestamp.date().isoformat(),
+                        open=bar.open,
+                        high=bar.high,
+                        low=bar.low,
+                        close=bar.close,
+                        volume=bar.volume,
+                        factor=bar.adjustment_factor,
+                        raw_close=bar.close / bar.adjustment_factor,
+                    )
+                    for bar in bars
+                ],
+                markers=[] if coverage else result_markers(result),  # type: ignore[no-untyped-call]  # Existing chart adapter.
+                signals=result["signals"],
+                orders=result["orders"],
+                trades=result["trades"],
+                audit=result["audit"],
+                metrics=result["metrics"],
+                curve=curve,
+                backtest=result["backtest"],
+                evidence=coverage["message"] if coverage else "AKShare / 新浪同源独立回测；已有模拟结果不代表策略有效",
+            )
+            return bars, generated, view

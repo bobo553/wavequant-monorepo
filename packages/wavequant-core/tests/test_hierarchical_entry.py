@@ -11,7 +11,7 @@ from tests.test_lecture_strategy import history
 
 
 def context(**kwargs):
-    return replace(EntryContext(1, 0, 3, 2, 27, 5, 4, 29, 3, 17, 7, 6, 18), **kwargs)
+    return replace(EntryContext(2, 0, 3, 2, 27, 5, 4, 29, 3, 17, 7, 6, 18), **kwargs)
 
 
 def choose(ctx, **kwargs):
@@ -21,6 +21,12 @@ def choose(ctx, **kwargs):
 
 
 class HierarchicalEntryTests(unittest.TestCase):
+    def test_first_buy_rejects_level_one_but_second_buy_keeps_its_existing_scope(self):
+        proof, reason = choose(context(trend_level=1))
+        self.assertIsNone(proof)
+        self.assertEqual(reason, 'first_buy_requires_level_two_or_three')
+        self.assertEqual(choose(context(trend_level=1, maturity_index=12))[0]['priority'], 2)
+
     def test_first_buy_does_not_apply_old_two_thirds_or_one_third(self):
         for ratio in (.2, 2/3, .9):
             proof, reason=choose(context(), ratio=ratio)

@@ -43,7 +43,14 @@ const results = [];
                     r.url().includes("/api/tdx-view?")) &&
                 r.status() === 200,
         );
-        await page.getByRole("combobox", { name, exact: true }).selectOption(value);
+        if (name === "股票") {
+            await page.locator("#symbol-select").evaluate((field, symbol) => {
+                field.value = symbol;
+                field.dispatchEvent(new Event("change", { bubbles: true }));
+            }, value);
+        } else {
+            await page.getByRole("combobox", { name, exact: true }).selectOption(value);
+        }
         const data = await (await response).json();
         await loaded();
         return data;
@@ -1220,7 +1227,10 @@ const results = [];
             const unsupported = page.waitForResponse(
                 (r) => r.url().includes("/api/tdx-backtest?") && r.status() === 400,
             );
-            await page.locator("#symbol-select").selectOption("sz.300750");
+            await page.locator("#symbol-select").evaluate((field) => {
+                field.value = "sz.300750";
+                field.dispatchEvent(new Event("change", { bubbles: true }));
+            });
             await unsupported;
             await page.locator("#error").waitFor({ state: "visible" });
             assert.ok(await page.locator("#page-workspace").isHidden());

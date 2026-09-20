@@ -77,7 +77,8 @@ class AkShareMarketDataAdapter:
         return list(prefix), list(complete)
 
     def metadata(self) -> dict[str, object]:
-        return {"provider_version": self.browser.provider.version}
+        return {"provider_version": self.browser.provider.version,
+                "upstream": "sina" if getattr(self.browser, "pinned_history", False) else "legacy_auto"}
 
 
 @dataclass(frozen=True)
@@ -284,6 +285,7 @@ class MarketDataRepository:
             **self.adapters[window.requested_source].metadata(),
             "symbol": symbol,
             "asof": window.asof,
+            "source_policy": "single_upstream_v1" if not self.fallback_order.get(window.requested_source) else "legacy_fallback",
             "requested_asof": window.requested_asof,
             "result_scope": window.requested_source,
             "data_source": window.requested_source,

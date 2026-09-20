@@ -6,6 +6,7 @@ import {
     addWatchlistMembers,
     createWatchlistGroup,
     deleteWatchlistGroup,
+    firstAvailableWatchlistSymbol,
     normalizeWatchlistSnapshot,
     removeWatchlistMember,
     renameWatchlistGroup,
@@ -38,6 +39,24 @@ test("normalization repairs malformed watchlist data without mutating the stored
         ],
     );
     assert.equal(normalized.memberships.length, 1);
+});
+
+test("initial symbol follows the first available row in the selected watchlist category", () => {
+    const group = createWatchlistGroup(null, "重点跟踪", "focus");
+    const withMembers = addWatchlistMembers(group.state, "focus", [
+        { symbol: "sh.600519", name: "重庆样本" },
+        { symbol: "sz.000001", name: "阿尔法样本" },
+        { symbol: "sh.600000", name: "北京样本" },
+    ]).state;
+    const universe = [
+        { symbol: "sh.600519", has_data: true },
+        { symbol: "sz.000001", has_data: false },
+        { symbol: "sh.600000", has_data: true },
+    ];
+
+    assert.equal(firstAvailableWatchlistSymbol(withMembers, "focus", universe), "sh.600000");
+    assert.equal(firstAvailableWatchlistSymbol(withMembers, "default", universe), "");
+    assert.equal(firstAvailableWatchlistSymbol(withMembers, "focus", []), "");
 });
 
 test("category names are unique and the protected default category cannot be renamed", () => {
@@ -75,10 +94,10 @@ test("deleting a category migrates unique members into the protected default cat
 
     const deleted = deleteWatchlistGroup(custom.state, "events");
 
-    assert.deepEqual(deleted.groups.map((group) => group.id), ["default"]);
     assert.deepEqual(
-        deleted.memberships.map((membership) => membership.symbol).sort(),
-        ["sh.600519", "sz.000001"],
+        deleted.groups.map((group) => group.id),
+        ["default"],
     );
+    assert.deepEqual(deleted.memberships.map((membership) => membership.symbol).sort(), ["sh.600519", "sz.000001"]);
     assert.throws(() => deleteWatchlistGroup(deleted, "default"), /不能删除/);
 });

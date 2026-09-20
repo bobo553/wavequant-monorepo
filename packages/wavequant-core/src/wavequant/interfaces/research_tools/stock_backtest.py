@@ -11,12 +11,12 @@ from wavequant.application.analytics.execution_diagnostics import execution_diag
 from wavequant.application.analytics.trade_evidence import enrich_ledger
 
 
-def single_stock_result(bars, strategy, execution, signal_result=None):
+def single_stock_result(bars, strategy, execution, signal_result=None, *, minute_loader=None):
     if not bars or len({b.symbol for b in bars})!=1:
         raise ValueError('exactly one nonempty security history required')
     if signal_result is None: signal_result=generate_system_signals(bars,SystemStrategy(**strategy))
     config=StrategyConfig(**execution); config.validate()
-    result=run_portfolio({bars[0].symbol:bars},signal_result.signals,config)
+    result=run_portfolio({bars[0].symbol:bars},signal_result.signals,config,minute_loader=minute_loader)
     screening=enrich_ledger(bars,result,signal_result,strategy)
     def serial(value):
         return json.loads(json.dumps(value,default=lambda obj:obj.isoformat() if isinstance(obj,datetime) else str(obj)))
@@ -39,7 +39,7 @@ def single_stock_result(bars, strategy, execution, signal_result=None):
                 backtest=dict(scope='single_stock_independent_account',start=bars[0].timestamp.date().isoformat(),
                               end=bars[-1].timestamp.date().isoformat(),initial_capital=config.initial_capital,
                               strategy=strategy,execution=config.to_dict(),counts=signal_result.counts,
-                              screening=screening,
+                              screening=screening,minute_fallbacks=result.minute_fallbacks,
                               diagnostics=execution_diagnostics(result),open_positions=result.open_positions,
                               provenance='current_engine_on_verified_snapshot_prefix',
                               warning='历史诊断；独立账户不等于组合分摊，无成交或样本有限不能证明策略有效。'))

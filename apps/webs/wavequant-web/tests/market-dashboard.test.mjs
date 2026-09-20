@@ -81,14 +81,31 @@ test("research workbench provides categorized local watchlists and structure-res
     assert.match(runtime, /await watchlists\.init\(\)/);
     assert.match(runtime, /watchlists\.setUniverse/);
     assert.match(structures, /structure-watchlist-add/);
-    assert.match(structures, /button\.textContent = added \? "★" : "☆"/);
+    assert.match(structures, /setWatchlistStarIcon\(button, added\)/);
     assert.match(structures, /this\.watchlists\.remove\(result\.symbol\)/);
-    assert.match(watchlists, /remove\.textContent = "★"/);
+    assert.match(watchlists, /setWatchlistStarIcon\(remove, true\)/);
     assert.doesNotMatch(watchlists, /remove\.textContent = "移除"/);
+    assert.doesNotMatch(watchlists, /点击查看/);
     assert.match(structures, /addAllToWatchlist/);
     assert.match(watchlists, /wavequant-user-data/);
     assert.match(watchlists, /keyPath: \["groupId", "symbol"\]/);
     assert.match(watchlists, /默认分类不能删除/);
+});
+
+test("stock selection keeps AkShare while TDX selection can still start a backtest", () => {
+    const browser = readFileSync(
+        join(sourceRoot, "features", "research-workbench", "components", "stock-browser.tsx"),
+        "utf8",
+    );
+    const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
+
+    assert.doesNotMatch(browser, /id="all-stocks-tab"/);
+    assert.match(browser, /id="stock-picker-toggle"/);
+    assert.match(browser, /id="stock-picker-panel"/);
+    const chooser = runtime.split("function chooseSymbol(")[1]?.split("function resetSlider()")[0] || "";
+    assert.match(chooser, /const runBacktest = autoBacktest && canBacktest && !isAkShare\(\)/);
+    assert.match(chooser, /\$\("result-scope"\)\.value = "tdx-backtest"/);
+    assert.match(chooser, /loadView\(\{ preferTrades: runBacktest \}\)/);
 });
 
 test("market browsing exposes server-backed daily through yearly candle timeframes", () => {
@@ -120,7 +137,7 @@ test("market browsing exposes server-backed daily through yearly candle timefram
 test("current-stock backtests tolerate cold computation and report non-JSON proxy failures clearly", () => {
     const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
 
-    assert.match(runtime, /path === "\/api\/tdx-backtest" \? 300000/);
+    assert.match(runtime, /\["\/api\/tdx-backtest", "\/api\/akshare-backtest"\]\.includes\(path\) \? 300000/);
     assert.match(runtime, /const text = await response\.text\(\)/);
     assert.match(runtime, /body = JSON\.parse\(text\)/);
     assert.match(runtime, /服务暂时不可用（HTTP/);
@@ -164,19 +181,31 @@ test("trade letters render above trend series and chart drawing primitives", () 
         join(sourceRoot, "features", "research-workbench", "components", "research-ledgers.tsx"),
         "utf8",
     );
-    assert.doesNotMatch(chartRuntime, /this\.tradeMarkers|createSeriesMarkers\(this\.candles, \[\], \{ zOrder: "top" \}\)/);
+    assert.doesNotMatch(
+        chartRuntime,
+        /this\.tradeMarkers|createSeriesMarkers\(this\.candles, \[\], \{ zOrder: "top" \}\)/,
+    );
     assert.match(chartRuntime, /this\.candles\.attachPrimitive\(this\.tradeMarkerOverlay\)/);
     assert.match(chartRuntime, /this\.tradeMarkerOverlay\.setMarkers\(/);
     assert.match(chartRuntime, /g\.items\[0\]\.kind !== "fill"/);
     assert.match(appRuntime, /\$\("fills-only"\)\.disabled = markers\.length === 0/);
-    assert.match(appRuntime, /\$\("fills-only"\)\.addEventListener\("click",[\s\S]*chart\.selectAnnotation\(marker\.id\);[\s\S]*requestAnimationFrame\(\(\) => \$\("price-chart"\)\.scrollIntoView/);
+    assert.match(
+        appRuntime,
+        /\$\("fills-only"\)\.addEventListener\("click",[\s\S]*chart\.selectAnnotation\(marker\.id\);[\s\S]*requestAnimationFrame\(\(\) => \$\("price-chart"\)\.scrollIntoView/,
+    );
     assert.match(ledgers, /id="fills-only">仅看并定位成交/);
 });
 
 test("running a current-stock backtest focuses its latest actual B/S fill", () => {
     const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
-    assert.match(runtime, /\$\("run-stock-backtest"\)\.addEventListener\("click",[\s\S]*loadView\(\{ focusLatestFill: true \}\)/);
-    assert.match(runtime, /const latestFill = data\.markers\.filter\(\(marker\) => marker\.kind === "fill"\)\.at\(-1\)/);
+    assert.match(
+        runtime,
+        /\$\("run-stock-backtest"\)\.addEventListener\("click",[\s\S]*loadView\(\{ focusLatestFill: true \}\)/,
+    );
+    assert.match(
+        runtime,
+        /const latestFill = data\.markers\.filter\(\(marker\) => marker\.kind === "fill"\)\.at\(-1\)/,
+    );
     assert.match(runtime, /chart\.selectAnnotation\(latestFill\.id\)/);
     assert.match(runtime, /\$\("price-chart"\)\.scrollIntoView\(\{ block: "center", behavior: "instant" \}\)/);
     assert.match(runtime, /本次回测没有模拟成交/);

@@ -36,9 +36,9 @@ def tertiary_trends(level2,bars):
             developing_strokes.append(tail)
     return dict(name='三级趋势线',trend_level=3,source_level=2,strokes=strokes,
                 bear_to_bull_highs=bear_to_bull_highs(strokes,trend_level=3),
-                bear_bull_alternation_lows=bear_bull_alternation_lows(strokes,trend_level=3),
-                post_alternation_bull_highs=post_alternation_bull_highs(strokes,trend_level=3),
-                bullish_turn_signals=bullish_turn_signals(strokes,bars,trend_level=3),
+                bear_bull_alternation_lows=bear_bull_alternation_lows(strokes,trend_level=3,source_strokes=level2['strokes']),
+                post_alternation_bull_highs=post_alternation_bull_highs(strokes,trend_level=3,source_strokes=level2['strokes']),
+                bullish_turn_signals=bullish_turn_signals(strokes,bars,trend_level=3,source_strokes=level2['strokes']),
                 developing_strokes=developing_strokes,
                 input_turn_count=sum(len(s['points']) for s in level2['strokes']),
                 confirmed_wave_count=sum(len(s['points']) for s in strokes),
