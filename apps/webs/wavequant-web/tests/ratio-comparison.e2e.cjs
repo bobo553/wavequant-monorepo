@@ -71,7 +71,13 @@ fs.mkdirSync(output, { recursive: true });
             assert.ok((await page.locator("#ratio-status").textContent()).includes("失败 0 组"));
             for (let i = 0; i < 5; i++) {
                 const cells = await page.locator("#ratio-results tr").nth(i).locator("td").allTextContents();
-                const variant = ["lecture_v3", "lecture_v3_d67_c33", "lecture_v3_d50_c50", "lecture_v3_d67_c50", "lecture_v3_close_d50_c50"][i];
+                const variant = [
+                    "lecture_v3",
+                    "lecture_v3_d67_c33",
+                    "lecture_v3_d50_c50",
+                    "lecture_v3_d67_c50",
+                    "lecture_v3_close_d50_c50",
+                ][i];
                 const view = responses.find((v) => v.variant === variant);
                 assert.ok(view, variant);
                 assert.equal(Number(cells[1]), view.backtest.counts.long_signals);
