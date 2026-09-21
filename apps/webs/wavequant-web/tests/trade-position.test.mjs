@@ -11,6 +11,40 @@ import {
 
 const sell = { kind: "fill", side: "SELL", quantity: 3496.84, remaining_quantity: 3576.32 };
 
+test("record squeeze copy distinguishes resistance high from prior candle and selling high", () => {
+    const text = formatFilledTradeCopy(
+        { symbol: "sz.301130", variant: "lecture_v3", backtest: { start: "2018-01-02" }, asof: "2026-09-21", bars: [] },
+        {
+            side: "BUY",
+            decision_evidence: [
+                {
+                    squeeze_confirmation: "resistance_record_break",
+                    attack_date: "2026-08-03",
+                    confirmation_close: 25.9731,
+                    confirmation_record_high: 25.8282,
+                },
+                {
+                    inverse_reentry_path: "deep_alternation_kill_high_record_squeeze",
+                    origin_index_date: "2024-02-08",
+                    flip_high_index_date: "2025-08-11",
+                    alternation_low_index_date: "2026-07-21",
+                    recovery_whole_retracement: 0.6790135,
+                    recovery_inverse_date: "2026-07-21",
+                    recovery_kill_high: 24.8663,
+                },
+            ],
+        },
+        "V3",
+        "5%",
+        null,
+    );
+    assert.match(text, /正 N 2026-08-03/);
+    assert.match(text, /收盘 25.9731 > 本次 N 抵抗阶段高点 25.8282/);
+    assert.match(text, /67.90%/);
+    assert.match(text, /杀多高 24.8663/);
+    assert.doesNotMatch(text, /抵抗 K/);
+});
+
 test("unsold buy shows end-date mark-to-market profit without pretending to be closed", () => {
     const buy = {
         kind: "fill",

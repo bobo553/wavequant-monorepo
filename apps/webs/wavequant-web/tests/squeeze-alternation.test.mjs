@@ -43,13 +43,13 @@ test("N squeeze marks B only after confirmation and dates failure without repain
     const failed = render("2026-08-20")[0];
     assert.match(failed.title, /已失效/);
     assert.equal(failed.color, "#8292a9");
-    assert.match(failed.description, /2026-08-20 尚未收盘突破/);
+    assert.match(failed.description, /2026-08-20 尚未突破/);
 });
 
 test("later breakout becomes visible only at its date", () => {
     const landmark = { ...low, invalidated_at: undefined, breakout_at: "2026-09-02" };
     const render = (date) =>
         bearBullAlternationLowAnnotations([{ level: 3, landmarks: [landmark] }], "2026-07-01", "2026-07-31", date)[0];
-    assert.doesNotMatch(render("2026-08-07").description, /收盘已严格突破/);
-    assert.match(render("2026-09-02").description, /收盘已严格突破/);
+    assert.doesNotMatch(render("2026-08-07").description, /最高价已严格突破/);
+    assert.match(render("2026-09-02").description, /最高价已严格突破/);
 });

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.abc_candidate import AbcAnchor, abc_pullback_evidence
 from wavequant.domain.strategies.inverse_reentry import deep_pullback_recovery, inverse_reentry_rejection
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
 from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
@@ -34,6 +35,19 @@ def test_deep_recovery_reclaims_kill_high_without_requiring_old_b_high():
     result = deep_pullback_recovery(bars, **args)
     assert result["recovery_whole_retracement"] == 0.7
     assert result["recovery_kill_high"] == 15
+
+
+def test_new_deep_path_is_opt_in_and_does_not_replace_existing_price_or_time_paths():
+    bars, _ = recovery_case()
+    anchor = AbcAnchor(0, 4, 4, 10, 20, "test")
+    assert abc_pullback_evidence(bars, anchor, 6) is None
+    assert abc_pullback_evidence(bars, anchor, 6, allow_deep_pullback=True)["deep_price_path"]
+    equality = replace(anchor, high_price=19)
+    assert not abc_pullback_evidence(bars, equality, 6, allow_deep_pullback=True).get("deep_price_path")
+    bars[6] = replace(bars[6], close=14)
+    timed = replace(anchor, high_index=2)
+    evidence = abc_pullback_evidence(bars, timed, 6, allow_deep_pullback=True)
+    assert evidence["time_path"] and not evidence.get("deep_price_path")
 
 
 @pytest.mark.parametrize(

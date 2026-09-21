@@ -3,7 +3,11 @@ import { label, num, pct } from "./labels.js";
 
 const RULES = {
     squeeze_alternation_confirmed: ["空多交替确认 · 正 N 轧空", "回调合格后，正 N 与轧空或强轧空确认 b 低点。", 168],
-    squeeze_alternation_breakout: ["空多交替后突破 a 高点", "最高价严格突破 a 高点，确认多头并解除突破前的 b 低点失效条件。", 169],
+    squeeze_alternation_breakout: [
+        "空多交替后突破 a 高点",
+        "最高价严格突破 a 高点，确认多头并解除突破前的 b 低点失效条件。",
+        169,
+    ],
     squeeze_alternation_invalidated: ["空多交替低点失效", "尚未突破 a 高点，最低价先跌破 b 低点。", 169],
     tertiary_c_candidate: ["Ⅲ c 段启动候选", "正 N 与轧空确认后的三级结构观察。", 168],
     tertiary_c_breakout: ["Ⅲ c 突破 a 高点", "收盘严格突破 a 段高点。", 169],
@@ -576,7 +580,9 @@ function abcDescription(event, view) {
     const date = (index) => view.bars[index]?.time || "—";
     const outcome =
         event.event === "squeeze_alternation_confirmed"
-            ? "b 低点确认为空多交替低点；此 N 只用于确认交替，须等待后续合格正 N 才能筛选买点。"
+            ? event.deep_price_path
+                ? "b 低点确认为空多交替低点；本次 N 突破抵抗阶段高点后，可同时检验 V3 入场资格及成交约束。"
+                : "b 低点确认为空多交替低点；此 N 只用于确认交替，须等待后续合格正 N 才能筛选买点。"
             : event.event === "squeeze_alternation_breakout"
               ? "最高价已严格突破 a 高点，解除突破前先跌破 b 的交替失效条件。"
               : event.event === "squeeze_alternation_invalidated"

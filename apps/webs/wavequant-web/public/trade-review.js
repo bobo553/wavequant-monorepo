@@ -55,7 +55,9 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
             );
         const d = (k) => proof[k + "_date"] || `第 ${proof[k] + 1} 根 K 线（可知日）`;
         add(
-            `翻多 ${d("flip_index")} → 交替 ${d("alternation_index")}${proof.priority === 2 ? ` → 再破翻多高 ${d("maturity_index")} → 浅回撤 ${d("pullback_index")}` : ""} → 新 N ${d("attack")}`,
+            proof.joint_alternation_confirmation
+                ? `翻多 ${d("flip_index")} → 新 N ${d("attack")} → ${d("alternation_index")} 轧空共同确认交替与入场资格`
+                : `翻多 ${d("flip_index")} → 交替 ${d("alternation_index")}${proof.priority === 2 ? ` → 再破翻多高 ${d("maturity_index")} → 浅回撤 ${d("pullback_index")}` : ""} → 新 N ${d("attack")}`,
         );
     }
     if (item.kind !== "fill" && item.kind !== "order") return;
