@@ -11,34 +11,40 @@ def deep_pullback_recovery(bars, *, now, attack, inverse, alternation, record_br
     This is not a waiver for old-N bounces: the inverse must belong to the
     completed decline, and both the new N and whole-wave context must be live.
     """
-    known = [e for e in inverse if e['known_at'] <= now]
+    known = [e for e in inverse if e["known_at"] <= now]
     if not known or not alternation or not record_break:
         return None
-    last = max(known, key=lambda e: (e['known_at'], e['attack'], e['b_high']))
-    if (alternation.get('definition') != 'whole_flip_wave_v3'
-            or alternation.get('trend_level') not in (2, 3)):
+    last = max(known, key=lambda e: (e["known_at"], e["attack"], e["b_high"]))
+    if alternation.get("definition") != "whole_flip_wave_v3" or alternation.get("trend_level") not in (2, 3):
         return None
-    origin, peak, low = (alternation[k] for k in ('origin_index', 'flip_high_index', 'alternation_low_index'))
-    confirmed = alternation['alternation_index']
-    if not (0 <= origin < peak < last['attack'] <= low < attack <= now < len(bars)
-            and last['known_at'] < attack and last['known_at'] <= confirmed <= now):
+    origin, peak, low = (alternation[k] for k in ("origin_index", "flip_high_index", "alternation_low_index"))
+    confirmed = alternation["alternation_index"]
+    if not (
+        0 <= origin < peak < last["attack"] <= low < attack <= now < len(bars)
+        and last["known_at"] < attack
+        and last["known_at"] <= confirmed <= now
+    ):
         return None
-    start, high, bottom = (Fraction(str(v)) for v in
-                           (alternation['origin_price'], alternation['flip_high_price'], bars[low].low))
+    start, high, bottom = (
+        Fraction(str(v)) for v in (alternation["origin_price"], alternation["flip_high_price"], bars[low].low)
+    )
     if not start < bottom < high or (high - bottom) / (high - start) < Fraction(2, 3):
         return None
-    close = min(b.close for b in bars[peak + 1:low + 1])
+    close = min(b.close for b in bars[peak + 1 : low + 1])
     if short_shallow_pullback(float(start), float(high), close, peak - origin, low - peak):
         return None
-    if min(b.low for b in bars[low:now + 1]) < float(bottom):
+    if min(b.low for b in bars[low : now + 1]) < float(bottom):
         return None
-    kill_high = last.get('kill_high')
+    kill_high = last.get("kill_high")
     if kill_high is None or bars[now].close <= kill_high:
         return None
-    return dict(inverse_reentry_path='deep_alternation_kill_high_record_squeeze',
-                recovery_inverse_date=bars[last['attack']].timestamp.date().isoformat(),
-                recovery_kill_high=kill_high, recovery_previous_b_high=last['b_high'],
-                recovery_whole_retracement=float((high - bottom) / (high - start)))
+    return dict(
+        inverse_reentry_path="deep_alternation_kill_high_record_squeeze",
+        recovery_inverse_date=bars[last["attack"]].timestamp.date().isoformat(),
+        recovery_kill_high=kill_high,
+        recovery_previous_b_high=last["b_high"],
+        recovery_whole_retracement=float((high - bottom) / (high - start)),
+    )
 
 
 def inverse_reentry_rejection(bars, *, now, attack, inverse, gap=False):

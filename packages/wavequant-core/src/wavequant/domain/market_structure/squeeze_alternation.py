@@ -120,7 +120,8 @@ def squeeze_alternations(bars, audit, anchors_at_attack):
                 )
                 if kind == "squeeze_alternation_invalidated":
                     occupied[identity] = event["bar_index"]
-    return sorted(observations, key=lambda e: e["bar_index"])
+    from .alternation_breakout import high_breakout_events
+    return high_breakout_events(bars, observations)
 
 
 def squeeze_landmarks(bars, events, level):

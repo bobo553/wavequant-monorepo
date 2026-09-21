@@ -116,7 +116,7 @@ def chart_entry_history(bars: Sequence[Bar], *, audit=()) -> tuple[dict[int, tup
                 ctx = replace(ctx, maturity_index=active[identity].maturity_index)
             else:
                 events.append(dict(bar_index=i, event="hierarchy_alternation_ready", **asdict(ctx)))
-            if ctx.maturity_index is None and i > known and bars[i].close > ctx.flip_high_price:
+            if ctx.maturity_index is None and i > known and bars[i].high > ctx.flip_high_price:
                 ctx = replace(ctx, maturity_index=i)
                 events.append(dict(bar_index=i, event="hierarchy_bull_matured", **asdict(ctx)))
             current[identity] = ctx

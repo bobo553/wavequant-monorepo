@@ -825,6 +825,7 @@ class ChartRepository:
                 tertiary_trends=tertiary_trends(level2, bars),
             )
         from ...domain.market_structure.squeeze_alternation import squeeze_landmarks
+        from ...domain.market_structure.alternation_breakout import promote_alternation_segments
         geometry = dict(geometry)
         for level, name in ((2, "secondary_trends"), (3, "tertiary_trends")):
             if name not in geometry:
@@ -836,6 +837,7 @@ class ChartRepository:
                         if (p["confirmed_bear_low"]["index"], p["confirmed_flip_high"]["index"], p["index"])
                         not in identities]
             geometry[name] = dict(geometry[name], bear_bull_alternation_lows=[*ordinary, *additions])
+            geometry[name] = promote_alternation_segments(geometry[name], bars, result.audit, level)
         dates = {day(bar.timestamp.isoformat()): index for index, bar in enumerate(bars)}
         anchors = [
             AbcAnchor(

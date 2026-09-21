@@ -26,6 +26,11 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
         add(
             `买点依据：正 N ${strongSqueeze.attack_date}；连续上攻确认强轧空：逐根守住虚拟低，确认日最低 ${num(strongSqueeze.confirmation_low, 4)} ≥ 前根虚拟低 ${num(strongSqueeze.prior_virtual_low, 4)}，收盘 ${num(strongSqueeze.confirmation_close, 4)} > 前收 ${num(strongSqueeze.prior_close, 4)}`,
         );
+    const record = item.decision_evidence?.find((e) => e.squeeze_confirmation === "resistance_record_break");
+    if (record)
+        add(`买点依据：正 N ${record.attack_date}；收盘 ${num(record.confirmation_close, 4)} > 本次 N 抵抗阶段高点 ${num(record.confirmation_record_high, 4)}，确认轧空。`);
+    if (proof?.inverse_reentry_path === "deep_alternation_kill_high_record_squeeze")
+        add(`深回撤恢复：整段 ${proof.origin_index_date} → ${proof.flip_high_index_date}，${proof.alternation_low_index_date} 回撤 ${pct(proof.recovery_whole_retracement)}；守住回调低点，收复 ${proof.recovery_inverse_date} 杀多高 ${num(proof.recovery_kill_high, 4)}。`);
     const squeeze = item.decision_evidence?.find((e) => e.squeeze_confirmation === "local_resistance_failure");
     if (squeeze?.n_level >= 2)
         add(

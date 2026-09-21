@@ -559,6 +559,8 @@ export function ruleTitle(e) {
 }
 function squeezeConditionText(event) {
     const paths = [];
+    if (event.deep_price_path)
+        paths.push(`深回撤条件：b 最低价 ${num(event.b_low_price)} ≤ 2/3 回撤价 ${num(event.two_thirds_price)}，正 N 收盘突破抵抗阶段高点确认轧空`);
     if (event.price_path)
         paths.push(`价格条件：b 最低价 ${num(event.b_low_price)} ≥ 2/3 回撤价 ${num(event.two_thirds_price)}`);
     if (event.time_path)
