@@ -22,6 +22,12 @@ _SHANGHAI = ZoneInfo("Asia/Shanghai")
 _FIELDS = "date,time,code,open,high,low,close,volume,amount,adjustflag"
 
 
+class MinuteVolumeMismatch(ValueError):
+    def __init__(self, day: date, minute_volume: float, daily_volume: float):
+        self.minute_volume, self.daily_volume = minute_volume, daily_volume
+        super().__init__(f"{day} 五分钟与同源日线成交量不一致")
+
+
 @dataclass(frozen=True)
 class MinuteBar:
     """A completed five-minute bar; timestamp is its end, in Shanghai time."""
@@ -117,7 +123,7 @@ def verify_minute_day(rows: list[dict[str, str]], daily: Bar) -> list[MinuteBar]
     if any(abs(actual - expected) > 0.015 for actual, expected in checks):
         raise ValueError(f"{day} 五分钟与同源日线 OHLC 不一致")
     if abs(sum(item.volume for item in result) - daily.volume) > max(1, daily.volume * 0.00001):
-        raise ValueError(f"{day} 五分钟与同源日线成交量不一致")
+        raise MinuteVolumeMismatch(day, sum(item.volume for item in result), daily.volume)
     return result
 
 

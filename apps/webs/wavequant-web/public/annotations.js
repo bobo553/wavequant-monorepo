@@ -56,6 +56,12 @@ const REASONS = {
     volume_down_small_n_reduce_30: "放量回落但小实体仍在正 N 突破 K 范围内，次日累计减仓 30%",
     volume_down_reduce_70: "放量下跌且收盘低于前收，次日累计减仓至原持仓 70%",
     volume_down_support_break_clear: "放量下跌后跌破冻结回踩低点，当日清仓",
+    trend_flip_resistance_adverse_clear: "高层级翻多受阻后出现不利K线，当日清仓",
+    pressure_adverse_clear: "正 N 上攻前期巨量阴线压力区，出现不利 K 线，当日清仓",
+    wave_gap_reversal_reduce: "目标阶段放量跳空高开大幅回落，减仓",
+    wave_volume_shadows_reduce: "目标阶段放量大振幅、上下长影，当日累计减仓",
+    wave_bull_resistance_failed_clear: "目标阶段大阴线击穿多头抵抗低点，当日清仓",
+    wave_bearish_engulf_clear: "目标阶段大阴线反包前日阳线，当日清仓",
     volume_inverse_n_clear: "倒 N 确认且成交量超过前日，当日直接清仓",
     inverse_n_close_reduce_90: "收盘确认倒 N，当日累计减仓至原持仓 90%",
     inverse_n_after_reduction_90: "首次减仓后确认倒 N，累计减仓至原持仓 90%",
@@ -87,12 +93,17 @@ const REASONS = {
     liquidity_below_one_lot: "流动性限额不足以买入一手",
     cash_below_one_lot: "可用现金不足以买入一手",
     cash_after_fees_below_one_lot: "扣除费用后现金不足以买入一手",
-    insufficient_net_reward_risk: "开盘含费净盈亏比不足",
+    insufficient_net_reward_risk: "成交价含费净盈亏比不足",
     time_exit: "达到最长持仓期限",
     entry_gap: "向上跳空超过入场上限",
     invalidated_at_open: "开盘已触及结构失效位",
     target_exhausted_at_open: "开盘目标空间已耗尽",
     not_buyable: "该开盘不满足可买条件",
+    not_buyable_at_close: "当日收盘不满足可买条件",
+    not_buyable_intraday: "盘中执行价格不满足可买条件",
+    invalidated_at_close: "收盘已触及结构失效位",
+    target_exhausted_at_close: "收盘目标空间已耗尽",
+    same_day_exit_priority: "当日退出信号优先，取消收盘买入",
     already_held: "已有持仓",
     position_limit: "持仓数量达到上限",
     expired: "入场委托已过期",
@@ -105,8 +116,10 @@ const REASONS = {
 const EXECUTION_RISK_REASONS = new Set([
     "position_limit",
     "invalidated_at_open",
+    "invalidated_at_close",
     "entry_gap",
     "target_exhausted_at_open",
+    "target_exhausted_at_close",
     "risk_budget_below_one_lot",
     "position_weight_below_one_lot",
     "liquidity_below_one_lot",
@@ -314,6 +327,18 @@ export function lastFallHighAnnotations(levelSummaries) {
                 },
             },
         ];
+    });
+}
+
+export function visibleLastFallHighGuides(items, from, to) {
+    return items.filter((item) => {
+        const level = item.raw?.trend_level;
+        if (level !== 2 && level !== 3) return true;
+        const breakoutTime = item.raw?.breakout?.time;
+        return (
+            (item.time >= from && item.time <= to) ||
+            (breakoutTime !== undefined && breakoutTime >= from && breakoutTime <= to)
+        );
     });
 }
 

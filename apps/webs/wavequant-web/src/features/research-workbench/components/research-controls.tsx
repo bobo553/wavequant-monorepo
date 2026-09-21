@@ -90,10 +90,10 @@ export function ResearchControls(): JSX.Element {
                 </label>
                 <label
                     className="backtest-volume-filter"
-                    title="默认关闭。勾选后，次开盘计入滑点和费用的净盈亏比低于策略门槛时不买入；适用于当前股票回测与五组幅度对比。"
+                    title="默认关闭。勾选后，执行价格计入滑点和费用的净盈亏比低于策略门槛时不买入；适用于当前股票回测与五组幅度对比。"
                 >
                     <input type="checkbox" id="backtest-net-reward-risk-filter" />
-                    启用次开盘含费净盈亏比过滤
+                    启用成交价含费净盈亏比过滤
                 </label>
                 <button id="run-stock-backtest">运行当前股票回测</button>
                 <button id="download-backtest" disabled>

@@ -52,6 +52,9 @@ class StrategyConfig:
     minimum_entry_shares: int = 1
     liquidity_lookback: int = 20
     max_participation: float = 0.01
+    entry_at_close: bool = False
+    nonflat_limit_close_fill: bool = False
+    consolidation_entry_intraday: bool = False
     entry_ttl_bars: int = 1
     max_entry_gap: float = 0.05
     minimum_commission: float = 5.0
@@ -65,6 +68,16 @@ class StrategyConfig:
     missing_minute_daily_fallback: bool = False
     inverse_n_after_reduction: bool = False
     inverse_n_close_reduce: bool = False
+    wave_exhaustion_exit: bool = False
+    wave_exhaustion_reduction: float = 0.8
+    wave_exhaustion_min_range: float = 0.08
+    wave_exhaustion_min_shadow: float = 0.2
+    wave_engulf_min_body: float = 0.05
+    pressure_adverse_exit: bool = False
+    trend_flip_adverse_exit: bool = False
+    pressure_lookback: int = 120
+    pressure_body_min_fraction: float = 0.05
+    pressure_volume_ratio: float = 2.0
     volume_inverse_n_clear: bool = False
     volume_down_exit: bool = False
     small_n_reduction: bool = False
@@ -87,13 +100,16 @@ class StrategyConfig:
         return asdict(self)
 
     def validate(self) -> None:
+        if type(self.nonflat_limit_close_fill) is not bool:
+            raise ValueError('nonflat_limit_close_fill must be boolean')
         for name, value in self.to_dict().items():
             if isinstance(value, (int, float)) and not math.isfinite(value):
                 raise ValueError(f"{name} must be finite")
-        for name in ("require_non_bearish_regime", "allow_same_day_exit", "a_share_taxes", "staged_exit_enabled", "net_reward_risk_filter", "staged_exit_same_day", "staged_exit_intraday", "missing_minute_daily_fallback", "inverse_n_after_reduction", "inverse_n_close_reduce", "volume_down_exit", "volume_inverse_n_clear", "small_n_reduction", "exit_on_target"):
+        for name in ("entry_at_close", "consolidation_entry_intraday", "require_non_bearish_regime", "allow_same_day_exit", "a_share_taxes", "staged_exit_enabled", "net_reward_risk_filter", "staged_exit_same_day", "staged_exit_intraday", "missing_minute_daily_fallback", "inverse_n_after_reduction", "inverse_n_close_reduce", "volume_down_exit", "volume_inverse_n_clear", "pressure_adverse_exit", "trend_flip_adverse_exit", "wave_exhaustion_exit", "small_n_reduction", "exit_on_target"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be boolean")
         positive_ints = {
+            "pressure_lookback": self.pressure_lookback,
             "small_body_lookback": self.small_body_lookback,
             "breakout_lookback": self.breakout_lookback,
             "impulse_lookback": self.impulse_lookback,
@@ -114,6 +130,14 @@ class StrategyConfig:
                 raise ValueError(f"{name} must be > 0")
         if type(self.small_body_max_fraction) not in (int, float) or not 0 < self.small_body_max_fraction <= 1:
             raise ValueError("small_body_max_fraction must be in (0, 1]")
+        if type(self.pressure_body_min_fraction) not in (int, float) or not 0 < self.pressure_body_min_fraction < 1:
+            raise ValueError("pressure_body_min_fraction must be in (0, 1)")
+        if type(self.pressure_volume_ratio) not in (int, float) or self.pressure_volume_ratio < 1:
+            raise ValueError("pressure_volume_ratio must be >= 1")
+        for name in ('wave_exhaustion_reduction', 'wave_exhaustion_min_range', 'wave_exhaustion_min_shadow', 'wave_engulf_min_body'):
+            value = getattr(self, name)
+            if type(value) not in (int, float) or not 0 < value < 1:
+                raise ValueError(f'{name} must be in (0, 1)')
         if self.min_confirm_bars > self.confirm_window:
             raise ValueError("min_confirm_bars must not exceed confirm_window")
         if not 0.0 < self.max_retracement < 1.0:

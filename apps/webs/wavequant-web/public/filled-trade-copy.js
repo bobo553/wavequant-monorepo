@@ -9,7 +9,9 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         `策略：${variantName}（${view.variant}）`,
         `回测区间：${view.backtest.start} 至 ${view.asof}`,
         `成交日期：${marker.time}`,
-        ...(marker.execution_model === "intraday_5m_next_open" ? [`成交时间：${marker.timestamp}`] : []),
+        ...(marker.execution_model === "intraday_5m_next_open"
+            ? [`成交时间：${marker.execution_timestamp || marker.timestamp}`]
+            : []),
         `方向：${marker.side === "BUY" ? "买入 B" : "卖出 S"}`,
         `原因：${reasonText(marker.reason)}（${marker.reason}）`,
         `决定日期：${marker.signal_time || "—"}`,
@@ -20,15 +22,43 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         `费用：${num(marker.fee)} 元`,
     ];
     if (marker.side === "BUY") lines.push(`买入后仓位：${positionLabel}`);
+    const gap = marker.decision_evidence?.find((e) => e.squeeze_confirmation === "defended_n_consolidation_gap");
+    const gapContext = marker.decision_evidence?.find((e) => e.buy_point_type);
+    if (gap && gapContext)
+        lines.push(
+            `${gapContext.trend_level} 级空多交替低点：${gapContext.alternation_low_index_date}；确认可知日：${gapContext.alternation_index_date}`,
+        );
+    if (gap)
+        lines.push(
+            `买点依据：正 N ${gap.consolidation_n_date}；整理守住防守低 ${num(gap.consolidation_defense, 4)}，跳空放量重新站上原 N 高点 ${num(gap.consolidation_high, 4)}；观察时最低 ${num(gap.gap_low, 4)} > 前日高 ${num(gap.gap_previous_high, 4)}，累计成交量 ${num(gap.gap_volume, 0)} > 前日 ${num(gap.gap_previous_volume, 0)}`,
+        );
+    const strongSqueeze = marker.decision_evidence?.find((e) => e.squeeze_confirmation === "uninterrupted_squeeze");
+    if (strongSqueeze)
+        lines.push(
+            `买点依据：正 N ${strongSqueeze.attack_date}；连续上攻确认强轧空：逐根守住虚拟低，确认日最低 ${num(strongSqueeze.confirmation_low, 4)} ≥ 前根虚拟低 ${num(strongSqueeze.prior_virtual_low, 4)}，收盘 ${num(strongSqueeze.confirmation_close, 4)} > 前收 ${num(strongSqueeze.prior_close, 4)}`,
+        );
     const squeeze = marker.decision_evidence?.find((e) => e.squeeze_confirmation === "local_resistance_failure");
-    if (squeeze?.n_level >= 2) lines.push(`正 N 级别：${squeeze.n_level}；A低 ${squeeze.n_origin_date} → B高 ${squeeze.n_neckline_date} → C低 ${squeeze.n_pullback_date}`);
-    if (squeeze) lines.push(`买点依据：正 N ${squeeze.attack_date}；抵抗 K ${squeeze.prior_bar_date}；该回不回确认：最低 ${num(squeeze.confirmation_low, 4)} ≥ 虚拟低 ${num(squeeze.prior_virtual_low, 4)}，收盘 ${num(squeeze.confirmation_close, 4)} > 前收 ${num(squeeze.prior_close, 4)}`);
+    if (squeeze?.n_level >= 2)
+        lines.push(
+            `正 N 级别：${squeeze.n_level}；A低 ${squeeze.n_origin_date} → B高 ${squeeze.n_neckline_date} → C低 ${squeeze.n_pullback_date}`,
+        );
+    if (squeeze)
+        lines.push(
+            `买点依据：正 N ${squeeze.attack_date}；抵抗 K ${squeeze.prior_bar_date}；该回不回确认：最低 ${num(squeeze.confirmation_low, 4)} ≥ 虚拟低 ${num(squeeze.prior_virtual_low, 4)}，收盘 ${num(squeeze.confirmation_close, 4)} > 前收 ${num(squeeze.prior_close, 4)}`,
+        );
     if (marker.side === "SELL") lines.push(closedPositionLabel(marker));
     if (Number.isFinite(marker.exit_target_fraction)) {
         lines.push(`目标累计减仓：${pct(marker.exit_target_fraction)}（占首次减仓前该股票持仓）`);
     }
     if (marker.execution_model === "same_day_close") lines.push("成交口径：当日收盘价（日线回测，未还原尾盘分钟路径）");
-    if (marker.minute_fallback) lines.push("日线成交原因：当日缺少完整同源分钟线");
+    if (marker.fill_assumption === "nonflat_limit_close_without_queue_verification")
+        lines.push("成交假设：非一字涨停按当日收盘价模拟成交，未验证涨停排队成交；成交价不另加正滑点。");
+    if (marker.minute_fallback)
+        lines.push(
+            marker.minute_fallback.reason === "minute_volume_incomplete"
+                ? `日线成交原因：分钟成交量比同源日线少 ${num(marker.minute_fallback.coverage.missing_volume, 0)} 股，分钟路径不完整`
+                : "日线成交原因：当日缺少完整同源分钟线",
+        );
     if (marker.execution_model === "intraday_5m_next_open") {
         lines.push(`下一根五分钟开盘原价：${num(marker.minute_next_open_raw, 4)} 元`);
         lines.push("成交口径：已完成五分钟线判定，下一根五分钟线开盘价加回测滑点模拟成交；非券商成交回报");
@@ -37,16 +67,72 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         lines.push(`成交后剩余：${num(marker.remaining_quantity)} 等价份额`);
     }
     if (marker.positive_n_date) {
-        lines.push(`小实体例外：正 N ${marker.positive_n_date} · K线范围 ${num(marker.positive_n_low, 4)}–${num(marker.positive_n_high, 4)}；实体 ${pct(marker.small_body_fraction)}，上限 ${pct(marker.small_body_cap)}；前 ${marker.small_body_lookback} 日平均实体 ${num(marker.small_body_mean, 4)} 元`);
+        lines.push(
+            `小实体例外：正 N ${marker.positive_n_date} · K线范围 ${num(marker.positive_n_low, 4)}–${num(marker.positive_n_high, 4)}；实体 ${pct(marker.small_body_fraction)}，上限 ${pct(marker.small_body_cap)}；前 ${marker.small_body_lookback} 日平均实体 ${num(marker.small_body_mean, 4)} 元`,
+        );
+    }
+    if (marker.wave_reached_stage) {
+        const stageNames = { two_t: "二吐", five_top: "五顶", ten_full: "十满" };
+        lines.push(
+            `目标背景：本笔正 N ${marker.wave_n_date}；${marker.wave_reached_date} 已到 ${stageNames[marker.wave_reached_stage] || marker.wave_reached_stage} ${num(marker.wave_reached_price, 4)} 元`,
+        );
+        if (marker.reason === "wave_gap_reversal_reduce")
+            lines.push(
+                `高开回落：开盘 ${num(marker.observed_open, 4)} > 前高 ${num(marker.previous_high, 4)}；阴线实体/开盘 ${pct(marker.wave_body_fraction)}，振幅/前收 ${pct(marker.wave_range_fraction)}；成交量 ${num(marker.observed_volume, 0)} > 前日 ${num(marker.previous_volume, 0)}；即使收盘高于前收也触发减仓`,
+            );
+        if (marker.reason === "wave_volume_shadows_reduce")
+            lines.push(
+                `异常波动：振幅/前收 ${pct(marker.wave_range_fraction)}，上影占振幅 ${pct(marker.wave_upper_shadow_fraction)}，下影占振幅 ${pct(marker.wave_lower_shadow_fraction)}；成交量 ${num(marker.observed_volume, 0)} > 前日 ${num(marker.previous_volume, 0)}`,
+            );
+        if (marker.reason === "wave_bull_resistance_failed_clear")
+            lines.push(
+                `抵抗失败：${marker.resistance_date} 多头抵抗虚拟低 ${num(marker.resistance_virtual_low, 4)}；大阴线收盘 ${num(marker.observed_close, 4)} 严格跌破，清空余仓，无需高开或再次放量`,
+            );
+        if (marker.reason === "wave_bearish_engulf_clear")
+            lines.push(
+                `反包依据：开盘 ${num(marker.observed_open, 4)} ≥ 前收 ${num(marker.previous_close, 4)}，收盘 ${num(marker.observed_close, 4)} ≤ 前开 ${num(marker.previous_open, 4)}；大阴线反包无需再次放量`,
+            );
+    }
+    if (marker.reason === "trend_flip_resistance_adverse_clear") {
+        const patterns = {
+            bearish_body: "阴线实体",
+            close_below_previous: "收盘低于前收",
+            low_below_previous: "最低价跌破前低",
+            long_upper_shadow: "长上影",
+        };
+        lines.push(
+            `趋势风险：${marker.trend_level}级末跌高 ${marker.trend_key_date} · ${num(marker.trend_key_high, 4)} 元；${marker.trend_attack_date} 收盘突破；空头抵抗：${(marker.trend_resistance_dates || []).join("、")}`,
+        );
+        lines.push(
+            `清仓形态：${(marker.trend_adverse_patterns || []).map((name) => patterns[name] || name).join("、")}；收盘 ${num(marker.observed_close, 4)} / 前收 ${num(marker.previous_close, 4)}；最低 ${num(marker.observed_low, 4)} / 前低 ${num(marker.previous_low, 4)}`,
+        );
+    }
+    if (marker.pressure_date) {
+        const adverseNames = {
+            close_below_previous: "收盘低于前收",
+            low_below_previous: "跌破前日低点",
+            long_upper_shadow: "长上影（占振幅至少 50%）",
+        };
+        lines.push(
+            `压力来源：${marker.pressure_date} · 区间 ${num(marker.pressure_low, 4)}–${num(marker.pressure_high, 4)} 元；成交量为此前 20 日均量的 ${num(marker.pressure_volume_multiple)} 倍`,
+        );
+        lines.push(
+            `正 N：${marker.pressure_n_date}；清仓依据：${(marker.pressure_adverse_patterns || []).map((key) => adverseNames[key] || key).join("、")}`,
+        );
     }
     if (marker.volume_trigger_date) {
-        lines.push(`放量下跌 ${marker.volume_trigger_date}：成交量 ${num(marker.trigger_volume, 0)} > 前日 ${num(marker.previous_volume, 0)}；收盘 ${num(marker.trigger_close, 4)} < 前收 ${num(marker.previous_close, 4)}`);
-        if (marker.volume_support_date) lines.push(`冻结回踩低点：${marker.volume_support_date} · ${num(marker.volume_support_low, 4)} 元`);
+        lines.push(
+            `放量下跌 ${marker.volume_trigger_date}：成交量 ${num(marker.trigger_volume, 0)} > 前日 ${num(marker.previous_volume, 0)}；收盘 ${num(marker.trigger_close, 4)} < 前收 ${num(marker.previous_close, 4)}`,
+        );
+        if (marker.volume_support_date)
+            lines.push(`冻结回踩低点：${marker.volume_support_date} · ${num(marker.volume_support_low, 4)} 元`);
     }
     if (marker.resistance_date) {
-        lines.push(`倒 N 日期：${marker.inverse_n_date}`,
+        lines.push(
+            `倒 N 日期：${marker.inverse_n_date}`,
             `多头抵抗 K：${marker.resistance_date} · 虚拟低 ${num(marker.resistance_virtual_low, 4)} 元`,
-            `失败收盘：${num(marker.failure_close, 4)} 元`);
+            `失败收盘：${num(marker.failure_close, 4)} 元`,
+        );
     }
     if (marker.support_date) {
         lines.push(

@@ -9,6 +9,7 @@ import {
     postAlternationBullHighAnnotations,
     reversalWindowSummary,
     visibleAnnotations,
+    visibleLastFallHighGuides,
 } from "./annotations.js";
 import { candleDetails } from "./candle-details.js";
 import { FocusFlashOverlay } from "./focus-flash-overlay.js";
@@ -459,7 +460,7 @@ export class PriceChart {
                 price: g.items[0].price,
             })),
         );
-        this.drawLastFallHighGuides(trendKeys);
+        this.drawLastFallHighGuides(trendKeys, from, to);
         this.drawBullishTurnGuides(bullishTurnSignals);
         this.drawTertiaryRetracementGuides(to);
         this.container.dataset.markerCount = this.groups.length;
@@ -524,8 +525,8 @@ export class PriceChart {
         this.lastFallHighLineKey = "";
         this.container.dataset.lastFallHighGuides = "0";
     }
-    drawLastFallHighGuides(items) {
-        const visible = this.options.trendKeys ? items : [];
+    drawLastFallHighGuides(items, from, to) {
+        const visible = this.options.trendKeys ? visibleLastFallHighGuides(items, from, to) : [];
         const key = visible.map((item) => item.id).join("|");
         if (key === this.lastFallHighLineKey) return;
         this.clearLastFallHighGuides();

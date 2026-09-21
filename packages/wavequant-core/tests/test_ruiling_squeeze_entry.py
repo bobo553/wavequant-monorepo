@@ -122,7 +122,7 @@ def test_v3_defers_reward_risk_to_execution(variant: str) -> None:
     assert profile["strategy"]["preflight_reward_risk"] is False
     assert profile["strategy"]["minimum_reward_risk"] == 1.5
     assert "gross_rr_1_5" not in profile["definition"]["primary_filters"]
-    assert "next_open_net_rr_1_5" in profile["definition"]["primary_filters"]
+    assert "execution_price_net_rr_1_5" in profile["definition"]["primary_filters"]
 
 
 def test_ruiling_august_7_target_exit_is_removed_without_future_wave_targets() -> None:

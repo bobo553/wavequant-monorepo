@@ -20,6 +20,9 @@ class Bar:
     # adjusted price / raw price. Quantity in the engine is an adjusted-price
     # equivalent unit; entry lot size and volume capacity use actual shares.
     adjustment_factor: float = 1.0
+    # None preserves legacy/custom-data permission semantics.
+    close_buyable: bool | None = None
+    nonflat_close_buyable: bool | None = None
 
 
 @dataclass(frozen=True)

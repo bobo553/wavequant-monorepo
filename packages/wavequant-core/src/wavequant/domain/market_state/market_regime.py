@@ -155,8 +155,15 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         if (policy.local_resistance_failure and i >= attack + 2
                 and first_resistance is not None and first_defense is None):
             prior_resistance = frames[-1].resistance
-            continuation = bool(prior_resistance and prior_resistance.detected is True
-                                and rolling_held and sign * (bar.close - prev.close) > 0)
+            # A higher close alone cannot defeat resistance while this candle
+            # still shows it (lower open, opposing body, or long upper wick).
+            # Keep the original breakout close as an anchor: a rebound below
+            # it is not renewed attack merely because yesterday closed lower.
+            continuation = bool((continuation or (prior_resistance and prior_resistance.detected is True))
+                                and rolling_held and sign * (bar.close - prev.close) > 0
+                                and sign * (bar.close - bars[attack].close) > 0
+                                and sign * (bar.close - bar.open) > 0
+                                and resistance.detected is False)
         phase = RegimePhase.AWAIT_CONFIRMATION if i == attack + 1 else RegimePhase.PENDING
         regime = None
         outcome = (ResistanceOutcome.PENDING if first_resistance is not None else

@@ -83,9 +83,23 @@ def squeeze_alternations(bars, audit, anchors_at_attack):
             anchor = AbcAnchor(
                 low["index"], high["index"], item["known_index"], low["value"], high["value"], item["source_path"]
             )
-            events = tertiary_abc_observations(bars, [anchor], [positive[attack], trigger])
+            events = tertiary_abc_observations(bars, [anchor], [positive[attack], trigger], allow_deep_pullback=True)
             if not events or (*identity, events[0]["b_low_index"]) in used:
                 continue
+            if events[0].get('deep_price_path') and bars[now].close <= max(b.high for b in bars[attack:now]):
+                continue
+            from .alternation_duration import short_shallow_pullback
+            proof = events[0]
+            if short_shallow_pullback(proof['a_origin_price'], proof['a_high_price'],
+                                      proof['b_minimum_close'], proof['a_duration'], proof['b_duration']):
+                breakout = next((e for e in events if e['event'] == 'tertiary_c_breakout'), None)
+                if breakout is None:
+                    continue
+                confirmed = breakout['bar_index']
+                events = [dict(proof, bar_index=confirmed, candidate_index=confirmed,
+                               duration_confirmation='close_above_a_high_after_short_pullback'),
+                          dict(breakout, candidate_index=confirmed,
+                               duration_confirmation='close_above_a_high_after_short_pullback')]
             used.add((*identity, events[0]["b_low_index"]))
             occupied[identity] = len(bars)
             for event in events:

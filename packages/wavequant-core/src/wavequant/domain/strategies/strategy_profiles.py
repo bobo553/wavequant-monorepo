@@ -51,10 +51,10 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
     thresholds=WAVE_PROFILES[variant]
     config=hierarchical_profile(legacy)
     for scenario in config['scenarios'].values():
-        scenario['execution'].update(staged_exit_enabled=True, staged_exit_same_day=False,
+        scenario['execution'].update(entry_at_close=True, nonflat_limit_close_fill=True, consolidation_entry_intraday=True, staged_exit_enabled=True, staged_exit_same_day=False,
                                      staged_exit_intraday=True, missing_minute_daily_fallback=True, inverse_n_after_reduction=True, inverse_n_close_reduce=True, initial_reduction_fraction=0.65,
-                                     exit_on_target=False, volume_inverse_n_clear=True, volume_down_exit=True, small_n_reduction=True)
-    config['strategy'].update(buy_point_definition='whole_flip_wave_v3',preflight_reward_risk=False,
+                                     exit_on_target=False, wave_exhaustion_exit=True, pressure_adverse_exit=True, trend_flip_adverse_exit=True, volume_inverse_n_clear=True, volume_down_exit=True, small_n_reduction=True)
+    config['strategy'].update(buy_point_definition='whole_flip_wave_v3',preflight_reward_risk=False,strict_n_attack_quality=False,
         first_pullback_threshold=thresholds.first,mature_shallow_ratio=thresholds.second,
         first_pullback_basis=thresholds.first_basis,mature_shallow_inclusive=thresholds.second_inclusive)
     config['profile_version']='whole_flip_wave_v3_'+variant
@@ -77,26 +77,35 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
             confirmation='formal_flip_high_and_confirmed_source_pullback_may_be_known_together',
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
-    config['profile_version'] = 'volume_inverse_n_v21_' + variant
+    config['profile_version'] = 'deep_alternation_kill_high_v38_' + variant
     config['definition']['exits'] = [
         rule for rule in config['definition']['exits'] if rule != 'target_observed_then_next_open'
     ]
     config['definition']['primary_filters'] = [
-        name for name in config['definition']['primary_filters'] if name != 'gross_rr_1_5'
+        ('execution_price_net_rr_1_5' if name == 'next_open_net_rr_1_5' else name)
+        for name in config['definition']['primary_filters'] if name != 'gross_rr_1_5'
     ]
     config['definition']['primary_filters'] += [
-        'attack_volume_strictly_above_previous', 'bullish_attack_body_ge_2pct_open_and_half_range',
-        'alternation_confirmed_before_n_attack',
+        'alternation_before_n_or_same_n_squeeze_confirmation',
     ]
     config['definition'].update(
-        signal_timing='qualified_positive_n_squeeze_confirmation_close',
-        reward_risk_policy='next_open_execution_gate_only_not_signal_preflight',
+        alternation_short_pullback='minimum_close_above_two_thirds_and_b_duration_lt_half_a_requires_later_close_above_a_high',
+        daily_limit_fill='nonflat_limit_up_close_simulated_fill_without_queue_verification_flat_limit_up_rejected',
+        secondary_breakout='latest_confirmed_level2_high_resisted_attack_or_response_requires_later_close_above_episode_high',
+        consolidation_entry='larger_n_defense_held_two_closes_under_n_high_then_gap_open_and_cumulative_volume_gt_previous_on_break_above_n_high',
+        wave_exhaustion_exit='entry_n_reached_two_t_or_later_volume_gt_previous_range_ge_8pct_both_shadows_ge_20pct_cumulative_80_close_then_bearish_engulf_clear',
+        weak_n_confirmation='uninterrupted_strong_squeeze_or_defense_held_volume_gt_previous_close_above_episode_record_squeeze',
+        squeeze_invalidation='later_inverse_n_ends_local_bounce_larger_defense_can_wait_for_fresh_volume_gap',
+        signal_timing='consolidation_intraday_completed_5m_other_entries_close',
+        entry_execution='defended_n_volume_gap_completed_5m_next_interval_other_entries_daily_close_simulation',
+        reward_risk_policy='execution_price_gate_only_not_signal_preflight',
         alternation='shared_chart_formal_or_qualified_b_positive_n_squeeze',
         staged_exit='verified_5m_closing_window_low_break_35_low_and_price_break_65_next_interval_open_then_weak_rebound_clear',
         missing_minute_policy='same_source_daily_close_with_explicit_fallback_evidence',
         inverse_n_after_reduction='cumulative_90_percent_of_initial_holding_other_full_risk_exits_take_priority',
         small_n_reduction='body_le_1pct_and_lt_previous_10_mean_inside_latest_valid_confirmed_n_candle_then_cumulative_30',
         volume_down_exit='volume_gt_previous_bearish_close_below_previous_then_next_open_cumulative_70_frozen_support_low_break_close_clear',
+        pressure_adverse_exit='confirmed_positive_n_retests_unbroken_high_volume_bearish_body_upper_half_then_adverse_close_full_clear',
         volume_inverse_n_clear='confirmed_inverse_n_and_volume_gt_previous_same_day_full_clear_before_partial_exits',
         inverse_n_remaining_exit='bull_resistance_next_close_below_virtual_low_same_day_clear',
         inverse_n_close_reduce='confirmed_inverse_n_same_day_close_cumulative_90_without_prior_reduction',
@@ -104,10 +113,10 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
         alternation_price_path='b_low>=a_high-(a_high-a_low)*2/3',
         alternation_time_path='b_duration>a_duration_and_b_min_close<a_high-(a_high-a_low)/2',
         alternation_invalidation='b_low_broken_before_close_above_a_high',
-        confirming_n_can_enter=False,
-        minimum_attack_body_open_fraction=0.02,
-        minimum_attack_body_range_fraction=0.5,
-        attack_volume_vs_previous='strictly_greater',
+        confirming_n_can_enter=True,
+        minimum_attack_body_open_fraction=None,
+        minimum_attack_body_range_fraction=None,
+        attack_volume_vs_previous='context_only_strict_quality_mode_optional',
         drawing_annotations='shared_causal_alternation_evidence',
         target_policy='nearest_unhit_n_target_then_confirmed_two_t_wave_projection',
         target_exit_policy='measured_targets_are_milestones_not_exit_orders',

@@ -24,7 +24,7 @@ def test_larger_n_folds_lower_correction_without_repainting(monkeypatch):
     assert hierarchical_n.hierarchical_n_candidates([])=={}
 
 
-def test_guilin_dec2_larger_n_and_dec6_squeeze_are_causal():
+def test_guilin_dec2_larger_n_does_not_confirm_on_dec6_resistance():
     raw=json.loads((Path(__file__).parent/'fixtures'/'guilin_2022_hierarchy.json').read_text(encoding='utf-8'))
     bars=[Bar(datetime.fromisoformat(day),raw['symbol'],*values) for day,*values in raw['bars']]
     config=SystemStrategy(pivot_mode='lecture_causal',entry_policy='hierarchical_two_buy_points',
@@ -35,7 +35,9 @@ def test_guilin_dec2_larger_n_and_dec6_squeeze_are_causal():
     assert event['n_level']==2
     assert [bars[event[k]].timestamp.date().isoformat() for k in ('origin','neckline','pullback')]==[
         '2022-04-27','2022-06-30','2022-10-12']
-    assert any(e['event']=='regime_confirmation' and e['attack']==event['bar_index']
+    confirmation=next(b for b in bars if b.timestamp.date().isoformat()=='2022-12-06')
+    assert confirmation.high-max(confirmation.open,confirmation.close) > (confirmation.high-confirmation.low)/2
+    assert not any(e['event']=='regime_confirmation' and e['attack']==event['bar_index']
                and e['timestamp'].startswith('2022-12-06') for e in full.audit)
     for date in ('2022-12-02','2022-12-06'):
         cutoff=next(i for i,b in enumerate(bars) if b.timestamp.date().isoformat()==date)

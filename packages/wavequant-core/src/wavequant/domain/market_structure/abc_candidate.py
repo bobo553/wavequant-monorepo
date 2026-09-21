@@ -24,6 +24,7 @@ class AbcAnchor:
 
 
 class PullbackEvidence(TypedDict):
+    deep_price_path: NotRequired[bool]
     a_origin_index: int
     a_high_index: int
     b_low_index: int
@@ -56,7 +57,7 @@ class AbcObservation(PullbackEvidence):
 
 
 def abc_pullback_evidence(
-    bars: Sequence[Bar], anchor: AbcAnchor, end: int,
+    bars: Sequence[Bar], anchor: AbcAnchor, end: int, *, allow_deep_pullback: bool = False,
 ) -> PullbackEvidence | None:
     """Return exact inclusive price thresholds and strict trading-bar duration."""
     start, peak = anchor.origin_index, anchor.high_index
@@ -78,7 +79,8 @@ def abc_pullback_evidence(
     a_bars, b_bars = peak - start, b_index - peak
     price_path = minimum >= two_thirds
     time_path = b_bars > a_bars and close < half
-    if not (price_path or time_path):
+    deep_price_path = allow_deep_pullback and minimum <= two_thirds
+    if not (price_path or time_path or deep_price_path):
         return None
     return dict(
         a_origin_index=start, a_high_index=peak, b_low_index=b_index,
@@ -88,6 +90,7 @@ def abc_pullback_evidence(
         retracement_ratio=float((high - minimum) / (high - low)),
         a_duration=a_bars, b_duration=b_bars, duration_unit="trading_bars",
         price_path=price_path, time_path=time_path,
+        **({'deep_price_path': True} if deep_price_path else {}),
     )
 
 
@@ -98,6 +101,7 @@ def _index(event: Mapping[str, object], name: str) -> int | None:
 
 def tertiary_abc_observations(
     bars: Sequence[Bar], anchors: Sequence[AbcAnchor], audit: Sequence[Mapping[str, object]],
+    *, allow_deep_pullback: bool = False,
 ) -> list[AbcObservation]:
     """Join confirmed positive Ns to squeeze evidence, independently of LONG filters.
 
@@ -133,7 +137,7 @@ def tertiary_abc_observations(
                     or not 0 <= anchor.high_index < origin < pullback < attack <= confirmed < len(bars)
                     or anchor.known_index > attack or known > confirmed or confirmed <= busy_until):
                 continue
-            proof = abc_pullback_evidence(bars, anchor, pullback)
+            proof = abc_pullback_evidence(bars, anchor, pullback, allow_deep_pullback=allow_deep_pullback)
             if proof is None:
                 continue
             b_index = proof["b_low_index"]

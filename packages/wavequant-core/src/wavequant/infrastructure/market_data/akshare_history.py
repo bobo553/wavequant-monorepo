@@ -9,7 +9,7 @@ import math
 from typing import Any
 
 from .akshare import AkShareProvider
-from .minute import MinuteBar, verify_minute_day
+from .minute import MinuteBar, MinuteVolumeMismatch, verify_minute_day
 from ..persistence.artifact_cache import ArtifactCache
 from ...domain.models.model import Bar
 
@@ -72,7 +72,18 @@ class AkShareMinuteSource:
         if not rows or len(rows) != 48:
             complete = sorted(key for key, value in self.rows.items() if len(value) == 48)
             raise MinuteCoverageError(day, complete[0] if complete else None, complete[-1] if complete else None)
-        minute = verify_minute_day(rows, daily)
+        try:
+            minute = verify_minute_day(rows, daily)
+        except MinuteVolumeMismatch as exc:
+            if exc.minute_volume >= exc.daily_volume:
+                raise
+            # The complete clock grid can still omit traded volume. Do not use
+            # this path for intraday fills, even when its OHLC agrees.
+            missing = MinuteCoverageError(day, None, None)
+            missing.coverage.update(reason="minute_volume_incomplete", minute_volume=exc.minute_volume,
+                                    daily_volume=exc.daily_volume,
+                                    missing_volume=exc.daily_volume-exc.minute_volume)
+            raise missing from exc
         self.digests[day] = hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
         return minute
 

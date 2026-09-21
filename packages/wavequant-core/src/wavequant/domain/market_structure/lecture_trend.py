@@ -314,8 +314,8 @@ def reversal_trends(drawing, bars):
         _annotate(stroke['points'],bars[0].symbol,dates)
     return dict(strokes=result,trend_level=1,name='一级趋势线',scope='lecture_wave_structure_not_strategy_confirmation',
                 bear_to_bull_highs=bear_to_bull_highs(result,trend_level=1),
-                bear_bull_alternation_lows=bear_bull_alternation_lows(result,trend_level=1),
-                post_alternation_bull_highs=post_alternation_bull_highs(result,trend_level=1),
+                bear_bull_alternation_lows=bear_bull_alternation_lows(result,trend_level=1,bars=bars),
+                post_alternation_bull_highs=post_alternation_bull_highs(result,trend_level=1,bars=bars),
                 bullish_turn_signals=bullish_turn_signals(result,bars,trend_level=1),
                 aggregation_rule='HH_HL_or_LH_LL_switch_with_confirmed_cross_path_extremes',input_turn_count=local_count,
                 confirmed_wave_count=sum(len(s['points']) for s in result),

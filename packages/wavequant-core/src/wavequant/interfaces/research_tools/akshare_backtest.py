@@ -61,11 +61,18 @@ class AkShareBacktester:
             buyable, sellable = opening_permissions(
                 dict(date=day, isST="0", tradestatus="1", preclose=str(reference), open=str(bar.open)), symbol
             )
+            close_buyable, _ = opening_permissions(
+                dict(date=day, isST="0", tradestatus="1" if bar.volume > 0 else "0",
+                     preclose=str(reference), open=str(bar.close)), symbol
+            )
             bars.append(
                 replace(
                     bar,
                     **{key: getattr(bar, key) * factor for key in ("open", "high", "low", "close")},
                     buyable=bool(buyable),
+                    close_buyable=bool(close_buyable),
+                    nonflat_close_buyable=bool(bar.volume > 0 and bar.high > bar.low and opening_permissions(
+                        dict(date=day, isST="0", tradestatus="1", preclose=str(reference), open=str(bar.low)), symbol)[0]),
                     sellable=bool(sellable),
                     adjustment_factor=factor,
                 )
@@ -119,7 +126,7 @@ class AkShareBacktester:
                     strategy,
                     execution,
                     generated,
-                    minute_loader=minute.get if execution["staged_exit_intraday"] else None,
+                    minute_loader=minute.get if execution["staged_exit_intraday"] or execution.get("consolidation_entry_intraday") else None,
                 )
             except MinuteCoverageError as exc:
                 # Discard partial simulation, but preserve the valid daily theory.

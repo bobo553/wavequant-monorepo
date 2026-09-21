@@ -14,6 +14,7 @@ import {
     reversalWindowSummary,
     ruleTitle,
     visibleAnnotations,
+    visibleLastFallHighGuides,
 } from "../public/annotations.js";
 
 const options = {
@@ -25,7 +26,7 @@ const options = {
 };
 test("sizing rejection and structural cutoff have explicit Chinese explanations", () => {
     assert.equal(reasonText("risk_budget_below_one_lot"), "单笔风险预算不足以买入一手");
-    assert.equal(reasonText("insufficient_net_reward_risk"), "开盘含费净盈亏比不足");
+    assert.equal(reasonText("insufficient_net_reward_risk"), "成交价含费净盈亏比不足");
     assert.match(reasonText("same_bar_vertices_require_lower_timeframe_n"), /同日高低点不能组成日线 N/);
 });
 test("window key follows extreme predecessor, not latest opposite pivot", () => {
@@ -308,6 +309,29 @@ test("last-fall-high labels identify each level at the source high and retain th
     assert.equal(marker.price, 101);
     assert.match(marker.text, /Ⅰ 末跌高/);
     assert.equal(visibleAnnotations(items, { ...options, trendKeys: false }).length, 0);
+});
+
+test("level-two and level-three guides require their key or breakout candle in the viewport", () => {
+    const guide = (level, time, breakoutTime) => ({
+        id: `level-${level}-${time}`,
+        time,
+        raw: {
+            trend_level: level,
+            breakout: breakoutTime ? { time: breakoutTime } : null,
+        },
+    });
+    const items = [
+        guide(1, "2025-01-01"),
+        guide(2, "2025-01-01", "2025-05-15"),
+        guide(2, "2025-01-01", "2025-04-01"),
+        guide(3, "2025-05-12", "2025-06-01"),
+        guide(3, "2025-01-01"),
+    ];
+
+    assert.deepEqual(
+        visibleLastFallHighGuides(items, "2025-05-01", "2025-05-31").map((item) => item.id),
+        ["level-1-2025-01-01", "level-2-2025-01-01", "level-3-2025-05-12"],
+    );
 });
 
 test("bear-to-bull high labels use Python landmarks and respect their causal availability", () => {

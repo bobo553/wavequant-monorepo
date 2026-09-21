@@ -172,7 +172,7 @@ class TdxBacktester:
         else:
             bars,generated=decode_research(research)
         strategy=SystemStrategy(**inputs['strategy']);strategy.validate()
-        minute_source=TdxMinuteSource(self.browser.root) if inputs['execution']['staged_exit_intraday'] else None
+        minute_source=TdxMinuteSource(self.browser.root) if inputs['execution']['staged_exit_intraday'] or inputs['execution'].get('consolidation_entry_intraday') else None
         result=single_stock_result(bars,asdict(strategy),inputs['execution'],generated,
                                    minute_loader=minute_source.get if minute_source else None)
         view=self._view(key,inputs,bars,result,research['sessions'],
@@ -188,11 +188,12 @@ class TdxBacktester:
         if len(raw)<22: raise ValueError('历史日线不足：须先跳过至少 20 个已有交易日，避免上市初期规则误用')
         start=max(date.fromisoformat(inputs['start']),raw[20]['date'])
         if start>end: raise ValueError('所选区间没有可回测日线')
-        converted=adjust_rows(raw,[json.loads(e) for e in events],start,end,symbol)
+        converted=adjust_rows(raw,[json.loads(e) for e in events],start,end,symbol,include_close_permission=True)
         if not converted: raise ValueError('所选区间没有可回测日线')
         bars=[Bar(datetime.fromisoformat(r['timestamp']),symbol,
                   *(r[k] for k in ('open','high','low','close','volume')),
-                  bool(r['buyable']),bool(r['sellable']),r['adjustment_factor']) for r in converted]
+                  bool(r['buyable']),bool(r['sellable']),r['adjustment_factor'],
+                  close_buyable=bool(r['close_buyable']), nonflat_close_buyable=bool(r['nonflat_close_buyable'])) for r in converted]
         strategy=SystemStrategy(**inputs['strategy']);strategy.validate()
         generated=generate_system_signals(bars,strategy)
         # Persist chart geometry during the first scan as well as on chart open.

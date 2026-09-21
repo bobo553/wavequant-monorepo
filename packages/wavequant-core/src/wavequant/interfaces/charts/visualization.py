@@ -647,11 +647,11 @@ class ChartRepository:
         definition = dict(config.get("definition", {}))
         definition["net_reward_risk_filter"] = net_reward_risk_filter
         definition["reward_risk_policy"] = (
-            "next_open_net_reward_risk_gate_enabled" if net_reward_risk_filter else "next_open_net_reward_risk_gate_disabled"
+            "execution_price_net_reward_risk_gate_enabled" if net_reward_risk_filter else "execution_price_net_reward_risk_gate_disabled"
         )
         if not net_reward_risk_filter and "primary_filters" in definition:
             definition["primary_filters"] = [
-                name for name in definition["primary_filters"] if name != "next_open_net_rr_1_5"
+                name for name in definition["primary_filters"] if name not in ("next_open_net_rr_1_5", "execution_price_net_rr_1_5")
             ]
         if not volume_filter and "primary_filters" in definition:
             definition["primary_filters"] = [
@@ -702,11 +702,11 @@ class ChartRepository:
         theory.update(price_basis=view['price_basis'], data_source='akshare', upstream='sina', run_id=view['run_id'])
         definition = dict(profile.get('definition', {}), net_reward_risk_filter=net_reward_risk_filter)
         definition['reward_risk_policy'] = (
-            'next_open_net_reward_risk_gate_enabled' if net_reward_risk_filter else 'next_open_net_reward_risk_gate_disabled'
+            'execution_price_net_reward_risk_gate_enabled' if net_reward_risk_filter else 'execution_price_net_reward_risk_gate_disabled'
         )
         if 'primary_filters' in definition:
             definition['primary_filters'] = [name for name in definition['primary_filters']
-                if (volume_filter or name != 'rvol_1_2') and (net_reward_risk_filter or name != 'next_open_net_rr_1_5')]
+                if (volume_filter or name != 'rvol_1_2') and (net_reward_risk_filter or name not in ('next_open_net_rr_1_5', 'execution_price_net_rr_1_5'))]
         return dict(view, variant=variant, scenario=scenario, parameter_source_run=rid, theory=theory,
                     strategy_profile=dict(id=variant, version=profile.get('profile_version', variant), definition=definition))
 

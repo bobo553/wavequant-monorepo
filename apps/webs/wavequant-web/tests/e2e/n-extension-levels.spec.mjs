@@ -16,6 +16,7 @@ test("Ruiling backtest preserves AKShare and fills missing-minute days using dai
     await page.route("**/api/akshare-catalog", (route) => route.fulfill({ json: catalog }));
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#selected-stock-summary")).toContainText("未回测", { timeout: 60_000 });
     await page.locator("#backtest-start").fill("2018-01-01");
     await page.locator("#backtest-volume-filter").evaluate((field) => {
         field.checked = false;
@@ -33,12 +34,19 @@ test("Ruiling backtest preserves AKShare and fills missing-minute days using dai
         (signal) => signal.time === "2025-05-19" && signal.reason === "inverse_n_risk_exit",
     );
     expect(inverse).toBeTruthy();
-    const mayBuy = view.orders.find((order) => order.side === "BUY" && order.timestamp.startsWith("2026-05-11"));
-    expect(mayBuy.signal_timestamp).toContain("2026-05-08");
+    const mayBuy = view.orders.find((order) => order.side === "BUY" && order.timestamp.startsWith("2026-05-07"));
+    expect(mayBuy.signal_timestamp).toContain("2026-05-06");
     expect(view.orders.some((order) => order.side === "BUY" && order.timestamp.startsWith("2026-05-15"))).toBe(false);
-    const squeeze = mayBuy.decision_evidence.find((item) => item.squeeze_confirmation === "local_resistance_failure");
-    expect(squeeze.attack_date).toBe("2026-04-30");
-    expect(squeeze.prior_bar_date).toBe("2026-05-07");
+    const squeeze = mayBuy.decision_evidence.find((item) => item.squeeze_confirmation === "uninterrupted_squeeze");
+    expect(squeeze.attack_date).toBe("2026-04-29");
+    expect(squeeze.n_level).toBe(1);
+    expect(squeeze.prior_bar_date).toBe("2026-04-30");
+    expect(
+        view.audit.some(
+            (event) =>
+                event.event === "n_completed" && event.direction === "up" && event.timestamp.startsWith("2026-04-30"),
+        ),
+    ).toBe(true);
     const reduction = view.orders.find(
         (order) => order.timestamp.startsWith("2026-05-21") && order.reason === "inverse_n_close_reduce_90",
     );
@@ -71,10 +79,10 @@ test("Ruiling backtest preserves AKShare and fills missing-minute days using dai
     await expect(page.locator("#backtest-details")).toContainText("按当日日线收盘价模拟成交");
     await expect(page.locator("#download-backtest")).toBeEnabled();
     await expect(page.locator("#result-scope")).toHaveValue("akshare-backtest");
-    const buyRow = page.locator("#trade-nodes-list .trade-node-row").filter({ hasText: "2026-05-11" });
+    const buyRow = page.locator("#trade-nodes-list .trade-node-row").filter({ hasText: "2026-05-07" });
     await buyRow.locator(".trade-node-button").click();
-    await expect(page.locator("#selection-info")).toContainText("该回不回");
-    await expect(page.locator("#selection-info")).toContainText("2026-05-07");
+    await expect(page.locator("#selection-info")).toContainText("连续上攻确认强轧空");
+    await expect(page.locator("#selection-info")).toContainText("2026-04-29");
     await page
         .locator("#trade-nodes-list .trade-node-row")
         .filter({ hasText: "2026-05-21" })

@@ -33,6 +33,7 @@ class SystemStrategy:
     minimum_reward_risk: float = 1.5
     max_counter_ratio: float = 2/3
     shadow_fraction: float = .5
+    strict_n_attack_quality: bool = True
     volume_filter: bool = True
     regime_filter: bool = True
     entry_policy: str = 'transitioned_squeeze'
@@ -71,6 +72,8 @@ class SystemStrategy:
         if self.buy_point_definition=='whole_flip_wave_v3' and (
                 self.entry_policy!='hierarchical_two_buy_points' or self.mature_shallow_ratio not in (1/3,.5)):
             raise ValueError('whole wave entries require hierarchical policy and close threshold 1/3 or 1/2')
+        if type(self.strict_n_attack_quality) is not bool:
+            raise ValueError('strict_n_attack_quality must be boolean')
         if type(self.volume_filter) is not bool or type(self.regime_filter) is not bool:
             raise ValueError('boolean filters required')
         if self.entry_policy not in ('legacy_n_continuation', 'transitioned_squeeze', 'hierarchical_two_buy_points'):
@@ -166,6 +169,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
     audit, candidates, seen, attack_keys = [], [], set(), set()
     events = defaultdict(list)
     resumptions, resumption_keys = defaultdict(list), set()
+    consolidation_events, consolidation_proofs = defaultdict(list), {}
     def log(i, kind, **fields):
         audit.append(dict(timestamp=bars[i].timestamp.isoformat(), symbol=bars[i].symbol,
                           bar_index=i, event=kind, **fields))
@@ -182,12 +186,18 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             j, kind = row.pop('bar_index'), row.pop('event')
             log(j, kind, **row)
             counts[kind] += 1
-    larger = {}
+    larger, folded_sets = {}, []
     if whole_wave and config.pivot_mode == 'lecture_causal':
         from .hierarchical_n import hierarchical_n_candidates
+        from .folded_n import folded_positive_n_candidates, folded_inverse_n_candidates
         larger = hierarchical_n_candidates(bars)
+        for i in range(len(bars)):
+            folded = folded_positive_n_candidates(snapshots[i], earliest=max(epochs[i], i-config.structure_window))
+            folded += folded_inverse_n_candidates(snapshots[i], earliest=max(epochs[i], i-config.structure_window))
+            folded_sets.extend((i, points, level) for points, level in folded)
     candidate_sets = [(i, points, level) for i in range(len(bars))
                       for points, level in [(snapshots[i], 0), *larger.get(i, [])]]
+    candidate_sets.extend(folded_sets)
     for i, points, n_level in candidate_sets:
         if i in blocked:
             log(i, 'strict_structure_interrupted')
@@ -238,9 +248,10 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         attack_keys.add((direction, t))
         control = observe_control_bar(data, local, timeframe='1d', volume_lookback=config.volume_lookback,
                                       shadow_policy=ShadowPolicy(config.shadow_fraction))
+        rejection = None
         if whole_wave and direction == Direction.UP:
             rejection = v3_positive_n_attack_rejection(bars[t], control.volume)
-            if rejection is not None:
+            if rejection is not None and config.strict_n_attack_quality:
                 counts['rejected_v3_positive_n_attack'] += 1
                 log(t, 'n_attack_rejected', direction=direction.value, reason=rejection,
                     known_at=i, previous_volume=bars[t-1].volume, attack_volume=bars[t].volume,
@@ -252,12 +263,45 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         force = measure_strength(n.anchors.origin, n.anchors.neckline_extreme, n.anchors.pullback,
                                   impulse_direction=direction, scale=StrengthScale.EXACT_FRACTIONS)
         candidate = dict(setup=setup, epoch=epochs[i], start=offset, finish=finish, n=n,
-                         attack=t, regime=regime, control=control, force=force, n_level=n_level)
+                         attack=t, known_at=i, regime=regime, control=control, force=force, n_level=n_level, attack_quality_warning=rejection)
         candidates.append(candidate)
         counts['completed_'+direction.value+'_n'] += 1
         log(t, 'n_completed', direction=direction.value, origin=a.point.index, neckline=b.point.index,
             pullback=c.point.index, known_at=i, defense=n.completion.defense, counter_ratio=force.ratio,
             n_level=n_level)
+    # A later confirmed inverse N terminates ordinary local-bounce entries.
+    # Use its availability, not a pivot source date, to preserve prior signals.
+    inverse_known = sorted((max(c['attack'], c['known_at']), c['attack']) for c in candidates
+                           if c['setup'].direction == Direction.DOWN)
+    inverse_reentry = [dict(known_at=max(c['attack'], c['known_at']), attack=c['attack'],
+                           b_index=c['setup'].pullback.index, b_high=c['n'].anchors.pullback,
+                           kill_high=c['n'].completion.defense)
+                       for c in candidates if c['setup'].direction == Direction.DOWN]
+    for candidate in candidates:
+        direction = candidate['setup'].direction
+        offset, t, n = candidate['start'], candidate['attack'], candidate['n']
+        regime = candidate['regime']
+        full_frames = regime.frames
+        if whole_wave and direction == Direction.UP:
+            invalidation = next(((known, attack) for known, attack in inverse_known if attack > t), None)
+            if invalidation is not None:
+                known, inverse_attack = invalidation
+                regime = replace(regime, frames=tuple(f for f in regime.frames if offset + f.bar_index < known))
+                candidate['regime'] = regime
+                log(known, 'n_squeeze_invalidated', attack=t, inverse_attack=inverse_attack,
+                    reason=('later_inverse_n_ends_local_bounce_larger_defense_still_observed'
+                            if candidate['n_level'] >= 1 else 'later_confirmed_inverse_n_requires_new_positive_n'))
+                counts['n_squeeze_invalidated'] += 1
+        if whole_wave and direction == Direction.UP and candidate['n_level'] >= 1:
+            from .n_consolidation import consolidation_gap
+            # The larger defense remains observable independently of smaller exits.
+            for f in full_frames:
+                j = offset + f.bar_index
+                proof = consolidation_gap(bars, attack=t, now=j, defense=n.completion.defense)
+                if proof is not None:
+                    consolidation_events[j].append((candidate, f))
+                    consolidation_proofs[t, j] = proof
+                    log(j, 'n_consolidation_gap_confirmed', attack=t, **proof)
         for f in regime.frames:
             j = offset+f.bar_index
             if f.regime is not None:
@@ -286,6 +330,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             n = candidate['n']
             squeeze = next((candidate['start'] + f.bar_index for f in candidate['regime'].frames
                             if f.regime in (MarketRegime.BULL, MarketRegime.STRONG_BULL)), None)
+            gap_confirmation = next((j for attack, j in consolidation_proofs if attack == candidate['attack']), None)
+            if gap_confirmation is not None:
+                squeeze = min(squeeze, gap_confirmation) if squeeze is not None else gap_confirmation
             if squeeze is None:
                 continue
             projection_setup = WaveProjectionSetup(
@@ -305,6 +352,12 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     'invalidated': '轧空低失守，转浪失效'}[event.state]
                 log(j, kind, **row)
                 counts[kind] += 1
+    secondary_resistance = {}
+    if whole_wave:
+        from .hierarchical_entry import hierarchical_history
+        from .secondary_resistance import secondary_resistance_history
+        secondary_levels, _ = hierarchical_history(bars)
+        secondary_resistance = secondary_resistance_history(bars, secondary_levels)
     if hierarchical:
         from .hierarchical_entry import hierarchical_history, context_history, select_entry
         if whole_wave:
@@ -387,12 +440,17 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             counts['turn_confirmed'] += 1
     signals = []
     def select_candidate(c,i):
-        params=dict(attack=c['attack'],origin_index=c['setup'].origin.index,
+        eligibility_attack = i if (c['attack'], i) in consolidation_proofs else c['attack']
+        params=dict(attack=eligibility_attack,origin_index=c['setup'].origin.index,
             high_index=c['setup'].neckline.index,low_index=c['setup'].pullback.index,
             ratio=c['force'].ratio,shallow_ratio=config.mature_shallow_ratio,asof=i)
         if whole_wave:
             from .whole_wave_entry import select_wave_entry
-            return select_wave_entry(hierarchy_permissions.get(i,()),hierarchy_permissions.get(c['attack'],()),
+            contexts = hierarchy_permissions.get(eligibility_attack,())
+            if (c['attack'], i) in consolidation_proofs:
+                contexts = sorted(contexts, key=lambda ctx: ctx.alternation_low_index, reverse=True)
+            return select_wave_entry(hierarchy_permissions.get(i,()),contexts,
+                allow_confirming_n=True,
                 bars=bars,deep_ratio=config.first_pullback_threshold,first_basis=config.first_pullback_basis,
                 second_inclusive=config.mature_shallow_inclusive,**params)
         return select_entry(hierarchy_permissions.get(i,()),hierarchy_permissions.get(c['attack'],()),**params)
@@ -417,7 +475,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 '|'.join(exits), bar.timestamp, 0, None, 'risk_exit'))
             log(i, 'exit_signal', reason='|'.join(exits))
             continue
-        choices = events.get(i, [])+resumptions.get(i, []) if config.regime_filter else [
+        choices = events.get(i, [])+resumptions.get(i, [])+consolidation_events.get(i, []) if config.regime_filter else [
             (c, c['regime'].frames[0]) for c in candidates if c['attack'] == i]
         def entry_priority(item):
             c, _ = item
@@ -426,12 +484,35 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             proof, _ = select_candidate(c,i)
             return ((proof or {}).get('priority', 0), c['attack'])
         for c, frame in sorted(choices, key=entry_priority, reverse=True):
-            if c['setup'].direction != Direction.UP or c['attack'] in emitted_attacks or epochs[i] != c['epoch']:
+            consolidation = consolidation_proofs.get((c['attack'], i))
+            if c['setup'].direction != Direction.UP or (c['attack'] in emitted_attacks and consolidation is None) or epochs[i] != c['epoch']:
                 continue
             counts['entry_candidate_evaluations'] += 1
+            if i in secondary_resistance:
+                log(i, 'entry_rejected', reason='secondary_breakout_resistance_unresolved',
+                    attack=c['attack'], **secondary_resistance[i])
+                continue
             permission = permissions.get(i)
             resumed = (c['attack'],i) in resumption_keys
-            entry_regime = MarketRegime.BULL if resumed else frame.regime
+            entry_regime = MarketRegime.BULL if resumed or consolidation is not None else frame.regime
+            # A bounce below the original breakout close cannot revive this N,
+            # including entries supplied by the separate resumption observer.
+            if whole_wave and bar.close <= bars[c['attack']].close:
+                log(i, 'entry_rejected', reason='squeeze_below_original_n_close', attack=c['attack'],
+                    confirmation_close=bar.close, n_attack_close=bars[c['attack']].close)
+                continue
+            # Weak attack quality is provisional: later genuine price discovery
+            # can resolve it without requiring a second N and another response.
+            record_squeeze = (entry_regime == MarketRegime.BULL
+                and frame.first_defense_breach_index is None
+                and frame.resistance is not None and frame.resistance.detected is False
+                and bar.close > frame.continuation_level
+                and bar.volume > bars[i-1].volume)
+            if (whole_wave and c.get('attack_quality_warning') is not None
+                    and entry_regime != MarketRegime.STRONG_BULL and consolidation is None
+                    and not record_squeeze):
+                log(i, 'entry_rejected', reason='weak_n_requires_uninterrupted_squeeze', attack=c['attack'])
+                continue
             hierarchy_proof = None
             if hierarchical:
                 if entry_regime not in (MarketRegime.BULL, MarketRegime.STRONG_BULL):
@@ -450,6 +531,20 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     counts['entry_rejected_'+reject] += 1
                     log(i, 'entry_rejected', reason=reject, attack=c['attack'])
                     continue
+            if whole_wave:
+                from .inverse_reentry import inverse_reentry_rejection, deep_pullback_recovery
+                blocked_reentry = inverse_reentry_rejection(
+                    bars, now=i, attack=c['attack'], inverse=inverse_reentry, gap=consolidation is not None)
+                recovery = deep_pullback_recovery(
+                    bars, now=i, attack=c['attack'], inverse=inverse_reentry, alternation=hierarchy_proof,
+                    record_break=(frame.first_defense_breach_index is None
+                                  and frame.regime in (MarketRegime.BULL, MarketRegime.STRONG_BULL)
+                                  and bar.close > frame.continuation_level))
+                if blocked_reentry is not None and recovery is None:
+                    log(i, 'entry_rejected', attack=c['attack'], **blocked_reentry)
+                    continue
+                if recovery is not None:
+                    hierarchy_proof.update(recovery, recovery_resistance_high=frame.continuation_level)
             n = c['n']
             rvol = c['control'].volume.relative_volume
             reject = ('countermove_too_deep' if not hierarchical and c['force'].ratio >= config.max_counter_ratio else
@@ -489,7 +584,10 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 tag = 'squeeze_pullback_resume'
             if hierarchy_proof is not None:
                 tag = hierarchy_proof['buy_point_type']
-            confirmation_source = ('pullback_resumption' if resumed else
+            confirmation_source = ('defended_n_consolidation_gap' if consolidation is not None else
+                'pullback_resumption' if resumed else
+                'resistance_record_break' if whole_wave and entry_regime == MarketRegime.BULL
+                    and bar.close > frame.continuation_level else
                 'local_resistance_failure' if whole_wave and entry_regime == MarketRegime.BULL else
                 'uninterrupted_squeeze' if whole_wave else 'canonical_record_event')
             signals.append(Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close, stop,
@@ -497,6 +595,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 entry_regime.value if entry_regime else 'n_only_ablation', targets[0], config.minimum_reward_risk))
             emitted_attacks.add(c['attack'])
             log(i, 'long_signal', channel=tag, attack=c['attack'], stop=stop, target=targets[0], rvol=rvol,
+                weak_n_resolved_by_volume_record=bool(c.get('attack_quality_warning') and record_squeeze),
+                confirmation_record_high=frame.continuation_level,
                 n_level=c['n_level'], n_origin_date=bars[c['setup'].origin.index].timestamp.date().isoformat(),
                 n_neckline_date=bars[c['setup'].neckline.index].timestamp.date().isoformat(),
                 n_pullback_date=bars[c['setup'].pullback.index].timestamp.date().isoformat(),
@@ -505,6 +605,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                         prior_virtual_low=min(bars[i-1].low, bars[i-2].close),
                         confirmation_low=bar.low, confirmation_close=bar.close,
                         prior_close=bars[i-1].close) if whole_wave else {}),
+                **(consolidation or {}),
                 gross_reward_risk=gross_rr,
                 **({'target_source': projection.state if projection is not None and projection.target == targets[0]
                     else 'n_measured_target'} if whole_wave else {}))

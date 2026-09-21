@@ -66,7 +66,8 @@ def read_actions(path: Path, cache: Path) -> tuple[list[dict], str]:
     return events, digest
 
 
-def adjust_rows(raw: list[dict], events: list[dict], start: date, end: date, symbol: str) -> list[dict]:
+def adjust_rows(raw: list[dict], events: list[dict], start: date, end: date, symbol: str,
+                *, include_close_permission: bool = False) -> list[dict]:
     """Forward accumulation of event factors: future actions cannot alter earlier prices."""
     relevant = sorted([e for e in events if start <= date.fromisoformat(e['date']) <= end], key=lambda e:e['date'])
     for e in relevant:
@@ -91,6 +92,11 @@ def adjust_rows(raw: list[dict], events: list[dict], start: date, end: date, sym
         row = {key: r[key] * factor for key in ('open','high','low','close')}
         row.update(timestamp=r['date'].isoformat(), symbol=symbol, volume=r['volume'],
                    buyable=int(can_buy), sellable=int(can_sell), adjustment_factor=factor)
+        if include_close_permission:
+            row['nonflat_close_buyable'] = bool(r['volume'] > 0 and r['high'] > r['low'] and opening_permissions(
+                dict(date=r['date'].isoformat(), isST='0', tradestatus='1', preclose=str(reference), open=str(r['low'])), symbol)[0])
+            row['close_buyable'] = opening_permissions(dict(date=r['date'].isoformat(), isST='0',
+                tradestatus='1' if r['volume'] > 0 else '0', preclose=str(reference), open=str(r['close'])), symbol)[0]
         result.append(row)
         previous = r['close']
     return result

@@ -1,6 +1,6 @@
-"""Define whole-flip-wave entries whose anchors are known at the N attack.
+"""Define whole-flip-wave entries using causally known alternation anchors.
 
-Type 1: deep alternation, low never below L0; freeze eligibility at attack.
+Type 1: freeze eligibility at attack, or opt into its exact joint confirmation.
 Type 2: after maturity, a new peak and pullback; CLOSE drawdown / (peak-L0).
 These are entry filters, not an alternative drawing algorithm.
 """
@@ -18,16 +18,25 @@ def threshold(value):
 
 def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
                       deep_ratio=.5, shallow_ratio=1/3, first_basis='alternation_low',
-                      second_inclusive=True, **unused):
+                      second_inclusive=True, allow_confirming_n=False, **unused):
     if not 0 <= low_index < attack <= asof < len(bars):
         return None, 'wave_invalid_n_sequence'
     live = {c.episode:c for c in current}; eligible=[]; reasons=[]
+    at_attack = list(at_attack)
+    if allow_confirming_n:
+        # Keep eligibility created by this exact N's confirmation available for
+        # its later squeeze; never backdate it or borrow another N's context.
+        at_attack += [c for c in current if c.confirmation_attack == attack
+                      and attack < c.alternation_index <= asof
+                      and c not in at_attack]
     if not at_attack:
         return None, 'wave_no_alternation_at_attack'
     for ctx in at_attack:
         if ctx.episode not in live:
             reasons.append('wave_context_no_longer_live');continue
-        if not (ctx.flip_index <= ctx.alternation_index < attack):
+        joint = (allow_confirming_n and ctx.confirmation_attack == attack
+                 and attack < ctx.alternation_index <= asof)
+        if not (ctx.flip_index <= ctx.alternation_index and (ctx.alternation_index < attack or joint)):
             reasons.append('wave_alternation_not_before_n');continue
         l0,h0=price(ctx.origin_price),price(ctx.flip_high_price)
         if h0 <= l0:
@@ -37,7 +46,8 @@ def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
         common=dict(asdict(ctx),definition='whole_flip_wave_v3',
                     counter_filter_applied=True,flip_origin_price=float(l0),
                     local_n_ratio=unused.get('ratio'),
-                    eligibility_frozen_at=attack)
+                    eligibility_frozen_at=ctx.alternation_index if joint else attack,
+                    joint_alternation_confirmation=joint)
         # Maturation on the attack bar does not retroactively change its class.
         if ctx.maturity_index is None or ctx.maturity_index >= attack:
             if ctx.trend_level not in (2, 3):

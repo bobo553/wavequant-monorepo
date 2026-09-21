@@ -8,6 +8,6 @@ describe("ResearchControls", () => {
         render(<ResearchControls />);
 
         expect(screen.getByRole("checkbox", { name: /启用量能过滤/ })).not.toBeChecked();
-        expect(screen.getByRole("checkbox", { name: /启用次开盘含费净盈亏比过滤/ })).not.toBeChecked();
+        expect(screen.getByRole("checkbox", { name: /启用成交价含费净盈亏比过滤/ })).not.toBeChecked();
     });
 });

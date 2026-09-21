@@ -401,7 +401,7 @@ const buyPoints = new BuyPoints({
             chart.selectAnnotation(marker.id);
             chart.flashSelectedAnnotation(marker.id);
             const note = document.createElement("p");
-            note.textContent = `买点筛选证据：盘态 ${match.regime}，相对量 ${num(match.rvol)}，回档比例 ${pct(match.retracement)}，收盘参考盈亏比 ${num(match.gross_reward_risk)}。次开盘成交尚需执行风控。`;
+            note.textContent = `买点筛选证据：盘态 ${match.regime}，相对量 ${num(match.rvol)}，回档比例 ${pct(match.retracement)}，收盘参考盈亏比 ${num(match.gross_reward_risk)}。模拟成交尚需执行风控。`;
             $("selection-info").append(note);
             const chain = match.evidence.find((e) => e.event === "long_transition_evidence");
             if (chain) {
@@ -782,7 +782,7 @@ function renderMetrics() {
                 .map(([key, n]) => `${reasonText(key)} × ${n}`)
                 .join("；");
         $("backtest-details").textContent =
-            `${symbolName(state.view.symbol)} · 独立回测 ${bt.start} — ${bt.end}｜量能过滤${bt.strategy.volume_filter ? `开启（攻击日量比 ≥ ${num(bt.strategy.minimum_rvol)}）` : "关闭"}；次开盘含费净盈亏比过滤${netRiskEnabled ? "开启" : "关闭"}；初始资金 ${num(bt.initial_capital, 0)} 元，单股仓位上限 ${pct(bt.execution.max_position_weight)}。年化 ${pct(m.annualized_return)} · 胜率 ${m.win_rate === null ? "—（无平仓）" : pct(m.win_rate)} · Sharpe ${num(m.sharpe)} · 费用 ${num(m.fees)} 元。买入成交 ${d.entry_fills} · 已平仓 ${d.closed_trades} · 未平仓 ${d.open_positions} · 期末未执行信号 ${m.unexecuted_end_signals}。${d.entry_fills ? "成交样本不等于策略有效。" : `未产生成交：入场信号 ${bt.counts.long_signals || 0}，委托尝试 ${d.entry_attempts}；可开启“筛选 / 中断”查看未通过条件。`}${reasons ? `拒单原因：${reasons}。` : ""}${bt.open_positions.map((p) => `未平仓 ${num(p.quantity)} 等价份额，累计已实现 ${num(p.realized_pnl)} 元，剩余浮动盈亏 ${num(p.unrealized_pnl)} 元，整笔当前盈亏 ${num(p.total_pnl)} 元（${pct(p.net_return)}，含未实现部分）。`).join("")}`;
+            `${symbolName(state.view.symbol)} · 独立回测 ${bt.start} — ${bt.end}｜量能过滤${bt.strategy.volume_filter ? `开启（攻击日量比 ≥ ${num(bt.strategy.minimum_rvol)}）` : "关闭"}；成交价含费净盈亏比过滤${netRiskEnabled ? "开启" : "关闭"}；初始资金 ${num(bt.initial_capital, 0)} 元，单股仓位上限 ${pct(bt.execution.max_position_weight)}。年化 ${pct(m.annualized_return)} · 胜率 ${m.win_rate === null ? "—（无平仓）" : pct(m.win_rate)} · Sharpe ${num(m.sharpe)} · 费用 ${num(m.fees)} 元。买入成交 ${d.entry_fills} · 已平仓 ${d.closed_trades} · 未平仓 ${d.open_positions} · 期末未执行信号 ${m.unexecuted_end_signals}。${d.entry_fills ? "成交样本不等于策略有效。" : `未产生成交：入场信号 ${bt.counts.long_signals || 0}，委托尝试 ${d.entry_attempts}；可开启“筛选 / 中断”查看未通过条件。`}${reasons ? `拒单原因：${reasons}。` : ""}${bt.open_positions.map((p) => `未平仓 ${num(p.quantity)} 等价份额，累计已实现 ${num(p.realized_pnl)} 元，剩余浮动盈亏 ${num(p.unrealized_pnl)} 元，整笔当前盈亏 ${num(p.total_pnl)} 元（${pct(p.net_return)}，含未实现部分）。`).join("")}`;
         if (bt.execution.missing_minute_daily_fallback) {
             const p = document.createElement("p");
             const days = bt.minute_fallbacks || [];
@@ -794,7 +794,7 @@ function renderMetrics() {
                 summary = document.createElement("summary"),
                 body = document.createElement("p");
             summary.textContent = "当前策略：讲义因果版 V1（查看生效规则）";
-            body.textContent = `讲义折线收盘确认 → 收盘突破冻结末跌高 → 回档 < 2/3 完成交替 → 高低点抬高确认多头 → 新正 N → 轧空 / 强轧空或守住轧空低后的恢复。${bt.strategy.volume_filter ? "攻击棒相对量 ≥ 1.2、" : "量能过滤已关闭、"}N 回档 < 2/3、最近未达目标收盘盈亏比 ≥ 1.5。${netRiskEnabled ? "次开盘含费净盈亏比须 ≥ 1.5。" : "次开盘含费净盈亏比过滤已关闭。"}倒 N、末升低收盘跌破、未定义结构、止损 / 目标 / 持仓期限触发退出。仅做多；洗盘是辅助标签；一二三级实线不额外充当三个入场门槛。日线面板未接入次级周期扭转确认。完整参数与规则随回测 JSON 导出。`;
+            body.textContent = `讲义折线收盘确认 → 收盘突破冻结末跌高 → 回档 < 2/3 完成交替 → 高低点抬高确认多头 → 新正 N → 轧空 / 强轧空或守住轧空低后的恢复。${bt.strategy.volume_filter ? "攻击棒相对量 ≥ 1.2、" : "量能过滤已关闭、"}N 回档 < 2/3、最近未达目标收盘盈亏比 ≥ 1.5。${netRiskEnabled ? "成交价含费净盈亏比须 ≥ 1.5。" : "成交价含费净盈亏比过滤已关闭。"}倒 N、末升低收盘跌破、未定义结构、止损 / 目标 / 持仓期限触发退出。仅做多；洗盘是辅助标签；一二三级实线不额外充当三个入场门槛。日线面板未接入次级周期扭转确认。完整参数与规则随回测 JSON 导出。`;
             detail.append(summary, body);
             $("backtest-details").append(detail);
         }
@@ -803,7 +803,7 @@ function renderMetrics() {
                 summary = document.createElement("summary"),
                 body = document.createElement("p");
             summary.textContent = "当前策略：分级双买点 V2（第二类优先复核）";
-            body.textContent = `第一类仅二级或三级：翻空为多、确认更高回档低点完成空多交替 → 新正 N → 轧空 / 强轧空，不设 1/3 或 2/3 回撤过滤，但不允许跌破结构防守。第二类为交替已知后，后续收盘再次超过冻结的翻多高点 → 新上涨段回撤 < 1/3 → 新正 N → 轧空 / 强轧空。同一级成熟后不回退第一类。${bt.strategy.volume_filter ? "保留量比 ≥ 1.2、" : "量能过滤已关闭；保留"}收盘盈亏比 ≥ 1.5。${netRiskEnabled ? "次开盘含费净盈亏比须 ≥ 1.5。" : "次开盘含费净盈亏比过滤已关闭。"}只有收盘可知证据可用，B / S 仍为次开盘模拟成交。原画线与旧图形注释不改，V2 买点以成交 / 信号证据为准。`;
+            body.textContent = `第一类仅二级或三级：翻空为多、确认更高回档低点完成空多交替 → 新正 N → 轧空 / 强轧空，不设 1/3 或 2/3 回撤过滤，但不允许跌破结构防守。第二类为交替已知后，后续收盘再次超过冻结的翻多高点 → 新上涨段回撤 < 1/3 → 新正 N → 轧空 / 强轧空。同一级成熟后不回退第一类。${bt.strategy.volume_filter ? "保留量比 ≥ 1.2、" : "量能过滤已关闭；保留"}收盘盈亏比 ≥ 1.5。${netRiskEnabled ? "成交价含费净盈亏比须 ≥ 1.5。" : "成交价含费净盈亏比过滤已关闭。"}只有收盘可知证据可用，B / S 仍为次开盘模拟成交。原画线与旧图形注释不改，V2 买点以成交 / 信号证据为准。`;
             detail.append(summary, body);
             $("backtest-details").append(detail);
         }
@@ -813,6 +813,7 @@ function renderMetrics() {
                 bt.strategy.first_pullback_basis === "minimum_close" ? "H0 至交替低点期间的最低收盘价" : "交替低点";
             const secondOperator = bt.strategy.mature_shallow_inclusive === false ? "<" : "≤";
             p.textContent = `整段双买点 V3：L0 为翻多上涨起始的整段最低点，H0 为翻多高点。第一类仅二级或三级空多交替后，等待新正 N 的轧空或强轧空，不破 L0。${bt.strategy.first_pullback_threshold == null ? "不附加深回撤门槛。" : `当前对照方案另要求 (H0−${firstCounter})/(H0−L0) > ${pct(bt.strategy.first_pullback_threshold)}。`}第二类交替后收盘再破 H0，取已知阶段最高 H1，再回撤；(H1−回撤期间最低收盘)/(H1−L0) ${secondOperator} ${pct(bt.strategy.mature_shallow_ratio)}，再等正 N 轧空。第一类在 N 攻击时冻结类别；用于确认交替的 N 不直接入场，须等待后续 N。突破棒成交量必须大于前日，阳线实体至少占开盘 2% 且至少占当日振幅 50%；第二类优先。${bt.strategy.volume_filter ? "另启用相对量能过滤；执行风控仍有效。" : "本次仅关闭相对量能过滤，突破棒强制量价条件与执行风控仍有效。"}`;
+            if (bt.execution.consolidation_entry_intraday) p.textContent += " 守住旧正 N 虚拟低点整理后，跳空放量形成新正 N，按已完成五分钟线确认、下一段开盘模拟买入；其他日线买点当日收盘模拟执行。缺少完整分钟时记录日线回退，价格限制仍须通过。";
             $("backtest-details").append(p);
         }
     }

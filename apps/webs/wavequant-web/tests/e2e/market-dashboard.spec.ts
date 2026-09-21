@@ -102,6 +102,63 @@ test("hovering a candle shows its prices and copies the selected bar", async ({ 
     expect(pageErrors).toEqual([]);
 });
 
+test("level-two and level-three guides follow their key and breakout candles into the viewport", async ({ page }) => {
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+
+    const guideCounts = await page.evaluate(async () => {
+        const { PriceChart } = await new Function("return import('/charts.js')")();
+        const container = document.createElement("div");
+        container.style.cssText = "position:fixed;left:-10000px;top:0;width:800px;height:400px";
+        document.body.append(container);
+        const chart = new PriceChart(container, () => {});
+        const guides = [
+            {
+                id: "level-2-guide",
+                time: "2025-01-10",
+                price: 12,
+                color: "#d6a3ff",
+                title: "Ⅱ 末跌高",
+                raw: {
+                    trend_level: 2,
+                    selected_low: { time: "2025-01-20" },
+                    breakout: { time: "2025-02-10" },
+                },
+            },
+            {
+                id: "level-3-guide",
+                time: "2025-01-15",
+                price: 13,
+                color: "#ffad72",
+                title: "Ⅲ 末跌高",
+                raw: {
+                    trend_level: 3,
+                    selected_low: { time: "2025-01-25" },
+                    breakout: { time: "2025-02-15" },
+                },
+            },
+        ];
+        const count = (from: string, to: string) => {
+            chart.drawLastFallHighGuides(guides, from, to);
+            return Number(container.dataset.lastFallHighGuides);
+        };
+        const result = {
+            keyCandlesVisible: count("2025-01-01", "2025-01-31"),
+            neitherAnchorVisible: count("2025-03-01", "2025-03-31"),
+            breakoutCandlesVisible: count("2025-02-01", "2025-02-28"),
+        };
+        chart.destroy();
+        container.remove();
+        return result;
+    });
+
+    expect(guideCounts).toEqual({
+        neitherAnchorVisible: 0,
+        keyCandlesVisible: 2,
+        breakoutCandlesVisible: 2,
+    });
+});
+
 test("experiment and strategy selectors remain usable across market tabs and scopes", async ({ page }) => {
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });

@@ -308,7 +308,7 @@ def bear_to_bull_highs(strokes, *, trend_level):
     )
 
 
-def bear_bull_alternation_lows(strokes, *, trend_level, source_strokes=()):
+def bear_bull_alternation_lows(strokes, *, trend_level, source_strokes=(), bars=None):
     """Return same-level lows that formally completed bear/bull alternation.
 
     Read explicit ``空多交替`` observations or the confirmed source pullback
@@ -465,13 +465,14 @@ def bear_bull_alternation_lows(strokes, *, trend_level, source_strokes=()):
             broken_key=_reference(high["broken_key"]), retracement_origin=_reference(origin),
             confirmed_rebreak_high=_reference(rebreak)))
         existing.add((path, _point_order(high)))
+    from .alternation_duration import filter_duration_landmarks
     return sorted(
-        landmarks,
+        filter_duration_landmarks(landmarks, bars),
         key=lambda item: (item["index"], item.get("ordinal", 0), item["available_at"], item["source_path"]),
     )
 
 
-def post_alternation_bull_highs(strokes, *, trend_level, source_strokes=()):
+def post_alternation_bull_highs(strokes, *, trend_level, source_strokes=(), bars=None):
     """Return the confirmed high ending the first bull leg after alternation.
 
     One confirmed ``空多交替`` low changes the same-level background to bull.
@@ -481,7 +482,7 @@ def post_alternation_bull_highs(strokes, *, trend_level, source_strokes=()):
     function never skips an invalid next vertex to select a later convenient
     high and never searches raw bars or a consumer's current chart window.
     """
-    alternation_lows = bear_bull_alternation_lows(strokes, trend_level=trend_level, source_strokes=source_strokes)
+    alternation_lows = bear_bull_alternation_lows(strokes, trend_level=trend_level, source_strokes=source_strokes, bars=bars)
     lows_by_path = {}
     for low in alternation_lows:
         lows_by_path.setdefault(low["source_path"], []).append(low)
@@ -551,7 +552,7 @@ def bullish_turn_signals(strokes, bars, *, trend_level, source_strokes=()):
     Intraday highs, equality and crosses before the selected evidence became
     knowable never qualify.
     """
-    alternation_lows = bear_bull_alternation_lows(strokes, trend_level=trend_level, source_strokes=source_strokes)
+    alternation_lows = bear_bull_alternation_lows(strokes, trend_level=trend_level, source_strokes=source_strokes, bars=bars)
     flip_highs = bear_to_bull_highs(strokes, trend_level=trend_level)
     alternated_highs = {
         (low["source_path"], _point_order(low.get("confirmed_flip_high")))

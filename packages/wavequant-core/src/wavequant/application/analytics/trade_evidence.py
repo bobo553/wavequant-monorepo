@@ -47,7 +47,7 @@ def enrich_ledger(bars, result, generated, strategy):
                 check('攻击相对量',signal.rvol,strategy.get('minimum_rvol',1.2),
                       signal.rvol is not None and signal.rvol>=strategy.get('minimum_rvol',1.2)
                       if strategy.get('volume_filter',True) else None),
-                check('开盘费用后盈亏比',order.get('net_reward_risk'),signal.minimum_reward_risk,
+                check('成交价费用后盈亏比',order.get('net_reward_risk'),signal.minimum_reward_risk,
                       order.get('net_reward_risk',-1)>=signal.minimum_reward_risk
                       if order.get('net_reward_risk') is not None else None)]
             if strategy.get('entry_policy')=='hierarchical_two_buy_points':
@@ -62,6 +62,10 @@ def enrich_ledger(bars, result, generated, strategy):
                     signal.retracement,strategy.get('mature_shallow_ratio',1/3) if second else '不启用比例过滤',
                     signal.retracement<strategy.get('mature_shallow_ratio',1/3) if second else None)
                 if proof and proof.get('definition')=='whole_flip_wave_v3':
+                    if not second and proof.get('joint_alternation_confirmation'):
+                        chain=(proof.get('trend_level') in (2,3)
+                            and proof.get('confirmation_attack')==proof['attack']
+                            and proof['flip_index']<=proof['attack']<proof['alternation_index']<=signal.bar_index)
                     from wavequant.domain.strategies.whole_wave_entry import threshold
                     from fractions import Fraction
                     ratio=Fraction(proof['counter_exact_ratio'])
