@@ -79,7 +79,8 @@ def abc_pullback_evidence(
     a_bars, b_bars = peak - start, b_index - peak
     price_path = minimum >= two_thirds
     time_path = b_bars > a_bars and close < half
-    deep_price_path = allow_deep_pullback and minimum <= two_thirds
+    # Existing price/time paths keep their original confirmation semantics.
+    deep_price_path = allow_deep_pullback and minimum <= two_thirds and not (price_path or time_path)
     if not (price_path or time_path or deep_price_path):
         return None
     return dict(

@@ -499,9 +499,12 @@ export class LectureOverlay {
                 proof = p.confirmed_by;
             const promotedByAlternation =
                 p.confirmation_rule === "level1_old_level2_key_break_alternation_and_nested_reversal";
-            const description = promotedByAlternation
-                ? `基于一级趋势线：${p.label}（${p.value}）先突破旧二级末跌高 ${key.label}（${key.value}）；随后 ${p.alternation.point.label}（${p.alternation.point.value}）完成 ${(p.alternation.retracement_ratio * 100).toFixed(2)}% 的场景回撤，并由非正式二级低点 ${p.provisional_reversal.label}（${p.provisional_reversal.value}）在 ${p.available_at} 完成确认，才把该高点升级为正式二级高点。证据按确认日可见，不倒填、不等于买卖信号。`
-                : `基于${source}趋势线：${proof.label}（${proof.value}）${p.flip === "翻空为多" ? "突破末跌高" : "跌破末升低"} ${key.label}（${key.value}），确认整段${p.kind === "H" ? "最高" : "最低"}点。可跨多个${source}拐点，不等待67%交替；不等于买卖信号。`;
+            const description =
+                p.confirmation_rule === "confirmed_alternation_then_high_breakout"
+                    ? `空多交替已确认后，${proof.time} 最高价 ${proof.value} 严格突破原空翻多高点，确认多头。原空翻多高点至空多交替低点确认为正式${name}趋势线，${p.available_at} 才可知；不要求收盘越过旧高点，也不把突破 K 当作已确认波段顶。`
+                    : promotedByAlternation
+                      ? `基于一级趋势线：${p.label}（${p.value}）先突破旧二级末跌高 ${key.label}（${key.value}）；随后 ${p.alternation.point.label}（${p.alternation.point.value}）完成 ${(p.alternation.retracement_ratio * 100).toFixed(2)}% 的场景回撤，并由非正式二级低点 ${p.provisional_reversal.label}（${p.provisional_reversal.value}）在 ${p.available_at} 完成确认，才把该高点升级为正式二级高点。证据按确认日可见，不倒填、不等于买卖信号。`
+                      : `基于${source}趋势线：${proof.label}（${proof.value}）${p.flip === "翻空为多" ? "突破末跌高" : "跌破末升低"} ${key.label}（${key.value}），确认整段${p.kind === "H" ? "最高" : "最低"}点。可跨多个${source}拐点，不等待67%交替；不等于买卖信号。`;
             return {
                 id,
                 time: p.available_at,
