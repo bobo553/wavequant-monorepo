@@ -18,6 +18,17 @@ def high_breakout_events(bars: Sequence[Bar], events: list[dict[str, Any]]) -> l
         if event["event"] != "squeeze_alternation_confirmed":
             continue
         result.append(event)
+        # Preserve an already-observed breakout while waiting for B's confirmation.
+        earlier = next((old for old in events if old['event'] == 'squeeze_alternation_breakout'
+                        and old.get('attack') == event.get('attack')
+                        and old.get('a_high_index') == event.get('a_high_index')
+                        and old.get('b_low_index') == event.get('b_low_index')
+                        and old['bar_index'] == event['bar_index']), None)
+        if earlier is not None and earlier.get('breakout_index', event['bar_index']) < event['bar_index']:
+            index = earlier['breakout_index']
+            result.append(dict(earlier, breakout_basis='high_after_confirmed_alternation',
+                               breakout_price=bars[index].high))
+            continue
         for i in range(event["bar_index"], len(bars)):
             if bars[i].low < event["b_low_price"]:
                 result.append(dict(event, event="squeeze_alternation_invalidated", bar_index=i))
@@ -121,6 +132,12 @@ def promote_alternation_segments(
     result["strokes"] = [*result.get("strokes", []), *added]
     result["developing_strokes"] = [s for s in result.get("developing_strokes", []) if len(s["points"]) >= 2]
     result["confirmed_alternation_segment_count"] = len(added)
+    if added:
+        result['confirmed_wave_count'] = len({(p['index'], p.get('ordinal', 0), p['kind'])
+                                             for s in result['strokes'] for p in s['points']})
+        result['scope'] = 'shared_strategy_and_chart_confirmed_alternation'
+        result['note'] = (result.get('note', '') + ' 已确认空多交替后最高价严格突破空翻多高点，'
+                          '将该高点至交替低点确认为同级正式趋势段；突破K不作为已确认波段高点。')
     result["developing_wave_count"] = len(result["developing_strokes"])
     result["developing_point_count"] = sum(len(s["points"]) for s in result["developing_strokes"])
     return result
