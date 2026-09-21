@@ -52,8 +52,8 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
     config=hierarchical_profile(legacy)
     for scenario in config['scenarios'].values():
         scenario['execution'].update(staged_exit_enabled=True, staged_exit_same_day=False,
-                                     staged_exit_intraday=True, missing_minute_daily_fallback=True, inverse_n_after_reduction=True, initial_reduction_fraction=0.65,
-                                     exit_on_target=False)
+                                     staged_exit_intraday=True, missing_minute_daily_fallback=True, inverse_n_after_reduction=True, inverse_n_close_reduce=True, initial_reduction_fraction=0.65,
+                                     exit_on_target=False, volume_inverse_n_clear=True, volume_down_exit=True, small_n_reduction=True)
     config['strategy'].update(buy_point_definition='whole_flip_wave_v3',preflight_reward_risk=False,
         first_pullback_threshold=thresholds.first,mature_shallow_ratio=thresholds.second,
         first_pullback_basis=thresholds.first_basis,mature_shallow_inclusive=thresholds.second_inclusive)
@@ -77,7 +77,7 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
             confirmation='formal_flip_high_and_confirmed_source_pullback_may_be_known_together',
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
-    config['profile_version'] = 'inverse_n_confirmation_close_v13_' + variant
+    config['profile_version'] = 'volume_inverse_n_v21_' + variant
     config['definition']['exits'] = [
         rule for rule in config['definition']['exits'] if rule != 'target_observed_then_next_open'
     ]
@@ -95,6 +95,11 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
         staged_exit='verified_5m_closing_window_low_break_35_low_and_price_break_65_next_interval_open_then_weak_rebound_clear',
         missing_minute_policy='same_source_daily_close_with_explicit_fallback_evidence',
         inverse_n_after_reduction='cumulative_90_percent_of_initial_holding_other_full_risk_exits_take_priority',
+        small_n_reduction='body_le_1pct_and_lt_previous_10_mean_inside_latest_valid_confirmed_n_candle_then_cumulative_30',
+        volume_down_exit='volume_gt_previous_bearish_close_below_previous_then_next_open_cumulative_70_frozen_support_low_break_close_clear',
+        volume_inverse_n_clear='confirmed_inverse_n_and_volume_gt_previous_same_day_full_clear_before_partial_exits',
+        inverse_n_remaining_exit='bull_resistance_next_close_below_virtual_low_same_day_clear',
+        inverse_n_close_reduce='confirmed_inverse_n_same_day_close_cumulative_90_without_prior_reduction',
         confirmation='qualified_b_then_positive_n_squeeze_or_existing_formal_confirmation',
         alternation_price_path='b_low>=a_high-(a_high-a_low)*2/3',
         alternation_time_path='b_duration>a_duration_and_b_min_close<a_high-(a_high-a_low)/2',

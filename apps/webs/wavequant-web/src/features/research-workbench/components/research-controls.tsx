@@ -54,6 +54,33 @@ export function ResearchControls(): JSX.Element {
                 <label>
                     回测起点 <input type="date" id="backtest-start" defaultValue="2018-01-01" aria-label="回测起点" />
                 </label>
+                <label title="回测账户的起始资金；仅影响当前股票回测与五组幅度对比，不修改封存组合。">
+                    初始资金（万）
+                    <input
+                        type="number"
+                        id="backtest-capital"
+                        defaultValue="10"
+                        min="0.01"
+                        max="100000"
+                        step="any"
+                        inputMode="decimal"
+                        aria-label="回测初始资金，单位万元"
+                    />
+                </label>
+                <label title="每笔买入的单股仓位上限，以买入时账户权益计算；实际成交还受风险预算、流动性、可用现金和整手限制。">
+                    每次买入比例（%）
+                    <input
+                        type="number"
+                        id="backtest-buy-ratio"
+                        defaultValue="100"
+                        min="0.01"
+                        max="100"
+                        step="any"
+                        inputMode="decimal"
+                        aria-label="每次买入比例，百分比"
+                        aria-describedby="backtest-sizing-help"
+                    />
+                </label>
                 <label
                     className="backtest-volume-filter"
                     title="勾选后，N 字攻击日成交量必须达到此前 20 个交易日日均量的 1.2 倍；取消后仅跳过这项量能门槛。"
@@ -72,7 +99,10 @@ export function ResearchControls(): JSX.Element {
                 <button id="download-backtest" disabled>
                     导出回测账本
                 </button>
-                <span>终点为回放日期 · 沪深京普通 A 股按板块规则回测 · ST / 退市暂不生成成交</span>
+                <span id="backtest-sizing-help">
+                    买入比例为单股仓位上限，实际成交仍受风险预算、流动性、现金和整手限制。终点为回放日期 · 沪深京普通 A
+                    股按板块规则回测 · ST / 退市暂不生成成交
+                </span>
             </div>
             <div id="error" className="message error" role="alert" hidden />
             <section className="panel note-card" aria-label="幅度方案对比">

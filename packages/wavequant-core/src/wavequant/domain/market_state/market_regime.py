@@ -54,8 +54,11 @@ class RegimePolicy:
     # Both arguments mandatory: None preserves unquantified shadow evidence.
     shadow_policy: ShadowPolicy | None
     wave_boundary: WaveBoundary
+    local_resistance_failure: bool = False
 
     def __post_init__(self):
+        if type(self.local_resistance_failure) is not bool:
+            raise ValueError('local resistance failure policy must be boolean')
         if self.shadow_policy is not None and not isinstance(self.shadow_policy, ShadowPolicy):
             raise ValueError('shadow_policy must be ShadowPolicy or None')
         if not isinstance(self.wave_boundary, WaveBoundary):
@@ -149,6 +152,11 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         rolling_all_held &= rolling_held
         uninterrupted &= sign * (bar.close - prev.close) > 0
         continuation = sign * (bar.close - record) > 0
+        if (policy.local_resistance_failure and i >= attack + 2
+                and first_resistance is not None and first_defense is None):
+            prior_resistance = frames[-1].resistance
+            continuation = bool(prior_resistance and prior_resistance.detected is True
+                                and rolling_held and sign * (bar.close - prev.close) > 0)
         phase = RegimePhase.AWAIT_CONFIRMATION if i == attack + 1 else RegimePhase.PENDING
         regime = None
         outcome = (ResistanceOutcome.PENDING if first_resistance is not None else

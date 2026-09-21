@@ -7,6 +7,7 @@ import math
 from zoneinfo import ZoneInfo
 
 from ..models.model import Bar
+from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 
 
 def support_break_reduction(day_low: float, current_price: float, support_low: float, support_close: float) -> float:
@@ -92,6 +93,10 @@ class StagedExitState:
     recovered: bool = False
     exit_requested: bool = False
     reduction_target: float = 0.0
+    inverse_index: int | None = None
+    volume_trigger_index: int | None = None
+    volume_support_index: int | None = None
+    volume_reduction_target: float = 0.0
 
 
 def observe_intraday_staged_exit(
@@ -108,7 +113,7 @@ def observe_intraday_staged_exit(
         if support is None:
             return None
         peak = max(range(support + 1, index), key=lambda j: bars[j].high)
-        if bars[peak].high <= bars[support].high or bars[peak].high <= day_low:
+        if bars[peak].high <= day_low:
             return None
     else:
         support = state.support_index
@@ -151,7 +156,7 @@ def observe_staged_exit(
         if not tiered and bars[index - 1].low < bars[support].low and bars[index - 1].close < bars[support].close:
             return None
         peak = max(range(support + 1, index), key=lambda j: bars[j].high)
-        if bars[peak].high <= bars[support].high or bars[peak].high <= bar.low:
+        if (not tiered and bars[peak].high <= bars[support].high) or bars[peak].high <= bar.low:
             return None
         state.breakdown_index, state.support_index, state.peak_index = index, support, peak
         if tiered:
@@ -211,3 +216,73 @@ def _decision(bars: list[Bar], state: StagedExitState, fraction: float, reason: 
         rebound_basis="high",
         rebound_peak=state.rebound_peak,
     )
+
+
+def observe_inverse_resistance_exit(bars: list[Bar], index: int, state: StagedExitState) -> dict | None:
+    """Track remaining inventory from its filled inverse-N reduction, at daily close."""
+    start = state.inverse_index
+    if start is None or index <= start:
+        return None
+    defense = max(bars[start].high, bars[start-1].close) if start else bars[start].high
+    if bars[index].high > defense:
+        state.inverse_index = None
+        return None
+    if index < start + 2:
+        return None
+    prior, previous = bars[index-1], bars[index-2]
+    resistance = observe_resistance(previous, prior, attack_direction=Direction.DOWN,
+                                    shadow_policy=ShadowPolicy(0.5))
+    virtual_low = min(prior.low, previous.close)
+    if resistance.detected is not True or bars[index].close >= virtual_low:
+        return None
+    return dict(reason='inverse_n_bull_resistance_failed_exit', exit_fraction=1.0,
+                inverse_n_date=bars[start].timestamp.date().isoformat(),
+                resistance_date=prior.timestamp.date().isoformat(),
+                resistance_virtual_low=virtual_low, resistance_close=prior.close,
+                failure_close=bars[index].close, inverse_defense=defense,
+                execution_model='same_day_close')
+
+
+def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState, *,
+                             positive_n_index: int | None = None, small_body_max_fraction: float = .01,
+                             small_body_lookback: int = 10) -> dict | None:
+    """Freeze confirmed support and escalate cumulative reduction without future N bars."""
+    if index < 1:
+        return None
+    bar, previous = bars[index], bars[index-1]
+    body = abs(Fraction(str(bar.close))-Fraction(str(bar.open)))
+    mean_body = (sum(abs(Fraction(str(b.close))-Fraction(str(b.open))) for b in bars[index-small_body_lookback:index]) / small_body_lookback
+                 if index >= small_body_lookback else None)
+    n_bar = bars[positive_n_index] if positive_n_index is not None and 0 <= positive_n_index < index else None
+    small_inside = (n_bar is not None and mean_body is not None
+                    and body <= Fraction(str(bar.open))*Fraction(str(small_body_max_fraction))
+                    and body < mean_body and n_bar.low <= bar.low and bar.high <= n_bar.high)
+    eligible = bar.volume > previous.volume and bar.close < previous.close and (bar.close < bar.open or small_inside)
+    target = .3 if small_inside else .7
+    if state.volume_trigger_index is None:
+        if not eligible:
+            return None
+        state.volume_trigger_index = index
+        state.volume_support_index = next((j for j in range(index-2,0,-1)
+            if bars[j].low < min(bars[j-1].low,bars[j+1].low)), None)
+    start, support = state.volume_trigger_index, state.volume_support_index
+    upgrading = eligible and target > state.volume_reduction_target
+    trigger = index if upgrading else start
+    evidence = dict(volume_trigger_date=bars[trigger].timestamp.date().isoformat(),
+                    trigger_volume=bars[trigger].volume, previous_volume=bars[trigger-1].volume,
+                    trigger_close=bars[trigger].close, previous_close=bars[trigger-1].close,
+                    volume_support_date=bars[support].timestamp.date().isoformat() if support is not None else None,
+                    volume_support_low=bars[support].low if support is not None else None)
+    if support is not None and bar.low < bars[support].low:
+        return dict(evidence, reason='volume_down_support_break_clear', exit_fraction=1.0,
+                    execution_model='same_day_close')
+    if upgrading:
+        state.volume_reduction_target = target
+        if small_inside:
+            evidence.update(positive_n_date=n_bar.timestamp.date().isoformat(),
+                            positive_n_low=n_bar.low, positive_n_high=n_bar.high,
+                            small_body_fraction=float(body)/bar.open, small_body_mean=float(mean_body),
+                            small_body_cap=small_body_max_fraction, small_body_lookback=small_body_lookback)
+        return dict(evidence, reason='volume_down_small_n_reduce_30' if small_inside else 'volume_down_reduce_70',
+                    exit_fraction=target, exit_target_fraction=target, execution_model='next_open')
+    return None

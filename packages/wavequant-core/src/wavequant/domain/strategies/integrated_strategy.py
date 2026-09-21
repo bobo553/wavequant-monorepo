@@ -182,8 +182,13 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             j, kind = row.pop('bar_index'), row.pop('event')
             log(j, kind, **row)
             counts[kind] += 1
-    for i in range(len(bars)):
-        points = snapshots[i]
+    larger = {}
+    if whole_wave and config.pivot_mode == 'lecture_causal':
+        from .hierarchical_n import hierarchical_n_candidates
+        larger = hierarchical_n_candidates(bars)
+    candidate_sets = [(i, points, level) for i in range(len(bars))
+                      for points, level in [(snapshots[i], 0), *larger.get(i, [])]]
+    for i, points, n_level in candidate_sets:
         if i in blocked:
             log(i, 'strict_structure_interrupted')
             continue
@@ -191,6 +196,12 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             counts['insufficient_pivots_bars'] += 1
             continue
         a, b, c = points[-3:]
+        if whole_wave and a.point.kind == PointKind.HIGH and a.point.index == b.point.index < c.point.index:
+            # A mother candle's internal high/low cannot order a daily N. A
+            # preceding confirmed high may supply an independent larger A.
+            a = next((p for p in reversed(points[:-3])
+                      if p.point.kind == PointKind.HIGH and p.point.index < b.point.index
+                      and bars[p.point.index].high > bars[c.point.index].high), a)
         key = tuple((p.point.index, p.confirmed_index) for p in (a, b, c))
         if key in seen:
             continue
@@ -199,14 +210,15 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             counts['same_bar_n_rejected']+=1
             log(i,'n_geometry_rejected',reason='same_bar_vertices_require_lower_timeframe_n')
             continue
-        if i-a.point.index > config.structure_window:
+        if i-a.point.index > config.structure_window * max(1,n_level):
             counts['expired_geometry'] += 1
             continue
         direction = Direction.UP if a.point.kind == PointKind.LOW else Direction.DOWN
         setup = NSetup(bars[0].symbol, '1d', direction,
             *(PivotRef(p.point.index, p.confirmed_index) for p in (a, b, c)),
             config.pivot_mode, BoxAnchorMode.ATTACK_VIRTUAL_EXTREME,
-            allow_confirmation_bar=whole_wave and direction == Direction.DOWN)
+            allow_confirmation_bar=whole_wave,
+            allow_outside_close=whole_wave and direction == Direction.DOWN)
         offset = max(0, a.point.index-config.volume_lookback)
         finish = min(len(bars)-1, limits[i], i+config.pattern_ttl)
         local, data = _local_setup(setup, offset), bars[offset:finish+1]
@@ -235,15 +247,17 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     open=bars[t].open, high=bars[t].high, low=bars[t].low, close=bars[t].close)
                 continue
         regime = observe_market_regime(data, local, timeframe='1d',
-            policy=RegimePolicy(ShadowPolicy(config.shadow_fraction), WaveBoundary.ORIGIN))
+            policy=RegimePolicy(ShadowPolicy(config.shadow_fraction), WaveBoundary.ORIGIN,
+                               local_resistance_failure=whole_wave and direction == Direction.UP))
         force = measure_strength(n.anchors.origin, n.anchors.neckline_extreme, n.anchors.pullback,
                                   impulse_direction=direction, scale=StrengthScale.EXACT_FRACTIONS)
         candidate = dict(setup=setup, epoch=epochs[i], start=offset, finish=finish, n=n,
-                         attack=t, regime=regime, control=control, force=force)
+                         attack=t, regime=regime, control=control, force=force, n_level=n_level)
         candidates.append(candidate)
         counts['completed_'+direction.value+'_n'] += 1
         log(t, 'n_completed', direction=direction.value, origin=a.point.index, neckline=b.point.index,
-            pullback=c.point.index, known_at=i, defense=n.completion.defense, counter_ratio=force.ratio)
+            pullback=c.point.index, known_at=i, defense=n.completion.defense, counter_ratio=force.ratio,
+            n_level=n_level)
         for f in regime.frames:
             j = offset+f.bar_index
             if f.regime is not None:
@@ -475,22 +489,33 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 tag = 'squeeze_pullback_resume'
             if hierarchy_proof is not None:
                 tag = hierarchy_proof['buy_point_type']
+            confirmation_source = ('pullback_resumption' if resumed else
+                'local_resistance_failure' if whole_wave and entry_regime == MarketRegime.BULL else
+                'uninterrupted_squeeze' if whole_wave else 'canonical_record_event')
             signals.append(Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close, stop,
                 'system_'+tag, bars[c['attack']].timestamp, hierarchy_proof['counter_ratio'] if whole_wave and hierarchy_proof else c['force'].ratio, rvol,
                 entry_regime.value if entry_regime else 'n_only_ablation', targets[0], config.minimum_reward_risk))
             emitted_attacks.add(c['attack'])
             log(i, 'long_signal', channel=tag, attack=c['attack'], stop=stop, target=targets[0], rvol=rvol,
+                n_level=c['n_level'], n_origin_date=bars[c['setup'].origin.index].timestamp.date().isoformat(),
+                n_neckline_date=bars[c['setup'].neckline.index].timestamp.date().isoformat(),
+                n_pullback_date=bars[c['setup'].pullback.index].timestamp.date().isoformat(),
+                **(dict(squeeze_confirmation=confirmation_source,
+                        prior_bar_date=bars[i-1].timestamp.date().isoformat(),
+                        prior_virtual_low=min(bars[i-1].low, bars[i-2].close),
+                        confirmation_low=bar.low, confirmation_close=bar.close,
+                        prior_close=bars[i-1].close) if whole_wave else {}),
                 gross_reward_risk=gross_rr,
                 **({'target_source': projection.state if projection is not None and projection.target == targets[0]
                     else 'n_measured_target'} if whole_wave else {}))
             if permission is not None:
                 log(i, 'long_transition_evidence', attack=c['attack'], regime=entry_regime.value,
-                    confirmation_source='pullback_resumption' if resumed else 'canonical_record_event',
+                    confirmation_source=confirmation_source,
                     **permission.__dict__)
             if hierarchy_proof is not None:
                 counts['buy_point_'+hierarchy_proof['buy_point_type']] += 1
                 log(i, 'long_transition_evidence', attack=c['attack'], regime=entry_regime.value,
-                    confirmation_source='pullback_resumption' if resumed else 'canonical_record_event',
+                    confirmation_source=confirmation_source,
                     **hierarchy_proof)
             break
     counts['long_signals'] = sum(s.side == 'LONG' for s in signals)

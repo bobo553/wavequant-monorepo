@@ -74,8 +74,11 @@ class NSetup:
     # No default: the caller must acknowledge the box-anchor interpretation.
     box_anchor_mode: BoxAnchorMode
     allow_confirmation_bar: bool = False
+    allow_outside_close: bool = False
 
     def __post_init__(self):
+        if type(self.allow_outside_close) is not bool:
+            raise ValueError('allow_outside_close must be boolean')
         if type(self.allow_confirmation_bar) is not bool:
             raise ValueError('allow_confirmation_bar must be boolean')
         for name in ('symbol','timeframe','source'):
@@ -233,6 +236,14 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     # This is a close-time observation, never an intraday order using future C.
     same_confirmation = (setup.allow_confirmation_bar and setup.pullback.index < known
                          and setup.neckline.confirmed_index < known)
+    # Lecture outside-candle convention describes completed daily geometry only.
+    # The close must cross B's low as well; no intraday high/low order is assumed.
+    outside_close = (setup.allow_outside_close and not up and setup.source == 'lecture_causal'
+                     and setup.pullback.index == known and known > 0
+                     and bars[known].high > bars[known-1].high
+                     and bars[known].low < bars[known-1].low
+                     and bars[known].close < min(b, bb.close)
+                     and bars[known-1].close >= bb.close)
     key_known = setup.neckline.confirmed_index if same_confirmation else known
     real_key = KeyLevel(setup.symbol,timeframe,kind,bb.close,setup.neckline.index,key_known,setup.source)
     virtual_key = KeyLevel(setup.symbol,timeframe,kind,b,setup.neckline.index,key_known,setup.source)
@@ -245,7 +256,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     # The lecture path starts at A's terminal low/high. Its opposite wick
     # belongs to the preceding leg, not the subsequent A-B impulse.
     neckline_start = setup.origin.index + (setup.source == 'lecture_causal')
-    if any(sign*(forward_value(bars[i])-b)>0 for i in range(neckline_start,setup.pullback.index+1)):
+    if any(sign*(forward_value(bars[i])-b)>0 for i in range(neckline_start,setup.pullback.index+(not outside_close))):
         raise ValueError('neckline is not the extreme of the supplied A-B-C structure')
     if any(sign*(adverse_value(bars[i])-c)<0 for i in range(setup.neckline.index+1,setup.pullback.index+1)):
         raise ValueError('C is not the pullback extreme of the supplied structure')
@@ -256,7 +267,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         if sign*(adverse-c) < 0:
             raise ValueError('supplied pullback pivot was exceeded before its confirmation')
     completion = None
-    for i in range(known if same_confirmation else known+1,end+1):
+    for i in range(known if same_confirmation or outside_close else known+1,end+1):
         bar = bars[i]
         adverse = bar.low if up else bar.high
         if sign*(adverse-a) < 0:
@@ -271,6 +282,10 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
                           sign*((prev.high if up else prev.low)-b)>0)
         if previous_joint:
             continue
+        if outside_close and i == known:
+            vl, vh = min(bar.low,prev.close), max(bar.high,prev.close)
+            completion = NCompletion(i,bar.timestamp,True,True,vl,vh,vh,'杀多高')
+            break
         real = observe_attack(bars,i,real_key,timeframe=timeframe)
         virtual = observe_attack(bars,i,virtual_key,timeframe=timeframe)
         # Occupancy beyond both levels alone must not create a belated attack.

@@ -31,7 +31,14 @@ test("hovering a candle shows its prices and copies the selected bar", async ({ 
     await expect(tooltip).toContainText("最高");
     await expect(tooltip).toContainText("最低");
     await expect(tooltip).toContainText("收盘");
+    await expect(tooltip).toContainText("涨跌幅");
     await expect(tooltip).toContainText("成交量");
+    const changeText = await tooltip
+        .locator(".chart-tooltip-price")
+        .filter({ hasText: "涨跌幅" })
+        .locator("span")
+        .last()
+        .textContent();
     const hoveredDate = (await tooltip.locator("b").first().textContent())!.split(" · ")[0];
     await expect(page.locator("#copy-candle")).toHaveAttribute("aria-label", `复制 ${hoveredDate} K 线数据`);
 
@@ -42,6 +49,7 @@ test("hovering a candle shows its prices and copies the selected bar", async ({ 
     expect(shortcutCopied).toContain("股票：600519 贵州茅台（sh.600519）");
     expect(shortcutCopied).toContain(`日期：${hoveredDate}`);
     expect(shortcutCopied).toContain("成交量：");
+    expect(shortcutCopied).toContain(`涨跌幅：${changeText}`);
 
     const tooltipCopy = tooltip.getByRole("button", { name: `复制 ${hoveredDate} K 线数据，也可按 Ctrl+C` });
     await expect(tooltipCopy).toHaveText("Ctrl+C 复制");

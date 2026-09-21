@@ -1,9 +1,9 @@
 import { reasonText } from "./annotations.js";
-import { num } from "./labels.js";
-import { closedPositionLabel } from "./trade-position.js";
+import { num, pct } from "./labels.js";
+import { closedPositionLabel, positionProfit } from "./trade-position.js";
 
 // All conditions come from the dated engine ledger, never re-inferred from a chart.
-export function appendTradeEvidence(panel, item) {
+export function appendTradeEvidence(panel, item, openPosition = null) {
     const add = (text, cls = "") => {
         const p = document.createElement("p");
         p.textContent = text;
@@ -12,6 +12,9 @@ export function appendTradeEvidence(panel, item) {
         return p;
     };
     const proof = item.decision_evidence?.find((e) => e.buy_point_type);
+    const squeeze = item.decision_evidence?.find((e) => e.squeeze_confirmation === "local_resistance_failure");
+    if (squeeze?.n_level >= 2) add(`正 N 级别 ${squeeze.n_level}：A低 ${squeeze.n_origin_date} → B高 ${squeeze.n_neckline_date} → C低 ${squeeze.n_pullback_date}`);
+    if (squeeze) add(`正 N ${squeeze.attack_date} → 抵抗 K ${squeeze.prior_bar_date} → 该回不回：确认日最低 ${num(squeeze.confirmation_low, 4)} 守住虚拟低 ${num(squeeze.prior_virtual_low, 4)}，收盘 ${num(squeeze.confirmation_close, 4)} 高于前收 ${num(squeeze.prior_close, 4)}。`);
     if (proof) {
         add(`${proof.priority === 2 ? "第二类 · 重点" : "第一类"}买点 · ${proof.trend_level} 级趋势线`);
         add(
@@ -65,9 +68,23 @@ export function appendTradeEvidence(panel, item) {
         add(
             `入场风控：失效位 ${num(item.stop)} · 最近目标 ${num(item.target)} · 风险预算 ${num(item.risk_budget)} 元 · 数量约束 ${constraints[item.limiting_constraint] || item.limiting_constraint || "—"}`,
         );
+        const profit = positionProfit(item, null, openPosition);
+        if (profit) add(profit.text);
     } else {
         add(`退出原因：${reasonText(item.decision_reason || item.reason)}`);
         if (item.kind === "fill") add(closedPositionLabel(item));
+        const profit = positionProfit(item);
+        if (profit) add(profit.text);
+        if (item.positive_n_date) {
+            add(`小实体例外：正 N ${item.positive_n_date} · K线范围 ${num(item.positive_n_low, 4)}–${num(item.positive_n_high, 4)}；实体 ${pct(item.small_body_fraction)}，上限 ${pct(item.small_body_cap)}；前 ${item.small_body_lookback} 日平均实体 ${num(item.small_body_mean, 4)} 元`);
+        }
+        if (item.volume_trigger_date) {
+            add(`放量下跌 ${item.volume_trigger_date}：成交量 ${num(item.trigger_volume, 0)} > 前日 ${num(item.previous_volume, 0)}；收盘 ${num(item.trigger_close, 4)} < 前收 ${num(item.previous_close, 4)}`);
+            if (item.volume_support_date) add(`冻结回踩低点：${item.volume_support_date} · ${num(item.volume_support_low, 4)} 元`);
+        }
+        if (item.resistance_date) {
+            add(`倒 N ${item.inverse_n_date} 后多头抵抗 ${item.resistance_date}：虚拟低 ${num(item.resistance_virtual_low, 4)}；失败收盘 ${num(item.failure_close, 4)}`);
+        }
         if (item.support_date) {
             add(`回踩参照 ${item.support_date}：最低 ${num(item.support_low, 4)}、收盘 ${num(item.support_close, 4)}`);
             add(`冻结下跌段 ${item.decline_high_date} 高 ${num(item.decline_high, 4)} → ${item.breakdown_date} 低 ${num(item.breakdown_low, 4)}；反弹最高价须突破 ${num(item.rebound_threshold, 4)}（2/3 位）`);

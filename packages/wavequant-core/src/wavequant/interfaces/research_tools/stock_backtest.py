@@ -16,7 +16,13 @@ def single_stock_result(bars, strategy, execution, signal_result=None, *, minute
         raise ValueError('exactly one nonempty security history required')
     if signal_result is None: signal_result=generate_system_signals(bars,SystemStrategy(**strategy))
     config=StrategyConfig(**execution); config.validate()
-    result=run_portfolio({bars[0].symbol:bars},signal_result.signals,config,minute_loader=minute_loader)
+    n_bars = {}
+    for row in getattr(signal_result, 'audit', []):
+        if row.get('event') == 'n_completed' and row.get('direction') == 'up':
+            attack = row['bar_index']
+            available = max(attack, row.get('known_at', attack))
+            n_bars[available] = max(attack, n_bars.get(available, -1))
+    result=run_portfolio({bars[0].symbol:bars},signal_result.signals,config,minute_loader=minute_loader,positive_n_bars={bars[0].symbol:n_bars})
     screening=enrich_ledger(bars,result,signal_result,strategy)
     def serial(value):
         return json.loads(json.dumps(value,default=lambda obj:obj.isoformat() if isinstance(obj,datetime) else str(obj)))

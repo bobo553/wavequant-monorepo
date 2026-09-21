@@ -64,6 +64,12 @@ class StrategyConfig:
     staged_exit_intraday: bool = False
     missing_minute_daily_fallback: bool = False
     inverse_n_after_reduction: bool = False
+    inverse_n_close_reduce: bool = False
+    volume_inverse_n_clear: bool = False
+    volume_down_exit: bool = False
+    small_n_reduction: bool = False
+    small_body_max_fraction: float = 0.01
+    small_body_lookback: int = 10
     initial_reduction_fraction: float = 0.5
 
     @classmethod
@@ -84,10 +90,11 @@ class StrategyConfig:
         for name, value in self.to_dict().items():
             if isinstance(value, (int, float)) and not math.isfinite(value):
                 raise ValueError(f"{name} must be finite")
-        for name in ("require_non_bearish_regime", "allow_same_day_exit", "a_share_taxes", "staged_exit_enabled", "net_reward_risk_filter", "staged_exit_same_day", "staged_exit_intraday", "missing_minute_daily_fallback", "inverse_n_after_reduction", "exit_on_target"):
+        for name in ("require_non_bearish_regime", "allow_same_day_exit", "a_share_taxes", "staged_exit_enabled", "net_reward_risk_filter", "staged_exit_same_day", "staged_exit_intraday", "missing_minute_daily_fallback", "inverse_n_after_reduction", "inverse_n_close_reduce", "volume_down_exit", "volume_inverse_n_clear", "small_n_reduction", "exit_on_target"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be boolean")
         positive_ints = {
+            "small_body_lookback": self.small_body_lookback,
             "breakout_lookback": self.breakout_lookback,
             "impulse_lookback": self.impulse_lookback,
             "atr_period": self.atr_period,
@@ -105,6 +112,8 @@ class StrategyConfig:
         for name, value in positive_ints.items():
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name} must be > 0")
+        if type(self.small_body_max_fraction) not in (int, float) or not 0 < self.small_body_max_fraction <= 1:
+            raise ValueError("small_body_max_fraction must be in (0, 1]")
         if self.min_confirm_bars > self.confirm_window:
             raise ValueError("min_confirm_bars must not exceed confirm_window")
         if not 0.0 < self.max_retracement < 1.0:

@@ -591,7 +591,20 @@ class ChartRepository:
         result = self._stock_signals(rid, variant, symbol, asof)
         return self.render_theory(bars, config, result, asof)
 
-    def tdx_backtest(self, rid, variant, symbol, asof, scenario, start, *, volume_filter=True, net_reward_risk_filter=False):
+    def tdx_backtest(
+        self,
+        rid,
+        variant,
+        symbol,
+        asof,
+        scenario,
+        start,
+        *,
+        volume_filter=True,
+        net_reward_risk_filter=False,
+        initial_capital=100_000,
+        max_position_weight=1.0,
+    ):
         self._run(rid)
         if variant not in VARIANTS or scenario not in SCENARIOS:
             raise ValueError("unknown strategy or scenario")
@@ -605,10 +618,13 @@ class ChartRepository:
         # Never mutate a sealed profile: the effective strategy is the cache key,
         # so checked and unchecked backtests remain independently reproducible.
         strategy = dict(config["strategy"], volume_filter=volume_filter)
-        execution = dict(config["scenarios"][scenario]["execution"], net_reward_risk_filter=net_reward_risk_filter)
-        bars, result, view = self.tdx_backtester.run(
-            symbol, start, asof, strategy, execution
+        execution = dict(
+            config["scenarios"][scenario]["execution"],
+            net_reward_risk_filter=net_reward_risk_filter,
+            initial_capital=initial_capital,
+            max_position_weight=max_position_weight,
         )
+        bars, result, view = self.tdx_backtester.run(symbol, start, asof, strategy, execution)
         cache = self.tdx_backtester.artifacts
         key = dict(
             source=view["backtest"]["source"],
@@ -652,7 +668,20 @@ class ChartRepository:
             ),
         )
 
-    def akshare_backtest(self, rid, variant, symbol, asof, scenario, start, *, volume_filter=True, net_reward_risk_filter=False):
+    def akshare_backtest(
+        self,
+        rid,
+        variant,
+        symbol,
+        asof,
+        scenario,
+        start,
+        *,
+        volume_filter=True,
+        net_reward_risk_filter=False,
+        initial_capital=100_000,
+        max_position_weight=1.0,
+    ):
         self._run(rid)
         if variant not in VARIANTS or scenario not in SCENARIOS:
             raise ValueError('unknown strategy or scenario')
@@ -662,7 +691,12 @@ class ChartRepository:
             raise ValueError('AKShare 数据源未配置')
         profile = self.strategy_config(rid, variant)
         strategy = dict(profile['strategy'], volume_filter=volume_filter)
-        execution = dict(profile['scenarios'][scenario]['execution'], net_reward_risk_filter=net_reward_risk_filter)
+        execution = dict(
+            profile["scenarios"][scenario]["execution"],
+            net_reward_risk_filter=net_reward_risk_filter,
+            initial_capital=initial_capital,
+            max_position_weight=max_position_weight,
+        )
         bars, generated, view = self.akshare_backtester.run(symbol, start, asof, strategy, execution)
         theory = self.render_theory(bars, SystemStrategy(**strategy), generated, view['asof'])
         theory.update(price_basis=view['price_basis'], data_source='akshare', upstream='sina', run_id=view['run_id'])

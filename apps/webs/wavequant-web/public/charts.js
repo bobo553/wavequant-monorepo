@@ -184,7 +184,8 @@ export class PriceChart {
             if (!this.data) return;
             // 鼠标进入卡片时保留当前 K 线，不让图表的离开事件清空卡片。
             if (this.tooltipHovered || this.tooltip.contains(document.activeElement)) return;
-            const bar = this.data.bars.find((candidate) => candidate.time === p.time);
+            const barIndex = this.data.bars.findIndex((candidate) => candidate.time === p.time);
+            const bar = this.data.bars[barIndex];
             if (bar) onHover(bar);
             const items = this.itemsAt(p.time, p.hoveredObjectId);
             if (!p.point || !bar) {
@@ -215,7 +216,8 @@ export class PriceChart {
             shortcut.addEventListener("click", () => onCopyCandle(bar, shortcut));
             heading.append(title, shortcut);
             this.tooltip.append(heading);
-            for (const [label, value] of candleDetails(bar).slice(1)) {
+            const previousClose = barIndex > 0 ? this.data.bars[barIndex - 1].close : undefined;
+            for (const [label, value] of candleDetails(bar, previousClose).slice(1)) {
                 const line = document.createElement("div");
                 line.className = "chart-tooltip-price";
                 const name = document.createElement("span");

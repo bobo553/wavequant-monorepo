@@ -21,7 +21,7 @@ export function ResearchMetrics(): JSX.Element {
                             </small>
                         </span>
                         <strong id={id}>—</strong>
-                        <p>{description}</p>
+                        <p id={index === 0 ? "metric-return-note" : undefined}>{description}</p>
                     </article>
                 ))}
             </section>

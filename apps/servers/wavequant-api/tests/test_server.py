@@ -456,6 +456,11 @@ class VisualizationTests(unittest.TestCase):
             self.assertEqual(request()[0], 200)
             self.assertIs(backtest.call_args.kwargs["volume_filter"], True)
             self.assertIs(backtest.call_args.kwargs["net_reward_risk_filter"], False)
+            self.assertEqual(backtest.call_args.kwargs["initial_capital"], 100_000)
+            self.assertEqual(backtest.call_args.kwargs["max_position_weight"], 1.0)
+            self.assertEqual(request("&initial_capital=250000&max_position_weight=0.25")[0], 200)
+            self.assertEqual(backtest.call_args.kwargs["initial_capital"], 250_000)
+            self.assertEqual(backtest.call_args.kwargs["max_position_weight"], 0.25)
             self.assertEqual(request("&net_reward_risk_filter=true")[0], 200)
             self.assertIs(backtest.call_args.kwargs["net_reward_risk_filter"], True)
             self.assertEqual(request("&net_reward_risk_filter=false")[0], 200)
@@ -472,7 +477,30 @@ class VisualizationTests(unittest.TestCase):
             self.assertEqual(request("&volume_filter=")[0], 400)
             self.assertEqual(request("&volume_filter=true&volume_filter=false")[0], 400)
             self.assertEqual(request("&volume_filter=false&unexpected=1")[0], 400)
+            for invalid in (
+                "&initial_capital=0",
+                "&initial_capital=-1",
+                "&initial_capital=nan",
+                "&initial_capital=inf",
+                "&initial_capital=1000000001",
+                "&initial_capital=",
+                "&max_position_weight=0",
+                "&max_position_weight=1.1",
+                "&max_position_weight=nan",
+            ):
+                self.assertEqual(request(invalid)[0], 400, invalid)
             self.assertEqual(backtest.call_count, before)
+
+        akshare_base = base.replace("/api/tdx-backtest", "/api/akshare-backtest")
+        with patch.object(self.repo, "akshare_backtest", return_value={"ok": True}) as backtest:
+            conn = HTTPConnection("127.0.0.1", server.server_port)
+            try:
+                conn.request("GET", akshare_base + "&initial_capital=300000&max_position_weight=0.75")
+                self.assertEqual(conn.getresponse().status, 200)
+            finally:
+                conn.close()
+            self.assertEqual(backtest.call_args.kwargs["initial_capital"], 300_000)
+            self.assertEqual(backtest.call_args.kwargs["max_position_weight"], 0.75)
 
     def test_tdx_backtest_volume_setting_is_part_of_strategy_and_theory_cache_key(self):
         profile = {
@@ -496,26 +524,68 @@ class VisualizationTests(unittest.TestCase):
         def run(_symbol, _start, _asof, strategy, _execution):
             strategies.append(strategy.copy())
             executions.append(_execution.copy())
-            return [], None, {
-                "price_basis": "causal_adjusted_equivalent",
-                "run_id": "test-run",
-                "backtest": {"source": {"engine": "test"}, "strategy": strategy.copy()},
-            }
+            return (
+                [],
+                None,
+                {
+                    "price_basis": "causal_adjusted_equivalent",
+                    "run_id": "test-run",
+                    "backtest": {"source": {"engine": "test"}, "strategy": strategy.copy()},
+                },
+            )
 
         self.repo.tdx_backtester = SimpleNamespace(run=run, artifacts=Cache())
         with patch.object(self.repo, "strategy_config", return_value=profile):
             enabled = self.repo.tdx_backtest("example", "lecture_v3", "sz.300154", "2026-09-07", "base", "2018-01-02")
             disabled = self.repo.tdx_backtest(
-                "example", "lecture_v3", "sz.300154", "2026-09-07", "base", "2018-01-02",
-                volume_filter=False, net_reward_risk_filter=True,
+                "example",
+                "lecture_v3",
+                "sz.300154",
+                "2026-09-07",
+                "base",
+                "2018-01-02",
+                volume_filter=False,
+                net_reward_risk_filter=True,
+                initial_capital=250_000,
+                max_position_weight=0.25,
             )
         self.assertEqual([e["net_reward_risk_filter"] for e in executions], [False, True])
+        self.assertEqual([e["initial_capital"] for e in executions], [100_000, 250_000])
+        self.assertEqual([e["max_position_weight"] for e in executions], [1.0, 0.25])
         self.assertNotIn("net_reward_risk_filter", profile["scenarios"]["base"]["execution"])
         self.assertEqual([strategy["volume_filter"] for strategy in strategies], [True, False])
         self.assertNotEqual(keys[0][1]["strategy"], keys[1][1]["strategy"])
         self.assertTrue(profile["strategy"]["volume_filter"])
         self.assertIn("rvol_1_2", enabled["strategy_profile"]["definition"]["primary_filters"])
         self.assertNotIn("rvol_1_2", disabled["strategy_profile"]["definition"]["primary_filters"])
+
+    def test_akshare_backtest_passes_sizing_without_mutating_the_profile(self):
+        profile = {"strategy": {}, "scenarios": {"base": {"execution": {"initial_capital": 1_000_000}}}}
+        executions = []
+
+        def run(_symbol, _start, asof, _strategy, execution):
+            executions.append(execution.copy())
+            return [], None, {"asof": asof, "price_basis": "causal_adjusted_equivalent", "run_id": "test-run"}
+
+        self.repo.akshare_backtester = SimpleNamespace(run=run)
+        with (
+            patch.object(self.repo, "strategy_config", return_value=profile),
+            patch.object(self.repo, "render_theory", return_value={}),
+        ):
+            self.repo.akshare_backtest("example", "lecture_v3", "sz.300154", "2026-09-07", "base", "2018-01-02")
+            self.repo.akshare_backtest(
+                "example",
+                "lecture_v3",
+                "sz.300154",
+                "2026-09-07",
+                "base",
+                "2018-01-02",
+                initial_capital=200_000,
+                max_position_weight=0.4,
+            )
+        self.assertEqual([item["initial_capital"] for item in executions], [100_000, 200_000])
+        self.assertEqual([item["max_position_weight"] for item in executions], [1.0, 0.4])
+        self.assertEqual(profile["scenarios"]["base"]["execution"], {"initial_capital": 1_000_000})
 
     def test_akshare_routes_are_read_only_strict_and_report_provider_failures(self):
         class AkShare:

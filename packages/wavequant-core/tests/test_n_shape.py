@@ -42,6 +42,30 @@ class NShapeTests(unittest.TestCase):
         self.assertIsNone(run(bars, replace(s, allow_confirmation_bar=False)).completion)
         self.assertIsNone(run(bars[:4], replace(s, neckline=PivotRef(1,3))).completion)
 
+    def test_outside_inverse_requires_explicit_lecture_policy_and_close_below_neck(self):
+        rows = [(15,16,14.5,15.5),(14.5,14.8,14.2,14.3),(14.4,15.1,13.8,14.0)]
+        bars = [Bar(datetime(2026,5,19)+timedelta(days=i),'TEST',o,h,l,c,1000)
+                for i,(o,h,l,c) in enumerate(rows)]
+        s = setup(direction=Direction.DOWN, origin=PivotRef(0,1), neckline=PivotRef(1,2),
+                  pullback=PivotRef(2,2), source='lecture_causal', allow_outside_close=True)
+        self.assertEqual(run(bars,s).completion.bar_index,2)
+        self.assertEqual(run(bars[:2],s).status,NStatus.AWAIT_ANCHORS)
+        for incompatible in (replace(s,allow_outside_close=False), replace(s,source='other')):
+            with self.assertRaises(ValueError):
+                run(bars,incompatible)
+        for closing in (14.2,14.3,14.4):
+            with self.assertRaises(ValueError):
+                run([*bars[:2],replace(bars[2],close=closing)],s)
+
+    def test_positive_n_can_complete_when_historical_c_is_confirmed_at_close(self):
+        bars=fixture()
+        s=setup(pullback=PivotRef(2,3),allow_confirmation_bar=True)
+        self.assertEqual(run(bars[:3],s).status,NStatus.AWAIT_ANCHORS)
+        self.assertEqual(run(bars[:4],s).completion.bar_index,3)
+        self.assertEqual(run(bars,s).completion,run(bars[:4],s).completion)
+        self.assertIsNone(run(bars,replace(s,allow_confirmation_bar=False)).completion)
+        self.assertIsNone(run(bars[:4],replace(s,neckline=PivotRef(1,3))).completion)
+
     def test_basic_positive_completion_and_virtual_defense(self):
         r=run(fixture()[:4])
         self.assertEqual(r.status,NStatus.COMPLETED)

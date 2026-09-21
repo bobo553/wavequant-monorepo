@@ -4,6 +4,384 @@
     "activeFeature": null,
     "features": [
         {
+            "id": "MONOREPO-125",
+            "name": "volume-inverse-n-clear",
+            "title": "放量倒N当日直接清仓",
+            "description": "倒N确认且成交量超过前日，清仓优先于同日部分减仓。",
+            "scope": "Core退出优先级、Web原因及真实回归",
+            "dependencies": [
+                "MONOREPO-124"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "桂林2023-07-13直接清空且不要求收盘低于前收",
+                "等量缩量保持原规则；遵守T+1且无未来数据"
+            ],
+            "verification": [
+                {
+                    "command": "Core test:unit/lint/typecheck/build; Web test:unit/build/targeted ESLint; Playwright 3 cases",
+                    "status": "passed",
+                    "summary": "MONOREPO-125：V3 已确认倒 N 且成交量严格超过前日时，当日收盘直接清仓，优先于同日部分减仓；持平收盘仍有效，等量缩量保留原规则，保留 T+1 和真实分钟成交。桂林 2023-07-13 一笔清空，截断回测 121 个信号和 21 个订单与全历史一致；瑞凌 05-21 减仓、05-26 清仓保持。Core 728 测试、Web 9+127、3 条浏览器回归、lint/typecheck/build 通过。"
+                },
+                {
+                    "command": "Live full and prefix through 2023-07-13",
+                    "status": "passed",
+                    "summary": "7月13日1457.007等价份额一笔清空，余仓0；信号及订单前缀完全一致。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-124",
+            "name": "hierarchical-n-breakout-entry",
+            "title": "较大级别正N突破接入该回不回入场",
+            "description": "补充已确认二三级波段的N候选，不再只取最近细浪三个点。",
+            "scope": "Core 多级N候选及入场证据、实际回测回归。",
+            "dependencies": [
+                "MONOREPO-123"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "桂林旅游12-02较大N被识别，并由12-05/06抵抗确认决定入场",
+                "只用当时已确认波段且严格校验N几何，不硬编码日期",
+                "前缀一致且旧有桂林/瑞凌买卖规则保持有效"
+            ],
+            "verification": [
+                {
+                    "command": "Core test:unit/lint/typecheck/build; Web test:unit/typecheck/build/targeted ESLint; API test:unit",
+                    "status": "passed",
+                    "summary": "Core723+43子测试、Web9+127、API69+4（1跳过），含较大N折叠C、破A失效、真实行情12-02/06前缀一致回归。"
+                },
+                {
+                    "command": "Live AKShare full/prefix through 2022-12-07; Playwright volume-down-exit and n-extension-levels",
+                    "status": "passed",
+                    "summary": "实际12-02二级N、12-06信号、12-07开盘买入，全量与截断信号/订单一致；12-14无新买单。3条浏览器回归通过，买点详情显示级别及波段锚点。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-123",
+            "name": "positive-n-confirmation-day-breakout",
+            "title": "正N回踩确认当日突破不漏判",
+            "description": "V3正N允许历史C确认当日完成首次突破，仍等待该回不回确认入场。",
+            "scope": "Core正N时序、回归及实际买点验证。",
+            "dependencies": [
+                "MONOREPO-122"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "桂林旅游2022-11-01正N按当天信息识别",
+                "后续该回不回成立后入场，不等待11-10新N",
+                "旧版时序不变，全量与截断前缀信号及订单一致"
+            ],
+            "verification": [
+                {
+                    "command": "Core test:unit/lint/typecheck/build; API test:unit; targeted ESLint",
+                    "status": "passed",
+                    "summary": "Core720+43子测试及追加29项时序测试通过；API69+4（1跳过）。覆盖B/C可知时序、正N确认日识别及旧版默认兼容。"
+                },
+                {
+                    "command": "Live AKShare full/prefix through 2022-11-04; Playwright volume-down-exit and n-extension-levels",
+                    "status": "passed",
+                    "summary": "真实11-01正N、11-03信号、11-04开盘买入，全量与截断信号/账本一致；11-16无新买单。3条浏览器回归通过并检查新买点证据。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-122",
+            "name": "small-body-inside-positive-n-reduce",
+            "title": "正 N 范围内小实体三成减仓",
+            "description": "放量下跌中，小实体且整根K处于有效正N突破K范围时降为三成，并允许后续升级七成。",
+            "scope": "Core 因果N上下文、减仓分档、Web证据及回归。",
+            "dependencies": [
+                "MONOREPO-119"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "桂林旅游12-20触发12-21累计三成",
+                "默认实体不超过1%且小于此前10日平均，不使用当日或未来均值",
+                "正N上下文真实确认且未失效，后续恶化可补至七成，破支撑清仓保留"
+            ],
+            "verification": [
+                {
+                    "command": "Core test:unit/lint/typecheck/build; Web test:unit/typecheck/build/targeted ESLint; API test:unit",
+                    "status": "passed",
+                    "summary": "Core719+43子测试、Web9+127、API69+4（1跳过）；覆盖小阴阳、1%边界、近期实体均值、N未知/失效、不在范围及三成升级七成。"
+                },
+                {
+                    "command": "Live AKShare full/prefix through 2021-12-21; Playwright volume-down-exit and n-extension-levels",
+                    "status": "passed",
+                    "summary": "实际12-21按三成目标减仓且全量/截断订单一致，正N参照12-10；2022九月七成及清仓保留。3条浏览器回归通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-121",
+            "name": "stock-candle-tooltip-change-percent",
+            "title": "股票 K 线提示与复制增加涨跌幅",
+            "description": "按当前图表价格口径计算相邻 K 线收盘涨跌幅，并保持悬停提示和复制信息一致。",
+            "scope": "Web K 线详情、悬停提示、复制文本和回归测试。",
+            "dependencies": [
+                "MONOREPO-095"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "悬停股票 K 线显示相对前一根 K 线收盘价的有符号涨跌幅",
+                "K 线复制与成交节点附带的成交日 K 线信息包含相同涨跌幅，首根或无效前收盘显示不可计算",
+                "桌面浏览器悬停与复制、单元测试和 Web 构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web test:unit; lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "9 项 Vitest、127 项 Node 测试及 lint、类型检查、生产构建通过；覆盖涨、跌、平盘与首根 K 线。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --grep hovering --project=chromium",
+                    "status": "passed",
+                    "summary": "真实 Chromium 验证悬停提示显示涨跌幅，Ctrl+C 复制值与提示一致。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-120",
+            "name": "akshare-backtest-result-cache",
+            "title": "AkShare 当前股票回测结果缓存与信号复用",
+            "description": "按已验证行情、复权、策略、执行参数与引擎版本缓存个股回测，减少重复运行等待。",
+            "scope": "Core AkShare 回测适配器与回归测试；不修改策略或交易规则。",
+            "dependencies": [
+                "MONOREPO-119"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "相同股票、历史截面与参数的再次请求复用完整结果，浏览器响应显著快于原始重复计算",
+                "仅变更资金或仓位等执行参数时复用已计算信号；日线、复权、策略或代码变化时重新计算",
+                "分钟数据不足的结果不永久缓存，策略结果与原回测口径一致"
+            ],
+            "verification": [
+                {
+                    "command": "Chromium DevTools + live sz.300154 AkShare backtest, identical 2018-01-01–2026-09-18 request",
+                    "status": "passed",
+                    "summary": "原请求 31.5 秒、原重复请求 41.6 秒；优化后首次 33.2 秒、重复服务请求 1.9 秒，浏览器重复请求约 1.1 秒；收益率和 4 笔买入/3 笔已平仓一致。"
+                },
+                {
+                    "command": "Core 709 pytest, Ruff lint/format, typecheck/build; API test:unit/build",
+                    "status": "passed",
+                    "summary": "Core 709 项测试、Ruff、既有 mypy 目标与 sdist/wheel 通过；API 69 项 Python、4 项 Node（1 项基础设施测试跳过）及构建通过。"
+                },
+                {
+                    "command": "AkShare artifact invalidation and incomplete-minute regression",
+                    "status": "passed",
+                    "summary": "相同结果跨实例复用；资金变化只重算账户，日线/复权/策略/代码变化重算；分钟不足不缓存完整结果。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-119",
+            "name": "volume-down-reduce-support-clear",
+            "title": "放量下跌七成减仓与冻结支撑清仓",
+            "description": "成交量超过前日的下跌阴线，次日累计减仓七成；跌破冻结回踩低点当日清仓。",
+            "scope": "Core V3 退出状态、执行证据、Web 详情与测试。",
+            "dependencies": [
+                "MONOREPO-118"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "桂林旅游09-22触发09-23减仓七成目标",
+                "09-19已确认回踩低点冻结，09-26跌破当日清仓",
+                "严格放量/下跌边界与因果、重复触发不重复扣七成"
+            ],
+            "verification": [
+                {
+                    "command": "Core test:unit/lint/typecheck/build; Web test:unit/typecheck/build/targeted ESLint; API test:unit",
+                    "status": "passed",
+                    "summary": "Core707+43子测试，追加边界与组合优先级43项通过；Web9+125、API69+4（1跳过）。覆盖严格前日量/价格比较、冻结支撑、次开盘70%目标、当日清仓和重复保护。"
+                },
+                {
+                    "command": "Live AKShare sz.000978 full and prefix through 2022-09-26; Playwright volume-down-exit and n-extension-levels",
+                    "status": "passed",
+                    "summary": "真实09-23减仓、09-26清仓及前缀账本一致；3条浏览器回归通过，新规则证据显示正确且保留瑞凌倒N退出。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-118",
+            "name": "inverse-resistance-failure-clear",
+            "title": "倒 N 减仓后多头抵抗失败当日清仓",
+            "description": "倒 N 成交后立即跟踪局部多头抵抗，失败时清空余仓，不等待新的支撑破位段。",
+            "scope": "Core 退出状态与回测、Web 成交原因及验证。",
+            "dependencies": [
+                "MONOREPO-117"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "瑞凌2026-05-26收盘清空余仓，不延至06-02",
+                "倒N后局部抵抗与失败使用当时可知K线且前缀一致",
+                "守住虚拟低及倒N失效不误清仓，保留成交限制"
+            ],
+            "verification": [
+                {
+                    "command": "Core test:unit/lint/typecheck/build; Web test:unit/typecheck/build/targeted ESLint; API test:unit",
+                    "status": "passed",
+                    "summary": "Core701+43子测试、Web9+125、API69+4（1跳过）通过；覆盖05-26当日清仓、逐日前缀、等值/仅影线/倒N失效不触发。"
+                },
+                {
+                    "command": "Live AKShare full and prefix through 2026-05-26; Playwright n-extension-levels.spec.mjs",
+                    "status": "passed",
+                    "summary": "真实订单前缀一致；05-26以13.555770卖出全部77.787723等价份额，06-02无卖单；两条浏览器用例通过，显示抵抗失败及05-25参照。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-117",
+            "name": "open-position-mark-to-market-return",
+            "title": "默认满仓上限与未平仓收益展示",
+            "description": "当前股票回测默认买入仓位上限改为 100%，最后一笔未卖出持仓按回放截止日估值展示盈亏与收益率。",
+            "scope": "WaveQuant Web 回测设置与交易复核、API 默认参数、Core 个股回测收益分解；不改变已平仓交易定义。",
+            "dependencies": [
+                "MONOREPO-116"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "当前股票回测页面和 API 缺省买入仓位上限均为 100%，仍保留风险、流动性、现金及整手约束",
+                "未平仓持仓的截至日盈亏和收益率在最后一笔买入及复核区可见，总收益率只计入一次浮动盈亏",
+                "已平仓笔数、胜率及已平仓账本不将未卖出持仓伪装为已完成交易"
+            ],
+            "verification": [
+                {
+                    "command": "wavequant-core pytest; wavequant-api test:unit; wavequant-web test:unit/typecheck/lint; playwright backtest-sizing",
+                    "status": "passed",
+                    "summary": "Core 696 项与 43 子测试通过；API 69 项 Python、4 项 Node（1 项跳过）；Web 9 项 Vitest、125 项 Node、类型与 lint 通过；Chromium 默认 100% 与参数传递回归通过。"
+                },
+                {
+                    "command": "Core 未平仓收益回归与 Web 未平仓成交复制回归",
+                    "status": "passed",
+                    "summary": "期末总收益与已实现加浮动盈亏对账且未重复计入；未卖出买入节点、复制及成交复核展示截止日盈亏，已平仓交易数量保持独立。"
+                },
+                {
+                    "command": "wavequant-web build; pnpm harness:check; codegraph sync",
+                    "status": "passed",
+                    "summary": "Next.js 生产构建和仓库状态校验通过，代码索引已同步。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-116",
+            "name": "configurable-stock-backtest-sizing",
+            "title": "当前股票回测资金与买入比例可配置",
+            "description": "当前股票回测支持按万元设置初始资金、按百分比设置每笔买入仓位上限，默认 10 万元与 50%。",
+            "scope": "WaveQuant Web 回测设置、TDX/AkShare API 参数与 Core 执行配置；封存组合保持原口径。",
+            "dependencies": [
+                "MONOREPO-102"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "页面默认显示 10 万元和 50%，修改后当前股票回测与五组幅度对比均使用新值",
+                "TDX 与 AkShare 回测接口严格校验参数，执行配置和缓存键保留实际值",
+                "非法输入不进入引擎，封存组合及既有风险、流动性和整手约束不变"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint/typecheck/test:unit/build; playwright test tests/e2e/backtest-sizing.spec.mjs; prettier --check",
+                    "status": "passed",
+                    "summary": "Web 9 项 Vitest、124 项 Node 与 Chromium 参数/五组对比/390px 回归通过；页面默认 10 万和 50%，25 万和 30% 传参正确。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api lint/typecheck/test:unit/build; pnpm --filter @wavequant/core lint/typecheck/test:unit/build; ruff format --check (changed ranges)",
+                    "status": "passed",
+                    "summary": "API 69 项 Python、4 项 Node（1 项环境跳过），Core 695 项测试通过；两种回测源均验证配置传递与输入拒绝。Core 完整旧文件仍有既存格式差异，本次修改行格式检查通过。"
+                },
+                {
+                    "command": "GET /api/tdx-backtest with 100000/0.5 and 250000/0.3; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "真实服务两次回测返回对应执行配置与不同 run_id；Harness 验证通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-115",
+            "name": "outside-inverse-close-exit",
+            "title": "外包线倒 N 当日减仓",
+            "description": "识别反弹与跌破同日的收盘倒 N，V3 当日累计减仓九成。",
+            "scope": "Core 倒 N、成交策略及 Web 原因文案。",
+            "dependencies": [
+                "MONOREPO-114"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "2026-05-21 倒 N 当日确认并成交，前缀一致",
+                "倒 N 无需等待首次回踩减仓即可累计减仓九成，保留交易约束",
+                "后续低比例减仓不重复卖出，其他风控保持优先"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest/lint/typecheck/build; API test:unit; Web test:unit/build; targeted ESLint and node --check",
+                    "status": "passed",
+                    "summary": "Core 694全量+43子测试及追加27项边界，Web 9+122、API 68+4（1跳过）通过。覆盖外包形态/收盘严格突破、直接九成、重复低比例不卖、T+1重试。"
+                },
+                {
+                    "command": "Playwright n-extension-levels.spec.mjs; live AKShare sz.300154; full/prefix signal comparison through 2026-05-21",
+                    "status": "passed",
+                    "summary": "浏览器2项通过；05-21当日收盘成交2100.268522等价份额、余311.150892，05-26无减仓成交，页面文案正确；前缀信号完全一致。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-114",
+            "name": "position-cycle-profit-accounting",
+            "title": "买入至清仓整笔盈亏统计",
+            "description": "分批卖出累计盈亏，净收益率固定以原始买入含费成本为分母，清仓才计为完整交易。",
+            "scope": "Core 回测账本、统计和未平仓汇总；Web 成交卡片、复制及交易表。",
+            "dependencies": [
+                "MONOREPO-113"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "多次减仓仅在最终清仓生成一笔交易，累计金额与费用守恒",
+                "胜率和平均收益按完整持仓统计，未清仓累计已实现和浮动盈亏分列",
+                "成交展示和复制使用当时可知的累计收益，不读未来清仓结果"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest/lint/typecheck/build; API test:unit; Web test:unit/lint/typecheck/build",
+                    "status": "passed",
+                    "summary": "Core 691 全量，追加再次买入回归后相关 29 项通过；Web 9+122、API 68+4（1 跳过），类型、规范与构建通过。覆盖盈亏混合分批、费用守恒、未清仓、再买入及前缀一致。"
+                },
+                {
+                    "command": "Playwright position-cycle-profit.spec.mjs; live AKShare sz.300154 2018-01-02..2026-09-18",
+                    "status": "passed",
+                    "summary": "真实浏览器桌面/390px、复制及全部已清仓持仓对账通过；6 次卖出归并为 3 笔清仓，4 次买入另有 1 笔未清仓。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-113",
+            "name": "local-squeeze-entry-exit-alignment",
+            "title": "正 N 该回不回入场与退出链一致",
+            "description": "V3 采用局部抵抗失败确认入场，修复回踩减仓被高点门槛延误和母子线倒 N 遗漏。",
+            "scope": "Core V3 确认策略、退出参照、倒 N 候选、证据与回归。",
+            "dependencies": [
+                "MONOREPO-112"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "入场依据正 N 后抵抗失败，不等待整段创新高",
+                "回踩破位执行35/65%，倒 N 九成与清仓风控有效",
+                "瑞凌5月买卖链实际验证，前缀一致、旧版兼容"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest/lint/typecheck/build; API test:unit; Web unit/typecheck/build and changed-test ESLint",
+                    "status": "passed",
+                    "summary": "Core 688 项与 43 子测试；API 68 Python+4 Node（1 跳过）；Web 9 Vitest+121 Node；相关类型、Ruff、定向 ESLint、构建全部通过。新增局部抵抗失败、回踩反弹不过前高、母子 K 使用此前独立 A 的回归。"
+                },
+                {
+                    "command": "Live sz.300154 2018-01-02..2026-09-18; exact real prefix through 2026-05-08; Playwright on built pages",
+                    "status": "passed",
+                    "summary": "V14 05-08 该回不回确认、05-11 入场，05-26 双破减仓、05-27 倒 N 九成目标、06-02 弱反弹清余仓；无 05-15 买单。完整历史与截至 05-08 前缀的全部信号一致。2 项浏览器回归通过，追加点击买点核对局部确认详情也通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-112",
             "name": "inverse-n-confirmation-bar",
             "title": "修复倒 N 在 C 确认当日漏报",

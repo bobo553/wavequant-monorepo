@@ -1,5 +1,5 @@
 from dataclasses import asdict, replace
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
@@ -74,6 +74,74 @@ def test_ruiling_break_reduces_next_open_but_high_above_two_thirds_prevents_weak
     assert sell["position_closed"] is False
     assert result["metrics"]["open_positions"] == 1
     assert result["backtest"]["open_positions"][0]["quantity"] == sell["remaining_quantity"]
+
+
+def test_partial_exit_does_not_count_as_completed_trade_and_uses_original_cost():
+    result = run(sample()[:7])
+    buy, sell = [o for o in result["orders"] if o["status"] == "filled"]
+    original_cost = buy["price"] * buy["quantity"] + buy["fee"]
+    assert result["trades"] == []
+    assert result["metrics"]["trades"] == 0
+    assert result["metrics"]["win_rate"] is None
+    assert result["metrics"]["closed_pnl"] == 0
+    assert result["backtest"]["diagnostics"]["closed_trades"] == 0
+    assert sell["position_entry_cost"] == pytest.approx(original_cost)
+    assert sell["position_net_return"] == pytest.approx(sell["fill_pnl"] / original_cost)
+    opened = result["backtest"]["open_positions"][0]
+    assert opened["realized_pnl"] == sell["position_pnl"]
+    assert opened["total_pnl"] == pytest.approx(opened["realized_pnl"] + opened["unrealized_pnl"])
+    assert opened["net_return"] == pytest.approx(opened["total_pnl"] / original_cost)
+    assert result["metrics"]["final_equity"] == pytest.approx(100_000 + opened["total_pnl"])
+
+
+@pytest.mark.parametrize("final_price", [11.87, 10.5])
+def test_profitable_reduction_and_losing_final_exit_are_one_weighted_trade(final_price):
+    bars = sample()
+    bars[6] = replace(bars[6], open=15, high=15)
+    bars[8] = replace(bars[8], open=final_price, low=min(final_price, bars[8].low))
+    exit_signal = Signal(bars[7].timestamp, bars[7].symbol, 7, "EXIT", bars[7].close,
+                         10, "fixture_exit", bars[7].timestamp, 0, None, "fixture")
+    result = run(bars, extra_signals=[exit_signal])
+    buy, first, last = [o for o in result["orders"] if o["status"] == "filled"]
+    cost = buy["price"] * buy["quantity"] + buy["fee"]
+    proceeds = sum(o["quantity"] * o["price"] - o["fee"] for o in (first, last))
+    assert first["fill_pnl"] > 0
+    assert last["fill_pnl"] < 0
+    assert len(result["trades"]) == result["metrics"]["trades"] == 1
+    trade = result["trades"][0]
+    assert trade["quantity"] == buy["quantity"]
+    assert trade["pnl"] == pytest.approx(proceeds - cost)
+    assert trade["net_return"] == pytest.approx((proceeds - cost) / cost)
+    assert last["position_net_return"] == pytest.approx(trade["net_return"])
+    assert last["position_pnl"] == pytest.approx(first["fill_pnl"] + last["fill_pnl"])
+    assert result["metrics"]["win_rate"] == (1 if proceeds > cost else 0)
+    assert result["metrics"]["average_net_return"] == trade["net_return"]
+    assert trade["fees"] == pytest.approx(sum(o["fee"] for o in (buy, first, last)))
+    assert trade["exit_time"] == last["timestamp"]
+    prefix = run(bars[:7])
+    assert prefix["orders"] == [o for o in result["orders"] if o["timestamp"] <= bars[6].timestamp.isoformat()]
+
+
+def test_reentry_starts_a_new_cost_basis_and_never_merges_separate_holdings():
+    first = sample(12.9)
+    second = [replace(bar, timestamp=bar.timestamp + timedelta(days=20)) for bar in first]
+    bars = first + second
+    entry = Signal(bars[11].timestamp, bars[11].symbol, 11, "LONG", bars[11].close,
+                   10, "second_entry", bars[11].timestamp, 0, None, "fixture", 20)
+    result = run(bars, extra_signals=[entry], slippage_bps_per_side=5, minimum_commission=10)
+    assert len(result["trades"]) == 2
+    buys = [o for o in result["orders"] if o["side"] == "BUY" and o["status"] == "filled"]
+    for buy, trade in zip(buys, result["trades"], strict=True):
+        sells = [o for o in result["orders"] if o["side"] == "SELL" and o["status"] == "filled"
+                 and o["trade_id"] == buy["trade_id"]]
+        cost = buy["quantity"] * buy["price"] + buy["fee"]
+        pnl = sum(o["quantity"] * o["price"] - o["fee"] for o in sells) - cost
+        assert len(sells) == 2
+        assert trade["entry_time"] == buy["timestamp"]
+        assert trade["net_return"] == pytest.approx(pnl / cost)
+        assert trade["pnl"] == pytest.approx(pnl)
+        assert sells[-1]["position_entry_cost"] == pytest.approx(cost)
+    assert result["metrics"]["final_equity"] == pytest.approx(100_000 + result["metrics"]["closed_pnl"])
 
 
 @pytest.mark.parametrize("exit_on_target", [True, False])
@@ -182,7 +250,7 @@ def test_tiered_low_only_then_close_break_sells_only_increment_to_65_percent():
     assert len({o["trade_id"] for o in [buy, first, second]}) == 1
     assert second["closed_position_fraction"] == second["quantity"] / first["remaining_quantity"]
     assert result["metrics"]["final_equity"] == pytest.approx(
-        100_000 + sum(t["pnl"] for t in result["trades"]) + result["backtest"]["open_positions"][0]["unrealized_pnl"]
+        100_000 + result["metrics"]["realized_pnl"] + result["backtest"]["open_positions"][0]["unrealized_pnl"]
     )
 
 
@@ -343,3 +411,252 @@ def test_ruiling_may_19_inverse_n_is_generated_at_confirmation_and_sold_next_ope
     assert last["timestamp"][:10] == "2025-05-20"
     assert last["signal_timestamp"][:10] == "2025-05-19"
     assert last["exit_target_fraction"] == 0.9
+
+
+def test_confirmed_pullback_does_not_require_rebound_above_support_candle_high():
+    bars = [Bar(datetime(2026, 5, 20 + index), "TEST", *values, 100000)
+            for index, values in enumerate([(13, 14, 12, 13), (12, 13, 10, 12),
+                                            (12, 12.5, 10.5, 12.3), (12, 12.4, 9.9, 11.5)])]
+    assert observe_staged_exit(bars, 3, StagedExitState(), .65) is None
+    decision = observe_staged_exit(bars, 3, StagedExitState(), .65, tiered=True)
+    assert decision["exit_target_fraction"] == .65
+    assert decision["support_date"] == "2026-05-21"
+
+
+def test_inverse_close_reduces_without_prior_support_break_and_never_sells_lower_target_again():
+    bars = sample()[:7]
+    result = run(bars, extra_signals=[inverse_signal(bars, 4), inverse_signal(bars, 6)],
+                 inverse_n_close_reduce=True, staged_exit_same_day=True, exit_on_target=False)
+    buy, sell = [o for o in result["orders"] if o["status"] == "filled"]
+    assert sell["timestamp"] == sell["signal_timestamp"] == bars[4].timestamp.isoformat()
+    assert sell["price"] == bars[4].close
+    assert sell["execution_model"] == "same_day_close"
+    assert sell["reason"] == "inverse_n_close_reduce_90"
+    assert sell["quantity"] == int(buy["quantity"] * 0.9 // 100) * 100
+    assert result["backtest"]["open_positions"][0]["pending_exit"] is None
+
+
+def test_inverse_close_t_plus_one_retries_at_next_close():
+    bars = sample()[:5]
+    result = run(bars, extra_signals=[inverse_signal(bars, 3)],
+                 inverse_n_close_reduce=True, exit_on_target=False)
+    buy, sell = [o for o in result["orders"] if o["status"] == "filled"]
+    assert any(o["reason"] == "T+1" for o in result["orders"])
+    assert sell["timestamp"] == bars[4].timestamp.isoformat()
+    assert sell["signal_timestamp"] == bars[3].timestamp.isoformat()
+    assert sell["price"] == bars[4].close
+
+
+def inverse_resistance_sample():
+    rows = [("15",14.93,15.79,14.66,15.41),("18",15.36,15.40,14.66,14.87),
+            ("19",14.98,15.00,14.41,14.63),("20",14.57,14.75,14.26,14.31),
+            ("21",14.33,15.08,13.81,14.00),("22",14.05,14.35,13.83,14.23),
+            ("25",14.27,15.04,14.14,14.26),("26",14.36,14.37,13.29,13.56),
+            ("27",13.42,13.70,12.96,13.10)]
+    return [Bar(datetime.fromisoformat("2026-05-"+day), "sz.300154", *values, 10_000_000)
+            for day,*values in rows]
+
+
+def test_inverse_resistance_failure_clears_on_may26_and_prefix_fills_match():
+    bars = inverse_resistance_sample()
+    options = dict(extra_signals=[inverse_signal(bars,4)], inverse_n_close_reduce=True, volume_down_exit=True,
+                   staged_exit_same_day=True, exit_on_target=False)
+    result = run(bars, **options)
+    buy, reduction, clear = [o for o in result["orders"] if o["status"] == "filled"]
+    assert reduction["timestamp"][:10] == "2026-05-21"
+    assert clear["timestamp"] == clear["signal_timestamp"] == bars[7].timestamp.isoformat()
+    assert clear["reason"] == "inverse_n_bull_resistance_failed_exit"
+    assert clear["price"] == bars[7].close
+    assert clear["remaining_quantity"] == 0
+    assert clear["quantity"] == reduction["remaining_quantity"]
+    assert clear["resistance_date"] == "2026-05-25"
+    assert clear["resistance_virtual_low"] == 14.14
+    assert result["orders"] == run(bars[:8], **options)["orders"]
+
+
+@pytest.mark.parametrize("change", ["equal", "wick_only", "invalidated", "no_reduction"])
+def test_inverse_resistance_does_not_clear_without_a_valid_close_failure(change):
+    from wavequant.domain.strategies.staged_exit import observe_inverse_resistance_exit
+    bars = inverse_resistance_sample()
+    state = StagedExitState(inverse_index=4 if change != "no_reduction" else None)
+    if change in ("equal", "wick_only"):
+        bars[7] = replace(bars[7], close=14.14 if change == "equal" else 14.2)
+    if change == "invalidated":
+        bars[6] = replace(bars[6], high=15.09)
+    assert observe_inverse_resistance_exit(bars,5,state) is None
+    assert observe_inverse_resistance_exit(bars,6,state) is None
+    assert observe_inverse_resistance_exit(bars,7,state) is None
+
+
+def volume_down_sample():
+    rows = [("13",7.11,7.39,7.07,7.35,39286133),("14",7.13,7.42,7.12,7.29,27600316),
+            ("15",7.32,7.78,7.24,7.55,47054489),("16",7.46,7.87,7.13,7.13,46943322),
+            ("19",7.12,7.84,7.09,7.84,76817115),("20",7.80,7.95,7.61,7.84,74155416),
+            ("21",7.67,7.81,7.48,7.75,39381140),("22",7.68,7.76,7.48,7.59,43005792),
+            ("23",7.48,7.55,7.11,7.13,37887874),("26",7.03,7.39,7.01,7.07,36559989)]
+    return [Bar(datetime.fromisoformat("2022-09-"+d), "sz.000978", *values) for d,*values in rows]
+
+
+def test_volume_down_freezes_confirmed_support_and_clears_on_low_break():
+    from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
+    bars = volume_down_sample()
+    state = StagedExitState()
+    for i in range(3,7):
+        assert observe_volume_down_exit(bars,i,state) is None
+    reduction = observe_volume_down_exit(bars,7,state)
+    assert reduction["exit_target_fraction"] == .7
+    assert reduction["execution_model"] == "next_open"
+    assert reduction["volume_support_date"] == "2022-09-19"
+    assert reduction["trigger_volume"] > reduction["previous_volume"]
+    assert observe_volume_down_exit(bars,8,state) is None
+    clear = observe_volume_down_exit(bars,9,state)
+    assert clear["exit_fraction"] == 1
+    assert clear["execution_model"] == "same_day_close"
+    assert clear["volume_support_low"] == 7.09
+
+
+@pytest.mark.parametrize("change", ["equal_volume", "less_volume", "equal_close", "bullish"])
+def test_volume_down_strict_boundaries(change):
+    from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
+    bars=volume_down_sample()
+    if change=="equal_volume": bars[7]=replace(bars[7],volume=bars[6].volume)
+    if change=="less_volume": bars[7]=replace(bars[7],volume=bars[6].volume-1)
+    if change=="equal_close": bars[7]=replace(bars[7],open=7.76,close=bars[6].close)
+    if change=="bullish": bars[7]=replace(bars[7],open=7.50)
+    assert observe_volume_down_exit(bars,7,StagedExitState()) is None
+
+
+def test_volume_down_execution_next_open_seventy_then_same_day_full_exit():
+    from wavequant.application.analytics.backtest import run_portfolio
+    bars=volume_down_sample()
+    signal=Signal(bars[0].timestamp,bars[0].symbol,0,"LONG",bars[0].close,6,"fixture",
+                  bars[0].timestamp,0,None,"fixture",20)
+    config=StrategyConfig(initial_capital=100000,risk_fraction=.2,max_position_weight=.8,
+                          max_participation=1,slippage_bps_per_side=0,exit_on_target=False,
+                          volume_down_exit=True,max_hold_bars=100)
+    result=run_portfolio({bars[0].symbol:bars},[signal],config)
+    buy,reduction,clear=[o for o in result.orders if o['status']=='filled']
+    assert reduction['timestamp'][:10]=='2022-09-23'
+    assert reduction['signal_timestamp'][:10]=='2022-09-22'
+    assert reduction['price']==bars[8].open
+    assert reduction['quantity']==int(buy['quantity']*.7//100)*100
+    assert clear['timestamp'][:10]=='2022-09-26'
+    assert clear['price']==bars[9].close
+    assert clear['remaining_quantity']==0
+    prefix=run_portfolio({bars[0].symbol:bars[:9]},[signal],config)
+    assert prefix.orders==[o for o in result.orders if o['timestamp']<=bars[8].timestamp.isoformat()]
+
+
+def test_volume_down_does_not_repeat_reduction_or_clear_at_equal_support():
+    from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
+    bars=volume_down_sample()
+    state=StagedExitState()
+    observe_volume_down_exit(bars,7,state)
+    bars[8]=replace(bars[8],volume=50_000_000)
+    assert observe_volume_down_exit(bars,8,state) is None
+    bars[9]=replace(bars[9],open=7.1,low=7.09,close=7.1)
+    assert observe_volume_down_exit(bars,9,state) is None
+    assert state.volume_support_index==4
+
+
+def small_inside_n_sample():
+    bars=[Bar(datetime(2021,12,1)+timedelta(days=i),'TEST',5.0,5.3,4.9,5.15,1000) for i in range(13)]
+    bars[10]=replace(bars[10],open=5.08,low=5.08,high=5.28,close=5.19,volume=2000)
+    bars[11]=replace(bars[11],open=5.22,low=5.20,high=5.27,close=5.26,volume=1000)
+    bars[12]=replace(bars[12],open=5.23,low=5.19,high=5.26,close=5.19,volume=1100)
+    return bars
+
+
+@pytest.mark.parametrize('bullish',[False,True])
+def test_small_candle_inside_positive_n_reduces_thirty_and_can_escalate(bullish):
+    from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
+    bars=small_inside_n_sample()
+    if bullish: bars[12]=replace(bars[12],open=5.18,low=5.17)
+    state=StagedExitState()
+    decision=observe_volume_down_exit(bars,12,state,positive_n_index=10)
+    assert decision['exit_target_fraction']==.3
+    assert decision['positive_n_date']==bars[10].timestamp.date().isoformat()
+    bars.append(replace(bars[12],timestamp=bars[12].timestamp+timedelta(days=1),open=5.25,close=5.18,low=5.17,volume=1200))
+    assert observe_volume_down_exit(bars,13,state,positive_n_index=10)['exit_target_fraction']==.7
+    assert state.volume_support_index is None
+
+
+@pytest.mark.parametrize('change',['outside_high','outside_low','large','no_n','future_n','large_relative'])
+def test_thirty_exception_requires_all_small_body_and_known_n_conditions(change):
+    from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
+    bars=small_inside_n_sample(); anchor=10
+    if change=='outside_high': bars[12]=replace(bars[12],high=5.29)
+    if change=='outside_low': bars[12]=replace(bars[12],low=5.07)
+    if change=='large': bars[12]=replace(bars[12],close=5.17,low=5.17)
+    if change=='no_n': anchor=None
+    if change=='future_n': anchor=12
+    if change=='large_relative':
+        bars[:10]=[replace(b,close=b.open) for b in bars[:10]]
+    assert observe_volume_down_exit(bars,12,StagedExitState(),positive_n_index=anchor)['exit_target_fraction']==.7
+
+
+def test_small_body_one_percent_boundary_is_inclusive():
+    from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
+    bars=small_inside_n_sample()
+    bars[12]=replace(bars[12],close=5.1777,low=5.17)
+    assert observe_volume_down_exit(bars,12,StagedExitState(),positive_n_index=10)['exit_target_fraction']==.3
+
+
+def test_thirty_reduction_context_respects_n_availability_and_invalidation():
+    from wavequant.application.analytics.backtest import run_portfolio
+    bars=small_inside_n_sample()
+    bars.append(replace(bars[-1],timestamp=bars[-1].timestamp+timedelta(days=1),volume=1000))
+    signal=Signal(bars[9].timestamp,'TEST',9,'LONG',5.15,1,'fixture',bars[9].timestamp,0,None,'fixture',10)
+    config=StrategyConfig(initial_capital=100000,risk_fraction=.2,max_position_weight=.8,
+        max_participation=1,max_hold_bars=100,exit_on_target=False,volume_down_exit=True,small_n_reduction=True)
+    bars=[replace(b,volume=b.volume*100000) for b in bars]
+    def reduction(known, series=bars):
+        r=run_portfolio({'TEST':series},[signal],config,positive_n_bars={'TEST':known})
+        return next(o for o in r.orders if o['side']=='SELL' and o['status']=='filled')
+    assert reduction({10:10})['exit_target_fraction']==.3
+    assert reduction({13:10})['exit_target_fraction']==.7
+    broken=list(bars);broken[11]=replace(broken[11],low=5.0)
+    assert reduction({10:10},broken)['exit_target_fraction']==.7
+
+
+@pytest.mark.parametrize("volume_ratio,expected_clear", [(1.01, True), (1.0, False), (.99, False)])
+def test_volume_inverse_clear_overrides_daily_partial_even_when_close_is_flat(volume_ratio, expected_clear):
+    bars = sample()[:6]
+    bars[4] = replace(bars[4], close=12.60)
+    bars[5] = replace(bars[5], volume=bars[4].volume * volume_ratio, close=12.60)
+    options = dict(extra_signals=[inverse_signal(bars, 5)], volume_inverse_n_clear=True,
+                   inverse_n_close_reduce=True, staged_exit_same_day=True, exit_on_target=False)
+    result = run(bars, **options)
+    fills = [row for row in result["orders"] if row["status"] == "filled"]
+    if expected_clear:
+        buy, sell = fills
+        assert sell["reason"] == "volume_inverse_n_clear"
+        assert sell["timestamp"] == sell["signal_timestamp"] == bars[5].timestamp.isoformat()
+        assert sell["price"] == bars[5].close
+        assert sell["remaining_quantity"] == 0
+        assert sell["quantity"] == buy["quantity"]
+    else:
+        assert fills[-1]["reason"] == "inverse_n_close_reduce_90"
+        assert fills[-1]["remaining_quantity"] > 0
+
+
+def test_volume_increase_without_inverse_n_does_not_clear():
+    bars = sample()[:6]
+    bars[5] = replace(bars[5], volume=bars[4].volume * 2)
+    fills = [row for row in run(bars, volume_inverse_n_clear=True, staged_exit_same_day=True)["orders"]
+             if row["status"] == "filled"]
+    assert fills[-1]["reason"] == "support_low_close_break_reduce"
+    assert fills[-1]["remaining_quantity"] > 0
+
+
+def test_volume_inverse_clear_respects_t_plus_one():
+    bars = sample()[:5]
+    bars[3] = replace(bars[3], volume=bars[2].volume * 2)
+    result = run(bars, volume_inverse_n_clear=True, inverse_n_close_reduce=True,
+                 extra_signals=[inverse_signal(bars, 3)])
+    buy, sell = [row for row in result["orders"] if row["status"] == "filled"]
+    assert any(row["reason"] == "T+1" for row in result["orders"])
+    assert sell["reason"] == "volume_inverse_n_clear"
+    assert sell["signal_timestamp"] == buy["timestamp"]
+    assert sell["timestamp"] == bars[4].timestamp.isoformat()
+    assert sell["remaining_quantity"] == 0

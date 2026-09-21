@@ -7,7 +7,7 @@ export const ratioPlans = [
     ["lecture_v3_d67_c50", ">2/3 / ≤1/2"],
     ["lecture_v3_close_d50_c50", "收盘 >1/2 / 收盘 <1/2"],
 ];
-/** @typedef {{run:string,symbol:string,asof:string,start:string,scenario:string,volume_filter:boolean,net_reward_risk_filter:boolean,local:boolean,source?:string}} RatioContext */
+/** @typedef {{run:string,symbol:string,asof:string,start:string,scenario:string,volume_filter:boolean,net_reward_risk_filter:boolean,initial_capital?:number,max_position_weight?:number,local:boolean,source?:string}} RatioContext */
 export const ratioContextKey = (p) =>
     JSON.stringify([
         p.run,
@@ -17,6 +17,8 @@ export const ratioContextKey = (p) =>
         p.scenario,
         p.volume_filter,
         p.net_reward_risk_filter ?? false,
+        p.initial_capital,
+        p.max_position_weight,
         p.local,
         p.source ?? "tdx",
     ]);

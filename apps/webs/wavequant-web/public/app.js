@@ -1,5 +1,6 @@
 import { reasonText } from "./annotations.js";
 import { retryBacktest } from "./backtest-retry.js";
+import { parseBacktestSizing } from "./backtest-sizing.js";
 import {
     blockedNodeMeta,
     blockedTradeNodes,
@@ -7,7 +8,7 @@ import {
     groupBlockedTradeNodes,
 } from "./blocked-trade-nodes.js";
 import { BuyPoints } from "./buy-points.js";
-import { candleCopyText } from "./candle-details.js";
+import { candleCopyText, previousCandleClose } from "./candle-details.js";
 import { loadMarketTimeframeSnapshot, loadStockCatalog } from "./catalog-cache.js";
 import { PerformanceCharts, PriceChart } from "./charts.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
@@ -15,12 +16,14 @@ import { label, names, num, pct, symbolName } from "./labels.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
 import { StockList } from "./stock-list.js";
 import { StructureSignals } from "./structure-signals.js";
-import { closedPositionLabel } from "./trade-position.js";
+import { closedPositionLabel, openPositionForMarker, openPositionProfit, positionProfit } from "./trade-position.js";
 import { appendTradeEvidence } from "./trade-review.js";
 import { TradingViewWidget } from "./tradingview-widget.js";
 import { Watchlists } from "./watchlists.js";
 
 const $ = (id) => document.getElementById(id);
+const currentBacktestSizing = () =>
+    parseBacktestSizing($("backtest-capital").value, $("backtest-buy-ratio").value);
 const chartPreferenceKey = "wavequant.research.chart.v1";
 const timeframes = {
     "1d": { label: "日线", tag: "日 K" },
@@ -614,7 +617,11 @@ function showCandleCopyFeedback(bar, button, copied) {
 }
 function currentCandleCopyText(bar) {
     const symbol = state.view?.symbol;
-    return candleCopyText(bar, symbol ? `${symbolName(symbol)}（${symbol}）` : "");
+    return candleCopyText(
+        bar,
+        symbol ? `${symbolName(symbol)}（${symbol}）` : "",
+        previousCandleClose(state.view?.bars, bar),
+    );
 }
 async function copyHoveredCandle(bar, button = $("copy-candle")) {
     if (!bar) return;
@@ -752,6 +759,16 @@ function renderMetrics() {
         `${label(state.catalog.variants[state.view.variant])} · ${state.view.evidence}。以下仅展示 ${state.view.asof} 收盘前的已知数据，行情口径为因果复权等价价格。`;
     const stock = state.view.result_scope === "stock",
         bt = state.view.backtest;
+    if (stock) {
+        const unrealized = Number.isFinite(m.unrealized_pnl)
+            ? m.unrealized_pnl
+            : (bt.open_positions || []).reduce((sum, position) => sum + (position.unrealized_pnl || 0), 0);
+        const total = Number.isFinite(m.total_pnl) ? m.total_pnl : m.final_equity - bt.initial_capital;
+        const realized = Number.isFinite(m.realized_pnl) ? m.realized_pnl : total - unrealized;
+        $("metric-return-note").textContent = `已实现 ${num(realized)} 元 + 未实现 ${num(unrealized)} 元 = 期末盈亏 ${num(total)} 元；收益率按期末净值计算，未卖出持仓只计入一次。`;
+    } else {
+        $("metric-return-note").textContent = "资金曲线含费用、未平仓估值";
+    }
     $("metric-scope-label").textContent = stock ? "个股净收益" : "组合净收益";
     $("trade-scope-label").textContent = stock ? "当前股票" : "全组合";
     $("curve-scope-label").textContent = stock ? "个股独立净值" : "原封存组合净值";
@@ -765,7 +782,7 @@ function renderMetrics() {
                 .map(([key, n]) => `${reasonText(key)} × ${n}`)
                 .join("；");
         $("backtest-details").textContent =
-            `${symbolName(state.view.symbol)} · 独立回测 ${bt.start} — ${bt.end}｜量能过滤${bt.strategy.volume_filter ? `开启（攻击日量比 ≥ ${num(bt.strategy.minimum_rvol)}）` : "关闭"}；次开盘含费净盈亏比过滤${netRiskEnabled ? "开启" : "关闭"}；初始资金 ${num(bt.initial_capital, 0)} 元，单股仓位上限 ${pct(bt.execution.max_position_weight)}。年化 ${pct(m.annualized_return)} · 胜率 ${m.win_rate === null ? "—（无平仓）" : pct(m.win_rate)} · Sharpe ${num(m.sharpe)} · 费用 ${num(m.fees)} 元。买入成交 ${d.entry_fills} · 已平仓 ${d.closed_trades} · 未平仓 ${d.open_positions} · 期末未执行信号 ${m.unexecuted_end_signals}。${d.entry_fills ? "成交样本不等于策略有效。" : `未产生成交：入场信号 ${bt.counts.long_signals || 0}，委托尝试 ${d.entry_attempts}；可开启“筛选 / 中断”查看未通过条件。`}${reasons ? `拒单原因：${reasons}。` : ""}${bt.open_positions.map((p) => `未平仓 ${num(p.quantity)} 等价份额，浮动盈亏 ${num(p.unrealized_pnl)} 元。`).join("")}`;
+            `${symbolName(state.view.symbol)} · 独立回测 ${bt.start} — ${bt.end}｜量能过滤${bt.strategy.volume_filter ? `开启（攻击日量比 ≥ ${num(bt.strategy.minimum_rvol)}）` : "关闭"}；次开盘含费净盈亏比过滤${netRiskEnabled ? "开启" : "关闭"}；初始资金 ${num(bt.initial_capital, 0)} 元，单股仓位上限 ${pct(bt.execution.max_position_weight)}。年化 ${pct(m.annualized_return)} · 胜率 ${m.win_rate === null ? "—（无平仓）" : pct(m.win_rate)} · Sharpe ${num(m.sharpe)} · 费用 ${num(m.fees)} 元。买入成交 ${d.entry_fills} · 已平仓 ${d.closed_trades} · 未平仓 ${d.open_positions} · 期末未执行信号 ${m.unexecuted_end_signals}。${d.entry_fills ? "成交样本不等于策略有效。" : `未产生成交：入场信号 ${bt.counts.long_signals || 0}，委托尝试 ${d.entry_attempts}；可开启“筛选 / 中断”查看未通过条件。`}${reasons ? `拒单原因：${reasons}。` : ""}${bt.open_positions.map((p) => `未平仓 ${num(p.quantity)} 等价份额，累计已实现 ${num(p.realized_pnl)} 元，剩余浮动盈亏 ${num(p.unrealized_pnl)} 元，整笔当前盈亏 ${num(p.total_pnl)} 元（${pct(p.net_return)}，含未实现部分）。`).join("")}`;
         if (bt.execution.missing_minute_daily_fallback) {
             const p = document.createElement("p");
             const days = bt.minute_fallbacks || [];
@@ -872,7 +889,7 @@ function showAnnotationDetails(items) {
     detail(`${item.title} · ${item.time}`, item.description);
     const panel = $("selection-info");
     panel.dataset.annotationId = item.id;
-    appendTradeEvidence(panel, item);
+    appendTradeEvidence(panel, item, openPositionForMarker(state.view, item));
     const source = document.createElement("p");
     source.className = "annotation-source";
     source.textContent = `${item.sourceLabel}。${item.sourceTime && item.sourceTime !== item.time ? `原结构日期 ${item.sourceTime}，到 ${item.time} 才可知。` : ""}`;
@@ -1263,10 +1280,11 @@ function renderTradeNodes() {
             position.title = "该笔买入成交额（不含费用）÷ 成交后账户权益；不是全回测期间的日均仓位";
             content.append(position);
         }
-        if (trade && Number.isFinite(trade.pnl)) {
+        const profit = positionProfit(marker, trade, open ? openPositionForMarker(view, marker) : null);
+        if (profit) {
             const pnl = document.createElement("span");
-            pnl.className = `trade-node-pnl ${trade.pnl >= 0 ? "positive" : "negative"}`;
-            pnl.textContent = `本次已平仓 ${trade.pnl >= 0 ? "+" : ""}${num(trade.pnl)} 元 · 净收益 ${pct(trade.net_return)}`;
+            pnl.className = `trade-node-pnl ${profit.pnl >= 0 ? "positive" : "negative"}`;
+            pnl.textContent = profit.text;
             content.append(pnl);
         }
         button.append(badge, content);
@@ -1346,12 +1364,25 @@ function renderTables() {
                 t.exit_time.slice(0, 10),
                 t.bars_held,
                 cell(num(t.pnl), Number(t.pnl) > 0 ? "positive" : "negative"),
+                cell(pct(t.net_return), Number(t.pnl) > 0 ? "positive" : "negative"),
                 num(t.fees),
                 actionCell("复盘 ↗", () => locate(t.symbol, t.entry_time.slice(0, 10), `交易复核：${t.entry_reason}`)),
             ]),
         );
     $("trades-empty").hidden = v.trades.length > 0;
     $("trade-count").textContent = `${v.trades.length} 笔已平仓`;
+    const openSummary = $("open-position-summary");
+    openSummary.replaceChildren();
+    const openPositions = v.result_scope === "stock" ? (v.backtest?.open_positions || []) : [];
+    openSummary.hidden = openPositions.length === 0;
+    for (const position of openPositions) {
+        const profit = openPositionProfit(position);
+        if (!profit) continue;
+        const paragraph = document.createElement("p");
+        paragraph.textContent = `${symbolName(position.symbol)} · 期末未平仓估值：${profit.text}`;
+        paragraph.className = profit.pnl >= 0 ? "positive" : "negative";
+        openSummary.append(paragraph);
+    }
     for (const o of [...v.orders].reverse())
         $("orders-body").append(
             row([
@@ -1483,6 +1514,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             start: $("backtest-start").value,
             volume_filter: String($("backtest-volume-filter").checked),
             net_reward_risk_filter: String($("backtest-net-reward-risk-filter").checked),
+            ...(isTdxBacktest() ? currentBacktestSizing() : {}),
         };
         const data = isMarketBrowse()
             ? (timeframeBundle = await loadMarketTimeframeSnapshot(
@@ -1682,12 +1714,19 @@ const ratioComparison = new RatioComparison({
     api,
     getContext: () => {
         const { variant, ...p } = select();
+        let sizing = null;
+        try {
+            sizing = currentBacktestSizing();
+        } catch {
+            // Invalid form values disable comparison until corrected.
+        }
         return {
             ...p,
+            ...sizing,
             start: $("backtest-start").value,
             volume_filter: $("backtest-volume-filter").checked,
             net_reward_risk_filter: $("backtest-net-reward-risk-filter").checked,
-            local: isLocal() || isAkShare(),
+            local: (isLocal() || isAkShare()) && sizing !== null,
             source: isAkShare() ? "akshare" : "tdx",
         };
     },
@@ -1702,6 +1741,12 @@ $("backtest-start").addEventListener("change", () => {
     structureSignals.contextChanged();
     ratioComparison.contextChanged();
 });
+for (const id of ["backtest-capital", "backtest-buy-ratio"]) {
+    $(id).addEventListener("change", () => {
+        ratioComparison.contextChanged();
+        if (isTdxBacktest()) loadView();
+    });
+}
 $("backtest-volume-filter").addEventListener("change", () => {
     ratioComparison.contextChanged();
     if (isTdxBacktest()) loadView();

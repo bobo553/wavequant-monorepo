@@ -11,7 +11,16 @@ const fillHeaders = [
     "买入后仓位",
     "入场条件 / 退出原因",
 ];
-const tradeHeaders = ["证券", "买入日期", "卖出日期", "持有 K 数", "净盈亏 / 元", "交易费用 / 元", "复盘"];
+const tradeHeaders = [
+    "证券",
+    "买入日期",
+    "清仓日期",
+    "持有 K 数",
+    "整笔净盈亏 / 元",
+    "整笔净收益率",
+    "交易费用 / 元",
+    "复盘",
+];
 
 /** B/S 成交账本、交易复核和全部股票独立回测结果。 */
 export function ResearchLedgers(): JSX.Element {
@@ -32,7 +41,7 @@ export function ResearchLedgers(): JSX.Element {
             <article className="panel ledger-card">
                 <div className="card-header">
                     <h2>
-                        成交复核 <small>点击记录定位 K 线</small>
+                        成交复核 <small>首次买入至全部清仓计一笔；含所有分批卖出和费用</small>
                     </h2>
                     <span id="trade-count" className="tag">
                         —
@@ -42,6 +51,7 @@ export function ResearchLedgers(): JSX.Element {
                 <p id="trades-empty" className="empty" hidden>
                     该截面没有已平仓交易。没有交易证据，不代表风险为零。
                 </p>
+                <div id="open-position-summary" className="note-card" aria-label="期末未平仓估值" hidden />
             </article>
         </>
     );

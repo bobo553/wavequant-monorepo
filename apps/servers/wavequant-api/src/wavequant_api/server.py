@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
 import json
 import logging
+import math
 import mimetypes
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -26,6 +27,18 @@ from .infrastructure import Infrastructure, InfrastructureSettings
 APPS_ROOT = Path(__file__).resolve().parents[4]
 WEB_WORKSPACE_ROOT = APPS_ROOT / "webs" / "wavequant-web"
 DEFAULT_WEB_ROOT = WEB_WORKSPACE_ROOT / "out"
+
+
+def backtest_positive_number(query: dict[str, list[str]], name: str, default: float, maximum: float) -> float:
+    """Parse one bounded backtest input before it reaches the research engine."""
+    raw = query.get(name, [str(default)])[0]
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
+    if not math.isfinite(value) or not 0 < value <= maximum:
+        raise ValueError(f"{name} must be in (0, {maximum}]")
+    return value
 
 
 def normalize_loopback_web_url(value: str | None) -> str | None:
@@ -314,7 +327,8 @@ def make_server(
                     return
                 if url.path in ("/api/tdx-backtest", "/api/akshare-backtest"):
                     required = {"run", "variant", "symbol", "asof", "scenario", "start"}
-                    if not required <= set(q) or set(q) - required - {"volume_filter", "net_reward_risk_filter"}:
+                    optional = {"volume_filter", "net_reward_risk_filter", "initial_capital", "max_position_weight"}
+                    if not required <= set(q) or set(q) - required - optional:
                         raise ValueError("invalid TDX backtest arguments")
                     filter_values = q.get("volume_filter", ["true"])
                     if len(filter_values) != 1:
@@ -325,12 +339,20 @@ def make_server(
                     risk_values = q.get("net_reward_risk_filter", ["false"])
                     if len(risk_values) != 1 or risk_values[0] not in ("true", "false"):
                         raise ValueError("net_reward_risk_filter must be true or false and provided once")
+                    initial_capital = backtest_positive_number(q, "initial_capital", 100_000, 1_000_000_000)
+                    max_position_weight = backtest_positive_number(q, "max_position_weight", 1.0, 1.0)
                     self.send(
                         200,
-                        (repository.akshare_backtest if url.path == "/api/akshare-backtest" else repository.tdx_backtest)(
+                        (
+                            repository.akshare_backtest
+                            if url.path == "/api/akshare-backtest"
+                            else repository.tdx_backtest
+                        )(
                             *(q[k][0] for k in ("run", "variant", "symbol", "asof", "scenario", "start")),
                             volume_filter=volume_filter == "true",
                             net_reward_risk_filter=risk_values[0] == "true",
+                            initial_capital=initial_capital,
+                            max_position_weight=max_position_weight,
                         ),
                     )
                     return

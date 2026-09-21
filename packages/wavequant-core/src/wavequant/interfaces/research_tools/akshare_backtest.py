@@ -17,7 +17,7 @@ from wavequant.infrastructure.market_data.data import opening_permissions
 from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
 from wavequant.application.analytics.trade_evidence import result_markers
 from .stock_backtest import single_stock_result
-from .tdx_backtest import TdxBacktester
+from .tdx_backtest import TdxBacktester, decode_research, encode_research
 
 
 class AkShareBacktester:
@@ -94,9 +94,24 @@ class AkShareBacktester:
         ]
         source["daily_sha256"] = hashlib.sha256(json.dumps(payload).encode()).hexdigest()
         source["engine"] = TdxBacktester._engine_hashes()  # type: ignore[no-untyped-call]  # Shared package fingerprint.
-        identity = hashlib.sha256(json.dumps([source, strategy, execution], sort_keys=True).encode()).hexdigest()
-        with self.artifacts.lock("akshare-backtest-" + identity):  # type: ignore[no-untyped-call]  # Legacy cache boundary.
-            generated = generate_system_signals(bars, config)
+        inputs = dict(
+            symbol=symbol, start=start, asof=asof, source=dict(source), strategy=strategy, execution=execution
+        )
+        identity = self.artifacts.key("akshare-backtest", inputs)  # type: ignore[no-untyped-call]  # Content address.
+        signal_inputs = {name: value for name, value in inputs.items() if name != "execution"}
+        with self.artifacts.lock(identity):  # type: ignore[no-untyped-call]  # Per-input single flight.
+            cached = self.artifacts.get("akshare-backtest", inputs)  # type: ignore[no-untyped-call]  # Legacy cache boundary.
+            signal_key = self.artifacts.key("akshare-signals", signal_inputs)  # type: ignore[no-untyped-call]
+            with self.artifacts.lock(signal_key):  # type: ignore[no-untyped-call]  # Share work across sizing plans.
+                research = self.artifacts.get("akshare-signals", signal_inputs)  # type: ignore[no-untyped-call]
+                if research is None:
+                    generated = generate_system_signals(bars, config)
+                    research = encode_research(bars, generated)
+                    self.artifacts.put("akshare-signals", signal_inputs, research)  # type: ignore[no-untyped-call]
+                else:
+                    bars, generated = decode_research(research)
+            if cached is not None:
+                return bars, generated, cached["view"]
             coverage = None
             try:
                 result = single_stock_result(  # type: ignore[no-untyped-call]  # Existing simulation boundary.
@@ -176,4 +191,8 @@ class AkShareBacktester:
                 backtest=result["backtest"],
                 evidence=coverage["message"] if coverage else "AKShare / 新浪同源独立回测；已有模拟结果不代表策略有效",
             )
+            if coverage is None:
+                self.artifacts.put(  # type: ignore[no-untyped-call]  # Disposable; valid result survives cache failure.
+                    "akshare-backtest", inputs, dict(view=view)
+                )
             return bars, generated, view

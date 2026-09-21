@@ -39,6 +39,17 @@ def run(bars=None, *, direction=Direction.UP, shadow=ShadowPolicy(.5),
 
 
 class MarketRegimeTests(unittest.TestCase):
+    def test_local_failed_resistance_does_not_wait_for_whole_episode_high(self):
+        bars = make([(12.4, 13.5, 11.8, 12.4), (12.3, 13.2, 12.0, 12.8)])
+        policy = RegimePolicy(ShadowPolicy(.5), WaveBoundary.ORIGIN, local_resistance_failure=True)
+        self.assertIsNone(run(bars).latest.regime)
+        observed = observe_market_regime(bars, setup(), timeframe='1d', policy=policy)
+        self.assertEqual(observed.latest.regime, R.BULL)
+        self.assertEqual(observed.latest.resistance_outcome, O.FAILED)
+        self.assertIsNone(observe_market_regime(bars[:-1], setup(), timeframe='1d', policy=policy).latest.regime)
+        broken = bars[:-1] + [replace(bars[-1], low=11.7)]
+        self.assertIsNone(observe_market_regime(broken, setup(), timeframe='1d', policy=policy).latest.regime)
+
     def test_all_six_regimes(self):
         for tail, bull, bear in [(STRONG, R.STRONG_BULL, R.STRONG_BEAR),
                                  (NORMAL, R.BULL, R.BEAR),

@@ -37,6 +37,17 @@ class StockBacktestTests(unittest.TestCase):
         self.assertTrue(all(o['timestamp'][:10]<='2026-01-03' for o in result['orders']))
         self.assertNotIn('exit_time',result['backtest']['open_positions'][0])
 
+    def test_unsold_position_profit_is_in_total_return_once(self):
+        result = single_stock_result(self.bars[:3], {}, self.config, self.generated)
+        position = result['backtest']['open_positions'][0]
+        metrics = result['metrics']
+        self.assertEqual(result['trades'], [])
+        self.assertAlmostEqual(metrics['unrealized_pnl'], position['unrealized_pnl'])
+        self.assertAlmostEqual(metrics['total_pnl'], metrics['realized_pnl'] + metrics['unrealized_pnl'])
+        self.assertAlmostEqual(metrics['total_pnl'], metrics['final_equity'] - self.config['initial_capital'])
+        self.assertAlmostEqual(metrics['total_return'], metrics['total_pnl'] / self.config['initial_capital'])
+        self.assertAlmostEqual(position['net_return'], position['total_pnl'] / position['entry_cost'])
+
     def test_no_signals_and_mixed_universe(self):
         result=single_stock_result(self.bars,{},self.config,SimpleNamespace(signals=[],counts={}))
         self.assertEqual(result['metrics']['total_return'],0)

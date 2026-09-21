@@ -2,9 +2,76 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { formatFilledTradeCopy } from "../public/filled-trade-copy.js";
-import { closedPositionFraction, closedPositionLabel } from "../public/trade-position.js";
+import {
+    closedPositionFraction,
+    closedPositionLabel,
+    openPositionForMarker,
+    positionProfit,
+} from "../public/trade-position.js";
 
 const sell = { kind: "fill", side: "SELL", quantity: 3496.84, remaining_quantity: 3576.32 };
+
+test("unsold buy shows end-date mark-to-market profit without pretending to be closed", () => {
+    const buy = {
+        kind: "fill",
+        side: "BUY",
+        symbol: "sz.300154",
+        time: "2026-01-02",
+        timestamp: "2026-01-02T00:00:00",
+        price: 10,
+        raw_price: 10,
+        quantity: 1000,
+        fee: 5,
+        id: "buy-1",
+    };
+    const open = {
+        symbol: "sz.300154",
+        entry_time: "2026-01-02T00:00:00",
+        mark_time: "2026-01-03T00:00:00",
+        quantity: 1000,
+        realized_pnl: 0,
+        unrealized_pnl: 995,
+        total_pnl: 995,
+        net_return: 995 / 10005,
+    };
+    const view = {
+        symbol: buy.symbol,
+        variant: "lecture_v3",
+        asof: "2026-01-03",
+        backtest: { start: "2026-01-01", open_positions: [open] },
+        bars: [],
+    };
+    assert.equal(openPositionForMarker(view, buy), open);
+    const profit = positionProfit(buy, null, open);
+    assert.match(profit.text, /截至 2026-01-03/);
+    assert.match(profit.text, /未实现盈亏：995/);
+    assert.match(profit.text, /整笔收益率：9\.95%/);
+    assert.equal(positionProfit(buy), null);
+    assert.equal(openPositionForMarker(view, { ...buy, timestamp: "2026-01-01T00:00:00", time: "2026-01-01" }), null);
+    assert.equal(openPositionForMarker(view, { ...buy, timestamp: "2026-01-02T09:45:00" }), null);
+    const copy = formatFilledTradeCopy(view, buy, "V3", "9.99%", null);
+    assert.ok(copy.includes(profit.text));
+    assert.ok(copy.includes("未卖出"));
+});
+
+test("partial and final sales show cumulative original-cost returns, never the remaining lot return", () => {
+    const partial = { ...sell, position_closed: false, position_pnl: 100, position_net_return: 0.01 };
+    const future = { pnl: -500, net_return: -0.5 };
+    assert.match(positionProfit(partial, future).text, /累计已实现收益率：1.00%/);
+    assert.match(positionProfit(partial, future).text, /尚未清仓/);
+    const final = { ...partial, position_closed: true, position_pnl: 50, position_net_return: 0.005 };
+    assert.match(positionProfit(final, future).text, /整笔净收益率：0.50%/);
+    assert.equal(positionProfit({ ...sell, position_closed: false }, future), null);
+    const text = formatFilledTradeCopy(
+        { symbol: "sz.300154", variant: "lecture_v3", backtest: { start: "2018-01-02" }, asof: "2026-09-07", bars: [] },
+        partial,
+        "V3",
+        "—",
+        future,
+    );
+    assert.ok(text.includes(positionProfit(partial).text));
+    assert.ok(!text.includes("-50.00%"));
+});
 
 test("closing proportion uses actual sold and remaining shares, not the target fraction", () => {
     assert.equal(closedPositionFraction({ ...sell, exit_fraction: 0.5 }), 3496.84 / 7073.16);

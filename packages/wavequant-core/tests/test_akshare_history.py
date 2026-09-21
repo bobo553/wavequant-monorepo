@@ -92,8 +92,10 @@ def test_missing_minutes_discards_account_but_keeps_daily_theory(tmp_path, monke
     monkeypatch.setattr(browser, "bars", lambda *_: (bars, bars))
     generated = SystemResult([], [], {})
     monkeypatch.setattr(module, "generate_system_signals", lambda *_: generated)
+    attempts = []
 
     def missing(*args, **kwargs):
+        attempts.append(1)
         assert kwargs["minute_loader"].__self__.provider is provider
         raise MinuteCoverageError("2026-01-23", "2026-07-24", "2026-09-18")
 
@@ -108,3 +110,82 @@ def test_missing_minutes_discards_account_but_keeps_daily_theory(tmp_path, monke
     assert view["orders"] == view["trades"] == view["curve"] == []
     assert view["metrics"] is None
     assert len(view["bars"]) == 10
+    again = AkShareBacktester(browser, tmp_path).run(
+        "sz.300154", "2026-01-21", "2026-01-30", {}, StrategyConfig(staged_exit_intraday=True).to_dict()
+    )[2]
+    assert again["backtest"]["status"] == "data_unavailable"
+    assert len(attempts) == 2  # Incomplete minutes may become available later.
+
+
+def test_pinned_backtest_reuses_exact_result_and_invalidates_changed_inputs(tmp_path, monkeypatch):
+    import wavequant.interfaces.research_tools.akshare_backtest as module
+
+    provider = Provider([dict(date="2000-01-01", hfq_factor=1)])
+    browser = AkShareBrowser(provider, pinned_history=True)
+    raw = [Bar(datetime(2026, 1, 1) + timedelta(days=index), "sz.300154", 10, 11, 9, 10, 100000) for index in range(30)]
+    monkeypatch.setattr(browser, "bars", lambda *_: (raw, raw))
+    calls = {"signals": 0, "account": 0}
+    original_account = module.single_stock_result
+
+    def signals(*args):
+        calls["signals"] += 1
+        return SystemResult([], [], {"long_signals": 0})
+
+    def account(*args, **kwargs):
+        calls["account"] += 1
+        return original_account(*args, **kwargs)
+
+    monkeypatch.setattr(module, "generate_system_signals", signals)
+    monkeypatch.setattr(module, "single_stock_result", account)
+    strategy = {}
+    execution = StrategyConfig(staged_exit_intraday=False).to_dict()
+    first_bars, first_signals, first_view = AkShareBacktester(browser, tmp_path).run(
+        "sz.300154", "2026-01-21", "2026-01-30", strategy, execution
+    )
+    second_bars, second_signals, second_view = AkShareBacktester(browser, tmp_path).run(
+        "sz.300154", "2026-01-21", "2026-01-30", strategy, execution
+    )
+    assert second_bars == first_bars
+    assert second_signals == first_signals
+    assert second_view == first_view
+    assert calls == {"signals": 1, "account": 1}
+
+    changed_execution = dict(execution, initial_capital=200000)
+    AkShareBacktester(browser, tmp_path).run("sz.300154", "2026-01-21", "2026-01-30", strategy, changed_execution)
+    assert calls == {"signals": 1, "account": 2}
+
+    raw[-1] = Bar(datetime(2026, 1, 30), "sz.300154", 10, 12, 9, 11, 100000)
+    changed = AkShareBacktester(browser, tmp_path).run("sz.300154", "2026-01-21", "2026-01-30", strategy, execution)[2]
+    assert changed["run_id"] != first_view["run_id"]
+    assert calls == {"signals": 2, "account": 3}
+
+    strategy_view = AkShareBacktester(browser, tmp_path).run(
+        "sz.300154", "2026-01-21", "2026-01-30", {"volume_filter": False}, execution
+    )[2]
+    assert strategy_view["run_id"] != changed["run_id"]
+    assert calls == {"signals": 3, "account": 4}
+
+    provider.records.append(dict(date="2026-01-25", hfq_factor=2))
+    factor_view = AkShareBacktester(browser, tmp_path).run(
+        "sz.300154", "2026-01-21", "2026-01-30", strategy, execution
+    )[2]
+    assert factor_view["run_id"] != changed["run_id"]
+    assert calls == {"signals": 4, "account": 5}
+
+    monkeypatch.setattr(module.TdxBacktester, "_engine_hashes", staticmethod(lambda: {"engine": "next-version"}))
+    code_view = AkShareBacktester(browser, tmp_path).run("sz.300154", "2026-01-21", "2026-01-30", strategy, execution)[
+        2
+    ]
+    assert code_view["run_id"] != factor_view["run_id"]
+    assert calls == {"signals": 5, "account": 6}
+
+    without_signals = AkShareBacktester(browser, tmp_path)
+    original_get = without_signals.artifacts.get
+    monkeypatch.setattr(
+        without_signals.artifacts,
+        "get",
+        lambda namespace, key: None if namespace == "akshare-signals" else original_get(namespace, key),
+    )
+    recovered = without_signals.run("sz.300154", "2026-01-21", "2026-01-30", strategy, execution)[2]
+    assert recovered == code_view
+    assert calls == {"signals": 6, "account": 6}  # Evicted signal artifact must not rerun a valid account.
