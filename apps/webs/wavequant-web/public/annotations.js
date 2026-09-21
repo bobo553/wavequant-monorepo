@@ -3,13 +3,13 @@ import { label, num, pct } from "./labels.js";
 
 const RULES = {
     squeeze_alternation_confirmed: ["空多交替确认 · 正 N 轧空", "回调合格后，正 N 与轧空或强轧空确认 b 低点。", 168],
-    squeeze_alternation_breakout: ["空多交替后突破 a 高点", "收盘严格突破 a 高点，解除突破前的 b 低点失效条件。", 169],
-    squeeze_alternation_invalidated: ["空多交替低点失效", "尚未收盘突破 a 高点，最低价先跌破 b 低点。", 169],
+    squeeze_alternation_breakout: ["空多交替后突破 a 高点", "最高价严格突破 a 高点，确认多头并解除突破前的 b 低点失效条件。", 169],
+    squeeze_alternation_invalidated: ["空多交替低点失效", "尚未突破 a 高点，最低价先跌破 b 低点。", 169],
     tertiary_c_candidate: ["Ⅲ c 段启动候选", "正 N 与轧空确认后的三级结构观察。", 168],
     tertiary_c_breakout: ["Ⅲ c 突破 a 高点", "收盘严格突破 a 段高点。", 169],
     tertiary_c_invalidated: ["Ⅲ c 候选失效", "最低价跌破原 b 段低点。", 169],
     hierarchy_alternation_ready: ["分级空多交替", "一级及以上的翻多后确认更高低点；V2 不使用交替回撤比例过滤。", 94],
-    hierarchy_bull_matured: ["分级完整多头", "交替已知后的后续收盘超过冻结翻多高点，之后按浅回撤买点筛选。", 93],
+    hierarchy_bull_matured: ["分级完整多头", "交替已知后的后续最高价超过冻结翻多高点，之后按浅回撤买点筛选。", 93],
     hierarchy_context_invalidated: ["分级多头失效", "结构防守被破坏，原分级入场依据失效。", 80],
     n_completed: ["N 字完成", "实过与虚过（或实破与虚破）完成；防守点取攻击棒虚拟低／高。", 100],
     bear_to_bull_flip: ["翻空为多", "收盘突破此前冻结的末跌高；只是趋势转换的第一步。", 95],
@@ -419,7 +419,7 @@ export function bearBullAlternationLowAnnotations(levelLandmarks, from, to, know
                 const invalidated = landmark.invalidated_at && landmark.invalidated_at <= knownAt;
                 const brokenOut = landmark.breakout_at && landmark.breakout_at <= knownAt;
                 const confirmationText = squeeze
-                    ? `价格或时间回调条件合格后，正 N + ${landmark.confirmation_evidence.regime}于 ${landmark.available_at} 确认 b 低点。${invalidated ? `${landmark.invalidated_at} 尚未收盘突破 a 高点就跌破 b 低点，本次交替低点已失效。` : brokenOut ? `${landmark.breakout_at} 收盘已严格突破 a 高点，解除突破前先跌破 b 的失效条件。` : "尚未收盘突破 a 高点前，若最低价跌破 b 低点，本次交替低点失效。"}`
+                    ? `价格或时间回调条件合格后，正 N + ${landmark.confirmation_evidence.regime}于 ${landmark.available_at} 确认 b 低点。${invalidated ? `${landmark.invalidated_at} 尚未突破 a 高点就跌破 b 低点，本次交替低点已失效。` : brokenOut ? `${landmark.breakout_at} 最高价已严格突破 a 高点，解除突破前先跌破 b 的失效条件。` : "尚未突破 a 高点前，若最低价跌破 b 低点，本次交替低点失效。"}`
                     : rebreak
                       ? `虽回档 ${pct(landmark.retracement_ratio)}，但随后已确认的 ${rebreak.label}（${rebreak.time}，${num(rebreak.value)}）严格突破原空翻多高点；完整证据到 ${landmark.available_at} 才可知。`
                       : `回档严格小于三分之二，完整证据到 ${landmark.available_at} 才可知。`;
@@ -560,7 +560,9 @@ export function ruleTitle(e) {
 function squeezeConditionText(event) {
     const paths = [];
     if (event.deep_price_path)
-        paths.push(`深回撤条件：b 最低价 ${num(event.b_low_price)} ≤ 2/3 回撤价 ${num(event.two_thirds_price)}，正 N 收盘突破抵抗阶段高点确认轧空`);
+        paths.push(
+            `深回撤条件：b 最低价 ${num(event.b_low_price)} ≤ 2/3 回撤价 ${num(event.two_thirds_price)}，正 N 收盘突破抵抗阶段高点确认轧空`,
+        );
     if (event.price_path)
         paths.push(`价格条件：b 最低价 ${num(event.b_low_price)} ≥ 2/3 回撤价 ${num(event.two_thirds_price)}`);
     if (event.time_path)
@@ -576,9 +578,9 @@ function abcDescription(event, view) {
         event.event === "squeeze_alternation_confirmed"
             ? "b 低点确认为空多交替低点；此 N 只用于确认交替，须等待后续合格正 N 才能筛选买点。"
             : event.event === "squeeze_alternation_breakout"
-              ? "收盘已严格突破 a 高点，解除突破前先跌破 b 的交替失效条件。"
+              ? "最高价已严格突破 a 高点，解除突破前先跌破 b 的交替失效条件。"
               : event.event === "squeeze_alternation_invalidated"
-                ? "尚未收盘突破 a 高点就先跌破 b 低点，本次交替低点失效，撤销其入场许可。"
+                ? "尚未突破 a 高点就先跌破 b 低点，本次交替低点失效，撤销其入场许可。"
                 : event.event === "tertiary_c_candidate"
                   ? "b 回调可能结束、c 段可能启动，尚不保证突破 a 高点。"
                   : event.event === "tertiary_c_breakout"

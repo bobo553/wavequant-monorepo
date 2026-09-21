@@ -4,6 +4,23 @@
     "activeFeature": "MONOREPO-144",
     "features": [
         {
+            "id": "MONOREPO-145",
+            "name": "confirmed-alternation-high-break-formal-trend",
+            "title": "交替后最高价突破确认多头及正式趋势段",
+            "description": "西点08-20最高突破旧翻多高后，高低段确认为三级实线；共享策略突破事件。",
+            "scope": "Core共享突破及图形证据、Web说明与回归",
+            "dependencies": [
+                "MONOREPO-144"
+            ],
+            "status": "backlog",
+            "acceptanceCriteria": [
+                "08-20高突破确认多头，无需收盘越过旧高",
+                "2025-08-11高至2026-07-21低于08-20确认为正式三级段",
+                "前缀不提前确认，等高/破低/同棒歧义拒绝；保持其他任务活动状态"
+            ],
+            "verification": []
+        },
+        {
             "id": "MONOREPO-144",
             "name": "deep-alternation-kill-high-squeeze",
             "title": "整段深回撤后收复杀多高与抵抗高确认入场",

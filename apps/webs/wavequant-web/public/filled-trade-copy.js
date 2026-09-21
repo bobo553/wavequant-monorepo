@@ -39,10 +39,16 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         );
     const record = marker.decision_evidence?.find((e) => e.squeeze_confirmation === "resistance_record_break");
     if (record)
-        lines.push(`买点依据：正 N ${record.attack_date}；收盘 ${num(record.confirmation_close, 4)} > 本次 N 抵抗阶段高点 ${num(record.confirmation_record_high, 4)}，确认轧空。`);
-    const recovery = marker.decision_evidence?.find((e) => e.inverse_reentry_path === "deep_alternation_kill_high_record_squeeze");
+        lines.push(
+            `买点依据：正 N ${record.attack_date}；收盘 ${num(record.confirmation_close, 4)} > 本次 N 抵抗阶段高点 ${num(record.confirmation_record_high, 4)}，确认轧空。`,
+        );
+    const recovery = marker.decision_evidence?.find(
+        (e) => e.inverse_reentry_path === "deep_alternation_kill_high_record_squeeze",
+    );
     if (recovery)
-        lines.push(`深回撤恢复：整段 ${recovery.origin_index_date} → ${recovery.flip_high_index_date}，${recovery.alternation_low_index_date} 回撤 ${pct(recovery.recovery_whole_retracement)}；守住回调低点，收复 ${recovery.recovery_inverse_date} 杀多高 ${num(recovery.recovery_kill_high, 4)}。`);
+        lines.push(
+            `深回撤恢复：整段 ${recovery.origin_index_date} → ${recovery.flip_high_index_date}，${recovery.alternation_low_index_date} 回撤 ${pct(recovery.recovery_whole_retracement)}；守住回调低点，收复 ${recovery.recovery_inverse_date} 杀多高 ${num(recovery.recovery_kill_high, 4)}。`,
+        );
     const squeeze = marker.decision_evidence?.find((e) => e.squeeze_confirmation === "local_resistance_failure");
     if (squeeze?.n_level >= 2)
         lines.push(
