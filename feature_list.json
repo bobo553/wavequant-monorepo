@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-144",
+    "activeFeature": null,
     "features": [
         {
             "id": "MONOREPO-145",
@@ -12,13 +12,24 @@
             "dependencies": [
                 "MONOREPO-144"
             ],
-            "status": "backlog",
+            "status": "done",
             "acceptanceCriteria": [
                 "08-20高突破确认多头，无需收盘越过旧高",
                 "2025-08-11高至2026-07-21低于08-20确认为正式三级段",
                 "前缀不提前确认，等高/破低/同棒歧义拒绝；保持其他任务活动状态"
             ],
-            "verification": []
+            "verification": [
+                {
+                    "command": "Core test:unit; pytest test_alternation_breakout.py; pytest test_squeeze_alternation.py test_folded_n.py; lint/typecheck/strict mypy/build",
+                    "status": "passed",
+                    "summary": "全量首轮832项及43子测试通过，6项相邻旧交替语义失败在当前代码（保留原价格/时间资格）复核的10项全部通过；新增4项真实西点/等值/破B/因果及实线晋级回归通过，新模块严格类型、Ruff与构建通过。"
+                },
+                {
+                    "command": "API test:unit; real Xidian full and pre-break prefix; Web unit/lint/typecheck/build; Playwright alternation-high-break",
+                    "status": "passed",
+                    "summary": "API69项Python及4项Node通过、1环境跳过；Web9项Vitest及129项Node、lint/类型/构建通过。真实Chromium读取西点接口并使用生产画线器验证三级线无虚线间隔、宽3.5及点击确认说明。全历史确认日08-20，真实08-19接口无提前晋级，策略08-19/08-20前缀事件与完整历史一致。"
+                }
+            ]
         },
         {
             "id": "MONOREPO-144",
@@ -29,13 +40,29 @@
             "dependencies": [
                 "MONOREPO-142"
             ],
-            "status": "in-progress",
+            "status": "done",
             "acceptanceCriteria": [
                 "西点2026-08-07基于08-03正N买入而非08-06",
                 "旧倒N普通反弹不被豁免，未来/破B/浅回撤例外拒绝",
                 "有效与无效样例回归、前缀一致"
             ],
-            "verification": []
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core test:unit; lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "843项核心测试通过；深回撤、旧倒N限制、原有价格/时间路径、国芳08-28及乐心既有买点回归通过；Ruff、配置类型检查、构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:unit; typecheck; build; targeted eslint; pnpm --filter wavequant-api test:unit",
+                    "status": "passed",
+                    "summary": "Web 9项Vitest+129项Node、类型/构建/改动ESLint通过；API 69项通过、1项跳过。"
+                },
+                {
+                    "command": "playwright deep-squeeze-entry.spec.mjs + n-consolidation-entry.spec.mjs; real AkShare full/prefix API",
+                    "status": "passed",
+                    "summary": "西点08-07基于08-03正N当日收盘成交200原始股，原价25.122555含滑点；收盘25.9731>抵抗高25.8282，收复杀多高24.8663，整段回撤67.90%。截至08-07的6条委托与完整历史一致；国芳08-28实际成交保留；两条真实Chromium通过。"
+                }
+            ]
         },
         {
             "id": "MONOREPO-143",
