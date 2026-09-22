@@ -23,21 +23,6 @@ export function StockBrowser(): JSX.Element {
                         </h2>
                         <p id="stock-source-notice">通达信本地沪深北 A 股目录</p>
                     </div>
-                    <div className="stock-search-controls" id="stock-search-controls">
-                        <label htmlFor="stock-search" className="sr-only">
-                            搜索股票
-                        </label>
-                        <input
-                            id="stock-search"
-                            type="search"
-                            placeholder="中文名 / 代码 / SH、SZ、BJ"
-                            autoComplete="off"
-                            aria-controls="stock-list"
-                        />
-                        <button id="stock-search-clear" aria-label="清空搜索" type="button" disabled>
-                            清空
-                        </button>
-                    </div>
                 </div>
                 <div id="stock-list" className="stock-list">
                     <p className="stock-empty">正在读取股票列表…</p>

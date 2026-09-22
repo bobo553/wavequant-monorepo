@@ -12,6 +12,11 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
         return p;
     };
     const proof = item.decision_evidence?.find((e) => e.buy_point_type);
+    const reversal = item.decision_evidence?.find((e) => e.squeeze_confirmation === "volume_reversal_record_break");
+    if (reversal)
+        add(
+            `放量反转轧空：N 收盘突破 ${reversal.n_close_break_date}（结构突破 ${reversal.attack_date}）；收盘 ${num(reversal.reversal_close, 4)} > 抵抗阶段高 ${num(reversal.reversal_record_high, 4)}，成交量 ${num(reversal.reversal_volume, 0)} > 前日 ${num(reversal.reversal_previous_volume, 0)}；最低 ${num(reversal.reversal_low, 4)} 守住 N 起点 ${num(reversal.reversal_structural_low, 4)}。`,
+        );
     const gap = item.decision_evidence?.find((e) => e.squeeze_confirmation === "defended_n_consolidation_gap");
     if (gap && proof)
         add(
@@ -44,7 +49,15 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
         add(
             `正 N ${squeeze.attack_date} → 抵抗 K ${squeeze.prior_bar_date} → 该回不回：确认日最低 ${num(squeeze.confirmation_low, 4)} 守住虚拟低 ${num(squeeze.prior_virtual_low, 4)}，收盘 ${num(squeeze.confirmation_close, 4)} 高于前收 ${num(squeeze.prior_close, 4)}。`,
         );
-    if (proof) {
+    if (proof?.buy_point_type === "multilevel_breakout_squeeze") {
+        add(
+            `双重轧空：正 N ${proof.attack_date} 同时突破 ${proof.trend_level} 级波段高 ${proof.key_source_index_date}（${num(proof.key_price, 4)}）；${proof.higher_confirmation_index_date} 守住防守、放量收盘 ${num(proof.confirmation_close, 4)} > 抵抗阶段高 ${num(proof.higher_resistance_high, 4)}。`,
+        );
+    } else if (proof) {
+        if (proof.secondary_resistance_resolved)
+            add(
+                `二级压力复核：${proof.secondary_high_date} 高点 ${num(proof.secondary_high, 4)}；${proof.secondary_attack_date} 再攻击后出现抵抗，${proof.secondary_resolution_date} 收盘 ${num(proof.secondary_confirmation_close, 4)} > 抵抗阶段高点 ${num(proof.secondary_resistance_high, 4)}，抵抗解除。`,
+            );
         add(`${proof.priority === 2 ? "第二类 · 重点" : "第一类"}买点 · ${proof.trend_level} 级趋势线`);
         add(
             `翻多高点 ${num(proof.flip_high_price)}；${proof.counter_filter_applied ? `回撤 ${num(proof.counter_ratio * 100)}% ${proof.counter_operator || "<"} ${num(proof.counter_limit * 100)}%` : "不启用回撤比例过滤，仍保留结构防守"}`,

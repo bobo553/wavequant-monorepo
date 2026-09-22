@@ -2,6 +2,7 @@ import { num, pct } from "./labels.js";
 
 export const ratioPlans = [
     ["lecture_v3", "二/三级交替后 N 轧空 / ≤1/3"],
+    ["lecture_v3_c50", "二/三级交替后 N 轧空 / <1/2"],
     ["lecture_v3_d67_c33", ">2/3 / ≤1/3"],
     ["lecture_v3_d50_c50", ">1/2 / ≤1/2"],
     ["lecture_v3_d67_c50", ">2/3 / ≤1/2"],

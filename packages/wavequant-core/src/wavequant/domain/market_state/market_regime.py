@@ -159,7 +159,11 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             # still shows it (lower open, opposing body, or long upper wick).
             # Keep the original breakout close as an anchor: a rebound below
             # it is not renewed attack merely because yesterday closed lower.
-            continuation = bool((continuation or (prior_resistance and prior_resistance.detected is True))
+            # A broken rolling response cannot be revived by a later pair of
+            # candles holding a freshly lowered virtual low. Only a genuine
+            # episode-record breakout may recover that still-defended N.
+            continuation = bool((continuation or (rolling_all_held and prior_resistance
+                                                  and prior_resistance.detected is True))
                                 and rolling_held and sign * (bar.close - prev.close) > 0
                                 and sign * (bar.close - bars[attack].close) > 0
                                 and sign * (bar.close - bar.open) > 0

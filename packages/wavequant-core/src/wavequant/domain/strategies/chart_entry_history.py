@@ -34,9 +34,10 @@ def chart_entry_history(bars: Sequence[Bar], *, audit=()) -> tuple[dict[int, tup
     attacks = {e["bar_index"] for e in audit if e["event"] == "n_completed" and e.get("direction") == "up"}
     anchors_at_attack = {}
     levels = ()
+    resistance_key = None
 
     def accept(i, epoch, raw):
-        nonlocal previous_epoch, previous_raw, signature, landmarks, active, invalidated, levels
+        nonlocal previous_epoch, previous_raw, signature, landmarks, active, invalidated, levels, resistance_key
         if previous_epoch is not None and epoch != previous_epoch and len(previous_raw) > 1:
             closed.append(dict(id=f"lecture-{previous_epoch}", points=previous_raw))
         previous_epoch, previous_raw = epoch, raw
@@ -57,6 +58,18 @@ def chart_entry_history(bars: Sequence[Bar], *, audit=()) -> tuple[dict[int, tup
             second = secondary_trends(first, prefix)
             third = tertiary_trends(second, prefix)
             levels = ((second, first), (third, second))
+            # The source-confirmed A high is already tradable evidence before
+            # it is promoted to a formal vertex of its own level.
+            candidates = [dict(index=p['index'], value=p['value'], source='formal')
+                          for stroke in second['strokes'] for p in stroke['points']
+                          if p['kind'] == 'H' and p.get('state') != 'developing']
+            candidates += [dict(index=a['high']['index'], value=a['high']['value'], source='confirmed_source')
+                           for a in squeeze_anchors(second, dates, first) if a['known_index'] <= i]
+            key = max(candidates, key=lambda p: (p['index'], p['value']), default=None)
+            identity = (key['index'], key['value']) if key else None
+            if identity != resistance_key:
+                events.append(dict(bar_index=i, event='hierarchy_resistance_key', trend_level=2, key=key))
+                resistance_key = identity
             landmarks = [item for level in (first, second, third) for item in level["bear_bull_alternation_lows"]]
             invalidated = set()
             for level in (first, second, third):

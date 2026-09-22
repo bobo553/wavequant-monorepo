@@ -61,7 +61,9 @@ def test_guofang_july29_n_survives_internal_smaller_swings():
     evidence = next(
         e for e in full.audit if e["event"] == "long_transition_evidence" and e["timestamp"].startswith("2026-08-28")
     )
-    assert evidence["alternation_index"] < gap["bar_index"]
+    assert evidence["alternation_index"] == gap["bar_index"]
+    assert evidence["joint_alternation_confirmation"]
+    assert evidence["confirmation_attack"] == event["bar_index"]
     assert bars[evidence["alternation_low_index"]].timestamp.date().isoformat() == "2026-06-29"
     # July 16 is itself resistance and cannot establish a new June 29 b context.
     assert not any(

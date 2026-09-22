@@ -32,6 +32,8 @@ class WholeWaveTests(unittest.TestCase):
     def test_default_profile_has_no_extra_depth_gate_and_allows_joint_confirmation(self):
         config = whole_wave_profile({'scenarios': {'base': {'execution': {}}}})['strategy']
         self.assertIsNone(config['first_pullback_threshold'])
+        self.assertEqual(config['mature_shallow_ratio'], 1/3)
+        self.assertTrue(config['mature_shallow_inclusive'])
         ctx = context(alternation_low_price=18, flip_index=6)
         proof, reason = choose(ctx, deep_ratio=None)
         self.assertFalse(reason)
@@ -101,6 +103,14 @@ class WholeWaveTests(unittest.TestCase):
                                 second_inclusive=False)[1],'wave_second_close_pullback_too_deep')
         proof,_=choose(ctx,self.second_bars(close=20.01),shallow_ratio=.5,second_inclusive=False)
         self.assertEqual(proof['counter_operator'],'<')
+
+    def test_selected_second_class_strict_half_boundary(self):
+        config = whole_wave_profile({'scenarios': {'base': {'execution': {}}}}, 'lecture_v3_c50')['strategy']
+        for close, accepted in ((20.01, True), (20, False), (19.99, False)):
+            proof, _ = choose(context(maturity_index=7), self.second_bars(close=close),
+                shallow_ratio=config['mature_shallow_ratio'],
+                second_inclusive=config['mature_shallow_inclusive'])
+            self.assertEqual(proof is not None, accepted)
 
     def test_new_peak_after_n_low_and_origin_break_reject(self):
         data=self.second_bars();data[14]=replace(data[14],high=32)

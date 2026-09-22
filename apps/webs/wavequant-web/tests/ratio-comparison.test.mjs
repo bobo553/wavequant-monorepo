@@ -3,8 +3,8 @@ import test from "node:test";
 
 import { comparisonValues, ratioContextKey, ratioPlans } from "../public/ratio-comparison.js";
 
-test("five explicit independent ratios and empty sample is not a zero win rate", () => {
-    assert.equal(new Set(ratioPlans.map((p) => p[0])).size, 5);
+test("six explicit independent ratios and empty sample is not a zero win rate", () => {
+    assert.equal(new Set(ratioPlans.map((p) => p[0])).size, 6);
     assert.ok(ratioPlans.some(([id, label]) => id === "lecture_v3_close_d50_c50" && label.includes("收盘 <1/2")));
     const view = {
         backtest: { counts: { long_signals: 4 } },
@@ -35,4 +35,9 @@ test("comparison invalidates source date cost symbol start and volume filter but
     assert.notEqual(ratioContextKey(p), ratioContextKey({ ...p, max_position_weight: 0.25 }));
     assert.equal(ratioContextKey(p), ratioContextKey({ ...p, net_reward_risk_filter: false }));
     assert.equal(ratioContextKey(p), ratioContextKey({ ...p, variant: "lecture_v3_d50_c50" }));
+});
+
+test("default V3 uses inclusive third and half is independently selectable", () => {
+    assert.match(ratioPlans.find(([id]) => id === "lecture_v3")[1], /≤1\/3/);
+    assert.match(ratioPlans.find(([id]) => id === "lecture_v3_c50")[1], /<1\/2/);
 });

@@ -1,8 +1,31 @@
-"""An inverse N requires a new attack above its rebound (B) high."""
+"""Causal inverse-N reentry gates and independently confirmed recovery paths."""
 
 from fractions import Fraction
 
 from ..market_structure.alternation_duration import short_shallow_pullback
+
+
+def fresh_strong_squeeze_recovery(bars, *, now, attack, origin, inverse, strong_squeeze):
+    """A wholly new uninterrupted N can retire the preceding inverse episode.
+
+    The caller supplies a confirmed STRONG_BULL frame, with its frozen and
+    rolling defenses intact. An ordinary local rebound cannot use this path.
+    """
+    known = [e for e in inverse if e["known_at"] <= now]
+    if not known or not strong_squeeze:
+        return None
+    last = max(known, key=lambda e: (e["known_at"], e["attack"], e["b_high"]))
+    if not 0 <= last["known_at"] < origin < attack < now < len(bars):
+        return None
+    kill_high = last.get("kill_high")
+    if kill_high is None or bars[now].close <= kill_high:
+        return None
+    return dict(
+        inverse_reentry_path="fresh_n_uninterrupted_strong_squeeze",
+        recovery_inverse_date=bars[last["attack"]].timestamp.date().isoformat(),
+        recovery_kill_high=kill_high,
+        recovery_previous_b_high=last["b_high"],
+    )
 
 
 def deep_pullback_recovery(bars, *, now, attack, inverse, alternation, record_break):

@@ -6,7 +6,7 @@ test("net reward risk is unchecked by default and toggles the actual execution g
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
-    const checkbox = page.getByRole("checkbox", { name: "启用次开盘含费净盈亏比过滤" });
+    const checkbox = page.getByRole("checkbox", { name: "启用成交价含费净盈亏比过滤" });
     await expect(checkbox).not.toBeChecked();
     await page.evaluate(() => {
         globalThis.document.getElementById("variant-select").value = "lecture_v3_d50_c50";
@@ -33,7 +33,7 @@ test("net reward risk is unchecked by default and toggles the actual execution g
     expect(off.backtest.execution.net_reward_risk_filter).toBe(false);
     expect(off.orders.filter((order) => order.reason === "insufficient_net_reward_risk")).toEqual([]);
     await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
-    await expect(page.locator("#backtest-details")).toContainText("次开盘含费净盈亏比过滤关闭");
+    await expect(page.locator("#backtest-details")).toContainText("成交价含费净盈亏比过滤关闭");
 
     pending = responseFor(true);
     await checkbox.focus();
@@ -46,7 +46,7 @@ test("net reward risk is unchecked by default and toggles the actual execution g
     expect(on.run_id).not.toBe(off.run_id);
     expect(on.orders.some((order) => order.reason === "insufficient_net_reward_risk")).toBe(true);
     await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
-    await expect(page.locator("#backtest-details")).toContainText("次开盘含费净盈亏比过滤开启");
+    await expect(page.locator("#backtest-details")).toContainText("成交价含费净盈亏比过滤开启");
 
     pending = responseFor(false);
     await checkbox.uncheck();
@@ -60,8 +60,8 @@ test("net reward risk is unchecked by default and toggles the actual execution g
         await route.fulfill({ json: off });
     });
     await page.locator("#compare-ratios").click();
-    await expect.poll(() => comparisonFlags.length).toBe(5);
-    expect(comparisonFlags).toEqual(Array(5).fill("false"));
+    await expect.poll(() => comparisonFlags.length).toBe(6);
+    expect(comparisonFlags).toEqual(Array(6).fill("false"));
     await page.setViewportSize({ width: 390, height: 844 });
     await checkbox.scrollIntoViewIfNeeded();
     await expect(checkbox).toBeVisible();

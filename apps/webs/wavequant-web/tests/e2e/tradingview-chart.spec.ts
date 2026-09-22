@@ -30,7 +30,7 @@ test("TradingView drawing view is lazy, keeps the local chart, and synchronizes 
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#price-chart")).toBeVisible();
     expect(widgetLoads).toBe(0);
-    await page.locator("#stock-search").fill("星网锐捷");
+    await page.locator("#header-stock-search").fill("星网锐捷");
     await page.locator('[data-symbol="sz.002396"]').click();
     await expect(page.locator("#symbol-select")).toHaveValue("sz.002396");
     await expect(page.locator("#result-scope")).toHaveValue("akshare");
@@ -55,7 +55,7 @@ test("TradingView drawing view is lazy, keeps the local chart, and synchronizes 
     expect(widgetLoads).toBe(1);
 
     if (await page.locator("#stock-picker-panel").isHidden()) await page.locator("#stock-picker-toggle").click();
-    await page.locator("#stock-search").fill("贵州茅台");
+    await page.locator("#header-stock-search").fill("贵州茅台");
     await page.locator('[data-symbol="sh.600519"]').click();
     await expect(page.locator("#symbol-select")).toHaveValue("sh.600519");
     await expect(page.locator("#tradingview-sync")).toBeVisible();

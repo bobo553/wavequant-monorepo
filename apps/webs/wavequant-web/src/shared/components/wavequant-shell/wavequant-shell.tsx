@@ -341,7 +341,7 @@ export function WaveQuantShell({ children }: IWaveQuantShellProps): JSX.Element 
     const variant: TWaveQuantShellVariant = pathname.startsWith("/market") ? "market" : "research";
 
     return (
-        <MarketWorkspaceProvider>
+        <MarketWorkspaceProvider researchMode={variant === "research"}>
             <DashboardFrame variant={variant}>{children}</DashboardFrame>
             <MarketWorkspaceOverlay />
         </MarketWorkspaceProvider>

@@ -47,6 +47,7 @@ const REASONS = {
     system_squeeze_pullback_resume: "轧空回压后恢复上涨",
     system_n_continuation: "N 字延续",
     system_transition_squeeze: "第一类：交替后正 N 轧空",
+    system_multilevel_breakout_squeeze: "正 N 与高一级波段突破叠加轧空",
     system_mature_shallow_squeeze: "第二类 · 重点：完整多头浅回撤后正 N 轧空",
     hierarchy_transition_not_ready: "一级及以上翻多交替未齐备",
     mature_pullback_sequence_not_ready: "完整多头之后的新回撤时序未齐备",

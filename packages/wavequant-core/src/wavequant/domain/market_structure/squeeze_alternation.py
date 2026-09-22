@@ -70,6 +70,11 @@ def squeeze_alternations(bars, audit, anchors_at_attack):
     positive = {e["bar_index"]: e for e in audit if e["event"] == "n_completed" and e.get("direction") == "up"}
     observations, occupied, used = [], {}, set()
     for trigger in sorted(audit, key=lambda e: e["bar_index"]):
+        gap_confirmation = trigger["event"] == "n_consolidation_gap_confirmed"
+        if gap_confirmation:
+            # The independently verified defended-N gap can establish today's
+            # qualified B. It must not depend on an earlier local bounce label.
+            trigger = dict(trigger, event="regime_confirmation", regime="轧空")
         if trigger["event"] not in ("regime_confirmation", "squeeze_resumption_observed"):
             continue
         attack, now = trigger.get("attack"), trigger["bar_index"]
@@ -86,6 +91,8 @@ def squeeze_alternations(bars, audit, anchors_at_attack):
             events = tertiary_abc_observations(bars, [anchor], [positive[attack], trigger], allow_deep_pullback=True)
             if not events or (*identity, events[0]["b_low_index"]) in used:
                 continue
+            if gap_confirmation:
+                events = [dict(e, confirmation_source="defended_n_consolidation_gap") for e in events]
             if events[0].get('deep_price_path') and bars[now].close <= max(b.high for b in bars[attack:now]):
                 continue
             from .alternation_duration import short_shallow_pullback

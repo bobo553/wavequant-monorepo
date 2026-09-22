@@ -11,6 +11,48 @@ import {
 
 const sell = { kind: "fill", side: "SELL", quantity: 3496.84, remaining_quantity: 3576.32 };
 
+test("buy copy exposes mature anchors, resolved pressure and disabled risk gate", () => {
+    const text = formatFilledTradeCopy(
+        { symbol: "sz.300163", variant: "lecture_v3", backtest: { start: "2018-01-02" }, asof: "2026-06-09", bars: [] },
+        {
+            side: "BUY",
+            net_reward_risk: 1.2174,
+            required_reward_risk: 1.5,
+            net_reward_risk_filter: false,
+            decision_evidence: [
+                {
+                    buy_point_type: "mature_shallow_squeeze",
+                    origin_index_date: "2025-04-09",
+                    ratio_low_price: 2.45,
+                    maturity_index_date: "2025-10-28",
+                    peak_index_date: "2026-05-21",
+                    ratio_high_price: 6.05,
+                    minimum_close_index_date: "2026-05-21",
+                    counter_price: 5.6,
+                    counter_ratio: 0.125,
+                    counter_operator: "<=",
+                    counter_limit: 1 / 3,
+                    secondary_resistance_resolved: true,
+                    secondary_high_date: "2026-02-02",
+                    secondary_high: 5.99,
+                    secondary_attack_date: "2026-05-25",
+                    secondary_resolution_date: "2026-06-09",
+                    secondary_confirmation_close: 6.94,
+                    secondary_resistance_high: 6.66,
+                },
+            ],
+        },
+        "V3",
+        "2.07%",
+        null,
+    );
+    assert.match(text, /起涨 2025-04-09 2.4500/);
+    assert.match(text, /12.50% <= 33.33%/);
+    assert.match(text, /2026-02-02 高点 5.9900/);
+    assert.match(text, /抵抗阶段高点 6.6600，抵抗解除/);
+    assert.match(text, /费后盈亏比：1.22；门槛 1.50；过滤未启用/);
+});
+
 test("record squeeze copy distinguishes resistance high from prior candle and selling high", () => {
     const text = formatFilledTradeCopy(
         { symbol: "sz.301130", variant: "lecture_v3", backtest: { start: "2018-01-02" }, asof: "2026-09-21", bars: [] },
@@ -138,4 +180,32 @@ test("missing holdings, invalid quantities, and unfilled orders never imply full
     ])
         assert.equal(closedPositionFraction({ ...sell, ...patch }), null);
     assert.match(closedPositionLabel({ ...sell, remaining_quantity: undefined }), /缺少成交前持仓数据/);
+});
+
+test("volume reversal copy distinguishes close breakout and structural origin defense", () => {
+    const text = formatFilledTradeCopy(
+        { symbol: "sz.300163", variant: "lecture_v3", backtest: { start: "2018-01-02" }, asof: "2026-05-18", bars: [] },
+        {
+            side: "BUY",
+            decision_evidence: [
+                {
+                    squeeze_confirmation: "volume_reversal_record_break",
+                    n_close_break_date: "2026-05-12",
+                    attack_date: "2026-05-11",
+                    reversal_close: 5.1,
+                    reversal_record_high: 4.85,
+                    reversal_volume: 79253633,
+                    reversal_previous_volume: 18961100,
+                    reversal_low: 4.38,
+                    reversal_structural_low: 4.15,
+                },
+            ],
+        },
+        "V3",
+        "1%",
+        null,
+    );
+    assert.match(text, /N 收盘突破 2026-05-12/);
+    assert.match(text, /5.1000 > 抵抗阶段高 4.8500/);
+    assert.match(text, /守住 N 起点 4.1500/);
 });

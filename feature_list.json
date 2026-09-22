@@ -4,6 +4,248 @@
     "activeFeature": null,
     "features": [
         {
+            "id": "MONOREPO-152",
+            "name": "selectable-second-pullback",
+            "title": "第二类浅回撤门槛独立选择",
+            "description": "默认≤1/3，可选择<1/2，并贯穿回测与缓存身份。 补充旧净盈亏比浏览器用例超时，限制见Web progress.md；选择器独立真实回测已通过。",
+            "scope": "V3配置与Web选择、对照回测和边界验证",
+            "dependencies": [
+                "MONOREPO-150"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "默认≤1/3，可切换<1/2",
+                "请求、缓存和展示使用相同方案",
+                "准确验证等于1/3允许、等于1/2拒绝"
+            ],
+            "verification": [
+                {
+                    "command": "Core test:unit; lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "881项全量测试通过；默认含等于1/3，半幅选项严格排除等于1/2；Ruff、类型和构建通过。"
+                },
+                {
+                    "command": "Web test:unit; lint; typecheck; build; Playwright shallow-half-entry",
+                    "status": "passed",
+                    "summary": "10项Vitest及132项Node通过，lint/类型/构建通过。真实浏览器默认third无先锋05-18买单，切half实际买入，切回third恢复原结果；独立variant与缓存身份生效。"
+                },
+                {
+                    "command": "API test:unit",
+                    "status": "passed",
+                    "summary": "69项Python通过、1项环境跳过，4项Node通过；六种策略配置保持独立。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-151",
+            "name": "research-ctrl-k-stock-search",
+            "title": "研究页 Ctrl+K 搜索真实股票列表",
+            "description": "将研究页头部搜索外观改为真实输入框，修复 Ctrl+K 无法直接输入搜索的问题，并移除右侧重复搜索入口。",
+            "scope": "Web 共享外壳搜索路由、旧研究工作台桥接及浏览器回归。",
+            "dependencies": [
+                "MONOREPO-093"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "研究页头部使用真实搜索输入框，Ctrl+K 直接聚焦并全选，不打开虚构 SIM 搜索对话框",
+                "当前位于交易节点、买点或结构页签时自动切回股票列表，并支持代码或中文名筛选",
+                "回车选择匹配股票，市场看盘页原 Ctrl+K 搜索行为保持可用",
+                "单元测试、类型、lint、生产构建及真实 Chromium 回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web test:unit; lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "5 个 Vitest 文件 10 项与 132 项 Node 测试通过；ESLint、TypeScript 和 Next.js 生产构建通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec playwright test tests/e2e/market-dashboard.spec.ts --grep Ctrl+K/shared-shell --workers=1",
+                    "status": "passed",
+                    "summary": "真实 Chromium 验证从买点页签按 Ctrl+K 聚焦头部输入框、以 600519 筛出贵州茅台并回车选择；桌面与 390px 窄屏无横向溢出，共享外壳回归通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-150",
+            "name": "volume-reversal-squeeze",
+            "title": "第二类严格半幅回撤与放量反转轧空",
+            "description": "默认第二类改为浅回撤<1/2，保留全局资格，修复先锋五月十八日放量反转漏买。",
+            "scope": "全局V3确认、因果证据与回归",
+            "dependencies": [
+                "MONOREPO-148"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "默认lecture_v3第二类严格<1/2，等于边界拒绝，页面和证据同步",
+                "先锋05-18同日成交且净盈亏比过滤保持关闭",
+                "普通低开反弹/结构破位/后来倒N不放行，完整与截断历史一致"
+            ],
+            "verification": [
+                {
+                    "command": "Core test:unit; lint; typecheck; strict mypy new module; build",
+                    "status": "passed",
+                    "summary": "879项全量测试通过；半幅严格边界、强反转拒绝边界及既有反例回归通过；Ruff、类型与构建通过。"
+                },
+                {
+                    "command": "Web test:unit; lint; typecheck; build; Playwright shallow-half-entry",
+                    "status": "passed",
+                    "summary": "10项Vitest及132项Node通过，lint/类型/构建通过。真实Chromium验证默认<1/2、05-18实际买单和05-12收盘突破/抵抗高4.85/结构防守4.15证据。"
+                },
+                {
+                    "command": "API test:unit; Xianfeng actual full/prefix backtests",
+                    "status": "passed",
+                    "summary": "API69通过1跳过；05-18参考5.10/模拟5.10255买500股，过滤false；截至05-18的11委托与截至09-21完整历史一致。06-04退出后06-09另有再入场，未按日期删除。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-149",
+            "name": "continuous-n-response",
+            "title": "旧正N该回不回确认链失守后禁止局部反弹复活",
+            "description": "修复星网2026-05-28误把旧N下跌后的局部反弹确认轧空。",
+            "scope": "共享盘态局部轧空生命周期与回归",
+            "dependencies": [
+                "MONOREPO-148"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "5月28日无误买",
+                "失守后局部反弹不复活，独立记录突破仍可确认",
+                "此前有效案例及历史前缀一致"
+            ],
+            "verification": [
+                {
+                    "command": "Core full pytest, targeted response/gap tests and final failure reruns",
+                    "status": "passed",
+                    "summary": "48项专项与5子测试通过。全量865项及43子测试通过，初次4项失败：国芳跳空资格依赖旧局部标签、2项运行期间源码快照变化、另任务更新中的测试。修复独立跳空资格后24项联合回归通过，当前代码重跑其余38项通过，未放宽负例或回写日期。"
+                },
+                {
+                    "command": "Core lint/typecheck/build; API test:unit",
+                    "status": "passed",
+                    "summary": "Ruff、严格配置类型、最终sdist/wheel通过；API69项Python和4项Node通过，1项环境测试跳过。"
+                },
+                {
+                    "command": "Actual Xingwang full/prefix API; Playwright multilevel-squeeze-entry and n-consolidation-entry",
+                    "status": "passed",
+                    "summary": "最终星网05-28无LONG/BUY、2019-02-13买入保留；全量与05-28截断232信号52委托一致。两条真实Chromium通过，国芳08-28跳空买入、节点和复制证据保留。"
+                },
+                {
+                    "command": "pnpm harness:check; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "状态、差异、索引同步通过；保留其他任务改动，未提交。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-148",
+            "name": "multilevel-breakout-squeeze",
+            "title": "正N与高一级波段突破叠加轧空",
+            "description": "修复星网2019年2月13日多级叠加轧空缺失。",
+            "scope": "V3共享买点、双重结构证据及回归",
+            "dependencies": [
+                "MONOREPO-147"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "实际2月13日确认并成交",
+                "未确认、破防守、旧抵抗不得放宽",
+                "前缀一致且保留此前反例"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest full and targeted; lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "865项测试和43子测试全部通过；11项新增路径、30项既有反例专项通过。Ruff、类型及sdist/wheel通过。"
+                },
+                {
+                    "command": "API test:unit; actual Xingwang full/prefix API",
+                    "status": "passed",
+                    "summary": "API69项Python与4项Node通过，1环境跳过。首笔2019-02-13同日收盘买300原始股，原价含滑点19.599795；完整历史与该日前缀29信号1委托完全一致。04-12是03-15全清后的另一笔交易，未按日期删除。"
+                },
+                {
+                    "command": "Web test:unit; lint; typecheck; build; Playwright multilevel-squeeze-entry.spec.mjs",
+                    "status": "passed",
+                    "summary": "9项Vitest、130项Node、lint/类型和生产构建通过；真实Chromium验证双重轧空、2018-12-03二级高点、02-11正N、02-13成交、详情和复制文本。"
+                },
+                {
+                    "command": "pnpm harness:check; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "状态、差异及索引同步通过，保留其他任务改动，未提交。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-147",
+            "name": "fresh-strong-squeeze-reentry",
+            "title": "新正N强轧空及时解除旧倒N门槛",
+            "description": "修复先锋8月4日强轧空被旧反弹高门槛拖延至8月7日。",
+            "scope": "全局V3再入场判定、因果证据及回归",
+            "dependencies": [
+                "MONOREPO-145"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "全新正N强轧空在首次确认日入场",
+                "旧N反弹及后续倒N继续拦截",
+                "实际先锋数据及历史前缀一致"
+            ],
+            "verification": [
+                {
+                    "command": "Core targeted pytest; full pytest; final secondary/fresh/source resistance regression",
+                    "status": "passed",
+                    "summary": "38项专项通过；全量851项及43子测试通过，1项旧共享抵抗实现的锚点断言失败；最终实现保留更高压力位后重跑12项全部通过，原断言未放宽。覆盖新N起点、后来倒N、等值、旧N、国芳和西点反例及逐日前缀。"
+                },
+                {
+                    "command": "Core lint; typecheck; build; Ruff format --check; API test:unit",
+                    "status": "passed",
+                    "summary": "Ruff、类型、sdist/wheel和改动格式通过；API 69项Python与4项Node通过，1项环境测试跳过。"
+                },
+                {
+                    "command": "Actual Xianfeng full/prefix API; Playwright fresh-strong-squeeze-entry.spec.mjs",
+                    "status": "passed",
+                    "summary": "先锋8月4日参考6.17、含滑点6.173085同日收盘模拟买400股，8月7日不再买。完整与8月4日前缀240信号14委托一致；全部买入日期仅该笔提前。真实Chromium通过，页面关联7月31日正N和强轧空。"
+                },
+                {
+                    "command": "pnpm harness:check; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "状态、差异及索引同步通过；保留其他任务的活动状态。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-146",
+            "name": "mature-squeeze-resistance-audit",
+            "title": "成熟浅回撤买点的多级抵抗审计",
+            "description": "复现先锋六月九日入场并校验成熟资格、抵抗生命周期及全局规则。",
+            "scope": "V3策略因果证据、全局规则及回归",
+            "dependencies": [
+                "MONOREPO-145"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "解释实际买入证据并逐日核对一级二级抵抗",
+                "按已知结构修复根因，禁止股票日期特例",
+                "保留有效反例及前缀一致性"
+            ],
+            "verification": [
+                {
+                    "command": "Core test:unit; lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "854项完整核心测试通过，新增来源压力可知日/新高不清除待解抵抗/较低来源高不降低正式压力/先锋逐日与前缀/关闭风险门槛展示回归；保留乐心07-02拦截及08-04买点。"
+                },
+                {
+                    "command": "Web test:unit; typecheck; build; changed ESLint; API test:unit; Chromium source-resistance-audit",
+                    "status": "passed",
+                    "summary": "Web9项Vitest+130项Node、类型/构建/改动ESLint通过；API69项通过1跳过；真实浏览器显示02-02高5.99、06-09收6.94>抵抗高6.66及未启用费后过滤。"
+                },
+                {
+                    "command": "AkShare actual full/prefix backtests and net_reward_risk_filter false/true comparison",
+                    "status": "passed",
+                    "summary": "截至06-09的11条委托与完整历史一致；关闭费后门槛买300股，开启1.5门槛按净盈亏比1.217386拒单。修复遗漏的压力来源与证据，没有为删除指定日期增加冷却期或改动开关。审计见docs/xianfeng_20260609_audit.md。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-145",
             "name": "confirmed-alternation-high-break-formal-trend",
             "title": "交替后最高价突破确认多头及正式趋势段",

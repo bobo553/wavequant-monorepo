@@ -32,7 +32,7 @@ describe("WaveQuantShell", () => {
         expect(screen.getByText("Market & Research")).toBeInTheDocument();
         expect(screen.getByText("Trading & Control")).toBeInTheDocument();
         expect(screen.getAllByText("本地研究")).toHaveLength(2);
-        expect(screen.getAllByRole("button", { name: /搜索股票/ })).toHaveLength(2);
+        expect(screen.getByRole("searchbox", { name: "搜索股票" })).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "查看通知" })).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "界面设置" })).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "刷新当前视图" })).toBeInTheDocument();
@@ -41,5 +41,27 @@ describe("WaveQuantShell", () => {
         expect(screen.getAllByRole("button", { name: "关闭侧栏" })).toHaveLength(2);
         fireEvent.keyDown(window, { key: "Escape" });
         expect(screen.queryAllByRole("button", { name: "关闭侧栏" })).toHaveLength(0);
+    });
+
+    it("uses the header input for Ctrl+K, filtering and selecting research stocks", () => {
+        const updateSearch = vi.fn();
+        const submitSearch = vi.fn();
+        window.addEventListener("wavequant:update-stock-search", updateSearch);
+        window.addEventListener("wavequant:submit-stock-search", submitSearch);
+        renderResearchShell();
+
+        fireEvent.keyDown(window, { ctrlKey: true, key: "k" });
+        const search = screen.getByRole("searchbox", { name: "搜索股票" });
+        expect(search).toHaveFocus();
+        expect(screen.queryByRole("dialog", { name: "搜索股票或题材" })).not.toBeInTheDocument();
+
+        fireEvent.change(search, { target: { value: "600519" } });
+        expect(updateSearch).toHaveBeenCalledTimes(1);
+        expect((updateSearch.mock.calls[0]?.[0] as CustomEvent<{ query: string }>).detail.query).toBe("600519");
+        fireEvent.keyDown(search, { key: "Enter" });
+        expect(submitSearch).toHaveBeenCalledTimes(1);
+
+        window.removeEventListener("wavequant:update-stock-search", updateSearch);
+        window.removeEventListener("wavequant:submit-stock-search", submitSearch);
     });
 });

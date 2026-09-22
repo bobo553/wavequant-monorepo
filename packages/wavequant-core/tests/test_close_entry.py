@@ -1,10 +1,12 @@
 from dataclasses import replace
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 
 from wavequant.application.analytics.backtest import run_portfolio
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.infrastructure.market_data.tdx import adjust_rows
+from wavequant.application.analytics.trade_evidence import enrich_ledger
 
 
 def fixture():
@@ -32,6 +34,19 @@ def test_close_entry_fills_last_visible_signal_without_waiting_for_next_day():
     assert prefix.metrics["unexecuted_end_signals"] == 0
     legacy = run_portfolio({signal.symbol: bars}, [signal], replace(config, entry_at_close=False))
     assert legacy.orders[0]["timestamp"] == bars[2].timestamp.isoformat()
+
+
+def test_disabled_reward_risk_filter_is_not_reported_as_a_failed_executed_gate():
+    bars, signal, config = fixture()
+    signal = replace(signal, target_price=11, minimum_reward_risk=1.5)
+    result = run_portfolio({signal.symbol: bars}, [signal], config)
+    enrich_ledger(bars, result, SimpleNamespace(signals=[signal], audit=[]), {"volume_filter": False})
+    order = result.orders[0]
+    assert order["status"] == "filled"
+    assert order["net_reward_risk"] < 1.5
+    assert order["entry_conditions"][-1]["passed"] is None
+    strict = run_portfolio({signal.symbol: bars}, [signal], replace(config, net_reward_risk_filter=True))
+    assert strict.orders[0]["status"] != "filled"
 
 
 def test_close_permission_is_independent_of_open_and_cancel_does_not_retry():

@@ -55,24 +55,25 @@ fs.mkdirSync(output, { recursive: true });
             await response;
             await loaded();
         });
-        await test("real five-plan comparison streams rows, including costs and sample count", async () => {
-            await page.getByRole("button", { name: "对比五组幅度", exact: true }).click();
+        await test("real six-plan comparison streams rows, including costs and sample count", async () => {
+            await page.getByRole("button", { name: "对比幅度方案", exact: true }).click();
             await page.waitForFunction(
                 () => document.querySelectorAll("#ratio-results tr").length >= 1,
                 {},
                 { timeout: 120000 },
             );
             await page.waitForFunction(
-                () => document.querySelector("#ratio-status").textContent.includes("5 组对比结束"),
+                () => document.querySelector("#ratio-status").textContent.includes("6 组对比结束"),
                 {},
                 { timeout: 240000 },
             );
-            assert.equal(await page.locator("#ratio-results tr").count(), 5);
+            assert.equal(await page.locator("#ratio-results tr").count(), 6);
             assert.ok((await page.locator("#ratio-status").textContent()).includes("失败 0 组"));
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 6; i++) {
                 const cells = await page.locator("#ratio-results tr").nth(i).locator("td").allTextContents();
                 const variant = [
                     "lecture_v3",
+                    "lecture_v3_c50",
                     "lecture_v3_d67_c33",
                     "lecture_v3_d50_c50",
                     "lecture_v3_d67_c50",
@@ -103,7 +104,7 @@ fs.mkdirSync(output, { recursive: true });
                 await page.getByRole("combobox", { name: "结果口径", exact: true }).inputValue(),
                 "tdx-backtest",
             );
-            assert.equal(await page.locator("#ratio-results tr").count(), 5);
+            assert.equal(await page.locator("#ratio-results tr").count(), 6);
             assert.ok(view.orders.some((o) => o.side === "BUY" && o.status === "filled"));
             assert.ok(
                 view.orders
@@ -136,9 +137,9 @@ fs.mkdirSync(output, { recursive: true });
                     body: JSON.stringify({ error: "controlled test failure" }),
                 }),
             );
-            await page.getByRole("button", { name: "对比五组幅度", exact: true }).click();
+            await page.getByRole("button", { name: "对比幅度方案", exact: true }).click();
             await page.waitForFunction(
-                () => document.querySelector("#ratio-status").textContent.includes("5 组对比结束"),
+                () => document.querySelector("#ratio-status").textContent.includes("6 组对比结束"),
                 {},
                 { timeout: 30000 },
             );
@@ -150,10 +151,10 @@ fs.mkdirSync(output, { recursive: true });
             await page.route("**/api/tdx-backtest?**", (route) => {
                 pending = route;
             });
-            await page.getByRole("button", { name: "对比五组幅度", exact: true }).click();
+            await page.getByRole("button", { name: "对比幅度方案", exact: true }).click();
             await page.getByRole("button", { name: "取消对比", exact: true }).click();
             assert.ok((await page.locator("#ratio-status").textContent()).includes("已取消"));
-            assert.ok(await page.getByRole("button", { name: "对比五组幅度", exact: true }).isEnabled());
+            assert.ok(await page.getByRole("button", { name: "对比幅度方案", exact: true }).isEnabled());
             if (pending) await pending.abort().catch(() => {});
         });
         assert.deepEqual(errors, []);

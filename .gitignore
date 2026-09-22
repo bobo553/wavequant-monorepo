@@ -39,6 +39,7 @@ apps/webs/wavequant-web/public/vendor/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.codex-runtime/
 
 # Misc
 .DS_Store

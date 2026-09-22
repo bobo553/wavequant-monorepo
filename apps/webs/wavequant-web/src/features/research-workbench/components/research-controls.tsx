@@ -23,7 +23,7 @@ export function ResearchControls(): JSX.Element {
                 <label>
                     策略 / 幅度方案
                     <select id="variant-select" aria-label="策略版本" defaultValue="lecture_v3">
-                        <option value="lecture_v3">V3 · 二/三级交替后 N 轧空 / 第二类 ≤1/3</option>
+                        <option value="lecture_v3">V3 · 二/三级交替后 N 轧空</option>
                         <option value="lecture_v3_d67_c33">V3 · 第一类 &gt;2/3 / 第二类 ≤1/3</option>
                         <option value="lecture_v3_d50_c50">V3 · 第一类 &gt;1/2 / 第二类 ≤1/2</option>
                         <option value="lecture_v3_d67_c50">V3 · 第一类 &gt;2/3 / 第二类 ≤1/2</option>
@@ -34,6 +34,13 @@ export function ResearchControls(): JSX.Element {
                         <option value="lecture_v1">讲义因果版 V1 · 研究对照</option>
                         <option value="strict_full">旧严格折线版 · 研究对照</option>
                         <option value="proxy_full">日线代理版 · 研究对照</option>
+                    </select>
+                </label>
+                <label id="second-pullback-field">
+                    第二类浅回撤
+                    <select id="second-pullback-select" aria-label="第二类浅回撤" defaultValue="third">
+                        <option value="third">浅回撤 ≤1/3（默认）</option>
+                        <option value="half">浅回撤 &lt;1/2</option>
                     </select>
                 </label>
                 <label>
@@ -54,7 +61,7 @@ export function ResearchControls(): JSX.Element {
                 <label>
                     回测起点 <input type="date" id="backtest-start" defaultValue="2018-01-01" aria-label="回测起点" />
                 </label>
-                <label title="回测账户的起始资金；仅影响当前股票回测与五组幅度对比，不修改封存组合。">
+                <label title="回测账户的起始资金；仅影响当前股票回测与幅度方案对比，不修改封存组合。">
                     初始资金（万）
                     <input
                         type="number"
@@ -90,7 +97,7 @@ export function ResearchControls(): JSX.Element {
                 </label>
                 <label
                     className="backtest-volume-filter"
-                    title="默认关闭。勾选后，执行价格计入滑点和费用的净盈亏比低于策略门槛时不买入；适用于当前股票回测与五组幅度对比。"
+                    title="默认关闭。勾选后，执行价格计入滑点和费用的净盈亏比低于策略门槛时不买入；适用于当前股票回测与幅度方案对比。"
                 >
                     <input type="checkbox" id="backtest-net-reward-risk-filter" />
                     启用成交价含费净盈亏比过滤
@@ -107,7 +114,7 @@ export function ResearchControls(): JSX.Element {
             <div id="error" className="message error" role="alert" hidden />
             <section className="panel note-card" aria-label="幅度方案对比">
                 <button id="compare-ratios" disabled>
-                    对比五组幅度
+                    对比幅度方案
                 </button>
                 <button id="cancel-ratios" disabled>
                     取消对比

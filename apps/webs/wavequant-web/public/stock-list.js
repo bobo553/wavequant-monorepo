@@ -28,34 +28,12 @@ export function stockCoverageText(stock) {
 }
 
 export class StockList {
-    constructor({ list, search, count, clear, onSelect }) {
-        Object.assign(this, { list, search, count, clear, onSelect });
+    constructor({ list, count, onSelect }) {
+        Object.assign(this, { list, count, onSelect });
         this.stocks = [];
         this.selected = "";
+        this.query = "";
         this.limit = 100;
-        search.addEventListener("input", () => {
-            this.limit = 100;
-            this.render();
-        });
-        clear.addEventListener("click", () => {
-            search.value = "";
-            this.render();
-            search.focus();
-        });
-        search.addEventListener("keydown", (e) => {
-            if (e.isComposing) return;
-            if (e.key === "Escape") {
-                search.value = "";
-                this.render();
-            }
-            if (e.key === "Enter" && this.matches?.length) {
-                const first = this.matches.find((s) => s.has_data !== false);
-                if (first) {
-                    e.preventDefault();
-                    this.onSelect(first.symbol);
-                }
-            }
-        });
     }
     setStocks(stocks, selected) {
         this.stocks = stocks;
@@ -67,12 +45,22 @@ export class StockList {
         this.selected = symbol;
         this.render();
     }
+    setQuery(query) {
+        this.query = query;
+        this.limit = 100;
+        this.render();
+    }
+    selectFirst() {
+        const first = this.matches?.find((stock) => stock.has_data !== false);
+        if (!first) return false;
+        this.onSelect(first.symbol);
+        return true;
+    }
     render() {
         const focused = this.list.contains(document.activeElement) ? document.activeElement.dataset.symbol : null;
-        this.matches = filterStocks(this.stocks, this.search.value);
+        this.matches = filterStocks(this.stocks, this.query);
         this.list.replaceChildren();
         this.count.textContent = `${this.matches.length} / ${this.stocks.length} 只`;
-        this.clear.disabled = !this.search.value;
         if (!this.matches.length) {
             const p = document.createElement("p");
             p.className = "stock-empty";

@@ -22,8 +22,7 @@ import { TradingViewWidget } from "./tradingview-widget.js";
 import { Watchlists } from "./watchlists.js";
 
 const $ = (id) => document.getElementById(id);
-const currentBacktestSizing = () =>
-    parseBacktestSizing($("backtest-capital").value, $("backtest-buy-ratio").value);
+const currentBacktestSizing = () => parseBacktestSizing($("backtest-capital").value, $("backtest-buy-ratio").value);
 const chartPreferenceKey = "wavequant.research.chart.v1";
 const timeframes = {
     "1d": { label: "日线", tag: "日 K" },
@@ -217,7 +216,10 @@ function option(select, value, text) {
 function select() {
     return {
         run: $("run-select").value,
-        variant: $("variant-select").value,
+        variant:
+            $("variant-select").value === "lecture_v3" && $("second-pullback-select").value === "half"
+                ? "lecture_v3_c50"
+                : $("variant-select").value,
         scenario: $("scenario-select").value,
         symbol: $("symbol-select").value,
         asof: state.noSessionBefore || sessions()[Number($("replay-slider").value)],
@@ -238,7 +240,11 @@ function sessions() {
           : currentRun()?.symbols.find((s) => s.symbol === symbol)?.sessions || [];
 }
 async function api(path, params = {}, signal, method = "GET") {
-    const timeoutMs = ["/api/tdx-backtest", "/api/akshare-backtest"].includes(path) ? 300000 : path === "/api/stock-summary" ? 180000 : 45000;
+    const timeoutMs = ["/api/tdx-backtest", "/api/akshare-backtest"].includes(path)
+        ? 300000
+        : path === "/api/stock-summary"
+          ? 180000
+          : 45000;
     const timeout = AbortSignal.timeout(timeoutMs);
     try {
         const response = await fetch(path + (method === "GET" ? "?" + new URLSearchParams(params) : ""), {
@@ -346,9 +352,7 @@ chart.setTrendPriceLabelsVisible($("show-trend-prices").checked);
 const performance = new PerformanceCharts(["equity-chart", "drawdown-chart", "exposure-chart"].map($));
 const stockList = new StockList({
     list: $("stock-list"),
-    search: $("stock-search"),
     count: $("stock-count"),
-    clear: $("stock-search-clear"),
     onSelect: (symbol) => chooseSymbol(symbol, true),
 });
 const watchlists = new Watchlists({
@@ -490,6 +494,28 @@ function activateStockBrowserTab(tab) {
     $("buy-points-tab").setAttribute("aria-pressed", String(tab === "buy"));
     $("structure-signals-tab").setAttribute("aria-pressed", String(tab === "structure"));
 }
+function activateHeaderStockSearch() {
+    showPage("workspace");
+    const url = new URL(window.location.href);
+    url.searchParams.set("page", "workspace");
+    window.history.replaceState(null, "", url);
+    window.dispatchEvent(new Event("wavequant:research-page-change"));
+    activateStockBrowserTab("all");
+}
+function focusStockSearch() {
+    activateHeaderStockSearch();
+    requestAnimationFrame(() => {
+        $("header-stock-search").focus();
+        $("header-stock-search").select();
+    });
+}
+window.addEventListener("wavequant:focus-stock-search", focusStockSearch);
+window.addEventListener("wavequant:activate-stock-search", activateHeaderStockSearch);
+window.addEventListener("wavequant:update-stock-search", (event) => {
+    activateHeaderStockSearch();
+    stockList.setQuery(typeof event.detail?.query === "string" ? event.detail.query : "");
+});
+window.addEventListener("wavequant:submit-stock-search", () => stockList.selectFirst());
 function syncStockBrowserMode(showTrades, preferTrades = false) {
     const previous = activeStockBrowserTab();
     const wasTrades = !$("trade-nodes-tab").hidden;
@@ -667,8 +693,13 @@ $("symbol-copy").addEventListener("click", copyCurrentSymbol);
 function syncProfileScope() {
     const portfolio = $("result-scope").value === "portfolio";
     const research = ["lecture_v1", "lecture_v2", ...ratioPlans.map((p) => p[0])];
-    for (const v of research) $("variant-select").querySelector(`[value="${v}"]`).disabled = portfolio;
+    for (const v of research) {
+        const opt = $("variant-select").querySelector(`[value="${v}"]`);
+        if (opt) opt.disabled = portfolio;
+    }
     if (portfolio && research.includes($("variant-select").value)) $("variant-select").value = "strict_full";
+    $("second-pullback-field").hidden = $("variant-select").value !== "lecture_v3";
+    $("second-pullback-select").disabled = portfolio || $("variant-select").value !== "lecture_v3";
 }
 function canBacktestSymbol(symbol) {
     return Boolean(
@@ -765,7 +796,8 @@ function renderMetrics() {
             : (bt.open_positions || []).reduce((sum, position) => sum + (position.unrealized_pnl || 0), 0);
         const total = Number.isFinite(m.total_pnl) ? m.total_pnl : m.final_equity - bt.initial_capital;
         const realized = Number.isFinite(m.realized_pnl) ? m.realized_pnl : total - unrealized;
-        $("metric-return-note").textContent = `已实现 ${num(realized)} 元 + 未实现 ${num(unrealized)} 元 = 期末盈亏 ${num(total)} 元；收益率按期末净值计算，未卖出持仓只计入一次。`;
+        $("metric-return-note").textContent =
+            `已实现 ${num(realized)} 元 + 未实现 ${num(unrealized)} 元 = 期末盈亏 ${num(total)} 元；收益率按期末净值计算，未卖出持仓只计入一次。`;
     } else {
         $("metric-return-note").textContent = "资金曲线含费用、未平仓估值";
     }
@@ -812,8 +844,10 @@ function renderMetrics() {
             const firstCounter =
                 bt.strategy.first_pullback_basis === "minimum_close" ? "H0 至交替低点期间的最低收盘价" : "交替低点";
             const secondOperator = bt.strategy.mature_shallow_inclusive === false ? "<" : "≤";
-            p.textContent = `整段双买点 V3：L0 为翻多上涨起始的整段最低点，H0 为翻多高点。第一类仅二级或三级空多交替后，等待新正 N 的轧空或强轧空，不破 L0。${bt.strategy.first_pullback_threshold == null ? "不附加深回撤门槛。" : `当前对照方案另要求 (H0−${firstCounter})/(H0−L0) > ${pct(bt.strategy.first_pullback_threshold)}。`}第二类交替后收盘再破 H0，取已知阶段最高 H1，再回撤；(H1−回撤期间最低收盘)/(H1−L0) ${secondOperator} ${pct(bt.strategy.mature_shallow_ratio)}，再等正 N 轧空。第一类在 N 攻击时冻结类别；用于确认交替的 N 不直接入场，须等待后续 N。突破棒成交量必须大于前日，阳线实体至少占开盘 2% 且至少占当日振幅 50%；第二类优先。${bt.strategy.volume_filter ? "另启用相对量能过滤；执行风控仍有效。" : "本次仅关闭相对量能过滤，突破棒强制量价条件与执行风控仍有效。"}`;
-            if (bt.execution.consolidation_entry_intraday) p.textContent += " 守住旧正 N 虚拟低点整理后，跳空放量形成新正 N，按已完成五分钟线确认、下一段开盘模拟买入；其他日线买点当日收盘模拟执行。缺少完整分钟时记录日线回退，价格限制仍须通过。";
+            p.textContent = `整段双买点 V3：L0 为翻多上涨起始的整段最低点，H0 为翻多高点。第一类仅二级或三级空多交替后，等待新正 N 的轧空或强轧空，不破 L0。${bt.strategy.first_pullback_threshold == null ? "不附加深回撤门槛。" : `当前对照方案另要求 (H0−${firstCounter})/(H0−L0) > ${pct(bt.strategy.first_pullback_threshold)}。`}第二类交替后收盘再破 H0，取已知阶段最高 H1，再回撤；(H1−回撤期间最低收盘)/(H1−L0) ${secondOperator} ${pct(bt.strategy.mature_shallow_ratio)}，再等正 N 轧空。第一类按已知交替与正 N 证据判定；同一 N 可在轧空当日共同确认交替。第二类优先。放量强反转须收盘突破本次 N 全部先前高点、守住 N 起点，且仍通过全局入场资格。${bt.strategy.volume_filter ? "另启用相对量能过滤；执行风控仍有效。" : "本次关闭相对量能过滤；各轧空路径自身的量价条件及执行风控仍有效。"}`;
+            if (bt.execution.consolidation_entry_intraday)
+                p.textContent +=
+                    " 守住旧正 N 虚拟低点整理后，跳空放量形成新正 N，按已完成五分钟线确认、下一段开盘模拟买入；其他日线买点当日收盘模拟执行。缺少完整分钟时记录日线回退，价格限制仍须通过。";
             $("backtest-details").append(p);
         }
     }
@@ -1374,7 +1408,7 @@ function renderTables() {
     $("trade-count").textContent = `${v.trades.length} 笔已平仓`;
     const openSummary = $("open-position-summary");
     openSummary.replaceChildren();
-    const openPositions = v.result_scope === "stock" ? (v.backtest?.open_positions || []) : [];
+    const openPositions = v.result_scope === "stock" ? v.backtest?.open_positions || [] : [];
     openSummary.hidden = openPositions.length === 0;
     for (const position of openPositions) {
         const profit = openPositionProfit(position);
@@ -1525,14 +1559,18 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
                   request.timeframe,
               )).view
             : isTdxBacktest()
-              ? await retryBacktest(() => api(isAkShare() ? "/api/akshare-backtest" : "/api/tdx-backtest", backtestParams, requestSignal), {
-                    signal: requestSignal,
-                    onRetry: (attempt, total) => {
-                        if (sequence === state.sequence)
-                            $("loading").textContent =
-                                `图表服务暂不可用，等待自动恢复后重试当前股票回测（${attempt}/${total}）…`;
+              ? await retryBacktest(
+                    () =>
+                        api(isAkShare() ? "/api/akshare-backtest" : "/api/tdx-backtest", backtestParams, requestSignal),
+                    {
+                        signal: requestSignal,
+                        onRetry: (attempt, total) => {
+                            if (sequence === state.sequence)
+                                $("loading").textContent =
+                                    `图表服务暂不可用，等待自动恢复后重试当前股票回测（${attempt}/${total}）…`;
+                        },
                     },
-                })
+                )
               : await api(
                     $("result-scope").value === "stock" ? "/api/stock-view" : "/api/view",
                     viewParams,
@@ -1580,11 +1618,12 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
         $("download-backtest").disabled = !data.backtest || data.backtest.status === "data_unavailable";
         // Keep the chosen source for daily prices, minute execution and factors.
         $("run-stock-backtest").disabled = !isAkShare() && !canBacktestSymbol(data.symbol);
-        $("run-stock-backtest").title = !isAkShare() && !canBacktestSymbol(data.symbol)
-            ? "当前股票缺少通达信本地日线，暂不可回测"
-            : isAkShare()
-              ? "日线、分钟线和复权因子统一使用 AKShare / 新浪"
-              : "";
+        $("run-stock-backtest").title =
+            !isAkShare() && !canBacktestSymbol(data.symbol)
+                ? "当前股票缺少通达信本地日线，暂不可回测"
+                : isAkShare()
+                  ? "日线、分钟线和复权因子统一使用 AKShare / 新浪"
+                  : "";
         $("price-basis").textContent = data.price_basis === "raw_unadjusted" ? "原始不复权" : "因果复权";
         chart.setData(data, {
             volume: $("show-volume").checked,
@@ -1732,7 +1771,9 @@ const ratioComparison = new RatioComparison({
         };
     },
     onSelect: (variant) => {
-        $("variant-select").value = variant;
+        $("variant-select").value = variant === "lecture_v3_c50" ? "lecture_v3" : variant;
+        if (variant === "lecture_v3" || variant === "lecture_v3_c50")
+            $("second-pullback-select").value = variant === "lecture_v3_c50" ? "half" : "third";
         $("result-scope").value = isAkShare() ? "akshare-backtest" : "tdx-backtest";
         loadView();
     },
@@ -1818,7 +1859,7 @@ $("run-select").addEventListener("change", () => {
     fillSymbols();
     loadView();
 });
-for (const id of ["variant-select", "scenario-select"])
+for (const id of ["variant-select", "scenario-select", "second-pullback-select"])
     $(id).addEventListener("change", () => {
         state.pendingFocus = null;
         loadView();

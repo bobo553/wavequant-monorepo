@@ -22,6 +22,30 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         `费用：${num(marker.fee)} 元`,
     ];
     if (marker.side === "BUY") lines.push(`买入后仓位：${positionLabel}`);
+    const reversal = marker.decision_evidence?.find((e) => e.squeeze_confirmation === "volume_reversal_record_break");
+    if (reversal)
+        lines.push(
+            `放量反转轧空：N 收盘突破 ${reversal.n_close_break_date}（结构突破 ${reversal.attack_date}）；收盘 ${num(reversal.reversal_close, 4)} > 抵抗阶段高 ${num(reversal.reversal_record_high, 4)}，成交量 ${num(reversal.reversal_volume, 0)} > 前日 ${num(reversal.reversal_previous_volume, 0)}；最低 ${num(reversal.reversal_low, 4)} 守住 N 起点 ${num(reversal.reversal_structural_low, 4)}。`,
+        );
+    const pressure = marker.decision_evidence?.find((e) => e.secondary_resistance_resolved);
+    if (pressure)
+        lines.push(
+            `二级压力复核：${pressure.secondary_high_date} 高点 ${num(pressure.secondary_high, 4)}；${pressure.secondary_attack_date} 再攻击后出现抵抗，${pressure.secondary_resolution_date} 收盘 ${num(pressure.secondary_confirmation_close, 4)} > 抵抗阶段高点 ${num(pressure.secondary_resistance_high, 4)}，抵抗解除。`,
+        );
+    if (marker.side === "BUY" && Number.isFinite(marker.net_reward_risk))
+        lines.push(
+            `费后盈亏比：${num(marker.net_reward_risk)}；门槛 ${num(marker.required_reward_risk)}；过滤${marker.net_reward_risk_filter === false ? "未启用（不据此拦截买入）" : marker.net_reward_risk_filter === true ? "已启用" : "状态未提供"}`,
+        );
+    const dual = marker.decision_evidence?.find((e) => e.buy_point_type === "multilevel_breakout_squeeze");
+    if (dual)
+        lines.push(
+            `双重轧空：正 N ${dual.attack_date} 同时突破 ${dual.trend_level} 级波段高 ${dual.key_source_index_date}（${num(dual.key_price, 4)}）；${dual.higher_confirmation_index_date} 放量收盘 ${num(dual.confirmation_close, 4)} > 抵抗阶段高 ${num(dual.higher_resistance_high, 4)}，并守住虚拟防守。`,
+        );
+    const mature = marker.decision_evidence?.find((e) => e.buy_point_type === "mature_shallow_squeeze");
+    if (mature)
+        lines.push(
+            `第二类背景：起涨 ${mature.origin_index_date} ${num(mature.ratio_low_price, 4)}，成熟确认 ${mature.maturity_index_date}；阶段高 ${mature.peak_index_date} ${num(mature.ratio_high_price, 4)}，最低收盘 ${mature.minimum_close_index_date} ${num(mature.counter_price, 4)}；整段收盘回撤 ${pct(mature.counter_ratio)} ${mature.counter_operator} ${pct(mature.counter_limit)}。`,
+        );
     const gap = marker.decision_evidence?.find((e) => e.squeeze_confirmation === "defended_n_consolidation_gap");
     const gapContext = marker.decision_evidence?.find((e) => e.buy_point_type);
     if (gap && gapContext)

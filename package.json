@@ -16,6 +16,7 @@
         "build:packages": "pnpm --filter \"./packages/**\" build",
         "create:project": "pnpm --filter @repo/create-project run create",
         "harness:check": "node scripts/harness/validate-state.mjs",
+        "restart:wavequant": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/restart-wavequant.ps1",
         "verify:quick": "pnpm harness:check && pnpm lint && pnpm typecheck && pnpm test:unit",
         "verify": "pnpm verify:quick && pnpm build",
         "dev": "pnpm env::dev turbo run dev",

@@ -83,7 +83,7 @@ test("hovering a candle shows its prices and copies the selected bar", async ({ 
     for (const field of ["开盘", "最高", "最低", "收盘", "成交量"]) {
         expect(copied).toContain(`${field}：`);
     }
-    const search = page.locator("#stock-search");
+    const search = page.locator("#header-stock-search");
     await search.fill("copy native input");
     await search.selectText();
     await page.keyboard.press("ControlOrMeta+C");
@@ -205,8 +205,8 @@ test("AkShare stock selection keeps its data source until backtest is requested"
     await expect(page.locator("#all-stocks-tab")).toHaveCount(0);
     await expect(page.locator("#stock-picker-panel")).toBeVisible();
 
-    await page.locator("#stock-search").fill("600519");
-    await page.locator("#stock-search").press("Enter");
+    await page.locator("#header-stock-search").fill("600519");
+    await page.locator("#header-stock-search").press("Enter");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#result-scope")).toHaveValue("akshare");
     await expect(page.locator("#trade-nodes-tab")).toBeHidden();
@@ -228,9 +228,9 @@ test("AkShare stock selection keeps its data source until backtest is requested"
     await expect(page.locator("#stock-picker-current")).toContainText("600519");
 
     await page.locator("#stock-picker-toggle").click();
-    await expect(page.locator("#stock-search")).toBeVisible();
-    await page.locator("#stock-search").focus();
-    await expect(page.locator("#stock-search")).toBeFocused();
+    await expect(page.locator("#header-stock-search")).toBeVisible();
+    await page.locator("#header-stock-search").focus();
+    await expect(page.locator("#header-stock-search")).toBeFocused();
 
     await page.locator("#watchlist-toggle-current").click();
     await page.locator("#buy-points-tab").click();
@@ -261,8 +261,8 @@ test("a stock without local TDX history stays in market browsing with a clear ex
 
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
-    await page.locator("#stock-search").fill("600519");
-    await page.locator("#stock-search").press("Enter");
+    await page.locator("#header-stock-search").fill("600519");
+    await page.locator("#header-stock-search").press("Enter");
     await expect(page.locator("#stock-picker-feedback")).toContainText("暂无通达信本地日线");
     await expect(page.locator("#result-scope")).toHaveValue("akshare");
     await expect(page.locator("#run-stock-backtest")).toBeDisabled();
@@ -347,8 +347,8 @@ test("chart stock label replaces the dropdown and copies the selected stock", as
     await expect(page.locator("#loading")).toBeHidden({ timeout: 90_000 });
     await expect(page.locator("select#symbol-select")).toHaveCount(0);
 
-    await page.locator("#stock-search").fill("600015");
-    await page.locator("#stock-search").press("Enter");
+    await page.locator("#header-stock-search").fill("600015");
+    await page.locator("#header-stock-search").press("Enter");
     await expect(page.locator("#symbol-copy-text")).toContainText("600015");
     const displayed = (await page.locator("#symbol-copy-text").textContent())?.trim();
     expect(displayed).toMatch(/^600015\s+\S+/);
@@ -1262,8 +1262,8 @@ test("categorized watchlists persist locally and preserve members when a categor
     await expect(page.locator("#watchlist-count")).toHaveText("1 只");
     await expect(page.locator("#watchlist-stock-list")).toContainText(selectedSymbol);
 
-    await page.locator("#stock-search").fill("600015");
-    await page.locator("#stock-search").press("Enter");
+    await page.locator("#header-stock-search").fill("600015");
+    await page.locator("#header-stock-search").press("Enter");
     await expect(page.locator("#symbol-select")).toHaveValue("sh.600015");
     await page.reload();
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
@@ -1918,6 +1918,7 @@ test("Zhongda Leader promotes the August 2022 high only after causal alternation
 });
 
 test("the shared dashboard shell works on desktop and mobile", async ({ page }) => {
+    test.setTimeout(90_000);
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
 
@@ -1932,16 +1933,16 @@ test("the shared dashboard shell works on desktop and mobile", async ({ page }) 
     await expect(page.getByText("Market & Research")).toBeVisible();
     await expect(page.getByText("Trading & Control")).toBeVisible();
     await expect(page.locator("header").getByText("本地研究")).toBeVisible();
-    await expect(page.getByRole("button", { name: /搜索股票/ })).toBeVisible();
+    await expect(page.getByRole("searchbox", { name: "搜索股票" })).toBeVisible();
     await expect(page.getByRole("button", { name: "查看通知" })).toBeVisible();
     await expect(page.getByRole("button", { name: "界面设置" })).toBeVisible();
     await expect(page.getByRole("button", { name: "刷新当前视图" })).toBeVisible();
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#error")).toBeHidden();
     await expect(page.getByRole("button", { name: "运行当前股票回测" })).toBeVisible();
-    await page.getByRole("button", { name: /搜索股票/ }).click();
-    await expect(page.getByRole("dialog", { name: "搜索股票或题材" })).toBeVisible();
-    await page.getByRole("button", { name: "关闭对话框" }).click();
+    await page.getByRole("searchbox", { name: "搜索股票" }).click();
+    await expect(page.locator("#header-stock-search")).toBeFocused();
+    await expect(page.locator("#stock-picker-panel")).toBeVisible();
     await page.getByRole("button", { name: "刷新当前视图" }).click();
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await page.getByRole("button", { name: "界面设置" }).click();
@@ -1953,12 +1954,40 @@ test("the shared dashboard shell works on desktop and mobile", async ({ page }) 
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/research?page=performance");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await page.getByRole("button", { name: "打开侧栏" }).click();
     await expect(page.locator("#wavequant-mobile-sidebar")).toBeVisible();
     await page.getByRole("button", { name: "系统与设置" }).click();
     await expect(page.locator("#page-title")).toHaveText("系统状态");
     await expect(page).toHaveURL(/page=health/);
     await expect(page.locator("#wavequant-mobile-sidebar")).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
+});
+
+test("Ctrl+K searches the real research stock universe", async ({ page }) => {
+    test.setTimeout(90_000);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await page.goto("/research?page=workspace");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await page.locator("#buy-points-tab").click();
+    await expect(page.locator("#stock-picker-panel")).toBeHidden();
+
+    await page.keyboard.press("Control+K");
+    const search = page.locator("#header-stock-search");
+    await expect(search).toBeFocused();
+    await expect(page.locator("#stock-picker-panel")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "搜索股票或题材" })).toHaveCount(0);
+
+    await search.fill("600519");
+    await expect(page.locator("#stock-list [data-symbol='sh.600519']")).toContainText("贵州茅台");
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#symbol-select")).toHaveValue("sh.600519");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(search).toBeVisible();
+    expect(await page.locator("body").evaluate((body) => body.scrollWidth)).toBeLessThanOrEqual(390);
     expect(pageErrors).toEqual([]);
 });
 

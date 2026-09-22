@@ -70,7 +70,13 @@ function triggerDownload(name: string, type: string, content: string): void {
 }
 
 /** 保存并共享看盘日期、时点、范围、观察组和用户偏好。 */
-export function MarketWorkspaceProvider({ children }: { children: ReactNode }): JSX.Element {
+export function MarketWorkspaceProvider({
+    children,
+    researchMode = false,
+}: {
+    children: ReactNode;
+    researchMode?: boolean;
+}): JSX.Element {
     const [state, setState] = useState<IMarketWorkspaceState>(defaultWorkspaceState);
     const [dialog, setDialog] = useState<TMarketDialog>(null);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -84,6 +90,15 @@ export function MarketWorkspaceProvider({ children }: { children: ReactNode }): 
         if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
         toastTimerRef.current = setTimeout(() => setToast(null), 2600);
     }, []);
+
+    const openSearch = useCallback((): void => {
+        if (researchMode) {
+            setDialog(null);
+            window.dispatchEvent(new Event("wavequant:focus-stock-search"));
+            return;
+        }
+        setDialog({ kind: "search" });
+    }, [researchMode]);
 
     useEffect(() => {
         const timer = window.setTimeout(() => {
@@ -122,13 +137,13 @@ export function MarketWorkspaceProvider({ children }: { children: ReactNode }): 
         function handleShortcut(event: KeyboardEvent): void {
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k" && !event.isComposing) {
                 event.preventDefault();
-                setDialog({ kind: "search" });
+                openSearch();
             }
             if (event.key === "Escape") setDialog(null);
         }
         window.addEventListener("keydown", handleShortcut);
         return () => window.removeEventListener("keydown", handleShortcut);
-    }, []);
+    }, [openSearch]);
 
     useEffect(() => {
         if (!isPlaying) return;
@@ -201,7 +216,7 @@ export function MarketWorkspaceProvider({ children }: { children: ReactNode }): 
             },
             openInfo: (title, body) => setDialog({ body, kind: "info", title }),
             openNotifications: () => setDialog({ kind: "notifications" }),
-            openSearch: () => setDialog({ kind: "search" }),
+            openSearch,
             openSettings: () => setDialog({ kind: "settings" }),
             openStock: (code) => setDialog({ code, kind: "stock" }),
             replaceMultiStock: (index, code) =>
@@ -255,7 +270,7 @@ export function MarketWorkspaceProvider({ children }: { children: ReactNode }): 
                 notify(current.includes(group) ? "已从观察组移除，可再次点击恢复" : "已加入观察组");
             },
         }),
-        [dialog, downloadCsv, isPlaying, notify, state, toast, update],
+        [dialog, downloadCsv, isPlaying, notify, openSearch, state, toast, update],
     );
 
     return <MarketWorkspaceContext value={contextValue}>{children}</MarketWorkspaceContext>;

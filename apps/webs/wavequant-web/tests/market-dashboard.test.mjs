@@ -137,7 +137,7 @@ test("market browsing exposes server-backed daily through yearly candle timefram
 test("current-stock backtests tolerate cold computation and report non-JSON proxy failures clearly", () => {
     const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
 
-    assert.match(runtime, /\["\/api\/tdx-backtest", "\/api\/akshare-backtest"\]\.includes\(path\) \? 300000/);
+    assert.match(runtime, /\["\/api\/tdx-backtest", "\/api\/akshare-backtest"\]\.includes\(path\)\s*\?\s*300000/);
     assert.match(runtime, /const text = await response\.text\(\)/);
     assert.match(runtime, /body = JSON\.parse\(text\)/);
     assert.match(runtime, /服务暂时不可用（HTTP/);

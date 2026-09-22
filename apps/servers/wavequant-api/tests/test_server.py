@@ -163,7 +163,7 @@ class VisualizationTests(unittest.TestCase):
         self.assertEqual(v["metrics"]["win_rate"], 1)
         self.assertAlmostEqual(v["metrics"]["total_return"], 0.1)
 
-    def test_five_whole_wave_profiles_are_distinct_and_do_not_inherit_results(self):
+    def test_whole_wave_profiles_are_distinct_and_do_not_inherit_results(self):
         from wavequant.domain.strategies.strategy_profiles import WAVE_PROFILES
         from wavequant.interfaces.charts.visualization import VARIANTS
 
@@ -178,7 +178,7 @@ class VisualizationTests(unittest.TestCase):
         }
         with patch.object(self.repo, "_json", return_value=source):
             configs = [self.repo.strategy_config("example", v) for v in WAVE_PROFILES]
-        self.assertEqual(len({json.dumps(c["strategy"], sort_keys=True) for c in configs}), 5)
+        self.assertEqual(len({json.dumps(c["strategy"], sort_keys=True) for c in configs}), len(WAVE_PROFILES))
         for v, c in zip(WAVE_PROFILES, configs):
             self.assertIn(v, VARIANTS)
             self.assertNotIn("folds", c)

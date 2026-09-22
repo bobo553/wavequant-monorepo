@@ -17,6 +17,7 @@ class WaveThresholds:
 
 WAVE_PROFILES={
     'lecture_v3':WaveThresholds(None,1/3),
+    'lecture_v3_c50':WaveThresholds(None,.5,second_inclusive=False),
     'lecture_v3_d67_c33':WaveThresholds(2/3,1/3),
     'lecture_v3_d50_c50':WaveThresholds(.5,.5),
     'lecture_v3_d67_c50':WaveThresholds(2/3,.5),
@@ -77,7 +78,9 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
             confirmation='formal_flip_high_and_confirmed_source_pullback_may_be_known_together',
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
-    config['profile_version'] = 'deep_alternation_kill_high_v38_' + variant
+    config['profile_version'] = 'selectable_second_pullback_v44_' + variant
+    config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze']
+    config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
         rule for rule in config['definition']['exits'] if rule != 'target_observed_then_next_open'
     ]

@@ -26,7 +26,8 @@ def enrich_ledger(bars, result, generated, strategy):
                 for key in ('context_index','key_source_index','flip_index','alternation_index',
                             'bullish_index','bullish_confirmation_index','attack','maturity_index',
                             'flip_high_index','alternation_low_index','pullback_index','impulse_high_index','impulse_origin_index',
-                            'origin_index','peak_index','minimum_close_index','eligibility_frozen_at'):
+                            'origin_index','peak_index','minimum_close_index','eligibility_frozen_at',
+                            'key_known_index','higher_breakout_index','higher_confirmation_index'):
                     if isinstance(item.get(key),int) and 0<=item[key]<=signal.bar_index:
                         item[key+'_date']=bars[item[key]].timestamp.date().isoformat()
                 evidence.append(item)
@@ -49,10 +50,10 @@ def enrich_ledger(bars, result, generated, strategy):
                       if strategy.get('volume_filter',True) else None),
                 check('成交价费用后盈亏比',order.get('net_reward_risk'),signal.minimum_reward_risk,
                       order.get('net_reward_risk',-1)>=signal.minimum_reward_risk
-                      if order.get('net_reward_risk') is not None else None)]
+                      if order.get('net_reward_risk') is not None and order.get('net_reward_risk_filter',True) else None)]
             if strategy.get('entry_policy')=='hierarchical_two_buy_points':
                 second=bool(proof) and proof.get('buy_point_type')=='mature_shallow_squeeze'
-                chain=bool(proof) and proof['flip_index']<=proof['alternation_index']<proof['attack']<=signal.bar_index
+                chain=bool(proof) and all(isinstance(proof.get(k),int) for k in ('flip_index','alternation_index')) and proof['flip_index']<=proof['alternation_index']<proof['attack']<=signal.bar_index
                 if second:
                     chain=chain and (proof['alternation_index']<proof['maturity_index']<=proof['impulse_high_index']
                         <proof['pullback_index']<proof['attack'])
@@ -80,6 +81,11 @@ def enrich_ledger(bars, result, generated, strategy):
                         proof['counter_ratio'],f"{proof['counter_operator']} {proof['counter_limit']}" if limit is not None else '不附加深回撤过滤',
                         None if limit is None else (ratio<=limit if proof['counter_operator']=='<=' else
                          ratio<limit if proof['counter_operator']=='<' else ratio>limit))
+                if proof and proof.get('buy_point_type')=='multilevel_breakout_squeeze':
+                    chain=(proof['key_known_index']<proof['attack']<proof['higher_confirmation_index']<=signal.bar_index)
+                    order['entry_conditions'][0]=check('分级双买点证据',proof,
+                        '新正N突破已知二/三级波段高 → 守防守、放量收盘突破抵抗阶段高 → 双重轧空',chain)
+                    order['entry_conditions'][2]=check('局部N回撤（仅展示）',signal.retracement,'不附加交替回撤过滤',None)
             order['trigger_timestamp']=signal.trigger_timestamp.isoformat()
         if order['status']=='filled':
             if order['side']=='BUY': serial+=1;active=f'{bar.symbol}-trade-{serial}'

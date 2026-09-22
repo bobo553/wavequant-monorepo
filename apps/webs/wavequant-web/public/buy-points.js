@@ -11,7 +11,8 @@ const statusNames = {
 };
 export const profileName = (id) =>
     ({
-        lecture_v3: "整段双买点 V3 >1/2 / ≤1/3",
+        lecture_v3: "整段双买点 V3 · 二/三级交替 / 第二类 ≤1/3",
+        lecture_v3_c50: "整段双买点 V3 · 二/三级交替 / 第二类 <1/2",
         lecture_v3_d67_c33: "整段双买点 V3 >2/3 / ≤1/3",
         lecture_v3_d50_c50: "整段双买点 V3 >1/2 / ≤1/2",
         lecture_v3_d67_c50: "整段双买点 V3 >2/3 / ≤1/2",
