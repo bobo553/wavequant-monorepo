@@ -26,8 +26,8 @@ export function MarketDashboard(): JSX.Element {
                 </div>
             </header>
             <div className="flex flex-col gap-3">
-                <MarketToolbar />
-                <IndexStrip />
+                {activeTab !== "ladder" && <MarketToolbar />}
+                {activeTab !== "ladder" && <IndexStrip />}
                 <MarketTabs activeTab={activeTab} onChange={setActiveTab} />
                 <div
                     role="tabpanel"

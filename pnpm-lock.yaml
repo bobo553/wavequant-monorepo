@@ -492,6 +492,9 @@ importers:
 
   apps/webs/wavequant-web:
     dependencies:
+      '@repo/contracts':
+        specifier: workspace:*
+        version: link:../../../packages/contracts
       '@repo/design-system-web':
         specifier: workspace:*
         version: link:../../../packages/design-system/web
@@ -513,6 +516,9 @@ importers:
       react-dom:
         specifier: ^19.2.6
         version: 19.2.6(react@19.2.6)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@playwright/test':
         specifier: ^1.60.0

@@ -25,13 +25,15 @@
         "test:all": "pnpm test:unit && pnpm test:e2e"
     },
     "dependencies": {
+        "@repo/contracts": "workspace:*",
         "@repo/design-system-web": "workspace:*",
         "@tabler/icons-react": "^3.44.0",
         "echarts": "^6.1.0",
         "lightweight-charts": "5.2.1",
         "next": "^16.2.6",
         "react": "^19.2.6",
-        "react-dom": "^19.2.6"
+        "react-dom": "^19.2.6",
+        "zod": "^4.4.3"
     },
     "devDependencies": {
         "@playwright/test": "^1.60.0",

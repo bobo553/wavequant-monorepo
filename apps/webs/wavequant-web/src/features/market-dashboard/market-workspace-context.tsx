@@ -39,6 +39,7 @@ interface IMarketWorkspaceContext extends IMarketWorkspaceState {
     setActiveTab: (tab: TMarketTabId) => void;
     setColorTheme: (theme: TMarketColorTheme) => void;
     setDate: (date: string) => void;
+    setLadderDate: (date: string) => void;
     setDensity: (density: TMarketDensity) => void;
     setIncludeRisk: (include: boolean) => void;
     setMultiCodes: (codes: string[]) => void;
@@ -231,6 +232,7 @@ export function MarketWorkspaceProvider({
             },
             setColorTheme: (theme) => update("colorTheme", theme),
             setDate: (date) => update("date", date),
+            setLadderDate: (date) => update("ladderDate", date),
             setDensity: (density) => update("density", density),
             setIncludeRisk: (include) => update("includeRisk", include),
             setMultiCodes: (codes) => update("multiCodes", codes),

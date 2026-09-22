@@ -15,3 +15,5 @@
 ## Risks and Next Steps
 
 - 契约变化需同步验证 API、Web 与 Mobile 消费者。
+
+- MONOREPO-153：新增LimitUpStockSchema/LimitUpLadderSchema及推导类型，Web复用验证API响应的日期、来源、连板数和可空数值。包构建和消费者Web类型/构建、真实接口浏览器解析通过。

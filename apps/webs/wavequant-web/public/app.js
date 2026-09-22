@@ -14,6 +14,7 @@ import { PerformanceCharts, PriceChart } from "./charts.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
+import { parseResearchLink, resolveResearchLink } from "./research-link.js";
 import { StockList } from "./stock-list.js";
 import { StructureSignals } from "./structure-signals.js";
 import { closedPositionLabel, openPositionForMarker, openPositionProfit, positionProfit } from "./trade-position.js";
@@ -2015,6 +2016,7 @@ $("export-orders").addEventListener("click", () => {
 });
 async function start() {
     try {
+        const requestedStock = parseResearchLink(window.location.search);
         const akshareOption = $("result-scope").querySelector('[value="akshare"]');
         akshareOption.disabled = true;
         akshareOption.textContent = "AkShare · 正在连接…";
@@ -2044,10 +2046,30 @@ async function start() {
         // AkShare 是默认实时浏览口径；上游不可用时才按本地数据、封存样本的顺序降级。
         $("result-scope").value = state.akshare.with_daily ? "akshare" : state.tdx.with_daily ? "tdx" : "stock";
         $("symbol-select").value = watchlists.firstAvailableSymbol(universe());
+        const linkedStock = requestedStock
+            ? resolveResearchLink(requestedStock, { akshare: state.akshare, tdx: state.tdx })
+            : null;
+        if (linkedStock) {
+            $("result-scope").value = linkedStock.source;
+            $("symbol-select").value = linkedStock.symbol;
+            setTimeframe("1d");
+        }
         $("run-select").replaceChildren();
         for (const r of state.catalog.runs) option($("run-select"), r.id, r.id.replace("acceptance_", ""));
         fillSymbols();
+        if (linkedStock?.asof) preserveCutoff(linkedStock.asof);
         await loadView();
+        if (linkedStock) {
+            const notices = [];
+            if (linkedStock.fallback)
+                notices.push(
+                    `所选股票在 ${requestedStock.source === "akshare" ? "AkShare" : "通达信"} 目录中暂无可用行情，当前使用 ${linkedStock.source === "akshare" ? "AkShare" : "通达信"} 查看同一股票。`,
+                );
+            if (linkedStock.asof && state.view?.symbol === linkedStock.symbol && state.view.asof !== linkedStock.asof)
+                notices.push(`请求日期 ${linkedStock.asof}，实际可用行情截至 ${state.view.asof}。`);
+            $("stock-picker-feedback").hidden = notices.length === 0;
+            $("stock-picker-feedback").textContent = notices.join(" ");
+        }
         if (requestedPage && Object.hasOwn(titles, requestedPage)) showPage(requestedPage);
     } catch (e) {
         stockList.setStocks([], "");

@@ -4,6 +4,67 @@
     "activeFeature": null,
     "features": [
         {
+            "id": "MONOREPO-154",
+            "name": "ladder-stock-research-navigation",
+            "title": "涨停天梯股票跳转行情与复盘",
+            "description": "天梯及明细链接携带股票和日期，复盘初始化加载目标行情。",
+            "scope": "Web天梯链接、研究页参数解析及浏览器回归",
+            "dependencies": [
+                "MONOREPO-153"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "卡片和明细代码/名称可打开行情与复盘并保留日期",
+                "目标股票优先于自选默认，缺数据不得静默替换为其他股票",
+                "校验链接参数，真实浏览器验证跳转后的行情请求和显示"
+            ],
+            "verification": [
+                {
+                    "command": "wavequant-web test:unit; lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "12项Vitest与135项Node通过；验证沪深北代码、日期参数、重复/无效输入和只回退同一股票；lint/类型及生产构建通过。"
+                },
+                {
+                    "command": "Playwright ladder-research-navigation.spec.ts",
+                    "status": "passed",
+                    "summary": "真实天梯股票点击后首次行情请求命中目标股票及2026-09-18，K线非空，刷新保留定位；当前目标本地数据截至09-07，页面明确提示数据源回退和请求/实际截止日。卡片及明细链接一致。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-153",
+            "name": "akshare-daily-limit-up-ladder",
+            "title": "AkShare每日涨停天梯与日期切换",
+            "description": "以真实涨停池替换天梯演示数据，按日期查询、连板分组与导出。",
+            "scope": "API AkShare适配/缓存、共享契约、Web天梯和浏览器验证",
+            "dependencies": [
+                "MONOREPO-151"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "天梯和明细来自所选日期的AkShare涨停池，无数据不使用演示或其他日期数据",
+                "日期选择、前后日、刷新与导出可用，防止快速切换旧响应覆盖",
+                "请求校验、上游失败、空数据、数值字段和真实浏览器回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "wavequant-api test:unit; lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "85项Python通过、1项环境跳过，4项Node通过；日期校验、缓存过期/隔离、数据单位与缺失值、重复及异常记录、HTTP503均覆盖；Ruff、严格mypy与构建通过。"
+                },
+                {
+                    "command": "contracts build; wavequant-web lint; typecheck; test:unit; build",
+                    "status": "passed",
+                    "summary": "共享Zod契约及Web构建通过；10项Vitest与132项Node通过，lint/类型通过。"
+                },
+                {
+                    "command": "Playwright limit-up-ladder.spec.ts (real local API + controlled upstream error cases)",
+                    "status": "passed",
+                    "summary": "2条真实Chromium通过。真实AkShare 09-21为103只、09-18为78只，核对明细数量/日期与导出；快速切换旧响应、空池、503重试、日期保存及390px验证通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-152",
             "name": "selectable-second-pullback",
             "title": "第二类浅回撤门槛独立选择",

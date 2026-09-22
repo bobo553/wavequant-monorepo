@@ -123,3 +123,11 @@ $env:WAVEQUANT_DATABASE_URL = "postgresql+psycopg://wavequant:<password>@127.0.0
 - 页面和浏览器测试属于 `apps/webs/wavequant-web`。
 
 `GET /api/tdx-backtest` 支持可选 `net_reward_risk_filter=true|false`（缺省 `false`，不接受重复或非布尔字符串）；写入执行配置和回测缓存键，仅控制次开盘含费净盈亏比不足的拒单门槛，不改变信号或除权价格。
+
+## 每日涨停天梯
+
+`GET /api/limit-up-ladder?date=2026-09-21&refresh=false` 通过 AkShare `stock_zt_pool_em` 读取指定日期东方财富涨停池；省略日期使用北京时间当天。仅接受 YYYY-MM-DD、非未来日期；refresh=true 强制重新读取。
+
+响应包含 date、source、fetched_at、status、notice 和 stocks。价格及金额使用上游的元单位，缺失数值返回 null；按连板数降序、首次封板时间排序。缓存以日期隔离，最多128日；当日/空池60秒、历史非空池1小时。刷新失败返回503，不以其他日期或演示数据补齐。
+
+上游不保证任意历史日期可查询。空池只表示未返回记录（休市、尚未发布、超出历史范围等），不等于全市场零涨停。覆盖口径见 [AkShare官方实现](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ztb_em.py)，不包含ST、科创板及未开板新股。当天返回抓取时快照，不提供历史日内回放。

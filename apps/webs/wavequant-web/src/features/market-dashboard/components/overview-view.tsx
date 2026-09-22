@@ -8,7 +8,7 @@ import { Badge, Button, Card, CardContent, CardHeader, Skeleton } from "@repo/de
 import { IconArrowRight, IconChevronRight, IconInfoCircle } from "@tabler/icons-react";
 
 import { BreadthBars } from "@/features/market-dashboard/components/breadth-bars";
-import { LadderBoard } from "@/features/market-dashboard/components/ladder-board";
+import { LadderView } from "@/features/market-dashboard/components/ladder-view";
 import { MarketPanel } from "@/features/market-dashboard/components/market-panel";
 import { StockTable } from "@/features/market-dashboard/components/stock-table";
 import { marketEvents, marketMetrics, sectorHeat, stockQuotes } from "@/features/market-dashboard/market-data";
@@ -159,7 +159,7 @@ export function OverviewView({ onNavigate }: IOverviewViewProps): JSX.Element {
                             }
                             contentClassName="px-3 pb-1"
                         >
-                            <LadderBoard compact />
+                            <LadderView compact />
                         </MarketPanel>
                     </div>
 

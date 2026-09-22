@@ -173,3 +173,5 @@
 - Core 688+43、API 68+4（1 跳过）、Web 9+121、相关 lint/type/build、浏览器2项及追加买点详情核验通过；真实截至05-08前缀信号与全历史一致。未提交 Git。
 
 - MONOREPO-152：V44六种幅度方案经共享配置校验并维持不同回测身份；配置独立性测试不再固定五组。API69项Python通过、1项环境跳过，4项Node通过。
+
+- MONOREPO-153：新增GET /api/limit-up-ladder，AkShare stock_zt_pool_em按日期读取。日期独立LRU128、当日/空池60秒历史1小时，强制刷新失败不补旧数据；数值缺失null、保留元单位、重复/异常核心字段拒绝。85项Python+4项Node通过（1环境跳过），lint/严格mypy/build通过；真实09-21 103只、09-18 78只。

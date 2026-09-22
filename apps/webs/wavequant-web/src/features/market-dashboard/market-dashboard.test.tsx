@@ -20,8 +20,8 @@ describe("MarketDashboard", () => {
 
         fireEvent.click(screen.getByRole("tab", { name: "涨停阶梯" }));
 
-        expect(screen.getByRole("heading", { name: "涨停阶梯 · 强弱接力" })).toBeInTheDocument();
-        expect(screen.getByRole("table", { name: "当前涨停股票池" })).toBeInTheDocument();
+        expect(screen.getByRole("heading", { name: "每日涨停天梯" })).toBeInTheDocument();
+        expect(screen.getByLabelText("涨停天梯日期")).toBeInTheDocument();
     });
 
     it("keeps all eight market views interactive", () => {

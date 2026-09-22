@@ -148,8 +148,7 @@ function ShellStatusStrip({ variant }: { variant: TWaveQuantShellVariant }): JSX
         <div className="border-border text-muted-foreground flex min-h-8 items-center gap-4 border-b px-4 text-[10px] sm:px-6">
             {variant === "market" ? (
                 <>
-                    <strong className="text-amber-400">合成样本</strong>
-                    <span>· 非真实行情，不构成投资建议</span>
+                    <MarketContextStatus kind="source" />
                     <span className="hidden sm:inline">
                         样本上涨 <b className="text-rose-400">31 只</b>
                     </span>

@@ -11,7 +11,7 @@ import mimetypes
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from wavequant.infrastructure.market_data.akshare import AkShareUnavailable
+from wavequant.infrastructure.market_data.akshare import AkShareProvider, AkShareUnavailable
 from wavequant.interfaces.charts.visualization import ChartRepository
 
 from .application import (
@@ -22,6 +22,7 @@ from .application import (
     StructureSnapshotUnavailable,
 )
 from .infrastructure import Infrastructure, InfrastructureSettings
+from .application.limit_up_ladder import LimitUpLadderService
 
 
 APPS_ROOT = Path(__file__).resolve().parents[4]
@@ -79,6 +80,7 @@ def make_server(
     serve_static=True,
     allowed_origins=(),
     web_url=None,
+    limit_up_ladder=None,
 ):
     if host not in ("127.0.0.1", "localhost"):
         raise ValueError("dashboard binds to loopback only")
@@ -100,6 +102,7 @@ def make_server(
     structure_snapshots = StructureSnapshotService(repository, infrastructure) if infrastructure is not None else None
     buy_snapshots = BuySignalSnapshotService(repository, infrastructure) if infrastructure is not None else None
     market_data = getattr(repository, "market_data", None)
+    ladder = limit_up_ladder or LimitUpLadderService(AkShareProvider())
     snapshot_database = getattr(infrastructure, "database", None) if infrastructure is not None else None
     snapshot_cache = getattr(infrastructure, "cache", None) if infrastructure is not None else None
     market_timeframes = (
@@ -192,6 +195,15 @@ def make_server(
                 return
             try:
                 request_path = unquote(url.path)
+                if url.path == "/api/limit-up-ladder":
+                    query = parse_qs(url.query, keep_blank_values=True)
+                    if set(query) - {"date", "refresh"} or any(len(values) != 1 for values in query.values()):
+                        raise ValueError("仅支持单个 date 和 refresh 参数")
+                    refresh = query.get("refresh", ["false"])[0]
+                    if refresh not in {"true", "false"}:
+                        raise ValueError("refresh 必须为 true 或 false")
+                    self.send(200, ladder.snapshot(query.get("date", [None])[0], refresh=refresh == "true"))
+                    return
                 if request_path in static_routes:
                     path = static_routes[request_path]
                     mime = (

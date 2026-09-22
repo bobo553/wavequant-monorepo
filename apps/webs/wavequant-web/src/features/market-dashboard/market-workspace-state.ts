@@ -27,6 +27,7 @@ export interface IMarketWorkspaceState {
     activeTab: TMarketTabId;
     colorTheme: TMarketColorTheme;
     date: string;
+    ladderDate: string;
     density: TMarketDensity;
     favorites: string[];
     includeRisk: boolean;
@@ -46,6 +47,7 @@ export const defaultWorkspaceState: IMarketWorkspaceState = {
     activeTab: "overview",
     colorTheme: "wavequant-teal",
     date: marketDates[2],
+    ladderDate: "",
     density: "comfortable",
     favorites: ["SIM001", "SIM009"],
     includeRisk: false,
@@ -75,6 +77,10 @@ export function restoreWorkspaceState(value: unknown): IMarketWorkspaceState {
             typeof saved.date === "string" && marketDates.includes(saved.date as (typeof marketDates)[number])
                 ? saved.date
                 : defaultWorkspaceState.date,
+        ladderDate:
+            typeof saved.ladderDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(saved.ladderDate)
+                ? saved.ladderDate
+                : "",
         density: saved.density === "compact" ? "compact" : "comfortable",
         favorites: Array.isArray(saved.favorites)
             ? saved.favorites.filter((item): item is string => typeof item === "string")
