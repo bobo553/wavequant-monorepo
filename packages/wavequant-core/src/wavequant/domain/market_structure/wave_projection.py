@@ -165,8 +165,12 @@ def wave_projection_history(
         # A fresh pullback suspends the previous target before considering hits.
         if state != "pullback" and bar.close < bars[i - 1].close:
             state, target = "pullback", None
+            same_a = peak_index == a_index
             a_high, a_index = peak, peak_index
-            b_low, b_index = (bar.low, i) if i > peak_index else (None, None)
+            if not same_a or b_low is None:
+                b_low, b_index = (bar.low, i) if i > peak_index else (None, None)
+            elif bar.low < b_low:
+                b_low, b_index = bar.low, i
             if stage != "five_top":
                 span = _price(a_high) - _price(setup.origin)
             emit(i, "wave_projection_pullback")

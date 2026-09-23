@@ -1,6 +1,7 @@
 import { reasonText } from "./annotations.js";
 import { num, pct } from "./labels.js";
 import { closedPositionLabel, positionProfit } from "./trade-position.js";
+import { waveEntryEvidence } from "./wave-entry-evidence.js";
 
 // All conditions come from the dated engine ledger, never re-inferred from a chart.
 export function appendTradeEvidence(panel, item, openPosition = null) {
@@ -12,6 +13,7 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
         return p;
     };
     const proof = item.decision_evidence?.find((e) => e.buy_point_type);
+    waveEntryEvidence(item.decision_evidence).forEach((line) => add(line));
     const reversal = item.decision_evidence?.find((e) => e.squeeze_confirmation === "volume_reversal_record_break");
     if (reversal)
         add(
@@ -143,6 +145,14 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
             if (item.reason === "wave_gap_reversal_reduce")
                 add(
                     `高开回落：开盘 ${num(item.observed_open, 4)} > 前高 ${num(item.previous_high, 4)}；阴线实体/开盘 ${pct(item.wave_body_fraction)}，振幅/前收 ${pct(item.wave_range_fraction)}；成交量 ${num(item.observed_volume, 0)} > 前日 ${num(item.previous_volume, 0)}；即使收盘高于前收也触发减仓`,
+                );
+            if (item.reason === "wave_abnormal_followthrough_clear")
+                add(
+                    `次日确认：${item.abnormal_date} 异常K线收盘 ${num(item.abnormal_close, 4)}；下一交易日收盘 ${num(item.observed_close, 4)} 严格低于该收盘，清空余仓，无需再次放量或等待倒 N`,
+                );
+            if (item.reason === "wave_upper_rejection_reduce")
+                add(
+                    `冲高收阴：上影不短于阴线实体；振幅/前收 ${pct(item.wave_range_fraction)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，下影占振幅 ${pct(item.wave_lower_shadow_fraction)}；成交量 ${num(item.observed_volume, 0)} > 前日 ${num(item.previous_volume, 0)}；不要求日涨跌幅为负`,
                 );
             if (item.reason === "wave_volume_shadows_reduce")
                 add(

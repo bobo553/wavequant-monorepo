@@ -64,7 +64,13 @@ def test_exhaustion_requires_known_active_target_and_all_candle_conditions(case)
         bars[index] = replace(bars[index], low=bars[index].close)
     else:
         events.append(dict(event="wave_projection_invalidated", attack=events[0]["attack"], bar_index=index))
-    assert observe_wave_exhaustion(bars, index, events, StrategyConfig()) is None
+    result = observe_wave_exhaustion(bars, index, events, StrategyConfig())
+    if case == "one_shadow":
+        # Removing the lower wick changes the abnormal candle into an upper
+        # rejection; it no longer satisfies the double-shadow rule.
+        assert result["reason"] == "wave_upper_rejection_reduce"
+    else:
+        assert result is None
 
 
 def test_daily_fills_reduce_original_holding_then_clear_and_prefix_matches():
@@ -108,3 +114,16 @@ def test_daily_fills_reduce_original_holding_then_clear_and_prefix_matches():
         {bars[0].symbol: bars}, signals=[signal], config=config, wave_events={bars[0].symbol: wrong}
     )
     assert not any(o["side"] == "SELL" for o in unrelated.orders)
+
+
+def test_abnormal_warning_next_trading_session_lower_close_clears():
+    bars, dates, events = sample()
+    index = dates["2026-09-11"] + 1
+    close = bars[index - 1].close * 0.99
+    bars[index] = replace(
+        bars[index], close=close, low=min(bars[index].low, close), high=max(bars[index].high, close), volume=1
+    )
+    result = observe_wave_exhaustion(bars, index, events, StrategyConfig(), reduced=True)
+    assert result["reason"] == "wave_abnormal_followthrough_clear"
+    assert result["abnormal_date"] == "2026-09-11"
+    assert result["exit_fraction"] == 1

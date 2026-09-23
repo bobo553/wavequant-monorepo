@@ -4,6 +4,72 @@
     "activeFeature": null,
     "features": [
         {
+            "id": "MONOREPO-156",
+            "name": "target-abnormal-followthrough-clear",
+            "title": "目标异常K线次日收盘走低清仓",
+            "description": "目标异常形态后的下一交易日收盘严格降低时当日清空余仓。",
+            "scope": "共享退出规则与成交证据及回归",
+            "dependencies": [
+                "MONOREPO-155"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "华瓷08-12清空余仓，不等08-19",
+                "不要求次日放量或减仓已成交，相等不清仓",
+                "验证目标归属、次日边界和真实成交展示"
+            ],
+            "verification": [
+                {
+                    "command": "Core targeted pytest (10 exit/backtest modules); lint; typecheck; build; ruff format",
+                    "status": "passed",
+                    "summary": "164项相关回归通过，含三类异常次日清仓、相等/高于拒绝、次日范围、未来目标拒绝、无减仓成交也清仓及完整/前缀一致性；lint/类型/构建通过。"
+                },
+                {
+                    "command": "真实AkShare华瓷完整/08-12前缀; Playwright wave-upper-rejection.spec.mjs",
+                    "status": "passed",
+                    "summary": "08-11卖500股，08-12收盘16.619058<异常收盘16.998285，清余200股且剩余0，08-19无卖单。124信号7订单前缀一致；真实浏览器订单、详情、剪贴板通过。"
+                },
+                {
+                    "command": "Web test:unit; lint; typecheck; build; API test:unit",
+                    "status": "passed",
+                    "summary": "Web12项Vitest及135项Node、lint/类型/构建通过；API85项Python及4项Node通过，1项环境跳过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-155",
+            "name": "target-upper-rejection-exit",
+            "title": "正N二饱后放量冲高收阴退出",
+            "description": "补齐持仓正N达到目标后上影拒绝形态，按当日收盘累计减仓80%。",
+            "scope": "共享退出规则、证据展示与真实回测",
+            "dependencies": [
+                "MONOREPO-152"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "华瓷08-03正N达到二饱后08-11当日减仓",
+                "未达目标、目标失效及非拒绝形态不误触发",
+                "真实订单、因果前缀及页面证据验证"
+            ],
+            "verification": [
+                {
+                    "command": "Core test:unit; lint; typecheck; build; changed-file ruff format --check",
+                    "status": "passed",
+                    "summary": "892项测试及43子测试通过；34项目标退出专项覆盖同日目标、无/未来/失效目标、形态边界、原N归属、去重及前缀一致性。Ruff、类型、构建通过。"
+                },
+                {
+                    "command": "真实AkShare华瓷完整回测与2026-08-11前缀",
+                    "status": "passed",
+                    "summary": "08-03正N二吐17.489049，08-11当日原始700股减500余200；截至当日124信号6订单与全历史完全一致。"
+                },
+                {
+                    "command": "Web test:unit; lint; typecheck; build; Playwright wave-upper-rejection.spec.mjs; API test:unit",
+                    "status": "passed",
+                    "summary": "Web12项Vitest及135项Node、lint/类型/构建通过；真实Chromium验证订单/详情/剪贴板。API85项Python通过1项环境跳过，4项Node通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-154",
             "name": "ladder-stock-research-navigation",
             "title": "涨停天梯股票跳转行情与复盘",
@@ -5544,6 +5610,80 @@
                     "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build; playwright test tests/e2e/n-extension-levels.spec.mjs --workers=1",
                     "status": "passed",
                     "summary": "Web lint、类型、9 项 Vitest、121 项 Node、生产构建及 2 条 Chromium 通过。验证真实瑞凌详情、鼠标点击 N、键盘、390px、远端目标价格轴、历史日期门控与图层清理。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-157",
+            "name": "two-t-wave-gap-continuation",
+            "title": "二吐后守住轧空低的堆箱放量跳空买点",
+            "description": "二吐完成后的 A/B 结构独立保留，合格原 N 守住轧空低后以放量跳空确认 C 浪入场和等浪目标。",
+            "scope": "Core V3 全局转浪入场、证据及回归；不硬编码股票日期。",
+            "dependencies": [
+                "MONOREPO-155",
+                "MONOREPO-156"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "二吐后回调守住原轧空低，放量跳空阳线触发 C 浪候选，不要求回到原突破 K 线内",
+                "A 为本次已完成攻击高点减原 N 起点，B 保留整段回调最低点，目标 B+A",
+                "沿用原 N 合格交替背景并保留倒 N、压力、仓位、执行过滤；逐日前缀无未来泄漏",
+                "华瓷真实数据 9 月 15 日产生买点并成交，8 月 21 日仅为 B 低观察；相关全量门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core lint/typecheck/build; ruff format --check; strict mypy wave_continuation.py; pytest tests/test_wave_continuation.py tests/test_wave_projection.py",
+                    "status": "passed",
+                    "summary": "原34项专项通过；最终转浪模块12项通过，包含真实日线、守低等值/失守、缺口/量能、目标耗尽、突破棒上影不能冒充二吐和全策略前缀。最终模块严格类型、Core Ruff/类型及sdist/wheel通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build; playwright wave-continuation.spec.mjs",
+                    "status": "passed",
+                    "summary": "12项Vitest、135项Node及1条真实Chromium通过；华瓷09-15买入成交、08-21 B低、08-11二吐、19.6975目标、复制及390px核对一致。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api test:unit; GET /api/akshare-backtest sz.001216 lecture_v3 full/prefix",
+                    "status": "passed",
+                    "summary": "API85项Python+4项Node通过，1项环境测试跳过；真实v47量能开/关均09-15当日收盘模拟成交。量能开启的09-15前缀与完整历史截取的2条成交记录一致；关闭时08-05买700股、08-11减500股、08-12清200股、09-15重新买100股。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core test:unit -- -q; pnpm harness:check; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "Core全量914项测试及43项子测试通过（761.43秒）；最终新增边界与分数计算由12项专项及严格mypy复核。功能状态、差异检查及索引同步通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-158",
+            "name": "c-wave-a-amplitude-extension-targets",
+            "title": "大C浪按整段A浪推演1.618与2.618目标",
+            "description": "明确完成二吐的整段A、回调B及后续大C的关系；等浪为中间观察位，追加相对A幅度的扩展目标，避免混用原N小a/c。",
+            "scope": "Core V3转浪目标证据、图表参考位、Web详情复制及说明；保留既有入场与退出门槛。",
+            "dependencies": [
+                "MONOREPO-157"
+            ],
+            "status": "done",
+            "acceptanceCriteria": [
+                "扩展目标为B低+1.618*(A高-A起点)、B低+2.618*(A高-A起点)",
+                "使用确认日可知A/B锚点，回放不借未来；2.618不作为上涨上限或自动卖出条件",
+                "详情与复制、图表参考位显示同源扩展价格；华瓷9月15日买点保留",
+                "相关Core/Web/API回归及实际浏览器验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_wave_continuation.py test_wave_projection.py test_target_exit_policy.py test_wave_exhaustion_exit.py; lint/typecheck/build; strict mypy wave_continuation.py",
+                    "status": "passed",
+                    "summary": "61项相关测试通过，覆盖整段A扩展价格、实际日线与逐日前缀、守低及目标非自动退出；Ruff、类型、新模块严格mypy及sdist/wheel通过。"
+                },
+                {
+                    "command": "Web lint/typecheck/test:unit/build; playwright wave-continuation.spec.mjs; API test:unit",
+                    "status": "passed",
+                    "summary": "Web12项Vitest、135项Node及真实Chromium通过；图表参考位、详情复制显示22.0549/25.8695并明确2.618不是上限，9月15日买点保留。API85项Python+4项Node通过，1项环境跳过。"
+                },
+                {
+                    "command": "Actual AkShare backtest v48 versus v47; harness:check; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "华瓷完整128条信号及8条执行记录逐条一致，新增扩展目标仅作C浪后续参照，保留等浪作为最近入场风险参考。状态、差异及索引校验通过。"
                 }
             ]
         }

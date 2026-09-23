@@ -8,6 +8,36 @@ from ..market_structure.price_action import Direction, ShadowPolicy, observe_res
 def observe_wave_exhaustion(
     bars: list[Bar], index: int, events: list[dict], config: StrategyConfig, *, reduced: bool = False
 ) -> dict | None:
+    # Confirm only the immediately preceding trading candle's known warning.
+    # Failed/rounded partial fills must not prevent a subsequent full exit.
+    if index >= 2 and bars[index].close < bars[index - 1].close:
+        warning = _observe_target_candle(bars, index - 1, events, config)
+        if warning is not None and "exit_target_fraction" in warning:
+            return dict(
+                {
+                    key: warning[key]
+                    for key in ("wave_n_date", "wave_reached_date", "wave_reached_stage", "wave_reached_price")
+                },
+                reason="wave_abnormal_followthrough_clear",
+                exit_fraction=1.0,
+                abnormal_date=bars[index - 1].timestamp.date().isoformat(),
+                abnormal_close=bars[index - 1].close,
+                abnormal_reason=warning["reason"],
+                observed_open=bars[index].open,
+                observed_close=bars[index].close,
+                observed_low=bars[index].low,
+                observed_high=bars[index].high,
+                observed_volume=bars[index].volume,
+                previous_volume=bars[index - 1].volume,
+                previous_close=bars[index - 1].close,
+                execution_model="same_day_close",
+            )
+    return _observe_target_candle(bars, index, events, config, reduced=reduced)
+
+
+def _observe_target_candle(
+    bars: list[Bar], index: int, events: list[dict], config: StrategyConfig, *, reduced: bool = False
+) -> dict | None:
     """Caller supplies only this entry N's dated projection events.
 
     Reaching a target alone never sells. Neither a bearish engulfing candle nor
@@ -93,6 +123,23 @@ def observe_wave_exhaustion(
         return dict(
             evidence,
             reason="wave_gap_reversal_reduce",
+            exit_fraction=config.wave_exhaustion_reduction,
+            exit_target_fraction=config.wave_exhaustion_reduction,
+        )
+    if (
+        not reduced
+        and bar.volume > previous.volume
+        and bar.high > previous.high
+        and body > 0
+        and span / previous.close >= config.wave_exhaustion_min_range
+        and upper >= body
+        and lower / span <= config.wave_exhaustion_min_shadow
+    ):
+        # A target-stage rally can fail through its upper wick without a
+        # 5% bearish body or a second long shadow. Daily return is irrelevant.
+        return dict(
+            evidence,
+            reason="wave_upper_rejection_reduce",
             exit_fraction=config.wave_exhaustion_reduction,
             exit_target_fraction=config.wave_exhaustion_reduction,
         )

@@ -97,3 +97,16 @@ def test_gap_reversal_executes_same_close_and_prefix_is_identical():
         replace(bars[end], open=10.5, high=10.5, low=9.4, close=9.7, volume=bars[end - 1].volume * 2)
     ]
     assert run_portfolio({bars[0].symbol: repeated}, **kwargs).orders == prefix.orders
+
+
+def test_abnormal_warning_next_trading_session_lower_close_clears():
+    bars, dates, events = sample()
+    index = dates["2024-10-08"] + 1
+    close = bars[index - 1].close * 0.99
+    bars[index] = replace(
+        bars[index], close=close, low=min(bars[index].low, close), high=max(bars[index].high, close), volume=1
+    )
+    result = observe_wave_exhaustion(bars, index, events, StrategyConfig(), reduced=True)
+    assert result["reason"] == "wave_abnormal_followthrough_clear"
+    assert result["abnormal_date"] == "2024-10-08"
+    assert result["exit_fraction"] == 1

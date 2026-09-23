@@ -2,6 +2,7 @@ import { reasonText } from "./annotations.js";
 import { candleCopyText, previousCandleClose } from "./candle-details.js";
 import { num, pct, symbolName } from "./labels.js";
 import { closedPositionLabel, openPositionForMarker, positionProfit } from "./trade-position.js";
+import { waveEntryEvidence } from "./wave-entry-evidence.js";
 
 export function formatFilledTradeCopy(view, marker, variantName, positionLabel, trade) {
     const lines = [
@@ -22,6 +23,7 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         `费用：${num(marker.fee)} 元`,
     ];
     if (marker.side === "BUY") lines.push(`买入后仓位：${positionLabel}`);
+    lines.push(...waveEntryEvidence(marker.decision_evidence));
     const reversal = marker.decision_evidence?.find((e) => e.squeeze_confirmation === "volume_reversal_record_break");
     if (reversal)
         lines.push(
@@ -115,6 +117,14 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         if (marker.reason === "wave_gap_reversal_reduce")
             lines.push(
                 `高开回落：开盘 ${num(marker.observed_open, 4)} > 前高 ${num(marker.previous_high, 4)}；阴线实体/开盘 ${pct(marker.wave_body_fraction)}，振幅/前收 ${pct(marker.wave_range_fraction)}；成交量 ${num(marker.observed_volume, 0)} > 前日 ${num(marker.previous_volume, 0)}；即使收盘高于前收也触发减仓`,
+            );
+        if (marker.reason === "wave_abnormal_followthrough_clear")
+            lines.push(
+                `次日确认：${marker.abnormal_date} 异常K线收盘 ${num(marker.abnormal_close, 4)}；下一交易日收盘 ${num(marker.observed_close, 4)} 严格低于该收盘，清空余仓，无需再次放量或等待倒 N`,
+            );
+        if (marker.reason === "wave_upper_rejection_reduce")
+            lines.push(
+                `冲高收阴：上影不短于阴线实体；振幅/前收 ${pct(marker.wave_range_fraction)}，上影占振幅 ${pct(marker.wave_upper_shadow_fraction)}，下影占振幅 ${pct(marker.wave_lower_shadow_fraction)}；成交量 ${num(marker.observed_volume, 0)} > 前日 ${num(marker.previous_volume, 0)}；不要求日涨跌幅为负`,
             );
         if (marker.reason === "wave_volume_shadows_reduce")
             lines.push(
