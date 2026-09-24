@@ -1998,18 +1998,20 @@ test("market overview and limit-up ladder remain usable across desktop and narro
     await page.goto("/market");
     await expect(page.locator("[data-shell-structure='market']")).toHaveAttribute("data-shell-variant", "market");
     await expect(page.getByRole("heading", { name: "市场看盘" })).toBeVisible();
+    await expect(page.locator("#market-main .market-view-tab[aria-selected='true']")).toHaveText("市场总览");
+    await expect(page.locator("#market-main .market-view-bar")).toHaveCSS("background-color", "rgb(17, 29, 45)");
     await expect(page.getByText("大盘与市场广度")).toBeVisible();
     await expect(page.getByText("1,060.36")).toBeVisible();
     await expect(page.locator("canvas")).toHaveCount(1);
 
     await page.getByRole("tab", { name: "涨停阶梯" }).click();
-    await expect(page.getByRole("heading", { name: "涨停阶梯 · 强弱接力" })).toBeVisible();
-    await expect(page.getByRole("table", { name: "当前涨停股票池" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "每日涨停天梯" })).toBeVisible();
+    await expect(page.getByLabel("涨停天梯日期")).toBeVisible();
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("tab", { name: "市场总览" }).click();
-    const bodyWidth = await page.locator("body").evaluate((body) => body.scrollWidth);
-    expect(bodyWidth).toBeLessThanOrEqual(390);
+    await expect(page.getByRole("button", { name: "保存快照" })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     expect(pageErrors).toEqual([]);
 });
 

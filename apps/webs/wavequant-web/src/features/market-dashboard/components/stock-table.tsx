@@ -144,7 +144,7 @@ function SortableHead({
 }): JSX.Element {
     return (
         <th className="px-2 py-1 font-medium">
-            <Button variant="ghost" size="sm" onClick={onClick}>
+            <Button variant="ghost" size="sm" className="relative" onClick={onClick}>
                 {label}
                 <IconArrowsSort data-icon="inline-end" aria-hidden="true" />
                 <span className="sr-only">{active === "none" ? "原顺序" : active === "desc" ? "降序" : "升序"}</span>

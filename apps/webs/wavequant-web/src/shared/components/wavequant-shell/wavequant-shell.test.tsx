@@ -29,6 +29,10 @@ describe("WaveQuantShell", () => {
         expect(screen.getByRole("button", { name: "策略回测" })).toHaveAttribute("data-page", "performance");
         expect(window.location.search).toBe("?page=performance");
 
+        fireEvent.click(screen.getByRole("button", { name: "策略拓扑" }));
+        expect(window.location.search).toBe("?page=topology");
+        expect(screen.getByRole("button", { name: "策略拓扑" })).toHaveAttribute("aria-current", "page");
+
         expect(screen.getByText("Market & Research")).toBeInTheDocument();
         expect(screen.getByText("Trading & Control")).toBeInTheDocument();
         expect(screen.getAllByText("本地研究")).toHaveLength(2);

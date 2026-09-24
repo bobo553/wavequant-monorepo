@@ -6,6 +6,10 @@ WaveQuant 的浏览器研究工作台。默认 `/` 进入从 `E:\WorkSpace\股�
 
 `/` 与 `/research` 都由 Next.js App Router 直接渲染 React 研究工作台，不再跳转静态 HTML。页面结构拆分在 `src/features/research-workbench/components`，浏览器图表和原有研究算法通过 `runtime` 客户端边界挂载，同源 `/api/*` 由开发服务器代理到 WaveQuant API。
 
+研究页左侧“策略拓扑”可通过 `/research?page=topology` 直接打开。tldraw 画布把结构候选、买点与公共门禁、A/B→C 波续攻、模拟执行与成交、退出与减仓拆成可逐关阅读的判断路径；每一关均列出“是 / 否”结果和源码位置。图以 `src/features/research-workbench/topology/topology-data.ts` 为版本化来源，画布只读以避免临时拖动被误认为策略规则。修改 `wavequant-core` 的策略/市场结构、回测执行或浏览器买点证据后，必须复核并更新该文件的条件与路径，再更新其中的 `strategySourceDigest`；`topology-data.test.ts` 会在源码指纹变化时失败，提醒同步维护。该指纹是变更门禁，不会自动推断策略语义，人工复核仍是必要步骤。
+
+tldraw 本地开发无需密钥；在 HTTPS 非本地域名上线前须按 [官方许可说明](https://tldraw.dev/sdk-features/license-key) 提供有效授权密钥（SDK 支持 `NEXT_PUBLIC_TLDRAW_LICENSE_KEY`）。
+
 全景市场看盘保留在 `/market`，使用 React 19、Next.js App Router、Tailwind CSS 4、ECharts 与共享 `@repo/design-system-web` shadcn 原语；业务组件位于 `src/features/market-dashboard`。其中证券与行情是明确标识的虚构合成样本，不与原研究工作台的本地通达信数据混用。
 
 原始 WaveQuant v2 单文件原型按文本等价副本保留在 `/wavequant-v2-classic.html`，作为 162 项既有交互的兼容验收入口；Next.js 页面逐项建立等价回归后再移除该兜底。

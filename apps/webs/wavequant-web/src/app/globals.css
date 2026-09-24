@@ -1,6 +1,12 @@
 @import "@repo/design-system-web/globals.css";
+@import "../features/market-dashboard/market-workbench.css";
 
 @source "../";
+
+/* 拓扑页可在行情接口尚未完成时独立显示，避免旧工作台内容抢占画布。 */
+#research-main:has(> #page-topology:not([hidden])) > :not(#page-topology) {
+    display: none !important;
+}
 
 :root,
 .dark {
@@ -147,4 +153,451 @@ html[data-density="compact"] main {
 ::-webkit-scrollbar-thumb {
     border-radius: 999px;
     background: #2b3d56;
+}
+
+/* 策略拓扑复用研究工作台的面板、密度与状态色。 */
+#page-topology {
+    --topology-surface: var(--research-control);
+    --topology-stroke: var(--research-accent-border);
+}
+
+#page-topology .topology-heading-badge {
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 650;
+    text-align: right;
+}
+
+#page-topology .topology-heading-badge small {
+    display: block;
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 400;
+}
+
+#page-topology .topology-stage-bar {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    min-width: 0;
+    padding: 11px 17px;
+}
+
+#page-topology .topology-stage-caption {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 3px;
+    color: var(--muted);
+    font-size: 10px;
+}
+
+#page-topology .topology-stage-caption strong {
+    color: var(--cyan);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+#page-topology .topology-stage-tabs {
+    display: flex;
+    gap: 5px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+#page-topology .topology-stage-tabs button {
+    flex: none;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+#page-topology .topology-stage-tabs button:hover,
+#page-topology .topology-stage-tabs button:focus-visible {
+    border-color: var(--border);
+    background: var(--panel-hover);
+    color: var(--text);
+}
+
+#page-topology .topology-stage-tabs button[aria-selected="true"] {
+    border-color: var(--research-accent-border);
+    background: var(--research-accent-soft);
+    color: var(--cyan);
+}
+
+#page-topology .topology-stage-description {
+    margin: 11px 0 13px;
+    color: var(--research-text-soft);
+    font-size: 11px;
+    line-height: 1.55;
+}
+
+#page-topology .topology-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 322px;
+    gap: 14px;
+    min-width: 0;
+}
+
+#page-topology .topology-canvas-panel,
+#page-topology .topology-inspector {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+#page-topology .topology-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 61px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+#page-topology .topology-panel-header h2 {
+    margin-top: 3px;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 650;
+}
+
+#page-topology .topology-panel-kicker {
+    color: var(--cyan);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+}
+
+#page-topology .topology-canvas-actions {
+    display: flex;
+    gap: 5px;
+}
+
+#page-topology .topology-canvas-actions button {
+    min-width: 29px;
+    height: 29px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--research-control);
+    color: var(--research-text-soft);
+    font-size: 11px;
+}
+
+#page-topology .topology-canvas-actions button:hover,
+#page-topology .topology-canvas-actions button:focus-visible {
+    border-color: var(--research-accent-border);
+    color: var(--cyan);
+}
+
+#page-topology .topology-canvas-view {
+    position: relative;
+    height: 560px;
+    overflow: hidden;
+    background: var(--bg);
+}
+
+#page-topology .topology-canvas-view .tl-container {
+    --tl-color-background: #0e1929;
+    --tl-color-green: #48d6c4;
+    --tl-color-red: #dd8b89;
+    background: #0e1929;
+}
+
+#page-topology .topology-canvas-foot {
+    padding: 7px 15px;
+    border-top: 1px solid var(--border);
+    color: var(--research-text-faint);
+    font-size: 10px;
+}
+
+#page-topology .topology-count {
+    padding: 4px 7px;
+    border: 1px solid var(--research-accent-border);
+    border-radius: 5px;
+    background: var(--research-accent-soft);
+    color: var(--cyan);
+    font-size: 10px;
+}
+
+#page-topology .topology-inspector {
+    height: 650px;
+}
+
+#page-topology .topology-rule-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+#page-topology .topology-rule {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 13px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-left: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+}
+
+#page-topology .topology-rule:hover,
+#page-topology .topology-rule:focus-visible,
+#page-topology .topology-rule[aria-pressed="true"] {
+    border-left-color: var(--cyan);
+    background: var(--research-accent-soft);
+}
+
+#page-topology .topology-rule__number {
+    color: var(--cyan);
+    font-size: 10px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+#page-topology .topology-rule__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+#page-topology .topology-rule__body strong {
+    margin-bottom: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+#page-topology .topology-rule__route {
+    color: var(--research-text-soft);
+    font-size: 10px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+#page-topology .topology-rule__route em {
+    margin-right: 6px;
+    color: var(--green);
+    font-style: normal;
+    font-weight: 700;
+}
+
+#page-topology .topology-rule__route--no em {
+    color: var(--red);
+}
+
+#page-topology .topology-detail {
+    flex: none;
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 13px 15px;
+    border-top: 1px solid var(--research-accent-border);
+    background: var(--research-subtle);
+}
+
+#page-topology .topology-detail h3 {
+    margin-top: 6px;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+#page-topology .topology-detail p {
+    margin-top: 7px;
+    color: var(--research-text-soft);
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+#page-topology .topology-detail code {
+    display: block;
+    margin-top: 8px;
+    color: var(--cyan);
+    font-size: 10px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+#page-topology .topology-notes {
+    margin-top: 15px;
+    padding: 0 16px;
+}
+
+#page-topology .topology-notes summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 0;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    list-style: none;
+}
+
+#page-topology .topology-notes summary span {
+    color: var(--muted);
+    font-weight: 400;
+}
+
+#page-topology .topology-notes ul {
+    padding: 0 0 15px 18px;
+    color: var(--research-text-soft);
+    font-size: 11px;
+    line-height: 1.7;
+}
+
+#page-topology .topology-canvas-loading {
+    min-height: 650px;
+    padding: 18px;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+#page-topology .topology-node {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    padding: 13px 15px;
+    border: 1px solid #34516a;
+    border-left: 3px solid #48d6c4;
+    border-radius: 9px;
+    background: #17283a;
+    box-shadow: 0 10px 26px #040b1580;
+    color: #e8eef8;
+    font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#page-topology .topology-node__topline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #73ddcb;
+    font-size: 11px;
+    font-weight: 650;
+}
+
+#page-topology .topology-node__marker {
+    display: inline-grid;
+    width: 19px;
+    height: 19px;
+    place-items: center;
+    border: 1px solid #48d6c466;
+    border-radius: 4px;
+    background: #48d6c41c;
+    font-size: 14px;
+}
+
+#page-topology .topology-node__title {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    color: #e8eef8;
+    font-size: 16px;
+    font-weight: 620;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+#page-topology .topology-node__source {
+    padding-top: 7px;
+    border-top: 1px solid #34465a;
+    color: #91a5bb;
+    font-size: 10px;
+}
+
+#page-topology .topology-node:not(.topology-node--decision) .topology-node__title {
+    font-size: 14px;
+    line-height: 1.35;
+}
+
+#page-topology .topology-node--stop {
+    border-color: #765155;
+    border-left-color: #dd8b89;
+    background: #312731;
+}
+
+#page-topology .topology-node--stop .topology-node__topline,
+#page-topology .topology-node--stop .topology-node__marker {
+    color: #edaaaa;
+}
+
+#page-topology .topology-node--exit {
+    border-color: #776348;
+    border-left-color: #d5af71;
+    background: #302d2a;
+}
+
+#page-topology .topology-node--exit .topology-node__topline,
+#page-topology .topology-node--exit .topology-node__marker {
+    color: #e4c38e;
+}
+
+#page-topology .topology-node--complete {
+    border-color: #326f64;
+    background: #17332f;
+}
+
+#page-topology .topology-node--decision .topology-node__title {
+    font-size: 15px;
+}
+
+#page-topology .topology-node:not(.topology-node--decision) .topology-node__title {
+    font-size: 13px;
+}
+
+@media (max-width: 1180px) {
+    #page-topology .topology-workspace {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #page-topology .topology-inspector {
+        height: 480px;
+    }
+}
+
+@media (max-width: 640px) {
+    #page-topology .topology-heading {
+        display: block;
+    }
+
+    #page-topology .topology-heading-badge {
+        margin-top: 16px;
+        text-align: left;
+    }
+
+    #page-topology .topology-stage-bar {
+        display: block;
+        padding: 10px;
+    }
+
+    #page-topology .topology-stage-caption {
+        flex-direction: row;
+        justify-content: space-between;
+        margin-bottom: 6px;
+    }
+
+    #page-topology .topology-canvas-view {
+        height: 470px;
+    }
+
+    #page-topology .topology-panel-header {
+        padding: 10px;
+    }
 }

@@ -4,6 +4,48 @@
     "activeFeature": "MONOREPO-165",
     "features": [
         {
+            "id": "MONOREPO-169",
+            "name": "market-workbench-visual-alignment",
+            "title": "市场看盘全视图对齐行情与复盘样式",
+            "description": "统一市场看盘标题、工具栏、视图切换、指标卡片与各子视图的研究工作台视觉规范，并修复窄屏横向溢出。",
+            "scope": "wavequant-web 市场看盘八个视图的页面样式、顶部操作与窄屏回归",
+            "dependencies": ["MONOREPO-014"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "市场看盘标题、筛选面板、卡片、表格和选中态沿用行情与复盘的颜色、边框、圆角与密度",
+                "桌面和窄屏均可使用顶部操作，八个看盘视图在 320px 及以上没有整页横向滚动",
+                "深浅主题及原有市场交互可用，Web lint、类型、单测、构建和 Chromium 关键路径通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build; targeted Chromium market-dashboard.spec.ts; pnpm harness:check; 320/390/1280/1440px browser checks",
+                    "status": "passed",
+                    "summary": "Web lint、类型、14 项 Vitest、150 项 Node 单测、生产构建、Harness 及 2 条市场工作流 Chromium 回归通过；八个视图无页面横向溢出，深浅主题、桌面与窄屏已人工复核。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-168",
+            "name": "strategy-topology-tldraw",
+            "title": "研究页策略拓扑与变更同步门禁",
+            "description": "在研究页左侧新增策略拓扑入口，使用 tldraw 显示默认 V3 的结构、入场、C 波、模拟执行和退出判断，并以源码指纹要求策略变更时复核拓扑。",
+            "scope": "wavequant-web 研究页导航、拓扑画布、策略维护校验及桌面/窄屏回归",
+            "dependencies": ["MONOREPO-166"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "左侧策略拓扑页签和可分享深链可在桌面与窄屏打开，旧工作区不与拓扑同时显示",
+                "每个画布判断都有明确的是/否路径、文字解释和源码定位，覆盖结构、买点、续波、执行与退出",
+                "策略和相关证据源码变化使拓扑指纹测试失败，维护者复核拓扑后才能更新指纹并通过门禁"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; test:unit; build; targeted Chromium strategy-topology.spec.ts; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "Web lint、类型、14 项 Vitest 和 150 项 Node 单测、生产构建通过；2 条 Chromium 回归验证深链、判断详情、画布、桌面与 390px 侧栏；Harness 通过。tldraw 正式 HTTPS 部署需提供官方许可密钥。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-166",
             "name": "selected-a-wave-c-target",
             "title": "选定 A 浪高点绘制 C 浪等浪目标",

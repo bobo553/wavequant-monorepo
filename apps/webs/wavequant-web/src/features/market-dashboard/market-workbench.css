@@ -1,0 +1,322 @@
+/* 与行情与复盘共用的研究工作台视觉语言，范围仅限市场看盘。 */
+#market-main {
+    --market-panel: var(--card);
+    --market-border: var(--input);
+    --market-control: color-mix(in srgb, var(--card) 82%, var(--foreground));
+    --market-accent-soft: color-mix(in srgb, var(--primary) 14%, var(--card));
+    --market-accent-border: color-mix(in srgb, var(--primary) 42%, var(--input));
+    min-width: 0;
+}
+
+#market-main .market-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin: 2px 0 22px;
+}
+
+#market-main .market-eyebrow {
+    color: var(--primary);
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.16em;
+}
+
+#market-main .market-heading h1 {
+    margin-top: 10px;
+    color: var(--foreground);
+    font-size: 25px;
+    font-weight: 750;
+    letter-spacing: -0.025em;
+    line-height: 1.25;
+}
+
+#market-main .market-heading h1 span {
+    color: var(--primary);
+}
+
+#market-main .market-heading-copy {
+    margin-top: 10px;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+#market-main .market-heading-aside {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 14px;
+    padding-top: 20px;
+}
+
+#market-main .market-heading-badge {
+    color: var(--foreground);
+    font-size: 15px;
+    font-weight: 650;
+    text-align: right;
+}
+
+#market-main .market-heading-badge small {
+    display: block;
+    margin-top: 6px;
+    color: var(--muted-foreground);
+    font-size: 10px;
+    font-weight: 400;
+}
+
+#market-main .market-heading-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 7px;
+}
+
+#market-main .market-heading-actions button {
+    height: 32px;
+    border-radius: 6px;
+    font-size: 11px;
+}
+
+#market-main [data-slot="button"] {
+    border-radius: 6px;
+    font-size: 11px;
+}
+
+#market-main .market-heading-actions button:not(:last-child) {
+    border-color: var(--market-border);
+    background: var(--market-control);
+}
+
+#market-main .market-filter-panel,
+#market-main [data-slot="card"] {
+    min-width: 0;
+    border: 1px solid var(--market-border);
+    border-radius: 9px;
+    background: var(--market-panel);
+    box-shadow: none;
+}
+
+#market-main .market-filter-panel {
+    overflow: hidden;
+}
+
+#market-main .market-filter-row {
+    min-height: 45px;
+    padding: 8px 17px;
+}
+
+#market-main .market-filter-row + .market-filter-row {
+    border-top-color: var(--market-border);
+}
+
+#market-main .market-filter-row button,
+#market-main .market-filter-row select {
+    min-height: 32px;
+    border-radius: 6px;
+    font-size: 11px;
+}
+
+#market-main select,
+#market-main input:not([type="checkbox"]):not([type="range"]),
+#market-main textarea {
+    border-color: var(--market-border);
+    border-radius: 6px;
+    background: var(--background);
+    color: var(--foreground);
+}
+
+#market-main select:focus-visible,
+#market-main input:focus-visible,
+#market-main textarea:focus-visible,
+#market-main button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+#market-main .market-view-bar {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    min-width: 0;
+    padding: 10px 16px;
+    border: 1px solid var(--market-border);
+    border-radius: 9px;
+    background: var(--market-panel);
+}
+
+#market-main .market-view-caption {
+    flex: none;
+    color: var(--muted-foreground);
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+#market-main .market-view-tabs {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+#market-main .market-view-tab {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+#market-main .market-view-tab:hover,
+#market-main .market-view-tab:focus-visible {
+    border-color: var(--market-border);
+    background: var(--secondary);
+    color: var(--foreground);
+}
+
+#market-main .market-view-tab[aria-selected="true"] {
+    border-color: var(--market-accent-border);
+    background: var(--market-accent-soft);
+    color: var(--primary);
+}
+
+#market-main [role="tab"][aria-selected="true"]:not(.market-view-tab) {
+    border-color: var(--market-accent-border);
+    background: var(--market-accent-soft);
+    color: var(--primary);
+}
+
+#market-main .market-view-count {
+    padding: 1px 5px;
+    border: 1px solid var(--market-border);
+    border-radius: 4px;
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+
+#market-main [role="tabpanel"] {
+    min-width: 0;
+}
+
+#market-main .market-panel-header {
+    min-height: 52px;
+    border-color: var(--market-border);
+}
+
+#market-main .market-panel-header h2 {
+    font-size: 13px;
+    font-weight: 650;
+}
+
+#market-main .market-panel-header button {
+    font-size: 11px;
+}
+
+#market-main .market-ladder-panel {
+    padding: 17px;
+    border: 1px solid var(--market-border);
+    border-radius: 9px;
+    background: var(--market-panel);
+}
+
+#market-main .market-ladder-panel h2 {
+    font-size: 14px;
+    font-weight: 650;
+}
+
+#market-main .market-ladder-panel [role="alert"] {
+    border-color: color-mix(in srgb, #e6b86b 45%, var(--market-border));
+    background: color-mix(in srgb, #e6b86b 8%, var(--market-panel));
+}
+
+#market-main [data-slot="card"][role="button"] {
+    transition:
+        border-color 150ms ease,
+        background 150ms ease;
+}
+
+#market-main [data-slot="card"][role="button"]:hover,
+#market-main [data-slot="card"][role="button"]:focus-visible {
+    border-color: var(--market-accent-border);
+    background: color-mix(in srgb, var(--market-panel) 94%, var(--primary));
+}
+
+#market-main table {
+    border-collapse: collapse;
+}
+
+#market-main thead {
+    background: var(--secondary);
+}
+
+#market-main th {
+    color: var(--muted-foreground);
+    font-weight: 500;
+}
+
+#market-main tbody tr:hover {
+    background: color-mix(in srgb, var(--market-panel) 90%, var(--primary));
+}
+
+@media (max-width: 900px) {
+    #market-main .market-heading {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    #market-main .market-heading-aside {
+        width: 100%;
+        align-items: flex-start;
+        padding-top: 0;
+    }
+
+    #market-main .market-heading-badge {
+        text-align: left;
+    }
+
+    #market-main .market-heading-actions {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 640px) {
+    #market-main .market-heading {
+        margin-bottom: 18px;
+    }
+
+    #market-main .market-heading h1 {
+        font-size: 22px;
+    }
+
+    #market-main .market-heading-badge {
+        display: none;
+    }
+
+    #market-main .market-heading-actions button {
+        flex: 1 1 auto;
+    }
+
+    #market-main .market-filter-row {
+        padding: 9px 11px;
+    }
+
+    #market-main .market-filter-row .market-range {
+        flex-basis: 100%;
+    }
+
+    #market-main .market-view-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+        padding: 9px 10px;
+    }
+}

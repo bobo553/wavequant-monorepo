@@ -5,6 +5,7 @@ import {
     IconFlask,
     IconLayersLinked,
     IconSettings,
+    IconSitemap,
     IconWallet,
 } from "@tabler/icons-react";
 
@@ -13,7 +14,7 @@ export interface IWaveQuantNavigationItem {
     href: string;
     icon: Icon;
     label: string;
-    researchPage?: "health" | "orders" | "performance" | "workspace";
+    researchPage?: "health" | "orders" | "performance" | "topology" | "workspace";
 }
 
 export interface IWaveQuantNavigationGroup {
@@ -38,6 +39,12 @@ export const marketNavigationGroups: readonly IWaveQuantNavigationGroup[] = [
                 icon: IconFlask,
                 label: "策略回测",
                 researchPage: "performance",
+            },
+            {
+                href: "/research?page=topology",
+                icon: IconSitemap,
+                label: "策略拓扑",
+                researchPage: "topology",
             },
         ],
     },

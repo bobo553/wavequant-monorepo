@@ -18,8 +18,8 @@ const phases = [
 export function MarketToolbar(): JSX.Element {
     const workspace = useMarketWorkspace();
     return (
-        <section aria-label="看盘条件" className="border-border bg-card rounded-lg border">
-            <div className="border-border flex flex-wrap items-center gap-2 border-b px-3 py-2">
+        <section aria-label="看盘条件" className="market-filter-panel border-border bg-card rounded-lg border">
+            <div className="market-filter-row border-border flex flex-wrap items-center gap-2 border-b px-3 py-2">
                 <span className="text-muted-foreground text-xs">样本日期</span>
                 <select
                     aria-label="样本日期"
@@ -84,7 +84,7 @@ export function MarketToolbar(): JSX.Element {
                           : "历史盘中样本"}
                 </Badge>
             </div>
-            <div className="flex flex-wrap items-center gap-3 px-3 py-2">
+            <div className="market-filter-row flex flex-wrap items-center gap-3 px-3 py-2">
                 <span className="text-muted-foreground text-xs">市场</span>
                 <select
                     aria-label="市场范围"
@@ -110,35 +110,44 @@ export function MarketToolbar(): JSX.Element {
                 </span>
                 <span className="text-muted-foreground ml-auto text-[11px]">48 只虚构证券 · 非全市场覆盖</span>
             </div>
-            <div className="absolute top-[106px] right-4 hidden items-center gap-2 xl:flex">
-                <Button
-                    variant="outline"
-                    onClick={() =>
-                        workspace.openInfo(
-                            "数据状态",
-                            "样本数据完整度 97.9%。48 只虚构证券中 47 只具有当前时点有效报价，1 只处于缺失演练。\n\n来源：WQ-SYNTH-02；观察时点与全部卡片共享。异常演练时保留最后可用快照并停止时钟。",
-                        )
-                    }
-                >
-                    <IconShieldCheck data-icon="inline-start" aria-hidden="true" />
-                    数据状态
-                </Button>
-                <Button
-                    variant="outline"
-                    onClick={() =>
-                        workspace.downloadJson(
-                            `wavequant-snapshot-${workspace.date}-${workspace.time.replace(":", "")}.json`,
-                        )
-                    }
-                >
-                    <IconDownload data-icon="inline-start" aria-hidden="true" />
-                    保存快照
-                </Button>
-                <Button onClick={workspace.openSearch}>
-                    <IconSearch data-icon="inline-start" aria-hidden="true" />
-                    找股票 / 题材
-                </Button>
-            </div>
         </section>
+    );
+}
+
+/** 顶部操作在桌面和窄屏保持同一位置与可用性。 */
+export function MarketHeaderActions(): JSX.Element {
+    const workspace = useMarketWorkspace();
+    return (
+        <div className="market-heading-actions">
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                    workspace.openInfo(
+                        "数据状态",
+                        "样本数据完整度 97.9%。48 只虚构证券中 47 只具有当前时点有效报价，1 只处于缺失演练。\n\n来源：WQ-SYNTH-02；观察时点与全部卡片共享。异常演练时保留最后可用快照并停止时钟。",
+                    )
+                }
+            >
+                <IconShieldCheck data-icon="inline-start" aria-hidden="true" />
+                数据状态
+            </Button>
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                    workspace.downloadJson(
+                        `wavequant-snapshot-${workspace.date}-${workspace.time.replace(":", "")}.json`,
+                    )
+                }
+            >
+                <IconDownload data-icon="inline-start" aria-hidden="true" />
+                保存快照
+            </Button>
+            <Button size="sm" onClick={workspace.openSearch}>
+                <IconSearch data-icon="inline-start" aria-hidden="true" />
+                找股票 / 题材
+            </Button>
+        </div>
     );
 }

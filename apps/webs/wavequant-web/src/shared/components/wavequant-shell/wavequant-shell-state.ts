@@ -5,7 +5,7 @@ import { useSyncExternalStore } from "react";
 const SIDEBAR_STORAGE_KEY = "wavequant.sidebar.collapsed.v1";
 const SIDEBAR_CHANGE_EVENT = "wavequant:sidebar-change";
 const RESEARCH_PAGE_CHANGE_EVENT = "wavequant:research-page-change";
-const researchPages = new Set(["health", "orders", "performance", "workspace"]);
+const researchPages = new Set(["health", "orders", "performance", "topology", "workspace"]);
 let fallbackSidebarState = false;
 
 function subscribeToSidebar(onChange: () => void): () => void {

@@ -188,7 +188,7 @@ const sessionCacheKey = (symbol) => `${symbol}:${activeTimeframe()}`;
 function universe() {
     return isAkShare() ? state.akshare?.stocks || [] : isLocal() ? state.tdx?.stocks || [] : currentRun().symbols;
 }
-const titles = { workspace: "K 线复盘", performance: "策略绩效", orders: "订单与信号", health: "系统状态" };
+const titles = { workspace: "K 线复盘", performance: "策略绩效", topology: "策略拓扑", orders: "订单与信号", health: "系统状态" };
 const requestedPage = new URLSearchParams(window.location.search).get("page");
 function cell(text, cls = "") {
     const td = document.createElement("td");
@@ -292,6 +292,7 @@ function showPage(page) {
     if (page === "performance") requestAnimationFrame(() => performance.resize());
     if (page === "health") loadHealth();
 }
+if (requestedPage === "topology") showPage("topology");
 let currentCandle = null;
 let candleCopyFeedbackTimer;
 function describeBar(b) {

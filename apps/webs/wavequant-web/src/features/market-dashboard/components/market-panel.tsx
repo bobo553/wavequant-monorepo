@@ -13,8 +13,8 @@ interface IMarketPanelProps {
 /** 统一看盘模块的卡片标题、边框与内容间距。 */
 export function MarketPanel({ action, children, className, contentClassName, title }: IMarketPanelProps): JSX.Element {
     return (
-        <Card className={className}>
-            <CardHeader className="border-border flex-row items-center justify-between gap-3 border-b px-4 py-3">
+        <Card className={`market-panel ${className ?? ""}`}>
+            <CardHeader className="market-panel-header border-border flex-row items-center justify-between gap-3 border-b px-4 py-3">
                 <CardTitle className="text-sm">{title}</CardTitle>
                 {action}
             </CardHeader>

@@ -10,6 +10,7 @@ import { HealthPage, OrdersPage, PerformancePage } from "./components/research-s
 import { StockBrowser } from "./components/stock-browser";
 import { WatchlistRail } from "./components/watchlist-rail";
 import { ResearchRuntime } from "./runtime/research-runtime";
+import { StrategyTopologyPage } from "./topology/strategy-topology-page";
 
 /**
  * 完整的 React 研究工作台页面。
@@ -37,6 +38,7 @@ export function ResearchWorkbench(): JSX.Element {
                     </section>
                     <StockBacktestResults />
                     <PerformancePage />
+                    <StrategyTopologyPage />
                     <OrdersPage />
                     <HealthPage />
                 </main>

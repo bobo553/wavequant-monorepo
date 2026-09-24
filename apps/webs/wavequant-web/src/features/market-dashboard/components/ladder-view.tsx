@@ -23,7 +23,10 @@ export function LadderView({ compact = false }: { compact?: boolean }): JSX.Elem
     );
     const height = Math.max(0, ...rows.map((stock) => stock.streak));
     return (
-        <div className="flex min-w-0 flex-col gap-3" aria-label="每日涨停天梯">
+        <div
+            className={`flex min-w-0 flex-col gap-3 ${compact ? "" : "market-ladder-panel"}`}
+            aria-label="每日涨停天梯"
+        >
             {!compact && <h2 className="text-lg font-bold">每日涨停天梯</h2>}
             <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-xs">
