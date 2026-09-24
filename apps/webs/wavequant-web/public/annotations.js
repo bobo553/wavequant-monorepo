@@ -61,6 +61,7 @@ const REASONS = {
     inverse_n_bull_resistance_failed_exit: "倒 N 减仓后多头抵抗失败，收盘跌破抵抗 K 虚拟低，当日清仓",
     volume_down_small_n_reduce_30: "放量回落但小实体仍在正 N 突破 K 范围内，次日累计减仓 30%",
     volume_down_reduce_70: "放量下跌且收盘低于前收，当日收盘累计减仓原持仓 70%",
+    volume_massive_gap_reversal_clear: "巨量高开后强阴反包跌破前日低点，当日清空余仓",
     volume_down_support_break_clear: "放量下跌后跌破冻结回踩低点，当日清仓",
     volume_down_next_gap_fade_clear: "放量减仓次日低开且收盘低于开盘，当日收盘清空余仓",
     volume_down_next_followthrough_clear: "放量减仓次日收阴且收盘跌破警示日低点，当日收盘清空余仓",

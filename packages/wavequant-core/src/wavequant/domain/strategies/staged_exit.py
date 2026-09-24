@@ -243,12 +243,42 @@ def observe_inverse_resistance_exit(bars: list[Bar], index: int, state: StagedEx
                 execution_model='same_day_close')
 
 
+def _massive_gap_reversal(bars: list[Bar], index: int) -> dict | None:
+    """A record-volume bearish gap that closes below the entire prior candle."""
+    window = 10
+    if index < window:
+        return None
+    bar, previous = bars[index], bars[index - 1]
+    prior_volumes = [item.volume for item in bars[index - window:index]]
+    total_volume = sum(prior_volumes)
+    if (total_volume <= 0 or bar.volume <= max(prior_volumes)
+            or bar.volume * window < 2 * total_volume
+            or bar.open <= previous.high or bar.close >= previous.low
+            or (bar.open - bar.close) / bar.open < .05):
+        return None
+    mean_volume = total_volume / window
+    return dict(reason='volume_massive_gap_reversal_clear', exit_fraction=1.0,
+                execution_model='same_day_close',
+                massive_volume_window=window, massive_volume_mean=mean_volume,
+                massive_volume_previous_max=max(prior_volumes),
+                massive_volume_multiple=bar.volume / mean_volume,
+                bearish_body_fraction=(bar.open - bar.close) / bar.open,
+                observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
+                observed_close=bar.close, observed_volume=bar.volume,
+                previous_open=previous.open, previous_high=previous.high,
+                previous_low=previous.low, previous_close=previous.close,
+                previous_volume=previous.volume)
+
+
 def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState, *,
                              positive_n_index: int | None = None, small_body_max_fraction: float = .01,
                              small_body_lookback: int = 10) -> dict | None:
     """Freeze confirmed support and escalate cumulative reduction without future N bars."""
     if index < 1:
         return None
+    massive_reversal = _massive_gap_reversal(bars, index)
+    if massive_reversal is not None:
+        return massive_reversal
     bar, previous = bars[index], bars[index-1]
     body = abs(Fraction(str(bar.close))-Fraction(str(bar.open)))
     mean_body = (sum(abs(Fraction(str(b.close))-Fraction(str(b.open))) for b in bars[index-small_body_lookback:index]) / small_body_lookback

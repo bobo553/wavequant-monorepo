@@ -500,7 +500,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             elif volume_exit is not None and volume_exit['exit_fraction'] == 1 and inverse_failure is None:
                 pending_exit[symbol] = volume_exit['reason']
                 exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
-                    **{key: value for key, value in volume_exit.items() if key != 'reason'},
+                    **{key: value for key, value in volume_exit.items()
+                       if key not in ('reason', 'observed_low', 'observed_close')},
                     decision_reason=volume_exit['reason'], decision_source='volume_down_exit',
                     observed_low=bar.low, observed_close=bar.close,
                     **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback

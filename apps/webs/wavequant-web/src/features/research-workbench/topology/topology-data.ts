@@ -301,8 +301,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             },
             {
                 id: "hard-risk",
-                question: "放量倒 N、异常波段反转、普通 C 异常后收低或趋势翻空？",
-                detail: "V3 的放量倒 N、波段异常、普通 A 的 C 浪到等浪目标后异常且首次收低、压力位反转与趋势翻空优先清仓；不同规则按其对应已观察收盘或分钟证据执行。",
+                question: "放量倒 N、巨量高开反包、异常波段反转或趋势翻空？",
+                detail: "V3 巨量高开后强阴收盘跌破前日低点，可直接清仓并优先于普通放量收跌及目标阶段部分减仓；放量倒 N、波段异常、普通 C 异常后首次收低、压力位反转与趋势翻空也按各自证据清仓。",
                 source: "strategy_profiles.py · whole_wave_profile definition；wave_exhaustion_exit.py；trend_flip_exit.py；pressure_exit.py",
                 yes: "优先整仓退出",
                 no: "检查防守与目标状态",
@@ -343,4 +343,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "759060e718fff2979fea547461f73ec5f7116543043d95e2a2f505660671aa6f";
+export const strategySourceDigest = "66a58ca4d928437a80a3d9a29fe08bf1049443e8a8b198ae8f53e4b819a84a14";

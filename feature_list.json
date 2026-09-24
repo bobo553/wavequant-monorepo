@@ -4,6 +4,37 @@
     "activeFeature": null,
     "features": [
         {
+            "id": "MONOREPO-171",
+            "name": "massive-volume-gap-reversal-clear",
+            "title": "巨量高开反包下跌当日清仓",
+            "description": "V3 全局持仓遇到巨量高开、强阴线收盘覆盖前一交易日整根 K 线时，直接清空余仓，优先于普通放量收跌和目标阶段跳空回落减仓。",
+            "scope": "Core 全局放量退出、策略版本与文档、Web 成交解释和真实国芳回测",
+            "dependencies": ["MONOREPO-170"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "国芳集团 2020-08-14 高开巨量反包后，07-30 持仓当日模拟清仓且余仓为零，不再执行目标阶段部分减仓",
+                "巨量使用此前十个交易日的相对量阈值，价格反包使用严格边界；普通放量收跌、较小回落与强势波段原规则不回退",
+                "真实 API 与浏览器显示清仓量价证据，历史前缀不读取未来数据"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core python -m pytest tests/test_massive_gap_reversal_exit.py tests/test_staged_exit.py tests/test_wave_gap_reversal.py tests/test_wave_exhaustion_exit.py tests/test_wave_upper_rejection.py tests/test_ordinary_wave_exit.py tests/test_stock_backtest.py tests/test_pressure_exit.py -q",
+                    "status": "passed",
+                    "summary": "139 项相关 Core 回归通过，覆盖国芳巨量高开反包、10 日量能和价格严格边界、普通放量减仓、目标阶段退出及历史前缀。"
+                },
+                {
+                    "command": "国芳集团 AkShare 真实 API 截至 2020-08-14 回测；Chromium guofang-massive-reversal.spec.mjs",
+                    "status": "passed",
+                    "summary": "07-30 持仓于 08-14 一次清空，卖出全部 745.2022 复权股、余仓零；量为前 10 日均量 3.107 倍，未再执行目标阶段部分减仓，页面显示完整量价证据。"
+                },
+                {
+                    "command": "Core Ruff lint/测试格式、类型、构建；Web lint、typecheck、test:unit、build；pnpm harness:check",
+                    "status": "passed",
+                    "summary": "Core 与 Web 相应门禁通过，Web 14 项 Vitest 与 150 项 Node 单测、生产构建通过，Harness 通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-170",
             "name": "ordinary-a-c-equal-target-exit",
             "title": "普通 A 浪 C 等浪目标异常 K 减仓与收低清仓",
