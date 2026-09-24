@@ -258,13 +258,14 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                       execution_timestamp=when.replace(hour=15).isoformat()) if at_close else {}
         if intraday is not None:
             buyable, timing = intraday['buyable'], intraday['timing']
-        if (at_close and intraday is None and not buyable and config.nonflat_limit_close_fill
-                and bar.nonflat_close_buyable is True and bar.volume > 0 and bar.high > bar.low):
+        observed_nonflat = (timing.get('observed_nonflat_limit_buyable') is True if intraday is not None else
+                            at_close and bar.nonflat_close_buyable is True and bar.volume > 0 and bar.high > bar.low)
+        if not buyable and config.nonflat_limit_close_fill and observed_nonflat:
             buyable = True
             # The user-selected daily model assumes queue access at the close;
             # positive slippage cannot price a fill above the observed limit.
             price = execution_price
-            timing = dict(timing, fill_assumption='nonflat_limit_close_without_queue_verification',
+            timing = dict(timing, fill_assumption='observed_nonflat_limit_intraday_without_queue_verification' if intraday is not None else 'nonflat_limit_close_without_queue_verification',
                           applied_slippage_bps=0.0)
         reason = ('position_limit' if len(positions) >= config.max_positions else
                   'already_held' if symbol in positions else

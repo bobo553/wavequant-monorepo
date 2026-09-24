@@ -1,7 +1,7 @@
-import { reasonText } from "./annotations.js";
 import { num, pct } from "./labels.js";
 import { closedPositionLabel, positionProfit } from "./trade-position.js";
 import { waveEntryEvidence } from "./wave-entry-evidence.js";
+import { numberedTradeReasons } from "./trade-reasons.js";
 
 // All conditions come from the dated engine ledger, never re-inferred from a chart.
 export function appendTradeEvidence(panel, item, openPosition = null) {
@@ -12,6 +12,17 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
         panel.append(p);
         return p;
     };
+    if (item.side === "BUY" || item.side === "SELL") {
+        add(`${item.side === "BUY" ? "买入" : "卖出"}原因：`);
+        const list = document.createElement("div");
+        list.className = "trade-reason-list";
+        for (const line of numberedTradeReasons(item)) {
+            const entry = document.createElement("p");
+            entry.textContent = line;
+            list.append(entry);
+        }
+        panel.append(list);
+    }
     const proof = item.decision_evidence?.find((e) => e.buy_point_type);
     waveEntryEvidence(item.decision_evidence).forEach((line) => add(line));
     const reversal = item.decision_evidence?.find((e) => e.squeeze_confirmation === "volume_reversal_record_break");
@@ -33,7 +44,9 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
         add(
             `买点依据：正 N ${strongSqueeze.attack_date}；连续上攻确认强轧空：逐根守住虚拟低，确认日最低 ${num(strongSqueeze.confirmation_low, 4)} ≥ 前根虚拟低 ${num(strongSqueeze.prior_virtual_low, 4)}，收盘 ${num(strongSqueeze.confirmation_close, 4)} > 前收 ${num(strongSqueeze.prior_close, 4)}`,
         );
-    const record = item.decision_evidence?.find((e) => e.squeeze_confirmation === "resistance_record_break");
+    const record = item.decision_evidence?.find((e) =>
+        ["resistance_record_break", "fresh_n_defeats_old_n_resistance"].includes(e.squeeze_confirmation),
+    );
     if (record)
         add(
             `买点依据：正 N ${record.attack_date}；收盘 ${num(record.confirmation_close, 4)} > 本次 N 抵抗阶段高点 ${num(record.confirmation_record_high, 4)}，确认轧空。`,
@@ -92,6 +105,8 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
     );
     if (item.fill_assumption === "nonflat_limit_close_without_queue_verification")
         add("成交假设：非一字涨停按当日收盘价模拟成交，未验证涨停排队成交；成交价不另加正滑点。");
+    if (item.fill_assumption === "observed_nonflat_limit_intraday_without_queue_verification")
+        add("成交假设：买点前已观察到非一字交易，按下一根分钟开盘价模拟成交；未验证涨停排队，成交价不另加正滑点。");
     if (item.minute_fallback)
         add(
             item.minute_fallback.reason === "minute_volume_incomplete"
@@ -126,7 +141,6 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
         const profit = positionProfit(item, null, openPosition);
         if (profit) add(profit.text);
     } else {
-        add(`退出原因：${reasonText(item.decision_reason || item.reason)}`);
         if (item.kind === "fill") add(closedPositionLabel(item));
         if (Number.isFinite(item.exit_target_fraction))
             add(`目标累计减仓：${pct(item.exit_target_fraction)}（占本笔初始持仓；整手限制可能使实际比例略低）`);

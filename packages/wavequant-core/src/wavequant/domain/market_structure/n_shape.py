@@ -75,8 +75,14 @@ class NSetup:
     box_anchor_mode: BoxAnchorMode
     allow_confirmation_bar: bool = False
     allow_outside_close: bool = False
+    allow_mother_impulse: bool = False
+    staged_defense: bool = False
 
     def __post_init__(self):
+        if type(self.staged_defense) is not bool:
+            raise ValueError('staged_defense must be boolean')
+        if type(self.allow_mother_impulse) is not bool:
+            raise ValueError('allow_mother_impulse must be boolean')
         if type(self.allow_outside_close) is not bool:
             raise ValueError('allow_outside_close must be boolean')
         if type(self.allow_confirmation_bar) is not bool:
@@ -89,7 +95,10 @@ class NSetup:
         refs = (self.origin,self.neckline,self.pullback)
         if not all(isinstance(p,PivotRef) for p in refs):
             raise ValueError('all three pivots require source and confirmation indices')
-        if not self.origin.index < self.neckline.index < self.pullback.index:
+        mother = (self.allow_mother_impulse and self.source == 'lecture_causal'
+                  and self.direction == Direction.UP and self.origin.index == self.neckline.index
+                  and self.neckline.index < self.pullback.index)
+        if not (self.origin.index < self.neckline.index < self.pullback.index or mother):
             raise ValueError('A, B, C must be strictly chronological')
         if not self.origin.confirmed_index <= self.neckline.confirmed_index <= self.pullback.confirmed_index:
             raise ValueError('pivot confirmations must be chronological')
@@ -224,6 +233,13 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         return NObservation(NStatus.AWAIT_ANCHORS,end,when)
     up = setup.direction == Direction.UP
     sign = 1 if up else -1
+    if setup.origin.index == setup.neckline.index:
+        mother_index = setup.origin.index
+        mother_bar = bars[mother_index]
+        if (mother_index == 0 or mother_bar.close <= mother_bar.open
+                or mother_bar.high <= bars[mother_index-1].high
+                or mother_bar.low >= bars[mother_index-1].low):
+            raise ValueError('mother impulse requires an observed bullish outside candle')
     a = bars[setup.origin.index].low if up else bars[setup.origin.index].high
     bb = bars[setup.neckline.index]
     b = bb.high if up else bb.low
@@ -237,13 +253,13 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     same_confirmation = (setup.allow_confirmation_bar and setup.pullback.index < known
                          and setup.neckline.confirmed_index < known)
     # Lecture outside-candle convention describes completed daily geometry only.
-    # The close must cross B's low as well; no intraday high/low order is assumed.
-    outside_close = (setup.allow_outside_close and not up and setup.source == 'lecture_causal'
+    # The close must cross B's real and virtual levels; no intrabar order is assumed.
+    outside_close = (setup.allow_outside_close and setup.source == 'lecture_causal'
                      and setup.pullback.index == known and known > 0
                      and bars[known].high > bars[known-1].high
                      and bars[known].low < bars[known-1].low
-                     and bars[known].close < min(b, bb.close)
-                     and bars[known-1].close >= bb.close)
+                     and sign*(bars[known].close-b)>0 and sign*(bars[known].close-bb.close)>0
+                     and sign*(bars[known-1].close-bb.close)<=0)
     key_known = setup.neckline.confirmed_index if same_confirmation else known
     real_key = KeyLevel(setup.symbol,timeframe,kind,bb.close,setup.neckline.index,key_known,setup.source)
     virtual_key = KeyLevel(setup.symbol,timeframe,kind,b,setup.neckline.index,key_known,setup.source)
@@ -267,6 +283,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         if sign*(adverse-c) < 0:
             raise ValueError('supplied pullback pivot was exceeded before its confirmation')
     completion = None
+    first_stage = None
     for i in range(known if same_confirmation or outside_close else known+1,end+1):
         bar = bars[i]
         adverse = bar.low if up else bar.high
@@ -275,6 +292,8 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         if sign*(adverse-c) < 0:
             return NObservation(NStatus.PULLBACK_EXTENDED,end,when,anchors,invalidated_index=i)
         extreme = bar.high if up else bar.low
+        if first_stage is None and (sign*(bar.close-bb.close)>0 or sign*(extreme-b)>=0):
+            first_stage = i
         if sign*(bar.close-bb.close) <= 0 or sign*(extreme-b) <= 0:
             continue
         prev = bars[i-1]
@@ -284,7 +303,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             continue
         if outside_close and i == known:
             vl, vh = min(bar.low,prev.close), max(bar.high,prev.close)
-            completion = NCompletion(i,bar.timestamp,True,True,vl,vh,vh,'杀多高')
+            completion = NCompletion(i,bar.timestamp,True,True,vl,vh,vl if up else vh,'轧空低' if up else '杀多高')
             break
         real = observe_attack(bars,i,real_key,timeframe=timeframe)
         virtual = observe_attack(bars,i,virtual_key,timeframe=timeframe)
@@ -292,7 +311,15 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         if not (real.close_crossed or virtual.intrabar_crossed):
             continue
         vl, vh = min(bar.low,bars[i-1].close),max(bar.high,bars[i-1].close)
-        completion = NCompletion(i,bar.timestamp,True,True,vl,vh,vl if up else vh,
+        defense = vl if up else vh
+        if setup.staged_defense and first_stage is not None:
+            # A touch may anchor the response, but never completes N: both
+            # strict real/virtual conditions above must still become true.
+            # Include intervening lows/highs so a split breakout cannot hide risk.
+            defense = (min if up else max)(bars[first_stage-1].close,
+                *(adverse_value(v) for v in bars[first_stage:i+1]))
+            # Box targets retain the actual completion extreme.
+        completion = NCompletion(i,bar.timestamp,True,True,vl,vh,defense,
                                  '轧空低' if up else '杀多高')
         break
     if completion is None:

@@ -48,7 +48,6 @@ def test_real_gap_keeps_whole_b_low_and_equal_a_target():
     [
         "equal_volume",
         "no_gap",
-        "doji",
         "broken_defense",
         "no_two_t",
         "attack_wick_only",
@@ -64,8 +63,6 @@ def test_gap_entry_requires_every_condition(case):
         bars[now] = replace(bars[now], volume=bars[now - 1].volume)
     elif case == "no_gap":
         bars[now] = replace(bars[now], low=bars[now - 1].high)
-    elif case == "doji":
-        bars[now] = replace(bars[now], open=bars[now].close)
     elif case == "broken_defense":
         bars[dates["2026-08-21"]] = replace(bars[dates["2026-08-21"]], low=setup.defense - 0.01)
     elif case == "no_two_t":
@@ -92,6 +89,13 @@ def test_equal_defense_is_held_and_symbol_does_not_change_rule():
     assert proof["wave_b_low"] == setup.defense
 
 
+def test_volume_gap_does_not_require_final_bullish_body():
+    bars, dates, setup = sample()
+    now = dates["2026-09-15"]
+    bars[now] = replace(bars[now], open=bars[now].close)
+    assert wave_gap_entry(bars, setup, now)["wave_gap_trigger"] == "volume"
+
+
 def test_full_global_pipeline_reenters_after_inverse_n_and_preserves_prefix():
     bars, dates, setup = sample()
     config = SystemStrategy(
@@ -111,7 +115,8 @@ def test_full_global_pipeline_reenters_after_inverse_n_and_preserves_prefix():
     assert buys[0].target_price == pytest.approx(19.69748771297527)
     proof = next(e for e in full.audit if e["event"] == "long_signal" and e["bar_index"] == day)
     assert proof["wave_b_low_date"] == "2026-08-21"
-    assert proof["rvol"] > config.minimum_rvol
+    assert proof["rvol"] > 1
+    assert proof["rvol"] == pytest.approx(bars[day].volume / bars[day - 1].volume)
     for end in (dates["2026-08-21"], day - 1, day):
         prefix = generate_system_signals(bars[: end + 1], config)
         assert prefix.signals == [s for s in full.signals if s.bar_index <= end]

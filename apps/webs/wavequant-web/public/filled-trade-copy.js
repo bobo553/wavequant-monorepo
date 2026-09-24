@@ -1,8 +1,8 @@
-import { reasonText } from "./annotations.js";
 import { candleCopyText, previousCandleClose } from "./candle-details.js";
 import { num, pct, symbolName } from "./labels.js";
 import { closedPositionLabel, openPositionForMarker, positionProfit } from "./trade-position.js";
 import { waveEntryEvidence } from "./wave-entry-evidence.js";
+import { numberedTradeReasons } from "./trade-reasons.js";
 
 export function formatFilledTradeCopy(view, marker, variantName, positionLabel, trade) {
     const lines = [
@@ -14,7 +14,9 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
             ? [`成交时间：${marker.execution_timestamp || marker.timestamp}`]
             : []),
         `方向：${marker.side === "BUY" ? "买入 B" : "卖出 S"}`,
-        `原因：${reasonText(marker.reason)}（${marker.reason}）`,
+        `${marker.side === "BUY" ? "买入" : "卖出"}原因：`,
+        ...numberedTradeReasons(marker),
+        `决策代码：${marker.decision_reason || marker.reason || "—"}`,
         `决定日期：${marker.signal_time || "—"}`,
         ...(marker.decision_timestamp ? [`决定时间：${marker.decision_timestamp}`] : []),
         `成交等价价：${num(marker.price)} 元`,
@@ -63,7 +65,9 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         lines.push(
             `买点依据：正 N ${strongSqueeze.attack_date}；连续上攻确认强轧空：逐根守住虚拟低，确认日最低 ${num(strongSqueeze.confirmation_low, 4)} ≥ 前根虚拟低 ${num(strongSqueeze.prior_virtual_low, 4)}，收盘 ${num(strongSqueeze.confirmation_close, 4)} > 前收 ${num(strongSqueeze.prior_close, 4)}`,
         );
-    const record = marker.decision_evidence?.find((e) => e.squeeze_confirmation === "resistance_record_break");
+    const record = marker.decision_evidence?.find((e) =>
+        ["resistance_record_break", "fresh_n_defeats_old_n_resistance"].includes(e.squeeze_confirmation),
+    );
     if (record)
         lines.push(
             `买点依据：正 N ${record.attack_date}；收盘 ${num(record.confirmation_close, 4)} > 本次 N 抵抗阶段高点 ${num(record.confirmation_record_high, 4)}，确认轧空。`,
@@ -91,6 +95,10 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
     if (marker.execution_model === "same_day_close") lines.push("成交口径：当日收盘价（日线回测，未还原尾盘分钟路径）");
     if (marker.fill_assumption === "nonflat_limit_close_without_queue_verification")
         lines.push("成交假设：非一字涨停按当日收盘价模拟成交，未验证涨停排队成交；成交价不另加正滑点。");
+    if (marker.fill_assumption === "observed_nonflat_limit_intraday_without_queue_verification")
+        lines.push(
+            "成交假设：买点前已观察到非一字交易，按下一根分钟开盘价模拟成交；未验证涨停排队，成交价不另加正滑点。",
+        );
     if (marker.minute_fallback)
         lines.push(
             marker.minute_fallback.reason === "minute_volume_incomplete"

@@ -110,3 +110,38 @@ def test_abnormal_warning_next_trading_session_lower_close_clears():
     assert result["reason"] == "wave_abnormal_followthrough_clear"
     assert result["abnormal_date"] == "2024-10-08"
     assert result["exit_fraction"] == 1
+
+
+def test_two_t_day_relative_reversal_below_five_percent_body():
+    raw = json.loads((Path(__file__).parent / "fixtures/shilian_wave_continuation.json").read_text(encoding="utf-8"))
+    bars = [Bar(datetime.fromisoformat(day), raw["symbol"], *values) for day, *values in raw["bars"]]
+    dates = {str(b.timestamp.date()): i for i, b in enumerate(bars)}
+    index = dates["2020-07-03"]
+    events = [
+        dict(event="wave_projection_ready", attack=dates["2020-06-01"], bar_index=index, two_t=3.2515911682234413)
+    ]
+    result = observe_wave_exhaustion(bars, index, events, StrategyConfig())
+    assert result is not None
+    assert result["reason"] == "wave_gap_reversal_reduce"
+    assert result["exit_target_fraction"] == 0.8
+    assert result["wave_body_fraction"] < 0.05
+    assert result["wave_body_range_fraction"] == pytest.approx(15 / 29)
+    assert bars[index].close > bars[index - 1].close
+    assert observe_wave_exhaustion(bars[: index + 1], index, events, StrategyConfig()) == result
+    for change in ({"volume": bars[index - 1].volume}, {"close": bars[index].open - 0.01}):
+        changed = list(bars)
+        changed[index] = replace(bars[index], **change)
+        assert observe_wave_exhaustion(changed, index, events, StrategyConfig()) is None
+    assert observe_wave_exhaustion(bars, index, [], StrategyConfig()) is None
+    assert observe_wave_exhaustion(bars, index, [dict(events[0], bar_index=index + 1)], StrategyConfig()) is None
+
+
+@pytest.mark.parametrize("body, expected", [(1.999, False), (2.0, True), (2.001, True)])
+def test_relative_body_half_range_boundary(body, expected):
+    bars = [
+        Bar(datetime(2020, 1, 2), "test", 39, 40, 38, 40, 100),
+        Bar(datetime(2020, 1, 3), "test", 44, 44, 40, 44 - body, 101),
+    ]
+    events = [dict(event="wave_projection_ready", attack=0, bar_index=1, two_t=43)]
+    result = observe_wave_exhaustion(bars, 1, events, StrategyConfig())
+    assert (result is not None) is expected

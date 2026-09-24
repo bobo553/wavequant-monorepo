@@ -16,6 +16,7 @@ from ..market_state.control_bar import observe_control_bar
 from ..market_structure.trend_structure import observe_structure
 from .bull_eligibility import bull_permission_history
 from .attack_quality import v3_positive_n_attack_rejection
+from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.wave_strength import StrengthScale, measure_strength
 from ..market_state.washout import WashoutPolicy, WashoutStage, observe_washout
@@ -171,6 +172,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
     resumptions, resumption_keys = defaultdict(list), set()
     consolidation_events, consolidation_proofs = defaultdict(list), {}
     reversal_proofs = {}
+    reconfirmation_proofs = {}
     def log(i, kind, **fields):
         audit.append(dict(timestamp=bars[i].timestamp.isoformat(), symbol=bars[i].symbol,
                           bar_index=i, event=kind, **fields))
@@ -217,7 +219,10 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         if key in seen:
             continue
         seen.add(key)
-        if not a.point.index<b.point.index<c.point.index:
+        mother_impulse = (whole_wave and config.pivot_mode == 'lecture_causal'
+            and a.point.kind == PointKind.LOW and a.point.index == b.point.index < c.point.index
+            and a.point.ordinal < b.point.ordinal)
+        if not (a.point.index<b.point.index<c.point.index or mother_impulse):
             counts['same_bar_n_rejected']+=1
             log(i,'n_geometry_rejected',reason='same_bar_vertices_require_lower_timeframe_n')
             continue
@@ -229,7 +234,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             *(PivotRef(p.point.index, p.confirmed_index) for p in (a, b, c)),
             config.pivot_mode, BoxAnchorMode.ATTACK_VIRTUAL_EXTREME,
             allow_confirmation_bar=whole_wave,
-            allow_outside_close=whole_wave and direction == Direction.DOWN)
+            allow_outside_close=whole_wave, allow_mother_impulse=mother_impulse,
+            staged_defense=whole_wave and direction == Direction.UP)
         offset = max(0, a.point.index-config.volume_lookback)
         finish = min(len(bars)-1, limits[i], i+config.pattern_ttl)
         local, data = _local_setup(setup, offset), bars[offset:finish+1]
@@ -269,7 +275,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         counts['completed_'+direction.value+'_n'] += 1
         log(t, 'n_completed', direction=direction.value, origin=a.point.index, neckline=b.point.index,
             pullback=c.point.index, known_at=i, defense=n.completion.defense, counter_ratio=force.ratio,
-            n_level=n_level)
+            n_level=n_level, **({'outside_close_confirmed': True} if whole_wave and setup.allow_outside_close and setup.pullback.index == t else {}))
     # A later confirmed inverse N terminates ordinary local-bounce entries.
     # Use its availability, not a pivot source date, to preserve prior signals.
     inverse_known = sorted((max(c['attack'], c['known_at']), c['attack']) for c in candidates
@@ -293,6 +299,28 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     reason=('later_inverse_n_ends_local_bounce_larger_defense_still_observed'
                             if candidate['n_level'] >= 1 else 'later_confirmed_inverse_n_requires_new_positive_n'))
                 counts['n_squeeze_invalidated'] += 1
+            from .n_record_reconfirmation import n_record_reconfirmation
+            fresh_by_attack = {c['attack']: c for c in candidates
+                               if c['setup'].direction == Direction.UP and c['attack'] > t}
+            retained = {f.bar_index: f for f in regime.frames}
+            for f in full_frames:
+                j = offset + f.bar_index
+                if f.bar_index in retained and f.regime in (MarketRegime.BULL, MarketRegime.STRONG_BULL):
+                    continue
+                fresh = fresh_by_attack.get(j)
+                if fresh is None:
+                    continue
+                proof = n_record_reconfirmation(bars, attack=t, defense=n.completion.defense, now=j,
+                    new_origin=fresh['setup'].origin.index, new_neckline=fresh['setup'].neckline.index,
+                    new_pullback=fresh['setup'].pullback.index, new_known=fresh['known_at'])
+                if proof is None:
+                    continue
+                reconfirmation_proofs[t, j] = proof
+                retained[f.bar_index] = replace(f, regime=MarketRegime.BULL, phase=RegimePhase.CONFIRMED,
+                    resistance_outcome=ResistanceOutcome.FAILED, close_continuation=True,
+                    last_confirmed_regime=MarketRegime.BULL, last_confirmed_index=f.bar_index)
+            regime = replace(regime, frames=tuple(retained[k] for k in sorted(retained)))
+            candidate['regime'] = regime
         if whole_wave and direction == Direction.UP and candidate['n_level'] >= 1:
             from .n_consolidation import consolidation_gap
             # The larger defense remains observable independently of smaller exits.
@@ -403,10 +431,11 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             projection_setup = WaveProjectionSetup(
                 candidate['setup'].origin.index, candidate['attack'], squeeze,
                 n.anchors.origin, n.targets.box_anchor, n.targets.two_t, n.completion.defense)
+            log(max(squeeze, candidate['known_at']), 'wave_continuation_ready', wave_epoch=candidate['epoch'], **asdict(projection_setup))
             projection = wave_projection_history(bars, projection_setup)
             candidate['wave_projection'] = projection
             for j in range(squeeze + 1, len(bars)):
-                proof = wave_gap_entry(bars, projection_setup, j)
+                proof = wave_gap_entry(bars, projection_setup, j, pivots=snapshots.get(j-1, ()))
                 if proof is not None:
                     frame = next((f for f in candidate['regime'].frames if candidate['start'] + f.bar_index == squeeze),
                                  candidate['regime'].frames[0])
@@ -512,7 +541,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     params['attack'] = c['attack']
                     contexts = []
             selected, rejected = select_wave_entry(hierarchy_permissions.get(i,()),contexts,
-                allow_confirming_n=True,
+                allow_confirming_n=True, allow_same_bar_pullback=c['setup'].allow_outside_close and c['setup'].pullback.index == c['attack'],
                 bars=bars,deep_ratio=config.first_pullback_threshold,first_basis=config.first_pullback_basis,
                 second_inclusive=config.mature_shallow_inclusive,**params)
             return (multilevel_proofs[c['attack'], i], '') if rejected and (c['attack'], i) in multilevel_proofs else (selected, rejected)
@@ -545,11 +574,14 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             if not hierarchical or c['setup'].direction != Direction.UP:
                 return (0, c['attack'])
             proof, _ = select_candidate(c,i)
-            return ((proof or {}).get('priority', 0), c['attack'])
+            # Reconfirmation is a fallback for an interrupted N. It must not
+            # displace an independently valid newer N or an established C wave.
+            supplemental = (c['attack'], i) in reconfirmation_proofs and (c['attack'], i) not in wave_proofs
+            return ((proof or {}).get('priority', 0), not supplemental, c['attack'])
         for c, frame in sorted(choices, key=entry_priority, reverse=True):
             consolidation = consolidation_proofs.get((c['attack'], i))
             wave = wave_proofs.get((c['attack'], i))
-            wave_key = (c['attack'], wave['wave_a_high_index']) if wave else None
+            wave_key = (c['attack'], wave['wave_a_high_index'], wave['wave_b_low_index']) if wave else None
             if wave_key in emitted_waves:
                 continue
             if c['setup'].direction != Direction.UP or (c['attack'] in emitted_attacks and consolidation is None and wave is None) or epochs[i] != c['epoch']:
@@ -560,7 +592,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 and secondary_resistance[i]['secondary_high'] <= dual['key_price']
                 and secondary_resistance[i]['secondary_resistance_high'] <= dual['higher_resistance_high']
                 and secondary_resistance[i]['secondary_attack_date'] == bars[c['attack']].timestamp.date().isoformat())
-            if i in secondary_resistance and not secondary_resistance[i].get('secondary_resistance_resolved') and not same_pressure:
+            wave_pressure_recovery = secondary_wave_recovery(bars, i, wave, secondary_resistance.get(i))
+            if i in secondary_resistance and not secondary_resistance[i].get('secondary_resistance_resolved') and not same_pressure and wave_pressure_recovery is None:
                 log(i, 'entry_rejected', reason='secondary_breakout_resistance_unresolved',
                     attack=c['attack'], **secondary_resistance[i])
                 continue
@@ -582,7 +615,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 and bar.volume > bars[i-1].volume)
             if (whole_wave and c.get('attack_quality_warning') is not None
                     and entry_regime != MarketRegime.STRONG_BULL and consolidation is None
-                    and wave is None and not record_squeeze and dual is None and (c['attack'], i) not in reversal_proofs):
+                    and wave is None and not record_squeeze and dual is None and (c['attack'], i) not in reversal_proofs
+                    and (c['attack'], i) not in reconfirmation_proofs):
                 log(i, 'entry_rejected', reason='weak_n_requires_uninterrupted_squeeze', attack=c['attack'])
                 continue
             hierarchy_proof = None
@@ -596,6 +630,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     continue
                 if hierarchy_proof is not None and secondary_resistance.get(i, {}).get('secondary_resistance_resolved'):
                     hierarchy_proof.update(secondary_resistance[i])
+                if hierarchy_proof is not None and wave_pressure_recovery is not None:
+                    hierarchy_proof.update(wave_pressure_recovery)
             if config.entry_policy == 'transitioned_squeeze':
                 reject = ('not_squeeze_regime' if entry_regime not in (MarketRegime.BULL, MarketRegime.STRONG_BULL) else
                           'bullish_transition_not_ready' if permission is None else
@@ -608,7 +644,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             if whole_wave:
                 from .inverse_reentry import inverse_reentry_rejection, deep_pullback_recovery, fresh_strong_squeeze_recovery
                 blocked_reentry = inverse_reentry_rejection(
-                    bars, now=i, attack=c['attack'], inverse=inverse_reentry, gap=consolidation is not None or wave is not None)
+                    bars, now=i, attack=i if (c['attack'], i) in reconfirmation_proofs else c['attack'],
+                    inverse=inverse_reentry, gap=consolidation is not None or wave is not None)
                 recovery = fresh_strong_squeeze_recovery(
                     bars, now=i, attack=c['attack'], origin=c['setup'].origin.index, inverse=inverse_reentry,
                     strong_squeeze=frame.regime == MarketRegime.STRONG_BULL)
@@ -617,6 +654,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     record_break=(frame.first_defense_breach_index is None
                                   and frame.regime in (MarketRegime.BULL, MarketRegime.STRONG_BULL)
                                   and bar.close > frame.continuation_level))
+                recovery = recovery or inverse_wave_recovery(bars, i, wave, inverse_reentry)
                 if blocked_reentry is not None and recovery is None:
                     log(i, 'entry_rejected', attack=c['attack'], **blocked_reentry)
                     continue
@@ -624,12 +662,14 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     hierarchy_proof.update(recovery, recovery_resistance_high=frame.continuation_level)
             n = c['n']
             rvol = c['control'].volume.relative_volume
-            if wave is not None:
-                history = bars[max(0, i-config.volume_lookback):i]
-                mean = sum(b.volume for b in history)/config.volume_lookback if len(history) == config.volume_lookback else 0
-                rvol = bar.volume/mean if mean > 0 else None
+            if whole_wave:
+                rvol = bar.volume/bars[i-1].volume if i and bars[i-1].volume > 0 else None
+            volume_pass = (bar.volume > bars[i-1].volume if whole_wave and i else
+                           rvol is not None and rvol >= config.minimum_rvol)
+            # A verified C price-break path is the explicit alternative to volume.
+            volume_pass = volume_pass or bool(wave and wave.get('wave_gap_trigger') in ('breakout', 'breakout_and_volume'))
             reject = ('countermove_too_deep' if not hierarchical and c['force'].ratio >= config.max_counter_ratio else
-                      'attack_volume_unavailable_or_low' if config.volume_filter and (rvol is None or rvol < config.minimum_rvol) else '')
+                      'attack_volume_unavailable_or_low' if config.volume_filter and not volume_pass else '')
             if reject:
                 log(i, 'entry_rejected', reason=reject, attack=c['attack'])
                 continue
@@ -669,7 +709,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 tag = hierarchy_proof['buy_point_type']
             if wave is not None:
                 tag = 'wave_push_gap'
-            confirmation_source = ('two_t_wave_push_gap' if wave is not None else
+            confirmation_source = (('one_p_wave_rebound' if wave.get('wave_a_class') == 'ordinary' else 'two_t_wave_push_gap') if wave is not None else
+                'fresh_n_defeats_old_n_resistance' if (c['attack'], i) in reconfirmation_proofs else
                 'volume_reversal_record_break' if (c['attack'], i) in reversal_proofs else
                 'defended_n_consolidation_gap' if consolidation is not None else
                 'pullback_resumption' if resumed else
@@ -684,6 +725,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             if wave_key is not None:
                 emitted_waves.add(wave_key)
             log(i, 'long_signal', channel=tag, attack=c['attack'], stop=stop, target=targets[0], rvol=rvol,
+                **(dict(volume_basis='confirmation_volume_over_previous_session',
+                        observed_volume=bar.volume, previous_volume=bars[i-1].volume,
+                        volume_pass=volume_pass) if whole_wave else {}),
                 weak_n_resolved_by_volume_record=bool(c.get('attack_quality_warning') and record_squeeze and wave is None),
                 confirmation_record_high=wave['wave_gap_previous_high'] if wave is not None else frame.continuation_level,
                 n_level=c['n_level'], n_origin_date=bars[c['setup'].origin.index].timestamp.date().isoformat(),
@@ -694,7 +738,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                         prior_virtual_low=min(bars[i-1].low, bars[i-2].close),
                         confirmation_low=bar.low, confirmation_close=bar.close,
                         prior_close=bars[i-1].close) if whole_wave else {}),
-                **(wave or {}), **(consolidation or {}), **reversal_proofs.get((c['attack'], i), {}),
+                **(wave or {}), **(wave_pressure_recovery or {}), **(consolidation or {}), **reversal_proofs.get((c['attack'], i), {}),
                 gross_reward_risk=gross_rr,
                 **({'target_source': 'wave_equal_projection' if wave is not None else projection.state if projection is not None and projection.target == targets[0]
                     else 'n_measured_target'} if whole_wave else {}))

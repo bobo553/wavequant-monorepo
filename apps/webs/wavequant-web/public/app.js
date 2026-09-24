@@ -19,6 +19,7 @@ import { StockList } from "./stock-list.js";
 import { StructureSignals } from "./structure-signals.js";
 import { closedPositionLabel, openPositionForMarker, openPositionProfit, positionProfit } from "./trade-position.js";
 import { appendTradeEvidence } from "./trade-review.js";
+import { numberedTradeReasons } from "./trade-reasons.js";
 import { TradingViewWidget } from "./tradingview-widget.js";
 import { Watchlists } from "./watchlists.js";
 
@@ -271,11 +272,13 @@ async function api(path, params = {}, signal, method = "GET") {
         return body;
     } catch (e) {
         if (e.name === "TimeoutError") {
-            throw new Error(
+            const error = new Error(
                 ["/api/tdx-backtest", "/api/akshare-backtest"].includes(path)
-                    ? "首次回测计算超时，后台可能仍在生成缓存，请稍后重试"
+                    ? "回测计算仍未完成，请缩短回测区间后重试"
                     : "请求超时，请稍后刷新重试",
             );
+            if (["/api/tdx-backtest", "/api/akshare-backtest"].includes(path)) error.code = "BACKTEST_TIMEOUT";
+            throw error;
         }
         throw e;
     }
@@ -815,7 +818,7 @@ function renderMetrics() {
                 .map(([key, n]) => `${reasonText(key)} × ${n}`)
                 .join("；");
         $("backtest-details").textContent =
-            `${symbolName(state.view.symbol)} · 独立回测 ${bt.start} — ${bt.end}｜量能过滤${bt.strategy.volume_filter ? `开启（攻击日量比 ≥ ${num(bt.strategy.minimum_rvol)}）` : "关闭"}；成交价含费净盈亏比过滤${netRiskEnabled ? "开启" : "关闭"}；初始资金 ${num(bt.initial_capital, 0)} 元，单股仓位上限 ${pct(bt.execution.max_position_weight)}。年化 ${pct(m.annualized_return)} · 胜率 ${m.win_rate === null ? "—（无平仓）" : pct(m.win_rate)} · Sharpe ${num(m.sharpe)} · 费用 ${num(m.fees)} 元。买入成交 ${d.entry_fills} · 已平仓 ${d.closed_trades} · 未平仓 ${d.open_positions} · 期末未执行信号 ${m.unexecuted_end_signals}。${d.entry_fills ? "成交样本不等于策略有效。" : `未产生成交：入场信号 ${bt.counts.long_signals || 0}，委托尝试 ${d.entry_attempts}；可开启“筛选 / 中断”查看未通过条件。`}${reasons ? `拒单原因：${reasons}。` : ""}${bt.open_positions.map((p) => `未平仓 ${num(p.quantity)} 等价份额，累计已实现 ${num(p.realized_pnl)} 元，剩余浮动盈亏 ${num(p.unrealized_pnl)} 元，整笔当前盈亏 ${num(p.total_pnl)} 元（${pct(p.net_return)}，含未实现部分）。`).join("")}`;
+            `${symbolName(state.view.symbol)} · 独立回测 ${bt.start} — ${bt.end}｜量能过滤${bt.strategy.volume_filter ? (bt.strategy.buy_point_definition === "whole_flip_wave_v3" ? "开启（确认时量 ＞ 昨日全天量；C 浪跳空突破可独立触发）" : `开启（攻击日量比 ≥ ${num(bt.strategy.minimum_rvol)}）`) : "关闭"}；成交价含费净盈亏比过滤${netRiskEnabled ? "开启" : "关闭"}；初始资金 ${num(bt.initial_capital, 0)} 元，单股仓位上限 ${pct(bt.execution.max_position_weight)}。年化 ${pct(m.annualized_return)} · 胜率 ${m.win_rate === null ? "—（无平仓）" : pct(m.win_rate)} · Sharpe ${num(m.sharpe)} · 费用 ${num(m.fees)} 元。买入成交 ${d.entry_fills} · 已平仓 ${d.closed_trades} · 未平仓 ${d.open_positions} · 期末未执行信号 ${m.unexecuted_end_signals}。${d.entry_fills ? "成交样本不等于策略有效。" : `未产生成交：入场信号 ${bt.counts.long_signals || 0}，委托尝试 ${d.entry_attempts}；可开启“筛选 / 中断”查看未通过条件。`}${reasons ? `拒单原因：${reasons}。` : ""}${bt.open_positions.map((p) => `未平仓 ${num(p.quantity)} 等价份额，累计已实现 ${num(p.realized_pnl)} 元，剩余浮动盈亏 ${num(p.unrealized_pnl)} 元，整笔当前盈亏 ${num(p.total_pnl)} 元（${pct(p.net_return)}，含未实现部分）。`).join("")}`;
         if (bt.execution.missing_minute_daily_fallback) {
             const p = document.createElement("p");
             const days = bt.minute_fallbacks || [];
@@ -930,7 +933,7 @@ function showAnnotationDetails(items) {
     source.className = "annotation-source";
     source.textContent = `${item.sourceLabel}。${item.sourceTime && item.sourceTime !== item.time ? `原结构日期 ${item.sourceTime}，到 ${item.time} 才可知。` : ""}`;
     panel.append(source);
-    if (item.reason) {
+    if (item.reason && item.side !== "BUY" && item.side !== "SELL") {
         const reason = document.createElement("p");
         reason.textContent = reasonText(item.reason);
         panel.append(reason);
@@ -1292,11 +1295,15 @@ function renderTradeNodes() {
         heading.append(date, price);
         const reason = document.createElement("span");
         reason.className = "trade-node-reason";
-        reason.textContent = `${buy ? "买入" : marker.position_closed === false ? "减仓" : "卖出"} · ${reasonText(marker.reason)}${open ? " · 尚未平仓" : ""}`;
+        reason.textContent = `${buy ? "买入成交" : marker.position_closed === false ? "减仓成交" : "卖出成交"}${open ? " · 尚未平仓" : ""}`;
         const details = document.createElement("span");
         details.className = "trade-node-details";
         details.textContent = `决定 ${marker.decision_timestamp || marker.signal_time || "—"}${marker.execution_model === "intraday_5m_next_open" ? ` · 成交 ${marker.timestamp}` : ""} · 原价 ${num(marker.raw_price)} 元 · ${num(marker.quantity)} 等价份额 · 费用 ${num(marker.fee)} 元`;
         content.append(heading, reason, details);
+        const reasons = document.createElement("span");
+        reasons.className = "trade-node-reasons";
+        reasons.textContent = `${buy ? "买入" : "卖出"}原因：\n${numberedTradeReasons(marker).join("\n")}`;
+        content.append(reasons);
         if (!buy) {
             const proportion = document.createElement("span");
             proportion.className = "trade-node-details";
@@ -1565,10 +1572,12 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
                         api(isAkShare() ? "/api/akshare-backtest" : "/api/tdx-backtest", backtestParams, requestSignal),
                     {
                         signal: requestSignal,
-                        onRetry: (attempt, total) => {
+                        onRetry: (attempt, total, error) => {
                             if (sequence === state.sequence)
                                 $("loading").textContent =
-                                    `图表服务暂不可用，等待自动恢复后重试当前股票回测（${attempt}/${total}）…`;
+                                    error?.code === "BACKTEST_TIMEOUT"
+                                        ? "首次计算仍在后台进行，正在自动等待同一回测结果…"
+                                        : `图表服务暂不可用，等待自动恢复后重试当前股票回测（${attempt}/${total}）…`;
                         },
                     },
                 )
@@ -1702,7 +1711,10 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
         $("loading").hidden = true;
         $("chart-loading-overlay").hidden = true;
         $("error").hidden = false;
-        $("error").textContent = `加载失败：${error.message}。旧图已隐藏，请检查结果文件后重试。`;
+        $("error").textContent =
+            error.code === "BACKTEST_TIMEOUT"
+                ? `加载失败：${error.message}。旧图已隐藏，请调整回测起始日期后重试。`
+                : `加载失败：${error.message}。旧图已隐藏，请检查结果文件后重试。`;
         $("selected-stock-summary").textContent =
             `${symbolName(request.symbol)} · 加载失败，未展示旧股票数据；可重新选择或刷新。`;
         $("price-chart").setAttribute("aria-busy", "false");

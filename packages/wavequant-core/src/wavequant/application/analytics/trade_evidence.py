@@ -51,6 +51,13 @@ def enrich_ledger(bars, result, generated, strategy):
                 check('成交价费用后盈亏比',order.get('net_reward_risk'),signal.minimum_reward_risk,
                       order.get('net_reward_risk',-1)>=signal.minimum_reward_risk
                       if order.get('net_reward_risk') is not None and order.get('net_reward_risk_filter',True) else None)]
+            if strategy.get('buy_point_definition') == 'whole_flip_wave_v3':
+                volume_proof = next((e for e in evidence if e['event'] == 'long_signal'), {})
+                price_alternative = volume_proof.get('wave_gap_trigger') in ('breakout', 'breakout_and_volume')
+                order['entry_conditions'][3] = check(
+                    '确认时量 / 前日量', signal.rvol,
+                    '跳空突破回调折线高点或成交量 > 前日全天量' if price_alternative else '> 1（前日全天量）',
+                    volume_proof.get('volume_pass', False) if strategy.get('volume_filter', True) else None)
             if strategy.get('entry_policy')=='hierarchical_two_buy_points':
                 second=bool(proof) and proof.get('buy_point_type')=='mature_shallow_squeeze'
                 chain=bool(proof) and all(isinstance(proof.get(k),int) for k in ('flip_index','alternation_index')) and proof['flip_index']<=proof['alternation_index']<proof['attack']<=signal.bar_index

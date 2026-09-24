@@ -141,7 +141,7 @@ test("current-stock backtests tolerate cold computation and report non-JSON prox
     assert.match(runtime, /const text = await response\.text\(\)/);
     assert.match(runtime, /body = JSON\.parse\(text\)/);
     assert.match(runtime, /服务暂时不可用（HTTP/);
-    assert.match(runtime, /首次回测计算超时，后台可能仍在生成缓存/);
+    assert.match(runtime, /回测计算仍未完成，请缩短回测区间后重试/);
     assert.doesNotMatch(runtime, /const body = await response\.json\(\)/);
 });
 

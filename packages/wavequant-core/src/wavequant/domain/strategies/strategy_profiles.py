@@ -78,33 +78,42 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
             confirmation='formal_flip_high_and_confirmed_source_pullback_may_be_known_together',
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
-    config['profile_version'] = 'c_wave_a_extensions_v48_' + variant
+    config['strategy']['minimum_rvol'] = 1.0
+    config['profile_version'] = 'split_n_defense_abc_v54_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
         rule for rule in config['definition']['exits'] if rule != 'target_observed_then_next_open'
     ]
     config['definition']['primary_filters'] = [
-        ('execution_price_net_rr_1_5' if name == 'next_open_net_rr_1_5' else name)
+        ('execution_price_net_rr_1_5' if name == 'next_open_net_rr_1_5' else
+         'volume_gt_previous' if name == 'rvol_1_2' else name)
         for name in config['definition']['primary_filters'] if name != 'gross_rr_1_5'
     ]
     config['definition']['primary_filters'] += [
         'alternation_before_n_or_same_n_squeeze_confirmation',
     ]
     config['definition'].update(
+        positive_n_defense='minimum_of_first_real_or_virtual_probe_low_through_joint_completion_and_pre_probe_close_touch_anchors_only_strict_joint_break_required',
+        mother_n='explicit_lecture_bullish_outside_mother_then_later_confirmed_pullback_and_strict_joint_break',
+        retained_n_reconfirmation='fresh_independent_n_close_breaks_all_prior_resistance_with_original_defense_held',
         alternation_short_pullback='minimum_close_above_two_thirds_and_b_duration_lt_half_a_requires_later_close_above_a_high',
         daily_limit_fill='nonflat_limit_up_close_simulated_fill_without_queue_verification_flat_limit_up_rejected',
         secondary_breakout='latest_confirmed_level2_high_resisted_attack_or_response_requires_later_close_above_episode_high',
+        completed_wave_recovery='completed_a_defended_b_gap_breakout_or_volume_retires_only_same_a_b_pressure_and_inverse',
+        volume_filter_basis='confirmation_cumulative_volume_strictly_gt_previous_session_total_wave_gap_price_break_is_alternative',
         c_wave_extensions='after_a_reaches_original_n_two_t_b_holds_defense_project_b_plus_1_618_and_2_618_times_whole_a_equal_wave_is_intermediate_not_exit',
-        wave_continuation_entry='qualified_n_two_t_then_pullback_holds_squeeze_low_volume_gap_bullish_candle_target_b_plus_a',
+        ordinary_a_rebound='one_p_reached_below_two_t_then_defended_b_bullish_close_above_known_pullback_high_equal_a_target_no_strong_extensions',
+        wave_continuation_entry='qualified_n_two_t_defended_b_gap_break_or_volume_or_non_gap_volume_bull_body_ge_3pct_and_60pct_range_close_above_known_b_high',
         consolidation_entry='larger_n_defense_held_two_closes_under_n_high_then_gap_open_and_cumulative_volume_gt_previous_on_break_above_n_high',
         wave_exhaustion_exit='entry_n_reached_two_t_or_later_volume_gt_previous_range_ge_8pct_both_shadows_ge_20pct_cumulative_80_close_then_bearish_engulf_clear',
         wave_abnormal_followthrough_exit='target_abnormal_candle_next_session_close_strictly_lower_same_close_full_clear_without_volume_or_partial_fill_requirement',
+        wave_gap_reversal_exit='entry_n_reached_two_t_or_later_volume_gt_previous_open_gt_previous_high_range_ge_8pct_upper_le_20pct_bear_body_ge_5pct_open_or_half_range_cumulative_80_same_close',
         wave_upper_rejection_exit='entry_n_reached_two_t_or_later_volume_gt_previous_new_high_bearish_upper_ge_body_lower_le_20pct_range_ge_8pct_cumulative_80_same_close',
         weak_n_confirmation='uninterrupted_strong_squeeze_or_defense_held_volume_gt_previous_close_above_episode_record_squeeze',
         squeeze_invalidation='later_inverse_n_ends_local_bounce_larger_defense_can_wait_for_fresh_volume_gap',
-        signal_timing='consolidation_intraday_completed_5m_other_entries_close',
-        entry_execution='defended_n_volume_gap_completed_5m_next_interval_other_entries_daily_close_simulation',
+        signal_timing='consolidation_and_c_wave_gap_intraday_completed_5m_other_entries_close',
+        entry_execution='defended_n_and_c_wave_gap_completed_5m_next_interval_missing_minutes_explicit_daily_close',
         reward_risk_policy='execution_price_gate_only_not_signal_preflight',
         alternation='shared_chart_formal_or_qualified_b_positive_n_squeeze',
         staged_exit='verified_5m_closing_window_low_break_35_low_and_price_break_65_next_interval_open_then_weak_rebound_clear',

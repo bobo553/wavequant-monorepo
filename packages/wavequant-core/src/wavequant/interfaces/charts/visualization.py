@@ -171,8 +171,14 @@ class ChartRepository:
             adapters.append(AkShareMarketDataAdapter(self.akshare))
         if self.tdx is not None:
             adapters.append(TdxMarketDataAdapter(self.tdx))
-        self.market_data = MarketDataRepository(adapters, default_source="akshare",
-            fallback_order={adapter.source: () for adapter in adapters})
+        self.market_data = MarketDataRepository(
+            adapters,
+            default_source="akshare",
+            # Keep the online source as the requested contract, but preserve a
+            # usable chart when AkShare is temporarily unavailable. Local TDX
+            # remains isolated and never triggers an unexpected network read.
+            fallback_order={"akshare": ("tdx",), "tdx": ()},
+        )
         self.root = Path(root).resolve()
         self.runs = {}
         self.cache = {}
@@ -656,7 +662,7 @@ class ChartRepository:
             ]
         if not volume_filter and "primary_filters" in definition:
             definition["primary_filters"] = [
-                filter_name for filter_name in definition["primary_filters"] if filter_name != "rvol_1_2"
+                filter_name for filter_name in definition["primary_filters"] if filter_name not in ("rvol_1_2", "volume_gt_previous")
             ]
         return dict(
             view,
@@ -707,7 +713,7 @@ class ChartRepository:
         )
         if 'primary_filters' in definition:
             definition['primary_filters'] = [name for name in definition['primary_filters']
-                if (volume_filter or name != 'rvol_1_2') and (net_reward_risk_filter or name not in ('next_open_net_rr_1_5', 'execution_price_net_rr_1_5'))]
+                if (volume_filter or name not in ('rvol_1_2', 'volume_gt_previous')) and (net_reward_risk_filter or name not in ('next_open_net_rr_1_5', 'execution_price_net_rr_1_5'))]
         return dict(view, variant=variant, scenario=scenario, parameter_source_run=rid, theory=theory,
                     strategy_profile=dict(id=variant, version=profile.get('profile_version', variant), definition=definition))
 
@@ -841,6 +847,10 @@ class ChartRepository:
                         not in identities]
             geometry[name] = dict(geometry[name], bear_bull_alternation_lows=[*ordinary, *additions])
             geometry[name] = promote_alternation_segments(geometry[name], bars, result.audit, level)
+            if level == 2:
+                # Level 3 must consume the same ordered level-2 geometry shown
+                # on the chart, including newly confirmed local segments.
+                geometry["tertiary_trends"] = tertiary_trends(geometry[name], bars)
         dates = {day(bar.timestamp.isoformat()): index for index, bar in enumerate(bars)}
         anchors = [
             AbcAnchor(

@@ -81,6 +81,7 @@ def _observe_target_candle(
         previous_close=previous.close,
         previous_high=previous.high,
         wave_body_fraction=body / bar.open,
+        wave_body_range_fraction=body / span,
         wave_gap_fraction=(bar.open - previous.high) / previous.high,
         execution_model="same_day_close",
     )
@@ -116,7 +117,9 @@ def _observe_target_candle(
         not reduced
         and bar.volume > previous.volume
         and bar.open > previous.high
-        and body >= config.wave_engulf_min_body * bar.open
+        # A wide gap reversal can surrender half its range before its body
+        # reaches 5% of the opening price. This is a reduction, not engulfing.
+        and (body >= config.wave_engulf_min_body * bar.open or body >= span * 0.5)
         and span / previous.close >= config.wave_exhaustion_min_range
         and upper / span <= 0.2
     ):

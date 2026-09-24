@@ -110,6 +110,37 @@ def test_minute_limit_lock_is_not_replaced_by_later_close_fill(monkeypatch):
     assert account.orders[0]["reason"] == "not_buyable_intraday"
 
 
+def test_user_nonflat_policy_uses_only_observed_range_and_preserves_limit_price(monkeypatch):
+    bars, generated, minute, seen = fixture(monkeypatch)
+    minute[2] = replace(minute[2], open=11.77, high=11.77, low=11.77, close=11.77)
+    result, executions, _ = resolve_consolidation_entries(
+        bars, generated, SystemStrategy(), lambda _: minute, daily_fallback=False
+    )
+    assert executions[bars[0].symbol, 4]["timing"]["observed_nonflat_limit_buyable"] is True
+    account = run_portfolio(
+        {bars[0].symbol: bars},
+        result.signals,
+        StrategyConfig(
+            entry_at_close=True, nonflat_limit_close_fill=True, net_reward_risk_filter=False, max_entry_gap=0.1
+        ),
+        entry_executions=executions,
+    )
+    buy = account.orders[0]
+    assert buy["status"] == "filled", buy
+    assert buy["price"] == 11.77
+    assert buy["applied_slippage_bps"] == 0
+    assert buy["fill_assumption"] == "observed_nonflat_limit_intraday_without_queue_verification"
+    # The later low cannot turn an observed one-price market into an earlier nonflat fill.
+    executions[bars[0].symbol, 4]["timing"]["observed_nonflat_limit_buyable"] = False
+    rejected = run_portfolio(
+        {bars[0].symbol: bars},
+        result.signals,
+        StrategyConfig(entry_at_close=True, nonflat_limit_close_fill=True, net_reward_risk_filter=False),
+        entry_executions=executions,
+    )
+    assert rejected.orders[0]["reason"] == "not_buyable_intraday"
+
+
 def test_missing_minutes_remain_explicit_daily_fallback(monkeypatch):
     bars, generated, minute, seen = fixture(monkeypatch)
     result, executions, fallbacks = resolve_consolidation_entries(

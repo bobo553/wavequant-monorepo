@@ -135,7 +135,8 @@ def tertiary_abc_observations(
             origin, pullback = _index(n, "origin"), _index(n, "pullback")
             known = _index(n, "known_at")
             if (origin is None or pullback is None or known is None
-                    or not 0 <= anchor.high_index < origin < pullback < attack <= confirmed < len(bars)
+                    or not 0 <= anchor.high_index < origin < pullback <= attack <= confirmed < len(bars)
+                    or (pullback == attack and n.get("outside_close_confirmed") is not True)
                     or anchor.known_index > attack or known > confirmed or confirmed <= busy_until):
                 continue
             proof = abc_pullback_evidence(bars, anchor, pullback, allow_deep_pullback=allow_deep_pullback)

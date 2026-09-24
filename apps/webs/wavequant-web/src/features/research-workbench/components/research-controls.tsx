@@ -90,10 +90,10 @@ export function ResearchControls(): JSX.Element {
                 </label>
                 <label
                     className="backtest-volume-filter"
-                    title="勾选后，N 字攻击日成交量必须达到此前 20 个交易日日均量的 1.2 倍；取消后仅跳过这项量能门槛。"
+                    title="V3 放量为确认时成交量严格超过前一交易日全天量；盘中使用截至确认时的累计量。C 浪跳空突破已知回调折线高点可独立触发。历史 V1/V2 对照保留原均量口径。"
                 >
                     <input type="checkbox" id="backtest-volume-filter" />
-                    启用量能过滤（攻击日量比 ≥ 1.2）
+                    启用量能过滤（V3：成交量 ＞ 昨日）
                 </label>
                 <label
                     className="backtest-volume-filter"

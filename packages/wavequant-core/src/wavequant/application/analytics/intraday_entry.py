@@ -2,11 +2,20 @@
 
 from dataclasses import replace
 from datetime import timedelta
+from decimal import Decimal
 from typing import Callable, TypedDict
 
 from wavequant.domain.models.model import Bar, Signal
-from wavequant.domain.strategies.integrated_strategy import SystemResult, SystemStrategy, generate_system_signals
+from wavequant.domain.strategies.integrated_strategy import (
+    SystemResult,
+    SystemStrategy,
+    generate_system_signals,
+    pivot_history,
+)
 from wavequant.domain.strategies.n_consolidation import consolidation_gap
+from wavequant.domain.strategies.wave_continuation import wave_gap_entry, wave_pullback_context
+from wavequant.domain.market_structure.wave_projection import WaveProjectionSetup
+from wavequant.domain.market_structure.polyline import PointKind
 from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageError
 from wavequant.infrastructure.market_data.data import opening_permissions
 from wavequant.infrastructure.market_data.minute import MinuteBar
@@ -37,7 +46,38 @@ def resolve_consolidation_entries(
     candidates = [
         e for e in audit if e["event"] == "n_completed" and e.get("direction") == "up" and e.get("n_level", 0) >= 1
     ]
+    wave_candidates = [
+        (
+            e["bar_index"],
+            WaveProjectionSetup(**{key: e[key] for key in WaveProjectionSetup.__dataclass_fields__}),
+            e.get("wave_epoch"),
+        )
+        for e in audit
+        if e["event"] == "wave_continuation_ready"
+    ]
+    snapshots, epochs = pivot_history(bars, strategy)[:2] if wave_candidates else ({}, {})
+    daily_waves = {
+        e["bar_index"]: (e["attack"], e["wave_a_high_index"], e["wave_b_low_index"])
+        for e in audit
+        if e["event"] == "long_signal" and e.get("wave_entry_path")
+    }
+    consumed_waves: set[tuple[int, int, int]] = set()
     for i, bar in enumerate(bars):
+        if i - 1 in daily_waves:
+            consumed_waves.add(daily_waves[i - 1])
+        if daily_waves.get(i) in consumed_waves:
+            # Earlier minute confirmation owns this A, even if that day's final
+            # candle failed the daily observer. Do not emit the same wave twice.
+            signals = [s for s in signals if not (s.bar_index == i and s.reason == "system_wave_push_gap")]
+            audit = [
+                e
+                for e in audit
+                if not (
+                    e["bar_index"] == i
+                    and e["event"] in ("long_signal", "long_transition_evidence")
+                    and e.get("attack") == daily_waves[i][0]
+                )
+            ]
         # Eligibility uses prior sessions and today's open, never today's final range/volume.
         eligible = [
             e
@@ -49,7 +89,42 @@ def resolve_consolidation_entries(
             and bars[i - 1].close <= bars[e["bar_index"]].high
             and bars[i - 2].close <= bars[e["bar_index"]].high
         ]
-        if not eligible:
+        wave_eligible = []
+        for known, setup, epoch in wave_candidates:
+            # Match the global strategy's structural episode boundary, using
+            # yesterday only: today's final candle must not invalidate a minute entry.
+            epoch = epochs.get(setup.attack_index) if epoch is None else epoch
+            if known >= i or bar.open < setup.defense or epoch != epochs.get(i - 1):
+                continue
+            context = wave_pullback_context(bars, setup, i)
+            if context is not None and bar.open <= bars[i - 1].high:
+                highs = [
+                    p
+                    for p in snapshots.get(i - 1, ())
+                    if p.point.kind == PointKind.HIGH
+                    and int(context["wave_a_high_index"]) < p.point.index < i
+                    and p.confirmed_index < i
+                ]
+                resistance = max(highs, key=lambda p: (p.point.index, p.confirmed_index), default=None)
+                # Final cumulative volume/high are upper bounds on every prefix.
+                # They can prove a trigger impossible, never confirm its timing.
+                if (
+                    (
+                        bar.volume <= bars[i - 1].volume
+                        and (context["wave_a_class"] != "ordinary" or strategy.volume_filter)
+                    )
+                    or bar.high < bar.open * (1.0 if context["wave_a_class"] == "ordinary" else 1.03)
+                    or resistance is None
+                    or bar.high <= resistance.point.price
+                ):
+                    continue
+            if (
+                context is not None
+                and (setup.attack_index, int(context["wave_a_high_index"]), int(context["wave_b_low_index"]))
+                not in consumed_waves
+            ):
+                wave_eligible.append(setup)
+        if not eligible and not wave_eligible:
             continue
         try:
             minute = minute_loader(bar) if minute_loader is not None else None
@@ -64,20 +139,48 @@ def resolve_consolidation_entries(
                     date=bar.timestamp.date().isoformat(),
                     reason=exc.coverage.get("reason", "minute_history_missing"),
                     coverage=exc.coverage,
-                    purpose="consolidation_entry",
+                    purpose="wave_continuation_entry" if wave_eligible else "consolidation_entry",
                     execution_model="same_day_close",
                 )
             )
             continue
         high, low, volume = 0.0, float("inf"), 0.0
+        attempted: set[tuple[float, float, float, float]] = set()
         for offset, observed in enumerate(minute[:-1]):
             high = max(high, observed.high * bar.adjustment_factor)
             low = min(low, observed.low * bar.adjustment_factor)
             volume += observed.volume
             partial = replace(bar, high=high, low=low, close=observed.close * bar.adjustment_factor, volume=volume)
             prefix = bars[:i] + [partial]
-            if not any(consolidation_gap(prefix, attack=e["bar_index"], now=i, defense=e["defense"]) for e in eligible):
+            consolidation_confirmed = any(
+                consolidation_gap(prefix, attack=e["bar_index"], now=i, defense=e["defense"]) for e in eligible
+            )
+            wave_confirmations = [
+                wave_observation
+                for setup in wave_eligible
+                if (wave_observation := wave_gap_entry(prefix, setup, i, pivots=snapshots.get(i - 1, ()))) is not None
+            ]
+            if not consolidation_confirmed and not wave_confirmations:
                 continue
+            # Ordinary-A price geometry does not imply the optional volume
+            # gate passed. Do not replay years of structure for every under-volume
+            # minute. Only a verified strong-A gap price-break may waive volume.
+            if (
+                strategy.buy_point_definition == "whole_flip_wave_v3"
+                and strategy.volume_filter
+                and volume <= bars[i - 1].volume
+                and not any(
+                    p.get("wave_gap_trigger") in ("breakout", "breakout_and_volume") for p in wave_confirmations
+                )
+            ):
+                continue
+            volume_state = (
+                float(volume > bars[i - 1].volume) if strategy.buy_point_definition == "whole_flip_wave_v3" else volume
+            )
+            observation = (high, low, partial.close, volume_state)
+            if observation in attempted:
+                continue
+            attempted.add(observation)
             replay = generate_system_signals(prefix, strategy)
             proof = next(
                 (
@@ -85,12 +188,22 @@ def resolve_consolidation_entries(
                     for e in replay.audit
                     if e["bar_index"] == i
                     and e["event"] == "long_signal"
-                    and e.get("squeeze_confirmation") == "defended_n_consolidation_gap"
+                    and e.get("squeeze_confirmation")
+                    in ("defended_n_consolidation_gap", "two_t_wave_push_gap", "one_p_wave_rebound")
                 ),
                 None,
             )
             if proof is None:
                 continue
+            wave_key = (
+                (proof["attack"], proof["wave_a_high_index"], proof["wave_b_low_index"])
+                if proof.get("wave_entry_path")
+                else None
+            )
+            if wave_key in consumed_waves:
+                continue
+            if wave_key is not None:
+                consumed_waves.add(wave_key)
             signal = next(s for s in replay.signals if s.bar_index == i and s.side == "LONG")
             following = minute[offset + 1]
             execution_at = following.timestamp - timedelta(minutes=5)
@@ -105,6 +218,18 @@ def resolve_consolidation_entries(
                 ),
                 bar.symbol,
             )
+            permission_row = dict(
+                date=bar.timestamp.date().isoformat(),
+                isST="0",
+                tradestatus="1" if following.volume > 0 else "0",
+                preclose=str(reference),
+            )
+            below_limit, _ = opening_permissions(
+                dict(permission_row, open=str(low / bar.adjustment_factor)), bar.symbol
+            )
+            previous_tick_buyable, _ = opening_permissions(
+                dict(permission_row, open=str(Decimal(str(following.open)) - Decimal("0.01"))), bar.symbol
+            )
             timing: dict[str, object] = dict(
                 execution_model="intraday_5m_next_open",
                 decision_source="completed_five_minute_bar",
@@ -116,6 +241,9 @@ def resolve_consolidation_entries(
                 observed_low=low,
                 observed_close=partial.close,
                 minute_next_open_raw=following.open,
+                observed_nonflat_limit_buyable=bool(
+                    not buyable and previous_tick_buyable and below_limit and high > low and volume > 0
+                ),
             )
             executions[bar.symbol, i] = dict(
                 signal=signal,
@@ -132,7 +260,7 @@ def resolve_consolidation_entries(
                 if not (e["bar_index"] == i and e["event"] in ("long_signal", "long_transition_evidence"))
             ]
             audit.extend(
-                dict(e, **timing)
+                {**e, **timing}
                 for e in replay.audit
                 if e["bar_index"] == i and e["event"] in ("long_signal", "long_transition_evidence")
             )

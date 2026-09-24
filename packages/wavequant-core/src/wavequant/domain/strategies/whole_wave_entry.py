@@ -18,8 +18,8 @@ def threshold(value):
 
 def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
                       deep_ratio=.5, shallow_ratio=1/3, first_basis='alternation_low',
-                      second_inclusive=True, allow_confirming_n=False, **unused):
-    if not 0 <= low_index < attack <= asof < len(bars):
+                      second_inclusive=True, allow_confirming_n=False, allow_same_bar_pullback=False, **unused):
+    if not (0 <= low_index <= attack <= asof < len(bars) and (low_index < attack or allow_same_bar_pullback)):
         return None, 'wave_invalid_n_sequence'
     live = {c.episode:c for c in current}; eligible=[]; reasons=[]
     at_attack = list(at_attack)

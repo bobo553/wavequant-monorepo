@@ -213,6 +213,12 @@ def _structural_reversals(points, *, source_level=1):
             pool=highs if direction=='up' else lows
             anchor=(max if direction=='up' else min)(pool,key=lambda k:points[k]['value'])
             key=anchor-1 if anchor else None
+            if key is None:
+                # A first-vertex extreme has no preceding opposite key. Start
+                # from the latest locally confirmed extreme instead of leaving
+                # this higher level unable to observe any future reversal.
+                anchor=pool[-1]
+                key=anchor-1 if anchor else None
             continue
         up=direction=='up'; target='H' if up else 'L'; sign=1 if up else -1
         if p['kind']==target and sign*(p['value']-points[anchor]['value'])>0:

@@ -69,6 +69,7 @@ def promote_alternation_segments(
     """
     result = deepcopy(geometry)
     added = []
+    merged = 0
     for event in events:
         if (
             event["event"] != "squeeze_alternation_breakout"
@@ -113,6 +114,45 @@ def promote_alternation_segments(
                 )
             )
         name = "tertiary" if level == 3 else "secondary"
+        # A separately rendered segment must not span an already confirmed
+        # path. When it fits inside one formal leg, splice its actual extrema
+        # into that leg so there is one ordered line for the next level.
+        handled = False
+        if level == 2:
+            for stroke in result.get("strokes", []):
+                original = stroke["points"]
+                if (
+                    not original
+                    or points[-1]["index"] < original[0]["index"]
+                    or points[0]["index"] > original[-1]["index"]
+                ):
+                    continue
+                handled = True
+                for position, (left, right) in enumerate(zip(original, original[1:])):
+                    if not (left["index"] <= points[0]["index"] < points[1]["index"] <= right["index"]):
+                        continue
+                    joined_known = max(known, left["available_at"])
+                    inserts = [
+                        dict(p, available_at=joined_known)
+                        for p in points
+                        if p["index"] not in (left["index"], right["index"])
+                    ]
+                    sequence = [left, *inserts, right]
+                    if (
+                        inserts
+                        and joined_known <= right["available_at"]
+                        and all(
+                            a["kind"] != b["kind"]
+                            and (a["value"] < b["value"] if a["kind"] == "L" else a["value"] > b["value"])
+                            for a, b in zip(sequence, sequence[1:])
+                        )
+                    ):
+                        stroke["points"] = [*original[: position + 1], *inserts, *original[position + 1 :]]
+                        merged += 1
+                    break
+                break
+        if handled:
+            continue
         added.append(
             dict(
                 id=f"{name}-alternation-{event['a_high_index']}-{event['b_low_index']}",
@@ -127,20 +167,15 @@ def promote_alternation_segments(
         # The now-formal edge must not remain under a duplicate developing edge.
         for stroke in result.get("developing_strokes", []):
             tail = stroke["points"]
-            if (
-                tail
-                and tail[0]["index"] <= event["a_high_index"]
-                and tail[-1]["index"] >= event["b_low_index"]
-                and any(p["index"] == event["a_high_index"] and p["kind"] == "H" for p in tail)
-            ):
+            if tail and tail[0]["index"] <= event["a_high_index"] and tail[-1]["index"] >= event["b_low_index"]:
                 stroke["points"] = [
                     dict(points[-1], display_only=True, development_role="formal_start"),
                     *[p for p in tail if p["index"] > event["b_low_index"]],
                 ]
     result["strokes"] = [*result.get("strokes", []), *added]
     result["developing_strokes"] = [s for s in result.get("developing_strokes", []) if len(s["points"]) >= 2]
-    result["confirmed_alternation_segment_count"] = len(added)
-    if added:
+    result["confirmed_alternation_segment_count"] = len(added) + merged
+    if added or merged:
         result["confirmed_wave_count"] = len(
             {(p["index"], p.get("ordinal", 0), p["kind"]) for s in result["strokes"] for p in s["points"]}
         )

@@ -341,6 +341,19 @@
     line-height: 1.5;
     overflow-wrap: anywhere;
 }
+.trade-node-reasons {
+    color: var(--research-text-soft);
+    font-size: 10px;
+    line-height: 1.6;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+.trade-reason-list {
+    margin: 4px 0 10px;
+}
+.trade-reason-list p {
+    margin: 3px 0;
+}
 .trade-node-details,
 .trade-node-pnl {
     color: var(--research-text-faint);
