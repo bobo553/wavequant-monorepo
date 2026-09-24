@@ -66,7 +66,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "regime",
                 question: "形成多头 / 强多头轧空盘态？",
-                detail: "V1、V2、V3 都要求已确认的轧空盘态。回档续攻、盘整缺口和 C 波续攻按各自证据恢复到多头盘态。",
+                detail: "V1、V2、V3 都要求已确认的轧空盘态。V3 抵抗后若盘中短暂跌破滚动低点，但守住原 N 防守、当日无新空抵且阳线收盘创本轮新高，也可当日确认普通轧空。回档续攻、盘整缺口和 C 波续攻按各自证据恢复到多头盘态。",
                 source: "integrated_strategy.py · generate_system_signals:356–444, 626–641",
                 yes: "交给买点分类",
                 no: "候选拒绝：not_squeeze_regime",
@@ -103,7 +103,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "pressure",
                 question: "上方二级阻力已解决？",
-                detail: "仍未突破的二级阻力阻断入场；同一次多级突破证据或完成 A/B 后的 C 波恢复可解除该阻断。",
+                detail: "二级突破受阻后，至少隔一日由无新空抵的阳线收盘越过抵抗阶段全部前高，且守住原突破防守，才解除阻断；盘中跌破前根滚动低点但收盘创本轮新高可通过。同一次多级突破证据或完成 A/B 后的 C 波恢复也可解除。",
                 source: "integrated_strategy.py · generate_system_signals:593–611",
                 yes: "检查原 N 收盘",
                 no: "拒绝：secondary_breakout_resistance_unresolved",
@@ -305,6 +305,14 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
                 detail: "V3 巨量高开后强阴收盘跌破前日低点，可直接清仓并优先于普通放量收跌及目标阶段部分减仓；放量倒 N、波段异常、普通 C 异常后首次收低、压力位反转与趋势翻空也按各自证据清仓。",
                 source: "strategy_profiles.py · whole_wave_profile definition；wave_exhaustion_exit.py；trend_flip_exit.py；pressure_exit.py",
                 yes: "优先整仓退出",
+                no: "检查二级 C 浪抵抗失败",
+            },
+            {
+                id: "secondary-c-exit",
+                question: "已知二级 A/B/C 等幅目标到位后，双长影次日收低破位？",
+                detail: "已确认二级低点与来源 A 高、B 低先于突破可知；盘中越过 A 高后连续两日空头抵抗，下一日触及等幅目标且上下影各占振幅至少 30%，再下一日阴线收盘跌破长影 K 线低点与 A 高，才按收盘清空余仓。",
+                source: "trend_flip_exit.py · _secondary_wave_exhaustion_history；strategy_profiles.py · secondary_c_wave_reversal_exit",
+                yes: "当日收盘清空余仓",
                 no: "检查防守与目标状态",
             },
             {
@@ -343,4 +351,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "66a58ca4d928437a80a3d9a29fe08bf1049443e8a8b198ae8f53e4b819a84a14";
+export const strategySourceDigest = "a57157671c298400a6b42329fcf1ae71dd889134ced37f626efb6f72adef10e3";

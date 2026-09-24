@@ -165,6 +165,13 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
             `清仓形态：${(marker.trend_adverse_patterns || []).map((name) => patterns[name] || name).join("、")}；收盘 ${num(marker.observed_close, 4)} / 前收 ${num(marker.previous_close, 4)}；最低 ${num(marker.observed_low, 4)} / 前低 ${num(marker.previous_low, 4)}`,
         );
     }
+    if (marker.reason === "secondary_wave_target_resistance_clear") {
+        lines.push(
+            `二级 C 浪：${marker.trend_origin_date} 低 ${num(marker.trend_origin_low, 4)} → ${marker.trend_key_date} A 高 ${num(marker.trend_key_high, 4)} → ${marker.wave_b_date} B 低 ${num(marker.wave_b_low, 4)}；等幅目标 ${num(marker.wave_equal_target, 4)} 元`,
+            `突破与抵抗：${marker.trend_attack_date} 盘中突破；空头抵抗 ${marker.trend_resistance_dates.join("、")}`,
+            `目标后转弱：${marker.trend_indecision_date} 上下长影，上影 ${pct(marker.trend_upper_shadow_fraction)}、下影 ${pct(marker.trend_lower_shadow_fraction)}；本日收盘 ${num(marker.observed_close, 4)} < 前日最低 ${num(marker.trend_indecision_low, 4)}，当日清仓`,
+        );
+    }
     if (marker.pressure_date) {
         const adverseNames = {
             close_below_previous: "收盘低于前收",

@@ -41,7 +41,9 @@ export function tradeReasonItems(item) {
         const proof = evidence.find((e) => e.buy_point_type);
         if (proof?.alternation_index_date && proof?.attack_date)
             reasons.push(
-                `趋势与入场时序：${proof.alternation_index_date} 确认空多交替，${proof.attack_date} 出现新正 N${proof.trend_level ? `；${proof.trend_level} 级趋势` : ""}。`,
+                proof.joint_alternation_confirmation
+                    ? `趋势与入场时序：${proof.attack_date} 出现正 N，${proof.alternation_index_date} 轧空共同确认空多交替与入场资格${proof.trend_level ? `；${proof.trend_level} 级趋势` : ""}。`
+                    : `趋势与入场时序：${proof.alternation_index_date} 确认空多交替，${proof.attack_date} 出现新正 N${proof.trend_level ? `；${proof.trend_level} 级趋势` : ""}。`,
             );
         if (proof?.secondary_resistance_resolved)
             reasons.push(
@@ -94,6 +96,13 @@ export function tradeReasonItems(item) {
             reasons.push(
                 `异常波动：振幅/前收 ${pct(item.wave_range_fraction)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，成交量 ${num(item.observed_volume, 0)} > 前日 ${num(item.previous_volume, 0)}。`,
             );
+        if (item.reason === "secondary_wave_target_resistance_clear") {
+            reasons.push(
+                `已确认 A/B/C：${item.trend_origin_date} 二级低 ${num(item.trend_origin_low, 4)} → ${item.trend_key_date} A 高 ${num(item.trend_key_high, 4)} → ${item.wave_b_date} B 低 ${num(item.wave_b_low, 4)}；等幅 C 目标 ${num(item.wave_equal_target, 4)} 元。`,
+                `${item.trend_attack_date} 盘中越过 A 高；${(item.trend_resistance_dates || []).join("、")} 连续出现空头抵抗。${item.trend_indecision_date} 触及目标，上下影分别占振幅 ${pct(item.trend_upper_shadow_fraction)}、${pct(item.trend_lower_shadow_fraction)}。`,
+                `本日收盘 ${num(item.observed_close, 4)} < 长上下影 K 线最低 ${num(item.trend_indecision_low, 4)}，且为阴线，清空余仓。`,
+            );
+        }
         if (item.trend_adverse_patterns?.length)
             reasons.push(`趋势转弱形态：${item.trend_adverse_patterns.join("、")}。`);
         if (item.resistance_date && item.failure_close != null)

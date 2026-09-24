@@ -3,6 +3,103 @@
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 
 
+def _secondary_wave_setup(levels, known_by):
+    """The confirmed source A/B points of an unfinished level-two up leg."""
+    secondary = levels.get(2, ())
+    if not secondary or secondary[-1]["kind"] != "L" or secondary[-1]["available_at"] > known_by:
+        return None
+    origin = secondary[-1]
+    source = levels.get(1, ())
+    highs = [p for p in source if p["kind"] == "H" and p["index"] > origin["index"]
+             and p["available_at"] <= known_by]
+    if not highs:
+        return None
+    high = max(highs, key=lambda p: (p["value"], -p["index"]))
+    lows = [p for p in source if p["kind"] == "L" and p["index"] > high["index"]
+            and p["available_at"] <= known_by]
+    if not lows:
+        return None
+    pullback = min(lows, key=lambda p: (p["value"], p["index"]))
+    if pullback["value"] <= origin["value"] or high["value"] <= origin["value"]:
+        return None
+    return origin, high, pullback, pullback["value"] + high["value"] - origin["value"]
+
+
+def _both_long_shadows(bar):
+    span = bar.high - bar.low
+    if span <= 0:
+        return False
+    return (bar.high - max(bar.open, bar.close)) / span >= 0.3 and (
+        min(bar.open, bar.close) - bar.low
+    ) / span >= 0.3
+
+
+def _secondary_wave_exhaustion_history(bars, history):
+    """Close a resisted level-two C wave only after a known equal-leg target fails."""
+    risks = {}
+    state = None
+    shadow_policy = ShadowPolicy(0.25)
+    for i in range(1, len(bars)):
+        setup = _secondary_wave_setup(history.get(i - 1, {}), i - 1)
+        identity = tuple((p["index"], p["value"]) for p in setup[:3]) if setup else None
+        if state is not None and identity != state["identity"]:
+            state = None
+        if setup is None:
+            continue
+        origin, high, pullback, target = setup
+        bar, previous = bars[i], bars[i - 1]
+        resistance = observe_resistance(
+            previous, bar, attack_direction=Direction.UP, shadow_policy=shadow_policy
+        ).detected is True
+        if state is None:
+            # An intraday break may precede the next day's close confirmation.
+            if previous.high <= high["value"] < bar.high and resistance:
+                state = dict(identity=identity, attack=i, resistance=[i])
+            continue
+        age = i - state["attack"]
+        if age == 1:
+            if bar.close > high["value"] and resistance:
+                state["resistance"].append(i)
+            else:
+                state = None
+        elif age == 2:
+            if bar.high >= target and bar.close > high["value"] and _both_long_shadows(bar):
+                state["indecision"] = i
+            else:
+                state = None
+        elif age == 3:
+            indecision = bars[state["indecision"]]
+            if bar.close < bar.open and bar.close < min(indecision.low, high["value"]):
+                span = indecision.high - indecision.low
+                risks[i] = dict(
+                    reason="secondary_wave_target_resistance_clear",
+                    exit_fraction=1.0,
+                    execution_model="same_day_close",
+                    trend_level=2,
+                    trend_origin_date=bars[origin["index"]].timestamp.date().isoformat(),
+                    trend_origin_low=origin["value"],
+                    trend_key_date=bars[high["index"]].timestamp.date().isoformat(),
+                    trend_key_high=high["value"],
+                    wave_b_date=bars[pullback["index"]].timestamp.date().isoformat(),
+                    wave_b_low=pullback["value"],
+                    wave_equal_target=target,
+                    trend_attack_date=bars[state["attack"]].timestamp.date().isoformat(),
+                    trend_resistance_dates=[bars[j].timestamp.date().isoformat() for j in state["resistance"]],
+                    trend_indecision_date=indecision.timestamp.date().isoformat(),
+                    trend_upper_shadow_fraction=(indecision.high - max(indecision.open, indecision.close)) / span,
+                    trend_lower_shadow_fraction=(min(indecision.open, indecision.close) - indecision.low) / span,
+                    trend_indecision_low=indecision.low,
+                    observed_close=bar.close,
+                    observed_low=bar.low,
+                    previous_close=previous.close,
+                    previous_low=previous.low,
+                )
+            state = None
+        else:
+            state = None
+    return risks
+
+
 def trend_flip_exit_history(bars, history):
     risks = {}
     for level in (3,):
@@ -88,4 +185,6 @@ def trend_flip_exit_history(bars, history):
                 state = None
             else:
                 state["record"] = max(state["record"], bar.high)
+    for index, risk in _secondary_wave_exhaustion_history(bars, history).items():
+        risks.setdefault(index, risk)
     return risks

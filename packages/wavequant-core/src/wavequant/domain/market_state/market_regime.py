@@ -162,9 +162,14 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             # A broken rolling response cannot be revived by a later pair of
             # candles holding a freshly lowered virtual low. Only a genuine
             # episode-record breakout may recover that still-defended N.
-            continuation = bool((continuation or (rolling_all_held and prior_resistance
-                                                  and prior_resistance.detected is True))
-                                and rolling_held and sign * (bar.close - prev.close) > 0
+            # A fresh close above the episode record can defeat prior supply
+            # even if today's intraday shakeout dipped below the rolling low.
+            # The original N defense must remain intact throughout.
+            record_rebound = continuation and first_defense is None
+            prior_response = (rolling_all_held and rolling_held and prior_resistance
+                              and prior_resistance.detected is True)
+            continuation = bool((record_rebound or prior_response)
+                                and sign * (bar.close - prev.close) > 0
                                 and sign * (bar.close - bars[attack].close) > 0
                                 and sign * (bar.close - bar.open) > 0
                                 and resistance.detected is False)

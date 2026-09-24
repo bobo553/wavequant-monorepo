@@ -63,7 +63,6 @@ def secondary_resistance_history(
                 and bar.close > bar.open
                 and bar.close > record
                 and bar.low >= defense
-                and bar.low >= min(prev.low, bars[i - 2].close)
             )
             if not confirmed:
                 blocked[i] = dict(

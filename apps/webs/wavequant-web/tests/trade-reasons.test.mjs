@@ -35,6 +35,23 @@ test("buy decision reasons are translated and numbered in order with recorded ev
     assert.match(copy, /买入原因：\n1\. N 字延续\n2\. 第一类：交替后正 N 轧空\n3\. 抵抗高点突破/);
 });
 
+test("joint N and alternation explain March 25 after the March 22 attack", () => {
+    const reasons = tradeReasonItems({
+        side: "BUY",
+        reason: "system_transition_squeeze",
+        decision_evidence: [
+            {
+                buy_point_type: "transition_squeeze",
+                joint_alternation_confirmation: true,
+                attack_date: "2021-03-22",
+                alternation_index_date: "2021-03-25",
+                trend_level: 2,
+            },
+        ],
+    });
+    assert.match(reasons.at(-1), /2021-03-22 出现正 N，2021-03-25 轧空共同确认空多交替与入场资格/);
+});
+
 test("sell reasons use exit trigger and observed values without inventing missing evidence", () => {
     const marker = {
         side: "SELL",
@@ -97,4 +114,30 @@ test("chart trade detail renders the same numbered reasons", () => {
     } finally {
         globalThis.document = previousDocument;
     }
+});
+
+test("secondary C-wave clear explains known anchors, target, resistance and close break", () => {
+    const marker = {
+        side: "SELL",
+        reason: "secondary_wave_target_resistance_clear",
+        trend_origin_date: "2020-04-28",
+        trend_origin_low: 4.6676,
+        trend_key_date: "2020-06-04",
+        trend_key_high: 5.6978,
+        wave_b_date: "2020-06-12",
+        wave_b_low: 4.9199,
+        wave_equal_target: 5.9501,
+        trend_attack_date: "2020-07-10",
+        trend_resistance_dates: ["2020-07-10", "2020-07-13"],
+        trend_indecision_date: "2020-07-14",
+        trend_upper_shadow_fraction: 0.4412,
+        trend_lower_shadow_fraction: 0.4412,
+        trend_indecision_low: 5.5931,
+        observed_close: 5.5716,
+    };
+    const lines = numberedTradeReasons(marker);
+    assert.equal(lines.length, 4);
+    assert.match(lines[1], /2020-04-28.*2020-06-04.*2020-06-12.*5\.9501/);
+    assert.match(lines[2], /2020-07-10、2020-07-13.*2020-07-14/);
+    assert.match(lines[3], /5\.5716 < .*5\.5931/);
 });

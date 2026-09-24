@@ -199,6 +199,15 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
                 `清仓形态：${(item.trend_adverse_patterns || []).map((name) => patterns[name] || name).join("、")}；收盘 ${num(item.observed_close, 4)} / 前收 ${num(item.previous_close, 4)}；最低 ${num(item.observed_low, 4)} / 前低 ${num(item.previous_low, 4)}`,
             );
         }
+        if (item.reason === "secondary_wave_target_resistance_clear") {
+            add(
+                `二级 C 浪：${item.trend_origin_date} 低 ${num(item.trend_origin_low, 4)} → ${item.trend_key_date} A 高 ${num(item.trend_key_high, 4)} → ${item.wave_b_date} B 低 ${num(item.wave_b_low, 4)}；等幅目标 ${num(item.wave_equal_target, 4)} 元`,
+            );
+            add(`突破与抵抗：${item.trend_attack_date} 盘中突破；空头抵抗 ${item.trend_resistance_dates.join("、")}`);
+            add(
+                `目标后转弱：${item.trend_indecision_date} 上下长影，上影 ${pct(item.trend_upper_shadow_fraction)}、下影 ${pct(item.trend_lower_shadow_fraction)}；本日收盘 ${num(item.observed_close, 4)} < 前日最低 ${num(item.trend_indecision_low, 4)}，当日清仓`,
+            );
+        }
         if (item.pressure_date) {
             const adverseNames = {
                 close_below_previous: "收盘低于前收",
