@@ -66,6 +66,14 @@ export function tradeReasonItems(item) {
             reasons.push(
                 `放量下跌：${item.volume_trigger_date} 成交量 ${num(item.trigger_volume, 0)} > 前日 ${num(item.previous_volume, 0)}，收盘 ${num(item.trigger_close, 4)} < 前收 ${num(item.previous_close, 4)}。`,
             );
+        if (item.reason === "volume_down_next_gap_fade_clear")
+            reasons.push(
+                `次日低开走弱：开盘 ${num(item.observed_open, 4)} < 前收 ${num(item.gap_previous_close, 4)}，收盘 ${num(item.observed_close, 4)} < 开盘 ${num(item.observed_open, 4)}。`,
+            );
+        if (item.reason === "volume_down_next_followthrough_clear")
+            reasons.push(
+                `次日下跌确认：收盘 ${num(item.observed_close, 4)} < 警示日低点 ${num(item.warning_low, 4)}，且低于当日开盘 ${num(item.observed_open, 4)}。`,
+            );
         if (item.positive_n_date)
             reasons.push(`小实体例外：${item.positive_n_date} 正 N 的实体 ${pct(item.small_body_fraction)}，上限 ${pct(item.small_body_cap)}。`);
         if (item.reason === "wave_gap_reversal_reduce" && item.observed_open != null)

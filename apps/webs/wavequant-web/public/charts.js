@@ -17,6 +17,7 @@ import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
 import { tertiaryRetracementGuides } from "./retracement-guides.js";
 import { TradeMarkerOverlay } from "./trade-marker-overlay.js";
+import { waveCProjection } from "./wave-c-projection.js";
 
 const L = window.LightweightCharts;
 if (!L) throw new Error("TradingView SDK 未加载，请检查本地 npm 依赖。");
@@ -258,12 +259,38 @@ export class PriceChart {
                 this.tooltip.style.left =
                     Math.max(4, Math.min(p.point.x + 16, container.clientWidth - this.tooltip.offsetWidth - 4)) + "px";
                 this.tooltip.style.top =
-                    Math.max(4, Math.min(p.point.y + 12, container.clientHeight - this.tooltip.offsetHeight - 4)) + "px";
+                    Math.max(4, Math.min(p.point.y + 12, container.clientHeight - this.tooltip.offsetHeight - 4)) +
+                    "px";
             }
         });
         this.chart.subscribeClick((p) => {
             const items = this.itemsAt(p.time, p.hoveredObjectId);
-            if (items.length) this.selectAnnotation(items[0].id, false, items);
+            if (p.hoveredObjectId && items.length) {
+                this.selectAnnotation(items[0].id, false, items);
+                return;
+            }
+            const projection =
+                this.data && this.theory && p.time ? waveCProjection(this.data.bars, this.theory.events, p.time) : null;
+            if (!projection) {
+                if (items.length) this.selectAnnotation(items[0].id, false, items);
+                return;
+            }
+            const selected = {
+                id: `wave-c:${projection.nTime}:${projection.aTime}`,
+                time: projection.bTime,
+                sourceTime: projection.aTime,
+                kind: "wave-projection",
+                category: "wave-projection",
+                price: projection.target,
+                title: "C 浪等浪观察目标",
+                description: `正 N ${projection.nTime} 后，选定 ${projection.aTime} 的 A 浪高点 ${num(projection.aHigh)} 高于一饱 ${num(projection.oneP)}；B 浪低点 ${projection.bTime} ${num(projection.bLow)}。C 浪等浪目标 = B 低 +（A 高 − 正 N 起点）= ${num(projection.target)} 元。仅为测幅观察，不保证到达。`,
+                sourceLabel: "所选 A 浪高点与当前历史截面 B 浪低点",
+                levels: [{ name: "C 浪等浪目标", price: projection.target, available_at: projection.bTime }],
+                raw: projection,
+            };
+            this.selected = selected;
+            this.drawLevels();
+            this.onSelect([selected]);
         });
         this.chart.timeScale().subscribeVisibleLogicalRangeChange(() => this.scheduleMarkers());
     }
@@ -632,7 +659,10 @@ export class PriceChart {
             !item ||
             !this.data ||
             !this.options.levels ||
-            (!blockedOrder && !blockedCandidate && !visibleAnnotations([item], this.options).length)
+            (!blockedOrder &&
+                !blockedCandidate &&
+                item.kind !== "wave-projection" &&
+                !visibleAnnotations([item], this.options).length)
         )
             return;
         const levels = blockedOrder
@@ -648,13 +678,15 @@ export class PriceChart {
                 lineWidth: 1,
                 title: level.name,
                 lastValueVisible: true,
-                priceLineVisible: false,
+                priceLineVisible: item.kind === "wave-projection",
                 crosshairMarkerVisible: false,
                 pointMarkersVisible: item.kind !== "trend",
                 pointMarkersRadius: 2,
                 // Selected N targets must remain visible even above the candle
                 // range; deselection removes these series and restores scaling.
-                ...(item.raw?.event === "n_completed" ? {} : { autoscaleInfoProvider: () => null }),
+                ...(item.raw?.event === "n_completed" || item.kind === "wave-projection"
+                    ? {}
+                    : { autoscaleInfoProvider: () => null }),
             });
             const start = level.available_at && level.available_at > item.time ? level.available_at : item.time;
             const points = [{ time: start, value: level.price }];

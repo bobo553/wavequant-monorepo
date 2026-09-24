@@ -79,7 +79,7 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'split_n_defense_abc_v54_' + variant
+    config['profile_version'] = 'volume_down_followthrough_v56_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -120,7 +120,7 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
         missing_minute_policy='same_source_daily_close_with_explicit_fallback_evidence',
         inverse_n_after_reduction='cumulative_90_percent_of_initial_holding_other_full_risk_exits_take_priority',
         small_n_reduction='body_le_1pct_and_lt_previous_10_mean_inside_latest_valid_confirmed_n_candle_then_cumulative_30',
-        volume_down_exit='volume_gt_previous_bearish_close_below_previous_then_next_open_cumulative_70_frozen_support_low_break_close_clear',
+        volume_down_exit='volume_gt_previous_bearish_close_below_previous_same_close_cumulative_70_next_session_gap_fade_or_bearish_close_below_warning_low_or_frozen_support_low_break_close_clear',
         pressure_adverse_exit='confirmed_positive_n_retests_unbroken_high_volume_bearish_body_upper_half_then_adverse_close_full_clear',
         volume_inverse_n_clear='confirmed_inverse_n_and_volume_gt_previous_same_day_full_clear_before_partial_exits',
         inverse_n_remaining_exit='bull_resistance_next_close_below_virtual_low_same_day_clear',

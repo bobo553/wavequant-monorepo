@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("Guilin volume-down reduction freezes support and clears on its break", async ({ page }) => {
+test("Guilin volume-down reduction and next-session gap fade exit", async ({ page }) => {
     test.setTimeout(180_000);
     const catalog = {
         available: true,
@@ -106,27 +106,28 @@ test("Guilin volume-down reduction freezes support and clears on its break", asy
     expect(small.exit_target_fraction).toBe(0.3);
     expect(small.positive_n_date).toBe("2021-12-15");
     expect(small.small_body_fraction).toBeLessThanOrEqual(0.01);
-    const reduction = sells.find((o) => o.timestamp.startsWith("2022-09-23"));
+    const reduction = sells.find((o) => o.timestamp.startsWith("2022-09-22"));
     expect(reduction.reason).toBe("volume_down_reduce_70");
     expect(reduction.exit_target_fraction).toBe(0.7);
+    expect(reduction.execution_model).toBe("same_day_close");
     expect(reduction.volume_support_date).toBe("2022-09-19");
-    const clear = sells.find((o) => o.timestamp.startsWith("2022-09-26"));
-    expect(clear.reason).toBe("volume_down_support_break_clear");
+    const clear = sells.find((o) => o.timestamp.startsWith("2022-09-23"));
+    expect(clear.reason).toBe("volume_down_next_gap_fade_clear");
     expect(clear.remaining_quantity).toBe(0);
     await expect(page.locator("#loading")).toBeHidden({ timeout: 120_000 });
     await page
         .locator("#trade-nodes-list .trade-node-row")
-        .filter({ hasText: "2022-09-23" })
+        .filter({ hasText: "2022-09-22" })
         .locator(".trade-node-button")
         .click();
     await expect(page.locator("#selection-info")).toContainText("70%");
     await expect(page.locator("#selection-info")).toContainText("2022-09-19");
     await page
         .locator("#trade-nodes-list .trade-node-row")
-        .filter({ hasText: "2022-09-26" })
+        .filter({ hasText: "2022-09-23" })
         .locator(".trade-node-button")
         .click();
-    await expect(page.locator("#selection-info")).toContainText("当日清仓");
+    await expect(page.locator("#selection-info")).toContainText("当日收盘清空余仓");
     await page
         .locator("#trade-nodes-list .trade-node-row")
         .filter({ hasText: "2021-12-21" })

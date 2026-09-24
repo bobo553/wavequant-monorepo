@@ -276,6 +276,15 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     if support is not None and bar.low < bars[support].low:
         return dict(evidence, reason='volume_down_support_break_clear', exit_fraction=1.0,
                     execution_model='same_day_close')
+    if index == start + 1 and bar.open < previous.close and bar.close < bar.open:
+        return dict(evidence, reason='volume_down_next_gap_fade_clear', exit_fraction=1.0,
+                    observed_open=bar.open, gap_previous_close=previous.close,
+                    execution_model='same_day_close')
+    if (index == start + 1 and state.volume_reduction_target >= .7
+            and bar.close < bar.open and bar.close < bars[start].low):
+        return dict(evidence, reason='volume_down_next_followthrough_clear', exit_fraction=1.0,
+                    warning_low=bars[start].low, observed_open=bar.open,
+                    execution_model='same_day_close')
     if upgrading:
         state.volume_reduction_target = target
         if small_inside:
@@ -284,5 +293,6 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
                             small_body_fraction=float(body)/bar.open, small_body_mean=float(mean_body),
                             small_body_cap=small_body_max_fraction, small_body_lookback=small_body_lookback)
         return dict(evidence, reason='volume_down_small_n_reduce_30' if small_inside else 'volume_down_reduce_70',
-                    exit_fraction=target, exit_target_fraction=target, execution_model='next_open')
+                    exit_fraction=target, exit_target_fraction=target,
+                    execution_model='next_open' if small_inside else 'same_day_close')
     return None

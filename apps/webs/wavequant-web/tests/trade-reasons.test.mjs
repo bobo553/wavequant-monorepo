@@ -46,10 +46,44 @@ test("sell reasons use exit trigger and observed values without inventing missin
         previous_close: 10,
     };
     assert.deepEqual(tradeReasonItems(marker), [
-        "放量下跌且收盘低于前收，次日累计减仓至原持仓 70%",
+        "放量下跌且收盘低于前收，当日收盘累计减仓原持仓 70%",
         "放量下跌：2026-09-04 成交量 200,000 > 前日 100,000，收盘 9.0000 < 前收 10.0000。",
     ]);
     assert.deepEqual(numberedTradeReasons({ side: "SELL" }), ["1. 本次成交记录未提供具体决策原因。"]);
+});
+
+test("next-session gap fade clear shows the observable close confirmation", () => {
+    const reasons = tradeReasonItems({
+        side: "SELL",
+        reason: "volume_down_next_gap_fade_clear",
+        volume_trigger_date: "2020-05-13",
+        trigger_volume: 9716400,
+        previous_volume: 6451974,
+        trigger_close: 5.27,
+        previous_close: 5.31,
+        gap_previous_close: 5.27,
+        observed_open: 5.2,
+        observed_close: 5.14,
+    });
+    assert.match(reasons[0], /当日收盘清空余仓/);
+    assert.match(reasons[2], /开盘 5\.2000 < 前收 5\.2700，收盘 5\.1400 < 开盘 5\.2000/);
+});
+
+test("next-session bearish close below warning low explains full exit", () => {
+    const reasons = tradeReasonItems({
+        side: "SELL",
+        reason: "volume_down_next_followthrough_clear",
+        volume_trigger_date: "2020-05-13",
+        trigger_volume: 9716400,
+        previous_volume: 6451974,
+        trigger_close: 5.27,
+        previous_close: 5.31,
+        warning_low: 5.26,
+        observed_open: 5.3,
+        observed_close: 5.07,
+    });
+    assert.match(reasons[0], /当日收盘清空余仓/);
+    assert.match(reasons[2], /收盘 5\.0700 < 警示日低点 5\.2600，且低于当日开盘 5\.3000/);
 });
 
 test("chart trade detail renders the same numbered reasons", () => {

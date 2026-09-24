@@ -1,8 +1,29 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": null,
+    "activeFeature": "MONOREPO-165",
     "features": [
+        {
+            "id": "MONOREPO-166",
+            "name": "selected-a-wave-c-target",
+            "title": "选定 A 浪高点绘制 C 浪等浪目标",
+            "description": "正 N 后所选 A 高严格越过一饱，按当前历史截面的后续 B 低计算并画出 C 浪等浪观察价。",
+            "scope": "Web K 线选择、等浪投影和浏览器回归",
+            "dependencies": ["MONOREPO-162"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "点击合格 A 高 K 线时展示 B 低 +（A 高 − 正 N 起点）的目标价和依据",
+                "未越过一饱、尚无 B 回调或失守防守位时不画目标",
+                "真实 Chromium 验证目标价线和详情，Web 单测、lint、类型及构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "wavequant-web test:unit; lint; typecheck; build; wave-c-projection.spec.mjs",
+                    "status": "passed",
+                    "summary": "12项Vitest及149项Node单测、ESLint、TypeScript、生产构建和真实Chromium通过；点击A高后从B低显示17.5目标价线。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-163",
             "name": "hierarchical-trend-overlap-and-tertiary-init",
@@ -5496,6 +5517,57 @@
                     "command": "Actual AKShare backtest; Playwright xinhua-abc-entry.spec.mjs; Web lint/typecheck/test:unit/build",
                     "status": "passed",
                     "summary": "完整账户09-17实际买300原始股，原价12.64632含滑点；分钟量缺17400股，回退当天收盘。真实Chromium点击买点与N/A/B/防守/等浪详情通过（9.1秒）；首跑仅因大响应被浏览器调试缓存淘汰，改为保留真实API响应证据后通过。Web12项Vitest+140项Node、lint/类型/构建通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-165",
+            "name": "volume-down-close-and-followthrough-exit",
+            "title": "放量收跌当日减仓与次日走弱清仓",
+            "description": "全局 V3 放量收跌默认按原持仓累计 70% 于当日收盘模拟减仓；次一交易日低开收阴，或收阴且收盘跌破警示日低点，均于当日收盘清余仓。保留小实体正 N 例外和原回踩低点清仓规则。",
+            "scope": "Core 全局退出策略、Web 说明与回归",
+            "dependencies": ["MONOREPO-162"],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "国芳集团 2020-05-13 给定行情触发当日累计 70% 减仓；05-14 虽高开但收阴并收盘跌破警示日低点，当日清空余仓，05-20 不再退出同笔持仓",
+                "次日低开且收盘低于开盘，或收阴且收盘跌破警示日低点才清余仓，无未来数据或重复减仓",
+                "小实体正 N、冻结回踩低点及已有目标异常退出路径回归"
+            ],
+            "verification": [
+                {
+                    "command": "Core test_staged_exit.py; real cached Guofang prefix replay",
+                    "status": "passed",
+                    "summary": "V56 专项 65 项通过；给定 05-14 行情及真实缓存价格均验证高开、收阴、收盘跌破 05-13 低点，触发当日清余仓。低开收阴、等于警示日低点、仅收阴和延后一天的边界亦覆盖。"
+                },
+                {
+                    "command": "Core full pytest",
+                    "status": "failed",
+                    "summary": "971 通过、1 失败；test_folded_n.py 的 2026-08-28 入场证据 alternation_index 预期 643、实际 621。该用例只运行未改动的入场信号逻辑，和本次退出规则无调用关系。"
+                },
+                {
+                    "command": "Core lint/typecheck/build; Web lint/typecheck/test:unit/build; Chromium Guofang and Guilin; harness:check; CodeGraph sync",
+                    "status": "passed",
+                    "summary": "Core Ruff lint、类型及构建通过；Web 12 项 Vitest 与 145 项 Node、lint/类型/构建通过；两条真实浏览器回归通过；Harness 与索引同步通过。"
+                },
+                {
+                    "command": "Ruff format --check on touched Python files and HEAD baseline",
+                    "status": "failed",
+                    "summary": "3 个所涉 Python 文件当前格式检查失败；对相同文件的 HEAD 版本检查亦失败，属于既有整文件格式债务，本次未扩大重排范围。"
+                },
+                {
+                    "command": "Final Web lint after concurrent workspace changes",
+                    "status": "passed",
+                    "summary": "早先并行文件报错后，当前完整 pnpm --filter wavequant-web lint 已重新通过；本任务新增的国芳、桂林聚焦 E2E 与更新的旧桂林用例定向 ESLint 也通过。"
+                },
+                {
+                    "command": "Legacy volume-down-exit.spec.mjs",
+                    "status": "failed",
+                    "summary": "保留原用例的跨年份断言后，执行在 2025-11-06 买点不存在的断言处先失败；退出路径由新增桂林聚焦 E2E 在真实 API 与浏览器中验证通过。"
+                },
+                {
+                    "command": "V56 Core 94 targeted tests; Web 12 Vitest + 150 Node; Chromium Guofang and Guilin; Core/Web lint, typecheck, build",
+                    "status": "passed",
+                    "summary": "用户补充 05-14 与 05-20 数据后，国芳 05-14 高开但收阴破警示日低点，真实 Chromium 显示当日清余仓且 05-20 无同笔再退出；桂林 09-23 原低开分支单独重跑通过。Core 94 项相关测试、Web 12+150 项单测通过；两端静态检查和构建通过。并行跑浏览器时桂林 120 秒请求超时，串行重跑 8.8 秒通过。"
                 }
             ]
         }
