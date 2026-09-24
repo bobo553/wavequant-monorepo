@@ -47,6 +47,7 @@ class _Position:
     realized_pnl: float = 0.0
     wave_events: list[dict] = field(default_factory=list)
     wave_reduced: bool = False
+    signal_index: int | None = None
 
 
 def transaction_fee(notional: float, when: datetime, sell: bool, config: StrategyConfig) -> float:
@@ -240,7 +241,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             del positions[symbol]
         else:
             pos.quantity = remaining
-            if pending_exit[symbol] in ('wave_volume_shadows_reduce', 'wave_gap_reversal_reduce', 'wave_upper_rejection_reduce'):
+            if pending_exit[symbol] in ('wave_volume_shadows_reduce', 'wave_gap_reversal_reduce',
+                                        'wave_upper_rejection_reduce', 'wave_ordinary_equal_upper_shadow_reduce'):
                 pos.wave_reduced = True
             if pending_exit[symbol] == 'inverse_n_close_reduce_90':
                 pos.staged_exit.inverse_index = evidence['inverse_observed_index']
@@ -337,7 +339,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
         positions[symbol] = _Position(i, when, price, quantity, fee,
                                       signal.invalidation_price, signal.invalidation_price,
                                       target, signal.reason, initial_quantity=quantity, initial_entry_fee=fee,
-                                      wave_events=wave_lookup[symbol].get(signal.trigger_timestamp, []))
+                                      wave_events=wave_lookup[symbol].get(signal.trigger_timestamp, []),
+                                      signal_index=signal.bar_index)
         log(when, symbol, 'BUY', 'filled', signal.reason, **detail)
 
     for tick, when in enumerate(sorted(calendar)):
@@ -470,7 +473,9 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                         and 'inverse_n_risk_exit' in signal.reason.split('|')
                         for signal in signal_map.get(when, [])))
             wave_exit = (observe_wave_exhaustion(grouped[symbol], i, pos.wave_events, config,
-                                                reduced=pos.wave_reduced) if config.wave_exhaustion_exit else None)
+                                                reduced=pos.wave_reduced, entry_index=pos.entry_index,
+                                                signal_index=pos.signal_index)
+                         if config.wave_exhaustion_exit else None)
             pressure = trend_flip_risks[symbol].get(i) or pressure_risks[symbol].get(i)
             if wave_exit is not None and wave_exit['exit_fraction'] == 1:
                 wave_clear_symbols.add(symbol)

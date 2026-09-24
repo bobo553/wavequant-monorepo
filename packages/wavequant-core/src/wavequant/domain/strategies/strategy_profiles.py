@@ -79,7 +79,7 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'volume_down_followthrough_v56_' + variant
+    config['profile_version'] = 'ordinary_c_equal_exit_v57_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -104,6 +104,7 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
         volume_filter_basis='confirmation_cumulative_volume_strictly_gt_previous_session_total_wave_gap_price_break_is_alternative',
         c_wave_extensions='after_a_reaches_original_n_two_t_b_holds_defense_project_b_plus_1_618_and_2_618_times_whole_a_equal_wave_is_intermediate_not_exit',
         ordinary_a_rebound='one_p_reached_below_two_t_then_defended_b_bullish_close_above_known_pullback_high_equal_a_target_no_strong_extensions',
+        ordinary_c_equal_exit='entry_a_reached_one_p_below_two_t_then_c_equal_target_volume_gt_previous_upper_shadow_ge_half_range_cumulative_80_same_close_following_first_strictly_lower_close_full_clear_same_close',
         wave_continuation_entry='qualified_n_two_t_defended_b_gap_break_or_volume_or_non_gap_volume_bull_body_ge_3pct_and_60pct_range_close_above_known_b_high',
         consolidation_entry='larger_n_defense_held_two_closes_under_n_high_then_gap_open_and_cumulative_volume_gt_previous_on_break_above_n_high',
         wave_exhaustion_exit='entry_n_reached_two_t_or_later_volume_gt_previous_range_ge_8pct_both_shadows_ge_20pct_cumulative_80_close_then_bearish_engulf_clear',

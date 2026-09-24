@@ -152,7 +152,7 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
             );
         }
         if (item.wave_reached_stage) {
-            const stageNames = { two_t: "二吐", five_top: "五顶", ten_full: "十满" };
+            const stageNames = { two_t: "二吐", five_top: "五顶", ten_full: "十满", ordinary_equal: "普通 A 的 C 等浪" };
             add(
                 `目标背景：本笔正 N ${item.wave_n_date}；${item.wave_reached_date} 已到 ${stageNames[item.wave_reached_stage] || item.wave_reached_stage} ${num(item.wave_reached_price, 4)} 元`,
             );
@@ -164,6 +164,10 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
                 add(
                     `次日确认：${item.abnormal_date} 异常K线收盘 ${num(item.abnormal_close, 4)}；下一交易日收盘 ${num(item.observed_close, 4)} 严格低于该收盘，清空余仓，无需再次放量或等待倒 N`,
                 );
+            if (item.reason === "wave_ordinary_equal_upper_shadow_reduce")
+                add(`普通 A：前 A 高 ${num(item.wave_a_high, 4)} 已达一饱 ${num(item.wave_one_p, 4)}、未达二吐 ${num(item.wave_two_t, 4)}；C 浪到等浪目标后，成交量 ${num(item.observed_volume, 0)} > 前日 ${num(item.previous_volume, 0)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，当日按累计 80% 目标减仓`);
+            if (item.reason === "wave_ordinary_equal_lower_close_clear")
+                add(`异常后首次收低：${item.abnormal_date} 出现长上影；本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，当日清空余仓`);
             if (item.reason === "wave_upper_rejection_reduce")
                 add(
                     `冲高收阴：上影不短于阴线实体；振幅/前收 ${pct(item.wave_range_fraction)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，下影占振幅 ${pct(item.wave_lower_shadow_fraction)}；成交量 ${num(item.observed_volume, 0)} > 前日 ${num(item.previous_volume, 0)}；不要求日涨跌幅为负`,

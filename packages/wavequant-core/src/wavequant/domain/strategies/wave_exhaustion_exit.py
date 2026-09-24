@@ -6,8 +6,26 @@ from ..market_structure.price_action import Direction, ShadowPolicy, observe_res
 
 
 def observe_wave_exhaustion(
-    bars: list[Bar], index: int, events: list[dict], config: StrategyConfig, *, reduced: bool = False
+    bars: list[Bar],
+    index: int,
+    events: list[dict],
+    config: StrategyConfig,
+    *,
+    reduced: bool = False,
+    entry_index: int | None = None,
+    signal_index: int | None = None,
 ) -> dict | None:
+    ordinary = next(
+        (
+            event
+            for event in events
+            if event.get("event") == "wave_ordinary_entry"
+            and event.get("bar_index") == (signal_index if signal_index is not None else entry_index)
+        ),
+        None,
+    )
+    if ordinary is not None:
+        return _observe_ordinary_c(bars, index, ordinary, config, reduced=reduced, entry_index=entry_index)
     # Confirm only the immediately preceding trading candle's known warning.
     # Failed/rounded partial fills must not prevent a subsequent full exit.
     if index >= 2 and bars[index].close < bars[index - 1].close:
@@ -33,6 +51,53 @@ def observe_wave_exhaustion(
                 execution_model="same_day_close",
             )
     return _observe_target_candle(bars, index, events, config, reduced=reduced)
+
+
+def _observe_ordinary_c(
+    bars: list[Bar],
+    index: int,
+    entry: dict,
+    config: StrategyConfig,
+    *,
+    reduced: bool,
+    entry_index: int | None,
+) -> dict | None:
+    """Freeze an ordinary A at entry and watch its C equal-wave target."""
+    held_from = entry_index if entry_index is not None else entry["bar_index"]
+    if index <= held_from or not entry["one_p"] <= entry["a_high"] < entry["two_t"]:
+        return None
+    reached_index = next((j for j in range(held_from + 1, index + 1) if bars[j].high >= entry["target"]), None)
+    if reached_index is None:
+        return None
+    reached = dict(
+        entry,
+        event="wave_projection_target_reached",
+        bar_index=reached_index,
+        reached_stage="ordinary_equal",
+        reached_target=entry["target"],
+    )
+    for j in range(reached_index, index):
+        warning = _observe_target_candle(bars, j, [reached], config)
+        if warning is not None and "exit_target_fraction" in warning:
+            if bars[index].close < bars[index - 1].close:
+                return dict(
+                    {key: value for key, value in warning.items() if key.startswith("wave_")},
+                    reason="wave_ordinary_equal_lower_close_clear",
+                    exit_fraction=1.0,
+                    abnormal_date=bars[j].timestamp.date().isoformat(),
+                    abnormal_close=bars[j].close,
+                    abnormal_reason=warning["reason"],
+                    observed_open=bars[index].open,
+                    observed_close=bars[index].close,
+                    observed_low=bars[index].low,
+                    observed_high=bars[index].high,
+                    observed_volume=bars[index].volume,
+                    previous_volume=bars[index - 1].volume,
+                    previous_close=bars[index - 1].close,
+                    execution_model="same_day_close",
+                )
+            return None
+    return _observe_target_candle(bars, index, [reached], config, reduced=reduced)
 
 
 def _observe_target_candle(
@@ -85,6 +150,15 @@ def _observe_target_candle(
         wave_gap_fraction=(bar.open - previous.high) / previous.high,
         execution_model="same_day_close",
     )
+    if stage == "ordinary_equal":
+        evidence.update(
+            wave_a_class="ordinary",
+            wave_one_p=reached["one_p"],
+            wave_two_t=reached["two_t"],
+            wave_a_high=reached["a_high"],
+            wave_b_low=reached["b_low"],
+            wave_equal_target=reached["target"],
+        )
     if (
         previous.close > previous.open
         and body >= config.wave_engulf_min_body * bar.open
@@ -113,6 +187,13 @@ def _observe_target_candle(
                 resistance_date=previous.timestamp.date().isoformat(),
                 resistance_virtual_low=virtual_low,
             )
+    if stage == "ordinary_equal" and not reduced and bar.volume > previous.volume and upper / span >= 0.5:
+        return dict(
+            evidence,
+            reason="wave_ordinary_equal_upper_shadow_reduce",
+            exit_fraction=config.wave_exhaustion_reduction,
+            exit_target_fraction=config.wave_exhaustion_reduction,
+        )
     if (
         not reduced
         and bar.volume > previous.volume

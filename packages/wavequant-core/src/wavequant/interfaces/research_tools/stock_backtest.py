@@ -28,8 +28,17 @@ def single_stock_result(bars, strategy, execution, signal_result=None, *, minute
             attack = row['bar_index']
             available = max(attack, row.get('known_at', attack))
             n_bars[available] = max(attack, n_bars.get(available, -1))
+    wave_events=[row for row in getattr(signal_result, 'audit', []) if row.get('event', '').startswith('wave_projection_')]
+    for row in getattr(signal_result, 'audit', []):
+        if row.get('event') == 'long_signal' and row.get('wave_a_class') == 'ordinary':
+            wave_events.append(dict(event='wave_ordinary_entry', attack=row['attack'],
+                bar_index=row['bar_index'], target=row['wave_equal_target'],
+                one_p=row['wave_entry_one_p'], two_t=row['wave_entry_two_t'],
+                a_origin=row['wave_a_origin'], a_high=row['wave_a_high'],
+                a_high_index=row['wave_a_high_index'], b_low=row['wave_b_low'],
+                b_low_index=row['wave_b_low_index']))
     result=run_portfolio({bars[0].symbol:bars},signal_result.signals,config,minute_loader=minute_loader,positive_n_bars={bars[0].symbol:n_bars},entry_executions=entry_executions,
-        wave_events={bars[0].symbol:[row for row in getattr(signal_result, 'audit', []) if row.get('event', '').startswith('wave_projection_')]})
+        wave_events={bars[0].symbol:wave_events})
     result.minute_fallbacks.extend(entry_fallbacks)
     for order in result.orders:
         if order['side'] == 'BUY' and order.get('execution_model') == 'same_day_close':

@@ -301,8 +301,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             },
             {
                 id: "hard-risk",
-                question: "放量倒 N、异常波段反转或趋势翻空？",
-                detail: "V3 的放量倒 N、强波段异常、压力位反转与趋势翻空优先清仓；不同规则按其对应已观察收盘或分钟证据执行。",
+                question: "放量倒 N、异常波段反转、普通 C 异常后收低或趋势翻空？",
+                detail: "V3 的放量倒 N、波段异常、普通 A 的 C 浪到等浪目标后异常且首次收低、压力位反转与趋势翻空优先清仓；不同规则按其对应已观察收盘或分钟证据执行。",
                 source: "strategy_profiles.py · whole_wave_profile definition；wave_exhaustion_exit.py；trend_flip_exit.py；pressure_exit.py",
                 yes: "优先整仓退出",
                 no: "检查防守与目标状态",
@@ -325,8 +325,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             },
             {
                 id: "partial",
-                question: "小 N、放量下跌或减仓后倒 N 触发？",
-                detail: "小 N 可累计减仓 30%；放量下跌可累计减仓 70%；已有减仓后的倒 N 可累计减仓 90%。各比例受已有卖出和整仓优先级约束。",
+                question: "小 N、放量下跌、普通 C 等浪异常或减仓后倒 N 触发？",
+                detail: "小 N 可累计减仓 30%；放量下跌可累计减仓 70%；普通 A 的 C 浪到等浪目标后放量长上影可累计减仓 80%；已有减仓后的倒 N 可累计减仓 90%。各比例受已有卖出和整仓优先级约束。",
                 source: "strategy_profiles.py · whole_wave_profile definition；integrated_strategy.py",
                 yes: "记录对应累计减仓目标",
                 no: "继续持仓",
@@ -343,4 +343,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "1b70b1c3f41741fbbfc924f3a1cba4224ed12f3acff7f748d5ab7241a7c3d861";
+export const strategySourceDigest = "759060e718fff2979fea547461f73ec5f7116543043d95e2a2f505660671aa6f";

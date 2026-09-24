@@ -118,7 +118,7 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         );
     }
     if (marker.wave_reached_stage) {
-        const stageNames = { two_t: "二吐", five_top: "五顶", ten_full: "十满" };
+        const stageNames = { two_t: "二吐", five_top: "五顶", ten_full: "十满", ordinary_equal: "普通 A 的 C 等浪" };
         lines.push(
             `目标背景：本笔正 N ${marker.wave_n_date}；${marker.wave_reached_date} 已到 ${stageNames[marker.wave_reached_stage] || marker.wave_reached_stage} ${num(marker.wave_reached_price, 4)} 元`,
         );
@@ -130,6 +130,10 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
             lines.push(
                 `次日确认：${marker.abnormal_date} 异常K线收盘 ${num(marker.abnormal_close, 4)}；下一交易日收盘 ${num(marker.observed_close, 4)} 严格低于该收盘，清空余仓，无需再次放量或等待倒 N`,
             );
+        if (marker.reason === "wave_ordinary_equal_upper_shadow_reduce")
+            lines.push(`普通 A：前 A 高 ${num(marker.wave_a_high, 4)} 已达一饱 ${num(marker.wave_one_p, 4)}、未达二吐 ${num(marker.wave_two_t, 4)}；C 浪到等浪目标后，成交量 ${num(marker.observed_volume, 0)} > 前日 ${num(marker.previous_volume, 0)}，上影占振幅 ${pct(marker.wave_upper_shadow_fraction)}，当日按累计 80% 目标减仓`);
+        if (marker.reason === "wave_ordinary_equal_lower_close_clear")
+            lines.push(`异常后首次收低：${marker.abnormal_date} 出现长上影；本日收盘 ${num(marker.observed_close, 4)} < 前收 ${num(marker.previous_close, 4)}，当日清空余仓`);
         if (marker.reason === "wave_upper_rejection_reduce")
             lines.push(
                 `冲高收阴：上影不短于阴线实体；振幅/前收 ${pct(marker.wave_range_fraction)}，上影占振幅 ${pct(marker.wave_upper_shadow_fraction)}，下影占振幅 ${pct(marker.wave_lower_shadow_fraction)}；成交量 ${num(marker.observed_volume, 0)} > 前日 ${num(marker.previous_volume, 0)}；不要求日涨跌幅为负`,
