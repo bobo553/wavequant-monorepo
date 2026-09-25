@@ -9,7 +9,7 @@ def enrich_ledger(bars, result, generated, strategy):
     dated={}
     for event in audit:
         dated.setdefault(event['timestamp'],[]).append(event)
-    active=None; serial=0
+    active={}; serial=0
     for order in result.orders:
         bar=by_time[order['timestamp'][:10]]
         order.update(price_basis='causal_adjusted_equivalent',adjustment_factor=bar.adjustment_factor)
@@ -109,9 +109,15 @@ def enrich_ledger(bars, result, generated, strategy):
                         and proof['breakout_volume']>proof['previous_volume'])
             order['trigger_timestamp']=signal.trigger_timestamp.isoformat()
         if order['status']=='filled':
-            if order['side']=='BUY': serial+=1;active=f'{bar.symbol}-trade-{serial}'
-            order['trade_id']=active
-            if order['side']=='SELL' and order.get('position_closed', True): active=None
+            if order['side']=='BUY' and bar.symbol not in active:
+                serial+=1
+                active[bar.symbol]=f'{bar.symbol}-trade-{serial}'
+            order['trade_id']=active.get(bar.symbol)
+            if order['side']=='SELL' and order.get('position_closed', True):
+                active.pop(bar.symbol,None)
+    for position in result.open_positions:
+        if position['symbol'] in active:
+            position['trade_id']=active[position['symbol']]
     rejected=Counter(e.get('reason','unknown') for e in audit
                      if e['event'] in ('entry_rejected','entry_preflight_rejected'))
     return dict(rejection_reasons=dict(rejected),events=Counter(e['event'] for e in audit))

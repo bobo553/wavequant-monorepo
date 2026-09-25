@@ -119,7 +119,11 @@ function cachedCatalog(cached, status, warning) {
  * A 304 response transfers no catalog body; a changed ETag atomically replaces
  * the IndexedDB record. Existing data remains usable during a transient outage.
  */
-export async function loadStockCatalog(source, path, { fetcher = fetch, storage = stockCatalogStorage } = {}) {
+export async function loadStockCatalog(
+    source,
+    path,
+    { fetcher = fetch, storage = stockCatalogStorage, timeoutMs = 30_000 } = {},
+) {
     let cached = null;
     try {
         cached = await storage.get(source);
@@ -131,6 +135,7 @@ export async function loadStockCatalog(source, path, { fetcher = fetch, storage 
         const response = await fetcher(path, {
             cache: "no-store",
             headers: cached?.etag ? { "If-None-Match": cached.etag } : {},
+            signal: AbortSignal.timeout(timeoutMs),
         });
         if (response.status === 304) {
             if (!cached) throw new Error("服务器返回 304，但本地股票目录不存在");
@@ -153,6 +158,7 @@ export async function loadStockCatalog(source, path, { fetcher = fetch, storage 
         };
     } catch (error) {
         if (cached) return cachedCatalog(cached, "offline", "服务器目录校验失败，当前使用浏览器缓存");
+        if (error?.name === "TimeoutError") throw new Error(`${source} 股票目录请求超时，请稍后重试`);
         throw error;
     }
 }

@@ -111,6 +111,17 @@ export function ResearchControls(): JSX.Element {
                     启用浅回撤横盘突破买点
                 </label>
                 <button id="run-stock-backtest">运行当前股票回测</button>
+                <div
+                    id="stock-backtest-status"
+                    className="stock-backtest-status"
+                    role="status"
+                    aria-live="polite"
+                    hidden
+                >
+                    <span className="stock-backtest-indicator" aria-hidden="true" />
+                    <span id="stock-backtest-status-text" />
+                    <span id="stock-backtest-other" className="stock-backtest-other" />
+                </div>
                 <button id="download-backtest" disabled>
                     导出回测账本
                 </button>

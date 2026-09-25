@@ -1,4 +1,4 @@
-"""Canonical market-data repository with provider adapters and safe fallback.
+"""Canonical market-data repository with source-isolated provider adapters.
 
 External providers expose different symbols, schemas, date semantics, and
 failure modes.  This module is the anti-corruption layer consumed by charts
@@ -21,7 +21,6 @@ from wavequant.domain.market_structure.lecture_trend import reversal_trends
 from wavequant.domain.market_structure.secondary_trend import secondary_trends
 from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
 from wavequant.domain.models.model import Bar
-from wavequant.infrastructure.market_data.akshare import AkShareUnavailable
 
 
 class MarketDataAdapter(Protocol):
@@ -77,8 +76,10 @@ class AkShareMarketDataAdapter:
         return list(prefix), list(complete)
 
     def metadata(self) -> dict[str, object]:
-        return {"provider_version": self.browser.provider.version,
-                "upstream": "sina" if getattr(self.browser, "pinned_history", False) else "legacy_auto"}
+        return {
+            "provider_version": self.browser.provider.version,
+            "upstream": "sina" if getattr(self.browser, "pinned_history", False) else "legacy_auto",
+        }
 
 
 @dataclass(frozen=True)
@@ -99,12 +100,9 @@ class MarketDataWindow:
 class MarketDataRepository:
     """Resolve providers into one stable repository contract.
 
-    AkShare is the default preference.  A provider switch changes acquisition
-    priority only: chart and theory generation below are shared.  If the
-    preferred provider is unavailable or stale for the requested cutoff, the
-    next configured adapter may supply the complete series or missing dates.
-    Primary values always win on duplicate dates so fallback never silently
-    overwrites the user's selected source.
+    AkShare is the default when no source is specified. Chart and theory
+    generation share a contract, while every read stays with its selected
+    provider. An unavailable or stale provider cannot borrow another source.
     """
 
     def __init__(
@@ -112,15 +110,11 @@ class MarketDataRepository:
         adapters: Sequence[MarketDataAdapter],
         *,
         default_source: str = "akshare",
-        fallback_order: dict[str, tuple[str, ...]] | None = None,
     ):
         self.adapters = {adapter.source: adapter for adapter in adapters}
         if self.adapters and default_source not in self.adapters:
             default_source = next(iter(self.adapters))
         self.default_source = default_source
-        self.fallback_order = fallback_order or {
-            source: tuple(candidate for candidate in self.adapters if candidate != source) for source in self.adapters
-        }
         self._theory: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._lock = Lock()
 
@@ -130,150 +124,77 @@ class MarketDataRepository:
         return tuple(self.adapters)
 
     def catalog(self, source: str | None = None) -> dict[str, Any]:
-        """Return a normalized catalog and supplement missing provider rows.
-
-        Catalog union is metadata-only.  A fallback-only stock is explicitly
-        marked so callers can audit that its bars will resolve through another
-        adapter instead of assuming the preferred provider supplied it.
-        """
+        """Return only the selected provider's normalized security catalog."""
 
         selected = self._selected(source)
-        order = self._order(selected)
-        payloads: list[tuple[str, dict[str, Any]]] = []
-        errors: list[str] = []
-        for candidate in order:
-            try:
-                payloads.append((candidate, self.adapters[candidate].catalog()))
-
-            except (AkShareUnavailable, FileNotFoundError, OSError, ValueError):
-                # Provider exceptions may contain an absolute local path or
-                # upstream URL, neither of which belongs in a public warning.
-                errors.append(f"{candidate}: unavailable")
-        if not payloads:
-            raise ValueError("所有已配置行情源均不可用：" + "；".join(errors))
+        try:
+            payload = self.adapters[selected].catalog()
+        except (FileNotFoundError, OSError, ValueError) as error:
+            # Provider exceptions may contain a local path or upstream URL.
+            raise ValueError(f"{selected} 行情目录暂不可用") from error
 
         merged: dict[str, dict[str, Any]] = {}
-        # Fallback rows establish defaults; preferred rows are applied last and
-        # therefore own every field they actually provide.
-        for provider, payload in reversed(payloads):
-            rows = payload.get("stocks")
-            if not isinstance(rows, list):
-                continue
+        rows = payload.get("stocks")
+        if isinstance(rows, list):
             for raw in rows:
                 if not isinstance(raw, dict) or not isinstance(raw.get("symbol"), str):
                     continue
                 symbol = raw["symbol"]
-                previous = merged.get(symbol, {})
-                normalized = {**previous, **raw}
-                normalized.update(
-                    symbol=symbol,
-                    source=selected,
-                    catalog_source=provider,
-                    has_data=bool(raw.get("has_data", True)),
-                    data_source=provider,
-                )
-                if not normalized["has_data"] and previous.get("has_data"):
-                    normalized["has_data"] = True
-                    normalized["data_source"] = previous.get("data_source", previous.get("catalog_source"))
-                if not raw.get("name") and previous.get("name"):
-                    normalized["name"] = previous["name"]
-                    normalized["name_source"] = previous.get("catalog_source", provider)
-                merged[symbol] = normalized
+                merged[symbol] = {
+                    **raw,
+                    "symbol": symbol,
+                    "source": selected,
+                    "catalog_source": selected,
+                    "has_data": bool(raw.get("has_data", True)),
+                    "data_source": selected,
+                }
         if not merged:
-            raise ValueError("行情源未返回有效证券目录")
+            raise ValueError(f"{selected} 行情源未返回有效证券目录")
 
-        primary_payload = next((payload for provider, payload in payloads if provider == selected), payloads[0][1])
         stocks = [merged[symbol] for symbol in sorted(merged)]
-        primary_symbols = {
-            row.get("symbol")
-            for provider, payload in payloads
-            if provider == selected and isinstance(payload.get("stocks"), list)
-            for row in payload["stocks"]
-            if isinstance(row, dict)
-        }
-        provider_warnings = primary_payload.get("warnings", [])
+        provider_warnings = payload.get("warnings", [])
         if not isinstance(provider_warnings, list):
             provider_warnings = []
         return {
-            **primary_payload,
+            **payload,
             "available": True,
             "source": selected,
             "default_source": self.default_source,
-            "providers": [provider for provider, _ in payloads],
+            "providers": [selected],
             "stocks": stocks,
             "with_daily": sum(bool(stock.get("has_data")) for stock in stocks),
-            "supplemented_stocks": sum(stock["symbol"] not in primary_symbols for stock in stocks),
-            "warnings": [*provider_warnings, *errors],
+            "supplemented_stocks": 0,
+            "warnings": provider_warnings,
         }
 
     def window(self, source: str | None, symbol: str, asof: str) -> MarketDataWindow:
-        """Load one canonical series, falling back only when data is missing."""
+        """Load one canonical series from the selected provider only."""
 
         selected = self._selected(source)
         requested = date.fromisoformat(asof)
         if requested.isoformat() != asof:
             raise ValueError("use YYYY-MM-DD date")
-        order = self._order(selected)
-        primary_error: str | None = None
-        resolved_source: str | None = None
-        primary_prefix: list[Bar] = []
-        primary_complete: list[Bar] = []
-        for candidate in order:
-            try:
-                prefix, complete = self.adapters[candidate].load(symbol, asof)
-                self._validate_series(symbol, prefix, complete)
-                resolved_source = candidate
-                primary_prefix, primary_complete = prefix, complete
-                break
-            except (AkShareUnavailable, FileNotFoundError, OSError, ValueError):
-                if candidate == selected:
-                    primary_error = f"{selected} 数据暂不可用"
-        if resolved_source is None:
-            raise ValueError(primary_error or "所有已配置行情源均未返回该股票行情")
+        try:
+            prefix, complete = self.adapters[selected].load(symbol, asof)
+            self._validate_series(symbol, prefix, complete)
+        except (FileNotFoundError, OSError, ValueError) as error:
+            raise ValueError(f"{selected} 数据暂不可用") from error
 
-        providers = [resolved_source]
-        supplemented = 0
-        complete_by_day = {bar.timestamp.date(): bar for bar in primary_complete}
-        # Only a stale/failed preferred source needs supplementation.  This
-        # avoids turning a healthy local read into an unnecessary network call.
-        needs_supplement = (
-            resolved_source != selected
-            or primary_prefix[-1].timestamp.date() < requested
-            or len(primary_complete) < 250
-        )
-        if needs_supplement:
-            for candidate in order:
-                if candidate == resolved_source or (candidate == selected and primary_error is not None):
-                    continue
-                try:
-                    _prefix, complete = self.adapters[candidate].load(symbol, asof)
-                    self._validate_series(symbol, _prefix, complete)
-                except (AkShareUnavailable, FileNotFoundError, OSError, ValueError):
-                    continue
-                added = 0
-                for bar in complete:
-                    day = bar.timestamp.date()
-                    if day not in complete_by_day:
-                        complete_by_day[day] = bar
-                        added += 1
-                if added:
-                    providers.append(candidate)
-                    supplemented += added
-
-        complete = sorted(complete_by_day.values(), key=lambda bar: bar.timestamp)
+        # Keep the provider's complete known sessions for date navigation, but
+        # never extend the requested prefix with bars from another provider.
+        complete = sorted(complete, key=lambda bar: bar.timestamp)
         prefix = [bar for bar in complete if bar.timestamp.date() <= requested]
         if not prefix:
             raise ValueError("该回放日期之前没有日线数据")
         return MarketDataWindow(
             requested_source=selected,
-            resolved_source=resolved_source,
+            resolved_source=selected,
             requested_asof=asof,
             asof=prefix[-1].timestamp.date().isoformat(),
             bars=tuple(prefix),
             sessions=tuple(bar.timestamp.date().isoformat() for bar in complete),
-            providers=tuple(providers),
-            supplemented_bars=supplemented,
-            primary_error=primary_error,
+            providers=(selected,),
+            supplemented_bars=0,
         )
 
     def view(self, source: str | None, symbol: str, asof: str) -> dict[str, Any]:
@@ -285,7 +206,7 @@ class MarketDataRepository:
             **self.adapters[window.requested_source].metadata(),
             "symbol": symbol,
             "asof": window.asof,
-            "source_policy": "single_upstream_v1" if not self.fallback_order.get(window.requested_source) else "legacy_fallback",
+            "source_policy": "single_upstream_v1",
             "requested_asof": window.requested_asof,
             "result_scope": window.requested_source,
             "data_source": window.requested_source,
@@ -320,6 +241,7 @@ class MarketDataRepository:
                 self._theory.move_to_end(key)
                 return cached
         bars = list(window.bars)
+        # These legacy market-structure builders have no typed boundary yet.
         drawing = lecture_drawing(bars)  # type: ignore[no-untyped-call]
         first = reversal_trends(drawing, bars)  # type: ignore[no-untyped-call]
         second = secondary_trends(first, bars)  # type: ignore[no-untyped-call]
@@ -359,10 +281,6 @@ class MarketDataRepository:
             raise ValueError(f"行情源不可用：{selected}")
         return selected
 
-    def _order(self, source: str) -> tuple[str, ...]:
-        fallbacks = tuple(candidate for candidate in self.fallback_order.get(source, ()) if candidate in self.adapters)
-        return (source, *fallbacks)
-
     @staticmethod
     def _validate_series(symbol: str, prefix: Sequence[Bar], complete: Sequence[Bar]) -> None:
         if not prefix or not complete:
@@ -397,14 +315,4 @@ class MarketDataRepository:
 
     @staticmethod
     def _evidence(window: MarketDataWindow) -> str:
-        if window.resolved_source != window.requested_source:
-            return (
-                f"首选 {window.requested_source} 不可用，已由 {window.resolved_source} 补齐；"
-                "原始不复权日线，仅用于行情与讲义绘图，未执行回测。"
-            )
-        if window.supplemented_bars:
-            return (
-                f"{window.requested_source} 原始不复权日线，并由备用源补齐 {window.supplemented_bars} 个缺失交易日；"
-                "仅用于行情与讲义绘图，未执行回测。"
-            )
         return f"{window.requested_source} 原始不复权日线，仅用于行情与讲义绘图；未执行回测。"

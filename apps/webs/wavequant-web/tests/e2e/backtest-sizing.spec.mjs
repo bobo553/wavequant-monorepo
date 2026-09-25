@@ -28,8 +28,8 @@ test("stock backtest sends configurable capital and per-entry position limit", a
     expect(params.get("initial_capital")).toBe("250000");
     expect(params.get("max_position_weight")).toBe("0.3");
     await expect(page.locator("#error")).toContainText("测试拦截", { timeout: 10_000 });
-    await page.getByRole("button", { name: "对比五组幅度" }).click();
-    await expect.poll(() => backtestRequests.length).toBe(6);
+    await page.getByRole("button", { name: "对比幅度方案" }).click();
+    await expect.poll(() => backtestRequests.length).toBe(7);
     for (const comparisonParams of backtestRequests) {
         expect(comparisonParams.get("initial_capital")).toBe("250000");
         expect(comparisonParams.get("max_position_weight")).toBe("0.3");

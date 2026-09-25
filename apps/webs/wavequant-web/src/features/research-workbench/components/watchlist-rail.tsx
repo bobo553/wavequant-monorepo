@@ -57,6 +57,24 @@ export function WatchlistRail(): JSX.Element {
                 <p id="watchlist-status" role="status">
                     正在读取浏览器中的自选股…
                 </p>
+                <section className="watchlist-backtest-panel" aria-label="自选股自动回测">
+                    <div className="watchlist-backtest-heading">
+                        <strong>自动回测</strong>
+                        <div className="watchlist-backtest-actions">
+                            <button id="watchlist-backtest-retry" type="button" disabled>
+                                重试失败
+                            </button>
+                            <button id="watchlist-auto-backtest-toggle" type="button" aria-pressed="true">
+                                暂停
+                            </button>
+                        </div>
+                    </div>
+                    <p id="watchlist-backtest-status" role="status">
+                        等待自选股列表加载…
+                    </p>
+                    <progress id="watchlist-backtest-progress" max={1} value={0} aria-label="自选股回测进度" />
+                    <small>页面空闲后按列表顺序、各股最新交易日逐只回测；策略更新后自动重跑。</small>
+                </section>
                 <div id="watchlist-stock-list" className="watchlist-stock-list">
                     <p className="stock-empty">自选股加载中…</p>
                 </div>

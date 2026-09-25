@@ -13,7 +13,7 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         ...(marker.execution_model === "intraday_5m_next_open"
             ? [`成交时间：${marker.execution_timestamp || marker.timestamp}`]
             : []),
-        `方向：${marker.side === "BUY" ? "买入 B" : "卖出 S"}`,
+        `方向：${marker.side === "BUY" ? (marker.add_on ? "加仓 B" : "买入 B") : "卖出 S"}`,
         `${marker.side === "BUY" ? "买入" : "卖出"}原因：`,
         ...numberedTradeReasons(marker),
         `决策代码：${marker.decision_reason || marker.reason || "—"}`,

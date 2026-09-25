@@ -277,6 +277,10 @@ export class Watchlists {
         this.selectedGroupId = DEFAULT_WATCHLIST_GROUP.id;
         this.railCollapsed = false;
         this.available = false;
+        this.backtestStatuses = {};
+        this.backtestFailures = {};
+        this.backtestFillCounts = {};
+        this.backtestEligible = null;
         this.$ = (id) => document.getElementById(id);
         this.bind();
     }
@@ -351,6 +355,38 @@ export class Watchlists {
 
     firstAvailableSymbol(stocks) {
         return firstAvailableWatchlistSymbol(this.state, this.selectedGroup.id, stocks);
+    }
+
+    orderedAvailableMembers(stocks = this.universe) {
+        return orderedMembers(this.state, this.selectedGroup.id, stocks).filter(
+            (member) => member.stock && member.stock.has_data !== false,
+        );
+    }
+
+    setBacktestStatuses(statuses, eligibleSymbols = null, failures = {}, fillCounts = {}) {
+        this.backtestStatuses = statuses;
+        this.backtestEligible = eligibleSymbols;
+        this.backtestFailures = failures;
+        this.backtestFillCounts = fillCounts;
+        for (const row of this.$("watchlist-stock-list").querySelectorAll(".watchlist-stock-row")) {
+            this.renderBacktestStatus(row, row.dataset.symbol);
+        }
+    }
+
+    renderBacktestStatus(row, symbol) {
+        const badge = row.querySelector(".watchlist-backtest-badge");
+        if (!badge) return;
+        const status = this.backtestStatuses[symbol] ||
+            (this.backtestEligible && !this.backtestEligible.has(symbol) ? "unavailable" : "pending");
+        badge.dataset.status = status;
+        const fills = this.backtestFillCounts[symbol];
+        badge.textContent = status === "completed" && Number.isInteger(fills)
+            ? `已完成 · ${fills}笔成交`
+            : { pending: "待回测", running: "回测中", completed: "已完成", failed: "失败", unavailable: "无数据" }[status];
+        badge.title = status === "failed" ? this.backtestFailures[symbol] || "回测失败"
+            : status === "completed" && fills === 0 ? "回测已完成，但没有实际模拟成交，图上不会有 B / S 成交标记" : badge.textContent;
+        const open = row.querySelector(".watchlist-stock-open");
+        if (open) open.setAttribute("aria-label", `${open.dataset.baseLabel}，${badge.textContent}${status === "failed" ? `：${badge.title}` : ""}`);
     }
 
     rememberSelectedGroup() {
@@ -539,6 +575,7 @@ export class Watchlists {
         for (const member of members) {
             const row = document.createElement("div");
             row.className = "watchlist-stock-row";
+            row.dataset.symbol = member.symbol;
             const open = document.createElement("button");
             open.type = "button";
             open.className = "watchlist-stock-open";
@@ -549,12 +586,15 @@ export class Watchlists {
                 "aria-label",
                 canOpen ? `切换到 ${member.name || member.symbol}` : `${member.name || member.symbol}，当前数据源不可用`,
             );
+            open.dataset.baseLabel = open.getAttribute("aria-label");
             if (!canOpen) open.title = "当前数据源不可用";
             const name = document.createElement("strong");
             name.textContent = member.stock?.name || member.name || member.symbol;
             const code = document.createElement("small");
             code.textContent = member.symbol;
-            open.append(name, code);
+            const backtestStatus = document.createElement("span");
+            backtestStatus.className = "watchlist-backtest-badge";
+            open.append(name, code, backtestStatus);
             open.addEventListener("click", () => this.onSelect(member.symbol));
             const remove = document.createElement("button");
             remove.type = "button";
@@ -565,6 +605,7 @@ export class Watchlists {
             remove.title = `已收藏到“${group.name}”，点击移除`;
             remove.addEventListener("click", () => void this.remove(member.symbol));
             row.append(open, remove);
+            this.renderBacktestStatus(row, member.symbol);
             list.append(row);
         }
     }

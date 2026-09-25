@@ -34,6 +34,7 @@ export class StockList {
         this.selected = "";
         this.query = "";
         this.limit = 100;
+        this.backtestStatuses = {};
     }
     setStocks(stocks, selected) {
         this.stocks = stocks;
@@ -43,6 +44,10 @@ export class StockList {
     }
     setSelected(symbol) {
         this.selected = symbol;
+        this.render();
+    }
+    setBacktestStatuses(statuses) {
+        this.backtestStatuses = statuses;
         this.render();
     }
     setQuery(query) {
@@ -86,6 +91,15 @@ export class StockList {
             const coverage = document.createElement("small");
             coverage.textContent = stockCoverageText(s);
             b.append(name, code, coverage);
+            const backtestStatus = this.backtestStatuses[s.symbol];
+            if (backtestStatus) {
+                const badge = document.createElement("span");
+                badge.className = "stock-backtest-badge";
+                badge.dataset.status = backtestStatus;
+                badge.textContent = backtestStatus === "running" ? "回测中" : backtestStatus === "completed" ? "已回测" : "回测失败";
+                b.append(badge);
+                b.setAttribute("aria-label", `${s.name} ${s.code} ${s.exchange} ${badge.textContent}`);
+            }
             b.addEventListener("click", () => this.onSelect(s.symbol));
             this.list.append(b);
             if (focused === s.symbol) b.focus({ preventScroll: true });

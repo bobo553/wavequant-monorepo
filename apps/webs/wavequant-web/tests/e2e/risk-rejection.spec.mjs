@@ -5,13 +5,9 @@ test("current-stock risk rejection appears in its buy signal tooltip without ano
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
 
-    await page.goto("/research?page=workspace");
+    await page.goto("/research?page=workspace&symbol=sh.600519&asof=2026-09-07&source=tdx");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
-    await page.locator("#symbol-select").evaluate((field) => {
-        field.value = "sh.600519";
-        field.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#result-scope")).toHaveValue("tdx");
     const backtestResponse = page.waitForResponse(
         (response) => response.url().includes("/api/tdx-backtest?") && response.ok(),
     );

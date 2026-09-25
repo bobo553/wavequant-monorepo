@@ -162,7 +162,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
     {
         id: "wave",
         label: "③ A/B → C 波续攻",
-        description: "普通 A 与强 A 分路，所有锚点在当天攻击前冻结。",
+        description: "普通 A 与强 A 分路，所有锚点在当天攻击前冻结；强 A 实体确认后可由更高缺口再确认一次。",
         mode: "gates",
         completion: "C 波证据回到公共入场门禁，目标为 B + A 等幅",
         gates: [
@@ -186,8 +186,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "strong-trigger",
                 question: "强 A 有缺口，或强实体且放量？",
-                detail: "强实体需实体 ≥ 开盘价 3%，且实体 ≥ 全日振幅 60%；非缺口强实体还需高于前日成交量。",
-                source: "wave_continuation.py · wave_gap_entry:84–97",
+                detail: "强实体需实体 ≥ 开盘价 3%，且实体 ≥ 全日振幅 60%；非缺口强实体还需高于前日成交量。同一 A/B 的实体确认只发一次，之后仅严格更高的缺口可升级确认一次。",
+                source: "wave_continuation.py · wave_gap_entry / wave_confirmation_is_new",
                 yes: "检查突破证据",
                 no: "强 A 暂不续攻；继续观察",
                 yesNext: "defense-target",
@@ -237,11 +237,11 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             },
             {
                 id: "position-slot",
-                question: "持仓槽位可用且未持有该证券？",
-                detail: "已达最大持仓数量或同一证券已有持仓时取消该笔买单。",
-                source: "backtest.py · execute_entry:269–278",
+                question: "新开仓有槽位，或已有持仓允许加仓？",
+                detail: "新开仓受最大持仓数量限制。V3 已有该股持仓、无待执行退出且当日未卖出时，可继续处理独立合格买点；其他方案保留原有持仓拒单规则。",
+                source: "backtest.py · execute_entry；strategy_profiles.py · whole_wave_profile",
                 yes: "检查可买状态",
-                no: "取消：position_limit / already_held",
+                no: "取消：position_limit / already_held / exit_pending",
             },
             {
                 id: "buyable",
@@ -270,8 +270,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "sizing",
                 question: "仓位、风险、流动性、现金足够一手？",
-                detail: "数量取仓位权重、风险预算、流动性、现金四个上限的最小值，再按复权整手向下取整，并计入手续费；不足最低买入数量则取消。",
-                source: "backtest.py · execute_entry:293–315",
+                detail: "数量取仓位权重、风险预算、当日剩余流动性、现金四个上限的最小值，再按复权整手向下取整。加仓先扣除原持仓占用的仓位和止损风险，含手续费复核成交后上限并合并成本；任一余额不足一手则取消。",
+                source: "backtest.py · execute_entry",
                 yes: "检查净盈亏比",
                 no: "取消：限制项低于一手 / 费用后现金不足",
             },
@@ -403,4 +403,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "d37ff2c364a5d668e62c93f5210338ca3fd1e75c4f3ed1415c49e6541e937c25";
+export const strategySourceDigest = "ed6bfa24861544f648368689f6f7e53c243e034d1fffdb3a0f728cdef895151f";

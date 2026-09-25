@@ -77,6 +77,23 @@ test("stock catalog remains available from IndexedDB during a server outage", as
     assert.match(result.warnings.at(-1), /浏览器缓存/);
 });
 
+test("a stalled catalog request ends and uses the existing browser catalog", async () => {
+    const storage = memoryStorage({
+        source: "akshare",
+        etag: '"cached"',
+        catalog: { available: true, stocks: [{ symbol: "sz.000001" }], with_daily: 1, warnings: [] },
+    });
+    const result = await loadStockCatalog("akshare", "/api/akshare-catalog", {
+        storage,
+        timeoutMs: 10,
+        fetcher: (_path, { signal }) => new Promise((_, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
+    });
+    assert.equal(result.catalog_cache, "offline");
+    assert.equal(result.stocks[0].symbol, "sz.000001");
+});
+
 const bundle = {
     schema_version: 1,
     snapshot_id: "a".repeat(64),

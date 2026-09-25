@@ -1,5 +1,11 @@
 # Progress
 
+- MONOREPO-180：TDX/AkShare 及无任务 ID 的单股回测统一进入有界任务注册表；全局按股票互斥，满 4 个直接返回 503 `BACKTEST_CAPACITY`，同股返回 409 `BACKTEST_SYMBOL_RUNNING` 和现有任务 ID。`GET /api/backtest-jobs` 与拒绝响应提供原子运行快照，前端可同步徽标。API 92 项通过、1 跳过、18 子测试通过；Ruff 检查与格式检查通过。
+
+- MONOREPO-179：API 消费 Core 单源行情仓库后，AkShare/TDX 目录与日线响应均报告唯一的对应 provider、supplemented=0；所选源不可用时保留明确错误和 AkShare 503 语义。真实 8765 接口核对华瓷 AkShare 回测 09-15 加仓已成交；API 定向 40 项测试与 10 个子测试通过。
+
+- MONOREPO-176：TDX/AkShare 回测增加幂等任务 ID 和查询接口，客户端断连后计算结果可恢复；无 ID 的同步 GET 保持兼容。新增策略版本接口供自选股队列检测配置和源码变化。API pytest 89 通过、1 跳过，Ruff 检查及打包通过；全量 mypy 仍受既有依赖类型和旧代码错误阻断，新任务模块 mypy 通过。
+
 - MONOREPO-117：当前股票回测 API 缺省 max_position_weight 改为 1.0；显式配置仍按原有边界校验并传入 Core。69 项 Python、4 项 Node（1 项基础设施跳过）及 Ruff 通过。
 
 - MONOREPO-116：TDX 与 AkShare 当前股票回测 GET 支持 initial_capital、max_position_weight，缺省 100000 元/0.5；拒绝非数值、非有限值及越界输入，传入 Core 执行配置。API lint、类型、构建、69 项 Python 与 4 项 Node 通过（1 项基础设施测试跳过）；真实 TDX 响应返回正确配置。

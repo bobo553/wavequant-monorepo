@@ -52,7 +52,7 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
     thresholds=WAVE_PROFILES[variant]
     config=hierarchical_profile(legacy)
     for scenario in config['scenarios'].values():
-        scenario['execution'].update(entry_at_close=True, nonflat_limit_close_fill=True, consolidation_entry_intraday=True, staged_exit_enabled=True, staged_exit_same_day=False,
+        scenario['execution'].update(entry_at_close=True, allow_add_on=True, nonflat_limit_close_fill=True, consolidation_entry_intraday=True, staged_exit_enabled=True, staged_exit_same_day=False,
                                      staged_exit_intraday=True, missing_minute_daily_fallback=True, inverse_n_after_reduction=True, inverse_n_close_reduce=True, initial_reduction_fraction=0.65,
                                      exit_on_target=False, wave_exhaustion_exit=True, pressure_adverse_exit=True, trend_flip_adverse_exit=True, volume_inverse_n_clear=True, volume_down_exit=True, small_n_reduction=True)
     config['strategy'].update(buy_point_definition='whole_flip_wave_v3',preflight_reward_risk=False,strict_n_attack_quality=False,
@@ -79,7 +79,7 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'record_high_resistance_v63_' + variant
+    config['profile_version'] = 'wave_add_on_v64_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [

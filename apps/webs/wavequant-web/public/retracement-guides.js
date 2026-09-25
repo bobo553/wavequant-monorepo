@@ -36,3 +36,32 @@ export function tertiaryRetracementGuides(theory, bars, windowEnd) {
         return [{ title: `Ⅲ 回撤 ${thirds}/3`, price, start, end: guideEnd, low, high }];
     });
 }
+
+export function selectedTertiaryThirds(selected, bars, asof) {
+    const point = selected?.raw?.point;
+    const neighbor = selected?.raw?.adjacent;
+    if (
+        selected?.kind !== "trend" ||
+        selected.raw.scope !== "lecture_level3_not_strategy_confirmation" ||
+        !bars?.length
+    )
+        return [];
+    if (!point || !neighbor || point.kind === neighbor.kind || ![point.value, neighbor.value].every(Number.isFinite))
+        return [];
+    const first = point.time < neighbor.time ? point : neighbor;
+    const last = point.time < neighbor.time ? neighbor : point;
+    const end = bars.findLast((bar) => bar.time <= asof)?.time;
+    const start = first.time < bars[0].time ? bars[0].time : first.time;
+    if (!end || last.time > end || point.available_at > asof || neighbor.available_at > asof || start >= end) return [];
+    const high = point.kind === "H" ? point : neighbor;
+    const low = point.kind === "L" ? point : neighbor;
+    if (high.value <= low.value) return [];
+    return [1, 2].map((thirds) => ({
+        title: `Ⅲ 波段 ${thirds}/3`,
+        price: high.value - ((high.value - low.value) * thirds) / 3,
+        start,
+        end,
+        low,
+        high,
+    }));
+}

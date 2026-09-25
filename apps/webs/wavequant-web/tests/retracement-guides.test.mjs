@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { tertiaryRetracementGuides } from "../public/retracement-guides.js";
+import { selectedTertiaryThirds, tertiaryRetracementGuides } from "../public/retracement-guides.js";
 
 const high = {
     time: "2025-03-20",
@@ -121,4 +121,61 @@ test("empty, unknown, flat or inverted waves never draw guide prices", () => {
             [],
         );
     }
+});
+
+test("clicking either endpoint of a confirmed tertiary leg draws that leg's thirds", () => {
+    const points = [
+        { kind: "L", time: "2026-01-01", value: 4, available_at: "2026-01-03" },
+        { kind: "H", time: "2026-01-04", value: 16, available_at: "2026-01-06" },
+        { kind: "L", time: "2026-01-08", value: 7, available_at: "2026-01-10" },
+    ];
+    const candles = ["2026-01-01", "2026-01-04", "2026-01-08", "2026-01-12"].map((time) => ({ time }));
+    const select = (point) => {
+        const index = points.indexOf(point);
+        return {
+            kind: "trend",
+            raw: {
+                point,
+                adjacent: points[index - 1] || points[1],
+                scope: "lecture_level3_not_strategy_confirmation",
+            },
+        };
+    };
+    assert.deepEqual(
+        selectedTertiaryThirds(select(points[1]), candles, "2026-01-12").map(({ title, price, start, end }) => ({
+            title,
+            price,
+            start,
+            end,
+        })),
+        [
+            { title: "Ⅲ 波段 1/3", price: 12, start: "2026-01-01", end: "2026-01-12" },
+            { title: "Ⅲ 波段 2/3", price: 8, start: "2026-01-01", end: "2026-01-12" },
+        ],
+    );
+    assert.deepEqual(
+        selectedTertiaryThirds(select(points[2]), candles, "2026-01-12").map(({ price }) => price),
+        [13, 10],
+    );
+    assert.deepEqual(
+        selectedTertiaryThirds(select(points[0]), candles, "2026-01-12").map(({ price }) => price),
+        [12, 8],
+    );
+    assert.deepEqual(selectedTertiaryThirds(select(points[2]), candles, "2026-01-09"), []);
+    assert.deepEqual(selectedTertiaryThirds(select(points[1]), candles, "2026-01-05"), []);
+    assert.deepEqual(
+        selectedTertiaryThirds(
+            {
+                kind: "trend",
+                raw: {
+                    point: points[1],
+                    adjacent: points[0],
+                    scope: "lecture_level2_not_strategy_confirmation",
+                },
+            },
+            candles,
+            "2026-01-12",
+        ),
+        [],
+    );
 });

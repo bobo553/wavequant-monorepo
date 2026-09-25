@@ -174,10 +174,6 @@ class ChartRepository:
         self.market_data = MarketDataRepository(
             adapters,
             default_source="akshare",
-            # Keep the online source as the requested contract, but preserve a
-            # usable chart when AkShare is temporarily unavailable. Local TDX
-            # remains isolated and never triggers an unexpected network read.
-            fallback_order={"akshare": ("tdx",), "tdx": ()},
         )
         self.root = Path(root).resolve()
         self.runs = {}
@@ -191,6 +187,11 @@ class ChartRepository:
         )
         from wavequant.interfaces.research_tools.akshare_backtest import AkShareBacktester
         self.akshare_backtester = AkShareBacktester(self.akshare, cache_root / 'akshare') if self.akshare else None
+        self.backtest_engine = (
+            self.tdx_backtester.engine if self.tdx_backtester else
+            self.akshare_backtester.engine if self.akshare_backtester else
+            TdxBacktester._engine_hashes()
+        )
         self.refresh()
         from wavequant.interfaces.screening.buy_scanner import BuyScanner
         from wavequant.interfaces.screening.structure_scanner import StructureScanner
@@ -326,6 +327,21 @@ class ChartRepository:
                 variants["strict_full"]
             )
         return variants[variant]
+
+    def backtest_version(self, rid, variant):
+        """Identify the loaded engine and selected profile for idle backtest queues."""
+        from wavequant.interfaces.research_tools.tdx_backtest import TdxBacktester
+
+        if TdxBacktester._engine_hashes() != self.backtest_engine:
+            raise ValueError('策略代码已变更，请重启图表服务后再运行，避免新版本标识对应旧引擎')
+        self._run(rid)
+        if variant not in VARIANTS:
+            raise ValueError('unknown strategy')
+        profile = self.strategy_config(rid, variant)
+        payload = json.dumps([rid, variant, self.backtest_engine, profile],
+                             sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
+        return dict(version=hashlib.sha256(payload.encode()).hexdigest(),
+                    profile_version=profile.get('profile_version', variant))
 
     def view(self, rid, variant, symbol, asof, scenario="base"):
         if variant in (PROFILE_ID, HIERARCHICAL_PROFILE_ID, *WAVE_PROFILES):

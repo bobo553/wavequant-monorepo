@@ -516,7 +516,12 @@ export class LectureOverlay {
                 description,
                 sourceLabel: `${name}趋势线 · 在${source}结构突破确认日可知`,
                 levels: p.levels,
-                raw: { point: p, trend_level: level, scope: `lecture_level${level}_not_strategy_confirmation` },
+                raw: {
+                    point: p,
+                    ...(third ? { adjacent: stroke.points[stroke.points.indexOf(p) - 1] || stroke.points[1] } : {}),
+                    trend_level: level,
+                    scope: `lecture_level${level}_not_strategy_confirmation`,
+                },
             };
         }
         if (stroke.kind === "reversal") {
