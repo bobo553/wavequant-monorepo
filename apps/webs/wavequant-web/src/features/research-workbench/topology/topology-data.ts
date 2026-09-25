@@ -303,7 +303,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "hard-risk",
                 question: "放量倒 N、巨量高开反包、异常波段反转或趋势翻空？",
-                detail: "V3 巨量高开后强阴收盘跌破前日低点，可直接清仓并优先于普通放量收跌及目标阶段部分减仓；放量倒 N、波段异常、普通 C 异常后首次收低、压力位反转与趋势翻空也按各自证据清仓。",
+                detail: "V3 巨量高开强阴反包、放量倒 N、波段异常与趋势翻空可整仓退出。正 N 上攻巨量阴线压力区遇不利 K 通常全清；未回补跳空且收高时先减半，成交后首次收跌清余仓。持仓大幅上涨后盘中突破压力高点并遇空头抵抗，后续首次不利 K 也清仓。",
                 source: "strategy_profiles.py · whole_wave_profile definition；wave_exhaustion_exit.py；trend_flip_exit.py；pressure_exit.py",
                 yes: "优先整仓退出",
                 no: "检查二级 C 浪抵抗失败",
@@ -334,8 +334,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             },
             {
                 id: "partial",
-                question: "小 N、放量下跌、普通 C 等浪异常或减仓后倒 N 触发？",
-                detail: "小 N 可累计减仓 30%；放量下跌可累计减仓 70%；普通 A 的 C 浪到等浪目标后放量长上影可累计减仓 80%；已有减仓后的倒 N 可累计减仓 90%。各比例受已有卖出和整仓优先级约束。",
+                question: "压力区未补跳空、小 N、放量下跌、普通 C 异常或减仓后倒 N 触发？",
+                detail: "压力区不利 K 若跳空未回补且收高，先卖出当前持仓 50%；小 N 可累计减仓 30%，放量下跌累计 70%，普通 A 的 C 浪异常累计 80%，减仓后倒 N 累计 90%。各比例受已有卖出和整仓优先级约束。",
                 source: "strategy_profiles.py · whole_wave_profile definition；integrated_strategy.py",
                 yes: "记录对应累计减仓目标",
                 no: "继续持仓",
@@ -403,4 +403,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "397a0b2a501a405dffcc29f4aa268cf7c109277a38b52c2422241a6ed698eebf";
+export const strategySourceDigest = "d276ed2a4533c8f8bee153642d61067327859d6f4b76202be11d21ecbdf69e31";

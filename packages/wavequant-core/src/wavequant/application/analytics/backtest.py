@@ -48,6 +48,7 @@ class _Position:
     wave_events: list[dict] = field(default_factory=list)
     wave_reduced: bool = False
     signal_index: int | None = None
+    pressure_warning: dict | None = None
 
 
 def transaction_fee(notional: float, when: datetime, sell: bool, config: StrategyConfig) -> float:
@@ -197,7 +198,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             quantity = max(0.0, math.floor((desired - already_sold) / lot + 1e-9) * lot)
         # A holding smaller than two sale lots cannot be split as requested.
         if quantity <= 0:
-            if 'exit_target_fraction' in evidence:
+            if 'exit_target_fraction' in evidence or pending_exit[symbol] == 'pressure_gap_adverse_reduce':
                 log(when, symbol, 'SELL', 'deferred', 'reduction_below_one_lot')
                 pending_exit.pop(symbol, None)
                 exit_evidence.pop(symbol, None)
@@ -241,6 +242,15 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             del positions[symbol]
         else:
             pos.quantity = remaining
+            if pending_exit[symbol] == 'pressure_gap_adverse_reduce':
+                pos.pressure_warning = dict(
+                    pressure_date=evidence['pressure_date'],
+                    pressure_low=evidence['pressure_low'],
+                    pressure_high=evidence['pressure_high'],
+                    pressure_volume_multiple=evidence['pressure_volume_multiple'],
+                    pressure_n_date=evidence['pressure_n_date'],
+                    pressure_warning_date=when.date().isoformat(),
+                )
             if pending_exit[symbol] in ('wave_volume_shadows_reduce', 'wave_gap_reversal_reduce',
                                         'wave_upper_rejection_reduce', 'wave_ordinary_equal_upper_shadow_reduce'):
                 pos.wave_reduced = True
@@ -477,6 +487,18 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                                 signal_index=pos.signal_index)
                          if config.wave_exhaustion_exit else None)
             pressure = trend_flip_risks[symbol].get(i) or pressure_risks[symbol].get(i)
+            if (pressure is not None and pressure['reason'] == 'pressure_breakout_adverse_clear'
+                    and pos.entry_index > pressure['pressure_breakout_index']):
+                pressure = None
+            if pos.pressure_warning is not None and i > 0 and bar.close < grouped[symbol][i - 1].close:
+                pressure = dict(
+                    reason='pressure_reduced_lower_close_clear', exit_fraction=1.0,
+                    execution_model='same_day_close', **pos.pressure_warning,
+                    pressure_adverse_patterns=['close_below_previous'],
+                    observed_close=bar.close, previous_close=grouped[symbol][i - 1].close,
+                )
+            elif pos.pressure_warning is not None and pressure is not None and pressure['exit_fraction'] < 1:
+                pressure = None
             if wave_exit is not None and wave_exit['exit_fraction'] == 1:
                 wave_clear_symbols.add(symbol)
                 pending_exit[symbol] = wave_exit['reason']

@@ -68,8 +68,14 @@ export function tradeReasonItems(item) {
             );
         if (item.pressure_adverse_patterns?.length)
             reasons.push(
-                `不利形态：${item.pressure_adverse_patterns.map((key) => ({ close_below_previous: "收盘低于前收", low_below_previous: "跌破前低", long_upper_shadow: "长上影" })[key] || key).join("、")}。`,
+                `不利形态：${item.pressure_adverse_patterns.map((key) => ({ bearish_body: "阴线实体", close_below_previous: "收盘低于前收", low_below_previous: "跌破前低", long_upper_shadow: "长上影" })[key] || key).join("、")}。`,
             );
+        if (item.reason === "pressure_gap_adverse_reduce")
+            reasons.push(`跳空未回补：最低 ${num(item.observed_low, 4)} > 前高 ${num(item.previous_high, 4)}，收盘 ${num(item.observed_close, 4)} > 前收 ${num(item.previous_close, 4)}；当日减仓 50%。`);
+        if (item.reason === "pressure_reduced_lower_close_clear")
+            reasons.push(`${item.pressure_warning_date} 减仓后首次收跌：本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，清空余仓。`);
+        if (item.reason === "pressure_breakout_adverse_clear")
+            reasons.push(`突破后转弱：${item.pressure_rally_low_date} 低点 ${num(item.pressure_rally_low, 4)} → ${item.pressure_breakout_date} 突破压力高点 ${num(item.pressure_high, 4)}，上涨 ${pct(item.pressure_rally_fraction)}；随后出现不利 K 线，清空余仓。`);
         if (item.volume_trigger_date)
             reasons.push(
                 `放量下跌：${item.volume_trigger_date} 成交量 ${num(item.trigger_volume, 0)} > 前日 ${num(item.previous_volume, 0)}，收盘 ${num(item.trigger_close, 4)} < 前收 ${num(item.previous_close, 4)}。`,

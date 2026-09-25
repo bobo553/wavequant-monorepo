@@ -212,6 +212,7 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
         }
         if (item.pressure_date) {
             const adverseNames = {
+                bearish_body: "阴线实体",
                 close_below_previous: "收盘低于前收",
                 low_below_previous: "跌破前日低点",
                 long_upper_shadow: "长上影（占振幅至少 50%）",
@@ -220,7 +221,7 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
                 `压力来源：${item.pressure_date} · 区间 ${num(item.pressure_low, 4)}–${num(item.pressure_high, 4)} 元；成交量为此前 20 日均量的 ${num(item.pressure_volume_multiple)} 倍`,
             );
             add(
-                `正 N：${item.pressure_n_date}；清仓依据：${(item.pressure_adverse_patterns || []).map((key) => adverseNames[key] || key).join("、")}`,
+                `${item.pressure_breakout_date ? `空头抵抗突破：${item.pressure_breakout_date}` : item.pressure_warning_date ? `跳空减仓：${item.pressure_warning_date}` : `正 N：${item.pressure_n_date}`}；${item.reason === "pressure_gap_adverse_reduce" ? "减仓依据" : "清仓依据"}：${(item.pressure_adverse_patterns || []).map((key) => adverseNames[key] || key).join("、")}`,
             );
         }
         if (item.volume_trigger_date) {

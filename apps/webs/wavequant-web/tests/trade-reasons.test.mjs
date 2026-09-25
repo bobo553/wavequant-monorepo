@@ -139,6 +139,33 @@ test("next-session bearish close below warning low explains full exit", () => {
     assert.match(reasons[2], /收盘 5\.0700 < 警示日低点 5\.2600，且低于当日开盘 5\.3000/);
 });
 
+test("pressure gap reduction and subsequent clear keep their distinct dated reasons", () => {
+    const base = {
+        side: "SELL",
+        pressure_date: "2022-04-13",
+        pressure_low: 7.2992,
+        pressure_high: 7.6698,
+        pressure_n_date: "2022-06-24",
+        pressure_adverse_patterns: ["long_upper_shadow"],
+        observed_low: 7.0007,
+        previous_high: 6.9801,
+        observed_close: 7.1242,
+        previous_close: 6.9801,
+    };
+    const reduction = tradeReasonItems({ ...base, reason: "pressure_gap_adverse_reduce" });
+    assert.match(reduction[0], /减仓 50%/);
+    assert.match(reduction.at(-1), /最低 7\.0007 > 前高 6\.9801/);
+    const clear = tradeReasonItems({
+        ...base,
+        reason: "pressure_reduced_lower_close_clear",
+        pressure_warning_date: "2022-06-27",
+        observed_close: 7.4228,
+        previous_close: 7.6184,
+    });
+    assert.match(clear[0], /清空余仓/);
+    assert.match(clear.at(-1), /2022-06-27 减仓后首次收跌/);
+});
+
 test("chart trade detail renders the same numbered reasons", () => {
     const document = new JSDOM("<div id='panel'></div>").window.document;
     const previousDocument = globalThis.document;

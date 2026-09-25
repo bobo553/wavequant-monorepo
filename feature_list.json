@@ -4,6 +4,42 @@
     "activeFeature": null,
     "features": [
         {
+            "id": "MONOREPO-174",
+            "name": "pressure-gap-reduce-and-resisted-breakout-clear",
+            "title": "压力区未回补跳空先减半与突破受阻后清仓",
+            "description": "V3 全局持仓在正 N 上攻巨量阴线压力区时，未回补跳空且收高的不利 K 先减半，减仓成交后首次收跌清余仓；大幅上涨后突破旧压力遇空头抵抗，后续首次不利 K 清仓。",
+            "scope": "Core 压力退出与持仓状态、V3 策略版本、Web 成交说明和策略拓扑、桂林旅游真实日线夹具回归",
+            "dependencies": ["MONOREPO-171"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "桂林旅游 2022-06-27 未回补跳空且收高，当日减仓 50%；2022-06-29 首次收跌清空剩余持仓",
+                "2022-06-29 大幅上涨后盘中越过 2022-04-13 压力高点并遇空头抵抗，既有持仓遇 2022-07-01 不利 K 清仓",
+                "原有普通压力不利形态全清、旧压力失效、整手/T+1/流动性及历史前缀因果性保持"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest tests/test_pressure_exit.py -q；Web node --test tests/trade-reasons.test.mjs",
+                    "status": "passed",
+                    "summary": "17 项 Core 压力退出专项与 9 项 Web 成交理由测试通过，含桂林旅游 2022 真实日线、未成交整手和历史前缀。"
+                },
+                {
+                    "command": "Core 相关退出 pytest；Core lint/typecheck/build；Web lint/typecheck/build",
+                    "status": "passed",
+                    "summary": "124 项相关退出测试及 Core lint/typecheck/build、Web lint/typecheck/build 通过。额外全量 Core 回归 1017 项通过、1 项无关国芳折叠 N 买点锚点断言失败，见 Core progress。"
+                },
+                {
+                    "command": "Web test:unit；Chromium pressure-exit-reasons.spec.mjs；pnpm harness:check",
+                    "status": "passed",
+                    "summary": "14 项 Vitest、156 项 Node 测试通过；真实 Chromium 检查减仓、清仓和突破风险的详情与复制文本；Harness 通过。"
+                },
+                {
+                    "command": "AkShare API sz.000978 lecture_v3 2018-01-02 至 2026-09-24，页面默认量能过滤关闭、初始资金 10 万、仓位上限 100%",
+                    "status": "passed",
+                    "summary": "当前 v62 完整回测：2022-06-24 买入 194.2676 等价份额；06-27 卖 97.1338、余 97.1338；06-29 首次收跌卖余 97.1338、余仓零；07-01 无重复卖单。整笔净盈亏 39.85 元、净收益率 2.93%。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-173",
             "name": "selected-buy-wave-endpoints",
             "title": "点击买入成交标注 A/B/C 浪关键点",
