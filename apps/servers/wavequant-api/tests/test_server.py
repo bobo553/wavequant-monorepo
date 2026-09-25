@@ -456,6 +456,7 @@ class VisualizationTests(unittest.TestCase):
             self.assertEqual(request()[0], 200)
             self.assertIs(backtest.call_args.kwargs["volume_filter"], True)
             self.assertIs(backtest.call_args.kwargs["net_reward_risk_filter"], False)
+            self.assertIs(backtest.call_args.kwargs["shallow_base_breakout_enabled"], True)
             self.assertEqual(backtest.call_args.kwargs["initial_capital"], 100_000)
             self.assertEqual(backtest.call_args.kwargs["max_position_weight"], 1.0)
             self.assertEqual(request("&initial_capital=250000&max_position_weight=0.25")[0], 200)
@@ -469,6 +470,10 @@ class VisualizationTests(unittest.TestCase):
             self.assertIs(backtest.call_args.kwargs["volume_filter"], False)
             self.assertEqual(request("&volume_filter=true")[0], 200)
             self.assertIs(backtest.call_args.kwargs["volume_filter"], True)
+            self.assertEqual(request("&shallow_base_breakout_enabled=false")[0], 200)
+            self.assertIs(backtest.call_args.kwargs["shallow_base_breakout_enabled"], False)
+            self.assertEqual(request("&shallow_base_breakout_enabled=true")[0], 200)
+            self.assertIs(backtest.call_args.kwargs["shallow_base_breakout_enabled"], True)
             before = backtest.call_count
             self.assertEqual(request("&net_reward_risk_filter=1")[0], 400)
             self.assertEqual(request("&net_reward_risk_filter=")[0], 400)
@@ -476,6 +481,9 @@ class VisualizationTests(unittest.TestCase):
             self.assertEqual(request("&volume_filter=0")[0], 400)
             self.assertEqual(request("&volume_filter=")[0], 400)
             self.assertEqual(request("&volume_filter=true&volume_filter=false")[0], 400)
+            self.assertEqual(request("&shallow_base_breakout_enabled=1")[0], 400)
+            self.assertEqual(request("&shallow_base_breakout_enabled=")[0], 400)
+            self.assertEqual(request("&shallow_base_breakout_enabled=true&shallow_base_breakout_enabled=false")[0], 400)
             self.assertEqual(request("&volume_filter=false&unexpected=1")[0], 400)
             for invalid in (
                 "&initial_capital=0",
@@ -495,12 +503,13 @@ class VisualizationTests(unittest.TestCase):
         with patch.object(self.repo, "akshare_backtest", return_value={"ok": True}) as backtest:
             conn = HTTPConnection("127.0.0.1", server.server_port)
             try:
-                conn.request("GET", akshare_base + "&initial_capital=300000&max_position_weight=0.75")
+                conn.request("GET", akshare_base + "&initial_capital=300000&max_position_weight=0.75&shallow_base_breakout_enabled=false")
                 self.assertEqual(conn.getresponse().status, 200)
             finally:
                 conn.close()
             self.assertEqual(backtest.call_args.kwargs["initial_capital"], 300_000)
             self.assertEqual(backtest.call_args.kwargs["max_position_weight"], 0.75)
+            self.assertIs(backtest.call_args.kwargs["shallow_base_breakout_enabled"], False)
 
     def test_tdx_backtest_volume_setting_is_part_of_strategy_and_theory_cache_key(self):
         profile = {
@@ -546,6 +555,7 @@ class VisualizationTests(unittest.TestCase):
                 "2018-01-02",
                 volume_filter=False,
                 net_reward_risk_filter=True,
+                shallow_base_breakout_enabled=False,
                 initial_capital=250_000,
                 max_position_weight=0.25,
             )
@@ -554,6 +564,7 @@ class VisualizationTests(unittest.TestCase):
         self.assertEqual([e["max_position_weight"] for e in executions], [1.0, 0.25])
         self.assertNotIn("net_reward_risk_filter", profile["scenarios"]["base"]["execution"])
         self.assertEqual([strategy["volume_filter"] for strategy in strategies], [True, False])
+        self.assertEqual([strategy["shallow_base_breakout_enabled"] for strategy in strategies], [True, False])
         self.assertNotEqual(keys[0][1]["strategy"], keys[1][1]["strategy"])
         self.assertTrue(profile["strategy"]["volume_filter"])
         self.assertIn("rvol_1_2", enabled["strategy_profile"]["definition"]["primary_filters"])

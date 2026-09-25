@@ -8,7 +8,7 @@ export const ratioPlans = [
     ["lecture_v3_d67_c50", ">2/3 / ≤1/2"],
     ["lecture_v3_close_d50_c50", "收盘 >1/2 / 收盘 <1/2"],
 ];
-/** @typedef {{run:string,symbol:string,asof:string,start:string,scenario:string,volume_filter:boolean,net_reward_risk_filter:boolean,initial_capital?:number,max_position_weight?:number,local:boolean,source?:string}} RatioContext */
+/** @typedef {{run:string,symbol:string,asof:string,start:string,scenario:string,volume_filter:boolean,net_reward_risk_filter:boolean,shallow_base_breakout_enabled:boolean,initial_capital?:number,max_position_weight?:number,local:boolean,source?:string}} RatioContext */
 export const ratioContextKey = (p) =>
     JSON.stringify([
         p.run,
@@ -18,6 +18,7 @@ export const ratioContextKey = (p) =>
         p.scenario,
         p.volume_filter,
         p.net_reward_risk_filter ?? false,
+        p.shallow_base_breakout_enabled ?? true,
         p.initial_capital,
         p.max_position_weight,
         p.local,
@@ -79,13 +80,14 @@ export class RatioComparison {
                 `${p.symbol} · ${p.start} — ${p.asof} · ${p.scenario}：已完成 ${completed}/${ratioPlans.length}，正在计算 ${title}…`;
             const tr = document.createElement("tr");
             try {
-                const { local, source = "tdx", volume_filter, net_reward_risk_filter = false, ...params } = p;
+                const { local, source = "tdx", volume_filter, net_reward_risk_filter = false, shallow_base_breakout_enabled = true, ...params } = p;
                 const view = await this.api(
                     source === "akshare" ? "/api/akshare-backtest" : "/api/tdx-backtest",
                     {
                         ...params,
                         volume_filter: String(volume_filter),
                         net_reward_risk_filter: String(net_reward_risk_filter),
+                        shallow_base_breakout_enabled: String(shallow_base_breakout_enabled),
                         variant,
                     },
                     this.controller.signal,

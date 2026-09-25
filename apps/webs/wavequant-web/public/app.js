@@ -705,6 +705,9 @@ function syncProfileScope() {
     if (portfolio && research.includes($("variant-select").value)) $("variant-select").value = "strict_full";
     $("second-pullback-field").hidden = $("variant-select").value !== "lecture_v3";
     $("second-pullback-select").disabled = portfolio || $("variant-select").value !== "lecture_v3";
+    const v3 = $("variant-select").value.startsWith("lecture_v3");
+    $("shallow-base-breakout-field").hidden = !v3;
+    $("backtest-shallow-base-breakout").disabled = !v3;
 }
 function canBacktestSymbol(symbol) {
     return Boolean(
@@ -819,7 +822,7 @@ function renderMetrics() {
                 .map(([key, n]) => `${reasonText(key)} × ${n}`)
                 .join("；");
         $("backtest-details").textContent =
-            `${symbolName(state.view.symbol)} · 独立回测 ${bt.start} — ${bt.end}｜量能过滤${bt.strategy.volume_filter ? (bt.strategy.buy_point_definition === "whole_flip_wave_v3" ? "开启（确认时量 ＞ 昨日全天量；C 浪跳空突破可独立触发）" : `开启（攻击日量比 ≥ ${num(bt.strategy.minimum_rvol)}）`) : "关闭"}；成交价含费净盈亏比过滤${netRiskEnabled ? "开启" : "关闭"}；初始资金 ${num(bt.initial_capital, 0)} 元，单股仓位上限 ${pct(bt.execution.max_position_weight)}。年化 ${pct(m.annualized_return)} · 胜率 ${m.win_rate === null ? "—（无平仓）" : pct(m.win_rate)} · Sharpe ${num(m.sharpe)} · 费用 ${num(m.fees)} 元。买入成交 ${d.entry_fills} · 已平仓 ${d.closed_trades} · 未平仓 ${d.open_positions} · 期末未执行信号 ${m.unexecuted_end_signals}。${d.entry_fills ? "成交样本不等于策略有效。" : `未产生成交：入场信号 ${bt.counts.long_signals || 0}，委托尝试 ${d.entry_attempts}；可开启“筛选 / 中断”查看未通过条件。`}${reasons ? `拒单原因：${reasons}。` : ""}${bt.open_positions.map((p) => `未平仓 ${num(p.quantity)} 等价份额，累计已实现 ${num(p.realized_pnl)} 元，剩余浮动盈亏 ${num(p.unrealized_pnl)} 元，整笔当前盈亏 ${num(p.total_pnl)} 元（${pct(p.net_return)}，含未实现部分）。`).join("")}`;
+            `${symbolName(state.view.symbol)} · 独立回测 ${bt.start} — ${bt.end}｜量能过滤${bt.strategy.volume_filter ? (bt.strategy.buy_point_definition === "whole_flip_wave_v3" ? "开启（确认时量 ＞ 昨日全天量；C 浪跳空突破可独立触发）" : `开启（攻击日量比 ≥ ${num(bt.strategy.minimum_rvol)}）`) : "关闭"}；${bt.strategy.buy_point_definition === "whole_flip_wave_v3" ? `浅回撤横盘突破${bt.strategy.shallow_base_breakout_enabled ? "开启" : "关闭"}；` : ""}成交价含费净盈亏比过滤${netRiskEnabled ? "开启" : "关闭"}；初始资金 ${num(bt.initial_capital, 0)} 元，单股仓位上限 ${pct(bt.execution.max_position_weight)}。年化 ${pct(m.annualized_return)} · 胜率 ${m.win_rate === null ? "—（无平仓）" : pct(m.win_rate)} · Sharpe ${num(m.sharpe)} · 费用 ${num(m.fees)} 元。买入成交 ${d.entry_fills} · 已平仓 ${d.closed_trades} · 未平仓 ${d.open_positions} · 期末未执行信号 ${m.unexecuted_end_signals}。${d.entry_fills ? "成交样本不等于策略有效。" : `未产生成交：入场信号 ${bt.counts.long_signals || 0}，委托尝试 ${d.entry_attempts}；可开启“筛选 / 中断”查看未通过条件。`}${reasons ? `拒单原因：${reasons}。` : ""}${bt.open_positions.map((p) => `未平仓 ${num(p.quantity)} 等价份额，累计已实现 ${num(p.realized_pnl)} 元，剩余浮动盈亏 ${num(p.unrealized_pnl)} 元，整笔当前盈亏 ${num(p.total_pnl)} 元（${pct(p.net_return)}，含未实现部分）。`).join("")}`;
         if (bt.execution.missing_minute_daily_fallback) {
             const p = document.createElement("p");
             const days = bt.minute_fallbacks || [];
@@ -850,6 +853,9 @@ function renderMetrics() {
                 bt.strategy.first_pullback_basis === "minimum_close" ? "H0 至交替低点期间的最低收盘价" : "交替低点";
             const secondOperator = bt.strategy.mature_shallow_inclusive === false ? "<" : "≤";
             p.textContent = `整段双买点 V3：L0 为翻多上涨起始的整段最低点，H0 为翻多高点。第一类仅二级或三级空多交替后，等待新正 N 的轧空或强轧空，不破 L0。${bt.strategy.first_pullback_threshold == null ? "不附加深回撤门槛。" : `当前对照方案另要求 (H0−${firstCounter})/(H0−L0) > ${pct(bt.strategy.first_pullback_threshold)}。`}第二类交替后收盘再破 H0，取已知阶段最高 H1，再回撤；(H1−回撤期间最低收盘)/(H1−L0) ${secondOperator} ${pct(bt.strategy.mature_shallow_ratio)}，再等正 N 轧空。第一类按已知交替与正 N 证据判定；同一 N 可在轧空当日共同确认交替。第二类优先。放量强反转须收盘突破本次 N 全部先前高点、守住 N 起点，且仍通过全局入场资格。${bt.strategy.volume_filter ? "另启用相对量能过滤；执行风控仍有效。" : "本次关闭相对量能过滤；各轧空路径自身的量价条件及执行风控仍有效。"}`;
+            p.textContent += bt.strategy.shallow_base_breakout_enabled
+                ? " 独立买点：0.618 至不足 2/3 的来源级回撤低点先列待选；守低整理 40–120 根、近 40 根区间波幅不超过 18%，大阳线收盘突破整个整理区间且量至少为前 20 日均量的 2 倍，最近已确认高点的毛盈亏比至少 1.5 才触发。不把待选低点提前标成正式交替。"
+                : " 浅回撤横盘突破独立买点已关闭。";
             if (bt.execution.consolidation_entry_intraday)
                 p.textContent +=
                     " 守住旧正 N 虚拟低点整理后，跳空放量形成新正 N，按已完成五分钟线确认、下一段开盘模拟买入；其他日线买点当日收盘模拟执行。缺少完整分钟时记录日线回退，价格限制仍须通过。";
@@ -1558,6 +1564,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             start: $("backtest-start").value,
             volume_filter: String($("backtest-volume-filter").checked),
             net_reward_risk_filter: String($("backtest-net-reward-risk-filter").checked),
+            shallow_base_breakout_enabled: String($("backtest-shallow-base-breakout").checked),
             ...(isTdxBacktest() ? currentBacktestSizing() : {}),
         };
         const data = isMarketBrowse()
@@ -1780,6 +1787,7 @@ const ratioComparison = new RatioComparison({
             start: $("backtest-start").value,
             volume_filter: $("backtest-volume-filter").checked,
             net_reward_risk_filter: $("backtest-net-reward-risk-filter").checked,
+            shallow_base_breakout_enabled: $("backtest-shallow-base-breakout").checked,
             local: (isLocal() || isAkShare()) && sizing !== null,
             source: isAkShare() ? "akshare" : "tdx",
         };
@@ -1809,6 +1817,11 @@ $("backtest-volume-filter").addEventListener("change", () => {
 });
 $("backtest-net-reward-risk-filter").addEventListener("change", () => {
     ratioComparison.contextChanged();
+    if (isTdxBacktest()) loadView();
+});
+$("backtest-shallow-base-breakout").addEventListener("change", () => {
+    ratioComparison.contextChanged();
+    buyPoints.contextChanged();
     if (isTdxBacktest()) loadView();
 });
 $("run-stock-backtest").addEventListener("click", () => {

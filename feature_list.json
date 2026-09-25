@@ -4,6 +4,33 @@
     "activeFeature": null,
     "features": [
         {
+            "id": "MONOREPO-172",
+            "name": "shallow-alternation-base-breakout",
+            "title": "0.618 浅回撤待选后横盘放量突破买点开关",
+            "description": "V3 将至少 0.618 且未达 2/3 的短浅回撤作为交替待选；守低横盘数十根 K 线后，由放量大阳线收盘突破区间确认独立买点，默认开启并可关闭。",
+            "scope": "Core 因果买点、TDX/AkShare 当前股票回测 API、Web 开关与理由、真实国芳和反例回归",
+            "dependencies": ["MONOREPO-171"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "国芳集团 2025-01-13 的 0.618 至 2/3 回撤仅成为待选，2025-04-03 守低横盘放量突破可触发买点，不提前写成正式二三级交替",
+                "独立条件按历史前缀计算，阻止未达 0.618、超过 2/3、失守低点、整理不足、突破不足、量能或实体不足以及重复触发",
+                "V3 默认开启，可通过当前股票回测开关关闭；开关进入请求、缓存键和可见策略证据，旧对照策略保持原义",
+                "真实行情与历史截断、Core/API/Web 相关测试和界面验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest tests/test_shallow_base_breakout.py tests/test_alternation_duration.py tests/test_whole_wave_entry.py -q；真实 TDX 601086 截至 2025-04-09 独立回测",
+                    "status": "passed",
+                    "summary": "30 项定向测试通过；2025-01-13 来源低点于 01-22 成为 64.38% 回撤待选，04-03 收盘 7.1604 突破 40 根区间高 7.0511、量为前 20 日均量 2.046 倍，产生 LONG 与实际模拟 BUY；04-07 无重复。关闭开关则无该信号和成交。"
+                },
+                {
+                    "command": "API pytest -q；Web test:unit、lint、typecheck、build；Chromium shallow-base-breakout.spec.mjs；Core/API Ruff 与构建；pnpm harness:check",
+                    "status": "passed",
+                    "summary": "API 85 项、18 子测试通过（1 项环境跳过）；Web 14 项 Vitest 与 153 项 Node 测试、Lint、类型、生产构建通过；真实页面开关和 TDX 接口开启/关闭及成交证据的 Chromium 回归通过；Core/API Ruff、包构建和 Harness 通过。新增 Core 模块定向 mypy 通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-171",
             "name": "massive-volume-gap-reversal-clear",
             "title": "巨量高开反包下跌当日清仓",

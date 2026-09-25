@@ -52,6 +52,42 @@ test("joint N and alternation explain March 25 after the March 22 attack", () =>
     assert.match(reasons.at(-1), /2021-03-22 出现正 N，2021-03-25 轧空共同确认空多交替与入场资格/);
 });
 
+test("pending shallow pullback breakout has dated and numbered buy reasons", () => {
+    const marker = {
+        side: "BUY",
+        reason: "system_shallow_base_breakout",
+        decision_evidence: [
+            {
+                buy_point_type: "shallow_base_breakout",
+                origin_index_date: "2024-02-08",
+                origin_price: 4.219,
+                flip_high_index_date: "2024-12-12",
+                flip_high_price: 8.9095,
+                alternation_low_index_date: "2025-01-13",
+                alternation_low_price: 5.8896,
+                candidate_known_index_date: "2025-01-22",
+                counter_ratio: 0.6438,
+                base_sessions: 51,
+                base_low: 6.1355,
+                base_high: 7.0511,
+                base_width_fraction: 0.1492,
+                breakout_close: 7.1604,
+                breakout_body_fraction: 0.1102,
+                breakout_volume: 20135200,
+                breakout_volume_multiple: 2.0459,
+                stop: 6.1355,
+                target: 8.9095,
+            },
+        ],
+    };
+    const reasons = numberedTradeReasons(marker);
+    assert.equal(reasons.length, 4);
+    assert.match(reasons[0], /0\.618 浅回撤待选后横盘放量突破/);
+    assert.match(reasons[1], /2025-01-22 才成为待选/);
+    assert.match(reasons[2], /51 根 K 线/);
+    assert.match(reasons[3], /2\.05 倍/);
+});
+
 test("sell reasons use exit trigger and observed values without inventing missing evidence", () => {
     const marker = {
         side: "SELL",

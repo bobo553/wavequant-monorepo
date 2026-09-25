@@ -609,6 +609,7 @@ class ChartRepository:
         *,
         volume_filter=True,
         net_reward_risk_filter=False,
+        shallow_base_breakout_enabled=True,
         initial_capital=100_000,
         max_position_weight=1.0,
     ):
@@ -619,12 +620,15 @@ class ChartRepository:
             raise ValueError("volume_filter must be a boolean")
         if type(net_reward_risk_filter) is not bool:
             raise ValueError("net_reward_risk_filter must be a boolean")
+        if type(shallow_base_breakout_enabled) is not bool:
+            raise ValueError("shallow_base_breakout_enabled must be a boolean")
         if self.tdx_backtester is None:
             raise ValueError("通达信目录未配置")
         config = self.strategy_config(rid, variant)
         # Never mutate a sealed profile: the effective strategy is the cache key,
         # so checked and unchecked backtests remain independently reproducible.
-        strategy = dict(config["strategy"], volume_filter=volume_filter)
+        strategy = dict(config["strategy"], volume_filter=volume_filter,
+                        shallow_base_breakout_enabled=shallow_base_breakout_enabled)
         execution = dict(
             config["scenarios"][scenario]["execution"],
             net_reward_risk_filter=net_reward_risk_filter,
@@ -653,6 +657,7 @@ class ChartRepository:
         theory = dict(theory, price_basis=view["price_basis"], run_id=view["run_id"])
         definition = dict(config.get("definition", {}))
         definition["net_reward_risk_filter"] = net_reward_risk_filter
+        definition["shallow_base_breakout_enabled"] = shallow_base_breakout_enabled
         definition["reward_risk_policy"] = (
             "execution_price_net_reward_risk_gate_enabled" if net_reward_risk_filter else "execution_price_net_reward_risk_gate_disabled"
         )
@@ -686,18 +691,21 @@ class ChartRepository:
         *,
         volume_filter=True,
         net_reward_risk_filter=False,
+        shallow_base_breakout_enabled=True,
         initial_capital=100_000,
         max_position_weight=1.0,
     ):
         self._run(rid)
         if variant not in VARIANTS or scenario not in SCENARIOS:
             raise ValueError('unknown strategy or scenario')
-        if type(volume_filter) is not bool or type(net_reward_risk_filter) is not bool:
+        if (type(volume_filter) is not bool or type(net_reward_risk_filter) is not bool
+                or type(shallow_base_breakout_enabled) is not bool):
             raise ValueError('backtest filters must be boolean')
         if self.akshare_backtester is None:
             raise ValueError('AKShare 数据源未配置')
         profile = self.strategy_config(rid, variant)
-        strategy = dict(profile['strategy'], volume_filter=volume_filter)
+        strategy = dict(profile['strategy'], volume_filter=volume_filter,
+                        shallow_base_breakout_enabled=shallow_base_breakout_enabled)
         execution = dict(
             profile["scenarios"][scenario]["execution"],
             net_reward_risk_filter=net_reward_risk_filter,
@@ -707,7 +715,8 @@ class ChartRepository:
         bars, generated, view = self.akshare_backtester.run(symbol, start, asof, strategy, execution)
         theory = self.render_theory(bars, SystemStrategy(**strategy), generated, view['asof'])
         theory.update(price_basis=view['price_basis'], data_source='akshare', upstream='sina', run_id=view['run_id'])
-        definition = dict(profile.get('definition', {}), net_reward_risk_filter=net_reward_risk_filter)
+        definition = dict(profile.get('definition', {}), net_reward_risk_filter=net_reward_risk_filter,
+                          shallow_base_breakout_enabled=shallow_base_breakout_enabled)
         definition['reward_risk_policy'] = (
             'execution_price_net_reward_risk_gate_enabled' if net_reward_risk_filter else 'execution_price_net_reward_risk_gate_disabled'
         )

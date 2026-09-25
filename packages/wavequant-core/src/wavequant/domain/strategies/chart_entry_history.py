@@ -11,7 +11,7 @@ from ..models.model import Bar
 from .hierarchical_entry import EntryContext
 
 
-def chart_entry_history(bars: Sequence[Bar], *, audit=()) -> tuple[dict[int, tuple[EntryContext, ...]], list[dict[str, object]]]:
+def chart_entry_history(bars: Sequence[Bar], *, audit=(), shallow_candidate_sink=None) -> tuple[dict[int, tuple[EntryContext, ...]], list[dict[str, object]]]:
     """Share confirmed landmarks, including cross-path continuity, with trading.
 
     Only a prefix is reduced. A source-confirmed pullback is entry evidence,
@@ -34,10 +34,11 @@ def chart_entry_history(bars: Sequence[Bar], *, audit=()) -> tuple[dict[int, tup
     attacks = {e["bar_index"] for e in audit if e["event"] == "n_completed" and e.get("direction") == "up"}
     anchors_at_attack = {}
     levels = ()
+    shallow_candidate = None
     resistance_key = None
 
     def accept(i, epoch, raw):
-        nonlocal previous_epoch, previous_raw, signature, landmarks, active, invalidated, levels, resistance_key
+        nonlocal previous_epoch, previous_raw, signature, landmarks, active, invalidated, levels, resistance_key, shallow_candidate
         if previous_epoch is not None and epoch != previous_epoch and len(previous_raw) > 1:
             closed.append(dict(id=f"lecture-{previous_epoch}", points=previous_raw))
         previous_epoch, previous_raw = epoch, raw
@@ -58,6 +59,9 @@ def chart_entry_history(bars: Sequence[Bar], *, audit=()) -> tuple[dict[int, tup
             second = secondary_trends(first, prefix)
             third = tertiary_trends(second, prefix)
             levels = ((second, first), (third, second))
+            if shallow_candidate_sink is not None:
+                from .shallow_base_breakout import shallow_candidate_from_geometry
+                shallow_candidate = shallow_candidate_from_geometry(levels, dates, i)
             # The source-confirmed A high is already tradable evidence before
             # it is promoted to a formal vertex of its own level.
             candidates = [dict(index=p['index'], value=p['value'], source='formal')
@@ -83,6 +87,8 @@ def chart_entry_history(bars: Sequence[Bar], *, audit=()) -> tuple[dict[int, tup
                         invalidated.add(low["id"])
         if i in attacks:
             anchors_at_attack[i] = [anchor for level, source in levels for anchor in squeeze_anchors(level, dates, source)]
+        if shallow_candidate_sink is not None:
+            shallow_candidate_sink[i] = shallow_candidate
         current = {}
         for low in landmarks:
             high = low["confirmed_flip_high"]

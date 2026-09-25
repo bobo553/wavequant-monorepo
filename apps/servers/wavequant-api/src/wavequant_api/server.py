@@ -339,7 +339,7 @@ def make_server(
                     return
                 if url.path in ("/api/tdx-backtest", "/api/akshare-backtest"):
                     required = {"run", "variant", "symbol", "asof", "scenario", "start"}
-                    optional = {"volume_filter", "net_reward_risk_filter", "initial_capital", "max_position_weight"}
+                    optional = {"volume_filter", "net_reward_risk_filter", "shallow_base_breakout_enabled", "initial_capital", "max_position_weight"}
                     if not required <= set(q) or set(q) - required - optional:
                         raise ValueError("invalid TDX backtest arguments")
                     filter_values = q.get("volume_filter", ["true"])
@@ -351,6 +351,9 @@ def make_server(
                     risk_values = q.get("net_reward_risk_filter", ["false"])
                     if len(risk_values) != 1 or risk_values[0] not in ("true", "false"):
                         raise ValueError("net_reward_risk_filter must be true or false and provided once")
+                    shallow_values = q.get("shallow_base_breakout_enabled", ["true"])
+                    if len(shallow_values) != 1 or shallow_values[0] not in ("true", "false"):
+                        raise ValueError("shallow_base_breakout_enabled must be true or false and provided once")
                     initial_capital = backtest_positive_number(q, "initial_capital", 100_000, 1_000_000_000)
                     max_position_weight = backtest_positive_number(q, "max_position_weight", 1.0, 1.0)
                     self.send(
@@ -363,6 +366,7 @@ def make_server(
                             *(q[k][0] for k in ("run", "variant", "symbol", "asof", "scenario", "start")),
                             volume_filter=volume_filter == "true",
                             net_reward_risk_filter=risk_values[0] == "true",
+                            shallow_base_breakout_enabled=shallow_values[0] == "true",
                             initial_capital=initial_capital,
                             max_position_weight=max_position_weight,
                         ),

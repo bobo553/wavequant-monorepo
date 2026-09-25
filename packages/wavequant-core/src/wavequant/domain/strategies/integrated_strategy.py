@@ -45,6 +45,7 @@ class SystemStrategy:
     first_pullback_threshold: float | None = .5
     first_pullback_basis: str = 'alternation_low'
     mature_shallow_inclusive: bool = True
+    shallow_base_breakout_enabled: bool = True
 
     def validate(self):
         import math
@@ -70,6 +71,8 @@ class SystemStrategy:
             raise ValueError('first pullback basis must be an alternation low or minimum close')
         if type(self.mature_shallow_inclusive) is not bool:
             raise ValueError('mature shallow inclusive must be boolean')
+        if type(self.shallow_base_breakout_enabled) is not bool:
+            raise ValueError('shallow base breakout switch must be boolean')
         if self.buy_point_definition=='whole_flip_wave_v3' and (
                 self.entry_policy!='hierarchical_two_buy_points' or self.mature_shallow_ratio not in (1/3,.5)):
             raise ValueError('whole wave entries require hierarchical policy and close threshold 1/3 or 1/2')
@@ -369,6 +372,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                         local_resistance=resume.local_resistance, defense=resume.defense,
                         classification='held_squeeze_defense_and_fresh_pullback_rebound')
     secondary_resistance = {}
+    shallow_base_proofs = {}
+    shallow_candidate_snapshots = {} if whole_wave and config.shallow_base_breakout_enabled else None
     if whole_wave:
         from .hierarchical_entry import hierarchical_history
         from .secondary_resistance import secondary_resistance_history
@@ -377,13 +382,21 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         from .hierarchical_entry import hierarchical_history, context_history, select_entry
         if whole_wave:
             from .chart_entry_history import chart_entry_history
-            hierarchy_permissions, hierarchy_events = chart_entry_history(bars, audit=audit)
+            hierarchy_permissions, hierarchy_events = chart_entry_history(
+                bars, audit=audit, shallow_candidate_sink=shallow_candidate_snapshots)
             secondary_resistance = secondary_resistance_history(
                 bars, secondary_levels, key_events=hierarchy_events, include_resolved=True)
         else:
             levels, level_epochs = hierarchical_history(bars)
             hierarchy_permissions, hierarchy_events = context_history(bars, levels, level_epochs, whole_wave=False)
         for event in hierarchy_events:
+            row = dict(event); j, kind = row.pop('bar_index'), row.pop('event')
+            log(j, kind, **row); counts[kind] += 1
+    if shallow_candidate_snapshots is not None:
+        from .shallow_base_breakout import shallow_base_history
+        shallow_events, shallow_base_proofs = shallow_base_history(
+            bars, shallow_candidate_snapshots, minimum_reward_risk=config.minimum_reward_risk)
+        for event in shallow_events:
             row = dict(event); j, kind = row.pop('bar_index'), row.pop('event')
             log(j, kind, **row); counts[kind] += 1
     multilevel_proofs = {}
@@ -752,6 +765,16 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     confirmation_source=confirmation_source,
                     **hierarchy_proof)
             break
+        special = shallow_base_proofs.get(i)
+        if special is not None and not any(s.bar_index == i and s.side == 'LONG' for s in signals):
+            signals.append(Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close,
+                special['stop'], 'system_shallow_base_breakout', bar.timestamp,
+                special['counter_ratio'], special['breakout_volume_multiple'],
+                '待选交替横盘突破', special['target'], config.minimum_reward_risk))
+            emitted_attacks.add(i)
+            counts['buy_point_shallow_base_breakout'] += 1
+            log(i, 'long_signal', channel='shallow_base_breakout', volume_pass=True, **special)
+            log(i, 'long_transition_evidence', **special)
     counts['long_signals'] = sum(s.side == 'LONG' for s in signals)
     counts['exit_signals'] = sum(s.side == 'EXIT' for s in signals)
     # Count every gate consistently, including volume, depth and target rejection.

@@ -31,6 +31,10 @@ test("comparison invalidates source date cost symbol start and volume filter but
         assert.notEqual(ratioContextKey(p), ratioContextKey({ ...p, [field]: "changed" }));
     assert.notEqual(ratioContextKey(p), ratioContextKey({ ...p, volume_filter: false }));
     assert.notEqual(ratioContextKey(p), ratioContextKey({ ...p, net_reward_risk_filter: true }));
+    assert.notEqual(
+        ratioContextKey({ ...p, shallow_base_breakout_enabled: true }),
+        ratioContextKey({ ...p, shallow_base_breakout_enabled: false }),
+    );
     assert.notEqual(ratioContextKey(p), ratioContextKey({ ...p, initial_capital: 200_000 }));
     assert.notEqual(ratioContextKey(p), ratioContextKey({ ...p, max_position_weight: 0.25 }));
     assert.equal(ratioContextKey(p), ratioContextKey({ ...p, net_reward_risk_filter: false }));

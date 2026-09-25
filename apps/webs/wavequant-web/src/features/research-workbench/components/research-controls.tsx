@@ -102,6 +102,14 @@ export function ResearchControls(): JSX.Element {
                     <input type="checkbox" id="backtest-net-reward-risk-filter" />
                     启用成交价含费净盈亏比过滤
                 </label>
+                <label
+                    id="shallow-base-breakout-field"
+                    className="backtest-volume-filter"
+                    title="V3 默认开启。已确认高低结构之后，0.618 至不足 2/3 的回撤先列为待选；守低横盘至少 40 根 K 线后，放量大阳线收盘突破整理区间才产生独立买点。"
+                >
+                    <input type="checkbox" id="backtest-shallow-base-breakout" defaultChecked />
+                    启用浅回撤横盘突破买点
+                </label>
                 <button id="run-stock-backtest">运行当前股票回测</button>
                 <button id="download-backtest" disabled>
                     导出回测账本

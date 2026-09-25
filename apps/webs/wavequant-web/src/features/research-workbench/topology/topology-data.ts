@@ -27,7 +27,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
     {
         id: "structure",
         label: "① 结构与候选",
-        description: "只使用截至当前交易日已确认的结构；任何失败都不会生成买入候选。",
+        description: "常规 N 买点只使用截至当前交易日已确认的结构；V3 浅回撤横盘突破另走独立待选通道。",
         mode: "gates",
         completion: "进入买点分类与入场确认",
         gates: [
@@ -66,7 +66,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "regime",
                 question: "形成多头 / 强多头轧空盘态？",
-                detail: "V1、V2、V3 都要求已确认的轧空盘态。V3 抵抗后若盘中短暂跌破滚动低点，但守住原 N 防守、当日无新空抵且阳线收盘创本轮新高，也可当日确认普通轧空。回档续攻、盘整缺口和 C 波续攻按各自证据恢复到多头盘态。",
+                detail: "常规 V1、V2、V3 买点要求已确认的轧空盘态。V3 抵抗后若盘中短暂跌破滚动低点，但守住原 N 防守、当日无新空抵且阳线收盘创本轮新高，也可当日确认普通轧空。回档续攻、盘整缺口和 C 波续攻按各自证据恢复到多头盘态；浅回撤横盘突破另走独立待选通道。",
                 source: "integrated_strategy.py · generate_system_signals:356–444, 626–641",
                 yes: "交给买点分类",
                 no: "候选拒绝：not_squeeze_regime",
@@ -76,7 +76,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
     {
         id: "entry",
         label: "② 买点与公共门禁",
-        description: "V3 默认方案；V1/V2 和 V3 幅度变体的差异在下方方案说明中列明。",
+        description:
+            "常规 V3 买点路径；独立的浅回撤横盘突破见“浅回撤待选突破”通道。V1/V2 和 V3 幅度变体的差异在下方方案说明中列明。",
         mode: "gates",
         completion: "生成 LONG 信号，交给执行价、仓位与成交门禁",
         gates: [
@@ -341,14 +342,65 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             },
         ],
     },
+    {
+        id: "shallow-base",
+        label: "浅回撤待选突破",
+        description:
+            "V3 独立买入通道，默认开启、可关闭。0.618 至 2/3 的低点先作为空多交替待选，不擅自升级为正式二/三级低点。",
+        mode: "gates",
+        completion: "只在突破确认日生成一次 LONG；仍须通过执行与成交门禁",
+        gates: [
+            {
+                id: "shallow-enabled",
+                question: "V3 浅回撤横盘突破开关已开启？",
+                detail: "默认开启；关闭后该通道不生成待选证据或买点，常规 V3 信号不受影响。",
+                source: "integrated_strategy.py · SystemStrategy.shallow_base_breakout_enabled；visualization.py · tdx_backtest",
+                yes: "核对冻结的结构锚点",
+                no: "通道关闭：不产生特殊买点",
+            },
+            {
+                id: "shallow-candidate",
+                question: "确认低点回撤达到 0.618、但不足 2/3？",
+                detail: "使用当时可知的正式二/三级起点与高点，以及已确认的一级来源低点；回撤 0.618 ≤ 深度 < 2/3，且没有跌破原起点。只记待选，不改变正式趋势线。",
+                source: "shallow_base_breakout.py · shallow_candidate_from_geometry；chart_entry_history.py",
+                yes: "观察低点之后的横盘",
+                no: "等待其他结构或普通买点",
+            },
+            {
+                id: "shallow-base-range",
+                question: "守低横盘至少 40 根、最多 120 根 K 线？",
+                detail: "从待选低点到突破日经历 40–120 个交易日，期间不得跌破待选低点；最近 40 根 K 线的最高至最低振幅不超过 18%。",
+                source: "shallow_base_breakout.py · shallow_base_history",
+                yes: "检查阳线与量价突破",
+                no: "继续等待或候选失效",
+            },
+            {
+                id: "shallow-breakout",
+                question: "放量大阳线收盘突破整段横盘前高？",
+                detail: "阳线实体至少为开盘价 5%、占全天振幅至少 60%，收盘落在全天振幅上部 20%；量为此前 20 日均量至少 2 倍且大于前日，收盘超过待选低点之后全部已知 K 线的最高价。",
+                source: "shallow_base_breakout.py · shallow_base_history",
+                yes: "检查最近正式高点的空间",
+                no: "不生成特殊买点",
+            },
+            {
+                id: "shallow-risk",
+                question: "以横盘低点防守、最近正式高点为目标，毛盈亏比至少 1.5？",
+                detail: "突破日收盘必须高于最近 40 根 K 线最低价、低于此前冻结的正式波段高点；按该防守和最近目标计算毛盈亏比，低于策略门槛则放弃。",
+                source: "shallow_base_breakout.py · shallow_base_history；integrated_strategy.py · generate_system_signals",
+                yes: "浅回撤横盘突破 LONG",
+                no: "空间不足：不追入",
+            },
+        ],
+    },
 ] as const;
 
 export const topologyProfileNotes = [
     "V3 默认：第一类为二/三级确认交替后新正 N；第二类浅回撤 ≤1/3。确认日量能严格大于前日；信号阶段不做毛盈亏比前置筛选。",
     "V3 幅度方案：第一类可要求 >2/3 或 >1/2，第二类可选 ≤1/3、≤1/2 或最低收盘价 <1/2；具体边界由 WAVE_PROFILES 决定。",
+    "V3 独立浅回撤横盘突破默认开启、可关闭：0.618 ≤ 回撤 < 2/3 的一级来源低点先记为交替待选，守低窄幅横盘至少 40 根 K 线后，放量大阳线收盘突破整段横盘前高并满足风险收益门槛才生成买点。",
     "V2：分级双买点的旧定义；V1：讲义因果轧空定义；严格折线与日线代理是研究对照，不能把代理结果解释为 V3 因果证据。",
     "信号、执行和成交是不同层：拓扑中的 LONG 只代表候选通过。成本、风险预算、可用现金、整手与涨停撮合仍可能拒单。",
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "a57157671c298400a6b42329fcf1ae71dd889134ced37f626efb6f72adef10e3";
+export const strategySourceDigest = "397a0b2a501a405dffcc29f4aa268cf7c109277a38b52c2422241a6ed698eebf";

@@ -175,3 +175,7 @@
 - MONOREPO-152：V44六种幅度方案经共享配置校验并维持不同回测身份；配置独立性测试不再固定五组。API69项Python通过、1项环境跳过，4项Node通过。
 
 - MONOREPO-153：新增GET /api/limit-up-ladder，AkShare stock_zt_pool_em按日期读取。日期独立LRU128、当日/空池60秒历史1小时，强制刷新失败不补旧数据；数值缺失null、保留元单位、重复/异常核心字段拒绝。85项Python+4项Node通过（1环境跳过），lint/严格mypy/build通过；真实09-21 103只、09-18 78只。
+
+## 2026-09-25 · MONOREPO-172 浅回撤买点开关
+
+- TDX 与 AkShare 当前股票回测接受 `shallow_base_breakout_enabled=true|false`，缺省 true；重复或非法值拒绝。参数进入独立回测缓存键与策略定义，切换结果可复现。API 85 项、18 子测试通过（1 项外部环境跳过），Ruff 和包构建通过；真实 TDX API 与 Chromium 验证开启有国芳 2025-04-03 买入、关闭无该信号。全量 mypy 受既有 NumPy stub/Python 版本不匹配及 server.py 184–308 行类型错误阻塞，新增参数行无相关报错。

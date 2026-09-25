@@ -27,7 +27,8 @@ def enrich_ledger(bars, result, generated, strategy):
                             'bullish_index','bullish_confirmation_index','attack','maturity_index',
                             'flip_high_index','alternation_low_index','pullback_index','impulse_high_index','impulse_origin_index',
                             'origin_index','peak_index','minimum_close_index','eligibility_frozen_at',
-                            'key_known_index','higher_breakout_index','higher_confirmation_index'):
+                            'key_known_index','higher_breakout_index','higher_confirmation_index',
+                            'candidate_known_index','base_start_index','base_end_index'):
                     if isinstance(item.get(key),int) and 0<=item[key]<=signal.bar_index:
                         item[key+'_date']=bars[item[key]].timestamp.date().isoformat()
                 evidence.append(item)
@@ -93,6 +94,19 @@ def enrich_ledger(bars, result, generated, strategy):
                     order['entry_conditions'][0]=check('分级双买点证据',proof,
                         '新正N突破已知二/三级波段高 → 守防守、放量收盘突破抵抗阶段高 → 双重轧空',chain)
                     order['entry_conditions'][2]=check('局部N回撤（仅展示）',signal.retracement,'不附加交替回撤过滤',None)
+                if proof and proof.get('buy_point_type')=='shallow_base_breakout':
+                    ratio=proof['counter_ratio']
+                    chain=(proof['origin_index']<proof['flip_high_index']<proof['alternation_low_index']
+                        and proof['candidate_known_index']<proof['attack']==signal.bar_index)
+                    order['entry_conditions'][0]=check('浅回撤交替待选',proof,
+                        '已确认高低锚点 → 来源级回撤低点待选 → 横盘突破',chain)
+                    order['entry_conditions'][1]=check('横盘突破',proof['breakout_close'],
+                        f"> {proof['base_high']}（此前区间高）",proof['breakout_close']>proof['base_high'])
+                    order['entry_conditions'][2]=check('待选回撤比例',ratio,'≥ 0.618 且 < 2/3',
+                        0.618<=ratio<2/3)
+                    order['entry_conditions'][3]=check('突破量 / 前20日均量',proof['breakout_volume_multiple'],
+                        '≥ 2 且 > 前日量',proof['breakout_volume_multiple']>=2
+                        and proof['breakout_volume']>proof['previous_volume'])
             order['trigger_timestamp']=signal.trigger_timestamp.isoformat()
         if order['status']=='filled':
             if order['side']=='BUY': serial+=1;active=f'{bar.symbol}-trade-{serial}'
