@@ -18,6 +18,7 @@ import { LectureOverlay, lectureConnections, secondaryConnections } from "./lect
 import { tertiaryRetracementGuides } from "./retracement-guides.js";
 import { TradeMarkerOverlay } from "./trade-marker-overlay.js";
 import { waveCProjection } from "./wave-c-projection.js";
+import { WaveEndpointOverlay, selectedWaveEndpoints } from "./wave-endpoint-overlay.js";
 
 const L = window.LightweightCharts;
 if (!L) throw new Error("TradingView SDK 未加载，请检查本地 npm 依赖。");
@@ -161,6 +162,8 @@ export class PriceChart {
         this.candles.attachPrimitive(this.lectureOverlay);
         this.tradeMarkerOverlay = new TradeMarkerOverlay(container);
         this.candles.attachPrimitive(this.tradeMarkerOverlay);
+        this.waveEndpointOverlay = new WaveEndpointOverlay(container);
+        this.candles.attachPrimitive(this.waveEndpointOverlay);
         this.focusFlashOverlay = new FocusFlashOverlay(container);
         this.candles.attachPrimitive(this.focusFlashOverlay);
         this.tooltip = document.createElement("div");
@@ -289,6 +292,7 @@ export class PriceChart {
                 raw: projection,
             };
             this.selected = selected;
+            this.waveEndpointOverlay.setPoints([]);
             this.drawLevels();
             this.onSelect([selected]);
         });
@@ -302,6 +306,7 @@ export class PriceChart {
         this.data = data;
         this.theory = null;
         this.selected = null;
+        this.waveEndpointOverlay.setPoints([]);
         this.tooltip.hidden = true;
         this.clearTheory();
         this.clearLevels();
@@ -533,7 +538,18 @@ export class PriceChart {
         const selected = this.windowAnnotations.find((m) => m.id === id) || this.lectureOverlay.annotation(id);
         if (!selected) return;
         this.selected = selected;
-        if (focus) this.focus(selected.time);
+        const endpoints = selectedWaveEndpoints(selected, this.data?.bars || []);
+        this.waveEndpointOverlay.setPoints(endpoints);
+        if (focus) {
+            if (endpoints.length) {
+                const first = this.data.bars.findIndex((bar) => bar.time === endpoints[0].time);
+                const last = this.data.bars.findIndex((bar) => bar.time === endpoints.at(-1).time);
+                this.chart.timeScale().setVisibleLogicalRange({
+                    from: Math.max(0, first - 12),
+                    to: Math.min(this.data.bars.length + 3, last + 12),
+                });
+            } else this.focus(selected.time);
+        }
         this.drawLevels();
         this.onSelect(items || [selected]);
     }

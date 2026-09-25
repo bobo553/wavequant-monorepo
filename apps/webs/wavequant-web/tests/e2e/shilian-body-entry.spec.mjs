@@ -37,4 +37,5 @@ test("Shilian non-gap body breakout buys September 16 without repeat", async ({ 
         .click();
     await expect(page.locator("#selection-info")).toContainText("放量中大阳线突破");
     await expect(page.locator("#selection-info")).toContainText("无需跳空");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-wave-endpoint-count", "3");
 });
