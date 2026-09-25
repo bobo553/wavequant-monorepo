@@ -123,59 +123,120 @@ test("empty, unknown, flat or inverted waves never draw guide prices", () => {
     }
 });
 
-test("clicking either endpoint of a confirmed tertiary leg draws that leg's thirds", () => {
+test("confirmed tertiary endpoints use the preceding leg and never a later point", () => {
     const points = [
-        { kind: "L", time: "2026-01-01", value: 4, available_at: "2026-01-03" },
-        { kind: "H", time: "2026-01-04", value: 16, available_at: "2026-01-06" },
-        { kind: "L", time: "2026-01-08", value: 7, available_at: "2026-01-10" },
+        { kind: "L", index: 0, time: "2026-01-01", value: 4, available_at: "2026-01-03" },
+        { kind: "H", index: 1, time: "2026-01-04", value: 16, available_at: "2026-01-06" },
+        { kind: "L", index: 2, time: "2026-01-08", value: 7, available_at: "2026-01-10" },
     ];
+    const theory = { tertiary_trends: { strokes: [{ id: "formal", points }] } };
     const candles = ["2026-01-01", "2026-01-04", "2026-01-08", "2026-01-12"].map((time) => ({ time }));
-    const select = (point) => {
-        const index = points.indexOf(point);
-        return {
-            kind: "trend",
-            raw: {
-                point,
-                adjacent: points[index - 1] || points[1],
-                scope: "lecture_level3_not_strategy_confirmation",
-            },
-        };
-    };
+    const select = (point) => ({
+        kind: "trend",
+        raw: { point, stroke_id: "formal", trend_level: 3, scope: "lecture_level3_not_strategy_confirmation" },
+    });
     assert.deepEqual(
-        selectedTertiaryThirds(select(points[1]), candles, "2026-01-12").map(({ title, price, start, end }) => ({
-            title,
-            price,
-            start,
-            end,
-        })),
+        selectedTertiaryThirds(select(points[1]), theory, candles, "2026-01-12").map(
+            ({ title, price, start, end }) => ({
+                title,
+                price,
+                start,
+                end,
+            }),
+        ),
         [
             { title: "Ⅲ 波段 1/3", price: 12, start: "2026-01-01", end: "2026-01-12" },
             { title: "Ⅲ 波段 2/3", price: 8, start: "2026-01-01", end: "2026-01-12" },
         ],
     );
     assert.deepEqual(
-        selectedTertiaryThirds(select(points[2]), candles, "2026-01-12").map(({ price }) => price),
+        selectedTertiaryThirds(select(points[2]), theory, candles, "2026-01-12").map(({ price }) => price),
         [13, 10],
     );
-    assert.deepEqual(
-        selectedTertiaryThirds(select(points[0]), candles, "2026-01-12").map(({ price }) => price),
-        [12, 8],
-    );
-    assert.deepEqual(selectedTertiaryThirds(select(points[2]), candles, "2026-01-09"), []);
-    assert.deepEqual(selectedTertiaryThirds(select(points[1]), candles, "2026-01-05"), []);
+    assert.deepEqual(selectedTertiaryThirds(select(points[0]), theory, candles, "2026-01-12"), []);
+    assert.deepEqual(selectedTertiaryThirds(select(points[2]), theory, candles, "2026-01-09"), []);
+    assert.deepEqual(selectedTertiaryThirds(select(points[1]), theory, candles, "2026-01-05"), []);
     assert.deepEqual(
         selectedTertiaryThirds(
             {
                 kind: "trend",
                 raw: {
                     point: points[1],
-                    adjacent: points[0],
+                    stroke_id: "formal",
+                    trend_level: 2,
                     scope: "lecture_level2_not_strategy_confirmation",
                 },
             },
+            theory,
             candles,
             "2026-01-12",
         ),
         [],
+    );
+});
+
+test("Guofang 2025-05-29 developing high uses the preceding 2025-01-13 secondary low", () => {
+    const low = { index: 1767, kind: "L", time: "2025-01-13", value: 5.887904563293728, available_at: "2025-06-18" };
+    const high = { index: 1855, kind: "H", time: "2025-05-29", value: 21.54344662717914, available_at: "2025-09-10" };
+    const laterLow = { index: 1910, kind: "L", time: "2025-08-15", value: 14.2, available_at: "2025-09-23" };
+    const source = { id: "guofang-secondary", points: [low, high, laterLow] };
+    const developing = {
+        kind: "tertiary-developing",
+        source_path: source.id,
+        points: [{ index: 1700, kind: "L", time: "2024-02-08", value: 4.4 }, high, laterLow],
+    };
+    const theory = { secondary_trends: { strokes: [source] } };
+    const selected = {
+        kind: "trend",
+        raw: { point: high, stroke: developing, trend_level: 3, scope: "display_only_developing_path" },
+    };
+    const bars = ["2025-01-13", "2025-05-29", "2025-08-15", "2025-09-23"].map((time) => ({ time }));
+    const guides = selectedTertiaryThirds(selected, theory, bars, "2025-09-23");
+    assert.deepEqual(
+        guides.map(({ start, low: anchorLow, high: anchorHigh }) => [start, anchorLow.time, anchorHigh.time]),
+        [
+            ["2025-01-13", "2025-01-13", "2025-05-29"],
+            ["2025-01-13", "2025-01-13", "2025-05-29"],
+        ],
+    );
+    assert.ok(Math.abs(guides[0].price - 16.324932605883998) < 1e-10);
+    assert.ok(Math.abs(guides[1].price - 11.106418584588862) < 1e-10);
+    assert.deepEqual(selectedTertiaryThirds(selected, theory, bars, "2025-09-09"), []);
+});
+
+test("selected thirds stop independently at the first strict break after the clicked endpoint", () => {
+    const low = { index: 0, kind: "L", time: "2026-01-01", value: 4, available_at: "2026-01-02" };
+    const high = { index: 1, kind: "H", time: "2026-01-02", value: 16, available_at: "2026-01-03" };
+    const nextLow = { index: 2, kind: "L", time: "2026-01-10", value: 7, available_at: "2026-01-11" };
+    const theory = { tertiary_trends: { strokes: [{ id: "formal", points: [low, high, nextLow] }] } };
+    const select = (point) => ({
+        kind: "trend",
+        raw: { point, stroke_id: "formal", trend_level: 3, scope: "lecture_level3_not_strategy_confirmation" },
+    });
+    const bars = [
+        { time: "2026-01-01", low: 4, high: 5 },
+        { time: "2026-01-02", low: 4, high: 16 },
+        { time: "2026-01-03", low: 12, high: 15 },
+        { time: "2026-01-04", low: 11.99, high: 14 },
+        { time: "2026-01-05", low: 8, high: 13 },
+        { time: "2026-01-06", low: 7.99, high: 12 },
+        { time: "2026-01-10", low: 7, high: 8 },
+        { time: "2026-01-11", low: 7.5, high: 13 },
+        { time: "2026-01-12", low: 8, high: 13.01 },
+        { time: "2026-01-13", low: 8, high: 10 },
+        { time: "2026-01-14", low: 8, high: 10.01 },
+        { time: "2026-01-15", low: 8, high: 9 },
+    ];
+    assert.deepEqual(
+        selectedTertiaryThirds(select(high), theory, bars, "2026-01-15").map((guide) => guide.end),
+        ["2026-01-04", "2026-01-06"],
+    );
+    assert.deepEqual(
+        selectedTertiaryThirds(select(nextLow), theory, bars, "2026-01-15").map((guide) => guide.end),
+        ["2026-01-12", "2026-01-11"],
+    );
+    assert.deepEqual(
+        selectedTertiaryThirds(select(nextLow), theory, bars, "2026-01-11").map((guide) => guide.end),
+        ["2026-01-11", "2026-01-11"],
     );
 });

@@ -132,3 +132,60 @@ test("clicking a tertiary swing endpoint shows that leg's dashed thirds", async 
     });
     expect(errors).toEqual([]);
 });
+
+test("Guofang 2025-05-29 developing high uses the January low", async ({ page }) => {
+    test.setTimeout(120_000);
+    const response = await page.request.get(
+        "/api/market-timeframe?source=akshare&symbol=sh.601086&asof=2026-09-18&timeframe=1d",
+        { timeout: 90_000 },
+    );
+    expect(response.ok(), await response.text()).toBe(true);
+    const snapshot = await response.json();
+    await page.goto("/research?page=workspace");
+    await page.waitForFunction(() => Boolean(globalThis.LightweightCharts));
+    const position = await page.evaluate(async ({ view, theory }) => {
+        const { PriceChart } = await import("/charts.js");
+        const container = globalThis.document.createElement("div");
+        container.id = "guofang-thirds-chart";
+        Object.assign(container.style, {
+            position: "fixed",
+            inset: "20px",
+            height: "600px",
+            background: "#111d2d",
+            zIndex: "9999",
+        });
+        globalThis.document.body.append(container);
+        const chart = new PriceChart(container, () => {});
+        chart.setData(view);
+        chart.setTheory(theory);
+        chart.chart.timeScale().setVisibleRange({ from: "2025-01-01", to: "2025-06-30" });
+        await new Promise((resolve) =>
+            globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(resolve)),
+        );
+        const projected = chart.lectureOverlay.projected.find((item) => item.stroke.kind === "tertiary-developing");
+        const point = projected.points.find((item) => item.point.time === "2025-05-29");
+        globalThis.guofangThirdsChart = chart;
+        const bounds = container.getBoundingClientRect();
+        return { x: bounds.left + point.x, y: bounds.top + point.y };
+    }, snapshot);
+    await page.mouse.click(position.x, position.y);
+    await expect(page.locator("#guofang-thirds-chart")).toHaveAttribute("data-tertiary-retracement-guides", "2");
+    const evidence = await page.evaluate(() => {
+        const chart = globalThis.guofangThirdsChart;
+        return {
+            scope: chart.selected?.raw?.scope,
+            clicked: chart.selected?.raw?.point?.time,
+            lines: chart.tertiaryRetracementLines.map((line) => line.data()),
+        };
+    });
+    expect(evidence.scope).toBe("display_only_developing_path");
+    expect(evidence.clicked).toBe("2025-05-29");
+    expect(evidence.lines.map((line) => [line[0].time, line[0].value, line.at(-1).time])).toEqual([
+        ["2025-01-13", 11.95, "2025-06-19"],
+        ["2025-01-13", 8.129999999999999, "2026-04-24"],
+    ]);
+    await page.evaluate(() => {
+        globalThis.guofangThirdsChart.destroy();
+        globalThis.document.querySelector("#guofang-thirds-chart").remove();
+    });
+});

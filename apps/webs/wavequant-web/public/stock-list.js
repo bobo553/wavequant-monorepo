@@ -1,4 +1,5 @@
 import { names } from "./labels.js";
+import { formatBacktestElapsed } from "./backtest-job-status.js";
 
 export function stockInfo(stock) {
     const symbol = stock.symbol,
@@ -35,6 +36,7 @@ export class StockList {
         this.query = "";
         this.limit = 100;
         this.backtestStatuses = {};
+        this.backtestJobs = [];
     }
     setStocks(stocks, selected) {
         this.stocks = stocks;
@@ -46,8 +48,9 @@ export class StockList {
         this.selected = symbol;
         this.render();
     }
-    setBacktestStatuses(statuses) {
+    setBacktestStatuses(statuses, jobs = []) {
         this.backtestStatuses = statuses;
+        this.backtestJobs = jobs;
         this.render();
     }
     setQuery(query) {
@@ -96,9 +99,21 @@ export class StockList {
                 const badge = document.createElement("span");
                 badge.className = "stock-backtest-badge";
                 badge.dataset.status = backtestStatus;
-                badge.textContent = backtestStatus === "running" ? "回测中" : backtestStatus === "completed" ? "已回测" : "回测失败";
+                badge.textContent = backtestStatus === "running" ? "回测中"
+                    : backtestStatus === "completed" ? "已回测"
+                    : backtestStatus === "unknown" ? "状态待确认" : "回测失败";
                 b.append(badge);
-                b.setAttribute("aria-label", `${s.name} ${s.code} ${s.exchange} ${badge.textContent}`);
+                const runningJob = backtestStatus === "running"
+                    ? this.backtestJobs.find((job) => job.symbol === s.symbol && job.status === "running")
+                    : null;
+                const elapsed = formatBacktestElapsed(runningJob?.elapsed_seconds);
+                if (elapsed) {
+                    const duration = document.createElement("small");
+                    duration.className = "stock-backtest-elapsed";
+                    duration.textContent = elapsed;
+                    b.append(duration);
+                }
+                b.setAttribute("aria-label", `${s.name} ${s.code} ${s.exchange} ${badge.textContent}${elapsed ? ` ${elapsed}` : ""}`);
             }
             b.addEventListener("click", () => this.onSelect(s.symbol));
             this.list.append(b);

@@ -86,9 +86,10 @@ test("a stalled catalog request ends and uses the existing browser catalog", asy
     const result = await loadStockCatalog("akshare", "/api/akshare-catalog", {
         storage,
         timeoutMs: 10,
-        fetcher: (_path, { signal }) => new Promise((_, reject) => {
-            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-        }),
+        fetcher: (_path, { signal }) =>
+            new Promise((_, reject) => {
+                signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+            }),
     });
     assert.equal(result.catalog_cache, "offline");
     assert.equal(result.stocks[0].symbol, "sz.000001");

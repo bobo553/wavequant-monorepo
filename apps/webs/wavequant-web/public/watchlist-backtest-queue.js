@@ -13,6 +13,24 @@ export function backtestArgumentsKey(path, params) {
     ]);
 }
 
+export function watchlistBacktestRequest(member, context) {
+    const path = `/api/${context.source}-backtest`;
+    const params = {
+        run: context.run,
+        variant: context.variant,
+        scenario: context.scenario,
+        start: context.start,
+        volume_filter: context.volume_filter,
+        net_reward_risk_filter: context.net_reward_risk_filter,
+        shallow_base_breakout_enabled: context.shallow_base_breakout_enabled,
+        initial_capital: context.initial_capital,
+        max_position_weight: context.max_position_weight,
+        symbol: member.symbol,
+        asof: member.asof,
+    };
+    return { path, params };
+}
+
 /** Runs the visible watchlist in order while the research workbench is idle. */
 export class IdleWatchlistBacktests {
     constructor({ snapshot, version, run, isIdle, onChange, onCompleted, onRejected, serverJobs = () => [], hasCapacity = () => true, now = Date.now, versionRefreshMs = DEFAULT_VERSION_REFRESH_MS }) {
@@ -145,6 +163,58 @@ export class IdleWatchlistBacktests {
         return this.context?.source === source && this.statuses.get(symbol) === "completed" && this.completedJobs.has(symbol);
     }
 
+    adoptCompleted(path, params, result, version) {
+        const member = this.members.find((item) => item.symbol === params.symbol && item.asof === params.asof);
+        if (!member || !this.context || !this.strategyVersion || version !== this.strategyVersion ||
+            result?.symbol !== member.symbol || result?.asof !== member.asof ||
+            result?.result_scope !== "stock" || !result?.backtest || result.backtest.status === "data_unavailable") return false;
+        const expected = watchlistBacktestRequest(member, this.context);
+        if (path !== expected.path || backtestArgumentsKey(path, params) !== backtestArgumentsKey(expected.path, expected.params))
+            return false;
+        if (this.statuses.get(member.symbol) === "completed") return true;
+        this.statuses.set(member.symbol, "completed");
+        this.completedJobs.set(member.symbol, { path, params });
+        this.fillCounts.set(member.symbol, (result.orders || []).filter((order) => order.status === "filled").length);
+        this.failures.delete(member.symbol);
+        this.retryAt.delete(member.symbol);
+        this.retryCounts.delete(member.symbol);
+        this.emit();
+        return true;
+    }
+
+    adoptServerStatus(record) {
+        const member = this.members.find((item) => item.symbol === record?.symbol && item.asof === record?.params?.asof);
+        if (!member || !this.context || !this.strategyVersion || record.version !== this.strategyVersion) return false;
+        const expected = watchlistBacktestRequest(member, this.context);
+        if (record.path !== expected.path ||
+            backtestArgumentsKey(record.path, record.params) !== backtestArgumentsKey(expected.path, expected.params)) return false;
+        if (this.active?.member.symbol === member.symbol && this.active.job?.params.backtest_job !== record.job) return false;
+        if (record.status === "completed" && record.result_valid === true) {
+            if (this.statuses.get(member.symbol) === "completed") return false;
+            this.statuses.set(member.symbol, "completed");
+            if (record.result_available && record.job) {
+                this.completedJobs.set(member.symbol, {
+                    path: record.path,
+                    params: { ...record.params, backtest_job: record.job },
+                });
+            } else this.completedJobs.delete(member.symbol);
+            if (Number.isInteger(record.fill_count)) this.fillCounts.set(member.symbol, record.fill_count);
+            this.failures.delete(member.symbol);
+            this.retryAt.delete(member.symbol);
+            this.retryCounts.delete(member.symbol);
+            this.emit();
+            return true;
+        }
+        if (record.status === "failed" && this.statuses.get(member.symbol) !== "completed" &&
+            this.statuses.get(member.symbol) !== "failed") {
+            this.statuses.set(member.symbol, "failed");
+            this.failures.set(member.symbol, "服务器回测失败，可点击重试");
+            this.emit();
+            return true;
+        }
+        return false;
+    }
+
     retryFailed() {
         for (const [symbol, status] of this.statuses) {
             if (status === "failed") this.statuses.delete(symbol);
@@ -156,46 +226,58 @@ export class IdleWatchlistBacktests {
         void this.tick();
     }
 
+    async ensureVersion(snapshot = this.snapshot()) {
+        this.sync(snapshot);
+        if (!snapshot || !this.members.length) return false;
+        if (this.checking) {
+            await this.versionRequest.catch(() => {});
+            return Boolean(this.strategyVersion);
+        }
+        if (this.now() - this.lastVersionCheck < this.versionRefreshMs) return Boolean(this.strategyVersion);
+        const generation = this.generation;
+        this.checking = true;
+        this.emit();
+        try {
+            this.versionRequest = this.version(snapshot);
+            const response = await this.versionRequest;
+            if (generation !== this.generation) return false;
+            if (typeof response?.version !== "string" || !response.version) throw new Error("策略版本响应无效");
+            if (this.strategyVersion !== response.version) {
+                this.strategyVersion = response.version;
+                this.statuses.clear();
+                this.completedJobs.clear();
+                this.fillCounts.clear();
+                this.failures.clear();
+                this.retryAt.clear();
+                this.retryCounts.clear();
+                this.generation++;
+            }
+            this.error = "";
+            this.lastVersionCheck = this.now();
+            return true;
+        } catch (error) {
+            if (generation === this.generation) {
+                this.strategyVersion = null;
+                this.error = error.message || "策略版本读取失败";
+                this.lastVersionCheck = this.now();
+            }
+            return false;
+        } finally {
+            this.checking = false;
+            this.versionRequest = null;
+            this.emit();
+        }
+    }
+
     async tick() {
         const snapshot = this.snapshot();
         this.sync(snapshot);
-        if (!snapshot || !this.members.length || !this.enabled || !this.isIdle() || this.now() < this.blockedUntil) {
+        if (!snapshot || !this.members.length || this.now() < this.blockedUntil) {
             this.emit();
             return;
         }
         if (this.checking || this.active) return;
-        if (this.now() - this.lastVersionCheck >= this.versionRefreshMs) {
-            const generation = this.generation;
-            this.checking = true;
-            this.emit();
-            try {
-                const response = await this.version(snapshot);
-                if (generation !== this.generation) return;
-                if (typeof response?.version !== "string" || !response.version) throw new Error("策略版本响应无效");
-                if (this.strategyVersion !== response.version) {
-                    this.strategyVersion = response.version;
-                    this.statuses.clear();
-                    this.completedJobs.clear();
-                    this.fillCounts.clear();
-                    this.failures.clear();
-                    this.retryAt.clear();
-                    this.retryCounts.clear();
-                    this.generation++;
-                }
-                this.error = "";
-                this.lastVersionCheck = this.now();
-            } catch (error) {
-                if (generation === this.generation) {
-                    this.strategyVersion = null;
-                    this.error = error.message || "策略版本读取失败";
-                    this.lastVersionCheck = this.now();
-                }
-                return;
-            } finally {
-                this.checking = false;
-                this.emit();
-            }
-        }
+        if (!await this.ensureVersion(snapshot)) return;
         if (!this.enabled || !this.isIdle() || !this.strategyVersion || !this.hasCapacity()) return;
         const busySymbols = new Set(this.serverJobs().map((job) => job.symbol || job.params?.symbol));
         const member = this.members.find(({ symbol }) => !busySymbols.has(symbol) && !this.statuses.has(symbol)) ||

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+
 import { StockBacktestTasks } from "../public/stock-backtest-tasks.js";
 
 test("switching stocks retains each calculation and returning reuses its task", async () => {
@@ -30,17 +31,24 @@ test("switching stocks retains each calculation and returning reuses its task", 
 });
 
 test("changing parameters or strategy version creates a fresh calculation", async () => {
-    const tasks = new StockBacktestTasks({ run: async (task) => task.params.backtest_job, createJobId: (() => {
-        let index = 0;
-        return () => `job-${++index}`;
-    })() });
+    const tasks = new StockBacktestTasks({
+        run: async (task) => task.params.backtest_job,
+        createJobId: (() => {
+            let index = 0;
+            return () => `job-${++index}`;
+        })(),
+    });
     const params = { symbol: "sz.000001", asof: "2026-09-24", start: "2020-01-01" };
     const first = tasks.start("/api/tdx-backtest", params, { version: "v1" });
     const changedDate = tasks.start("/api/tdx-backtest", { ...params, start: "2021-01-01" }, { version: "v1" });
     const changedStrategy = tasks.start("/api/tdx-backtest", params, { version: "v2" });
     assert.notEqual(first, changedDate);
     assert.notEqual(first, changedStrategy);
-    assert.deepEqual(await Promise.all([first.promise, changedDate.promise, changedStrategy.promise]), ["job-1", "job-2", "job-3"]);
+    assert.deepEqual(await Promise.all([first.promise, changedDate.promise, changedStrategy.promise]), [
+        "job-1",
+        "job-2",
+        "job-3",
+    ]);
 });
 
 test("a selected automatic result is adopted without starting a second calculation", async () => {

@@ -726,6 +726,9 @@
 .watchlist-backtest-badge[data-status="completed"] {
     color: var(--green);
 }
+.watchlist-backtest-badge[data-status="historical"] {
+    color: var(--research-text-soft);
+}
 .watchlist-backtest-badge[data-status="failed"] {
     color: var(--red);
 }
@@ -1037,6 +1040,7 @@
     font-size: 10px;
 }
 .stock-item .stock-backtest-badge[data-status="failed"] { border-color: #713344; color: #ffa9b3; }
+.stock-item .stock-backtest-badge[data-status="unknown"] { border-color: #796637; color: #e6ce88; }
 .filters {
     flex-wrap: wrap;
 }

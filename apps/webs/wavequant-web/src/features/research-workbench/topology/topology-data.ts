@@ -403,4 +403,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "ed6bfa24861544f648368689f6f7e53c243e034d1fffdb3a0f728cdef895151f";
+export const strategySourceDigest = "94f71e35239a8ce21db58f1d28ea6cb8b0f80ea2702b747f97c227800db646a9";

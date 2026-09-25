@@ -171,7 +171,12 @@ export class PriceChart {
             const bounds = container.getBoundingClientRect();
             const hit = this.lectureOverlay.hitTest(event.clientX - bounds.left, event.clientY - bounds.top);
             const selected = hit && this.lectureOverlay.annotation(hit.externalId);
-            if (selected?.raw?.trend_level === 3 && selected.raw.scope === "lecture_level3_not_strategy_confirmation")
+            if (
+                selected?.raw?.trend_level === 3 &&
+                ["lecture_level3_not_strategy_confirmation", "display_only_developing_path"].includes(
+                    selected.raw.scope,
+                )
+            )
                 this.selectAnnotation(selected.id, false);
         };
         container.addEventListener("pointerup", this.onTertiaryPointerUp);
@@ -653,8 +658,16 @@ export class PriceChart {
     drawTertiaryRetracementGuides(to) {
         const visible =
             this.options.tertiaryRetracement && this.showTertiaryTrend && this.polylineEnabled
-                ? this.selected?.raw?.scope === "lecture_level3_not_strategy_confirmation"
-                    ? selectedTertiaryThirds(this.selected, this.data?.bars, this.theory?.asof || this.data?.asof || to)
+                ? this.selected?.raw?.trend_level === 3 &&
+                  ["lecture_level3_not_strategy_confirmation", "display_only_developing_path"].includes(
+                      this.selected.raw.scope,
+                  )
+                    ? selectedTertiaryThirds(
+                          this.selected,
+                          this.theory,
+                          this.data?.bars,
+                          this.theory?.asof || this.data?.asof || to,
+                      )
                     : tertiaryRetracementGuides(this.theory, this.data?.bars, to)
                 : [];
         const key = JSON.stringify(visible);

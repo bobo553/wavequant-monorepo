@@ -382,8 +382,9 @@ export class Watchlists {
         const fills = this.backtestFillCounts[symbol];
         badge.textContent = status === "completed" && Number.isInteger(fills)
             ? `已完成 · ${fills}笔成交`
-            : { pending: "待回测", running: "回测中", completed: "已完成", failed: "失败", unavailable: "无数据" }[status];
+            : { pending: "待回测", historical: "已回测 · 待更新", running: "回测中", unknown: "状态待确认", completed: "已完成", failed: "失败", unavailable: "无数据" }[status];
         badge.title = status === "failed" ? this.backtestFailures[symbol] || "回测失败"
+            : status === "historical" ? "服务器有历史回测记录，但数据源、日期、策略版本或参数与当前设置不一致；本轮仍待更新"
             : status === "completed" && fills === 0 ? "回测已完成，但没有实际模拟成交，图上不会有 B / S 成交标记" : badge.textContent;
         const open = row.querySelector(".watchlist-stock-open");
         if (open) open.setAttribute("aria-label", `${open.dataset.baseLabel}，${badge.textContent}${status === "failed" ? `：${badge.title}` : ""}`);

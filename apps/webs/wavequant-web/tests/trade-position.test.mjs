@@ -137,15 +137,24 @@ test("all buy fills in one open cycle share its marked position without claiming
         entry_time: "2026-09-21T00:00:00",
     };
     const view = { backtest: { open_positions: [open] } };
-    const first = { kind: "fill", side: "BUY", symbol: open.symbol, trade_id: open.trade_id,
-        timestamp: "2026-09-21T00:00:00", time: "2026-09-21" };
+    const first = {
+        kind: "fill",
+        side: "BUY",
+        symbol: open.symbol,
+        trade_id: open.trade_id,
+        timestamp: "2026-09-21T00:00:00",
+        time: "2026-09-21",
+    };
     const addon = { ...first, timestamp: "2026-09-22T00:00:00", time: "2026-09-22" };
     const past = { ...first, trade_id: "sz.001216-trade-1", timestamp: "2026-08-26T00:00:00" };
 
     assert.equal(openPositionForMarker(view, first), open);
     assert.equal(openPositionForMarker(view, addon), open);
     assert.equal(openPositionForMarker(view, past), null);
-    assert.equal(openPositionForMarker({ backtest: { open_positions: [{ ...open, trade_id: undefined }] } }, addon), null);
+    assert.equal(
+        openPositionForMarker({ backtest: { open_positions: [{ ...open, trade_id: undefined }] } }, addon),
+        null,
+    );
 });
 
 test("partial and final sales show cumulative original-cost returns, never the remaining lot return", () => {

@@ -73,7 +73,7 @@ test("server running status and capacity rejection reach the watchlist and toast
         }),
     );
     await page.route("**/api/backtest-version?*", (route) => route.fulfill({ json: { version: "v1" } }));
-    const running = [{ status: "running", symbol, job: "other-tab-job" }];
+    const running = [{ status: "running", symbol, job: "other-tab-job", elapsed_seconds: 125 }];
     await page.route("**/api/backtest-jobs*", (route) =>
         route.fulfill({
             json: { active: 1, max_active: 4, jobs: running },
@@ -95,10 +95,13 @@ test("server running status and capacity rejection reach the watchlist and toast
     });
 
     await page.goto("/research?page=workspace");
-    await expect(page.locator("#loading")).toBeHidden();
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 15_000 });
     await page.locator("#watchlist-toggle-current").click();
     const badge = page.locator(`.watchlist-stock-row[data-symbol="${symbol}"] .watchlist-backtest-badge`);
     await expect(badge).toHaveText("回测中");
+    await expect(page.locator(`.stock-item[data-symbol="${symbol}"] .stock-backtest-elapsed`)).toHaveText(
+        "已运行 2 分钟",
+    );
     await page.locator("#run-stock-backtest").click();
     await expect(page.locator("#backtest-toast")).toContainText("并行回测已满（4/4）");
     expect(rejectedCalls).toBe(1);

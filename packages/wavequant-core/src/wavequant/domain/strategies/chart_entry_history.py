@@ -2,6 +2,7 @@
 
 from dataclasses import asdict, replace
 from collections.abc import Sequence
+from copy import deepcopy
 
 from ..market_structure.lecture_drawing import lecture_drawing
 from ..market_structure.lecture_trend import reversal_trends
@@ -11,7 +12,30 @@ from ..models.model import Bar
 from .hierarchical_entry import EntryContext
 
 
-def chart_entry_history(bars: Sequence[Bar], *, audit=(), shallow_candidate_sink=None) -> tuple[dict[int, tuple[EntryContext, ...]], list[dict[str, object]]]:
+def _copy_replay_state(state):
+    """Detach only containers the next callback extends or replaces.
+
+    Dated entries, events, landmarks, and level reductions are read-only after
+    publication. The drawing's live point list is the exception: its final
+    developing endpoint may be replaced by the next candle.
+    """
+    (
+        history, events, active, first_seen, retired, closed, previous_epoch,
+        previous_raw, signature, landmarks, invalidated, levels,
+        shallow_candidate, resistance_key, anchors_at_attack, prior_shallow,
+    ) = state
+    return (
+        history.copy(), events.copy(), active.copy(), first_seen.copy(),
+        retired.copy(), closed.copy(), previous_epoch, deepcopy(previous_raw),
+        signature, landmarks.copy(), invalidated.copy(), levels,
+        shallow_candidate, resistance_key, anchors_at_attack.copy(),
+        prior_shallow.copy(),
+    )
+
+
+def chart_entry_history(
+    bars: Sequence[Bar], *, audit=(), shallow_candidate_sink=None, prefix_cache=None
+) -> tuple[dict[int, tuple[EntryContext, ...]], list[dict[str, object]]]:
     """Share confirmed landmarks, including cross-path continuity, with trading.
 
     Only a prefix is reduced. A source-confirmed pullback is entry evidence,
@@ -36,9 +60,42 @@ def chart_entry_history(bars: Sequence[Bar], *, audit=(), shallow_candidate_sink
     levels = ()
     shallow_candidate = None
     resistance_key = None
+    last = len(bars) - 1
+    # Intraday replays change only the unfinished last candle. All earlier
+    # drawing steps (and their expensive hierarchy reductions) are identical.
+    # Include the earlier attack dates because they control stored anchors.
+    prefix_key = (
+        tuple(bars[:-1]),
+        frozenset(i for i in attacks if i < last),
+        shallow_candidate_sink is not None,
+    )
+    cached_key = prefix_cache.get("key") if prefix_cache is not None else None
+    if cached_key == prefix_key:
+        resume_start = last
+    elif (
+        cached_key is not None
+        and cached_key[0] == tuple(bars[:-2])
+        and cached_key[1] == frozenset(i for i in attacks if i < last - 1)
+        and cached_key[2] == (shallow_candidate_sink is not None)
+    ):
+        # Yesterday was unfinished when the prior checkpoint was saved. Replay
+        # its final candle, then today's partial candle, from the older state.
+        resume_start = last - 1
+    else:
+        resume_start = 0
+    if resume_start:
+        (
+            history, events, active, first_seen, retired, closed, previous_epoch,
+            previous_raw, signature, landmarks, invalidated, levels,
+            shallow_candidate, resistance_key, anchors_at_attack, prior_shallow,
+        ) = _copy_replay_state(prefix_cache["checkpoint"])
+        if shallow_candidate_sink is not None:
+            shallow_candidate_sink.update(prior_shallow)
 
     def accept(i, epoch, raw):
         nonlocal previous_epoch, previous_raw, signature, landmarks, active, invalidated, levels, resistance_key, shallow_candidate
+        if i < resume_start:
+            return
         if previous_epoch is not None and epoch != previous_epoch and len(previous_raw) > 1:
             closed.append(dict(id=f"lecture-{previous_epoch}", points=previous_raw))
         previous_epoch, previous_raw = epoch, raw
@@ -143,6 +200,14 @@ def chart_entry_history(bars: Sequence[Bar], *, audit=(), shallow_candidate_sink
         retired.update(set(active) - set(current))
         active = current
         history[i] = tuple(current.values())
+        if prefix_cache is not None and resume_start != last and i == last - 1:
+            prefix_cache["key"] = prefix_key
+            prefix_cache["checkpoint"] = _copy_replay_state((
+                history, events, active, first_seen, retired, closed, previous_epoch,
+                previous_raw, signature, landmarks, invalidated, levels,
+                shallow_candidate, resistance_key, anchors_at_attack,
+                dict(shallow_candidate_sink or {}),
+            ))
 
     lecture_drawing(bars, on_step=accept)
     if audit:

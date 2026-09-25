@@ -8,8 +8,18 @@ test("only transient strategy reload and service errors are retried", () => {
     assert.equal(isRecoverableBacktestError(new Error("服务暂时不可用（HTTP 500 Internal Server Error）")), true);
     assert.equal(isRecoverableBacktestError(new TypeError("Failed to fetch")), true);
     assert.equal(isRecoverableBacktestError(Object.assign(new Error("service busy"), { httpStatus: 503 })), true);
-    assert.equal(isRecoverableBacktestError(Object.assign(new Error("at capacity"), { httpStatus: 503, code: "BACKTEST_CAPACITY" })), false);
-    assert.equal(isRecoverableBacktestError(Object.assign(new Error("stock busy"), { httpStatus: 409, code: "BACKTEST_SYMBOL_RUNNING" })), false);
+    assert.equal(
+        isRecoverableBacktestError(
+            Object.assign(new Error("at capacity"), { httpStatus: 503, code: "BACKTEST_CAPACITY" }),
+        ),
+        false,
+    );
+    assert.equal(
+        isRecoverableBacktestError(
+            Object.assign(new Error("stock busy"), { httpStatus: 409, code: "BACKTEST_SYMBOL_RUNNING" }),
+        ),
+        false,
+    );
     assert.equal(isRecoverableBacktestError(new Error("HTTP 400 invalid symbol")), false);
     assert.equal(isRecoverableBacktestError(new Error("首次回测计算超时")), false);
     assert.equal(

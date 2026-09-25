@@ -51,7 +51,7 @@ test("idle queue follows visible row order and waits for foreground activity to 
         },
     });
     const running = subject.controller.tick();
-    await Promise.resolve();
+    await new Promise(setImmediate);
     assert.deepEqual(calls, ["sz.000002"]);
     subject.setIdle(false);
     finishFirst();
@@ -63,6 +63,99 @@ test("idle queue follows visible row order and waits for foreground activity to 
     await subject.controller.tick();
     assert.deepEqual(calls, ["sz.000002", "sz.000001"]);
     assert.equal(subject.controller.state().completed, 2);
+});
+
+test("a matching completed stock task updates the watchlist without running it again", async () => {
+    const context = {
+        run: "example",
+        variant: "lecture_v3",
+        scenario: "base",
+        source: "akshare",
+        start: "2018-01-01",
+        volume_filter: "true",
+        net_reward_risk_filter: "false",
+        shallow_base_breakout_enabled: "true",
+        initial_capital: 100_000,
+        max_position_weight: 1,
+    };
+    const member = { symbol: "sz.000002", name: "列表首位", asof: "2026-09-24" };
+    const subject = queue();
+    subject.setSnapshot({ context, members: [member] });
+    subject.controller.setEnabled(false);
+    subject.setIdle(false);
+    subject.controller.hasCapacity = () => false;
+    await subject.controller.tick();
+    assert.equal(subject.controller.strategyVersion, "v1");
+    const path = "/api/akshare-backtest";
+    const params = {
+        ...context,
+        symbol: member.symbol,
+        asof: member.asof,
+        backtest_job: "manual-job",
+    };
+    delete params.source;
+    const completed = { ...result(member), orders: [{ status: "filled" }] };
+    assert.equal(subject.controller.adoptCompleted(path, params, completed, "v1"), true);
+    assert.equal(subject.controller.state().statuses[member.symbol], "completed");
+    assert.equal(subject.controller.state().fillCounts[member.symbol], 1);
+    assert.equal(subject.controller.matchingJobId(path, params), "manual-job");
+    subject.controller.setEnabled(true);
+    subject.setIdle(true);
+    subject.controller.hasCapacity = () => true;
+    await subject.controller.tick();
+    assert.deepEqual(subject.calls, []);
+    assert.equal(subject.controller.adoptCompleted(path, { ...params, start: "2019-01-01" }, completed, "v1"), false);
+    assert.equal(subject.controller.adoptCompleted(path, params, completed, "outdated"), false);
+});
+
+test("server completion restores a watchlist badge after reload without a local task", async () => {
+    const context = {
+        run: "example",
+        variant: "lecture_v3",
+        scenario: "base",
+        source: "akshare",
+        start: "2018-01-01",
+        volume_filter: "true",
+        net_reward_risk_filter: "false",
+        shallow_base_breakout_enabled: "true",
+        initial_capital: 100_000,
+        max_position_weight: 1,
+    };
+    const member = { symbol: "sz.300154", name: "瑞凌股份", asof: "2026-09-24" };
+    const subject = queue();
+    subject.setSnapshot({ context, members: [member] });
+    subject.controller.setEnabled(false);
+    await subject.controller.ensureVersion();
+    const { source, ...params } = context;
+    const record = {
+        symbol: member.symbol,
+        path: "/api/akshare-backtest",
+        params: { ...params, symbol: member.symbol, asof: member.asof },
+        job: "server-job",
+        version: "v1",
+        status: "completed",
+        result_valid: true,
+        result_available: true,
+        fill_count: 2,
+    };
+    assert.equal(subject.controller.adoptServerStatus(record), true);
+    assert.equal(subject.controller.state().statuses[member.symbol], "completed");
+    assert.equal(subject.controller.state().fillCounts[member.symbol], 2);
+    assert.equal(subject.controller.matchingJobId(record.path, record.params), "server-job");
+    assert.equal(subject.controller.adoptServerStatus({ ...record, version: "v2" }), false);
+    assert.equal(
+        subject.controller.adoptServerStatus({ ...record, params: { ...record.params, start: "2019-01-01" } }),
+        false,
+    );
+
+    const expired = queue();
+    expired.setSnapshot({ context, members: [member] });
+    expired.controller.setEnabled(false);
+    await expired.controller.ensureVersion();
+    assert.equal(expired.controller.adoptServerStatus({ ...record, result_available: false }), true);
+    assert.equal(expired.controller.state().statuses[member.symbol], "completed");
+    assert.equal(expired.controller.matchingJobId(record.path, record.params), null);
+    assert.equal(source, "akshare");
 });
 
 test("strategy fingerprint change invalidates finished stocks and backtests from the top again", async () => {
@@ -124,7 +217,7 @@ test("context edits discard an old in-flight result instead of crediting the new
         },
     });
     const running = subject.controller.tick();
-    await Promise.resolve();
+    await new Promise(setImmediate);
     subject.setSnapshot({
         context: { run: "example", variant: "lecture_v3_c50", source: "akshare" },
         members: [{ symbol: "sz.000002", name: "列表首位", asof: "2026-09-24" }],
@@ -147,14 +240,18 @@ test("changing strategy aborts the old client wait and starts the new queue", as
             attempts++;
             if (attempts > 1) return Promise.resolve(result(member));
             return new Promise((_, reject) => {
-                active.controller.signal.addEventListener("abort", () => reject(new DOMException("stale", "AbortError")), {
-                    once: true,
-                });
+                active.controller.signal.addEventListener(
+                    "abort",
+                    () => reject(new DOMException("stale", "AbortError")),
+                    {
+                        once: true,
+                    },
+                );
             });
         },
     });
     const old = subject.controller.tick();
-    await Promise.resolve();
+    await new Promise(setImmediate);
     subject.setSnapshot({
         context: { run: "example", variant: "lecture_v3_c50", source: "akshare" },
         members: [{ symbol: "sz.000001", name: "新策略首位", asof: "2026-09-24" }],
@@ -173,9 +270,13 @@ test("switching data source aborts an old queued calculation before its first re
             if (context.source === "akshare") {
                 active.queued = true;
                 return new Promise((_, reject) => {
-                    active.controller.signal.addEventListener("abort", () => reject(new DOMException("stale", "AbortError")), {
-                        once: true,
-                    });
+                    active.controller.signal.addEventListener(
+                        "abort",
+                        () => reject(new DOMException("stale", "AbortError")),
+                        {
+                            once: true,
+                        },
+                    );
                 });
             }
             submitted.push(context.source);
@@ -183,7 +284,7 @@ test("switching data source aborts an old queued calculation before its first re
         },
     });
     const old = subject.controller.tick();
-    await Promise.resolve();
+    await new Promise(setImmediate);
     assert.equal(subject.controller.active?.queued, true);
     subject.setSnapshot({
         context: { run: "example", variant: "lecture_v3", source: "tdx" },
@@ -236,7 +337,7 @@ test("transient failure retries after the first pass and a matching manual reque
         },
     });
     const running = activeSubject.controller.tick();
-    await Promise.resolve();
+    await new Promise(setImmediate);
     assert.equal(
         activeSubject.controller.matchingJobId("/api/akshare-backtest", {
             asof: "2026-09-24",
@@ -271,9 +372,13 @@ test("a completed stock keeps its job identity for opening the real chart result
     await subject.controller.tick();
     assert.equal(subject.controller.hasCompleted("sz.000002", "akshare"), true);
     assert.equal(subject.controller.state().fillCounts["sz.000002"], 1);
-    assert.equal(subject.controller.matchingJobId("/api/akshare-backtest", {
-        symbol: "sz.000002", asof: "2026-09-24",
-    }), "completed-job");
+    assert.equal(
+        subject.controller.matchingJobId("/api/akshare-backtest", {
+            symbol: "sz.000002",
+            asof: "2026-09-24",
+        }),
+        "completed-job",
+    );
     assert.deepEqual(completed, [["sz.000002", "completed-job"]]);
     subject.setSnapshot({
         context: { run: "example", variant: "lecture_v3_c50", source: "akshare" },
@@ -281,9 +386,13 @@ test("a completed stock keeps its job identity for opening the real chart result
     });
     subject.controller.sync(subject.controller.snapshot());
     assert.equal(subject.controller.hasCompleted("sz.000002", "akshare"), false);
-    assert.equal(subject.controller.matchingJobId("/api/akshare-backtest", {
-        symbol: "sz.000002", asof: "2026-09-24",
-    }), null);
+    assert.equal(
+        subject.controller.matchingJobId("/api/akshare-backtest", {
+            symbol: "sz.000002",
+            asof: "2026-09-24",
+        }),
+        null,
+    );
 });
 
 test("version lookup failure blocks dispatch and retries after the refresh interval", async () => {
@@ -317,9 +426,10 @@ test("capacity and same-stock rejection defer without marking a watchlist stock 
         version: async () => ({ version: "v1" }),
         run: async (member) => {
             calls++;
-            if (calls < 3) throw Object.assign(new Error("rejected"), {
-                code: calls === 1 ? "BACKTEST_CAPACITY" : "BACKTEST_SYMBOL_RUNNING",
-            });
+            if (calls < 3)
+                throw Object.assign(new Error("rejected"), {
+                    code: calls === 1 ? "BACKTEST_CAPACITY" : "BACKTEST_SYMBOL_RUNNING",
+                });
             return result(member);
         },
         isIdle: () => true,

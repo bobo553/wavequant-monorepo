@@ -124,6 +124,8 @@ $env:WAVEQUANT_DATABASE_URL = "postgresql+psycopg://wavequant:<password>@127.0.0
 
 `GET /api/tdx-backtest` 支持可选 `net_reward_risk_filter=true|false`（缺省 `false`，不接受重复或非布尔字符串）；写入执行配置和回测缓存键，仅控制次开盘含费净盈亏比不足的拒单门槛，不改变信号或除权价格。
 
+`GET /api/backtest-jobs` 返回运行中的 `jobs` 及最近任务的 `recent`。完成摘要包含规范化请求参数、策略版本、状态、实际成交笔数和 `result_available`；前端只在这些字段与当前自选股回测条件一致时恢复已完成状态。摘要写入结果根目录的 `.backtest-history.sqlite`，最多保留 256 条、7 天，服务重启后仍可读取；完整结果按原有上限最多保留 24 条、15 分钟。服务端没有匹配记录时，不能仅凭浏览器标记宣称已完成。
+
 ## 每日涨停天梯
 
 `GET /api/limit-up-ladder?date=2026-09-21&refresh=false` 通过 AkShare `stock_zt_pool_em` 读取指定日期东方财富涨停池；省略日期使用北京时间当天。仅接受 YYYY-MM-DD、非未来日期；refresh=true 强制重新读取。

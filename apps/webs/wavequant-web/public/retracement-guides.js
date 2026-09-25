@@ -37,31 +37,44 @@ export function tertiaryRetracementGuides(theory, bars, windowEnd) {
     });
 }
 
-export function selectedTertiaryThirds(selected, bars, asof) {
+export function selectedTertiaryThirds(selected, theory, bars, asof) {
     const point = selected?.raw?.point;
-    const neighbor = selected?.raw?.adjacent;
-    if (
-        selected?.kind !== "trend" ||
-        selected.raw.scope !== "lecture_level3_not_strategy_confirmation" ||
-        !bars?.length
-    )
-        return [];
-    if (!point || !neighbor || point.kind === neighbor.kind || ![point.value, neighbor.value].every(Number.isFinite))
-        return [];
-    const first = point.time < neighbor.time ? point : neighbor;
-    const last = point.time < neighbor.time ? neighbor : point;
+    const raw = selected?.raw;
+    if (selected?.kind !== "trend" || raw?.trend_level !== 3 || !point || !bars?.length) return [];
+    const developing = raw.scope === "display_only_developing_path";
+    if (!developing && raw.scope !== "lecture_level3_not_strategy_confirmation") return [];
+    const source = developing
+        ? theory?.secondary_trends?.strokes?.find((stroke) => stroke.id === raw.stroke?.source_path)
+        : theory?.tertiary_trends?.strokes?.find((stroke) => stroke.id === raw.stroke_id);
+    const points = source?.points || [];
+    const position = points.findIndex(
+        (candidate) =>
+            candidate.time === point.time &&
+            candidate.kind === point.kind &&
+            candidate.value === point.value &&
+            candidate.index === point.index,
+    );
+    if (position < 1) return [];
+    const neighbor = points.slice(0, position).findLast((candidate) => candidate.kind !== point.kind);
+    if (!neighbor || ![point.value, neighbor.value].every(Number.isFinite)) return [];
+    const first = neighbor;
+    const last = point;
     const end = bars.findLast((bar) => bar.time <= asof)?.time;
     const start = first.time < bars[0].time ? bars[0].time : first.time;
     if (!end || last.time > end || point.available_at > asof || neighbor.available_at > asof || start >= end) return [];
     const high = point.kind === "H" ? point : neighbor;
     const low = point.kind === "L" ? point : neighbor;
     if (high.value <= low.value) return [];
-    return [1, 2].map((thirds) => ({
-        title: `Ⅲ 波段 ${thirds}/3`,
-        price: high.value - ((high.value - low.value) * thirds) / 3,
-        start,
-        end,
-        low,
-        high,
-    }));
+    return [1, 2].map((thirds) => {
+        const price = high.value - ((high.value - low.value) * thirds) / 3;
+        const firstBreak = bars.find(
+            (bar) =>
+                bar.time > point.time &&
+                bar.time <= end &&
+                (point.kind === "H"
+                    ? Number.isFinite(bar.low) && bar.low < price
+                    : Number.isFinite(bar.high) && bar.high > price),
+        );
+        return { title: `Ⅲ 波段 ${thirds}/3`, price, start, end: firstBreak?.time || end, low, high };
+    });
 }

@@ -18,6 +18,7 @@ export class StockBacktestTasks {
         if (this.adoptedKey && this.adoptedKey !== key) this.tasks.delete(this.adoptedKey);
         const task = {
             key,
+            version,
             path,
             params: { ...params, backtest_job: jobId || this.createJobId() },
             symbol: params.symbol,
@@ -42,6 +43,7 @@ export class StockBacktestTasks {
         if (this.adoptedKey === key) this.adoptedKey = null;
         const task = {
             key,
+            version,
             path,
             params: { ...params, backtest_job: jobId || this.createJobId() },
             symbol: params.symbol,

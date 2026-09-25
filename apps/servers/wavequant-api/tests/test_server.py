@@ -539,7 +539,10 @@ class VisualizationTests(unittest.TestCase):
             finally:
                 conn.close()
 
-        with patch.object(self.repo, "akshare_backtest", side_effect=backtest) as mock:
+        with (
+            patch.object(self.repo, "akshare_backtest", side_effect=backtest) as mock,
+            patch.object(self.repo, "backtest_version", return_value={"version": "strategy-v1"}),
+        ):
             first = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
             try:
                 first.request("GET", base + "&backtest_job=running-stock-0001")
@@ -548,6 +551,7 @@ class VisualizationTests(unittest.TestCase):
                 self.assertEqual((status, snapshot["active"], snapshot["max_active"]), (200, 1, 1))
                 self.assertEqual(snapshot["jobs"][0]["symbol"], "sz.300154")
                 self.assertEqual(snapshot["jobs"][0]["job"], "running-stock-0001")
+                self.assertGreaterEqual(snapshot["jobs"][0]["elapsed_seconds"], 0)
                 self.assertNotIn("result", snapshot["jobs"][0])
                 status, duplicate = request(base + "&backtest_job=other-stock-job-0002")
                 self.assertEqual(
@@ -562,7 +566,11 @@ class VisualizationTests(unittest.TestCase):
                 release.set()
                 self.assertEqual(first.getresponse().status, 200)
                 first.close()
-            self.assertEqual(request("/api/backtest-jobs")[1]["jobs"], [])
+            completed = request("/api/backtest-jobs")[1]
+            self.assertEqual(completed["jobs"], [])
+            self.assertEqual(completed["recent"][0]["status"], "completed")
+            self.assertEqual(completed["recent"][0]["version"], "strategy-v1")
+            self.assertEqual(completed["recent"][0]["params"]["max_position_weight"], "1")
 
     def test_backtest_job_survives_disconnect_and_new_id_rechecks_data(self):
         server = self.http_server()
@@ -595,7 +603,9 @@ class VisualizationTests(unittest.TestCase):
                 first.request("GET", base + f"&backtest_job={job_id}")
                 self.assertTrue(entered.wait(5))
                 first.close()
-                self.assertEqual(request(f"/api/backtest-job?job={job_id}"), (202, {"status": "running"}))
+                status, running = request(f"/api/backtest-job?job={job_id}")
+                self.assertEqual((status, running["status"]), (202, "running"))
+                self.assertGreaterEqual(running["elapsed_seconds"], 0)
             finally:
                 release.set()
                 first.close()

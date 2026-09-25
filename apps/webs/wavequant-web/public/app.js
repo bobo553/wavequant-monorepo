@@ -1,6 +1,6 @@
 import { reasonText } from "./annotations.js";
 import { retryBacktest, waitForBacktestJob } from "./backtest-retry.js";
-import { runningBacktestStatuses } from "./backtest-job-status.js";
+import { expiredBacktestSnapshot, formatBacktestElapsed, historicalBacktestStatuses, runningBacktestStatuses } from "./backtest-job-status.js";
 import { parseBacktestSizing } from "./backtest-sizing.js";
 import {
     blockedNodeMeta,
@@ -23,11 +23,12 @@ import { closedPositionLabel, openPositionForMarker, openPositionProfit, positio
 import { numberedTradeReasons } from "./trade-reasons.js";
 import { appendTradeEvidence } from "./trade-review.js";
 import { TradingViewWidget } from "./tradingview-widget.js";
-import { backtestArgumentsKey, IdleWatchlistBacktests } from "./watchlist-backtest-queue.js";
+import { backtestArgumentsKey, IdleWatchlistBacktests, watchlistBacktestRequest } from "./watchlist-backtest-queue.js";
 import { Watchlists } from "./watchlists.js";
 
 const $ = (id) => document.getElementById(id);
 let serverBacktestSnapshot = { active: 0, max_active: 4, jobs: [] };
+let serverBacktestSnapshotSeenAt = Date.now();
 let backtestToastTimer;
 function showBacktestToast(message) {
     let toast = $("backtest-toast");
@@ -45,6 +46,7 @@ function showBacktestToast(message) {
 function showBacktestRejection(error) {
     if (Array.isArray(error.jobs)) {
         serverBacktestSnapshot = { active: error.active, max_active: error.max_active, jobs: error.jobs };
+        serverBacktestSnapshotSeenAt = Date.now();
         renderServerBacktestStatuses();
         watchlistBacktests.emit();
     }
@@ -257,10 +259,15 @@ function renderStockBacktestStatus() {
     status.hidden = !current && !others;
     status.dataset.status = current?.status || "background";
     const name = current ? symbolName(current.symbol) : "";
+    const currentServerJob = serverBacktestSnapshot.jobs.find((job) => job.symbol === current?.symbol);
+    const elapsed = formatBacktestElapsed(currentServerJob?.elapsed_seconds);
+    const serverStatus = serverBacktestSnapshot.unavailable
+        ? "服务器任务状态暂不可确认。"
+        : elapsed ? `${elapsed}。` : "";
     const priorResult = current?.status === "running" && state.view?.symbol === current.symbol &&
         state.view.result_scope === "stock" ? "图中成交标记为上次结果，完成后更新。" : "";
     $("stock-backtest-status-text").textContent = current?.status === "running"
-        ? `${name} · ${current.message} 可继续查看或切换股票。${priorResult}`
+        ? `${name} · ${current.message} ${serverStatus}可继续查看或切换股票。${priorResult}`
         : current?.status === "completed"
           ? `${name} · 回测已完成，结果已显示在当前股票。`
           : current?.status === "failed"
@@ -269,11 +276,15 @@ function renderStockBacktestStatus() {
     $("stock-backtest-other").textContent = others ? `另有 ${others} 只股票仍在后台回测。` : "";
     const statuses = {};
     for (const task of stockBacktestTasks.tasks.values()) statuses[task.symbol] = task.status;
-    const merged = runningBacktestStatuses(statuses, serverBacktestSnapshot.jobs);
-    const serialized = JSON.stringify(merged);
+    const merged = runningBacktestStatuses(statuses, serverBacktestSnapshot.jobs, {
+        unavailable: serverBacktestSnapshot.unavailable,
+    });
+    const serialized = JSON.stringify([merged, serverBacktestSnapshot.jobs.map(
+        (job) => [job.symbol, job.elapsed_seconds],
+    )]);
     if (serialized !== lastStockBacktestStatuses) {
         lastStockBacktestStatuses = serialized;
-        stockList.setBacktestStatuses(merged);
+        stockList.setBacktestStatuses(merged, serverBacktestSnapshot.jobs);
     }
 }
 const stockBacktestTasks = new StockBacktestTasks({
@@ -310,6 +321,7 @@ const stockBacktestTasks = new StockBacktestTasks({
     onChange: (task) => {
         if (task === state.activeBacktestTask) renderStockBacktestStatus();
         else if (stockBacktestTasks.tasks.size) renderStockBacktestStatus();
+        if (task.status === "completed") syncCompletedStockBacktests();
     },
 });
 const activeTimeframe = () => (isMarketBrowse() ? selectedTimeframe() : "1d");
@@ -1760,6 +1772,10 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             ...(isTdxBacktest() ? currentBacktestSizing() : {}),
         };
         const backtestPath = isAkShare() ? "/api/akshare-backtest" : "/api/tdx-backtest";
+        if (backtestMode && !watchlistBacktests.strategyVersion) {
+            await watchlistBacktests.ensureVersion();
+            if (sequence !== state.sequence) return;
+        }
         const task = backtestMode ? stockBacktestTasks.start(backtestPath, backtestParams, {
             version: watchlistBacktests.strategyVersion || "",
             force: forceBacktest,
@@ -2016,7 +2032,8 @@ for (const eventName of ["pointerdown", "keydown", "input", "wheel"]) {
 }
 const watchlistBacktests = new IdleWatchlistBacktests({
     serverJobs: () => serverBacktestSnapshot.jobs,
-    hasCapacity: () => serverBacktestSnapshot.active < serverBacktestSnapshot.max_active,
+    hasCapacity: () => !serverBacktestSnapshot.unavailable &&
+        serverBacktestSnapshot.active < serverBacktestSnapshot.max_active,
     snapshot: () => {
         if (!state.catalog || !watchlists.available) return null;
         const source = sourceForScope($("result-scope").value);
@@ -2055,23 +2072,9 @@ const watchlistBacktests = new IdleWatchlistBacktests({
     },
     version: ({ context }) => api("/api/backtest-version", { run: context.run, variant: context.variant }),
     run: async (member, { context }, active) => {
-        const { source, run, variant, scenario, start, volume_filter, net_reward_risk_filter, shallow_base_breakout_enabled } = context;
-        const params = {
-            run,
-            variant,
-            scenario,
-            start,
-            volume_filter,
-            net_reward_risk_filter,
-            shallow_base_breakout_enabled,
-            initial_capital: context.initial_capital,
-            max_position_weight: context.max_position_weight,
-            symbol: member.symbol,
-            asof: member.asof,
-            backtest_job: crypto.randomUUID(),
-        };
-        const path = source === "akshare" ? "/api/akshare-backtest" : "/api/tdx-backtest";
-        const catalogEtag = (source === "akshare" ? state.akshare : state.tdx)?.catalog_etag || "";
+        const { path, params: requestParams } = watchlistBacktestRequest(member, context);
+        const params = { ...requestParams, backtest_job: crypto.randomUUID() };
+        const catalogEtag = state[context.source]?.catalog_etag || "";
         const completionKey = sharedBacktestCompletionPrefix + JSON.stringify([
             watchlistBacktests.strategyVersion,
             catalogEtag,
@@ -2159,6 +2162,8 @@ const watchlistBacktests = new IdleWatchlistBacktests({
         void loadView({ preferTrades: true });
     },
     onChange: ({ enabled, ready, version, source, checking, idle, active, queued, draining, statuses, fillCounts, failures, total, completed, failed, retrying, capacityFull, error }) => {
+        if (syncServerBacktestHistory()) return;
+        if (syncCompletedStockBacktests()) return;
         const toggle = $("watchlist-auto-backtest-toggle");
         toggle.setAttribute("aria-pressed", String(enabled));
         toggle.textContent = enabled ? "暂停" : "继续";
@@ -2169,6 +2174,8 @@ const watchlistBacktests = new IdleWatchlistBacktests({
         const status = $("watchlist-backtest-status");
         const activeIndex = active ? watchlistBacktests.members.findIndex((member) => member.symbol === active.symbol) + 1 : 0;
         const sourceLabel = source === "akshare" ? "AkShare" : "通达信";
+        const activeServerJob = serverBacktestSnapshot.jobs.find((job) => job.symbol === active?.symbol);
+        const activeElapsed = formatBacktestElapsed(activeServerJob?.elapsed_seconds);
         status.textContent = !ready
             ? "等待可用行情和回测参数…"
             : draining
@@ -2176,7 +2183,7 @@ const watchlistBacktests = new IdleWatchlistBacktests({
             : queued
               ? `其他页面正在自动回测，${active.name}（${active.symbol}）已排队…`
             : active
-              ? `${sourceLabel} ${activeIndex}/${total}：正在回测 ${active.name}（${active.symbol}）；已完成 ${completed}，失败 ${failed}${enabled ? "" : "。完成当前股票后暂停"}`
+              ? `${sourceLabel} ${activeIndex}/${total}：正在回测 ${active.name}（${active.symbol}）${activeElapsed ? `，${activeElapsed}` : ""}${serverBacktestSnapshot.unavailable ? "，服务器任务状态暂不可确认" : ""}；已完成 ${completed}，失败 ${failed}${enabled ? "" : "。完成当前股票后暂停"}`
               : !enabled
                 ? `已暂停 · 已完成 ${completed}/${total}，失败 ${failed}`
                 : !total
@@ -2189,6 +2196,8 @@ const watchlistBacktests = new IdleWatchlistBacktests({
                           : failed
                             ? `本轮已结束：完成 ${completed}/${total}，失败 ${failed} 只；可点击重试失败`
                             : `自动回测已完成 ${completed}/${total}；等待策略更新`
+                    : serverBacktestSnapshot.unavailable
+                      ? "服务器任务状态暂不可确认，等待连接恢复…"
                     : capacityFull
                       ? `并行回测已满（${serverBacktestSnapshot.active}/${serverBacktestSnapshot.max_active}），等待空位…`
                     : !idle
@@ -2199,10 +2208,29 @@ const watchlistBacktests = new IdleWatchlistBacktests({
         renderServerBacktestStatuses({ statuses, ready, failures, fillCounts });
     },
 });
+function syncServerBacktestHistory() {
+    if (!Array.isArray(serverBacktestSnapshot.recent) || !watchlistBacktests.strategyVersion) return false;
+    watchlistBacktests.sync(watchlistBacktests.snapshot());
+    for (const record of serverBacktestSnapshot.recent) {
+        if (watchlistBacktests.adoptServerStatus(record)) return true;
+    }
+    return false;
+}
+function syncCompletedStockBacktests() {
+    watchlistBacktests.sync(watchlistBacktests.snapshot());
+    if (!watchlistBacktests.strategyVersion) return false;
+    for (const task of stockBacktestTasks.tasks.values()) {
+        if (task.status !== "completed" || watchlistBacktests.statuses.get(task.symbol) === "completed") continue;
+        if (watchlistBacktests.adoptCompleted(task.path, task.params, task.result, task.version)) return true;
+    }
+    return false;
+}
 function renderServerBacktestStatuses(queueState = watchlistBacktests.state()) {
     const { statuses, ready, failures, fillCounts } = queueState;
     watchlists.setBacktestStatuses(
-        runningBacktestStatuses(statuses, serverBacktestSnapshot.jobs),
+        runningBacktestStatuses(historicalBacktestStatuses(statuses, serverBacktestSnapshot.recent), serverBacktestSnapshot.jobs, {
+            unavailable: serverBacktestSnapshot.unavailable,
+        }),
         ready ? new Set(watchlistBacktests.members.map((member) => member.symbol)) : null,
         failures,
         fillCounts,
@@ -2213,12 +2241,18 @@ let serverBacktestStatusRequest = null;
 async function refreshServerBacktestStatuses() {
     if (serverBacktestStatusRequest) return serverBacktestStatusRequest;
     serverBacktestStatusRequest = api("/api/backtest-jobs").then((snapshot) => {
-        if (!Array.isArray(snapshot.jobs)) return;
+        if (!Array.isArray(snapshot.jobs)) throw new Error("回测任务状态格式异常");
         serverBacktestSnapshot = snapshot;
+        serverBacktestSnapshotSeenAt = Date.now();
+        syncServerBacktestHistory();
         renderServerBacktestStatuses();
         watchlistBacktests.emit();
     }).catch(() => {
-        // Transient status lookup failure leaves the last known state visible.
+        const expired = expiredBacktestSnapshot(serverBacktestSnapshot, serverBacktestSnapshotSeenAt);
+        if (expired === serverBacktestSnapshot || serverBacktestSnapshot.unavailable) return;
+        serverBacktestSnapshot = expired;
+        renderServerBacktestStatuses();
+        watchlistBacktests.emit();
     }).finally(() => { serverBacktestStatusRequest = null; });
     return serverBacktestStatusRequest;
 }

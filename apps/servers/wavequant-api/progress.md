@@ -1,5 +1,9 @@
 # Progress
 
+- MONOREPO-181：运行任务记录单调时钟开始时间，`GET /api/backtest-jobs` 与运行中的 `GET /api/backtest-job` 返回 `elapsed_seconds`；并发上限 4 和同股互斥不变。现场排查乐心时任务数从 1 增至 2，均未满载。API 定向测试 41 项及 10 个子测试、Ruff 检查与格式检查通过；真实 `sz.300562` 任务完成并返回 60 笔成交。
+
+- MONOREPO-182：`GET /api/backtest-jobs` 在运行任务之外返回最近完成摘要，按请求签名在结果根目录 SQLite 保留最多 256 条、最长 7 天，服务重启后仍可读取；结果正文仍按原有 24 条/15 分钟短期保留。摘要仅含规范化参数、策略版本、状态、实际成交笔数与结果可读取标记，版本/参数不匹配由前端排除。API 95 项通过、1 外部环境项跳过、18 子测试通过，Ruff 与构建通过；目标文件 mypy 仍有 8 项既有错误。
+
 - MONOREPO-180：TDX/AkShare 及无任务 ID 的单股回测统一进入有界任务注册表；全局按股票互斥，满 4 个直接返回 503 `BACKTEST_CAPACITY`，同股返回 409 `BACKTEST_SYMBOL_RUNNING` 和现有任务 ID。`GET /api/backtest-jobs` 与拒绝响应提供原子运行快照，前端可同步徽标。API 92 项通过、1 跳过、18 子测试通过；Ruff 检查与格式检查通过。
 
 - MONOREPO-179：API 消费 Core 单源行情仓库后，AkShare/TDX 目录与日线响应均报告唯一的对应 provider、supplemented=0；所选源不可用时保留明确错误和 AkShare 503 语义。真实 8765 接口核对华瓷 AkShare 回测 09-15 加仓已成交；API 定向 40 项测试与 10 个子测试通过。

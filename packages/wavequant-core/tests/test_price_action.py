@@ -162,6 +162,17 @@ class PriceActionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 observe_attack(bars,1,level(),timeframe='1d')
 
+    def test_observe_attack_reuses_validated_immutable_prefix(self):
+        from unittest.mock import patch
+        from wavequant.domain.market_state import wave_strength
+        from wavequant.domain.models.validated_bars import ValidatedBars
+
+        certified = ValidatedBars(fixture())
+        with patch.object(wave_strength, '_validate_bar', side_effect=AssertionError('redundant validation')):
+            self.assertEqual(observe_attack(certified, 1, level(), timeframe='1d').bar_index, 1)
+            with self.assertRaisesRegex(AssertionError, 'redundant validation'):
+                observe_attack(list(certified), 1, level(), timeframe='1d')
+
     def test_invalid_shadow_policy(self):
         for value in (0,-.1,1.1,float('nan'),True):
             with self.assertRaises(ValueError): ShadowPolicy(value)

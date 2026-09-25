@@ -63,6 +63,10 @@ def resolve_consolidation_entries(
     snapshots, epochs = pivot_history(bars, strategy)[:2] if wave_candidates else ({}, {})
     daily_waves = {e["bar_index"]: e for e in audit if e["event"] == "long_signal" and e.get("wave_entry_path")}
     consumed_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
+    # Every minute prefix takes all earlier bars from this fixed full-history
+    # input. The strategy may therefore reuse observations ending before the
+    # current session across later sessions as well as later minutes.
+    chart_history_cache: dict = {"source_bars": tuple(bars)}
     for i, bar in enumerate(bars):
         preceding_daily = daily_waves.get(i - 1)
         if preceding_daily is not None:
@@ -202,7 +206,11 @@ def resolve_consolidation_entries(
             if observation in attempted:
                 continue
             attempted.add(observation)
-            replay = generate_system_signals(prefix, strategy)
+            replay = (
+                generate_system_signals(prefix, strategy, chart_history_cache=chart_history_cache)
+                if strategy.buy_point_definition == "whole_flip_wave_v3"
+                else generate_system_signals(prefix, strategy)
+            )
             proof = next(
                 (
                     e

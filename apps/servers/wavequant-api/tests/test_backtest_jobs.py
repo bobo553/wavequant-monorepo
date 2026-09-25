@@ -1,5 +1,7 @@
 """Bounded recovery state for disconnected backtest HTTP requests."""
 
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from threading import Event
 import unittest
 
@@ -62,8 +64,10 @@ class BacktestJobsTests(unittest.TestCase):
                 jobs.start("second-job", "other-args", lambda: rejected_calls.append(True))
             self.assertEqual(rejected_calls, [])
             self.assertIsNone(jobs.get("second-job"))
+            snapshot = jobs.snapshot()
+            self.assertGreaterEqual(snapshot["jobs"][0].pop("elapsed_seconds"), 0)
             self.assertEqual(
-                jobs.snapshot(),
+                snapshot,
                 {
                     "active": 1,
                     "max_active": 1,
@@ -75,12 +79,38 @@ class BacktestJobsTests(unittest.TestCase):
                             "params": {"symbol": "sz.000978"},
                         }
                     ],
+                    "recent": [],
                 },
             )
         finally:
             release.set()
         self.assertTrue(first.done.wait(5))
-        self.assertEqual(jobs.snapshot(), {"active": 0, "max_active": 1, "jobs": []})
+        finished = jobs.snapshot()
+        self.assertEqual((finished["active"], finished["jobs"]), (0, []))
+        self.assertEqual(finished["recent"][0]["job"], "first-job")
+
+    def test_elapsed_seconds_uses_monotonic_job_start_and_does_not_change_capacity(self):
+        now = [100.0]
+        jobs = BacktestJobs(max_active=1, clock=lambda: now[0])
+        entered, release = Event(), Event()
+
+        def slow_backtest():
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError("test backtest was not released")
+            return {"result": 1}
+
+        job = jobs.start("timed-job", "timed-args", slow_backtest, symbol="sz.300562")
+        try:
+            self.assertTrue(entered.wait(5))
+            now[0] = 112.34
+            self.assertEqual(jobs.snapshot()["jobs"][0]["elapsed_seconds"], 12.3)
+            self.assertEqual(jobs.elapsed_seconds(job), 12.3)
+            self.assertEqual(jobs.snapshot()["active"], 1)
+        finally:
+            release.set()
+        self.assertTrue(job.done.wait(5))
+        self.assertEqual(jobs.snapshot()["active"], 0)
 
     def test_active_limit_conflict_and_completed_retention(self):
         now = [0.0]
@@ -113,6 +143,63 @@ class BacktestJobsTests(unittest.TestCase):
         self.assertIs(jobs.get("second-job"), second)
         now[0] = 10
         self.assertIsNone(jobs.get("second-job"))
+
+    def test_completed_metadata_remains_after_result_expires_and_then_ages_out(self):
+        now = [0.0]
+        jobs = BacktestJobs(
+            max_completed=1,
+            completed_ttl_seconds=10,
+            max_history=2,
+            history_ttl_seconds=100,
+            clock=lambda: now[0],
+            history_clock=lambda: now[0],
+        )
+        details = {
+            "path": "/api/akshare-backtest",
+            "params": {"symbol": "sz.300154", "start": "2018-01-01"},
+            "symbol": "sz.300154",
+            "version": "strategy-v1",
+        }
+        first = jobs.start(
+            "first-job",
+            "first-args",
+            lambda: {
+                "result_scope": "stock",
+                "backtest": {"status": "complete"},
+                "orders": [{"status": "filled"}, {"status": "cancelled"}],
+            },
+            details=details,
+        )
+        self.assertTrue(first.done.wait(5))
+        recent = jobs.snapshot()["recent"]
+        self.assertEqual(len(recent), 1)
+        self.assertEqual(recent[0]["status"], "completed")
+        self.assertEqual(recent[0]["fill_count"], 1)
+        self.assertTrue(recent[0]["result_available"])
+        self.assertNotIn("result", recent[0])
+        now[0] = 10
+        self.assertIsNone(jobs.get("first-job"))
+        self.assertFalse(jobs.snapshot()["recent"][0]["result_available"])
+        now[0] = 100
+        self.assertEqual(jobs.snapshot()["recent"], [])
+
+    def test_completed_status_survives_server_registry_recreation(self):
+        with TemporaryDirectory() as folder:
+            history_path = Path(folder) / "backtest-history.sqlite"
+            first = BacktestJobs(history_path=history_path)
+            job = first.start(
+                "durable-job",
+                "durable-args",
+                lambda: {"result_scope": "stock", "backtest": {"status": "complete"}, "orders": []},
+                details={"symbol": "sz.300154", "version": "v1", "path": "/api/akshare-backtest"},
+            )
+            self.assertTrue(job.done.wait(5))
+            restored = BacktestJobs(history_path=history_path)
+            recent = restored.snapshot()["recent"]
+            self.assertEqual(len(recent), 1)
+            self.assertEqual(recent[0]["status"], "completed")
+            self.assertEqual(recent[0]["version"], "v1")
+            self.assertFalse(recent[0]["result_available"])
 
 
 if __name__ == "__main__":

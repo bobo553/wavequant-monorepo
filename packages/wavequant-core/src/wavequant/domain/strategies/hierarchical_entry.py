@@ -15,13 +15,27 @@ def _identity(p):
     return p['index'], p['ordinal'], p['kind'], p['value']
 
 
-def hierarchical_history(bars):
+def hierarchical_history(bars, *, prefix_cache=None):
     """Reuse the drawing reducers, but freeze availability on each daily prefix."""
     history = {}; epochs = {}; previous = {0: {}, 1: {}, 2: {}, 3: {}}
     last_epoch = None
+    last = len(bars) - 1
+    prefix_key = tuple(bars[:-1])
+    cached_key = prefix_cache.get('key') if prefix_cache is not None else None
+    resume_start = (last if cached_key == prefix_key else
+                    last - 1 if cached_key == tuple(bars[:-2]) else 0)
+    if resume_start:
+        saved_history, saved_epochs, saved_previous, last_epoch = prefix_cache['checkpoint']
+        # Each dated level consists of freshly built dictionaries that become
+        # read-only after publication. Only the outer maps grow on replay.
+        history, epochs, previous = (
+            saved_history.copy(), saved_epochs.copy(),
+            {level: known.copy() for level, known in saved_previous.items()})
 
     def accept(i, epoch, raw):
         nonlocal previous, last_epoch
+        if i < resume_start:
+            return
         if epoch != last_epoch:
             previous = {0: {}, 1: {}, 2: {}, 3: {}}
         last_epoch = epoch; epochs[i] = epoch
@@ -62,6 +76,11 @@ def hierarchical_history(bars):
             levels[level] = tuple(dict(index=p['index'], ordinal=p['ordinal'], kind=p['kind'],
                                       value=p['value'], available_at=p['available_at']) for p in source)
         history[i] = levels
+        if prefix_cache is not None and resume_start != last and i == last - 1:
+            prefix_cache['key'] = prefix_key
+            prefix_cache['checkpoint'] = (
+                history.copy(), epochs.copy(),
+                {level: known.copy() for level, known in previous.items()}, last_epoch)
 
     lecture_drawing(bars, on_step=accept)
     return history, epochs

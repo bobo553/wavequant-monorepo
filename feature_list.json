@@ -4,6 +4,77 @@
     "activeFeature": null,
     "features": [
         {
+            "id": "MONOREPO-182",
+            "name": "sync-manual-watchlist-backtest-completion",
+            "title": "自选股完成状态与服务器同步",
+            "description": "服务端持久化有界完成记录；自选股刷新页面后按策略版本、股票、数据源、截止日和参数恢复已完成状态，旧条件的记录明确标为待更新。",
+            "scope": "wavequant-api 任务状态快照；wavequant-web 自选股回测状态、任务复用与浏览器回归",
+            "dependencies": ["MONOREPO-180"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "手动回测完成后自选股显示已完成及真实成交笔数，总进度同步更新",
+                "服务器状态接口返回有界完成记录，刷新页面或服务重启后能恢复匹配的完成状态",
+                "服务器只有旧条件的完成记录时显示已回测但本轮待更新，不误称当前参数已完成",
+                "同一请求不被自动队列重复计算，参数或策略版本不一致时不误标完成",
+                "自动队列暂停或页面尚未空闲时仍可核对策略版本并同步状态",
+                "API/Web 定向单测、真实 Chromium、Lint、类型及生产构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/*.test.mjs; pnpm --filter wavequant-web lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "Web Node 单测、完整 Lint、类型检查及生产构建通过。全量 Vitest 的策略拓扑源码摘要断言因并行 Core 修改仍失败（13 通过、1 失败），与本次状态变更无关。"
+                },
+                {
+                    "command": "Playwright Chromium watchlist-manual-completion.spec.mjs",
+                    "status": "passed",
+                    "summary": "自动队列暂停时手动完成瑞凌股份回测，刷新页面后由服务器完成记录恢复进度 1/1，且只提交一次请求；服务器记录版本不同时显示已回测 · 待更新，进度 0/1。旧 watchlist-auto-backtest 用例仍在首只股票顺序断言失败。"
+                },
+                {
+                    "command": "wavequant-api pytest -q; Ruff check/format --check; build",
+                    "status": "passed",
+                    "summary": "任务状态接口返回有界完成摘要、真实成交笔数和结果可恢复标记；结果根目录 SQLite 在服务重启后恢复摘要，过期后不假称结果仍可读取。95 项 Python 测试、18 子测试通过，1 项外部环境项跳过；Ruff 与构建通过，目标文件 mypy 仍有 8 项既有错误。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-181",
+            "name": "resolve-long-running-lexin-backtest",
+            "title": "乐心股份长回测热点与运行状态修复",
+            "description": "定位 300562 长时间回测的真实计算热点，消除重复历史重算，并公开运行耗时及可靠状态。",
+            "scope": "wavequant-core 分钟确认性能，wavequant-api 回测任务耗时，wavequant-web 状态与失联处理",
+            "dependencies": ["MONOREPO-180"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "现场确认当前运行任务数量、乐心任务状态及主要耗时位置，并说明其与并行上限的关系",
+                "减少长历史分钟复核的重复计算，保持前缀信号和成交结果一致，实际乐心回测可完成",
+                "运行快照显示耗时；失联后的旧运行徽标有界失效而真实任务继续轮询",
+                "Core/API/Web 定向回归、真实任务与浏览器验证、构建及 Harness 检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "300562 live AkShare API backtest; backtest-jobs; py-spy; 2117-bar same/cross-day cache benchmark",
+                    "status": "passed",
+                    "summary": "服务器并发槽位上限4，现场任务数1至3；CPU热点为分钟候选重复计算多年历史。真实300562任务已完成，84笔订单、60笔成交、286个信号；运行中曾与两只股票并发。缓存与完整SystemResult严格一致，跨日1.021秒、同日后续1.415秒。"
+                },
+                {
+                    "command": "Core 36 targeted pytest; Ruff; Core build",
+                    "status": "passed",
+                    "summary": "跨日检查点、历史候选、转浪及退出筛选缓存与分钟入场回归通过；Ruff和构建通过。"
+                },
+                {
+                    "command": "API pytest test_backtest_jobs.py test_server.py; Ruff check/format; API build",
+                    "status": "passed",
+                    "summary": "41项测试及10个子测试通过；单调时钟运行时长出现在任务快照和轮询响应；格式、检查和构建通过。"
+                },
+                {
+                    "command": "Web test:unit; lint; typecheck; build; Chromium backtest-capacity-status; harness:check",
+                    "status": "passed",
+                    "summary": "Vitest 14项、Node 186项、真实Chromium运行时长徽标/容量提示、Web全部门禁与Harness通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-180",
             "name": "synchronize-and-bound-stock-backtests",
             "title": "回测并行状态同步与同股互斥",
@@ -108,12 +179,13 @@
             "id": "MONOREPO-177",
             "name": "selected-tertiary-wave-thirds",
             "title": "点击三级波段端点显示三分位虚线",
-            "description": "点击正式三级趋势线的波段高低点时，以相邻已确认端点计算当前波段的 1/3 和 2/3 价格参考线。",
+            "description": "点击三级正式端点或发展路径端点时，按该端点所属结构向前寻找来源级别的已确认波段端点，计算前一段的 1/3 和 2/3 价格参考线，并让各线止于此后首次严格跌破或突破的 K 线。",
             "scope": "wavequant-web 三级趋势端点点击、三分位参考线及交互回归",
             "dependencies": ["MONOREPO-107"],
             "status": "done",
             "acceptanceCriteria": [
-                "点击正式三级趋势线高点或低点后，图上显示所选波段的 1/3、2/3 水平虚线和价格",
+                "点击三级趋势线高点或低点后，图上显示截至该点的前一波段 1/3、2/3 水平虚线和价格；发展路径取其二级来源波段",
+                "上涨波段的每条三分位线止于端点后最低价首次严格跌破处，下跌波段止于最高价首次严格突破处；触线不算突破，尚未突破则延伸到当前数据末端",
                 "参考线只使用已确认端点；切股、切换选择或关闭三级趋势及回撤图层时同步恢复或清除",
                 "Web 定向单测、完整门禁、构建及真实 Chromium 点击回归通过"
             ],
@@ -127,6 +199,16 @@
                     "command": "pnpm exec playwright test tests/e2e/tertiary-selected-thirds.spec.mjs --workers=1",
                     "status": "passed",
                     "summary": "真实 Chromium 点击三级高点及低点分别显示对应波段的两条虚线，关闭三级图层后清除。"
+                },
+                {
+                    "command": "国芳集团 sh.601086 真实 market-timeframe 数据；node --test tests/*.test.mjs；Web lint/typecheck/build；tertiary-selected-thirds Chromium",
+                    "status": "passed",
+                    "summary": "2025-05-29 三级发展高点从二级来源路径回看 2025-01-13 低点，而非后续波段；182 项 Node 测试、Web Lint/类型/构建和 2 条 Chromium 点击回归通过。"
+                },
+                {
+                    "command": "node --test tests/retracement-guides.test.mjs；node --test tests/*.test.mjs；Web lint/typecheck/build；tertiary-selected-thirds Chromium",
+                    "status": "passed",
+                    "summary": "所选上涨波段两条线分别止于首次最低价严格跌破，所选下跌波段止于首次最高价严格突破；国芳集团真实 Chromium 端点为 2025-06-19 与 2026-04-24。9 项定向、184 项 Node、Web Lint/类型/构建及 2 条 Chromium 回归通过。"
                 }
             ]
         },

@@ -134,7 +134,11 @@ def make_server(
         if backtest_job_error(error)[0] == 500:
             logging.error("backtest job %s failed", job_id, exc_info=(type(error), error, error.__traceback__))
 
-    backtest_jobs = BacktestJobs(on_error=log_backtest_job_error)
+    history_root = getattr(repository, "root", None)
+    backtest_jobs = BacktestJobs(
+        on_error=log_backtest_job_error,
+        history_path=Path(history_root) / ".backtest-history.sqlite" if history_root is not None else None,
+    )
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -302,7 +306,7 @@ def make_server(
                         return
                     done, result, error = backtest_jobs.outcome(job)
                     if not done:
-                        self.send(202, {"status": "running"})
+                        self.send(202, {"status": "running", "elapsed_seconds": backtest_jobs.elapsed_seconds(job)})
                     elif error is not None:
                         status, message = backtest_job_error(error)
                         self.send(200, {"status": "failed", "error": message, "http_status": status})
@@ -431,6 +435,24 @@ def make_server(
                     job_id = q.get("backtest_job", [None])[0] or str(uuid4())
                     validate_backtest_job_id(job_id)
                     signature = json.dumps([url.path, backtest_args, options], sort_keys=True, allow_nan=False)
+                    normalized_params = dict(
+                        zip(("run", "variant", "symbol", "asof", "scenario", "start"), backtest_args)
+                    )
+                    normalized_params.update(
+                        volume_filter=volume_filter,
+                        net_reward_risk_filter=risk_values[0],
+                        shallow_base_breakout_enabled=shallow_values[0],
+                        initial_capital=str(int(initial_capital))
+                        if initial_capital.is_integer()
+                        else str(initial_capital),
+                        max_position_weight=str(int(max_position_weight))
+                        if max_position_weight.is_integer()
+                        else str(max_position_weight),
+                    )
+                    try:
+                        strategy_version = repository.backtest_version(backtest_args[0], backtest_args[1])["version"]
+                    except (KeyError, ValueError):
+                        strategy_version = None
                     job = backtest_jobs.start(
                         job_id,
                         signature,
@@ -438,8 +460,9 @@ def make_server(
                         symbol=q["symbol"][0],
                         details={
                             "path": url.path,
-                            "params": {key: values[0] for key, values in q.items() if key != "backtest_job"},
+                            "params": normalized_params,
                             "symbol": q["symbol"][0],
+                            "version": strategy_version,
                         },
                     )
                     job.done.wait()

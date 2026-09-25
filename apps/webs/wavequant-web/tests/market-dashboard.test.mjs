@@ -118,15 +118,18 @@ test("stock selection backtests only the currently selected AkShare or TDX sourc
     assert.match(canBacktest, /catalogHasSymbol\(state\[source\], symbol\)/);
     assert.doesNotMatch(canBacktest, /state\.tdx/);
     const automatic =
-        runtime.split("const watchlistBacktests = new IdleWatchlistBacktests(")[1]?.split("version: ({ context })")[0] ||
-        "";
+        runtime
+            .split("const watchlistBacktests = new IdleWatchlistBacktests(")[1]
+            ?.split("version: ({ context })")[0] || "";
     assert.match(automatic, /const source = sourceForScope\(\$\("result-scope"\)\.value\)/);
     assert.match(automatic, /const sourceCatalog = state\[source\]/);
     assert.match(automatic, /if \(!source\) return null/);
     assert.doesNotMatch(automatic, /state\.akshare\?\.with_daily \? "akshare" : "tdx"/);
-    const sourceChange = runtime.split('$("result-scope").addEventListener("change"')[1]?.split('$("symbol-select")')[0] || "";
+    const sourceChange =
+        runtime.split('$("result-scope").addEventListener("change"')[1]?.split('$("symbol-select")')[0] || "";
     assert.match(sourceChange, /void watchlistBacktests\.tick\(\)/);
-    const manual = runtime.split('$("run-stock-backtest").addEventListener("click"')[1]?.split('$("fills-only")')[0] || "";
+    const manual =
+        runtime.split('$("run-stock-backtest").addEventListener("click"')[1]?.split('$("fills-only")')[0] || "";
     assert.match(manual, /const source = sourceForScope\(\$\("result-scope"\)\.value\)/);
     assert.match(manual, /if \(!source \|\| !canBacktestSymbol/);
     assert.match(manual, /\$\("result-scope"\)\.value = `\$\{source\}-backtest`/);
@@ -304,7 +307,10 @@ test("the complete server-backed research workbench is composed from React featu
     assert.match(components, /id="chart-loading-overlay"/);
     assert.match(components, /className="chart-loading-spinner"/);
     assert.doesNotMatch(legacyRuntime, /el\.hidden = state\.loading \|\| state\.error/);
-    assert.match(legacyRuntime, /const hasRenderedView = Boolean\(state\.view && state\.view\.symbol === \$\("symbol-select"\)\.value\)/);
+    assert.match(
+        legacyRuntime,
+        /const hasRenderedView = Boolean\(state\.view && state\.view\.symbol === \$\("symbol-select"\)\.value\)/,
+    );
     assert.match(legacyRuntime, /\$\("chart-loading-overlay"\)\.hidden = backtestMode/);
     assert.equal((legacyRuntime.match(/\$\("chart-loading-overlay"\)\.hidden = true/g) || []).length, 2);
     for (const id of [
