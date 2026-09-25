@@ -38,6 +38,7 @@ class TdxBacktester:
         self.artifacts=ArtifactCache(self.cache)
         self.actions_lock=Lock(); self.actions_hash=None; self.actions_by_symbol={}
         self.engine=self._engine_hashes()
+        self.artifacts.clear_backtests_for_engine(self.engine)
 
     @staticmethod
     def _engine_hashes():

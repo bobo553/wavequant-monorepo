@@ -1201,10 +1201,8 @@ test("confirmed structure search distinguishes event and availability dates and 
     await expect(favorite).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("#watchlist-stock-list")).not.toContainText("中大力德");
     await favorite.click();
-    const railFavorite = page.locator(".watchlist-stock-remove");
-    await expect(railFavorite.locator("svg.tabler-icon-star-filled")).toHaveCount(1);
-    await expect(railFavorite).toHaveAttribute("aria-pressed", "true");
-    await railFavorite.click();
+    await expect(page.locator(".watchlist-stock-remove")).toHaveCount(0);
+    await favorite.click();
     await expect(favorite.locator("svg.tabler-icon-star")).toHaveCount(1);
     await expect(page.locator("#watchlist-stock-list")).not.toContainText("中大力德");
     await result.click();
@@ -1272,7 +1270,7 @@ test("categorized watchlists persist locally and preserve members when a categor
     expect(pageErrors).toEqual([]);
 });
 
-test("watchlist rows show one-line names and codes with borderless icon stars", async ({ page }, testInfo) => {
+test("watchlist rows reserve the right side for backtest results", async ({ page }, testInfo) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -1285,7 +1283,8 @@ test("watchlist rows show one-line names and codes with borderless icon stars", 
     const row = page.locator("#watchlist-stock-list .watchlist-stock-row");
     await expect(row).toHaveCount(1);
     await expect(row).not.toContainText("点击查看");
-    await expect(row.locator(".watchlist-stock-remove svg")).toHaveCount(1);
+    await expect(row.locator(".watchlist-stock-remove")).toHaveCount(0);
+    await expect(row.locator(".watchlist-backtest-result")).toBeHidden();
     await expect(chartStar.locator("svg")).toHaveCount(1);
     await page.locator("#watchlist-rail").screenshot({ path: testInfo.outputPath("watchlist-rail.png") });
 
@@ -1294,17 +1293,15 @@ test("watchlist rows show one-line names and codes with borderless icon stars", 
         const layout = await row.evaluate((element) => {
             const name = element.querySelector("strong")!.getBoundingClientRect();
             const code = element.querySelector("small")!.getBoundingClientRect();
-            const star = element.querySelector(".watchlist-stock-remove")!;
             return {
                 sameLine: Math.abs(name.y + name.height / 2 - (code.y + code.height / 2)) < 6,
                 rowBorder: getComputedStyle(element).borderTopWidth,
-                starBorder: getComputedStyle(star).borderTopWidth,
             };
         });
-        expect(layout).toEqual({ sameLine: true, rowBorder: "0px", starBorder: "0px" });
+        expect(layout).toEqual({ sameLine: true, rowBorder: "0px" });
     }
 
-    await row.locator(".watchlist-stock-remove").click();
+    await chartStar.click();
     await expect(row).toHaveCount(0);
     await expect(chartStar).toHaveAttribute("aria-pressed", "false");
     expect(pageErrors).toEqual([]);

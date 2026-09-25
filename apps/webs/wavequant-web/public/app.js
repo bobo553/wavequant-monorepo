@@ -1,6 +1,11 @@
 import { reasonText } from "./annotations.js";
+import {
+    expiredBacktestSnapshot,
+    formatBacktestElapsed,
+    historicalBacktestStatuses,
+    runningBacktestStatuses,
+} from "./backtest-job-status.js";
 import { retryBacktest, waitForBacktestJob } from "./backtest-retry.js";
-import { expiredBacktestSnapshot, formatBacktestElapsed, historicalBacktestStatuses, runningBacktestStatuses } from "./backtest-job-status.js";
 import { parseBacktestSizing } from "./backtest-sizing.js";
 import {
     blockedNodeMeta,
@@ -16,14 +21,14 @@ import { formatFilledTradeCopy } from "./filled-trade-copy.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
 import { parseResearchLink, resolveResearchLink } from "./research-link.js";
-import { StockList } from "./stock-list.js";
 import { StockBacktestTasks } from "./stock-backtest-tasks.js";
+import { StockList } from "./stock-list.js";
 import { StructureSignals } from "./structure-signals.js";
 import { closedPositionLabel, openPositionForMarker, openPositionProfit, positionProfit } from "./trade-position.js";
 import { numberedTradeReasons } from "./trade-reasons.js";
 import { appendTradeEvidence } from "./trade-review.js";
 import { TradingViewWidget } from "./tradingview-widget.js";
-import { backtestArgumentsKey, IdleWatchlistBacktests, watchlistBacktestRequest } from "./watchlist-backtest-queue.js";
+import { IdleWatchlistBacktests, backtestArgumentsKey, watchlistBacktestRequest } from "./watchlist-backtest-queue.js";
 import { Watchlists } from "./watchlists.js";
 
 const $ = (id) => document.getElementById(id);
@@ -41,7 +46,9 @@ function showBacktestToast(message) {
     toast.textContent = message;
     toast.hidden = false;
     clearTimeout(backtestToastTimer);
-    backtestToastTimer = setTimeout(() => { toast.hidden = true; }, 5_000);
+    backtestToastTimer = setTimeout(() => {
+        toast.hidden = true;
+    }, 5_000);
 }
 function showBacktestRejection(error) {
     if (Array.isArray(error.jobs)) {
@@ -51,9 +58,10 @@ function showBacktestRejection(error) {
         watchlistBacktests.emit();
     }
     if (error.code === "BACKTEST_CAPACITY")
-        showBacktestToast(`并行回测已满（${error.active ?? "?"}/${error.max_active ?? "?"}），请等待已有回测完成后重试`);
-    else if (error.code === "BACKTEST_SYMBOL_RUNNING")
-        showBacktestToast("该股票已有回测正在进行，请等待完成");
+        showBacktestToast(
+            `并行回测已满（${error.active ?? "?"}/${error.max_active ?? "?"}），请等待已有回测完成后重试`,
+        );
+    else if (error.code === "BACKTEST_SYMBOL_RUNNING") showBacktestToast("该股票已有回测正在进行，请等待完成");
 }
 const currentBacktestSizing = () => parseBacktestSizing($("backtest-capital").value, $("backtest-buy-ratio").value);
 const chartPreferenceKey = "wavequant.research.chart.v1";
@@ -215,9 +223,11 @@ state.tdxSessions = {};
 state.akshareSessions = {};
 const catalogRequests = new Map();
 const loadedCatalogs = new Set();
-const sourceForScope = (scope) => scope.startsWith("akshare") ? "akshare" : scope.startsWith("tdx") ? "tdx" : null;
+const sourceForScope = (scope) => (scope.startsWith("akshare") ? "akshare" : scope.startsWith("tdx") ? "tdx" : null);
 function catalogHasSymbol(catalog, symbol) {
-    return Boolean(catalog?.with_daily && catalog.stocks.some((stock) => stock.symbol === symbol && stock.has_data !== false));
+    return Boolean(
+        catalog?.with_daily && catalog.stocks.some((stock) => stock.symbol === symbol && stock.has_data !== false),
+    );
 }
 function syncSourceOptions() {
     const sources = [
@@ -233,13 +243,15 @@ function syncSourceOptions() {
 function ensureSourceCatalog(source) {
     if (loadedCatalogs.has(source)) return Promise.resolve(state[source]);
     if (catalogRequests.has(source)) return catalogRequests.get(source);
-    const request = loadStockCatalog(source, `/api/${source}-catalog`).then((catalog) => {
-        state[source] = catalog;
-        for (const stock of catalog.stocks || []) if (stock.name) names[stock.symbol] = stock.name;
-        if (catalog.with_daily) loadedCatalogs.add(source);
-        syncSourceOptions();
-        return catalog;
-    }).finally(() => catalogRequests.delete(source));
+    const request = loadStockCatalog(source, `/api/${source}-catalog`)
+        .then((catalog) => {
+            state[source] = catalog;
+            for (const stock of catalog.stocks || []) if (stock.name) names[stock.symbol] = stock.name;
+            if (catalog.with_daily) loadedCatalogs.add(source);
+            syncSourceOptions();
+            return catalog;
+        })
+        .finally(() => catalogRequests.delete(source));
     catalogRequests.set(source, request);
     return request;
 }
@@ -249,9 +261,39 @@ const isTdxBacktest = () => ["tdx-backtest", "akshare-backtest"].includes($("res
 const isLocal = () => isTdx() || $("result-scope").value === "tdx-backtest";
 const isMarketBrowse = () => isTdx() || $("result-scope").value === "akshare";
 let lastStockBacktestStatuses = "";
+function renderRunStockBacktestButton() {
+    const button = $("run-stock-backtest");
+    const symbol = $("symbol-select").value;
+    const status =
+        watchlists.backtestStatuses[symbol] ||
+        (state.activeBacktestTask?.symbol === symbol ? state.activeBacktestTask.status : "pending");
+    const labels = {
+        pending: "待回测 · 运行当前股票回测",
+        running: "回测中",
+        unknown: "状态待确认",
+        completed: "已完成 · 重新回测",
+        historical: "已回测 · 待更新",
+        failed: "失败 · 重新回测",
+        unavailable: "无数据 · 暂不可回测",
+    };
+    button.dataset.status = status;
+    button.textContent = labels[status] || labels.pending;
+    button.disabled = state.loading || !canBacktestSymbol(symbol) || status === "running" || status === "unknown";
+    button.title = !canBacktestSymbol(symbol)
+        ? "当前股票缺少所选数据源的日线，暂不可回测"
+        : status === "running"
+          ? "该股票回测正在运行，完成后可重新回测"
+          : status === "unknown"
+            ? "服务器任务状态待确认，暂不重复提交"
+            : isAkShare()
+              ? "日线、分钟线和复权因子统一使用 AKShare / 新浪"
+              : "";
+}
 function renderStockBacktestStatus() {
-    const current = state.activeBacktestTask?.symbol === $("symbol-select").value && isTdxBacktest()
-        ? state.activeBacktestTask : null;
+    const current =
+        state.activeBacktestTask?.symbol === $("symbol-select").value && isTdxBacktest()
+            ? state.activeBacktestTask
+            : null;
     const others = [...stockBacktestTasks.tasks.values()].filter(
         (task) => task.status === "running" && task !== current,
     ).length;
@@ -263,65 +305,63 @@ function renderStockBacktestStatus() {
     const elapsed = formatBacktestElapsed(currentServerJob?.elapsed_seconds);
     const serverStatus = serverBacktestSnapshot.unavailable
         ? "服务器任务状态暂不可确认。"
-        : elapsed ? `${elapsed}。` : "";
-    const priorResult = current?.status === "running" && state.view?.symbol === current.symbol &&
-        state.view.result_scope === "stock" ? "图中成交标记为上次结果，完成后更新。" : "";
-    $("stock-backtest-status-text").textContent = current?.status === "running"
-        ? `${name} · ${current.message} ${serverStatus}可继续查看或切换股票。${priorResult}`
-        : current?.status === "completed"
-          ? `${name} · 回测已完成，结果已显示在当前股票。`
-          : current?.status === "failed"
-            ? `${name} · 回测失败：${current.error?.message || "未知错误"}。可修改设置后重试。`
+        : elapsed
+          ? `${elapsed}。`
+          : "";
+    const priorResult =
+        current?.status === "running" && state.view?.symbol === current.symbol && state.view.result_scope === "stock"
+            ? "图中成交标记为上次结果，完成后更新。"
             : "";
+    $("stock-backtest-status-text").textContent =
+        current?.status === "running"
+            ? `${name} · ${current.message} ${serverStatus}可继续查看或切换股票。${priorResult}`
+            : current?.status === "completed"
+              ? `${name} · 回测已完成，结果已显示在当前股票。`
+              : current?.status === "failed"
+                ? `${name} · 回测失败：${current.error?.message || "未知错误"}。可修改设置后重试。`
+                : "";
     $("stock-backtest-other").textContent = others ? `另有 ${others} 只股票仍在后台回测。` : "";
     const statuses = {};
     for (const task of stockBacktestTasks.tasks.values()) statuses[task.symbol] = task.status;
     const merged = runningBacktestStatuses(statuses, serverBacktestSnapshot.jobs, {
         unavailable: serverBacktestSnapshot.unavailable,
     });
-    const serialized = JSON.stringify([merged, serverBacktestSnapshot.jobs.map(
-        (job) => [job.symbol, job.elapsed_seconds],
-    )]);
+    const serialized = JSON.stringify([
+        merged,
+        serverBacktestSnapshot.jobs.map((job) => [job.symbol, job.elapsed_seconds]),
+    ]);
     if (serialized !== lastStockBacktestStatuses) {
         lastStockBacktestStatuses = serialized;
         stockList.setBacktestStatuses(merged, serverBacktestSnapshot.jobs);
     }
+    renderRunStockBacktestButton();
 }
 const stockBacktestTasks = new StockBacktestTasks({
     run: (task, progress) => {
         const request = () => api(task.path, task.params);
         return retryBacktest(request, {
-            onTimeout: () => waitForBacktestJob(
-                () => api("/api/backtest-job", { job: task.params.backtest_job }),
-                request,
-                {
+            onTimeout: () =>
+                waitForBacktestJob(() => api("/api/backtest-job", { job: task.params.backtest_job }), request, {
                     maxWaitMs: 24 * 60 * 60 * 1000,
                     onPending: () => progress("服务器仍在计算，正在查询任务状态…"),
                     onRestart: () => progress("服务恢复后正在继续查询回测…"),
                     onRetry: (attempt, total) => progress(`状态查询暂不可用，重试中（${attempt}/${total}）…`),
-                },
-            ),
+                }),
             onRetry: (attempt, total) => progress(`回测服务暂不可用，重试中（${attempt}/${total}）…`),
         }).catch((error) => {
-            if (error.code !== "BACKTEST_SYMBOL_RUNNING" || !error.same_request || !error.running_job)
-                throw error;
+            if (error.code !== "BACKTEST_SYMBOL_RUNNING" || !error.same_request || !error.running_job) throw error;
             task.params.backtest_job = error.running_job;
             progress("相同参数的回测已在运行，正在同步任务状态…");
-            return waitForBacktestJob(
-                () => api("/api/backtest-job", { job: error.running_job }),
-                request,
-                {
-                    maxMissingResubmits: 0,
-                    maxWaitMs: 24 * 60 * 60 * 1000,
-                    onPending: () => progress("服务器仍在计算，正在查询任务状态…"),
-                },
-            );
+            return waitForBacktestJob(() => api("/api/backtest-job", { job: error.running_job }), request, {
+                maxMissingResubmits: 0,
+                maxWaitMs: 24 * 60 * 60 * 1000,
+                onPending: () => progress("服务器仍在计算，正在查询任务状态…"),
+            });
         });
     },
     onChange: (task) => {
-        if (task === state.activeBacktestTask) renderStockBacktestStatus();
-        else if (stockBacktestTasks.tasks.size) renderStockBacktestStatus();
         if (task.status === "completed") syncCompletedStockBacktests();
+        renderServerBacktestStatuses();
     },
 });
 const activeTimeframe = () => (isMarketBrowse() ? selectedTimeframe() : "1d");
@@ -421,8 +461,11 @@ async function api(path, params = {}, signal, method = "GET") {
             error.code = body.code;
             if (["BACKTEST_CAPACITY", "BACKTEST_SYMBOL_RUNNING"].includes(error.code)) {
                 Object.assign(error, {
-                    active: body.active, max_active: body.max_active, jobs: body.jobs,
-                    running_job: body.running_job, same_request: body.same_request,
+                    active: body.active,
+                    max_active: body.max_active,
+                    jobs: body.jobs,
+                    running_job: body.running_job,
+                    same_request: body.same_request,
                 });
                 showBacktestRejection(error);
             }
@@ -880,17 +923,21 @@ function chooseSymbol(symbol, workspace = false, autoBacktest = true) {
     const navigation = ++state.symbolNavigation;
     const previousScope = $("result-scope").value;
     const source = sourceForScope(previousScope);
-    const completedMember = source && watchlistBacktests.hasCompleted(symbol, source)
-        ? watchlistBacktests.members.find((member) => member.symbol === symbol) : null;
+    const completedMember =
+        source && watchlistBacktests.hasCompleted(symbol, source)
+            ? watchlistBacktests.members.find((member) => member.symbol === symbol)
+            : null;
     const cutoff = completedMember?.asof || state.requestedAsOf || state.view?.asof || currentRun().end;
     $("symbol-select").value = symbol;
     state.pendingFocus = null;
     const canBacktest = canBacktestSymbol(symbol);
     const runBacktest = autoBacktest && canBacktest;
-    const resumeBacktest = Boolean(source) &&
-        (Boolean(completedMember) || [...stockBacktestTasks.tasks.values()].some(
-            (task) => task.symbol === symbol && task.path === `/api/${source}-backtest`,
-        ));
+    const resumeBacktest =
+        Boolean(source) &&
+        (Boolean(completedMember) ||
+            [...stockBacktestTasks.tasks.values()].some(
+                (task) => task.symbol === symbol && task.path === `/api/${source}-backtest`,
+            ));
     if (runBacktest) {
         $("result-scope").value = source;
         fillSymbols();
@@ -906,15 +953,22 @@ function chooseSymbol(symbol, workspace = false, autoBacktest = true) {
     watchlistBacktests.start();
     $("stock-picker-feedback").hidden = !autoBacktest || Boolean(canBacktest) || !source;
     $("stock-picker-feedback").textContent =
-        !autoBacktest || canBacktest || !source ? "" : `${symbolName(symbol)} 暂无${source === "akshare" ? "AkShare" : "通达信"}日线，保留当前行情查看，未运行回测。`;
+        !autoBacktest || canBacktest || !source
+            ? ""
+            : `${symbolName(symbol)} 暂无${source === "akshare" ? "AkShare" : "通达信"}日线，保留当前行情查看，未运行回测。`;
     if (!runBacktest && !resumeBacktest) {
         loadView();
         return;
     }
     // Show this stock's ordinary chart first; its strategy calculation then runs beside it.
     void loadView().then(() => {
-        if (navigation !== state.symbolNavigation || $("symbol-select").value !== symbol || state.error ||
-            $("result-scope").value !== source) return;
+        if (
+            navigation !== state.symbolNavigation ||
+            $("symbol-select").value !== symbol ||
+            state.error ||
+            $("result-scope").value !== source
+        )
+            return;
         $("result-scope").value = `${source}-backtest`;
         fillSymbols();
         preserveCutoff(cutoff);
@@ -1679,8 +1733,11 @@ async function loadTheory(request, sequence, preloaded = null) {
         $("drawing-status").textContent =
             `讲义绘图：${data.lecture_drawing?.teaching_paths?.length || 0} 组子母三点、${data.lecture_drawing?.inside_connections?.length || 0} 处母子缩头／缩脚衔接；${data.lecture_drawing?.issues.length || 0} 处十字星／初始方向待确认。${data.strategy_pivot_mode === "lecture_causal" ? "新版从同一递推器提取收盘确认点；绘图连接不直接等于交易信号。" : "显示结构与所选旧策略／行情浏览独立。"}母子顺序是讲义约定，不代表已知真实日内路径。`;
         $("theory-status").textContent = data.interrupted ? "当前结构未解" : "已确认结构";
-        if (!state.pendingFocus && !state.selectedAnnotationId &&
-            !(state.view?.backtest && !state.view.orders.some((order) => order.status === "filled")))
+        if (
+            !state.pendingFocus &&
+            !state.selectedAnnotationId &&
+            !(state.view?.backtest && !state.view.orders.some((order) => order.status === "filled"))
+        )
             detail(
                 data.interrupted ? "严格结构中断" : "点击标识查看规则",
                 data.interrupted
@@ -1776,11 +1833,13 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             await watchlistBacktests.ensureVersion();
             if (sequence !== state.sequence) return;
         }
-        const task = backtestMode ? stockBacktestTasks.start(backtestPath, backtestParams, {
-            version: watchlistBacktests.strategyVersion || "",
-            force: forceBacktest,
-            jobId: watchlistBacktests.matchingJobId(backtestPath, backtestParams) || undefined,
-        }) : null;
+        const task = backtestMode
+            ? stockBacktestTasks.start(backtestPath, backtestParams, {
+                  version: watchlistBacktests.strategyVersion || "",
+                  force: forceBacktest,
+                  jobId: watchlistBacktests.matchingJobId(backtestPath, backtestParams) || undefined,
+              })
+            : null;
         if (task) {
             state.activeBacktestTask = task;
             updateBacktestProgress(task.status === "running" ? task.message : "正在读取已完成的回测结果…");
@@ -1841,13 +1900,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
         }
         $("download-backtest").disabled = !data.backtest || data.backtest.status === "data_unavailable";
         // Keep the chosen source for daily prices, minute execution and factors.
-        $("run-stock-backtest").disabled = !canBacktestSymbol(data.symbol);
-        $("run-stock-backtest").title =
-            !canBacktestSymbol(data.symbol)
-                ? "当前股票缺少所选数据源的日线，暂不可回测"
-                : isAkShare()
-                  ? "日线、分钟线和复权因子统一使用 AKShare / 新浪"
-                  : "";
+        renderRunStockBacktestButton();
         $("price-basis").textContent = data.price_basis === "raw_unadjusted" ? "原始不复权" : "因果复权";
         chart.setData(data, {
             volume: $("show-volume").checked,
@@ -1951,7 +2004,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             document.querySelector(".metric-grid").hidden = true;
             $("stock-results").hidden = true;
         }
-        $("run-stock-backtest").disabled = !canBacktestSymbol(request.symbol);
+        renderRunStockBacktestButton();
     }
 }
 async function locate(symbol, time, description) {
@@ -2032,8 +2085,15 @@ for (const eventName of ["pointerdown", "keydown", "input", "wheel"]) {
 }
 const watchlistBacktests = new IdleWatchlistBacktests({
     serverJobs: () => serverBacktestSnapshot.jobs,
-    hasCapacity: () => !serverBacktestSnapshot.unavailable &&
-        serverBacktestSnapshot.active < serverBacktestSnapshot.max_active,
+    hasCapacity: () =>
+        !serverBacktestSnapshot.unavailable && serverBacktestSnapshot.active < serverBacktestSnapshot.max_active,
+    onEngineChanged: () => {
+        try {
+            localStorage.setItem(autoBacktestPreferenceKey, "false");
+        } catch {
+            // 当前页面的自动队列仍会暂停。
+        }
+    },
     snapshot: () => {
         if (!state.catalog || !watchlists.available) return null;
         const source = sourceForScope($("result-scope").value);
@@ -2075,11 +2135,9 @@ const watchlistBacktests = new IdleWatchlistBacktests({
         const { path, params: requestParams } = watchlistBacktestRequest(member, context);
         const params = { ...requestParams, backtest_job: crypto.randomUUID() };
         const catalogEtag = state[context.source]?.catalog_etag || "";
-        const completionKey = sharedBacktestCompletionPrefix + JSON.stringify([
-            watchlistBacktests.strategyVersion,
-            catalogEtag,
-            backtestArgumentsKey(path, params),
-        ]);
+        const completionKey =
+            sharedBacktestCompletionPrefix +
+            JSON.stringify([watchlistBacktests.strategyVersion, catalogEtag, backtestArgumentsKey(path, params)]);
         const signal = active.controller.signal;
         const execute = async () => {
             active.queued = false;
@@ -2089,8 +2147,10 @@ const watchlistBacktests = new IdleWatchlistBacktests({
                 if (now - lastSharedBacktestPrune >= sharedBacktestCompletionTtlMs) {
                     for (let index = localStorage.length - 1; index >= 0; index--) {
                         const key = localStorage.key(index);
-                        if (key?.startsWith(sharedBacktestCompletionPrefix) &&
-                            now - Number(localStorage.getItem(key)?.split(":")[0]) > sharedBacktestCompletionTtlMs)
+                        if (
+                            key?.startsWith(sharedBacktestCompletionPrefix) &&
+                            now - Number(localStorage.getItem(key)?.split(":")[0]) > sharedBacktestCompletionTtlMs
+                        )
                             localStorage.removeItem(key);
                     }
                     lastSharedBacktestPrune = now;
@@ -2098,8 +2158,12 @@ const watchlistBacktests = new IdleWatchlistBacktests({
                 const [completedAt, sharedJobId] = (localStorage.getItem(completionKey) || "").split(":");
                 if (sharedJobId && now - Number(completedAt) <= sharedBacktestCompletionTtlMs) {
                     const shared = await api("/api/backtest-job", { job: sharedJobId }, signal);
-                    if (shared.status === "completed" && shared.result?.symbol === member.symbol &&
-                        shared.result.result_scope === "stock" && shared.result.backtest) {
+                    if (
+                        shared.status === "completed" &&
+                        shared.result?.symbol === member.symbol &&
+                        shared.result.result_scope === "stock" &&
+                        shared.result.backtest
+                    ) {
                         active.job = { path, params: { ...params, backtest_job: sharedJobId } };
                         return shared.result;
                     }
@@ -2114,15 +2178,15 @@ const watchlistBacktests = new IdleWatchlistBacktests({
             try {
                 result = await retryBacktest(request, {
                     signal,
-                    onTimeout: () => waitForBacktestJob(
-                        () => api("/api/backtest-job", { job: params.backtest_job }, signal),
-                        request,
-                        { signal },
-                    ),
+                    onTimeout: () =>
+                        waitForBacktestJob(
+                            () => api("/api/backtest-job", { job: params.backtest_job }, signal),
+                            request,
+                            { signal },
+                        ),
                 });
             } catch (error) {
-                if (error.code !== "BACKTEST_SYMBOL_RUNNING" || !error.same_request || !error.running_job)
-                    throw error;
+                if (error.code !== "BACKTEST_SYMBOL_RUNNING" || !error.same_request || !error.running_job) throw error;
                 params.backtest_job = error.running_job;
                 active.job = { path, params };
                 result = await waitForBacktestJob(
@@ -2131,7 +2195,12 @@ const watchlistBacktests = new IdleWatchlistBacktests({
                     { signal, maxMissingResubmits: 0 },
                 );
             }
-            if (result?.symbol === member.symbol && result?.result_scope === "stock" && result?.backtest && result.backtest.status !== "data_unavailable") {
+            if (
+                result?.symbol === member.symbol &&
+                result?.result_scope === "stock" &&
+                result?.backtest &&
+                result.backtest.status !== "data_unavailable"
+            ) {
                 try {
                     localStorage.setItem(completionKey, `${Date.now()}:${params.backtest_job}`);
                 } catch {
@@ -2145,13 +2214,24 @@ const watchlistBacktests = new IdleWatchlistBacktests({
         watchlistBacktests.emit();
         return navigator.locks.request("wavequant-watchlist-auto-backtest", { signal }, execute);
     },
-    isIdle: () => document.visibilityState === "visible" && !state.loading && !ratioComparison.running && Date.now() - lastWorkbenchInteraction >= 5_000,
+    isIdle: () =>
+        document.visibilityState === "visible" &&
+        !state.loading &&
+        !ratioComparison.running &&
+        Date.now() - lastWorkbenchInteraction >= 5_000,
     onCompleted: (result, active) => {
         const job = active.job;
         const source = watchlistBacktests.context?.source;
-        if (!job || !source || state.loading || state.view?.symbol !== result.symbol ||
-            state.view.asof !== result.asof || $("symbol-select").value !== result.symbol ||
-            $("result-scope").value !== source) return;
+        if (
+            !job ||
+            !source ||
+            state.loading ||
+            state.view?.symbol !== result.symbol ||
+            state.view.asof !== result.asof ||
+            $("symbol-select").value !== result.symbol ||
+            $("result-scope").value !== source
+        )
+            return;
         stockBacktestTasks.adoptCompleted(job.path, job.params, result, {
             version: watchlistBacktests.strategyVersion,
             jobId: job.params.backtest_job,
@@ -2161,7 +2241,27 @@ const watchlistBacktests = new IdleWatchlistBacktests({
         preserveCutoff(result.asof);
         void loadView({ preferTrades: true });
     },
-    onChange: ({ enabled, ready, version, source, checking, idle, active, queued, draining, statuses, fillCounts, failures, total, completed, failed, retrying, capacityFull, error }) => {
+    onChange: ({
+        enabled,
+        ready,
+        version,
+        source,
+        checking,
+        idle,
+        active,
+        queued,
+        draining,
+        statuses,
+        fillCounts,
+        returns,
+        failures,
+        total,
+        completed,
+        failed,
+        retrying,
+        capacityFull,
+        error,
+    }) => {
         if (syncServerBacktestHistory()) return;
         if (syncCompletedStockBacktests()) return;
         const toggle = $("watchlist-auto-backtest-toggle");
@@ -2172,7 +2272,9 @@ const watchlistBacktests = new IdleWatchlistBacktests({
         progress.max = Math.max(1, total);
         progress.value = completed + failed;
         const status = $("watchlist-backtest-status");
-        const activeIndex = active ? watchlistBacktests.members.findIndex((member) => member.symbol === active.symbol) + 1 : 0;
+        const activeIndex = active
+            ? watchlistBacktests.members.findIndex((member) => member.symbol === active.symbol) + 1
+            : 0;
         const sourceLabel = source === "akshare" ? "AkShare" : "通达信";
         const activeServerJob = serverBacktestSnapshot.jobs.find((job) => job.symbol === active?.symbol);
         const activeElapsed = formatBacktestElapsed(activeServerJob?.elapsed_seconds);
@@ -2180,32 +2282,32 @@ const watchlistBacktests = new IdleWatchlistBacktests({
             ? "等待可用行情和回测参数…"
             : draining
               ? "设置已更新，等待先前回测结束后按新设置继续…"
-            : queued
-              ? `其他页面正在自动回测，${active.name}（${active.symbol}）已排队…`
-            : active
-              ? `${sourceLabel} ${activeIndex}/${total}：正在回测 ${active.name}（${active.symbol}）${activeElapsed ? `，${activeElapsed}` : ""}${serverBacktestSnapshot.unavailable ? "，服务器任务状态暂不可确认" : ""}；已完成 ${completed}，失败 ${failed}${enabled ? "" : "。完成当前股票后暂停"}`
-              : !enabled
-                ? `已暂停 · 已完成 ${completed}/${total}，失败 ${failed}`
-                : !total
-                  ? "当前分类没有可回测的股票"
-                  : error
-                    ? `策略版本读取失败：${error}；稍后自动重试`
-                    : version && completed + failed === total
-                      ? retrying
-                          ? `本轮已完成 ${completed}/${total}，失败 ${failed} 只待自动重试`
-                          : failed
-                            ? `本轮已结束：完成 ${completed}/${total}，失败 ${failed} 只；可点击重试失败`
-                            : `自动回测已完成 ${completed}/${total}；等待策略更新`
-                    : serverBacktestSnapshot.unavailable
-                      ? "服务器任务状态暂不可确认，等待连接恢复…"
-                    : capacityFull
-                      ? `并行回测已满（${serverBacktestSnapshot.active}/${serverBacktestSnapshot.max_active}），等待空位…`
-                    : !idle
-                      ? `等待页面空闲 · 已完成 ${completed}/${total}，失败 ${failed}`
-                    : checking || !version
-                      ? "正在核对策略版本…"
-                      : `准备按列表顺序回测 · 已完成 ${completed}/${total}，失败 ${failed}`;
-        renderServerBacktestStatuses({ statuses, ready, failures, fillCounts });
+              : queued
+                ? `其他页面正在自动回测，${active.name}（${active.symbol}）已排队…`
+                : active
+                  ? `${sourceLabel} ${activeIndex}/${total}：正在回测 ${active.name}（${active.symbol}）${activeElapsed ? `，${activeElapsed}` : ""}${serverBacktestSnapshot.unavailable ? "，服务器任务状态暂不可确认" : ""}；已完成 ${completed}，失败 ${failed}${enabled ? "" : "。完成当前股票后暂停"}`
+                  : !enabled
+                    ? `已暂停 · 已完成 ${completed}/${total}，失败 ${failed}`
+                    : !total
+                      ? "当前分类没有可回测的股票"
+                      : error
+                        ? `策略版本读取失败：${error}；稍后自动重试`
+                        : version && completed + failed === total
+                          ? retrying
+                              ? `本轮已完成 ${completed}/${total}，失败 ${failed} 只待自动重试`
+                              : failed
+                                ? `本轮已结束：完成 ${completed}/${total}，失败 ${failed} 只；可点击重试失败`
+                                : `自动回测已完成 ${completed}/${total}；等待策略更新`
+                          : serverBacktestSnapshot.unavailable
+                            ? "服务器任务状态暂不可确认，等待连接恢复…"
+                            : capacityFull
+                              ? `并行回测已满（${serverBacktestSnapshot.active}/${serverBacktestSnapshot.max_active}），等待空位…`
+                              : !idle
+                                ? `等待页面空闲 · 已完成 ${completed}/${total}，失败 ${failed}`
+                                : checking || !version
+                                  ? "正在核对策略版本…"
+                                  : `准备按列表顺序回测 · 已完成 ${completed}/${total}，失败 ${failed}`;
+        renderServerBacktestStatuses({ statuses, ready, failures, fillCounts, returns });
     },
 });
 function syncServerBacktestHistory() {
@@ -2226,34 +2328,56 @@ function syncCompletedStockBacktests() {
     return false;
 }
 function renderServerBacktestStatuses(queueState = watchlistBacktests.state()) {
-    const { statuses, ready, failures, fillCounts } = queueState;
+    const { statuses, ready, failures, fillCounts, returns } = queueState;
+    const visibleStatuses = runningBacktestStatuses(
+        historicalBacktestStatuses(statuses, serverBacktestSnapshot.recent),
+        serverBacktestSnapshot.jobs,
+        { unavailable: serverBacktestSnapshot.unavailable },
+    );
+    const visibleFailures = { ...failures };
+    if (watchlistBacktests.context && watchlistBacktests.strategyVersion) {
+        for (const member of watchlistBacktests.members) {
+            const expected = watchlistBacktestRequest(member, watchlistBacktests.context);
+            const task = stockBacktestTasks.find(expected.path, expected.params, watchlistBacktests.strategyVersion);
+            if (task?.status === "running")
+                visibleStatuses[member.symbol] = serverBacktestSnapshot.unavailable ? "unknown" : "running";
+            else if (task?.status === "failed") {
+                visibleStatuses[member.symbol] = "failed";
+                visibleFailures[member.symbol] = task.error?.message || "回测失败";
+            }
+        }
+    }
     watchlists.setBacktestStatuses(
-        runningBacktestStatuses(historicalBacktestStatuses(statuses, serverBacktestSnapshot.recent), serverBacktestSnapshot.jobs, {
-            unavailable: serverBacktestSnapshot.unavailable,
-        }),
+        visibleStatuses,
         ready ? new Set(watchlistBacktests.members.map((member) => member.symbol)) : null,
-        failures,
+        visibleFailures,
         fillCounts,
+        returns,
     );
     renderStockBacktestStatus();
 }
 let serverBacktestStatusRequest = null;
 async function refreshServerBacktestStatuses() {
     if (serverBacktestStatusRequest) return serverBacktestStatusRequest;
-    serverBacktestStatusRequest = api("/api/backtest-jobs").then((snapshot) => {
-        if (!Array.isArray(snapshot.jobs)) throw new Error("回测任务状态格式异常");
-        serverBacktestSnapshot = snapshot;
-        serverBacktestSnapshotSeenAt = Date.now();
-        syncServerBacktestHistory();
-        renderServerBacktestStatuses();
-        watchlistBacktests.emit();
-    }).catch(() => {
-        const expired = expiredBacktestSnapshot(serverBacktestSnapshot, serverBacktestSnapshotSeenAt);
-        if (expired === serverBacktestSnapshot || serverBacktestSnapshot.unavailable) return;
-        serverBacktestSnapshot = expired;
-        renderServerBacktestStatuses();
-        watchlistBacktests.emit();
-    }).finally(() => { serverBacktestStatusRequest = null; });
+    serverBacktestStatusRequest = api("/api/backtest-jobs")
+        .then((snapshot) => {
+            if (!Array.isArray(snapshot.jobs)) throw new Error("回测任务状态格式异常");
+            serverBacktestSnapshot = snapshot;
+            serverBacktestSnapshotSeenAt = Date.now();
+            syncServerBacktestHistory();
+            renderServerBacktestStatuses();
+            watchlistBacktests.emit();
+        })
+        .catch(() => {
+            const expired = expiredBacktestSnapshot(serverBacktestSnapshot, serverBacktestSnapshotSeenAt);
+            if (expired === serverBacktestSnapshot || serverBacktestSnapshot.unavailable) return;
+            serverBacktestSnapshot = expired;
+            renderServerBacktestStatuses();
+            watchlistBacktests.emit();
+        })
+        .finally(() => {
+            serverBacktestStatusRequest = null;
+        });
     return serverBacktestStatusRequest;
 }
 setInterval(() => {
@@ -2261,9 +2385,10 @@ setInterval(() => {
 }, 3_000);
 void refreshServerBacktestStatuses();
 try {
-    watchlistBacktests.setEnabled(localStorage.getItem(autoBacktestPreferenceKey) !== "false");
+    localStorage.setItem(autoBacktestPreferenceKey, "false");
+    watchlistBacktests.setEnabled(false);
 } catch {
-    // 存储不可用时本次会话仍默认自动回测。
+    watchlistBacktests.setEnabled(false);
 }
 $("watchlist-auto-backtest-toggle").addEventListener("click", () => {
     watchlistBacktests.setEnabled(!watchlistBacktests.enabled);
@@ -2274,8 +2399,7 @@ $("watchlist-auto-backtest-toggle").addEventListener("click", () => {
     }
 });
 window.addEventListener("storage", (event) => {
-    if (event.key === autoBacktestPreferenceKey)
-        watchlistBacktests.setEnabled(event.newValue !== "false");
+    if (event.key === autoBacktestPreferenceKey) watchlistBacktests.setEnabled(event.newValue !== "false");
 });
 $("watchlist-backtest-retry").addEventListener("click", () => watchlistBacktests.retryFailed());
 document.addEventListener("visibilitychange", () => {
@@ -2389,7 +2513,8 @@ $("result-scope").addEventListener("change", async () => {
         try {
             const catalog = await ensureSourceCatalog(source);
             if (!catalog.with_daily) {
-                $("stock-source-notice").textContent = `${source === "tdx" ? "通达信" : "AkShare"}股票目录暂无可用行情，请稍后重新选择。`;
+                $("stock-source-notice").textContent =
+                    `${source === "tdx" ? "通达信" : "AkShare"}股票目录暂无可用行情，请稍后重新选择。`;
                 return;
             }
         } catch (error) {

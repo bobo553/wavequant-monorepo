@@ -6,6 +6,7 @@ from contextlib import closing
 from dataclasses import dataclass, field
 import json
 import logging
+import math
 from pathlib import Path
 import sqlite3
 from threading import Event, Lock, Thread
@@ -64,6 +65,7 @@ class BacktestJobs:
         max_history: int = 256,
         history_ttl_seconds: float = 7 * 86_400,
         history_path: Path | None = None,
+        engine_version: str | None = None,
         clock: Callable[[], float] = monotonic,
         history_clock: Callable[[], float] = time,
         on_error: Callable[[str, Exception], None] | None = None,
@@ -82,6 +84,7 @@ class BacktestJobs:
         self.max_history = max_history
         self.history_ttl_seconds = history_ttl_seconds
         self.history_path = Path(history_path) if history_path is not None else None
+        self.engine_version = engine_version
         self.clock = clock
         self.history_clock = history_clock
         self.on_error = on_error
@@ -111,6 +114,20 @@ class BacktestJobs:
             return
         try:
             with closing(self._history_connection()) as connection, connection:
+                if self.engine_version is not None:
+                    connection.execute(
+                        'CREATE TABLE IF NOT EXISTS backtest_versions '
+                        '(name TEXT PRIMARY KEY, version TEXT NOT NULL)'
+                    )
+                    previous = connection.execute(
+                        'SELECT version FROM backtest_versions WHERE name=?', ('quant-engine',)
+                    ).fetchone()
+                    if previous is None or previous[0] != self.engine_version:
+                        connection.execute('DELETE FROM backtest_history')
+                        connection.execute(
+                            'INSERT OR REPLACE INTO backtest_versions (name, version) VALUES (?, ?)',
+                            ('quant-engine', self.engine_version),
+                        )
                 rows = connection.execute(
                     "SELECT signature, completed_at, item FROM backtest_history "
                     "WHERE completed_at > ? ORDER BY completed_at DESC LIMIT ?",
@@ -239,6 +256,12 @@ class BacktestJobs:
                             item["fill_count"] = sum(
                                 isinstance(order, dict) and order.get("status") == "filled" for order in orders
                             )
+                        metrics = result.get("metrics")
+                        if isinstance(metrics, dict):
+                            for key in ("total_return", "total_pnl"):
+                                value = metrics.get(key)
+                                if type(value) in (int, float) and math.isfinite(value):
+                                    item[key] = value
                 self._history.pop(job.signature, None)
                 history_completed_at = self.history_clock()
                 self._history[job.signature] = (history_completed_at, item)

@@ -84,12 +84,15 @@ export function normalizeWatchlistSnapshot(snapshot) {
 }
 
 function assertGroupName(state, rawName, currentGroupId = null) {
-    const name = String(rawName || "").normalize("NFKC").trim();
+    const name = String(rawName || "")
+        .normalize("NFKC")
+        .trim();
     if (!name || name.length > 24) throw new Error("分类名称需为 1–24 个字符");
     if (
         state.groups.some(
             (group) =>
-                group.id !== currentGroupId && group.name.toLocaleLowerCase("zh-CN") === name.toLocaleLowerCase("zh-CN"),
+                group.id !== currentGroupId &&
+                group.name.toLocaleLowerCase("zh-CN") === name.toLocaleLowerCase("zh-CN"),
         )
     )
         throw new Error("分类名称已存在");
@@ -147,12 +150,15 @@ export function deleteWatchlistGroup(state, groupId) {
 export function addWatchlistMembers(state, groupId, stocks) {
     const current = normalizeWatchlistSnapshot(state);
     if (!current.groups.some((group) => group.id === groupId)) throw new Error("自选分类不存在");
-    const existing = new Set(
-        current.memberships.filter((item) => item.groupId === groupId).map((item) => item.symbol),
-    );
+    const existing = new Set(current.memberships.filter((item) => item.groupId === groupId).map((item) => item.symbol));
     const candidates = [];
     for (const stock of stocks) {
-        if (!stock || typeof stock.symbol !== "string" || !SYMBOL_PATTERN.test(stock.symbol) || existing.has(stock.symbol))
+        if (
+            !stock ||
+            typeof stock.symbol !== "string" ||
+            !SYMBOL_PATTERN.test(stock.symbol) ||
+            existing.has(stock.symbol)
+        )
             continue;
         existing.add(stock.symbol);
         candidates.push({
@@ -280,6 +286,7 @@ export class Watchlists {
         this.backtestStatuses = {};
         this.backtestFailures = {};
         this.backtestFillCounts = {};
+        this.backtestReturns = {};
         this.backtestEligible = null;
         this.$ = (id) => document.getElementById(id);
         this.bind();
@@ -363,11 +370,12 @@ export class Watchlists {
         );
     }
 
-    setBacktestStatuses(statuses, eligibleSymbols = null, failures = {}, fillCounts = {}) {
+    setBacktestStatuses(statuses, eligibleSymbols = null, failures = {}, fillCounts = {}, returns = {}) {
         this.backtestStatuses = statuses;
         this.backtestEligible = eligibleSymbols;
         this.backtestFailures = failures;
         this.backtestFillCounts = fillCounts;
+        this.backtestReturns = returns;
         for (const row of this.$("watchlist-stock-list").querySelectorAll(".watchlist-stock-row")) {
             this.renderBacktestStatus(row, row.dataset.symbol);
         }
@@ -376,18 +384,48 @@ export class Watchlists {
     renderBacktestStatus(row, symbol) {
         const badge = row.querySelector(".watchlist-backtest-badge");
         if (!badge) return;
-        const status = this.backtestStatuses[symbol] ||
+        const status =
+            this.backtestStatuses[symbol] ||
             (this.backtestEligible && !this.backtestEligible.has(symbol) ? "unavailable" : "pending");
         badge.dataset.status = status;
         const fills = this.backtestFillCounts[symbol];
-        badge.textContent = status === "completed" && Number.isInteger(fills)
-            ? `已完成 · ${fills}笔成交`
-            : { pending: "待回测", historical: "已回测 · 待更新", running: "回测中", unknown: "状态待确认", completed: "已完成", failed: "失败", unavailable: "无数据" }[status];
-        badge.title = status === "failed" ? this.backtestFailures[symbol] || "回测失败"
-            : status === "historical" ? "服务器有历史回测记录，但数据源、日期、策略版本或参数与当前设置不一致；本轮仍待更新"
-            : status === "completed" && fills === 0 ? "回测已完成，但没有实际模拟成交，图上不会有 B / S 成交标记" : badge.textContent;
+        badge.textContent =
+            status === "completed" && Number.isInteger(fills)
+                ? `已完成 · ${fills}笔成交`
+                : {
+                      pending: "待回测",
+                      historical: "已回测 · 待更新",
+                      running: "回测中",
+                      unknown: "状态待确认",
+                      completed: "已完成",
+                      failed: "失败",
+                      unavailable: "无数据",
+                  }[status];
+        badge.title =
+            status === "failed"
+                ? this.backtestFailures[symbol] || "回测失败"
+                : status === "historical"
+                  ? "服务器有历史回测记录，但数据源、日期、策略版本或参数与当前设置不一致；本轮仍待更新"
+                  : status === "completed" && fills === 0
+                    ? "回测已完成，但没有实际模拟成交，图上不会有 B / S 成交标记"
+                    : badge.textContent;
+        const result = row.querySelector(".watchlist-backtest-result");
+        const value = this.backtestReturns[symbol];
+        const hasReturn = status === "completed" && Number.isFinite(value?.rate) && Number.isFinite(value?.amount);
+        if (result) {
+            result.hidden = !hasReturn;
+            if (hasReturn) {
+                result.dataset.result = value.rate > 0 ? "profit" : value.rate < 0 ? "loss" : "flat";
+                result.textContent = `${value.rate > 0 ? "盈 +" : value.rate < 0 ? "亏 " : "平 "}${(value.rate * 100).toFixed(2)}%`;
+                result.title = `期末盈亏 ${value.amount > 0 ? "+" : ""}${value.amount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 元；收益率 ${value.rate > 0 ? "+" : ""}${(value.rate * 100).toFixed(2)}%`;
+            }
+        }
         const open = row.querySelector(".watchlist-stock-open");
-        if (open) open.setAttribute("aria-label", `${open.dataset.baseLabel}，${badge.textContent}${status === "failed" ? `：${badge.title}` : ""}`);
+        if (open)
+            open.setAttribute(
+                "aria-label",
+                `${open.dataset.baseLabel}，${badge.textContent}${hasReturn ? `，${result.title}` : ""}${status === "failed" ? `：${badge.title}` : ""}`,
+            );
     }
 
     rememberSelectedGroup() {
@@ -585,7 +623,9 @@ export class Watchlists {
             open.disabled = !canOpen;
             open.setAttribute(
                 "aria-label",
-                canOpen ? `切换到 ${member.name || member.symbol}` : `${member.name || member.symbol}，当前数据源不可用`,
+                canOpen
+                    ? `切换到 ${member.name || member.symbol}`
+                    : `${member.name || member.symbol}，当前数据源不可用`,
             );
             open.dataset.baseLabel = open.getAttribute("aria-label");
             if (!canOpen) open.title = "当前数据源不可用";
@@ -593,19 +633,17 @@ export class Watchlists {
             name.textContent = member.stock?.name || member.name || member.symbol;
             const code = document.createElement("small");
             code.textContent = member.symbol;
+            const identity = document.createElement("span");
+            identity.className = "watchlist-stock-identity";
+            identity.append(name, code);
             const backtestStatus = document.createElement("span");
             backtestStatus.className = "watchlist-backtest-badge";
-            open.append(name, code, backtestStatus);
+            open.append(identity, backtestStatus);
             open.addEventListener("click", () => this.onSelect(member.symbol));
-            const remove = document.createElement("button");
-            remove.type = "button";
-            remove.className = "watchlist-stock-remove";
-            setWatchlistStarIcon(remove, true);
-            remove.setAttribute("aria-pressed", "true");
-            remove.setAttribute("aria-label", `从“${group.name}”移除 ${member.name || member.symbol}`);
-            remove.title = `已收藏到“${group.name}”，点击移除`;
-            remove.addEventListener("click", () => void this.remove(member.symbol));
-            row.append(open, remove);
+            const result = document.createElement("span");
+            result.className = "watchlist-backtest-result";
+            result.hidden = true;
+            row.append(open, result);
             this.renderBacktestStatus(row, member.symbol);
             list.append(row);
         }

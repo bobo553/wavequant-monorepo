@@ -199,6 +199,14 @@ class ChartRepository:
         self.buy_scanner = BuyScanner(self)
         self.structure_scanner = StructureScanner(self)
 
+    def clear_backtest_caches(self):
+        """Remove old strategy artifacts from every existing cache scope."""
+        from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
+
+        cache_root = project_path("data", "cache")
+        for cache_file in cache_root.rglob("artifacts-v1.sqlite"):
+            ArtifactCache(cache_file.parent).clear_backtests_for_engine(self.backtest_engine)
+
     def refresh(self):
         path = self.root / "operations.sqlite"
         if not path.is_file():
@@ -341,6 +349,7 @@ class ChartRepository:
         payload = json.dumps([rid, variant, self.backtest_engine, profile],
                              sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
         return dict(version=hashlib.sha256(payload.encode()).hexdigest(),
+                    engine_version=hashlib.sha256(json.dumps(self.backtest_engine, sort_keys=True).encode()).hexdigest(),
                     profile_version=profile.get('profile_version', variant))
 
     def view(self, rid, variant, symbol, asof, scenario="base"):

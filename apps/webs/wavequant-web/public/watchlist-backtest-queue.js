@@ -33,17 +33,45 @@ export function watchlistBacktestRequest(member, context) {
 
 /** Runs the visible watchlist in order while the research workbench is idle. */
 export class IdleWatchlistBacktests {
-    constructor({ snapshot, version, run, isIdle, onChange, onCompleted, onRejected, serverJobs = () => [], hasCapacity = () => true, now = Date.now, versionRefreshMs = DEFAULT_VERSION_REFRESH_MS }) {
-        Object.assign(this, { snapshot, version, run, isIdle, onChange, onCompleted, onRejected, serverJobs, hasCapacity, now, versionRefreshMs });
+    constructor({
+        snapshot,
+        version,
+        run,
+        isIdle,
+        onChange,
+        onCompleted,
+        onRejected,
+        onEngineChanged,
+        serverJobs = () => [],
+        hasCapacity = () => true,
+        now = Date.now,
+        versionRefreshMs = DEFAULT_VERSION_REFRESH_MS,
+    }) {
+        Object.assign(this, {
+            snapshot,
+            version,
+            run,
+            isIdle,
+            onChange,
+            onCompleted,
+            onRejected,
+            onEngineChanged,
+            serverJobs,
+            hasCapacity,
+            now,
+            versionRefreshMs,
+        });
         this.enabled = true;
         this.contextKey = null;
         this.membershipKey = null;
         this.strategyVersion = null;
+        this.lastEngineVersion = null;
         this.lastVersionCheck = -Infinity;
         this.generation = 0;
         this.statuses = new Map();
         this.completedJobs = new Map();
         this.fillCounts = new Map();
+        this.returns = new Map();
         this.failures = new Map();
         this.retryAt = new Map();
         this.retryCounts = new Map();
@@ -76,7 +104,9 @@ export class IdleWatchlistBacktests {
         const members = snapshot?.members || [];
         const { group, ...calculationContext } = snapshot?.context || {};
         const contextKey = snapshot ? JSON.stringify(calculationContext) : null;
-        const membershipKey = snapshot ? JSON.stringify([group, members.map(({ symbol, asof }) => [symbol, asof])]) : null;
+        const membershipKey = snapshot
+            ? JSON.stringify([group, members.map(({ symbol, asof }) => [symbol, asof])])
+            : null;
         if (contextKey === this.contextKey && membershipKey === this.membershipKey) return;
         const contextChanged = contextKey !== this.contextKey;
         const previousAsOf = new Map(this.members.map((member) => [member.symbol, member.asof]));
@@ -91,6 +121,7 @@ export class IdleWatchlistBacktests {
             this.statuses.clear();
             this.completedJobs.clear();
             this.fillCounts.clear();
+            this.returns.clear();
             this.failures.clear();
             this.retryAt.clear();
             this.retryCounts.clear();
@@ -105,6 +136,7 @@ export class IdleWatchlistBacktests {
                     this.statuses.delete(symbol);
                     this.completedJobs.delete(symbol);
                     this.fillCounts.delete(symbol);
+                    this.returns.delete(symbol);
                     this.failures.delete(symbol);
                     this.retryAt.delete(symbol);
                     this.retryCounts.delete(symbol);
@@ -117,9 +149,14 @@ export class IdleWatchlistBacktests {
     state() {
         const completed = [...this.statuses.values()].filter((status) => status === "completed").length;
         const failed = [...this.statuses.values()].filter((status) => status === "failed").length;
-        const active = this.active && this.active.generation === this.generation &&
-            this.members.some((member) => member.symbol === this.active.member.symbol && member.asof === this.active.member.asof)
-            ? this.active.member : null;
+        const active =
+            this.active &&
+            this.active.generation === this.generation &&
+            this.members.some(
+                (member) => member.symbol === this.active.member.symbol && member.asof === this.active.member.asof,
+            )
+                ? this.active.member
+                : null;
         return {
             enabled: this.enabled,
             ready: Boolean(this.contextKey),
@@ -132,6 +169,7 @@ export class IdleWatchlistBacktests {
             draining: Boolean(this.active && !active),
             statuses: Object.fromEntries(this.statuses),
             fillCounts: Object.fromEntries(this.fillCounts),
+            returns: Object.fromEntries(this.returns),
             failures: Object.fromEntries(this.failures),
             total: this.members.length,
             completed,
@@ -155,26 +193,46 @@ export class IdleWatchlistBacktests {
         if (job?.path === path && backtestArgumentsKey(path, job.params) === backtestArgumentsKey(path, params))
             return job.params.backtest_job;
         const completed = this.completedJobs.get(params.symbol);
-        return completed?.path === path && backtestArgumentsKey(path, completed.params) === backtestArgumentsKey(path, params)
-            ? completed.params.backtest_job : null;
+        return completed?.path === path &&
+            backtestArgumentsKey(path, completed.params) === backtestArgumentsKey(path, params)
+            ? completed.params.backtest_job
+            : null;
     }
 
     hasCompleted(symbol, source) {
-        return this.context?.source === source && this.statuses.get(symbol) === "completed" && this.completedJobs.has(symbol);
+        return (
+            this.context?.source === source &&
+            this.statuses.get(symbol) === "completed" &&
+            this.completedJobs.has(symbol)
+        );
     }
 
     adoptCompleted(path, params, result, version) {
         const member = this.members.find((item) => item.symbol === params.symbol && item.asof === params.asof);
-        if (!member || !this.context || !this.strategyVersion || version !== this.strategyVersion ||
-            result?.symbol !== member.symbol || result?.asof !== member.asof ||
-            result?.result_scope !== "stock" || !result?.backtest || result.backtest.status === "data_unavailable") return false;
+        if (
+            !member ||
+            !this.context ||
+            !this.strategyVersion ||
+            version !== this.strategyVersion ||
+            result?.symbol !== member.symbol ||
+            result?.asof !== member.asof ||
+            result?.result_scope !== "stock" ||
+            !result?.backtest ||
+            result.backtest.status === "data_unavailable"
+        )
+            return false;
         const expected = watchlistBacktestRequest(member, this.context);
-        if (path !== expected.path || backtestArgumentsKey(path, params) !== backtestArgumentsKey(expected.path, expected.params))
+        if (
+            path !== expected.path ||
+            backtestArgumentsKey(path, params) !== backtestArgumentsKey(expected.path, expected.params)
+        )
             return false;
         if (this.statuses.get(member.symbol) === "completed") return true;
         this.statuses.set(member.symbol, "completed");
         this.completedJobs.set(member.symbol, { path, params });
         this.fillCounts.set(member.symbol, (result.orders || []).filter((order) => order.status === "filled").length);
+        if (Number.isFinite(result.metrics?.total_return) && Number.isFinite(result.metrics?.total_pnl))
+            this.returns.set(member.symbol, { rate: result.metrics.total_return, amount: result.metrics.total_pnl });
         this.failures.delete(member.symbol);
         this.retryAt.delete(member.symbol);
         this.retryCounts.delete(member.symbol);
@@ -183,12 +241,18 @@ export class IdleWatchlistBacktests {
     }
 
     adoptServerStatus(record) {
-        const member = this.members.find((item) => item.symbol === record?.symbol && item.asof === record?.params?.asof);
+        const member = this.members.find(
+            (item) => item.symbol === record?.symbol && item.asof === record?.params?.asof,
+        );
         if (!member || !this.context || !this.strategyVersion || record.version !== this.strategyVersion) return false;
         const expected = watchlistBacktestRequest(member, this.context);
-        if (record.path !== expected.path ||
-            backtestArgumentsKey(record.path, record.params) !== backtestArgumentsKey(expected.path, expected.params)) return false;
-        if (this.active?.member.symbol === member.symbol && this.active.job?.params.backtest_job !== record.job) return false;
+        if (
+            record.path !== expected.path ||
+            backtestArgumentsKey(record.path, record.params) !== backtestArgumentsKey(expected.path, expected.params)
+        )
+            return false;
+        if (this.active?.member.symbol === member.symbol && this.active.job?.params.backtest_job !== record.job)
+            return false;
         if (record.status === "completed" && record.result_valid === true) {
             if (this.statuses.get(member.symbol) === "completed") return false;
             this.statuses.set(member.symbol, "completed");
@@ -199,14 +263,19 @@ export class IdleWatchlistBacktests {
                 });
             } else this.completedJobs.delete(member.symbol);
             if (Number.isInteger(record.fill_count)) this.fillCounts.set(member.symbol, record.fill_count);
+            if (Number.isFinite(record.total_return) && Number.isFinite(record.total_pnl))
+                this.returns.set(member.symbol, { rate: record.total_return, amount: record.total_pnl });
             this.failures.delete(member.symbol);
             this.retryAt.delete(member.symbol);
             this.retryCounts.delete(member.symbol);
             this.emit();
             return true;
         }
-        if (record.status === "failed" && this.statuses.get(member.symbol) !== "completed" &&
-            this.statuses.get(member.symbol) !== "failed") {
+        if (
+            record.status === "failed" &&
+            this.statuses.get(member.symbol) !== "completed" &&
+            this.statuses.get(member.symbol) !== "failed"
+        ) {
             this.statuses.set(member.symbol, "failed");
             this.failures.set(member.symbol, "服务器回测失败，可点击重试");
             this.emit();
@@ -242,11 +311,18 @@ export class IdleWatchlistBacktests {
             const response = await this.versionRequest;
             if (generation !== this.generation) return false;
             if (typeof response?.version !== "string" || !response.version) throw new Error("策略版本响应无效");
+            const engineVersion = typeof response.engine_version === "string" ? response.engine_version : null;
+            if (engineVersion && this.lastEngineVersion && engineVersion !== this.lastEngineVersion) {
+                this.enabled = false;
+                this.onEngineChanged?.(engineVersion);
+            }
+            if (engineVersion) this.lastEngineVersion = engineVersion;
             if (this.strategyVersion !== response.version) {
                 this.strategyVersion = response.version;
                 this.statuses.clear();
                 this.completedJobs.clear();
                 this.fillCounts.clear();
+                this.returns.clear();
                 this.failures.clear();
                 this.retryAt.clear();
                 this.retryCounts.clear();
@@ -277,11 +353,18 @@ export class IdleWatchlistBacktests {
             return;
         }
         if (this.checking || this.active) return;
-        if (!await this.ensureVersion(snapshot)) return;
+        if (!(await this.ensureVersion(snapshot))) return;
         if (!this.enabled || !this.isIdle() || !this.strategyVersion || !this.hasCapacity()) return;
         const busySymbols = new Set(this.serverJobs().map((job) => job.symbol || job.params?.symbol));
-        const member = this.members.find(({ symbol }) => !busySymbols.has(symbol) && !this.statuses.has(symbol)) ||
-            this.members.find(({ symbol }) => !busySymbols.has(symbol) && this.statuses.get(symbol) === "failed" && this.retryAt.has(symbol) && this.retryAt.get(symbol) <= this.now());
+        const member =
+            this.members.find(({ symbol }) => !busySymbols.has(symbol) && !this.statuses.has(symbol)) ||
+            this.members.find(
+                ({ symbol }) =>
+                    !busySymbols.has(symbol) &&
+                    this.statuses.get(symbol) === "failed" &&
+                    this.retryAt.has(symbol) &&
+                    this.retryAt.get(symbol) <= this.now(),
+            );
         if (!member) {
             this.emit();
             return;
@@ -294,20 +377,35 @@ export class IdleWatchlistBacktests {
         this.emit();
         try {
             const result = await this.run(member, snapshot, active);
-            if (result?.backtest?.status === "data_unavailable") throw new Error(result.evidence || "当前数据源无法完成回测");
+            if (result?.backtest?.status === "data_unavailable")
+                throw new Error(result.evidence || "当前数据源无法完成回测");
             if (!result?.backtest || result.symbol !== member.symbol || result.result_scope !== "stock")
                 throw new Error("回测结果与请求股票不一致");
-            if (generation === this.generation && this.members.some((item) => item.symbol === member.symbol && item.asof === member.asof)) {
+            if (
+                generation === this.generation &&
+                this.members.some((item) => item.symbol === member.symbol && item.asof === member.asof)
+            ) {
                 this.statuses.set(member.symbol, "completed");
                 if (active.job) this.completedJobs.set(member.symbol, active.job);
-                this.fillCounts.set(member.symbol, (result.orders || []).filter((order) => order.status === "filled").length);
+                this.fillCounts.set(
+                    member.symbol,
+                    (result.orders || []).filter((order) => order.status === "filled").length,
+                );
+                if (Number.isFinite(result.metrics?.total_return) && Number.isFinite(result.metrics?.total_pnl))
+                    this.returns.set(member.symbol, {
+                        rate: result.metrics.total_return,
+                        amount: result.metrics.total_pnl,
+                    });
                 this.failures.delete(member.symbol);
                 this.retryAt.delete(member.symbol);
                 this.retryCounts.delete(member.symbol);
                 this.onCompleted?.(result, active);
             }
         } catch (error) {
-            if (generation === this.generation && this.members.some((item) => item.symbol === member.symbol && item.asof === member.asof)) {
+            if (
+                generation === this.generation &&
+                this.members.some((item) => item.symbol === member.symbol && item.asof === member.asof)
+            ) {
                 if (["BACKTEST_CAPACITY", "BACKTEST_SYMBOL_RUNNING"].includes(error?.code)) {
                     this.statuses.delete(member.symbol);
                     this.failures.delete(member.symbol);

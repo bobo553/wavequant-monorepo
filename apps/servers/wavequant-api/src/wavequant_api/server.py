@@ -135,9 +135,15 @@ def make_server(
             logging.error("backtest job %s failed", job_id, exc_info=(type(error), error, error.__traceback__))
 
     history_root = getattr(repository, "root", None)
+    engine = getattr(repository, "backtest_engine", None)
+    engine_version = (
+        hashlib.sha256(json.dumps(engine, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        if engine is not None else None
+    )
     backtest_jobs = BacktestJobs(
         on_error=log_backtest_job_error,
         history_path=Path(history_root) / ".backtest-history.sqlite" if history_root is not None else None,
+        engine_version=engine_version,
     )
 
     class Handler(BaseHTTPRequestHandler):
@@ -543,6 +549,7 @@ def serve_dashboard(
         akshare_timeout=akshare_timeout,
         artifact_cache_scope="api",
     )
+    repository.clear_backtest_caches()
     services = infrastructure or Infrastructure.from_settings(InfrastructureSettings.from_env())
     server = make_server(
         repository,

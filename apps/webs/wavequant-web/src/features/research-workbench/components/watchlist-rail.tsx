@@ -79,7 +79,7 @@ export function WatchlistRail(): JSX.Element {
                     <p className="stock-empty">自选股加载中…</p>
                 </div>
                 <p className="scan-note">
-                    点击图表标题旁或列表行右侧的星标加入、移除当前分类；删除分类时股票会移入“我的自选”。
+                    点击股票名称切换；使用图表标题旁的星标加入或移除当前分类。列表右侧显示当前设置下回测的期末收益率，悬停可查看盈亏金额。
                 </p>
             </div>
             <span hidden aria-hidden="true">

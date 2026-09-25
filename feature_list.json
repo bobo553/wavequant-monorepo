@@ -1,8 +1,35 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": null,
+    "activeFeature": "MONOREPO-183",
     "features": [
+        {
+            "id": "MONOREPO-183",
+            "name": "clear-backtest-cache-on-quant-code-change",
+            "title": "量化代码变更后自动清理旧回测缓存",
+            "description": "量化 Core 的 Python 源码指纹变化且开发服务重启时，自动清理各作用域的回测结果、信号和筛选缓存以及 API 历史完成摘要；网页自动队列在引擎版本变化时暂停，手动回测接口保持可用。",
+            "scope": "wavequant-core ArtifactCache 和 ChartRepository；wavequant-api 回测任务历史与服务启动；wavequant-web 自动队列",
+            "dependencies": ["MONOREPO-181", "MONOREPO-182"],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "量化代码版本变化后自动清理所有现有作用域的回测派生缓存，同版本重启不重复清理",
+                "API 不再展示旧引擎的历史完成摘要，行情与分钟缓存保留",
+                "代码变更后自选股自动回测队列暂停，网页手动 AkShare/TDX 回测入口保持可用",
+                "人工核对缓存和运行状态；用户允许后再执行相关自动化门禁"
+            ],
+            "verification": [
+                {
+                    "command": "人工只读检查 11 个 SQLite 缓存、GET /api/backtest-jobs、backtest-version 与两个回测入口的缺参响应；git diff --check",
+                    "status": "passed",
+                    "summary": "11 个缓存库的回测派生命名空间记录数均为 0，行情和分钟缓存保留；API 活跃任务 0、历史摘要 0，版本接口返回引擎指纹，两个回测入口缺参均返回 400，未启动计算；diff 无空白错误。"
+                },
+                {
+                    "command": "Core/API/Web 单测、E2E、Playwright、Lint、类型检查、构建及真实回测",
+                    "status": "not-run",
+                    "summary": "用户要求当前采用人工测试，修改代码后不运行 E2E、Playwright、Lint、构建或自动回测。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-182",
             "name": "sync-manual-watchlist-backtest-completion",

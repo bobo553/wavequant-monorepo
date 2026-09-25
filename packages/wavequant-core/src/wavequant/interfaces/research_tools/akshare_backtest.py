@@ -25,6 +25,7 @@ class AkShareBacktester:
         self.browser = browser
         self.artifacts = ArtifactCache(cache)  # type: ignore[no-untyped-call]  # Legacy cache boundary.
         self.engine = TdxBacktester._engine_hashes()  # Match the loaded strategy code.
+        self.artifacts.clear_backtests_for_engine(self.engine)  # type: ignore[no-untyped-call]  # Legacy cache boundary.
 
     def _verify_engine(self) -> None:
         if TdxBacktester._engine_hashes() != self.engine:  # Shared package fingerprint.

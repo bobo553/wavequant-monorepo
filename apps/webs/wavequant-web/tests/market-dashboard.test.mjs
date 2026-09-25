@@ -88,8 +88,8 @@ test("research workbench provides categorized local watchlists and structure-res
     assert.match(structures, /structure-watchlist-add/);
     assert.match(structures, /setWatchlistStarIcon\(button, added\)/);
     assert.match(structures, /this\.watchlists\.remove\(result\.symbol\)/);
-    assert.match(watchlists, /setWatchlistStarIcon\(remove, true\)/);
-    assert.doesNotMatch(watchlists, /remove\.textContent = "移除"/);
+    assert.match(watchlists, /watchlist-backtest-result/);
+    assert.doesNotMatch(watchlists, /watchlist-stock-remove/);
     assert.doesNotMatch(watchlists, /点击查看/);
     assert.match(structures, /addAllToWatchlist/);
     assert.match(watchlists, /wavequant-user-data/);

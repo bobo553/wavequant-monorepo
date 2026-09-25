@@ -108,6 +108,28 @@ test("a matching completed stock task updates the watchlist without running it a
     assert.equal(subject.controller.adoptCompleted(path, params, completed, "outdated"), false);
 });
 
+test("completed return summaries follow the current backtest context", async () => {
+    const subject = queue({
+        run: async (member) => ({
+            ...result(member),
+            metrics: { total_return: member.symbol === "sz.000002" ? 0.125 : -0.075,
+                total_pnl: member.symbol === "sz.000002" ? 12500 : -7500 },
+        }),
+    });
+    await subject.controller.tick();
+    await subject.controller.tick();
+    assert.deepEqual(subject.controller.state().returns, {
+        "sz.000002": { rate: 0.125, amount: 12500 },
+        "sz.000001": { rate: -0.075, amount: -7500 },
+    });
+    subject.setSnapshot({
+        context: { run: "example", variant: "changed", source: "akshare" },
+        members: [{ symbol: "sz.000002", asof: "2026-09-24" }],
+    });
+    subject.controller.sync(subject.controller.snapshot());
+    assert.deepEqual(subject.controller.state().returns, {});
+});
+
 test("server completion restores a watchlist badge after reload without a local task", async () => {
     const context = {
         run: "example",
@@ -137,10 +159,13 @@ test("server completion restores a watchlist badge after reload without a local 
         result_valid: true,
         result_available: true,
         fill_count: 2,
+        total_return: -0.075,
+        total_pnl: -7500,
     };
     assert.equal(subject.controller.adoptServerStatus(record), true);
     assert.equal(subject.controller.state().statuses[member.symbol], "completed");
     assert.equal(subject.controller.state().fillCounts[member.symbol], 2);
+    assert.deepEqual(subject.controller.state().returns[member.symbol], { rate: -0.075, amount: -7500 });
     assert.equal(subject.controller.matchingJobId(record.path, record.params), "server-job");
     assert.equal(subject.controller.adoptServerStatus({ ...record, version: "v2" }), false);
     assert.equal(
