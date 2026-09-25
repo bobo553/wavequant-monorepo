@@ -48,6 +48,29 @@ test("pressure exits render distinct reduction and clear evidence in the browser
                 pressure_rally_fraction: 0.507,
                 pressure_adverse_patterns: ["bearish_body"],
             },
+            {
+                ...base,
+                pressure_date: undefined,
+                reason: "record_high_resistance_reduce",
+                record_high_date: "2021-09-10",
+                record_high: 7.0007,
+                record_high_age: 97,
+                record_breakout_date: "2022-02-11",
+                record_upper_shadow_fraction: 0.796,
+                record_adverse_patterns: ["close_below_previous", "long_upper_shadow"],
+            },
+            {
+                ...base,
+                pressure_date: undefined,
+                reason: "record_high_lower_close_clear",
+                record_high_date: "2021-09-10",
+                record_high: 7.0007,
+                record_high_age: 97,
+                record_breakout_date: "2022-02-11",
+                record_resistance_dates: ["2022-02-11", "2022-02-14"],
+                observed_close: 6.5683,
+                previous_close: 7.1036,
+            },
         ];
         return cases.map((marker) => {
             const panel = globalThis.document.createElement("section");
@@ -80,4 +103,8 @@ test("pressure exits render distinct reduction and clear evidence in the browser
     expect(details[2].detail).toContain("2022-06-29");
     expect(details[2].detail).toContain("2022-04-27");
     expect(details[2].copy).toContain("空头抵抗突破：2022-06-29");
+    expect(details[3].detail).toContain("2021-09-10 阳线最高");
+    expect(details[3].copy).toContain("目标减仓 50%，按整手执行");
+    expect(details[4].detail).toContain("2022-02-11、2022-02-14");
+    expect(details[4].copy).toContain("清空余仓");
 });

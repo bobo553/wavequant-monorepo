@@ -224,6 +224,13 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
                 `${item.pressure_breakout_date ? `空头抵抗突破：${item.pressure_breakout_date}` : item.pressure_warning_date ? `跳空减仓：${item.pressure_warning_date}` : `正 N：${item.pressure_n_date}`}；${item.reason === "pressure_gap_adverse_reduce" ? "减仓依据" : "清仓依据"}：${(item.pressure_adverse_patterns || []).map((key) => adverseNames[key] || key).join("、")}`,
             );
         }
+        if (item.record_high_date) {
+            add(`旧高来源：${item.record_high_date} 阳线最高 ${num(item.record_high, 4)} 元；突破时距该高点 ${item.record_high_age} 个交易日`);
+            if (item.reason === "record_high_resistance_reduce")
+                add(`${item.record_breakout_date} 盘中突破后遇空头抵抗，收盘未站稳；上影占振幅 ${pct(item.record_upper_shadow_fraction)}，当日目标减仓 50%，按整手执行`);
+            if (item.reason === "record_high_lower_close_clear")
+                add(`空头抵抗：${(item.record_resistance_dates || []).join("、")}；本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，清空余仓`);
+        }
         if (item.volume_trigger_date) {
             add(
                 `放量下跌 ${item.volume_trigger_date}：成交量 ${num(item.trigger_volume, 0)} > 前日 ${num(item.previous_volume, 0)}；收盘 ${num(item.trigger_close, 4)} < 前收 ${num(item.previous_close, 4)}`,

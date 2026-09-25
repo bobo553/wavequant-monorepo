@@ -1,5 +1,7 @@
 # Progress
 
+- MONOREPO-175：成交理由、详情及复制文本新增旧阳线高点突破受阻的目标 50% 整手减仓和成交后首次收低清仓，02-11/02-14 空头抵抗日期可追溯；拓扑与 v63 策略指纹同步。Web lint/typecheck/build、14 项 Vitest 与 157 项 Node 测试、真实 Chromium 成交说明回归和 Harness 通过。strict_full 回测中 3 手余仓于 02-11 实际卖 1 手，文案明确目标比例与整手差异。
+
 - MONOREPO-174：成交理由、明细和复制文本区分压力区未回补跳空的 50% 减仓、减仓后收跌清余仓及受阻突破后不利 K 清仓；策略拓扑同步说明。Web 14 项 Vitest、156 项 Node、lint/typecheck/build、真实 Chromium 详情与复制文本回归及 Harness 通过，拓扑源码指纹已更新。
 
 - MONOREPO-173：点击转浪买入成交后，从该笔决策证据在对应 K 线价位标出 A 高、B 低和 C 确认点；C 为已知入场确认价，不误称未来完成高点。切换选择或股票清除标注，视窗覆盖三点。桂林旅游 2021-05-21 与世联行真实 Chromium 点击回归通过；Web 14 项 Vitest、155 项 Node 单测、Lint、类型、生产构建及 Harness 通过。

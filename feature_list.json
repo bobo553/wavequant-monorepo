@@ -1,8 +1,55 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": null,
+    "activeFeature": "MONOREPO-176",
     "features": [
+        {
+            "id": "MONOREPO-176",
+            "name": "recover-long-current-stock-backtests",
+            "title": "长时间当前股票回测持续等待并恢复结果",
+            "description": "消除同步回测超过浏览器时限后重复计算和隐藏页面的失败路径，并修复回测重试交互。",
+            "scope": "wavequant-api 回测任务状态与幂等恢复、wavequant-web 轮询和重试、必要的性能修复及回归验证",
+            "dependencies": ["MONOREPO-120"],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "TDX 与 AkShare 回测计算超过页面单次请求时限后，页面能等待同一任务并展示最终结果或真实失败原因，不盲目再算一次",
+                "切换股票或回测参数会停止等待旧任务，修改起始日期可重新运行；AkShare 失败后仍可重试",
+                "短回测及既有同步 API 保持兼容，任务状态与重复请求、断连、失败和服务重启路径有确定性回归测试",
+                "相关 Web/API/Core 门禁及真实浏览器回测验证通过"
+            ],
+            "verification": []
+        },
+        {
+            "id": "MONOREPO-175",
+            "name": "old-bullish-high-resistance-staged-exit",
+            "title": "旧阳线高点突破受阻当日减仓及收低清余仓",
+            "description": "V3 全局持仓盘中突破至少 20 个交易日前的近 120 日未受空头抵抗阳线最高价，但遭空头抵抗且收盘未站稳并出现不利 K 时，当日按整手减半；实际成交后首次收低清空剩余持仓。",
+            "scope": "Core 旧高压力退出与持仓状态、V3 策略版本、Web 成交说明及桂林旅游 2022-02 回归",
+            "dependencies": ["MONOREPO-174"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "桂林旅游 2022-02-11 突破 2021-09-10 阳线最高价受阻并出现不利 K，当日减仓；02-14 空头抵抗可追溯；02-15 首次收低清余仓",
+                "全局旧阳线高点突破规则不提前改变巨量阴线压力突破退出、普通三级末跌高退出及既有仓位限制",
+                "历史前缀因果性、未成交整手减仓、成交说明及完整真实策略回测验证"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest tests/test_pressure_exit.py tests/test_trend_flip_exit.py tests/test_staged_exit.py；Ruff lint 与新增规则文件格式检查",
+                    "status": "passed",
+                    "summary": "101 项相关退出测试通过。覆盖桂林旅游 02-11/02-14/02-15、旧压力来源、整手不足、同日全清优先、同日新开仓不继承警示及历史前缀。额外全量 Core 回归 1027 项与 43 子测试通过，1 项既有国芳折叠 N 买点锚点断言失败（预期 643、实际 621）；backtest.py 与 strategy_profiles.py 整文件格式检查在 HEAD 亦失败。"
+                },
+                {
+                    "command": "AkShare API sz.000978 lecture_v3 2018-01-02 至 2026-09-24，strict_full 基础执行配置及页面量能过滤关闭、初始资金 10 万、仓位上限 100%",
+                    "status": "passed",
+                    "summary": "v63 页面执行口径下 01-07 既有放量减仓后余 291.4014 等价份额；02-11 卖 97.1338、余 194.2676；02-15 卖清余仓，02-14 空头抵抗进入证据。04-13/14 保持放量下跌退出；06-24 买 194.2676、06-27 减半卖 97.1338、06-29 清余仓，与此前页面回测一致。其他旧高风险还在 2020-09、2021-03、2022-12 依相同规则完成分段退出。"
+                },
+                {
+                    "command": "Core/Web lint、typecheck、build；Web test:unit；Chromium pressure-exit-reasons.spec.mjs；pnpm harness:check；codegraph sync",
+                    "status": "passed",
+                    "summary": "Core/Web 静态检查和构建、Web 14 项 Vitest 与 157 项 Node 测试通过；真实 Chromium 成交详情/复制文案、Harness 与索引同步通过。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-174",
             "name": "pressure-gap-reduce-and-resisted-breakout-clear",

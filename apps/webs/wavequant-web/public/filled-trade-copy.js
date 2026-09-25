@@ -186,6 +186,13 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
             `${marker.pressure_breakout_date ? `空头抵抗突破：${marker.pressure_breakout_date}` : marker.pressure_warning_date ? `跳空减仓：${marker.pressure_warning_date}` : `正 N：${marker.pressure_n_date}`}；${marker.reason === "pressure_gap_adverse_reduce" ? "减仓依据" : "清仓依据"}：${(marker.pressure_adverse_patterns || []).map((key) => adverseNames[key] || key).join("、")}`,
         );
     }
+    if (marker.record_high_date) {
+        lines.push(`旧高来源：${marker.record_high_date} 阳线最高 ${num(marker.record_high, 4)} 元；突破时距该高点 ${marker.record_high_age} 个交易日`);
+        if (marker.reason === "record_high_resistance_reduce")
+            lines.push(`${marker.record_breakout_date} 盘中突破后遇空头抵抗，收盘未站稳；上影占振幅 ${pct(marker.record_upper_shadow_fraction)}，当日目标减仓 50%，按整手执行`);
+        if (marker.reason === "record_high_lower_close_clear")
+            lines.push(`空头抵抗：${(marker.record_resistance_dates || []).join("、")}；本日收盘 ${num(marker.observed_close, 4)} < 前收 ${num(marker.previous_close, 4)}，清空余仓`);
+    }
     if (marker.volume_trigger_date) {
         lines.push(
             `放量下跌 ${marker.volume_trigger_date}：成交量 ${num(marker.trigger_volume, 0)} > 前日 ${num(marker.previous_volume, 0)}；收盘 ${num(marker.trigger_close, 4)} < 前收 ${num(marker.previous_close, 4)}`,

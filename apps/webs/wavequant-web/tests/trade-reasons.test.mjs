@@ -166,6 +166,33 @@ test("pressure gap reduction and subsequent clear keep their distinct dated reas
     assert.match(clear.at(-1), /2022-06-27 减仓后首次收跌/);
 });
 
+test("old bullish record resistance explains the February reduction and lower close", () => {
+    const base = {
+        side: "SELL",
+        record_high_date: "2021-09-10",
+        record_high: 7.0007,
+        record_high_age: 97,
+        record_breakout_date: "2022-02-11",
+    };
+    const reduction = tradeReasonItems({
+        ...base,
+        reason: "record_high_resistance_reduce",
+        record_adverse_patterns: ["close_below_previous", "long_upper_shadow"],
+    });
+    assert.match(reduction[0], /减仓 50%/);
+    assert.match(reduction[1], /2021-09-10.*7\.0007/);
+    assert.match(reduction[2], /2022-02-11.*长上影/);
+    const clear = tradeReasonItems({
+        ...base,
+        reason: "record_high_lower_close_clear",
+        record_resistance_dates: ["2022-02-11", "2022-02-14"],
+        observed_close: 6.5683,
+        previous_close: 7.1036,
+    });
+    assert.match(clear[0], /清空余仓/);
+    assert.match(clear.at(-1), /2022-02-11、2022-02-14.*6\.5683 < 前收 7\.1036/);
+});
+
 test("chart trade detail renders the same numbered reasons", () => {
     const document = new JSDOM("<div id='panel'></div>").window.document;
     const previousDocument = globalThis.document;

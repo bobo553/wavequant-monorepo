@@ -79,7 +79,7 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'pressure_staged_breakout_v62_' + variant
+    config['profile_version'] = 'record_high_resistance_v63_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -127,6 +127,7 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
         secondary_c_wave_reversal_exit='known_level2_low_to_confirmed_source_a_high_then_known_b_low_intraday_high_break_two_resisted_sessions_equal_c_target_with_both_shadows_ge_30pct_next_bear_close_below_shadow_low_same_close_full_clear',
         pressure_adverse_exit='positive_n_retests_supply_adverse_unfilled_gap_higher_close_half_reduce_first_lower_close_clear_other_adverse_full_clear',
         pressure_breakout_exit='held_position_supply_high_resisted_intraday_break_after_20pct_rise_from_post_supply_low_then_first_later_adverse_full_clear',
+        record_high_resistance_exit='held_position_intraday_break_of_clean_bullish_120_session_high_at_least_20_sessions_old_resisted_and_adverse_close_at_or_below_high_half_reduce_after_fill_first_lower_close_full_clear',
         volume_inverse_n_clear='confirmed_inverse_n_and_volume_gt_previous_same_day_full_clear_before_partial_exits',
         inverse_n_remaining_exit='bull_resistance_next_close_below_virtual_low_same_day_clear',
         inverse_n_close_reduce='confirmed_inverse_n_same_day_close_cumulative_90_without_prior_reduction',

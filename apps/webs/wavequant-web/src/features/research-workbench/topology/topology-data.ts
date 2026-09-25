@@ -302,10 +302,10 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             },
             {
                 id: "hard-risk",
-                question: "放量倒 N、巨量高开反包、异常波段反转或趋势翻空？",
-                detail: "V3 巨量高开强阴反包、放量倒 N、波段异常与趋势翻空可整仓退出。正 N 上攻巨量阴线压力区遇不利 K 通常全清；未回补跳空且收高时先减半，成交后首次收跌清余仓。持仓大幅上涨后盘中突破压力高点并遇空头抵抗，后续首次不利 K 也清仓。",
+                question: "放量倒 N、巨量反包、异常波段或压力突破受阻？",
+                detail: "V3 巨量高开强阴反包、放量倒 N、波段异常与趋势翻空可整仓退出。正 N 上攻巨量阴线压力区遇不利 K 通常全清；未回补跳空且收高时先减半，成交后首次收跌清余仓。持仓大幅上涨后盘中突破阴线压力高点并遇空头抵抗，后续首次不利 K 清仓。盘中突破至少 20 个交易日前的近 120 日未受空头抵抗阳线最高价，遇空头抵抗且收盘未站稳并出现不利 K 时先减半，成交后首次收低清余仓。",
                 source: "strategy_profiles.py · whole_wave_profile definition；wave_exhaustion_exit.py；trend_flip_exit.py；pressure_exit.py",
-                yes: "优先整仓退出",
+                yes: "按对应风险全清或减仓",
                 no: "检查二级 C 浪抵抗失败",
             },
             {
@@ -403,4 +403,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "d276ed2a4533c8f8bee153642d61067327859d6f4b76202be11d21ecbdf69e31";
+export const strategySourceDigest = "d37ff2c364a5d668e62c93f5210338ca3fd1e75c4f3ed1415c49e6541e937c25";

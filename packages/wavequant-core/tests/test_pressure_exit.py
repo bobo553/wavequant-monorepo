@@ -8,7 +8,7 @@ import pytest
 from wavequant.application.analytics.backtest import run_portfolio
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal
-from wavequant.domain.strategies.pressure_exit import pressure_exit_history
+from wavequant.domain.strategies.pressure_exit import pressure_exit_history, record_high_resistance_history
 
 
 def sample():
@@ -18,6 +18,216 @@ def sample():
     bars[22] = replace(bars[22], open=9.4, high=10, low=9.4, close=9.9)
     bars[23] = replace(bars[23], open=9.9, high=10.3, low=9.85, close=9.95)
     return bars, [None] * 22 + [22, 22]
+
+
+def guilin_2022_record_sample():
+    fixtures = Path(__file__).parent / "fixtures"
+    previous = json.loads((fixtures / "guilin_2021_record_high.json").read_text(encoding="utf-8"))
+    current = json.loads((fixtures / "guilin_2022_hierarchy.json").read_text(encoding="utf-8"))
+    bars = [
+        Bar(datetime.fromisoformat(day), previous["symbol"], *values)
+        for day, *values in previous["bars"] + current["bars"]
+    ]
+    return bars, {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+
+
+def test_guilin_2022_february_old_record_resistance_reduces_then_lower_close_clears():
+    bars, dates = guilin_2022_record_sample()
+    entry, warning, clear = (dates[day] for day in ("2022-02-08", "2022-02-11", "2022-02-15"))
+    risks = record_high_resistance_history(bars[: clear + 1], StrategyConfig())
+    assert risks[warning]["reason"] == "record_high_resistance_reduce"
+    assert risks[warning]["exit_fraction"] == 0.5
+    assert risks[warning]["record_high_date"] == "2021-09-10"
+    assert risks[warning]["record_high"] == pytest.approx(7.00065240967373)
+    assert risks[warning]["record_resistance_patterns"] == ["direct_lower_open", "long_upper_shadow"]
+    assert record_high_resistance_history(bars[:warning], StrategyConfig()).get(warning) is None
+
+    signal = Signal(
+        bars[entry].timestamp,
+        bars[0].symbol,
+        entry,
+        "LONG",
+        bars[entry].close,
+        5,
+        "fixture",
+        bars[entry].timestamp,
+        0,
+        None,
+        "fixture",
+        20,
+    )
+    config = StrategyConfig(
+        pressure_adverse_exit=True,
+        entry_at_close=True,
+        exit_on_target=False,
+        max_hold_bars=100,
+        initial_capital=100000,
+        max_position_weight=1,
+        risk_fraction=1,
+    )
+    options = dict(signals=[signal], config=config)
+    full = run_portfolio({bars[0].symbol: bars[: clear + 1]}, **options)
+    prefix = run_portfolio({bars[0].symbol: bars[: warning + 1]}, **options)
+    assert full.orders[: len(prefix.orders)] == prefix.orders
+    buy, first, second = [order for order in full.orders if order["status"] == "filled"]
+    assert first["reason"] == "record_high_resistance_reduce"
+    assert first["timestamp"] == bars[warning].timestamp.isoformat()
+    assert first["closed_position_fraction"] == pytest.approx(0.5, rel=0.02)
+    assert first["remaining_quantity"] > 0
+    assert second["reason"] == "record_high_lower_close_clear"
+    assert second["timestamp"] == bars[clear].timestamp.isoformat()
+    assert second["record_resistance_dates"] == ["2022-02-11", "2022-02-14"]
+    assert second["quantity"] == pytest.approx(first["remaining_quantity"])
+    assert second["remaining_quantity"] == 0
+    assert first["quantity"] + second["quantity"] == pytest.approx(buy["quantity"])
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "bearish_source",
+        "resisted_source",
+        "fresh_record",
+        "outside_lookback",
+        "no_cross",
+        "close_above",
+        "no_resistance",
+    ],
+)
+def test_old_bullish_record_reduction_rejects_unqualified_breakouts(case):
+    bars, dates = guilin_2022_record_sample()
+    warning = dates["2022-02-11"]
+    config = StrategyConfig()
+    if case == "bearish_source":
+        source = dates["2021-09-10"]
+        bars[source] = replace(bars[source], open=6.95, close=6.85)
+    elif case == "resisted_source":
+        source = dates["2021-09-10"]
+        bars[source] = replace(bars[source], open=6.35, low=6.3)
+    elif case == "fresh_record":
+        previous = warning - 1
+        bars[previous] = replace(bars[previous], high=7.05)
+    elif case == "outside_lookback":
+        config = replace(config, pressure_lookback=60)
+    elif case == "no_cross":
+        bars[warning] = replace(bars[warning], high=bars[dates["2021-09-10"]].high)
+    elif case == "close_above":
+        bars[warning] = replace(bars[warning], close=7.05)
+    else:
+        bars[warning] = replace(bars[warning], open=6.76, close=7.0)
+    assert warning not in record_high_resistance_history(bars[: warning + 1], config)
+
+
+def test_old_record_one_lot_reduction_defers_without_arming_later_clear():
+    bars, dates = guilin_2022_record_sample()
+    entry, clear = dates["2022-02-08"], dates["2022-02-15"]
+    signal = Signal(
+        bars[entry].timestamp,
+        bars[0].symbol,
+        entry,
+        "LONG",
+        bars[entry].close,
+        5,
+        "fixture",
+        bars[entry].timestamp,
+        0,
+        None,
+        "fixture",
+        20,
+    )
+    config = StrategyConfig(
+        pressure_adverse_exit=True,
+        entry_at_close=True,
+        exit_on_target=False,
+        max_hold_bars=100,
+        initial_capital=1000,
+        max_position_weight=1,
+        risk_fraction=1,
+    )
+    result = run_portfolio({bars[0].symbol: bars[: clear + 1]}, [signal], config)
+    assert [(order["side"], order["status"], order["reason"]) for order in result.orders] == [
+        ("BUY", "filled", "fixture"),
+        ("SELL", "deferred", "reduction_below_one_lot"),
+    ]
+
+
+def test_old_record_partial_does_not_override_same_day_full_clear():
+    bars, dates = guilin_2022_record_sample()
+    entry, warning = dates["2022-02-08"], dates["2022-02-11"]
+    buy = Signal(
+        bars[entry].timestamp,
+        bars[0].symbol,
+        entry,
+        "LONG",
+        bars[entry].close,
+        5,
+        "fixture",
+        bars[entry].timestamp,
+        0,
+        None,
+        "fixture",
+        20,
+    )
+    inverse = Signal(
+        bars[warning].timestamp,
+        bars[0].symbol,
+        warning,
+        "EXIT",
+        bars[warning].close,
+        5,
+        "inverse_n_risk_exit",
+        bars[warning].timestamp,
+        0,
+        None,
+        "fixture",
+    )
+    config = StrategyConfig(
+        pressure_adverse_exit=True,
+        volume_inverse_n_clear=True,
+        entry_at_close=True,
+        exit_on_target=False,
+        max_hold_bars=100,
+        initial_capital=100000,
+        max_position_weight=1,
+        risk_fraction=1,
+    )
+    result = run_portfolio({bars[0].symbol: bars[: warning + 1]}, [buy, inverse], config)
+    filled = [order for order in result.orders if order["status"] == "filled"]
+    assert [(order["side"], order["reason"]) for order in filled] == [
+        ("BUY", "fixture"),
+        ("SELL", "volume_inverse_n_clear"),
+    ]
+    assert filled[-1]["remaining_quantity"] == 0
+
+
+def test_old_record_warning_does_not_attach_to_position_entered_on_breakout_day():
+    bars, dates = guilin_2022_record_sample()
+    entry, clear = dates["2022-02-11"], dates["2022-02-15"]
+    signal = Signal(
+        bars[entry].timestamp,
+        bars[0].symbol,
+        entry,
+        "LONG",
+        bars[entry].close,
+        5,
+        "fixture",
+        bars[entry].timestamp,
+        0,
+        None,
+        "fixture",
+        20,
+    )
+    config = StrategyConfig(
+        pressure_adverse_exit=True,
+        entry_at_close=True,
+        exit_on_target=False,
+        max_hold_bars=100,
+        initial_capital=100000,
+        max_position_weight=1,
+        risk_fraction=1,
+    )
+    result = run_portfolio({bars[0].symbol: bars[: clear + 1]}, [signal], config)
+    assert [(order["side"], order["status"]) for order in result.orders] == [("BUY", "filled")]
 
 
 @pytest.mark.parametrize("pattern", ["shadow", "close", "low"])

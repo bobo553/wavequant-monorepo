@@ -10,7 +10,8 @@ from typing import Callable
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
 from wavequant.domain.strategies.wave_exhaustion_exit import observe_wave_exhaustion
-from wavequant.domain.strategies.pressure_exit import pressure_exit_history
+from wavequant.domain.strategies.pressure_exit import pressure_exit_history, record_high_resistance_history
+from wavequant.domain.market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from wavequant.domain.strategies.staged_exit import (
     StagedExitState, observe_intraday_staged_exit, observe_staged_exit, observe_inverse_resistance_exit, observe_volume_down_exit,
 )
@@ -49,6 +50,7 @@ class _Position:
     wave_reduced: bool = False
     signal_index: int | None = None
     pressure_warning: dict | None = None
+    record_high_warning: dict | None = None
 
 
 def transaction_fee(notional: float, when: datetime, sell: bool, config: StrategyConfig) -> float:
@@ -136,6 +138,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             n_context[symbol].append(active)
     pressure_risks = {symbol: pressure_exit_history(history, n_context[symbol], config)
                       if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
+    record_high_risks = {symbol: record_high_resistance_history(history, config)
+                         if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
     trend_flip_risks = {symbol: {} for symbol in grouped}
     if config.trend_flip_adverse_exit:
         from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
@@ -198,7 +202,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             quantity = max(0.0, math.floor((desired - already_sold) / lot + 1e-9) * lot)
         # A holding smaller than two sale lots cannot be split as requested.
         if quantity <= 0:
-            if 'exit_target_fraction' in evidence or pending_exit[symbol] == 'pressure_gap_adverse_reduce':
+            if 'exit_target_fraction' in evidence or pending_exit[symbol] in (
+                    'pressure_gap_adverse_reduce', 'record_high_resistance_reduce'):
                 log(when, symbol, 'SELL', 'deferred', 'reduction_below_one_lot')
                 pending_exit.pop(symbol, None)
                 exit_evidence.pop(symbol, None)
@@ -250,6 +255,14 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                     pressure_volume_multiple=evidence['pressure_volume_multiple'],
                     pressure_n_date=evidence['pressure_n_date'],
                     pressure_warning_date=when.date().isoformat(),
+                )
+            if pending_exit[symbol] == 'record_high_resistance_reduce':
+                pos.record_high_warning = dict(
+                    record_high_date=evidence['record_high_date'],
+                    record_high=evidence['record_high'],
+                    record_high_age=evidence['record_high_age'],
+                    record_breakout_date=evidence['record_breakout_date'],
+                    record_breakout_index=evidence['record_breakout_index'],
                 )
             if pending_exit[symbol] in ('wave_volume_shadows_reduce', 'wave_gap_reversal_reduce',
                                         'wave_upper_rejection_reduce', 'wave_ordinary_equal_upper_shadow_reduce'):
@@ -486,9 +499,12 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                                 reduced=pos.wave_reduced, entry_index=pos.entry_index,
                                                 signal_index=pos.signal_index)
                          if config.wave_exhaustion_exit else None)
-            pressure = trend_flip_risks[symbol].get(i) or pressure_risks[symbol].get(i)
+            pressure = trend_flip_risks[symbol].get(i) or pressure_risks[symbol].get(i) or record_high_risks[symbol].get(i)
             if (pressure is not None and pressure['reason'] == 'pressure_breakout_adverse_clear'
                     and pos.entry_index > pressure['pressure_breakout_index']):
+                pressure = None
+            if (pressure is not None and pressure['reason'] == 'record_high_resistance_reduce'
+                    and pos.entry_index >= pressure['record_breakout_index']):
                 pressure = None
             if pos.pressure_warning is not None and i > 0 and bar.close < grouped[symbol][i - 1].close:
                 pressure = dict(
@@ -497,7 +513,25 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                     pressure_adverse_patterns=['close_below_previous'],
                     observed_close=bar.close, previous_close=grouped[symbol][i - 1].close,
                 )
-            elif pos.pressure_warning is not None and pressure is not None and pressure['exit_fraction'] < 1:
+            elif pos.record_high_warning is not None and i > 0 and bar.close < grouped[symbol][i - 1].close:
+                warning = pos.record_high_warning
+                history = grouped[symbol]
+                resisted = [history[j].timestamp.date().isoformat()
+                            for j in range(warning['record_breakout_index'], i)
+                            if observe_resistance(history[j - 1], history[j], attack_direction=Direction.UP,
+                                                  shadow_policy=ShadowPolicy(0.5)).detected is True]
+                pressure = dict(
+                    reason='record_high_lower_close_clear', exit_fraction=1.0,
+                    execution_model='same_day_close', **warning,
+                    record_resistance_dates=resisted,
+                    record_adverse_patterns=['close_below_previous'],
+                    observed_close=bar.close, previous_close=history[i - 1].close,
+                )
+            elif (pos.pressure_warning is not None or pos.record_high_warning is not None) and pressure is not None and pressure['exit_fraction'] < 1:
+                pressure = None
+            if (pressure is not None and pressure['reason'] == 'record_high_resistance_reduce'
+                    and (hard_reason or volume_inverse or inverse_failure is not None
+                         or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
                 pressure = None
             if wave_exit is not None and wave_exit['exit_fraction'] == 1:
                 wave_clear_symbols.add(symbol)

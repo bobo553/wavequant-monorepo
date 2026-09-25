@@ -1,4 +1,4 @@
-"""Causal exits after a positive N encounters an unbroken supply candle."""
+"""Causal exits at unbroken supply candles and resisted former record highs."""
 
 from statistics import mean
 
@@ -16,6 +16,72 @@ def _pressure_evidence(bars: list[Bar], source: int) -> dict:
         pressure_volume=supply.volume,
         pressure_volume_multiple=supply.volume / mean(b.volume for b in bars[source - 20 : source]),
     )
+
+
+def record_high_resistance_history(bars: list[Bar], config: StrategyConfig) -> dict[int, dict]:
+    """Reduce on a resisted intraday break of an old 120-session record high.
+
+    The source must precede the attack by at least 20 sessions. Both the prior
+    record and resistance are known at the attack close, without swing labels.
+    """
+    risks: dict[int, dict] = {}
+    for index in range(20, len(bars)):
+        prior = bars[index - 1]
+        bar = bars[index]
+        start = max(0, index - config.pressure_lookback)
+        source = max(range(start, index), key=lambda j: (bars[j].high, -j))
+        record = bars[source]
+        if (
+            index - source < 20
+            or record.close <= record.open
+            or not prior.close <= record.high < bar.high
+            or bar.close > record.high
+        ):
+            continue
+        if (
+            source == 0
+            or observe_resistance(
+                bars[source - 1], record, attack_direction=Direction.UP, shadow_policy=ShadowPolicy(0.5)
+            ).detected
+            is True
+        ):
+            continue
+        resistance = observe_resistance(prior, bar, attack_direction=Direction.UP, shadow_policy=ShadowPolicy(0.5))
+        if resistance.detected is not True:
+            continue
+        span = bar.high - bar.low
+        upper = bar.high - max(bar.open, bar.close)
+        adverse = []
+        if bar.close < bar.open:
+            adverse.append("bearish_body")
+        if bar.close < prior.close:
+            adverse.append("close_below_previous")
+        if bar.low < prior.low:
+            adverse.append("low_below_previous")
+        if span > 0 and upper / span >= 0.5:
+            adverse.append("long_upper_shadow")
+        if not adverse:
+            continue
+        risks[index] = dict(
+            reason="record_high_resistance_reduce",
+            exit_fraction=0.5,
+            execution_model="same_day_close",
+            record_high_date=record.timestamp.date().isoformat(),
+            record_high=record.high,
+            record_high_age=index - source,
+            record_breakout_date=bar.timestamp.date().isoformat(),
+            record_breakout_index=index,
+            record_resistance_patterns=list(resistance.reasons),
+            record_adverse_patterns=adverse,
+            record_upper_shadow_fraction=upper / span if span else 0,
+            observed_open=bar.open,
+            observed_close=bar.close,
+            observed_low=bar.low,
+            previous_close=prior.close,
+            previous_high=prior.high,
+            previous_low=prior.low,
+        )
+    return risks
 
 
 def pressure_exit_history(bars: list[Bar], n_context: list[int | None], config: StrategyConfig) -> dict[int, dict]:
