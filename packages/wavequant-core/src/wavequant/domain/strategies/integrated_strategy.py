@@ -341,7 +341,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         counts['completed_'+direction.value+'_n'] += 1
         log(t, 'n_completed', direction=direction.value, origin=a.point.index, neckline=b.point.index,
             pullback=c.point.index, known_at=i, defense=n.completion.defense, counter_ratio=force.ratio,
-            n_level=n_level, **({'outside_close_confirmed': True} if whole_wave and setup.allow_outside_close and setup.pullback.index == t else {}))
+            n_level=n_level, box_anchor=n.targets.box_anchor, one_p=n.targets.one_p,
+            two_t=n.targets.two_t,
+            **({'outside_close_confirmed': True} if whole_wave and setup.allow_outside_close and setup.pullback.index == t else {}))
     # A later confirmed inverse N terminates ordinary local-bounce entries.
     # Use its availability, not a pivot source date, to preserve prior signals.
     inverse_known = sorted((max(c['attack'], c['known_at']), c['attack']) for c in candidates
@@ -533,6 +535,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             for event in projection:
                 row = asdict(event)
                 j, kind = row.pop('bar_index'), row.pop('event')
+                row['origin_index'] = projection_setup.origin_index
                 row['projection_label'] = {'stacking': '叠箱', 'pushing': '堆箱',
                     'ready': '二吐完成，等待转浪', 'pullback': 'B浪回调，等待再攻击',
                     'invalidated': '轧空低失守，转浪失效'}[event.state]

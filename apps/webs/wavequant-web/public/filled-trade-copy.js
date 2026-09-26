@@ -118,9 +118,9 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         );
     }
     if (marker.wave_reached_stage) {
-        const stageNames = { two_t: "二吐", five_top: "五顶", ten_full: "十满", ordinary_equal: "普通 A 的 C 等浪" };
+        const stageNames = { one_p: "一饱", two_t: "二吐", five_top: "五顶", ten_full: "十满", ordinary_equal: "普通 A 的 C 等浪" };
         lines.push(
-            `目标背景：本笔正 N ${marker.wave_n_date}；${marker.wave_reached_date} 已到 ${stageNames[marker.wave_reached_stage] || marker.wave_reached_stage} ${num(marker.wave_reached_price, 4)} 元`,
+            `目标背景：${marker.wave_n_origin_date ? `新段正 N 起点 ${marker.wave_n_origin_date} ${num(marker.wave_n_origin_price, 4)} 元；` : "本笔"}正 N ${marker.wave_n_date}；${marker.wave_reached_date} 已到 ${stageNames[marker.wave_reached_stage] || marker.wave_reached_stage} ${num(marker.wave_reached_price, 4)} 元`,
         );
         if (marker.reason === "wave_gap_reversal_reduce")
             lines.push(
