@@ -65,6 +65,54 @@ test("idle queue follows visible row order and waits for foreground activity to 
     assert.equal(subject.controller.state().completed, 2);
 });
 
+test("the queue refreshes stale results first, then starts the top pending stock only after other jobs finish", async () => {
+    const subject = queue();
+    await subject.controller.ensureVersion();
+    subject.controller.historicalSymbols = () => new Set(["sz.000001"]);
+    let serverJobs = [{ status: "running", symbol: "sh.600000" }];
+    subject.controller.serverJobs = () => serverJobs;
+
+    await subject.controller.tick();
+    assert.deepEqual(subject.calls, []);
+    assert.equal(subject.controller.state().serverBusy, true);
+    assert.equal(subject.controller.state().statuses["sz.000001"], undefined);
+
+    serverJobs = [];
+    await subject.controller.tick();
+    assert.equal(subject.controller.state().serverBusy, false);
+    assert.deepEqual(subject.calls, ["sz.000001"]);
+    await subject.controller.tick();
+    assert.deepEqual(subject.calls, ["sz.000001", "sz.000002"]);
+});
+
+test("a recorded historical status also runs before pending members", async () => {
+    const subject = queue();
+    await subject.controller.ensureVersion();
+    subject.controller.statuses.set("sz.000001", "historical");
+    await subject.controller.tick();
+    assert.deepEqual(subject.calls, ["sz.000001"]);
+});
+
+test("engine updates refresh the queue while preserving the manual pause choice", async () => {
+    let engineVersion = "engine-1";
+    const subject = queue({ version: async () => ({ version: engineVersion, engine_version: engineVersion }) });
+    await subject.controller.tick();
+    assert.deepEqual(subject.calls, ["sz.000002"]);
+
+    engineVersion = "engine-2";
+    subject.advance(30_001);
+    await subject.controller.tick();
+    assert.equal(subject.controller.enabled, true);
+    assert.deepEqual(subject.calls, ["sz.000002", "sz.000002"]);
+
+    subject.controller.setEnabled(false);
+    engineVersion = "engine-3";
+    subject.advance(30_001);
+    await subject.controller.tick();
+    assert.equal(subject.controller.enabled, false);
+    assert.deepEqual(subject.calls, ["sz.000002", "sz.000002"]);
+});
+
 test("a matching completed stock task updates the watchlist without running it again", async () => {
     const context = {
         run: "example",
@@ -112,8 +160,10 @@ test("completed return summaries follow the current backtest context", async () 
     const subject = queue({
         run: async (member) => ({
             ...result(member),
-            metrics: { total_return: member.symbol === "sz.000002" ? 0.125 : -0.075,
-                total_pnl: member.symbol === "sz.000002" ? 12500 : -7500 },
+            metrics: {
+                total_return: member.symbol === "sz.000002" ? 0.125 : -0.075,
+                total_pnl: member.symbol === "sz.000002" ? 12500 : -7500,
+            },
         }),
     });
     await subject.controller.tick();

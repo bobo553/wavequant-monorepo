@@ -90,7 +90,7 @@ export function WatchlistRail(): JSX.Element {
                         等待自选股列表加载…
                     </p>
                     <progress id="watchlist-backtest-progress" max={1} value={0} aria-label="自选股回测进度" />
-                    <small>页面空闲后按列表顺序、各股最新交易日逐只回测；策略更新后自动重跑。</small>
+                    <small>页面空闲且没有其他回测时，先更新旧结果，再从列表顶部逐只回测；策略更新后自动重跑。</small>
                 </section>
                 <div id="watchlist-stock-list" className="watchlist-stock-list">
                     <p className="stock-empty">自选股加载中…</p>
