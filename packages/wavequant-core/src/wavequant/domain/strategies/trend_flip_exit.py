@@ -167,8 +167,64 @@ def _last_fall_high_shadow_history(bars, history, reduction_fraction):
     return risks
 
 
-def trend_flip_exit_history(bars, history, *, reduction_fraction=0.8):
+def _primary_last_fall_high_history(bars, history, positive_n_attacks, reduction_fraction):
+    """Watch the first adverse candle after a positive N holds a level-one key."""
+    risks = {}
+    state = None
+    for i in range(1, len(bars)):
+        bar, previous = bars[i], bars[i - 1]
+        if state is None:
+            points = history.get(i - 1, {}).get(1, ())
+            key = points[-1] if points and points[-1]['kind'] == 'H' else None
+            if (i not in positive_n_attacks or key is None or key['available_at'] >= i
+                    or not previous.close < key['value'] <= bar.close
+                    or bar.high <= key['value']):
+                continue
+            state = dict(key=key, attack=i, warning=None)
+            continue
+        if bar.close < previous.close:
+            risks[i] = dict(
+                reason='trend_last_fall_high_lower_close_clear', exit_fraction=1.0,
+                execution_model='same_day_close', trend_level=1,
+                trend_key_date=bars[state['key']['index']].timestamp.date().isoformat(),
+                trend_key_high=state['key']['value'],
+                trend_attack_date=bars[state['attack']].timestamp.date().isoformat(),
+                trend_attack_index=state['attack'],
+                trend_warning_index=state['warning'] if state['warning'] is not None else state['attack'],
+                observed_close=bar.close, previous_close=previous.close,
+            )
+            state = None
+            continue
+        resistance = observe_resistance(
+            previous, bar, attack_direction=Direction.UP, shadow_policy=ShadowPolicy(1 / 3))
+        adverse = list(resistance.reasons)
+        if bar.close < bar.open and 'bearish_body' not in adverse:
+            adverse.append('bearish_body')
+        if bar.low < previous.low:
+            adverse.append('low_below_previous')
+        if state['warning'] is None and adverse:
+            state['warning'] = i
+            risks[i] = dict(
+                reason='trend_last_fall_high_adverse_reduce',
+                exit_fraction=reduction_fraction, exit_target_fraction=reduction_fraction,
+                execution_model='same_day_close', trend_level=1,
+                trend_key_date=bars[state['key']['index']].timestamp.date().isoformat(),
+                trend_key_high=state['key']['value'],
+                trend_attack_date=bars[state['attack']].timestamp.date().isoformat(),
+                trend_attack_index=state['attack'], trend_warning_index=i,
+                trend_adverse_patterns=adverse,
+                observed_open=bar.open, observed_high=bar.high,
+                observed_low=bar.low, observed_close=bar.close,
+                previous_close=previous.close,
+            )
+    return risks
+
+
+def trend_flip_exit_history(bars, history, *, reduction_fraction=0.8, positive_n_attacks=()):
     risks = _last_fall_high_shadow_history(bars, history, reduction_fraction)
+    for index, risk in _primary_last_fall_high_history(
+            bars, history, set(positive_n_attacks), reduction_fraction).items():
+        risks.setdefault(index, risk)
     for level in (3,):
         state = None
         attempted = set()

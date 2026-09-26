@@ -152,7 +152,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
         from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
         from wavequant.domain.strategies.trend_flip_exit import trend_flip_exit_history
         trend_flip_risks = {symbol: trend_flip_exit_history(
-            history, hierarchical_history(history)[0], reduction_fraction=config.wave_exhaustion_reduction)
+            history, hierarchical_history(history)[0], reduction_fraction=config.wave_exhaustion_reduction,
+            positive_n_attacks=(positive_n_bars or {}).get(symbol, {}).values())
                             for symbol, history in grouped.items()}
     wave_lookup = {symbol: {} for symbol in grouped}
     wave_signal_lookup = {symbol: {} for symbol in grouped}
@@ -306,7 +307,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                         'wave_upper_rejection_reduce', 'wave_target_upper_shadow_reduce',
                                         'wave_ordinary_equal_upper_shadow_reduce'):
                 pos.wave_reduced = True
-            if pending_exit[symbol] == 'trend_last_fall_high_upper_shadow_reduce':
+            if pending_exit[symbol] in ('trend_last_fall_high_upper_shadow_reduce',
+                                        'trend_last_fall_high_adverse_reduce'):
                 pos.trend_last_fall_high_reduced = True
             if pending_exit[symbol] == 'inverse_n_close_reduce_90':
                 pos.staged_exit.inverse_index = evidence['inverse_observed_index']
@@ -606,7 +608,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             if (pressure is not None and pressure['reason'].startswith('trend_last_fall_high_')
                     and pos.entry_index > pressure['trend_warning_index']):
                 pressure = None
-            if (pressure is not None and pressure['reason'] == 'trend_last_fall_high_upper_shadow_reduce'
+            if (pressure is not None and pressure['reason'] in ('trend_last_fall_high_upper_shadow_reduce',
+                                                                 'trend_last_fall_high_adverse_reduce')
                     and pos.trend_last_fall_high_reduced):
                 pressure = None
             if (pressure is not None and pressure['reason'] == 'pressure_breakout_adverse_clear'
