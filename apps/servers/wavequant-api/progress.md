@@ -1,5 +1,7 @@
 # Progress
 
+- MONOREPO-191：常驻 API/Worker 启动器限制为 `main`；一次性 Python 命令仍可在特性 worktree 运行。特性分支启动拒绝检查及 Node 语法检查通过；完整 Python 套件未运行。
+
 - MONOREPO-183：API 启动按量化 Core 引擎版本清理旧回测任务完成摘要，并触发各缓存作用域的旧回测派生记录清理。人工只读确认活跃任务与历史摘要均为 0；AkShare/TDX 回测入口缺参均返回 400，网页手动回测接口保持可用。依用户要求未运行自动化测试、构建或回测，待人工验收。
 
 - MONOREPO-181：运行任务记录单调时钟开始时间，`GET /api/backtest-jobs` 与运行中的 `GET /api/backtest-job` 返回 `elapsed_seconds`；并发上限 4 和同股互斥不变。现场排查乐心时任务数从 1 增至 2，均未满载。API 定向测试 41 项及 10 个子测试、Ruff 检查与格式检查通过；真实 `sz.300562` 任务完成并返回 60 笔成交。

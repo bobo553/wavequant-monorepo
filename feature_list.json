@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-191",
+            "name": "main-only-live-development",
+            "title": "主分支独占服务并在合并后刷新页面",
+            "description": "WaveQuant 常驻开发服务仅从 main 启动；特性分支合并后发布提交版本，已打开的开发页面自动刷新。",
+            "scope": "wavequant-web 开发启动器和根布局、wavequant-api 常驻启动器、重启脚本",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "特性分支不能启动 WaveQuant Web/API 常驻开发服务",
+                "main 提交变化后更新版本信号并刷新已打开的开发页面",
+                "一次性 Python 命令及特性分支定向检查仍可运行"
+            ],
+            "verification": [
+                {
+                    "command": "node --test scripts/main-runtime.test.mjs; pnpm --filter wavequant-web typecheck; changed-file eslint; node --check; git diff --check",
+                    "status": "passed",
+                    "summary": "版本发布与分支限制的定向测试、Web 类型、改动文件 ESLint、Node 语法及差异检查通过；浏览器端到端按用户规则未运行。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-190",
             "name": "refresh-selected-historical-backtest",
             "title": "选中待更新股票时自动重跑回测",

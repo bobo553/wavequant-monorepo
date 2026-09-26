@@ -33,6 +33,7 @@ out/
 build
 dist
 apps/webs/wavequant-web/public/vendor/
+apps/webs/wavequant-web/public/dev-runtime-revision.json
 
 
 # Debug

@@ -7,7 +7,7 @@
     "scripts": {
         "predev": "node scripts/prepare-legacy.mjs",
         "dev": "node scripts/dev.mjs",
-        "dev:web": "next dev --turbopack --port 3003",
+        "dev:web": "node scripts/dev-web.mjs",
         "prebuild": "node scripts/prepare-legacy.mjs",
         "build": "next build --turbopack",
         "start": "next start --port 3003",

@@ -6,6 +6,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
+$branch = & git -C $repositoryRoot branch --show-current
+if ($LASTEXITCODE -ne 0 -or $branch -ne "main") {
+    throw "WaveQuant's persistent development service must run from main (current branch: $branch)."
+}
 $runtimeDirectory = Join-Path $repositoryRoot ".codex-runtime"
 $pidFile = Join-Path $runtimeDirectory "wavequant-dev.pid"
 $webPort = 3003

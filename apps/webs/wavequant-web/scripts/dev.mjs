@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { assertMainRuntime, startMainRevisionPublisher } from "../../../../scripts/main-runtime.mjs";
 import {
     isInfrastructureConfigured,
     loadEnvironmentDefaults,
@@ -13,6 +14,7 @@ import {
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const monorepoRoot = resolve(workspaceRoot, "../../..");
+assertMainRuntime(monorepoRoot);
 const apiWorkspaceRoot = resolve(monorepoRoot, "apps/servers/wavequant-api");
 const infrastructureEnvironment = resolve(apiWorkspaceRoot, ".env.infrastructure");
 const composeFile = resolve(apiWorkspaceRoot, "compose.yaml");
@@ -37,10 +39,12 @@ const tdxRoot = firstExisting(process.env.WAVEQUANT_TDX_ROOT, process.platform =
 const children = new Set();
 const restartTimers = new Set();
 let stopping = false;
+let stopRevisionPublisher;
 
 function stop(code = 0) {
     if (stopping) return;
     stopping = true;
+    stopRevisionPublisher?.();
     for (const timer of restartTimers) clearTimeout(timer);
     for (const child of children) {
         if (!child.killed) child.kill("SIGINT");
@@ -178,6 +182,7 @@ if (resultsRoot) {
 }
 
 runPnpm(["exec", "next", "dev", "--turbopack", "--port", webPort], workspaceRoot, { label: "Next.js" });
+stopRevisionPublisher = startMainRevisionPublisher(monorepoRoot, resolve(workspaceRoot, "public"), () => stop(1));
 
 process.on("SIGINT", () => stop(0));
 process.on("SIGTERM", () => stop(0));
