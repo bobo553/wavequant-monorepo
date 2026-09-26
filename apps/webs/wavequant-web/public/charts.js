@@ -12,6 +12,7 @@ import {
     visibleLastFallHighGuides,
 } from "./annotations.js";
 import { candleDetails } from "./candle-details.js";
+import { chartNavigationState, panChartRange, seekChartRange, zoomChartRange } from "./chart-navigation.js";
 import { FocusFlashOverlay } from "./focus-flash-overlay.js";
 import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
@@ -103,10 +104,18 @@ function base(container) {
     return chart;
 }
 export class PriceChart {
-    constructor(container, onHover, onSelect = () => {}, onVisible = () => {}, onCopyCandle = () => {}) {
+    constructor(
+        container,
+        onHover,
+        onSelect = () => {},
+        onVisible = () => {},
+        onCopyCandle = () => {},
+        onViewport = () => {},
+    ) {
         this.container = container;
         this.onSelect = onSelect;
         this.onVisible = onVisible;
+        this.onViewport = onViewport;
         this.chart = base(container);
         this.candles = this.chart.addSeries(L.CandlestickSeries, {
             upColor: colors.up,
@@ -314,7 +323,10 @@ export class PriceChart {
             this.scheduleMarkers();
             this.onSelect([selected]);
         });
-        this.chart.timeScale().subscribeVisibleLogicalRangeChange(() => this.scheduleMarkers());
+        this.chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+            this.scheduleMarkers();
+            this.updateViewport();
+        });
     }
     setData(data, options = {}) {
         this.focusFlashOverlay.clear();
@@ -333,6 +345,29 @@ export class PriceChart {
         this.setAnnotationOptions({ signals: options.markers !== false, ...options.annotations });
         const end = data.bars.length - 1;
         this.chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, end - 140), to: end + 6 });
+        this.updateViewport();
+    }
+    navigationState() {
+        return chartNavigationState(this.chart.timeScale().getVisibleLogicalRange(), this.data?.bars.length ?? 0);
+    }
+    updateViewport() {
+        const state = this.navigationState();
+        this.onViewport(state, this.data?.bars ?? []);
+    }
+    pan(direction) {
+        const state = this.navigationState();
+        if (!state) return;
+        this.chart.timeScale().setVisibleLogicalRange(panChartRange(state, direction));
+    }
+    zoom(direction) {
+        const state = this.navigationState();
+        if (!state) return;
+        this.chart.timeScale().setVisibleLogicalRange(zoomChartRange(state, this.data.bars.length, direction));
+    }
+    seek(position) {
+        const state = this.navigationState();
+        if (!state || !Number.isFinite(position)) return;
+        this.chart.timeScale().setVisibleLogicalRange(seekChartRange(state, position));
     }
     setVolume(show) {
         if (!this.data) return;

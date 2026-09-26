@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 
-import { IconStar } from "@tabler/icons-react";
+import { IconChevronLeft, IconChevronRight, IconMinus, IconPlus, IconStar } from "@tabler/icons-react";
 
 import { TradingViewChartView } from "./tradingview-chart-view";
 
@@ -323,7 +323,70 @@ export function ResearchChart(): JSX.Element {
                 </button>
                 <span id="candle-copy-feedback" className="candle-copy-feedback" role="status" aria-live="polite" />
             </div>
+            <div className="chart-navigation" role="group" aria-label="本地图表视图控制">
+                <span className="chart-navigation-title">图窗导航</span>
+                <div className="chart-navigation-buttons">
+                    <button
+                        id="chart-pan-left"
+                        type="button"
+                        aria-label="视图左移"
+                        aria-controls="price-chart"
+                        title="向较早 K 线移动"
+                        disabled
+                    >
+                        <IconChevronLeft size={17} stroke={1.8} aria-hidden="true" />
+                    </button>
+                    <button
+                        id="chart-pan-right"
+                        type="button"
+                        aria-label="视图右移"
+                        aria-controls="price-chart"
+                        title="向较晚 K 线移动"
+                        disabled
+                    >
+                        <IconChevronRight size={17} stroke={1.8} aria-hidden="true" />
+                    </button>
+                    <button
+                        id="chart-zoom-in"
+                        type="button"
+                        aria-label="放大视图"
+                        aria-controls="price-chart"
+                        title="显示更少 K 线"
+                        disabled
+                    >
+                        <IconPlus size={17} stroke={1.8} aria-hidden="true" />
+                    </button>
+                    <button
+                        id="chart-zoom-out"
+                        type="button"
+                        aria-label="缩小视图"
+                        aria-controls="price-chart"
+                        title="显示更多 K 线"
+                        disabled
+                    >
+                        <IconMinus size={17} stroke={1.8} aria-hidden="true" />
+                    </button>
+                </div>
+            </div>
             <div id="price-chart" className="price-chart" aria-label="TradingView K线与成交量图" />
+            <div className="chart-position">
+                <div className="chart-position-heading">
+                    <label htmlFor="chart-position-slider">当前图窗位置</label>
+                    <output id="chart-position-label" htmlFor="chart-position-slider">
+                        等待行情数据
+                    </output>
+                </div>
+                <input
+                    id="chart-position-slider"
+                    type="range"
+                    min="0"
+                    max="0"
+                    step="any"
+                    defaultValue="0"
+                    aria-controls="price-chart"
+                    disabled
+                />
+            </div>
             <div id="chart-loading-overlay" className="chart-loading-overlay" role="status" aria-live="polite" hidden>
                 <span className="chart-loading-spinner" aria-hidden="true" />
                 <span>正在加载股票数据…</span>
