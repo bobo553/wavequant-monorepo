@@ -156,7 +156,9 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             resisted_last_fall_high_sessions, trend_flip_exit_history,
         )
         for symbol, history in grouped.items():
-            hierarchy = hierarchical_history(history)[0]
+            hierarchy = hierarchical_history(
+                history, include_drawing_turns=config.volume_down_after_milestone,
+            )[0]
             if config.trend_flip_adverse_exit:
                 trend_flip_risks[symbol] = trend_flip_exit_history(
                     history, hierarchy, reduction_fraction=config.wave_exhaustion_reduction,

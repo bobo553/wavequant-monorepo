@@ -15,15 +15,15 @@ def _identity(p):
     return p['index'], p['ordinal'], p['kind'], p['value']
 
 
-def hierarchical_history(bars, *, prefix_cache=None):
-    """Reuse the drawing reducers, but freeze availability on each daily prefix."""
+def hierarchical_history(bars, *, prefix_cache=None, include_drawing_turns=False):
+    """Reuse drawing reducers with causal availability; optionally expose the latest base turns."""
     history = {}; epochs = {}; previous = {0: {}, 1: {}, 2: {}, 3: {}}
     last_epoch = None
     last = len(bars) - 1
-    prefix_key = tuple(bars[:-1])
+    prefix_key = (include_drawing_turns, tuple(bars[:-1]))
     cached_key = prefix_cache.get('key') if prefix_cache is not None else None
     resume_start = (last if cached_key == prefix_key else
-                    last - 1 if cached_key == tuple(bars[:-2]) else 0)
+                    last - 1 if cached_key == (include_drawing_turns, tuple(bars[:-2])) else 0)
     if resume_start:
         saved_history, saved_epochs, saved_previous, last_epoch = prefix_cache['checkpoint']
         # Each dated level consists of freshly built dictionaries that become
@@ -68,6 +68,10 @@ def hierarchical_history(bars, *, prefix_cache=None):
 
         turns = freeze(turns, 0)
         levels = {}; source = turns
+        if include_drawing_turns:
+            # The risk gate needs only the latest confirmed H/L pair, never the developing endpoint.
+            levels[0] = tuple({'index': p['index'], 'ordinal': p['ordinal'], 'kind': p['kind'],
+                               'value': p['value'], 'available_at': p['available_at']} for p in turns[-2:])
         for level in (1, 2, 3):
             reduced = _wave_reversals(source) if level == 1 else _structural_reversals(source, source_level=level-1)
             # The reducer's confirmation trigger may occur after the extreme itself.
