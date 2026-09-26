@@ -84,7 +84,7 @@ export function tradeReasonItems(item) {
             reasons.push(`${(item.record_resistance_dates || []).join("、")} 出现空头抵抗；减仓后本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，清空余仓。`);
         if (item.volume_trigger_date)
             reasons.push(
-                `放量下跌：${item.volume_trigger_date} 成交量 ${num(item.trigger_volume, 0)} > 前日 ${num(item.previous_volume, 0)}，收盘 ${num(item.trigger_close, 4)} < 前收 ${num(item.previous_close, 4)}。`,
+                `${item.reason === "volume_down_small_n_reduce_30" ? "放量小实体" : "放量阴线"}：${item.volume_trigger_date} 成交量 ${num(item.trigger_volume, 0)}；前日 ${num(item.previous_volume, 0)}${item.previous_bearish_date ? `，前一阴线（${item.previous_bearish_date}）${num(item.previous_bearish_volume, 0)}` : ""}；收盘 ${num(item.trigger_close, 4)}，前收 ${num(item.previous_close, 4)}。`,
             );
         if (item.reason === "volume_massive_gap_reversal_clear")
             reasons.push(`巨量高开反包：开盘 ${num(item.observed_open, 4)} > 前高 ${num(item.previous_high, 4)}，收盘 ${num(item.observed_close, 4)} < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} 股，为前 ${item.massive_volume_window} 日均量的 ${num(item.massive_volume_multiple, 2)} 倍且创同期新高；阴线实体/开盘 ${pct(item.bearish_body_fraction)}，当日清空余仓。`);
@@ -94,8 +94,10 @@ export function tradeReasonItems(item) {
             );
         if (item.reason === "volume_down_next_followthrough_clear")
             reasons.push(
-                `次日下跌确认：收盘 ${num(item.observed_close, 4)} < 警示日低点 ${num(item.warning_low, 4)}，且低于当日开盘 ${num(item.observed_open, 4)}。`,
+                `减仓后低点 ${num(item.observed_low, 4)} < 前一交易日低点 ${num(item.previous_low, 4)}，高点 ${num(item.observed_high, 4)} ≤ 前一交易日高点 ${num(item.previous_high, 4)}，清空余仓。`,
             );
+        if (item.reason === "volume_down_previous_low_break_clear")
+            reasons.push(`本日低点 ${num(item.observed_low, 4)} < 前一交易日低点 ${num(item.previous_low, 4)}，直接清空余仓。`);
         if (item.positive_n_date)
             reasons.push(`小实体例外：${item.positive_n_date} 正 N 的实体 ${pct(item.small_body_fraction)}，上限 ${pct(item.small_body_cap)}。`);
         if (item.reason === "wave_gap_reversal_reduce" && item.observed_open != null)

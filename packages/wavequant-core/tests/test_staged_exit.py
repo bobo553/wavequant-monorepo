@@ -497,6 +497,70 @@ def volume_down_sample():
     return [Bar(datetime.fromisoformat("2022-09-"+d), "sz.000978", *values) for d,*values in rows]
 
 
+@pytest.mark.parametrize("close_price", [7.75, 7.80])
+def test_volume_down_non_lower_close_reduces_half_at_close(close_price):
+    from wavequant.application.analytics.backtest import run_portfolio
+    from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
+
+    bars = volume_down_sample()
+    bars[7] = replace(bars[7], open=7.85, high=7.90, close=close_price)
+    decision = observe_volume_down_exit(bars, 7, StagedExitState())
+    assert decision["reason"] == "volume_down_reduce_50"
+    assert decision["exit_target_fraction"] == .5
+    assert decision["execution_model"] == "same_day_close"
+
+    signal = Signal(bars[0].timestamp, bars[0].symbol, 0, "LONG", bars[0].close, 6,
+                    "fixture", bars[0].timestamp, 0, None, "fixture", 20)
+    config = StrategyConfig(initial_capital=100000, risk_fraction=.2, max_position_weight=.8,
+                            max_participation=1, slippage_bps_per_side=0, exit_on_target=False,
+                            volume_down_exit=True, max_hold_bars=100)
+    result = run_portfolio({bars[0].symbol: bars[:8]}, [signal], config)
+    buy, reduction = [order for order in result.orders if order["status"] == "filled"]
+    assert reduction["reason"] == "volume_down_reduce_50"
+    assert reduction["price"] == bars[7].close
+    assert reduction["quantity"] == int(buy["quantity"] * .5 // 100) * 100
+
+
+def test_volume_down_uses_previous_bearish_volume_when_yesterday_was_larger():
+    from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
+
+    bars = [Bar(datetime(2022, 1, 1), "TEST", 10.4, 10.5, 9.8, 10.0, 80),
+            Bar(datetime(2022, 1, 2), "TEST", 10.0, 10.7, 9.9, 10.6, 200),
+            Bar(datetime(2022, 1, 3), "TEST", 10.7, 10.8, 10.0, 10.5, 100)]
+    decision = observe_volume_down_exit(bars, 2, StagedExitState())
+    assert decision["reason"] == "volume_down_reduce_70"
+    assert decision["previous_bearish_date"] == "2022-01-01"
+    assert decision["previous_bearish_volume"] == 80
+    assert decision["trigger_volume"] < decision["previous_volume"]
+    bars[2] = replace(bars[2], volume=80)
+    assert observe_volume_down_exit(bars, 2, StagedExitState()) is None
+
+
+def test_volume_down_trigger_low_break_clears_directly():
+    from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
+
+    bars = volume_down_sample()
+    bars[7] = replace(bars[7], open=7.76, close=7.75, low=7.47)
+    decision = observe_volume_down_exit(bars, 7, StagedExitState())
+    assert decision["reason"] == "volume_down_previous_low_break_clear"
+    assert decision["exit_fraction"] == 1
+    assert decision["previous_low"] == bars[6].low
+
+
+@pytest.mark.parametrize("trigger_close,target", [(7.59, .7), (7.75, .5)])
+def test_volume_down_followup_lower_low_clears_even_with_higher_high(trigger_close, target):
+    from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
+
+    bars = volume_down_sample()
+    bars[7] = replace(bars[7], open=7.76, close=trigger_close)
+    bars[8] = replace(bars[8], open=7.80, high=7.90, low=7.47, close=7.81)
+    state = StagedExitState()
+    assert observe_volume_down_exit(bars, 7, state)["exit_target_fraction"] == target
+    decision = observe_volume_down_exit(bars, 8, state)
+    assert decision["reason"] == "volume_down_previous_low_break_clear"
+    assert decision["exit_fraction"] == 1
+
+
 def test_volume_down_freezes_confirmed_support_and_clears_on_low_break():
     from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
     bars = volume_down_sample()
@@ -509,20 +573,20 @@ def test_volume_down_freezes_confirmed_support_and_clears_on_low_break():
     assert reduction["execution_model"] == "same_day_close"
     assert reduction["volume_support_date"] == "2022-09-19"
     assert reduction["trigger_volume"] > reduction["previous_volume"]
-    assert observe_volume_down_exit(bars,8,state) is None
-    clear = observe_volume_down_exit(bars,9,state)
+    clear = observe_volume_down_exit(bars,8,state)
     assert clear["exit_fraction"] == 1
     assert clear["execution_model"] == "same_day_close"
+    assert clear["reason"] == "volume_down_next_followthrough_clear"
+    assert clear["previous_low"] == bars[7].low
     assert clear["volume_support_low"] == 7.09
 
 
-@pytest.mark.parametrize("change", ["equal_volume", "less_volume", "equal_close", "bullish"])
+@pytest.mark.parametrize("change", ["equal_volume", "less_volume", "bullish"])
 def test_volume_down_strict_boundaries(change):
     from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
     bars=volume_down_sample()
     if change=="equal_volume": bars[7]=replace(bars[7],volume=bars[6].volume)
     if change=="less_volume": bars[7]=replace(bars[7],volume=bars[6].volume-1)
-    if change=="equal_close": bars[7]=replace(bars[7],open=7.76,close=bars[6].close)
     if change=="bullish": bars[7]=replace(bars[7],open=7.50)
     assert observe_volume_down_exit(bars,7,StagedExitState()) is None
 
@@ -542,8 +606,8 @@ def test_volume_down_execution_same_close_seventy_then_same_day_full_exit():
     assert reduction['signal_timestamp'][:10]=='2022-09-22'
     assert reduction['price']==bars[7].close
     assert reduction['quantity']==int(buy['quantity']*.7//100)*100
-    assert clear['timestamp'][:10]=='2022-09-26'
-    assert clear['price']==bars[9].close
+    assert clear['timestamp'][:10]=='2022-09-23'
+    assert clear['price']==bars[8].close
     assert clear['remaining_quantity']==0
     prefix=run_portfolio({bars[0].symbol:bars[:8]},[signal],config)
     assert prefix.orders==[o for o in result.orders if o['timestamp']<=bars[7].timestamp.isoformat()]
@@ -552,13 +616,11 @@ def test_volume_down_execution_same_close_seventy_then_same_day_full_exit():
 def test_volume_down_does_not_repeat_reduction_or_clear_at_equal_support():
     from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
     bars=volume_down_sample()
-    bars[8] = replace(bars[8], open=7.12, close=7.13)
+    bars[8] = replace(bars[8], open=7.55, low=7.48, close=7.53)
     state=StagedExitState()
     observe_volume_down_exit(bars,7,state)
     bars[8]=replace(bars[8],volume=50_000_000)
     assert observe_volume_down_exit(bars,8,state) is None
-    bars[9]=replace(bars[9],open=7.1,low=7.09,close=7.1)
-    assert observe_volume_down_exit(bars,9,state) is None
     assert state.volume_support_index==4
 
 
@@ -584,7 +646,7 @@ def test_guofang_volume_down_reduces_at_close_and_next_low_break_clears():
     clear = observe_volume_down_exit(bars, 5, state)
     assert clear["reason"] == "volume_down_next_followthrough_clear"
     assert clear["execution_model"] == "same_day_close"
-    assert clear["warning_low"] == bars[4].low
+    assert clear["previous_low"] == bars[4].low
     assert bars[5].open > bars[4].close
     assert bars[5].close < bars[4].low
 
@@ -606,12 +668,12 @@ def test_guofang_volume_down_reduces_at_close_and_next_low_break_clears():
     assert prefix.orders == [order for order in result.orders if order["timestamp"] <= bars[4].timestamp.isoformat()]
 
 
-@pytest.mark.parametrize("open_price, close_price", [(7.70, 7.48), (7.12, 7.13), (7.12, 7.12)])
-def test_volume_down_next_session_does_not_clear_without_gap_fade_or_bearish_low_break(open_price, close_price):
+@pytest.mark.parametrize("high_price", [7.76, 7.90])
+def test_volume_down_next_session_does_not_clear_at_equal_previous_low(high_price):
     from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
 
     bars = volume_down_sample()
-    bars[8] = replace(bars[8], open=open_price, high=7.76, close=close_price)
+    bars[8] = replace(bars[8], open=7.55, high=high_price, low=7.48, close=7.50)
     state = StagedExitState()
     assert observe_volume_down_exit(bars, 7, state)["exit_target_fraction"] == .7
     assert observe_volume_down_exit(bars, 8, state) is None
@@ -629,12 +691,12 @@ def test_volume_down_next_session_higher_open_bearish_low_break_clears():
     assert clear["warning_low"] == bars[7].low
 
 
-def test_volume_down_gap_fade_clear_is_limited_to_next_session():
+def test_volume_down_gap_fade_without_lower_low_does_not_clear():
     from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
 
     bars = volume_down_sample()
-    bars[8] = replace(bars[8], open=7.12, close=7.13)
-    bars[9] = replace(bars[9], open=7.12, high=7.39, low=7.11, close=7.11)
+    bars[8] = replace(bars[8], open=7.55, high=7.70, low=7.48, close=7.49)
+    bars[9] = replace(bars[9], open=7.52, high=7.60, low=7.49, close=7.50)
     state = StagedExitState()
     observe_volume_down_exit(bars, 7, state)
     assert observe_volume_down_exit(bars, 8, state) is None
@@ -693,7 +755,9 @@ def test_thirty_exception_requires_all_small_body_and_known_n_conditions(change)
     if change=='future_n': anchor=12
     if change=='large_relative':
         bars[:10]=[replace(b,close=b.open) for b in bars[:10]]
-    assert observe_volume_down_exit(bars,12,StagedExitState(),positive_n_index=anchor)['exit_target_fraction']==.7
+    decision = observe_volume_down_exit(bars,12,StagedExitState(),positive_n_index=anchor)
+    assert decision['reason']=='volume_down_previous_low_break_clear'
+    assert decision['exit_fraction']==1
 
 
 def test_small_body_one_percent_boundary_is_inclusive():
@@ -715,7 +779,7 @@ def test_thirty_reduction_context_respects_n_availability_and_invalidation():
         r=run_portfolio({'TEST':series},[signal],config,positive_n_bars={'TEST':known})
         return next(o for o in r.orders if o['side']=='SELL' and o['status']=='filled')
     assert reduction({10:10})['exit_target_fraction']==.3
-    assert reduction({13:10})['exit_target_fraction']==.7
+    assert reduction({13:10})['reason']=='volume_down_previous_low_break_clear'
     broken=list(bars);broken[11]=replace(broken[11],low=5.0)
     assert reduction({10:10},broken)['exit_target_fraction']==.7
 
