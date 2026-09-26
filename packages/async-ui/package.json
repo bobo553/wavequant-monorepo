@@ -15,7 +15,8 @@
         "prettier:fix": "prettier --write .",
         "format": "pnpm lint:fix && pnpm prettier:fix",
         "typecheck": "tsc --noEmit",
-        "test:unit": "vitest run"
+        "test:unit": "vitest run",
+        "test:all": "pnpm test:unit"
     },
     "exports": {
         ".": {

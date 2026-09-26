@@ -20,7 +20,7 @@ export function waveEntryEvidence(evidence) {
             : bodyBreakout
               ? `C 浪确认：放量中大阳线突破，确认价 ${num(wave.wave_breakout_close, 4)} > 回调折线高点 ${wave.wave_breakout_date} ${num(wave.wave_breakout_high, 4)}；确认时累计成交量 ${num(wave.wave_gap_volume, 0)} > 前日全天 ${num(wave.wave_gap_previous_volume, 0)}；阳线实体/开盘 ≥3%，实体/振幅 ≥60%，无需跳空。`
               : `C 浪确认：${volume ? "放量跳空" : "跳空突破"}，观察时最低 ${num(wave.wave_gap_low, 4)} > 前日最高 ${num(wave.wave_gap_previous_high, 4)}。${volume ? `确认时累计成交量 ${num(wave.wave_gap_volume, 0)} > 前日全天 ${num(wave.wave_gap_previous_volume, 0)}。` : ""}${breakout ? `观察时最高 ${num(wave.wave_gap_high, 4)} > 回调折线高点 ${wave.wave_breakout_date} ${num(wave.wave_breakout_high, 4)}；突破或放量满足其一。` : ""}`,
-        `等浪观察位：B 低 ${num(wave.wave_b_low, 4)} + A 浪幅度（${wave.wave_a_high_date} 高点 ${num(wave.wave_a_high, 4)} − 起点 ${num(wave.wave_a_origin, 4)}）= ${num(wave.wave_equal_target, 4)} 元。`,
+        `等浪观察位：B 低 ${num(wave.wave_b_low, 4)} + A 浪幅度（${wave.wave_a_high_date} 高点 ${num(wave.wave_a_high, 4)} − ${wave.wave_a_origin_date ? `${wave.wave_a_origin_date} ` : ""}起点 ${num(wave.wave_a_origin, 4)}）= ${num(wave.wave_equal_target, 4)} 元。`,
         ...(Number.isFinite(wave.wave_c_1618_target) && Number.isFinite(wave.wave_c_2618_target)
             ? [
                   `大 C 浪扩展目标：B 低 + 1.618×整段 A 幅度 = ${num(wave.wave_c_1618_target, 4)} 元；B 低 + 2.618×整段 A 幅度 = ${num(wave.wave_c_2618_target, 4)} 元。2.618 倍不是上涨上限，达标本身不触发卖出。`,

@@ -33,6 +33,7 @@ test("selected executed wave entry marks A origin, A high, B low and C confirmat
     assert.deepEqual(selectedWaveEndpoints({ ...buy, kind: "signal" }, bars), []);
     assert.deepEqual(selectedWaveEndpoints({ ...buy, decision_evidence: [] }, bars), []);
     assert.deepEqual(selectedWaveEndpoints(buy, bars.slice(0, 3)), []);
+    assert.deepEqual(selectedWaveEndpoints(buy, bars.slice(1)), []);
     assert.deepEqual(selectedWaveEndpoints({ ...buy, signal_time: "2021-04-20" }, bars), []);
     assert.deepEqual(
         selectedWaveEndpoints(

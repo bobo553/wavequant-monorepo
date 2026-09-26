@@ -39,7 +39,7 @@ Python 服务、Worker、CLI 和库也按上述职责落位，不单独创建技
 3. 使用 `pnpm -r list --depth -1 --json` 确认受影响的 Node.js workspace；Python 任务再检索对应 `pyproject.toml`，并读取各 workspace 根目录的 `progress.md`。
 4. 在 `feature_list.json` 中只保留一个 `in-progress` 功能，确认其依赖与验收条件。
 5. 读取距离目标文件最近的 `AGENTS.md`，再按下方路由读取必要规范。
-6. 首次检出运行 `./init.ps1 -Mode quick`（Windows）或 `./init.sh --mode quick`（macOS/Linux）；日常任务至少运行相关 workspace 的基线检查。
+6. 首次检出运行 `./init.ps1 -Mode quick`（Windows）或 `./init.sh --mode quick`（macOS/Linux）；日常任务只运行相关 workspace 的非测试基线检查，自动化测试按变更风险手动执行或交由 CI。
 7. 搜索已有实现、契约、设计系统组件和测试后再修改。
 
 ## 上下文路由
@@ -90,6 +90,8 @@ Python 服务、Worker、CLI 和库也按上述职责落位，不单独创建技
 
 ## 验证命令与完成定义（Verification Commands / Definition of Done）
 
+日常代码修改后可以运行格式检查、lint、类型检查和必要构建。本地提交不运行 Git 钩子检查。现有 GitHub Actions 配置保持不变，在推送 main 或向 main 创建 PR 时执行 Harness、构建、lint、类型和单元测试；其他分支推送不会触发该工作流。按变更风险可手动运行受影响的定向测试；浏览器端到端测试仅在用户当次明确要求时执行。未运行的检查记录为“待验证”，不得写成已通过；已运行的检查失败时先修复。
+
 按风险选择最小充分验证：
 
 ```bash
@@ -112,13 +114,13 @@ python -m build
 
 具体路径和是否需要构建由 `pyproject.toml` 与任务类型决定，不能为了套用示例运行不存在的目标。Python 格式、导入和命名遵循 `docs/agent/python/rules.md` 与现有代码风格，由 Codex 在编辑时处理。
 
-只有在目标行为实现、适用的类型/测试/构建验证通过、代码风格已人工核对、状态与进度文件更新、无法运行项及风险明确记录后，功能才能标记为 `done`。UI 改动还需真实浏览器或设备验证；API、数据库和基础设施改动需要相应集成验证。
+目标行为实现且相关格式/lint/类型/构建实际通过后，按风险记录已运行的定向测试和待验证项；状态与进度文件更新、无法运行项及风险明确记录后才能标记为 `done`。UI、API、数据库和基础设施改动所需的浏览器、设备或集成验证遵循当次用户要求与实际验证结果，不得把未运行项写成通过。
 
 ## 会话结束（End of Session）
 
 1. 更新 `feature_list.json` 的状态和命令级证据。
 2. 更新所有受影响 workspace 的 `progress.md`。
 3. 未完成或跨 workspace 的长任务更新 `session-handoff.md`。
-4. 重新运行最终验证并检查 `git diff`、`git status`，确保没有凭据、产物或无关文件。
+4. 复查 `git diff`、`git status` 和实际执行的验证，记录待验证项；提交前确认没有凭据、产物或无关文件。
 
 按以上记录即可保持 clean、restartable 的交接路径。
