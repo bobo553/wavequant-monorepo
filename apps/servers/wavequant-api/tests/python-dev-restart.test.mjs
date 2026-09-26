@@ -53,7 +53,7 @@ test("source monitor waits for stable Python changes and ignores generated files
         assert.equal(changes.length, 2);
     } finally {
         monitor.stop();
-        rmSync(root, { recursive: true, force: true });
+        rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     }
 });
 
@@ -90,7 +90,7 @@ test("source edit replaces the owned service process and shutdown does not leave
         assert.equal(isRunning(replacementGrandchildPid), false);
     } finally {
         await supervisor.stop();
-        rmSync(root, { recursive: true, force: true });
+        rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     }
 });
 
@@ -118,7 +118,7 @@ test("failed launch retries with a delay and stops retrying on shutdown", async 
         assert.equal(starts.length, countAfterStop);
     } finally {
         await supervisor.stop();
-        rmSync(root, { recursive: true, force: true });
+        rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     }
 });
 

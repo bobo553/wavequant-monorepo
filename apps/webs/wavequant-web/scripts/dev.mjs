@@ -24,7 +24,8 @@ if (existsSync(infrastructureEnvironment)) {
 
 const pnpmCli = process.env.npm_execpath;
 const apiPort = process.env.WAVEQUANT_API_PORT || "8765";
-const webOrigin = "http://127.0.0.1:3003";
+const webPort = process.env.WAVEQUANT_WEB_PORT || "3003";
+const webOrigin = `http://127.0.0.1:${webPort}`;
 const firstExisting = (...candidates) => candidates.find((candidate) => candidate && existsSync(candidate));
 const resultsRoot = firstExisting(
     process.env.WAVEQUANT_RESULTS_ROOT,
@@ -139,7 +140,7 @@ if (resultsRoot) {
         "--allow-origin",
         webOrigin,
         "--allow-origin",
-        "http://localhost:3003",
+        `http://localhost:${webPort}`,
     );
     console.log(`[wavequant-web] API data: ${resultsRoot}`);
     console.log(`[wavequant-web] TDX data: ${tdxRoot || "not configured"}`);
@@ -176,7 +177,7 @@ if (resultsRoot) {
     );
 }
 
-runPnpm(["exec", "next", "dev", "--turbopack", "--port", "3003"], workspaceRoot, { label: "Next.js" });
+runPnpm(["exec", "next", "dev", "--turbopack", "--port", webPort], workspaceRoot, { label: "Next.js" });
 
 process.on("SIGINT", () => stop(0));
 process.on("SIGTERM", () => stop(0));

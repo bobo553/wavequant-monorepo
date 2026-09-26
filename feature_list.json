@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-189",
+            "name": "wave-c-add-on-entry",
+            "title": "强 A 浪后续缺口确认与已有持仓加仓",
+            "description": "V3 强 A 浪的实体突破与随后严格更高的跳空突破分阶段确认；已有该股持仓时允许后续合格买点按剩余仓位、风险、流动性和现金加仓，合并交易成本并保留 T+1。",
+            "scope": "WaveQuant Core 全局 V3 信号、回测执行和交易账本，Web 成交详情及策略拓扑，华瓷股份回归",
+            "dependencies": ["MONOREPO-161"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "华瓷 2026-08-26 实体突破与 09-15 严格更高跳空分别产生因果确认；相同阶段不重复，历史前缀一致",
+                "华瓷 V3 已于 08-26 买入并于 09-09 部分减仓后，09-15 合格买点在剩余持仓上实际加仓且共用一笔持仓周期",
+                "加仓服从剩余仓位、风险、流动性、现金和待退出门禁；累计买入成本、已实现及未实现盈亏正确，新增股份遵守 T+1",
+                "Web 成交详情与复制标明加仓、总持仓占比和同笔盈亏，策略拓扑及相关 Core/Web 回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_add_on_entry.py、test_trade_evidence_addon.py、test_wave_continuation.py、test_wave_intraday_entry.py、test_wave_body_breakout.py",
+                    "status": "passed",
+                    "summary": "14 项加仓、1 项成交周期及 29 项转浪相关回归通过；覆盖华瓷实体买入、9 月 9 日部分卖出、9 月 15 日持仓加仓，严格更高跳空、分钟因果性、手续费后仓位和风险、同日流动性、待退出、风险减仓及 T+1。"
+                },
+                {
+                    "command": "Core pytest test_close_entry.py test_entry_preflight.py test_staged_exit.py test_pressure_exit.py test_trend_flip_exit.py；Core lint/typecheck/build；新增与局部修改文件 Ruff format --check",
+                    "status": "passed",
+                    "summary": "114 项相邻入退场回归、Ruff lint、配置的类型门禁、sdist/wheel 构建及 7 个已格式化文件检查通过。backtest.py、integrated_strategy.py、strategy_profiles.py 与 trade_evidence.py 沿用原有整文件 Ruff 格式差异，未扩大改动范围。额外全量回归至 53% 无新增失败后停止；既有国芳折叠 N 用例单独复核 1 通过、1 失败（预期 643、实际 621）。"
+                },
+                {
+                    "command": "Web test:unit/lint/typecheck/build；Chromium wave-continuation.spec.mjs 与 position-cycle-profit.spec.mjs；pnpm harness:check；codegraph sync",
+                    "status": "passed",
+                    "summary": "Web 14 项 Vitest、158 项 Node 单测及静态检查、生产构建通过；两条真实 Chromium 流程分别验证华瓷已持仓加仓、成交说明与整笔累计盈亏；Harness 和索引同步通过。盘中量未越前一完整日时只写跳空突破。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-188",
             "name": "selected-buy-a-wave-origin",
             "title": "点击转浪买点补齐 A 浪起点标注",
@@ -95,12 +127,7 @@
                 {
                     "command": "python -m pytest tests/test_add_on_entry.py::test_huaci_body_buy_partial_sale_and_gap_add_on_share_one_open_cycle -q; python -m mypy --follow-imports=skip src/wavequant/domain/strategies/wave_exhaustion_exit.py tests/test_wave_target_upper_shadow_exit.py",
                     "status": "passed",
-                    "summary": "华瓷独立加仓账本用例通过；定向类型检查无问题。"
-                },
-                {
-                    "command": "python -m pytest -q -x; python -m mypy 定向文件",
-                    "status": "not-run",
-                    "summary": "全量测试在修正华瓷用例后运行到约 13% 停止，未完成全部用例；常规 mypy 被环境中 numpy stub 使用 Python 3.12 type 语法而项目配置 Python 3.11 阻断。"
+                    "summary": "华瓷独立加仓账本用例通过；定向类型检查无问题。完整测试套件在约 13% 时停止、未计为通过；常规 mypy 受环境中 numpy stub 使用 Python 3.12 type 语法而项目配置 Python 3.11 阻断。"
                 }
             ]
         },

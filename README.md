@@ -41,7 +41,7 @@ WaveQuant 的边界、数据库选型、依赖方向和迁移取舍见 [WaveQuan
 - **Validation**: Zod (shared schemas via `@repo/contracts`)
 - **Testing**: Vitest, Playwright, Supertest
 - **Linting/Formatting**: ESLint 10, Prettier
-- **Git hooks**: Husky + Commitlint + lint-staged
+- **CI checks**: GitHub Actions for build, lint, typecheck, and unit tests
 - **Containerization**: Docker + Docker Compose
 - **Package versioning**: Changesets
 - **Dependency updates**: Dependabot (weekly, grouped by ecosystem)
@@ -138,7 +138,6 @@ wavequant-monorepo/
 ├── .github/
 │   ├── workflows/ci.yml    # CI pipeline
 │   └── dependabot.yml      # Automated dependency updates
-├── .husky/                 # Git hooks (pre-commit, commit-msg)
 ├── docs/agent/             # Progressive agent engineering rules
 ├── scripts/harness/        # Agent-state validation
 ├── AGENTS.md               # Authoritative agent entry point
@@ -237,12 +236,9 @@ pnpm changeset:publish  # Build and publish packages to the registry
 pnpm changeset:status   # List packages with unpublished changes
 ```
 
-## Git Hooks
+## CI Checks
 
-| Hook         | Trigger            | Action                                                        |
-| ------------ | ------------------ | ------------------------------------------------------------- |
-| `pre-commit` | Every `git commit` | Runs `pnpm format` across the workspace                       |
-| `commit-msg` | Every `git commit` | Validates message against Conventional Commits via commitlint |
+Pushing `main` or opening a pull request to `main` runs GitHub Actions. CI checks the agent harness, build, lint, types, and unit tests. Local commits do not run Git hooks.
 
 ## Environment Variables
 
