@@ -7,7 +7,7 @@
             "id": "MONOREPO-197",
             "name": "milestone-volume-bearish-exit",
             "title": "目标或末跌高抵抗后的放量阴线分级出场",
-            "description": "本笔波浪达到一饱、二吐、五顶或十满，或已确认末跌高突破后出现空头抵抗时，按放量阴线的收盘与昨低关系分别累计减仓 50%、70% 或直接清仓；减仓后破昨低且高点不创新高则清余仓。阴线严格要求今收低于今开，一字板不计入阴线。",
+            "description": "本笔波浪达到一饱、二吐、五顶或十满，或已确认的基础折线及更高层级末跌高突破后出现空头抵抗时，按放量阴线的收盘与昨低关系分别累计减仓 50%、70% 或直接清仓；减仓后破昨低且高点不创新高则清余仓。阴线严格要求今收低于今开，一字板不计入阴线。",
             "scope": "wavequant-core 出场判定与回测优先级、wavequant-web 成交说明",
             "dependencies": [],
             "status": "done",
@@ -16,13 +16,14 @@
                 "仅今收小于今开计入阴线，开收相等及一字板不计入；量须严格大于昨日或前一根严格阴线",
                 "今收高于昨收累计减仓 50%；今收低于昨收且今低高于昨低累计减仓 70%；放量阴线破昨低直接清仓",
                 "两种减仓后，后续今低破昨低且今高不高于昨高时清空余仓；直接清仓优先于其他部分减仓",
+                "国芳集团 2020-05-13 在已确认基础折线末跌高突破后的放量阴线减仓 70%，05-14 清空余仓；05-08 阳线抵抗不提前触发",
                 "定向 Core 与 Web 测试、Web Lint/类型/构建及 Core 构建通过"
             ],
             "verification": [
                 {
-                    "command": "Core pytest 7 targeted files; python -m build --no-isolation; Web node --test trade-reasons.test.mjs; pnpm --filter wavequant-web lint/typecheck/build; prettier --check changed JS; git diff --check",
+                    "command": "Core pytest 10 targeted files; python -m build --no-isolation; Web node --test trade-reasons.test.mjs; pnpm --filter wavequant-web lint/typecheck/build; prettier --check changed JS; git diff --check",
                     "status": "passed",
-                    "summary": "本轮阴线边界更新后 Core 146 项定向测试通过，十字线与涨跌一字板不触发且不参与前一阴线量参照；此前 Web 12 项定向测试、Core/Web 构建及 Web Lint/类型检查通过。按当前规则未运行 Playwright；完整 Web 单测留待空闲时段验证。"
+                    "summary": "国芳集团基础折线回归及前缀因果检查在内的 Core 177 项定向测试通过，05-13 减仓 70%、05-14 清余仓；此前 Web 12 项定向测试、Core/Web 构建及 Web Lint/类型检查通过。按当前规则未运行 Playwright；完整 Web 单测留待空闲时段验证。"
                 }
             ]
         },

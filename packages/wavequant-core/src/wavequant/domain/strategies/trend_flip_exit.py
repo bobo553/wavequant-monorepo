@@ -168,9 +168,9 @@ def _last_fall_high_shadow_history(bars, history, reduction_fraction):
 
 
 def resisted_last_fall_high_sessions(bars, history):
-    """Return sessions when a known last-fall-high breakout meets bearish resistance."""
+    """Return resisted breakouts of known base-line or higher-level last-fall highs."""
     sessions = set()
-    for level in (1, 2, 3):
+    for level in (0, 1, 2, 3):
         active = None
         for index in range(1, len(bars)):
             points = history.get(index - 1, {}).get(level, ())
@@ -192,7 +192,8 @@ def resisted_last_fall_high_sessions(bars, history):
             candle_resistance = observe_resistance(
                 previous, bar, attack_direction=Direction.UP, shadow_policy=ShadowPolicy(0.5)
             ).detected is True
-            if bar.high > active["key"]["value"] and (shadow_resistance or candle_resistance):
+            if (bar.high > active["key"]["value"] and (shadow_resistance or candle_resistance)
+                    and (level != 0 or bar.close < bar.open)):
                 sessions.add(index)
                 active = None
                 continue

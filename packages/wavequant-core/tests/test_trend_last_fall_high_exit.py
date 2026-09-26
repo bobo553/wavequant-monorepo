@@ -21,6 +21,58 @@ def lexin_bars():
     return bars[:dates["2026-07-06"] + 1], dates
 
 
+def guofang_bars():
+    raw = json.loads((Path(__file__).parent / "fixtures/guofang_2020_secondary_wave.json").read_text(encoding="utf-8"))
+    bars = [Bar(datetime.fromisoformat(day), raw["symbol"], *values) for day, *values in raw["bars"]]
+    dates = {str(bar.timestamp.date()): index for index, bar in enumerate(bars)}
+    return bars[:dates["2020-05-14"] + 1], dates
+
+
+def test_guofang_confirmed_drawing_last_fall_high_arms_volume_exit_after_bearish_resistance():
+    bars, dates = guofang_bars()
+    history = hierarchical_history(bars, include_drawing_turns=True)[0]
+    may7, may8, may13, may14 = (dates[day] for day in
+                               ("2020-05-07", "2020-05-08", "2020-05-13", "2020-05-14"))
+    key = history[may7 - 1][0][-2]
+    assert len(history[may7 - 1][0]) == 2
+    assert 0 not in hierarchical_history(bars)[0][may7 - 1]
+    cache = {}
+    hierarchical_history(bars[:-1], prefix_cache=cache)
+    assert hierarchical_history(bars, prefix_cache=cache, include_drawing_turns=True)[0] == history
+    assert key["kind"] == "H"
+    assert bars[key["index"]].timestamp.date().isoformat() == "2020-04-29"
+    assert key["value"] == pytest.approx(bars[key["index"]].high)
+    assert key["available_at"] < may7
+    assert bars[may7 - 1].close <= key["value"] < bars[may7].close
+    sessions = resisted_last_fall_high_sessions(bars, history)
+    assert may8 not in sessions  # A bullish lower open is not the bearish warning.
+    assert may13 in sessions
+    prefix = bars[:may13 + 1]
+    assert may13 in resisted_last_fall_high_sessions(
+        prefix, hierarchical_history(prefix, include_drawing_turns=True)[0],
+    )
+    assert bars[may13].volume > bars[may13 - 1].volume
+    assert bars[may13].close < min(bars[may13].open, bars[may13 - 1].close)
+    assert bars[may13].low > bars[may13 - 1].low
+    assert bars[may14].low < bars[may13].low and bars[may14].high <= bars[may13].high
+
+    signal = Signal(bars[may7].timestamp, bars[0].symbol, may7, "LONG", bars[may7].close,
+                    4.5, "fixture", bars[may7].timestamp, 0, None, "fixture", 10)
+    config = StrategyConfig(initial_capital=100_000, risk_fraction=.2, max_position_weight=.8,
+                            max_participation=1, slippage_bps_per_side=0, exit_on_target=False,
+                            volume_down_exit=True, volume_down_after_milestone=True, max_hold_bars=100)
+    result = run_portfolio({bars[0].symbol: bars}, [signal], config)
+    buy, reduction, clear = [order for order in result.orders if order["status"] == "filled"]
+    assert buy["timestamp"] == bars[may8].timestamp.isoformat()
+    assert reduction["timestamp"] == bars[may13].timestamp.isoformat()
+    assert reduction["reason"] == "volume_down_reduce_70"
+    assert reduction["exit_target_fraction"] == .7
+    assert reduction["quantity"] == int(buy["quantity"] * .7 // 100) * 100
+    assert clear["timestamp"] == bars[may14].timestamp.isoformat()
+    assert clear["reason"] == "volume_down_next_followthrough_clear"
+    assert clear["remaining_quantity"] == 0
+
+
 def test_lexin_secondary_last_fall_high_reduces_once_then_clears_on_first_lower_close():
     bars, dates = lexin_bars()
     risks = trend_flip_exit_history(bars, hierarchical_history(bars)[0])
