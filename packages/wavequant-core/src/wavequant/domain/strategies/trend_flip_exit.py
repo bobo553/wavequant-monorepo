@@ -167,6 +167,40 @@ def _last_fall_high_shadow_history(bars, history, reduction_fraction):
     return risks
 
 
+def resisted_last_fall_high_sessions(bars, history):
+    """Return sessions when a known last-fall-high breakout meets bearish resistance."""
+    sessions = set()
+    for level in (1, 2, 3):
+        active = None
+        for index in range(1, len(bars)):
+            points = history.get(index - 1, {}).get(level, ())
+            key = (points[-2] if len(points) >= 2 and points[-2]["kind"] == "H"
+                   and points[-1]["kind"] == "L" else
+                   points[-1] if points and points[-1]["kind"] == "H" else None)
+            identity = (key["index"], key["value"]) if key is not None else None
+            if active is not None and active["identity"] != identity:
+                active = None
+            bar, previous = bars[index], bars[index - 1]
+            if (active is None and key is not None and key["available_at"] < index
+                    and previous.close <= key["value"] < bar.close):
+                active = dict(identity=identity, key=key)
+            if active is None:
+                continue
+            span = bar.high - bar.low
+            upper = bar.high - max(bar.open, bar.close)
+            shadow_resistance = span > 0 and upper > abs(bar.close - bar.open) and upper >= span / 3
+            candle_resistance = observe_resistance(
+                previous, bar, attack_direction=Direction.UP, shadow_policy=ShadowPolicy(0.5)
+            ).detected is True
+            if bar.high > active["key"]["value"] and (shadow_resistance or candle_resistance):
+                sessions.add(index)
+                active = None
+                continue
+            if bar.close < active["key"]["value"]:
+                active = None
+    return sessions
+
+
 def trend_flip_exit_history(bars, history, *, reduction_fraction=0.8):
     risks = _last_fall_high_shadow_history(bars, history, reduction_fraction)
     for level in (3,):

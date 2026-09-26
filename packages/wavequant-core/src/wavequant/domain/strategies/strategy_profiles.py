@@ -54,7 +54,7 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
     for scenario in config['scenarios'].values():
         scenario['execution'].update(entry_at_close=True, allow_add_on=True, nonflat_limit_close_fill=True, consolidation_entry_intraday=True, staged_exit_enabled=True, staged_exit_same_day=False,
                                      staged_exit_intraday=True, missing_minute_daily_fallback=True, inverse_n_after_reduction=True, inverse_n_close_reduce=True, initial_reduction_fraction=0.65,
-                                     exit_on_target=False, wave_exhaustion_exit=True, pressure_adverse_exit=True, trend_flip_adverse_exit=True, volume_inverse_n_clear=True, volume_down_exit=True, small_n_reduction=True)
+                                     exit_on_target=False, wave_exhaustion_exit=True, pressure_adverse_exit=True, trend_flip_adverse_exit=True, volume_inverse_n_clear=True, volume_down_exit=True, volume_down_after_milestone=True, small_n_reduction=True)
     config['strategy'].update(buy_point_definition='whole_flip_wave_v3',preflight_reward_risk=False,strict_n_attack_quality=False,
         first_pullback_threshold=thresholds.first,mature_shallow_ratio=thresholds.second,
         first_pullback_basis=thresholds.first_basis,mature_shallow_inclusive=thresholds.second_inclusive)
@@ -122,8 +122,8 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
         staged_exit='verified_5m_closing_window_low_break_35_low_and_price_break_65_next_interval_open_then_weak_rebound_clear',
         missing_minute_policy='same_source_daily_close_with_explicit_fallback_evidence',
         inverse_n_after_reduction='cumulative_90_percent_of_initial_holding_other_full_risk_exits_take_priority',
-        small_n_reduction='body_le_1pct_and_lt_previous_10_mean_inside_latest_valid_confirmed_n_candle_then_cumulative_30',
-        volume_down_exit='bearish_volume_gt_previous_day_or_previous_bearish_candle_same_close_cumulative_50_if_close_not_lower_70_if_close_lower_and_low_not_lower_previous_low_break_same_close_full_clear',
+        small_n_reduction='bullish_body_le_1pct_and_lt_previous_10_mean_inside_latest_valid_confirmed_n_candle_then_cumulative_30',
+        volume_down_exit='after_resisted_last_fall_high_or_owned_wave_target_close_le_open_except_rising_one_price_volume_gt_previous_day_or_previous_bearish_candle_close_gt_previous_cumulative_50_close_lt_previous_and_low_gt_previous_cumulative_70_bearish_lower_low_direct_clear_after_reduction_lower_low_and_high_le_previous_high_clear',
         massive_gap_reversal_exit='volume_strict_record_of_previous_10_and_ge_2_times_previous_10_mean_open_gt_previous_high_close_lt_previous_low_bear_body_ge_5pct_open_same_close_full_clear_before_partial',
         secondary_c_wave_reversal_exit='known_level2_low_to_confirmed_source_a_high_then_known_b_low_intraday_high_break_two_resisted_sessions_equal_c_target_with_both_shadows_ge_30pct_next_bear_close_below_shadow_low_same_close_full_clear',
         pressure_adverse_exit='positive_n_retests_supply_adverse_unfilled_gap_higher_close_half_reduce_first_lower_close_clear_other_adverse_full_clear',

@@ -4,6 +4,29 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-197",
+            "name": "milestone-volume-bearish-exit",
+            "title": "目标或末跌高抵抗后的放量阴线分级出场",
+            "description": "本笔波浪达到一饱、二吐、五顶或十满，或已确认末跌高突破后出现空头抵抗时，按放量阴线的收盘与昨低关系分别累计减仓 50%、70% 或直接清仓；减仓后破昨低且高点不创新高则清余仓，排除上涨一字板。",
+            "scope": "wavequant-core 出场判定与回测优先级、wavequant-web 成交说明",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "仅在本笔目标到达或末跌高突破并出现空头抵抗后启用新放量阴线规则，单纯突破不启用",
+                "开收相等计入阴线但上涨一字板不计入，量须严格大于昨日或前一根阴线",
+                "今收高于昨收累计减仓 50%；今收低于昨收且今低高于昨低累计减仓 70%；放量阴线破昨低直接清仓",
+                "两种减仓后，后续今低破昨低且今高不高于昨高时清空余仓；直接清仓优先于其他部分减仓",
+                "定向 Core 与 Web 测试、Web Lint/类型/构建及 Core 构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest 7 targeted files; python -m build --no-isolation; Web node --test trade-reasons.test.mjs; pnpm --filter wavequant-web lint/typecheck/build; prettier --check changed JS; git diff --check",
+                    "status": "passed",
+                    "summary": "Core 144 项、Web 12 项定向测试通过；Core 包构建、Web Lint（6 条既有警告）、类型检查、生产构建、修改 JS 格式及差异检查通过。按当前规则未运行 Playwright；完整 Web 单测留待空闲时段验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-196",
             "name": "auto-refresh-watchlist-backtests-in-order",
             "title": "自选股待更新优先和待回测顺序自动运行",

@@ -57,6 +57,7 @@ class _Position:
     pressure_warning: dict | None = None
     record_high_warning: dict | None = None
     trend_last_fall_high_reduced: bool = False
+    volume_milestone_reached: bool = False
 
 
 def transaction_fee(notional: float, when: datetime, sell: bool, config: StrategyConfig) -> float:
@@ -148,12 +149,20 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
     record_high_risks = {symbol: record_high_resistance_history(history, config)
                          if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
     trend_flip_risks = {symbol: {} for symbol in grouped}
-    if config.trend_flip_adverse_exit:
+    trend_volume_milestones = {symbol: set() for symbol in grouped}
+    if config.trend_flip_adverse_exit or config.volume_down_after_milestone:
         from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
-        from wavequant.domain.strategies.trend_flip_exit import trend_flip_exit_history
-        trend_flip_risks = {symbol: trend_flip_exit_history(
-            history, hierarchical_history(history)[0], reduction_fraction=config.wave_exhaustion_reduction)
-                            for symbol, history in grouped.items()}
+        from wavequant.domain.strategies.trend_flip_exit import (
+            resisted_last_fall_high_sessions, trend_flip_exit_history,
+        )
+        for symbol, history in grouped.items():
+            hierarchy = hierarchical_history(history)[0]
+            if config.trend_flip_adverse_exit:
+                trend_flip_risks[symbol] = trend_flip_exit_history(
+                    history, hierarchy, reduction_fraction=config.wave_exhaustion_reduction,
+                )
+            if config.volume_down_after_milestone:
+                trend_volume_milestones[symbol] = resisted_last_fall_high_sessions(history, hierarchy)
     wave_lookup = {symbol: {} for symbol in grouped}
     wave_signal_lookup = {symbol: {} for symbol in grouped}
     for symbol, history in grouped.items():
@@ -432,7 +441,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                           last_buy_date=when.date(), bought_today_quantity=quantity,
                                           wave_events=wave_signal_lookup[symbol].get(
                                               signal.bar_index, wave_lookup[symbol].get(signal.trigger_timestamp, [])),
-                                          signal_index=signal.bar_index)
+                                          signal_index=signal.bar_index,
+                                          volume_milestone_reached=signal.bar_index in trend_volume_milestones[symbol])
         else:
             if intraday is not None and existing.intraday_add_on_date != when.date():
                 existing.intraday_add_on_prior_stop = existing.stop
@@ -586,10 +596,20 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 hard_reason = 'time_exit'
             inverse_failure = (observe_inverse_resistance_exit(grouped[symbol], i, pos.staged_exit)
                                if config.inverse_n_close_reduce else None)
+            if config.volume_down_after_milestone and not pos.volume_milestone_reached:
+                pos.volume_milestone_reached = (i in trend_volume_milestones[symbol] or any(
+                    event['bar_index'] <= i and (
+                        event.get('event') == 'wave_projection_ready' or
+                        (event.get('event') in ('wave_projection_target_reached', 'wave_n_target_reached')
+                         and event.get('reached_stage') in ('one_p', 'two_t', 'five_top', 'ten_full'))
+                    ) for event in pos.wave_events
+                ))
             volume_exit = (observe_volume_down_exit(grouped[symbol], i, pos.staged_exit,
                                positive_n_index=n_context[symbol][i] if config.small_n_reduction else None,
                                small_body_max_fraction=config.small_body_max_fraction,
-                               small_body_lookback=config.small_body_lookback)
+                               small_body_lookback=config.small_body_lookback,
+                               milestone_active=(not config.volume_down_after_milestone
+                                                 or pos.volume_milestone_reached))
                            if config.volume_down_exit else None)
             # Evaluate close-known N risk only after intraday execution. It may
             # supersede daily partial orders, never erase earlier minute fills.
@@ -641,6 +661,9 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             if (pressure is not None and pressure['reason'] == 'record_high_resistance_reduce'
                     and (hard_reason or volume_inverse or inverse_failure is not None
                          or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
+                pressure = None
+            if (pressure is not None and pressure['exit_fraction'] < 1
+                    and volume_exit is not None and volume_exit['exit_fraction'] == 1):
                 pressure = None
             if wave_exit is not None and wave_exit['exit_fraction'] == 1:
                 wave_clear_symbols.add(symbol)

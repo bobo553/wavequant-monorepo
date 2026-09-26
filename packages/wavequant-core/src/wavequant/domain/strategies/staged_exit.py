@@ -270,9 +270,17 @@ def _massive_gap_reversal(bars: list[Bar], index: int) -> dict | None:
                 previous_volume=previous.volume)
 
 
+def _bearish_candle(bars: list[Bar], index: int) -> bool:
+    """A rising one-price candle is not a bearish doji despite equal open and close."""
+    bar = bars[index]
+    one_price_up = (index > 0 and bar.open == bar.high == bar.low == bar.close
+                    and bar.close > bars[index - 1].close)
+    return bar.close <= bar.open and not one_price_up
+
+
 def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState, *,
                              positive_n_index: int | None = None, small_body_max_fraction: float = .01,
-                             small_body_lookback: int = 10) -> dict | None:
+                             small_body_lookback: int = 10, milestone_active: bool = True) -> dict | None:
     """Reduce on a high-volume bearish candle; keep the existing small-N exception."""
     if index < 1:
         return None
@@ -288,27 +296,35 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
                     and body <= Fraction(str(bar.open))*Fraction(str(small_body_max_fraction))
                     and body < mean_body and bar.close < previous.close
                     and n_bar.low <= bar.low and bar.high <= n_bar.high)
+    if not milestone_active and not (small_inside and not _bearish_candle(bars, index)):
+        return None
     previous_bearish_index = next((j for j in range(index - 1, -1, -1)
-                                   if bars[j].close < bars[j].open), None)
+                                   if _bearish_candle(bars, j)), None)
     previous_bearish = bars[previous_bearish_index] if previous_bearish_index is not None else None
     volume_increased = (bar.volume > previous.volume or
                         (previous_bearish is not None and bar.volume > previous_bearish.volume))
-    eligible = volume_increased and (bar.close < bar.open or small_inside)
-    target = (.3 if small_inside else .5 if bar.close >= previous.close else .7)
-    if state.volume_trigger_index is None:
-        if not eligible:
-            return None
+    bearish_volume = milestone_active and volume_increased and _bearish_candle(bars, index)
+    direct_clear = bearish_volume and bar.low < previous.low
+    start = state.volume_trigger_index
+    followthrough_clear = (start is not None and index > start
+                           and state.volume_reduction_target in (.5, .7)
+                           and bar.low < previous.low and bar.high <= previous.high)
+    target = (.5 if bearish_volume and bar.close > previous.close else
+              .7 if bearish_volume and bar.close < previous.close and bar.low > previous.low else
+              .3 if volume_increased and small_inside and not _bearish_candle(bars, index) else 0.0)
+    upgrading = target > state.volume_reduction_target
+    if not direct_clear and not followthrough_clear and not upgrading:
+        return None
+    if upgrading and start is None and not direct_clear:
         state.volume_trigger_index = index
         state.volume_support_index = next((j for j in range(index-2,0,-1)
             if bars[j].low < min(bars[j-1].low,bars[j+1].low)), None)
-    start, support = state.volume_trigger_index, state.volume_support_index
-    upgrading = eligible and target > state.volume_reduction_target
-    small_n_reduction = small_inside and state.volume_reduction_target == 0
-    small_n_upgrade = state.volume_reduction_target == .3 and upgrading
-    clear_lower_low = bar.low < previous.low and not (small_n_reduction or small_n_upgrade)
-    trigger = start if clear_lower_low else index if upgrading else start
+        start = index
+    support = state.volume_support_index
+    trigger = index if direct_clear or (upgrading and not followthrough_clear) else start
+    assert trigger is not None
     trigger_previous_bearish_index = next((j for j in range(trigger - 1, -1, -1)
-                                           if bars[j].close < bars[j].open), None)
+                                           if _bearish_candle(bars, j)), None)
     evidence = dict(volume_trigger_date=bars[trigger].timestamp.date().isoformat(),
                     trigger_volume=bars[trigger].volume, previous_volume=bars[trigger-1].volume,
                     trigger_close=bars[trigger].close, previous_close=bars[trigger-1].close,
@@ -318,24 +334,24 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
                                              if trigger_previous_bearish_index is not None else None),
                     volume_support_date=bars[support].timestamp.date().isoformat() if support is not None else None,
                     volume_support_low=bars[support].low if support is not None else None)
-    if clear_lower_low:
-        followthrough = index > start and bar.high <= previous.high
+    if direct_clear or followthrough_clear:
         return dict(evidence,
-                    reason=('volume_down_next_followthrough_clear' if followthrough
-                            else 'volume_down_previous_low_break_clear'),
+                    reason=('volume_down_previous_low_break_clear' if direct_clear
+                            else 'volume_down_next_followthrough_clear'),
                     exit_fraction=1.0, previous_low=previous.low, previous_high=previous.high,
-                    warning_low=previous.low, observed_high=bar.high, observed_open=bar.open,
+                    warning_low=previous.low, observed_low=bar.low,
+                    observed_high=bar.high, observed_open=bar.open,
                     execution_model='same_day_close')
     if upgrading:
         state.volume_reduction_target = target
-        if small_inside:
+        if target == .3:
             evidence.update(positive_n_date=n_bar.timestamp.date().isoformat(),
                             positive_n_low=n_bar.low, positive_n_high=n_bar.high,
                             small_body_fraction=float(body)/bar.open, small_body_mean=float(mean_body),
                             small_body_cap=small_body_max_fraction, small_body_lookback=small_body_lookback)
-        reason = ('volume_down_small_n_reduce_30' if small_inside else
+        reason = ('volume_down_small_n_reduce_30' if target == .3 else
                   'volume_down_reduce_50' if target == .5 else 'volume_down_reduce_70')
         return dict(evidence, reason=reason,
                     exit_fraction=target, exit_target_fraction=target,
-                    execution_model='next_open' if small_inside else 'same_day_close')
+                    execution_model='next_open' if target == .3 else 'same_day_close')
     return None
