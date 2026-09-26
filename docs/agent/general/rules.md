@@ -107,5 +107,5 @@
 
 - 提交信息遵循 Conventional Commits：`feat`、`fix`、`chore`、`docs`、`refactor`、`test`、`style`、`perf`、`ci`；标题准确描述本次改动且少于 35 个字符。
 - 修改可发布包时评估是否需要 Changeset；纯内部文档/Harness 变更通常不需要。
-- 特性分支提交与合并后推送 `main` 遵循根 `AGENTS.md` 的工作流；未经用户明确要求不得创建 PR、发布包或部署。
+- 特性分支提交与本地合并遵循根 `AGENTS.md` 的工作流；未经用户明确要求不得推送、创建 PR、发布包或部署。
 - 提交前确认没有真实环境变量、凭据、构建产物或无关文件进入变更集。
