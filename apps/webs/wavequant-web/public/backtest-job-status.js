@@ -41,6 +41,24 @@ export function historicalBacktestStatuses(statuses, recent) {
     return merged;
 }
 
+export function adoptServerBacktestHistory(queue, recent, tasks) {
+    if (!Array.isArray(recent) || !queue.strategyVersion) return false;
+    queue.sync(queue.snapshot());
+    for (const record of recent) {
+        // A retained local result is still readable after the server drops its short-lived result copy.
+        if (
+            record?.status === "completed" &&
+            record.result_valid === true &&
+            !record.result_available &&
+            record.params &&
+            tasks.find(record.path, record.params, record.version)?.status === "completed"
+        )
+            continue;
+        if (queue.adoptServerStatus(record)) return true;
+    }
+    return false;
+}
+
 export function runningBacktestStatuses(statuses, jobs, { unavailable = false } = {}) {
     const merged = Object.fromEntries(
         Object.entries(statuses).map(([symbol, status]) => [

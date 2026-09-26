@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
     BACKTEST_STATUS_STALE_MS,
+    adoptServerBacktestHistory,
     expiredBacktestSnapshot,
     formatBacktestElapsed,
     formatBacktestProgress,
@@ -11,6 +12,8 @@ import {
     selectedBacktestAction,
     selectedBacktestButton,
 } from "../public/backtest-job-status.js";
+import { StockBacktestTasks } from "../public/stock-backtest-tasks.js";
+import { IdleWatchlistBacktests, watchlistBacktestRequest } from "../public/watchlist-backtest-queue.js";
 
 test("selecting a stale backtest starts a fresh calculation even from the symbol selector", () => {
     assert.deepEqual(selectedBacktestAction({ historical: true, canBacktest: true, autoBacktest: false }), {
@@ -83,6 +86,75 @@ test("an older server completion is identified without claiming the current run 
     ];
     assert.deepEqual(historicalBacktestStatuses({}, recent), { "sz.300154": "historical" });
     assert.deepEqual(historicalBacktestStatuses({ "sz.300154": "running" }, recent), { "sz.300154": "running" });
+});
+
+test("an expired server copy cannot displace a completed local result or recurse through status updates", async () => {
+    const context = {
+        run: "example",
+        variant: "lecture_v3",
+        scenario: "base",
+        source: "akshare",
+        start: "2018-01-01",
+        volume_filter: "false",
+        net_reward_risk_filter: "false",
+        shallow_base_breakout_enabled: "true",
+        initial_capital: 100_000,
+        max_position_weight: 1,
+    };
+    const member = { symbol: "sh.601086", name: "国芳集团", asof: "2026-09-24" };
+    const request = watchlistBacktestRequest(member, context);
+    const record = {
+        ...request,
+        symbol: member.symbol,
+        job: "completed-job",
+        version: "v1",
+        status: "completed",
+        result_valid: true,
+        result_available: false,
+    };
+    const result = {
+        symbol: member.symbol,
+        asof: member.asof,
+        result_scope: "stock",
+        backtest: {},
+        orders: [{ status: "filled" }],
+        markers: [{ id: "fill-1", kind: "fill" }],
+    };
+    let queue;
+    let updates = 0;
+    const tasks = new StockBacktestTasks({ run: async () => result });
+    const syncLocalResult = () => {
+        for (const task of tasks.tasks.values()) {
+            if (task.status === "completed" && queue.statuses.get(task.symbol) !== "completed")
+                queue.adoptCompleted(task.path, task.params, task.result, task.version);
+        }
+    };
+    queue = new IdleWatchlistBacktests({
+        snapshot: () => ({ context, members: [member] }),
+        version: async () => ({ version: "v1" }),
+        run: async () => result,
+        isIdle: () => false,
+        onChange: () => {
+            assert.ok(++updates < 10, "status updates must settle without recursion");
+            if (adoptServerBacktestHistory(queue, [record], tasks)) return;
+            syncLocalResult();
+        },
+    });
+    queue.setEnabled(false);
+    await queue.ensureVersion();
+    assert.equal(queue.state().statuses[member.symbol], "historical");
+
+    const task = tasks.adoptCompleted(request.path, request.params, result, {
+        version: "v1",
+        jobId: "local-job",
+    });
+    syncLocalResult();
+
+    assert.equal(queue.state().statuses[member.symbol], "completed");
+    assert.equal(queue.state().fillCounts[member.symbol], 1);
+    assert.equal(queue.matchingJobId(request.path, request.params), "local-job");
+    assert.deepEqual((await task.promise).markers, result.markers);
+    assert.ok(updates < 10);
 });
 
 test("a failed status poll expires old server running badges without claiming spare capacity", () => {

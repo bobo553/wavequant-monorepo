@@ -1,5 +1,6 @@
 import { reasonText } from "./annotations.js";
 import {
+    adoptServerBacktestHistory,
     expiredBacktestSnapshot,
     formatBacktestElapsed,
     historicalBacktestStatuses,
@@ -2104,7 +2105,19 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
                 ? "已完成的任务仍可重试读取，无需重新计算。"
                 : "当前股票视图仍可操作，请调整回测设置或重新运行。"
             : "旧图已隐藏，请检查结果文件后重试。";
-        $("error").replaceChildren(document.createTextNode(`加载失败：${error.message}。${errorHint}`));
+        const errorMessage = `加载失败：${error.message}。${errorHint}`;
+        $("error").replaceChildren(document.createTextNode(errorMessage));
+        const copyError = document.createElement("button");
+        copyError.type = "button";
+        copyError.className = "backtest-error-copy-button";
+        copyError.textContent = "复制";
+        copyError.setAttribute("aria-label", "复制加载失败信息");
+        copyError.addEventListener("click", async () => {
+            const copied = await writeClipboardText(errorMessage, copyError);
+            copyError.textContent = copied ? "已复制" : "复制失败，请重试";
+            copyError.setAttribute("aria-label", copied ? "加载失败信息已复制" : "复制加载失败信息失败，请重试");
+        });
+        $("error").append(copyError);
         if (backtestMode) {
             const retry = document.createElement("button");
             retry.type = "button";
@@ -2435,12 +2448,7 @@ const watchlistBacktests = new IdleWatchlistBacktests({
     },
 });
 function syncServerBacktestHistory() {
-    if (!Array.isArray(serverBacktestSnapshot.recent) || !watchlistBacktests.strategyVersion) return false;
-    watchlistBacktests.sync(watchlistBacktests.snapshot());
-    for (const record of serverBacktestSnapshot.recent) {
-        if (watchlistBacktests.adoptServerStatus(record)) return true;
-    }
-    return false;
+    return adoptServerBacktestHistory(watchlistBacktests, serverBacktestSnapshot.recent, stockBacktestTasks);
 }
 function syncCompletedStockBacktests() {
     watchlistBacktests.sync(watchlistBacktests.snapshot());

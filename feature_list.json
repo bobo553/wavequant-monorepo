@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-195",
+            "name": "copy-backtest-load-error-and-keep-local-result",
+            "title": "复制回测加载错误并保留本地完成结果",
+            "description": "回测加载失败提示增加复制按钮；服务器完成结果正文过期时，状态同步优先保留浏览器仍可读取的完成任务，避免递归更新阻断图表展示。",
+            "scope": "wavequant-web 研究页错误提示与回测任务状态同步",
+            "dependencies": ["MONOREPO-192"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "加载失败提示可一键复制完整错误和说明，复制反馈可见，重试按钮文字不进入剪贴板",
+                "服务器结果正文过期但本地完成结果仍可读时不循环切换任务状态，已完成股票可继续展示回测结果",
+                "定向任务状态回归、JS 语法、Web Lint、类型检查、生产构建和格式检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test 4 targeted files; node --check public/app.js public/backtest-job-status.js; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; git diff --check",
+                    "status": "passed",
+                    "summary": "29 项定向回归通过，覆盖服务端结果正文过期与本地完成结果并存时的状态收敛；JS 语法、Web Lint（6 条既有警告）、类型、生产构建、格式及差异检查通过。按用户规则未运行 Playwright 或真实浏览器，页面复制与图表交互待人工复核。完整 Web 单测留待空闲时段。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-194",
             "name": "navigate-local-chart-viewport",
             "title": "本地图表视图导航与缩放",

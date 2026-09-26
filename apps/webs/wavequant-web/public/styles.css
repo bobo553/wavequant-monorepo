@@ -2612,12 +2612,14 @@ tbody tr:hover {
     font-size: 11px;
 }
 #run-stock-backtest,
-.backtest-retry-button {
+.backtest-retry-button,
+.backtest-error-copy-button {
     background: #173b38;
     color: #83e4d6;
     border-color: #2a655c;
 }
-.backtest-retry-button {
+.backtest-retry-button,
+.backtest-error-copy-button {
     margin-inline-start: 8px;
 }
 .decision-timeline {
