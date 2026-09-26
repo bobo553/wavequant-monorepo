@@ -43,6 +43,7 @@ export class IdleWatchlistBacktests {
         onRejected,
         onEngineChanged,
         serverJobs = () => [],
+        historicalSymbols = () => new Set(),
         hasCapacity = () => true,
         now = Date.now,
         versionRefreshMs = DEFAULT_VERSION_REFRESH_MS,
@@ -57,6 +58,7 @@ export class IdleWatchlistBacktests {
             onRejected,
             onEngineChanged,
             serverJobs,
+            historicalSymbols,
             hasCapacity,
             now,
             versionRefreshMs,
@@ -178,6 +180,7 @@ export class IdleWatchlistBacktests {
             failed,
             retrying: this.retryAt.size,
             capacityFull: !this.hasCapacity(),
+            serverBusy: this.serverJobs().some((job) => job.status === "running"),
             error: this.error,
         };
     }
@@ -327,7 +330,6 @@ export class IdleWatchlistBacktests {
             if (typeof response?.version !== "string" || !response.version) throw new Error("策略版本响应无效");
             const engineVersion = typeof response.engine_version === "string" ? response.engine_version : null;
             if (engineVersion && this.lastEngineVersion && engineVersion !== this.lastEngineVersion) {
-                this.enabled = false;
                 this.onEngineChanged?.(engineVersion);
             }
             if (engineVersion) this.lastEngineVersion = engineVersion;
@@ -370,12 +372,18 @@ export class IdleWatchlistBacktests {
         if (this.checking || this.active) return;
         if (!(await this.ensureVersion(snapshot))) return;
         if (!this.enabled || !this.isIdle() || !this.strategyVersion || !this.hasCapacity()) return;
-        const busySymbols = new Set(this.serverJobs().map((job) => job.symbol || job.params?.symbol));
+        const serverJobs = this.serverJobs();
+        if (serverJobs.some((job) => job.status === "running")) return;
+        const historicalSymbols = this.historicalSymbols();
         const member =
-            this.members.find(({ symbol }) => !busySymbols.has(symbol) && !this.statuses.has(symbol)) ||
             this.members.find(
                 ({ symbol }) =>
-                    !busySymbols.has(symbol) &&
+                    this.statuses.get(symbol) === "historical" ||
+                    (!this.statuses.has(symbol) && historicalSymbols.has(symbol)),
+            ) ||
+            this.members.find(({ symbol }) => !this.statuses.has(symbol)) ||
+            this.members.find(
+                ({ symbol }) =>
                     this.statuses.get(symbol) === "failed" &&
                     this.retryAt.has(symbol) &&
                     this.retryAt.get(symbol) <= this.now(),

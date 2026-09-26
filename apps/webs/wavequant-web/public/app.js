@@ -38,7 +38,7 @@ import { IdleWatchlistBacktests, backtestArgumentsKey, watchlistBacktestRequest 
 import { Watchlists } from "./watchlists.js";
 
 const $ = (id) => document.getElementById(id);
-let serverBacktestSnapshot = { active: 0, max_active: 4, jobs: [] };
+let serverBacktestSnapshot = { active: null, max_active: 4, jobs: [], unavailable: true };
 let serverBacktestSnapshotSeenAt = Date.now();
 let backtestToastTimer;
 function showBacktestToast(message) {
@@ -2213,7 +2213,7 @@ const ratioComparison = new RatioComparison({
         loadView();
     },
 });
-const autoBacktestPreferenceKey = "wavequant.watchlists.auto-backtest.v1";
+const autoBacktestPreferenceKey = "wavequant.watchlists.auto-backtest.v2";
 const sharedBacktestCompletionPrefix = "wavequant.watchlists.backtest-done.v2:";
 const sharedBacktestCompletionTtlMs = 60_000;
 let lastSharedBacktestPrune = 0;
@@ -2223,15 +2223,14 @@ for (const eventName of ["pointerdown", "keydown", "input", "wheel"]) {
 }
 const watchlistBacktests = new IdleWatchlistBacktests({
     serverJobs: () => serverBacktestSnapshot.jobs,
+    historicalSymbols: () =>
+        new Set(
+            Object.entries(watchlists.backtestStatuses)
+                .filter(([, status]) => status === "historical")
+                .map(([symbol]) => symbol),
+        ),
     hasCapacity: () =>
         !serverBacktestSnapshot.unavailable && serverBacktestSnapshot.active < serverBacktestSnapshot.max_active,
-    onEngineChanged: () => {
-        try {
-            localStorage.setItem(autoBacktestPreferenceKey, "false");
-        } catch {
-            // 当前页面的自动队列仍会暂停。
-        }
-    },
     snapshot: () => {
         if (!state.catalog || !watchlists.available) return null;
         const source = sourceForScope($("result-scope").value);
@@ -2355,6 +2354,7 @@ const watchlistBacktests = new IdleWatchlistBacktests({
     isIdle: () =>
         document.visibilityState === "visible" &&
         !state.loading &&
+        ![...stockBacktestTasks.tasks.values()].some((task) => task.status === "running") &&
         !ratioComparison.running &&
         Date.now() - lastWorkbenchInteraction >= 5_000,
     onCompleted: (result, active) => {
@@ -2398,6 +2398,7 @@ const watchlistBacktests = new IdleWatchlistBacktests({
         failed,
         retrying,
         capacityFull,
+        serverBusy,
         error,
     }) => {
         if (syncServerBacktestHistory()) return;
@@ -2440,11 +2441,13 @@ const watchlistBacktests = new IdleWatchlistBacktests({
                             ? "服务器任务状态暂不可确认，等待连接恢复…"
                             : capacityFull
                               ? `并行回测已满（${serverBacktestSnapshot.active}/${serverBacktestSnapshot.max_active}），等待空位…`
-                              : !idle
-                                ? `等待页面空闲 · 已完成 ${completed}/${total}，失败 ${failed}`
-                                : checking || !version
-                                  ? "正在核对策略版本…"
-                                  : `准备按列表顺序回测 · 已完成 ${completed}/${total}，失败 ${failed}`;
+                              : serverBusy
+                                ? "等待当前股票回测完成后继续自动回测…"
+                                : !idle
+                                  ? `等待页面空闲 · 已完成 ${completed}/${total}，失败 ${failed}`
+                                  : checking || !version
+                                    ? "正在核对策略版本…"
+                                    : `准备按列表顺序回测 · 已完成 ${completed}/${total}，失败 ${failed}`;
         renderServerBacktestStatuses({ statuses, ready, failures, fillCounts, returns });
     },
 });
@@ -2519,10 +2522,9 @@ setInterval(() => {
 }, 3_000);
 void refreshServerBacktestStatuses();
 try {
-    localStorage.setItem(autoBacktestPreferenceKey, "false");
-    watchlistBacktests.setEnabled(false);
+    watchlistBacktests.setEnabled(localStorage.getItem(autoBacktestPreferenceKey) !== "false");
 } catch {
-    watchlistBacktests.setEnabled(false);
+    watchlistBacktests.setEnabled(true);
 }
 $("watchlist-auto-backtest-toggle").addEventListener("click", () => {
     watchlistBacktests.setEnabled(!watchlistBacktests.enabled);

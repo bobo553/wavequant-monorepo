@@ -4,6 +4,28 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-196",
+            "name": "auto-refresh-watchlist-backtests-in-order",
+            "title": "自选股待更新优先和待回测顺序自动运行",
+            "description": "自动回测默认启用，先更新列表中已回测待更新的股票；没有其他回测时，按列表顺序启动最上面的待回测股票，保留手动暂停偏好。",
+            "scope": "wavequant-web 自选股自动回测调度与状态提示",
+            "dependencies": ["MONOREPO-195"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "显示已回测待更新的股票无需点击即可优先进入自动更新队列",
+                "没有其他股票回测时，待回测股票按列表从上到下逐只运行",
+                "服务器或当前页面已有回测时不启动下一只；手动暂停在刷新和策略版本变化后仍生效",
+                "定向队列测试、Web Lint、类型检查、生产构建和格式检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test 3 targeted files; node --check public/app.js public/watchlist-backtest-queue.js; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "29 项定向 Node 测试通过，覆盖待更新优先、服务器任务占用时等待、最上方待回测选取、版本变化和手动暂停；JS 语法、Web Lint（6 条既有警告）、类型、生产构建、格式、Harness 与差异检查通过。按用户规则未运行 Playwright 或真实浏览器，页面调度待人工复核；完整 Web 单测留待空闲时段。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-195",
             "name": "copy-backtest-load-error-and-keep-local-result",
             "title": "复制回测加载错误并保留本地完成结果",
