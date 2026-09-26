@@ -9,16 +9,19 @@ import {
     historicalBacktestStatuses,
     runningBacktestStatuses,
     selectedBacktestAction,
+    selectedBacktestButton,
 } from "../public/backtest-job-status.js";
 
 test("selecting a stale backtest starts a fresh calculation even from the symbol selector", () => {
     assert.deepEqual(selectedBacktestAction({ historical: true, canBacktest: true, autoBacktest: false }), {
         run: true,
         force: true,
+        direct: false,
     });
     assert.deepEqual(selectedBacktestAction({ historical: true, canBacktest: false, autoBacktest: true }), {
         run: false,
         force: true,
+        direct: false,
     });
 });
 
@@ -26,10 +29,35 @@ test("selection keeps completed result reuse and ordinary selector browsing", ()
     assert.deepEqual(selectedBacktestAction({ historical: false, canBacktest: true, autoBacktest: true }), {
         run: true,
         force: false,
+        direct: false,
     });
     assert.deepEqual(selectedBacktestAction({ historical: false, canBacktest: true, autoBacktest: false }), {
         run: false,
         force: false,
+        direct: false,
+    });
+    assert.deepEqual(
+        selectedBacktestAction({ historical: false, canBacktest: true, autoBacktest: true, completed: true }),
+        { run: true, force: false, direct: true },
+    );
+    assert.deepEqual(
+        selectedBacktestAction({ historical: false, canBacktest: true, autoBacktest: false, completed: true }),
+        { run: false, force: false, direct: true },
+    );
+});
+
+test("a finished badge opens its result before offering a fresh calculation", () => {
+    assert.deepEqual(selectedBacktestButton("completed", false), {
+        label: "已完成 · 查看回测",
+        force: false,
+    });
+    assert.deepEqual(selectedBacktestButton("completed", true), {
+        label: "已完成 · 重新回测",
+        force: true,
+    });
+    assert.deepEqual(selectedBacktestButton("failed", false), {
+        label: "失败 · 重新回测",
+        force: true,
     });
 });
 

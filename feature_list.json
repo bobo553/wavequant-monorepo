@@ -4,7 +4,7 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
-            "id": "MONOREPO-192",
+            "id": "MONOREPO-193",
             "name": "watchlist-stock-backtest-progress",
             "title": "自选股单股回测进度百分比",
             "description": "服务端为每只运行中的回测任务报告阶段和百分比，自选股列表在对应股票上同步展示。",
@@ -20,7 +20,29 @@
                 {
                     "command": "Core pytest test_tdx_backtest.py test_akshare_history.py test_backtest_version.py；API pytest test_backtest_jobs.py test_server.py；Web Node 定向测试、typecheck、Prettier、Node 语法和 git diff --check",
                     "status": "passed",
-                    "summary": "Core 30 项、API 42 项及 10 个子测试、Web 14 项定向测试通过；Web 类型、格式和语法检查通过。未运行浏览器端到端验证。"
+                    "summary": "Core 30 项、API 42 项及 10 个子测试、Web 17 项定向测试通过；Web 类型、格式、语法与 Harness 检查通过。未运行浏览器端到端验证。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-192",
+            "name": "show-completed-stock-backtest-without-rerun",
+            "title": "已完成单股回测直接显示成交标识",
+            "description": "选中已完成的股票回测时直接读取现有任务结果；普通行情失败不再阻断回测展示，按钮按当前展示状态区分查看与重新运行。",
+            "scope": "wavequant-web 选股、任务复用和回测状态显示",
+            "dependencies": ["MONOREPO-190"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "已完成的当前股票回测直接读取原任务并显示 B/S 成交标识，不提交新计算",
+                "普通行情加载失败时仍继续读取已完成或正在运行的回测结果",
+                "结果尚未显示时按钮读取现有任务；读取暂时失败可重试同一任务，明确重新回测才创建新计算",
+                "真实桂林旅游结果的任务状态、成交订单和标识数量已只读核对，定向检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "GET /api/backtest-jobs; GET /api/backtest-job; node --test 3 targeted files; node --check; pnpm --filter wavequant-web lint; typecheck; build; prettier --check; git diff --check",
+                    "status": "passed",
+                    "summary": "桂林旅游任务结果可读取，含 131 笔成交及 131 个成交标识；12 项定向测试、语法、Web Lint（6 条既有警告）、类型、生产构建、格式和差异检查通过。按用户规则未运行浏览器端到端测试，页面交互待人工复核。"
                 }
             ]
         },

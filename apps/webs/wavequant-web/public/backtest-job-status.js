@@ -1,9 +1,27 @@
 export const BACKTEST_STATUS_STALE_MS = 15_000;
 
-export function selectedBacktestAction({ historical, canBacktest, autoBacktest }) {
+export function selectedBacktestAction({ historical, canBacktest, autoBacktest, completed = false }) {
     return {
         run: canBacktest && (autoBacktest || historical),
         force: historical,
+        direct: completed && !historical,
+    };
+}
+
+export function selectedBacktestButton(status, showingCompletedResult) {
+    if (status === "completed" && !showingCompletedResult) return { label: "已完成 · 查看回测", force: false };
+    return {
+        label:
+            {
+                pending: "待回测 · 运行当前股票回测",
+                running: "回测中",
+                unknown: "状态待确认",
+                completed: "已完成 · 重新回测",
+                historical: "已回测 · 待更新",
+                failed: "失败 · 重新回测",
+                unavailable: "无数据 · 暂不可回测",
+            }[status] || "待回测 · 运行当前股票回测",
+        force: true,
     };
 }
 

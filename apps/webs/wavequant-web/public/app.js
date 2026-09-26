@@ -5,6 +5,7 @@ import {
     historicalBacktestStatuses,
     runningBacktestStatuses,
     selectedBacktestAction,
+    selectedBacktestButton,
 } from "./backtest-job-status.js";
 import { retryBacktest, waitForBacktestJob } from "./backtest-retry.js";
 import { parseBacktestSizing } from "./backtest-sizing.js";
@@ -266,20 +267,16 @@ let lastStockBacktestStatuses = "";
 function renderRunStockBacktestButton() {
     const button = $("run-stock-backtest");
     const symbol = $("symbol-select").value;
+    const currentTask = state.activeBacktestTask?.symbol === symbol ? state.activeBacktestTask : null;
     const status =
-        watchlists.backtestStatuses[symbol] ||
-        (state.activeBacktestTask?.symbol === symbol ? state.activeBacktestTask.status : "pending");
-    const labels = {
-        pending: "待回测 · 运行当前股票回测",
-        running: "回测中",
-        unknown: "状态待确认",
-        completed: "已完成 · 重新回测",
-        historical: "已回测 · 待更新",
-        failed: "失败 · 重新回测",
-        unavailable: "无数据 · 暂不可回测",
-    };
+        currentTask?.status === "completed" && currentTask.result === state.view
+            ? "completed"
+            : watchlists.backtestStatuses[symbol] || currentTask?.status || "pending";
+    const showingCompletedResult =
+        isTdxBacktest() && !state.error && currentTask?.status === "completed" && currentTask.result === state.view;
+    const action = selectedBacktestButton(status, showingCompletedResult);
     button.dataset.status = status;
-    button.textContent = labels[status] || labels.pending;
+    button.textContent = action.label;
     button.disabled = state.loading || !canBacktestSymbol(symbol) || status === "running" || status === "unknown";
     button.title = !canBacktestSymbol(symbol)
         ? "当前股票缺少所选数据源的日线，暂不可回测"
@@ -936,10 +933,15 @@ function chooseSymbol(symbol, workspace = false, autoBacktest = true) {
     const historical =
         watchlistBacktests.statuses.get(symbol) === "historical" ||
         watchlists.backtestStatuses[symbol] === "historical";
-    const { run: runBacktest, force: refreshBacktest } = selectedBacktestAction({
+    const {
+        run: runBacktest,
+        force: refreshBacktest,
+        direct,
+    } = selectedBacktestAction({
         historical,
         canBacktest,
         autoBacktest,
+        completed: Boolean(completedMember),
     });
     const resumeBacktest =
         !historical &&
@@ -974,19 +976,20 @@ function chooseSymbol(symbol, workspace = false, autoBacktest = true) {
         loadView();
         return;
     }
-    // Show this stock's ordinary chart first; its strategy calculation then runs beside it.
-    void loadView().then(() => {
-        if (
-            navigation !== state.symbolNavigation ||
-            $("symbol-select").value !== symbol ||
-            state.error ||
-            $("result-scope").value !== source
-        )
-            return;
+    const showBacktest = () => {
+        if (navigation !== state.symbolNavigation || $("symbol-select").value !== symbol) return;
         $("result-scope").value = `${source}-backtest`;
         fillSymbols();
         preserveCutoff(cutoff);
         void loadView({ preferTrades: true, forceBacktest: refreshBacktest });
+    };
+    if (direct) {
+        showBacktest();
+        return;
+    }
+    // Show this stock's ordinary chart first; its strategy calculation then runs beside it.
+    void loadView().then(() => {
+        if ($("result-scope").value === source) showBacktest();
     });
 }
 function resetSlider() {
@@ -1831,6 +1834,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
     }
     const requestSignal = state.controller.signal;
     let completedResultRequest = false;
+    let reusedCompletedResult = false;
     try {
         let timeframeBundle = null;
         const viewParams = {
@@ -1854,10 +1858,20 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             if (sequence !== state.sequence) return;
         }
         const version = watchlistBacktests.strategyVersion || "";
+        if (
+            backtestMode &&
+            !forceBacktest &&
+            !stockBacktestTasks.find(backtestPath, backtestParams, version) &&
+            !watchlistBacktests.hasCompleted(request.symbol, sourceForScope($("result-scope").value))
+        ) {
+            await refreshServerBacktestStatuses();
+            if (sequence !== state.sequence) return;
+        }
         const completedJobId =
             !forceBacktest && watchlistBacktests.hasCompleted(request.symbol, sourceForScope($("result-scope").value))
                 ? watchlistBacktests.matchingJobId(backtestPath, backtestParams)
                 : null;
+        reusedCompletedResult = Boolean(completedJobId);
         const cachedTask = completedJobId && stockBacktestTasks.find(backtestPath, backtestParams, version);
         completedResultRequest = Boolean(completedJobId && !["running", "completed"].includes(cachedTask?.status));
         const task = !backtestMode
@@ -1869,7 +1883,11 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
                     params: backtestParams,
                     version,
                     jobId: completedJobId,
-                    fetchJob: (job) => api("/api/backtest-job", { job }, requestSignal),
+                    fetchJob: (job) =>
+                        retryBacktest(() => api("/api/backtest-job", { job }, requestSignal), {
+                            signal: requestSignal,
+                            delays: [500, 1_000, 2_000],
+                        }),
                 })
               : stockBacktestTasks.start(backtestPath, backtestParams, {
                     version,
@@ -2036,8 +2054,9 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
                 `${symbolName(request.symbol)} · 旧回测结果已过期，可手动重新运行。`;
             delete $("selected-stock-summary").dataset.backtestStatus;
             $("stock-picker-feedback").hidden = false;
-            $("stock-picker-feedback").textContent = "旧回测结果已过期；点击“运行当前股票回测”可重新计算。";
+            $("stock-picker-feedback").textContent = "旧回测结果已过期；点击回测按钮可重新计算。";
             renderRunStockBacktestButton();
+            void loadView();
             return;
         }
         state.loading = false;
@@ -2046,21 +2065,28 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
         $("chart-loading-overlay").hidden = true;
         $("error").hidden = false;
         const errorHint = backtestMode
-            ? "当前股票视图仍可操作，请调整回测设置或重新运行。"
+            ? reusedCompletedResult
+                ? "已完成的任务仍可重试读取，无需重新计算。"
+                : "当前股票视图仍可操作，请调整回测设置或重新运行。"
             : "旧图已隐藏，请检查结果文件后重试。";
         $("error").replaceChildren(document.createTextNode(`加载失败：${error.message}。${errorHint}`));
         if (backtestMode) {
             const retry = document.createElement("button");
             retry.type = "button";
             retry.className = "backtest-retry-button";
-            retry.textContent = "重新运行当前股票回测";
-            retry.addEventListener("click", () => loadView({ forceBacktest: true }));
+            retry.textContent = reusedCompletedResult ? "重试读取已完成回测" : "重新运行当前股票回测";
+            retry.addEventListener("click", () => loadView({ forceBacktest: !reusedCompletedResult }));
             $("error").append(retry);
         }
         if (backtestMode) $("selected-stock-summary").dataset.backtestStatus = "failed";
         else delete $("selected-stock-summary").dataset.backtestStatus;
+        const failureSummary = backtestMode
+            ? reusedCompletedResult
+                ? "可重试读取该任务。"
+                : "可调整设置或重新运行。"
+            : "未展示旧股票数据，可重新选择或刷新。";
         $("selected-stock-summary").textContent =
-            `${symbolName(request.symbol)} · ${backtestMode ? "回测失败" : "加载失败"}：${error.message}；${backtestMode ? "当前股票行情仍可查看。" : "未展示旧股票数据，可重新选择或刷新。"}`;
+            `${symbolName(request.symbol)} · ${backtestMode ? (reusedCompletedResult ? "回测结果加载失败" : "回测失败") : "加载失败"}：${error.message}；${failureSummary}`;
         $("price-chart").setAttribute("aria-busy", "false");
         if (!backtestMode || !hasRenderedView) {
             document.querySelectorAll(".page").forEach((p) => (p.hidden = true));
@@ -2506,7 +2532,14 @@ $("run-stock-backtest").addEventListener("click", () => {
     state.pendingFocus = null;
     fillSymbols();
     preserveCutoff(cutoff);
-    loadView({ focusLatestFill: true, forceBacktest: true });
+    const status = $("run-stock-backtest").dataset.status;
+    const showingCompletedResult =
+        isTdxBacktest() &&
+        !state.error &&
+        state.activeBacktestTask?.status === "completed" &&
+        state.activeBacktestTask.result === state.view;
+    const action = selectedBacktestButton(status, showingCompletedResult);
+    loadView({ focusLatestFill: true, forceBacktest: action.force });
 });
 $("fills-only").addEventListener("click", () => {
     $("show-fills").checked = true;
@@ -2799,10 +2832,9 @@ async function start() {
             !linkedStock &&
             firstWatchlistSymbol &&
             $("symbol-select").value === firstWatchlistSymbol &&
-            state.view?.symbol === firstWatchlistSymbol &&
-            !state.error
+            (state.view?.symbol === firstWatchlistSymbol || state.error)
         ) {
-            const cutoff = state.requestedAsOf || state.view.asof || state[initialSource].latest;
+            const cutoff = state.requestedAsOf || state.view?.asof || state[initialSource].latest;
             $("result-scope").value = `${initialSource}-backtest`;
             fillSymbols();
             preserveCutoff(cutoff);
