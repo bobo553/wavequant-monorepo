@@ -4,6 +4,49 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-188",
+            "name": "selected-buy-a-wave-origin",
+            "title": "点击转浪买点补齐 A 浪起点标注",
+            "description": "转浪买入证据携带原正 N 的起点日期；选中买入成交时在 K 线上标出 A 起点、A 高、B 低和 C 确认。",
+            "scope": "wavequant-core 转浪证据与 wavequant-web K 线叠加标注",
+            "dependencies": ["MONOREPO-173"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "乐心股份 2025-02-10 买点的 A 起点取 2024-09-18、约 10.5900 元，不误用 2024-09-25 正 N 日期",
+                "选中转浪买入成交时显示 A 起点、A 高、B 低、C 确认四点，并覆盖四点所在的 K 线视窗",
+                "旧回测证据缺少起点日期时保留原有三点显示，非买入成交不显示波段标注"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest -q tests/test_wave_continuation.py tests/test_completed_wave_recovery.py；node --test tests/wave-endpoint-overlay.test.mjs；pnpm --filter wavequant-web typecheck；git diff --check",
+                    "status": "passed",
+                    "summary": "Core 转浪用例及 Web 四点绘制单测通过；真实乐心日线夹具确认 2024-09-18 起点，Web 类型检查与差异检查通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-187",
+            "name": "last-fall-high-shadow-staged-exit",
+            "title": "二三级末跌高突破后长上影减仓与收低清仓",
+            "description": "持仓突破已确认二级或三级末跌高后，长上影不利 K 线按累计 80% 目标减仓；其后首次收盘低于前一交易日时清掉余仓。",
+            "scope": "wavequant-core 趋势退出与回测成交",
+            "dependencies": ["MONOREPO-142", "MONOREPO-185"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "仅使用前一交易日已知的二级或三级末跌高，收盘严格突破后才启用",
+                "乐心股份 2026-07-02 减仓、07-03 已成交不重复卖或首日失败则重试、07-06 首次收低清仓",
+                "累计整手减仓与持仓归属正确，历史截断结果一致",
+                "原有三级转势退出和二级压力入场规则保持有效"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest -q tests/test_trend_last_fall_high_exit.py tests/test_trend_flip_exit.py tests/test_secondary_wave_exit.py tests/test_wave_target_upper_shadow_exit.py",
+                    "status": "passed",
+                    "summary": "23 项通过，覆盖乐心真实日线、次日失败重试与已成交去重、二三级边界、历史截断及相邻退出。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-186",
             "name": "restore-light-theme-before-first-paint",
             "title": "进入页面时避免深色主题闪烁",

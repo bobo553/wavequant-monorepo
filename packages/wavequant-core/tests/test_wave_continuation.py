@@ -12,6 +12,7 @@ from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
     wave_confirmation_state,
     wave_gap_entry,
+    wave_pullback_context,
 )
 
 
@@ -27,10 +28,31 @@ def sample():
     return bars, dates, setup
 
 
+def test_lexin_february_buy_keeps_the_september_a_origin():
+    raw = json.loads((Path(__file__).parent / "fixtures/lexin_2026_squeeze.json").read_text(encoding="utf-8"))
+    bars = [Bar(datetime.fromisoformat(day), raw["symbol"], *values) for day, *values in raw["bars"]]
+    dates = {str(bar.timestamp.date()): i for i, bar in enumerate(bars)}
+    origin, attack, squeeze = [dates[day] for day in ("2024-09-18", "2024-09-25", "2024-12-16")]
+    setup = WaveProjectionSetup(
+        origin, attack, squeeze, bars[origin].low, bars[attack].high,
+        3 * bars[attack].high - 2 * bars[origin].low, bars[attack].low,
+    )
+
+    proof = wave_pullback_context(bars, setup, dates["2025-02-10"])
+
+    assert proof is not None
+    assert proof["wave_a_origin_date"] == "2024-09-18"
+    assert proof["wave_a_origin"] == pytest.approx(10.5900, abs=0.0001)
+    assert proof["wave_a_high_date"] == "2024-12-18"
+    assert proof["wave_b_low_date"] == "2025-01-13"
+
+
 def test_real_gap_keeps_whole_b_low_and_equal_a_target():
     bars, dates, setup = sample()
     now = dates["2026-09-15"]
     proof = wave_gap_entry(bars, setup, now)
+    assert proof["wave_a_origin_date"] == "2026-07-27"
+    assert proof["wave_a_origin"] == setup.origin
     assert proof["wave_b_low_date"] == "2026-08-21"
     assert proof["wave_a_high_date"] == proof["wave_entry_two_t_date"] == "2026-08-11"
     assert proof["wave_equal_target"] == pytest.approx(19.69748771297527)
@@ -118,6 +140,7 @@ def test_full_global_pipeline_reenters_after_inverse_n_and_preserves_prefix():
     assert buys[0].reason == "system_wave_push_gap"
     assert buys[0].target_price == pytest.approx(19.69748771297527)
     proof = next(e for e in full.audit if e["event"] == "long_signal" and e["bar_index"] == day)
+    assert proof["wave_a_origin_date"] == "2026-07-27"
     assert proof["wave_b_low_date"] == "2026-08-21"
     assert proof["rvol"] > 1
     assert proof["rvol"] == pytest.approx(bars[day].volume / bars[day - 1].volume)

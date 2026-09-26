@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("Guilin selected May 21 buy marks its A, B and C confirmation candles", async ({ page }) => {
+test("Guilin selected May 21 buy marks A origin, A high, B low and C confirmation", async ({ page }) => {
     test.setTimeout(240_000);
     const catalog = {
         available: true,
@@ -23,6 +23,7 @@ test("Guilin selected May 21 buy marks its A, B and C confirmation candles", asy
     const buy = view.orders.find((order) => order.side === "BUY" && order.timestamp.startsWith("2021-05-21"));
     expect(buy?.status).toBe("filled");
     const proof = buy.decision_evidence.find((evidence) => evidence.wave_entry_path);
+    expect(proof.wave_a_origin_date).toBeTruthy();
     expect(proof.wave_a_high_date).toBe("2021-04-20");
     expect(proof.wave_b_low_date).toBe("2021-05-07");
     expect(proof.wave_breakout_close).toBeCloseTo(6.7021, 4);
@@ -33,7 +34,7 @@ test("Guilin selected May 21 buy marks its A, B and C confirmation candles", asy
         .locator(".trade-node-button")
         .first()
         .click();
-    await expect(page.locator("#price-chart")).toHaveAttribute("data-wave-endpoint-count", "3");
+    await expect(page.locator("#price-chart")).toHaveAttribute("data-wave-endpoint-count", "4");
     await expect(page.locator("#selection-info")).toContainText("8.5655");
     await expect(page.locator("#selection-info")).toContainText("5.9814");
     await expect(page.locator("#selection-info")).toContainText("6.7021");

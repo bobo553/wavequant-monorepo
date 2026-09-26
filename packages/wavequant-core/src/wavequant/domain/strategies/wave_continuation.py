@@ -47,6 +47,7 @@ def wave_pullback_context(
         wave_entry_two_t=setup.two_t,
         wave_entry_two_t_date=bars[max(reached, setup.squeeze_index)].timestamp.date().isoformat() if strong else "",
         wave_a_origin=setup.origin,
+        wave_a_origin_date=bars[setup.origin_index].timestamp.date().isoformat(),
         wave_a_high=bars[peak].high,
         wave_a_high_index=peak,
         wave_a_high_date=bars[peak].timestamp.date().isoformat(),
