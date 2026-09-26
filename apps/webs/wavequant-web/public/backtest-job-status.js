@@ -1,10 +1,22 @@
 export const BACKTEST_STATUS_STALE_MS = 15_000;
 
+export function selectedBacktestAction({ historical, canBacktest, autoBacktest }) {
+    return {
+        run: canBacktest && (autoBacktest || historical),
+        force: historical,
+    };
+}
+
 export function historicalBacktestStatuses(statuses, recent) {
     const merged = { ...statuses };
     for (const record of recent || []) {
-        if (record?.status === "completed" && record.result_valid === true &&
-            typeof record.symbol === "string" && record.symbol && !merged[record.symbol]) {
+        if (
+            record?.status === "completed" &&
+            record.result_valid === true &&
+            typeof record.symbol === "string" &&
+            record.symbol &&
+            !merged[record.symbol]
+        ) {
             merged[record.symbol] = "historical";
         }
     }
@@ -12,9 +24,12 @@ export function historicalBacktestStatuses(statuses, recent) {
 }
 
 export function runningBacktestStatuses(statuses, jobs, { unavailable = false } = {}) {
-    const merged = Object.fromEntries(Object.entries(statuses).map(([symbol, status]) => [
-        symbol, unavailable && status === "running" ? "unknown" : status,
-    ]));
+    const merged = Object.fromEntries(
+        Object.entries(statuses).map(([symbol, status]) => [
+            symbol,
+            unavailable && status === "running" ? "unknown" : status,
+        ]),
+    );
     for (const job of jobs || []) {
         if (job?.status !== "running") continue;
         const symbol = job.symbol || job.params?.symbol;

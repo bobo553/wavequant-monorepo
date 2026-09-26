@@ -4,6 +4,7 @@ import {
     formatBacktestElapsed,
     historicalBacktestStatuses,
     runningBacktestStatuses,
+    selectedBacktestAction,
 } from "./backtest-job-status.js";
 import { retryBacktest, waitForBacktestJob } from "./backtest-retry.js";
 import { parseBacktestSizing } from "./backtest-sizing.js";
@@ -932,8 +933,14 @@ function chooseSymbol(symbol, workspace = false, autoBacktest = true) {
     $("symbol-select").value = symbol;
     state.pendingFocus = null;
     const canBacktest = canBacktestSymbol(symbol);
-    const historical = watchlistBacktests.statuses.get(symbol) === "historical";
-    const runBacktest = autoBacktest && canBacktest && !historical;
+    const historical =
+        watchlistBacktests.statuses.get(symbol) === "historical" ||
+        watchlists.backtestStatuses[symbol] === "historical";
+    const { run: runBacktest, force: refreshBacktest } = selectedBacktestAction({
+        historical,
+        canBacktest,
+        autoBacktest,
+    });
     const resumeBacktest =
         !historical &&
         Boolean(source) &&
@@ -954,12 +961,12 @@ function chooseSymbol(symbol, workspace = false, autoBacktest = true) {
     preserveCutoff(cutoff);
     if (workspace) showPage("workspace");
     watchlistBacktests.start();
-    $("stock-picker-feedback").hidden = !autoBacktest || (!historical && Boolean(canBacktest)) || !source;
+    $("stock-picker-feedback").hidden = (!autoBacktest && !historical) || Boolean(canBacktest) || !source;
     $("stock-picker-feedback").textContent =
-        !autoBacktest || !source
+        (!autoBacktest && !historical) || !source
             ? ""
             : historical
-              ? `${symbolName(symbol)} 的旧回测结果已过期；需要时可点击“运行当前股票回测”重新计算。`
+              ? `${symbolName(symbol)} 的旧回测结果已过期，且暂无日线可更新。`
               : canBacktest
                 ? ""
                 : `${symbolName(symbol)} 暂无${source === "akshare" ? "AkShare" : "通达信"}日线，保留当前行情查看，未运行回测。`;
@@ -979,7 +986,7 @@ function chooseSymbol(symbol, workspace = false, autoBacktest = true) {
         $("result-scope").value = `${source}-backtest`;
         fillSymbols();
         preserveCutoff(cutoff);
-        void loadView({ preferTrades: true });
+        void loadView({ preferTrades: true, forceBacktest: refreshBacktest });
     });
 }
 function resetSlider() {

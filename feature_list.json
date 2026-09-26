@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-189",
+            "name": "refresh-selected-historical-backtest",
+            "title": "选中待更新股票时自动重跑回测",
+            "description": "股票显示已回测待更新时，点击股票列表、自选股或在当前股票选择器中选中它，自动发起新的当前股票回测；已完成结果继续复用。",
+            "scope": "wavequant-web 选股与单股回测",
+            "dependencies": ["MONOREPO-182"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "选中已回测待更新且有日线的股票时，自动以新任务 ID 回测并展示新结果",
+                "已完成结果继续复用，普通股票选择器浏览不自动回测",
+                "缺少日线时不提交回测并说明原因"
+            ],
+            "verification": [
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/backtest-job-status.test.mjs apps/webs/wavequant-web/tests/stock-backtest-tasks.test.mjs apps/webs/wavequant-web/tests/completed-backtest-result.test.mjs；pnpm --filter wavequant-web typecheck；pnpm exec prettier --check；node --check；git diff --check",
+                    "status": "passed",
+                    "summary": "11 项定向 Node 测试、Web 类型、改动文件格式、语法与差异检查通过；按用户规则未运行 Playwright，真实交互待人工复核。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-188",
             "name": "selected-buy-a-wave-origin",
             "title": "点击转浪买点补齐 A 浪起点标注",
