@@ -2,6 +2,10 @@
 
 本文件是仓库级智能体规则的唯一入口。详细规范位于 `docs/agent/`，只按当前任务需要加载，避免一次读取全部规则。
 
+## Git worktree 工作流
+
+Git 代码开发默认在独立 worktree 中进行；多个任务分别使用独立分支和 worktree。提交后逐个同步主分支、检查、复核并在本地合并。本仓库主分支是 `main`，全局规则中的 `master` 在本仓库对应 `main`。完整流程及个人 Codex 全局规则的版本化副本见 `docs/agent/codex-global-AGENTS.md` 的“Git 多任务开发与本地合并流程”。该副本不会自动替换各开发者本机的 `~/.codex/AGENTS.md`。
+
 ## 语言与基本约定
 
 - 与用户沟通、规则、进度和交接使用简体中文；代码标识符、文件名、协议字段和第三方 API 保留英文。
@@ -63,7 +67,7 @@ Python 服务、Worker、CLI 和库也按上述职责落位，不单独创建技
 - `ROADMAP.md` 只表达面向公众的 Now、Next、Later 与已交付方向；不得重复维护精确状态、依赖、验收条件或验证证据。获准执行的 Roadmap 项必须先在 `feature_list.json` 中取得 Feature ID。
 - 每个独立 workspace 在自身根目录维护 `progress.md`；新增 Python 项目时同步扩展 Harness 的 workspace 发现逻辑，只更新受当前任务影响的 workspace。
 - `session-handoff.md` 只记录跨会话仍未完成的工作、阻塞、关键文件和下一步。
-- One feature at a time：同一时间只允许一个 `in-progress` 功能；不顺手处理无关问题。
+- One feature at a time：每个 worktree 和 feature 分支只允许一个 `in-progress` 功能；并行任务须在各自 worktree 中维护状态，合并时协调 `feature_list.json`，不顺手处理无关问题。
 - 新增 workspace 时同步创建 `progress.md`；`pnpm harness:check` 必须能够发现它。
 
 ## 工程不变量
