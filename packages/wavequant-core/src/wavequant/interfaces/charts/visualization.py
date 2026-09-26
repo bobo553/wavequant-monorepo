@@ -637,6 +637,7 @@ class ChartRepository:
         shallow_base_breakout_enabled=True,
         initial_capital=100_000,
         max_position_weight=1.0,
+        progress=None,
     ):
         self._run(rid)
         if variant not in VARIANTS or scenario not in SCENARIOS:
@@ -660,7 +661,10 @@ class ChartRepository:
             initial_capital=initial_capital,
             max_position_weight=max_position_weight,
         )
-        bars, result, view = self.tdx_backtester.run(symbol, start, asof, strategy, execution)
+        bars, result, view = self.tdx_backtester.run(
+            symbol, start, asof, strategy, execution,
+            **({"progress": progress} if progress is not None else {}),
+        )
         cache = self.tdx_backtester.artifacts
         key = dict(
             source=view["backtest"]["source"],
@@ -680,6 +684,7 @@ class ChartRepository:
                 self.tdx_backtester._verify(dict(view["backtest"]["source"], symbol=symbol))
                 cache.put("adjusted_theory", key, theory)
         theory = dict(theory, price_basis=view["price_basis"], run_id=view["run_id"])
+        if progress is not None: progress(99, '完成图表')
         definition = dict(config.get("definition", {}))
         definition["net_reward_risk_filter"] = net_reward_risk_filter
         definition["shallow_base_breakout_enabled"] = shallow_base_breakout_enabled
@@ -719,6 +724,7 @@ class ChartRepository:
         shallow_base_breakout_enabled=True,
         initial_capital=100_000,
         max_position_weight=1.0,
+        progress=None,
     ):
         self._run(rid)
         if variant not in VARIANTS or scenario not in SCENARIOS:
@@ -737,8 +743,12 @@ class ChartRepository:
             initial_capital=initial_capital,
             max_position_weight=max_position_weight,
         )
-        bars, generated, view = self.akshare_backtester.run(symbol, start, asof, strategy, execution)
+        bars, generated, view = self.akshare_backtester.run(
+            symbol, start, asof, strategy, execution,
+            **({"progress": progress} if progress is not None else {}),
+        )
         theory = self.render_theory(bars, SystemStrategy(**strategy), generated, view['asof'])
+        if progress is not None: progress(99, '完成图表')
         theory.update(price_basis=view['price_basis'], data_source='akshare', upstream='sina', run_id=view['run_id'])
         definition = dict(profile.get('definition', {}), net_reward_risk_filter=net_reward_risk_filter,
                           shallow_base_breakout_enabled=shallow_base_breakout_enabled)

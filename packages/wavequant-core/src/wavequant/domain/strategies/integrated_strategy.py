@@ -5,7 +5,7 @@ observers produce dated evidence; only evidence available on a signal bar is use
 """
 from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
-from typing import Sequence
+from typing import Callable, Sequence
 
 from ..models.model import Bar, Signal
 from ..market_structure.polyline import LinePoint, PointKind, ReversalPoint, observe_polyline, observe_bar_relations
@@ -162,7 +162,8 @@ def _local_setup(setup, offset):
 
 def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                             minor_points: Sequence[ReversalPoint] | None = None,
-                            chart_history_cache: dict | None = None) -> SystemResult:
+                            chart_history_cache: dict | None = None,
+                            progress: Callable[[int], None] | None = None) -> SystemResult:
     config.validate()
     if not bars:
         return SystemResult([], [], {})
@@ -670,7 +671,12 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
     emitted_attacks = set()
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
     bearish_attacks = {c['attack']: c for c in candidates if c['setup'].direction == Direction.DOWN}
+    last_progress = -1
     for i, bar in enumerate(bars):
+        percent = i * 100 // len(bars)
+        if progress is not None and percent != last_progress:
+            progress(percent)
+            last_progress = percent
         exits = []
         if i in blocked:
             exits.append('strict_structure_unresolved')
@@ -902,5 +908,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
     rejections=Counter(r['reason'] for r in audit if r['event'] in ('entry_rejected','entry_preflight_rejected'))
     for reason,total in rejections.items(): counts['entry_rejected_'+reason]=total
     counts['entry_candidate_rejections']=sum(rejections.values())
+    if progress is not None:
+        progress(100)
     return SystemResult(sorted(signals, key=lambda s: (s.timestamp, s.side)),
                         sorted(audit, key=lambda r: (r['bar_index'], r['event'])), dict(counts))

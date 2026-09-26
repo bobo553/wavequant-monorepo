@@ -46,6 +46,8 @@ class BacktestJob:
     result: object = None
     error: Exception | None = None
     completed_at: float | None = None
+    progress_percent: int = 0
+    progress_stage: str = "准备回测"
 
 
 class BacktestJobs:
@@ -279,7 +281,13 @@ class BacktestJobs:
             if job.done.is_set():
                 continue
             item = dict(job.details)
-            item.update(job=job_id, status="running", elapsed_seconds=round(max(0.0, now - job.started_at), 1))
+            item.update(
+                job=job_id,
+                status="running",
+                elapsed_seconds=round(max(0.0, now - job.started_at), 1),
+                progress_percent=job.progress_percent,
+                progress_stage=job.progress_stage,
+            )
             running.append(item)
         return {"active": self._active, "max_active": self.max_active, "jobs": running}
 
@@ -288,6 +296,20 @@ class BacktestJobs:
         with self._lock:
             end = job.completed_at if job.completed_at is not None else self.clock()
             return round(max(0.0, end - job.started_at), 1)
+
+    def update_progress(self, job_id: str, percent: int, stage: str) -> None:
+        """Publish completed work without allowing a running job to claim 100%."""
+        if type(percent) is not int or not 0 <= percent <= 99 or not stage:
+            raise ValueError("invalid backtest progress")
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is not None and not job.done.is_set() and percent >= job.progress_percent:
+                job.progress_percent = percent
+                job.progress_stage = stage
+
+    def progress(self, job: BacktestJob) -> dict[str, object]:
+        with self._lock:
+            return {"progress_percent": job.progress_percent, "progress_stage": job.progress_stage}
 
     def snapshot(self) -> dict[str, object]:
         """Expose bounded job metadata without serializing backtest results."""

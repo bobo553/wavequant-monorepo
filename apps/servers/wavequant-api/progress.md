@@ -1,5 +1,7 @@
 # Progress
 
+- MONOREPO-193：运行中的回测任务快照与单任务查询公开独立的 `progress_percent` 和 `progress_stage`，进度单调递增且未完成时最高 99%。API 42 项测试及 10 个子测试通过；真实浏览器展示未验证。
+
 - MONOREPO-191：常驻 API/Worker 启动器限制为 `main`；一次性 Python 命令仍可在特性 worktree 运行。特性分支启动拒绝检查及 Node 语法检查通过；完整 Python 套件未运行。
 
 - MONOREPO-183：API 启动按量化 Core 引擎版本清理旧回测任务完成摘要，并触发各缓存作用域的旧回测派生记录清理。人工只读确认活跃任务与历史摘要均为 0；AkShare/TDX 回测入口缺参均返回 400，网页手动回测接口保持可用。依用户要求未运行自动化测试、构建或回测，待人工验收。
