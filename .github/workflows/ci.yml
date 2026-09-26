@@ -2,7 +2,6 @@ name: CI
 
 on:
     push:
-        branches: [main]
     pull_request:
         branches: [main]
 
@@ -53,6 +52,16 @@ jobs:
 
             - name: Install dependencies
               run: pnpm install --frozen-lockfile
+
+            - name: Check commits and whitespace
+              env:
+                  BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+              run: |
+                  if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+                      BASE_SHA="$(git merge-base origin/main HEAD)"
+                  fi
+                  git diff --check "$BASE_SHA" HEAD
+                  pnpm exec commitlint --from "$BASE_SHA" --to HEAD
 
             - name: Validate agent harness
               run: pnpm harness:check

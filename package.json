@@ -11,7 +11,6 @@
         "changeset:version": "changeset version && pnpm install --lockfile-only",
         "changeset:publish": "pnpm build && changeset publish",
         "changeset:status": "changeset status",
-        "prepare": "husky",
         "build": "turbo run build",
         "build:packages": "pnpm --filter \"./packages/**\" build",
         "create:project": "pnpm --filter @repo/create-project run create",
@@ -31,7 +30,6 @@
         "test:unit": "turbo run test:unit",
         "test:e2e": "turbo run test:e2e",
         "test:all": "turbo run test:all",
-        "test:commit": "node scripts/harness/commit-tests.mjs",
         "migrate:generate:dev": "pnpm env::dev pnpm --filter=api migrate:generate",
         "migrate:up:dev": "pnpm env::dev pnpm --filter=api migrate:up",
         "migrate:up:staging": "pnpm env::staging pnpm --filter=api migrate:up",
@@ -56,19 +54,10 @@
         "commitizen": "^4.3.1",
         "cross-env": "^10.1.0",
         "cz-conventional-changelog": "^3.3.0",
-        "husky": "^9.1.7",
-        "lint-staged": "^17.0.5",
         "prettier": "^3.8.3",
         "prettier-plugin-tailwindcss": "^0.8.0",
         "turbo": "^2.9.14",
         "typescript": "6.0.3"
-    },
-    "lint-staged": {
-        "**/*.{ts,tsx,js,jsx}": [
-            "eslint --fix",
-            "prettier --write"
-        ],
-        "**/*.{json,md,css,yaml}": "prettier --write"
     },
     "packageManager": "pnpm@10.26.2",
     "engines": {
