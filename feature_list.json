@@ -4,6 +4,28 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-192",
+            "name": "show-completed-stock-backtest-without-rerun",
+            "title": "已完成单股回测直接显示成交标识",
+            "description": "选中已完成的股票回测时直接读取现有任务结果；普通行情失败不再阻断回测展示，按钮按当前展示状态区分查看与重新运行。",
+            "scope": "wavequant-web 选股、任务复用和回测状态显示",
+            "dependencies": ["MONOREPO-190"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "已完成的当前股票回测直接读取原任务并显示 B/S 成交标识，不提交新计算",
+                "普通行情加载失败时仍继续读取已完成或正在运行的回测结果",
+                "结果尚未显示时按钮读取现有任务；读取暂时失败可重试同一任务，明确重新回测才创建新计算",
+                "真实桂林旅游结果的任务状态、成交订单和标识数量已只读核对，定向检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "GET /api/backtest-jobs; GET /api/backtest-job; node --test 3 targeted files; node --check; pnpm --filter wavequant-web lint; typecheck; build; prettier --check; git diff --check",
+                    "status": "passed",
+                    "summary": "桂林旅游任务结果可读取，含 131 笔成交及 131 个成交标识；12 项定向测试、语法、Web Lint（6 条既有警告）、类型、生产构建、格式和差异检查通过。按用户规则未运行浏览器端到端测试，页面交互待人工复核。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-191",
             "name": "main-only-live-development",
             "title": "主分支独占服务并在合并后刷新页面",
