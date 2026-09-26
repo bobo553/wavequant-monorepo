@@ -1,4 +1,5 @@
 <!-- CODEGRAPH_START -->
+
 ## CodeGraph
 
 In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
@@ -7,7 +8,9 @@ In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the re
 - **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
 
 If there is no `.codegraph/` directory, follow the global project initialization rule below.
+
 <!-- CODEGRAPH_END -->
+
 ## Default CodeGraph setup for projects
 
 The user has chosen CodeGraph indexing as the default for every code project. At the start of work in a project, identify its project root. If the root has no `.codegraph/` directory, run `codegraph init --yes <project-root>` once before code exploration. If it is already initialized, use the existing index; do not rebuild it on every task. Use `codegraph sync` when the index needs updating. `codegraph install` configures the agent globally and is already done; do not repeat it in each repository. If initialization fails, report the specific error and continue the task with available tools.
