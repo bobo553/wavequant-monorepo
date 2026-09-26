@@ -1762,7 +1762,9 @@ body {
         #partial-timeframe,
         #price-basis,
         #ohlc,
+        .chart-navigation,
         #price-chart,
+        .chart-position,
         #chart-loading-overlay,
         .replay
     ) {
@@ -2305,6 +2307,71 @@ body {
     min-height: 355px;
     height: auto;
     width: 100%;
+}
+.chart-navigation {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--research-text-soft);
+    font-size: 11px;
+}
+.chart-navigation-buttons {
+    display: flex;
+    gap: 6px;
+}
+.chart-navigation-buttons button {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--cyan);
+    cursor: pointer;
+}
+.chart-navigation-buttons button:hover:not(:disabled) {
+    background: var(--research-accent-soft);
+    border-color: var(--research-accent-border);
+}
+.chart-navigation-buttons button:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+}
+.chart-navigation-buttons button:focus-visible,
+.chart-position input:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+}
+.chart-position {
+    padding: 9px 16px 13px;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+}
+.chart-position-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--research-text-soft);
+    font-size: 10px;
+}
+.chart-position-heading output {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+.chart-position input {
+    display: block;
+    width: 100%;
+    margin: 12px 0 3px;
+    accent-color: var(--cyan);
+    cursor: pointer;
+}
+.chart-position input:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 .replay {
     border-top: 1px solid var(--border);

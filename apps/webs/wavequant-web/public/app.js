@@ -513,13 +513,39 @@ function describeBar(b) {
     $("copy-candle").disabled = false;
     $("copy-candle").setAttribute("aria-label", `复制 ${b.time} K 线数据`);
 }
+function renderChartViewport(state, bars) {
+    $("chart-pan-left").disabled = !state?.canPanLeft;
+    $("chart-pan-right").disabled = !state?.canPanRight;
+    $("chart-zoom-in").disabled = !state?.canZoomIn;
+    $("chart-zoom-out").disabled = !state?.canZoomOut;
+    const slider = $("chart-position-slider");
+    slider.disabled = !state || state.maxStart < 0.01;
+    slider.max = String(state?.maxStart ?? 0);
+    slider.value = String(state?.from ?? 0);
+    if (!state) {
+        $("chart-position-label").textContent = "等待行情数据";
+        slider.removeAttribute("aria-valuetext");
+        return;
+    }
+    const first = bars[state.firstIndex]?.time ?? "—";
+    const last = bars[state.lastIndex]?.time ?? "—";
+    const progress = state.maxStart ? Math.round((state.from / state.maxStart) * 100) : 100;
+    $("chart-position-label").textContent = `${first} — ${last} · ${progress}%`;
+    slider.setAttribute("aria-valuetext", `${first} 至 ${last}，全程 ${progress}%`);
+}
 const chart = new PriceChart(
     $("price-chart"),
     describeBar,
     showAnnotationDetails,
     renderVisibleAnnotations,
     (bar, button) => copyHoveredCandle(bar, button),
+    renderChartViewport,
 );
+$("chart-pan-left").addEventListener("click", () => chart.pan(-1));
+$("chart-pan-right").addEventListener("click", () => chart.pan(1));
+$("chart-zoom-in").addEventListener("click", () => chart.zoom("in"));
+$("chart-zoom-out").addEventListener("click", () => chart.zoom("out"));
+$("chart-position-slider").addEventListener("input", (event) => chart.seek(Number(event.currentTarget.value)));
 const tradingViewWidget = new TradingViewWidget({
     container: $("tradingview-widget"),
     status: $("tradingview-status"),
