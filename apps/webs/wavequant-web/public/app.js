@@ -2442,6 +2442,7 @@ function renderServerBacktestStatuses(queueState = watchlistBacktests.state()) {
         visibleFailures,
         fillCounts,
         returns,
+        serverBacktestSnapshot.jobs,
     );
     renderStockBacktestStatus();
 }

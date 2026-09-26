@@ -71,3 +71,7 @@ export function formatBacktestElapsed(seconds) {
     const remainingMinutes = minutes % 60;
     return `已运行 ${hours} 小时${remainingMinutes ? ` ${remainingMinutes} 分钟` : ""}`;
 }
+
+export function formatBacktestProgress(percent) {
+    return Number.isInteger(percent) && percent >= 0 && percent <= 99 ? `${percent}%` : "";
+}

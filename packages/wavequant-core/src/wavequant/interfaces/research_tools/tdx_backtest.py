@@ -80,8 +80,9 @@ class TdxBacktester:
             raise ValueError('lookback must be 1, 5 or 20')
         return self.run(symbol,start,asof,strategy,execution,_screening=lookback)
 
-    def run(self,symbol,start,asof,strategy,execution,*,_screening=None):
+    def run(self,symbol,start,asof,strategy,execution,*,_screening=None,progress=None):
         started=perf_counter()
+        if progress is not None: progress(5, '校验行情')
         first,last=date.fromisoformat(start),date.fromisoformat(asof)
         if first.isoformat()!=start or last.isoformat()!=asof or first>last:
             raise ValueError('回测起止日期无效，请使用 YYYY-MM-DD')
@@ -98,6 +99,7 @@ class TdxBacktester:
         engine=self._engine_hashes()
         if engine!=self.engine: raise ValueError('策略代码已变更，请重启图表服务后再运行，避免新版本标识对应旧引擎')
         day_hash=fingerprint(path);actions,action_hash=self._actions(actions_path)
+        if progress is not None: progress(15, '读取日线')
         events=actions.get(symbol,())
         # Single-flight per symbol, not a global lock blocking chart inspection
         # behind a different stock's cold calculation.
@@ -117,9 +119,10 @@ class TdxBacktester:
                 bundle=self.memory.get(key)
                 if bundle is not None:self.memory.move_to_end(key)
             if bundle is None:
-                bars,generated,view,status=self._run(key,events)
+                bars,generated,view,status=self._run(key,events,progress=progress)
             else:
                 bars,generated,view=bundle;status='memory'
+                if progress is not None: progress(90, '读取缓存')
             self._verify(inputs)
             with self.memory_lock:
                 self.memory[key]=(bars,generated,view)
@@ -136,6 +139,7 @@ class TdxBacktester:
             performance=dict(cache=status,elapsed_seconds=perf_counter()-started)
             if _screening is not None:
                 return dict(summary[str(_screening)],source=summary['source'],performance=performance)
+            if progress is not None: progress(95, '整理结果')
             return bars,generated,dict(view,performance=performance)
 
     @staticmethod
@@ -155,34 +159,41 @@ class TdxBacktester:
         path = TdxMinuteSource(self.browser.root).path(symbol)
         return fingerprint(path) if path.is_file() else None
 
-    def _run(self,key,events):
+    def _run(self,key,events,*,progress=None):
         inputs=json.loads(key)
         cached=self.artifacts.get('backtest',inputs)
         if cached is not None:
             bars,generated=decode_research(cached['research'])
+            if progress is not None: progress(90, '读取缓存')
             return bars,generated,cached['view'],'disk'
         signal_inputs={k:v for k,v in inputs.items() if k!='execution'}
         research=self.artifacts.get('signals',signal_inputs)
         signal_hit=research is not None
         if research is None:
-            bars,generated,all_raw,start=self._generate(inputs,events)
+            bars,generated,all_raw,start=self._generate(inputs,events,progress=progress)
             research=encode_research(bars,generated)
             research['sessions']=[r['date'].isoformat() for r in all_raw if r['date']>=start]
             self._verify(inputs)  # Never publish an artifact from a moving source.
             self.artifacts.put('signals',signal_inputs,research)
         else:
             bars,generated=decode_research(research)
+            if progress is not None: progress(60, '读取信号缓存')
         strategy=SystemStrategy(**inputs['strategy']);strategy.validate()
         minute_source=TdxMinuteSource(self.browser.root) if inputs['execution']['staged_exit_intraday'] or inputs['execution'].get('consolidation_entry_intraday') else None
+        if progress is not None: progress(65, '模拟成交')
         result=single_stock_result(bars,asdict(strategy),inputs['execution'],generated,
-                                   minute_loader=minute_source.get if minute_source else None)
+                                   minute_loader=minute_source.get if minute_source else None,
+                                   **({'progress': lambda percent: progress(65+percent*25//100, '模拟成交')}
+                                      if progress is not None else {}))
+        if progress is not None: progress(90, '整理结果')
         view=self._view(key,inputs,bars,result,research['sessions'],
                         minute_source.provenance() if minute_source else None)
         self._verify(inputs)
         self.artifacts.put('backtest',inputs,dict(research=research,view=view))
+        if progress is not None: progress(95, '整理结果')
         return bars,generated,view,'signals_disk' if signal_hit else 'computed'
 
-    def _generate(self,inputs,events):
+    def _generate(self,inputs,events,*,progress=None):
         symbol=inputs['symbol'];end=date.fromisoformat(inputs['asof'])
         all_raw=read_day(self.browser._path(symbol))
         raw=[r for r in all_raw if r['date']<=end]
@@ -195,8 +206,11 @@ class TdxBacktester:
                   *(r[k] for k in ('open','high','low','close','volume')),
                   bool(r['buyable']),bool(r['sellable']),r['adjustment_factor'],
                   close_buyable=bool(r['close_buyable']), nonflat_close_buyable=bool(r['nonflat_close_buyable'])) for r in converted]
+        if progress is not None: progress(30, '生成信号')
         strategy=SystemStrategy(**inputs['strategy']);strategy.validate()
-        generated=generate_system_signals(bars,strategy)
+        generated=generate_system_signals(bars,strategy,
+            **({'progress': lambda percent: progress(35+percent*25//100, '生成信号')}
+               if progress is not None else {}))
         # Persist chart geometry during the first scan as well as on chart open.
         # It is independent of strategy/execution, but never of price basis.
         from wavequant.interfaces.charts.chart_geometry import cached_geometry

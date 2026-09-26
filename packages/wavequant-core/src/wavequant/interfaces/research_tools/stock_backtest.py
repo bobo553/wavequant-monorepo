@@ -51,7 +51,7 @@ def _post_b_wave_exit_events(bars, audit, signal_row):
     return events
 
 
-def single_stock_result(bars, strategy, execution, signal_result=None, *, minute_loader=None):
+def single_stock_result(bars, strategy, execution, signal_result=None, *, minute_loader=None, progress=None):
     if not bars or len({b.symbol for b in bars})!=1:
         raise ValueError('exactly one nonempty security history required')
     if signal_result is None: signal_result=generate_system_signals(bars,SystemStrategy(**strategy))
@@ -81,7 +81,7 @@ def single_stock_result(bars, strategy, execution, signal_result=None, *, minute
                 a_high_index=row['wave_a_high_index'], b_low=row['wave_b_low'],
                 b_low_index=row['wave_b_low_index']))
     result=run_portfolio({bars[0].symbol:bars},signal_result.signals,config,minute_loader=minute_loader,positive_n_bars={bars[0].symbol:n_bars},entry_executions=entry_executions,
-        wave_events={bars[0].symbol:wave_events})
+        wave_events={bars[0].symbol:wave_events},progress=progress)
     result.minute_fallbacks.extend(entry_fallbacks)
     for order in result.orders:
         if order['side'] == 'BUY' and order.get('execution_model') == 'same_day_close':

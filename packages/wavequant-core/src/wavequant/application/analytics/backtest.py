@@ -105,7 +105,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                   minute_loader: Callable[[Bar], list[MinuteBar]] | None = None,
                   positive_n_bars: dict[str, dict[int, int]] | None = None,
                   wave_events: dict[str, list[dict]] | None = None,
-                  entry_executions: dict | None = None) -> BacktestResult:
+                  entry_executions: dict | None = None,
+                  progress: Callable[[int], None] | None = None) -> BacktestResult:
     """Entries use explicit next-open or same-close simulation; exits retain their model.
 
     Volume capacity is a prior-bar estimate, not an auction fill guarantee. Adjusted
@@ -457,7 +458,13 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                         existing.wave_events.append(event)
         log(when, symbol, 'BUY', 'filled', signal.reason, **detail)
 
-    for tick, when in enumerate(sorted(calendar)):
+    timeline = sorted(calendar)
+    last_progress = -1
+    for tick, when in enumerate(timeline):
+        percent = tick * 100 // len(timeline)
+        if progress is not None and percent != last_progress:
+            progress(percent)
+            last_progress = percent
         sold_today.clear()
         bought_today.clear()
         current = calendar[when]
@@ -791,4 +798,6 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
     entries = sum(o['side']=='BUY' and o['status']=='filled' for o in orders)
     metrics.update(entry_fills=entries, evidence_status=(
         'no_entry_fills' if not entries else 'open_positions_only' if not trades else 'closed_trades_observed'))
+    if progress is not None:
+        progress(100)
     return BacktestResult(trades, metrics, curve, orders, opened, minute_fallbacks)

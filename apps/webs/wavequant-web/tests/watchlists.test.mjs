@@ -3,15 +3,53 @@ import test from "node:test";
 
 import {
     DEFAULT_WATCHLIST_GROUP,
+    Watchlists,
     addWatchlistMembers,
     createWatchlistGroup,
     deleteWatchlistGroup,
     firstAvailableWatchlistSymbol,
     normalizeWatchlistSnapshot,
     removeWatchlistMember,
-    reorderWatchlistMembers,
     renameWatchlistGroup,
+    reorderWatchlistMembers,
 } from "../public/watchlists.js";
+
+test("a running watchlist row shows its own server progress and clears it after completion", () => {
+    const badge = { dataset: {}, textContent: "", title: "" };
+    const result = { hidden: true };
+    const open = {
+        dataset: { baseLabel: "切换到 瑞凌股份" },
+        setAttribute(name, value) {
+            this[name] = value;
+        },
+    };
+    const row = {
+        querySelector(selector) {
+            return {
+                ".watchlist-backtest-badge": badge,
+                ".watchlist-backtest-result": result,
+                ".watchlist-stock-open": open,
+            }[selector];
+        },
+    };
+    const watchlists = {
+        backtestStatuses: { "sz.300154": "running" },
+        backtestEligible: null,
+        backtestJobs: [{ status: "running", symbol: "sz.300154", progress_percent: 46, progress_stage: "模拟成交" }],
+        backtestFillCounts: {},
+        backtestReturns: {},
+        backtestFailures: {},
+    };
+    Watchlists.prototype.renderBacktestStatus.call(watchlists, row, "sz.300154");
+    assert.equal(badge.textContent, "回测中 · 46%");
+    assert.equal(badge.title, "回测中 · 46% · 模拟成交");
+    assert.match(open["aria-label"], /回测中 · 46%/);
+
+    watchlists.backtestStatuses["sz.300154"] = "completed";
+    watchlists.backtestJobs = [];
+    Watchlists.prototype.renderBacktestStatus.call(watchlists, row, "sz.300154");
+    assert.equal(badge.textContent, "已完成");
+});
 
 test("normalization repairs malformed watchlist data without mutating the stored snapshot", () => {
     const snapshot = {
@@ -79,7 +117,10 @@ test("reordering a category survives storage order and leaves other categories u
         reloaded.memberships.filter((member) => member.groupId === "focus").map((member) => member.symbol),
         desiredOrder,
     );
-    assert.equal(firstAvailableWatchlistSymbol(reloaded, "focus", [{ symbol: "sh.600000", has_data: true }]), "sh.600000");
+    assert.equal(
+        firstAvailableWatchlistSymbol(reloaded, "focus", [{ symbol: "sh.600000", has_data: true }]),
+        "sh.600000",
+    );
     assert.deepEqual(
         reloaded.memberships.filter((member) => member.groupId === "default").map((member) => member.symbol),
         ["bj.430001"],
