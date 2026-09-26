@@ -30,6 +30,8 @@ pnpm --filter wavequant-web build
 pnpm --filter wavequant-web dev
 ```
 
+常驻开发服务只从本地 `main` 工作目录启动。特性分支使用独立 worktree 修改和检查代码；合并到 `main` 后，Next.js 热更新页面代码，Python API/Worker 监听源码并重启，已打开的开发页面会在检测到新提交后自动刷新。纯前端的 `dev:web` 也遵循同一分支和页面刷新规则。首次启用这套机制时，需从 `main` 重启一次现有服务。
+
 该命令同时启动 Next.js（`http://localhost:3003`）和只读 WaveQuant API（默认 `8765`），并代理 `/api/*`。存在 API workspace 的 `.env.infrastructure` 时，开发启动器会加载其中未被终端显式覆盖的 SQL/Redis 配置；对于指向 loopback 的 MySQL/Redis URL，还会自动执行 Compose `up --wait`、幂等建表，并托管一个通达信信号 Worker 与八个 AkShare 结构分片 Worker。Worker 异常退出会在 5 秒后自动重启，所以重启页面或开发服务不再丢失结构读模型。可设置 `WAVEQUANT_DEV_AUTO_INFRA=false` 禁止管理 Compose，设置 `WAVEQUANT_DEV_STRUCTURE_WORKERS=1..16` 调整 AkShare 分片数，或设为 `false` 只启动 API。
 
 启动器会优先读取 `WAVEQUANT_RESULTS_ROOT` 与 `WAVEQUANT_TDX_ROOT`；当前迁移机器未设置变量时会回退到 `E:\WorkSpace\股票\results\operations_v1` 和 `D:\TDX`。研究页可从“数据 / 结果口径”选择 AkShare 或通达信，并通过图表标题区的单行 Tab 切换日、周、月、季、年 K 线；键盘方向键、Home、End 同样可切换。K 线与结构画线从服务器同一个版本化预计算 bundle 读取，最后一个未完成周期会明确提示。浏览器 IndexedDB 的 `market-timeframes` 表按来源、股票、请求日期和周期缓存最多 40 份 bundle，用 ETag 只同步变化的数据；短暂离线时可安全复用完整旧 bundle。封存样本与策略回测仍锁定日线，避免聚合行情改变成交语义。“符合买点”和“结构信号”继续只查询服务器预先发布到 SQL/Redis 的结果。

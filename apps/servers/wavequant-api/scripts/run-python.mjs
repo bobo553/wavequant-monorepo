@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertMainRuntime } from "../../../../scripts/main-runtime.mjs";
 import { createPythonSupervisor, shouldAutoRestartPython } from "./python-dev-restart.mjs";
 
 const workspaceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -16,6 +17,7 @@ const args = process.argv.slice(2);
 
 if (shouldAutoRestartPython(args)) {
     const monorepoRoot = resolve(workspaceRoot, "../../..");
+    assertMainRuntime(monorepoRoot);
     const supervisor = createPythonSupervisor({
         executable,
         args,
