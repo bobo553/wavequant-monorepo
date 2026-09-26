@@ -536,24 +536,28 @@ def test_volume_down_uses_previous_bearish_volume_when_yesterday_was_larger():
     assert observe_volume_down_exit(bars, 2, StagedExitState()) is None
 
 
-def test_volume_down_counts_doji_as_previous_bearish_and_direct_clear():
+def test_volume_down_skips_doji_as_current_and_previous_bearish():
     from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
 
-    bars = [Bar(datetime(2022, 1, 1), "TEST", 10.0, 10.5, 9.8, 10.0, 80),
-            Bar(datetime(2022, 1, 2), "TEST", 10.0, 10.7, 9.9, 10.6, 200),
-            Bar(datetime(2022, 1, 3), "TEST", 10.5, 10.8, 9.8, 10.5, 100)]
-    decision = observe_volume_down_exit(bars, 2, StagedExitState())
+    bars = [Bar(datetime(2022, 1, 1), "TEST", 10.4, 10.5, 9.8, 10.0, 80),
+            Bar(datetime(2022, 1, 2), "TEST", 9.9, 10.2, 9.7, 9.9, 300),
+            Bar(datetime(2022, 1, 3), "TEST", 9.9, 10.7, 9.9, 10.6, 200),
+            Bar(datetime(2022, 1, 4), "TEST", 10.7, 10.8, 9.8, 10.5, 100)]
+    assert observe_volume_down_exit(bars, 1, StagedExitState()) is None
+    decision = observe_volume_down_exit(bars, 3, StagedExitState())
     assert decision["reason"] == "volume_down_previous_low_break_clear"
     assert decision["exit_fraction"] == 1.0
     assert decision["previous_bearish_date"] == "2022-01-01"
-    assert decision["observed_high"] > decision["previous_high"]
+    assert decision["trigger_volume"] < decision["previous_volume"]
+    assert decision["trigger_volume"] < bars[1].volume
 
 
-def test_rising_one_price_candle_is_not_bearish_or_previous_bearish_volume():
+@pytest.mark.parametrize("one_price", [11.0, 9.5])
+def test_one_price_candle_is_not_bearish_or_previous_bearish_volume(one_price):
     from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
 
     bars = [Bar(datetime(2022, 1, 1), "TEST", 10.4, 10.5, 9.8, 10.0, 200),
-            Bar(datetime(2022, 1, 2), "TEST", 11.0, 11.0, 11.0, 11.0, 250),
+            Bar(datetime(2022, 1, 2), "TEST", one_price, one_price, one_price, one_price, 250),
             Bar(datetime(2022, 1, 3), "TEST", 11.0, 11.5, 10.9, 11.4, 90),
             Bar(datetime(2022, 1, 4), "TEST", 11.5, 11.6, 11.0, 11.2, 80)]
     assert observe_volume_down_exit(bars, 1, StagedExitState()) is None
@@ -834,6 +838,16 @@ def test_bearish_small_candle_uses_seventy_percent_rule():
     assert decision['reason'] == 'volume_down_reduce_70'
     assert decision['exit_target_fraction'] == .7
     assert decision['execution_model'] == 'same_day_close'
+
+
+def test_small_n_doji_does_not_enter_bullish_thirty_percent_exception():
+    from wavequant.domain.strategies.staged_exit import observe_volume_down_exit
+
+    bars = small_inside_n_sample()
+    bars[12] = replace(bars[12], open=bars[12].close)
+    assert observe_volume_down_exit(bars, 12, StagedExitState(), positive_n_index=10) is None
+    assert observe_volume_down_exit(bars, 12, StagedExitState(), positive_n_index=10,
+                                    milestone_active=False) is None
 
 
 @pytest.mark.parametrize('change',['outside_high','outside_low','large','no_n','future_n','large_relative'])
