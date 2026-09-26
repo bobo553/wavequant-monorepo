@@ -271,11 +271,9 @@ def _massive_gap_reversal(bars: list[Bar], index: int) -> dict | None:
 
 
 def _bearish_candle(bars: list[Bar], index: int) -> bool:
-    """A rising one-price candle is not a bearish doji despite equal open and close."""
+    """Only a close strictly below the open is bearish."""
     bar = bars[index]
-    one_price_up = (index > 0 and bar.open == bar.high == bar.low == bar.close
-                    and bar.close > bars[index - 1].close)
-    return bar.close <= bar.open and not one_price_up
+    return bar.close < bar.open
 
 
 def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState, *,
@@ -296,7 +294,7 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
                     and body <= Fraction(str(bar.open))*Fraction(str(small_body_max_fraction))
                     and body < mean_body and bar.close < previous.close
                     and n_bar.low <= bar.low and bar.high <= n_bar.high)
-    if not milestone_active and not (small_inside and not _bearish_candle(bars, index)):
+    if not milestone_active and not (small_inside and bar.close > bar.open):
         return None
     previous_bearish_index = next((j for j in range(index - 1, -1, -1)
                                    if _bearish_candle(bars, j)), None)
@@ -311,7 +309,7 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
                            and bar.low < previous.low and bar.high <= previous.high)
     target = (.5 if bearish_volume and bar.close > previous.close else
               .7 if bearish_volume and bar.close < previous.close and bar.low > previous.low else
-              .3 if volume_increased and small_inside and not _bearish_candle(bars, index) else 0.0)
+              .3 if volume_increased and small_inside and bar.close > bar.open else 0.0)
     upgrading = target > state.volume_reduction_target
     if not direct_clear and not followthrough_clear and not upgrading:
         return None
