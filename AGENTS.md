@@ -4,7 +4,7 @@
 
 ## Git worktree 工作流
 
-Git 代码开发默认在独立 worktree 中进行；多个任务分别使用独立分支和 worktree。提交后逐个同步主分支、检查、复核并在本地合并。本仓库主分支是 `main`，全局规则中的 `master` 在本仓库对应 `main`。完整流程及个人 Codex 全局规则的版本化副本见 `docs/agent/codex-global-AGENTS.md` 的“Git 多任务开发与本地合并流程”。该副本不会自动替换各开发者本机的 `~/.codex/AGENTS.md`。
+Git 代码开发默认在独立 worktree 中进行；多个任务分别使用独立分支和 worktree。特性分支命名为 `feat-中文名`，会话默认使用分支名；用户手动修改会话名后保留用户名称。提交后逐个同步主分支、检查、复核并在本地合并。本仓库主分支是 `main`。完整流程及个人 Codex 全局规则的版本化副本见 `docs/agent/codex-global-AGENTS.md` 的“Git 多任务开发与本地合并流程”。该副本不会自动替换各开发者本机的 `~/.codex/AGENTS.md`。
 
 ## 语言与基本约定
 
