@@ -1,6 +1,12 @@
 import type { JSX } from "react";
 
-import { IconStar, IconStarFilled } from "@tabler/icons-react";
+import {
+    IconGripVertical,
+    IconLayoutSidebarLeftCollapse,
+    IconLayoutSidebarLeftExpand,
+    IconStar,
+    IconStarFilled,
+} from "@tabler/icons-react";
 
 /** 分类自选股独立侧栏；运行时负责 IndexedDB 数据和折叠状态。 */
 export function WatchlistRail(): JSX.Element {
@@ -23,7 +29,18 @@ export function WatchlistRail(): JSX.Element {
                     aria-label="收起自选股列表"
                     title="收起自选股列表"
                 >
-                    ‹
+                    <IconLayoutSidebarLeftCollapse
+                        className="watchlist-collapse-icon"
+                        size={18}
+                        stroke={1.8}
+                        aria-hidden="true"
+                    />
+                    <IconLayoutSidebarLeftExpand
+                        className="watchlist-expand-icon"
+                        size={18}
+                        stroke={1.8}
+                        aria-hidden="true"
+                    />
                 </button>
             </header>
             <div id="watchlist-rail-body" className="watchlist-rail-body">
@@ -79,12 +96,13 @@ export function WatchlistRail(): JSX.Element {
                     <p className="stock-empty">自选股加载中…</p>
                 </div>
                 <p className="scan-note">
-                    点击股票名称切换；使用图表标题旁的星标加入或移除当前分类。列表右侧显示当前设置下回测的期末收益率，悬停可查看盈亏金额。
+                    点击股票名称切换；拖动左侧手柄或用上下方向键调整顺序。使用图表标题旁的星标加入或移除当前分类。列表右侧显示当前设置下回测的期末收益率，悬停可查看盈亏金额。
                 </p>
             </div>
             <span hidden aria-hidden="true">
                 <IconStar id="watchlist-star-outline-icon" size={18} stroke={1.8} />
                 <IconStarFilled id="watchlist-star-filled-icon" size={18} />
+                <IconGripVertical id="watchlist-drag-icon" size={16} stroke={1.8} />
             </span>
         </aside>
     );

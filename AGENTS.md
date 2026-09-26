@@ -46,7 +46,7 @@ Python 服务、Worker、CLI 和库也按上述职责落位，不单独创建技
 - `apps/mobiles/*`：读取 `apps/mobiles/AGENTS.md` 和 `docs/agent/frontend/rules.md`。
 - `apps/webs/*`：读取 `apps/webs/AGENTS.md` 和 `docs/agent/frontend/rules.md`；管理后台、桌面门户与数据工作台再读 `docs/agent/frontend/pc-web-rules.md`。
 - `apps/tools/*`：读取 `apps/tools/AGENTS.md`；有 UI 时再读前端规范。
-- Python 源码、`pyproject.toml`、Ruff、类型检查或 Python 运行时任务：读取 `docs/agent/python/rules.md`，测试或打包任务再按其路由加载专项规则。
+- Python 源码、`pyproject.toml`、类型检查或 Python 运行时任务：读取 `docs/agent/python/rules.md`，测试或打包任务再按其路由加载专项规则。
 - Web 设计系统：额外读取 `packages/design-system/web/AGENTS.md`。
 - 共享契约、环境变量或组件库：读取通用规范中的“共享包规则”。
 - 应用/服务拆分、技术选型、容量、一致性或高可用：读取 `docs/agent/architecture/rules.md`，再按其路由加载系统设计或分布式专项。
@@ -74,7 +74,7 @@ Python 服务、Worker、CLI 和库也按上述职责落位，不单独创建技
 - 通用 UI 原语优先复用设计系统；含接口、权限、路由或业务流程的组合组件留在应用内部。
 - Web 保持 Server/Client Component 边界；API 保持 `presentation → application → domain ← infrastructure` 依赖方向。
 - 新增依赖前确认现有能力不能满足需求，使用 `workspace:*` 引用内部包并同步锁文件。
-- Python 项目以 `pyproject.toml` 作为配置和打包事实来源，虚拟环境保持隔离，Ruff、类型检查和 pytest 门禁按 Python 规则执行。
+- Python 项目以 `pyproject.toml` 作为配置和打包事实来源，虚拟环境保持隔离；Codex 按 Python 规则直接写出符合规范的代码，不运行 Python 格式化或 lint 工具；类型检查和 pytest 按任务风险选择。
 - 缺陷修复补充能够复现问题的测试；无法自动化时记录手工验证和剩余风险。
 
 ## 安全与变更边界
@@ -101,16 +101,14 @@ pnpm verify
 Python workspace 使用项目已选定的环境/依赖执行器运行等价门禁；默认命令形态为：
 
 ```bash
-ruff format --check .
-ruff check .
 mypy src tests
 pytest
 python -m build
 ```
 
-具体路径和是否需要构建由 `pyproject.toml` 与任务类型决定，不能为了套用示例运行不存在的目标。
+具体路径和是否需要构建由 `pyproject.toml` 与任务类型决定，不能为了套用示例运行不存在的目标。Python 格式、导入和命名遵循 `docs/agent/python/rules.md` 与现有代码风格，由 Codex 在编辑时处理。
 
-只有在目标行为实现、相关格式/lint/类型/测试/构建实际通过、状态与进度文件更新、无法运行项及风险明确记录后，功能才能标记为 `done`。UI 改动还需真实浏览器或设备验证；API、数据库和基础设施改动需要相应集成验证。
+只有在目标行为实现、适用的类型/测试/构建验证通过、代码风格已人工核对、状态与进度文件更新、无法运行项及风险明确记录后，功能才能标记为 `done`。UI 改动还需真实浏览器或设备验证；API、数据库和基础设施改动需要相应集成验证。
 
 ## 会话结束（End of Session）
 

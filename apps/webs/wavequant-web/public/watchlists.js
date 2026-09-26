@@ -78,9 +78,23 @@ export function normalizeWatchlistSnapshot(snapshot) {
             symbol: membership.symbol,
             name: typeof membership.name === "string" ? membership.name.slice(0, 80) : "",
             createdAt: typeof membership.createdAt === "string" ? membership.createdAt : undefined,
+            position:
+                Number.isSafeInteger(membership.position) && membership.position >= 0 ? membership.position : null,
         });
     }
-    return { schemaVersion: 1, groups, memberships };
+    const orderedMemberships = groups.flatMap((group) =>
+        memberships
+            .filter((membership) => membership.groupId === group.id)
+            .sort((left, right) => {
+                if (left.position !== null && right.position !== null && left.position !== right.position)
+                    return left.position - right.position;
+                if (left.position !== null) return -1;
+                if (right.position !== null) return 1;
+                return (left.name || left.symbol).localeCompare(right.name || right.symbol, "zh-CN");
+            })
+            .map((membership, position) => ({ ...membership, position })),
+    );
+    return { schemaVersion: 1, groups, memberships: orderedMemberships };
 }
 
 function assertGroupName(state, rawName, currentGroupId = null) {
@@ -150,7 +164,9 @@ export function deleteWatchlistGroup(state, groupId) {
 export function addWatchlistMembers(state, groupId, stocks) {
     const current = normalizeWatchlistSnapshot(state);
     if (!current.groups.some((group) => group.id === groupId)) throw new Error("自选分类不存在");
-    const existing = new Set(current.memberships.filter((item) => item.groupId === groupId).map((item) => item.symbol));
+    const groupMembers = current.memberships.filter((item) => item.groupId === groupId);
+    const existing = new Set(groupMembers.map((item) => item.symbol));
+    const currentCount = existing.size;
     const candidates = [];
     for (const stock of stocks) {
         if (
@@ -166,13 +182,28 @@ export function addWatchlistMembers(state, groupId, stocks) {
             symbol: stock.symbol,
             name: typeof stock.name === "string" ? stock.name.slice(0, 80) : "",
             createdAt: new Date().toISOString(),
+            position: currentCount + candidates.length,
         });
     }
-    const currentCount = current.memberships.filter((item) => item.groupId === groupId).length;
     if (currentCount + candidates.length > MAX_MEMBERS_PER_GROUP)
         throw new Error(`每个分类最多保存 ${MAX_MEMBERS_PER_GROUP} 只股票`);
+    const alphabetical = [...groupMembers].sort((left, right) =>
+        (left.name || left.symbol).localeCompare(right.name || right.symbol, "zh-CN"),
+    );
+    const manuallyOrdered = groupMembers.some((member, index) => member.symbol !== alphabetical[index].symbol);
+    const nextMembers = manuallyOrdered
+        ? [...groupMembers, ...candidates]
+        : [...groupMembers, ...candidates].sort((left, right) =>
+              (left.name || left.symbol).localeCompare(right.name || right.symbol, "zh-CN"),
+          );
     return {
-        state: { ...current, memberships: [...current.memberships, ...candidates] },
+        state: {
+            ...current,
+            memberships: [
+                ...current.memberships.filter((item) => item.groupId !== groupId),
+                ...nextMembers.map((member, position) => ({ ...member, position })),
+            ],
+        },
         added: candidates.length,
         duplicates: stocks.length - candidates.length,
     };
@@ -186,12 +217,29 @@ export function removeWatchlistMember(state, groupId, symbol) {
     };
 }
 
+export function reorderWatchlistMembers(state, groupId, symbols) {
+    const current = normalizeWatchlistSnapshot(state);
+    const members = current.memberships.filter((member) => member.groupId === groupId);
+    const bySymbol = new Map(members.map((member) => [member.symbol, member]));
+    if (
+        symbols.length !== members.length ||
+        new Set(symbols).size !== members.length ||
+        symbols.some((symbol) => !bySymbol.has(symbol))
+    ) {
+        throw new Error("自选股顺序已变化，请重试");
+    }
+    const reordered = symbols.map((symbol, position) => ({ ...bySymbol.get(symbol), position }));
+    return {
+        ...current,
+        memberships: [...current.memberships.filter((member) => member.groupId !== groupId), ...reordered],
+    };
+}
+
 function orderedMembers(state, groupId, universe) {
     const universeBySymbol = new Map(universe.map((stock) => [stock.symbol, stock]));
     return state.memberships
         .filter((membership) => membership.groupId === groupId)
-        .map((membership) => ({ ...membership, stock: universeBySymbol.get(membership.symbol) }))
-        .sort((left, right) => (left.name || left.symbol).localeCompare(right.name || right.symbol, "zh-CN"));
+        .map((membership) => ({ ...membership, stock: universeBySymbol.get(membership.symbol) }));
 }
 
 export function firstAvailableWatchlistSymbol(state, groupId, universe) {
@@ -288,6 +336,7 @@ export class Watchlists {
         this.backtestFillCounts = {};
         this.backtestReturns = {};
         this.backtestEligible = null;
+        this.reordering = false;
         this.$ = (id) => document.getElementById(id);
         this.bind();
     }
@@ -456,7 +505,6 @@ export class Watchlists {
         toggle.setAttribute("aria-expanded", String(!this.railCollapsed));
         toggle.setAttribute("aria-label", this.railCollapsed ? "展开自选股列表" : "收起自选股列表");
         toggle.title = this.railCollapsed ? "展开自选股列表" : "收起自选股列表";
-        toggle.textContent = this.railCollapsed ? "›" : "‹";
         workspace?.classList.toggle("watchlist-rail-collapsed", this.railCollapsed);
     }
 
@@ -466,11 +514,12 @@ export class Watchlists {
         );
     }
 
-    async commit(nextState, message) {
+    async commit(nextState, message, beforeRender) {
         try {
             await this.storage.save(nextState);
             this.state = normalizeWatchlistSnapshot(nextState);
             this.available = true;
+            if (beforeRender) await beforeRender;
             this.render();
             this.announce(message);
             window.dispatchEvent(new CustomEvent("wavequant:watchlists-changed"));
@@ -500,6 +549,111 @@ export class Watchlists {
 
     async remove(symbol) {
         await this.commit(removeWatchlistMember(this.state, this.selectedGroup.id, symbol), "已从当前分类移除股票");
+    }
+
+    async saveOrder(symbols, focusSymbol = "") {
+        if (this.reordering) return;
+        this.reordering = true;
+        try {
+            const saved = await this.commit(
+                reorderWatchlistMembers(this.state, this.selectedGroup.id, symbols),
+                "自选股顺序已保存",
+                this.orderAnimation,
+            );
+            if (!saved) this.render();
+            if (focusSymbol) {
+                const handle = [...this.$("watchlist-stock-list").querySelectorAll(".watchlist-stock-drag")].find(
+                    (item) => item.closest(".watchlist-stock-row")?.dataset.symbol === focusSymbol,
+                );
+                handle?.focus();
+            }
+        } finally {
+            this.reordering = false;
+        }
+    }
+
+    animateOrder(list, rearrange) {
+        const rows = [...list.querySelectorAll(".watchlist-stock-row")];
+        const before = new Map(rows.map((item) => [item, item.getBoundingClientRect().top]));
+        rows.forEach((item) => item.getAnimations().forEach((animation) => animation.cancel()));
+        rearrange();
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            this.orderAnimation = Promise.resolve();
+            return;
+        }
+        const animations = rows.flatMap((item) => {
+            const distance = before.get(item) - item.getBoundingClientRect().top;
+            if (Math.abs(distance) < 1) return [];
+            return [
+                item.animate([{ transform: `translateY(${distance}px)` }, { transform: "translateY(0)" }], {
+                    duration: 220,
+                    easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+                }),
+            ];
+        });
+        this.orderAnimation = Promise.allSettled(animations.map((animation) => animation.finished));
+    }
+
+    bindOrderHandle(handle, row, list) {
+        handle.addEventListener("keydown", (event) => {
+            if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+            event.preventDefault();
+            if (this.reordering) return;
+            const rows = [...list.querySelectorAll(".watchlist-stock-row")];
+            const currentIndex = rows.indexOf(row);
+            const nextIndex = currentIndex + (event.key === "ArrowUp" ? -1 : 1);
+            if (nextIndex < 0 || nextIndex >= rows.length) return;
+            this.animateOrder(list, () =>
+                list.insertBefore(row, event.key === "ArrowUp" ? rows[nextIndex] : rows[nextIndex].nextSibling),
+            );
+            void this.saveOrder(
+                [...list.querySelectorAll(".watchlist-stock-row")].map((item) => item.dataset.symbol),
+                row.dataset.symbol,
+            );
+        });
+        handle.addEventListener("pointerdown", (event) => {
+            if (event.button !== 0 || this.reordering || list.childElementCount < 2) return;
+            event.preventDefault();
+            const initialOrder = [...list.querySelectorAll(".watchlist-stock-row")].map((item) => item.dataset.symbol);
+            let moved = false;
+            row.dataset.dragging = "true";
+            const move = (moveEvent) => {
+                if (moveEvent.pointerId !== event.pointerId) return;
+                if (!row.isConnected) return;
+                if (Math.abs(moveEvent.clientY - event.clientY) < 4 && !moved) return;
+                moved = true;
+                const others = [...list.querySelectorAll(".watchlist-stock-row")].filter((item) => item !== row);
+                const before = others.find(
+                    (item) => moveEvent.clientY < item.getBoundingClientRect().top + item.offsetHeight / 2,
+                );
+                if (before !== row.nextElementSibling && (before || row !== list.lastElementChild))
+                    this.animateOrder(list, () => list.insertBefore(row, before || null));
+                const bounds = list.getBoundingClientRect();
+                if (moveEvent.clientY < bounds.top + 24) list.scrollTop -= 12;
+                if (moveEvent.clientY > bounds.bottom - 24) list.scrollTop += 12;
+            };
+            const finish = (save) => {
+                window.removeEventListener("pointermove", move);
+                window.removeEventListener("pointerup", up);
+                window.removeEventListener("pointercancel", cancel);
+                if (!row.isConnected) return;
+                const symbols = [...list.querySelectorAll(".watchlist-stock-row")].map((item) => item.dataset.symbol);
+                if (save && moved && symbols.some((symbol, index) => symbol !== initialOrder[index])) {
+                    void this.saveOrder(symbols).finally(() => delete row.dataset.dragging);
+                } else if (!save && moved) {
+                    this.render();
+                } else delete row.dataset.dragging;
+            };
+            const up = (upEvent) => {
+                if (upEvent.pointerId === event.pointerId) finish(true);
+            };
+            const cancel = (cancelEvent) => {
+                if (cancelEvent.pointerId === event.pointerId) finish(false);
+            };
+            window.addEventListener("pointermove", move);
+            window.addEventListener("pointerup", up);
+            window.addEventListener("pointercancel", cancel);
+        });
     }
 
     openEditor(mode) {
@@ -615,6 +769,18 @@ export class Watchlists {
             const row = document.createElement("div");
             row.className = "watchlist-stock-row";
             row.dataset.symbol = member.symbol;
+            const drag = document.createElement("button");
+            drag.type = "button";
+            drag.className = "watchlist-stock-drag";
+            const dragIcon = document.getElementById("watchlist-drag-icon")?.cloneNode(true);
+            if (dragIcon) {
+                dragIcon.removeAttribute("id");
+                dragIcon.setAttribute("aria-hidden", "true");
+                drag.append(dragIcon);
+            }
+            drag.setAttribute("aria-label", `拖拽调整 ${member.name || member.symbol} 的顺序，或按上下方向键移动`);
+            drag.title = "拖动排序；方向键上下移动";
+            this.bindOrderHandle(drag, row, list);
             const open = document.createElement("button");
             open.type = "button";
             open.className = "watchlist-stock-open";
@@ -643,7 +809,7 @@ export class Watchlists {
             const result = document.createElement("span");
             result.className = "watchlist-backtest-result";
             result.hidden = true;
-            row.append(open, result);
+            row.append(drag, open, result);
             this.renderBacktestStatus(row, member.symbol);
             list.append(row);
         }

@@ -327,6 +327,7 @@ def test_huaci_body_buy_partial_sale_and_gap_add_on_share_one_open_cycle():
         initial_capital=100_000,
         max_position_weight=1,
         net_reward_risk_filter=False,
+        wave_exhaustion_exit=False,
     )
     view = single_stock_result(bars, profile["strategy"], execution, minute_loader=load)
     buys = [order for order in view["orders"] if order["side"] == "BUY" and order["status"] == "filled"]

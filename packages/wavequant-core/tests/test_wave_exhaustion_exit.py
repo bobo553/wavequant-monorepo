@@ -65,10 +65,10 @@ def test_exhaustion_requires_known_active_target_and_all_candle_conditions(case)
     else:
         events.append(dict(event="wave_projection_invalidated", attack=events[0]["attack"], bar_index=index))
     result = observe_wave_exhaustion(bars, index, events, StrategyConfig())
-    if case == "one_shadow":
-        # Removing the lower wick changes the abnormal candle into an upper
-        # rejection; it no longer satisfies the double-shadow rule.
-        assert result["reason"] == "wave_upper_rejection_reduce"
+    if case in ("equal_volume", "one_shadow"):
+        # A long upper shadow after five-top reach stands on its own;
+        # the double-shadow rule still requires growing volume.
+        assert result["reason"] == "wave_target_upper_shadow_reduce"
     else:
         assert result is None
 

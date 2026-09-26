@@ -39,13 +39,12 @@
 按项目工具执行等价检查：
 
 ```bash
-ruff format --check .
-ruff check .
 mypy src tests
 pytest
 python -m build
 ```
 
+- Python 代码按 `docs/agent/python/rules.md` 直接写成符合项目规范的格式。
 - 对生成的 wheel/sdist 运行元数据检查，并在临时虚拟环境 smoke test；发布前确认包名、版本和目标索引，避免覆盖或误发正式仓库。
 - 发布凭据使用短期、最小权限的可信发布机制或秘密管理，不写入命令历史、配置文件、日志和 CI 产物。
 - 发布、撤回、删除版本或修改远端索引属于外部高影响操作，必须获得用户明确授权；本规则不构成发布授权。

@@ -293,7 +293,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                     record_breakout_index=evidence['record_breakout_index'],
                 )
             if pending_exit[symbol] in ('wave_volume_shadows_reduce', 'wave_gap_reversal_reduce',
-                                        'wave_upper_rejection_reduce', 'wave_ordinary_equal_upper_shadow_reduce'):
+                                        'wave_upper_rejection_reduce', 'wave_target_upper_shadow_reduce',
+                                        'wave_ordinary_equal_upper_shadow_reduce'):
                 pos.wave_reduced = True
             if pending_exit[symbol] == 'inverse_n_close_reduce_90':
                 pos.staged_exit.inverse_index = evidence['inverse_observed_index']

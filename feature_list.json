@@ -4,6 +4,91 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-186",
+            "name": "restore-light-theme-before-first-paint",
+            "title": "进入页面时避免深色主题闪烁",
+            "description": "在文档头部同步恢复已保存的明暗与配色偏好，使浏览器首次绘制即使用当前主题。",
+            "scope": "wavequant-web 根布局、主题初始化与首帧浏览器回归",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "保存亮色主题后刷新或重新进入页面，首帧即为亮色且没有深色闪烁",
+                "深色或无有效偏好时保持默认深色",
+                "静态生产构建、类型检查、定向 Lint 和真实 Chromium 验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm exec playwright test tests/e2e/theme-first-paint.spec.mjs --workers=1",
+                    "status": "passed",
+                    "summary": "Chromium 首帧、亮色背景、已保存配色及无需外部主题脚本均通过；DevTools 首帧采样与首次绘制时间一致，Console 无错误。"
+                },
+                {
+                    "command": "pnpm exec eslint src/app/layout.tsx tests/e2e/theme-first-paint.spec.mjs; pnpm --filter wavequant-web typecheck; build; git diff --check",
+                    "status": "passed",
+                    "summary": "改动文件 Lint、类型检查、生产构建和差异检查通过；静态 HTML 的主题脚本位于 body 之前。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-185",
+            "name": "target-stage-long-upper-shadow-exit",
+            "title": "二饱以上长上影减仓与首次收低清仓",
+            "description": "持仓本笔 N 已到二饱、五顶或十满阶段后，长上影占当日振幅至少一半即按累计 80% 目标减仓；之后首次收盘低于前一交易日时，当日清掉余仓。",
+            "scope": "wavequant-core 目标阶段退出与回测成交",
+            "dependencies": ["MONOREPO-108", "MONOREPO-156"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "二饱、五顶、十满阶段均识别长上影，且不依赖收阴或放量",
+                "新华文轩 2026-01-14 减仓、2026-01-15 收高不清、2026-01-16 首次收低清余仓",
+                "即使部分减仓未成交也可在首次收低时清仓，并保持持仓归属及前缀一致",
+                "相邻退出规则及独立加仓账本用例通过"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest tests/test_wave_target_upper_shadow_exit.py tests/test_wave_exhaustion_exit.py tests/test_wave_upper_rejection.py tests/test_wave_gap_reversal.py tests/test_wave_resistance_failure.py tests/test_ordinary_wave_exit.py -q",
+                    "status": "passed",
+                    "summary": "61 项通过，覆盖三阶段、新华文轩真实 K 线、当日减仓、隔日收高、后续首次收低清仓、未成交减仓及前缀一致。"
+                },
+                {
+                    "command": "python -m pytest tests/test_add_on_entry.py::test_huaci_body_buy_partial_sale_and_gap_add_on_share_one_open_cycle -q; python -m mypy --follow-imports=skip src/wavequant/domain/strategies/wave_exhaustion_exit.py tests/test_wave_target_upper_shadow_exit.py",
+                    "status": "passed",
+                    "summary": "华瓷独立加仓账本用例通过；定向类型检查无问题。"
+                },
+                {
+                    "command": "python -m pytest -q -x; python -m mypy 定向文件",
+                    "status": "not-run",
+                    "summary": "全量测试在修正华瓷用例后运行到约 13% 停止，未完成全部用例；常规 mypy 被环境中 numpy stub 使用 Python 3.12 type 语法而项目配置 Python 3.11 阻断。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-184",
+            "name": "reorder-watchlist-stocks-by-dragging",
+            "title": "自选股列表拖拽调整顺序",
+            "description": "自选股侧栏支持上下拖动和方向键调整股票顺序，保存到 IndexedDB；刷新及自动回测队列沿用该顺序。",
+            "scope": "wavequant-web 自选股排序、侧栏交互与浏览器回归",
+            "dependencies": ["MONOREPO-176"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "当前分类的股票可通过手柄上下拖动，并可用方向键调整顺序",
+                "顺序写入 IndexedDB，刷新后保留；其他分类不受影响",
+                "自动回测按当前显示顺序读取股票，旧数据正常迁移",
+                "自选股单测、类型检查、构建及真实 Chromium 交互通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/*.test.mjs; pnpm --filter wavequant-web typecheck; build",
+                    "status": "passed",
+                    "summary": "188 项 Node 单测、类型检查和生产构建通过。"
+                },
+                {
+                    "command": "pnpm exec playwright test tests/e2e/watchlist-reorder.spec.mjs --workers=1; changed-file eslint; git diff --check",
+                    "status": "passed",
+                    "summary": "Chromium 验证拖拽、方向键与刷新后持久化；改动文件 ESLint 和差异检查通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-183",
             "name": "clear-backtest-cache-on-quant-code-change",
             "title": "量化代码变更后自动清理旧回测缓存",

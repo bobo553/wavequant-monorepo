@@ -10,7 +10,7 @@ dependencies = ["tzdata>=2025.2; platform_system == 'Windows'"]
 tdx = ["pytdx==1.72", "pandas>=2.2,<4"]
 akshare = ["akshare>=1.18.94,<2"]
 data = ["baostock==0.9.3"]
-dev = ["build>=1.3,<2", "mypy>=2.3,<3", "pytest>=9.1,<10", "ruff>=0.16,<1"]
+dev = ["build>=1.3,<2", "mypy>=2.3,<3", "pytest>=9.1,<10"]
 
 [project.scripts]
 wavequant = "wavequant.interfaces.cli:main"
@@ -25,14 +25,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
 testpaths = ["tests"]
-
-[tool.ruff]
-target-version = "py311"
-line-length = 120
-exclude = ["data", "dist", "output", "results"]
-
-[tool.ruff.lint]
-select = ["F"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -27,13 +27,13 @@ export function ResearchWorkbench(): JSX.Element {
                     <ResearchControls />
                     <ResearchMetrics />
                     <section id="page-workspace" className="page">
-                        <div id="backtest-details" className="panel note-card" hidden />
                         <div className="workspace-grid">
                             <WatchlistRail />
                             <ResearchChart />
                             <StockBrowser />
                             <ResearchEvidence />
                         </div>
+                        <div id="backtest-details" className="panel note-card" hidden />
                         <ResearchLedgers />
                     </section>
                     <StockBacktestResults />

@@ -2707,7 +2707,8 @@ async function start() {
                 sourceError = error.message;
             }
         }
-        $("symbol-select").value = linkedStock?.symbol || watchlists.firstAvailableSymbol(universe());
+        const firstWatchlistSymbol = watchlists.firstAvailableSymbol(universe());
+        $("symbol-select").value = linkedStock?.symbol || firstWatchlistSymbol;
         if (linkedStock) setTimeframe("1d");
         fillSymbols();
         if (sourceError) {
@@ -2730,6 +2731,19 @@ async function start() {
         }
         if (requestedPage && Object.hasOwn(titles, requestedPage)) showPage(requestedPage);
         watchlistBacktests.start();
+        if (
+            !linkedStock &&
+            firstWatchlistSymbol &&
+            $("symbol-select").value === firstWatchlistSymbol &&
+            state.view?.symbol === firstWatchlistSymbol &&
+            !state.error
+        ) {
+            const cutoff = state.requestedAsOf || state.view.asof || state[initialSource].latest;
+            $("result-scope").value = `${initialSource}-backtest`;
+            fillSymbols();
+            preserveCutoff(cutoff);
+            void loadView({ preferTrades: true });
+        }
     } catch (e) {
         $("result-scope").disabled = false;
         stockList.setStocks([], "");

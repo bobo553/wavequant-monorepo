@@ -19,7 +19,7 @@
 
 - 每个可独立安装、测试或部署的 Python 项目以自己的 `pyproject.toml` 定义名称、Python 版本范围、依赖、构建方式和工具配置；不要把配置散落为互相冲突的多个事实来源。
 - 应用和服务优先采用 `src/<import_package>/` 布局，测试放在项目根 `tests/` 并镜像主要模块；一次性仓库维护脚本可留在 `scripts/`，但不得承载长期业务核心。
-- `requires-python`、Ruff `target-version`、类型检查器和 CI 测试矩阵必须表达同一兼容范围；升级最低版本时同步代码、镜像、文档和部署环境。
+- `requires-python`、类型检查器和 CI 测试矩阵必须表达同一兼容范围；升级最低版本时同步代码、镜像、文档和部署环境。
 - 使用项目专属虚拟环境，推荐 `.venv`；虚拟环境、缓存、覆盖率、构建目录和本地解释器状态不得提交。
 - 依赖必须通过项目选定的工具从 `pyproject.toml` 安装。应用/服务提交可复现锁文件；可发布库声明合理兼容范围，不把本机冻结列表当作公共依赖契约。
 - 运行命令优先使用项目选定执行器，或在已激活虚拟环境中执行 `python -m <module>`；文档和 CI 不依赖全局 `python`、隐式 `PATH` 或用户级 site-packages。
@@ -27,8 +27,8 @@
 
 ## 格式、命名与导入
 
-- 默认使用 Ruff 同时负责格式化、导入排序和 lint，配置集中在 `pyproject.toml`；不要长期并行运行 Black、isort 与 Ruff formatter 产生相互改写。
-- 使用 4 空格缩进、UTF-8 和自动格式化；行宽由项目统一配置。工具能确定的纯样式问题不进入人工争论。
+- Codex 根据本文件和现有代码风格直接编写、修改 Python，不运行 Python 格式化或 lint 工具。
+- 使用 4 空格缩进、UTF-8，单行尽量不超过 120 字符；提交前自行核对格式、导入与命名，删除未使用的导入并检查名称是否已定义。
 - 模块、包、函数和变量使用 `snake_case`，类和异常使用 `CapWords`，常量使用 `UPPER_SNAKE_CASE`；公共名称表达领域含义，避免无意义缩写。
 - 标准库、第三方、本项目导入分组；优先清晰的绝对导入，禁止通配符导入和通过修改 `sys.path` 掩盖包结构问题。
 - `__init__.py` 只暴露有意维护的公共 API，不用大规模重导出制造循环依赖或高昂导入副作用。
@@ -84,20 +84,18 @@
 按项目配置和改动风险运行等价命令：
 
 ```bash
-ruff format --check .
-ruff check .
 mypy src tests
 pytest
 ```
 
+- Codex 编辑时按本文件的格式、命名、导入规则核对改动。
 - 可发布包或构建型应用追加 `python -m build`，并在干净虚拟环境安装生成产物后执行 smoke test。
 - 数据库、队列、网络和框架生命周期边界追加集成测试；并发、超时、迁移或安全变更覆盖对应失败模式。
-- CI 与本地读取同一 `pyproject.toml` 和锁文件，不在命令行维护另一套规则；跳过或降级门禁必须记录原因、范围和恢复条件。
+- CI 与本地读取同一 `pyproject.toml` 和锁文件，不在命令行维护另一套规则；门禁若跳过或降级需记录原因、范围和恢复条件。
 - 完成前更新功能状态与 workspace 进度，确认没有 `.venv`、缓存、覆盖率文件、构建产物、Notebook 输出或秘密进入变更集。
 
 ## 官方依据
 
 - [PEP 8：Python 代码风格](https://peps.python.org/pep-0008/)
 - [Python `venv` 文档](https://docs.python.org/3/library/venv.html)
-- [Ruff 配置](https://docs.astral.sh/ruff/configuration/)与[Ruff Formatter](https://docs.astral.sh/ruff/formatter/)
 - [mypy：为现有代码库引入类型检查](https://mypy.readthedocs.io/en/stable/existing_code.html)
