@@ -154,9 +154,9 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
             );
         }
         if (item.wave_reached_stage) {
-            const stageNames = { two_t: "二吐", five_top: "五顶", ten_full: "十满", ordinary_equal: "普通 A 的 C 等浪" };
+            const stageNames = { one_p: "一饱", two_t: "二吐", five_top: "五顶", ten_full: "十满", ordinary_equal: "普通 A 的 C 等浪" };
             add(
-                `目标背景：本笔正 N ${item.wave_n_date}；${item.wave_reached_date} 已到 ${stageNames[item.wave_reached_stage] || item.wave_reached_stage} ${num(item.wave_reached_price, 4)} 元`,
+                `目标背景：${item.wave_n_origin_date ? `新段正 N 起点 ${item.wave_n_origin_date} ${num(item.wave_n_origin_price, 4)} 元；` : "本笔"}正 N ${item.wave_n_date}；${item.wave_reached_date} 已到 ${stageNames[item.wave_reached_stage] || item.wave_reached_stage} ${num(item.wave_reached_price, 4)} 元`,
             );
             if (item.reason === "wave_gap_reversal_reduce")
                 add(
