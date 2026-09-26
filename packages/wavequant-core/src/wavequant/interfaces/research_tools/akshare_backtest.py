@@ -5,7 +5,7 @@ from datetime import date
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.a_share_security import a_share_security_spec
@@ -32,15 +32,18 @@ class AkShareBacktester:
             raise ValueError('策略代码已变更，请重启图表服务后再运行，避免新版本标识对应旧引擎')
 
     def run(
-        self, symbol: str, start: str, asof: str, strategy: dict[str, Any], execution: dict[str, Any]
+        self, symbol: str, start: str, asof: str, strategy: dict[str, Any], execution: dict[str, Any],
+        *, progress: Callable[[int, str], None] | None = None,
     ) -> tuple[list[Bar], SystemResult, dict[str, Any]]:
         if date.fromisoformat(start) > date.fromisoformat(asof):
             raise ValueError("回测起始日期不能晚于结束日期")
         self._verify_engine()
         if not self.browser.pinned_history:
             raise ValueError("回测必须固定 AKShare 的同一上游")
+        if progress is not None: progress(5, '读取行情')
         raw, _ = self.browser.bars(symbol, asof)
         factors = sina_factors(self.browser.provider, symbol)
+        if progress is not None: progress(20, '整理日线')
         # Skip the first twenty listed sessions as in the local execution model.
         if len(raw) < 22:
             raise ValueError("历史日线不足 22 个交易日")
@@ -87,6 +90,7 @@ class AkShareBacktester:
             previous = bar.close
         if not bars:
             raise ValueError("所选区间没有同源日线")
+        if progress is not None: progress(30, '生成信号')
         config = SystemStrategy(**strategy)
         config.validate()  # type: ignore[no-untyped-call]  # Legacy strategy boundary.
         execution = TdxBacktester._execution_for_security(  # type: ignore[no-untyped-call]  # Shared execution rules.
@@ -119,23 +123,31 @@ class AkShareBacktester:
             with self.artifacts.lock(signal_key):  # type: ignore[no-untyped-call]  # Share work across sizing plans.
                 research = self.artifacts.get("akshare-signals", signal_inputs)  # type: ignore[no-untyped-call]
                 if research is None:
-                    generated = generate_system_signals(bars, config)
+                    generated = (generate_system_signals(bars, config)
+                                 if progress is None else generate_system_signals(
+                                     bars, config,
+                                     progress=lambda percent: progress(35+percent*25//100, '生成信号')))
                     research = encode_research(bars, generated)
                     self._verify_engine()
                     self.artifacts.put("akshare-signals", signal_inputs, research)  # type: ignore[no-untyped-call]
                 else:
                     bars, generated = decode_research(research)
+                    if progress is not None: progress(60, '读取信号缓存')
             if cached is not None:
                 self._verify_engine()
+                if progress is not None: progress(95, '读取缓存')
                 return bars, generated, cached["view"]
             coverage = None
             try:
+                if progress is not None: progress(65, '模拟成交')
                 result = single_stock_result(  # type: ignore[no-untyped-call]  # Existing simulation boundary.
                     bars,
                     strategy,
                     execution,
                     generated,
                     minute_loader=minute.get if execution["staged_exit_intraday"] or execution.get("consolidation_entry_intraday") else None,
+                    **({'progress': lambda percent: progress(65+percent*25//100, '模拟成交')}
+                       if progress is not None else {}),
                 )
             except MinuteCoverageError as exc:
                 # Discard partial simulation, but preserve the valid daily theory.
@@ -157,6 +169,7 @@ class AkShareBacktester:
                     ),
                 )
             source["minute"] = minute.provenance()
+            if progress is not None: progress(90, '整理结果')
             from wavequant.interfaces.charts.visualization import metrics_at
 
             _, curve = metrics_at(result["equity"], result["trades"], result["backtest"]["initial_capital"])  # type: ignore[no-untyped-call]  # Shared chart normalization.
@@ -214,4 +227,5 @@ class AkShareBacktester:
                 )
             else:
                 self._verify_engine()
+            if progress is not None: progress(95, '整理结果')
             return bars, generated, view

@@ -1,3 +1,5 @@
+import { formatBacktestProgress } from "./backtest-job-status.js";
+
 const DATABASE_NAME = "wavequant-user-data";
 const DATABASE_VERSION = 1;
 const GROUP_STORE = "watchlist-groups";
@@ -335,6 +337,7 @@ export class Watchlists {
         this.backtestFailures = {};
         this.backtestFillCounts = {};
         this.backtestReturns = {};
+        this.backtestJobs = [];
         this.backtestEligible = null;
         this.reordering = false;
         this.$ = (id) => document.getElementById(id);
@@ -419,12 +422,13 @@ export class Watchlists {
         );
     }
 
-    setBacktestStatuses(statuses, eligibleSymbols = null, failures = {}, fillCounts = {}, returns = {}) {
+    setBacktestStatuses(statuses, eligibleSymbols = null, failures = {}, fillCounts = {}, returns = {}, jobs = []) {
         this.backtestStatuses = statuses;
         this.backtestEligible = eligibleSymbols;
         this.backtestFailures = failures;
         this.backtestFillCounts = fillCounts;
         this.backtestReturns = returns;
+        this.backtestJobs = jobs;
         for (const row of this.$("watchlist-stock-list").querySelectorAll(".watchlist-stock-row")) {
             this.renderBacktestStatus(row, row.dataset.symbol);
         }
@@ -436,6 +440,11 @@ export class Watchlists {
         const status =
             this.backtestStatuses[symbol] ||
             (this.backtestEligible && !this.backtestEligible.has(symbol) ? "unavailable" : "pending");
+        const runningJob =
+            status === "running"
+                ? this.backtestJobs.find((job) => job.status === "running" && job.symbol === symbol)
+                : null;
+        const percent = formatBacktestProgress(runningJob?.progress_percent);
         badge.dataset.status = status;
         const fills = this.backtestFillCounts[symbol];
         badge.textContent =
@@ -444,7 +453,7 @@ export class Watchlists {
                 : {
                       pending: "待回测",
                       historical: "已回测 · 待更新",
-                      running: "回测中",
+                      running: percent ? `回测中 · ${percent}` : "回测中",
                       unknown: "状态待确认",
                       completed: "已完成",
                       failed: "失败",
@@ -453,11 +462,13 @@ export class Watchlists {
         badge.title =
             status === "failed"
                 ? this.backtestFailures[symbol] || "回测失败"
-                : status === "historical"
-                  ? "服务器有历史回测记录，但数据源、日期、策略版本或参数与当前设置不一致；本轮仍待更新"
-                  : status === "completed" && fills === 0
-                    ? "回测已完成，但没有实际模拟成交，图上不会有 B / S 成交标记"
-                    : badge.textContent;
+                : status === "running" && runningJob?.progress_stage
+                  ? `${badge.textContent} · ${runningJob.progress_stage}`
+                  : status === "historical"
+                    ? "服务器有历史回测记录，但数据源、日期、策略版本或参数与当前设置不一致；本轮仍待更新"
+                    : status === "completed" && fills === 0
+                      ? "回测已完成，但没有实际模拟成交，图上不会有 B / S 成交标记"
+                      : badge.textContent;
         const result = row.querySelector(".watchlist-backtest-result");
         const value = this.backtestReturns[symbol];
         const hasReturn = status === "completed" && Number.isFinite(value?.rate) && Number.isFinite(value?.amount);

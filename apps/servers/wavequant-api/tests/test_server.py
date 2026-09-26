@@ -526,6 +526,7 @@ class VisualizationTests(unittest.TestCase):
         entered, release = Event(), Event()
 
         def backtest(*args, **kwargs):
+            kwargs["progress"](46, "模拟成交")
             entered.set()
             self.assertTrue(release.wait(5))
             return {"symbol": args[2]}
@@ -551,8 +552,13 @@ class VisualizationTests(unittest.TestCase):
                 self.assertEqual((status, snapshot["active"], snapshot["max_active"]), (200, 1, 1))
                 self.assertEqual(snapshot["jobs"][0]["symbol"], "sz.300154")
                 self.assertEqual(snapshot["jobs"][0]["job"], "running-stock-0001")
+                self.assertEqual(snapshot["jobs"][0]["progress_percent"], 46)
+                self.assertEqual(snapshot["jobs"][0]["progress_stage"], "模拟成交")
                 self.assertGreaterEqual(snapshot["jobs"][0]["elapsed_seconds"], 0)
                 self.assertNotIn("result", snapshot["jobs"][0])
+                status, running = request("/api/backtest-job?job=running-stock-0001")
+                self.assertEqual((status, running["progress_percent"], running["progress_stage"]),
+                                 (202, 46, "模拟成交"))
                 status, duplicate = request(base + "&backtest_job=other-stock-job-0002")
                 self.assertEqual(
                     (status, duplicate["code"], duplicate["running_job"]),

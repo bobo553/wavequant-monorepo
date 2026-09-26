@@ -66,6 +66,8 @@ class BacktestJobsTests(unittest.TestCase):
             self.assertIsNone(jobs.get("second-job"))
             snapshot = jobs.snapshot()
             self.assertGreaterEqual(snapshot["jobs"][0].pop("elapsed_seconds"), 0)
+            self.assertEqual(snapshot["jobs"][0].pop("progress_percent"), 0)
+            self.assertEqual(snapshot["jobs"][0].pop("progress_stage"), "准备回测")
             self.assertEqual(
                 snapshot,
                 {
@@ -88,6 +90,31 @@ class BacktestJobsTests(unittest.TestCase):
         finished = jobs.snapshot()
         self.assertEqual((finished["active"], finished["jobs"]), (0, []))
         self.assertEqual(finished["recent"][0]["job"], "first-job")
+
+    def test_progress_is_monotonic_and_isolated_to_one_running_job(self):
+        jobs = BacktestJobs(max_active=2)
+        entered, release = Event(), Event()
+
+        def slow_backtest():
+            entered.set()
+            self.assertTrue(release.wait(5))
+
+        first = jobs.start("first", "first-args", slow_backtest, symbol="sz.000978")
+        second = jobs.start("second", "second-args", slow_backtest, symbol="sh.601086")
+        try:
+            self.assertTrue(entered.wait(5))
+            jobs.update_progress("first", 46, "模拟成交")
+            jobs.update_progress("first", 20, "读取日线")
+            jobs.update_progress("missing", 50, "模拟成交")
+            by_id = {item["job"]: item for item in jobs.snapshot()["jobs"]}
+            self.assertEqual(jobs.progress(first), {"progress_percent": 46, "progress_stage": "模拟成交"})
+            self.assertEqual(by_id["second"]["progress_percent"], 0)
+            with self.assertRaises(ValueError):
+                jobs.update_progress("first", 100, "完成")
+        finally:
+            release.set()
+        self.assertTrue(first.done.wait(5))
+        self.assertTrue(second.done.wait(5))
 
     def test_elapsed_seconds_uses_monotonic_job_start_and_does_not_change_capacity(self):
         now = [100.0]

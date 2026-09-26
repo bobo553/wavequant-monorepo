@@ -5,6 +5,7 @@ import {
     BACKTEST_STATUS_STALE_MS,
     expiredBacktestSnapshot,
     formatBacktestElapsed,
+    formatBacktestProgress,
     historicalBacktestStatuses,
     runningBacktestStatuses,
     selectedBacktestAction,
@@ -77,4 +78,12 @@ test("server elapsed time is readable and unavailable values are omitted", () =>
     assert.equal(formatBacktestElapsed(3_661), "已运行 1 小时 1 分钟");
     assert.equal(formatBacktestElapsed(undefined), "");
     assert.equal(formatBacktestElapsed(-1), "");
+});
+
+test("running progress accepts only an actual server percentage", () => {
+    assert.equal(formatBacktestProgress(0), "0%");
+    assert.equal(formatBacktestProgress(87), "87%");
+    assert.equal(formatBacktestProgress(undefined), "");
+    assert.equal(formatBacktestProgress(100), "");
+    assert.equal(formatBacktestProgress(42.5), "");
 });

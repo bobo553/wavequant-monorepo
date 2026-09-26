@@ -32,7 +32,8 @@ class TdxBacktestTests(unittest.TestCase):
         self.execution=asdict(StrategyConfig(initial_capital=100000,minimum_commission=0,
             commission_bps_per_side=0,slippage_bps_per_side=0,a_share_taxes=False,max_participation=1))
 
-    def generated(self,bars,config):
+    def generated(self,bars,config,**kwargs):
+        if 'progress' in kwargs: kwargs['progress'](100)
         signals=[];audit=[]
         for i,side in ((2,'LONG'),(4,'EXIT')):
             if i>=len(bars): continue
@@ -50,10 +51,20 @@ class TdxBacktestTests(unittest.TestCase):
         self.assertIn('domain/market_structure/secondary_trend.py',hashes)
         self.assertIn('domain/strategies/attack_quality.py',hashes)
 
-    def run_fixture(self,end=None):
+    def run_fixture(self,end=None,progress=None):
         with patch('wavequant.interfaces.research_tools.tdx_backtest.read_actions',return_value=(self.events,fingerprint(self.action_path))), \
              patch('wavequant.interfaces.research_tools.tdx_backtest.generate_system_signals',side_effect=self.generated):
-            return self.service.run('sh.600000','2020-01-01',end or self.days[-1].isoformat(),self.strategy,self.execution)
+            return self.service.run('sh.600000','2020-01-01',end or self.days[-1].isoformat(),self.strategy,self.execution,
+                                    **({'progress': progress} if progress is not None else {}))
+
+    def test_running_progress_follows_signal_and_execution_stages(self):
+        updates=[]
+        self.run_fixture(progress=lambda percent,stage: updates.append((percent,stage)))
+        self.assertEqual(updates[0],(5,'校验行情'))
+        self.assertIn((60,'生成信号'),updates)
+        self.assertTrue(any(stage=='模拟成交' and 65<percent<=90 for percent,stage in updates))
+        self.assertEqual(updates[-1],(95,'整理结果'))
+        self.assertEqual([percent for percent,_ in updates],sorted(percent for percent,_ in updates))
 
     def test_unified_adjusted_prices_and_entry_exit_evidence(self):
         bars,_,view=self.run_fixture()

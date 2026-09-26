@@ -312,7 +312,14 @@ def make_server(
                         return
                     done, result, error = backtest_jobs.outcome(job)
                     if not done:
-                        self.send(202, {"status": "running", "elapsed_seconds": backtest_jobs.elapsed_seconds(job)})
+                        self.send(
+                            202,
+                            {
+                                "status": "running",
+                                "elapsed_seconds": backtest_jobs.elapsed_seconds(job),
+                                **backtest_jobs.progress(job),
+                            },
+                        )
                     elif error is not None:
                         status, message = backtest_job_error(error)
                         self.send(200, {"status": "failed", "error": message, "http_status": status})
@@ -462,7 +469,11 @@ def make_server(
                     job = backtest_jobs.start(
                         job_id,
                         signature,
-                        lambda: backtest(*backtest_args, **options),
+                        lambda: backtest(
+                            *backtest_args,
+                            **options,
+                            progress=lambda percent, stage: backtest_jobs.update_progress(job_id, percent, stage),
+                        ),
                         symbol=q["symbol"][0],
                         details={
                             "path": url.path,
