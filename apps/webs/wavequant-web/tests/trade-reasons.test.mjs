@@ -99,8 +99,8 @@ test("sell reasons use exit trigger and observed values without inventing missin
         previous_close: 10,
     };
     assert.deepEqual(tradeReasonItems(marker), [
-        "放量下跌且收盘低于前收，当日收盘累计减仓原持仓 70%",
-        "放量下跌：2026-09-04 成交量 200,000 > 前日 100,000，收盘 9.0000 < 前收 10.0000。",
+        "放量阴线且收盘低于前收、低点高于前低，当日收盘累计减仓原持仓 70%",
+        "放量阴线：2026-09-04 成交量 200,000；前日 100,000；收盘 9.0000，前收 10.0000。",
     ]);
     assert.deepEqual(numberedTradeReasons({ side: "SELL" }), ["1. 本次成交记录未提供具体决策原因。"]);
 });
@@ -157,7 +157,7 @@ test("next-session gap fade clear shows the observable close confirmation", () =
     assert.match(reasons[2], /开盘 5\.2000 < 前收 5\.2700，收盘 5\.1400 < 开盘 5\.2000/);
 });
 
-test("next-session bearish close below warning low explains full exit", () => {
+test("lower low and no higher high explain full exit", () => {
     const reasons = tradeReasonItems({
         side: "SELL",
         reason: "volume_down_next_followthrough_clear",
@@ -166,12 +166,39 @@ test("next-session bearish close below warning low explains full exit", () => {
         previous_volume: 6451974,
         trigger_close: 5.27,
         previous_close: 5.31,
-        warning_low: 5.26,
+        previous_low: 5.26,
+        previous_high: 5.34,
+        observed_low: 5.04,
+        observed_high: 5.3,
         observed_open: 5.3,
         observed_close: 5.07,
     });
     assert.match(reasons[0], /当日收盘清空余仓/);
-    assert.match(reasons[2], /收盘 5\.0700 < 警示日低点 5\.2600，且低于当日开盘 5\.3000/);
+    assert.match(reasons[2], /低点 5\.0400 < 前一交易日低点 5\.2600，高点 5\.3000 ≤ 前一交易日高点 5\.3400/);
+});
+
+test("half reduction and direct previous-low break have distinct explanations", () => {
+    const base = {
+        side: "SELL",
+        volume_trigger_date: "2026-09-04",
+        trigger_volume: 200000,
+        previous_volume: 300000,
+        previous_bearish_date: "2026-09-02",
+        previous_bearish_volume: 150000,
+        trigger_close: 10,
+        previous_close: 10,
+    };
+    const half = tradeReasonItems({ ...base, reason: "volume_down_reduce_50" });
+    assert.match(half[0], /减仓原持仓 50%/);
+    assert.match(half[1], /前一阴线（2026-09-02）150,000/);
+    const clear = tradeReasonItems({
+        ...base,
+        reason: "volume_down_previous_low_break_clear",
+        previous_low: 9.9,
+        observed_low: 9.8,
+    });
+    assert.match(clear[0], /清空余仓/);
+    assert.match(clear[2], /本日低点 9\.8000 < 前一交易日低点 9\.9000/);
 });
 
 test("pressure gap reduction and subsequent clear keep their distinct dated reasons", () => {
