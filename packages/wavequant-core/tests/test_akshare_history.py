@@ -202,3 +202,50 @@ def test_pinned_backtest_reuses_exact_result_and_invalidates_changed_inputs(tmp_
     recovered = without_signals.run("sz.300154", "2026-01-21", "2026-01-30", strategy, execution)[2]
     assert recovered == code_view
     assert calls == {"signals": 6, "account": 6}  # Evicted signal artifact must not rerun a valid account.
+
+
+def test_engine_change_during_signal_generation_does_not_publish_stale_artifacts(tmp_path, monkeypatch):
+    import wavequant.interfaces.research_tools.akshare_backtest as module
+
+    current_engine = {"value": {"engine": "loaded"}}
+    monkeypatch.setattr(module.TdxBacktester, "_engine_hashes", staticmethod(lambda: current_engine["value"]))
+    provider = Provider([dict(date="2000-01-01", hfq_factor=1)])
+    browser = AkShareBrowser(provider, pinned_history=True)
+    raw = [Bar(datetime(2026, 1, 1) + timedelta(days=index), "sz.300154", 10, 11, 9, 10, 100000) for index in range(30)]
+    monkeypatch.setattr(browser, "bars", lambda *_: (raw, raw))
+    backtester = AkShareBacktester(browser, tmp_path)
+    published = []
+    original_put = backtester.artifacts.put
+
+    def put(namespace, key, data):
+        published.append(namespace)
+        return original_put(namespace, key, data)
+
+    def signals(*_):
+        current_engine["value"] = {"engine": "changed"}
+        return SystemResult([], [], {})
+
+    monkeypatch.setattr(backtester.artifacts, "put", put)
+    monkeypatch.setattr(module, "generate_system_signals", signals)
+    with pytest.raises(ValueError, match="策略代码已变更"):
+        backtester.run(
+            "sz.300154", "2026-01-21", "2026-01-30", {}, StrategyConfig(staged_exit_intraday=False).to_dict()
+        )
+    assert published == []
+
+
+def test_engine_change_after_initialization_is_rejected_before_provider_access(tmp_path, monkeypatch):
+    import wavequant.interfaces.research_tools.akshare_backtest as module
+
+    current_engine = {"value": {"engine": "loaded"}}
+    monkeypatch.setattr(module.TdxBacktester, "_engine_hashes", staticmethod(lambda: current_engine["value"]))
+    provider = Provider([])
+    browser = AkShareBrowser(provider, pinned_history=True)
+    backtester = AkShareBacktester(browser, tmp_path)
+
+    current_engine["value"] = {"engine": "changed"}
+    with pytest.raises(ValueError, match="策略代码已变更"):
+        backtester.run(
+            "sz.300154", "2026-01-21", "2026-01-30", {}, StrategyConfig(staged_exit_intraday=False).to_dict()
+        )
+    assert provider.calls == []

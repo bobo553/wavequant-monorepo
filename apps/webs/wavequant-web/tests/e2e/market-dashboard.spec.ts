@@ -195,36 +195,28 @@ test("experiment and strategy selectors remain usable across market tabs and sco
     await expect(variant.locator('option[value="lecture_v2"]')).toHaveAttribute("disabled", "");
 });
 
-test("AkShare stock selection keeps its data source until backtest is requested", async ({ page }) => {
+test("AkShare stock selection requests only the selected source's backtest", async ({ page }) => {
     test.setTimeout(180_000);
     const pageErrors: string[] = [];
+    const tdxBacktestRequests: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("request", (request) => {
+        if (new URL(request.url()).pathname === "/api/tdx-backtest") tdxBacktestRequests.push(request.url());
+    });
 
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#all-stocks-tab")).toHaveCount(0);
     await expect(page.locator("#stock-picker-panel")).toBeVisible();
 
+    const backtest = page.waitForRequest(
+        (request) => request.url().includes("/api/akshare-backtest?") && request.url().includes("symbol=sh.600519"),
+        { timeout: 60_000 },
+    );
     await page.locator("#header-stock-search").fill("600519");
     await page.locator("#header-stock-search").press("Enter");
-    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
-    await expect(page.locator("#result-scope")).toHaveValue("akshare");
-    await expect(page.locator("#trade-nodes-tab")).toBeHidden();
-    await expect(page.locator("#stock-picker-current")).toContainText("600519");
-
-    const backtest = page.waitForResponse(
-        (response) =>
-            response.url().includes("/api/tdx-backtest?") &&
-            response.url().includes("symbol=sh.600519") &&
-            response.ok(),
-        { timeout: 180_000 },
-    );
-    await page.getByRole("button", { name: "运行当前股票回测" }).click();
     await backtest;
-    await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
-    await expect(page.locator("#result-scope")).toHaveValue("tdx-backtest");
-    await expect(page.locator("#trade-nodes-tab")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("#stock-picker-panel")).toBeHidden();
+    await expect(page.locator("#result-scope")).toHaveValue("akshare-backtest", { timeout: 60_000 });
     await expect(page.locator("#stock-picker-current")).toContainText("600519");
 
     await page.locator("#stock-picker-toggle").click();
@@ -232,47 +224,37 @@ test("AkShare stock selection keeps its data source until backtest is requested"
     await page.locator("#header-stock-search").focus();
     await expect(page.locator("#header-stock-search")).toBeFocused();
 
-    await page.locator("#watchlist-toggle-current").click();
-    await page.locator("#buy-points-tab").click();
-    const watchlistBacktest = page.waitForRequest(
-        (request) => request.url().includes("/api/tdx-backtest?") && request.url().includes("symbol=sh.600519"),
-    );
-    await page.locator("#watchlist-stock-list .watchlist-stock-open").click();
-    await watchlistBacktest;
-    await expect(page.locator("#result-scope")).toHaveValue("tdx-backtest");
-
     await page.setViewportSize({ width: 390, height: 844 });
     const rail = await page.locator(".stock-browser").boundingBox();
     expect(rail?.width).toBeLessThanOrEqual(390);
+    expect(tdxBacktestRequests).toEqual([]);
     expect(pageErrors).toEqual([]);
 });
 
-test("a stock without local TDX history stays in market browsing with a clear explanation", async ({ page }) => {
-    const backtestRequests: string[] = [];
+test("an unavailable TDX catalog does not disable an available AkShare stock", async ({ page }) => {
+    const tdxRequests: string[] = [];
     page.on("request", (request) => {
-        if (request.url().includes("/api/tdx-backtest?")) backtestRequests.push(request.url());
+        if (["/api/tdx-catalog", "/api/tdx-backtest"].includes(new URL(request.url()).pathname))
+            tdxRequests.push(request.url());
     });
-    await page.route("**/api/tdx-catalog", async (route) => {
-        const response = await route.fetch();
-        const catalog = await response.json();
-        catalog.stocks = catalog.stocks.filter((stock: { symbol: string }) => stock.symbol !== "sh.600519");
-        await route.fulfill({ response, json: catalog });
-    });
+    await page.route("**/api/tdx-catalog", (route) =>
+        route.fulfill({ json: { available: false, latest: null, with_daily: 0, stocks: [] } }),
+    );
 
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await page.locator("#header-stock-search").fill("600519");
     await page.locator("#header-stock-search").press("Enter");
-    await expect(page.locator("#stock-picker-feedback")).toContainText("暂无通达信本地日线");
+    await expect(page.locator("#stock-picker-feedback")).toBeHidden();
     await expect(page.locator("#result-scope")).toHaveValue("akshare");
-    await expect(page.locator("#run-stock-backtest")).toBeDisabled();
-    expect(backtestRequests).toEqual([]);
+    await expect(page.locator("#run-stock-backtest")).toBeEnabled();
+    expect(tdxRequests).toEqual([]);
 });
 
 test("close-based half-wave profile reaches the current-stock backtest", async ({ page }) => {
     test.setTimeout(180_000);
     // Keep catalog loading deterministic; the backtest itself still goes to
-    // the real API with a local TDX stock.
+    // the real API with an explicitly selected local TDX stock.
     const catalog = {
         available: true,
         latest: "2026-09-07",
@@ -289,13 +271,9 @@ test("close-based half-wave profile reaches the current-stock backtest", async (
         ],
     };
     await page.route("**/api/tdx-catalog", (route) => route.fulfill({ json: catalog }));
-    await page.route("**/api/akshare-catalog", (route) => route.fulfill({ json: catalog }));
-    await page.route("**/api/market-timeframe?source=akshare&**", async (route) => {
-        const response = await route.fetch({ url: route.request().url().replace("source=akshare", "source=tdx") });
-        await route.fulfill({ response });
-    });
-    await page.goto("/research?page=workspace");
+    await page.goto("/research?page=workspace&symbol=sh.600519&asof=2026-09-07&source=tdx");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#result-scope")).toHaveValue("tdx");
     await page.locator("#variant-select").selectOption("lecture_v3_close_d50_c50");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     const backtest = page.waitForResponse(
@@ -399,6 +377,7 @@ test("running a stock backtest reveals the trade journal and any B/S executions"
 
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await selectTdx(page);
     await selectSymbol(page, "sh.600519");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await page.getByRole("button", { name: "运行当前股票回测" }).click();
@@ -543,6 +522,7 @@ test("each buy shows its own entry weight while average exposure stays a full-pe
 
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await selectTdx(page);
     await selectSymbol(page, "sh.600519");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await page.getByRole("button", { name: "运行当前股票回测" }).click();
@@ -578,6 +558,7 @@ test("backtest right rail distinguishes an empty trade journal from strategy sig
     });
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await selectTdx(page);
     await page.getByRole("button", { name: "运行当前股票回测" }).click();
     await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
     await expect(page.locator("#trade-nodes-tab")).toBeVisible();
@@ -638,6 +619,7 @@ test("blocked order tab explains a rejected buy and locates its attempted candle
     });
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await selectTdx(page);
     await selectSymbol(page, "sh.600519");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await page.locator("#variant-select").selectOption("lecture_v3_d67_c50");
@@ -733,6 +715,7 @@ test("blocked date cards and the complete list copy their underlying evidence", 
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await selectTdx(page);
     await selectSymbol(page, "sh.600519");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await page.locator("#variant-select").selectOption("lecture_v3_d67_c50");
@@ -969,6 +952,9 @@ test("stock catalogs persist in IndexedDB and only transfer again after an ETag 
     await page.goto("/research");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#stock-source-notice")).toContainText("IndexedDB 缓存已更新");
+    await selectTdx(page);
+    await page.locator("#result-scope").selectOption("akshare");
+    await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     const cached = await page.evaluate(
         () =>
             new Promise<Array<{ source: string; etag: string; count: number }>>((resolve, reject) => {
@@ -996,6 +982,7 @@ test("stock catalogs persist in IndexedDB and only transfer again after an ETag 
     await page.reload();
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#stock-source-notice")).toContainText("IndexedDB 缓存已校验");
+    await selectTdx(page);
     expect(responses.filter((response) => response.status === 200)).toHaveLength(2);
     expect(responses.filter((response) => response.status === 304)).toHaveLength(2);
 });
@@ -1214,10 +1201,8 @@ test("confirmed structure search distinguishes event and availability dates and 
     await expect(favorite).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("#watchlist-stock-list")).not.toContainText("中大力德");
     await favorite.click();
-    const railFavorite = page.locator(".watchlist-stock-remove");
-    await expect(railFavorite.locator("svg.tabler-icon-star-filled")).toHaveCount(1);
-    await expect(railFavorite).toHaveAttribute("aria-pressed", "true");
-    await railFavorite.click();
+    await expect(page.locator(".watchlist-stock-remove")).toHaveCount(0);
+    await favorite.click();
     await expect(favorite.locator("svg.tabler-icon-star")).toHaveCount(1);
     await expect(page.locator("#watchlist-stock-list")).not.toContainText("中大力德");
     await result.click();
@@ -1285,7 +1270,7 @@ test("categorized watchlists persist locally and preserve members when a categor
     expect(pageErrors).toEqual([]);
 });
 
-test("watchlist rows show one-line names and codes with borderless icon stars", async ({ page }, testInfo) => {
+test("watchlist rows reserve the right side for backtest results", async ({ page }, testInfo) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -1298,7 +1283,8 @@ test("watchlist rows show one-line names and codes with borderless icon stars", 
     const row = page.locator("#watchlist-stock-list .watchlist-stock-row");
     await expect(row).toHaveCount(1);
     await expect(row).not.toContainText("点击查看");
-    await expect(row.locator(".watchlist-stock-remove svg")).toHaveCount(1);
+    await expect(row.locator(".watchlist-stock-remove")).toHaveCount(0);
+    await expect(row.locator(".watchlist-backtest-result")).toBeHidden();
     await expect(chartStar.locator("svg")).toHaveCount(1);
     await page.locator("#watchlist-rail").screenshot({ path: testInfo.outputPath("watchlist-rail.png") });
 
@@ -1307,17 +1293,15 @@ test("watchlist rows show one-line names and codes with borderless icon stars", 
         const layout = await row.evaluate((element) => {
             const name = element.querySelector("strong")!.getBoundingClientRect();
             const code = element.querySelector("small")!.getBoundingClientRect();
-            const star = element.querySelector(".watchlist-stock-remove")!;
             return {
                 sameLine: Math.abs(name.y + name.height / 2 - (code.y + code.height / 2)) < 6,
                 rowBorder: getComputedStyle(element).borderTopWidth,
-                starBorder: getComputedStyle(star).borderTopWidth,
             };
         });
-        expect(layout).toEqual({ sameLine: true, rowBorder: "0px", starBorder: "0px" });
+        expect(layout).toEqual({ sameLine: true, rowBorder: "0px" });
     }
 
-    await row.locator(".watchlist-stock-remove").click();
+    await chartStar.click();
     await expect(row).toHaveCount(0);
     await expect(chartStar).toHaveAttribute("aria-pressed", "false");
     expect(pageErrors).toEqual([]);

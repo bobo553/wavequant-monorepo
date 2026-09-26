@@ -185,13 +185,15 @@ def observe_attack(bars: Sequence[Bar], attack_index: int, level: KeyLevel,
         raise ValueError('a KeyLevel with matching timeframe is required')
     if level.confirmed_index >= attack_index:
         raise ValueError('key level must be confirmed before the attack bar')
-    # Validate only the consumed prefix: future input must not alter this evidence.
-    for i in range(attack_index+1):
-        _validate_bar(bars[i])
-        if bars[i].symbol != level.symbol:
-            raise ValueError('key level symbol mismatch')
-        if i:
-            _ordered_pair(bars[i-1], bars[i])
+    # ValidatedBars certifies its immutable prefix once. Ordinary sequences
+    # still receive the full consumed-prefix check on every standalone call.
+    from ..market_state.wave_strength import validate_prefix
+    try:
+        validate_prefix(bars, symbol=level.symbol, end=attack_index)
+    except ValueError as exc:
+        if str(exc) == 'symbol mismatch':
+            raise ValueError('key level symbol mismatch') from exc
+        raise
     prev, current = bars[attack_index-1], bars[attack_index]
     up = level.kind == LevelKind.RESISTANCE
     sign = 1 if up else -1

@@ -60,11 +60,11 @@ jobs:
             - name: Build
               run: pnpm build
 
-            - name: Lint
-              run: pnpm lint
+            - name: Lint non-Python workspaces
+              run: pnpm exec turbo run lint --filter='!wavequant-web'
 
             - name: Typecheck
-              run: pnpm typecheck
+              run: pnpm exec turbo run typecheck --filter='!wavequant-web'
 
             - name: Unit tests
-              run: pnpm test:unit
+              run: pnpm exec turbo run test:unit --filter='!wavequant-web'

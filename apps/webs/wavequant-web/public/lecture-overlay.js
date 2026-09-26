@@ -486,7 +486,13 @@ export class LectureOverlay {
                 description: `正式${name}${start.kind === "L" ? "低点" : "高点"} ${start.label}（${start.time}，${start.value}）确认后，Python 继续串联 ${nestedCount} 个已确认${sourceName}内部转折，并保留 ${pendingCount} 个待决尾部${sourceName}点，直到当前 ${endpoint.label}（${endpoint.time}，${endpoint.value}）。所有点均按各自确认日期可见；它们是${name}发展检查路径，不是正式${name}反转点，不参与后续级别、策略或回测。`,
                 sourceLabel: `${name}趋势线 · Python 完整发展路径（仅显示）`,
                 levels: [],
-                raw: { stroke, trend_level: level, source_level: sourceLevel, scope: "display_only_developing_path" },
+                raw: {
+                    point: p,
+                    stroke,
+                    trend_level: level,
+                    source_level: sourceLevel,
+                    scope: "display_only_developing_path",
+                },
             };
         }
         if (stroke.kind === "secondary" || stroke.kind === "tertiary") {
@@ -516,7 +522,12 @@ export class LectureOverlay {
                 description,
                 sourceLabel: `${name}趋势线 · 在${source}结构突破确认日可知`,
                 levels: p.levels,
-                raw: { point: p, trend_level: level, scope: `lecture_level${level}_not_strategy_confirmation` },
+                raw: {
+                    point: p,
+                    stroke_id: stroke.id,
+                    trend_level: level,
+                    scope: `lecture_level${level}_not_strategy_confirmation`,
+                },
             };
         }
         if (stroke.kind === "reversal") {

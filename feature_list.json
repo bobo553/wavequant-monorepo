@@ -1,10 +1,10 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-176",
+    "activeFeature": "MONOREPO-183",
     "features": [
         {
-            "id": "MONOREPO-177",
+            "id": "MONOREPO-189",
             "name": "wave-c-add-on-entry",
             "title": "强 A 浪后续缺口确认与已有持仓加仓",
             "description": "V3 强 A 浪的实体突破与随后严格更高的跳空突破分阶段确认；已有该股持仓时允许后续合格买点按剩余仓位、风险、流动性和现金加仓，合并交易成本并保留 T+1。",
@@ -36,20 +36,417 @@
             ]
         },
         {
-            "id": "MONOREPO-176",
-            "name": "recover-long-current-stock-backtests",
-            "title": "长时间当前股票回测持续等待并恢复结果",
-            "description": "消除同步回测超过浏览器时限后重复计算和隐藏页面的失败路径，并修复回测重试交互。",
-            "scope": "wavequant-api 回测任务状态与幂等恢复、wavequant-web 轮询和重试、必要的性能修复及回归验证",
-            "dependencies": ["MONOREPO-120"],
+            "id": "MONOREPO-188",
+            "name": "selected-buy-a-wave-origin",
+            "title": "点击转浪买点补齐 A 浪起点标注",
+            "description": "转浪买入证据携带原正 N 的起点日期；选中买入成交时在 K 线上标出 A 起点、A 高、B 低和 C 确认。",
+            "scope": "wavequant-core 转浪证据与 wavequant-web K 线叠加标注",
+            "dependencies": ["MONOREPO-173"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "乐心股份 2025-02-10 买点的 A 起点取 2024-09-18、约 10.5900 元，不误用 2024-09-25 正 N 日期",
+                "选中转浪买入成交时显示 A 起点、A 高、B 低、C 确认四点，并覆盖四点所在的 K 线视窗",
+                "旧回测证据缺少起点日期时保留原有三点显示，非买入成交不显示波段标注"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest -q tests/test_wave_continuation.py tests/test_completed_wave_recovery.py；node --test tests/wave-endpoint-overlay.test.mjs；pnpm --filter wavequant-web typecheck；git diff --check",
+                    "status": "passed",
+                    "summary": "Core 转浪用例及 Web 四点绘制单测通过；真实乐心日线夹具确认 2024-09-18 起点，Web 类型检查与差异检查通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-187",
+            "name": "last-fall-high-shadow-staged-exit",
+            "title": "二三级末跌高突破后长上影减仓与收低清仓",
+            "description": "持仓突破已确认二级或三级末跌高后，长上影不利 K 线按累计 80% 目标减仓；其后首次收盘低于前一交易日时清掉余仓。",
+            "scope": "wavequant-core 趋势退出与回测成交",
+            "dependencies": ["MONOREPO-142", "MONOREPO-185"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "仅使用前一交易日已知的二级或三级末跌高，收盘严格突破后才启用",
+                "乐心股份 2026-07-02 减仓、07-03 已成交不重复卖或首日失败则重试、07-06 首次收低清仓",
+                "累计整手减仓与持仓归属正确，历史截断结果一致",
+                "原有三级转势退出和二级压力入场规则保持有效"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest -q tests/test_trend_last_fall_high_exit.py tests/test_trend_flip_exit.py tests/test_secondary_wave_exit.py tests/test_wave_target_upper_shadow_exit.py",
+                    "status": "passed",
+                    "summary": "23 项通过，覆盖乐心真实日线、次日失败重试与已成交去重、二三级边界、历史截断及相邻退出。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-186",
+            "name": "restore-light-theme-before-first-paint",
+            "title": "进入页面时避免深色主题闪烁",
+            "description": "在文档头部同步恢复已保存的明暗与配色偏好，使浏览器首次绘制即使用当前主题。",
+            "scope": "wavequant-web 根布局、主题初始化与首帧浏览器回归",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "保存亮色主题后刷新或重新进入页面，首帧即为亮色且没有深色闪烁",
+                "深色或无有效偏好时保持默认深色",
+                "静态生产构建、类型检查、定向 Lint 和真实 Chromium 验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm exec playwright test tests/e2e/theme-first-paint.spec.mjs --workers=1",
+                    "status": "passed",
+                    "summary": "Chromium 首帧、亮色背景、已保存配色及无需外部主题脚本均通过；DevTools 首帧采样与首次绘制时间一致，Console 无错误。"
+                },
+                {
+                    "command": "pnpm exec eslint src/app/layout.tsx tests/e2e/theme-first-paint.spec.mjs; pnpm --filter wavequant-web typecheck; build; git diff --check",
+                    "status": "passed",
+                    "summary": "改动文件 Lint、类型检查、生产构建和差异检查通过；静态 HTML 的主题脚本位于 body 之前。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-185",
+            "name": "target-stage-long-upper-shadow-exit",
+            "title": "二饱以上长上影减仓与首次收低清仓",
+            "description": "持仓本笔 N 已到二饱、五顶或十满阶段后，长上影占当日振幅至少一半即按累计 80% 目标减仓；之后首次收盘低于前一交易日时，当日清掉余仓。",
+            "scope": "wavequant-core 目标阶段退出与回测成交",
+            "dependencies": ["MONOREPO-108", "MONOREPO-156"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "二饱、五顶、十满阶段均识别长上影，且不依赖收阴或放量",
+                "新华文轩 2026-01-14 减仓、2026-01-15 收高不清、2026-01-16 首次收低清余仓",
+                "即使部分减仓未成交也可在首次收低时清仓，并保持持仓归属及前缀一致",
+                "相邻退出规则及独立加仓账本用例通过"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest tests/test_wave_target_upper_shadow_exit.py tests/test_wave_exhaustion_exit.py tests/test_wave_upper_rejection.py tests/test_wave_gap_reversal.py tests/test_wave_resistance_failure.py tests/test_ordinary_wave_exit.py -q",
+                    "status": "passed",
+                    "summary": "61 项通过，覆盖三阶段、新华文轩真实 K 线、当日减仓、隔日收高、后续首次收低清仓、未成交减仓及前缀一致。"
+                },
+                {
+                    "command": "python -m pytest tests/test_add_on_entry.py::test_huaci_body_buy_partial_sale_and_gap_add_on_share_one_open_cycle -q; python -m mypy --follow-imports=skip src/wavequant/domain/strategies/wave_exhaustion_exit.py tests/test_wave_target_upper_shadow_exit.py",
+                    "status": "passed",
+                    "summary": "华瓷独立加仓账本用例通过；定向类型检查无问题。完整测试套件在约 13% 时停止、未计为通过；常规 mypy 受环境中 numpy stub 使用 Python 3.12 type 语法而项目配置 Python 3.11 阻断。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-184",
+            "name": "reorder-watchlist-stocks-by-dragging",
+            "title": "自选股列表拖拽调整顺序",
+            "description": "自选股侧栏支持上下拖动和方向键调整股票顺序，保存到 IndexedDB；刷新及自动回测队列沿用该顺序。",
+            "scope": "wavequant-web 自选股排序、侧栏交互与浏览器回归",
+            "dependencies": ["MONOREPO-176"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "当前分类的股票可通过手柄上下拖动，并可用方向键调整顺序",
+                "顺序写入 IndexedDB，刷新后保留；其他分类不受影响",
+                "自动回测按当前显示顺序读取股票，旧数据正常迁移",
+                "自选股单测、类型检查、构建及真实 Chromium 交互通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/*.test.mjs; pnpm --filter wavequant-web typecheck; build",
+                    "status": "passed",
+                    "summary": "188 项 Node 单测、类型检查和生产构建通过。"
+                },
+                {
+                    "command": "pnpm exec playwright test tests/e2e/watchlist-reorder.spec.mjs --workers=1; changed-file eslint; git diff --check",
+                    "status": "passed",
+                    "summary": "Chromium 验证拖拽、方向键与刷新后持久化；改动文件 ESLint 和差异检查通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-183",
+            "name": "clear-backtest-cache-on-quant-code-change",
+            "title": "量化代码变更后自动清理旧回测缓存",
+            "description": "量化 Core 的 Python 源码指纹变化且开发服务重启时，自动清理各作用域的回测结果、信号和筛选缓存以及 API 历史完成摘要；网页自动队列在引擎版本变化时暂停，手动回测接口保持可用。",
+            "scope": "wavequant-core ArtifactCache 和 ChartRepository；wavequant-api 回测任务历史与服务启动；wavequant-web 自动队列",
+            "dependencies": ["MONOREPO-181", "MONOREPO-182"],
             "status": "in-progress",
             "acceptanceCriteria": [
-                "TDX 与 AkShare 回测计算超过页面单次请求时限后，页面能等待同一任务并展示最终结果或真实失败原因，不盲目再算一次",
-                "切换股票或回测参数会停止等待旧任务，修改起始日期可重新运行；AkShare 失败后仍可重试",
-                "短回测及既有同步 API 保持兼容，任务状态与重复请求、断连、失败和服务重启路径有确定性回归测试",
-                "相关 Web/API/Core 门禁及真实浏览器回测验证通过"
+                "量化代码版本变化后自动清理所有现有作用域的回测派生缓存，同版本重启不重复清理",
+                "API 不再展示旧引擎的历史完成摘要，行情与分钟缓存保留",
+                "代码变更后自选股自动回测队列暂停，网页手动 AkShare/TDX 回测入口保持可用",
+                "人工核对缓存和运行状态；用户允许后再执行相关自动化门禁"
             ],
-            "verification": []
+            "verification": [
+                {
+                    "command": "人工只读检查 11 个 SQLite 缓存、GET /api/backtest-jobs、backtest-version 与两个回测入口的缺参响应；git diff --check",
+                    "status": "passed",
+                    "summary": "11 个缓存库的回测派生命名空间记录数均为 0，行情和分钟缓存保留；API 活跃任务 0、历史摘要 0，版本接口返回引擎指纹，两个回测入口缺参均返回 400，未启动计算；diff 无空白错误。"
+                },
+                {
+                    "command": "Core/API/Web 单测、E2E、Playwright、Lint、类型检查、构建及真实回测",
+                    "status": "not-run",
+                    "summary": "用户要求当前采用人工测试，修改代码后不运行 E2E、Playwright、Lint、构建或自动回测。"
+                },
+                {
+                    "command": "node --test tests/completed-backtest-result.test.mjs tests/watchlist-backtest-queue.test.mjs tests/stock-backtest-tasks.test.mjs; node --check public/app.js; git diff --check",
+                    "status": "passed",
+                    "summary": "修复已完成股票切换时再次提交回测：从只读任务接口取结果，过期状态标记待更新且须手动重跑。20 项定向测试与语法、差异检查通过；按用户当前要求未运行 Playwright 或完整 Web 单测，浏览器交互待人工复核。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-182",
+            "name": "sync-manual-watchlist-backtest-completion",
+            "title": "自选股完成状态与服务器同步",
+            "description": "服务端持久化有界完成记录；自选股刷新页面后按策略版本、股票、数据源、截止日和参数恢复已完成状态，旧条件的记录明确标为待更新。",
+            "scope": "wavequant-api 任务状态快照；wavequant-web 自选股回测状态、任务复用与浏览器回归",
+            "dependencies": ["MONOREPO-180"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "手动回测完成后自选股显示已完成及真实成交笔数，总进度同步更新",
+                "服务器状态接口返回有界完成记录，刷新页面或服务重启后能恢复匹配的完成状态",
+                "服务器只有旧条件的完成记录时显示已回测但本轮待更新，不误称当前参数已完成",
+                "同一请求不被自动队列重复计算，参数或策略版本不一致时不误标完成",
+                "自动队列暂停或页面尚未空闲时仍可核对策略版本并同步状态",
+                "API/Web 定向单测、真实 Chromium、Lint、类型及生产构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/*.test.mjs; pnpm --filter wavequant-web lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "Web Node 单测、完整 Lint、类型检查及生产构建通过。全量 Vitest 的策略拓扑源码摘要断言因并行 Core 修改仍失败（13 通过、1 失败），与本次状态变更无关。"
+                },
+                {
+                    "command": "Playwright Chromium watchlist-manual-completion.spec.mjs",
+                    "status": "passed",
+                    "summary": "自动队列暂停时手动完成瑞凌股份回测，刷新页面后由服务器完成记录恢复进度 1/1，且只提交一次请求；服务器记录版本不同时显示已回测 · 待更新，进度 0/1。旧 watchlist-auto-backtest 用例仍在首只股票顺序断言失败。"
+                },
+                {
+                    "command": "wavequant-api pytest -q; Ruff check/format --check; build",
+                    "status": "passed",
+                    "summary": "任务状态接口返回有界完成摘要、真实成交笔数和结果可恢复标记；结果根目录 SQLite 在服务重启后恢复摘要，过期后不假称结果仍可读取。95 项 Python 测试、18 子测试通过，1 项外部环境项跳过；Ruff 与构建通过，目标文件 mypy 仍有 8 项既有错误。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-181",
+            "name": "resolve-long-running-lexin-backtest",
+            "title": "乐心股份长回测热点与运行状态修复",
+            "description": "定位 300562 长时间回测的真实计算热点，消除重复历史重算，并公开运行耗时及可靠状态。",
+            "scope": "wavequant-core 分钟确认性能，wavequant-api 回测任务耗时，wavequant-web 状态与失联处理",
+            "dependencies": ["MONOREPO-180"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "现场确认当前运行任务数量、乐心任务状态及主要耗时位置，并说明其与并行上限的关系",
+                "减少长历史分钟复核的重复计算，保持前缀信号和成交结果一致，实际乐心回测可完成",
+                "运行快照显示耗时；失联后的旧运行徽标有界失效而真实任务继续轮询",
+                "Core/API/Web 定向回归、真实任务与浏览器验证、构建及 Harness 检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "300562 live AkShare API backtest; backtest-jobs; py-spy; 2117-bar same/cross-day cache benchmark",
+                    "status": "passed",
+                    "summary": "服务器并发槽位上限4，现场任务数1至3；CPU热点为分钟候选重复计算多年历史。真实300562任务已完成，84笔订单、60笔成交、286个信号；运行中曾与两只股票并发。缓存与完整SystemResult严格一致，跨日1.021秒、同日后续1.415秒。"
+                },
+                {
+                    "command": "Core 36 targeted pytest; Ruff; Core build",
+                    "status": "passed",
+                    "summary": "跨日检查点、历史候选、转浪及退出筛选缓存与分钟入场回归通过；Ruff和构建通过。"
+                },
+                {
+                    "command": "API pytest test_backtest_jobs.py test_server.py; Ruff check/format; API build",
+                    "status": "passed",
+                    "summary": "41项测试及10个子测试通过；单调时钟运行时长出现在任务快照和轮询响应；格式、检查和构建通过。"
+                },
+                {
+                    "command": "Web test:unit; lint; typecheck; build; Chromium backtest-capacity-status; harness:check",
+                    "status": "passed",
+                    "summary": "Vitest 14项、Node 186项、真实Chromium运行时长徽标/容量提示、Web全部门禁与Harness通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-180",
+            "name": "synchronize-and-bound-stock-backtests",
+            "title": "回测并行状态同步与同股互斥",
+            "description": "服务端统一登记单股回测，公开运行快照；达到并行上限或同股已有任务时直接拒绝，并同步前端自选股状态及提示。",
+            "scope": "wavequant-api 回测任务和状态接口；wavequant-web 自选股状态、容量提示与自动派发",
+            "dependencies": ["MONOREPO-176"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "AkShare 和 TDX 对同一股票最多一个运行任务，无 ID 请求也遵守并行上限",
+                "状态接口及拒绝响应返回运行任务快照；容量满时不启动任务且返回稳定错误码",
+                "自选股显示服务端回测中状态，容量或同股拒绝弹 toast 且自动回测不误记失败",
+                "API 集成测试、Web 单测、真实浏览器及项目门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "wavequant-api pytest -q; Ruff check/format --check; build",
+                    "status": "passed",
+                    "summary": "92 项通过、1 项外部环境跳过、18 个子测试通过；HTTP 集成验证同股 409、容量 503、无 ID 请求受限、运行快照与拒绝不启动任务；sdist/wheel 构建通过。"
+                },
+                {
+                    "command": "wavequant-web test:unit; lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "14 项 Vitest、179 项 Node 单测及 Web lint、类型检查、生产构建通过。"
+                },
+                {
+                    "command": "Playwright Chromium backtest-capacity-status.spec.mjs; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "真实 Chromium 验证服务端运行状态覆盖自选股徽标、容量 503 toast；Harness 检查通过。旧 watchlist-auto-backtest 用例仍在首只顺序断言失败，详见 Web progress。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-179",
+            "name": "wave-add-on-and-selected-source-isolation",
+            "title": "华瓷强势 C 浪持仓加仓及所选数据源隔离",
+            "description": "全局 V3 对同一强势 A/B 的更高跳空确认允许持仓内再买入，合并整笔成本并遵守仓位、风险与 T+1；行情、回测与自动队列只使用当前显式选择的数据源。",
+            "scope": "wavequant-core 波段和执行账本、行情源选择，wavequant-web 源切换与成交展示、真实 AkShare 回测",
+            "dependencies": ["MONOREPO-157", "MONOREPO-176"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "华瓷 2026-09-15 在原 08-26 持仓上形成同一交易编号的实际加仓，展示强 A、B 低和 C 浪目标证据",
+                "全局加仓按累计仓位、风险预算、整手与 T+1 执行；卖出和整笔盈亏包括全部买入",
+                "选择 AkShare 只请求和读取 AkShare，选择 TDX 只请求和读取 TDX；缺源报错，切源后旧队列不再派发请求",
+                "Core、Web 与 API 定向测试、真实 Chromium 双源交互、生产构建及 Harness 检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core 定向 pytest；Ruff；目标文件 mypy；python -m build",
+                    "status": "passed",
+                    "summary": "加仓相关 44 项、行情源隔离相关 63 项测试通过，Core 构建成功。"
+                },
+                {
+                    "command": "API 定向 pytest；python -m build；8765 实际接口",
+                    "status": "passed",
+                    "summary": "40 项 API 测试与 10 个子测试通过；双源目录/日线各仅返回自身 provider；华瓷 09-15 模拟加仓同属 08-26 trade-3。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web test:unit；lint；typecheck；build",
+                    "status": "passed",
+                    "summary": "14 项 Vitest、177 项 Node 单测及 Web Lint、类型、生产构建通过。"
+                },
+                {
+                    "command": "Playwright Chromium 源切换、华瓷加仓与瑞凌整笔盈亏定向用例",
+                    "status": "passed",
+                    "summary": "源切换 3 项、华瓷与瑞凌 2 项、AkShare 专测通过；旧 TDX 重试用例因服务容量受限未完成最终成交节点断言。"
+                },
+                {
+                    "command": "pnpm harness:check；git diff --check；codegraph sync",
+                    "status": "passed",
+                    "summary": "Harness、差异检查和索引同步通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-178",
+            "name": "show-completed-watchlist-backtests-on-chart",
+            "title": "自选股自动回测完成后展示成交标记",
+            "description": "自动队列完成的真实回测结果要能进入当前股票图表，切换到已完成股票时复用对应任务；零成交需明确显示，不把短时跨标签提示伪装成结果。",
+            "scope": "wavequant-web 自动回测任务复用、股票切换、状态文案及浏览器回归",
+            "dependencies": ["MONOREPO-176"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "当前股票自动回测完成后，图表展示该股票实际回测结果和买卖成交标记",
+                "点击已完成的自选股复用对应任务；任务已过期时重新计算，且切股不打断正在进行的回测",
+                "无实际成交时显示零成交，跨标签只在可取得真实结果时标记完成",
+                "Web 单测、类型、Lint、构建、真实 Chromium 交互及 Harness 验证"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint；typecheck；test:unit；build",
+                    "status": "passed",
+                    "summary": "完整 Lint、类型和生产构建通过；14 项 Vitest 与 176 项 Node 单测通过。"
+                },
+                {
+                    "command": "pnpm exec playwright test tests/e2e/watchlist-auto-backtest.spec.mjs tests/e2e/backtest-job-recovery.spec.mjs tests/e2e/tdx-backtest-switch.spec.mjs --workers=1",
+                    "status": "passed",
+                    "summary": "3 条 Chromium 回归通过：自动完成后当前图表显示成交标记、零成交提示明确、点击已完成股票复用任务、跨标签读取真实结果及切股不中断。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-177",
+            "name": "selected-tertiary-wave-thirds",
+            "title": "点击三级波段端点显示三分位虚线",
+            "description": "点击三级正式端点或发展路径端点时，按该端点所属结构向前寻找来源级别的已确认波段端点，计算前一段的 1/3 和 2/3 价格参考线，并让各线止于此后首次严格跌破或突破的 K 线。",
+            "scope": "wavequant-web 三级趋势端点点击、三分位参考线及交互回归",
+            "dependencies": ["MONOREPO-107"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "点击三级趋势线高点或低点后，图上显示截至该点的前一波段 1/3、2/3 水平虚线和价格；发展路径取其二级来源波段",
+                "上涨波段的每条三分位线止于端点后最低价首次严格跌破处，下跌波段止于最高价首次严格突破处；触线不算突破，尚未突破则延伸到当前数据末端",
+                "参考线只使用已确认端点；切股、切换选择或关闭三级趋势及回撤图层时同步恢复或清除",
+                "Web 定向单测、完整门禁、构建及真实 Chromium 点击回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web test:unit；typecheck；lint；build",
+                    "status": "passed",
+                    "summary": "14 项 Vitest、172 项 Node 单测及 Web 类型、Lint、生产构建通过。"
+                },
+                {
+                    "command": "pnpm exec playwright test tests/e2e/tertiary-selected-thirds.spec.mjs --workers=1",
+                    "status": "passed",
+                    "summary": "真实 Chromium 点击三级高点及低点分别显示对应波段的两条虚线，关闭三级图层后清除。"
+                },
+                {
+                    "command": "国芳集团 sh.601086 真实 market-timeframe 数据；node --test tests/*.test.mjs；Web lint/typecheck/build；tertiary-selected-thirds Chromium",
+                    "status": "passed",
+                    "summary": "2025-05-29 三级发展高点从二级来源路径回看 2025-01-13 低点，而非后续波段；182 项 Node 测试、Web Lint/类型/构建和 2 条 Chromium 点击回归通过。"
+                },
+                {
+                    "command": "node --test tests/retracement-guides.test.mjs；node --test tests/*.test.mjs；Web lint/typecheck/build；tertiary-selected-thirds Chromium",
+                    "status": "passed",
+                    "summary": "所选上涨波段两条线分别止于首次最低价严格跌破，所选下跌波段止于首次最高价严格突破；国芳集团真实 Chromium 端点为 2025-06-19 与 2026-04-24。9 项定向、184 项 Node、Web Lint/类型/构建及 2 条 Chromium 回归通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-176",
+            "name": "recover-and-schedule-stock-backtests",
+            "title": "长回测任务恢复与空闲自选股顺序回测",
+            "description": "长时间回测断连后保持任务结果可查，单股回测期间保持股票操作可用；空闲时按自选股列表顺序回测，并在策略版本变化后重新运行。",
+            "scope": "wavequant-api 回测任务与策略版本接口、wavequant-core 指纹守卫、wavequant-web 手动状态及自选股空闲队列",
+            "dependencies": ["MONOREPO-120"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "TDX 与 AkShare 回测超过页面请求时限后继续查询同一任务，展示结果或真实错误，不重复计算",
+                "手动回测显示运行及完成状态且不阻挡股票操作；切股后前一股票回测继续，返回时复用同一任务，参数变化可重跑",
+                "默认首屏仅请求 AkShare 股票目录，不因未选择的通达信目录阻塞；切换通达信时按需加载并复用目录缓存，目录请求有界失败",
+                "页面空闲时按当前自选股分类的可用股票显示顺序逐只自动回测，UI 同步展示当前股票、进度、完成及失败状态",
+                "策略源码或配置版本变化后使自动完成状态失效并重新回测，运行中源码变化不能写入旧版本缓存",
+                "Web/API/Core 定向回归、真实 Chromium 操作、构建和项目门禁验证"
+            ],
+            "verification": [
+                {
+                    "command": "API pytest；Ruff check/format；wheel/sdist build；真实 backtest-version 请求",
+                    "status": "passed",
+                    "summary": "API 89 通过、1 环境项跳过及 18 子测试通过；任务注册、断连恢复、冲突和安全错误均覆盖。真实本地服务对有效 run/variant 返回 64 位版本指纹；Ruff 与构建通过。"
+                },
+                {
+                    "command": "Core backtest-version/AkShare 缓存专项 pytest；Ruff",
+                    "status": "passed",
+                    "summary": "29 项定向测试及 Ruff 通过；版本/配置变化和信号计算中源码变化会失效。"
+                },
+                {
+                    "command": "Web lint/typecheck/test:unit/build；两条 Chromium 回测交互回归",
+                    "status": "passed",
+                    "summary": "14 项 Vitest、169 项 Node 测试、lint/类型/生产构建通过；Chromium 验证长任务恢复、起点修改与失败重试、回测中切股、自选股顺序执行、同参手动任务复用 ID 及第二标签沿用短时完成状态。"
+                },
+                {
+                    "command": "pnpm harness:check；codegraph sync；git diff --check",
+                    "status": "passed",
+                    "summary": "Harness 检查通过；索引已同步，差异无空白错误。"
+                },
+                {
+                    "command": "Web 交互复核：lint/typecheck/test:unit/build；Chromium 回测任务恢复、自选股队列、资金仓位参数；harness:check",
+                    "status": "passed",
+                    "summary": "14 项 Vitest、171 项 Node 单测、本次改动文件 Lint、类型和生产构建通过。4 条 Chromium 回归验证按钮回测时图表无遮挡、AkShare 与通达信切股后旧任务继续且返回复用 ID、失败保留行情、自选股顺序执行及参数传递；Harness 检查通过。全仓 Lint 曾通过，之后同时新增的无关 tertiary-selected-thirds.spec.mjs 存在 20 项检查错误。"
+                },
+                {
+                    "command": "Web lint/typecheck/test:unit/build；4 条 Chromium 数据源及回测交互回归",
+                    "status": "passed",
+                    "summary": "默认首屏仅请求 AkShare 目录，切换通达信按需请求并复用；30 秒目录超时与缓存回退覆盖。14 项 Vitest、173 项 Node 单测、完整 Lint、类型和构建通过；4 条 Chromium 回归通过。"
+                }
+            ]
         },
         {
             "id": "MONOREPO-175",
@@ -121,13 +518,13 @@
         {
             "id": "MONOREPO-173",
             "name": "selected-buy-wave-endpoints",
-            "title": "点击买入成交标注 A 浪起点及 A/B/C 关键点",
-            "description": "在选中转浪买入成交时，按决策时已知证据将 A 起点、A 高、B 低和 C 确认价标在对应 K 线上。",
+            "title": "点击买入成交标注 A/B/C 浪关键点",
+            "description": "在选中转浪买入成交时，按决策时已知证据将 A 高、B 低和 C 确认价标在对应 K 线上。",
             "scope": "wavequant-web 成交点击、K 线叠加标注与回归",
             "dependencies": ["MONOREPO-162"],
             "status": "done",
             "acceptanceCriteria": [
-                "点击转浪买入成交后，在图上对应日期和价位显示 A 起点、A 高、B 低、C 确认标注，并将四点纳入可视范围",
+                "点击转浪买入成交后，在图上对应日期和价位显示 A、B、C 确认标注，并将三点纳入可视范围",
                 "其他成交或信号不显示该组标注，切换选择或股票时清除，不借未来行情补点",
                 "单测、Web 门禁与真实浏览器点击回归通过"
             ],
@@ -141,11 +538,6 @@
                     "command": "pnpm exec playwright test tests/e2e/shilian-body-entry.spec.mjs --workers=1；pnpm exec playwright test tests/e2e/guilin-wave-endpoints.spec.mjs --workers=1",
                     "status": "passed",
                     "summary": "两条真实 Chromium 测试分别通过；桂林旅游 2021-05-21 买入证据为 A 高 2021-04-20、B 低 2021-05-07、C 确认价 6.7021，点击成交后图表出现三处标注。"
-                },
-                {
-                    "command": "Core pytest test_one_p_rebound.py test_completed_wave_recovery.py；Web 定向 Node 单测、lint/typecheck/build；harness:check",
-                    "status": "passed",
-                    "summary": "A 起点日期取冻结的 N 起点索引；图表和等浪说明显示同一日期及价格。Core 26 项、Web 7 项定向 Node、静态检查、生产构建及 Harness 通过。完整 Web 单测曾在本轮通过（14 项 Vitest、158 项 Node），后续按用户的全局验证节奏改为空闲时运行；完整成交点击回归本轮未计为通过。"
                 }
             ]
         },

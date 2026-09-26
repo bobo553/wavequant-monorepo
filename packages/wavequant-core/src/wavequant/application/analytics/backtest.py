@@ -56,6 +56,7 @@ class _Position:
     signal_index: int | None = None
     pressure_warning: dict | None = None
     record_high_warning: dict | None = None
+    trend_last_fall_high_reduced: bool = False
 
 
 def transaction_fee(notional: float, when: datetime, sell: bool, config: StrategyConfig) -> float:
@@ -149,7 +150,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
     if config.trend_flip_adverse_exit:
         from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
         from wavequant.domain.strategies.trend_flip_exit import trend_flip_exit_history
-        trend_flip_risks = {symbol: trend_flip_exit_history(history, hierarchical_history(history)[0])
+        trend_flip_risks = {symbol: trend_flip_exit_history(
+            history, hierarchical_history(history)[0], reduction_fraction=config.wave_exhaustion_reduction)
                             for symbol, history in grouped.items()}
     wave_lookup = {symbol: {} for symbol in grouped}
     for symbol, history in grouped.items():
@@ -293,8 +295,11 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                     record_breakout_index=evidence['record_breakout_index'],
                 )
             if pending_exit[symbol] in ('wave_volume_shadows_reduce', 'wave_gap_reversal_reduce',
-                                        'wave_upper_rejection_reduce', 'wave_ordinary_equal_upper_shadow_reduce'):
+                                        'wave_upper_rejection_reduce', 'wave_target_upper_shadow_reduce',
+                                        'wave_ordinary_equal_upper_shadow_reduce'):
                 pos.wave_reduced = True
+            if pending_exit[symbol] == 'trend_last_fall_high_upper_shadow_reduce':
+                pos.trend_last_fall_high_reduced = True
             if pending_exit[symbol] == 'inverse_n_close_reduce_90':
                 pos.staged_exit.inverse_index = evidence['inverse_observed_index']
             pos.entry_fee -= allocated_entry_fee
@@ -578,6 +583,12 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                                 signal_index=pos.signal_index)
                          if config.wave_exhaustion_exit else None)
             pressure = trend_flip_risks[symbol].get(i) or pressure_risks[symbol].get(i) or record_high_risks[symbol].get(i)
+            if (pressure is not None and pressure['reason'].startswith('trend_last_fall_high_')
+                    and pos.entry_index > pressure['trend_warning_index']):
+                pressure = None
+            if (pressure is not None and pressure['reason'] == 'trend_last_fall_high_upper_shadow_reduce'
+                    and pos.trend_last_fall_high_reduced):
+                pressure = None
             if (pressure is not None and pressure['reason'] == 'pressure_breakout_adverse_clear'
                     and pos.entry_index > pressure['pressure_breakout_index']):
                 pressure = None

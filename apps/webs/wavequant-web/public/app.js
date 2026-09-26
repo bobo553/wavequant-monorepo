@@ -1,5 +1,11 @@
 import { reasonText } from "./annotations.js";
-import { retryBacktest } from "./backtest-retry.js";
+import {
+    expiredBacktestSnapshot,
+    formatBacktestElapsed,
+    historicalBacktestStatuses,
+    runningBacktestStatuses,
+} from "./backtest-job-status.js";
+import { retryBacktest, waitForBacktestJob } from "./backtest-retry.js";
 import { parseBacktestSizing } from "./backtest-sizing.js";
 import {
     blockedNodeMeta,
@@ -11,19 +17,53 @@ import { BuyPoints } from "./buy-points.js";
 import { candleCopyText, previousCandleClose } from "./candle-details.js";
 import { loadMarketTimeframeSnapshot, loadStockCatalog } from "./catalog-cache.js";
 import { PerformanceCharts, PriceChart } from "./charts.js";
+import { reuseCompletedBacktest } from "./completed-backtest-result.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
 import { parseResearchLink, resolveResearchLink } from "./research-link.js";
+import { StockBacktestTasks } from "./stock-backtest-tasks.js";
 import { StockList } from "./stock-list.js";
 import { StructureSignals } from "./structure-signals.js";
 import { closedPositionLabel, openPositionForMarker, openPositionProfit, positionProfit } from "./trade-position.js";
-import { appendTradeEvidence } from "./trade-review.js";
 import { numberedTradeReasons } from "./trade-reasons.js";
+import { appendTradeEvidence } from "./trade-review.js";
 import { TradingViewWidget } from "./tradingview-widget.js";
+import { IdleWatchlistBacktests, backtestArgumentsKey, watchlistBacktestRequest } from "./watchlist-backtest-queue.js";
 import { Watchlists } from "./watchlists.js";
 
 const $ = (id) => document.getElementById(id);
+let serverBacktestSnapshot = { active: 0, max_active: 4, jobs: [] };
+let serverBacktestSnapshotSeenAt = Date.now();
+let backtestToastTimer;
+function showBacktestToast(message) {
+    let toast = $("backtest-toast");
+    if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "backtest-toast";
+        toast.setAttribute("role", "alert");
+        document.body.append(toast);
+    }
+    toast.textContent = message;
+    toast.hidden = false;
+    clearTimeout(backtestToastTimer);
+    backtestToastTimer = setTimeout(() => {
+        toast.hidden = true;
+    }, 5_000);
+}
+function showBacktestRejection(error) {
+    if (Array.isArray(error.jobs)) {
+        serverBacktestSnapshot = { active: error.active, max_active: error.max_active, jobs: error.jobs };
+        serverBacktestSnapshotSeenAt = Date.now();
+        renderServerBacktestStatuses();
+        watchlistBacktests.emit();
+    }
+    if (error.code === "BACKTEST_CAPACITY")
+        showBacktestToast(
+            `并行回测已满（${error.active ?? "?"}/${error.max_active ?? "?"}），请等待已有回测完成后重试`,
+        );
+    else if (error.code === "BACKTEST_SYMBOL_RUNNING") showBacktestToast("该股票已有回测正在进行，请等待完成");
+}
 const currentBacktestSizing = () => parseBacktestSizing($("backtest-capital").value, $("backtest-buy-ratio").value);
 const chartPreferenceKey = "wavequant.research.chart.v1";
 const timeframes = {
@@ -164,6 +204,8 @@ document.addEventListener("scroll", () => chartPopoverControllers.forEach((contr
 
 const state = {
     catalog: null,
+    tdx: { available: false, stocks: [], with_daily: 0 },
+    akshare: { available: false, stocks: [], with_daily: 0 },
     view: null,
     theory: null,
     page: "workspace",
@@ -173,22 +215,168 @@ const state = {
     controller: null,
     pendingFocus: null,
     pendingStructureAnnotation: null,
+    activeBacktestTask: null,
+    symbolNavigation: 0,
     tradeNodeFilter: "all",
     tradeNodeView: "filled",
 };
 state.tdxSessions = {};
 state.akshareSessions = {};
+const catalogRequests = new Map();
+const loadedCatalogs = new Set();
+const sourceForScope = (scope) => (scope.startsWith("akshare") ? "akshare" : scope.startsWith("tdx") ? "tdx" : null);
+function catalogHasSymbol(catalog, symbol) {
+    return Boolean(
+        catalog?.with_daily && catalog.stocks.some((stock) => stock.symbol === symbol && stock.has_data !== false),
+    );
+}
+function syncSourceOptions() {
+    const sources = [
+        ["akshare", "AkShare · 在线 A 股行情", "AkShare · 同源股票回测"],
+        ["tdx", "通达信 · 全部 A 股行情", "通达信 · 当前股票回测"],
+    ];
+    for (const [source, browseLabel, backtestLabel] of sources) {
+        const suffix = loadedCatalogs.has(source) ? "" : "（选择后加载目录）";
+        $("result-scope").querySelector(`[value="${source}"]`).textContent = browseLabel + suffix;
+        $("result-scope").querySelector(`[value="${source}-backtest"]`).textContent = backtestLabel + suffix;
+    }
+}
+function ensureSourceCatalog(source) {
+    if (loadedCatalogs.has(source)) return Promise.resolve(state[source]);
+    if (catalogRequests.has(source)) return catalogRequests.get(source);
+    const request = loadStockCatalog(source, `/api/${source}-catalog`)
+        .then((catalog) => {
+            state[source] = catalog;
+            for (const stock of catalog.stocks || []) if (stock.name) names[stock.symbol] = stock.name;
+            if (catalog.with_daily) loadedCatalogs.add(source);
+            syncSourceOptions();
+            return catalog;
+        })
+        .finally(() => catalogRequests.delete(source));
+    catalogRequests.set(source, request);
+    return request;
+}
 const isTdx = () => $("result-scope").value === "tdx";
 const isAkShare = () => ["akshare", "akshare-backtest"].includes($("result-scope").value);
 const isTdxBacktest = () => ["tdx-backtest", "akshare-backtest"].includes($("result-scope").value);
 const isLocal = () => isTdx() || $("result-scope").value === "tdx-backtest";
 const isMarketBrowse = () => isTdx() || $("result-scope").value === "akshare";
+let lastStockBacktestStatuses = "";
+function renderRunStockBacktestButton() {
+    const button = $("run-stock-backtest");
+    const symbol = $("symbol-select").value;
+    const status =
+        watchlists.backtestStatuses[symbol] ||
+        (state.activeBacktestTask?.symbol === symbol ? state.activeBacktestTask.status : "pending");
+    const labels = {
+        pending: "待回测 · 运行当前股票回测",
+        running: "回测中",
+        unknown: "状态待确认",
+        completed: "已完成 · 重新回测",
+        historical: "已回测 · 待更新",
+        failed: "失败 · 重新回测",
+        unavailable: "无数据 · 暂不可回测",
+    };
+    button.dataset.status = status;
+    button.textContent = labels[status] || labels.pending;
+    button.disabled = state.loading || !canBacktestSymbol(symbol) || status === "running" || status === "unknown";
+    button.title = !canBacktestSymbol(symbol)
+        ? "当前股票缺少所选数据源的日线，暂不可回测"
+        : status === "running"
+          ? "该股票回测正在运行，完成后可重新回测"
+          : status === "unknown"
+            ? "服务器任务状态待确认，暂不重复提交"
+            : isAkShare()
+              ? "日线、分钟线和复权因子统一使用 AKShare / 新浪"
+              : "";
+}
+function renderStockBacktestStatus() {
+    const current =
+        state.activeBacktestTask?.symbol === $("symbol-select").value && isTdxBacktest()
+            ? state.activeBacktestTask
+            : null;
+    const others = [...stockBacktestTasks.tasks.values()].filter(
+        (task) => task.status === "running" && task !== current,
+    ).length;
+    const status = $("stock-backtest-status");
+    status.hidden = !current && !others;
+    status.dataset.status = current?.status || "background";
+    const name = current ? symbolName(current.symbol) : "";
+    const currentServerJob = serverBacktestSnapshot.jobs.find((job) => job.symbol === current?.symbol);
+    const elapsed = formatBacktestElapsed(currentServerJob?.elapsed_seconds);
+    const serverStatus = serverBacktestSnapshot.unavailable
+        ? "服务器任务状态暂不可确认。"
+        : elapsed
+          ? `${elapsed}。`
+          : "";
+    const priorResult =
+        current?.status === "running" && state.view?.symbol === current.symbol && state.view.result_scope === "stock"
+            ? "图中成交标记为上次结果，完成后更新。"
+            : "";
+    $("stock-backtest-status-text").textContent =
+        current?.status === "running"
+            ? `${name} · ${current.message} ${serverStatus}可继续查看或切换股票。${priorResult}`
+            : current?.status === "completed"
+              ? `${name} · 回测已完成，结果已显示在当前股票。`
+              : current?.status === "failed"
+                ? `${name} · 回测失败：${current.error?.message || "未知错误"}。可修改设置后重试。`
+                : "";
+    $("stock-backtest-other").textContent = others ? `另有 ${others} 只股票仍在后台回测。` : "";
+    const statuses = {};
+    for (const task of stockBacktestTasks.tasks.values()) statuses[task.symbol] = task.status;
+    const merged = runningBacktestStatuses(statuses, serverBacktestSnapshot.jobs, {
+        unavailable: serverBacktestSnapshot.unavailable,
+    });
+    const serialized = JSON.stringify([
+        merged,
+        serverBacktestSnapshot.jobs.map((job) => [job.symbol, job.elapsed_seconds]),
+    ]);
+    if (serialized !== lastStockBacktestStatuses) {
+        lastStockBacktestStatuses = serialized;
+        stockList.setBacktestStatuses(merged, serverBacktestSnapshot.jobs);
+    }
+    renderRunStockBacktestButton();
+}
+const stockBacktestTasks = new StockBacktestTasks({
+    run: (task, progress) => {
+        const request = () => api(task.path, task.params);
+        return retryBacktest(request, {
+            onTimeout: () =>
+                waitForBacktestJob(() => api("/api/backtest-job", { job: task.params.backtest_job }), request, {
+                    maxWaitMs: 24 * 60 * 60 * 1000,
+                    onPending: () => progress("服务器仍在计算，正在查询任务状态…"),
+                    onRestart: () => progress("服务恢复后正在继续查询回测…"),
+                    onRetry: (attempt, total) => progress(`状态查询暂不可用，重试中（${attempt}/${total}）…`),
+                }),
+            onRetry: (attempt, total) => progress(`回测服务暂不可用，重试中（${attempt}/${total}）…`),
+        }).catch((error) => {
+            if (error.code !== "BACKTEST_SYMBOL_RUNNING" || !error.same_request || !error.running_job) throw error;
+            task.params.backtest_job = error.running_job;
+            progress("相同参数的回测已在运行，正在同步任务状态…");
+            return waitForBacktestJob(() => api("/api/backtest-job", { job: error.running_job }), request, {
+                maxMissingResubmits: 0,
+                maxWaitMs: 24 * 60 * 60 * 1000,
+                onPending: () => progress("服务器仍在计算，正在查询任务状态…"),
+            });
+        });
+    },
+    onChange: (task) => {
+        if (task.status === "completed") syncCompletedStockBacktests();
+        renderServerBacktestStatuses();
+    },
+});
 const activeTimeframe = () => (isMarketBrowse() ? selectedTimeframe() : "1d");
 const sessionCacheKey = (symbol) => `${symbol}:${activeTimeframe()}`;
 function universe() {
     return isAkShare() ? state.akshare?.stocks || [] : isLocal() ? state.tdx?.stocks || [] : currentRun().symbols;
 }
-const titles = { workspace: "K 线复盘", performance: "策略绩效", topology: "策略拓扑", orders: "订单与信号", health: "系统状态" };
+const titles = {
+    workspace: "K 线复盘",
+    performance: "策略绩效",
+    topology: "策略拓扑",
+    orders: "订单与信号",
+    health: "系统状态",
+};
 const requestedPage = new URLSearchParams(window.location.search).get("page");
 function cell(text, cls = "") {
     const td = document.createElement("td");
@@ -268,16 +456,34 @@ async function api(path, params = {}, signal, method = "GET") {
                 throw new Error("服务返回格式异常，请稍后重试");
             }
         }
-        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+        if (!response.ok) {
+            const error = new Error(body.error || `HTTP ${response.status}`);
+            error.httpStatus = response.status;
+            error.code = body.code;
+            if (["BACKTEST_CAPACITY", "BACKTEST_SYMBOL_RUNNING"].includes(error.code)) {
+                Object.assign(error, {
+                    active: body.active,
+                    max_active: body.max_active,
+                    jobs: body.jobs,
+                    running_job: body.running_job,
+                    same_request: body.same_request,
+                });
+                showBacktestRejection(error);
+            }
+            throw error;
+        }
         return body;
     } catch (e) {
         if (e.name === "TimeoutError") {
             const error = new Error(
                 ["/api/tdx-backtest", "/api/akshare-backtest"].includes(path)
-                    ? "回测计算仍未完成，请缩短回测区间后重试"
-                    : "请求超时，请稍后刷新重试",
+                    ? "回测计算仍在后台进行"
+                    : path === "/api/backtest-job"
+                      ? "回测任务状态查询超时"
+                      : "请求超时，请稍后刷新重试",
             );
             if (["/api/tdx-backtest", "/api/akshare-backtest"].includes(path)) error.code = "BACKTEST_TIMEOUT";
+            if (path === "/api/backtest-job") error.code = "BACKTEST_POLL_TIMEOUT";
             throw error;
         }
         throw e;
@@ -710,20 +916,36 @@ function syncProfileScope() {
     $("backtest-shallow-base-breakout").disabled = !v3;
 }
 function canBacktestSymbol(symbol) {
-    return Boolean(
-        state.tdx?.with_daily && state.tdx.stocks.some((stock) => stock.symbol === symbol && stock.has_data !== false),
-    );
+    const source = sourceForScope($("result-scope").value);
+    return source ? catalogHasSymbol(state[source], symbol) : false;
 }
 function chooseSymbol(symbol, workspace = false, autoBacktest = true) {
     if (!universe().some((s) => s.symbol === symbol && s.has_data !== false)) return;
-    const cutoff = state.requestedAsOf || state.view?.asof || currentRun().end;
+    const navigation = ++state.symbolNavigation;
+    const previousScope = $("result-scope").value;
+    const source = sourceForScope(previousScope);
+    const completedMember =
+        source && watchlistBacktests.hasCompleted(symbol, source)
+            ? watchlistBacktests.members.find((member) => member.symbol === symbol)
+            : null;
+    const cutoff = completedMember?.asof || state.requestedAsOf || state.view?.asof || currentRun().end;
     $("symbol-select").value = symbol;
     state.pendingFocus = null;
     const canBacktest = canBacktestSymbol(symbol);
-    // AkShare 选股保持用户正在浏览的数据口径；回测由明确按钮切到通达信。
-    const runBacktest = autoBacktest && canBacktest && !isAkShare();
+    const historical = watchlistBacktests.statuses.get(symbol) === "historical";
+    const runBacktest = autoBacktest && canBacktest && !historical;
+    const resumeBacktest =
+        !historical &&
+        Boolean(source) &&
+        (Boolean(completedMember) ||
+            [...stockBacktestTasks.tasks.values()].some(
+                (task) => task.symbol === symbol && task.path === `/api/${source}-backtest`,
+            ));
     if (runBacktest) {
-        $("result-scope").value = "tdx-backtest";
+        $("result-scope").value = source;
+        fillSymbols();
+    } else if (previousScope.endsWith("-backtest") && source) {
+        $("result-scope").value = source;
         fillSymbols();
     } else {
         syncSymbolCopy();
@@ -731,10 +953,34 @@ function chooseSymbol(symbol, workspace = false, autoBacktest = true) {
     }
     preserveCutoff(cutoff);
     if (workspace) showPage("workspace");
-    $("stock-picker-feedback").hidden = !autoBacktest || Boolean(canBacktest);
+    watchlistBacktests.start();
+    $("stock-picker-feedback").hidden = !autoBacktest || (!historical && Boolean(canBacktest)) || !source;
     $("stock-picker-feedback").textContent =
-        !autoBacktest || canBacktest ? "" : `${symbolName(symbol)} 暂无通达信本地日线，保留当前行情查看，未运行回测。`;
-    loadView({ preferTrades: runBacktest });
+        !autoBacktest || !source
+            ? ""
+            : historical
+              ? `${symbolName(symbol)} 的旧回测结果已过期；需要时可点击“运行当前股票回测”重新计算。`
+              : canBacktest
+                ? ""
+                : `${symbolName(symbol)} 暂无${source === "akshare" ? "AkShare" : "通达信"}日线，保留当前行情查看，未运行回测。`;
+    if (!runBacktest && !resumeBacktest) {
+        loadView();
+        return;
+    }
+    // Show this stock's ordinary chart first; its strategy calculation then runs beside it.
+    void loadView().then(() => {
+        if (
+            navigation !== state.symbolNavigation ||
+            $("symbol-select").value !== symbol ||
+            state.error ||
+            $("result-scope").value !== source
+        )
+            return;
+        $("result-scope").value = `${source}-backtest`;
+        fillSymbols();
+        preserveCutoff(cutoff);
+        void loadView({ preferTrades: true });
+    });
 }
 function resetSlider() {
     state.noSessionBefore = null;
@@ -1494,7 +1740,11 @@ async function loadTheory(request, sequence, preloaded = null) {
         $("drawing-status").textContent =
             `讲义绘图：${data.lecture_drawing?.teaching_paths?.length || 0} 组子母三点、${data.lecture_drawing?.inside_connections?.length || 0} 处母子缩头／缩脚衔接；${data.lecture_drawing?.issues.length || 0} 处十字星／初始方向待确认。${data.strategy_pivot_mode === "lecture_causal" ? "新版从同一递推器提取收盘确认点；绘图连接不直接等于交易信号。" : "显示结构与所选旧策略／行情浏览独立。"}母子顺序是讲义约定，不代表已知真实日内路径。`;
         $("theory-status").textContent = data.interrupted ? "当前结构未解" : "已确认结构";
-        if (!state.pendingFocus && !state.selectedAnnotationId)
+        if (
+            !state.pendingFocus &&
+            !state.selectedAnnotationId &&
+            !(state.view?.backtest && !state.view.orders.some((order) => order.status === "filled"))
+        )
             detail(
                 data.interrupted ? "严格结构中断" : "点击标识查看规则",
                 data.interrupted
@@ -1508,10 +1758,12 @@ async function loadTheory(request, sequence, preloaded = null) {
         renderEvents();
     }
 }
-async function loadView({ focusLatestFill = false, preferTrades = focusLatestFill } = {}) {
+async function loadView({ focusLatestFill = false, preferTrades = focusLatestFill, forceBacktest = false } = {}) {
+    state.lastResolvedScope = $("result-scope").value;
     syncSymbolCopy();
     syncProfileScope();
-    const hasRenderedView = Boolean(state.view);
+    const backtestMode = isTdxBacktest();
+    const hasRenderedView = Boolean(state.view && state.view.symbol === $("symbol-select").value);
     const sequence = ++state.sequence;
     state.controller?.abort();
     state.controller = new AbortController();
@@ -1530,7 +1782,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
     $("download-backtest").disabled = true;
     $("run-stock-backtest").disabled = true;
     $("error").hidden = true;
-    $("loading").hidden = false;
+    $("loading").hidden = backtestMode;
     $("loading").textContent = isTdxBacktest()
         ? "正在校验除权数据、运行策略并生成成交账本…"
         : isAkShare()
@@ -1538,12 +1790,19 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
           : isTdx()
             ? `正在读取通达信${timeframes[activeTimeframe()].label}预计算快照…`
             : "读取已封存行情与交易记录…";
-    $("chart-loading-overlay").hidden = false;
-    $("price-chart").setAttribute("aria-busy", "true");
+    $("chart-loading-overlay").hidden = backtestMode;
+    $("price-chart").setAttribute("aria-busy", String(!backtestMode));
     if (!hasRenderedView) document.querySelector(".metric-grid").hidden = true;
     showPage(state.page);
     syncDate();
     const request = select();
+    const updateBacktestProgress = (message, running = true) => {
+        if (sequence !== state.sequence) return;
+        const summary = $("selected-stock-summary");
+        const description = `${symbolName(request.symbol)} · ${message}${running ? " 切换股票后仍会继续计算。" : ""}`;
+        summary.dataset.backtestStatus = running ? "running" : "loading";
+        if (summary.textContent !== description) summary.textContent = description;
+    };
     if (focusLatestFill) $("show-fills").checked = true;
     state.requestedAsOf = request.asof;
     buyPoints.contextChanged();
@@ -1551,8 +1810,20 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
     ratioComparison.contextChanged();
     stockList.setSelected(request.symbol);
     watchlists.setSelected(request.symbol);
-    $("selected-stock-summary").textContent = `${symbolName(request.symbol)} · 正在读取 ${request.asof} 截面…`;
+    if (backtestMode) {
+        const completed = watchlistBacktests.hasCompleted(request.symbol, sourceForScope($("result-scope").value));
+        updateBacktestProgress(
+            completed ? "正在读取已完成的回测结果…" : "当前股票回测运行中，正在生成成交账本…",
+            !completed,
+        );
+    } else {
+        state.activeBacktestTask = null;
+        renderStockBacktestStatus();
+        delete $("selected-stock-summary").dataset.backtestStatus;
+        $("selected-stock-summary").textContent = `${symbolName(request.symbol)} · 正在读取 ${request.asof} 截面…`;
+    }
     const requestSignal = state.controller.signal;
+    let completedResultRequest = false;
     try {
         let timeframeBundle = null;
         const viewParams = {
@@ -1570,6 +1841,44 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             shallow_base_breakout_enabled: String($("backtest-shallow-base-breakout").checked),
             ...(isTdxBacktest() ? currentBacktestSizing() : {}),
         };
+        const backtestPath = isAkShare() ? "/api/akshare-backtest" : "/api/tdx-backtest";
+        if (backtestMode && !watchlistBacktests.strategyVersion) {
+            await watchlistBacktests.ensureVersion();
+            if (sequence !== state.sequence) return;
+        }
+        const version = watchlistBacktests.strategyVersion || "";
+        const completedJobId =
+            !forceBacktest && watchlistBacktests.hasCompleted(request.symbol, sourceForScope($("result-scope").value))
+                ? watchlistBacktests.matchingJobId(backtestPath, backtestParams)
+                : null;
+        const cachedTask = completedJobId && stockBacktestTasks.find(backtestPath, backtestParams, version);
+        completedResultRequest = Boolean(completedJobId && !["running", "completed"].includes(cachedTask?.status));
+        const task = !backtestMode
+            ? null
+            : completedJobId
+              ? await reuseCompletedBacktest({
+                    tasks: stockBacktestTasks,
+                    path: backtestPath,
+                    params: backtestParams,
+                    version,
+                    jobId: completedJobId,
+                    fetchJob: (job) => api("/api/backtest-job", { job }, requestSignal),
+                })
+              : stockBacktestTasks.start(backtestPath, backtestParams, {
+                    version,
+                    force: forceBacktest,
+                    jobId: forceBacktest
+                        ? undefined
+                        : watchlistBacktests.matchingJobId(backtestPath, backtestParams) || undefined,
+                });
+        if (task) {
+            state.activeBacktestTask = task;
+            updateBacktestProgress(
+                task.status === "running" ? task.message : "正在读取已完成的回测结果…",
+                task.status === "running",
+            );
+            renderStockBacktestStatus();
+        }
         const data = isMarketBrowse()
             ? (timeframeBundle = await loadMarketTimeframeSnapshot(
                   isAkShare() ? "akshare" : "tdx",
@@ -1577,21 +1886,8 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
                   request.asof,
                   request.timeframe,
               )).view
-            : isTdxBacktest()
-              ? await retryBacktest(
-                    () =>
-                        api(isAkShare() ? "/api/akshare-backtest" : "/api/tdx-backtest", backtestParams, requestSignal),
-                    {
-                        signal: requestSignal,
-                        onRetry: (attempt, total, error) => {
-                            if (sequence === state.sequence)
-                                $("loading").textContent =
-                                    error?.code === "BACKTEST_TIMEOUT"
-                                        ? "首次计算仍在后台进行，正在自动等待同一回测结果…"
-                                        : `图表服务暂不可用，等待自动恢复后重试当前股票回测（${attempt}/${total}）…`;
-                        },
-                    },
-                )
+            : task
+              ? await task.promise
               : await api(
                     $("result-scope").value === "stock" ? "/api/stock-view" : "/api/view",
                     viewParams,
@@ -1638,13 +1934,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
         }
         $("download-backtest").disabled = !data.backtest || data.backtest.status === "data_unavailable";
         // Keep the chosen source for daily prices, minute execution and factors.
-        $("run-stock-backtest").disabled = !isAkShare() && !canBacktestSymbol(data.symbol);
-        $("run-stock-backtest").title =
-            !isAkShare() && !canBacktestSymbol(data.symbol)
-                ? "当前股票缺少通达信本地日线，暂不可回测"
-                : isAkShare()
-                  ? "日线、分钟线和复权因子统一使用 AKShare / 新浪"
-                  : "";
+        renderRunStockBacktestButton();
         $("price-basis").textContent = data.price_basis === "raw_unadjusted" ? "原始不复权" : "因果复权";
         chart.setData(data, {
             volume: $("show-volume").checked,
@@ -1676,8 +1966,10 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
                   ? " 服务器暂不可用，使用浏览器周期缓存。"
                   : " 浏览器周期缓存已同步。"
             : "";
+        if (backtestMode) $("selected-stock-summary").dataset.backtestStatus = "completed";
+        else delete $("selected-stock-summary").dataset.backtestStatus;
         $("selected-stock-summary").textContent =
-            `${symbolName(data.symbol)} · ${data.asof} ${data.timeframe_label || "日线"}截面｜原始收盘 ${num(last.raw_close)} 元 · 周期成交量 ${num(last.volume, 0)} 股。${sourceSummary}${cacheSummary}${data.is_partial_last_bar ? " 当前最后一根周期 K 线尚未收完。" : ""}`;
+            `${backtestMode ? "当前股票回测已完成 · " : ""}${symbolName(data.symbol)} · ${data.asof} ${data.timeframe_label || "日线"}截面｜原始收盘 ${num(last.raw_close)} 元 · 周期成交量 ${num(last.volume, 0)} 股。${sourceSummary}${cacheSummary}${data.is_partial_last_bar ? " 当前最后一根周期 K 线尚未收完。" : ""}`;
         $("price-chart").dataset.symbol = data.symbol;
         tradingViewWidget.setLocalSymbol(data.symbol);
         $("data-range").textContent = isAkShare()
@@ -1707,6 +1999,8 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
                     `图上的圆点是结构或策略信号，不是买卖成交；只有成交账本中的真实模拟买卖才显示 B / S。${blockedCount ? `右侧“被拦截”有 ${blockedCount} 个未通过候选或未成交委托，可定位 K 线查看原因。` : ""}`,
                 );
             }
+        } else if (backtestMode && !(data.orders || []).some((order) => order.status === "filled")) {
+            detail("本次回测没有模拟成交", "回测计算已完成，但成交账本没有买卖记录，因此图上没有 B / S 成交标记。");
         } else
             detail(
                 "按所选日期复核",
@@ -1717,22 +2011,56 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
         loadStockSummary(request, sequence);
     } catch (error) {
         if (error.name === "AbortError" || sequence !== state.sequence) return;
+        if (
+            backtestMode &&
+            completedResultRequest &&
+            (error.httpStatus === 404 || error.code === "BACKTEST_COMPLETED_RESULT_UNAVAILABLE")
+        ) {
+            watchlistBacktests.markResultUnavailable(request.symbol);
+            state.loading = false;
+            state.activeBacktestTask = null;
+            $("result-scope").value = sourceForScope($("result-scope").value);
+            fillSymbols();
+            preserveCutoff(request.asof);
+            $("loading").hidden = true;
+            $("chart-loading-overlay").hidden = true;
+            $("price-chart").setAttribute("aria-busy", "false");
+            $("selected-stock-summary").textContent =
+                `${symbolName(request.symbol)} · 旧回测结果已过期，可手动重新运行。`;
+            delete $("selected-stock-summary").dataset.backtestStatus;
+            $("stock-picker-feedback").hidden = false;
+            $("stock-picker-feedback").textContent = "旧回测结果已过期；点击“运行当前股票回测”可重新计算。";
+            renderRunStockBacktestButton();
+            return;
+        }
         state.loading = false;
         state.error = true;
         $("loading").hidden = true;
         $("chart-loading-overlay").hidden = true;
         $("error").hidden = false;
-        $("error").textContent =
-            error.code === "BACKTEST_TIMEOUT"
-                ? `加载失败：${error.message}。旧图已隐藏，请调整回测起始日期后重试。`
-                : `加载失败：${error.message}。旧图已隐藏，请检查结果文件后重试。`;
+        const errorHint = backtestMode
+            ? "当前股票视图仍可操作，请调整回测设置或重新运行。"
+            : "旧图已隐藏，请检查结果文件后重试。";
+        $("error").replaceChildren(document.createTextNode(`加载失败：${error.message}。${errorHint}`));
+        if (backtestMode) {
+            const retry = document.createElement("button");
+            retry.type = "button";
+            retry.className = "backtest-retry-button";
+            retry.textContent = "重新运行当前股票回测";
+            retry.addEventListener("click", () => loadView({ forceBacktest: true }));
+            $("error").append(retry);
+        }
+        if (backtestMode) $("selected-stock-summary").dataset.backtestStatus = "failed";
+        else delete $("selected-stock-summary").dataset.backtestStatus;
         $("selected-stock-summary").textContent =
-            `${symbolName(request.symbol)} · 加载失败，未展示旧股票数据；可重新选择或刷新。`;
+            `${symbolName(request.symbol)} · ${backtestMode ? "回测失败" : "加载失败"}：${error.message}；${backtestMode ? "当前股票行情仍可查看。" : "未展示旧股票数据，可重新选择或刷新。"}`;
         $("price-chart").setAttribute("aria-busy", "false");
-        document.querySelectorAll(".page").forEach((p) => (p.hidden = true));
-        document.querySelector(".metric-grid").hidden = true;
-        $("stock-results").hidden = true;
-        $("run-stock-backtest").disabled = !canBacktestSymbol(request.symbol);
+        if (!backtestMode || !hasRenderedView) {
+            document.querySelectorAll(".page").forEach((p) => (p.hidden = true));
+            document.querySelector(".metric-grid").hidden = true;
+            $("stock-results").hidden = true;
+        }
+        renderRunStockBacktestButton();
     }
 }
 async function locate(symbol, time, description) {
@@ -1803,10 +2131,344 @@ const ratioComparison = new RatioComparison({
         loadView();
     },
 });
+const autoBacktestPreferenceKey = "wavequant.watchlists.auto-backtest.v1";
+const sharedBacktestCompletionPrefix = "wavequant.watchlists.backtest-done.v2:";
+const sharedBacktestCompletionTtlMs = 60_000;
+let lastSharedBacktestPrune = 0;
+let lastWorkbenchInteraction = Date.now();
+for (const eventName of ["pointerdown", "keydown", "input", "wheel"]) {
+    document.addEventListener(eventName, () => (lastWorkbenchInteraction = Date.now()), { passive: true });
+}
+const watchlistBacktests = new IdleWatchlistBacktests({
+    serverJobs: () => serverBacktestSnapshot.jobs,
+    hasCapacity: () =>
+        !serverBacktestSnapshot.unavailable && serverBacktestSnapshot.active < serverBacktestSnapshot.max_active,
+    onEngineChanged: () => {
+        try {
+            localStorage.setItem(autoBacktestPreferenceKey, "false");
+        } catch {
+            // 当前页面的自动队列仍会暂停。
+        }
+    },
+    snapshot: () => {
+        if (!state.catalog || !watchlists.available) return null;
+        const source = sourceForScope($("result-scope").value);
+        if (!source) return null;
+        const request = select();
+        const sourceCatalog = state[source];
+        const sourceUniverse = sourceCatalog?.stocks;
+        if (!sourceUniverse?.length || !sourceCatalog.latest || !request.run || !request.variant) return null;
+        const start = $("backtest-start").value;
+        if (!start || start > sourceCatalog.latest) return null;
+        let sizing;
+        try {
+            sizing = currentBacktestSizing();
+        } catch {
+            return null;
+        }
+        const context = {
+            run: request.run,
+            variant: request.variant,
+            scenario: request.scenario,
+            source,
+            group: watchlists.selectedGroup.id,
+            cutoff: sourceCatalog.latest,
+            start,
+            volume_filter: String($("backtest-volume-filter").checked),
+            net_reward_risk_filter: String($("backtest-net-reward-risk-filter").checked),
+            shallow_base_breakout_enabled: String($("backtest-shallow-base-breakout").checked),
+            ...sizing,
+        };
+        const members = watchlists.orderedAvailableMembers(sourceUniverse).map((member) => ({
+            symbol: member.symbol,
+            name: member.stock.name || member.name || member.symbol,
+            asof: member.stock.last || sourceCatalog.latest,
+        }));
+        return { context, members };
+    },
+    version: ({ context }) => api("/api/backtest-version", { run: context.run, variant: context.variant }),
+    run: async (member, { context }, active) => {
+        const { path, params: requestParams } = watchlistBacktestRequest(member, context);
+        const params = { ...requestParams, backtest_job: crypto.randomUUID() };
+        const catalogEtag = state[context.source]?.catalog_etag || "";
+        const completionKey =
+            sharedBacktestCompletionPrefix +
+            JSON.stringify([watchlistBacktests.strategyVersion, catalogEtag, backtestArgumentsKey(path, params)]);
+        const signal = active.controller.signal;
+        const execute = async () => {
+            active.queued = false;
+            watchlistBacktests.emit();
+            try {
+                const now = Date.now();
+                if (now - lastSharedBacktestPrune >= sharedBacktestCompletionTtlMs) {
+                    for (let index = localStorage.length - 1; index >= 0; index--) {
+                        const key = localStorage.key(index);
+                        if (
+                            key?.startsWith(sharedBacktestCompletionPrefix) &&
+                            now - Number(localStorage.getItem(key)?.split(":")[0]) > sharedBacktestCompletionTtlMs
+                        )
+                            localStorage.removeItem(key);
+                    }
+                    lastSharedBacktestPrune = now;
+                }
+                const [completedAt, sharedJobId] = (localStorage.getItem(completionKey) || "").split(":");
+                if (sharedJobId && now - Number(completedAt) <= sharedBacktestCompletionTtlMs) {
+                    const shared = await api("/api/backtest-job", { job: sharedJobId }, signal);
+                    if (
+                        shared.status === "completed" &&
+                        shared.result?.symbol === member.symbol &&
+                        shared.result.result_scope === "stock" &&
+                        shared.result.backtest
+                    ) {
+                        active.job = { path, params: { ...params, backtest_job: sharedJobId } };
+                        return shared.result;
+                    }
+                }
+            } catch {
+                // 共享任务不可读取时重新计算，不能只凭完成标记声称图表已有结果。
+            }
+            active.job = { path, params };
+            watchlistBacktests.emit();
+            const request = () => api(path, params, signal);
+            let result;
+            try {
+                result = await retryBacktest(request, {
+                    signal,
+                    onTimeout: () =>
+                        waitForBacktestJob(
+                            () => api("/api/backtest-job", { job: params.backtest_job }, signal),
+                            request,
+                            { signal },
+                        ),
+                });
+            } catch (error) {
+                if (error.code !== "BACKTEST_SYMBOL_RUNNING" || !error.same_request || !error.running_job) throw error;
+                params.backtest_job = error.running_job;
+                active.job = { path, params };
+                result = await waitForBacktestJob(
+                    () => api("/api/backtest-job", { job: error.running_job }, signal),
+                    request,
+                    { signal, maxMissingResubmits: 0 },
+                );
+            }
+            if (
+                result?.symbol === member.symbol &&
+                result?.result_scope === "stock" &&
+                result?.backtest &&
+                result.backtest.status !== "data_unavailable"
+            ) {
+                try {
+                    localStorage.setItem(completionKey, `${Date.now()}:${params.backtest_job}`);
+                } catch {
+                    // 进度仍保留在当前页面内存中。
+                }
+            }
+            return result;
+        };
+        if (!navigator.locks?.request) return execute();
+        active.queued = true;
+        watchlistBacktests.emit();
+        return navigator.locks.request("wavequant-watchlist-auto-backtest", { signal }, execute);
+    },
+    isIdle: () =>
+        document.visibilityState === "visible" &&
+        !state.loading &&
+        !ratioComparison.running &&
+        Date.now() - lastWorkbenchInteraction >= 5_000,
+    onCompleted: (result, active) => {
+        const job = active.job;
+        const source = watchlistBacktests.context?.source;
+        if (
+            !job ||
+            !source ||
+            state.loading ||
+            state.view?.symbol !== result.symbol ||
+            state.view.asof !== result.asof ||
+            $("symbol-select").value !== result.symbol ||
+            $("result-scope").value !== source
+        )
+            return;
+        stockBacktestTasks.adoptCompleted(job.path, job.params, result, {
+            version: watchlistBacktests.strategyVersion,
+            jobId: job.params.backtest_job,
+        });
+        $("result-scope").value = `${source}-backtest`;
+        fillSymbols();
+        preserveCutoff(result.asof);
+        void loadView({ preferTrades: true });
+    },
+    onChange: ({
+        enabled,
+        ready,
+        version,
+        source,
+        checking,
+        idle,
+        active,
+        queued,
+        draining,
+        statuses,
+        fillCounts,
+        returns,
+        failures,
+        total,
+        completed,
+        failed,
+        retrying,
+        capacityFull,
+        error,
+    }) => {
+        if (syncServerBacktestHistory()) return;
+        if (syncCompletedStockBacktests()) return;
+        const toggle = $("watchlist-auto-backtest-toggle");
+        toggle.setAttribute("aria-pressed", String(enabled));
+        toggle.textContent = enabled ? "暂停" : "继续";
+        $("watchlist-backtest-retry").disabled = !failed;
+        const progress = $("watchlist-backtest-progress");
+        progress.max = Math.max(1, total);
+        progress.value = completed + failed;
+        const status = $("watchlist-backtest-status");
+        const activeIndex = active
+            ? watchlistBacktests.members.findIndex((member) => member.symbol === active.symbol) + 1
+            : 0;
+        const sourceLabel = source === "akshare" ? "AkShare" : "通达信";
+        const activeServerJob = serverBacktestSnapshot.jobs.find((job) => job.symbol === active?.symbol);
+        const activeElapsed = formatBacktestElapsed(activeServerJob?.elapsed_seconds);
+        status.textContent = !ready
+            ? "等待可用行情和回测参数…"
+            : draining
+              ? "设置已更新，等待先前回测结束后按新设置继续…"
+              : queued
+                ? `其他页面正在自动回测，${active.name}（${active.symbol}）已排队…`
+                : active
+                  ? `${sourceLabel} ${activeIndex}/${total}：正在回测 ${active.name}（${active.symbol}）${activeElapsed ? `，${activeElapsed}` : ""}${serverBacktestSnapshot.unavailable ? "，服务器任务状态暂不可确认" : ""}；已完成 ${completed}，失败 ${failed}${enabled ? "" : "。完成当前股票后暂停"}`
+                  : !enabled
+                    ? `已暂停 · 已完成 ${completed}/${total}，失败 ${failed}`
+                    : !total
+                      ? "当前分类没有可回测的股票"
+                      : error
+                        ? `策略版本读取失败：${error}；稍后自动重试`
+                        : version && completed + failed === total
+                          ? retrying
+                              ? `本轮已完成 ${completed}/${total}，失败 ${failed} 只待自动重试`
+                              : failed
+                                ? `本轮已结束：完成 ${completed}/${total}，失败 ${failed} 只；可点击重试失败`
+                                : `自动回测已完成 ${completed}/${total}；等待策略更新`
+                          : serverBacktestSnapshot.unavailable
+                            ? "服务器任务状态暂不可确认，等待连接恢复…"
+                            : capacityFull
+                              ? `并行回测已满（${serverBacktestSnapshot.active}/${serverBacktestSnapshot.max_active}），等待空位…`
+                              : !idle
+                                ? `等待页面空闲 · 已完成 ${completed}/${total}，失败 ${failed}`
+                                : checking || !version
+                                  ? "正在核对策略版本…"
+                                  : `准备按列表顺序回测 · 已完成 ${completed}/${total}，失败 ${failed}`;
+        renderServerBacktestStatuses({ statuses, ready, failures, fillCounts, returns });
+    },
+});
+function syncServerBacktestHistory() {
+    if (!Array.isArray(serverBacktestSnapshot.recent) || !watchlistBacktests.strategyVersion) return false;
+    watchlistBacktests.sync(watchlistBacktests.snapshot());
+    for (const record of serverBacktestSnapshot.recent) {
+        if (watchlistBacktests.adoptServerStatus(record)) return true;
+    }
+    return false;
+}
+function syncCompletedStockBacktests() {
+    watchlistBacktests.sync(watchlistBacktests.snapshot());
+    if (!watchlistBacktests.strategyVersion) return false;
+    for (const task of stockBacktestTasks.tasks.values()) {
+        if (task.status !== "completed" || watchlistBacktests.statuses.get(task.symbol) === "completed") continue;
+        if (watchlistBacktests.adoptCompleted(task.path, task.params, task.result, task.version)) return true;
+    }
+    return false;
+}
+function renderServerBacktestStatuses(queueState = watchlistBacktests.state()) {
+    const { statuses, ready, failures, fillCounts, returns } = queueState;
+    const visibleStatuses = runningBacktestStatuses(
+        historicalBacktestStatuses(statuses, serverBacktestSnapshot.recent),
+        serverBacktestSnapshot.jobs,
+        { unavailable: serverBacktestSnapshot.unavailable },
+    );
+    const visibleFailures = { ...failures };
+    if (watchlistBacktests.context && watchlistBacktests.strategyVersion) {
+        for (const member of watchlistBacktests.members) {
+            const expected = watchlistBacktestRequest(member, watchlistBacktests.context);
+            const task = stockBacktestTasks.find(expected.path, expected.params, watchlistBacktests.strategyVersion);
+            if (task?.status === "running")
+                visibleStatuses[member.symbol] = serverBacktestSnapshot.unavailable ? "unknown" : "running";
+            else if (task?.status === "failed") {
+                visibleStatuses[member.symbol] = "failed";
+                visibleFailures[member.symbol] = task.error?.message || "回测失败";
+            }
+        }
+    }
+    watchlists.setBacktestStatuses(
+        visibleStatuses,
+        ready ? new Set(watchlistBacktests.members.map((member) => member.symbol)) : null,
+        visibleFailures,
+        fillCounts,
+        returns,
+    );
+    renderStockBacktestStatus();
+}
+let serverBacktestStatusRequest = null;
+async function refreshServerBacktestStatuses() {
+    if (serverBacktestStatusRequest) return serverBacktestStatusRequest;
+    serverBacktestStatusRequest = api("/api/backtest-jobs")
+        .then((snapshot) => {
+            if (!Array.isArray(snapshot.jobs)) throw new Error("回测任务状态格式异常");
+            serverBacktestSnapshot = snapshot;
+            serverBacktestSnapshotSeenAt = Date.now();
+            syncServerBacktestHistory();
+            renderServerBacktestStatuses();
+            watchlistBacktests.emit();
+        })
+        .catch(() => {
+            const expired = expiredBacktestSnapshot(serverBacktestSnapshot, serverBacktestSnapshotSeenAt);
+            if (expired === serverBacktestSnapshot || serverBacktestSnapshot.unavailable) return;
+            serverBacktestSnapshot = expired;
+            renderServerBacktestStatuses();
+            watchlistBacktests.emit();
+        })
+        .finally(() => {
+            serverBacktestStatusRequest = null;
+        });
+    return serverBacktestStatusRequest;
+}
+setInterval(() => {
+    if (document.visibilityState === "visible") void refreshServerBacktestStatuses();
+}, 3_000);
+void refreshServerBacktestStatuses();
+try {
+    localStorage.setItem(autoBacktestPreferenceKey, "false");
+    watchlistBacktests.setEnabled(false);
+} catch {
+    watchlistBacktests.setEnabled(false);
+}
+$("watchlist-auto-backtest-toggle").addEventListener("click", () => {
+    watchlistBacktests.setEnabled(!watchlistBacktests.enabled);
+    try {
+        localStorage.setItem(autoBacktestPreferenceKey, String(watchlistBacktests.enabled));
+    } catch {
+        // 当前会话内的暂停状态仍然有效。
+    }
+});
+window.addEventListener("storage", (event) => {
+    if (event.key === autoBacktestPreferenceKey) watchlistBacktests.setEnabled(event.newValue !== "false");
+});
+$("watchlist-backtest-retry").addEventListener("click", () => watchlistBacktests.retryFailed());
+document.addEventListener("visibilitychange", () => {
+    lastWorkbenchInteraction = Date.now();
+    if (document.visibilityState === "visible") void refreshServerBacktestStatuses();
+    void watchlistBacktests.tick();
+});
+window.addEventListener("wavequant:watchlists-changed", () => void watchlistBacktests.tick());
 $("backtest-start").addEventListener("change", () => {
     buyPoints.contextChanged();
     structureSignals.contextChanged();
     ratioComparison.contextChanged();
+    if (isTdxBacktest()) loadView();
 });
 for (const id of ["backtest-capital", "backtest-buy-ratio"]) {
     $(id).addEventListener("change", () => {
@@ -1828,12 +2490,15 @@ $("backtest-shallow-base-breakout").addEventListener("change", () => {
     if (isTdxBacktest()) loadView();
 });
 $("run-stock-backtest").addEventListener("click", () => {
-    const cutoff = state.requestedAsOf || state.view?.asof || state.tdx.latest;
-    $("result-scope").value = isAkShare() ? "akshare-backtest" : "tdx-backtest";
+    const source = sourceForScope($("result-scope").value);
+    if (!source || !canBacktestSymbol($("symbol-select").value)) return;
+    state.symbolNavigation++;
+    const cutoff = state.requestedAsOf || state.view?.asof || state[source].latest;
+    $("result-scope").value = `${source}-backtest`;
     state.pendingFocus = null;
     fillSymbols();
     preserveCutoff(cutoff);
-    loadView({ focusLatestFill: true });
+    loadView({ focusLatestFill: true, forceBacktest: true });
 });
 $("fills-only").addEventListener("click", () => {
     $("show-fills").checked = true;
@@ -1894,10 +2559,35 @@ for (const id of ["variant-select", "scenario-select", "second-pullback-select"]
         state.pendingFocus = null;
         loadView();
     });
-$("result-scope").addEventListener("change", () => {
+$("result-scope").addEventListener("change", async () => {
+    const targetScope = $("result-scope").value;
+    const source = sourceForScope(targetScope);
+    if (source && !loadedCatalogs.has(source)) {
+        $("result-scope").value = state.lastResolvedScope || "stock";
+        $("result-scope").disabled = true;
+        $("stock-source-notice").textContent = `正在读取${source === "tdx" ? "通达信" : "AkShare"}股票目录…`;
+        try {
+            const catalog = await ensureSourceCatalog(source);
+            if (!catalog.with_daily) {
+                $("stock-source-notice").textContent =
+                    `${source === "tdx" ? "通达信" : "AkShare"}股票目录暂无可用行情，请稍后重新选择。`;
+                return;
+            }
+        } catch (error) {
+            $("stock-source-notice").textContent = `股票目录加载失败：${error.message}；请重新选择重试。`;
+            return;
+        } finally {
+            $("result-scope").disabled = false;
+        }
+        $("result-scope").value = targetScope;
+    }
+    state.lastResolvedScope = targetScope;
     state.pendingFocus = null;
     fillSymbols();
+    lastWorkbenchInteraction = Date.now();
+    void watchlistBacktests.tick();
     loadView();
+    watchlistBacktests.start();
 });
 $("symbol-select").addEventListener("change", () => chooseSymbol($("symbol-select").value, false, false));
 function activateTimeframe(timeframe, focus = false) {
@@ -2046,61 +2736,72 @@ $("export-orders").addEventListener("click", () => {
 async function start() {
     try {
         const requestedStock = parseResearchLink(window.location.search);
-        const akshareOption = $("result-scope").querySelector('[value="akshare"]');
-        akshareOption.disabled = true;
-        akshareOption.textContent = "AkShare · 正在连接…";
-        [state.catalog, state.tdx, state.akshare] = await Promise.all([
+        const initialSource = requestedStock?.source || "akshare";
+        $("result-scope").value = initialSource;
+        $("result-scope").disabled = true;
+        syncSourceOptions();
+        [state.catalog] = await Promise.all([
             api("/api/catalog"),
-            loadStockCatalog("tdx", "/api/tdx-catalog").catch((e) => ({
-                available: false,
-                stocks: [],
-                with_daily: 0,
-                error: e.message,
-            })),
-            loadStockCatalog("akshare", "/api/akshare-catalog").catch((e) => ({
-                available: false,
-                stocks: [],
-                with_daily: 0,
-                error: e.message,
-            })),
+            ensureSourceCatalog(initialSource).catch((error) => {
+                state[initialSource] = { available: false, stocks: [], with_daily: 0, error: error.message };
+            }),
         ]);
-        for (const s of state.tdx.stocks) if (s.name) names[s.symbol] = s.name;
-        for (const s of state.akshare.stocks) if (s.name) names[s.symbol] = s.name;
         await watchlists.init();
-        const tdxOption = $("result-scope").querySelector('[value="tdx"]');
-        tdxOption.disabled = !state.tdx.with_daily;
-        if (!state.tdx.with_daily) tdxOption.textContent = "通达信目录不可用";
-        akshareOption.disabled = !state.akshare.with_daily;
-        akshareOption.textContent = state.akshare.with_daily ? "AkShare · 在线 A 股行情" : "AkShare 数据源不可用";
-        // AkShare 是默认实时浏览口径；上游不可用时才按本地数据、封存样本的顺序降级。
-        $("result-scope").value = state.akshare.with_daily ? "akshare" : state.tdx.with_daily ? "tdx" : "stock";
-        $("symbol-select").value = watchlists.firstAvailableSymbol(universe());
-        const linkedStock = requestedStock
-            ? resolveResearchLink(requestedStock, { akshare: state.akshare, tdx: state.tdx })
-            : null;
-        if (linkedStock) {
-            $("result-scope").value = linkedStock.source;
-            $("symbol-select").value = linkedStock.symbol;
-            setTimeframe("1d");
-        }
+        $("result-scope").disabled = false;
+        syncSourceOptions();
+        state.lastResolvedScope = initialSource;
         $("run-select").replaceChildren();
         for (const r of state.catalog.runs) option($("run-select"), r.id, r.id.replace("acceptance_", ""));
+        let sourceError = !state[initialSource].with_daily
+            ? `${initialSource === "akshare" ? "AkShare" : "通达信"}目录暂无可用行情，请重新选择或稍后重试。`
+            : "";
+        let linkedStock = null;
+        if (!sourceError && requestedStock) {
+            try {
+                linkedStock = resolveResearchLink(requestedStock, { [initialSource]: state[initialSource] });
+            } catch (error) {
+                sourceError = error.message;
+            }
+        }
+        const firstWatchlistSymbol = watchlists.firstAvailableSymbol(universe());
+        $("symbol-select").value = linkedStock?.symbol || firstWatchlistSymbol;
+        if (linkedStock) setTimeframe("1d");
         fillSymbols();
+        if (sourceError) {
+            $("loading").hidden = true;
+            $("error").hidden = false;
+            $("error").textContent = sourceError;
+            $("stock-source-notice").textContent = sourceError;
+            $("selected-stock-summary").textContent = sourceError;
+            if (requestedPage && Object.hasOwn(titles, requestedPage)) showPage(requestedPage);
+            return;
+        }
         if (linkedStock?.asof) preserveCutoff(linkedStock.asof);
         await loadView();
         if (linkedStock) {
             const notices = [];
-            if (linkedStock.fallback)
-                notices.push(
-                    `所选股票在 ${requestedStock.source === "akshare" ? "AkShare" : "通达信"} 目录中暂无可用行情，当前使用 ${linkedStock.source === "akshare" ? "AkShare" : "通达信"} 查看同一股票。`,
-                );
             if (linkedStock.asof && state.view?.symbol === linkedStock.symbol && state.view.asof !== linkedStock.asof)
                 notices.push(`请求日期 ${linkedStock.asof}，实际可用行情截至 ${state.view.asof}。`);
             $("stock-picker-feedback").hidden = notices.length === 0;
             $("stock-picker-feedback").textContent = notices.join(" ");
         }
         if (requestedPage && Object.hasOwn(titles, requestedPage)) showPage(requestedPage);
+        watchlistBacktests.start();
+        if (
+            !linkedStock &&
+            firstWatchlistSymbol &&
+            $("symbol-select").value === firstWatchlistSymbol &&
+            state.view?.symbol === firstWatchlistSymbol &&
+            !state.error
+        ) {
+            const cutoff = state.requestedAsOf || state.view.asof || state[initialSource].latest;
+            $("result-scope").value = `${initialSource}-backtest`;
+            fillSymbols();
+            preserveCutoff(cutoff);
+            void loadView({ preferTrades: true });
+        }
     } catch (e) {
+        $("result-scope").disabled = false;
         stockList.setStocks([], "");
         watchlists.setUniverse([], "");
         $("stock-count").textContent = "不可用";

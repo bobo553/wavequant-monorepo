@@ -3,23 +3,41 @@ import "./globals.css";
 import type { JSX, ReactNode } from "react";
 
 import type { Metadata } from "next";
-import Script from "next/script";
 
 import { WaveQuantShell } from "@/shared/components/wavequant-shell/wavequant-shell";
 
 import "../../public/styles.css";
+
+// 必须在首屏内容解析前执行，避免浅色偏好等待客户端脚本时先绘制深色页面。
+const themeInitScript = `(() => {
+    try {
+        const payload = JSON.parse(localStorage.getItem("wavequant.market.v2") || "null");
+        if (payload?.version !== 2 || !payload.state || typeof payload.state !== "object") return;
+        const saved = payload.state;
+        const light = saved.theme === "light";
+        document.documentElement.classList.toggle("light", light);
+        document.documentElement.classList.toggle("dark", !light);
+        document.documentElement.dataset.theme = saved.colorTheme === "market-blue" ? "market-blue" : "wavequant-teal";
+        document.documentElement.dataset.palette = saved.palette === "accessible" ? "accessible" : "classic";
+        document.documentElement.dataset.density = saved.density === "compact" ? "compact" : "comfortable";
+    } catch {
+        // 存储不可用或数据损坏时保留服务端默认主题。
+    }
+})();`;
 
 export const metadata: Metadata = {
     title: "WaveQuant · 主控量化研究",
     description: "WaveQuant 本地日线研究、回测、证据复盘与全景市场工作台。",
 };
 
-/** WaveQuant 根布局，固定中文语义与深色量化工作台主题。 */
+/** WaveQuant 根布局，首屏绘制前恢复本地主题偏好。 */
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>): JSX.Element {
     return (
         <html lang="zh-CN" className="dark" data-theme="wavequant-teal" suppressHydrationWarning>
+            <head>
+                <script id="wavequant-theme-init">{themeInitScript}</script>
+            </head>
             <body className="min-h-screen antialiased">
-                <Script id="wavequant-theme-init" src="/theme-init.js" strategy="beforeInteractive" />
                 <WaveQuantShell>{children}</WaveQuantShell>
             </body>
         </html>

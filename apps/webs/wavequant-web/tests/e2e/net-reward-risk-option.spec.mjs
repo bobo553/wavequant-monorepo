@@ -4,8 +4,9 @@ test("net reward risk is unchecked by default and toggles the actual execution g
     test.setTimeout(240_000);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.goto("/research?page=workspace");
+    await page.goto("/research?page=workspace&symbol=sz.300154&asof=2026-09-07&source=tdx");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#result-scope")).toHaveValue("tdx");
     const checkbox = page.getByRole("checkbox", { name: "启用成交价含费净盈亏比过滤" });
     await expect(checkbox).not.toBeChecked();
     await page.evaluate(() => {

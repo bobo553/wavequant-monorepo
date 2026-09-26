@@ -9,7 +9,9 @@ import logging
 import math
 import mimetypes
 from pathlib import Path
+import re
 from urllib.parse import parse_qs, unquote, urlsplit
+from uuid import uuid4
 
 from wavequant.infrastructure.market_data.akshare import AkShareProvider, AkShareUnavailable
 from wavequant.interfaces.charts.visualization import ChartRepository
@@ -23,11 +25,13 @@ from .application import (
 )
 from .infrastructure import Infrastructure, InfrastructureSettings
 from .application.limit_up_ladder import LimitUpLadderService
+from .backtest_jobs import BacktestJobCapacity, BacktestJobConflict, BacktestJobSymbolBusy, BacktestJobs
 
 
 APPS_ROOT = Path(__file__).resolve().parents[4]
 WEB_WORKSPACE_ROOT = APPS_ROOT / "webs" / "wavequant-web"
 DEFAULT_WEB_ROOT = WEB_WORKSPACE_ROOT / "out"
+BACKTEST_JOB_ID = re.compile(r"[A-Za-z0-9_-]{8,128}\Z")
 
 
 def backtest_positive_number(query: dict[str, list[str]], name: str, default: float, maximum: float) -> float:
@@ -39,6 +43,21 @@ def backtest_positive_number(query: dict[str, list[str]], name: str, default: fl
         raise ValueError(f"{name} must be a number") from exc
     if not math.isfinite(value) or not 0 < value <= maximum:
         raise ValueError(f"{name} must be in (0, {maximum}]")
+    return value
+
+
+def backtest_job_error(error: Exception) -> tuple[int, str]:
+    """Expose a stable status without relaying raw Core or provider exceptions."""
+    if isinstance(error, (BuySignalSnapshotUnavailable, StructureSnapshotUnavailable, AkShareUnavailable, LookupError)):
+        return 503, "行情服务暂不可用，请稍后重试"
+    if isinstance(error, (ValueError, KeyError, FileNotFoundError)):
+        return 400, "回测参数或行情数据无效，请检查输入后重试"
+    return 500, "回测计算失败，请稍后重试"
+
+
+def validate_backtest_job_id(value: str) -> str:
+    if BACKTEST_JOB_ID.fullmatch(value) is None:
+        raise ValueError("invalid backtest job ID")
     return value
 
 
@@ -111,6 +130,22 @@ def make_server(
         else None
     )
 
+    def log_backtest_job_error(job_id: str, error: Exception) -> None:
+        if backtest_job_error(error)[0] == 500:
+            logging.error("backtest job %s failed", job_id, exc_info=(type(error), error, error.__traceback__))
+
+    history_root = getattr(repository, "root", None)
+    engine = getattr(repository, "backtest_engine", None)
+    engine_version = (
+        hashlib.sha256(json.dumps(engine, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        if engine is not None else None
+    )
+    backtest_jobs = BacktestJobs(
+        on_error=log_backtest_job_error,
+        history_path=Path(history_root) / ".backtest-history.sqlite" if history_root is not None else None,
+        engine_version=engine_version,
+    )
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
             pass
@@ -126,20 +161,20 @@ def make_server(
         ):
             if not isinstance(body, bytes):
                 body = json.dumps(body, ensure_ascii=False, allow_nan=False).encode()
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", cache_control)
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Referrer-Policy", "no-referrer")
-            for name, value in (headers or {}).items():
-                self.send_header(name, value)
-            self.send_header(
-                "Content-Security-Policy",
-                "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
-            )
-            self.end_headers()
             try:
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", cache_control)
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Referrer-Policy", "no-referrer")
+                for name, value in (headers or {}).items():
+                    self.send_header(name, value)
+                self.send_header(
+                    "Content-Security-Policy",
+                    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+                )
+                self.end_headers()
                 self.wfile.write(body)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass
@@ -260,6 +295,35 @@ def make_server(
                 q = parse_qs(url.query, strict_parsing=True, keep_blank_values=True)
                 if any(len(v) != 1 for v in q.values()):
                     raise ValueError("duplicate query arguments")
+                if url.path == "/api/backtest-version":
+                    if set(q) != {"run", "variant"} or any(
+                        not 1 <= len(q[name][0]) <= 128 or q[name][0].strip() != q[name][0]
+                        for name in ("run", "variant")
+                    ):
+                        raise ValueError("one run and variant required for backtest version")
+                    self.send(200, repository.backtest_version(q["run"][0], q["variant"][0]))
+                    return
+                if url.path == "/api/backtest-job":
+                    if set(q) != {"job"}:
+                        raise ValueError("one backtest job ID required")
+                    job = backtest_jobs.get(validate_backtest_job_id(q["job"][0]))
+                    if job is None:
+                        self.send(404, {"error": "backtest job not found"})
+                        return
+                    done, result, error = backtest_jobs.outcome(job)
+                    if not done:
+                        self.send(202, {"status": "running", "elapsed_seconds": backtest_jobs.elapsed_seconds(job)})
+                    elif error is not None:
+                        status, message = backtest_job_error(error)
+                        self.send(200, {"status": "failed", "error": message, "http_status": status})
+                    else:
+                        self.send(200, {"status": "completed", "result": result})
+                    return
+                if url.path == "/api/backtest-jobs":
+                    if q:
+                        raise ValueError("backtest jobs status takes no arguments")
+                    self.send(200, backtest_jobs.snapshot())
+                    return
                 if url.path == "/api/market-timeframe":
                     if set(q) != {"source", "symbol", "asof", "timeframe"}:
                         raise ValueError("invalid market timeframe arguments")
@@ -339,7 +403,14 @@ def make_server(
                     return
                 if url.path in ("/api/tdx-backtest", "/api/akshare-backtest"):
                     required = {"run", "variant", "symbol", "asof", "scenario", "start"}
-                    optional = {"volume_filter", "net_reward_risk_filter", "shallow_base_breakout_enabled", "initial_capital", "max_position_weight"}
+                    optional = {
+                        "volume_filter",
+                        "net_reward_risk_filter",
+                        "shallow_base_breakout_enabled",
+                        "initial_capital",
+                        "max_position_weight",
+                        "backtest_job",
+                    }
                     if not required <= set(q) or set(q) - required - optional:
                         raise ValueError("invalid TDX backtest arguments")
                     filter_values = q.get("volume_filter", ["true"])
@@ -356,21 +427,57 @@ def make_server(
                         raise ValueError("shallow_base_breakout_enabled must be true or false and provided once")
                     initial_capital = backtest_positive_number(q, "initial_capital", 100_000, 1_000_000_000)
                     max_position_weight = backtest_positive_number(q, "max_position_weight", 1.0, 1.0)
-                    self.send(
-                        200,
-                        (
-                            repository.akshare_backtest
-                            if url.path == "/api/akshare-backtest"
-                            else repository.tdx_backtest
-                        )(
-                            *(q[k][0] for k in ("run", "variant", "symbol", "asof", "scenario", "start")),
-                            volume_filter=volume_filter == "true",
-                            net_reward_risk_filter=risk_values[0] == "true",
-                            shallow_base_breakout_enabled=shallow_values[0] == "true",
-                            initial_capital=initial_capital,
-                            max_position_weight=max_position_weight,
-                        ),
+                    backtest_args = tuple(q[k][0] for k in ("run", "variant", "symbol", "asof", "scenario", "start"))
+                    options = dict(
+                        volume_filter=volume_filter == "true",
+                        net_reward_risk_filter=risk_values[0] == "true",
+                        shallow_base_breakout_enabled=shallow_values[0] == "true",
+                        initial_capital=initial_capital,
+                        max_position_weight=max_position_weight,
                     )
+                    backtest = (
+                        repository.akshare_backtest if url.path == "/api/akshare-backtest" else repository.tdx_backtest
+                    )
+                    job_id = q.get("backtest_job", [None])[0] or str(uuid4())
+                    validate_backtest_job_id(job_id)
+                    signature = json.dumps([url.path, backtest_args, options], sort_keys=True, allow_nan=False)
+                    normalized_params = dict(
+                        zip(("run", "variant", "symbol", "asof", "scenario", "start"), backtest_args)
+                    )
+                    normalized_params.update(
+                        volume_filter=volume_filter,
+                        net_reward_risk_filter=risk_values[0],
+                        shallow_base_breakout_enabled=shallow_values[0],
+                        initial_capital=str(int(initial_capital))
+                        if initial_capital.is_integer()
+                        else str(initial_capital),
+                        max_position_weight=str(int(max_position_weight))
+                        if max_position_weight.is_integer()
+                        else str(max_position_weight),
+                    )
+                    try:
+                        strategy_version = repository.backtest_version(backtest_args[0], backtest_args[1])["version"]
+                    except (KeyError, ValueError):
+                        strategy_version = None
+                    job = backtest_jobs.start(
+                        job_id,
+                        signature,
+                        lambda: backtest(*backtest_args, **options),
+                        symbol=q["symbol"][0],
+                        details={
+                            "path": url.path,
+                            "params": normalized_params,
+                            "symbol": q["symbol"][0],
+                            "version": strategy_version,
+                        },
+                    )
+                    job.done.wait()
+                    _, result, error = backtest_jobs.outcome(job)
+                    if error is not None:
+                        status, message = backtest_job_error(error)
+                        self.send(status, {"error": message})
+                        return
+                    self.send(200, result)
                     return
                 if url.path not in ("/api/view", "/api/stock-view", "/api/theory"):
                     self.send(404, {"error": "not found"})
@@ -389,6 +496,21 @@ def make_server(
                 self.send(200, result)
             except (BuySignalSnapshotUnavailable, StructureSnapshotUnavailable, AkShareUnavailable, LookupError) as exc:
                 self.send(503, {"error": str(exc)})
+            except BacktestJobConflict as exc:
+                self.send(409, {"error": str(exc)})
+            except BacktestJobSymbolBusy as exc:
+                self.send(
+                    409,
+                    {
+                        "error": str(exc),
+                        "code": "BACKTEST_SYMBOL_RUNNING",
+                        "running_job": exc.job_id,
+                        "same_request": exc.same_request,
+                        **exc.snapshot,
+                    },
+                )
+            except BacktestJobCapacity as exc:
+                self.send(503, {"error": str(exc), "code": "BACKTEST_CAPACITY", **exc.snapshot})
             except (ValueError, KeyError, FileNotFoundError) as exc:
                 self.send(400, {"error": str(exc) if isinstance(exc, ValueError) else "required result unavailable"})
             except Exception:
@@ -427,6 +549,7 @@ def serve_dashboard(
         akshare_timeout=akshare_timeout,
         artifact_cache_scope="api",
     )
+    repository.clear_backtest_caches()
     services = infrastructure or Infrastructure.from_settings(InfrastructureSettings.from_env())
     server = make_server(
         repository,

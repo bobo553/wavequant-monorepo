@@ -24,12 +24,19 @@ class AkShareBacktester:
     def __init__(self, browser: AkShareBrowser, cache: str | Path):
         self.browser = browser
         self.artifacts = ArtifactCache(cache)  # type: ignore[no-untyped-call]  # Legacy cache boundary.
+        self.engine = TdxBacktester._engine_hashes()  # Match the loaded strategy code.
+        self.artifacts.clear_backtests_for_engine(self.engine)  # type: ignore[no-untyped-call]  # Legacy cache boundary.
+
+    def _verify_engine(self) -> None:
+        if TdxBacktester._engine_hashes() != self.engine:  # Shared package fingerprint.
+            raise ValueError('策略代码已变更，请重启图表服务后再运行，避免新版本标识对应旧引擎')
 
     def run(
         self, symbol: str, start: str, asof: str, strategy: dict[str, Any], execution: dict[str, Any]
     ) -> tuple[list[Bar], SystemResult, dict[str, Any]]:
         if date.fromisoformat(start) > date.fromisoformat(asof):
             raise ValueError("回测起始日期不能晚于结束日期")
+        self._verify_engine()
         if not self.browser.pinned_history:
             raise ValueError("回测必须固定 AKShare 的同一上游")
         raw, _ = self.browser.bars(symbol, asof)
@@ -100,7 +107,7 @@ class AkShareBacktester:
             for bar in bars
         ]
         source["daily_sha256"] = hashlib.sha256(json.dumps(payload).encode()).hexdigest()
-        source["engine"] = TdxBacktester._engine_hashes()  # type: ignore[no-untyped-call]  # Shared package fingerprint.
+        source["engine"] = self.engine
         inputs = dict(
             symbol=symbol, start=start, asof=asof, source=dict(source), strategy=strategy, execution=execution
         )
@@ -114,10 +121,12 @@ class AkShareBacktester:
                 if research is None:
                     generated = generate_system_signals(bars, config)
                     research = encode_research(bars, generated)
+                    self._verify_engine()
                     self.artifacts.put("akshare-signals", signal_inputs, research)  # type: ignore[no-untyped-call]
                 else:
                     bars, generated = decode_research(research)
             if cached is not None:
+                self._verify_engine()
                 return bars, generated, cached["view"]
             coverage = None
             try:
@@ -199,7 +208,10 @@ class AkShareBacktester:
                 evidence=coverage["message"] if coverage else "AKShare / 新浪同源独立回测；已有模拟结果不代表策略有效",
             )
             if coverage is None:
+                self._verify_engine()
                 self.artifacts.put(  # type: ignore[no-untyped-call]  # Disposable; valid result survives cache failure.
                     "akshare-backtest", inputs, dict(view=view)
                 )
+            else:
+                self._verify_engine()
             return bars, generated, view

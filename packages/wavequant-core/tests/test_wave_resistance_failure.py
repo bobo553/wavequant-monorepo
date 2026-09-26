@@ -54,7 +54,11 @@ def test_target_resistance_failure_requires_known_target_large_body_and_strict_b
         bars[index] = replace(bars[index], open=bars[index].close + 0.1)
     else:
         bars[index - 1] = replace(bars[index - 1], open=bars[index - 2].close)
-    assert observe_wave_exhaustion(bars, index, events, StrategyConfig()) is None
+    decision = observe_wave_exhaustion(bars, index, events, StrategyConfig(), entry_index=index - 1)
+    if case == "small_body":
+        assert decision["reason"] == "wave_target_upper_shadow_reduce"
+    else:
+        assert decision is None
 
 
 def test_existing_position_is_fully_sold_on_failure_day_and_prefix_matches():

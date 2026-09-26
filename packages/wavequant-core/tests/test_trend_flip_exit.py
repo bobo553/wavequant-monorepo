@@ -107,4 +107,6 @@ def test_secondary_high_alone_does_not_arm_tertiary_flip_rule():
     bars, _ = sample()
     history = hierarchical_history(bars)[0]
     only_secondary = {i: {2: levels[2]} for i, levels in history.items()}
-    assert not trend_flip_exit_history(bars, only_secondary)
+    risks = trend_flip_exit_history(bars, only_secondary)
+    assert all(risk["reason"] != "trend_flip_resistance_adverse_clear" for risk in risks.values())
+    assert all(risk["trend_level"] == 2 for risk in risks.values())

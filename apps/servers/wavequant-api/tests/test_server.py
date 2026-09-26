@@ -8,7 +8,7 @@ from http.client import HTTPConnection
 import json
 from pathlib import Path
 import tempfile
-from threading import Thread
+from threading import Event, Thread
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -26,6 +26,7 @@ from wavequant_api.infrastructure import (
     StructureSnapshot,
 )
 from wavequant_api.server import make_server
+from wavequant_api.backtest_jobs import BacktestJobs
 
 
 class VisualizationTests(unittest.TestCase):
@@ -503,13 +504,206 @@ class VisualizationTests(unittest.TestCase):
         with patch.object(self.repo, "akshare_backtest", return_value={"ok": True}) as backtest:
             conn = HTTPConnection("127.0.0.1", server.server_port)
             try:
-                conn.request("GET", akshare_base + "&initial_capital=300000&max_position_weight=0.75&shallow_base_breakout_enabled=false")
+                conn.request(
+                    "GET",
+                    akshare_base
+                    + "&initial_capital=300000&max_position_weight=0.75&shallow_base_breakout_enabled=false",
+                )
                 self.assertEqual(conn.getresponse().status, 200)
             finally:
                 conn.close()
             self.assertEqual(backtest.call_args.kwargs["initial_capital"], 300_000)
             self.assertEqual(backtest.call_args.kwargs["max_position_weight"], 0.75)
             self.assertIs(backtest.call_args.kwargs["shallow_base_breakout_enabled"], False)
+
+    def test_running_backtest_status_rejects_same_stock_and_capacity(self):
+        with patch("wavequant_api.server.BacktestJobs", return_value=BacktestJobs(max_active=1)):
+            server = self.http_server()
+        base = (
+            "/api/akshare-backtest?run=example&variant=lecture_v3&symbol=sz.300154"
+            "&asof=2026-09-07&scenario=base&start=2018-01-02"
+        )
+        entered, release = Event(), Event()
+
+        def backtest(*args, **kwargs):
+            entered.set()
+            self.assertTrue(release.wait(5))
+            return {"symbol": args[2]}
+
+        def request(path):
+            conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+            try:
+                conn.request("GET", path)
+                response = conn.getresponse()
+                return response.status, json.loads(response.read())
+            finally:
+                conn.close()
+
+        with (
+            patch.object(self.repo, "akshare_backtest", side_effect=backtest) as mock,
+            patch.object(self.repo, "backtest_version", return_value={"version": "strategy-v1"}),
+        ):
+            first = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+            try:
+                first.request("GET", base + "&backtest_job=running-stock-0001")
+                self.assertTrue(entered.wait(5))
+                status, snapshot = request("/api/backtest-jobs")
+                self.assertEqual((status, snapshot["active"], snapshot["max_active"]), (200, 1, 1))
+                self.assertEqual(snapshot["jobs"][0]["symbol"], "sz.300154")
+                self.assertEqual(snapshot["jobs"][0]["job"], "running-stock-0001")
+                self.assertGreaterEqual(snapshot["jobs"][0]["elapsed_seconds"], 0)
+                self.assertNotIn("result", snapshot["jobs"][0])
+                status, duplicate = request(base + "&backtest_job=other-stock-job-0002")
+                self.assertEqual(
+                    (status, duplicate["code"], duplicate["running_job"]),
+                    (409, "BACKTEST_SYMBOL_RUNNING", "running-stock-0001"),
+                )
+                self.assertTrue(duplicate["same_request"])
+                status, capacity = request(base.replace("sz.300154", "sh.601086"))
+                self.assertEqual((status, capacity["code"], capacity["active"]), (503, "BACKTEST_CAPACITY", 1))
+                self.assertEqual(mock.call_count, 1)
+            finally:
+                release.set()
+                self.assertEqual(first.getresponse().status, 200)
+                first.close()
+            completed = request("/api/backtest-jobs")[1]
+            self.assertEqual(completed["jobs"], [])
+            self.assertEqual(completed["recent"][0]["status"], "completed")
+            self.assertEqual(completed["recent"][0]["version"], "strategy-v1")
+            self.assertEqual(completed["recent"][0]["params"]["max_position_weight"], "1")
+
+    def test_backtest_job_survives_disconnect_and_new_id_rechecks_data(self):
+        server = self.http_server()
+        base = (
+            "/api/tdx-backtest?run=example&variant=lecture_v3&symbol=sz.300154"
+            "&asof=2026-09-07&scenario=base&start=2018-01-02"
+        )
+        job_id = "backtest-recovery-0001"
+        entered = Event()
+        release = Event()
+
+        def backtest(*args, **kwargs):
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError("test backtest was not released")
+            return {"symbol": args[2], "fresh_call": mock.call_count}
+
+        def request(path):
+            conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+            try:
+                conn.request("GET", path)
+                response = conn.getresponse()
+                return response.status, json.loads(response.read())
+            finally:
+                conn.close()
+
+        with patch.object(self.repo, "tdx_backtest", side_effect=backtest) as mock:
+            first = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+            try:
+                first.request("GET", base + f"&backtest_job={job_id}")
+                self.assertTrue(entered.wait(5))
+                first.close()
+                status, running = request(f"/api/backtest-job?job={job_id}")
+                self.assertEqual((status, running["status"]), (202, "running"))
+                self.assertGreaterEqual(running["elapsed_seconds"], 0)
+            finally:
+                release.set()
+                first.close()
+
+            status, result = request(base + f"&backtest_job={job_id}")
+            self.assertEqual(status, 200)
+            self.assertEqual(result, {"symbol": "sz.300154", "fresh_call": 1})
+            self.assertEqual(
+                request(f"/api/backtest-job?job={job_id}"),
+                (200, {"status": "completed", "result": result}),
+            )
+            self.assertEqual(mock.call_count, 1)
+            self.assertEqual(request(base + f"&backtest_job={job_id}&initial_capital=100000")[0], 200)
+            self.assertEqual(mock.call_count, 1)
+            self.assertEqual(request(base + f"&backtest_job={job_id}&start=2019-01-01")[0], 400)
+            self.assertEqual(
+                request(base.replace("start=2018-01-02", "start=2019-01-01") + f"&backtest_job={job_id}")[0], 409
+            )
+            self.assertEqual(request(base + "&backtest_job=backtest-recovery-0002")[1]["fresh_call"], 2)
+            self.assertEqual(mock.call_count, 2)
+
+    def test_backtest_job_reports_safe_failure_and_rejects_invalid_queries(self):
+        server = self.http_server()
+        base = (
+            "/api/akshare-backtest?run=example&variant=lecture_v3&symbol=sz.300154"
+            "&asof=2026-09-07&scenario=base&start=2018-01-02"
+        )
+
+        def request(path):
+            conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+            try:
+                conn.request("GET", path)
+                response = conn.getresponse()
+                return response.status, json.loads(response.read())
+            finally:
+                conn.close()
+
+        self.assertEqual(request("/api/backtest-job?job=unknown-job-0000")[0], 404)
+        self.assertEqual(request("/api/backtest-job?job=short")[0], 400)
+        self.assertEqual(request("/api/backtest-job?job=unknown-job-0000&extra=1")[0], 400)
+        with patch.object(self.repo, "akshare_backtest", side_effect=ValueError("回测区间无数据")):
+            status, body = request(base + "&backtest_job=backtest-invalid-0001")
+            self.assertEqual((status, body["error"]), (400, "回测参数或行情数据无效，请检查输入后重试"))
+            self.assertEqual(
+                request("/api/backtest-job?job=backtest-invalid-0001"),
+                (200, {"status": "failed", "error": "回测参数或行情数据无效，请检查输入后重试", "http_status": 400}),
+            )
+        with patch.object(self.repo, "akshare_backtest", side_effect=AkShareUnavailable("secret provider detail")):
+            status, body = request(base + "&backtest_job=backtest-unavailable-0002")
+            self.assertEqual(status, 503)
+            self.assertNotIn("secret", body["error"])
+            status, body = request("/api/backtest-job?job=backtest-unavailable-0002")
+            self.assertEqual((status, body["status"], body["http_status"]), (200, "failed", 503))
+            self.assertNotIn("secret", body["error"])
+        with self.assertLogs(level="ERROR") as captured:
+            with patch.object(self.repo, "akshare_backtest", side_effect=RuntimeError("secret internal path")):
+                status, body = request(base + "&backtest_job=backtest-failure-0002")
+                self.assertEqual(status, 500)
+                self.assertNotIn("secret", body["error"])
+                status, body = request("/api/backtest-job?job=backtest-failure-0002")
+                self.assertEqual((status, body["status"], body["http_status"]), (200, "failed", 500))
+                self.assertNotIn("secret", body["error"])
+        self.assertEqual(len(captured.output), 1)
+
+    def test_backtest_version_requires_exact_parameters_and_reads_each_time(self):
+        server = self.http_server()
+
+        def request(path):
+            conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+            try:
+                conn.request("GET", path)
+                response = conn.getresponse()
+                return response.status, json.loads(response.read())
+            finally:
+                conn.close()
+
+        with patch.object(
+            self.repo, "backtest_version", create=True, side_effect=[{"version": "a"}, {"version": "b"}]
+        ) as version:
+            self.assertEqual(request("/api/backtest-version?run=example&variant=lecture_v3"), (200, {"version": "a"}))
+            self.assertEqual(request("/api/backtest-version?run=example&variant=lecture_v3"), (200, {"version": "b"}))
+            version.assert_called_with("example", "lecture_v3")
+            self.assertEqual(version.call_count, 2)
+            for path in (
+                "/api/backtest-version",
+                "/api/backtest-version?run=example",
+                "/api/backtest-version?run=&variant=lecture_v3",
+                "/api/backtest-version?run=example&variant=",
+                "/api/backtest-version?run=example&variant=lecture_v3&extra=1",
+                "/api/backtest-version?run=example&run=other&variant=lecture_v3",
+                "/api/backtest-version?run=%20example&variant=lecture_v3",
+            ):
+                self.assertEqual(request(path)[0], 400, path)
+            self.assertEqual(version.call_count, 2)
+        status, body = request("/api/backtest-version?run=example&variant=proxy_full")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(body["version"]), 64)
+        self.assertEqual(body["profile_version"], "proxy_full")
 
     def test_tdx_backtest_volume_setting_is_part_of_strategy_and_theory_cache_key(self):
         profile = {

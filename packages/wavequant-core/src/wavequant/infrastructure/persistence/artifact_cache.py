@@ -21,6 +21,7 @@ def canonical(value):
 
 class ArtifactCache:
     SCHEMA = 1
+    BACKTEST_NAMESPACES = ('backtest', 'signals', 'screen', 'akshare-backtest', 'akshare-signals')
     # Reads use WAL snapshots and can wait for transient filesystem pressure.
     # Writes are disposable optimizations: a busy background precomputation
     # must never make an interactive chart/backtest wait 30 seconds per
@@ -49,6 +50,29 @@ class ArtifactCache:
                 lock = RLock()
                 self.locks[key] = lock
             return lock
+
+    def clear_backtests_for_engine(self, engine):
+        """Discard derived results once when the loaded quant code changes."""
+        version = hashlib.sha256(canonical(engine).encode()).hexdigest()
+        try:
+            with closing(self._connect()) as db, db:
+                db.execute('BEGIN IMMEDIATE')
+                db.execute('CREATE TABLE IF NOT EXISTS artifact_versions (name TEXT PRIMARY KEY, version TEXT NOT NULL)')
+                row = db.execute('SELECT version FROM artifact_versions WHERE name=?', ('quant-engine',)).fetchone()
+                if row is not None and row[0] == version:
+                    return 0
+                placeholders = ','.join('?' for _ in self.BACKTEST_NAMESPACES)
+                deleted = db.execute(
+                    f'DELETE FROM artifacts WHERE namespace IN ({placeholders})', self.BACKTEST_NAMESPACES
+                ).rowcount
+                db.execute(
+                    'INSERT OR REPLACE INTO artifact_versions (name, version) VALUES (?, ?)',
+                    ('quant-engine', version),
+                )
+                return deleted
+        except (OSError, sqlite3.Error) as exc:
+            logging.warning('Research backtest cache invalidation skipped: %s', exc)
+            return 0
 
     def _connect(self, *, timeout_seconds=READ_TIMEOUT_SECONDS):
         with self.init_lock:

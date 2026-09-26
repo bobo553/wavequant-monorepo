@@ -8,10 +8,23 @@ from ..market_structure.lecture_drawing import lecture_drawing
 from ..market_structure.polyline import LinePoint,PointKind,ReversalPoint
 
 
-def lecture_pivot_history(bars):
+def lecture_pivot_history(bars, *, prefix_cache=None):
     snapshots={};epochs={};limits={};blocked=set();prior={};last_epoch=None
+    last = len(bars) - 1
+    prefix_key = tuple(bars[:-1])
+    cached_key = prefix_cache.get('key') if prefix_cache is not None else None
+    resume_start = (last if cached_key == prefix_key else
+                    last - 1 if cached_key == tuple(bars[:-2]) else 0)
+    if resume_start:
+        saved_snapshots, saved_epochs, saved_blocked, saved_prior, last_epoch = prefix_cache['checkpoint']
+        # Snapshot values are tuples of frozen ReversalPoints; only the outer
+        # maps and set are extended while today's partial candle is reduced.
+        snapshots, epochs, blocked, prior = (
+            saved_snapshots.copy(), saved_epochs.copy(), saved_blocked.copy(), saved_prior.copy())
     def accept(i,epoch,points):
         nonlocal prior,last_epoch
+        if i < resume_start:
+            return
         if epoch!=last_epoch: prior={}
         last_epoch=epoch;epochs[i]=epoch
         if i and not points and epoch==i: blocked.add(i)
@@ -40,6 +53,10 @@ def lecture_pivot_history(bars):
                 known.pop()
             known.append(ref);now[key]=ref
         prior=now;snapshots[i]=tuple(known)
+        if prefix_cache is not None and resume_start != last and i == last - 1:
+            prefix_cache['key'] = prefix_key
+            prefix_cache['checkpoint'] = (
+                snapshots.copy(), epochs.copy(), blocked.copy(), prior.copy(), last_epoch)
     lecture_drawing(bars,on_step=accept)
     # Existing event pipeline bounds setups to a causal episode; prefix tests
     # enforce that a future episode boundary cannot alter any earlier signal.

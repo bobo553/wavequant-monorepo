@@ -9,6 +9,7 @@ import {
     firstAvailableWatchlistSymbol,
     normalizeWatchlistSnapshot,
     removeWatchlistMember,
+    reorderWatchlistMembers,
     renameWatchlistGroup,
 } from "../public/watchlists.js";
 
@@ -57,6 +58,38 @@ test("initial symbol follows the first available row in the selected watchlist c
     assert.equal(firstAvailableWatchlistSymbol(withMembers, "focus", universe), "sh.600000");
     assert.equal(firstAvailableWatchlistSymbol(withMembers, "default", universe), "");
     assert.equal(firstAvailableWatchlistSymbol(withMembers, "focus", []), "");
+});
+
+test("reordering a category survives storage order and leaves other categories unchanged", () => {
+    const custom = createWatchlistGroup(null, "重点跟踪", "focus");
+    const defaults = addWatchlistMembers(custom.state, "default", [{ symbol: "bj.430001", name: "默认样本" }]);
+    const added = addWatchlistMembers(defaults.state, "focus", [
+        { symbol: "sh.600519", name: "重庆样本" },
+        { symbol: "sz.000001", name: "阿尔法样本" },
+        { symbol: "sh.600000", name: "北京样本" },
+    ]);
+    const desiredOrder = ["sh.600000", "sh.600519", "sz.000001"];
+    const reordered = reorderWatchlistMembers(added.state, "focus", desiredOrder);
+    const reloaded = normalizeWatchlistSnapshot({
+        ...reordered,
+        memberships: [...reordered.memberships].reverse(),
+    });
+
+    assert.deepEqual(
+        reloaded.memberships.filter((member) => member.groupId === "focus").map((member) => member.symbol),
+        desiredOrder,
+    );
+    assert.equal(firstAvailableWatchlistSymbol(reloaded, "focus", [{ symbol: "sh.600000", has_data: true }]), "sh.600000");
+    assert.deepEqual(
+        reloaded.memberships.filter((member) => member.groupId === "default").map((member) => member.symbol),
+        ["bj.430001"],
+    );
+    const appended = addWatchlistMembers(reloaded, "focus", [{ symbol: "sz.000002", name: "最前样本" }]).state;
+    assert.deepEqual(
+        appended.memberships.filter((member) => member.groupId === "focus").map((member) => member.symbol),
+        [...desiredOrder, "sz.000002"],
+    );
+    assert.throws(() => reorderWatchlistMembers(reloaded, "focus", ["sh.600000"]), /顺序已变化/);
 });
 
 test("category names are unique and the protected default category cannot be renamed", () => {

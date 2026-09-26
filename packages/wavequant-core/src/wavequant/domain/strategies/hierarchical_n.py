@@ -3,8 +3,9 @@ from ..market_structure.polyline import LinePoint, PointKind, ReversalPoint
 from .hierarchical_entry import hierarchical_history
 
 
-def hierarchical_n_candidates(bars):
-    history, _ = hierarchical_history(bars)
+def hierarchical_n_candidates(bars, *, history=None):
+    if history is None:
+        history, _ = hierarchical_history(bars)
     result = {}
     seen = set()
     for now, levels in history.items():

@@ -22,13 +22,17 @@ class FakeAdapter:
         self.rows = rows
         self.stocks = stocks
         self.error = error
+        self.catalog_calls = 0
+        self.load_calls = 0
 
     def catalog(self):
+        self.catalog_calls += 1
         if self.error:
             raise self.error
         return {"available": True, "stocks": self.stocks, "with_daily": len(self.stocks), "warnings": []}
 
     def load(self, symbol, asof):
+        self.load_calls += 1
         if self.error:
             raise self.error
         complete = list(self.rows[symbol])
@@ -40,7 +44,7 @@ class FakeAdapter:
 
 
 class MarketDataRepositoryTests(unittest.TestCase):
-    def test_default_catalog_uses_akshare_and_supplements_missing_metadata_and_stocks(self):
+    def test_default_catalog_contains_only_akshare_stocks_and_metadata(self):
         online = FakeAdapter(
             "akshare",
             {"sh.600000": [bar(1, 10)]},
@@ -59,12 +63,15 @@ class MarketDataRepositoryTests(unittest.TestCase):
 
         self.assertEqual(catalog["source"], "akshare")
         self.assertEqual(catalog["default_source"], "akshare")
-        self.assertEqual(catalog["supplemented_stocks"], 1)
-        self.assertEqual([stock["symbol"] for stock in catalog["stocks"]], ["sh.600000", "sz.000001"])
-        self.assertEqual(catalog["stocks"][0]["name"], "浦发银行")
-        self.assertEqual(catalog["stocks"][1]["catalog_source"], "tdx")
+        self.assertEqual(catalog["providers"], ["akshare"])
+        self.assertEqual(catalog["supplemented_stocks"], 0)
+        self.assertEqual([stock["symbol"] for stock in catalog["stocks"]], ["sh.600000"])
+        self.assertEqual(catalog["stocks"][0]["name"], "")
+        self.assertEqual(catalog["stocks"][0]["catalog_source"], "akshare")
+        self.assertEqual(online.catalog_calls, 1)
+        self.assertEqual(local.catalog_calls, 0)
 
-    def test_stale_primary_keeps_primary_values_and_adds_missing_fallback_sessions(self):
+    def test_stale_akshare_window_does_not_append_tdx_sessions(self):
         online = FakeAdapter(
             "akshare",
             {"sh.600000": [bar(1, 10), bar(2, 12)]},
@@ -79,11 +86,13 @@ class MarketDataRepositoryTests(unittest.TestCase):
         window = MarketDataRepository([online, local]).window("akshare", "sh.600000", "2026-01-03")
 
         self.assertEqual(window.resolved_source, "akshare")
-        self.assertEqual(window.providers, ("akshare", "tdx"))
-        self.assertEqual(window.supplemented_bars, 1)
-        self.assertEqual([value.close for value in window.bars], [10, 12, 13])
+        self.assertEqual(window.providers, ("akshare",))
+        self.assertEqual(window.supplemented_bars, 0)
+        self.assertEqual(window.asof, "2026-01-02")
+        self.assertEqual([value.close for value in window.bars], [10, 12])
+        self.assertEqual(local.load_calls, 0)
 
-    def test_unavailable_primary_falls_back_without_changing_requested_contract(self):
+    def test_unavailable_akshare_fails_without_testing_tdx(self):
         online = FakeAdapter("akshare", {}, [], error=AkShareUnavailable("online timeout"))
         local = FakeAdapter(
             "tdx",
@@ -91,14 +100,23 @@ class MarketDataRepositoryTests(unittest.TestCase):
             [{"symbol": "sh.600000", "name": "浦发银行", "has_data": True}],
         )
 
-        view = MarketDataRepository([online, local]).view("akshare", "sh.600000", "2026-01-02")
+        with self.assertRaisesRegex(AkShareUnavailable, "online timeout"):
+            MarketDataRepository([online, local]).view("akshare", "sh.600000", "2026-01-02")
+        self.assertEqual(local.load_calls, 0)
 
-        self.assertEqual(view["data_source"], "akshare")
-        self.assertEqual(view["resolved_source"], "tdx")
-        self.assertTrue(view["source_fallback"])
-        self.assertEqual(len(view["bars"]), 2)
+    def test_unavailable_akshare_catalog_fails_without_testing_tdx(self):
+        online = FakeAdapter("akshare", {}, [], error=AkShareUnavailable("online timeout"))
+        local = FakeAdapter(
+            "tdx",
+            {"sh.600000": [bar(1, 10)]},
+            [{"symbol": "sh.600000", "name": "浦发银行", "has_data": True}],
+        )
 
-    def test_short_online_history_is_backfilled_from_local_without_overwriting_online_values(self):
+        with self.assertRaisesRegex(AkShareUnavailable, "online timeout"):
+            MarketDataRepository([online, local]).catalog("akshare")
+        self.assertEqual(local.catalog_calls, 0)
+
+    def test_short_akshare_history_is_not_backfilled_from_tdx(self):
         online = FakeAdapter(
             "akshare",
             {"sh.600000": [bar(2, 12), bar(3, 13)]},
@@ -112,9 +130,54 @@ class MarketDataRepositoryTests(unittest.TestCase):
 
         window = MarketDataRepository([online, local]).window("akshare", "sh.600000", "2026-01-03")
 
-        self.assertEqual(window.providers, ("akshare", "tdx"))
-        self.assertEqual(window.supplemented_bars, 1)
-        self.assertEqual([value.close for value in window.bars], [10, 12, 13])
+        self.assertEqual(window.providers, ("akshare",))
+        self.assertEqual(window.supplemented_bars, 0)
+        self.assertEqual([value.close for value in window.bars], [12, 13])
+        self.assertEqual(local.load_calls, 0)
+
+    def test_explicit_tdx_selection_never_reads_akshare(self):
+        online = FakeAdapter(
+            "akshare",
+            {"sh.600000": [bar(1, 99)]},
+            [{"symbol": "sh.600000", "name": "网络证券", "has_data": True}],
+        )
+        local = FakeAdapter(
+            "tdx",
+            {"sh.600000": [bar(1, 10)]},
+            [{"symbol": "sh.600000", "name": "本地证券", "has_data": True}],
+        )
+        repository = MarketDataRepository([online, local])
+
+        catalog = repository.catalog("tdx")
+        view = repository.view("tdx", "sh.600000", "2026-01-02")
+
+        self.assertEqual(catalog["providers"], ["tdx"])
+        self.assertEqual(catalog["stocks"][0]["name"], "本地证券")
+        self.assertEqual(view["resolved_source"], "tdx")
+        self.assertEqual(view["providers"], ["tdx"])
+        self.assertEqual(view["source_policy"], "single_upstream_v1")
+        self.assertFalse(view["source_fallback"])
+        self.assertEqual(view["supplemented_bars"], 0)
+        self.assertEqual(view["bars"][0]["close"], 10)
+        self.assertEqual(online.catalog_calls, 0)
+        self.assertEqual(online.load_calls, 0)
+
+    def test_unavailable_tdx_fails_without_testing_akshare(self):
+        online = FakeAdapter(
+            "akshare",
+            {"sh.600000": [bar(1, 99)]},
+            [{"symbol": "sh.600000", "name": "网络证券", "has_data": True}],
+        )
+        local = FakeAdapter("tdx", {}, [], error=FileNotFoundError("local TDX missing"))
+        repository = MarketDataRepository([online, local])
+
+        with self.assertRaisesRegex(ValueError, "tdx 行情目录暂不可用"):
+            repository.catalog("tdx")
+        with self.assertRaisesRegex(ValueError, "tdx 数据暂不可用"):
+            repository.window("tdx", "sh.600000", "2026-01-02")
+
+        self.assertEqual(online.catalog_calls, 0)
+        self.assertEqual(online.load_calls, 0)
 
     def test_provider_switches_share_the_same_domain_theory_contract(self):
         rows = [bar(1, 10), bar(2, 12), bar(3, 11), bar(4, 13)]

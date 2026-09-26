@@ -100,8 +100,75 @@ def _secondary_wave_exhaustion_history(bars, history):
     return risks
 
 
-def trend_flip_exit_history(bars, history):
+def _last_fall_high_shadow_history(bars, history, reduction_fraction):
     risks = {}
+    for level in (2, 3):
+        state = None
+        attempted = set()
+        for index in range(1, len(bars)):
+            points = history.get(index - 1, {}).get(level, ())
+            # A confirmed low after the high identifies the last falling leg.
+            key = (points[-2] if len(points) >= 2
+                   and points[-2]["kind"] == "H" and points[-1]["kind"] == "L" else None)
+            identity = (key["index"], key["value"]) if key is not None else None
+            if state is not None and state["warning"] is None and identity != state["identity"]:
+                state = None
+            bar, previous = bars[index], bars[index - 1]
+            if (state is None and key is not None and key["available_at"] < index
+                    and identity not in attempted and previous.close <= key["value"] < bar.close):
+                attempted.add(identity)
+                state = dict(identity=identity, key=key, attack=index, warning=None)
+            if state is None:
+                continue
+            if state["warning"] is not None and bar.close < previous.close:
+                warning = state["warning"]
+                risks[index] = dict(
+                    reason="trend_last_fall_high_lower_close_clear",
+                    exit_fraction=1.0,
+                    execution_model="same_day_close",
+                    trend_level=level,
+                    trend_key_date=bars[state["key"]["index"]].timestamp.date().isoformat(),
+                    trend_key_high=state["key"]["value"],
+                    trend_attack_date=bars[state["attack"]].timestamp.date().isoformat(),
+                    trend_attack_index=state["attack"],
+                    trend_warning_date=bars[warning].timestamp.date().isoformat(),
+                    trend_warning_index=warning,
+                    observed_close=bar.close,
+                    previous_close=previous.close,
+                )
+                state = None
+                continue
+            span = bar.high - bar.low
+            upper = bar.high - max(bar.open, bar.close)
+            if (span > 0 and upper > abs(bar.close - bar.open) and upper >= span / 3
+                    and bar.high > state["key"]["value"] and bar.close >= state["key"]["value"]):
+                state["warning"] = index
+                risks[index] = dict(
+                    reason="trend_last_fall_high_upper_shadow_reduce",
+                    exit_fraction=reduction_fraction,
+                    exit_target_fraction=reduction_fraction,
+                    execution_model="same_day_close",
+                    trend_level=level,
+                    trend_key_date=bars[state["key"]["index"]].timestamp.date().isoformat(),
+                    trend_key_high=state["key"]["value"],
+                    trend_attack_date=bars[state["attack"]].timestamp.date().isoformat(),
+                    trend_attack_index=state["attack"],
+                    trend_warning_date=bar.timestamp.date().isoformat(),
+                    trend_warning_index=index,
+                    trend_upper_shadow_fraction=upper / span,
+                    observed_open=bar.open,
+                    observed_high=bar.high,
+                    observed_low=bar.low,
+                    observed_close=bar.close,
+                    previous_close=previous.close,
+                )
+            elif bar.close < state["key"]["value"]:
+                state = None
+    return risks
+
+
+def trend_flip_exit_history(bars, history, *, reduction_fraction=0.8):
+    risks = _last_fall_high_shadow_history(bars, history, reduction_fraction)
     for level in (3,):
         state = None
         attempted = set()
@@ -155,7 +222,7 @@ def trend_flip_exit_history(bars, history):
             if span > 0 and upper / span >= 0.5:
                 adverse.append("long_upper_shadow")
             if state["resistance"] and adverse:
-                risks[i] = dict(
+                risks.setdefault(i, dict(
                     reason="trend_flip_resistance_adverse_clear",
                     exit_fraction=1.0,
                     execution_model="same_day_close",
@@ -171,7 +238,7 @@ def trend_flip_exit_history(bars, history):
                     previous_close=prev.close,
                     previous_low=prev.low,
                     trend_upper_shadow_fraction=upper / span if span else 0,
-                )
+                ))
             # A clean renewed advance resolves resistance; a failed defense ends
             # this episode only after the failure candle has emitted its exit.
             resolved = (

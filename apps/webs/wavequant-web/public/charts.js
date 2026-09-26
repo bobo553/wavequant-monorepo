@@ -15,7 +15,7 @@ import { candleDetails } from "./candle-details.js";
 import { FocusFlashOverlay } from "./focus-flash-overlay.js";
 import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
-import { tertiaryRetracementGuides } from "./retracement-guides.js";
+import { selectedTertiaryThirds, tertiaryRetracementGuides } from "./retracement-guides.js";
 import { TradeMarkerOverlay } from "./trade-marker-overlay.js";
 import { waveCProjection } from "./wave-c-projection.js";
 import { WaveEndpointOverlay, selectedWaveEndpoints } from "./wave-endpoint-overlay.js";
@@ -166,6 +166,20 @@ export class PriceChart {
         this.candles.attachPrimitive(this.waveEndpointOverlay);
         this.focusFlashOverlay = new FocusFlashOverlay(container);
         this.candles.attachPrimitive(this.focusFlashOverlay);
+        this.onTertiaryPointerUp = (event) => {
+            if (!(event.target instanceof HTMLCanvasElement)) return;
+            const bounds = container.getBoundingClientRect();
+            const hit = this.lectureOverlay.hitTest(event.clientX - bounds.left, event.clientY - bounds.top);
+            const selected = hit && this.lectureOverlay.annotation(hit.externalId);
+            if (
+                selected?.raw?.trend_level === 3 &&
+                ["lecture_level3_not_strategy_confirmation", "display_only_developing_path"].includes(
+                    selected.raw.scope,
+                )
+            )
+                this.selectAnnotation(selected.id, false);
+        };
+        container.addEventListener("pointerup", this.onTertiaryPointerUp);
         this.tooltip = document.createElement("div");
         this.tooltip.className = "chart-tooltip";
         this.tooltip.hidden = true;
@@ -267,8 +281,11 @@ export class PriceChart {
             }
         });
         this.chart.subscribeClick((p) => {
-            const items = this.itemsAt(p.time, p.hoveredObjectId);
-            if (p.hoveredObjectId && items.length) {
+            const drawingId = p.point && this.lectureOverlay.hitTest(p.point.x, p.point.y)?.externalId;
+            if (drawingId && drawingId === this.selected?.id) return;
+            const items = this.itemsAt(p.time, drawingId || p.hoveredObjectId);
+            if ((drawingId || p.hoveredObjectId) && items.length) {
+                if (items[0].id === this.selected?.id) return;
                 this.selectAnnotation(items[0].id, false, items);
                 return;
             }
@@ -294,6 +311,7 @@ export class PriceChart {
             this.selected = selected;
             this.waveEndpointOverlay.setPoints([]);
             this.drawLevels();
+            this.scheduleMarkers();
             this.onSelect([selected]);
         });
         this.chart.timeScale().subscribeVisibleLogicalRangeChange(() => this.scheduleMarkers());
@@ -551,6 +569,7 @@ export class PriceChart {
             } else this.focus(selected.time);
         }
         this.drawLevels();
+        this.scheduleMarkers();
         this.onSelect(items || [selected]);
     }
     flashSelectedAnnotation(id, stage) {
@@ -637,15 +656,25 @@ export class PriceChart {
         this.container.dataset.tertiaryRetracementGuides = "0";
     }
     drawTertiaryRetracementGuides(to) {
-        const guides =
+        const visible =
             this.options.tertiaryRetracement && this.showTertiaryTrend && this.polylineEnabled
-                ? tertiaryRetracementGuides(this.theory, this.data?.bars, to)
+                ? this.selected?.raw?.trend_level === 3 &&
+                  ["lecture_level3_not_strategy_confirmation", "display_only_developing_path"].includes(
+                      this.selected.raw.scope,
+                  )
+                    ? selectedTertiaryThirds(
+                          this.selected,
+                          this.theory,
+                          this.data?.bars,
+                          this.theory?.asof || this.data?.asof || to,
+                      )
+                    : tertiaryRetracementGuides(this.theory, this.data?.bars, to)
                 : [];
-        const key = JSON.stringify(guides);
+        const key = JSON.stringify(visible);
         if (key === this.tertiaryRetracementKey) return;
         this.clearTertiaryRetracementGuides();
         this.tertiaryRetracementKey = key;
-        for (const guide of guides) {
+        for (const guide of visible) {
             const series = this.chart.addSeries(L.LineSeries, {
                 color: "#d98638",
                 lineStyle: 2,
@@ -873,6 +902,7 @@ export class PriceChart {
         if (this.frame) cancelAnimationFrame(this.frame);
         clearTimeout(this.tooltipHideTimer);
         this.focusFlashOverlay.clear();
+        this.container.removeEventListener("pointerup", this.onTertiaryPointerUp);
         this.tooltip.remove();
         themedCharts.delete(this.chart);
         this.chart.remove();

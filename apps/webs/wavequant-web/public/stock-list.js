@@ -1,4 +1,5 @@
 import { names } from "./labels.js";
+import { formatBacktestElapsed } from "./backtest-job-status.js";
 
 export function stockInfo(stock) {
     const symbol = stock.symbol,
@@ -34,6 +35,8 @@ export class StockList {
         this.selected = "";
         this.query = "";
         this.limit = 100;
+        this.backtestStatuses = {};
+        this.backtestJobs = [];
     }
     setStocks(stocks, selected) {
         this.stocks = stocks;
@@ -43,6 +46,11 @@ export class StockList {
     }
     setSelected(symbol) {
         this.selected = symbol;
+        this.render();
+    }
+    setBacktestStatuses(statuses, jobs = []) {
+        this.backtestStatuses = statuses;
+        this.backtestJobs = jobs;
         this.render();
     }
     setQuery(query) {
@@ -86,6 +94,27 @@ export class StockList {
             const coverage = document.createElement("small");
             coverage.textContent = stockCoverageText(s);
             b.append(name, code, coverage);
+            const backtestStatus = this.backtestStatuses[s.symbol];
+            if (backtestStatus) {
+                const badge = document.createElement("span");
+                badge.className = "stock-backtest-badge";
+                badge.dataset.status = backtestStatus;
+                badge.textContent = backtestStatus === "running" ? "回测中"
+                    : backtestStatus === "completed" ? "已回测"
+                    : backtestStatus === "unknown" ? "状态待确认" : "回测失败";
+                b.append(badge);
+                const runningJob = backtestStatus === "running"
+                    ? this.backtestJobs.find((job) => job.symbol === s.symbol && job.status === "running")
+                    : null;
+                const elapsed = formatBacktestElapsed(runningJob?.elapsed_seconds);
+                if (elapsed) {
+                    const duration = document.createElement("small");
+                    duration.className = "stock-backtest-elapsed";
+                    duration.textContent = elapsed;
+                    b.append(duration);
+                }
+                b.setAttribute("aria-label", `${s.name} ${s.code} ${s.exchange} ${badge.textContent}${elapsed ? ` ${elapsed}` : ""}`);
+            }
             b.addEventListener("click", () => this.onSelect(s.symbol));
             this.list.append(b);
             if (focused === s.symbol) b.focus({ preventScroll: true });

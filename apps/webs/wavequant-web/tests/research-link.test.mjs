@@ -26,11 +26,23 @@ test("invalid dates, symbols, repeated parameters and unsupported sources cannot
         assert.throws(() => parseResearchLink(search));
 });
 
-test("fallback only selects the same stock, never the default watchlist stock", () => {
+test("stock links resolve only against their selected data source", () => {
     const link = parseResearchLink("?symbol=sz.001216&asof=2026-09-18");
     const available = { with_daily: 1, stocks: [{ symbol: "sz.001216", has_data: true }] };
-    assert.equal(resolveResearchLink(link, { akshare: available, tdx: available }).source, "akshare");
-    assert.equal(resolveResearchLink(link, { akshare: { with_daily: 0 }, tdx: available }).fallback, true);
+    assert.deepEqual(resolveResearchLink(link, { akshare: available, tdx: available }), { ...link, fallback: false });
+    assert.throws(
+        () => resolveResearchLink(link, { akshare: { with_daily: 0 }, tdx: available }),
+        /所选AkShare目录中暂无可用行情/,
+    );
+    const tdxLink = { ...link, source: "tdx" };
+    assert.deepEqual(resolveResearchLink(tdxLink, { akshare: available, tdx: available }), {
+        ...tdxLink,
+        fallback: false,
+    });
+    assert.throws(
+        () => resolveResearchLink(tdxLink, { akshare: available, tdx: { with_daily: 0 } }),
+        /所选通达信目录中暂无可用行情/,
+    );
     assert.throws(
         () => resolveResearchLink(link, { akshare: { with_daily: 1, stocks: [{ symbol: "sh.600519" }] } }),
         /sz.001216/,
@@ -38,4 +50,5 @@ test("fallback only selects the same stock, never the default watchlist stock", 
     assert.throws(() =>
         resolveResearchLink(link, { akshare: { with_daily: 1, stocks: [{ symbol: "sz.001216", has_data: false }] } }),
     );
+    assert.throws(() => resolveResearchLink({ ...link, source: "other" }, { akshare: available }), /数据源无效/);
 });

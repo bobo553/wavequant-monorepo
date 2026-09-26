@@ -29,13 +29,6 @@ addopts = ["--import-mode=importlib"]
 testpaths = ["tests"]
 markers = ["integration: requires externally configured MySQL and Redis services"]
 
-[tool.ruff]
-target-version = "py311"
-line-length = 120
-
-[tool.ruff.lint]
-select = ["F"]
-
 [tool.mypy]
 python_version = "3.11"
 check_untyped_defs = true

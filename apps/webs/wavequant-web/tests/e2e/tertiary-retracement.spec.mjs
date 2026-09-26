@@ -3,7 +3,12 @@ import { expect, test } from "@playwright/test";
 test("Ruiling thirds render at adjusted prices with persistent controls and causal cleanup", async ({ page }) => {
     test.setTimeout(240_000);
     const errors = [];
+    const unexpectedAkshareRequests = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    page.on("request", (request) => {
+        if (["/api/akshare-catalog", "/api/akshare-backtest"].includes(new URL(request.url()).pathname))
+            unexpectedAkshareRequests.push(request.url());
+    });
     const catalog = {
         available: true,
         latest: "2026-09-07",
@@ -20,12 +25,7 @@ test("Ruiling thirds render at adjusted prices with persistent controls and caus
         ],
     };
     await page.route("**/api/tdx-catalog", (route) => route.fulfill({ json: catalog }));
-    await page.route("**/api/akshare-catalog", (route) => route.fulfill({ json: catalog }));
-    await page.route("**/api/market-timeframe?source=akshare&**", async (route) => {
-        const response = await route.fetch({ url: route.request().url().replace("source=akshare", "source=tdx") });
-        await route.fulfill({ response });
-    });
-    await page.goto("/research?page=workspace");
+    await page.goto("/research?page=workspace&symbol=sz.300154&asof=2026-09-07&source=tdx");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#symbol-select")).toHaveValue("sz.300154");
     const backtest = page.waitForResponse(
@@ -59,6 +59,7 @@ test("Ruiling thirds render at adjusted prices with persistent controls and caus
     await expect(page.locator("#result-scope")).toHaveValue("tdx-backtest");
     await expect(chart).toHaveAttribute("data-tertiary-retracement-guides", "2");
     await page.screenshot({ path: "test-results/rui-tertiary-thirds-workbench.png" });
+    expect(unexpectedAkshareRequests).toEqual([]);
 
     const evidence = await page.evaluate(async (data) => {
         const { PriceChart } = await import("/charts.js");

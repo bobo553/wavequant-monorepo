@@ -34,14 +34,19 @@ test("research workbench exposes AkShare as a read-only online market source", (
     assert.match(controls, /defaultValue="akshare"/);
     assert.ok(controls.indexOf('value="akshare"') < controls.indexOf('value="tdx"'));
     assert.match(controls, /value="akshare">AkShare · 在线 A 股行情/);
-    assert.match(runtime, /\/api\/akshare-catalog/);
+    assert.match(runtime, /const initialSource = requestedStock\?\.source \|\| "akshare"/);
+    assert.match(runtime, /ensureSourceCatalog\(initialSource\)/);
     assert.match(runtime, /loadMarketTimeframeSnapshot/);
     assert.match(runtime, /state\.akshareSessions/);
     assert.match(runtime, /source: isAkShare\(\) \? "akshare"/);
     assert.match(runtime, /查询当前股票买点/);
     assert.match(runtime, /查询全市场结构/);
     assert.match(runtime, /买点与结构仅读服务器预计算结果/);
-    assert.match(runtime, /state\.akshare\.with_daily \? "akshare" : state\.tdx\.with_daily \? "tdx" : "stock"/);
+    assert.match(runtime, /\$\("result-scope"\)\.value = initialSource/);
+    assert.match(runtime, /let sourceError = !state\[initialSource\]\.with_daily/);
+    assert.match(runtime, /resolveResearchLink\(requestedStock, \{ \[initialSource\]: state\[initialSource\] \}\)/);
+    assert.match(runtime, /for \(const r of state\.catalog\.runs\) option\(\$\("run-select"\)/);
+    assert.doesNotMatch(runtime, /ensureSourceCatalog\(fallbackSource\)/);
     assert.match(runtime, /data\.source_fallback/);
     assert.match(runtime, /data\.supplemented_bars/);
     assert.doesNotMatch(runtime, /run-stock-backtest"\)\.disabled = !state\.tdx\?\.with_daily \|\| isAkShare/);
@@ -83,8 +88,8 @@ test("research workbench provides categorized local watchlists and structure-res
     assert.match(structures, /structure-watchlist-add/);
     assert.match(structures, /setWatchlistStarIcon\(button, added\)/);
     assert.match(structures, /this\.watchlists\.remove\(result\.symbol\)/);
-    assert.match(watchlists, /setWatchlistStarIcon\(remove, true\)/);
-    assert.doesNotMatch(watchlists, /remove\.textContent = "移除"/);
+    assert.match(watchlists, /watchlist-backtest-result/);
+    assert.doesNotMatch(watchlists, /watchlist-stock-remove/);
     assert.doesNotMatch(watchlists, /点击查看/);
     assert.match(structures, /addAllToWatchlist/);
     assert.match(watchlists, /wavequant-user-data/);
@@ -92,7 +97,7 @@ test("research workbench provides categorized local watchlists and structure-res
     assert.match(watchlists, /默认分类不能删除/);
 });
 
-test("stock selection keeps AkShare while TDX selection can still start a backtest", () => {
+test("stock selection backtests only the currently selected AkShare or TDX source", () => {
     const browser = readFileSync(
         join(sourceRoot, "features", "research-workbench", "components", "stock-browser.tsx"),
         "utf8",
@@ -103,9 +108,31 @@ test("stock selection keeps AkShare while TDX selection can still start a backte
     assert.match(browser, /id="stock-picker-toggle"/);
     assert.match(browser, /id="stock-picker-panel"/);
     const chooser = runtime.split("function chooseSymbol(")[1]?.split("function resetSlider()")[0] || "";
-    assert.match(chooser, /const runBacktest = autoBacktest && canBacktest && !isAkShare\(\)/);
-    assert.match(chooser, /\$\("result-scope"\)\.value = "tdx-backtest"/);
-    assert.match(chooser, /loadView\(\{ preferTrades: runBacktest \}\)/);
+    assert.match(chooser, /const source = sourceForScope\(previousScope\)/);
+    assert.match(chooser, /const runBacktest = autoBacktest && canBacktest/);
+    assert.match(chooser, /\$\("result-scope"\)\.value = `\$\{source\}-backtest`/);
+    assert.match(chooser, /loadView\(\{ preferTrades: true \}\)/);
+    assert.doesNotMatch(chooser, /\$\("result-scope"\)\.value = "tdx"/);
+    const canBacktest = runtime.split("function canBacktestSymbol(")[1]?.split("function chooseSymbol(")[0] || "";
+    assert.match(canBacktest, /sourceForScope\(\$\("result-scope"\)\.value\)/);
+    assert.match(canBacktest, /catalogHasSymbol\(state\[source\], symbol\)/);
+    assert.doesNotMatch(canBacktest, /state\.tdx/);
+    const automatic =
+        runtime
+            .split("const watchlistBacktests = new IdleWatchlistBacktests(")[1]
+            ?.split("version: ({ context })")[0] || "";
+    assert.match(automatic, /const source = sourceForScope\(\$\("result-scope"\)\.value\)/);
+    assert.match(automatic, /const sourceCatalog = state\[source\]/);
+    assert.match(automatic, /if \(!source\) return null/);
+    assert.doesNotMatch(automatic, /state\.akshare\?\.with_daily \? "akshare" : "tdx"/);
+    const sourceChange =
+        runtime.split('$("result-scope").addEventListener("change"')[1]?.split('$("symbol-select")')[0] || "";
+    assert.match(sourceChange, /void watchlistBacktests\.tick\(\)/);
+    const manual =
+        runtime.split('$("run-stock-backtest").addEventListener("click"')[1]?.split('$("fills-only")')[0] || "";
+    assert.match(manual, /const source = sourceForScope\(\$\("result-scope"\)\.value\)/);
+    assert.match(manual, /if \(!source \|\| !canBacktestSymbol/);
+    assert.match(manual, /\$\("result-scope"\)\.value = `\$\{source\}-backtest`/);
 });
 
 test("market browsing exposes server-backed daily through yearly candle timeframes", () => {
@@ -134,14 +161,16 @@ test("market browsing exposes server-backed daily through yearly candle timefram
     assert.match(runtime, /is_partial_last_bar/);
 });
 
-test("current-stock backtests tolerate cold computation and report non-JSON proxy failures clearly", () => {
+test("current-stock backtests resume a cold calculation by job and report non-JSON proxy failures clearly", () => {
     const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
 
     assert.match(runtime, /\["\/api\/tdx-backtest", "\/api\/akshare-backtest"\]\.includes\(path\)\s*\?\s*300000/);
     assert.match(runtime, /const text = await response\.text\(\)/);
     assert.match(runtime, /body = JSON\.parse\(text\)/);
     assert.match(runtime, /服务暂时不可用（HTTP/);
-    assert.match(runtime, /回测计算仍未完成，请缩短回测区间后重试/);
+    assert.match(runtime, /backtest_job: crypto\.randomUUID\(\)/);
+    assert.match(runtime, /waitForBacktestJob\(/);
+    assert.match(runtime, /"\/api\/backtest-job"/);
     assert.doesNotMatch(runtime, /const body = await response\.json\(\)/);
 });
 
@@ -200,7 +229,7 @@ test("running a current-stock backtest focuses its latest actual B/S fill", () =
     const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
     assert.match(
         runtime,
-        /\$\("run-stock-backtest"\)\.addEventListener\("click",[\s\S]*loadView\(\{ focusLatestFill: true \}\)/,
+        /\$\("run-stock-backtest"\)\.addEventListener\("click",[\s\S]*loadView\(\{ focusLatestFill: true, forceBacktest: true \}\)/,
     );
     assert.match(
         runtime,
@@ -278,8 +307,11 @@ test("the complete server-backed research workbench is composed from React featu
     assert.match(components, /id="chart-loading-overlay"/);
     assert.match(components, /className="chart-loading-spinner"/);
     assert.doesNotMatch(legacyRuntime, /el\.hidden = state\.loading \|\| state\.error/);
-    assert.match(legacyRuntime, /const hasRenderedView = Boolean\(state\.view\)/);
-    assert.match(legacyRuntime, /\$\("chart-loading-overlay"\)\.hidden = false/);
+    assert.match(
+        legacyRuntime,
+        /const hasRenderedView = Boolean\(state\.view && state\.view\.symbol === \$\("symbol-select"\)\.value\)/,
+    );
+    assert.match(legacyRuntime, /\$\("chart-loading-overlay"\)\.hidden = backtestMode/);
     assert.equal((legacyRuntime.match(/\$\("chart-loading-overlay"\)\.hidden = true/g) || []).length, 2);
     for (const id of [
         "price-chart",

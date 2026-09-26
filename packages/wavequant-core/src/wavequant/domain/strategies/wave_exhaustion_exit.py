@@ -15,6 +15,8 @@ def observe_wave_exhaustion(
     entry_index: int | None = None,
     signal_index: int | None = None,
 ) -> dict | None:
+    if not events:
+        return None
     ordinary = next(
         (
             event
@@ -26,21 +28,34 @@ def observe_wave_exhaustion(
     )
     if ordinary is not None:
         return _observe_ordinary_c(bars, index, ordinary, config, reduced=reduced, entry_index=entry_index)
-    # Confirm only the immediately preceding trading candle's known warning.
-    # Failed/rounded partial fills must not prevent a subsequent full exit.
-    if index >= 2 and bars[index].close < bars[index - 1].close:
-        warning = _observe_target_candle(bars, index - 1, events, config)
-        if warning is not None and "exit_target_fraction" in warning:
+    current = _observe_target_candle(bars, index, events, config, reduced=reduced)
+    if current is not None and current.get("exit_fraction") == 1.0:
+        return current
+    # Long upper-shadow warnings persist to the first later lower close.
+    # Failed/rounded partial fills must not prevent that full exit.
+    held_from = entry_index if entry_index is not None else signal_index if signal_index is not None else 0
+    if index > held_from + 1 and bars[index].close < bars[index - 1].close:
+        active_warning = None
+        for warning_index in range(max(1, held_from + 1), index):
+            if active_warning is not None and bars[warning_index].close < bars[warning_index - 1].close:
+                active_warning = None
+            warning = _observe_target_candle(bars, warning_index, events, config)
+            if warning is None or "exit_target_fraction" not in warning:
+                continue
+            if warning_index != index - 1 and warning["reason"] != "wave_target_upper_shadow_reduce":
+                continue
+            active_warning = warning
+            abnormal_index = warning_index
+        if active_warning is not None:
             return dict(
                 {
-                    key: warning[key]
+                    key: active_warning[key]
                     for key in ("wave_n_date", "wave_reached_date", "wave_reached_stage", "wave_reached_price")
                 },
                 reason="wave_abnormal_followthrough_clear",
                 exit_fraction=1.0,
-                abnormal_date=bars[index - 1].timestamp.date().isoformat(),
-                abnormal_close=bars[index - 1].close,
-                abnormal_reason=warning["reason"],
+                abnormal_date=bars[abnormal_index].timestamp.date().isoformat(),
+                abnormal_close=bars[abnormal_index].close,
                 observed_open=bars[index].open,
                 observed_close=bars[index].close,
                 observed_low=bars[index].low,
@@ -50,7 +65,7 @@ def observe_wave_exhaustion(
                 previous_close=bars[index - 1].close,
                 execution_model="same_day_close",
             )
-    return _observe_target_candle(bars, index, events, config, reduced=reduced)
+    return current
 
 
 def _observe_ordinary_c(
@@ -191,6 +206,13 @@ def _observe_target_candle(
         return dict(
             evidence,
             reason="wave_ordinary_equal_upper_shadow_reduce",
+            exit_fraction=config.wave_exhaustion_reduction,
+            exit_target_fraction=config.wave_exhaustion_reduction,
+        )
+    if stage in ("two_t", "five_top", "ten_full") and not reduced and upper / span >= 0.5:
+        return dict(
+            evidence,
+            reason="wave_target_upper_shadow_reduce",
             exit_fraction=config.wave_exhaustion_reduction,
             exit_target_fraction=config.wave_exhaustion_reduction,
         )

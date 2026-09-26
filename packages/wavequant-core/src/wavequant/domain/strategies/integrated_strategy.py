@@ -102,13 +102,13 @@ class SystemResult:
     counts: dict
 
 
-def pivot_history(bars: list[Bar], config: SystemStrategy):
+def pivot_history(bars: list[Bar], config: SystemStrategy, *, prefix_cache=None):
     """Snapshots are immutable tuples; strict ambiguity starts a NEW episode."""
     snapshots, epochs, limits, blocked = {}, {}, {}, set()
     n = len(bars)
     if config.pivot_mode=='lecture_causal':
         from .lecture_strategy import lecture_pivot_history
-        return lecture_pivot_history(bars)
+        return lecture_pivot_history(bars, prefix_cache=prefix_cache)
     if config.pivot_mode == 'strict_polyline':
         start = 0
         while start < n:
@@ -161,7 +161,8 @@ def _local_setup(setup, offset):
 
 
 def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
-                            minor_points: Sequence[ReversalPoint] | None = None) -> SystemResult:
+                            minor_points: Sequence[ReversalPoint] | None = None,
+                            chart_history_cache: dict | None = None) -> SystemResult:
     config.validate()
     if not bars:
         return SystemResult([], [], {})
@@ -169,7 +170,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
     bars = ValidatedBars(bars)
     if len({b.timestamp.date() for b in bars}) != len(bars):
         raise ValueError('daily bars required; map supplied minor pivots explicitly to daily index axis')
-    snapshots, epochs, limits, blocked = pivot_history(bars, config)
+    snapshots, epochs, limits, blocked = pivot_history(
+        bars, config, prefix_cache=chart_history_cache.setdefault('pivot', {}) if chart_history_cache is not None else None)
     counts = Counter(rows=len(bars), ambiguous_bars=len(blocked), minor_data_available=minor_points is not None)
     audit, candidates, seen, attack_keys = [], [], set(), set()
     events = defaultdict(list)
@@ -194,14 +196,53 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             log(j, kind, **row)
             counts[kind] += 1
     larger, folded_sets = {}, []
+    folded_cache = chart_history_cache.setdefault('folded_n', {}) if chart_history_cache is not None else None
+    secondary_levels = None
     if whole_wave and config.pivot_mode == 'lecture_causal':
+        from .hierarchical_entry import hierarchical_history
         from .hierarchical_n import hierarchical_n_candidates
         from .folded_n import folded_positive_n_candidates, folded_inverse_n_candidates
-        larger = hierarchical_n_candidates(bars)
+        secondary_levels, _ = hierarchical_history(
+            bars, prefix_cache=chart_history_cache.setdefault('hierarchy', {}) if chart_history_cache is not None else None)
+        larger = hierarchical_n_candidates(bars, history=secondary_levels)
         for i in range(len(bars)):
-            folded = folded_positive_n_candidates(snapshots[i], earliest=max(epochs[i], i-config.structure_window))
-            folded += folded_inverse_n_candidates(snapshots[i], earliest=max(epochs[i], i-config.structure_window))
+            earliest = max(epochs[i], i-config.structure_window)
+            folded_key = (snapshots[i], earliest)
+            if folded_cache is not None and i < len(bars) - 1 and folded_key in folded_cache:
+                folded = folded_cache[folded_key]
+            else:
+                folded = tuple([
+                    *folded_positive_n_candidates(snapshots[i], earliest=earliest),
+                    *folded_inverse_n_candidates(snapshots[i], earliest=earliest),
+                ])
+                if folded_cache is not None and i < len(bars) - 1:
+                    folded_cache[folded_key] = folded
             folded_sets.extend((i, points, level) for points, level in folded)
+    candidate_observations = None
+    if chart_history_cache is not None:
+        # IntradayEntry supplies the complete fixed series as a certificate:
+        # every day before the partial last bar must match that source exactly.
+        # This keeps earlier completed observations reusable across sessions.
+        source_bars = chart_history_cache.get('source_bars')
+        fixed_source = (
+            isinstance(source_bars, tuple) and len(source_bars) >= len(bars)
+            and tuple(bars[:-1]) == source_bars[:len(bars) - 1]
+            and bars[-1].timestamp == source_bars[len(bars) - 1].timestamp
+            and bars[-1].symbol == source_bars[len(bars) - 1].symbol
+        )
+        cache_scope = (
+            ('source', config, id(source_bars)) if fixed_source
+            else ('day', config, tuple(bars[:-1]))
+        )
+        if chart_history_cache.get('candidate_scope') != cache_scope:
+            chart_history_cache['candidate_scope'] = cache_scope
+            chart_history_cache['candidate_observations'] = {}
+            chart_history_cache['washout_observations'] = {}
+            chart_history_cache['wave_gap_observations'] = {}
+            chart_history_cache['wave_selection_observations'] = {}
+        candidate_observations = chart_history_cache['candidate_observations']
+    washout_observations = chart_history_cache['washout_observations'] if chart_history_cache is not None else None
+    wave_gap_observations = chart_history_cache['wave_gap_observations'] if chart_history_cache is not None else None
     candidate_sets = [(i, points, level) for i in range(len(bars))
                       for points, level in [(snapshots[i], 0), *larger.get(i, [])]]
     candidate_sets.extend(folded_sets)
@@ -243,10 +284,23 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         offset = max(0, a.point.index-config.volume_lookback)
         finish = min(len(bars)-1, limits[i], i+config.pattern_ttl)
         local, data = _local_setup(setup, offset), bars[offset:finish+1]
+        # A candidate ending before the unfinished minute candle reads exactly
+        # the same immutable daily slice in every replay of this session.
+        memo = (
+            candidate_observations.setdefault((local, offset, finish), {})
+            if candidate_observations is not None and finish < len(bars) - 1 else None
+        )
         counts['n_candidates'] += 1
         try:
-            n = observe_n(data, local, timeframe='1d', milestone_basis=MilestoneBasis.EXTREME)
+            if memo is not None and 'n_error' in memo:
+                raise ValueError(memo['n_error'])
+            n = memo['n'] if memo is not None and 'n' in memo else observe_n(
+                data, local, timeframe='1d', milestone_basis=MilestoneBasis.EXTREME)
+            if memo is not None:
+                memo['n'] = n
         except ValueError as exc:
+            if memo is not None:
+                memo['n_error'] = str(exc)
             counts['rejected_n_geometry'] += 1
             log(i, 'n_geometry_rejected', reason=str(exc))
             continue
@@ -257,8 +311,11 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         if (direction, t) in attack_keys:
             continue
         attack_keys.add((direction, t))
-        control = observe_control_bar(data, local, timeframe='1d', volume_lookback=config.volume_lookback,
-                                      shadow_policy=ShadowPolicy(config.shadow_fraction))
+        control = memo['control'] if memo is not None and 'control' in memo else observe_control_bar(
+            data, local, timeframe='1d', volume_lookback=config.volume_lookback,
+            shadow_policy=ShadowPolicy(config.shadow_fraction))
+        if memo is not None:
+            memo['control'] = control
         rejection = None
         if whole_wave and direction == Direction.UP:
             rejection = v3_positive_n_attack_rejection(bars[t], control.volume)
@@ -268,11 +325,16 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     known_at=i, previous_volume=bars[t-1].volume, attack_volume=bars[t].volume,
                     open=bars[t].open, high=bars[t].high, low=bars[t].low, close=bars[t].close)
                 continue
-        regime = observe_market_regime(data, local, timeframe='1d',
-            policy=RegimePolicy(ShadowPolicy(config.shadow_fraction), WaveBoundary.ORIGIN,
-                               local_resistance_failure=whole_wave and direction == Direction.UP))
-        force = measure_strength(n.anchors.origin, n.anchors.neckline_extreme, n.anchors.pullback,
-                                  impulse_direction=direction, scale=StrengthScale.EXACT_FRACTIONS)
+        if memo is not None and 'effects' in memo:
+            regime, force = memo['effects']
+        else:
+            regime = observe_market_regime(data, local, timeframe='1d',
+                policy=RegimePolicy(ShadowPolicy(config.shadow_fraction), WaveBoundary.ORIGIN,
+                                   local_resistance_failure=whole_wave and direction == Direction.UP))
+            force = measure_strength(n.anchors.origin, n.anchors.neckline_extreme, n.anchors.pullback,
+                                      impulse_direction=direction, scale=StrengthScale.EXACT_FRACTIONS)
+            if memo is not None:
+                memo['effects'] = (regime, force)
         candidate = dict(setup=setup, epoch=epochs[i], start=offset, finish=finish, n=n,
                          attack=t, known_at=i, regime=regime, control=control, force=force, n_level=n_level, attack_quality_warning=rejection)
         candidates.append(candidate)
@@ -378,13 +440,15 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
     if whole_wave:
         from .hierarchical_entry import hierarchical_history
         from .secondary_resistance import secondary_resistance_history
-        secondary_levels, _ = hierarchical_history(bars)
+        if secondary_levels is None:
+            secondary_levels, _ = hierarchical_history(bars)
     if hierarchical:
         from .hierarchical_entry import hierarchical_history, context_history, select_entry
         if whole_wave:
             from .chart_entry_history import chart_entry_history
             hierarchy_permissions, hierarchy_events = chart_entry_history(
-                bars, audit=audit, shallow_candidate_sink=shallow_candidate_snapshots)
+                bars, audit=audit, shallow_candidate_sink=shallow_candidate_snapshots,
+                prefix_cache=chart_history_cache.setdefault('chart', {}) if chart_history_cache is not None else None)
             secondary_resistance = secondary_resistance_history(
                 bars, secondary_levels, key_events=hierarchy_events, include_resolved=True)
         else:
@@ -449,7 +513,13 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             projection = wave_projection_history(bars, projection_setup)
             candidate['wave_projection'] = projection
             for j in range(squeeze + 1, len(bars)):
-                proof = wave_gap_entry(bars, projection_setup, j, pivots=snapshots.get(j-1, ()))
+                wave_key = (projection_setup, j)
+                if wave_gap_observations is not None and j < len(bars) - 1 and wave_key in wave_gap_observations:
+                    proof = wave_gap_observations[wave_key]
+                else:
+                    proof = wave_gap_entry(bars, projection_setup, j, pivots=snapshots.get(j-1, ()))
+                    if wave_gap_observations is not None and j < len(bars) - 1:
+                        wave_gap_observations[wave_key] = proof
                 if proof is not None:
                     frame = next((f for f in candidate['regime'].frames if candidate['start'] + f.bar_index == squeeze),
                                  candidate['regime'].frames[0])
@@ -477,11 +547,23 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     old['attack'] >= new['setup'].origin.index):
                 continue
             offset = old['start']
+            washout_bars = bars[offset:new['attack']+1]
+            memo = (
+                washout_observations.get((old['setup'], new['setup'], offset, new['attack']))
+                if washout_observations is not None and new['attack'] < len(bars) - 1 else None
+            )
             try:
-                result = observe_washout(bars[offset:new['attack']+1], _local_setup(old['setup'], offset),
+                if memo is not None and memo[0] == 'error':
+                    raise ValueError(memo[1])
+                result = memo[1] if memo is not None else observe_washout(
+                    washout_bars, _local_setup(old['setup'], offset),
                     timeframe='1d', policy=WashoutPolicy(MilestoneBasis.CLOSE),
                     reattack_setup=_local_setup(new['setup'], offset))
-            except ValueError:
+                if memo is None and washout_observations is not None and new['attack'] < len(bars) - 1:
+                    washout_observations[old['setup'], new['setup'], offset, new['attack']] = ('result', result)
+            except ValueError as exc:
+                if memo is None and washout_observations is not None and new['attack'] < len(bars) - 1:
+                    washout_observations[old['setup'], new['setup'], offset, new['attack']] = ('error', str(exc))
                 counts['washout_pair_rejected'] += 1
                 continue
             if result.latest is not None and result.latest.stage == WashoutStage.CONFIRMED:
@@ -538,8 +620,25 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             log(t, 'turn_confirmed', direction=direction.value)
             counts['turn_confirmed'] += 1
     signals = []
+    exit_structure_cache = (
+        chart_history_cache.setdefault('exit_structure', {}) if chart_history_cache is not None else None)
+    current_selections = {}
+    historical_selections = (
+        chart_history_cache['wave_selection_observations'] if chart_history_cache is not None else None)
     def select_candidate(c,i):
         eligibility_attack = i if (c['attack'], i) in consolidation_proofs else c['attack']
+        if whole_wave:
+            selection_key = (
+                c['setup'], c['epoch'], c['start'], c['n_level'], c['attack'],
+                c['force'].ratio, eligibility_attack, i)
+            selected_cache = (
+                historical_selections if historical_selections is not None and i < len(bars) - 1
+                else current_selections if chart_history_cache is not None else None
+            )
+            if selected_cache is not None and selection_key in selected_cache:
+                selected, rejected = selected_cache[selection_key]
+                # The caller may enrich its own proof with resistance and recovery.
+                return (dict(selected) if selected is not None else None), rejected
         params=dict(attack=eligibility_attack,origin_index=c['setup'].origin.index,
             high_index=c['setup'].neckline.index,low_index=c['setup'].pullback.index,
             ratio=c['force'].ratio,shallow_ratio=config.mature_shallow_ratio,asof=i)
@@ -558,7 +657,12 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 allow_confirming_n=True, allow_same_bar_pullback=c['setup'].allow_outside_close and c['setup'].pullback.index == c['attack'],
                 bars=bars,deep_ratio=config.first_pullback_threshold,first_basis=config.first_pullback_basis,
                 second_inclusive=config.mature_shallow_inclusive,**params)
-            return (multilevel_proofs[c['attack'], i], '') if rejected and (c['attack'], i) in multilevel_proofs else (selected, rejected)
+            outcome = ((multilevel_proofs[c['attack'], i], '')
+                       if rejected and (c['attack'], i) in multilevel_proofs else (selected, rejected))
+            if selected_cache is not None:
+                selected_cache[selection_key] = (
+                    dict(outcome[0]) if outcome[0] is not None else None, outcome[1])
+            return outcome
         return select_entry(hierarchy_permissions.get(i,()),hierarchy_permissions.get(c['attack'],()),**params)
     emitted_attacks = set()
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
@@ -572,8 +676,15 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         if turn_events.get(i) == Direction.DOWN:
             exits.append('negative_turn_risk_exit')
         if i and i not in blocked and epochs[i] < i:
-            ctx = observe_structure(snapshots[i-1], symbol=bar.symbol, timeframe='1d',
-                window_start=max(epochs[i], i-config.structure_window), asof_index=i-1)
+            window_start = max(epochs[i], i-config.structure_window)
+            structure_key = (snapshots[i-1], bar.symbol, window_start, i-1)
+            if exit_structure_cache is not None and i < len(bars) - 1 and structure_key in exit_structure_cache:
+                ctx = exit_structure_cache[structure_key]
+            else:
+                ctx = observe_structure(snapshots[i-1], symbol=bar.symbol, timeframe='1d',
+                    window_start=window_start, asof_index=i-1)
+                if exit_structure_cache is not None and i < len(bars) - 1:
+                    exit_structure_cache[structure_key] = ctx
             level = ctx.last_rise_low
             if level is not None and bars[i-1].close >= level.price > bar.close:
                 exits.append('last_rise_low_close_broken')

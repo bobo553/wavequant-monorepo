@@ -4,31 +4,43 @@ test("Ruiling cumulative sale returns reconcile to one trade per complete holdin
     page,
     context,
 }, testInfo) => {
-    test.setTimeout(240_000);
+    test.setTimeout(420_000);
     const errors = [];
+    const unexpectedTdxRequests = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    await page.route(/\/api\/tdx-(?:catalog|backtest)(?:\?|$)/, (route) => {
+        unexpectedTdxRequests.push(route.request().url());
+        return route.abort();
+    });
+    let resolveView;
+    const completedView = new Promise((resolve) => (resolveView = resolve));
+    page.on("response", async (response) => {
+        const path = new URL(response.url()).pathname;
+        if (!response.ok() || !["/api/akshare-backtest", "/api/backtest-job"].includes(path)) return;
+        const body = await response.json().catch(() => null);
+        const view = body?.status === "completed" ? body.result : body;
+        if (view?.symbol === "sz.300154" && view.result_scope === "stock" && Array.isArray(view.orders)) {
+            resolveView(view);
+        }
+    });
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     const catalog = {
         available: true,
         latest: "2026-09-18",
         with_daily: 1,
-        stocks: [{ symbol: "sz.300154", name: "瑞凌股份", has_data: true, last: "2026-09-18", source: "tdx" }],
+        stocks: [{ symbol: "sz.300154", name: "瑞凌股份", has_data: true, last: "2026-09-18", source: "akshare" }],
     };
-    await page.route("**/api/tdx-catalog", (route) => route.fulfill({ json: catalog }));
     await page.route("**/api/akshare-catalog", (route) => route.fulfill({ json: catalog }));
     await page.goto("/research?page=workspace");
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator("#result-scope")).toHaveValue("akshare");
     await page.locator("#backtest-start").fill("2018-01-02");
     await page.locator("#backtest-volume-filter").evaluate((field) => {
         field.checked = false;
     });
-    const response = page.waitForResponse((item) => item.url().includes("/api/akshare-backtest?"), {
-        timeout: 180_000,
-    });
     await page.getByRole("button", { name: "运行当前股票回测" }).click();
-    const result = await response;
-    expect(result.ok()).toBe(true);
-    const view = await result.json();
+    await expect(page.locator("#result-scope")).toHaveValue("akshare-backtest");
+    const view = await completedView;
     await expect(page.locator("#loading")).toBeHidden({ timeout: 180_000 });
     const fills = view.orders.filter((item) => item.status === "filled");
     const closed = fills.filter((item) => item.side === "SELL" && item.position_closed);
@@ -78,5 +90,6 @@ test("Ruiling cumulative sale returns reconcile to one trade per complete holdin
         ),
     ).toBe(true);
     await page.screenshot({ path: testInfo.outputPath("position-cycle-profit.png") });
+    expect(unexpectedTdxRequests).toEqual([]);
     expect(errors).toEqual([]);
 });

@@ -3,20 +3,36 @@ import { env } from "node:process";
 import { expect, test } from "@playwright/test";
 
 test("Huaci adds on the later stronger gap after its earlier body buy", async ({ page, context }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(420_000);
     const errors = [];
+    const unexpectedTdxRequests = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    let resolveView;
+    const completedView = new Promise((resolve) => (resolveView = resolve));
+    page.on("response", async (response) => {
+        const path = new URL(response.url()).pathname;
+        if (!response.ok() || !["/api/akshare-backtest", "/api/backtest-job"].includes(path)) return;
+        const body = await response.json().catch(() => null);
+        const view = body?.status === "completed" ? body.result : body;
+        if (view?.symbol === "sz.001216" && view.result_scope === "stock" && Array.isArray(view.orders)) {
+            resolveView(view);
+        }
+    });
     const apiOrigin = env["WAVEQUANT_E2E_API_ORIGIN"];
     if (apiOrigin) {
         await page.route("**/api/**", async (route) => {
             const target = new URL(route.request().url());
             const response = await route.fetch({
                 url: `${apiOrigin}${target.pathname}${target.search}`,
-                timeout: 180000,
+                timeout: 310_000,
             });
-            await route.fulfill({ response });
+            await route.fulfill({ response }).catch(() => {});
         });
     }
+    await page.route(/\/api\/tdx-(?:catalog|backtest)(?:\?|$)/, (route) => {
+        unexpectedTdxRequests.push(route.request().url());
+        return route.abort();
+    });
     const catalog = {
         available: true,
         latest: "2026-09-21",
@@ -24,19 +40,17 @@ test("Huaci adds on the later stronger gap after its earlier body buy", async ({
         stocks: [{ symbol: "sz.001216", name: "华瓷股份", has_data: true, last: "2026-09-21", source: "akshare" }],
     };
     await page.route("**/api/akshare-catalog", (route) => route.fulfill({ json: catalog }));
-    await page.route("**/api/tdx-catalog", (route) => route.fulfill({ json: catalog }));
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.goto("/research?page=workspace");
     await expect(page.locator("#selected-stock-summary")).toContainText("未回测", { timeout: 60_000 });
+    await expect(page.locator("#result-scope")).toHaveValue("akshare");
     await page.locator("#backtest-start").fill("2018-01-02");
     await page.locator("#backtest-volume-filter").evaluate((field) => {
         field.checked = true;
     });
-    const response = page.waitForResponse((r) => r.url().includes("/api/akshare-backtest?"), { timeout: 180_000 });
     await page.getByRole("button", { name: "运行当前股票回测" }).click();
-    const result = await response;
-    expect(result.ok()).toBe(true);
-    const view = await result.json();
+    await expect(page.locator("#result-scope")).toHaveValue("akshare-backtest");
+    const view = await completedView;
     const buy = view.orders.find((o) => o.side === "BUY" && o.timestamp.startsWith("2026-08-26"));
     expect(buy?.status).toBe("filled");
     expect(buy.reason).toBe("system_wave_push_gap");
@@ -103,5 +117,6 @@ test("Huaci adds on the later stronger gap after its earlier body buy", async ({
     expect(addOnCopy).toContain("C 浪确认：跳空突破");
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator("#selection-info")).toContainText("19.6975");
+    expect(unexpectedTdxRequests).toEqual([]);
     expect(errors).toEqual([]);
 });

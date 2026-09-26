@@ -24,12 +24,9 @@ export function parseResearchLink(search) {
 }
 
 export function resolveResearchLink(link, catalogs) {
-    const sources = [link.source, link.source === "akshare" ? "tdx" : "akshare"];
-    const source = sources.find(
-        (name) =>
-            catalogs[name]?.with_daily &&
-            catalogs[name].stocks.some((stock) => stock.symbol === link.symbol && stock.has_data !== false),
-    );
-    if (!source) throw new Error(`${link.symbol} 暂无可用行情，请更新股票目录后重试。`);
-    return { ...link, source, fallback: source !== link.source };
+    if (!["akshare", "tdx"].includes(link.source)) throw new Error("行情链接数据源无效");
+    const catalog = catalogs[link.source];
+    if (!catalog?.with_daily || !catalog.stocks?.some((stock) => stock.symbol === link.symbol && stock.has_data !== false))
+        throw new Error(`${link.symbol} 在所选${link.source === "akshare" ? "AkShare" : "通达信"}目录中暂无可用行情，请更新股票目录后重试。`);
+    return { ...link, fallback: false };
 }
