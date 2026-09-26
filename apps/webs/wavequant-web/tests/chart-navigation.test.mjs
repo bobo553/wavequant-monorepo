@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chartNavigationState, panChartRange, seekChartRange, zoomChartRange } from "../public/chart-navigation.js";
+import {
+    chartNavigationKeyPosition,
+    chartNavigationState,
+    panChartRange,
+    seekChartRange,
+    zoomChartRange,
+} from "../public/chart-navigation.js";
 
 test("chart navigation clamps panning and seeking to the loaded data", () => {
     const start = chartNavigationState({ from: 0, to: 106 }, 1000);
@@ -46,4 +52,15 @@ test("dates describe the actual chart window when native dragging passes a data 
     assert.equal(overscrolled.from, 0);
     assert.equal(overscrolled.firstIndex, 0);
     assert.equal(overscrolled.lastIndex, 50);
+});
+
+test("range keyboard navigation uses one-bar arrows and larger page steps", () => {
+    const state = chartNavigationState({ from: 400, to: 500 }, 1000);
+    assert.equal(chartNavigationKeyPosition(state, "ArrowLeft"), 399);
+    assert.equal(chartNavigationKeyPosition(state, "ArrowRight"), 401);
+    assert.equal(chartNavigationKeyPosition(state, "PageDown"), 380);
+    assert.equal(chartNavigationKeyPosition(state, "PageUp"), 420);
+    assert.equal(chartNavigationKeyPosition(state, "Home"), 0);
+    assert.equal(chartNavigationKeyPosition(state, "End"), state.maxStart);
+    assert.equal(chartNavigationKeyPosition(state, "Escape"), null);
 });

@@ -46,3 +46,13 @@ export function seekChartRange(state, position) {
     const from = Math.max(0, Math.min(state.maxStart, position));
     return { from, to: from + state.span };
 }
+
+export function chartNavigationKeyPosition(state, key) {
+    if (key === "Home") return 0;
+    if (key === "End") return state.maxStart;
+    if (key === "ArrowLeft" || key === "ArrowDown") return state.from - 1;
+    if (key === "ArrowRight" || key === "ArrowUp") return state.from + 1;
+    if (key === "PageDown") return state.from - Math.max(1, Math.round(state.span * 0.2));
+    if (key === "PageUp") return state.from + Math.max(1, Math.round(state.span * 0.2));
+    return null;
+}

@@ -21,7 +21,7 @@
                 {
                     "command": "node --test tests/chart-navigation.test.mjs; node --check public/chart-navigation.js public/charts.js public/app.js; pnpm --filter wavequant-web lint; typecheck; build; prettier --check; git diff --check",
                     "status": "passed",
-                    "summary": "4 项图窗边界、平移、缩放与原生拖拽越界测试及语法、Web Lint（6 条既有警告）、类型、生产构建、格式和差异检查通过。按当前规则未运行 Playwright 或真实浏览器，视觉和键盘交互待人工复核。"
+                    "summary": "5 项图窗边界、平移、缩放、原生拖拽越界与键盘导航测试及语法、Web Lint（6 条既有警告）、类型、生产构建、格式和差异检查通过。按当前规则未运行 Playwright 或真实浏览器，视觉和键盘交互待人工复核。"
                 }
             ]
         },
