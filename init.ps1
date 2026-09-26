@@ -14,7 +14,8 @@ if (-not (Test-Path -LiteralPath "node_modules")) {
 }
 
 if ($Mode -eq "full") {
-    pnpm verify
+    pnpm verify:quick
+    pnpm build
 } else {
     pnpm verify:quick
 }

@@ -77,6 +77,7 @@ def test_ordinary_rebound_requires_target_defense_and_known_close_break():
     pivot = ReversalPoint(LinePoint(5, 0, PointKind.HIGH, 18), 6, "test")
     proof = wave_gap_entry(bars, setup, 7, pivots=[pivot])
     assert proof["wave_a_class"] == "ordinary"
+    assert proof["wave_a_origin_date"] == "2020-01-01"
     assert proof["wave_equal_target"] == 25
     assert proof["wave_entry_two_t_date"] == ""
     assert "wave_c_1618_target" not in proof

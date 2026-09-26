@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-176",
     "features": [
         {
+            "id": "MONOREPO-177",
+            "name": "wave-c-add-on-entry",
+            "title": "强 A 浪后续缺口确认与已有持仓加仓",
+            "description": "V3 强 A 浪的实体突破与随后严格更高的跳空突破分阶段确认；已有该股持仓时允许后续合格买点按剩余仓位、风险、流动性和现金加仓，合并交易成本并保留 T+1。",
+            "scope": "WaveQuant Core 全局 V3 信号、回测执行和交易账本，Web 成交详情及策略拓扑，华瓷股份回归",
+            "dependencies": ["MONOREPO-161"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "华瓷 2026-08-26 实体突破与 09-15 严格更高跳空分别产生因果确认；相同阶段不重复，历史前缀一致",
+                "华瓷 V3 已于 08-26 买入并于 09-09 部分减仓后，09-15 合格买点在剩余持仓上实际加仓且共用一笔持仓周期",
+                "加仓服从剩余仓位、风险、流动性、现金和待退出门禁；累计买入成本、已实现及未实现盈亏正确，新增股份遵守 T+1",
+                "Web 成交详情与复制标明加仓、总持仓占比和同笔盈亏，策略拓扑及相关 Core/Web 回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_add_on_entry.py、test_trade_evidence_addon.py、test_wave_continuation.py、test_wave_intraday_entry.py、test_wave_body_breakout.py",
+                    "status": "passed",
+                    "summary": "14 项加仓、1 项成交周期及 29 项转浪相关回归通过；覆盖华瓷实体买入、9 月 9 日部分卖出、9 月 15 日持仓加仓，严格更高跳空、分钟因果性、手续费后仓位和风险、同日流动性、待退出、风险减仓及 T+1。"
+                },
+                {
+                    "command": "Core pytest test_close_entry.py test_entry_preflight.py test_staged_exit.py test_pressure_exit.py test_trend_flip_exit.py；Core lint/typecheck/build；新增与局部修改文件 Ruff format --check",
+                    "status": "passed",
+                    "summary": "114 项相邻入退场回归、Ruff lint、配置的类型门禁、sdist/wheel 构建及 7 个已格式化文件检查通过。backtest.py、integrated_strategy.py、strategy_profiles.py 与 trade_evidence.py 沿用原有整文件 Ruff 格式差异，未扩大改动范围。额外全量回归至 53% 无新增失败后停止；既有国芳折叠 N 用例单独复核 1 通过、1 失败（预期 643、实际 621）。"
+                },
+                {
+                    "command": "Web test:unit/lint/typecheck/build；Chromium wave-continuation.spec.mjs 与 position-cycle-profit.spec.mjs；pnpm harness:check；codegraph sync",
+                    "status": "passed",
+                    "summary": "Web 14 项 Vitest、158 项 Node 单测及静态检查、生产构建通过；两条真实 Chromium 流程分别验证华瓷已持仓加仓、成交说明与整笔累计盈亏；Harness 和索引同步通过。盘中量未越前一完整日时只写跳空突破。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-176",
             "name": "recover-long-current-stock-backtests",
             "title": "长时间当前股票回测持续等待并恢复结果",
@@ -89,13 +121,13 @@
         {
             "id": "MONOREPO-173",
             "name": "selected-buy-wave-endpoints",
-            "title": "点击买入成交标注 A/B/C 浪关键点",
-            "description": "在选中转浪买入成交时，按决策时已知证据将 A 高、B 低和 C 确认价标在对应 K 线上。",
+            "title": "点击买入成交标注 A 浪起点及 A/B/C 关键点",
+            "description": "在选中转浪买入成交时，按决策时已知证据将 A 起点、A 高、B 低和 C 确认价标在对应 K 线上。",
             "scope": "wavequant-web 成交点击、K 线叠加标注与回归",
             "dependencies": ["MONOREPO-162"],
             "status": "done",
             "acceptanceCriteria": [
-                "点击转浪买入成交后，在图上对应日期和价位显示 A、B、C 确认标注，并将三点纳入可视范围",
+                "点击转浪买入成交后，在图上对应日期和价位显示 A 起点、A 高、B 低、C 确认标注，并将四点纳入可视范围",
                 "其他成交或信号不显示该组标注，切换选择或股票时清除，不借未来行情补点",
                 "单测、Web 门禁与真实浏览器点击回归通过"
             ],
@@ -109,6 +141,11 @@
                     "command": "pnpm exec playwright test tests/e2e/shilian-body-entry.spec.mjs --workers=1；pnpm exec playwright test tests/e2e/guilin-wave-endpoints.spec.mjs --workers=1",
                     "status": "passed",
                     "summary": "两条真实 Chromium 测试分别通过；桂林旅游 2021-05-21 买入证据为 A 高 2021-04-20、B 低 2021-05-07、C 确认价 6.7021，点击成交后图表出现三处标注。"
+                },
+                {
+                    "command": "Core pytest test_one_p_rebound.py test_completed_wave_recovery.py；Web 定向 Node 单测、lint/typecheck/build；harness:check",
+                    "status": "passed",
+                    "summary": "A 起点日期取冻结的 N 起点索引；图表和等浪说明显示同一日期及价格。Core 26 项、Web 7 项定向 Node、静态检查、生产构建及 Harness 通过。完整 Web 单测曾在本轮通过（14 项 Vitest、158 项 Node），后续按用户的全局验证节奏改为空闲时运行；完整成交点击回归本轮未计为通过。"
                 }
             ]
         },

@@ -17,6 +17,7 @@ from ..market_structure.trend_structure import observe_structure
 from .bull_eligibility import bull_permission_history
 from .attack_quality import v3_positive_n_attack_rejection
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
+from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.wave_strength import StrengthScale, measure_strength
 from ..market_state.washout import WashoutPolicy, WashoutStage, observe_washout
@@ -559,7 +560,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 second_inclusive=config.mature_shallow_inclusive,**params)
             return (multilevel_proofs[c['attack'], i], '') if rejected and (c['attack'], i) in multilevel_proofs else (selected, rejected)
         return select_entry(hierarchy_permissions.get(i,()),hierarchy_permissions.get(c['attack'],()),**params)
-    emitted_attacks, emitted_waves = set(), set()
+    emitted_attacks = set()
+    emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
     bearish_attacks = {c['attack']: c for c in candidates if c['setup'].direction == Direction.DOWN}
     for i, bar in enumerate(bars):
         exits = []
@@ -594,8 +596,12 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         for c, frame in sorted(choices, key=entry_priority, reverse=True):
             consolidation = consolidation_proofs.get((c['attack'], i))
             wave = wave_proofs.get((c['attack'], i))
-            wave_key = (c['attack'], wave['wave_a_high_index'], wave['wave_b_low_index']) if wave else None
-            if wave_key in emitted_waves:
+            wave_key = (
+                (int(c['attack']), int(wave['wave_a_high_index']), int(wave['wave_b_low_index']))
+                if wave is not None else None
+            )
+            if (wave is not None and wave_key is not None
+                    and not wave_confirmation_is_new(wave, emitted_waves.get(wave_key))):
                 continue
             if c['setup'].direction != Direction.UP or (c['attack'] in emitted_attacks and consolidation is None and wave is None) or epochs[i] != c['epoch']:
                 continue
@@ -735,8 +741,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 'system_'+tag, bars[c['attack']].timestamp, hierarchy_proof['counter_ratio'] if whole_wave and hierarchy_proof else c['force'].ratio, rvol,
                 entry_regime.value if entry_regime else 'n_only_ablation', targets[0], config.minimum_reward_risk))
             emitted_attacks.add(c['attack'])
-            if wave_key is not None:
-                emitted_waves.add(wave_key)
+            if wave is not None and wave_key is not None:
+                emitted_waves[wave_key] = wave_confirmation_state(wave)
             log(i, 'long_signal', channel=tag, attack=c['attack'], stop=stop, target=targets[0], rvol=rvol,
                 **(dict(volume_basis='confirmation_volume_over_previous_session',
                         observed_volume=bar.volume, previous_volume=bars[i-1].volume,

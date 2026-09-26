@@ -11,6 +11,9 @@ export function selectedWaveEndpoints(marker, bars) {
     if (!proof) return [];
     const cTime = marker.signal_time || marker.decision_timestamp?.slice(0, 10);
     const points = [
+        ...(proof.wave_a_origin_date
+            ? [{ label: "A 起点", time: proof.wave_a_origin_date, price: proof.wave_a_origin, position: "below" }]
+            : []),
         { label: "A", time: proof.wave_a_high_date, price: proof.wave_a_high, position: "above" },
         { label: "B", time: proof.wave_b_low_date, price: proof.wave_b_low, position: "below" },
         { label: "C 确认", time: cTime, price: proof.wave_breakout_close, position: "above" },
@@ -18,7 +21,11 @@ export function selectedWaveEndpoints(marker, bars) {
     const marketDates = new Set(bars.map((bar) => bar.time));
     if (
         points.some((point) => !marketDates.has(point.time) || !Number.isFinite(point.price)) ||
-        !(points[0].time < points[1].time && points[1].time <= points[2].time)
+        points.some(
+            (point, index) =>
+                index > 0 &&
+                (point.label === "C 确认" ? point.time < points[index - 1].time : point.time <= points[index - 1].time),
+        )
     )
         return [];
     return points;
@@ -76,7 +83,7 @@ export class WaveEndpointOverlay {
             context.textBaseline = "middle";
             context.lineJoin = "round";
             context.font = "700 11px ui-sans-serif, system-ui, sans-serif";
-            const colors = { A: "#ebbc70", B: "#5ebeb0", "C 确认": "#a29ce0" };
+            const colors = { "A 起点": "#ebbc70", A: "#ebbc70", B: "#5ebeb0", "C 确认": "#a29ce0" };
             for (const point of this.projected) {
                 if (point.x < 20 || point.x > mediaSize.width - 20 || point.y < 8 || point.y > mediaSize.height - 8)
                     continue;

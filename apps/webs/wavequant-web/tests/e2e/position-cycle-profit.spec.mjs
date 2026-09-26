@@ -36,8 +36,9 @@ test("Ruiling cumulative sale returns reconcile to one trade per complete holdin
     expect(view.metrics.trades).toBe(closed.length);
     for (const last of closed) {
         const holding = fills.filter((item) => item.trade_id === last.trade_id);
-        const buy = holding.find((item) => item.side === "BUY");
-        const cost = buy.price * buy.quantity + buy.fee;
+        const cost = holding
+            .filter((item) => item.side === "BUY")
+            .reduce((sum, item) => sum + item.price * item.quantity + item.fee, 0);
         const proceeds = holding
             .filter((item) => item.side === "SELL")
             .reduce((sum, item) => sum + item.price * item.quantity - item.fee, 0);
@@ -49,7 +50,11 @@ test("Ruiling cumulative sale returns reconcile to one trade per complete holdin
     await expect(page.locator("#trades-body tr")).toHaveCount(closed.length);
     const partial = fills.find((item) => item.side === "SELL" && item.position_closed === false);
     expect(partial).toBeTruthy();
-    const row = page.locator("#trade-nodes-list .trade-node-row").filter({ hasText: partial.timestamp.slice(0, 10) });
+    const row = page
+        .locator('#trade-nodes-list .trade-node-item[data-side="SELL"] .trade-node-row')
+        .filter({ hasText: partial.timestamp.slice(0, 10) })
+        .filter({ hasText: "减仓成交" })
+        .first();
     await expect(row).toContainText("累计已实现盈亏");
     await expect(row).toContainText(`${(partial.position_net_return * 100).toFixed(2)}%`);
     await expect(row).toContainText("以整笔买入含费成本为基数，尚未清仓");
@@ -57,8 +62,10 @@ test("Ruiling cumulative sale returns reconcile to one trade per complete holdin
     await expect(row.locator(".trade-node-copy")).toHaveText("已复制");
     expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("累计已实现收益率");
     const lastRow = page
-        .locator("#trade-nodes-list .trade-node-row")
-        .filter({ hasText: closed[0].timestamp.slice(0, 10) });
+        .locator('#trade-nodes-list .trade-node-item[data-side="SELL"] .trade-node-row')
+        .filter({ hasText: closed[0].timestamp.slice(0, 10) })
+        .filter({ hasText: "卖出成交" })
+        .first();
     await expect(lastRow).toContainText("整笔清仓盈亏");
     await expect(lastRow).toContainText(`${(closed[0].position_net_return * 100).toFixed(2)}%`);
     await page.setViewportSize({ width: 390, height: 844 });

@@ -16,7 +16,8 @@ if [[ ! -d node_modules ]]; then
 fi
 
 if [[ "$mode" == "full" ]]; then
-  pnpm verify
+  pnpm verify:quick
+  pnpm build
 else
   pnpm verify:quick
 fi

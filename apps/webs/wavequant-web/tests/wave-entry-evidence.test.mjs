@@ -21,6 +21,7 @@ const proof = {
     wave_breakout_date: "2020-07-14",
     wave_a_high_date: "2020-07-06",
     wave_a_high: 3.56,
+    wave_a_origin_date: "2020-05-19",
     wave_a_origin: 2.58,
     wave_equal_target: 3.99,
 };
@@ -70,5 +71,6 @@ test("ordinary one-p rebound never claims two-t or strong extensions", () => {
     ]).join("\n");
     assert.match(text, /普通 A 浪反弹买点/);
     assert.match(text, /达到一饱/);
+    assert.match(text, /2020-05-19 起点 2\.5800/);
     assert.doesNotMatch(text, /已到二吐|大 C 浪扩展目标/);
 });

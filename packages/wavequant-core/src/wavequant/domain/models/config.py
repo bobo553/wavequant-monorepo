@@ -53,6 +53,7 @@ class StrategyConfig:
     liquidity_lookback: int = 20
     max_participation: float = 0.01
     entry_at_close: bool = False
+    allow_add_on: bool = False
     nonflat_limit_close_fill: bool = False
     consolidation_entry_intraday: bool = False
     entry_ttl_bars: int = 1
@@ -105,7 +106,7 @@ class StrategyConfig:
         for name, value in self.to_dict().items():
             if isinstance(value, (int, float)) and not math.isfinite(value):
                 raise ValueError(f"{name} must be finite")
-        for name in ("entry_at_close", "consolidation_entry_intraday", "require_non_bearish_regime", "allow_same_day_exit", "a_share_taxes", "staged_exit_enabled", "net_reward_risk_filter", "staged_exit_same_day", "staged_exit_intraday", "missing_minute_daily_fallback", "inverse_n_after_reduction", "inverse_n_close_reduce", "volume_down_exit", "volume_inverse_n_clear", "pressure_adverse_exit", "trend_flip_adverse_exit", "wave_exhaustion_exit", "small_n_reduction", "exit_on_target"):
+        for name in ("entry_at_close", "allow_add_on", "consolidation_entry_intraday", "require_non_bearish_regime", "allow_same_day_exit", "a_share_taxes", "staged_exit_enabled", "net_reward_risk_filter", "staged_exit_same_day", "staged_exit_intraday", "missing_minute_daily_fallback", "inverse_n_after_reduction", "inverse_n_close_reduce", "volume_down_exit", "volume_inverse_n_clear", "pressure_adverse_exit", "trend_flip_adverse_exit", "wave_exhaustion_exit", "small_n_reduction", "exit_on_target"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be boolean")
         positive_ints = {

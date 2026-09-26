@@ -1,6 +1,6 @@
 """A completed N attack may retain its A/B structure beyond local N lifetimes."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from fractions import Fraction
 
 from ..market_structure.wave_projection import WaveProjectionSetup
@@ -47,6 +47,7 @@ def wave_pullback_context(
         wave_entry_two_t=setup.two_t,
         wave_entry_two_t_date=bars[max(reached, setup.squeeze_index)].timestamp.date().isoformat() if strong else "",
         wave_a_origin=setup.origin,
+        wave_a_origin_date=bars[setup.origin_index].timestamp.date().isoformat(),
         wave_a_high=bars[peak].high,
         wave_a_high_index=peak,
         wave_a_high_date=bars[peak].timestamp.date().isoformat(),
@@ -64,6 +65,22 @@ def wave_pullback_context(
             else {}
         ),
         wave_defense=setup.defense,
+    )
+
+
+def wave_confirmation_state(proof: Mapping[str, str | int | float]) -> tuple[str, float]:
+    """Keep the confirmation phase and the high known when it was emitted."""
+    return str(proof["wave_confirmation_phase"]), float(proof["wave_gap_high"])
+
+
+def wave_confirmation_is_new(proof: Mapping[str, str | int | float], previous: tuple[str, float] | None) -> bool:
+    """Only a higher strong-A gap may advance an already confirmed body."""
+    if previous is None:
+        return True
+    return (
+        previous[0] == "body"
+        and proof["wave_confirmation_phase"] == "gap"
+        and float(proof["wave_gap_high"]) > previous[1]
     )
 
 
@@ -126,6 +143,7 @@ def wave_gap_entry(
         return None
     return dict(
         context,
+        wave_confirmation_phase="rebound" if ordinary else "gap" if gap else "body",
         wave_gap_trigger="rebound_close_breakout"
         if rebound
         else "volume_body_breakout"

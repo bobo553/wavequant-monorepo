@@ -8,7 +8,11 @@ import pytest
 from wavequant.domain.models.model import Bar
 from wavequant.domain.market_structure.wave_projection import WaveProjectionSetup, wave_projection_history
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
-from wavequant.domain.strategies.wave_continuation import wave_gap_entry
+from wavequant.domain.strategies.wave_continuation import (
+    wave_confirmation_is_new,
+    wave_confirmation_state,
+    wave_gap_entry,
+)
 
 
 def sample():
@@ -121,3 +125,46 @@ def test_full_global_pipeline_reenters_after_inverse_n_and_preserves_prefix():
         prefix = generate_system_signals(bars[: end + 1], config)
         assert prefix.signals == [s for s in full.signals if s.bar_index <= end]
         assert prefix.audit == [e for e in full.audit if e["bar_index"] <= end]
+
+
+def test_strong_a_body_confirmation_can_advance_to_later_higher_gap():
+    bars, dates, _ = sample()
+    body, gap = dates["2026-08-26"], dates["2026-09-15"]
+    # A completed early observation can confirm the body route even if the
+    # final August candle no longer has a qualifying body.
+    bars[body] = replace(bars[body], close=16.70, volume=2_100_000)
+    strategy = SystemStrategy(
+        pivot_mode="lecture_causal",
+        entry_policy="hierarchical_two_buy_points",
+        buy_point_definition="whole_flip_wave_v3",
+        first_pullback_threshold=None,
+        strict_n_attack_quality=False,
+        preflight_reward_risk=False,
+        volume_filter=True,
+    )
+    full = generate_system_signals(bars[: gap + 1], strategy)
+    confirmations = [
+        e
+        for e in full.audit
+        if e["event"] == "long_signal" and e.get("wave_entry_path") and e["bar_index"] in (body, gap)
+    ]
+    assert [e["bar_index"] for e in confirmations] == [body, gap]
+    assert [(e["bar_index"], e["wave_confirmation_phase"]) for e in confirmations] == [(body, "body"), (gap, "gap")]
+    assert confirmations[0]["wave_a_high_index"] == confirmations[1]["wave_a_high_index"]
+    assert confirmations[0]["wave_b_low_index"] == confirmations[1]["wave_b_low_index"]
+    assert confirmations[1]["wave_gap_high"] > confirmations[0]["wave_gap_high"]
+    for end in (body, gap):
+        prefix = generate_system_signals(bars[: end + 1], strategy)
+        assert prefix.signals == [s for s in full.signals if s.bar_index <= end]
+        assert prefix.audit == [e for e in full.audit if e["bar_index"] <= end]
+
+
+def test_strong_a_confirmation_requires_strictly_higher_gap_and_one_fill_per_phase():
+    body = {"wave_confirmation_phase": "body", "wave_gap_high": 18.0}
+    prior_body = wave_confirmation_state(body)
+    assert not wave_confirmation_is_new({"wave_confirmation_phase": "body", "wave_gap_high": 19.0}, prior_body)
+    assert not wave_confirmation_is_new({"wave_confirmation_phase": "gap", "wave_gap_high": 18.0}, prior_body)
+    higher_gap = {"wave_confirmation_phase": "gap", "wave_gap_high": 18.01}
+    assert wave_confirmation_is_new(higher_gap, prior_body)
+    assert not wave_confirmation_is_new(higher_gap, wave_confirmation_state(higher_gap))
+    assert not wave_confirmation_is_new(body, wave_confirmation_state(higher_gap))

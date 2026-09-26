@@ -1219,6 +1219,7 @@ function renderBlockedTradeDate(group, view) {
 }
 function entryPositionWeight(marker) {
     if (marker.side !== "BUY") return null;
+    if (Number.isFinite(marker.position_weight_after_fill)) return marker.position_weight_after_fill;
     if (Number.isFinite(marker.entry_position_weight)) return marker.entry_position_weight;
     // Older saved backtests have the fill inputs but not the derived weight.
     const positionValue = Number.isFinite(marker.entry_position_value)
@@ -1302,7 +1303,7 @@ function renderTradeNodes() {
         heading.append(date, price);
         const reason = document.createElement("span");
         reason.className = "trade-node-reason";
-        reason.textContent = `${buy ? "买入成交" : marker.position_closed === false ? "减仓成交" : "卖出成交"}${open ? " · 尚未平仓" : ""}`;
+        reason.textContent = `${buy ? (marker.add_on ? "加仓成交" : "买入成交") : marker.position_closed === false ? "减仓成交" : "卖出成交"}${open ? " · 尚未平仓" : ""}`;
         const details = document.createElement("span");
         details.className = "trade-node-details";
         details.textContent = `决定 ${marker.decision_timestamp || marker.signal_time || "—"}${marker.execution_model === "intraday_5m_next_open" ? ` · 成交 ${marker.timestamp}` : ""} · 原价 ${num(marker.raw_price)} 元 · ${num(marker.quantity)} 等价份额 · 费用 ${num(marker.fee)} 元`;
@@ -1327,7 +1328,9 @@ function renderTradeNodes() {
             const position = document.createElement("span");
             position.className = "trade-node-position";
             position.textContent = `买入后仓位 ${entryPositionLabel(marker)}`;
-            position.title = "该笔买入成交额（不含费用）÷ 成交后账户权益；不是全回测期间的日均仓位";
+            position.title = Number.isFinite(marker.position_weight_after_fill)
+                ? "该股票成交后总持仓市值 ÷ 成交后账户权益；不是全回测期间的日均仓位"
+                : "该笔买入成交额（不含费用）÷ 成交后账户权益；旧回测未记录加仓后总仓位";
             content.append(position);
         }
         const profit = positionProfit(marker, trade, open ? openPositionForMarker(view, marker) : null);

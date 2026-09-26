@@ -35,7 +35,7 @@ Python 服务、Worker、CLI 和库也按上述职责落位，不单独创建技
 3. 使用 `pnpm -r list --depth -1 --json` 确认受影响的 Node.js workspace；Python 任务再检索对应 `pyproject.toml`，并读取各 workspace 根目录的 `progress.md`。
 4. 在 `feature_list.json` 中只保留一个 `in-progress` 功能，确认其依赖与验收条件。
 5. 读取距离目标文件最近的 `AGENTS.md`，再按下方路由读取必要规范。
-6. 首次检出运行 `./init.ps1 -Mode quick`（Windows）或 `./init.sh --mode quick`（macOS/Linux）；日常任务至少运行相关 workspace 的基线检查。
+6. 首次检出运行 `./init.ps1 -Mode quick`（Windows）或 `./init.sh --mode quick`（macOS/Linux）；日常任务只运行相关 workspace 的非测试基线检查，自动化测试留到提交代码时。
 7. 搜索已有实现、契约、设计系统组件和测试后再修改。
 
 ## 上下文路由
@@ -86,6 +86,8 @@ Python 服务、Worker、CLI 和库也按上述职责落位，不单独创建技
 
 ## 验证命令与完成定义（Verification Commands / Definition of Done）
 
+日常代码修改后可以运行格式、lint、类型检查和必要构建；不运行单元、组件、集成、端到端、回归、pytest 等自动化测试。仅在实际提交代码前运行适用的自动化测试；未提交时记录“待提交前验证”，不得把未运行的测试写成已通过。提交前钩子通过 `pnpm test:commit` 运行已暂存的定向测试；没有对应测试文件的受影响 workspace 及其下游消费者运行 `test:all`，含浏览器 E2E 的 workspace 默认只运行 `test:unit`。浏览器端到端测试只在用户当次明确要求时设置 `WAVEQUANT_COMMIT_E2E=1` 执行，否则记录待验证。失败时不得提交；完整测试套件另安排空闲验证。
+
 按风险选择最小充分验证：
 
 ```bash
@@ -110,13 +112,13 @@ python -m build
 
 具体路径和是否需要构建由 `pyproject.toml` 与任务类型决定，不能为了套用示例运行不存在的目标。
 
-只有在目标行为实现、相关格式/lint/类型/测试/构建实际通过、状态与进度文件更新、无法运行项及风险明确记录后，功能才能标记为 `done`。UI 改动还需真实浏览器或设备验证；API、数据库和基础设施改动需要相应集成验证。
+目标行为实现且相关格式/lint/类型/构建实际通过后，未提交的功能保持 `in-progress`，在验证证据中记录“待提交前验证”；提交前自动化测试实际通过、状态与进度文件更新、无法运行项及风险明确记录后才能标记为 `done`。UI 改动还需真实浏览器或设备验证；API、数据库和基础设施改动需要相应集成验证。
 
 ## 会话结束（End of Session）
 
 1. 更新 `feature_list.json` 的状态和命令级证据。
 2. 更新所有受影响 workspace 的 `progress.md`。
 3. 未完成或跨 workspace 的长任务更新 `session-handoff.md`。
-4. 重新运行最终验证并检查 `git diff`、`git status`，确保没有凭据、产物或无关文件。
+4. 未提交时只复查非测试验证和 `git diff`、`git status`，记录待提交前运行的测试；实际提交前运行自动化测试，并确保没有凭据、产物或无关文件。
 
 按以上记录即可保持 clean、restartable 的交接路径。

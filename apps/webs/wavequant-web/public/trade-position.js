@@ -4,7 +4,9 @@ export function openPositionForMarker(view, marker) {
     if (marker?.kind !== "fill" || marker.side !== "BUY") return null;
     const entryTime = marker.timestamp || marker.time;
     return view?.backtest?.open_positions?.find((position) => {
-        if (position.symbol !== marker.symbol || !position.entry_time || !entryTime) return false;
+        if (position.symbol !== marker.symbol) return false;
+        if (position.trade_id && marker.trade_id) return position.trade_id === marker.trade_id;
+        if (!position.entry_time || !entryTime) return false;
         return position.entry_time.includes("T") && entryTime.includes("T")
             ? position.entry_time === entryTime
             : position.entry_time.slice(0, 10) === entryTime.slice(0, 10);
