@@ -65,8 +65,28 @@ test("watchlist rows can be dragged and moved with the keyboard, then keep their
     const end = await lastRow.boundingBox();
     await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
     await page.mouse.down();
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2 + 10);
+    const lifted = await page.evaluate(() => ({
+        ghost: globalThis.document.querySelector(".watchlist-stock-ghost")?.getBoundingClientRect().top,
+        placeholder: globalThis.document
+            .querySelector('#watchlist-stock-list .watchlist-stock-row[data-dragging="true"]')
+            ?.getBoundingClientRect().top,
+    }));
+    expect(lifted.ghost).toBeDefined();
+    expect(lifted.placeholder).toBeDefined();
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2 + 20);
+    const following = await page
+        .locator(".watchlist-stock-ghost")
+        .evaluate((ghost) => ghost.getBoundingClientRect().top);
+    expect(following - lifted.ghost).toBeGreaterThan(8);
+    await expect.poll(symbols).toEqual(["sh.600001", "sh.600002", "sh.600003"]);
+    const placeholder = await page
+        .locator('#watchlist-stock-list .watchlist-stock-row[data-dragging="true"]')
+        .boundingBox();
+    expect(Math.abs(placeholder.y - lifted.placeholder)).toBeLessThan(2);
     await page.mouse.move(end.x + end.width / 2, end.y + end.height - 2, { steps: 6 });
     await page.mouse.up();
+    await expect(page.locator(".watchlist-stock-ghost")).toHaveCount(0);
     await expect.poll(symbols).toEqual(["sh.600002", "sh.600003", "sh.600001"]);
     await expect.poll(savedSymbols).toEqual(["sh.600002", "sh.600003", "sh.600001"]);
     await page.reload();

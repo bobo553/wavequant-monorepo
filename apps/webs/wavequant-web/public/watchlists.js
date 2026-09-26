@@ -616,12 +616,32 @@ export class Watchlists {
             event.preventDefault();
             const initialOrder = [...list.querySelectorAll(".watchlist-stock-row")].map((item) => item.dataset.symbol);
             let moved = false;
-            row.dataset.dragging = "true";
+            let ghost = null;
+            let origin = null;
+            const lift = () => {
+                origin = row.getBoundingClientRect();
+                ghost = row.cloneNode(true);
+                ghost.classList.add("watchlist-stock-ghost");
+                ghost.setAttribute("aria-hidden", "true");
+                ghost.inert = true;
+                Object.assign(ghost.style, {
+                    left: `${origin.left}px`,
+                    top: `${origin.top}px`,
+                    width: `${origin.width}px`,
+                    height: `${origin.height}px`,
+                });
+                (list.closest("[data-wavequant-react-workbench]") || document.body).append(ghost);
+                row.dataset.dragging = "true";
+            };
             const move = (moveEvent) => {
                 if (moveEvent.pointerId !== event.pointerId) return;
                 if (!row.isConnected) return;
                 if (Math.abs(moveEvent.clientY - event.clientY) < 4 && !moved) return;
-                moved = true;
+                if (!moved) {
+                    moved = true;
+                    lift();
+                }
+                ghost.style.transform = `translate3d(0, ${moveEvent.clientY - event.clientY}px, 0)`;
                 const others = [...list.querySelectorAll(".watchlist-stock-row")].filter((item) => item !== row);
                 const before = others.find(
                     (item) => moveEvent.clientY < item.getBoundingClientRect().top + item.offsetHeight / 2,
@@ -636,13 +656,37 @@ export class Watchlists {
                 window.removeEventListener("pointermove", move);
                 window.removeEventListener("pointerup", up);
                 window.removeEventListener("pointercancel", cancel);
-                if (!row.isConnected) return;
+                if (!row.isConnected) {
+                    ghost?.remove();
+                    return;
+                }
+                if (!moved) return;
+                if (!save) {
+                    const rows = new Map(
+                        [...list.querySelectorAll(".watchlist-stock-row")].map((item) => [item.dataset.symbol, item]),
+                    );
+                    this.animateOrder(list, () => initialOrder.forEach((symbol) => list.append(rows.get(symbol))));
+                }
+                row.getAnimations().forEach((animation) => animation.finish());
+                const target = row.getBoundingClientRect();
+                const landing = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+                    ? Promise.resolve()
+                    : ghost.animate(
+                          [
+                              { transform: ghost.style.transform },
+                              {
+                                  transform: `translate3d(${target.left - origin.left}px, ${target.top - origin.top}px, 0)`,
+                              },
+                          ],
+                          { duration: 160, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+                      ).finished;
+                this.orderAnimation = Promise.allSettled([this.orderAnimation, landing]).then(() => {
+                    ghost.remove();
+                    delete row.dataset.dragging;
+                });
                 const symbols = [...list.querySelectorAll(".watchlist-stock-row")].map((item) => item.dataset.symbol);
-                if (save && moved && symbols.some((symbol, index) => symbol !== initialOrder[index])) {
-                    void this.saveOrder(symbols).finally(() => delete row.dataset.dragging);
-                } else if (!save && moved) {
-                    this.render();
-                } else delete row.dataset.dragging;
+                if (save && symbols.some((symbol, index) => symbol !== initialOrder[index]))
+                    void this.saveOrder(symbols);
             };
             const up = (upEvent) => {
                 if (upEvent.pointerId === event.pointerId) finish(true);
@@ -804,12 +848,15 @@ export class Watchlists {
             identity.append(name, code);
             const backtestStatus = document.createElement("span");
             backtestStatus.className = "watchlist-backtest-badge";
-            open.append(identity, backtestStatus);
-            open.addEventListener("click", () => this.onSelect(member.symbol));
             const result = document.createElement("span");
             result.className = "watchlist-backtest-result";
             result.hidden = true;
-            row.append(drag, open, result);
+            const meta = document.createElement("span");
+            meta.className = "watchlist-stock-meta";
+            meta.append(backtestStatus, result);
+            open.append(identity, meta);
+            open.addEventListener("click", () => this.onSelect(member.symbol));
+            row.append(drag, open);
             this.renderBacktestStatus(row, member.symbol);
             list.append(row);
         }
