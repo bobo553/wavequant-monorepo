@@ -41,7 +41,7 @@ WaveQuant 的边界、数据库选型、依赖方向和迁移取舍见 [WaveQuan
 - **Validation**: Zod (shared schemas via `@repo/contracts`)
 - **Testing**: Vitest, Playwright, Supertest
 - **Linting/Formatting**: ESLint 10, Prettier
-- **CI checks**: GitHub Actions + Commitlint, build, lint, typecheck, unit tests
+- **CI checks**: GitHub Actions for build, lint, typecheck, and unit tests
 - **Containerization**: Docker + Docker Compose
 - **Package versioning**: Changesets
 - **Dependency updates**: Dependabot (weekly, grouped by ecosystem)
@@ -238,7 +238,7 @@ pnpm changeset:status   # List packages with unpublished changes
 
 ## CI Checks
 
-Pushing a branch or opening a pull request to `main` runs GitHub Actions. CI checks commit messages, whitespace, the agent harness, build, lint, types, and unit tests. Local commits do not run Git hooks.
+Pushing `main` or opening a pull request to `main` runs GitHub Actions. CI checks the agent harness, build, lint, types, and unit tests. Local commits do not run Git hooks.
 
 ## Environment Variables
 

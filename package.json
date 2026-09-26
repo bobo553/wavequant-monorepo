@@ -47,8 +47,6 @@
     },
     "devDependencies": {
         "@changesets/cli": "^2.27.12",
-        "@commitlint/cli": "^21.0.1",
-        "@commitlint/config-conventional": "^21.0.1",
         "@repo/typescript": "workspace:*",
         "@trivago/prettier-plugin-sort-imports": "^6.0.2",
         "commitizen": "^4.3.1",
