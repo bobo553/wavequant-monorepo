@@ -7,7 +7,30 @@ import {
     formatBacktestElapsed,
     historicalBacktestStatuses,
     runningBacktestStatuses,
+    selectedBacktestAction,
 } from "../public/backtest-job-status.js";
+
+test("selecting a stale backtest starts a fresh calculation even from the symbol selector", () => {
+    assert.deepEqual(selectedBacktestAction({ historical: true, canBacktest: true, autoBacktest: false }), {
+        run: true,
+        force: true,
+    });
+    assert.deepEqual(selectedBacktestAction({ historical: true, canBacktest: false, autoBacktest: true }), {
+        run: false,
+        force: true,
+    });
+});
+
+test("selection keeps completed result reuse and ordinary selector browsing", () => {
+    assert.deepEqual(selectedBacktestAction({ historical: false, canBacktest: true, autoBacktest: true }), {
+        run: true,
+        force: false,
+    });
+    assert.deepEqual(selectedBacktestAction({ historical: false, canBacktest: true, autoBacktest: false }), {
+        run: false,
+        force: false,
+    });
+});
 
 test("server running jobs override stale local watchlist and stock badges", () => {
     const local = { "sz.000978": "failed", "sh.601086": "completed" };
