@@ -24,6 +24,7 @@ import { PerformanceCharts, PriceChart } from "./charts.js";
 import { reuseCompletedBacktest } from "./completed-backtest-result.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
+import { bindPressAndHold } from "./press-and-hold.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
 import { parseResearchLink, resolveResearchLink } from "./research-link.js";
 import { StockBacktestTasks } from "./stock-backtest-tasks.js";
@@ -543,10 +544,10 @@ const chart = new PriceChart(
     (bar, button) => copyHoveredCandle(bar, button),
     renderChartViewport,
 );
-$("chart-pan-left").addEventListener("click", () => chart.pan(-1));
-$("chart-pan-right").addEventListener("click", () => chart.pan(1));
-$("chart-zoom-in").addEventListener("click", () => chart.zoom("in"));
-$("chart-zoom-out").addEventListener("click", () => chart.zoom("out"));
+bindPressAndHold($("chart-pan-left"), () => chart.pan(-1));
+bindPressAndHold($("chart-pan-right"), () => chart.pan(1));
+bindPressAndHold($("chart-zoom-in"), () => chart.zoom("in"));
+bindPressAndHold($("chart-zoom-out"), () => chart.zoom("out"));
 $("chart-position-slider").addEventListener("input", (event) => chart.seek(Number(event.currentTarget.value)));
 $("chart-position-slider").addEventListener("keydown", (event) => {
     const state = chart.navigationState();

@@ -331,7 +331,7 @@ export function ResearchChart(): JSX.Element {
                         type="button"
                         aria-label="视图左移"
                         aria-controls="price-chart"
-                        title="向较早 K 线移动"
+                        title="向较早 K 线移动，长按连续移动"
                         disabled
                     >
                         <IconChevronLeft size={17} stroke={1.8} aria-hidden="true" />
@@ -341,7 +341,7 @@ export function ResearchChart(): JSX.Element {
                         type="button"
                         aria-label="视图右移"
                         aria-controls="price-chart"
-                        title="向较晚 K 线移动"
+                        title="向较晚 K 线移动，长按连续移动"
                         disabled
                     >
                         <IconChevronRight size={17} stroke={1.8} aria-hidden="true" />
@@ -351,7 +351,7 @@ export function ResearchChart(): JSX.Element {
                         type="button"
                         aria-label="放大视图"
                         aria-controls="price-chart"
-                        title="显示更少 K 线"
+                        title="显示更少 K 线，长按连续放大"
                         disabled
                     >
                         <IconPlus size={17} stroke={1.8} aria-hidden="true" />
@@ -361,7 +361,7 @@ export function ResearchChart(): JSX.Element {
                         type="button"
                         aria-label="缩小视图"
                         aria-controls="price-chart"
-                        title="显示更多 K 线"
+                        title="显示更多 K 线，长按连续缩小"
                         disabled
                     >
                         <IconMinus size={17} stroke={1.8} aria-hidden="true" />
