@@ -105,6 +105,41 @@ test("sell reasons use exit trigger and observed values without inventing missin
     assert.deepEqual(numberedTradeReasons({ side: "SELL" }), ["1. 本次成交记录未提供具体决策原因。"]);
 });
 
+test("post-B target evidence names the new N origin and one-P milestone", () => {
+    const marker = {
+        kind: "fill",
+        side: "SELL",
+        reason: "wave_target_upper_shadow_reduce",
+        wave_n_origin_date: "2020-06-12",
+        wave_n_origin_price: 4.9199,
+        wave_n_date: "2020-07-06",
+        wave_reached_date: "2020-07-09",
+        wave_reached_stage: "one_p",
+        wave_reached_price: 5.751,
+    };
+    assert.match(tradeReasonItems(marker)[1], /新段正 N 起点 2020-06-12 4\.9199 元.*一饱 5\.7510 元/);
+    const copy = formatFilledTradeCopy(
+        { symbol: "sh.601086", variant: "lecture_v3", backtest: { start: "2020-01-01" }, asof: "2020-07-09", bars: [] },
+        marker,
+        "V3",
+        "",
+        null,
+    );
+    assert.match(copy, /新段正 N 起点 2020-06-12 4\.9199 元；正 N 2020-07-06.*一饱 5\.7510 元/);
+    const document = new JSDOM("<div id='panel'></div>").window.document;
+    const previousDocument = globalThis.document;
+    globalThis.document = document;
+    try {
+        appendTradeEvidence(document.getElementById("panel"), marker);
+        assert.match(
+            document.getElementById("panel").textContent,
+            /新段正 N 起点 2020-06-12 4\.9199 元；正 N 2020-07-06.*一饱 5\.7510 元/,
+        );
+    } finally {
+        globalThis.document = previousDocument;
+    }
+});
+
 test("next-session gap fade clear shows the observable close confirmation", () => {
     const reasons = tradeReasonItems({
         side: "SELL",

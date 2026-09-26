@@ -154,12 +154,19 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             history, hierarchical_history(history)[0], reduction_fraction=config.wave_exhaustion_reduction)
                             for symbol, history in grouped.items()}
     wave_lookup = {symbol: {} for symbol in grouped}
+    wave_signal_lookup = {symbol: {} for symbol in grouped}
     for symbol, history in grouped.items():
         for event in (wave_events or {}).get(symbol, []):
             attack, known = event['attack'], event['bar_index']
             if type(attack) is not int or type(known) is not int or not 0 <= attack <= known < len(history):
                 raise ValueError('invalid wave event availability')
-            wave_lookup[symbol].setdefault(history[attack].timestamp, []).append(event)
+            owner = event.get('owner_signal_index')
+            if owner is not None:
+                if type(owner) is not int or not 0 <= owner < len(history):
+                    raise ValueError('invalid wave event owner')
+                wave_signal_lookup[symbol].setdefault(owner, []).append(event)
+            else:
+                wave_lookup[symbol].setdefault(history[attack].timestamp, []).append(event)
     signal_map: dict[datetime, list[Signal]] = {}
     for signal in signals:
         bars = grouped.get(signal.symbol, [])
@@ -422,7 +429,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                           target, signal.reason, initial_quantity=quantity,
                                           initial_entry_notional=price*quantity, initial_entry_fee=fee,
                                           last_buy_date=when.date(), bought_today_quantity=quantity,
-                                          wave_events=wave_lookup[symbol].get(signal.trigger_timestamp, []),
+                                          wave_events=wave_signal_lookup[symbol].get(
+                                              signal.bar_index, wave_lookup[symbol].get(signal.trigger_timestamp, [])),
                                           signal_index=signal.bar_index)
         else:
             if intraday is not None and existing.intraday_add_on_date != when.date():
@@ -439,9 +447,14 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             existing.bought_today_quantity = (existing.bought_today_quantity
                 if existing.last_buy_date == when.date() else 0.0) + quantity
             existing.last_buy_date = when.date()
-            for event in wave_lookup[symbol].get(signal.trigger_timestamp, []):
-                if event not in existing.wave_events:
-                    existing.wave_events.append(event)
+            owned_wave = wave_signal_lookup[symbol].get(signal.bar_index)
+            if owned_wave is not None:
+                existing.wave_events = owned_wave
+                existing.signal_index = signal.bar_index
+            elif not any(event['event'] == 'wave_segment_start' for event in existing.wave_events):
+                for event in wave_lookup[symbol].get(signal.trigger_timestamp, []):
+                    if event not in existing.wave_events:
+                        existing.wave_events.append(event)
         log(when, symbol, 'BUY', 'filled', signal.reason, **detail)
 
     for tick, when in enumerate(sorted(calendar)):

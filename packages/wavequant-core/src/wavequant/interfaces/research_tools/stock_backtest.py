@@ -11,6 +11,46 @@ from wavequant.application.analytics.execution_diagnostics import execution_diag
 from wavequant.application.analytics.trade_evidence import enrich_ledger
 
 
+def _post_b_wave_exit_events(bars, audit, signal_row):
+    """Measure exit stages from positive Ns whose own origin belongs to C's segment."""
+    b_index = signal_row['wave_b_low_index']
+    owner = signal_row['bar_index']
+    events = [dict(event='wave_segment_start', attack=owner, bar_index=owner,
+                   origin_index=b_index, owner_signal_index=owner)]
+    for row in audit:
+        if (row.get('event') != 'n_completed' or row.get('direction') != 'up'
+                or row['origin'] < b_index or row['bar_index'] <= b_index):
+            continue
+        attack = row['bar_index']
+        known = max(attack, row['known_at'])
+        origin_price = bars[row['origin']].low
+        defense = row.get('defense', origin_price)
+        reached = set()
+        for j in range(known, len(bars)):
+            if j > attack and bars[j].low < defense:
+                events.append(dict(event='wave_projection_invalidated', attack=attack,
+                                   origin_index=row['origin'], bar_index=j,
+                                   owner_signal_index=owner))
+                break
+            # A target first known on this bar can only use its close. Later
+            # bars may use their high, matching the causal N milestone rule.
+            observed = bars[j].close if j == known else bars[j].high
+            for stage in ('one_p', 'two_t'):
+                target = row[stage]
+                if target is not None and stage not in reached and observed >= target:
+                    events.append(dict(event='wave_n_target_reached', attack=attack,
+                                       origin_index=row['origin'], bar_index=j,
+                                       reached_stage=stage, reached_target=target,
+                                       owner_signal_index=owner))
+                    reached.add(stage)
+    for row in audit:
+        if (row.get('event', '').startswith('wave_projection_')
+                and row.get('origin_index', -1) >= b_index
+                and row['attack'] > b_index):
+            events.append(dict(row, owner_signal_index=owner))
+    return events
+
+
 def single_stock_result(bars, strategy, execution, signal_result=None, *, minute_loader=None):
     if not bars or len({b.symbol for b in bars})!=1:
         raise ValueError('exactly one nonempty security history required')
@@ -28,9 +68,12 @@ def single_stock_result(bars, strategy, execution, signal_result=None, *, minute
             attack = row['bar_index']
             available = max(attack, row.get('known_at', attack))
             n_bars[available] = max(attack, n_bars.get(available, -1))
-    wave_events=[row for row in getattr(signal_result, 'audit', []) if row.get('event', '').startswith('wave_projection_')]
-    for row in getattr(signal_result, 'audit', []):
-        if row.get('event') == 'long_signal' and row.get('wave_a_class') == 'ordinary':
+    audit_rows = getattr(signal_result, 'audit', [])
+    wave_events=[row for row in audit_rows if row.get('event', '').startswith('wave_projection_')]
+    for row in audit_rows:
+        if row.get('event') == 'long_signal' and row.get('channel') == 'wave_push_gap' and isinstance(row.get('wave_b_low_index'), int):
+            wave_events.extend(_post_b_wave_exit_events(bars, audit_rows, row))
+        elif row.get('event') == 'long_signal' and row.get('wave_a_class') == 'ordinary':
             wave_events.append(dict(event='wave_ordinary_entry', attack=row['attack'],
                 bar_index=row['bar_index'], target=row['wave_equal_target'],
                 one_p=row['wave_entry_one_p'], two_t=row['wave_entry_two_t'],

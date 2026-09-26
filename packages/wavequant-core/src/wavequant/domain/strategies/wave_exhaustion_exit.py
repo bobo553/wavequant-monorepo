@@ -50,7 +50,8 @@ def observe_wave_exhaustion(
             return dict(
                 {
                     key: active_warning[key]
-                    for key in ("wave_n_date", "wave_reached_date", "wave_reached_stage", "wave_reached_price")
+                    for key in ("wave_n_date", "wave_reached_date", "wave_reached_stage", "wave_reached_price",
+                                "wave_n_origin_date", "wave_n_origin_price") if key in active_warning
                 },
                 reason="wave_abnormal_followthrough_clear",
                 exit_fraction=1.0,
@@ -125,19 +126,27 @@ def _observe_target_candle(
     """
     if index < 1:
         return None
-    reached = None
-    stage = None
+    active = {}
+    invalidated = set()
     for event in sorted(events, key=lambda e: e["bar_index"]):
         if event["bar_index"] > index:
             break
+        key = (event["attack"], event.get("origin_index"))
         if event["event"] == "wave_projection_invalidated":
-            return None
+            invalidated.add(key)
+            active.pop(key, None)
+            continue
+        if key in invalidated:
+            continue
         if event["event"] == "wave_projection_ready":
-            reached, stage = event, "two_t"
-        elif event["event"] == "wave_projection_target_reached":
-            reached, stage = event, event["reached_stage"]
-    if reached is None:
+            active[key] = (event, "two_t")
+        elif event["event"] in ("wave_projection_target_reached", "wave_n_target_reached"):
+            active[key] = (event, event["reached_stage"])
+    if not active:
         return None
+    stage_rank = {"one_p": 1, "two_t": 2, "five_top": 3, "ten_full": 4}
+    reached, stage = max(active.values(), key=lambda item: (
+        item[0]["attack"], item[0]["bar_index"], stage_rank.get(item[1], 0)))
     bar, previous = bars[index], bars[index - 1]
     span = bar.high - bar.low
     if span <= 0:
@@ -149,7 +158,7 @@ def _observe_target_candle(
         wave_n_date=bars[reached["attack"]].timestamp.date().isoformat(),
         wave_reached_date=bars[reached["bar_index"]].timestamp.date().isoformat(),
         wave_reached_stage=stage,
-        wave_reached_price=reached["two_t"] if stage == "two_t" else reached["reached_target"],
+        wave_reached_price=reached.get("two_t", reached.get("reached_target")) if stage == "two_t" else reached["reached_target"],
         wave_range_fraction=span / previous.close,
         wave_upper_shadow_fraction=upper / span,
         wave_lower_shadow_fraction=lower / span,
@@ -165,6 +174,9 @@ def _observe_target_candle(
         wave_gap_fraction=(bar.open - previous.high) / previous.high,
         execution_model="same_day_close",
     )
+    if reached.get("origin_index") is not None:
+        evidence["wave_n_origin_date"] = bars[reached["origin_index"]].timestamp.date().isoformat()
+        evidence["wave_n_origin_price"] = bars[reached["origin_index"]].low
     if stage == "ordinary_equal":
         evidence.update(
             wave_a_class="ordinary",
@@ -209,7 +221,7 @@ def _observe_target_candle(
             exit_fraction=config.wave_exhaustion_reduction,
             exit_target_fraction=config.wave_exhaustion_reduction,
         )
-    if stage in ("two_t", "five_top", "ten_full") and not reduced and upper / span >= 0.5:
+    if stage in ("one_p", "two_t", "five_top", "ten_full") and not reduced and upper / span >= 0.5:
         return dict(
             evidence,
             reason="wave_target_upper_shadow_reduce",
