@@ -172,13 +172,20 @@ test("server completion restores a watchlist badge after reload without a local 
         subject.controller.adoptServerStatus({ ...record, params: { ...record.params, start: "2019-01-01" } }),
         false,
     );
+    assert.equal(subject.controller.adoptServerStatus({ ...record, result_available: false }), true);
+    assert.equal(subject.controller.state().statuses[member.symbol], "historical");
+    assert.equal(subject.controller.matchingJobId(record.path, record.params), null);
+    assert.equal(subject.controller.adoptServerStatus(record), true);
+    assert.equal(subject.controller.markResultUnavailable(member.symbol), true);
+    assert.equal(subject.controller.adoptServerStatus(record), false);
+    assert.equal(subject.controller.state().statuses[member.symbol], "historical");
 
     const expired = queue();
     expired.setSnapshot({ context, members: [member] });
     expired.controller.setEnabled(false);
     await expired.controller.ensureVersion();
     assert.equal(expired.controller.adoptServerStatus({ ...record, result_available: false }), true);
-    assert.equal(expired.controller.state().statuses[member.symbol], "completed");
+    assert.equal(expired.controller.state().statuses[member.symbol], "historical");
     assert.equal(expired.controller.matchingJobId(record.path, record.params), null);
     assert.equal(source, "akshare");
 });

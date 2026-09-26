@@ -70,6 +70,7 @@ export class IdleWatchlistBacktests {
         this.generation = 0;
         this.statuses = new Map();
         this.completedJobs = new Map();
+        this.unavailableJobs = new Set();
         this.fillCounts = new Map();
         this.returns = new Map();
         this.failures = new Map();
@@ -120,6 +121,7 @@ export class IdleWatchlistBacktests {
             this.lastVersionCheck = -Infinity;
             this.statuses.clear();
             this.completedJobs.clear();
+            this.unavailableJobs.clear();
             this.fillCounts.clear();
             this.returns.clear();
             this.failures.clear();
@@ -207,6 +209,16 @@ export class IdleWatchlistBacktests {
         );
     }
 
+    markResultUnavailable(symbol) {
+        if (this.statuses.get(symbol) !== "completed") return false;
+        const jobId = this.completedJobs.get(symbol)?.params.backtest_job;
+        if (jobId) this.unavailableJobs.add(jobId);
+        this.statuses.set(symbol, "historical");
+        this.completedJobs.delete(symbol);
+        this.emit();
+        return true;
+    }
+
     adoptCompleted(path, params, result, version) {
         const member = this.members.find((item) => item.symbol === params.symbol && item.asof === params.asof);
         if (
@@ -254,9 +266,11 @@ export class IdleWatchlistBacktests {
         if (this.active?.member.symbol === member.symbol && this.active.job?.params.backtest_job !== record.job)
             return false;
         if (record.status === "completed" && record.result_valid === true) {
-            if (this.statuses.get(member.symbol) === "completed") return false;
-            this.statuses.set(member.symbol, "completed");
-            if (record.result_available && record.job) {
+            const available = Boolean(record.result_available && record.job && !this.unavailableJobs.has(record.job));
+            const nextStatus = available ? "completed" : "historical";
+            if (this.statuses.get(member.symbol) === nextStatus) return false;
+            this.statuses.set(member.symbol, nextStatus);
+            if (available) {
                 this.completedJobs.set(member.symbol, {
                     path: record.path,
                     params: { ...record.params, backtest_job: record.job },
@@ -321,6 +335,7 @@ export class IdleWatchlistBacktests {
                 this.strategyVersion = response.version;
                 this.statuses.clear();
                 this.completedJobs.clear();
+                this.unavailableJobs.clear();
                 this.fillCounts.clear();
                 this.returns.clear();
                 this.failures.clear();

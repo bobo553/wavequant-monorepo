@@ -112,6 +112,11 @@
                     "command": "Core/API/Web 单测、E2E、Playwright、Lint、类型检查、构建及真实回测",
                     "status": "not-run",
                     "summary": "用户要求当前采用人工测试，修改代码后不运行 E2E、Playwright、Lint、构建或自动回测。"
+                },
+                {
+                    "command": "node --test tests/completed-backtest-result.test.mjs tests/watchlist-backtest-queue.test.mjs tests/stock-backtest-tasks.test.mjs; node --check public/app.js; git diff --check",
+                    "status": "passed",
+                    "summary": "修复已完成股票切换时再次提交回测：从只读任务接口取结果，过期状态标记待更新且须手动重跑。20 项定向测试与语法、差异检查通过；按用户当前要求未运行 Playwright 或完整 Web 单测，浏览器交互待人工复核。"
                 }
             ]
         },
