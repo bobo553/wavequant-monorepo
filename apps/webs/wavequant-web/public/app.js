@@ -18,6 +18,7 @@ import {
 import { BuyPoints } from "./buy-points.js";
 import { candleCopyText, previousCandleClose } from "./candle-details.js";
 import { loadMarketTimeframeSnapshot, loadStockCatalog } from "./catalog-cache.js";
+import { chartNavigationKeyPosition } from "./chart-navigation.js";
 import { PerformanceCharts, PriceChart } from "./charts.js";
 import { reuseCompletedBacktest } from "./completed-backtest-result.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
@@ -546,6 +547,14 @@ $("chart-pan-right").addEventListener("click", () => chart.pan(1));
 $("chart-zoom-in").addEventListener("click", () => chart.zoom("in"));
 $("chart-zoom-out").addEventListener("click", () => chart.zoom("out"));
 $("chart-position-slider").addEventListener("input", (event) => chart.seek(Number(event.currentTarget.value)));
+$("chart-position-slider").addEventListener("keydown", (event) => {
+    const state = chart.navigationState();
+    if (!state) return;
+    const position = chartNavigationKeyPosition(state, event.key);
+    if (position === null) return;
+    event.preventDefault();
+    chart.seek(position);
+});
 const tradingViewWidget = new TradingViewWidget({
     container: $("tradingview-widget"),
     status: $("tradingview-status"),
