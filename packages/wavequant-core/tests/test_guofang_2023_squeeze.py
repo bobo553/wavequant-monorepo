@@ -51,6 +51,20 @@ def test_march_17_n_march_21_squeeze_and_no_march_23_rebuy():
             and signal.bar_index == dates['2023-03-21']] == longs
 
 
+def test_march_21_squeeze_signal_still_obeys_execution_reward_risk():
+    bars, dates = fixture()
+    signal = next(signal for signal in generate_system_signals(bars, strategy()).signals
+                  if signal.side == 'LONG' and signal.bar_index == dates['2023-03-21'])
+    config = StrategyConfig(entry_at_close=True, risk_fraction=0.1,
+                            max_position_weight=0.8, max_participation=1)
+    result = run_portfolio({bars[0].symbol: bars}, [signal], config)
+    buy = next(order for order in result.orders if order['side'] == 'BUY')
+    assert buy['timestamp'][:10] == '2023-03-21'
+    assert buy['status'] == 'cancelled'
+    assert buy['reason'] == 'insufficient_net_reward_risk'
+    assert buy['net_reward_risk'] < buy['required_reward_risk']
+
+
 def test_level_one_breakout_lower_close_clears_held_position():
     bars, dates = fixture()
     attack = dates['2023-03-21']

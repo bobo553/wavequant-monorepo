@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-198",
+            "name": "guofang-march-2023-same-day-squeeze",
+            "title": "校正国芳2023年轧空买点与出场",
+            "description": "国芳集团 2023 年 3 月的一级正 N 在攻击当天确认轧空；已持仓时按末跌高后的不利 K 线与首次收低退出。信号与执行风控分别记录。",
+            "scope": "wavequant-core 分级 N 确认、买点信号、末跌高退出与真实行情回归",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "3 月 17 日正 N 后，3 月 21 日确认轧空并产生 LONG；3 月 23 日不重复发信号，历史前缀结果一致",
+                "真实 3 月 21 日信号的模拟委托保留净盈亏比门槛；若不足 1.5，明确记录取消而不伪报成交",
+                "已有仓位在一级末跌高后的不利 K 线减仓，首次收低时清仓；相邻旧买点约束允许有证据的攻击当天信号"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest 7 targeted wavequant-core test files -q; python -m build --no-isolation; pnpm harness:check; prettier --check feature_list.json packages/wavequant-core/progress.md; git diff --check",
+                    "status": "passed",
+                    "summary": "43 项国芳真实行情、相邻轧空、末跌高退出和执行风控回归通过；Core sdist/wheel 构建、Harness、文档格式与差异检查通过。3 月 21 日 LONG 成立，但实际 BUY 净盈亏比约 0.449 低于 1.5，委托取消。未运行完整 Core 套件或浏览器验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-197",
             "name": "locate-max-drawdown-interval",
             "title": "最大回撤区间标识与点击定位",
