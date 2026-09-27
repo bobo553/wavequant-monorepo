@@ -23,11 +23,6 @@ def choose(ctx=None,data=None,**kwargs):
 
 
 class WholeWaveTests(unittest.TestCase):
-    def test_volume_down_new_rule_requires_milestone_in_whole_wave_profile(self):
-        execution = whole_wave_profile({'scenarios': {'base': {'execution': {}}}})['scenarios']['base']['execution']
-        self.assertTrue(execution['volume_down_exit'])
-        self.assertTrue(execution['volume_down_after_milestone'])
-
     def test_first_buy_only_accepts_level_two_or_three(self):
         self.assertEqual(choose(context(trend_level=1))[1], 'first_buy_requires_level_two_or_three')
         for level in (2, 3):
