@@ -7,13 +7,16 @@ export function PerformancePage(): JSX.Element {
     return (
         <section id="page-performance" className="page" hidden>
             <article className="panel">
-                <div className="card-header">
+                <div className="card-header performance-card-header">
                     <h2>
                         账户净值 <small>初始资金归一化为 1</small>
                     </h2>
                     <span id="curve-scope-label" className="tag">
                         个股独立净值
                     </span>
+                    <button id="performance-dd-jump" className="drawdown-range-jump" type="button" hidden>
+                        最大回撤 <span id="performance-dd-period" /> · 定位区间
+                    </button>
                 </div>
                 <div id="equity-chart" className="performance-chart" aria-label="账户净值图" />
             </article>

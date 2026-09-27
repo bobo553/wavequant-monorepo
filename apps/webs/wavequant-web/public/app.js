@@ -24,6 +24,7 @@ import { PerformanceCharts, PriceChart } from "./charts.js";
 import { reuseCompletedBacktest } from "./completed-backtest-result.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
+import { maxDrawdownInterval } from "./max-drawdown.js";
 import { bindPressAndHold } from "./press-and-hold.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
 import { parseResearchLink, resolveResearchLink } from "./research-link.js";
@@ -596,6 +597,17 @@ chartViewTabs.forEach((tab) => {
 });
 chart.setTrendPriceLabelsVisible($("show-trend-prices").checked);
 const performance = new PerformanceCharts(["equity-chart", "drawdown-chart", "exposure-chart"].map($));
+let drawdownInterval = null;
+function focusMaximumDrawdown() {
+    if (!drawdownInterval) return;
+    showPage("performance");
+    requestAnimationFrame(() => {
+        performance.focusInterval(drawdownInterval);
+        $("equity-chart").scrollIntoView({ block: "center", behavior: "instant" });
+    });
+}
+$("metric-dd-jump").addEventListener("click", focusMaximumDrawdown);
+$("performance-dd-jump").addEventListener("click", focusMaximumDrawdown);
 const stockList = new StockList({
     list: $("stock-list"),
     count: $("stock-count"),
@@ -1062,7 +1074,27 @@ function setMetric(id, value, type) {
     el.classList.remove("positive", "negative");
     if (type === "return" && value !== 0) el.classList.add(value > 0 ? "positive" : "negative");
 }
+function renderDrawdownInterval(view) {
+    drawdownInterval =
+        ["tdx", "akshare"].includes(view.result_scope) || view.backtest?.status === "data_unavailable"
+            ? null
+            : maxDrawdownInterval(view.curve, view.backtest?.start || currentRun().start);
+    const metricButton = $("metric-dd-jump");
+    const performanceButton = $("performance-dd-jump");
+    metricButton.disabled = !drawdownInterval;
+    performanceButton.hidden = !drawdownInterval;
+    if (!drawdownInterval) {
+        $("metric-dd-period").textContent = "暂无回撤区间";
+        metricButton.setAttribute("aria-label", "最大回撤暂无可定位区间");
+        return;
+    }
+    const period = `${drawdownInterval.initialPeak ? "初始资金峰值 · " : ""}${drawdownInterval.from} — ${drawdownInterval.to}`;
+    $("metric-dd-period").textContent = `${period} · 点击定位`;
+    $("performance-dd-period").textContent = period;
+    metricButton.setAttribute("aria-label", `最大回撤 ${pct(view.metrics.max_drawdown)}，${period}，点击定位绩效曲线`);
+}
 function renderMetrics() {
+    renderDrawdownInterval(state.view);
     if (state.view.backtest?.status === "data_unavailable") {
         document.querySelector(".metric-grid").hidden = true;
         $("evidence").textContent = state.view.evidence;
