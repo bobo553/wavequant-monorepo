@@ -4,28 +4,6 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
-            "id": "MONOREPO-197",
-            "name": "last-fall-high-bearish-double-break-exit",
-            "title": "末跌高突破后空头减仓与双破清仓",
-            "description": "全局 V3 的已知原始下降段末跌高盘中突破或二三级正式末跌高收盘突破后，收阴或明显长上影减仓；收盘低于昨收且最低低于昨低直接清仓。",
-            "scope": "wavequant-core 趋势退出和回测执行、wavequant-web 成交说明及策略文档",
-            "dependencies": ["MONOREPO-187"],
-            "status": "done",
-            "acceptanceCriteria": [
-                "已知原始走势线连续创新低之间的最高反弹点可作末跌高，盘中严格越过后观察；二三级正式末跌高维持严格收盘突破",
-                "突破后的收阴或明显长上影按累计目标减仓，实际成交后不重复；突破后的双重破位不依赖此前减仓而直接全清",
-                "仅收低或仅破昨低不能触发直接清仓，同一关键位再次突破可开启新观察",
-                "国芳真实日线夹具验证 06-29 减仓提示、06-30 买入、07-04 双破清仓；乐心夹具、历史前缀和页面说明均有定向回归"
-            ],
-            "verification": [
-                {
-                    "command": "Core pytest 8 targeted files; Core build; Web node --test trade-reasons.test.mjs; Web lint/typecheck/build; changed-file Prettier/Node syntax; pnpm harness:check; git diff --check",
-                    "status": "passed",
-                    "summary": "Core 91 项和 Web 12 项定向测试通过；国芳 43 根真实日线夹具覆盖 06-29 减仓提示、06-30 买入、07-04 清仓。Core 构建、Web lint（6 条既有警告）/类型/生产构建、格式、语法及 Harness 检查通过。mypy 修改文件仅有与 main 相同的 4 项既有注解错误；关闭该错误码的定向检查通过；Ruff 告警未增加。未运行完整历史回测、完整单测或浏览器端到端测试。"
-                }
-            ]
-        },
-        {
             "id": "MONOREPO-196",
             "name": "auto-refresh-watchlist-backtests-in-order",
             "title": "自选股待更新优先和待回测顺序自动运行",

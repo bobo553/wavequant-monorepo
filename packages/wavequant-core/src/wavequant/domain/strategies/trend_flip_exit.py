@@ -1,45 +1,6 @@
-"""Exit adverse candles after a known falling high is broken."""
-
-from collections.abc import Sequence
-from typing import TypedDict
+"""Exit adverse candles after a resisted close break of a higher-level falling high."""
 
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
-from ..models.model import Bar
-
-
-class _LastFallHighPoint(TypedDict):
-    index: int
-    kind: str
-    value: float
-    available_at: int
-
-
-class _LastFallHighState(TypedDict):
-    identity: tuple[int, float]
-    key: _LastFallHighPoint
-    attack: int
-    warning: int | None
-
-
-def _source_last_fall_high(levels: dict[int, Sequence[_LastFallHighPoint]]) -> _LastFallHighPoint | None:
-    """High between the latest two new lows of an unfinished first-level fall."""
-    first = levels.get(1, ())
-    anchor = next((point for point in reversed(first) if point["kind"] == "H"), None)
-    if anchor is None:
-        return None
-    source = [point for point in levels.get(0, ()) if point["index"] > anchor["index"]]
-    record_lows = []
-    lowest = float("inf")
-    for point in source:
-        if point["kind"] == "L" and point["value"] < lowest:
-            record_lows.append(point)
-            lowest = point["value"]
-    if len(record_lows) < 2:
-        return None
-    left, right = record_lows[-2:]
-    highs = [point for point in source if point["kind"] == "H"
-             and left["index"] < point["index"] < right["index"]]
-    return max(highs, key=lambda point: point["value"], default=None)
 
 
 def _secondary_wave_setup(levels, known_by):
@@ -139,37 +100,30 @@ def _secondary_wave_exhaustion_history(bars, history):
     return risks
 
 
-def _last_fall_high_shadow_history(
-    bars: list[Bar], history: dict[int, dict[int, Sequence[_LastFallHighPoint]]], reduction_fraction: float
-) -> dict[int, dict]:
-    """Stage exits from known source, second-level, or third-level falling highs."""
-    risks: dict[int, dict] = {}
-    for level in (0, 2, 3):
-        state: _LastFallHighState | None = None
+def _last_fall_high_shadow_history(bars, history, reduction_fraction):
+    risks = {}
+    for level in (2, 3):
+        state = None
+        attempted = set()
         for index in range(1, len(bars)):
-            levels = history.get(index - 1, {})
-            points = levels.get(level, ())
+            points = history.get(index - 1, {}).get(level, ())
             # A confirmed low after the high identifies the last falling leg.
-            key = (_source_last_fall_high(levels) if level == 0 else
-                   points[-2] if len(points) >= 2
+            key = (points[-2] if len(points) >= 2
                    and points[-2]["kind"] == "H" and points[-1]["kind"] == "L" else None)
             identity = (key["index"], key["value"]) if key is not None else None
             if state is not None and state["warning"] is None and identity != state["identity"]:
                 state = None
             bar, previous = bars[index], bars[index - 1]
-            crossed = (previous.high <= key["value"] < bar.high if level == 0 else
-                       previous.close <= key["value"] < bar.close) if key is not None else False
             if (state is None and key is not None and key["available_at"] < index
-                    and crossed):
-                state = _LastFallHighState(
-                    identity=(key["index"], key["value"]), key=key, attack=index, warning=None
-                )
+                    and identity not in attempted and previous.close <= key["value"] < bar.close):
+                attempted.add(identity)
+                state = dict(identity=identity, key=key, attack=index, warning=None)
             if state is None:
                 continue
-            if bar.close < previous.close and bar.low < previous.low:
-                warning = state["warning"] if state["warning"] is not None else index
+            if state["warning"] is not None and bar.close < previous.close:
+                warning = state["warning"]
                 risks[index] = dict(
-                    reason="trend_last_fall_high_breakdown_clear",
+                    reason="trend_last_fall_high_lower_close_clear",
                     exit_fraction=1.0,
                     execution_model="same_day_close",
                     trend_level=level,
@@ -177,28 +131,20 @@ def _last_fall_high_shadow_history(
                     trend_key_high=state["key"]["value"],
                     trend_attack_date=bars[state["attack"]].timestamp.date().isoformat(),
                     trend_attack_index=state["attack"],
-                    trend_breakout_basis="high" if level == 0 else "close",
                     trend_warning_date=bars[warning].timestamp.date().isoformat(),
-                    trend_warning_index=index,
-                    trend_prior_warning_index=warning,
+                    trend_warning_index=warning,
                     observed_close=bar.close,
-                    observed_low=bar.low,
                     previous_close=previous.close,
-                    previous_low=previous.low,
                 )
                 state = None
                 continue
             span = bar.high - bar.low
             upper = bar.high - max(bar.open, bar.close)
-            long_upper = span > 0 and upper > abs(bar.close - bar.open) and upper >= span / 3
-            bearish_body = bar.close < bar.open
-            upper_warning = long_upper
-            if (bearish_body or upper_warning) and risks.get(index, {}).get("exit_fraction", 0) < 1:
-                if state["warning"] is None:
-                    state["warning"] = index
+            if (span > 0 and upper > abs(bar.close - bar.open) and upper >= span / 3
+                    and bar.high > state["key"]["value"] and bar.close >= state["key"]["value"]):
+                state["warning"] = index
                 risks[index] = dict(
-                    reason=("trend_last_fall_high_bearish_reduce" if bearish_body
-                            else "trend_last_fall_high_upper_shadow_reduce"),
+                    reason="trend_last_fall_high_upper_shadow_reduce",
                     exit_fraction=reduction_fraction,
                     exit_target_fraction=reduction_fraction,
                     execution_model="same_day_close",
@@ -207,21 +153,16 @@ def _last_fall_high_shadow_history(
                     trend_key_high=state["key"]["value"],
                     trend_attack_date=bars[state["attack"]].timestamp.date().isoformat(),
                     trend_attack_index=state["attack"],
-                    trend_breakout_basis="high" if level == 0 else "close",
                     trend_warning_date=bar.timestamp.date().isoformat(),
                     trend_warning_index=index,
                     trend_upper_shadow_fraction=upper / span,
-                    trend_adverse_patterns=(["bearish_body"] if bearish_body else [])
-                    + (["long_upper_shadow"] if upper_warning else []),
                     observed_open=bar.open,
                     observed_high=bar.high,
                     observed_low=bar.low,
                     observed_close=bar.close,
                     previous_close=previous.close,
-                    previous_low=previous.low,
                 )
-            elif (state["warning"] is None and index > state["attack"]
-                  and bar.close < state["key"]["value"] and bar.high <= state["key"]["value"]):
+            elif bar.close < state["key"]["value"]:
                 state = None
     return risks
 

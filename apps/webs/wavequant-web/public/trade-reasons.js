@@ -4,7 +4,10 @@ import { waveEntryEvidence } from "./wave-entry-evidence.js";
 
 // Explain the dated engine decision; never infer a signal from plotted prices.
 export function tradeReasonItems(item) {
-    const reasons = (item.decision_reason || item.reason || "").split("|").filter(Boolean).map(reasonText);
+    const reasons = (item.decision_reason || item.reason || "")
+        .split("|")
+        .filter(Boolean)
+        .map(reasonText);
     const evidence = item.decision_evidence || [];
     if (item.side === "BUY") {
         reasons.push(...waveEntryEvidence(evidence).slice(0, 2));
@@ -53,31 +56,8 @@ export function tradeReasonItems(item) {
                 `二级压力解除：${proof.secondary_resolution_date} 收盘 ${num(proof.secondary_confirmation_close, 4)} > 抵抗阶段高 ${num(proof.secondary_resistance_high, 4)}。`,
             );
     } else if (item.side === "SELL") {
-        const lastFallHighReason = item.decision_reason || item.reason || "";
-        if (lastFallHighReason.startsWith("trend_last_fall_high_") && item.trend_key_date)
-            reasons.push(
-                `末跌高：${item.trend_key_date} 的 ${num(item.trend_key_high, 4)} 元；${item.trend_attack_date} ${item.trend_breakout_basis === "high" ? "最高价越过" : "收盘越过"}，按 ${item.trend_level === 0 ? "原始走势线" : `${item.trend_level} 级趋势`}观察。`,
-            );
-        if (
-            ["trend_last_fall_high_upper_shadow_reduce", "trend_last_fall_high_bearish_reduce"].includes(
-                lastFallHighReason,
-            )
-        )
-            reasons.push(
-                `本日空头形态：${(item.trend_adverse_patterns || []).map((pattern) => ({ bearish_body: "收阴", long_upper_shadow: "明显长上影" })[pattern] || pattern).join("、")}；按原持仓累计 ${pct(item.exit_target_fraction)} 目标减仓，实际数量受整手和可卖数量约束。`,
-            );
-        if (lastFallHighReason === "trend_last_fall_high_breakdown_clear")
-            reasons.push(
-                `双重破位：本日收盘 ${num(item.observed_close, 4)} < 昨收 ${num(item.previous_close, 4)}，本日最低 ${num(item.observed_low, 4)} < 昨低 ${num(item.previous_low, 4)}；直接清空余仓。`,
-            );
         if (item.wave_reached_stage) {
-            const names = {
-                one_p: "一饱",
-                two_t: "二吐",
-                five_top: "五顶",
-                ten_full: "十满",
-                ordinary_equal: "普通 A 的 C 等浪",
-            };
+            const names = { one_p: "一饱", two_t: "二吐", five_top: "五顶", ten_full: "十满", ordinary_equal: "普通 A 的 C 等浪" };
             reasons.push(
                 `目标背景：${item.wave_n_origin_date ? `新段正 N 起点 ${item.wave_n_origin_date} ${num(item.wave_n_origin_price, 4)} 元；` : ""}${item.wave_reached_date} 已达到${names[item.wave_reached_stage] || item.wave_reached_stage} ${num(item.wave_reached_price, 4)} 元。`,
             );
@@ -91,37 +71,23 @@ export function tradeReasonItems(item) {
                 `不利形态：${item.pressure_adverse_patterns.map((key) => ({ bearish_body: "阴线实体", close_below_previous: "收盘低于前收", low_below_previous: "跌破前低", long_upper_shadow: "长上影" })[key] || key).join("、")}。`,
             );
         if (item.reason === "pressure_gap_adverse_reduce")
-            reasons.push(
-                `跳空未回补：最低 ${num(item.observed_low, 4)} > 前高 ${num(item.previous_high, 4)}，收盘 ${num(item.observed_close, 4)} > 前收 ${num(item.previous_close, 4)}；当日减仓 50%。`,
-            );
+            reasons.push(`跳空未回补：最低 ${num(item.observed_low, 4)} > 前高 ${num(item.previous_high, 4)}，收盘 ${num(item.observed_close, 4)} > 前收 ${num(item.previous_close, 4)}；当日减仓 50%。`);
         if (item.reason === "pressure_reduced_lower_close_clear")
-            reasons.push(
-                `${item.pressure_warning_date} 减仓后首次收跌：本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，清空余仓。`,
-            );
+            reasons.push(`${item.pressure_warning_date} 减仓后首次收跌：本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，清空余仓。`);
         if (item.reason === "pressure_breakout_adverse_clear")
-            reasons.push(
-                `突破后转弱：${item.pressure_rally_low_date} 低点 ${num(item.pressure_rally_low, 4)} → ${item.pressure_breakout_date} 突破压力高点 ${num(item.pressure_high, 4)}，上涨 ${pct(item.pressure_rally_fraction)}；随后出现不利 K 线，清空余仓。`,
-            );
+            reasons.push(`突破后转弱：${item.pressure_rally_low_date} 低点 ${num(item.pressure_rally_low, 4)} → ${item.pressure_breakout_date} 突破压力高点 ${num(item.pressure_high, 4)}，上涨 ${pct(item.pressure_rally_fraction)}；随后出现不利 K 线，清空余仓。`);
         if (item.record_high_date)
-            reasons.push(
-                `前期阳线高点：${item.record_high_date} 最高 ${num(item.record_high, 4)} 元；突破时已距该高点 ${item.record_high_age} 个交易日。`,
-            );
+            reasons.push(`前期阳线高点：${item.record_high_date} 最高 ${num(item.record_high, 4)} 元；突破时已距该高点 ${item.record_high_age} 个交易日。`);
         if (item.reason === "record_high_resistance_reduce")
-            reasons.push(
-                `${item.record_breakout_date} 盘中越过旧高但收盘未站稳；空头抵抗与不利形态：${(item.record_adverse_patterns || []).map((key) => ({ bearish_body: "阴线实体", close_below_previous: "收盘低于前收", low_below_previous: "跌破前低", long_upper_shadow: "长上影" })[key] || key).join("、")}；当日目标减仓 50%，按整手执行。`,
-            );
+            reasons.push(`${item.record_breakout_date} 盘中越过旧高但收盘未站稳；空头抵抗与不利形态：${(item.record_adverse_patterns || []).map((key) => ({ bearish_body: "阴线实体", close_below_previous: "收盘低于前收", low_below_previous: "跌破前低", long_upper_shadow: "长上影" })[key] || key).join("、")}；当日目标减仓 50%，按整手执行。`);
         if (item.reason === "record_high_lower_close_clear")
-            reasons.push(
-                `${(item.record_resistance_dates || []).join("、")} 出现空头抵抗；减仓后本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，清空余仓。`,
-            );
+            reasons.push(`${(item.record_resistance_dates || []).join("、")} 出现空头抵抗；减仓后本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，清空余仓。`);
         if (item.volume_trigger_date)
             reasons.push(
                 `放量下跌：${item.volume_trigger_date} 成交量 ${num(item.trigger_volume, 0)} > 前日 ${num(item.previous_volume, 0)}，收盘 ${num(item.trigger_close, 4)} < 前收 ${num(item.previous_close, 4)}。`,
             );
         if (item.reason === "volume_massive_gap_reversal_clear")
-            reasons.push(
-                `巨量高开反包：开盘 ${num(item.observed_open, 4)} > 前高 ${num(item.previous_high, 4)}，收盘 ${num(item.observed_close, 4)} < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} 股，为前 ${item.massive_volume_window} 日均量的 ${num(item.massive_volume_multiple, 2)} 倍且创同期新高；阴线实体/开盘 ${pct(item.bearish_body_fraction)}，当日清空余仓。`,
-            );
+            reasons.push(`巨量高开反包：开盘 ${num(item.observed_open, 4)} > 前高 ${num(item.previous_high, 4)}，收盘 ${num(item.observed_close, 4)} < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} 股，为前 ${item.massive_volume_window} 日均量的 ${num(item.massive_volume_multiple, 2)} 倍且创同期新高；阴线实体/开盘 ${pct(item.bearish_body_fraction)}，当日清空余仓。`);
         if (item.reason === "volume_down_next_gap_fade_clear")
             reasons.push(
                 `次日低开走弱：开盘 ${num(item.observed_open, 4)} < 前收 ${num(item.gap_previous_close, 4)}，收盘 ${num(item.observed_close, 4)} < 开盘 ${num(item.observed_open, 4)}。`,
@@ -131,9 +97,7 @@ export function tradeReasonItems(item) {
                 `次日下跌确认：收盘 ${num(item.observed_close, 4)} < 警示日低点 ${num(item.warning_low, 4)}，且低于当日开盘 ${num(item.observed_open, 4)}。`,
             );
         if (item.positive_n_date)
-            reasons.push(
-                `小实体例外：${item.positive_n_date} 正 N 的实体 ${pct(item.small_body_fraction)}，上限 ${pct(item.small_body_cap)}。`,
-            );
+            reasons.push(`小实体例外：${item.positive_n_date} 正 N 的实体 ${pct(item.small_body_fraction)}，上限 ${pct(item.small_body_cap)}。`);
         if (item.reason === "wave_gap_reversal_reduce" && item.observed_open != null)
             reasons.push(
                 `高开回落：开盘 ${num(item.observed_open, 4)} > 前高 ${num(item.previous_high, 4)}，成交量 ${num(item.observed_volume, 0)} > 前日 ${num(item.previous_volume, 0)}。`,
@@ -143,17 +107,10 @@ export function tradeReasonItems(item) {
                 `次日确认：${item.abnormal_date} 异常 K 线后，收盘 ${num(item.observed_close, 4)} < 异常 K 线收盘 ${num(item.abnormal_close, 4)}。`,
             );
         if (item.reason === "wave_ordinary_equal_upper_shadow_reduce")
-            reasons.push(
-                `普通 A：前 A 高 ${num(item.wave_a_high, 4)} 达一饱 ${num(item.wave_one_p, 4)}、未达二吐 ${num(item.wave_two_t, 4)}；C 浪触及等浪目标后放量长上影，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，按累计 80% 目标减仓。`,
-            );
+            reasons.push(`普通 A：前 A 高 ${num(item.wave_a_high, 4)} 达一饱 ${num(item.wave_one_p, 4)}、未达二吐 ${num(item.wave_two_t, 4)}；C 浪触及等浪目标后放量长上影，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，按累计 80% 目标减仓。`);
         if (item.reason === "wave_ordinary_equal_lower_close_clear")
-            reasons.push(
-                `异常后首次收低：${item.abnormal_date} 出现长上影；本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，当日清空余仓。`,
-            );
-        if (
-            ["wave_upper_rejection_reduce", "wave_volume_shadows_reduce"].includes(item.reason) &&
-            item.wave_range_fraction != null
-        )
+            reasons.push(`异常后首次收低：${item.abnormal_date} 出现长上影；本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，当日清空余仓。`);
+        if (["wave_upper_rejection_reduce", "wave_volume_shadows_reduce"].includes(item.reason) && item.wave_range_fraction != null)
             reasons.push(
                 `异常波动：振幅/前收 ${pct(item.wave_range_fraction)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，成交量 ${num(item.observed_volume, 0)} > 前日 ${num(item.previous_volume, 0)}。`,
             );
@@ -164,23 +121,17 @@ export function tradeReasonItems(item) {
                 `本日收盘 ${num(item.observed_close, 4)} < 长上下影 K 线最低 ${num(item.trend_indecision_low, 4)}，且为阴线，清空余仓。`,
             );
         }
-        if (item.trend_adverse_patterns?.length && !lastFallHighReason.startsWith("trend_last_fall_high_"))
+        if (item.trend_adverse_patterns?.length)
             reasons.push(`趋势转弱形态：${item.trend_adverse_patterns.join("、")}。`);
         if (item.resistance_date && item.failure_close != null)
-            reasons.push(
-                `多头抵抗失败：${item.resistance_date} 虚拟低 ${num(item.resistance_virtual_low, 4)}，失败收盘 ${num(item.failure_close, 4)}。`,
-            );
+            reasons.push(`多头抵抗失败：${item.resistance_date} 虚拟低 ${num(item.resistance_virtual_low, 4)}，失败收盘 ${num(item.failure_close, 4)}。`);
         if (item.support_date && item.support_low != null && item.observed_low != null)
-            reasons.push(
-                `前回踩低点失守：${item.support_date} 最低 ${num(item.support_low, 4)}，触发时最低 ${num(item.observed_low, 4)}。`,
-            );
+            reasons.push(`前回踩低点失守：${item.support_date} 最低 ${num(item.support_low, 4)}，触发时最低 ${num(item.observed_low, 4)}。`);
     }
     return reasons.filter(Boolean);
 }
 
 export function numberedTradeReasons(item) {
     const reasons = tradeReasonItems(item);
-    return reasons.length
-        ? reasons.map((reason, index) => `${index + 1}. ${reason}`)
-        : ["1. 本次成交记录未提供具体决策原因。"];
+    return reasons.length ? reasons.map((reason, index) => `${index + 1}. ${reason}`) : ["1. 本次成交记录未提供具体决策原因。"];
 }

@@ -15,14 +15,13 @@ def _identity(p):
     return p['index'], p['ordinal'], p['kind'], p['value']
 
 
-def hierarchical_history(bars, *, prefix_cache=None, include_base=False):
+def hierarchical_history(bars, *, prefix_cache=None):
     """Reuse the drawing reducers, but freeze availability on each daily prefix."""
     history = {}; epochs = {}; previous = {0: {}, 1: {}, 2: {}, 3: {}}
     last_epoch = None
     last = len(bars) - 1
     prefix_key = tuple(bars[:-1])
-    cached_key = (prefix_cache.get('key') if prefix_cache is not None
-                  and prefix_cache.get('include_base', False) == include_base else None)
+    cached_key = prefix_cache.get('key') if prefix_cache is not None else None
     resume_start = (last if cached_key == prefix_key else
                     last - 1 if cached_key == tuple(bars[:-2]) else 0)
     if resume_start:
@@ -69,9 +68,6 @@ def hierarchical_history(bars, *, prefix_cache=None, include_base=False):
 
         turns = freeze(turns, 0)
         levels = {}; source = turns
-        if include_base:
-            levels[0] = tuple({'index': p['index'], 'ordinal': p['ordinal'], 'kind': p['kind'],
-                               'value': p['value'], 'available_at': p['available_at']} for p in turns)
         for level in (1, 2, 3):
             reduced = _wave_reversals(source) if level == 1 else _structural_reversals(source, source_level=level-1)
             # The reducer's confirmation trigger may occur after the extreme itself.
@@ -82,7 +78,6 @@ def hierarchical_history(bars, *, prefix_cache=None, include_base=False):
         history[i] = levels
         if prefix_cache is not None and resume_start != last and i == last - 1:
             prefix_cache['key'] = prefix_key
-            prefix_cache['include_base'] = include_base
             prefix_cache['checkpoint'] = (
                 history.copy(), epochs.copy(),
                 {level: known.copy() for level, known in previous.items()}, last_epoch)

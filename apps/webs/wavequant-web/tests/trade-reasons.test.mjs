@@ -105,37 +105,6 @@ test("sell reasons use exit trigger and observed values without inventing missin
     assert.deepEqual(numberedTradeReasons({ side: "SELL" }), ["1. 本次成交记录未提供具体决策原因。"]);
 });
 
-test("last-fall-high exits explain bearish reduction and direct double-break clear", () => {
-    const context = {
-        side: "SELL",
-        trend_level: 0,
-        trend_key_date: "2022-06-15",
-        trend_key_high: 4.9621,
-        trend_attack_date: "2022-06-29",
-        trend_breakout_basis: "high",
-    };
-    const reduction = tradeReasonItems({
-        ...context,
-        reason: "trend_last_fall_high_bearish_reduce",
-        trend_adverse_patterns: ["bearish_body"],
-        exit_target_fraction: 0.8,
-    });
-    assert.match(reduction[0], /收阴.*减仓/);
-    assert.match(reduction[1], /2022-06-15.*4\.9621.*2022-06-29 最高价越过.*原始走势线/);
-    assert.match(reduction[2], /收阴.*80\.00%/);
-
-    const clear = tradeReasonItems({
-        ...context,
-        reason: "trend_last_fall_high_breakdown_clear",
-        observed_close: 4.9503,
-        previous_close: 5.0016,
-        observed_low: 4.9246,
-        previous_low: 4.9374,
-    });
-    assert.match(clear[0], /收低且最低价破昨低.*清空/);
-    assert.match(clear[2], /4\.9503 < 昨收 5\.0016.*4\.9246 < 昨低 4\.9374/);
-});
-
 test("post-B target evidence names the new N origin and one-P milestone", () => {
     const marker = {
         kind: "fill",
