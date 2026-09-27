@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-197",
+            "name": "locate-max-drawdown-interval",
+            "title": "最大回撤区间标识与点击定位",
+            "description": "研究页显示最大回撤峰值至谷值的日期，点击指标或绩效页入口时定位净值、回撤和仓位图的该区间。",
+            "scope": "wavequant-web 研究指标与绩效图表",
+            "dependencies": ["MONOREPO-194"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "最大回撤显示历史峰值至谷值日期，初始资金为峰值时标明起点；无回撤时不提供无效定位",
+                "点击指标及绩效页区间入口，将绩效图表定位到相同日期区间",
+                "定向区间测试、Web Lint、类型检查、生产构建、格式和差异检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/max-drawdown.test.mjs tests/chart-navigation.test.mjs; node --check public/app.js public/charts.js public/max-drawdown.js; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; git diff --check",
+                    "status": "passed",
+                    "summary": "8 项定向测试、JS 语法、Web Lint（6 条既有警告）、类型、生产构建、格式及差异检查通过。按当前规则未运行浏览器端到端验证，点击与窄屏视觉待人工复核；完整 Web 单测留待空闲时段。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-196",
             "name": "auto-refresh-watchlist-backtests-in-order",
             "title": "自选股待更新优先和待回测顺序自动运行",

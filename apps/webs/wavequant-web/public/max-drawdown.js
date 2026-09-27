@@ -1,0 +1,40 @@
+/** 与回测指标相同，以初始资金 1 和每日净值的历史峰值计算最大回撤。 */
+export function maxDrawdownInterval(curve, backtestStart) {
+    if (!Array.isArray(curve) || !curve.length) return null;
+    let peak = 1;
+    let peakIndex = -1;
+    let fromIndex = -1;
+    let toIndex = -1;
+    let drawdown = 0;
+    for (const [index, point] of curve.entries()) {
+        if (typeof point?.time !== "string" || !Number.isFinite(point.value) || point.value <= 0) return null;
+        if (point.value >= peak) {
+            peak = point.value;
+            peakIndex = index;
+        }
+        const current = point.value / peak - 1;
+        if (current < drawdown) {
+            drawdown = current;
+            fromIndex = peakIndex;
+            toIndex = index;
+        }
+    }
+    if (toIndex < 0) return null;
+    return {
+        from: fromIndex < 0 ? backtestStart || curve[0].time : curve[fromIndex].time,
+        to: curve[toIndex].time,
+        fromIndex: Math.max(0, fromIndex),
+        toIndex,
+        initialPeak: fromIndex < 0,
+        drawdown,
+    };
+}
+
+export function drawdownLogicalRange(interval, barCount) {
+    if (!interval || barCount < 1) return null;
+    const padding = Math.max(2, Math.ceil((interval.toIndex - interval.fromIndex + 1) * 0.1));
+    return {
+        from: Math.max(0, interval.fromIndex - padding),
+        to: Math.min(barCount + 4, interval.toIndex + padding),
+    };
+}

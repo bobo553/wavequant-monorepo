@@ -20,7 +20,14 @@ export function ResearchMetrics(): JSX.Element {
                                 {index === 2 ? "当前股票" : "截至回放日期"}
                             </small>
                         </span>
-                        <strong id={id}>—</strong>
+                        {id === "metric-dd" ? (
+                            <button id="metric-dd-jump" className="metric-dd-jump" type="button" disabled>
+                                <strong id={id}>—</strong>
+                                <span id="metric-dd-period">暂无回撤区间</span>
+                            </button>
+                        ) : (
+                            <strong id={id}>—</strong>
+                        )}
                         <p id={index === 0 ? "metric-return-note" : undefined}>{description}</p>
                     </article>
                 ))}
