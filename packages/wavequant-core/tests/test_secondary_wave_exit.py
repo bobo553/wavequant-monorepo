@@ -50,10 +50,13 @@ def test_guofang_known_abc_target_and_resisted_break_clear_on_july_15():
                             risk_fraction=0.1, max_position_weight=0.8, max_participation=1)
     result = run_portfolio({bars[0].symbol: bars}, [signal], config)
     sales = [order for order in result.orders if order["side"] == "SELL" and order["status"] == "filled"]
-    assert len(sales) == 1
-    assert sales[0]["timestamp"] == bars[dates["2020-07-15"]].timestamp.isoformat()
-    assert sales[0]["reason"] == risk["reason"]
-    assert sales[0]["position_closed"] is True
+    assert [(order["timestamp"][:10], order["reason"]) for order in sales] == [
+        ("2020-07-08", "trend_last_fall_high_bearish_reduce"),
+        ("2020-07-15", "trend_last_fall_high_breakdown_clear"),
+    ]
+    assert sales[0]["trend_key_date"] == "2020-06-19"
+    assert sales[0]["position_closed"] is False
+    assert sales[1]["position_closed"] is True
 
 
 def synthetic(*, future_key=False):
