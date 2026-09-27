@@ -420,6 +420,32 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 updated.append(f)
             regime = replace(regime, frames=tuple(updated))
             candidate['regime'] = regime
+        if whole_wave and direction == Direction.UP and candidate['n_level'] >= 1:
+            attack_frame = next((frame for frame in regime.frames
+                                 if offset + frame.bar_index == t and frame.regime is None), None)
+            if attack_frame is not None:
+                from .hierarchical_n_squeeze import hierarchical_n_squeeze
+                proof = hierarchical_n_squeeze(bars, candidate)
+                if proof is not None:
+                    candidate['hierarchical_squeeze_proof'] = proof
+                    confirmed = replace(attack_frame, regime=MarketRegime.BULL, phase=RegimePhase.CONFIRMED,
+                        resistance_outcome=ResistanceOutcome.FAILED, close_continuation=True,
+                        last_confirmed_regime=MarketRegime.BULL,
+                        last_confirmed_index=attack_frame.bar_index)
+                    updated_frames = []
+                    for frame in regime.frames:
+                        if frame.bar_index == attack_frame.bar_index:
+                            frame = confirmed
+                        elif (frame.bar_index > attack_frame.bar_index and frame.regime is None
+                              and frame.first_defense_breach_index is None
+                              and (frame.last_confirmed_index is None
+                                   or frame.last_confirmed_index < attack_frame.bar_index)):
+                            frame = replace(frame, last_confirmed_regime=MarketRegime.BULL,
+                                            last_confirmed_index=attack_frame.bar_index)
+                        updated_frames.append(frame)
+                    regime = replace(regime, frames=tuple(updated_frames))
+                    candidate['regime'] = regime
+                    log(t, 'hierarchical_n_squeeze_confirmed', attack=t, **proof)
         for f in regime.frames:
             j = offset+f.bar_index
             if f.regime is not None:
@@ -503,7 +529,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 continue
             n = candidate['n']
             squeeze = next((candidate['start'] + f.bar_index for f in candidate['regime'].frames
-                            if f.regime in (MarketRegime.BULL, MarketRegime.STRONG_BULL)), None)
+                            if f.regime in (MarketRegime.BULL, MarketRegime.STRONG_BULL)
+                            and candidate['start'] + f.bar_index > candidate['attack']), None)
             gap_confirmation = next((j for attack, j in consolidation_proofs if attack == candidate['attack']), None)
             if gap_confirmation is not None:
                 squeeze = min(squeeze, gap_confirmation) if squeeze is not None else gap_confirmation
@@ -741,7 +768,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             entry_regime = MarketRegime.BULL if resumed or consolidation is not None or wave is not None else frame.regime
             # A bounce below the original breakout close cannot revive this N,
             # including entries supplied by the separate resumption observer.
-            if whole_wave and bar.close <= bars[c['attack']].close:
+            if (whole_wave and bar.close <= bars[c['attack']].close
+                    and not (i == c['attack'] and c.get('hierarchical_squeeze_proof') is not None)):
                 log(i, 'entry_rejected', reason='squeeze_below_original_n_close', attack=c['attack'],
                     confirmation_close=bar.close, n_attack_close=bars[c['attack']].close)
                 continue
@@ -849,6 +877,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             if wave is not None:
                 tag = 'wave_push_gap'
             confirmation_source = (('one_p_wave_rebound' if wave.get('wave_a_class') == 'ordinary' else 'two_t_wave_push_gap') if wave is not None else
+                'hierarchical_n_last_fall_high_squeeze' if c['attack'] == i and c.get('hierarchical_squeeze_proof') is not None else
                 'fresh_n_defeats_old_n_resistance' if (c['attack'], i) in reconfirmation_proofs else
                 'volume_reversal_record_break' if (c['attack'], i) in reversal_proofs else
                 'defended_n_consolidation_gap' if consolidation is not None else
