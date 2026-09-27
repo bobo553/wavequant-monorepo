@@ -78,7 +78,8 @@ def squeeze_alternations(bars, audit, anchors_at_attack):
         if trigger["event"] not in ("regime_confirmation", "squeeze_resumption_observed"):
             continue
         attack, now = trigger.get("attack"), trigger["bar_index"]
-        if attack not in positive or now >= len(bars):
+        # A same-day N squeeze has no post-attack B leg to alternate yet.
+        if attack not in positive or now <= attack or now >= len(bars):
             continue
         for item in anchors_at_attack.get(attack, []):
             low, high = item["origin"], item["high"]
