@@ -1553,6 +1553,39 @@ body {
     font-size: 10px;
     color: #677e98;
 }
+[data-wavequant-react-workbench] .metric-dd-jump {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    text-align: left;
+}
+[data-wavequant-react-workbench] .metric-dd-jump:hover {
+    background: none;
+}
+[data-wavequant-react-workbench] .metric-dd-jump:disabled {
+    opacity: 1;
+    cursor: default;
+}
+.metric-dd-jump span {
+    color: var(--cyan);
+    font-size: 10px;
+}
+.metric-dd-jump:disabled span {
+    color: #677e98;
+}
+.drawdown-range-jump {
+    font-size: 11px !important;
+    font-variant-numeric: tabular-nums;
+}
+.performance-card-header {
+    flex-wrap: wrap;
+}
+.performance-card-header .drawdown-range-jump {
+    margin-left: auto;
+}
 .comparison {
     font-size: 9px;
     color: #5c718a;
