@@ -15,7 +15,7 @@ export function PerformancePage(): JSX.Element {
                         个股独立净值
                     </span>
                     <button id="performance-dd-jump" className="drawdown-range-jump" type="button" hidden>
-                        最大回撤 <span id="performance-dd-period" /> · 定位区间
+                        最大回撤 <span id="performance-dd-period" /> · 定位 K 线
                     </button>
                 </div>
                 <div id="equity-chart" className="performance-chart" aria-label="账户净值图" />
