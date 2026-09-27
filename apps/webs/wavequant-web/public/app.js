@@ -600,10 +600,14 @@ const performance = new PerformanceCharts(["equity-chart", "drawdown-chart", "ex
 let drawdownInterval = null;
 function focusMaximumDrawdown() {
     if (!drawdownInterval) return;
-    showPage("performance");
+    showPage("workspace");
+    setChartView("local");
     requestAnimationFrame(() => {
-        performance.focusInterval(drawdownInterval);
-        $("equity-chart").scrollIntoView({ block: "center", behavior: "instant" });
+        if (!chart.focusRange(drawdownInterval.from, drawdownInterval.to)) {
+            showBacktestToast("当前 K 线不包含最大回撤日期区间");
+            return;
+        }
+        $("price-chart").scrollIntoView({ block: "center", behavior: "instant" });
     });
 }
 $("metric-dd-jump").addEventListener("click", focusMaximumDrawdown);
@@ -1089,9 +1093,9 @@ function renderDrawdownInterval(view) {
         return;
     }
     const period = `${drawdownInterval.initialPeak ? "初始资金峰值 · " : ""}${drawdownInterval.from} — ${drawdownInterval.to}`;
-    $("metric-dd-period").textContent = `${period} · 点击定位`;
+    $("metric-dd-period").textContent = `${period} · 点击定位 K 线`;
     $("performance-dd-period").textContent = period;
-    metricButton.setAttribute("aria-label", `最大回撤 ${pct(view.metrics.max_drawdown)}，${period}，点击定位绩效曲线`);
+    metricButton.setAttribute("aria-label", `最大回撤 ${pct(view.metrics.max_drawdown)}，${period}，点击定位 K 线区间`);
 }
 function renderMetrics() {
     renderDrawdownInterval(state.view);

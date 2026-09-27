@@ -23,18 +23,19 @@ export function maxDrawdownInterval(curve, backtestStart) {
     return {
         from: fromIndex < 0 ? backtestStart || curve[0].time : curve[fromIndex].time,
         to: curve[toIndex].time,
-        fromIndex: Math.max(0, fromIndex),
-        toIndex,
         initialPeak: fromIndex < 0,
         drawdown,
     };
 }
 
-export function drawdownLogicalRange(interval, barCount) {
-    if (!interval || barCount < 1) return null;
-    const padding = Math.max(2, Math.ceil((interval.toIndex - interval.fromIndex + 1) * 0.1));
+export function drawdownCandleRange(interval, bars) {
+    if (!interval || !Array.isArray(bars) || !bars.length) return null;
+    const fromIndex = bars.findIndex((bar) => bar.time >= interval.from);
+    const toIndex = bars.findLastIndex((bar) => bar.time <= interval.to);
+    if (fromIndex < 0 || toIndex < fromIndex) return null;
+    const padding = Math.max(3, Math.ceil((toIndex - fromIndex + 1) * 0.1));
     return {
-        from: Math.max(0, interval.fromIndex - padding),
-        to: Math.min(barCount + 4, interval.toIndex + padding),
+        from: Math.max(0, fromIndex - padding),
+        to: Math.min(bars.length + 3, toIndex + padding),
     };
 }

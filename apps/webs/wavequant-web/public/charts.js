@@ -16,7 +16,7 @@ import { chartNavigationState, panChartRange, seekChartRange, zoomChartRange } f
 import { FocusFlashOverlay } from "./focus-flash-overlay.js";
 import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
-import { drawdownLogicalRange } from "./max-drawdown.js";
+import { drawdownCandleRange } from "./max-drawdown.js";
 import { selectedTertiaryThirds, tertiaryRetracementGuides } from "./retracement-guides.js";
 import { TradeMarkerOverlay } from "./trade-marker-overlay.js";
 import { waveCProjection } from "./wave-c-projection.js";
@@ -934,6 +934,12 @@ export class PriceChart {
             .timeScale()
             .setVisibleLogicalRange({ from: Math.max(0, i - 55), to: Math.min(this.data.bars.length + 3, i + 30) });
     }
+    focusRange(from, to) {
+        const range = drawdownCandleRange({ from, to }, this.data?.bars);
+        if (!range) return false;
+        this.chart.timeScale().setVisibleLogicalRange(range);
+        return true;
+    }
     destroy() {
         if (this.frame) cancelAnimationFrame(this.frame);
         clearTimeout(this.tooltipHideTimer);
@@ -946,8 +952,6 @@ export class PriceChart {
 }
 export class PerformanceCharts {
     constructor(containers) {
-        this.curveLength = 0;
-        this.focusedRange = null;
         this.instances = containers.map((c, i) => {
             const chart = base(c);
             // Daily portfolio histories must fit even in a narrow half-width panel.
@@ -961,7 +965,7 @@ export class PerformanceCharts {
                 priceFormat: { type: "custom", formatter: (p) => (i ? `${p.toFixed(2)}%` : p.toFixed(4)) },
             });
             themedSeries.add({ index: i, series });
-            chart.timeScale().subscribeSizeChange(() => this.applyRange());
+            chart.timeScale().subscribeSizeChange(() => chart.timeScale().fitContent());
             chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
                 if (range) {
                     c.dataset.visibleFromIndex = range.from;
@@ -972,24 +976,12 @@ export class PerformanceCharts {
         });
     }
     update(curve) {
-        this.curveLength = curve.length;
-        this.focusedRange = null;
         ["value", "drawdown", "exposure"].forEach((key, i) => {
             this.instances[i].series.setData(curve.map((r) => ({ time: r.time, value: r[key] })));
             this.instances[i].chart.timeScale().fitContent();
         });
     }
-    focusInterval(interval) {
-        this.focusedRange = drawdownLogicalRange(interval, this.curveLength);
-        this.applyRange();
-    }
-    applyRange() {
-        this.instances?.forEach(({ chart }) => {
-            if (this.focusedRange) chart.timeScale().setVisibleLogicalRange(this.focusedRange);
-            else chart.timeScale().fitContent();
-        });
-    }
     resize() {
-        this.applyRange();
+        this.instances.forEach(({ chart }) => chart.timeScale().fitContent());
     }
 }
