@@ -57,15 +57,7 @@ def test_lexin_january21_cannot_reuse_december29_n_for_bounce_entry():
     for signal in result.signals:
         if signal.side == "LONG":
             attack = next(b for b in bars if b.timestamp == signal.trigger_timestamp)
-            if signal.timestamp == signal.trigger_timestamp:
-                assert any(
-                    event["event"] == "hierarchical_n_squeeze_confirmed"
-                    and event["bar_index"] == signal.bar_index
-                    and event["attack"] == signal.bar_index
-                    for event in result.audit
-                )
-            else:
-                assert bars[signal.bar_index].close > attack.close
+            assert bars[signal.bar_index].close > attack.close
     cutoff = next(i for i, b in enumerate(bars) if str(b.timestamp.date()) == "2022-01-21")
     prefix = generate_system_signals(bars[: cutoff + 1], config)
     assert prefix.signals == [s for s in result.signals if s.bar_index <= cutoff]

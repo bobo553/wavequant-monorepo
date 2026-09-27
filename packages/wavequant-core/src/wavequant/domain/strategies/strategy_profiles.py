@@ -79,7 +79,7 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'post_b_new_n_exit_v68_' + variant
+    config['profile_version'] = 'post_b_new_n_exit_v67_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -103,8 +103,6 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
         secondary_breakout='latest_confirmed_level2_high_resisted_attack_or_response_requires_later_clean_bullish_record_close_with_original_defense_held',
         completed_wave_recovery='completed_a_defended_b_gap_breakout_or_volume_retires_only_same_a_b_pressure_and_inverse',
         volume_filter_basis='confirmation_cumulative_volume_strictly_gt_previous_session_total_wave_gap_price_break_is_alternative',
-        hierarchical_n_squeeze='known_level1_or_higher_positive_n_intraday_break_of_its_frozen_last_fall_high_bullish_close_at_or_above_key_top_quarter_and_volume_gt_previous_same_day',
-        level1_last_fall_high_exit='after_positive_n_close_break_first_bearish_candle_reduce_first_lower_close_full_clear',
         c_wave_extensions='after_a_reaches_original_n_two_t_b_holds_defense_project_b_plus_1_618_and_2_618_times_whole_a_equal_wave_is_intermediate_not_exit',
         ordinary_a_rebound='one_p_reached_below_two_t_then_defended_b_bullish_close_above_known_pullback_high_equal_a_target_no_strong_extensions',
         ordinary_c_equal_exit='v3_wave_entry_target_exit_replaced_by_post_b_new_positive_n',
