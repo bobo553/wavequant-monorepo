@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-198",
+            "name": "guofang-march-2023-same-day-squeeze",
+            "title": "修正国芳2023年3月轧空买点",
+            "description": "国芳集团 2023 年 3 月 21 日突破已知一级正 N 末跌高并放量站稳时，当天确认轧空；模拟买单尊重用户的净盈亏比过滤开关。",
+            "scope": "wavequant-core 分级 N 轧空确认、买点信号与真实行情回归",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "3 月 21 日确认轧空并产生 LONG，3 月 23 日不重复发信号，历史前缀一致",
+                "净盈亏比过滤关闭时 3 月 21 日 BUY 成交；开启时不达 1.5 的委托取消",
+                "相邻分级 N、轧空与原 N 收盘锚点回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest 7 targeted wavequant-core test files and 1 TDX filter test -q; python -m build; pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "42 项定向测试通过；使用独立虚拟环境复跑国芳与收盘锚点 7 项通过；Core sdist/wheel 构建通过。改动文件类型检查对照 main 均为相同 47 条既有错误，新模块单独检查通过；完整 Core 套件和浏览器验证未运行。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-197",
             "name": "locate-max-drawdown-interval",
             "title": "最大回撤区间标识与点击定位",
