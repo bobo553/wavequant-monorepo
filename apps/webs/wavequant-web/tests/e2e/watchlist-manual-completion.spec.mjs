@@ -29,7 +29,7 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
             scope === "stock"
                 ? {
                       total_return: 0.125,
-                      max_drawdown: 0,
+                      max_drawdown: -0.083,
                       trades: 0,
                       entry_fills: 0,
                       average_exposure: 0,
@@ -140,6 +140,7 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
             fill_count: 0,
             total_return: 0.125,
             total_pnl: 12_500,
+            max_drawdown: -0.083,
         };
         return route.fulfill({ json: view("stock") });
     });
@@ -158,27 +159,34 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
     await expect(runButton).toBeDisabled();
     releaseBacktest();
     await expect(page.locator("#result-scope")).toHaveValue("akshare-backtest");
-    await expect(badge).toHaveText("已完成 · 0笔成交");
+    await expect(badge).toHaveText("已完成");
+    const fillCount = page.locator(`.watchlist-stock-row[data-symbol="${symbol}"] .watchlist-backtest-fill-count`);
+    await expect(fillCount).toHaveText("0笔成交");
     await expect(runButton).toHaveAttribute("data-status", "completed");
     await expect(runButton).toContainText("已完成 · 重新回测");
     await expect(runButton).toBeEnabled();
     const result = page.locator(`.watchlist-stock-row[data-symbol="${symbol}"] .watchlist-backtest-result`);
+    const drawdown = page.locator(`.watchlist-stock-row[data-symbol="${symbol}"] .watchlist-backtest-drawdown`);
     await expect(result).toHaveText("盈 +12.50%");
     await expect(result).toHaveAttribute("title", /\+12,500\.00 元/);
+    await expect(drawdown).toHaveText("最大回撤 -8.30%");
     const rowLayout = await result.evaluate((element) => {
         const row = element.closest(".watchlist-stock-row");
         const name = row.querySelector(".watchlist-stock-identity strong");
         const badge = row.querySelector(".watchlist-backtest-badge");
         return {
             resultY: element.getBoundingClientRect().y,
+            drawdownY: row.querySelector(".watchlist-backtest-drawdown").getBoundingClientRect().y,
             badgeY: badge.getBoundingClientRect().y,
+            nameY: name.getBoundingClientRect().y,
             nameBottom: name.getBoundingClientRect().bottom,
             nameFits: name.scrollWidth <= name.clientWidth + 1,
             color: globalThis.getComputedStyle(element).color,
         };
     });
-    expect(Math.abs(rowLayout.resultY - rowLayout.badgeY)).toBeLessThan(5);
+    expect(Math.abs(rowLayout.badgeY - rowLayout.nameY)).toBeLessThan(5);
     expect(rowLayout.resultY).toBeGreaterThan(rowLayout.nameBottom);
+    expect(Math.abs(rowLayout.drawdownY - rowLayout.resultY)).toBeLessThan(5);
     expect(rowLayout.nameFits).toBe(true);
     const themeColor = (variable) =>
         page.evaluate((name) => {
@@ -195,7 +203,10 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
     expect(
         await result.evaluate((element) =>
             Math.abs(
-                element.getBoundingClientRect().y -
+                element
+                    .closest(".watchlist-stock-row")
+                    .querySelector(".watchlist-stock-identity strong")
+                    .getBoundingClientRect().y -
                     element
                         .closest(".watchlist-stock-row")
                         .querySelector(".watchlist-backtest-badge")
@@ -205,18 +216,23 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
     ).toBeLessThan(5);
     await page.setViewportSize({ width: 390, height: 900 });
     const fits = await result.evaluate((element) => {
-        const value = element.getBoundingClientRect();
+        const values = [
+            element,
+            element.closest(".watchlist-stock-row").querySelector(".watchlist-backtest-drawdown"),
+        ].map((item) => item.getBoundingClientRect());
         const rail = element.closest("#watchlist-rail").getBoundingClientRect();
-        return value.right <= rail.right && value.left >= rail.left;
+        return values.every((value) => value.right <= rail.right && value.left >= rail.left);
     });
     expect(fits).toBe(true);
     await expect(page.locator("#watchlist-backtest-status")).toContainText("已完成 1/1");
     expect(submitted).toBe(1);
     await page.reload();
     await expect(page.locator("#loading")).toBeHidden({ timeout: 15_000 });
-    await expect(badge).toHaveText("已完成 · 0笔成交");
+    await expect(badge).toHaveText("已完成");
+    await expect(fillCount).toHaveText("0笔成交");
     await expect(runButton).toHaveAttribute("data-status", "completed");
     await expect(result).toHaveText("盈 +12.50%");
+    await expect(drawdown).toHaveText("最大回撤 -8.30%");
     await expect(page.locator("#watchlist-backtest-status")).toContainText("已完成 1/1");
     expect(submitted).toBe(1);
     serverRecord.total_return = -0.075;

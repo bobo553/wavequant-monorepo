@@ -195,3 +195,8 @@
 ## 2026-09-25 · MONOREPO-172 浅回撤买点开关
 
 - TDX 与 AkShare 当前股票回测接受 `shallow_base_breakout_enabled=true|false`，缺省 true；重复或非法值拒绝。参数进入独立回测缓存键与策略定义，切换结果可复现。API 85 项、18 子测试通过（1 项外部环境跳过），Ruff 和包构建通过；真实 TDX API 与 Chromium 验证开启有国芳 2025-04-03 买入、关闭无该信号。全量 mypy 受既有 NumPy stub/Python 版本不匹配及 server.py 184–308 行类型错误阻塞，新增参数行无相关报错。
+
+## 2026-09-28 · MONOREPO-198 自选股回测摘要增加最大回撤
+
+- 完成的有效单股回测将有限的 `max_drawdown` 写入任务摘要与持久化历史，列表刷新后可继续读取；不改回测算法与旧记录。
+- `test_backtest_jobs.py` 定向 7 项通过，覆盖完成结果与重建任务注册表后的持久化摘要。首次检出的全仓快速检查因全局 Python 缺少 `build` 模块停在 Core 构建；本次 API 定向测试使用原项目虚拟环境并显式指向本 worktree 源码。

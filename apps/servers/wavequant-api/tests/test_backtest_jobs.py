@@ -194,7 +194,7 @@ class BacktestJobsTests(unittest.TestCase):
                 "result_scope": "stock",
                 "backtest": {"status": "complete"},
                 "orders": [{"status": "filled"}, {"status": "cancelled"}],
-                "metrics": {"total_return": -0.075, "total_pnl": -7500.0},
+                "metrics": {"total_return": -0.075, "total_pnl": -7500.0, "max_drawdown": -0.154},
             },
             details=details,
         )
@@ -205,6 +205,7 @@ class BacktestJobsTests(unittest.TestCase):
         self.assertEqual(recent[0]["fill_count"], 1)
         self.assertEqual(recent[0]["total_return"], -0.075)
         self.assertEqual(recent[0]["total_pnl"], -7500.0)
+        self.assertEqual(recent[0]["max_drawdown"], -0.154)
         self.assertTrue(recent[0]["result_available"])
         self.assertNotIn("result", recent[0])
         now[0] = 10
@@ -224,7 +225,7 @@ class BacktestJobsTests(unittest.TestCase):
                     "result_scope": "stock",
                     "backtest": {"status": "complete"},
                     "orders": [],
-                    "metrics": {"total_return": 0.12, "total_pnl": 12000.0},
+                    "metrics": {"total_return": 0.12, "total_pnl": 12000.0, "max_drawdown": -0.083},
                 },
                 details={"symbol": "sz.300154", "version": "v1", "path": "/api/akshare-backtest"},
             )
@@ -236,6 +237,7 @@ class BacktestJobsTests(unittest.TestCase):
             self.assertEqual(recent[0]["version"], "v1")
             self.assertEqual(recent[0]["total_return"], 0.12)
             self.assertEqual(recent[0]["total_pnl"], 12000.0)
+            self.assertEqual(recent[0]["max_drawdown"], -0.083)
             self.assertFalse(recent[0]["result_available"])
 
 

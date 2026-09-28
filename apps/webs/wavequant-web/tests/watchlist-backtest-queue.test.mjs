@@ -142,10 +142,19 @@ test("a matching completed stock task updates the watchlist without running it a
         backtest_job: "manual-job",
     };
     delete params.source;
-    const completed = { ...result(member), orders: [{ status: "filled" }] };
+    const completed = {
+        ...result(member),
+        orders: [{ status: "filled" }],
+        metrics: { total_return: 0.125, total_pnl: 12500, max_drawdown: -0.083 },
+    };
     assert.equal(subject.controller.adoptCompleted(path, params, completed, "v1"), true);
     assert.equal(subject.controller.state().statuses[member.symbol], "completed");
     assert.equal(subject.controller.state().fillCounts[member.symbol], 1);
+    assert.deepEqual(subject.controller.state().returns[member.symbol], {
+        rate: 0.125,
+        amount: 12500,
+        drawdown: -0.083,
+    });
     assert.equal(subject.controller.matchingJobId(path, params), "manual-job");
     subject.controller.setEnabled(true);
     subject.setIdle(true);
@@ -163,14 +172,15 @@ test("completed return summaries follow the current backtest context", async () 
             metrics: {
                 total_return: member.symbol === "sz.000002" ? 0.125 : -0.075,
                 total_pnl: member.symbol === "sz.000002" ? 12500 : -7500,
+                max_drawdown: member.symbol === "sz.000002" ? -0.083 : -0.154,
             },
         }),
     });
     await subject.controller.tick();
     await subject.controller.tick();
     assert.deepEqual(subject.controller.state().returns, {
-        "sz.000002": { rate: 0.125, amount: 12500 },
-        "sz.000001": { rate: -0.075, amount: -7500 },
+        "sz.000002": { rate: 0.125, amount: 12500, drawdown: -0.083 },
+        "sz.000001": { rate: -0.075, amount: -7500, drawdown: -0.154 },
     });
     subject.setSnapshot({
         context: { run: "example", variant: "changed", source: "akshare" },
@@ -211,11 +221,16 @@ test("server completion restores a watchlist badge after reload without a local 
         fill_count: 2,
         total_return: -0.075,
         total_pnl: -7500,
+        max_drawdown: -0.154,
     };
     assert.equal(subject.controller.adoptServerStatus(record), true);
     assert.equal(subject.controller.state().statuses[member.symbol], "completed");
     assert.equal(subject.controller.state().fillCounts[member.symbol], 2);
-    assert.deepEqual(subject.controller.state().returns[member.symbol], { rate: -0.075, amount: -7500 });
+    assert.deepEqual(subject.controller.state().returns[member.symbol], {
+        rate: -0.075,
+        amount: -7500,
+        drawdown: -0.154,
+    });
     assert.equal(subject.controller.matchingJobId(record.path, record.params), "server-job");
     assert.equal(subject.controller.adoptServerStatus({ ...record, version: "v2" }), false);
     assert.equal(
