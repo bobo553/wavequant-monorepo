@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-205",
+            "name": "clear-xinhua-bearish-outside-reversal",
+            "title": "新华文轩放量阴线反包当日清仓",
+            "description": "连续阳线前最近阴线作为量能基准；当日阴线最高价不低于前高、收盘严格低于前低且成交量严格超过基准阴线时，持仓于当日收盘清空。",
+            "scope": "wavequant-core 全局 V3 放量退出、策略定义与 wavequant-web 成交解释",
+            "dependencies": ["MONOREPO-171"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "新华文轩 2026-08-04 相对 2026-07-28 放量且收破 08-03 低点，已有持仓当日收盘清仓、余仓为零",
+                "等量、未反包或阳线序列中断不触发该清仓；前一阳线量更大时仍以序列前阴线比较",
+                "成交说明显示比较日期、量价证据；Core 定向回归、类型检查、构建及 Web 静态检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest -q tests/test_xinhuawenxuan_bearish_reversal_exit.py tests/test_staged_exit.py tests/test_massive_gap_reversal_exit.py tests/test_wave_target_upper_shadow_exit.py tests/test_backtest_version.py tests/test_add_on_entry.py; python -m mypy --follow-imports=silent src/wavequant/domain/strategies/staged_exit.py src/wavequant/domain/strategies/strategy_profiles.py; python -m build --no-isolation; node --test apps/webs/wavequant-web/tests/annotations.test.mjs; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check feature_list.json apps/webs/wavequant-web/public/annotations.js apps/webs/wavequant-web/public/filled-trade-copy.js apps/webs/wavequant-web/public/trade-review.js apps/webs/wavequant-web/tests/annotations.test.mjs; git diff --check",
+                    "status": "passed",
+                    "summary": "Core 定向回归 97 项、两份改动 Python 模块 mypy、sdist/wheel、Web 注释定向测试 29 项、Lint（6 条既有警告）、类型检查、生产构建、修改文件 Prettier 及 diff 检查通过；未运行浏览器端到端及完整 Web 单测。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-204",
             "name": "show-completed-fill-count-in-watchlist-status",
             "title": "已完成自选股状态显示成交笔数",

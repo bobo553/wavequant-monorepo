@@ -1,7 +1,7 @@
 import { num, pct } from "./labels.js";
 import { closedPositionLabel, positionProfit } from "./trade-position.js";
-import { waveEntryEvidence } from "./wave-entry-evidence.js";
 import { numberedTradeReasons } from "./trade-reasons.js";
+import { waveEntryEvidence } from "./wave-entry-evidence.js";
 
 // All conditions come from the dated engine ledger, never re-inferred from a chart.
 export function appendTradeEvidence(panel, item, openPosition = null) {
@@ -154,7 +154,13 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
             );
         }
         if (item.wave_reached_stage) {
-            const stageNames = { one_p: "一饱", two_t: "二吐", five_top: "五顶", ten_full: "十满", ordinary_equal: "普通 A 的 C 等浪" };
+            const stageNames = {
+                one_p: "一饱",
+                two_t: "二吐",
+                five_top: "五顶",
+                ten_full: "十满",
+                ordinary_equal: "普通 A 的 C 等浪",
+            };
             add(
                 `目标背景：${item.wave_n_origin_date ? `新段正 N 起点 ${item.wave_n_origin_date} ${num(item.wave_n_origin_price, 4)} 元；` : "本笔"}正 N ${item.wave_n_date}；${item.wave_reached_date} 已到 ${stageNames[item.wave_reached_stage] || item.wave_reached_stage} ${num(item.wave_reached_price, 4)} 元`,
             );
@@ -167,9 +173,13 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
                     `次日确认：${item.abnormal_date} 异常K线收盘 ${num(item.abnormal_close, 4)}；下一交易日收盘 ${num(item.observed_close, 4)} 严格低于该收盘，清空余仓，无需再次放量或等待倒 N`,
                 );
             if (item.reason === "wave_ordinary_equal_upper_shadow_reduce")
-                add(`普通 A：前 A 高 ${num(item.wave_a_high, 4)} 已达一饱 ${num(item.wave_one_p, 4)}、未达二吐 ${num(item.wave_two_t, 4)}；C 浪到等浪目标后，成交量 ${num(item.observed_volume, 0)} > 前日 ${num(item.previous_volume, 0)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，当日按累计 80% 目标减仓`);
+                add(
+                    `普通 A：前 A 高 ${num(item.wave_a_high, 4)} 已达一饱 ${num(item.wave_one_p, 4)}、未达二吐 ${num(item.wave_two_t, 4)}；C 浪到等浪目标后，成交量 ${num(item.observed_volume, 0)} > 前日 ${num(item.previous_volume, 0)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，当日按累计 80% 目标减仓`,
+                );
             if (item.reason === "wave_ordinary_equal_lower_close_clear")
-                add(`异常后首次收低：${item.abnormal_date} 出现长上影；本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，当日清空余仓`);
+                add(
+                    `异常后首次收低：${item.abnormal_date} 出现长上影；本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，当日清空余仓`,
+                );
             if (item.reason === "wave_upper_rejection_reduce")
                 add(
                     `冲高收阴：上影不短于阴线实体；振幅/前收 ${pct(item.wave_range_fraction)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，下影占振幅 ${pct(item.wave_lower_shadow_fraction)}；成交量 ${num(item.observed_volume, 0)} > 前日 ${num(item.previous_volume, 0)}；不要求日涨跌幅为负`,
@@ -225,11 +235,17 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
             );
         }
         if (item.record_high_date) {
-            add(`旧高来源：${item.record_high_date} 阳线最高 ${num(item.record_high, 4)} 元；突破时距该高点 ${item.record_high_age} 个交易日`);
+            add(
+                `旧高来源：${item.record_high_date} 阳线最高 ${num(item.record_high, 4)} 元；突破时距该高点 ${item.record_high_age} 个交易日`,
+            );
             if (item.reason === "record_high_resistance_reduce")
-                add(`${item.record_breakout_date} 盘中突破后遇空头抵抗，收盘未站稳；上影占振幅 ${pct(item.record_upper_shadow_fraction)}，当日目标减仓 50%，按整手执行`);
+                add(
+                    `${item.record_breakout_date} 盘中突破后遇空头抵抗，收盘未站稳；上影占振幅 ${pct(item.record_upper_shadow_fraction)}，当日目标减仓 50%，按整手执行`,
+                );
             if (item.reason === "record_high_lower_close_clear")
-                add(`空头抵抗：${(item.record_resistance_dates || []).join("、")}；本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，清空余仓`);
+                add(
+                    `空头抵抗：${(item.record_resistance_dates || []).join("、")}；本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，清空余仓`,
+                );
         }
         if (item.volume_trigger_date) {
             add(
@@ -239,7 +255,13 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
                 add(`冻结回踩低点：${item.volume_support_date} · ${num(item.volume_support_low, 4)} 元`);
         }
         if (item.reason === "volume_massive_gap_reversal_clear")
-            add(`巨量高开反包：开盘 ${num(item.observed_open, 4)} > 前高 ${num(item.previous_high, 4)}，收盘 ${num(item.observed_close, 4)} < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} 股，为前 ${item.massive_volume_window} 日均量的 ${num(item.massive_volume_multiple, 2)} 倍且创同期新高；阴线实体/开盘 ${pct(item.bearish_body_fraction)}，当日清空余仓`);
+            add(
+                `巨量高开反包：开盘 ${num(item.observed_open, 4)} > 前高 ${num(item.previous_high, 4)}，收盘 ${num(item.observed_close, 4)} < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} 股，为前 ${item.massive_volume_window} 日均量的 ${num(item.massive_volume_multiple, 2)} 倍且创同期新高；阴线实体/开盘 ${pct(item.bearish_body_fraction)}，当日清空余仓`,
+            );
+        if (item.reason === "volume_bearish_outside_clear")
+            add(
+                `放量阴线反包：最高 ${num(item.observed_high, 4)} ≥ 前高 ${num(item.previous_high, 4)}，收盘 ${num(item.observed_close, 4)} < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} > 连续阳线前 ${item.bearish_reference_date} 阴线的 ${num(item.bearish_reference_volume, 0)}，当日清空余仓`,
+            );
         if (item.resistance_date) {
             add(
                 `倒 N ${item.inverse_n_date} 后多头抵抗 ${item.resistance_date}：虚拟低 ${num(item.resistance_virtual_low, 4)}；失败收盘 ${num(item.failure_close, 4)}`,

@@ -1,6 +1,7 @@
 """Define versioned research profiles while preserving sealed historical profiles."""
 from copy import deepcopy
 from dataclasses import asdict, dataclass
+from typing import Any
 from .integrated_strategy import SystemStrategy
 
 PROFILE_ID='lecture_v1'
@@ -124,6 +125,9 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
         inverse_n_after_reduction='cumulative_90_percent_of_initial_holding_other_full_risk_exits_take_priority',
         small_n_reduction='body_le_1pct_and_lt_previous_10_mean_inside_latest_valid_confirmed_n_candle_then_cumulative_30',
         volume_down_exit='volume_gt_previous_bearish_close_below_previous_same_close_cumulative_70_next_session_gap_fade_or_bearish_close_below_warning_low_or_frozen_support_low_break_close_clear',
+        volume_bearish_outside_exit=(
+            'bullish_run_followed_by_bearish_high_ge_previous_high_'
+            'close_lt_previous_low_volume_gt_pre_run_bearish_same_close_full_clear'),
         massive_gap_reversal_exit='volume_strict_record_of_previous_10_and_ge_2_times_previous_10_mean_open_gt_previous_high_close_lt_previous_low_bear_body_ge_5pct_open_same_close_full_clear_before_partial',
         secondary_c_wave_reversal_exit='known_level2_low_to_confirmed_source_a_high_then_known_b_low_intraday_high_break_two_resisted_sessions_equal_c_target_with_both_shadows_ge_30pct_next_bear_close_below_shadow_low_same_close_full_clear',
         pressure_adverse_exit='positive_n_retests_supply_adverse_unfilled_gap_higher_close_half_reduce_first_lower_close_clear_other_adverse_full_clear',
@@ -159,7 +163,7 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
 def research_profile(legacy):
     # Inherit execution assumptions only, NEVER the sealed strategy's metrics,
     # folds, bootstrap confidence intervals or validation pass/fail flags.
-    config={'scenarios':{name:{'execution':deepcopy(value['execution'])}
+    config: dict[str, Any] = {'scenarios':{name:{'execution':deepcopy(value['execution'])}
                          for name,value in legacy['scenarios'].items()}}
     config['strategy']=asdict(SystemStrategy(pivot_mode='lecture_causal'))
     config['strategy'].pop('mature_shallow_ratio')  # V1 definition remains byte-for-byte compatible.

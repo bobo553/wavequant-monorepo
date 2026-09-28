@@ -117,8 +117,9 @@ def observe_intraday_staged_exit(
             return None
     else:
         support = state.support_index
-        peak = state.peak_index
-        assert support is not None and peak is not None
+        prior_peak = state.peak_index
+        assert support is not None and prior_peak is not None
+        peak = prior_peak
     target = support_break_reduction(day_low, current_price, bars[support].low, bars[support].close)
     if target <= state.reduction_target:
         return None
@@ -270,6 +271,33 @@ def _massive_gap_reversal(bars: list[Bar], index: int) -> dict | None:
                 previous_volume=previous.volume)
 
 
+def _bearish_outside_reversal(bars: list[Bar], index: int) -> dict | None:
+    """Clear a bullish run's outside reversal only when it exceeds the run's last bearish volume."""
+    if index < 2:
+        return None
+    bar, previous = bars[index], bars[index - 1]
+    if (bar.close >= bar.open or previous.close <= previous.open
+            or bar.high < previous.high or bar.close >= previous.low):
+        return None
+    reference = index - 2
+    while reference >= 0 and bars[reference].close > bars[reference].open:
+        reference -= 1
+    if (reference < 0 or bars[reference].close >= bars[reference].open
+            or bar.volume <= bars[reference].volume):
+        return None
+    bearish = bars[reference]
+    return dict(reason='volume_bearish_outside_clear', exit_fraction=1.0,
+                execution_model='same_day_close',
+                bearish_reference_date=bearish.timestamp.date().isoformat(),
+                bearish_reference_volume=bearish.volume,
+                observed_open=bar.open, observed_high=bar.high,
+                observed_low=bar.low, observed_close=bar.close,
+                observed_volume=bar.volume,
+                previous_open=previous.open, previous_high=previous.high,
+                previous_low=previous.low, previous_close=previous.close,
+                previous_volume=previous.volume)
+
+
 def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState, *,
                              positive_n_index: int | None = None, small_body_max_fraction: float = .01,
                              small_body_lookback: int = 10) -> dict | None:
@@ -279,6 +307,9 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     massive_reversal = _massive_gap_reversal(bars, index)
     if massive_reversal is not None:
         return massive_reversal
+    outside_reversal = _bearish_outside_reversal(bars, index)
+    if outside_reversal is not None:
+        return outside_reversal
     bar, previous = bars[index], bars[index-1]
     body = abs(Fraction(str(bar.close))-Fraction(str(bar.open)))
     mean_body = (sum(abs(Fraction(str(b.close))-Fraction(str(b.open))) for b in bars[index-small_body_lookback:index]) / small_body_lookback
@@ -318,6 +349,7 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     if upgrading:
         state.volume_reduction_target = target
         if small_inside:
+            assert n_bar is not None and mean_body is not None
             evidence.update(positive_n_date=n_bar.timestamp.date().isoformat(),
                             positive_n_low=n_bar.low, positive_n_high=n_bar.high,
                             small_body_fraction=float(body)/bar.open, small_body_mean=float(mean_body),
