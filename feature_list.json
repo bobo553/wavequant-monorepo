@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-199",
+            "name": "third-resisted-last-fall-high-clear",
+            "title": "国芳末跌高三日抵抗反包清仓",
+            "description": "以当时已确认的末跌高为键，连续三日盘中突破却收不稳并受抵抗；第三日放量阴线反包前日区间时清仓。",
+            "scope": "wavequant-core 全局退出策略、Web 清仓证据与国芳真实行情回归",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "国芳 2026-07-15 买点保留，07-17 对照 07-13 阴线量直接清仓",
+                "06-24 末跌高在攻击前已确认，连续抵抗和反包量价条件均从当时数据判断",
+                "相同规则适用于其他股票与日期，原退出规则定向回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core 定向 pytest；Web 定向 Node；JS 语法与 Harness",
+                    "status": "passed",
+                    "summary": "Core 96 项及国芳前缀回放通过；Web 41 项通过。未运行 Playwright 或完整 Web 单测。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-198",
             "name": "guofang-march-2023-squeeze-recognition",
             "title": "修正国芳三月正N轧空识别",

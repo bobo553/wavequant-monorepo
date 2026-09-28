@@ -266,3 +266,23 @@ test("secondary C-wave clear explains known anchors, target, resistance and clos
     assert.match(lines[2], /2020-07-10、2020-07-13.*2020-07-14/);
     assert.match(lines[3], /5\.5716 < .*5\.5931/);
 });
+
+test("third resisted last-fall-high exit explains the dated volume comparison", () => {
+    const marker = {
+        side: "SELL",
+        reason: "trend_last_fall_high_third_resistance_clear",
+        trend_key_date: "2026-06-24",
+        trend_key_high: 10.239,
+        trend_resistance_dates: ["2026-07-15", "2026-07-16", "2026-07-17"],
+        bearish_reference_date: "2026-07-13",
+        bearish_reference_volume: 6226708,
+        observed_close: 9.8072,
+        observed_volume: 13741408,
+        previous_low: 9.9883,
+    };
+    const reasons = numberedTradeReasons(marker);
+    assert.equal(reasons.length, 3);
+    assert.match(reasons[0], /连续三日受空头抵抗.*当日清仓/);
+    assert.match(reasons[1], /2026-06-24.*2026-07-15、2026-07-16、2026-07-17/);
+    assert.match(reasons[2], /13,741,408 > 2026-07-13 阴线 6,226,708/);
+});

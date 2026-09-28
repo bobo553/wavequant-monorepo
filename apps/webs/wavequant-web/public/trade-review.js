@@ -210,6 +210,10 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
                 `目标后转弱：${item.trend_indecision_date} 上下长影，上影 ${pct(item.trend_upper_shadow_fraction)}、下影 ${pct(item.trend_lower_shadow_fraction)}；本日收盘 ${num(item.observed_close, 4)} < 前日最低 ${num(item.trend_indecision_low, 4)}，当日清仓`,
             );
         }
+        if (item.reason === "trend_last_fall_high_third_resistance_clear") {
+            add(`末跌高：${item.trend_key_date} · ${num(item.trend_key_high, 4)} 元；${(item.trend_resistance_dates || []).join("、")} 三日盘中突破但收盘未站稳，均出现空头抵抗`);
+            add(`第三日反包：收盘 ${num(item.observed_close, 4)} < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} > ${item.bearish_reference_date} 阴线 ${num(item.bearish_reference_volume, 0)}，当日清仓`);
+        }
         if (item.pressure_date) {
             const adverseNames = {
                 bearish_body: "阴线实体",

@@ -172,6 +172,12 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
             `目标后转弱：${marker.trend_indecision_date} 上下长影，上影 ${pct(marker.trend_upper_shadow_fraction)}、下影 ${pct(marker.trend_lower_shadow_fraction)}；本日收盘 ${num(marker.observed_close, 4)} < 前日最低 ${num(marker.trend_indecision_low, 4)}，当日清仓`,
         );
     }
+    if (marker.reason === "trend_last_fall_high_third_resistance_clear") {
+        lines.push(
+            `末跌高：${marker.trend_key_date} · ${num(marker.trend_key_high, 4)} 元；${(marker.trend_resistance_dates || []).join("、")} 三日盘中突破但收盘未站稳，均出现空头抵抗`,
+            `第三日反包：收盘 ${num(marker.observed_close, 4)} < 前低 ${num(marker.previous_low, 4)}；成交量 ${num(marker.observed_volume, 0)} > ${marker.bearish_reference_date} 阴线 ${num(marker.bearish_reference_volume, 0)}，当日清仓`,
+        );
+    }
     if (marker.pressure_date) {
         const adverseNames = {
             bearish_body: "阴线实体",
