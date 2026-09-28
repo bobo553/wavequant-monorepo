@@ -247,7 +247,11 @@ export class IdleWatchlistBacktests {
         this.completedJobs.set(member.symbol, { path, params });
         this.fillCounts.set(member.symbol, (result.orders || []).filter((order) => order.status === "filled").length);
         if (Number.isFinite(result.metrics?.total_return) && Number.isFinite(result.metrics?.total_pnl))
-            this.returns.set(member.symbol, { rate: result.metrics.total_return, amount: result.metrics.total_pnl });
+            this.returns.set(member.symbol, {
+                rate: result.metrics.total_return,
+                amount: result.metrics.total_pnl,
+                drawdown: Number.isFinite(result.metrics.max_drawdown) ? result.metrics.max_drawdown : null,
+            });
         this.failures.delete(member.symbol);
         this.retryAt.delete(member.symbol);
         this.retryCounts.delete(member.symbol);
@@ -281,7 +285,11 @@ export class IdleWatchlistBacktests {
             } else this.completedJobs.delete(member.symbol);
             if (Number.isInteger(record.fill_count)) this.fillCounts.set(member.symbol, record.fill_count);
             if (Number.isFinite(record.total_return) && Number.isFinite(record.total_pnl))
-                this.returns.set(member.symbol, { rate: record.total_return, amount: record.total_pnl });
+                this.returns.set(member.symbol, {
+                    rate: record.total_return,
+                    amount: record.total_pnl,
+                    drawdown: Number.isFinite(record.max_drawdown) ? record.max_drawdown : null,
+                });
             this.failures.delete(member.symbol);
             this.retryAt.delete(member.symbol);
             this.retryCounts.delete(member.symbol);
@@ -418,6 +426,7 @@ export class IdleWatchlistBacktests {
                     this.returns.set(member.symbol, {
                         rate: result.metrics.total_return,
                         amount: result.metrics.total_pnl,
+                        drawdown: Number.isFinite(result.metrics.max_drawdown) ? result.metrics.max_drawdown : null,
                     });
                 this.failures.delete(member.symbol);
                 this.retryAt.delete(member.symbol);

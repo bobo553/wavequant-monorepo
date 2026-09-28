@@ -447,18 +447,20 @@ export class Watchlists {
         const percent = formatBacktestProgress(runningJob?.progress_percent);
         badge.dataset.status = status;
         const fills = this.backtestFillCounts[symbol];
-        badge.textContent =
-            status === "completed" && Number.isInteger(fills)
-                ? `已完成 · ${fills}笔成交`
-                : {
-                      pending: "待回测",
-                      historical: "已回测 · 待更新",
-                      running: percent ? `回测中 · ${percent}` : "回测中",
-                      unknown: "状态待确认",
-                      completed: "已完成",
-                      failed: "失败",
-                      unavailable: "无数据",
-                  }[status];
+        badge.textContent = {
+            pending: "待回测",
+            historical: "已回测 · 待更新",
+            running: percent ? `回测中 · ${percent}` : "回测中",
+            unknown: "状态待确认",
+            completed: "已完成",
+            failed: "失败",
+            unavailable: "无数据",
+        }[status];
+        const fillCount = row.querySelector(".watchlist-backtest-fill-count");
+        if (fillCount) {
+            fillCount.hidden = status !== "completed" || !Number.isInteger(fills);
+            if (!fillCount.hidden) fillCount.textContent = `${fills}笔成交`;
+        }
         badge.title =
             status === "failed"
                 ? this.backtestFailures[symbol] || "回测失败"
@@ -470,8 +472,11 @@ export class Watchlists {
                       ? "回测已完成，但没有实际模拟成交，图上不会有 B / S 成交标记"
                       : badge.textContent;
         const result = row.querySelector(".watchlist-backtest-result");
+        const drawdown = row.querySelector(".watchlist-backtest-drawdown");
+        const metrics = row.querySelector(".watchlist-stock-metrics");
         const value = this.backtestReturns[symbol];
         const hasReturn = status === "completed" && Number.isFinite(value?.rate) && Number.isFinite(value?.amount);
+        const hasDrawdown = status === "completed" && Number.isFinite(value?.drawdown);
         if (result) {
             result.hidden = !hasReturn;
             if (hasReturn) {
@@ -480,11 +485,19 @@ export class Watchlists {
                 result.title = `期末盈亏 ${value.amount > 0 ? "+" : ""}${value.amount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 元；收益率 ${value.rate > 0 ? "+" : ""}${(value.rate * 100).toFixed(2)}%`;
             }
         }
+        if (drawdown) {
+            drawdown.hidden = !hasDrawdown;
+            if (hasDrawdown) {
+                drawdown.textContent = `最大回撤 ${(value.drawdown * 100).toFixed(2)}%`;
+                drawdown.title = drawdown.textContent;
+            }
+        }
+        if (metrics) metrics.hidden = !hasReturn && !hasDrawdown;
         const open = row.querySelector(".watchlist-stock-open");
         if (open)
             open.setAttribute(
                 "aria-label",
-                `${open.dataset.baseLabel}，${badge.textContent}${hasReturn ? `，${result.title}` : ""}${status === "failed" ? `：${badge.title}` : ""}`,
+                `${open.dataset.baseLabel}，${badge.textContent}${hasReturn ? `，${result.title}` : ""}${hasDrawdown ? `，${drawdown.textContent}` : ""}${status === "failed" ? `：${badge.title}` : ""}`,
             );
     }
 
@@ -856,16 +869,26 @@ export class Watchlists {
             code.textContent = member.symbol;
             const identity = document.createElement("span");
             identity.className = "watchlist-stock-identity";
-            identity.append(name, code);
             const backtestStatus = document.createElement("span");
             backtestStatus.className = "watchlist-backtest-badge";
+            identity.append(name, backtestStatus);
+            const fillCount = document.createElement("span");
+            fillCount.className = "watchlist-backtest-fill-count";
+            fillCount.hidden = true;
+            const secondary = document.createElement("span");
+            secondary.className = "watchlist-stock-secondary";
+            secondary.append(code, fillCount);
             const result = document.createElement("span");
             result.className = "watchlist-backtest-result";
             result.hidden = true;
-            const meta = document.createElement("span");
-            meta.className = "watchlist-stock-meta";
-            meta.append(backtestStatus, result);
-            open.append(identity, meta);
+            const drawdown = document.createElement("span");
+            drawdown.className = "watchlist-backtest-drawdown";
+            drawdown.hidden = true;
+            const metrics = document.createElement("span");
+            metrics.className = "watchlist-stock-metrics";
+            metrics.hidden = true;
+            metrics.append(result, drawdown);
+            open.append(identity, secondary, metrics);
             open.addEventListener("click", () => this.onSelect(member.symbol));
             row.append(drag, open);
             this.renderBacktestStatus(row, member.symbol);

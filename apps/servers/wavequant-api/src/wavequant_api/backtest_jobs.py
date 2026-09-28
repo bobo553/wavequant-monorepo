@@ -260,7 +260,7 @@ class BacktestJobs:
                             )
                         metrics = result.get("metrics")
                         if isinstance(metrics, dict):
-                            for key in ("total_return", "total_pnl"):
+                            for key in ("total_return", "total_pnl", "max_drawdown"):
                                 value = metrics.get(key)
                                 if type(value) in (int, float) and math.isfinite(value):
                                     item[key] = value

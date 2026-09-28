@@ -16,7 +16,10 @@ import {
 
 test("a running watchlist row shows its own server progress and clears it after completion", () => {
     const badge = { dataset: {}, textContent: "", title: "" };
-    const result = { hidden: true };
+    const fillCount = { hidden: true, textContent: "" };
+    const result = { hidden: true, dataset: {}, textContent: "", title: "" };
+    const drawdown = { hidden: true, textContent: "" };
+    const metrics = { hidden: true };
     const open = {
         dataset: { baseLabel: "切换到 瑞凌股份" },
         setAttribute(name, value) {
@@ -27,7 +30,10 @@ test("a running watchlist row shows its own server progress and clears it after 
         querySelector(selector) {
             return {
                 ".watchlist-backtest-badge": badge,
+                ".watchlist-backtest-fill-count": fillCount,
                 ".watchlist-backtest-result": result,
+                ".watchlist-backtest-drawdown": drawdown,
+                ".watchlist-stock-metrics": metrics,
                 ".watchlist-stock-open": open,
             }[selector];
         },
@@ -47,8 +53,23 @@ test("a running watchlist row shows its own server progress and clears it after 
 
     watchlists.backtestStatuses["sz.300154"] = "completed";
     watchlists.backtestJobs = [];
+    watchlists.backtestFillCounts["sz.300154"] = 2;
+    watchlists.backtestReturns["sz.300154"] = { rate: 0.125, amount: 12500, drawdown: -0.083 };
     Watchlists.prototype.renderBacktestStatus.call(watchlists, row, "sz.300154");
     assert.equal(badge.textContent, "已完成");
+    assert.equal(fillCount.textContent, "2笔成交");
+    assert.equal(fillCount.hidden, false);
+    assert.equal(result.textContent, "盈 +12.50%");
+    assert.equal(drawdown.textContent, "最大回撤 -8.30%");
+    assert.equal(metrics.hidden, false);
+    assert.match(open["aria-label"], /最大回撤 -8\.30%/);
+
+    watchlists.backtestStatuses["sz.300154"] = "historical";
+    Watchlists.prototype.renderBacktestStatus.call(watchlists, row, "sz.300154");
+    assert.equal(fillCount.hidden, true);
+    assert.equal(result.hidden, true);
+    assert.equal(drawdown.hidden, true);
+    assert.equal(metrics.hidden, true);
 });
 
 test("normalization repairs malformed watchlist data without mutating the stored snapshot", () => {

@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-198",
+            "name": "watchlist-max-drawdown-and-status-layout",
+            "title": "自选股显示最大回撤并将已完成放在首行",
+            "description": "自选股回测结果增加最大回撤；状态放在股票名同一行，成交笔数移至代码行，并保留刷新后的指标。",
+            "scope": "wavequant-api 回测任务摘要与 wavequant-web 自选股列表",
+            "dependencies": ["MONOREPO-193", "MONOREPO-197"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "已完成状态与股票名在首行，成交笔数、收益和最大回撤各自清楚显示",
+                "新完成、手动复用和刷新后恢复的有效回测均能显示最大回撤，过期状态不显示旧指标",
+                "相关 API 与 Web 定向测试、Web Lint、类型检查、生产构建及格式检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/watchlists.test.mjs tests/watchlist-backtest-queue.test.mjs; pytest tests/test_backtest_jobs.py -q; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed Web files; node --check changed JS files; git diff --check",
+                    "status": "passed",
+                    "summary": "Web 定向 25 项与 API 定向 7 项通过；Web Lint（6 条既有警告）、类型、生产构建、格式、JS 语法和差异检查通过。按用户规则未运行 Playwright 或浏览器视觉验证；完整 Web 单测留待空闲时段。首次检出的 init.ps1 快速检查因全局 Python 缺少 build 模块停在 Core 构建，随后受影响 Web 依赖已单独构建并通过定向门禁。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-197",
             "name": "locate-max-drawdown-interval",
             "title": "最大回撤区间标识与点击定位",

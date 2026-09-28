@@ -774,13 +774,22 @@
     font-size: 10px;
     white-space: nowrap;
 }
-.watchlist-stock-meta {
+.watchlist-stock-secondary,
+.watchlist-stock-metrics {
     display: flex;
     min-width: 0;
     align-items: baseline;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 2px 4px;
+}
+.watchlist-stock-metrics[hidden] {
+    display: none;
+}
+.watchlist-backtest-fill-count {
+    color: var(--research-text-soft);
+    font-size: 9px;
+    white-space: nowrap;
 }
 .watchlist-backtest-badge {
     flex: 0 0 auto;
@@ -816,6 +825,12 @@
 }
 .watchlist-backtest-result[data-result="loss"] {
     color: var(--green);
+}
+.watchlist-backtest-drawdown {
+    color: var(--research-text-soft);
+    font-size: 9px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 .watchlist-rail {
     grid-column: 1;
