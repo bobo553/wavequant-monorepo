@@ -25,10 +25,13 @@ export function selectedBacktestButton(status, showingCompletedResult) {
     };
 }
 
-export function historicalBacktestStatuses(statuses, recent) {
+export const backtestRecordMatchesSource = (record, source) => !source || record?.path === `/api/${source}-backtest`;
+
+export function historicalBacktestStatuses(statuses, recent, source = null) {
     const merged = { ...statuses };
     for (const record of recent || []) {
         if (
+            backtestRecordMatchesSource(record, source) &&
             record?.status === "completed" &&
             record.result_valid === true &&
             typeof record.symbol === "string" &&
@@ -59,7 +62,7 @@ export function adoptServerBacktestHistory(queue, recent, tasks) {
     return false;
 }
 
-export function runningBacktestStatuses(statuses, jobs, { unavailable = false } = {}) {
+export function runningBacktestStatuses(statuses, jobs, { unavailable = false, source = null } = {}) {
     const merged = Object.fromEntries(
         Object.entries(statuses).map(([symbol, status]) => [
             symbol,
@@ -67,7 +70,7 @@ export function runningBacktestStatuses(statuses, jobs, { unavailable = false } 
         ]),
     );
     for (const job of jobs || []) {
-        if (job?.status !== "running") continue;
+        if (!backtestRecordMatchesSource(job, source) || job?.status !== "running") continue;
         const symbol = job.symbol || job.params?.symbol;
         if (typeof symbol === "string" && symbol) merged[symbol] = "running";
     }
