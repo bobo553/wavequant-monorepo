@@ -902,6 +902,7 @@ export class Watchlists {
             const row = document.createElement("div");
             row.className = "watchlist-stock-row";
             row.dataset.symbol = member.symbol;
+            row.dataset.selected = String(member.symbol === this.selectedSymbol);
             const drag = document.createElement("button");
             drag.type = "button";
             drag.className = "watchlist-stock-drag";
