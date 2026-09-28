@@ -79,12 +79,13 @@ def whole_wave_profile(legacy,variant='lecture_v3'):
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'post_b_new_n_exit_v69_' + variant
+    config['profile_version'] = 'post_b_new_n_exit_v70_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
         rule for rule in config['definition']['exits'] if rule != 'target_observed_then_next_open'
-    ] + ['last_fall_high_third_resistance_bearish_outside_volume_clear']
+    ] + ['last_fall_high_third_resistance_bearish_outside_volume_clear',
+         'previous_bearish_volume_previous_low_close_break_clear']
     config['definition']['primary_filters'] = [
         ('execution_price_net_rr_1_5' if name == 'next_open_net_rr_1_5' else
          'volume_gt_previous' if name == 'rvol_1_2' else name)

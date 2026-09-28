@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-200",
+            "name": "previous-bearish-volume-low-break-clear",
+            "title": "放量跌破前低对照前阴线清仓",
+            "description": "当日阴线收盘严格低于前收与前低，且量超过最近前一根阴线时直接清仓；保留正N小实体首次减仓的既有升级路径。",
+            "scope": "wavequant-core 全局放量退出、Web 清仓依据与国芳真实行情回归",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "国芳 2026-08-10 买点保留，08-13 对照 08-06 阴线量直接清空余仓",
+                "前收、前低和前阴线成交量均使用当时可知行情且严格比较，不硬编码个股日期",
+                "正N小实体首次减仓、既有退出条件和页面证据定向回归通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core 退出规则定向 pytest；Web 成交理由 Node；语法、差异与 Harness",
+                    "status": "passed",
+                    "summary": "Core 163 项退出回归通过，最后收紧例外后 71 项直接相关回归通过；Web 42 项通过。未运行 Playwright 或完整 Web 单测。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-199",
             "name": "third-resisted-last-fall-high-clear",
             "title": "国芳末跌高三日抵抗反包清仓",

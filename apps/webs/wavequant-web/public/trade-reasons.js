@@ -88,6 +88,8 @@ export function tradeReasonItems(item) {
             );
         if (item.reason === "volume_massive_gap_reversal_clear")
             reasons.push(`巨量高开反包：开盘 ${num(item.observed_open, 4)} > 前高 ${num(item.previous_high, 4)}，收盘 ${num(item.observed_close, 4)} < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} 股，为前 ${item.massive_volume_window} 日均量的 ${num(item.massive_volume_multiple, 2)} 倍且创同期新高；阴线实体/开盘 ${pct(item.bearish_body_fraction)}，当日清空余仓。`);
+        if (item.reason === "volume_previous_bearish_low_break_clear")
+            reasons.push(`收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)} 且 < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} > ${item.bearish_reference_date} 阴线 ${num(item.bearish_reference_volume, 0)}，当日清仓。`);
         if (item.reason === "volume_down_next_gap_fade_clear")
             reasons.push(
                 `次日低开走弱：开盘 ${num(item.observed_open, 4)} < 前收 ${num(item.gap_previous_close, 4)}，收盘 ${num(item.observed_close, 4)} < 开盘 ${num(item.observed_open, 4)}。`,
