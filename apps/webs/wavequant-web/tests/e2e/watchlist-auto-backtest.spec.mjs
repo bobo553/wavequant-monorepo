@@ -208,11 +208,8 @@ test("idle watchlist backtests follow row order while stock controls stay usable
     releaseFirst();
     await expect(page.locator("#loading")).toBeHidden();
     await expect(page.locator('.watchlist-stock-row[data-symbol="sz.000001"] .watchlist-backtest-badge')).toHaveText(
-        "已完成",
+        "成交0笔",
     );
-    await expect(
-        page.locator('.watchlist-stock-row[data-symbol="sz.000001"] .watchlist-backtest-fill-count'),
-    ).toHaveText("0笔成交");
     expect(submitted).toHaveLength(2);
     await expect.poll(() => submitted.length, { timeout: 12_000 }).toBe(3);
     expect(submitted[2].symbol).toBe("sz.000002");
@@ -222,11 +219,8 @@ test("idle watchlist backtests follow row order while stock controls stay usable
     await expect(page.locator("#result-scope")).toHaveValue("akshare-backtest");
     await expect(page.locator("#price-chart")).toHaveAttribute("data-trade-label-count", "1");
     await expect(page.locator('.watchlist-stock-row[data-symbol="sz.000002"] .watchlist-backtest-badge')).toHaveText(
-        "已完成",
+        "成交1笔",
     );
-    await expect(
-        page.locator('.watchlist-stock-row[data-symbol="sz.000002"] .watchlist-backtest-fill-count'),
-    ).toHaveText("1笔成交");
     await page.locator('.watchlist-stock-row[data-symbol="sz.000001"] .watchlist-stock-open').click();
     await expect(page.locator("#result-scope")).toHaveValue("akshare-backtest");
     await expect(page.locator("#price-chart")).toHaveAttribute("data-trade-label-count", "0");

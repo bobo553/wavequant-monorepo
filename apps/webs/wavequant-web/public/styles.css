@@ -790,15 +790,6 @@
 .watchlist-stock-secondary[hidden] {
     display: none;
 }
-.watchlist-backtest-fill-count {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: var(--research-text-soft);
-    font-size: 10px;
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-}
 .watchlist-backtest-badge {
     flex: 0 0 auto;
     max-width: 72px;

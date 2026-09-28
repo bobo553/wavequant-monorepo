@@ -126,7 +126,6 @@ test("dragging from the stock button reorders the row without activating its cli
 
 test("a running watchlist row shows its own server progress and clears it after completion", () => {
     const badge = { dataset: {}, textContent: "", title: "" };
-    const fillCount = { hidden: true, textContent: "" };
     const result = { hidden: true, dataset: {}, textContent: "", title: "" };
     const drawdown = { hidden: true, textContent: "" };
     const secondary = { hidden: true };
@@ -140,7 +139,6 @@ test("a running watchlist row shows its own server progress and clears it after 
         querySelector(selector) {
             return {
                 ".watchlist-backtest-badge": badge,
-                ".watchlist-backtest-fill-count": fillCount,
                 ".watchlist-backtest-result": result,
                 ".watchlist-backtest-drawdown": drawdown,
                 ".watchlist-stock-secondary": secondary,
@@ -166,17 +164,19 @@ test("a running watchlist row shows its own server progress and clears it after 
     watchlists.backtestFillCounts["sz.300154"] = 2;
     watchlists.backtestReturns["sz.300154"] = { rate: 0.125, amount: 12500, drawdown: -0.083 };
     Watchlists.prototype.renderBacktestStatus.call(watchlists, row, "sz.300154");
-    assert.equal(badge.textContent, "已完成");
-    assert.equal(fillCount.textContent, "2笔成交");
-    assert.equal(fillCount.hidden, false);
+    assert.equal(badge.textContent, "成交2笔");
     assert.equal(result.textContent, "盈 +12.50%");
     assert.equal(drawdown.textContent, "最大回撤 -8.30%");
     assert.equal(secondary.hidden, false);
+    assert.match(open["aria-label"], /成交2笔/);
     assert.match(open["aria-label"], /最大回撤 -8\.30%/);
+
+    delete watchlists.backtestFillCounts["sz.300154"];
+    Watchlists.prototype.renderBacktestStatus.call(watchlists, row, "sz.300154");
+    assert.equal(badge.textContent, "已完成");
 
     watchlists.backtestStatuses["sz.300154"] = "historical";
     Watchlists.prototype.renderBacktestStatus.call(watchlists, row, "sz.300154");
-    assert.equal(fillCount.hidden, true);
     assert.equal(result.hidden, true);
     assert.equal(drawdown.hidden, true);
     assert.equal(secondary.hidden, true);

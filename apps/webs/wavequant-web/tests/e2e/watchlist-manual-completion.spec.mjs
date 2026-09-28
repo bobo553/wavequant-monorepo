@@ -159,9 +159,7 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
     await expect(runButton).toBeDisabled();
     releaseBacktest();
     await expect(page.locator("#result-scope")).toHaveValue("akshare-backtest");
-    await expect(badge).toHaveText("已完成");
-    const fillCount = page.locator(`.watchlist-stock-row[data-symbol="${symbol}"] .watchlist-backtest-fill-count`);
-    await expect(fillCount).toHaveText("0笔成交");
+    await expect(badge).toHaveText("成交0笔");
     await expect(runButton).toHaveAttribute("data-status", "completed");
     await expect(runButton).toContainText("已完成 · 重新回测");
     await expect(runButton).toBeEnabled();
@@ -177,7 +175,6 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
         return {
             resultY: element.getBoundingClientRect().y,
             drawdownY: row.querySelector(".watchlist-backtest-drawdown").getBoundingClientRect().y,
-            fillY: row.querySelector(".watchlist-backtest-fill-count").getBoundingClientRect().y,
             badgeY: badge.getBoundingClientRect().y,
             codeY: row.querySelector(".watchlist-stock-identity small").getBoundingClientRect().y,
             nameY: name.getBoundingClientRect().y,
@@ -189,7 +186,6 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
     expect(Math.abs(rowLayout.badgeY - rowLayout.nameY)).toBeLessThan(5);
     expect(Math.abs(rowLayout.codeY - rowLayout.nameY)).toBeLessThan(5);
     expect(rowLayout.resultY).toBeGreaterThan(rowLayout.nameBottom);
-    expect(Math.abs(rowLayout.fillY - rowLayout.resultY)).toBeLessThan(5);
     expect(Math.abs(rowLayout.drawdownY - rowLayout.resultY)).toBeLessThan(5);
     expect(rowLayout.nameFits).toBe(true);
     const themeColor = (variable) =>
@@ -224,7 +220,6 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
             ".watchlist-stock-identity strong",
             ".watchlist-stock-identity small",
             ".watchlist-backtest-badge",
-            ".watchlist-backtest-fill-count",
             ".watchlist-backtest-result",
             ".watchlist-backtest-drawdown",
         ].map((selector) => element.closest(".watchlist-stock-row").querySelector(selector).getBoundingClientRect());
@@ -236,8 +231,7 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
     expect(submitted).toBe(1);
     await page.reload();
     await expect(page.locator("#loading")).toBeHidden({ timeout: 15_000 });
-    await expect(badge).toHaveText("已完成");
-    await expect(fillCount).toHaveText("0笔成交");
+    await expect(badge).toHaveText("成交0笔");
     await expect(runButton).toHaveAttribute("data-status", "completed");
     await expect(result).toHaveText("盈 +12.50%");
     await expect(drawdown).toHaveText("最大回撤 -8.30%");
