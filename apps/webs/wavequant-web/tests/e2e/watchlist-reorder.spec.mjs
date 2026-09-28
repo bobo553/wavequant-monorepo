@@ -57,11 +57,26 @@ test("watchlist rows can be dragged and moved with the keyboard, then keep their
         });
     await expect.poll(symbols).toEqual(["sh.600001", "sh.600002", "sh.600003"]);
     const firstHandle = rows.first().locator(".watchlist-stock-drag");
+    const firstOpen = rows.first().locator(".watchlist-stock-open");
     const lastRow = rows.last();
     await lastRow.scrollIntoViewIfNeeded();
     await firstHandle.scrollIntoViewIfNeeded();
     await expect(firstHandle.locator("svg")).toBeVisible();
-    const start = await firstHandle.boundingBox();
+    await firstOpen.evaluate((button) => {
+        button.disabled = false;
+        globalThis.watchlistRowClicks = 0;
+        button.addEventListener(
+            "click",
+            (event) => {
+                globalThis.watchlistRowClicks++;
+                event.stopImmediatePropagation();
+            },
+            true,
+        );
+    });
+    await firstOpen.click();
+    expect(await page.evaluate(() => globalThis.watchlistRowClicks)).toBe(1);
+    const start = await firstOpen.boundingBox();
     const end = await lastRow.boundingBox();
     await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
     await page.mouse.down();
@@ -86,6 +101,7 @@ test("watchlist rows can be dragged and moved with the keyboard, then keep their
     expect(Math.abs(placeholder.y - lifted.placeholder)).toBeLessThan(2);
     await page.mouse.move(end.x + end.width / 2, end.y + end.height - 2, { steps: 6 });
     await page.mouse.up();
+    expect(await page.evaluate(() => globalThis.watchlistRowClicks)).toBe(1);
     await expect(page.locator(".watchlist-stock-ghost")).toHaveCount(0);
     await expect.poll(symbols).toEqual(["sh.600002", "sh.600003", "sh.600001"]);
     await expect.poll(savedSymbols).toEqual(["sh.600002", "sh.600003", "sh.600001"]);

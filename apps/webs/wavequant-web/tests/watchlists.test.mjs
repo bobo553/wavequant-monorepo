@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { JSDOM } from "jsdom";
+
 import {
     DEFAULT_WATCHLIST_GROUP,
     Watchlists,
@@ -13,6 +15,114 @@ import {
     renameWatchlistGroup,
     reorderWatchlistMembers,
 } from "../public/watchlists.js";
+
+test("dragging from the stock button reorders the row without activating its click", async () => {
+    const dom = new JSDOM(`
+        <div id="list">
+            <div class="watchlist-stock-row" data-symbol="sh.600001">
+                <button class="watchlist-stock-drag"></button><button class="watchlist-stock-open"></button>
+            </div>
+            <div class="watchlist-stock-row" data-symbol="sh.600002"></div>
+        </div>
+    `);
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    try {
+        const list = document.getElementById("list");
+        const row = list.firstElementChild;
+        const handle = row.querySelector(".watchlist-stock-drag");
+        const open = row.querySelector(".watchlist-stock-open");
+        window.matchMedia = () => ({ matches: true });
+        list.getBoundingClientRect = () => ({ top: 0, bottom: 80 });
+        for (const item of list.children) {
+            item.getBoundingClientRect = () => ({
+                left: 0,
+                top: [...list.children].indexOf(item) * 40,
+                width: 180,
+                height: 40,
+            });
+            Object.defineProperty(item, "offsetHeight", { value: 40 });
+            item.getAnimations = () => [];
+        }
+        const saved = [];
+        const subject = {
+            reordering: false,
+            orderAnimation: Promise.resolve(),
+            animateOrder(_list, rearrange) {
+                rearrange();
+                this.orderAnimation = Promise.resolve();
+            },
+            saveOrder(symbols) {
+                saved.push(symbols);
+                return Promise.resolve();
+            },
+        };
+        Watchlists.prototype.bindOrderHandle.call(subject, handle, row, list);
+        let clicks = 0;
+        open.addEventListener("click", () => clicks++);
+        const pointer = (target, type, clientY) => {
+            const event = new window.Event(type, { bubbles: true, cancelable: true });
+            Object.assign(event, { button: 0, isPrimary: true, pointerId: 1, clientY });
+            target.dispatchEvent(event);
+        };
+
+        pointer(open, "pointerdown", 10);
+        pointer(window, "pointerup", 10);
+        open.click();
+        assert.equal(clicks, 1);
+
+        pointer(open, "pointerdown", 10);
+        pointer(window, "pointermove", 90);
+        pointer(window, "pointerup", 90);
+        open.click();
+        await subject.orderAnimation;
+        assert.equal(clicks, 1);
+        assert.deepEqual(
+            [...list.children].map((item) => item.dataset.symbol),
+            ["sh.600002", "sh.600001"],
+        );
+        assert.deepEqual(saved, [["sh.600002", "sh.600001"]]);
+        assert.equal(document.querySelector(".watchlist-stock-ghost"), null);
+
+        const touch = (target, type, clientY) => {
+            const event = new window.Event(type, { bubbles: true, cancelable: true });
+            const point = { identifier: 1, clientY };
+            Object.assign(event, {
+                touches: type === "touchend" ? [] : [point],
+                changedTouches: [point],
+            });
+            target.dispatchEvent(event);
+            return event;
+        };
+        touch(open, "touchstart", 70);
+        const scroll = touch(window, "touchmove", 10);
+        touch(window, "touchend", 10);
+        assert.equal(scroll.defaultPrevented, false);
+        assert.deepEqual(saved, [["sh.600002", "sh.600001"]]);
+
+        touch(open, "touchstart", 70);
+        await new Promise((resolve) => window.setTimeout(resolve, 320));
+        const dragMove = touch(window, "touchmove", 10);
+        touch(window, "touchend", 10);
+        open.click();
+        await subject.orderAnimation;
+        assert.equal(dragMove.defaultPrevented, true);
+        assert.equal(clicks, 1);
+        assert.deepEqual(
+            [...list.children].map((item) => item.dataset.symbol),
+            ["sh.600001", "sh.600002"],
+        );
+        assert.deepEqual(saved[1], ["sh.600001", "sh.600002"]);
+    } finally {
+        dom.window.close();
+        if (previousWindow === undefined) delete globalThis.window;
+        else globalThis.window = previousWindow;
+        if (previousDocument === undefined) delete globalThis.document;
+        else globalThis.document = previousDocument;
+    }
+});
 
 test("a running watchlist row shows its own server progress and clears it after completion", () => {
     const badge = { dataset: {}, textContent: "", title: "" };

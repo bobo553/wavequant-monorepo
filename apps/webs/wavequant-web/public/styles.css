@@ -679,6 +679,8 @@
     align-items: center;
     gap: 0;
     padding: 1px 0;
+    cursor: grab;
+    user-select: none;
     background: transparent;
     border: 0;
     border-radius: 6px;
@@ -690,6 +692,7 @@
 .watchlist-stock-row[data-dragging="true"] {
     position: relative;
     background: var(--research-accent-soft);
+    cursor: grabbing;
 }
 .watchlist-stock-row[data-dragging="true"]::after {
     position: absolute;
@@ -713,7 +716,7 @@
     scale: 1.03;
 }
 .watchlist-stock-drag {
-    flex: 0 0 18px;
+    flex: 0 0 16px;
     min-height: 34px;
     padding: 0;
     border: 0;
@@ -746,10 +749,14 @@
     flex-direction: column;
     justify-content: center;
     gap: 1px;
-    padding: 4px 2px;
+    padding: 4px 1px;
     text-align: left;
     background: transparent;
     border: 0;
+    cursor: inherit;
+}
+.watchlist-stock-open:disabled {
+    pointer-events: none;
 }
 .watchlist-stock-identity {
     display: flex;
@@ -912,6 +919,7 @@
 }
 .watchlist-rail .watchlist-stock-list {
     min-height: 80px;
+    margin-inline: -3px;
     overflow-y: auto;
 }
 .watchlist-rail[data-collapsed="true"] {

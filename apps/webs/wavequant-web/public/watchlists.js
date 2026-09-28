@@ -619,6 +619,17 @@ export class Watchlists {
     }
 
     bindOrderHandle(handle, row, list) {
+        let suppressClick = false;
+        row.addEventListener(
+            "click",
+            (event) => {
+                if (!suppressClick) return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                suppressClick = false;
+            },
+            true,
+        );
         handle.addEventListener("keydown", (event) => {
             if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
             event.preventDefault();
@@ -635,9 +646,7 @@ export class Watchlists {
                 row.dataset.symbol,
             );
         });
-        handle.addEventListener("pointerdown", (event) => {
-            if (event.button !== 0 || this.reordering || list.childElementCount < 2) return;
-            event.preventDefault();
+        const startDrag = (startY) => {
             const initialOrder = [...list.querySelectorAll(".watchlist-stock-row")].map((item) => item.dataset.symbol);
             let moved = false;
             let ghost = null;
@@ -657,29 +666,28 @@ export class Watchlists {
                 (list.closest("[data-wavequant-react-workbench]") || document.body).append(ghost);
                 row.dataset.dragging = "true";
             };
-            const move = (moveEvent) => {
-                if (moveEvent.pointerId !== event.pointerId) return;
+            const move = (clientY, moveEvent) => {
                 if (!row.isConnected) return;
-                if (Math.abs(moveEvent.clientY - event.clientY) < 4 && !moved) return;
+                if (Math.abs(clientY - startY) < 4 && !moved) return;
                 if (!moved) {
                     moved = true;
+                    suppressClick = true;
                     lift();
                 }
-                ghost.style.transform = `translate3d(0, ${moveEvent.clientY - event.clientY}px, 0)`;
+                moveEvent?.preventDefault();
+                ghost.style.transform = `translate3d(0, ${clientY - startY}px, 0)`;
                 const others = [...list.querySelectorAll(".watchlist-stock-row")].filter((item) => item !== row);
                 const before = others.find(
-                    (item) => moveEvent.clientY < item.getBoundingClientRect().top + item.offsetHeight / 2,
+                    (item) => clientY < item.getBoundingClientRect().top + item.offsetHeight / 2,
                 );
                 if (before !== row.nextElementSibling && (before || row !== list.lastElementChild))
                     this.animateOrder(list, () => list.insertBefore(row, before || null));
                 const bounds = list.getBoundingClientRect();
-                if (moveEvent.clientY < bounds.top + 24) list.scrollTop -= 12;
-                if (moveEvent.clientY > bounds.bottom - 24) list.scrollTop += 12;
+                if (clientY < bounds.top + 24) list.scrollTop -= 12;
+                if (clientY > bounds.bottom - 24) list.scrollTop += 12;
             };
             const finish = (save) => {
-                window.removeEventListener("pointermove", move);
-                window.removeEventListener("pointerup", up);
-                window.removeEventListener("pointercancel", cancel);
+                if (moved) window.setTimeout(() => (suppressClick = false), 0);
                 if (!row.isConnected) {
                     ghost?.remove();
                     return;
@@ -712,15 +720,72 @@ export class Watchlists {
                 if (save && symbols.some((symbol, index) => symbol !== initialOrder[index]))
                     void this.saveOrder(symbols);
             };
+            return { move, finish };
+        };
+        row.addEventListener("pointerdown", (event) => {
+            if (!event.isPrimary || event.button !== 0 || this.reordering || list.childElementCount < 2) return;
+            if (event.pointerType === "touch" && !handle.contains(event.target)) return;
+            const drag = startDrag(event.clientY);
+            const cleanup = () => {
+                window.removeEventListener("pointermove", move);
+                window.removeEventListener("pointerup", up);
+                window.removeEventListener("pointercancel", cancel);
+            };
+            const move = (moveEvent) => {
+                if (moveEvent.pointerId === event.pointerId) drag.move(moveEvent.clientY, moveEvent);
+            };
             const up = (upEvent) => {
-                if (upEvent.pointerId === event.pointerId) finish(true);
+                if (upEvent.pointerId !== event.pointerId) return;
+                cleanup();
+                drag.finish(true);
             };
             const cancel = (cancelEvent) => {
-                if (cancelEvent.pointerId === event.pointerId) finish(false);
+                if (cancelEvent.pointerId !== event.pointerId) return;
+                cleanup();
+                drag.finish(false);
             };
             window.addEventListener("pointermove", move);
             window.addEventListener("pointerup", up);
             window.addEventListener("pointercancel", cancel);
+        });
+        row.addEventListener("touchstart", (event) => {
+            if (event.touches.length !== 1 || this.reordering || list.childElementCount < 2) return;
+            if (handle.contains(event.target)) return;
+            const touch = event.touches[0];
+            const startY = touch.clientY;
+            let drag = null;
+            const findTouch = (touches) => [...touches].find((item) => item.identifier === touch.identifier);
+            const cleanup = () => {
+                window.clearTimeout(timer);
+                window.removeEventListener("touchmove", move);
+                window.removeEventListener("touchend", end);
+                window.removeEventListener("touchcancel", cancel);
+            };
+            const move = (moveEvent) => {
+                const current = findTouch(moveEvent.changedTouches);
+                if (!current) return;
+                if (!drag && Math.abs(current.clientY - startY) >= 4) {
+                    cleanup();
+                    return;
+                }
+                if (!drag) return;
+                moveEvent.preventDefault();
+                drag.move(current.clientY);
+            };
+            const end = (endEvent) => {
+                if (!findTouch(endEvent.changedTouches)) return;
+                cleanup();
+                drag?.finish(true);
+            };
+            const cancel = (cancelEvent) => {
+                if (!findTouch(cancelEvent.changedTouches)) return;
+                cleanup();
+                drag?.finish(false);
+            };
+            const timer = window.setTimeout(() => (drag = startDrag(startY)), 300);
+            window.addEventListener("touchmove", move, { passive: false });
+            window.addEventListener("touchend", end);
+            window.addEventListener("touchcancel", cancel);
         });
     }
 
@@ -847,7 +912,7 @@ export class Watchlists {
                 drag.append(dragIcon);
             }
             drag.setAttribute("aria-label", `拖拽调整 ${member.name || member.symbol} 的顺序，或按上下方向键移动`);
-            drag.title = "拖动排序；方向键上下移动";
+            drag.title = "拖动整行排序；触屏长按后拖动；方向键上下移动";
             this.bindOrderHandle(drag, row, list);
             const open = document.createElement("button");
             open.type = "button";
