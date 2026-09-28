@@ -473,7 +473,7 @@ export class Watchlists {
                       : badge.textContent;
         const result = row.querySelector(".watchlist-backtest-result");
         const drawdown = row.querySelector(".watchlist-backtest-drawdown");
-        const metrics = row.querySelector(".watchlist-stock-metrics");
+        const secondary = row.querySelector(".watchlist-stock-secondary");
         const value = this.backtestReturns[symbol];
         const hasReturn = status === "completed" && Number.isFinite(value?.rate) && Number.isFinite(value?.amount);
         const hasDrawdown = status === "completed" && Number.isFinite(value?.drawdown);
@@ -492,7 +492,7 @@ export class Watchlists {
                 drawdown.title = drawdown.textContent;
             }
         }
-        if (metrics) metrics.hidden = !hasReturn && !hasDrawdown;
+        if (secondary) secondary.hidden = fillCount?.hidden !== false && !hasReturn && !hasDrawdown;
         const open = row.querySelector(".watchlist-stock-open");
         if (open)
             open.setAttribute(
@@ -865,30 +865,28 @@ export class Watchlists {
             if (!canOpen) open.title = "当前数据源不可用";
             const name = document.createElement("strong");
             name.textContent = member.stock?.name || member.name || member.symbol;
+            name.title = name.textContent;
             const code = document.createElement("small");
             code.textContent = member.symbol;
             const identity = document.createElement("span");
             identity.className = "watchlist-stock-identity";
             const backtestStatus = document.createElement("span");
             backtestStatus.className = "watchlist-backtest-badge";
-            identity.append(name, backtestStatus);
+            identity.append(name, code, backtestStatus);
             const fillCount = document.createElement("span");
             fillCount.className = "watchlist-backtest-fill-count";
             fillCount.hidden = true;
             const secondary = document.createElement("span");
             secondary.className = "watchlist-stock-secondary";
-            secondary.append(code, fillCount);
+            secondary.hidden = true;
             const result = document.createElement("span");
             result.className = "watchlist-backtest-result";
             result.hidden = true;
             const drawdown = document.createElement("span");
             drawdown.className = "watchlist-backtest-drawdown";
             drawdown.hidden = true;
-            const metrics = document.createElement("span");
-            metrics.className = "watchlist-stock-metrics";
-            metrics.hidden = true;
-            metrics.append(result, drawdown);
-            open.append(identity, secondary, metrics);
+            secondary.append(fillCount, result, drawdown);
+            open.append(identity, secondary);
             open.addEventListener("click", () => this.onSelect(member.symbol));
             row.append(drag, open);
             this.renderBacktestStatus(row, member.symbol);

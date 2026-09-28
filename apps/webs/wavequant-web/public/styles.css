@@ -677,8 +677,8 @@
     display: flex;
     min-width: 0;
     align-items: center;
-    gap: 2px;
-    padding: 1px 2px;
+    gap: 0;
+    padding: 1px 0;
     background: transparent;
     border: 0;
     border-radius: 6px;
@@ -713,7 +713,7 @@
     scale: 1.03;
 }
 .watchlist-stock-drag {
-    flex: 0 0 22px;
+    flex: 0 0 18px;
     min-height: 34px;
     padding: 0;
     border: 0;
@@ -745,8 +745,8 @@
     min-height: 34px;
     flex-direction: column;
     justify-content: center;
-    gap: 2px;
-    padding: 5px 6px;
+    gap: 1px;
+    padding: 4px 2px;
     text-align: left;
     background: transparent;
     border: 0;
@@ -756,7 +756,7 @@
     min-width: 0;
     align-items: baseline;
     justify-content: space-between;
-    gap: 4px;
+    gap: 3px;
 }
 .watchlist-stock-open[aria-pressed="true"] {
     background: var(--research-accent-soft);
@@ -764,29 +764,32 @@
 .watchlist-stock-open strong {
     flex: 1 1 auto;
     min-width: 0;
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--cyan);
     font-size: 12px;
+    white-space: nowrap;
 }
 .watchlist-stock-open small {
     flex: 0 0 auto;
     color: var(--research-text-soft);
-    font-size: 10px;
+    font-size: 9px;
     white-space: nowrap;
 }
-.watchlist-stock-secondary,
-.watchlist-stock-metrics {
+.watchlist-stock-secondary {
     display: flex;
     min-width: 0;
     align-items: baseline;
     justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 2px 4px;
+    gap: 3px;
 }
-.watchlist-stock-metrics[hidden] {
+.watchlist-stock-secondary[hidden] {
     display: none;
 }
 .watchlist-backtest-fill-count {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--research-text-soft);
     font-size: 9px;
     white-space: nowrap;
@@ -812,7 +815,7 @@
 .watchlist-backtest-result {
     flex: 0 0 auto;
     color: var(--research-text-soft);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
