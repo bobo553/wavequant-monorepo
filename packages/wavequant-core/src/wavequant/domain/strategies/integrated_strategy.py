@@ -669,6 +669,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             return outcome
         return select_entry(hierarchy_permissions.get(i,()),hierarchy_permissions.get(c['attack'],()),**params)
     emitted_attacks = set()
+    emitted_entry_contexts = {}
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
     bearish_attacks = {c['attack']: c for c in candidates if c['setup'].direction == Direction.DOWN}
     last_progress = -1
@@ -749,7 +750,10 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             # can resolve it without requiring a second N and another response.
             record_squeeze = (entry_regime == MarketRegime.BULL
                 and frame.first_defense_breach_index is None
-                and frame.resistance is not None and frame.resistance.detected is False
+                and frame.resistance is not None
+                and (frame.resistance.detected is False or
+                     (frame.resistance.reasons == ('direct_lower_open',)
+                      and frame.resistance_outcome == ResistanceOutcome.FAILED))
                 and bar.close > frame.continuation_level
                 and bar.volume > bars[i-1].volume)
             if (whole_wave and c.get('attack_quality_warning') is not None
@@ -771,6 +775,22 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     hierarchy_proof.update(secondary_resistance[i])
                 if hierarchy_proof is not None and wave_pressure_recovery is not None:
                     hierarchy_proof.update(wave_pressure_recovery)
+            entry_context_key = None
+            if whole_wave and hierarchy_proof is not None and hierarchy_proof.get('definition') == 'whole_flip_wave_v3':
+                identity = ('trend_level', 'epoch', 'context_index', 'flip_index', 'alternation_index', 'buy_point_type')
+                if all(field in hierarchy_proof for field in identity):
+                    entry_context_key = tuple(hierarchy_proof[field] for field in identity)
+                    prior_signal = emitted_entry_contexts.get(entry_context_key)
+                    # An N formed on the prior buy candle is the same entry
+                    # observation unless a separate continuation path qualifies.
+                    if (prior_signal is not None and c['attack'] == prior_signal
+                            and wave is None and consolidation is None and not resumed
+                            and dual is None and (c['attack'], i) not in reversal_proofs
+                            and (c['attack'], i) not in reconfirmation_proofs):
+                        log(i, 'entry_rejected', reason='same_wave_entry_from_prior_signal_bar',
+                            attack=c['attack'], prior_signal_index=prior_signal)
+                        emitted_attacks.add(c['attack'])
+                        continue
             if config.entry_policy == 'transitioned_squeeze':
                 reject = ('not_squeeze_regime' if entry_regime not in (MarketRegime.BULL, MarketRegime.STRONG_BULL) else
                           'bullish_transition_not_ready' if permission is None else
@@ -861,6 +881,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 'system_'+tag, bars[c['attack']].timestamp, hierarchy_proof['counter_ratio'] if whole_wave and hierarchy_proof else c['force'].ratio, rvol,
                 entry_regime.value if entry_regime else 'n_only_ablation', targets[0], config.minimum_reward_risk))
             emitted_attacks.add(c['attack'])
+            if entry_context_key is not None:
+                emitted_entry_contexts[entry_context_key] = i
             if wave is not None and wave_key is not None:
                 emitted_waves[wave_key] = wave_confirmation_state(wave)
             log(i, 'long_signal', channel=tag, attack=c['attack'], stop=stop, target=targets[0], rvol=rvol,
