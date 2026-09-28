@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-201",
+            "name": "fix-watchlist-grip-spacing",
+            "title": "修正自选股图标两侧实际留白",
+            "description": "修正研究工作台通用按钮内边距覆盖自选股拖拽图标与股票按钮样式的问题，让图标两侧真正保持紧凑，并同步整行拖动提示。",
+            "scope": "wavequant-web 自选股列表样式与说明",
+            "dependencies": ["MONOREPO-200"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "图标按钮不再继承通用按钮的左右 11px 内边距，文字按钮保持窄内边距",
+                "拖动提示准确说明整行拖动和触屏长按",
+                "Web Lint、类型检查、生产构建、格式和差异检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; git diff --check",
+                    "status": "passed",
+                    "summary": "Web Lint（6 条既有警告）、类型、生产构建、格式及差异检查通过。按用户规则未运行 Playwright 或真实浏览器，最终视觉待人工复核。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-200",
             "name": "drag-whole-watchlist-row",
             "title": "自选股整行拖动与图标两侧收紧",

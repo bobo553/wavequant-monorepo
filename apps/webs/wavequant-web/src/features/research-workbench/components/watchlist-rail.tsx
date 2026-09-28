@@ -96,7 +96,7 @@ export function WatchlistRail(): JSX.Element {
                     <p className="stock-empty">自选股加载中…</p>
                 </div>
                 <p className="scan-note">
-                    点击股票名称切换；拖动左侧手柄或用上下方向键调整顺序。使用图表标题旁的星标加入或移除当前分类。列表右侧显示当前设置下回测的期末收益率，悬停可查看盈亏金额。
+                    点击股票名称切换；拖动整条自选股（触屏长按），或用上下方向键调整顺序。使用图表标题旁的星标加入或移除当前分类。列表右侧显示当前设置下回测的期末收益率，悬停可查看盈亏金额。
                 </p>
             </div>
             <span hidden aria-hidden="true">

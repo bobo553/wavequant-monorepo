@@ -2920,6 +2920,21 @@ tbody tr:hover {
 [data-wavequant-react-workbench] .watchlist-stock-drag:hover {
     border: 0;
     background: transparent;
+    padding: 0;
+    cursor: grab;
+}
+[data-wavequant-react-workbench] .watchlist-stock-drag {
+    color: var(--research-text-soft);
+}
+[data-wavequant-react-workbench] .watchlist-stock-drag:hover {
+    color: var(--cyan);
+}
+[data-wavequant-react-workbench] .watchlist-stock-open {
+    padding: 4px 1px;
+    cursor: inherit;
+}
+[data-wavequant-react-workbench] .watchlist-stock-drag:active {
+    cursor: grabbing;
 }
 [data-wavequant-react-workbench] .watchlist-stock-ghost {
     background: var(--panel);
