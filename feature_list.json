@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-198",
+            "name": "guofang-march-2023-squeeze-recognition",
+            "title": "修正国芳三月正N轧空识别",
+            "description": "3月17日正N在21日放量收盘突破已有抵抗后确认轧空，避免23日同一交替结构重复买点。",
+            "scope": "wavequant-core 盘态确认、V3买点去重与国芳真实行情回归",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "3月17日正N于3月21日确认轧空并产生LONG，3月23日不重复产生同一交替买点",
+                "低开收阴、长上影、未突破纪录或失守防守时不误确认轧空",
+                "真实行情与历史截断结果一致，相关定向检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "pytest 2023国芳、盘态、V3入场及相邻规则定向测试；node --test annotations；Core build；harness:check；git diff --check",
+                    "status": "passed",
+                    "summary": "国芳3月17日正N于21日放量突破20日高点并确认轧空；V3当日LONG，费后盈亏比过滤关闭的完整日线成交回放于21日BUY，23日无同段重复。Core定向64项与8子测试、相邻21项及转浪17项、Web标注29项通过，Core构建及Harness通过；2026国芳折叠N交替索引断言在main基线亦失败。未运行浏览器或完整Web套件。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-197",
             "name": "locate-max-drawdown-interval",
             "title": "最大回撤区间标识与点击定位",

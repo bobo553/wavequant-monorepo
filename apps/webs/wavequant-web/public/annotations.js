@@ -106,6 +106,7 @@ const REASONS = {
     wave_second_close_pullback_too_deep: "第二类买点的收盘回撤超过当前方案阈值",
     wave_context_no_longer_live: "攻击时的多头结构已失效",
     wave_alternation_not_before_n: "空多交替尚未先于 N 字攻击确认",
+    same_wave_entry_from_prior_signal_bar: "同一交替结构已在该 N 攻击日给出买点",
     wave_flip_origin_broken: "翻多起点已被跌破",
     wave_first_pullback_not_deep: "第一类买点的交替回撤未达到当前方案阈值",
     wave_second_peak_pullback_sequence: "第二类买点的高点与回撤时序未成立",
