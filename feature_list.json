@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-203",
+            "name": "group-watchlist-name-and-symbol",
+            "title": "自选股名称与代码紧邻显示",
+            "description": "取消股票名称的弹性填满，让名称和股票代码紧邻显示，状态继续固定在首行右侧；长名称在代码前截断。",
+            "scope": "wavequant-web 自选股首行布局",
+            "dependencies": ["MONOREPO-202"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "短股票名称和代码紧邻显示，状态仍位于首行右侧",
+                "长股票名称在代码前截断，代码保持完整可读",
+                "Web Lint、类型检查、生产构建和格式检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; git diff --check",
+                    "status": "passed",
+                    "summary": "Web Lint（6 条既有警告）、类型、生产构建、格式及差异检查通过；使用 Headless Edge 的深浅主题静态样例检查短名称、长名称与代码间距。按用户规则未运行 Playwright 或浏览器端到端测试。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-202",
             "name": "refine-watchlist-row-visuals",
             "title": "优化自选股双行条目视觉层级",
