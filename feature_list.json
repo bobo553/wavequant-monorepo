@@ -4,6 +4,28 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-200",
+            "name": "drag-whole-watchlist-row",
+            "title": "自选股整行拖动与图标两侧收紧",
+            "description": "整条自选股列表项可用鼠标上下拖动，触屏长按文字区域后拖动排序，普通触屏滑动可滚动列表；缩小左侧拖拽图标两边的间距。",
+            "scope": "wavequant-web 自选股列表拖拽与布局",
+            "dependencies": ["MONOREPO-199"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "从股票文字区域或图标都能拖动整条自选股排序，点击股票仍可正常切换",
+                "触屏长按文字区域可拖动排序，普通上下滑动可滚动列表",
+                "拖动产生的点击不会误切换股票，图标两侧留白缩小且键盘排序保留",
+                "自选股定向测试、Web Lint、类型检查、生产构建和格式检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/watchlists.test.mjs; node --check public/watchlists.js tests/e2e/watchlist-reorder.spec.mjs; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; git diff --check",
+                    "status": "passed",
+                    "summary": "自选股定向测试覆盖按钮区域拖动、触屏长按与滚动手势、点击拦截；Web Lint（6 条既有警告）、类型、生产构建、格式及语法检查通过。按用户规则未运行 Playwright 或真实浏览器，窄屏触摸体验待人工复核。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-199",
             "name": "compact-watchlist-two-line-rows",
             "title": "自选股图标间距缩小并改为两行文字",
