@@ -39,25 +39,6 @@ def run(bars=None, *, direction=Direction.UP, shadow=ShadowPolicy(.5),
 
 
 class MarketRegimeTests(unittest.TestCase):
-    def test_lower_open_record_close_defeats_prior_resistance(self):
-        bars = make([(12.4, 13.5, 11.8, 12.4), (12.3, 14, 12.2, 13.8)])
-        policy = RegimePolicy(ShadowPolicy(.5), WaveBoundary.ORIGIN, local_resistance_failure=True)
-        observed = observe_market_regime(bars, setup(), timeframe='1d', policy=policy)
-        self.assertEqual(observed.frames[1].resistance.reasons, ('long_upper_shadow',))
-        self.assertEqual(observed.latest.resistance.reasons, ('direct_lower_open',))
-        self.assertEqual(observed.latest.regime, R.BULL)
-        self.assertEqual(observed.latest.resistance_outcome, O.FAILED)
-        self.assertIsNone(observe_market_regime(bars[:-1], setup(), timeframe='1d', policy=policy).latest.regime)
-        reversed_bars = mirror(bars)
-        reversed_result = observe_market_regime(reversed_bars, setup(Direction.DOWN), timeframe='1d', policy=policy)
-        self.assertEqual(reversed_result.latest.resistance.reasons, ('direct_higher_open',))
-        self.assertEqual(reversed_result.latest.regime, R.BEAR)
-        for replacement in ((12.3, 14, 12.2, 13.5), (12.3, 16, 12.2, 13.8), (12.3, 14, 10.3, 13.8)):
-            with self.subTest(replacement=replacement):
-                changed = bars[:-1] + [replace(bars[-1], open=replacement[0], high=replacement[1],
-                                              low=replacement[2], close=replacement[3])]
-                self.assertIsNone(observe_market_regime(changed, setup(), timeframe='1d', policy=policy).latest.regime)
-
     def test_local_failed_resistance_does_not_wait_for_whole_episode_high(self):
         bars = make([(12.4, 13.5, 11.8, 12.4), (12.4, 13.2, 12.0, 12.8)])
         policy = RegimePolicy(ShadowPolicy(.5), WaveBoundary.ORIGIN, local_resistance_failure=True)

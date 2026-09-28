@@ -210,10 +210,6 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
                 `目标后转弱：${item.trend_indecision_date} 上下长影，上影 ${pct(item.trend_upper_shadow_fraction)}、下影 ${pct(item.trend_lower_shadow_fraction)}；本日收盘 ${num(item.observed_close, 4)} < 前日最低 ${num(item.trend_indecision_low, 4)}，当日清仓`,
             );
         }
-        if (item.reason === "trend_last_fall_high_third_resistance_clear") {
-            add(`末跌高：${item.trend_key_date} · ${num(item.trend_key_high, 4)} 元；${(item.trend_resistance_dates || []).join("、")} 三日盘中突破但收盘未站稳，均出现空头抵抗`);
-            add(`第三日反包：收盘 ${num(item.observed_close, 4)} < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} > ${item.bearish_reference_date} 阴线 ${num(item.bearish_reference_volume, 0)}，当日清仓`);
-        }
         if (item.pressure_date) {
             const adverseNames = {
                 bearish_body: "阴线实体",
@@ -244,8 +240,6 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
         }
         if (item.reason === "volume_massive_gap_reversal_clear")
             add(`巨量高开反包：开盘 ${num(item.observed_open, 4)} > 前高 ${num(item.previous_high, 4)}，收盘 ${num(item.observed_close, 4)} < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} 股，为前 ${item.massive_volume_window} 日均量的 ${num(item.massive_volume_multiple, 2)} 倍且创同期新高；阴线实体/开盘 ${pct(item.bearish_body_fraction)}，当日清空余仓`);
-        if (item.reason === "volume_previous_bearish_low_break_clear")
-            add(`跌破与放量：收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)} 且 < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} > ${item.bearish_reference_date} 阴线 ${num(item.bearish_reference_volume, 0)}，当日清仓`);
         if (item.resistance_date) {
             add(
                 `倒 N ${item.inverse_n_date} 后多头抵抗 ${item.resistance_date}：虚拟低 ${num(item.resistance_virtual_low, 4)}；失败收盘 ${num(item.failure_close, 4)}`,

@@ -4,69 +4,6 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
-            "id": "MONOREPO-200",
-            "name": "previous-bearish-volume-low-break-clear",
-            "title": "放量跌破前低对照前阴线清仓",
-            "description": "当日阴线收盘严格低于前收与前低，且量超过最近前一根阴线时直接清仓；保留正N小实体首次减仓的既有升级路径。",
-            "scope": "wavequant-core 全局放量退出、Web 清仓依据与国芳真实行情回归",
-            "dependencies": [],
-            "status": "done",
-            "acceptanceCriteria": [
-                "国芳 2026-08-10 买点保留，08-13 对照 08-06 阴线量直接清空余仓",
-                "前收、前低和前阴线成交量均使用当时可知行情且严格比较，不硬编码个股日期",
-                "正N小实体首次减仓、既有退出条件和页面证据定向回归通过"
-            ],
-            "verification": [
-                {
-                    "command": "Core 退出规则定向 pytest；Web 成交理由 Node；语法、差异与 Harness",
-                    "status": "passed",
-                    "summary": "Core 163 项退出回归通过，最后收紧例外后 71 项直接相关回归通过；Web 42 项通过。未运行 Playwright 或完整 Web 单测。"
-                }
-            ]
-        },
-        {
-            "id": "MONOREPO-199",
-            "name": "third-resisted-last-fall-high-clear",
-            "title": "国芳末跌高三日抵抗反包清仓",
-            "description": "以当时已确认的末跌高为键，连续三日盘中突破却收不稳并受抵抗；第三日放量阴线反包前日区间时清仓。",
-            "scope": "wavequant-core 全局退出策略、Web 清仓证据与国芳真实行情回归",
-            "dependencies": [],
-            "status": "done",
-            "acceptanceCriteria": [
-                "国芳 2026-07-15 买点保留，07-17 对照 07-13 阴线量直接清仓",
-                "06-24 末跌高在攻击前已确认，连续抵抗和反包量价条件均从当时数据判断",
-                "相同规则适用于其他股票与日期，原退出规则定向回归通过"
-            ],
-            "verification": [
-                {
-                    "command": "Core 定向 pytest；Web 定向 Node；JS 语法与 Harness",
-                    "status": "passed",
-                    "summary": "Core 96 项及国芳前缀回放通过；Web 41 项通过。未运行 Playwright 或完整 Web 单测。"
-                }
-            ]
-        },
-        {
-            "id": "MONOREPO-198",
-            "name": "guofang-march-2023-squeeze-recognition",
-            "title": "修正国芳三月正N轧空识别",
-            "description": "3月17日正N在21日放量收盘突破已有抵抗后确认轧空，避免23日同一交替结构重复买点。",
-            "scope": "wavequant-core 盘态确认、V3买点去重与国芳真实行情回归",
-            "dependencies": [],
-            "status": "done",
-            "acceptanceCriteria": [
-                "3月17日正N于3月21日确认轧空并产生LONG，3月23日不重复产生同一交替买点",
-                "低开收阴、长上影、未突破纪录或失守防守时不误确认轧空",
-                "真实行情与历史截断结果一致，相关定向检查通过"
-            ],
-            "verification": [
-                {
-                    "command": "pytest 2023国芳、盘态、V3入场及相邻规则定向测试；node --test annotations；Core build；harness:check；git diff --check",
-                    "status": "passed",
-                    "summary": "国芳3月17日正N于21日放量突破20日高点并确认轧空；V3当日LONG，费后盈亏比过滤关闭的完整日线成交回放于21日BUY，23日无同段重复。Core定向64项与8子测试、相邻21项及转浪17项、Web标注29项通过，Core构建及Harness通过；2026国芳折叠N交替索引断言在main基线亦失败。未运行浏览器或完整Web套件。"
-                }
-            ]
-        },
-        {
             "id": "MONOREPO-197",
             "name": "locate-max-drawdown-interval",
             "title": "最大回撤区间标识与点击定位",

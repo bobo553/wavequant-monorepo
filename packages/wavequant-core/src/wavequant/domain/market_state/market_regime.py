@@ -95,7 +95,7 @@ class RegimeObservation:
     n_defense: float | None = None
     wave_boundary: float | None = None
     frames: tuple[RegimeFrame, ...] = ()
-    rule_version: str = 'six_regimes_v2_opening_record_recovery'
+    rule_version: str = 'six_regimes_v1_close_record_defense_breach'
 
     @property
     def latest(self) -> RegimeFrame | None:
@@ -168,17 +168,11 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             record_rebound = continuation and first_defense is None
             prior_response = (rolling_all_held and rolling_held and prior_resistance
                               and prior_resistance.detected is True)
-            # An opposing open precedes the close, so a clean record close can
-            # defeat that opening resistance on this bar. A shadow or opposing
-            # body leaves the intrabar order unresolved.
-            opening_reason = 'direct_lower_open' if up else 'direct_higher_open'
-            opening_resistance_defeated = (record_rebound
-                and resistance.reasons == (opening_reason,))
             continuation = bool((record_rebound or prior_response)
                                 and sign * (bar.close - prev.close) > 0
                                 and sign * (bar.close - bars[attack].close) > 0
                                 and sign * (bar.close - bar.open) > 0
-                                and (resistance.detected is False or opening_resistance_defeated))
+                                and resistance.detected is False)
         phase = RegimePhase.AWAIT_CONFIRMATION if i == attack + 1 else RegimePhase.PENDING
         regime = None
         outcome = (ResistanceOutcome.PENDING if first_resistance is not None else

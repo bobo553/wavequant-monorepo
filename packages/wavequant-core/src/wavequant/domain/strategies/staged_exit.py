@@ -280,19 +280,6 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     if massive_reversal is not None:
         return massive_reversal
     bar, previous = bars[index], bars[index-1]
-    bearish_reference = next((j for j in range(index - 1, -1, -1)
-                              if bars[j].close < bars[j].open), None)
-    if (bearish_reference is not None and bar.close < bar.open
-            and state.volume_reduction_target != .3
-            and bar.close < previous.close
-            and bar.close < previous.low and bar.volume > bars[bearish_reference].volume):
-        reference = bars[bearish_reference]
-        return dict(reason='volume_previous_bearish_low_break_clear', exit_fraction=1.0,
-                    execution_model='same_day_close',
-                    bearish_reference_date=reference.timestamp.date().isoformat(),
-                    bearish_reference_volume=reference.volume,
-                    observed_close=bar.close, observed_volume=bar.volume,
-                    previous_close=previous.close, previous_low=previous.low)
     body = abs(Fraction(str(bar.close))-Fraction(str(bar.open)))
     mean_body = (sum(abs(Fraction(str(b.close))-Fraction(str(b.open))) for b in bars[index-small_body_lookback:index]) / small_body_lookback
                  if index >= small_body_lookback else None)
