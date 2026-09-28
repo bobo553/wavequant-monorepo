@@ -286,3 +286,21 @@ test("third resisted last-fall-high exit explains the dated volume comparison", 
     assert.match(reasons[1], /2026-06-24.*2026-07-15、2026-07-16、2026-07-17/);
     assert.match(reasons[2], /13,741,408 > 2026-07-13 阴线 6,226,708/);
 });
+
+test("prior bearish volume clear explains the August close and volume breaks", () => {
+    const marker = {
+        side: "SELL",
+        reason: "volume_previous_bearish_low_break_clear",
+        bearish_reference_date: "2026-08-06",
+        bearish_reference_volume: 12887189,
+        observed_close: 11.1167,
+        observed_volume: 15126500,
+        previous_close: 11.4092,
+        previous_low: 11.242,
+    };
+    const reasons = numberedTradeReasons(marker);
+    assert.equal(reasons.length, 2);
+    assert.match(reasons[0], /成交量超过最近前一根阴线，当日清仓/);
+    assert.match(reasons[1], /11\.1167 < 前收 11\.4092 且 < 前低 11\.2420/);
+    assert.match(reasons[1], /15,126,500 > 2026-08-06 阴线 12,887,189/);
+});

@@ -208,6 +208,8 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
     }
     if (marker.reason === "volume_massive_gap_reversal_clear")
         lines.push(`巨量高开反包：开盘 ${num(marker.observed_open, 4)} > 前高 ${num(marker.previous_high, 4)}，收盘 ${num(marker.observed_close, 4)} < 前低 ${num(marker.previous_low, 4)}；成交量 ${num(marker.observed_volume, 0)} 股，为前 ${marker.massive_volume_window} 日均量的 ${num(marker.massive_volume_multiple, 2)} 倍且创同期新高；阴线实体/开盘 ${pct(marker.bearish_body_fraction)}，当日清空余仓`);
+    if (marker.reason === "volume_previous_bearish_low_break_clear")
+        lines.push(`跌破与放量：收盘 ${num(marker.observed_close, 4)} < 前收 ${num(marker.previous_close, 4)} 且 < 前低 ${num(marker.previous_low, 4)}；成交量 ${num(marker.observed_volume, 0)} > ${marker.bearish_reference_date} 阴线 ${num(marker.bearish_reference_volume, 0)}，当日清仓`);
     if (marker.resistance_date) {
         lines.push(
             `倒 N 日期：${marker.inverse_n_date}`,
