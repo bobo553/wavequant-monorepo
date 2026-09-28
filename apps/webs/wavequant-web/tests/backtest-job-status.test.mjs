@@ -88,6 +88,25 @@ test("an older server completion is identified without claiming the current run 
     assert.deepEqual(historicalBacktestStatuses({ "sz.300154": "running" }, recent), { "sz.300154": "running" });
 });
 
+test("backtest badges only use jobs from the selected market source", () => {
+    const recent = [
+        { path: "/api/tdx-backtest", status: "completed", symbol: "sz.000001", result_valid: true },
+        { path: "/api/akshare-backtest", status: "completed", symbol: "sh.601086", result_valid: true },
+    ];
+    const jobs = [
+        { path: "/api/tdx-backtest", status: "running", symbol: "sh.601086" },
+        { path: "/api/akshare-backtest", status: "running", symbol: "sz.000001" },
+    ];
+    const akshare = runningBacktestStatuses(historicalBacktestStatuses({}, recent, "akshare"), jobs, {
+        source: "akshare",
+    });
+    const tdx = runningBacktestStatuses(historicalBacktestStatuses({}, recent, "tdx"), jobs, {
+        source: "tdx",
+    });
+    assert.deepEqual(akshare, { "sh.601086": "historical", "sz.000001": "running" });
+    assert.deepEqual(tdx, { "sz.000001": "historical", "sh.601086": "running" });
+});
+
 test("an expired server copy cannot displace a completed local result or recurse through status updates", async () => {
     const context = {
         run: "example",

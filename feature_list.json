@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-206",
+            "name": "scope-backtest-status-by-selected-source",
+            "title": "回测状态跟随所选数据源",
+            "description": "研究工作台选择 AkShare 或通达信后，股票列表、自选股、回测按钮和进度只读取该来源的回测任务与历史状态，切换来源时立即刷新。",
+            "scope": "wavequant-web 研究工作台回测状态显示",
+            "dependencies": ["MONOREPO-179", "MONOREPO-182"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "AkShare 与通达信同一股票的运行中及历史回测状态互不覆盖",
+                "切换数据源后股票列表、自选股、回测按钮和进度立即按当前来源显示",
+                "原有同源行情、信号和回测请求路径保持有效；定向测试、Lint、类型、构建和格式检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/backtest-job-status.test.mjs apps/webs/wavequant-web/tests/watchlist-backtest-queue.test.mjs; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check apps/webs/wavequant-web/public/app.js apps/webs/wavequant-web/public/backtest-job-status.js apps/webs/wavequant-web/tests/backtest-job-status.test.mjs; git diff --check",
+                    "status": "passed",
+                    "summary": "28 项相关 Node 测试、Web Lint（6 条既有警告）、类型检查、生产构建、修改文件格式与差异检查通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-205",
             "name": "clear-xinhua-bearish-outside-reversal",
             "title": "新华文轩放量阴线反包当日清仓",

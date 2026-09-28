@@ -1,6 +1,7 @@
 import { reasonText } from "./annotations.js";
 import {
     adoptServerBacktestHistory,
+    backtestRecordMatchesSource,
     expiredBacktestSnapshot,
     formatBacktestElapsed,
     historicalBacktestStatuses,
@@ -271,7 +272,13 @@ let lastStockBacktestStatuses = "";
 function renderRunStockBacktestButton() {
     const button = $("run-stock-backtest");
     const symbol = $("symbol-select").value;
-    const currentTask = state.activeBacktestTask?.symbol === symbol ? state.activeBacktestTask : null;
+    const source = sourceForScope($("result-scope").value);
+    const currentTask =
+        source &&
+        state.activeBacktestTask?.symbol === symbol &&
+        backtestRecordMatchesSource(state.activeBacktestTask, source)
+            ? state.activeBacktestTask
+            : null;
     const status =
         currentTask?.status === "completed" && currentTask.result === state.view
             ? "completed"
@@ -293,8 +300,11 @@ function renderRunStockBacktestButton() {
               : "";
 }
 function renderStockBacktestStatus() {
+    const source = sourceForScope($("result-scope").value);
     const current =
-        state.activeBacktestTask?.symbol === $("symbol-select").value && isTdxBacktest()
+        state.activeBacktestTask?.symbol === $("symbol-select").value &&
+        backtestRecordMatchesSource(state.activeBacktestTask, source) &&
+        isTdxBacktest()
             ? state.activeBacktestTask
             : null;
     const others = [...stockBacktestTasks.tasks.values()].filter(
@@ -304,7 +314,9 @@ function renderStockBacktestStatus() {
     status.hidden = !current && !others;
     status.dataset.status = current?.status || "background";
     const name = current ? symbolName(current.symbol) : "";
-    const currentServerJob = serverBacktestSnapshot.jobs.find((job) => job.symbol === current?.symbol);
+    const currentServerJob = serverBacktestSnapshot.jobs.find(
+        (job) => job.symbol === current?.symbol && backtestRecordMatchesSource(job, source),
+    );
     const elapsed = formatBacktestElapsed(currentServerJob?.elapsed_seconds);
     const serverStatus = serverBacktestSnapshot.unavailable
         ? "服务器任务状态暂不可确认。"
@@ -325,17 +337,17 @@ function renderStockBacktestStatus() {
                 : "";
     $("stock-backtest-other").textContent = others ? `另有 ${others} 只股票仍在后台回测。` : "";
     const statuses = {};
-    for (const task of stockBacktestTasks.tasks.values()) statuses[task.symbol] = task.status;
-    const merged = runningBacktestStatuses(statuses, serverBacktestSnapshot.jobs, {
+    for (const task of stockBacktestTasks.tasks.values())
+        if (source && backtestRecordMatchesSource(task, source)) statuses[task.symbol] = task.status;
+    const sourceJobs = serverBacktestSnapshot.jobs.filter((job) => source && backtestRecordMatchesSource(job, source));
+    const merged = runningBacktestStatuses(statuses, sourceJobs, {
         unavailable: serverBacktestSnapshot.unavailable,
+        source,
     });
-    const serialized = JSON.stringify([
-        merged,
-        serverBacktestSnapshot.jobs.map((job) => [job.symbol, job.elapsed_seconds]),
-    ]);
+    const serialized = JSON.stringify([source, merged, sourceJobs.map((job) => [job.symbol, job.elapsed_seconds])]);
     if (serialized !== lastStockBacktestStatuses) {
         lastStockBacktestStatuses = serialized;
-        stockList.setBacktestStatuses(merged, serverBacktestSnapshot.jobs);
+        stockList.setBacktestStatuses(merged, sourceJobs);
     }
     renderRunStockBacktestButton();
 }
@@ -2451,7 +2463,9 @@ const watchlistBacktests = new IdleWatchlistBacktests({
             ? watchlistBacktests.members.findIndex((member) => member.symbol === active.symbol) + 1
             : 0;
         const sourceLabel = source === "akshare" ? "AkShare" : "通达信";
-        const activeServerJob = serverBacktestSnapshot.jobs.find((job) => job.symbol === active?.symbol);
+        const activeServerJob = serverBacktestSnapshot.jobs.find(
+            (job) => job.symbol === active?.symbol && backtestRecordMatchesSource(job, source),
+        );
         const activeElapsed = formatBacktestElapsed(activeServerJob?.elapsed_seconds);
         status.textContent = !ready
             ? "等待可用行情和回测参数…"
@@ -2500,14 +2514,19 @@ function syncCompletedStockBacktests() {
     return false;
 }
 function renderServerBacktestStatuses(queueState = watchlistBacktests.state()) {
-    const { statuses, ready, failures, fillCounts, returns } = queueState;
+    const source = sourceForScope($("result-scope").value);
+    const sameSource = Boolean(source && queueState.source === source);
+    const { statuses, ready, failures, fillCounts, returns } = sameSource
+        ? queueState
+        : { statuses: {}, ready: false, failures: {}, fillCounts: {}, returns: {} };
+    const sourceJobs = serverBacktestSnapshot.jobs.filter((job) => source && backtestRecordMatchesSource(job, source));
     const visibleStatuses = runningBacktestStatuses(
-        historicalBacktestStatuses(statuses, serverBacktestSnapshot.recent),
-        serverBacktestSnapshot.jobs,
-        { unavailable: serverBacktestSnapshot.unavailable },
+        source ? historicalBacktestStatuses(statuses, serverBacktestSnapshot.recent, source) : statuses,
+        sourceJobs,
+        { unavailable: serverBacktestSnapshot.unavailable, source },
     );
     const visibleFailures = { ...failures };
-    if (watchlistBacktests.context && watchlistBacktests.strategyVersion) {
+    if (sameSource && watchlistBacktests.context && watchlistBacktests.strategyVersion) {
         for (const member of watchlistBacktests.members) {
             const expected = watchlistBacktestRequest(member, watchlistBacktests.context);
             const task = stockBacktestTasks.find(expected.path, expected.params, watchlistBacktests.strategyVersion);
@@ -2525,7 +2544,7 @@ function renderServerBacktestStatuses(queueState = watchlistBacktests.state()) {
         visibleFailures,
         fillCounts,
         returns,
-        serverBacktestSnapshot.jobs,
+        sourceJobs,
     );
     renderStockBacktestStatus();
 }
@@ -2707,6 +2726,7 @@ $("result-scope").addEventListener("change", async () => {
     state.lastResolvedScope = targetScope;
     state.pendingFocus = null;
     fillSymbols();
+    renderServerBacktestStatuses();
     lastWorkbenchInteraction = Date.now();
     void watchlistBacktests.tick();
     loadView();
