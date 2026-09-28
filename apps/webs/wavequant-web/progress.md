@@ -532,3 +532,8 @@
 - 参考 [Atlassian 拖动设计指南](https://atlassian.design/components/pragmatic-drag-and-drop/design-guidelines) 与 [Carbon 结构化列表](https://carbondesignsystem.com/components/structured-list/usage/) 的紧凑拖动入口和分层信息做法，保留双行内容与整行拖动，统一条目底色、悬停和选中反馈。
 - 名称使用主文本色，选中行用柔和强调色与左侧细标记；状态采用轻量徽标，次行指标略增字号并对齐数字。长名称和高进度状态保持截断与完整提示。
 - 自选股定向测试 8 项、JS 语法、Web Lint（6 条既有警告）、类型、生产构建、格式及差异检查通过。Headless Edge 静态样例深浅主题预览通过；按用户规则未运行 Playwright 或浏览器端到端测试，实际数据下的页面布局待人工复核。
+
+## 2026-09-28 · MONOREPO-203 自选股名称与代码紧邻显示
+
+- 股票名称停止填满首行剩余空间，代码紧跟名称；回测状态仍在最右侧。长名称优先截断，股票代码保持完整。
+- Web Lint（6 条既有警告）、类型、生产构建、格式及差异检查通过；Headless Edge 静态样例检查了深浅主题和长短名称。按用户规则未运行 Playwright 或浏览器端到端测试。
