@@ -526,3 +526,9 @@
 
 - 研究工作台通用按钮样式的左右 11px 内边距覆盖了自选股图标与文字按钮的紧凑设置；提高自选股样式优先级后，图标两侧内边距为 0，文字按钮左右内边距为 1px。
 - 列表说明改为整行拖动和触屏长按。Web Lint（6 条既有警告）、类型、生产构建、格式及差异检查通过；按用户规则未运行 Playwright 或真实浏览器，视觉待人工复核。
+
+## 2026-09-28 · MONOREPO-202 自选股条目视觉优化
+
+- 参考 [Atlassian 拖动设计指南](https://atlassian.design/components/pragmatic-drag-and-drop/design-guidelines) 与 [Carbon 结构化列表](https://carbondesignsystem.com/components/structured-list/usage/) 的紧凑拖动入口和分层信息做法，保留双行内容与整行拖动，统一条目底色、悬停和选中反馈。
+- 名称使用主文本色，选中行用柔和强调色与左侧细标记；状态采用轻量徽标，次行指标略增字号并对齐数字。长名称和高进度状态保持截断与完整提示。
+- 自选股定向测试 8 项、JS 语法、Web Lint（6 条既有警告）、类型、生产构建、格式及差异检查通过。Headless Edge 静态样例深浅主题预览通过；按用户规则未运行 Playwright 或浏览器端到端测试，实际数据下的页面布局待人工复核。

@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-202",
+            "name": "refine-watchlist-row-visuals",
+            "title": "优化自选股双行条目视觉层级",
+            "description": "参考近期列表与拖动设计实践，为自选股条目统一背景、悬停和选中状态，改善名称、状态与回测指标的可读性，同时保持整行拖动及两行布局。",
+            "scope": "wavequant-web 自选股侧栏视觉样式",
+            "dependencies": ["MONOREPO-201"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "首行名称、代码和状态，次行成交、收益和最大回撤的层级清晰且长名称可截断",
+                "选中、悬停与拖动反馈作用于整行，深浅主题下均保持可读",
+                "定向测试、Web Lint、类型检查、生产构建和格式检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/watchlists.test.mjs; node --check apps/webs/wavequant-web/public/watchlists.js; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; git diff --check",
+                    "status": "passed",
+                    "summary": "自选股定向测试 8 项、JS 语法、Web Lint（6 条既有警告）、类型、生产构建及格式检查通过；用 Headless Edge 对深浅主题静态样例做了视觉预览。按用户规则未运行 Playwright 或浏览器端到端测试，实际数据下的页面布局待人工复核。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-201",
             "name": "fix-watchlist-grip-spacing",
             "title": "修正自选股图标两侧实际留白",
