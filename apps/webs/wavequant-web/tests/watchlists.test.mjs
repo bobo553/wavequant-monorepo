@@ -19,7 +19,7 @@ test("a running watchlist row shows its own server progress and clears it after 
     const fillCount = { hidden: true, textContent: "" };
     const result = { hidden: true, dataset: {}, textContent: "", title: "" };
     const drawdown = { hidden: true, textContent: "" };
-    const metrics = { hidden: true };
+    const secondary = { hidden: true };
     const open = {
         dataset: { baseLabel: "切换到 瑞凌股份" },
         setAttribute(name, value) {
@@ -33,7 +33,7 @@ test("a running watchlist row shows its own server progress and clears it after 
                 ".watchlist-backtest-fill-count": fillCount,
                 ".watchlist-backtest-result": result,
                 ".watchlist-backtest-drawdown": drawdown,
-                ".watchlist-stock-metrics": metrics,
+                ".watchlist-stock-secondary": secondary,
                 ".watchlist-stock-open": open,
             }[selector];
         },
@@ -61,7 +61,7 @@ test("a running watchlist row shows its own server progress and clears it after 
     assert.equal(fillCount.hidden, false);
     assert.equal(result.textContent, "盈 +12.50%");
     assert.equal(drawdown.textContent, "最大回撤 -8.30%");
-    assert.equal(metrics.hidden, false);
+    assert.equal(secondary.hidden, false);
     assert.match(open["aria-label"], /最大回撤 -8\.30%/);
 
     watchlists.backtestStatuses["sz.300154"] = "historical";
@@ -69,7 +69,7 @@ test("a running watchlist row shows its own server progress and clears it after 
     assert.equal(fillCount.hidden, true);
     assert.equal(result.hidden, true);
     assert.equal(drawdown.hidden, true);
-    assert.equal(metrics.hidden, true);
+    assert.equal(secondary.hidden, true);
 });
 
 test("normalization repairs malformed watchlist data without mutating the stored snapshot", () => {

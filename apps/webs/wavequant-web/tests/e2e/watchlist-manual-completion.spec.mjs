@@ -177,7 +177,9 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
         return {
             resultY: element.getBoundingClientRect().y,
             drawdownY: row.querySelector(".watchlist-backtest-drawdown").getBoundingClientRect().y,
+            fillY: row.querySelector(".watchlist-backtest-fill-count").getBoundingClientRect().y,
             badgeY: badge.getBoundingClientRect().y,
+            codeY: row.querySelector(".watchlist-stock-identity small").getBoundingClientRect().y,
             nameY: name.getBoundingClientRect().y,
             nameBottom: name.getBoundingClientRect().bottom,
             nameFits: name.scrollWidth <= name.clientWidth + 1,
@@ -185,7 +187,9 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
         };
     });
     expect(Math.abs(rowLayout.badgeY - rowLayout.nameY)).toBeLessThan(5);
+    expect(Math.abs(rowLayout.codeY - rowLayout.nameY)).toBeLessThan(5);
     expect(rowLayout.resultY).toBeGreaterThan(rowLayout.nameBottom);
+    expect(Math.abs(rowLayout.fillY - rowLayout.resultY)).toBeLessThan(5);
     expect(Math.abs(rowLayout.drawdownY - rowLayout.resultY)).toBeLessThan(5);
     expect(rowLayout.nameFits).toBe(true);
     const themeColor = (variable) =>
@@ -217,9 +221,13 @@ test("a completed manual backtest updates the matching watchlist row", async ({ 
     await page.setViewportSize({ width: 390, height: 900 });
     const fits = await result.evaluate((element) => {
         const values = [
-            element,
-            element.closest(".watchlist-stock-row").querySelector(".watchlist-backtest-drawdown"),
-        ].map((item) => item.getBoundingClientRect());
+            ".watchlist-stock-identity strong",
+            ".watchlist-stock-identity small",
+            ".watchlist-backtest-badge",
+            ".watchlist-backtest-fill-count",
+            ".watchlist-backtest-result",
+            ".watchlist-backtest-drawdown",
+        ].map((selector) => element.closest(".watchlist-stock-row").querySelector(selector).getBoundingClientRect());
         const rail = element.closest("#watchlist-rail").getBoundingClientRect();
         return values.every((value) => value.right <= rail.right && value.left >= rail.left);
     });

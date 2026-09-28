@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-199",
+            "name": "compact-watchlist-two-line-rows",
+            "title": "自选股图标间距缩小并改为两行文字",
+            "description": "压缩自选股拖拽图标与文字之间的留白，将名称、代码、状态放在首行，成交笔数、收益与最大回撤放在第二行。",
+            "scope": "wavequant-web 自选股列表布局",
+            "dependencies": ["MONOREPO-198"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "自选股左侧图标与文字更紧凑，已完成股票的信息稳定排在两行",
+                "长名称在首行截断但保留完整名称提示，成交、收益与最大回撤仍可读取",
+                "相关定向测试、Web Lint、类型检查、生产构建和格式检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/watchlists.test.mjs; node --check public/watchlists.js tests/e2e/watchlist-manual-completion.spec.mjs; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; git diff --check",
+                    "status": "passed",
+                    "summary": "自选股定向 7 项、JS 语法、Web Lint（6 条既有警告）、类型、生产构建、格式及差异检查通过。按用户规则未运行 Playwright 或真实浏览器；两行布局和窄屏视觉待人工复核，完整 Web 单测留待空闲时段。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-198",
             "name": "watchlist-max-drawdown-and-status-layout",
             "title": "自选股显示最大回撤并将已完成放在首行",
