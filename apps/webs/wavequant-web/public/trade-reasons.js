@@ -121,6 +121,11 @@ export function tradeReasonItems(item) {
                 `本日收盘 ${num(item.observed_close, 4)} < 长上下影 K 线最低 ${num(item.trend_indecision_low, 4)}，且为阴线，清空余仓。`,
             );
         }
+        if (item.reason === "trend_last_fall_high_third_resistance_clear")
+            reasons.push(
+                `${item.trend_key_date} 已确认末跌高 ${num(item.trend_key_high, 4)} 元；${(item.trend_resistance_dates || []).join("、")} 三日盘中突破但收盘未站稳，均出现空头抵抗。`,
+                `第三日阴线高点越前高、收盘 ${num(item.observed_close, 4)} < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} > ${item.bearish_reference_date} 阴线 ${num(item.bearish_reference_volume, 0)}，当日清仓。`,
+            );
         if (item.trend_adverse_patterns?.length)
             reasons.push(`趋势转弱形态：${item.trend_adverse_patterns.join("、")}。`);
         if (item.resistance_date && item.failure_close != null)

@@ -604,6 +604,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                          if config.wave_exhaustion_exit else None)
             pressure = trend_flip_risks[symbol].get(i) or pressure_risks[symbol].get(i) or record_high_risks[symbol].get(i)
             if (pressure is not None and pressure['reason'].startswith('trend_last_fall_high_')
+                    and 'trend_warning_index' in pressure
                     and pos.entry_index > pressure['trend_warning_index']):
                 pressure = None
             if (pressure is not None and pressure['reason'] == 'trend_last_fall_high_upper_shadow_reduce'

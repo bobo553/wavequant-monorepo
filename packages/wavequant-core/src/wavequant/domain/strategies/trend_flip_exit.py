@@ -1,6 +1,73 @@
 """Exit adverse candles after a resisted close break of a higher-level falling high."""
 
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
+from ..market_structure.trend_structure import observe_structure
+from .lecture_strategy import lecture_pivot_history
+
+
+def _third_resisted_last_fall_high_history(bars, *, structure_window=120):
+    """Clear a failed third intraday attack on a causally known last-fall high."""
+    if len(bars) < 4:
+        return {}
+    snapshots, epochs, _, _ = lecture_pivot_history(bars)
+    risks = {}
+    state = None
+    shadow_policy = ShadowPolicy(0.5)
+    for i in range(1, len(bars)):
+        bar, previous = bars[i], bars[i - 1]
+        resistance = observe_resistance(
+            previous, bar, attack_direction=Direction.UP, shadow_policy=shadow_policy
+        ).detected is True
+        if state is not None:
+            key = state['key']
+            if bar.high > key.price and bar.close < key.price and resistance:
+                state['resistance'].append(i)
+                if len(state['resistance']) == 3:
+                    reference = bars[state['bearish_reference']]
+                    if (bar.close < bar.open and bar.high > previous.high
+                            and bar.low < previous.low and bar.close < previous.low
+                            and bar.volume > reference.volume):
+                        risks[i] = dict(
+                            reason='trend_last_fall_high_third_resistance_clear',
+                            exit_fraction=1.0,
+                            execution_model='same_day_close',
+                            trend_key_date=bars[key.source_index].timestamp.date().isoformat(),
+                            trend_key_high=key.price,
+                            trend_attack_date=bars[state['attack']].timestamp.date().isoformat(),
+                            trend_resistance_dates=[bars[j].timestamp.date().isoformat()
+                                                    for j in state['resistance']],
+                            bearish_reference_date=reference.timestamp.date().isoformat(),
+                            bearish_reference_volume=reference.volume,
+                            observed_open=bar.open,
+                            observed_high=bar.high,
+                            observed_low=bar.low,
+                            observed_close=bar.close,
+                            observed_volume=bar.volume,
+                            previous_high=previous.high,
+                            previous_low=previous.low,
+                        )
+                    state = None
+                continue
+            state = None
+        if not resistance:
+            continue
+        context = observe_structure(
+            snapshots[i - 1], symbol=bar.symbol, timeframe='1d',
+            window_start=max(epochs[i - 1], i - structure_window), asof_index=i - 1,
+        )
+        key, low = context.last_fall_high, context.window_low
+        if (key is None or low is None or key.source_index >= low.point.index
+                or previous.high > key.price or bar.high <= key.price
+                or bar.close >= key.price):
+            continue
+        # The comparison candle is the most recent substantial bearish day
+        # in the five sessions before the first attack, after the pivot low.
+        reference = next((j for j in range(i - 1, max(low.point.index, i - 6), -1)
+                          if bars[j].close < bars[j].open
+                          and bars[j].close < bars[j - 1].close * 0.98), None)
+        if reference is not None:
+            state = dict(key=key, attack=i, resistance=[i], bearish_reference=reference)
+    return risks
 
 
 def _secondary_wave_setup(levels, known_by):
@@ -254,4 +321,7 @@ def trend_flip_exit_history(bars, history, *, reduction_fraction=0.8):
                 state["record"] = max(state["record"], bar.high)
     for index, risk in _secondary_wave_exhaustion_history(bars, history).items():
         risks.setdefault(index, risk)
+    for index, risk in _third_resisted_last_fall_high_history(bars).items():
+        if risks.get(index, {}).get('exit_fraction', 0) < 1.0:
+            risks[index] = risk
     return risks

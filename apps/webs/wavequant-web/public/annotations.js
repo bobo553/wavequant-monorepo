@@ -68,6 +68,7 @@ const REASONS = {
     volume_down_next_gap_fade_clear: "放量减仓次日低开且收盘低于开盘，当日收盘清空余仓",
     volume_down_next_followthrough_clear: "放量减仓次日收阴且收盘跌破警示日低点，当日收盘清空余仓",
     trend_flip_resistance_adverse_clear: "高层级翻多受阻后出现不利K线，当日清仓",
+    trend_last_fall_high_third_resistance_clear: "突破末跌高连续三日受空头抵抗，第三日放量阴线反包，当日清仓",
     secondary_wave_target_resistance_clear: "二级 C 浪等幅目标到位、连续空头抵抗后收低破位，当日清仓",
     pressure_adverse_clear: "正 N 上攻前期巨量阴线压力区，出现不利 K 线，当日清仓",
     pressure_gap_adverse_reduce: "正 N 上攻压力区遇不利 K 线，但跳空未回补且收高，当日减仓 50%",
