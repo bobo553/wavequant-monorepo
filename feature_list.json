@@ -4,6 +4,28 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-204",
+            "name": "show-completed-fill-count-in-watchlist-status",
+            "title": "已完成自选股状态显示成交笔数",
+            "description": "已完成且有有效成交笔数时将首行状态改为“成交xx笔”，移除第二行重复的成交笔数；笔数暂缺时保留“已完成”。",
+            "scope": "wavequant-web 自选股回测状态文案与两行布局",
+            "dependencies": ["MONOREPO-203"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "已完成且笔数有效时首行显示“成交xx笔”，包含 0 笔场景",
+                "第二行不再重复成交笔数，收益与最大回撤正常显示",
+                "笔数暂缺时显示“已完成”，其他回测状态不受影响",
+                "自选股定向测试、Web Lint、类型检查、生产构建和格式检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/watchlists.test.mjs; node --check changed JavaScript files; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; git diff --check",
+                    "status": "passed",
+                    "summary": "自选股定向测试 8 项覆盖已完成有效笔数及缺失笔数回退；JS 语法、Web Lint（6 条既有警告）、类型、生产构建及格式检查通过。按用户规则未运行 Playwright 或浏览器端到端测试。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-203",
             "name": "group-watchlist-name-and-symbol",
             "title": "自选股名称与代码紧邻显示",
