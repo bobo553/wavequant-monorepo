@@ -17,6 +17,7 @@ from ..market_structure.trend_structure import observe_structure
 from .bull_eligibility import bull_permission_history
 from .attack_quality import v3_positive_n_attack_rejection
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
+from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.wave_strength import StrengthScale, measure_strength
@@ -678,6 +679,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             progress(percent)
             last_progress = percent
         exits = []
+        mother_child_inverse = mother_child_inverse_n_break(bars, i) if whole_wave else None
+        if mother_child_inverse is not None:
+            exits.append(MOTHER_CHILD_INVERSE_N_LOW_BREAK)
         if i in blocked:
             exits.append('strict_structure_unresolved')
         if i in bearish_attacks:
@@ -700,7 +704,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         if exits:
             signals.append(Signal(bar.timestamp, bar.symbol, i, 'EXIT', bar.close, bar.high,
                 '|'.join(exits), bar.timestamp, 0, None, 'risk_exit'))
-            log(i, 'exit_signal', reason='|'.join(exits))
+            log(i, 'exit_signal', reason='|'.join(exits), **(mother_child_inverse or {}))
             continue
         choices = events.get(i, [])+resumptions.get(i, [])+consolidation_events.get(i, [])+wave_events.get(i, []) if config.regime_filter else [
             (c, c['regime'].frames[0]) for c in candidates if c['attack'] == i]

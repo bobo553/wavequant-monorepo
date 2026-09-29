@@ -11,6 +11,9 @@ from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
 from wavequant.domain.strategies.wave_exhaustion_exit import observe_wave_exhaustion
 from wavequant.domain.strategies.pressure_exit import pressure_exit_history, record_high_resistance_history
+from wavequant.domain.strategies.mother_child_inverse_n import (
+    MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break,
+)
 from wavequant.domain.market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from wavequant.domain.strategies.staged_exit import (
     StagedExitState, observe_intraday_staged_exit, observe_staged_exit, observe_inverse_resistance_exit, observe_volume_down_exit,
@@ -598,6 +601,12 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 and any(signal.symbol == symbol and signal.side == 'EXIT'
                         and 'inverse_n_risk_exit' in signal.reason.split('|')
                         for signal in signal_map.get(when, [])))
+            mother_child_inverse = (
+                mother_child_inverse_n_break(grouped[symbol], i)
+                if any(signal.symbol == symbol and signal.side == 'EXIT'
+                       and MOTHER_CHILD_INVERSE_N_LOW_BREAK in signal.reason.split('|')
+                       for signal in signal_map.get(when, [])) else None
+            )
             wave_exit = (observe_wave_exhaustion(grouped[symbol], i, pos.wave_events, config,
                                                 reduced=pos.wave_reduced, entry_index=pos.entry_index,
                                                 signal_index=pos.signal_index)
@@ -642,7 +651,16 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                     and (hard_reason or volume_inverse or inverse_failure is not None
                          or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
                 pressure = None
-            if wave_exit is not None and wave_exit['exit_fraction'] == 1:
+            if mother_child_inverse is not None:
+                pending_exit[symbol] = MOTHER_CHILD_INVERSE_N_LOW_BREAK
+                exit_evidence[symbol] = dict(
+                    signal_timestamp=when.isoformat(), **mother_child_inverse,
+                    decision_reason=MOTHER_CHILD_INVERSE_N_LOW_BREAK,
+                    decision_source='strategy_exit_signal', execution_model='same_day_close',
+                    exit_fraction=1.0,
+                    **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}),
+                )
+            elif wave_exit is not None and wave_exit['exit_fraction'] == 1:
                 wave_clear_symbols.add(symbol)
                 pending_exit[symbol] = wave_exit['reason']
                 exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),

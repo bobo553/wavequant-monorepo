@@ -4,6 +4,37 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-208",
+            "name": "clear-mother-child-inverse-n-break",
+            "title": "母子阳线跌破子低形成倒 N 当日清仓",
+            "description": "母子阳线讲义路径依次形成母高、子低、子高，后续一日最低价严格跌破子低时，V3 全局策略发布倒 N 清仓信号并于当日收盘清空已有持仓。",
+            "scope": "wavequant-core V3 信号、回测执行及 wavequant-web 退出说明",
+            "dependencies": ["MONOREPO-207"],
+            "status": "blocked",
+            "acceptanceCriteria": [
+                "国芳集团 2022-07-04 跌破 07-01 子线低点，即使收盘站回、成交量低于前日，已有持仓仍于当日收盘清仓且余仓为零",
+                "等低或子线非阳线时不误判倒 N；跌破日同时创子线新高仍按破子低清仓",
+                "真实日线前缀与后缀信号一致，Core 定向回归、静态检查及 Web 文案定向验证通过"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest -q packages/wavequant-core/tests/test_mother_child_inverse_exit.py packages/wavequant-core/tests/test_may_inverse_origin.py packages/wavequant-core/tests/test_staged_exit.py packages/wavequant-core/tests/test_pressure_exit.py packages/wavequant-core/tests/test_integrated_strategy.py --maxfail=1; node --test apps/webs/wavequant-web/tests/annotations.test.mjs",
+                    "status": "passed",
+                    "summary": "Core 107 项相邻回归及 Web 文案 29 项定向测试通过；本机同源日线 2022-01-01 至 07-08 回放核对 07-04 前缀与后缀均产生母子倒 N 清仓信号，既有日期信号一致。"
+                },
+                {
+                    "command": "mypy --follow-imports=silent mother_child_inverse_n.py strategy_profiles.py; pnpm --filter @wavequant/core build; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed JSON and JS files; git diff --check",
+                    "status": "passed",
+                    "summary": "新增识别模块与策略配置定向 mypy、Core sdist/wheel、Web Lint（6 条既有警告）、类型、生产构建及修改文件格式检查通过；Core 整仓严格 mypy 仍有既有类型错误，未运行完整 Web 单测或浏览器端到端测试。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core typecheck; mypy --follow-imports=silent integrated_strategy.py backtest.py strategy_profiles.py",
+                    "status": "failed",
+                    "summary": "Core 整仓严格 mypy 报 410 条既有错误；改动的两个大模块按定向口径报 44 条，与本地 main 同数且无新增行报错。按仓库未通过检查不合并规则，本地 main 合并待解决基线或获用户明确覆盖。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-207",
             "name": "recalculate-containment-polyline",
             "title": "母子子母折线重算与历史回测",
