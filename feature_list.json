@@ -7,13 +7,14 @@
             "id": "MONOREPO-211",
             "name": "play-backtest-trade-fills",
             "title": "回测买卖成交点播放与暂停",
-            "description": "本地研究图按当前回测实际成交的 B/S 点位顺序逐笔定位，提供播放、暂停、前后步进、速度和进度；切换数据或隐藏页面时停止计时。",
+            "description": "本地研究图按当前回测实际成交的 B/S 点位顺序逐笔定位，提供播放、暂停、前后步进、速度和进度；手动步进直接跳转并高亮相邻点，图表或列表选中成交后从该点继续；切换数据或隐藏页面时停止计时。",
             "scope": "wavequant-web 回测图表交互与播放控制",
             "dependencies": [],
             "status": "done",
             "acceptanceCriteria": [
                 "仅播放当前个股回测中实际已成交的 B/S 点位，按成交时间排序且不重新发起回测",
                 "播放从首笔开始，暂停后从当前笔继续，支持前后步进、调速与播完重启",
+                "未选中成交时上一笔跳末笔、下一笔跳首笔；图表或成交列表选中 B/S 后，步进以该点为基准并将目标放入图窗",
                 "切换股票、回测截面、图表视图、离开工作台或隐藏页面时取消计时，不让旧点位影响新结果",
                 "控件默认不自动播放、无成交时禁用，展示进度并使用可访问的按钮状态",
                 "相关定向测试、Web Lint、类型检查、生产构建、格式与 Harness 检查通过"
@@ -22,12 +23,12 @@
                 {
                     "command": "node --test apps/webs/wavequant-web/tests/trade-playback.test.mjs apps/webs/wavequant-web/tests/chart-navigation.test.mjs apps/webs/wavequant-web/tests/annotations.test.mjs",
                     "status": "passed",
-                    "summary": "38 项定向 Node 测试通过，覆盖实际成交筛选与排序、暂停续播、步进、调速、切换结果取消旧计时及回调中暂停。"
+                    "summary": "41 项定向 Node 测试通过，补充首末笔直接跳转、外部选点同步、图窗定位边界与不可绘制成交过滤回归。"
                 },
                 {
                     "command": "node --check changed public JS; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; pnpm harness:check; git diff --check",
                     "status": "passed",
-                    "summary": "JS 语法与未定义标识符定向检查、Web Lint（6 条既有警告）、类型检查、生产构建、修改文件格式、Harness 和差异检查通过；按用户规则未运行 Playwright、浏览器端到端或完整 Web 单测。"
+                    "summary": "JS 语法与未定义标识符定向检查、Web Lint（6 条既有警告）、类型检查、生产构建、修改文件格式、Harness 和差异检查通过；按用户规则未运行 Playwright、浏览器端到端或完整 Web 单测。手动跳转页面观感待人工复核。"
                 }
             ]
         },

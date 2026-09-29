@@ -635,7 +635,7 @@ function renderTradePlayback({ total, index, current, playing, finished }) {
     toggle.textContent = playing ? "暂停" : "播放";
     toggle.setAttribute("aria-label", playing ? "暂停买卖点播放" : "播放买卖点");
     toggle.setAttribute("aria-pressed", String(playing));
-    $("trade-playback-previous").disabled = index <= 0;
+    $("trade-playback-previous").disabled = total === 0 || index === 0;
     $("trade-playback-next").disabled = total === 0 || index >= total - 1;
     $("trade-playback-speed").disabled = total === 0;
     $("trade-playback-progress").textContent = `${index + 1} / ${total}`;
@@ -658,7 +658,9 @@ tradePlayback = new TradePlayback({
             $("show-fills").checked = true;
             chart.setAnnotationOptions({ fills: true });
         }
-        chart.selectAnnotation(marker.id);
+        chart.selectAnnotation(marker.id, false);
+        chart.focusTrade(marker.time);
+        chart.flashSelectedAnnotation(marker.id, "execution");
     },
     onChange: renderTradePlayback,
 });
@@ -1345,6 +1347,7 @@ function showAnnotationDetails(items) {
     if (!$("tradingview-panel").hidden) setChartView("local");
     const item = items[0];
     state.selectedAnnotationId = item.id;
+    if (item.kind === "fill") tradePlayback?.select(item.id);
     highlightTradeNode(
         item.kind === "fill" || item.kind === "candidate" || (item.kind === "order" && item.status === "cancelled")
             ? item.id

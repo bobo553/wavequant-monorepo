@@ -12,7 +12,13 @@ import {
     visibleLastFallHighGuides,
 } from "./annotations.js";
 import { candleDetails } from "./candle-details.js";
-import { chartNavigationState, panChartRange, seekChartRange, zoomChartRange } from "./chart-navigation.js";
+import {
+    chartNavigationState,
+    panChartRange,
+    seekChartRange,
+    tradePointRange,
+    zoomChartRange,
+} from "./chart-navigation.js";
 import { FocusFlashOverlay } from "./focus-flash-overlay.js";
 import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
@@ -933,6 +939,13 @@ export class PriceChart {
         this.chart
             .timeScale()
             .setVisibleLogicalRange({ from: Math.max(0, i - 55), to: Math.min(this.data.bars.length + 3, i + 30) });
+    }
+    focusTrade(time) {
+        const index = this.data?.bars.findIndex((bar) => bar.time === time) ?? -1;
+        const range = tradePointRange(index, this.data?.bars.length ?? 0);
+        if (!range) return false;
+        this.chart.timeScale().setVisibleLogicalRange(range);
+        return true;
     }
     focusRange(from, to) {
         const range = drawdownCandleRange({ from, to }, this.data?.bars);
