@@ -366,48 +366,48 @@ export function ResearchChart(): JSX.Element {
                     >
                         <IconMinus size={17} stroke={1.8} aria-hidden="true" />
                     </button>
+                    <div className="trade-playback-controls" role="group" aria-label="回测买卖点播放">
+                        <button
+                            id="trade-playback-previous"
+                            type="button"
+                            aria-label="上一笔成交"
+                            aria-controls="price-chart"
+                            disabled
+                        >
+                            上一笔
+                        </button>
+                        <button
+                            id="trade-playback-toggle"
+                            type="button"
+                            aria-label="播放买卖点"
+                            aria-controls="price-chart"
+                            aria-pressed="false"
+                            disabled
+                        >
+                            播放
+                        </button>
+                        <button
+                            id="trade-playback-next"
+                            type="button"
+                            aria-label="下一笔成交"
+                            aria-controls="price-chart"
+                            disabled
+                        >
+                            下一笔
+                        </button>
+                        <label htmlFor="trade-playback-speed">速度</label>
+                        <select id="trade-playback-speed" defaultValue="1600" disabled>
+                            <option value="3200">0.5×</option>
+                            <option value="1600">1×</option>
+                            <option value="800">2×</option>
+                        </select>
+                    </div>
                 </div>
             </div>
             <section className="trade-playback" aria-labelledby="trade-playback-title">
                 <div className="trade-playback-heading">
                     <strong id="trade-playback-title">回测买卖点播放</strong>
                     <output id="trade-playback-progress">0 / 0</output>
-                </div>
-                <div className="trade-playback-controls">
-                    <button
-                        id="trade-playback-previous"
-                        type="button"
-                        aria-label="上一笔成交"
-                        aria-controls="price-chart"
-                        disabled
-                    >
-                        上一笔
-                    </button>
-                    <button
-                        id="trade-playback-toggle"
-                        type="button"
-                        aria-label="播放买卖点"
-                        aria-controls="price-chart"
-                        aria-pressed="false"
-                        disabled
-                    >
-                        播放
-                    </button>
-                    <button
-                        id="trade-playback-next"
-                        type="button"
-                        aria-label="下一笔成交"
-                        aria-controls="price-chart"
-                        disabled
-                    >
-                        下一笔
-                    </button>
-                    <label htmlFor="trade-playback-speed">速度</label>
-                    <select id="trade-playback-speed" defaultValue="1600" disabled>
-                        <option value="3200">0.5×</option>
-                        <option value="1600">1×</option>
-                        <option value="800">2×</option>
-                    </select>
                 </div>
                 <p id="trade-playback-current">运行当前股票回测后可按成交顺序播放 B/S 点位。</p>
                 <p className="trade-playback-note">

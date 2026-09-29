@@ -16,7 +16,7 @@
                 "播放从首笔开始，暂停后从当前笔继续，支持前后步进、调速与播完重启",
                 "未选中成交时上一笔跳末笔、下一笔跳首笔；图表或成交列表选中 B/S 后，步进以该点为基准，平移图窗且保持原缩放",
                 "切换股票、回测截面、图表视图、离开工作台或隐藏页面时取消计时，不让旧点位影响新结果",
-                "控件默认不自动播放、无成交时禁用，展示进度并使用可访问的按钮状态",
+                "控件默认不自动播放、无成交时禁用，展示进度并使用可访问的按钮状态；播放与图窗缩放按钮同排，窄容器时整组换行",
                 "相关定向测试、Web Lint、类型检查、生产构建、格式与 Harness 检查通过"
             ],
             "verification": [
@@ -28,7 +28,7 @@
                 {
                     "command": "node --check changed public JS; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; pnpm harness:check; git diff --check",
                     "status": "passed",
-                    "summary": "JS 语法与未定义标识符定向检查、Web Lint（6 条既有警告）、类型检查、生产构建、修改文件格式、Harness 和差异检查通过；按用户规则未运行 Playwright、浏览器端到端或完整 Web 单测。手动跳转页面观感待人工复核。"
+                    "summary": "JS 语法与未定义标识符定向检查、Web Lint（6 条既有警告）、类型检查、生产构建、修改文件格式、Harness 和差异检查通过；控件合并到图窗导航行并保留 40px 操作高度。按用户规则未运行 Playwright、浏览器端到端或完整 Web 单测，页面观感待人工复核。"
                 }
             ]
         },
