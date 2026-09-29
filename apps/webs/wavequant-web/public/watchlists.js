@@ -27,6 +27,10 @@ export function setWatchlistStarIcon(button, filled) {
     }
 }
 
+function assignIfChanged(target, property, value) {
+    if (target[property] !== value) target[property] = value;
+}
+
 function validGroup(group) {
     return (
         group &&
@@ -445,10 +449,10 @@ export class Watchlists {
                 ? this.backtestJobs.find((job) => job.status === "running" && job.symbol === symbol)
                 : null;
         const percent = formatBacktestProgress(runningJob?.progress_percent);
-        badge.dataset.status = status;
+        assignIfChanged(badge.dataset, "status", status);
         const fills = this.backtestFillCounts[symbol];
         const completedFills = status === "completed" && Number.isInteger(fills) && fills >= 0 ? fills : null;
-        badge.textContent = {
+        const badgeText = {
             pending: "待回测",
             historical: "已回测 · 待更新",
             running: percent ? `回测中 · ${percent}` : "回测中",
@@ -457,16 +461,18 @@ export class Watchlists {
             failed: "失败",
             unavailable: "无数据",
         }[status];
-        badge.title =
+        assignIfChanged(badge, "textContent", badgeText);
+        const badgeTitle =
             status === "failed"
                 ? this.backtestFailures[symbol] || "回测失败"
                 : status === "running" && runningJob?.progress_stage
-                  ? `${badge.textContent} · ${runningJob.progress_stage}`
+                  ? `${badgeText} · ${runningJob.progress_stage}`
                   : status === "historical"
                     ? "服务器有历史回测记录，但数据源、日期、策略版本或参数与当前设置不一致；本轮仍待更新"
                     : status === "completed" && fills === 0
                       ? "回测已完成，但没有实际模拟成交，图上不会有 B / S 成交标记"
-                      : badge.textContent;
+                      : badgeText;
+        assignIfChanged(badge, "title", badgeTitle);
         const result = row.querySelector(".watchlist-backtest-result");
         const drawdown = row.querySelector(".watchlist-backtest-drawdown");
         const secondary = row.querySelector(".watchlist-stock-secondary");
@@ -474,27 +480,35 @@ export class Watchlists {
         const hasReturn = status === "completed" && Number.isFinite(value?.rate) && Number.isFinite(value?.amount);
         const hasDrawdown = status === "completed" && Number.isFinite(value?.drawdown);
         if (result) {
-            result.hidden = !hasReturn;
+            assignIfChanged(result, "hidden", !hasReturn);
             if (hasReturn) {
-                result.dataset.result = value.rate > 0 ? "profit" : value.rate < 0 ? "loss" : "flat";
-                result.textContent = `${value.rate > 0 ? "盈 +" : value.rate < 0 ? "亏 " : "平 "}${(value.rate * 100).toFixed(2)}%`;
-                result.title = `期末盈亏 ${value.amount > 0 ? "+" : ""}${value.amount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 元；收益率 ${value.rate > 0 ? "+" : ""}${(value.rate * 100).toFixed(2)}%`;
+                assignIfChanged(result.dataset, "result", value.rate > 0 ? "profit" : value.rate < 0 ? "loss" : "flat");
+                assignIfChanged(
+                    result,
+                    "textContent",
+                    `${value.rate > 0 ? "盈 +" : value.rate < 0 ? "亏 " : "平 "}${(value.rate * 100).toFixed(2)}%`,
+                );
+                assignIfChanged(
+                    result,
+                    "title",
+                    `期末盈亏 ${value.amount > 0 ? "+" : ""}${value.amount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 元；收益率 ${value.rate > 0 ? "+" : ""}${(value.rate * 100).toFixed(2)}%`,
+                );
             }
         }
         if (drawdown) {
-            drawdown.hidden = !hasDrawdown;
+            assignIfChanged(drawdown, "hidden", !hasDrawdown);
             if (hasDrawdown) {
-                drawdown.textContent = `最大回撤 ${(value.drawdown * 100).toFixed(2)}%`;
-                drawdown.title = drawdown.textContent;
+                const drawdownText = `最大回撤 ${(value.drawdown * 100).toFixed(2)}%`;
+                assignIfChanged(drawdown, "textContent", drawdownText);
+                assignIfChanged(drawdown, "title", drawdownText);
             }
         }
-        if (secondary) secondary.hidden = !hasReturn && !hasDrawdown;
+        if (secondary) assignIfChanged(secondary, "hidden", !hasReturn && !hasDrawdown);
         const open = row.querySelector(".watchlist-stock-open");
-        if (open)
-            open.setAttribute(
-                "aria-label",
-                `${open.dataset.baseLabel}，${badge.textContent}${hasReturn ? `，${result.title}` : ""}${hasDrawdown ? `，${drawdown.textContent}` : ""}${status === "failed" ? `：${badge.title}` : ""}`,
-            );
+        if (open) {
+            const label = `${open.dataset.baseLabel}，${badgeText}${hasReturn ? `，${result.title}` : ""}${hasDrawdown ? `，${drawdown.textContent}` : ""}${status === "failed" ? `：${badgeTitle}` : ""}`;
+            if (open.getAttribute?.("aria-label") !== label) open.setAttribute("aria-label", label);
+        }
     }
 
     rememberSelectedGroup() {

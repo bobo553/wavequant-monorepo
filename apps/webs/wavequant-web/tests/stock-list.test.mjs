@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { filterStocks, stockCoverageText, stockInfo } from "../public/stock-list.js";
+import { JSDOM } from "jsdom";
+
+import { StockList, filterStocks, stockCoverageText, stockInfo } from "../public/stock-list.js";
 
 const stocks = ["sh.600519", "sh.600036", "sz.000858", "sz.000333"].map((symbol) => ({
     symbol,
@@ -39,4 +41,48 @@ test("online catalogs describe on-demand history without claiming zero bars", ()
         "按需读取 · 最新交易日以返回为准",
     );
     assert.equal(stockCoverageText({ bar_count: 6003, last: "2026-09-11" }), "6003 根日线 · 至 2026-09-11");
+});
+
+test("backtest polling updates stock badges without replacing focused rows", () => {
+    const dom = new JSDOM('<div id="list"></div><span id="count"></span>');
+    const previousDocument = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        const list = document.getElementById("list");
+        const subject = new StockList({ list, count: document.getElementById("count"), onSelect() {} });
+        subject.setStocks(stocks, stocks[0].symbol);
+        const row = list.querySelector('.stock-item[data-symbol="sh.600519"]');
+        row.focus();
+
+        subject.setBacktestStatuses({ "sh.600519": "running" }, [
+            { symbol: "sh.600519", status: "running", elapsed_seconds: 63 },
+        ]);
+        assert.equal(list.querySelector('.stock-item[data-symbol="sh.600519"]'), row);
+        assert.equal(document.activeElement, row);
+        assert.equal(row.querySelector(".stock-backtest-badge").textContent, "回测中");
+        assert.match(row.getAttribute("aria-label"), /回测中/);
+        const duration = row.querySelector(".stock-backtest-elapsed");
+        assert.equal(duration.textContent, "已运行 1 分钟");
+
+        subject.setBacktestStatuses({ "sh.600519": "running" }, [
+            { symbol: "sh.600519", status: "running", elapsed_seconds: 120 },
+        ]);
+        assert.equal(list.querySelector('.stock-item[data-symbol="sh.600519"]'), row);
+        assert.equal(row.querySelector(".stock-backtest-elapsed"), duration);
+        assert.equal(duration.textContent, "已运行 2 分钟");
+
+        subject.setBacktestStatuses({ "sh.600519": "completed" });
+        assert.equal(list.querySelector('.stock-item[data-symbol="sh.600519"]'), row);
+        assert.equal(row.querySelector(".stock-backtest-badge").textContent, "已回测");
+        assert.equal(row.querySelector(".stock-backtest-elapsed"), null);
+
+        subject.setBacktestStatuses({});
+        assert.equal(list.querySelector('.stock-item[data-symbol="sh.600519"]'), row);
+        assert.equal(row.querySelector(".stock-backtest-badge"), null);
+        assert.equal(row.getAttribute("aria-label"), "贵州茅台 600519 SH");
+    } finally {
+        dom.window.close();
+        if (previousDocument === undefined) delete globalThis.document;
+        else globalThis.document = previousDocument;
+    }
 });
