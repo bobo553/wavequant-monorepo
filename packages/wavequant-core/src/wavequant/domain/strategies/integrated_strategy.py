@@ -857,6 +857,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 'volume_reversal_record_break' if (c['attack'], i) in reversal_proofs else
                 'defended_n_consolidation_gap' if consolidation is not None else
                 'pullback_resumption' if resumed else
+                'gap_up_bullish_record' if whole_wave and entry_regime == MarketRegime.BULL
+                    and frame.resistance is not None and frame.resistance.long_shadow is True
+                    and bar.open > bars[i-1].high and bar.close > frame.continuation_level else
                 'resistance_record_break' if whole_wave and entry_regime == MarketRegime.BULL
                     and bar.close > frame.continuation_level else
                 'local_resistance_failure' if whole_wave and entry_regime == MarketRegime.BULL else

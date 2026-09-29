@@ -95,7 +95,7 @@ class RegimeObservation:
     n_defense: float | None = None
     wave_boundary: float | None = None
     frames: tuple[RegimeFrame, ...] = ()
-    rule_version: str = 'six_regimes_v1_close_record_defense_breach'
+    rule_version: str = 'six_regimes_v2_bullish_gap_record'
 
     @property
     def latest(self) -> RegimeFrame | None:
@@ -155,8 +155,9 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         if (policy.local_resistance_failure and i >= attack + 2
                 and first_resistance is not None and first_defense is None):
             prior_resistance = frames[-1].resistance
-            # A higher close alone cannot defeat resistance while this candle
-            # still shows it (lower open, opposing body, or long upper wick).
+            # A higher close alone cannot defeat current resistance. A bullish
+            # open above yesterday's high with an episode-record close is the
+            # explicit exception to a long upper shadow.
             # Keep the original breakout close as an anchor: a rebound below
             # it is not renewed attack merely because yesterday closed lower.
             # A broken rolling response cannot be revived by a later pair of
@@ -168,11 +169,13 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             record_rebound = continuation and first_defense is None
             prior_response = (rolling_all_held and rolling_held and prior_resistance
                               and prior_resistance.detected is True)
+            bullish_gap_record = (up and record_rebound and bar.open > prev.high
+                                  and bar.close > bar.open and resistance.long_shadow is True)
             continuation = bool((record_rebound or prior_response)
                                 and sign * (bar.close - prev.close) > 0
                                 and sign * (bar.close - bars[attack].close) > 0
                                 and sign * (bar.close - bar.open) > 0
-                                and resistance.detected is False)
+                                and (resistance.detected is False or bullish_gap_record))
         phase = RegimePhase.AWAIT_CONFIRMATION if i == attack + 1 else RegimePhase.PENDING
         regime = None
         outcome = (ResistanceOutcome.PENDING if first_resistance is not None else

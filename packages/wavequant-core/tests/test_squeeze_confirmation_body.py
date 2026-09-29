@@ -75,6 +75,36 @@ def test_long_upper_shadow_cannot_confirm_local_resistance_failure():
     assert result.latest.regime is None
 
 
+def test_gap_up_bullish_record_close_confirms_squeeze_despite_long_upper_shadow():
+    rows = [
+        (3.75, 3.80, 3.72, 3.75),
+        (3.78, 3.83, 3.76, 3.80),
+        (3.77, 3.80, 3.73, 3.75),
+        (3.82, 3.93, 3.78, 3.91),
+        (3.88, 3.96, 3.88, 3.93),
+        (3.99, 4.29, 3.95, 4.08),
+    ]
+    days = ("2022-11-23", "2022-11-25", "2022-11-28", "2022-11-29", "2022-11-30", "2022-12-01")
+    bars = [Bar(datetime.fromisoformat(day), "TEST", *row, 1000) for day, row in zip(days, rows)]
+    setup = NSetup(
+        "TEST", "1d", Direction.UP, PivotRef(0, 0), PivotRef(1, 1), PivotRef(2, 2),
+        "test", BoxAnchorMode.ATTACK_VIRTUAL_EXTREME,
+    )
+    policy = RegimePolicy(ShadowPolicy(0.5), WaveBoundary.ORIGIN, local_resistance_failure=True)
+
+    result = observe_market_regime(bars, setup, timeframe="1d", policy=policy)
+    assert result.frames[-2].resistance.direct_opposing_open
+    assert result.latest.resistance.long_shadow
+    assert result.latest.regime == MarketRegime.BULL
+
+    no_gap = bars[:-1] + [replace(bars[-1], open=bars[-2].high)]
+    assert observe_market_regime(no_gap, setup, timeframe="1d", policy=policy).latest.regime is None
+    bearish = bars[:-1] + [replace(bars[-1], open=4.10)]
+    assert observe_market_regime(bearish, setup, timeframe="1d", policy=policy).latest.regime is None
+    broken_defense = bars[:-1] + [replace(bars[-1], low=3.70)]
+    assert observe_market_regime(broken_defense, setup, timeframe="1d", policy=policy).latest.regime is None
+
+
 def test_guofang_july16_lower_open_is_resistance_not_squeeze_confirmation():
     raw = json.loads((Path(__file__).parent / "fixtures/guofang_2026_consolidation.json").read_text(encoding="utf-8"))
     bars = [
