@@ -30,6 +30,7 @@ test("sizing rejection and structural cutoff have explicit Chinese explanations"
     assert.match(reasonText("same_bar_vertices_require_lower_timeframe_n"), /同日高低点不能组成日线 N/);
     assert.match(reasonText("volume_bearish_outside_clear"), /连续阳线后.*当日清仓/);
     assert.match(reasonText("mother_child_inverse_n_low_break"), /跌破子线低点.*当日收盘清仓/);
+    assert.match(reasonText("mother_child_inverse_n_low_break"), /今收低于昨收/);
 });
 test("window key follows extreme predecessor, not latest opposite pivot", () => {
     const points = [

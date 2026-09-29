@@ -13,7 +13,8 @@ def mother_child_inverse_n_break(bars: Sequence[Bar], index: int) -> dict[str, f
     """Return close-known evidence when a third bar strictly breaks the child low.
 
     The lecture's bullish mother-child ordering supplies mother high, child low,
-    then child high. A later strict low break confirms the risk at daily close.
+    then child high. Risk is confirmed only when the next bar breaks the child
+    low and closes strictly below the child close.
     """
     if index < 2 or not observe_bar_relations(bars[index - 2], bars[index - 1]).inside:
         return None
@@ -27,6 +28,7 @@ def mother_child_inverse_n_break(bars: Sequence[Bar], index: int) -> dict[str, f
         and neckline.index == index - 1 and neckline.kind == PointKind.LOW
         and pullback.index == index - 1 and pullback.kind == PointKind.HIGH
         and break_bar.low < neckline.price
+        and break_bar.close < child.close
     ):
         return None
     return {
@@ -35,6 +37,7 @@ def mother_child_inverse_n_break(bars: Sequence[Bar], index: int) -> dict[str, f
         "child_date": child.timestamp.date().isoformat(),
         "child_low": neckline.price,
         "child_high": pullback.price,
+        "child_close": child.close,
         "observed_low": break_bar.low,
         "observed_close": break_bar.close,
     }
