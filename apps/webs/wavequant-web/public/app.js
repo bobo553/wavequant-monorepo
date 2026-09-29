@@ -1833,7 +1833,7 @@ async function loadTheory(request, sequence, preloaded = null) {
             state.pendingStructureAnnotation = null;
         }
         $("drawing-status").textContent =
-            `讲义绘图：${data.lecture_drawing?.teaching_paths?.length || 0} 组子母三点、${data.lecture_drawing?.inside_connections?.length || 0} 处母子缩头／缩脚衔接；${data.lecture_drawing?.issues.length || 0} 处十字星／初始方向待确认。${data.strategy_pivot_mode === "lecture_causal" ? "新版从同一递推器提取收盘确认点；绘图连接不直接等于交易信号。" : "显示结构与所选旧策略／行情浏览独立。"}母子顺序是讲义约定，不代表已知真实日内路径。`;
+            `讲义绘图：${data.lecture_drawing?.teaching_paths?.length || 0} 组子母路径、${data.lecture_drawing?.inside_connections?.length || 0} 组母子路径；${data.lecture_drawing?.issues.length || 0} 处无法连线的十字星。${data.strategy_pivot_mode === "lecture_causal" ? "新版从同一递推器提取收盘确认点；绘图连接不直接等于交易信号。" : "显示结构与所选旧策略／行情浏览独立。"}阴阳高低顺序是讲义约定，不代表已知真实日内路径。`;
         $("theory-status").textContent = data.interrupted ? "当前结构未解" : "已确认结构";
         if (
             !state.pendingFocus &&

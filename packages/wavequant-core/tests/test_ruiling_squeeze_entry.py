@@ -1,4 +1,4 @@
-"""Regression for the supplied July N and August squeeze, using adjusted prices."""
+"""Regression for the July-to-August fold and squeeze, using adjusted prices."""
 
 from dataclasses import replace
 from datetime import datetime
@@ -84,8 +84,8 @@ def test_squeeze_date_emits_signal_before_execution_reward_risk_check() -> None:
     )
     result = generate_system_signals(bars, config)
     signal = next(s for s in result.signals if s.side == "LONG")
-    assert signal.timestamp == datetime(2026, 8, 4)
-    assert signal.trigger_timestamp == datetime(2026, 7, 27)
+    assert signal.timestamp == datetime(2026, 8, 7)
+    assert signal.trigger_timestamp == datetime(2026, 8, 4)
     assert signal.target_price is not None
     assert signal.minimum_reward_risk == 1.5
     assert (signal.target_price - signal.reference_price) / (
@@ -97,11 +97,14 @@ def test_squeeze_date_emits_signal_before_execution_reward_risk_check() -> None:
         assert prefix.signals == [s for s in result.signals if s.bar_index <= cut]
     old = generate_system_signals(bars, replace(config, preflight_reward_risk=True))
     assert not any(s.side == "LONG" and s.timestamp == signal.timestamp for s in old.signals)
-    executed = run_portfolio({"sz.300154": bars}, [signal], StrategyConfig(liquidity_lookback=3))
+    # The new fold confirms on the fixture's final day. Supply only the next
+    # session to test execution without letting its prices confirm the signal.
+    execution_bars = bars + [Bar(datetime(2026, 8, 10), bars[0].symbol, 12.4, 12.9, 12.2, 12.6, 10_000_000)]
+    executed = run_portfolio({"sz.300154": execution_bars}, [signal], StrategyConfig(liquidity_lookback=3))
     assert not executed.trades
     assert any(row["reason"] == "insufficient_net_reward_risk" for row in executed.orders)
     unfiltered = run_portfolio(
-        {"sz.300154": bars}, [signal], StrategyConfig(liquidity_lookback=3, net_reward_risk_filter=False)
+        {"sz.300154": execution_bars}, [signal], StrategyConfig(liquidity_lookback=3, net_reward_risk_filter=False)
     )
     assert not any(row["reason"] == "insufficient_net_reward_risk" for row in unfiltered.orders)
     filled = next(row for row in unfiltered.orders if row["side"] == "BUY" and row["status"] == "filled")
@@ -109,7 +112,7 @@ def test_squeeze_date_emits_signal_before_execution_reward_risk_check() -> None:
     assert filled["net_reward_risk"] < signal.minimum_reward_risk
     # Disabling this one filter does not permit buys at an exhausted target.
     exhausted = run_portfolio(
-        {"sz.300154": bars}, [replace(signal, target_price=signal.invalidation_price)],
+        {"sz.300154": execution_bars}, [replace(signal, target_price=signal.invalidation_price)],
         StrategyConfig(liquidity_lookback=3, net_reward_risk_filter=False),
     )
     assert any(row["reason"] == "target_exhausted_at_open" for row in exhausted.orders)
@@ -125,21 +128,16 @@ def test_v3_defers_reward_risk_to_execution(variant: str) -> None:
     assert "execution_price_net_rr_1_5" in profile["definition"]["primary_filters"]
 
 
-def test_ruiling_august_7_target_exit_is_removed_without_future_wave_targets() -> None:
+def test_ruiling_final_day_signal_creates_no_future_order_or_exit() -> None:
     bars = ruiling_bars()
-    result = generate_system_signals(bars, SystemStrategy(
+    config = SystemStrategy(
         pivot_mode="lecture_causal", entry_policy="legacy_n_continuation", volume_filter=False,
         max_counter_ratio=0.99, preflight_reward_risk=False, squeeze_pullback_entries=False,
-    ))
-    signal = next(s for s in result.signals if s.side == "LONG")
-    config = StrategyConfig(liquidity_lookback=3, net_reward_risk_filter=False)
-    before = run_portfolio({"sz.300154": bars}, result.signals, config)
-    sell = next(o for o in before.orders if o["side"] == "SELL")
-    assert sell["timestamp"] == "2026-08-07T00:00:00"
-    assert sell["signal_timestamp"] == "2026-08-06T00:00:00"
-    assert sell["reason"] == "target_observed"
-    assert signal.target_price == pytest.approx(11.148654)
-    after = run_portfolio({"sz.300154": bars}, result.signals, replace(config, exit_on_target=False))
-    assert [o["side"] for o in after.orders] == ["BUY"]
-    assert after.open_positions[0]["pending_exit"] is None
-    assert after.orders[0]["target_price"] == signal.target_price
+    )
+    result = generate_system_signals(bars, config)
+    assert [(s.timestamp.date().isoformat(), s.side) for s in result.signals] == [("2026-08-07", "LONG")]
+    assert not generate_system_signals(bars[:-1], config).signals
+    executed = run_portfolio({bars[0].symbol: bars}, result.signals,
+                             StrategyConfig(liquidity_lookback=3, net_reward_risk_filter=False))
+    assert executed.orders == []
+    assert executed.trades == []

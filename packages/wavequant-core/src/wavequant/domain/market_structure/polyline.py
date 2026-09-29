@@ -95,25 +95,43 @@ class BarPathEvidence:
 class TeachingPath:
     vertices: tuple[LinePoint, ...]
     status: str
-    provenance: str = 'lecture_child_mother_colour_convention_not_observed_intrabar_path'
+    provenance: str = 'lecture_containment_colour_convention_not_observed_intrabar_path'
+    raw_vertices: tuple[LinePoint, ...] = ()
+
+
+def _containment_path(first: Bar, second: Bar, *, first_index: int, outside: bool) -> TeachingPath:
+    relation = observe_bar_relations(first, second)
+    _index(first_index, 'first index')
+    if not (relation.outside if outside else relation.inside):
+        raise ValueError('strict containment in the requested order required')
+    if first.open == first.close or second.open == second.close:
+        return TeachingPath((), 'undefined_doji')
+
+    def extremes(bar: Bar, index: int) -> tuple[LinePoint, LinePoint]:
+        order = ((PointKind.LOW, PointKind.HIGH) if bar.close > bar.open else
+                 (PointKind.HIGH, PointKind.LOW))
+        first_kind, second_kind = order
+        return (LinePoint(index, 0, first_kind, bar.high if first_kind == PointKind.HIGH else bar.low),
+                LinePoint(index, 1, second_kind, bar.high if second_kind == PointKind.HIGH else bar.low))
+
+    raw = (*extremes(first, first_index), *extremes(second, first_index + 1))
+    simplified: list[LinePoint] = []
+    for vertex in raw:
+        while (len(simplified) > 1 and
+               (simplified[-1].price - simplified[-2].price) * (vertex.price - simplified[-1].price) > 0):
+            simplified.pop()
+        simplified.append(vertex)
+    return TeachingPath(tuple(simplified), 'teaching_convention', raw_vertices=raw)
 
 
 def child_mother_path(child: Bar, mother: Bar, *, child_index: int) -> TeachingPath:
-    """Four explicit child-then-mother teaching cases; no reverse-order inference."""
-    r = observe_bar_relations(child, mother)
-    _index(child_index, 'child index')
-    if not r.outside:
-        raise ValueError('strict child then encompassing mother required')
-    if child.open == child.close or mother.open == mother.close:
-        return TeachingPath((), 'undefined_doji')
-    first = PointKind.HIGH if child.close > child.open else PointKind.LOW
-    order = ((PointKind.LOW, PointKind.HIGH) if mother.close > mother.open else
-             (PointKind.HIGH, PointKind.LOW))
-    def vertex(bar, index, ordinal, kind):
-        return LinePoint(index, ordinal, kind, bar.high if kind == PointKind.HIGH else bar.low)
-    return TeachingPath((vertex(child, child_index, 0, first),
-        vertex(mother, child_index+1, 0, order[0]),
-        vertex(mother, child_index+1, 1, order[1])), 'teaching_convention')
+    """Connect child then encompassing mother, merging consecutive same-direction legs."""
+    return _containment_path(child, mother, first_index=child_index, outside=True)
+
+
+def mother_child_path(mother: Bar, child: Bar, *, mother_index: int) -> TeachingPath:
+    """Connect mother then contained child under the same drawing convention."""
+    return _containment_path(mother, child, first_index=mother_index, outside=False)
 
 
 @dataclass(frozen=True)
@@ -184,7 +202,7 @@ def observe_polyline(bars: Sequence[Bar], *, symbol: str, timeframe: str,
                 if evidence is None:
                     blocked = i
                     source = 'requires_ordered_intrabar_evidence'
-                    vertices = ()
+                    vertices: tuple[LinePoint, ...] = ()
                 else:
                     if not isinstance(evidence, BarPathEvidence) or evidence.index != i:
                         raise ValueError('matching BarPathEvidence required')
@@ -225,6 +243,8 @@ def n_setup_from_polyline(line: PolylineObservation, *, box_anchor_mode: BoxAnch
         raise ValueError('same-bar pivots require a lower-timeframe N, not daily projection')
     direction = Direction.UP if a.point.kind == PointKind.LOW else Direction.DOWN
     return NSetup(line.symbol, line.timeframe, direction,
-        *(PivotRef(p.point.index, p.confirmed_index) for p in (a, b, c)),
+        PivotRef(a.point.index, a.confirmed_index),
+        PivotRef(b.point.index, b.confirmed_index),
+        PivotRef(c.point.index, c.confirmed_index),
         source='polyline_confirmed:' + '|'.join(p.source for p in (a, b, c)),
         box_anchor_mode=box_anchor_mode)

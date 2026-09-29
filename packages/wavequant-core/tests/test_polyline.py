@@ -7,7 +7,7 @@ from wavequant.domain.market_structure.price_action import Direction
 from wavequant.domain.market_structure.n_shape import BoxAnchorMode, MilestoneBasis, NStatus, observe_n
 from wavequant.domain.market_state.market_regime import RegimePolicy, WaveBoundary, observe_market_regime
 from wavequant.domain.market_structure.polyline import (BarPathEvidence, LinePoint, PointKind as K,
-    child_mother_path, n_setup_from_polyline, observe_bar_relations, observe_polyline)
+    child_mother_path, mother_child_path, n_setup_from_polyline, observe_bar_relations, observe_polyline)
 
 
 def bars(rows):
@@ -98,20 +98,30 @@ class PolylineTests(unittest.TestCase):
         self.assertEqual(r.reversals[2].source, 'explicit_intraday_extremes')
 
     def test_four_teaching_cases(self):
+        expected = {
+            (True, True): [K.LOW, K.HIGH, K.LOW, K.HIGH],
+            (True, False): [K.LOW, K.HIGH, K.LOW],
+            (False, True): [K.HIGH, K.LOW, K.HIGH],
+            (False, False): [K.HIGH, K.LOW, K.HIGH, K.LOW],
+        }
         for child_bull in (True, False):
             for mother_bull in (True, False):
                 data = bars([(9, 11, 8, 10) if child_bull else (10, 11, 8, 9),
                              (8, 13, 7, 12) if mother_bull else (12, 13, 7, 8)])
                 path = child_mother_path(*data, child_index=0)
-                expected = [K.HIGH if child_bull else K.LOW] + ([K.LOW, K.HIGH] if mother_bull else [K.HIGH, K.LOW])
-                self.assertEqual([v.kind for v in path.vertices], expected)
+                self.assertEqual([v.kind for v in path.vertices], expected[(child_bull, mother_bull)])
+                self.assertEqual(len(path.raw_vertices), 4)
+                self.assertEqual(path.vertices[-1], path.raw_vertices[-1])
                 self.assertIn('not_observed', path.provenance)
 
-    def test_teaching_doji_undefined_and_mother_child_not_invented(self):
+    def test_teaching_doji_undefined_and_wrong_order_rejected(self):
         data = bars([(9, 11, 8, 9), (8, 13, 7, 12)])
         self.assertEqual(child_mother_path(*data, child_index=0).status, 'undefined_doji')
         with self.assertRaises(ValueError):
             child_mother_path(*bars([(8, 13, 7, 12), (9, 11, 8, 10)]), child_index=0)
+        inside = bars([(8, 13, 7, 12), (9, 11, 8, 10)])
+        self.assertEqual([v.kind for v in mother_child_path(*inside, mother_index=0).vertices],
+                         [K.LOW, K.HIGH, K.LOW, K.HIGH])
 
     def test_zero_length_and_equal_extreme_do_not_create_pivots(self):
         r = run(bars([(10, 10, 10, 10), (10, 10, 10, 10)]))

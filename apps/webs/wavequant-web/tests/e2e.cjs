@@ -400,20 +400,22 @@ const results = [];
                 "a wave leg must span intermediate small turns",
             );
             const stroke = theory.lecture_drawing.teaching_paths.find(
-                (s) => s.points[0].time === "2026-08-28" && s.points[1].time === "2026-08-31",
+                (s) => s.points[0].time === "2026-08-28" && s.points.at(-1).time === "2026-08-31",
             );
             assert.ok(stroke);
             assert.deepEqual(
-                stroke.points.map((p) => Number(p.value.toFixed(2))),
-                [1578.33, 1563.88, 1586.98],
+                stroke.points.filter((p) => p.time === "2026-08-31").map((p) => Number(p.value.toFixed(2))),
+                [1563.88, 1586.98],
             );
-            assert.deepEqual(
-                stroke.points.map((p) => p.ordinal),
-                [0, 0, 1],
-            );
+            assert.ok(stroke.points.some((p) => p.time === "2026-08-28"));
+            for (let point = 2; point < stroke.points.length; point++) {
+                const previous = stroke.points[point - 1].value - stroke.points[point - 2].value;
+                const next = stroke.points[point].value - stroke.points[point - 1].value;
+                assert.ok(previous * next < 0, "same-direction legs should share one line");
+            }
             const connected = theory.lecture_drawing.strokes.filter((s) => s.teaching_path_ids.includes(stroke.id));
             assert.equal(connected.length, 1, "child and mother must belong to a single main path");
-            assert.ok(connected[0].points.some((p) => p.time === "2026-08-31" && p.teaching_ordinal === 2));
+            assert.ok(connected[0].points.some((p) => p.time === "2026-08-31" && p.teaching_path_id === stroke.id));
             const ordinary = theory.lecture_drawing.strokes.filter((s) => s.kind === "ordinary");
             assert.ok(theory.lecture_drawing.inside_connections.length > 0);
             for (const link of theory.lecture_drawing.inside_connections) {
@@ -422,7 +424,7 @@ const results = [];
             }
             assert.ok(theory.lecture_drawing.issues.every((i) => !i.reason.startsWith("先母后子")));
             for (const line of ordinary) {
-                assert.equal(line.seed_policy, "first_directional_high_low_pair_opposite_extreme");
+                assert.equal(line.seed_policy, "colour_order_for_containment_or_first_directional_pair");
                 for (let i = 1; i < line.points.length; i++) {
                     assert.notEqual(
                         line.points[i - 1].kind,

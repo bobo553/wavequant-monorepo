@@ -56,7 +56,8 @@ def test_target_and_joint_candle_conditions_are_required(case):
     elif case == "future_target":
         events = [dict(e, bar_index=index + 1) for e in events]
     elif case == "invalidated":
-        events = events + [dict(event="wave_projection_invalidated", bar_index=index)]
+        events = events + [dict(event="wave_projection_invalidated", bar_index=index,
+                                attack=events[0]["attack"], origin_index=events[0].get("origin_index"))]
     elif case == "equal_volume":
         bars[index] = replace(bars[index], volume=bars[index - 1].volume)
     elif case == "no_new_high":
