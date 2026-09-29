@@ -4,6 +4,33 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-209",
+            "name": "stabilize-watchlist-polling-render",
+            "title": "自选股轮询不再反复刷新列表",
+            "description": "回测任务每三秒轮询时仅更新实际变化的状态字段，股票列表保持原有行、焦点和滚动位置，自选股状态未变化时不写入 DOM。",
+            "scope": "wavequant-web 左侧股票列表与自选股回测状态",
+            "dependencies": ["MONOREPO-204", "MONOREPO-206"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "回测状态及耗时更新时不重建股票行，已聚焦的股票按钮保持不变",
+                "相同回测快照重复轮询时，自选股行不产生 DOM 改动",
+                "运行中、完成和清除状态仍能更新徽标、耗时与可访问名称",
+                "定向测试、Web Lint、类型检查、生产构建与格式检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/stock-list.test.mjs apps/webs/wavequant-web/tests/watchlists.test.mjs",
+                    "status": "passed",
+                    "summary": "15 项定向测试通过，覆盖轮询时股票行与焦点稳定、耗时增量更新、无变化自选股行零 DOM 改动。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "Web Lint（6 条既有警告）、类型检查、生产构建、修改文件格式、Harness 及差异检查通过；按用户规则未运行 Playwright、浏览器端到端或完整 Web 单测。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-208",
             "name": "clear-mother-child-inverse-n-break",
             "title": "母子阳线跌破子低形成倒 N 当日清仓",

@@ -182,6 +182,49 @@ test("a running watchlist row shows its own server progress and clears it after 
     assert.equal(secondary.hidden, true);
 });
 
+test("unchanged backtest polls leave watchlist rows untouched", () => {
+    const dom = new JSDOM(`
+        <div id="watchlist-stock-list">
+            <div class="watchlist-stock-row" data-symbol="sh.600519">
+                <button class="watchlist-stock-open" data-base-label="切换到 贵州茅台"></button>
+                <span class="watchlist-backtest-badge"></span>
+                <span class="watchlist-stock-secondary" hidden>
+                    <span class="watchlist-backtest-result" hidden></span>
+                    <span class="watchlist-backtest-drawdown" hidden></span>
+                </span>
+            </div>
+        </div>
+    `);
+    const list = dom.window.document.getElementById("watchlist-stock-list");
+    const row = list.firstElementChild;
+    const subject = {
+        $(id) {
+            assert.equal(id, "watchlist-stock-list");
+            return list;
+        },
+        renderBacktestStatus: Watchlists.prototype.renderBacktestStatus,
+    };
+    const values = [
+        { "sh.600519": "completed" },
+        new Set(["sh.600519"]),
+        {},
+        { "sh.600519": 2 },
+        { "sh.600519": { rate: 0.125, amount: 12500, drawdown: -0.083 } },
+        [],
+    ];
+    try {
+        Watchlists.prototype.setBacktestStatuses.call(subject, ...values);
+        const observer = new dom.window.MutationObserver(() => {});
+        observer.observe(row, { subtree: true, childList: true, characterData: true, attributes: true });
+        Watchlists.prototype.setBacktestStatuses.call(subject, ...values);
+        assert.equal(observer.takeRecords().length, 0);
+        assert.equal(list.firstElementChild, row);
+        observer.disconnect();
+    } finally {
+        dom.window.close();
+    }
+});
+
 test("normalization repairs malformed watchlist data without mutating the stored snapshot", () => {
     const snapshot = {
         groups: [
