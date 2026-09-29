@@ -1828,6 +1828,7 @@ body {
         #price-chart,
         .chart-position,
         #chart-loading-overlay,
+        .trade-playback,
         .replay
     ) {
     display: none;
@@ -2438,10 +2439,50 @@ body {
     opacity: 0.45;
     cursor: not-allowed;
 }
+.trade-playback,
 .replay {
     border-top: 1px solid var(--border);
     padding: 12px 17px;
+}
+.trade-playback {
+    background: var(--research-subtle);
+}
+.replay {
     background: #111b28;
+}
+.trade-playback-heading,
+.trade-playback-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.trade-playback-heading {
+    justify-content: space-between;
+    color: var(--research-text-soft);
+    font-size: 11px;
+}
+.trade-playback-heading output {
+    font-variant-numeric: tabular-nums;
+}
+.trade-playback-controls {
+    flex-wrap: wrap;
+    margin: 10px 0 6px;
+}
+.trade-playback-controls button,
+.trade-playback-controls select {
+    min-height: 32px;
+    font-size: 11px;
+}
+.trade-playback-controls label,
+.trade-playback p {
+    color: var(--research-text-faint);
+    font-size: 10px;
+}
+.trade-playback p {
+    margin: 0;
+}
+.trade-playback .trade-playback-note {
+    margin-top: 4px;
 }
 .replay-title {
     display: flex;
