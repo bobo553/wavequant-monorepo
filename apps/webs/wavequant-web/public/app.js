@@ -4,10 +4,10 @@ import {
     backtestRecordMatchesSource,
     expiredBacktestSnapshot,
     formatBacktestElapsed,
-    historicalBacktestStatuses,
     runningBacktestStatuses,
     selectedBacktestAction,
     selectedBacktestButton,
+    visibleWatchlistBacktestState,
 } from "./backtest-job-status.js";
 import { retryBacktest, waitForBacktestJob } from "./backtest-retry.js";
 import { parseBacktestSizing } from "./backtest-sizing.js";
@@ -2437,10 +2437,6 @@ const watchlistBacktests = new IdleWatchlistBacktests({
         active,
         queued,
         draining,
-        statuses,
-        fillCounts,
-        returns,
-        failures,
         total,
         completed,
         failed,
@@ -2498,7 +2494,7 @@ const watchlistBacktests = new IdleWatchlistBacktests({
                                   : checking || !version
                                     ? "正在核对策略版本…"
                                     : `准备按列表顺序回测 · 已完成 ${completed}/${total}，失败 ${failed}`;
-        renderServerBacktestStatuses({ statuses, ready, failures, fillCounts, returns });
+        renderServerBacktestStatuses();
     },
 });
 function syncServerBacktestHistory() {
@@ -2513,18 +2509,18 @@ function syncCompletedStockBacktests() {
     }
     return false;
 }
-function renderServerBacktestStatuses(queueState = watchlistBacktests.state()) {
+function renderServerBacktestStatuses() {
     const source = sourceForScope($("result-scope").value);
-    const sameSource = Boolean(source && queueState.source === source);
-    const { statuses, ready, failures, fillCounts, returns } = sameSource
-        ? queueState
-        : { statuses: {}, ready: false, failures: {}, fillCounts: {}, returns: {} };
-    const sourceJobs = serverBacktestSnapshot.jobs.filter((job) => source && backtestRecordMatchesSource(job, source));
-    const visibleStatuses = runningBacktestStatuses(
-        source ? historicalBacktestStatuses(statuses, serverBacktestSnapshot.recent, source) : statuses,
-        sourceJobs,
-        { unavailable: serverBacktestSnapshot.unavailable, source },
+    const { sameSource, statuses, ready, failures, fillCounts, returns } = visibleWatchlistBacktestState(
+        source,
+        watchlistBacktests.state(),
+        serverBacktestSnapshot.recent,
     );
+    const sourceJobs = serverBacktestSnapshot.jobs.filter((job) => source && backtestRecordMatchesSource(job, source));
+    const visibleStatuses = runningBacktestStatuses(statuses, sourceJobs, {
+        unavailable: serverBacktestSnapshot.unavailable,
+        source,
+    });
     const visibleFailures = { ...failures };
     if (sameSource && watchlistBacktests.context && watchlistBacktests.strategyVersion) {
         for (const member of watchlistBacktests.members) {

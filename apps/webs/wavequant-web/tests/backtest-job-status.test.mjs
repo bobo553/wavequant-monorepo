@@ -11,6 +11,7 @@ import {
     runningBacktestStatuses,
     selectedBacktestAction,
     selectedBacktestButton,
+    visibleWatchlistBacktestState,
 } from "../public/backtest-job-status.js";
 import { StockBacktestTasks } from "../public/stock-backtest-tasks.js";
 import { IdleWatchlistBacktests, watchlistBacktestRequest } from "../public/watchlist-backtest-queue.js";
@@ -105,6 +106,30 @@ test("backtest badges only use jobs from the selected market source", () => {
     });
     assert.deepEqual(akshare, { "sh.601086": "historical", "sz.000001": "running" });
     assert.deepEqual(tdx, { "sz.000001": "historical", "sh.601086": "running" });
+});
+
+test("a completed watchlist result stays completed across queue and server status refreshes", () => {
+    const queueState = {
+        source: "akshare",
+        statuses: { "sh.601086": "completed" },
+        ready: true,
+        failures: {},
+        fillCounts: { "sh.601086": 2 },
+        returns: { "sh.601086": { rate: 0.1, amount: 10_000 } },
+    };
+    const recent = [{ path: "/api/akshare-backtest", symbol: "sh.601086", status: "completed", result_valid: true }];
+    for (const [refresh, history] of [
+        ["queue change", []],
+        ["server poll", recent],
+    ]) {
+        const state = visibleWatchlistBacktestState("akshare", queueState, history);
+        assert.equal(state.sameSource, true, refresh);
+        assert.equal(state.statuses["sh.601086"], "completed", refresh);
+        assert.equal(state.fillCounts["sh.601086"], 2, refresh);
+    }
+    const otherSource = visibleWatchlistBacktestState("tdx", queueState, recent);
+    assert.equal(otherSource.sameSource, false);
+    assert.equal(otherSource.statuses["sh.601086"], undefined);
 });
 
 test("an expired server copy cannot displace a completed local result or recurse through status updates", async () => {

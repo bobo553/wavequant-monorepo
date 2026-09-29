@@ -44,6 +44,18 @@ export function historicalBacktestStatuses(statuses, recent, source = null) {
     return merged;
 }
 
+export function visibleWatchlistBacktestState(source, queueState, recent) {
+    const sameSource = Boolean(source && queueState.source === source);
+    const selected = sameSource
+        ? queueState
+        : { statuses: {}, ready: false, failures: {}, fillCounts: {}, returns: {} };
+    return {
+        ...selected,
+        sameSource,
+        statuses: source ? historicalBacktestStatuses(selected.statuses, recent, source) : selected.statuses,
+    };
+}
+
 export function adoptServerBacktestHistory(queue, recent, tasks) {
     if (!Array.isArray(recent) || !queue.strategyVersion) return false;
     queue.sync(queue.snapshot());
