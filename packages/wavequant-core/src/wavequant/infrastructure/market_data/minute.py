@@ -120,10 +120,12 @@ def verify_minute_day(rows: list[dict[str, str]], daily: Bar) -> list[MinuteBar]
         (min(item.low for item in result), daily.low / factor),
         (result[-1].close, daily.close / factor),
     )
-    if any(abs(actual - expected) > 0.015 for actual, expected in checks):
-        raise ValueError(f"{day} 五分钟与同源日线 OHLC 不一致")
+    # Missing trades can leave all 48 timestamps but hide the day's price extreme.
+    # Check volume first so the caller can apply its missing-minute policy.
     if abs(sum(item.volume for item in result) - daily.volume) > max(1, daily.volume * 0.00001):
         raise MinuteVolumeMismatch(day, sum(item.volume for item in result), daily.volume)
+    if any(abs(actual - expected) > 0.015 for actual, expected in checks):
+        raise ValueError(f"{day} 五分钟与同源日线 OHLC 不一致")
     return result
 
 
