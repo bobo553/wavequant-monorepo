@@ -89,7 +89,7 @@ const REASONS = {
     wave_bull_resistance_failed_clear: "目标阶段大阴线击穿多头抵抗低点，当日清仓",
     wave_bearish_engulf_clear: "目标阶段大阴线反包前日阳线，当日清仓",
     volume_inverse_n_clear: "倒 N 确认且成交量超过前日，当日直接清仓",
-    mother_child_inverse_n_low_break: "母子阳线路径跌破子线低点形成倒 N，当日收盘清仓",
+    mother_child_inverse_n_low_break: "母子阳线路径今低跌破子线低点且今收低于昨收，形成倒 N，当日收盘清仓",
     inverse_n_close_reduce_90: "收盘确认倒 N，当日累计减仓至原持仓 90%",
     inverse_n_after_reduction_90: "首次减仓后确认倒 N，累计减仓至原持仓 90%",
     support_low_break_reduce: "最低价跌破前回踩 K 线，收盘未跌破，减仓至 35%",

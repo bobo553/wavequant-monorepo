@@ -7,13 +7,14 @@
             "id": "MONOREPO-208",
             "name": "clear-mother-child-inverse-n-break",
             "title": "母子阳线跌破子低形成倒 N 当日清仓",
-            "description": "母子阳线讲义路径依次形成母高、子低、子高，后续一日最低价严格跌破子低时，V3 全局策略发布倒 N 清仓信号并于当日收盘清空已有持仓。",
+            "description": "母子阳线讲义路径依次形成母高、子低、子高，后续一日今低严格小于昨低且今收严格小于昨收时，V3 全局策略发布倒 N 清仓信号并于当日收盘清空已有持仓。",
             "scope": "wavequant-core V3 信号、回测执行及 wavequant-web 退出说明",
             "dependencies": ["MONOREPO-207"],
             "status": "done",
             "acceptanceCriteria": [
                 "国芳集团 2022-07-04 跌破 07-01 子线低点，即使收盘站回、成交量低于前日，已有持仓仍于当日收盘清仓且余仓为零",
-                "等低或子线非阳线时不误判倒 N；跌破日同时创子线新高仍按破子低清仓",
+                "国芳集团 2020-08-07 虽盘中跌破 08-06 子低，但今收高于昨收，不触发母子倒 N 清仓",
+                "今低等于昨低、今收等于昨收或子线非阳线时不误判倒 N；只要今低与今收双破，今高创新高也不阻止清仓",
                 "真实日线前缀与后缀信号一致，Core 定向回归、静态检查及 Web 文案定向验证通过"
             ],
             "verification": [
@@ -28,14 +29,14 @@
                     "summary": "新增识别模块与策略配置定向 mypy、Core sdist/wheel、Web Lint（6 条既有警告）、类型、生产构建及修改文件格式检查通过；Core 整仓严格 mypy 仍有既有类型错误，未运行完整 Web 单测或浏览器端到端测试。"
                 },
                 {
-                    "command": "pnpm --filter @wavequant/core typecheck; mypy --follow-imports=silent integrated_strategy.py backtest.py strategy_profiles.py",
-                    "status": "failed",
-                    "summary": "Core 整仓严格 mypy 报 410 条既有错误；改动的两个大模块按定向口径报 44 条，与本地 main 同数且无新增行报错。用户 2026-09-29 明确要求当前分支合并到 main 并重启服务，本次按其指示覆盖既有错误门禁。"
-                },
-                {
                     "command": "2018-01-01 至 2022-07-04 本机通达信完整个股回测；合并最新 main 后 Core 和 Web 定向回归",
                     "status": "passed",
                     "summary": "sh.601086 2022-07-04 复权最低 4.9246、收盘 4.9503；06-30 买入 6393.9961 等价股，07-04 约 4.9478 全额卖出且余仓为零。同步最新 main 后 Core 101 项、Web 29 项通过。"
+                },
+                {
+                    "command": "2020-08-07 与 2022-07-04 本机通达信完整个股回测；Core 118 项、Web 29 项、改动模块 strict mypy",
+                    "status": "passed",
+                    "summary": "改为今低严格小于昨低且今收严格小于昨收后，2020-08-07 无母子倒 N EXIT 或 SELL；2022-07-04 仍 EXIT 且约 4.9478 元全额卖出、余仓为零。任一相等边界不触发；定向 Core 118 项、Web 29 项及两个改动模块 strict mypy 通过。"
                 }
             ]
         },
