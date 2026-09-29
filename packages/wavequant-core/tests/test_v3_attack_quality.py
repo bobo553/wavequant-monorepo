@@ -48,7 +48,7 @@ def test_ruiling_2019_october_attack_is_disqualified_even_when_relative_volume_f
 
 
 def test_v3_rejection_prevents_completed_n_evidence_even_when_optional_volume_filter_is_off():
-    bars = ruiling_bars()  # Equal daily volumes; geometry itself completes on July 27.
+    bars = ruiling_bars()  # Equal daily volumes; the revised geometry completes on August 4.
     legacy = generate_system_signals(
         bars,
         SystemStrategy(
@@ -56,7 +56,8 @@ def test_v3_rejection_prevents_completed_n_evidence_even_when_optional_volume_fi
             volume_filter=False, squeeze_pullback_entries=False,
         ),
     )
-    assert any(e["event"] == "n_completed" and e["timestamp"].startswith("2026-07-27") for e in legacy.audit)
+    assert not any(e["event"] == "n_completed" and e["timestamp"].startswith("2026-07-27") for e in legacy.audit)
+    assert any(e["event"] == "n_completed" and e["timestamp"].startswith("2026-08-04") for e in legacy.audit)
     v3 = generate_system_signals(
         bars,
         SystemStrategy(
@@ -65,8 +66,8 @@ def test_v3_rejection_prevents_completed_n_evidence_even_when_optional_volume_fi
         ),
     )
     assert any(
-        e["event"] == "n_attack_rejected" and e["timestamp"].startswith("2026-07-27")
+        e["event"] == "n_attack_rejected" and e["timestamp"].startswith("2026-08-04")
         and e["reason"] == "v3_attack_volume_not_above_previous"
         for e in v3.audit
     )
-    assert not any(e["event"] == "n_completed" and e["timestamp"].startswith("2026-07-27") for e in v3.audit)
+    assert not any(e["event"] == "n_completed" and e["timestamp"].startswith("2026-08-04") for e in v3.audit)

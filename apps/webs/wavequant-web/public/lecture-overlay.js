@@ -561,14 +561,14 @@ export class LectureOverlay {
             category: "rules",
             price: p.value,
             title: teaching
-                ? `子母路径第 ${p.teaching_ordinal || Number(index) + 1} 点 · ${p.kind}${p.teaching_extended ? " · 极值已延伸" : ""}`
+                ? `${p.teaching_path_id?.startsWith("mother-child") ? "母子" : "子母"}路径第 ${p.teaching_ordinal || Number(index) + 1} 点 · ${p.kind}${p.teaching_extended ? " · 极值已延伸" : ""}`
                 : `${p.kind === "H" ? "高点" : "低点"} · ${p.state === "developing" ? "发展中" : p.state === "seed" ? "初始化" : "已确认"}`,
             description: p.drawing_rule
-                ? `${p.drawing_rule}。只按基础规则连接单个极值，未确认子线日内高低顺序。新版另经收盘确认与 N 几何过滤，不直接凭绘图点买卖。`
+                ? `${p.drawing_rule}。该处日内顺序未解；新版另取收盘确认点，不直接凭绘图点买卖。`
                 : teaching
-                  ? "按子母三点规则接入主路径，后续沿同一端点延伸。属于讲义约定，非实测盘中顺序；旧封存策略不使用该路径，新版另取收盘确认点。"
+                  ? "按阴阳高低顺序连线，连续同向的线段合并。属于讲义约定，非实测盘中顺序；新版另取收盘确认点，不直接凭绘图点买卖。"
                   : "使用普通棒高低比较及发展中端点；不把端点当作已确认 N 拐点。",
-            sourceLabel: "讲义绘图层 · 与策略拐点独立",
+            sourceLabel: "讲义折线 · 新版策略另取收盘确认点",
             levels: [{ name: "高低点价格", price: p.value }],
             raw: stroke,
         };

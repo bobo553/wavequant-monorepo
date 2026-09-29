@@ -20,23 +20,23 @@ def guofang():
     return bars, {str(bar.timestamp.date()): index for index, bar in enumerate(bars)}
 
 
-def test_guofang_known_abc_target_and_resisted_break_clear_on_july_15():
+def test_guofang_recalculated_level_two_key_reduces_then_clears_on_july_15():
     bars, dates = guofang()
     history, _ = hierarchical_history(bars)
     risks = trend_flip_exit_history(bars, history)
-    assert not any(dates["2020-07-07"] <= index < dates["2020-07-15"] for index in risks)
+    assert not any(dates["2020-07-07"] <= index < dates["2020-07-10"] for index in risks)
+    warning = risks[dates["2020-07-10"]]
+    assert warning["reason"] == "trend_last_fall_high_upper_shadow_reduce"
+    assert warning["exit_fraction"] == pytest.approx(0.8)
+    assert warning["trend_key_date"] == "2020-04-17"
+    assert risks[dates["2020-07-14"]]["reason"] == warning["reason"]
     risk = risks[dates["2020-07-15"]]
-    assert risk["reason"] == "secondary_wave_target_resistance_clear"
+    assert risk["reason"] == "trend_last_fall_high_lower_close_clear"
     assert risk["exit_fraction"] == 1
     assert risk["execution_model"] == "same_day_close"
-    assert risk["trend_origin_date"] == "2020-04-28"
-    assert risk["trend_key_date"] == "2020-06-04"
-    assert risk["wave_b_date"] == "2020-06-12"
-    assert risk["trend_resistance_dates"] == ["2020-07-10", "2020-07-13"]
-    assert risk["trend_indecision_date"] == "2020-07-14"
-    assert risk["wave_equal_target"] == pytest.approx(5.9501408392)
-    assert bars[dates["2020-07-13"]].high < risk["wave_equal_target"] <= bars[dates["2020-07-14"]].high
-    assert bars[dates["2020-07-15"]].close < risk["trend_indecision_low"]
+    assert risk["trend_key_date"] == "2020-04-17"
+    assert risk["trend_warning_date"] == "2020-07-14"
+    assert bars[dates["2020-07-15"]].close < risk["trend_key_high"]
 
     prefix = bars[: dates["2020-07-15"] + 1]
     assert trend_flip_exit_history(prefix, hierarchical_history(prefix)[0]) == {
@@ -50,10 +50,10 @@ def test_guofang_known_abc_target_and_resisted_break_clear_on_july_15():
                             risk_fraction=0.1, max_position_weight=0.8, max_participation=1)
     result = run_portfolio({bars[0].symbol: bars}, [signal], config)
     sales = [order for order in result.orders if order["side"] == "SELL" and order["status"] == "filled"]
-    assert len(sales) == 1
-    assert sales[0]["timestamp"] == bars[dates["2020-07-15"]].timestamp.isoformat()
-    assert sales[0]["reason"] == risk["reason"]
-    assert sales[0]["position_closed"] is True
+    assert [(sale["timestamp"][:10],sale["reason"],sale["position_closed"]) for sale in sales] == [
+        ("2020-07-10",warning["reason"],False),
+        ("2020-07-15",risk["reason"],True),
+    ]
 
 
 def synthetic(*, future_key=False):

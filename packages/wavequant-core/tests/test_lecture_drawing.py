@@ -9,6 +9,29 @@ def bars(rows):
 
 
 class LectureDrawingTests(unittest.TestCase):
+    def test_containment_pairs_follow_colour_order_and_merge_monotone_edges(self):
+        cases = (
+            (True, True, [('L', 9), ('H', 12), ('L', 10), ('H', 11)],
+             [('L', 10), ('H', 11), ('L', 9), ('H', 12)]),
+            (True, False, [('L', 9), ('H', 12), ('L', 10)],
+             [('H', 11), ('L', 9), ('H', 12)]),
+            (False, False, [('H', 12), ('L', 9), ('H', 11), ('L', 10)],
+             [('H', 11), ('L', 10), ('H', 12), ('L', 9)]),
+            (False, True, [('H', 12), ('L', 9), ('H', 11)],
+             [('L', 10), ('H', 12), ('L', 9)]),
+        )
+        for mother_up, child_up, mother_child, child_mother in cases:
+            mother = (9.5, 12, 9, 11.5) if mother_up else (11.5, 12, 9, 9.5)
+            child = (10.2, 11, 10, 10.8) if child_up else (10.8, 11, 10, 10.2)
+            for rows, expected in (([mother, child], mother_child),
+                                   ([child, mother], child_mother)):
+                with self.subTest(mother_up=mother_up, child_up=child_up, rows=rows):
+                    drawing = lecture_drawing(bars(rows))
+                    self.assertEqual(drawing['issues'], [])
+                    self.assertEqual(len(drawing['strokes']), 1)
+                    self.assertEqual([(point['kind'], point['value'])
+                                      for point in drawing['strokes'][0]['points']], expected)
+
     def test_ordinary_extends_high_low_not_close(self):
         bs=bars([(10,12,9,11),(12,14,11,13),(11,12,10,11),(12,13,11,12)])
         drawing=lecture_drawing(bs);points=drawing['strokes'][0]['points']
@@ -54,6 +77,12 @@ class LectureDrawingTests(unittest.TestCase):
         self.assertEqual([p['index'] for p in points],[0,1,3,5])
 
     def test_four_explicit_child_mother_cases_and_same_bar_order(self):
+        expected_cases = {
+            (True, True): [10, 11, 9, 12],
+            (True, False): [10, 12, 9],
+            (False, True): [11, 9, 12],
+            (False, False): [11, 10, 12, 9],
+        }
         for child_up in (True,False):
             for mother_up in (True,False):
                 with self.subTest(child_up=child_up,mother_up=mother_up):
@@ -61,21 +90,34 @@ class LectureDrawingTests(unittest.TestCase):
                     mother=(9.5,12,9,11.5) if mother_up else (11.5,12,9,9.5)
                     drawing=lecture_drawing(bars([child,mother]))
                     path=drawing['teaching_paths'][0]['points']
-                    self.assertEqual([p['value'] for p in path],[11 if child_up else 10]+([9,12] if mother_up else [12,9]))
-                    self.assertEqual([p['index'] for p in path],[0,1,1])
-                    self.assertEqual([p['ordinal'] for p in path],[0,0,1])
+                    self.assertEqual([p['value'] for p in path], expected_cases[(child_up, mother_up)])
+                    self.assertEqual([p['index'] for p in path],
+                                     [0, 0, 1, 1] if child_up == mother_up else [0, 1, 1])
+                    self.assertEqual([p['ordinal'] for p in path],
+                                     [0, 1, 0, 1] if child_up == mother_up else [0, 0, 1])
                     self.assertTrue(all(p['available_at']=='2026-01-02' for p in path))
                     self.assertEqual(len(drawing['strokes']),1)
                     self.assertEqual([p['value'] for p in drawing['strokes'][0]['points']], [p['value'] for p in path])
                     self.assertEqual(drawing['strokes'][0]['teaching_path_ids'],['child-mother-1'])
 
-    def test_missing_inside_and_doji_rules_are_not_invented(self):
+    def test_initial_mother_child_is_defined_but_doji_remains_unresolved(self):
         inside=lecture_drawing(bars([(9.5,12,9,11.5),(10,11,9.5,10.5)]))
-        self.assertEqual(len(inside['issues']),1)
+        self.assertEqual(inside['issues'],[])
+        self.assertEqual([p['value'] for p in inside['strokes'][0]['points']],[9,12,9.5,11])
         self.assertEqual(inside['teaching_paths'],[])
         doji=lecture_drawing(bars([(10,11,9,10),(9,12,8,11)]))
         self.assertEqual(len(doji['issues']),1)
         self.assertEqual(doji['teaching_paths'],[])
+        initial_inside_doji=lecture_drawing(bars([(9.5,12,9,11.5),(10.5,11,10,10.5)]))
+        self.assertEqual(len(initial_inside_doji['issues']),1)
+
+    def test_inside_doji_with_known_direction_keeps_single_extreme_and_history(self):
+        drawing=lecture_drawing(bars([(10,11,9,10.5),(10.5,12,10,11.5),(10.5,11,10.5,10.5)]))
+        self.assertEqual(drawing['issues'],[])
+        self.assertEqual([p['value'] for p in drawing['strokes'][0]['points']],[9,12,10.5])
+        self.assertFalse(drawing['strokes'][0]['points'][-1]['intrabar_order_resolved'])
+        self.assertEqual(drawing['inside_connections'][0]['source'],
+                         'known_direction_single_extreme_for_inside_doji')
 
     def test_child_mother_path_not_available_before_mother(self):
         bs=bars([(10.2,11,10,10.8),(9.5,12,9,11.5)])
@@ -83,6 +125,12 @@ class LectureDrawingTests(unittest.TestCase):
         self.assertEqual(len(lecture_drawing(bs)['teaching_paths']),1)
 
     def test_all_four_cases_join_previous_leg_and_extend_without_restart(self):
+        expected_at_mother = {
+            (True, True): [(0,8),(1,11),(2,9),(2,12)],
+            (True, False): [(0,8),(2,12),(2,9)],
+            (False, True): [(0,8),(1,11),(2,9),(2,12)],
+            (False, False): [(0,8),(1,11),(1,10),(2,12),(2,9)],
+        }
         for child_up in (True,False):
             for mother_up in (True,False):
                 with self.subTest(child_up=child_up,mother_up=mother_up):
@@ -94,12 +142,13 @@ class LectureDrawingTests(unittest.TestCase):
                     at_mother=lecture_drawing(bs[:3])
                     self.assertEqual(len(at_mother['strokes']),1)
                     path=at_mother['strokes'][0]['points']
-                    self.assertEqual([p['index'] for p in path],[0,1,2,2])
-                    self.assertEqual([p['value'] for p in path], [8,11 if child_up else 10]+([9,12] if mother_up else [12,9]))
+                    self.assertEqual([(p['index'],p['value']) for p in path],
+                                     expected_at_mother[(child_up,mother_up)])
                     final=lecture_drawing(bs)
                     self.assertEqual(len(final['strokes']),1)
                     points=final['strokes'][0]['points']
-                    self.assertEqual([p['index'] for p in points],[0,1,2,4])
+                    self.assertEqual([p['index'] for p in points],
+                                     [index for index,_ in expected_at_mother[(child_up,mother_up)][:-1]]+[4])
                     self.assertEqual(points[-1]['value'],14 if mother_up else 7)
                     self.assertEqual(points[:-1],path[:-1])
                     self.assertTrue(points[-1]['teaching_extended'])
@@ -117,32 +166,33 @@ class LectureDrawingTests(unittest.TestCase):
         self.assertEqual(len(drawing['strokes']),1)
         self.assertEqual(len(drawing['teaching_paths']),2)
         points=drawing['strokes'][0]['points']
-        self.assertEqual([p['value'] for p in points],[11,9,12,8,13])
-        self.assertEqual([(p['index'],p['ordinal']) for p in points],[(0,0),(1,0),(1,1),(2,0),(2,1)])
+        self.assertEqual([p['value'] for p in points],[10,11,9,12,8,13])
+        self.assertEqual([(p['index'],p['ordinal']) for p in points],
+                         [(0,0),(0,1),(1,0),(1,1),(2,0),(2,1)])
 
-    def test_known_direction_inside_connects_one_extreme_without_restart(self):
+    def test_known_direction_inside_keeps_reversal_and_later_extension(self):
         bs=bars([(10.2,11,10,10.8),(9.5,12,9,11.5),(10,11,10,10.5),(11,13,11,12)])
         drawing=lecture_drawing(bs)
         self.assertEqual(len(drawing['strokes']),1)
         self.assertFalse(drawing['incomplete'])
         self.assertTrue(drawing['intrabar_incomplete'])
-        self.assertEqual([p['value'] for p in drawing['strokes'][0]['points']],[11,9,12,10,13])
-        self.assertEqual(drawing['inside_connections'][0]['rule'],'上涨缩头：原高点连子低')
+        self.assertEqual([p['value'] for p in drawing['strokes'][0]['points']],[10,11,9,12,10,13])
+        self.assertEqual(drawing['inside_connections'][0]['rule'],'母子阴阳路径：相邻同向线段合并')
 
     def test_downtrend_inside_connects_previous_low_to_child_high(self):
         bs=bars([(12,14,10,13),(10,12,8,9),(10,11,9,10.5),(10,13,10,12)])
         drawing=lecture_drawing(bs)
         self.assertEqual(len(drawing['strokes']),1)
         self.assertEqual([p['value'] for p in drawing['strokes'][0]['points']],[14,8,13])
-        self.assertEqual(drawing['inside_connections'][0]['rule'],'下跌缩脚：原低点连子高')
+        self.assertEqual(drawing['inside_connections'][0]['rule'],'母子阴阳路径：相邻同向线段合并')
 
-    def test_nested_inside_bars_keep_one_path_and_do_not_invent_intrabar_turns(self):
+    def test_nested_inside_bars_follow_colour_order_in_one_path(self):
         bs=bars([(9,11,8,10),(10,14,9,13),(11,13,10,12),(11,12,11,11.5),(10,11.5,9,10)])
         drawing=lecture_drawing(bs)
         self.assertEqual(len(drawing['strokes']),1)
-        self.assertEqual([p['value'] for p in drawing['strokes'][0]['points']],[8,14,10,12,9])
+        self.assertEqual([p['value'] for p in drawing['strokes'][0]['points']],[8,14,10,13,11,12,9])
         self.assertEqual(len(drawing['inside_connections']),2)
-        self.assertEqual([p['index'] for p in drawing['strokes'][0]['points']],[0,1,2,3,4])
+        self.assertEqual([p['index'] for p in drawing['strokes'][0]['points']],[0,1,2,2,3,3,4])
 
     def test_inside_drawing_does_not_relax_strict_strategy_polyline(self):
         from wavequant.domain.market_structure.polyline import observe_polyline

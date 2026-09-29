@@ -5,7 +5,7 @@ import sys
 
 from wavequant.domain.models.model import Bar
 from wavequant.domain.market_structure.polyline import (LinePoint, PointKind as K, ReversalPoint,
-    child_mother_path, n_setup_from_polyline, observe_polyline)
+    child_mother_path, mother_child_path, n_setup_from_polyline, observe_polyline)
 from wavequant.domain.market_structure.price_action import AttackBasis, Direction
 from wavequant.domain.market_structure.n_shape import BoxAnchorMode, MilestoneBasis, observe_n
 from wavequant.domain.market_state.market_regime import RegimePolicy, WaveBoundary, observe_market_regime
@@ -62,7 +62,10 @@ def main():
     child, mother = make_bars([(9, 11, 8, 10), (8, 13, 7, 12)])
     path = child_mother_path(child, mother, child_index=0)
     print('\n阳子＋阳母教学连接：'+' → '.join(f'{p.kind.value} {p.price:g}' for p in path.vertices))
-    print('以上子母连接是讲义约定，不是日内真实路径；默认折线遇内外包会暂停等待证据。')
+    mother, child = make_bars([(9.5, 12, 9, 11.5), (10.8, 11, 10, 10.2)])
+    path = mother_child_path(mother, child, mother_index=0)
+    print('阳母＋阴子教学连接：'+' → '.join(f'{p.kind.value} {p.price:g}' for p in path.vertices))
+    print('以上连接是讲义约定，不是日内真实路径；严格研究折线遇内外包仍暂停等待次级证据。')
 
 
 if __name__ == '__main__':
