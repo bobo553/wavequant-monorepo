@@ -79,8 +79,12 @@ def test_complete_clock_but_missing_volume_is_unavailable_not_a_verified_path(tm
     assert source.provenance()['session_sha256'] == {}
     with pytest.raises(ValueError, match='成交量不一致'):
         source.get(replace(day(), volume=47000))
-    with pytest.raises(ValueError, match='OHLC'):
+    with pytest.raises(MinuteCoverageError) as caught:
         source.get(replace(day(), high=12, volume=48200))
+    assert caught.value.coverage['reason'] == 'minute_volume_incomplete'
+    assert caught.value.coverage['missing_volume'] == 200
+    with pytest.raises(ValueError, match='OHLC'):
+        source.get(replace(day(), high=12))
 
 
 def test_pinned_daily_never_tries_another_upstream():
