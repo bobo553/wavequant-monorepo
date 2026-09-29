@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-212",
+            "name": "gap-up-bullish-squeeze-confirmation",
+            "title": "正 N 后跳空阳线确认轧空",
+            "description": "正 N 后已有抵抗且原防守未破时，跳空高开收阳并收盘突破本轮此前全部高点可在长上影下确认轧空，保留买点资格和明确的审计来源。",
+            "scope": "wavequant-core 全局盘态确认、V3 买点审计和规则文档",
+            "dependencies": ["MONOREPO-164"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "开盘严格高于前高、收阳且收盘严格突破本轮 N 先前高点，已有抵抗与原 N 防守未破时允许长上影确认轧空",
+                "无跳空、收阴、防守失守或 N 完成后仅第一根 K 线时不借此确认",
+                "国芳集团 2022-11-29 正 N 在 2022-12-01 确认轧空并产生第一类买点，证据标记 gap_up_bullish_record",
+                "相关盘态、买点和历史反例定向测试通过，规则版本与文档同步"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest test_squeeze_confirmation_body.py test_market_regime.py test_hierarchical_n.py test_split_n_wave.py test_multilevel_squeeze.py test_weak_n_record_squeeze.py -q",
+                    "status": "passed",
+                    "summary": "55 项及 5 个子测试通过；覆盖跳空阳线长上影放行、未跳空、收阴、防守失守与既有抵抗反例。"
+                },
+                {
+                    "command": "真实 TDX 2018-01-02 至 2022-12-06 日线以本分支全局策略重放，并单独重放截至 2022-12-01 的前缀",
+                    "status": "passed",
+                    "summary": "完整与截至当日前缀均在 2022-12-01 为 11-29 正 N 生成 transition_squeeze LONG，审计来源为 gap_up_bullish_record；12-06 不再生成同笔延迟 LONG。"
+                },
+                {
+                    "command": "python -m compileall -q 修改的 Python 文件; pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "修改模块可编译，Harness 验证 211 项功能记录与 workspace/规则结构通过，差异无空白错误。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-211",
             "name": "play-backtest-trade-fills",
             "title": "回测买卖成交点播放与暂停",
