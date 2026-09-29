@@ -47,6 +47,14 @@ export function seekChartRange(state, position) {
     return { from, to: from + state.span };
 }
 
+export function tradePointRange(index, barCount) {
+    if (!Number.isInteger(index) || index < 0 || index >= barCount) return null;
+    const rightEdge = barCount - 1 + RIGHT_PADDING_BARS;
+    const span = Math.min(84, rightEdge);
+    const from = Math.max(0, Math.min(rightEdge - span, index - span / 2));
+    return { from, to: from + span };
+}
+
 export function chartNavigationKeyPosition(state, key) {
     if (key === "Home") return 0;
     if (key === "End") return state.maxStart;

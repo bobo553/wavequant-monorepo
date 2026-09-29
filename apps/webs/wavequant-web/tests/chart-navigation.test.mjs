@@ -6,6 +6,7 @@ import {
     chartNavigationState,
     panChartRange,
     seekChartRange,
+    tradePointRange,
     zoomChartRange,
 } from "../public/chart-navigation.js";
 
@@ -20,6 +21,14 @@ test("chart navigation clamps panning and seeking to the loaded data", () => {
     assert.equal(end.firstIndex, 899);
     assert.equal(end.lastIndex, 999);
     assert.deepEqual(panChartRange(end, 1), { from: 899, to: 1005 });
+});
+
+test("trade navigation centers the selected fill and clamps near chart edges", () => {
+    assert.deepEqual(tradePointRange(500, 1000), { from: 458, to: 542 });
+    assert.deepEqual(tradePointRange(0, 1000), { from: 0, to: 84 });
+    assert.deepEqual(tradePointRange(999, 1000), { from: 921, to: 1005 });
+    assert.deepEqual(tradePointRange(2, 5), { from: 0, to: 10 });
+    assert.equal(tradePointRange(-1, 1000), null);
 });
 
 test("zoom keeps the latest edge visible and respects the minimum and maximum window", () => {

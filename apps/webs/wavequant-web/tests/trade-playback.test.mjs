@@ -6,7 +6,13 @@ import { TradePlayback, filledTradePlaybackEvents } from "../public/trade-playba
 const buy = { id: "buy", kind: "fill", side: "BUY", time: "2024-01-03", price: 10 };
 const sell = { id: "sell", kind: "fill", side: "SELL", time: "2024-01-05", price: 11 };
 const add = { id: "add", kind: "fill", side: "BUY", time: "2024-01-03", price: 10.5 };
-const view = { result_scope: "stock", backtest: { status: "completed" }, markers: [sell, buy, add] };
+const view = {
+    result_scope: "stock",
+    backtest: { status: "completed" },
+    asof: "2024-01-05",
+    bars: [{ time: "2024-01-03" }, { time: "2024-01-05" }],
+    markers: [sell, buy, add],
+};
 
 function playback() {
     const selected = [];
@@ -40,10 +46,49 @@ test("playback uses actual fills in chronological order and ignores signals", ()
     assert.deepEqual(
         filledTradePlaybackEvents({
             ...view,
+            markers: [
+                buy,
+                { ...sell, id: "unplotted", time: "2024-01-04" },
+                { ...sell, id: "future", time: "2024-01-06" },
+            ],
+        }).map(({ id }) => id),
+        ["buy"],
+    );
+    assert.deepEqual(
+        filledTradePlaybackEvents({
+            ...view,
             markers: [{ ...buy, timestamp: "2024-01-03T15:00:00" }, { ...add, timestamp: "2024-01-03T14:00:00" }, sell],
         }).map(({ id }) => id),
         ["add", "buy", "sell"],
     );
+});
+
+test("previous and next jump directly to adjacent filled B/S points", () => {
+    const { subject, selected } = playback();
+    subject.setView(view);
+    assert.equal(subject.step(-1), true);
+    assert.deepEqual(selected, ["sell"]);
+    assert.equal(subject.step(-1), true);
+    assert.deepEqual(selected, ["sell", "add"]);
+    assert.equal(subject.step(1), true);
+    assert.deepEqual(selected, ["sell", "add", "sell"]);
+    subject.setView(view);
+    assert.equal(subject.step(1), true);
+    assert.equal(subject.snapshot().current.id, "buy");
+});
+
+test("selecting a fill outside playback makes the next step relative to that fill", () => {
+    const { subject, selected, pending } = playback();
+    subject.setView(view);
+    subject.play();
+    assert.equal(subject.select("sell"), true);
+    assert.equal(subject.snapshot().current.id, "sell");
+    assert.equal(subject.snapshot().playing, false);
+    assert.equal(pending.size, 0);
+    assert.equal(subject.step(-1), true);
+    assert.deepEqual(selected, ["buy", "add"]);
+    assert.equal(subject.select("missing"), false);
+    assert.equal(subject.snapshot().current.id, "add");
 });
 
 test("pause retains the current fill and resume continues with the next fill", () => {

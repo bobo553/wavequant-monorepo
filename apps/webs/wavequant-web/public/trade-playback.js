@@ -1,5 +1,6 @@
 export function filledTradePlaybackEvents(view) {
     if (view?.result_scope !== "stock" || !view.backtest || view.backtest.status === "data_unavailable") return [];
+    const plottedDates = new Set((view.bars || []).map((bar) => bar.time));
     return (view.markers || [])
         .map((marker, order) => ({ marker, order }))
         .filter(
@@ -7,7 +8,9 @@ export function filledTradePlaybackEvents(view) {
                 marker.kind === "fill" &&
                 ["BUY", "SELL"].includes(marker.side) &&
                 typeof marker.id === "string" &&
-                typeof marker.time === "string",
+                typeof marker.time === "string" &&
+                marker.time <= view.asof &&
+                plottedDates.has(marker.time),
         )
         .sort((left, right) => {
             const dateOrder = left.marker.time.localeCompare(right.marker.time);
@@ -109,11 +112,25 @@ export class TradePlayback {
     step(delta) {
         if (!this.events.length) return false;
         this.pause();
-        const next = Math.max(0, Math.min(this.events.length - 1, this.index + delta));
+        const next =
+            this.index < 0 && delta < 0
+                ? this.events.length - 1
+                : Math.max(0, Math.min(this.events.length - 1, this.index + delta));
         if (next === this.index) return false;
         this.index = next;
         this.completed = false;
         this.onSelect(this.events[next], next);
+        this.emit();
+        return true;
+    }
+
+    select(id) {
+        const index = this.events.findIndex((event) => event.id === id);
+        if (index < 0 || index === this.index) return false;
+        this.cancelNext();
+        this.playing = false;
+        this.completed = false;
+        this.index = index;
         this.emit();
         return true;
     }
