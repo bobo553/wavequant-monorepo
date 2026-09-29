@@ -4,6 +4,32 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-210",
+            "name": "keep-watchlist-status-source-during-queue-updates",
+            "title": "自选股回测状态不再交替显示",
+            "description": "队列状态变化和服务器轮询统一读取完整的队列快照，保留当前数据源，避免已完成状态被误判为历史待更新。",
+            "scope": "wavequant-web 自选股回测状态合并与来源匹配",
+            "dependencies": ["MONOREPO-209"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "相同来源的已完成回测在队列通知和服务器轮询后均保持已完成",
+                "历史回测记录不会覆盖当前来源的已完成状态，其他来源状态继续隔离",
+                "自选股相关定向测试、Web Lint、类型检查、生产构建与格式检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/backtest-job-status.test.mjs apps/webs/wavequant-web/tests/watchlist-backtest-queue.test.mjs apps/webs/wavequant-web/tests/watchlists.test.mjs apps/webs/wavequant-web/tests/stock-list.test.mjs",
+                    "status": "passed",
+                    "summary": "44 项相关 Node 测试通过，新增队列变化与服务器轮询间已完成状态稳定的回归用例。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "Web Lint（既有警告）、类型检查、生产构建、修改文件格式、Harness 和差异检查通过；按用户规则未运行 Playwright、浏览器端到端或完整 Web 单测。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-209",
             "name": "stabilize-watchlist-polling-render",
             "title": "自选股轮询不再反复刷新列表",
