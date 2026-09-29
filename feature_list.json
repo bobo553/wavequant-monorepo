@@ -10,7 +10,7 @@
             "description": "母子阳线讲义路径依次形成母高、子低、子高，后续一日最低价严格跌破子低时，V3 全局策略发布倒 N 清仓信号并于当日收盘清空已有持仓。",
             "scope": "wavequant-core V3 信号、回测执行及 wavequant-web 退出说明",
             "dependencies": ["MONOREPO-207"],
-            "status": "blocked",
+            "status": "done",
             "acceptanceCriteria": [
                 "国芳集团 2022-07-04 跌破 07-01 子线低点，即使收盘站回、成交量低于前日，已有持仓仍于当日收盘清仓且余仓为零",
                 "等低或子线非阳线时不误判倒 N；跌破日同时创子线新高仍按破子低清仓",
@@ -30,7 +30,12 @@
                 {
                     "command": "pnpm --filter @wavequant/core typecheck; mypy --follow-imports=silent integrated_strategy.py backtest.py strategy_profiles.py",
                     "status": "failed",
-                    "summary": "Core 整仓严格 mypy 报 410 条既有错误；改动的两个大模块按定向口径报 44 条，与本地 main 同数且无新增行报错。按仓库未通过检查不合并规则，本地 main 合并待解决基线或获用户明确覆盖。"
+                    "summary": "Core 整仓严格 mypy 报 410 条既有错误；改动的两个大模块按定向口径报 44 条，与本地 main 同数且无新增行报错。用户 2026-09-29 明确要求当前分支合并到 main 并重启服务，本次按其指示覆盖既有错误门禁。"
+                },
+                {
+                    "command": "2018-01-01 至 2022-07-04 本机通达信完整个股回测；合并最新 main 后 Core 和 Web 定向回归",
+                    "status": "passed",
+                    "summary": "sh.601086 2022-07-04 复权最低 4.9246、收盘 4.9503；06-30 买入 6393.9961 等价股，07-04 约 4.9478 全额卖出且余仓为零。同步最新 main 后 Core 101 项、Web 29 项通过。"
                 }
             ]
         },
