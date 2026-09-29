@@ -9,6 +9,54 @@ from wavequant.domain.strategies.integrated_strategy import SystemStrategy, gene
 from wavequant.domain.strategies.mother_child_inverse_n import mother_child_inverse_n_break
 
 
+def guofang_march_2023() -> list[Bar]:
+    factor = 1.2824530716204
+    rows = [
+        ("2023-03-22", 4.41, 4.43, 4.31, 4.37, 4_858_956),
+        ("2023-03-23", 4.38, 4.40, 4.34, 4.40, 4_996_359),
+        ("2023-03-24", 4.40, 4.41, 4.28, 4.31, 4_297_000),
+    ]
+    return [
+        Bar(datetime.fromisoformat(day), "sh.601086", *(price * factor for price in (opening, high, low, close)),
+            volume, adjustment_factor=factor)
+        for day, opening, high, low, close, volume in rows
+    ]
+
+
+def test_guofang_march_24_breaks_bullish_child_of_bearish_mother_and_clears_position():
+    bars = guofang_march_2023()
+    assert bars[0].close < bars[0].open < bars[0].high
+    assert bars[1].close > bars[1].open
+    assert bars[2].high > bars[1].high and bars[2].volume < bars[1].volume
+    evidence = mother_child_inverse_n_break(bars, 2)
+    assert evidence is not None
+    assert evidence["mother_date"] == "2023-03-22"
+    assert evidence["child_date"] == "2023-03-23"
+    assert evidence["child_low"] == bars[1].low
+    assert evidence["child_close"] == bars[1].close
+
+    strategy = SystemStrategy(pivot_mode="lecture_causal", entry_policy="hierarchical_two_buy_points",
+                              buy_point_definition="whole_flip_wave_v3")
+    generated = generate_system_signals(bars, strategy)
+    assert any(signal.timestamp == bars[2].timestamp and
+               "mother_child_inverse_n_low_break" in signal.reason for signal in generated.signals)
+
+    entry = Signal(bars[1].timestamp, bars[1].symbol, 1, "LONG", bars[1].close, 5.2,
+                   "fixture", bars[1].timestamp, 0, None, "fixture", 6.0)
+    config = StrategyConfig(entry_at_close=True, inverse_n_close_reduce=True, volume_inverse_n_clear=True,
+                            staged_exit_enabled=False, exit_on_target=False, max_participation=1,
+                            risk_fraction=0.2, max_position_weight=0.8, slippage_bps_per_side=0)
+    result = run_backtest(bars, [entry, *generated.signals], config)
+    fills = [order for order in result.orders if order["status"] == "filled"]
+    assert [(order["side"], order["timestamp"][:10]) for order in fills] == [
+        ("BUY", "2023-03-23"), ("SELL", "2023-03-24"),
+    ]
+    assert fills[-1]["reason"] == "mother_child_inverse_n_low_break"
+    assert fills[-1]["position_closed"] is True
+    assert fills[-1]["remaining_quantity"] == 0
+    assert result.open_positions == []
+
+
 def guofang_july_2022() -> list[Bar]:
     factor = 1.2824530731884245
     rows = [
@@ -66,7 +114,11 @@ def test_child_low_touch_and_bearish_child_do_not_claim_an_inverse_n():
     bearish_child = [bars[0], bars[1],
                      Bar(bars[2].timestamp, bars[2].symbol, bars[2].open, bars[2].high,
                          bars[2].low, bars[2].open - 0.01, bars[2].volume), bars[3]]
-    for sample in (touching, bearish_child):
+    mother = bars[1]
+    doji_mother = [bars[0],
+                   Bar(mother.timestamp, mother.symbol, mother.close, mother.high,
+                       mother.low, mother.close, mother.volume), bars[2], bars[3]]
+    for sample in (touching, bearish_child, doji_mother):
         generated = generate_system_signals(sample, strategy)
         assert not any("mother_child_inverse_n_low_break" in signal.reason for signal in generated.signals)
 
