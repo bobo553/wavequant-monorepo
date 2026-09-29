@@ -47,11 +47,20 @@ export function seekChartRange(state, position) {
     return { from, to: from + state.span };
 }
 
-export function tradePointRange(index, barCount) {
-    if (!Number.isInteger(index) || index < 0 || index >= barCount) return null;
+export function tradePointRange(index, barCount, range) {
+    if (
+        !Number.isInteger(index) ||
+        index < 0 ||
+        index >= barCount ||
+        !range ||
+        !Number.isFinite(range.from) ||
+        !Number.isFinite(range.to) ||
+        range.to <= range.from
+    )
+        return null;
     const rightEdge = barCount - 1 + RIGHT_PADDING_BARS;
-    const span = Math.min(84, rightEdge);
-    const from = Math.max(0, Math.min(rightEdge - span, index - span / 2));
+    const span = range.to - range.from;
+    const from = Math.max(0, Math.min(Math.max(0, rightEdge - span), index - span / 2));
     return { from, to: from + span };
 }
 

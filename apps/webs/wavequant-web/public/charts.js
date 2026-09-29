@@ -942,9 +942,10 @@ export class PriceChart {
     }
     focusTrade(time) {
         const index = this.data?.bars.findIndex((bar) => bar.time === time) ?? -1;
-        const range = tradePointRange(index, this.data?.bars.length ?? 0);
+        const timeScale = this.chart.timeScale();
+        const range = tradePointRange(index, this.data?.bars.length ?? 0, timeScale.getVisibleLogicalRange());
         if (!range) return false;
-        this.chart.timeScale().setVisibleLogicalRange(range);
+        timeScale.setVisibleLogicalRange(range);
         return true;
     }
     focusRange(from, to) {

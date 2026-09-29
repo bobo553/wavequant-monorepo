@@ -23,12 +23,14 @@ test("chart navigation clamps panning and seeking to the loaded data", () => {
     assert.deepEqual(panChartRange(end, 1), { from: 899, to: 1005 });
 });
 
-test("trade navigation centers the selected fill and clamps near chart edges", () => {
-    assert.deepEqual(tradePointRange(500, 1000), { from: 458, to: 542 });
-    assert.deepEqual(tradePointRange(0, 1000), { from: 0, to: 84 });
-    assert.deepEqual(tradePointRange(999, 1000), { from: 921, to: 1005 });
-    assert.deepEqual(tradePointRange(2, 5), { from: 0, to: 10 });
-    assert.equal(tradePointRange(-1, 1000), null);
+test("trade navigation pans to the selected fill without changing zoom", () => {
+    assert.deepEqual(tradePointRange(500, 1000, { from: 100, to: 140 }), { from: 480, to: 520 });
+    assert.deepEqual(tradePointRange(500, 1000, { from: 100, to: 280 }), { from: 410, to: 590 });
+    assert.deepEqual(tradePointRange(0, 1000, { from: 100, to: 140 }), { from: 0, to: 40 });
+    assert.deepEqual(tradePointRange(999, 1000, { from: 100, to: 140 }), { from: 965, to: 1005 });
+    assert.deepEqual(tradePointRange(2, 5, { from: 0, to: 10 }), { from: 0, to: 10 });
+    assert.equal(tradePointRange(-1, 1000, { from: 100, to: 140 }), null);
+    assert.equal(tradePointRange(500, 1000, null), null);
 });
 
 test("zoom keeps the latest edge visible and respects the minimum and maximum window", () => {

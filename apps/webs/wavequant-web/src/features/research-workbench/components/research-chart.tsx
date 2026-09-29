@@ -411,7 +411,7 @@ export function ResearchChart(): JSX.Element {
                 </div>
                 <p id="trade-playback-current">运行当前股票回测后可按成交顺序播放 B/S 点位。</p>
                 <p className="trade-playback-note">
-                    上一笔／下一笔直接跳到相邻 B/S 成交点；首次可从首笔或末笔开始，不逐日重算。
+                    上一笔／下一笔直接跳到相邻 B/S 成交点并保持当前缩放；首次可从首笔或末笔开始。
                 </p>
                 <span id="trade-playback-announcement" className="sr-only" role="status" aria-live="polite" />
             </section>

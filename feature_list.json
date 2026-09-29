@@ -14,7 +14,7 @@
             "acceptanceCriteria": [
                 "仅播放当前个股回测中实际已成交的 B/S 点位，按成交时间排序且不重新发起回测",
                 "播放从首笔开始，暂停后从当前笔继续，支持前后步进、调速与播完重启",
-                "未选中成交时上一笔跳末笔、下一笔跳首笔；图表或成交列表选中 B/S 后，步进以该点为基准并将目标放入图窗",
+                "未选中成交时上一笔跳末笔、下一笔跳首笔；图表或成交列表选中 B/S 后，步进以该点为基准，平移图窗且保持原缩放",
                 "切换股票、回测截面、图表视图、离开工作台或隐藏页面时取消计时，不让旧点位影响新结果",
                 "控件默认不自动播放、无成交时禁用，展示进度并使用可访问的按钮状态",
                 "相关定向测试、Web Lint、类型检查、生产构建、格式与 Harness 检查通过"
@@ -23,7 +23,7 @@
                 {
                     "command": "node --test apps/webs/wavequant-web/tests/trade-playback.test.mjs apps/webs/wavequant-web/tests/chart-navigation.test.mjs apps/webs/wavequant-web/tests/annotations.test.mjs",
                     "status": "passed",
-                    "summary": "41 项定向 Node 测试通过，补充首末笔直接跳转、外部选点同步、图窗定位边界与不可绘制成交过滤回归。"
+                    "summary": "定向 Node 测试通过，覆盖首末笔直接跳转、外部选点同步、图窗平移时保持缩放、定位边界与不可绘制成交过滤。"
                 },
                 {
                     "command": "node --check changed public JS; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; pnpm exec prettier --check changed files; pnpm harness:check; git diff --check",
