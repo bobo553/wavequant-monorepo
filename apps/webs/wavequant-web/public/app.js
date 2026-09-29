@@ -32,6 +32,7 @@ import { parseResearchLink, resolveResearchLink } from "./research-link.js";
 import { StockBacktestTasks } from "./stock-backtest-tasks.js";
 import { StockList } from "./stock-list.js";
 import { StructureSignals } from "./structure-signals.js";
+import { TradePlayback } from "./trade-playback.js";
 import { closedPositionLabel, openPositionForMarker, openPositionProfit, positionProfit } from "./trade-position.js";
 import { numberedTradeReasons } from "./trade-reasons.js";
 import { appendTradeEvidence } from "./trade-review.js";
@@ -392,6 +393,7 @@ const titles = {
     health: "系统状态",
 };
 const requestedPage = new URLSearchParams(window.location.search).get("page");
+let tradePlayback = null;
 function cell(text, cls = "") {
     const td = document.createElement("td");
     td.textContent = text;
@@ -504,6 +506,7 @@ async function api(path, params = {}, signal, method = "GET") {
     }
 }
 function showPage(page) {
+    if (page !== "workspace") tradePlayback?.pause();
     state.page = page;
     $("page-title").textContent = titles[page];
     document.querySelectorAll(".page").forEach((el) => (el.hidden = state.error || el.id !== `page-${page}`));
@@ -557,19 +560,36 @@ const chart = new PriceChart(
     (bar, button) => copyHoveredCandle(bar, button),
     renderChartViewport,
 );
-bindPressAndHold($("chart-pan-left"), () => chart.pan(-1));
-bindPressAndHold($("chart-pan-right"), () => chart.pan(1));
-bindPressAndHold($("chart-zoom-in"), () => chart.zoom("in"));
-bindPressAndHold($("chart-zoom-out"), () => chart.zoom("out"));
-$("chart-position-slider").addEventListener("input", (event) => chart.seek(Number(event.currentTarget.value)));
+bindPressAndHold($("chart-pan-left"), () => {
+    tradePlayback?.pause();
+    chart.pan(-1);
+});
+bindPressAndHold($("chart-pan-right"), () => {
+    tradePlayback?.pause();
+    chart.pan(1);
+});
+bindPressAndHold($("chart-zoom-in"), () => {
+    tradePlayback?.pause();
+    chart.zoom("in");
+});
+bindPressAndHold($("chart-zoom-out"), () => {
+    tradePlayback?.pause();
+    chart.zoom("out");
+});
+$("chart-position-slider").addEventListener("input", (event) => {
+    tradePlayback?.pause();
+    chart.seek(Number(event.currentTarget.value));
+});
 $("chart-position-slider").addEventListener("keydown", (event) => {
     const state = chart.navigationState();
     if (!state) return;
     const position = chartNavigationKeyPosition(state, event.key);
     if (position === null) return;
     event.preventDefault();
+    tradePlayback?.pause();
     chart.seek(position);
 });
+$("price-chart").addEventListener("pointerdown", () => tradePlayback?.pause());
 const tradingViewWidget = new TradingViewWidget({
     container: $("tradingview-widget"),
     status: $("tradingview-status"),
@@ -581,6 +601,7 @@ const tradingViewWidget = new TradingViewWidget({
 const chartViewTabs = [$("chart-local-tab"), $("chart-tradingview-tab")];
 function setChartView(view, focus = false) {
     const tradingView = view === "tradingview";
+    if (tradingView) tradePlayback?.pause();
     $("tradingview-panel").hidden = !tradingView;
     $("chart-local-tab").setAttribute("aria-selected", String(!tradingView));
     $("chart-tradingview-tab").setAttribute("aria-selected", String(tradingView));
@@ -606,6 +627,62 @@ chartViewTabs.forEach((tab) => {
             true,
         );
     });
+});
+let playbackWasPlaying = false;
+function renderTradePlayback({ total, index, current, playing, finished }) {
+    const toggle = $("trade-playback-toggle");
+    toggle.disabled = total === 0;
+    toggle.textContent = playing ? "暂停" : "播放";
+    toggle.setAttribute("aria-label", playing ? "暂停买卖点播放" : "播放买卖点");
+    toggle.setAttribute("aria-pressed", String(playing));
+    $("trade-playback-previous").disabled = index <= 0;
+    $("trade-playback-next").disabled = total === 0 || index >= total - 1;
+    $("trade-playback-speed").disabled = total === 0;
+    $("trade-playback-progress").textContent = `${index + 1} / ${total}`;
+    $("trade-playback-current").textContent = current
+        ? `${current.time} · ${current.side === "BUY" ? "买入" : "卖出"} · ${num(current.price)} 元${finished ? " · 播放完成" : playing ? " · 播放中" : index === total - 1 ? " · 已到末笔" : " · 已暂停"}`
+        : total
+          ? `共 ${total} 笔实际成交，点击播放从最早一笔开始。`
+          : state.loading
+            ? "正在读取当前股票的回测成交…"
+            : state.view?.backtest
+              ? "本次回测没有实际成交的买卖点。"
+              : "运行当前股票回测后可按成交顺序播放 B/S 点位。";
+    if (finished && playbackWasPlaying) $("trade-playback-announcement").textContent = "买卖点播放完成";
+    playbackWasPlaying = playing;
+}
+tradePlayback = new TradePlayback({
+    onSelect: (marker) => {
+        if (!$("tradingview-panel").hidden) setChartView("local");
+        if (!$("show-fills").checked) {
+            $("show-fills").checked = true;
+            chart.setAnnotationOptions({ fills: true });
+        }
+        chart.selectAnnotation(marker.id);
+    },
+    onChange: renderTradePlayback,
+});
+$("trade-playback-toggle").addEventListener("click", () => {
+    if (tradePlayback.playing) {
+        tradePlayback.pause();
+        $("trade-playback-announcement").textContent = "买卖点播放已暂停";
+    } else if (tradePlayback.play()) {
+        $("trade-playback-announcement").textContent = tradePlayback.snapshot().finished
+            ? "买卖点播放完成"
+            : "正在播放买卖点";
+    }
+});
+for (const [id, delta] of [
+    ["trade-playback-previous", -1],
+    ["trade-playback-next", 1],
+]) {
+    $(id).addEventListener("click", () => {
+        if (tradePlayback.step(delta))
+            $("trade-playback-announcement").textContent = `已定位第 ${tradePlayback.snapshot().index + 1} 笔成交`;
+    });
+}
+$("trade-playback-speed").addEventListener("change", (event) => {
+    tradePlayback.setSpeed(Number(event.currentTarget.value));
 });
 chart.setTrendPriceLabelsVisible($("show-trend-prices").checked);
 const performance = new PerformanceCharts(["equity-chart", "drawdown-chart", "exposure-chart"].map($));
@@ -1865,6 +1942,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
     state.summaryController?.abort();
     $("stock-results-body").replaceChildren();
     state.loading = true;
+    tradePlayback.setView(null);
     state.error = false;
     state.theory = null;
     state.selectedAnnotationId = null;
@@ -2051,6 +2129,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             markers: $("show-markers").checked,
             annotations: annotationOptions(),
         });
+        tradePlayback.setView(data);
         describeBar(data.bars.at(-1));
         performance.update(data.curve);
         const last = data.bars.at(-1);
@@ -2591,9 +2670,14 @@ window.addEventListener("storage", (event) => {
 $("watchlist-backtest-retry").addEventListener("click", () => watchlistBacktests.retryFailed());
 document.addEventListener("visibilitychange", () => {
     lastWorkbenchInteraction = Date.now();
+    if (document.visibilityState !== "visible" && tradePlayback.playing) {
+        tradePlayback.pause();
+        $("trade-playback-announcement").textContent = "页面已隐藏，买卖点播放已暂停";
+    }
     if (document.visibilityState === "visible") void refreshServerBacktestStatuses();
     void watchlistBacktests.tick();
 });
+window.addEventListener("pagehide", () => tradePlayback.pause());
 window.addEventListener("wavequant:watchlists-changed", () => void watchlistBacktests.tick());
 $("backtest-start").addEventListener("change", () => {
     buyPoints.contextChanged();
@@ -2836,6 +2920,7 @@ for (const id of [
             loadTheory(select(), state.sequence);
     });
 $("focus-fill").addEventListener("click", () => {
+    tradePlayback.pause();
     const marker = state.view.markers.filter((m) => m.kind === "fill").at(-1);
     if (marker) selectFill(marker);
     else {
