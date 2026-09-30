@@ -110,6 +110,7 @@ const REASONS = {
     no_live_structural_risk_reward: "没有有效结构止损或未达目标",
     insufficient_close_gross_reward_risk: "收盘参考盈亏比不足",
     wave_no_alternation_at_attack: "N 字攻击时尚无已确认的空多交替",
+    bearish_mother_child_resistance_unresolved: "巨量阴母线与阴子线跌破后，收盘尚未突破母线高点",
     first_buy_requires_level_two_or_three: "第一类买点需要二级或三级空多交替，一级不符合",
     wave_second_close_pullback_too_deep: "第二类买点的收盘回撤超过当前方案阈值",
     wave_context_no_longer_live: "攻击时的多头结构已失效",

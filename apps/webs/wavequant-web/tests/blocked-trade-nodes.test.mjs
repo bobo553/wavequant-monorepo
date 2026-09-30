@@ -67,6 +67,35 @@ test("empty blocked history produces no date cards", () => {
     assert.deepEqual(groupBlockedTradeNodes(blockedTradeNodes({ markers: [], theory: { events: [] } })), []);
 });
 
+test("bearish mother resistance copy identifies the unresolved mother high", () => {
+    const view = {
+        symbol: "sz.000978",
+        backtest: { start: "2026-03-11" },
+        asof: "2026-04-16",
+        bars: [],
+        markers: [],
+        theory: {
+            events: [
+                {
+                    id: "mother-1",
+                    event: "entry_rejected",
+                    time: "2026-04-16",
+                    available_at: "2026-04-16",
+                    price: 8.75,
+                    reason: "bearish_mother_child_resistance_unresolved",
+                    mother_date: "2026-04-09",
+                    mother_high: 8.936126899407055,
+                },
+            ],
+        },
+    };
+
+    const copy = formatBlockedTradeCopy(view, groupBlockedTradeNodes(blockedTradeNodes(view)), "全局 V3");
+
+    assert.match(copy, /收盘尚未突破母线高点/);
+    assert.match(copy, /阴母线 2026-04-09 高点 8\.94 元/);
+});
+
 test("copy text retains each same-day rejection with stock, strategy, prices and reasons", () => {
     const view = {
         symbol: "sh.600519",

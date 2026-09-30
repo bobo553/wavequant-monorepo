@@ -32,6 +32,7 @@ test("sizing rejection and structural cutoff have explicit Chinese explanations"
     assert.match(reasonText("mother_child_inverse_n_low_break"), /阳子线低点与收盘均被严格跌破.*当日收盘清仓/);
     assert.match(reasonText("volume_bearish_child_reduce_70"), /阴子线.*减仓 70%/);
     assert.match(reasonText("volume_bearish_child_break_clear"), /最低价和收盘价均跌破阴子线.*清空余仓/);
+    assert.match(reasonText("bearish_mother_child_resistance_unresolved"), /收盘尚未突破母线高点/);
 });
 test("window key follows extreme predecessor, not latest opposite pivot", () => {
     const points = [
