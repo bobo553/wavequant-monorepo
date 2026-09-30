@@ -124,6 +124,7 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
             five_top: "五顶",
             ten_full: "十满",
             ordinary_equal: "普通 A 的 C 等浪",
+            c_0618: "C 浪 0.618 目标",
         };
         lines.push(
             `目标背景：${marker.wave_n_origin_date ? `新段正 N 起点 ${marker.wave_n_origin_date} ${num(marker.wave_n_origin_price, 4)} 元；` : "本笔"}正 N ${marker.wave_n_date}；${marker.wave_reached_date} 已到 ${stageNames[marker.wave_reached_stage] || marker.wave_reached_stage} ${num(marker.wave_reached_price, 4)} 元`,
@@ -143,6 +144,14 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         if (marker.reason === "wave_ordinary_equal_lower_close_clear")
             lines.push(
                 `异常后首次收低：${marker.abnormal_date} 出现长上影；本日收盘 ${num(marker.observed_close, 4)} < 前收 ${num(marker.previous_close, 4)}，当日清空余仓`,
+            );
+        if (marker.reason === "wave_c_0618_upper_shadow_reduce")
+            lines.push(
+                `C 浪 0.618 目标 ${num(marker.wave_c_0618_target, 4)} 元已触及；本日收盘 ${num(marker.observed_close, 4)} < 前收 ${num(marker.previous_close, 4)}，上影占振幅 ${pct(marker.wave_upper_shadow_fraction)}，累计减仓 80%`,
+            );
+        if (marker.reason === "wave_c_0618_shadow_break_clear")
+            lines.push(
+                `${marker.abnormal_date} 长上影警示后，本日收盘 ${num(marker.observed_close, 4)} < 前收 ${num(marker.previous_close, 4)}；最低 ${num(marker.observed_low, 4)} < 警示低点 ${num(marker.abnormal_low, 4)}，收盘 < 警示收盘 ${num(marker.abnormal_close, 4)}，清空余仓`,
             );
         if (marker.reason === "wave_upper_rejection_reduce")
             lines.push(

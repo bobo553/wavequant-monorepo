@@ -4,6 +4,37 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-214",
+            "name": "xianfeng-c-0618-and-bearish-child-exit",
+            "title": "先锋新材 C 浪目标与阴子线退出",
+            "description": "普通 A 浪持仓达到 C 浪 0.618 观察位后遇收低长上影先减仓，后续收低并双破警示 K 清仓；阳母阴子放量门槛改为严格超过此前最近阴线，并在次日双破时清仓。",
+            "scope": "wavequant-core 出场识别、单股回测事件归属、wavequant-web 成交说明与真实历史样本回归",
+            "dependencies": ["MONOREPO-170"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "先锋新材 2026-01-29 普通 A 浪买点的 C 浪 0.618 观察位为 5.50666 元；01-30 首触目标，02-02 收低长上影按累计 80% 目标减仓，02-04 收低且跌破警示 K 低点与收盘后清余仓",
+                "02-03 严格内包阴子线成交量 86,844,200 股大于最近前阴线的 55,429,400 股，独立母子放量路径当日累计减仓 70%，02-04 最低价与收盘价均跌破子线后清余仓",
+                "普通 A 浪目标事件归属于实际买入信号；既有等浪、强 A 浪、减仓累计比例及历史前缀行为不回退"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest -q 8 个直接相关 Core 测试文件 --maxfail=1",
+                    "status": "passed",
+                    "summary": "125 项通过，含先锋真实日 K、单股审计到成交路径、等浪与后续 N 退出及历史前缀。"
+                },
+                {
+                    "command": "node --test tests/annotations.test.mjs tests/trade-reasons.test.mjs",
+                    "status": "passed",
+                    "summary": "42 项 Web 说明与标记单测通过，含 C 浪目标日期与警示 K 双破说明。"
+                },
+                {
+                    "command": "Core typecheck/build；Web lint/typecheck/build",
+                    "status": "passed",
+                    "summary": "独立 Python 虚拟环境下 Core 配置门禁和构建通过；Web lint 无错误（6 条既有警告）、类型及生产构建通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-213",
             "name": "clear-bearish-mother-bullish-child-break",
             "title": "国芳阴母阳子双破当日清仓",

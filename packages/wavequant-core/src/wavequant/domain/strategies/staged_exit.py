@@ -301,7 +301,7 @@ def _bearish_outside_reversal(bars: list[Bar], index: int) -> dict | None:
 
 
 def _bearish_mother_child_volume(bars: list[Bar], index: int) -> dict | None:
-    """A bearish inside child with twice the last bearish candle's volume."""
+    """A bearish inside child whose volume exceeds the last bearish candle's."""
     if index < 2:
         return None
     mother, child = bars[index - 1], bars[index]
@@ -314,7 +314,7 @@ def _bearish_mother_child_volume(bars: list[Bar], index: int) -> dict | None:
     if reference < 0:
         return None
     bearish = bars[reference]
-    if bearish.volume <= 0 or mother.close <= bearish.high or child.volume < 2 * bearish.volume:
+    if bearish.volume <= 0 or mother.close <= bearish.high or child.volume <= bearish.volume:
         return None
     return dict(mother_date=mother.timestamp.date().isoformat(),
                 mother_high=mother.high, mother_close=mother.close,

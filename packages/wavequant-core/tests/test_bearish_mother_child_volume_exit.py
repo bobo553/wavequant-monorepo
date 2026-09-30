@@ -2,6 +2,8 @@
 
 from dataclasses import replace
 from datetime import datetime
+import json
+from pathlib import Path
 
 import pytest
 
@@ -64,11 +66,11 @@ def test_guofang_april_portfolio_reduces_70_percent_then_closes_remaining():
 
 
 @pytest.mark.parametrize("change", [
-    {"volume": 2 * 3_526_100 - 1},
+    {"volume": 3_526_100},
     {"close": 4.50},
     {"high": 4.58},
 ])
-def test_child_requires_twice_prior_bearish_volume_bearish_body_and_inside_range(change):
+def test_child_requires_more_than_prior_bearish_volume_bearish_body_and_inside_range(change):
     bars = guofang_april_2023()
     bars[4] = replace(bars[4], **change)
     decision = observe_volume_down_exit(bars, 4, StagedExitState())
@@ -93,3 +95,38 @@ def test_next_session_requires_strict_low_and_close_break(change):
     bars[5] = replace(bars[5], **change)
     decision = observe_volume_down_exit(bars, 5, state)
     assert decision is None
+
+
+def test_xianfeng_february_child_exceeds_prior_bearish_volume_then_breaks_next_day():
+    fixture = Path(__file__).parent / "fixtures/xianfeng_2026_resistance.json"
+    raw = json.loads(fixture.read_text(encoding="utf-8"))
+    rows = [row for row in raw["bars"] if "2026-01-27" <= row[0] <= "2026-02-04"]
+    bars = [Bar(datetime.fromisoformat(day), raw["symbol"], *prices) for day, *prices in rows]
+    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+    state = StagedExitState()
+
+    child = observe_volume_down_exit(bars, dates["2026-02-03"], state)
+    assert child is not None and child["reason"] == "volume_bearish_child_reduce_70"
+    assert child["bearish_reference_date"] == "2026-01-27"
+    assert child["child_volume"] == 86_844_200
+    assert child["child_bearish_volume_multiple"] == pytest.approx(86_844_200 / 55_429_400)
+    clear = observe_volume_down_exit(bars, dates["2026-02-04"], state)
+    assert clear is not None and clear["reason"] == "volume_bearish_child_break_clear"
+    assert clear["observed_low"] < child["child_low"]
+    assert clear["observed_close"] < child["child_close"]
+
+    entry_index = dates["2026-01-29"]
+    entry = Signal(bars[entry_index].timestamp, bars[entry_index].symbol, entry_index,
+                   "LONG", bars[entry_index].close, 4.07, "fixture",
+                   bars[entry_index].timestamp, 0, None, "fixture", 6.03)
+    config = StrategyConfig(entry_at_close=True, volume_down_exit=True, staged_exit_enabled=False,
+                            exit_on_target=False, max_hold_bars=100, max_participation=1,
+                            slippage_bps_per_side=0)
+    result = run_backtest(bars, [entry], config)
+    orders = [order for order in result.orders if order["status"] == "filled"]
+    assert [(order["side"], order["timestamp"][:10], order["reason"]) for order in orders] == [
+        ("BUY", "2026-01-29", "fixture"),
+        ("SELL", "2026-02-03", "volume_bearish_child_reduce_70"),
+        ("SELL", "2026-02-04", "volume_bearish_child_break_clear"),
+    ]
+    assert orders[2]["remaining_quantity"] == 0
