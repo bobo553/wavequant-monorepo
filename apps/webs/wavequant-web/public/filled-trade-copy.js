@@ -216,6 +216,10 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         if (marker.volume_support_date)
             lines.push(`冻结回踩低点：${marker.volume_support_date} · ${num(marker.volume_support_low, 4)} 元`);
     }
+    if (marker.reason === "volume_bearish_child_reduce_70")
+        lines.push(`${marker.mother_date} 阳母线收盘 ${num(marker.mother_close, 4)} > ${marker.bearish_reference_date} 前阴线高点 ${num(marker.bearish_reference_high, 4)}；${marker.child_date} 阴子线被母线包含，成交量 ${num(marker.child_volume, 0)} 股是前阴线 ${num(marker.bearish_reference_volume, 0)} 股的 ${num(marker.child_bearish_volume_multiple, 2)} 倍，当日累计减仓 70%`);
+    if (marker.reason === "volume_bearish_child_break_clear")
+        lines.push(`${marker.child_date} 阴子线后，最低 ${num(marker.observed_low, 4)} < 子线低点 ${num(marker.child_low, 4)}，收盘 ${num(marker.observed_close, 4)} < 子线收盘 ${num(marker.child_close, 4)}，清空余仓`);
     if (marker.reason === "volume_massive_gap_reversal_clear")
         lines.push(
             `巨量高开反包：开盘 ${num(marker.observed_open, 4)} > 前高 ${num(marker.previous_high, 4)}，收盘 ${num(marker.observed_close, 4)} < 前低 ${num(marker.previous_low, 4)}；成交量 ${num(marker.observed_volume, 0)} 股，为前 ${marker.massive_volume_window} 日均量的 ${num(marker.massive_volume_multiple, 2)} 倍且创同期新高；阴线实体/开盘 ${pct(marker.bearish_body_fraction)}，当日清空余仓`,

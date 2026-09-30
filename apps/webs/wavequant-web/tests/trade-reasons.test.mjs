@@ -174,6 +174,32 @@ test("next-session bearish close below warning low explains full exit", () => {
     assert.match(reasons[2], /收盘 5\.0700 < 警示日低点 5\.2600，且低于当日开盘 5\.3000/);
 });
 
+test("bearish inside child reduction and next-session break show their own evidence", () => {
+    const reduction = tradeReasonItems({
+        side: "SELL",
+        reason: "volume_bearish_child_reduce_70",
+        mother_date: "2023-03-31",
+        mother_close: 4.50,
+        bearish_reference_date: "2023-03-29",
+        bearish_reference_high: 4.38,
+        bearish_reference_volume: 3_526_100,
+        child_date: "2023-04-03",
+        child_volume: 15_040_800,
+        child_bearish_volume_multiple: 15_040_800 / 3_526_100,
+    });
+    assert.match(reduction.join(" "), /2023-03-31.*2023-03-29.*2023-04-03.*4\.27 倍.*减仓 70%/);
+    const clear = tradeReasonItems({
+        side: "SELL",
+        reason: "volume_bearish_child_break_clear",
+        child_date: "2023-04-03",
+        child_low: 4.36,
+        child_close: 4.40,
+        observed_low: 4.26,
+        observed_close: 4.30,
+    });
+    assert.match(clear.join(" "), /最低 4\.2600 < 子线低点 4\.3600.*收盘 4\.3000 < 子线收盘 4\.4000.*清空余仓/);
+});
+
 test("pressure gap reduction and subsequent clear keep their distinct dated reasons", () => {
     const base = {
         side: "SELL",

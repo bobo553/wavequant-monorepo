@@ -86,6 +86,10 @@ export function tradeReasonItems(item) {
             reasons.push(
                 `放量下跌：${item.volume_trigger_date} 成交量 ${num(item.trigger_volume, 0)} > 前日 ${num(item.previous_volume, 0)}，收盘 ${num(item.trigger_close, 4)} < 前收 ${num(item.previous_close, 4)}。`,
             );
+        if (item.reason === "volume_bearish_child_reduce_70")
+            reasons.push(`${item.mother_date} 阳母线收盘 ${num(item.mother_close, 4)} > ${item.bearish_reference_date} 前阴线高点 ${num(item.bearish_reference_high, 4)}；${item.child_date} 阴子线被母线包含，成交量 ${num(item.child_volume, 0)} 股是前阴线 ${num(item.bearish_reference_volume, 0)} 股的 ${num(item.child_bearish_volume_multiple, 2)} 倍，当日累计减仓 70%。`);
+        if (item.reason === "volume_bearish_child_break_clear")
+            reasons.push(`${item.child_date} 阴子线后，最低 ${num(item.observed_low, 4)} < 子线低点 ${num(item.child_low, 4)}，收盘 ${num(item.observed_close, 4)} < 子线收盘 ${num(item.child_close, 4)}，清空余仓。`);
         if (item.reason === "volume_massive_gap_reversal_clear")
             reasons.push(`巨量高开反包：开盘 ${num(item.observed_open, 4)} > 前高 ${num(item.previous_high, 4)}，收盘 ${num(item.observed_close, 4)} < 前低 ${num(item.previous_low, 4)}；成交量 ${num(item.observed_volume, 0)} 股，为前 ${item.massive_volume_window} 日均量的 ${num(item.massive_volume_multiple, 2)} 倍且创同期新高；阴线实体/开盘 ${pct(item.bearish_body_fraction)}，当日清空余仓。`);
         if (item.reason === "volume_down_next_gap_fade_clear")

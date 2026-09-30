@@ -7,6 +7,7 @@ import math
 from zoneinfo import ZoneInfo
 
 from ..models.model import Bar
+from ..market_structure.polyline import observe_bar_relations
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 
 
@@ -97,6 +98,7 @@ class StagedExitState:
     volume_trigger_index: int | None = None
     volume_support_index: int | None = None
     volume_reduction_target: float = 0.0
+    bearish_child_warning_index: int | None = None
 
 
 def observe_intraday_staged_exit(
@@ -298,18 +300,69 @@ def _bearish_outside_reversal(bars: list[Bar], index: int) -> dict | None:
                 previous_volume=previous.volume)
 
 
+def _bearish_mother_child_volume(bars: list[Bar], index: int) -> dict | None:
+    """A bearish inside child with twice the last bearish candle's volume."""
+    if index < 2:
+        return None
+    mother, child = bars[index - 1], bars[index]
+    if (mother.close <= mother.open or child.close >= child.open
+            or not observe_bar_relations(mother, child).inside):
+        return None
+    reference = index - 2
+    while reference >= 0 and bars[reference].close >= bars[reference].open:
+        reference -= 1
+    if reference < 0:
+        return None
+    bearish = bars[reference]
+    if bearish.volume <= 0 or mother.close <= bearish.high or child.volume < 2 * bearish.volume:
+        return None
+    return dict(mother_date=mother.timestamp.date().isoformat(),
+                mother_high=mother.high, mother_close=mother.close,
+                bearish_reference_date=bearish.timestamp.date().isoformat(),
+                bearish_reference_high=bearish.high,
+                bearish_reference_volume=bearish.volume,
+                child_date=child.timestamp.date().isoformat(),
+                child_low=child.low, child_close=child.close,
+                child_volume=child.volume,
+                child_bearish_volume_multiple=child.volume / bearish.volume)
+
+
 def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState, *,
                              positive_n_index: int | None = None, small_body_max_fraction: float = .01,
                              small_body_lookback: int = 10) -> dict | None:
     """Freeze confirmed support and escalate cumulative reduction without future N bars."""
     if index < 1:
         return None
+    warning = state.bearish_child_warning_index
+    if warning is not None and index == warning + 1:
+        child, bar = bars[warning], bars[index]
+        if bar.low < child.low and bar.close < child.close:
+            return dict(reason='volume_bearish_child_break_clear', exit_fraction=1.0,
+                        execution_model='same_day_close',
+                        child_date=child.timestamp.date().isoformat(),
+                        child_low=child.low, child_close=child.close,
+                        observed_low=bar.low, observed_close=bar.close)
     massive_reversal = _massive_gap_reversal(bars, index)
     if massive_reversal is not None:
         return massive_reversal
     outside_reversal = _bearish_outside_reversal(bars, index)
     if outside_reversal is not None:
         return outside_reversal
+    # A warned inside child has its own next-session confirmation. A gap fade
+    # alone must not substitute for the required low-and-close break.
+    if warning is not None and index == warning + 1:
+        return None
+    bearish_child = _bearish_mother_child_volume(bars, index)
+    if bearish_child is not None:
+        state.bearish_child_warning_index = index
+    if bearish_child is not None and state.volume_reduction_target < .7:
+        state.volume_trigger_index = index
+        state.volume_support_index = next((j for j in range(index - 2, 0, -1)
+            if bars[j].low < min(bars[j - 1].low, bars[j + 1].low)), None)
+        state.volume_reduction_target = .7
+        return dict(bearish_child, reason='volume_bearish_child_reduce_70',
+                    exit_fraction=.7, exit_target_fraction=.7,
+                    execution_model='same_day_close')
     bar, previous = bars[index], bars[index-1]
     body = abs(Fraction(str(bar.close))-Fraction(str(bar.open)))
     mean_body = (sum(abs(Fraction(str(b.close))-Fraction(str(b.open))) for b in bars[index-small_body_lookback:index]) / small_body_lookback
