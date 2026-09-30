@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-215",
+            "name": "c-wave-buy-target-guides-and-launch-n",
+            "title": "C 浪目标截断与启动正 N 测幅",
+            "description": "点击 C 浪买点时，两档目标从 B 上方画到首次严格突破；未突破用短虚线标识。启动正 N 另画一饱、二吐与注明预估的五顶、十满，后续以已知叠箱／堆箱目标更新。",
+            "scope": "wavequant-web 买点目标组装、图表线段与短线覆盖层、历史回放及先锋样本回归",
+            "dependencies": ["MONOREPO-214"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "C 浪 0.618 和等幅目标从 B 点日期画到首次突破 K 线；未突破不延伸到图窗末日，改为 B 上方固定宽度短虚线，保留目标名称与价格",
+                "先锋新材 2026-05-18 优先使用当天新正 N 的一饱 6.25、二吐 7.30 元，初始叠箱五顶 10.45、十满 16.75 元明确注明预估；不混用 05-11 原买单 N 的目标",
+                "结构目标在确认当日只用收盘、后续日用最高价判断严格突破；截面不使用未来 K 线或尚未确认的 N，后续已知目标取代预估且不倒画",
+                "取消选择与关闭目标线时清空长短目标标识；与既有强 A、N 目标和成交标记兼容"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/buy-n-targets.test.mjs tests/target-level-guides.test.mjs tests/n-extension-levels.test.mjs tests/wave-endpoint-overlay.test.mjs tests/annotations.test.mjs tests/wave-c-projection.test.mjs tests/wave-entry-evidence.test.mjs",
+                    "status": "passed",
+                    "summary": "56 项通过，含先锋真实日 K 与新 N 归属、首次突破终点、B 上方短线、单根 K 截面、文字错开、清除标识及历史可用日期。"
+                },
+                {
+                    "command": "pnpm exec turbo run lint typecheck build --filter=wavequant-web --output-logs=errors-only",
+                    "status": "passed",
+                    "summary": "9 个任务通过；Web lint 无错误（6 条既有环境变量警告）、类型与生产构建通过。"
+                },
+                {
+                    "command": "新增 4 文件 prettier --check；修改 7 JS 文件 node --check；git diff --check",
+                    "status": "passed",
+                    "summary": "新增模块和测试格式、修改文件语法及差异空白检查通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-214",
             "name": "xianfeng-c-0618-and-bearish-child-exit",
             "title": "先锋新材 C 浪目标与阴子线退出",

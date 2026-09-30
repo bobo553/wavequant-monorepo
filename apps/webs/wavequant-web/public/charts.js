@@ -24,6 +24,7 @@ import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
 import { drawdownCandleRange } from "./max-drawdown.js";
 import { selectedTertiaryThirds, tertiaryRetracementGuides } from "./retracement-guides.js";
+import { targetLevelGuide, TargetGuideOverlay } from "./target-level-guides.js";
 import { TradeMarkerOverlay } from "./trade-marker-overlay.js";
 import { waveCProjection } from "./wave-c-projection.js";
 import { WaveEndpointOverlay, selectedWaveEndpoints } from "./wave-endpoint-overlay.js";
@@ -180,6 +181,8 @@ export class PriceChart {
         this.candles.attachPrimitive(this.tradeMarkerOverlay);
         this.waveEndpointOverlay = new WaveEndpointOverlay(container);
         this.candles.attachPrimitive(this.waveEndpointOverlay);
+        this.targetGuideOverlay = new TargetGuideOverlay();
+        this.candles.attachPrimitive(this.targetGuideOverlay);
         this.focusFlashOverlay = new FocusFlashOverlay(container);
         this.candles.attachPrimitive(this.focusFlashOverlay);
         this.onTertiaryPointerUp = (event) => {
@@ -608,7 +611,13 @@ export class PriceChart {
         if (focus) {
             if (endpoints.length) {
                 const first = this.data.bars.findIndex((bar) => bar.time === endpoints[0].time);
-                const last = this.data.bars.findIndex((bar) => bar.time === endpoints.at(-1).time);
+                const targetAsOf = this.theory?.asof && this.theory.asof < this.data.asof
+                    ? this.theory.asof : this.data.asof;
+                const cBreaks = selected.levels.filter((level) => ["c_0618", "c_equal"].includes(level.stage))
+                    .map((level) => targetLevelGuide(selected, level, this.data.bars, targetAsOf)?.end)
+                    .filter(Boolean);
+                const lastTime = [endpoints.at(-1).time, ...cBreaks].sort().at(-1);
+                const last = this.data.bars.findIndex((bar) => bar.time === lastTime);
                 this.chart.timeScale().setVisibleLogicalRange({
                     from: Math.max(0, first - 12),
                     to: Math.min(this.data.bars.length + 3, last + 12),
@@ -626,6 +635,7 @@ export class PriceChart {
     clearLevels() {
         for (const s of this.levelLines) this.chart.removeSeries(s);
         this.levelLines = [];
+        this.targetGuideOverlay?.setGuides([]);
         this.container.dataset.levelCount = "0";
     }
     clearLastFallHighGuides() {
@@ -762,19 +772,23 @@ export class PriceChart {
             : blockedCandidate
               ? [{ name: "候选参考价（未下单）", price: item.price }]
               : item.levels;
-        const targetStages = new Set(["c_0618", "c_equal", "five_top", "ten_full"]);
+        const targetStages = new Set(["c_0618", "c_equal", "one_p", "two_t", "five_top", "ten_full"]);
         const projectionTargets = levels.some((level) => targetStages.has(level.stage));
+        const shortGuides = [];
         for (const [i, level] of levels.entries()) {
             if (!Number.isFinite(level.price)) continue;
+            const guide = targetLevelGuide(item, level, this.data.bars,
+                this.theory?.asof && this.theory.asof < this.data.asof ? this.theory.asof : this.data.asof);
+            const color = ["#ebbc70", "#a29ce0", "#5ebeb0"][i % 3];
             const s = this.chart.addSeries(L.LineSeries, {
-                color: ["#ebbc70", "#a29ce0", "#5ebeb0"][i % 3],
+                color,
                 lineStyle: item.kind === "trend" ? 0 : 2,
                 lineWidth: 1,
                 title: level.name,
                 lastValueVisible: true,
-                priceLineVisible: item.kind === "wave-projection" || targetStages.has(level.stage),
+                priceLineVisible: !guide && (item.kind === "wave-projection" || targetStages.has(level.stage)),
                 crosshairMarkerVisible: false,
-                pointMarkersVisible: item.kind !== "trend",
+                pointMarkersVisible: !guide && item.kind !== "trend",
                 pointMarkersRadius: 2,
                 // Selected N targets must remain visible even above the candle
                 // range; deselection removes these series and restores scaling.
@@ -782,13 +796,18 @@ export class PriceChart {
                     ? {}
                     : { autoscaleInfoProvider: () => null }),
             });
-            const start = level.available_at && level.available_at > item.time ? level.available_at : item.time;
+            const start = guide?.start || (level.available_at && level.available_at > item.time ? level.available_at : item.time);
             const points = [{ time: start, value: level.price }];
-            if (start < this.data.bars.at(-1).time)
+            if (guide?.end && guide.end > start)
+                points.push({ time: guide.end, value: level.price });
+            else if (guide)
+                shortGuides.push({ ...guide, color });
+            else if (start < this.data.bars.at(-1).time)
                 points.push({ time: this.data.bars.at(-1).time, value: level.price });
             s.setData(points);
             this.levelLines.push(s);
         }
+        this.targetGuideOverlay?.setGuides(shortGuides);
         this.container.dataset.levelCount = this.levelLines.length;
     }
     clearPolyline() {

@@ -100,7 +100,7 @@ test("Guofang April 1 ordinary C-wave buy labels both projected levels once", ()
     ]);
 });
 
-test("selecting the Guofang C-wave buy draws both targets on the price axis", async () => {
+test("selecting the Guofang C-wave buy shows target axis labels without full-width price lines", async () => {
     globalThis.window = { LightweightCharts: { LineSeries: Symbol("line") } };
     globalThis.MutationObserver = class { observe() {} };
     globalThis.document = { documentElement: {} };
@@ -137,8 +137,8 @@ test("selecting the Guofang C-wave buy draws both targets on the price axis", as
     assert.deepEqual(lines.filter((line) => line.options.title.startsWith("C 浪目标"))
         .map((line) => [line.options.title, line.points[0].value,
             line.options.priceLineVisible, line.options.autoscaleInfoProvider]), [
-        ["C 浪目标 0.618×A", 7.6592301126997056, true, undefined],
-        ["C 浪目标 1×A", 8.372756128751465, true, undefined],
+        ["C 浪目标 0.618×A", 7.6592301126997056, false, undefined],
+        ["C 浪目标 1×A", 8.372756128751465, false, undefined],
     ]);
     fake.selected = null;
     PriceChart.prototype.drawLevels.call(fake);
