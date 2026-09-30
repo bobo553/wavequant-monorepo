@@ -4,38 +4,6 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
-            "id": "MONOREPO-214",
-            "name": "bearish-mother-child-entry-resistance",
-            "title": "桂林旅游阴母子破位后等待突破",
-            "description": "全局 V3 将放巨量的空头抵抗阴母线、严格内包的阴子线及随后低点跌破子低且收盘低于子收识别为空态；母线高点未被收盘严格突破前，拦截所有买入通道并保留母子与破位证据。三级趋势线底部距离只作为风险提示。",
-            "scope": "wavequant-core V3 买点筛选与审计、wavequant-web 候选拦截说明、桂林旅游真实日线回归",
-            "dependencies": ["MONOREPO-207"],
-            "status": "done",
-            "acceptanceCriteria": [
-                "桂林旅游 2026-04-09 阴母线成交 74,839,121 股，为前 20 日新高且超过均量两倍；04-10 阴子线被严格内包，04-13 最低价跌破子低且收盘低于子收",
-                "04-15 与 04-16 收盘未严格突破 04-09 母线高点 8.9361 元，不产生新的 V3 买入信号；已有候选留下可解释的拒绝证据",
-                "收盘等于母线高点仍等待，严格高于高点才解除；普通量、阳子线和非严格内包不启动该门禁",
-                "短窗真实日线、历史前缀与相邻买点回归通过，拦截原因可在 Web 中显示"
-            ],
-            "verification": [
-                {
-                    "command": "Core 定向 pytest：阴母子压力、二级压力、C 浪恢复和入场预检",
-                    "status": "passed",
-                    "summary": "真实 127 根复权日线与边界夹具确认 04-16 候选被拒绝、04-15/16 无 LONG；相关定向回归通过。"
-                },
-                {
-                    "command": "本地只读 AkShare/Sina 缓存截至 2026-04-16 的 2009 根日线重放",
-                    "status": "passed",
-                    "summary": "旧快照在 04-16 有 wave_push_gap LONG；新规则产生两条带 04-09 母线高点证据的 entry_rejected，04-15/16 均无 LONG。"
-                },
-                {
-                    "command": "Web 定向 Node 测试、lint、typecheck、build；Core 新模块 mypy 与 sdist/wheel 构建；git diff --check",
-                    "status": "passed",
-                    "summary": "Web 33 项定向测试、Lint（6 条既有警告）、类型与构建通过；Core 新模块 mypy 和包构建通过。integrated_strategy.py 的 43 条 mypy 错误与主分支基线相同。"
-                }
-            ]
-        },
-        {
             "id": "MONOREPO-213",
             "name": "clear-bearish-mother-bullish-child-break",
             "title": "国芳阴母阳子双破当日清仓",
