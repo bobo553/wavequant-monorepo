@@ -180,6 +180,10 @@ def wave_gap_entry(
                 wave_resistance_high=resistance_bar.high,
                 wave_two_t_break_date=breakthrough.timestamp.date().isoformat(),
                 wave_two_t_body_midpoint=midpoint,
+                wave_five_top_target=float(
+                    Fraction(str(context["wave_b_low"]))
+                    + Fraction(str(setup.two_t)) - Fraction(str(setup.origin))
+                ),
             )
             if strong_a_rebreak else {}
         ),

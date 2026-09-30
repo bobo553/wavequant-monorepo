@@ -148,6 +148,46 @@ def test_chart_n_click_exposes_dated_five_ten_levels_and_pauses_only_the_live_st
     assert levels(9)[1]["status"] == "回调暂停"
 
 
+def test_strong_a_buy_exposes_five_top_before_legacy_push_and_preserves_its_date():
+    from dataclasses import asdict
+    from types import SimpleNamespace
+    from wavequant.interfaces.charts.visualization import ChartRepository
+
+    bars = bars_with((21, 21.5, 18, 19), (19, 20, 17, 18),
+                     (18, 22, 17.5, 21), (21, 31, 20, 30.8))
+    audit = [dict(event="n_completed", bar_index=3, origin=0, neckline=1,
+                  pullback=2, defense=10.4, direction="up",
+                  timestamp=bars[3].timestamp.isoformat())]
+    audit.extend(dict(asdict(event), timestamp=bars[event.bar_index].timestamp.isoformat())
+                 for event in wave_projection_history(bars, SETUP))
+    audit.append(dict(event="long_signal", bar_index=8, attack=3,
+                      wave_entry_path="two_t_strong_a_resistance_rebreak",
+                      wave_five_top_target=30.8, wave_entry_two_t=21.8,
+                      wave_a_origin=8, wave_a_high=21.8, wave_b_low=17,
+                      timestamp=bars[8].timestamp.isoformat()))
+    result = SimpleNamespace(audit=sorted(audit, key=lambda row: (row["bar_index"], row["event"])), counts={})
+
+    def levels(end):
+        theory = ChartRepository.render_theory(
+            None, bars[: end + 1], SystemStrategy(), result,
+            bars[end].timestamp.date().isoformat(), geometry=dict(tertiary_trends={}),
+        )
+        n = next(event for event in theory["events"] if event["event"] == "n_completed")
+        return {level["stage"]: level for level in n["levels"] if level.get("stage")}
+
+    assert levels(7) == {}
+    five = levels(8)["five_top"]
+    assert five["price"] == 30.8
+    assert five["status"] == "观察"
+    assert five["available_at"] == bars[8].timestamp.date().isoformat()
+    assert "ten_full" not in levels(8)
+    assert levels(9)["five_top"]["available_at"] == bars[8].timestamp.date().isoformat()
+    reached = levels(10)
+    assert reached["five_top"]["status"] == "已满足"
+    assert reached["ten_full"]["price"] == 54
+    assert reached["ten_full"]["available_at"] == bars[10].timestamp.date().isoformat()
+
+
 def test_a_high_bar_low_is_not_assumed_to_be_a_subsequent_b_low():
     bars = bars_with((21, 24, 10.5, 20), (20, 21, 18, 19), (19, 23, 18, 22))
     events = wave_projection_history(bars, SETUP)

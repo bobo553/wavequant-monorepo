@@ -28,6 +28,9 @@ export function waveEntryEvidence(evidence) {
         strongRebreak
             ? `强 A 浪后续观察位：A 幅度 = ${num(wave.wave_a_high, 4)} − ${num(wave.wave_a_origin, 4)}；B 低 ${num(wave.wave_b_low, 4)} + 0.618×A = ${num(wave.wave_c_0618_target, 4)} 元，B 低 + 1×A = ${num(wave.wave_equal_target, 4)} 元。`
             : `等浪观察位：B 低 ${num(wave.wave_b_low, 4)} + A 浪幅度（${wave.wave_a_high_date} 高点 ${num(wave.wave_a_high, 4)} − ${wave.wave_a_origin_date ? `${wave.wave_a_origin_date} ` : ""}起点 ${num(wave.wave_a_origin, 4)}）= ${num(wave.wave_equal_target, 4)} 元。`,
+        ...(strongRebreak && Number.isFinite(wave.wave_five_top_target)
+            ? [`五顶观察位：B 低 + 原正 N 的 3 倍箱高 = ${num(wave.wave_five_top_target, 4)} 元；十满需五顶达成后按当时已知高点重新测算。`]
+            : []),
         ...(Number.isFinite(wave.wave_c_1618_target) && Number.isFinite(wave.wave_c_2618_target)
             ? [
                   `大 C 浪扩展目标：B 低 + 1.618×整段 A 幅度 = ${num(wave.wave_c_1618_target, 4)} 元；B 低 + 2.618×整段 A 幅度 = ${num(wave.wave_c_2618_target, 4)} 元。2.618 倍不是上涨上限，达标本身不触发卖出。`,
