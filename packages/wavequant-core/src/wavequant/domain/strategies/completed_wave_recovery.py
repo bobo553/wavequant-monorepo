@@ -21,7 +21,9 @@ def secondary_wave_recovery(
     if (
         wave is None
         or pressure is None
-        or wave.get("wave_entry_path") not in ("two_t_held_defense_gap_attack", "one_p_held_defense_rebound")
+        or wave.get("wave_entry_path") not in (
+            "two_t_held_defense_gap_attack", "two_t_strong_a_resistance_rebreak", "one_p_held_defense_rebound"
+        )
     ):
         return None
     if pressure.get("secondary_current_resistance") or pressure.get("secondary_resistance_resolved"):
@@ -60,6 +62,7 @@ def inverse_wave_recovery(
     """A fresh C gap can end an inverse N contained wholly in the defended B."""
     if wave is None or wave.get("wave_entry_path") not in (
         "two_t_held_defense_gap_attack",
+        "two_t_strong_a_resistance_rebreak",
         "one_p_held_defense_rebound",
     ):
         return None

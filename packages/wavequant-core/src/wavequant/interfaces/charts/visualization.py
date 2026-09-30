@@ -817,6 +817,7 @@ class ChartRepository:
                 ("bottom", "冻结波段低点"),
                 ("stop", "信号失效参考"),
                 ("target", "测幅目标（非保证）"),
+                ("wave_c_0618_target", "强 A 浪 B+0.618×A（非保证）"),
                 ("wave_c_1618_target", "C 浪扩展 1.618×A（非保证）"),
                 ("wave_c_2618_target", "C 浪扩展 2.618×A（非保证）"),
             ):
