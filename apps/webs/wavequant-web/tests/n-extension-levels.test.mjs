@@ -80,20 +80,24 @@ test("strong A buy displays five top immediately and ten full only when known", 
     assert.equal(fallback.levels.find((level) => level.stage === "five_top")?.price, 5.85);
 });
 
-test("ordinary C-wave buy labels its equal-wave target once", () => {
+test("Guofang April 1 ordinary C-wave buy labels both projected levels once", () => {
     const marker = {
-        id: "ordinary-c", kind: "signal", side: "LONG", time: "2023-07-26",
-        price: 5.76, target: 6.41,
+        id: "ordinary-c", kind: "fill", side: "BUY", status: "filled", time: "2024-04-01",
+        price: 6.495070867219145, target: 8.242135908334124,
         decision_evidence: [{ event: "long_signal", wave_entry_path: "one_p_held_defense_rebound",
-            wave_equal_target: 6.41 }],
+            wave_c_0618_target: 7.448774813563287, wave_equal_target: 8.242135908334124 }],
     };
-    const item = buildAnnotations({ asof: "2023-07-26", bars: [{ time: "2023-07-26" }],
+    const item = buildAnnotations({ asof: "2024-04-01", bars: [{ time: "2024-04-01" }],
         markers: [marker] }, null)[0];
     assert.deepEqual(item.levels.map(({ name, stage }) => ({ name, stage })), [
-        { name: "信号参考价", stage: undefined },
+        { name: "成交价", stage: undefined },
+        { name: "C 浪目标 0.618×A", stage: "c_0618" },
         { name: "C 浪目标 1×A", stage: "c_equal" },
     ]);
-    assert.equal(item.levels[1].available_at, "2023-07-26");
+    assert.deepEqual(item.levels.slice(1).map(({ price, available_at }) => [price, available_at]), [
+        [7.448774813563287, "2024-04-01"],
+        [8.242135908334124, "2024-04-01"],
+    ]);
 });
 
 test("selecting the Guofang C-wave buy draws both targets on the price axis", async () => {

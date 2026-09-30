@@ -67,11 +67,13 @@ test("ordinary one-p rebound never claims two-t or strong extensions", () => {
             wave_entry_milestone_date: "2020-06-04",
             wave_entry_two_t: 5,
             wave_breakout_close: 4.99,
+            wave_c_0618_target: 3.61572,
         },
     ]).join("\n");
     assert.match(text, /普通 A 浪反弹买点/);
     assert.match(text, /达到一饱/);
     assert.match(text, /2020-05-19 起点 2\.5800/);
+    assert.match(text, /0\.618×A = 3\.6157 元.*1×A = 3\.9900 元/);
     assert.doesNotMatch(text, /已到二吐|大 C 浪扩展目标/);
 });
 

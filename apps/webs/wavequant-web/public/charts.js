@@ -318,10 +318,15 @@ export class PriceChart {
                 kind: "wave-projection",
                 category: "wave-projection",
                 price: projection.target,
-                title: "C 浪等浪观察目标",
-                description: `正 N ${projection.nTime} 后，选定 ${projection.aTime} 的 A 浪高点 ${num(projection.aHigh)} 高于一饱 ${num(projection.oneP)}；B 浪低点 ${projection.bTime} ${num(projection.bLow)}。C 浪等浪目标 = B 低 +（A 高 − 正 N 起点）= ${num(projection.target)} 元。仅为测幅观察，不保证到达。`,
+                title: "C 浪 0.618 倍与等浪观察目标",
+                description: `正 N ${projection.nTime} 后，选定 ${projection.aTime} 的 A 浪高点 ${num(projection.aHigh)} 高于一饱 ${num(projection.oneP)}；B 浪低点 ${projection.bTime} ${num(projection.bLow)}。A 幅度 = A 高 − 正 N 起点；B 低 + 0.618×A = ${num(projection.target0618)} 元，B 低 + 1×A = ${num(projection.target)} 元。仅为测幅观察，不保证到达。`,
                 sourceLabel: "所选 A 浪高点与当前历史截面 B 浪低点",
-                levels: [{ name: "C 浪等浪目标", price: projection.target, available_at: projection.bTime }],
+                levels: [
+                    { name: "C 浪目标 0.618×A", price: projection.target0618,
+                        stage: "c_0618", available_at: projection.bTime },
+                    { name: "C 浪目标 1×A", price: projection.target,
+                        stage: "c_equal", available_at: projection.bTime },
+                ],
                 raw: projection,
             };
             this.selected = selected;

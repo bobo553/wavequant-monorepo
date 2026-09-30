@@ -27,6 +27,8 @@ export function waveEntryEvidence(evidence) {
               : `C 浪确认：${volume ? "放量跳空" : "跳空突破"}，观察时最低 ${num(wave.wave_gap_low, 4)} > 前日最高 ${num(wave.wave_gap_previous_high, 4)}。${volume ? `确认时累计成交量 ${num(wave.wave_gap_volume, 0)} > 前日全天 ${num(wave.wave_gap_previous_volume, 0)}。` : ""}${breakout ? `观察时最高 ${num(wave.wave_gap_high, 4)} > 回调折线高点 ${wave.wave_breakout_date} ${num(wave.wave_breakout_high, 4)}；突破或放量满足其一。` : ""}`,
         strongRebreak
             ? `强 A 浪后续观察位：A 幅度 = ${num(wave.wave_a_high, 4)} − ${num(wave.wave_a_origin, 4)}；B 低 ${num(wave.wave_b_low, 4)} + 0.618×A = ${num(wave.wave_c_0618_target, 4)} 元，B 低 + 1×A = ${num(wave.wave_equal_target, 4)} 元。`
+            : Number.isFinite(wave.wave_c_0618_target)
+            ? `C 浪观察位：A 幅度 = ${wave.wave_a_high_date} 高点 ${num(wave.wave_a_high, 4)} − ${wave.wave_a_origin_date ? `${wave.wave_a_origin_date} ` : ""}起点 ${num(wave.wave_a_origin, 4)}；B 低 ${num(wave.wave_b_low, 4)} + 0.618×A = ${num(wave.wave_c_0618_target, 4)} 元，B 低 + 1×A = ${num(wave.wave_equal_target, 4)} 元。`
             : `等浪观察位：B 低 ${num(wave.wave_b_low, 4)} + A 浪幅度（${wave.wave_a_high_date} 高点 ${num(wave.wave_a_high, 4)} − ${wave.wave_a_origin_date ? `${wave.wave_a_origin_date} ` : ""}起点 ${num(wave.wave_a_origin, 4)}）= ${num(wave.wave_equal_target, 4)} 元。`,
         ...(strongRebreak && Number.isFinite(wave.wave_five_top_target)
             ? [`五顶观察位：B 低 + 原正 N 的 3 倍箱高 = ${num(wave.wave_five_top_target, 4)} 元；十满需五顶达成后按当时已知高点重新测算。`]

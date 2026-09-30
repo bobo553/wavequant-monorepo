@@ -37,6 +37,7 @@ export function waveCProjection(bars, events, selectedTime) {
             if (!bottom || bar.low < bottom.low) bottom = bar;
         }
         if (!corrected || !bottom || bottom.low <= origin || bottom.low >= highBar.high) return null;
+        const amplitude = highBar.high - origin;
         return {
             nTime: event.time,
             origin,
@@ -45,7 +46,8 @@ export function waveCProjection(bars, events, selectedTime) {
             aHigh: highBar.high,
             bTime: bottom.time,
             bLow: bottom.low,
-            target: bottom.low + highBar.high - origin,
+            target0618: bottom.low + 0.618 * amplitude,
+            target: bottom.low + amplitude,
         };
     }
     return null;
