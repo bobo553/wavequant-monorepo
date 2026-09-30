@@ -49,14 +49,7 @@ export function blockedNodeMeta(marker, view) {
             : Number.isFinite(marker.risk_budget) && Number.isFinite(marker.one_lot_price_risk)
               ? ` · 风险预算 ${num(marker.risk_budget)} 元 < 一手预估风险 ${num(marker.one_lot_price_risk)} 元`
               : "";
-    const motherResistance =
-        candidate &&
-        marker.reason === "bearish_mother_child_resistance_unresolved" &&
-        marker.mother_date &&
-        Number.isFinite(marker.mother_high)
-            ? ` · 阴母线 ${marker.mother_date} 高点 ${num(marker.mother_high)} 元`
-            : "";
-    return context + comparison + motherResistance;
+    return context + comparison;
 }
 
 /** 复制原始事件而非日期卡摘要，避免同日不同原因或价格被合并后丢失。 */
