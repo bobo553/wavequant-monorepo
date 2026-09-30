@@ -62,6 +62,37 @@ def test_guofang_strong_a_resistance_rebreak_confirms_july_26():
     assert proof["wave_five_top_target"] == pytest.approx(5.85)
 
 
+def test_guofang_april_1_ordinary_a_projects_point_618_and_equal_wave():
+    from wavequant.domain.market_structure.polyline import LinePoint, PointKind, ReversalPoint
+
+    rows = [
+        ("2024-02-29", 4.02, 4.28, 4.02, 4.25, 16_685_400),
+        ("2024-03-14", 4.50, 4.67, 4.42, 4.48, 16_213_600),
+        ("2024-03-18", 5.28, 5.42, 5.18, 5.42, 75_191_900),
+        ("2024-03-22", 5.07, 5.61, 5.01, 5.34, 70_992_647),
+        ("2024-03-25", 5.25, 5.30, 4.95, 4.99, 41_133_558),
+        ("2024-03-26", 5.00, 5.03, 4.75, 4.85, 26_411_476),
+        ("2024-03-27", 4.80, 4.98, 4.72, 4.82, 28_858_988),
+        ("2024-03-28", 4.76, 4.92, 4.73, 4.92, 23_457_120),
+        ("2024-03-29", 4.88, 4.91, 4.77, 4.86, 17_200_056),
+        ("2024-04-01", 4.91, 4.99, 4.88, 4.97, 21_046_000),
+    ]
+    bars = [Bar(datetime.fromisoformat(day), "sh.601086", *values) for day, *values in rows]
+    setup = WaveProjectionSetup(0, 1, 2, 4.02, 4.67, 5.97, 4.29)
+    pivot = ReversalPoint(LinePoint(7, 0, PointKind.HIGH, 4.92), 8, "fixture")
+
+    proof = wave_gap_entry(bars, setup, 9, pivots=[pivot])
+    assert proof is not None
+    assert proof["wave_a_class"] == "ordinary"
+    assert proof["wave_a_origin_date"] == "2024-02-29"
+    assert proof["wave_a_high_date"] == "2024-03-22"
+    assert proof["wave_b_low_date"] == "2024-03-27"
+    assert proof["wave_c_0618_target"] == pytest.approx(4.72 + .618 * (5.61 - 4.02))
+    assert proof["wave_equal_target"] == pytest.approx(6.31)
+    assert "wave_c_1618_target" not in proof
+    assert wave_pullback_context(bars[:-1], setup, 8)["wave_c_0618_target"] == pytest.approx(5.70262)
+
+
 def test_strong_a_signal_marker_carries_only_its_matching_buy_proof():
     from wavequant.application.analytics.trade_evidence import result_markers
 

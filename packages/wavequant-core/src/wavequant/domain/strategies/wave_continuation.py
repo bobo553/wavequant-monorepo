@@ -55,10 +55,10 @@ def wave_pullback_context(
         wave_b_low=bars[bottom].low,
         wave_b_low_index=bottom,
         wave_b_low_date=bars[bottom].timestamp.date().isoformat(),
+        wave_c_0618_target=float(Fraction(str(bars[bottom].low)) + Fraction("0.618") * amplitude),
         wave_equal_target=float(target),
         **(
             dict(
-                wave_c_0618_target=float(Fraction(str(bars[bottom].low)) + Fraction("0.618") * amplitude),
                 wave_c_1618_target=float(Fraction(str(bars[bottom].low)) + Fraction("1.618") * amplitude),
                 wave_c_2618_target=float(Fraction(str(bars[bottom].low)) + Fraction("2.618") * amplitude),
             )

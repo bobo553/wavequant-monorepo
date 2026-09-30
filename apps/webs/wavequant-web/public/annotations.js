@@ -662,13 +662,11 @@ export function buildAnnotations(view, theory) {
         if (Number.isFinite(m.price))
             levels.push({ name: fill ? "成交价" : riskRejection ? "拟买价（未成交）" : "信号参考价", price: m.price });
         if (Number.isFinite(m.stop)) levels.push({ name: "原始失效参考", price: m.stop });
-        if (Number.isFinite(m.target)) levels.push(matchedTarget
-            ? { name: matchedTarget[1], price: m.target, stage: matchedTarget[2],
-                available_at: signalDate || m.time }
-            : { name: "原始目标投影", price: m.target });
+        if (Number.isFinite(m.target) && !matchedTarget)
+            levels.push({ name: "原始目标投影", price: m.target });
         if (wave) {
             for (const [key, name, stage] of cTargets) {
-                if (Number.isFinite(wave[key]) && matchedTarget?.[0] !== key)
+                if (Number.isFinite(wave[key]))
                     levels.push({ name, price: wave[key], stage, available_at: signalDate || m.time });
             }
         }

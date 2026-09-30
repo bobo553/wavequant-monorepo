@@ -29,8 +29,36 @@ test("selecting A high projects the equal C wave from the later B low", () => {
         aHigh: 14,
         bTime: "2026-01-05",
         bLow: 11.5,
+        target0618: 15.208,
         target: 17.5,
     });
+});
+
+test("Guofang April 1 chart projects both levels from the March 22 A high and March 27 B low", () => {
+    const history = [
+        ["2024-02-29", 4.28, 4.02, 4.25],
+        ["2024-03-14", 4.67, 4.42, 4.48],
+        ["2024-03-18", 5.42, 5.18, 5.42],
+        ["2024-03-22", 5.61, 5.01, 5.34],
+        ["2024-03-25", 5.30, 4.95, 4.99],
+        ["2024-03-26", 5.03, 4.75, 4.85],
+        ["2024-03-27", 4.98, 4.72, 4.82],
+        ["2024-03-28", 4.92, 4.73, 4.92],
+        ["2024-03-29", 4.91, 4.77, 4.86],
+        ["2024-04-01", 4.99, 4.88, 4.97],
+    ].map(([time, high, low, close]) => ({ time, high, low, close }));
+    const attack = {
+        ...n,
+        time: "2024-03-14",
+        available_at: "2024-03-14",
+        defense: 4.29,
+        shape: [{ time: "2024-02-29", value: 4.02 }],
+        levels: [{ name: "1P 投影", price: 5.32 }],
+    };
+    const projection = waveCProjection(history, [attack], "2024-03-22");
+    assert.equal(projection?.bTime, "2024-03-27");
+    assert.ok(Math.abs(projection.target0618 - 5.70262) < 1e-10);
+    assert.ok(Math.abs(projection.target - 6.31) < 1e-10);
 });
 
 test("projection needs a strict one-P break and a later defended B low", () => {
