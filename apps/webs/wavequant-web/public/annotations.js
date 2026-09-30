@@ -1,4 +1,5 @@
 // Presentation-only mappings. Strategy conditions remain in the Python engine.
+import { buyNTargetLevels } from "./buy-n-targets.js";
 import { label, num, pct } from "./labels.js";
 
 const RULES = {
@@ -660,19 +661,23 @@ export function buildAnnotations(view, theory) {
         ];
         const matchedTarget = cTargets.find(([key]) => Number.isFinite(m.target)
             && Number.isFinite(wave?.[key]) && Math.abs(m.target - wave[key]) < 1e-6);
+        const nTargets = ((fill && m.side === "BUY") || (signal && m.side === "LONG"))
+            ? buyNTargetLevels(m, wave, view, theory) : [];
         const levels = [];
         if (Number.isFinite(m.price))
             levels.push({ name: fill ? "成交价" : riskRejection ? "拟买价（未成交）" : "信号参考价", price: m.price });
         if (Number.isFinite(m.stop)) levels.push({ name: "原始失效参考", price: m.stop });
-        if (Number.isFinite(m.target) && !matchedTarget)
+        if (Number.isFinite(m.target) && !matchedTarget && !nTargets.length)
             levels.push({ name: "原始目标投影", price: m.target });
         if (wave) {
             for (const [key, name, stage] of cTargets) {
                 if (Number.isFinite(wave[key]))
-                    levels.push({ name, price: wave[key], stage, available_at: signalDate || m.time });
+                    levels.push({ name, price: wave[key], stage, available_at: signalDate || m.time,
+                        anchor_at: wave.wave_b_low_date || signalDate || m.time });
             }
         }
-        if (strongA) {
+        levels.push(...nTargets);
+        if (strongA && !nTargets.length) {
             const projections = (nExtensions.get(strongA.wave_entry_n_date) || []).filter(
                 (level) => ["five_top", "ten_full"].includes(level.stage)
                     && (!level.available_at || (level.available_at <= view.asof
@@ -698,7 +703,9 @@ export function buildAnnotations(view, theory) {
             priority: fill ? 200 : riskRejection ? 160 : 150,
             description: riskRejection
                 ? `${signalDate ? `${signalDate} 产生买入信号，` : ""}${m.time} 尝试买入时被执行风控拒绝：${reasonText(m.reason)}。${riskComparison}未实际买入。`
-                : reasonText(m.reason) + (m.side === "EXIT" ? "。空仓时也可能出现，不代表已卖出。" : ""),
+                : reasonText(m.reason) + (m.side === "EXIT" ? "。空仓时也可能出现，不代表已卖出。" : "")
+                    + (nTargets.some((level) => level.estimated)
+                        ? "。五顶、十满为启动正 N 的叠箱预估，假设不回调且五顶恰好到位；后续以已确认的叠箱／堆箱目标更新。" : ""),
             sourceLabel:
                 m.source === "single_stock_backtest"
                     ? signal
