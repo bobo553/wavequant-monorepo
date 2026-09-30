@@ -58,6 +58,7 @@ def wave_pullback_context(
         wave_equal_target=float(target),
         **(
             dict(
+                wave_c_0618_target=float(Fraction(str(bars[bottom].low)) + Fraction("0.618") * amplitude),
                 wave_c_1618_target=float(Fraction(str(bars[bottom].low)) + Fraction("1.618") * amplitude),
                 wave_c_2618_target=float(Fraction(str(bars[bottom].low)) + Fraction("2.618") * amplitude),
             )
@@ -110,13 +111,13 @@ def wave_gap_entry(
     if context is None:
         return None
     ordinary = context["wave_a_class"] == "ordinary"
-    if not ordinary and not (gap or (strong_body and volume_up)):
-        return None
-    if not gap and bar.low < float(context["wave_b_low"]):
+    prior_b_low = float(context["wave_b_low"])
+    if not gap and bar.low < prior_b_low:
         # Only the already observed portion of today's candle may update B.
         context.update(wave_b_low=bar.low, wave_b_low_index=now, wave_b_low_date=bar.timestamp.date().isoformat())
         amplitude = Fraction(str(context["wave_a_amplitude"]))
         for key, multiple in (
+            ("wave_c_0618_target", "0.618"),
             ("wave_equal_target", "1"),
             ("wave_c_1618_target", "1.618"),
             ("wave_c_2618_target", "2.618"),
@@ -125,6 +126,35 @@ def wave_gap_entry(
                 continue
             context[key] = float(Fraction(str(bar.low)) + Fraction(multiple) * amplitude)
     if bar.close >= float(context["wave_equal_target"]):
+        return None
+    peak = int(context["wave_a_high_index"])
+    two_t_break = next(
+        (
+            j for j in range(max(setup.attack_index, setup.squeeze_index), peak)
+            if bars[j - 1].close <= setup.two_t < bars[j].close
+            and bars[j].close > bars[j].open
+        ),
+        None,
+    )
+    strong_a_rebreak = False
+    midpoint = 0.0
+    if not ordinary and two_t_break is not None:
+        breakthrough = bars[two_t_break]
+        midpoint = (breakthrough.open + breakthrough.close) / 2
+        resistance_bar = bars[peak]
+        strong_a_rebreak = (
+            peak > two_t_break
+            and resistance_bar.high > bars[peak - 1].high
+            and resistance_bar.close < resistance_bar.open
+            and resistance_bar.close < bars[peak - 1].close
+            and bar.low >= prior_b_low
+            and all(bars[j].close >= midpoint for j in range(two_t_break + 1, now))
+            and bar.close >= midpoint
+            and bar.close > float(context["wave_a_high"])
+            and body > 0
+            and volume_up
+        )
+    if not ordinary and not (strong_a_rebreak or gap or (strong_body and volume_up)):
         return None
     highs = [
         p
@@ -139,13 +169,25 @@ def wave_gap_entry(
         not gap and resistance is not None and bar.close > resistance.point.price and strong_body and volume_up
     )
     rebound = ordinary and body > 0 and resistance is not None and bar.close > resistance.point.price
-    if not (rebound if ordinary else ((gap and (breakout or volume_up)) or body_breakout)):
+    if not (rebound if ordinary else (strong_a_rebreak or (gap and (breakout or volume_up)) or body_breakout)):
         return None
     return dict(
         context,
+        **(
+            dict(
+                wave_entry_path="two_t_strong_a_resistance_rebreak",
+                wave_resistance_date=resistance_bar.timestamp.date().isoformat(),
+                wave_resistance_high=resistance_bar.high,
+                wave_two_t_break_date=breakthrough.timestamp.date().isoformat(),
+                wave_two_t_body_midpoint=midpoint,
+            )
+            if strong_a_rebreak else {}
+        ),
         wave_confirmation_phase="rebound" if ordinary else "gap" if gap else "body",
         wave_gap_trigger="rebound_close_breakout"
         if rebound
+        else "strong_a_volume_close_breakout"
+        if strong_a_rebreak
         else "volume_body_breakout"
         if body_breakout
         else "breakout_and_volume"
@@ -156,8 +198,8 @@ def wave_gap_entry(
         wave_breakout_close=bar.close,
         wave_body_fraction=body / bar.open,
         wave_body_range_fraction=body / (bar.high - bar.low) if bar.high > bar.low else 0.0,
-        wave_breakout_high=resistance.point.price if resistance else 0.0,
-        wave_breakout_date=bars[resistance.point.index].timestamp.date().isoformat() if resistance else "",
+        wave_breakout_high=float(context["wave_a_high"]) if strong_a_rebreak else resistance.point.price if resistance else 0.0,
+        wave_breakout_date=str(context["wave_a_high_date"]) if strong_a_rebreak else bars[resistance.point.index].timestamp.date().isoformat() if resistance else "",
         wave_gap_previous_high=prev.high,
         wave_gap_high=bar.high,
         wave_gap_low=bar.low,

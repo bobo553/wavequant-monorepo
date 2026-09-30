@@ -828,7 +828,14 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     and projection.target is not None and projection.target > bar.close):
                 targets = [projection.target]
             if wave is not None:
-                stop, targets = wave['wave_defense'], [wave['wave_equal_target']]
+                stop = wave['wave_defense']
+                targets = [
+                    target for target in (
+                        (wave['wave_c_0618_target'], wave['wave_equal_target'])
+                        if wave['wave_entry_path'] == 'two_t_strong_a_resistance_rebreak'
+                        else (wave['wave_equal_target'],)
+                    ) if target > bar.close
+                ]
             if stop >= bar.close or not targets:
                 log(i, 'entry_rejected', reason='no_live_structural_risk_reward', attack=c['attack'])
                 continue
@@ -852,7 +859,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 tag = hierarchy_proof['buy_point_type']
             if wave is not None:
                 tag = 'wave_push_gap'
-            confirmation_source = (('one_p_wave_rebound' if wave.get('wave_a_class') == 'ordinary' else 'two_t_wave_push_gap') if wave is not None else
+            confirmation_source = (('one_p_wave_rebound' if wave.get('wave_a_class') == 'ordinary' else
+                                    'strong_a_resistance_rebreak' if wave.get('wave_entry_path') == 'two_t_strong_a_resistance_rebreak'
+                                    else 'two_t_wave_push_gap') if wave is not None else
                 'fresh_n_defeats_old_n_resistance' if (c['attack'], i) in reconfirmation_proofs else
                 'volume_reversal_record_break' if (c['attack'], i) in reversal_proofs else
                 'defended_n_consolidation_gap' if consolidation is not None else
@@ -886,7 +895,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                         prior_close=bars[i-1].close) if whole_wave else {}),
                 **(wave or {}), **(wave_pressure_recovery or {}), **(consolidation or {}), **reversal_proofs.get((c['attack'], i), {}),
                 gross_reward_risk=gross_rr,
-                **({'target_source': 'wave_equal_projection' if wave is not None else projection.state if projection is not None and projection.target == targets[0]
+                **({'target_source': ('wave_0618_projection' if wave['wave_entry_path'] == 'two_t_strong_a_resistance_rebreak'
+                                      and targets[0] == wave['wave_c_0618_target'] else 'wave_equal_projection') if wave is not None else projection.state if projection is not None and projection.target == targets[0]
                     else 'n_measured_target'} if whole_wave else {}))
             if permission is not None:
                 log(i, 'long_transition_evidence', attack=c['attack'], regime=entry_regime.value,

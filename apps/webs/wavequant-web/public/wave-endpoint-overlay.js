@@ -1,6 +1,7 @@
 const WAVE_ENTRY_PATHS = new Set([
     "two_t_held_defense_volume_gap",
     "two_t_held_defense_gap_attack",
+    "two_t_strong_a_resistance_rebreak",
     "one_p_held_defense_rebound",
 ]);
 

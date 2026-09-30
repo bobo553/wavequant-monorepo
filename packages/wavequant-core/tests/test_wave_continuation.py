@@ -28,6 +28,57 @@ def sample():
     return bars, dates, setup
 
 
+def guofang_strong_a_sample():
+    rows = [
+        ("2023-06-26", 4.27, 4.36, 4.27, 4.32, 10_046_900),
+        ("2023-07-03", 4.46, 4.56, 4.43, 4.54, 14_883_001),
+        ("2023-07-19", 4.80, 4.94, 4.74, 4.89, 19_022_900),
+        ("2023-07-20", 4.90, 5.38, 4.90, 5.38, 49_777_665),
+        ("2023-07-21", 5.37, 5.70, 5.18, 5.32, 73_203_163),
+        ("2023-07-24", 5.13, 5.33, 4.98, 5.26, 47_724_598),
+        ("2023-07-25", 5.26, 5.37, 5.17, 5.24, 33_760_865),
+        ("2023-07-26", 5.19, 5.76, 5.10, 5.76, 44_259_187),
+    ]
+    bars = [Bar(datetime.fromisoformat(day), "sh.601086", *values) for day, *values in rows]
+    setup = WaveProjectionSetup(0, 1, 2, 4.27, 4.56, 5.14, 4.43)
+    return bars, setup
+
+
+def test_guofang_strong_a_resistance_rebreak_confirms_july_26():
+    bars, setup = guofang_strong_a_sample()
+    proof = wave_gap_entry(bars, setup, 7)
+    assert wave_gap_entry(bars, setup, 6) is None
+    assert proof == wave_gap_entry(bars[:8], setup, 7)
+    assert proof["wave_entry_path"] == "two_t_strong_a_resistance_rebreak"
+    assert proof["wave_a_origin_date"] == "2023-06-26"
+    assert proof["wave_a_high_date"] == proof["wave_resistance_date"] == "2023-07-21"
+    assert proof["wave_b_low_date"] == "2023-07-24"
+    assert proof["wave_two_t_break_date"] == "2023-07-20"
+    assert proof["wave_two_t_body_midpoint"] == pytest.approx(5.14)
+    assert proof["wave_breakout_close"] == pytest.approx(5.76)
+    assert proof["wave_breakout_high"] == pytest.approx(5.70)
+    assert proof["wave_c_0618_target"] == pytest.approx(5.86374)
+    assert proof["wave_equal_target"] == pytest.approx(6.41)
+
+
+@pytest.mark.parametrize("case", ["midpoint_close", "volume", "a_high", "no_resistance", "defense", "new_b_low"])
+def test_strong_a_rebreak_requires_held_close_volume_and_a_high_break(case):
+    bars, setup = guofang_strong_a_sample()
+    if case == "midpoint_close":
+        bars[5] = replace(bars[5], close=5.13)
+    elif case == "volume":
+        bars[7] = replace(bars[7], volume=bars[6].volume)
+    elif case == "a_high":
+        bars[7] = replace(bars[7], close=5.69)
+    elif case == "no_resistance":
+        bars[4] = replace(bars[4], open=5.30)
+    elif case == "defense":
+        bars[5] = replace(bars[5], low=4.42)
+    else:
+        bars[7] = replace(bars[7], low=4.97)
+    assert wave_gap_entry(bars, setup, 7) is None
+
+
 def test_lexin_february_buy_keeps_the_september_a_origin():
     raw = json.loads((Path(__file__).parent / "fixtures/lexin_2026_squeeze.json").read_text(encoding="utf-8"))
     bars = [Bar(datetime.fromisoformat(day), raw["symbol"], *values) for day, *values in raw["bars"]]
