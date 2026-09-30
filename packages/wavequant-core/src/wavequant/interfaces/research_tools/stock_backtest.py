@@ -79,9 +79,10 @@ def single_stock_result(bars, strategy, execution, signal_result=None, *, minute
     for row in audit_rows:
         if row.get('event') == 'long_signal' and row.get('channel') == 'wave_push_gap' and isinstance(row.get('wave_b_low_index'), int):
             wave_events.extend(_post_b_wave_exit_events(bars, audit_rows, row))
-        elif row.get('event') == 'long_signal' and row.get('wave_a_class') == 'ordinary':
+        if row.get('event') == 'long_signal' and row.get('wave_a_class') == 'ordinary':
             wave_events.append(dict(event='wave_ordinary_entry', attack=row['attack'],
-                bar_index=row['bar_index'], target=row['wave_equal_target'],
+                bar_index=row['bar_index'], owner_signal_index=row['bar_index'], target=row['wave_equal_target'],
+                target_0618=row['wave_c_0618_target'],
                 one_p=row['wave_entry_one_p'], two_t=row['wave_entry_two_t'],
                 a_origin=row['wave_a_origin'], a_high=row['wave_a_high'],
                 a_high_index=row['wave_a_high_index'], b_low=row['wave_b_low'],

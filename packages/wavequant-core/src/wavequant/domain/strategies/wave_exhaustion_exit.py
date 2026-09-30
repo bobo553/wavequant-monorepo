@@ -78,13 +78,57 @@ def _observe_ordinary_c(
     reduced: bool,
     entry_index: int | None,
 ) -> dict | None:
-    """Freeze an ordinary A at entry and watch its C equal-wave target."""
+    """Freeze an ordinary A at entry and watch its C projection targets."""
     held_from = entry_index if entry_index is not None else entry["bar_index"]
     if index <= held_from or not entry["one_p"] <= entry["a_high"] < entry["two_t"]:
         return None
+    c_0618_reduction = None
+    target_0618 = entry.get("target_0618")
+    if target_0618 is not None:
+        reached_0618_index = next(
+            (j for j in range(held_from + 1, index + 1) if bars[j].high >= target_0618), None
+        )
+        if reached_0618_index is not None:
+            evidence = dict(
+                wave_a_class="ordinary",
+                wave_n_date=bars[entry["attack"]].timestamp.date().isoformat(),
+                wave_reached_date=bars[reached_0618_index].timestamp.date().isoformat(),
+                wave_reached_stage="c_0618",
+                wave_reached_price=target_0618,
+                wave_a_high=entry["a_high"],
+                wave_b_low=entry["b_low"],
+                wave_c_0618_target=target_0618,
+                execution_model="same_day_close",
+            )
+            warning_index = next(
+                (j for j in range(reached_0618_index, index)
+                 if _c_0618_bearish_shadow(bars, j)), None
+            )
+            bar = bars[index]
+            if (warning_index is not None and bar.close < bars[index - 1].close
+                    and bar.low < bars[warning_index].low and bar.close < bars[warning_index].close):
+                warning = bars[warning_index]
+                return dict(
+                    evidence, reason="wave_c_0618_shadow_break_clear", exit_fraction=1.0,
+                    abnormal_date=warning.timestamp.date().isoformat(),
+                    abnormal_low=warning.low, abnormal_close=warning.close,
+                    observed_low=bar.low, observed_close=bar.close,
+                    previous_close=bars[index - 1].close,
+                )
+            if not reduced and _c_0618_bearish_shadow(bars, index):
+                span = bar.high - bar.low
+                c_0618_reduction = dict(
+                    evidence, reason="wave_c_0618_upper_shadow_reduce",
+                    exit_fraction=config.wave_exhaustion_reduction,
+                    exit_target_fraction=config.wave_exhaustion_reduction,
+                    wave_upper_shadow_fraction=(bar.high - max(bar.open, bar.close)) / span,
+                    observed_open=bar.open, observed_close=bar.close,
+                    observed_low=bar.low, observed_high=bar.high,
+                    previous_close=bars[index - 1].close,
+                )
     reached_index = next((j for j in range(held_from + 1, index + 1) if bars[j].high >= entry["target"]), None)
     if reached_index is None:
-        return None
+        return c_0618_reduction
     reached = dict(
         entry,
         event="wave_projection_target_reached",
@@ -112,8 +156,21 @@ def _observe_ordinary_c(
                     previous_close=bars[index - 1].close,
                     execution_model="same_day_close",
                 )
-            return None
-    return _observe_target_candle(bars, index, [reached], config, reduced=reduced)
+            return c_0618_reduction
+    decision = _observe_target_candle(bars, index, [reached], config, reduced=reduced)
+    if decision is not None and decision["exit_fraction"] == 1.0:
+        return decision
+    return c_0618_reduction or decision
+
+
+def _c_0618_bearish_shadow(bars: list[Bar], index: int) -> bool:
+    """Require a lower close and a dominant upper shadow after C reaches 0.618."""
+    if index < 1:
+        return False
+    bar = bars[index]
+    span = bar.high - bar.low
+    return (span > 0 and bar.close < bars[index - 1].close
+            and 2 * (bar.high - max(bar.open, bar.close)) >= span)
 
 
 def _observe_target_candle(

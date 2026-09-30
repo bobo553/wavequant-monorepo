@@ -200,6 +200,33 @@ test("bearish inside child reduction and next-session break show their own evide
     assert.match(clear.join(" "), /最低 4\.2600 < 子线低点 4\.3600.*收盘 4\.3000 < 子线收盘 4\.4000.*清空余仓/);
 });
 
+test("C-wave 0.618 exit explains the earlier target and later warning break", () => {
+    const reduction = tradeReasonItems({
+        side: "SELL",
+        reason: "wave_c_0618_upper_shadow_reduce",
+        wave_reached_stage: "c_0618",
+        wave_reached_date: "2026-01-30",
+        wave_reached_price: 5.50666,
+        wave_c_0618_target: 5.50666,
+        observed_close: 5.54,
+        previous_close: 5.64,
+        wave_upper_shadow_fraction: 0.45 / 0.55,
+    });
+    assert.match(reduction.join(" "), /2026-01-30.*5\.5067.*上影占振幅.*减仓 80%/);
+
+    const clear = tradeReasonItems({
+        side: "SELL",
+        reason: "wave_c_0618_shadow_break_clear",
+        abnormal_date: "2026-02-02",
+        abnormal_low: 5.44,
+        abnormal_close: 5.54,
+        observed_low: 5.30,
+        observed_close: 5.36,
+        previous_close: 5.57,
+    });
+    assert.match(clear.join(" "), /2026-02-02.*5\.3000 < 警示低点 5\.4400.*5\.5400，清空余仓/);
+});
+
 test("pressure gap reduction and subsequent clear keep their distinct dated reasons", () => {
     const base = {
         side: "SELL",

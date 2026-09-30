@@ -307,7 +307,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 )
             if pending_exit[symbol] in ('wave_volume_shadows_reduce', 'wave_gap_reversal_reduce',
                                         'wave_upper_rejection_reduce', 'wave_target_upper_shadow_reduce',
-                                        'wave_ordinary_equal_upper_shadow_reduce',
+                                        'wave_ordinary_equal_upper_shadow_reduce', 'wave_c_0618_upper_shadow_reduce',
                                         'wave_target_bearish_reduce'):
                 pos.wave_reduced = True
             if pending_exit[symbol] == 'trend_last_fall_high_upper_shadow_reduce':
