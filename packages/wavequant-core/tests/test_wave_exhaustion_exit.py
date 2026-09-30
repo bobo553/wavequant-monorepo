@@ -30,13 +30,14 @@ def sample():
     return bars, dates, events
 
 
-def test_reached_target_alone_does_not_sell_but_double_shadows_reduce_and_engulf_clears():
+def test_reached_target_alone_does_not_sell_but_bearish_candle_reduces_and_engulf_clears():
     bars, dates, events = sample()
     config = StrategyConfig(wave_exhaustion_exit=True)
     assert observe_wave_exhaustion(bars, dates["2026-09-09"], events, config) is None
     assert observe_wave_exhaustion(bars, dates["2026-09-10"], events, config) is None
     reduced = observe_wave_exhaustion(bars, dates["2026-09-11"], events, config)
-    assert reduced["exit_target_fraction"] == 0.8
+    assert reduced["reason"] == "wave_target_bearish_reduce"
+    assert reduced["exit_target_fraction"] == 0.7
     assert reduced["wave_reached_stage"] == "five_top"
     assert reduced["wave_reached_date"] == "2026-09-09"
     assert observe_wave_exhaustion(bars, dates["2026-09-11"], events, config, reduced=True) is None
@@ -65,10 +66,9 @@ def test_exhaustion_requires_known_active_target_and_all_candle_conditions(case)
     else:
         events.append(dict(event="wave_projection_invalidated", attack=events[0]["attack"], bar_index=index))
     result = observe_wave_exhaustion(bars, index, events, StrategyConfig())
-    if case in ("equal_volume", "one_shadow"):
-        # A long upper shadow after five-top reach stands on its own;
-        # the double-shadow rule still requires growing volume.
-        assert result["reason"] == "wave_target_upper_shadow_reduce"
+    if case in ("equal_volume", "one_shadow", "small_range"):
+        # Once five-top is reached, any bearish body reduces the holding.
+        assert result["reason"] == "wave_target_bearish_reduce"
     else:
         assert result is None
 
@@ -102,7 +102,7 @@ def test_daily_fills_reduce_original_holding_then_clear_and_prefix_matches():
     result = run_portfolio({bars[0].symbol: bars}, **kwargs)
     buy, reduction, clear = [o for o in result.orders if o["status"] == "filled"]
     assert reduction["timestamp"] == reduction["signal_timestamp"] == bars[dates["2026-09-11"]].timestamp.isoformat()
-    assert reduction["quantity"] == int(buy["quantity"] * 0.8 // config.lot_size) * config.lot_size
+    assert reduction["quantity"] == int(buy["quantity"] * 0.7 // config.lot_size) * config.lot_size
     assert clear["timestamp"] == clear["signal_timestamp"] == bars[dates["2026-09-15"]].timestamp.isoformat()
     assert clear["remaining_quantity"] == 0
     assert clear["quantity"] == reduction["remaining_quantity"]

@@ -121,8 +121,8 @@ def _observe_target_candle(
 ) -> dict | None:
     """Caller supplies only this entry N's dated projection events.
 
-    Reaching a target alone never sells. Neither a bearish engulfing candle nor
-    a full exit requires higher volume or a previously filled partial order.
+    Reaching a target alone never sells. Bearish engulfing and failed bullish
+    resistance clear regardless of volume or a previously filled reduction.
     """
     if index < 1:
         return None
@@ -145,8 +145,10 @@ def _observe_target_candle(
     if not active:
         return None
     stage_rank = {"one_p": 1, "two_t": 2, "five_top": 3, "ten_full": 4}
+    # A strong A holding can own its parent five/ten milestone and a newer B N.
+    # The reached parent milestone governs exits until a higher stage is reached.
     reached, stage = max(active.values(), key=lambda item: (
-        item[0]["attack"], item[0]["bar_index"], stage_rank.get(item[1], 0)))
+        stage_rank.get(item[1], 0), item[0]["bar_index"], item[0]["attack"]))
     bar, previous = bars[index], bars[index - 1]
     span = bar.high - bar.low
     if span <= 0:
@@ -214,6 +216,24 @@ def _observe_target_candle(
                 resistance_date=previous.timestamp.date().isoformat(),
                 resistance_virtual_low=virtual_low,
             )
+    if stage == "ten_full" and body > 0 and bar.high >= reached["reached_target"]:
+        prior_bearish = next((bars[j] for j in range(index - 1, -1, -1)
+                              if bars[j].close < bars[j].open), None)
+        if prior_bearish is not None and bar.volume > prior_bearish.volume:
+            return dict(
+                evidence,
+                reason="wave_ten_full_bearish_volume_clear",
+                exit_fraction=1.0,
+                bearish_reference_date=prior_bearish.timestamp.date().isoformat(),
+                bearish_reference_volume=prior_bearish.volume,
+            )
+    if stage in ("five_top", "ten_full") and body > 0 and not reduced:
+        return dict(
+            evidence,
+            reason="wave_target_bearish_reduce",
+            exit_fraction=0.7,
+            exit_target_fraction=0.7,
+        )
     if stage == "ordinary_equal" and not reduced and bar.volume > previous.volume and upper / span >= 0.5:
         return dict(
             evidence,

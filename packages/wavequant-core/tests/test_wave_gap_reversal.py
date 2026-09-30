@@ -32,8 +32,8 @@ def test_positive_daily_return_can_still_be_target_stage_gap_reversal():
     bars, dates, events = sample()
     index = dates["2024-10-08"]
     result = observe_wave_exhaustion(bars, index, events, StrategyConfig())
-    assert result["reason"] == "wave_gap_reversal_reduce"
-    assert result["exit_target_fraction"] == 0.8
+    assert result["reason"] == "wave_target_bearish_reduce"
+    assert result["exit_target_fraction"] == 0.7
     assert result["wave_reached_stage"] == "five_top"
     assert bars[index].close > bars[index - 1].close
     assert result["wave_body_fraction"] == pytest.approx(0.06986, abs=0.00001)
@@ -56,7 +56,11 @@ def test_gap_reversal_requires_known_target_and_joint_conditions(case):
         bars[index] = replace(bars[index], close=bars[index].open - 0.01)
     else:
         bars[index] = replace(bars[index], high=9.6)
-    assert observe_wave_exhaustion(bars, index, events, StrategyConfig()) is None
+    result = observe_wave_exhaustion(bars, index, events, StrategyConfig())
+    if case in ("no_target", "future_target"):
+        assert result is None
+    else:
+        assert result["reason"] == "wave_target_bearish_reduce"
 
 
 def test_gap_reversal_executes_same_close_and_prefix_is_identical():
@@ -91,8 +95,8 @@ def test_gap_reversal_executes_same_close_and_prefix_is_identical():
     assert prefix.orders == [o for o in full.orders if o["timestamp"][:10] <= "2024-10-08"]
     buy, reduction = [o for o in prefix.orders if o["status"] == "filled"]
     assert reduction["timestamp"] == reduction["signal_timestamp"] == bars[end - 1].timestamp.isoformat()
-    assert reduction["exit_target_fraction"] == 0.8
-    assert reduction["quantity"] == int(buy["quantity"] * 0.8 // config.lot_size) * config.lot_size
+    assert reduction["exit_target_fraction"] == 0.7
+    assert reduction["quantity"] == int(buy["quantity"] * 0.7 // config.lot_size) * config.lot_size
     repeated = bars[:end] + [
         replace(bars[end], open=10.5, high=10.5, low=9.4, close=9.7, volume=bars[end - 1].volume * 2)
     ]
