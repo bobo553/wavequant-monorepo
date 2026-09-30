@@ -77,11 +77,18 @@ def single_stock_result(bars, strategy, execution, signal_result=None, *, minute
     audit_rows = getattr(signal_result, 'audit', [])
     wave_events=[row for row in audit_rows if row.get('event', '').startswith('wave_projection_')]
     for row in audit_rows:
+        if (row.get('event') == 'long_signal' and isinstance(row.get('wave_b_low_index'), int)
+                and row.get('wave_c_0618_target') is not None and row.get('wave_equal_target') is not None):
+            wave_events.append(dict(event='wave_c_entry', attack=row['attack'],
+                bar_index=row['bar_index'], owner_signal_index=row['bar_index'],
+                c_0618_target=row['wave_c_0618_target'], equal_target=row['wave_equal_target'],
+                a_origin=row['wave_a_origin'], a_high=row['wave_a_high'], b_low=row['wave_b_low']))
         if row.get('event') == 'long_signal' and row.get('channel') == 'wave_push_gap' and isinstance(row.get('wave_b_low_index'), int):
             wave_events.extend(_post_b_wave_exit_events(bars, audit_rows, row))
         elif row.get('event') == 'long_signal' and row.get('wave_a_class') == 'ordinary':
             wave_events.append(dict(event='wave_ordinary_entry', attack=row['attack'],
-                bar_index=row['bar_index'], target=row['wave_equal_target'],
+                bar_index=row['bar_index'], owner_signal_index=row['bar_index'],
+                target=row['wave_equal_target'],
                 one_p=row['wave_entry_one_p'], two_t=row['wave_entry_two_t'],
                 a_origin=row['wave_a_origin'], a_high=row['wave_a_high'],
                 a_high_index=row['wave_a_high_index'], b_low=row['wave_b_low'],
