@@ -12,7 +12,7 @@ from wavequant.application.analytics.trade_evidence import enrich_ledger
 
 
 def _post_b_wave_exit_events(bars, audit, signal_row):
-    """Measure exit stages from positive Ns whose own origin belongs to C's segment."""
+    """Measure C-segment Ns and the parent N of a strong A continuation."""
     b_index = signal_row['wave_b_low_index']
     owner = signal_row['bar_index']
     events = [dict(event='wave_segment_start', attack=owner, bar_index=owner,
@@ -47,6 +47,12 @@ def _post_b_wave_exit_events(bars, audit, signal_row):
         if (row.get('event', '').startswith('wave_projection_')
                 and row.get('origin_index', -1) >= b_index
                 and row['attack'] > b_index):
+            events.append(dict(row, owner_signal_index=owner))
+        elif (signal_row.get('wave_entry_path') == 'two_t_strong_a_resistance_rebreak'
+              and row.get('event', '').startswith('wave_projection_')
+              and row['attack'] == signal_row['attack']):
+            # The strong A continuation trades the same parent N whose five-top
+            # and ten-full milestones are drawn on its entry chart.
             events.append(dict(row, owner_signal_index=owner))
     return events
 
