@@ -17,13 +17,6 @@ def observe_wave_exhaustion(
 ) -> dict | None:
     if not events:
         return None
-    c_entry = next(
-        (event for event in events if event.get("event") == "wave_c_entry"
-         and event.get("bar_index") == (signal_index if signal_index is not None else entry_index)),
-        None,
-    )
-    c_exit = (_observe_c_target(bars, index, c_entry, reduced=reduced, entry_index=entry_index)
-              if c_entry is not None else None)
     ordinary = next(
         (
             event
@@ -34,14 +27,10 @@ def observe_wave_exhaustion(
         None,
     )
     if ordinary is not None:
-        if c_entry is not None:
-            return c_exit
         return _observe_ordinary_c(bars, index, ordinary, config, reduced=reduced, entry_index=entry_index)
     current = _observe_target_candle(bars, index, events, config, reduced=reduced)
     if current is not None and current.get("exit_fraction") == 1.0:
         return current
-    if c_exit is not None and c_exit["exit_fraction"] == 1.0:
-        return c_exit
     # Long upper-shadow warnings persist to the first later lower close.
     # Failed/rounded partial fills must not prevent that full exit.
     held_from = entry_index if entry_index is not None else signal_index if signal_index is not None else 0
@@ -77,60 +66,7 @@ def observe_wave_exhaustion(
                 previous_close=bars[index - 1].close,
                 execution_model="same_day_close",
             )
-    return current or c_exit
-
-
-def _observe_c_target(
-    bars: list[Bar], index: int, entry: dict, *, reduced: bool, entry_index: int | None
-) -> dict | None:
-    """Use only the entry's frozen C projections and bars closed so far."""
-    held_from = entry_index if entry_index is not None else entry["bar_index"]
-    if index <= held_from or index < 1:
-        return None
-    reached = None
-    for stage, target in (("c_equal", entry["equal_target"]), ("c_0618", entry["c_0618_target"])):
-        first = next((j for j in range(held_from + 1, index + 1) if bars[j].high >= target), None)
-        if first is not None:
-            reached = stage, target, first
-            break
-    if reached is None:
-        return None
-    stage, target, first = reached
-    bar, previous = bars[index], bars[index - 1]
-    prior_bearish_index = next((j for j in range(index - 1, -1, -1)
-                                if bars[j].close < bars[j].open), None)
-    evidence = dict(
-        wave_reached_stage=stage,
-        wave_reached_date=bars[first].timestamp.date().isoformat(),
-        wave_reached_price=target,
-        wave_c_0618_target=entry["c_0618_target"],
-        wave_equal_target=entry["equal_target"],
-        wave_a_origin=entry["a_origin"],
-        wave_a_high=entry["a_high"],
-        wave_b_low=entry["b_low"],
-        observed_open=bar.open,
-        observed_high=bar.high,
-        observed_low=bar.low,
-        observed_close=bar.close,
-        observed_volume=bar.volume,
-        previous_low=previous.low,
-        previous_close=previous.close,
-        execution_model="same_day_close",
-    )
-    if (prior_bearish_index is not None and bar.low < previous.low
-            and bar.close < previous.close and bar.volume > bars[prior_bearish_index].volume):
-        reference = bars[prior_bearish_index]
-        return dict(evidence, reason="wave_c_target_lower_low_close_volume_clear", exit_fraction=1.0,
-                    bearish_reference_date=reference.timestamp.date().isoformat(),
-                    bearish_reference_volume=reference.volume)
-    if reduced:
-        return None
-    resistance = observe_resistance(previous, bar, attack_direction=Direction.UP,
-                                    shadow_policy=ShadowPolicy(0.5))
-    if resistance.detected is True:
-        return dict(evidence, reason="wave_c_target_bearish_reduce", exit_fraction=0.7,
-                    exit_target_fraction=0.7, wave_bearish_patterns=list(resistance.reasons))
-    return None
+    return current
 
 
 def _observe_ordinary_c(

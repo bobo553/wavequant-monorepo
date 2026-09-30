@@ -57,7 +57,7 @@ export function tradeReasonItems(item) {
             );
     } else if (item.side === "SELL") {
         if (item.wave_reached_stage) {
-            const names = { one_p: "一饱", two_t: "二吐", five_top: "五顶", ten_full: "十满", ordinary_equal: "普通 A 的 C 等浪", c_0618: "C 浪 0.618×A", c_equal: "C 浪 1×A" };
+            const names = { one_p: "一饱", two_t: "二吐", five_top: "五顶", ten_full: "十满", ordinary_equal: "普通 A 的 C 等浪" };
             reasons.push(
                 `目标背景：${item.wave_n_origin_date ? `新段正 N 起点 ${item.wave_n_origin_date} ${num(item.wave_n_origin_price, 4)} 元；` : ""}${item.wave_reached_date} 已达到${names[item.wave_reached_stage] || item.wave_reached_stage} ${num(item.wave_reached_price, 4)} 元。`,
             );
@@ -114,10 +114,6 @@ export function tradeReasonItems(item) {
             reasons.push(`普通 A：前 A 高 ${num(item.wave_a_high, 4)} 达一饱 ${num(item.wave_one_p, 4)}、未达二吐 ${num(item.wave_two_t, 4)}；C 浪触及等浪目标后放量长上影，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，按累计 80% 目标减仓。`);
         if (item.reason === "wave_ordinary_equal_lower_close_clear")
             reasons.push(`异常后首次收低：${item.abnormal_date} 出现长上影；本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，当日清空余仓。`);
-        if (item.reason === "wave_c_target_bearish_reduce")
-            reasons.push(`C 浪到目标后出现空头抵抗（${(item.wave_bearish_patterns || []).map((key) => ({ higher_open_bearish_body: "高开阴线", direct_lower_open: "低开", long_upper_shadow: "长上影" })[key] || key).join("、")}），当日按累计 70% 目标减仓。`);
-        if (item.reason === "wave_c_target_lower_low_close_volume_clear")
-            reasons.push(`C 浪目标后转弱：本日最低 ${num(item.observed_low, 4)} < 昨低 ${num(item.previous_low, 4)}，收盘 ${num(item.observed_close, 4)} < 昨收 ${num(item.previous_close, 4)}；成交量 ${num(item.observed_volume, 0)} > ${item.bearish_reference_date} 前一阴线 ${num(item.bearish_reference_volume, 0)}，当日清空余仓。`);
         if (["wave_upper_rejection_reduce", "wave_volume_shadows_reduce"].includes(item.reason) && item.wave_range_fraction != null)
             reasons.push(
                 `异常波动：振幅/前收 ${pct(item.wave_range_fraction)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，成交量 ${num(item.observed_volume, 0)} > 前日 ${num(item.previous_volume, 0)}。`,

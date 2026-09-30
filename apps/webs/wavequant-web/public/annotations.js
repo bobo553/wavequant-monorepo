@@ -86,8 +86,6 @@ const REASONS = {
     wave_abnormal_followthrough_clear: "目标异常K线次日收盘继续走低，当日清空余仓",
     wave_ordinary_equal_upper_shadow_reduce: "普通 A 浪的 C 浪到等浪目标后放量长上影，当日按累计 80% 目标减仓",
     wave_ordinary_equal_lower_close_clear: "普通 A 浪的 C 浪异常后首次收低，当日清空余仓",
-    wave_c_target_bearish_reduce: "C 浪到 0.618 或 1 倍目标后出现空头抵抗，当日累计减仓 70%",
-    wave_c_target_lower_low_close_volume_clear: "C 浪到目标后低点与收盘双双走低，且放量超过前一阴线，当日清空余仓",
     wave_upper_rejection_reduce: "目标阶段放量冲高收阴、长上影，当日累计减仓",
     wave_volume_shadows_reduce: "目标阶段放量大振幅、上下长影，当日累计减仓",
     wave_bull_resistance_failed_clear: "目标阶段大阴线击穿多头抵抗低点，当日清仓",
