@@ -43,6 +43,7 @@ test("strong A buy displays five top immediately and ten full only when known", 
         wave_entry_path: "two_t_strong_a_resistance_rebreak",
         wave_entry_n_date: "2023-07-03",
         wave_five_top_target: 5.85,
+        wave_c_0618_target: 5.86374,
         wave_equal_target: 6.41,
     };
     const marker = {
@@ -64,7 +65,12 @@ test("strong A buy displays five top immediately and ten full only when known", 
     const early = buildAnnotations(view, { asof: "2023-07-26", events: [n] })
         .find((item) => item.id === marker.id);
     assert.deepEqual(early.levels.map((level) => level.name), [
-        "成交价", "原始目标投影", "五顶（强A再攻击 · 观察）", "B+1×A 观察",
+        "成交价", "C 浪目标 0.618×A", "C 浪目标 1×A", "五顶（强A再攻击 · 观察）",
+    ]);
+    assert.deepEqual(early.levels.filter((level) => level.stage?.startsWith("c_"))
+        .map(({ stage, price, available_at }) => ({ stage, price, available_at })), [
+        { stage: "c_0618", price: 5.86374, available_at: "2023-07-26" },
+        { stage: "c_equal", price: 6.41, available_at: "2023-07-26" },
     ]);
     const later = buildAnnotations({ ...view, asof: "2023-07-27", bars: [...view.bars, { time: "2023-07-27" }] },
         { asof: "2023-07-27", events: [n] }).find((item) => item.id === marker.id);
@@ -72,4 +78,65 @@ test("strong A buy displays five top immediately and ten full only when known", 
     assert.equal(later.levels.find((level) => level.stage === "ten_full")?.available_at, "2023-07-27");
     const fallback = buildAnnotations(view, null).find((item) => item.id === marker.id);
     assert.equal(fallback.levels.find((level) => level.stage === "five_top")?.price, 5.85);
+});
+
+test("ordinary C-wave buy labels its equal-wave target once", () => {
+    const marker = {
+        id: "ordinary-c", kind: "signal", side: "LONG", time: "2023-07-26",
+        price: 5.76, target: 6.41,
+        decision_evidence: [{ event: "long_signal", wave_entry_path: "one_p_held_defense_rebound",
+            wave_equal_target: 6.41 }],
+    };
+    const item = buildAnnotations({ asof: "2023-07-26", bars: [{ time: "2023-07-26" }],
+        markers: [marker] }, null)[0];
+    assert.deepEqual(item.levels.map(({ name, stage }) => ({ name, stage })), [
+        { name: "信号参考价", stage: undefined },
+        { name: "C 浪目标 1×A", stage: "c_equal" },
+    ]);
+    assert.equal(item.levels[1].available_at, "2023-07-26");
+});
+
+test("selecting the Guofang C-wave buy draws both targets on the price axis", async () => {
+    globalThis.window = { LightweightCharts: { LineSeries: Symbol("line") } };
+    globalThis.MutationObserver = class { observe() {} };
+    globalThis.document = { documentElement: {} };
+    const { PriceChart } = await import("../public/charts.js");
+    const view = {
+        asof: "2023-08-01",
+        bars: [{ time: "2023-07-26" }, { time: "2023-08-01" }],
+        markers: [{
+            id: "guofang-c-buy", kind: "fill", side: "BUY", status: "filled",
+            time: "2023-07-26", signal_time: "2023-07-26",
+            price: 7.523724696038756, target: 7.6592301126997056,
+            decision_evidence: [{ event: "long_signal",
+                wave_entry_path: "two_t_strong_a_resistance_rebreak",
+                wave_c_0618_target: 7.6592301126997056,
+                wave_equal_target: 8.372756128751465 }],
+        }],
+    };
+    const lines = [];
+    const fake = {
+        data: view, selected: buildAnnotations(view, null)[0],
+        options: { levels: true, fills: true }, levelLines: [],
+        container: { dataset: {} },
+        chart: {
+            addSeries(_type, options) {
+                const line = { options, setData(points) { this.points = points; } };
+                lines.push(line);
+                return line;
+            },
+            removeSeries() {},
+        },
+        clearLevels: PriceChart.prototype.clearLevels,
+    };
+    PriceChart.prototype.drawLevels.call(fake);
+    assert.deepEqual(lines.filter((line) => line.options.title.startsWith("C 浪目标"))
+        .map((line) => [line.options.title, line.points[0].value,
+            line.options.priceLineVisible, line.options.autoscaleInfoProvider]), [
+        ["C 浪目标 0.618×A", 7.6592301126997056, true, undefined],
+        ["C 浪目标 1×A", 8.372756128751465, true, undefined],
+    ]);
+    fake.selected = null;
+    PriceChart.prototype.drawLevels.call(fake);
+    assert.equal(fake.container.dataset.levelCount, "0");
 });

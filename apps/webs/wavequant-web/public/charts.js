@@ -757,7 +757,8 @@ export class PriceChart {
             : blockedCandidate
               ? [{ name: "候选参考价（未下单）", price: item.price }]
               : item.levels;
-        const projectionTargets = levels.some((level) => ["five_top", "ten_full"].includes(level.stage));
+        const targetStages = new Set(["c_0618", "c_equal", "five_top", "ten_full"]);
+        const projectionTargets = levels.some((level) => targetStages.has(level.stage));
         for (const [i, level] of levels.entries()) {
             if (!Number.isFinite(level.price)) continue;
             const s = this.chart.addSeries(L.LineSeries, {
@@ -766,7 +767,7 @@ export class PriceChart {
                 lineWidth: 1,
                 title: level.name,
                 lastValueVisible: true,
-                priceLineVisible: item.kind === "wave-projection" || ["five_top", "ten_full"].includes(level.stage),
+                priceLineVisible: item.kind === "wave-projection" || targetStages.has(level.stage),
                 crosshairMarkerVisible: false,
                 pointMarkersVisible: item.kind !== "trend",
                 pointMarkersRadius: 2,
