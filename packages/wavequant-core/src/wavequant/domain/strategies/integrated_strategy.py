@@ -18,6 +18,7 @@ from .bull_eligibility import bull_permission_history
 from .attack_quality import v3_positive_n_attack_rejection
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
+from .bearish_mother_child_resistance import bearish_mother_child_resistance_history
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.wave_strength import StrengthScale, measure_strength
@@ -188,6 +189,10 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
     hierarchy_permissions = {}
     hierarchical = config.entry_policy == 'hierarchical_two_buy_points'
     whole_wave = config.buy_point_definition == 'whole_flip_wave_v3'
+    bearish_mother_child_resistance = (
+        bearish_mother_child_resistance_history(bars, volume_lookback=config.volume_lookback)
+        if whole_wave else {}
+    )
     if config.entry_policy == 'transitioned_squeeze':
         permissions, permission_events = bull_permission_history(
             bars, snapshots, epochs, blocked, config.structure_window,
@@ -730,6 +735,10 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             if c['setup'].direction != Direction.UP or (c['attack'] in emitted_attacks and consolidation is None and wave is None) or epochs[i] != c['epoch']:
                 continue
             counts['entry_candidate_evaluations'] += 1
+            if i in bearish_mother_child_resistance:
+                log(i, 'entry_rejected', reason='bearish_mother_child_resistance_unresolved',
+                    attack=c['attack'], **bearish_mother_child_resistance[i])
+                continue
             dual = multilevel_proofs.get((c['attack'], i))
             same_pressure = (dual is not None and i in secondary_resistance
                 and secondary_resistance[i]['secondary_high'] <= dual['key_price']
@@ -909,7 +918,10 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     **hierarchy_proof)
             break
         special = shallow_base_proofs.get(i)
-        if special is not None and not any(s.bar_index == i and s.side == 'LONG' for s in signals):
+        if special is not None and i in bearish_mother_child_resistance:
+            log(i, 'entry_rejected', reason='bearish_mother_child_resistance_unresolved',
+                channel='shallow_base_breakout', **bearish_mother_child_resistance[i])
+        elif special is not None and not any(s.bar_index == i and s.side == 'LONG' for s in signals):
             signals.append(Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close,
                 special['stop'], 'system_shallow_base_breakout', bar.timestamp,
                 special['counter_ratio'], special['breakout_volume_multiple'],

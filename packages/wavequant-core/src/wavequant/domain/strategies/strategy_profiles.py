@@ -80,7 +80,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v70_' + variant
+    config['profile_version'] = 'gap_up_bullish_squeeze_v71_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -93,10 +93,15 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
     ]
     config['definition']['primary_filters'] += [
         'alternation_before_n_or_same_n_squeeze_confirmation',
+        'broken_massive_bearish_mother_child_mother_high_close_break',
     ]
     config['definition'].update(
         positive_n_defense='minimum_of_first_real_or_virtual_probe_low_through_joint_completion_and_pre_probe_close_touch_anchors_only_strict_joint_break_required',
         mother_n='explicit_lecture_bullish_outside_mother_then_later_confirmed_pullback_and_strict_joint_break',
+        bearish_mother_child_entry_gate=(
+            'higher_open_bearish_mother_record_volume_ge_2x_lookback_mean_'
+            'inside_bearish_child_later_low_break_and_close_below_child_close_'
+            'blocks_all_v3_entries_until_close_gt_mother_high'),
         retained_n_reconfirmation='fresh_independent_n_close_breaks_all_prior_resistance_with_original_defense_held',
         gap_up_bullish_record='prior_resistance_defense_held_open_gt_previous_high_bullish_episode_record_close_upper_shadow_allowed',
         alternation_short_pullback='minimum_close_above_two_thirds_and_b_duration_lt_half_a_requires_later_close_above_a_high',
