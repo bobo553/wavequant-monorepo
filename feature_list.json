@@ -4,6 +4,43 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-214",
+            "name": "c-wave-target-bearish-risk-exit",
+            "title": "C 浪目标后空头抵抗减仓与放量双破清仓",
+            "description": "C 浪买点冻结 B 低加 A 幅度的 0.618 与 1 倍目标；达到任一目标后，空头抵抗按累计七成减仓，最低价和收盘价同时低于前日且成交量超过最近前一阴线时清空余仓。",
+            "scope": "wavequant-core V3 单股目标退出与 wavequant-web 成交说明",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "601086 于 2024-04-01 买入后，04-10 触及 C 浪 0.618 目标并出现放量长上影，当日累计减仓 70%",
+                "04-12 高点尚未触及 1 倍目标；04-15 最低价与收盘价均低于 04-12，成交量高于 04-02 最近前一阴线，当日清空余仓",
+                "1 倍目标沿用相同退出条件；目标未触及、非本次持仓及低点、收盘或成交量任一不严格满足时不误清仓",
+                "成交标注展示目标阶段、A/B 锚点、空头抵抗与清仓比较依据"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest 7 个 C 浪及相邻退出模块 -q；node --test trade-reasons.test.mjs annotations.test.mjs",
+                    "status": "passed",
+                    "summary": "Core 67 项、Web 42 项定向测试通过，覆盖 0.618 和 1 倍目标、严格价量条件及成交说明。"
+                },
+                {
+                    "command": "真实 TDX sh.601086 2018-01-01 至 2024-04-18 单股 V3 回放",
+                    "status": "passed",
+                    "summary": "04-01 BUY，04-10 C 0.618 目标减仓 70%，04-15 按前一阴线 04-02 的量清空，剩余数量为零。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint/typecheck/build；Python 模块编译；git diff --check；pnpm harness:check",
+                    "status": "passed",
+                    "summary": "Web Lint 无错误（6 条既有警告）、类型与生产构建通过；Python 改动模块可编译，差异与 Harness 检查通过。完整 Web 单测和浏览器端到端按用户规则待独立验证；本机 mypy/build 模块未安装。"
+                },
+                {
+                    "command": "python -m pytest test_c_wave_target_exit.py test_ordinary_wave_exit.py -q",
+                    "status": "passed",
+                    "summary": "最终分派逻辑调整后 15 项通过，确认已冻结 C 目标时旧等浪规则不能绕过前阴量条件。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-213",
             "name": "clear-bearish-mother-bullish-child-break",
             "title": "国芳阴母阳子双破当日清仓",

@@ -124,9 +124,11 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
             five_top: "五顶",
             ten_full: "十满",
             ordinary_equal: "普通 A 的 C 等浪",
+            c_0618: "C 浪 0.618×A",
+            c_equal: "C 浪 1×A",
         };
         lines.push(
-            `目标背景：${marker.wave_n_origin_date ? `新段正 N 起点 ${marker.wave_n_origin_date} ${num(marker.wave_n_origin_price, 4)} 元；` : "本笔"}正 N ${marker.wave_n_date}；${marker.wave_reached_date} 已到 ${stageNames[marker.wave_reached_stage] || marker.wave_reached_stage} ${num(marker.wave_reached_price, 4)} 元`,
+            `目标背景：${marker.wave_reached_stage.startsWith("c_") ? `A 高 ${num(marker.wave_a_high, 4)} − A 低 ${num(marker.wave_a_origin, 4)}，B 低 ${num(marker.wave_b_low, 4)}；` : `${marker.wave_n_origin_date ? `新段正 N 起点 ${marker.wave_n_origin_date} ${num(marker.wave_n_origin_price, 4)} 元；` : "本笔"}正 N ${marker.wave_n_date}；`}${marker.wave_reached_date} 已到 ${stageNames[marker.wave_reached_stage] || marker.wave_reached_stage} ${num(marker.wave_reached_price, 4)} 元`,
         );
         if (marker.reason === "wave_gap_reversal_reduce")
             lines.push(
@@ -144,6 +146,10 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
             lines.push(
                 `异常后首次收低：${marker.abnormal_date} 出现长上影；本日收盘 ${num(marker.observed_close, 4)} < 前收 ${num(marker.previous_close, 4)}，当日清空余仓`,
             );
+        if (marker.reason === "wave_c_target_bearish_reduce")
+            lines.push(`C 浪到目标后出现空头抵抗（${(marker.wave_bearish_patterns || []).map((key) => ({ higher_open_bearish_body: "高开阴线", direct_lower_open: "低开", long_upper_shadow: "长上影" })[key] || key).join("、")}），当日按累计 70% 目标减仓`);
+        if (marker.reason === "wave_c_target_lower_low_close_volume_clear")
+            lines.push(`本日最低 ${num(marker.observed_low, 4)} < 昨低 ${num(marker.previous_low, 4)}，收盘 ${num(marker.observed_close, 4)} < 昨收 ${num(marker.previous_close, 4)}；成交量 ${num(marker.observed_volume, 0)} > ${marker.bearish_reference_date} 前一阴线 ${num(marker.bearish_reference_volume, 0)}，当日清空余仓`);
         if (marker.reason === "wave_upper_rejection_reduce")
             lines.push(
                 `冲高收阴：上影不短于阴线实体；振幅/前收 ${pct(marker.wave_range_fraction)}，上影占振幅 ${pct(marker.wave_upper_shadow_fraction)}，下影占振幅 ${pct(marker.wave_lower_shadow_fraction)}；成交量 ${num(marker.observed_volume, 0)} > 前日 ${num(marker.previous_volume, 0)}；不要求日涨跌幅为负`,

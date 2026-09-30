@@ -140,6 +140,41 @@ test("post-B target evidence names the new N origin and one-P milestone", () => 
     }
 });
 
+test("C target reduction and volume clear show dated target and bearish reference", () => {
+    const base = {
+        side: "SELL",
+        wave_reached_stage: "c_0618",
+        wave_reached_date: "2024-04-10",
+        wave_reached_price: 7.4488,
+        wave_a_origin: 5.2509,
+        wave_a_high: 7.3278,
+        wave_b_low: 6.1653,
+    };
+    const reduction = { ...base, reason: "wave_c_target_bearish_reduce",
+        wave_bearish_patterns: ["direct_lower_open", "long_upper_shadow"] };
+    assert.match(tradeReasonItems(reduction).join(" "), /C 浪 0\.618×A.*低开、长上影.*70%/);
+    const view = { symbol: "sh.601086", variant: "lecture_v3",
+        backtest: { start: "2024-01-01" }, asof: "2024-04-15", bars: [] };
+    const copy = formatFilledTradeCopy(view, reduction, "V3", "", null);
+    assert.match(copy, /A 高 7\.3278 − A 低 5\.2509，B 低 6\.1653；2024-04-10 已到 C 浪 0\.618×A/);
+    assert.doesNotMatch(copy, /正 N undefined/);
+    const clear = { ...base, reason: "wave_c_target_lower_low_close_volume_clear",
+        observed_low: 6.6128, previous_low: 7.1355,
+        observed_close: 6.6128, previous_close: 7.3446,
+        observed_volume: 39859464, bearish_reference_date: "2024-04-02",
+        bearish_reference_volume: 16657800 };
+    assert.match(tradeReasonItems(clear).join(" "), /2024-04-02 前一阴线 16,657,800.*清空余仓/);
+    const document = new JSDOM("<div id='panel'></div>").window.document;
+    const previousDocument = globalThis.document;
+    globalThis.document = document;
+    try {
+        appendTradeEvidence(document.getElementById("panel"), clear);
+        assert.match(document.getElementById("panel").textContent, /C 浪 0\.618×A.*2024-04-02 前一阴线/);
+    } finally {
+        globalThis.document = previousDocument;
+    }
+});
+
 test("next-session gap fade clear shows the observable close confirmation", () => {
     const reasons = tradeReasonItems({
         side: "SELL",
