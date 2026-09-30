@@ -644,16 +644,32 @@ export function buildAnnotations(view, theory) {
               : riskRejection
                 ? "风控未通过 · 买入未成交"
                 : `委托${label(m.status)}`;
+        const signalDate = m.signal_time || m.signal_timestamp?.slice(0, 10);
+        const wave = ((fill && m.side === "BUY") || (signal && m.side === "LONG"))
+            ? m.decision_evidence?.find((evidence) => evidence.event === "long_signal"
+                && evidence.wave_entry_path && Number.isFinite(evidence.wave_equal_target))
+            : null;
+        const strongA = wave?.wave_entry_path === "two_t_strong_a_resistance_rebreak" ? wave : null;
+        const cTargets = [
+            ["wave_c_0618_target", "C 浪目标 0.618×A", "c_0618"],
+            ["wave_equal_target", "C 浪目标 1×A", "c_equal"],
+        ];
+        const matchedTarget = cTargets.find(([key]) => Number.isFinite(m.target)
+            && Number.isFinite(wave?.[key]) && Math.abs(m.target - wave[key]) < 1e-6);
         const levels = [];
         if (Number.isFinite(m.price))
             levels.push({ name: fill ? "成交价" : riskRejection ? "拟买价（未成交）" : "信号参考价", price: m.price });
         if (Number.isFinite(m.stop)) levels.push({ name: "原始失效参考", price: m.stop });
-        if (Number.isFinite(m.target)) levels.push({ name: "原始目标投影", price: m.target });
-        const signalDate = m.signal_time || m.signal_timestamp?.slice(0, 10);
-        const strongA = (fill && m.side === "BUY") || (signal && m.side === "LONG")
-            ? m.decision_evidence?.find((evidence) =>
-                  evidence.wave_entry_path === "two_t_strong_a_resistance_rebreak" && evidence.event === "long_signal")
-            : null;
+        if (Number.isFinite(m.target)) levels.push(matchedTarget
+            ? { name: matchedTarget[1], price: m.target, stage: matchedTarget[2],
+                available_at: signalDate || m.time }
+            : { name: "原始目标投影", price: m.target });
+        if (wave) {
+            for (const [key, name, stage] of cTargets) {
+                if (Number.isFinite(wave[key]) && matchedTarget?.[0] !== key)
+                    levels.push({ name, price: wave[key], stage, available_at: signalDate || m.time });
+            }
+        }
         if (strongA) {
             const projections = (nExtensions.get(strongA.wave_entry_n_date) || []).filter(
                 (level) => ["five_top", "ten_full"].includes(level.stage)
@@ -665,9 +681,6 @@ export function buildAnnotations(view, theory) {
                 && Number.isFinite(strongA.wave_five_top_target))
                 levels.push({ name: "五顶（强 A 买点测幅）", price: strongA.wave_five_top_target,
                     stage: "five_top", available_at: signalDate || m.time });
-            if (Number.isFinite(strongA.wave_equal_target))
-                levels.push({ name: "B+1×A 观察", price: strongA.wave_equal_target,
-                    available_at: signalDate || m.time });
         }
         const riskComparison =
             m.reason === "risk_budget_below_one_lot" &&
