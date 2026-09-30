@@ -757,6 +757,7 @@ export class PriceChart {
             : blockedCandidate
               ? [{ name: "候选参考价（未下单）", price: item.price }]
               : item.levels;
+        const projectionTargets = levels.some((level) => ["five_top", "ten_full"].includes(level.stage));
         for (const [i, level] of levels.entries()) {
             if (!Number.isFinite(level.price)) continue;
             const s = this.chart.addSeries(L.LineSeries, {
@@ -765,13 +766,13 @@ export class PriceChart {
                 lineWidth: 1,
                 title: level.name,
                 lastValueVisible: true,
-                priceLineVisible: item.kind === "wave-projection",
+                priceLineVisible: item.kind === "wave-projection" || ["five_top", "ten_full"].includes(level.stage),
                 crosshairMarkerVisible: false,
                 pointMarkersVisible: item.kind !== "trend",
                 pointMarkersRadius: 2,
                 // Selected N targets must remain visible even above the candle
                 // range; deselection removes these series and restores scaling.
-                ...(item.raw?.event === "n_completed" || item.kind === "wave-projection"
+                ...(item.raw?.event === "n_completed" || item.kind === "wave-projection" || projectionTargets
                     ? {}
                     : { autoscaleInfoProvider: () => null }),
             });

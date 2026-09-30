@@ -621,6 +621,10 @@ function abcDescription(event, view) {
 export function buildAnnotations(view, theory) {
     if (!view) return [];
     const marketDates = new Set(view.bars.map((b) => b.time));
+    const nExtensions = new Map(
+        (theory?.events || []).filter((event) => event.event === "n_completed" && event.direction === "up")
+            .map((event) => [event.time, event.levels || []]),
+    );
     const items = view.markers.map((m) => {
         const fill = m.kind === "fill",
             signal = m.kind === "signal",
@@ -646,6 +650,25 @@ export function buildAnnotations(view, theory) {
         if (Number.isFinite(m.stop)) levels.push({ name: "原始失效参考", price: m.stop });
         if (Number.isFinite(m.target)) levels.push({ name: "原始目标投影", price: m.target });
         const signalDate = m.signal_time || m.signal_timestamp?.slice(0, 10);
+        const strongA = (fill && m.side === "BUY") || (signal && m.side === "LONG")
+            ? m.decision_evidence?.find((evidence) =>
+                  evidence.wave_entry_path === "two_t_strong_a_resistance_rebreak" && evidence.event === "long_signal")
+            : null;
+        if (strongA) {
+            const projections = (nExtensions.get(strongA.wave_entry_n_date) || []).filter(
+                (level) => ["five_top", "ten_full"].includes(level.stage)
+                    && (!level.available_at || (level.available_at <= view.asof
+                        && level.available_at <= (theory?.asof || view.asof))),
+            );
+            levels.push(...projections);
+            if (!projections.some((level) => level.stage === "five_top")
+                && Number.isFinite(strongA.wave_five_top_target))
+                levels.push({ name: "五顶（强 A 买点测幅）", price: strongA.wave_five_top_target,
+                    stage: "five_top", available_at: signalDate || m.time });
+            if (Number.isFinite(strongA.wave_equal_target))
+                levels.push({ name: "B+1×A 观察", price: strongA.wave_equal_target,
+                    available_at: signalDate || m.time });
+        }
         const riskComparison =
             m.reason === "risk_budget_below_one_lot" &&
             Number.isFinite(m.risk_budget) &&

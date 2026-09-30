@@ -131,7 +131,10 @@ def result_markers(result):
             target=o.get('target_price'),signal_time=o.get('signal_timestamp','')[:10],
             source='single_stock_backtest'))
     for i,s in enumerate(result['signals']):
-        evidence=[e for e in result.get('audit',[]) if e['timestamp']==s['timestamp'] and e['event']=='long_transition_evidence']
+        dated=[e for e in result.get('audit',[]) if e['timestamp']==s['timestamp']]
+        evidence=[e for e in dated if e['event']=='long_transition_evidence']
+        evidence.extend(e for e in dated if e['event']=='long_signal'
+                        and e.get('channel') and s['reason']=='system_'+e['channel'])
         markers.append(dict(id=f'stock-signal-{i}',time=s['time'],kind='signal',side=s['side'],
             price=s['reference_price'],reason=s['reason'],regime=s['regime'],rvol=s['rvol'],
             stop=s['invalidation_price'] if s['side']=='LONG' else None,

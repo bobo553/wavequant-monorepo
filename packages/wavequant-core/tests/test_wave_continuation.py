@@ -59,6 +59,27 @@ def test_guofang_strong_a_resistance_rebreak_confirms_july_26():
     assert proof["wave_breakout_high"] == pytest.approx(5.70)
     assert proof["wave_c_0618_target"] == pytest.approx(5.86374)
     assert proof["wave_equal_target"] == pytest.approx(6.41)
+    assert proof["wave_five_top_target"] == pytest.approx(5.85)
+
+
+def test_strong_a_signal_marker_carries_only_its_matching_buy_proof():
+    from wavequant.application.analytics.trade_evidence import result_markers
+
+    stamp = "2023-07-26T00:00:00"
+    result = dict(
+        orders=[],
+        signals=[dict(timestamp=stamp, time="2023-07-26", side="LONG",
+                      reference_price=5.76, reason="system_wave_push_gap", regime="轧空",
+                      rvol=1.31, invalidation_price=4.43, target_price=5.86374)],
+        audit=[
+            dict(timestamp=stamp, event="long_signal", channel="shallow_base_breakout"),
+            dict(timestamp=stamp, event="long_signal", channel="wave_push_gap",
+                 wave_entry_path="two_t_strong_a_resistance_rebreak", wave_five_top_target=5.85),
+        ],
+    )
+    marker = result_markers(result)[0]
+    assert len(marker["decision_evidence"]) == 1
+    assert marker["decision_evidence"][0]["wave_five_top_target"] == 5.85
 
 
 @pytest.mark.parametrize("case", ["midpoint_close", "volume", "a_high", "no_resistance", "defense", "new_b_low"])

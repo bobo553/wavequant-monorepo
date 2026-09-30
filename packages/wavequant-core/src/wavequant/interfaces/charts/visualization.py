@@ -780,7 +780,20 @@ class ChartRepository:
         # fulfilled targets for review and label suspended targets explicitly.
         extension_levels = {}
         for row in result.audit:
-            if not row['event'].startswith('wave_projection_') or row['bar_index'] > i:
+            if row['bar_index'] > i:
+                continue
+            if (row['event'] == 'long_signal'
+                    and row.get('wave_entry_path') == 'two_t_strong_a_resistance_rebreak'
+                    and row.get('wave_five_top_target') is not None):
+                extension_levels.setdefault(row['attack'], {})['five_top'] = dict(
+                    stage='five_top', price=row['wave_five_top_target'], status='观察',
+                    mode='强A再攻击', available_at=day(bars[row['bar_index']].timestamp.isoformat()),
+                    projection_span=row['wave_entry_two_t'] - row['wave_a_origin'],
+                    a_origin=row['wave_a_origin'], a_high=row['wave_a_high'],
+                    b_low=row['wave_b_low'],
+                )
+                continue
+            if not row['event'].startswith('wave_projection_'):
                 continue
             levels = extension_levels.setdefault(row['attack'], {})
             reached = row.get('reached_stage')
@@ -790,10 +803,14 @@ class ChartRepository:
             if stage not in ('five_top', 'ten_full'):
                 continue
             if row.get('target') is not None:
+                previous = levels.get(stage)
+                available_at = day(bars[row['bar_index']].timestamp.isoformat())
+                if previous is not None and abs(previous['price'] - row['target']) < 1e-8:
+                    available_at = previous['available_at']
                 levels[stage] = dict(
                     stage=stage, price=row['target'], status='推演中',
                     mode='叠箱' if row['state'] == 'stacking' else '堆箱',
-                    available_at=day(bars[row['bar_index']].timestamp.isoformat()),
+                    available_at=available_at,
                     projection_span=row['projection_span'], a_origin=row['a_origin'],
                     a_high=row['a_high'], b_low=row.get('b_low'),
                 )
