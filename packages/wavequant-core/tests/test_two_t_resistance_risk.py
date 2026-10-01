@@ -25,9 +25,15 @@ def xianfeng_june():
     return bars, config, generate_system_signals(bars, config)
 
 
-def test_xianfeng_below_half_shadow_does_not_block_smaller_n_buy(xianfeng_june):
+def test_xianfeng_below_half_shadow_is_blocked_by_unfinished_c_not_shadow(xianfeng_june):
     bars, config, result = xianfeng_june
-    assert any(s.side == "LONG" and str(s.timestamp.date()) == "2026-06-09" for s in result.signals)
+    assert not any(s.side == "LONG" and str(s.timestamp.date()) == "2026-06-09" for s in result.signals)
+    rejected = next(e for e in result.audit if e["event"] == "entry_rejected"
+                    and e["timestamp"].startswith("2026-06-09")
+                    and e["reason"] == "wave_c_0618_unfinished_pressure")
+    assert rejected["previous_c_known_date"] == "2026-05-18"
+    assert rejected["previous_c_0618_target"] == pytest.approx(7.22146)
+    assert rejected["previous_c_equal_target"] == pytest.approx(9.12)
     assert not any(e["event"] == "target_resistance_observed"
                    and e["timestamp"][:10] == "2026-06-09" for e in result.audit)
     clear = next(s for s in result.signals if s.side == "EXIT" and str(s.timestamp.date()) == "2026-06-10")

@@ -43,11 +43,30 @@ const RULES = {
         "diagnostic",
     ],
     entry_rejected: ["入场条件未通过", "仅为候选规则筛选失败，不代表委托被交易所拒绝。", 25, "diagnostic"],
+    wave_c_unfinished_observed: [
+        "前 C 浪未完成压力",
+        "前 C 浪触及 0.618 后尚未到 1 倍且未跌破 C 起点，新买点不能绕过旧压力。",
+        25,
+        "diagnostic",
+    ],
+    wave_c_progress_observed: [
+        "前 C 浪发展阶段",
+        "按冻结 A/B 跟踪 0.618、守起点回撤、向 1 倍续推及风险周期结束。",
+        25,
+        "diagnostic",
+    ],
     entry_preflight_rejected: ["盈亏比未通过", "当时参考价到失效位和最近未达目标的收益风险比不足。", 25, "diagnostic"],
     n_geometry_rejected: ["N 字几何未成立", "候选拐点未满足标准 N 字几何条件。", 20, "diagnostic"],
     long_signal: ["引擎入场观察", "当前引擎重算事件；买入信号与模拟成交分别展示，信号不保证成交。", 20, "diagnostic"],
     exit_signal: ["引擎退出观察", "风险退出观察可能在空仓时发生，不等于实际卖出。", 20, "diagnostic"],
     long_transition_evidence: ["入场趋势链证据", "记录该入场观察所依赖的翻多、交替和多头确认日期。", 25, "diagnostic"],
+};
+const C_WAVE_PHASES = {
+    reached_0618: "第一步：触及 0.618",
+    pullback_holds_c_origin: "第二步：回撤仍守 C 起点",
+    resuming_to_equal: "第三步：继续向旧 1 倍目标上涨，尚未完成",
+    c_origin_broken: "实际跌破 C 起点，旧 C 周期结束，允许重新筛选买点",
+    equal_completed: "达到旧 1 倍目标，旧 C 周期结束，允许重新筛选买点",
 };
 const REASONS = {
     system_squeeze_pullback_resume: "轧空回压后恢复上涨",
@@ -91,6 +110,7 @@ const REASONS = {
     wave_ordinary_equal_lower_close_clear: "普通 A 浪的 C 浪异常后首次收低，当日清空余仓",
     wave_c_0618_upper_shadow_reduce: "普通 A 浪的 C 浪达到 0.618 目标后收低且出现长上影，当日累计减仓 80%",
     wave_c_0618_shadow_break_clear: "C 浪 0.618 目标警示后收低，最低价和收盘价均跌破警示 K 线，当日清空余仓",
+    wave_c_0618_unfinished_pressure: "前 C 浪已达 0.618、未完成 1 倍且未跌破 C 起点，禁止买入与加仓",
     wave_two_t_resistance_reduce: "二饱（二吐/2T）到位出现较长上影抵抗，禁买与加仓，持仓累计减仓 80%",
     wave_two_t_resistance_volume_clear: "二饱抵抗后次笔阴线低点与收盘双破，量大于最近阴线，当日清仓",
     wave_two_t_next_volume_clear: "二饱到位日上影超过 40%，次日阴线双破且量大于最近阴线，当日清仓",
@@ -737,6 +757,14 @@ export function buildAnnotations(view, theory) {
             event.event === "entry_preflight_rejected" && Number.isFinite(event.gross_reward_risk)
                 ? `收盘收益风险比 ${num(event.gross_reward_risk)}，要求至少 ${num(event.required_reward_risk)}。`
                 : "";
+        const previousC =
+            event.reason === "wave_c_0618_unfinished_pressure"
+                ? `旧 C ${event.previous_c_known_date} 已确认，A 高 ${event.previous_c_a_high_date} ${num(event.previous_c_a_high, 4)}、C 起点（B 低）${event.previous_c_b_low_date} ${num(event.previous_c_b_low, 4)}；${event.previous_c_reached_date} 触及 0.618 目标 ${num(event.previous_c_0618_target, 4)}，1 倍目标 ${num(event.previous_c_equal_target, 4)} 尚未完成。当前确认价 ${num(event.observed_close, 4)}；等待实际跌破 C 起点或达到旧 1 倍后才重新筛选买点，强势站上 0.618 本身不解除禁买。${event.previous_c_pullback_date ? `已于 ${event.previous_c_pullback_date} 观察回撤，低点 ${num(event.previous_c_pullback_low, 4)} 仍守 C 起点；第二段上涨 0.618×A 的参考位 ${num(event.previous_c_second_rise_reference, 4)}，旧 1 倍目标保持。` : ""}A 幅度 ${num(event.previous_c_a_amplitude, 4)}，从已知 C 高回落同幅度的参考价 ${num(event.previous_c_retracement_reference, 4)}（风险参考，不保证到达）。`
+                : "";
+        const cPhase =
+            event.event === "wave_c_progress_observed"
+                ? `旧 C ${event.previous_c_known_date}；${C_WAVE_PHASES[event.previous_c_phase] || event.previous_c_phase}。C 起点 ${num(event.previous_c_b_low, 4)}，冻结 0.618 ${num(event.previous_c_0618_target, 4)}、1 倍 ${num(event.previous_c_equal_target, 4)}；重新筛选不等于自动买入。`
+                : "";
         items.push({
             id: event.id,
             time: event.available_at,
@@ -749,8 +777,8 @@ export function buildAnnotations(view, theory) {
                 abc || squeezeAlternation
                     ? abcDescription(event, view)
                     : candidateRejection
-                      ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}未产生买入信号，也未提交买单。`
-                      : spec?.[1] || "当前引擎已记录的规则事件。",
+                      ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${previousC}未产生买入信号，也未提交买单。`
+                      : previousC || cPhase || spec?.[1] || "当前引擎已记录的规则事件。",
             category: abc ? "tertiary-abc" : candidateRejection ? "entry-rejections" : spec?.[3] || "rules",
             priority: candidateRejection ? 155 : spec?.[2] || 10,
             levels: eventLevels,

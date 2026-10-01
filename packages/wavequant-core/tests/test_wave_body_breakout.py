@@ -28,9 +28,9 @@ def test_real_non_gap_body_breakout_and_prefix(sample):
     assert proof["wave_confirmation_phase"] == "body"
     assert proof["wave_b_low_date"] == "2026-09-16"
     assert proof["wave_breakout_date"] == "2026-09-14"
-    gap = next(s for s in result.signals if s.side == "LONG" and s.bar_index == now + 1)
-    assert gap.reason == "system_wave_push_gap"
-    gap_proof = next(e for e in result.audit if e["bar_index"] == now + 1 and e["event"] == "long_signal")
+    assert not any(s.side == "LONG" and s.bar_index == now + 1 for s in result.signals)
+    gap_proof = next(e for e in result.audit if e["bar_index"] == now + 1 and e["event"] == "wave_gap_observed"
+                     and e["attack"] == proof["attack"])
     assert gap_proof["wave_confirmation_phase"] == "gap"
     assert (gap_proof["attack"], gap_proof["wave_a_high_index"], gap_proof["wave_b_low_index"]) == (
         proof["attack"],
@@ -38,6 +38,10 @@ def test_real_non_gap_body_breakout_and_prefix(sample):
         proof["wave_b_low_index"],
     )
     assert gap_proof["wave_gap_high"] > proof["wave_gap_high"]
+    rejected = next(e for e in result.audit if e["bar_index"] == now + 1 and e["event"] == "entry_rejected"
+                    and e["reason"] == "wave_c_0618_unfinished_pressure")
+    assert rejected["previous_c_known_date"] == "2026-09-16"
+    assert rejected["previous_c_equal_target"] == proof["wave_equal_target"]
     prefix = generate_system_signals(bars[: now + 1], config())
     assert prefix.signals == [s for s in result.signals if s.bar_index <= now]
 
