@@ -4,6 +4,43 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-219",
+            "name": "global-two-t-next-session-volume-clear",
+            "title": "二饱次日放量双破独立清仓",
+            "description": "全局 V3 在二饱首次到位日上影严格超过 40%，次日收阴、低点与收盘严格双破前日且量超过最近阴线时，不依赖 50% 上影减仓警示在收盘清仓。",
+            "scope": "全局 V3 信号、成交清仓、Web 原因与真实先锋回归",
+            "dependencies": ["MONOREPO-218"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "先锋 2026-06-09 上影不足 50% 仍可买，06-10 阴线今低 6.32 < 6.54、今收 6.47 < 6.94 且量 50,750,501 > 最近阴线 06-04 的 36,051,401，当日清仓",
+                "清仓要求前日上影占振幅严格超过 40%，恰好 40% 不触发；不依赖 50% 上影警示或前日减仓，较小新 N 持仓和当天新买/加仓受同一全局风险约束",
+                "只取首次二饱到位的下一交易日，严格 40% 上影及价格、量边界、目标失效、阴线参照及历史前缀无未来数据均有回归",
+                "50% 长上影减仓、既有警示后清仓、T+1、早先开盘/分钟成交与较强退出优先级保持，成交说明明确二饱日期和双破量价依据"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest tests/test_two_t_resistance_risk.py tests/test_wave_target_upper_shadow_exit.py tests/test_ordinary_wave_exit.py tests/test_wave_exhaustion_exit.py tests/test_bearish_mother_child_volume_exit.py -q",
+                    "status": "passed",
+                    "summary": "最终严格 40% 门槛版本 69 项通过；先复现先锋 06-10 漏清仓及恰好 40% 未排除，再覆盖真实前缀、06-09 买入后次日清仓、不依赖减仓、不同 N、严格双破/量能/窗口及确认日失效仍保护持仓。"
+                },
+                {
+                    "command": "python -m pytest tests/test_add_on_entry.py tests/test_wave_intraday_entry.py tests/test_intraday_entry.py tests/test_mother_child_inverse_exit.py -q",
+                    "status": "passed",
+                    "summary": "追加 40% 限制前的独立清仓实现通过 33 项相邻回归；加仓、分钟执行及母子退出时序通过。追加限制后复验 69 项退出定向用例及 34 项快速检查。"
+                },
+                {
+                    "command": "node --test tests/trade-reasons.test.mjs tests/annotations.test.mjs；pnpm --filter wavequant-web lint、typecheck、build",
+                    "status": "passed",
+                    "summary": "最终 44 项 Web 定向测试、类型及生产构建通过；Lint 仅有 6 条既有警告。清仓说明包括二饱日期/目标、前日 47.37% 上影超过 40%、双破价与最近阴线量，不混用 50% 减仓说明。"
+                },
+                {
+                    "command": "新模块及配置的 4 个 Core 基线文件 mypy --strict，追加 40% 后新模块复验；compileall；python -m build --no-isolation；JS 语法、测试格式、git diff --check；pnpm harness:check",
+                    "status": "passed",
+                    "summary": "类型、模块编译、最终 sdist/wheel 构建通过；完整 Core/Web 套件、浏览器端到端和账户收益重算待验证，按用户规则未运行 Playwright。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-218",
             "name": "restore-two-t-half-range-upper-shadow",
             "title": "二饱抵抗上影门槛恢复 50%",
