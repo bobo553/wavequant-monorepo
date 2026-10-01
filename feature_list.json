@@ -4,6 +4,33 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-224",
+            "name": "bearish-outside-mother-volume-staged-exit",
+            "title": "子母线阴母放量反包减仓与次日双破清仓",
+            "description": "全局持仓遇后出现的阴母线反包前一根子线，母线量严格大于此前最近阴线时按原仓累计减70%；下一交易日低点和收盘严格低于母线低点与收盘时清空余仓。",
+            "scope": "Core 子母线持仓风控、成交证据、Web 卖出原因与新华文轩实际样本",
+            "dependencies": ["MONOREPO-223", "MONOREPO-220"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "新华文轩2024-01-29阴母与01-26子线等高且低点更低，母线量3106650大于01-22最近阴线量2868478，01-29累计减仓70%；01-30低点与收盘双破母线则收盘清仓",
+                "反包使用整根K线范围，允许一侧等高或等低且至少一侧严格包住；子线可收阳、阴或十字星，前阴线量从母线前向前查，子线收阴时可以作为量能参照",
+                "等量、无正量阴线参照、母线收阳或十字星及未反包不触发；次日清仓严格双破，不要求次日收阴或放量，不延长到之后交易日",
+                "已有70%减仓和整手未减成功仍保留母线保护；更强巨量反转及原阴线反包清仓优先，既有母子线条件、T+1、累计目标和历史前缀保持"
+            ],
+            "verification": [
+                {
+                    "command": "Core 7个退出规则文件定向pytest；新分支最终22项复验；test_add_on_entry.py、test_close_entry.py、test_mother_child_inverse_exit.py定向pytest",
+                    "status": "passed",
+                    "summary": "151个不同退出用例及27项相邻持仓用例通过，共178项。先复现新华01-29漏减仓和01-30未清，再覆盖等高/等低反包、阳阴十字子线、前阴量严格边界、母线双破边界、只破子线、仅下一交易日、不足一手仍清和历史前缀。原巨量及阴线反包强清仓保持。"
+                },
+                {
+                    "command": "node --test tests/trade-reasons.test.mjs tests/annotations.test.mjs；Web lint、typecheck、build；2修改模块mypy；Core build及独立环境安装wheel导入；JS语法、格式、差异和Harness检查",
+                    "status": "passed",
+                    "summary": "47项Web用例、类型和生产构建通过，Lint仅6条既有警告；Core类型、sdist/wheel构建及独立安装导入通过。完整Core/Web套件、外部分钟回放、浏览器和账户收益重算待独立验证，未运行Playwright。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-223",
             "name": "restore-child-volume-gate-and-volume-double-break-clear",
             "title": "恢复子线放量减仓与放量双破直清",

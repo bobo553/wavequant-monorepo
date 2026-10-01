@@ -7,6 +7,36 @@ import { formatFilledTradeCopy } from "../public/filled-trade-copy.js";
 import { numberedTradeReasons, tradeReasonItems } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
 
+test("bearish outside mother reduction and next-session clear use mother price and volume evidence", () => {
+    const reduction = tradeReasonItems({
+        side: "SELL",
+        reason: "volume_bearish_child_mother_reduce_70",
+        mother_date: "2024-01-29",
+        mother_low: 15.8461,
+        mother_high: 16.3274,
+        mother_volume: 3_106_650,
+        child_date: "2024-01-26",
+        child_low: 15.8942,
+        child_high: 16.3274,
+        bearish_reference_date: "2024-01-22",
+        bearish_reference_volume: 2_868_478,
+    }).join(" ");
+    assert.match(reduction, /子母线阴母反包.*累计减仓 70%/);
+    assert.match(reduction, /2024-01-29.*15\.8461～16\.3274.*反包 2024-01-26.*15\.8942～16\.3274/);
+    assert.match(reduction, /母线成交量 3,106,650 股 > 此前 2024-01-22 最近阴线量 2,868,478 股/);
+    const clear = tradeReasonItems({
+        side: "SELL",
+        reason: "volume_bearish_child_mother_break_clear",
+        mother_date: "2024-01-29",
+        mother_low: 15.8461,
+        mother_close: 16.0386,
+        observed_low: 15.3167,
+        observed_close: 15.3528,
+    }).join(" ");
+    assert.match(clear, /次一交易日最低 15\.3167 < 母线低点 15\.8461.*收盘 15\.3528 < 母线收盘 16\.0386.*清空余仓/);
+    assert.doesNotMatch(clear, /子线低点|子线收盘|undefined/);
+});
+
 test("two-T next-session clear explains target and double break without a shadow warning", () => {
     const reasons = numberedTradeReasons({
         side: "SELL",
