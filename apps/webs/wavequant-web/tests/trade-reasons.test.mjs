@@ -7,6 +7,36 @@ import { formatFilledTradeCopy } from "../public/filled-trade-copy.js";
 import { numberedTradeReasons, tradeReasonItems } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
 
+test("global two-T risk explains warning and the next bearish-volume double break", () => {
+    const warning = {
+        side: "SELL",
+        reason: "wave_two_t_resistance_reduce",
+        target_warning_date: "2026-06-09",
+        wave_reached_price: 7.3,
+        wave_upper_shadow_fraction: 0.36 / 0.76,
+        exit_target_fraction: 0.8,
+    };
+    const reduced = numberedTradeReasons(warning).join("\n");
+    assert.match(reduced, /禁买与加仓/);
+    assert.match(reduced, /7\.3000/);
+    assert.match(reduced, /47\.37%/);
+    const clear = numberedTradeReasons({
+        ...warning,
+        reason: "wave_two_t_resistance_volume_clear",
+        observed_low: 6.32,
+        previous_low: 6.54,
+        observed_close: 6.47,
+        previous_close: 6.94,
+        observed_volume: 50_750_501,
+        bearish_reference_date: "2026-06-04",
+        bearish_reference_volume: 36_051_401,
+    }).join("\n");
+    assert.match(clear, /6\.3200 < 昨低 6\.5400/);
+    assert.match(clear, /6\.4700 < 昨收 6\.9400/);
+    assert.match(clear, /最近阴线 2026-06-04/);
+    assert.match(clear, /清空余仓/);
+});
+
 test("buy decision reasons are translated and numbered in order with recorded evidence", () => {
     const marker = {
         side: "BUY",
@@ -179,7 +209,7 @@ test("bearish inside child reduction and next-session break show their own evide
         side: "SELL",
         reason: "volume_bearish_child_reduce_70",
         mother_date: "2023-03-31",
-        mother_close: 4.50,
+        mother_close: 4.5,
         bearish_reference_date: "2023-03-29",
         bearish_reference_high: 4.38,
         bearish_reference_volume: 3_526_100,
@@ -193,9 +223,9 @@ test("bearish inside child reduction and next-session break show their own evide
         reason: "volume_bearish_child_break_clear",
         child_date: "2023-04-03",
         child_low: 4.36,
-        child_close: 4.40,
+        child_close: 4.4,
         observed_low: 4.26,
-        observed_close: 4.30,
+        observed_close: 4.3,
     });
     assert.match(clear.join(" "), /最低 4\.2600 < 子线低点 4\.3600.*收盘 4\.3000 < 子线收盘 4\.4000.*清空余仓/);
 });
@@ -220,7 +250,7 @@ test("C-wave 0.618 exit explains the earlier target and later warning break", ()
         abnormal_date: "2026-02-02",
         abnormal_low: 5.44,
         abnormal_close: 5.54,
-        observed_low: 5.30,
+        observed_low: 5.3,
         observed_close: 5.36,
         previous_close: 5.57,
     });

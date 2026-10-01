@@ -19,6 +19,7 @@ from .attack_quality import v3_positive_n_attack_rejection
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
+from .two_t_resistance import two_t_resistance_history
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.wave_strength import StrengthScale, measure_strength
 from ..market_state.washout import WashoutPolicy, WashoutStage, observe_washout
@@ -670,6 +671,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             return outcome
         return select_entry(hierarchy_permissions.get(i,()),hierarchy_permissions.get(c['attack'],()),**params)
     emitted_attacks = set()
+    target_resistance = two_t_resistance_history(bars, audit) if whole_wave else {}
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
     bearish_attacks = {c['attack']: c for c in candidates if c['setup'].direction == Direction.DOWN}
     last_progress = -1
@@ -679,6 +681,11 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             progress(percent)
             last_progress = percent
         exits = []
+        target_risk = target_resistance.get(i)
+        if target_risk is not None:
+            log(i, 'target_resistance_observed', **target_risk)
+            if target_risk['exit_fraction'] == 1.0:
+                exits.append(str(target_risk['reason']))
         mother_child_inverse = mother_child_inverse_n_break(bars, i) if whole_wave else None
         if mother_child_inverse is not None:
             exits.append(MOTHER_CHILD_INVERSE_N_LOW_BREAK)
@@ -704,7 +711,11 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         if exits:
             signals.append(Signal(bar.timestamp, bar.symbol, i, 'EXIT', bar.close, bar.high,
                 '|'.join(exits), bar.timestamp, 0, None, 'risk_exit'))
-            log(i, 'exit_signal', reason='|'.join(exits), **(mother_child_inverse or {}))
+            log(i, 'exit_signal', reason='|'.join(exits), **{
+                **(mother_child_inverse or {}),
+                **({key: value for key, value in target_risk.items() if key not in ('reason', 'exit_fraction')}
+                   if target_risk is not None and target_risk['exit_fraction'] == 1.0 else {}),
+            })
             continue
         choices = events.get(i, [])+resumptions.get(i, [])+consolidation_events.get(i, [])+wave_events.get(i, []) if config.regime_filter else [
             (c, c['regime'].frames[0]) for c in candidates if c['attack'] == i]
@@ -730,6 +741,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             if c['setup'].direction != Direction.UP or (c['attack'] in emitted_attacks and consolidation is None and wave is None) or epochs[i] != c['epoch']:
                 continue
             counts['entry_candidate_evaluations'] += 1
+            if target_risk is not None:
+                log(i, 'entry_rejected', **target_risk, candidate_attack=c['attack'])
+                continue
             dual = multilevel_proofs.get((c['attack'], i))
             same_pressure = (dual is not None and i in secondary_resistance
                 and secondary_resistance[i]['secondary_high'] <= dual['key_price']

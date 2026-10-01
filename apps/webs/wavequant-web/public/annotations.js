@@ -89,6 +89,8 @@ const REASONS = {
     wave_ordinary_equal_lower_close_clear: "普通 A 浪的 C 浪异常后首次收低，当日清空余仓",
     wave_c_0618_upper_shadow_reduce: "普通 A 浪的 C 浪达到 0.618 目标后收低且出现长上影，当日累计减仓 80%",
     wave_c_0618_shadow_break_clear: "C 浪 0.618 目标警示后收低，最低价和收盘价均跌破警示 K 线，当日清空余仓",
+    wave_two_t_resistance_reduce: "二饱（二吐/2T）到位出现较长上影抵抗，禁买与加仓，持仓累计减仓 80%",
+    wave_two_t_resistance_volume_clear: "二饱抵抗后次笔阴线低点与收盘双破，量大于最近阴线，当日清仓",
     wave_upper_rejection_reduce: "目标阶段放量冲高收阴、长上影，当日累计减仓",
     wave_volume_shadows_reduce: "目标阶段放量大振幅、上下长影，当日累计减仓",
     wave_bull_resistance_failed_clear: "目标阶段大阴线击穿多头抵抗低点，当日清仓",
