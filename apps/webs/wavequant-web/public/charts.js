@@ -774,7 +774,7 @@ export class PriceChart {
               : item.levels;
         const targetStages = new Set(["c_0618", "c_equal", "one_p", "two_t", "five_top", "ten_full"]);
         const projectionTargets = levels.some((level) => targetStages.has(level.stage));
-        const shortGuides = [];
+        const targetGuides = [];
         for (const [i, level] of levels.entries()) {
             if (!Number.isFinite(level.price)) continue;
             const guide = targetLevelGuide(item, level, this.data.bars,
@@ -785,7 +785,7 @@ export class PriceChart {
                 lineStyle: item.kind === "trend" ? 0 : 2,
                 lineWidth: 1,
                 title: level.name,
-                lastValueVisible: true,
+                lastValueVisible: !targetStages.has(level.stage),
                 priceLineVisible: !guide && (item.kind === "wave-projection" || targetStages.has(level.stage)),
                 crosshairMarkerVisible: false,
                 pointMarkersVisible: !guide && item.kind !== "trend",
@@ -800,14 +800,24 @@ export class PriceChart {
             const points = [{ time: start, value: level.price }];
             if (guide?.end && guide.end > start)
                 points.push({ time: guide.end, value: level.price });
-            else if (guide)
-                shortGuides.push({ ...guide, color });
-            else if (start < this.data.bars.at(-1).time)
+            else if (!guide && start < this.data.bars.at(-1).time)
                 points.push({ time: this.data.bars.at(-1).time, value: level.price });
+            if (targetStages.has(level.stage))
+                targetGuides.push({
+                    ...(guide || {
+                        start,
+                        end: points.at(-1).time,
+                        price: level.price,
+                        name: level.name,
+                        // 旧记录缺少结构锚点，仍标注目标，但不推断突破状态。
+                        statusKnown: false,
+                    }),
+                    color,
+                });
             s.setData(points);
             this.levelLines.push(s);
         }
-        this.targetGuideOverlay?.setGuides(shortGuides);
+        this.targetGuideOverlay?.setGuides(targetGuides);
         this.container.dataset.levelCount = this.levelLines.length;
     }
     clearPolyline() {

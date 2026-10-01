@@ -4,6 +4,37 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-216",
+            "name": "c-wave-target-left-labels",
+            "title": "C 浪目标标签左侧贴线显示",
+            "description": "C 浪及启动正 N 目标改为目标线左端的直接标注，去除右侧重复价格标签；避让相近目标并保留引线和预估标识。",
+            "scope": "wavequant-web 目标图层与标签布局",
+            "dependencies": ["MONOREPO-215"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "已突破与未突破目标均贴近线段左端显示名称、价格、突破状态；右侧价格轴不重复显示目标标签",
+                "C 浪与正 N 六档目标在相近价格和图窗边缘错开文字，用引线指向真实价位；窄容器保留价格及预估标识",
+                "平移与缩放后标签保持图窗内，取消选择清除；目标原价格、B 起点、突破终点与缩放逻辑保持正确"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/buy-n-targets.test.mjs tests/target-level-guides.test.mjs tests/n-extension-levels.test.mjs tests/wave-endpoint-overlay.test.mjs tests/annotations.test.mjs tests/wave-c-projection.test.mjs tests/wave-entry-evidence.test.mjs",
+                    "status": "passed",
+                    "summary": "59 项通过；先复现目标 lastValueVisible 仍为 true 的失败，再覆盖长短线左端标签、右轴去重、六档顶部/底部避让、窄窗预估保留、平移可见性和旧记录兼容。"
+                },
+                {
+                    "command": "pnpm exec turbo run lint typecheck build --filter=wavequant-web --output-logs=errors-only",
+                    "status": "passed",
+                    "summary": "首轮 9 个任务通过；最终 Turbo 重跑发生 Windows 进程内存异常，随后单独运行 pnpm --filter wavequant-web lint、typecheck、build 全部通过。Lint 仅有 6 条既有环境变量警告。"
+                },
+                {
+                    "command": "修改目标模块及 2 个测试 prettier --check；修改 5 个 JS 文件 node --check；git diff --check；pnpm harness:check",
+                    "status": "passed",
+                    "summary": "格式、语法、差异和状态检查通过；完整 Web 单测及浏览器视觉留待独立验证，按用户规则未运行 Playwright 或浏览器端到端测试。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-215",
             "name": "c-wave-buy-target-guides-and-launch-n",
             "title": "C 浪目标截断与启动正 N 测幅",
