@@ -99,6 +99,7 @@ class StagedExitState:
     volume_support_index: int | None = None
     volume_reduction_target: float = 0.0
     bearish_child_warning_index: int | None = None
+    bearish_mother_child_warning_index: int | None = None
 
 
 def observe_intraday_staged_exit(
@@ -301,12 +302,15 @@ def _bearish_outside_reversal(bars: list[Bar], index: int) -> dict | None:
 
 
 def _bearish_mother_child_volume(bars: list[Bar], index: int) -> dict | None:
-    """A bearish inside child whose volume exceeds the last bearish candle's."""
+    """Compare a bearish child's volume with the last bearish bar before its mother."""
     if index < 2:
         return None
     mother, child = bars[index - 1], bars[index]
-    if (mother.close <= mother.open or child.close >= child.open
-            or not observe_bar_relations(mother, child).inside):
+    bearish_mother = mother.close < mother.open
+    contained = (child.high <= mother.high and child.low >= mother.low
+                 and (child.high < mother.high or child.low > mother.low)) if bearish_mother else (
+                     observe_bar_relations(mother, child).inside)
+    if mother.close == mother.open or child.close >= child.open or not contained:
         return None
     reference = index - 2
     while reference >= 0 and bars[reference].close >= bars[reference].open:
@@ -314,15 +318,17 @@ def _bearish_mother_child_volume(bars: list[Bar], index: int) -> dict | None:
     if reference < 0:
         return None
     bearish = bars[reference]
-    if bearish.volume <= 0 or mother.close <= bearish.high or child.volume <= bearish.volume:
+    if (bearish.volume <= 0 or child.volume <= bearish.volume
+            or (not bearish_mother and mother.close <= bearish.high)):
         return None
     return dict(mother_date=mother.timestamp.date().isoformat(),
-                mother_high=mother.high, mother_close=mother.close,
+                mother_high=mother.high, mother_low=mother.low,
+                mother_open=mother.open, mother_close=mother.close, mother_bearish=bearish_mother,
                 bearish_reference_date=bearish.timestamp.date().isoformat(),
                 bearish_reference_high=bearish.high,
                 bearish_reference_volume=bearish.volume,
                 child_date=child.timestamp.date().isoformat(),
-                child_low=child.low, child_close=child.close,
+                child_high=child.high, child_low=child.low, child_close=child.close,
                 child_volume=child.volume,
                 child_bearish_volume_multiple=child.volume / bearish.volume)
 
@@ -333,6 +339,16 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     """Freeze confirmed support and escalate cumulative reduction without future N bars."""
     if index < 1:
         return None
+    bearish_warning = state.bearish_mother_child_warning_index
+    if bearish_warning is not None and index > bearish_warning:
+        mother, child, bar = bars[bearish_warning - 1], bars[bearish_warning], bars[index]
+        if bar.low < child.low:
+            return dict(reason='volume_bearish_mother_child_low_clear', exit_fraction=1.0,
+                        execution_model='same_day_close',
+                        mother_date=mother.timestamp.date().isoformat(),
+                        child_date=child.timestamp.date().isoformat(),
+                        child_low=child.low, child_close=child.close,
+                        observed_low=bar.low, observed_close=bar.close)
     warning = state.bearish_child_warning_index
     if warning is not None and index == warning + 1:
         child, bar = bars[warning], bars[index]
@@ -348,19 +364,26 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     outside_reversal = _bearish_outside_reversal(bars, index)
     if outside_reversal is not None:
         return outside_reversal
-    # A warned inside child has its own next-session confirmation. A gap fade
-    # alone must not substitute for the required low-and-close break.
-    if warning is not None and index == warning + 1:
-        return None
     bearish_child = _bearish_mother_child_volume(bars, index)
+    # The bullish-mother warning keeps its double-break requirement, while
+    # an overlapping bearish pair can independently protect its child's low.
+    if warning is not None and index == warning + 1:
+        if bearish_child is not None and bearish_child['mother_bearish']:
+            state.bearish_mother_child_warning_index = index
+        return None
     if bearish_child is not None:
-        state.bearish_child_warning_index = index
+        if bearish_child['mother_bearish']:
+            state.bearish_mother_child_warning_index = index
+        else:
+            state.bearish_child_warning_index = index
     if bearish_child is not None and state.volume_reduction_target < .7:
         state.volume_trigger_index = index
         state.volume_support_index = next((j for j in range(index - 2, 0, -1)
             if bars[j].low < min(bars[j - 1].low, bars[j + 1].low)), None)
         state.volume_reduction_target = .7
-        return dict(bearish_child, reason='volume_bearish_child_reduce_70',
+        reason = ('volume_bearish_mother_child_reduce_70' if bearish_child['mother_bearish']
+                  else 'volume_bearish_child_reduce_70')
+        return dict(bearish_child, reason=reason,
                     exit_fraction=.7, exit_target_fraction=.7,
                     execution_model='same_day_close')
     bar, previous = bars[index], bars[index-1]

@@ -255,6 +255,37 @@ test("bearish inside child reduction and next-session break show their own evide
     assert.match(clear.join(" "), /最低 4\.2600 < 子线低点 4\.3600.*收盘 4\.3000 < 子线收盘 4\.4000.*清空余仓/);
 });
 
+test("bearish mother and child explain volume before the pair and a bullish low break", () => {
+    const reduction = tradeReasonItems({
+        side: "SELL",
+        reason: "volume_bearish_mother_child_reduce_70",
+        mother_date: "2026-04-17",
+        mother_low: 4.89,
+        mother_high: 5.18,
+        child_date: "2026-04-20",
+        child_low: 4.89,
+        child_high: 4.98,
+        child_volume: 20_778_797,
+        bearish_reference_date: "2026-04-15",
+        bearish_reference_volume: 15_569_200,
+    });
+    assert.match(reduction.join(" "), /阴母阴子组合.*累计减仓 70%/);
+    assert.match(reduction.join(" "), /2026-04-17.*4\.8900～5\.1800.*2026-04-20.*4\.8900～4\.9800/);
+    assert.match(reduction.join(" "), /子线成交量 20,778,797 股 > 组合前 2026-04-15 最近阴线 15,569,200 股/);
+    const clear = tradeReasonItems({
+        side: "SELL",
+        reason: "volume_bearish_mother_child_low_clear",
+        mother_date: "2026-04-17",
+        child_date: "2026-04-20",
+        child_low: 4.89,
+        child_close: 4.9,
+        observed_low: 4.88,
+        observed_close: 5.06,
+    });
+    assert.match(clear.join(" "), /最低 4\.8800 < 子线低点 4\.8900.*当日收盘清空余仓/);
+    assert.match(clear.join(" "), /本日收盘 5\.0600，无需低于子线收盘 4\.9000/);
+});
+
 test("C-wave 0.618 exit explains the earlier target and later warning break", () => {
     const reduction = tradeReasonItems({
         side: "SELL",
