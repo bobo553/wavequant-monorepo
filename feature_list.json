@@ -4,6 +4,43 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-217",
+            "name": "global-two-t-resistance-entry-and-exit",
+            "title": "全局二吐抵抗禁买与放量清仓",
+            "description": "二吐到位当笔或次笔出现较长上影抵抗时禁止新买与加仓，持仓减仓；次笔阴线低点与收盘双破前日且量超过最近阴线时清仓，风险不因候选属于更小新 N 而消失。",
+            "scope": "全局 V3 信号、成交风险门禁、因果审计和先锋真实日线回归",
+            "dependencies": ["MONOREPO-214", "MONOREPO-216"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "先锋 2026-06-09 到达 7.30 元二吐且上影占振幅 47.4%、与实体等长，不再产生较小 N 的 LONG 或加仓；持仓按累计 80% 减仓",
+                "2026-06-10 收阴且今低低于昨低、今收低于昨收，成交量高于 06-04 最近阴线时当日清余仓，不依赖前日部分卖出成功",
+                "较长上影门槛为至少振幅三分之一且不短于实体；目标当笔和次笔窗口、等价边界、等量、失效目标、未来数据及历史前缀均有回归",
+                "所有 V3 幅度方案共用此门禁；保持原先 50% 长上影、目标价格、下一日开盘与早先分钟成交的因果时序"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest tests/test_two_t_resistance_risk.py tests/test_wave_target_upper_shadow_exit.py tests/test_ordinary_wave_exit.py tests/test_wave_exhaustion_exit.py tests/test_bearish_mother_child_volume_exit.py -q",
+                    "status": "passed",
+                    "summary": "48 项通过；先复现先锋 06-09 错误 LONG，再验证大 N 二吐门禁、06-10 最近阴线放量双破清仓、不同 N 持仓、不足一手未减仓仍清仓、严格边界及真实历史前缀一致性。"
+                },
+                {
+                    "command": "python -m pytest tests/test_add_on_entry.py tests/test_wave_intraday_entry.py tests/test_intraday_entry.py tests/test_mother_child_inverse_exit.py -q",
+                    "status": "passed",
+                    "summary": "33 项相邻回归通过；加仓、分钟执行和母子退出保持已有时序。"
+                },
+                {
+                    "command": "node --test tests/trade-reasons.test.mjs tests/annotations.test.mjs；pnpm --filter wavequant-web lint、typecheck、build",
+                    "status": "passed",
+                    "summary": "43 项 Web 定向测试及静态检查、生产构建通过；Lint 仅有 6 条既有环境变量警告。原因说明包含 7.30 元目标、47.37% 上影、双破价格及最近阴线量。"
+                },
+                {
+                    "command": "新模块及配置的 4 个 Core 基线文件 mypy --strict；修改模块 compileall；python -m build --no-isolation；JS 语法、测试格式、git diff --check；pnpm harness:check",
+                    "status": "passed",
+                    "summary": "定向类型、编译与 sdist/wheel 构建通过；完整 Core/Web 套件待独立验证，按用户规则未运行 Playwright 或浏览器端到端测试。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-216",
             "name": "c-wave-target-left-labels",
             "title": "C 浪目标标签左侧贴线显示",

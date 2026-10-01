@@ -10,6 +10,7 @@ from typing import Callable
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
 from wavequant.domain.strategies.wave_exhaustion_exit import observe_wave_exhaustion
+from wavequant.domain.strategies.two_t_resistance import two_t_resistance_history
 from wavequant.domain.strategies.pressure_exit import pressure_exit_history, record_high_resistance_history
 from wavequant.domain.strategies.mother_child_inverse_n import (
     MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break,
@@ -158,6 +159,9 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             history, hierarchical_history(history)[0], reduction_fraction=config.wave_exhaustion_reduction)
                             for symbol, history in grouped.items()}
     wave_lookup = {symbol: {} for symbol in grouped}
+    target_resistance = {symbol: two_t_resistance_history(
+        history, (wave_events or {}).get(symbol, []), reduction_fraction=config.wave_exhaustion_reduction)
+        if config.wave_exhaustion_exit else {} for symbol, history in grouped.items()}
     wave_signal_lookup = {symbol: {} for symbol in grouped}
     for symbol, history in grouped.items():
         for event in (wave_events or {}).get(symbol, []):
@@ -308,7 +312,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             if pending_exit[symbol] in ('wave_volume_shadows_reduce', 'wave_gap_reversal_reduce',
                                         'wave_upper_rejection_reduce', 'wave_target_upper_shadow_reduce',
                                         'wave_ordinary_equal_upper_shadow_reduce', 'wave_c_0618_upper_shadow_reduce',
-                                        'wave_target_bearish_reduce'):
+                                        'wave_target_bearish_reduce', 'wave_two_t_resistance_reduce'):
                 pos.wave_reduced = True
             if pending_exit[symbol] == 'trend_last_fall_high_upper_shadow_reduce':
                 pos.trend_last_fall_high_reduced = True
@@ -612,6 +616,12 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                                 reduced=pos.wave_reduced, entry_index=pos.entry_index,
                                                 signal_index=pos.signal_index)
                          if config.wave_exhaustion_exit else None)
+            target_risk = target_resistance[symbol].get(i)
+            if target_risk is not None:
+                if target_risk['exit_fraction'] == 1.0 and (wave_exit is None or wave_exit['exit_fraction'] < 1.0):
+                    wave_exit = target_risk
+                elif wave_exit is None and not pos.wave_reduced:
+                    wave_exit = target_risk
             pressure = trend_flip_risks[symbol].get(i) or pressure_risks[symbol].get(i) or record_high_risks[symbol].get(i)
             if (pressure is not None and pressure['reason'].startswith('trend_last_fall_high_')
                     and pos.entry_index > pressure['trend_warning_index']):
@@ -735,6 +745,11 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             symbol = signal.symbol
             if signal.side == 'LONG' and (symbol, signal.bar_index) in entry_executions:
                 continue
+            if signal.side == 'LONG' and current[symbol][0] in target_resistance[symbol]:
+                risk = target_resistance[symbol][current[symbol][0]]
+                log(when, symbol, 'BUY', 'cancelled', str(risk['reason']),
+                    signal_timestamp=signal.timestamp.isoformat(), **{key: value for key, value in risk.items() if key != 'reason'})
+                continue
             if signal.side == 'EXIT':
                 pending_entry.pop(symbol, None)
                 if symbol in positions:
@@ -761,6 +776,12 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                             i, bar = current[symbol]
                             exit_evidence[symbol]['execution_model'] = 'same_day_close'
                             exit_evidence[symbol]['inverse_observed_index'] = signal.bar_index
+                            execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
+                        elif 'wave_two_t_resistance_volume_clear' in signal.reason.split('|'):
+                            i, bar = current[symbol]
+                            wave_clear_symbols.add(symbol)
+                            pending_exit[symbol] = 'wave_two_t_resistance_volume_clear'
+                            exit_evidence[symbol].update(execution_model='same_day_close', exit_fraction=1.0)
                             execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
             elif symbol in positions:
                 pos = positions[symbol]

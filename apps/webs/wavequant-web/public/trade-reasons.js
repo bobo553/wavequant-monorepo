@@ -9,6 +9,15 @@ export function tradeReasonItems(item) {
         .filter(Boolean)
         .map(reasonText);
     const evidence = item.decision_evidence || [];
+    const targetReason = item.decision_reason || item.reason;
+    if (targetReason === "wave_two_t_resistance_reduce")
+        reasons.push(
+            `${item.target_warning_date} 二饱（二吐/2T）目标 ${num(item.wave_reached_price, 4)} 元；上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，至少三分之一且不短于实体。禁止新买与加仓，已有持仓累计减仓 ${pct(item.exit_target_fraction)}。`,
+        );
+    if (targetReason === "wave_two_t_resistance_volume_clear")
+        reasons.push(
+            `${item.target_warning_date} 二饱抵抗后，次笔收阴；最低 ${num(item.observed_low, 4)} < 昨低 ${num(item.previous_low, 4)}，收盘 ${num(item.observed_close, 4)} < 昨收 ${num(item.previous_close, 4)}；成交量 ${num(item.observed_volume, 0)} > 最近阴线 ${item.bearish_reference_date} 的 ${num(item.bearish_reference_volume, 0)}，当日清空余仓。`,
+        );
     if (item.side === "BUY") {
         reasons.push(...waveEntryEvidence(evidence).slice(0, 2));
         const reversal = evidence.find((e) => e.squeeze_confirmation === "volume_reversal_record_break");
