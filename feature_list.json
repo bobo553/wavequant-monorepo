@@ -4,6 +4,32 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-222",
+            "name": "bearish-child-pattern-staged-exit",
+            "title": "阴子线母子形态减仓与次日双破清仓",
+            "description": "全局 V3 持仓遇母子阴子线时不以放量为前提，当日按原持仓累计减仓70%；次一交易日低点和收盘均严格跌破子线时清空余仓。允许一侧等高或等低，并保留原放量母子路径的独立证据。",
+            "scope": "Core 持仓形态风控与回测、Web 成交说明、先锋新材 2020 年真实价格回归",
+            "dependencies": ["MONOREPO-214", "MONOREPO-220"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "2020-08-11 母线和 08-12 阴子线同低 5.21 元，08-12 子量 15,799,059 股低于此前阴线仍于当日累计减仓 70%",
+                "08-13 最低 4.96 元低于子低 5.21 元、收盘 5.08 元低于子收 5.34 元，当日清空；等于边界、只破一项或延后一日不触发本次清仓",
+                "原放量阴母阴子与阳母阴子分支、累计减仓、整手和成交时序保持独立，页面显示准确的形态与双破依据"
+            ],
+            "verification": [
+                {
+                    "command": "Core 6 个母子/阶段/倒N/巨量退出文件定向 pytest；4 个转浪/加仓文件定向 pytest",
+                    "status": "passed",
+                    "summary": "分别 118 项和 38 项通过；先复现 08-12 漏减仓、08-13 错作普通减仓，再验证同低、低量、次日严格双破、边界、延后、阴母无前阴参照、整手不足及回测成交。"
+                },
+                {
+                    "command": "Web trade-reasons Node 定向测试；Web lint、typecheck、build；Core build 与修改模块定向 mypy",
+                    "status": "passed",
+                    "summary": "Web 17 项通过，lint 0 错误及 6 条既有警告，类型与生产构建通过；Core sdist/wheel 构建和 3 个修改模块 mypy 通过。完整套件与浏览器端到端留待独立验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-221",
             "name": "distant-targets-without-price-compression",
             "title": "五顶十满显示不压缩K线",

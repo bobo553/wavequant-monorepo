@@ -100,6 +100,7 @@ class StagedExitState:
     volume_reduction_target: float = 0.0
     bearish_child_warning_index: int | None = None
     bearish_mother_child_warning_index: int | None = None
+    bearish_child_pattern_warning_index: int | None = None
 
 
 def observe_intraday_staged_exit(
@@ -331,6 +332,50 @@ def _bearish_mother_child_volume(bars: list[Bar], index: int) -> dict | None:
                 child_high=child.high, child_low=child.low, child_close=child.close,
                 child_volume=child.volume,
                 child_bearish_volume_multiple=child.volume / bearish.volume)
+
+
+def _bearish_mother_child_pattern(bars: list[Bar], index: int) -> dict[str, float | str] | None:
+    """Recognize a bearish child within a non-doji mother, allowing one shared extreme."""
+    if index < 1:
+        return None
+    mother, child = bars[index - 1], bars[index]
+    if (mother.close == mother.open or child.close >= child.open
+            or child.high > mother.high or child.low < mother.low
+            or (child.high == mother.high and child.low == mother.low)):
+        return None
+    return dict(mother_date=mother.timestamp.date().isoformat(),
+                mother_high=mother.high, mother_low=mother.low,
+                child_date=child.timestamp.date().isoformat(),
+                child_high=child.high, child_low=child.low, child_close=child.close)
+
+
+def observe_bearish_child_pattern_exit(
+    bars: list[Bar], index: int, state: StagedExitState
+) -> dict[str, float | str] | None:
+    """Reduce on a bearish child and clear on the next session's strict double break."""
+    if index < 1:
+        return None
+    warning = state.bearish_child_pattern_warning_index
+    if warning is not None and index == warning + 1:
+        child, bar = bars[warning], bars[index]
+        if bar.low < child.low and bar.close < child.close:
+            return dict(reason='bearish_mother_child_break_clear', exit_fraction=1.0,
+                        execution_model='same_day_close',
+                        child_date=child.timestamp.date().isoformat(),
+                        child_low=child.low, child_close=child.close,
+                        observed_low=bar.low, observed_close=bar.close)
+    if warning is not None and index > warning:
+        state.bearish_child_pattern_warning_index = None
+    pattern = _bearish_mother_child_pattern(bars, index)
+    if pattern is None:
+        return None
+    state.bearish_child_pattern_warning_index = index
+    if state.volume_reduction_target >= .7:
+        return None
+    state.volume_reduction_target = .7
+    return dict(pattern, reason='bearish_mother_child_reduce_70',
+                exit_fraction=.7, exit_target_fraction=.7,
+                execution_model='same_day_close')
 
 
 def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState, *,
