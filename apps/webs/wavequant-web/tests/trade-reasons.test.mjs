@@ -13,13 +13,14 @@ test("global two-T risk explains warning and the next bearish-volume double brea
         reason: "wave_two_t_resistance_reduce",
         target_warning_date: "2026-06-09",
         wave_reached_price: 7.3,
-        wave_upper_shadow_fraction: 0.36 / 0.76,
+        wave_upper_shadow_fraction: 0.5,
         exit_target_fraction: 0.8,
     };
     const reduced = numberedTradeReasons(warning).join("\n");
     assert.match(reduced, /禁买与加仓/);
     assert.match(reduced, /7\.3000/);
-    assert.match(reduced, /47\.37%/);
+    assert.match(reduced, /上影占振幅 50\.00%，至少 50%/);
+    assert.doesNotMatch(reduced, /三分之一/);
     const clear = numberedTradeReasons({
         ...warning,
         reason: "wave_two_t_resistance_volume_clear",

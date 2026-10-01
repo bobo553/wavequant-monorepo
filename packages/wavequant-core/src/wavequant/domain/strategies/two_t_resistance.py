@@ -12,7 +12,7 @@ def _long_upper_shadow(bar: Bar) -> bool:
     high, low, opened, closed = (Fraction(str(value)) for value in (bar.high, bar.low, bar.open, bar.close))
     upper = high - max(opened, closed)
     # Decimal prices that give an equal wick/body must not fail through binary rounding.
-    return high > low and 3 * upper >= high - low and upper >= abs(closed - opened)
+    return high > low and 2 * upper >= high - low and upper >= abs(closed - opened)
 
 
 def two_t_resistance_history(
@@ -64,7 +64,7 @@ def two_t_resistance_history(
             if not _long_upper_shadow(warning):
                 continue
             resistance = observe_resistance(bars[warning_index - 1], warning,
-                attack_direction=Direction.UP, shadow_policy=ShadowPolicy(1 / 3))
+                attack_direction=Direction.UP, shadow_policy=ShadowPolicy(.5))
             patterns = list(resistance.reasons)
             if "long_upper_shadow" not in patterns:
                 patterns.append("long_upper_shadow")
@@ -95,7 +95,7 @@ def two_t_resistance_history(
                 continue
             bar = bars[following]
             confirmation = observe_resistance(warning, bar, attack_direction=Direction.UP,
-                                              shadow_policy=ShadowPolicy(1 / 3))
+                                              shadow_policy=ShadowPolicy(.5))
             if confirmation.detected is True and risks.get(following, {}).get("exit_fraction") != 1.0:
                 risks[following] = dict(reduction, target_confirmation_patterns=list(confirmation.reasons),
                                         observed_open=bar.open, observed_high=bar.high,

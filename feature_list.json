@@ -4,10 +4,47 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-218",
+            "name": "restore-two-t-half-range-upper-shadow",
+            "title": "二饱抵抗上影门槛恢复 50%",
+            "description": "按用户要求，将二饱全局抵抗门禁的上影占振幅门槛从三分之一恢复为至少 50%，同步判定、抵抗证据、策略定义、原因文案及真实样本回归。",
+            "scope": "全局 V3 二饱风险、Web 原因说明与定向回归",
+            "dependencies": ["MONOREPO-217"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "上影占振幅恰好 50% 可触发，低于 50% 不触发二饱禁买、减仓或由该警示派生的次笔清仓",
+                "新华文轩 2022-01-06 的 46.94%、2023-04-27 的 44.38%，先锋 2026-06-09 的 47.37% 均不再触发这条二饱上影门禁",
+                "合格 50% 上影仍对不同 N 买点和持仓生效，保留累计 80%、次笔阴线严格双破与最近阴线放量、整手和成交时序",
+                "策略定义、README 与 Web 原因说明统一为至少 50%，历史三分之一验收由本功能替代"
+            ],
+            "verification": [
+                {
+                    "command": "新华文轩固定 AkShare 快照 2123 根日线重新生成 V3 信号；pnpm harness:check",
+                    "status": "passed",
+                    "summary": "2022-01-06、2023-04-27、2026-09-17 均无该二饱上影警示，09-17 的 system_wave_push_gap LONG 恢复；账户收益未重算。Harness 217 功能状态检查通过。"
+                },
+                {
+                    "command": "python -m pytest tests/test_two_t_resistance_risk.py tests/test_wave_target_upper_shadow_exit.py tests/test_ordinary_wave_exit.py tests/test_wave_exhaustion_exit.py tests/test_bearish_mother_child_volume_exit.py -q；python -m pytest tests/test_two_t_resistance_risk.py -q -k xinhua_actual_under_half",
+                    "status": "passed",
+                    "summary": "主定向套件 54 项通过；最终新增 09-17 样本后，3 个新华实际价格参数用例复核通过，共覆盖 55 个不同 Core 用例。先复现低于 50% 仍触发，再验证恰好 50%、略高/略低、不同 N 持仓、整手及真实先锋历史前缀。"
+                },
+                {
+                    "command": "node --test tests/trade-reasons.test.mjs tests/annotations.test.mjs；pnpm --filter wavequant-web lint、typecheck、build",
+                    "status": "passed",
+                    "summary": "43 项 Web 定向测试、类型及生产构建通过；Lint 无错误，6 条既有环境变量警告。原因说明断言至少 50%，不再显示三分之一。"
+                },
+                {
+                    "command": "新模块及配置的 4 个 Core 基线文件 mypy --strict；修改模块/测试 compileall；python -m build --no-isolation；JS 语法、测试格式及 git diff --check",
+                    "status": "passed",
+                    "summary": "5 文件 strict mypy、编译与 sdist/wheel 构建通过；完整 Core/Web 套件、浏览器端到端及账户收益重算待验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-217",
             "name": "global-two-t-resistance-entry-and-exit",
             "title": "全局二吐抵抗禁买与放量清仓",
-            "description": "二吐到位当笔或次笔出现较长上影抵抗时禁止新买与加仓，持仓减仓；次笔阴线低点与收盘双破前日且量超过最近阴线时清仓，风险不因候选属于更小新 N 而消失。",
+            "description": "二吐到位当笔或次笔出现较长上影抵抗时禁止新买与加仓，持仓减仓；次笔阴线低点与收盘双破前日且量超过最近阴线时清仓，风险不因候选属于更小新 N 而消失。初始三分之一上影门槛及相关历史验收已由 MONOREPO-218 的 50% 口径替代。",
             "scope": "全局 V3 信号、成交风险门禁、因果审计和先锋真实日线回归",
             "dependencies": ["MONOREPO-214", "MONOREPO-216"],
             "status": "done",
