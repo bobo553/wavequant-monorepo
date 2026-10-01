@@ -253,7 +253,7 @@ def test_full_global_pipeline_reenters_after_inverse_n_and_preserves_prefix():
         assert prefix.audit == [e for e in full.audit if e["bar_index"] <= end]
 
 
-def test_strong_a_body_confirmation_can_advance_to_later_higher_gap():
+def test_strong_a_body_confirmation_blocks_later_gap_at_unfinished_c_target():
     bars, dates, _ = sample()
     body, gap = dates["2026-08-26"], dates["2026-09-15"]
     # A completed early observation can confirm the body route even if the
@@ -274,11 +274,18 @@ def test_strong_a_body_confirmation_can_advance_to_later_higher_gap():
         for e in full.audit
         if e["event"] == "long_signal" and e.get("wave_entry_path") and e["bar_index"] in (body, gap)
     ]
-    assert [e["bar_index"] for e in confirmations] == [body, gap]
-    assert [(e["bar_index"], e["wave_confirmation_phase"]) for e in confirmations] == [(body, "body"), (gap, "gap")]
-    assert confirmations[0]["wave_a_high_index"] == confirmations[1]["wave_a_high_index"]
-    assert confirmations[0]["wave_b_low_index"] == confirmations[1]["wave_b_low_index"]
-    assert confirmations[1]["wave_gap_high"] > confirmations[0]["wave_gap_high"]
+    assert [e["bar_index"] for e in confirmations] == [body]
+    assert confirmations[0]["wave_confirmation_phase"] == "body"
+    observed = next(e for e in full.audit if e["bar_index"] == gap and e["event"] == "wave_gap_observed"
+                    and e["attack"] == confirmations[0]["attack"])
+    assert observed["wave_confirmation_phase"] == "gap"
+    assert observed["wave_a_high_index"] == confirmations[0]["wave_a_high_index"]
+    assert observed["wave_b_low_index"] == confirmations[0]["wave_b_low_index"]
+    assert observed["wave_gap_high"] > confirmations[0]["wave_gap_high"]
+    rejected = next(e for e in full.audit if e["bar_index"] == gap and e["event"] == "entry_rejected"
+                    and e["reason"] == "wave_c_0618_unfinished_pressure")
+    assert rejected["previous_c_known_date"] == "2026-08-26"
+    assert rejected["previous_c_equal_target"] == confirmations[0]["wave_equal_target"]
     for end in (body, gap):
         prefix = generate_system_signals(bars[: end + 1], strategy)
         assert prefix.signals == [s for s in full.signals if s.bar_index <= end]

@@ -80,7 +80,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v71_' + variant
+    config['profile_version'] = 'unfinished_c_pressure_v72_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -106,6 +106,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         completed_wave_recovery='completed_a_defended_b_gap_breakout_or_volume_retires_only_same_a_b_pressure_and_inverse',
         volume_filter_basis='confirmation_cumulative_volume_strictly_gt_previous_session_total_wave_gap_price_break_is_alternative',
         c_wave_extensions='after_a_reaches_original_n_one_p_b_holds_defense_project_b_plus_0_618_and_1_times_whole_a_strong_a_can_add_1_618_and_2_618_targets_are_observations_not_exit',
+        unfinished_c_entry_gate='frozen_prior_c_after_0_618_blocks_all_new_buys_and_adds_until_1x_reached_or_strict_c_origin_b_low_break_defended_pullback_and_second_0_618_rise_remain_same_c_no_strong_close_early_release_initial_c_not_its_own_prior_pressure',
         ordinary_a_rebound='one_p_reached_below_two_t_then_defended_b_bullish_close_above_known_pullback_high_equal_a_target_no_strong_extensions',
         ordinary_c_equal_exit='v3_wave_entry_target_exit_replaced_by_post_b_new_positive_n',
         wave_continuation_entry='qualified_n_two_t_defended_b_gap_or_volume_body_breakout_or_strong_a_two_t_close_break_next_resistance_midbody_closes_held_volume_close_rebreaks_a_high',
