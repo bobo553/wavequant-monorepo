@@ -1,13 +1,15 @@
 from dataclasses import FrozenInstanceError, replace
 from datetime import datetime, timedelta
 import unittest
+from zoneinfo import ZoneInfo
 
 from wavequant.domain.models.model import Bar
 from wavequant.domain.market_structure.price_action import Direction
 from wavequant.domain.market_structure.n_shape import BoxAnchorMode, MilestoneBasis, NStatus, observe_n
 from wavequant.domain.market_state.market_regime import RegimePolicy, WaveBoundary, observe_market_regime
 from wavequant.domain.market_structure.polyline import (BarPathEvidence, LinePoint, PointKind as K,
-    child_mother_path, mother_child_path, n_setup_from_polyline, observe_bar_relations, observe_polyline)
+    child_mother_path, mother_child_path, n_setup_from_polyline, observe_bar_relations, observe_polyline,
+    teaching_inside)
 
 
 def bars(rows):
@@ -45,6 +47,22 @@ class PolylineTests(unittest.TestCase):
         r = observe_bar_relations(a, b)
         self.assertTrue(r.equal_high and r.equal_low)
         self.assertFalse(any((r.shrinking_head, r.shrinking_foot, r.extending_head, r.falling_tail)))
+
+    def test_one_equal_boundary_is_a_teaching_mother_child_pair(self):
+        shanghai = ZoneInfo('Asia/Shanghai')
+        mother = Bar(datetime(2025, 11, 13, tzinfo=shanghai), 'sz.300163',
+                     4.84, 5.03, 4.70, 5.00, 72400000)
+        child = Bar(datetime(2025, 11, 14, tzinfo=shanghai), 'sz.300163',
+                    4.91, 5.03, 4.91, 4.96, 45350900)
+        self.assertFalse(observe_bar_relations(mother, child).inside)
+        self.assertTrue(teaching_inside(mother, child))
+        self.assertEqual([(point.kind, point.price) for point in
+                          mother_child_path(mother, child, mother_index=0).vertices],
+                         [(K.LOW, 4.70), (K.HIGH, 5.03), (K.LOW, 4.91), (K.HIGH, 5.03)])
+        self.assertTrue(teaching_inside(mother, replace(child, high=5.00, low=4.70)))
+        self.assertFalse(teaching_inside(mother, replace(child, low=4.70)))
+        with self.assertRaises(ValueError):
+            mother_child_path(mother, replace(child, low=4.70), mother_index=0)
 
     def test_up_leg_extends_then_confirms_negative_turn(self):
         r = run(fixture()[:4])

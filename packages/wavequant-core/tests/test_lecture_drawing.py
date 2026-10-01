@@ -1,5 +1,6 @@
 from datetime import datetime
 import unittest
+from zoneinfo import ZoneInfo
 from wavequant.domain.models.model import Bar
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
 
@@ -110,6 +111,28 @@ class LectureDrawingTests(unittest.TestCase):
         self.assertEqual(doji['teaching_paths'],[])
         initial_inside_doji=lecture_drawing(bars([(9.5,12,9,11.5),(10.5,11,10,10.5)]))
         self.assertEqual(len(initial_inside_doji['issues']),1)
+
+    def test_xianfeng_equal_high_bullish_mother_child_keeps_both_turns(self):
+        shanghai = ZoneInfo('Asia/Shanghai')
+        data = [
+            Bar(datetime(2025, 11, 12, tzinfo=shanghai), 'sz.300163',
+                4.82, 5.06, 4.82, 4.86, 61887300),
+            Bar(datetime(2025, 11, 13, tzinfo=shanghai), 'sz.300163',
+                4.84, 5.03, 4.70, 5.00, 72400000),
+            Bar(datetime(2025, 11, 14, tzinfo=shanghai), 'sz.300163',
+                4.91, 5.03, 4.91, 4.96, 45350900),
+        ]
+        drawing = lecture_drawing(data)
+        points = drawing['strokes'][0]['points']
+        self.assertEqual([(p['kind'], p['value']) for p in
+                          lecture_drawing(data[:2])['strokes'][0]['points']],
+                         [('H', 5.06), ('L', 4.70)])
+        self.assertEqual([(p['index'], p['kind'], p['value']) for p in points],
+                         [(0, 'H', 5.06), (1, 'L', 4.70), (1, 'H', 5.03),
+                          (2, 'L', 4.91), (2, 'H', 5.03)])
+        self.assertEqual(points[2]['available_at'], '2025-11-14')
+        self.assertEqual(drawing['strokes'][0]['teaching_path_ids'], ['mother-child-2'])
+        self.assertEqual(drawing['inside_connections'][0]['time'], '2025-11-14')
 
     def test_inside_doji_with_known_direction_keeps_single_extreme_and_history(self):
         drawing=lecture_drawing(bars([(10,11,9,10.5),(10.5,12,10,11.5),(10.5,11,10.5,10.5)]))
