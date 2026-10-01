@@ -172,7 +172,7 @@ def test_old_structural_episode_never_replays_minutes_in_new_episode():
     assert "2026-08-11" not in loaded
 
 
-def test_huaci_minute_confirmed_c_blocks_later_daily_gap_before_equal_target():
+def test_huaci_early_body_minute_keeps_later_daily_gap_confirmation():
     from .test_wave_continuation import sample as huaci_sample
     from wavequant.domain.strategies.integrated_strategy import SystemStrategy
 
@@ -218,20 +218,12 @@ def test_huaci_minute_confirmed_c_blocks_later_daily_gap_before_equal_target():
         for e in resolved.audit
         if e["event"] == "long_signal" and e.get("wave_entry_path") and e["bar_index"] in (body, gap)
     ]
-    assert [e["bar_index"] for e in confirmations] == [body]
-    assert confirmations[0]["wave_confirmation_phase"] == "body"
-    rejected = next(e for e in resolved.audit if e["event"] == "entry_rejected" and e["bar_index"] == gap
-                    and e["reason"] == "wave_c_0618_unfinished_pressure")
-    assert rejected["previous_c_known_date"] == "2026-08-26"
-    assert rejected["previous_c_equal_target"] == confirmations[0]["wave_equal_target"]
-    risk = next(e for e in resolved.audit if e["event"] == "wave_c_unfinished_observed"
-                and e["bar_index"] == gap)
-    assert risk["previous_c_known_date"] == "2026-08-26"
-    assert resolved.counts["entry_rejected_wave_c_0618_unfinished_pressure"] == sum(
-        e["event"] == "entry_rejected" and e.get("reason") == "wave_c_0618_unfinished_pressure"
-        for e in resolved.audit)
+    assert [e["bar_index"] for e in confirmations] == [body, gap]
+    assert [(e["bar_index"], e["wave_confirmation_phase"]) for e in confirmations] == [(body, "body"), (gap, "gap")]
+    assert confirmations[1]["wave_gap_high"] > confirmations[0]["wave_gap_high"]
     assert [(s.bar_index, s.reason) for s in resolved.signals if s.bar_index in (body, gap) and s.side == "LONG"] == [
         (body, "system_wave_push_gap"),
+        (gap, "system_wave_push_gap"),
     ]
     prefix_bars = bars[: body + 1]
     prefix_daily = generate_system_signals(prefix_bars, strategy)

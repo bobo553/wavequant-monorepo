@@ -4,44 +4,6 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
-            "id": "MONOREPO-222",
-            "name": "unfinished-c-wave-pressure-entry-gate",
-            "title": "未完成C浪跨结构禁买",
-            "description": "冻结首次可知C浪的A/B及两档目标；触及0.618后，未达旧1倍且未实际跌破C起点（B低）时跨新N、新C禁买与禁加仓。守起点回撤及再涨0.618的三步发展沿用旧目标，强阳不提前解除；盘中已确认C保留到后续回放。",
-            "scope": "Core 全局V3入场、分钟确认、旧C风险证据及Web说明",
-            "dependencies": ["MONOREPO-214", "MONOREPO-219"],
-            "status": "done",
-            "acceptanceCriteria": [
-                "先锋2025-11-17受到旧C的0.618目标5.28648、1倍6.57和C起点3.21约束，日线信号与独立账户诊断均不买入",
-                "已达0.618但未到旧1倍时禁买；仅实际最低价严格跌破C起点或旧1倍到达后重新筛选，等低和强阳重新站上0.618均不解除；不会自动买入",
-                "守住C起点的回撤和再上涨作为同一C的三步发展，跟踪第二段0.618×A参考位；原目标冻结，不凭空设置回撤比例或把A幅度风险当必跌预测",
-                "所有V3通道及加仓共用压力，初次C不自我拦截，重复日线观察不复活结束周期，阶段证据可见且历史前缀一致",
-                "盘中确认C即使最终日线实体变弱也向后续分钟及日线回放保留；确认后分钟高低只在完整当日可知时结算周期，不回溯取消较早分钟成交"
-            ],
-            "verification": [
-                {
-                    "command": "Core 10 related test files; targeted replay after expectation updates; new minute-boundary tests",
-                    "status": "passed",
-                    "summary": "共135个不同定向用例通过。132项主批129通过；华瓷早期C后的加仓、世联行次日加仓、乐心08-04三个原买点预期按新规则更新后17项复验通过。追加3个分钟时序/同日证据用例通过，终版C专项与华瓷分钟18项复验通过。冻结、三步续推、严格破C起点、强阳不提前解除、1倍完成、未来证据、分钟与历史前缀均覆盖。 最后14项分钟/普通A回归全部通过，确认分钟与普通A路径及审计计数。"
-                },
-                {
-                    "command": "Xianfeng 1901 daily bars through 2025-11-18; V3 independent account with intraday execution disabled",
-                    "status": "passed",
-                    "summary": "11-17无LONG及无BUY委托；旧C首知08-20，0.618为5.28648、1倍6.57，C起点3.21，回撤低点4.68仍守起点，收盘5.19。A幅度3.36、回落参考2.19只作风险参考；完整分钟账户收益未重算。"
-                },
-                {
-                    "command": "node --test annotations, trade-reasons and buy-n-targets; Web lint/typecheck/build; JS syntax and touched test/docs format",
-                    "status": "passed",
-                    "summary": "52项Web定向用例、类型、生产构建和语法通过；Lint无错误、6条既有环境变量警告。说明区区分三步发展、C起点跌破和1倍完成，明确重新筛选不自动买入。完整Web套件与浏览器视觉待独立验证，未运行Playwright。"
-                },
-                {
-                    "command": "New C module strict mypy; intraday module mypy with silent imports; configured four-file strict mypy; sdist/wheel build and isolated wheel smoke",
-                    "status": "passed",
-                    "summary": "新增模块strict mypy、分钟模块定向mypy及配置4文件strict mypy通过，sdist/wheel构建和独立安装导入验证通过。完整Core单测、完整收益重算留待独立验证。"
-                }
-            ]
-        },
-        {
             "id": "MONOREPO-221",
             "name": "distant-targets-without-price-compression",
             "title": "五顶十满显示不压缩K线",

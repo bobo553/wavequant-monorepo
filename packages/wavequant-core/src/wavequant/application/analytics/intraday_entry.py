@@ -13,7 +13,6 @@ from wavequant.domain.strategies.integrated_strategy import (
     pivot_history,
 )
 from wavequant.domain.strategies.n_consolidation import consolidation_gap
-from wavequant.domain.strategies.unfinished_c_wave import unfinished_c_wave_history
 from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
     wave_confirmation_state,
@@ -68,7 +67,6 @@ def resolve_consolidation_entries(
     # input. The strategy may therefore reuse observations ending before the
     # current session across later sessions as well as later minutes.
     chart_history_cache: dict = {"source_bars": tuple(bars)}
-    confirmed_c_observations: list[dict[str, object]] = []
     for i, bar in enumerate(bars):
         preceding_daily = daily_waves.get(i - 1)
         if preceding_daily is not None:
@@ -209,9 +207,7 @@ def resolve_consolidation_entries(
                 continue
             attempted.add(observation)
             replay = (
-                generate_system_signals(prefix, strategy, chart_history_cache=chart_history_cache,
-                                        current_bar_complete=False,
-                                        prior_c_observations=confirmed_c_observations)
+                generate_system_signals(prefix, strategy, chart_history_cache=chart_history_cache)
                 if strategy.buy_point_definition == "whole_flip_wave_v3"
                 else generate_system_signals(prefix, strategy)
             )
@@ -286,10 +282,6 @@ def resolve_consolidation_entries(
                 remaining_low=min(m.low for m in minute[offset + 1 :]) * bar.adjustment_factor,
                 remaining_high=max(m.high for m in minute[offset + 1 :]) * bar.adjustment_factor,
             )
-            if wave_key is not None:
-                confirmed_c_observations.append({**proof, "event": "wave_gap_observed",
-                    "wave_post_confirmation_high": executions[bar.symbol, i]["remaining_high"],
-                    "wave_post_confirmation_low": executions[bar.symbol, i]["remaining_low"]})
             signals = [s for s in signals if not (s.bar_index == i and s.side == "LONG")] + [signal]
             audit = [
                 e
@@ -302,54 +294,7 @@ def resolve_consolidation_entries(
                 if e["bar_index"] == i and e["event"] in ("long_signal", "long_transition_evidence")
             )
             break
-    if confirmed_c_observations and strategy.buy_point_definition == "whole_flip_wave_v3":
-        # A minute-confirmed C remains known even when its final daily body
-        # weakens. Recheck later daily-close fallbacks with that frozen history;
-        # verified earlier minute executions keep their own causal decisions.
-        c_events: list[dict[str, object]] = []
-        risks = unfinished_c_wave_history(bars, [*generated.audit, *confirmed_c_observations], event_sink=c_events)
-        # The minute history can also prove an earlier C already completed.
-        # Re-evaluate a previously rejected daily candidate after that release,
-        # rather than retaining a stale rejection from the daily-only history.
-        released_days = sorted({e['bar_index'] for e in generated.audit
-                                if e['event'] == 'entry_rejected'
-                                and e.get('reason') == 'wave_c_0618_unfinished_pressure'
-                                and e['bar_index'] not in risks
-                                and (bars[e['bar_index']].symbol, e['bar_index']) not in executions})
-        for index in released_days:
-            replay = generate_system_signals(bars[:index + 1], strategy,
-                                             chart_history_cache=chart_history_cache,
-                                             prior_c_observations=confirmed_c_observations)
-            signals = [s for s in signals if not (s.bar_index == index and s.side == 'LONG')]
-            signals.extend(s for s in replay.signals if s.bar_index == index and s.side == 'LONG')
-            replace_events = ('long_signal', 'long_transition_evidence', 'entry_rejected', 'entry_preflight_rejected')
-            audit = [e for e in audit if not (e['bar_index'] == index and e['event'] in replace_events)]
-            audit.extend(e for e in replay.audit if e['bar_index'] == index and e['event'] in replace_events)
-        audit = [e for e in audit if e["event"] not in ("wave_c_progress_observed", "wave_c_unfinished_observed")]
-        for event in c_events:
-            index = event["bar_index"]
-            assert isinstance(index, int)
-            audit.append(dict(event, timestamp=bars[index].timestamp.isoformat(), symbol=bars[index].symbol))
-        for index, risk in risks.items():
-            audit.append(dict(timestamp=bars[index].timestamp.isoformat(), symbol=bars[index].symbol,
-                              bar_index=index, event="wave_c_unfinished_observed", **risk))
-        rejected_days = {s.bar_index for s in signals if s.side == "LONG" and s.bar_index in risks
-                         and (s.symbol, s.bar_index) not in executions}
-        rejected_proofs = [e for e in audit if e["event"] == "long_signal" and e["bar_index"] in rejected_days]
-        signals = [s for s in signals if not (s.side == "LONG" and s.bar_index in rejected_days)]
-        audit = [e for e in audit if not (e["bar_index"] in rejected_days
-                 and e["event"] in ("long_signal", "long_transition_evidence"))]
-        for proof in rejected_proofs:
-            index = proof["bar_index"]
-            audit.append(dict(timestamp=bars[index].timestamp.isoformat(), symbol=bars[index].symbol,
-                              bar_index=index, event="entry_rejected", candidate_attack=proof.get("attack"),
-                              **risks[index]))
     counts = dict(generated.counts, long_signals=sum(s.side == "LONG" for s in signals))
-    if confirmed_c_observations and strategy.buy_point_definition == "whole_flip_wave_v3":
-        counts['entry_candidate_rejections'] = sum(e['event'] in ('entry_rejected', 'entry_preflight_rejected')
-                                                 for e in audit)
-        counts['entry_rejected_wave_c_0618_unfinished_pressure'] = sum(
-            e['event'] == 'entry_rejected' and e.get('reason') == 'wave_c_0618_unfinished_pressure' for e in audit)
     return (
         SystemResult(
             sorted(signals, key=lambda s: (s.timestamp, s.side)),

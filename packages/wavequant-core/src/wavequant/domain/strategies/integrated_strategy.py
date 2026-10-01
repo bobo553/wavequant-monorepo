@@ -20,7 +20,6 @@ from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recov
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
 from .two_t_resistance import two_t_resistance_history
-from .unfinished_c_wave import unfinished_c_wave_history
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.wave_strength import StrengthScale, measure_strength
 from ..market_state.washout import WashoutPolicy, WashoutStage, observe_washout
@@ -166,8 +165,6 @@ def _local_setup(setup, offset):
 def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                             minor_points: Sequence[ReversalPoint] | None = None,
                             chart_history_cache: dict | None = None,
-                            current_bar_complete: bool = True,
-                            prior_c_observations: Sequence[dict[str, object]] = (),
                             progress: Callable[[int], None] | None = None) -> SystemResult:
     config.validate()
     if not bars:
@@ -675,13 +672,6 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         return select_entry(hierarchy_permissions.get(i,()),hierarchy_permissions.get(c['attack'],()),**params)
     emitted_attacks = set()
     target_resistance = two_t_resistance_history(bars, audit) if whole_wave else {}
-    unfinished_c_events: list[dict[str, object]] = []
-    unfinished_c = unfinished_c_wave_history(
-        bars, [*audit, *prior_c_observations], last_bar_complete=current_bar_complete,
-        event_sink=unfinished_c_events) if whole_wave else {}
-    for observation in unfinished_c_events:
-        log(observation['bar_index'], 'wave_c_progress_observed',
-            **{key: value for key, value in observation.items() if key not in ('bar_index', 'event')})
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
     bearish_attacks = {c['attack']: c for c in candidates if c['setup'].direction == Direction.DOWN}
     last_progress = -1
@@ -691,9 +681,6 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             progress(percent)
             last_progress = percent
         exits = []
-        previous_c_risk = unfinished_c.get(i)
-        if previous_c_risk is not None:
-            log(i, 'wave_c_unfinished_observed', **previous_c_risk)
         target_risk = target_resistance.get(i)
         if target_risk is not None:
             log(i, 'target_resistance_observed', **target_risk)
@@ -756,9 +743,6 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             counts['entry_candidate_evaluations'] += 1
             if target_risk is not None:
                 log(i, 'entry_rejected', **target_risk, candidate_attack=c['attack'])
-                continue
-            if previous_c_risk is not None:
-                log(i, 'entry_rejected', **previous_c_risk, candidate_attack=c['attack'])
                 continue
             dual = multilevel_proofs.get((c['attack'], i))
             same_pressure = (dual is not None and i in secondary_resistance
@@ -939,10 +923,6 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     **hierarchy_proof)
             break
         special = shallow_base_proofs.get(i)
-        if special is not None and previous_c_risk is not None:
-            log(i, 'entry_rejected', **previous_c_risk, candidate_attack=i,
-                candidate_channel='shallow_base_breakout')
-            continue
         if special is not None and not any(s.bar_index == i and s.side == 'LONG' for s in signals):
             signals.append(Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close,
                 special['stop'], 'system_shallow_base_breakout', bar.timestamp,

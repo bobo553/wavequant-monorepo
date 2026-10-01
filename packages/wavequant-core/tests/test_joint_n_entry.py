@@ -40,10 +40,4 @@ def test_lexin_february18_joint_confirmation_can_enter_causally():
     prefix = generate_system_signals(data[: signal.bar_index + 1], config)
     assert prefix.signals == [s for s in full.signals if s.bar_index <= signal.bar_index]
     assert not any(s.side == "LONG" and str(s.timestamp.date()) == "2026-07-02" for s in full.signals)
-    assert not any(s.side == "LONG" and str(s.timestamp.date()) == "2026-08-04" for s in full.signals)
-    rejected = next(e for e in full.audit if e["event"] == "entry_rejected"
-                    and e["timestamp"].startswith("2026-08-04")
-                    and e["reason"] == "wave_c_0618_unfinished_pressure")
-    assert rejected["previous_c_known_date"] == "2026-07-27"
-    assert rejected["previous_c_b_low_date"] == "2026-07-21"
-    assert rejected["observed_close"] < rejected["previous_c_equal_target"]
+    assert any(s.side == "LONG" and str(s.timestamp.date()) == "2026-08-04" for s in full.signals)
