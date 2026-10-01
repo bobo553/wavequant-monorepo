@@ -400,8 +400,14 @@ def test_guilin_2022_resisted_breakout_clears_on_later_adverse_candle():
     )
     config = StrategyConfig(pressure_adverse_exit=True, entry_at_close=True, exit_on_target=False, max_hold_bars=100)
     portfolio = run_portfolio({raw["symbol"]: bars[: clear + 1]}, [signal], config)
-    buy, sell = [order for order in portfolio.orders if order["status"] == "filled"]
+    buy, reduce, sell = [order for order in portfolio.orders if order["status"] == "filled"]
     assert buy["timestamp"] == bars[entry].timestamp.isoformat()
+    assert reduce["reason"] == "record_high_massive_resistance_reduce_30"
+    assert reduce["timestamp"] == bars[breakout].timestamp.isoformat()
+    assert reduce["record_high_date"] == "2022-04-13"
+    assert reduce["record_volume_ratio"] == pytest.approx(2.2135687341840224)
+    assert reduce["closed_position_fraction"] == .3
+    assert reduce["remaining_quantity"] > 0
     assert sell["reason"] == "pressure_breakout_adverse_clear"
     assert sell["timestamp"] == bars[clear].timestamp.isoformat()
     assert sell["remaining_quantity"] == 0

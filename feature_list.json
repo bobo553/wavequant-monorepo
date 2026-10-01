@@ -4,6 +4,33 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-225",
+            "name": "old-high-massive-bearish-resistance-exit",
+            "title": "旧高突破巨量阴线抵抗减三成与次笔清仓",
+            "description": "全局旧高突破当笔或次笔巨量收阴并出现空头抵抗时累计减仓30%；下一交易日继续巨量收阴且收盘更低则直接清空，均量基准冻结于突破前。",
+            "scope": "Core 历史高点持仓风控、成交证据、Web 卖出原因与先锋实际样本",
+            "dependencies": ["MONOREPO-224"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "先锋2022-03-21突破2021-09-22高4.56后仍收5.07，巨量194599622收阴抵抗应累计减30%；03-22量152565213虽较警示量小但继续巨量收阴且收4.42，应清余仓",
+                "旧高采用此前pressure_lookback默认120交易日最高价且至少20交易日旧；不要求源K无抵抗或警示收盘跌回旧高；只允许突破当笔或次笔警示及警示次笔清仓",
+                "巨量复用pressure_volume_ratio默认2倍，分母冻结为突破前20日均量并排除突破棒；阴线和下跌严格比较，等量门槛允许，第三笔与阳线不触发",
+                "三成采用原仓累计目标、整手不足仍保留清仓风险；原50%旧高抵抗及更强完整退出优先，T+1、容量、后入场隔离和历史前缀保持"
+            ],
+            "verification": [
+                {
+                    "command": "Core 12个退出与相邻持仓文件定向pytest；3修改模块mypy；Core build及独立环境安装wheel导入",
+                    "status": "passed",
+                    "summary": "209项通过，覆盖先锋03-21三成减仓及03-22清仓、冻结均量、当笔/次笔窗口、巨量与阴线严格边界、配置阈值、整手不足仍清、历史前缀及更强止损。桂林06-29因2.21倍均量新增三成减仓，07-01原压力全清保留。3模块类型、sdist/wheel及独立导入通过。"
+                },
+                {
+                    "command": "node --test tests/trade-reasons.test.mjs tests/annotations.test.mjs；Web lint、typecheck、build；JS语法、修改文件格式、Harness与差异检查",
+                    "status": "passed",
+                    "summary": "48项Web用例、类型与生产构建通过，Lint仅6条既有警告；成交说明展示旧高、冻结均量、两日量倍数和开收比较。完整Core/Web、外部分钟回放、浏览器及账户收益重算待独立验证，未运行Playwright。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-224",
             "name": "bearish-outside-mother-volume-staged-exit",
             "title": "子母线阴母放量反包减仓与次日双破清仓",

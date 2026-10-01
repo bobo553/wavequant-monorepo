@@ -88,6 +88,8 @@ const REASONS = {
     pressure_breakout_adverse_clear: "大幅上涨突破前期巨量阴线压力后遇不利 K 线，当日清仓",
     record_high_resistance_reduce: "盘中突破较早的阳线高点受空头抵抗，当日目标减仓 50%（按整手）",
     record_high_lower_close_clear: "旧高受阻减仓后首次收低，当日清空余仓",
+    record_high_massive_resistance_reduce_30: "突破旧高当笔或次笔巨量阴线空头抵抗，当日累计减仓 30%",
+    record_high_massive_followthrough_clear: "旧高巨量阴线抵抗后次笔继续巨量收阴下跌，当日清空余仓",
     wave_gap_reversal_reduce: "目标阶段放量跳空高开大幅回落，减仓",
     wave_abnormal_followthrough_clear: "目标异常K线次日收盘继续走低，当日清空余仓",
     wave_ordinary_equal_upper_shadow_reduce: "普通 A 浪的 C 浪到等浪目标后放量长上影，当日按累计 80% 目标减仓",
