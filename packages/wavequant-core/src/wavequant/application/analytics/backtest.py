@@ -17,7 +17,8 @@ from wavequant.domain.strategies.mother_child_inverse_n import (
 )
 from wavequant.domain.market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from wavequant.domain.strategies.staged_exit import (
-    StagedExitState, observe_intraday_staged_exit, observe_staged_exit, observe_inverse_resistance_exit, observe_volume_down_exit,
+    StagedExitState, observe_bearish_child_pattern_exit, observe_intraday_staged_exit,
+    observe_staged_exit, observe_inverse_resistance_exit, observe_volume_down_exit,
 )
 from wavequant.infrastructure.market_data.minute import MinuteBar
 from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageError
@@ -151,18 +152,18 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                       if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
     record_high_risks = {symbol: record_high_resistance_history(history, config)
                          if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
-    trend_flip_risks = {symbol: {} for symbol in grouped}
+    trend_flip_risks: dict[str, dict[int, dict]] = {symbol: {} for symbol in grouped}
     if config.trend_flip_adverse_exit:
         from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
         from wavequant.domain.strategies.trend_flip_exit import trend_flip_exit_history
         trend_flip_risks = {symbol: trend_flip_exit_history(
             history, hierarchical_history(history)[0], reduction_fraction=config.wave_exhaustion_reduction)
                             for symbol, history in grouped.items()}
-    wave_lookup = {symbol: {} for symbol in grouped}
+    wave_lookup: dict[str, dict[datetime, list[dict]]] = {symbol: {} for symbol in grouped}
     target_resistance = {symbol: two_t_resistance_history(
         history, (wave_events or {}).get(symbol, []), reduction_fraction=config.wave_exhaustion_reduction)
         if config.wave_exhaustion_exit else {} for symbol, history in grouped.items()}
-    wave_signal_lookup = {symbol: {} for symbol in grouped}
+    wave_signal_lookup: dict[str, dict[int, list[dict]]] = {symbol: {} for symbol in grouped}
     for symbol, history in grouped.items():
         for event in (wave_events or {}).get(symbol, []):
             attack, known = event['attack'], event['bar_index']
@@ -196,7 +197,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
     exit_evidence: dict[str, dict] = {}
     sold_today: set[str] = set()
     bought_today: dict[str, float] = {}
-    marks, mark_times = {}, {}
+    marks: dict[str, float] = {}
+    mark_times: dict[str, str] = {}
     trades, curve, orders = [], [], []
     minute_fallbacks = []
     total_fees = turnover = 0.0
@@ -382,7 +384,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
         units = min(caps.values())
         lot = config.lot_size/bar.adjustment_factor
         detail.update({name+'_shares': value*bar.adjustment_factor for name,value in caps.items()})
-        detail['limiting_constraint'] = min(caps, key=caps.get)
+        detail['limiting_constraint'] = min(caps, key=lambda name: caps[name])
         detail['one_lot_notional'] = price*lot
         detail['one_lot_price_risk'] = risk*lot
         lots = math.floor(units/lot)
@@ -403,7 +405,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             quantity = lots*lot
             fee = transaction_fee(price*quantity, when, False, config)
         if lots <= 0 or quantity+1e-8 < minimum_quantity:
-            constraint = min(caps, key=caps.get) if units < max(lot,minimum_quantity) else after_fee_constraint
+            constraint = min(caps, key=lambda name: caps[name]) if units < max(lot,minimum_quantity) else after_fee_constraint
             log(when, symbol, 'BUY', 'cancelled', constraint+'_below_one_lot', **detail)
             return
         # Evaluate reward/risk at the actual slipped execution price and sized
@@ -599,6 +601,18 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                small_body_max_fraction=config.small_body_max_fraction,
                                small_body_lookback=config.small_body_lookback)
                            if config.volume_down_exit else None)
+            if config.volume_down_exit and (
+                    pos.staged_exit.bearish_child_pattern_warning_index is not None
+                    or volume_exit is None
+                    or (volume_exit['exit_fraction'] < 1
+                        and volume_exit['reason'] not in ('volume_bearish_child_reduce_70',
+                                                          'volume_bearish_mother_child_reduce_70'))):
+                pattern_exit = observe_bearish_child_pattern_exit(grouped[symbol], i, pos.staged_exit)
+                if pattern_exit is not None and (
+                        volume_exit is None or pattern_exit['exit_fraction'] > volume_exit['exit_fraction']):
+                    volume_exit = pattern_exit
+            volume_source = ('bearish_child_pattern' if volume_exit is not None
+                             and volume_exit['reason'].startswith('bearish_mother_child_') else 'volume_down_exit')
             # Evaluate close-known N risk only after intraday execution. It may
             # supersede daily partial orders, never erase earlier minute fills.
             volume_inverse = (config.volume_inverse_n_clear and i > 0
@@ -696,7 +710,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
                     **{key: value for key, value in volume_exit.items()
                        if key not in ('reason', 'observed_low', 'observed_close')},
-                    decision_reason=volume_exit['reason'], decision_source='volume_down_exit',
+                    decision_reason=volume_exit['reason'], decision_source=volume_source,
                     observed_low=bar.low, observed_close=bar.close,
                     **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback
                        and volume_exit['execution_model'] == 'same_day_close' else {}))
@@ -721,7 +735,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 pending_exit[symbol] = volume_exit['reason']
                 exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
                     **{key: value for key, value in volume_exit.items() if key != 'reason'},
-                    decision_reason=volume_exit['reason'], decision_source='volume_down_exit',
+                    decision_reason=volume_exit['reason'], decision_source=volume_source,
                     observed_low=bar.low, observed_close=bar.close)
             elif config.staged_exit_enabled:
                 decision = observe_staged_exit(grouped[symbol], i, pos.staged_exit, config.initial_reduction_fraction,
