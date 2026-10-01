@@ -8,7 +8,7 @@ vertices when a developing endpoint extends.
 """
 from zoneinfo import ZoneInfo
 
-from .polyline import observe_bar_relations, child_mother_path, mother_child_path, PointKind
+from .polyline import observe_bar_relations, child_mother_path, mother_child_path, teaching_inside, PointKind
 from .price_action import Direction
 
 
@@ -41,8 +41,10 @@ def lecture_drawing(bars, *, on_step=None):
 
     for i in range(1, len(bars)):
         relation = observe_bar_relations(bars[i-1], bars[i])
+        inside = relation.inside or ((relation.equal_high or relation.equal_low)
+                                     and teaching_inside(bars[i-1], bars[i]))
         doji_inside_fallback = False
-        if relation.outside or relation.inside:
+        if relation.outside or inside:
             teaching = (child_mother_path(bars[i-1], bars[i], child_index=i-1) if relation.outside else
                         mother_child_path(bars[i-1], bars[i], mother_index=i-1))
             if teaching.vertices:
@@ -96,7 +98,7 @@ def lecture_drawing(bars, *, on_step=None):
                 direction = Direction.UP if points[-1]['kind'] == 'H' else Direction.DOWN
                 publish(i)
                 continue
-            doji_inside_fallback = relation.inside and direction is not None and bool(points)
+            doji_inside_fallback = inside and direction is not None and bool(points)
             reason = None if doji_inside_fallback else '十字星包含关系的阴阳顺序未定义'
         else:
             reason = None

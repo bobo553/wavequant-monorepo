@@ -41,6 +41,13 @@ def observe_bar_relations(previous: Bar, current: Bar) -> BarRelations:
         h == previous.high, l == previous.low)
 
 
+def teaching_inside(mother: Bar, child: Bar) -> bool:
+    """Treat one shared high or low as containment in the lecture drawing only."""
+    _ordered_pair(mother, child)
+    return (child.high <= mother.high and child.low >= mother.low
+            and (child.high < mother.high or child.low > mother.low))
+
+
 @dataclass(frozen=True)
 class LinePoint:
     index: int
@@ -102,8 +109,9 @@ class TeachingPath:
 def _containment_path(first: Bar, second: Bar, *, first_index: int, outside: bool) -> TeachingPath:
     relation = observe_bar_relations(first, second)
     _index(first_index, 'first index')
-    if not (relation.outside if outside else relation.inside):
-        raise ValueError('strict containment in the requested order required')
+    contained = relation.outside if outside else (relation.inside or teaching_inside(first, second))
+    if not contained:
+        raise ValueError('containment in the requested order required')
     if first.open == first.close or second.open == second.close:
         return TeachingPath((), 'undefined_doji')
 
