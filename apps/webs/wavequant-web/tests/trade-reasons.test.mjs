@@ -7,6 +7,30 @@ import { formatFilledTradeCopy } from "../public/filled-trade-copy.js";
 import { numberedTradeReasons, tradeReasonItems } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
 
+test("two-T next-session clear explains target and double break without a shadow warning", () => {
+    const reasons = numberedTradeReasons({
+        side: "SELL",
+        reason: "wave_two_t_next_volume_clear",
+        wave_reached_date: "2026-06-09",
+        wave_reached_price: 7.3,
+        previous_upper_shadow_fraction: 0.36 / 0.76,
+        observed_low: 6.32,
+        previous_low: 6.54,
+        observed_close: 6.47,
+        previous_close: 6.94,
+        observed_volume: 50_750_501,
+        bearish_reference_date: "2026-06-04",
+        bearish_reference_volume: 36_051_401,
+    }).join("\n");
+    assert.match(reasons, /2026-06-09 二饱.*7\.3000.*到位/);
+    assert.match(reasons, /前日上影占振幅 47\.37%，超过 40%；次日收阴/);
+    assert.match(reasons, /6\.3200 < 昨低 6\.5400/);
+    assert.match(reasons, /6\.4700 < 昨收 6\.9400/);
+    assert.match(reasons, /最近阴线 2026-06-04/);
+    assert.match(reasons, /清空余仓/);
+    assert.doesNotMatch(reasons, /50%|减仓|undefined/);
+});
+
 test("global two-T risk explains warning and the next bearish-volume double break", () => {
     const warning = {
         side: "SELL",

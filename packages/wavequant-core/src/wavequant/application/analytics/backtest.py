@@ -777,10 +777,12 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                             exit_evidence[symbol]['execution_model'] = 'same_day_close'
                             exit_evidence[symbol]['inverse_observed_index'] = signal.bar_index
                             execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
-                        elif 'wave_two_t_resistance_volume_clear' in signal.reason.split('|'):
+                        elif any(reason in signal.reason.split('|') for reason in
+                                 ('wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear')):
                             i, bar = current[symbol]
                             wave_clear_symbols.add(symbol)
-                            pending_exit[symbol] = 'wave_two_t_resistance_volume_clear'
+                            pending_exit[symbol] = next(reason for reason in signal.reason.split('|') if reason in
+                                ('wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear'))
                             exit_evidence[symbol].update(execution_model='same_day_close', exit_fraction=1.0)
                             execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
             elif symbol in positions:

@@ -18,6 +18,10 @@ export function tradeReasonItems(item) {
         reasons.push(
             `${item.target_warning_date} 二饱抵抗后，次笔收阴；最低 ${num(item.observed_low, 4)} < 昨低 ${num(item.previous_low, 4)}，收盘 ${num(item.observed_close, 4)} < 昨收 ${num(item.previous_close, 4)}；成交量 ${num(item.observed_volume, 0)} > 最近阴线 ${item.bearish_reference_date} 的 ${num(item.bearish_reference_volume, 0)}，当日清空余仓。`,
         );
+    if (targetReason === "wave_two_t_next_volume_clear")
+        reasons.push(
+            `${item.wave_reached_date} 二饱（二吐/2T）目标 ${num(item.wave_reached_price, 4)} 元到位，前日上影占振幅 ${pct(item.previous_upper_shadow_fraction)}，超过 40%；次日收阴，最低 ${num(item.observed_low, 4)} < 昨低 ${num(item.previous_low, 4)}，收盘 ${num(item.observed_close, 4)} < 昨收 ${num(item.previous_close, 4)}；成交量 ${num(item.observed_volume, 0)} > 最近阴线 ${item.bearish_reference_date} 的 ${num(item.bearish_reference_volume, 0)}，当日清空余仓。`,
+        );
     if (item.side === "BUY") {
         reasons.push(...waveEntryEvidence(evidence).slice(0, 2));
         const reversal = evidence.find((e) => e.squeeze_confirmation === "volume_reversal_record_break");

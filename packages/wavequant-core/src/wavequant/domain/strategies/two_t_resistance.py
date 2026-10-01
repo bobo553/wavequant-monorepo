@@ -15,6 +15,33 @@ def _long_upper_shadow(bar: Bar) -> bool:
     return high > low and 2 * upper >= high - low and upper >= abs(closed - opened)
 
 
+def _upper_shadow_over_forty_percent(bar: Bar) -> bool:
+    high, low, opened, closed = (Fraction(str(value)) for value in (bar.high, bar.low, bar.open, bar.close))
+    return high > low and 5 * (high - max(opened, closed)) > 2 * (high - low)
+
+
+def _next_volume_clear(
+    bars: Sequence[Bar],
+    index: int,
+    bearish_index: int | None,
+    evidence: dict[str, object],
+    reason: str,
+) -> dict[str, object] | None:
+    previous, bar = bars[index - 1], bars[index]
+    if (bar.close >= bar.open or bar.low >= previous.low or bar.close >= previous.close
+            or bearish_index is None or bars[bearish_index].volume <= 0
+            or bar.volume <= bars[bearish_index].volume):
+        return None
+    return dict(
+        evidence, reason=reason, exit_fraction=1.0,
+        bearish_reference_date=bars[bearish_index].timestamp.date().isoformat(),
+        bearish_reference_volume=bars[bearish_index].volume,
+        observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
+        observed_close=bar.close, observed_volume=bar.volume,
+        previous_low=previous.low, previous_close=previous.close,
+    )
+
+
 def two_t_resistance_history(
     bars: Sequence[Bar],
     events: Sequence[Mapping[str, object]],
@@ -25,8 +52,8 @@ def two_t_resistance_history(
 
     Projection-ready evidence already fixes the original N, first two-T reach,
     and availability date. A newer entry N cannot erase that larger target.
-    A next-session bearish double break requires volume above the most recent
-    bearish candle, independently of whether the warning reduction filled.
+    A first reach with upper shadow strictly over 40% clears on the next-session
+    bearish volume double break. Reductions retain the separate 50% threshold.
     """
     if not isfinite(reduction_fraction) or not 0 < reduction_fraction < 1:
         raise ValueError("reduction fraction must be between zero and one")
@@ -57,6 +84,29 @@ def two_t_resistance_history(
         if observed < target:
             continue
         key = (attack, origin if type(origin) is int else None)
+        if invalidated.get(key, len(bars)) <= reached:
+            continue
+        target_evidence: dict[str, object] = dict(
+            attack=attack, wave_n_date=bars[attack].timestamp.date().isoformat(),
+            wave_reached_stage="two_t", wave_reached_price=target,
+            wave_reached_date=bars[reached].timestamp.date().isoformat(),
+            execution_model="same_day_close",
+        )
+        if type(origin) is int and 0 <= origin <= reached:
+            target_evidence.update(wave_n_origin_date=bars[origin].timestamp.date().isoformat(),
+                                   wave_n_origin_price=bars[origin].low)
+        following = reached + 1
+        if following < len(bars) and _upper_shadow_over_forty_percent(bars[reached]):
+            confirmation = observe_resistance(bars[reached], bars[following],
+                attack_direction=Direction.UP, shadow_policy=ShadowPolicy(.5))
+            clear = _next_volume_clear(bars, following, previous_bearish[following],
+                dict(target_evidence, target_trigger="first_two_t_reach_upper_gt_40pct_next_session",
+                     previous_upper_shadow_fraction=(bars[reached].high - max(bars[reached].open, bars[reached].close))
+                     / (bars[reached].high - bars[reached].low),
+                     target_confirmation_patterns=list(confirmation.reasons)),
+                "wave_two_t_next_volume_clear")
+            if clear is not None and risks.get(following, {}).get("exit_fraction") != 1.0:
+                risks[following] = clear
         for warning_index in range(max(1, reached), min(reached + 2, len(bars))):
             if invalidated.get(key, len(bars)) <= warning_index:
                 break
@@ -69,10 +119,7 @@ def two_t_resistance_history(
             if "long_upper_shadow" not in patterns:
                 patterns.append("long_upper_shadow")
             evidence: dict[str, object] = dict(
-                attack=attack,
-                wave_n_date=bars[attack].timestamp.date().isoformat(),
-                wave_reached_stage="two_t", wave_reached_price=target,
-                wave_reached_date=bars[reached].timestamp.date().isoformat(),
+                target_evidence,
                 target_warning_index=warning_index,
                 target_warning_date=warning.timestamp.date().isoformat(),
                 target_warning_low=warning.low, target_warning_close=warning.close,
@@ -81,11 +128,7 @@ def two_t_resistance_history(
                 observed_open=warning.open, observed_high=warning.high,
                 observed_low=warning.low, observed_close=warning.close,
                 observed_volume=warning.volume, previous_close=bars[warning_index - 1].close,
-                execution_model="same_day_close",
             )
-            if type(origin) is int and 0 <= origin <= reached:
-                evidence.update(wave_n_origin_date=bars[origin].timestamp.date().isoformat(),
-                                wave_n_origin_price=bars[origin].low)
             reduction = dict(evidence, reason="wave_two_t_resistance_reduce",
                              exit_fraction=reduction_fraction, exit_target_fraction=reduction_fraction)
             if risks.get(warning_index, {}).get("exit_fraction") != 1.0:
@@ -101,18 +144,9 @@ def two_t_resistance_history(
                                         observed_open=bar.open, observed_high=bar.high,
                                         observed_low=bar.low, observed_close=bar.close,
                                         observed_volume=bar.volume, previous_close=warning.close)
-            bearish_index = previous_bearish[following]
-            if (bar.close >= bar.open or bar.low >= warning.low or bar.close >= warning.close
-                    or bearish_index is None or bars[bearish_index].volume <= 0
-                    or bar.volume <= bars[bearish_index].volume):
-                continue
-            risks[following] = dict(
-                evidence, reason="wave_two_t_resistance_volume_clear", exit_fraction=1.0,
-                target_confirmation_patterns=list(confirmation.reasons),
-                bearish_reference_date=bars[bearish_index].timestamp.date().isoformat(),
-                bearish_reference_volume=bars[bearish_index].volume,
-                observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
-                observed_close=bar.close, observed_volume=bar.volume,
-                previous_low=warning.low, previous_close=warning.close,
-            )
+            clear = _next_volume_clear(bars, following, previous_bearish[following],
+                dict(evidence, target_confirmation_patterns=list(confirmation.reasons)),
+                "wave_two_t_resistance_volume_clear")
+            if clear is not None:
+                risks[following] = clear
     return risks
