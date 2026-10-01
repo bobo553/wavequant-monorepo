@@ -66,15 +66,22 @@ export class TargetGuideOverlay {
             context.textBaseline = "bottom";
             context.textAlign = "left";
             const visible = this.projected
+                .map((guide) => {
+                    const offscreen = guide.y < 4 || guide.y > mediaSize.height - 4;
+                    return {
+                        ...guide,
+                        offscreen,
+                        displayY: offscreen ? Math.max(4, Math.min(guide.y, mediaSize.height - 4)) : guide.y,
+                    };
+                })
                 .filter(
                     (guide) =>
                         guide.x <= mediaSize.width &&
                         (guide.x >= 0 || (guide.end > guide.start && guide.endX !== null && guide.endX >= 0)) &&
-                        guide.y >= 4 &&
-                        guide.y <= mediaSize.height - 4,
+                        (!guide.offscreen || ["five_top", "ten_full"].includes(guide.stage)),
                 )
-                .sort((left, right) => left.y - right.y);
-            const labelYs = visible.map((guide) => guide.y - 3);
+                .sort((left, right) => left.displayY - right.displayY);
+            const labelYs = visible.map((guide) => guide.displayY - 3);
             const spacing = Math.min(18, (mediaSize.height - 20) / Math.max(1, visible.length - 1));
             // 先向下避让，再整体收回图窗底部，避免顶部多个标签被同时夹到同一位置。
             for (let index = 0; index < labelYs.length; index++)
@@ -89,7 +96,7 @@ export class TargetGuideOverlay {
                 context.lineWidth = 1;
                 const short = !guide.end || guide.end === guide.start;
                 const anchorX = Math.max(0, short ? guide.x - 18 : guide.x);
-                if (short) {
+                if (short && !guide.offscreen) {
                     context.setLineDash([4, 3]);
                     context.beginPath();
                     context.moveTo(anchorX, guide.y);
@@ -100,14 +107,19 @@ export class TargetGuideOverlay {
                 const shortName = guide.name.startsWith("C 浪目标")
                     ? guide.name.replace("C 浪目标", "C")
                     : guide.name.split("（")[0] + (guide.name.includes("预估") ? "（预估）" : "");
-                const value = `${shortName} ${guide.price.toFixed(4)}`;
-                const text = guide.statusKnown === false ? value : `${value} · ${guide.end ? "已突破" : "未突破"}`;
+                const direction = guide.offscreen ? (guide.y < 4 ? "↑ " : "↓ ") : "";
+                const value = `${direction}${shortName} ${guide.price.toFixed(4)}`;
+                const text = guide.offscreen
+                    ? `${value} · 图外`
+                    : guide.statusKnown === false
+                      ? value
+                      : `${value} · ${guide.end ? "已突破" : "未突破"}`;
                 // 窄屏优先保留名称、价格和预估标识，空间不足时省略突破状态。
                 const label = context.measureText(text).width <= mediaSize.width - 8 ? text : value;
                 const width = Math.min(context.measureText(label).width, mediaSize.width - 8);
                 const labelX = Math.max(4, Math.min(anchorX - width - 8, mediaSize.width - width - 4));
                 const labelY = labelYs[index];
-                if (Math.abs(labelY - (guide.y - 3)) > 1 || labelX + width > anchorX - 8) {
+                if (!guide.offscreen && (Math.abs(labelY - (guide.y - 3)) > 1 || labelX + width > anchorX - 8)) {
                     const edgeX = anchorX < labelX + width / 2 ? labelX - 2 : labelX + width + 2;
                     context.beginPath();
                     context.moveTo(edgeX, labelY - 6);

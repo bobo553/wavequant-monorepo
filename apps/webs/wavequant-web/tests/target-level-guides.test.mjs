@@ -242,3 +242,24 @@ test("narrow panes retain estimated name and price, and panning preserves labels
     assert.equal(renderGuides([{ ...guide, end: "2026-05-20" }], { x: -40, endX: null }).labels.length, 0);
     assert.equal(renderGuides([guide], { x: 800 }).labels.length, 0);
 });
+
+test("distant offscreen targets keep separate edge labels without drawing false price lines", () => {
+    const guides = [
+        { start: item.time, end: null, stage: "five_top", name: "五顶（预估）", price: 10.45 },
+        { start: item.time, end: null, stage: "ten_full", name: "十满（预估）", price: 16.75 },
+    ];
+    const { labels, segments } = renderGuides(guides, { y: (price) => -price * 100 });
+    assert.equal(labels.length, 2);
+    assert.ok(labels.every(({ text, y }) => /↑.*预估.*图外/.test(text) && y >= 16));
+    assert.ok(labels[1].y - labels[0].y >= 18);
+    assert.equal(segments.length, 0);
+    assert.match(labels.map(({ text }) => text).join(" "), /10\.4500.*16\.7500/);
+    const below = renderGuides([guides[0]], { width: 160, x: 20, y: () => 240 });
+    assert.match(below.labels[0].text, /↓.*五顶.*10\.4500/);
+    assert.ok(below.labels[0].y <= 196);
+    assert.equal(below.segments.length, 0);
+    assert.equal(renderGuides(guides, { x: -30, y: () => -100 }).labels.length, 0);
+    const onscreen = renderGuides([guides[0]], { y: () => 80 });
+    assert.match(onscreen.labels[0].text, /10\.4500.*未突破/);
+    assert.ok(onscreen.segments.some(({ dash }) => dash.length));
+});
