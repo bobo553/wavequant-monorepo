@@ -100,7 +100,7 @@ test("Guofang April 1 ordinary C-wave buy labels both projected levels once", ()
     ]);
 });
 
-test("selecting the Guofang C-wave buy shows target axis labels without full-width price lines", async () => {
+test("legacy C-wave buys without B dates use direct target labels and preserve existing line geometry", async () => {
     globalThis.window = { LightweightCharts: { LineSeries: Symbol("line") } };
     globalThis.MutationObserver = class { observe() {} };
     globalThis.document = { documentElement: {} };
@@ -131,6 +131,7 @@ test("selecting the Guofang C-wave buy shows target axis labels without full-wid
             },
             removeSeries() {},
         },
+        targetGuideOverlay: { setGuides(guides) { this.guides = guides; } },
         clearLevels: PriceChart.prototype.clearLevels,
     };
     PriceChart.prototype.drawLevels.call(fake);
@@ -140,6 +141,13 @@ test("selecting the Guofang C-wave buy shows target axis labels without full-wid
         ["C 浪目标 0.618×A", 7.6592301126997056, false, undefined],
         ["C 浪目标 1×A", 8.372756128751465, false, undefined],
     ]);
+    assert.ok(lines.filter((line) => line.options.title.startsWith("C 浪目标"))
+        .every((line) => line.options.lastValueVisible === false));
+    assert.equal(fake.targetGuideOverlay.guides.length, 2);
+    assert.ok(fake.targetGuideOverlay.guides.every((guide) => guide.start === "2023-07-26"));
+    fake.selected.levels = fake.selected.levels.map((level) => ({ ...level, anchor_at: undefined }));
+    PriceChart.prototype.drawLevels.call(fake);
+    assert.ok(fake.targetGuideOverlay.guides.every((guide) => guide.statusKnown === false));
     fake.selected = null;
     PriceChart.prototype.drawLevels.call(fake);
     assert.equal(fake.container.dataset.levelCount, "0");

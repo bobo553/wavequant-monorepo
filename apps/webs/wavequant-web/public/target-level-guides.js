@@ -17,7 +17,7 @@ export function targetLevelGuide(item, level, bars, asof) {
     return { start: level.anchor_at, end: breakout?.time || null, price: level.price, name: level.name };
 }
 
-/** 用固定像素宽度表示未突破目标，单根 K 线截面也能显示线段。 */
+/** 目标统一在左端直接标注；短线使用固定像素宽度，长线交给价格序列。 */
 export class TargetGuideOverlay {
     constructor() {
         this.guides = [];
@@ -53,6 +53,7 @@ export class TargetGuideOverlay {
             .map((guide) => ({
                 ...guide,
                 x: this.chart.timeScale().timeToCoordinate(guide.start),
+                endX: guide.end ? this.chart.timeScale().timeToCoordinate(guide.end) : null,
                 y: this.series.priceToCoordinate(guide.price),
             }))
             .filter((guide) => guide.x !== null && guide.y !== null);
@@ -61,38 +62,62 @@ export class TargetGuideOverlay {
     draw(target) {
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {
             context.save();
-            context.font = "600 10px ui-sans-serif, system-ui, sans-serif";
+            context.font = "600 12px ui-sans-serif, system-ui, sans-serif";
             context.textBaseline = "bottom";
             context.textAlign = "left";
             const visible = this.projected
                 .filter(
                     (guide) =>
-                        guide.x >= 0 && guide.x <= mediaSize.width && guide.y >= 10 && guide.y <= mediaSize.height - 4,
+                        guide.x <= mediaSize.width &&
+                        (guide.x >= 0 || (guide.end > guide.start && guide.endX !== null && guide.endX >= 0)) &&
+                        guide.y >= 4 &&
+                        guide.y <= mediaSize.height - 4,
                 )
                 .sort((left, right) => left.y - right.y);
             const labelYs = visible.map((guide) => guide.y - 3);
-            // 相近的 C 目标在远端 N 目标参与缩放时仍保留可读间距，线段价格不位移。
+            const spacing = Math.min(18, (mediaSize.height - 20) / Math.max(1, visible.length - 1));
+            // 先向下避让，再整体收回图窗底部，避免顶部多个标签被同时夹到同一位置。
+            for (let index = 0; index < labelYs.length; index++)
+                labelYs[index] = Math.max(labelYs[index], index ? labelYs[index - 1] + spacing : 16);
+            if (labelYs.length) labelYs[labelYs.length - 1] = Math.min(labelYs.at(-1), mediaSize.height - 4);
             for (let index = labelYs.length - 2; index >= 0; index--)
-                labelYs[index] = Math.min(labelYs[index], labelYs[index + 1] - 14);
+                labelYs[index] = Math.min(labelYs[index], labelYs[index + 1] - spacing);
+            const background = this.chart.options?.().layout?.background?.color || "#101722";
             for (const [index, guide] of visible.entries()) {
                 context.strokeStyle = guide.color;
                 context.fillStyle = guide.color;
                 context.lineWidth = 1;
-                context.setLineDash([4, 3]);
-                context.beginPath();
-                context.moveTo(Math.max(0, guide.x - 18), guide.y);
-                context.lineTo(Math.min(mediaSize.width, guide.x + 18), guide.y);
-                context.stroke();
+                const short = !guide.end || guide.end === guide.start;
+                const anchorX = Math.max(0, short ? guide.x - 18 : guide.x);
+                if (short) {
+                    context.setLineDash([4, 3]);
+                    context.beginPath();
+                    context.moveTo(anchorX, guide.y);
+                    context.lineTo(Math.min(mediaSize.width, guide.x + 18), guide.y);
+                    context.stroke();
+                }
                 context.setLineDash([]);
                 const shortName = guide.name.startsWith("C 浪目标")
                     ? guide.name.replace("C 浪目标", "C")
                     : guide.name.split("（")[0] + (guide.name.includes("预估") ? "（预估）" : "");
-                const text = `${shortName} ${guide.price.toFixed(4)} · ${guide.end ? "已突破" : "未突破"}`;
-                const labelX = Math.max(
-                    4,
-                    Math.min(guide.x - 18, mediaSize.width - context.measureText(text).width - 4),
-                );
-                context.fillText(text, labelX, Math.max(12, labelYs[index]));
+                const value = `${shortName} ${guide.price.toFixed(4)}`;
+                const text = guide.statusKnown === false ? value : `${value} · ${guide.end ? "已突破" : "未突破"}`;
+                // 窄屏优先保留名称、价格和预估标识，空间不足时省略突破状态。
+                const label = context.measureText(text).width <= mediaSize.width - 8 ? text : value;
+                const width = Math.min(context.measureText(label).width, mediaSize.width - 8);
+                const labelX = Math.max(4, Math.min(anchorX - width - 8, mediaSize.width - width - 4));
+                const labelY = labelYs[index];
+                if (Math.abs(labelY - (guide.y - 3)) > 1 || labelX + width > anchorX - 8) {
+                    const edgeX = anchorX < labelX + width / 2 ? labelX - 2 : labelX + width + 2;
+                    context.beginPath();
+                    context.moveTo(edgeX, labelY - 6);
+                    context.lineTo(anchorX, guide.y);
+                    context.stroke();
+                }
+                context.fillStyle = background;
+                context.fillRect(labelX - 2, labelY - 14, width + 4, 16);
+                context.fillStyle = guide.color;
+                context.fillText(label, labelX, labelY, width);
             }
             context.restore();
         });

@@ -201,9 +201,14 @@ test("selecting an ordinary C buy draws the broken target to its first break and
     ]);
     assert.deepEqual(targets[1].points, [{ time: "2026-01-27", value: 6.03 }]);
     assert.ok(targets.every((line) => !line.options.priceLineVisible && !line.options.pointMarkersVisible));
+    assert.ok(targets.every((line) => !line.options.lastValueVisible));
+    assert.equal(fake.levelLines[0].options.lastValueVisible, true);
     assert.deepEqual(
         fake.targetGuideOverlay.guides.map(({ start, end, price }) => [start, end, price]),
-        [["2026-01-27", null, 6.03]],
+        [
+            ["2026-01-27", "2026-01-30", 5.50666],
+            ["2026-01-27", null, 6.03],
+        ],
     );
     fake.selected = null;
     PriceChart.prototype.drawLevels.call(fake);
