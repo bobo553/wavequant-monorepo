@@ -255,20 +255,7 @@ test("bearish inside child reduction and next-session break show their own evide
     assert.match(clear.join(" "), /最低 4\.2600 < 子线低点 4\.3600.*收盘 4\.3000 < 子线收盘 4\.4000.*清空余仓/);
 });
 
-test("bearish child pattern explains equal-low containment without a volume gate", () => {
-    const reduction = tradeReasonItems({
-        side: "SELL",
-        reason: "bearish_mother_child_reduce_70",
-        mother_date: "2020-08-11",
-        mother_low: 5.21,
-        mother_high: 5.63,
-        child_date: "2020-08-12",
-        child_low: 5.21,
-        child_high: 5.51,
-    });
-    assert.match(reduction.join(" "), /2020-08-11.*5\.2100～5\.6300.*2020-08-12.*5\.2100～5\.5100/);
-    assert.match(reduction.join(" "), /累计减仓 70%，无需放量/);
-
+test("bearish child clear explains expanding volume on the bar breaking the child low", () => {
     const clear = tradeReasonItems({
         side: "SELL",
         reason: "bearish_mother_child_break_clear",
@@ -277,8 +264,18 @@ test("bearish child pattern explains equal-low containment without a volume gate
         child_close: 5.34,
         observed_low: 4.96,
         observed_close: 5.08,
+        child_volume: 15_799_059,
+        observed_volume: 19_530_900,
+        bearish_reference_date: "2020-08-12",
+        bearish_reference_volume: 15_799_059,
     });
-    assert.match(clear.join(" "), /最低 4\.9600 < 子线低点 5\.2100.*收盘 5\.0800 < 子线收盘 5\.3400.*清空余仓/);
+    assert.match(clear[0], /放量且低点、收盘均跌破阴子线.*清空余仓/);
+    assert.match(clear.join(" "), /最低 4\.9600 < 子线低点 5\.2100.*收盘 5\.0800 < 子线收盘 5\.3400/);
+    assert.match(
+        clear.join(" "),
+        /19,530,900 股.*子线量 15,799,059 股或此前 2020-08-12 最近阴线量 15,799,059 股.*直接清空余仓/,
+    );
+    assert.doesNotMatch(clear.join(" "), /无需放量/);
 });
 
 test("bearish mother and child explain volume before the pair and a bullish low break", () => {
