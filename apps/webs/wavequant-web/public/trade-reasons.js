@@ -103,10 +103,8 @@ export function tradeReasonItems(item) {
             reasons.push(`${item.mother_date} 阳母线收盘 ${num(item.mother_close, 4)} > ${item.bearish_reference_date} 前阴线高点 ${num(item.bearish_reference_high, 4)}；${item.child_date} 阴子线被母线包含，成交量 ${num(item.child_volume, 0)} 股是前阴线 ${num(item.bearish_reference_volume, 0)} 股的 ${num(item.child_bearish_volume_multiple, 2)} 倍，当日累计减仓 70%。`);
         if (item.reason === "volume_bearish_child_break_clear")
             reasons.push(`${item.child_date} 阴子线后，最低 ${num(item.observed_low, 4)} < 子线低点 ${num(item.child_low, 4)}，收盘 ${num(item.observed_close, 4)} < 子线收盘 ${num(item.child_close, 4)}，清空余仓。`);
-        if (item.reason === "bearish_mother_child_reduce_70")
-            reasons.push(`${item.mother_date} 母线范围 ${num(item.mother_low, 4)}～${num(item.mother_high, 4)} 包含 ${item.child_date} 阴子线范围 ${num(item.child_low, 4)}～${num(item.child_high, 4)}，允许一侧等高或等低；当日累计减仓 70%，无需放量。`);
         if (item.reason === "bearish_mother_child_break_clear")
-            reasons.push(`${item.child_date} 阴子线后，最低 ${num(item.observed_low, 4)} < 子线低点 ${num(item.child_low, 4)}，收盘 ${num(item.observed_close, 4)} < 子线收盘 ${num(item.child_close, 4)}，清空余仓。`);
+            reasons.push(`${item.child_date} 阴子线后，最低 ${num(item.observed_low, 4)} < 子线低点 ${num(item.child_low, 4)}，收盘 ${num(item.observed_close, 4)} < 子线收盘 ${num(item.child_close, 4)}；跌破 K 线成交量 ${num(item.observed_volume, 0)} 股，严格大于子线量 ${num(item.child_volume, 0)} 股或此前 ${item.bearish_reference_date} 最近阴线量 ${num(item.bearish_reference_volume, 0)} 股，当日收盘直接清空余仓。`);
         if (item.reason === "volume_bearish_mother_child_reduce_70")
             reasons.push(`${item.mother_date} 阴母线范围 ${num(item.mother_low, 4)}～${num(item.mother_high, 4)} 包含 ${item.child_date} 阴子线范围 ${num(item.child_low, 4)}～${num(item.child_high, 4)}，允许一侧等高或等低；子线成交量 ${num(item.child_volume, 0)} 股 > 组合前 ${item.bearish_reference_date} 最近阴线 ${num(item.bearish_reference_volume, 0)} 股，当日累计减仓 70%。`);
         if (item.reason === "volume_bearish_mother_child_low_clear")

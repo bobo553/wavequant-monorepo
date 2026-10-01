@@ -527,7 +527,7 @@ def test_volume_down_strict_boundaries(change):
     assert observe_volume_down_exit(bars,7,StagedExitState()) is None
 
 
-def test_volume_down_reduction_then_bearish_child_double_break_clears_next_day():
+def test_volume_down_execution_same_close_seventy_then_same_day_full_exit():
     from wavequant.application.analytics.backtest import run_portfolio
     bars=volume_down_sample()
     bars[8] = replace(bars[8], open=7.12, close=7.13)
@@ -542,9 +542,9 @@ def test_volume_down_reduction_then_bearish_child_double_break_clears_next_day()
     assert reduction['signal_timestamp'][:10]=='2022-09-22'
     assert reduction['price']==bars[7].close
     assert reduction['quantity']==int(buy['quantity']*.7//100)*100
-    assert clear['timestamp'][:10]=='2022-09-23'
-    assert clear['reason']=='bearish_mother_child_break_clear'
-    assert clear['price']==bars[8].close
+    assert clear['timestamp'][:10]=='2022-09-26'
+    assert clear['reason']=='volume_down_support_break_clear'
+    assert clear['price']==bars[9].close
     assert clear['remaining_quantity']==0
     prefix=run_portfolio({bars[0].symbol:bars[:8]},[signal],config)
     assert prefix.orders==[o for o in result.orders if o['timestamp']<=bars[7].timestamp.isoformat()]

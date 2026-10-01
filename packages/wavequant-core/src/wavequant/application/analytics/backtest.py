@@ -601,12 +601,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                small_body_max_fraction=config.small_body_max_fraction,
                                small_body_lookback=config.small_body_lookback)
                            if config.volume_down_exit else None)
-            if config.volume_down_exit and (
-                    pos.staged_exit.bearish_child_pattern_warning_index is not None
-                    or volume_exit is None
-                    or (volume_exit['exit_fraction'] < 1
-                        and volume_exit['reason'] not in ('volume_bearish_child_reduce_70',
-                                                          'volume_bearish_mother_child_reduce_70'))):
+            if config.volume_down_exit:
                 pattern_exit = observe_bearish_child_pattern_exit(grouped[symbol], i, pos.staged_exit)
                 if pattern_exit is not None and (
                         volume_exit is None or pattern_exit['exit_fraction'] > volume_exit['exit_fraction']):

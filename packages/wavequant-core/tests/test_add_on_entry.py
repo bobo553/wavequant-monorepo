@@ -300,7 +300,7 @@ def test_add_on_respects_weight_and_risk_caps_after_buy_fee(max_weight, risk_fra
     assert add_on["position_risk_after_fill"] <= post_fee_equity * risk_fraction + 1e-12
 
 
-def test_huaci_body_buy_partial_sale_and_gap_add_on_share_one_open_cycle():
+def test_huaci_volume_double_break_closes_cycle_before_next_gap_buy():
     from .test_wave_continuation import sample as huaci_sample
     from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
     from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageError
@@ -339,16 +339,28 @@ def test_huaci_body_buy_partial_sale_and_gap_add_on_share_one_open_cycle():
         if order["side"] == "SELL" and order["status"] == "filled" and order["timestamp"].startswith("2026-09-09")
     )
     assert partial["position_closed"] is False
-    assert body_buy["trade_id"] == partial["trade_id"] == gap_buy["trade_id"]
-    assert gap_buy["add_on"] is True
-    assert gap_buy["position_quantity_before"] == partial["remaining_quantity"]
-    assert gap_buy["position_quantity_after"] == partial["remaining_quantity"] + gap_buy["quantity"]
-    assert gap_buy["position_weight_after_fill"] > gap_buy["entry_position_weight"]
+    clear = next(order for order in view["orders"]
+                 if order["side"] == "SELL" and order["status"] == "filled"
+                 and order["timestamp"].startswith("2026-09-11"))
+    assert clear["reason"] == "bearish_mother_child_break_clear"
+    assert clear["child_date"] == "2026-08-31"
+    assert clear["observed_low"] < clear["child_low"]
+    assert clear["observed_close"] < clear["child_close"]
+    assert clear["observed_volume"] <= clear["child_volume"]
+    assert clear["observed_volume"] > clear["bearish_reference_volume"]
+    assert clear["bearish_reference_date"] == "2026-09-10"
+    assert clear["quantity"] == partial["remaining_quantity"]
+    assert clear["position_closed"] is True and clear["remaining_quantity"] == 0
+    assert body_buy["trade_id"] == partial["trade_id"] == clear["trade_id"]
+    assert gap_buy["trade_id"] != clear["trade_id"]
+    assert gap_buy["add_on"] is False
+    assert gap_buy["position_quantity_before"] == 0
+    assert gap_buy["position_quantity_after"] == gap_buy["quantity"]
     proof = next(event for event in gap_buy["decision_evidence"] if event.get("wave_entry_path"))
     assert proof["wave_confirmation_phase"] == "gap"
     assert proof["wave_gap_trigger"] == "breakout_and_volume"
     opened = view["backtest"]["open_positions"][0]
-    assert opened["trade_id"] == body_buy["trade_id"]
+    assert opened["trade_id"] == gap_buy["trade_id"]
     assert opened["quantity"] == gap_buy["position_quantity_after"]
     assert opened["entry_cost"] == pytest.approx(
         sum(o["price"] * o["quantity"] + o["fee"] for o in buys if o["trade_id"] == opened["trade_id"])

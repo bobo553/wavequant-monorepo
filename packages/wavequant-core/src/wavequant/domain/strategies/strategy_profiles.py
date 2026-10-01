@@ -80,7 +80,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v71_' + variant
+    config['profile_version'] = 'gap_up_bullish_squeeze_v73_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -128,7 +128,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         inverse_n_after_reduction='cumulative_90_percent_of_initial_holding_other_full_risk_exits_take_priority',
         small_n_reduction='body_le_1pct_and_lt_previous_10_mean_inside_latest_valid_confirmed_n_candle_then_cumulative_30',
         volume_down_exit='volume_gt_previous_bearish_close_below_previous_same_close_cumulative_70_next_session_gap_fade_or_bearish_close_below_warning_low_or_frozen_support_low_break_close_clear',
-        bearish_mother_child_pattern_exit='non_doji_mother_contains_bearish_child_one_strict_edge_no_volume_gate_cumulative_70_same_close_next_session_low_and_close_strict_break_full_clear',
+        bearish_mother_child_pattern_exit='non_doji_mother_contains_bearish_child_one_strict_edge_no_pattern_reduction_any_later_low_and_close_strict_break_volume_gt_positive_child_or_last_bearish_volume_same_close_full_clear',
         volume_bearish_mother_child_exit='bullish_mother_close_gt_last_bearish_high_strict_inside_bearish_child_volume_gt_last_bearish_before_pair_cumulative_70_same_close_next_session_low_and_close_strict_break_full_clear',
         volume_double_bearish_mother_child_exit='bearish_mother_bearish_child_inclusive_containment_one_strict_edge_volume_gt_last_bearish_before_pair_cumulative_70_same_close_any_later_low_strict_break_same_close_full_clear',
         volume_bearish_outside_exit=(

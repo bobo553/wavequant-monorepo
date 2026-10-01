@@ -4,10 +4,37 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-223",
+            "name": "restore-child-volume-gate-and-volume-double-break-clear",
+            "title": "恢复子线放量减仓与放量双破直清",
+            "description": "替代 MONOREPO-222 的无量减仓：恢复原子线放量减仓判据；新增独立清仓要求后续K线低点和收盘严格低于子线，成交量大于子线或跌破前最近阴线，满足时当日收盘直接清空。",
+            "scope": "Core 母子形态持仓风险、成交证据、Web 原因说明",
+            "dependencies": ["MONOREPO-220", "MONOREPO-222"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "子线减仓仍需量严格大于组合前最近阴线，并满足原阳母/阴母判据；不按无量母子形态减仓，不改原放量母子退出路径",
+                "后续K线今低严格低于子低且今收严格低于子收，同时量严格大于子量或此前最近阴线量，正量参照有效时当日直接清仓；不依赖子线减仓成交",
+                "先锋2020-08-12子线低量不减，08-13量19530900大于子量15799059且双破，直接清仓；等价、等量、只破一项、两种量能或条件与前缀均覆盖",
+                "清仓说明列出子线及最近阴线成交量、低点与收盘比较；累计减仓、整手、T+1和更强风险优先级保持"
+            ],
+            "verification": [
+                {
+                    "command": "Core 6个退出规则文件定向pytest；4个转浪/加仓/普通退出文件定向pytest；华瓷分钟买入持仓周期用例单独复验",
+                    "status": "passed",
+                    "summary": "129项退出规则通过，56项相邻用例及1项华瓷实际样本通过，共186项。先复现无量误减仓，再覆盖子线量门槛恢复、两种放量或条件、价格/量严格边界、无先行减仓、整手和前缀；华瓷09-11因量高于前阴且双破清仓，09-15重新开仓。"
+                },
+                {
+                    "command": "node --test tests/trade-reasons.test.mjs tests/annotations.test.mjs；Web lint、typecheck、build；3个修改模块mypy；Core build及独立环境安装wheel导入smoke；JS语法、格式、git diff --check、Harness",
+                    "status": "passed",
+                    "summary": "46项Web测试、类型和生产构建通过；Lint仅6条既有警告。Core类型、sdist/wheel构建和独立安装导入通过，策略版本升至v73避免复用历史v72结果。完整Core/Web套件、浏览器端到端和账户收益重算待独立验证，按用户规则未运行Playwright。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-222",
             "name": "bearish-child-pattern-staged-exit",
             "title": "阴子线母子形态减仓与次日双破清仓",
-            "description": "全局 V3 持仓遇母子阴子线时不以放量为前提，当日按原持仓累计减仓70%；次一交易日低点和收盘均严格跌破子线时清空余仓。允许一侧等高或等低，并保留原放量母子路径的独立证据。",
+            "description": "历史实现：全局 V3 母子阴子线无量减仓及次日双破清仓；已由 MONOREPO-223 按用户要求恢复原子线放量门槛，并改为放量双破独立清仓。以下验收与验证保留为当时记录。",
             "scope": "Core 持仓形态风控与回测、Web 成交说明、先锋新材 2020 年真实价格回归",
             "dependencies": ["MONOREPO-214", "MONOREPO-220"],
             "status": "done",
