@@ -101,6 +101,7 @@ class StagedExitState:
     bearish_child_warning_index: int | None = None
     bearish_mother_child_warning_index: int | None = None
     bearish_child_pattern_warning_index: int | None = None
+    bearish_child_mother_warning_index: int | None = None
 
 
 def observe_intraday_staged_exit(
@@ -302,6 +303,32 @@ def _bearish_outside_reversal(bars: list[Bar], index: int) -> dict | None:
                 previous_volume=previous.volume)
 
 
+def _bearish_child_mother_volume(bars: list[Bar], index: int) -> dict[str, float | str] | None:
+    """A later bearish mother encloses the child and exceeds the previous bearish volume."""
+    if index < 1:
+        return None
+    child, mother = bars[index - 1], bars[index]
+    if (mother.close >= mother.open or mother.high < child.high or mother.low > child.low
+            or (mother.high == child.high and mother.low == child.low)):
+        return None
+    reference = index - 1
+    while reference >= 0 and bars[reference].close >= bars[reference].open:
+        reference -= 1
+    if reference < 0:
+        return None
+    bearish = bars[reference]
+    if bearish.volume <= 0 or mother.volume <= bearish.volume:
+        return None
+    return dict(child_date=child.timestamp.date().isoformat(),
+                child_open=child.open, child_high=child.high, child_low=child.low,
+                child_close=child.close, child_volume=child.volume,
+                mother_date=mother.timestamp.date().isoformat(),
+                mother_open=mother.open, mother_high=mother.high, mother_low=mother.low,
+                mother_close=mother.close, mother_volume=mother.volume,
+                bearish_reference_date=bearish.timestamp.date().isoformat(),
+                bearish_reference_volume=bearish.volume)
+
+
 def _bearish_mother_child_volume(bars: list[Bar], index: int) -> dict | None:
     """Compare a bearish child's volume with the last bearish bar before its mother."""
     if index < 2:
@@ -387,6 +414,17 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     """Freeze confirmed support and escalate cumulative reduction without future N bars."""
     if index < 1:
         return None
+    mother_warning = state.bearish_child_mother_warning_index
+    if mother_warning is not None and index == mother_warning + 1:
+        mother, bar = bars[mother_warning], bars[index]
+        if bar.low < mother.low and bar.close < mother.close:
+            return dict(reason='volume_bearish_child_mother_break_clear', exit_fraction=1.0,
+                        execution_model='same_day_close',
+                        mother_date=mother.timestamp.date().isoformat(),
+                        mother_low=mother.low, mother_close=mother.close,
+                        observed_low=bar.low, observed_close=bar.close)
+    if mother_warning is not None and index > mother_warning + 1:
+        state.bearish_child_mother_warning_index = None
     bearish_warning = state.bearish_mother_child_warning_index
     if bearish_warning is not None and index > bearish_warning:
         mother, child, bar = bars[bearish_warning - 1], bars[bearish_warning], bars[index]
@@ -412,6 +450,14 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     outside_reversal = _bearish_outside_reversal(bars, index)
     if outside_reversal is not None:
         return outside_reversal
+    bearish_mother = _bearish_child_mother_volume(bars, index)
+    if bearish_mother is not None:
+        state.bearish_child_mother_warning_index = index
+        if state.volume_reduction_target < .7:
+            state.volume_reduction_target = .7
+            return dict(bearish_mother, reason='volume_bearish_child_mother_reduce_70',
+                        exit_fraction=.7, exit_target_fraction=.7,
+                        execution_model='same_day_close')
     bearish_child = _bearish_mother_child_volume(bars, index)
     # The bullish-mother warning keeps its double-break requirement, while
     # an overlapping bearish pair can independently protect its child's low.
