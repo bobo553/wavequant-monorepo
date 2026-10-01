@@ -1,7 +1,7 @@
 """A smaller N cannot bypass an already reached larger N's two-T resistance."""
 
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from pathlib import Path
 
@@ -25,18 +25,13 @@ def xianfeng_june():
     return bars, config, generate_system_signals(bars, config)
 
 
-def test_xianfeng_two_t_warning_blocks_smaller_n_buy_and_next_volume_double_break_exits(xianfeng_june):
+def test_xianfeng_below_half_shadow_does_not_block_smaller_n_buy(xianfeng_june):
     bars, config, result = xianfeng_june
-    assert not any(s.side == "LONG" and str(s.timestamp.date()) == "2026-06-09" for s in result.signals)
-    clear = next(s for s in result.signals if s.side == "EXIT" and str(s.timestamp.date()) == "2026-06-10")
-    assert "wave_two_t_resistance_volume_clear" in clear.reason
-    warning = next(e for e in result.audit if e["event"] == "target_resistance_observed"
-                   and e["timestamp"].startswith("2026-06-09"))
-    assert warning["wave_n_date"] == "2026-05-18"
-    assert warning["wave_reached_price"] == 7.30
-    assert warning["wave_upper_shadow_fraction"] == pytest.approx(.36 / .76)
-    assert any(e["event"] == "entry_rejected" and e["timestamp"].startswith("2026-06-09")
-               and e["reason"] == "wave_two_t_resistance_reduce" for e in result.audit)
+    assert any(s.side == "LONG" and str(s.timestamp.date()) == "2026-06-09" for s in result.signals)
+    assert not any(e["event"] == "target_resistance_observed"
+                   and e["timestamp"][:10] in ("2026-06-09", "2026-06-10") for e in result.audit)
+    assert not any("wave_two_t_resistance_volume_clear" in s.reason
+                   and str(s.timestamp.date()) == "2026-06-10" for s in result.signals)
 
 
 def target_pair():
@@ -48,8 +43,43 @@ def target_pair():
     return bars, event
 
 
-def test_actual_target_pair_is_causal_and_compares_with_last_bearish_not_yesterday_volume():
+def qualified_target_pair():
     bars, event = target_pair()
+    # Controlled 50% wick on the real price/volume sequence, not the original June 9 close.
+    bars[5] = replace(bars[5], close=6.92)
+    return bars, event
+
+
+@pytest.mark.parametrize("close, qualifies", [(6.9199, True), (6.92, True), (6.9201, False)])
+def test_half_range_upper_shadow_boundary_is_inclusive(close, qualifies):
+    bars, event = target_pair()
+    bars[5] = replace(bars[5], close=close)
+    assert (5 in two_t_resistance_history(bars, [event])) is qualifies
+
+
+def test_real_below_half_shadow_does_not_start_warning_or_followthrough_clear():
+    bars, event = target_pair()
+    assert not two_t_resistance_history(bars, [event])
+
+
+@pytest.mark.parametrize("day, prices, volume, target", [
+    ("2022-01-06", (10.723554217788903, 11.217106922373329, 10.667468683177036, 10.959113463158744), 6_567_725, 11.20588981545096),
+    ("2023-04-27", (21.124277080296686, 22.54185783045961, 20.68273553516397, 21.71687231192217), 38_504_580, 21.101038051605485),
+    ("2026-09-17", (16.611534025820525, 17.529895256516294, 16.31441715706601, 17.070714641168408), 16_572_600, 17.50288463208406),
+])
+def test_xinhua_actual_under_half_candles_do_not_trigger_two_t_reduction(day, prices, volume, target):
+    opened, _, low, closed = prices
+    timestamp = datetime.fromisoformat(day)
+    before = Bar(timestamp - timedelta(days=1), "sh.601811", low, opened, low, low, 1)
+    warning = Bar(timestamp, "sh.601811", *prices, volume)
+    # A controlled following bearish double break must not clear without a qualified warning.
+    following = Bar(timestamp + timedelta(days=1), "sh.601811", closed, closed, low - .1, low - .1, volume * 2)
+    event = dict(event="wave_projection_ready", attack=0, bar_index=1, two_t=target)
+    assert not two_t_resistance_history([before, warning, following], [event])
+
+
+def test_qualified_target_pair_is_causal_and_compares_with_last_bearish_not_yesterday_volume():
+    bars, event = qualified_target_pair()
     full = two_t_resistance_history(bars, [event])
     assert full[5]["exit_target_fraction"] == .8
     assert full[6]["exit_fraction"] == 1
@@ -61,25 +91,25 @@ def test_actual_target_pair_is_causal_and_compares_with_last_bearish_not_yesterd
     assert two_t_resistance_history(bars[:7], [event]) == full
 
 
-def test_real_june9_warning_and_signals_do_not_use_june10_confirmation(xianfeng_june):
+def test_real_june9_signals_do_not_use_june10_confirmation(xianfeng_june):
     bars, config, full = xianfeng_june
     prefix = generate_system_signals(bars[:-1], config)
     assert prefix.signals == [signal for signal in full.signals if signal.bar_index < len(bars) - 1]
-    warning = lambda result: [e for e in result.audit if e["event"] == "target_resistance_observed"
-                              and e["timestamp"].startswith("2026-06-09")]
-    assert warning(prefix) == warning(full)
+    buy = lambda result: [e for e in result.audit if e["event"] == "long_signal"
+                          and e["timestamp"].startswith("2026-06-09")]
+    assert buy(prefix) == buy(full)
 
 
 @pytest.mark.parametrize("invalid", ["not_reached", "short_shadow", "wick_shorter_than_body", "same_low", "same_close", "equal_volume", "bullish", "invalidated"])
 def test_warning_and_clear_have_strict_price_and_volume_boundaries(invalid):
-    bars, event = target_pair()
+    bars, event = qualified_target_pair()
     events = [event]
     if invalid == "not_reached":
         event["two_t"] = 7.31
     elif invalid == "short_shadow":
         bars[5] = replace(bars[5], close=7.1)
     elif invalid == "wick_shorter_than_body":
-        bars[5] = replace(bars[5], open=6.3)
+        bars[5] = replace(bars[5], open=6.54, close=6.94)
     elif invalid == "same_low":
         bars[6] = replace(bars[6], low=bars[5].low, close=6.6)
     elif invalid == "same_close":
@@ -99,9 +129,9 @@ def test_warning_and_clear_have_strict_price_and_volume_boundaries(invalid):
 
 
 def test_next_session_shadow_is_allowed_but_later_shadow_cannot_reuse_old_target_window():
-    bars, event = target_pair()
+    bars, event = qualified_target_pair()
     bars[5] = replace(bars[5], close=7.2)
-    bars[6] = replace(bars[6], open=6.65, high=6.89, close=6.7)
+    bars[6] = replace(bars[6], open=6.55, high=6.89, close=6.6)
     assert 6 in two_t_resistance_history(bars, [event])
     bars[6] = replace(bars[6], close=6.87)
     bars[7] = replace(bars[7], open=6.4, high=7.0, close=6.45)
@@ -109,7 +139,7 @@ def test_next_session_shadow_is_allowed_but_later_shadow_cannot_reuse_old_target
 
 
 def test_holding_reduces_and_clears_even_when_its_signal_owns_a_different_n():
-    bars, event = target_pair()
+    bars, event = qualified_target_pair()
     signal = Signal(bars[3].timestamp, bars[3].symbol, 3, "LONG", bars[3].close, 4.38,
                     "fixture", bars[3].timestamp, 0, None, "fixture", 9.68)
     repeat = replace(signal, timestamp=bars[5].timestamp, bar_index=5, reference_price=bars[5].close)
@@ -139,7 +169,7 @@ def test_holding_reduces_and_clears_even_when_its_signal_owns_a_different_n():
 
 
 def test_close_known_warning_does_not_retroactively_cancel_previous_signal_next_open_buy():
-    bars, event = target_pair()
+    bars, event = qualified_target_pair()
     signal = Signal(bars[4].timestamp, bars[4].symbol, 4, "LONG", bars[4].close, 4.38,
                     "fixture", bars[4].timestamp, 0, None, "fixture", 9.68)
     config = StrategyConfig(entry_at_close=False, exit_on_target=False, wave_exhaustion_exit=True,

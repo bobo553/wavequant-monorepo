@@ -12,7 +12,7 @@ export function tradeReasonItems(item) {
     const targetReason = item.decision_reason || item.reason;
     if (targetReason === "wave_two_t_resistance_reduce")
         reasons.push(
-            `${item.target_warning_date} 二饱（二吐/2T）目标 ${num(item.wave_reached_price, 4)} 元；上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，至少三分之一且不短于实体。禁止新买与加仓，已有持仓累计减仓 ${pct(item.exit_target_fraction)}。`,
+            `${item.target_warning_date} 二饱（二吐/2T）目标 ${num(item.wave_reached_price, 4)} 元；上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，至少 50% 且不短于实体。禁止新买与加仓，已有持仓累计减仓 ${pct(item.exit_target_fraction)}。`,
         );
     if (targetReason === "wave_two_t_resistance_volume_clear")
         reasons.push(
