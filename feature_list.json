@@ -4,6 +4,32 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-221",
+            "name": "distant-targets-without-price-compression",
+            "title": "五顶十满显示不压缩K线",
+            "description": "五顶、十满目标退出价格轴自动缩放，图外时在目标线左端对应位置显示方向、真实价格与预估标识，进入图窗后恢复原有虚线。",
+            "scope": "Web 目标线价格缩放与左侧目标标签",
+            "dependencies": ["MONOREPO-215", "MONOREPO-216"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "C 浪与正 N 买点的五顶、十满，无论预估或确认均不扩展K线价格轴",
+                "图外远端目标显示上下箭头与价格，保留预估标识并避让；不在图窗边缘绘制虚假的目标价格线",
+                "目标进入图窗后恢复真实价位虚线；横向移出图窗、取消选择与近端目标保持原有行为"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/target-autoscale.test.mjs tests/target-level-guides.test.mjs tests/buy-n-targets.test.mjs tests/abc-annotations.test.mjs tests/chart-navigation.test.mjs",
+                    "status": "passed",
+                    "summary": "23 项定向测试通过；先复现远端目标参与缩放及图外标签消失，再验证五顶十满退出缩放、左端边缘箭头标签避让、窄窗/平移/返回图内，以及先锋买点目标、C 浪突破时序与图窗导航。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint、typecheck、build；Node JS语法检查；测试格式与git diff --check",
+                    "status": "passed",
+                    "summary": "类型检查与生产构建通过；Lint无错误、6条既有环境变量警告。完整Web单测与浏览器视觉待独立验证，按用户规则未运行Playwright。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-220",
             "name": "bearish-mother-child-volume-low-exit",
             "title": "阴母阴子放量减仓与破子低清仓",

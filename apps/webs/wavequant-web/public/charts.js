@@ -790,9 +790,9 @@ export class PriceChart {
                 crosshairMarkerVisible: false,
                 pointMarkersVisible: !guide && item.kind !== "trend",
                 pointMarkersRadius: 2,
-                // Selected N targets must remain visible even above the candle
-                // range; deselection removes these series and restores scaling.
-                ...(item.raw?.event === "n_completed" || item.kind === "wave-projection" || projectionTargets
+                // 远端五顶、十满不扩展价格轴；图外目标由左侧边缘标签提示。
+                ...(!["five_top", "ten_full"].includes(level.stage) &&
+                (item.raw?.event === "n_completed" || item.kind === "wave-projection" || projectionTargets)
                     ? {}
                     : { autoscaleInfoProvider: () => null }),
             });
@@ -813,6 +813,7 @@ export class PriceChart {
                         statusKnown: false,
                     }),
                     color,
+                    stage: level.stage,
                 });
             s.setData(points);
             this.levelLines.push(s);
