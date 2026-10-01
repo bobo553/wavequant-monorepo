@@ -4,6 +4,43 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-220",
+            "name": "bearish-mother-child-volume-low-exit",
+            "title": "阴母阴子放量减仓与破子低清仓",
+            "description": "全局 V3 补充阴母阴子包容组合，允许一侧等高或等低，子线量严格超过组合前最近阴线时累计减仓70%；后续任一交易日最低价严格跌破子低时当日收盘清空。",
+            "scope": "Core 持仓量价风控、交易证据、Web 原因说明与先锋实际行情回归",
+            "dependencies": ["MONOREPO-214", "MONOREPO-219"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "先锋2026-04-17阴母与04-20阴子低点同为4.89仍属于包容，子量20778797>组合前04-15阴量15569200，当日累计减仓70%",
+                "04-21最低4.88<子低4.89，即使收阳且收盘5.06>子收4.90仍清空；后续破低不限于次日，等低不清仓",
+                "保留阳母阴子的原有突破压力及次日低点/收盘双破规则；放量比较不使用母线量，T+1、整手和部分未成交后的保护有效",
+                "严格等量、无前阴、十字星、非内包、重叠组合和历史前缀覆盖；成交说明输出组合日期、最近阴线量与子低证据"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest tests/test_bearish_mother_bearish_child_exit.py tests/test_bearish_mother_child_volume_exit.py tests/test_staged_exit.py tests/test_massive_gap_reversal_exit.py tests/test_xinhuawenxuan_bearish_reversal_exit.py -q",
+                    "status": "passed",
+                    "summary": "先复现6个漏判用例；最终106项通过，覆盖先锋等低阴母阴子、组合前阴量、04-21收阳破低清仓、任意后续日、严格边界、无前阴、十字星、重叠组合、已减仓和不足一手未减仓仍清仓、订单前缀一致与原阳母阴子兼容。"
+                },
+                {
+                    "command": "同源先锋2002根日线截至2026-04-21的V3信号与日线成交诊断",
+                    "status": "passed",
+                    "summary": "关闭分钟执行作日线诊断：04-16实际买点买300股，04-20子量20778797>04-15阴量15569200，累计70%目标整手卖200股；04-21最低4.88<子低4.89，收阳5.06仍清余100股。同源分钟与完整账户收益未重算。"
+                },
+                {
+                    "command": "node --test tests/trade-reasons.test.mjs tests/annotations.test.mjs；pnpm --filter wavequant-web lint、typecheck、build；JS语法和测试格式",
+                    "status": "passed",
+                    "summary": "45项Web定向测试、语法、格式、类型与生产构建通过；Lint无错误，6条既有环境变量警告。成交说明展示组合前阴量和阳线破子低的清仓证据。"
+                },
+                {
+                    "command": "修改模块mypy；配置4文件strict mypy；pnpm --filter @wavequant/core build；独立虚拟环境安装wheel和锁定tzdata后的导入smoke；git diff --check；pnpm harness:check",
+                    "status": "passed",
+                    "summary": "类型检查、sdist/wheel构建通过；独立环境初次无依赖安装缺少tzdata，补齐项目锁定的tzdata==2026.3后导入通过。完整Core/Web套件、同源分钟及浏览器待独立验证，未运行Playwright。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-219",
             "name": "global-two-t-next-session-volume-clear",
             "title": "二饱次日放量双破独立清仓",
