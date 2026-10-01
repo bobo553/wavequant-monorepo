@@ -11,7 +11,9 @@ from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
 from wavequant.domain.strategies.wave_exhaustion_exit import observe_wave_exhaustion
 from wavequant.domain.strategies.two_t_resistance import two_t_resistance_history
-from wavequant.domain.strategies.pressure_exit import pressure_exit_history, record_high_resistance_history
+from wavequant.domain.strategies.pressure_exit import (
+    pressure_exit_history, record_high_resistance_history, record_high_massive_resistance_history,
+)
 from wavequant.domain.strategies.mother_child_inverse_n import (
     MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break,
 )
@@ -152,6 +154,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                       if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
     record_high_risks = {symbol: record_high_resistance_history(history, config)
                          if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
+    record_volume_risks = {symbol: record_high_massive_resistance_history(history, config)
+                           if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
     trend_flip_risks: dict[str, dict[int, dict]] = {symbol: {} for symbol in grouped}
     if config.trend_flip_adverse_exit:
         from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
@@ -644,6 +648,12 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             if (pressure is not None and pressure['reason'] == 'record_high_resistance_reduce'
                     and pos.entry_index >= pressure['record_breakout_index']):
                 pressure = None
+            record_volume = record_volume_risks[symbol].get(i)
+            if record_volume is not None and pos.entry_index > record_volume['record_warning_index']:
+                record_volume = None
+            if record_volume is not None and (
+                    pressure is None or record_volume['exit_fraction'] > pressure['exit_fraction']):
+                pressure = record_volume
             if pos.pressure_warning is not None and i > 0 and bar.close < grouped[symbol][i - 1].close:
                 pressure = dict(
                     reason='pressure_reduced_lower_close_clear', exit_fraction=1.0,
@@ -667,7 +677,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 )
             elif (pos.pressure_warning is not None or pos.record_high_warning is not None) and pressure is not None and pressure['exit_fraction'] < 1:
                 pressure = None
-            if (pressure is not None and pressure['reason'] == 'record_high_resistance_reduce'
+            if (pressure is not None and pressure['reason'] in (
+                    'record_high_resistance_reduce', 'record_high_massive_resistance_reduce_30')
                     and (hard_reason or volume_inverse or inverse_failure is not None
                          or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
                 pressure = None

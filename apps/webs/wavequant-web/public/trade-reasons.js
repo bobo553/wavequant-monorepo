@@ -90,11 +90,17 @@ export function tradeReasonItems(item) {
         if (item.reason === "pressure_breakout_adverse_clear")
             reasons.push(`突破后转弱：${item.pressure_rally_low_date} 低点 ${num(item.pressure_rally_low, 4)} → ${item.pressure_breakout_date} 突破压力高点 ${num(item.pressure_high, 4)}，上涨 ${pct(item.pressure_rally_fraction)}；随后出现不利 K 线，清空余仓。`);
         if (item.record_high_date)
-            reasons.push(`前期阳线高点：${item.record_high_date} 最高 ${num(item.record_high, 4)} 元；突破时已距该高点 ${item.record_high_age} 个交易日。`);
+            reasons.push(`${item.record_volume_mean != null ? "前期高点" : "前期阳线高点"}：${item.record_high_date} 最高 ${num(item.record_high, 4)} 元；突破时已距该高点 ${item.record_high_age} 个交易日。`);
         if (item.reason === "record_high_resistance_reduce")
             reasons.push(`${item.record_breakout_date} 盘中越过旧高但收盘未站稳；空头抵抗与不利形态：${(item.record_adverse_patterns || []).map((key) => ({ bearish_body: "阴线实体", close_below_previous: "收盘低于前收", low_below_previous: "跌破前低", long_upper_shadow: "长上影" })[key] || key).join("、")}；当日目标减仓 50%，按整手执行。`);
         if (item.reason === "record_high_lower_close_clear")
             reasons.push(`${(item.record_resistance_dates || []).join("、")} 出现空头抵抗；减仓后本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，清空余仓。`);
+        if (["record_high_massive_resistance_reduce_30", "record_high_massive_followthrough_clear"].includes(item.reason))
+            reasons.push(`巨量基准冻结于 ${item.record_volume_baseline_date}：突破前 ${item.record_volume_window} 日均量 ${num(item.record_volume_mean, 0)} 股；当日量 ${num(item.observed_volume, 0)} 股，为 ${num(item.record_volume_ratio, 2)} 倍，达到至少 ${num(item.record_volume_min_ratio, 2)} 倍门槛 ${num(item.record_volume_threshold, 0)} 股。`);
+        if (item.reason === "record_high_massive_resistance_reduce_30")
+            reasons.push(`${item.record_breakout_date} 突破旧高，${item.record_warning_date} 当笔或次笔收阴，收盘 ${num(item.observed_close, 4)} < 开盘 ${num(item.observed_open, 4)}，出现空头抵抗；当日按原仓累计减仓 30%，按整手执行。`);
+        if (item.reason === "record_high_massive_followthrough_clear")
+            reasons.push(`${item.record_warning_date} 巨量阴线警示后的次一交易日，收盘 ${num(item.observed_close, 4)} < 开盘 ${num(item.observed_open, 4)}，且低于警示收盘 ${num(item.record_warning_close, 4)}；继续达到冻结巨量门槛，当日清空余仓。`);
         if (item.volume_trigger_date)
             reasons.push(
                 `放量下跌：${item.volume_trigger_date} 成交量 ${num(item.trigger_volume, 0)} > 前日 ${num(item.previous_volume, 0)}，收盘 ${num(item.trigger_close, 4)} < 前收 ${num(item.previous_close, 4)}。`,

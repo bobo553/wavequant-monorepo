@@ -393,6 +393,47 @@ test("pressure gap reduction and subsequent clear keep their distinct dated reas
     assert.match(clear.at(-1), /2022-06-27 减仓后首次收跌/);
 });
 
+test("massive old-high bearish breakout explains frozen volume and next-session clear", () => {
+    const base = {
+        side: "SELL",
+        record_high_date: "2021-09-22",
+        record_high: 4.56,
+        record_high_age: 118,
+        record_breakout_date: "2022-03-21",
+        record_warning_date: "2022-03-21",
+        record_warning_close: 5.07,
+        record_volume_baseline_date: "2022-03-18",
+        record_volume_window: 20,
+        record_volume_mean: 16_904_716,
+        record_volume_threshold: 33_809_432,
+        record_volume_min_ratio: 2,
+    };
+    const reduction = tradeReasonItems({
+        ...base,
+        reason: "record_high_massive_resistance_reduce_30",
+        observed_volume: 194_599_622,
+        record_volume_ratio: 194_599_622 / 16_904_716,
+        observed_open: 5.34,
+        observed_close: 5.07,
+    });
+    assert.match(reduction[0], /累计减仓 30%/);
+    assert.match(reduction[1], /前期高点：2021-09-22.*4\.5600/);
+    assert.match(reduction[2], /2022-03-18.*20 日均量.*11\.51 倍.*2\.00 倍/);
+    assert.match(reduction[3], /2022-03-21.*5\.0700 < 开盘 5\.3400/);
+    const clear = tradeReasonItems({
+        ...base,
+        reason: "record_high_massive_followthrough_clear",
+        observed_volume: 152_565_213,
+        record_volume_ratio: 152_565_213 / 16_904_716,
+        observed_open: 4.7,
+        observed_close: 4.42,
+    });
+    assert.match(clear[0], /次笔继续巨量收阴下跌/);
+    assert.match(clear[2], /9\.03 倍.*2\.00 倍/);
+    assert.match(clear[3], /次一交易日.*4\.4200 < 开盘 4\.7000.*警示收盘 5\.0700/);
+    assert.match(clear[3], /清空余仓/);
+});
+
 test("old bullish record resistance explains the February reduction and lower close", () => {
     const base = {
         side: "SELL",
