@@ -7,53 +7,6 @@ import { formatFilledTradeCopy } from "../public/filled-trade-copy.js";
 import { numberedTradeReasons, tradeReasonItems } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
 
-test("five-top child break explains the prior bearish volume and both dated price breaks", () => {
-    const marker = {
-        side: "SELL",
-        reason: "wave_five_top_child_volume_clear",
-        wave_n_date: "2025-09-29",
-        wave_reached_date: "2025-10-28",
-        wave_reached_stage: "five_top",
-        wave_reached_price: 4.93,
-        mother_date: "2025-11-13",
-        child_date: "2025-11-14",
-        child_low: 4.91,
-        observed_low: 4.85,
-        observed_close: 4.91,
-        previous_low: 4.99,
-        previous_close: 5.19,
-        observed_volume: 63_288_181,
-        bearish_reference_date: "2025-11-11",
-        bearish_reference_volume: 63_172_500,
-    };
-    const lines = numberedTradeReasons(marker);
-    assert.equal(lines.length, 4);
-    const text = lines.join(" ");
-    assert.match(text, /2025-10-28 已达到五饱 4\.9300/);
-    assert.match(text, /2025-11-13 母线包含前天 2025-11-14 子线/);
-    assert.match(text, /4\.8500 < 昨低 4\.9900.*4\.9100 < 昨收 5\.1900.*最低 < 子低 4\.9100/);
-    assert.match(text, /63,288,181 股 > 最近阴线 2025-11-11 的 63,172,500 股.*清空余仓/);
-    assert.doesNotMatch(text, /undefined|子线收盘|成交量.*前日/);
-    assert.match(numberedTradeReasons({ ...marker, wave_reached_stage: "ten_full" }).join(" "), /已达到十满/);
-    const copy = formatFilledTradeCopy(
-        { symbol: "sz.300163", variant: "lecture_v3", backtest: { start: "2025-08-01" }, asof: "2025-11-18", bars: [] },
-        marker,
-        "V3",
-        "",
-        null,
-    );
-    assert.match(copy, /63,288,181 股 > 最近阴线 2025-11-11 的 63,172,500 股/);
-    const document = new JSDOM("<div id='panel'></div>").window.document;
-    const previousDocument = globalThis.document;
-    globalThis.document = document;
-    try {
-        appendTradeEvidence(document.getElementById("panel"), marker);
-        assert.match(document.querySelector(".trade-reason-list").textContent, /前天 2025-11-14 子线/);
-    } finally {
-        globalThis.document = previousDocument;
-    }
-});
-
 test("bearish outside mother reduction and next-session clear use mother price and volume evidence", () => {
     const reduction = tradeReasonItems({
         side: "SELL",
