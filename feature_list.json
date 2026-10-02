@@ -7414,6 +7414,32 @@
                     "summary": "用户补充 05-14 与 05-20 数据后，国芳 05-14 高开但收阴破警示日低点，真实 Chromium 显示当日清余仓且 05-20 无同笔再退出；桂林 09-23 原低开分支单独重跑通过。Core 94 项相关测试、Web 12+150 项单测通过；两端静态检查和构建通过。并行跑浏览器时桂林 120 秒请求超时，串行重跑 8.8 秒通过。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-232",
+            "name": "xianfeng-2020-c-wave-projection",
+            "title": "先锋新材2020年C浪测幅与图表目标",
+            "description": "A浪正N起点低收双破才撤销B段测幅，C浪0.618和等浪目标从B日期画出。",
+            "scope": "Web图表测幅观察、目标线及定向回归",
+            "dependencies": ["MONOREPO-215"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "2020-02-04正N起点、03-02 A高、04-28 B低给出4.0508与4.62元两档观察位",
+                "B段仅在同一K线最低价和收盘价都严格跌破正N起点时撤销测幅",
+                "选定A高点后从B日期画出目标，遵守历史截面并维持现有交易入场规则"
+            ],
+            "verification": [
+                {
+                    "command": "node --test wave-c-projection.test.mjs target-level-guides.test.mjs",
+                    "status": "passed",
+                    "summary": "15项通过，含先锋2020五个给定日期、双破拒绝、B日期锚定和历史截断。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; git diff --check",
+                    "status": "passed",
+                    "summary": "Web检查与构建通过；lint有6条既有环境变量声明警告。"
+                }
+            ]
         }
     ]
 }
