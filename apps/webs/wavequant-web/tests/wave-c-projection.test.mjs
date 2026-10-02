@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { avoidLabelCollisions, markerGroups } from "../public/annotations.js";
 import { targetLevelGuide } from "../public/target-level-guides.js";
 import {
     waveCProjection,
     waveCProjectionAnnotation,
+    waveCProjectionEvidenceAnnotations,
     waveCProjectionForSelection,
     waveCProjectionFromStructure,
+    waveCProjectionLegs,
     waveCProjectionLevels,
 } from "../public/wave-c-projection.js";
 
@@ -177,6 +180,7 @@ test("real Xianfeng daily bars reveal the February 10 N, February 17 squeeze and
     const annotation = waveCProjectionAnnotation(projection);
     assert.equal(annotation.time, "2020-04-28");
     assert.equal(annotation.sourceTime, "2020-03-02");
+    assert.equal(annotation.title, "B / C");
     assert.deepEqual(
         annotation.levels.map((level) => level.price),
         [projection.target0618, projection.target],
@@ -190,6 +194,69 @@ test("real Xianfeng daily bars reveal the February 10 N, February 17 squeeze and
         levels: [{ name: "1P 投影", price: 3.91 }],
     };
     assert.equal(waveCProjectionForSelection(xianfengBars, [laterFormalN], "2020-03-02", projection), projection);
+});
+
+test("A origin, N, squeeze, A high and B/C are visible at their historical prices", () => {
+    const projection = waveCProjectionFromStructure(xianfengBars, xianfengTheory);
+    const annotations = [...waveCProjectionEvidenceAnnotations(projection), waveCProjectionAnnotation(projection)];
+    assert.deepEqual(
+        annotations.map(({ time, title, price }) => [time, title, price]),
+        [
+            ["2020-02-04", "A 起", 2.9],
+            ["2020-02-10", "正 N", 3.46],
+            ["2020-02-17", "轧空", 3.53],
+            ["2020-03-02", "A 顶", 4.39],
+            ["2020-04-28", "B / C", 3.13],
+        ],
+    );
+    const groups = markerGroups(annotations, { rules: false, tertiaryAbc: true }, 65);
+    assert.equal(markerGroups(annotations, { rules: true, tertiaryAbc: false }, 65).length, 0);
+    assert.deepEqual(
+        groups.map(({ marker }) => [marker.time, marker.text, marker.position, marker.price]),
+        [
+            ["2020-02-04", "A 起", "atPriceBottom", 2.9],
+            ["2020-02-10", "正 N", "aboveBar", undefined],
+            ["2020-02-17", "轧空", "aboveBar", undefined],
+            ["2020-03-02", "A 顶", "atPriceTop", 4.39],
+            ["2020-04-28", "B / C", "atPriceBottom", 3.13],
+        ],
+    );
+    assert.deepEqual(
+        waveCProjectionLegs(projection).map(({ title, points }) => [title, points]),
+        [
+            [
+                "A 浪",
+                [
+                    { time: "2020-02-04", value: 2.9 },
+                    { time: "2020-03-02", value: 4.39 },
+                ],
+            ],
+            [
+                "B 浪",
+                [
+                    { time: "2020-03-02", value: 4.39 },
+                    { time: "2020-04-28", value: 3.13 },
+                ],
+            ],
+        ],
+    );
+    const crowded = markerGroups(
+        [
+            ...annotations,
+            {
+                id: "other-rule",
+                time: projection.bTime,
+                title: "其他规则",
+                kind: "rule",
+                category: "rules",
+                priority: 100,
+            },
+        ],
+        { rules: true, tertiaryAbc: true },
+        65,
+    );
+    avoidLabelCollisions(crowded, (time) => xianfengBars.findIndex((bar) => bar.time === time) * 20);
+    assert.equal(crowded.find((group) => group.id === annotations.at(-1).id)?.marker.text, "B / C");
 });
 
 test("structural projection uses only available A evidence and invalidates a joint origin break", () => {

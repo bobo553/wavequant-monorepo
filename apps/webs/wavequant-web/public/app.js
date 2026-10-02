@@ -1942,8 +1942,8 @@ function renderEvents() {
 }
 async function loadTheory(request, sequence, preloaded = null) {
     if (preloaded) state.theory = preloaded;
-    if (!$("show-theory").checked && !$("show-rules").checked) {
-        $("theory-status").textContent = "规则与折线已关闭";
+    if (!$("show-theory").checked && !$("show-rules").checked && !$("show-tertiary-abc").checked) {
+        $("theory-status").textContent = "规则、折线与 ABC 观察已关闭";
         return;
     }
     $("theory-status").textContent = "按历史截面计算…";
@@ -2934,6 +2934,7 @@ $("show-markers").addEventListener("change", (e) => chart.setMarkers(e.target.ch
 $("show-theory").addEventListener("change", (e) => {
     if (!e.target.checked) {
         chart.clearTheory();
+        chart.drawLevels();
         chart.refreshMarkers();
     } else if (state.theory) chart.setTheory(state.theory);
     else loadTheory(select(), state.sequence);
@@ -2976,7 +2977,12 @@ for (const id of [
 ])
     $(id).addEventListener("change", () => {
         chart.setAnnotationOptions(annotationOptions());
-        if ($("show-rules").checked && !state.theory && !state.loading && !state.error)
+        if (
+            ($("show-rules").checked || $("show-tertiary-abc").checked) &&
+            !state.theory &&
+            !state.loading &&
+            !state.error
+        )
             loadTheory(select(), state.sequence);
     });
 $("focus-fill").addEventListener("click", () => {
