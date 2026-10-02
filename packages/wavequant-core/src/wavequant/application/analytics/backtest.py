@@ -490,6 +490,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
         current = calendar[when]
         daily_fallback = {}
         wave_clear_symbols = set()
+        observing_structure_exits: dict[str, dict] = {}
         for symbol, (_, bar) in current.items():
             marks[symbol], mark_times[symbol] = bar.open, when.isoformat()
         # Free cash from eligible exits before sizing new entries at this open.
@@ -500,6 +501,15 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             if symbol not in current:
                 continue
             i, bar = current[symbol]
+            if (pending_exit[symbol] == 'strict_structure_unresolved' and i > 0
+                    and bar.open > grouped[symbol][i - 1].close
+                    and exit_evidence.get(symbol, {}).get('execution_model') not in
+                    ('same_day_close', 'intraday_5m_next_open')):
+                # A gap above the prior close disputes an ambiguous structural exit.
+                # Remove it for today so independent risk controls can still act.
+                observing_structure_exits[symbol] = exit_evidence.pop(symbol, {})
+                del pending_exit[symbol]
+                continue
             if exit_evidence.get(symbol, {}).get('execution_model') not in ('same_day_close', 'intraday_5m_next_open'):
                 execute_exit(symbol, i, bar, when, bar.open, 'next_open')
         ranked = sorted(pending_entry, key=lambda s: (-(pending_entry[s][0].rvol or 0), s))
@@ -848,6 +858,22 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             elif (current[symbol][0] not in pressure_risks[symbol]
                   and current[symbol][0] not in trend_flip_risks[symbol] and symbol not in wave_clear_symbols):
                 pending_entry[symbol] = (signal, tick)
+        for symbol, evidence in observing_structure_exits.items():
+            if symbol not in positions or symbol in pending_exit or symbol in sold_today:
+                continue
+            i, bar = current[symbol]
+            previous_close = grouped[symbol][i - 1].close
+            if bar.close > previous_close:
+                continue
+            # Only a weak close confirms the unresolved structure; act at that
+            # observed close, after any stronger same-day exit has had priority.
+            pending_entry.pop(symbol, None)
+            pending_exit[symbol] = 'strict_structure_unresolved'
+            exit_evidence[symbol] = dict(
+                evidence, execution_model='same_day_close', decision_source='gap_observed_structure_exit',
+                previous_close=previous_close, observed_open=bar.open, observed_close=bar.close,
+            )
+            execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
         for symbol, (_, bar) in current.items():
             marks[symbol] = bar.close
         if config.entry_at_close:

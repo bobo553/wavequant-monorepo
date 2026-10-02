@@ -58,7 +58,7 @@ def test_legacy_still_sells_after_target_observed():
     assert sell["timestamp"] == bars[3].timestamp.isoformat()
 
 
-@pytest.mark.parametrize("reason", ["inverse_n_risk_exit", "last_rise_low_close_broken", "strict_structure_unresolved"])
+@pytest.mark.parametrize("reason", ["inverse_n_risk_exit", "last_rise_low_close_broken"])
 def test_strategy_exit_after_target_still_executes_next_open(reason):
     bars, signal, config = sample()
     exit_signal = replace(signal, side="EXIT", timestamp=bars[3].timestamp, bar_index=3, reason=reason)
