@@ -80,7 +80,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v76_' + variant
+    config['profile_version'] = 'gap_up_bullish_squeeze_v77_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -112,6 +112,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         consolidation_entry='larger_n_defense_held_two_closes_under_n_high_then_gap_open_and_cumulative_volume_gt_previous_on_break_above_n_high',
         wave_exhaustion_exit='wave_entry_uses_positive_n_with_origin_at_or_after_confirmed_b_low_then_own_one_p_two_t_five_top_ten_full_for_abnormal_candle_risk',
         wave_abnormal_followthrough_exit='target_abnormal_candle_first_later_close_strictly_lower_than_previous_same_close_full_clear_without_volume_or_partial_fill_requirement',
+        wave_five_top_child_volume_exit='owned_n_five_top_or_ten_full_reached_before_exit_day_bearish_low_lt_previous_low_close_lt_previous_close_low_lt_child_two_sessions_ago_inclusive_inside_non_doji_mother_one_strict_edge_volume_gt_positive_last_bearish_same_close_full_clear_without_prior_reduction',
         wave_target_upper_shadow_exit='post_b_positive_n_own_one_p_two_t_five_top_or_ten_full_upper_shadow_ge_half_range_cumulative_80_same_close_then_first_later_lower_close_full_clear',
         two_t_resistance_entry_exit='global_larger_n_two_t_reach_or_next_session_upper_ge_half_range_and_body_blocks_buy_add_cumulative_80_then_next_bearish_low_lt_previous_low_close_lt_previous_close_volume_gt_last_bearish_full_clear',
         two_t_next_session_exit='global_first_two_t_reach_upper_shadow_gt_40pct_next_session_bearish_low_lt_previous_low_close_lt_previous_close_volume_gt_last_bearish_same_close_full_clear_without_prior_reduction',
