@@ -64,6 +64,25 @@ class PolylineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mother_child_path(mother, replace(child, low=4.70), mother_index=0)
 
+    def test_equal_boundary_opposite_colours_omit_zero_length_connector(self):
+        shanghai = ZoneInfo('Asia/Shanghai')
+        equal_high = (
+            Bar(datetime(2025, 11, 13, tzinfo=shanghai), 'TEST', 4.84, 5.03, 4.70, 5.00, 1000),
+            Bar(datetime(2025, 11, 14, tzinfo=shanghai), 'TEST', 5.00, 5.03, 4.91, 4.92, 1000),
+        )
+        equal_low = (
+            Bar(datetime(2025, 11, 13, tzinfo=shanghai), 'TEST', 5.00, 5.03, 4.70, 4.84, 1000),
+            Bar(datetime(2025, 11, 14, tzinfo=shanghai), 'TEST', 4.75, 4.91, 4.70, 4.85, 1000),
+        )
+        for pair, expected in (
+            (equal_high, [(K.LOW, 4.70), (K.HIGH, 5.03), (K.LOW, 4.91)]),
+            (equal_low, [(K.HIGH, 5.03), (K.LOW, 4.70), (K.HIGH, 4.91)]),
+        ):
+            with self.subTest(pair=pair):
+                path = mother_child_path(*pair, mother_index=0)
+                self.assertEqual([(point.kind, point.price) for point in path.vertices], expected)
+                self.assertEqual(len(path.raw_vertices), 4)
+
     def test_up_leg_extends_then_confirms_negative_turn(self):
         r = run(fixture()[:4])
         self.assertEqual(len(r.reversals), 1)
