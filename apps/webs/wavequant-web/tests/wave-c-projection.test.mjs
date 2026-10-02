@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { waveCProjection } from "../public/wave-c-projection.js";
+import { targetLevelGuide } from "../public/target-level-guides.js";
+import { waveCProjection, waveCProjectionLevels } from "../public/wave-c-projection.js";
 
 const bars = [
     { time: "2026-01-01", high: 10, low: 8, close: 9 },
@@ -40,7 +41,7 @@ test("Guofang April 1 chart projects both levels from the March 22 A high and Ma
         ["2024-03-14", 4.67, 4.42, 4.48],
         ["2024-03-18", 5.42, 5.18, 5.42],
         ["2024-03-22", 5.61, 5.01, 5.34],
-        ["2024-03-25", 5.30, 4.95, 4.99],
+        ["2024-03-25", 5.3, 4.95, 4.99],
         ["2024-03-26", 5.03, 4.75, 4.85],
         ["2024-03-27", 4.98, 4.72, 4.82],
         ["2024-03-28", 4.92, 4.73, 4.92],
@@ -61,12 +62,72 @@ test("Guofang April 1 chart projects both levels from the March 22 A high and Ma
     assert.ok(Math.abs(projection.target - 6.31) < 1e-10);
 });
 
-test("projection needs a strict one-P break and a later defended B low", () => {
+test("projection needs a strict one-P break and rejects a B close below the N origin", () => {
     assert.equal(waveCProjection(bars, [n], "2026-01-02"), null);
     assert.equal(waveCProjection(bars.slice(0, 3), [n], "2026-01-03"), null);
     const broken = bars.map((bar) => ({ ...bar }));
     broken[3].low = 8.5;
+    assert.equal(waveCProjection(broken, [n], "2026-01-03")?.bLow, 8.5);
+    broken[3].low = 7.9;
+    broken[3].close = 7.9;
     assert.equal(waveCProjection(broken, [n], "2026-01-03"), null);
+});
+
+test("Xianfeng 2020 A/B wave keeps the April 28 B wick and projects C from the February 4 N origin", () => {
+    const history = [
+        ["2020-02-04", 3.27, 2.9, 3.23],
+        ["2020-02-10", 3.46, 3.21, 3.42],
+        ["2020-02-17", 3.53, 3.29, 3.45],
+        ["2020-03-02", 4.39, 3.88, 3.89],
+        ["2020-04-28", 3.45, 3.13, 3.41],
+    ].map(([time, high, low, close]) => ({ time, high, low, close }));
+    const attack = {
+        ...n,
+        time: "2020-02-10",
+        available_at: "2020-02-10",
+        defense: 3.21,
+        shape: [{ time: "2020-02-04", value: 2.9 }],
+        levels: [{ name: "1P 投影", price: 4.02 }],
+    };
+    const projection = waveCProjection(history, [attack], "2020-03-02");
+    assert.deepEqual(
+        { ...projection, target: Number(projection.target.toFixed(2)) },
+        {
+            nTime: "2020-02-10",
+            origin: 2.9,
+            oneP: 4.02,
+            aTime: "2020-03-02",
+            aHigh: 4.39,
+            bTime: "2020-04-28",
+            bLow: 3.13,
+            target0618: 4.05082,
+            target: 4.62,
+        },
+    );
+    const levels = waveCProjectionLevels(projection);
+    assert.deepEqual(
+        levels.map((level) => [level.stage, level.anchor_at, level.available_at]),
+        [
+            ["c_0618", "2020-04-28", "2020-04-28"],
+            ["c_equal", "2020-04-28", "2020-04-28"],
+        ],
+    );
+    assert.deepEqual(
+        levels.map((level) => targetLevelGuide({ time: "2020-04-28" }, level, history, "2020-04-28")?.start),
+        ["2020-04-28", "2020-04-28"],
+    );
+    assert.deepEqual(
+        levels.map((level) => targetLevelGuide({ time: "2020-04-28" }, level, history, "2020-04-28")?.end),
+        [null, null],
+    );
+    assert.equal(waveCProjection(history.slice(0, 4), [attack], "2020-03-02"), null);
+    const lostOrigin = history.map((bar) => ({ ...bar }));
+    lostOrigin[4].low = 2.89;
+    lostOrigin[4].close = 2.89;
+    assert.equal(waveCProjection(lostOrigin, [attack], "2020-03-02"), null);
+    lostOrigin.splice(4, 0, { time: "2020-04-27", high: 3.6, low: 3.2, close: 3.3 });
+    lostOrigin[5].high = 4.4;
+    assert.equal(waveCProjection(lostOrigin, [attack], "2020-03-02"), null);
 });
 
 test("B low stops before a later A-high breakout", () => {

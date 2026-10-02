@@ -30,13 +30,15 @@ export function waveCProjection(bars, events, selectedTime) {
         let corrected = false;
         for (let index = highIndex + 1; index < bars.length; index++) {
             const bar = bars[index];
+            // B can briefly pierce the earlier squeeze defense. The A wave's
+            // positive-N origin fails only when both low and close lose it.
+            if (bar.low < origin && bar.close < origin) return null;
             // Once A is exceeded, later lows belong to a new phase.
             if (bar.high > highBar.high) break;
-            if (bar.low < event.defense) return null;
             if (bar.close < bars[index - 1].close) corrected = true;
             if (!bottom || bar.low < bottom.low) bottom = bar;
         }
-        if (!corrected || !bottom || bottom.low <= origin || bottom.low >= highBar.high) return null;
+        if (!corrected || !bottom || bottom.low >= highBar.high) return null;
         const amplitude = highBar.high - origin;
         return {
             nTime: event.time,
@@ -51,4 +53,24 @@ export function waveCProjection(bars, events, selectedTime) {
         };
     }
     return null;
+}
+
+/** C targets are conditional observations known from the B candle onward. */
+export function waveCProjectionLevels(projection) {
+    return [
+        {
+            name: "C 浪目标 0.618×A",
+            price: projection.target0618,
+            stage: "c_0618",
+            available_at: projection.bTime,
+            anchor_at: projection.bTime,
+        },
+        {
+            name: "C 浪目标 1×A",
+            price: projection.target,
+            stage: "c_equal",
+            available_at: projection.bTime,
+            anchor_at: projection.bTime,
+        },
+    ];
 }
