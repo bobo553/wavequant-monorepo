@@ -59,6 +59,9 @@ def test_flat_period_and_reentry_reset_cost():
     bars = [bar(1, low=10), bar(2, opening=11), bar(3, low=1), bar(4, opening=20, high=22, low=19, close=21), bar(5, opening=21, high=22, close=21)]
     episodes = measure(bars, [fill(1), fill(2, 'SELL', price=11), fill(4, price=20), fill(5, 'SELL', price=21)])
     assert [e['max_drawdown'] for e in episodes] == pytest.approx([0, -.05])
+    assert drawdown_metrics(episodes)['holding_max_drawdown'] == pytest.approx(-.05)
+    assert drawdown_metrics(episodes)['holding_current_max_drawdown'] == 0
+    assert drawdown_metrics(episodes)['holding_current_drawdown_status'] == 'flat'
     assert drawdown_metrics(episodes)['holding_drawdown_interval'] is episodes[1]
 
 
@@ -134,7 +137,7 @@ def test_verified_minutes_clip_both_boundaries_and_convert_raw_prices():
     assert e['low_source'] == 'verified_5m_low'
 
 
-@pytest.mark.parametrize('bad', ['partial', 'wrong_day', 'volume', 'extrema'])
+@pytest.mark.parametrize('bad', ['partial', 'wrong_day', 'volume', 'extrema', 'boundary'])
 def test_invalid_boundary_minutes_do_not_claim_complete_coverage(bad):
     bars = [bar(1, high=10, low=8, close=10)]
     minutes = minute_day(1, {time(14, 5): 8})
@@ -143,7 +146,10 @@ def test_invalid_boundary_minutes_do_not_claim_complete_coverage(bad):
     if bad == 'volume': bars = [Bar(datetime(2026, 1, 1), 'TEST', 10, 10, 8, 10, 10000)]
     if bad == 'extrema': bars = [bar(1, high=20, low=8, close=10)]
     order = fill(1, model='intraday_5m_next_open', execution_timestamp='2026-01-01T14:00:00')
-    assert measure(bars, [order], minute_loader=lambda b: minutes)[0]['coverage'] == 'incomplete'
+    if bad == 'boundary': order['execution_timestamp'] = '2026-01-01T14:02:00'
+    episode = measure(bars, [order], minute_loader=lambda b: minutes)[0]
+    assert episode['coverage'] == 'incomplete'
+    assert episode['drawdown_curve'][-1]['value'] is None
 
 
 def test_independent_oracle_for_daily_single_fill_holdings():
@@ -160,3 +166,63 @@ def test_independent_oracle_for_daily_single_fill_holdings():
 def test_unmatched_sell_rejected():
     with pytest.raises(ValueError, match='matching holding'):
         measure([bar(1)], [fill(1, 'SELL')])
+
+
+def test_every_zero_quantity_starts_an_independent_cycle_and_live_metric():
+    bars = [bar(1, low=5), bar(2), bar(3, opening=20, high=22, low=19, close=20),
+            bar(4, opening=20, high=22, low=20, close=20), bar(5, low=10)]
+    orders = [fill(1), fill(2, 'SELL'), fill(3, price=20), fill(4, 'SELL', price=20), fill(5)]
+    episodes = measure(bars, orders)
+    assert [e['cycle_index'] for e in episodes] == [1, 2, 3]
+    assert [e['max_drawdown'] for e in episodes] == pytest.approx([-.5, -.05, 0])
+    assert drawdown_metrics(episodes)['holding_max_drawdown'] == pytest.approx(-.5)
+    assert drawdown_metrics(episodes)['holding_current_max_drawdown'] == 0
+    assert drawdown_metrics(episodes)['holding_drawdown_interval'] is episodes[0]
+    # The two earlier losses remain attached to their closed cycles only.
+    assert drawdown_metrics(episodes[:2])['holding_current_drawdown_status'] == 'flat'
+    assert all(e['drawdown_curve'][-1]['quantity'] == 0 for e in episodes[:2])
+    assert all(e['drawdown_curve'][-1]['value'] == 0 for e in episodes[:2])
+
+
+def test_missing_closed_cycle_does_not_poison_next_live_cycle():
+    orders = [fill(1, model='intraday_5m_next_open', execution_timestamp='2026-01-01T14:00:00'),
+              fill(2, 'SELL'), fill(3, price=20)]
+    episodes = measure([bar(1, low=1), bar(2), bar(3, opening=20, high=22, low=19, close=20)], orders)
+    assert episodes[0]['coverage'] == 'incomplete'
+    assert episodes[1]['coverage'] == 'complete'
+    assert drawdown_metrics(episodes)['holding_max_drawdown'] is None
+    assert drawdown_metrics(episodes)['holding_current_max_drawdown'] == pytest.approx(-.05)
+    assert drawdown_metrics(episodes)['holding_current_drawdown_status'] == 'complete'
+
+
+def test_same_day_liquidation_reentry_has_distinct_cost_and_reset_events():
+    bars = [bar(1, high=10, low=8, close=10)]
+    minutes = minute_day(1, {time(10): 8, time(14, 5): 9})
+    orders = [fill(1), fill(1, 'SELL', model='intraday_5m_next_open', execution_timestamp='2026-01-01T11:00:00'),
+              fill(1, price=10, model='intraday_5m_next_open', execution_timestamp='2026-01-01T14:00:00')]
+    episodes = measure(bars, orders, minute_loader=lambda b: minutes)
+    assert [e['max_drawdown'] for e in episodes] == pytest.approx([-.2, -.1])
+    assert episodes[0]['drawdown_curve'][-1] == dict(timestamp='2026-01-01T11:00:00', value=0, quantity=0)
+    assert drawdown_metrics(episodes)['holding_drawdown_interval'] is episodes[0]
+    assert drawdown_metrics(episodes)['holding_current_max_drawdown'] == pytest.approx(-.1)
+
+
+def test_zero_tolerance_clears_residual_quantity_before_reentry():
+    orders = [fill(1, quantity=100), fill(2, 'SELL', quantity=100 - 1e-9), fill(3, price=20, quantity=1)]
+    episodes = measure([bar(1, low=5), bar(2), bar(3, opening=20, high=22, low=19, close=20)], orders)
+    assert len(episodes) == 2
+    assert episodes[1]['cost_price'] == 20
+    assert episodes[1]['quantity'] == 1
+
+
+def test_unliquidated_loss_is_excluded_from_final_maximum_drawdown():
+    bars = [bar(1, low=9), bar(2), bar(3, low=1)]
+    episodes = measure(bars, [fill(1), fill(2, 'SELL'), fill(3)])
+    metrics = drawdown_metrics(episodes)
+    assert metrics['holding_max_drawdown'] == pytest.approx(-.1)
+    assert metrics['holding_current_max_drawdown'] == pytest.approx(-.9)
+    assert metrics['holding_drawdown_interval'] is episodes[0]
+    only_open = drawdown_metrics(measure(bars[-1:], [fill(3)]))
+    assert only_open['holding_max_drawdown'] is None
+    assert only_open['holding_drawdown_status'] == 'no_closed_cycles'
+    assert only_open['holding_current_max_drawdown'] == pytest.approx(-.9)

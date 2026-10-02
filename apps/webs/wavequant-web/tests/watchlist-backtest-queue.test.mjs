@@ -149,7 +149,7 @@ test("a matching completed stock task updates the watchlist without running it a
             total_return: 0.125,
             total_pnl: 12500,
             max_drawdown: -0.01,
-            holding_drawdown_version: "holding_entry_cost_mae_v1",
+            holding_drawdown_version: "holding_entry_cost_mae_cycle_v2",
             holding_max_drawdown: -0.083,
         },
     };
@@ -179,7 +179,7 @@ test("completed return summaries follow the current backtest context", async () 
                 total_return: member.symbol === "sz.000002" ? 0.125 : -0.075,
                 total_pnl: member.symbol === "sz.000002" ? 12500 : -7500,
                 max_drawdown: -0.01,
-                holding_drawdown_version: "holding_entry_cost_mae_v1",
+                holding_drawdown_version: "holding_entry_cost_mae_cycle_v2",
                 holding_max_drawdown: member.symbol === "sz.000002" ? -0.083 : -0.154,
             },
         }),
@@ -230,7 +230,7 @@ test("server completion restores a watchlist badge after reload without a local 
         total_return: -0.075,
         total_pnl: -7500,
         max_drawdown: -0.01,
-        holding_drawdown_version: "holding_entry_cost_mae_v1",
+        holding_drawdown_version: "holding_entry_cost_mae_cycle_v2",
         holding_max_drawdown: -0.154,
     };
     assert.equal(subject.controller.adoptServerStatus(record), true);

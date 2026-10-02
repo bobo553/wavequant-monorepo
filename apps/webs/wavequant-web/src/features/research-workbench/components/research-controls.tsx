@@ -152,7 +152,7 @@ export function ResearchControls(): JSX.Element {
                                     "已平仓",
                                     "扣费胜率",
                                     "净收益",
-                                    "持仓最大亏损",
+                                    "最大回撤（已清仓）",
                                     "复盘",
                                 ].map((label) => (
                                     <th key={label}>{label}</th>

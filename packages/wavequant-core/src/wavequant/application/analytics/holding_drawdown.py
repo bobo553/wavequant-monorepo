@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from wavequant.domain.models.model import Bar
 from wavequant.infrastructure.market_data.minute import MinuteBar
 
-METRIC_VERSION = 'holding_entry_cost_mae_v1'
+METRIC_VERSION = 'holding_entry_cost_mae_cycle_v2'
 _SHANGHAI = ZoneInfo('Asia/Shanghai')
 
 
@@ -55,6 +55,7 @@ def holding_drawdowns(
         segments: list[dict[str, Any]] = []
         quantity = cost = 0.0
         cost_time = ''
+        cycle_index = 0
         for order in sorted(fills[symbol], key=holding_fill_time):
             when = holding_fill_time(order)
             if end is not None and when.date().isoformat() > end:
@@ -66,8 +67,10 @@ def holding_drawdowns(
                 segments[-1].update(end=when, end_price=price)
             if order['side'] == 'BUY':
                 if active is None:
+                    cycle_index += 1
                     active = dict(symbol=symbol, entry_time=when.isoformat(),
-                                  entry_order_time=order['timestamp'], entry_price=price, exit_time=None)
+                                  entry_order_time=order['timestamp'], entry_price=price, exit_time=None,
+                                  cycle_index=cycle_index)
                     segments = []
                 cost = price if quantity == 0 else cost + (price - cost) * (amount / (quantity + amount))
                 cost_time = when.isoformat()
@@ -77,6 +80,7 @@ def holding_drawdowns(
                     raise ValueError('sell without matching holding')
                 quantity = max(0.0, quantity - amount)
                 if quantity < 1e-8:
+                    quantity = 0.0
                     active['exit_time'] = when.isoformat()
                     episodes.append(_measure(active, segments, bars, days, end, minute_loader, minute_cache))
                     active = None
@@ -103,7 +107,14 @@ def _measure(
     loss_amount = 0.0
     low_source = 'entry_fill'
     missing: set[str] = set()
+    missing_from: str | None = None
     resolutions: set[str] = set()
+    points: list[dict[str, Any]] = []
+
+    def mark_missing(day: str) -> None:
+        nonlocal missing_from
+        missing.add(day)
+        missing_from = min(missing_from or day, day)
 
     def observe(price: float, stamp: str, source: str, segment: dict[str, Any]) -> None:
         nonlocal drawdown, basis, low, basis_time, low_time, loss_amount, low_source
@@ -116,15 +127,24 @@ def _measure(
             basis_time, low_time = segment['cost_time'], stamp
             loss_amount = (price - basis) * segment['quantity']
             low_source = source
+        # A daily low becomes known only at the close. The cumulative loss is
+        # shared by every segment of this cycle, including partial reductions.
+        known = stamp + 'T15:00:00' if source == 'daily_low' else stamp
+        point = dict(timestamp=known, value=None if missing_from and missing_from <= known[:10] else drawdown,
+                     quantity=segment['quantity'])
+        if points and points[-1]['timestamp'] == known:
+            points[-1] = point
+        else:
+            points.append(point)
 
     for segment in segments:
         begin, finish = segment['start'], segment.get('end', stop)
         first = bisect_left(days, begin.date().isoformat())
         last = bisect_right(days, finish.date().isoformat())
         if first == len(days) or days[first] != begin.date().isoformat():
-            missing.add(begin.date().isoformat())
+            mark_missing(begin.date().isoformat())
         if not days or not last or days[last - 1] != finish.date().isoformat():
-            missing.add(finish.date().isoformat())
+            mark_missing(finish.date().isoformat())
         observe(segment['start_price'], begin.isoformat(), 'fill', segment)
         for bar in bars[first:last]:
             day = bar.timestamp.date().isoformat()
@@ -153,15 +173,15 @@ def _measure(
             minute = minute_cache[day]
             if minute:
                 resolutions.add('verified_5m')
+                if lower.minute % 5 or upper.minute % 5 or lower.second or upper.second:
+                    mark_missing(day)
                 for item in minute:
                     ended = _local(item.timestamp)
                     started = ended - timedelta(minutes=5)
                     if started >= lower and ended <= upper:
                         observe(item.low * bar.adjustment_factor, ended.isoformat(), 'verified_5m_low', segment)
-                if lower.minute % 5 or upper.minute % 5 or lower.second or upper.second:
-                    missing.add(day)
             else:
-                missing.add(day)
+                mark_missing(day)
                 if lower == opening:
                     observe(bar.open, opening.isoformat(), 'daily_open', segment)
                 if upper == closing:
@@ -169,13 +189,18 @@ def _measure(
         if 'end_price' in segment:
             observe(segment['end_price'], finish.isoformat(), 'fill', segment)
     complete = not missing
+    if exited:
+        # Preserve the closed cycle's final MAE above, then clear the live
+        # accumulator at the actual liquidation fill, even on the same day.
+        points.append(dict(timestamp=exited.isoformat(), value=0.0, quantity=0.0))
     return dict(episode, asof=stop.isoformat(), status='closed' if exited else 'open',
                 metric_version=METRIC_VERSION, price_basis='causal_adjusted_equivalent', timezone='Asia/Shanghai',
                 max_drawdown=drawdown if complete else None, observed_max_drawdown=drawdown,
                 cost_price=basis, low_price=low, cost_time=basis_time, low_time=low_time,
                 loss_amount=loss_amount, low_source=low_source,
                 coverage='complete' if complete else 'incomplete', missing_sessions=sorted(missing),
-                resolutions=sorted(resolutions))
+                resolutions=sorted(resolutions), drawdown_curve=points,
+                quantity=0.0 if exited else segments[-1]['quantity'])
 
 
 def _validate_minutes(minute: list[MinuteBar], daily: Bar) -> None:
@@ -201,9 +226,18 @@ def _validate_minutes(minute: list[MinuteBar], daily: Bar) -> None:
 
 
 def drawdown_metrics(episodes: list[dict[str, Any]]) -> dict[str, Any]:
-    worst = min(episodes, key=lambda e: (e['observed_max_drawdown'], e['entry_time'], e['symbol'])) if episodes else None
-    complete = all(e['coverage'] == 'complete' for e in episodes)
+    """Report the worst completed cycle; the live accumulator resets at zero."""
+    closed = [e for e in episodes if e['status'] == 'closed']
+    active = [e for e in episodes if e['status'] == 'open']
+    worst = min(closed, key=lambda e: (e['observed_max_drawdown'], e['entry_time'], e['symbol'])) if closed else None
+    current = min(active, key=lambda e: (e['observed_max_drawdown'], e['entry_time'], e['symbol'])) if active else None
+    complete = all(e['coverage'] == 'complete' for e in closed)
+    current_complete = all(e['coverage'] == 'complete' for e in active)
     return dict(holding_drawdown_version=METRIC_VERSION,
                 holding_max_drawdown=worst['max_drawdown'] if worst and complete else None,
-                holding_drawdown_status='no_entry_fills' if not episodes else 'complete' if complete else 'incomplete',
-                holding_drawdown_interval=worst)
+                holding_drawdown_status=('no_entry_fills' if not episodes else 'no_closed_cycles' if not closed
+                                         else 'complete' if complete else 'incomplete'),
+                holding_drawdown_interval=worst,
+                holding_current_max_drawdown=(current['max_drawdown'] if current_complete else None) if current else 0.0 if episodes else None,
+                holding_current_drawdown_status=('no_entry_fills' if not episodes else 'flat' if not active
+                                                 else 'complete' if current_complete else 'incomplete'))

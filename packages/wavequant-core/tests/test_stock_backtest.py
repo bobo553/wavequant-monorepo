@@ -29,9 +29,12 @@ class StockBacktestTests(unittest.TestCase):
         self.assertAlmostEqual(result['metrics']['equity'],10000+result['trades'][0]['pnl'])
         self.assertEqual(result['backtest']['initial_capital'],10000)
         self.assertAlmostEqual(result['metrics']['holding_max_drawdown'], -.1)
+        self.assertEqual(result['metrics']['holding_current_max_drawdown'], 0)
+        self.assertEqual(result['metrics']['holding_current_drawdown_status'], 'flat')
         self.assertEqual(result['metrics']['account_max_drawdown'], result['metrics']['max_drawdown'])
         self.assertEqual(result['metrics']['account_max_drawdown'], 0)
         holding = result['backtest']['holding_drawdowns'][0]
+        self.assertAlmostEqual(holding['max_drawdown'], -.1)
         self.assertEqual(holding['trade_id'], fills[0]['trade_id'])
         self.assertEqual(fills[-1]['holding_drawdown'], holding)
         self.assertEqual(result_markers(result)[-1]['holding_drawdown'], holding)
@@ -84,6 +87,26 @@ class StockBacktestTests(unittest.TestCase):
         rejected=single_stock_result(self.bars,{},dict(self.config,lot_size=100000),self.generated)
         self.assertEqual(rejected['metrics']['entry_fills'],0)
         self.assertTrue(rejected['backtest']['diagnostics']['rejection_reasons'])
+
+    def test_actual_three_round_trips_preserve_each_loss_and_reset_at_zero(self):
+        prices = [10, 10, 9, 20, 20, 19, 10, 10, 9]
+        lows = [9, 7, 8, 19, 19, 18, 9, 9, 8]
+        bars = [Bar(datetime(2026, 1, 1) + timedelta(days=i), 'TEST', price, price + 1,
+                    low, price, 100000) for i, (price, low) in enumerate(zip(prices, lows))]
+        signals = [Signal(bars[i].timestamp, 'TEST', i, side, bars[i].close, 2, 'fixture',
+                          bars[i].timestamp, .1, 2, '轧空', 100, 0)
+                   for i, side in [(0, 'LONG'), (1, 'EXIT'), (2, 'LONG'), (4, 'EXIT'), (5, 'LONG'), (7, 'EXIT')]]
+        result = single_stock_result(bars, {}, dict(self.config, max_entry_gap=2), SimpleNamespace(signals=signals, counts={}))
+        episodes = result['backtest']['holding_drawdowns']
+        self.assertEqual(len(episodes), 3)
+        self.assertEqual([e['cycle_index'] for e in episodes], [1, 2, 3])
+        for episode, expected in zip(episodes, [-.3, -.05, -.1]):
+            self.assertAlmostEqual(episode['max_drawdown'], expected)
+            self.assertEqual(episode['drawdown_curve'][-1]['quantity'], 0)
+            self.assertEqual(episode['drawdown_curve'][-1]['value'], 0)
+        self.assertEqual(len({e['trade_id'] for e in episodes}), 3)
+        self.assertAlmostEqual(result['metrics']['holding_max_drawdown'], -.3)
+        self.assertEqual(result['metrics']['holding_current_max_drawdown'], 0)
 
 
 if __name__=='__main__':unittest.main()

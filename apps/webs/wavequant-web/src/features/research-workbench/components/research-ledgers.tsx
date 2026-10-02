@@ -71,7 +71,7 @@ export function StockBacktestResults(): JSX.Element {
                     "股票",
                     "截至日期",
                     "净收益",
-                    "持仓最大亏损",
+                    "最大回撤（已清仓）",
                     "买入成交",
                     "已平仓",
                     "胜率",

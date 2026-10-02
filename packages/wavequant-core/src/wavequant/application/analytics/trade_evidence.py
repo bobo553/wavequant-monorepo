@@ -11,7 +11,9 @@ def enrich_ledger(bars, result, generated, strategy):
     for event in audit:
         dated.setdefault(event['timestamp'],[]).append(event)
     active={}; serial=0
-    holding_by_entry = {(e['symbol'], e['entry_order_time']): e for e in getattr(result, 'holding_drawdowns', [])}
+    holding_by_cycle = {(e['symbol'], e.get('cycle_index')): e for e in getattr(result, 'holding_drawdowns', [])}
+    cycles: Counter[str] = Counter()
+    quantities: dict[str, float] = {}
     for order in result.orders:
         bar=by_time[order['timestamp'][:10]]
         order.update(price_basis='causal_adjusted_equivalent',adjustment_factor=bar.adjustment_factor)
@@ -125,12 +127,19 @@ def enrich_ledger(bars, result, generated, strategy):
             if order['side']=='BUY' and bar.symbol not in active:
                 serial+=1
                 active[bar.symbol]=f'{bar.symbol}-trade-{serial}'
-                holding = holding_by_entry.get((bar.symbol, order['timestamp']))
+                cycles[bar.symbol] += 1
+                holding = holding_by_cycle.get((bar.symbol, cycles[bar.symbol]))
                 if holding is not None:
                     holding['trade_id'] = active[bar.symbol]
             order['trade_id']=active.get(bar.symbol)
-            if order['side']=='SELL' and order.get('position_closed', True):
+            amount = order.get('quantity')
+            if isinstance(amount, (int, float)):
+                quantities[bar.symbol] = max(0.0, quantities.get(bar.symbol, 0.0)
+                                             + (amount if order['side'] == 'BUY' else -amount))
+            closed = quantities.get(bar.symbol, 0.0) < 1e-8 if amount is not None else order.get('position_closed', True)
+            if order['side']=='SELL' and closed:
                 active.pop(bar.symbol,None)
+                quantities[bar.symbol] = 0.0
     for position in result.open_positions:
         if position['symbol'] in active:
             position['trade_id']=active[position['symbol']]

@@ -1,8 +1,8 @@
 import { num, pct } from "./labels.js";
 
-export const holdingDrawdownVersion = "holding_entry_cost_mae_v1";
+export const holdingDrawdownVersion = "holding_entry_cost_mae_cycle_v2";
 
-/** 当前回测的买入至卖出最大亏损；旧账户回撤不可作为替代值。 */
+/** 已清仓轮次中最深的买入至卖出亏损。 */
 export function holdingDrawdownValue(metrics) {
     return metrics?.holding_drawdown_version === holdingDrawdownVersion && Number.isFinite(metrics.holding_max_drawdown)
         ? metrics.holding_max_drawdown
@@ -17,8 +17,29 @@ export function holdingDrawdownText(metrics) {
 export function holdingDrawdownNote(metrics) {
     if (metrics?.holding_drawdown_version !== holdingDrawdownVersion) return "旧结果未计算持仓最大亏损，请重新回测";
     if (metrics.holding_drawdown_status === "no_entry_fills") return "无买入成交，暂无持仓最大亏损";
+    if (metrics.holding_drawdown_status === "no_closed_cycles") return "暂无完全卖出的持仓；未清仓的本轮亏损见持仓明细";
     if (metrics.holding_drawdown_status === "incomplete") return "盘中成交边界缺少完整分钟线，最大亏损尚无法确认";
-    return "买入至清仓的最大浮亏；加仓按当时均价；未清仓算至回放截止；不含费用";
+    return "已完全卖出的各轮持仓中最大亏损；每轮独立计算，未清仓不计入；减仓不重置，加仓按当时均价；不含费用";
+}
+
+/** 按真实成交的清仓边界归零，每个日期只使用当时已观察到的亏损。 */
+export function holdingDrawdownCurve(view) {
+    if (view?.metrics?.holding_drawdown_version !== holdingDrawdownVersion) return [];
+    const events = (view.backtest?.holding_drawdowns || [])
+        .flatMap((episode) => (episode.drawdown_curve || []).map((point) => ({ ...point, symbol: episode.symbol })))
+        .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    const current = new Map();
+    let index = 0;
+    return (view.curve || []).map(({ time }) => {
+        const close = `${time}T15:00:00`;
+        while (index < events.length && events[index].timestamp <= close) {
+            const event = events[index++];
+            if (event.quantity > 0) current.set(event.symbol, event.value);
+            else current.delete(event.symbol);
+        }
+        const values = [...current.values()];
+        return values.every(Number.isFinite) ? { time, value: Math.min(0, ...values) * 100 } : { time };
+    });
 }
 
 export function holdingDrawdownInterval(view) {
@@ -26,6 +47,8 @@ export function holdingDrawdownInterval(view) {
     if (
         view?.metrics?.holding_drawdown_version !== holdingDrawdownVersion ||
         !interval ||
+        interval.status !== "closed" ||
+        !interval.exit_time ||
         interval.symbol !== view.symbol ||
         !Number.isFinite(interval.observed_max_drawdown) ||
         !interval.entry_time ||

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
     drawdownCandleRange,
+    holdingDrawdownCurve,
     holdingDrawdownForMarker,
     holdingDrawdownInterval,
     holdingDrawdownLines,
@@ -85,17 +86,78 @@ test("holding MAE uses only current metric version and never substitutes account
     assert.match(holdingDrawdownNote({ max_drawdown: 0 }), /重新回测/);
     assert.match(holdingDrawdownNote({ ...metrics, holding_drawdown_status: "no_entry_fills" }), /无买入成交/);
     assert.match(holdingDrawdownNote({ ...metrics, holding_drawdown_status: "incomplete" }), /无法确认/);
+    assert.match(holdingDrawdownNote({ ...metrics, holding_drawdown_status: "no_closed_cycles" }), /暂无完全卖出/);
 });
 
-test("navigation covers the entire same-symbol holding from filled entry to liquidation or asof", () => {
+test("holding loss chart clears at each liquidation and carries no previous cycle loss", () => {
+    const view = {
+        metrics,
+        curve: curve([1, 0.8, 0.9, 1, 1.1]),
+        backtest: {
+            holding_drawdowns: [
+                {
+                    symbol: "TEST",
+                    drawdown_curve: [
+                        { timestamp: "2026-01-02T09:30:00", value: 0, quantity: 100 },
+                        { timestamp: "2026-01-02T15:00:00", value: -0.3, quantity: 100 },
+                        { timestamp: "2026-01-03T09:30:00", value: 0, quantity: 0 },
+                    ],
+                },
+                {
+                    symbol: "TEST",
+                    drawdown_curve: [
+                        { timestamp: "2026-01-04T09:30:00", value: 0, quantity: 200 },
+                        { timestamp: "2026-01-04T15:00:00", value: -0.05, quantity: 200 },
+                        { timestamp: "2026-01-05T09:30:00", value: 0, quantity: 0 },
+                    ],
+                },
+                { symbol: "TEST", drawdown_curve: [{ timestamp: "2026-01-06T15:00:00", value: 0, quantity: 50 }] },
+            ],
+        },
+    };
+    assert.deepEqual(
+        holdingDrawdownCurve(view).map((point) => point.value),
+        [-30, 0, -5, 0, 0],
+    );
+    assert.deepEqual(
+        holdingDrawdownCurve({ ...view, curve: view.curve.slice(0, 3) }),
+        holdingDrawdownCurve(view).slice(0, 3),
+    );
+    assert.deepEqual(holdingDrawdownCurve({ ...view, metrics: { max_drawdown: -0.5 } }), []);
+});
+
+test("same-day new cycle and later complete data replace a cleared incomplete cycle", () => {
+    const view = {
+        metrics,
+        curve: curve([1, 1]),
+        backtest: {
+            holding_drawdowns: [
+                {
+                    symbol: "TEST",
+                    drawdown_curve: [
+                        { timestamp: "2026-01-02T15:00:00", value: null, quantity: 100 },
+                        { timestamp: "2026-01-03T11:00:00", value: 0, quantity: 0 },
+                    ],
+                },
+                {
+                    symbol: "TEST",
+                    drawdown_curve: [
+                        { timestamp: "2026-01-03T14:00:00", value: 0, quantity: 100 },
+                        { timestamp: "2026-01-03T15:00:00", value: -0.1, quantity: 100 },
+                    ],
+                },
+            ],
+        },
+    };
+    assert.deepEqual(holdingDrawdownCurve(view), [{ time: "2026-01-02" }, { time: "2026-01-03", value: -10 }]);
+});
+
+test("final drawdown navigation covers only a completed same-symbol holding cycle", () => {
     const view = { symbol: "sz.001216", metrics };
     assert.deepEqual(holdingDrawdownInterval(view), { ...episode, from: "2024-01-17", to: "2024-01-22" });
     assert.equal(holdingDrawdownInterval({ ...view, symbol: "sh.600009" }), null);
     const open = { ...episode, exit_time: null, status: "open", asof: "2024-01-19T15:00:00" };
-    assert.equal(
-        holdingDrawdownInterval({ ...view, metrics: { ...metrics, holding_drawdown_interval: open } }).to,
-        "2024-01-19",
-    );
+    assert.equal(holdingDrawdownInterval({ ...view, metrics: { ...metrics, holding_drawdown_interval: open } }), null);
 });
 
 test("trade details share cycle identity for initial entry, add-on and partial sell", () => {

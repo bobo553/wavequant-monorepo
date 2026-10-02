@@ -26,11 +26,13 @@ import { reuseCompletedBacktest } from "./completed-backtest-result.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
 import {
+    holdingDrawdownCurve,
     holdingDrawdownForMarker,
     holdingDrawdownInterval,
     holdingDrawdownNote,
     holdingDrawdownText,
     holdingDrawdownValue,
+    holdingDrawdownVersion,
 } from "./max-drawdown.js";
 import { bindPressAndHold } from "./press-and-hold.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
@@ -695,17 +697,20 @@ $("trade-playback-speed").addEventListener("change", (event) => {
 chart.setTrendPriceLabelsVisible($("show-trend-prices").checked);
 const performance = new PerformanceCharts(["equity-chart", "drawdown-chart", "exposure-chart"].map($));
 let drawdownInterval = null;
-function focusMaximumDrawdown() {
-    if (!drawdownInterval) return;
+function focusHoldingInterval(interval) {
+    if (!interval) return;
     showPage("workspace");
     setChartView("local");
     requestAnimationFrame(() => {
-        if (!chart.focusRange(drawdownInterval.from, drawdownInterval.to)) {
+        if (!chart.focusRange(interval.from, interval.to)) {
             showBacktestToast("当前 K 线不包含最大亏损对应的持仓区间");
             return;
         }
         $("price-chart").scrollIntoView({ block: "center", behavior: "instant" });
     });
+}
+function focusMaximumDrawdown() {
+    focusHoldingInterval(drawdownInterval);
 }
 $("metric-dd-jump").addEventListener("click", focusMaximumDrawdown);
 $("performance-dd-jump").addEventListener("click", focusMaximumDrawdown);
@@ -1185,8 +1190,8 @@ function renderDrawdownInterval(view) {
     metricButton.disabled = !drawdownInterval;
     performanceButton.hidden = !drawdownInterval;
     if (!drawdownInterval) {
-        $("metric-dd-period").textContent = "暂无持仓区间";
-        metricButton.setAttribute("aria-label", "最大亏损暂无可定位持仓区间");
+        $("metric-dd-period").textContent = "暂无已清仓持仓区间";
+        metricButton.setAttribute("aria-label", "最大回撤暂无已清仓持仓区间");
         return;
     }
     const period = `${drawdownInterval.from} — ${drawdownInterval.to}${drawdownInterval.status === "open" ? "（未清仓）" : "（已清仓）"}`;
@@ -1194,10 +1199,47 @@ function renderDrawdownInterval(view) {
     $("performance-dd-period").textContent = period;
     metricButton.setAttribute(
         "aria-label",
-        `最大亏损 ${holdingDrawdownText(view.metrics)}，${period}，点击定位整段持仓 K 线`,
+        `最大回撤 ${holdingDrawdownText(view.metrics)}，${period}，点击定位整段持仓 K 线`,
     );
 }
+function renderHoldingCycles(view) {
+    const body = $("holding-cycles-body");
+    body.replaceChildren();
+    const episodes =
+        view.metrics?.holding_drawdown_version === holdingDrawdownVersion
+            ? (view.backtest?.holding_drawdowns || []).filter((episode) => episode.symbol === view.symbol)
+            : [];
+    $("holding-cycles-empty").hidden = episodes.length > 0;
+    for (const episode of episodes) {
+        const row = document.createElement("tr");
+        row.append(
+            cell(`第 ${episode.cycle_index} 轮`),
+            cell(episode.entry_time.replace("T", " ")),
+            cell(episode.exit_time?.replace("T", " ") || `未清仓 · 截至 ${episode.asof.replace("T", " ")}`),
+            cell(
+                episode.coverage === "complete"
+                    ? pct(episode.max_drawdown)
+                    : `未知（已观察 ${pct(episode.observed_max_drawdown)}）`,
+            ),
+            cell(`${episode.low_time} · ${num(episode.low_price, 4)} 元`),
+        );
+        const action = document.createElement("td");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "定位本轮";
+        button.addEventListener("click", () =>
+            focusHoldingInterval({
+                from: episode.entry_time.slice(0, 10),
+                to: episode.asof.slice(0, 10),
+            }),
+        );
+        action.append(button);
+        row.append(action);
+        body.append(row);
+    }
+}
 function renderMetrics() {
+    renderHoldingCycles(state.view);
     renderDrawdownInterval(state.view);
     if (state.view.backtest?.status === "data_unavailable") {
         document.querySelector(".metric-grid").hidden = true;
@@ -2149,7 +2191,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
         });
         tradePlayback.setView(data);
         describeBar(data.bars.at(-1));
-        performance.update(data.curve);
+        performance.update(data.curve, holdingDrawdownCurve(data));
         const last = data.bars.at(-1);
         const providerNames = { akshare: "AkShare", tdx: "通达信" };
         const sourceSummary = data.source_fallback

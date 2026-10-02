@@ -1,10 +1,12 @@
 # Session Handoff
 
-## 2026-10-02 · MONOREPO-231 持仓最大亏损
+## 2026-10-02 · MONOREPO-231 持仓归零与最终最大回撤
 
-用户澄清“最大回撤”指买入至卖出的最大亏损，已实现成本到最低价的 MAE，包含动态加仓成本、减仓不断段、实际开收盘边界、未平仓截止与缺分钟覆盖状态。工作区 `E:/WorkSpace/work/wavequant-huaci-volume-breakout`，同会话分支 `feat-华瓷放量突破`，基线 main `df1025b`。Core 30 项、Web Node 70 项/拓扑 2 项、API 7 项及相关类型/构建通过；冻结华瓷 01-17 收盘成交到 01-19 的 MAE=0，经独立重算验证。完整 Web 套件与浏览器未运行。
+用户最终明确：每轮首次买入至完全卖出独立计算最大亏损，每次持仓数量归零结束并重置本轮；已完全卖出的各轮中亏损最深者才是最终最大回撤。未清仓本轮亏损单独展示，不计入最终统计。版本 `holding_entry_cost_mae_cycle_v2`；Core 增加逐轮序号、数量归零身份和因果观测曲线，Web 增加归零曲线及逐轮明细，API 同时保存最终与本轮指标。
 
-本次扩大 Core 检查出现 main 既有失败：`tests/test_add_on_entry.py::test_huaci_volume_double_break_closes_cycle_before_next_gap_buy` 无 2026-08-26 买入；使用 main 原源码重跑也失败。另 `test_wave_continuation.py::test_strong_a_body_confirmation_can_advance_to_later_higher_gap` 当前无预期 body/gap 波段信号。本次没有修改策略或降低这些断言，试验性旧夹具修改已全部撤回。按用户 AGENTS.md 检查失败不合并的规则，提交保留在特性分支，未合并/推送，常驻页面仍是 main。下一步先修复既有波段资格回归，重跑相关测试，再同步 main、复核并本地合并。MONOREPO-183 原人工缓存验收保持 backlog，当前唯一 in-progress 为 MONOREPO-231。
+工作区 `E:/WorkSpace/work/wavequant-huaci-volume-breakout`，同会话分支 `feat-华瓷放量突破`，main 基线 `df1025b`。38 项 Core、72 项 Web Node、2 项拓扑、7 项 API（合计 119）以及相关类型检查、Web/Core/API 构建和 Core wheel 隔离安装通过；Web lint 有 6 条既有警告。未运行完整 Web、浏览器或 Playwright，未重算真实账户全历史。
+
+两项旧波段测试用 main 原源码再次复现失败：`test_huaci_volume_double_break_closes_cycle_before_next_gap_buy` 没有 2026-08-26 预期买入；`test_strong_a_body_confirmation_can_advance_to_later_higher_gap` 没有预期 body/gap 信号。已确认导入 main 的 backtest.py；本轮没有修改策略或降低这两项断言。遵守用户 AGENTS.md 检查失败不合并，修复保留在当前特性分支，常驻 main 页面未更新，未推送。后续先处理原波段资格回归，再同步 main、检查、复核和本地合并；推送需要明确授权。MONOREPO-231 保持唯一 in-progress，MONOREPO-183 的人工验收继续 backlog。
 
 ## 2026-09-29 · MONOREPO-208 双破确认
 

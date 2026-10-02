@@ -6,52 +6,53 @@
         {
             "id": "MONOREPO-231",
             "name": "holding-episode-maximum-drawdown",
-            "title": "最大回撤限定买入至清仓",
-            "description": "逐段持仓计算买入成本到持仓低点的最大亏损（MAE），清仓后重置，分批卖出不断段，加仓按当时均价；账户净值回撤保留明确口径。",
-            "scope": "Core持仓MAE证据、单股结果、Web指标/定位/对比/自选收益及API完成摘要",
+            "title": "持仓归零分段及已清仓最大回撤",
+            "description": "每次零持仓首次买入至数量归零独立计算成本MAE，清仓后本轮归零，再次买入重算；最终最大回撤取已清仓轮次中最深亏损，未清仓不混入。",
+            "scope": "Core持仓轮次/成本MAE/归零曲线、Web最终指标/逐轮明细/定位/对比/自选收益及API完成摘要",
             "dependencies": ["MONOREPO-197"],
             "status": "in-progress",
             "acceptanceCriteria": [
-                "仅实际买入至完全清仓或回放截止的行情参与计算，排除空仓、买入前和清仓后行情",
-                "分批卖出不断段，加仓按当时平均成本；重新买入重新计算；分母为买入成本，浮盈回吐不视为亏损",
-                "收盘买入不借用当天高低，开盘清仓不借用当天后续行情；盘中边界缺分钟时标明覆盖不足",
-                "指标、成交详情、对比及定位同源；无成交/旧结果/不完整数据不伪装成零回撤；相关测试与检查通过"
+                "每轮仅实际首次买入至数量归零的完全卖出参与计算；每次归零后下轮独立重算，空仓行情不参与",
+                "分批卖出不断段，加仓按当时成本；轮次身份以成交数量为准，同日清仓再买入也独立计算",
+                "最终最大回撤取已清仓各轮最大亏损的最小百分比；未清仓本轮亏损独立展示，没有完全卖出则最终指标未知",
+                "实际开收盘/分钟成交边界正确；覆盖不足不伪装成完整结果，已清仓历史不污染新一轮曲线",
+                "指标/对比/自选采用最终已清仓口径；曲线清仓归零，逐轮明细可定位；定向测试与检查通过"
             ],
             "verification": [
                 {
                     "command": "Core pytest test_holding_drawdown.py test_stock_backtest.py test_close_entry.py test_trade_evidence_addon.py",
                     "status": "passed",
-                    "summary": "30项通过：成本亏损而非浮盈回吐、开收盘边界、分批卖出/加仓、重新买入、前缀/时区、分钟同源与覆盖不足、独立随机重算。"
+                    "summary": "38项通过。新增真实撮合三轮回测、每次数量归零、同日重入、部分卖出清仓标志不一致、浮点残余、未清仓不计入最终回撤及旧不完整轮次不污染当前轮次；保留独立价格重算和开收盘/分钟边界检查。"
                 },
                 {
-                    "command": "华瓷冻结日线单股回测及持仓低点独立重算",
+                    "command": "上一轮华瓷冻结日线单股回测及持仓低点独立重算",
                     "status": "passed",
-                    "summary": "2024-01-17 15:00 按14.9194596711等价价买入，至01-19未清仓，持仓MAE=0；不包含当天买入之前13.50低点。账户费用回撤另计。"
+                    "summary": "此前2024-01-17收盘成交至01-19未清仓，本轮成本MAE=0。该证据只说明本轮持仓亏损；按本轮澄清，未完全卖出不能作为最终最大回撤。未重新运行真实账户全历史回测。"
                 },
                 {
-                    "command": "Web相关6个Node文件与topology-data.test.ts；lint/typecheck/build",
+                    "command": "Web相关6个Node文件、topology-data.test.ts、lint/typecheck/build",
                     "status": "passed",
-                    "summary": "70项Node、2项拓扑通过；lint零错误及6条既有警告，类型和生产构建通过。"
+                    "summary": "72项Node及2项拓扑通过，含清仓归零曲线、同日重入、不完整前轮清零、最终指标版本及自选摘要。lint零错误6条既有警告；类型及生产构建通过。"
                 },
                 {
-                    "command": "API test_backtest_jobs.py、修改模块mypy、既定11模块strict mypy及构建",
+                    "command": "API test_backtest_jobs.py、修改模块mypy、既定11模块strict mypy、sdist/wheel",
                     "status": "passed",
-                    "summary": "7项任务/持久化恢复测试通过，修改模块与既定类型检查通过，API sdist/wheel构建通过。"
+                    "summary": "7项通过，最终回撤与本轮累计值/清仓状态均持久化并能在注册表重建后恢复；修改模块及既定类型检查、构建通过。"
                 },
                 {
-                    "command": "Core新增模块strict mypy、3个调用模块mypy、既定4模块typecheck、构建与独立安装",
+                    "command": "Core holding_drawdown strict mypy、3个调用模块check-untyped-defs mypy、既定4模块typecheck、sdist/wheel及独立安装导入",
                     "status": "passed",
-                    "summary": "均通过，新模块已打入sdist/wheel，独立安装环境成功导入holding_entry_cost_mae_v1。"
+                    "summary": "均通过。独立安装wheel使用-I成功导入holding_entry_cost_mae_cycle_v2，模块来自隔离环境site-packages。"
                 },
                 {
-                    "command": "扩大Core 9个相关文件pytest（149项）及main原源码单项复现",
+                    "command": "main原源码复现 test_huaci_volume_double_break_closes_cycle_before_next_gap_buy 与 test_strong_a_body_confirmation_can_advance_to_later_higher_gap",
                     "status": "failed",
-                    "summary": "148项通过，既有华瓷2026-08-26交易周期测试未出现预期买入；main原源码同样失败。另旧body→gap波段信号测试失败。本次保留原断言及策略，按AGENTS.md暂停合并，待原回归修复。"
+                    "summary": "main df1025b原模块路径已确认，两项均失败：2026-08-26无预期BUY，body→gap无预期信号。本轮没有修改策略或降低旧断言；按用户AGENTS.md暂不合并。本轮38项直接相关Core检查全部通过。"
                 },
                 {
                     "command": "完整Web单测、浏览器端到端与常驻页面验收",
                     "status": "not-run",
-                    "summary": "依开发验证节奏未运行完整Web及Playwright；旧Core回归失败阻断合并，常驻main尚未更新。"
+                    "summary": "遵守开发验证节奏，未运行完整Web、浏览器或Playwright；main既有信号回归失败阻断合并，常驻页面尚未更新。"
                 }
             ]
         },
@@ -3580,12 +3581,12 @@
                 {
                     "command": "source baseline: python -m unittest discover -s tests -v && node --test web/tests/*.test.mjs",
                     "status": "passed",
-                    "summary": "迁移前源工作树的 505 项 Python 测试与 37 项 Web 单元测试全部通过。"
+                    "summary": "迁移前源工作树的 505 项 Python 测试与 38 项 Web 单元测试全部通过。"
                 },
                 {
                     "command": "pnpm --filter wavequant lint && pnpm --filter wavequant typecheck && pnpm --filter wavequant test:unit && pnpm --filter wavequant build",
                     "status": "passed",
-                    "summary": "Ruff、渐进式严格 mypy、Web 语法检查、505 项 Python 测试、37 项 Web 测试以及 Python sdist/wheel 构建全部通过。"
+                    "summary": "Ruff、渐进式严格 mypy、Web 语法检查、505 项 Python 测试、38 项 Web 测试以及 Python sdist/wheel 构建全部通过。"
                 },
                 {
                     "command": "pnpm harness:check",
@@ -3633,7 +3634,7 @@
                 {
                     "command": "pnpm --filter wavequant-web lint && pnpm --filter wavequant-web typecheck && pnpm --filter wavequant-web test:unit && pnpm --filter wavequant-web build",
                     "status": "passed",
-                    "summary": "Web 语法与格式检查、37 项单元测试以及包含本地 Lightweight Charts 的静态构建通过。"
+                    "summary": "Web 语法与格式检查、38 项单元测试以及包含本地 Lightweight Charts 的静态构建通过。"
                 },
                 {
                     "command": "dependency boundary scan and API CLI smoke",
@@ -3800,14 +3801,14 @@
             "name": "wavequant-source-project-complete-parity",
             "description": "以 E:\\WorkSpace\\股票 当前完整工作树及其 web 页面为唯一迁移基线，确认核心、服务和页面功能在 monorepo 中无缺失。",
             "title": "完整迁移股票项目及原 Web 工作台",
-            "scope": "逐项核对源项目 Python 模块、CLI、配置、文档、脚本、505 项测试和 web 工作台 37 项行为契约；将原 web 工作台恢复为默认产品入口，同时保留全景市场页为独立路由。",
+            "scope": "逐项核对源项目 Python 模块、CLI、配置、文档、脚本、505 项测试和 web 工作台 38 项行为契约；将原 web 工作台恢复为默认产品入口，同时保留全景市场页为独立路由。",
             "dependencies": ["MONOREPO-015"],
             "status": "done",
             "acceptanceCriteria": [
                 "源项目当前未忽略工作树中的 Python 研究、回测、数据、纸面执行、运维、可视化和 CLI 能力均映射到 core 或 API，不遗漏源测试契约",
                 "E:\\WorkSpace\\股票\\web\\index.html 的页面结构、样式、脚本模块和全部既有交互在 wavequant-web 中保持可用",
                 "默认入口进入原 Web 研究工作台，全景市场看盘保留在独立 /market 路由，不互相覆盖",
-                "源项目 505 项 Python 与 37 项 Web 单元契约建立可重复的迁移对照，目标 Core、API 和 Web 测试通过",
+                "源项目 505 项 Python 与 38 项 Web 单元契约建立可重复的迁移对照，目标 Core、API 和 Web 测试通过",
                 "原工作台的 K 线、回放、股票搜索、买点扫描、幅度对比、回测、绩效、订单信号和系统状态关键流程通过真实浏览器验证",
                 "相关 workspace 和全仓质量门禁通过，迁移映射与剩余运行环境依赖有明确记录"
             ],
@@ -3815,7 +3816,7 @@
                 {
                     "command": "E:\\WorkSpace\\股票\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v && node --test web/tests/*.test.mjs",
                     "status": "passed",
-                    "summary": "迁移源当前工作树的 505 项 Python 测试与 37 项 Web 行为契约全部通过。"
+                    "summary": "迁移源当前工作树的 505 项 Python 测试与 38 项 Web 行为契约全部通过。"
                 },
                 {
                     "command": "源/目标模块、测试名称以及格式化后的 web/index.html 与 styles.css 对照",
