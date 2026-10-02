@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-227",
+            "name": "five-top-child-volume-clear",
+            "title": "五饱后放量双破昨日及前天子低清仓",
+            "description": "持仓本笔N在此前交易日已达五饱或十满后，阴线低点和收盘严格双破昨日、低点跌破前天子线，且量超过此前最近阴线，收盘直接清空余仓。",
+            "scope": "Core 本笔N目标阶段风控、真实先锋日线成交与Web原因",
+            "dependencies": ["MONOREPO-226"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "先锋2025-11-18低4.85跌破昨低4.99及11-14子低4.91，收4.91低于昨收5.19，量63288181大于11-11阴量63172500，收盘清仓",
+                "前天子线允许阳阴及一侧等高等低，至少一侧严格包含；最近阴线按开收比较，排除11-12阳线",
+                "未达五饱、目标当日才到位、未来到位、目标失效、非本笔N、任一等值边界和无有效阴量不触发；已减仓仍清余仓",
+                "同源真实目标事件和完整/截断成交一致，相关Core与Web定向检查通过，保留其他活动任务"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_five_top_child_volume_exit.py test_guofang_2023_target_exit.py test_wave_exhaustion_exit.py test_wave_resistance_failure.py test_wave_gap_reversal.py test_post_b_wave_exit.py test_target_exit_policy.py test_bearish_child_pattern_exit.py test_outside_split_n.py test_ordinary_wave_exit.py",
+                    "status": "passed",
+                    "summary": "108项通过，含17项条件回归。同源实际测幅事件确认10-28五饱4.93；11-18收盘4.91全清，已有11-14减仓仍清余仓。严格等值、阳阴子线、等高等低、零量、无阴线、目标当日才到位、未来及失效目标、非本笔N与历史前缀验证通过。"
+                },
+                {
+                    "command": "node --test tests/trade-reasons.test.mjs tests/annotations.test.mjs; vitest run topology-data.test.ts; Core修改2模块mypy/Core typecheck/build; Web lint/typecheck/build",
+                    "status": "passed",
+                    "summary": "49项Web成交原因与注释测试及2项拓扑测试通过；拓扑整仓风险节点已补五饱规则并更新源码指纹。修改模块与Core既定4模块类型、sdist/wheel构建、Web lint（6条既有警告）、类型及生产构建通过。类型检查修复原文件局部变量类型复用及空字典未标注，行为不变。"
+                },
+                {
+                    "command": "harness:check; changed metadata/docs/tests/topology-data.ts prettier --check; JS syntax; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "状态、相关文件格式、JS语法、最终差异及索引复核通过。两份既有Web公共JS文件在main上已有Prettier差异，本次保持局部修改。全仓快速检查因并发内存不足退出，受影响检查已串行通过；完整Core/Web套件、真实浏览器、外部分钟及全历史账户收益待独立验证。未运行Playwright，保留MONOREPO-183活动状态。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-226",
             "name": "outside-pullback-split-n-targets",
             "title": "外包回踩分步正N及先锋九月测幅",
