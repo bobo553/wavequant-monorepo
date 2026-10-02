@@ -1,4 +1,5 @@
 import { isRecoverableBacktestError } from "./backtest-retry.js";
+import { holdingDrawdownValue } from "./max-drawdown.js";
 
 const DEFAULT_VERSION_REFRESH_MS = 30_000;
 const FAILURE_RETRY_DELAYS_MS = [5_000, 15_000, 45_000];
@@ -250,7 +251,7 @@ export class IdleWatchlistBacktests {
             this.returns.set(member.symbol, {
                 rate: result.metrics.total_return,
                 amount: result.metrics.total_pnl,
-                drawdown: Number.isFinite(result.metrics.max_drawdown) ? result.metrics.max_drawdown : null,
+                drawdown: holdingDrawdownValue(result.metrics),
             });
         this.failures.delete(member.symbol);
         this.retryAt.delete(member.symbol);
@@ -288,7 +289,7 @@ export class IdleWatchlistBacktests {
                 this.returns.set(member.symbol, {
                     rate: record.total_return,
                     amount: record.total_pnl,
-                    drawdown: Number.isFinite(record.max_drawdown) ? record.max_drawdown : null,
+                    drawdown: holdingDrawdownValue(record),
                 });
             this.failures.delete(member.symbol);
             this.retryAt.delete(member.symbol);
@@ -426,7 +427,7 @@ export class IdleWatchlistBacktests {
                     this.returns.set(member.symbol, {
                         rate: result.metrics.total_return,
                         amount: result.metrics.total_pnl,
-                        drawdown: Number.isFinite(result.metrics.max_drawdown) ? result.metrics.max_drawdown : null,
+                        drawdown: holdingDrawdownValue(result.metrics),
                     });
                 this.failures.delete(member.symbol);
                 this.retryAt.delete(member.symbol);

@@ -11,6 +11,7 @@ def enrich_ledger(bars, result, generated, strategy):
     for event in audit:
         dated.setdefault(event['timestamp'],[]).append(event)
     active={}; serial=0
+    holding_by_entry = {(e['symbol'], e['entry_order_time']): e for e in getattr(result, 'holding_drawdowns', [])}
     for order in result.orders:
         bar=by_time[order['timestamp'][:10]]
         order.update(price_basis='causal_adjusted_equivalent',adjustment_factor=bar.adjustment_factor)
@@ -124,6 +125,9 @@ def enrich_ledger(bars, result, generated, strategy):
             if order['side']=='BUY' and bar.symbol not in active:
                 serial+=1
                 active[bar.symbol]=f'{bar.symbol}-trade-{serial}'
+                holding = holding_by_entry.get((bar.symbol, order['timestamp']))
+                if holding is not None:
+                    holding['trade_id'] = active[bar.symbol]
             order['trade_id']=active.get(bar.symbol)
             if order['side']=='SELL' and order.get('position_closed', True):
                 active.pop(bar.symbol,None)

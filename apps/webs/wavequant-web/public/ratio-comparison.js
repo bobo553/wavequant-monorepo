@@ -1,4 +1,5 @@
 import { num, pct } from "./labels.js";
+import { holdingDrawdownText } from "./max-drawdown.js";
 
 export const ratioPlans = [
     ["lecture_v3", "二/三级交替后 N 轧空 / ≤1/3"],
@@ -32,7 +33,7 @@ export function comparisonValues(view) {
         num(m.trades, 0),
         m.trades && m.win_rate != null ? pct(m.win_rate) : "无平仓样本",
         pct(m.total_return),
-        pct(m.max_drawdown),
+        holdingDrawdownText(m),
     ];
 }
 export class RatioComparison {
@@ -80,7 +81,14 @@ export class RatioComparison {
                 `${p.symbol} · ${p.start} — ${p.asof} · ${p.scenario}：已完成 ${completed}/${ratioPlans.length}，正在计算 ${title}…`;
             const tr = document.createElement("tr");
             try {
-                const { local, source = "tdx", volume_filter, net_reward_risk_filter = false, shallow_base_breakout_enabled = true, ...params } = p;
+                const {
+                    local,
+                    source = "tdx",
+                    volume_filter,
+                    net_reward_risk_filter = false,
+                    shallow_base_breakout_enabled = true,
+                    ...params
+                } = p;
                 const view = await this.api(
                     source === "akshare" ? "/api/akshare-backtest" : "/api/tdx-backtest",
                     {

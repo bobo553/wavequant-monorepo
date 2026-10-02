@@ -15,7 +15,7 @@ export function PerformancePage(): JSX.Element {
                         个股独立净值
                     </span>
                     <button id="performance-dd-jump" className="drawdown-range-jump" type="button" hidden>
-                        最大回撤 <span id="performance-dd-period" /> · 定位 K 线
+                        持仓最大亏损 <span id="performance-dd-period" /> · 定位买入至清仓
                     </button>
                 </div>
                 <div id="equity-chart" className="performance-chart" aria-label="账户净值图" />
@@ -24,10 +24,10 @@ export function PerformancePage(): JSX.Element {
                 <article className="panel">
                     <div className="card-header">
                         <h2>
-                            回撤曲线 <small>%</small>
+                            账户净值回撤 <small>% · 从账户历史峰值计算</small>
                         </h2>
                     </div>
-                    <div id="drawdown-chart" className="small-chart" aria-label="回撤图" />
+                    <div id="drawdown-chart" className="small-chart" aria-label="账户净值回撤图" />
                 </article>
                 <article className="panel">
                     <div className="card-header">
@@ -39,7 +39,7 @@ export function PerformancePage(): JSX.Element {
                 </article>
             </div>
             <div className="panel note-card">
-                收益和回撤遵循上方“结果口径”，个股独立账户与原封存组合分开。仅使用回放日期之前的数据；没有把日线代理结果标成严格讲义策略。
+                最大亏损按每笔买入至完全清仓的最深浮亏计算，未清仓计算至回放截止；分批卖出不重置，加仓按当时均价。账户净值回撤图包含仓位与费用，从账户历史峰值计算。仅使用回放截止前的数据。
             </div>
         </section>
     );

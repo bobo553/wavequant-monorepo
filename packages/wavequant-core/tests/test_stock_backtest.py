@@ -28,6 +28,13 @@ class StockBacktestTests(unittest.TestCase):
         self.assertEqual(result['metrics']['trades'],1)
         self.assertAlmostEqual(result['metrics']['equity'],10000+result['trades'][0]['pnl'])
         self.assertEqual(result['backtest']['initial_capital'],10000)
+        self.assertAlmostEqual(result['metrics']['holding_max_drawdown'], -.1)
+        self.assertEqual(result['metrics']['account_max_drawdown'], result['metrics']['max_drawdown'])
+        self.assertEqual(result['metrics']['account_max_drawdown'], 0)
+        holding = result['backtest']['holding_drawdowns'][0]
+        self.assertEqual(holding['trade_id'], fills[0]['trade_id'])
+        self.assertEqual(fills[-1]['holding_drawdown'], holding)
+        self.assertEqual(result_markers(result)[-1]['holding_drawdown'], holding)
 
     def test_prefix_open_position_has_no_future_sell_or_exit_pnl(self):
         result=single_stock_result(self.bars[:3],{},self.config,self.generated)
@@ -36,6 +43,8 @@ class StockBacktestTests(unittest.TestCase):
         self.assertEqual([o['side'] for o in result['orders'] if o['status']=='filled'],['BUY'])
         self.assertTrue(all(o['timestamp'][:10]<='2026-01-03' for o in result['orders']))
         self.assertNotIn('exit_time',result['backtest']['open_positions'][0])
+        self.assertEqual(result['backtest']['open_positions'][0]['holding_drawdown']['status'], 'open')
+        self.assertEqual(result['backtest']['holding_drawdowns'][0]['asof'][:10], '2026-01-03')
 
     def test_unsold_position_profit_is_in_total_return_once(self):
         result = single_stock_result(self.bars[:3], {}, self.config, self.generated)

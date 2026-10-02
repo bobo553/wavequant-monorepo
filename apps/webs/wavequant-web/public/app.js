@@ -25,7 +25,13 @@ import { PerformanceCharts, PriceChart } from "./charts.js";
 import { reuseCompletedBacktest } from "./completed-backtest-result.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
-import { maxDrawdownInterval } from "./max-drawdown.js";
+import {
+    holdingDrawdownForMarker,
+    holdingDrawdownInterval,
+    holdingDrawdownNote,
+    holdingDrawdownText,
+    holdingDrawdownValue,
+} from "./max-drawdown.js";
 import { bindPressAndHold } from "./press-and-hold.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
 import { parseResearchLink, resolveResearchLink } from "./research-link.js";
@@ -695,7 +701,7 @@ function focusMaximumDrawdown() {
     setChartView("local");
     requestAnimationFrame(() => {
         if (!chart.focusRange(drawdownInterval.from, drawdownInterval.to)) {
-            showBacktestToast("当前 K 线不包含最大回撤日期区间");
+            showBacktestToast("当前 K 线不包含最大亏损对应的持仓区间");
             return;
         }
         $("price-chart").scrollIntoView({ block: "center", behavior: "instant" });
@@ -1165,7 +1171,7 @@ function syncDate() {
 }
 function setMetric(id, value, type) {
     const el = $(id);
-    el.textContent = type === "count" ? num(value, 0) : pct(value);
+    el.textContent = value == null ? "—" : type === "count" ? num(value, 0) : pct(value);
     el.classList.remove("positive", "negative");
     if (type === "return" && value !== 0) el.classList.add(value > 0 ? "positive" : "negative");
 }
@@ -1173,20 +1179,23 @@ function renderDrawdownInterval(view) {
     drawdownInterval =
         ["tdx", "akshare"].includes(view.result_scope) || view.backtest?.status === "data_unavailable"
             ? null
-            : maxDrawdownInterval(view.curve, view.backtest?.start || currentRun().start);
+            : holdingDrawdownInterval(view);
     const metricButton = $("metric-dd-jump");
     const performanceButton = $("performance-dd-jump");
     metricButton.disabled = !drawdownInterval;
     performanceButton.hidden = !drawdownInterval;
     if (!drawdownInterval) {
-        $("metric-dd-period").textContent = "暂无回撤区间";
-        metricButton.setAttribute("aria-label", "最大回撤暂无可定位区间");
+        $("metric-dd-period").textContent = "暂无持仓区间";
+        metricButton.setAttribute("aria-label", "最大亏损暂无可定位持仓区间");
         return;
     }
-    const period = `${drawdownInterval.initialPeak ? "初始资金峰值 · " : ""}${drawdownInterval.from} — ${drawdownInterval.to}`;
+    const period = `${drawdownInterval.from} — ${drawdownInterval.to}${drawdownInterval.status === "open" ? "（未清仓）" : "（已清仓）"}`;
     $("metric-dd-period").textContent = `${period} · 点击定位 K 线`;
     $("performance-dd-period").textContent = period;
-    metricButton.setAttribute("aria-label", `最大回撤 ${pct(view.metrics.max_drawdown)}，${period}，点击定位 K 线区间`);
+    metricButton.setAttribute(
+        "aria-label",
+        `最大亏损 ${holdingDrawdownText(view.metrics)}，${period}，点击定位整段持仓 K 线`,
+    );
 }
 function renderMetrics() {
     renderDrawdownInterval(state.view);
@@ -1211,7 +1220,8 @@ function renderMetrics() {
     }
     const m = state.view.metrics;
     setMetric("metric-return", m.total_return, "return");
-    setMetric("metric-dd", m.max_drawdown);
+    setMetric("metric-dd", holdingDrawdownValue(m));
+    $("metric-dd-note").textContent = holdingDrawdownNote(m);
     setMetric("metric-trades", m.trades, "count");
     setMetric("metric-exposure", m.average_exposure);
     $("evidence").textContent =
@@ -1302,7 +1312,7 @@ async function loadStockSummary(request, sequence) {
                     symbolName(r.symbol),
                     r.asof,
                     m ? pct(m.total_return) : "无历史",
-                    m ? pct(m.max_drawdown) : "—",
+                    m ? holdingDrawdownText(m) : "—",
                     m ? num(m.entry_fills, 0) : "—",
                     m ? num(m.trades, 0) : "—",
                     m?.win_rate == null ? "—" : pct(m.win_rate),
@@ -1356,7 +1366,12 @@ function showAnnotationDetails(items) {
     detail(`${item.title} · ${item.time}`, item.description);
     const panel = $("selection-info");
     panel.dataset.annotationId = item.id;
-    appendTradeEvidence(panel, item, openPositionForMarker(state.view, item));
+    appendTradeEvidence(
+        panel,
+        item,
+        openPositionForMarker(state.view, item),
+        holdingDrawdownForMarker(state.view, item),
+    );
     const source = document.createElement("p");
     source.className = "annotation-source";
     source.textContent = `${item.sourceLabel}。${item.sourceTime && item.sourceTime !== item.time ? `原结构日期 ${item.sourceTime}，到 ${item.time} 才可知。` : ""}`;

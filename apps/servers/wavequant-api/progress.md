@@ -1,5 +1,7 @@
 # Progress
 
+- MONOREPO-231：回测完成摘要持久化并恢复 `holding_max_drawdown`、口径版本和覆盖状态，使自选股刷新后保持 MAE 口径。旧摘要不伪装成持仓最大亏损；账户字段保留。7 项任务/历史测试、修改模块 mypy、既定 11 模块严格类型检查与 sdist/wheel 构建通过。Core 既有波段信号回归失败阻断合并，本功能尚未进入常驻 main 服务。
+
 - MONOREPO-193：运行中的回测任务快照与单任务查询公开独立的 `progress_percent` 和 `progress_stage`，进度单调递增且未完成时最高 99%。API 42 项测试及 10 个子测试通过；真实浏览器展示未验证。
 
 - MONOREPO-191：常驻 API/Worker 启动器限制为 `main`；一次性 Python 命令仍可在特性 worktree 运行。特性分支启动拒绝检查及 Node 语法检查通过；完整 Python 套件未运行。

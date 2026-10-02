@@ -498,7 +498,7 @@ export class Watchlists {
         if (drawdown) {
             assignIfChanged(drawdown, "hidden", !hasDrawdown);
             if (hasDrawdown) {
-                const drawdownText = `最大回撤 ${(value.drawdown * 100).toFixed(2)}%`;
+                const drawdownText = `持仓最大亏损 ${(value.drawdown * 100).toFixed(2)}%`;
                 assignIfChanged(drawdown, "textContent", drawdownText);
                 assignIfChanged(drawdown, "title", drawdownText);
             }

@@ -9,6 +9,7 @@ from typing import Callable
 
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
+from wavequant.application.analytics.holding_drawdown import holding_drawdowns, drawdown_metrics, holding_fill_time
 from wavequant.domain.strategies.wave_exhaustion_exit import (
     C_EQUAL_NEAR_RESISTANCE_REDUCE, C_EQUAL_NEAR_VOLUME_CLEAR, FIVE_TOP_CHILD_VOLUME_CLEAR,
     observe_c_equal_near_risk, observe_five_top_child_volume_clear, observe_wave_exhaustion,
@@ -37,6 +38,7 @@ class BacktestResult:
     orders: list[dict] = field(default_factory=list)
     open_positions: list[dict] = field(default_factory=list)
     minute_fallbacks: list[dict] = field(default_factory=list)
+    holding_drawdowns: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -208,7 +210,9 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
     bought_today: dict[str, float] = {}
     marks: dict[str, float] = {}
     mark_times: dict[str, str] = {}
-    trades, curve, orders = [], [], []
+    trades: list[Trade] = []
+    curve: list[dict] = []
+    orders: list[dict] = []
     minute_fallbacks = []
     total_fees = turnover = 0.0
     slip = config.slippage_bps_per_side / 10000
@@ -896,7 +900,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             raise ArithmeticError('portfolio cash/equity invariant failed')
         curve.append(dict(timestamp=when.isoformat(), cash=cash, market_value=market_value,
                           equity=equity, exposure=market_value/equity, positions=len(positions)))
-    opened = [dict(symbol=s, entry_time=p.entry_time.isoformat(), entry_price=p.entry_price,
+    opened: list[dict] = [dict(symbol=s, entry_time=p.entry_time.isoformat(), entry_price=p.entry_price,
                    quantity=p.quantity, mark=marks[s], mark_time=mark_times[s],
                    unrealized_pnl=p.quantity*(marks[s]-p.entry_price)-p.entry_fee,
                    realized_pnl=p.realized_pnl,
@@ -906,6 +910,16 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                         /(p.initial_entry_notional+p.initial_entry_fee),
                    pending_exit=pending_exit.get(s)) for s, p in sorted(positions.items())]
     metrics = equity_metrics(curve, config.initial_capital)
+    metrics['account_max_drawdown'] = metrics['max_drawdown']
+    holding_losses = holding_drawdowns(grouped, orders, end, minute_loader)
+    metrics.update(drawdown_metrics(holding_losses))
+    open_losses = {e['symbol']: e for e in holding_losses if e['status'] == 'open'}
+    closed_losses = {(e['symbol'], e['exit_time']): e for e in holding_losses if e['status'] == 'closed'}
+    for position in opened:
+        position['holding_drawdown'] = open_losses.get(position['symbol'])
+    for order in orders:
+        if order['side'] == 'SELL' and order['status'] == 'filled' and order.get('position_closed'):
+            order['holding_drawdown'] = closed_losses.get((order['symbol'], holding_fill_time(order).isoformat()))
     metrics.update(summarize_trades(trades))
     metrics['realized_pnl'] = sum(t.pnl for t in trades) + sum(p.realized_pnl for p in positions.values())
     metrics['unrealized_pnl'] = sum(p['unrealized_pnl'] for p in opened)
@@ -919,4 +933,4 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
         'no_entry_fills' if not entries else 'open_positions_only' if not trades else 'closed_trades_observed'))
     if progress is not None:
         progress(100)
-    return BacktestResult(trades, metrics, curve, orders, opened, minute_fallbacks)
+    return BacktestResult(trades, metrics, curve, orders, opened, minute_fallbacks, holding_losses)

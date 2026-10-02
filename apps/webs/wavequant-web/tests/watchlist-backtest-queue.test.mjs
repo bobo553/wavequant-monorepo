@@ -145,7 +145,13 @@ test("a matching completed stock task updates the watchlist without running it a
     const completed = {
         ...result(member),
         orders: [{ status: "filled" }],
-        metrics: { total_return: 0.125, total_pnl: 12500, max_drawdown: -0.083 },
+        metrics: {
+            total_return: 0.125,
+            total_pnl: 12500,
+            max_drawdown: -0.01,
+            holding_drawdown_version: "holding_entry_cost_mae_v1",
+            holding_max_drawdown: -0.083,
+        },
     };
     assert.equal(subject.controller.adoptCompleted(path, params, completed, "v1"), true);
     assert.equal(subject.controller.state().statuses[member.symbol], "completed");
@@ -172,7 +178,9 @@ test("completed return summaries follow the current backtest context", async () 
             metrics: {
                 total_return: member.symbol === "sz.000002" ? 0.125 : -0.075,
                 total_pnl: member.symbol === "sz.000002" ? 12500 : -7500,
-                max_drawdown: member.symbol === "sz.000002" ? -0.083 : -0.154,
+                max_drawdown: -0.01,
+                holding_drawdown_version: "holding_entry_cost_mae_v1",
+                holding_max_drawdown: member.symbol === "sz.000002" ? -0.083 : -0.154,
             },
         }),
     });
@@ -221,7 +229,9 @@ test("server completion restores a watchlist badge after reload without a local 
         fill_count: 2,
         total_return: -0.075,
         total_pnl: -7500,
-        max_drawdown: -0.154,
+        max_drawdown: -0.01,
+        holding_drawdown_version: "holding_entry_cost_mae_v1",
+        holding_max_drawdown: -0.154,
     };
     assert.equal(subject.controller.adoptServerStatus(record), true);
     assert.equal(subject.controller.state().statuses[member.symbol], "completed");

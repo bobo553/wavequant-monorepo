@@ -1,8 +1,60 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-183",
+    "activeFeature": "MONOREPO-231",
     "features": [
+        {
+            "id": "MONOREPO-231",
+            "name": "holding-episode-maximum-drawdown",
+            "title": "最大回撤限定买入至清仓",
+            "description": "逐段持仓计算买入成本到持仓低点的最大亏损（MAE），清仓后重置，分批卖出不断段，加仓按当时均价；账户净值回撤保留明确口径。",
+            "scope": "Core持仓MAE证据、单股结果、Web指标/定位/对比/自选收益及API完成摘要",
+            "dependencies": ["MONOREPO-197"],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "仅实际买入至完全清仓或回放截止的行情参与计算，排除空仓、买入前和清仓后行情",
+                "分批卖出不断段，加仓按当时平均成本；重新买入重新计算；分母为买入成本，浮盈回吐不视为亏损",
+                "收盘买入不借用当天高低，开盘清仓不借用当天后续行情；盘中边界缺分钟时标明覆盖不足",
+                "指标、成交详情、对比及定位同源；无成交/旧结果/不完整数据不伪装成零回撤；相关测试与检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_holding_drawdown.py test_stock_backtest.py test_close_entry.py test_trade_evidence_addon.py",
+                    "status": "passed",
+                    "summary": "30项通过：成本亏损而非浮盈回吐、开收盘边界、分批卖出/加仓、重新买入、前缀/时区、分钟同源与覆盖不足、独立随机重算。"
+                },
+                {
+                    "command": "华瓷冻结日线单股回测及持仓低点独立重算",
+                    "status": "passed",
+                    "summary": "2024-01-17 15:00 按14.9194596711等价价买入，至01-19未清仓，持仓MAE=0；不包含当天买入之前13.50低点。账户费用回撤另计。"
+                },
+                {
+                    "command": "Web相关6个Node文件与topology-data.test.ts；lint/typecheck/build",
+                    "status": "passed",
+                    "summary": "70项Node、2项拓扑通过；lint零错误及6条既有警告，类型和生产构建通过。"
+                },
+                {
+                    "command": "API test_backtest_jobs.py、修改模块mypy、既定11模块strict mypy及构建",
+                    "status": "passed",
+                    "summary": "7项任务/持久化恢复测试通过，修改模块与既定类型检查通过，API sdist/wheel构建通过。"
+                },
+                {
+                    "command": "Core新增模块strict mypy、3个调用模块mypy、既定4模块typecheck、构建与独立安装",
+                    "status": "passed",
+                    "summary": "均通过，新模块已打入sdist/wheel，独立安装环境成功导入holding_entry_cost_mae_v1。"
+                },
+                {
+                    "command": "扩大Core 9个相关文件pytest（149项）及main原源码单项复现",
+                    "status": "failed",
+                    "summary": "148项通过，既有华瓷2026-08-26交易周期测试未出现预期买入；main原源码同样失败。另旧body→gap波段信号测试失败。本次保留原断言及策略，按AGENTS.md暂停合并，待原回归修复。"
+                },
+                {
+                    "command": "完整Web单测、浏览器端到端与常驻页面验收",
+                    "status": "not-run",
+                    "summary": "依开发验证节奏未运行完整Web及Playwright；旧Core回归失败阻断合并，常驻main尚未更新。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-230",
             "name": "secondary-primary-volume-breakout-entry",
@@ -1282,7 +1334,7 @@
             "description": "量化 Core 的 Python 源码指纹变化且开发服务重启时，自动清理各作用域的回测结果、信号和筛选缓存以及 API 历史完成摘要；网页自动队列在引擎版本变化时暂停，手动回测接口保持可用。",
             "scope": "wavequant-core ArtifactCache 和 ChartRepository；wavequant-api 回测任务历史与服务启动；wavequant-web 自动队列",
             "dependencies": ["MONOREPO-181", "MONOREPO-182"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "量化代码版本变化后自动清理所有现有作用域的回测派生缓存，同版本重启不重复清理",
                 "API 不再展示旧引擎的历史完成摘要，行情与分钟缓存保留",

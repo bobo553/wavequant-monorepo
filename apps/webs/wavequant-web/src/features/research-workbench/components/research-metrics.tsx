@@ -2,7 +2,7 @@ import type { JSX } from "react";
 
 const metrics = [
     ["metric-return", "个股净收益", "资金曲线含费用、未平仓估值"],
-    ["metric-dd", "最大回撤", "从初始资金与历史峰值计算"],
+    ["metric-dd", "最大亏损", "买入至清仓；以当时买入成本为基准"],
     ["metric-trades", "卖出成交", "含减仓；按已实现份额统计"],
     ["metric-exposure", "平均仓位", "市值 / 账户净值的日均值"],
 ] as const;
@@ -23,12 +23,14 @@ export function ResearchMetrics(): JSX.Element {
                         {id === "metric-dd" ? (
                             <button id="metric-dd-jump" className="metric-dd-jump" type="button" disabled>
                                 <strong id={id}>—</strong>
-                                <span id="metric-dd-period">暂无回撤区间</span>
+                                <span id="metric-dd-period">暂无持仓区间</span>
                             </button>
                         ) : (
                             <strong id={id}>—</strong>
                         )}
-                        <p id={index === 0 ? "metric-return-note" : undefined}>{description}</p>
+                        <p id={index === 0 ? "metric-return-note" : index === 1 ? "metric-dd-note" : undefined}>
+                            {description}
+                        </p>
                     </article>
                 ))}
             </section>
