@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-228",
+            "name": "c-equal-near-resistance-exit",
+            "title": "C浪近等浪空头抵抗减仓及放量双破清仓",
+            "description": "已知强A的C浪等浪目标首次进入下方一分钱内且出现空头抵抗K线时按配置累计减仓；后续首次低点和收盘严格双破昨日且量超过此前最近阴线时生成EXIT，有持仓当日收盘清空余仓。",
+            "scope": "Core同源目标审计、全局信号与单股回测；先锋2026年7月日线及Web成交说明",
+            "dependencies": ["MONOREPO-227"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "先锋07-02/03强A续攻信号给出C浪等浪8.57；07-06最高8.56相差0.01且上影占振幅74.36%，虽收阳仍为空头抵抗，默认累计减仓80%",
+                "07-08低6.58低于昨低7.40，收7.07低于昨收8.15，量82443254大于06-30最近阴线量18267900，生成EXIT并在持仓模拟中清余仓",
+                "只在有效强A首次接近目标一分钱内且有空头抵抗时减仓；防守已失守、价差超出边界、越过目标、无抵抗，以及后续严格等值或阴量不足时不触发",
+                "真实信号和图表标注、定向单股回测成交及历史前缀一致；注明模拟买入时关闭净收益风险比门槛，不冒充默认账户历史成交"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_c_equal_near_exit.py test_ordinary_wave_exit.py test_post_b_wave_exit.py test_wave_exhaustion_exit.py test_two_t_resistance_risk.py test_five_top_child_volume_exit.py test_whole_wave_entry.py test_outside_split_n.py",
+                    "status": "passed",
+                    "summary": "100项通过。真实先锋流水在07-06记录近等浪抵抗减仓风险、07-08生成EXIT；定向持仓07-06以7.98模拟减仓、07-08以7.07清零，单股回测、历史前缀与严格边界通过。"
+                },
+                {
+                    "command": "node --test tests/trade-reasons.test.mjs tests/annotations.test.mjs; vitest run topology-data.test.ts; Core修改4模块mypy/Core typecheck/build; Web lint/typecheck/build",
+                    "status": "passed",
+                    "summary": "50项Web成交说明/注释及2项拓扑测试通过；修改的4个可独立检查Core模块和既定4模块类型、Core sdist/wheel、Web lint（6条既有警告）、typecheck及生产构建通过。"
+                },
+                {
+                    "command": "harness:check; changed metadata/docs/tests/topology-data.ts prettier --check; JS syntax; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "状态、相关文件格式、JS语法、最终差异及代码索引复核通过。完整Core/Web套件、浏览器、外部分钟及默认账户全历史收益待独立验证；未运行Playwright，保留MONOREPO-183活动状态。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-227",
             "name": "five-top-child-volume-clear",
             "title": "五顶后放量双破昨日及前天子低清仓",

@@ -302,8 +302,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             },
             {
                 id: "hard-risk",
-                question: "放量倒 N、巨量反包、五顶后破子低、异常波段或压力突破受阻？",
-                detail: "V3 巨量高开强阴反包、放量倒 N、波段异常与趋势翻空可整仓退出。已知正 N 在此前交易日达到五顶或十满，随后阴线低点低于昨低及前天子低、收盘低于昨收，且量大于此前最近阴线时生成清仓信号；有持仓时当日收盘清空余仓。正 N 上攻巨量阴线压力区遇不利 K 通常全清；未回补跳空且收高时先减半，成交后首次收跌清余仓。持仓大幅上涨后盘中突破阴线压力高点并遇空头抵抗，后续首次不利 K 清仓。盘中突破至少 20 个交易日前的近 120 日未受空头抵抗阳线最高价，遇空头抵抗且收盘未站稳并出现不利 K 时先减半，成交后首次收低清余仓。",
+                question: "放量倒 N、巨量反包、五顶或近等浪空头抵抗后破位、异常波段？",
+                detail: "V3 巨量高开强阴反包、放量倒 N、波段异常与趋势翻空可整仓退出。已知正 N 在此前交易日达到五顶或十满，随后阴线低点低于昨低及前天子低、收盘低于昨收，且量大于此前最近阴线时生成清仓信号。强 A 的 C 浪首次接近等浪目标一分钱内遇空头抵抗后，后续首次低点与收盘双破昨日且量大于此前最近阴线时也生成清仓信号；有持仓时当日收盘清空余仓。正 N 上攻巨量阴线压力区遇不利 K 通常全清；未回补跳空且收高时先减半，成交后首次收跌清余仓。持仓大幅上涨后盘中突破阴线压力高点并遇空头抵抗，后续首次不利 K 清仓。盘中突破至少 20 个交易日前的近 120 日未受空头抵抗阳线最高价，遇空头抵抗且收盘未站稳并出现不利 K 时先减半，成交后首次收低清余仓。",
                 source: "strategy_profiles.py · whole_wave_profile definition；wave_exhaustion_exit.py；trend_flip_exit.py；pressure_exit.py",
                 yes: "按对应风险全清或减仓",
                 no: "检查二级 C 浪抵抗失败",
@@ -334,8 +334,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             },
             {
                 id: "partial",
-                question: "压力区未补跳空、小 N、放量下跌、普通 C 异常或减仓后倒 N 触发？",
-                detail: "压力区不利 K 若跳空未回补且收高，先卖出当前持仓 50%；小 N 可累计减仓 30%，放量下跌累计 70%，普通 A 的 C 浪异常累计 80%，减仓后倒 N 累计 90%。各比例受已有卖出和整仓优先级约束。",
+                question: "压力区未补跳空、小 N、放量下跌、C 浪空头抵抗或减仓后倒 N 触发？",
+                detail: "压力区不利 K 若跳空未回补且收高，先卖出当前持仓 50%；小 N 可累计减仓 30%，放量下跌累计 70%，普通 A 的 C 浪异常累计 80%。已知强 A 的 C 浪等浪目标首次接近一分钱内且出现空头抵抗 K 线时，不要求当日放量，按配置的累计目标减仓（默认 80%）。减仓后倒 N 可累计减仓 90%。各比例受已有卖出和整仓优先级约束。",
                 source: "strategy_profiles.py · whole_wave_profile definition；integrated_strategy.py",
                 yes: "记录对应累计减仓目标",
                 no: "继续持仓",
@@ -403,4 +403,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "59ac2b88979b5bad59dace1d80360e5f537568ae832af5c64709a588dbcfc16d";
+export const strategySourceDigest = "2e16fdf694121e47a09a176e85da245d44c327e99053b788385a9ff631f48433";

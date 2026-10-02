@@ -10,7 +10,8 @@ from typing import Callable
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
 from wavequant.domain.strategies.wave_exhaustion_exit import (
-    FIVE_TOP_CHILD_VOLUME_CLEAR, observe_five_top_child_volume_clear, observe_wave_exhaustion,
+    C_EQUAL_NEAR_RESISTANCE_REDUCE, C_EQUAL_NEAR_VOLUME_CLEAR, FIVE_TOP_CHILD_VOLUME_CLEAR,
+    observe_c_equal_near_risk, observe_five_top_child_volume_clear, observe_wave_exhaustion,
 )
 from wavequant.domain.strategies.two_t_resistance import two_t_resistance_history
 from wavequant.domain.strategies.pressure_exit import (
@@ -169,6 +170,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
     target_resistance = {symbol: two_t_resistance_history(
         history, (wave_events or {}).get(symbol, []), reduction_fraction=config.wave_exhaustion_reduction)
         if config.wave_exhaustion_exit else {} for symbol, history in grouped.items()}
+    c_equal_events = {symbol: [event for event in (wave_events or {}).get(symbol, [])
+                               if event.get('event') == 'wave_c_equal_target'] for symbol in grouped}
     wave_signal_lookup: dict[str, dict[int, list[dict]]] = {symbol: {} for symbol in grouped}
     for symbol, history in grouped.items():
         for event in (wave_events or {}).get(symbol, []):
@@ -320,7 +323,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             if pending_exit[symbol] in ('wave_volume_shadows_reduce', 'wave_gap_reversal_reduce',
                                         'wave_upper_rejection_reduce', 'wave_target_upper_shadow_reduce',
                                         'wave_ordinary_equal_upper_shadow_reduce', 'wave_c_0618_upper_shadow_reduce',
-                                        'wave_target_bearish_reduce', 'wave_two_t_resistance_reduce'):
+                                        'wave_target_bearish_reduce', 'wave_two_t_resistance_reduce',
+                                        C_EQUAL_NEAR_RESISTANCE_REDUCE):
                 pos.wave_reduced = True
             if pending_exit[symbol] == 'trend_last_fall_high_upper_shadow_reduce':
                 pos.trend_last_fall_high_reduced = True
@@ -637,6 +641,15 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                     wave_exit = target_risk
                 elif wave_exit is None and not pos.wave_reduced:
                     wave_exit = target_risk
+            c_equal_risk = (observe_c_equal_near_risk(
+                grouped[symbol], i, c_equal_events[symbol],
+                reduction_fraction=config.wave_exhaustion_reduction)
+                if config.wave_exhaustion_exit else None)
+            if c_equal_risk is not None:
+                if c_equal_risk['exit_fraction'] == 1.0 and (wave_exit is None or wave_exit['exit_fraction'] < 1.0):
+                    wave_exit = c_equal_risk
+                elif wave_exit is None and not pos.wave_reduced:
+                    wave_exit = c_equal_risk
             pressure = trend_flip_risks[symbol].get(i) or pressure_risks[symbol].get(i) or record_high_risks[symbol].get(i)
             if (pressure is not None and pressure['reason'].startswith('trend_last_fall_high_')
                     and pos.entry_index > pressure['trend_warning_index']):
@@ -801,18 +814,26 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                             execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
                         elif any(reason in signal.reason.split('|') for reason in
                                  ('wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
-                                  FIVE_TOP_CHILD_VOLUME_CLEAR)):
+                                  FIVE_TOP_CHILD_VOLUME_CLEAR, C_EQUAL_NEAR_VOLUME_CLEAR)):
                             i, bar = current[symbol]
                             wave_clear_symbols.add(symbol)
                             pending_exit[symbol] = next(reason for reason in signal.reason.split('|') if reason in
                                 ('wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
-                                 FIVE_TOP_CHILD_VOLUME_CLEAR))
+                                 FIVE_TOP_CHILD_VOLUME_CLEAR, C_EQUAL_NEAR_VOLUME_CLEAR))
                             if pending_exit[symbol] == FIVE_TOP_CHILD_VOLUME_CLEAR:
                                 known_events = sorted((wave_events or {}).get(symbol, []),
                                                       key=lambda event: event['bar_index'])
                                 five_top_evidence = observe_five_top_child_volume_clear(grouped[symbol], i, known_events)
                                 if five_top_evidence is not None:
                                     exit_evidence[symbol].update(five_top_evidence)
+                            elif pending_exit[symbol] == C_EQUAL_NEAR_VOLUME_CLEAR:
+                                c_equal_evidence = observe_c_equal_near_risk(
+                                    grouped[symbol], i, c_equal_events[symbol],
+                                    reduction_fraction=config.wave_exhaustion_reduction)
+                                if c_equal_evidence is not None:
+                                    exit_evidence[symbol].update(
+                                        {key: value for key, value in c_equal_evidence.items()
+                                         if key != 'reason'})
                             exit_evidence[symbol].update(execution_model='same_day_close', exit_fraction=1.0)
                             execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
             elif symbol in positions:

@@ -80,7 +80,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v78_' + variant
+    config['profile_version'] = 'gap_up_bullish_squeeze_v79_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -108,6 +108,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         c_wave_extensions='after_a_reaches_original_n_one_p_b_holds_defense_project_b_plus_0_618_and_1_times_whole_a_strong_a_can_add_1_618_and_2_618_targets_are_observations_not_exit',
         ordinary_a_rebound='one_p_reached_below_two_t_then_defended_b_bullish_close_above_known_pullback_high_equal_a_target_no_strong_extensions',
         ordinary_c_equal_exit='v3_wave_entry_target_exit_replaced_by_post_b_new_positive_n',
+        strong_c_equal_near_exit='known_strong_a_c_equal_first_approach_within_one_cent_and_bear_resistance_cumulative_80_same_close_then_first_later_low_lt_previous_low_close_lt_previous_close_volume_gt_last_bearish_global_exit_same_close_clear',
         wave_continuation_entry='qualified_n_two_t_defended_b_gap_or_volume_body_breakout_or_strong_a_two_t_close_break_next_resistance_midbody_closes_held_volume_close_rebreaks_a_high',
         consolidation_entry='larger_n_defense_held_two_closes_under_n_high_then_gap_open_and_cumulative_volume_gt_previous_on_break_above_n_high',
         wave_exhaustion_exit='wave_entry_uses_positive_n_with_origin_at_or_after_confirmed_b_low_then_own_one_p_two_t_five_top_ten_full_for_abnormal_candle_risk',
