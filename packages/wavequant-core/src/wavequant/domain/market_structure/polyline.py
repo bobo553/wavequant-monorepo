@@ -125,6 +125,8 @@ def _containment_path(first: Bar, second: Bar, *, first_index: int, outside: boo
     raw = (*extremes(first, first_index), *extremes(second, first_index + 1))
     simplified: list[LinePoint] = []
     for vertex in raw:
+        if simplified and simplified[-1].price == vertex.price:
+            continue
         while (len(simplified) > 1 and
                (simplified[-1].price - simplified[-2].price) * (vertex.price - simplified[-1].price) > 0):
             simplified.pop()
