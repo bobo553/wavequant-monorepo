@@ -107,11 +107,11 @@ def _observe_ordinary_c(
             bar = bars[index]
             if (warning_index is not None and bar.close < bars[index - 1].close
                     and bar.low < bars[warning_index].low and bar.close < bars[warning_index].close):
-                warning = bars[warning_index]
+                shadow_warning = bars[warning_index]
                 return dict(
                     evidence, reason="wave_c_0618_shadow_break_clear", exit_fraction=1.0,
-                    abnormal_date=warning.timestamp.date().isoformat(),
-                    abnormal_low=warning.low, abnormal_close=warning.close,
+                    abnormal_date=shadow_warning.timestamp.date().isoformat(),
+                    abnormal_low=shadow_warning.low, abnormal_close=shadow_warning.close,
                     observed_low=bar.low, observed_close=bar.close,
                     previous_close=bars[index - 1].close,
                 )
@@ -183,7 +183,7 @@ def _observe_target_candle(
     """
     if index < 1:
         return None
-    active = {}
+    active: dict[tuple[int, int | None], tuple[dict, str]] = {}
     invalidated = set()
     for event in sorted(events, key=lambda e: e["bar_index"]):
         if event["bar_index"] > index:
@@ -245,6 +245,10 @@ def _observe_target_candle(
             wave_b_low=reached["b_low"],
             wave_equal_target=reached["target"],
         )
+    if stage in ("five_top", "ten_full"):
+        child_break = _five_top_child_volume_break(bars, index)
+        if child_break is not None:
+            return dict(evidence, **child_break, reason="wave_five_top_child_volume_clear", exit_fraction=1.0)
     if (
         previous.close > previous.open
         and body >= config.wave_engulf_min_body * bar.open
@@ -353,3 +357,31 @@ def _observe_target_candle(
             exit_target_fraction=config.wave_exhaustion_reduction,
         )
     return None
+
+
+def _five_top_child_volume_break(bars: list[Bar], index: int) -> dict | None:
+    """The child two sessions ago may be bullish; compare volume to the last bearish bar."""
+    if index < 3:
+        return None
+    mother, child, previous, bar = bars[index - 3:index + 1]
+    if (
+        mother.close == mother.open
+        or child.high > mother.high
+        or child.low < mother.low
+        or (child.high == mother.high and child.low == mother.low)
+        or bar.close >= bar.open
+        or bar.low >= previous.low
+        or bar.close >= previous.close
+        or bar.low >= child.low
+    ):
+        return None
+    reference = next((bars[j] for j in range(index - 1, -1, -1)
+                      if bars[j].close < bars[j].open), None)
+    if reference is None or reference.volume <= 0 or bar.volume <= reference.volume:
+        return None
+    return dict(
+        mother_date=mother.timestamp.date().isoformat(), mother_high=mother.high, mother_low=mother.low,
+        child_date=child.timestamp.date().isoformat(), child_high=child.high, child_low=child.low,
+        child_close=child.close, previous_low=previous.low, observed_low=bar.low,
+        bearish_reference_date=reference.timestamp.date().isoformat(), bearish_reference_volume=reference.volume,
+    )
