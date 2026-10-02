@@ -343,6 +343,39 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
         ],
     },
     {
+        id: "nested-breakout",
+        label: "二级后一级交替突破",
+        description: "V3 新增买入通道：两级交替低点已依次确认，放量阳线突破时可由当日正 N 完成入场确认。",
+        mode: "gates",
+        completion: "生成一次 LONG，进入原有执行与成交门禁",
+        gates: [
+            {
+                id: "nested-lows",
+                question: "先二级、后一级交替低点在前日已确认且有效？",
+                detail: "发生日期与确认日期分别严格先后；一级正 N 须对应其整段起点及交替低点，期间不得跌破任一级交替低点。",
+                source: "nested_alternation_breakout.py；chart_entry_history.py",
+                yes: "检查当日量价突破",
+                no: "等待两级低点确认或重建结构",
+            },
+            {
+                id: "nested-volume-price",
+                question: "阳线放量收盘突破一级翻多高及全部整理高？",
+                detail: "成交量严格大于前日正成交量，收阳且收盘严格突破此前最高价；有明显长上影抵抗时不触发，不要求开盘跳空。",
+                source: "nested_alternation_breakout.py · nested_alternation_breakout",
+                yes: "检查其他风险与测幅目标",
+                no: "不生成该通道买点",
+            },
+            {
+                id: "nested-risk",
+                question: "倒 N、其他压力、整仓风险及最近目标检查通过？",
+                detail: "当日正 N 可以确认买点；沿用其原防守和最近未达到目标。两低组合只生成一次买入信号，成交仍按费用、仓位、流动性及涨停设置处理。",
+                source: "integrated_strategy.py · generate_system_signals；backtest.py",
+                yes: "二级后一级交替突破 LONG",
+                no: "保留拒绝原因，等待后续有效信号",
+            },
+        ],
+    },
+    {
         id: "shallow-base",
         label: "浅回撤待选突破",
         description:
@@ -395,6 +428,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
 ] as const;
 
 export const topologyProfileNotes = [
+    "V3 新增二级后一级交替低点放量突破：两级低点在前日已依次确认且有效，放量阳线收盘突破一级翻多高及整理高，当日正 N 完成即可确认买点；沿用原防守、测幅与成交检查。",
     "V3 默认：第一类为二/三级确认交替后新正 N；第二类浅回撤 ≤1/3。确认日量能严格大于前日；信号阶段不做毛盈亏比前置筛选。",
     "V3 幅度方案：第一类可要求 >2/3 或 >1/2，第二类可选 ≤1/3、≤1/2 或最低收盘价 <1/2；具体边界由 WAVE_PROFILES 决定。",
     "V3 独立浅回撤横盘突破默认开启、可关闭：0.618 ≤ 回撤 < 2/3 的一级来源低点先记为交替待选，守低窄幅横盘至少 40 根 K 线后，放量大阳线收盘突破整段横盘前高并满足风险收益门槛才生成买点。",
@@ -403,4 +437,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "2e16fdf694121e47a09a176e85da245d44c327e99053b788385a9ff631f48433";
+export const strategySourceDigest = "8add4c421e689b28dba3cb817f11ea455392aa8335f20e0a845782141651e495";

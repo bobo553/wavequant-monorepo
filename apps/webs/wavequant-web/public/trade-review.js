@@ -64,7 +64,10 @@ export function appendTradeEvidence(panel, item, openPosition = null) {
         add(
             `正 N ${squeeze.attack_date} → 抵抗 K ${squeeze.prior_bar_date} → 该回不回：确认日最低 ${num(squeeze.confirmation_low, 4)} 守住虚拟低 ${num(squeeze.prior_virtual_low, 4)}，收盘 ${num(squeeze.confirmation_close, 4)} 高于前收 ${num(squeeze.prior_close, 4)}。`,
         );
-    if (proof?.buy_point_type === "shallow_base_breakout") {
+    if (proof?.buy_point_type === "nested_alternation_breakout") {
+        add(`二级交替低点 ${proof.secondary_low_date}（${proof.secondary_known_date} 确认） → 一级交替低点 ${proof.primary_low_date}（${proof.primary_known_date} 确认）。`);
+        add(`守住两级低点，放量阳线收盘 ${num(proof.confirmation_close, 4)} > 一级翻多及整理高 ${num(proof.breakout_high, 4)}；当日正 N 完成即可确认买点。`);
+    } else if (proof?.buy_point_type === "shallow_base_breakout") {
         add(`${proof.trend_level} 级交替待选 · 横盘放量突破；待选低点不作为正式二/三级交替点。`);
     } else if (proof?.buy_point_type === "multilevel_breakout_squeeze") {
         add(

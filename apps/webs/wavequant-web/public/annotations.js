@@ -56,6 +56,7 @@ const REASONS = {
     system_shallow_base_breakout: "0.618 浅回撤待选后横盘放量突破",
     system_wave_push_gap: "转浪再攻击：A 浪回调守低后启动 C 浪",
     system_multilevel_breakout_squeeze: "正 N 与高一级波段突破叠加轧空",
+    system_nested_alternation_breakout: "二级后一级交替低点放量阳线突破",
     system_mature_shallow_squeeze: "第二类 · 重点：完整多头浅回撤后正 N 轧空",
     hierarchy_transition_not_ready: "一级及以上翻多交替未齐备",
     mature_pullback_sequence_not_ready: "完整多头之后的新回撤时序未齐备",

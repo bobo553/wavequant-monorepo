@@ -4,6 +4,43 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-230",
+            "name": "secondary-primary-volume-breakout-entry",
+            "title": "二级后一级交替放量突破买入",
+            "description": "已知且有效的二级交替低点之后再确认一级交替低点，守住两低且阳线放量收盘突破一级翻多高及整理高时，当天正N完成即可确认买点。",
+            "scope": "Core全局V3信号、同源证据与Web买入说明；华瓷2024年1月历史前缀回归",
+            "dependencies": ["MONOREPO-229"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "华瓷2023-10-23二级低点11-08可知；12-28一级低点2024-01-05可知；01-17量4557338且收14.9195突破13.9041，当天生成LONG",
+                "两低严格先后且确认先于突破日，原低与一级低未破；放量、阳线、突破均严格比较，拒绝未来确认、失效、抵抗及错配N",
+                "沿用测幅目标、防守、倒N、其他压力和执行约束；旧跳空路径保持，同一低点组合不重复入场，历史前缀一致",
+                "图表及成交证据说明二级低点、一级低点、可知日、突破高和量；相关定向测试、类型与构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "华瓷冻结日线真实信号、历史前缀及缓存未完成日线重放",
+                    "status": "passed",
+                    "summary": "华瓷上市至2024-01-19本地日线冻结夹具：01-17生成LONG；截至01-17前缀及缓存部分日线重放一致，后两日不重复，N延续仍等后续真实轧空"
+                },
+                {
+                    "command": "Core pytest 两组相关测试：68项、41项",
+                    "status": "passed",
+                    "summary": "Core定向68项及41项通过，含两级先后、严格量价、守低、长上影、失效/未来确认、错配N及旧跳空、倒N、收盘执行；默认净收益风险比保留，非一字涨停关闭时取消买单"
+                },
+                {
+                    "command": "Web node定向51项、拓扑2项、lint/typecheck/build；Core严格新增模块mypy、既定typecheck/build与独立安装",
+                    "status": "passed",
+                    "summary": "Web成交说明/注释51项、拓扑2项、lint/typecheck/生产构建通过，6条既有lint警告；新增规则严格mypy、Core既定四模块typecheck、sdist/wheel与独立安装导入通过"
+                },
+                {
+                    "command": "mypy --follow-imports=silent integrated_strategy.py trade_evidence.py strategy_profiles.py secondary_resistance.py",
+                    "status": "passed",
+                    "summary": "后续补齐容器/序列类型、拆开N/转折构造参数与同名不同类型变量、显式收窄可空证据，原51条类型错误已修复；四个文件检查通过。89项相关策略回归通过。 80项受影响的转浪、分级压力、浅回撤及反转回归通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-229",
             "name": "ambiguous-structure-gap-observation",
             "title": "结构未解退出遇高开收高先观察",
