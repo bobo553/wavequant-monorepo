@@ -7419,25 +7419,26 @@
             "id": "MONOREPO-232",
             "name": "xianfeng-2020-c-wave-projection",
             "title": "先锋新材2020年C浪测幅与图表目标",
-            "description": "A浪正N起点低收双破才撤销B段测幅，C浪0.618和等浪目标从B日期画出。",
+            "description": "讲义折线补足早期正N图表观察，A浪正N起点低收双破才撤销B段测幅，自动从B日期画出C浪目标。",
             "scope": "Web图表测幅观察、目标线及定向回归",
             "dependencies": ["MONOREPO-215"],
             "status": "done",
             "acceptanceCriteria": [
                 "2020-02-04正N起点、03-02 A高、04-28 B低给出4.0508与4.62元两档观察位",
                 "B段仅在同一K线最低价和收盘价都严格跌破正N起点时撤销测幅",
-                "选定A高点后从B日期画出目标，遵守历史截面并维持现有交易入场规则"
+                "2020-04-28图表自动识别02-10正N与02-17轧空式续攻，从B日期画出目标；手动选定A高点也使用同一结构",
+                "二级A高须在当前历史截面已确认，保持自动交易入场与回测规则不变"
             ],
             "verification": [
                 {
-                    "command": "node --test wave-c-projection.test.mjs target-level-guides.test.mjs",
+                    "command": "node --test annotations.test.mjs target-level-guides.test.mjs wave-c-projection.test.mjs",
                     "status": "passed",
-                    "summary": "15项通过，含先锋2020五个给定日期、双破拒绝、B日期锚定和历史截断。"
+                    "summary": "46项通过，含先锋2020真实65根日线、早期正N与放量续攻、双破拒绝、A高确认日期和B日期锚定。"
                 },
                 {
                     "command": "pnpm --filter wavequant-web lint; typecheck; build; git diff --check",
                     "status": "passed",
-                    "summary": "Web检查与构建通过；lint有6条既有环境变量声明警告。"
+                    "summary": "Web lint无错误（6条既有警告）、typecheck、生产构建及Node语法检查通过；public目录JS由现有ESLint配置忽略。"
                 }
             ]
         }
