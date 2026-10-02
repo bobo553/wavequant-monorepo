@@ -30,8 +30,8 @@ import {
     waveCProjectionAnnotation,
     waveCProjectionEvidenceAnnotations,
     waveCProjectionForSelection,
-    waveCProjectionFromStructure,
     waveCProjectionLegs,
+    waveCProjectionsFromStructure,
 } from "./wave-c-projection.js";
 import { WaveEndpointOverlay, selectedWaveEndpoints } from "./wave-endpoint-overlay.js";
 
@@ -164,6 +164,7 @@ export class PriceChart {
         this.geometryVisible = false;
         this.annotations = [];
         this.autoWaveProjection = null;
+        this.autoWaveProjections = [];
         this.autoWaveEvidence = [];
         this.options = {
             signals: true,
@@ -324,7 +325,7 @@ export class PriceChart {
                           this.data.bars,
                           this.theory.events,
                           p.time,
-                          this.autoWaveProjection?.raw,
+                          this.autoWaveProjections.find((item) => item.raw.aTime === p.time)?.raw,
                       )
                     : null;
             if (!projection) {
@@ -332,9 +333,8 @@ export class PriceChart {
                 return;
             }
             const selected =
-                this.autoWaveProjection?.raw === projection
-                    ? this.autoWaveProjection
-                    : waveCProjectionAnnotation(projection);
+                this.autoWaveProjections.find((item) => item.raw === projection) ||
+                waveCProjectionAnnotation(projection);
             this.selected = selected;
             this.waveEndpointOverlay.setPoints([]);
             this.drawLevels();
@@ -356,6 +356,7 @@ export class PriceChart {
         this.geometryVisible = false;
         this.selected = null;
         this.autoWaveProjection = null;
+        this.autoWaveProjections = [];
         this.autoWaveEvidence = [];
         this.waveEndpointOverlay.setPoints([]);
         this.tooltip.hidden = true;
@@ -408,7 +409,7 @@ export class PriceChart {
     setAnnotationOptions(options) {
         Object.assign(this.options, options);
         this.annotations = buildAnnotations(this.data, this.theory);
-        if (this.autoWaveProjection) this.annotations.push(...this.autoWaveEvidence, this.autoWaveProjection);
+        this.annotations.push(...this.autoWaveEvidence, ...this.autoWaveProjections);
         this.drawWaveAbPath();
         this.refreshMarkers();
         this.drawLevels();
@@ -426,6 +427,10 @@ export class PriceChart {
         const bars = this.data.bars,
             from = bars[Math.max(0, Math.floor(range?.from || 0))]?.time || bars[0].time;
         const to = bars[Math.min(bars.length - 1, Math.ceil(range?.to ?? bars.length - 1))]?.time || bars.at(-1).time;
+        const previousProjection = this.autoWaveProjection;
+        this.autoWaveProjection =
+            this.autoWaveProjections.filter((item) => item.raw.originTime <= to && item.time >= from).at(-1) || null;
+        if (previousProjection !== this.autoWaveProjection) this.drawLevels();
         const span = range ? range.to - range.from : 140;
         // Python returns the authoritative continuous level-1 paths.  Rebuilding
         // business pivots in the browser would make level-2 input disagree with
@@ -574,6 +579,14 @@ export class PriceChart {
         this.container.dataset.markerCount = this.groups.length;
         this.container.dataset.tertiaryAbcCount = String(
             this.groups.flatMap((group) => group.items).filter((item) => item.category === "tertiary-abc").length,
+        );
+        this.container.dataset.waveAbcCount = String(
+            new Set(
+                this.groups
+                    .flatMap((group) => group.items)
+                    .filter((item) => item.category === "wave-projection")
+                    .map((item) => item.raw.aTime),
+            ).size,
         );
         this.container.dataset.lastFallHighCount = String(trendKeys.length);
         this.container.dataset.bearToBullHighCount = String(this.options.bullFlipHighs ? bullFlipHighs.length : 0);
@@ -864,9 +877,10 @@ export class PriceChart {
     }
     drawWaveAbPath() {
         this.clearWaveAbPath();
-        const projection = this.autoWaveProjection?.raw;
-        if (!this.options.tertiaryAbc || !this.geometryVisible || !projection?.originTime || !this.data) return;
-        for (const { title, color, points } of waveCProjectionLegs(projection)) {
+        if (!this.options.tertiaryAbc || !this.geometryVisible || !this.data) return;
+        for (const { title, color, points } of this.autoWaveProjections.flatMap((item) =>
+            waveCProjectionLegs(item.raw),
+        )) {
             const series = this.chart.addSeries(L.LineSeries, {
                 color,
                 lineStyle: 2,
@@ -1001,11 +1015,12 @@ export class PriceChart {
         this.theory = theory;
         this.clearTheory();
         this.geometryVisible = geometry;
-        const projection = theory && this.data ? waveCProjectionFromStructure(this.data.bars, theory) : null;
-        this.autoWaveProjection = projection ? waveCProjectionAnnotation(projection) : null;
-        this.autoWaveEvidence = projection ? waveCProjectionEvidenceAnnotations(projection) : [];
+        const projections = theory && this.data ? waveCProjectionsFromStructure(this.data.bars, theory) : [];
+        this.autoWaveProjections = projections.map(waveCProjectionAnnotation);
+        this.autoWaveProjection = this.autoWaveProjections.at(-1) || null;
+        this.autoWaveEvidence = projections.flatMap(waveCProjectionEvidenceAnnotations);
         this.annotations = buildAnnotations(this.data, theory);
-        if (this.autoWaveProjection) this.annotations.push(...this.autoWaveEvidence, this.autoWaveProjection);
+        this.annotations.push(...this.autoWaveEvidence, ...this.autoWaveProjections);
         this.drawWaveAbPath();
         this.refreshMarkers();
         this.drawLevels();
@@ -1021,6 +1036,20 @@ export class PriceChart {
         this.chart
             .timeScale()
             .setVisibleLogicalRange({ from: Math.max(0, i - 55), to: Math.min(this.data.bars.length + 3, i + 30) });
+    }
+    focusWaveProjection() {
+        const item = this.autoWaveProjection || this.autoWaveProjections.at(-1);
+        if (!item || !this.data) return false;
+        const first = this.data.bars.findIndex((bar) => bar.time === item.raw.originTime);
+        const last = this.data.bars.findIndex((bar) => bar.time === item.time);
+        if (first < 0 || last < first) return false;
+        this.chart.timeScale().setVisibleLogicalRange({
+            from: Math.max(0, first - 8),
+            to: Math.min(this.data.bars.length + 3, last + 18),
+        });
+        this.refreshMarkers();
+        this.selectAnnotation(item.id, false);
+        return true;
     }
     focusTrade(time) {
         const index = this.data?.bars.findIndex((bar) => bar.time === time) ?? -1;

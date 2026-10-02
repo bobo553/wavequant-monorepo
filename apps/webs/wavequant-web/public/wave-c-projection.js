@@ -66,6 +66,7 @@ export function waveCProjectionLevels(projection) {
             stage: "c_0618",
             available_at: projection.bTime,
             anchor_at: projection.bTime,
+            ...(projection.targetValidUntil ? { valid_until: projection.targetValidUntil } : {}),
         },
         {
             name: "C 浪目标 1×A",
@@ -73,20 +74,86 @@ export function waveCProjectionLevels(projection) {
             stage: "c_equal",
             available_at: projection.bTime,
             anchor_at: projection.bTime,
+            ...(projection.targetValidUntil ? { valid_until: projection.targetValidUntil } : {}),
         },
     ];
 }
 
-/** Observe an early lecture-path N that the stricter strategy event reducer may omit. */
-export function waveCProjectionFromStructure(bars, theory) {
+function knownPoint(point, kind, asof) {
+    return (
+        point?.kind === kind &&
+        Number.isFinite(point.value) &&
+        typeof point.time === "string" &&
+        typeof point.available_at === "string" &&
+        point.time <= point.available_at &&
+        point.available_at <= asof
+    );
+}
+
+/** Active landmarks omit older flips; their confirmed evidence still belongs on a historical chart. */
+function historicalHighs(theory, asof) {
+    const candidates = new Map();
+    const identity = (high) => `${high.time}:${high.value}:${high.confirmed_low?.time}:${high.confirmed_low?.value}`;
+    for (const stroke of theory?.secondary_trends?.strokes || []) {
+        for (const low of stroke.points || []) {
+            const high = low.confirmed_by;
+            const key = low.broken_key;
+            if (
+                low.flip !== "翻空为多" ||
+                !knownPoint(low, "L", asof) ||
+                !knownPoint(high, "H", asof) ||
+                !knownPoint(key, "H", asof) ||
+                low.time >= high.time ||
+                high.value <= key.value
+            )
+                continue;
+            const formalHigh = stroke.points.find(
+                (point) => point.kind === "H" && point.time === high.time && point.value === high.value,
+            );
+            const completedB =
+                formalHigh?.flip === "翻多为空" &&
+                knownPoint(formalHigh, "H", asof) &&
+                knownPoint(formalHigh.confirmed_by, "L", asof) &&
+                formalHigh.confirmed_by.time > high.time
+                    ? {
+                          ...formalHigh.confirmed_by,
+                          available_at: [formalHigh.available_at, formalHigh.confirmed_by.available_at].sort().at(-1),
+                      }
+                    : null;
+            const candidate = {
+                ...high,
+                confirmed_low: low,
+                available_at: [low.available_at, high.available_at].sort().at(-1),
+                completedB,
+            };
+            candidates.set(identity(candidate), candidate);
+        }
+    }
+    for (const high of theory?.secondary_trends?.bear_to_bull_highs || []) {
+        const key = identity(high);
+        candidates.set(key, { ...candidates.get(key), ...high });
+    }
+    return [...candidates.values()].sort((left, right) => left.time.localeCompare(right.time));
+}
+
+/** Observe early lecture-path Ns independently from the stricter strategy event reducer. */
+export function waveCProjectionsFromStructure(bars, theory) {
     const asof = theory?.asof || bars.at(-1)?.time;
     const visibleBars = bars.filter((bar) => bar.time <= asof);
     const byTime = new Map(visibleBars.map((bar, index) => [bar.time, { bar, index }]));
-    const highs = theory?.secondary_trends?.bear_to_bull_highs || [];
+    const highs = historicalHighs(theory, asof);
     const strokes = theory?.lecture_drawing?.strokes || [];
-    for (const high of [...highs].reverse()) {
+    const projections = [];
+    for (const high of highs) {
         const a = byTime.get(high.time);
         if (!a || high.available_at > asof || high.value !== a.bar.high) continue;
+        const completedB = high.completedB;
+        if (completedB && completedB.value !== byTime.get(completedB.time)?.bar.low) continue;
+        // A confirmed B fixes this historical group; a later wave cannot move or erase its endpoints.
+        const projectionBars = completedB
+            ? visibleBars.filter((bar) => bar.time <= completedB.available_at)
+            : visibleBars;
+        let found = null;
         for (const stroke of strokes) {
             const points = stroke.points || [];
             for (let i = 0; i < points.length - 3; i++) {
@@ -157,20 +224,44 @@ export function waveCProjectionFromStructure(bars, theory) {
                     shape: [{ time: origin.time, value: origin.value }],
                     levels: [{ name: "1P 投影", price: oneP }],
                 };
-                const projection = waveCProjection(visibleBars, [event], high.time);
-                if (projection)
-                    return {
+                const projection = waveCProjection(projectionBars, [event], high.time);
+                if (
+                    projection &&
+                    (!completedB || (projection.bTime === completedB.time && projection.bLow === completedB.value))
+                ) {
+                    found = {
                         ...projection,
                         originTime: origin.time,
                         nHigh: attack.value,
                         squeezeTime,
                         squeezeHigh,
                         aKnownAt: high.available_at,
+                        ...(completedB ? { bKnownAt: completedB.available_at } : {}),
                     };
+                    if (completedB) {
+                        const failedIndex = visibleBars.findIndex(
+                            (bar) =>
+                                bar.time > completedB.available_at &&
+                                bar.low < projection.origin &&
+                                bar.close < projection.origin,
+                        );
+                        if (failedIndex > 0) {
+                            found.invalidatedAt = visibleBars[failedIndex].time;
+                            found.targetValidUntil = visibleBars[failedIndex - 1].time;
+                        }
+                    }
+                    break;
+                }
             }
+            if (found) break;
         }
+        if (found) projections.push(found);
     }
-    return null;
+    return projections;
+}
+
+export function waveCProjectionFromStructure(bars, theory) {
+    return waveCProjectionsFromStructure(bars, theory).at(-1) || null;
 }
 
 export function waveCProjectionForSelection(bars, events, selectedTime, structuralProjection) {
@@ -193,7 +284,7 @@ export function waveCProjectionAnnotation(projection) {
         color: "#e6ba64",
         priority: 200,
         title: "B / C",
-        description: `${observed ? "讲义折线结构观察：" : ""}正 N ${projection.nTime} 后${observed ? `，${projection.squeezeTime} 出现轧空式放量续攻` : ""}，A 浪高点 ${projection.aTime} ${num(projection.aHigh)} 高于一饱 ${num(projection.oneP)}；B 浪低点 ${projection.bTime} ${num(projection.bLow)}。B 期间未出现最低价与收盘价同时跌破正 N 起点 ${num(projection.origin)}。A 幅度 = A 高 − 正 N 起点；B 低 + 0.618×A = ${num(projection.target0618, 4)} 元，B 低 + 1×A = ${num(projection.target)} 元。仅为测幅观察，不保证到达。`,
+        description: `${observed ? "讲义折线结构观察：" : ""}正 N ${projection.nTime} 后${observed ? `，${projection.squeezeTime} 出现轧空式放量续攻` : ""}，A 浪高点 ${projection.aTime} ${num(projection.aHigh)} 高于一饱 ${num(projection.oneP)}；B 浪低点 ${projection.bTime} ${num(projection.bLow)}${projection.bKnownAt ? `，于 ${projection.bKnownAt} 确认并固定历史端点` : ""}。B 期间未出现最低价与收盘价同时跌破正 N 起点 ${num(projection.origin)}。A 幅度 = A 高 − 正 N 起点；B 低 + 0.618×A = ${num(projection.target0618, 4)} 元，B 低 + 1×A = ${num(projection.target)} 元。${projection.invalidatedAt ? `${projection.invalidatedAt} 最低价与收盘价双破起点，目标有效区间截至 ${projection.targetValidUntil}；保留历史标识。` : ""}仅为测幅观察，不保证到达。`,
         sourceLabel: observed ? "讲义折线起点与已确认二级 A 高 · 图表观察" : "所选 A 浪高点与当前历史截面 B 浪低点",
         levels: waveCProjectionLevels(projection),
         raw: projection,

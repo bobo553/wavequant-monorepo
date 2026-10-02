@@ -127,10 +127,10 @@ const chartLayers: readonly IChartLayer[] = [
     },
     {
         id: "show-tertiary-abc",
-        label: "三级 a/b/c 观察",
+        label: "ABC 波段 / C 目标",
         checked: true,
         description:
-            "b 最低价不低于 a 的 2/3 回撤价，或者 b 耗时长于 a 且 b 最低收盘低于 a 的 1/2 回撤价，再由正 N 与轧空确认提示 c 启动候选。讲义折线与已确认二级 A 高也可标出 A/B/C 测幅及两档目标；点击可查看完整证据。",
+            "标出 A 起点、正 N、轧空、A 顶和 B/C 起点；开启“折线 / N 字”连出 A/B 波段，开启“选中点位线”显示 C 浪两档目标。历史确认的 ABC 保留在原日期。也显示经正 N 与轧空确认的三级 c 启动候选；点击可查看证据。",
         tone: "orange",
     },
 ];
@@ -246,6 +246,9 @@ export function ResearchChart(): JSX.Element {
                         metaId="layer-toggle-count"
                     />
                     <ChartToolTrigger controls="chart-guide-popover" id="chart-guide-trigger" label="图例" meta="?" />
+                    <button id="focus-abc" className="subtle-button" type="button" disabled>
+                        定位 ABC
+                    </button>
                     <button id="focus-fill" className="subtle-button" aria-label="定位最近成交 ↗">
                         <span className="focus-fill-prefix">定位最近</span>成交 ↗
                     </button>
