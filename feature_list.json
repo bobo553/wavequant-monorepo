@@ -4,6 +4,32 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-229",
+            "name": "ambiguous-structure-gap-observation",
+            "title": "结构未解退出遇高开收高先观察",
+            "description": "全局持仓回测对单独的结构未解退出延迟判断：次日高开于昨收则观察收盘，收盘仍高于昨收时撤销该退出并等待后续卖出信号；收盘不高于昨收时当日收盘退出。止损及其他明确退出保持优先。",
+            "scope": "Core 全局持仓退出执行、国芳2026年9月真实日线与定向回归",
+            "dependencies": ["MONOREPO-228"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "国芳09-04结构未解信号在09-07开盘高于09-04收盘、收盘继续走高时不卖，保持持仓且无遗留待卖单",
+                "仅单独的结构未解退出适用观察；不开高、混合退出原因、当天止损和后续新卖出信号保留原优先级",
+                "高开但收盘不高于昨收时按当日已知收盘价退出，验证历史前缀与完整回放一致"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest 6 个相关测试模块；修改模块 mypy",
+                    "status": "passed",
+                    "summary": "142 项通过；国芳真实日线及策略生成的09-04结构未解信号回放到09-07无卖单，模拟持仓保留；修改模块 mypy 通过。"
+                },
+                {
+                    "command": "Core sdist/wheel build",
+                    "status": "passed",
+                    "summary": "Core源码包和wheel构建通过。完整Core/Web套件与浏览器未运行；既有华瓷08-26买点断言在未修改的main源码上同样失败，详见Core进度。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-228",
             "name": "c-equal-near-resistance-exit",
             "title": "C浪近等浪空头抵抗减仓及放量双破清仓",
