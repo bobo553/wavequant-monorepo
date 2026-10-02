@@ -107,6 +107,7 @@ const REASONS = {
     wave_bull_resistance_failed_clear: "目标阶段大阴线击穿多头抵抗低点，当日清仓",
     wave_bearish_engulf_clear: "目标阶段大阴线反包前日阳线，当日清仓",
     wave_five_top_child_volume_clear: "五顶后收阴，跌破昨低昨收及前天子低，量超过最近阴线，当日清空余仓",
+    wave_five_top_entry_too_close: "距已知五顶目标不超过原正 N 一箱，禁止新买入或加仓",
     volume_inverse_n_clear: "倒 N 确认且成交量超过前日，当日直接清仓",
     mother_child_inverse_n_low_break: "母子线的阳子线低点与收盘均被严格跌破，形成倒 N，当日收盘清仓",
     inverse_n_close_reduce_90: "收盘确认倒 N，当日累计减仓至原持仓 90%",
@@ -746,6 +747,11 @@ export function buildAnnotations(view, theory) {
             event.event === "entry_preflight_rejected" && Number.isFinite(event.gross_reward_risk)
                 ? `收盘收益风险比 ${num(event.gross_reward_risk)}，要求至少 ${num(event.required_reward_risk)}。`
                 : "";
+        const fiveTopRisk =
+            event.reason === "wave_five_top_entry_too_close" &&
+            [event.wave_five_top_target, event.wave_box_height, event.wave_remaining_reward].every(Number.isFinite)
+                ? `五顶目标 ${num(event.wave_five_top_target)} 元，原 N 箱高 ${num(event.wave_box_height)} 元，当前剩余空间 ${num(event.wave_remaining_reward)} 元。${event.wave_target_known_date ? `目标在 ${event.wave_target_known_date} 已知。` : ""}`
+                : "";
         items.push({
             id: event.id,
             time: event.available_at,
@@ -758,7 +764,7 @@ export function buildAnnotations(view, theory) {
                 abc || squeezeAlternation
                     ? abcDescription(event, view)
                     : candidateRejection
-                      ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}未产生买入信号，也未提交买单。`
+                      ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${fiveTopRisk}未产生买入信号，也未提交买单。`
                       : spec?.[1] || "当前引擎已记录的规则事件。",
             category: abc ? "tertiary-abc" : candidateRejection ? "entry-rejections" : spec?.[3] || "rules",
             priority: candidateRejection ? 155 : spec?.[2] || 10,

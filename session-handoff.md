@@ -1,5 +1,13 @@
 # Session Handoff
 
+## 2026-10-03 · MONOREPO-233 五顶附近禁买待合并
+
+会话 worktree `E:/WorkSpace/work/wavequant-xianfeng-c-target`、分支 `feat-先锋新材C浪目标` 已同步 main `ffb87cf`。新增 `five_top_entry.py` 用前一交易日已知五顶及冻结箱高检查全部V3买入通道；先锋2020-06-24目标5.42、箱高0.29、收盘5.20剩余0.22，原C浪候选被拒绝。Web说明保留这些价格及06-23目标已知日期；版本v81，常驻main尚未更新。
+
+定向Core 110通过、2失败：`test_full_global_pipeline_reenters_after_inverse_n_and_preserves_prefix` 与 `test_strong_a_body_confirmation_can_advance_to_later_higher_gap`。使用特性worktree的隔离Python、`PYTHONPATH` 指向未修改main的Core源码并复跑main测试文件，失败内容完全相同。新规则16项、Web33项及类型/构建通过。按用户AGENTS失败门禁不合并、不推送；MONOREPO-233保留backlog，未覆盖其他会话MONOREPO-231的唯一in-progress状态。完整Core/Web套件与真实浏览器未执行。
+
+用户说“06-05形成正N，06-24近五顶不要买入，06-05应符合清空条件”。已异步询问清空是否指06-05持仓退出、06-24或以后，以及触发依据，尚未回答。当前正式引擎N完成06-02、轧空确认06-05；给定06-05是放量阳线，不能擅自添加清仓。后续按用户澄清处理日期/条件，再解决或明确授权处理既有失败门禁并合并；之前的推送授权仅已完成ABC任务，未自动沿用于本次修改。
+
 ## 2026-10-03 · MONOREPO-231 已合并
 
 用户在了解两项 main 既有波段信号失败后明确要求合并。实现提交 `912ac09`、修正提交 `5a9655d` 已以 `40522c1` 合并到本地 main。119 项修复定向测试及类型/构建证据保留；`test_huaci_volume_double_break_closes_cycle_before_next_gap_buy` 和 `test_strong_a_body_confirmation_can_advance_to_later_higher_gap` 的 main 既有失败未修复，按本轮明确指示覆盖该门禁，未降低断言。

@@ -26,6 +26,7 @@ from .wave_exhaustion_exit import (
 )
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
 from .two_t_resistance import two_t_resistance_history
+from .five_top_entry import five_top_entry_history
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.wave_strength import StrengthScale, measure_strength
 from ..market_state.washout import WashoutPolicy, WashoutStage, observe_washout
@@ -709,6 +710,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         (event for event in audit if event["event"].startswith("wave_projection_")),
         key=lambda event: event["bar_index"],
     ) if whole_wave else []
+    five_top_entry_risks = five_top_entry_history(bars, projection_events) if whole_wave else {}
     c_equal_events: list[dict] = []
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
     bearish_attacks = {c['attack']: c for c in candidates if c['setup'].direction == Direction.DOWN}
@@ -720,6 +722,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             last_progress = percent
         exits = []
         target_risk = target_resistance.get(i)
+        five_top_entry_risk = five_top_entry_risks.get(i)
         if target_risk is not None:
             log(i, 'target_resistance_observed', **target_risk)
             if target_risk['exit_fraction'] == 1.0:
@@ -797,6 +800,9 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             counts['entry_candidate_evaluations'] += 1
             if target_risk is not None:
                 log(i, 'entry_rejected', **target_risk, candidate_attack=c['attack'])
+                continue
+            if five_top_entry_risk is not None:
+                log(i, 'entry_rejected', **five_top_entry_risk, candidate_attack=c['attack'])
                 continue
             dual = multilevel_proofs.get((c['attack'], i))
             same_pressure = (dual is not None and i in secondary_resistance
@@ -989,6 +995,10 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             break
         special = shallow_base_proofs.get(i)
         if special is not None and not any(s.bar_index == i and s.side == 'LONG' for s in signals):
+            if five_top_entry_risk is not None:
+                log(i, 'entry_rejected', **five_top_entry_risk, candidate_attack=i,
+                    candidate_channel='shallow_base_breakout')
+                continue
             signals.append(Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close,
                 cast(float, special['stop']), 'system_shallow_base_breakout', bar.timestamp,
                 cast(float, special['counter_ratio']), cast(float, special['breakout_volume_multiple']),

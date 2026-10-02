@@ -1,5 +1,8 @@
 # Progress
 
+- MONOREPO-233：补充全局 V3 五顶附近禁买。距上一交易日已知待满足五顶不超过原 N 一箱时，C 浪、新 N 与浅回撤突破均不生成 LONG；首次达到五顶当日不能靠升级十满绕过，失效或暂停后不沿用旧目标。版本 v81。真实先锋 2020-06-24 收盘 5.20、五顶 5.42、箱高 0.29、剩余 0.22，原买点已拦截；06-05 的轧空确认保留，正 N 完成日仍为 06-02。用户所说“06-05清空”的日期与规则待澄清，未添加猜测性卖出。
+- MONOREPO-233 验证：5 个相关 Core 文件 110 项通过、2 项失败；失败为 `test_full_global_pipeline_reenters_after_inverse_n_and_preserves_prefix`（通道预期 wave_push_gap，实际 transition_squeeze）和 `test_strong_a_body_confirmation_can_advance_to_later_higher_gap`（预期两次 wave_entry_path，实际无），未改动 main 源码复跑完全相同。本次新增 16 项通过；新模块 strict mypy、修改模块 mypy、Core 配置类型检查与源码包/wheel构建通过。初次构建缺少 setuptools，安装 pyproject 规定的 >=80,<81 后成功。按失败门禁暂不合并，完整 Core/Web 与浏览器验证留待独立时段。
+
 - MONOREPO-231 合并验收：用户在已知两项 main 既有波段信号失败后明确要求合并，修复已通过 `40522c1` 合并到 main；失败记录保留，未改变策略或降低断言。38 项 Core 定向测试及已记录的类型/构建通过。常驻 API 的引擎 `dbaa9a01700f` 与 main 源码指纹一致，已加载每次持仓归零分段、已清仓轮次最终最大回撤的新版口径；未推送。本次合并完成；因既有失败证据，Harness 要求 MONOREPO-231 继续保留待验证状态，MONOREPO-183 的原人工验收仍为 backlog。
 
 - MONOREPO-231 修正：持仓每次从 0 买入开始新轮次，到实际成交数量归零结束；分批卖出不重置，清仓标志不能代替数量。各轮成本 MAE 和最大亏损独立保留，清仓后本轮累计值归零，再次买入重新计算；最终最大回撤只取已清仓轮次中最深亏损，未清仓不混入。增加逐轮序号与因果观测曲线，修复极小浮点残余导致新轮成本继承的问题。版本 `holding_entry_cost_mae_cycle_v2`。
