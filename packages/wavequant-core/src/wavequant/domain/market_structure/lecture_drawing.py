@@ -8,7 +8,8 @@ vertices when a developing endpoint extends.
 """
 from zoneinfo import ZoneInfo
 
-from .polyline import observe_bar_relations, child_mother_path, mother_child_path, teaching_inside, PointKind
+from .polyline import (observe_bar_relations, child_mother_path, mother_child_path,
+                       teaching_inside, teaching_outside, PointKind)
 from .price_action import Direction
 
 
@@ -43,15 +44,17 @@ def lecture_drawing(bars, *, on_step=None):
         relation = observe_bar_relations(bars[i-1], bars[i])
         inside = relation.inside or ((relation.equal_high or relation.equal_low)
                                      and teaching_inside(bars[i-1], bars[i]))
+        outside = relation.outside or ((relation.equal_high or relation.equal_low)
+                                       and teaching_outside(bars[i-1], bars[i]))
         doji_inside_fallback = False
-        if relation.outside or inside:
-            teaching = (child_mother_path(bars[i-1], bars[i], child_index=i-1) if relation.outside else
+        if outside or inside:
+            teaching = (child_mother_path(bars[i-1], bars[i], child_index=i-1) if outside else
                         mother_child_path(bars[i-1], bars[i], mother_index=i-1))
             if teaching.vertices:
-                path_id = f'{"child-mother" if relation.outside else "mother-child"}-{i}'
+                path_id = f'{"child-mother" if outside else "mother-child"}-{i}'
                 evidence_points = [vertex(p.index, p.kind, 'teaching', i, p.ordinal)
                                    for p in teaching.vertices]
-                if relation.outside:
+                if outside:
                     teaching_paths.append(dict(id=path_id, kind='teaching', points=evidence_points,
                                                source=teaching.provenance,
                                                label='子母折线依据；已接入讲义主路径'))
@@ -85,6 +88,8 @@ def lecture_drawing(bars, *, on_step=None):
                         points.append(dict(next_point, state='teaching'))
                         continue
                     if points[-1]['value'] == next_point['value']:
+                        if outside and item.index == i and points[-1]['index'] == i-1:
+                            points[-1] = next_point
                         continue
                     if (len(points) > 1 and points[-1]['state'] == 'developing' and
                             (points[-1]['value'] - points[-2]['value']) *

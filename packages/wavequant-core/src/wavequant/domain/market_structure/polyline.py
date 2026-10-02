@@ -48,6 +48,13 @@ def teaching_inside(mother: Bar, child: Bar) -> bool:
             and (child.high < mother.high or child.low > mother.low))
 
 
+def teaching_outside(child: Bar, mother: Bar) -> bool:
+    """Treat one shared high or low as encompassing in the lecture drawing only."""
+    _ordered_pair(child, mother)
+    return (mother.high >= child.high and mother.low <= child.low
+            and (mother.high > child.high or mother.low < child.low))
+
+
 @dataclass(frozen=True)
 class LinePoint:
     index: int
@@ -109,7 +116,8 @@ class TeachingPath:
 def _containment_path(first: Bar, second: Bar, *, first_index: int, outside: bool) -> TeachingPath:
     relation = observe_bar_relations(first, second)
     _index(first_index, 'first index')
-    contained = relation.outside if outside else (relation.inside or teaching_inside(first, second))
+    contained = ((relation.outside or teaching_outside(first, second)) if outside else
+                 (relation.inside or teaching_inside(first, second)))
     if not contained:
         raise ValueError('containment in the requested order required')
     if first.open == first.close or second.open == second.close:
@@ -126,6 +134,8 @@ def _containment_path(first: Bar, second: Bar, *, first_index: int, outside: boo
     simplified: list[LinePoint] = []
     for vertex in raw:
         if simplified and simplified[-1].price == vertex.price:
+            if outside:
+                simplified[-1] = vertex
             continue
         while (len(simplified) > 1 and
                (simplified[-1].price - simplified[-2].price) * (vertex.price - simplified[-1].price) > 0):
