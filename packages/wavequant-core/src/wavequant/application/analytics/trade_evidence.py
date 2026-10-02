@@ -94,6 +94,17 @@ def enrich_ledger(bars, result, generated, strategy):
                     order['entry_conditions'][0]=check('分级双买点证据',proof,
                         '新正N突破已知二/三级波段高 → 守防守、放量收盘突破抵抗阶段高 → 双重轧空',chain)
                     order['entry_conditions'][2]=check('局部N回撤（仅展示）',signal.retracement,'不附加交替回撤过滤',None)
+                if proof and proof.get('buy_point_type')=='nested_alternation_breakout':
+                    chain=(proof['secondary_low_index']<proof['primary_low_index']
+                        and proof['secondary_known_index']<proof['primary_known_index']<signal.bar_index
+                        and proof['primary_low_index']==proof['alternation_low_index'])
+                    order['entry_conditions'][0]=check('二级后一级交替低点',proof,
+                        '已确认二级交替低点 → 已确认一级交替低点 → 放量阳线突破（当日正N可入场）',chain)
+                    order['entry_conditions'][1]=check('放量阳线突破',proof['confirmation_close'],
+                        f"> {proof['breakout_high']}（一级翻多高及此前整理高）",
+                        proof['confirmation_close']>proof['breakout_high'])
+                    order['entry_conditions'][2]=check('一级交替回撤（仅展示）',
+                        signal.retracement,'不附加回撤比例过滤，仍须守住两级低点',None)
                 if proof and proof.get('buy_point_type')=='shallow_base_breakout':
                     ratio=proof['counter_ratio']
                     chain=(proof['origin_index']<proof['flip_high_index']<proof['alternation_low_index']

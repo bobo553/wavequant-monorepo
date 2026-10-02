@@ -7,6 +7,55 @@ import { formatFilledTradeCopy } from "../public/filled-trade-copy.js";
 import { numberedTradeReasons, tradeReasonItems } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
 
+test("secondary then primary alternation breakout explains dates, price and volume", () => {
+    const marker = {
+        side: "BUY",
+        reason: "system_nested_alternation_breakout",
+        decision_evidence: [
+            {
+                buy_point_type: "nested_alternation_breakout",
+                secondary_low_date: "2023-10-23",
+                secondary_known_date: "2023-11-08",
+                secondary_low_price: 11.9045,
+                primary_low_date: "2023-12-28",
+                primary_known_date: "2024-01-05",
+                primary_low_price: 12.723,
+                confirmation_close: 14.9195,
+                breakout_high: 13.9041,
+                confirmation_volume: 4557338,
+                previous_volume: 1579601,
+                alternation_index_date: "2024-01-05",
+                attack_date: "2024-01-17",
+            },
+        ],
+    };
+    const reasons = numberedTradeReasons(marker);
+    assert.equal(reasons.length, 3);
+    assert.match(reasons[0], /二级后一级交替低点放量阳线突破/);
+    assert.match(reasons[1], /2023-10-23.*2023-11-08.*2023-12-28.*2024-01-05/);
+    assert.match(reasons[2], /14\.9195 >.*13\.9041.*4,557,338.*当日正 N/);
+    const view = {
+        symbol: "sz.001216",
+        variant: "lecture_v3",
+        asof: "2024-01-17",
+        backtest: { start: "2021-10-19" },
+        bars: [],
+    };
+    assert.match(formatFilledTradeCopy(view, marker, "V3", "20%"), /二级交替低点/);
+    const dom = new JSDOM("<section></section>");
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        const panel = document.querySelector("section");
+        appendTradeEvidence(panel, { ...marker, kind: "signal" });
+        assert.match(panel.textContent, /二级交替低点.*一级交替低点/);
+        assert.doesNotMatch(panel.textContent, /第一类买点|空多交替 → 新正 N → 轧空/);
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
+});
+
 test("near C equal-wave resistance and later volume break explain both July sales", () => {
     const warning = numberedTradeReasons({
         side: "SELL",

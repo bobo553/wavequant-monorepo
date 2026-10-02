@@ -474,13 +474,30 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             row = dict(event); j, kind = row.pop('bar_index'), row.pop('event')
             log(j, kind, **row); counts[kind] += 1
     multilevel_proofs = {}
+    nested_proofs = {}
     if whole_wave:
         from .multilevel_squeeze import multilevel_squeeze
+        from .nested_alternation_breakout import nested_alternation_breakout
         for candidate in candidates:
             if candidate['setup'].direction != Direction.UP:
                 continue
             updated_frames = list(candidate['regime'].frames)
             for frame_index, frame in enumerate(candidate['regime'].frames):
+                j = candidate['start'] + frame.bar_index
+                nested = nested_alternation_breakout(
+                    bars, hierarchy_permissions.get(j - 1, ()), hierarchy_permissions.get(j, ()),
+                    now=j, origin=candidate['setup'].origin.index, pullback=candidate['setup'].pullback.index,
+                ) if frame.first_defense_breach_index is None else None
+                if nested is not None:
+                    nested_proofs[candidate['attack'], j] = nested
+                    # Entry-only confirmation: the wave projection still waits
+                    # for the N's own chronologically later squeeze frame.
+                    confirmed = replace(frame, regime=MarketRegime.BULL, phase=RegimePhase.CONFIRMED,
+                        resistance_outcome=ResistanceOutcome.FAILED, close_continuation=True,
+                        last_confirmed_regime=MarketRegime.BULL, last_confirmed_index=frame.bar_index)
+                    events[j].append((candidate, confirmed))
+                    counts['nested_alternation_breakout_confirmed'] += 1
+                    log(j, 'nested_alternation_breakout_confirmed', attack=candidate['attack'], **nested)
                 proof = multilevel_squeeze(bars, candidate, frame, hierarchy_events)
                 if proof is None:
                     continue
@@ -636,6 +653,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
     historical_selections = (
         chart_history_cache['wave_selection_observations'] if chart_history_cache is not None else None)
     def select_candidate(c,i):
+        if (c['attack'], i) in nested_proofs:
+            return dict(nested_proofs[c['attack'], i]), ''
         eligibility_attack = i if (c['attack'], i) in consolidation_proofs else c['attack']
         if whole_wave:
             selection_key = (
@@ -675,6 +694,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             return outcome
         return select_entry(hierarchy_permissions.get(i,()),hierarchy_permissions.get(c['attack'],()),**params)
     emitted_attacks = set()
+    emitted_nested = set()
     target_resistance = two_t_resistance_history(bars, audit) if whole_wave else {}
     projection_events = sorted(
         (event for event in audit if event["event"].startswith("wave_projection_")),
@@ -750,6 +770,10 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             supplemental = (c['attack'], i) in reconfirmation_proofs and (c['attack'], i) not in wave_proofs
             return ((proof or {}).get('priority', 0), not supplemental, c['attack'])
         for c, frame in sorted(choices, key=entry_priority, reverse=True):
+            nested = nested_proofs.get((c['attack'], i))
+            nested_key = (nested['secondary_low_index'], nested['primary_low_index']) if nested else None
+            if nested_key in emitted_nested:
+                continue
             consolidation = consolidation_proofs.get((c['attack'], i))
             wave = wave_proofs.get((c['attack'], i))
             wave_key = (
@@ -770,6 +794,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 and secondary_resistance[i]['secondary_high'] <= dual['key_price']
                 and secondary_resistance[i]['secondary_resistance_high'] <= dual['higher_resistance_high']
                 and secondary_resistance[i]['secondary_attack_date'] == bars[c['attack']].timestamp.date().isoformat())
+            same_pressure = same_pressure or (nested is not None and i in secondary_resistance
+                and secondary_resistance[i]['secondary_high'] <= nested['breakout_high']
+                and secondary_resistance[i]['secondary_attack_date'] == bar.timestamp.date().isoformat())
             wave_pressure_recovery = secondary_wave_recovery(bars, i, wave, secondary_resistance.get(i))
             if i in secondary_resistance and not secondary_resistance[i].get('secondary_resistance_resolved') and not same_pressure and wave_pressure_recovery is None:
                 log(i, 'entry_rejected', reason='secondary_breakout_resistance_unresolved',
@@ -780,7 +807,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             entry_regime = MarketRegime.BULL if resumed or consolidation is not None or wave is not None else frame.regime
             # A bounce below the original breakout close cannot revive this N,
             # including entries supplied by the separate resumption observer.
-            if whole_wave and bar.close <= bars[c['attack']].close:
+            if whole_wave and nested is None and bar.close <= bars[c['attack']].close:
                 log(i, 'entry_rejected', reason='squeeze_below_original_n_close', attack=c['attack'],
                     confirmation_close=bar.close, n_attack_close=bars[c['attack']].close)
                 continue
@@ -793,7 +820,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 and bar.volume > bars[i-1].volume)
             if (whole_wave and c.get('attack_quality_warning') is not None
                     and entry_regime != MarketRegime.STRONG_BULL and consolidation is None
-                    and wave is None and not record_squeeze and dual is None and (c['attack'], i) not in reversal_proofs
+                    and wave is None and not record_squeeze and dual is None and nested is None and (c['attack'], i) not in reversal_proofs
                     and (c['attack'], i) not in reconfirmation_proofs):
                 log(i, 'entry_rejected', reason='weak_n_requires_uninterrupted_squeeze', attack=c['attack'])
                 continue
@@ -897,6 +924,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             confirmation_source = (('one_p_wave_rebound' if wave.get('wave_a_class') == 'ordinary' else
                                     'strong_a_resistance_rebreak' if wave.get('wave_entry_path') == 'two_t_strong_a_resistance_rebreak'
                                     else 'two_t_wave_push_gap') if wave is not None else
+                'secondary_primary_volume_breakout' if nested is not None else
                 'fresh_n_defeats_old_n_resistance' if (c['attack'], i) in reconfirmation_proofs else
                 'volume_reversal_record_break' if (c['attack'], i) in reversal_proofs else
                 'defended_n_consolidation_gap' if consolidation is not None else
@@ -912,6 +940,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 'system_'+tag, bars[c['attack']].timestamp, hierarchy_proof['counter_ratio'] if whole_wave and hierarchy_proof else c['force'].ratio, rvol,
                 entry_regime.value if entry_regime else 'n_only_ablation', targets[0], config.minimum_reward_risk))
             emitted_attacks.add(c['attack'])
+            if nested_key is not None:
+                emitted_nested.add(nested_key)
             if wave is not None and wave_key is not None:
                 emitted_waves[wave_key] = wave_confirmation_state(wave)
             log(i, 'long_signal', channel=tag, attack=c['attack'], stop=stop, target=targets[0], rvol=rvol,

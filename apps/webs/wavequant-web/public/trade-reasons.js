@@ -57,13 +57,18 @@ export function tradeReasonItems(item) {
                 `抵抗失败确认：${local.attack_date} 正 N 后，最低 ${num(local.confirmation_low, 4)} ≥ 虚拟低 ${num(local.prior_virtual_low, 4)}，收盘 ${num(local.confirmation_close, 4)} > 前收 ${num(local.prior_close, 4)}。`,
             );
         const proof = evidence.find((e) => e.buy_point_type);
+        if (proof?.buy_point_type === "nested_alternation_breakout")
+            reasons.push(
+                `二级交替低点：${proof.secondary_low_date} 低点 ${num(proof.secondary_low_price, 4)}，${proof.secondary_known_date} 确认；随后一级交替低点 ${proof.primary_low_date} 低点 ${num(proof.primary_low_price, 4)}，${proof.primary_known_date} 确认。`,
+                `守住两级低点，阳线收盘 ${num(proof.confirmation_close, 4)} > 一级翻多高及整理高 ${num(proof.breakout_high, 4)}；成交量 ${num(proof.confirmation_volume, 0)} > 前日量 ${num(proof.previous_volume, 0)}，当日正 N 完成即可确认买点。`,
+            );
         if (proof?.buy_point_type === "shallow_base_breakout")
             reasons.push(
                 `交替待选：${proof.origin_index_date} 低点 ${num(proof.origin_price, 4)} → ${proof.flip_high_index_date} 已确认高点 ${num(proof.flip_high_price, 4)}；${proof.alternation_low_index_date} 回撤低点 ${num(proof.alternation_low_price, 4)}，回撤 ${pct(proof.counter_ratio)}，在 0.618 至不足 2/3 之间；${proof.candidate_known_index_date} 才成为待选。`,
                 `守低横盘：低点后 ${proof.base_sessions} 根 K 线未破待选低点；此前 40 根区间 ${num(proof.base_low, 4)}–${num(proof.base_high, 4)}，区间波幅 ${pct(proof.base_width_fraction)}。`,
                 `放量突破：收盘 ${num(proof.breakout_close, 4)} > 区间高 ${num(proof.base_high, 4)}；阳线实体/开盘 ${pct(proof.breakout_body_fraction)}，成交量 ${num(proof.breakout_volume, 0)} 股，为此前 20 日均量的 ${num(proof.breakout_volume_multiple, 2)} 倍。防守 ${num(proof.stop, 4)}，最近已确认高点目标 ${num(proof.target, 4)}。`,
             );
-        if (proof?.alternation_index_date && proof?.attack_date)
+        if (proof?.buy_point_type !== "nested_alternation_breakout" && proof?.alternation_index_date && proof?.attack_date)
             reasons.push(
                 proof.joint_alternation_confirmation
                     ? `趋势与入场时序：${proof.attack_date} 出现正 N，${proof.alternation_index_date} 轧空共同确认空多交替与入场资格${proof.trend_level ? `；${proof.trend_level} 级趋势` : ""}。`
