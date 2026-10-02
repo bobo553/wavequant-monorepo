@@ -1,12 +1,13 @@
 """Attach causal decisions to an execution ledger without inventing fills."""
 from collections import Counter
+from typing import Any
 
 
 def enrich_ledger(bars, result, generated, strategy):
     by_time={b.timestamp.date().isoformat(): b for b in bars}
     signals={(s.timestamp.isoformat(),s.side):s for s in generated.signals}
     audit=getattr(generated,'audit',[])
-    dated={}
+    dated: dict[str, list[dict[str, Any]]] = {}
     for event in audit:
         dated.setdefault(event['timestamp'],[]).append(event)
     active={}; serial=0
@@ -37,7 +38,7 @@ def enrich_ledger(bars, result, generated, strategy):
             proof=next((e for e in evidence if e['event']=='long_transition_evidence'),None)
             def check(name,actual,required,passed):
                 return dict(name=name,actual=actual,required=required,passed=passed)
-            chain_ok=bool(proof) and all(isinstance(proof.get(k),int) for k in
+            chain_ok=proof is not None and bool(proof) and all(isinstance(proof.get(k),int) for k in
                 ('flip_index','alternation_index','bullish_index','attack')) and (
                 proof['flip_index']<proof['alternation_index']<=proof['bullish_index']<proof['attack']<=signal.bar_index)
             order['entry_conditions']=[
@@ -60,9 +61,9 @@ def enrich_ledger(bars, result, generated, strategy):
                     '跳空突破回调折线高点或成交量 > 前日全天量' if price_alternative else '> 1（前日全天量）',
                     volume_proof.get('volume_pass', False) if strategy.get('volume_filter', True) else None)
             if strategy.get('entry_policy')=='hierarchical_two_buy_points':
-                second=bool(proof) and proof.get('buy_point_type')=='mature_shallow_squeeze'
-                chain=bool(proof) and all(isinstance(proof.get(k),int) for k in ('flip_index','alternation_index')) and proof['flip_index']<=proof['alternation_index']<proof['attack']<=signal.bar_index
-                if second:
+                second=proof is not None and bool(proof) and proof.get('buy_point_type')=='mature_shallow_squeeze'
+                chain=proof is not None and bool(proof) and all(isinstance(proof.get(k),int) for k in ('flip_index','alternation_index')) and proof['flip_index']<=proof['alternation_index']<proof['attack']<=signal.bar_index
+                if second and proof is not None:
                     chain=chain and (proof['alternation_index']<proof['maturity_index']<=proof['impulse_high_index']
                         <proof['pullback_index']<proof['attack'])
                 order['entry_conditions'][0]=check('分级双买点证据',proof,

@@ -5,7 +5,7 @@ observers produce dated evidence; only evidence available on a signal bar is use
 """
 from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
-from typing import Callable, Sequence
+from typing import Any, Callable, Sequence, cast
 
 from ..models.model import Bar, Signal
 from ..market_structure.polyline import LinePoint, PointKind, ReversalPoint, observe_polyline, observe_bar_relations
@@ -15,6 +15,8 @@ from ..market_state.market_regime import MarketRegime, RegimePhase, RegimePolicy
 from ..market_state.control_bar import observe_control_bar
 from ..market_structure.trend_structure import observe_structure
 from .bull_eligibility import bull_permission_history
+from .hierarchical_entry import EntryContext
+from .shallow_base_breakout import ShallowAlternationCandidate
 from .attack_quality import v3_positive_n_attack_rejection
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
@@ -108,7 +110,7 @@ class SystemResult:
     counts: dict
 
 
-def pivot_history(bars: list[Bar], config: SystemStrategy, *, prefix_cache=None):
+def pivot_history(bars: Sequence[Bar], config: SystemStrategy, *, prefix_cache=None):
     """Snapshots are immutable tuples; strict ambiguity starts a NEW episode."""
     snapshots, epochs, limits, blocked = {}, {}, {}, set()
     n = len(bars)
@@ -128,7 +130,7 @@ def pivot_history(bars: list[Bar], config: SystemStrategy, *, prefix_cache=None)
             direction = Direction.UP if bars[start].close >= bars[start].open else Direction.DOWN
             line = observe_polyline(bars, symbol=bars[0].symbol, timeframe='1d',
                 initial_direction=direction, start_index=start, asof_index=stop)
-            known = []
+            known: list[ReversalPoint] = []
             for frame in line.frames:
                 known.extend(frame.new_reversals)
                 snapshots[frame.bar_index] = tuple(known)
@@ -138,12 +140,12 @@ def pivot_history(bars: list[Bar], config: SystemStrategy, *, prefix_cache=None)
                 blocked.add(end)
             start = end+1
     else:
-        points = []
+        points: list[ReversalPoint] = []
         w = config.pivot_width
         for i in range(n):
             if i >= 2*w:
                 j = i-w
-                others = bars[j-w:j]+bars[j+1:i+1]
+                others = [*bars[j-w:j], *bars[j+1:i+1]]
                 lo = all(bars[j].low < b.low for b in others)
                 hi = all(bars[j].high > b.high for b in others)
                 if lo != hi:
@@ -166,7 +168,7 @@ def _local_setup(setup, offset):
                              for name in ('origin', 'neckline', 'pullback')})
 
 
-def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
+def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                             minor_points: Sequence[ReversalPoint] | None = None,
                             chart_history_cache: dict | None = None,
                             progress: Callable[[int], None] | None = None) -> SystemResult:
@@ -190,7 +192,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         audit.append(dict(timestamp=bars[i].timestamp.isoformat(), symbol=bars[i].symbol,
                           bar_index=i, event=kind, **fields))
     permissions = {}
-    hierarchy_permissions = {}
+    hierarchy_permissions: dict[int, tuple[EntryContext, ...]] = {}
     hierarchical = config.entry_policy == 'hierarchical_two_buy_points'
     whole_wave = config.buy_point_definition == 'whole_flip_wave_v3'
     if config.entry_policy == 'transitioned_squeeze':
@@ -202,7 +204,8 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             j, kind = row.pop('bar_index'), row.pop('event')
             log(j, kind, **row)
             counts[kind] += 1
-    larger, folded_sets = {}, []
+    larger = {}
+    folded_sets: list[tuple[int, Sequence[ReversalPoint], int]] = []
     folded_cache = chart_history_cache.setdefault('folded_n', {}) if chart_history_cache is not None else None
     secondary_levels = None
     if whole_wave and config.pivot_mode == 'lecture_causal':
@@ -283,7 +286,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             continue
         direction = Direction.UP if a.point.kind == PointKind.LOW else Direction.DOWN
         setup = NSetup(bars[0].symbol, '1d', direction,
-            *(PivotRef(p.point.index, p.confirmed_index) for p in (a, b, c)),
+            PivotRef(a.point.index, a.confirmed_index),
+            PivotRef(b.point.index, b.confirmed_index),
+            PivotRef(c.point.index, c.confirmed_index),
             config.pivot_mode, BoxAnchorMode.ATTACK_VIRTUAL_EXTREME,
             allow_confirmation_bar=whole_wave,
             allow_outside_close=whole_wave, allow_mother_impulse=mother_impulse,
@@ -314,6 +319,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         if n.completion is None:
             counts['n_'+n.status.value] += 1
             continue
+        assert n.anchors is not None and n.targets is not None
         t = offset+n.completion.bar_index
         if (direction, t) in attack_keys:
             continue
@@ -411,13 +417,13 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             updated = []
             for f in regime.frames:
                 j = offset + f.bar_index
-                proof = volume_reversal_squeeze(bars, attack=t, now=j,
+                reversal = volume_reversal_squeeze(bars, attack=t, now=j,
                     origin_low=n.anchors.origin, attack_defense=n.completion.defense,
                     frame=f, offset=offset)
-                if proof is not None:
+                if reversal is not None:
                     close_break = next(k for k in range(t, j + 1)
                         if bars[k].close > n.anchors.neckline_extreme)
-                    reversal_proofs[t, j] = dict(proof,
+                    reversal_proofs[t, j] = dict(reversal,
                         n_close_break_date=bars[close_break].timestamp.date().isoformat())
                     f = replace(f, regime=MarketRegime.BULL, phase=RegimePhase.CONFIRMED,
                         close_continuation=True, last_confirmed_regime=MarketRegime.BULL,
@@ -444,8 +450,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                         local_resistance=resume.local_resistance, defense=resume.defense,
                         classification='held_squeeze_defense_and_fresh_pullback_rebound')
     secondary_resistance = {}
-    shallow_base_proofs = {}
-    shallow_candidate_snapshots = {} if whole_wave and config.shallow_base_breakout_enabled else None
+    shallow_base_proofs: dict[int, dict[str, object]] = {}
+    shallow_candidate_snapshots: dict[int, ShallowAlternationCandidate | None] | None = (
+        {} if whole_wave and config.shallow_base_breakout_enabled else None)
     if whole_wave:
         from .hierarchical_entry import hierarchical_history
         from .secondary_resistance import secondary_resistance_history
@@ -458,6 +465,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             hierarchy_permissions, hierarchy_events = chart_entry_history(
                 bars, audit=audit, shallow_candidate_sink=shallow_candidate_snapshots,
                 prefix_cache=chart_history_cache.setdefault('chart', {}) if chart_history_cache is not None else None)
+            assert secondary_levels is not None
             secondary_resistance = secondary_resistance_history(
                 bars, secondary_levels, key_events=hierarchy_events, include_resolved=True)
         else:
@@ -536,16 +544,16 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 candidate['setup'].origin.index, candidate['attack'], squeeze,
                 n.anchors.origin, n.targets.box_anchor, n.targets.two_t, n.completion.defense)
             log(max(squeeze, candidate['known_at']), 'wave_continuation_ready', wave_epoch=candidate['epoch'], **asdict(projection_setup))
-            projection = wave_projection_history(bars, projection_setup)
-            candidate['wave_projection'] = projection
+            projection_history = wave_projection_history(bars, projection_setup)
+            candidate['wave_projection'] = projection_history
             for j in range(squeeze + 1, len(bars)):
-                wave_key = (projection_setup, j)
-                if wave_gap_observations is not None and j < len(bars) - 1 and wave_key in wave_gap_observations:
-                    proof = wave_gap_observations[wave_key]
+                gap_key = (projection_setup, j)
+                if wave_gap_observations is not None and j < len(bars) - 1 and gap_key in wave_gap_observations:
+                    proof = wave_gap_observations[gap_key]
                 else:
                     proof = wave_gap_entry(bars, projection_setup, j, pivots=snapshots.get(j-1, ()))
                     if wave_gap_observations is not None and j < len(bars) - 1:
-                        wave_gap_observations[wave_key] = proof
+                        wave_gap_observations[gap_key] = proof
                 if proof is not None:
                     frame = next((f for f in candidate['regime'].frames if candidate['start'] + f.bar_index == squeeze),
                                  candidate['regime'].frames[0])
@@ -556,7 +564,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             # to use the nearest rung, never a farther goal to inflate reward.
             candidate['entry_wave_projection'] = wave_projection_history(
                 bars, projection_setup, target_policy='nearest_box')
-            for event in projection:
+            for event in projection_history:
                 row = asdict(event)
                 j, kind = row.pop('bar_index'), row.pop('event')
                 row['origin_index'] = projection_setup.origin_index
@@ -626,12 +634,13 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             counts['turn_key_unavailable'] += 1
             continue
         try:
-            setup = TurnSetup(bars[0].symbol, '1d', direction, *quartet,
+            turn_setup = TurnSetup(bars[0].symbol, '1d', direction,
+                             quartet[0], quartet[1], quartet[2], quartet[3],
                              RegimeContext(bars[0].symbol, '1d', f.regime, j, 'dated_six_regime_event'), level)
             line = None if minor_points is None else freeze_minor_line(minor_points, symbol=bars[0].symbol,
                 timeframe='1d', direction=direction, selected_at_index=i, source='caller_supplied_minor_structure')
             end = i if line is None else min(limits[i], i+config.pattern_ttl)
-            result = observe_market_turn(bars[:end+1], setup,
+            result = observe_market_turn(bars[:end+1], turn_setup,
                 policy=TurnPolicy(StrengthScale.EXACT_FRACTIONS, TurnThreshold.TWO_THIRDS,
                                   TurnThreshold.TWO_THIRDS, AttackBasis.CLOSE, AttackBasis.CLOSE), minor_line=line)
         except ValueError:
@@ -649,7 +658,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
     signals = []
     exit_structure_cache = (
         chart_history_cache.setdefault('exit_structure', {}) if chart_history_cache is not None else None)
-    current_selections = {}
+    current_selections: dict[tuple, tuple[dict[str, Any] | None, str]] = {}
     historical_selections = (
         chart_history_cache['wave_selection_observations'] if chart_history_cache is not None else None)
     def select_candidate(c,i):
@@ -675,13 +684,13 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             from .whole_wave_entry import select_wave_entry
             contexts = hierarchy_permissions.get(eligibility_attack,())
             if (c['attack'], i) in consolidation_proofs:
-                contexts = sorted(contexts, key=lambda ctx: ctx.alternation_low_index, reverse=True)
+                contexts = tuple(sorted(contexts, key=lambda ctx: ctx.alternation_low_index, reverse=True))
                 if any(ctx.confirmation_attack == c['attack'] and ctx.alternation_index == i for ctx in contexts):
                     # Today's independent gap may qualify B for the original
                     # defended N. Use only that joint confirmation, not a
                     # fabricated earlier alternation or unrelated old context.
                     params['attack'] = c['attack']
-                    contexts = []
+                    contexts = ()
             selected, rejected = select_wave_entry(hierarchy_permissions.get(i,()),contexts,
                 allow_confirming_n=True, allow_same_bar_pullback=c['setup'].allow_outside_close and c['setup'].pullback.index == c['attack'],
                 bars=bars,deep_ratio=config.first_pullback_threshold,first_basis=config.first_pullback_basis,
@@ -864,6 +873,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                     log(i, 'entry_rejected', attack=c['attack'], **blocked_reentry)
                     continue
                 if recovery is not None:
+                    assert hierarchy_proof is not None
                     hierarchy_proof.update(recovery, recovery_resistance_high=frame.continuation_level)
             n = c['n']
             rvol = c['control'].volume.relative_volume
@@ -896,7 +906,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                         (wave['wave_c_0618_target'], wave['wave_equal_target'])
                         if wave['wave_entry_path'] == 'two_t_strong_a_resistance_rebreak'
                         else (wave['wave_equal_target'],)
-                    ) if target > bar.close
+                    ) if cast(float, target) > bar.close
                 ]
             if stop >= bar.close or not targets:
                 log(i, 'entry_rejected', reason='no_live_structural_risk_reward', attack=c['attack'])
@@ -980,9 +990,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         special = shallow_base_proofs.get(i)
         if special is not None and not any(s.bar_index == i and s.side == 'LONG' for s in signals):
             signals.append(Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close,
-                special['stop'], 'system_shallow_base_breakout', bar.timestamp,
-                special['counter_ratio'], special['breakout_volume_multiple'],
-                '待选交替横盘突破', special['target'], config.minimum_reward_risk))
+                cast(float, special['stop']), 'system_shallow_base_breakout', bar.timestamp,
+                cast(float, special['counter_ratio']), cast(float, special['breakout_volume_multiple']),
+                '待选交替横盘突破', cast(float, special['target']), config.minimum_reward_risk))
             emitted_attacks.add(i)
             counts['buy_point_shallow_base_breakout'] += 1
             log(i, 'long_signal', channel='shallow_base_breakout', volume_pass=True, **special)

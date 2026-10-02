@@ -34,9 +34,9 @@
                     "summary": "Web成交说明/注释51项、拓扑2项、lint/typecheck/生产构建通过，6条既有lint警告；新增规则严格mypy、Core既定四模块typecheck、sdist/wheel与独立安装导入通过"
                 },
                 {
-                    "command": "扩大旧模块mypy的main/分支基线差异比对",
+                    "command": "mypy --follow-imports=silent integrated_strategy.py trade_evidence.py strategy_profiles.py secondary_resistance.py",
                     "status": "passed",
-                    "summary": "扩大检查的旧集成策略及账本模块51条mypy错误与未修改main逐项一致，无新增；完整Core/Web、浏览器、外部分钟及全账户收益待独立验证，未运行Playwright"
+                    "summary": "后续补齐容器/序列类型、拆开N/转折构造参数与同名不同类型变量、显式收窄可空证据，原51条类型错误已修复；四个文件检查通过。89项相关策略回归通过。 80项受影响的转浪、分级压力、浅回撤及反转回归通过。"
                 }
             ]
         },

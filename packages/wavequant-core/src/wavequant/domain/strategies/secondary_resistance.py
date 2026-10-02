@@ -1,11 +1,13 @@
 """A lower-level squeeze cannot resolve a fresh resisted secondary breakout."""
 
+from collections.abc import Sequence
+
 from ..models.model import Bar
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 
 
 def secondary_resistance_history(
-    bars: list[Bar], history: dict, *, key_events=(), include_resolved=False
+    bars: Sequence[Bar], history: dict, *, key_events=(), include_resolved=False
 ) -> dict[int, dict]:
     blocked = {}
     current_key = None
