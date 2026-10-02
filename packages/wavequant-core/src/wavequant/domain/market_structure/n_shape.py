@@ -197,7 +197,7 @@ def project_n_targets(origin: float, neckline: float, pullback: float, *,
     names = ('equal_wave','one_p','two_t')
     unavailable = tuple(name for name,value in zip(names,raw) if domain==ValueDomain.PRICE and value<=0)
     values = tuple(None if name in unavailable else value for name,value in zip(names,raw))
-    return NTargets(*values,box_anchor,domain,unavailable)
+    return NTargets(values[0],values[1],values[2],box_anchor,domain,unavailable)
 
 
 def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
@@ -260,6 +260,14 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
                      and bars[known].low < bars[known-1].low
                      and sign*(bars[known].close-b)>0 and sign*(bars[known].close-bb.close)>0
                      and sign*(bars[known-1].close-bb.close)<=0)
+    # The lecture outside candle turns at C before its directional excursion.
+    # That excursion belongs to the new attack even if only the wick crosses B.
+    outside_turn = (setup.allow_outside_close and setup.source == 'lecture_causal'
+                    and setup.pullback.index == known and known > 0
+                    and setup.neckline.confirmed_index < known
+                    and bars[known].high > bars[known-1].high
+                    and bars[known].low < bars[known-1].low
+                    and sign*(bars[known].close-bars[known].open)>0)
     key_known = setup.neckline.confirmed_index if same_confirmation else known
     real_key = KeyLevel(setup.symbol,timeframe,kind,bb.close,setup.neckline.index,key_known,setup.source)
     virtual_key = KeyLevel(setup.symbol,timeframe,kind,b,setup.neckline.index,key_known,setup.source)
@@ -272,7 +280,8 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     # The lecture path starts at A's terminal low/high. Its opposite wick
     # belongs to the preceding leg, not the subsequent A-B impulse.
     neckline_start = setup.origin.index + (setup.source == 'lecture_causal')
-    if any(sign*(forward_value(bars[i])-b)>0 for i in range(neckline_start,setup.pullback.index+(not outside_close))):
+    neckline_end = setup.pullback.index + (not (outside_close or outside_turn))
+    if any(sign*(forward_value(bars[i])-b)>0 for i in range(neckline_start,neckline_end)):
         raise ValueError('neckline is not the extreme of the supplied A-B-C structure')
     if any(sign*(adverse_value(bars[i])-c)<0 for i in range(setup.neckline.index+1,setup.pullback.index+1)):
         raise ValueError('C is not the pullback extreme of the supplied structure')
@@ -284,7 +293,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             raise ValueError('supplied pullback pivot was exceeded before its confirmation')
     completion = None
     first_stage = None
-    for i in range(known if same_confirmation or outside_close else known+1,end+1):
+    for i in range(known if same_confirmation or outside_close or outside_turn else known+1,end+1):
         bar = bars[i]
         adverse = bar.low if up else bar.high
         if sign*(adverse-a) < 0:
@@ -294,6 +303,8 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         extreme = bar.high if up else bar.low
         if first_stage is None and (sign*(bar.close-bb.close)>0 or sign*(extreme-b)>=0):
             first_stage = i
+        if i == known and outside_turn and not outside_close:
+            continue
         if sign*(bar.close-bb.close) <= 0 or sign*(extreme-b) <= 0:
             continue
         prev = bars[i-1]
@@ -330,7 +341,9 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     box = ((completion.virtual_high if up else completion.virtual_low)
            if setup.box_anchor_mode == BoxAnchorMode.ATTACK_VIRTUAL_EXTREME else b)
     targets = project_n_targets(a,b,c,box_anchor=box,direction=setup.direction,domain=ValueDomain.PRICE)
-    hit, defense_breach, origin_breach = [], None, None
+    hit: list[Milestone] = []
+    defense_breach: int | None = None
+    origin_breach: int | None = None
     names = ('equal_wave','one_p','two_t')
     for i in range(completion.bar_index,end+1):
         bar = bars[i]

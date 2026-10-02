@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-183",
     "features": [
         {
+            "id": "MONOREPO-226",
+            "name": "outside-pullback-split-n-targets",
+            "title": "外包回踩分步正N及先锋九月测幅",
+            "description": "C棒按讲义先回踩后攻击时，虚颈线试探属于后续攻击，等待后来实虚突破完成N，冻结首次试探防守及完成日箱顶。",
+            "scope": "Core 全局讲义正倒N、测幅及同源图表事件",
+            "dependencies": ["MONOREPO-224"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "先锋2025-09-29识别09-23/24/26三锚点正N，1P3.81、2T4.09、防守3.29，09-26仅虚突破不能完成",
+                "显式讲义外包方向、当天确认C、此前已知颈线；反向实体、未来确认和中间更高颈线不放宽；倒N镜像一致",
+                "五顶4.93在10-28满足，首次十满6.73及后续B基准6.22绑定原N与可知日，不借未来提前显示",
+                "相关定向测试、类型、构建、图表序列化与历史截断验证通过，保留其他会话活动状态"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_outside_split_n.py test_n_shape.py test_split_n_wave.py test_wave_projection.py; test_outside_split_n.py test_n_shape.py test_market_regime.py test_wave_projection.py; test_control_washout.py",
+                    "status": "passed",
+                    "summary": "61项、最终84项及5子测试、控制/洗盘34项均通过，共122个独立用例。先复现C棒攻击高点误入颈线验证；覆盖原始行情、倒N镜像、未完成/失守/未来确认/严格路径反例、完整样本与截至09-29信号和审计一致、图表四点及目标可知日。独立worktree环境最终5项新增回归重跑通过。"
+                },
+                {
+                    "command": "Core 2修改模块mypy --follow-imports=silent; Core typecheck/build; turbo run lint typecheck --concurrency=1; harness:check; prettier --check; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "2修改模块及Core既定4模块类型通过，sdist/wheel构建通过；串行仓库静态门禁30/30任务通过，API11模块通过。首次worktree依赖链接、Python导入定位与并发内存问题已用独立依赖目录、独立Python环境及串行执行解决，未修改其他业务代码；生成的next-env改动恢复。状态、格式、差异与索引复核通过。"
+                },
+                {
+                    "command": "同源原始日线：123根样本V3与图表序列化；冻结09-29 N设置单独wave_projection_history至2026-09-30",
+                    "status": "passed",
+                    "summary": "一饱3.81、二吐4.09于10-27达到，五顶4.93于10-28满足；首次十满6.73，随后A/B更新，123根样本末参考6.22。延续测幅观察器到2026-09-30，未有十满达到事件，最新9.47参考在09-23后回调暂停。完整Core/Web套件、浏览器、外部分钟及账户全历史成交收益待独立验证，未运行Playwright。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-225",
             "name": "old-high-massive-bearish-resistance-exit",
             "title": "旧高突破巨量阴线抵抗减三成与次笔清仓",
