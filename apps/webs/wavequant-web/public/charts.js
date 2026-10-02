@@ -26,7 +26,11 @@ import { drawdownCandleRange } from "./max-drawdown.js";
 import { selectedTertiaryThirds, tertiaryRetracementGuides } from "./retracement-guides.js";
 import { TargetGuideOverlay, targetLevelGuide } from "./target-level-guides.js";
 import { TradeMarkerOverlay } from "./trade-marker-overlay.js";
-import { waveCProjection, waveCProjectionLevels } from "./wave-c-projection.js";
+import {
+    waveCProjectionAnnotation,
+    waveCProjectionForSelection,
+    waveCProjectionFromStructure,
+} from "./wave-c-projection.js";
 import { WaveEndpointOverlay, selectedWaveEndpoints } from "./wave-endpoint-overlay.js";
 
 const L = window.LightweightCharts;
@@ -155,6 +159,7 @@ export class PriceChart {
         this.data = null;
         this.theory = null;
         this.annotations = [];
+        this.autoWaveProjection = null;
         this.options = {
             signals: true,
             fills: true,
@@ -309,24 +314,22 @@ export class PriceChart {
                 return;
             }
             const projection =
-                this.data && this.theory && p.time ? waveCProjection(this.data.bars, this.theory.events, p.time) : null;
+                this.data && this.theory && p.time
+                    ? waveCProjectionForSelection(
+                          this.data.bars,
+                          this.theory.events,
+                          p.time,
+                          this.autoWaveProjection?.raw,
+                      )
+                    : null;
             if (!projection) {
                 if (items.length) this.selectAnnotation(items[0].id, false, items);
                 return;
             }
-            const selected = {
-                id: `wave-c:${projection.nTime}:${projection.aTime}`,
-                time: projection.bTime,
-                sourceTime: projection.aTime,
-                kind: "wave-projection",
-                category: "wave-projection",
-                price: projection.target,
-                title: "C 浪 0.618 倍与等浪观察目标",
-                description: `正 N ${projection.nTime} 后，选定 ${projection.aTime} 的 A 浪高点 ${num(projection.aHigh)} 高于一饱 ${num(projection.oneP)}；B 浪低点 ${projection.bTime} ${num(projection.bLow)}。B 期间未出现最低价与收盘价同时跌破正 N 起点 ${num(projection.origin)}。A 幅度 = A 高 − 正 N 起点；B 低 + 0.618×A = ${num(projection.target0618)} 元，B 低 + 1×A = ${num(projection.target)} 元。仅为测幅观察，不保证到达。`,
-                sourceLabel: "所选 A 浪高点与当前历史截面 B 浪低点",
-                levels: waveCProjectionLevels(projection),
-                raw: projection,
-            };
+            const selected =
+                this.autoWaveProjection?.raw === projection
+                    ? this.autoWaveProjection
+                    : waveCProjectionAnnotation(projection);
             this.selected = selected;
             this.waveEndpointOverlay.setPoints([]);
             this.drawLevels();
@@ -346,6 +349,7 @@ export class PriceChart {
         this.data = data;
         this.theory = null;
         this.selected = null;
+        this.autoWaveProjection = null;
         this.waveEndpointOverlay.setPoints([]);
         this.tooltip.hidden = true;
         this.clearTheory();
@@ -397,6 +401,7 @@ export class PriceChart {
     setAnnotationOptions(options) {
         Object.assign(this.options, options);
         this.annotations = buildAnnotations(this.data, this.theory);
+        if (this.autoWaveProjection) this.annotations.push(this.autoWaveProjection);
         this.refreshMarkers();
         this.drawLevels();
     }
@@ -749,7 +754,7 @@ export class PriceChart {
     }
     drawLevels() {
         this.clearLevels();
-        const item = this.selected;
+        const item = this.selected || this.autoWaveProjection;
         // 拒单不产生常驻图标；从右侧账本主动定位时，仅临时标示对应 K 线的参考价。
         const blockedOrder = item?.kind === "order" && item.status === "cancelled";
         const blockedCandidate = item?.kind === "candidate";
@@ -757,6 +762,7 @@ export class PriceChart {
             !item ||
             !this.data ||
             !this.options.levels ||
+            (item === this.autoWaveProjection && !this.options.rules) ||
             (!blockedOrder &&
                 !blockedCandidate &&
                 item.kind !== "wave-projection" &&
@@ -962,8 +968,13 @@ export class PriceChart {
     setTheory(theory, geometry = true) {
         this.theory = theory;
         this.clearTheory();
+        const projection =
+            theory && this.data && geometry ? waveCProjectionFromStructure(this.data.bars, theory) : null;
+        this.autoWaveProjection = projection ? waveCProjectionAnnotation(projection) : null;
         this.annotations = buildAnnotations(this.data, theory);
+        if (this.autoWaveProjection) this.annotations.push(this.autoWaveProjection);
         this.refreshMarkers();
+        this.drawLevels();
         if (!theory || !this.data || !geometry) return;
         for (const n of theory.shapes) this.addLine(n.points, n.direction === "up" ? "#60cfc3" : "#cba271", 0, 2);
         this.polylineEnabled = true;

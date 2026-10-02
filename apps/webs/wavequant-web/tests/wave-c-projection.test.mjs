@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { targetLevelGuide } from "../public/target-level-guides.js";
-import { waveCProjection, waveCProjectionLevels } from "../public/wave-c-projection.js";
+import {
+    waveCProjection,
+    waveCProjectionAnnotation,
+    waveCProjectionForSelection,
+    waveCProjectionFromStructure,
+    waveCProjectionLevels,
+} from "../public/wave-c-projection.js";
 
 const bars = [
     { time: "2026-01-01", high: 10, low: 8, close: 9 },
@@ -143,4 +150,57 @@ test("an early B low remains the anchor when the later declining close makes the
     correction[4].close = 12;
     assert.equal(waveCProjection(correction, [n], "2026-01-03")?.bLow, 11);
     assert.equal(waveCProjection(correction.slice(0, 4), [n], "2026-01-03"), null);
+});
+
+const xianfeng = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_2020_c_wave.json", import.meta.url)));
+const xianfengBars = xianfeng.bars.map(([time, open, high, low, close, volume]) => ({
+    time,
+    open,
+    high,
+    low,
+    close,
+    volume,
+}));
+const xianfengTheory = xianfeng.theory;
+
+test("real Xianfeng daily bars reveal the February 10 N, February 17 squeeze and April 28 B", () => {
+    const projection = waveCProjectionFromStructure(xianfengBars, xianfengTheory);
+    assert.ok(projection);
+    assert.deepEqual(
+        [projection.originTime, projection.nTime, projection.squeezeTime, projection.aTime, projection.bTime],
+        ["2020-02-04", "2020-02-10", "2020-02-17", "2020-03-02", "2020-04-28"],
+    );
+    assert.equal(projection.origin, 2.9);
+    assert.equal(projection.oneP, 4.02);
+    assert.ok(Math.abs(projection.target0618 - 4.05082) < 1e-10);
+    assert.ok(Math.abs(projection.target - 4.62) < 1e-10);
+    const annotation = waveCProjectionAnnotation(projection);
+    assert.equal(annotation.time, "2020-04-28");
+    assert.equal(annotation.sourceTime, "2020-03-02");
+    assert.deepEqual(
+        annotation.levels.map((level) => level.price),
+        [projection.target0618, projection.target],
+    );
+    const laterFormalN = {
+        ...n,
+        time: "2020-02-17",
+        available_at: "2020-02-17",
+        defense: 3.28,
+        shape: [{ time: "2020-02-07", value: 3.15 }],
+        levels: [{ name: "1P 投影", price: 3.91 }],
+    };
+    assert.equal(waveCProjectionForSelection(xianfengBars, [laterFormalN], "2020-03-02", projection), projection);
+});
+
+test("structural projection uses only available A evidence and invalidates a joint origin break", () => {
+    assert.equal(waveCProjectionFromStructure(xianfengBars, { ...xianfengTheory, asof: "2020-04-01" }), null);
+    const lost = xianfengBars.map((bar) => ({ ...bar }));
+    lost.at(-1).low = 2.89;
+    lost.at(-1).close = 2.89;
+    assert.equal(waveCProjectionFromStructure(lost, xianfengTheory), null);
+    const noSqueeze = xianfengBars.map((bar) => ({ ...bar }));
+    for (const bar of noSqueeze) {
+        if (bar.time > "2020-02-10" && bar.time < "2020-03-02") bar.volume = 1;
+    }
+    assert.equal(waveCProjectionFromStructure(noSqueeze, xianfengTheory), null);
 });
