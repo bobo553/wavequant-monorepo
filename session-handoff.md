@@ -1,12 +1,12 @@
 # Session Handoff
 
-## 2026-10-02 · MONOREPO-231 持仓归零与最终最大回撤
+## 2026-10-03 · MONOREPO-231 已合并
 
-用户最终明确：每轮首次买入至完全卖出独立计算最大亏损，每次持仓数量归零结束并重置本轮；已完全卖出的各轮中亏损最深者才是最终最大回撤。未清仓本轮亏损单独展示，不计入最终统计。版本 `holding_entry_cost_mae_cycle_v2`；Core 增加逐轮序号、数量归零身份和因果观测曲线，Web 增加归零曲线及逐轮明细，API 同时保存最终与本轮指标。
+用户在了解两项 main 既有波段信号失败后明确要求合并。实现提交 `912ac09`、修正提交 `5a9655d` 已以 `40522c1` 合并到本地 main。119 项修复定向测试及类型/构建证据保留；`test_huaci_volume_double_break_closes_cycle_before_next_gap_buy` 和 `test_strong_a_body_confirmation_can_advance_to_later_higher_gap` 的 main 既有失败未修复，按本轮明确指示覆盖该门禁，未降低断言。
 
-工作区 `E:/WorkSpace/work/wavequant-huaci-volume-breakout`，同会话分支 `feat-华瓷放量突破`，main 基线 `df1025b`。38 项 Core、72 项 Web Node、2 项拓扑、7 项 API（合计 119）以及相关类型检查、Web/Core/API 构建和 Core wheel 隔离安装通过；Web lint 有 6 条既有警告。未运行完整 Web、浏览器或 Playwright，未重算真实账户全历史。
+每轮零持仓首次买入至数量归零独立计算成本 MAE；已清仓轮次中亏损最深者为最终最大回撤，未清仓只展示本轮亏损。HTTP 已确认 Web main 修订 `40522c1`、`holding_entry_cost_mae_cycle_v2` 模块和研究页持仓轮次表。API 引擎 `dbaa9a01700f` 与 main 本地源码一致，旧引擎完成摘要在启动检查时 recent=0；行情文件及封存样本仍截至 2026-09-07。没有运行浏览器、Playwright 或完整 Web 套件，没有推送。
 
-两项旧波段测试用 main 原源码再次复现失败：`test_huaci_volume_double_break_closes_cycle_before_next_gap_buy` 没有 2026-08-26 预期买入；`test_strong_a_body_confirmation_can_advance_to_later_higher_gap` 没有预期 body/gap 信号。已确认导入 main 的 backtest.py；本轮没有修改策略或降低这两项断言。遵守用户 AGENTS.md 检查失败不合并，修复保留在当前特性分支，常驻 main 页面未更新，未推送。后续先处理原波段资格回归，再同步 main、检查、复核和本地合并；推送需要明确授权。MONOREPO-231 保持唯一 in-progress，MONOREPO-183 的人工验收继续 backlog。
+本次合并已完成；Harness 不允许存在 failed 证据的功能标记 done，因此 MONOREPO-231 继续保持唯一 in-progress，保留待验证的既有波段失败，MONOREPO-183 原人工缓存验收继续 backlog。用户本轮的合并请求已经完成，不自动开展旧信号修复。该会话继续保留分支 `feat-华瓷放量突破` 和 worktree `E:/WorkSpace/work/wavequant-huaci-volume-breakout`；后续修改前同步最新本地 main。
 
 ## 2026-09-29 · MONOREPO-208 双破确认
 

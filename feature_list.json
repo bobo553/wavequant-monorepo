@@ -47,12 +47,17 @@
                 {
                     "command": "main原源码复现 test_huaci_volume_double_break_closes_cycle_before_next_gap_buy 与 test_strong_a_body_confirmation_can_advance_to_later_higher_gap",
                     "status": "failed",
-                    "summary": "main df1025b原模块路径已确认，两项均失败：2026-08-26无预期BUY，body→gap无预期信号。本轮没有修改策略或降低旧断言；按用户AGENTS.md暂不合并。本轮38项直接相关Core检查全部通过。"
+                    "summary": "main df1025b原模块已确认，两项既有测试失败：2026-08-26无预期BUY，body→gap无预期信号。本次未修改策略或降低断言；用户在已知失败后明确要求合并，按本轮指示覆盖该门禁，保留失败记录。38项修复直接相关Core检查全部通过。"
                 },
                 {
-                    "command": "完整Web单测、浏览器端到端与常驻页面验收",
+                    "command": "完整Web单测和浏览器端到端",
                     "status": "not-run",
-                    "summary": "遵守开发验证节奏，未运行完整Web、浏览器或Playwright；main既有信号回归失败阻断合并，常驻页面尚未更新。"
+                    "summary": "遵守开发验证节奏，未运行完整Web、浏览器或Playwright。常驻服务另以HTTP及引擎指纹核验，不能替代浏览器交互验收。"
+                },
+                {
+                    "command": "用户明确合并授权；git merge --no-ff；HTTP main修订/MAE模块/研究页面/回测版本及任务摘要",
+                    "status": "passed",
+                    "summary": "修复以40522c1合并main，两个工作区均无冲突。Web修订确认40522c1，MAE模块为holding_entry_cost_mae_cycle_v2，研究页含持仓轮次表。API加载引擎dbaa9a01700f，与main本地源码哈希一致；旧引擎完成摘要清除后recent=0。没有推送远端；行情截止日期未变更。"
                 }
             ]
         },

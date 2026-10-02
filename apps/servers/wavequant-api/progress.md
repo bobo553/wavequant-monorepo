@@ -1,5 +1,7 @@
 # Progress
 
+- MONOREPO-231 合并验收：按用户本轮明确要求将修复合并为 main `40522c1`，保留两项既有波段信号失败证据。常驻 API 回测版本的引擎 `dbaa9a01700f` 与 main 源码一致，旧引擎历史完成摘要自动失效（初次检查 recent=0）；7 项定向任务/恢复测试、类型及构建结果保留。未推送远端。
+
 - MONOREPO-231 修正：回测完成摘要保存最终已清仓 `holding_max_drawdown`，同时独立保存本轮 `holding_current_max_drawdown` 与数量归零后的 flat 状态；版本更新为 `holding_entry_cost_mae_cycle_v2`。7 项任务/历史恢复测试、修改模块 mypy、既定 11 模块严格类型检查及 sdist/wheel 构建通过。main 既有信号回归失败阻断合并，常驻服务尚未包含本功能。
 
 - MONOREPO-193：运行中的回测任务快照与单任务查询公开独立的 `progress_percent` 和 `progress_stage`，进度单调递增且未完成时最高 99%。API 42 项测试及 10 个子测试通过；真实浏览器展示未验证。
