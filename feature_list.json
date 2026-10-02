@@ -37,6 +37,11 @@
                     "command": "mypy --follow-imports=silent integrated_strategy.py trade_evidence.py strategy_profiles.py secondary_resistance.py",
                     "status": "passed",
                     "summary": "后续补齐容器/序列类型、拆开N/转折构造参数与同名不同类型变量、显式收窄可空证据，原51条类型错误已修复；四个文件检查通过。89项相关策略回归通过。 80项受影响的转浪、分级压力、浅回撤及反转回归通过。"
+                },
+                {
+                    "command": "Web 3003 / API 8765 backtest-version; 正式TDX单股回测至2024-01-19",
+                    "status": "passed",
+                    "summary": "常驻服务由v79更新为v80，页面main修订同步518c9ee；量能及净收益风险比过滤开启，真实接口返回2024-01-17 BUY/filled，原始价14.40元、300股、净收益风险比2.0182，成交图表标记齐备。保留既有非一字涨停收盘模拟假设。"
                 }
             ]
         },
