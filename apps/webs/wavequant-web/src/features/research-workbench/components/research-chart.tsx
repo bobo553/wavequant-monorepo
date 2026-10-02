@@ -130,7 +130,7 @@ const chartLayers: readonly IChartLayer[] = [
         label: "三级 a/b/c 观察",
         checked: true,
         description:
-            "b 最低价不低于 a 的 2/3 回撤价，或者 b 耗时长于 a 且 b 最低收盘低于 a 的 1/2 回撤价，再由正 N 与轧空确认提示 c 启动候选。收盘突破 a 高点、跌破 b 低点另行标记；点击可查看完整证据。",
+            "b 最低价不低于 a 的 2/3 回撤价，或者 b 耗时长于 a 且 b 最低收盘低于 a 的 1/2 回撤价，再由正 N 与轧空确认提示 c 启动候选。讲义折线与已确认二级 A 高也可标出 A/B/C 测幅及两档目标；点击可查看完整证据。",
         tone: "orange",
     },
 ];

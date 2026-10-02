@@ -828,6 +828,8 @@ export function visibleAnnotations(items, options) {
                                 ? options.bullishTurnSignals
                                 : m.category === "tertiary-abc"
                                   ? options.tertiaryAbc
+                                  : m.category === "wave-projection"
+                                    ? options.tertiaryAbc
                                   : options.rules,
     );
 }
@@ -856,6 +858,7 @@ export function markerGroups(items, options, span = 140) {
                 isFill = item.kind === "fill",
                 isRule = item.kind === "rule",
                 isTrendKey = item.kind === "trend-key",
+                isWaveProjection = item.kind === "wave-projection",
                 isCandidateRejection = item.category === "entry-rejections",
                 buy = item.side === "BUY" || item.side === "LONG";
             const text = isCandidateRejection
@@ -869,7 +872,7 @@ export function markerGroups(items, options, span = 140) {
                     : item.title;
             const markerPosition =
                 item.markerPosition ||
-                ((isFill || isTrendKey || isCandidateRejection) && Number.isFinite(item.price)
+                ((isFill || isTrendKey || isWaveProjection || isCandidateRejection) && Number.isFinite(item.price)
                     ? buy
                         ? "atPriceBottom"
                         : "atPriceTop"
@@ -884,7 +887,7 @@ export function markerGroups(items, options, span = 140) {
                     id: g.id,
                     time: g.time,
                     position: markerPosition,
-                    ...((isFill || isTrendKey || isCandidateRejection) &&
+                    ...((isFill || isTrendKey || isWaveProjection || isCandidateRejection) &&
                     Number.isFinite(item.price) &&
                     markerPosition.startsWith("atPrice")
                         ? { price: item.price }
@@ -895,6 +898,8 @@ export function markerGroups(items, options, span = 140) {
                             : "#40d6a3"
                         : isCandidateRejection
                           ? "#8c9db599"
+                          : isWaveProjection
+                            ? item.color
                           : isTrendKey
                             ? item.color
                             : isRule
@@ -912,7 +917,9 @@ export function markerGroups(items, options, span = 140) {
                         ? buy
                             ? "arrowUp"
                             : "arrowDown"
-                        : isTrendKey
+                        : isWaveProjection
+                          ? item.markerShape || "circle"
+                          : isTrendKey
                           ? item.markerShape || "arrowDown"
                           : isRule
                             ? "circle"
@@ -922,6 +929,8 @@ export function markerGroups(items, options, span = 140) {
                         ? 1.5
                         : isCandidateRejection
                           ? 0.8
+                        : isWaveProjection
+                          ? 1.1
                           : isTrendKey
                             ? 0.8
                             : isRule

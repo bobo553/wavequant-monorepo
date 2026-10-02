@@ -28,8 +28,10 @@ import { TargetGuideOverlay, targetLevelGuide } from "./target-level-guides.js";
 import { TradeMarkerOverlay } from "./trade-marker-overlay.js";
 import {
     waveCProjectionAnnotation,
+    waveCProjectionEvidenceAnnotations,
     waveCProjectionForSelection,
     waveCProjectionFromStructure,
+    waveCProjectionLegs,
 } from "./wave-c-projection.js";
 import { WaveEndpointOverlay, selectedWaveEndpoints } from "./wave-endpoint-overlay.js";
 
@@ -149,6 +151,7 @@ export class PriceChart {
         this.polylineEnabled = false;
         this.polylineKey = "";
         this.levelLines = [];
+        this.waveAbLines = [];
         this.lastFallHighLines = [];
         this.lastFallHighLineKey = "";
         this.bullishTurnGuideLines = [];
@@ -158,8 +161,10 @@ export class PriceChart {
         this.windowAnnotations = [];
         this.data = null;
         this.theory = null;
+        this.geometryVisible = false;
         this.annotations = [];
         this.autoWaveProjection = null;
+        this.autoWaveEvidence = [];
         this.options = {
             signals: true,
             fills: true,
@@ -348,8 +353,10 @@ export class PriceChart {
         this.tooltipBarTime = null;
         this.data = data;
         this.theory = null;
+        this.geometryVisible = false;
         this.selected = null;
         this.autoWaveProjection = null;
+        this.autoWaveEvidence = [];
         this.waveEndpointOverlay.setPoints([]);
         this.tooltip.hidden = true;
         this.clearTheory();
@@ -401,7 +408,8 @@ export class PriceChart {
     setAnnotationOptions(options) {
         Object.assign(this.options, options);
         this.annotations = buildAnnotations(this.data, this.theory);
-        if (this.autoWaveProjection) this.annotations.push(this.autoWaveProjection);
+        if (this.autoWaveProjection) this.annotations.push(...this.autoWaveEvidence, this.autoWaveProjection);
+        this.drawWaveAbPath();
         this.refreshMarkers();
         this.drawLevels();
     }
@@ -762,11 +770,7 @@ export class PriceChart {
             !item ||
             !this.data ||
             !this.options.levels ||
-            (item === this.autoWaveProjection && !this.options.rules) ||
-            (!blockedOrder &&
-                !blockedCandidate &&
-                item.kind !== "wave-projection" &&
-                !visibleAnnotations([item], this.options).length)
+            (!blockedOrder && !blockedCandidate && !visibleAnnotations([item], this.options).length)
         )
             return;
         const levels = blockedOrder
@@ -837,8 +841,10 @@ export class PriceChart {
         this.container.dataset.polylineConnections = "0";
     }
     clearTheory() {
+        this.geometryVisible = false;
         for (const series of this.lines) this.chart.removeSeries(series);
         this.lines = [];
+        this.clearWaveAbPath();
         this.windowAnnotations = [];
         this.clearLastFallHighGuides();
         this.clearBullishTurnGuides();
@@ -850,6 +856,32 @@ export class PriceChart {
         this.container.dataset.bullishTurnSignalCount = "0";
         this.polylineEnabled = false;
         this.clearPolyline();
+    }
+    clearWaveAbPath() {
+        for (const series of this.waveAbLines) this.chart.removeSeries(series);
+        this.waveAbLines = [];
+        this.container.dataset.waveAbcLegs = "0";
+    }
+    drawWaveAbPath() {
+        this.clearWaveAbPath();
+        const projection = this.autoWaveProjection?.raw;
+        if (!this.options.tertiaryAbc || !this.geometryVisible || !projection?.originTime || !this.data) return;
+        for (const { title, color, points } of waveCProjectionLegs(projection)) {
+            const series = this.chart.addSeries(L.LineSeries, {
+                color,
+                lineStyle: 2,
+                lineWidth: 2,
+                title,
+                lastValueVisible: false,
+                priceLineVisible: false,
+                crosshairMarkerVisible: false,
+                pointMarkersVisible: false,
+                autoscaleInfoProvider: () => null,
+            });
+            series.setData(points);
+            this.waveAbLines.push(series);
+        }
+        this.container.dataset.waveAbcLegs = String(this.waveAbLines.length);
     }
     setDrawingMode(mode, teaching = true) {
         this.drawingMode = mode;
@@ -968,11 +1000,13 @@ export class PriceChart {
     setTheory(theory, geometry = true) {
         this.theory = theory;
         this.clearTheory();
-        const projection =
-            theory && this.data && geometry ? waveCProjectionFromStructure(this.data.bars, theory) : null;
+        this.geometryVisible = geometry;
+        const projection = theory && this.data ? waveCProjectionFromStructure(this.data.bars, theory) : null;
         this.autoWaveProjection = projection ? waveCProjectionAnnotation(projection) : null;
+        this.autoWaveEvidence = projection ? waveCProjectionEvidenceAnnotations(projection) : [];
         this.annotations = buildAnnotations(this.data, theory);
-        if (this.autoWaveProjection) this.annotations.push(this.autoWaveProjection);
+        if (this.autoWaveProjection) this.annotations.push(...this.autoWaveEvidence, this.autoWaveProjection);
+        this.drawWaveAbPath();
         this.refreshMarkers();
         this.drawLevels();
         if (!theory || !this.data || !geometry) return;
