@@ -1,6 +1,7 @@
 """Close-observed exhaustion risk after a known positive N reaches a target."""
 
 from collections.abc import Sequence
+from fractions import Fraction
 
 from ..models.config import StrategyConfig
 from ..models.model import Bar
@@ -8,6 +9,90 @@ from ..market_structure.price_action import Direction, ShadowPolicy, observe_res
 
 
 FIVE_TOP_CHILD_VOLUME_CLEAR = "wave_five_top_child_volume_clear"
+C_EQUAL_NEAR_RESISTANCE_REDUCE = "wave_c_equal_near_resistance_reduce"
+C_EQUAL_NEAR_VOLUME_CLEAR = "wave_c_equal_near_volume_clear"
+
+
+def observe_c_equal_near_risk(
+    bars: Sequence[Bar], index: int, events: Sequence[dict], *, reduction_fraction: float = 0.8
+) -> dict | None:
+    """Watch the first one-tick approach to a known strong-A C equal target."""
+    if index < 1 or not events:
+        return None
+    tick = Fraction(1, 100)
+    current, previous = bars[index], bars[index - 1]
+    lower_day = current.low < previous.low and current.close < previous.close
+    last_bearish = (next((bars[j] for j in range(index - 1, -1, -1)
+                          if bars[j].close < bars[j].open), None) if lower_day else None)
+    clear_possible = (last_bearish is not None and last_bearish.volume > 0
+                      and current.volume > last_bearish.volume)
+    for event in sorted(events, key=lambda row: row["bar_index"], reverse=True):
+        if event.get("event") != "wave_c_equal_target":
+            continue
+        entry, attack, target = event["bar_index"], event["attack"], event["target"]
+        defense = event.get("defense")
+        if not 0 <= attack <= entry < index:
+            continue
+        if defense is None or any(bars[j].low < defense for j in range(entry + 1, index)):
+            continue
+        target_price = Fraction(str(target))
+        today_gap = target_price - Fraction(str(current.high))
+        if not clear_possible and not 0 <= today_gap <= tick:
+            continue
+        warning_index = next(
+            (j for j in range(entry + 1, index + 1)
+             if Fraction(str(bars[j].high)) >= target_price - tick), None
+        )
+        if warning_index is None:
+            continue
+        warning = bars[warning_index]
+        gap = target_price - Fraction(str(warning.high))
+        if not 0 <= gap <= tick:
+            continue
+        resistance = observe_resistance(
+            bars[warning_index - 1], warning,
+            attack_direction=Direction.UP, shadow_policy=ShadowPolicy(0.5),
+        )
+        if resistance.detected is not True:
+            continue
+        evidence = dict(
+            wave_n_date=bars[attack].timestamp.date().isoformat(),
+            wave_c_equal_target=target, wave_target_gap=float(gap),
+            target_warning_date=warning.timestamp.date().isoformat(),
+            target_warning_high=warning.high, target_warning_low=warning.low,
+            target_warning_close=warning.close,
+            wave_upper_shadow_fraction=resistance.shadow_range_fraction,
+            target_resistance_patterns=list(resistance.reasons),
+            execution_model="same_day_close",
+        )
+        if warning_index == index:
+            return dict(
+                evidence, reason=C_EQUAL_NEAR_RESISTANCE_REDUCE,
+                exit_fraction=reduction_fraction, exit_target_fraction=reduction_fraction,
+                observed_open=warning.open, observed_high=warning.high,
+                observed_low=warning.low, observed_close=warning.close,
+                observed_volume=warning.volume,
+            )
+        reference = next((bars[j] for j in range(warning_index, -1, -1)
+                          if bars[j].close < bars[j].open), None)
+        for day in range(warning_index + 1, index + 1):
+            bar, previous = bars[day], bars[day - 1]
+            if (reference is not None and reference.volume > 0 and bar.low < previous.low
+                    and bar.close < previous.close and bar.volume > reference.volume):
+                if day == index:
+                    return dict(
+                        evidence, reason=C_EQUAL_NEAR_VOLUME_CLEAR, exit_fraction=1.0,
+                        observed_open=bar.open, observed_high=bar.high,
+                        observed_low=bar.low, observed_close=bar.close,
+                        observed_volume=bar.volume, previous_low=previous.low,
+                        previous_close=previous.close,
+                        bearish_reference_date=reference.timestamp.date().isoformat(),
+                        bearish_reference_volume=reference.volume,
+                    )
+                break
+            if bar.close < bar.open:
+                reference = bar
+    return None
 
 
 def observe_five_top_child_volume_clear(

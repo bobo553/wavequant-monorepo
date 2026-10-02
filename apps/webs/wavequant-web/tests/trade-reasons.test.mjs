@@ -7,6 +7,37 @@ import { formatFilledTradeCopy } from "../public/filled-trade-copy.js";
 import { numberedTradeReasons, tradeReasonItems } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
 
+test("near C equal-wave resistance and later volume break explain both July sales", () => {
+    const warning = numberedTradeReasons({
+        side: "SELL",
+        reason: "wave_c_equal_near_resistance_reduce",
+        target_warning_date: "2026-07-06",
+        wave_c_equal_target: 8.57,
+        target_warning_high: 8.56,
+        wave_target_gap: 0.01,
+        target_resistance_patterns: ["long_upper_shadow"],
+        wave_upper_shadow_fraction: 0.58 / 0.78,
+        exit_target_fraction: 0.8,
+    }).join(" ");
+    assert.match(warning, /8\.5700.*8\.5600.*0\.0100/);
+    assert.match(warning, /上影占振幅 74\.36%.*累计 80\.00%/);
+    const clear = numberedTradeReasons({
+        side: "SELL",
+        reason: "wave_c_equal_near_volume_clear",
+        target_warning_date: "2026-07-06",
+        observed_low: 6.58,
+        previous_low: 7.4,
+        observed_close: 7.07,
+        previous_close: 8.15,
+        observed_volume: 82_443_254,
+        bearish_reference_date: "2026-06-30",
+        bearish_reference_volume: 18_267_900,
+    }).join(" ");
+    assert.match(clear, /6\.5800 < 昨低 7\.4000.*7\.0700 < 昨收 8\.1500/);
+    assert.match(clear, /82,443,254 股 > 此前最近阴线 2026-06-30 的 18,267,900 股/);
+    assert.doesNotMatch(clear, /undefined|NaN/);
+});
+
 test("five-top child break explains the prior bearish volume and both dated price breaks", () => {
     const marker = {
         side: "SELL",

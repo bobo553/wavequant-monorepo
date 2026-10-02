@@ -152,6 +152,10 @@ export function tradeReasonItems(item) {
             reasons.push(`C 浪 0.618 目标 ${num(item.wave_c_0618_target, 4)} 元已触及；本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，累计减仓 80%。`);
         if (item.reason === "wave_c_0618_shadow_break_clear")
             reasons.push(`${item.abnormal_date} 长上影警示后，本日收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)}；最低 ${num(item.observed_low, 4)} < 警示低点 ${num(item.abnormal_low, 4)}，收盘 < 警示收盘 ${num(item.abnormal_close, 4)}，清空余仓。`);
+        if (item.reason === "wave_c_equal_near_resistance_reduce" && item.target_warning_date)
+            reasons.push(`${item.target_warning_date} 强 A 的 C 浪等浪目标 ${num(item.wave_c_equal_target, 4)} 元，最高 ${num(item.target_warning_high, 4)} 元，相差 ${num(item.wave_target_gap, 4)} 元；空头抵抗${item.target_resistance_patterns?.includes("long_upper_shadow") ? `，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}` : ""}，按累计 ${pct(item.exit_target_fraction)} 目标减仓。`);
+        if (item.reason === "wave_c_equal_near_volume_clear" && item.target_warning_date && item.bearish_reference_date)
+            reasons.push(`${item.target_warning_date} 近等浪空头抵抗后，今日最低 ${num(item.observed_low, 4)} < 昨低 ${num(item.previous_low, 4)}，收盘 ${num(item.observed_close, 4)} < 昨收 ${num(item.previous_close, 4)}；成交量 ${num(item.observed_volume, 0)} 股 > 此前最近阴线 ${item.bearish_reference_date} 的 ${num(item.bearish_reference_volume, 0)} 股，当日清空余仓。`);
         if (["wave_upper_rejection_reduce", "wave_volume_shadows_reduce"].includes(item.reason) && item.wave_range_fraction != null)
             reasons.push(
                 `异常波动：振幅/前收 ${pct(item.wave_range_fraction)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，成交量 ${num(item.observed_volume, 0)} > 前日 ${num(item.previous_volume, 0)}。`,

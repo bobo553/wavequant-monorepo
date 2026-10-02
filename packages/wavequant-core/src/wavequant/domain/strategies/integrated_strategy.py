@@ -18,7 +18,10 @@ from .bull_eligibility import bull_permission_history
 from .attack_quality import v3_positive_n_attack_rejection
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
-from .wave_exhaustion_exit import FIVE_TOP_CHILD_VOLUME_CLEAR, observe_five_top_child_volume_clear
+from .wave_exhaustion_exit import (
+    C_EQUAL_NEAR_VOLUME_CLEAR, FIVE_TOP_CHILD_VOLUME_CLEAR,
+    observe_c_equal_near_risk, observe_five_top_child_volume_clear,
+)
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
 from .two_t_resistance import two_t_resistance_history
 from ..market_state.squeeze_state import observe_squeeze_resumption
@@ -677,6 +680,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         (event for event in audit if event["event"].startswith("wave_projection_")),
         key=lambda event: event["bar_index"],
     ) if whole_wave else []
+    c_equal_events: list[dict] = []
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
     bearish_attacks = {c['attack']: c for c in candidates if c['setup'].direction == Direction.DOWN}
     last_progress = -1
@@ -691,6 +695,11 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             log(i, 'target_resistance_observed', **target_risk)
             if target_risk['exit_fraction'] == 1.0:
                 exits.append(str(target_risk['reason']))
+        c_equal_risk = observe_c_equal_near_risk(bars, i, c_equal_events) if whole_wave else None
+        if c_equal_risk is not None:
+            log(i, 'c_equal_near_risk_observed', **c_equal_risk)
+            if c_equal_risk['reason'] == C_EQUAL_NEAR_VOLUME_CLEAR:
+                exits.append(C_EQUAL_NEAR_VOLUME_CLEAR)
         five_top_exit = observe_five_top_child_volume_clear(bars, i, projection_events) if whole_wave else None
         if five_top_exit is not None:
             exits.append(FIVE_TOP_CHILD_VOLUME_CLEAR)
@@ -721,6 +730,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 '|'.join(exits), bar.timestamp, 0, None, 'risk_exit'))
             log(i, 'exit_signal', reason='|'.join(exits), **{
                 **(mother_child_inverse or {}),
+                **({key: value for key, value in c_equal_risk.items()
+                    if key not in ('reason', 'exit_fraction', 'exit_target_fraction')}
+                   if c_equal_risk is not None else {}),
                 **(five_top_exit or {}),
                 **({key: value for key, value in target_risk.items() if key not in ('reason', 'exit_fraction')}
                    if target_risk is not None and target_risk['exit_fraction'] == 1.0 else {}),
@@ -921,6 +933,10 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 **({'target_source': ('wave_0618_projection' if wave['wave_entry_path'] == 'two_t_strong_a_resistance_rebreak'
                                       and targets[0] == wave['wave_c_0618_target'] else 'wave_equal_projection') if wave is not None else projection.state if projection is not None and projection.target == targets[0]
                     else 'n_measured_target'} if whole_wave else {}))
+            if wave is not None and wave['wave_a_class'] == 'strong':
+                log(i, 'wave_c_equal_target', attack=c['attack'], target=wave['wave_equal_target'],
+                    defense=stop, owner_signal_index=i)
+                c_equal_events.append(audit[-1])
             if permission is not None:
                 log(i, 'long_transition_evidence', attack=c['attack'], regime=entry_regime.value,
                     confirmation_source=confirmation_source,
