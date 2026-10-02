@@ -1460,6 +1460,7 @@ function showAnnotationDetails(items) {
     panel.append(raw);
 }
 function renderVisibleAnnotations(items, range) {
+    $("focus-abc").disabled = chart.autoWaveProjections.length === 0;
     const t = range.trend;
     $("trend-summary").textContent = t
         ? `一级趋势线 · 视窗：${t.windowTrend} · 最新局部：${t.trend}（至 ${t.latestKnown}）｜视窗末跌高 ${num(t.lastFallHigh?.value)} · 末升低 ${num(t.lastRiseLow?.value)} · 点击一级转折点查看依据`
@@ -1971,7 +1972,8 @@ async function loadTheory(request, sequence, preloaded = null) {
         }
         $("drawing-status").textContent =
             `讲义绘图：${data.lecture_drawing?.teaching_paths?.length || 0} 组子母路径、${data.lecture_drawing?.inside_connections?.length || 0} 组母子路径；${data.lecture_drawing?.issues.length || 0} 处无法连线的十字星。${data.strategy_pivot_mode === "lecture_causal" ? "新版从同一递推器提取收盘确认点；绘图连接不直接等于交易信号。" : "显示结构与所选旧策略／行情浏览独立。"}阴阳高低顺序是讲义约定，不代表已知真实日内路径。`;
-        $("theory-status").textContent = data.interrupted ? "当前结构未解" : "已确认结构";
+        $("theory-status").textContent =
+            `${data.interrupted ? "当前结构未解" : "已确认结构"} · ABC ${chart.autoWaveProjections.length} 组`;
         if (
             !state.pendingFocus &&
             !state.selectedAnnotationId &&
@@ -2985,6 +2987,18 @@ for (const id of [
         )
             loadTheory(select(), state.sequence);
     });
+$("focus-abc").addEventListener("click", () => {
+    if (!state.theory) return;
+    tradePlayback?.pause();
+    setChartView("local");
+    $("show-tertiary-abc").checked = true;
+    $("show-levels").checked = true;
+    $("show-theory").checked = true;
+    updateLayerToggleCount();
+    chart.setAnnotationOptions(annotationOptions());
+    chart.setTheory(state.theory, true);
+    chart.focusWaveProjection();
+});
 $("focus-fill").addEventListener("click", () => {
     tradePlayback.pause();
     const marker = state.view.markers.filter((m) => m.kind === "fill").at(-1);

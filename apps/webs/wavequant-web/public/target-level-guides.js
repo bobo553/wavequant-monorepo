@@ -4,7 +4,8 @@ const TARGET_STAGES = new Set(["c_0618", "c_equal", "one_p", "two_t", "five_top"
 export function targetLevelGuide(item, level, bars, asof) {
     if (!TARGET_STAGES.has(level.stage) || !level.anchor_at || !Number.isFinite(level.price)) return null;
     const knownAt = level.available_at || item.signal_time || item.time;
-    const end = asof || bars.at(-1)?.time;
+    const requestedEnd = asof || bars.at(-1)?.time;
+    const end = level.valid_until && level.valid_until < requestedEnd ? level.valid_until : requestedEnd;
     if (!end || knownAt > end || !bars.some((bar) => bar.time === level.anchor_at && bar.time <= end)) return null;
     // 确认当日的上影可能先于目标成立，只有收盘可以证明当日已经突破。
     const breakout = bars.find(

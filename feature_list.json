@@ -7428,18 +7428,25 @@
                 "B段仅在同一K线最低价和收盘价都严格跌破正N起点时撤销测幅",
                 "2020-04-28图表自动识别02-10正N与02-17轧空式续攻，从B日期画出目标；手动选定A高点也使用同一结构",
                 "图上分别标出A起点、正N、轧空、A顶和B/C起点，并连出A、B两段；ABC开关独立于普通规则标识",
+                "历史A退出当前有效高点列表后仍从确认记录保留ABC；已确认B固定，多个历史组不互相覆盖，失效后不推断新的目标突破",
+                "定位ABC按钮可将视窗外历史波段带回图窗，并开启标识、波段与C目标",
                 "二级A高须在当前历史截面已确认，保持自动交易入场与回测规则不变"
             ],
             "verification": [
                 {
-                    "command": "node --test annotations.test.mjs target-level-guides.test.mjs wave-c-projection.test.mjs",
+                    "command": "node --test tests/annotations.test.mjs tests/target-level-guides.test.mjs tests/wave-c-projection.test.mjs tests/wave-c-chart.test.mjs",
                     "status": "passed",
-                    "summary": "47项通过，含先锋2020真实日线、早期正N与放量续攻、双破拒绝、A/B/C按价标识及B日期目标锚定。"
+                    "summary": "55项通过，含先锋2020真实日线、历史A被过滤复现、B确认冻结、多个ABC、视窗切换/定位、标签/波段/目标独立开关及目标失效截止。图表测试验证SDK输入与状态，不代替像素验证。"
                 },
                 {
                     "command": "pnpm --filter wavequant-web lint; typecheck; build; git diff --check",
                     "status": "passed",
                     "summary": "Web lint无错误（6条既有警告）、typecheck、生产构建及Node语法检查通过；public目录JS由现有ESLint配置忽略。"
+                },
+                {
+                    "command": "live AkShare view/theory HTTP prefixes: 2020-04-28, 2020-05-29, latest 2026-09-30",
+                    "status": "passed",
+                    "summary": "旧实现截至04-28返回ABC、05-29返回null；修复后1849/1869/3398根真实行情均保留02-04起点、03-02 A和04-28 B及4.05082/4.62目标。当前完整历史中目标双破失效日为2024-02-01。"
                 }
             ]
         }

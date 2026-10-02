@@ -12,6 +12,7 @@ import {
     waveCProjectionFromStructure,
     waveCProjectionLegs,
     waveCProjectionLevels,
+    waveCProjectionsFromStructure,
 } from "../public/wave-c-projection.js";
 
 const bars = [
@@ -165,6 +166,82 @@ const xianfengBars = xianfeng.bars.map(([time, open, high, low, close, volume]) 
     volume,
 }));
 const xianfengTheory = xianfeng.theory;
+const history = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_2020_c_wave_history.json", import.meta.url)));
+const historyBars = [
+    ...xianfengBars,
+    ...history.bars.map(([time, open, high, low, close, volume]) => ({
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume,
+    })),
+];
+const historyTheory = { ...xianfengTheory, asof: history.asof, secondary_trends: history.secondary_trends };
+
+test("historical ABC survives removal of its A high from the active landmark list", () => {
+    assert.equal(
+        historyTheory.secondary_trends.bear_to_bull_highs.some((high) => high.time === "2020-03-02"),
+        false,
+    );
+    const projection = waveCProjectionFromStructure(historyBars, historyTheory);
+    assert.ok(projection);
+    assert.equal(projection.aTime, "2020-03-02");
+    assert.equal(projection.bTime, "2020-04-28");
+    assert.equal(projection.bKnownAt, "2020-05-06");
+    assert.ok(Math.abs(projection.target - 4.62) < 1e-10);
+    assert.equal(waveCProjectionsFromStructure(historyBars, historyTheory).length, 1);
+});
+
+test("later ABC observations do not replace the earlier group", () => {
+    const shifted = JSON.parse(
+        JSON.stringify({ bars: xianfengBars, theory: xianfengTheory }).replaceAll("2020-", "2021-"),
+    );
+    const theory = {
+        asof: shifted.theory.asof,
+        lecture_drawing: {
+            strokes: [...xianfengTheory.lecture_drawing.strokes, ...shifted.theory.lecture_drawing.strokes],
+        },
+        secondary_trends: {
+            ...historyTheory.secondary_trends,
+            bear_to_bull_highs: shifted.theory.secondary_trends.bear_to_bull_highs,
+        },
+    };
+    const projections = waveCProjectionsFromStructure([...historyBars, ...shifted.bars], theory);
+    assert.deepEqual(
+        projections.map((p) => [p.aTime, p.bTime]),
+        [
+            ["2020-03-02", "2020-04-28"],
+            ["2021-03-02", "2021-04-28"],
+        ],
+    );
+});
+
+test("historical evidence rejects unavailable, equal-key and mismatched B confirmation", () => {
+    assert.equal(waveCProjectionFromStructure(historyBars, { ...historyTheory, asof: "2020-04-01" }), null);
+    const equalKey = structuredClone(historyTheory);
+    equalKey.secondary_trends.strokes[0].points[0].broken_key.value = 4.39;
+    assert.equal(waveCProjectionFromStructure(historyBars, equalKey), null);
+    const mismatched = structuredClone(historyTheory);
+    mismatched.secondary_trends.strokes[0].points[1].confirmed_by.value = 3.12;
+    assert.equal(waveCProjectionFromStructure(historyBars, mismatched), null);
+});
+
+test("confirmed historical B stays fixed after a later origin failure and targets stop before that failure", () => {
+    const later = [
+        ...historyBars,
+        { time: "2020-06-01", open: 2.88, high: 2.89, low: 2.8, close: 2.85, volume: 1 },
+        { time: "2020-06-02", open: 4.9, high: 5, low: 4.8, close: 4.9, volume: 1 },
+    ];
+    const projection = waveCProjectionFromStructure(later, { ...historyTheory, asof: "2020-06-02" });
+    assert.ok(projection);
+    assert.equal(projection.bTime, "2020-04-28");
+    assert.equal(projection.invalidatedAt, "2020-06-01");
+    const annotation = waveCProjectionAnnotation(projection);
+    assert.equal(annotation.levels[1].valid_until, "2020-05-29");
+    assert.equal(targetLevelGuide(annotation, annotation.levels[1], later, "2020-06-02").end, null);
+});
 
 test("real Xianfeng daily bars reveal the February 10 N, February 17 squeeze and April 28 B", () => {
     const projection = waveCProjectionFromStructure(xianfengBars, xianfengTheory);
