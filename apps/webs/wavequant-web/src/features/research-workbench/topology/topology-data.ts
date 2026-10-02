@@ -302,8 +302,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             },
             {
                 id: "hard-risk",
-                question: "放量倒 N、巨量反包、五饱后破子低、异常波段或压力突破受阻？",
-                detail: "V3 巨量高开强阴反包、放量倒 N、波段异常与趋势翻空可整仓退出。本笔正 N 在此前交易日已达五饱或十满，随后阴线低点低于昨低及前天子低、收盘低于昨收，且量大于此前最近阴线时清空余仓。正 N 上攻巨量阴线压力区遇不利 K 通常全清；未回补跳空且收高时先减半，成交后首次收跌清余仓。持仓大幅上涨后盘中突破阴线压力高点并遇空头抵抗，后续首次不利 K 清仓。盘中突破至少 20 个交易日前的近 120 日未受空头抵抗阳线最高价，遇空头抵抗且收盘未站稳并出现不利 K 时先减半，成交后首次收低清余仓。",
+                question: "放量倒 N、巨量反包、五顶后破子低、异常波段或压力突破受阻？",
+                detail: "V3 巨量高开强阴反包、放量倒 N、波段异常与趋势翻空可整仓退出。已知正 N 在此前交易日达到五顶或十满，随后阴线低点低于昨低及前天子低、收盘低于昨收，且量大于此前最近阴线时生成清仓信号；有持仓时当日收盘清空余仓。正 N 上攻巨量阴线压力区遇不利 K 通常全清；未回补跳空且收高时先减半，成交后首次收跌清余仓。持仓大幅上涨后盘中突破阴线压力高点并遇空头抵抗，后续首次不利 K 清仓。盘中突破至少 20 个交易日前的近 120 日未受空头抵抗阳线最高价，遇空头抵抗且收盘未站稳并出现不利 K 时先减半，成交后首次收低清余仓。",
                 source: "strategy_profiles.py · whole_wave_profile definition；wave_exhaustion_exit.py；trend_flip_exit.py；pressure_exit.py",
                 yes: "按对应风险全清或减仓",
                 no: "检查二级 C 浪抵抗失败",
@@ -403,4 +403,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "70e688942640924117b0870451c6f0aa10214d9629b5a2b24b12459062211246";
+export const strategySourceDigest = "59ac2b88979b5bad59dace1d80360e5f537568ae832af5c64709a588dbcfc16d";

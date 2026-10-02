@@ -18,6 +18,7 @@ from .bull_eligibility import bull_permission_history
 from .attack_quality import v3_positive_n_attack_rejection
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
+from .wave_exhaustion_exit import FIVE_TOP_CHILD_VOLUME_CLEAR, observe_five_top_child_volume_clear
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
 from .two_t_resistance import two_t_resistance_history
 from ..market_state.squeeze_state import observe_squeeze_resumption
@@ -672,6 +673,10 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
         return select_entry(hierarchy_permissions.get(i,()),hierarchy_permissions.get(c['attack'],()),**params)
     emitted_attacks = set()
     target_resistance = two_t_resistance_history(bars, audit) if whole_wave else {}
+    projection_events = sorted(
+        (event for event in audit if event["event"].startswith("wave_projection_")),
+        key=lambda event: event["bar_index"],
+    ) if whole_wave else []
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
     bearish_attacks = {c['attack']: c for c in candidates if c['setup'].direction == Direction.DOWN}
     last_progress = -1
@@ -686,6 +691,9 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
             log(i, 'target_resistance_observed', **target_risk)
             if target_risk['exit_fraction'] == 1.0:
                 exits.append(str(target_risk['reason']))
+        five_top_exit = observe_five_top_child_volume_clear(bars, i, projection_events) if whole_wave else None
+        if five_top_exit is not None:
+            exits.append(FIVE_TOP_CHILD_VOLUME_CLEAR)
         mother_child_inverse = mother_child_inverse_n_break(bars, i) if whole_wave else None
         if mother_child_inverse is not None:
             exits.append(MOTHER_CHILD_INVERSE_N_LOW_BREAK)
@@ -713,6 +721,7 @@ def generate_system_signals(bars: list[Bar], config: SystemStrategy, *,
                 '|'.join(exits), bar.timestamp, 0, None, 'risk_exit'))
             log(i, 'exit_signal', reason='|'.join(exits), **{
                 **(mother_child_inverse or {}),
+                **(five_top_exit or {}),
                 **({key: value for key, value in target_risk.items() if key not in ('reason', 'exit_fraction')}
                    if target_risk is not None and target_risk['exit_fraction'] == 1.0 else {}),
             })

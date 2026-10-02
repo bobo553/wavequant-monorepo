@@ -10,9 +10,9 @@ export function tradeReasonItems(item) {
         .map(reasonText);
     const evidence = item.decision_evidence || [];
     const targetReason = item.decision_reason || item.reason;
-    if (targetReason === "wave_five_top_child_volume_clear")
+    if (targetReason === "wave_five_top_child_volume_clear" && item.wave_reached_date && item.child_date)
         reasons.push(
-            `${item.wave_reached_date} 已达到${item.wave_reached_stage === "ten_full" ? "十满" : "五饱"} ${num(item.wave_reached_price, 4)} 元；${item.mother_date} 母线包含前天 ${item.child_date} 子线，允许一侧等高或等低。`,
+            `${item.wave_n_date ? `${item.wave_n_date} 正 N；` : ""}${item.wave_reached_date} 已达到${item.wave_reached_stage === "ten_full" ? "十满" : "五顶"} ${num(item.wave_reached_price, 4)} 元；${item.mother_date} 母线包含前天 ${item.child_date} 子线，允许一侧等高或等低。`,
             `本日收阴，最低 ${num(item.observed_low, 4)} < 昨低 ${num(item.previous_low, 4)}，收盘 ${num(item.observed_close, 4)} < 昨收 ${num(item.previous_close, 4)}，最低 < 子低 ${num(item.child_low, 4)}；成交量 ${num(item.observed_volume, 0)} 股 > 最近阴线 ${item.bearish_reference_date} 的 ${num(item.bearish_reference_volume, 0)} 股，当日收盘清空余仓。`,
         );
     if (targetReason === "wave_two_t_resistance_reduce")

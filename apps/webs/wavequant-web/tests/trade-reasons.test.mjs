@@ -29,12 +29,14 @@ test("five-top child break explains the prior bearish volume and both dated pric
     const lines = numberedTradeReasons(marker);
     assert.equal(lines.length, 4);
     const text = lines.join(" ");
-    assert.match(text, /2025-10-28 已达到五饱 4\.9300/);
+    assert.match(text, /2025-09-29 正 N/);
+    assert.match(text, /2025-10-28 已达到五顶 4\.9300/);
     assert.match(text, /2025-11-13 母线包含前天 2025-11-14 子线/);
     assert.match(text, /4\.8500 < 昨低 4\.9900.*4\.9100 < 昨收 5\.1900.*最低 < 子低 4\.9100/);
     assert.match(text, /63,288,181 股 > 最近阴线 2025-11-11 的 63,172,500 股.*清空余仓/);
     assert.doesNotMatch(text, /undefined|子线收盘|成交量.*前日/);
     assert.match(numberedTradeReasons({ ...marker, wave_reached_stage: "ten_full" }).join(" "), /已达到十满/);
+    assert.doesNotMatch(numberedTradeReasons({ side: "SELL", reason: marker.reason }).join(" "), /undefined|NaN/);
     const copy = formatFilledTradeCopy(
         { symbol: "sz.300163", variant: "lecture_v3", backtest: { start: "2025-08-01" }, asof: "2025-11-18", bars: [] },
         marker,
