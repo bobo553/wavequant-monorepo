@@ -9,7 +9,7 @@ from wavequant.domain.market_structure.n_shape import BoxAnchorMode, MilestoneBa
 from wavequant.domain.market_state.market_regime import RegimePolicy, WaveBoundary, observe_market_regime
 from wavequant.domain.market_structure.polyline import (BarPathEvidence, LinePoint, PointKind as K,
     child_mother_path, mother_child_path, n_setup_from_polyline, observe_bar_relations, observe_polyline,
-    teaching_inside)
+    teaching_inside, teaching_outside)
 
 
 def bars(rows):
@@ -82,6 +82,31 @@ class PolylineTests(unittest.TestCase):
                 path = mother_child_path(*pair, mother_index=0)
                 self.assertEqual([(point.kind, point.price) for point in path.vertices], expected)
                 self.assertEqual(len(path.raw_vertices), 4)
+
+    def test_one_equal_boundary_is_a_teaching_child_mother_pair(self):
+        shanghai = ZoneInfo('Asia/Shanghai')
+        equal_high = (
+            Bar(datetime(2025, 11, 13, tzinfo=shanghai), 'TEST', 10.2, 12, 10, 11.8, 1000),
+            Bar(datetime(2025, 11, 14, tzinfo=shanghai), 'TEST', 11.8, 12, 9, 9.2, 1000),
+        )
+        equal_low = (
+            Bar(datetime(2025, 11, 13, tzinfo=shanghai), 'TEST', 10.8, 11, 9, 9.2, 1000),
+            Bar(datetime(2025, 11, 14, tzinfo=shanghai), 'TEST', 9.2, 12, 9, 11.8, 1000),
+        )
+        for pair, expected in (
+            (equal_high, [(0, K.LOW, 10), (1, K.HIGH, 12), (1, K.LOW, 9)]),
+            (equal_low, [(0, K.HIGH, 11), (1, K.LOW, 9), (1, K.HIGH, 12)]),
+        ):
+            with self.subTest(pair=pair):
+                self.assertFalse(observe_bar_relations(*pair).outside)
+                self.assertTrue(teaching_outside(*pair))
+                path = child_mother_path(*pair, child_index=0)
+                self.assertEqual([(p.index, p.kind, p.price) for p in path.vertices], expected)
+                self.assertEqual(len(path.raw_vertices), 4)
+        identical = replace(equal_high[1], low=10, close=10.2)
+        self.assertFalse(teaching_outside(equal_high[0], identical))
+        with self.assertRaises(ValueError):
+            child_mother_path(equal_high[0], identical, child_index=0)
 
     def test_up_leg_extends_then_confirms_negative_turn(self):
         r = run(fixture()[:4])

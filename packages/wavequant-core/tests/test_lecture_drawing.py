@@ -33,6 +33,76 @@ class LectureDrawingTests(unittest.TestCase):
                     self.assertEqual([(point['kind'], point['value'])
                                       for point in drawing['strokes'][0]['points']], expected)
 
+    def test_equal_boundary_child_mother_keeps_mother_extreme_in_all_colours(self):
+        shanghai = ZoneInfo('Asia/Shanghai')
+        cases = (
+            (12, 10, True, True, [(0, 'L', 10), (0, 'H', 12), (1, 'L', 9), (1, 'H', 12)]),
+            (12, 10, True, False, [(0, 'L', 10), (1, 'H', 12), (1, 'L', 9)]),
+            (12, 10, False, False, [(0, 'H', 12), (0, 'L', 10), (1, 'H', 12), (1, 'L', 9)]),
+            (12, 10, False, True, [(0, 'H', 12), (1, 'L', 9), (1, 'H', 12)]),
+            (11, 9, True, True, [(0, 'L', 9), (0, 'H', 11), (1, 'L', 9), (1, 'H', 12)]),
+            (11, 9, True, False, [(0, 'L', 9), (1, 'H', 12), (1, 'L', 9)]),
+            (11, 9, False, False, [(0, 'H', 11), (0, 'L', 9), (1, 'H', 12), (1, 'L', 9)]),
+            (11, 9, False, True, [(0, 'H', 11), (1, 'L', 9), (1, 'H', 12)]),
+        )
+        for child_high, child_low, child_up, mother_up, expected in cases:
+            with self.subTest(child_high=child_high, child_low=child_low,
+                              child_up=child_up, mother_up=mother_up):
+                def bar(day, up, high, low):
+                    opened, closed = (low + .2, high - .2) if up else (high - .2, low + .2)
+                    return Bar(datetime(2025, 11, day, tzinfo=shanghai), 'TEST',
+                               opened, high, low, closed, 1000)
+
+                drawing = lecture_drawing([bar(13, child_up, child_high, child_low),
+                                           bar(14, mother_up, 12, 9)])
+                self.assertEqual(drawing['issues'], [])
+                self.assertEqual(drawing['inside_connections'], [])
+                self.assertEqual(len(drawing['teaching_paths']), 1)
+                self.assertEqual([(p['index'], p['kind'], p['value']) for p in
+                                  drawing['teaching_paths'][0]['points']], expected)
+                self.assertTrue(all(p['available_at'] == '2025-11-14' for p in
+                                    drawing['teaching_paths'][0]['points']))
+                self.assertEqual([(p['index'], p['kind'], p['value']) for p in
+                                  drawing['strokes'][0]['points']], expected)
+
+    def test_equal_boundary_mother_child_keeps_all_eight_colour_paths(self):
+        shanghai = ZoneInfo('Asia/Shanghai')
+        cases = (
+            (12, 10, True, True, [(0, 'L', 9), (0, 'H', 12), (1, 'L', 10), (1, 'H', 12)]),
+            (12, 10, True, False, [(0, 'L', 9), (0, 'H', 12), (1, 'L', 10)]),
+            (12, 10, False, False, [(0, 'H', 12), (0, 'L', 9), (1, 'H', 12), (1, 'L', 10)]),
+            (12, 10, False, True, [(0, 'H', 12), (0, 'L', 9), (1, 'H', 12)]),
+            (11, 9, True, True, [(0, 'L', 9), (0, 'H', 12), (1, 'L', 9), (1, 'H', 11)]),
+            (11, 9, True, False, [(0, 'L', 9), (0, 'H', 12), (1, 'L', 9)]),
+            (11, 9, False, False, [(0, 'H', 12), (0, 'L', 9), (1, 'H', 11), (1, 'L', 9)]),
+            (11, 9, False, True, [(0, 'H', 12), (0, 'L', 9), (1, 'H', 11)]),
+        )
+        for child_high, child_low, mother_up, child_up, expected in cases:
+            with self.subTest(child_high=child_high, child_low=child_low,
+                              mother_up=mother_up, child_up=child_up):
+                def bar(day, up, high, low):
+                    opened, closed = (low + .2, high - .2) if up else (high - .2, low + .2)
+                    return Bar(datetime(2025, 11, day, tzinfo=shanghai), 'TEST',
+                               opened, high, low, closed, 1000)
+
+                drawing = lecture_drawing([bar(13, mother_up, 12, 9),
+                                           bar(14, child_up, child_high, child_low)])
+                self.assertEqual(drawing['issues'], [])
+                self.assertEqual(len(drawing['inside_connections']), 1)
+                self.assertEqual([(p['index'], p['kind'], p['value']) for p in
+                                  drawing['strokes'][0]['points']], expected)
+
+    def test_equal_high_child_mother_reuses_live_endpoint_at_mother(self):
+        data = bars([(9.5, 11, 9, 10.5), (10.2, 12, 10, 11.8),
+                     (11.8, 12, 8, 8.2)])
+        before = lecture_drawing(data[:2])['strokes'][0]['points']
+        self.assertEqual([(p['index'], p['kind'], p['value']) for p in before],
+                         [(0, 'L', 9), (1, 'H', 12)])
+        points = lecture_drawing(data)['strokes'][0]['points']
+        self.assertEqual([(p['index'], p['kind'], p['value']) for p in points],
+                         [(0, 'L', 9), (2, 'H', 12), (2, 'L', 8)])
+        self.assertEqual(points[1]['available_at'], '2026-01-03')
+
     def test_ordinary_extends_high_low_not_close(self):
         bs=bars([(10,12,9,11),(12,14,11,13),(11,12,10,11),(12,13,11,12)])
         drawing=lecture_drawing(bs);points=drawing['strokes'][0]['points']
@@ -59,9 +129,9 @@ class LectureDrawingTests(unittest.TestCase):
             self.assertEqual([(p['kind'],p['value']) for p in points],[('H',15),('L',bs[end-1].low)])
             self.assertEqual(points[-1]['index'],end-1)
 
-    def test_equal_low_allows_rising_and_equal_high_allows_falling(self):
-        for rows,expected in [([(10,12,9,11),(11,14,9,12),(12,16,9,13)],[9,16]),
-                              ([(12,15,10,11),(11,15,8,10),(10,15,6,9)],[15,6])]:
+    def test_equal_boundary_child_mother_run_keeps_each_candle_turn(self):
+        for rows,expected in [([(10,12,9,11),(11,14,9,12),(12,16,9,13)],[9,12,9,14,9,16]),
+                              ([(12,15,10,11),(11,15,8,10),(10,15,6,9)],[15,10,15,8,15,6])]:
             points=lecture_drawing(bars(rows))['strokes'][0]['points']
             self.assertEqual([p['value'] for p in points],expected)
 
