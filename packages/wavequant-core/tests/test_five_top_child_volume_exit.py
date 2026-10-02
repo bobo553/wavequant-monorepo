@@ -12,7 +12,10 @@ from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
 from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
-from wavequant.domain.strategies.wave_exhaustion_exit import observe_wave_exhaustion
+from wavequant.domain.strategies.wave_exhaustion_exit import (
+    observe_five_top_child_volume_clear, observe_wave_exhaustion,
+)
+from wavequant.interfaces.charts.visualization import ChartRepository
 
 
 @pytest.fixture(scope="module")
@@ -83,6 +86,69 @@ def test_real_five_top_child_break_clears_remaining_at_same_close(sample):
     foreign = run_portfolio({bars[0].symbol: prefix_bars}, [unrelated], config,
                             wave_events={bars[0].symbol: prefix_events})
     assert [o["side"] for o in foreign.orders if o["status"] == "filled"] == ["BUY"]
+
+
+def test_real_five_top_generates_november_exit_signal_and_close_fill(sample):
+    bars, _, dates = sample
+    profile = whole_wave_profile({"scenarios": {"base": {"execution": {}}}})
+    result = generate_system_signals(bars, SystemStrategy(**profile["strategy"]))
+    index = dates["2025-11-18"]
+    exit_signal = next(s for s in result.signals if s.bar_index == index and s.side == "EXIT")
+    assert exit_signal.reason == "wave_five_top_child_volume_clear"
+    assert not any("wave_five_top_child_volume_clear" in s.reason for s in result.signals
+                   if s.bar_index < index)
+    exit_event = next(e for e in result.audit if e["event"] == "exit_signal" and e["bar_index"] == index)
+    assert (exit_event["wave_n_date"], exit_event["wave_reached_date"], exit_event["child_date"]) == (
+        "2025-09-29", "2025-10-28", "2025-11-14")
+    chart = ChartRepository.render_theory(
+        None, bars[:index + 1], SystemStrategy(**profile["strategy"]), result, "2025-11-18",
+        geometry={"tertiary_trends": {}},
+    )
+    chart_exit = next(e for e in chart["events"] if e["event"] == "exit_signal" and e["bar_index"] == index)
+    assert (chart_exit["time"], chart_exit["reason"]) == (
+        "2025-11-18", "wave_five_top_child_volume_clear")
+    prefix = generate_system_signals(bars[:index + 1], SystemStrategy(**profile["strategy"]))
+    assert prefix.signals == [s for s in result.signals if s.bar_index <= index]
+
+    entry_index = dates["2025-11-17"]
+    entry = Signal(bars[entry_index].timestamp, bars[entry_index].symbol, entry_index,
+                   "LONG", bars[entry_index].close, 3.29, "fixture",
+                   bars[entry_index].timestamp, 0, None, "fixture", 10.0)
+    config = StrategyConfig(entry_at_close=True, wave_exhaustion_exit=True, exit_on_target=False,
+                            max_hold_bars=200, max_participation=1, slippage_bps_per_side=0)
+    portfolio = run_portfolio({bars[0].symbol: bars[:index + 1]},
+                              [entry, *[s for s in result.signals if s.bar_index <= index]], config)
+    buy, clear = [order for order in portfolio.orders if order["status"] == "filled"]
+    assert (clear["timestamp"][:10], clear["reason"], clear["price"]) == (
+        "2025-11-18", "wave_five_top_child_volume_clear", 4.91)
+    assert clear["quantity"] == buy["quantity"]
+    assert clear["remaining_quantity"] == 0
+    assert clear["execution_model"] == "same_day_close"
+    with_events = run_portfolio(
+        {bars[0].symbol: bars[:index + 1]},
+        [entry, *[s for s in result.signals if s.bar_index <= index]], config,
+        wave_events={bars[0].symbol: [e for e in result.audit
+                                     if e["event"].startswith("wave_projection_") and e["bar_index"] <= index]},
+    )
+    explained_clear = next(order for order in with_events.orders
+                           if order["side"] == "SELL" and order["status"] == "filled")
+    assert (explained_clear["wave_n_date"], explained_clear["wave_reached_date"],
+            explained_clear["child_date"], explained_clear["bearish_reference_volume"]) == (
+        "2025-09-29", "2025-10-28", "2025-11-14", 63_172_500)
+
+
+def test_global_exit_requires_a_prior_live_five_top(sample):
+    bars, _, dates = sample
+    index = dates["2025-11-18"]
+    reached = dict(event="wave_projection_target_reached", attack=dates["2025-09-29"],
+                   origin_index=dates["2025-09-23"], bar_index=index - 1,
+                   reached_stage="five_top", reached_target=4.93)
+    assert observe_five_top_child_volume_clear(bars, index, [reached]) is not None
+    assert observe_five_top_child_volume_clear(bars, index, [dict(reached, bar_index=index)]) is None
+    assert observe_five_top_child_volume_clear(bars, index,
+        [reached, dict(reached, event="wave_projection_invalidated", bar_index=index)]) is None
+    assert observe_five_top_child_volume_clear(bars, index,
+        [dict(reached, reached_stage="two_t")]) is None
 
 
 @pytest.mark.parametrize("change", ["equal_child_low", "equal_previous_low", "equal_previous_close",

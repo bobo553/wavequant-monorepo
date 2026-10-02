@@ -1,8 +1,52 @@
-"""Close-observed exhaustion risk after the holding's own N reaches a target."""
+"""Close-observed exhaustion risk after a known positive N reaches a target."""
+
+from collections.abc import Sequence
 
 from ..models.config import StrategyConfig
 from ..models.model import Bar
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
+
+
+FIVE_TOP_CHILD_VOLUME_CLEAR = "wave_five_top_child_volume_clear"
+
+
+def observe_five_top_child_volume_clear(
+    bars: Sequence[Bar], index: int, projection_events: Sequence[dict]
+) -> dict | None:
+    """Expose a known five-top break from chronologically sorted projection events."""
+    if not projection_events:
+        return None
+    child_break = _five_top_child_volume_break(bars, index)
+    if child_break is None:
+        return None
+    reached_by_n: dict[tuple[int, int | None], dict] = {}
+    invalidated: set[tuple[int, int | None]] = set()
+    for event in projection_events:
+        if event["bar_index"] > index:
+            break
+        key = (event["attack"], event.get("origin_index"))
+        if event["event"] == "wave_projection_invalidated":
+            reached_by_n.pop(key, None)
+            invalidated.add(key)
+        elif (key not in invalidated and event["event"] == "wave_projection_target_reached"
+              and event["bar_index"] < index
+              and event.get("reached_stage") in ("five_top", "ten_full")):
+            reached_by_n[key] = event
+    if not reached_by_n:
+        return None
+    rank = {"five_top": 1, "ten_full": 2}
+    reached = max(reached_by_n.values(), key=lambda event: (
+        rank[event["reached_stage"]], event["bar_index"], event["attack"]))
+    bar, previous = bars[index], bars[index - 1]
+    return dict(
+        child_break,
+        wave_n_date=bars[reached["attack"]].timestamp.date().isoformat(),
+        wave_reached_date=bars[reached["bar_index"]].timestamp.date().isoformat(),
+        wave_reached_stage=reached["reached_stage"], wave_reached_price=reached["reached_target"],
+        observed_open=bar.open, observed_close=bar.close, observed_volume=bar.volume,
+        previous_close=previous.close, previous_volume=previous.volume,
+        execution_model="same_day_close",
+    )
 
 
 def observe_wave_exhaustion(
@@ -248,7 +292,7 @@ def _observe_target_candle(
     if stage in ("five_top", "ten_full") and reached["bar_index"] < index:
         child_break = _five_top_child_volume_break(bars, index)
         if child_break is not None:
-            return dict(evidence, **child_break, reason="wave_five_top_child_volume_clear", exit_fraction=1.0)
+            return dict(evidence, **child_break, reason=FIVE_TOP_CHILD_VOLUME_CLEAR, exit_fraction=1.0)
     if (
         previous.close > previous.open
         and body >= config.wave_engulf_min_body * bar.open
@@ -359,7 +403,7 @@ def _observe_target_candle(
     return None
 
 
-def _five_top_child_volume_break(bars: list[Bar], index: int) -> dict | None:
+def _five_top_child_volume_break(bars: Sequence[Bar], index: int) -> dict | None:
     """The child two sessions ago may be bullish; compare volume to the last bearish bar."""
     if index < 3:
         return None
