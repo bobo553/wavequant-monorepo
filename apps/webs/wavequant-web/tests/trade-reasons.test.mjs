@@ -4,8 +4,52 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 
 import { formatFilledTradeCopy } from "../public/filled-trade-copy.js";
+import { holdingDrawdownVersion } from "../public/max-drawdown.js";
 import { numberedTradeReasons, tradeReasonItems } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
+
+test("trade detail and clipboard show the same whole-holding entry-cost maximum loss", () => {
+    const episode = {
+        metric_version: holdingDrawdownVersion,
+        symbol: "sz.001216",
+        trade_id: "t1",
+        entry_time: "2024-01-17T15:00:00",
+        exit_time: null,
+        asof: "2024-01-19T15:00:00",
+        status: "open",
+        observed_max_drawdown: -0.125,
+        max_drawdown: -0.125,
+        cost_price: 16,
+        low_price: 14,
+        low_time: "2024-01-19",
+        loss_amount: -200,
+        coverage: "complete",
+    };
+    const marker = { kind: "fill", side: "BUY", trade_id: "t1", time: "2024-01-17" };
+    const view = {
+        symbol: "sz.001216",
+        asof: "2024-01-19",
+        bars: [],
+        metrics: { holding_drawdown_version: holdingDrawdownVersion },
+        backtest: { start: "2024-01-01", holding_drawdowns: [episode] },
+    };
+    const text = formatFilledTradeCopy(view, marker, "V3", "10%");
+    assert.match(text, /整笔持仓最大亏损：-12.50%/);
+    assert.match(text, /未清仓/);
+    assert.match(text, /浮亏 -200.00 元/);
+    const dom = new JSDOM("<section></section>");
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        const panel = document.querySelector("section");
+        appendTradeEvidence(panel, marker, null, episode);
+        assert.match(panel.textContent, /整笔持仓最大亏损：-12.50%/);
+        assert.match(panel.textContent, /成本 16.0000 元.*最低 14.0000 元/);
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
+});
 
 test("secondary then primary alternation breakout explains dates, price and volume", () => {
     const marker = {

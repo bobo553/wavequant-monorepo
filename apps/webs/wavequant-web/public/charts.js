@@ -24,7 +24,7 @@ import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
 import { drawdownCandleRange } from "./max-drawdown.js";
 import { selectedTertiaryThirds, tertiaryRetracementGuides } from "./retracement-guides.js";
-import { targetLevelGuide, TargetGuideOverlay } from "./target-level-guides.js";
+import { TargetGuideOverlay, targetLevelGuide } from "./target-level-guides.js";
 import { TradeMarkerOverlay } from "./trade-marker-overlay.js";
 import { waveCProjection } from "./wave-c-projection.js";
 import { WaveEndpointOverlay, selectedWaveEndpoints } from "./wave-endpoint-overlay.js";
@@ -325,10 +325,18 @@ export class PriceChart {
                 description: `正 N ${projection.nTime} 后，选定 ${projection.aTime} 的 A 浪高点 ${num(projection.aHigh)} 高于一饱 ${num(projection.oneP)}；B 浪低点 ${projection.bTime} ${num(projection.bLow)}。A 幅度 = A 高 − 正 N 起点；B 低 + 0.618×A = ${num(projection.target0618)} 元，B 低 + 1×A = ${num(projection.target)} 元。仅为测幅观察，不保证到达。`,
                 sourceLabel: "所选 A 浪高点与当前历史截面 B 浪低点",
                 levels: [
-                    { name: "C 浪目标 0.618×A", price: projection.target0618,
-                        stage: "c_0618", available_at: projection.bTime },
-                    { name: "C 浪目标 1×A", price: projection.target,
-                        stage: "c_equal", available_at: projection.bTime },
+                    {
+                        name: "C 浪目标 0.618×A",
+                        price: projection.target0618,
+                        stage: "c_0618",
+                        available_at: projection.bTime,
+                    },
+                    {
+                        name: "C 浪目标 1×A",
+                        price: projection.target,
+                        stage: "c_equal",
+                        available_at: projection.bTime,
+                    },
                 ],
                 raw: projection,
             };
@@ -611,9 +619,10 @@ export class PriceChart {
         if (focus) {
             if (endpoints.length) {
                 const first = this.data.bars.findIndex((bar) => bar.time === endpoints[0].time);
-                const targetAsOf = this.theory?.asof && this.theory.asof < this.data.asof
-                    ? this.theory.asof : this.data.asof;
-                const cBreaks = selected.levels.filter((level) => ["c_0618", "c_equal"].includes(level.stage))
+                const targetAsOf =
+                    this.theory?.asof && this.theory.asof < this.data.asof ? this.theory.asof : this.data.asof;
+                const cBreaks = selected.levels
+                    .filter((level) => ["c_0618", "c_equal"].includes(level.stage))
                     .map((level) => targetLevelGuide(selected, level, this.data.bars, targetAsOf)?.end)
                     .filter(Boolean);
                 const lastTime = [endpoints.at(-1).time, ...cBreaks].sort().at(-1);
@@ -777,8 +786,12 @@ export class PriceChart {
         const targetGuides = [];
         for (const [i, level] of levels.entries()) {
             if (!Number.isFinite(level.price)) continue;
-            const guide = targetLevelGuide(item, level, this.data.bars,
-                this.theory?.asof && this.theory.asof < this.data.asof ? this.theory.asof : this.data.asof);
+            const guide = targetLevelGuide(
+                item,
+                level,
+                this.data.bars,
+                this.theory?.asof && this.theory.asof < this.data.asof ? this.theory.asof : this.data.asof,
+            );
             const color = ["#ebbc70", "#a29ce0", "#5ebeb0"][i % 3];
             const s = this.chart.addSeries(L.LineSeries, {
                 color,
@@ -796,10 +809,10 @@ export class PriceChart {
                     ? {}
                     : { autoscaleInfoProvider: () => null }),
             });
-            const start = guide?.start || (level.available_at && level.available_at > item.time ? level.available_at : item.time);
+            const start =
+                guide?.start || (level.available_at && level.available_at > item.time ? level.available_at : item.time);
             const points = [{ time: start, value: level.price }];
-            if (guide?.end && guide.end > start)
-                points.push({ time: guide.end, value: level.price });
+            if (guide?.end && guide.end > start) points.push({ time: guide.end, value: level.price });
             else if (!guide && start < this.data.bars.at(-1).time)
                 points.push({ time: this.data.bars.at(-1).time, value: level.price });
             if (targetStages.has(level.stage))
@@ -1026,9 +1039,11 @@ export class PerformanceCharts {
             return { chart, series };
         });
     }
-    update(curve) {
+    update(curve, holdingCurve = []) {
         ["value", "drawdown", "exposure"].forEach((key, i) => {
-            this.instances[i].series.setData(curve.map((r) => ({ time: r.time, value: r[key] })));
+            this.instances[i].series.setData(
+                i === 1 ? holdingCurve : curve.map((r) => ({ time: r.time, value: r[key] })),
+            );
             this.instances[i].chart.timeScale().fitContent();
         });
     }

@@ -194,7 +194,10 @@ class BacktestJobsTests(unittest.TestCase):
                 "result_scope": "stock",
                 "backtest": {"status": "complete"},
                 "orders": [{"status": "filled"}, {"status": "cancelled"}],
-                "metrics": {"total_return": -0.075, "total_pnl": -7500.0, "max_drawdown": -0.154},
+                "metrics": {"total_return": -0.075, "total_pnl": -7500.0, "max_drawdown": -0.154,
+                            "holding_drawdown_version": "holding_entry_cost_mae_cycle_v2",
+                            "holding_drawdown_status": "complete", "holding_max_drawdown": -.22,
+                            "holding_current_max_drawdown": 0, "holding_current_drawdown_status": "flat"},
             },
             details=details,
         )
@@ -206,6 +209,10 @@ class BacktestJobsTests(unittest.TestCase):
         self.assertEqual(recent[0]["total_return"], -0.075)
         self.assertEqual(recent[0]["total_pnl"], -7500.0)
         self.assertEqual(recent[0]["max_drawdown"], -0.154)
+        self.assertEqual(recent[0]['holding_max_drawdown'], -.22)
+        self.assertEqual(recent[0]['holding_drawdown_version'], 'holding_entry_cost_mae_cycle_v2')
+        self.assertEqual(recent[0]['holding_current_max_drawdown'], 0)
+        self.assertEqual(recent[0]['holding_current_drawdown_status'], 'flat')
         self.assertTrue(recent[0]["result_available"])
         self.assertNotIn("result", recent[0])
         now[0] = 10
@@ -225,7 +232,10 @@ class BacktestJobsTests(unittest.TestCase):
                     "result_scope": "stock",
                     "backtest": {"status": "complete"},
                     "orders": [],
-                    "metrics": {"total_return": 0.12, "total_pnl": 12000.0, "max_drawdown": -0.083},
+                    "metrics": {"total_return": 0.12, "total_pnl": 12000.0, "max_drawdown": -0.083,
+                                "holding_drawdown_version": "holding_entry_cost_mae_cycle_v2",
+                                "holding_drawdown_status": "complete", "holding_max_drawdown": -.2,
+                                "holding_current_max_drawdown": 0, "holding_current_drawdown_status": "flat"},
                 },
                 details={"symbol": "sz.300154", "version": "v1", "path": "/api/akshare-backtest"},
             )
@@ -238,6 +248,10 @@ class BacktestJobsTests(unittest.TestCase):
             self.assertEqual(recent[0]["total_return"], 0.12)
             self.assertEqual(recent[0]["total_pnl"], 12000.0)
             self.assertEqual(recent[0]["max_drawdown"], -0.083)
+            self.assertEqual(recent[0]['holding_max_drawdown'], -.2)
+            self.assertEqual(recent[0]['holding_drawdown_version'], 'holding_entry_cost_mae_cycle_v2')
+            self.assertEqual(recent[0]['holding_current_max_drawdown'], 0)
+            self.assertEqual(recent[0]['holding_current_drawdown_status'], 'flat')
             self.assertFalse(recent[0]["result_available"])
 
 

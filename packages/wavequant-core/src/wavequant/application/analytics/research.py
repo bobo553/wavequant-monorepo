@@ -36,6 +36,7 @@ def save_result(directory: Path, result: BacktestResult) -> None:
     order_columns += sorted({key for row in result.orders for key in row}-set(order_columns))
     write_rows(directory/'orders.csv', result.orders, order_columns)
     dump_json(directory/'open_positions.json',result.open_positions)
+    dump_json(directory/'holding_drawdowns.json',result.holding_drawdowns)
     dump_json(directory/'metrics.json',result.metrics)
 
 

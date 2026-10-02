@@ -1,5 +1,8 @@
 # Progress
 
+- MONOREPO-231 修正：持仓每次从 0 买入开始新轮次，到实际成交数量归零结束；分批卖出不重置，清仓标志不能代替数量。各轮成本 MAE 和最大亏损独立保留，清仓后本轮累计值归零，再次买入重新计算；最终最大回撤只取已清仓轮次中最深亏损，未清仓不混入。增加逐轮序号与因果观测曲线，修复极小浮点残余导致新轮成本继承的问题。版本 `holding_entry_cost_mae_cycle_v2`。
+  38 项相关测试通过，包含真实撮合三轮交易、同日清仓重入、减仓与清仓标志不一致、未清仓排除、分钟覆盖不足及独立低点重算。新模块严格 mypy、3 个调用模块含函数体检查、既定 4 模块检查、sdist/wheel 和隔离安装导入通过。main df1025b 原源码复现两项旧波段信号测试仍失败；未改策略或降低断言，按 AGENTS.md 不合并。
+
 - MONOREPO-230 常驻回放：本地合并 `518c9ee` 后，Web 3003 代理与 API 8765 的策略版本均更新为 v80，页面 main 修订同步。正式 TDX 单股回测接口使用真实日线、初始资金 100,000 元、最大仓位上限 100%、量能与净收益风险比过滤开启，回放至 2024-01-19，返回 01-17 BUY / filled：原始 14.40 元、300 股、净收益风险比 2.0182；图表成交标记与两级交替证据齐备。实际执行起点 2021-11-16 遵循上市前二十日保护期。保留非一字涨停收盘模拟假设，不代表排队实盘成交；未推送远端。
 
 - MONOREPO-230 生效补充：确认常驻服务仍运行 v79 的 main，分支中的 v80 买点尚未被页面使用。为满足本地合并门禁，修复集成策略及账本原有 51 条类型错误：补齐容器和只读序列类型，拆开固定顶点构造参数及不同类型的同名变量，显式收窄可空证据。四个相关旧模块 mypy 现已通过，89 项相关策略回归与 80 项受影响的转浪/压力/浅回撤回归、Core 既定类型检查及 sdist/wheel、拓扑 2 项通过；修复不放宽买入或成交条件。
@@ -199,8 +202,8 @@
 - MONOREPO-044 Core 门禁通过 Ruff、配置的严格 mypy、525 项 pytest 和 sdist/wheel 构建；覆盖确认日年龄、最新市场交易日、数据版本和算法版本。
 - MONOREPO-043 Core 门禁通过 Ruff、配置的严格 mypy、525 项 pytest 和 sdist/wheel 构建；确认日窗口、任一结构、级别过滤及科创/北交结构搜索均有覆盖。
 - 迁移前：`python -m unittest discover -s tests -v`，505 项通过。
-- 迁移前：`node --test web/tests/*.test.mjs`，37 项通过。
-- 迁移后：`pnpm lint`、`pnpm typecheck`、`pnpm test:unit` 与 `pnpm build` 均通过；其中 Python 505 项、Web 37 项测试通过。
+- 迁移前：`node --test web/tests/*.test.mjs`，38 项通过。
+- 迁移后：`pnpm lint`、`pnpm typecheck`、`pnpm test:unit` 与 `pnpm build` 均通过；其中 Python 505 项、Web 38 项测试通过。
 - CLI 冒烟：`pnpm python -- -m wavequant.interfaces.cli --help` 通过，本地 Lightweight Charts SDK 路径检查通过。
 - 全仓：`pnpm harness:check` 与 `pnpm verify` 通过。
 - 拆分后核心门禁：Ruff 与渐进式严格 mypy 通过，483 项核心测试通过，sdist/wheel 构建通过。

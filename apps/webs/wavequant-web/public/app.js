@@ -25,7 +25,15 @@ import { PerformanceCharts, PriceChart } from "./charts.js";
 import { reuseCompletedBacktest } from "./completed-backtest-result.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
-import { maxDrawdownInterval } from "./max-drawdown.js";
+import {
+    holdingDrawdownCurve,
+    holdingDrawdownForMarker,
+    holdingDrawdownInterval,
+    holdingDrawdownNote,
+    holdingDrawdownText,
+    holdingDrawdownValue,
+    holdingDrawdownVersion,
+} from "./max-drawdown.js";
 import { bindPressAndHold } from "./press-and-hold.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
 import { parseResearchLink, resolveResearchLink } from "./research-link.js";
@@ -689,17 +697,20 @@ $("trade-playback-speed").addEventListener("change", (event) => {
 chart.setTrendPriceLabelsVisible($("show-trend-prices").checked);
 const performance = new PerformanceCharts(["equity-chart", "drawdown-chart", "exposure-chart"].map($));
 let drawdownInterval = null;
-function focusMaximumDrawdown() {
-    if (!drawdownInterval) return;
+function focusHoldingInterval(interval) {
+    if (!interval) return;
     showPage("workspace");
     setChartView("local");
     requestAnimationFrame(() => {
-        if (!chart.focusRange(drawdownInterval.from, drawdownInterval.to)) {
-            showBacktestToast("当前 K 线不包含最大回撤日期区间");
+        if (!chart.focusRange(interval.from, interval.to)) {
+            showBacktestToast("当前 K 线不包含最大亏损对应的持仓区间");
             return;
         }
         $("price-chart").scrollIntoView({ block: "center", behavior: "instant" });
     });
+}
+function focusMaximumDrawdown() {
+    focusHoldingInterval(drawdownInterval);
 }
 $("metric-dd-jump").addEventListener("click", focusMaximumDrawdown);
 $("performance-dd-jump").addEventListener("click", focusMaximumDrawdown);
@@ -1165,7 +1176,7 @@ function syncDate() {
 }
 function setMetric(id, value, type) {
     const el = $(id);
-    el.textContent = type === "count" ? num(value, 0) : pct(value);
+    el.textContent = value == null ? "—" : type === "count" ? num(value, 0) : pct(value);
     el.classList.remove("positive", "negative");
     if (type === "return" && value !== 0) el.classList.add(value > 0 ? "positive" : "negative");
 }
@@ -1173,22 +1184,62 @@ function renderDrawdownInterval(view) {
     drawdownInterval =
         ["tdx", "akshare"].includes(view.result_scope) || view.backtest?.status === "data_unavailable"
             ? null
-            : maxDrawdownInterval(view.curve, view.backtest?.start || currentRun().start);
+            : holdingDrawdownInterval(view);
     const metricButton = $("metric-dd-jump");
     const performanceButton = $("performance-dd-jump");
     metricButton.disabled = !drawdownInterval;
     performanceButton.hidden = !drawdownInterval;
     if (!drawdownInterval) {
-        $("metric-dd-period").textContent = "暂无回撤区间";
-        metricButton.setAttribute("aria-label", "最大回撤暂无可定位区间");
+        $("metric-dd-period").textContent = "暂无已清仓持仓区间";
+        metricButton.setAttribute("aria-label", "最大回撤暂无已清仓持仓区间");
         return;
     }
-    const period = `${drawdownInterval.initialPeak ? "初始资金峰值 · " : ""}${drawdownInterval.from} — ${drawdownInterval.to}`;
+    const period = `${drawdownInterval.from} — ${drawdownInterval.to}${drawdownInterval.status === "open" ? "（未清仓）" : "（已清仓）"}`;
     $("metric-dd-period").textContent = `${period} · 点击定位 K 线`;
     $("performance-dd-period").textContent = period;
-    metricButton.setAttribute("aria-label", `最大回撤 ${pct(view.metrics.max_drawdown)}，${period}，点击定位 K 线区间`);
+    metricButton.setAttribute(
+        "aria-label",
+        `最大回撤 ${holdingDrawdownText(view.metrics)}，${period}，点击定位整段持仓 K 线`,
+    );
+}
+function renderHoldingCycles(view) {
+    const body = $("holding-cycles-body");
+    body.replaceChildren();
+    const episodes =
+        view.metrics?.holding_drawdown_version === holdingDrawdownVersion
+            ? (view.backtest?.holding_drawdowns || []).filter((episode) => episode.symbol === view.symbol)
+            : [];
+    $("holding-cycles-empty").hidden = episodes.length > 0;
+    for (const episode of episodes) {
+        const row = document.createElement("tr");
+        row.append(
+            cell(`第 ${episode.cycle_index} 轮`),
+            cell(episode.entry_time.replace("T", " ")),
+            cell(episode.exit_time?.replace("T", " ") || `未清仓 · 截至 ${episode.asof.replace("T", " ")}`),
+            cell(
+                episode.coverage === "complete"
+                    ? pct(episode.max_drawdown)
+                    : `未知（已观察 ${pct(episode.observed_max_drawdown)}）`,
+            ),
+            cell(`${episode.low_time} · ${num(episode.low_price, 4)} 元`),
+        );
+        const action = document.createElement("td");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "定位本轮";
+        button.addEventListener("click", () =>
+            focusHoldingInterval({
+                from: episode.entry_time.slice(0, 10),
+                to: episode.asof.slice(0, 10),
+            }),
+        );
+        action.append(button);
+        row.append(action);
+        body.append(row);
+    }
 }
 function renderMetrics() {
+    renderHoldingCycles(state.view);
     renderDrawdownInterval(state.view);
     if (state.view.backtest?.status === "data_unavailable") {
         document.querySelector(".metric-grid").hidden = true;
@@ -1211,7 +1262,8 @@ function renderMetrics() {
     }
     const m = state.view.metrics;
     setMetric("metric-return", m.total_return, "return");
-    setMetric("metric-dd", m.max_drawdown);
+    setMetric("metric-dd", holdingDrawdownValue(m));
+    $("metric-dd-note").textContent = holdingDrawdownNote(m);
     setMetric("metric-trades", m.trades, "count");
     setMetric("metric-exposure", m.average_exposure);
     $("evidence").textContent =
@@ -1302,7 +1354,7 @@ async function loadStockSummary(request, sequence) {
                     symbolName(r.symbol),
                     r.asof,
                     m ? pct(m.total_return) : "无历史",
-                    m ? pct(m.max_drawdown) : "—",
+                    m ? holdingDrawdownText(m) : "—",
                     m ? num(m.entry_fills, 0) : "—",
                     m ? num(m.trades, 0) : "—",
                     m?.win_rate == null ? "—" : pct(m.win_rate),
@@ -1356,7 +1408,12 @@ function showAnnotationDetails(items) {
     detail(`${item.title} · ${item.time}`, item.description);
     const panel = $("selection-info");
     panel.dataset.annotationId = item.id;
-    appendTradeEvidence(panel, item, openPositionForMarker(state.view, item));
+    appendTradeEvidence(
+        panel,
+        item,
+        openPositionForMarker(state.view, item),
+        holdingDrawdownForMarker(state.view, item),
+    );
     const source = document.createElement("p");
     source.className = "annotation-source";
     source.textContent = `${item.sourceLabel}。${item.sourceTime && item.sourceTime !== item.time ? `原结构日期 ${item.sourceTime}，到 ${item.time} 才可知。` : ""}`;
@@ -2134,7 +2191,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
         });
         tradePlayback.setView(data);
         describeBar(data.bars.at(-1));
-        performance.update(data.curve);
+        performance.update(data.curve, holdingDrawdownCurve(data));
         const last = data.bars.at(-1);
         const providerNames = { akshare: "AkShare", tdx: "通达信" };
         const sourceSummary = data.source_fallback

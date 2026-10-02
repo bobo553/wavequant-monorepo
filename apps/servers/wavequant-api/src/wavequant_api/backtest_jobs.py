@@ -260,10 +260,15 @@ class BacktestJobs:
                             )
                         metrics = result.get("metrics")
                         if isinstance(metrics, dict):
-                            for key in ("total_return", "total_pnl", "max_drawdown"):
+                            for key in ("total_return", "total_pnl", "max_drawdown", "holding_max_drawdown",
+                                        "holding_current_max_drawdown"):
                                 value = metrics.get(key)
-                                if type(value) in (int, float) and math.isfinite(value):
+                                if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
                                     item[key] = value
+                            for key in ("holding_drawdown_version", "holding_drawdown_status",
+                                        "holding_current_drawdown_status"):
+                                if isinstance(metrics.get(key), str):
+                                    item[key] = metrics[key]
                 self._history.pop(job.signature, None)
                 history_completed_at = self.history_clock()
                 self._history[job.signature] = (history_completed_at, item)

@@ -121,6 +121,7 @@ def single_stock_result(bars, strategy, execution, signal_result=None, *, minute
                               strategy=strategy,execution=config.to_dict(),counts=signal_result.counts,
                               screening=screening,minute_fallbacks=result.minute_fallbacks,
                               diagnostics=execution_diagnostics(result),open_positions=result.open_positions,
+                              holding_drawdowns=result.holding_drawdowns,
                               provenance='current_engine_on_verified_snapshot_prefix',
                               warning='历史诊断；独立账户不等于组合分摊，无成交或样本有限不能证明策略有效。'))
 

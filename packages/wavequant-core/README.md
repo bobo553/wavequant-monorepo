@@ -8,6 +8,16 @@
 
 ## TradingView 可视化工作台
 
+### 买入至卖出的最大亏损
+
+工作台“最大回撤”使用持仓内最大不利变动（MAE），版本 `holding_entry_cost_mae_cycle_v2`：每轮从持仓为零后的首次实际买入开始，到持仓数量归零的完全卖出结束，取 `min(0, 持仓价格 / 当时买入均价 - 1)` 的最小值。清仓后本轮累积值归零，再次买入独立重算；最终最大回撤取所有已清仓轮次中最深的最大亏损。未清仓只展示本轮截至回放日期的亏损，不计入最终统计；没有清仓轮次时最终指标为空。分批卖出保持成本与持仓段，加仓按剩余份额和本次成交价更新均价，不追溯修改历史。价格含执行滑点，指标不含费用；低点浮亏金额用当时剩余等价份额计算，不表示最大金额亏损的独立排序。
+
+收盘买入排除此前日内低点，开盘清仓排除之后日内低点；完整持仓日使用日线最低价。盘中成交边界使用完整同源五分钟 OHLCV，排除买入前和清仓后的分钟线。分钟覆盖不足时 `max_drawdown=null`，`observed_max_drawdown` 仅为已经观察到的亏损下界，不能当作完整最大值。无买入成交返回 `holding_max_drawdown=null`；确有持仓且未跌破成本返回 0。时间采用上海本地时间，日线低点只精确到交易日，分钟低点时间为所在五分钟区间的结束时间。
+
+`backtest.holding_drawdowns` 保存每轮独立的 `cycle_index`、最终亏损及按实际成交边界归零的 `drawdown_curve`。`metrics.holding_drawdown_interval` 指向最差已清仓轮次，`holding_max_drawdown` 是最终最大回撤；`holding_current_max_drawdown` 是尚未清仓的本轮累计亏损，全部持仓为零时为 0。最终清仓成交及未清仓记录附带同源证据，成交轮次身份以实际成交数量归零为边界，不依赖清仓标志。账户净值历史峰值回撤继续使用 `metrics.max_drawdown`，并提供明确别名 `account_max_drawdown`，用于原有账户风险门槛。旧封存结果及旧版本 MAE 须重新回测。
+
+口径参考 [TradeStation 的交易 MAE 定义](https://help.tradestation.com/10_00/eng/tsportfolio/reports/trades_graphs.htm)及 [QuantConnect 的逐笔交易统计](https://www.quantconnect.com/docs/v2/cloud-platform/api-reference/backtest-management/read-backtest/trades)。
+
 ```powershell
 # 从 monorepo 根目录启动 Web + API 工作台
 pnpm --filter wavequant-api dashboard

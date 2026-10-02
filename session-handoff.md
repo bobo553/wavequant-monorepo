@@ -1,5 +1,13 @@
 # Session Handoff
 
+## 2026-10-02 · MONOREPO-231 持仓归零与最终最大回撤
+
+用户最终明确：每轮首次买入至完全卖出独立计算最大亏损，每次持仓数量归零结束并重置本轮；已完全卖出的各轮中亏损最深者才是最终最大回撤。未清仓本轮亏损单独展示，不计入最终统计。版本 `holding_entry_cost_mae_cycle_v2`；Core 增加逐轮序号、数量归零身份和因果观测曲线，Web 增加归零曲线及逐轮明细，API 同时保存最终与本轮指标。
+
+工作区 `E:/WorkSpace/work/wavequant-huaci-volume-breakout`，同会话分支 `feat-华瓷放量突破`，main 基线 `df1025b`。38 项 Core、72 项 Web Node、2 项拓扑、7 项 API（合计 119）以及相关类型检查、Web/Core/API 构建和 Core wheel 隔离安装通过；Web lint 有 6 条既有警告。未运行完整 Web、浏览器或 Playwright，未重算真实账户全历史。
+
+两项旧波段测试用 main 原源码再次复现失败：`test_huaci_volume_double_break_closes_cycle_before_next_gap_buy` 没有 2026-08-26 预期买入；`test_strong_a_body_confirmation_can_advance_to_later_higher_gap` 没有预期 body/gap 信号。已确认导入 main 的 backtest.py；本轮没有修改策略或降低这两项断言。遵守用户 AGENTS.md 检查失败不合并，修复保留在当前特性分支，常驻 main 页面未更新，未推送。后续先处理原波段资格回归，再同步 main、检查、复核和本地合并；推送需要明确授权。MONOREPO-231 保持唯一 in-progress，MONOREPO-183 的人工验收继续 backlog。
+
 ## 2026-09-29 · MONOREPO-208 双破确认
 
 用户最终明确母子倒 N 清仓必须今低严格小于昨低且今收严格小于昨收，今高不参与判断。V3 全局识别器按双破确认，版本升至 v69，Web 原因文案同步。2018-01-01 起的完整通达信回测确认 2020-08-07 无 EXIT/SELL、2022-07-04 仍 EXIT 并以约 4.9478 元卖清；Core 118 项、Web 29 项及改动模块 strict mypy 通过。完整 Web 单测和浏览器端到端未运行。
