@@ -1190,16 +1190,16 @@ function renderDrawdownInterval(view) {
     metricButton.disabled = !drawdownInterval;
     performanceButton.hidden = !drawdownInterval;
     if (!drawdownInterval) {
-        $("metric-dd-period").textContent = "暂无已清仓持仓区间";
-        metricButton.setAttribute("aria-label", "最大回撤暂无已清仓持仓区间");
+        $("metric-dd-period").textContent = "暂无持仓区间";
+        metricButton.setAttribute("aria-label", "最大回撤暂无持仓区间");
         return;
     }
-    const period = `${drawdownInterval.from} — ${drawdownInterval.to}${drawdownInterval.status === "open" ? "（未清仓）" : "（已清仓）"}`;
+    const period = `${drawdownInterval.from} — ${drawdownInterval.to}`;
     $("metric-dd-period").textContent = `${period} · 点击定位 K 线`;
     $("performance-dd-period").textContent = period;
     metricButton.setAttribute(
         "aria-label",
-        `最大回撤 ${holdingDrawdownText(view.metrics)}，${period}，点击定位整段持仓 K 线`,
+        `最大回撤 ${holdingDrawdownText(view.metrics)}，${period}，点击定位持仓 K 线`,
     );
 }
 function renderHoldingCycles(view) {

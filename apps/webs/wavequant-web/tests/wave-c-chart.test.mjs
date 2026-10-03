@@ -150,19 +150,78 @@ test("ABC labels and targets remain available when trend geometry is hidden", ()
     assert.equal(chart.waveAbLines.length, 0);
 });
 
-test("locating ABC brings an offscreen historical group and its targets into view", () => {
+test("locating ABC brings its B/C start and targets into view without changing zoom", () => {
     const later = [...bars, { time: "2026-09-30", open: 5, high: 5, low: 5, close: 5, volume: 1 }];
     const { chart, rendered } = chartHarness(later);
-    rendered.range = { from: bars.length, to: bars.length };
+    rendered.range = { from: bars.length, to: bars.length + 20 };
     chart.setTheory({ ...theory, asof: "2026-09-30" });
     assert.equal(rendered.markers.length, 0);
     assert.equal(rendered.guides.length, 0);
     assert.equal(chart.focusWaveProjection(), true);
-    assert.equal(rendered.markers.length, 5);
+    assert.ok(rendered.markers.some((marker) => marker.text === "B / C"));
     assert.equal(rendered.guides.length, 2);
     assert.equal(chart.selected.time, "2020-04-28");
-    assert.ok(rendered.range.from <= bars.findIndex((bar) => bar.time === "2020-02-04"));
-    assert.ok(rendered.range.to >= bars.findIndex((bar) => bar.time === "2020-04-28"));
+    const target = bars.findIndex((bar) => bar.time === "2020-04-28");
+    assert.equal(rendered.range.to - rendered.range.from, 20);
+    assert.ok(rendered.range.from <= target && rendered.range.to >= target);
     chart.setTheory(null);
     assert.equal(chart.focusWaveProjection(), false);
+});
+
+test("date, fill and holding-cycle chart navigation preserve the SDK viewport span", () => {
+    const { chart, rendered } = chartHarness();
+    for (const span of [20, 40.5, bars.length + 10]) {
+        for (const locate of [
+            () => chart.focus("2020-02-04"),
+            () => chart.focusTrade("2020-05-29"),
+            () => chart.focusRange("2020-02-04", "2020-05-29"),
+        ]) {
+            rendered.range = { from: 70, to: 70 + span };
+            assert.equal(locate(), true);
+            assert.equal(rendered.range.to - rendered.range.from, span);
+        }
+    }
+    const before = { ...rendered.range };
+    assert.equal(chart.focus("2099-01-01"), false);
+    assert.equal(chart.focusRange("2099-01-01", "2099-12-31"), false);
+    assert.deepEqual(rendered.range, before);
+});
+
+test("locating a wave entry keeps zoom while retaining its four endpoint labels", () => {
+    const { chart, rendered } = chartHarness();
+    chart.setTheory(theory);
+    const entry = {
+        id: "wave-entry",
+        kind: "fill",
+        side: "BUY",
+        time: "2020-05-29",
+        signal_time: "2020-05-29",
+        levels: [],
+        decision_evidence: [
+            {
+                wave_entry_path: "two_t_held_defense_gap_attack",
+                wave_a_origin_date: "2020-02-04",
+                wave_a_origin: 2.9,
+                wave_a_high_date: "2020-03-02",
+                wave_a_high: 4.39,
+                wave_b_low_date: "2020-04-28",
+                wave_b_low: 3.13,
+                wave_breakout_close: 3.67,
+            },
+        ],
+    };
+    chart.windowAnnotations.push(entry);
+    chart.waveEndpointOverlay = {
+        setPoints: (points) => {
+            rendered.endpoints = points;
+        },
+    };
+    rendered.range = { from: 5, to: 25 };
+    chart.selectAnnotation(entry.id);
+    assert.equal(chart.selected.time, "2020-05-29");
+    assert.equal(rendered.range.to - rendered.range.from, 20);
+    assert.deepEqual(
+        rendered.endpoints.map((point) => point.label),
+        ["A 起点", "A 高", "B", "C 确认"],
+    );
 });

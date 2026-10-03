@@ -166,10 +166,10 @@ test("a running watchlist row shows its own server progress and clears it after 
     Watchlists.prototype.renderBacktestStatus.call(watchlists, row, "sz.300154");
     assert.equal(badge.textContent, "成交2笔");
     assert.equal(result.textContent, "盈 +12.50%");
-    assert.equal(drawdown.textContent, "最大回撤（已清仓） -8.30%");
+    assert.equal(drawdown.textContent, "最大回撤 -8.30%");
     assert.equal(secondary.hidden, false);
     assert.match(open["aria-label"], /成交2笔/);
-    assert.match(open["aria-label"], /最大回撤（已清仓） -8\.30%/);
+    assert.match(open["aria-label"], /最大回撤 -8\.30%/);
 
     delete watchlists.backtestFillCounts["sz.300154"];
     Watchlists.prototype.renderBacktestStatus.call(watchlists, row, "sz.300154");
