@@ -27,6 +27,7 @@ from .wave_exhaustion_exit import (
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
 from .two_t_resistance import two_t_resistance_history
 from .five_top_entry import five_top_entry_history
+from .ten_full_entry import RetracementAnchor, ten_full_entry_history
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.wave_strength import StrengthScale, measure_strength
 from ..market_state.washout import WashoutPolicy, WashoutStage, observe_washout
@@ -56,6 +57,9 @@ class SystemStrategy:
     first_pullback_basis: str = 'alternation_low'
     mature_shallow_inclusive: bool = True
     shallow_base_breakout_enabled: bool = True
+    ten_full_breakout_window: int = 23
+    ten_full_retracement_ratio: float = .5
+    ten_full_retracement_anchor: RetracementAnchor = 'b_low'
 
     def validate(self):
         import math
@@ -83,6 +87,13 @@ class SystemStrategy:
             raise ValueError('mature shallow inclusive must be boolean')
         if type(self.shallow_base_breakout_enabled) is not bool:
             raise ValueError('shallow base breakout switch must be boolean')
+        if type(self.ten_full_breakout_window) is not int or self.ten_full_breakout_window <= 0:
+            raise ValueError('ten-full breakout window must be a positive integer')
+        if (type(self.ten_full_retracement_ratio) not in (float, int)
+                or self.ten_full_retracement_ratio not in (.5, 2/3)):
+            raise ValueError('ten-full retracement ratio must be 1/2 or 2/3')
+        if self.ten_full_retracement_anchor not in ('origin', 'b_low'):
+            raise ValueError('ten-full retracement anchor must be origin or b_low')
         if self.buy_point_definition=='whole_flip_wave_v3' and (
                 self.entry_policy!='hierarchical_two_buy_points' or self.mature_shallow_ratio not in (1/3,.5)):
             raise ValueError('whole wave entries require hierarchical policy and close threshold 1/3 or 1/2')
@@ -723,6 +734,12 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         key=lambda event: event["bar_index"],
     ) if whole_wave else []
     five_top_entry_risks = five_top_entry_history(bars, projection_events) if whole_wave else {}
+    ten_full_entry_risks = ten_full_entry_history(
+        bars, projection_events,
+        breakout_window=config.ten_full_breakout_window,
+        retracement_ratio=config.ten_full_retracement_ratio,
+        anchor=config.ten_full_retracement_anchor,
+    ) if whole_wave else {}
     c_equal_events: list[dict] = []
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
     bearish_attacks = {c['attack']: c for c in candidates if c['setup'].direction == Direction.DOWN}
@@ -735,6 +752,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         exits = []
         target_risk = target_resistance.get(i)
         five_top_entry_risk = five_top_entry_risks.get(i)
+        ten_full_entry_risk = ten_full_entry_risks.get(i)
         inverse_entry_risk = inverse_entry_risks.get(i)
         if inverse_entry_risk is not None:
             log(i, 'inverse_n_entry_observed', **inverse_entry_risk)
@@ -792,6 +810,9 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             continue
         if inverse_entry_risk is not None:
             log(i, 'entry_rejected', candidate_channel='global_inverse_n_low_guard', **inverse_entry_risk)
+            continue
+        if ten_full_entry_risk is not None:
+            log(i, 'entry_rejected', candidate_channel='global_ten_full_pullback_guard', **ten_full_entry_risk)
             continue
         choices = events.get(i, [])+resumptions.get(i, [])+consolidation_events.get(i, [])+wave_events.get(i, []) if config.regime_filter else [
             (c, c['regime'].frames[0]) for c in candidates if c['attack'] == i]

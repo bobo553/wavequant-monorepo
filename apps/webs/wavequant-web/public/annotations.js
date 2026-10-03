@@ -111,6 +111,7 @@ const REASONS = {
     wave_five_top_child_volume_clear: "五顶后收阴，跌破昨低昨收及前天子低，量超过最近阴线，当日清空余仓",
     wave_five_top_gap_volume_clear: "五顶到达后低开，收盘跌破前日开盘且成交量超过此前最近阴线，当日收盘清空余仓",
     wave_five_top_entry_too_close: "距已知五顶目标不超过原正 N 一箱，禁止新买入或加仓",
+    wave_ten_full_pullback_pending: "十满到达后等待短期再突破或规定幅度的回撤，暂缓新买入或加仓",
     volume_inverse_n_clear: "倒 N 确认且成交量超过前日，当日直接清仓",
     mother_child_inverse_n_low_break: "母子线的阳子线低点与收盘均被严格跌破，形成倒 N，当日收盘清仓",
     inverse_n_close_reduce_90: "收盘确认倒 N，当日累计减仓至原持仓 90%",
@@ -774,6 +775,11 @@ export function buildAnnotations(view, theory) {
             [event.wave_five_top_target, event.wave_box_height, event.wave_remaining_reward].every(Number.isFinite)
                 ? `五顶目标 ${num(event.wave_five_top_target)} 元，原 N 箱高 ${num(event.wave_box_height)} 元，当前剩余空间 ${num(event.wave_remaining_reward)} 元。${event.wave_target_known_date ? `目标在 ${event.wave_target_known_date} 已知。` : ""}`
                 : "";
+        const tenFullRisk =
+            event.reason === "wave_ten_full_pullback_pending" &&
+            [event.wave_ten_full_high, event.wave_retracement_anchor, event.wave_retracement_threshold].every(Number.isFinite)
+                ? `十满于 ${event.wave_ten_full_reached_date} 到达，日高 ${num(event.wave_ten_full_high)} 元；从 ${event.wave_retracement_anchor_source === "b_low" ? "最近 B 浪低点" : event.wave_retracement_anchor_source === "origin_no_b" ? "原正 N 起点（暂无 B 低点）" : "原正 N 起点"} ${num(event.wave_retracement_anchor)} 元起算，回撤 ${event.wave_retracement_ratio === 0.5 ? "1/2" : "2/3"} 的价格线为 ${num(event.wave_retracement_threshold)} 元。${Number.isInteger(event.wave_breakout_window) ? `也可在 ${event.wave_breakout_window} 个交易日内严格突破到达日高点。` : ""}条件在收盘后确认，下一交易日起解除限制。`
+                : "";
         items.push({
             id: event.id,
             time: event.available_at,
@@ -786,7 +792,7 @@ export function buildAnnotations(view, theory) {
                 abc || squeezeAlternation
                     ? abcDescription(event, view)
                     : candidateRejection
-                      ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${fiveTopRisk}未产生买入信号，也未提交买单。`
+                      ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${fiveTopRisk}${tenFullRisk}未产生买入信号，也未提交买单。`
                       : spec?.[1] || "当前引擎已记录的规则事件。",
             category: abc ? "tertiary-abc" : candidateRejection ? "entry-rejections" : spec?.[3] || "rules",
             priority: candidateRejection ? 155 : spec?.[2] || 10,

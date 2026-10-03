@@ -58,7 +58,9 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
                                      exit_on_target=False, wave_exhaustion_exit=True, pressure_adverse_exit=True, trend_flip_adverse_exit=True, volume_inverse_n_clear=True, volume_down_exit=True, small_n_reduction=True)
     config['strategy'].update(buy_point_definition='whole_flip_wave_v3',preflight_reward_risk=False,strict_n_attack_quality=False,
         first_pullback_threshold=thresholds.first,mature_shallow_ratio=thresholds.second,
-        first_pullback_basis=thresholds.first_basis,mature_shallow_inclusive=thresholds.second_inclusive)
+        first_pullback_basis=thresholds.first_basis,mature_shallow_inclusive=thresholds.second_inclusive,
+        ten_full_breakout_window=23,ten_full_retracement_ratio=thresholds.first or .5,
+        ten_full_retracement_anchor='b_low')
     config['profile_version']='whole_flip_wave_v3_'+variant
     config['definition'].update(alternation='confirmed_low_at_or_above_whole_flip_origin',
         first_buy=('level_2_or_3_confirmed_alternation_then_new_positive_n_then_squeeze'
@@ -80,7 +82,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v85_' + variant
+    config['profile_version'] = 'gap_up_bullish_squeeze_v86_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout', 'nested_alternation_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -95,6 +97,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
     config['definition']['primary_filters'] += [
         'alternation_before_n_or_same_n_squeeze_confirmation',
         'known_pending_five_top_remaining_space_gt_one_original_n_box',
+        'ten_full_then_23_sessions_new_high_or_latest_b_retracement',
         'new_daily_low_and_inverse_neckline_wick_break_requires_observation',
     ]
     config['definition'].update(
@@ -121,6 +124,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         wave_abnormal_followthrough_exit='target_abnormal_candle_first_later_close_strictly_lower_than_previous_same_close_full_clear_without_volume_or_partial_fill_requirement',
         wave_five_top_child_volume_exit='known_active_n_five_top_or_ten_full_reached_before_exit_day_bearish_low_lt_previous_low_close_lt_previous_close_low_lt_child_two_sessions_ago_inclusive_inside_non_doji_mother_one_strict_edge_volume_gt_positive_last_bearish_global_exit_signal_same_close_clear',
         wave_five_top_entry='previous_session_pending_named_five_top_close_remaining_reward_le_original_n_box_blocks_all_new_entries_and_additions_independent_of_optional_reward_risk_completed_or_invalidated_goals_expire',
+        wave_ten_full_entry='ten_full_reach_day_and_later_entries_paused_until_next_session_after_strict_new_high_within_23_sessions_or_latest_pre_target_b_low_to_ten_full_day_high_retracement_reaches_variant_1_2_or_2_3_no_b_uses_original_n_origin_late_new_high_does_not_release',
         wave_target_upper_shadow_exit='post_b_positive_n_own_one_p_two_t_five_top_or_ten_full_upper_shadow_ge_half_range_cumulative_80_same_close_then_first_later_lower_close_full_clear',
         two_t_resistance_entry_exit='global_larger_n_two_t_reach_or_next_session_upper_ge_half_range_and_body_blocks_buy_add_cumulative_80_then_next_bearish_low_lt_previous_low_close_lt_previous_close_volume_gt_last_bearish_full_clear',
         two_t_next_session_exit='global_first_two_t_reach_upper_shadow_gt_40pct_next_session_bearish_low_lt_previous_low_close_lt_previous_close_volume_gt_last_bearish_same_close_full_clear_without_prior_reduction',
