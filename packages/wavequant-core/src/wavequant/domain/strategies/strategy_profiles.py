@@ -80,7 +80,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v81_' + variant
+    config['profile_version'] = 'gap_up_bullish_squeeze_v82_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout', 'nested_alternation_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -107,6 +107,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         daily_limit_fill='nonflat_limit_up_close_simulated_fill_without_queue_verification_flat_limit_up_rejected',
         secondary_breakout='latest_confirmed_level2_high_resisted_attack_or_response_requires_later_clean_bullish_record_close_with_original_defense_held',
         completed_wave_recovery='completed_a_defended_b_gap_breakout_or_volume_retires_only_same_a_b_pressure_and_inverse',
+        completed_wave_lifetime='defended_independently_confirmed_c_reattack_outlives_local_polyline_epoch_reset_requires_live_attack_time_hierarchy_and_all_global_risk_gates',
         volume_filter_basis='confirmation_cumulative_volume_strictly_gt_previous_session_total_wave_gap_price_break_is_alternative',
         c_wave_extensions='after_a_reaches_original_n_one_p_b_holds_defense_project_b_plus_0_618_and_1_times_whole_a_strong_a_can_add_1_618_and_2_618_targets_are_observations_not_exit',
         ordinary_a_rebound='one_p_reached_below_two_t_then_defended_b_bullish_close_above_known_pullback_high_equal_a_target_no_strong_extensions',
