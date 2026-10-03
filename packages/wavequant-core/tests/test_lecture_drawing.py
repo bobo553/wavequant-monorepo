@@ -212,6 +212,41 @@ class LectureDrawingTests(unittest.TestCase):
         self.assertEqual(drawing['inside_connections'][0]['source'],
                          'known_direction_single_extreme_for_inside_doji')
 
+    def test_guofang_equal_high_inside_doji_connects_child_low(self):
+        data = [
+            Bar(datetime(2024, 9, 19), 'sh.601086',
+                4.836005140153086, 5.027259580724112, 4.836005140153086, 5.013598549254753, 7381500),
+            Bar(datetime(2024, 9, 20), 'sh.601086',
+                5.040920612193471, 5.040920612193471, 4.945293391907958, 5.013598549254753, 4120300),
+            Bar(datetime(2024, 9, 23), 'sh.601086',
+                4.986276486316035, 5.040920612193471, 4.958954423377317, 4.986276486316035, 4303900),
+            Bar(datetime(2024, 9, 24), 'sh.601086',
+                5.013598549254753, 5.19119195835642, 5.013598549254753, 5.177530926887061, 7713300),
+        ]
+        on_doji = lecture_drawing(data[:3])
+        self.assertEqual(on_doji['issues'], [])
+        self.assertEqual([(point['time'], point['kind'], point['value'])
+                          for point in on_doji['strokes'][0]['points']], [
+                              ('2024-09-19', 'L', data[0].low),
+                              ('2024-09-20', 'H', data[1].high),
+                              ('2024-09-23', 'L', data[2].low),
+                          ])
+        self.assertFalse(on_doji['strokes'][0]['points'][-1]['intrabar_order_resolved'])
+        after_rebound = lecture_drawing(data)
+        self.assertEqual([(point['time'], point['kind'])
+                          for point in after_rebound['strokes'][0]['points']], [
+                              ('2024-09-19', 'L'), ('2024-09-20', 'H'),
+                              ('2024-09-23', 'L'), ('2024-09-24', 'H'),
+                          ])
+        self.assertEqual(after_rebound['strokes'][0]['points'][-2]['state'], 'confirmed')
+
+    def test_equal_low_inside_doji_connects_child_high_on_decline(self):
+        drawing = lecture_drawing(bars([(12,14,10,13),(10,12,8,9),(11,11,8,11)]))
+        self.assertEqual(drawing['issues'], [])
+        self.assertEqual([(point['kind'], point['value'])
+                          for point in drawing['strokes'][0]['points']],
+                         [('H', 14), ('L', 8), ('H', 11)])
+
     def test_child_mother_path_not_available_before_mother(self):
         bs=bars([(10.2,11,10,10.8),(9.5,12,9,11.5)])
         self.assertEqual(lecture_drawing(bs[:1])['teaching_paths'],[])

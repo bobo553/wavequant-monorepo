@@ -130,8 +130,9 @@ def lecture_drawing(bars, *, on_step=None):
             publish(i)
             continue
 
-        reverse = ((relation.falling_tail or relation.shrinking_head) if direction == Direction.UP
-                   else (relation.extending_head or relation.shrinking_foot))
+        reverse = doji_inside_fallback or ((relation.falling_tail or relation.shrinking_head)
+                                           if direction == Direction.UP else
+                                           (relation.extending_head or relation.shrinking_foot))
         candidate = points[-1]
         target = (PointKind.LOW if direction == Direction.UP else PointKind.HIGH) if reverse else PointKind(candidate['kind'])
         next_point = vertex(i, target, 'developing', i, edge_kind='ordinary')

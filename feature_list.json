@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-240",
+            "name": "connect-equal-high-inside-doji-polyline",
+            "title": "补画等高内包十字星折线",
+            "description": "已知折线方向遇内包十字星时，强制转向子线相反极值，修复等高或等低关系下普通反转判据未触发导致缺线。",
+            "scope": "Core 讲义折线与国芳集团 2024-09-23 实际样本回归",
+            "dependencies": ["MONOREPO-207"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "国芳集团 2024-09-20 高点与 09-23 高点相等时，讲义主折线从前高连至 09-23 低点，并在 09-24 反弹后保留该转折",
+                "下降方向的等低内包十字星从前低连至子线高点；十字星日内顺序仍标记未解",
+                "讲义折线、分级趋势及策略相关定向回归通过；不运行浏览器端到端测试"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest test_lecture_drawing.py test_lecture_trend.py test_polyline.py test_lecture_strategy.py test_secondary_trend.py test_tertiary_trend.py -q; python -m py_compile; git diff --check",
+                    "status": "passed",
+                    "summary": "新增国芳等高和下降等低用例在修复前失败、修复后通过；共 80 项与 36 项子测试通过。真实 659 根国芳夹具截至 09-23 显示高 5.040921 连低 4.958954，09-24 反弹后低点保留。语法和差异检查通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-237",
             "name": "completed-wave-entry-lifetime",
             "title": "有效转浪买点跨局部折线阶段",
