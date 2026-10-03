@@ -7607,6 +7607,39 @@
                     "summary": "Web lint无错误（6条既有警告）、类型检查、生产构建、相关格式及E2E源码语法通过。两个现有浏览器用例在操作账本前增加展开步骤；按用户规则未运行Playwright，完整Web单测与浏览器交互留待独立验证。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-238",
+            "name": "inverse-n-new-low-entry-observation",
+            "title": "倒N创昨低新低当日观望",
+            "description": "修复先锋2026-01-26跌破昨低与已知倒N颈线后仍买入的问题，全局V3在当日阻止所有新买入和加仓。",
+            "scope": "Core全局入场门禁、因果审计、策略版本及Web原因说明",
+            "dependencies": ["MONOREPO-237"],
+            "status": "backlog",
+            "acceptanceCriteria": [
+                "早于当日的H-L-较低H锚点当日已知，首次跌破颈线低点且创昨低新低时观望",
+                "原高点未收复，收盘回升或放量不能绕过全局新买入和加仓门禁",
+                "低点触碰、旧颈线已破、原高收复、未来或失效锚点不能误用；仅低点突破不新增清仓信号",
+                "先锋01-26不生成LONG和BUY，01-06有效买点及2020-06-24五顶禁买保留",
+                "全量与前缀一致，缓存部分日线只使用当时已知低点；v83刷新引擎并显示观望原因"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_inverse_n_entry_guard.py test_wave_entry_epoch.py test_inverse_reentry.py test_mother_child_inverse_exit.py; test_wave_continuation.py test_completed_wave_recovery.py test_five_top_entry.py test_shallow_base_breakout.py test_nested_alternation_breakout.py -q",
+                    "status": "passed",
+                    "summary": "两组35+94共129项通过。真实01-26无LONG、无新EXIT及无BUY成交，01-06保留；覆盖未来锚点、部分日线缓存重放、关闭量能和独立浅回撤通道不能绕过观望。"
+                },
+                {
+                    "command": "Core targeted strict mypy inverse_n_entry.py; mypy integrated_strategy.py strategy_profiles.py; pnpm --filter @wavequant/core typecheck; build; Web annotations Node test; lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "Core新模块及修改模块类型检查、既定严格类型检查、sdist/wheel通过；Web标注30项、lint零错误（6条既有警告）、类型与生产构建通过。完整套件、浏览器与外部分钟留待独立验证，未运行Playwright。"
+                },
+                {
+                    "command": "restart-wavequant.ps1 -NoBrowser; API/Web v83 formal AkShare January 26 backtest HTTP and annotations.js",
+                    "status": "not-run",
+                    "summary": "旧v82正式1948日线接口已复现01-26 LONG及BUY/filled 400股5.152575元；新规则待本地合并、重启及相同参数HTTP验收。"
+                }
+            ]
         }
     ]
 }

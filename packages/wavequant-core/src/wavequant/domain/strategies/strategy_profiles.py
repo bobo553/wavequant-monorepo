@@ -80,7 +80,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v82_' + variant
+    config['profile_version'] = 'gap_up_bullish_squeeze_v83_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout', 'nested_alternation_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -95,6 +95,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
     config['definition']['primary_filters'] += [
         'alternation_before_n_or_same_n_squeeze_confirmation',
         'known_pending_five_top_remaining_space_gt_one_original_n_box',
+        'new_daily_low_and_inverse_neckline_wick_break_requires_observation',
     ]
     config['definition'].update(
         nested_alternation_breakout='known_live_level2_low_then_level1_low_matching_primary_n_defense_held_bullish_volume_gt_previous_close_gt_primary_flip_and_consolidation_high_same_day_n_completion_permitted',
@@ -108,6 +109,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         secondary_breakout='latest_confirmed_level2_high_resisted_attack_or_response_requires_later_clean_bullish_record_close_with_original_defense_held',
         completed_wave_recovery='completed_a_defended_b_gap_breakout_or_volume_retires_only_same_a_b_pressure_and_inverse',
         completed_wave_lifetime='defended_independently_confirmed_c_reattack_outlives_local_polyline_epoch_reset_requires_live_attack_time_hierarchy_and_all_global_risk_gates',
+        inverse_n_entry_observation='known_h_l_lower_h_from_earlier_sessions_strict_new_daily_low_and_first_neckline_low_break_without_reclaiming_origin_blocks_all_new_entries_and_additions_even_when_close_recovers_no_new_exit_from_wick_alone',
         volume_filter_basis='confirmation_cumulative_volume_strictly_gt_previous_session_total_wave_gap_price_break_is_alternative',
         c_wave_extensions='after_a_reaches_original_n_one_p_b_holds_defense_project_b_plus_0_618_and_1_times_whole_a_strong_a_can_add_1_618_and_2_618_targets_are_observations_not_exit',
         ordinary_a_rebound='one_p_reached_below_two_t_then_defended_b_bullish_close_above_known_pullback_high_equal_a_target_no_strong_extensions',

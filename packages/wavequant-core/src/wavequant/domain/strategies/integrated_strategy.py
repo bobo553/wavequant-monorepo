@@ -257,6 +257,18 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
     candidate_sets = [(i, points, level) for i in range(len(bars))
                       for points, level in [(snapshots[i], 0), *larger.get(i, [])]]
     candidate_sets.extend(folded_sets)
+    inverse_entry_risks: dict[int, dict[str, str | int | float | bool]] = {}
+    if whole_wave:
+        from .inverse_n_entry import inverse_n_low_entry_risk
+        for now, known_points, _ in candidate_sets:
+            risk = inverse_n_low_entry_risk(bars, now, known_points)
+            if risk is not None and (
+                now not in inverse_entry_risks
+                or (str(risk['inverse_neckline_date']), str(risk['inverse_rebound_date']))
+                > (str(inverse_entry_risks[now]['inverse_neckline_date']),
+                   str(inverse_entry_risks[now]['inverse_rebound_date']))
+            ):
+                inverse_entry_risks[now] = risk
     for i, points, n_level in candidate_sets:
         if i in blocked:
             log(i, 'strict_structure_interrupted')
@@ -723,6 +735,9 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         exits = []
         target_risk = target_resistance.get(i)
         five_top_entry_risk = five_top_entry_risks.get(i)
+        inverse_entry_risk = inverse_entry_risks.get(i)
+        if inverse_entry_risk is not None:
+            log(i, 'inverse_n_entry_observed', **inverse_entry_risk)
         if target_risk is not None:
             log(i, 'target_resistance_observed', **target_risk)
             if target_risk['exit_fraction'] == 1.0:
@@ -769,6 +784,9 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 **({key: value for key, value in target_risk.items() if key not in ('reason', 'exit_fraction')}
                    if target_risk is not None and target_risk['exit_fraction'] == 1.0 else {}),
             })
+            continue
+        if inverse_entry_risk is not None:
+            log(i, 'entry_rejected', candidate_channel='global_inverse_n_low_guard', **inverse_entry_risk)
             continue
         choices = events.get(i, [])+resumptions.get(i, [])+consolidation_events.get(i, [])+wave_events.get(i, []) if config.regime_filter else [
             (c, c['regime'].frames[0]) for c in candidates if c['attack'] == i]

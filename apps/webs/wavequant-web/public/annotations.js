@@ -117,6 +117,7 @@ const REASONS = {
     weak_rebound_two_thirds_exit: "反弹最高价未突破下跌段 2/3，收盘再破破位低点清仓",
     last_rise_low_close_broken: "收盘跌破末升低",
     inverse_n_risk_exit: "倒 N 字风险退出",
+    inverse_n_new_low_requires_observation: "跌破昨低并出现倒 N 低点突破，观望，禁止新买入或加仓",
     negative_turn_risk_exit: "负扭转风险退出",
     strict_structure_unresolved: "严格折线高低路径未解",
     not_squeeze_regime: "不是轧空／强轧空盘",
