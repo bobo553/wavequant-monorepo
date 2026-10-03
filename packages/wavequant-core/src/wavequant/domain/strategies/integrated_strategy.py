@@ -26,7 +26,6 @@ from .wave_exhaustion_exit import (
 )
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
 from .two_t_resistance import two_t_resistance_history
-from .two_t_entry import two_t_entry_history
 from .five_top_entry import five_top_entry_history
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.wave_strength import StrengthScale, measure_strength
@@ -719,7 +718,6 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
     emitted_attacks = set()
     emitted_nested = set()
     target_resistance = two_t_resistance_history(bars, audit) if whole_wave else {}
-    two_t_entry_risks = two_t_entry_history(bars, audit) if whole_wave else {}
     projection_events = sorted(
         (event for event in audit if event["event"].startswith("wave_projection_")),
         key=lambda event: event["bar_index"],
@@ -736,13 +734,10 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             last_progress = percent
         exits = []
         target_risk = target_resistance.get(i)
-        two_t_entry_risk = two_t_entry_risks.get(i)
         five_top_entry_risk = five_top_entry_risks.get(i)
         inverse_entry_risk = inverse_entry_risks.get(i)
         if inverse_entry_risk is not None:
             log(i, 'inverse_n_entry_observed', **inverse_entry_risk)
-        if two_t_entry_risk is not None:
-            log(i, 'two_t_entry_observed', **two_t_entry_risk)
         if target_risk is not None:
             log(i, 'target_resistance_observed', **target_risk)
             if target_risk['exit_fraction'] == 1.0:
@@ -792,9 +787,6 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             continue
         if inverse_entry_risk is not None:
             log(i, 'entry_rejected', candidate_channel='global_inverse_n_low_guard', **inverse_entry_risk)
-            continue
-        if two_t_entry_risk is not None:
-            log(i, 'entry_rejected', candidate_channel='global_two_t_entry_guard', **two_t_entry_risk)
             continue
         choices = events.get(i, [])+resumptions.get(i, [])+consolidation_events.get(i, [])+wave_events.get(i, []) if config.regime_filter else [
             (c, c['regime'].frames[0]) for c in candidates if c['attack'] == i]

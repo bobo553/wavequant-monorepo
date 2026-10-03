@@ -31,10 +31,6 @@ test("sizing rejection and structural cutoff have explicit Chinese explanations"
     assert.match(reasonText("volume_bearish_outside_clear"), /连续阳线后.*当日清仓/);
     assert.match(reasonText("mother_child_inverse_n_low_break"), /阳子线低点与收盘均被严格跌破.*当日收盘清仓/);
     assert.match(reasonText("inverse_n_new_low_requires_observation"), /跌破昨低.*倒 N.*观望.*禁止新买入或加仓/);
-    assert.match(
-        reasonText("wave_two_t_requires_strong_close"),
-        /二饱.*观望.*强势收在目标之上且无空头抵抗.*买入或加仓/,
-    );
     assert.match(reasonText("volume_bearish_child_reduce_70"), /阴子线.*减仓 70%/);
     assert.match(reasonText("volume_bearish_child_break_clear"), /最低价和收盘价均跌破阴子线.*清空余仓/);
 });

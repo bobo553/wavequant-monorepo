@@ -7673,40 +7673,6 @@
                     "summary": "685298a经8331b3d合并本地main。Web3003五个模块HTTP200且与main文件逐字一致；实际AkShare 3303日线与理论计算得到历史1.618目标5.54082、生效2020-06-16、有效至2024-01-31。当前2026-05-18高5.20、等浪6.22无延伸；Core仍v83。未推送，完整Web与浏览器待独立验证。"
                 }
             ]
-        },
-        {
-            "id": "MONOREPO-240",
-            "name": "two-t-strong-close-entry-confirmation",
-            "title": "二饱未强势站上与空头抵抗观望",
-            "description": "先锋2026-06-09触及原正N二饱7.30但收盘6.94，禁止新正N绕过原目标买入；全局要求首次触及强势收盘站上且无空头抵抗，次笔抵抗重新观望。",
-            "scope": "Core原正N二饱入场门禁、因果证据、v84缓存及Web原因说明",
-            "dependencies": ["MONOREPO-238"],
-            "status": "done",
-            "acceptanceCriteria": [
-                "已知二饱首次触及但收盘未严格站上时，所有买入和加仓通道均观望，新正N较远目标不能绕过",
-                "沿用实体至少开盘价3%且占振幅60%的强势标准，严格收在二饱之上且无空头抵抗方可继续考量入场",
-                "次笔空头抵抗仅从次笔生效，后续再次触及仍需干净强势收盘，远离旧目标的新波段不误拦；原防守失效或确认突破后旧目标退休",
-                "已知日期、全量与历史前缀一致，部分当日行情不能借用未来高点或收盘",
-                "先锋06-09无LONG/BUY，保留06-10原有保护退出、01-06买点、01-26观望及2020-06-24五顶禁买",
-                "v84刷新计算缓存，Web以中文显示观望条件"
-            ],
-            "verification": [
-                {
-                    "command": "Core pytest test_two_t_entry.py test_two_t_resistance_risk.py test_wave_entry_epoch.py test_inverse_n_entry_guard.py test_five_top_entry.py -q; test_wave_continuation.py test_completed_wave_recovery.py test_shallow_base_breakout.py test_nested_alternation_breakout.py test_wave_exhaustion_exit.py -q",
-                    "status": "passed",
-                    "summary": "两组102+87共189项通过。新增真实06-09失败回归先复现旧LONG；修正后该日无LONG/BUY，独立浅回撤无法绕过，06-10原保护EXIT保留。覆盖当笔/次笔抵抗、再次试探、强势恢复、同价目标、未来可知、部分行情和全量/前缀；01-06买点、01-26观望、2020-06-24五顶禁买及华瓷正式再确认保留。初次持续禁买误拦远离旧目标的新波段，已修正并通过完整相关组回归。"
-                },
-                {
-                    "command": "Core strict mypy two_t_entry.py; mypy integrated_strategy.py strategy_profiles.py; pnpm --filter @wavequant/core typecheck; build; node --test annotations.test.mjs; Web lint; typecheck; build; Node syntax; git diff --check; pnpm harness:check",
-                    "status": "passed",
-                    "summary": "Core新增与修改模块类型检查、既定四模块严格检查和sdist/wheel通过。Web标注30项、lint零错误（6条既有警告）、类型与生产构建通过；格式仅保留新增文案与测试，原文件既有未格式化部分未批量改写。Harness通过。完整Core/Web套件、浏览器与外部分钟待独立验证，未运行Playwright。"
-                },
-                {
-                    "command": "local main merge; restart-wavequant.ps1 -NoBrowser; API v84 formal AkShare June9 prefix/full history; Web proxy full history and annotations.js HTTP",
-                    "status": "passed",
-                    "summary": "395dc79经d46fa57合并本地main并重启。常驻v84相同用户参数2034日前缀与2113日全量，前缀行情和信号、06-09拒绝证据一致；该日LONG/BUY与买入标记均0，原05-18 N二饱7.30、05-25已知、收盘6.94且强实体为false。01-06 LONG及BUY/filled 500股4.44222保留，01-26及2020-06-24无买入；06-10保护EXIT保留、无持仓则无SELL。Web3003代理版本/信号/委托/标记与API8765一致，新原因模块HTTP200与main逐字一致，research HTTP200。未推送；完整套件、浏览器与外部分钟待独立验证。"
-                }
-            ]
         }
     ]
 }

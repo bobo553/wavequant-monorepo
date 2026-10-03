@@ -25,18 +25,9 @@ def xianfeng_june():
     return bars, config, generate_system_signals(bars, config)
 
 
-def test_xianfeng_two_t_touch_without_close_break_blocks_smaller_n_buy(xianfeng_june):
+def test_xianfeng_below_half_shadow_does_not_block_smaller_n_buy(xianfeng_june):
     bars, config, result = xianfeng_june
-    assert not any(s.side == "LONG" and str(s.timestamp.date()) == "2026-06-09" for s in result.signals)
-    rejection = next(e for e in result.audit if e["event"] == "entry_rejected"
-                     and e["timestamp"].startswith("2026-06-09")
-                     and e.get("candidate_channel") == "global_two_t_entry_guard")
-    assert rejection["wave_reached_price"] == 7.30
-    assert rejection["wave_n_date"] == "2026-05-18"
-    assert rejection["observed_close"] == 6.94
-    assert rejection["two_t_close_above"] is False
-    assert rejection["two_t_strong_body"] is False
-    # Entry confirmation and the existing 50% shadow reduction are separate.
+    assert any(s.side == "LONG" and str(s.timestamp.date()) == "2026-06-09" for s in result.signals)
     assert not any(e["event"] == "target_resistance_observed"
                    and e["timestamp"][:10] == "2026-06-09" for e in result.audit)
     clear = next(s for s in result.signals if s.side == "EXIT" and str(s.timestamp.date()) == "2026-06-10")
@@ -46,30 +37,6 @@ def test_xianfeng_two_t_touch_without_close_break_blocks_smaller_n_buy(xianfeng_
     assert evidence["wave_reached_date"] == "2026-06-09"
     assert evidence["wave_reached_price"] == 7.30
     assert evidence["bearish_reference_date"] == "2026-06-04"
-
-
-def test_real_generated_entries_cannot_buy_or_add_at_failed_june9_target(xianfeng_june):
-    bars, _, generated = xianfeng_june
-    profile = whole_wave_profile({"scenarios": {"base": {"execution": {}}}})
-    execution = replace(StrategyConfig(**profile["scenarios"]["base"]["execution"]),
-                        staged_exit_intraday=False)
-    wave_events = [e for e in generated.audit if e["event"].startswith("wave_projection_")]
-    result = run_portfolio({bars[0].symbol: bars}, generated.signals, execution,
-                           wave_events={bars[0].symbol: wave_events})
-    assert not any(row["side"] == "BUY" and row["timestamp"].startswith("2026-06-09")
-                   for row in result.orders)
-
-
-def test_shallow_base_fallback_cannot_bypass_failed_two_t_close(xianfeng_june, monkeypatch):
-    bars, config, _ = xianfeng_june
-    bars = bars[:-1]
-    proof = dict(stop=5.64, target=8.62, counter_ratio=.62, breakout_volume_multiple=2.5)
-    monkeypatch.setattr("wavequant.domain.strategies.shallow_base_breakout.shallow_base_history",
-                        lambda *args, **kwargs: ([], {len(bars) - 1: proof}))
-    result = generate_system_signals(bars, config)
-    assert not any(s.side == "LONG" and s.bar_index == len(bars) - 1 for s in result.signals)
-    assert any(e["event"] == "entry_rejected" and e["bar_index"] == len(bars) - 1
-               and e.get("candidate_channel") == "global_two_t_entry_guard" for e in result.audit)
 
 
 def target_pair():
@@ -163,9 +130,8 @@ def test_independent_next_session_clear_requires_target_and_strict_confirmation(
     assert not any(row["reason"] == "wave_two_t_next_volume_clear" for row in risks.values())
 
 
-def test_manual_position_still_clears_next_session_without_prior_reduction():
+def test_real_target_next_session_clears_june9_buy_without_prior_reduction():
     bars, event = target_pair()
-    # This bypasses signal generation to isolate the existing protective exit.
     buy = Signal(bars[5].timestamp, bars[5].symbol, 5, "LONG", bars[5].close, 4.38,
                  "fixture", bars[5].timestamp, 0, None, "fixture", 9.68)
     repeat = replace(buy, timestamp=bars[6].timestamp, bar_index=6, reference_price=bars[6].close)
@@ -205,7 +171,6 @@ def test_real_june9_signals_do_not_use_june10_confirmation(xianfeng_june):
     buy = lambda result: [e for e in result.audit if e["event"] == "long_signal"
                           and e["timestamp"].startswith("2026-06-09")]
     assert buy(prefix) == buy(full)
-    assert not buy(prefix)
 
 
 @pytest.mark.parametrize("invalid", ["not_reached", "short_shadow", "wick_shorter_than_body", "same_low", "same_close", "equal_volume", "bullish", "invalidated"])
