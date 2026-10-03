@@ -10,7 +10,7 @@
             "description": "独立且防守有效的A/B/C再攻击保留较大波段生命周期，修复先锋2026-01-06放量突破已识别却被局部折线重启静默丢弃的问题。",
             "scope": "Core全局转浪入场、策略版本、因果审计及定向回归",
             "dependencies": ["MONOREPO-233"],
-            "status": "backlog",
+            "status": "done",
             "acceptanceCriteria": [
                 "有效独立C浪允许跨局部折线阶段，普通局部N仍保持自身阶段限制",
                 "攻击时与当前交替资格、冻结防守、倒N恢复和二饱/五顶入场风险不得绕过",
@@ -30,9 +30,9 @@
                     "summary": "两个修改模块mypy、既定四模块严格类型检查、sdist/wheel和空白差异检查通过。2018起1934根完整真实前缀确认01-06 LONG，4.44元、防守3.54、等浪目标6.22，二级交替08-12可知。"
                 },
                 {
-                    "command": "常驻v82与正式AkShare单股接口；完整Core/Web、浏览器及外部分钟",
-                    "status": "not-run",
-                    "summary": "常驻接口待本地合并后复核；完整套件、浏览器和外部分钟留待独立验证，按用户要求未运行Playwright。"
+                    "command": "restart-wavequant.ps1 -NoBrowser; API/Web backtest-version and akshare-backtest HTTP (2018-01-01 to 2026-01-06, V3/base, volume on, optional net RR off, capital 100000, weight 1); pnpm harness:check",
+                    "status": "passed",
+                    "summary": "已合并本地main并重启，API8765/Web3003均为v82/27b6c617b9d1。正式1934日线接口及Web代理均返回01-06一个LONG和一个BUY/filled：500股、4.44222元、费用后盈亏比1.891749、防守3.54、C等浪6.22，同日15:00收盘模拟。完整Core/Web、浏览器与外部分钟仍待独立验证，未运行Playwright，未推送。"
                 }
             ]
         },
