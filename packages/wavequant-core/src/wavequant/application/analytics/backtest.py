@@ -711,6 +711,10 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                     and (hard_reason or volume_inverse or inverse_failure is not None
                          or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
                 pressure = None
+            if (pressure is not None and pressure['exit_fraction'] < 1
+                    and volume_exit is not None
+                    and volume_exit['reason'] == 'volume_bullish_gap_bearish_clear'):
+                pressure = None
             if mother_child_inverse is not None:
                 pending_exit[symbol] = MOTHER_CHILD_INVERSE_N_LOW_BREAK
                 exit_evidence[symbol] = dict(

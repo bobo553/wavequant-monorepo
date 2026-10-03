@@ -80,7 +80,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v83_' + variant
+    config['profile_version'] = 'gap_up_bullish_squeeze_v84_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout', 'nested_alternation_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -144,6 +144,11 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         volume_bearish_outside_exit=(
             'bullish_run_followed_by_bearish_high_ge_previous_high_'
             'close_lt_previous_low_volume_gt_pre_run_bearish_same_close_full_clear'),
+        bullish_gap_bearish_exit=(
+            'previous_bull_body_ge_5pct_open_volume_gt_previous_or_'
+            'when_previous_volume_ge_2x_earlier_bull_volume_gt_earlier_bull_'
+            'next_open_lt_bull_body_midpoint_bearish_close_'
+            'volume_gt_last_bearish_before_bull_same_close_full_clear'),
         massive_gap_reversal_exit='volume_strict_record_of_previous_10_and_ge_2_times_previous_10_mean_open_gt_previous_high_close_lt_previous_low_bear_body_ge_5pct_open_same_close_full_clear_before_partial',
         secondary_c_wave_reversal_exit='known_level2_low_to_confirmed_source_a_high_then_known_b_low_intraday_high_break_two_resisted_sessions_equal_c_target_with_both_shadows_ge_30pct_next_bear_close_below_shadow_low_same_close_full_clear',
         pressure_adverse_exit='positive_n_retests_supply_adverse_unfilled_gap_higher_close_half_reduce_first_lower_close_clear_other_adverse_full_clear',

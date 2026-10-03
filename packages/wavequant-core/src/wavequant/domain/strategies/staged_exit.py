@@ -276,6 +276,52 @@ def _massive_gap_reversal(bars: list[Bar], index: int) -> dict | None:
                 previous_volume=previous.volume)
 
 
+def _bullish_gap_bearish_reversal(bars: list[Bar], index: int) -> dict[str, float | str] | None:
+    """Clear after a long bullish candle loses more than half its body at the next open."""
+    if index < 2:
+        return None
+    bar, bullish, before_bullish = bars[index], bars[index - 1], bars[index - 2]
+    body = bullish.close - bullish.open
+    if (bullish.open <= 0 or before_bullish.volume <= 0 or body < bullish.open * .05
+            or bar.open >= (bullish.open + bullish.close) / 2
+            or bar.close >= bar.open):
+        return None
+    volume_benchmark = before_bullish
+    volume_basis = 'previous_session'
+    if bullish.volume <= before_bullish.volume:
+        # Only step over one exceptional spike to the immediately earlier bullish session.
+        if index < 3:
+            return None
+        earlier_bullish = bars[index - 3]
+        if (before_bullish.close <= before_bullish.open
+                or earlier_bullish.close <= earlier_bullish.open or earlier_bullish.volume <= 0
+                or before_bullish.volume < 2 * earlier_bullish.volume
+                or bullish.volume <= earlier_bullish.volume):
+            return None
+        volume_benchmark = earlier_bullish
+        volume_basis = 'bullish_before_exceptional_volume'
+    reference = index - 2
+    while reference >= 0 and bars[reference].close >= bars[reference].open:
+        reference -= 1
+    if reference < 0 or bars[reference].volume <= 0 or bar.volume <= bars[reference].volume:
+        return None
+    bearish = bars[reference]
+    return dict(reason='volume_bullish_gap_bearish_clear', exit_fraction=1.0,
+                execution_model='same_day_close',
+                bullish_date=bullish.timestamp.date().isoformat(),
+                bullish_open=bullish.open, bullish_close=bullish.close,
+                bullish_body_midpoint=(bullish.open + bullish.close) / 2,
+                bullish_volume=bullish.volume,
+                bullish_previous_volume=before_bullish.volume,
+                bullish_volume_benchmark_date=volume_benchmark.timestamp.date().isoformat(),
+                bullish_volume_benchmark=volume_benchmark.volume,
+                bullish_volume_basis=volume_basis,
+                bearish_reference_date=bearish.timestamp.date().isoformat(),
+                bearish_reference_volume=bearish.volume,
+                observed_open=bar.open, observed_close=bar.close,
+                observed_volume=bar.volume)
+
+
 def _bearish_outside_reversal(bars: list[Bar], index: int) -> dict | None:
     """Clear a bullish run's outside reversal only when it exceeds the run's last bearish volume."""
     if index < 2:
@@ -447,6 +493,9 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     massive_reversal = _massive_gap_reversal(bars, index)
     if massive_reversal is not None:
         return massive_reversal
+    bullish_reversal = _bullish_gap_bearish_reversal(bars, index)
+    if bullish_reversal is not None:
+        return bullish_reversal
     outside_reversal = _bearish_outside_reversal(bars, index)
     if outside_reversal is not None:
         return outside_reversal
