@@ -9,6 +9,7 @@ from ..market_structure.price_action import Direction, ShadowPolicy, observe_res
 
 
 FIVE_TOP_CHILD_VOLUME_CLEAR = "wave_five_top_child_volume_clear"
+FIVE_TOP_GAP_VOLUME_CLEAR = "wave_five_top_gap_volume_clear"
 C_EQUAL_NEAR_RESISTANCE_REDUCE = "wave_c_equal_near_resistance_reduce"
 C_EQUAL_NEAR_VOLUME_CLEAR = "wave_c_equal_near_volume_clear"
 
@@ -104,6 +105,23 @@ def observe_five_top_child_volume_clear(
     child_break = _five_top_child_volume_break(bars, index)
     if child_break is None:
         return None
+    reached = _known_five_top(projection_events, index)
+    if reached is None:
+        return None
+    bar, previous = bars[index], bars[index - 1]
+    return dict(
+        child_break,
+        wave_n_date=bars[reached["attack"]].timestamp.date().isoformat(),
+        wave_reached_date=bars[reached["bar_index"]].timestamp.date().isoformat(),
+        wave_reached_stage=reached["reached_stage"], wave_reached_price=reached["reached_target"],
+        observed_open=bar.open, observed_close=bar.close, observed_volume=bar.volume,
+        previous_close=previous.close, previous_volume=previous.volume,
+        execution_model="same_day_close",
+    )
+
+
+def _known_five_top(projection_events: Sequence[dict], index: int) -> dict | None:
+    """Select a live five-top known before this close; current invalidation wins."""
     reached_by_n: dict[tuple[int, int | None], dict] = {}
     invalidated: set[tuple[int, int | None]] = set()
     for event in projection_events:
@@ -120,16 +138,35 @@ def observe_five_top_child_volume_clear(
     if not reached_by_n:
         return None
     rank = {"five_top": 1, "ten_full": 2}
-    reached = max(reached_by_n.values(), key=lambda event: (
+    return max(reached_by_n.values(), key=lambda event: (
         rank[event["reached_stage"]], event["bar_index"], event["attack"]))
+
+
+def observe_five_top_gap_volume_clear(
+    bars: Sequence[Bar], index: int, projection_events: Sequence[dict]
+) -> dict | None:
+    """Clear after a prior five-top on a lower open, prior-open break and bearish-volume expansion."""
+    if index < 1 or not projection_events:
+        return None
     bar, previous = bars[index], bars[index - 1]
+    if bar.open >= previous.close or bar.close >= previous.open:
+        return None
+    reference = next((bars[j] for j in range(index - 1, -1, -1)
+                      if bars[j].close < bars[j].open), None)
+    if reference is None or reference.volume <= 0 or bar.volume <= reference.volume:
+        return None
+    reached = _known_five_top(projection_events, index)
+    if reached is None:
+        return None
     return dict(
-        child_break,
+        reason=FIVE_TOP_GAP_VOLUME_CLEAR, exit_fraction=1.0,
         wave_n_date=bars[reached["attack"]].timestamp.date().isoformat(),
         wave_reached_date=bars[reached["bar_index"]].timestamp.date().isoformat(),
         wave_reached_stage=reached["reached_stage"], wave_reached_price=reached["reached_target"],
         observed_open=bar.open, observed_close=bar.close, observed_volume=bar.volume,
-        previous_close=previous.close, previous_volume=previous.volume,
+        previous_open=previous.open, previous_close=previous.close,
+        bearish_reference_date=reference.timestamp.date().isoformat(),
+        bearish_reference_volume=reference.volume,
         execution_model="same_day_close",
     )
 

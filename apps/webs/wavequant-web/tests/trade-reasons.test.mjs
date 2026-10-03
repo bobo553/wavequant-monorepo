@@ -180,6 +180,28 @@ test("five-top child break explains the prior bearish volume and both dated pric
     }
 });
 
+test("five-top gap clear explains the prior open and bearish-volume reference", () => {
+    const text = numberedTradeReasons({
+        side: "SELL",
+        reason: "wave_five_top_gap_volume_clear",
+        wave_n_date: "2024-04-12",
+        wave_reached_date: "2026-09-14",
+        wave_reached_stage: "five_top",
+        wave_reached_price: 23.6007,
+        observed_open: 24.8662,
+        observed_close: 22.5537,
+        observed_volume: 52_774_200,
+        previous_open: 22.8045,
+        previous_close: 25.0613,
+        bearish_reference_date: "2026-08-26",
+        bearish_reference_volume: 7_902_800,
+    }).join(" ");
+    assert.match(text, /2026-09-14 已达到五顶 23\.6007/);
+    assert.match(text, /24\.8662 < 前收 25\.0613.*22\.5537 < 前开 22\.8045/);
+    assert.match(text, /52,774,200 股 > 最近阴线 2026-08-26 的 7,902,800 股/);
+    assert.doesNotMatch(text, /undefined|NaN/);
+});
+
 test("bearish outside mother reduction and next-session clear use mother price and volume evidence", () => {
     const reduction = tradeReasonItems({
         side: "SELL",
