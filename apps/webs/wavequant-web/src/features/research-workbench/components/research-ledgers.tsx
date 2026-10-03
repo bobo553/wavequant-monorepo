@@ -26,33 +26,35 @@ const tradeHeaders = [
 export function ResearchLedgers(): JSX.Element {
     return (
         <>
-            <article className="panel ledger-card">
-                <div className="card-header">
+            <details className="panel ledger-card" id="fills-ledger">
+                <summary className="card-header">
                     <h2>
                         B / S 成交账本 <small>点击查看当时条件，含尚未平仓的买入</small>
                     </h2>
+                </summary>
+                <div className="ledger-actions">
                     <button id="fills-only">仅看并定位成交</button>
                 </div>
                 <ResearchTable headers={fillHeaders} bodyId="fills-body" />
                 <p id="fills-empty" className="empty">
                     没有模拟成交。信号圆点不会被转换成 B / S。
                 </p>
-            </article>
-            <article className="panel ledger-card">
-                <div className="card-header">
+            </details>
+            <details className="panel ledger-card" id="trades-ledger">
+                <summary className="card-header">
                     <h2>
                         成交复核 <small>首次买入至全部清仓计一笔；含所有分批卖出和费用</small>
+                        <span id="trade-count" className="tag">
+                            —
+                        </span>
                     </h2>
-                    <span id="trade-count" className="tag">
-                        —
-                    </span>
-                </div>
+                </summary>
                 <ResearchTable headers={tradeHeaders} bodyId="trades-body" />
                 <p id="trades-empty" className="empty" hidden>
                     该截面没有已平仓交易。没有交易证据，不代表风险为零。
                 </p>
                 <div id="open-position-summary" className="note-card" aria-label="期末未平仓估值" hidden />
-            </article>
+            </details>
         </>
     );
 }

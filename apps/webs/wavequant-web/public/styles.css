@@ -2604,6 +2604,39 @@ body {
 .ledger-card {
     margin-top: 18px;
 }
+.ledger-card > summary {
+    justify-content: flex-start;
+    cursor: pointer;
+    list-style: none;
+}
+.ledger-card > summary::-webkit-details-marker {
+    display: none;
+}
+.ledger-card > summary::before {
+    content: "";
+    flex-shrink: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 5px solid var(--muted);
+}
+.ledger-card[open] > summary::before {
+    transform: rotate(90deg);
+}
+.ledger-card:not([open]) > summary {
+    border-bottom: 0;
+}
+.ledger-card > summary:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: -3px;
+}
+.ledger-card > summary .tag {
+    margin-left: 10px;
+}
+.ledger-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 10px 17px;
+}
 .table-scroll {
     overflow: auto;
 }

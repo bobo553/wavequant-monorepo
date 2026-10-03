@@ -1141,6 +1141,7 @@ const results = [];
                 assert.ok(f.signal_time < f.time);
                 assert.ok(Math.abs(f.raw_price * f.adjustment_factor - f.price) < 1e-8);
             }
+            await page.locator("#fills-ledger > summary").click();
             await page.locator("#fills-body button").filter({ hasText: "查看入场条件" }).click();
             let detail = await page.locator("#selection-info").textContent();
             assert.ok(detail.includes("2019-02-11"));
