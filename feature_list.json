@@ -7615,7 +7615,7 @@
             "description": "修复先锋2026-01-26跌破昨低与已知倒N颈线后仍买入的问题，全局V3在当日阻止所有新买入和加仓。",
             "scope": "Core全局入场门禁、因果审计、策略版本及Web原因说明",
             "dependencies": ["MONOREPO-237"],
-            "status": "backlog",
+            "status": "done",
             "acceptanceCriteria": [
                 "早于当日的H-L-较低H锚点当日已知，首次跌破颈线低点且创昨低新低时观望",
                 "原高点未收复，收盘回升或放量不能绕过全局新买入和加仓门禁",
@@ -7636,8 +7636,8 @@
                 },
                 {
                     "command": "restart-wavequant.ps1 -NoBrowser; API/Web v83 formal AkShare January 26 backtest HTTP and annotations.js",
-                    "status": "not-run",
-                    "summary": "旧v82正式1948日线接口已复现01-26 LONG及BUY/filled 400股5.152575元；新规则待本地合并、重启及相同参数HTTP验收。"
+                    "status": "passed",
+                    "summary": "实现0e49af3经dce9363合并本地main并重启，API8765/Web3003均为v83/38ae5f8c7087。相同1948日线前缀和Web代理01-26 LONG/BUY/EXIT均0，01-06 LONG及BUY/filled 500股4.44222仍保留；页面当前关闭量能并开启浅回撤的2113日线正式回测同样通过。观望证据含昨低4.92、颈线4.91、低点4.81与当日已知反弹，annotations.js中文说明HTTP200。未推送；完整套件、浏览器及外部分钟待独立验证，未运行Playwright。"
                 }
             ]
         }
