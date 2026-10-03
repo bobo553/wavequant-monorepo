@@ -7548,6 +7548,32 @@
                     "summary": "Web lint无错误（6条既有警告）、类型检查、生产构建、JS语法、相关格式和差异检查通过。完整Web单测留待空闲时段；按用户规则未运行Playwright或浏览器端到端测试。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-236",
+            "name": "collapsed-trade-ledgers",
+            "title": "成交复核与B/S账本默认折叠",
+            "description": "研究工作台成交复核和B/S成交账本初始折叠，标题显示方向箭头，点击或键盘可独立展开查看。",
+            "scope": "Web账本折叠展示、相关样式和现有回归适配",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "成交复核与B/S成交账本首次加载均折叠，可独立展开和收起",
+                "成交笔数保留在标题，账本操作按钮、表格和空状态在展开后可用",
+                "使用原生details/summary，标题具有展开箭头和键盘焦点提示"
+            ],
+            "verification": [
+                {
+                    "command": "node --test --test-name-pattern='trade letters render' tests/market-dashboard.test.mjs; built research HTML jsdom checks",
+                    "status": "passed",
+                    "summary": "现有成交账本操作回归1项通过；生产HTML检查确认两个details无open属性、点击可独立开关、表格与仅看并定位成交按钮保留，成交笔数在summary内。DOM验证不代替浏览器视觉。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; Node syntax; git diff --check",
+                    "status": "passed",
+                    "summary": "Web lint无错误（6条既有警告）、类型检查、生产构建、相关格式及E2E源码语法通过。两个现有浏览器用例在操作账本前增加展开步骤；按用户规则未运行Playwright，完整Web单测与浏览器交互留待独立验证。"
+                }
+            ]
         }
     ]
 }

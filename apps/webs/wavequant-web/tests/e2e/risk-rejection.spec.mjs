@@ -86,6 +86,7 @@ test("current-stock risk rejection appears in its buy signal tooltip without ano
         globalThis.riskRejectionFixture.destroy();
         globalThis.document.querySelector("#risk-rejection-fixture").remove();
     });
+    await page.locator("#fills-ledger > summary").click();
     await page.locator("#fills-only").click();
     await expect(page.locator("#show-markers")).not.toBeChecked();
     expect(errors).toEqual([]);
