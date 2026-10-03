@@ -1,5 +1,7 @@
 # Progress
 
+- MONOREPO-233 门禁处理：旧华瓷全局测试把手工提供的08-03转浪N当作正式N；当前讲义引擎实际确认07-27起、08-06颈线、08-07回档、08-10完成的正N。集成回归明确检查该N重新确认通道、原防守及自身一饱，并保持全量/前缀信号和审计一致；实体突破→更高跳空改为有已知拐点的转浪观察，仍检查同A/B、两阶段去重和前缀一致，不改变生产信号。5个相关Core文件112项全部通过，既有两项门禁已澄清并修正。常驻v80正式AkShare单股接口相同参数已复现06-24 LONG及BUY成交5.2026元；新规则待本轮合并、重启与HTTP复验。
+
 - MONOREPO-233：补充全局 V3 五顶附近禁买。距上一交易日已知待满足五顶不超过原 N 一箱时，C 浪、新 N 与浅回撤突破均不生成 LONG；首次达到五顶当日不能靠升级十满绕过，失效或暂停后不沿用旧目标。版本 v81。真实先锋 2020-06-24 收盘 5.20、五顶 5.42、箱高 0.29、剩余 0.22，原买点已拦截；06-05 的轧空确认保留，正 N 完成日仍为 06-02。用户所说“06-05清空”的日期与规则待澄清，未添加猜测性卖出。
 - MONOREPO-233 验证：5 个相关 Core 文件 110 项通过、2 项失败；失败为 `test_full_global_pipeline_reenters_after_inverse_n_and_preserves_prefix`（通道预期 wave_push_gap，实际 transition_squeeze）和 `test_strong_a_body_confirmation_can_advance_to_later_higher_gap`（预期两次 wave_entry_path，实际无），未改动 main 源码复跑完全相同。本次新增 16 项通过；新模块 strict mypy、修改模块 mypy、Core 配置类型检查与源码包/wheel构建通过。初次构建缺少 setuptools，安装 pyproject 规定的 >=80,<81 后成功。按失败门禁暂不合并，完整 Core/Web 与浏览器验证留待独立时段。
 

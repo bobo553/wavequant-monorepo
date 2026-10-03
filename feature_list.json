@@ -7434,8 +7434,8 @@
             "verification": [
                 {
                     "command": "pytest test_five_top_entry.py test_wave_projection.py test_wave_continuation.py test_two_t_resistance_risk.py test_shallow_base_breakout.py",
-                    "status": "failed",
-                    "summary": "110通过、2失败；本次新增16项通过。wave_continuation的global_pipeline通道与strong_a_body确认断言失败，在未修改main源码复跑同样失败。未削弱断言，按门禁不合并。"
+                    "status": "passed",
+                    "summary": "112项全部通过。原2项失败的华瓷测试错误把手工08-03转浪setup当作正式N；集成断言现验证实际08-10 N的重新确认、原防守与自身一饱，并保留信号/审计前缀一致。实体→更高跳空在有已知拐点的转浪观察层验证同A/B、两阶段去重与前缀，未修改生产通道选择。"
                 },
                 {
                     "command": "mypy --strict five_top_entry.py; mypy integrated_strategy.py strategy_profiles.py; pnpm --filter @wavequant/core typecheck; build",

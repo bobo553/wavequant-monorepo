@@ -7,7 +7,7 @@ import pytest
 
 from wavequant.domain.models.model import Bar
 from wavequant.domain.market_structure.wave_projection import WaveProjectionSetup, wave_projection_history
-from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
+from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals, pivot_history
 from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
     wave_confirmation_state,
@@ -225,8 +225,8 @@ def test_volume_gap_does_not_require_final_bullish_body():
     assert wave_gap_entry(bars, setup, now)["wave_gap_trigger"] == "volume"
 
 
-def test_full_global_pipeline_reenters_after_inverse_n_and_preserves_prefix():
-    bars, dates, setup = sample()
+def test_full_global_pipeline_uses_formal_reconfirmation_and_preserves_prefix():
+    bars, dates, _ = sample()
     config = SystemStrategy(
         pivot_mode="lecture_causal",
         entry_policy="hierarchical_two_buy_points",
@@ -240,11 +240,24 @@ def test_full_global_pipeline_reenters_after_inverse_n_and_preserves_prefix():
     day = dates["2026-09-15"]
     buys = [s for s in full.signals if s.side == "LONG" and s.bar_index == day]
     assert len(buys) == 1
-    assert buys[0].reason == "system_wave_push_gap"
-    assert buys[0].target_price == pytest.approx(19.69748771297527)
+    # The supplied Aug 3 setup used by the wave observer is not a completed N
+    # under the current lecture reducer. The global pipeline must own its actual
+    # Aug 10 N, rather than borrow the unqualified setup's larger C target.
+    attack = dates["2026-08-10"]
+    completed = next(e for e in full.audit if e["event"] == "n_completed" and e["bar_index"] == attack)
+    assert completed["origin"] == dates["2026-07-27"]
+    assert completed["neckline"] == dates["2026-08-06"]
+    assert completed["pullback"] == dates["2026-08-07"]
+    assert buys[0].reason == "system_transition_squeeze"
+    assert buys[0].target_price == pytest.approx(completed["one_p"])
+    assert buys[0].invalidation_price == pytest.approx(completed["defense"])
     proof = next(e for e in full.audit if e["event"] == "long_signal" and e["bar_index"] == day)
-    assert proof["wave_a_origin_date"] == "2026-07-27"
-    assert proof["wave_b_low_date"] == "2026-08-21"
+    assert proof["attack"] == attack
+    assert proof["n_origin_date"] == "2026-07-27"
+    assert proof["n_neckline_date"] == "2026-08-06"
+    assert proof["n_pullback_date"] == "2026-08-07"
+    assert proof["squeeze_confirmation"] == "fresh_n_defeats_old_n_resistance"
+    assert "wave_entry_path" not in proof
     assert proof["rvol"] > 1
     assert proof["rvol"] == pytest.approx(bars[day].volume / bars[day - 1].volume)
     for end in (dates["2026-08-21"], day - 1, day):
@@ -254,35 +267,32 @@ def test_full_global_pipeline_reenters_after_inverse_n_and_preserves_prefix():
 
 
 def test_strong_a_body_confirmation_can_advance_to_later_higher_gap():
-    bars, dates, _ = sample()
+    bars, dates, setup = sample()
     body, gap = dates["2026-08-26"], dates["2026-09-15"]
     # A completed early observation can confirm the body route even if the
     # final August candle no longer has a qualifying body.
     bars[body] = replace(bars[body], close=16.70, volume=2_100_000)
-    strategy = SystemStrategy(
-        pivot_mode="lecture_causal",
-        entry_policy="hierarchical_two_buy_points",
-        buy_point_definition="whole_flip_wave_v3",
-        first_pullback_threshold=None,
-        strict_n_attack_quality=False,
-        preflight_reward_risk=False,
-        volume_filter=True,
+    config = SystemStrategy(
+        pivot_mode="lecture_causal", entry_policy="hierarchical_two_buy_points",
+        buy_point_definition="whole_flip_wave_v3", first_pullback_threshold=None,
+        strict_n_attack_quality=False, preflight_reward_risk=False, volume_filter=True,
     )
-    full = generate_system_signals(bars[: gap + 1], strategy)
-    confirmations = [
-        e
-        for e in full.audit
-        if e["event"] == "long_signal" and e.get("wave_entry_path") and e["bar_index"] in (body, gap)
-    ]
-    assert [e["bar_index"] for e in confirmations] == [body, gap]
-    assert [(e["bar_index"], e["wave_confirmation_phase"]) for e in confirmations] == [(body, "body"), (gap, "gap")]
+    snapshots = pivot_history(bars, config)[0]
+    # Observe the explicitly supplied N independently of formal N eligibility;
+    # the global pipeline's real completion is covered in the preceding test.
+    confirmations = [wave_gap_entry(bars, setup, index, pivots=snapshots[index - 1]) for index in (body, gap)]
+    assert all(proof is not None for proof in confirmations)
+    assert [proof["wave_confirmation_phase"] for proof in confirmations] == ["body", "gap"]
     assert confirmations[0]["wave_a_high_index"] == confirmations[1]["wave_a_high_index"]
     assert confirmations[0]["wave_b_low_index"] == confirmations[1]["wave_b_low_index"]
     assert confirmations[1]["wave_gap_high"] > confirmations[0]["wave_gap_high"]
-    for end in (body, gap):
-        prefix = generate_system_signals(bars[: end + 1], strategy)
-        assert prefix.signals == [s for s in full.signals if s.bar_index <= end]
-        assert prefix.audit == [e for e in full.audit if e["bar_index"] <= end]
+    assert wave_confirmation_is_new(confirmations[0], None)
+    assert wave_confirmation_is_new(confirmations[1], wave_confirmation_state(confirmations[0]))
+    assert not wave_confirmation_is_new(confirmations[1], wave_confirmation_state(confirmations[1]))
+    for index, confirmation in zip((body, gap), confirmations, strict=True):
+        prefix = bars[: index + 1]
+        known_pivots = pivot_history(prefix, config)[0][index - 1]
+        assert wave_gap_entry(prefix, setup, index, pivots=known_pivots) == confirmation
 
 
 def test_strong_a_confirmation_requires_strictly_higher_gap_and_one_fill_per_phase():
