@@ -67,17 +67,7 @@ export function StockBacktestResults(): JSX.Element {
                 </span>
             </div>
             <ResearchTable
-                headers={[
-                    "股票",
-                    "截至日期",
-                    "净收益",
-                    "最大回撤（已清仓）",
-                    "买入成交",
-                    "已平仓",
-                    "胜率",
-                    "费用 / 元",
-                    "查看",
-                ]}
+                headers={["股票", "截至日期", "净收益", "最大回撤", "买入成交", "已平仓", "胜率", "费用 / 元", "查看"]}
                 bodyId="stock-results-body"
             />
             <p className="note-card">
