@@ -7648,7 +7648,7 @@
             "description": "C浪首次满足1倍A浪测幅后按同一A/B锚点追加1.618目标，目标线从达标日期开始显示，支持自动ABC及交易标记。",
             "scope": "Web测幅观察、买点和成交目标、目标线与历史回放",
             "dependencies": ["MONOREPO-232"],
-            "status": "backlog",
+            "status": "done",
             "acceptanceCriteria": [
                 "达到1倍后计算B低加1.618乘A高减A起点，保留已有0.618和1倍目标",
                 "自动ABC、手选A高点、买入信号与实际成交使用同一延伸判定和价格标签",
@@ -7669,8 +7669,8 @@
                 },
                 {
                     "command": "local main merge; Web static modules HTTP; actual AkShare May18 view/theory projection verification",
-                    "status": "not-run",
-                    "summary": "真实3303日线行情/理论已取得并核对5月18日5.20高点；源代码待合并后核对常驻资源及延伸目标。"
+                    "status": "passed",
+                    "summary": "685298a经8331b3d合并本地main。Web3003五个模块HTTP200且与main文件逐字一致；实际AkShare 3303日线与理论计算得到历史1.618目标5.54082、生效2020-06-16、有效至2024-01-31。当前2026-05-18高5.20、等浪6.22无延伸；Core仍v83。未推送，完整Web与浏览器待独立验证。"
                 }
             ]
         }
