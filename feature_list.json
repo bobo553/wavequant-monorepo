@@ -4,6 +4,39 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-237",
+            "name": "completed-wave-entry-lifetime",
+            "title": "有效转浪买点跨局部折线阶段",
+            "description": "独立且防守有效的A/B/C再攻击保留较大波段生命周期，修复先锋2026-01-06放量突破已识别却被局部折线重启静默丢弃的问题。",
+            "scope": "Core全局转浪入场、策略版本、因果审计及定向回归",
+            "dependencies": ["MONOREPO-233"],
+            "status": "backlog",
+            "acceptanceCriteria": [
+                "有效独立C浪允许跨局部折线阶段，普通局部N仍保持自身阶段限制",
+                "攻击时与当前交替资格、冻结防守、倒N恢复和二饱/五顶入场风险不得绕过",
+                "先锋2026-01-06真实历史前缀生成LONG及带费用后盈亏比检查的BUY，量能不足的未完成日线不提前买",
+                "全量/前缀及缓存部分日线重放一致，未知或退休交替、目标附近拒绝有回归",
+                "版本v82刷新引擎指纹，买入证据记录原N与当前局部阶段"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_wave_entry_epoch.py test_five_top_entry.py test_wave_continuation.py test_completed_wave_recovery.py test_add_on_entry.py -q; pytest test_wave_entry_epoch.py -q",
+                    "status": "passed",
+                    "summary": "五文件83项与新增成交后的先锋8项通过，共84个不同用例；2020-06-24五顶禁买保留。旧华瓷手工N成交用例在原main同样失败，已改为明确提供入场的撮合验证，保留真实部分卖出/全清/新周期/成本/证据断言；正式N资格仍独立覆盖。"
+                },
+                {
+                    "command": "Core targeted mypy integrated_strategy.py strategy_profiles.py; pnpm --filter @wavequant/core typecheck; build; git diff --check",
+                    "status": "passed",
+                    "summary": "两个修改模块mypy、既定四模块严格类型检查、sdist/wheel和空白差异检查通过。2018起1934根完整真实前缀确认01-06 LONG，4.44元、防守3.54、等浪目标6.22，二级交替08-12可知。"
+                },
+                {
+                    "command": "常驻v82与正式AkShare单股接口；完整Core/Web、浏览器及外部分钟",
+                    "status": "not-run",
+                    "summary": "常驻接口待本地合并后复核；完整套件、浏览器和外部分钟留待独立验证，按用户要求未运行Playwright。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-231",
             "name": "holding-episode-maximum-drawdown",
             "title": "持仓归零分段及已清仓最大回撤",

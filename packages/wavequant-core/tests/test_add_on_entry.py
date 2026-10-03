@@ -300,44 +300,56 @@ def test_add_on_respects_weight_and_risk_caps_after_buy_fee(max_weight, risk_fra
     assert add_on["position_risk_after_fill"] <= post_fee_equity * risk_fraction + 1e-12
 
 
-def test_huaci_volume_double_break_closes_cycle_before_next_gap_buy():
+def test_huaci_supplied_wave_entries_close_cycle_before_next_gap_buy():
     from .test_wave_continuation import sample as huaci_sample
+    from wavequant.domain.strategies.integrated_strategy import SystemResult, SystemStrategy, pivot_history
     from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
+    from wavequant.domain.strategies.wave_continuation import wave_gap_entry
     from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageError
-    from wavequant.infrastructure.market_data.minute import MinuteBar
     from wavequant.interfaces.research_tools.stock_backtest import single_stock_result
 
-    bars, dates, _ = huaci_sample()
+    bars, dates, setup = huaci_sample()
     bars = bars[: dates["2026-09-15"] + 1]
-    body = bars[dates["2026-08-26"]]
-    minute = [
-        MinuteBar(body.timestamp.replace(hour=9, minute=35), body.open, body.high, body.low, 16.70, 2_100_000),
-        MinuteBar(body.timestamp.replace(hour=9, minute=40), 16.70, 16.70, 16.60, 16.65, 800_000),
-        MinuteBar(body.timestamp.replace(hour=9, minute=45), 16.65, 16.65, 16.40, body.close, body.volume - 2_900_000),
-    ]
-
-    def load(bar):
-        if bar.timestamp == body.timestamp:
-            return minute
-        raise MinuteCoverageError(str(bar.timestamp.date()), None, None, "fixture")
-
     profile = whole_wave_profile({"scenarios": {"base": {"execution": StrategyConfig().to_dict()}}})
+    # This execution fixture supplies an August-3 N. Formal N eligibility is
+    # tested in test_wave_continuation with the actual August-10 completion.
+    # Here the two supplied entries isolate cycle clearing and ledger identity.
+    observed = list(bars)
+    body_index = dates["2026-08-26"]
+    observed[body_index] = replace(observed[body_index], close=16.70, volume=2_100_000)
+    snapshots = pivot_history(observed, SystemStrategy(**profile["strategy"]))[0]
+    signals, audit = [], []
+    for index in (body_index, dates["2026-09-15"]):
+        proof = wave_gap_entry(observed, setup, index, pivots=snapshots[index - 1])
+        assert proof is not None
+        bar = bars[index]
+        signals.append(Signal(bar.timestamp, bar.symbol, index, "LONG", bar.close,
+            proof["wave_defense"], "system_wave_push_gap", bars[setup.attack_index].timestamp,
+            0, bar.volume / bars[index - 1].volume, "轧空", proof["wave_equal_target"], 1.5))
+        audit.append(dict(timestamp=bar.timestamp.isoformat(), symbol=bar.symbol,
+            bar_index=index, event="long_signal", channel="wave_push_gap",
+            attack=setup.attack_index, **proof))
     execution = dict(
         profile["scenarios"]["base"]["execution"],
         initial_capital=100_000,
         max_position_weight=1,
         net_reward_risk_filter=False,
         wave_exhaustion_exit=False,
+        consolidation_entry_intraday=False,
     )
-    view = single_stock_result(bars, profile["strategy"], execution, minute_loader=load)
+    def load(bar):
+        raise MinuteCoverageError(str(bar.timestamp.date()), None, None, "fixture_daily_close")
+
+    view = single_stock_result(bars, profile["strategy"], execution, SystemResult(signals, audit, {}), minute_loader=load)
     buys = [order for order in view["orders"] if order["side"] == "BUY" and order["status"] == "filled"]
     body_buy = next(order for order in buys if order["timestamp"].startswith("2026-08-26"))
     gap_buy = next(order for order in buys if order["timestamp"].startswith("2026-09-15"))
     partial = next(
         order
         for order in view["orders"]
-        if order["side"] == "SELL" and order["status"] == "filled" and order["timestamp"].startswith("2026-09-09")
+        if order["side"] == "SELL" and order["status"] == "filled" and order["timestamp"].startswith("2026-09-10")
     )
+    assert partial["reason"] == "support_low_close_break_reduce"
     assert partial["position_closed"] is False
     clear = next(order for order in view["orders"]
                  if order["side"] == "SELL" and order["status"] == "filled"

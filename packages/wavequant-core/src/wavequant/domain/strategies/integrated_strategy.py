@@ -795,7 +795,10 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             if (wave is not None and wave_key is not None
                     and not wave_confirmation_is_new(wave, emitted_waves.get(wave_key))):
                 continue
-            if c['setup'].direction != Direction.UP or (c['attack'] in emitted_attacks and consolidation is None and wave is None) or epochs[i] != c['epoch']:
+            # A defended, independently confirmed A/B/C wave outlives local
+            # polyline resets. Its frozen defense and live hierarchy still gate
+            # entry below; ordinary local N candidates remain epoch-scoped.
+            if c['setup'].direction != Direction.UP or (c['attack'] in emitted_attacks and consolidation is None and wave is None) or (epochs[i] != c['epoch'] and wave is None):
                 continue
             counts['entry_candidate_evaluations'] += 1
             if target_risk is not None:
@@ -975,6 +978,8 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                         confirmation_low=bar.low, confirmation_close=bar.close,
                         prior_close=bars[i-1].close) if whole_wave else {}),
                 **(wave or {}), **(wave_pressure_recovery or {}), **(consolidation or {}), **reversal_proofs.get((c['attack'], i), {}),
+                **(dict(wave_local_epoch_recovered=epochs[i] != c['epoch'],
+                        wave_n_epoch=c['epoch'], entry_local_epoch=epochs[i]) if wave is not None else {}),
                 gross_reward_risk=gross_rr,
                 **({'target_source': ('wave_0618_projection' if wave['wave_entry_path'] == 'two_t_strong_a_resistance_rebreak'
                                       and targets[0] == wave['wave_c_0618_target'] else 'wave_equal_projection') if wave is not None else projection.state if projection is not None and projection.target == targets[0]
