@@ -88,7 +88,7 @@ def test_cross_epoch_wave_cannot_borrow_unknown_or_retired_alternation(xianfeng_
     assert any(e["bar_index"] == now and e.get("reason") == expected for e in result.audit)
 
 
-@pytest.mark.parametrize("observer", ["five_top_entry_history", "two_t_resistance_history"])
+@pytest.mark.parametrize("observer", ["five_top_entry_history", "two_t_resistance_history", "two_t_entry_history"])
 def test_cross_epoch_confirmation_still_obeys_global_target_entry_risks(xianfeng_january, monkeypatch, observer):
     bars, now, config, _ = xianfeng_january
     risk = dict(reason="target_entry_test_risk", exit_fraction=.8)
