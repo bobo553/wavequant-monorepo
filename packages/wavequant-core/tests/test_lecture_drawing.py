@@ -240,6 +240,51 @@ class LectureDrawingTests(unittest.TestCase):
                           ])
         self.assertEqual(after_rebound['strokes'][0]['points'][-2]['state'], 'confirmed')
 
+    def test_guofang_doji_child_connects_to_bearish_outside_mother(self):
+        data = [
+            Bar(datetime(2024, 9, 10), 'sh.601086',
+                5.177530926887061, 5.19119195835642, 5.040920612193471, 5.095564738070907, 10546477),
+            Bar(datetime(2024, 9, 11), 'sh.601086',
+                5.027259580724112, 5.068242675132189, 4.9316323604385985, 4.986276486316035, 7790800),
+            Bar(datetime(2024, 9, 12), 'sh.601086',
+                4.986276486316035, 5.040920612193471, 4.945293391907958, 4.986276486316035, 6627200),
+            Bar(datetime(2024, 9, 13), 'sh.601086',
+                4.945293391907958, 5.05458164366283, 4.863327203091804, 4.876988234561162, 8388993),
+            Bar(datetime(2024, 9, 18), 'sh.601086',
+                4.876988234561162, 4.890649266030522, 4.754038951336931, 4.822344108683726, 6167300),
+        ]
+        on_mother = lecture_drawing(data[:4])
+        self.assertEqual(on_mother['issues'], [])
+        self.assertEqual(len(on_mother['strokes']), 1)
+        self.assertEqual([(point['time'], point['kind'], point['value'])
+                          for point in on_mother['strokes'][0]['points']], [
+                              ('2024-09-10', 'H', data[0].high),
+                              ('2024-09-11', 'L', data[1].low),
+                              ('2024-09-13', 'H', data[3].high),
+                              ('2024-09-13', 'L', data[3].low),
+                          ])
+        self.assertEqual(on_mother['teaching_paths'][0]['source'],
+                         'known_child_endpoint_to_coloured_mother')
+        self.assertFalse(on_mother['strokes'][0]['points'][-1]['intrabar_order_resolved'])
+        after_decline = lecture_drawing(data)
+        self.assertEqual(len(after_decline['strokes']), 1)
+        self.assertEqual([(point['time'], point['kind'])
+                          for point in after_decline['strokes'][0]['points'][-2:]],
+                         [('2024-09-13', 'H'), ('2024-09-18', 'L')])
+
+    def test_outside_doji_mother_keeps_unresolved_order(self):
+        drawing = lecture_drawing(bars([(9,11,8,10),(10,12,9,11),(10,13,8,10)]))
+        self.assertEqual(len(drawing['issues']), 1)
+        self.assertEqual(drawing['teaching_paths'], [])
+
+    def test_known_doji_child_connects_to_bullish_outside_mother(self):
+        drawing = lecture_drawing(bars([(12,14,10,13),(10,12,8,9),
+                                        (10,11,9,10),(8,12,7,11)]))
+        self.assertEqual(drawing['issues'], [])
+        self.assertEqual([(point['kind'], point['value'])
+                          for point in drawing['strokes'][0]['points']],
+                         [('H', 14), ('L', 8), ('H', 11), ('L', 7), ('H', 12)])
+
     def test_equal_low_inside_doji_connects_child_high_on_decline(self):
         drawing = lecture_drawing(bars([(12,14,10,13),(10,12,8,9),(11,11,8,11)]))
         self.assertEqual(drawing['issues'], [])
