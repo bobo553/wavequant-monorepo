@@ -745,6 +745,34 @@ test("each rejected entry evaluation keeps its reason when same-day candidates s
     assert.equal(markerGroups(items, { ...options, candidateRejections: false }).length, 0);
     assert.equal(markerGroups(items, { ...options, rules: false, diagnostics: false }).length, 1);
 });
+test("near five-top rejection shows the known target and original box without a buy marker", () => {
+    const candidateView = {
+        asof: "2020-06-24",
+        bars: [{ time: "2020-06-02" }, { time: "2020-06-23" }, { time: "2020-06-24" }],
+        markers: [],
+    };
+    const event = {
+        id: "five-top-risk",
+        event: "entry_rejected",
+        time: "2020-06-24",
+        available_at: "2020-06-24",
+        price: 5.2,
+        attack: 0,
+        reason: "wave_five_top_entry_too_close",
+        wave_five_top_target: 5.42,
+        wave_box_height: 0.29,
+        wave_remaining_reward: 0.22,
+        wave_target_known_date: "2020-06-23",
+    };
+    const [item] = buildAnnotations(candidateView, { events: [event] });
+    assert.equal(item.category, "entry-rejections");
+    assert.match(item.description, /禁止新买入或加仓/);
+    assert.match(item.description, /五顶目标 5\.42 元.*箱高 0\.29 元.*剩余空间 0\.22 元/);
+    assert.match(item.description, /2020-06-23 已知/);
+    assert.match(item.description, /未提交买单/);
+    assert.equal(markerGroups([item], options)[0].marker.color, "#8c9db599");
+    assert.equal(buildAnnotations({ ...candidateView, asof: "2020-06-23" }, { events: [event] }).length, 0);
+});
 test("same-day rules grouped, no evidence lost", () => {
     const rules = markerGroups(buildAnnotations(view, theory), options).filter((g) => g.items[0].kind === "rule");
     assert.equal(rules.length, 1);

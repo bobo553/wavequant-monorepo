@@ -7416,6 +7416,45 @@
             ]
         },
         {
+            "id": "MONOREPO-233",
+            "name": "five-top-near-entry-gate",
+            "title": "先锋新材五顶附近禁买与日期核对",
+            "description": "全局V3距已知待满足五顶不超过原正N一箱时拦截新买入与加仓；先锋2020-06-24回放及中文证据，06-05清空依据待澄清。",
+            "scope": "Core五顶入场门槛、策略版本、Web候选说明与定向验证",
+            "dependencies": [],
+            "status": "backlog",
+            "acceptanceCriteria": [
+                "06-24五顶5.42、箱高0.29、收盘5.20剩余0.22，不生成原C浪买入信号",
+                "距上一交易日已知待满足五顶不超过一箱时所有入场通道禁买，关闭可选盈亏比过滤不能绕过",
+                "首次五顶达到当日仍拦截，完成、暂停或失效的目标不无限阻挡后来买点；前缀不使用未来目标",
+                "Web显示目标、原箱高、剩余空间及已知日期，候选拦截不显示为成交",
+                "06-05清空的日期与触发规则需用户澄清；当前引擎06-02正N、06-05轧空确认事实保留",
+                "相关回归失败澄清或修复后再按工作流合并"
+            ],
+            "verification": [
+                {
+                    "command": "pytest test_five_top_entry.py test_wave_projection.py test_wave_continuation.py test_two_t_resistance_risk.py test_shallow_base_breakout.py",
+                    "status": "passed",
+                    "summary": "112项全部通过。原2项失败的华瓷测试错误把手工08-03转浪setup当作正式N；集成断言现验证实际08-10 N的重新确认、原防守与自身一饱，并保留信号/审计前缀一致。实体→更高跳空在有已知拐点的转浪观察层验证同A/B、两阶段去重与前缀，未修改生产通道选择。"
+                },
+                {
+                    "command": "mypy --strict five_top_entry.py; mypy integrated_strategy.py strategy_profiles.py; pnpm --filter @wavequant/core typecheck; build",
+                    "status": "passed",
+                    "summary": "新模块strict、修改模块类型、配置4文件strict及sdist/wheel通过；首次构建补齐隔离环境pyproject要求的setuptools>=80,<81后通过。"
+                },
+                {
+                    "command": "node --test tests/annotations.test.mjs tests/blocked-trade-nodes.test.mjs",
+                    "status": "passed",
+                    "summary": "33项通过，含五顶禁买中文金额和已知日期、候选标识与未来过滤。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "Web lint无错误（6条既有警告）、类型检查及生产构建通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-232",
             "name": "xianfeng-2020-c-wave-projection",
             "title": "先锋新材2020年C浪测幅与图表目标",
