@@ -1,5 +1,7 @@
 # Progress
 
+- MONOREPO-233 常驻生效：本地main合并 `d7ee177` 并重启，Web/API加载v81，HTTP `/annotations.js` 已返回五顶禁买中文文案。正式AkShare同参数回测前后对比：2020-06-24旧版BUY成交5.2026与LONG均存在；新版BUY/LONG标记0，两个候选返回五顶5.42、箱高0.29、余量0.22及06-23已知证据。研究页HTTP200。原页面若保留旧结果，刷新并重新回测采用新引擎；未运行浏览器/Playwright及完整Web套件，未推送。
+
 - MONOREPO-233：入场未通过标记增加“五顶附近禁止新买入或加仓”的中文说明，保留目标、原 N 箱高、剩余空间及目标已知日期。先锋 2020-06-24 展示 5.42 / 0.29 / 0.22 元，不画成买入或成交。33 项定向 Node 测试、Web lint（6 条既有警告）、类型检查与生产构建通过。相关 Core 两项 main 既有失败复现，按门禁保留特性分支，常驻 main 页面尚未更新；完整 Web 与浏览器/Playwright 未运行。
 
 - MONOREPO-231 合并验收：用户明确要求合并后，main 修复合并为 `40522c1`。HTTP 已确认 Web 发布修订、`holding_entry_cost_mae_cycle_v2` 模块及研究页持仓轮次表；API 新引擎与 main 源码一致，旧回测完成摘要已失效。72 项 Node、2 项拓扑及 lint/typecheck/build 的先前结果保留；完整 Web 与真实浏览器/Playwright 未运行，未推送。

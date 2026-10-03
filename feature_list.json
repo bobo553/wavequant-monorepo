@@ -7429,7 +7429,7 @@
                 "首次五顶达到当日仍拦截，完成、暂停或失效的目标不无限阻挡后来买点；前缀不使用未来目标",
                 "Web显示目标、原箱高、剩余空间及已知日期，候选拦截不显示为成交",
                 "06-05清空的日期与触发规则需用户澄清；当前引擎06-02正N、06-05轧空确认事实保留",
-                "相关回归失败澄清或修复后再按工作流合并"
+                "相关回归通过后合并并验证常驻V3接口06-24没有LONG及BUY标记"
             ],
             "verification": [
                 {
@@ -7451,6 +7451,11 @@
                     "command": "pnpm --filter wavequant-web lint; typecheck; build",
                     "status": "passed",
                     "summary": "Web lint无错误（6条既有警告）、类型检查及生产构建通过。"
+                },
+                {
+                    "command": "live HTTP /api/backtest-version, /annotations.js, /research, /api/akshare-backtest (sz.300163, lecture_v3/base, 2018-01-01..2020-06-24)",
+                    "status": "passed",
+                    "summary": "本地main d7ee177重启生效，v81/20541a57aa76；旧版06-24 LONG和BUY 5.2026元，新版同参数回测complete、当日BUY/LONG标记0，两个候选五顶禁买证据5.42/0.29/0.22、目标06-23已知。Web禁买文案已加载、研究页HTTP200。06-05信号保留，清空依据未确认。"
                 }
             ]
         },
