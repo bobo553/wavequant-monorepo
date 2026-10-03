@@ -7521,6 +7521,33 @@
                     "summary": "Web lint无错误（6条既有警告）、类型检查、生产构建、修改JS语法及相关文件格式通过。完整Web单测留待空闲时段；按用户规则未运行Playwright或浏览器端到端测试。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-235",
+            "name": "candle-locate-pulse",
+            "title": "K线定位后的光圈提示",
+            "description": "定位完成后在目标K线复用已有点击光圈，方便用户识别定位位置，保留当前缩放比例。",
+            "scope": "Web K线定位反馈与动画定向回归",
+            "dependencies": ["MONOREPO-234"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "普通日期、成交、持仓区间与ABC定位成功后在目标K线上显示短暂光圈",
+                "持仓区间高亮区间中部K线，光圈不改变缩放、策略标识或C目标",
+                "连续定位替换上一次光圈，动画完成清理；无效日期不产生新提示",
+                "减少动态效果时沿用静态提示；成交仍使用已有执行颜色和价格"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/chart-navigation.test.mjs tests/max-drawdown.test.mjs tests/wave-c-chart.test.mjs tests/wave-endpoint-overlay.test.mjs",
+                    "status": "passed",
+                    "summary": "27项通过。图表测试接入真实FocusFlashOverlay，验证平移后的目标坐标与收盘价格、ABC B/C定位、连续替换、Canvas光圈扩散与到期清理、减少动画模式、执行颜色及原缩放和四端点标识。非浏览器像素验证。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; node --check public/charts.js; targeted Prettier; git diff --check",
+                    "status": "passed",
+                    "summary": "Web lint无错误（6条既有警告）、类型检查、生产构建、JS语法、相关格式和差异检查通过。完整Web单测留待空闲时段；按用户规则未运行Playwright或浏览器端到端测试。"
+                }
+            ]
         }
     ]
 }
