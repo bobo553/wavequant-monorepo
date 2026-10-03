@@ -1,3 +1,4 @@
+import { cWaveExtensionLevel } from "./c-wave-extension.js";
 import { num } from "./labels.js";
 
 // A selected candle fixes A. Only later, already visible candles may supply B.
@@ -58,8 +59,8 @@ export function waveCProjection(bars, events, selectedTime) {
 }
 
 /** C targets are conditional observations known from the B candle onward. */
-export function waveCProjectionLevels(projection) {
-    return [
+export function waveCProjectionLevels(projection, bars = [], asof) {
+    const levels = [
         {
             name: "C 浪目标 0.618×A",
             price: projection.target0618,
@@ -77,6 +78,9 @@ export function waveCProjectionLevels(projection) {
             ...(projection.targetValidUntil ? { valid_until: projection.targetValidUntil } : {}),
         },
     ];
+    const extension = cWaveExtensionLevel(projection, bars, asof);
+    if (extension) levels.push(extension);
+    return levels;
 }
 
 function knownPoint(point, kind, asof) {
@@ -270,8 +274,10 @@ export function waveCProjectionForSelection(bars, events, selectedTime, structur
         : waveCProjection(bars, events, selectedTime);
 }
 
-export function waveCProjectionAnnotation(projection) {
+export function waveCProjectionAnnotation(projection, bars = [], asof) {
     const observed = Boolean(projection.squeezeTime);
+    const levels = waveCProjectionLevels(projection, bars, asof);
+    const extension = levels.find((level) => level.stage === "c_1618");
     return {
         id: `wave-c:${projection.nTime}:${projection.aTime}`,
         time: projection.bTime,
@@ -284,17 +290,17 @@ export function waveCProjectionAnnotation(projection) {
         color: "#e6ba64",
         priority: 200,
         title: "B / C",
-        description: `${observed ? "讲义折线结构观察：" : ""}正 N ${projection.nTime} 后${observed ? `，${projection.squeezeTime} 出现轧空式放量续攻` : ""}，A 浪高点 ${projection.aTime} ${num(projection.aHigh)} 高于一饱 ${num(projection.oneP)}；B 浪低点 ${projection.bTime} ${num(projection.bLow)}${projection.bKnownAt ? `，于 ${projection.bKnownAt} 确认并固定历史端点` : ""}。B 期间未出现最低价与收盘价同时跌破正 N 起点 ${num(projection.origin)}。A 幅度 = A 高 − 正 N 起点；B 低 + 0.618×A = ${num(projection.target0618, 4)} 元，B 低 + 1×A = ${num(projection.target)} 元。${projection.invalidatedAt ? `${projection.invalidatedAt} 最低价与收盘价双破起点，目标有效区间截至 ${projection.targetValidUntil}；保留历史标识。` : ""}仅为测幅观察，不保证到达。`,
+        description: `${observed ? "讲义折线结构观察：" : ""}正 N ${projection.nTime} 后${observed ? `，${projection.squeezeTime} 出现轧空式放量续攻` : ""}，A 浪高点 ${projection.aTime} ${num(projection.aHigh)} 高于一饱 ${num(projection.oneP)}；B 浪低点 ${projection.bTime} ${num(projection.bLow)}${projection.bKnownAt ? `，于 ${projection.bKnownAt} 确认并固定历史端点` : ""}。B 期间未出现最低价与收盘价同时跌破正 N 起点 ${num(projection.origin)}。A 幅度 = A 高 − 正 N 起点；B 低 + 0.618×A = ${num(projection.target0618, 4)} 元，B 低 + 1×A = ${num(projection.target)} 元。${extension ? `${extension.available_at} 已满足 1×A，增加 B 低 + 1.618×A = ${num(extension.price, 4)} 元。` : ""}${projection.invalidatedAt ? `${projection.invalidatedAt} 最低价与收盘价双破起点，目标有效区间截至 ${projection.targetValidUntil}；保留历史标识。` : ""}仅为测幅观察，不保证到达。`,
         sourceLabel: observed ? "讲义折线起点与已确认二级 A 高 · 图表观察" : "所选 A 浪高点与当前历史截面 B 浪低点",
-        levels: waveCProjectionLevels(projection),
+        levels,
         raw: projection,
     };
 }
 
 /** Price-anchored evidence makes the A/B/C observation legible without a click. */
-export function waveCProjectionEvidenceAnnotations(projection) {
+export function waveCProjectionEvidenceAnnotations(projection, bars = [], asof) {
     if (!projection.originTime || !projection.squeezeTime) return [];
-    const shared = waveCProjectionAnnotation(projection);
+    const shared = waveCProjectionAnnotation(projection, bars, asof);
     return [
         {
             ...shared,

@@ -7640,6 +7640,39 @@
                     "summary": "实现0e49af3经dce9363合并本地main并重启，API8765/Web3003均为v83/38ae5f8c7087。相同1948日线前缀和Web代理01-26 LONG/BUY/EXIT均0，01-06 LONG及BUY/filled 500股4.44222仍保留；页面当前关闭量能并开启浅回撤的2113日线正式回测同样通过。观望证据含昨低4.92、颈线4.91、低点4.81与当日已知反弹，annotations.js中文说明HTTP200。未推送；完整套件、浏览器及外部分钟待独立验证，未运行Playwright。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-239",
+            "name": "c-wave-equal-to-1618-target",
+            "title": "C浪满足等浪后显示1.618目标",
+            "description": "C浪首次满足1倍A浪测幅后按同一A/B锚点追加1.618目标，目标线从达标日期开始显示，支持自动ABC及交易标记。",
+            "scope": "Web测幅观察、买点和成交目标、目标线与历史回放",
+            "dependencies": ["MONOREPO-232"],
+            "status": "backlog",
+            "acceptanceCriteria": [
+                "达到1倍后计算B低加1.618乘A高减A起点，保留已有0.618和1倍目标",
+                "自动ABC、手选A高点、买入信号与实际成交使用同一延伸判定和价格标签",
+                "首次达标含等值触碰，确认当天只按收盘；未达标、未来行情、未知B或失效波段不提前激活",
+                "延伸线从达标日期开始，图外目标有边缘标签且不扩大价格轴，定位保留缩放",
+                "真实先锋2020-06-16等浪4.62后显示5.54082；2026-05-18当前6.22等浪未达时不提前显示7.49926"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/c-wave-extension.test.mjs tests/wave-c-projection.test.mjs tests/wave-c-chart.test.mjs tests/target-level-guides.test.mjs tests/annotations.test.mjs",
+                    "status": "passed",
+                    "summary": "69项通过；旧实现新增六例先复现五例缺失延伸，修正后覆盖等值触碰、确认日上影不借用、历史前缀、未来行情、未知B、失效及同棒歧义、自动ABC/证据点击/成交复用、图表SDK目标标签/关闭/缩放。真实先锋2020-06-16激活5.54082；2026-05-18当前6.22等浪未达，无7.49926延伸。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; Node syntax; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "Web lint零错误（6条既有警告）、类型检查和生产构建通过；修改JS与新增固定行情测试通过。完整Web单测、浏览器及Playwright未运行，留待独立验证。"
+                },
+                {
+                    "command": "local main merge; Web static modules HTTP; actual AkShare May18 view/theory projection verification",
+                    "status": "not-run",
+                    "summary": "真实3303日线行情/理论已取得并核对5月18日5.20高点；源代码待合并后核对常驻资源及延伸目标。"
+                }
+            ]
         }
     ]
 }

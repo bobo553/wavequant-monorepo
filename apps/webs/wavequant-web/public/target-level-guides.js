@@ -1,4 +1,4 @@
-const TARGET_STAGES = new Set(["c_0618", "c_equal", "one_p", "two_t", "five_top", "ten_full"]);
+const TARGET_STAGES = new Set(["c_0618", "c_equal", "c_1618", "one_p", "two_t", "five_top", "ten_full"]);
 
 /** 目标从结构锚点画到首次突破；未突破时只在锚点上方标示短线。 */
 export function targetLevelGuide(item, level, bars, asof) {

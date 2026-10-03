@@ -334,7 +334,11 @@ export class PriceChart {
             }
             const selected =
                 this.autoWaveProjections.find((item) => item.raw === projection) ||
-                waveCProjectionAnnotation(projection);
+                waveCProjectionAnnotation(
+                    projection,
+                    this.data.bars,
+                    this.theory?.asof && this.theory.asof < this.data.asof ? this.theory.asof : this.data.asof,
+                );
             this.selected = selected;
             this.waveEndpointOverlay.setPoints([]);
             this.drawLevels();
@@ -778,7 +782,7 @@ export class PriceChart {
             : blockedCandidate
               ? [{ name: "候选参考价（未下单）", price: item.price }]
               : item.levels;
-        const targetStages = new Set(["c_0618", "c_equal", "one_p", "two_t", "five_top", "ten_full"]);
+        const targetStages = new Set(["c_0618", "c_equal", "c_1618", "one_p", "two_t", "five_top", "ten_full"]);
         const projectionTargets = levels.some((level) => targetStages.has(level.stage));
         const targetGuides = [];
         for (const [i, level] of levels.entries()) {
@@ -800,8 +804,8 @@ export class PriceChart {
                 crosshairMarkerVisible: false,
                 pointMarkersVisible: !guide && item.kind !== "trend",
                 pointMarkersRadius: 2,
-                // 远端五顶、十满不扩展价格轴；图外目标由左侧边缘标签提示。
-                ...(!["five_top", "ten_full"].includes(level.stage) &&
+                // 延伸目标和远端五顶、十满不扩展价格轴；图外目标由边缘标签提示。
+                ...(!["c_1618", "five_top", "ten_full"].includes(level.stage) &&
                 (item.raw?.event === "n_completed" || item.kind === "wave-projection" || projectionTargets)
                     ? {}
                     : { autoscaleInfoProvider: () => null }),
@@ -1003,9 +1007,14 @@ export class PriceChart {
         this.clearTheory();
         this.geometryVisible = geometry;
         const projections = theory && this.data ? waveCProjectionsFromStructure(this.data.bars, theory) : [];
-        this.autoWaveProjections = projections.map(waveCProjectionAnnotation);
+        const asof = theory?.asof && theory.asof < this.data?.asof ? theory.asof : this.data?.asof;
+        this.autoWaveProjections = projections.map((projection) =>
+            waveCProjectionAnnotation(projection, this.data.bars, asof),
+        );
         this.autoWaveProjection = this.autoWaveProjections.at(-1) || null;
-        this.autoWaveEvidence = projections.flatMap(waveCProjectionEvidenceAnnotations);
+        this.autoWaveEvidence = projections.flatMap((projection) =>
+            waveCProjectionEvidenceAnnotations(projection, this.data.bars, asof),
+        );
         this.annotations = buildAnnotations(this.data, theory);
         this.annotations.push(...this.autoWaveEvidence, ...this.autoWaveProjections);
         this.drawWaveAbPath();
