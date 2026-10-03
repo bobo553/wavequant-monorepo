@@ -4,6 +4,35 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-242",
+            "name": "bullish-gap-bearish-volume-clear",
+            "title": "放量大阳后低开收阴清仓",
+            "description": "前日实体至少为开盘价 5% 的放量阳线，次日开盘跌过其实体中点、收阴且成交量高于阳线前最近阴线时，持仓当日收盘直接清空。通常比较紧前一日成交量；紧前一日异常放量时允许改与该日的前一根阳线比较。",
+            "scope": "Core 全局 V3 持仓退出、策略版本、Web 原因说明及国芳集团 2022-04-25 回归",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "前日阳线实体不少于开盘价 5%；通常成交量严格大于紧前一日，若紧前一日也是阳线且量至少为其前一日阳线的 2 倍，则允许改与更早阳线严格比量",
+                "当日开盘严格低于前日实体中点并收阴；只使用当日及已完成的历史日线",
+                "当日成交量严格高于前日阳线之前最近一根阴线，无阴线或等量不触发",
+                "满足全部条件时在当日收盘清空持仓，优先于普通部分减仓，并保留日期、量价与参照阴线证据",
+                "国芳 2022-04-25 实际数据因 04-21 成交量超过 04-20 的 2 倍，04-22 量高于 04-20 而触发本规则；阴线参照为 04-18",
+                "定向回归、类型检查、构建和 Harness 通过；浏览器端到端测试按当前用户规则不运行"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_bullish_gap_bearish_exit.py test_massive_gap_reversal_exit.py test_xinhuawenxuan_bearish_reversal_exit.py test_bearish_mother_child_volume_exit.py test_bearish_child_mother_volume_exit.py test_volume_reversal_squeeze.py -q",
+                    "status": "passed",
+                    "summary": "最终代码相关 65 项定向测试通过；真实国芳 04-25 按 04-20 阳线量作异常量基准，回测当日收盘全清且余仓为零，等量、非大阳、非阴线和无参照阴线均拒绝。"
+                },
+                {
+                    "command": "Core targeted mypy with existing type-arg baseline disabled; @wavequant/core typecheck; python -m build; Web annotations Node test; Web lint/typecheck/build; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "修改的两项策略模块定向类型检查通过，Core 四模块既定严格检查、sdist/wheel、30 项 Web 标注测试、Web lint 零错误（6 条既有警告）、类型和生产构建通过；完整 Core/Web 套件及浏览器端到端按当前验证节奏未运行。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-241",
             "name": "connect-known-doji-child-to-outside-mother",
             "title": "衔接十字星子母折线",
