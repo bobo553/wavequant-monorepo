@@ -629,23 +629,7 @@ export class PriceChart {
         this.selected = selected;
         const endpoints = selectedWaveEndpoints(selected, this.data?.bars || []);
         this.waveEndpointOverlay.setPoints(endpoints);
-        if (focus) {
-            if (endpoints.length) {
-                const first = this.data.bars.findIndex((bar) => bar.time === endpoints[0].time);
-                const targetAsOf =
-                    this.theory?.asof && this.theory.asof < this.data.asof ? this.theory.asof : this.data.asof;
-                const cBreaks = selected.levels
-                    .filter((level) => ["c_0618", "c_equal"].includes(level.stage))
-                    .map((level) => targetLevelGuide(selected, level, this.data.bars, targetAsOf)?.end)
-                    .filter(Boolean);
-                const lastTime = [endpoints.at(-1).time, ...cBreaks].sort().at(-1);
-                const last = this.data.bars.findIndex((bar) => bar.time === lastTime);
-                this.chart.timeScale().setVisibleLogicalRange({
-                    from: Math.max(0, first - 12),
-                    to: Math.min(this.data.bars.length + 3, last + 12),
-                });
-            } else this.focus(selected.time);
-        }
+        if (focus) this.focus(selected.time);
         this.drawLevels();
         this.scheduleMarkers();
         this.onSelect(items || [selected]);
@@ -1030,12 +1014,8 @@ export class PriceChart {
         this.refreshMarkers();
     }
     focus(time) {
-        if (!this.data) return;
-        const i = this.data.bars.findIndex((b) => b.time >= time);
-        if (i < 0) return;
-        this.chart
-            .timeScale()
-            .setVisibleLogicalRange({ from: Math.max(0, i - 55), to: Math.min(this.data.bars.length + 3, i + 30) });
+        const bar = this.data?.bars.find((bar) => bar.time >= time);
+        return bar ? this.focusTrade(bar.time) : false;
     }
     focusWaveProjection() {
         const item = this.autoWaveProjection || this.autoWaveProjections.at(-1);
@@ -1043,10 +1023,7 @@ export class PriceChart {
         const first = this.data.bars.findIndex((bar) => bar.time === item.raw.originTime);
         const last = this.data.bars.findIndex((bar) => bar.time === item.time);
         if (first < 0 || last < first) return false;
-        this.chart.timeScale().setVisibleLogicalRange({
-            from: Math.max(0, first - 8),
-            to: Math.min(this.data.bars.length + 3, last + 18),
-        });
+        if (!this.focusTrade(item.time)) return false;
         this.refreshMarkers();
         this.selectAnnotation(item.id, false);
         return true;
@@ -1060,9 +1037,10 @@ export class PriceChart {
         return true;
     }
     focusRange(from, to) {
-        const range = drawdownCandleRange({ from, to }, this.data?.bars);
+        const timeScale = this.chart.timeScale();
+        const range = drawdownCandleRange({ from, to }, this.data?.bars, timeScale.getVisibleLogicalRange());
         if (!range) return false;
-        this.chart.timeScale().setVisibleLogicalRange(range);
+        timeScale.setVisibleLogicalRange(range);
         return true;
     }
     destroy() {

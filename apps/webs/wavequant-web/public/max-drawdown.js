@@ -1,3 +1,4 @@
+import { tradePointRange } from "./chart-navigation.js";
 import { num, pct } from "./labels.js";
 
 export const holdingDrawdownVersion = "holding_entry_cost_mae_cycle_v2";
@@ -111,14 +112,10 @@ export function maxDrawdownInterval(curve, backtestStart) {
     };
 }
 
-export function drawdownCandleRange(interval, bars) {
+export function drawdownCandleRange(interval, bars, visibleRange) {
     if (!interval || !Array.isArray(bars) || !bars.length) return null;
     const fromIndex = bars.findIndex((bar) => bar.time >= interval.from);
     const toIndex = bars.findLastIndex((bar) => bar.time <= interval.to);
     if (fromIndex < 0 || toIndex < fromIndex) return null;
-    const padding = Math.max(3, Math.ceil((toIndex - fromIndex + 1) * 0.1));
-    return {
-        from: Math.max(0, fromIndex - padding),
-        to: Math.min(bars.length + 3, toIndex + padding),
-    };
+    return tradePointRange(Math.floor((fromIndex + toIndex) / 2), bars.length, visibleRange);
 }

@@ -30,18 +30,30 @@ test("uses the backtest start when initial capital is the peak", () => {
     assert.equal(interval.from, "2026-01-01");
     assert.equal(interval.to, "2026-01-03");
     assert.equal(interval.initialPeak, true);
-    assert.deepEqual(drawdownCandleRange(interval, curve([1, 1, 1])), { from: 0, to: 4 });
+    assert.deepEqual(drawdownCandleRange(interval, curve([1, 1, 1]), { from: 0, to: 8 }), { from: 0, to: 8 });
 });
 
 test("locates the date interval in K-line bars even when trading dates differ from curve indices", () => {
     const bars = [2, 3, 6, 9, 12, 15, 18, 21, 24].map((day) => ({
         time: `2026-01-${String(day).padStart(2, "0")}`,
     }));
-    assert.deepEqual(drawdownCandleRange({ from: "2026-01-11", to: "2026-01-13" }, bars), {
+    assert.deepEqual(drawdownCandleRange({ from: "2026-01-11", to: "2026-01-13" }, bars, { from: 8, to: 14 }), {
         from: 1,
         to: 7,
     });
-    assert.equal(drawdownCandleRange({ from: "2026-01-10", to: "2026-01-11" }, bars), null);
+    assert.equal(drawdownCandleRange({ from: "2026-01-10", to: "2026-01-11" }, bars, { from: 8, to: 14 }), null);
+});
+
+test("holding interval navigation preserves narrow, wide and fractional view spans", () => {
+    const bars = Array.from({ length: 1000 }, (_, index) => ({ time: String(index).padStart(4, "0") }));
+    const interval = { from: "0200", to: "0600" };
+    for (const span of [20, 180, 1100, 40.5]) {
+        const range = drawdownCandleRange(interval, bars, { from: 700, to: 700 + span });
+        assert.equal(range.to - range.from, span);
+        assert.ok(range.from <= 400 && range.to >= 400);
+    }
+    assert.equal(drawdownCandleRange(interval, bars, null), null);
+    assert.equal(drawdownCandleRange({ from: "1000", to: "1100" }, bars, { from: 0, to: 20 }), null);
 });
 
 test("returns no interval for a flat or rising curve", () => {
