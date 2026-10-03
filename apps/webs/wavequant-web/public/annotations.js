@@ -1,5 +1,6 @@
 // Presentation-only mappings. Strategy conditions remain in the Python engine.
 import { buyNTargetLevels } from "./buy-n-targets.js";
+import { cWaveExtensionLevel } from "./c-wave-extension.js";
 import { label, num, pct } from "./labels.js";
 
 const RULES = {
@@ -688,9 +689,27 @@ export function buildAnnotations(view, theory) {
         if (wave) {
             for (const [key, name, stage] of cTargets) {
                 if (Number.isFinite(wave[key]))
-                    levels.push({ name, price: wave[key], stage, available_at: signalDate || m.time,
-                        anchor_at: wave.wave_b_low_date || signalDate || m.time });
+                    levels.push({
+                        name,
+                        price: wave[key],
+                        stage,
+                        available_at: signalDate || m.time,
+                        anchor_at: wave.wave_b_low_date || signalDate || m.time,
+                    });
             }
+            const extension = cWaveExtensionLevel(
+                {
+                    origin: wave.wave_a_origin,
+                    aHigh: wave.wave_a_high,
+                    bTime: wave.wave_b_low_date,
+                    bLow: wave.wave_b_low,
+                    target: wave.wave_equal_target,
+                    confirmedAt: signalDate || m.time,
+                },
+                view.bars,
+                theory?.asof && theory.asof < view.asof ? theory.asof : view.asof,
+            );
+            if (extension) levels.push(extension);
         }
         levels.push(...nTargets);
         if (strongA && !nTargets.length) {

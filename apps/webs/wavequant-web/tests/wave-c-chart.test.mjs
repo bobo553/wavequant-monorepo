@@ -120,6 +120,36 @@ test("May 29 theory renders the earlier ABC labels, A/B legs and C targets with 
     assert.equal(rendered.guides.length, 2);
 });
 
+test("the equal-target hit adds a dated 1.618 guide for automatic ABC and selected evidence without changing zoom", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_c_extension.json", import.meta.url)));
+    const continuation = fixture.june2020.bars
+        .filter(([time]) => time > theory.asof)
+        .map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }));
+    const { chart, rendered } = chartHarness([...bars, ...continuation]);
+    const seriesOptions = [];
+    const addSeries = chart.chart.addSeries;
+    chart.chart.addSeries = (type, options) => {
+        seriesOptions.push(options);
+        return addSeries(type, options);
+    };
+    const originalRange = { ...rendered.range };
+    chart.setTheory({ ...theory, asof: "2020-06-15" });
+    assert.equal(rendered.guides.length, 2);
+    chart.setTheory({ ...theory, asof: "2020-06-16" });
+    assert.equal(rendered.guides.length, 3);
+    const level = rendered.guides.find((guide) => guide.stage === "c_1618");
+    assert.ok(Math.abs(level.price - 5.54082) < 1e-10);
+    assert.equal(level.start, "2020-06-16");
+    assert.equal(level.end, null);
+    assert.deepEqual(rendered.range, originalRange);
+    const options = seriesOptions.find((item) => item.title === "C 浪目标 1.618×A");
+    assert.equal(options.autoscaleInfoProvider(), null);
+    chart.selectAnnotation(chart.autoWaveEvidence[0].id, false);
+    assert.equal(rendered.guides.find((guide) => guide.stage === "c_1618").start, "2020-06-16");
+    chart.setAnnotationOptions({ levels: false });
+    assert.equal(rendered.guides.length, 0);
+});
+
 test("panning back to an earlier ABC selects that group's C targets", () => {
     const next = JSON.parse(JSON.stringify(initial).replaceAll("2020-", "2021-"));
     const nextBars = next.bars.map(([time, open, high, low, close, volume]) => ({
@@ -174,7 +204,8 @@ test("locating ABC brings its B/C start and targets into view without changing z
     assert.equal(rendered.guides.length, 0);
     assert.equal(chart.focusWaveProjection(), true);
     assert.ok(rendered.markers.some((marker) => marker.text === "B / C"));
-    assert.equal(rendered.guides.length, 2);
+    assert.equal(rendered.guides.length, 3);
+    assert.equal(rendered.guides.find((guide) => guide.stage === "c_1618").start, "2026-09-30");
     assert.equal(chart.selected.time, "2020-04-28");
     const target = bars.findIndex((bar) => bar.time === "2020-04-28");
     assert.equal(rendered.range.to - rendered.range.from, 20);
