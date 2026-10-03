@@ -4,6 +4,27 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-241",
+            "name": "connect-known-doji-child-to-outside-mother",
+            "title": "衔接十字星子母折线",
+            "description": "讲义主折线已有十字星子线端点时，沿非十字星母线的阴阳高低顺序接入外包母线，替代此前将所有外包十字星标记未解的处理。",
+            "scope": "Core 讲义折线、国芳集团 2024-09-13 样本及分级趋势回归",
+            "dependencies": ["MONOREPO-240"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "国芳集团 2024-09-12 十字星子线的已知高点接入 09-13 阴母线高低点，前后主路径连续，后续 09-23 折点保留",
+                "阳母线镜像可连接；未知子线端点和十字星母线继续标记未解，不推断子线另一极值的日内顺序",
+                "国芳历史夹具中同类路径边界重新计算，分级趋势和讲义策略定向回归通过；浏览器端到端测试按当前开发规则不运行"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest test_lecture_drawing.py test_lecture_trend.py test_polyline.py test_lecture_strategy.py test_secondary_trend.py test_tertiary_trend.py test_xinhuawenxuan_trends.py -q; Python mypy、py_compile；pnpm harness:check；git diff --check",
+                    "status": "passed",
+                    "summary": "国芳 09-13 样本先复现断线，修复后接出母线高低并连至 09-18/09-23；阳母线与十字星母线边界覆盖。86 项定向测试和 36 项子测试、类型与语法检查通过；完整 Core 套件与浏览器视觉待独立验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-240",
             "name": "connect-equal-high-inside-doji-polyline",
             "title": "补画等高内包十字星折线",

@@ -9,7 +9,7 @@ vertices when a developing endpoint extends.
 from zoneinfo import ZoneInfo
 
 from .polyline import (observe_bar_relations, child_mother_path, mother_child_path,
-                       teaching_inside, teaching_outside, PointKind)
+                       teaching_inside, teaching_outside, LinePoint, PointKind, TeachingPath)
 from .price_action import Direction
 
 
@@ -50,6 +50,20 @@ def lecture_drawing(bars, *, on_step=None):
         if outside or inside:
             teaching = (child_mother_path(bars[i-1], bars[i], child_index=i-1) if outside else
                         mother_child_path(bars[i-1], bars[i], mother_index=i-1))
+            if (outside and not teaching.vertices and bars[i-1].open == bars[i-1].close
+                    and bars[i].open != bars[i].close and direction is not None
+                    and points and points[-1]['index'] == i-1):
+                # The known child endpoint is enough to join the coloured mother;
+                # no order is inferred for the other extreme of the doji child.
+                endpoint = points[-1]
+                mother_order = ((PointKind.HIGH, PointKind.LOW) if bars[i].close < bars[i].open else
+                                (PointKind.LOW, PointKind.HIGH))
+                ordered = (LinePoint(i-1, endpoint['ordinal'], PointKind(endpoint['kind']), endpoint['value']),
+                           *(LinePoint(i, ordinal, kind,
+                                       bars[i].high if kind == PointKind.HIGH else bars[i].low)
+                             for ordinal, kind in enumerate(mother_order)))
+                teaching = TeachingPath(ordered, 'known_child_endpoint',
+                                        'known_child_endpoint_to_coloured_mother', ordered)
             if teaching.vertices:
                 path_id = f'{"child-mother" if outside else "mother-child"}-{i}'
                 evidence_points = [vertex(p.index, p.kind, 'teaching', i, p.ordinal)
@@ -84,6 +98,8 @@ def lecture_drawing(bars, *, on_step=None):
                     next_point = vertex(item.index, item.kind, 'developing', i, item.ordinal,
                                         edge_kind='teaching', teaching_path_id=path_id,
                                         teaching_ordinal=ordinal)
+                    if teaching.status == 'known_child_endpoint':
+                        next_point['intrabar_order_resolved'] = False
                     if not points:
                         points.append(dict(next_point, state='teaching'))
                         continue
@@ -163,4 +179,5 @@ def lecture_drawing(bars, *, on_step=None):
     return dict(strokes=strokes, teaching_paths=teaching_paths, inside_connections=inside_connections, issues=issues,
                 scope='lecture_convention_shared_with_causal_pivots', incomplete=bool(issues),
                 intrabar_incomplete=bool(issues or teaching_paths or inside_connections),
-                note='母子与子母按阴阳高低顺序接入主路径，连续同向线段合并；已知方向的十字星内包只连一极值。该顺序是讲义约定，不代表实测日内路径。')
+                note='母子与子母按阴阳高低顺序接入主路径，连续同向线段合并；已知方向的十字星内包只连一极值，'
+                     '十字星子线外包时由已知端点接入有阴阳方向的母线。该顺序是讲义约定，不代表实测日内路径。')
