@@ -4,6 +4,34 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-243",
+            "name": "five-top-gap-volume-clear",
+            "title": "五顶后低开放量跌破前开清仓",
+            "description": "正 N 在此前交易日已达到五顶或十满后，当日低开、收盘严格低于前日开盘且成交量严格高于此前最近阴线时，持仓当日收盘清空。",
+            "scope": "Core 全局 V3 信号与持仓回测、策略版本、Web 原因及拓扑说明、国芳集团 2026-09-15 回归",
+            "dependencies": ["MONOREPO-242"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "五顶或十满须在此前交易日已到达且未失效，当前交易日到达或已失效不触发",
+                "当日开盘严格低于前收、收盘严格低于前开，量严格大于此前最近一根阴线；等值、无有效阴线不触发，不额外要求当日收阴",
+                "命中后生成全局 EXIT，有持仓时当日收盘清空余仓并记录目标、前日量价及阴线参照",
+                "国芳 2026-09-15 历史样本命中，09-14 已到五顶、08-26 为最近阴线；原五顶子线清仓仍有效",
+                "定向测试、Core 类型与隔离构建、Web 说明测试及静态构建通过；浏览器端到端按当前用户规则不运行"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_five_top_gap_volume_exit.py test_five_top_child_volume_exit.py test_bullish_gap_bearish_exit.py test_wave_projection.py -q",
+                    "status": "passed",
+                    "summary": "63 项通过，真实国芳 09-15 生成 EXIT、模拟持仓按当日收盘清空；覆盖严格等值、同日目标、失效、无阴线及非阴实体。"
+                },
+                {
+                    "command": "Core targeted mypy; @wavequant/core typecheck; python -m build; Web annotations/trade-reasons Node tests; topology Vitest; Web lint/typecheck/build; git diff --check",
+                    "status": "passed",
+                    "summary": "修改的策略模块定向类型检查、既定四模块严格类型检查、Core 隔离 sdist/wheel、54 项 Web 说明测试、2 项拓扑测试、Web lint 零错误（6 条既有警告）、类型和生产构建通过。非隔离 Core 构建因本地虚拟环境缺 setuptools 未通过，隔离构建成功。完整 Core/Web 套件与浏览器端到端未运行；另 3 项 C 浪旧测试在未修改 main 上同样失败。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-242",
             "name": "bullish-gap-bearish-volume-clear",
             "title": "放量大阳后低开收阴清仓",

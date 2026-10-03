@@ -109,6 +109,7 @@ const REASONS = {
     wave_bull_resistance_failed_clear: "目标阶段大阴线击穿多头抵抗低点，当日清仓",
     wave_bearish_engulf_clear: "目标阶段大阴线反包前日阳线，当日清仓",
     wave_five_top_child_volume_clear: "五顶后收阴，跌破昨低昨收及前天子低，量超过最近阴线，当日清空余仓",
+    wave_five_top_gap_volume_clear: "五顶到达后低开，收盘跌破前日开盘且成交量超过此前最近阴线，当日收盘清空余仓",
     wave_five_top_entry_too_close: "距已知五顶目标不超过原正 N 一箱，禁止新买入或加仓",
     volume_inverse_n_clear: "倒 N 确认且成交量超过前日，当日直接清仓",
     mother_child_inverse_n_low_break: "母子线的阳子线低点与收盘均被严格跌破，形成倒 N，当日收盘清仓",

@@ -21,8 +21,8 @@ from .attack_quality import v3_positive_n_attack_rejection
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
 from .wave_exhaustion_exit import (
-    C_EQUAL_NEAR_VOLUME_CLEAR, FIVE_TOP_CHILD_VOLUME_CLEAR,
-    observe_c_equal_near_risk, observe_five_top_child_volume_clear,
+    C_EQUAL_NEAR_VOLUME_CLEAR, FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
+    observe_c_equal_near_risk, observe_five_top_child_volume_clear, observe_five_top_gap_volume_clear,
 )
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
 from .two_t_resistance import two_t_resistance_history
@@ -750,6 +750,9 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         five_top_exit = observe_five_top_child_volume_clear(bars, i, projection_events) if whole_wave else None
         if five_top_exit is not None:
             exits.append(FIVE_TOP_CHILD_VOLUME_CLEAR)
+        five_top_gap_exit = observe_five_top_gap_volume_clear(bars, i, projection_events) if whole_wave else None
+        if five_top_gap_exit is not None and five_top_exit is None:
+            exits.append(FIVE_TOP_GAP_VOLUME_CLEAR)
         mother_child_inverse = mother_child_inverse_n_break(bars, i) if whole_wave else None
         if mother_child_inverse is not None:
             exits.append(MOTHER_CHILD_INVERSE_N_LOW_BREAK)
@@ -781,6 +784,8 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     if key not in ('reason', 'exit_fraction', 'exit_target_fraction')}
                    if c_equal_risk is not None else {}),
                 **(five_top_exit or {}),
+                **({key: value for key, value in five_top_gap_exit.items() if key not in ('reason', 'exit_fraction')}
+                   if five_top_gap_exit is not None and five_top_exit is None else {}),
                 **({key: value for key, value in target_risk.items() if key not in ('reason', 'exit_fraction')}
                    if target_risk is not None and target_risk['exit_fraction'] == 1.0 else {}),
             })

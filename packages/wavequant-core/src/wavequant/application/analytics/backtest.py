@@ -12,7 +12,8 @@ from wavequant.domain.models.model import Bar, Signal, Trade
 from wavequant.application.analytics.holding_drawdown import holding_drawdowns, drawdown_metrics, holding_fill_time
 from wavequant.domain.strategies.wave_exhaustion_exit import (
     C_EQUAL_NEAR_RESISTANCE_REDUCE, C_EQUAL_NEAR_VOLUME_CLEAR, FIVE_TOP_CHILD_VOLUME_CLEAR,
-    observe_c_equal_near_risk, observe_five_top_child_volume_clear, observe_wave_exhaustion,
+    FIVE_TOP_GAP_VOLUME_CLEAR, observe_c_equal_near_risk, observe_five_top_child_volume_clear,
+    observe_five_top_gap_volume_clear, observe_wave_exhaustion,
 )
 from wavequant.domain.strategies.two_t_resistance import two_t_resistance_history
 from wavequant.domain.strategies.pressure_exit import (
@@ -832,18 +833,28 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                             execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
                         elif any(reason in signal.reason.split('|') for reason in
                                  ('wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
-                                  FIVE_TOP_CHILD_VOLUME_CLEAR, C_EQUAL_NEAR_VOLUME_CLEAR)):
+                                   FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
+                                   C_EQUAL_NEAR_VOLUME_CLEAR)):
                             i, bar = current[symbol]
                             wave_clear_symbols.add(symbol)
                             pending_exit[symbol] = next(reason for reason in signal.reason.split('|') if reason in
                                 ('wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
-                                 FIVE_TOP_CHILD_VOLUME_CLEAR, C_EQUAL_NEAR_VOLUME_CLEAR))
+                                  FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
+                                  C_EQUAL_NEAR_VOLUME_CLEAR))
                             if pending_exit[symbol] == FIVE_TOP_CHILD_VOLUME_CLEAR:
                                 known_events = sorted((wave_events or {}).get(symbol, []),
                                                       key=lambda event: event['bar_index'])
                                 five_top_evidence = observe_five_top_child_volume_clear(grouped[symbol], i, known_events)
                                 if five_top_evidence is not None:
                                     exit_evidence[symbol].update(five_top_evidence)
+                            elif pending_exit[symbol] == FIVE_TOP_GAP_VOLUME_CLEAR:
+                                known_events = sorted((wave_events or {}).get(symbol, []),
+                                                      key=lambda event: event['bar_index'])
+                                five_top_evidence = observe_five_top_gap_volume_clear(
+                                    grouped[symbol], i, known_events)
+                                if five_top_evidence is not None:
+                                    exit_evidence[symbol].update(
+                                        {key: value for key, value in five_top_evidence.items() if key != 'reason'})
                             elif pending_exit[symbol] == C_EQUAL_NEAR_VOLUME_CLEAR:
                                 c_equal_evidence = observe_c_equal_near_risk(
                                     grouped[symbol], i, c_equal_events[symbol],
