@@ -4,6 +4,37 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-245",
+            "name": "ten-full-default-deep-retracement",
+            "title": "修正十满后默认 V3 深回撤禁买门槛",
+            "description": "十满后默认 V3 沿用第二类浅回撤上限 1/3 对应的 2/3 深回撤；半幅方案保持 1/2，显式深回撤方案保持原值。国芳 2023-08-15 未触及深回撤线，不再买入。",
+            "scope": "Core V3 配置与策略版本、Web 拓扑说明、国芳 2023-08-15 历史回归",
+            "dependencies": ["MONOREPO-244"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "默认 lecture_v3 十满后的深回撤比例为 2/3；c50 方案为 1/2，显式 d50/d67 方案保持自身比例",
+                "国芳 2023-08-01 十满高点原始 8.44 元、最近 B 低点 4.98 元，2/3 回撤线约 6.13 元；08-15 前最低 6.27 元，不解除禁买",
+                "真实 TDX 单股回放 2023-08-15 不产生买单，审计记录 wave_ten_full_pullback_pending；定向 Core 与 Web 检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_ten_full_entry.py test_five_top_entry.py test_guofang_2023_target_exit.py test_backtest_version.py -q; targeted mypy",
+                    "status": "passed",
+                    "summary": "34 项通过；修改的策略模块类型检查通过。"
+                },
+                {
+                    "command": "Direct worktree TDX backtest sh.601086 through 2023-08-15",
+                    "status": "passed",
+                    "summary": "v87 默认 V3 当日无买单；审计拒绝原因为 wave_ten_full_pullback_pending，回撤比例 2/3。"
+                },
+                {
+                    "command": "Core isolated build and typecheck; Web topology Vitest, lint, typecheck, build; harness:check",
+                    "status": "passed",
+                    "summary": "Core sdist/wheel 和类型检查、Web 拓扑 2 项、lint 零错误（6 条既有警告）、类型与生产构建、Harness 均通过。完整单测与浏览器端到端按当前开发节奏未运行。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-244",
             "name": "ten-full-pullback-entry-pause",
             "title": "十满后未及时突破则等深回撤再买",

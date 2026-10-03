@@ -121,6 +121,15 @@ def test_guofang_august_first_reaches_ten_full_and_post_target_gate_is_causal():
         ("2023-07-31", 7.51, 7.67, 6.88, 7.67),
         ("2023-08-01", 8.10, 8.44, 7.69, 7.73),
         ("2023-08-02", 7.27, 8.08, 7.27, 7.39),
+        ("2023-08-03", 7.11, 7.47, 6.66, 7.15),
+        ("2023-08-04", 7.20, 7.36, 6.85, 6.89),
+        ("2023-08-07", 6.85, 6.91, 6.50, 6.69),
+        ("2023-08-08", 6.67, 6.70, 6.45, 6.49),
+        ("2023-08-09", 6.56, 6.57, 6.35, 6.45),
+        ("2023-08-10", 6.45, 6.51, 6.27, 6.43),
+        ("2023-08-11", 6.34, 6.52, 6.31, 6.48),
+        ("2023-08-14", 6.35, 6.82, 6.31, 6.73),
+        ("2023-08-15", 6.54, 7.06, 6.54, 6.98),
     ]
     bars = [Bar(datetime.fromisoformat(day), "sh.601086", *ohlc, 100)
             for day, *ohlc in rows]
@@ -134,20 +143,26 @@ def test_guofang_august_first_reaches_ten_full_and_post_target_gate_is_causal():
     assert result[12]["wave_retracement_anchor"] == 4.98
     assert result[12]["wave_retracement_anchor_source"] == "b_low"
     assert result[12]["wave_retracement_threshold"] == pytest.approx(6.71)
+    assert len(bars) - 1 not in result  # The old default half-depth released on August 4.
+    deep = risks(bars, events, window=23, ratio=2 / 3, anchor="b_low")
+    assert deep[len(bars) - 1]["wave_ten_full_reached_date"] == "2023-08-01"
+    assert deep[len(bars) - 1]["wave_retracement_threshold"] == pytest.approx(6.1333333333)
+    assert min(bar.low for bar in bars[12:]) == 6.27
 
 
 @pytest.mark.parametrize("variant, ratio", [
-    ("lecture_v3", .5),
+    ("lecture_v3", 2 / 3),
     ("lecture_v3_c50", .5),
     ("lecture_v3_d50_c50", .5),
     ("lecture_v3_d67_c33", 2 / 3),
     ("lecture_v3_d67_c50", 2 / 3),
+    ("lecture_v3_close_d50_c50", .5),
 ])
-def test_v3_profiles_use_their_deep_pullback_ratio_or_half_default(variant, ratio):
+def test_v3_profiles_use_explicit_depth_or_complement_their_shallow_threshold(variant, ratio):
     profile = whole_wave_profile({"scenarios": {"base": {"execution": {}}}}, variant)
     config = SystemStrategy(**profile["strategy"])
     config.validate()
-    assert profile["profile_version"].startswith("gap_up_bullish_squeeze_v86_")
+    assert profile["profile_version"].startswith("gap_up_bullish_squeeze_v87_")
     assert config.ten_full_breakout_window == 23
     assert config.ten_full_retracement_ratio == ratio
     assert config.ten_full_retracement_anchor == "b_low"

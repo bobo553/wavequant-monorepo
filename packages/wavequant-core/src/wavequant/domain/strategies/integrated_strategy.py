@@ -58,7 +58,7 @@ class SystemStrategy:
     mature_shallow_inclusive: bool = True
     shallow_base_breakout_enabled: bool = True
     ten_full_breakout_window: int = 23
-    ten_full_retracement_ratio: float = .5
+    ten_full_retracement_ratio: float = 2/3
     ten_full_retracement_anchor: RetracementAnchor = 'b_low'
 
     def validate(self):
