@@ -82,6 +82,15 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
         completion: "生成 LONG 信号，交给执行价、仓位与成交门禁",
         gates: [
             {
+                id: "ten-full-pause",
+                question: "此前十满到位后的买入限制已解除？",
+                detail: "十满到达当日先暂停所有 V3 新买入与加仓，包括浅回撤横盘突破。随后 23 个交易日内若严格突破到达日最高价，或价格从该最高价回撤至十满前最近 B 浪低点与高点幅度的 1/2（深回撤变体为 2/3），条件在收盘后确认，下一交易日起解除。若该段尚无 B 低点，保守采用原正 N 起点；逾期突破不能代替尚未完成的回撤。",
+                source: "ten_full_entry.py · ten_full_entry_history；integrated_strategy.py · generate_system_signals",
+                yes: "检查买点分类",
+                no: "拒绝：wave_ten_full_pullback_pending",
+                yesNext: "first-buy",
+            },
+            {
                 id: "first-buy",
                 question: "第一类资格成立？",
                 detail: "攻击时翻多尚未成熟，二/三级已确认交替的低点不低于翻多起点，之后有新正 N。幅度变体另要求交替低点或冻结窗口最低收盘的深回撤严格大于设定比例。",
@@ -438,4 +447,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "ee1fddaa4edcaa9ab4079d9431f3e12b24b728ce66277996fb386a911cfdb8a3";
+export const strategySourceDigest = "4913d8583e3710519247e905294ecb0f7ea3cd254045441dd587e03233350cf9";

@@ -4,6 +4,35 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-244",
+            "name": "ten-full-pullback-entry-pause",
+            "title": "十满后未及时突破则等深回撤再买",
+            "description": "V3 正 N 十满到达日起暂缓所有新买入与加仓；随后 23 个交易日内严格突破到达日最高价，或从该高点回撤至十满前最近 B 浪低点与高点幅度的 1/2（深回撤变体为 2/3）后，下一交易日解除。逾期创新高不能替代深回撤。",
+            "scope": "Core 全局 V3 入场门禁和策略版本、Web 中文原因与拓扑、国芳集团 2023-08-01 样本回归",
+            "dependencies": ["MONOREPO-243"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "十满以当日已知投影事件确认，当日及未解除期间所有 V3 入场通道和加仓都不产生 LONG；同日既有 EXIT 优先",
+                "23 个交易日内仅严格高于十满到达日最高价可解除，等高与逾期创新高不解除；任意后续交易日低点达到规定回撤线可解除",
+                "回撤参照十满前最近 B 浪低点；该段尚无 B 浪低点时用原正 N 起点保守替代，不能因此跳过禁买",
+                "突破或回撤必须在完整日线结束后确认，下一交易日起才恢复买入，避免盘中入场借用尚未发生的日内高低点",
+                "国芳 2023-08-01 原始价格 8.44 元高点对应十满，最近 B 低点为 4.98 元；08-02 未突破且未达到默认 6.71 元的半幅回撤线；原十满放量阴线清仓规则保留",
+                "定向 Core 测试、类型检查与隔离构建、Web 原因和拓扑测试、Web 静态检查与构建通过；浏览器端到端按当前用户规则不运行"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_ten_full_entry.py test_five_top_entry.py test_guofang_2023_target_exit.py -q",
+                    "status": "passed",
+                    "summary": "覆盖国芳 2023-08-01 十满事件、23 日边界、等高/及时及逾期突破、B 浪深回撤及无 B 替代、未来数据隔离、全局买点门禁与旧清仓。"
+                },
+                {
+                    "command": "Core targeted mypy and typecheck; isolated build; Web annotations Node, topology Vitest, lint/typecheck/build; harness:check",
+                    "status": "passed",
+                    "summary": "新模块严格类型、三个策略模块定向类型、Core 既定类型与隔离 sdist/wheel、31 项标注测试、2 项拓扑测试、Web lint 零错误（6 条既有警告）、类型和生产构建、Harness 均通过。完整 Core/Web 套件及浏览器端到端未运行。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-243",
             "name": "five-top-gap-volume-clear",
             "title": "五顶后低开放量跌破前开清仓",

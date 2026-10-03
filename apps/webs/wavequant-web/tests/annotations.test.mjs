@@ -776,6 +776,38 @@ test("near five-top rejection shows the known target and original box without a 
     assert.equal(markerGroups([item], options)[0].marker.color, "#8c9db599");
     assert.equal(buildAnnotations({ ...candidateView, asof: "2020-06-23" }, { events: [event] }).length, 0);
 });
+test("ten-full entry pause explains the frozen high and retracement threshold", () => {
+    const candidateView = {
+        asof: "2023-08-02",
+        bars: [{ time: "2023-07-03" }, { time: "2023-07-20" }, { time: "2023-08-01" }, { time: "2023-08-02" }],
+        markers: [],
+    };
+    const [item] = buildAnnotations(candidateView, {
+        events: [{
+            id: "ten-full-risk",
+            event: "entry_rejected",
+            time: "2023-08-02",
+            available_at: "2023-08-02",
+            price: 7.39,
+            attack: 1,
+            reason: "wave_ten_full_pullback_pending",
+            wave_ten_full_reached_date: "2023-08-01",
+            wave_ten_full_high: 8.44,
+            wave_retracement_anchor: 4.98,
+            wave_retracement_anchor_source: "b_low",
+            wave_retracement_ratio: 0.5,
+            wave_retracement_threshold: 6.71,
+            wave_breakout_window: 23,
+        }],
+    });
+    assert.equal(item.category, "entry-rejections");
+    assert.match(item.description, /十满于 2023-08-01 到达，日高 8\.44 元/);
+    assert.match(item.description, /最近 B 浪低点 4\.98 元起算，回撤 1\/2 的价格线为 6\.71 元/);
+    assert.match(item.description, /23 个交易日内严格突破/);
+    assert.match(item.description, /下一交易日起解除限制/);
+    assert.match(item.description, /未提交买单/);
+});
+
 test("same-day rules grouped, no evidence lost", () => {
     const rules = markerGroups(buildAnnotations(view, theory), options).filter((g) => g.items[0].kind === "rule");
     assert.equal(rules.length, 1);
