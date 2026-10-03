@@ -2,13 +2,22 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-globalThis.window = { LightweightCharts: { LineSeries: "line" } };
+let reducedMotion = false;
+globalThis.window = {
+    LightweightCharts: { LineSeries: "line" },
+    matchMedia: () => ({ matches: reducedMotion }),
+};
 globalThis.document = { documentElement: {} };
 globalThis.requestAnimationFrame = () => 1;
+globalThis.cancelAnimationFrame = () => {};
+globalThis.getComputedStyle = () => ({
+    getPropertyValue: (name) => ({ "--cyan": "#60cfc3", "--amber": "#ebbc70", "--panel": "#111d2d" })[name] || "",
+});
 globalThis.MutationObserver = class {
     observe() {}
 };
 const { PriceChart } = await import("../public/charts.js");
+const { FocusFlashOverlay } = await import("../public/focus-flash-overlay.js");
 
 const initial = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_2020_c_wave.json", import.meta.url)));
 const history = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_2020_c_wave_history.json", import.meta.url)));
@@ -54,7 +63,7 @@ function chartHarness(data = bars) {
             setVisibleLogicalRange: (range) => {
                 rendered.range = range;
             },
-            timeToCoordinate: (time) => data.findIndex((bar) => bar.time === time) * 20,
+            timeToCoordinate: (time) => (data.findIndex((bar) => bar.time === time) - rendered.range.from) * 20,
         }),
     };
     chart.markers = {
@@ -70,6 +79,12 @@ function chartHarness(data = bars) {
         },
     };
     chart.waveEndpointOverlay = { setPoints() {} };
+    chart.focusFlashOverlay = new FocusFlashOverlay(chart.container);
+    chart.focusFlashOverlay.attached({
+        chart: chart.chart,
+        series: { priceToCoordinate: (price) => price * 10 },
+        requestUpdate() {},
+    });
     chart.onSelect = () => {};
     chart.onVisible = () => {};
     return { chart, rendered };
@@ -164,8 +179,74 @@ test("locating ABC brings its B/C start and targets into view without changing z
     const target = bars.findIndex((bar) => bar.time === "2020-04-28");
     assert.equal(rendered.range.to - rendered.range.from, 20);
     assert.ok(rendered.range.from <= target && rendered.range.to >= target);
+    assert.equal(chart.focusFlashOverlay.active.time, "2020-04-28");
     chart.setTheory(null);
     assert.equal(chart.focusWaveProjection(), false);
+});
+
+test("successful date and holding navigation pulse on the actual candle after panning", () => {
+    const { chart, rendered } = chartHarness();
+    rendered.range = { from: 30, to: 50 };
+    assert.equal(chart.focus("2020-02-04"), true);
+    assert.equal(chart.container.dataset.focusFlashActive, "true");
+    assert.equal(chart.container.dataset.focusFlashMotion, "pulse");
+    const focusedIndex = bars.findIndex((bar) => bar.time === "2020-02-04");
+    assert.equal(chart.focusFlashOverlay.active.price, bars[focusedIndex].close);
+    assert.equal(chart.focusFlashOverlay.projected.x, (focusedIndex - rendered.range.from) * 20);
+
+    const from = "2020-02-04",
+        to = "2020-05-29";
+    const interval = bars.filter((bar) => bar.time >= from && bar.time <= to);
+    const target = interval[Math.floor((interval.length - 1) / 2)];
+    assert.equal(chart.focusRange(from, to), true);
+    assert.equal(chart.focusFlashOverlay.active.time, target.time);
+    assert.equal(chart.focusFlashOverlay.active.price, target.close);
+    const index = bars.findIndex((bar) => bar.time === target.time);
+    assert.ok(rendered.range.from <= index && rendered.range.to >= index);
+    assert.equal(rendered.range.to - rendered.range.from, 20);
+});
+
+test("repeated navigation replaces the pulse, animates its rings and clears the feedback", () => {
+    const { chart } = chartHarness();
+    chart.focus("2020-02-04");
+    chart.focus("2020-05-29");
+    const overlay = chart.focusFlashOverlay;
+    assert.equal(overlay.active.time, "2020-05-29");
+    const radii = [];
+    const context = Object.fromEntries(
+        ["save", "restore", "beginPath", "stroke", "fill"].map((method) => [method, () => {}]),
+    );
+    context.arc = (x, y, radius) => {
+        assert.equal(x, overlay.projected.x);
+        assert.equal(y, overlay.projected.y);
+        radii.push(radius);
+    };
+    const target = { useMediaCoordinateSpace: (draw) => draw({ context, mediaSize: { width: 10000, height: 10000 } }) };
+    overlay.draw(target);
+    const firstRadius = radii[0];
+    overlay.tick(overlay.active.startedAt + 200);
+    radii.length = 0;
+    overlay.draw(target);
+    assert.ok(radii[0] > firstRadius);
+    overlay.tick(overlay.active.startedAt + overlay.active.duration);
+    assert.equal(overlay.active, null);
+    assert.equal(chart.container.dataset.focusFlashActive, "false");
+    assert.equal(chart.container.dataset.focusFlashId, undefined);
+});
+
+test("reduced motion uses the existing static locator without changing zoom", () => {
+    reducedMotion = true;
+    const { chart, rendered } = chartHarness();
+    try {
+        rendered.range = { from: 30, to: 50 };
+        chart.focus("2020-02-04");
+        assert.equal(chart.container.dataset.focusFlashMotion, "static");
+        assert.equal(rendered.range.to - rendered.range.from, 20);
+        assert.ok(chart.focusFlashOverlay.timer !== null);
+    } finally {
+        chart.focusFlashOverlay.clear();
+        reducedMotion = false;
+    }
 });
 
 test("date, fill and holding-cycle chart navigation preserve the SDK viewport span", () => {
@@ -182,9 +263,11 @@ test("date, fill and holding-cycle chart navigation preserve the SDK viewport sp
         }
     }
     const before = { ...rendered.range };
+    const pulse = chart.focusFlashOverlay.active;
     assert.equal(chart.focus("2099-01-01"), false);
     assert.equal(chart.focusRange("2099-01-01", "2099-12-31"), false);
     assert.deepEqual(rendered.range, before);
+    assert.equal(chart.focusFlashOverlay.active, pulse);
 });
 
 test("locating a wave entry keeps zoom while retaining its four endpoint labels", () => {
@@ -195,6 +278,7 @@ test("locating a wave entry keeps zoom while retaining its four endpoint labels"
         kind: "fill",
         side: "BUY",
         time: "2020-05-29",
+        price: 3.67,
         signal_time: "2020-05-29",
         levels: [],
         decision_evidence: [
@@ -218,7 +302,10 @@ test("locating a wave entry keeps zoom while retaining its four endpoint labels"
     };
     rendered.range = { from: 5, to: 25 };
     chart.selectAnnotation(entry.id);
+    chart.flashSelectedAnnotation(entry.id, "execution");
     assert.equal(chart.selected.time, "2020-05-29");
+    assert.equal(chart.focusFlashOverlay.active.id, entry.id);
+    assert.equal(chart.focusFlashOverlay.active.color, "#ebbc70");
     assert.equal(rendered.range.to - rendered.range.from, 20);
     assert.deepEqual(
         rendered.endpoints.map((point) => point.label),

@@ -638,6 +638,9 @@ export class PriceChart {
         if (this.selected?.id !== id) return;
         this.focusFlashOverlay.flash(this.selected, stage);
     }
+    flashCandle(bar) {
+        this.focusFlashOverlay.flash({ id: `candle-focus-${bar.time}`, time: bar.time, price: bar.close });
+    }
     clearLevels() {
         for (const s of this.levelLines) this.chart.removeSeries(s);
         this.levelLines = [];
@@ -1034,6 +1037,7 @@ export class PriceChart {
         const range = tradePointRange(index, this.data?.bars.length ?? 0, timeScale.getVisibleLogicalRange());
         if (!range) return false;
         timeScale.setVisibleLogicalRange(range);
+        this.flashCandle(this.data.bars[index]);
         return true;
     }
     focusRange(from, to) {
@@ -1041,6 +1045,8 @@ export class PriceChart {
         const range = drawdownCandleRange({ from, to }, this.data?.bars, timeScale.getVisibleLogicalRange());
         if (!range) return false;
         timeScale.setVisibleLogicalRange(range);
+        const bars = this.data.bars.filter((bar) => bar.time >= from && bar.time <= to);
+        this.flashCandle(bars[Math.floor((bars.length - 1) / 2)]);
         return true;
     }
     destroy() {
