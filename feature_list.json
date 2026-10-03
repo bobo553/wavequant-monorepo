@@ -7700,6 +7700,11 @@
                     "command": "Core strict mypy two_t_entry.py; mypy integrated_strategy.py strategy_profiles.py; pnpm --filter @wavequant/core typecheck; build; node --test annotations.test.mjs; Web lint; typecheck; build; Node syntax; git diff --check; pnpm harness:check",
                     "status": "passed",
                     "summary": "Core新增与修改模块类型检查、既定四模块严格检查和sdist/wheel通过。Web标注30项、lint零错误（6条既有警告）、类型与生产构建通过；格式仅保留新增文案与测试，原文件既有未格式化部分未批量改写。Harness通过。完整Core/Web套件、浏览器与外部分钟待独立验证，未运行Playwright。"
+                },
+                {
+                    "command": "local main merge; restart-wavequant.ps1 -NoBrowser; API v84 formal AkShare June9 prefix/full history; Web proxy full history and annotations.js HTTP",
+                    "status": "passed",
+                    "summary": "395dc79经d46fa57合并本地main并重启。常驻v84相同用户参数2034日前缀与2113日全量，前缀行情和信号、06-09拒绝证据一致；该日LONG/BUY与买入标记均0，原05-18 N二饱7.30、05-25已知、收盘6.94且强实体为false。01-06 LONG及BUY/filled 500股4.44222保留，01-26及2020-06-24无买入；06-10保护EXIT保留、无持仓则无SELL。Web3003代理版本/信号/委托/标记与API8765一致，新原因模块HTTP200与main逐字一致，research HTTP200。未推送；完整套件、浏览器与外部分钟待独立验证。"
                 }
             ]
         }
