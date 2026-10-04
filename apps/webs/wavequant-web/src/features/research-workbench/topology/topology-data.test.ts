@@ -11,6 +11,7 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../.
 const strategyDirectories = [
     "packages/wavequant-core/src/wavequant/domain/strategies",
     "packages/wavequant-core/src/wavequant/domain/market_structure",
+    "packages/wavequant-core/src/wavequant/domain/market_state",
 ];
 const additionalSources = [
     "packages/wavequant-core/src/wavequant/application/analytics/backtest.py",
@@ -40,6 +41,8 @@ describe("strategy topology", () => {
             ...additionalSources,
         ].sort();
         const sources = files.map((file) => ({ file, content: readFileSync(resolve(projectRoot, file), "utf8") }));
+        const regimeSource = sources.findIndex((source) => source.file.endsWith("/market_state/market_regime.py"));
+        expect(regimeSource).toBeGreaterThanOrEqual(0);
         expect(sourceDigest(sources)).toBe(strategySourceDigest);
         expect(
             sourceDigest(sources.map(({ file, content }) => ({ file, content: content.replace(/\r?\n/g, "\r\n") }))),
@@ -47,6 +50,13 @@ describe("strategy topology", () => {
         expect(
             sourceDigest(
                 sources.map((source, index) => (index === 0 ? { ...source, content: source.content + " " } : source)),
+            ),
+        ).not.toBe(strategySourceDigest);
+        expect(
+            sourceDigest(
+                sources.map((source, index) =>
+                    index === regimeSource ? { ...source, content: source.content + " " } : source,
+                ),
             ),
         ).not.toBe(strategySourceDigest);
     });

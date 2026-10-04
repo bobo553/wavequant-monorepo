@@ -13,8 +13,8 @@ from wavequant.domain.strategies.integrated_strategy import SystemStrategy, gene
 from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
 
 
-@pytest.mark.parametrize("response_low,local_confirmed", [(11.7, False), (11.8, True)])
-def test_local_response_cannot_restart_after_lowering_its_virtual_defense(response_low, local_confirmed):
+@pytest.mark.parametrize("response_low", [11.7, 11.8])
+def test_late_response_cannot_restart_original_n_resistance(response_low):
     rows = [
         (8.5, 9, 8, 8.5),
         (10, 12, 9.5, 11),
@@ -39,14 +39,14 @@ def test_local_response_cannot_restart_after_lowering_its_virtual_defense(respon
     result = observe_market_regime(bars, setup, timeframe="1d", policy=policy)
     assert result.latest.rolling_defense_held
     assert result.latest.first_defense_breach_index is None
-    assert (result.latest.regime == MarketRegime.BULL) is local_confirmed
+    assert result.latest.first_resistance_index == 4
+    assert result.latest.regime is None
     # A later close strictly exceeding the whole episode record is independent
     # evidence; equality and loss of the original N defense never qualify.
     for close, expected in [(13.5, False), (13.8, True)]:
         recovery = Bar(bars[-1].timestamp + timedelta(days=1), "TEST", 12.8, 13.9, 12.3, close, 1000)
         recovered = observe_market_regime([*bars, recovery], setup, timeframe="1d", policy=policy)
-        if response_low < 11.8:
-            assert (recovered.latest.regime == MarketRegime.BULL) is expected
+        assert (recovered.latest.regime == MarketRegime.BULL) is expected
     broken = bars[:5] + [replace(bars[5], low=10.3), *bars[6:]]
     assert observe_market_regime(broken, setup, timeframe="1d", policy=policy).latest.regime is None
 

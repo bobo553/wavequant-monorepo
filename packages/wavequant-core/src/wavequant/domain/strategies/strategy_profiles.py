@@ -82,7 +82,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v89_' + variant
+    config['profile_version'] = 'gap_up_bullish_squeeze_v90_' + variant
     config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout', 'nested_alternation_breakout', 'combined_a_pullback_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
@@ -107,6 +107,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         mother_n='explicit_lecture_bullish_outside_mother_then_later_confirmed_pullback_and_strict_joint_break',
         retained_n_reconfirmation='fresh_independent_n_close_breaks_all_prior_resistance_with_original_defense_held',
         gap_up_bullish_record='prior_resistance_defense_held_open_gt_previous_high_bullish_episode_record_close_upper_shadow_allowed',
+        positive_n_resistance_window='attack_session_or_next_session_only_later_candle_facts_do_not_extend_original_n_resistance_record_confirmation_keeps_original_defense',
         alternation_short_pullback='minimum_close_above_two_thirds_and_b_duration_lt_half_a_requires_later_close_above_a_high',
         shallow_base_breakout='switchable_default_on_pending_level2_or_3_0_618_to_below_2_3_pullback_then_40_to_120_sessions_held_low_40_bar_narrow_base_close_break_above_all_base_highs_volume_ge_2x_20_mean_bull_body_ge_5pct_nearest_formal_high_rr_ge_1_5',
         daily_limit_fill='nonflat_limit_up_close_simulated_fill_without_queue_verification_flat_limit_up_rejected',
