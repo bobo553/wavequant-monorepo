@@ -20,7 +20,8 @@
                 "保留既有买入、止损、清仓和终点确认口径；定向回归、相关类型与构建检查通过",
                 "真实2018起完整行情保留02-08/04-12/07-25/01-03组；正式二级缺少端点时复用同路径一级严格关键位观察，明确局部来源且不改交易",
                 "开启ABC与点位线后，光标在A、B、C区间任意K显示该组锚点与三档目标；不更改成交选择或缩放，移出恢复原展示",
-                "平移到C后半段或目标在价格轴外时三档标签仍可见，不扩价格轴；历史触及日、生效日与C确认日不随悬停改变"
+                "平移到C后半段或目标在价格轴外时三档标签仍可见，不扩价格轴；历史触及日、生效日与C确认日不随悬停改变",
+                "光标进入ABC任意K线时复用成交波段端点图层，直接在图上绘出A起点、A终点、B和C三档目标；移出恢复选中成交端点，隐藏ABC或切换理论与行情不残留"
             ],
             "verification": [
                 {
@@ -82,6 +83,21 @@
                     "command": "本轮修改文件Prettier；codegraph sync；pnpm harness:check；git diff --check",
                     "status": "passed",
                     "summary": "本轮源码、测试、完整夹具及状态记录格式、CodeGraph、Harness与差异检查通过。未运行浏览器、Playwright或完整Web套件，实际浏览器视觉仍待验证；保留独立not-run记录及既有231任务证据。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec node --test tests/wave-c-chart.test.mjs tests/wave-endpoint-overlay.test.mjs tests/wave-c-projection.test.mjs tests/target-level-guides.test.mjs tests/ordinary-c-wave.test.mjs tests/c-wave-extension.test.mjs",
+                    "status": "passed",
+                    "summary": "本轮80项通过。悬停接入既有成交端点图层，实际217根ABC K逐根调用端点draw均画出A起点、A终点、B及可知C终点，同时保留三档C目标；首尾边界标签内移且圆点日期不动。无需选择BUY，退出恢复其A高/C确认原标识，ABC开关、理论/行情替换和平移清理、选择与缩放保持均覆盖。"
+                },
+                {
+                    "command": "独立wave-endpoint-overlay / wave-c-chart Node测试；未裁剪实际API全量端点与历史前缀探针",
+                    "status": "passed",
+                    "summary": "独立30项及217次实际端点draw通过；完整2,123根实际行情的7组与fixture逐项一致，A起低/A终高/B低/C高同源；5组已知C、2组无C仅画前三点。国芳01-21只有A/B三端点，01-22才显示01-03 C终点；最终差异独立复核无剩余已证实问题。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "本轮端点接线最终lint零错误（6条既有环境变量警告）、类型与标准Next.js生产构建通过。仅恢复构建生成的next-env已知路径差异；未修改Core、API、成交规则、依赖或锁文件。"
                 }
             ]
         },

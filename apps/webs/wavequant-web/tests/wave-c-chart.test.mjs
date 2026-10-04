@@ -19,6 +19,7 @@ globalThis.MutationObserver = class {
 const { PriceChart } = await import("../public/charts.js");
 const { FocusFlashOverlay } = await import("../public/focus-flash-overlay.js");
 const { TargetGuideOverlay } = await import("../public/target-level-guides.js");
+const { WaveEndpointOverlay } = await import("../public/wave-endpoint-overlay.js");
 
 const initial = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_2020_c_wave.json", import.meta.url)));
 const history = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_2020_c_wave_history.json", import.meta.url)));
@@ -79,7 +80,12 @@ function chartHarness(data = bars) {
             rendered.guides = guides;
         },
     };
-    chart.waveEndpointOverlay = { setPoints() {} };
+    chart.waveEndpointOverlay = new WaveEndpointOverlay(chart.container);
+    chart.waveEndpointOverlay.attached({
+        chart: chart.chart,
+        series: { priceToCoordinate: (price) => 200 - price * 10 },
+        requestUpdate() {},
+    });
     chart.focusFlashOverlay = new FocusFlashOverlay(chart.container);
     chart.focusFlashOverlay.attached({
         chart: chart.chart,
@@ -133,6 +139,31 @@ function targetLabels(chart, guides, priceToCoordinate = () => 100) {
     context.fillText = (text) => labels.push(text);
     overlay.draw({ useMediaCoordinateSpace: (draw) => draw({ context, mediaSize: { width: 2000, height: 200 } }) });
     return labels;
+}
+
+function endpointDrawing(chart) {
+    const labels = [],
+        circles = [],
+        textXs = [];
+    const context = Object.fromEntries(
+        ["save", "restore", "beginPath", "fill", "moveTo", "lineTo", "stroke", "strokeText"].map((name) => [
+            name,
+            () => {},
+        ]),
+    );
+    context.measureText = (text) => ({ width: text.length * 6 });
+    context.arc = (x, y) => circles.push({ x, y });
+    context.fillText = (text, x) => {
+        labels.push(text);
+        textXs.push(x);
+    };
+    const range = chart.chart.timeScale().getVisibleLogicalRange();
+    const width = Math.max(100, (range.to - range.from) * 20);
+    chart.waveEndpointOverlay.updateAllViews();
+    chart.waveEndpointOverlay.draw({
+        useMediaCoordinateSpace: (draw) => draw({ context, mediaSize: { width, height: 250 } }),
+    });
+    return { labels, circles, textXs, width };
 }
 
 test("May 29 theory renders the earlier ABC labels, A/B legs and C targets with ordinary rules off", () => {
@@ -345,7 +376,7 @@ test("long B-correction hover draws three target labels with their later availab
     assert.ok(chart.hoveredWaveProjection.levels.every(({ available_at }) => available_at === "2024-08-14"));
 });
 
-test("all 217 ABC candles in the full 2018 response consistently show this group's three tooltip targets", () => {
+test("all 217 ABC candles in the full 2018 response draw this group's endpoints and three tooltip targets", () => {
     const { chart, rendered, data } = ordinaryChart("2026-09-30");
     assert.equal(data.length, 2123);
     assert.equal(chart.autoWaveProjections.length, 7);
@@ -363,9 +394,135 @@ test("all 217 ABC candles in the full 2018 response consistently show this group
         assert.ok(lines.some(({ text }) => /0\.618.*6\.8777.*已触及/.test(text)));
         assert.ok(lines.some(({ text }) => /等浪.*8\.2748.*已触及/.test(text)));
         assert.ok(lines.some(({ text }) => /1\.618.*10\.535.*本段结束未达成/.test(text)));
+        assert.deepEqual(endpointDrawing(chart).labels, [
+            "A 起点 4.2190",
+            "A 终点 7.8764",
+            "B 4.6174",
+            "C 终点 9.3168",
+        ]);
+        assert.deepEqual(
+            chart.waveEndpointOverlay.points.map(({ time, price }) => ({ time, price })),
+            [
+                { time: "2024-02-08", price: 4.219033114321772 },
+                { time: "2024-04-12", price: 7.876399281535692 },
+                { time: "2024-07-25", price: 4.617428636643342 },
+                { time: "2025-01-03", price: 9.316823462102839 },
+            ],
+        );
     }
     assert.deepEqual(rendered.range, originalRange);
     assert.equal(chart.selected, undefined);
+});
+
+test("hover endpoint labels survive exact viewport boundaries while their dots remain at the real dates", () => {
+    const { chart, rendered, data } = ordinaryChart();
+    rendered.range = {
+        from: data.findIndex(({ time }) => time === "2024-02-08"),
+        to: data.findIndex(({ time }) => time === "2025-01-03"),
+    };
+    chart.refreshMarkers();
+    chart.updateWaveProjectionHover("2024-12-12");
+    const drawing = endpointDrawing(chart);
+    assert.equal(drawing.labels.length, 4);
+    assert.equal(drawing.circles[0].x, 0);
+    assert.equal(drawing.circles.at(-1).x, drawing.width);
+    assert.ok(drawing.textXs[0] > 0);
+    assert.ok(drawing.textXs.at(-1) < drawing.width);
+    assert.equal(rendered.guides.length, 3);
+});
+
+test("hover shows only known endpoints and clears them when ABC or its theory is disabled", () => {
+    const { chart, rendered } = ordinaryChart("2025-01-21");
+    chart.updateWaveProjectionHover("2024-12-12");
+    assert.deepEqual(endpointDrawing(chart).labels, ["A 起点 4.2190", "A 终点 7.8764", "B 4.6174"]);
+    assert.equal(rendered.guides.length, 3);
+    chart.setAnnotationOptions({ tertiaryAbc: false });
+    assert.deepEqual(endpointDrawing(chart).labels, []);
+    chart.setAnnotationOptions({ tertiaryAbc: true });
+    chart.updateWaveProjectionHover("2024-12-12");
+    assert.equal(chart.waveEndpointOverlay.points.length, 3);
+    const structure = chart.theory;
+    chart.setTheory({ ...structure, asof: "2025-01-22" });
+    assert.deepEqual(endpointDrawing(chart).labels, []);
+    chart.updateWaveProjectionHover("2024-12-12");
+    assert.equal(chart.waveEndpointOverlay.points.at(-1).label, "C 终点");
+    chart.setTheory(null);
+    assert.deepEqual(endpointDrawing(chart).labels, []);
+    chart.updateWaveProjectionHover("2024-12-12");
+    assert.equal(chart.hoveredWaveProjection, null);
+});
+
+test("changing candle data clears hovering ABC endpoints and previous selections", () => {
+    const { chart } = ordinaryChart();
+    chart.updateWaveProjectionHover("2024-12-12");
+    assert.equal(endpointDrawing(chart).labels.length, 4);
+    chart.tooltip = { hidden: false };
+    chart.candles = { setData() {} };
+    chart.volume = { setData() {} };
+    chart.onViewport = () => {};
+    const replacement = {
+        bars: [
+            { time: "2026-09-29", open: 5, high: 6, low: 4, close: 5, volume: 100 },
+            { time: "2026-09-30", open: 5, high: 6, low: 4, close: 5, volume: 100 },
+        ],
+        markers: [],
+        orders: [],
+        asof: "2026-09-30",
+    };
+    chart.setData(replacement);
+    assert.equal(chart.hoveredWaveProjection, null);
+    assert.equal(chart.selected, null);
+    assert.equal(chart.theory, null);
+    assert.deepEqual(chart.waveEndpointOverlay.points, []);
+    assert.equal(chart.container.dataset.waveEndpointCount, "0");
+});
+
+test("leaving an ABC restores a selected BUY's original endpoints without another selection or zoom", () => {
+    const { chart, rendered } = ordinaryChart();
+    const buy = {
+        id: "selected-wave-buy",
+        time: "2024-08-16",
+        signal_time: "2024-08-15",
+        kind: "fill",
+        category: "fills",
+        side: "BUY",
+        price: 5,
+        levels: [{ name: "成交价", price: 5 }],
+        decision_evidence: [
+            {
+                wave_entry_path: "two_t_held_defense_gap_attack",
+                wave_a_origin_date: "2024-02-08",
+                wave_a_origin: 4.219033114321772,
+                wave_a_high_date: "2024-04-12",
+                wave_a_high: 7.876399281535692,
+                wave_b_low_date: "2024-07-25",
+                wave_b_low: 4.617428636643342,
+                wave_breakout_close: 5,
+            },
+        ],
+    };
+    chart.options.fills = true;
+    chart.windowAnnotations.push(buy);
+    let selections = 0;
+    chart.onSelect = () => selections++;
+    chart.selectAnnotation(buy.id, false);
+    const selectedPoints = chart.waveEndpointOverlay.points;
+    assert.deepEqual(endpointDrawing(chart).labels, ["A 起点 4.2190", "A 高 7.8764", "B 4.6174", "C 确认 5.0000"]);
+    const originalRange = { ...rendered.range };
+    chart.updateWaveProjectionHover("2024-12-12");
+    assert.ok(endpointDrawing(chart).labels.includes("A 终点 7.8764"));
+    assert.ok(endpointDrawing(chart).labels.includes("C 终点 9.3168"));
+    assert.equal(rendered.guides.length, 3);
+    chart.updateWaveProjectionHover(null);
+    assert.deepEqual(chart.waveEndpointOverlay.points, selectedPoints);
+    assert.ok(endpointDrawing(chart).labels.includes("C 确认 5.0000"));
+    chart.updateWaveProjectionHover("2024-12-12");
+    chart.setAnnotationOptions({ tertiaryAbc: false, levels: false });
+    assert.deepEqual(chart.waveEndpointOverlay.points, selectedPoints);
+    assert.ok(endpointDrawing(chart).labels.includes("A 高 7.8764"));
+    assert.equal(chart.selected, buy);
+    assert.equal(selections, 1);
+    assert.deepEqual(rendered.range, originalRange);
 });
 
 test("hovering any A, B or C candle shows that group's targets without changing a selected fill or zoom", () => {
@@ -461,6 +618,7 @@ test("panning away clears a stale hover and archived ABC targets without changin
     chart.refreshMarkers();
     assert.equal(chart.hoveredWaveProjection, null);
     assert.equal(chart.autoWaveProjection, null);
+    assert.deepEqual(endpointDrawing(chart).labels, []);
     assert.equal(rendered.guides.length, 0);
     assert.deepEqual(rendered.range, originalRange);
     assert.equal(chart.selected, undefined);

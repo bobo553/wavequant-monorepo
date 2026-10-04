@@ -33,7 +33,7 @@ import {
     waveCProjectionLegs,
     waveCProjectionsFromStructure,
 } from "./wave-c-projection.js";
-import { WaveEndpointOverlay, selectedWaveEndpoints } from "./wave-endpoint-overlay.js";
+import { WaveEndpointOverlay, projectionWaveEndpoints, selectedWaveEndpoints } from "./wave-endpoint-overlay.js";
 
 const L = window.LightweightCharts;
 if (!L) throw new Error("TradingView SDK 未加载，请检查本地 npm 依赖。");
@@ -747,8 +747,6 @@ export class PriceChart {
         const selected = this.windowAnnotations.find((m) => m.id === id) || this.lectureOverlay.annotation(id);
         if (!selected) return;
         this.selected = selected;
-        const endpoints = selectedWaveEndpoints(selected, this.data?.bars || []);
-        this.waveEndpointOverlay.setPoints(endpoints);
         if (focus) this.focus(selected.time);
         this.drawLevels();
         this.scheduleMarkers();
@@ -882,6 +880,15 @@ export class PriceChart {
     }
     drawLevels() {
         this.clearLevels();
+        this.waveEndpointOverlay.setPoints(
+            this.hoveredWaveProjection && this.options.tertiaryAbc
+                ? projectionWaveEndpoints(
+                      this.hoveredWaveProjection.raw,
+                      this.data?.bars || [],
+                      this.waveProjectionAsOf(),
+                  )
+                : selectedWaveEndpoints(this.selected, this.data?.bars || []),
+        );
         const item = this.hoveredWaveProjection || this.selected || this.autoWaveProjection;
         // 拒单不产生常驻图标；从右侧账本主动定位时，仅临时标示对应 K 线的参考价。
         const blockedOrder = item?.kind === "order" && item.status === "cancelled";
@@ -979,6 +986,10 @@ export class PriceChart {
     }
     clearTheory() {
         this.geometryVisible = false;
+        this.hoveredWaveProjection = null;
+        this.hoveredWaveTime = null;
+        this.hoveredWaveId = null;
+        this.waveEndpointOverlay.setPoints(selectedWaveEndpoints(this.selected, this.data?.bars || []));
         for (const series of this.lines) this.chart.removeSeries(series);
         this.lines = [];
         this.clearWaveAbPath();
