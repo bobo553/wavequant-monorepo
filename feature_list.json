@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-257",
+    "activeFeature": "MONOREPO-256",
     "features": [
         {
             "id": "MONOREPO-257",
@@ -10,7 +10,7 @@
             "description": "全局V3正N空头抵抗只取突破当天或第二天，后续低开等K线事实不能延长该N抵抗；已有抵抗失败及原防守完整时及时确认新华传媒2019-02-22买点。",
             "scope": "Core盘态、全局V3入场、Web拓扑与真实新华传媒定向回归",
             "dependencies": ["MONOREPO-212", "MONOREPO-150"],
-            "status": "in-progress",
+            "status": "done",
             "acceptanceCriteria": [
                 "全局V3正N抵抗证据仅在突破当天及下一交易日计入，后续原始K形态可审计但不延长该N抵抗，晚期昨日形态也不能制造局部确认",
                 "最早第三棒确认；原防守失守不能复活，默认研究及倒N兼容、独立全局风控保留；暂不加入次日中大阳短上影提前确认规则",
@@ -19,6 +19,16 @@
                 "相关定向测试、类型、构建、格式、Harness和独立复核通过，不运行浏览器或完整套件"
             ],
             "verification": [
+                {
+                    "command": "GET 13003 /api/akshare-backtest (2018-01-01..2019-02-25, sh.600825, lecture_v3/base, volume=false, netRR=false, shallow=true, capital100000, weight1); job4ba0c9d8-4758-4283-a594-20a9fa5fa459",
+                    "status": "passed",
+                    "summary": "当前v90正式接口277根完整账户历史status=complete。02-22唯一轧空LONG归属02-19正N，抵抗日期02-20、窗口02-19..02-20；当日BUY/filled原始6.35元500股，same_day_close、既有非一字涨停模拟；02-25 BUY为0。未使用伪造分钟或实盘成交。当前引擎728924798c...与main一致，未加入次日提前确认。完整截至2026-09-30的两个任务被其他本地流程连续重启中断，未宣称通过；当前买点已由正式历史截面及独立测试验证。"
+                },
+                {
+                    "command": "GET 13003 /api/backtest-version?run=acceptance_20260908_verified&variant=lecture_v3; main TdxBacktester._engine_hashes; main topology Vitest",
+                    "status": "passed",
+                    "summary": "实现1641816已以299d330本地合并，main3项拓扑通过。API加载v90，引擎728924798c0776761b578faa4c7fdd235fb1d7035896e1f2e2de7d274ca82d57与main源码一致。初次服务退出后按原13003/API8765隐藏恢复进程10116；随后其他本地流程两次重启并更换管理PID至34604，两个长任务均丢失。未继续终止其他流程；正式277根历史截面已通过，见上方证据。未推送。"
+                },
                 {
                     "command": "pnpm harness:check; pnpm exec prettier --write feature_list.json packages/wavequant-core/progress.md apps/webs/wavequant-web/progress.md session-handoff.md packages/wavequant-core/docs/market_regime_contract.md; git diff --check",
                     "status": "passed",
@@ -73,7 +83,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "backlog",
+            "status": "in-progress",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
