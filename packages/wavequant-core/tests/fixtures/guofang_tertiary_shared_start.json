@@ -1,0 +1,231 @@
+{
+    "source": "AkShare formal lecture_v3 2018-01-01 to 2026-09-30, graph before alternation promotion; compact bar indices preserve source order",
+    "symbol": "sh.601086",
+    "asof": "2026-09-30",
+    "source_indices": [
+        455, 537, 563, 632, 636, 867, 915, 927, 1004, 1044, 1170, 1354, 1484, 1794, 2015, 2025, 2056, 2110
+    ],
+    "bars": [
+        ["2019-11-18", 4.70965211297504, 4.73067734562225, 4.657089031357015, 4.70965211297504, 1964000],
+        ["2020-03-20", 6.0973174676909, 6.423208573722655, 5.802964210629959, 6.24449409622137, 68005482],
+        ["2020-04-28", 5.10913153327203, 5.119644149595635, 4.667601647680621, 4.91990443944714, 7600677],
+        ["2020-08-10", 6.215762581268985, 6.537822818640435, 6.09767382756612, 6.537822818640435, 19679943],
+        ["2020-08-14", 8.97474528141774, 8.97474528141774, 7.3429734120690595, 7.3429734120690595, 53163008],
+        ["2021-07-28", 4.182819267522798, 4.182819267522798, 4.050031354268106, 4.072162673143888, 2117700],
+        ["2021-10-13", 5.045940703678296, 5.0680720225540785, 4.691839601665785, 4.8246275149204765, 12884200],
+        ["2021-10-29", 4.074685414155522, 4.237172869321233, 4.074685414155522, 4.2246738343084855, 2474786],
+        ["2022-02-23", 4.9371188300350655, 5.187099530290006, 4.887122689984077, 5.0996062852007755, 8519370],
+        ["2022-04-22", 6.3870068915137175, 7.261939342406007, 6.324511716449981, 7.261939342406007, 76131957],
+        ["2022-10-31", 4.450112158522788, 4.552708404252419, 4.437287627806584, 4.501410281387604, 6372300],
+        ["2023-08-01", 10.58023784086884, 11.024346589744814, 10.044694937812515, 10.096943025915571, 121024185],
+        ["2024-02-08", 4.323529290527884, 4.754576017378096, 4.219033114321772, 4.728451973326568, 30114838],
+        ["2025-05-29", 20.423242046691705, 21.54344662717914, 19.753851504693113, 21.54344662717914, 123845583],
+        ["2026-04-27", 11.128834670450848, 11.527274430257116, 11.032659556014854, 11.45857791994569, 10458748],
+        ["2026-05-14", 12.557722084928491, 12.969901146797039, 12.22797883543365, 12.3653718560565, 27268000],
+        ["2026-06-29", 9.138511152202415, 9.347471010865581, 8.887759321806618, 9.236025752911893, 7492100],
+        ["2026-09-11", 21.59251872852705, 23.152752339878685, 20.018354459931206, 22.776624594284986, 112439135]
+    ],
+    "geometry": {
+        "strokes": [
+            {
+                "id": "tertiary-secondary-reversal-continuous-lecture-0-lecture-1252",
+                "kind": "tertiary",
+                "trend_level": 3,
+                "points": [
+                    {
+                        "index": 0,
+                        "ordinal": 0,
+                        "time": "2019-11-18",
+                        "value": 4.657089031357015,
+                        "kind": "L",
+                        "label": "L1",
+                        "available_at": "2020-04-02",
+                        "state": "reversal",
+                        "trend_level": 3
+                    },
+                    {
+                        "index": 1,
+                        "ordinal": 0,
+                        "time": "2020-03-20",
+                        "value": 6.423208573722655,
+                        "kind": "H",
+                        "label": "H1",
+                        "available_at": "2020-04-27",
+                        "state": "reversal",
+                        "trend_level": 3
+                    },
+                    {
+                        "index": 2,
+                        "ordinal": 0,
+                        "time": "2020-04-28",
+                        "value": 4.667601647680621,
+                        "kind": "L",
+                        "label": "L2",
+                        "available_at": "2020-08-05",
+                        "state": "reversal",
+                        "trend_level": 3
+                    },
+                    {
+                        "index": 4,
+                        "ordinal": 0,
+                        "time": "2020-08-14",
+                        "value": 8.97474528141774,
+                        "kind": "H",
+                        "label": "H2",
+                        "available_at": "2021-04-08",
+                        "state": "reversal",
+                        "trend_level": 3
+                    },
+                    {
+                        "index": 5,
+                        "ordinal": 0,
+                        "time": "2021-07-28",
+                        "value": 4.050031354268106,
+                        "kind": "L",
+                        "label": "L3",
+                        "available_at": "2021-11-17",
+                        "state": "reversal",
+                        "trend_level": 3
+                    },
+                    {
+                        "index": 9,
+                        "ordinal": 0,
+                        "time": "2022-04-22",
+                        "value": 7.261939342406007,
+                        "kind": "H",
+                        "label": "H3",
+                        "available_at": "2023-05-24",
+                        "state": "reversal",
+                        "trend_level": 3
+                    },
+                    {
+                        "index": 10,
+                        "ordinal": 0,
+                        "time": "2022-10-31",
+                        "value": 4.437287627806584,
+                        "kind": "L",
+                        "label": "L4",
+                        "available_at": "2023-12-15",
+                        "state": "reversal",
+                        "trend_level": 3
+                    },
+                    {
+                        "index": 11,
+                        "ordinal": 0,
+                        "time": "2023-08-01",
+                        "value": 11.024346589744814,
+                        "kind": "H",
+                        "label": "H4",
+                        "available_at": "2025-05-09",
+                        "state": "reversal",
+                        "trend_level": 3
+                    },
+                    {
+                        "index": 12,
+                        "ordinal": 0,
+                        "time": "2024-02-08",
+                        "value": 4.219033114321772,
+                        "kind": "L",
+                        "label": "L5",
+                        "available_at": "2025-05-29",
+                        "state": "reversal",
+                        "trend_level": 3
+                    },
+                    {
+                        "index": 13,
+                        "ordinal": 0,
+                        "time": "2025-05-29",
+                        "value": 21.54344662717914,
+                        "kind": "H",
+                        "label": "H5",
+                        "available_at": "2026-04-28",
+                        "state": "reversal",
+                        "trend_level": 3
+                    },
+                    {
+                        "index": 14,
+                        "ordinal": 0,
+                        "time": "2026-04-27",
+                        "value": 11.032659556014854,
+                        "kind": "L",
+                        "label": "L6",
+                        "available_at": "2026-07-03",
+                        "state": "reversal",
+                        "trend_level": 3
+                    }
+                ]
+            }
+        ],
+        "developing_strokes": [
+            {
+                "id": "tertiary-developing-secondary-reversal-continuous-lecture-0-lecture-1252",
+                "kind": "tertiary-developing",
+                "trend_level": 3,
+                "points": [
+                    {
+                        "index": 14,
+                        "ordinal": 0,
+                        "time": "2026-04-27",
+                        "value": 11.032659556014854,
+                        "kind": "L",
+                        "label": "L6",
+                        "available_at": "2026-07-03",
+                        "state": "confirmed",
+                        "trend_level": 3,
+                        "display_only": true,
+                        "development_role": "formal_start"
+                    },
+                    {
+                        "index": 15,
+                        "ordinal": 0,
+                        "time": "2026-05-14",
+                        "value": 12.969901146797039,
+                        "kind": "H",
+                        "label": "H19",
+                        "available_at": "2026-07-03",
+                        "state": "developing",
+                        "trend_level": 3,
+                        "display_only": true,
+                        "development_role": "active_endpoint"
+                    }
+                ],
+                "available_at": "2026-07-03"
+            }
+        ]
+    },
+    "events": [
+        {
+            "event": "squeeze_alternation_breakout",
+            "bar_index": 3,
+            "trend_level": 3,
+            "breakout_basis": "high_after_confirmed_alternation",
+            "a_high_index": 1,
+            "a_high_price": 6.423208573722655,
+            "b_low_index": 2,
+            "b_low_price": 4.667601647680621,
+            "source_path": "tertiary-secondary-reversal-lecture-0"
+        },
+        {
+            "event": "squeeze_alternation_breakout",
+            "bar_index": 8,
+            "trend_level": 3,
+            "breakout_basis": "high_after_confirmed_alternation",
+            "a_high_index": 6,
+            "a_high_price": 5.0680720225540785,
+            "b_low_index": 7,
+            "b_low_price": 4.074685414155522,
+            "source_path": "tertiary-secondary-reversal-continuous-lecture-0-lecture-979"
+        },
+        {
+            "event": "squeeze_alternation_breakout",
+            "bar_index": 17,
+            "trend_level": 3,
+            "breakout_basis": "high_after_confirmed_alternation",
+            "a_high_index": 13,
+            "a_high_price": 21.54344662717914,
+            "b_low_index": 16,
+            "b_low_price": 8.887759321806618,
+            "source_path": "tertiary-secondary-reversal-continuous-lecture-0-lecture-1252"
+        }
+    ]
+}

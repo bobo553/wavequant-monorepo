@@ -4,6 +4,47 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-251",
+            "name": "trend-path-endpoint-uniqueness",
+            "title": "二三级趋势补线唯一连接",
+            "description": "统一二三级趋势确认补线的重叠、重复和共享端点规则，修复国芳2025-05-29正式三级高点两条出线；保留独立审计与正常一进一出。",
+            "scope": "Core趋势图路径发布及Core/Web回归，不修改信号、成交或买卖规则",
+            "dependencies": ["MONOREPO-250"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "国芳2025-05-29三级趋势点最多一条出线",
+                "各级路径的重复边和分叉按来源权威性及稳定规则统一处理，保留跨级叠加和真实K内点序",
+                "保持正式确认、发展线、交替标识和可知边界，定向回归与相关静态/构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core python -m pytest tests/test_alternation_breakout.py tests/test_tertiary_trend.py tests/test_xinhuawenxuan_trends.py -q",
+                    "status": "passed",
+                    "summary": "18项相关Python回归通过；新增国芳真实最小输入先复现05-29同时连04-27/06-29，修复后仅保留先确认的04-27路径。覆盖二三级重复确认、空原始路径多候选/乱序、共享末端正常续接、正式与发展路径和输入不变。强化真实07-03/09-11可知前缀断言另行通过。Python通过主仓库虚拟环境及指向任务src的PYTHONPATH执行，未使用全局Python。"
+                },
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/lecture-overlay.test.mjs apps/webs/wavequant-web/tests/wave-connections.test.mjs apps/webs/wavequant-web/tests/combined-a-chart.test.mjs apps/webs/wavequant-web/tests/combined-a-wave.test.mjs apps/webs/wavequant-web/tests/wave-c-chart.test.mjs apps/webs/wavequant-web/tests/wave-c-projection.test.mjs apps/webs/wavequant-web/tests/ordinary-c-wave.test.mjs apps/webs/wavequant-web/tests/wave-endpoint-overlay.test.mjs",
+                    "status": "passed",
+                    "summary": "133项图表定向回归通过，覆盖各级线型、K内点序、桥接证据、ABC/组合A去重、原目标、半幅、标签、成交选择与视窗。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core python -m mypy src/wavequant/domain/market_structure/alternation_breakout.py; pnpm --filter @wavequant/core typecheck; pnpm --filter @wavequant/core build; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; NODE_OPTIONS=--max-old-space-size=768 pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "修改模块mypy、Core既定类型与sdist/wheel构建，以及Web lint（零错误，6条既有警告）、类型和生产构建通过；Python未运行格式化/lint。"
+                },
+                {
+                    "command": "ChartRepository.render_theory完整正式国芳行情与原策略审计重绘探针",
+                    "status": "passed",
+                    "summary": "与用户价格口径一致：2025-05-29高21.54344662717914、原始15.77。使用2018起完整日线和原审计调用实际生产渲染器，一二三级全历史路径无多入/多出，三级该高点唯一连接2026-04-27 11.032659556014854；原审计及交易规则未修改。"
+                },
+                {
+                    "command": "完整Core/Web套件、真实浏览器视觉及Playwright",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏仅运行定向回归；完整套件和人工视觉留待独立验证，本轮未启动浏览器或Playwright。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-250",
             "name": "wave-line-endpoint-degree",
             "title": "同级同类波段端点连线去重",
