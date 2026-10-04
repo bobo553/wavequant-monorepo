@@ -796,8 +796,8 @@ export class PriceChart {
             const color = ["#ebbc70", "#a29ce0", "#5ebeb0"][i % 3];
             const s = this.chart.addSeries(L.LineSeries, {
                 color,
-                lineStyle: item.kind === "trend" ? 0 : 2,
-                lineWidth: 1,
+                lineStyle: guide?.targetState === "已触及" || item.kind === "trend" ? 0 : 2,
+                lineWidth: level.stage === "c_equal" ? 2 : 1,
                 title: level.name,
                 lastValueVisible: !targetStages.has(level.stage),
                 priceLineVisible: !guide && (item.kind === "wave-projection" || targetStages.has(level.stage)),

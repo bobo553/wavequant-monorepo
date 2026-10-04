@@ -4,6 +4,60 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-247",
+            "name": "non-strong-a-c-wave-targets",
+            "title": "非强攻击长B回调与C浪三档目标",
+            "description": "保留已过一喷、未达二吐A后守住A起点的深长B结构，按同组A幅度显示C的0.618、等浪及1.618目标，失效及结束后不再延伸目标观察。",
+            "scope": "Web复用Core正式理论观察，补齐普通A的自动ABC测幅、目标生命周期及国芳集团回归；沿用交易门槛；Harness按仓库验证节奏如实保留未运行检查",
+            "dependencies": ["MONOREPO-162", "MONOREPO-232", "MONOREPO-239"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "A起点与正N确认节点分离；未达既有二吐的A不标为强攻击，缺失证据保持待判定",
+                "非强A后的B可深可长可破轧空低；按既有口径破A起点立即使原组失效，后续收复不复活",
+                "有效组同锚点计算B低加0.618、1、1.618倍A幅度；普通A三档同时保留，既有强A规则沿用",
+                "国芳指定两位价格手算三目标6.88188、8.28、10.54188；真实完整复权精度不提前舍入，2025-01-03最高价命中是、是、否",
+                "目标只按当时可知数据生效，触及后回落不撤销；同级C结束及结构失效后冻结，不借后续价格补达标",
+                "保留既有买入、止损、清仓和终点确认口径；定向回归、相关类型与构建检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core现有国芳659日线fixture生成正式V3理论；Web ordinary-c-wave定向回归",
+                    "status": "passed",
+                    "summary": "正式正N为2024-02-23，A起点02-08、A顶04-12、B低07-25、C顶2025-01-03，C于01-22可知。A未达既有二吐，B破轧空低但未按原口径破A起点；A/B为38/70交易日间隔，回撤89.1070%。完整复权精度三目标6.877680927981544、8.274794803857262、10.535047095195464；首次触及10-11、12-03，1.618本段未达。指定两位价格手算亦通过。Core源码和交易规则未修改。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec node --test tests/ordinary-c-wave.test.mjs tests/wave-c-projection.test.mjs tests/c-wave-extension.test.mjs tests/target-level-guides.test.mjs tests/wave-c-chart.test.mjs",
+                    "status": "passed",
+                    "summary": "51项通过，覆盖同锚点三目标、等值触及、触及后回落、历史截面、B锚点版本、C顶可知日期、归档冻结与图外目标不扩价格轴；9项普通A专项覆盖起点破位后收复和C确认时不复活。"
+                },
+                {
+                    "command": "独立代码复核；node --test --test-isolation=none tests/ordinary-c-wave.test.mjs",
+                    "status": "passed",
+                    "summary": "独立复核发现的C极值至确认日期之间破A起点后复活问题已修复。起点失效扫描至C确认日，同日失效优先；确认归档后的不同波段不污染旧组。9项专项通过，最终差异无剩余已证实问题。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "lint零错误（6条既有环境变量警告），类型检查与标准Next.js生产构建通过。首次quick初始化的依赖及跨盘junction构建问题已通过离线安装Web及依赖的本地包解决；锁文件未变更。"
+                },
+                {
+                    "command": "修改文件Prettier检查；codegraph sync；pnpm harness:check；git diff --check",
+                    "status": "passed",
+                    "summary": "8个源码/测试/fixture及功能记录、进度、Harness文件格式检查、CodeGraph同步、Harness和差异检查通过；保留既有MONOREPO-231状态及失败证据。"
+                },
+                {
+                    "command": "pnpm exec node --test --test-isolation=none scripts/harness/completed-verification.test.mjs; Node语法检查修改的Harness源码",
+                    "status": "passed",
+                    "summary": "5项通过。done必须有实际通过证据，允许附具体说明的not-run；失败、未决、未知、非法记录及只有未运行项仍拒绝。修复原校验与AGENTS开发验证节奏的冲突，247的未运行记录和原schema保持不变。Harness脚本不在现有workspace ESLint覆盖内，未运行不适用lint。"
+                },
+                {
+                    "command": "完整Web单测、真实浏览器及Playwright",
+                    "status": "not-run",
+                    "summary": "按用户本轮开发验证节奏未运行，完整Web单测留待独立空闲验证；实际图表交互与视觉待验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-246",
             "name": "ten-full-a-wave-time-depth-entry-gate",
             "title": "十满后按 A 段回调价幅与时间禁买",

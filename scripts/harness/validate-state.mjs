@@ -2,6 +2,8 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { hasCompletedVerificationEvidence } from "./completed-verification.mjs";
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = join(scriptDirectory, "..", "..");
 const failures = [];
@@ -39,8 +41,10 @@ for (const feature of features) {
     }
     if (feature.status === "done") {
         const verification = feature.verification ?? [];
-        if (verification.length === 0 || verification.some((item) => item.status !== "passed")) {
-            failures.push(`${feature.id} 标记为 done 前必须记录全部通过的验证证据`);
+        if (!hasCompletedVerificationEvidence(verification)) {
+            failures.push(
+                `${feature.id} 标记为 done 前必须至少有一条 passed 验证；其余仅允许附原因的 not-run 待验证项，失败或未决状态不能完成`,
+            );
         }
     }
 }
