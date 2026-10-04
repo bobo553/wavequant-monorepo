@@ -150,6 +150,51 @@ test("the equal-target hit adds a dated 1.618 guide for automatic ABC and select
     assert.equal(rendered.guides.length, 0);
 });
 
+test("ordinary Guofang ABC draws all three targets and adds the C high only after its structural confirmation", () => {
+    const ordinary = JSON.parse(readFileSync(new URL("./fixtures/guofang_2024_ordinary_c_wave.json", import.meta.url)));
+    const data = ordinary.bars.map(([time, open, high, low, close, volume]) => ({
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume,
+    }));
+    const { chart, rendered } = chartHarness(data);
+    const structure = { ...ordinary.theory, shapes: [], lecture_drawing: { strokes: [] } };
+    const options = [];
+    const addSeries = chart.chart.addSeries;
+    chart.chart.addSeries = (type, value) => {
+        options.push(value);
+        return addSeries(type, value);
+    };
+    const originalRange = { ...rendered.range };
+    chart.setTheory({ ...structure, asof: "2024-08-14" });
+    assert.equal(rendered.guides.length, 3);
+    assert.ok(rendered.guides.every(({ targetState }) => targetState === "待达成"));
+    assert.equal(
+        rendered.markers.some(({ text }) => text === "C 顶"),
+        false,
+    );
+    const extension = options.find(({ title }) => title === "C 浪目标 1.618×A");
+    assert.equal(extension.autoscaleInfoProvider(), null);
+    assert.equal(options.find(({ title }) => title.includes("等浪")).lineWidth, 2);
+    chart.setTheory({ ...structure, asof: "2025-01-21" });
+    assert.equal(
+        rendered.markers.some(({ text }) => text === "C 顶"),
+        false,
+    );
+    chart.setTheory({ ...structure, asof: "2025-01-22" });
+    assert.ok(
+        rendered.markers.some(({ time, text, price }) => time === "2025-01-03" && text === "C 顶" && price > 9.31),
+    );
+    assert.deepEqual(
+        rendered.guides.map(({ targetState }) => targetState),
+        ["已触及", "已触及", "本段结束未达成"],
+    );
+    assert.deepEqual(rendered.range, originalRange);
+});
+
 test("panning back to an earlier ABC selects that group's C targets", () => {
     const next = JSON.parse(JSON.stringify(initial).replaceAll("2020-", "2021-"));
     const nextBars = next.bars.map(([time, open, high, low, close, volume]) => ({

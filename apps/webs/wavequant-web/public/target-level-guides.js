@@ -1,4 +1,5 @@
 const TARGET_STAGES = new Set(["c_0618", "c_equal", "c_1618", "one_p", "two_t", "five_top", "ten_full"]);
+const C_STAGES = new Set(["c_0618", "c_equal", "c_1618"]);
 
 /** 目标从结构锚点画到首次突破；未突破时只在锚点上方标示短线。 */
 export function targetLevelGuide(item, level, bars, asof) {
@@ -8,14 +9,30 @@ export function targetLevelGuide(item, level, bars, asof) {
     const end = level.valid_until && level.valid_until < requestedEnd ? level.valid_until : requestedEnd;
     if (!end || knownAt > end || !bars.some((bar) => bar.time === level.anchor_at && bar.time <= end)) return null;
     // 确认当日的上影可能先于目标成立，只有收盘可以证明当日已经突破。
-    const breakout = bars.find(
-        (bar) =>
+    const cTarget = C_STAGES.has(level.stage);
+    const breakout = bars.find((bar) => {
+        const price = bar.time === knownAt ? bar.close : bar.high;
+        const rounding = Number.EPSILON * Math.max(1, Math.abs(price), Math.abs(level.price)) * 4;
+        return (
             bar.time >= knownAt &&
             bar.time <= end &&
-            Number.isFinite(bar.time === knownAt ? bar.close : bar.high) &&
-            (bar.time === knownAt ? bar.close : bar.high) > level.price,
-    );
-    return { start: level.anchor_at, end: breakout?.time || null, price: level.price, name: level.name };
+            Number.isFinite(price) &&
+            (cTarget ? price >= level.price - rounding : price > level.price)
+        );
+    });
+    const ended = level.c_ended_at && level.c_end_known_at && level.c_end_known_at <= requestedEnd;
+    return {
+        start: level.anchor_at,
+        end: breakout?.time || null,
+        price: level.price,
+        name: level.name,
+        ...(cTarget
+            ? {
+                  targetState: breakout ? "已触及" : ended ? "本段结束未达成" : "待达成",
+                  firstTouchedAt: breakout?.time || null,
+              }
+            : {}),
+    };
 }
 
 /** 目标统一在左端直接标注；短线使用固定像素宽度，长线交给价格序列。 */
@@ -79,7 +96,7 @@ export class TargetGuideOverlay {
                     (guide) =>
                         guide.x <= mediaSize.width &&
                         (guide.x >= 0 || (guide.end > guide.start && guide.endX !== null && guide.endX >= 0)) &&
-                        (!guide.offscreen || ["five_top", "ten_full"].includes(guide.stage)),
+                        (!guide.offscreen || ["c_1618", "five_top", "ten_full"].includes(guide.stage)),
                 )
                 .sort((left, right) => left.displayY - right.displayY);
             const labelYs = visible.map((guide) => guide.displayY - 3);
@@ -105,16 +122,19 @@ export class TargetGuideOverlay {
                     context.stroke();
                 }
                 context.setLineDash([]);
-                const shortName = guide.name.startsWith("C 浪目标")
+                let shortName = guide.name.startsWith("C 浪目标")
                     ? guide.name.replace("C 浪目标", "C")
                     : guide.name.split("（")[0] + (guide.name.includes("预估") ? "（预估）" : "");
+                if (guide.stage === "c_equal" && !shortName.includes("等浪")) shortName += "（等浪）";
                 const direction = guide.offscreen ? (guide.y < 4 ? "↑ " : "↓ ") : "";
                 const value = `${direction}${shortName} ${guide.price.toFixed(4)}`;
-                const text = guide.offscreen
-                    ? `${value} · 图外`
-                    : guide.statusKnown === false
-                      ? value
-                      : `${value} · ${guide.end ? "已突破" : "未突破"}`;
+                const text = guide.targetState
+                    ? `${value} · ${guide.targetState}${guide.offscreen ? " · 图外" : ""}`
+                    : guide.offscreen
+                      ? `${value} · 图外`
+                      : guide.statusKnown === false
+                        ? value
+                        : `${value} · ${guide.end ? "已突破" : "未突破"}`;
                 // 窄屏优先保留名称、价格和预估标识，空间不足时省略突破状态。
                 const label = context.measureText(text).width <= mediaSize.width - 8 ? text : value;
                 const width = Math.min(context.measureText(label).width, mediaSize.width - 8);

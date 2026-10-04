@@ -13,17 +13,20 @@ const bars = [
     { time: "2026-05-21", high: 6.5, close: 6.2 },
 ];
 
-test("C target stops at its first strict break after confirmation, starting above B", () => {
+test("C target stops at its first touch after confirmation, starting above B", () => {
     assert.deepEqual(targetLevelGuide(item, level, bars, "2026-05-21"), {
         start: "2026-05-15",
-        end: "2026-05-20",
+        end: "2026-05-19",
         price: 6,
         name: level.name,
+        targetState: "已触及",
+        firstTouchedAt: "2026-05-19",
     });
 });
 
-test("entry shadow, equal high and future bars cannot extend a target during replay", () => {
-    for (const asof of ["2026-05-18", "2026-05-19"]) assert.equal(targetLevelGuide(item, level, bars, asof).end, null);
+test("entry shadows and future bars cannot extend a target during replay", () => {
+    assert.equal(targetLevelGuide(item, level, bars, "2026-05-18").end, null);
+    assert.equal(targetLevelGuide(item, level, bars, "2026-05-19").end, "2026-05-19");
     assert.equal(targetLevelGuide(item, level, bars, "2026-05-15"), null);
     assert.equal(targetLevelGuide(item, { ...level, anchor_at: "2026-05-14" }, bars), null);
     assert.equal(targetLevelGuide(item, { ...level, price: NaN }, bars), null);
@@ -33,6 +36,14 @@ test("entry shadow, equal high and future bars cannot extend a target during rep
 test("a close beyond a target at confirmation can end the line on that same session", () => {
     const history = bars.map((bar) => (bar.time === item.time ? { ...bar, close: 6.1 } : bar));
     assert.equal(targetLevelGuide(item, level, history, item.time).end, item.time);
+});
+
+test("C touches use equality while existing N targets still require a strict break", () => {
+    const oneP = { ...level, stage: "one_p", name: "一饱" };
+    assert.equal(targetLevelGuide(item, oneP, bars, "2026-05-19").end, null);
+    assert.equal(targetLevelGuide(item, oneP, bars, "2026-05-20").end, "2026-05-20");
+    const closed = bars.map((bar) => (bar.time === item.time ? { ...bar, close: level.price } : bar));
+    assert.equal(targetLevelGuide(item, level, closed, item.time).targetState, "已触及");
 });
 
 test("unbroken targets remain short dashed segments on a one-candle chart and clear on deselection", () => {
@@ -262,4 +273,23 @@ test("distant offscreen targets keep separate edge labels without drawing false 
     const onscreen = renderGuides([guides[0]], { y: () => 80 });
     assert.match(onscreen.labels[0].text, /10\.4500.*未突破/);
     assert.ok(onscreen.segments.some(({ dash }) => dash.length));
+});
+
+test("a C extension outside the price axis still shows its frozen state without a false line", () => {
+    const { labels, segments } = renderGuides(
+        [
+            {
+                start: item.time,
+                end: null,
+                stage: "c_1618",
+                name: "C 浪目标 1.618×A",
+                price: 10.54188,
+                targetState: "本段结束未达成",
+            },
+        ],
+        { width: 800, y: () => -100 },
+    );
+    assert.equal(labels.length, 1);
+    assert.match(labels[0].text, /C 1\.618×A.*10\.5419.*本段结束未达成.*图外/);
+    assert.equal(segments.length, 0);
 });
