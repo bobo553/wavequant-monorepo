@@ -1,5 +1,7 @@
 # Progress
 
+- MONOREPO-256 常驻验收：用户显式允许保留4项main既有策略测试失败后本地合并并重启。API8765随main源码变更自动重载到v89，与13003页面代理及main源码引擎6cd79d78...一致，旧引擎摘要失效。正式用户参数2018-01-01至2026-09-30、量能可选过滤关/净RR过滤关/浅回撤开、本金10万/权重1的2123日线完整账户任务7346d5b8-9101-4342-8a1f-fa124ca2f711已completed、52笔filled订单；任务查询及同参数缓存重试HTTP200，04-03返回组合LONG与原始5.24元500股filled BUY、完整decision_evidence和entry_conditions。缺失分钟按原有日线收盘模拟回退，不改服务源码和真实权限；未运行浏览器，未推送。
+
 - MONOREPO-231 合并验收：按用户本轮明确要求将修复合并为 main `40522c1`，保留两项既有波段信号失败证据。常驻 API 回测版本的引擎 `dbaa9a01700f` 与 main 源码一致，旧引擎历史完成摘要自动失效（初次检查 recent=0）；7 项定向任务/恢复测试、类型及构建结果保留。未推送远端。
 
 - MONOREPO-231 修正：回测完成摘要保存最终已清仓 `holding_max_drawdown`，同时独立保存本轮 `holding_current_max_drawdown` 与数量归零后的 flat 状态；版本更新为 `holding_entry_cost_mae_cycle_v2`。7 项任务/历史恢复测试、修改模块 mypy、既定 11 模块严格类型检查及 sdist/wheel 构建通过。main 既有信号回归失败阻断合并，常驻服务尚未包含本功能。

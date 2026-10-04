@@ -1,20 +1,20 @@
 # Session Handoff
 
-## 2026-10-04 · MONOREPO-256 组合A回调买入已获合并授权
+## 2026-10-04 · MONOREPO-256 已合并并常驻生效
 
-会话 worktree `C:/Users/zb/.codex/worktrees/combined-a-entry/wavequant-monorepo`，分支 `feat-组合A回调买入`，基线 main `c99b825`。V3 v89 的新通道已实现，回调时间按 C 顶到放量突破日计算，包含低点之后的长期窄幅横盘。国芳 2025-04-03 的 58 日虽然不超过内部 B 的 70 日，但超过最末同源子 B 的 9 日；最低收盘 6.215769 守 2/3 位 5.918297，放量中大阳线收盘 7.158380 突破此前已知高点 7.049092。新规则 24 项、十满 17 项、Web 65+3 项、定向类型检查及 Core/Web 构建通过。完整账户和外部分钟回测未运行，独立单笔成交不替代账户回放。
+会话 worktree `C:/Users/zb/.codex/worktrees/combined-a-entry/wavequant-monorepo`，分支 `feat-组合A回调买入`，基线 main `c99b825`。实现 `ffd49b9` 及扫描原因修复 `46bb7bc` 已经由 `9d6893b` 本地合并；拓扑换行校验 `ef0290b` 经 `eb43b64` 本地合并。用户授权的合并及服务生效已完成，不推送。后续同会话继续复用此 worktree/分支，修改前同步最新本地 main。
 
-主行情缓存 2123 根只读截到 2018-01-02 至 2025-04-03 的 1759 根，明确导入新 worktree 源码，不借旧 signals/audit，78.744 秒生成当日唯一组合通道 LONG；58/70/9、量价、守线与此前可知高点证据全部通过。未运行账户成交，普通 N 原拒因不变。
+V3 v89 回调时间按 C 顶到放量突破日计算，包含低点之后的长期窄幅横盘。国芳 2025-04-03 的 58 日虽然不超过内部 B 的 70 日，但超过最末同源子 B 的 9 日，满足严格择一条件；最低收盘 6.215769 守 2/3 位 5.918297，放量中大阳线收盘 7.158380 突破此前已知高点 7.049092。普通 N 原拒因 `wave_second_peak_pullback_sequence` 保留，新独立通道产生当日 LONG。
 
 较广回归仍有 4 项主分支既有失败，已在 clean main 明确导入 main/src 复现。`test_wave_entry_epoch.py` 两项 January6 的旧断言要求 local epoch recovered，但实际 N 和入场同属 epoch138；实际买入日期、价格和风控断言通过。`test_nested_alternation_breakout.py` 两项华瓷 January17 缺预期一级上下文而无信号。启停组合通道证据不变，未修改旧断言。此前按 AGENTS“检查未通过……无法通过……不合并”保留 feature in-progress；2026-10-04 用户已明确回答“允许合并并重启”，允许保留这四项既有失败覆盖本次门禁，不推送。保留failed事实，Harness不能将带failed证据功能标done；旧 MONOREPO-231 所有失败证据保留，暂设backlog以保持单一活动功能。
 
-追加定位与验证：实际页面是13003，Next/API8765同属main `.codex-runtime/wavequant-dev.pid=24196` 进程树，HTTP源码修订c99b825/profile v88、新原因helper404。按正式界面vol=false/netRR=false等参数完整2018起1759根账户前缀重放81.87秒确认04-03原始5.24元500股filled BUY、费用后RR1.62725689及完整台账原因。缺分钟使用现有日线收盘回退，不改权限、不伪造分钟。现有restart-wavequant.ps1等待硬编码3003与实际13003不符；合并后验证所有者和零活跃任务，仅停止该登记的dev进程树，再用main cwd、WAVEQUANT_WEB_PORT=13003/WAVEQUANT_API_PORT=8765隐藏启动pnpm --filter wavequant-web dev，登记新pid并HTTP确认新版本。Web扫描入口已补独立分类及AkShare/TDX理由消费，新增6项回归、18项Node、3项拓扑及最终lint/typecheck/build/格式/语法通过，独立只读复核无问题；Backend扫描JSON保留完整proof。
+实际用户页面是 `http://127.0.0.1:13003/research?page=workspace`，API8765；此前仍运行 main c99b825/v88，新原因helper404，旧正式回测04-03无LONG/BUY。合并后 API 随 main 源码自动重载，由10756变为29192，仍属 `.codex-runtime/wavequant-dev.pid=24196` 已登记服务树；13003/API8765策略 v89、原始引擎 `6cd79d78ecc4c96a2ce4bc2a7f94475f2b1ecabd2dda7f3944d4d153022faaaf` 与 main 源码一致，新原因helper200，旧引擎完成摘要已失效。受控进程树终止命令曾被自动审批拒绝（仅返回 blocked by policy），未绕过；之后确认现有自动重载已实现新版本生效，未强行重复终止。现有 restart-wavequant.ps1 等待硬编码3003与实际13003不符，后续不要直接套用其默认端口。
 
-本段记录时尚未合并重启，用户授权已到；完成扫描显示检查后同步最新本地main、复核差异并按no-ff本地合并，沿实际13003入口重启并HTTP确认，不重复请求授权，不推送。不要自动扩大旧信号修复范围。策略拓扑指纹 `5655992d616d91db95743fd746aff3cf0c99ababfe8a5354a8f13503f92261ab`，任何Core源码修改后须同步拓扑门禁；最终合并与服务证据将追加到本节。
+正式 HTTP 用户参数完整账户任务 `7346d5b8-9101-4342-8a1f-fa124ca2f711` 已 completed：2018-01-01至2026-09-30，AkShare2123日线，volume_filter=false、net_reward_risk_filter=false、浅回撤开、本金100000、最大权重1，52笔filled订单。04-03唯一组合BUY/filled原始5.24元500股、费用后RR1.62725689；LONG、完整decision_evidence和entry_conditions保留。首次同步长请求超时但后台正常完成，任务接口与同参数缓存重试均HTTP200。此前只读1759日线信号前缀78.744秒、正式账户前缀81.87秒也通过；现已补齐真实接口全窗账户回放。04-03缺分钟仍按既有日线收盘回退和非一字涨停模拟，不宣称实盘排队成交。
 
-后续进展：实现`ffd49b9`及扫描修复`46bb7bc`已以`9d6893b`本地合并main。受控进程树终止命令被自动审批拦截（仅返回blocked by policy）；未强行绕过。实际API随代码变更自动重载，由10756变为29192，仍属已登记24196服务树；13003 HTTP确认v89、新原因helper200及main修订9d6893b，原始引擎6cd79d78...与main venv源码一致，旧摘要recent=0。直接保留当前服务处理真实参数回测，未重复终止。job`7346d5b8-9101-4342-8a1f-fa124ca2f711`按2018-01-01..2026-09-30、vol=false/netRR=false、本金10万/权重1运行中。
+Web信号、成交详情和复制共用完整组合proof，扫描列表已补独立分类及AkShare/TDX理由消费，Backend扫描JSON保留18个必需proof字段。实际HTTP成交经过共享helper、reasonText、numberedTradeReasons及buildAnnotations生成“组合A回调放量突破”、58/70/9、2/3和已知高点量价证据；当日B标记stock-order-39存在，独立只读复核通过。通用label返回英文不影响原因展示链；原始订单/信号表直接显示原因代码为既有行为。普通OHLCV复制仍只包含行情字段，查看完整原因需点击B/BUY或LONG标记。
 
-合并后main三项拓扑初测1失败是Git检出CRLF/LF摘要差异，新补规范化换行的source guard及全CRLF不变/非换行变化必变断言，54来源main/worktree归一后摘要一致，最终3项与Weblint/type/格式/独立复核通过；仅测试变化，Core引擎未改。提交后main再运行三项确认，并待HTTP完整回测核对04-03成交原因后追加终验。
+新规则24项、十满17项、Web原65项及追加18项Node、拓扑3项、相关类型/格式和Core/Web构建通过。合并后main三项拓扑曾因CRLF/LF摘要差异有1项失败；仅校验归一换行并增加CRLF不变/其他字符变化必变断言，54来源两检出摘要一致，最终worktree及main同3项通过。策略拓扑指纹 `5655992d616d91db95743fd746aff3cf0c99ababfe8a5354a8f13503f92261ab`，Core源码变更后须同步门禁。完整Core/Web套件、真实浏览器/Playwright和外部分钟执行未运行；四项已确认基线失败待独立处理，不自动扩大本次修复范围。
 
 ## 2026-10-03 · MONOREPO-233 清空依据待澄清
 
