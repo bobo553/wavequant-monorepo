@@ -21,6 +21,16 @@
             ],
             "verification": [
                 {
+                    "command": "pnpm harness:check; pnpm exec prettier --check feature_list.json packages/wavequant-core/progress.md apps/webs/wavequant-web/progress.md apps/servers/wavequant-api/progress.md session-handoff.md; git diff --check",
+                    "status": "passed",
+                    "summary": "最终验收文档更新后Harness通过（255功能、18 Node及2 Python workspace、32规则），5份文档格式和差异检查通过；保留4项main既有失败及完整套件/浏览器/外部分钟待验证事实。仅追加实际HTTP全窗账户和服务生效记录，不重复已通过的代码构建和定向测试。"
+                },
+                {
+                    "command": "GET 13003 /api/akshare-backtest and /api/backtest-job?job=7346d5b8-9101-4342-8a1f-fa124ca2f711; live v89 version/source/helper checks; compose actual BUY evidence with shared Web helper",
+                    "status": "passed",
+                    "summary": "用户授权后实现ffd49b9及扫描修复46bb7bc以9d6893b合并本地main，拓扑换行校验ef0290b以eb43b64合并；main实际3项拓扑通过。API随main代码变更自动重载到v89，13003页面代理和8765 API原始引擎6cd79d78...与main源码一致，新helper HTTP200。正式用户参数2018-01-01至2026-09-30、volume_filter=false、netRR=false、shallow=true、本金10万/权重1的2123日线完整账户回测completed，52笔filled订单；首次长请求超时后从任务接口取到结果，同参数缓存重试HTTP200。04-03唯一组合BUY/filled原始5.24元500股、费用后RR1.62725689，LONG及完整proof/entry_conditions均保留，实际共享helper生成58/70/9择一、守线、量价和突破的完整中文依据。当前服务已生效，未运行浏览器或推送。"
+                },
+                {
                     "command": "Canonical topology source digest across main/worktree, 3 topology Vitest tests, Web lint/typecheck/Prettier/diff",
                     "status": "passed",
                     "summary": "合并main后发现5个Git检出CRLF文件导致raw摘要与worktree LF不同，初测1项source guard失败。仅在拓扑校验归一CRLF→LF，54个真实来源两检出归一均5655992d...，摘要常量不变；加入全CRLF转换摘要相同及非换行字符变化必须异摘要断言，最终3项通过，lint零错误6条旧警告、typecheck/格式/diff及独立复核通过。未改Core引擎指纹，main原始引擎6cd79d78...已与运行API一致，生产代码无新增变化故不重复build/其他已通过套件。"
@@ -76,9 +86,9 @@
                     "summary": "Web lint零错误6条既有警告、类型和最终生产构建通过（仅命令级512MB堆/4MB新生代）；相关格式、语法和差异检查通过。独立只读复核未发现新增阻塞；剔除next-env.d.ts生成变更，未推送。"
                 },
                 {
-                    "command": "Complete Core/Web suites, browser/Playwright, external-minute and full-window account backtest through 2026-09-30",
+                    "command": "Complete Core/Web suites, browser/Playwright and external-minute execution verification",
                     "status": "not-run",
-                    "summary": "依本轮验证节奏未运行完整套件及浏览器；外部分钟和截至2026-09-30全窗账户回测留待独立验证。截至04-03的2018起完整账户前缀已实际重放通过，不宣称拥有缺失的真实分钟或之后全窗账户收益。"
+                    "summary": "依本轮验证节奏未运行完整Core/Web套件及浏览器；缺失的真实分钟与外部成交验证留待独立验证。正式HTTP截至2026-09-30的完整账户回测已通过，但04-03分钟缺失仍按现有日线收盘回退及非一字涨停模拟撮合，不宣称实盘排队成交。"
                 }
             ]
         },
