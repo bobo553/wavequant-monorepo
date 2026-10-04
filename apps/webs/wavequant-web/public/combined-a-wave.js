@@ -1,3 +1,5 @@
+import { selectWaveConnections } from "./wave-connections.js";
+
 function isDate(value) {
     return (
         typeof value === "string" &&
@@ -332,6 +334,7 @@ export function combinedAObservations(bars, theory, projections) {
             aHigh: projection.aHigh,
             cTime: projection.cTime,
             cHigh: projection.cHigh,
+            trendLevel: projection.trendLevel || 2,
             overlapTime: overlap.time,
             overlapPrice: overlap.low,
             preconditions,
@@ -356,7 +359,22 @@ export function combinedAObservations(bars, theory, projections) {
     );
 }
 
+export function combinedAWaveConnections(observations) {
+    return selectWaveConnections(
+        observations.map((observation) => ({
+            id: observation.id,
+            group: `combined-a:${observation.trendLevel || 2}`,
+            observation,
+            points: [
+                { time: observation.originTime, value: observation.origin },
+                { time: observation.cTime, value: observation.cHigh },
+            ],
+        })),
+    );
+}
+
 export function combinedAAnnotations(observations) {
+    const connected = new Set(combinedAWaveConnections(observations).map((line) => line.observation));
     return observations.flatMap((observation) => {
         const context = observation.preconditions
             .map(
@@ -419,29 +437,33 @@ export function combinedAAnnotations(observations) {
         };
         return [
             base,
-            {
-                ...base,
-                id: observation.id + ":origin",
-                time: observation.originTime,
-                sourceTime: observation.originTime,
-                price: observation.origin,
-                title: "组合 A 起",
-                markerPosition: "atPriceBottom",
-                markerShape: "arrowUp",
-                color: "#d986aa",
-                priority: 210,
-            },
-            {
-                ...base,
-                id: observation.id + ":high",
-                time: observation.cTime,
-                price: observation.cHigh,
-                title: "组合 A 顶",
-                markerPosition: "atPriceTop",
-                markerShape: "arrowDown",
-                color: "#d986aa",
-                priority: 210,
-            },
+            ...(connected.has(observation)
+                ? [
+                      {
+                          ...base,
+                          id: observation.id + ":origin",
+                          time: observation.originTime,
+                          sourceTime: observation.originTime,
+                          price: observation.origin,
+                          title: "组合 A 起",
+                          markerPosition: "atPriceBottom",
+                          markerShape: "arrowUp",
+                          color: "#d986aa",
+                          priority: 210,
+                      },
+                      {
+                          ...base,
+                          id: observation.id + ":high",
+                          time: observation.cTime,
+                          price: observation.cHigh,
+                          title: "组合 A 顶",
+                          markerPosition: "atPriceTop",
+                          markerShape: "arrowDown",
+                          color: "#d986aa",
+                          priority: 210,
+                      },
+                  ]
+                : []),
             ...observation.strengthObservations.map((strength) => ({
                 ...base,
                 id: observation.id + ":strength:" + strength.time,
