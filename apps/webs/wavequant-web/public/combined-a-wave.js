@@ -9,6 +9,34 @@ function isDate(value) {
     );
 }
 
+export function latestCombinedAObservation(observations, asof) {
+    let latest = null;
+    let latestKey = "";
+    for (const observation of observations || []) {
+        if (
+            !isDate(observation?.originTime) ||
+            !isDate(observation.cTime) ||
+            !isDate(observation.available_at) ||
+            observation.originTime >= observation.cTime ||
+            observation.cTime > observation.available_at ||
+            (asof && observation.available_at > asof) ||
+            !Number.isFinite(observation.origin) ||
+            !Number.isFinite(observation.cHigh)
+        ) {
+            continue;
+        }
+        // 先按截面排除未来确认，再选最新 C；同一 C 保留最近的组合起点。
+        const key = [observation.cTime, observation.originTime, observation.available_at, observation.id || ""].join(
+            "|",
+        );
+        if (!latest || key > latestKey) {
+            latest = observation;
+            latestKey = key;
+        }
+    }
+    return latest;
+}
+
 function samePoint(left, right) {
     return (
         left?.time === right?.time &&

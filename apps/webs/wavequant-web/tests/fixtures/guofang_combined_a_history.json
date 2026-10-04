@@ -1,0 +1,161 @@
+{
+    "source": "AkShare lecture_v3 formal 2018-01-01 to 2026-09-30; actual old/current half guides, stripped context metadata",
+    "symbol": "sh.601086",
+    "asof": "2026-09-30",
+    "bars": [
+        {
+            "time": "2021-02-08",
+            "open": 3.8539875072116847,
+            "high": 3.8861935309488302,
+            "low": 3.811046142228825,
+            "close": 3.8539875072116847,
+            "volume": 1030400,
+            "factor": 1.0735341245715,
+            "raw_close": 3.59
+        },
+        {
+            "time": "2022-04-22",
+            "open": 6.3870068915137175,
+            "high": 7.261939342406007,
+            "low": 6.324511716449981,
+            "close": 7.261939342406007,
+            "volume": 76131957,
+            "factor": 1.2499035012747,
+            "raw_close": 5.81
+        },
+        {
+            "time": "2022-04-27",
+            "open": 5.299590845404728,
+            "high": 5.449579265557692,
+            "low": 5.299590845404728,
+            "close": 5.299590845404728,
+            "volume": 42709412,
+            "factor": 1.2499035012747,
+            "raw_close": 4.24
+        },
+        {
+            "time": "2022-11-10",
+            "open": 4.706602772846868,
+            "high": 4.8091990185765,
+            "low": 4.6809537114144595,
+            "close": 4.796374487860296,
+            "volume": 7106509,
+            "factor": 1.2824530716204,
+            "raw_close": 3.7400000000000007
+        },
+        {
+            "time": "2024-02-08",
+            "open": 4.323529290527884,
+            "high": 4.754576017378096,
+            "low": 4.219033114321772,
+            "close": 4.728451973326568,
+            "volume": 30114838,
+            "factor": 1.3062022025764,
+            "raw_close": 3.6200000000000006
+        },
+        {
+            "time": "2025-01-03",
+            "open": 8.46983951100258,
+            "high": 9.316823462102839,
+            "low": 7.732143811657194,
+            "close": 7.827771031942707,
+            "volume": 77049749,
+            "factor": 1.3661031469359,
+            "raw_close": 5.73
+        },
+        {
+            "time": "2025-01-10",
+            "open": 6.734888514393987,
+            "high": 6.748549545863346,
+            "low": 6.2294303500277035,
+            "close": 6.27041344443578,
+            "volume": 28250108,
+            "factor": 1.3661031469359,
+            "raw_close": 4.59
+        },
+        {
+            "time": "2025-01-14",
+            "open": 6.243091381497063,
+            "high": 6.55729510529232,
+            "low": 6.243091381497063,
+            "close": 6.543634073822961,
+            "volume": 24635700,
+            "factor": 1.3661031469359,
+            "raw_close": 4.79
+        },
+        {
+            "time": "2025-01-22",
+            "open": 6.598278199700397,
+            "high": 6.598278199700397,
+            "low": 6.338718601782575,
+            "close": 6.366040664721294,
+            "volume": 16817226,
+            "factor": 1.3661031469359,
+            "raw_close": 4.66
+        },
+        {
+            "time": "2026-09-30",
+            "open": 19.154653710790125,
+            "high": 19.33575225496487,
+            "low": 18.388467562358517,
+            "close": 18.569566106533262,
+            "volume": 73610122,
+            "factor": 1.3930657244211,
+            "raw_close": 13.33
+        }
+    ],
+    "observations": [
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1252:2021-02-08:2022-04-22",
+            "title": "组合大 A 50%",
+            "price": 5.5364927423174155,
+            "start": "2022-11-10",
+            "end": "2026-09-30",
+            "available_at": "2022-11-10",
+            "originTime": "2021-02-08",
+            "origin": 3.811046142228825,
+            "aTime": "2021-04-01",
+            "aHigh": 5.3676706228575,
+            "cTime": "2022-04-22",
+            "cHigh": 7.261939342406007,
+            "trendLevel": 2,
+            "overlapTime": "2022-04-27",
+            "overlapPrice": 5.299590845404728,
+            "preconditions": [],
+            "invalidatedAt": null,
+            "halfHeld": false,
+            "firstCloseBelowHalf": {
+                "time": "2022-04-27",
+                "close": 5.299590845404728
+            },
+            "strengthObservations": [],
+            "scope": "combined_abc_chart_observation"
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1252:2024-02-08:2025-01-03",
+            "title": "组合大 A 50%",
+            "price": 6.767928288212305,
+            "start": "2025-01-22",
+            "end": "2026-09-30",
+            "available_at": "2025-01-22",
+            "originTime": "2024-02-08",
+            "origin": 4.219033114321772,
+            "aTime": "2024-04-12",
+            "aHigh": 7.876399281535692,
+            "cTime": "2025-01-03",
+            "cHigh": 9.316823462102839,
+            "trendLevel": 2,
+            "overlapTime": "2025-01-06",
+            "overlapPrice": 7.049092238189244,
+            "preconditions": [],
+            "invalidatedAt": null,
+            "halfHeld": false,
+            "firstCloseBelowHalf": {
+                "time": "2025-01-10",
+                "close": 6.27041344443578
+            },
+            "strengthObservations": [],
+            "scope": "combined_abc_chart_observation"
+        }
+    ]
+}
