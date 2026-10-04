@@ -37,6 +37,54 @@ export function latestCombinedAObservation(observations, asof) {
     return latest;
 }
 
+export function combinedARetracementGuides(observations, bars, asof) {
+    const cutoff = asof || bars.at(-1)?.time;
+    if (!isDate(cutoff)) return [];
+    const knownBars = bars.filter((bar) => isDate(bar.time) && bar.time <= cutoff);
+    const lastTime = knownBars.at(-1)?.time;
+    if (!lastTime) return [];
+    return observations.flatMap((observation) => {
+        if (
+            !isDate(observation.available_at) ||
+            observation.available_at > lastTime ||
+            !isDate(observation.cTime) ||
+            observation.cTime > observation.available_at ||
+            !Number.isFinite(observation.origin) ||
+            !Number.isFinite(observation.cHigh) ||
+            observation.origin >= observation.cHigh ||
+            !knownBars.some((bar) => bar.time === observation.cTime)
+        ) {
+            return [];
+        }
+        const end = [lastTime, observation.end, observation.invalidatedAt].filter(isDate).sort()[0];
+        if (end <= observation.cTime) return [];
+        const pullback = knownBars.filter((bar) => bar.time > observation.cTime && bar.time <= end);
+        // 回撤比例从 C 顶向下量；确认后回标到 C 顶，允许终点早于组合确认日。
+        return [
+            { stage: "combined_a_half", ratio: "50%", price: (observation.origin + observation.cHigh) / 2 },
+            {
+                stage: "combined_a_two_thirds",
+                ratio: "2/3",
+                price: observation.cHigh - ((observation.cHigh - observation.origin) * 2) / 3,
+            },
+        ].map(({ stage, ratio, price }) => {
+            const firstCloseBelow = pullback.find((bar) => Number.isFinite(bar.close) && bar.close < price);
+            return {
+                id: observation.id + ":" + stage,
+                stage,
+                name: "组合 A " + ratio,
+                start: observation.cTime,
+                end: firstCloseBelow?.time || end,
+                price,
+                color: "#d986aa",
+                labelPosition: "line",
+                targetState: firstCloseBelow ? (ratio === "50%" ? "半幅失守" : "2/3失守") : "未跌破",
+                firstCloseBelow: firstCloseBelow ? { time: firstCloseBelow.time, close: firstCloseBelow.close } : null,
+            };
+        });
+    });
+}
+
 function samePoint(left, right) {
     return (
         left?.time === right?.time &&

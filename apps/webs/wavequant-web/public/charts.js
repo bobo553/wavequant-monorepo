@@ -22,6 +22,7 @@ import {
 import {
     combinedAAnnotations,
     combinedAObservations,
+    combinedARetracementGuides,
     combinedAWaveConnections,
     latestCombinedAObservation,
 } from "./combined-a-wave.js";
@@ -223,6 +224,8 @@ export class PriceChart {
         this.candles.attachPrimitive(this.waveEndpointOverlay);
         this.targetGuideOverlay = new TargetGuideOverlay();
         this.candles.attachPrimitive(this.targetGuideOverlay);
+        this.combinedAGuideOverlay = new TargetGuideOverlay();
+        this.candles.attachPrimitive(this.combinedAGuideOverlay);
         this.focusFlashOverlay = new FocusFlashOverlay(container);
         this.candles.attachPrimitive(this.focusFlashOverlay);
         this.onTertiaryPointerUp = (event) => {
@@ -947,11 +950,16 @@ export class PriceChart {
         this.combinedARetracementLines = [];
         this.combinedARetracementKey = "";
         this.container.dataset.combinedARetracementGuides = "0";
+        this.combinedAGuideOverlay?.setGuides([]);
     }
     drawCombinedARetracementGuides(from, to) {
         const visible =
             this.options.tertiaryAbc && this.options.levels
-                ? this.displayedCombinedAObservations().filter(
+                ? combinedARetracementGuides(
+                      this.displayedCombinedAObservations(),
+                      this.data?.bars || [],
+                      this.waveProjectionAsOf(),
+                  ).filter(
                       (guide) =>
                           Number.isFinite(guide.price) &&
                           guide.start < guide.end &&
@@ -968,8 +976,8 @@ export class PriceChart {
                 color: "#d986aa",
                 lineStyle: 2,
                 lineWidth: 1,
-                title: guide.title + (guide.halfHeld === false ? " · 半幅失守" : ""),
-                lastValueVisible: true,
+                title: guide.name + " · " + guide.targetState,
+                lastValueVisible: false,
                 priceLineVisible: false,
                 crosshairMarkerVisible: false,
                 pointMarkersVisible: false,
@@ -981,6 +989,7 @@ export class PriceChart {
             ]);
             this.combinedARetracementLines.push(series);
         }
+        this.combinedAGuideOverlay?.setGuides(visible);
         this.container.dataset.combinedARetracementGuides = String(this.combinedARetracementLines.length);
     }
     drawLevels() {

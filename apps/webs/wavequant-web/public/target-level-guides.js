@@ -139,7 +139,13 @@ export class TargetGuideOverlay {
                 // 窄屏优先保留名称、价格和预估标识，空间不足时省略突破状态。
                 const label = context.measureText(text).width <= mediaSize.width - 8 ? text : value;
                 const width = Math.min(context.measureText(label).width, mediaSize.width - 8);
-                const labelX = Math.max(4, Math.min(anchorX - width - 8, mediaSize.width - width - 4));
+                const labelX = Math.max(
+                    4,
+                    Math.min(
+                        guide.labelPosition === "line" ? anchorX + 8 : anchorX - width - 8,
+                        mediaSize.width - width - 4,
+                    ),
+                );
                 const labelY = labelYs[index];
                 if (!guide.offscreen && (Math.abs(labelY - (guide.y - 3)) > 1 || labelX + width > anchorX - 8)) {
                     const edgeX = anchorX < labelX + width / 2 ? labelX - 2 : labelX + width + 2;

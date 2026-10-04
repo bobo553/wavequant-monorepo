@@ -318,3 +318,25 @@ test("a touched C reference uses a solid segment while a pending C reference rem
     assert.match(touched.labels[0].text, /已触及/);
     assert.match(pending.labels[0].text, /待达成/);
 });
+
+test("combined retracement labels render above their lines with independent states and clear offscreen", () => {
+    const guides = [
+        { name: "组合 A 50%", price: 7.5, targetState: "半幅失守" },
+        { name: "组合 A 2/3", price: 6, targetState: "未跌破" },
+    ].map((guide) => ({ ...guide, start: item.time, end: "2026-05-21", labelPosition: "line" }));
+    const { labels, segments } = renderGuides(guides, { width: 800, x: 100, y: (price) => (price === 7.5 ? 80 : 130) });
+    assert.equal(labels.length, 2);
+    assert.ok(labels.every((label) => label.x === 108));
+    assert.deepEqual(
+        labels.map((label) => label.y),
+        [77, 127],
+    );
+    assert.match(labels[0].text, /50%.*7\.5000.*半幅失守/);
+    assert.match(labels[1].text, /2\/3.*6\.0000.*未跌破/);
+    assert.ok(
+        segments.every((segment) => segment.start[1] !== segment.end[1]),
+        "SDK owns the horizontal dashed lines",
+    );
+    assert.deepEqual(renderGuides(guides, { x: -300, endX: -100 }).labels, []);
+    assert.deepEqual(renderGuides(guides, { y: () => -50 }).labels, []);
+});
