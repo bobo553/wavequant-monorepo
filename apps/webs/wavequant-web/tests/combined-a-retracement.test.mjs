@@ -34,10 +34,61 @@ const topBreakBars = bars.map((bar) => ({
     close: bar.time === "2025-01-06" ? 5.9 : 8,
 }));
 
+test("low breaks with closes held at or above each price get evidence-based labels", () => {
+    const history = topBreakBars.map((bar) => ({
+        ...bar,
+        high: 12,
+        low: bar.time === "2025-01-04" ? 7.4 : bar.time === "2025-01-05" ? 5.8 : 8,
+        close: bar.time === "2025-01-04" ? 7.5 : bar.time === "2025-01-05" ? 6 : 8,
+    }));
+    const early = combinedARetracementGuides([observation], history, "2025-01-04");
+    assert.equal(early[0].targetState, "低点突破，收盘没有跌破");
+    assert.deepEqual(early[0].firstLowBreak, { time: "2025-01-04", low: 7.4, close: 7.5 });
+    assert.equal(early[1].targetState, "未跌破");
+    assert.equal(early[1].firstLowBreak, null);
+    const later = combinedARetracementGuides([observation], history, "2025-01-05");
+    assert.equal(later[0].targetState, "半幅失守");
+    assert.equal(later[1].targetState, "低点突破，收盘没有跌破");
+    assert.deepEqual(later[1].firstLowBreak, { time: "2025-01-05", low: 5.8, close: 6 });
+    assert.deepEqual(
+        early,
+        combinedARetracementGuides(
+            [observation],
+            history.filter((bar) => bar.time <= "2025-01-04"),
+        ),
+    );
+});
+
+test("equal lows and wick breaks after the A top cutoff do not claim a held low break", () => {
+    const history = topBreakBars.map((bar) => ({
+        ...bar,
+        close: 8,
+        low: bar.time === "2025-01-04" ? 7.5 : bar.time === "2025-01-06" ? 5.5 : 8,
+    }));
+    for (const guide of combinedARetracementGuides([observation], history)) {
+        assert.equal(guide.end, "2025-01-05");
+        assert.equal(guide.targetState, "未跌破");
+        assert.equal(guide.firstLowBreak, null);
+    }
+    history[2].low = 6;
+    const twoThirds = combinedARetracementGuides([observation], history)[1];
+    assert.equal(twoThirds.targetState, "未跌破");
+    assert.equal(twoThirds.firstLowBreak, null);
+});
+
+test("a recovered wick after a closing failure cannot revive either retracement's state or evidence", () => {
+    const history = bars.map((bar) => ({ ...bar, low: bar.time === "2025-01-07" ? 5.8 : bar.close }));
+    const [half, twoThirds] = combinedARetracementGuides([observation], history);
+    assert.equal(half.targetState, "半幅失守");
+    assert.equal(twoThirds.targetState, "2/3失守");
+    assert.equal(half.firstLowBreak, null);
+    assert.equal(twoThirds.firstLowBreak, null);
+});
+
 test("held references end on the first strict high break and later closing failures cannot revive them", () => {
     const guides = combinedARetracementGuides([observation], topBreakBars, observation.end);
     assert.ok(guides.every((guide) => guide.end === "2025-01-05"));
-    assert.ok(guides.every((guide) => guide.targetState === "高点已突破"));
+    assert.ok(guides.every((guide) => guide.targetState === "低点突破，收盘没有跌破"));
     assert.ok(guides.every((guide) => guide.firstCloseBelow === null));
 });
 
@@ -47,13 +98,15 @@ test("each reference keeps its earlier closing failure while a still-held refere
     assert.equal(half.end, "2025-01-04");
     assert.equal(half.targetState, "半幅失守");
     assert.equal(twoThirds.end, "2025-01-05");
-    assert.equal(twoThirds.targetState, "高点已突破");
+    assert.equal(twoThirds.targetState, "低点突破，收盘没有跌破");
     assert.equal(twoThirds.firstCloseBelow, null);
 });
 
 test("a top touch and future high break do not end a held reference at an earlier replay date", () => {
     const guides = combinedARetracementGuides([observation], topBreakBars, "2025-01-04");
-    assert.ok(guides.every((guide) => guide.end === "2025-01-04" && guide.targetState === "未跌破"));
+    assert.ok(guides.every((guide) => guide.end === "2025-01-04"));
+    assert.equal(guides[0].targetState, "低点突破，收盘没有跌破");
+    assert.equal(guides[1].targetState, "未跌破");
     assert.deepEqual(
         guides,
         combinedARetracementGuides(
@@ -73,7 +126,7 @@ test("a simultaneous high break and closing failure share the candle while the c
         assert.equal(half.end, "2025-01-05");
         assert.equal(half.targetState, "半幅失守");
         assert.equal(twoThirds.end, "2025-01-05");
-        assert.equal(twoThirds.targetState, close < 6 ? "2/3失守" : "高点已突破");
+        assert.equal(twoThirds.targetState, close < 6 ? "2/3失守" : "低点突破，收盘没有跌破");
         assert.deepEqual(twoThirds.firstCloseBelow, close < 6 ? { time: "2025-01-05", close } : null);
     }
 });
@@ -105,7 +158,7 @@ test("a held retracement extends only to the known data end and cannot borrow a 
     const [half, twoThirds] = combinedARetracementGuides([observation], bars, "2025-01-05");
     assert.equal(half.end, "2025-01-04");
     assert.equal(twoThirds.end, "2025-01-05");
-    assert.equal(twoThirds.targetState, "未跌破");
+    assert.equal(twoThirds.targetState, "低点突破，收盘没有跌破");
     assert.equal(twoThirds.firstCloseBelow, null);
     assert.deepEqual(
         combinedARetracementGuides([observation], bars, "2025-01-05"),
@@ -172,8 +225,11 @@ test("real Guofang history ends the half at January 10 and its held two-thirds r
     assert.equal(half.end, "2025-01-10");
     assert.equal(twoThirds.price, 5.918296563582128);
     assert.equal(twoThirds.end, "2025-04-09");
-    assert.equal(twoThirds.targetState, "高点已突破");
+    assert.equal(twoThirds.targetState, "低点突破，收盘没有跌破");
     assert.equal(twoThirds.firstCloseBelow, null);
+    assert.deepEqual(twoThirds.firstLowBreak, { time: "2025-01-13", low: 5.887904563293728, close: 6.243091381497063 });
+    assert.equal(half.targetState, "半幅失守");
+    assert.equal(half.firstLowBreak.time, "2025-01-07");
     const older = observations.find((item) => item.cTime === "2022-04-22");
     const oldGuides = combinedARetracementGuides([older], history, fixture.theory.asof);
     assert.equal(oldGuides[0].end, "2022-04-27");

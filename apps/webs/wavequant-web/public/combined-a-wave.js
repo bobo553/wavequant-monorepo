@@ -73,12 +73,21 @@ export function combinedARetracementGuides(observations, bars, asof) {
             const firstCloseBelow = pullback.find(
                 (bar) => bar.time <= phaseEnd && Number.isFinite(bar.close) && bar.close < price,
             );
+            const lineEnd = firstCloseBelow?.time || phaseEnd;
+            const firstLowBreak = pullback.find(
+                (bar) =>
+                    bar.time <= lineEnd &&
+                    Number.isFinite(bar.low) &&
+                    Number.isFinite(bar.close) &&
+                    bar.low < price &&
+                    bar.close >= price,
+            );
             return {
                 id: observation.id + ":" + stage,
                 stage,
                 name: "组合 A " + ratio,
                 start: observation.cTime,
-                end: firstCloseBelow?.time || phaseEnd,
+                end: lineEnd,
                 price,
                 color: "#d986aa",
                 labelPosition: "line",
@@ -86,10 +95,13 @@ export function combinedARetracementGuides(observations, bars, asof) {
                     ? ratio === "50%"
                         ? "半幅失守"
                         : "2/3失守"
-                    : firstHighBreak
-                      ? "高点已突破"
+                    : firstLowBreak
+                      ? "低点突破，收盘没有跌破"
                       : "未跌破",
                 firstCloseBelow: firstCloseBelow ? { time: firstCloseBelow.time, close: firstCloseBelow.close } : null,
+                firstLowBreak: firstLowBreak
+                    ? { time: firstLowBreak.time, low: firstLowBreak.low, close: firstLowBreak.close }
+                    : null,
             };
         });
     });
