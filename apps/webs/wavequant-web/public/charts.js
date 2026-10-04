@@ -19,6 +19,7 @@ import {
     tradePointRange,
     zoomChartRange,
 } from "./chart-navigation.js";
+import { combinedAAnnotations, combinedAObservations } from "./combined-a-wave.js";
 import { FocusFlashOverlay } from "./focus-flash-overlay.js";
 import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
@@ -172,6 +173,8 @@ export class PriceChart {
         this.bullishTurnGuideKey = "";
         this.tertiaryRetracementLines = [];
         this.tertiaryRetracementKey = "";
+        this.combinedARetracementLines = [];
+        this.combinedARetracementKey = "";
         this.windowAnnotations = [];
         this.data = null;
         this.theory = null;
@@ -179,6 +182,7 @@ export class PriceChart {
         this.annotations = [];
         this.autoWaveProjection = null;
         this.autoWaveProjections = [];
+        this.autoCombinedAObservations = [];
         this.autoWaveEvidence = [];
         this.hoveredWaveProjection = null;
         this.hoveredWaveTime = null;
@@ -391,6 +395,7 @@ export class PriceChart {
         this.selected = null;
         this.autoWaveProjection = null;
         this.autoWaveProjections = [];
+        this.autoCombinedAObservations = [];
         this.autoWaveEvidence = [];
         this.hoveredWaveProjection = null;
         this.hoveredWaveTime = null;
@@ -446,7 +451,11 @@ export class PriceChart {
     setAnnotationOptions(options) {
         Object.assign(this.options, options);
         this.annotations = buildAnnotations(this.data, this.theory);
-        this.annotations.push(...this.autoWaveEvidence, ...this.autoWaveProjections);
+        this.annotations.push(
+            ...this.autoWaveEvidence,
+            ...this.autoWaveProjections,
+            ...combinedAAnnotations(this.autoCombinedAObservations || []),
+        );
         this.drawWaveAbPath();
         this.refreshMarkers();
         this.drawLevels();
@@ -696,6 +705,7 @@ export class PriceChart {
         this.drawLastFallHighGuides(trendKeys, from, to);
         this.drawBullishTurnGuides(bullishTurnSignals);
         this.drawTertiaryRetracementGuides(to);
+        this.drawCombinedARetracementGuides(from, to);
         this.container.dataset.markerCount = this.groups.length;
         this.container.dataset.tertiaryAbcCount = String(
             this.groups.flatMap((group) => group.items).filter((item) => item.category === "tertiary-abc").length,
@@ -704,8 +714,16 @@ export class PriceChart {
             new Set(
                 this.groups
                     .flatMap((group) => group.items)
-                    .filter((item) => item.category === "wave-projection")
+                    .filter((item) => item.kind === "wave-projection")
                     .map((item) => item.raw.aTime),
+            ).size,
+        );
+        this.container.dataset.combinedAWaveCount = String(
+            new Set(
+                this.groups
+                    .flatMap((group) => group.items)
+                    .filter((item) => item.kind === "combined-a-wave")
+                    .map((item) => item.raw.id),
             ).size,
         );
         this.container.dataset.lastFallHighCount = String(trendKeys.length);
@@ -878,6 +896,49 @@ export class PriceChart {
         }
         this.container.dataset.tertiaryRetracementGuides = String(this.tertiaryRetracementLines.length);
     }
+    clearCombinedARetracementGuides() {
+        for (const series of this.combinedARetracementLines || []) this.chart.removeSeries(series);
+        this.combinedARetracementLines = [];
+        this.combinedARetracementKey = "";
+        this.container.dataset.combinedARetracementGuides = "0";
+    }
+    drawCombinedARetracementGuides(from, to) {
+        const asof = this.waveProjectionAsOf();
+        const visible =
+            this.options.tertiaryAbc && this.options.levels
+                ? (this.autoCombinedAObservations || []).filter(
+                      (guide) =>
+                          Number.isFinite(guide.price) &&
+                          guide.available_at <= asof &&
+                          guide.start < guide.end &&
+                          guide.start <= to &&
+                          guide.end >= from,
+                  )
+                : [];
+        const key = JSON.stringify(visible);
+        if (key === this.combinedARetracementKey) return;
+        this.clearCombinedARetracementGuides();
+        this.combinedARetracementKey = key;
+        for (const guide of visible) {
+            const series = this.chart.addSeries(L.LineSeries, {
+                color: "#d986aa",
+                lineStyle: 2,
+                lineWidth: 1,
+                title: guide.title + (guide.halfHeld === false ? " · 半幅失守" : ""),
+                lastValueVisible: true,
+                priceLineVisible: false,
+                crosshairMarkerVisible: false,
+                pointMarkersVisible: false,
+                autoscaleInfoProvider: () => null,
+            });
+            series.setData([
+                { time: guide.start, value: guide.price },
+                { time: guide.end, value: guide.price },
+            ]);
+            this.combinedARetracementLines.push(series);
+        }
+        this.container.dataset.combinedARetracementGuides = String(this.combinedARetracementLines.length);
+    }
     drawLevels() {
         this.clearLevels();
         this.waveEndpointOverlay.setPoints(
@@ -997,6 +1058,9 @@ export class PriceChart {
         this.clearLastFallHighGuides();
         this.clearBullishTurnGuides();
         this.clearTertiaryRetracementGuides();
+        this.autoCombinedAObservations = [];
+        this.container.dataset.combinedAWaveCount = "0";
+        this.clearCombinedARetracementGuides();
         this.container.dataset.lastFallHighCount = "0";
         this.container.dataset.bearToBullHighCount = "0";
         this.container.dataset.bearBullAlternationLowCount = "0";
@@ -1159,8 +1223,14 @@ export class PriceChart {
         this.autoWaveEvidence = projections.flatMap((projection) =>
             waveCProjectionEvidenceAnnotations(projection, this.data.bars, asof),
         );
+        this.autoCombinedAObservations =
+            theory && this.data ? combinedAObservations(this.data.bars, { ...theory, asof }, projections) : [];
         this.annotations = buildAnnotations(this.data, theory);
-        this.annotations.push(...this.autoWaveEvidence, ...this.autoWaveProjections);
+        this.annotations.push(
+            ...this.autoWaveEvidence,
+            ...this.autoWaveProjections,
+            ...combinedAAnnotations(this.autoCombinedAObservations),
+        );
         this.drawWaveAbPath();
         this.refreshMarkers();
         this.drawLevels();

@@ -4,6 +4,57 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-248",
+            "name": "combined-abc-a-half-retracement",
+            "title": "ABC组合大A半幅回调观察",
+            "description": "固定二三级末跌高的已确认来源显示上下文，将已确认C后重叠且守起点的ABC组合为更大A，绘制50%虚线并观察守半放量突破。",
+            "scope": "Web组合ABC观察、50%独立虚线与强K图表标识及定向回归，不修改交易引擎",
+            "dependencies": ["MONOREPO-247"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "前置末跌高在内部N截面冻结；二级或三级任一级有同源已确认来源点即可，标明源级已确认/目标级显示上下文，不借未来正式升级或额外要求突破旧key",
+                "国芳二级显示末跌高为2024-01-12，源一级01-19已确认；三级为2023-08-01，源二级12-15已确认，移除后续上级正式节点仍匹配这两个用户指定key",
+                "C结束可知且C后低破原A终点形成重叠、未低破原A起点，才允许组合；不以five_top或路径点数冒充五浪判定",
+                "组合大A固定原A起点至C终点，半幅为两端中点；50%虚线独立于C目标，原端点悬停与三档C目标保持",
+                "C极值日起扫描全部后续行情，收盘严格破50%取消同组守半资格，最低价严格破原点终止组合；相等守位，收复不复活",
+                "沿用前日放量、未回补跳空及3%/60%实体突破原子口径；参考H须触发日前已知，失效优先于形态且仅输出观察",
+                "国芳真实组合半幅6.767928288212305，01-10收盘已失守、早于01-22 C确认，因此保留半幅线但不标后续守半强K",
+                "虚线无价格轴扩张，开关/理论/行情/图窗变化正确清理；定向回归、格式、lint、类型与必要构建实际通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/combined-a-wave.test.mjs",
+                    "status": "passed",
+                    "summary": "29项模型回归通过。覆盖N截面同源末跌高、未来正式上级点移除、正式ABC唯一父来源恢复、歧义拒绝、已知C与重叠、半幅与原点严格边界、确认前半幅失守、失守不恢复、强K严格晚于可知日、量能/跳空/实体突破及未来/跨路径H隔离。"
+                },
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/combined-a-wave.test.mjs apps/webs/wavequant-web/tests/combined-a-chart.test.mjs apps/webs/wavequant-web/tests/annotations.test.mjs apps/webs/wavequant-web/tests/abc-annotations.test.mjs apps/webs/wavequant-web/tests/wave-c-chart.test.mjs apps/webs/wavequant-web/tests/wave-endpoint-overlay.test.mjs",
+                    "status": "passed",
+                    "summary": "独立复核100项通过，包含上述29项。验证独立50%虚线、不扩大价格轴、真实SDK atPrice标记必须带有限价格、旧ABC悬停与BUY端点/缩放、图层开关/行情/理论/移窗清理、行情截面早于理论时不借未来C或回调证据。复核未发现剩余交付问题。"
+                },
+                {
+                    "command": "Guofang actual 2123 bars / 192 formal upN / 7 ABC projections: full payload and as-of prefix probes",
+                    "status": "passed",
+                    "summary": "真实国芳二级显示末跌高2024-01-12由源一级01-19确认，三级显示末跌高2023-08-01由源二级12-15确认，均冻结于2024-02-23截面；删除后续正式上级节点仍保留两key。组合半幅6.767928288212305，2025-01-10收盘已失守、早于01-22 C确认，01-21不提前出现，01-22起保留虚线但不恢复本组守半强K。7组ABC去重形成4组历史组合观察，原三档C目标及217根区间悬停保留。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "lint零错误（6条既有警告）、类型与生产构建通过。前两次构建类型工作进程因Windows内存分配失败退出；临时NODE_OPTIONS=--max-old-space-size=768后完整构建通过并恢复环境变量，未修改项目配置或跳过类型检查。"
+                },
+                {
+                    "command": "targeted Prettier; node --check combined-a-wave.js / charts.js / annotations.js; pnpm harness:check; codegraph sync; git diff --check",
+                    "status": "passed",
+                    "summary": "7个修改/新增文件格式及3个图表脚本语法通过；Harness通过（247功能、18 Node与2 Python工作区），CodeGraph同步3新增与2修改源文件，差异检查通过。原活动功能231与全部既有证据保持不变。"
+                },
+                {
+                    "command": "完整Web单测、真实浏览器视觉与Playwright",
+                    "status": "not-run",
+                    "summary": "遵循用户开发验证节奏，本轮仅运行相关定向测试和静态/构建检查；完整Web套件留待空闲或独立时段，用户本轮未要求浏览器或Playwright，真实视觉仍待验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-247",
             "name": "non-strong-a-c-wave-targets",
             "title": "非强攻击ABC悬停及C浪三档目标",
