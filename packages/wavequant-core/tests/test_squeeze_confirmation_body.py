@@ -82,7 +82,10 @@ def test_later_upper_shadow_does_not_extend_original_n_resistance_window():
         ({}, True),
         ({"volume": 1000}, True),
         ({"volume": 999}, True),
-        ({"close": 13.5}, False),
+        ({"close": 13.5}, True),
+        ({"close": 13.49}, False),
+        ({"close": 12.2}, False),
+        ({"high": 12.6, "close": 12.5}, False),
         ({"high": 16}, True),
         ({"low": 10}, True),
         ({"low": 9.9}, False),
@@ -202,7 +205,7 @@ def test_record_close_confirms_prior_window_resistance_with_later_upper_shadow()
     assert observe_market_regime(broken_defense, setup, timeframe="1d", policy=policy).latest.regime is None
 
 
-def test_guofang_july16_lower_open_is_resistance_not_squeeze_confirmation():
+def test_guofang_later_weak_bullish_candle_does_not_confirm_or_repeat_n_entry():
     raw = json.loads((Path(__file__).parent / "fixtures/guofang_2026_consolidation.json").read_text(encoding="utf-8"))
     bars = [
         Bar(datetime.fromisoformat(day), raw["symbol"], *values) for day, *values in raw["bars"] if day <= "2026-07-24"

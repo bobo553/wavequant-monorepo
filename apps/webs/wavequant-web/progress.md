@@ -1,5 +1,8 @@
 # Progress
 
+- MONOREPO-258：拓扑同步全局 V3 讲义阴母先高后低同日 B/C 正 N，以及原正 N 突破棒收盘、最高价分别严格突破的抵抗失败路径。仍只统计突破当天或次日抵抗、最早第三根 K 线确认、原 N 防守从未失守；新路径要求确认日中大阳且短上影（实体/开盘 ≥3%、实体/振幅 ≥60%、上影/振幅 ≤20%），原严格抵抗阶段纪录路径独立保留。成交原因、详情及复制文本共用 `resistance_attack_bar_break` 的发布证据；日期、价位或任一强势形态字段缺失时只显示缺证据，不由价格推算买点。新深 B 倒 N 恢复路径同时保留整段至少 2/3、结构归属与可知时序、回调低点防守、收盘严格收复杀多高及独立风险门禁说明。
+  `pnpm --filter wavequant-web exec node --test tests/trade-reasons.test.mjs tests/wave-entry-evidence.test.mjs tests/combined-a-entry-evidence.test.mjs` 44 项通过；`pnpm --filter wavequant-web exec vitest run src/features/research-workbench/topology/topology-data.test.ts` 3 项通过。源码摘要自动包含新增 `market_state/candle_strength.py`，63 个来源最终 SHA256 为 `9c7045db5f0634eba30050fcd687ecc2adb4279eebf51deeed007817c6c484a4`。Web lint 零错误（6 条既有警告）、typecheck、生产 build（命令级 512 MB 堆 / 4 MB 新生代）、相关 Prettier 和四个修改 JS 语法检查通过。构建前确认 next-env 无差异，构建后仅 routes import 产物变化已定向恢复。Core 最后仅补充 market_regime.py 顶部研究模式与 V3 分支说明，刷新摘要后同命令复跑 3 项拓扑、该 TypeScript Prettier 和 diff 检查通过；未重复 Node、lint、typecheck 或构建。完整 Web 单测、浏览器和 Playwright 按本轮规则未运行；本记录不代表已提交、合并或常驻生效。
+
 - MONOREPO-257（已完成）：拓扑说明同步全局V3正N抵抗只计突破当天或第二个交易日，后续K线事实仍可审计且原防守/公共风险保留。按用户要求暂不加入次日中大阳短上影提前确认，最早仍第三根K线；5个早确认专属文件无差异。拓扑源摘要覆盖market_state目录，62个来源SHA256为`21a0a65bd82be46a489de291045437b873bd5ef35aae570ee2c8fdb136586e72`；worktree及合并后的main均3项拓扑通过。最终Web lint0错误6条旧警告、typecheck及512MB/4MB生产build通过，next-env产物差异已定向恢复。实现1641816以299d330本地合并，当前v90正式接口277根账户历史确认02-22 LONG/BUY原始6.35元500股、02-25无重复BUY。完整截至2026回放受其他服务重启中断；完整套件及浏览器未运行，未推送。
 
 - MONOREPO-256：新增全局“组合A回调放量突破”原因与证据展示，按完整 long_transition_evidence 解释 C 顶至突破日含整理的交易日间隔、组合内部或最末同源子 B 回调满足其一、最低收盘守住 2/3、放量 3%/60% 中大阳线及此前可知高点严格突破；跳空分支明确前日最高价与缺口未回补。信号标注、成交原因、详情和复制文本共用同一证据，缺少子级时长不补零，不落入第一类分级说明或借同日无归属正 N 覆盖组合顶目标；独立拓扑同步量价、防守与原有风险、执行和成交门禁。
