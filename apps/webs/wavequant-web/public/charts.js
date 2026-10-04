@@ -19,7 +19,7 @@ import {
     tradePointRange,
     zoomChartRange,
 } from "./chart-navigation.js";
-import { combinedAAnnotations, combinedAObservations } from "./combined-a-wave.js";
+import { combinedAAnnotations, combinedAObservations, combinedAWaveConnections } from "./combined-a-wave.js";
 import { FocusFlashOverlay } from "./focus-flash-overlay.js";
 import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
@@ -34,6 +34,7 @@ import {
     waveCProjectionLegs,
     waveCProjectionsFromStructure,
 } from "./wave-c-projection.js";
+import { selectWaveConnections } from "./wave-connections.js";
 import { WaveEndpointOverlay, projectionWaveEndpoints, selectedWaveEndpoints } from "./wave-endpoint-overlay.js";
 
 const L = window.LightweightCharts;
@@ -908,23 +909,15 @@ export class PriceChart {
     drawCombinedAWavePath(from, to) {
         const asof = this.waveProjectionAsOf();
         const visible = this.options.tertiaryAbc
-            ? (this.autoCombinedAObservations || []).filter(
-                  (item) =>
-                      item.available_at <= asof &&
-                      item.originTime < item.cTime &&
-                      Number.isFinite(item.origin) &&
-                      Number.isFinite(item.cHigh) &&
-                      item.originTime <= to &&
-                      item.cTime >= from,
-              )
+            ? combinedAWaveConnections(
+                  (this.autoCombinedAObservations || []).filter((item) => item.available_at <= asof),
+              ).filter(({ points }) => points[0].time <= to && points[1].time >= from)
             : [];
-        const key = JSON.stringify(
-            visible.map(({ id, originTime, origin, cTime, cHigh }) => [id, originTime, origin, cTime, cHigh]),
-        );
+        const key = JSON.stringify(visible.map(({ id, group, points }) => [id, group, points]));
         if (key === this.combinedAWaveKey) return;
         this.clearCombinedAWavePath();
         this.combinedAWaveKey = key;
-        for (const item of visible) {
+        for (const { points } of visible) {
             const series = this.chart.addSeries(L.LineSeries, {
                 color: "#d986aa",
                 lineStyle: 0,
@@ -936,10 +929,7 @@ export class PriceChart {
                 pointMarkersVisible: false,
                 autoscaleInfoProvider: () => null,
             });
-            series.setData([
-                { time: item.originTime, value: item.origin },
-                { time: item.cTime, value: item.cHigh },
-            ]);
+            series.setData(points);
             this.combinedAWaveLines.push(series);
         }
         this.container.dataset.combinedAWaveLegs = String(this.combinedAWaveLines.length);
@@ -1126,9 +1116,16 @@ export class PriceChart {
     drawWaveAbPath() {
         this.clearWaveAbPath();
         if (!this.options.tertiaryAbc || !this.geometryVisible || !this.data) return;
-        for (const { title, color, points } of this.autoWaveProjections.flatMap((item) =>
-            waveCProjectionLegs(item.raw),
-        )) {
+        const connections = selectWaveConnections(
+            this.autoWaveProjections.flatMap((item) =>
+                waveCProjectionLegs(item.raw).map((leg) => ({
+                    ...leg,
+                    id: `${item.id}:${leg.title}`,
+                    group: `abc:${item.raw.trendLevel || 2}:${leg.title}`,
+                })),
+            ),
+        );
+        for (const { title, color, points } of connections) {
             const series = this.chart.addSeries(L.LineSeries, {
                 color,
                 lineStyle: 2,
@@ -1284,7 +1281,16 @@ export class PriceChart {
         this.refreshMarkers();
         this.drawLevels();
         if (!theory || !this.data || !geometry) return;
-        for (const n of theory.shapes) this.addLine(n.points, n.direction === "up" ? "#60cfc3" : "#cba271", 0, 2);
+        const nConnections = selectWaveConnections(
+            theory.shapes.flatMap((shape) =>
+                shape.points.slice(1).map((point, index) => ({
+                    group: `n:${shape.trend_level || 1}:${shape.direction}`,
+                    color: shape.direction === "up" ? "#60cfc3" : "#cba271",
+                    points: [shape.points[index], point],
+                })),
+            ),
+        );
+        for (const { points, color } of nConnections) this.addLine(points, color, 0, 2);
         this.polylineEnabled = true;
         this.refreshMarkers();
     }

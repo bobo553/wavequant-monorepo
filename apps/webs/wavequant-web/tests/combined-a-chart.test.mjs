@@ -420,3 +420,93 @@ test("future confirmation and invalid anchors cannot draw a combined A connectio
         assert.deepEqual(chart.combinedAWaveLines, []);
     }
 });
+
+test("Xianfeng's July 6 combined A endpoint keeps one incoming line across historical N origins", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_wave_connections.json", import.meta.url)));
+    const { chart, rendered } = chartHarness(fixture.reportedBars);
+    chart.data.asof = fixture.asof;
+    chart.theory.asof = fixture.asof;
+    chart.autoCombinedAObservations = fixture.combined;
+    chart.refreshMarkers();
+    const arrivals = chart.combinedAWaveLines.filter((series) => series.points.at(-1).time === "2026-07-06");
+    assert.equal(arrivals.length, 1);
+    assert.equal(arrivals[0].points[0].time, "2025-12-17");
+    const lines = chart.combinedAWaveLines.map((series) => series.points);
+    rendered.range = { from: 1, to: 1 };
+    chart.refreshMarkers();
+    assert.equal(chart.combinedAWaveLines.filter((series) => series.points.at(-1).time === "2026-07-06").length, 1);
+    rendered.range = { from: 0, to: 1 };
+    chart.refreshMarkers();
+    assert.deepEqual(
+        chart.combinedAWaveLines.map((series) => series.points),
+        lines,
+    );
+    assert.equal(chart.autoCombinedAObservations.length, fixture.combined.length);
+});
+
+test("ABC SDK lines deduplicate historical A origins and repeated B/C edges without deleting projections", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_wave_connections.json", import.meta.url)));
+    const { chart } = chartHarness(fixture.reportedBars);
+    chart.geometryVisible = true;
+    chart.autoWaveProjections = fixture.projections.map((raw, index) => ({ id: `wave:${index}`, raw }));
+    chart.drawWaveAbPath();
+    assert.equal(chart.waveAbLines.filter((series) => series.points.at(-1).time === "2026-07-06").length, 1);
+    assert.equal(
+        chart.waveAbLines.filter(
+            (series) => series.options.title === "A 浪" && series.points.at(-1).time === "2026-06-09",
+        ).length,
+        1,
+    );
+    assert.equal(chart.autoWaveProjections.length, fixture.projections.length);
+    chart.setAnnotationOptions({ tertiaryAbc: false });
+    assert.equal(chart.waveAbLines.length, 0);
+});
+
+test("future alternatives cannot suppress a known connection and endpoint labels match the selected origin", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_wave_connections.json", import.meta.url)));
+    const { chart } = chartHarness(fixture.reportedBars);
+    chart.data.asof = fixture.asof;
+    chart.theory.asof = fixture.asof;
+    const future = {
+        ...observation,
+        id: "future-local",
+        originTime: "2026-06-08",
+        origin: 6.19,
+        cTime: "2026-07-06",
+        cHigh: 8.56,
+        available_at: "2026-10-01",
+    };
+    const known = fixture.combined.map((item) => ({ ...observation, ...item, price: (item.origin + item.cHigh) / 2 }));
+    chart.autoCombinedAObservations = [...known, future];
+    chart.refreshMarkers();
+    assert.equal(
+        chart.combinedAWaveLines.find((series) => series.points.at(-1).time === "2026-07-06").points[0].time,
+        "2025-12-17",
+    );
+    const annotations = combinedAAnnotations(known);
+    const julyHigh = annotations.filter((item) => item.title === "组合 A 顶" && item.time === "2026-07-06");
+    assert.equal(julyHigh.length, 1);
+    assert.equal(julyHigh[0].raw.originTime, "2025-12-17");
+    assert.equal(annotations.filter((item) => item.id === item.raw.id).length, known.length);
+});
+
+test("overlapping same-direction N shapes share one SDK edge while opposite types stay visible", () => {
+    const { chart } = chartHarness();
+    const points = [
+        { time: "2025-01-03", value: 6 },
+        { time: "2025-01-21", value: 8 },
+        { time: "2025-01-22", value: 7 },
+        { time: "2025-02-03", value: 9 },
+    ];
+    chart.setTheory({
+        ...chart.theory,
+        shapes: [
+            { direction: "up", points },
+            { direction: "up", points: [points[1], points[2], points[3]] },
+            { direction: "down", points: [points[1], points[2]] },
+        ],
+    });
+    assert.equal(chart.lines.filter((series) => series.options.color === "#60cfc3").length, 3);
+    assert.equal(chart.lines.filter((series) => series.options.color === "#cba271").length, 1);
+    assert.equal(chart.theory.shapes.length, 3);
+});

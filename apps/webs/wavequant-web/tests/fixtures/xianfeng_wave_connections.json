@@ -1,0 +1,427 @@
+{
+    "symbol": "sz.300163",
+    "asof": "2026-09-30",
+    "source": "AkShare formal lecture_v3 backtest, 2018-01-01 to 2026-09-30; display endpoints only",
+    "reportedBars": [
+        {
+            "time": "2026-06-08",
+            "open": 6.33,
+            "high": 6.56,
+            "low": 6.19,
+            "close": 6.44,
+            "volume": 35046400,
+            "factor": 1,
+            "raw_close": 6.44
+        },
+        {
+            "time": "2026-07-06",
+            "open": 7.78,
+            "high": 8.56,
+            "low": 7.78,
+            "close": 7.98,
+            "volume": 99270800,
+            "factor": 1,
+            "raw_close": 7.98
+        }
+    ],
+    "projections": [
+        {
+            "originTime": "2018-10-19",
+            "origin": 2.37,
+            "aTime": "2019-03-25",
+            "aHigh": 4.8,
+            "bTime": "2019-05-06",
+            "bLow": 3.4,
+            "cTime": "2019-05-23",
+            "cHigh": 5.01,
+            "trendLevel": 2,
+            "cKnownAt": "2019-06-13"
+        },
+        {
+            "originTime": "2018-12-25",
+            "origin": 3.11,
+            "aTime": "2019-03-25",
+            "aHigh": 4.8,
+            "bTime": "2019-05-06",
+            "bLow": 3.4,
+            "cTime": "2019-05-23",
+            "cHigh": 5.01,
+            "trendLevel": 2,
+            "cKnownAt": "2019-06-13"
+        },
+        {
+            "originTime": "2018-10-19",
+            "origin": 2.37,
+            "aTime": "2019-05-23",
+            "aHigh": 5.01,
+            "bTime": "2020-02-04",
+            "bLow": 2.9,
+            "cTime": "2020-09-09",
+            "cHigh": 6.4,
+            "trendLevel": 2,
+            "cKnownAt": "2021-02-01"
+        },
+        {
+            "originTime": "2018-12-25",
+            "origin": 3.11,
+            "aTime": "2019-05-23",
+            "aHigh": 5.01,
+            "bTime": "2020-02-04",
+            "bLow": 2.9,
+            "trendLevel": 2
+        },
+        {
+            "originTime": "2020-02-04",
+            "origin": 2.9,
+            "aTime": "2020-03-02",
+            "aHigh": 4.39,
+            "bTime": "2020-04-28",
+            "bLow": 3.13,
+            "cTime": "2020-09-09",
+            "cHigh": 6.4,
+            "trendLevel": 2,
+            "cKnownAt": "2021-02-01"
+        },
+        {
+            "originTime": "2021-01-14",
+            "origin": 3.02,
+            "aTime": "2021-09-22",
+            "aHigh": 4.56,
+            "bTime": "2021-10-28",
+            "bLow": 3.21,
+            "trendLevel": 2
+        },
+        {
+            "originTime": "2021-10-28",
+            "origin": 3.21,
+            "aTime": "2022-01-13",
+            "aHigh": 4.1,
+            "bTime": "2022-01-27",
+            "bLow": 3.45,
+            "trendLevel": 2
+        },
+        {
+            "originTime": "2024-06-03",
+            "origin": 1.02,
+            "aTime": "2024-12-11",
+            "aHigh": 2.97,
+            "bTime": "2025-01-06",
+            "bLow": 2.04,
+            "cTime": "2025-03-21",
+            "cHigh": 3.27,
+            "trendLevel": 2,
+            "cKnownAt": "2025-04-15"
+        },
+        {
+            "originTime": "2024-06-03",
+            "origin": 1.02,
+            "aTime": "2025-03-21",
+            "aHigh": 3.27,
+            "bTime": "2025-04-09",
+            "bLow": 2.45,
+            "cTime": "2025-06-04",
+            "cHigh": 4.38,
+            "trendLevel": 2,
+            "cKnownAt": "2025-08-12"
+        },
+        {
+            "originTime": "2025-01-06",
+            "origin": 2.04,
+            "aTime": "2025-03-21",
+            "aHigh": 3.27,
+            "bTime": "2025-04-09",
+            "bLow": 2.45,
+            "cTime": "2025-06-04",
+            "cHigh": 4.38,
+            "trendLevel": 2,
+            "cKnownAt": "2025-08-12"
+        },
+        {
+            "originTime": "2024-06-03",
+            "origin": 1.02,
+            "aTime": "2025-06-04",
+            "aHigh": 4.38,
+            "bTime": "2025-09-23",
+            "bLow": 3.25,
+            "cTime": "2026-02-02",
+            "cHigh": 5.99,
+            "trendLevel": 2,
+            "cKnownAt": "2026-04-10"
+        },
+        {
+            "originTime": "2025-01-06",
+            "origin": 2.04,
+            "aTime": "2025-06-04",
+            "aHigh": 4.38,
+            "bTime": "2025-09-23",
+            "bLow": 3.25,
+            "cTime": "2026-02-02",
+            "cHigh": 5.99,
+            "trendLevel": 2,
+            "cKnownAt": "2026-04-10"
+        },
+        {
+            "originTime": "2025-04-09",
+            "origin": 2.45,
+            "aTime": "2025-06-04",
+            "aHigh": 4.38,
+            "bTime": "2025-09-23",
+            "bLow": 3.25,
+            "cTime": "2026-02-02",
+            "cHigh": 5.99,
+            "trendLevel": 2,
+            "cKnownAt": "2026-04-10"
+        },
+        {
+            "originTime": "2025-08-15",
+            "origin": 3.21,
+            "aTime": "2025-09-16",
+            "aHigh": 3.79,
+            "bTime": "2025-09-23",
+            "bLow": 3.25,
+            "cTime": "2026-02-02",
+            "cHigh": 5.99,
+            "trendLevel": 2,
+            "cKnownAt": "2026-04-10"
+        },
+        {
+            "originTime": "2024-06-03",
+            "origin": 1.02,
+            "aTime": "2026-02-02",
+            "aHigh": 5.99,
+            "bTime": "2026-04-29",
+            "bLow": 4.15,
+            "cTime": "2026-06-09",
+            "cHigh": 7.3,
+            "trendLevel": 2,
+            "cKnownAt": "2026-06-17"
+        },
+        {
+            "originTime": "2025-01-06",
+            "origin": 2.04,
+            "aTime": "2026-02-02",
+            "aHigh": 5.99,
+            "bTime": "2026-04-29",
+            "bLow": 4.15,
+            "cTime": "2026-06-09",
+            "cHigh": 7.3,
+            "trendLevel": 2,
+            "cKnownAt": "2026-06-17"
+        },
+        {
+            "originTime": "2025-10-17",
+            "origin": 3.48,
+            "aTime": "2026-02-02",
+            "aHigh": 5.99,
+            "bTime": "2026-04-29",
+            "bLow": 4.15,
+            "cTime": "2026-06-09",
+            "cHigh": 7.3,
+            "trendLevel": 2,
+            "cKnownAt": "2026-06-17"
+        },
+        {
+            "originTime": "2024-06-03",
+            "origin": 1.02,
+            "aTime": "2026-06-09",
+            "aHigh": 7.3,
+            "bTime": "2026-06-30",
+            "bLow": 5.19,
+            "cTime": "2026-07-06",
+            "cHigh": 8.56,
+            "trendLevel": 2,
+            "cKnownAt": "2026-08-12"
+        },
+        {
+            "originTime": "2025-01-06",
+            "origin": 2.04,
+            "aTime": "2026-06-09",
+            "aHigh": 7.3,
+            "bTime": "2026-06-30",
+            "bLow": 5.19,
+            "cTime": "2026-07-06",
+            "cHigh": 8.56,
+            "trendLevel": 2,
+            "cKnownAt": "2026-08-12"
+        },
+        {
+            "originTime": "2025-10-23",
+            "origin": 3.58,
+            "aTime": "2026-06-09",
+            "aHigh": 7.3,
+            "bTime": "2026-06-30",
+            "bLow": 5.19,
+            "cTime": "2026-07-06",
+            "cHigh": 8.56,
+            "trendLevel": 2,
+            "cKnownAt": "2026-08-12"
+        },
+        {
+            "originTime": "2025-12-17",
+            "origin": 3.92,
+            "aTime": "2026-06-09",
+            "aHigh": 7.3,
+            "bTime": "2026-06-30",
+            "bLow": 5.19,
+            "cTime": "2026-07-06",
+            "cHigh": 8.56,
+            "trendLevel": 2,
+            "cKnownAt": "2026-08-12"
+        }
+    ],
+    "combined": [
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2018-10-19:2019-05-23",
+            "originTime": "2018-10-19",
+            "origin": 2.37,
+            "cTime": "2019-05-23",
+            "cHigh": 5.01,
+            "available_at": "2019-06-13",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2018-12-25:2019-05-23",
+            "originTime": "2018-12-25",
+            "origin": 3.11,
+            "cTime": "2019-05-23",
+            "cHigh": 5.01,
+            "available_at": "2019-06-13",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2018-10-19:2020-09-09",
+            "originTime": "2018-10-19",
+            "origin": 2.37,
+            "cTime": "2020-09-09",
+            "cHigh": 6.4,
+            "available_at": "2021-02-01",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2020-02-04:2020-09-09",
+            "originTime": "2020-02-04",
+            "origin": 2.9,
+            "cTime": "2020-09-09",
+            "cHigh": 6.4,
+            "available_at": "2021-02-01",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2024-06-03:2025-03-21",
+            "originTime": "2024-06-03",
+            "origin": 1.02,
+            "cTime": "2025-03-21",
+            "cHigh": 3.27,
+            "available_at": "2025-04-15",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2024-06-03:2025-06-04",
+            "originTime": "2024-06-03",
+            "origin": 1.02,
+            "cTime": "2025-06-04",
+            "cHigh": 4.38,
+            "available_at": "2025-08-14",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2025-01-06:2025-06-04",
+            "originTime": "2025-01-06",
+            "origin": 2.04,
+            "cTime": "2025-06-04",
+            "cHigh": 4.38,
+            "available_at": "2025-08-14",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2024-06-03:2026-02-02",
+            "originTime": "2024-06-03",
+            "origin": 1.02,
+            "cTime": "2026-02-02",
+            "cHigh": 5.99,
+            "available_at": "2026-04-10",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2025-01-06:2026-02-02",
+            "originTime": "2025-01-06",
+            "origin": 2.04,
+            "cTime": "2026-02-02",
+            "cHigh": 5.99,
+            "available_at": "2026-04-10",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2025-04-09:2026-02-02",
+            "originTime": "2025-04-09",
+            "origin": 2.45,
+            "cTime": "2026-02-02",
+            "cHigh": 5.99,
+            "available_at": "2026-04-10",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2024-06-03:2026-06-09",
+            "originTime": "2024-06-03",
+            "origin": 1.02,
+            "cTime": "2026-06-09",
+            "cHigh": 7.3,
+            "available_at": "2026-06-17",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2025-01-06:2026-06-09",
+            "originTime": "2025-01-06",
+            "origin": 2.04,
+            "cTime": "2026-06-09",
+            "cHigh": 7.3,
+            "available_at": "2026-06-17",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2025-10-17:2026-06-09",
+            "originTime": "2025-10-17",
+            "origin": 3.48,
+            "cTime": "2026-06-09",
+            "cHigh": 7.3,
+            "available_at": "2026-06-17",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2024-06-03:2026-07-06",
+            "originTime": "2024-06-03",
+            "origin": 1.02,
+            "cTime": "2026-07-06",
+            "cHigh": 8.56,
+            "available_at": "2026-08-12",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2025-01-06:2026-07-06",
+            "originTime": "2025-01-06",
+            "origin": 2.04,
+            "cTime": "2026-07-06",
+            "cHigh": 8.56,
+            "available_at": "2026-08-12",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2025-10-23:2026-07-06",
+            "originTime": "2025-10-23",
+            "origin": 3.58,
+            "cTime": "2026-07-06",
+            "cHigh": 8.56,
+            "available_at": "2026-08-12",
+            "trendLevel": 2
+        },
+        {
+            "id": "combined-a:reversal-continuous-lecture-0-lecture-1830:2025-12-17:2026-07-06",
+            "originTime": "2025-12-17",
+            "origin": 3.92,
+            "cTime": "2026-07-06",
+            "cHigh": 8.56,
+            "available_at": "2026-08-12",
+            "trendLevel": 2
+        }
+    ]
+}

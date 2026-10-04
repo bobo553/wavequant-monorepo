@@ -4,6 +4,42 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-250",
+            "name": "wave-line-endpoint-degree",
+            "title": "同级同类波段端点连线去重",
+            "description": "修复先锋新材07-06多组历史ABC共用C顶导致同级同类线分叉，核对06-08原路径；显示端点最多一进一出。",
+            "scope": "Web波段连线显示与端点回归，不修改交易规则",
+            "dependencies": ["MONOREPO-249"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "先锋新材2026-06-08与07-06同级同类型每个点至多一根入线和一根出线",
+                "重复边及同向分叉按明确稳定规则去重，不跨级或跨类型误删",
+                "历史可知、图层开关、视窗与旧目标标签保持，定向回归及Web静态/构建检查通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/wave-connections.test.mjs apps/webs/wavequant-web/tests/combined-a-chart.test.mjs apps/webs/wavequant-web/tests/combined-a-wave.test.mjs apps/webs/wavequant-web/tests/wave-c-chart.test.mjs apps/webs/wavequant-web/tests/wave-c-projection.test.mjs apps/webs/wavequant-web/tests/ordinary-c-wave.test.mjs apps/webs/wavequant-web/tests/wave-endpoint-overlay.test.mjs",
+                    "status": "passed",
+                    "summary": "109项定向测试通过；真实先锋2018至2026-09-30正式回测端点固化夹具，07-06组合A四入线归一，ABC A/B/C及N重复边去重。06-08讲义路径原本一进一出，保留。覆盖等级/类型隔离、同点一进一出、输入顺序、密集分叉、未来确认过滤、缩放和平移不变、标签与连线一致、原目标/半幅/成交观察保留。先写复现用例实际4!=1，修复后通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; NODE_OPTIONS=--max-old-space-size=768 pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "lint零错误（6条既有环境变量警告）、类型和生产构建通过，内存参数仅限本次命令。"
+                },
+                {
+                    "command": "targeted Prettier; node --check public/charts.js; node --check public/combined-a-wave.js; node --check public/wave-connections.js; git diff --check; pnpm harness:check; codegraph sync",
+                    "status": "passed",
+                    "summary": "相关脚本语法、修改文件格式、差异、Harness检查及CodeGraph同步通过。"
+                },
+                {
+                    "command": "完整Web单测、真实浏览器视觉及Playwright",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏仅做相关定向回归；完整Web套件及人工视觉待独立验证，本轮未启动浏览器或Playwright。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-249",
             "name": "combined-a-wave-path-labels",
             "title": "ABC组合A浪连线与端点标签",
