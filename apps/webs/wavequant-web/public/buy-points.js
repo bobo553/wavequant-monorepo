@@ -1,4 +1,4 @@
-import { num, symbolName } from "./labels.js";
+import { label, num, symbolName } from "./labels.js";
 
 /** @typedef {{run:string,variant:string,scenario:string,source:'tdx'|'snapshot'|'akshare',symbol?:string,asof:string,start:string,lookback:number}} ScanParams */
 /** @typedef {{id:string,revision:number,params:ScanParams,status:string,total:number,processed:number,failed:number,stale:number,skipped:number,results:Array<object>,errors:Array<object>,error:string|null,performance?:{cache_hits:number,recomputed:number,elapsed_seconds:number}}} ScanJob */
@@ -157,7 +157,13 @@ export class BuyPoints {
                 const name = document.createElement("strong");
                 name.textContent = r.name ? `${r.symbol.split(".")[1]} ${r.name}` : symbolName(r.symbol);
                 const status = document.createElement("span");
-                status.textContent = `${r.signal_date} · ${r.buy_point_type ? `${r.priority === 2 ? "第二类 · 重点" : "第一类"} / ${r.trend_level} 级 · ` : ""}${statusNames[r.status]}`;
+                const classification =
+                    r.buy_point_type === "combined_a_pullback_breakout"
+                        ? label(r.buy_point_type)
+                        : r.buy_point_type
+                          ? `${r.priority === 2 ? "第二类 · 重点" : "第一类"} / ${r.trend_level} 级`
+                          : "";
+                status.textContent = `${r.signal_date} · ${classification ? `${classification} · ` : ""}${statusNames[r.status]}`;
                 const values = document.createElement("small");
                 values.textContent = `${r.regime} · 参考 ${num(r.raw_reference_price)} 元（原始） · 相对量 ${num(r.rvol)} · 收盘盈亏比 ${num(r.gross_reward_risk)}`;
                 b.append(name, status, values);

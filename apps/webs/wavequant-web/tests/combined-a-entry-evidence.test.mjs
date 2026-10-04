@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 
 import { JSDOM } from "jsdom";
 
 import { buildAnnotations, reasonText } from "../public/annotations.js";
+import { BuyPoints } from "../public/buy-points.js";
+import { combinedAEntryEvidence } from "../public/combined-a-entry-evidence.js";
 import { formatFilledTradeCopy } from "../public/filled-trade-copy.js";
-import { label } from "../public/labels.js";
+import { label, num, pct } from "../public/labels.js";
 import { numberedTradeReasons } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
 import { waveEntryEvidence } from "../public/wave-entry-evidence.js";
@@ -54,6 +58,92 @@ const marker = {
         evidence,
     ],
 };
+
+const scanMatch = {
+    symbol: "sh.601086",
+    run_id: "fixture",
+    signal_date: "2025-04-03",
+    buy_point_type: evidence.buy_point_type,
+    status: "awaiting_next_open",
+    regime: "轧空",
+    rvol: 3.13,
+    retracement: 0.608,
+    gross_reward_risk: 1.7,
+    raw_reference_price: 5.24,
+    reason: marker.reason,
+    evidence: marker.decision_evidence,
+};
+
+async function scanClickText(match, source, { markerEvidence = match.evidence, includeMarker = true } = {}) {
+    const appSource = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+    const begin = appSource.indexOf("onSelect: async (match, p) => {");
+    assert.ok(begin >= 0);
+    const end = appSource.indexOf("\n    },\n});\nconst structureSignals", begin);
+    assert.ok(end > begin);
+    const callback = appSource.slice(begin + "onSelect: ".length, end) + "\n}";
+    const dom = new JSDOM(`
+        <select id="result-scope"><option>akshare</option><option>tdx-backtest</option><option>stock</option></select>
+        <select id="symbol-select"><option>sh.601086</option></select>
+        <input id="show-markers" type="checkbox"><section id="selection-info"></section>
+    `);
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        const $ = (id) => document.getElementById(id);
+        const view = {
+            run_id: match.run_id,
+            symbol: match.symbol,
+            asof: "2025-04-03",
+            bars: [{ time: "2025-04-03", close: marker.price }],
+            markers: includeMarker
+                ? [{ ...marker, reason: match.reason, kind: "signal", side: "LONG", decision_evidence: markerEvidence }]
+                : [],
+        };
+        const detail = (title, text) => {
+            $("selection-info").replaceChildren();
+            const paragraph = document.createElement("p");
+            paragraph.textContent = `${title}。${text}`;
+            $("selection-info").append(paragraph);
+        };
+        const selectMatch = runInNewContext(`(${callback})`, {
+            $,
+            document,
+            state: { view, error: false },
+            combinedAEntryEvidence,
+            reasonText,
+            num,
+            pct,
+            detail,
+            fillSymbols() {},
+            setTimeframe() {},
+            preserveCutoff() {},
+            showPage() {},
+            async loadView() {},
+            annotationOptions: () => ({}),
+            chart: {
+                setAnnotationOptions() {},
+                flashSelectedAnnotation() {},
+                selectAnnotation(id) {
+                    const annotation = buildAnnotations(view).find((item) => item.id === id);
+                    detail(annotation.title, annotation.description);
+                    appendTradeEvidence($("selection-info"), annotation);
+                },
+            },
+        });
+        await selectMatch(match, { source, asof: view.asof });
+        return $("selection-info").textContent;
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
+}
+
+function assertCombinedScanText(text) {
+    assert.match(text, /组合A回调放量突破/);
+    assert.match(text, /回调及整理 58.*组合内部回调 70.*或.*子级回调 9.*满足其一/s);
+    assert.match(text, /2\/3.*严格突破.*20,135,200.*实体\/开盘.*防守.*目标/s);
+    assert.doesNotMatch(text, /undefined|第一类|NaN/);
+}
 
 test("combined A trade reasons explain the OR duration, close defense, volume and known breakout", () => {
     assert.equal(reasonText(marker.reason), "组合A回调放量突破");
@@ -137,4 +227,97 @@ test("combined A signal annotation, trade detail and clipboard share its dated p
         globalThis.document = previous;
         dom.window.close();
     }
+});
+
+test("scanner list names combined A without a trend level and preserves the two classified buy points", () => {
+    const dom = new JSDOM(`
+        <button id="scan-start"></button><select id="scan-lookback"><option>1</option></select>
+        <p id="scan-status"></p><div id="buy-points-list"></div>
+    `);
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        const points = new BuyPoints({ api() {}, getContext() {}, onSelect() {} });
+        points.job = {
+            params: { source: "akshare", asof: "2025-04-03", variant: "lecture_v3" },
+            status: "ready",
+            processed: 3,
+            total: 3,
+            skipped: 0,
+            stale: 0,
+            failed: 0,
+            errors: [],
+            results: [
+                scanMatch,
+                {
+                    ...scanMatch,
+                    symbol: "sh.601087",
+                    buy_point_type: "transitioned_squeeze",
+                    trend_level: 2,
+                    priority: 1,
+                },
+                {
+                    ...scanMatch,
+                    symbol: "sh.601088",
+                    buy_point_type: "mature_shallow_squeeze",
+                    trend_level: 3,
+                    priority: 2,
+                },
+            ],
+        };
+        points.render();
+        const list = document.getElementById("buy-points-list");
+        const combined = list.querySelector('[data-symbol="sh.601086"]').textContent;
+        assert.match(combined, /组合A回调放量突破.*当日新信号/);
+        assert.doesNotMatch(combined, /undefined|第一类|级/);
+        assert.match(list.querySelector('[data-symbol="sh.601087"]').textContent, /第一类 \/ 2 级/);
+        assert.match(list.querySelector('[data-symbol="sh.601088"]').textContent, /第二类 · 重点 \/ 3 级/);
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
+});
+
+test("AkShare scan click explains its complete combined proof while remaining signal only", async () => {
+    const text = await scanClickText(scanMatch, "akshare");
+    assertCombinedScanText(text);
+    assert.match(text, /未模拟成交/);
+});
+
+test("TDX scan click keeps the complete marker proof and skips the old flip chain", async () => {
+    const text = await scanClickText(scanMatch, "tdx");
+    assertCombinedScanText(text);
+    assert.equal(text.match(/放量中大阳线确认/g).length, 2);
+    assert.doesNotMatch(text, /翻多 —/);
+});
+
+test("snapshot scan click uses the published complete proof when the selected marker has only a channel", async () => {
+    assertCombinedScanText(
+        await scanClickText(scanMatch, "snapshot", { markerEvidence: [marker.decision_evidence[0]] }),
+    );
+});
+
+test("combined scan proof remains reviewable if the chart has no matching marker", async () => {
+    assertCombinedScanText(await scanClickText(scanMatch, "snapshot", { includeMarker: false }));
+});
+
+test("other scan types retain AkShare's overview and the original classified flip chain", async () => {
+    const legacy = {
+        ...scanMatch,
+        buy_point_type: "mature_shallow_squeeze",
+        reason: "system_entry",
+        evidence: [
+            {
+                event: "long_transition_evidence",
+                buy_point_type: "mature_shallow_squeeze",
+                trend_level: 2,
+                priority: 2,
+            },
+        ],
+    };
+    const akshare = await scanClickText(legacy, "akshare");
+    assert.match(akshare, /参考 5\.24 元.*未模拟成交/);
+    assert.doesNotMatch(akshare, /组合 A|组合A|回调及整理/);
+    const tdx = await scanClickText(legacy, "tdx");
+    assert.match(tdx, /2 级 · 第二类（重点）：翻多 — → 交替 — → 再破翻多高 — → 浅回撤 — → 攻击 —/);
 });

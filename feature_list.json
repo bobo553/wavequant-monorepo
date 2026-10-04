@@ -21,6 +21,21 @@
             ],
             "verification": [
                 {
+                    "command": "pnpm --filter wavequant-web exec node --test tests/combined-a-entry-evidence.test.mjs tests/buy-points.test.mjs tests/candle-details.test.mjs; Web topology Vitest/lint/typecheck/build/format/JS syntax",
+                    "status": "passed",
+                    "summary": "补齐扫描列表独立分类及AkShare/TDX点击完整组合原因，避免误标第一类或undefined级；6项新增直接回归，18项Node及3项拓扑通过，指纹未变。最终Web lint零错误6条既有警告、typecheck、512MB/4MB生产build及相关格式/语法/diff通过；剔除next-env生成变化。Backend小样本combined history→buy_match→JSON的18个必需proof字段完整，独立只读复核无问题。OHLCV复制保留已有字段行为，完整原因在B/LONG详情展示。"
+                },
+                {
+                    "command": "Read-only formal-parameter single_stock_result on current v89 signals, 2018-01-02..2025-04-03 (1759 real bars)",
+                    "status": "passed",
+                    "summary": "81.87秒完整账户前缀重放通过，沿用界面volume_filter=false、net_reward_risk_filter=false、shallow=true、本金10万/权重1和真实买卖权限。04-02空仓、买前现金103396.3703，04-03组合LONG实际filled BUY，原始价5.24元500股、费5.0262元、费用后RR1.62725689；台账完整decision_evidence及结构/时间OR/2/3/放量/3%-60%突破条件均通过。分钟本机缺失按正式daily-close fallback执行，不伪造分钟、不改权限/仓位。此前仅隔离成交，现补齐2018起账户状态与该日成交原因。"
+                },
+                {
+                    "command": "GET live 13003/API8765 backtest-version, dev-runtime-revision and completed Guofang backtest job; compare new feature build",
+                    "status": "passed",
+                    "summary": "用户再次报告缺买入原因时，实际页面13003/接口8765仍main c99b825、profile v88，新原因helper404；旧正式回测04-03无LONG/订单，审计拒因wave_second_peak_pullback_sequence。新worktree已构建helper且正式账户前缀filled BUY。明确旧服务/旧结果未加载新通道；2026-10-04用户显式允许保留4项main既有失败后本地合并重启，不推送。"
+                },
+                {
                     "command": "Read-only main AkShare cache bars, generate current worktree V3 signals for 2018-01-02..2025-04-03 prefix (1759 bars)",
                     "status": "passed",
                     "summary": "实际2123根主行情缓存仅取当时1759根，不复用signals/audit缓存，明确导入新worktree源码，78.744秒完成。04-03唯一LONG来自system_combined_a_pullback_breakout，ref7.158380、stop5.887905、target9.316823、量比3.131934；完整证据58/70/9，内部未超但子B已超，含01-13低点之后整理，已知日期、最低收盘守2/3、实体和此前可知03-17高点突破断言均通过。旧普通N当日仍因wave_second_peak_pullback_sequence拒绝，新独立通道不改变该拒因。只验证信号，不宣称完整账户成交。"
@@ -38,7 +53,7 @@
                 {
                     "command": "packages/wavequant-core/.venv/Scripts/python.exe -m pytest tests/test_combined_a_entry.py tests/test_combined_a_strategy.py tests/test_inverse_n_entry_guard.py tests/test_ten_full_entry.py tests/test_five_top_entry.py tests/test_two_t_resistance_risk.py tests/test_secondary_resistance.py tests/test_wave_entry_epoch.py tests/test_nested_alternation_breakout.py -q (Core cwd)",
                     "status": "failed",
-                    "summary": "首次较广定向回归127通过、10失败；6项仅为旧v88断言，更新后十满全文件17项通过。其余4项为两项January6 wave_local_epoch_recovered断言和两项华瓷January17 nested信号缺失。在clean main c99b825、明确import main/src原测试同样4失败；当前分支关闭/开启组合通道结果相同。1月6日实际LONG/BUY日期、价格、止损、目标与净盈亏比均通过，但N和入场同属epoch138，recovered按原逻辑为False；华瓷当时缺预期一级上下文，未进入嵌套通道。未修改这些断言或无关旧通道，按AGENTS合并门禁保留未完成状态。"
+                    "summary": "首次较广定向回归127通过、10失败；6项仅为旧v88断言，更新后十满全文件17项通过。其余4项为两项January6 wave_local_epoch_recovered断言和两项华瓷January17 nested信号缺失。在clean main c99b825、明确import main/src原测试同样4失败；当前分支关闭/开启组合通道结果相同。1月6日实际LONG/BUY日期、价格、止损、目标与净盈亏比均通过，但N和入场同属epoch138，recovered按原逻辑为False；华瓷当时缺预期一级上下文，未进入嵌套通道。未修改这些断言或无关旧通道。2026-10-04用户显式允许保留这4项main既有失败后本地合并重启，覆盖本次合并门禁；保留failed事实及未完成状态，不宣称全部回归通过。"
                 },
                 {
                     "command": "Core venv mypy --strict --follow-imports=silent combined_a_entry.py; mypy --follow-imports=silent modified strategy/analytics modules and two new tests; pnpm --filter @wavequant/core typecheck; pnpm --filter @wavequant/core build",
@@ -56,9 +71,9 @@
                     "summary": "Web lint零错误6条既有警告、类型和最终生产构建通过（仅命令级512MB堆/4MB新生代）；相关格式、语法和差异检查通过。独立只读复核未发现新增阻塞；剔除next-env.d.ts生成变更，未推送。"
                 },
                 {
-                    "command": "Complete Core/Web suites, browser/Playwright, external-minute and full-account backtest",
+                    "command": "Complete Core/Web suites, browser/Playwright, external-minute and full-window account backtest through 2026-09-30",
                     "status": "not-run",
-                    "summary": "依本轮验证节奏未运行完整套件及浏览器；外部分钟和完整账户回测留待独立验证，隔离单笔成交不宣称为完整账户收益。"
+                    "summary": "依本轮验证节奏未运行完整套件及浏览器；外部分钟和截至2026-09-30全窗账户回测留待独立验证。截至04-03的2018起完整账户前缀已实际重放通过，不宣称拥有缺失的真实分钟或之后全窗账户收益。"
                 }
             ]
         },

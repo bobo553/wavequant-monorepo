@@ -1,14 +1,16 @@
 # Session Handoff
 
-## 2026-10-04 · MONOREPO-256 组合A回调买入待合并
+## 2026-10-04 · MONOREPO-256 组合A回调买入已获合并授权
 
 会话 worktree `C:/Users/zb/.codex/worktrees/combined-a-entry/wavequant-monorepo`，分支 `feat-组合A回调买入`，基线 main `c99b825`。V3 v89 的新通道已实现，回调时间按 C 顶到放量突破日计算，包含低点之后的长期窄幅横盘。国芳 2025-04-03 的 58 日虽然不超过内部 B 的 70 日，但超过最末同源子 B 的 9 日；最低收盘 6.215769 守 2/3 位 5.918297，放量中大阳线收盘 7.158380 突破此前已知高点 7.049092。新规则 24 项、十满 17 项、Web 65+3 项、定向类型检查及 Core/Web 构建通过。完整账户和外部分钟回测未运行，独立单笔成交不替代账户回放。
 
 主行情缓存 2123 根只读截到 2018-01-02 至 2025-04-03 的 1759 根，明确导入新 worktree 源码，不借旧 signals/audit，78.744 秒生成当日唯一组合通道 LONG；58/70/9、量价、守线与此前可知高点证据全部通过。未运行账户成交，普通 N 原拒因不变。
 
-暂未合并：较广回归仍有 4 项主分支既有失败，已在 clean main 明确导入 main/src 复现。`test_wave_entry_epoch.py` 两项 January6 的旧断言要求 local epoch recovered，但实际 N 和入场同属 epoch138；实际买入日期、价格和风控断言通过。`test_nested_alternation_breakout.py` 两项华瓷 January17 缺预期一级上下文而无信号。启停组合通道证据不变，未修改旧断言。按 AGENTS“检查未通过……无法通过……不合并”保留 feature in-progress；合并前需要修复这四项或用户明确允许覆盖既有失败门禁。旧 MONOREPO-231 的所有失败证据保留，暂设 backlog 以保持单一活动功能；本功能完成时恢复旧活动状态。
+较广回归仍有 4 项主分支既有失败，已在 clean main 明确导入 main/src 复现。`test_wave_entry_epoch.py` 两项 January6 的旧断言要求 local epoch recovered，但实际 N 和入场同属 epoch138；实际买入日期、价格和风控断言通过。`test_nested_alternation_breakout.py` 两项华瓷 January17 缺预期一级上下文而无信号。启停组合通道证据不变，未修改旧断言。此前按 AGENTS“检查未通过……无法通过……不合并”保留 feature in-progress；2026-10-04 用户已明确回答“允许合并并重启”，允许保留这四项既有失败覆盖本次门禁，不推送。保留failed事实，Harness不能将带failed证据功能标done；旧 MONOREPO-231 所有失败证据保留，暂设backlog以保持单一活动功能。
 
-未修改 main、未重启服务、未推送，未运行浏览器或 Playwright。后续只同步最新本地 main，确认四项门禁的处理授权后复核差异并按 no-ff 本地合并；不要自动扩大旧信号修复范围。策略拓扑最终指纹 `5655992d616d91db95743fd746aff3cf0c99ababfe8a5354a8f13503f92261ab`，任何 Core 源码修改后须同步拓扑门禁。
+追加定位与验证：实际页面是13003，Next/API8765同属main `.codex-runtime/wavequant-dev.pid=24196` 进程树，HTTP源码修订c99b825/profile v88、新原因helper404。按正式界面vol=false/netRR=false等参数完整2018起1759根账户前缀重放81.87秒确认04-03原始5.24元500股filled BUY、费用后RR1.62725689及完整台账原因。缺分钟使用现有日线收盘回退，不改权限、不伪造分钟。现有restart-wavequant.ps1等待硬编码3003与实际13003不符；合并后验证所有者和零活跃任务，仅停止该登记的dev进程树，再用main cwd、WAVEQUANT_WEB_PORT=13003/WAVEQUANT_API_PORT=8765隐藏启动pnpm --filter wavequant-web dev，登记新pid并HTTP确认新版本。Web扫描入口已补独立分类及AkShare/TDX理由消费，新增6项回归、18项Node、3项拓扑及最终lint/typecheck/build/格式/语法通过，独立只读复核无问题；Backend扫描JSON保留完整proof。
+
+本段记录时尚未合并重启，用户授权已到；完成扫描显示检查后同步最新本地main、复核差异并按no-ff本地合并，沿实际13003入口重启并HTTP确认，不重复请求授权，不推送。不要自动扩大旧信号修复范围。策略拓扑指纹 `5655992d616d91db95743fd746aff3cf0c99ababfe8a5354a8f13503f92261ab`，任何Core源码修改后须同步拓扑门禁；最终合并与服务证据将追加到本节。
 
 ## 2026-10-03 · MONOREPO-233 清空依据待澄清
 
