@@ -111,7 +111,7 @@ const REASONS = {
     wave_five_top_child_volume_clear: "五顶后收阴，跌破昨低昨收及前天子低，量超过最近阴线，当日清空余仓",
     wave_five_top_gap_volume_clear: "五顶到达后低开，收盘跌破前日开盘且成交量超过此前最近阴线，当日收盘清空余仓",
     wave_five_top_entry_too_close: "距已知五顶目标不超过原正 N 一箱，禁止新买入或加仓",
-    wave_ten_full_pullback_pending: "十满到达后等待短期再突破或规定幅度的回撤，暂缓新买入或加仓",
+    wave_ten_full_pullback_pending: "十满后等待短期再突破、A 段 2/3 回撤，或半幅回撤且 B 段时间长于 A 段，暂缓新买入或加仓",
     volume_inverse_n_clear: "倒 N 确认且成交量超过前日，当日直接清仓",
     mother_child_inverse_n_low_break: "母子线的阳子线低点与收盘均被严格跌破，形成倒 N，当日收盘清仓",
     inverse_n_close_reduce_90: "收盘确认倒 N，当日累计减仓至原持仓 90%",
@@ -778,7 +778,7 @@ export function buildAnnotations(view, theory) {
         const tenFullRisk =
             event.reason === "wave_ten_full_pullback_pending" &&
             [event.wave_ten_full_high, event.wave_retracement_anchor, event.wave_retracement_threshold].every(Number.isFinite)
-                ? `十满于 ${event.wave_ten_full_reached_date} 到达，日高 ${num(event.wave_ten_full_high)} 元；从 ${event.wave_retracement_anchor_source === "b_low" ? "最近 B 浪低点" : event.wave_retracement_anchor_source === "origin_no_b" ? "原正 N 起点（暂无 B 低点）" : "原正 N 起点"} ${num(event.wave_retracement_anchor)} 元起算，回撤 ${event.wave_retracement_ratio === 0.5 ? "1/2" : "2/3"} 的价格线为 ${num(event.wave_retracement_threshold)} 元。${Number.isInteger(event.wave_breakout_window) ? `也可在 ${event.wave_breakout_window} 个交易日内严格突破到达日高点。` : ""}条件在收盘后确认，下一交易日起解除限制。`
+                ? `十满于 ${event.wave_ten_full_reached_date} 到达，日高 ${num(event.wave_ten_full_high)} 元；从 ${event.wave_retracement_anchor_source === "b_low" ? "最近 B 浪低点" : "A 段起点"} ${num(event.wave_retracement_anchor)} 元起算，回撤 ${event.wave_retracement_ratio === 0.5 ? "1/2" : "2/3"} 的价格线为 ${num(event.wave_retracement_threshold)} 元。${event.wave_timed_half_retracement && Number.isFinite(event.wave_half_retracement_threshold) ? `另可在 B 段最低收盘达到半幅线 ${num(event.wave_half_retracement_threshold)} 元、且回调至 B 低点的时间严格长于 A 段时解除；当前 A 段 ${event.wave_a_duration} 日、B 段 ${event.wave_b_duration} 日${Number.isFinite(event.wave_b_low) ? `，B 低 ${num(event.wave_b_low)} 元` : ""}。` : ""}${Number.isInteger(event.wave_breakout_window) ? `也可在 ${event.wave_breakout_window} 个交易日内严格突破到达日高点。` : ""}条件在收盘后确认，下一交易日起解除限制。`
                 : "";
         items.push({
             id: event.id,

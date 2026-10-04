@@ -4,6 +4,33 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-246",
+            "name": "ten-full-a-wave-time-depth-entry-gate",
+            "title": "十满后按 A 段回调价幅与时间禁买",
+            "description": "十满后的全局 V3 入场暂停改以 A 段起点至十满高点计算：B 最低价达到 2/3 回撤可不看时间；仅 B 最低收盘达到半幅时，须从 A 高到 B 低的交易日间隔严格长于 A 上涨间隔。23 日内严格创新高的原例外保留。",
+            "scope": "Core 十满后全局门禁及策略版本、Web 拒买说明与拓扑、国芳集团 2023-09-01 回归",
+            "dependencies": ["MONOREPO-245"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "A 段以原正 N 起点至十满到达日高点计算；B 时间从十满日到后续最低价日，以交易 K 线间隔计量",
+                "B 最低价达到 2/3 回撤时不要求时间；仅最低收盘达到 1/2 时须 B 时间严格大于 A 时间，等长不通过",
+                "回撤或 23 个交易日内严格创新高均在完整日线结束后确认，下一交易日才解除；所有 V3 买点和加仓共用门禁",
+                "国芳 2023-09-01 A 段 26 日、B 段 20 日，B 低 5.82 元未达 2/3 线 5.66 元，半幅虽满足但时间不足，无买单并记录禁买原因"
+            ],
+            "verification": [
+                {
+                    "command": "Core targeted pytest and mypy; direct TDX backtest sh.601086 through 2023-09-01",
+                    "status": "passed",
+                    "summary": "最终 17 项专项及 92 项扩大相关测试、修改策略模块类型检查通过；真实 TDX v88 当日无买单，候选被 wave_ten_full_pullback_pending 拦截。"
+                },
+                {
+                    "command": "Core typecheck and isolated build; Web annotations Node, topology Vitest, lint, typecheck, build; harness:check",
+                    "status": "passed",
+                    "summary": "Core 配置类型和 sdist/wheel、Web 31 项标注与 2 项拓扑、lint 零错误（6 条既有警告）、类型与生产构建、Harness 均通过。完整 Web 套件和浏览器端到端按当前开发节奏未运行。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-245",
             "name": "ten-full-default-deep-retracement",
             "title": "修正十满后默认 V3 深回撤禁买门槛",

@@ -36,9 +36,10 @@ def sample():
     return bars, events
 
 
-def risks(bars, events, *, window=3, ratio=.5, anchor="origin"):
+def risks(bars, events, *, window=3, ratio=.5, anchor="origin", timed_half=False):
     return ten_full_entry_history(bars, events, breakout_window=window,
-                                  retracement_ratio=ratio, anchor=anchor)
+                                  retracement_ratio=ratio, anchor=anchor,
+                                  timed_half=timed_half)
 
 
 def test_equal_high_is_not_a_breakout_but_strict_new_high_within_window_releases():
@@ -87,6 +88,31 @@ def test_two_thirds_and_recent_b_low_use_the_selected_frozen_amplitude():
     bars.append(Bar(datetime(2023, 8, 9), "sh.601086", 8.0, 9.0, 7.0, 8.0, 100))
     assert 8 not in risks(bars, events, ratio=2 / 3, anchor="b_low")
     assert risks(bars[:7], events, ratio=2 / 3, anchor="b_low")[6]["wave_retracement_threshold"] == pytest.approx(6.6666667)
+
+
+def test_half_depth_needs_b_longer_than_a_but_two_thirds_needs_no_time():
+    bars, events = sample()
+    bars[6] = replace(bars[6], open=7.0, high=9.0, low=6.9, close=6.9)
+    bars[7] = replace(bars[7], open=7.0, high=9.0, low=6.8, close=6.8)
+    bars.append(Bar(datetime(2023, 8, 9), "sh.601086", 7.0, 9.0, 6.8, 7.0, 100))
+    waiting = risks(bars, events, ratio=2 / 3, timed_half=True)
+    assert 7 in waiting  # B duration equals A duration; strict > is required.
+    assert 8 not in waiting  # B reaches half depth after exceeding A duration.
+    assert waiting[7]["wave_half_retracement_threshold"] == 7.0
+    assert waiting[7]["wave_retracement_threshold"] == pytest.approx(6.0)
+
+    bars[4] = replace(bars[4], open=7.0, high=9.0, low=6.0, close=6.0)
+    deep = risks(bars, events, ratio=2 / 3, timed_half=True)
+    assert 4 in deep
+    assert 5 not in deep  # Equality at 2/3 releases without waiting for A duration.
+
+
+def test_timed_half_requires_the_a_origin_two_thirds_configuration():
+    bars, events = sample()
+    with pytest.raises(ValueError, match="requires A origin"):
+        risks(bars, events, ratio=.5, timed_half=True)
+    with pytest.raises(ValueError, match="requires A origin"):
+        risks(bars, events, ratio=2 / 3, anchor="b_low", timed_half=True)
 
 
 def test_missing_pre_target_b_uses_the_original_n_origin_and_still_blocks():
@@ -150,22 +176,54 @@ def test_guofang_august_first_reaches_ten_full_and_post_target_gate_is_causal():
     assert min(bar.low for bar in bars[12:]) == 6.27
 
 
-@pytest.mark.parametrize("variant, ratio", [
-    ("lecture_v3", 2 / 3),
-    ("lecture_v3_c50", .5),
-    ("lecture_v3_d50_c50", .5),
-    ("lecture_v3_d67_c33", 2 / 3),
-    ("lecture_v3_d67_c50", 2 / 3),
-    ("lecture_v3_close_d50_c50", .5),
+def test_guofang_september_first_half_depth_is_too_fast_to_release():
+    start, end = datetime(2023, 6, 26), datetime(2023, 9, 1)
+    dates = [start + timedelta(days=offset) for offset in range((end - start).days + 1)
+             if (start + timedelta(days=offset)).weekday() < 5]
+    correction = [
+        (7.27, 7.39), (6.66, 7.15), (6.85, 6.89), (6.50, 6.69),
+        (6.45, 6.49), (6.35, 6.45), (6.27, 6.43), (6.31, 6.48),
+        (6.31, 6.73), (6.54, 6.98), (6.28, 6.30), (6.06, 6.17),
+        (6.02, 6.03), (5.92, 6.10), (6.07, 6.19), (6.03, 6.05),
+        (5.92, 6.03), (5.83, 5.88), (5.87, 5.91), (5.82, 6.08),
+        (5.93, 6.00), (5.88, 6.01), (6.05, 6.61),
+    ]
+    peak = dates.index(datetime(2023, 8, 1))
+    assert peak == 26 and len(dates) - 1 - peak == 23
+    bars = []
+    for index, date in enumerate(dates):
+        low, close = ((7.69, 7.73) if index == peak else
+                      correction[index - peak - 1] if index > peak else (4.27, 4.32))
+        high = 8.44 if index == peak else max(low + .1, close)
+        bars.append(Bar(date, "sh.601086", low, high, low, close, 100))
+    events = [dict(event="wave_projection_target_reached", bar_index=peak,
+                   attack=5, origin_index=0, reached_stage="ten_full", a_origin=4.27)]
+    gate = risks(bars, events, window=23, ratio=2 / 3, anchor="origin", timed_half=True)
+    september = gate[len(bars) - 1]
+    assert september["wave_ten_full_reached_date"] == "2023-08-01"
+    assert september["wave_retracement_anchor"] == 4.27
+    assert september["wave_retracement_threshold"] == pytest.approx(5.66)
+    assert september["wave_half_retracement_threshold"] == pytest.approx(6.355)
+    assert september["wave_a_duration"] == 26
+    assert september["wave_b_duration"] == 20
+    assert september["wave_b_low_date"] == "2023-08-29"
+    assert september["wave_b_low"] == 5.82
+    assert september["wave_b_minimum_close"] == 5.88
+
+
+@pytest.mark.parametrize("variant", [
+    "lecture_v3", "lecture_v3_c50", "lecture_v3_d50_c50",
+    "lecture_v3_d67_c33", "lecture_v3_d67_c50", "lecture_v3_close_d50_c50",
 ])
-def test_v3_profiles_use_explicit_depth_or_complement_their_shallow_threshold(variant, ratio):
+def test_v3_profiles_use_a_origin_two_thirds_and_timed_half(variant):
     profile = whole_wave_profile({"scenarios": {"base": {"execution": {}}}}, variant)
     config = SystemStrategy(**profile["strategy"])
     config.validate()
-    assert profile["profile_version"].startswith("gap_up_bullish_squeeze_v87_")
+    assert profile["profile_version"].startswith("gap_up_bullish_squeeze_v88_")
     assert config.ten_full_breakout_window == 23
-    assert config.ten_full_retracement_ratio == ratio
-    assert config.ten_full_retracement_anchor == "b_low"
+    assert config.ten_full_retracement_ratio == 2 / 3
+    assert config.ten_full_retracement_anchor == "origin"
+    assert config.ten_full_timed_half_retracement is True
 
 
 def test_global_gate_blocks_normal_and_shallow_base_entry_channels(monkeypatch):

@@ -59,7 +59,8 @@ class SystemStrategy:
     shallow_base_breakout_enabled: bool = True
     ten_full_breakout_window: int = 23
     ten_full_retracement_ratio: float = 2/3
-    ten_full_retracement_anchor: RetracementAnchor = 'b_low'
+    ten_full_retracement_anchor: RetracementAnchor = 'origin'
+    ten_full_timed_half_retracement: bool = True
 
     def validate(self):
         import math
@@ -94,6 +95,11 @@ class SystemStrategy:
             raise ValueError('ten-full retracement ratio must be 1/2 or 2/3')
         if self.ten_full_retracement_anchor not in ('origin', 'b_low'):
             raise ValueError('ten-full retracement anchor must be origin or b_low')
+        if type(self.ten_full_timed_half_retracement) is not bool:
+            raise ValueError('ten-full timed half retracement switch must be boolean')
+        if self.ten_full_timed_half_retracement and (
+                self.ten_full_retracement_ratio != 2/3 or self.ten_full_retracement_anchor != 'origin'):
+            raise ValueError('ten-full timed half needs A origin and 2/3 deep threshold')
         if self.buy_point_definition=='whole_flip_wave_v3' and (
                 self.entry_policy!='hierarchical_two_buy_points' or self.mature_shallow_ratio not in (1/3,.5)):
             raise ValueError('whole wave entries require hierarchical policy and close threshold 1/3 or 1/2')
@@ -739,6 +745,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         breakout_window=config.ten_full_breakout_window,
         retracement_ratio=config.ten_full_retracement_ratio,
         anchor=config.ten_full_retracement_anchor,
+        timed_half=config.ten_full_timed_half_retracement,
     ) if whole_wave else {}
     c_equal_events: list[dict] = []
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = {}

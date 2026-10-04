@@ -28,6 +28,7 @@ class _Pause:
     anchor: Decimal
     anchor_source: str
     threshold: Decimal
+    half_threshold: Decimal
 
 
 def ten_full_entry_history(
@@ -37,13 +38,16 @@ def ten_full_entry_history(
     breakout_window: int,
     retracement_ratio: float,
     anchor: RetracementAnchor,
+    timed_half: bool = False,
 ) -> dict[int, dict[str, object]]:
-    """Pause entries until a prompt new high or the required retracement.
+    """Pause entries until a prompt new high or a completed B correction.
 
     The target session itself is paused. A completed later session can resolve
-    the pause with its low, or with a strict new high inside the trading-day
-    window. Release starts on the following session so intraday entry channels
-    cannot use a daily high or low that occurred after their intended fill.
+    the pause with the selected deep low. When timed_half is enabled, a
+    half-depth minimum close also resolves it if the time from A high to B low
+    strictly exceeds the A rise. A strict new high inside the trading-day
+    window releases it too. Release starts on the following session so entry
+    channels cannot use later intraday observations.
     A new high after the window cannot waive the unfinished retracement.
     """
     if type(breakout_window) is not int or breakout_window <= 0:
@@ -52,6 +56,10 @@ def ten_full_entry_history(
         raise ValueError("retracement ratio must be 1/2 or 2/3")
     if anchor not in ("origin", "b_low"):
         raise ValueError("retracement anchor must be origin or b_low")
+    if type(timed_half) is not bool:
+        raise ValueError("timed half retracement switch must be boolean")
+    if timed_half and (retracement_ratio != 2 / 3 or anchor != "origin"):
+        raise ValueError("timed half retracement requires A origin and 2/3 deep threshold")
 
     dated = sorted(
         ((index, event) for event in events
@@ -61,6 +69,8 @@ def ten_full_entry_history(
     recent_b: dict[tuple[int, int], Decimal] = {}
     pauses: dict[tuple[int, int], _Pause] = {}
     resolved: set[tuple[int, int]] = set()
+    minimum_closes: dict[tuple[int, int], Decimal] = {}
+    corrections: dict[tuple[int, int], tuple[Decimal, int, Decimal]] = {}
     risks: dict[int, dict[str, object]] = {}
     cursor = 0
     ratio = Decimal(str(retracement_ratio))
@@ -88,20 +98,37 @@ def ten_full_entry_history(
             anchor_source = ("origin" if anchor == "origin" else
                              "b_low" if previous_b is not None else "origin_no_b")
             pauses[key] = _Pause(attack, origin, known, peak, base, anchor_source,
-                                 peak - (peak - base) * ratio)
+                                 peak - (peak - base) * ratio,
+                                 peak - (peak - base) / 2)
 
         if index:
             previous = bars[index - 1]
             low, high = Decimal(str(previous.low)), Decimal(str(previous.high))
+            close = Decimal(str(previous.close))
             for key, pause in list(pauses.items()):
                 elapsed = index - 1 - pause.reached
-                if elapsed > 0 and (low <= pause.threshold or
-                                    (elapsed <= breakout_window and high > pause.peak)):
+                if elapsed <= 0:
+                    continue
+                minimum_closes[key] = min(close, minimum_closes.get(key, close))
+                correction = corrections.get(key)
+                if correction is None or low < correction[0]:
+                    correction = (low, index - 1, minimum_closes[key])
+                    corrections[key] = correction
+                b_duration = correction[1] - pause.reached
+                a_duration = pause.reached - pause.origin
+                deep_retracement = correction[0] <= pause.threshold
+                timed_half_retracement = (
+                    timed_half and b_duration > a_duration
+                    and correction[2] <= pause.half_threshold
+                )
+                if (deep_retracement or timed_half_retracement or
+                        (elapsed <= breakout_window and high > pause.peak)):
                     pauses.pop(key)
                     resolved.add(key)
         if not pauses:
             continue
         pause = max(pauses.values(), key=lambda current: (current.reached, current.attack))
+        correction = corrections.get((pause.attack, pause.origin))
         risks[index] = dict(
             reason=TEN_FULL_PULLBACK_PENDING,
             attack=pause.attack,
@@ -113,6 +140,13 @@ def ten_full_entry_history(
             wave_retracement_anchor_source=pause.anchor_source,
             wave_retracement_ratio=retracement_ratio,
             wave_retracement_threshold=float(pause.threshold),
+            wave_half_retracement_threshold=float(pause.half_threshold),
+            wave_timed_half_retracement=timed_half,
+            wave_a_duration=pause.reached - pause.origin,
+            wave_b_duration=(correction[1] - pause.reached) if correction else 0,
+            wave_b_low=float(correction[0]) if correction else None,
+            wave_b_low_date=bars[correction[1]].timestamp.date().isoformat() if correction else None,
+            wave_b_minimum_close=float(correction[2]) if correction else None,
             wave_breakout_window=breakout_window,
             wave_breakout_sessions_elapsed=index - pause.reached,
         )
