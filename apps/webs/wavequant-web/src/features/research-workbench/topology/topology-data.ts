@@ -84,7 +84,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "ten-full-pause",
                 question: "此前十满到位后的买入限制已解除？",
-                detail: "十满到达当日先暂停所有 V3 新买入与加仓，包括浅回撤横盘突破。随后 23 个交易日内若严格突破到达日最高价，或价格从该最高价回撤至十满前最近 B 浪低点与高点幅度的 1/2 或 2/3，条件在收盘后确认，下一交易日起解除。第一类深回撤已有阈值的方案沿用该值；未单独设置的方案使用第二类浅回撤上限的互补比例，默认 V3 为 2/3。若该段尚无 B 低点，保守采用原正 N 起点；逾期突破不能代替尚未完成的回撤。",
+                detail: "十满到达当日先暂停所有 V3 新买入与加仓，包括浅回撤横盘突破。A 段取原正 N 起点到十满当日高点；随后 B 段最低价从高点回撤至少 2/3 可在下一交易日起解除，不要求时间。若 B 段最低收盘只达到半幅，则从高点到 B 最低价的交易日间隔必须严格长于 A 段上涨间隔。23 个交易日内严格突破十满高点也可在下一交易日起解除；逾期创新高不能代替回撤条件。",
                 source: "ten_full_entry.py · ten_full_entry_history；integrated_strategy.py · generate_system_signals",
                 yes: "检查买点分类",
                 no: "拒绝：wave_ten_full_pullback_pending",
@@ -447,4 +447,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "40ff05ba47b2e7ed2e2a44bddeb3e7ced2acfa5338bd52130cdf2a08a5c084e0";
+export const strategySourceDigest = "563bae683d6921ac43dba295ec5fd9ec9e1ee9788ded58cab4034d01d0a5a8f9";

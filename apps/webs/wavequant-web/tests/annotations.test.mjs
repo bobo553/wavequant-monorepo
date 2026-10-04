@@ -776,33 +776,40 @@ test("near five-top rejection shows the known target and original box without a 
     assert.equal(markerGroups([item], options)[0].marker.color, "#8c9db599");
     assert.equal(buildAnnotations({ ...candidateView, asof: "2020-06-23" }, { events: [event] }).length, 0);
 });
-test("ten-full entry pause explains the frozen high and retracement threshold", () => {
+test("ten-full entry pause explains A-to-B depth and duration", () => {
     const candidateView = {
-        asof: "2023-08-02",
-        bars: [{ time: "2023-07-03" }, { time: "2023-07-20" }, { time: "2023-08-01" }, { time: "2023-08-02" }],
+        asof: "2023-09-01",
+        bars: [{ time: "2023-06-26" }, { time: "2023-07-03" }, { time: "2023-08-01" }, { time: "2023-09-01" }],
         markers: [],
     };
     const [item] = buildAnnotations(candidateView, {
         events: [{
             id: "ten-full-risk",
             event: "entry_rejected",
-            time: "2023-08-02",
-            available_at: "2023-08-02",
-            price: 7.39,
+            time: "2023-09-01",
+            available_at: "2023-09-01",
+            price: 6.61,
             attack: 1,
             reason: "wave_ten_full_pullback_pending",
             wave_ten_full_reached_date: "2023-08-01",
             wave_ten_full_high: 8.44,
-            wave_retracement_anchor: 4.98,
-            wave_retracement_anchor_source: "b_low",
-            wave_retracement_ratio: 0.5,
-            wave_retracement_threshold: 6.71,
+            wave_retracement_anchor: 4.27,
+            wave_retracement_anchor_source: "origin",
+            wave_retracement_ratio: 2 / 3,
+            wave_retracement_threshold: 5.66,
+            wave_half_retracement_threshold: 6.355,
+            wave_timed_half_retracement: true,
+            wave_a_duration: 26,
+            wave_b_duration: 20,
+            wave_b_low: 5.82,
             wave_breakout_window: 23,
         }],
     });
     assert.equal(item.category, "entry-rejections");
     assert.match(item.description, /十满于 2023-08-01 到达，日高 8\.44 元/);
-    assert.match(item.description, /最近 B 浪低点 4\.98 元起算，回撤 1\/2 的价格线为 6\.71 元/);
+    assert.match(item.description, /A 段起点 4\.27 元起算，回撤 2\/3 的价格线为 5\.66 元/);
+    assert.match(item.description, /最低收盘达到半幅线 6\.36 元/);
+    assert.match(item.description, /A 段 26 日、B 段 20 日，B 低 5\.82 元/);
     assert.match(item.description, /23 个交易日内严格突破/);
     assert.match(item.description, /下一交易日起解除限制/);
     assert.match(item.description, /未提交买单/);
