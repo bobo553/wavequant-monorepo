@@ -899,7 +899,8 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             # can resolve it without requiring a second N and another response.
             record_squeeze = (entry_regime == MarketRegime.BULL
                 and frame.first_defense_breach_index is None
-                and frame.resistance is not None and frame.resistance.detected is False
+                and frame.resistance is not None
+                and (frame.resistance.detected is False or i > c['attack'] + 1)
                 and bar.close > frame.continuation_level
                 and bar.volume > bars[i-1].volume)
             if (whole_wave and c.get('attack_quality_warning') is not None
@@ -1039,6 +1040,11 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 n_neckline_date=bars[c['setup'].neckline.index].timestamp.date().isoformat(),
                 n_pullback_date=bars[c['setup'].pullback.index].timestamp.date().isoformat(),
                 **(dict(squeeze_confirmation=confirmation_source,
+                        n_resistance_date=(bars[c['start'] + frame.first_resistance_index].timestamp.date().isoformat()
+                                           if frame.first_resistance_index is not None else None),
+                        n_resistance_window_start=bars[c['attack']].timestamp.date().isoformat(),
+                        n_resistance_window_end=(bars[c['attack'] + 1].timestamp.date().isoformat()
+                                                 if c['attack'] + 1 <= i else None),
                         prior_bar_date=bars[i-1].timestamp.date().isoformat(),
                         prior_virtual_low=min(bars[i-1].low, bars[i-2].close),
                         confirmation_low=bar.low, confirmation_close=bar.close,

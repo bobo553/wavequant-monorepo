@@ -19,7 +19,7 @@ from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
 
 
-@pytest.mark.parametrize("opening,confirmed", [(12.9, False), (12.8, False), (12.3, False), (12.4, True)])
+@pytest.mark.parametrize("opening,confirmed", [(12.9, False), (12.8, False), (12.3, True), (12.4, True)])
 def test_local_confirmation_needs_directional_body(opening, confirmed):
     rows = [
         (8.5, 9, 8, 8.5),
@@ -49,7 +49,7 @@ def test_local_confirmation_needs_directional_body(opening, confirmed):
     assert observe_market_regime(broken, setup, timeframe="1d", policy=policy).latest.regime is None
 
 
-def test_long_upper_shadow_cannot_confirm_local_resistance_failure():
+def test_later_upper_shadow_does_not_extend_original_n_resistance_window():
     rows = [
         (8.5, 9, 8, 8.5),
         (10, 12, 9.5, 11),
@@ -72,10 +72,107 @@ def test_long_upper_shadow_cannot_confirm_local_resistance_failure():
     policy = RegimePolicy(ShadowPolicy(0.5), WaveBoundary.ORIGIN, local_resistance_failure=True)
     result = observe_market_regime(bars, setup, timeframe="1d", policy=policy)
     assert result.latest.resistance.long_shadow
-    assert result.latest.regime is None
+    assert result.latest.first_resistance_index == 4
+    assert result.latest.regime == MarketRegime.BULL
 
 
-def test_gap_up_bullish_record_close_confirms_squeeze_despite_long_upper_shadow():
+@pytest.mark.parametrize(
+    "change,confirmed",
+    [
+        ({}, True),
+        ({"volume": 1000}, True),
+        ({"volume": 999}, True),
+        ({"close": 13.5}, False),
+        ({"high": 16}, True),
+        ({"low": 10}, True),
+        ({"low": 9.9}, False),
+        ({"open": 14}, False),
+    ],
+)
+def test_later_candle_facts_do_not_extend_n_resistance_window(change: dict[str, float], confirmed: bool) -> None:
+    rows = [
+        (8.5, 9, 8, 8.5),
+        (10, 12, 9.5, 11),
+        (10.7, 11, 10, 10.5),
+        (10.8, 12.6, 10, 12.2),
+        (12.4, 13.5, 11.8, 12.4),
+        (12, 14, 11.5, 14),
+    ]
+    bars = [Bar(datetime(2022, 1, index + 1), "TEST", *row, 1000) for index, row in enumerate(rows)]
+    bars[-1] = replace(bars[-1], **{"volume": 2000, **change})
+    setup = NSetup(
+        "TEST", "1d", Direction.UP, PivotRef(0, 0), PivotRef(1, 1), PivotRef(2, 2),
+        "test", BoxAnchorMode.ATTACK_VIRTUAL_EXTREME,
+    )
+    policy = RegimePolicy(ShadowPolicy(0.5), WaveBoundary.ORIGIN, local_resistance_failure=True)
+    result = observe_market_regime(bars, setup, timeframe="1d", policy=policy)
+
+    latest = result.latest
+    assert latest is not None
+    assert (latest.regime == MarketRegime.BULL) is confirmed
+    if confirmed:
+        assert latest.resistance is not None
+        assert latest.resistance.direct_opposing_open
+        assert latest.resistance.detected
+        assert latest.first_resistance_index == 4
+        prefix = observe_market_regime(bars, setup, timeframe="1d", policy=policy, asof_index=4)
+        assert prefix.frames == result.frames[:-1]
+
+
+def test_later_resistance_cannot_revive_broken_defense_or_create_n_resistance() -> None:
+    rows = [
+        (8.5, 9, 8, 8.5),
+        (10, 12, 9.5, 11),
+        (10.7, 11, 10, 10.5),
+        (10.8, 12.6, 10, 12.2),
+        (12.4, 13.5, 9.9, 12.4),
+        (12, 14, 11.5, 14),
+    ]
+    bars = [Bar(datetime(2022, 1, index + 1), "TEST", *row, 1000) for index, row in enumerate(rows)]
+    bars[-1] = replace(bars[-1], volume=2000)
+    setup = NSetup(
+        "TEST", "1d", Direction.UP, PivotRef(0, 0), PivotRef(1, 1), PivotRef(2, 2),
+        "test", BoxAnchorMode.ATTACK_VIRTUAL_EXTREME,
+    )
+    policy = RegimePolicy(ShadowPolicy(0.5), WaveBoundary.ORIGIN, local_resistance_failure=True)
+    latest = observe_market_regime(bars, setup, timeframe="1d", policy=policy).latest
+    assert latest is not None and latest.regime is None
+
+    bars[-2] = replace(bars[-2], open=12.3, high=12.5, low=12.2)
+    result = observe_market_regime(bars, setup, timeframe="1d", policy=policy)
+    latest = result.latest
+    assert latest is not None
+    assert latest.resistance is not None and latest.resistance.direct_opposing_open
+    assert latest.first_resistance_index is None
+    assert latest.regime is None
+
+
+def test_n_attack_day_resistance_is_retained_in_confirmation_window() -> None:
+    rows = [
+        (8.5, 9, 8, 8.5),
+        (10, 12, 9.5, 11),
+        (10.7, 11, 10, 10.5),
+        (10.4, 12.6, 10, 12.2),
+        (12.3, 12.5, 12.2, 12.4),
+        (12, 14, 11.5, 14),
+    ]
+    bars = [Bar(datetime(2022, 1, index + 1), "TEST", *row, 1000) for index, row in enumerate(rows)]
+    setup = NSetup(
+        "TEST", "1d", Direction.UP, PivotRef(0, 0), PivotRef(1, 1), PivotRef(2, 2),
+        "test", BoxAnchorMode.ATTACK_VIRTUAL_EXTREME,
+    )
+    policy = RegimePolicy(ShadowPolicy(0.5), WaveBoundary.ORIGIN, local_resistance_failure=True)
+    result = observe_market_regime(bars, setup, timeframe="1d", policy=policy)
+    assert result.frames[0].resistance is not None
+    assert result.frames[0].resistance.direct_opposing_open
+    assert result.frames[0].first_resistance_index == 3
+    assert result.frames[1].regime is None
+    latest = result.latest
+    assert latest is not None and latest.first_resistance_index == 3
+    assert latest.regime == MarketRegime.BULL
+
+
+def test_record_close_confirms_prior_window_resistance_with_later_upper_shadow():
     rows = [
         (3.75, 3.80, 3.72, 3.75),
         (3.78, 3.83, 3.76, 3.80),
@@ -98,7 +195,7 @@ def test_gap_up_bullish_record_close_confirms_squeeze_despite_long_upper_shadow(
     assert result.latest.regime == MarketRegime.BULL
 
     no_gap = bars[:-1] + [replace(bars[-1], open=bars[-2].high)]
-    assert observe_market_regime(no_gap, setup, timeframe="1d", policy=policy).latest.regime is None
+    assert observe_market_regime(no_gap, setup, timeframe="1d", policy=policy).latest.regime == MarketRegime.BULL
     bearish = bars[:-1] + [replace(bars[-1], open=4.10)]
     assert observe_market_regime(bearish, setup, timeframe="1d", policy=policy).latest.regime is None
     broken_defense = bars[:-1] + [replace(bars[-1], low=3.70)]

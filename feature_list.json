@@ -1,8 +1,71 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-256",
+    "activeFeature": "MONOREPO-257",
     "features": [
+        {
+            "id": "MONOREPO-257",
+            "name": "n-attack-response-resistance-window",
+            "title": "正N抵抗限窗及时确认轧空",
+            "description": "全局V3正N空头抵抗只取突破当天或第二天，后续低开等K线事实不能延长该N抵抗；已有抵抗失败及原防守完整时及时确认新华传媒2019-02-22买点。",
+            "scope": "Core盘态、全局V3入场、Web拓扑与真实新华传媒定向回归",
+            "dependencies": ["MONOREPO-212", "MONOREPO-150"],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "全局V3正N抵抗证据仅在突破当天及下一交易日计入，后续原始K形态可审计但不延长该N抵抗，晚期昨日形态也不能制造局部确认",
+                "最早第三棒确认；原防守失守不能复活，默认研究及倒N兼容、独立全局风控保留；暂不加入次日中大阳短上影提前确认规则",
+                "新华传媒2019-02-22对应19日N产生LONG并按正式日线收盘规则成交，25日不重复同N入场",
+                "真实行情前缀和部分日线重放一致，可选量过滤、等值、收阴、未创新高、首次晚期抵抗及防守失守反例有效",
+                "相关定向测试、类型、构建、格式、Harness和独立复核通过，不运行浏览器或完整套件"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm harness:check; pnpm exec prettier --write feature_list.json packages/wavequant-core/progress.md apps/webs/wavequant-web/progress.md session-handoff.md packages/wavequant-core/docs/market_regime_contract.md; git diff --check",
+                    "status": "passed",
+                    "summary": "Harness通过（256功能、18 Node与2 Python workspace、32规则），5份相关文档格式及差异检查通过。源码检索确认早确认helper、门槛定义和证据字段均不存在。开发阶段星网失败已在最终门禁复验消除，见下方记录。"
+                },
+                {
+                    "command": "Core .venv/Scripts/python.exe -m pytest tests/test_squeeze_confirmation_body.py tests/test_xinhua_volume_record_squeeze.py tests/test_continuous_n_response.py -k 'not xingwang' -q",
+                    "status": "passed",
+                    "summary": "按用户最新要求撤回次日中大阳短上影提前确认后，23项通过、1项单独历史用例排除（17.49秒）。抵抗时间窗与新华传媒2019-02-22正式日线收盘模拟成交、02-25同N不重复、因果前缀及量过滤通过；最早仍从第三棒确认。早确认数值门槛、字段、Web文案及测试已移除。"
+                },
+                {
+                    "command": "Core .venv/Scripts/python.exe -m mypy src/wavequant/domain/market_state/market_regime.py src/wavequant/domain/strategies/integrated_strategy.py src/wavequant/domain/strategies/strategy_profiles.py; git diff --check",
+                    "status": "passed",
+                    "summary": "撤回早确认后3个修改模块类型检查及差异检查通过。尚未提交或合并，常驻main仍为v89。"
+                },
+                {
+                    "command": "Core .venv/Scripts/python.exe -m pytest tests/test_market_regime.py tests/test_joint_n_entry.py tests/test_volume_reversal.py tests/test_ten_full_entry.py -q",
+                    "status": "passed",
+                    "summary": "56项与5个子用例通过（381.41秒），覆盖默认六态及倒N兼容、联合N资格、放量反转和十满独立门禁。另52项快速子集通过，未重复计数。"
+                },
+                {
+                    "command": "Core .venv/Scripts/python.exe -m pytest tests/test_continuous_n_response.py::test_xingwang_may28_does_not_reuse_broken_may11_response -q",
+                    "status": "passed",
+                    "summary": "最终代码1项通过（398.54秒）：2117根完整历史保留2019-02-13 LONG，2026-05-28无LONG/无轧空确认，截面前缀signals一致。此前失败来自已撤回的次日提前确认：N192在10-25倒N失效前于10-22确认，残留五顶投影误挡02-13；当前N192不产生该投影。未改旧断言或放宽五顶门禁。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec vitest run src/features/research-workbench/topology/topology-data.test.ts; pnpm exec prettier --check apps/webs/wavequant-web/src/features/research-workbench/topology/topology-data.ts apps/webs/wavequant-web/src/features/research-workbench/topology/topology-data.test.ts",
+                    "status": "passed",
+                    "summary": "撤回提前确认后，保留时间窗说明及新增market_state摘要覆盖；62个来源摘要21a0a65b...，3项拓扑门禁及两文件格式检查通过。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core build; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "最终撤回早确认后的Core sdist/wheel构建和Web lint/typecheck/build均通过；Web lint0错误、6条既有警告。Web构建使用命令级512MB堆/4MB新生代，next-env生成差异已定向恢复。"
+                },
+                {
+                    "command": "Core .venv/Scripts/python.exe -m pytest tests/test_xinhua_volume_record_squeeze.py tests/test_weak_n_record_squeeze.py tests/test_secondary_resistance.py tests/test_source_resistance_audit.py -q",
+                    "status": "passed",
+                    "summary": "最终10项通过（1063.92秒），含真实02-22成交及抵抗窗口审计日期、乐心08-04已有N入场和量/价反例、07-02二级压力拒绝、先锋06-09压力实际解除及因果前缀。与此前23项重叠3项，累计87个定向用例及5个子用例通过。只读独立Core复核无阻塞问题，默认研究和倒N兼容、原防守、独立压力及去重保留。"
+                },
+                {
+                    "command": "Full Core/Web suites, browser and external minute execution",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏未运行完整套件、浏览器/Playwright及外部分钟执行；真实2019日线采用既有收盘撮合边界，未伪造分钟或实盘成交。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-256",
             "name": "combined-a-pullback-volume-breakout-entry",
@@ -10,7 +73,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",

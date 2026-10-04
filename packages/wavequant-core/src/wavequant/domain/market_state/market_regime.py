@@ -95,7 +95,7 @@ class RegimeObservation:
     n_defense: float | None = None
     wave_boundary: float | None = None
     frames: tuple[RegimeFrame, ...] = ()
-    rule_version: str = 'six_regimes_v2_bullish_gap_record'
+    rule_version: str = 'six_regimes_v3_n_attack_response_window'
 
     @property
     def latest(self) -> RegimeFrame | None:
@@ -117,6 +117,7 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
                   milestone_basis=MilestoneBasis.CLOSE, asof_index=asof_index)
     if n.completion is None:
         return RegimeObservation(n.asof_index, n.status, policy)
+    assert n.anchors is not None
     attack = n.completion.bar_index
     defense = n.completion.defense
     boundary = (n.anchors.origin if policy.wave_boundary == WaveBoundary.ORIGIN
@@ -127,22 +128,31 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     adverse = lambda bar: bar.low if up else bar.high
     virtual = lambda bar, prev: min(bar.low, prev.close) if up else max(bar.high, prev.close)
     record = forward(bars[attack])
-    first_resistance = first_defense = first_wave = None
-    unknown = False
+    resistance_window = policy.local_resistance_failure and up
+    attack_resistance = (
+        observe_resistance(bars[attack - 1], bars[attack], attack_direction=setup.direction,
+                           shadow_policy=policy.shadow_policy) if resistance_window else None
+    )
+    first_resistance = attack if attack_resistance is not None and attack_resistance.detected is True else None
+    first_defense = first_wave = None
+    unknown = attack_resistance is not None and attack_resistance.detected is None
     uninterrupted = True
     rolling_all_held = True
     last_regime = last_index = None
     frames = [RegimeFrame(
-        attack, bars[attack].timestamp, RegimePhase.AWAIT_RESPONSE, None, None,
-        ResistanceOutcome.NOT_OBSERVED, None, False, None, None,
+        attack, bars[attack].timestamp, RegimePhase.AWAIT_RESPONSE, None, attack_resistance,
+        ResistanceOutcome.PENDING if first_resistance is not None else ResistanceOutcome.NOT_OBSERVED,
+        first_resistance, unknown, None, None,
         record, False, defense, None, True, None, None)]
     for i in range(attack + 1, n.asof_index + 1):
         bar, prev = bars[i], bars[i - 1]
         resistance = observe_resistance(prev, bar, attack_direction=setup.direction,
                                          shadow_policy=policy.shadow_policy)
-        if resistance.detected is True and first_resistance is None:
+        resistance_eligible = not resistance_window or i == attack + 1
+        if resistance_eligible and resistance.detected is True and first_resistance is None:
             first_resistance = i
-        unknown |= resistance.detected is None
+        if resistance_eligible:
+            unknown |= resistance.detected is None
         if first_defense is None and sign * (adverse(bar) - defense) < 0:
             first_defense = i
         if first_wave is None and sign * (adverse(bar) - boundary) < 0:
@@ -155,9 +165,6 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         if (policy.local_resistance_failure and i >= attack + 2
                 and first_resistance is not None and first_defense is None):
             prior_resistance = frames[-1].resistance
-            # A higher close alone cannot defeat current resistance. A bullish
-            # open above yesterday's high with an episode-record close is the
-            # explicit exception to a long upper shadow.
             # Keep the original breakout close as an anchor: a rebound below
             # it is not renewed attack merely because yesterday closed lower.
             # A broken rolling response cannot be revived by a later pair of
@@ -168,14 +175,15 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             # The original N defense must remain intact throughout.
             record_rebound = continuation and first_defense is None
             prior_response = (rolling_all_held and rolling_held and prior_resistance
+                              and (not resistance_window or frames[-1].bar_index <= attack + 1)
                               and prior_resistance.detected is True)
-            bullish_gap_record = (up and record_rebound and bar.open > prev.high
-                                  and bar.close > bar.open and resistance.long_shadow is True)
+            # Later candle facts stay visible, but cannot extend this N's
+            # resistance window beyond its attack and next response session.
             continuation = bool((record_rebound or prior_response)
                                 and sign * (bar.close - prev.close) > 0
                                 and sign * (bar.close - bars[attack].close) > 0
                                 and sign * (bar.close - bar.open) > 0
-                                and (resistance.detected is False or bullish_gap_record))
+                                and (not resistance_eligible or resistance.detected is False))
         phase = RegimePhase.AWAIT_CONFIRMATION if i == attack + 1 else RegimePhase.PENDING
         regime = None
         outcome = (ResistanceOutcome.PENDING if first_resistance is not None else

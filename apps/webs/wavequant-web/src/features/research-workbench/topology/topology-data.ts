@@ -66,8 +66,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "regime",
                 question: "形成多头 / 强多头轧空盘态？",
-                detail: "常规 V1、V2、V3 买点要求已确认的轧空盘态。V3 抵抗后若盘中短暂跌破滚动低点，但守住原 N 防守、当日无新空抵且阳线收盘创本轮新高，也可当日确认普通轧空。回档续攻、盘整缺口和 C 波续攻按各自证据恢复到多头盘态；浅回撤横盘突破另走独立待选通道。",
-                source: "integrated_strategy.py · generate_system_signals:356–444, 626–641",
+                detail: "常规 V1、V2、V3 买点要求已确认的轧空盘态。V3 局部正 N 的空头抵抗只计入突破当天或第二个交易日；之后的低开、高开收阴或长上影仍保留为原始 K 线证据，但不延长该 N 的抵抗。最早从突破日起第三根 K 线确认；守住原 N 防守，阳线收盘高于前收、原攻击收盘并创本轮新高时，即使盘中短暂跌破滚动低点，也可确认普通轧空。上方二级压力及其他风险仍按各自门禁判断。回档续攻、盘整缺口和 C 波续攻按各自证据恢复到多头盘态；浅回撤横盘突破另走独立待选通道。",
+                source: "market_regime.py · observe_market_regime；integrated_strategy.py · generate_system_signals",
                 yes: "交给买点分类",
                 no: "候选拒绝：not_squeeze_regime",
             },
@@ -497,4 +497,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "5655992d616d91db95743fd746aff3cf0c99ababfe8a5354a8f13503f92261ab";
+export const strategySourceDigest = "21a0a65bd82be46a489de291045437b873bd5ef35aae570ee2c8fdb136586e72";
