@@ -68,15 +68,20 @@ def promote_alternation_segments(
     subsequent development separate rather than making that live high formal.
     """
     result = deepcopy(geometry)
-    added = []
+    added: list[dict[str, Any]] = []
     merged = 0
-    for event in events:
-        if (
-            event["event"] != "squeeze_alternation_breakout"
-            or event.get("trend_level") != level
-            or event.get("breakout_basis") != "high_after_confirmed_alternation"
-        ):
-            continue
+    qualified = [
+        event
+        for event in events
+        if event["event"] == "squeeze_alternation_breakout"
+        and event.get("trend_level") == level
+        and event.get("breakout_basis") == "high_after_confirmed_alternation"
+    ]
+    # Earlier confirmation owns a shared endpoint, independently of audit input order.
+    for event in sorted(
+        qualified,
+        key=lambda item: (item["bar_index"], item["a_high_index"], item["b_low_index"], item["source_path"]),
+    ):
         known = bars[event["bar_index"]].timestamp.date().isoformat()
         points = []
         for kind, index, value in [
@@ -116,15 +121,17 @@ def promote_alternation_segments(
         name = "tertiary" if level == 3 else "secondary"
         # A separately rendered segment must not span an already confirmed
         # path. When it fits inside one formal leg, splice its actual extrema
-        # into that leg so there is one ordered line for the next level.
+        # into that leg so there is one ordered line at either trend level.
+        # Previously published candidates participate too: otherwise repeated
+        # confirmations outside the initial path can create the same fork again.
         handled = False
-        if level == 2:
-            for stroke in result.get("strokes", []):
+        if level in (2, 3):
+            for stroke in [*result.get("strokes", []), *added]:
                 original = stroke["points"]
                 if (
                     not original
-                    or points[-1]["index"] < original[0]["index"]
-                    or points[0]["index"] > original[-1]["index"]
+                    or points[-1]["index"] <= original[0]["index"]
+                    or points[0]["index"] >= original[-1]["index"]
                 ):
                     continue
                 handled = True

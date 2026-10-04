@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 import json
 from pathlib import Path
 
+import pytest
+
 from wavequant.domain.market_structure.alternation_breakout import high_breakout_events, promote_alternation_segments
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
@@ -68,6 +70,96 @@ def test_formal_segment_owns_confirmation_date_and_clears_duplicate_development(
     assert [(p["index"], p["kind"]) for p in points] == [(1, "H"), (2, "L")]
     assert all(p["state"] == "confirmed" and p["available_at"] == "2026-01-05" for p in points)
     assert promote_alternation_segments(geometry, bars, [event], 3)["strokes"] == []
+
+
+def test_guofang_may29_tertiary_high_has_one_outgoing_formal_leg():
+    raw = json.loads(
+        (Path(__file__).parent / "fixtures/guofang_tertiary_shared_start.json").read_text(encoding="utf-8")
+    )
+    bars = [Bar(datetime.fromisoformat(day), raw["symbol"], *values) for day, *values in raw["bars"]]
+    geometry = deepcopy(raw["geometry"])
+    result = promote_alternation_segments(geometry, bars, raw["events"], 3)
+    outgoing = [
+        right
+        for stroke in result["strokes"]
+        for left, right in zip(stroke["points"], stroke["points"][1:])
+        if left["time"] == "2025-05-29"
+    ]
+    assert [point["time"] for point in outgoing] == ["2026-04-27"]
+    assert geometry == raw["geometry"]
+    assert result["developing_strokes"] == raw["geometry"]["developing_strokes"]
+    incoming = set()
+    outgoing = set()
+    for stroke in [*result["strokes"], *result["developing_strokes"]]:
+        for left, right in zip(stroke["points"], stroke["points"][1:]):
+            start = (left["index"], left.get("ordinal", 0), left["kind"], left["value"])
+            end = (right["index"], right.get("ordinal", 0), right["kind"], right["value"])
+            assert start not in outgoing
+            assert end not in incoming
+            outgoing.add(start)
+            incoming.add(end)
+            assert left["index"] < right["index"]
+            assert left["kind"] != right["kind"]
+    for cutoff in ("2026-07-03", "2026-09-11"):
+        prefix_bars = [bar for bar in bars if str(bar.timestamp.date()) <= cutoff]
+        source = deepcopy(raw["geometry"])
+        for stroke in source["strokes"]:
+            stroke["points"] = [point for point in stroke["points"] if point["available_at"] <= cutoff]
+        events = [event for event in raw["events"] if event["bar_index"] < len(prefix_bars)]
+        prefix = promote_alternation_segments(source, prefix_bars, events, 3)
+        assert [
+            (point["time"], point["kind"], point["available_at"])
+            for stroke in prefix["strokes"]
+            for point in stroke["points"]
+        ] == [
+            (point["time"], point["kind"], point["available_at"])
+            for stroke in result["strokes"]
+            for point in stroke["points"]
+            if point["available_at"] <= cutoff
+        ]
+
+
+@pytest.mark.parametrize("level", [2, 3])
+def test_alternation_candidates_share_one_ordered_path_even_without_initial_formal_strokes(level):
+    bars, qualified = fixture()
+    events = [
+        event
+        for event in high_breakout_events(bars, [dict(qualified, trend_level=level)])
+        if event["event"] == "squeeze_alternation_breakout"
+    ]
+    assert len(events) == 1
+    original = events[0]
+    later = dict(original, bar_index=5, b_low_index=3, b_low_price=6.5)
+    duplicate = dict(original)
+    for candidates in ([original, later, duplicate], [later, duplicate, original]):
+        result = promote_alternation_segments(dict(strokes=[]), bars, candidates, level)
+        edges = [
+            (left["index"], right["index"])
+            for stroke in result["strokes"]
+            for left, right in zip(stroke["points"], stroke["points"][1:])
+        ]
+        assert edges == [(1, 2)]
+        assert result["strokes"][0]["available_at"] == "2026-01-05"
+
+
+@pytest.mark.parametrize("level", [2, 3])
+def test_alternation_can_continue_from_the_last_formal_high_without_losing_its_incoming_leg(level):
+    bars, event = fixture()
+    geometry = dict(strokes=[dict(points=[
+        dict(index=0, kind="L", value=5, available_at="2026-01-01"),
+        dict(index=1, kind="H", value=10, available_at="2026-01-02"),
+    ])])
+    before = deepcopy(geometry)
+    result = promote_alternation_segments(
+        geometry, bars, high_breakout_events(bars, [dict(event, trend_level=level)]), level
+    )
+    edges = [
+        (left["index"], right["index"])
+        for stroke in result["strokes"]
+        for left, right in zip(stroke["points"], stroke["points"][1:])
+    ]
+    assert edges == [(0, 1), (1, 2)]
+    assert geometry == before
 
 
 def test_xidian_august20_confirmed_high_break_and_formal_segment_match_prefix():
