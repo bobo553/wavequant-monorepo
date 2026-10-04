@@ -510,7 +510,7 @@ test("annotations remain observation categories and never become BUY or executed
     const input = sample();
     addBar(input, candle("2024-06-11", 87, 89, 87, 88, 200));
     const annotations = combinedAAnnotations(observe(input));
-    assert.equal(annotations.length, 2);
+    assert.equal(annotations.length, 4);
     assert.ok(annotations.every((annotation) => annotation.category === "wave-projection"));
     assert.deepEqual(
         new Set(annotations.map((annotation) => annotation.kind)),

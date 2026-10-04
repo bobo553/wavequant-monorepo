@@ -4,6 +4,47 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-249",
+            "name": "combined-a-wave-path-labels",
+            "title": "ABC组合A浪连线与端点标签",
+            "description": "连接已确认ABC组合的原A起点与C终点，并显示组合A起与组合A顶标识。",
+            "scope": "Web组合A浪图表显示和定向回归",
+            "dependencies": ["MONOREPO-248"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "组合A浪从原A起点连接至已确认C终点，端点使用各自真实日期与价格标识",
+                "连线和标签受ABC开关控制，不依赖普通规则或C目标开关，不扩大价格轴或改变缩放",
+                "组合确认前不显示，切换行情、理论与图窗后不残留；原半幅线与ABC悬停保持"
+            ],
+            "verification": [
+                {
+                    "command": "node --test combined-a-wave.test.mjs combined-a-chart.test.mjs annotations.test.mjs abc-annotations.test.mjs wave-c-chart.test.mjs wave-endpoint-overlay.test.mjs",
+                    "status": "passed",
+                    "summary": "102项定向回归通过；国芳真实日线2024-02-08原点至2025-01-03已确认C顶连线与组合A端点价格、文字通过，涵盖ABC开关、C目标关闭、视窗平移、理论/行情切换清理、未来确认与无效价格，以及原半幅线/ABC悬停/成交选择/缩放保留。初轮同价标签避让问题通过组合优先级修正；既有定位光圈用例偶发浮点边界失败，未改无关代码，整组复跑通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; NODE_OPTIONS=--max-old-space-size=768 pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "Web lint零错误（6条既有警告）、类型检查和生产构建通过。内存参数仅用于本次构建，不修改项目配置。"
+                },
+                {
+                    "command": "targeted Prettier; node --check public/charts.js; node --check public/combined-a-wave.js; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "修改文件格式、两份图表脚本语法、差异与Harness检查通过。"
+                },
+                {
+                    "command": "全仓verify:quick后续验证",
+                    "status": "not-run",
+                    "summary": "首次worktree初始化安装依赖成功，全仓quick未完成：无关Core使用系统Python时缺少build模块，受影响Web静态检查及构建已独立通过。宿主Node v24.14.1与.nvmrc v24.16.0存在既有版本差异。"
+                },
+                {
+                    "command": "完整Web单测、真实浏览器视觉及Playwright",
+                    "status": "not-run",
+                    "summary": "按用户验证节奏未运行完整Web套件或浏览器端到端测试；仅运行相关定向回归，视觉效果待人工复核。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-248",
             "name": "combined-abc-a-half-retracement",
             "title": "ABC组合大A半幅回调观察",

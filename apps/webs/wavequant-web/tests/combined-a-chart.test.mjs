@@ -200,6 +200,7 @@ test("changing theory or candle data clears previous combined A observations and
     chart.setTheory(null);
     assert.deepEqual(chart.autoCombinedAObservations, []);
     assert.deepEqual(chart.combinedARetracementLines, []);
+    assert.deepEqual(chart.combinedAWaveLines, []);
     assert.ok(rendered.removed.includes(originalSeries));
     chart.autoCombinedAObservations = [observation];
     chart.refreshMarkers();
@@ -207,6 +208,7 @@ test("changing theory or candle data clears previous combined A observations and
     assert.deepEqual(chart.autoCombinedAObservations, []);
     assert.deepEqual(chart.combinedARetracementLines, []);
     assert.equal(chart.container.dataset.combinedARetracementGuides, "0");
+    assert.equal(chart.container.dataset.combinedAWaveLegs, "0");
 });
 
 test("full-history Guofang observes the exact half reference while its original ABC hover and BUY selection remain intact", () => {
@@ -232,6 +234,24 @@ test("full-history Guofang observes the exact half reference while its original 
     const marker = rendered.markers.find(({ id }) => id === annotation.id);
     assert.equal(marker.price, observed.price);
     assert.equal(marker.color, annotation.color);
+    const path = chart.combinedAWaveLines.find(
+        ({ points }) => points[0].time === observed.originTime && points[1].time === observed.cTime,
+    );
+    assert.ok(path);
+    assert.deepEqual(path.points, [
+        { time: observed.originTime, value: observed.origin },
+        { time: observed.cTime, value: observed.cHigh },
+    ]);
+    for (const [suffix, time, price, text] of [
+        ["origin", observed.originTime, observed.origin, "组合 A 起"],
+        ["high", observed.cTime, observed.cHigh, "组合 A 顶"],
+    ]) {
+        const endpoint = rendered.markers.find(({ id }) => id === observed.id + ":" + suffix);
+        assert.ok(endpoint);
+        assert.equal(endpoint.time, time);
+        assert.equal(endpoint.price, price);
+        assert.equal(endpoint.text, text);
+    }
     assert.ok(Math.abs(observed.price - 6.767928288212306) < 1e-12);
     assert.deepEqual(
         observed.preconditions.map(({ level, sourceLevel, scope, contextAsOf, key }) => ({
@@ -357,4 +377,46 @@ test("a shorter data asof cannot borrow a future theory's C completion, half sta
         rendered.guides.map(({ targetState }) => targetState),
         ["已触及", "已触及", "待达成"],
     );
+});
+
+test("combined A connects confirmed anchors independently from C targets and removes lines when hidden or out of view", () => {
+    const { chart, rendered } = withObservation();
+    const series = chart.combinedAWaveLines[0];
+    assert.ok(series);
+    assert.equal(series.options.title, "组合 A 浪");
+    assert.equal(series.options.lineStyle, 0);
+    assert.equal(series.options.autoscaleInfoProvider(), null);
+    assert.deepEqual(series.points, [
+        { time: observation.originTime, value: observation.origin },
+        { time: observation.cTime, value: observation.cHigh },
+    ]);
+    const originalRange = { ...rendered.range };
+    chart.setAnnotationOptions({ levels: false });
+    assert.equal(chart.combinedAWaveLines[0], series);
+    assert.ok(rendered.markers.some(({ id, text }) => id === observation.id + ":high" && text === "组合 A 顶"));
+    chart.setAnnotationOptions({ tertiaryAbc: false });
+    assert.deepEqual(chart.combinedAWaveLines, []);
+    assert.ok(rendered.removed.includes(series));
+    assert.ok(rendered.markers.every(({ id }) => !id.startsWith(observation.id)));
+    chart.setAnnotationOptions({ tertiaryAbc: true });
+    assert.equal(chart.combinedAWaveLines.length, 1);
+    rendered.range = { from: 4, to: 5 };
+    chart.refreshMarkers();
+    assert.deepEqual(chart.combinedAWaveLines, []);
+    rendered.range = originalRange;
+    chart.refreshMarkers();
+    assert.equal(chart.combinedAWaveLines.length, 1);
+    assert.deepEqual(rendered.range, originalRange);
+});
+
+test("future confirmation and invalid anchors cannot draw a combined A connection", () => {
+    for (const changes of [
+        { available_at: "2025-02-05" },
+        { origin: NaN },
+        { cHigh: Infinity },
+        { originTime: observation.cTime },
+    ]) {
+        const { chart } = withObservation({ ...observation, ...changes });
+        assert.deepEqual(chart.combinedAWaveLines, []);
+    }
 });
