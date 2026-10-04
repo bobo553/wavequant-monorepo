@@ -41,6 +41,16 @@
                     "command": "完整Core/Web套件、真实浏览器视觉及Playwright",
                     "status": "not-run",
                     "summary": "按用户开发验证节奏仅运行定向回归；完整套件和人工视觉留待独立验证，本轮未启动浏览器或Playwright。"
+                },
+                {
+                    "command": "scripts/restart-wavequant.ps1 -NoBrowser; GET /api/backtest-version; GET /api/akshare-backtest; GET /api/backtest-job; HTTP /research",
+                    "status": "passed",
+                    "summary": "本地main新引擎指纹332280c04ec96d84b886120879981d00f08f7b079ea2affc0f20ce16bd174913与API一致，Web3003/API8765就绪，research HTTP200。新服务完整国芳2123日线回放：一二三级295/48/13条正式及发展边均无重复或分叉，05-29三级唯一出线到2026-04-27。修复前后4856条审计、318条信号、51个订单及17笔成交逐条一致。旧引擎回测缓存由现有版本机制失效；人工视觉、完整套件及Playwright仍未运行。"
+                },
+                {
+                    "command": "targeted Prettier; git diff --check; pnpm harness:check; codegraph sync",
+                    "status": "passed",
+                    "summary": "状态/进度/真实最小输入格式、差异、Harness及CodeGraph同步通过，Python格式由人工按既有风格维护。"
                 }
             ]
         },
