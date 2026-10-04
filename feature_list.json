@@ -20,6 +20,11 @@
             ],
             "verification": [
                 {
+                    "command": "GET 13003/8765 /api/backtest-version?run=acceptance_20260908_verified&variant=lecture_v3; main TdxBacktester._engine_hashes; GET /wave-entry-evidence.js; main topology Vitest",
+                    "status": "passed",
+                    "summary": "实现c05d8e4已以e6d1e13本地合并，两个工作区clean；main实际3项拓扑通过。13003代理及8765均HTTP200、自动加载v91，无需重启；127个Python源引擎468d1456680c21d8f5904aa51f20bca1c0b341a4801309624a23b029d7eab354与main精确一致。新成交说明helper HTTP200且响应字节与main文件一致。全程只读，未启动HTTP长回放、修改缓存或重启进程；本轮新增修改未推送。"
+                },
+                {
                     "command": "Core .venv/Scripts/python.exe -m pytest tests/test_market_regime.py tests/test_squeeze_confirmation_body.py tests/test_continuous_n_response.py tests/test_xinhua_mother_pullback_squeeze.py tests/test_xinhua_volume_record_squeeze.py tests/test_v3_attack_quality.py tests/test_ten_full_entry.py -k 'not xingwang' -q",
                     "status": "passed",
                     "summary": "最终强势形态规则82项及5个子用例通过（54.21秒）；真实3/5阴母N、3/20LONG/filled、前三棒/原防守/强形态及弱棒放量、真实2019-02-22买点和02-25同N不重复、因果前缀与部分日线缓存保留。开发阶段的旧record参照/无强形态规则均撤回，只记录最终规则结果。"
