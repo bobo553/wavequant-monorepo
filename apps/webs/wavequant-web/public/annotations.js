@@ -111,7 +111,8 @@ const REASONS = {
     wave_five_top_child_volume_clear: "五顶后收阴，跌破昨低昨收及前天子低，量超过最近阴线，当日清空余仓",
     wave_five_top_gap_volume_clear: "五顶到达后低开，收盘跌破前日开盘且成交量超过此前最近阴线，当日收盘清空余仓",
     wave_five_top_entry_too_close: "距已知五顶目标不超过原正 N 一箱，禁止新买入或加仓",
-    wave_ten_full_pullback_pending: "十满后等待短期再突破、A 段 2/3 回撤，或半幅回撤且 B 段时间长于 A 段，暂缓新买入或加仓",
+    wave_ten_full_pullback_pending:
+        "十满后等待短期再突破、A 段 2/3 回撤，或半幅回撤且 B 段时间长于 A 段，暂缓新买入或加仓",
     volume_inverse_n_clear: "倒 N 确认且成交量超过前日，当日直接清仓",
     mother_child_inverse_n_low_break: "母子线的阳子线低点与收盘均被严格跌破，形成倒 N，当日收盘清仓",
     inverse_n_close_reduce_90: "收盘确认倒 N，当日累计减仓至原持仓 90%",
@@ -647,7 +648,8 @@ export function buildAnnotations(view, theory) {
     if (!view) return [];
     const marketDates = new Set(view.bars.map((b) => b.time));
     const nExtensions = new Map(
-        (theory?.events || []).filter((event) => event.event === "n_completed" && event.direction === "up")
+        (theory?.events || [])
+            .filter((event) => event.event === "n_completed" && event.direction === "up")
             .map((event) => [event.time, event.levels || []]),
     );
     const items = view.markers.map((m) => {
@@ -670,19 +672,26 @@ export function buildAnnotations(view, theory) {
                 ? "风控未通过 · 买入未成交"
                 : `委托${label(m.status)}`;
         const signalDate = m.signal_time || m.signal_timestamp?.slice(0, 10);
-        const wave = ((fill && m.side === "BUY") || (signal && m.side === "LONG"))
-            ? m.decision_evidence?.find((evidence) => evidence.event === "long_signal"
-                && evidence.wave_entry_path && Number.isFinite(evidence.wave_equal_target))
-            : null;
+        const wave =
+            (fill && m.side === "BUY") || (signal && m.side === "LONG")
+                ? m.decision_evidence?.find(
+                      (evidence) =>
+                          evidence.event === "long_signal" &&
+                          evidence.wave_entry_path &&
+                          Number.isFinite(evidence.wave_equal_target),
+                  )
+                : null;
         const strongA = wave?.wave_entry_path === "two_t_strong_a_resistance_rebreak" ? wave : null;
         const cTargets = [
             ["wave_c_0618_target", "C 浪目标 0.618×A", "c_0618"],
             ["wave_equal_target", "C 浪目标 1×A", "c_equal"],
         ];
-        const matchedTarget = cTargets.find(([key]) => Number.isFinite(m.target)
-            && Number.isFinite(wave?.[key]) && Math.abs(m.target - wave[key]) < 1e-6);
-        const nTargets = ((fill && m.side === "BUY") || (signal && m.side === "LONG"))
-            ? buyNTargetLevels(m, wave, view, theory) : [];
+        const matchedTarget = cTargets.find(
+            ([key]) =>
+                Number.isFinite(m.target) && Number.isFinite(wave?.[key]) && Math.abs(m.target - wave[key]) < 1e-6,
+        );
+        const nTargets =
+            (fill && m.side === "BUY") || (signal && m.side === "LONG") ? buyNTargetLevels(m, wave, view, theory) : [];
         const levels = [];
         if (Number.isFinite(m.price))
             levels.push({ name: fill ? "成交价" : riskRejection ? "拟买价（未成交）" : "信号参考价", price: m.price });
@@ -717,15 +726,22 @@ export function buildAnnotations(view, theory) {
         levels.push(...nTargets);
         if (strongA && !nTargets.length) {
             const projections = (nExtensions.get(strongA.wave_entry_n_date) || []).filter(
-                (level) => ["five_top", "ten_full"].includes(level.stage)
-                    && (!level.available_at || (level.available_at <= view.asof
-                        && level.available_at <= (theory?.asof || view.asof))),
+                (level) =>
+                    ["five_top", "ten_full"].includes(level.stage) &&
+                    (!level.available_at ||
+                        (level.available_at <= view.asof && level.available_at <= (theory?.asof || view.asof))),
             );
             levels.push(...projections);
-            if (!projections.some((level) => level.stage === "five_top")
-                && Number.isFinite(strongA.wave_five_top_target))
-                levels.push({ name: "五顶（强 A 买点测幅）", price: strongA.wave_five_top_target,
-                    stage: "five_top", available_at: signalDate || m.time });
+            if (
+                !projections.some((level) => level.stage === "five_top") &&
+                Number.isFinite(strongA.wave_five_top_target)
+            )
+                levels.push({
+                    name: "五顶（强 A 买点测幅）",
+                    price: strongA.wave_five_top_target,
+                    stage: "five_top",
+                    available_at: signalDate || m.time,
+                });
         }
         const riskComparison =
             m.reason === "risk_budget_below_one_lot" &&
@@ -741,9 +757,11 @@ export function buildAnnotations(view, theory) {
             priority: fill ? 200 : riskRejection ? 160 : 150,
             description: riskRejection
                 ? `${signalDate ? `${signalDate} 产生买入信号，` : ""}${m.time} 尝试买入时被执行风控拒绝：${reasonText(m.reason)}。${riskComparison}未实际买入。`
-                : reasonText(m.reason) + (m.side === "EXIT" ? "。空仓时也可能出现，不代表已卖出。" : "")
-                    + (nTargets.some((level) => level.estimated)
-                        ? "。五顶、十满为启动正 N 的叠箱预估，假设不回调且五顶恰好到位；后续以已确认的叠箱／堆箱目标更新。" : ""),
+                : reasonText(m.reason) +
+                  (m.side === "EXIT" ? "。空仓时也可能出现，不代表已卖出。" : "") +
+                  (nTargets.some((level) => level.estimated)
+                      ? "。五顶、十满为启动正 N 的叠箱预估，假设不回调且五顶恰好到位；后续以已确认的叠箱／堆箱目标更新。"
+                      : ""),
             sourceLabel:
                 m.source === "single_stock_backtest"
                     ? signal
@@ -777,7 +795,9 @@ export function buildAnnotations(view, theory) {
                 : "";
         const tenFullRisk =
             event.reason === "wave_ten_full_pullback_pending" &&
-            [event.wave_ten_full_high, event.wave_retracement_anchor, event.wave_retracement_threshold].every(Number.isFinite)
+            [event.wave_ten_full_high, event.wave_retracement_anchor, event.wave_retracement_threshold].every(
+                Number.isFinite,
+            )
                 ? `十满于 ${event.wave_ten_full_reached_date} 到达，日高 ${num(event.wave_ten_full_high)} 元；从 ${event.wave_retracement_anchor_source === "b_low" ? "最近 B 浪低点" : "A 段起点"} ${num(event.wave_retracement_anchor)} 元起算，回撤 ${event.wave_retracement_ratio === 0.5 ? "1/2" : "2/3"} 的价格线为 ${num(event.wave_retracement_threshold)} 元。${event.wave_timed_half_retracement && Number.isFinite(event.wave_half_retracement_threshold) ? `另可在 B 段最低收盘达到半幅线 ${num(event.wave_half_retracement_threshold)} 元、且回调至 B 低点的时间严格长于 A 段时解除；当前 A 段 ${event.wave_a_duration} 日、B 段 ${event.wave_b_duration} 日${Number.isFinite(event.wave_b_low) ? `，B 低 ${num(event.wave_b_low)} 元` : ""}。` : ""}${Number.isInteger(event.wave_breakout_window) ? `也可在 ${event.wave_breakout_window} 个交易日内严格突破到达日高点。` : ""}条件在收盘后确认，下一交易日起解除限制。`
                 : "";
         items.push({
@@ -864,7 +884,7 @@ export function visibleAnnotations(items, options) {
                                   ? options.tertiaryAbc
                                   : m.category === "wave-projection"
                                     ? options.tertiaryAbc
-                                  : options.rules,
+                                    : options.rules,
     );
 }
 export function markerGroups(items, options, span = 140) {
@@ -892,7 +912,7 @@ export function markerGroups(items, options, span = 140) {
                 isFill = item.kind === "fill",
                 isRule = item.kind === "rule",
                 isTrendKey = item.kind === "trend-key",
-                isWaveProjection = item.kind === "wave-projection",
+                isWaveProjection = ["wave-projection", "combined-a-wave", "combined-a-strength"].includes(item.kind),
                 isCandidateRejection = item.category === "entry-rejections",
                 buy = item.side === "BUY" || item.side === "LONG";
             const text = isCandidateRejection
@@ -934,19 +954,19 @@ export function markerGroups(items, options, span = 140) {
                           ? "#8c9db599"
                           : isWaveProjection
                             ? item.color
-                          : isTrendKey
-                            ? item.color
-                            : isRule
-                              ? item.category === "diagnostic"
+                            : isTrendKey
+                              ? item.color
+                              : isRule
+                                ? item.category === "diagnostic"
+                                    ? "#8292a9"
+                                    : item.raw?.event === "n_completed" && item.side === "down"
+                                      ? "#40d6a3"
+                                      : "#b69af5"
+                                : item.kind === "order"
                                   ? "#8292a9"
-                                  : item.raw?.event === "n_completed" && item.side === "down"
-                                    ? "#40d6a3"
-                                    : "#b69af5"
-                              : item.kind === "order"
-                                ? "#8292a9"
-                                : buy
-                                  ? "#49d5dc"
-                                  : "#e6ba64",
+                                  : buy
+                                    ? "#49d5dc"
+                                    : "#e6ba64",
                     shape: isFill
                         ? buy
                             ? "arrowUp"
@@ -954,24 +974,24 @@ export function markerGroups(items, options, span = 140) {
                         : isWaveProjection
                           ? item.markerShape || "circle"
                           : isTrendKey
-                          ? item.markerShape || "arrowDown"
-                          : isRule
-                            ? "circle"
-                            : "circle",
+                            ? item.markerShape || "arrowDown"
+                            : isRule
+                              ? "circle"
+                              : "circle",
                     text: isRule && span > 70 && index % Math.ceil(span / 70) !== 0 ? "" : text,
                     size: isFill
                         ? 1.5
                         : isCandidateRejection
                           ? 0.8
-                        : isWaveProjection
-                          ? 1.1
-                          : isTrendKey
-                            ? 0.8
-                            : isRule
-                              ? 0.65
-                              : item.kind === "signal" && item.side === "EXIT"
-                                ? 0.45
-                                : 1,
+                          : isWaveProjection
+                            ? 1.1
+                            : isTrendKey
+                              ? 0.8
+                              : isRule
+                                ? 0.65
+                                : item.kind === "signal" && item.side === "EXIT"
+                                  ? 0.45
+                                  : 1,
                 },
             };
         });
