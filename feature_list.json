@@ -21,6 +21,11 @@
             ],
             "verification": [
                 {
+                    "command": "Canonical topology source digest across main/worktree, 3 topology Vitest tests, Web lint/typecheck/Prettier/diff",
+                    "status": "passed",
+                    "summary": "合并main后发现5个Git检出CRLF文件导致raw摘要与worktree LF不同，初测1项source guard失败。仅在拓扑校验归一CRLF→LF，54个真实来源两检出归一均5655992d...，摘要常量不变；加入全CRLF转换摘要相同及非换行字符变化必须异摘要断言，最终3项通过，lint零错误6条旧警告、typecheck/格式/diff及独立复核通过。未改Core引擎指纹，main原始引擎6cd79d78...已与运行API一致，生产代码无新增变化故不重复build/其他已通过套件。"
+                },
+                {
                     "command": "pnpm --filter wavequant-web exec node --test tests/combined-a-entry-evidence.test.mjs tests/buy-points.test.mjs tests/candle-details.test.mjs; Web topology Vitest/lint/typecheck/build/format/JS syntax",
                     "status": "passed",
                     "summary": "补齐扫描列表独立分类及AkShare/TDX点击完整组合原因，避免误标第一类或undefined级；6项新增直接回归，18项Node及3项拓扑通过，指纹未变。最终Web lint零错误6条既有警告、typecheck、512MB/4MB生产build及相关格式/语法/diff通过；剔除next-env生成变化。Backend小样本combined history→buy_match→JSON的18个必需proof字段完整，独立只读复核无问题。OHLCV复制保留已有字段行为，完整原因在B/LONG详情展示。"
