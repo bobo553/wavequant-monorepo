@@ -3,7 +3,7 @@ import { num, pct, symbolName } from "./labels.js";
 import { holdingDrawdownForMarker, holdingDrawdownLines } from "./max-drawdown.js";
 import { closedPositionLabel, openPositionForMarker, positionProfit } from "./trade-position.js";
 import { numberedTradeReasons } from "./trade-reasons.js";
-import { waveEntryEvidence } from "./wave-entry-evidence.js";
+import { attackBarBreakSqueezeEvidence, waveEntryEvidence } from "./wave-entry-evidence.js";
 
 export function formatFilledTradeCopy(view, marker, variantName, positionLabel, trade) {
     const lines = [
@@ -28,6 +28,7 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
     if (marker.side === "BUY") lines.push(`买入后仓位：${positionLabel}`);
     lines.push(...holdingDrawdownLines(holdingDrawdownForMarker(view, marker)));
     lines.push(...waveEntryEvidence(marker.decision_evidence));
+    lines.push(...attackBarBreakSqueezeEvidence(marker.decision_evidence));
     const reversal = marker.decision_evidence?.find((e) => e.squeeze_confirmation === "volume_reversal_record_break");
     if (reversal)
         lines.push(
@@ -74,12 +75,14 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         lines.push(
             `买点依据：正 N ${record.attack_date}；收盘 ${num(record.confirmation_close, 4)} > 本次 N 抵抗阶段高点 ${num(record.confirmation_record_high, 4)}，确认轧空。`,
         );
-    const recovery = marker.decision_evidence?.find(
-        (e) => e.inverse_reentry_path === "deep_alternation_kill_high_record_squeeze",
+    const recovery = marker.decision_evidence?.find((e) =>
+        ["deep_alternation_kill_high_record_squeeze", "deep_alternation_kill_high_attack_bar_squeeze"].includes(
+            e.inverse_reentry_path,
+        ),
     );
     if (recovery)
         lines.push(
-            `深回撤恢复：整段 ${recovery.origin_index_date} → ${recovery.flip_high_index_date}，${recovery.alternation_low_index_date} 回撤 ${pct(recovery.recovery_whole_retracement)}；守住回调低点，收复 ${recovery.recovery_inverse_date} 杀多高 ${num(recovery.recovery_kill_high, 4)}。`,
+            `深回撤恢复：整段 ${recovery.origin_index_date} → ${recovery.flip_high_index_date}，${recovery.alternation_low_index_date} 回撤 ${pct(recovery.recovery_whole_retracement)}；守住回调低点，收复 ${recovery.recovery_inverse_date} 杀多高 ${num(recovery.recovery_kill_high, 4)}。${recovery.inverse_reentry_path === "deep_alternation_kill_high_attack_bar_squeeze" ? "整段回撤至少 2/3，结构归属与可知时序成立，收盘严格收复杀多高；轧空参照原正 N 突破棒的收盘与最高价严格双比较。" : ""}`,
         );
     const squeeze = marker.decision_evidence?.find((e) => e.squeeze_confirmation === "local_resistance_failure");
     if (squeeze?.n_level >= 2)

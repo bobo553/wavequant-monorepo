@@ -3,6 +3,7 @@
 from fractions import Fraction
 
 from ..market_structure.alternation_duration import short_shallow_pullback
+from ..market_state.candle_strength import strong_bullish_candle
 
 
 def fresh_strong_squeeze_recovery(bars, *, now, attack, origin, inverse, strong_squeeze):
@@ -28,14 +29,14 @@ def fresh_strong_squeeze_recovery(bars, *, now, attack, origin, inverse, strong_
     )
 
 
-def deep_pullback_recovery(bars, *, now, attack, inverse, alternation, record_break):
+def deep_pullback_recovery(bars, *, now, attack, inverse, alternation, record_break, attack_bar_break=False):
     """A newly qualified deep B may recover the selling-high with a fresh squeeze.
 
     This is not a waiver for old-N bounces: the inverse must belong to the
     completed decline, and both the new N and whole-wave context must be live.
     """
     known = [e for e in inverse if e["known_at"] <= now]
-    if not known or not alternation or not record_break:
+    if not known or not alternation or not (record_break or attack_bar_break):
         return None
     last = max(known, key=lambda e: (e["known_at"], e["attack"], e["b_high"]))
     if alternation.get("definition") != "whole_flip_wave_v3" or alternation.get("trend_level") not in (2, 3):
@@ -46,6 +47,12 @@ def deep_pullback_recovery(bars, *, now, attack, inverse, alternation, record_br
         0 <= origin < peak < last["attack"] <= low < attack <= now < len(bars)
         and last["known_at"] < attack
         and last["known_at"] <= confirmed <= now
+    ):
+        return None
+    if attack_bar_break and not record_break and not (
+        now >= attack + 2
+        and bars[now].high > bars[attack].high and bars[now].close > bars[attack].close
+        and bars[now].close > bars[now-1].close and strong_bullish_candle(bars[now])
     ):
         return None
     start, high, bottom = (
@@ -62,7 +69,8 @@ def deep_pullback_recovery(bars, *, now, attack, inverse, alternation, record_br
     if kill_high is None or bars[now].close <= kill_high:
         return None
     return dict(
-        inverse_reentry_path="deep_alternation_kill_high_record_squeeze",
+        inverse_reentry_path=("deep_alternation_kill_high_record_squeeze" if record_break
+                              else "deep_alternation_kill_high_attack_bar_squeeze"),
         recovery_inverse_date=bars[last["attack"]].timestamp.date().isoformat(),
         recovery_kill_high=kill_high,
         recovery_previous_b_high=last["b_high"],

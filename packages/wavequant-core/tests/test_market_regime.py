@@ -48,7 +48,11 @@ class MarketRegimeTests(unittest.TestCase):
         self.assertEqual(observed.latest.resistance_outcome, O.FAILED)
         self.assertIsNone(observe_market_regime(bars[:-1], setup(), timeframe='1d', policy=policy).latest.regime)
         broken = bars[:-1] + [replace(bars[-1], low=11.7)]
-        self.assertIsNone(observe_market_regime(broken, setup(), timeframe='1d', policy=policy).latest.regime)
+        recovered = observe_market_regime(broken, setup(), timeframe='1d', policy=policy).latest
+        self.assertIsNone(recovered.regime)
+        self.assertFalse(recovered.rolling_defense_held)
+        lost_original = bars[:-1] + [replace(bars[-1], low=10.3)]
+        self.assertIsNone(observe_market_regime(lost_original, setup(), timeframe='1d', policy=policy).latest.regime)
 
     def test_all_six_regimes(self):
         for tail, bull, bear in [(STRONG, R.STRONG_BULL, R.STRONG_BEAR),

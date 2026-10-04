@@ -315,6 +315,212 @@ test("buy decision reasons are translated and numbered in order with recorded ev
     assert.match(copy, /买入原因：\n1\. N 字延续\n2\. 第一类：交替后正 N 轧空\n3\. 抵抗高点突破/);
 });
 
+const attackBarProof = {
+    squeeze_confirmation: "resistance_attack_bar_break",
+    attack_date: "2024-03-05",
+    n_resistance_date: "2024-03-05",
+    confirmation_high: 4.87,
+    confirmation_close: 4.84,
+    confirmation_record_high: 4.84,
+    n_attack_high: 4.68,
+    n_attack_close: 4.64,
+    confirmation_strong_bullish: true,
+    confirmation_body_open_ratio: 0.043103,
+    confirmation_body_range_ratio: 0.869565,
+    confirmation_upper_shadow_ratio: 0.130435,
+};
+
+test("attack-bar break explains separate strict close and high comparisons in reasons, detail and clipboard", () => {
+    const marker = {
+        id: "attack-bar-break",
+        time: "2024-03-20",
+        side: "BUY",
+        reason: "system_transition_squeeze",
+        decision_evidence: [attackBarProof],
+    };
+    const explanation = tradeReasonItems(marker).find((line) => line.startsWith("原正 N 突破棒确认："));
+    assert.match(
+        explanation,
+        /2024-03-05 正 N.*收盘 4\.8400 > 原突破棒收盘 4\.6400.*最高价 4\.8700 > 原突破棒最高 4\.6800/,
+    );
+    assert.match(explanation, /原 N 防守完整.*突破当天或次日已有空头抵抗（2024-03-05）失败.*确认轧空/);
+    assert.match(
+        explanation,
+        /中大阳且短上影.*实体\/开盘 4\.31% ≥ 3%.*实体\/振幅 86\.96% ≥ 60%.*上影\/振幅 13\.04% ≤ 20%/,
+    );
+    assert.doesNotMatch(explanation, /提前|本轮此前高|守稳/);
+    const copy = formatFilledTradeCopy(
+        { symbol: "sh.600825", variant: "lecture_v3", backtest: { start: "2018-01-01" }, asof: "2024-03-20", bars: [] },
+        marker,
+        "V3",
+        "5%",
+        null,
+    );
+    assert.ok(copy.includes(explanation));
+    const dom = new JSDOM("<section></section>");
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        const panel = document.querySelector("section");
+        appendTradeEvidence(panel, marker);
+        assert.ok(panel.querySelector(".trade-reason-list").textContent.includes(explanation));
+        assert.ok([...panel.children].some((child) => child.tagName === "P" && child.textContent === explanation));
+        panel.replaceChildren();
+        appendTradeEvidence(panel, { ...marker, side: "LONG", kind: "signal" });
+        assert.ok([...panel.children].some((child) => child.tagName === "P" && child.textContent === explanation));
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
+});
+
+test("attack-bar break with incomplete prices, dates or strong shape proof never reconstructs a complete explanation", () => {
+    const dom = new JSDOM("<section></section>");
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        for (const missing of [
+            { confirmation_high: undefined },
+            { confirmation_high: NaN },
+            { confirmation_close: undefined },
+            { n_attack_high: undefined },
+            { n_attack_close: undefined },
+            { n_attack_high: "4.68" },
+            { attack_date: "" },
+            { n_resistance_date: undefined },
+            { confirmation_strong_bullish: undefined },
+            { confirmation_strong_bullish: false },
+            { confirmation_strong_bullish: "true" },
+            { confirmation_body_open_ratio: undefined },
+            { confirmation_body_range_ratio: undefined },
+            { confirmation_upper_shadow_ratio: undefined },
+            { confirmation_body_open_ratio: "0.043103" },
+            { confirmation_body_range_ratio: NaN },
+            { confirmation_upper_shadow_ratio: Infinity },
+        ]) {
+            const marker = {
+                id: "attack-bar-break",
+                time: "2024-03-20",
+                side: "BUY",
+                reason: "system_transition_squeeze",
+                decision_evidence: [{ ...attackBarProof, ...missing }],
+            };
+            const reasons = numberedTradeReasons(marker).join("\n");
+            assert.match(reasons, /缺少完整日期、价位或强势形态证据/);
+            assert.doesNotMatch(reasons, /最高价|原 N 防守完整|已有空头抵抗|中大阳|短上影|undefined|NaN/);
+            const copy = formatFilledTradeCopy(
+                {
+                    symbol: "sh.600825",
+                    variant: "lecture_v3",
+                    backtest: { start: "2018-01-01" },
+                    asof: "2024-03-20",
+                    bars: [],
+                },
+                marker,
+                "V3",
+                "5%",
+                null,
+            );
+            assert.match(copy, /缺少完整日期、价位或强势形态证据/);
+            assert.doesNotMatch(copy, /最高价|原 N 防守完整|已有空头抵抗|中大阳|短上影|undefined|NaN/);
+            const panel = document.querySelector("section");
+            panel.replaceChildren();
+            appendTradeEvidence(panel, marker);
+            assert.match(panel.textContent, /缺少完整日期、价位或强势形态证据/);
+            assert.doesNotMatch(panel.textContent, /最高价|原 N 防守完整|已有空头抵抗|中大阳|短上影|undefined|NaN/);
+        }
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
+});
+
+test("attack-bar break is never inferred from prices without its source and keeps the record source independent", () => {
+    for (const source of [undefined, "uninterrupted_squeeze", "resistance_record_break"]) {
+        const marker = {
+            side: "BUY",
+            reason: "system_transition_squeeze",
+            decision_evidence: [
+                {
+                    ...attackBarProof,
+                    squeeze_confirmation: source,
+                    confirmation_close: source === "resistance_record_break" ? 4.85 : attackBarProof.confirmation_close,
+                },
+            ],
+        };
+        assert.doesNotMatch(numberedTradeReasons(marker).join("\n"), /原正 N 突破棒确认|原 N 防守完整|收盘.*≥/);
+        if (source === "resistance_record_break")
+            assert.match(numberedTradeReasons(marker).join("\n"), /抵抗高点突破：2024-03-05 正 N，确认收盘.*>/);
+    }
+});
+
+test("deep inverse recovery explains the original attack-bar path without losing its separate risk gates", () => {
+    const dom = new JSDOM("<section></section>");
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        for (const path of [
+            "deep_alternation_kill_high_attack_bar_squeeze",
+            "deep_alternation_kill_high_record_squeeze",
+        ]) {
+            const isAttackBar = path === "deep_alternation_kill_high_attack_bar_squeeze";
+            const marker = {
+                id: "deep-inverse-recovery",
+                time: "2024-03-20",
+                side: "BUY",
+                reason: "system_transition_squeeze",
+                decision_evidence: [
+                    {
+                        ...attackBarProof,
+                        squeeze_confirmation: isAttackBar ? "resistance_attack_bar_break" : "resistance_record_break",
+                        buy_point_type: "transition_squeeze",
+                        inverse_reentry_path: path,
+                        origin_index_date: "2023-12-12",
+                        flip_high_index_date: "2024-01-02",
+                        alternation_low_index_date: "2024-03-04",
+                        recovery_whole_retracement: 0.8,
+                        recovery_inverse_date: "2024-02-06",
+                        recovery_kill_high: 4.6,
+                    },
+                ],
+            };
+            const panel = document.querySelector("section");
+            panel.replaceChildren();
+            appendTradeEvidence(panel, marker);
+            const recovery = [...panel.children].find((child) => child.textContent.startsWith("深回撤恢复："));
+            assert.match(
+                recovery.textContent,
+                /整段 2023-12-12 → 2024-01-02，2024-03-04 回撤 80\.00%；守住回调低点，收复 2024-02-06 杀多高 4\.6000/,
+            );
+            const copy = formatFilledTradeCopy(
+                {
+                    symbol: "sh.600825",
+                    variant: "lecture_v3",
+                    backtest: { start: "2018-01-01" },
+                    asof: "2024-03-20",
+                    bars: [],
+                },
+                marker,
+                "V3",
+                "5%",
+                null,
+            );
+            assert.ok(copy.includes(recovery.textContent));
+            if (isAttackBar) {
+                assert.match(recovery.textContent, /至少 2\/3.*结构归属与可知时序成立.*收盘严格收复杀多高/);
+                assert.match(recovery.textContent, /原正 N 突破棒的收盘与最高价严格双比较/);
+                assert.doesNotMatch(recovery.textContent, /本轮前高|抵抗阶段高|新高|提前|实体/);
+                assert.match(panel.textContent, /收盘 4\.8400 > 原突破棒收盘 4\.6400/);
+            } else {
+                assert.doesNotMatch(recovery.textContent, /原正 N 突破棒|严格双比较/);
+            }
+        }
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
+});
+
 test("joint N and alternation explain March 25 after the March 22 attack", () => {
     const reasons = tradeReasonItems({
         side: "BUY",

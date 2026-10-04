@@ -1,6 +1,6 @@
 import { reasonText } from "./annotations.js";
 import { num, pct } from "./labels.js";
-import { waveEntryEvidence } from "./wave-entry-evidence.js";
+import { attackBarBreakSqueezeEvidence, waveEntryEvidence } from "./wave-entry-evidence.js";
 
 // Explain the dated engine decision; never infer a signal from plotted prices.
 export function tradeReasonItems(item) {
@@ -34,6 +34,7 @@ export function tradeReasonItems(item) {
         );
     if (item.side === "BUY") {
         reasons.push(...waveEntryEvidence(evidence).slice(0, 2));
+        reasons.push(...attackBarBreakSqueezeEvidence(evidence));
         const reversal = evidence.find((e) => e.squeeze_confirmation === "volume_reversal_record_break");
         if (reversal)
             reasons.push(

@@ -4,6 +4,69 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-258",
+            "name": "defended-n-march-squeeze-entry",
+            "title": "正N守线后续轧空买点",
+            "description": "全局V3接纳讲义阴母同日先高后低B/C的正N；突破当日或次日已有抵抗且原防守完整时，第三棒起中大阳短上影的高点/收盘分别严格越过原N突破棒，弱N须放量，深B恢复保留原风控；修复新华传媒2024-03-05正N对应03-20买点。",
+            "scope": "Core全局正N识别、轧空入场与Web策略说明及真实行情定向回归",
+            "dependencies": ["MONOREPO-257"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "全局V3正N仅显式接纳已知阴母严格外包前棒、H先于L的同日B/C；3/5 N四点及3/20买点真实回归，不按股票/日期特判",
+                "原N突破棒高点/收盘严格双比较且中大阳短上影（实体>=开盘3%、>=振幅60%、上影<=振幅20%）；t/t+1已有抵抗、原防守从未破、最早第三棒及旧record/默认研究/倒N范围保持",
+                "03-20产生因果LONG及正式日线收盘模拟BUY，历史前缀和部分日线重放一致，同N去重",
+                "相邻价格边界、抵抗失败与防守失守反例及原2019新华传媒买点保留",
+                "相关定向测试、类型、构建、Harness和独立复核通过，未运行的完整套件与浏览器明确记录"
+            ],
+            "verification": [
+                {
+                    "command": "Core .venv/Scripts/python.exe -m pytest tests/test_market_regime.py tests/test_squeeze_confirmation_body.py tests/test_continuous_n_response.py tests/test_xinhua_mother_pullback_squeeze.py tests/test_xinhua_volume_record_squeeze.py tests/test_v3_attack_quality.py tests/test_ten_full_entry.py -k 'not xingwang' -q",
+                    "status": "passed",
+                    "summary": "最终强势形态规则82项及5个子用例通过（54.21秒）；真实3/5阴母N、3/20LONG/filled、前三棒/原防守/强形态及弱棒放量、真实2019-02-22买点和02-25同N不重复、因果前缀与部分日线缓存保留。开发阶段的旧record参照/无强形态规则均撤回，只记录最终规则结果。"
+                },
+                {
+                    "command": "Core .venv/Scripts/python.exe -m pytest tests/test_bullish_squeeze_candle.py tests/test_mother_pullback_n.py tests/test_v3_attack_bar_break.py tests/test_deep_squeeze_recovery.py -k 'not xidian' -q; targeted mypy four tests",
+                    "status": "passed",
+                    "summary": "独立复核73项通过、1项真实西电另跑（1.25秒），四测试文件mypy通过。精确3%/60%/20%等号与越界、原锚触等、形态只用于新route、原N低失守、首窗/third、默认/倒N兼容、深B/kill高/时间/所有权边界；与最终deep全文件检查有重叠，不重复累计。"
+                },
+                {
+                    "command": "Core .venv/Scripts/python.exe -m pytest tests/test_continuous_n_response.py -k xingwang -q",
+                    "status": "passed",
+                    "summary": "最终真实星网完整历史及05-28前缀回归1项通过、2项已在前组执行故取消选择（408.87秒）。05-28虽严格超过原攻击高点/收盘且原防守完整，但实体/振幅56.5854%未达60%且弱N量不足，未确认或买入；原2019-02-13买点保留。"
+                },
+                {
+                    "command": "Core .venv/Scripts/python.exe -m pytest tests/test_weak_n_record_squeeze.py tests/test_deep_squeeze_recovery.py -q",
+                    "status": "passed",
+                    "summary": "最终39项通过（620.27秒），含乐心3个真实原N/放量/弱形态用例、真实西电原record恢复与前缀一致性，未改旧断言。其余35项深回撤边界与此前73项重叠，不重复累计。独立只读复核无阻断缺陷，旧record恢复不受新增强形态门槛影响。"
+                },
+                {
+                    "command": "Read-only 2018-01-02..2024-03-20 formal single_stock_result with 1508 actual AkShare bars; add 03-21 prefix replay",
+                    "status": "passed",
+                    "summary": "最终顶部研究口径注释修正后复验6源前后hash完全一致、12项checks全true，signals43.377秒、账户2.010秒、未来扩展0.930秒。3/5 N A02-29/B=C03-04，原防守raw4.38。3/20唯一该N LONG、账户此前空仓、BUYfilled约1000股，观察原始收4.84/正式5bps滑点成交4.84242。两原攻击价及强形态比率4.3103%/86.9565%/13.0435%、新weak恢复及深B杀多高原攻击恢复来源完整入订单；03-21前缀signals/audit完全相同且不重复。真实同源缺分钟沿既有日线收盘回退，不宣称实盘逐笔成交。"
+                },
+                {
+                    "command": "Core mypy six modified source files; pnpm --filter @wavequant/core typecheck; pnpm --filter @wavequant/core build; clean temporary venv installed wheel smoke",
+                    "status": "passed",
+                    "summary": "6源定向mypy、既定4模块strict typecheck及sdist/wheel构建通过。独立临时venv安装wheel与pyproject声明的Windows tzdata后，强形态及mother_pullback字段smoke通过；首轮跳过依赖缺tzdata的环境错误已修复。最后仅改研究口径docstring后重新打包、安装同wheel并确认最终注释及字段从site-packages导入。未运行Python格式或lint工具。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec node --test tests/trade-reasons.test.mjs tests/wave-entry-evidence.test.mjs tests/combined-a-entry-evidence.test.mjs; topology Vitest; Prettier/JS syntax/lint/typecheck/build",
+                    "status": "passed",
+                    "summary": "44项Node、3项拓扑、相关格式/4JS语法、lint零错误6旧警告、typecheck及512MB/4MB生产build通过。新原攻击双比较、强形态及深B恢复中文理由/复制共用证据，缺字段不推断；旧record来源独立。顶部研究口径docstring修正后仅同步常量并复验3项拓扑和对应格式；63来源最终摘要9c7045db5f0634eba30050fcd687ecc2adb4279eebf51deeed007817c6c484a4含新candle_strength。剔除next-env构建生成漂移。"
+                },
+                {
+                    "command": "pnpm harness:check; related Prettier; git diff --check; independent read-only review",
+                    "status": "passed",
+                    "summary": "Harness通过（257功能、18 Node及2 Python workspace、32规则），状态、契约与相关格式及差异检查通过；独立复核无阻断缺陷。258完成后恢复256为唯一in-progress，保留其4项既有失败证据。按默认工作流提交并本地合并，不自动推送本次新增改动。"
+                },
+                {
+                    "command": "Full Core/Web suites, browser/Playwright and external minute execution",
+                    "status": "not-run",
+                    "summary": "遵循本轮开发验证节奏未运行完整Core/Web套件或浏览器/Playwright，留待独立验证；未伪造历史分钟或实盘成交。真实星网、乐心及西电相邻定向回归均已通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-257",
             "name": "n-attack-response-resistance-window",
             "title": "正N抵抗限窗及时确认轧空",

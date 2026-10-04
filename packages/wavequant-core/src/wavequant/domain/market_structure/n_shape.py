@@ -77,8 +77,11 @@ class NSetup:
     allow_outside_close: bool = False
     allow_mother_impulse: bool = False
     staged_defense: bool = False
+    allow_mother_pullback: bool = False
 
     def __post_init__(self):
+        if type(self.allow_mother_pullback) is not bool:
+            raise ValueError('mother pullback policy must be boolean')
         if type(self.staged_defense) is not bool:
             raise ValueError('staged_defense must be boolean')
         if type(self.allow_mother_impulse) is not bool:
@@ -98,7 +101,10 @@ class NSetup:
         mother = (self.allow_mother_impulse and self.source == 'lecture_causal'
                   and self.direction == Direction.UP and self.origin.index == self.neckline.index
                   and self.neckline.index < self.pullback.index)
-        if not (self.origin.index < self.neckline.index < self.pullback.index or mother):
+        mother_pullback = (self.allow_mother_pullback and self.source == 'lecture_causal'
+                           and self.direction == Direction.UP
+                           and self.origin.index < self.neckline.index == self.pullback.index)
+        if not (self.origin.index < self.neckline.index < self.pullback.index or mother or mother_pullback):
             raise ValueError('A, B, C must be strictly chronological')
         if not self.origin.confirmed_index <= self.neckline.confirmed_index <= self.pullback.confirmed_index:
             raise ValueError('pivot confirmations must be chronological')
@@ -242,6 +248,14 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             raise ValueError('mother impulse requires an observed bullish outside candle')
     a = bars[setup.origin.index].low if up else bars[setup.origin.index].high
     bb = bars[setup.neckline.index]
+    if setup.neckline.index == setup.pullback.index:
+        # The lecture's bearish outside path supplies H before L. Strict
+        # geometry keeps this daily convention out of other N policies.
+        mother_index = setup.neckline.index
+        if (mother_index == 0 or bb.close >= bb.open
+                or bb.high <= bars[mother_index-1].high
+                or bb.low >= bars[mother_index-1].low):
+            raise ValueError('mother pullback requires an observed bearish outside candle')
     b = bb.high if up else bb.low
     c = bars[setup.pullback.index].low if up else bars[setup.pullback.index].high
     # Validate the explicit standard A-B-C geometry; no arbitrary 1/2 filter.

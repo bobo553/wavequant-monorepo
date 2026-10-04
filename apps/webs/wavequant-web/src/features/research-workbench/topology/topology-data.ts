@@ -50,8 +50,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "n-geometry",
                 question: "N 点次序、窗口、完成条件成立？",
-                detail: "常规 N 的起点、颈线、回档点严格按时间排序；母 N 特例单独处理。超过结构窗口或未完成的结构不进入候选。",
-                source: "integrated_strategy.py · generate_system_signals:212–253",
+                detail: "常规 N 的起点、颈线、回档点按时间排序；阳母同日 A/B 特例保留。全局 V3 讲义正 N 还允许 A < B = C：B 高与 C 低来自同一根真实外包阴母，且已知 K 内先高后低的端点顺序；仍须后续实过、虚过双突破才完成。超过结构窗口或未完成的结构不进入候选。",
+                source: "n_shape.py · NSetup / observe_n；integrated_strategy.py · generate_system_signals",
                 yes: "冻结攻击与防守位",
                 no: "跳过该结构",
             },
@@ -66,8 +66,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "regime",
                 question: "形成多头 / 强多头轧空盘态？",
-                detail: "常规 V1、V2、V3 买点要求已确认的轧空盘态。V3 局部正 N 的空头抵抗只计入突破当天或第二个交易日；之后的低开、高开收阴或长上影仍保留为原始 K 线证据，但不延长该 N 的抵抗。最早从突破日起第三根 K 线确认；守住原 N 防守，阳线收盘高于前收、原攻击收盘并创本轮新高时，即使盘中短暂跌破滚动低点，也可确认普通轧空。上方二级压力及其他风险仍按各自门禁判断。回档续攻、盘整缺口和 C 波续攻按各自证据恢复到多头盘态；浅回撤横盘突破另走独立待选通道。",
-                source: "market_regime.py · observe_market_regime；integrated_strategy.py · generate_system_signals",
+                detail: "常规 V1、V2、V3 买点要求已确认的轧空盘态。V3 局部正 N 的空头抵抗只计入突破当天或第二个交易日；之后的低开、高开收阴或长上影仍保留为原始 K 线证据，但不延长该 N 的抵抗。最早从突破日起第三根 K 线确认；已有窗口抵抗且原 N 防守从未失守时，确认日须为中大阳且短上影：实体/开盘至少 3%、实体/振幅至少 60%、上影/振幅最多 20%；收盘高于前收，且收盘与最高价分别严格高于原正 N 突破棒的收盘与最高价，可确认普通轧空。任一价格比较相等不能走原突破棒确认分支；盘中跌破滚动低点仍须保持原 N 防守完整，原防守失守后不恢复资格。原有收盘严格突破本轮前高的抵抗失败证据独立保留。上方二级压力及其他风险仍按各自门禁判断。回档续攻、盘整缺口和 C 波续攻按各自证据恢复到多头盘态；浅回撤横盘突破另走独立待选通道。",
+                source: "market_regime.py · observe_market_regime；candle_strength.py；integrated_strategy.py · generate_system_signals",
                 yes: "交给买点分类",
                 no: "候选拒绝：not_squeeze_regime",
             },
@@ -137,7 +137,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "inverse-reentry",
                 question: "倒 N 后重入场阻断已解除？",
-                detail: "若旧倒 N 阻断仍在，必须出现新强轧空、深回档恢复、C 波恢复或符合条件的缺口路径。",
+                detail: "若旧倒 N 阻断仍在，必须出现新强轧空、深回档恢复、C 波恢复或符合条件的缺口路径。深回档恢复仍要求整段回撤至少 2/3、结构归属与可知时序成立、回调低点未破且收盘严格收复杀多高；原正 N 突破棒的收盘与最高价严格双比较可提供该路径的轧空确认，独立风险门禁继续适用。",
                 source: "integrated_strategy.py · generate_system_signals:665–683；inverse_reentry.py",
                 yes: "检查确认日量能",
                 no: "拒绝：倒 N 后重入场未获证据",
@@ -497,4 +497,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "21a0a65bd82be46a489de291045437b873bd5ef35aae570ee2c8fdb136586e72";
+export const strategySourceDigest = "9c7045db5f0634eba30050fcd687ecc2adb4279eebf51deeed007817c6c484a4";

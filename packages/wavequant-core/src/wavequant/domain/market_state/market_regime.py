@@ -1,7 +1,8 @@
 """Classify six regimes for one causally completed N episode.
 
 Local resistance success is explicitly proxied by breach of the frozen N
-defense; renewed continuation requires a close beyond ALL prior episode extrema.
+defense. The default research policy requires a close beyond all prior episode
+extrema; V3 also permits a strong bullish rebreak of the original attack bar.
 These are engineering conventions, not fully specified rules in the lecture.
 See docs/market_regime_contract.md for timing, uncertainty and limitations.
 """
@@ -15,6 +16,7 @@ from typing import Sequence
 from ..models.model import Bar
 from ..market_structure.n_shape import MilestoneBasis, NSetup, NStatus, observe_n
 from ..market_structure.price_action import Direction, ResistanceEvidence, ShadowPolicy, observe_resistance
+from .candle_strength import strong_bullish_candle
 
 
 class MarketRegime(str, Enum):
@@ -95,7 +97,7 @@ class RegimeObservation:
     n_defense: float | None = None
     wave_boundary: float | None = None
     frames: tuple[RegimeFrame, ...] = ()
-    rule_version: str = 'six_regimes_v3_n_attack_response_window'
+    rule_version: str = 'six_regimes_v3_n_attack_response_window_attack_bar_break'
 
     @property
     def latest(self) -> RegimeFrame | None:
@@ -167,13 +169,15 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             prior_resistance = frames[-1].resistance
             # Keep the original breakout close as an anchor: a rebound below
             # it is not renewed attack merely because yesterday closed lower.
-            # A broken rolling response cannot be revived by a later pair of
-            # candles holding a freshly lowered virtual low. Only a genuine
-            # episode-record breakout may recover that still-defended N.
+            # A broken rolling response cannot borrow a later, lowered low.
+            # Renewed attack instead compares the original N attack's high
+            # and close, while retaining its frozen defense throughout.
             # A fresh close above the episode record can defeat prior supply
             # even if today's intraday shakeout dipped below the rolling low.
             # The original N defense must remain intact throughout.
-            record_rebound = continuation and first_defense is None
+            attack_bar_break = (resistance_window and bar.high > bars[attack].high
+                                and bar.close > bars[attack].close and strong_bullish_candle(bar))
+            record_rebound = (continuation or attack_bar_break) and first_defense is None
             prior_response = (rolling_all_held and rolling_held and prior_resistance
                               and (not resistance_window or frames[-1].bar_index <= attack + 1)
                               and prior_resistance.detected is True)

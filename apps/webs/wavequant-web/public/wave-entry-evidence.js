@@ -1,6 +1,32 @@
 import { combinedAEntryEvidence } from "./combined-a-entry-evidence.js";
 import { num } from "./labels.js";
 
+/** Explain the published engine path without reconstructing a buy signal from prices. */
+export function attackBarBreakSqueezeEvidence(evidence) {
+    const proof = evidence?.find((entry) => entry.squeeze_confirmation === "resistance_attack_bar_break");
+    if (!proof) return [];
+    if (
+        ![
+            proof.confirmation_high,
+            proof.confirmation_close,
+            proof.n_attack_high,
+            proof.n_attack_close,
+            proof.confirmation_body_open_ratio,
+            proof.confirmation_body_range_ratio,
+            proof.confirmation_upper_shadow_ratio,
+        ].every(Number.isFinite) ||
+        proof.confirmation_strong_bullish !== true ||
+        typeof proof.attack_date !== "string" ||
+        !proof.attack_date ||
+        typeof proof.n_resistance_date !== "string" ||
+        !proof.n_resistance_date
+    )
+        return ["原正 N 突破棒确认：引擎记录了该轧空路径；当前结果缺少完整日期、价位或强势形态证据。"];
+    return [
+        `原正 N 突破棒确认：${proof.attack_date} 正 N；收盘 ${num(proof.confirmation_close, 4)} > 原突破棒收盘 ${num(proof.n_attack_close, 4)}，最高价 ${num(proof.confirmation_high, 4)} > 原突破棒最高 ${num(proof.n_attack_high, 4)}；确认日为中大阳且短上影：实体/开盘 ${num(proof.confirmation_body_open_ratio * 100)}% ≥ 3%，实体/振幅 ${num(proof.confirmation_body_range_ratio * 100)}% ≥ 60%，上影/振幅 ${num(proof.confirmation_upper_shadow_ratio * 100)}% ≤ 20%；原 N 防守完整，突破当天或次日已有空头抵抗（${proof.n_resistance_date}）失败，确认轧空。`,
+    ];
+}
+
 export function waveEntryEvidence(evidence) {
     const combined = combinedAEntryEvidence(evidence);
     if (combined.length) return combined;

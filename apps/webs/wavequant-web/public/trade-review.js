@@ -2,7 +2,7 @@ import { num, pct } from "./labels.js";
 import { holdingDrawdownLines } from "./max-drawdown.js";
 import { closedPositionLabel, positionProfit } from "./trade-position.js";
 import { numberedTradeReasons } from "./trade-reasons.js";
-import { waveEntryEvidence } from "./wave-entry-evidence.js";
+import { attackBarBreakSqueezeEvidence, waveEntryEvidence } from "./wave-entry-evidence.js";
 
 // All conditions come from the dated engine ledger, never re-inferred from a chart.
 export function appendTradeEvidence(panel, item, openPosition = null, holdingDrawdown = null) {
@@ -26,6 +26,7 @@ export function appendTradeEvidence(panel, item, openPosition = null, holdingDra
     }
     const proof = item.decision_evidence?.find((e) => e.buy_point_type);
     waveEntryEvidence(item.decision_evidence).forEach((line) => add(line));
+    attackBarBreakSqueezeEvidence(item.decision_evidence).forEach((line) => add(line));
     const reversal = item.decision_evidence?.find((e) => e.squeeze_confirmation === "volume_reversal_record_break");
     if (reversal)
         add(
@@ -52,9 +53,13 @@ export function appendTradeEvidence(panel, item, openPosition = null, holdingDra
         add(
             `买点依据：正 N ${record.attack_date}；收盘 ${num(record.confirmation_close, 4)} > 本次 N 抵抗阶段高点 ${num(record.confirmation_record_high, 4)}，确认轧空。`,
         );
-    if (proof?.inverse_reentry_path === "deep_alternation_kill_high_record_squeeze")
+    if (
+        ["deep_alternation_kill_high_record_squeeze", "deep_alternation_kill_high_attack_bar_squeeze"].includes(
+            proof?.inverse_reentry_path,
+        )
+    )
         add(
-            `深回撤恢复：整段 ${proof.origin_index_date} → ${proof.flip_high_index_date}，${proof.alternation_low_index_date} 回撤 ${pct(proof.recovery_whole_retracement)}；守住回调低点，收复 ${proof.recovery_inverse_date} 杀多高 ${num(proof.recovery_kill_high, 4)}。`,
+            `深回撤恢复：整段 ${proof.origin_index_date} → ${proof.flip_high_index_date}，${proof.alternation_low_index_date} 回撤 ${pct(proof.recovery_whole_retracement)}；守住回调低点，收复 ${proof.recovery_inverse_date} 杀多高 ${num(proof.recovery_kill_high, 4)}。${proof.inverse_reentry_path === "deep_alternation_kill_high_attack_bar_squeeze" ? "整段回撤至少 2/3，结构归属与可知时序成立，收盘严格收复杀多高；轧空参照原正 N 突破棒的收盘与最高价严格双比较。" : ""}`,
         );
     const squeeze = item.decision_evidence?.find((e) => e.squeeze_confirmation === "local_resistance_failure");
     if (squeeze?.n_level >= 2)
