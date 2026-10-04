@@ -1,5 +1,7 @@
 # Progress
 
+MONOREPO-258常驻验收：c05d8e4经e6d1e13本地合并，main真实3项拓扑通过；13003/API8765均HTTP200且自动加载v91，原始引擎468d1456680c21d8f5904aa51f20bca1c0b341a4801309624a23b029d7eab354与main一致。新wave-entry-evidence.js响应字节与main文件相同。未重启、未修改缓存，用户刷新并重新回测即可；本轮未推送。
+
 - MONOREPO-258：拓扑同步全局 V3 讲义阴母先高后低同日 B/C 正 N，以及原正 N 突破棒收盘、最高价分别严格突破的抵抗失败路径。仍只统计突破当天或次日抵抗、最早第三根 K 线确认、原 N 防守从未失守；新路径要求确认日中大阳且短上影（实体/开盘 ≥3%、实体/振幅 ≥60%、上影/振幅 ≤20%），原严格抵抗阶段纪录路径独立保留。成交原因、详情及复制文本共用 `resistance_attack_bar_break` 的发布证据；日期、价位或任一强势形态字段缺失时只显示缺证据，不由价格推算买点。新深 B 倒 N 恢复路径同时保留整段至少 2/3、结构归属与可知时序、回调低点防守、收盘严格收复杀多高及独立风险门禁说明。
   `pnpm --filter wavequant-web exec node --test tests/trade-reasons.test.mjs tests/wave-entry-evidence.test.mjs tests/combined-a-entry-evidence.test.mjs` 44 项通过；`pnpm --filter wavequant-web exec vitest run src/features/research-workbench/topology/topology-data.test.ts` 3 项通过。源码摘要自动包含新增 `market_state/candle_strength.py`，63 个来源最终 SHA256 为 `9c7045db5f0634eba30050fcd687ecc2adb4279eebf51deeed007817c6c484a4`。Web lint 零错误（6 条既有警告）、typecheck、生产 build（命令级 512 MB 堆 / 4 MB 新生代）、相关 Prettier 和四个修改 JS 语法检查通过。构建前确认 next-env 无差异，构建后仅 routes import 产物变化已定向恢复。Core 最后仅补充 market_regime.py 顶部研究模式与 V3 分支说明，刷新摘要后同命令复跑 3 项拓扑、该 TypeScript Prettier 和 diff 检查通过；未重复 Node、lint、typecheck 或构建。完整 Web 单测、浏览器和 Playwright 按本轮规则未运行；本记录不代表已提交、合并或常驻生效。
 
