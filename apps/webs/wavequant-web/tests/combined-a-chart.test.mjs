@@ -98,6 +98,11 @@ function chartHarness(bars = sampleBars) {
             rendered.guides = guides;
         },
     };
+    chart.combinedAGuideOverlay = {
+        setGuides: (guides) => {
+            rendered.combinedGuides = guides;
+        },
+    };
     chart.waveEndpointOverlay = new WaveEndpointOverlay(chart.container);
     chart.waveEndpointOverlay.attached({
         chart: chart.chart,
@@ -123,19 +128,19 @@ function withObservation(value = observation) {
 
 test("the combined A half reference draws as an independent dashed line without scaling or requiring trend geometry", () => {
     const { chart, rendered } = withObservation();
-    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines.length, 2);
     const series = chart.combinedARetracementLines[0];
-    assert.equal(series.options.title, "组合大 A 50%");
+    assert.equal(series.options.title, "组合 A 50% · 未跌破");
     assert.equal(series.options.lineStyle, 2);
     assert.equal(series.options.autoscaleInfoProvider(), null);
     assert.equal(series.options.priceLineVisible, false);
     assert.equal(series.options.pointMarkersVisible, false);
     assert.equal(series.options.crosshairMarkerVisible, false);
     assert.deepEqual(series.points, [
-        { time: "2025-01-22", value: 6.75 },
+        { time: "2025-01-03", value: 6.75 },
         { time: "2025-02-04", value: 6.75 },
     ]);
-    assert.equal(chart.container.dataset.combinedARetracementGuides, "1");
+    assert.equal(chart.container.dataset.combinedARetracementGuides, "2");
     const originalRange = { ...rendered.range };
     chart.drawLevels();
     chart.refreshMarkers();
@@ -150,11 +155,11 @@ test("ABC and target switches clear the half guide and preserve its annotation t
     chart.setAnnotationOptions({ tertiaryAbc: false });
     assert.equal(chart.combinedARetracementLines.length, 0);
     chart.setAnnotationOptions({ tertiaryAbc: true });
-    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines.length, 2);
     chart.setAnnotationOptions({ levels: false });
     assert.equal(chart.combinedARetracementLines.length, 0);
     chart.setAnnotationOptions({ levels: true });
-    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines.length, 2);
     assert.deepEqual(
         chart.annotations.filter(({ id }) => expected.includes(id)).map(({ id }) => id),
         expected,
@@ -164,7 +169,7 @@ test("ABC and target switches clear the half guide and preserve its annotation t
 test("unavailable or one-candle observations cannot draw a half reference", () => {
     const { chart } = withObservation({ ...observation, available_at: "2025-02-05" });
     assert.equal(chart.combinedARetracementLines.length, 0);
-    chart.autoCombinedAObservations = [{ ...observation, start: observation.end }];
+    chart.autoCombinedAObservations = [{ ...observation, cTime: observation.end, available_at: observation.end }];
     chart.refreshMarkers();
     assert.equal(chart.combinedARetracementLines.length, 0);
     chart.autoCombinedAObservations = [];
@@ -180,6 +185,8 @@ test("a failed half keeps the historical dashed line while panning only changes 
         halfHeld: false,
         firstCloseBelowHalf: { time: "2025-01-23", close: 6.5 },
     });
+    chart.data.bars = sampleBars.map((bar) => (bar.time === "2025-01-23" ? { ...bar, close: 6.5 } : bar));
+    chart.refreshMarkers();
     const series = chart.combinedARetracementLines[0];
     assert.match(series.options.title, /50%.*半幅失守/);
     assert.equal(series.options.lineStyle, 2);
@@ -190,7 +197,7 @@ test("a failed half keeps the historical dashed line while panning only changes 
     assert.ok(rendered.removed.includes(series));
     rendered.range = { from: 0, to: 3 };
     chart.refreshMarkers();
-    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines.length, 2);
     assert.equal(chart.combinedARetracementLines[0].points.at(-1).time, "2025-01-23");
 });
 
@@ -231,7 +238,7 @@ test("full-history Guofang observes the exact half reference while its original 
     assert.equal(chart.container.dataset.waveAbcCount, "7");
     assert.equal(chart.autoCombinedAObservations.length, 4);
     assert.equal(Number(chart.container.dataset.combinedAWaveCount), 1);
-    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines.length, 2);
     assert.equal(chart.combinedAWaveLines.length, 1);
     const annotation = chart.annotations.find((item) => item.kind === "combined-a-wave" && item.raw.id === observed.id);
     const marker = rendered.markers.find(({ id }) => id === annotation.id);
@@ -521,7 +528,7 @@ test("Guofang displays only its latest combined A, half guide and failure label 
     chart.theory.asof = fixture.asof;
     chart.autoCombinedAObservations = fixture.observations;
     chart.setAnnotationOptions({});
-    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines.length, 2);
     assert.equal(chart.combinedARetracementLines[0].points[0].value, 6.767928288212305);
     assert.match(chart.combinedARetracementLines[0].options.title, /半幅失守/);
     assert.equal(chart.combinedAWaveLines.length, 1);
@@ -540,12 +547,12 @@ test("Guofang displays only its latest combined A, half guide and failure label 
     assert.equal(chart.combinedARetracementLines.length, 0);
     assert.equal(chart.combinedAWaveLines.length, 1);
     chart.setAnnotationOptions({ levels: true });
-    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines.length, 2);
     chart.setAnnotationOptions({ tertiaryAbc: false });
     assert.equal(chart.combinedARetracementLines.length, 0);
     assert.equal(chart.combinedAWaveLines.length, 0);
     chart.setAnnotationOptions({ tertiaryAbc: true });
-    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines.length, 2);
     assert.equal(chart.combinedAWaveLines.length, 1);
 });
 
@@ -557,7 +564,7 @@ test("Guofang's historical asof chooses the then-known A rather than its future 
     chart.setAnnotationOptions({});
     assert.equal(chart.combinedAWaveLines.length, 1);
     assert.equal(chart.combinedAWaveLines[0].points[0].time, "2021-02-08");
-    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines.length, 2);
     assert.equal(chart.combinedARetracementLines[0].points[0].value, 5.5364927423174155);
     assert.ok(
         chart.annotations
@@ -568,11 +575,42 @@ test("Guofang's historical asof chooses the then-known A rather than its future 
     chart.setAnnotationOptions({});
     assert.equal(chart.combinedAWaveLines.length, 1);
     assert.equal(chart.combinedAWaveLines[0].points[0].time, "2024-02-08");
-    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines.length, 2);
     assert.equal(chart.combinedARetracementLines[0].points[0].value, 6.767928288212305);
     chart.theory.asof = "2022-11-09";
     chart.setAnnotationOptions({});
     assert.equal(chart.combinedAWaveLines.length, 0);
     assert.equal(chart.combinedARetracementLines.length, 0);
     assert.equal(chart.annotations.filter((item) => item.kind === "combined-a-wave").length, 0);
+});
+
+test("Guofang's retracement labels sit on their own lines and stop at independent closing breaks", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/guofang_combined_a_history.json", import.meta.url)));
+    const { chart, rendered } = chartHarness(fixture.bars);
+    chart.autoCombinedAObservations = fixture.observations;
+    chart.setAnnotationOptions({});
+    const [half, twoThirds] = chart.combinedARetracementLines;
+    assert.equal(half.options.lastValueVisible, false);
+    assert.deepEqual(half.points, [
+        { time: "2025-01-03", value: 6.767928288212305 },
+        { time: "2025-01-10", value: 6.767928288212305 },
+    ]);
+    assert.equal(twoThirds.options.lastValueVisible, false);
+    assert.ok(Math.abs(twoThirds.points[0].value - 5.918296563582128) < 1e-12);
+    assert.equal(twoThirds.points[0].time, "2025-01-03");
+    assert.equal(twoThirds.points[1].time, fixture.asof);
+    assert.equal(rendered.combinedGuides.length, 2);
+    assert.equal(rendered.combinedGuides[0].labelPosition, "line");
+    assert.match(rendered.combinedGuides[0].name, /50%/);
+    assert.equal(rendered.combinedGuides[0].targetState, "半幅失守");
+    assert.match(rendered.combinedGuides[1].name, /2\/3/);
+    assert.equal(rendered.combinedGuides[1].targetState, "未跌破");
+    chart.drawLevels();
+    assert.equal(rendered.combinedGuides.length, 2, "selection guides cannot clear combined A labels");
+    chart.setAnnotationOptions({ levels: false });
+    assert.deepEqual(rendered.combinedGuides, []);
+    chart.setAnnotationOptions({ levels: true });
+    assert.equal(rendered.combinedGuides.length, 2);
+    chart.setTheory(null);
+    assert.deepEqual(rendered.combinedGuides, []);
 });

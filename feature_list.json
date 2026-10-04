@@ -4,6 +4,37 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-253",
+            "name": "combined-a-retracement-line-labels",
+            "title": "组合A回撤线标注与跌破截断",
+            "description": "最近组合A的50%与2/3回撤线从C顶画到各自首次收盘跌破K线，标签直接标在线上，不借未来确认或未来跌破。",
+            "scope": "Web组合A回撤展示，保留历史分析与交易规则",
+            "dependencies": ["MONOREPO-252"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "仅最近已确认组合A同时显示50%及2/3回撤线与图内标签，关闭和清理同步移除",
+                "从已确认C顶回标至各自首次收盘严格跌破K线；未跌破延伸当前可知截面，相等与下影不算跌破",
+                "真实国芳50%止于2025-01-10，2/3独立核对；历史确认前不显示，不借未来跌破，相关回归与Web门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "NODE_OPTIONS=--max-old-space-size=512 node --test --test-concurrency=1 tests/lecture-overlay.test.mjs tests/wave-connections.test.mjs tests/combined-a-chart.test.mjs tests/combined-a-wave.test.mjs tests/combined-a-retracement.test.mjs tests/wave-c-chart.test.mjs tests/wave-c-projection.test.mjs tests/ordinary-c-wave.test.mjs tests/wave-endpoint-overlay.test.mjs tests/target-level-guides.test.mjs tests/c-wave-extension.test.mjs",
+                    "status": "passed",
+                    "summary": "166项通过。先复现50%仍显示价格轴且未截断；统一两条回撤线从C顶到各自首次严格收盘跌破，标签绘制在线上，保持独立清理及原C目标不受影响。覆盖相等/下影不跌破、不同跌破日、回升不复活、确认前不可见、确认后回标、前缀一致、原起点失效截止、开关、平移和清理。首次并行检查wave-c-chart进程因系统内存不足中止，串行全量定向回归通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; NODE_OPTIONS=--max-old-space-size=768 pnpm --filter wavequant-web typecheck; NODE_OPTIONS=--max-old-space-size=512 --max-semi-space-size=4 pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "lint零错误6条既有警告，类型及完整生产构建通过。本机内存压力导致首次并行类型及前两次构建退出，串行类型与较小新生代堆构建成功；仅使用命令级参数，不修改项目配置或跳过检查。完整Web及浏览器/Playwright未运行，待独立验证。"
+                },
+                {
+                    "command": "Node actual guofang-fixed-formal.json combinedARetracementGuides",
+                    "status": "passed",
+                    "summary": "正式AkShare 2123日线保留4组历史，仅展示最近组合；50%为6.767928288212305，从2025-01-03至01-10收盘跌破；2/3从C顶向下回撤整段涨幅的2/3，价5.918296563582128，未被收盘跌破，延伸到2026-09-30。旧组50%/2/3分别止于2022-04-27/28。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-252",
             "name": "latest-combined-a-display",
             "title": "仅显示最近一组组合A",
