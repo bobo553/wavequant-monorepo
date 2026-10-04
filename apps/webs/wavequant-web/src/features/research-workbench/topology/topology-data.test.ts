@@ -19,6 +19,16 @@ const additionalSources = [
     "apps/webs/wavequant-web/public/combined-a-entry-evidence.js",
 ];
 
+function sourceDigest(sources: { file: string; content: string }[]): string {
+    const digest = createHash("sha256");
+    for (const { file, content } of sources) {
+        digest.update(file);
+        // Git 的平台换行转换不改变拓扑版本；其他源码内容仍需重新复核。
+        digest.update(content.replace(/\r\n/g, "\n"));
+    }
+    return digest.digest("hex");
+}
+
 describe("strategy topology", () => {
     it("requires a diagram review whenever strategy source changes", () => {
         const files = [
@@ -29,12 +39,16 @@ describe("strategy topology", () => {
             ),
             ...additionalSources,
         ].sort();
-        const digest = createHash("sha256");
-        for (const file of files) {
-            digest.update(file);
-            digest.update(readFileSync(resolve(projectRoot, file)));
-        }
-        expect(digest.digest("hex")).toBe(strategySourceDigest);
+        const sources = files.map((file) => ({ file, content: readFileSync(resolve(projectRoot, file), "utf8") }));
+        expect(sourceDigest(sources)).toBe(strategySourceDigest);
+        expect(
+            sourceDigest(sources.map(({ file, content }) => ({ file, content: content.replace(/\r?\n/g, "\r\n") }))),
+        ).toBe(strategySourceDigest);
+        expect(
+            sourceDigest(
+                sources.map((source, index) => (index === 0 ? { ...source, content: source.content + " " } : source)),
+            ),
+        ).not.toBe(strategySourceDigest);
     });
 
     it("provides explicit yes and no routes for every decision", () => {
