@@ -22,6 +22,7 @@ import { candleCopyText, previousCandleClose } from "./candle-details.js";
 import { loadMarketTimeframeSnapshot, loadStockCatalog } from "./catalog-cache.js";
 import { chartNavigationKeyPosition } from "./chart-navigation.js";
 import { PerformanceCharts, PriceChart } from "./charts.js";
+import { combinedAEntryEvidence } from "./combined-a-entry-evidence.js";
 import { reuseCompletedBacktest } from "./completed-backtest-result.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
@@ -737,6 +738,7 @@ const buyPoints = new BuyPoints({
         };
     },
     onSelect: async (match, p) => {
+        const combinedEvidence = combinedAEntryEvidence(match.evidence);
         $("result-scope").value = p.source === "akshare" ? "akshare" : p.source === "tdx" ? "tdx-backtest" : "stock";
         setTimeframe("1d");
         fillSymbols();
@@ -752,7 +754,7 @@ const buyPoints = new BuyPoints({
         if (p.source === "akshare") {
             detail(
                 "AkShare 当前股票买点信号",
-                `原始不复权在线日线仅用于信号研究；${match.signal_date} · ${match.regime} · 参考 ${num(match.raw_reference_price)} 元 · 相对量 ${num(match.rvol)} · 未模拟成交。`,
+                `原始不复权在线日线仅用于信号研究；${match.signal_date} · ${match.regime} · 参考 ${num(match.raw_reference_price)} 元 · 相对量 ${num(match.rvol)} · 未模拟成交。${combinedEvidence.length ? `\n${reasonText(match.reason)}。\n${combinedEvidence.join("\n")}` : ""}`,
             );
             return;
         }
@@ -771,15 +773,25 @@ const buyPoints = new BuyPoints({
             const note = document.createElement("p");
             note.textContent = `买点筛选证据：盘态 ${match.regime}，相对量 ${num(match.rvol)}，回档比例 ${pct(match.retracement)}，收盘参考盈亏比 ${num(match.gross_reward_risk)}。模拟成交尚需执行风控。`;
             $("selection-info").append(note);
-            const chain = match.evidence.find((e) => e.event === "long_transition_evidence");
-            if (chain) {
-                const line = document.createElement("p");
-                const d = (i) => state.view.bars[i]?.time || "—";
-                line.textContent = chain.buy_point_type
-                    ? `${chain.trend_level} 级 · ${chain.priority === 2 ? "第二类（重点）" : "第一类"}：翻多 ${d(chain.flip_index)} → 交替 ${d(chain.alternation_index)}${chain.priority === 2 ? ` → 再破翻多高 ${d(chain.maturity_index)} → 浅回撤 ${d(chain.pullback_index)}` : ""} → 攻击 ${d(chain.attack)}`
-                    : `翻多 ${d(chain.flip_index)} → 交替 ${d(chain.alternation_index)} → 多头确认 ${d(chain.bullish_index)} → 攻击 ${d(chain.attack)}`;
-                $("selection-info").append(line);
+            if (combinedEvidence.length) {
+                if (!combinedAEntryEvidence(marker.decision_evidence).length) {
+                    const line = document.createElement("p");
+                    line.textContent = `${reasonText(match.reason)}。${combinedEvidence.join("")}`;
+                    $("selection-info").append(line);
+                }
+            } else {
+                const chain = match.evidence.find((e) => e.event === "long_transition_evidence");
+                if (chain) {
+                    const line = document.createElement("p");
+                    const d = (i) => state.view.bars[i]?.time || "—";
+                    line.textContent = chain.buy_point_type
+                        ? `${chain.trend_level} 级 · ${chain.priority === 2 ? "第二类（重点）" : "第一类"}：翻多 ${d(chain.flip_index)} → 交替 ${d(chain.alternation_index)}${chain.priority === 2 ? ` → 再破翻多高 ${d(chain.maturity_index)} → 浅回撤 ${d(chain.pullback_index)}` : ""} → 攻击 ${d(chain.attack)}`
+                        : `翻多 ${d(chain.flip_index)} → 交替 ${d(chain.alternation_index)} → 多头确认 ${d(chain.bullish_index)} → 攻击 ${d(chain.attack)}`;
+                    $("selection-info").append(line);
+                }
             }
+        } else if (combinedEvidence.length) {
+            detail("组合 A 买点复核", `${reasonText(match.reason)}。${combinedEvidence.join("")}`);
         }
     },
 });

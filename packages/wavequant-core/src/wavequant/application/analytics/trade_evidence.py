@@ -122,6 +122,26 @@ def enrich_ledger(bars, result, generated, strategy):
                     order['entry_conditions'][3]=check('突破量 / 前20日均量',proof['breakout_volume_multiple'],
                         '≥ 2 且 > 前日量',proof['breakout_volume_multiple']>=2
                         and proof['breakout_volume']>proof['previous_volume'])
+                if proof and proof.get('buy_point_type')=='combined_a_pullback_breakout':
+                    sessions = proof['combined_a_pullback_sessions']
+                    internal = proof['combined_a_internal_pullback_sessions']
+                    child = proof.get('combined_a_child_pullback_sessions')
+                    order['entry_conditions'][0]=check('已确认组合A',proof,
+                        '已知同源ABC → C顶后重叠回调 → 放量突破',
+                        proof['combined_a_known_date']<bar.timestamp.date().isoformat())
+                    order['entry_conditions'][1]=check('中大阳线突破',proof['confirmation_close'],
+                        f"> {proof['combined_a_breakout_price']}，实体≥开盘3%且≥振幅60%",
+                        proof['confirmation_close']>proof['combined_a_breakout_price']
+                        and proof['breakout_body_pct']>=0.03 and proof['breakout_body_ratio']>=0.6)
+                    order['entry_conditions'][2]=check('回调收盘守2/3',proof['combined_a_minimum_close'],
+                        f"≥ {proof['combined_a_two_thirds_price']}",
+                        proof['combined_a_minimum_close']>=proof['combined_a_two_thirds_price'])
+                    order['entry_conditions'][3]=check('放量 / 前日量',signal.rvol,'> 1（必需）',
+                        proof['previous_volume']>0 and proof['breakout_volume']>proof['previous_volume'])
+                    order['entry_conditions'].append(check('回调及整理交易日',sessions,
+                        f"> 内部回调{internal}日" +
+                        (f" 或 子级回调{child}日" if child is not None else "（子级回调时长未提供）"),
+                        sessions>internal or (child is not None and sessions>child)))
             order['trigger_timestamp']=signal.trigger_timestamp.isoformat()
         if order['status']=='filled':
             if order['side']=='BUY' and bar.symbol not in active:

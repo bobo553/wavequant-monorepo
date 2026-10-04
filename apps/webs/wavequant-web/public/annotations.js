@@ -1,6 +1,7 @@
 // Presentation-only mappings. Strategy conditions remain in the Python engine.
 import { buyNTargetLevels } from "./buy-n-targets.js";
 import { cWaveExtensionLevel } from "./c-wave-extension.js";
+import { combinedAEntryEvidence } from "./combined-a-entry-evidence.js";
 import { label, num, pct } from "./labels.js";
 
 const RULES = {
@@ -58,6 +59,7 @@ const REASONS = {
     system_wave_push_gap: "转浪再攻击：A 浪回调守低后启动 C 浪",
     system_multilevel_breakout_squeeze: "正 N 与高一级波段突破叠加轧空",
     system_nested_alternation_breakout: "二级后一级交替低点放量阳线突破",
+    system_combined_a_pullback_breakout: "组合A回调放量突破",
     system_mature_shallow_squeeze: "第二类 · 重点：完整多头浅回撤后正 N 轧空",
     hierarchy_transition_not_ready: "一级及以上翻多交替未齐备",
     mature_pullback_sequence_not_ready: "完整多头之后的新回撤时序未齐备",
@@ -672,6 +674,10 @@ export function buildAnnotations(view, theory) {
                 ? "风控未通过 · 买入未成交"
                 : `委托${label(m.status)}`;
         const signalDate = m.signal_time || m.signal_timestamp?.slice(0, 10);
+        const combinedEvidence =
+            (fill && m.side === "BUY") || (signal && m.side === "LONG")
+                ? combinedAEntryEvidence(m.decision_evidence)
+                : [];
         const wave =
             (fill && m.side === "BUY") || (signal && m.side === "LONG")
                 ? m.decision_evidence?.find(
@@ -691,7 +697,9 @@ export function buildAnnotations(view, theory) {
                 Number.isFinite(m.target) && Number.isFinite(wave?.[key]) && Math.abs(m.target - wave[key]) < 1e-6,
         );
         const nTargets =
-            (fill && m.side === "BUY") || (signal && m.side === "LONG") ? buyNTargetLevels(m, wave, view, theory) : [];
+            ((fill && m.side === "BUY") || (signal && m.side === "LONG")) && !combinedEvidence.length
+                ? buyNTargetLevels(m, wave, view, theory)
+                : [];
         const levels = [];
         if (Number.isFinite(m.price))
             levels.push({ name: fill ? "成交价" : riskRejection ? "拟买价（未成交）" : "信号参考价", price: m.price });
@@ -759,6 +767,7 @@ export function buildAnnotations(view, theory) {
                 ? `${signalDate ? `${signalDate} 产生买入信号，` : ""}${m.time} 尝试买入时被执行风控拒绝：${reasonText(m.reason)}。${riskComparison}未实际买入。`
                 : reasonText(m.reason) +
                   (m.side === "EXIT" ? "。空仓时也可能出现，不代表已卖出。" : "") +
+                  (combinedEvidence.length ? `。${combinedEvidence.join("")}` : "") +
                   (nTargets.some((level) => level.estimated)
                       ? "。五顶、十满为启动正 N 的叠箱预估，假设不回调且五顶恰好到位；后续以已确认的叠箱／堆箱目标更新。"
                       : ""),

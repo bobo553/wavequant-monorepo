@@ -16,6 +16,7 @@ const additionalSources = [
     "packages/wavequant-core/src/wavequant/application/analytics/backtest.py",
     "packages/wavequant-core/src/wavequant/application/trading/intent_execution.py",
     "apps/webs/wavequant-web/public/wave-entry-evidence.js",
+    "apps/webs/wavequant-web/public/combined-a-entry-evidence.js",
 ];
 
 describe("strategy topology", () => {
@@ -51,5 +52,16 @@ describe("strategy topology", () => {
                 if (gate.noNext) expect(ids.has(gate.noNext)).toBe(true);
             }
         }
+    });
+
+    it("explains the independent combined A duration, close defense and dated breakout path", () => {
+        const flow = topologyFlows.find((entry) => entry.id === "combined-a-breakout");
+        expect(flow).toBeDefined();
+        const details = flow?.gates.map((gate) => `${gate.question} ${gate.detail}`).join("\n");
+        expect(details).toMatch(/回调及整理.*组合内部回调.*或.*子级回调.*满足其一/);
+        expect(details).toMatch(/收盘.*2\/3.*相等/);
+        expect(details).toMatch(/实体.*3%.*振幅.*60%.*严格大于前日/);
+        expect(details).toMatch(/参考高.*可知.*严格突破/);
+        expect(flow?.completion).toMatch(/LONG.*执行与成交/);
     });
 });
