@@ -293,3 +293,28 @@ test("a C extension outside the price axis still shows its frozen state without 
     assert.match(labels[0].text, /C 1\.618×A.*10\.5419.*本段结束未达成.*图外/);
     assert.equal(segments.length, 0);
 });
+
+test("all three C targets retain distinct edge labels when the hovered A candle has a lower price axis", () => {
+    const guides = [
+        { stage: "c_0618", name: "C 浪目标 0.618×A", price: 6.877680927981544, targetState: "已触及" },
+        { stage: "c_equal", name: "C 浪目标 1×A（等浪）", price: 8.274794803857262, targetState: "已触及" },
+        { stage: "c_1618", name: "C 浪目标 1.618×A", price: 10.535047095195464, targetState: "本段结束未达成" },
+    ].map((guide) => ({ ...guide, start: item.time, end: null }));
+    const { labels, segments } = renderGuides(guides, { width: 1000, y: () => -100 });
+    assert.equal(labels.length, 3);
+    assert.ok(labels.every(({ text }) => /图外/.test(text)));
+    assert.ok(labels.some(({ text }) => /等浪.*已触及/.test(text)));
+    assert.ok(labels.some(({ text }) => /1\.618.*本段结束未达成/.test(text)));
+    assert.ok(labels.slice(1).every((label, index) => label.y - labels[index].y >= 18));
+    assert.equal(segments.length, 0);
+});
+
+test("a touched C reference uses a solid segment while a pending C reference remains dashed", () => {
+    const guide = { start: item.time, end: null, stage: "c_equal", name: "C 浪目标 1×A（等浪）", price: 8.28 };
+    const touched = renderGuides([{ ...guide, targetState: "已触及" }]);
+    const pending = renderGuides([{ ...guide, targetState: "待达成" }]);
+    assert.ok(touched.segments.some(({ dash }) => dash.length === 0));
+    assert.ok(pending.segments.some(({ dash }) => dash.length === 2));
+    assert.match(touched.labels[0].text, /已触及/);
+    assert.match(pending.labels[0].text, /待达成/);
+});

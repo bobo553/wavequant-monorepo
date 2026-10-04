@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { ordinaryCWaveLevels, ordinaryCWaveProjections } from "../public/ordinary-c-wave.js";
+import { ordinaryLocalWavePoints } from "../public/ordinary-local-wave.js";
 import { targetLevelGuide } from "../public/target-level-guides.js";
 import {
     waveCProjectionAnnotation,
@@ -18,6 +19,145 @@ const guides = (projection, asof, input = bars) => {
     const annotation = waveCProjectionAnnotation(projection, input, asof);
     return annotation.levels.map((level) => targetLevelGuide(annotation, level, input, asof));
 };
+
+const fullFixture = JSON.parse(readFileSync(new URL("./fixtures/guofang_2018_ordinary_c_wave.json", import.meta.url)));
+const fullBars = fullFixture.bars.map(([time, open, high, low, close, volume]) => ({
+    time,
+    open,
+    high,
+    low,
+    close,
+    volume,
+}));
+const observeFull = (asof, input = fullBars, theory = fullFixture.theory) =>
+    ordinaryCWaveProjections(input, { ...theory, asof }).find(
+        (projection) => projection.nTime === "2024-02-23" && projection.aTime === "2024-04-12",
+    );
+
+test("the actual 2018 full-history response observes the local ABC without changing formal level two", () => {
+    const before = structuredClone(fullFixture.theory);
+    assert.equal(fullBars[0].time, "2018-01-02");
+    assert.equal(fullBars.length, 2123);
+    assert.equal(fullFixture.theory.events.length, 192);
+    assert.ok(fullFixture.theory.events.every((event) => event.event === "n_completed" && event.direction === "up"));
+    assert.equal(ordinaryCWaveProjections(fullBars, fullFixture.theory).length, 7);
+    assert.equal(
+        fullFixture.theory.secondary_trends.strokes.some((stroke) =>
+            stroke.points.some((point) => point.time === "2024-04-12"),
+        ),
+        false,
+    );
+    const projection = observeFull("2025-01-22");
+    assert.ok(projection, "the real full-history response must preserve the February N's ordinary A");
+    assert.deepEqual(
+        [projection.originTime, projection.nTime, projection.aTime, projection.bTime, projection.cTime],
+        ["2024-02-08", "2024-02-23", "2024-04-12", "2024-07-25", "2025-01-03"],
+    );
+    assert.deepEqual(
+        [projection.aKnownAt, projection.bKnownAt, projection.cKnownAt],
+        ["2024-04-30", "2024-08-14", "2025-01-22"],
+    );
+    assert.equal(projection.projectionSource, "n_origin_local_structure");
+    assert.equal(projection.formalTrend, false);
+    assert.equal(projection.sourceTrendLevel, 1);
+    assert.equal(projection.trendLevel, 2);
+    assert.equal(projection.bBrokeASqueezeLow, true);
+    assert.deepEqual(fullFixture.theory, before);
+});
+
+test("the local source reducer requires strict key breaks and upgrades its running extreme", () => {
+    const source = [1, 4, 2, 5, 2, 6, 1.9, 6, 1.8, 6.1].map((value, index) => ({
+        time: `2024-01-${String(index + 1).padStart(2, "0")}`,
+        available_at: `2024-01-${String(index + 2).padStart(2, "0")}`,
+        kind: index % 2 ? "H" : "L",
+        value,
+    }));
+    assert.equal(ordinaryLocalWavePoints(source.slice(0, 5)).length, 0);
+    const highsOnly = ordinaryLocalWavePoints(source.slice(0, 8));
+    assert.deepEqual(
+        highsOnly.map(({ time, available_at }) => ({ time, available_at })),
+        [{ time: "2024-01-06", available_at: "2024-01-08" }],
+    );
+    const completed = ordinaryLocalWavePoints(source);
+    assert.deepEqual(
+        completed.map(({ time, available_at, local_wave_turn }) => ({
+            time,
+            available_at,
+            local_wave_turn,
+        })),
+        [
+            { time: "2024-01-06", available_at: "2024-01-08", local_wave_turn: "up_to_down" },
+            { time: "2024-01-09", available_at: "2024-01-11", local_wave_turn: "down_to_up" },
+        ],
+    );
+    assert.ok(completed.every((point) => point.flip === undefined));
+});
+
+test("full-history local observations preserve B versions and reject future endpoint confirmation", () => {
+    assert.equal(observeFull("2024-07-09"), undefined);
+    assert.equal(observeFull("2024-07-10").bTime, "2024-06-24");
+    assert.equal(observeFull("2024-08-13").bTime, "2024-06-24");
+    assert.equal(observeFull("2024-08-14").bTime, "2024-07-25");
+    for (const asof of ["2024-07-10", "2024-08-14", "2024-12-09", "2025-01-06", "2025-01-21", "2025-01-22"]) {
+        const prefix = fullBars.filter((bar) => bar.time <= asof);
+        assert.deepEqual(observeFull(asof), observeFull(asof, prefix));
+    }
+    // 一级反弹高只是 C 内部一段，不能单独冻结整段终点。
+    for (const asof of ["2024-12-09", "2025-01-06", "2025-01-21"]) assert.equal(observeFull(asof).cTime, undefined);
+    assert.equal(observeFull("2025-01-22").cTime, "2025-01-03");
+});
+
+test("full-history local targets freeze at the completed C and never use a later group's rally", () => {
+    const projection = observeFull(fullFixture.theory.asof);
+    assert.deepEqual(
+        guides(projection, fullFixture.theory.asof, fullBars).map(({ firstTouchedAt, targetState }) => ({
+            firstTouchedAt,
+            targetState,
+        })),
+        [
+            { firstTouchedAt: "2024-10-11", targetState: "已触及" },
+            { firstTouchedAt: "2024-12-03", targetState: "已触及" },
+            { firstTouchedAt: null, targetState: "本段结束未达成" },
+        ],
+    );
+    assert.ok(fullBars.some((bar) => bar.time > projection.cKnownAt && bar.high > projection.target1618));
+    const later = [...fullBars, { time: "2026-10-01", open: 4, high: 4.3, low: 4, close: 4, volume: 1 }];
+    assert.equal(observeFull("2026-10-01", later).aIsValid, true);
+});
+
+test("full-history local observations terminate on origin failure before B or before C confirmation", () => {
+    const failedB = fullBars.map((bar) => (bar.time === "2024-07-24" ? { ...bar, low: 4.2, close: 4.2 } : bar));
+    assert.equal(observeFull("2024-08-14", failedB), undefined);
+    assert.equal(observeFull(fullFixture.theory.asof, failedB), undefined);
+    const failedC = fullBars.map((bar) => (bar.time === "2025-01-15" ? { ...bar, low: 4, close: 4.1 } : bar));
+    for (const asof of ["2025-01-15", "2025-01-22", fullFixture.theory.asof]) {
+        const projection = observeFull(asof, failedC);
+        assert.equal(projection.invalidatedAt, "2025-01-15");
+        assert.equal(projection.cTime, undefined);
+        assert.equal(ordinaryCWaveLevels(projection, asof).length, 0);
+    }
+});
+
+test("formal secondary observations take precedence over the separate local fallback", () => {
+    const theory = { ...fullFixture.theory, secondary_trends: fixture.theory.secondary_trends };
+    const projection = observeFull("2025-01-22", fullBars, theory);
+    assert.equal(projection.projectionSource, undefined);
+    assert.equal(projection.bTime, "2024-07-25");
+    assert.equal(projection.cTime, "2025-01-03");
+    const disconnected = structuredClone(fullFixture.theory);
+    for (const stroke of disconnected.reversal_trends.strokes)
+        stroke.points = stroke.points.filter((point) => point.time !== "2024-02-08");
+    assert.equal(observeFull("2025-01-22", fullBars, disconnected), undefined);
+});
+
+test("removing the target positive N rejects only its local group and retains other real observations", () => {
+    const theory = {
+        ...fullFixture.theory,
+        events: fullFixture.theory.events.filter((event) => event.time !== "2024-02-23"),
+    };
+    assert.equal(observeFull(fullFixture.theory.asof, fullBars, theory), undefined);
+    assert.ok(ordinaryCWaveProjections(fullBars, theory).length > 0);
+});
 
 test("real ordinary A keeps February 8 as origin, its formal February 23 N and the long deep B", () => {
     const projection = observe("2025-01-22");

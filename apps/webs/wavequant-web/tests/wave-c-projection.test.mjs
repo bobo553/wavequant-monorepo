@@ -348,3 +348,43 @@ test("structural projection uses only available A evidence and invalidates a joi
     }
     assert.equal(waveCProjectionFromStructure(noSqueeze, xianfengTheory), null);
 });
+
+test("full-history Guofang local observation connects C only after its confirmation", () => {
+    const actual = JSON.parse(readFileSync(new URL("./fixtures/guofang_2018_ordinary_c_wave.json", import.meta.url)));
+    const actualBars = actual.bars.map(([time, open, high, low, close, volume]) => ({
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume,
+    }));
+    const projection = waveCProjectionsFromStructure(actualBars, actual.theory).find(
+        (item) => item.nTime === "2024-02-23" && item.aTime === "2024-04-12",
+    );
+    assert.ok(projection);
+    const annotation = waveCProjectionAnnotation(projection, actualBars, actual.theory.asof);
+    assert.match(annotation.sourceLabel, /局部波段 A\/B\/C/);
+    assert.match(annotation.description, /按正 N 原点的局部波段观察确认/);
+    assert.match(annotation.description, /来源为一级已确认端点/);
+    const legs = waveCProjectionLegs(projection);
+    assert.deepEqual(
+        legs.map((leg) => leg.title),
+        ["A 浪", "B 浪", "C 浪"],
+    );
+    assert.deepEqual(legs[2].points, [
+        { time: "2024-07-25", value: projection.bLow },
+        { time: "2025-01-03", value: projection.cHigh },
+    ]);
+    const asof = "2025-01-21";
+    const prefix = waveCProjectionsFromStructure(
+        actualBars.filter((bar) => bar.time <= asof),
+        { ...actual.theory, asof },
+    ).find((item) => item.nTime === "2024-02-23" && item.aTime === "2024-04-12");
+    assert.ok(prefix);
+    assert.equal(prefix.cTime, undefined);
+    assert.deepEqual(
+        waveCProjectionLegs(prefix).map((leg) => leg.title),
+        ["A 浪", "B 浪"],
+    );
+});

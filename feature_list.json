@@ -6,9 +6,9 @@
         {
             "id": "MONOREPO-247",
             "name": "non-strong-a-c-wave-targets",
-            "title": "非强攻击长B回调与C浪三档目标",
-            "description": "保留已过一喷、未达二吐A后守住A起点的深长B结构，按同组A幅度显示C的0.618、等浪及1.618目标，失效及结束后不再延伸目标观察。",
-            "scope": "Web复用Core正式理论观察，补齐普通A的自动ABC测幅、目标生命周期及国芳集团回归；沿用交易门槛；Harness按仓库验证节奏如实保留未运行检查",
+            "title": "非强攻击ABC悬停及C浪三档目标",
+            "description": "补齐真实全历史中普通A的正N原点局部观察，保留守住A起点的深长B；光标在ABC任意K线上展示本组标识、0.618、等浪和1.618目标，结束或失效后冻结。",
+            "scope": "Web正式N原点局部波段观察、ABC区间悬停、C目标标签与生命周期及国芳全历史回归；沿用全局二级与交易口径",
             "dependencies": ["MONOREPO-162", "MONOREPO-232", "MONOREPO-239"],
             "status": "done",
             "acceptanceCriteria": [
@@ -17,13 +17,16 @@
                 "有效组同锚点计算B低加0.618、1、1.618倍A幅度；普通A三档同时保留，既有强A规则沿用",
                 "国芳指定两位价格手算三目标6.88188、8.28、10.54188；真实完整复权精度不提前舍入，2025-01-03最高价命中是、是、否",
                 "目标只按当时可知数据生效，触及后回落不撤销；同级C结束及结构失效后冻结，不借后续价格补达标",
-                "保留既有买入、止损、清仓和终点确认口径；定向回归、相关类型与构建检查通过"
+                "保留既有买入、止损、清仓和终点确认口径；定向回归、相关类型与构建检查通过",
+                "真实2018起完整行情保留02-08/04-12/07-25/01-03组；正式二级缺少端点时复用同路径一级严格关键位观察，明确局部来源且不改交易",
+                "开启ABC与点位线后，光标在A、B、C区间任意K显示该组锚点与三档目标；不更改成交选择或缩放，移出恢复原展示",
+                "平移到C后半段或目标在价格轴外时三档标签仍可见，不扩价格轴；历史触及日、生效日与C确认日不随悬停改变"
             ],
             "verification": [
                 {
-                    "command": "Core现有国芳659日线fixture生成正式V3理论；Web ordinary-c-wave定向回归",
+                    "command": "首轮2024起点样本：Core国芳659日线fixture生成正式V3理论；Web ordinary-c-wave回归",
                     "status": "passed",
-                    "summary": "正式正N为2024-02-23，A起点02-08、A顶04-12、B低07-25、C顶2025-01-03，C于01-22可知。A未达既有二吐，B破轧空低但未按原口径破A起点；A/B为38/70交易日间隔，回撤89.1070%。完整复权精度三目标6.877680927981544、8.274794803857262、10.535047095195464；首次触及10-11、12-03，1.618本段未达。指定两位价格手算亦通过。Core源码和交易规则未修改。"
+                    "summary": "此为首轮短起点夹具证据，未覆盖2018起完整二级历史状态；完整实际链路修正见本次追加记录。正式正N为2024-02-23，A起点02-08、A顶04-12、B低07-25、C顶2025-01-03，C于01-22可知。A未达既有二吐，B破轧空低但未按原口径破A起点；A/B为38/70交易日间隔，回撤89.1070%。完整复权精度三目标6.877680927981544、8.274794803857262、10.535047095195464；首次触及10-11、12-03，1.618本段未达。指定两位价格手算亦通过。Core源码和交易规则未修改。"
                 },
                 {
                     "command": "pnpm --filter wavequant-web exec node --test tests/ordinary-c-wave.test.mjs tests/wave-c-projection.test.mjs tests/c-wave-extension.test.mjs tests/target-level-guides.test.mjs tests/wave-c-chart.test.mjs",
@@ -54,6 +57,31 @@
                     "command": "完整Web单测、真实浏览器及Playwright",
                     "status": "not-run",
                     "summary": "按用户本轮开发验证节奏未运行，完整Web单测留待独立空闲验证；实际图表交互与视觉待验证。"
+                },
+                {
+                    "command": "实际 /api/akshare-backtest 国芳2018-01-01→2026-09-30完整view/theory；完整fixture与历史前缀",
+                    "status": "passed",
+                    "summary": "实际2,123根行情、192条正N完整输入原先缺2024组，原因是全局二级历史状态未保留用户三端点。复用既有严格关键位主干构建正N原点局部观察后得到7组，其中02-08起点、02-23N、04-12A、07-25B、2025-01-03C正确；A/B/C可知日为04-30/08-14/01-22。局部来源明确，全局二级与Core交易保持原口径。首个一级高不提前结束C，完整后续行情不补旧1.618。纯行情raw接口缺正式N，本次真实验收为复权单股回测。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec node --test tests/wave-c-chart.test.mjs tests/wave-c-projection.test.mjs tests/c-wave-extension.test.mjs tests/target-level-guides.test.mjs tests/ordinary-c-wave.test.mjs",
+                    "status": "passed",
+                    "summary": "最终71项通过。全部217根目标ABC K逐根命中且提示卡三档与生效日正确；真实overlay.draw覆盖A/长B/C三标签、C后半窗平移、A悬停后移窗。保留历史触及时点/锚点/有效区间，图外三档不扩轴，等浪加粗、已触及实线及待达成虚线；成交选择、缩放及移出恢复均通过。"
+                },
+                {
+                    "command": "独立完整输入前缀及hover探针；ordinary-c-wave / wave-c-chart / wave-c-projection / target-level-guides四文件",
+                    "status": "passed",
+                    "summary": "独立64项通过，实际未裁剪响应全部事件下7组与217根命中一致；01-21尚未归档，01-22才冻结01-03C，后续截面保持。局部状态机、正式入口优先、跨路径拒绝、目标日期与最终pan重绘代码复核无剩余已证实问题。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "本轮lint零错误（6条既有警告）、最终类型检查与标准Turbopack生产构建通过；构建生成的next-env路径改动已按原内容恢复，不提交产物或依赖变化。"
+                },
+                {
+                    "command": "本轮修改文件Prettier；codegraph sync；pnpm harness:check；git diff --check",
+                    "status": "passed",
+                    "summary": "本轮源码、测试、完整夹具及状态记录格式、CodeGraph、Harness与差异检查通过。未运行浏览器、Playwright或完整Web套件，实际浏览器视觉仍待验证；保留独立not-run记录及既有231任务证据。"
                 }
             ]
         },

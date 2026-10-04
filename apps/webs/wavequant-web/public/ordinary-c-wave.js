@@ -1,3 +1,5 @@
+import { ordinaryLocalWavePoints } from "./ordinary-local-wave.js";
+
 function isDate(value) {
     return (
         typeof value === "string" &&
@@ -24,7 +26,32 @@ function maximumHigh(bars, from, until) {
     return Math.max(...bars.filter((bar) => bar.time >= from && bar.time <= until).map((bar) => bar.high));
 }
 
-/** 普通 A 的结构观察复用正式正 N 与二级确认，不进入交易信号路径。 */
+function localWaveStrokes(theory, origin, asof, byTime) {
+    const strokes = [];
+    for (const source of theory?.reversal_trends?.strokes || []) {
+        const points = (source.points || []).filter(
+            (point) =>
+                (point.kind === "H" || point.kind === "L") &&
+                point.time >= origin.time &&
+                knownPoint(point, point.kind, asof, byTime),
+        );
+        if (points[0]?.time !== origin.time || points[0]?.kind !== "L" || points[0]?.value !== origin.value) continue;
+        strokes.push({
+            id: `ordinary-local:${source.id}:${origin.time}`,
+            source_path: source.id,
+            trend_level: 2,
+            projection_source: "n_origin_local_structure",
+            points: ordinaryLocalWavePoints(points),
+        });
+    }
+    return strokes;
+}
+
+function isWaveHigh(point) {
+    return point.flip === "翻多为空" || point.local_wave_turn === "up_to_down";
+}
+
+/** 普通 A 复用正式正 N；优先正式二级，缺少时以同路径一级点推导局部观察，不进入交易信号路径。 */
 export function ordinaryCWaveProjections(bars, theory) {
     const asof = theory?.asof || bars.at(-1)?.time;
     const visible = bars.filter((bar) => bar.time <= asof);
@@ -58,12 +85,16 @@ export function ordinaryCWaveProjections(bars, theory) {
             twoT <= oneP
         )
             continue;
-        for (const stroke of theory?.secondary_trends?.strokes || []) {
+        const strokes = [
+            ...(theory?.secondary_trends?.strokes || []),
+            ...localWaveStrokes(theory, origin, asof, byTime),
+        ];
+        for (const stroke of strokes) {
             const points = stroke.points || [];
             for (const a of points) {
                 if (
                     !knownPoint(a, "H", asof, byTime) ||
-                    a.flip !== "翻多为空" ||
+                    !isWaveHigh(a) ||
                     a.time <= event.time ||
                     a.value <= oneP ||
                     a.value >= twoT ||
@@ -89,7 +120,7 @@ export function ordinaryCWaveProjections(bars, theory) {
                 const completedC = points.find(
                     (point) =>
                         knownPoint(point, "H", asof, byTime) &&
-                        point.flip === "翻多为空" &&
+                        isWaveHigh(point) &&
                         point.time > b.time &&
                         point.value > a.value &&
                         point.available_at >= knownAt &&
@@ -152,7 +183,15 @@ export function ordinaryCWaveProjections(bars, theory) {
                     target1618: b.value + 1.618 * amplitude,
                     anchorVersion: `${origin.time}:${a.time}:${b.time}`,
                     anchorVersions,
-                    trendLevel: stroke.trend_level || theory.secondary_trends.trend_level || 2,
+                    trendLevel: stroke.trend_level || theory.secondary_trends?.trend_level || 2,
+                    ...(stroke.projection_source
+                        ? {
+                              projectionSource: stroke.projection_source,
+                              sourceTrendLevel: 1,
+                              formalTrend: false,
+                              sourcePath: stroke.source_path,
+                          }
+                        : {}),
                     aIsValid: failedIndex < 0,
                     cEligible: failedIndex < 0,
                     ...(completedC && failedIndex < 0
@@ -173,14 +212,20 @@ export function ordinaryCWaveProjections(bars, theory) {
                 };
                 const key = `${origin.time}:${a.time}`;
                 const previous = observations.get(key);
-                if (!previous || observation.bLow < previous.bLow) observations.set(key, observation);
+                if (previous && !previous.projectionSource && observation.projectionSource) continue;
+                if (
+                    !previous ||
+                    (!observation.projectionSource && previous.projectionSource) ||
+                    observation.bLow < previous.bLow
+                )
+                    observations.set(key, observation);
             }
         }
     }
     return [...observations.values()].sort((left, right) => left.aTime.localeCompare(right.aTime));
 }
 
-/** 非强攻击 A 的正式 C 保留三档，生效时间与 B 极值时间分别保存。 */
+/** 非强攻击 A 的 C 观察保留三档，生效时间与 B 极值时间分别保存。 */
 export function ordinaryCWaveLevels(projection, asof) {
     const knownAt = projection.confirmedAt || projection.bKnownAt || projection.bTime;
     if ((asof && knownAt > asof) || (projection.invalidatedAt && (!asof || projection.invalidatedAt <= asof)))
