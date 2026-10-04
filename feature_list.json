@@ -4,6 +4,37 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-255",
+            "name": "combined-a-low-break-close-held-label",
+            "title": "组合A回撤线标注低点突破",
+            "description": "回撤线状态依据最低价与收盘：低点严格突破而收盘未跌破时显示对应标签，收盘跌破仍失守；保留前轮高点截止与最近组合规则。",
+            "scope": "Web组合A回撤线状态与低点证据",
+            "dependencies": ["MONOREPO-254"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "仅在低点严格低于阈值且收盘大于等于阈值时标注低点突破收盘没有跌破，不显示高点已突破标签",
+                "收盘失守优先，不因后续收复重置；无低点突破和相等触碰标注未跌破",
+                "证据截止虚线终点及已知截面，不借未来或高点截止之后的低点；国芳真实行情和相关回归与Web门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "NODE_OPTIONS=--max-old-space-size=512 --max-semi-space-size=4 node --test --test-concurrency=1 apps/webs/wavequant-web/tests/lecture-overlay.test.mjs apps/webs/wavequant-web/tests/wave-connections.test.mjs apps/webs/wavequant-web/tests/combined-a-chart.test.mjs apps/webs/wavequant-web/tests/combined-a-wave.test.mjs apps/webs/wavequant-web/tests/combined-a-retracement.test.mjs apps/webs/wavequant-web/tests/wave-c-chart.test.mjs apps/webs/wavequant-web/tests/wave-c-projection.test.mjs apps/webs/wavequant-web/tests/ordinary-c-wave.test.mjs apps/webs/wavequant-web/tests/wave-endpoint-overlay.test.mjs apps/webs/wavequant-web/tests/target-level-guides.test.mjs apps/webs/wavequant-web/tests/c-wave-extension.test.mjs",
+                    "status": "passed",
+                    "summary": "174项通过，含最终45项低点/图表/标签定向检查。先复现缺失真实低点突破状态，现按low严格小于线价且close大于等于线价保留首个证据；收盘失守优先，无真实低点突破只显示未跌破。覆盖相等、未来截面、同棒、截止后下影、失守后反弹不能复活、独立比例及图内文本绘制。原高点截止、最新组合和原C目标保留。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build (command-scoped NODE_OPTIONS 512MB old space / 4MB semi space)",
+                    "status": "passed",
+                    "summary": "lint零错误6条既有警告，类型和完整生产构建通过。完整Web套件、浏览器及Playwright未运行，待独立验证。"
+                },
+                {
+                    "command": "Node actual guofang-fixed-formal.json combinedARetracementGuides; independent read-only review",
+                    "status": "passed",
+                    "summary": "真实2123日线4组历史记录，最近2/3价5.918296563582128的首个held-low为2025-01-13：低5.887904563293728、收6.243091381497063，显示低点突破收盘没有跌破，终点保留2025-04-09。50%在01-07先有下影证据，但01-10收盘失守优先保留。独立只读复核无实质问题。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-254",
             "name": "combined-a-guides-stop-at-top-break",
             "title": "组合A回撤线止于高点突破",

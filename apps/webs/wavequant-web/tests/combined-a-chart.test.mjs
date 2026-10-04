@@ -130,7 +130,7 @@ test("the combined A half reference draws as an independent dashed line without 
     const { chart, rendered } = withObservation();
     assert.equal(chart.combinedARetracementLines.length, 2);
     const series = chart.combinedARetracementLines[0];
-    assert.equal(series.options.title, "组合 A 50% · 未跌破");
+    assert.equal(series.options.title, "组合 A 50% · 低点突破，收盘没有跌破");
     assert.equal(series.options.lineStyle, 2);
     assert.equal(series.options.autoscaleInfoProvider(), null);
     assert.equal(series.options.priceLineVisible, false);
@@ -604,7 +604,8 @@ test("Guofang's retracement labels sit on their own lines and stop at independen
     assert.match(rendered.combinedGuides[0].name, /50%/);
     assert.equal(rendered.combinedGuides[0].targetState, "半幅失守");
     assert.match(rendered.combinedGuides[1].name, /2\/3/);
-    assert.equal(rendered.combinedGuides[1].targetState, "高点已突破");
+    assert.equal(rendered.combinedGuides[1].targetState, "低点突破，收盘没有跌破");
+    assert.equal(rendered.combinedGuides[1].firstLowBreak.time, "2025-01-13");
     const range = { ...rendered.range };
     rendered.range = {
         from: fixture.bars.findIndex((bar) => bar.time === "2025-04-09") + 1,
