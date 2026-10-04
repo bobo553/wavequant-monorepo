@@ -1,8 +1,67 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-231",
+    "activeFeature": "MONOREPO-256",
     "features": [
+        {
+            "id": "MONOREPO-256",
+            "name": "combined-a-pullback-volume-breakout-entry",
+            "title": "组合A回调放量突破买入",
+            "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
+            "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
+            "dependencies": ["MONOREPO-248", "MONOREPO-255"],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
+                "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
+                "从C顶后整段最低收盘守住高点减2/3振幅，收盘相等及下影允许，失守收复不复活，原起点低破失效",
+                "量严格超过前日、实体至少开盘3%及振幅60%，收盘严格突破已知回调高或未回补跳空前高，同组合去重",
+                "保留全局退出、倒N、五顶十满、二吐抵抗及其他压力门禁和成交费用后盈亏比约束",
+                "国芳2025-04-03真实行情、历史前缀与部分日线重放一致；相关定向测试、类型和构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "Read-only main AkShare cache bars, generate current worktree V3 signals for 2018-01-02..2025-04-03 prefix (1759 bars)",
+                    "status": "passed",
+                    "summary": "实际2123根主行情缓存仅取当时1759根，不复用signals/audit缓存，明确导入新worktree源码，78.744秒完成。04-03唯一LONG来自system_combined_a_pullback_breakout，ref7.158380、stop5.887905、target9.316823、量比3.131934；完整证据58/70/9，内部未超但子B已超，含01-13低点之后整理，已知日期、最低收盘守2/3、实体和此前可知03-17高点突破断言均通过。旧普通N当日仍因wave_second_peak_pullback_sequence拒绝，新独立通道不改变该拒因。只验证信号，不宣称完整账户成交。"
+                },
+                {
+                    "command": "packages/wavequant-core/.venv/Scripts/python.exe -m pytest tests/test_combined_a_entry.py tests/test_combined_a_strategy.py -q (Core cwd)",
+                    "status": "passed",
+                    "summary": "最终24项通过（51.23秒），含58日回调及整理、70日内部B和9日最末同源子B的严格OR、2/3收盘及实体相等边界、量严格大于前日、来源与可知前缀、部分日线缓存重放、同组合去重、6个全局门禁、原始5.24元隔离成交和无效目标不遮蔽独立浅回撤通道。真实2023/2024两种起始历史均通过。"
+                },
+                {
+                    "command": "packages/wavequant-core/.venv/Scripts/python.exe -m pytest tests/test_ten_full_entry.py -q (Core cwd)",
+                    "status": "passed",
+                    "summary": "17项通过，6处v88版本断言已随策略v89更新，未降低行为断言。"
+                },
+                {
+                    "command": "packages/wavequant-core/.venv/Scripts/python.exe -m pytest tests/test_combined_a_entry.py tests/test_combined_a_strategy.py tests/test_inverse_n_entry_guard.py tests/test_ten_full_entry.py tests/test_five_top_entry.py tests/test_two_t_resistance_risk.py tests/test_secondary_resistance.py tests/test_wave_entry_epoch.py tests/test_nested_alternation_breakout.py -q (Core cwd)",
+                    "status": "failed",
+                    "summary": "首次较广定向回归127通过、10失败；6项仅为旧v88断言，更新后十满全文件17项通过。其余4项为两项January6 wave_local_epoch_recovered断言和两项华瓷January17 nested信号缺失。在clean main c99b825、明确import main/src原测试同样4失败；当前分支关闭/开启组合通道结果相同。1月6日实际LONG/BUY日期、价格、止损、目标与净盈亏比均通过，但N和入场同属epoch138，recovered按原逻辑为False；华瓷当时缺预期一级上下文，未进入嵌套通道。未修改这些断言或无关旧通道，按AGENTS合并门禁保留未完成状态。"
+                },
+                {
+                    "command": "Core venv mypy --strict --follow-imports=silent combined_a_entry.py; mypy --follow-imports=silent modified strategy/analytics modules and two new tests; pnpm --filter @wavequant/core typecheck; pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "新增模块strict mypy、其余6文件定向mypy、Core既定4文件strict typecheck和最终sdist/wheel构建通过。首次quick因检出缺Python build依赖失败，已按pyproject创建隔离虚拟环境并安装声明的开发/构建依赖；不运行Python格式或lint工具。"
+                },
+                {
+                    "command": "node --test tests/combined-a-entry-evidence.test.mjs tests/wave-entry-evidence.test.mjs tests/trade-reasons.test.mjs tests/annotations.test.mjs; pnpm exec vitest run src/features/research-workbench/topology/topology-data.test.ts (Web cwd)",
+                    "status": "passed",
+                    "summary": "65项Node及3项拓扑检查通过；完整证据优先、统一中文显示/复制、ISO跳空日期、缺子级时长不补零、组合自身目标和独立通道及最终源码指纹门禁均通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; related Prettier and JS syntax; git diff --check",
+                    "status": "passed",
+                    "summary": "Web lint零错误6条既有警告、类型和最终生产构建通过（仅命令级512MB堆/4MB新生代）；相关格式、语法和差异检查通过。独立只读复核未发现新增阻塞；剔除next-env.d.ts生成变更，未推送。"
+                },
+                {
+                    "command": "Complete Core/Web suites, browser/Playwright, external-minute and full-account backtest",
+                    "status": "not-run",
+                    "summary": "依本轮验证节奏未运行完整套件及浏览器；外部分钟和完整账户回测留待独立验证，隔离单笔成交不宣称为完整账户收益。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-255",
             "name": "combined-a-low-break-close-held-label",
@@ -630,7 +689,7 @@
             "description": "每次零持仓首次买入至数量归零独立计算成本MAE，清仓后本轮归零，再次买入重算；最终最大回撤取已清仓轮次中最深亏损，未清仓不混入。",
             "scope": "Core持仓轮次/成本MAE/归零曲线、Web最终指标/逐轮明细/定位/对比/自选收益及API完成摘要",
             "dependencies": ["MONOREPO-197"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "每轮仅实际首次买入至数量归零的完全卖出参与计算；每次归零后下轮独立重算，空仓行情不参与",
                 "分批卖出不断段，加仓按当时成本；轮次身份以成交数量为准，同日清仓再买入也独立计算",

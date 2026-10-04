@@ -17,6 +17,7 @@ from ..market_structure.trend_structure import observe_structure
 from .bull_eligibility import bull_permission_history
 from .hierarchical_entry import EntryContext
 from .shallow_base_breakout import ShallowAlternationCandidate
+from .combined_a_entry import CombinedAContext, combined_a_entry_history
 from .attack_quality import v3_positive_n_attack_rejection
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
@@ -57,6 +58,7 @@ class SystemStrategy:
     first_pullback_basis: str = 'alternation_low'
     mature_shallow_inclusive: bool = True
     shallow_base_breakout_enabled: bool = True
+    combined_a_entry_enabled: bool = False
     ten_full_breakout_window: int = 23
     ten_full_retracement_ratio: float = 2/3
     ten_full_retracement_anchor: RetracementAnchor = 'origin'
@@ -88,6 +90,8 @@ class SystemStrategy:
             raise ValueError('mature shallow inclusive must be boolean')
         if type(self.shallow_base_breakout_enabled) is not bool:
             raise ValueError('shallow base breakout switch must be boolean')
+        if type(self.combined_a_entry_enabled) is not bool:
+            raise ValueError('combined A entry switch must be boolean')
         if type(self.ten_full_breakout_window) is not int or self.ten_full_breakout_window <= 0:
             raise ValueError('ten-full breakout window must be a positive integer')
         if (type(self.ten_full_retracement_ratio) not in (float, int)
@@ -481,6 +485,9 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                         classification='held_squeeze_defense_and_fresh_pullback_rebound')
     secondary_resistance = {}
     shallow_base_proofs: dict[int, dict[str, object]] = {}
+    combined_a_proofs: dict[int, dict[str, object]] = {}
+    combined_candidate_snapshots: dict[int, tuple[CombinedAContext, ...]] | None = (
+        {} if whole_wave and config.combined_a_entry_enabled else None)
     shallow_candidate_snapshots: dict[int, ShallowAlternationCandidate | None] | None = (
         {} if whole_wave and config.shallow_base_breakout_enabled else None)
     if whole_wave:
@@ -494,6 +501,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             from .chart_entry_history import chart_entry_history
             hierarchy_permissions, hierarchy_events = chart_entry_history(
                 bars, audit=audit, shallow_candidate_sink=shallow_candidate_snapshots,
+                combined_candidate_sink=combined_candidate_snapshots,
                 prefix_cache=chart_history_cache.setdefault('chart', {}) if chart_history_cache is not None else None)
             assert secondary_levels is not None
             secondary_resistance = secondary_resistance_history(
@@ -512,6 +520,13 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             row = dict(event); j, kind = row.pop('bar_index'), row.pop('event')
             log(j, kind, **row); counts[kind] += 1
     multilevel_proofs = {}
+    if combined_candidate_snapshots is not None:
+        combined_events, combined_a_proofs = combined_a_entry_history(bars, combined_candidate_snapshots)
+        for event in combined_events:
+            row = dict(event)
+            j, kind = cast(int, row.pop('bar_index')), cast(str, row.pop('event'))
+            log(j, kind, **row)
+            counts[kind] += 1
     nested_proofs = {}
     if whole_wave:
         from .multilevel_squeeze import multilevel_squeeze
@@ -1049,6 +1064,36 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     confirmation_source=confirmation_source,
                     **hierarchy_proof)
             break
+        combined = combined_a_proofs.get(i)
+        if combined is not None and not any(s.bar_index == i and s.side == 'LONG' for s in signals):
+            combined_rejection = target_risk or five_top_entry_risk
+            if combined_rejection is None and i in secondary_resistance and not secondary_resistance[i].get('secondary_resistance_resolved'):
+                combined_rejection = dict(reason='secondary_breakout_resistance_unresolved',
+                    **secondary_resistance[i])
+            if combined_rejection is None:
+                from .inverse_reentry import inverse_reentry_rejection
+                combined_rejection = inverse_reentry_rejection(
+                    bars, now=i, attack=i, inverse=inverse_reentry,
+                    gap=combined.get('combined_a_breakout_type') == 'gap')
+            if combined_rejection is not None:
+                log(i, 'entry_rejected', candidate_channel='combined_a_pullback_breakout',
+                    candidate_attack=i, **combined_rejection)
+            else:
+                combined_stop, combined_target = cast(float, combined['stop']), cast(float, combined['target'])
+                combined_rvol = cast(float, combined['breakout_volume_multiple'])
+                if not combined_stop < bar.close < combined_target:
+                    log(i, 'entry_rejected', reason='no_live_structural_risk_reward',
+                        candidate_channel='combined_a_pullback_breakout', candidate_attack=i,
+                        stop=combined_stop, target=combined_target)
+                else:
+                    signals.append(Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close,
+                        combined_stop, 'system_combined_a_pullback_breakout', bar.timestamp,
+                        cast(float, combined['counter_ratio']), combined_rvol,
+                        '组合A回调放量突破', combined_target, config.minimum_reward_risk))
+                    counts['buy_point_combined_a_pullback_breakout'] += 1
+                    log(i, 'long_signal', channel='combined_a_pullback_breakout', volume_pass=True,
+                        stop=combined_stop, target=combined_target, rvol=combined_rvol)
+                    log(i, 'long_transition_evidence', **combined)
         special = shallow_base_proofs.get(i)
         if special is not None and not any(s.bar_index == i and s.side == 'LONG' for s in signals):
             if five_top_entry_risk is not None:

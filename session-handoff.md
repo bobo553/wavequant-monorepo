@@ -1,5 +1,15 @@
 # Session Handoff
 
+## 2026-10-04 · MONOREPO-256 组合A回调买入待合并
+
+会话 worktree `C:/Users/zb/.codex/worktrees/combined-a-entry/wavequant-monorepo`，分支 `feat-组合A回调买入`，基线 main `c99b825`。V3 v89 的新通道已实现，回调时间按 C 顶到放量突破日计算，包含低点之后的长期窄幅横盘。国芳 2025-04-03 的 58 日虽然不超过内部 B 的 70 日，但超过最末同源子 B 的 9 日；最低收盘 6.215769 守 2/3 位 5.918297，放量中大阳线收盘 7.158380 突破此前已知高点 7.049092。新规则 24 项、十满 17 项、Web 65+3 项、定向类型检查及 Core/Web 构建通过。完整账户和外部分钟回测未运行，独立单笔成交不替代账户回放。
+
+主行情缓存 2123 根只读截到 2018-01-02 至 2025-04-03 的 1759 根，明确导入新 worktree 源码，不借旧 signals/audit，78.744 秒生成当日唯一组合通道 LONG；58/70/9、量价、守线与此前可知高点证据全部通过。未运行账户成交，普通 N 原拒因不变。
+
+暂未合并：较广回归仍有 4 项主分支既有失败，已在 clean main 明确导入 main/src 复现。`test_wave_entry_epoch.py` 两项 January6 的旧断言要求 local epoch recovered，但实际 N 和入场同属 epoch138；实际买入日期、价格和风控断言通过。`test_nested_alternation_breakout.py` 两项华瓷 January17 缺预期一级上下文而无信号。启停组合通道证据不变，未修改旧断言。按 AGENTS“检查未通过……无法通过……不合并”保留 feature in-progress；合并前需要修复这四项或用户明确允许覆盖既有失败门禁。旧 MONOREPO-231 的所有失败证据保留，暂设 backlog 以保持单一活动功能；本功能完成时恢复旧活动状态。
+
+未修改 main、未重启服务、未推送，未运行浏览器或 Playwright。后续只同步最新本地 main，确认四项门禁的处理授权后复核差异并按 no-ff 本地合并；不要自动扩大旧信号修复范围。策略拓扑最终指纹 `5655992d616d91db95743fd746aff3cf0c99ababfe8a5354a8f13503f92261ab`，任何 Core 源码修改后须同步拓扑门禁。
+
 ## 2026-10-03 · MONOREPO-233 清空依据待澄清
 
 会话 worktree `E:/WorkSpace/work/wavequant-xianfeng-c-target`、分支 `feat-先锋新材C浪目标` 已同步 main `d7ee177`。先锋2020-06-24禁买已合并并常驻生效：v81/20541a57aa76，同参数正式AkShare回测状态complete、该日BUY/LONG标记0，目标5.42、箱高0.29、余量0.22、06-23已知。Web禁买文案已加载。首次启动MySQL空握手经重启既有本地MySQL容器恢复。未推送。

@@ -78,7 +78,11 @@ export function appendTradeEvidence(panel, item, openPosition = null, holdingDra
         add(
             `双重轧空：正 N ${proof.attack_date} 同时突破 ${proof.trend_level} 级波段高 ${proof.key_source_index_date}（${num(proof.key_price, 4)}）；${proof.higher_confirmation_index_date} 守住防守、放量收盘 ${num(proof.confirmation_close, 4)} > 抵抗阶段高 ${num(proof.higher_resistance_high, 4)}。`,
         );
-    } else if (proof) {
+    } else if (
+        proof &&
+        proof.buy_point_type !== "combined_a_pullback_breakout" &&
+        proof.channel !== "combined_a_pullback_breakout"
+    ) {
         if (proof.secondary_resistance_resolved)
             add(
                 `二级压力复核：${proof.secondary_high_date} 高点 ${num(proof.secondary_high, 4)}；${proof.secondary_attack_date} 再攻击后出现抵抗，${proof.secondary_resolution_date} 收盘 ${num(proof.secondary_confirmation_close, 4)} > 抵抗阶段高点 ${num(proof.secondary_resistance_high, 4)}，抵抗解除。`,

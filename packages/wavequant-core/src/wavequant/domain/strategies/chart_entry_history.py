@@ -3,6 +3,7 @@
 from dataclasses import asdict, replace
 from collections.abc import Sequence
 from copy import deepcopy
+from typing import cast
 
 from ..market_structure.lecture_drawing import lecture_drawing
 from ..market_structure.lecture_trend import reversal_trends
@@ -22,19 +23,19 @@ def _copy_replay_state(state):
     (
         history, events, active, first_seen, retired, closed, previous_epoch,
         previous_raw, signature, landmarks, invalidated, levels,
-        shallow_candidate, resistance_key, anchors_at_attack, prior_shallow,
+        shallow_candidate, resistance_key, anchors_at_attack, prior_shallow, prior_combined,
     ) = state
     return (
         history.copy(), events.copy(), active.copy(), first_seen.copy(),
         retired.copy(), closed.copy(), previous_epoch, deepcopy(previous_raw),
         signature, landmarks.copy(), invalidated.copy(), levels,
         shallow_candidate, resistance_key, anchors_at_attack.copy(),
-        prior_shallow.copy(),
+        prior_shallow.copy(), prior_combined.copy(),
     )
 
 
 def chart_entry_history(
-    bars: Sequence[Bar], *, audit=(), shallow_candidate_sink=None, prefix_cache=None
+    bars: Sequence[Bar], *, audit=(), shallow_candidate_sink=None, combined_candidate_sink=None, prefix_cache=None
 ) -> tuple[dict[int, tuple[EntryContext, ...]], list[dict[str, object]]]:
     """Share confirmed landmarks, including cross-path continuity, with trading.
 
@@ -57,7 +58,7 @@ def chart_entry_history(
     from ..market_structure.squeeze_alternation import squeeze_anchors, squeeze_alternations
     attacks = {e["bar_index"] for e in audit if e["event"] == "n_completed" and e.get("direction") == "up"}
     anchors_at_attack = {}
-    levels = ()
+    levels: tuple[tuple[dict, dict], ...] = ()
     shallow_candidate = None
     resistance_key = None
     last = len(bars) - 1
@@ -68,15 +69,18 @@ def chart_entry_history(
         tuple(bars[:-1]),
         frozenset(i for i in attacks if i < last),
         shallow_candidate_sink is not None,
+        combined_candidate_sink is not None,
     )
     cached_key = prefix_cache.get("key") if prefix_cache is not None else None
     if cached_key == prefix_key:
         resume_start = last
     elif (
         cached_key is not None
+        and len(cached_key) == len(prefix_key)
         and cached_key[0] == tuple(bars[:-2])
         and cached_key[1] == frozenset(i for i in attacks if i < last - 1)
         and cached_key[2] == (shallow_candidate_sink is not None)
+        and cached_key[3] == (combined_candidate_sink is not None)
     ):
         # Yesterday was unfinished when the prior checkpoint was saved. Replay
         # its final candle, then today's partial candle, from the older state.
@@ -87,10 +91,12 @@ def chart_entry_history(
         (
             history, events, active, first_seen, retired, closed, previous_epoch,
             previous_raw, signature, landmarks, invalidated, levels,
-            shallow_candidate, resistance_key, anchors_at_attack, prior_shallow,
+            shallow_candidate, resistance_key, anchors_at_attack, prior_shallow, prior_combined,
         ) = _copy_replay_state(prefix_cache["checkpoint"])
         if shallow_candidate_sink is not None:
             shallow_candidate_sink.update(prior_shallow)
+        if combined_candidate_sink is not None:
+            combined_candidate_sink.update(prior_combined)
 
     def accept(i, epoch, raw):
         nonlocal previous_epoch, previous_raw, signature, landmarks, active, invalidated, levels, resistance_key, shallow_candidate
@@ -127,10 +133,10 @@ def chart_entry_history(
             candidates += [dict(index=a['high']['index'], value=a['high']['value'], source='confirmed_source')
                            for a in squeeze_anchors(second, dates, first) if a['known_index'] <= i]
             key = max(candidates, key=lambda p: (p['index'], p['value']), default=None)
-            identity = (key['index'], key['value']) if key else None
-            if identity != resistance_key:
+            resistance_identity = (key['index'], key['value']) if key else None
+            if resistance_identity != resistance_key:
                 events.append(dict(bar_index=i, event='hierarchy_resistance_key', trend_level=2, key=key))
-                resistance_key = identity
+                resistance_key = resistance_identity
             landmarks = [item for level in (first, second, third) for item in level["bear_bull_alternation_lows"]]
             invalidated = set()
             for level in (first, second, third):
@@ -146,6 +152,14 @@ def chart_entry_history(
             anchors_at_attack[i] = [anchor for level, source in levels for anchor in squeeze_anchors(level, dates, source)]
         if shallow_candidate_sink is not None:
             shallow_candidate_sink[i] = shallow_candidate
+        if combined_candidate_sink is not None and levels:
+            from .combined_a_entry import GeometryLevel, combined_a_contexts_from_geometry
+            drawing = dict(strokes=[*closed, *([dict(id=f"lecture-{epoch}", points=raw)] if len(raw) > 1 else [])])
+            second, first = levels[0]
+            third, _ = levels[1]
+            combined_candidate_sink[i] = combined_a_contexts_from_geometry(
+                bars, cast(GeometryLevel, drawing), cast(GeometryLevel, first),
+                cast(GeometryLevel, second), cast(GeometryLevel, third), dates, i, audit)
         current = {}
         for low in landmarks:
             high = low["confirmed_flip_high"]
@@ -207,6 +221,7 @@ def chart_entry_history(
                 previous_raw, signature, landmarks, invalidated, levels,
                 shallow_candidate, resistance_key, anchors_at_attack,
                 dict(shallow_candidate_sink or {}),
+                dict(combined_candidate_sink or {}),
             ))
 
     lecture_drawing(bars, on_step=accept)
@@ -223,7 +238,8 @@ def merge_squeeze_history(bars, history, events):
     dated = defaultdict(list)
     for event in events:
         dated[event["bar_index"]].append(event)
-    active, claimed, merged = {}, set(), {}
+    active: dict[tuple[int, int, int, int], EntryContext] = {}
+    claimed, merged = set(), {}
     for i, bar in enumerate(bars):
         for event in dated[i]:
             identity = (event["trend_level"], event["a_origin_index"], event["a_high_index"], event["b_low_index"])

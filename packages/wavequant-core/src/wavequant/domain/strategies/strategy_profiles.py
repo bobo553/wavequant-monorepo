@@ -59,7 +59,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
     config['strategy'].update(buy_point_definition='whole_flip_wave_v3',preflight_reward_risk=False,strict_n_attack_quality=False,
         first_pullback_threshold=thresholds.first,mature_shallow_ratio=thresholds.second,
         first_pullback_basis=thresholds.first_basis,mature_shallow_inclusive=thresholds.second_inclusive,
-        ten_full_breakout_window=23,ten_full_retracement_ratio=2/3,
+        combined_a_entry_enabled=True,ten_full_breakout_window=23,ten_full_retracement_ratio=2/3,
         ten_full_retracement_anchor='origin',ten_full_timed_half_retracement=True)
     config['profile_version']='whole_flip_wave_v3_'+variant
     config['definition'].update(alternation='confirmed_low_at_or_above_whole_flip_origin',
@@ -82,8 +82,8 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v88_' + variant
-    config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout', 'nested_alternation_breakout']
+    config['profile_version'] = 'gap_up_bullish_squeeze_v89_' + variant
+    config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout', 'nested_alternation_breakout', 'combined_a_pullback_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
         rule for rule in config['definition']['exits'] if rule != 'target_observed_then_next_open'
@@ -101,6 +101,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         'new_daily_low_and_inverse_neckline_wick_break_requires_observation',
     ]
     config['definition'].update(
+        combined_a_pullback_breakout='known_same_source_abc_combined_a_then_c_to_breakout_sessions_including_consolidation_gt_internal_b_or_latest_same_source_child_abc_b_sessions_all_closes_ge_two_thirds_volume_gt_previous_bull_body_ge_3pct_and_60pct_range_strict_known_rebound_high_or_unfilled_gap_break_once_all_global_gates',
         nested_alternation_breakout='known_live_level2_low_then_level1_low_matching_primary_n_defense_held_bullish_volume_gt_previous_close_gt_primary_flip_and_consolidation_high_same_day_n_completion_permitted',
         positive_n_defense='minimum_of_first_real_or_virtual_probe_low_through_joint_completion_and_pre_probe_close_touch_anchors_only_strict_joint_break_required',
         mother_n='explicit_lecture_bullish_outside_mother_then_later_confirmed_pullback_and_strict_joint_break',

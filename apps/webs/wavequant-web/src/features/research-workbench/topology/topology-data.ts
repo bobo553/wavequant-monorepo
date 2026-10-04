@@ -20,14 +20,14 @@ export interface ITopologyFlow {
 }
 
 /**
- * 每个判断都显式给出两条出口。源码变更由 strategy-topology.test.mjs
+ * 每个判断都显式给出两条出口。源码变更由 topology-data.test.ts
  * 的指纹门禁提醒维护者同步复核这里的条件和路径。
  */
 export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
     {
         id: "structure",
         label: "① 结构与候选",
-        description: "常规 N 买点只使用截至当前交易日已确认的结构；V3 浅回撤横盘突破另走独立待选通道。",
+        description: "常规 N 买点只使用截至当前交易日已确认的结构；V3 浅回撤横盘突破与组合 A 回调突破另走独立通道。",
         mode: "gates",
         completion: "进入买点分类与入场确认",
         gates: [
@@ -77,7 +77,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
         id: "entry",
         label: "② 买点与公共门禁",
         description:
-            "常规 V3 买点路径；独立的浅回撤横盘突破见“浅回撤待选突破”通道。V1/V2 和 V3 幅度变体的差异在下方方案说明中列明。",
+            "常规 V3 买点路径；独立买点另见“浅回撤待选突破”和“组合 A 回调放量突破”通道。V1/V2 和 V3 幅度变体的差异在下方方案说明中列明。",
         mode: "gates",
         completion: "生成 LONG 信号，交给执行价、仓位与成交门禁",
         gates: [
@@ -385,6 +385,55 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
         ],
     },
     {
+        id: "combined-a-breakout",
+        label: "组合 A 回调放量突破",
+        description: "V3 全局独立入场通道：组合 A 顶后回调及整理达到时间条件、收盘守住 2/3，再由放量中大阳线严格突破。",
+        mode: "gates",
+        completion: "组合 A 突破生成一次 LONG，进入原有风险、执行与成交门禁",
+        gates: [
+            {
+                id: "combined-a-known",
+                question: "组合 A 与同源结构在当日之前已确认？",
+                detail: "冻结组合 A 起点、C 顶和确认可知日，按发生日期与可知日期核对已有回调及整理；未知或失效组合不能借后续数据生成历史买点。",
+                source: "combined_a_entry.py · combined_a_contexts_from_geometry；chart_entry_history.py",
+                yes: "检查顶后回调及整理时间",
+                no: "等待有效组合确认",
+            },
+            {
+                id: "combined-a-time",
+                question: "回调及整理时间超过组合内部回调或子级回调？",
+                detail: "从组合 A 的 C 顶到突破日计算交易日间隔，包含底部整理；须严格长于组合内部回调或最末已确认同源子级回调，满足其一。未提供的子级时长不能替换为零，相等不通过。",
+                source: "combined_a_entry.py · combined_a_entry_history",
+                yes: "检查回调期收盘防守",
+                no: "继续等待足够的回调时间",
+            },
+            {
+                id: "combined-a-close",
+                question: "回调期间全部收盘守住 2/3 回撤价？",
+                detail: "2/3 回撤价为组合顶减去整段涨幅的 2/3；最低收盘须大于或等于该线，相等允许。仅盘中低点短暂越线不算收盘失守；任何已知收盘跌破后，不因重新收复恢复旧组合入场资格。",
+                source: "combined_a_entry.py · combined_a_entry_history",
+                yes: "检查放量中大阳线突破",
+                no: "组合收盘失守：不产生该买点",
+            },
+            {
+                id: "combined-a-trigger",
+                question: "放量中大阳线收盘严格突破已知回调参考高？",
+                detail: "参考高在触发日前发生且已可知，收盘须首次从下方严格突破；或未回补的跳空同时收盘越过前日最高价。收盘相等或仅盘中越线不触发。两条突破分支都须阳线实体至少为开盘价 3%、占全天振幅至少 60%，成交量严格大于前日正成交量。",
+                source: "combined_a_entry.py · combined_a_entry_history",
+                yes: "检查全局风险和组合顶目标",
+                no: "继续观察量价与突破证据",
+            },
+            {
+                id: "combined-a-risk",
+                question: "倒 N 观望、目标限制与原有成交门禁通过？",
+                detail: "以回调期最低价为防守，以尚未到达的组合 A 顶为目标；同一组合只确认一次。仍受倒 N 观望、目标阶段禁买、费用后盈亏比、仓位、流动性与涨停成交设置约束，LONG 不保证 BUY 成交。",
+                source: "integrated_strategy.py · generate_system_signals；backtest.py",
+                yes: "组合 A 回调放量突破 LONG",
+                no: "保留拒绝原因，不补造买入成交",
+            },
+        ],
+    },
+    {
         id: "shallow-base",
         label: "浅回撤待选突破",
         description:
@@ -437,6 +486,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
 ] as const;
 
 export const topologyProfileNotes = [
+    "V3 组合 A 回调放量突破：C 顶后回调及整理时间严格超过组合内部回调或最末同源子级回调，收盘守住 2/3，放量中大阳线收盘严格突破此前已知回调高点；不要求跳空，沿用全局风控与成交门禁。",
     "V3 新增二级后一级交替低点放量突破：两级低点在前日已依次确认且有效，放量阳线收盘突破一级翻多高及整理高，当日正 N 完成即可确认买点；沿用原防守、测幅与成交检查。",
     "V3 默认：第一类为二/三级确认交替后新正 N；第二类浅回撤 ≤1/3。确认日量能严格大于前日；信号阶段不做毛盈亏比前置筛选。",
     "V3 幅度方案：第一类可要求 >2/3 或 >1/2，第二类可选 ≤1/3、≤1/2 或最低收盘价 <1/2；具体边界由 WAVE_PROFILES 决定。",
@@ -447,4 +497,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "563bae683d6921ac43dba295ec5fd9ec9e1ee9788ded58cab4034d01d0a5a8f9";
+export const strategySourceDigest = "5655992d616d91db95743fd746aff3cf0c99ababfe8a5354a8f13503f92261ab";
