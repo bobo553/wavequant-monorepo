@@ -419,6 +419,29 @@ export function combinedAAnnotations(observations) {
         };
         return [
             base,
+            {
+                ...base,
+                id: observation.id + ":origin",
+                time: observation.originTime,
+                sourceTime: observation.originTime,
+                price: observation.origin,
+                title: "组合 A 起",
+                markerPosition: "atPriceBottom",
+                markerShape: "arrowUp",
+                color: "#d986aa",
+                priority: 210,
+            },
+            {
+                ...base,
+                id: observation.id + ":high",
+                time: observation.cTime,
+                price: observation.cHigh,
+                title: "组合 A 顶",
+                markerPosition: "atPriceTop",
+                markerShape: "arrowDown",
+                color: "#d986aa",
+                priority: 210,
+            },
             ...observation.strengthObservations.map((strength) => ({
                 ...base,
                 id: observation.id + ":strength:" + strength.time,

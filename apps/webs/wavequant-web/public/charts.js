@@ -175,6 +175,8 @@ export class PriceChart {
         this.tertiaryRetracementKey = "";
         this.combinedARetracementLines = [];
         this.combinedARetracementKey = "";
+        this.combinedAWaveLines = [];
+        this.combinedAWaveKey = "";
         this.windowAnnotations = [];
         this.data = null;
         this.theory = null;
@@ -706,6 +708,7 @@ export class PriceChart {
         this.drawBullishTurnGuides(bullishTurnSignals);
         this.drawTertiaryRetracementGuides(to);
         this.drawCombinedARetracementGuides(from, to);
+        this.drawCombinedAWavePath(from, to);
         this.container.dataset.markerCount = this.groups.length;
         this.container.dataset.tertiaryAbcCount = String(
             this.groups.flatMap((group) => group.items).filter((item) => item.category === "tertiary-abc").length,
@@ -896,6 +899,51 @@ export class PriceChart {
         }
         this.container.dataset.tertiaryRetracementGuides = String(this.tertiaryRetracementLines.length);
     }
+    clearCombinedAWavePath() {
+        for (const series of this.combinedAWaveLines || []) this.chart.removeSeries(series);
+        this.combinedAWaveLines = [];
+        this.combinedAWaveKey = "";
+        this.container.dataset.combinedAWaveLegs = "0";
+    }
+    drawCombinedAWavePath(from, to) {
+        const asof = this.waveProjectionAsOf();
+        const visible = this.options.tertiaryAbc
+            ? (this.autoCombinedAObservations || []).filter(
+                  (item) =>
+                      item.available_at <= asof &&
+                      item.originTime < item.cTime &&
+                      Number.isFinite(item.origin) &&
+                      Number.isFinite(item.cHigh) &&
+                      item.originTime <= to &&
+                      item.cTime >= from,
+              )
+            : [];
+        const key = JSON.stringify(
+            visible.map(({ id, originTime, origin, cTime, cHigh }) => [id, originTime, origin, cTime, cHigh]),
+        );
+        if (key === this.combinedAWaveKey) return;
+        this.clearCombinedAWavePath();
+        this.combinedAWaveKey = key;
+        for (const item of visible) {
+            const series = this.chart.addSeries(L.LineSeries, {
+                color: "#d986aa",
+                lineStyle: 0,
+                lineWidth: 2,
+                title: "组合 A 浪",
+                lastValueVisible: false,
+                priceLineVisible: false,
+                crosshairMarkerVisible: false,
+                pointMarkersVisible: false,
+                autoscaleInfoProvider: () => null,
+            });
+            series.setData([
+                { time: item.originTime, value: item.origin },
+                { time: item.cTime, value: item.cHigh },
+            ]);
+            this.combinedAWaveLines.push(series);
+        }
+        this.container.dataset.combinedAWaveLegs = String(this.combinedAWaveLines.length);
+    }
     clearCombinedARetracementGuides() {
         for (const series of this.combinedARetracementLines || []) this.chart.removeSeries(series);
         this.combinedARetracementLines = [];
@@ -1062,6 +1110,7 @@ export class PriceChart {
         this.container.dataset.combinedAWaveCount = "0";
         this.clearCombinedARetracementGuides();
         this.container.dataset.lastFallHighCount = "0";
+        this.clearCombinedAWavePath();
         this.container.dataset.bearToBullHighCount = "0";
         this.container.dataset.bearBullAlternationLowCount = "0";
         this.container.dataset.postAlternationBullHighCount = "0";

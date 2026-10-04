@@ -293,7 +293,8 @@ test("a window containing only the C segment retains the corresponding ABC targe
     ])
         assert.ok(chart.waveAbLines.some(({ points }) => points[0].time === start && points[1].time === end));
     assert.equal(targetLabels(chart, rendered.guides).length, 3);
-    assert.ok(rendered.markers.some(({ text }) => text === "C 顶"));
+    // 已确认 C 顶也是组合 A 顶，同价同日标签优先展示组合身份。
+    assert.ok(rendered.markers.some(({ text }) => text === "组合 A 顶"));
     assert.deepEqual(rendered.range, originalRange);
 });
 
