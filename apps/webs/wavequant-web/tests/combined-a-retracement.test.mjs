@@ -28,6 +28,64 @@ const bars = [
     { time: "2025-01-08", close: 8, low: 7.5 },
 ];
 
+const topBreakBars = bars.map((bar) => ({
+    ...bar,
+    high: bar.time === "2025-01-02" || bar.time === "2025-01-04" ? 12 : bar.time === "2025-01-05" ? 12.1 : 10,
+    close: bar.time === "2025-01-06" ? 5.9 : 8,
+}));
+
+test("held references end on the first strict high break and later closing failures cannot revive them", () => {
+    const guides = combinedARetracementGuides([observation], topBreakBars, observation.end);
+    assert.ok(guides.every((guide) => guide.end === "2025-01-05"));
+    assert.ok(guides.every((guide) => guide.targetState === "高点已突破"));
+    assert.ok(guides.every((guide) => guide.firstCloseBelow === null));
+});
+
+test("each reference keeps its earlier closing failure while a still-held reference stops at the A top break", () => {
+    const history = topBreakBars.map((bar) => (bar.time === "2025-01-04" ? { ...bar, close: 7 } : bar));
+    const [half, twoThirds] = combinedARetracementGuides([observation], history, observation.end);
+    assert.equal(half.end, "2025-01-04");
+    assert.equal(half.targetState, "半幅失守");
+    assert.equal(twoThirds.end, "2025-01-05");
+    assert.equal(twoThirds.targetState, "高点已突破");
+    assert.equal(twoThirds.firstCloseBelow, null);
+});
+
+test("a top touch and future high break do not end a held reference at an earlier replay date", () => {
+    const guides = combinedARetracementGuides([observation], topBreakBars, "2025-01-04");
+    assert.ok(guides.every((guide) => guide.end === "2025-01-04" && guide.targetState === "未跌破"));
+    assert.deepEqual(
+        guides,
+        combinedARetracementGuides(
+            [observation],
+            topBreakBars.filter((bar) => bar.time <= "2025-01-04"),
+            "2025-01-04",
+        ),
+    );
+    const touchedOnly = topBreakBars.map((bar) => ({ ...bar, high: Math.min(bar.high, 12), close: 8 }));
+    assert.ok(combinedARetracementGuides([observation], touchedOnly).every((guide) => guide.end === observation.end));
+});
+
+test("a simultaneous high break and closing failure share the candle while the closing failure determines status", () => {
+    for (const close of [6, 5.9]) {
+        const history = topBreakBars.map((bar) => (bar.time === "2025-01-05" ? { ...bar, close } : bar));
+        const [half, twoThirds] = combinedARetracementGuides([observation], history, observation.end);
+        assert.equal(half.end, "2025-01-05");
+        assert.equal(half.targetState, "半幅失守");
+        assert.equal(twoThirds.end, "2025-01-05");
+        assert.equal(twoThirds.targetState, close < 6 ? "2/3失守" : "高点已突破");
+        assert.deepEqual(twoThirds.firstCloseBelow, close < 6 ? { time: "2025-01-05", close } : null);
+    }
+});
+
+test("confirmation gates an earlier A top break and an origin invalidation before it remains the bound", () => {
+    const late = { ...observation, available_at: "2025-01-07" };
+    assert.deepEqual(combinedARetracementGuides([late], topBreakBars, "2025-01-06"), []);
+    assert.ok(combinedARetracementGuides([late], topBreakBars).every((guide) => guide.end === "2025-01-05"));
+    const invalidated = { ...observation, invalidatedAt: "2025-01-04" };
+    assert.ok(combinedARetracementGuides([invalidated], topBreakBars).every((guide) => guide.end === "2025-01-04"));
+});
+
 test("50% and two-thirds measure down from C and stop at their independent first strict closing breaks", () => {
     const original = structuredClone({ observation, bars });
     const [half, twoThirds] = combinedARetracementGuides([observation], bars, observation.end);
@@ -92,7 +150,7 @@ test("empty, unavailable, missing C and invalid amplitude inputs cannot draw ret
         assert.deepEqual(combinedARetracementGuides([input], bars), []);
 });
 
-test("real Guofang history ends the half at January 10 while the two-thirds reference stays held", () => {
+test("real Guofang history ends the half at January 10 and its held two-thirds reference at the April 9 top break", () => {
     const fixture = JSON.parse(readFileSync(new URL("./fixtures/guofang_2018_ordinary_c_wave.json", import.meta.url)));
     const history = fixture.bars.map(([time, open, high, low, close, volume]) => ({
         time,
@@ -113,7 +171,8 @@ test("real Guofang history ends the half at January 10 while the two-thirds refe
     assert.equal(half.start, "2025-01-03");
     assert.equal(half.end, "2025-01-10");
     assert.equal(twoThirds.price, 5.918296563582128);
-    assert.equal(twoThirds.end, fixture.theory.asof);
+    assert.equal(twoThirds.end, "2025-04-09");
+    assert.equal(twoThirds.targetState, "高点已突破");
     assert.equal(twoThirds.firstCloseBelow, null);
     const older = observations.find((item) => item.cTime === "2022-04-22");
     const oldGuides = combinedARetracementGuides([older], history, fixture.theory.asof);
