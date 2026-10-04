@@ -4,6 +4,37 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-254",
+            "name": "combined-a-guides-stop-at-top-break",
+            "title": "组合A回撤线止于高点突破",
+            "description": "最近组合A的50%与2/3回撤线，在未被收盘跌破时止于后续K线首次严格突破组合A高点的位置。",
+            "scope": "Web组合A回撤线终点与标签状态",
+            "dependencies": ["MONOREPO-253"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "两条虚线分别止于首次收盘跌破或组合A高点突破中先发生的事件，当天低收盘失守优先标记",
+                "高点相等不算突破，采用后续K线最高价严格越过C顶；已止于高点突破的线不再借后续跌破延伸",
+                "两者未发生时延伸可知截面，确认前不显示，历史前缀不借未来；国芳真实行情及相关回归、Web门禁通过"
+            ],
+            "verification": [
+                {
+                    "command": "NODE_OPTIONS=--max-old-space-size=512 --max-semi-space-size=4 node --test --test-concurrency=1 apps/webs/wavequant-web/tests/{lecture-overlay,wave-connections,combined-a-chart,combined-a-wave,combined-a-retracement,wave-c-chart,wave-c-projection,ordinary-c-wave,wave-endpoint-overlay,target-level-guides,c-wave-extension}.test.mjs (explicit paths)",
+                    "status": "passed",
+                    "summary": "171项通过。先复现未截到高点突破、借后续跌破的错误；两条线独立取首次收盘严格跌破与后续最高价严格突破组合A高点中较早日期。同棒失守优先，相等不触发，确认前不显示、确认后回标，历史前缀一致，失效上限及平移后清理/恢复通过。保留最近一组及全部历史分析。"
+                },
+                {
+                    "command": "NODE_OPTIONS=--max-old-space-size=512 --max-semi-space-size=4 pnpm --filter wavequant-web lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "lint零错误（6条既有警告）、类型及完整生产构建通过；仅命令级低内存参数。完整Web套件与浏览器/Playwright未运行，待独立验证。"
+                },
+                {
+                    "command": "Node actual guofang-fixed-formal.json combinedARetracementGuides; independent read-only boundary review",
+                    "status": "passed",
+                    "summary": "正式AkShare 2123日线保留4组历史；当前50% 6.767928止于2025-01-10收盘跌破，2/3 5.918297止于2025-04-09，首次最高9.521739严格突破组合A顶9.316823。旧半幅失守不被后续突破重置；独立只读复核未发现实质问题。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-253",
             "name": "combined-a-retracement-line-labels",
             "title": "组合A回撤线标注与跌破截断",

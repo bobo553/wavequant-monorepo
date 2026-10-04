@@ -59,6 +59,8 @@ export function combinedARetracementGuides(observations, bars, asof) {
         const end = [lastTime, observation.end, observation.invalidatedAt].filter(isDate).sort()[0];
         if (end <= observation.cTime) return [];
         const pullback = knownBars.filter((bar) => bar.time > observation.cTime && bar.time <= end);
+        const firstHighBreak = pullback.find((bar) => Number.isFinite(bar.high) && bar.high > observation.cHigh);
+        const phaseEnd = firstHighBreak?.time || end;
         // 回撤比例从 C 顶向下量；确认后回标到 C 顶，允许终点早于组合确认日。
         return [
             { stage: "combined_a_half", ratio: "50%", price: (observation.origin + observation.cHigh) / 2 },
@@ -68,17 +70,25 @@ export function combinedARetracementGuides(observations, bars, asof) {
                 price: observation.cHigh - ((observation.cHigh - observation.origin) * 2) / 3,
             },
         ].map(({ stage, ratio, price }) => {
-            const firstCloseBelow = pullback.find((bar) => Number.isFinite(bar.close) && bar.close < price);
+            const firstCloseBelow = pullback.find(
+                (bar) => bar.time <= phaseEnd && Number.isFinite(bar.close) && bar.close < price,
+            );
             return {
                 id: observation.id + ":" + stage,
                 stage,
                 name: "组合 A " + ratio,
                 start: observation.cTime,
-                end: firstCloseBelow?.time || end,
+                end: firstCloseBelow?.time || phaseEnd,
                 price,
                 color: "#d986aa",
                 labelPosition: "line",
-                targetState: firstCloseBelow ? (ratio === "50%" ? "半幅失守" : "2/3失守") : "未跌破",
+                targetState: firstCloseBelow
+                    ? ratio === "50%"
+                        ? "半幅失守"
+                        : "2/3失守"
+                    : firstHighBreak
+                      ? "高点已突破"
+                      : "未跌破",
                 firstCloseBelow: firstCloseBelow ? { time: firstCloseBelow.time, close: firstCloseBelow.close } : null,
             };
         });

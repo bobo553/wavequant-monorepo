@@ -598,13 +598,24 @@ test("Guofang's retracement labels sit on their own lines and stop at independen
     assert.equal(twoThirds.options.lastValueVisible, false);
     assert.ok(Math.abs(twoThirds.points[0].value - 5.918296563582128) < 1e-12);
     assert.equal(twoThirds.points[0].time, "2025-01-03");
-    assert.equal(twoThirds.points[1].time, fixture.asof);
+    assert.equal(twoThirds.points[1].time, "2025-04-09");
     assert.equal(rendered.combinedGuides.length, 2);
     assert.equal(rendered.combinedGuides[0].labelPosition, "line");
     assert.match(rendered.combinedGuides[0].name, /50%/);
     assert.equal(rendered.combinedGuides[0].targetState, "半幅失守");
     assert.match(rendered.combinedGuides[1].name, /2\/3/);
-    assert.equal(rendered.combinedGuides[1].targetState, "未跌破");
+    assert.equal(rendered.combinedGuides[1].targetState, "高点已突破");
+    const range = { ...rendered.range };
+    rendered.range = {
+        from: fixture.bars.findIndex((bar) => bar.time === "2025-04-09") + 1,
+        to: fixture.bars.length - 1,
+    };
+    chart.refreshMarkers();
+    assert.equal(chart.combinedARetracementLines.length, 0);
+    assert.deepEqual(rendered.combinedGuides, []);
+    rendered.range = range;
+    chart.refreshMarkers();
+    assert.equal(chart.combinedARetracementLines.length, 2);
     chart.drawLevels();
     assert.equal(rendered.combinedGuides.length, 2, "selection guides cannot clear combined A labels");
     chart.setAnnotationOptions({ levels: false });
