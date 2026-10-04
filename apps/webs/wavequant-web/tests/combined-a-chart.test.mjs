@@ -229,7 +229,10 @@ test("full-history Guofang observes the exact half reference while its original 
     assert.ok(observed);
     assert.equal(chart.autoWaveProjections.length, 7);
     assert.equal(chart.container.dataset.waveAbcCount, "7");
-    assert.equal(Number(chart.container.dataset.combinedAWaveCount), chart.autoCombinedAObservations.length);
+    assert.equal(chart.autoCombinedAObservations.length, 4);
+    assert.equal(Number(chart.container.dataset.combinedAWaveCount), 1);
+    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedAWaveLines.length, 1);
     const annotation = chart.annotations.find((item) => item.kind === "combined-a-wave" && item.raw.id === observed.id);
     const marker = rendered.markers.find(({ id }) => id === annotation.id);
     assert.equal(marker.price, observed.price);
@@ -509,4 +512,67 @@ test("overlapping same-direction N shapes share one SDK edge while opposite type
     assert.equal(chart.lines.filter((series) => series.options.color === "#60cfc3").length, 3);
     assert.equal(chart.lines.filter((series) => series.options.color === "#cba271").length, 1);
     assert.equal(chart.theory.shapes.length, 3);
+});
+
+test("Guofang displays only its latest combined A, half guide and failure label while keeping history", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/guofang_combined_a_history.json", import.meta.url)));
+    const { chart, rendered } = chartHarness(fixture.bars);
+    chart.data.asof = fixture.asof;
+    chart.theory.asof = fixture.asof;
+    chart.autoCombinedAObservations = fixture.observations;
+    chart.setAnnotationOptions({});
+    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines[0].points[0].value, 6.767928288212305);
+    assert.match(chart.combinedARetracementLines[0].options.title, /半幅失守/);
+    assert.equal(chart.combinedAWaveLines.length, 1);
+    assert.equal(chart.combinedAWaveLines[0].points[0].time, "2024-02-08");
+    const annotations = chart.annotations.filter((item) => item.kind === "combined-a-wave");
+    assert.equal(annotations.length, 3);
+    assert.ok(annotations.every((item) => item.raw.originTime === "2024-02-08"));
+    assert.equal(chart.autoCombinedAObservations.length, 2);
+    const range = { ...rendered.range };
+    rendered.range = { from: 0, to: fixture.bars.findIndex((bar) => bar.time === "2022-11-10") };
+    chart.refreshMarkers();
+    assert.equal(chart.combinedARetracementLines.length, 0);
+    assert.equal(chart.combinedAWaveLines.length, 0);
+    rendered.range = range;
+    chart.setAnnotationOptions({ levels: false });
+    assert.equal(chart.combinedARetracementLines.length, 0);
+    assert.equal(chart.combinedAWaveLines.length, 1);
+    chart.setAnnotationOptions({ levels: true });
+    assert.equal(chart.combinedARetracementLines.length, 1);
+    chart.setAnnotationOptions({ tertiaryAbc: false });
+    assert.equal(chart.combinedARetracementLines.length, 0);
+    assert.equal(chart.combinedAWaveLines.length, 0);
+    chart.setAnnotationOptions({ tertiaryAbc: true });
+    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedAWaveLines.length, 1);
+});
+
+test("Guofang's historical asof chooses the then-known A rather than its future replacement", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/guofang_combined_a_history.json", import.meta.url)));
+    const { chart } = chartHarness(fixture.bars);
+    chart.autoCombinedAObservations = fixture.observations;
+    chart.data.asof = "2025-01-14";
+    chart.setAnnotationOptions({});
+    assert.equal(chart.combinedAWaveLines.length, 1);
+    assert.equal(chart.combinedAWaveLines[0].points[0].time, "2021-02-08");
+    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines[0].points[0].value, 5.5364927423174155);
+    assert.ok(
+        chart.annotations
+            .filter((item) => item.kind === "combined-a-wave")
+            .every((item) => item.raw.originTime === "2021-02-08"),
+    );
+    chart.data.asof = "2025-01-22";
+    chart.setAnnotationOptions({});
+    assert.equal(chart.combinedAWaveLines.length, 1);
+    assert.equal(chart.combinedAWaveLines[0].points[0].time, "2024-02-08");
+    assert.equal(chart.combinedARetracementLines.length, 1);
+    assert.equal(chart.combinedARetracementLines[0].points[0].value, 6.767928288212305);
+    chart.theory.asof = "2022-11-09";
+    chart.setAnnotationOptions({});
+    assert.equal(chart.combinedAWaveLines.length, 0);
+    assert.equal(chart.combinedARetracementLines.length, 0);
+    assert.equal(chart.annotations.filter((item) => item.kind === "combined-a-wave").length, 0);
 });

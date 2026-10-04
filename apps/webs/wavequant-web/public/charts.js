@@ -19,7 +19,12 @@ import {
     tradePointRange,
     zoomChartRange,
 } from "./chart-navigation.js";
-import { combinedAAnnotations, combinedAObservations, combinedAWaveConnections } from "./combined-a-wave.js";
+import {
+    combinedAAnnotations,
+    combinedAObservations,
+    combinedAWaveConnections,
+    latestCombinedAObservation,
+} from "./combined-a-wave.js";
 import { FocusFlashOverlay } from "./focus-flash-overlay.js";
 import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
@@ -457,7 +462,7 @@ export class PriceChart {
         this.annotations.push(
             ...this.autoWaveEvidence,
             ...this.autoWaveProjections,
-            ...combinedAAnnotations(this.autoCombinedAObservations || []),
+            ...combinedAAnnotations(this.displayedCombinedAObservations()),
         );
         this.drawWaveAbPath();
         this.refreshMarkers();
@@ -465,6 +470,10 @@ export class PriceChart {
     }
     waveProjectionAsOf() {
         return this.theory?.asof && this.theory.asof < this.data?.asof ? this.theory.asof : this.data?.asof;
+    }
+    displayedCombinedAObservations() {
+        const latest = latestCombinedAObservation(this.autoCombinedAObservations, this.waveProjectionAsOf());
+        return latest ? [latest] : [];
     }
     waveProjectionAt(time, id) {
         if (!time || !this.options.tertiaryAbc) return null;
@@ -907,11 +916,10 @@ export class PriceChart {
         this.container.dataset.combinedAWaveLegs = "0";
     }
     drawCombinedAWavePath(from, to) {
-        const asof = this.waveProjectionAsOf();
         const visible = this.options.tertiaryAbc
-            ? combinedAWaveConnections(
-                  (this.autoCombinedAObservations || []).filter((item) => item.available_at <= asof),
-              ).filter(({ points }) => points[0].time <= to && points[1].time >= from)
+            ? combinedAWaveConnections(this.displayedCombinedAObservations()).filter(
+                  ({ points }) => points[0].time <= to && points[1].time >= from,
+              )
             : [];
         const key = JSON.stringify(visible.map(({ id, group, points }) => [id, group, points]));
         if (key === this.combinedAWaveKey) return;
@@ -941,13 +949,11 @@ export class PriceChart {
         this.container.dataset.combinedARetracementGuides = "0";
     }
     drawCombinedARetracementGuides(from, to) {
-        const asof = this.waveProjectionAsOf();
         const visible =
             this.options.tertiaryAbc && this.options.levels
-                ? (this.autoCombinedAObservations || []).filter(
+                ? this.displayedCombinedAObservations().filter(
                       (guide) =>
                           Number.isFinite(guide.price) &&
-                          guide.available_at <= asof &&
                           guide.start < guide.end &&
                           guide.start <= to &&
                           guide.end >= from,
@@ -1275,7 +1281,7 @@ export class PriceChart {
         this.annotations.push(
             ...this.autoWaveEvidence,
             ...this.autoWaveProjections,
-            ...combinedAAnnotations(this.autoCombinedAObservations),
+            ...combinedAAnnotations(this.displayedCombinedAObservations()),
         );
         this.drawWaveAbPath();
         this.refreshMarkers();

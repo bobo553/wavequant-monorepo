@@ -4,6 +4,37 @@
     "activeFeature": "MONOREPO-231",
     "features": [
         {
+            "id": "MONOREPO-252",
+            "name": "latest-combined-a-display",
+            "title": "仅显示最近一组组合A",
+            "description": "组合A显示按当前可知截面只取C端点最近且同顶起点最近的一组，统一连线、端点、半幅和失守标签，保留全历史记录。",
+            "scope": "Web组合A显示，不修改交易或历史ABC分析",
+            "dependencies": ["MONOREPO-251"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "国芳旧5.5365与新6.7679半幅同时存在时只显示最近6.7679及对应端点",
+                "未来未确认组不能替换当前组，重放早期截面选择当时最近组；视窗平移不复活旧组",
+                "开关、数据清理、原ABC目标与历史记录保留，相关回归及Web静态/构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/lecture-overlay.test.mjs tests/wave-connections.test.mjs tests/combined-a-chart.test.mjs tests/combined-a-wave.test.mjs tests/wave-c-chart.test.mjs tests/wave-c-projection.test.mjs tests/ordinary-c-wave.test.mjs tests/wave-endpoint-overlay.test.mjs; combined A pair after final assertion",
+                    "status": "passed",
+                    "summary": "138项回归通过，最终组合A两文件48项再次通过。真实旧/新半幅先复现2条，现只显示6.767928及2024-02-08至2025-01-03连线和3个标签，保留历史记录；覆盖截面、同顶最近起点、未来确认、关闭/恢复、平移和清理。首次广回归遇到既有定位脉冲浮点边界1699.9999999999995导致1项失败，未修改该实现，重跑全部138项通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; NODE_OPTIONS=--max-old-space-size=768 pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "lint零错误（6条既有警告）、类型及生产构建通过；完整Web单测与浏览器/Playwright未运行，留待独立验证。"
+                },
+                {
+                    "command": "Node actual guofang-fixed-formal.json projections and latestCombinedAObservation",
+                    "status": "passed",
+                    "summary": "正式AkShare 2123日线得到4组历史记录，当前仅选C为2025-01-03、2025-01-22确认的一组，半幅6.767928288212305；2025-01-14截面只选旧组5.5364927423174155。原7组ABC及交易分析保留。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-251",
             "name": "trend-path-endpoint-uniqueness",
             "title": "二三级趋势补线唯一连接",

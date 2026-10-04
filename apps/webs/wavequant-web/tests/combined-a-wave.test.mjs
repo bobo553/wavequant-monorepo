@@ -2,8 +2,53 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { combinedAAnnotations, combinedAObservations } from "../public/combined-a-wave.js";
+import { combinedAAnnotations, combinedAObservations, latestCombinedAObservation } from "../public/combined-a-wave.js";
 import { waveCProjectionsFromStructure } from "../public/wave-c-projection.js";
+
+const combinedHistory = JSON.parse(
+    readFileSync(new URL("./fixtures/guofang_combined_a_history.json", import.meta.url)),
+).observations;
+
+test("latest combined A selects only observations confirmed at the requested asof", () => {
+    const [older, latest] = combinedHistory;
+    assert.equal(latestCombinedAObservation([], "2026-09-30"), null);
+    assert.equal(latestCombinedAObservation(combinedHistory, "2022-11-09"), null);
+    assert.equal(latestCombinedAObservation(combinedHistory, "2022-11-10"), older);
+    assert.equal(latestCombinedAObservation(combinedHistory, "2025-01-14"), older);
+    assert.equal(latestCombinedAObservation(combinedHistory, "2025-01-22"), latest);
+    assert.equal(latestCombinedAObservation(combinedHistory, "2026-09-30"), latest);
+});
+
+test("latest combined A compares C before confirmation dates and keeps the closest origin at a shared C", () => {
+    const [older, latest] = combinedHistory;
+    const lateConfirmation = { ...older, available_at: "2026-09-30" };
+    const closerOrigin = { ...latest, id: "closer", originTime: "2024-03-01" };
+    const observations = [closerOrigin, latest, lateConfirmation];
+    const before = structuredClone(observations);
+    assert.equal(latestCombinedAObservation(observations, "2026-09-30"), closerOrigin);
+    assert.equal(latestCombinedAObservation([...observations].reverse(), "2026-09-30"), closerOrigin);
+    assert.deepEqual(observations, before);
+    const tie = { ...closerOrigin, id: "tie" };
+    assert.equal(latestCombinedAObservation([tie, closerOrigin], "2026-09-30"), tie);
+    assert.equal(latestCombinedAObservation([closerOrigin, tie], "2026-09-30"), tie);
+});
+
+test("invalid or future combinations cannot replace the latest known failed A", () => {
+    const [, latest] = combinedHistory;
+    const future = { ...latest, cTime: "2026-10-01", available_at: "2026-10-05" };
+    const invalid = [
+        null,
+        { ...future, available_at: "2026-09-01" },
+        { ...future, cTime: "2026-02-30" },
+        { ...future, origin: NaN },
+        { ...future, cHigh: Infinity },
+        { ...future, originTime: future.cTime },
+    ];
+    const failed = { ...latest, halfHeld: false, invalidatedAt: "2025-02-03" };
+    assert.equal(latestCombinedAObservation([failed, future, ...invalid], "2026-09-30"), failed);
+    assert.equal(latestCombinedAObservation([failed, future, ...invalid], "2026-10-05"), future);
+    for (const item of invalid) assert.equal(latestCombinedAObservation([item], "2026-10-05"), null);
+});
 
 function candle(time, open, high, low, close, volume = 100) {
     return { time, open, high, low, close, volume };
