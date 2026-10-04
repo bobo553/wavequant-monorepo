@@ -96,7 +96,8 @@ export class TargetGuideOverlay {
                     (guide) =>
                         guide.x <= mediaSize.width &&
                         (guide.x >= 0 || (guide.end > guide.start && guide.endX !== null && guide.endX >= 0)) &&
-                        (!guide.offscreen || ["c_1618", "five_top", "ten_full"].includes(guide.stage)),
+                        (!guide.offscreen ||
+                            ["c_0618", "c_equal", "c_1618", "five_top", "ten_full"].includes(guide.stage)),
                 )
                 .sort((left, right) => left.displayY - right.displayY);
             const labelYs = visible.map((guide) => guide.displayY - 3);
@@ -111,11 +112,11 @@ export class TargetGuideOverlay {
             for (const [index, guide] of visible.entries()) {
                 context.strokeStyle = guide.color;
                 context.fillStyle = guide.color;
-                context.lineWidth = 1;
+                context.lineWidth = guide.stage === "c_equal" ? 2 : 1;
                 const short = !guide.end || guide.end === guide.start;
                 const anchorX = Math.max(0, short ? guide.x - 18 : guide.x);
                 if (short && !guide.offscreen) {
-                    context.setLineDash([4, 3]);
+                    context.setLineDash(guide.targetState === "已触及" ? [] : [4, 3]);
                     context.beginPath();
                     context.moveTo(anchorX, guide.y);
                     context.lineTo(Math.min(mediaSize.width, guide.x + 18), guide.y);

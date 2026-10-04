@@ -117,6 +117,20 @@ function base(container) {
     themedCharts.add(chart);
     return chart;
 }
+
+function waveProjectionRange(item, asof) {
+    const projection = item?.raw;
+    const knownAt = [projection?.aKnownAt, projection?.bKnownAt, projection?.confirmedAt, item?.time]
+        .filter((time) => typeof time === "string")
+        .sort()
+        .at(-1);
+    if (!projection?.originTime || !asof || !knownAt || knownAt > asof) return null;
+    const completed = projection.cTime && projection.cKnownAt && projection.cKnownAt <= asof;
+    let until = completed ? projection.cTime : asof;
+    if (projection.targetValidUntil && projection.targetValidUntil < until) until = projection.targetValidUntil;
+    return { from: projection.originTime, to: until };
+}
+
 export class PriceChart {
     constructor(
         container,
@@ -166,6 +180,9 @@ export class PriceChart {
         this.autoWaveProjection = null;
         this.autoWaveProjections = [];
         this.autoWaveEvidence = [];
+        this.hoveredWaveProjection = null;
+        this.hoveredWaveTime = null;
+        this.hoveredWaveId = null;
         this.options = {
             signals: true,
             fills: true,
@@ -223,6 +240,7 @@ export class PriceChart {
         this.tooltip.addEventListener("pointerleave", () => {
             this.tooltipHovered = false;
             this.tooltip.hidden = true;
+            this.updateWaveProjectionHover(null);
         });
         this.tooltip.addEventListener("focusin", () => clearTimeout(this.tooltipHideTimer));
         this.tooltip.addEventListener("focusout", () => {
@@ -235,8 +253,13 @@ export class PriceChart {
             if (this.tooltipHovered || this.tooltip.contains(document.activeElement)) return;
             const barIndex = this.data.bars.findIndex((candidate) => candidate.time === p.time);
             const bar = this.data.bars[barIndex];
+            this.updateWaveProjectionHover(p.point && bar ? bar.time : null, p.hoveredObjectId);
             if (bar) onHover(bar);
-            const items = this.itemsAt(p.time, p.hoveredObjectId);
+            const candleItems = this.itemsAt(p.time, p.hoveredObjectId);
+            const items =
+                this.hoveredWaveProjection && !candleItems.some((item) => item.id === this.hoveredWaveProjection.id)
+                    ? [this.hoveredWaveProjection, ...candleItems]
+                    : candleItems;
             if (!p.point || !bar) {
                 clearTimeout(this.tooltipHideTimer);
                 this.tooltipHideTimer = setTimeout(() => {
@@ -290,6 +313,13 @@ export class PriceChart {
                     const reason = document.createElement("small");
                     reason.textContent = item.description;
                     this.tooltip.append(reason);
+                }
+                if (item === this.hoveredWaveProjection) {
+                    for (const { tag, text } of this.waveProjectionHoverLines()) {
+                        const detail = document.createElement(tag);
+                        detail.textContent = text;
+                        this.tooltip.append(detail);
+                    }
                 }
                 for (const rejection of item.executionRiskRejections || []) {
                     const execution = document.createElement("div");
@@ -362,6 +392,9 @@ export class PriceChart {
         this.autoWaveProjection = null;
         this.autoWaveProjections = [];
         this.autoWaveEvidence = [];
+        this.hoveredWaveProjection = null;
+        this.hoveredWaveTime = null;
+        this.hoveredWaveId = null;
         this.waveEndpointOverlay.setPoints([]);
         this.tooltip.hidden = true;
         this.clearTheory();
@@ -418,6 +451,69 @@ export class PriceChart {
         this.refreshMarkers();
         this.drawLevels();
     }
+    waveProjectionAsOf() {
+        return this.theory?.asof && this.theory.asof < this.data?.asof ? this.theory.asof : this.data?.asof;
+    }
+    waveProjectionAt(time, id) {
+        if (!time || !this.options.tertiaryAbc) return null;
+        const asof = this.waveProjectionAsOf();
+        const candidates = this.autoWaveProjections.filter((item) => {
+            const range = waveProjectionRange(item, asof);
+            return range && range.from <= time && time <= range.to;
+        });
+        const evidence = this.autoWaveEvidence.find((item) => item.id === id);
+        const hit = candidates.find((item) => item.id === id || (evidence && item.raw === evidence.raw));
+        if (hit) return hit;
+        const selected =
+            this.selected?.category === "wave-projection"
+                ? candidates.find((item) => item.id === this.selected.id || item.raw === this.selected.raw)
+                : null;
+        return (
+            selected ||
+            candidates.sort(
+                (left, right) =>
+                    (right.raw.trendLevel || 2) - (left.raw.trendLevel || 2) ||
+                    right.raw.originTime.localeCompare(left.raw.originTime) ||
+                    right.raw.aTime.localeCompare(left.raw.aTime) ||
+                    right.time.localeCompare(left.time) ||
+                    left.id.localeCompare(right.id),
+            )[0] ||
+            null
+        );
+    }
+    /** 悬停只临时展示所在 ABC，保留成交选择与图窗；移出后恢复原目标。 */
+    updateWaveProjectionHover(time, id) {
+        const availableTime = time && this.data?.bars.some((bar) => bar.time === time) ? time : null;
+        const previous = this.hoveredWaveProjection;
+        this.hoveredWaveTime = availableTime;
+        this.hoveredWaveId = id || null;
+        this.hoveredWaveProjection = this.waveProjectionAt(availableTime, id);
+        if (previous !== this.hoveredWaveProjection) this.drawLevels();
+    }
+    waveProjectionHoverLines() {
+        const item = this.hoveredWaveProjection;
+        if (!item) return [];
+        const projection = item.raw;
+        return [
+            {
+                tag: "small",
+                text: `A 起 ${projection.originTime} ${num(projection.origin, 4)} → A 顶 ${projection.aTime} ${num(projection.aHigh, 4)}；B ${projection.bTime} ${num(projection.bLow, 4)}${projection.cTime ? `；C 顶 ${projection.cTime} ${num(projection.cHigh, 4)}（${projection.cKnownAt} 确认）` : ""}`,
+            },
+            {
+                tag: "small",
+                text: `按 ${this.waveProjectionAsOf()} 截面复盘；目标生效 ${projection.confirmedAt || projection.bKnownAt || projection.bTime}`,
+            },
+            ...item.levels
+                .filter((level) => ["c_0618", "c_equal", "c_1618"].includes(level.stage))
+                .map((level) => {
+                    const guide = targetLevelGuide(item, level, this.data.bars, this.waveProjectionAsOf());
+                    return {
+                        tag: "div",
+                        text: `${level.name}｜${num(level.price, 4)}｜${guide?.targetState || "待达成"}`,
+                    };
+                }),
+        ];
+    }
     scheduleMarkers() {
         if (!this.frame)
             this.frame = requestAnimationFrame(() => {
@@ -431,10 +527,30 @@ export class PriceChart {
         const bars = this.data.bars,
             from = bars[Math.max(0, Math.floor(range?.from || 0))]?.time || bars[0].time;
         const to = bars[Math.min(bars.length - 1, Math.ceil(range?.to ?? bars.length - 1))]?.time || bars.at(-1).time;
-        const previousProjection = this.autoWaveProjection;
+        const previousProjection = this.hoveredWaveProjection || this.selected || this.autoWaveProjection;
+        const wasHoveringProjection = Boolean(this.hoveredWaveProjection);
+        const viewportStartChanged = this.waveProjectionViewportFrom !== from;
+        this.waveProjectionViewportFrom = from;
+        const asof = this.waveProjectionAsOf();
         this.autoWaveProjection =
-            this.autoWaveProjections.filter((item) => item.raw.originTime <= to && item.time >= from).at(-1) || null;
-        if (previousProjection !== this.autoWaveProjection) this.drawLevels();
+            this.autoWaveProjections
+                .filter((item) => {
+                    const projectionRange = waveProjectionRange(item, asof);
+                    return projectionRange && projectionRange.from <= to && projectionRange.to >= from;
+                })
+                .at(-1) || null;
+        if (this.hoveredWaveTime && (this.hoveredWaveTime < from || this.hoveredWaveTime > to)) {
+            this.hoveredWaveTime = null;
+            this.hoveredWaveId = null;
+        }
+        this.hoveredWaveProjection = this.waveProjectionAt(this.hoveredWaveTime, this.hoveredWaveId);
+        const displayedProjection = this.hoveredWaveProjection || this.selected || this.autoWaveProjection;
+        if (
+            previousProjection !== displayedProjection ||
+            (displayedProjection?.kind === "wave-projection" &&
+                (viewportStartChanged || wasHoveringProjection !== Boolean(this.hoveredWaveProjection)))
+        )
+            this.drawLevels();
         const span = range ? range.to - range.from : 140;
         // Python returns the authoritative continuous level-1 paths.  Rebuilding
         // business pivots in the browser would make level-2 input disagree with
@@ -766,7 +882,7 @@ export class PriceChart {
     }
     drawLevels() {
         this.clearLevels();
-        const item = this.selected || this.autoWaveProjection;
+        const item = this.hoveredWaveProjection || this.selected || this.autoWaveProjection;
         // 拒单不产生常驻图标；从右侧账本主动定位时，仅临时标示对应 K 线的参考价。
         const blockedOrder = item?.kind === "order" && item.status === "cancelled";
         const blockedCandidate = item?.kind === "candidate";
@@ -816,9 +932,26 @@ export class PriceChart {
             if (guide?.end && guide.end > start) points.push({ time: guide.end, value: level.price });
             else if (!guide && start < this.data.bars.at(-1).time)
                 points.push({ time: this.data.bars.at(-1).time, value: level.price });
+            let displayGuide = guide;
+            if (guide && item.kind === "wave-projection" && ["c_0618", "c_equal", "c_1618"].includes(level.stage)) {
+                const visibleRange = this.chart.timeScale().getVisibleLogicalRange();
+                const visibleStart = this.data.bars[Math.max(0, Math.floor(visibleRange?.from || 0))]?.time;
+                const displayStart =
+                    this.hoveredWaveProjection === item && this.hoveredWaveTime
+                        ? this.hoveredWaveTime
+                        : visibleStart && guide.start < visibleStart
+                          ? visibleStart
+                          : guide.start;
+                // 标签随复盘光标或可见 C 区间出现；历史锚点、可知日与首次触及时间不改。
+                displayGuide = {
+                    ...guide,
+                    start: displayStart,
+                    end: guide.end && guide.end >= displayStart ? guide.end : null,
+                };
+            }
             if (targetStages.has(level.stage))
                 targetGuides.push({
-                    ...(guide || {
+                    ...(displayGuide || {
                         start,
                         end: points.at(-1).time,
                         price: level.price,

@@ -18,6 +18,7 @@ globalThis.MutationObserver = class {
 };
 const { PriceChart } = await import("../public/charts.js");
 const { FocusFlashOverlay } = await import("../public/focus-flash-overlay.js");
+const { TargetGuideOverlay } = await import("../public/target-level-guides.js");
 
 const initial = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_2020_c_wave.json", import.meta.url)));
 const history = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_2020_c_wave_history.json", import.meta.url)));
@@ -88,6 +89,50 @@ function chartHarness(data = bars) {
     chart.onSelect = () => {};
     chart.onVisible = () => {};
     return { chart, rendered };
+}
+
+function ordinaryChart(asof = "2025-01-22") {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/guofang_2018_ordinary_c_wave.json", import.meta.url)));
+    const data = fixture.bars.map(([time, open, high, low, close, volume]) => ({
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume,
+    }));
+    const harness = chartHarness(data);
+    harness.rendered.range = {
+        from: data.findIndex((bar) => bar.time === "2024-02-08"),
+        to: data.findIndex((bar) => bar.time === "2025-01-22"),
+    };
+    harness.chart.setTheory({ ...fixture.theory, asof, shapes: [], lecture_drawing: { strokes: [] } });
+    return { ...harness, data };
+}
+
+function targetLabels(chart, guides, priceToCoordinate = () => 100) {
+    const overlay = new TargetGuideOverlay();
+    const range = chart.chart.timeScale().getVisibleLogicalRange();
+    const overlayChart = {
+        timeScale: () => ({
+            timeToCoordinate: (time) =>
+                ((chart.data.bars.findIndex((bar) => bar.time === time) - range.from) * 2000) /
+                Math.max(1, range.to - range.from),
+        }),
+    };
+    overlay.attached({ chart: overlayChart, series: { priceToCoordinate }, requestUpdate() {} });
+    overlay.setGuides(guides);
+    const labels = [];
+    const context = Object.fromEntries(
+        ["save", "restore", "fillRect", "beginPath", "stroke", "moveTo", "lineTo", "setLineDash"].map((name) => [
+            name,
+            () => {},
+        ]),
+    );
+    context.measureText = (text) => ({ width: text.length * 6 });
+    context.fillText = (text) => labels.push(text);
+    overlay.draw({ useMediaCoordinateSpace: (draw) => draw({ context, mediaSize: { width: 2000, height: 200 } }) });
+    return labels;
 }
 
 test("May 29 theory renders the earlier ABC labels, A/B legs and C targets with ordinary rules off", () => {
@@ -195,6 +240,232 @@ test("ordinary Guofang ABC draws all three targets and adds the C high only afte
     assert.deepEqual(rendered.range, originalRange);
 });
 
+test("a window containing only the C segment retains the corresponding ABC targets", () => {
+    const { chart, rendered, data } = ordinaryChart();
+    const originalProjection = chart.autoWaveProjection;
+    assert.equal(targetLabels(chart, rendered.guides).length, 3);
+    rendered.range = {
+        from: data.findIndex((bar) => bar.time === "2024-11-01"),
+        to: data.findIndex((bar) => bar.time === "2025-01-22"),
+    };
+    const originalRange = { ...rendered.range };
+    chart.refreshMarkers();
+    assert.equal(chart.autoWaveProjection, originalProjection);
+    assert.equal(chart.autoWaveProjection.raw.originTime, "2024-02-08");
+    assert.equal(chart.autoWaveProjection.raw.bTime, "2024-07-25");
+    assert.equal(rendered.guides.length, 3);
+    assert.equal(chart.autoWaveProjection.raw.projectionSource, "n_origin_local_structure");
+    for (const [start, end] of [
+        ["2024-02-08", "2024-04-12"],
+        ["2024-04-12", "2024-07-25"],
+        ["2024-07-25", "2025-01-03"],
+    ])
+        assert.ok(chart.waveAbLines.some(({ points }) => points[0].time === start && points[1].time === end));
+    assert.equal(targetLabels(chart, rendered.guides).length, 3);
+    assert.ok(rendered.markers.some(({ text }) => text === "C 顶"));
+    assert.deepEqual(rendered.range, originalRange);
+});
+
+test("panning from hovered A candles to C replaces the offscreen display anchor without changing the ABC", () => {
+    const { chart, rendered, data } = ordinaryChart();
+    chart.updateWaveProjectionHover("2024-02-23");
+    const originalProjection = chart.hoveredWaveProjection;
+    assert.ok(rendered.guides.every(({ start }) => start === "2024-02-23"));
+    assert.equal(targetLabels(chart, rendered.guides).length, 3);
+    rendered.range = {
+        from: data.findIndex((bar) => bar.time === "2024-11-01"),
+        to: data.findIndex((bar) => bar.time === "2025-01-22"),
+    };
+    const originalRange = { ...rendered.range };
+    chart.refreshMarkers();
+    assert.equal(chart.hoveredWaveProjection, null);
+    assert.equal(chart.autoWaveProjection, originalProjection);
+    assert.ok(rendered.guides.every(({ start }) => start === "2024-11-01"));
+    assert.equal(targetLabels(chart, rendered.guides).length, 3);
+    assert.deepEqual(rendered.range, originalRange);
+});
+
+test("C-tail hover draws three real labels while keeping original target anchors and first-touch evidence", () => {
+    const { chart, rendered, data } = ordinaryChart();
+    rendered.range = {
+        from: data.findIndex((bar) => bar.time === "2024-11-01"),
+        to: data.findIndex((bar) => bar.time === "2025-01-03"),
+    };
+    chart.refreshMarkers();
+    chart.updateWaveProjectionHover("2024-12-12");
+    const labels = targetLabels(chart, rendered.guides, (price) => (price < 7 ? 240 : price > 10 ? -100 : 100));
+    assert.equal(labels.length, 3);
+    assert.ok(labels.some((label) => /C 0\.618.*已触及.*图外/.test(label)));
+    assert.ok(labels.some((label) => /等浪.*已触及/.test(label)));
+    assert.ok(labels.some((label) => /C 1\.618.*本段结束未达成.*图外/.test(label)));
+    assert.ok(rendered.guides.every((guide) => guide.start === "2024-12-12"));
+    assert.deepEqual(
+        rendered.guides.map(({ firstTouchedAt }) => firstTouchedAt),
+        ["2024-10-11", "2024-12-03", null],
+    );
+    assert.deepEqual(
+        chart.levelLines[0].points.map(({ time }) => time),
+        ["2024-07-25", "2024-10-11"],
+    );
+    assert.deepEqual(
+        chart.levelLines[1].points.map(({ time }) => time),
+        ["2024-07-25", "2024-12-03"],
+    );
+    assert.equal(chart.hoveredWaveProjection.levels[0].valid_until, "2025-01-03");
+});
+
+test("A-segment hover keeps all three target labels visible outside that candle's price axis", () => {
+    const { chart, rendered, data } = ordinaryChart();
+    rendered.range = {
+        from: data.findIndex((bar) => bar.time === "2024-02-08"),
+        to: data.findIndex((bar) => bar.time === "2024-02-29"),
+    };
+    chart.refreshMarkers();
+    const originalRange = { ...rendered.range };
+    chart.updateWaveProjectionHover("2024-02-23");
+    const labels = targetLabels(chart, rendered.guides, () => -100);
+    assert.equal(labels.length, 3);
+    assert.ok(labels.every((label) => /图外/.test(label)));
+    assert.ok(labels.some((label) => /等浪/.test(label)));
+    assert.deepEqual(rendered.range, originalRange);
+    assert.equal(chart.hoveredWaveProjection.levels[0].available_at, "2024-08-14");
+    assert.equal(chart.hoveredWaveProjection.levels[0].anchor_at, "2024-07-25");
+});
+
+test("long B-correction hover draws three target labels with their later availability preserved", () => {
+    const { chart, rendered, data } = ordinaryChart();
+    rendered.range = {
+        from: data.findIndex((bar) => bar.time === "2024-06-03"),
+        to: data.findIndex((bar) => bar.time === "2024-07-01"),
+    };
+    chart.refreshMarkers();
+    chart.updateWaveProjectionHover("2024-06-04");
+    assert.equal(targetLabels(chart, rendered.guides, () => -100).length, 3);
+    assert.match(chart.waveProjectionHoverLines()[1].text, /目标生效 2024-08-14/);
+    assert.ok(chart.hoveredWaveProjection.levels.every(({ available_at }) => available_at === "2024-08-14"));
+});
+
+test("all 217 ABC candles in the full 2018 response consistently show this group's three tooltip targets", () => {
+    const { chart, rendered, data } = ordinaryChart("2026-09-30");
+    assert.equal(data.length, 2123);
+    assert.equal(chart.autoWaveProjections.length, 7);
+    const originalRange = { ...rendered.range };
+    const abcBars = data.filter(({ time }) => time >= "2024-02-08" && time <= "2025-01-03");
+    assert.equal(abcBars.length, 217);
+    for (const { time } of abcBars) {
+        chart.updateWaveProjectionHover(time);
+        assert.equal(chart.hoveredWaveProjection.raw.nTime, "2024-02-23", time);
+        assert.equal(chart.hoveredWaveProjection.raw.aTime, "2024-04-12", time);
+        const lines = chart.waveProjectionHoverLines();
+        assert.match(lines[0].text, /A 起 2024-02-08.*A 顶 2024-04-12.*B 2024-07-25.*C 顶 2025-01-03/);
+        assert.match(lines[1].text, /目标生效 2024-08-14/);
+        assert.equal(lines.filter(({ tag }) => tag === "div").length, 3);
+        assert.ok(lines.some(({ text }) => /0\.618.*6\.8777.*已触及/.test(text)));
+        assert.ok(lines.some(({ text }) => /等浪.*8\.2748.*已触及/.test(text)));
+        assert.ok(lines.some(({ text }) => /1\.618.*10\.535.*本段结束未达成/.test(text)));
+    }
+    assert.deepEqual(rendered.range, originalRange);
+    assert.equal(chart.selected, undefined);
+});
+
+test("hovering any A, B or C candle shows that group's targets without changing a selected fill or zoom", () => {
+    const { chart, rendered } = ordinaryChart();
+    const fill = {
+        id: "selected-buy",
+        time: "2024-11-01",
+        kind: "fill",
+        category: "fills",
+        side: "BUY",
+        price: 6,
+        levels: [{ name: "成交价", price: 6 }],
+    };
+    chart.options.fills = true;
+    chart.windowAnnotations.push(fill);
+    let selections = 0;
+    chart.onSelect = () => selections++;
+    chart.selectAnnotation(fill.id, false);
+    const originalRange = { ...rendered.range };
+    for (const time of [
+        "2024-02-08",
+        "2024-02-23",
+        "2024-04-12",
+        "2024-06-04",
+        "2024-07-25",
+        "2024-11-01",
+        "2025-01-03",
+    ]) {
+        chart.updateWaveProjectionHover(time);
+        assert.equal(chart.hoveredWaveProjection.raw.aTime, "2024-04-12");
+        assert.equal(rendered.guides.length, 3);
+        assert.equal(chart.selected, fill);
+        assert.equal(chart.options.tertiaryAbc, true);
+        assert.deepEqual(rendered.range, originalRange);
+    }
+    assert.equal(selections, 1);
+    chart.updateWaveProjectionHover("2025-01-06");
+    assert.equal(chart.hoveredWaveProjection, null);
+    assert.equal(chart.selected, fill);
+    assert.equal(rendered.guides.length, 0);
+    assert.equal(chart.container.dataset.levelCount, 1);
+    chart.updateWaveProjectionHover(null);
+    assert.equal(chart.selected, fill);
+});
+
+test("overlapping ABCs prefer an explicit hit or selected group and otherwise choose consistently", () => {
+    const { chart } = ordinaryChart();
+    const current = chart.autoWaveProjections.find(({ raw }) => raw.nTime === "2024-02-23");
+    const older = { ...current, id: "overlapping-older-abc", raw: { ...current.raw, aTime: "2024-04-10" } };
+    chart.autoWaveProjections.unshift(older);
+    chart.updateWaveProjectionHover("2024-06-04", older.id);
+    assert.equal(chart.hoveredWaveProjection, older);
+    chart.updateWaveProjectionHover("2024-06-04");
+    assert.equal(chart.hoveredWaveProjection, current);
+    chart.autoWaveProjections.reverse();
+    chart.updateWaveProjectionHover("2024-06-04");
+    assert.equal(chart.hoveredWaveProjection, current);
+    chart.selected = older;
+    chart.updateWaveProjectionHover("2024-06-04");
+    assert.equal(chart.hoveredWaveProjection, older);
+    chart.updateWaveProjectionHover("2024-06-04", current.id);
+    assert.equal(chart.hoveredWaveProjection, current);
+    assert.equal(chart.selected, older);
+    chart.updateWaveProjectionHover(null);
+    assert.equal(chart.selected, older);
+});
+
+test("repeated movement within one ABC avoids redraws and respects a disabled ABC layer", () => {
+    const { chart, rendered } = ordinaryChart();
+    const setGuides = chart.targetGuideOverlay.setGuides;
+    let updates = 0;
+    chart.targetGuideOverlay.setGuides = (guides) => {
+        updates++;
+        setGuides(guides);
+    };
+    chart.updateWaveProjectionHover("2024-06-04");
+    const afterFirst = updates;
+    chart.updateWaveProjectionHover("2024-06-05");
+    assert.equal(updates, afterFirst);
+    chart.setAnnotationOptions({ tertiaryAbc: false });
+    assert.equal(chart.hoveredWaveProjection, null);
+    chart.updateWaveProjectionHover("2024-06-04");
+    assert.equal(chart.hoveredWaveProjection, null);
+    assert.equal(chart.options.tertiaryAbc, false);
+    assert.equal(rendered.guides.length, 0);
+});
+
+test("panning away clears a stale hover and archived ABC targets without changing selection or the viewport", () => {
+    const { chart, rendered, data } = ordinaryChart();
+    chart.updateWaveProjectionHover("2024-06-04");
+    rendered.range = { from: data.findIndex((bar) => bar.time === "2025-05-06"), to: data.length - 1 };
+    const originalRange = { ...rendered.range };
+    chart.refreshMarkers();
+    assert.equal(chart.hoveredWaveProjection, null);
+    assert.equal(chart.autoWaveProjection, null);
+    assert.equal(rendered.guides.length, 0);
+    assert.deepEqual(rendered.range, originalRange);
+    assert.equal(chart.selected, undefined);
+});
+
 test("panning back to an earlier ABC selects that group's C targets", () => {
     const next = JSON.parse(JSON.stringify(initial).replaceAll("2020-", "2021-"));
     const nextBars = next.bars.map(([time, open, high, low, close, volume]) => ({
@@ -240,13 +511,14 @@ test("ABC labels and targets remain available when trend geometry is hidden", ()
     assert.equal(chart.waveAbLines.length, 0);
 });
 
-test("locating ABC brings its B/C start and targets into view without changing zoom", () => {
+test("locating an active ABC brings its B/C start into view while retaining its targets and zoom", () => {
     const later = [...bars, { time: "2026-09-30", open: 5, high: 5, low: 5, close: 5, volume: 1 }];
     const { chart, rendered } = chartHarness(later);
     rendered.range = { from: bars.length, to: bars.length + 20 };
     chart.setTheory({ ...theory, asof: "2026-09-30" });
     assert.equal(rendered.markers.length, 0);
-    assert.equal(rendered.guides.length, 0);
+    // 未提供结束确认的原观察仍活动到当前 asof；C 区间可保留目标。
+    assert.equal(rendered.guides.length, 3);
     assert.equal(chart.focusWaveProjection(), true);
     assert.ok(rendered.markers.some((marker) => marker.text === "B / C"));
     assert.equal(rendered.guides.length, 3);
