@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-274",
+    "activeFeature": "MONOREPO-256",
     "features": [
         {
             "id": "MONOREPO-274",
@@ -10,13 +10,18 @@
             "description": "按用户要求撤回本次高开开盘买入两次main合并和全部实现，恢复此前V93及既有交易/图表行为；撤回的273不自动重新启用。",
             "scope": "精确撤回78cf319与5171b6b、核对de00b04源码及全局V93",
             "dependencies": ["MONOREPO-272"],
-            "status": "in-progress",
+            "status": "done",
             "acceptanceCriteria": [
                 "撤回两次合并的全部代码、测试、策略定义和UI说明，不改写Git历史，不推送",
                 "交易Core、Web生产代码及原测试与de00b04逐文件一致，二饱实体反包清仓及此前ABC/UI改动保留",
                 "相关回归、类型、构建与Harness通过，实际main服务恢复V93，不再产生高开开盘买入"
             ],
             "verification": [
+                {
+                    "command": "main no-ff merge; exact de00b04 source diff; HTTP 8765/13003 backtest-version, seven Web modules and formal AkShare account; main engine/provenance comparison",
+                    "status": "passed",
+                    "summary": "撤回实现2297b54以49550d4无冲突合并main。与de00b04相比仅四个审计/状态文档有差异，全部生产代码和测试逐文件相同。两端HTTP200返回V93/54e9bff0...，128源码与正式账户provenance逐项相同，七个Web模块HTTP200逐字匹配。正式255日线恢复01-17 BUY/filled，system_transition_squeeze、15:00/same_day_close、原始5.98元/600股；没有system_n_opening_gap_squeeze订单。初始自动重载阶段短暂500，后续通过，无手工进程/缓存操作。保持Git历史，不推送；恢复256唯一in-progress及原失败记录。"
+                },
                 {
                     "command": "git revert --no-commit -m 1 78cf319; git revert --no-commit -m 1 5171b6b; git diff --cached de00b04 --stat",
                     "status": "passed",
@@ -45,7 +50,7 @@
                 {
                     "command": "Complete suites, browser/Playwright and external historical minute execution",
                     "status": "not-run",
-                    "summary": "按用户验证节奏未运行完整套件和浏览器/Playwright；真实视觉及外部分钟仍待独立验证。保留256/263旧失败，不扩大本次撤回范围。main合并与常驻V93/正式账户验收随后追加。"
+                    "summary": "按用户验证节奏未运行完整套件和浏览器/Playwright；真实视觉及外部分钟仍待独立验证。保留256/263旧失败，不扩大本次撤回范围。main及常驻V93/正式账户验收已经通过。"
                 }
             ]
         },
@@ -726,7 +731,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "backlog",
+            "status": "in-progress",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
