@@ -1,5 +1,8 @@
 # Progress
 
+- MONOREPO-260（2026-10-05）：修复此前只选中精确正 N 规则点才显示目标的问题。共用 N 焦点观察从已知结构起点延续至二吐首次严格突破当天，悬停、K 线点击和日期定位显示一饱、二吐；独立于规则和 ABC 开关，只受目标开关控制。ABC 与 N 并显，同阶段同价去重；优先明确命中或已选 N，否则最新已知结构。C 点在图窗任一侧或分数缩放边界之外时，标签使用可见显示锚点；目标价格图外显示边缘提示，保留原目标、C 点和突破日期。移出清理临时悬停，换数据/理论清理旧焦点。没有改动 Core 交易规则。
+  `node --test tests/n-target-focus.test.mjs tests/wave-c-chart.test.mjs tests/target-level-guides.test.mjs tests/buy-n-targets.test.mjs tests/n-extension-levels.test.mjs tests/annotations.test.mjs tests/wave-c-projection.test.mjs tests/ordinary-c-wave.test.mjs tests/combined-a-chart.test.mjs` 最终 137 项通过。真实新华传媒夹具先复现无标签，覆盖规则关闭、ABC 并显、图外目标与锚点、范围结束、去重、候选参考价及清理；旧测试桩 DOM 值按实际字符串校正，动画结束检查避免浮点时间误差。复用上一轮正式 1508 日线 HTTP 数据核对 03-05 焦点、一饱 5.2891 和二吐 5.7836、03-04 不可知及 03-20 原唯一 BUY/filled；未重跑账户。lint 零错误（6 条既有警告）、typecheck、最终生产构建、相关格式/语法及 Harness 通过。完整 Web 单测和真实浏览器/Playwright 未运行，待独立验证；本轮按默认流程本地合并，不推送。
+
 MONOREPO-259 常驻验收：`9a61ace` 经 `d745b34` 合并本地 main；Web13003 三个标注/图表/目标模块的 HTTP 响应与文件逐字相同。API8765 和 13003 版本接口均为 v91 / `f9b1cb9e78e5a5b96a48c521c4f0e1c36803557d07ce9b50f0824c291cfd6838`，与 main 全部源码一致。实际 1508 日线正式回测响应通过当前 `buildAnnotations` 和 `targetLevelGuide`，3/5 生成一饱 5.2891、二吐 5.7836 的中文左端指南，C 点 03-04、形成日两目标均未突破；03-20 唯一 BUY/filled 保留。仅 HTTP 和纯模块验证，未运行浏览器；刷新页面重新回测可查看，本轮未推送。
 
 - MONOREPO-259（2026-10-05）：正 N 一饱、二吐消费 Core 共用出口发布的阶段、C 点和可知日；标记详情与目标线统一中文显示名，保留引擎旧字段和精确价格，不由 Web 重算。确认当天即可按既有左端标识方案绘制，未突破画短虚线，首次严格突破后截断；确认日仍只用收盘。新华传媒 2024-03-05 的实际 1508 日线审计经过当前渲染器生成固定夹具，验证同日 B/C、无 BUY 时也显示一饱 5.2891 和二吐 5.7836、到 03-20 仍未突破，右侧不重复标签，隐藏和取消选择清理目标。
