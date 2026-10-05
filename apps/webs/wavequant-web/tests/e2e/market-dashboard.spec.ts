@@ -860,16 +860,19 @@ test("chart tools reveal detailed overlays without reducing the candle viewport"
     const chartViewControls = await page.locator(".chart-view-controls").boundingBox();
     const ohlc = await page.locator("#ohlc").boundingBox();
     const candleViewport = await page.locator("#price-chart").boundingBox();
+    const chartPosition = await page.locator(".chart-position").boundingBox();
     const replay = await page.locator(".chart-card .replay").boundingBox();
     expect(chartCard).not.toBeNull();
     expect(chartHeader).not.toBeNull();
     expect(chartViewControls).not.toBeNull();
     expect(ohlc).not.toBeNull();
     expect(candleViewport).not.toBeNull();
+    expect(chartPosition).not.toBeNull();
     expect(replay).not.toBeNull();
     expect(candleViewport!.y - chartCard!.y - chartViewControls!.height).toBeLessThan(115);
-    expect(chartCard!.height).toBeGreaterThanOrEqual(874);
-    expect(candleViewport!.height + chartViewControls!.height).toBeGreaterThan(650);
+    expect(candleViewport!.height).toBeGreaterThanOrEqual(200);
+    expect(candleViewport!.height).toBeLessThanOrEqual(520);
+    expect(chartPosition!.y + chartPosition!.height).toBeLessThanOrEqual(884);
     expect(
         Math.abs(
             chartCard!.height -
@@ -877,6 +880,7 @@ test("chart tools reveal detailed overlays without reducing the candle viewport"
                 chartViewControls!.height -
                 ohlc!.height -
                 candleViewport!.height -
+                chartPosition!.height -
                 replay!.height -
                 2,
         ),
@@ -928,8 +932,8 @@ test("chart tools reveal detailed overlays without reducing the candle viewport"
     const narrowViewport = await page.locator("#price-chart").boundingBox();
     expect(narrowCard).not.toBeNull();
     expect(narrowViewport).not.toBeNull();
-    expect(narrowCard!.height).toBeGreaterThanOrEqual(818);
-    expect(narrowViewport!.height).toBeGreaterThan(500);
+    expect(narrowViewport!.height).toBeGreaterThanOrEqual(200);
+    expect(narrowViewport!.height).toBeLessThanOrEqual(520);
     await expect
         .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth))
         .toBe(true);

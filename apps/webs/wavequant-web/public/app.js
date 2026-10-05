@@ -21,6 +21,7 @@ import { BuyPoints } from "./buy-points.js";
 import { candleCopyText, previousCandleClose } from "./candle-details.js";
 import { loadMarketTimeframeSnapshot, loadStockCatalog } from "./catalog-cache.js";
 import { chartNavigationKeyPosition } from "./chart-navigation.js";
+import { bindChartViewportHeight } from "./chart-viewport-height.js";
 import { PerformanceCharts, PriceChart } from "./charts.js";
 import { combinedAEntryEvidence } from "./combined-a-entry-evidence.js";
 import { reuseCompletedBacktest } from "./completed-backtest-result.js";
@@ -561,6 +562,11 @@ function renderChartViewport(state, bars) {
     $("chart-position-label").textContent = `${first} — ${last} · ${progress}%`;
     slider.setAttribute("aria-valuetext", `${first} 至 ${last}，全程 ${progress}%`);
 }
+bindChartViewportHeight(
+    $("price-chart"),
+    [document.querySelector(".chart-card .chart-position")],
+    $("research-main") ?? $("price-chart").parentElement,
+);
 const chart = new PriceChart(
     $("price-chart"),
     describeBar,

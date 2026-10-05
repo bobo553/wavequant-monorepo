@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-269",
+            "name": "fit-research-chart-first-viewport",
+            "title": "图表高度适配首屏进度条",
+            "description": "缩小K线视图默认高度，取消图表卡片近整屏的最小高度，按实际图表起点与窗口剩余空间优先预留当前图窗位置进度区，历史回放保留在下方，窗口及控件尺寸变化时重新适配。",
+            "scope": "Web图表尺寸与运行时布局",
+            "dependencies": ["MONOREPO-268"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "常见桌面窗口按实际剩余高度为当前图窗位置进度条预留首屏位置，历史回放保留在下方",
+                "K线视图控制在200至520px，尺寸及控件变化后重新计算，页面滚动不放大图表",
+                "隐藏图表不参与测量，恢复本地视图后重新适配，进度控件和导航行为保持",
+                "相关回归、格式、lint、类型及生产构建通过，真实浏览器未运行如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/chart-viewport-height.test.mjs tests/chart-navigation.test.mjs tests/trade-playback.test.mjs; production DOM/CSS and actual app/helper binding in jsdom",
+                    "status": "passed",
+                    "summary": "最终16项通过，新增4项覆盖720/768/900/1080高度预算、200/520上下界、浮点尺寸、窗口/进度区变化、滚动稳定、隐藏恢复及清理。生产DOM/CSS与实际app绑定核对仅为当前图窗位置预留首屏空间，历史回放保留在下方；给定768px窗口、340px图表起点和60px进度区得到352px，首屏底部留16px。测量由jsdom探针提供，不执行真实浏览器布局。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; node --check public/app.js and public/chart-viewport-height.js; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "修改前类型基线及最终lint（零错误6条既有警告）、类型和512MB/4MB命令级生产构建通过；修改源码、定向测试、E2E源码、状态和进度格式、JS语法、差异与Harness通过。next-env生成路径定向恢复；原SDK autoSize保持，测量用RAF合并且值相同时不写样式。"
+                },
+                {
+                    "command": "Complete Web unit suite and browser/Playwright verification",
+                    "status": "not-run",
+                    "summary": "依用户规则未运行完整Web单测或浏览器/Playwright；既有E2E高度断言改为200至520px与桌面图窗进度首屏范围，未执行用例。真实像素与设备验证待独立进行；极短窗口或图表位于纵向堆叠下方时保留200px可读高度，仍需页面滚动。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-268",
             "name": "compact-trade-playback-copy",
             "title": "移除成交播放三行说明",
