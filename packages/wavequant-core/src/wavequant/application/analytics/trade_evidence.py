@@ -142,20 +142,6 @@ def enrich_ledger(bars, result, generated, strategy):
                         f"> 内部回调{internal}日" +
                         (f" 或 子级回调{child}日" if child is not None else "（子级回调时长未提供）"),
                         sessions>internal or (child is not None and sessions>child)))
-            if signal.reason == 'system_n_opening_gap_squeeze' and proof is not None:
-                order['entry_conditions'] = [
-                    check('前日已确认有效正N', proof,
-                          '正N完成及可知日在本日前，原防守未失守，未被后续已知倒N或退出终止',
-                          proof['n_opening_attack'] <= proof['n_opening_known'] < signal.bar_index),
-                    check('开盘轧空', proof['opening_price'],
-                          f"> {proof['prior_close']}（昨日收盘）",
-                          proof['opening_price'] > proof['prior_close']),
-                    check('开盘防守', proof['opening_price'],
-                          f"> {proof['n_opening_defense']}（原正N防守）",
-                          proof['opening_price'] > proof['n_opening_defense']),
-                    check('当日形态及量能', None, '开盘入口不等待本日收盘形态或全天成交量', None),
-                    order['entry_conditions'][-1],
-                ]
             order['trigger_timestamp']=signal.trigger_timestamp.isoformat()
         if order['status']=='filled':
             if order['side']=='BUY' and bar.symbol not in active:

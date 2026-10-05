@@ -15,8 +15,6 @@ const strategyDirectories = [
 ];
 const additionalSources = [
     "packages/wavequant-core/src/wavequant/application/analytics/backtest.py",
-    "packages/wavequant-core/src/wavequant/application/analytics/intraday_entry.py",
-    "packages/wavequant-core/src/wavequant/application/analytics/trade_evidence.py",
     "packages/wavequant-core/src/wavequant/application/trading/intent_execution.py",
     "apps/webs/wavequant-web/public/wave-entry-evidence.js",
     "apps/webs/wavequant-web/public/combined-a-entry-evidence.js",
@@ -39,15 +37,6 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
-    it("traces the independent opening-only N squeeze without later candle information", () => {
-        const flow = topologyFlows.find((flow) => flow.id === "opening-n");
-        expect(flow?.completion).toMatch(/当日开盘.*T\+1/);
-        const details = flow?.gates.map((gate) => gate.detail).join("\n");
-        expect(details).toMatch(/开盘 > 昨日收盘/);
-        expect(details).toMatch(/不等待阳线形态、全天量能或本日新交替/);
-        expect(details).toMatch(/后续阴线、破低及缩量不能倒填撤销/);
-        expect(details).toMatch(/不借用收盘非一字涨停许可/);
-    });
     it("traces the post-two-T body reversal and strict previous bearish volume clear", () => {
         const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "two-t-body-clear");
         expect(gate?.detail).toMatch(/此前交易日已到二饱/);

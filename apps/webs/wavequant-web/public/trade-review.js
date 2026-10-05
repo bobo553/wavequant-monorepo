@@ -85,7 +85,6 @@ export function appendTradeEvidence(panel, item, openPosition = null, holdingDra
         );
     } else if (
         proof &&
-        proof.buy_point_type !== "n_opening_gap_squeeze" &&
         proof.buy_point_type !== "combined_a_pullback_breakout" &&
         proof.channel !== "combined_a_pullback_breakout"
     ) {
@@ -120,13 +119,11 @@ export function appendTradeEvidence(panel, item, openPosition = null, holdingDra
         `图表价 ${num(item.price, 4)} ÷ 当日因子 ${num(item.adjustment_factor, 6)} = 原始模拟价 ${num(item.raw_price, 4)} 元`,
     );
     add(
-        item.execution_model === "same_day_open"
-            ? "本笔使用前日已确认正 N 和当天开盘价判断，按当天开盘价计入回测滑点模拟执行。"
-            : item.execution_model === "intraday_5m_next_open"
-              ? `已完成五分钟 K 线判定，下一根五分钟线开盘原价 ${num(item.minute_next_open_raw, 4)} 元，计入回测滑点后模拟成交；非逐笔成交或券商回报。`
-              : item.execution_model === "same_day_close"
-                ? "本笔按触发当日收盘价检查并模拟执行，未还原尾盘分钟路径；实际是否成交以委托状态为准。"
-                : "B / S 为回测引擎的模拟成交，不是券商真实成交；本笔条件收盘观察，后续可交易开盘执行。",
+        item.execution_model === "intraday_5m_next_open"
+            ? `已完成五分钟 K 线判定，下一根五分钟线开盘原价 ${num(item.minute_next_open_raw, 4)} 元，计入回测滑点后模拟成交；非逐笔成交或券商回报。`
+            : item.execution_model === "same_day_close"
+              ? "本笔按触发当日收盘价检查并模拟执行，未还原尾盘分钟路径；实际是否成交以委托状态为准。"
+              : "B / S 为回测引擎的模拟成交，不是券商真实成交；本笔条件收盘观察，后续可交易开盘执行。",
     );
     if (item.fill_assumption === "nonflat_limit_close_without_queue_verification")
         add("成交假设：非一字涨停按当日收盘价模拟成交，未验证涨停排队成交；成交价不另加正滑点。");

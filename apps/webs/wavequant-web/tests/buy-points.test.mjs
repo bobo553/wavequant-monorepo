@@ -2,50 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { JSDOM } from "jsdom";
-
-import { BuyPoints, funnelLines, profileName, scanContextKey, sortedMatches } from "../public/buy-points.js";
-
-test("opening squeeze list shows its independent classification and opening reward risk", () => {
-    const dom = new JSDOM(
-        '<button id="scan-start"></button><select id="scan-lookback"><option>1</option></select><p id="scan-status"></p><div id="buy-points-list"></div>',
-    );
-    const previous = globalThis.document;
-    globalThis.document = dom.window.document;
-    try {
-        const points = new BuyPoints({ api() {}, getContext() {}, onSelect() {} });
-        points.job = {
-            params: { source: "akshare", asof: "2019-01-11", variant: "lecture_v3" },
-            status: "ready",
-            processed: 1,
-            total: 1,
-            skipped: 0,
-            stale: 0,
-            failed: 0,
-            errors: [],
-            results: [
-                {
-                    symbol: "sh.600825",
-                    signal_date: "2019-01-11",
-                    buy_point_type: "n_opening_gap_squeeze",
-                    status: "filled",
-                    regime: "轧空",
-                    raw_reference_price: 5.38,
-                    rvol: null,
-                    gross_reward_risk: 5.3478,
-                },
-            ],
-        };
-        points.render();
-        const text = document.getElementById("buy-points-list").textContent;
-        assert.match(text, /正 N 高开轧空.*开盘买点/);
-        assert.match(text, /开盘盈亏比/);
-        assert.doesNotMatch(text, /undefined|第一类|收盘盈亏比/);
-    } finally {
-        globalThis.document = previous;
-        dom.window.close();
-    }
-});
+import { funnelLines, profileName, scanContextKey, sortedMatches } from "../public/buy-points.js";
 
 test("buy-point UI reads published snapshots and cannot start interactive scans", async () => {
     const source = await readFile(new URL("../public/buy-points.js", import.meta.url), "utf8");

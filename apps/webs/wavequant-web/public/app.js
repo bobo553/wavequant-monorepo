@@ -49,7 +49,6 @@ import { appendTradeEvidence } from "./trade-review.js";
 import { TradingViewWidget } from "./tradingview-widget.js";
 import { IdleWatchlistBacktests, backtestArgumentsKey, watchlistBacktestRequest } from "./watchlist-backtest-queue.js";
 import { Watchlists } from "./watchlists.js";
-import { waveEntryEvidence } from "./wave-entry-evidence.js";
 
 const $ = (id) => document.getElementById(id);
 let serverBacktestSnapshot = { active: null, max_active: 4, jobs: [], unavailable: true };
@@ -745,9 +744,7 @@ const buyPoints = new BuyPoints({
         };
     },
     onSelect: async (match, p) => {
-        const openingEntry = match.buy_point_type === "n_opening_gap_squeeze";
-        const entryEvidence = openingEntry ? waveEntryEvidence : combinedAEntryEvidence;
-        const independentEvidence = entryEvidence(match.evidence);
+        const combinedEvidence = combinedAEntryEvidence(match.evidence);
         $("result-scope").value = p.source === "akshare" ? "akshare" : p.source === "tdx" ? "tdx-backtest" : "stock";
         setTimeframe("1d");
         fillSymbols();
@@ -763,7 +760,7 @@ const buyPoints = new BuyPoints({
         if (p.source === "akshare") {
             detail(
                 "AkShare 当前股票买点信号",
-                `原始不复权在线日线仅用于信号研究；${match.signal_date} · ${match.regime} · 参考 ${num(match.raw_reference_price)} 元 · 相对量 ${num(match.rvol)} · 未模拟成交。${independentEvidence.length ? `\n${reasonText(match.reason)}。\n${independentEvidence.join("\n")}` : ""}`,
+                `原始不复权在线日线仅用于信号研究；${match.signal_date} · ${match.regime} · 参考 ${num(match.raw_reference_price)} 元 · 相对量 ${num(match.rvol)} · 未模拟成交。${combinedEvidence.length ? `\n${reasonText(match.reason)}。\n${combinedEvidence.join("\n")}` : ""}`,
             );
             return;
         }
@@ -780,12 +777,12 @@ const buyPoints = new BuyPoints({
             chart.selectAnnotation(marker.id);
             chart.flashSelectedAnnotation(marker.id);
             const note = document.createElement("p");
-            note.textContent = `买点筛选证据：盘态 ${match.regime}，相对量 ${num(match.rvol)}，回档比例 ${pct(match.retracement)}，${openingEntry ? "开盘" : "收盘"}参考盈亏比 ${num(match.gross_reward_risk)}。模拟成交尚需执行风控。`;
+            note.textContent = `买点筛选证据：盘态 ${match.regime}，相对量 ${num(match.rvol)}，回档比例 ${pct(match.retracement)}，收盘参考盈亏比 ${num(match.gross_reward_risk)}。模拟成交尚需执行风控。`;
             $("selection-info").append(note);
-            if (independentEvidence.length) {
-                if (!entryEvidence(marker.decision_evidence).length) {
+            if (combinedEvidence.length) {
+                if (!combinedAEntryEvidence(marker.decision_evidence).length) {
                     const line = document.createElement("p");
-                    line.textContent = `${reasonText(match.reason)}。${independentEvidence.join("")}`;
+                    line.textContent = `${reasonText(match.reason)}。${combinedEvidence.join("")}`;
                     $("selection-info").append(line);
                 }
             } else {
@@ -799,11 +796,8 @@ const buyPoints = new BuyPoints({
                     $("selection-info").append(line);
                 }
             }
-        } else if (independentEvidence.length) {
-            detail(
-                openingEntry ? "正 N 高开买点复核" : "组合 A 买点复核",
-                `${reasonText(match.reason)}。${independentEvidence.join("")}`,
-            );
+        } else if (combinedEvidence.length) {
+            detail("组合 A 买点复核", `${reasonText(match.reason)}。${combinedEvidence.join("")}`);
         }
     },
 });

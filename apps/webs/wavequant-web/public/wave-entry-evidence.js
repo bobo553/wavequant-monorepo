@@ -28,12 +28,6 @@ export function attackBarBreakSqueezeEvidence(evidence) {
 }
 
 export function waveEntryEvidence(evidence) {
-    const opening = evidence?.find((entry) => entry.squeeze_confirmation === "known_n_opening_gap");
-    if (opening)
-        return [
-            `开盘轧空：${opening.n_opening_attack_date} 正 N，${opening.n_opening_known_date} 已确认可知；本日开盘 ${num(opening.opening_price, 4)} > ${opening.prior_bar_date} 收盘 ${num(opening.prior_close, 4)}，在 ${opening.decision_timestamp} 确认，交由当日开盘执行。`,
-            `原 N 防守 ${num(opening.n_opening_defense, 4)} 在此前交易日保持有效；开盘入口不等待本日收盘形态或全天成交量，同一 N 只触发一次。`,
-        ];
     const combined = combinedAEntryEvidence(evidence);
     if (combined.length) return combined;
     const wave = evidence?.find((e) =>

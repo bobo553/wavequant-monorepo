@@ -11,7 +11,7 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         `策略：${variantName}（${view.variant}）`,
         `回测区间：${view.backtest.start} 至 ${view.asof}`,
         `成交日期：${marker.time}`,
-        ...(["intraday_5m_next_open", "same_day_open"].includes(marker.execution_model)
+        ...(marker.execution_model === "intraday_5m_next_open"
             ? [`成交时间：${marker.execution_timestamp || marker.timestamp}`]
             : []),
         `方向：${marker.side === "BUY" ? (marker.add_on ? "加仓 B" : "买入 B") : "卖出 S"}`,
@@ -98,8 +98,6 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
         lines.push(`目标累计减仓：${pct(marker.exit_target_fraction)}（占首次减仓前该股票持仓）`);
     }
     if (marker.execution_model === "same_day_close") lines.push("成交口径：当日收盘价（日线回测，未还原尾盘分钟路径）");
-    if (marker.execution_model === "same_day_open")
-        lines.push("成交口径：前日已知正 N 与本日开盘价判断，当天开盘价加回测滑点模拟成交");
     if (marker.fill_assumption === "nonflat_limit_close_without_queue_verification")
         lines.push("成交假设：非一字涨停按当日收盘价模拟成交，未验证涨停排队成交；成交价不另加正滑点。");
     if (marker.fill_assumption === "observed_nonflat_limit_intraday_without_queue_verification")

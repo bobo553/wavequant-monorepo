@@ -1,58 +1,51 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-256",
+    "activeFeature": "MONOREPO-274",
     "features": [
         {
-            "id": "MONOREPO-273",
-            "name": "positive-n-opening-gap-squeeze",
-            "title": "正N高开轧空当日开盘买入",
-            "description": "有效正N在前日已确认后，开盘价严格高于昨收即以开盘确认轧空并当日模拟成交，无需本日阳线或全天量；保留此前失效、退出、压力、目标及执行门禁。",
-            "scope": "Core全局V3开盘入口、执行时序、可知证据及Web说明",
+            "id": "MONOREPO-274",
+            "name": "revert-positive-n-opening-gap",
+            "title": "撤回正N高开开盘买入",
+            "description": "按用户要求撤回本次高开开盘买入两次main合并和全部实现，恢复此前V93及既有交易/图表行为；撤回的273不自动重新启用。",
+            "scope": "精确撤回78cf319与5171b6b、核对de00b04源码及全局V93",
             "dependencies": ["MONOREPO-272"],
-            "status": "done",
+            "status": "in-progress",
             "acceptanceCriteria": [
-                "全部V3全局方案启用独立开盘入口，既有封存配置默认关闭；不按股票或日期特判",
-                "严格open>前close，正N完成与可知日早于当前，此前守住原防守且无后续已知倒N或退出；同N只触发一次",
-                "仅使用昨日及之前的数据与本日开盘，禁止当天HLCV、交替或退出倒填影响开盘；保留原压力及五顶十满、现金、费用、流动性与T+1",
-                "真实新华2019-01-17符合高开谓词，完整2018账户如更早高开符合则提前，页面显示正确日期/价格/开盘时间而非收盘依据",
-                "定向回归、因果前缀、当日后续行情扰动、类型和必要构建通过，相关状态与进度记录完整"
+                "撤回两次合并的全部代码、测试、策略定义和UI说明，不改写Git历史，不推送",
+                "交易Core、Web生产代码及原测试与de00b04逐文件一致，二饱实体反包清仓及此前ABC/UI改动保留",
+                "相关回归、类型、构建与Harness通过，实际main服务恢复V93，不再产生高开开盘买入"
             ],
             "verification": [
                 {
-                    "command": "main no-ff merge; HTTP 13003 backtest-version and seven Web modules; formal AkShare backtest 2018-01-01..2019-01-17; exact main engine/provenance and actual filled-order Web helper checks",
+                    "command": "git revert --no-commit -m 1 78cf319; git revert --no-commit -m 1 5171b6b; git diff --cached de00b04 --stat",
                     "status": "passed",
-                    "summary": "f77f0aa以5171b6b无冲突no-ff合并本地main，特性分支已同步；main Harness及6项拓扑通过。实际13003版本v94，129源码引擎f0d1b175...与main逐项相同，七个Web模块HTTP200逐字匹配。正式页面接口255日线HTTP200，01-11唯一当月BUY/filled，2300股、原始5.38269元，决策/执行09:30/same_day_open，01-07正N、01-10昨收与当日开盘防守条件全部明确；01-17无重复BUY。实际成交代入详情/复制helper通过。合并初始探测500，自动重载后200，无手工重启、缓存改写或进程操作。旧页面刷新并重新回测；本任务未推送。"
+                    "summary": "两次merge逐个撤回均无冲突，补撤回记录前整个索引与de00b04树完全一致。全部273代码、测试、版本、图表说明及状态记录已移除；仅额外保留本次274撤回审计。保留Git历史，不重置或推送远端。"
                 },
                 {
-                    "command": "pnpm --filter @wavequant/core python -m pytest tests/test_n_opening_squeeze.py tests/test_ten_full_entry.py tests/test_xinhua_volume_record_squeeze.py tests/test_xinhua_mother_pullback_squeeze.py tests/test_intraday_entry.py tests/test_add_on_entry.py tests/test_trade_evidence_addon.py tests/test_stock_backtest.py -q",
+                    "command": "pnpm --filter @wavequant/core python -m pytest tests/test_xinhua_volume_record_squeeze.py tests/test_xinhua_mother_pullback_squeeze.py tests/test_close_entry.py tests/test_stock_backtest.py tests/test_two_t_body_volume_clear.py -q",
                     "status": "passed",
-                    "summary": "最终77项通过，含24项新增。覆盖严格高开、前日可知/失效/守防、六个全局V3方案、同N一次、真实2018起点Jan11首次及Jan17不重复、完整/前缀信号与当日HLCV扰动订单不变、开盘不可买禁止借用收盘许可、同日后续EXIT不撤销开盘成交和T+1、既知五顶十满门禁。旧v90/v91收盘oracle显式关闭新入口保留原断言；十满原双通道测试同样固定旧入口，并单独覆盖新开盘门禁。最初执行回归3失败定位仅收盘填单问题；相邻旧通道用例因新更早高开消耗N而失败，固定被测旧路径后全部通过。"
+                    "summary": "45项通过；此前新华2019/2024收盘轧空、执行与二饱实体反包放量清仓均保留。未新增或修改测试以迎合撤回；源文件与de00b04一致。"
                 },
                 {
-                    "command": "pnpm --filter @wavequant/core python ../../.codex-runtime/verify_n_opening.py",
+                    "command": "node --test annotations.test.mjs trade-reasons.test.mjs buy-points.test.mjs combined-a-entry-evidence.test.mjs (Web cwd); pnpm --filter wavequant-web exec vitest run src/features/research-workbench/topology/topology-data.test.ts",
                     "status": "passed",
-                    "summary": "复用真实固定行情及权限，不复用旧信号；256根2018-01-02..2019-01-18，正式single_stock_result和原执行配置重新计算。01-07正N已知，01-11首次高开买入2300股，原始开5.38、既定5bps模拟5.38269元，same_day_open/09:30；01-17开5.6207663782>前收5.4601730532满足谓词但不重复买入。同日后续交替或抵抗确认不能倒填开盘。历史缺分钟仅用于其他通道的原有显式回退，开盘入口不等待或依赖分钟。"
+                    "summary": "75项Node和5项拓扑通过，旧收盘买点详情、复制和组合A列表恢复，二饱清仓说明保留；恢复70来源旧指纹793d0515。"
                 },
                 {
-                    "command": "Core strict mypy n_opening_squeeze.py; explicit modified production modules and test mypy; pnpm --filter @wavequant/core typecheck; pnpm --filter @wavequant/core build",
+                    "command": "pnpm --filter @wavequant/core typecheck; restored source isolated sdist/wheel; pnpm --filter wavequant-web lint/typecheck/build",
                     "status": "passed",
-                    "summary": "纯开盘判据strict、7个修改源码/测试mypy、既定4文件strict以及sdist/wheel通过。新模块在wheel内；测试Optional证据先断言非空后类型通过，无类型忽略。未运行Python格式或lint。"
+                    "summary": "Core既定strict、Web类型和生产build通过，lint0错误6条既有警告。将de00b04已核对相同的完整Core源码导出至新临时目录构建，sdist/wheel通过且不含被撤回的opening模块，避免旧构建目录残留。生成next-env差异定向恢复。"
                 },
                 {
-                    "command": "node --test tests/annotations.test.mjs tests/trade-reasons.test.mjs tests/buy-points.test.mjs tests/combined-a-entry-evidence.test.mjs (Web cwd); pnpm --filter wavequant-web exec vitest run src/features/research-workbench/topology/topology-data.test.ts",
+                    "command": "Targeted Prettier; git diff --check; pnpm harness:check; codegraph sync",
                     "status": "passed",
-                    "summary": "最终78项Node和6项拓扑通过。详情/复制提供前日已知正N、昨收、开盘和09:30执行，买点列表与三种数据源点击保留独立开盘分类、证据及开盘盈亏比，无undefined或虚构第一类。拓扑独立开盘三门禁，73来源指纹3a7548d5...包含执行/分钟/交易证据。"
+                    "summary": "相关状态和进度格式、差异、Harness及CodeGraph同步通过；提交仅本次撤回及记录，不含凭据或产物。"
                 },
                 {
-                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; targeted Prettier/Node syntax; git diff --check; pnpm harness:check; codegraph sync",
-                    "status": "passed",
-                    "summary": "最终lint0错误6条既有环境变量警告、类型与生产构建通过；相关格式、JS语法、差异与Harness通过，next-env生成差异定向恢复。复核全局启用、新N守防/失效/时间、独立开盘价成交、原压力目标执行门禁与T+1；不按股票日期特判。"
-                },
-                {
-                    "command": "Complete Core/Web suites, browser/Playwright and external historical minute execution",
+                    "command": "Complete suites, browser/Playwright and external historical minute execution",
                     "status": "not-run",
-                    "summary": "依用户当次验证节奏完整套件和浏览器/Playwright未运行，真实视觉与外部分钟留待独立验证，不把模块/DOM验收写成浏览器通过。保留256/263全部既有失败证据并恢复256唯一in-progress；本任务默认提交并本地合并，不推送。本地main常驻版本与正式HTTP账户验收已通过，具体证据见本条目首项。"
+                    "summary": "按用户验证节奏未运行完整套件和浏览器/Playwright；真实视觉及外部分钟仍待独立验证。保留256/263旧失败，不扩大本次撤回范围。main合并与常驻V93/正式账户验收随后追加。"
                 }
             ]
         },
@@ -733,7 +726,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
