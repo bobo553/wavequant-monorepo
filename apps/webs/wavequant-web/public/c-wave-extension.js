@@ -1,3 +1,5 @@
+import { isAOriginBroken } from "./a-wave-rules.js";
+
 /** 原波段达到等浪后才显示延伸；确认当天不能借用先于确认的上影。 */
 export function cWaveExtensionLevel(projection, bars, asof) {
     const amplitude = projection.aHigh - projection.origin;
@@ -25,8 +27,8 @@ export function cWaveExtensionLevel(projection, bars, asof) {
     for (let index = 0; index < bars.length; index++) {
         const bar = bars[index];
         if (bar.time < knownAt || bar.time > end) continue;
-        // 同棒既达标又双破起点时无法确认先后，先结束旧目标观察。
-        if (bar.low < projection.origin && bar.close < projection.origin) {
+        // 同棒既达标又最低价破起点时无法确认先后，先结束旧目标观察。
+        if (isAOriginBroken(bar, projection.origin)) {
             validUntil = bars[index - 1]?.time;
             break;
         }

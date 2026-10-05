@@ -178,16 +178,16 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "ab-known",
                 question: "原 N 已轧空，且此前 A/B 可冻结？",
-                detail: "A 顶必须在今天之前出现，随后有真实回落并形成 B；B 不得跌破原 N 防守位。当天高点不能反过来构造自己的 A/B。",
-                source: "wave_continuation.py · wave_pullback_context:11–40",
+                detail: "A 顶必须在今天之前出现，随后有真实回落并形成 B；强势 A 与普通 A 的 B 均可跌破轧空低；最低价严格跌破整段 A 起点即失效，相等仍有效，后续没有原组 C，等待新 A。破轧空低后的回调与底部整理按实际交易日持续记录。当天高点不能反过来构造自己的 A/B。",
+                source: "a_wave_rules.py · a_origin_broken；wave_continuation.py · wave_pullback_context",
                 yes: "比较 A 与原 N 目标",
                 no: "等待完整 A/B 或防守失效",
             },
             {
                 id: "a-class",
                 question: "A 达到原 N 的 2T？",
-                detail: "是＝强 A，冻结 2T 与防守 B，可观察等幅、1.618、2.618；否＝普通 A，必须至少到 1P，仅观察等幅目标。",
-                source: "wave_continuation.py · wave_pullback_context:20–65",
+                detail: "A 高点 ≥ 二吐（2T）是强势 A；一饱（1P）≤ A 高点 < 二吐是普通 A。一饱、二吐的等号都表示已达到，未达一饱不分类。强 A 与普通 A 都保留完整 A 起点，内部正 N 不替换父 A。",
+                source: "a_wave_rules.py · classify_a_attack；wave_continuation.py · wave_pullback_context",
                 yes: "强 A：缺口或强实体放量",
                 no: "普通 A：阳线收盘突破已知回档高点",
                 noNext: "ordinary-trigger",
@@ -204,7 +204,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "ordinary-trigger",
                 question: "普通 A：阳线收盘突破已知回档高点？",
-                detail: "普通 A 至少触达 1P、未到 2T；B 守住原 N 防守位。当前棒须为阳线，且收盘高于 A 后已确认的回档高点。",
+                detail: "普通 A 至少触达 1P、未到 2T；B 可破轧空低，但最低价须守住 A 起点。当前棒须为阳线，且收盘高于 A 后已确认的回档高点。",
                 source: "wave_continuation.py · wave_pullback_context:20–45；wave_gap_entry:112–126",
                 yes: "普通 A 回升通道",
                 no: "普通 A 等待收盘突破",
@@ -497,4 +497,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "9c7045db5f0634eba30050fcd687ecc2adb4279eebf51deeed007817c6c484a4";
+export const strategySourceDigest = "916f103446d14bb7c40e6dcf372347facd7aa4eb8ddd0dd9f2759f1815bdfd82";

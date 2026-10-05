@@ -66,9 +66,11 @@ def abc_pullback_evidence(
     low, high = Fraction(str(anchor.origin_price)), Fraction(str(anchor.high_price))
     if high <= low:
         return None
+    if any(Fraction(str(bar.low)) < low for bar in bars[start + 1:peak + 1]):
+        return None
     b_index = min(range(peak + 1, end + 1), key=lambda i: bars[i].low)
     minimum = Fraction(str(bars[b_index].low))
-    if minimum <= low or minimum >= high:
+    if minimum < low or minimum >= high:
         return None
     # The A-high candle belongs to A; its own long wick must not manufacture
     # a below-half closing observation in the subsequent B correction.
@@ -83,16 +85,18 @@ def abc_pullback_evidence(
     deep_price_path = allow_deep_pullback and minimum <= two_thirds and not (price_path or time_path)
     if not (price_path or time_path or deep_price_path):
         return None
-    return dict(
-        a_origin_index=start, a_high_index=peak, b_low_index=b_index,
-        a_origin_price=float(low), a_high_price=float(high), b_low_price=float(minimum),
-        b_minimum_close=float(close), b_minimum_close_index=close_index,
-        two_thirds_price=float(two_thirds), half_price=float(half),
-        retracement_ratio=float((high - minimum) / (high - low)),
-        a_duration=a_bars, b_duration=b_bars, duration_unit="trading_bars",
-        price_path=price_path, time_path=time_path,
-        **({'deep_price_path': True} if deep_price_path else {}),
-    )
+    proof: PullbackEvidence = {
+        "a_origin_index": start, "a_high_index": peak, "b_low_index": b_index,
+        "a_origin_price": float(low), "a_high_price": float(high), "b_low_price": float(minimum),
+        "b_minimum_close": float(close), "b_minimum_close_index": close_index,
+        "two_thirds_price": float(two_thirds), "half_price": float(half),
+        "retracement_ratio": float((high - minimum) / (high - low)),
+        "a_duration": a_bars, "b_duration": b_bars, "duration_unit": "trading_bars",
+        "price_path": price_path, "time_path": time_path,
+    }
+    if deep_price_path:
+        proof["deep_price_path"] = True
+    return proof
 
 
 def _index(event: Mapping[str, object], name: str) -> int | None:

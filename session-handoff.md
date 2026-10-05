@@ -1,3 +1,11 @@
+## 2026-10-05 · MONOREPO-263 实现完成，合并待确认
+
+复用新华传媒 worktree 与 feat-新华传媒轧空买点，基线 main ffa270a。Core/Web 统一一饱包含等号的普通 A、二吐包含等号的强势 A；最低价严格跌破原 A 起点即永久失效（相等有效），B 可破轧空低，记录首次破低及实际回调、整理交易日。整段 A 与内部正 N 各保留原点，普通 A 各来源统一三档 C 观察。策略 v92，规则见 docs/wavequant-a-b-c-rules.md。
+
+Core 最终52项边界/版本/ABC/测幅，Web173项与4项拓扑，Core/Web类型与构建、Web lint、格式、Harness及复核通过。Core相邻179项中173通过、6失败；明确导入未修改main/src对照同6项，全部原样失败：wave_intraday_entry的old_structural_episode及huaci_early_body_minute，one_p_rebound的guilin及optional_volume_filter，以及wave_entry_epoch两项January6 recovered。后两项在256原4失败豁免内，前4项没有新豁免；桂林波段正确，但正式wave_no_alternation_at_attack拒绝LONG。没有修改这些旧资格或断言以制造通过。
+
+按照 docs/agent/codex-global-AGENTS.md:34 的“检查未通过时先修复，无法通过时说明原因，不合并”，先提交可复核实现，待用户确认是否保留这6项既有失败并本地合并。263保留唯一in-progress，256暂置backlog且原四项失败证据不动；确认例外后复查main、同步、no-ff合并，再恢复256为唯一in-progress。未要求新推送。服务暂仍main v91，不能宣称v92已生效；完整套件、浏览器/Playwright及外部分钟执行未运行。
+
 ## 2026-10-05 · MONOREPO-262 已完成
 
 继续复用新华传媒 worktree / feat-新华传媒轧空买点，基线 main eda7e9c。新增共用已确认父 A 结构观察，保留二级整段起点、内部正式 N 独立测幅、同路径一级已确认 B 持续更低刷新及已确认 C 归档；普通 A 共用因果跟踪器，交易 Core 未改。真实 1699 日线和独立 1621 日线 09-03 正式前缀一致，完整 A 02-08→03-25、B 08-28→C 10-31 被发布，B 09-03、C 11-08 才可知，03-20 BUY/filled 保持。150 项定向回归及 Web lint/typecheck/build 通过；完整套件和浏览器/Playwright 待独立验证。262 done，恢复 256 为唯一 in-progress 并保留 4 项旧失败，本轮不推送。实现 5d65633 已经 b98ed41 合并本地 main；13003 四个共用模块 HTTP200 且响应字节与 main 文件一致，main 真实1699日线重放与 Harness 再次通过。未重启、未修改缓存；浏览器未运行。

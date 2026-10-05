@@ -73,7 +73,7 @@ test("Guofang April 1 chart projects both levels from the March 22 A high and Ma
     assert.ok(Math.abs(projection.target - 6.31) < 1e-10);
 });
 
-test("projection needs a strict one-P break and rejects a B close below the N origin", () => {
+test("projection needs to reach one-P and rejects a B low below the N origin", () => {
     assert.equal(waveCProjection(bars, [n], "2026-01-02"), null);
     assert.equal(waveCProjection(bars.slice(0, 3), [n], "2026-01-03"), null);
     const broken = bars.map((bar) => ({ ...bar }));
@@ -238,9 +238,10 @@ test("confirmed historical B stays fixed after a later origin failure and target
     assert.ok(projection);
     assert.equal(projection.bTime, "2020-04-28");
     assert.equal(projection.invalidatedAt, "2020-06-01");
-    const annotation = waveCProjectionAnnotation(projection);
-    assert.equal(annotation.levels[1].valid_until, "2020-05-29");
-    assert.equal(targetLevelGuide(annotation, annotation.levels[1], later, "2020-06-02").end, null);
+    assert.deepEqual(waveCProjectionAnnotation(projection, later, "2020-06-02").levels, []);
+    const annotation = waveCProjectionAnnotation(projection, later, "2020-05-29");
+    assert.equal(annotation.levels[1].valid_until, undefined);
+    assert.equal(targetLevelGuide(annotation, annotation.levels[1], later, "2020-05-29").end, null);
 });
 
 test("real Xianfeng daily bars reveal the February 10 N, February 17 squeeze and April 28 B", () => {
@@ -260,7 +261,7 @@ test("real Xianfeng daily bars reveal the February 10 N, February 17 squeeze and
     assert.equal(annotation.title, "B / C");
     assert.deepEqual(
         annotation.levels.map((level) => level.price),
-        [projection.target0618, projection.target],
+        [projection.target0618, projection.target, projection.target1618],
     );
     const laterFormalN = {
         ...n,

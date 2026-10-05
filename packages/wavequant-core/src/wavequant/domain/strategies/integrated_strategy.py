@@ -573,7 +573,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                         confirmation_source='multilevel_record_break')
                 log(j, 'multilevel_squeeze_confirmed', attack=candidate['attack'], **proof)
             candidate['regime'] = replace(candidate['regime'], frames=tuple(updated_frames))
-    # Projection outlives the entry candidate TTL, but never its frozen defense.
+    # A/B/C outlives the N entry TTL and squeeze defense, until the A origin fails.
     # It remains available in the audit even when this N already emitted LONG.
     wave_events, wave_proofs = defaultdict(list), {}
     if whole_wave:
@@ -621,7 +621,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 row['origin_index'] = projection_setup.origin_index
                 row['projection_label'] = {'stacking': '叠箱', 'pushing': '堆箱',
                     'ready': '二吐完成，等待转浪', 'pullback': 'B浪回调，等待再攻击',
-                    'invalidated': '轧空低失守，转浪失效'}[event.state]
+                    'invalidated': '最低价跌破A起点，转浪失效'}[event.state]
                 log(j, kind, **row)
                 counts[kind] += 1
     # Optional opportunity tags use their own confirmation dates, not future shape labels.

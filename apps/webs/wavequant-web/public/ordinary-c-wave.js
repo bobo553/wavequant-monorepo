@@ -1,3 +1,4 @@
+import { classifyAAttack } from "./a-wave-rules.js";
 import {
     confirmedCWaveProjection,
     knownWavePoint as knownPoint,
@@ -84,8 +85,7 @@ export function ordinaryCWaveProjections(bars, theory) {
                     !knownPoint(a, "H", asof, byTime) ||
                     !isWaveHigh(a) ||
                     a.time <= event.time ||
-                    a.value <= oneP ||
-                    a.value >= twoT ||
+                    classifyAAttack(a.value, oneP, twoT) !== "ordinary" ||
                     maximumHigh(visible, origin.time, a.time) !== a.value
                 )
                     continue;

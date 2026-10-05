@@ -78,19 +78,50 @@ test("ordinary one-p rebound never claims two-t or strong extensions", () => {
 });
 
 test("strong A evidence names the five top goal and waits to compute ten full", () => {
-    const lines = waveEntryEvidence([{
-        ...proof,
-        wave_entry_path: "two_t_strong_a_resistance_rebreak",
-        wave_a_class: "strong",
-        wave_a_origin_date: "2023-06-26", wave_a_origin: 4.27,
-        wave_a_high_date: "2023-07-21", wave_a_high: 5.70,
-        wave_b_low_date: "2023-07-24", wave_b_low: 4.98,
-        wave_two_t_break_date: "2023-07-20", wave_resistance_date: "2023-07-21",
-        wave_resistance_high: 5.70, wave_two_t_body_midpoint: 5.14,
-        wave_breakout_date: "2023-07-21", wave_breakout_high: 5.70,
-        wave_breakout_close: 5.76, wave_c_0618_target: 5.86374,
-        wave_equal_target: 6.41, wave_five_top_target: 5.85,
-    }]).join("\n");
+    const lines = waveEntryEvidence([
+        {
+            ...proof,
+            wave_entry_path: "two_t_strong_a_resistance_rebreak",
+            wave_a_class: "strong",
+            wave_a_origin_date: "2023-06-26",
+            wave_a_origin: 4.27,
+            wave_a_high_date: "2023-07-21",
+            wave_a_high: 5.7,
+            wave_b_low_date: "2023-07-24",
+            wave_b_low: 4.98,
+            wave_two_t_break_date: "2023-07-20",
+            wave_resistance_date: "2023-07-21",
+            wave_resistance_high: 5.7,
+            wave_two_t_body_midpoint: 5.14,
+            wave_breakout_date: "2023-07-21",
+            wave_breakout_high: 5.7,
+            wave_breakout_close: 5.76,
+            wave_c_0618_target: 5.86374,
+            wave_equal_target: 6.41,
+            wave_five_top_target: 5.85,
+        },
+    ]).join("\n");
     assert.match(lines, /五顶观察位.*5\.8500 元/);
     assert.match(lines, /十满需五顶达成后/);
+});
+
+test("published B defense loss and actual duration explain a surviving ordinary A", () => {
+    const evidence = {
+        ...proof,
+        wave_entry_path: "one_p_held_defense_rebound",
+        wave_a_class: "ordinary",
+        wave_b_broke_squeeze_low: 1,
+        wave_b_squeeze_break_date: "2020-06-10",
+        wave_b_duration: 25,
+        wave_b_consolidation_duration: 9,
+        wave_b_elapsed_duration: 34,
+        wave_duration_unit: "trading_bars",
+    };
+    const before = structuredClone(evidence);
+    const text = waveEntryEvidence([evidence]).join("\n");
+    assert.match(text, /2020-06-10.*跌破轧空低.*原 A 起点保持有效/);
+    assert.match(text, /最低价严格跌破 A 起点.*相等仍有效/);
+    assert.match(text, /25.*9.*34.*交易日/);
+    assert.doesNotMatch(text, /守住轧空低/);
+    assert.deepEqual(evidence, before);
 });
