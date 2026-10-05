@@ -30,7 +30,14 @@ import { FocusFlashOverlay } from "./focus-flash-overlay.js";
 import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
 import { drawdownCandleRange } from "./max-drawdown.js";
-import { isPositiveNTarget, nTargetAt, nTargetObservations } from "./n-target-focus.js";
+import {
+    isNTargetStage,
+    isPositiveNTarget,
+    nTargetAt,
+    nTargetGuide,
+    nTargetLevels,
+    nTargetObservations,
+} from "./n-target-focus.js";
 import { selectedTertiaryThirds, tertiaryRetracementGuides } from "./retracement-guides.js";
 import { TargetGuideOverlay, targetLevelGuide } from "./target-level-guides.js";
 import { TradeMarkerOverlay } from "./trade-marker-overlay.js";
@@ -1084,6 +1091,7 @@ export class PriceChart {
         const blockedOrder = item?.kind === "order" && item.status === "cancelled";
         const blockedCandidate = item?.kind === "candidate";
         if (!this.data || !this.options.levels) return;
+        const asof = this.theory?.asof && this.theory.asof < this.data.asof ? this.theory.asof : this.data.asof;
         const primaryVisible =
             item &&
             (blockedOrder ||
@@ -1100,27 +1108,24 @@ export class PriceChart {
         const targetStages = new Set(["c_0618", "c_equal", "c_1618", "one_p", "two_t", "five_top", "ten_full"]);
         const levels = primaryLevels.map((level) => ({ item, level }));
         if (focusedN && focusedN !== item)
-            levels.push(
-                ...focusedN.levels
-                    .filter((level) => ["one_p", "two_t"].includes(level.stage))
-                    .map((level) => ({ item: focusedN, level })),
-            );
+            levels.push(...nTargetLevels(focusedN, asof).map((level) => ({ item: focusedN, level })));
         const targetGuides = [];
         const seenN = new Set();
         for (const [i, { item, level }] of levels.entries()) {
             if (!Number.isFinite(level.price)) continue;
-            if (["one_p", "two_t"].includes(level.stage)) {
+            if (level.available_at && level.available_at > asof) continue;
+            if (isPositiveNTarget(item) && isNTargetStage(level.stage) && !nTargetLevels(item, asof).includes(level))
+                continue;
+            if (isNTargetStage(level.stage)) {
                 const identity = `${level.stage}:${level.price}`;
                 if (seenN.has(identity)) continue;
                 seenN.add(identity);
             }
             const projectionTargets = item.levels?.some((candidate) => targetStages.has(candidate.stage)) || false;
-            const guide = targetLevelGuide(
-                item,
-                level,
-                this.data.bars,
-                this.theory?.asof && this.theory.asof < this.data.asof ? this.theory.asof : this.data.asof,
-            );
+            const guide =
+                isPositiveNTarget(item) && isNTargetStage(level.stage)
+                    ? nTargetGuide(item, level, this.data.bars, asof)
+                    : targetLevelGuide(item, level, this.data.bars, asof);
             const color = ["#ebbc70", "#a29ce0", "#5ebeb0"][i % 3];
             const s = this.chart.addSeries(L.LineSeries, {
                 color,
@@ -1145,7 +1150,7 @@ export class PriceChart {
             else if (!guide && start < this.data.bars.at(-1).time)
                 points.push({ time: this.data.bars.at(-1).time, value: level.price });
             let displayGuide = guide;
-            if (guide && ["one_p", "two_t"].includes(level.stage) && focusedN) {
+            if (guide && isNTargetStage(level.stage) && focusedN) {
                 const range = this.chart.timeScale().getVisibleLogicalRange();
                 const first = Math.max(0, Math.ceil(range?.from ?? 0));
                 const last = Math.min(this.data.bars.length - 1, Math.floor(range?.to ?? this.data.bars.length - 1));
@@ -1160,7 +1165,11 @@ export class PriceChart {
                             : from && (guide.start < from || guide.start > to)
                               ? from
                               : guide.start,
-                    targetState: guide.end ? "已突破" : "未突破",
+                    targetState: ["one_p", "two_t"].includes(level.stage)
+                        ? guide.end
+                            ? "已突破"
+                            : "未突破"
+                        : guide.targetState,
                 };
             }
             if (guide && item.kind === "wave-projection" && ["c_0618", "c_equal", "c_1618"].includes(level.stage)) {

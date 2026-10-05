@@ -53,9 +53,13 @@ class NShapeTests(unittest.TestCase):
         for incompatible in (replace(s,allow_outside_close=False), replace(s,source='other')):
             with self.assertRaises(ValueError):
                 run(bars,incompatible)
-        for closing in (14.2,14.3,14.4):
-            with self.assertRaises(ValueError):
-                run([*bars[:2],replace(bars[2],close=closing)],s)
+        for closing in (14.2,14.3):
+            forming = run([*bars[:2],replace(bars[2],close=closing)],s)
+            self.assertEqual(forming.status,NStatus.FORMING)
+            self.assertIsNone(forming.completion)
+            self.assertIsNone(forming.targets)
+        with self.assertRaises(ValueError):
+            run([*bars[:2],replace(bars[2],close=14.4)],s)
 
     def test_positive_n_can_complete_when_historical_c_is_confirmed_at_close(self):
         bars=fixture()

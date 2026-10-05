@@ -49,11 +49,19 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             },
             {
                 id: "n-geometry",
-                question: "N 点次序、窗口、完成条件成立？",
-                detail: "常规 N 的起点、颈线、回档点按时间排序；阳母同日 A/B 特例保留。全局 V3 讲义正 N 还允许 A < B = C：B 高与 C 低来自同一根真实外包阴母，且已知 K 内先高后低的端点顺序；仍须后续实过、虚过双突破才完成。超过结构窗口或未完成的结构不进入候选。",
+                question: "N 点次序、边界和窗口成立？",
+                detail: "常规 N 的起点 A、颈线 B、回档 C 按时间排序且保持部分回撤。讲义因果外包 C 接纳等低创新高或等高创新低；两侧完全相等不算外包。C 在自身收盘确认，分步转折时实体须朝攻击方向；B 与 C 可在同一收盘才确认。C 转折后的攻击极值不冒充旧颈线，中间其他棒仍检查。阳母同日 A/B 与全局 V3 正 N 的阴母 A < B = C 保留独立严格外包条件；阴母须收阴且先高后低，等高、等低和十字星不放宽该分支。默认严格 N 条件保持。超过结构窗口的结构跳过。",
                 source: "n_shape.py · NSetup / observe_n；integrated_strategy.py · generate_system_signals",
-                yes: "冻结攻击与防守位",
+                yes: "检查首次实虚攻击",
                 no: "跳过该结构",
+            },
+            {
+                id: "n-attack",
+                question: "出现当时可确认的首次实虚攻击？",
+                detail: "正 N 同棒收盘严格越过 B 收盘且最高严格越过 B 最高；倒 N 对称。讲义外包 C 当天须收盘严格越过 B 两层且前收盘未越过 B 收盘，才可同棒完成。C 只有影线越过颈线极值、收盘尚未越过极值时保持形成中；C 后第一棒仍须从前收盘重新严格攻击并同棒满足实过、虚过，不能把 C 的影线误当成已有完成。后续收盘无需另加越过 B 极值的门槛。持续站上、相等触及、跨棒拼接或未来才确认的锚点均不能补认。完成后冻结实际攻击棒的箱体锚点与防守。",
+                source: "n_shape.py · observe_n；price_action.py · observe_attack",
+                yes: "冻结攻击与防守位",
+                no: "等待新攻击或跳过失效结构",
             },
             {
                 id: "direction",
@@ -505,4 +513,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "793d05159f3033c66e11846cc9f2b451e736e0a6105c91d9763b58945a1ea8a3";
+export const strategySourceDigest = "c3089d4da9a5347b86e0b82d5ea1fa6cfe2ea12c777bb8e1f233f31a0a255504";

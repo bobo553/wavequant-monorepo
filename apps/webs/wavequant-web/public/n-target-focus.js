@@ -1,6 +1,41 @@
 import { targetLevelGuide } from "./target-level-guides.js";
 
-const N_STAGES = new Set(["one_p", "two_t"]);
+const BASE_N_STAGES = new Set(["one_p", "two_t"]);
+const N_STAGES = ["one_p", "two_t", "five_top", "ten_full"];
+
+export function isNTargetStage(stage) {
+    return N_STAGES.includes(stage);
+}
+
+/** 只读取原 N 已发布的阶段；预估价和缺少可知日的远端目标不延长观察窗口。 */
+export function nTargetLevels(item, asof) {
+    if (!isPositiveNTarget(item) || !asof || item.time > asof || item.raw.available_at > asof) return [];
+    return item.levels.filter((level) => {
+        if (!isNTargetStage(level.stage) || !Number.isFinite(level.price)) return false;
+        if (!BASE_N_STAGES.has(level.stage) && (!level.available_at || level.estimated)) return false;
+        const knownAt = level.available_at || item.signal_time || item.time;
+        return knownAt <= asof;
+    });
+}
+
+/** 五顶、十满缺少结构锚点时从发布日画起；达到含等号，与一饱二吐突破线区分。 */
+export function nTargetGuide(item, level, bars, asof) {
+    if (!nTargetLevels(item, asof).includes(level)) return null;
+    const knownAt = level.available_at || item.time;
+    const guide = targetLevelGuide(item, { ...level, anchor_at: level.anchor_at || knownAt }, bars, asof);
+    if (!guide || BASE_N_STAGES.has(level.stage)) return guide;
+    const end = level.valid_until && level.valid_until < asof ? level.valid_until : asof;
+    const reached = bars.find((bar) => {
+        const price = bar.time === knownAt ? bar.close : bar.high;
+        const rounding = Number.EPSILON * Math.max(1, Math.abs(price), Math.abs(level.price)) * 4;
+        return bar.time >= knownAt && bar.time <= end && Number.isFinite(price) && price >= level.price - rounding;
+    });
+    return {
+        ...guide,
+        end: reached?.time || null,
+        targetState: level.status && level.status !== "已满足" ? level.status : reached ? "已满足" : "推演中",
+    };
+}
 
 export function isPositiveNTarget(item) {
     return (
@@ -18,14 +53,26 @@ export function nTargetObservations(items, bars, asof) {
     return items
         .flatMap((item) => {
             if (!isPositiveNTarget(item) || item.time > asof) return [];
-            const levels = item.levels.filter((level) => N_STAGES.has(level.stage));
-            const guides = levels.map((level) => targetLevelGuide(item, level, bars, asof));
-            if (guides.some((guide) => !guide)) return [];
+            const levels = nTargetLevels(item, asof);
+            const guides = levels.map((level) => nTargetGuide(item, level, bars, asof));
+            if (["one_p", "two_t"].some((stage) => !guides[levels.findIndex((level) => level.stage === stage)]))
+                return [];
             const twoT = guides[levels.findIndex((level) => level.stage === "two_t")];
+            const activeLevels = levels.filter(
+                (level, index) => guides[index] && !["回调暂停", "已失效"].includes(level.status),
+            );
+            const latest =
+                [...N_STAGES]
+                    .reverse()
+                    .map(
+                        (stage) =>
+                            guides[levels.findIndex((level) => level.stage === stage && activeLevels.includes(level))],
+                    )
+                    .find(Boolean) || twoT;
             const from = item.raw.shape?.[0]?.time || twoT.start;
-            const to = levels.reduce(
+            const to = activeLevels.reduce(
                 (end, level) => (level.valid_until && level.valid_until < end ? level.valid_until : end),
-                twoT.end || asof,
+                latest.end || asof,
             );
             if (from > to || !bars.some((bar) => bar.time === from)) return [];
             return [{ item, from, to }];

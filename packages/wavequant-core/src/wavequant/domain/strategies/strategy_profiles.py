@@ -82,7 +82,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v93_' + variant
+    config['profile_version'] = 'shared_edge_n_v94_' + variant
     config['definition']['a_wave_classification'] = 'ordinary_one_p_inclusive_below_two_t__strong_two_t_inclusive'
     config['definition']['a_wave_invalidation'] = 'strict_low_break_of_a_origin__no_later_c_until_new_a'
     config['definition']['b_wave_pullback'] = 'both_a_classes_may_break_squeeze_low__actual_trading_bar_duration'
@@ -104,6 +104,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         'new_daily_low_and_inverse_neckline_wick_break_requires_observation',
     ]
     config['definition'].update(
+        outside_turn_n='explicit_lecture_shared_edge_outside_directional_c_known_with_b_then_fresh_joint_attack_no_c_wick_occupancy_replay',
         combined_a_pullback_breakout='known_same_source_abc_combined_a_then_c_to_breakout_sessions_including_consolidation_gt_internal_b_or_latest_same_source_child_abc_b_sessions_all_closes_ge_two_thirds_volume_gt_previous_bull_body_ge_3pct_and_60pct_range_strict_known_rebound_high_or_unfilled_gap_break_once_all_global_gates',
         nested_alternation_breakout='known_live_level2_low_then_level1_low_matching_primary_n_defense_held_bullish_volume_gt_previous_close_gt_primary_flip_and_consolidation_high_same_day_n_completion_permitted',
         positive_n_defense='minimum_of_first_real_or_virtual_probe_low_through_joint_completion_and_pre_probe_close_touch_anchors_only_strict_joint_break_required',
