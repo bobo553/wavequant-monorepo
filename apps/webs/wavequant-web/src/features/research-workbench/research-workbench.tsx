@@ -24,7 +24,6 @@ export function ResearchWorkbench(): JSX.Element {
             <div data-wavequant-react-workbench="true" style={{ display: "contents" }}>
                 <main id="research-main" className="research-content" tabIndex={-1}>
                     <ResearchHeader />
-                    <ResearchControls />
                     <ResearchMetrics />
                     <section id="page-workspace" className="page">
                         <div className="workspace-grid">
@@ -36,6 +35,7 @@ export function ResearchWorkbench(): JSX.Element {
                         <div id="backtest-details" className="panel note-card" hidden />
                         <ResearchLedgers />
                     </section>
+                    <ResearchControls />
                     <StockBacktestResults />
                     <PerformancePage />
                     <StrategyTopologyPage />
