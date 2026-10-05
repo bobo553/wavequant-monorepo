@@ -870,9 +870,12 @@ test("chart tools reveal detailed overlays without reducing the candle viewport"
     expect(chartPosition).not.toBeNull();
     expect(replay).not.toBeNull();
     expect(candleViewport!.y - chartCard!.y - chartViewControls!.height).toBeLessThan(115);
-    expect(candleViewport!.height).toBeGreaterThanOrEqual(200);
-    expect(candleViewport!.height).toBeLessThanOrEqual(520);
-    expect(chartPosition!.y + chartPosition!.height).toBeLessThanOrEqual(884);
+    expect(candleViewport!.height).toBeGreaterThanOrEqual(300);
+    expect(candleViewport!.height).toBeLessThanOrEqual(1000);
+    expect(chartPosition!.y + chartPosition!.height).toBeLessThanOrEqual(984);
+    const decisionEvidence = await page.locator(".workspace-grid > .insight").boundingBox();
+    expect(decisionEvidence).not.toBeNull();
+    expect(decisionEvidence!.y).toBeGreaterThanOrEqual(900);
     expect(
         Math.abs(
             chartCard!.height -
@@ -932,8 +935,8 @@ test("chart tools reveal detailed overlays without reducing the candle viewport"
     const narrowViewport = await page.locator("#price-chart").boundingBox();
     expect(narrowCard).not.toBeNull();
     expect(narrowViewport).not.toBeNull();
-    expect(narrowViewport!.height).toBeGreaterThanOrEqual(200);
-    expect(narrowViewport!.height).toBeLessThanOrEqual(520);
+    expect(narrowViewport!.height).toBeGreaterThanOrEqual(300);
+    expect(narrowViewport!.height).toBeLessThanOrEqual(944);
     await expect
         .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth))
         .toBe(true);

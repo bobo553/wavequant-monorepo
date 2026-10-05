@@ -5,30 +5,38 @@ import { JSDOM } from "jsdom";
 
 import { bindChartViewportHeight, chartViewportHeight } from "../public/chart-viewport-height.js";
 
-test("desktop heights reserve the chart-position progress row and a bottom gap", () => {
-    for (const viewport of [720, 768, 900, 1080]) {
+test("desktop charts add 100px to the prior viewport heights", () => {
+    for (const [viewport, expectedHeight] of [
+        [720, 424],
+        [768, 472],
+        [900, 604],
+        [1080, 784],
+    ]) {
         const chartTop = 320;
         const footerHeight = 60;
         const height = chartViewportHeight(viewport, chartTop, footerHeight);
-        assert.ok(height >= 200 && height <= 520);
-        assert.ok(chartTop + height + footerHeight <= viewport - 16);
+        assert.equal(height, expectedHeight);
+        assert.ok(chartTop + height + footerHeight <= viewport + 84);
+        assert.ok(chartTop + height + footerHeight + 17 >= viewport);
     }
 });
 
-test("short or below-fold layouts retain a readable chart and tall screens stay compact", () => {
-    assert.equal(chartViewportHeight(600, 400, 160), 200);
-    assert.equal(chartViewportHeight(844, 900, 140), 200);
-    assert.equal(chartViewportHeight(1600, 320, 60), 520);
+test("short layouts remain readable and tall screens extend the drawing area beyond the old cap", () => {
+    assert.equal(chartViewportHeight(600, 400, 160), 300);
+    assert.equal(chartViewportHeight(844, 900, 140), 300);
+    assert.equal(chartViewportHeight(1600, 320, 60), 1304);
 });
 
-test("fractional measurements never consume the reserved bottom gap", () => {
+test("fractional measurements retain the same 100px increase", () => {
     const height = chartViewportHeight(768.25, 320.5, 60.5);
-    assert.equal(height, 371);
-    assert.ok(320.5 + height + 60.5 <= 768.25 - 16);
+    assert.equal(height, 471);
+    assert.ok(320.5 + height + 60.5 <= 768.25 + 84);
 });
 
 test("measurement follows viewport and footer changes, survives scrolling and hidden views, and cleans up", () => {
-    const dom = new JSDOM('<main><div id="chart"></div><div id="position"></div><div id="replay"></div></main>');
+    const dom = new JSDOM(
+        '<main><article class="chart-card"><div id="chart"></div><div id="position"></div><div id="replay"></div></article><aside class="insight"></aside></main>',
+    );
     const taskWindow = dom.window;
     const doc = taskWindow.document;
     const chart = doc.getElementById("chart");
@@ -79,28 +87,28 @@ test("measurement follows viewport and footer changes, survives scrolling and hi
         taskWindow.dispatchEvent(new taskWindow.Event("resize"));
         assert.equal(frames.size, 1);
         flush();
-        assert.equal(chart.style.getPropertyValue("--chart-viewport-height"), "334px");
+        assert.equal(chart.style.getPropertyValue("--chart-viewport-height"), "434px");
         taskWindow.scrollY = 120;
         observer.callback();
         flush();
-        assert.equal(chart.style.getPropertyValue("--chart-viewport-height"), "334px");
+        assert.equal(chart.style.getPropertyValue("--chart-viewport-height"), "434px");
         taskWindow.innerHeight = 900;
         taskWindow.dispatchEvent(new taskWindow.Event("resize"));
         flush();
-        assert.equal(chart.style.getPropertyValue("--chart-viewport-height"), "514px");
+        assert.equal(chart.style.getPropertyValue("--chart-viewport-height"), "614px");
         footerHeights = [100];
         observer.callback();
         flush();
-        assert.equal(chart.style.getPropertyValue("--chart-viewport-height"), "464px");
+        assert.equal(chart.style.getPropertyValue("--chart-viewport-height"), "564px");
         chartWidth = 0;
         taskWindow.innerHeight = 1080;
         observer.callback();
         flush();
-        assert.equal(chart.style.getPropertyValue("--chart-viewport-height"), "464px");
+        assert.equal(chart.style.getPropertyValue("--chart-viewport-height"), "564px");
         chartWidth = 900;
         observer.callback();
         flush();
-        assert.equal(chart.style.getPropertyValue("--chart-viewport-height"), "520px");
+        assert.equal(chart.style.getPropertyValue("--chart-viewport-height"), "744px");
         observer.callback();
         dispose();
         assert.equal(observer.disconnected, true);
