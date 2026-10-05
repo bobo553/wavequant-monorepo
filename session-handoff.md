@@ -1,3 +1,9 @@
+## 2026-10-05 · MONOREPO-263 已合并并常驻生效
+
+规则39ebb54、ABC焦点修复462fbef和授权记录588247f已由dc786d9无冲突no-ff合并本地main，特性分支已同步此main。合并后的main Harness及4项拓扑检查通过；13003的charts、a-wave-rules、confirmed-c-wave、structural-c-wave、wave-c-projection和wave-entry-evidence六模块HTTP200且响应逐字匹配main，策略接口已返回v92/6c883b9a8d6e。没有手工重启或修改缓存。页面刷新会读取新模块，旧账户结果需重新回测后采用v92规则；不宣称实际用户浏览器视觉已验收。
+
+本轮用户明确授权普通推送main，最终远端提交确认见本轮交付。6项既有失败按授权保留，263留backlog待独立验证，256为唯一in-progress；两个工作目录的最终状态随Git交付检查确认。
+
 ## 2026-10-05 · MONOREPO-263 合并及推送已授权
 
 用户在收到6项main既有失败及4项未授权例外说明后，明确要求“合并到main并推送”，允许保留这些失败执行本次交付。实现39ebb54、焦点修复462fbef和检查证据保持；fetch后本地main ffa270a无新增变更，特性分支同步main无冲突。后续按no-ff合并并普通推送main，不改写历史。
