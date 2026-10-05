@@ -32,6 +32,11 @@
                     "command": "actual saved 1508-bar HTTP payload through current Web annotations and N focus helpers",
                     "status": "passed",
                     "summary": "复用上一轮正式HTTP响应，未重跑账户；1508日线混合历史03-05焦点绑定原03-05 N/02-29低，A4.299882554747297/X4.794469984753443，目标5.289057414759589/5.783644844765735，03-20 signal和fill均绑定03-05原攻击。交易Core无变更。"
+                },
+                {
+                    "command": "local main no-ff merge; Web13003 charts.js/n-target-focus.js/buy-n-targets.js HTTP bytes; main Harness",
+                    "status": "passed",
+                    "summary": "实现6f0b14f以9e5d74c合并本地main，两检出干净；三个相关模块HTTP200且响应逐字匹配main，当前服务返回新来源匹配代码。main Harness通过，无重启或推送，未运行浏览器。刷新页面加载修复。"
                 }
             ]
         },
