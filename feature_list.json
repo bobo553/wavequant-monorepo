@@ -1,16 +1,16 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-263",
+    "activeFeature": "MONOREPO-256",
     "features": [
         {
             "id": "MONOREPO-263",
             "name": "a-wave-classification-origin-lifecycle",
             "title": "A强弱分类与起点失效规则统一",
-            "description": "按用户确认统一强A高点达到二吐、普通A达到一饱但未达二吐；最低价严格破A起点即永久失效；强弱A的B均可破轧空低，保留实际回调整理时长和后续新A独立生命周期。；图表悬停、K线点击、日期定位和ABC端点选择统一显示及异步重绑定，保留测幅与可知性。",
+            "description": "按用户确认统一强A高点达到二吐、普通A达到一饱但未达二吐；最低价严格破A起点即永久失效；强弱A的B均可破轧空低，保留实际回调整理时长和后续新A独立生命周期；图表悬停、K线点击、日期定位和ABC端点选择统一显示及异步重绑定，保留测幅与可知性。",
             "scope": "Core A/B/C共用规则、整段波浪上下文与测幅、Web共用识别和说明及真实行情/边界定向回归",
             "dependencies": ["MONOREPO-262", "MONOREPO-258"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "一饱相等为普通A、二吐相等为强势A，未达一饱不分类；内部N测幅与整段A起点分别保留",
                 "最低价严格破原A起点优先失效，价格相等仍有效；后来收复或更高行情不能复活同A及后续C，已结束历史不被新段抹除",
@@ -64,6 +64,11 @@
                     "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; pnpm harness:check; git diff --check",
                     "status": "passed",
                     "summary": "图表补修Web lint0错误6既有警告、类型与512MB/4MB生产构建通过；next-env生成路径定向恢复。格式/Harness/差异检查通过。原Core6项基线失败及合并待确认保持，不重跑无关失败或修改断言；完整单测与浏览器/Playwright未运行。"
+                },
+                {
+                    "command": "User-authorized delivery with acknowledged main baseline failures; git fetch origin; git merge main; git diff --check main...HEAD",
+                    "status": "passed",
+                    "summary": "用户在被告知6项main既有失败（其中4项原未获例外）后明确要求合并到main并推送，授权保留这些失败。main ffa270a未新增，特性分支同步无冲突，最终差异检查通过；6项failed记录及256原四项失败均保留。263实现已完成但带failed证据不能标done，留backlog待独立验证，恢复256为唯一in-progress。"
                 }
             ]
         },
@@ -369,7 +374,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "backlog",
+            "status": "in-progress",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
