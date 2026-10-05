@@ -4,6 +4,75 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-263",
+            "name": "a-wave-classification-origin-lifecycle",
+            "title": "A强弱分类与起点失效规则统一",
+            "description": "按用户确认统一强A高点达到二吐、普通A达到一饱但未达二吐；最低价严格破A起点即永久失效；强弱A的B均可破轧空低，保留实际回调整理时长和后续新A独立生命周期；图表悬停、K线点击、日期定位和ABC端点选择统一显示及异步重绑定，保留测幅与可知性。",
+            "scope": "Core A/B/C共用规则、整段波浪上下文与测幅、Web共用识别和说明及真实行情/边界定向回归",
+            "dependencies": ["MONOREPO-262", "MONOREPO-258"],
+            "status": "backlog",
+            "acceptanceCriteria": [
+                "一饱相等为普通A、二吐相等为强势A，未达一饱不分类；内部N测幅与整段A起点分别保留",
+                "最低价严格破原A起点优先失效，价格相等仍有效；后来收复或更高行情不能复活同A及后续C，已结束历史不被新段抹除",
+                "强A和普通A的B均允许破轧空低，记录首次破低、完整回调和底部整理交易日，不制造固定延期或自动买点",
+                "Core、Web观察/目标/成交说明和拓扑规则一致，保留已有量价、结构、风控和执行门禁",
+                "新华传媒与国芳真实锚点、边界及历史前缀和相关测试/类型/构建通过；旧失败及未运行完整套件/浏览器如实记录",
+                "ABC范围内K线点击、日期定位或端点选择固定对应标签与C目标，理论异步加载后重绑定；内部N目标并显，开关控制显示、换数据清理旧选择、移窗清理范围焦点，目标显示位置不改原锚点和可知日"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core python -m pytest tests/test_backtest_version.py tests/test_a_wave_lifecycle.py tests/test_abc_candidate.py tests/test_wave_projection.py -q",
+                    "status": "passed",
+                    "summary": "最终52项通过；Core/Web共享7组分类边界，覆盖一饱/二吐等号、强弱B破轧空低、最低价破起点（收盘收复仍失效）、同价有效、旧A不复活、新A独立、实际时长与历史前缀。首次63项波浪回归通过，后续更广回归另记，不重复累计。"
+                },
+                {
+                    "command": "Core pytest test_a_wave_lifecycle, wave_continuation, wave_projection, wave_body_breakout, wave_intraday_entry, abc_candidate, one_p_rebound, ten_full_entry, five_top_entry, two_t_resistance_risk, wave_entry_epoch, xinhua_mother_pullback_squeeze, xinhua_volume_record_squeeze",
+                    "status": "failed",
+                    "summary": "179项中173通过、6失败。失败为旧结构分钟加载、华瓷早分钟确认、桂林普通A买点和分钟量过滤、两项January6 recovered标志。使用pythonpath明确指向未修改main/src再次运行这6项，6项原样失败；桂林当前因wave_no_alternation_at_attack拒绝，普通A结构观察仍有正确5/28 N、6/8 A、6/29 B。不篡改旧测试、正式资格或历史行情以制造通过。"
+                },
+                {
+                    "command": "Baseline pytest -o pythonpath=E:/WorkSpace/work/wavequant-monorepo/packages/wavequant-core/src on the same six failures",
+                    "status": "failed",
+                    "summary": "修改前main ffa270a的同6项全部失败（51.03秒）；两项January6属于256中此前获准保留的4项之一，另外4项尚无豁免。按AGENTS检查失败不合并，本轮实现先提交在特性分支，等待合并例外确认；保留256原四项失败记录。"
+                },
+                {
+                    "command": "Web node --test 14 affected test files; pnpm exec vitest run src/features/research-workbench/topology/topology-data.test.ts",
+                    "status": "passed",
+                    "summary": "173项Node及4项拓扑通过。真实新华整段A02-08至03-25、B08-28于09-03确认，106回调+4整理=110交易日；内部03-05 N起点仍02-29。强弱父A、普通A三档目标、最低价失效/恢复不复活、历史归档与前缀、焦点/Canvas/来源和成交说明通过。70源拓扑摘要916f1034...包含新共用Web规则。"
+                },
+                {
+                    "command": "Core five modified modules mypy --follow-imports=silent; Core typecheck/build; Web lint/typecheck/build; targeted Prettier; pnpm harness:check; codegraph sync; git diff --check",
+                    "status": "passed",
+                    "summary": "5修改模块mypy及既定4文件严格typecheck、Core sdist/wheel通过；Web lint0错误6既有警告、类型与512MB/4MB生产构建通过，next-env生成变化定向恢复。Harness、相关格式、差异和CodeGraph同步通过；未修改凭据、CI或数据缓存。"
+                },
+                {
+                    "command": "Full Core/Web suites; browser/Playwright; external minute execution",
+                    "status": "not-run",
+                    "summary": "按当前开发验证节奏未运行，待独立验证。179项Core相邻回归的6项失败如实保留，不能宣称全部验证通过；未合并main或推送，服务暂仍main v91。"
+                },
+                {
+                    "command": "node --test 15 affected chart/ABC/N test files",
+                    "status": "passed",
+                    "summary": "183项通过；新增5项定位、端点选择、理论异步加载、N选择共显和焦点生命周期回归，原三条缺失路径先失败。成交/测幅断言保留，旧显示位置断言改用display_at并新增原B锚点不变断言。"
+                },
+                {
+                    "command": "Real /api/akshare-backtest sh.600825 2018-01-01..2026-09-30; replay three chart SDK/Canvas regression paths with full response",
+                    "status": "passed",
+                    "summary": "实际main v91接口2,113根因果复权日线保留A02-08→03-25、B08-28和C10-31；完整输入代入定位、ABC端点选择、焦点先于理论三条回归均通过。C目标5.371010663884799/6.4621916579306/8.227505412695798与内部03-05 N目标共显，历史截面不借未来B。没有浏览器像素验收。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "图表补修Web lint0错误6既有警告、类型与512MB/4MB生产构建通过；next-env生成路径定向恢复。格式/Harness/差异检查通过。原Core6项基线失败及合并待确认保持，不重跑无关失败或修改断言；完整单测与浏览器/Playwright未运行。"
+                },
+                {
+                    "command": "User-authorized delivery with acknowledged main baseline failures; git fetch origin; git merge main; git diff --check main...HEAD",
+                    "status": "passed",
+                    "summary": "用户在被告知6项main既有失败（其中4项原未获例外）后明确要求合并到main并推送，授权保留这些失败。main ffa270a未新增，特性分支同步无冲突，最终差异检查通过；6项failed记录及256原四项失败均保留。263实现已完成但带failed证据不能标done，留backlog待独立验证，恢复256为唯一in-progress。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-262",
             "name": "confirmed-parent-abc-observation",
             "title": "整段A起点与深B回调ABC标识",

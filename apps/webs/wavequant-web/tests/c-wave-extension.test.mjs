@@ -59,6 +59,13 @@ test("a failed origin or expired observation cannot unlock a new extension", () 
     assert.equal(extension(projection, []), undefined);
 });
 
+test("a low-only origin loss blocks the extension while equality holds", () => {
+    const wick = bars.map((bar) => (bar.time === "2026-01-06" ? { ...bar, low: 7.99 } : bar));
+    assert.equal(extension(projection, wick), undefined);
+    const touch = bars.map((bar) => (bar.time === "2026-01-06" ? { ...bar, low: 8 } : bar));
+    assert.equal(extension(projection, touch)?.available_at, "2026-01-07");
+});
+
 test("later failure keeps the earlier target but stops its breakout observations", () => {
     const history = [
         ...bars.slice(0, 3),

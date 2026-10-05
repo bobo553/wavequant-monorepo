@@ -44,12 +44,16 @@ export function waveEntryEvidence(evidence) {
     const bodyBreakout = wave.wave_gap_trigger === "volume_body_breakout";
     const ordinary = wave.wave_a_class === "ordinary";
     const strongRebreak = wave.wave_entry_path === "two_t_strong_a_resistance_rebreak";
+    const bDefense =
+        wave.wave_b_broke_squeeze_low === 1 || wave.wave_b_broke_squeeze_low === true
+            ? `曾于 ${wave.wave_b_squeeze_break_date} 跌破轧空低 ${num(wave.wave_defense, 4)}，原 A 起点保持有效`
+            : `守住轧空低 ${num(wave.wave_defense, 4)}`;
     return [
         strongRebreak
             ? `强 A 浪再攻击买点：${wave.wave_a_origin_date} 起涨，${wave.wave_two_t_break_date} 收盘突破二吐 ${num(wave.wave_entry_two_t, 4)}；${wave.wave_resistance_date} 冲至 A 高 ${num(wave.wave_resistance_high, 4)} 后遇阻，${wave.wave_b_low_date} B 低 ${num(wave.wave_b_low, 4)}。突破阳线实体中位 ${num(wave.wave_two_t_body_midpoint, 4)}，此后各交易日收盘均未跌破。`
             : ordinary
-              ? `普通 A 浪反弹买点：原正 N ${wave.wave_entry_n_date}，${wave.wave_entry_milestone_date} 达到一饱 ${num(wave.wave_entry_one_p, 4)}；A 高 ${wave.wave_a_high_date} ${num(wave.wave_a_high, 4)} 尚未达到二吐 ${num(wave.wave_entry_two_t, 4)}。B 低 ${wave.wave_b_low_date} ${num(wave.wave_b_low, 4)} 守住轧空低 ${num(wave.wave_defense, 4)}。`
-              : `堆箱买点：原正 N ${wave.wave_entry_n_date}，${wave.wave_entry_two_t_date} 达到二吐 ${num(wave.wave_entry_two_t, 4)}；B 低 ${wave.wave_b_low_date} ${num(wave.wave_b_low, 4)} 守住轧空低 ${num(wave.wave_defense, 4)}。`,
+              ? `普通 A 浪反弹买点：原正 N ${wave.wave_entry_n_date}，${wave.wave_entry_milestone_date} 达到一饱 ${num(wave.wave_entry_one_p, 4)}；A 高 ${wave.wave_a_high_date} ${num(wave.wave_a_high, 4)} 尚未达到二吐 ${num(wave.wave_entry_two_t, 4)}。B 低 ${wave.wave_b_low_date} ${num(wave.wave_b_low, 4)} ${bDefense}。`
+              : `堆箱买点：原正 N ${wave.wave_entry_n_date}，${wave.wave_entry_two_t_date} 达到二吐 ${num(wave.wave_entry_two_t, 4)}；B 低 ${wave.wave_b_low_date} ${num(wave.wave_b_low, 4)} ${bDefense}。`,
         strongRebreak
             ? `C 浪确认：${wave.wave_breakout_date} A 高 ${num(wave.wave_breakout_high, 4)} 被 ${num(wave.wave_breakout_close, 4)} 收盘突破，成交量 ${num(wave.wave_gap_volume, 0)} > 前日 ${num(wave.wave_gap_previous_volume, 0)}。`
             : ordinary
@@ -70,6 +74,12 @@ export function waveEntryEvidence(evidence) {
         ...(Number.isFinite(wave.wave_c_1618_target) && Number.isFinite(wave.wave_c_2618_target)
             ? [
                   `大 C 浪扩展目标：B 低 + 1.618×整段 A 幅度 = ${num(wave.wave_c_1618_target, 4)} 元；B 低 + 2.618×整段 A 幅度 = ${num(wave.wave_c_2618_target, 4)} 元。2.618 倍不是上涨上限，达标本身不触发卖出。`,
+              ]
+            : []),
+        ...(wave.wave_duration_unit === "trading_bars" &&
+        [wave.wave_b_duration, wave.wave_b_consolidation_duration, wave.wave_b_elapsed_duration].every(Number.isInteger)
+            ? [
+                  `A/B 生命周期：最低价严格跌破 A 起点 ${num(wave.wave_a_origin, 4)} 即失效，相等仍有效；失效后等待新 A。B 可跌破轧空低，回调至低点 ${wave.wave_b_duration}、底部整理 ${wave.wave_b_consolidation_duration}，合计 ${wave.wave_b_elapsed_duration} 个交易日，按实际过程跟踪。`,
               ]
             : []),
     ];

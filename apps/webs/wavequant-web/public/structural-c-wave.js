@@ -1,3 +1,4 @@
+import { classifyAAttack } from "./a-wave-rules.js";
 import { confirmedCWaveProjection, knownWavePoint, maximumWaveHigh } from "./confirmed-c-wave.js";
 
 /** 已确认父 A 的起点独立于内部正 N；一级小回调不会提前截断整段 B。 */
@@ -49,10 +50,12 @@ export function structuralCWaveProjections(bars, theory) {
                     Number.isFinite(twoT) &&
                     oneP > nOrigin.value &&
                     twoT > oneP &&
-                    a.value >= twoT
+                    classifyAAttack(a.value, oneP, twoT) !== null
                 );
             });
             if (!event) continue;
+            const oneP = event.one_p ?? event.levels.find((level) => level.stage === "one_p").price;
+            const twoT = event.two_t ?? event.levels.find((level) => level.stage === "two_t").price;
             for (const source of theory?.reversal_trends?.strokes || []) {
                 const points = (source.points || []).filter(
                     (point) => point.time >= origin.time && knownWavePoint(point, point.kind, asof, byTime),
@@ -79,11 +82,11 @@ export function structuralCWaveProjections(bars, theory) {
                 if (observations.has(key)) continue;
                 observations.set(key, {
                     ...projection,
-                    oneP: event.one_p ?? event.levels.find((level) => level.stage === "one_p").price,
-                    twoT: event.two_t ?? event.levels.find((level) => level.stage === "two_t").price,
+                    oneP,
+                    twoT,
                     nOriginTime: event.shape[0].time,
                     nOrigin: event.shape[0].value,
-                    aAttackClass: "strong",
+                    aAttackClass: classifyAAttack(projection.aHigh, oneP, twoT) === "strong" ? "strong" : "non_strong",
                     projectionSource: "confirmed_parent_wave",
                     trendLevel: parent.trend_level || 2,
                     sourceTrendLevel: 1,

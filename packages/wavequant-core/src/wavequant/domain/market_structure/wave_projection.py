@@ -13,6 +13,7 @@ from math import isfinite
 from typing import Literal
 
 from ..models.model import Bar
+from .a_wave_rules import a_origin_broken
 
 
 def _price(value: float) -> Decimal:
@@ -102,6 +103,10 @@ def wave_projection_history(
             if i:
                 _ordered_pair(bars[i - 1], bars[i])
 
+    if any(a_origin_broken(bar.low, setup.origin)
+           for bar in bars[setup.origin_index + 1:setup.attack_index + 1]):
+        return ()
+
     box = _price(setup.box_anchor) - _price(setup.origin)
     peak, peak_index = bars[setup.attack_index].high, setup.attack_index
     a_high, a_index = peak, peak_index
@@ -141,11 +146,11 @@ def wave_projection_history(
 
     for i in range(setup.attack_index, end + 1):
         bar = bars[i]
-        if i > setup.attack_index and bar.low < setup.defense:
+        if i > setup.attack_index and a_origin_broken(bar.low, setup.origin):
             if state != "await_two_t":
                 state, target = "invalidated", None
                 emit(i, "wave_projection_invalidated")
-            break  # This N cannot revive even if support is regained later.
+            break  # Only a new A origin can start a later C after this A fails.
         previous_peak = peak
         if bar.high > peak:
             peak, peak_index = bar.high, i

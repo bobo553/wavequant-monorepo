@@ -197,6 +197,9 @@ export class PriceChart {
         this.hoveredWaveProjection = null;
         this.hoveredWaveTime = null;
         this.hoveredWaveId = null;
+        this.focusedWaveProjection = null;
+        this.focusedWaveTime = null;
+        this.focusedWaveId = null;
         this.options = {
             signals: true,
             fills: true,
@@ -357,7 +360,7 @@ export class PriceChart {
             }
         });
         this.chart.subscribeClick((p) => {
-            this.focusNTargets(p.time, p.hoveredObjectId);
+            this.focusCandleTargets(p.time, p.hoveredObjectId);
             const drawingId = p.point && this.lectureOverlay.hitTest(p.point.x, p.point.y)?.externalId;
             if (drawingId && drawingId === this.selected?.id) return;
             const items = this.itemsAt(p.time, drawingId || p.hoveredObjectId);
@@ -413,6 +416,9 @@ export class PriceChart {
         this.hoveredWaveProjection = null;
         this.hoveredWaveTime = null;
         this.hoveredWaveId = null;
+        this.focusedWaveProjection = null;
+        this.focusedWaveTime = null;
+        this.focusedWaveId = null;
         this.waveEndpointOverlay.setPoints([]);
         this.tooltip.hidden = true;
         this.clearTheory();
@@ -507,6 +513,26 @@ export class PriceChart {
             null
         );
     }
+    displayedWaveProjection() {
+        if (!this.options.tertiaryAbc) return null;
+        const selected =
+            this.selected?.category === "wave-projection"
+                ? this.autoWaveProjections.find(
+                      (item) => item.id === this.selected.id || item.raw === this.selected.raw,
+                  )
+                : null;
+        return this.hoveredWaveProjection || this.focusedWaveProjection || selected || null;
+    }
+    focusWaveTargets(time, id, redraw = true) {
+        this.focusedWaveTime = this.data?.bars.some((bar) => bar.time === time) ? time : null;
+        this.focusedWaveId = id || null;
+        this.focusedWaveProjection = this.waveProjectionAt(this.focusedWaveTime, this.focusedWaveId);
+        if (redraw) this.drawLevels();
+    }
+    focusCandleTargets(time, id) {
+        this.focusNTargets(time, id, false);
+        this.focusWaveTargets(time, id);
+    }
     selectedNTargetId() {
         if (isPositiveNTarget(this.selected)) return this.selected.id;
         const date = this.selected?.levels?.find((level) => level.stage === "one_p")?.n_date;
@@ -578,7 +604,7 @@ export class PriceChart {
         const bars = this.data.bars,
             from = bars[Math.max(0, Math.floor(range?.from || 0))]?.time || bars[0].time;
         const to = bars[Math.min(bars.length - 1, Math.ceil(range?.to ?? bars.length - 1))]?.time || bars.at(-1).time;
-        const previousProjection = this.hoveredWaveProjection || this.selected || this.autoWaveProjection;
+        const previousProjection = this.displayedWaveProjection() || this.selected || this.autoWaveProjection;
         const wasHoveringProjection = Boolean(this.hoveredWaveProjection);
         const viewportStartChanged = this.waveProjectionViewportFrom !== from;
         this.waveProjectionViewportFrom = from;
@@ -596,6 +622,11 @@ export class PriceChart {
             this.hoveredWaveTime = null;
             this.hoveredWaveId = null;
         }
+        if (this.focusedWaveTime && (this.focusedWaveTime < from || this.focusedWaveTime > to)) {
+            this.focusedWaveTime = null;
+            this.focusedWaveId = null;
+        }
+        this.focusedWaveProjection = this.waveProjectionAt(this.focusedWaveTime, this.focusedWaveId);
         const previousN = this.hoveredNTarget;
         this.hoveredWaveProjection = this.waveProjectionAt(this.hoveredWaveTime, this.hoveredWaveId);
         this.hoveredNTarget = this.options.levels
@@ -606,14 +637,16 @@ export class PriceChart {
                   this.selectedNTargetId(),
               )
             : null;
-        const displayedProjection = this.hoveredWaveProjection || this.selected || this.autoWaveProjection;
+        const displayedProjection = this.displayedWaveProjection() || this.selected || this.autoWaveProjection;
         if (
             previousProjection !== displayedProjection ||
             previousN !== this.hoveredNTarget ||
             ((this.hoveredNTarget || this.focusedNTarget || isPositiveNTarget(this.selected)) &&
                 (viewportStartChanged || viewportEndChanged)) ||
             (displayedProjection?.kind === "wave-projection" &&
-                (viewportStartChanged || wasHoveringProjection !== Boolean(this.hoveredWaveProjection)))
+                (viewportStartChanged ||
+                    viewportEndChanged ||
+                    wasHoveringProjection !== Boolean(this.hoveredWaveProjection)))
         )
             this.drawLevels();
         const span = range ? range.to - range.from : 140;
@@ -822,8 +855,9 @@ export class PriceChart {
         const selected = this.windowAnnotations.find((m) => m.id === id) || this.lectureOverlay.annotation(id);
         if (!selected) return;
         this.selected = selected;
-        this.focusNTargets(selected.time, selected.id, false);
         if (focus) this.focus(selected.time);
+        this.focusNTargets(selected.time, selected.id, false);
+        this.focusWaveTargets(selected.kind === "fill" ? null : selected.time, selected.id, false);
         this.drawLevels();
         this.scheduleMarkers();
         this.onSelect(items || [selected]);
@@ -1036,18 +1070,15 @@ export class PriceChart {
     }
     drawLevels() {
         this.clearLevels();
+        const projection = this.displayedWaveProjection();
         this.waveEndpointOverlay.setPoints(
-            this.hoveredWaveProjection && this.options.tertiaryAbc
-                ? projectionWaveEndpoints(
-                      this.hoveredWaveProjection.raw,
-                      this.data?.bars || [],
-                      this.waveProjectionAsOf(),
-                  )
+            projection
+                ? projectionWaveEndpoints(projection.raw, this.data?.bars || [], this.waveProjectionAsOf())
                 : selectedWaveEndpoints(this.selected, this.data?.bars || []),
         );
         const focusedN =
             this.hoveredNTarget || this.focusedNTarget || (isPositiveNTarget(this.selected) ? this.selected : null);
-        let item = this.hoveredWaveProjection || this.selected || this.autoWaveProjection;
+        let item = projection || this.selected || this.autoWaveProjection;
         if (isPositiveNTarget(item) && focusedN) item = focusedN;
         // 拒单不产生常驻图标；从右侧账本主动定位时，仅临时标示对应 K 线的参考价。
         const blockedOrder = item?.kind === "order" && item.status === "cancelled";
@@ -1134,18 +1165,27 @@ export class PriceChart {
             }
             if (guide && item.kind === "wave-projection" && ["c_0618", "c_equal", "c_1618"].includes(level.stage)) {
                 const visibleRange = this.chart.timeScale().getVisibleLogicalRange();
-                const visibleStart = this.data.bars[Math.max(0, Math.floor(visibleRange?.from || 0))]?.time;
-                const displayStart =
-                    this.hoveredWaveProjection === item && this.hoveredWaveTime
+                const visibleStart = this.data.bars[Math.max(0, Math.ceil(visibleRange?.from || 0))]?.time;
+                const visibleEnd =
+                    this.data.bars[
+                        Math.min(this.data.bars.length - 1, Math.floor(visibleRange?.to ?? this.data.bars.length - 1))
+                    ]?.time;
+                const focusTime =
+                    this.hoveredWaveProjection === item
                         ? this.hoveredWaveTime
-                        : visibleStart && guide.start < visibleStart
+                        : this.focusedWaveProjection === item
+                          ? this.focusedWaveTime
+                          : null;
+                const displayStart =
+                    focusTime && focusTime >= visibleStart && focusTime <= visibleEnd
+                        ? focusTime
+                        : visibleStart && (guide.start < visibleStart || guide.start > visibleEnd)
                           ? visibleStart
                           : guide.start;
                 // 标签随复盘光标或可见 C 区间出现；历史锚点、可知日与首次触及时间不改。
                 displayGuide = {
                     ...guide,
-                    start: displayStart,
-                    end: guide.end && guide.end >= displayStart ? guide.end : null,
+                    display_at: displayStart,
                 };
             }
             if (targetStages.has(level.stage))
@@ -1186,6 +1226,9 @@ export class PriceChart {
         this.hoveredWaveProjection = null;
         this.hoveredWaveTime = null;
         this.hoveredWaveId = null;
+        this.focusedWaveProjection = null;
+        this.focusedWaveTime = null;
+        this.focusedWaveId = null;
         this.waveEndpointOverlay.setPoints(selectedWaveEndpoints(this.selected, this.data?.bars || []));
         for (const series of this.lines) this.chart.removeSeries(series);
         this.lines = [];
@@ -1355,6 +1398,10 @@ export class PriceChart {
         this.lines.push(s);
     }
     setTheory(theory, geometry = true) {
+        const focusedTime = this.focusedWaveTime;
+        const focusedId = this.focusedWaveId;
+        const focusedNTime = this.focusedNTime;
+        const focusedNId = this.focusedNTarget?.id;
         this.theory = theory;
         this.clearTheory();
         this.geometryVisible = geometry;
@@ -1373,11 +1420,19 @@ export class PriceChart {
         this.nTargetObservations = nTargetObservations(this.annotations, this.data?.bars || [], asof);
         if (isPositiveNTarget(this.selected))
             this.selected = this.nTargetObservations.find(({ item }) => item.id === this.selected.id)?.item || null;
+        if (this.selected?.category === "wave-projection")
+            this.selected =
+                [...this.autoWaveProjections, ...this.autoWaveEvidence].find((item) => item.id === this.selected.id) ||
+                null;
         this.annotations.push(
             ...this.autoWaveEvidence,
             ...this.autoWaveProjections,
             ...combinedAAnnotations(this.displayedCombinedAObservations()),
         );
+        if (theory) {
+            this.focusNTargets(focusedNTime, focusedNId, false);
+            this.focusWaveTargets(focusedTime, focusedId, false);
+        }
         this.drawWaveAbPath();
         this.refreshMarkers();
         this.drawLevels();
@@ -1417,7 +1472,7 @@ export class PriceChart {
         if (!range) return false;
         timeScale.setVisibleLogicalRange(range);
         this.flashCandle(this.data.bars[index]);
-        this.focusNTargets(this.data.bars[index].time);
+        this.focusCandleTargets(this.data.bars[index].time);
         return true;
     }
     focusRange(from, to) {

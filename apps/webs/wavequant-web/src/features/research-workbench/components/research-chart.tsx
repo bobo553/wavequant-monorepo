@@ -114,7 +114,7 @@ const chartLayers: readonly IChartLayer[] = [
         id: "show-levels",
         label: "选中点位线",
         checked: true,
-        description: "点击图表标识或证据记录后，显示所选价格水平的辅助定位线。",
+        description: "悬停、点击 K 线或按日期定位时显示所在波段的目标；点击标识或证据记录也可显示所选价格水平。",
         tone: "base",
     },
     {
@@ -130,7 +130,7 @@ const chartLayers: readonly IChartLayer[] = [
         label: "ABC 波段 / C 目标",
         checked: true,
         description:
-            "标出 A 起点、正 N、轧空、A 顶和 B/C 起点；开启“折线 / N 字”连出 A/B 波段，开启“选中点位线”显示 C 浪两档目标。历史确认的 ABC 保留在原日期。也显示经正 N 与轧空确认的三级 c 启动候选；点击可查看证据。",
+            "标出 A 起点、正 N、轧空、A 顶、B/C 起点和已确认 C 顶。范围内悬停、点击 K 线或按日期定位显示对应端点与 C 目标；目标需开启“选中点位线”，连线需开启“折线 / N 字”。普通 A 显示三档目标，强势 A 达到等浪后显示 1.618 延伸。历史锚点与可知日期保持不变；点击标识可查看证据。",
         tone: "orange",
     },
 ];

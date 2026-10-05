@@ -175,7 +175,7 @@ def test_strong_a_buy_exposes_five_top_before_legacy_push_and_preserves_its_date
         n = next(event for event in theory["events"] if event["event"] == "n_completed")
         return {level["stage"]: level for level in n["levels"] if level.get("stage")}
 
-    assert levels(7) == {}
+    assert set(levels(7)) == {"one_p", "two_t"}
     five = levels(8)["five_top"]
     assert five["price"] == 30.8
     assert five["status"] == "观察"
@@ -196,8 +196,8 @@ def test_a_high_bar_low_is_not_assumed_to_be_a_subsequent_b_low():
     assert events[-1].target == 31.8  # B18 + 3H13.8, not the A-high-bar low.
 
 
-@pytest.mark.parametrize("low,invalid", [(10.4, False), (10.39, True)])
-def test_defense_equality_holds_breach_wins_over_upside_and_never_revives(low: float, invalid: bool):
+@pytest.mark.parametrize("low,invalid", [(10.4, False), (10.39, False), (8, False), (7.99, True)])
+def test_a_origin_equality_holds_strict_break_wins_and_never_revives(low: float, invalid: bool):
     bars = bars_with((21, 22, 18, 19), (19, 20, low, 18), (18, 50, 18, 49))
     events = wave_projection_history(bars, SETUP)
     assert (events[-1].state == "invalidated") is invalid
@@ -205,14 +205,14 @@ def test_defense_equality_holds_breach_wins_over_upside_and_never_revives(low: f
         assert events[-1].bar_index == 8 and events[-1].target is None
 
 
-def test_defense_breach_before_two_t_prevents_later_activation():
+def test_a_origin_breach_before_two_t_prevents_later_activation():
     bars = bars_with((22, 30, 21, 29))
-    bars[5] = replace(bars[5], low=10.39)
+    bars[5] = replace(bars[5], low=7.99)
     assert not wave_projection_history(bars, SETUP)
 
 
 def test_same_bar_support_break_wins_over_reaching_the_active_target():
-    events = wave_projection_history(bars_with((22, 24, 21, 23), (23, 40, 10.39, 39)), SETUP)
+    events = wave_projection_history(bars_with((22, 24, 21, 23), (23, 40, 7.99, 39)), SETUP)
     assert events[-1].state == "invalidated"
     assert events[-1].target is None
     assert not any(e.event == "wave_projection_target_reached" for e in events)

@@ -1,3 +1,23 @@
+## 2026-10-05 · MONOREPO-263 合并及推送已授权
+
+用户在收到6项main既有失败及4项未授权例外说明后，明确要求“合并到main并推送”，允许保留这些失败执行本次交付。实现39ebb54、焦点修复462fbef和检查证据保持；fetch后本地main ffa270a无新增变更，特性分支同步main无冲突。后续按no-ff合并并普通推送main，不改写历史。
+
+263实现已完成并获得交付授权，但其6项failed事实保留，因此按Harness要求留为backlog待独立验证；恢复256为唯一in-progress，256原四项失败记录保持。之前的合并待确认说明为当时记录，现已解除。图表及策略的常驻实际生效验收和Git最终结果见随后交付记录；不宣称浏览器像素或完整套件通过。
+
+## 2026-10-05 · MONOREPO-263 图表焦点补修，当时合并待确认
+
+同一 worktree/分支继续修复用户反馈的 ABC 标签缺失。结构在实际 main API 截至2026-09-30的2,113根日线仍存在，断点是点击和日期定位仅固定N、ABC端点选中未发布端点标签、异步理论清理焦点。charts.js共用固定ABC/正N焦点及重绑定，选中ABC端点与内部N都显示父段；C标签用display_at保持原测幅和可知性，成交选择不冒用回看观察。新增5项行为回归，原三路径先失败；183项定向Node和Web lint/typecheck/build通过，完整实际输入代入三条图表/SDK/Canvas回归也通过。次级重叠组保留，父A02-08→03-25、B08-28、C10-31及三档精确目标未改变。
+
+浏览器连接不可用，没有读取到用户当前页面；未运行Playwright、E2E或完整套件，不能把SDK/Canvas检查写成浏览器像素验收。39ebb54的6项已复现main基线失败及合并例外请求仍保留，用户本轮报错不构成例外授权。263继续唯一in-progress，256保持backlog且原失败证据不变；修复提交后等待明确例外，再同步main、no-ff本地合并。当前13003/API8765仍main v91，没有修改缓存、服务进程或推送。
+
+## 2026-10-05 · MONOREPO-263 实现完成，合并待确认
+
+复用新华传媒 worktree 与 feat-新华传媒轧空买点，基线 main ffa270a。Core/Web 统一一饱包含等号的普通 A、二吐包含等号的强势 A；最低价严格跌破原 A 起点即永久失效（相等有效），B 可破轧空低，记录首次破低及实际回调、整理交易日。整段 A 与内部正 N 各保留原点，普通 A 各来源统一三档 C 观察。策略 v92，规则见 docs/wavequant-a-b-c-rules.md。
+
+Core 最终52项边界/版本/ABC/测幅，Web173项与4项拓扑，Core/Web类型与构建、Web lint、格式、Harness及复核通过。Core相邻179项中173通过、6失败；明确导入未修改main/src对照同6项，全部原样失败：wave_intraday_entry的old_structural_episode及huaci_early_body_minute，one_p_rebound的guilin及optional_volume_filter，以及wave_entry_epoch两项January6 recovered。后两项在256原4失败豁免内，前4项没有新豁免；桂林波段正确，但正式wave_no_alternation_at_attack拒绝LONG。没有修改这些旧资格或断言以制造通过。
+
+按照 docs/agent/codex-global-AGENTS.md:34 的“检查未通过时先修复，无法通过时说明原因，不合并”，先提交可复核实现，待用户确认是否保留这6项既有失败并本地合并。263保留唯一in-progress，256暂置backlog且原四项失败证据不动；确认例外后复查main、同步、no-ff合并，再恢复256为唯一in-progress。未要求新推送。服务暂仍main v91，不能宣称v92已生效；完整套件、浏览器/Playwright及外部分钟执行未运行。
+
 ## 2026-10-05 · MONOREPO-262 已完成
 
 继续复用新华传媒 worktree / feat-新华传媒轧空买点，基线 main eda7e9c。新增共用已确认父 A 结构观察，保留二级整段起点、内部正式 N 独立测幅、同路径一级已确认 B 持续更低刷新及已确认 C 归档；普通 A 共用因果跟踪器，交易 Core 未改。真实 1699 日线和独立 1621 日线 09-03 正式前缀一致，完整 A 02-08→03-25、B 08-28→C 10-31 被发布，B 09-03、C 11-08 才可知，03-20 BUY/filled 保持。150 项定向回归及 Web lint/typecheck/build 通过；完整套件和浏览器/Playwright 待独立验证。262 done，恢复 256 为唯一 in-progress 并保留 4 项旧失败，本轮不推送。实现 5d65633 已经 b98ed41 合并本地 main；13003 四个共用模块 HTTP200 且响应字节与 main 文件一致，main 真实1699日线重放与 Harness 再次通过。未重启、未修改缓存；浏览器未运行。

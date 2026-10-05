@@ -3,6 +3,7 @@
 from collections.abc import Mapping, Sequence
 from fractions import Fraction
 
+from ..market_structure.a_wave_rules import a_origin_broken, classify_a_attack
 from ..market_structure.wave_projection import WaveProjectionSetup
 from ..market_structure.polyline import PointKind, ReversalPoint
 from ..models.model import Bar
@@ -11,15 +12,18 @@ from ..models.model import Bar
 def wave_pullback_context(
     bars: Sequence[Bar], setup: WaveProjectionSetup, now: int
 ) -> dict[str, str | int | float] | None:
-    """Freeze the completed A and defended B using previous sessions only."""
+    """Freeze A and the known B; B may lose squeeze defense while A remains valid."""
     if not setup.squeeze_index < now < len(bars):
         return None
-    if min(b.low for b in bars[setup.attack_index + 1 : now]) < setup.defense:
+    if any(a_origin_broken(bar.low, setup.origin) for bar in bars[setup.origin_index + 1 : now]):
         return None
     # Exclude today's high: today's attack cannot retroactively create its own A/B.
     peak = max(range(setup.attack_index, now), key=lambda j: bars[j].high)
     one_p = float(2 * Fraction(str(setup.box_anchor)) - Fraction(str(setup.origin)))
-    strong = bars[peak].high >= setup.two_t
+    a_class = classify_a_attack(bars[peak].high, one_p, setup.two_t)
+    if a_class is None:
+        return None
+    strong = a_class == "strong"
     milestone = setup.two_t if strong else one_p
     if peak >= now - 1 or bars[peak].high < one_p:
         return None
@@ -38,9 +42,10 @@ def wave_pullback_context(
     )
     if reached is None:
         return None
+    squeeze_break = next((j for j in range(peak + 1, now) if bars[j].low < setup.defense), None)
     return dict(
         wave_entry_path="two_t_held_defense_gap_attack" if strong else "one_p_held_defense_rebound",
-        wave_a_class="strong" if strong else "ordinary",
+        wave_a_class=a_class,
         wave_entry_one_p=one_p,
         wave_entry_milestone_date=bars[max(reached, setup.squeeze_index)].timestamp.date().isoformat(),
         wave_entry_n_date=bars[setup.attack_index].timestamp.date().isoformat(),
@@ -55,6 +60,12 @@ def wave_pullback_context(
         wave_b_low=bars[bottom].low,
         wave_b_low_index=bottom,
         wave_b_low_date=bars[bottom].timestamp.date().isoformat(),
+        wave_b_broke_squeeze_low=int(squeeze_break is not None),
+        wave_b_squeeze_break_date=bars[squeeze_break].timestamp.date().isoformat() if squeeze_break is not None else "",
+        wave_b_duration=bottom - peak,
+        wave_b_consolidation_duration=now - 1 - bottom,
+        wave_b_elapsed_duration=now - 1 - peak,
+        wave_duration_unit="trading_bars",
         wave_c_0618_target=float(Fraction(str(bars[bottom].low)) + Fraction("0.618") * amplitude),
         wave_equal_target=float(target),
         **(
@@ -115,6 +126,8 @@ def wave_gap_entry(
     if not gap and bar.low < prior_b_low:
         # Only the already observed portion of today's candle may update B.
         context.update(wave_b_low=bar.low, wave_b_low_index=now, wave_b_low_date=bar.timestamp.date().isoformat())
+        context.update(wave_b_duration=now - int(context["wave_a_high_index"]),
+                       wave_b_consolidation_duration=0, wave_b_elapsed_duration=now - int(context["wave_a_high_index"]))
         amplitude = Fraction(str(context["wave_a_amplitude"]))
         for key, multiple in (
             ("wave_c_0618_target", "0.618"),
@@ -171,22 +184,20 @@ def wave_gap_entry(
     rebound = ordinary and body > 0 and resistance is not None and bar.close > resistance.point.price
     if not (rebound if ordinary else (strong_a_rebreak or (gap and (breakout or volume_up)) or body_breakout)):
         return None
+    if strong_a_rebreak:
+        context.update(
+            wave_entry_path="two_t_strong_a_resistance_rebreak",
+            wave_resistance_date=resistance_bar.timestamp.date().isoformat(),
+            wave_resistance_high=resistance_bar.high,
+            wave_two_t_break_date=breakthrough.timestamp.date().isoformat(),
+            wave_two_t_body_midpoint=midpoint,
+            wave_five_top_target=float(
+                Fraction(str(context["wave_b_low"]))
+                + Fraction(str(setup.two_t)) - Fraction(str(setup.origin))
+            ),
+        )
     return dict(
         context,
-        **(
-            dict(
-                wave_entry_path="two_t_strong_a_resistance_rebreak",
-                wave_resistance_date=resistance_bar.timestamp.date().isoformat(),
-                wave_resistance_high=resistance_bar.high,
-                wave_two_t_break_date=breakthrough.timestamp.date().isoformat(),
-                wave_two_t_body_midpoint=midpoint,
-                wave_five_top_target=float(
-                    Fraction(str(context["wave_b_low"]))
-                    + Fraction(str(setup.two_t)) - Fraction(str(setup.origin))
-                ),
-            )
-            if strong_a_rebreak else {}
-        ),
         wave_confirmation_phase="rebound" if ordinary else "gap" if gap else "body",
         wave_gap_trigger="rebound_close_breakout"
         if rebound

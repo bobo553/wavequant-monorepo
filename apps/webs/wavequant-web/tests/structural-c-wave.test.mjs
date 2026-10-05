@@ -129,7 +129,7 @@ test("strong parent classification requires the internal N's valid two-T with eq
     theory.events = theory.events.filter((event) => event.time === "2024-03-05");
     const twoT = theory.events[0].levels.find((level) => level.stage === "two_t");
     twoT.price = 6.389262105997745 + 0.01;
-    assert.equal(find(structuralCWaveProjections(bars, theory)), undefined);
+    assert.equal(find(structuralCWaveProjections(bars, theory)).aAttackClass, "non_strong");
     twoT.price = 6.389262105997745;
     assert.ok(find(structuralCWaveProjections(bars, theory)));
     twoT.price = NaN;

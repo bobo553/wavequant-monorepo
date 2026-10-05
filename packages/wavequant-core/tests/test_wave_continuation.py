@@ -113,7 +113,7 @@ def test_strong_a_signal_marker_carries_only_its_matching_buy_proof():
     assert marker["decision_evidence"][0]["wave_five_top_target"] == 5.85
 
 
-@pytest.mark.parametrize("case", ["midpoint_close", "volume", "a_high", "no_resistance", "defense", "new_b_low"])
+@pytest.mark.parametrize("case", ["midpoint_close", "volume", "a_high", "no_resistance", "origin", "new_b_low"])
 def test_strong_a_rebreak_requires_held_close_volume_and_a_high_break(case):
     bars, setup = guofang_strong_a_sample()
     if case == "midpoint_close":
@@ -124,8 +124,8 @@ def test_strong_a_rebreak_requires_held_close_volume_and_a_high_break(case):
         bars[7] = replace(bars[7], close=5.69)
     elif case == "no_resistance":
         bars[4] = replace(bars[4], open=5.30)
-    elif case == "defense":
-        bars[5] = replace(bars[5], low=4.42)
+    elif case == "origin":
+        bars[5] = replace(bars[5], low=4.26)
     else:
         bars[7] = replace(bars[7], low=4.97)
     assert wave_gap_entry(bars, setup, 7) is None
@@ -177,7 +177,7 @@ def test_real_gap_keeps_whole_b_low_and_equal_a_target():
     [
         "equal_volume",
         "no_gap",
-        "broken_defense",
+        "broken_origin",
         "no_two_t",
         "attack_wick_only",
         "no_squeeze",
@@ -192,8 +192,8 @@ def test_gap_entry_requires_every_condition(case):
         bars[now] = replace(bars[now], volume=bars[now - 1].volume)
     elif case == "no_gap":
         bars[now] = replace(bars[now], low=bars[now - 1].high)
-    elif case == "broken_defense":
-        bars[dates["2026-08-21"]] = replace(bars[dates["2026-08-21"]], low=setup.defense - 0.01)
+    elif case == "broken_origin":
+        bars[dates["2026-08-21"]] = replace(bars[dates["2026-08-21"]], low=setup.origin - 0.01)
     elif case == "no_two_t":
         setup = replace(setup, two_t=30, box_anchor=(30 + 2 * setup.origin) / 3)
     elif case == "attack_wick_only":

@@ -18,6 +18,12 @@ const additionalSources = [
     "packages/wavequant-core/src/wavequant/application/trading/intent_execution.py",
     "apps/webs/wavequant-web/public/wave-entry-evidence.js",
     "apps/webs/wavequant-web/public/combined-a-entry-evidence.js",
+    "apps/webs/wavequant-web/public/a-wave-rules.js",
+    "apps/webs/wavequant-web/public/confirmed-c-wave.js",
+    "apps/webs/wavequant-web/public/ordinary-c-wave.js",
+    "apps/webs/wavequant-web/public/structural-c-wave.js",
+    "apps/webs/wavequant-web/public/wave-c-projection.js",
+    "apps/webs/wavequant-web/public/c-wave-extension.js",
 ];
 
 function sourceDigest(sources: { file: string; content: string }[]): string {
@@ -31,6 +37,17 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("keeps A classification and lifetime distinct from B squeeze defense", () => {
+        const details = topologyFlows
+            .flatMap((flow) => flow.gates)
+            .map((gate) => gate.detail)
+            .join("\n");
+        expect(details).toMatch(/一饱.*≤.*A 高点.*<.*二吐/);
+        expect(details).toMatch(/二吐.*强势|强势.*二吐/);
+        expect(details).toMatch(/最低价.*严格.*A 起点/);
+        expect(details).toMatch(/B.*跌破轧空低/);
+        expect(details).toMatch(/失效.*新 A/);
+    });
     it("requires a diagram review whenever strategy source changes", () => {
         const files = [
             ...strategyDirectories.flatMap((directory) =>

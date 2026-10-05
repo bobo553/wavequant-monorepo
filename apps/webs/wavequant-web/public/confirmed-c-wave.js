@@ -1,3 +1,5 @@
+import { isAOriginBroken } from "./a-wave-rules.js";
+
 export function knownWavePoint(point, kind, asof, byTime) {
     const bar = byTime.get(point?.time);
     return (
@@ -23,7 +25,7 @@ export function maximumWaveHigh(bars, from, until) {
 }
 
 /** 同一 A 的 B 可持续刷新；只有突破 A 顶后的已确认 C 高点结束本段测幅。 */
-export function confirmedCWaveProjection({ bars, asof, event, origin, a, points, isHigh, failureFrom = event.time }) {
+export function confirmedCWaveProjection({ bars, asof, event, origin, a, points, isHigh, failureFrom = origin.time }) {
     const byTime = new Map(bars.map((bar) => [bar.time, bar]));
     const breakout = bars.find((bar) => bar.time > a.time && bar.high > a.value);
     const lows = points.filter(
@@ -51,11 +53,14 @@ export function confirmedCWaveProjection({ bars, asof, event, origin, a, points,
     );
     const end = completedC?.available_at || asof;
     const failedIndex = bars.findIndex(
-        (bar) => bar.time > failureFrom && bar.time <= end && bar.low < origin.value && bar.close < origin.value,
+        (bar) => bar.time > failureFrom && bar.time <= end && isAOriginBroken(bar, origin.value),
     );
-    // 确认前双破 A 起点时不发布原组；确认后失效保留历史及截止证据。
+    // 起点最低价严格失守优先；后续收复不能复活原 A。
     if (failedIndex >= 0 && bars[failedIndex].time <= knownAt) return null;
     const amplitude = a.value - origin.value;
+    const firstSqueezeBreak = Number.isFinite(event.defense)
+        ? bars.find((bar) => bar.time > a.time && bar.time <= b.time && bar.low < event.defense)
+        : null;
     const anchorVersions = [];
     for (const low of [...lows].sort(
         (left, right) => left.available_at.localeCompare(right.available_at) || left.time.localeCompare(right.time),
@@ -94,9 +99,10 @@ export function confirmedCWaveProjection({ bars, asof, event, origin, a, points,
         bLow: b.value,
         bKnownAt: b.available_at,
         confirmedAt: knownAt,
-        bBrokeASqueezeLow:
-            Number.isFinite(event.defense) &&
-            bars.some((bar) => bar.time > a.time && bar.time <= b.time && bar.low < event.defense),
+        bBrokeASqueezeLow: Boolean(firstSqueezeBreak),
+        bSqueezeBreakAt: firstSqueezeBreak?.time || null,
+        bConsolidationDuration: bars.filter((bar) => bar.time > b.time && bar.time <= b.available_at).length,
+        bFormationDuration: bars.filter((bar) => bar.time > a.time && bar.time <= b.available_at).length,
         bRetracementRatio: (a.value - b.value) / amplitude,
         aDuration: bars.filter((bar) => bar.time >= origin.time && bar.time <= a.time).length - 1,
         bDuration: bars.filter((bar) => bar.time > a.time && bar.time <= b.time).length,
