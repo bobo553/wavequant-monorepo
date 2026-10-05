@@ -1830,14 +1830,32 @@ body {
     overflow: visible;
     container-type: inline-size;
 }
-.chart-view-tabs {
+.chart-view-controls {
     display: flex;
-    gap: 4px;
-    padding: 7px 16px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 6px 16px;
     border-bottom: 1px solid var(--border);
     background: var(--panel);
 }
+.chart-view-tabs {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 4px;
+}
+.chart-view-controls .chart-navigation {
+    flex: 1 1 178px;
+    min-width: 178px;
+    padding: 0;
+    border: 0;
+}
+.chart-view-controls .chart-navigation-buttons {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+}
 .chart-view-tabs button {
+    min-height: 40px;
     padding: 6px 11px;
     border: 1px solid transparent;
     border-radius: 6px;
@@ -1866,6 +1884,7 @@ body {
         #price-basis,
         #ohlc,
         .chart-navigation,
+        .trade-playback-navigation,
         #price-chart,
         .chart-position,
         #chart-loading-overlay,
@@ -2412,7 +2431,8 @@ body {
     height: auto;
     width: 100%;
 }
-.chart-navigation {
+.chart-navigation,
+.trade-playback-navigation {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2505,6 +2525,11 @@ body {
     border-left: 1px solid var(--border);
     white-space: nowrap;
 }
+.trade-playback-navigation .trade-playback-controls {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+}
 .trade-playback-heading {
     display: flex;
     align-items: center;
@@ -2547,6 +2572,14 @@ body {
     }
     .trade-playback-controls {
         margin-left: 0;
+    }
+}
+@container (max-width: 430px) {
+    .chart-view-controls .chart-navigation {
+        flex-basis: 100%;
+    }
+    .chart-view-controls .chart-navigation-buttons {
+        justify-content: flex-start;
     }
 }
 .replay-title {

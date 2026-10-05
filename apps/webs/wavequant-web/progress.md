@@ -1,3 +1,6 @@
+- MONOREPO-266（2026-10-05）：本地研究图/TradingView页签与平移、放大、缩小合并控制行，左侧首位本地页签、右侧4个本地操作；成交播放保留独立行。统一40px点击高度，容器不足430px时换行；TradingView模式隐藏本地导航与播放，切换入口保持。参照 [W3C APG Tabs](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/) 与 [Toolbar](https://www.w3.org/WAI/ARIA/apg/patterns/toolbar/) 的分组与焦点指导，保留独立tablist/group、选中状态、方向键与Home/End及可见焦点，未新增toolbar键盘模型。
+  现有20项Node定向回归、lint（0错误6条既有警告）、typecheck、512MB/4MB生产构建、格式、差异和Harness通过。生产DOM/CSS及实际页签运行时代码核对左/右分组、10个ID唯一、点击/Home/方向键焦点状态及TradingView隐藏本地操作，不代替浏览器布局。原E2E高度计算选择器适配整个控制栏，未执行用例；完整Web和真实桌面/窄屏、外部图表浏览器/Playwright按用户规则未运行，留待独立验证。next-env生成差异定向恢复；恢复256为唯一in-progress并保留既有失败证据，默认本地合并，不推送。
+
 - MONOREPO-265（2026-10-05）：个股净收益、最大回撤、卖出成交和平均仓位四张卡压缩为两行；第一行名称与22px数值，第二行说明及回撤区间，去掉数值上下外边距，桌面内边距10px/14px，窄屏8px/12px。长说明及区间使用单行省略，原DOM全文、按钮、ARIA与回撤定位保持。现有回撤相关10项Node回归、lint（0错误6条既有警告）、typecheck、512MB/4MB生产build、格式、差异与Harness通过；生成HTML/当前CSS的DOM检查确认四卡26px/14px两行、原8个ID唯一及按钮契约保持，不代替真实浏览器布局。剔除next-env生成差异，完整Web套件及桌面/窄屏浏览器视觉与Playwright按用户规则未运行，留待独立验证。恢复256为唯一in-progress，既有失败证据不变；按默认流程本地合并，不推送。
 
 - MONOREPO-264（2026-10-05）：将数据口径、回测起点和幅度方案对比三个面板整体移到图表工作区下方，保持原顺序与全局可用性；控件DOM ID、默认值及运行时绑定不变。现有控件定向测试1项、lint（零错误6条既有警告）、typecheck、512MB/4MB生产构建、相关格式、差异与Harness通过；生成HTML的DOM检查确认三个面板位于图表区之后，8个关键ID唯一、日期及过滤默认值保持。仅页面编排变化，剔除next-env生成差异。完整Web套件和浏览器/Playwright按用户规则未运行，留待独立验证；恢复256为唯一in-progress，既有失败证据不变。本轮按默认流程本地合并，不推送。

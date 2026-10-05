@@ -857,24 +857,24 @@ test("chart tools reveal detailed overlays without reducing the candle viewport"
 
     const chartCard = await page.locator(".chart-card").boundingBox();
     const chartHeader = await page.locator(".chart-card-header").boundingBox();
-    const chartViewTabs = await page.locator(".chart-view-tabs").boundingBox();
+    const chartViewControls = await page.locator(".chart-view-controls").boundingBox();
     const ohlc = await page.locator("#ohlc").boundingBox();
     const candleViewport = await page.locator("#price-chart").boundingBox();
     const replay = await page.locator(".chart-card .replay").boundingBox();
     expect(chartCard).not.toBeNull();
     expect(chartHeader).not.toBeNull();
-    expect(chartViewTabs).not.toBeNull();
+    expect(chartViewControls).not.toBeNull();
     expect(ohlc).not.toBeNull();
     expect(candleViewport).not.toBeNull();
     expect(replay).not.toBeNull();
-    expect(candleViewport!.y - chartCard!.y - chartViewTabs!.height).toBeLessThan(115);
+    expect(candleViewport!.y - chartCard!.y - chartViewControls!.height).toBeLessThan(115);
     expect(chartCard!.height).toBeGreaterThanOrEqual(874);
-    expect(candleViewport!.height + chartViewTabs!.height).toBeGreaterThan(650);
+    expect(candleViewport!.height + chartViewControls!.height).toBeGreaterThan(650);
     expect(
         Math.abs(
             chartCard!.height -
                 chartHeader!.height -
-                chartViewTabs!.height -
+                chartViewControls!.height -
                 ohlc!.height -
                 candleViewport!.height -
                 replay!.height -
