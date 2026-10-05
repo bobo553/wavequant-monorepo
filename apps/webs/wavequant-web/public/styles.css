@@ -1454,12 +1454,19 @@ body {
     justify-content: space-between;
     align-items: center;
 }
+.heading.research-heading {
+    padding: 10px 0 12px;
+    gap: 12px;
+}
 .eyebrow {
     font-size: 9px;
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--cyan);
     margin-bottom: 10px;
+}
+.research-heading .eyebrow {
+    margin-bottom: 0;
 }
 .heading h1 {
     font-size: 25px;

@@ -344,7 +344,9 @@ test("the original stock project Web workbench is the default page", async ({ pa
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
     await expect(page.locator("[data-wavequant-react-workbench='true']")).toBeVisible();
-    await expect(page.getByRole("heading", { name: /让每一个信号，都有据可循/ })).toBeVisible();
+    await expect(page.locator("#research-main .research-heading")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /让每一个信号，都有据可循/ })).toHaveCount(0);
+    await expect(page.getByText("N 字结构、趋势交替与轧空信号，在同一张图上复核。", { exact: true })).toHaveCount(0);
     await expect(page.locator("#loading")).toBeHidden({ timeout: 60_000 });
     await expect(page.locator("#error")).toBeHidden();
     await expect(page.locator("#result-scope")).toHaveValue("akshare");
