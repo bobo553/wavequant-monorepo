@@ -2436,8 +2436,8 @@ body {
 }
 .price-chart {
     flex: 0 0 auto;
-    min-height: 200px;
-    height: var(--chart-viewport-height, clamp(200px, calc(100svh - 480px), 520px));
+    min-height: 300px;
+    height: var(--chart-viewport-height, max(300px, calc(100svh - 380px)));
     width: 100%;
 }
 .chart-navigation,

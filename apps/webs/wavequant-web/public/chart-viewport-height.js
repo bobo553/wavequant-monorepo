@@ -1,11 +1,11 @@
 const MIN_CHART_HEIGHT = 200;
-const MAX_CHART_HEIGHT = 520;
 const VIEWPORT_BOTTOM_GAP = 16;
+const CHART_HEIGHT_INCREASE = 100;
 
 export function chartViewportHeight(viewportHeight, chartTop, footerHeight) {
-    return Math.max(
-        MIN_CHART_HEIGHT,
-        Math.min(MAX_CHART_HEIGHT, Math.floor(viewportHeight - chartTop - footerHeight - VIEWPORT_BOTTOM_GAP)),
+    return (
+        Math.max(MIN_CHART_HEIGHT, Math.floor(viewportHeight - chartTop - footerHeight - VIEWPORT_BOTTOM_GAP)) +
+        CHART_HEIGHT_INCREASE
     );
 }
 
@@ -16,8 +16,9 @@ export function bindChartViewportHeight(chart, footers, layout) {
         pendingFrame = 0;
         const bounds = chart.getBoundingClientRect();
         if (!bounds.width) return;
+        const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
         const height = chartViewportHeight(
-            window.visualViewport?.height ?? window.innerHeight,
+            viewportHeight,
             Math.max(0, bounds.top + window.scrollY),
             footers.reduce((total, footer) => total + footer.getBoundingClientRect().height, 0),
         );

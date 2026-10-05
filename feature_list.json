@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-270",
+            "name": "taller-chart-evidence-below-fold",
+            "title": "K线加高自然下推证据",
+            "description": "按用户澄清增加K线绘图区本身的高度，在首屏剩余空间预算上增加100px并解除原520px上限，让决策证据自然位于首屏之后，组件位置和内容保持。",
+            "scope": "Web图表尺寸与首屏布局",
+            "dependencies": ["MONOREPO-269"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "K线绘图区按首屏剩余高度预算增加100px，最小300px，较高窗口也可继续展开",
+                "通过绘图区自身加高将决策证据自然推到首屏后，不增加卡片空白或移动证据组件，原内容与交互保留",
+                "窗口缩放及尺寸变化时适配，滚动不会扩大高度，隐藏/恢复行为保持",
+                "相关定向回归、格式、lint、类型及生产构建通过，浏览器未运行如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/chart-viewport-height.test.mjs tests/chart-navigation.test.mjs tests/trade-playback.test.mjs; production DOM/CSS and actual app/helper binding in jsdom",
+                    "status": "passed",
+                    "summary": "最终16项通过，更新高度回归覆盖剩余高度加100px、300px下限、较高窗口解除旧上限、浮点、滚动、隐藏恢复和清理。生产DOM/CSS及实际app绑定确认是绘图区本身加高，卡片无额外占位，决策证据仍在原网格位置且2个状态ID唯一。给定768px窗口/340px起点/60px进度区，352px改为452px；1600px窗口展开1284px，足以自然下推证据。测量由jsdom提供，不执行浏览器像素布局。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; node --check public/chart-viewport-height.js; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "修改前类型基线及最终lint（零错误6条既有警告）、类型与512MB/4MB命令级生产build通过；修改源码、测试、E2E源码与状态/进度格式、JS语法、差异和Harness通过。next-env生成路径定向恢复，证据组件和页面编排未改，原SDK autoSize保持。"
+                },
+                {
+                    "command": "Complete Web unit suite and browser/Playwright verification",
+                    "status": "not-run",
+                    "summary": "依用户规则未运行完整Web单测或浏览器/Playwright；既有E2E更新为较高绘图区及决策证据在首屏之后的断言，未执行用例。真实设备像素待独立验证；按本次加高要求，较短窗口查看图窗进度区需向下滚动。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-269",
             "name": "fit-research-chart-first-viewport",
             "title": "图表高度适配首屏进度条",
