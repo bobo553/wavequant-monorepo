@@ -257,50 +257,94 @@ export function ResearchChart(): JSX.Element {
 
             <TradingViewChartView
                 navigation={
-                    <div className="chart-navigation" role="group" aria-label="本地图表视图控制">
-                        <div className="chart-navigation-buttons">
-                            <button
-                                id="chart-pan-left"
-                                type="button"
-                                aria-label="视图左移"
-                                aria-controls="price-chart"
-                                title="向较早 K 线移动，长按连续移动"
-                                disabled
-                            >
-                                <IconChevronLeft size={17} stroke={1.8} aria-hidden="true" />
-                            </button>
-                            <button
-                                id="chart-pan-right"
-                                type="button"
-                                aria-label="视图右移"
-                                aria-controls="price-chart"
-                                title="向较晚 K 线移动，长按连续移动"
-                                disabled
-                            >
-                                <IconChevronRight size={17} stroke={1.8} aria-hidden="true" />
-                            </button>
-                            <button
-                                id="chart-zoom-in"
-                                type="button"
-                                aria-label="放大视图"
-                                aria-controls="price-chart"
-                                title="显示更少 K 线，长按连续放大"
-                                disabled
-                            >
-                                <IconPlus size={17} stroke={1.8} aria-hidden="true" />
-                            </button>
-                            <button
-                                id="chart-zoom-out"
-                                type="button"
-                                aria-label="缩小视图"
-                                aria-controls="price-chart"
-                                title="显示更多 K 线，长按连续缩小"
-                                disabled
-                            >
-                                <IconMinus size={17} stroke={1.8} aria-hidden="true" />
-                            </button>
+                    <>
+                        <div className="chart-navigation" role="group" aria-label="本地图表视图控制">
+                            <div className="chart-navigation-buttons">
+                                <button
+                                    id="chart-pan-left"
+                                    type="button"
+                                    aria-label="视图左移"
+                                    aria-controls="price-chart"
+                                    title="向较早 K 线移动，长按连续移动"
+                                    disabled
+                                >
+                                    <IconChevronLeft size={17} stroke={1.8} aria-hidden="true" />
+                                </button>
+                                <button
+                                    id="chart-pan-right"
+                                    type="button"
+                                    aria-label="视图右移"
+                                    aria-controls="price-chart"
+                                    title="向较晚 K 线移动，长按连续移动"
+                                    disabled
+                                >
+                                    <IconChevronRight size={17} stroke={1.8} aria-hidden="true" />
+                                </button>
+                                <button
+                                    id="chart-zoom-in"
+                                    type="button"
+                                    aria-label="放大视图"
+                                    aria-controls="price-chart"
+                                    title="显示更少 K 线，长按连续放大"
+                                    disabled
+                                >
+                                    <IconPlus size={17} stroke={1.8} aria-hidden="true" />
+                                </button>
+                                <button
+                                    id="chart-zoom-out"
+                                    type="button"
+                                    aria-label="缩小视图"
+                                    aria-controls="price-chart"
+                                    title="显示更多 K 线，长按连续缩小"
+                                    disabled
+                                >
+                                    <IconMinus size={17} stroke={1.8} aria-hidden="true" />
+                                </button>
+                            </div>
                         </div>
-                    </div>
+                        <div className="trade-playback-navigation">
+                            <div
+                                className="chart-navigation-buttons trade-playback-controls"
+                                role="group"
+                                aria-label="回测买卖点播放"
+                            >
+                                <button
+                                    id="trade-playback-previous"
+                                    type="button"
+                                    aria-label="上一笔成交"
+                                    aria-controls="price-chart"
+                                    disabled
+                                >
+                                    上一笔
+                                </button>
+                                <button
+                                    id="trade-playback-toggle"
+                                    type="button"
+                                    aria-label="播放买卖点"
+                                    aria-controls="price-chart"
+                                    aria-pressed="false"
+                                    disabled
+                                >
+                                    播放
+                                </button>
+                                <button
+                                    id="trade-playback-next"
+                                    type="button"
+                                    aria-label="下一笔成交"
+                                    aria-controls="price-chart"
+                                    disabled
+                                >
+                                    下一笔
+                                </button>
+                                <label htmlFor="trade-playback-speed">速度</label>
+                                <select id="trade-playback-speed" defaultValue="1600" disabled>
+                                    <option value="3200">0.5×</option>
+                                    <option value="1600">1×</option>
+                                    <option value="800">2×</option>
+                                </select>
+                            </div>
+                        </div>
+                    </>
                 }
             />
 
@@ -372,49 +416,6 @@ export function ResearchChart(): JSX.Element {
                     复制 K 线
                 </button>
                 <span id="candle-copy-feedback" className="candle-copy-feedback" role="status" aria-live="polite" />
-            </div>
-            <div className="trade-playback-navigation">
-                <span className="chart-navigation-title" aria-hidden="true">
-                    成交播放
-                </span>
-                <div className="chart-navigation-buttons">
-                    <div className="trade-playback-controls" role="group" aria-label="回测买卖点播放">
-                        <button
-                            id="trade-playback-previous"
-                            type="button"
-                            aria-label="上一笔成交"
-                            aria-controls="price-chart"
-                            disabled
-                        >
-                            上一笔
-                        </button>
-                        <button
-                            id="trade-playback-toggle"
-                            type="button"
-                            aria-label="播放买卖点"
-                            aria-controls="price-chart"
-                            aria-pressed="false"
-                            disabled
-                        >
-                            播放
-                        </button>
-                        <button
-                            id="trade-playback-next"
-                            type="button"
-                            aria-label="下一笔成交"
-                            aria-controls="price-chart"
-                            disabled
-                        >
-                            下一笔
-                        </button>
-                        <label htmlFor="trade-playback-speed">速度</label>
-                        <select id="trade-playback-speed" defaultValue="1600" disabled>
-                            <option value="3200">0.5×</option>
-                            <option value="1600">1×</option>
-                            <option value="800">2×</option>
-                        </select>
-                    </div>
-                </div>
             </div>
             <section className="trade-playback" aria-labelledby="trade-playback-title">
                 <div className="trade-playback-heading">

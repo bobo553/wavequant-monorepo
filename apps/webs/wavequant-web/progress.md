@@ -1,3 +1,6 @@
+- MONOREPO-267（2026-10-05）：上一笔、播放、下一笔、速度并入本地研究图/TradingView和平移缩放所在控制行，顺序为左侧页签、右侧平移缩放及成交播放；去掉重复的播放控制行，保留下方成交状态说明。所有按钮与选择器保持原ID、默认值、禁用及ARIA，40px操作高度；控制栏与分组不换行，窄屏仅栏内横向滚动，TradingView仍隐藏本地导航/播放。
+  现有14项Node定向回归、lint（0错误6条既有警告）、typecheck、512MB/4MB生产构建、格式、差异和Harness通过。生产DOM/CSS核对10个ID唯一/顺序、单行及40px规则、速度1×、ARIA和TradingView隐藏，不代替真实浏览器布局；完整Web及桌面/窄屏滚动和焦点浏览器视觉、Playwright依用户规则未运行，留待独立验证。next-env生成路径定向恢复；恢复256为唯一in-progress并保留既有失败证据，默认本地合并，不推送。
+
 - MONOREPO-266（2026-10-05）：本地研究图/TradingView页签与平移、放大、缩小合并控制行，左侧首位本地页签、右侧4个本地操作；成交播放保留独立行。统一40px点击高度，容器不足430px时换行；TradingView模式隐藏本地导航与播放，切换入口保持。参照 [W3C APG Tabs](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/) 与 [Toolbar](https://www.w3.org/WAI/ARIA/apg/patterns/toolbar/) 的分组与焦点指导，保留独立tablist/group、选中状态、方向键与Home/End及可见焦点，未新增toolbar键盘模型。
   现有20项Node定向回归、lint（0错误6条既有警告）、typecheck、512MB/4MB生产构建、格式、差异和Harness通过。生产DOM/CSS及实际页签运行时代码核对左/右分组、10个ID唯一、点击/Home/方向键焦点状态及TradingView隐藏本地操作，不代替浏览器布局。原E2E高度计算选择器适配整个控制栏，未执行用例；完整Web和真实桌面/窄屏、外部图表浏览器/Playwright按用户规则未运行，留待独立验证。next-env生成差异定向恢复；恢复256为唯一in-progress并保留既有失败证据，默认本地合并，不推送。
 

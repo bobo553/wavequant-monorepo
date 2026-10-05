@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-267",
+            "name": "chart-playback-controls-row",
+            "title": "成交播放并入图表控制行",
+            "description": "将上一笔、播放、下一笔和速度控件并入图表切换与平移缩放所在控制行，保持本地研究图靠左，窄屏通过控制栏内横向滚动保持单行。",
+            "scope": "Web图表组件编排与样式",
+            "dependencies": ["MONOREPO-266"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "本地研究图、TradingView、平移缩放及成交播放共用一行，不额外占用播放控制行",
+                "上一笔、播放、下一笔和速度保持原顺序、ID、默认状态及可访问分组",
+                "窄屏仅控制栏横向滚动，TradingView模式继续隐藏本地操作",
+                "相关定向测试、格式、lint、类型与生产构建通过，未运行浏览器如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/trade-playback.test.mjs tests/chart-navigation.test.mjs tests/tradingview-widget.test.mjs; production HTML/CSS jsdom checks",
+                    "status": "passed",
+                    "summary": "14项既有定向回归通过；生产DOM/CSS确认页签、4个平移缩放按钮和播放控件同栏，10个ID唯一且顺序保持，速度默认1×、禁用和ARIA契约保留。控制栏及按钮分组不换行、操作高度40px、栏内横向滚动；TradingView隐藏本地操作并保留页签。DOM不执行浏览器布局。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "修改前类型基线与修改后lint（零错误、6条既有警告）、类型及512MB/4MB命令级生产构建通过；修改组件、样式和状态/进度格式、差异与Harness通过。仅控件布局变化，原运行时绑定保持，next-env生成路径定向恢复。"
+                },
+                {
+                    "command": "Complete Web unit suite and browser/Playwright verification",
+                    "status": "not-run",
+                    "summary": "依用户规则未运行完整Web单测或浏览器/Playwright；桌面同排、窄屏横向滚动及焦点视觉留待独立验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-266",
             "name": "chart-view-navigation-row",
             "title": "图表切换与缩放合并一行",
