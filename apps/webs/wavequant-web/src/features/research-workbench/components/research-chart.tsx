@@ -307,6 +307,7 @@ export function ResearchChart(): JSX.Element {
                                 className="chart-navigation-buttons trade-playback-controls"
                                 role="group"
                                 aria-label="回测买卖点播放"
+                                aria-describedby="trade-playback-current"
                             >
                                 <button
                                     id="trade-playback-previous"
@@ -342,6 +343,18 @@ export function ResearchChart(): JSX.Element {
                                     <option value="1600">1×</option>
                                     <option value="800">2×</option>
                                 </select>
+                                <output id="trade-playback-progress" aria-label="成交播放进度">
+                                    0 / 0
+                                </output>
+                                <span id="trade-playback-current" className="sr-only">
+                                    运行当前股票回测后可按成交顺序播放 B/S 点位。
+                                </span>
+                                <span
+                                    id="trade-playback-announcement"
+                                    className="sr-only"
+                                    role="status"
+                                    aria-live="polite"
+                                />
                             </div>
                         </div>
                     </>
@@ -417,17 +430,6 @@ export function ResearchChart(): JSX.Element {
                 </button>
                 <span id="candle-copy-feedback" className="candle-copy-feedback" role="status" aria-live="polite" />
             </div>
-            <section className="trade-playback" aria-labelledby="trade-playback-title">
-                <div className="trade-playback-heading">
-                    <strong id="trade-playback-title">回测买卖点播放</strong>
-                    <output id="trade-playback-progress">0 / 0</output>
-                </div>
-                <p id="trade-playback-current">运行当前股票回测后可按成交顺序播放 B/S 点位。</p>
-                <p className="trade-playback-note">
-                    上一笔／下一笔直接跳到相邻 B/S 成交点并保持当前缩放；首次可从首笔或末笔开始。
-                </p>
-                <span id="trade-playback-announcement" className="sr-only" role="status" aria-live="polite" />
-            </section>
             <div id="price-chart" className="price-chart" aria-label="TradingView K线与成交量图" />
             <div className="chart-position">
                 <div className="chart-position-heading">

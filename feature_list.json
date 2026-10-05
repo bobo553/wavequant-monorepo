@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-268",
+            "name": "compact-trade-playback-copy",
+            "title": "移除成交播放三行说明",
+            "description": "去掉图表上回测买卖点播放标题、当前成交说明和操作提示的三行可见文字，将成交进度移入原单行控制栏，保留辅助状态与播放交互。",
+            "scope": "Web图表播放布局与样式",
+            "dependencies": ["MONOREPO-267"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "图表不再显示播放标题和两行说明，不留空白说明区",
+                "成交进度与上一笔/播放/下一笔/速度同栏，原控件和状态ID保持唯一",
+                "辅助状态、完成提示和播放交互保持，TradingView仍隐藏本地控件",
+                "相关回归、格式、lint、类型与生产构建通过，未运行浏览器如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/trade-playback.test.mjs; production HTML/CSS jsdom and actual renderTradePlayback checks",
+                    "status": "passed",
+                    "summary": "6项既有播放回归通过；生产DOM确认标题/两行说明及独立说明区移除，进度并入原单行栏，7个播放控件/状态ID唯一，当前说明与完成提示保留为辅助状态。注入实际renderTradePlayback验证空成交、播放中与完成后的进度、按钮和提示更新，TradingView仍隐藏播放。DOM不执行浏览器布局。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "修改前类型基线及修改后lint（零错误、6条既有警告）、类型和512MB/4MB命令级生产构建通过；修改组件、样式、状态/进度格式、差异与Harness通过，next-env生成路径定向恢复。运行时播放逻辑未改。"
+                },
+                {
+                    "command": "Complete Web unit suite and browser/Playwright verification",
+                    "status": "not-run",
+                    "summary": "依用户规则未运行完整Web单测或浏览器/Playwright；桌面/窄屏布局及辅助技术真实使用留待独立验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-267",
             "name": "chart-playback-controls-row",
             "title": "成交播放并入图表控制行",

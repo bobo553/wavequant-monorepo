@@ -1897,7 +1897,6 @@ body {
         #price-chart,
         .chart-position,
         #chart-loading-overlay,
-        .trade-playback,
         .replay
     ) {
     display: none;
@@ -2518,10 +2517,6 @@ body {
     border-top: 1px solid var(--border);
     padding: 12px 17px;
 }
-.trade-playback {
-    padding: 8px 16px;
-    background: var(--research-subtle);
-}
 .replay {
     background: #111b28;
 }
@@ -2539,15 +2534,10 @@ body {
     padding-left: 0;
     border-left: 0;
 }
-.trade-playback-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
+.trade-playback-controls output {
+    flex-shrink: 0;
+    min-width: 5ch;
     color: var(--research-text-soft);
-    font-size: 11px;
-}
-.trade-playback-heading output {
     font-variant-numeric: tabular-nums;
 }
 .trade-playback-controls button {
@@ -2561,16 +2551,9 @@ body {
     padding: 0 8px;
     font-size: 11px;
 }
-.trade-playback-controls label,
-.trade-playback p {
+.trade-playback-controls label {
     color: var(--research-text-faint);
     font-size: 10px;
-}
-.trade-playback p {
-    margin: 0;
-}
-.trade-playback .trade-playback-note {
-    margin-top: 4px;
 }
 @container (max-width: 600px) {
     .chart-navigation-title {
