@@ -19,6 +19,11 @@
             ],
             "verification": [
                 {
+                    "command": "main no-ff merge; HTTP 13003 backtest-version, reason modules, research and formal AkShare backtest (2018-01-01..2023-12-18); main topology and engine digest",
+                    "status": "passed",
+                    "summary": "实现f2cc832经ecb2a17无冲突合并本地main；128来源原始引擎54e9bff0...与实际服务v93一致，两个Web原因模块HTTP200逐字匹配，main5项拓扑和Harness通过。正式页面接口1448条日线HTTP200，12-18唯一SELL/filled清1400股、原始执行5.267365、余仓0，最近阴线12-08和23328933量证据完整。API自动重载，无手工重启、缓存改写或进程操作；当前源码已生效，旧页面刷新并重新回测。本轮未推送。"
+                },
+                {
                     "command": "pytest tests/test_two_t_body_volume_clear.py; tests/test_two_t_resistance_risk.py tests/test_wave_exhaustion_exit.py tests/test_guofang_2023_target_exit.py tests/test_wave_target_upper_shadow_exit.py tests/test_xinhuawenxuan_bearish_reversal_exit.py tests/test_target_exit_policy.py tests/test_ten_full_entry.py (scoped groups and affected reruns)",
                     "status": "passed",
                     "summary": "新增24项及相邻91项通过，分组有重叠不重复累计。先加回归复现12-18无EXIT等7处缺失；相邻首轮89通过2个旧全清原因被覆盖，保留旧全清优先级后最终新/二饱56项通过（1项已通过的真实先锋用例不重复），追加多股票及最近阴线更新4项通过。覆盖实体边界、严格量、十字线、到位时序、未来/失效目标、全清优先、同日禁买、T+1及正式账户前缀。"
