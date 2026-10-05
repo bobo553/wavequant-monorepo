@@ -749,6 +749,42 @@ test("each rejected entry evaluation keeps its reason when same-day candidates s
     assert.equal(markerGroups(items, { ...options, candidateRejections: false }).length, 0);
     assert.equal(markerGroups(items, { ...options, rules: false, diagnostics: false }).length, 1);
 });
+test("weak candle rejection explains shape thresholds without a buy or order marker", () => {
+    const candidateView = {
+        asof: "2023-06-15",
+        bars: [{ time: "2023-06-12" }, { time: "2023-06-15" }],
+        markers: [],
+    };
+    const event = {
+        id: "weak-candle",
+        event: "entry_rejected",
+        time: "2023-06-15",
+        available_at: "2023-06-15",
+        price: 5.86,
+        attack: 0,
+        reason: "entry_requires_strong_bullish_candle",
+        confirmation_strong_bullish: false,
+        confirmation_body_open_ratio: 0.13 / 5.73,
+        confirmation_body_range_ratio: 0.13 / 0.32,
+        confirmation_upper_shadow_ratio: 0.12 / 0.32,
+    };
+    const [item] = buildAnnotations(candidateView, { events: [event] });
+    assert.equal(item.kind, "candidate");
+    assert.equal(item.category, "entry-rejections");
+    assert.match(item.description, /实体\/开盘 ≥ 3%.*实体\/振幅 ≥ 60%.*上影\/振幅 ≤ 20%.*等号有效/);
+    assert.match(item.description, /实体\/开盘 2\.27%.*实体\/振幅 40\.63%.*上影\/振幅 37\.50%/);
+    assert.match(item.description, /2023-06-12.*轧空盘态及目标推演仍保留/);
+    assert.match(item.description, /该轧空候选未产生买入信号，也未提交对应买单/);
+    assert.equal(markerGroups([item], options)[0].marker.shape, "circle");
+    assert.equal(buildAnnotations({ ...candidateView, asof: "2023-06-14" }, { events: [event] }).length, 0);
+
+    const [missing] = buildAnnotations(candidateView, {
+        events: [{ ...event, confirmation_body_range_ratio: null, confirmation_upper_shadow_ratio: undefined }],
+    });
+    assert.match(missing.description, /实体\/振幅 不可计算.*上影\/振幅 不可计算/);
+    assert.doesNotMatch(missing.description, /NaN|Infinity/);
+});
+
 test("near five-top rejection shows the known target and original box without a buy marker", () => {
     const candidateView = {
         asof: "2020-06-24",

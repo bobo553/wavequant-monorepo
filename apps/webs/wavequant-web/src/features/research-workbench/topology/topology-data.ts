@@ -96,6 +96,15 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
                 source: "ten_full_entry.py · ten_full_entry_history；integrated_strategy.py · generate_system_signals",
                 yes: "检查买点分类",
                 no: "拒绝：wave_ten_full_pullback_pending",
+                yesNext: "strong-candle",
+            },
+            {
+                id: "strong-candle",
+                question: "入场时已观察的 K 线满足强势阳线？",
+                detail: "所有 V3 轧空买点的新买入与加仓，包括 N 普通/强轧空、C 浪续攻、盘整、嵌套和回调恢复，统一要求实体 ≥ 开盘价 3%、实体 ≥ 振幅 60%、上影 ≤ 振幅 20%，等号有效。量能和盈亏比开关不能绕过。强轧空盘态不等于强 K；弱 K 只拒买，不撤销盘态或五顶十满，也不消耗 N 候选。独立组合 A 和浅回撤通道保留自身形态规则。后续须有当日新确认才重新审核。退出先处理，不被形态门禁阻挡；盘中只使用当时已见 K 线，不能借未来收盘判断。",
+                source: "candle_strength.py · strong_bullish_candle；integrated_strategy.py · generate_system_signals",
+                yes: "继续检查买点资格及其余门禁",
+                no: "拒买：entry_requires_strong_bullish_candle",
                 yesNext: "first-buy",
             },
             {
@@ -513,4 +522,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "c3089d4da9a5347b86e0b82d5ea1fa6cfe2ea12c777bb8e1f233f31a0a255504";
+export const strategySourceDigest = "6b8746cead7bcd15236dded7a701166eea5b4300ec78af00e80400faa1c2f9d2";

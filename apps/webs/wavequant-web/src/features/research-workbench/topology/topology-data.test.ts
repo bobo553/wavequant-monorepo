@@ -37,6 +37,15 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("gates V3 squeeze entries with strong candle shape while preserving regime and projections", () => {
+        const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "strong-candle");
+        expect(gate?.detail).toMatch(/所有 V3 轧空买点的新买入与加仓.*N 普通\/强轧空.*C 浪续攻/);
+        expect(gate?.detail).toMatch(/实体 ≥ 开盘价 3%.*实体 ≥ 振幅 60%.*上影 ≤ 振幅 20%.*等号有效/);
+        expect(gate?.detail).toMatch(/量能和盈亏比开关不能绕过/);
+        expect(gate?.detail).toMatch(/不撤销盘态或五顶十满.*不消耗 N 候选.*独立组合 A 和浅回撤通道保留自身/);
+        expect(gate?.detail).toMatch(/后续须有当日新确认.*退出先处理/);
+        expect(gate?.no).toContain("entry_requires_strong_bullish_candle");
+    });
     it("distinguishes shared-boundary outside C from strict mother-candle geometry", () => {
         const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "n-geometry");
         expect(gate?.detail).toMatch(/讲义因果外包 C.*等低创新高.*等高创新低/);
