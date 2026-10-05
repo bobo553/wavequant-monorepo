@@ -1,30 +1,37 @@
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
+
+interface ITradingViewChartViewProps {
+    readonly navigation: ReactNode;
+}
 
 /** 独立外部绘图视图；原有研究图表与回测控件始终留在同一张卡片中。 */
-export function TradingViewChartView(): JSX.Element {
+export function TradingViewChartView({ navigation }: ITradingViewChartViewProps): JSX.Element {
     return (
         <>
-            <div id="chart-view-tabs" className="chart-view-tabs" role="tablist" aria-label="K 线图表视图">
-                <button
-                    id="chart-local-tab"
-                    type="button"
-                    role="tab"
-                    aria-controls="price-chart"
-                    aria-selected="true"
-                    tabIndex={0}
-                >
-                    本地研究图
-                </button>
-                <button
-                    id="chart-tradingview-tab"
-                    type="button"
-                    role="tab"
-                    aria-controls="tradingview-panel"
-                    aria-selected="false"
-                    tabIndex={-1}
-                >
-                    TradingView 画图
-                </button>
+            <div className="chart-view-controls">
+                <div id="chart-view-tabs" className="chart-view-tabs" role="tablist" aria-label="K 线图表视图">
+                    <button
+                        id="chart-local-tab"
+                        type="button"
+                        role="tab"
+                        aria-controls="price-chart"
+                        aria-selected="true"
+                        tabIndex={0}
+                    >
+                        本地研究图
+                    </button>
+                    <button
+                        id="chart-tradingview-tab"
+                        type="button"
+                        role="tab"
+                        aria-controls="tradingview-panel"
+                        aria-selected="false"
+                        tabIndex={-1}
+                    >
+                        TradingView 画图
+                    </button>
+                </div>
+                {navigation}
             </div>
             <section
                 id="tradingview-panel"

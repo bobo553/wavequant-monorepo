@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-266",
+            "name": "chart-view-navigation-row",
+            "title": "图表切换与缩放合并一行",
+            "description": "按用户要求将本地研究图和TradingView页签与平移/缩放放在同一控制行，视图切换靠左、操作靠右，成交播放独立分组并保留窄屏换行。",
+            "scope": "Web图表组件编排与样式",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "本地研究图位于左侧首位，与TradingView页签、平移和放大缩小共用一行，窄屏可换行",
+                "保留独立tablist/group语义、页签状态和键盘切换、控件ID与长按操作",
+                "TradingView模式隐藏本地操作且保留视图切换，成交播放独立于视图控制",
+                "相关定向回归、格式、lint、类型及生产构建通过，浏览器未运行如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/chart-navigation.test.mjs tests/press-and-hold.test.mjs tests/trade-playback.test.mjs tests/tradingview-widget.test.mjs; production HTML/CSS jsdom and actual tab-runtime checks",
+                    "status": "passed",
+                    "summary": "现有20项定向回归通过；生产DOM确认左侧首位本地页签、同栏右侧4个导航按钮、播放独立及10个ID唯一。注入实际页签运行时代码验证点击、Home、方向键的状态与焦点；TradingView模式隐藏本地导航和播放、保留页签。CSS同栏、40px点击高度及430px窄屏回退规则保持，DOM不执行浏览器布局。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "Web lint零错误（6条既有警告）、类型与512MB/4MB命令级生产构建通过；修改组件、样式、E2E源码及状态/进度格式、差异与Harness通过。运行时绑定不变，next-env生成路径定向恢复。"
+                },
+                {
+                    "command": "Complete Web unit suite and browser/Playwright verification",
+                    "status": "not-run",
+                    "summary": "依用户规则未运行完整Web单测及浏览器/Playwright；现有E2E高度计算选择器改为整个控制栏，未执行该用例。真实桌面同排、窄屏回退及外部图表视觉留待独立验证。参考W3C APG Tabs/Toolbar分组与焦点指南，保留tablist与操作group语义。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-265",
             "name": "compact-research-metrics",
             "title": "研究指标卡压缩为两行",

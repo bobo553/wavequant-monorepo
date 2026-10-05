@@ -255,7 +255,54 @@ export function ResearchChart(): JSX.Element {
                 </div>
             </div>
 
-            <TradingViewChartView />
+            <TradingViewChartView
+                navigation={
+                    <div className="chart-navigation" role="group" aria-label="本地图表视图控制">
+                        <div className="chart-navigation-buttons">
+                            <button
+                                id="chart-pan-left"
+                                type="button"
+                                aria-label="视图左移"
+                                aria-controls="price-chart"
+                                title="向较早 K 线移动，长按连续移动"
+                                disabled
+                            >
+                                <IconChevronLeft size={17} stroke={1.8} aria-hidden="true" />
+                            </button>
+                            <button
+                                id="chart-pan-right"
+                                type="button"
+                                aria-label="视图右移"
+                                aria-controls="price-chart"
+                                title="向较晚 K 线移动，长按连续移动"
+                                disabled
+                            >
+                                <IconChevronRight size={17} stroke={1.8} aria-hidden="true" />
+                            </button>
+                            <button
+                                id="chart-zoom-in"
+                                type="button"
+                                aria-label="放大视图"
+                                aria-controls="price-chart"
+                                title="显示更少 K 线，长按连续放大"
+                                disabled
+                            >
+                                <IconPlus size={17} stroke={1.8} aria-hidden="true" />
+                            </button>
+                            <button
+                                id="chart-zoom-out"
+                                type="button"
+                                aria-label="缩小视图"
+                                aria-controls="price-chart"
+                                title="显示更多 K 线，长按连续缩小"
+                                disabled
+                            >
+                                <IconMinus size={17} stroke={1.8} aria-hidden="true" />
+                            </button>
+                        </div>
+                    </div>
+                }
+            />
 
             <div id="chart-layers-popover" className="chart-tool-popover chart-layers-popover" popover="manual">
                 <div className="chart-popover-header">
@@ -326,49 +373,11 @@ export function ResearchChart(): JSX.Element {
                 </button>
                 <span id="candle-copy-feedback" className="candle-copy-feedback" role="status" aria-live="polite" />
             </div>
-            <div className="chart-navigation" role="group" aria-label="本地图表视图控制">
-                <span className="chart-navigation-title">图窗导航</span>
+            <div className="trade-playback-navigation">
+                <span className="chart-navigation-title" aria-hidden="true">
+                    成交播放
+                </span>
                 <div className="chart-navigation-buttons">
-                    <button
-                        id="chart-pan-left"
-                        type="button"
-                        aria-label="视图左移"
-                        aria-controls="price-chart"
-                        title="向较早 K 线移动，长按连续移动"
-                        disabled
-                    >
-                        <IconChevronLeft size={17} stroke={1.8} aria-hidden="true" />
-                    </button>
-                    <button
-                        id="chart-pan-right"
-                        type="button"
-                        aria-label="视图右移"
-                        aria-controls="price-chart"
-                        title="向较晚 K 线移动，长按连续移动"
-                        disabled
-                    >
-                        <IconChevronRight size={17} stroke={1.8} aria-hidden="true" />
-                    </button>
-                    <button
-                        id="chart-zoom-in"
-                        type="button"
-                        aria-label="放大视图"
-                        aria-controls="price-chart"
-                        title="显示更少 K 线，长按连续放大"
-                        disabled
-                    >
-                        <IconPlus size={17} stroke={1.8} aria-hidden="true" />
-                    </button>
-                    <button
-                        id="chart-zoom-out"
-                        type="button"
-                        aria-label="缩小视图"
-                        aria-controls="price-chart"
-                        title="显示更多 K 线，长按连续缩小"
-                        disabled
-                    >
-                        <IconMinus size={17} stroke={1.8} aria-hidden="true" />
-                    </button>
                     <div className="trade-playback-controls" role="group" aria-label="回测买卖点播放">
                         <button
                             id="trade-playback-previous"
