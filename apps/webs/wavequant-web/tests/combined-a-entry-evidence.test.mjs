@@ -110,6 +110,7 @@ async function scanClickText(match, source, { markerEvidence = match.evidence, i
             document,
             state: { view, error: false },
             combinedAEntryEvidence,
+            waveEntryEvidence,
             reasonText,
             num,
             pct,
@@ -161,6 +162,38 @@ test("combined A trade reasons explain the OR duration, close defense, volume an
     assert.doesNotMatch(text, /跳空|第一类|undefined/);
     assert.ok(numberedTradeReasons(marker).some((line) => /严格突破/.test(line)));
     assert.doesNotMatch(numberedTradeReasons(marker).join("\n"), /undefined|—/);
+});
+
+test("opening N scan click uses opening proof and price basis across data sources", async () => {
+    const openingMatch = {
+        ...scanMatch,
+        buy_point_type: "n_opening_gap_squeeze",
+        reason: "system_n_opening_gap_squeeze",
+        evidence: [
+            {
+                event: "long_transition_evidence",
+                buy_point_type: "n_opening_gap_squeeze",
+                squeeze_confirmation: "known_n_opening_gap",
+                n_opening_attack_date: "2025-03-31",
+                n_opening_known_date: "2025-04-01",
+                n_opening_defense: 4.9,
+                opening_price: 5.62,
+                prior_bar_date: "2025-04-02",
+                prior_close: 5.46,
+                decision_timestamp: "2025-04-03T09:30:00+08:00",
+            },
+        ],
+    };
+    for (const source of ["akshare", "tdx", "snapshot"]) {
+        const text = await scanClickText(openingMatch, source);
+        assert.match(text, /正 N.*高开.*开盘.*买入/);
+        assert.match(text, /2025-03-31.*2025-04-01.*5\.6200.*2025-04-02.*5\.4600.*09:30/s);
+        assert.doesNotMatch(text, /undefined|NaN|第一类|翻多 —|收盘参考盈亏比/);
+        if (source === "akshare") assert.match(text, /未模拟成交/);
+        else assert.match(text, /开盘参考盈亏比/);
+    }
+    const noMarker = await scanClickText(openingMatch, "snapshot", { includeMarker: false });
+    assert.match(noMarker, /正 N 高开买点复核.*09:30/s);
 });
 
 test("missing child duration stays absent rather than becoming a zero-day comparison", () => {

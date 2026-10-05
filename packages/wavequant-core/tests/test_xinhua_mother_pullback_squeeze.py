@@ -53,8 +53,9 @@ def xinhua_history() -> _XinhuaSample:
     ]
     dates = {str(bar.timestamp.date()): index for index, bar in enumerate(bars)}
     profile = whole_wave_profile({"scenarios": {"base": {"execution": {}}}})
-    config = replace(SystemStrategy(**profile["strategy"]), volume_filter=False)
-    assert asdict(config) == raw["strategy"]
+    # Preserve the frozen close-shape path independently from the v94 opener.
+    config = replace(SystemStrategy(**profile["strategy"]), volume_filter=False, opening_gap_squeeze_enabled=False)
+    assert asdict(config) == dict(raw["strategy"], opening_gap_squeeze_enabled=False)
     assert len(bars) == 536
     assert str(bars[0].timestamp.date()) == "2022-01-04"
     assert str(bars[-1].timestamp.date()) == "2024-03-21"

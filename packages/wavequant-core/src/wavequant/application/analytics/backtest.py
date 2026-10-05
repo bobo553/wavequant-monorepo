@@ -16,6 +16,7 @@ from wavequant.domain.strategies.wave_exhaustion_exit import (
     observe_five_top_gap_volume_clear, observe_wave_exhaustion,
 )
 from wavequant.domain.strategies.two_t_resistance import TWO_T_BODY_VOLUME_CLEAR, two_t_resistance_history
+from wavequant.domain.strategies.n_opening_squeeze import OPENING_SQUEEZE_REASON
 from wavequant.domain.strategies.pressure_exit import (
     pressure_exit_history, record_high_resistance_history, record_high_massive_resistance_history,
 )
@@ -349,6 +350,10 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
         timing = dict(execution_model='same_day_close', decision_source='daily_close_simulation',
                       decision_timestamp=when.replace(hour=15).isoformat(),
                       execution_timestamp=when.replace(hour=15).isoformat()) if at_close else {}
+        if signal.reason == OPENING_SQUEEZE_REASON and not at_close:
+            opening_at = when.replace(hour=9, minute=30, second=0, microsecond=0).isoformat()
+            timing = dict(execution_model='same_day_open', decision_source='known_n_opening_gap',
+                          decision_timestamp=opening_at, execution_timestamp=opening_at)
         if intraday is not None:
             buyable, timing = intraday['buyable'], intraday['timing']
         observed_nonflat = (timing.get('observed_nonflat_limit_buyable') is True if intraday is not None else
@@ -517,6 +522,20 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 continue
             if exit_evidence.get(symbol, {}).get('execution_model') not in ('same_day_close', 'intraday_5m_next_open'):
                 execute_exit(symbol, i, bar, when, bar.open, 'next_open')
+        # This signal is known from yesterday's N and today's auction price.
+        # Later daily exits cannot cancel a purchase already made at the open.
+        opening_signals = sorted((signal for signal in signal_map.get(when, [])
+                                  if signal.reason == OPENING_SQUEEZE_REASON),
+                                 key=lambda signal: signal.symbol)
+        for signal in opening_signals:
+            symbol = signal.symbol
+            pending_entry.pop(symbol, None)
+            i, bar = current[symbol]
+            if symbol in sold_today:
+                log(when, symbol, 'BUY', 'cancelled', 'same_day_exit_priority',
+                    signal_timestamp=signal.timestamp.isoformat(), execution_model='same_day_open')
+                continue
+            execute_entry(symbol, i, bar, when, signal, bar.open)
         ranked = sorted(pending_entry, key=lambda s: (-(pending_entry[s][0].rvol or 0), s))
         for symbol in ranked:
             signal, created = pending_entry[symbol]
@@ -805,6 +824,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
         for signal in signal_map.get(when, []):
             symbol = signal.symbol
+            if signal.reason == OPENING_SQUEEZE_REASON:
+                continue
             if signal.side == 'LONG' and (symbol, signal.bar_index) in entry_executions:
                 continue
             if signal.side == 'LONG' and current[symbol][0] in target_resistance[symbol]:

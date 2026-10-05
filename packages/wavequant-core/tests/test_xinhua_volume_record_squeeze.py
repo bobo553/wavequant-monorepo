@@ -52,8 +52,10 @@ def xinhua_history() -> _XinhuaSample:
     ]
     dates = {str(bar.timestamp.date()): index for index, bar in enumerate(bars)}
     profile = whole_wave_profile({"scenarios": {"base": {"execution": {}}}})
-    config = replace(SystemStrategy(**profile["strategy"]), volume_filter=False)
-    assert asdict(config) == raw["strategy"]
+    # The frozen v90 volume-record route remains a regression oracle. Current
+    # v94 opening behavior is independently covered in test_n_opening_squeeze.
+    config = replace(SystemStrategy(**profile["strategy"]), volume_filter=False, opening_gap_squeeze_enabled=False)
+    assert asdict(config) == dict(raw["strategy"], opening_gap_squeeze_enabled=False)
     assert len(bars) == 277
     assert str(bars[0].timestamp.date()) == "2018-01-02"
     return _XinhuaSample(bars, dates, config, generate_system_signals(bars, config), raw["execution"])
