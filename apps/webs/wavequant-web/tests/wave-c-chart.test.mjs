@@ -198,7 +198,7 @@ test("confirmed Xinhua N uses the shared one-p and two-t target guides before an
     assert.ok(rendered.guides.every((guide) => guide.end === null && guide.start === "2024-03-04"));
     chart.options.rules = false;
     chart.drawLevels();
-    assert.equal(rendered.guides.length, 0);
+    assert.equal(rendered.guides.length, 2);
     chart.options.rules = true;
     chart.options.levels = false;
     chart.drawLevels();
@@ -208,6 +208,157 @@ test("confirmed Xinhua N uses the shared one-p and two-t target guides before an
     chart.drawLevels();
     assert.equal(rendered.guides.length, 0);
     assert.equal(chart.levelLines.length, 0);
+});
+
+test("Xinhua N range focus shows its targets with rule markers disabled and preserves selection", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xinhua_2024_n_targets.json", import.meta.url)));
+    const { chart, rendered } = chartHarness(fixture.view.bars);
+    chart.setTheory({ ...fixture.theory, shapes: [], lecture_drawing: { strokes: [] } });
+    const selected = { id: "kept-buy", kind: "fill", category: "fills", time: "2024-03-05", levels: [] };
+    chart.selected = selected;
+    chart.options.fills = true;
+    chart.setAnnotationOptions({ tertiaryAbc: false });
+    const range = { ...rendered.range };
+    for (const bar of fixture.view.bars) {
+        chart.updateWaveProjectionHover(bar.time);
+        assert.deepEqual(
+            rendered.guides.map((guide) => guide.stage),
+            ["one_p", "two_t"],
+            bar.time,
+        );
+        assert.deepEqual(targetLabels(chart, rendered.guides), ["一饱 5.2891 · 未突破", "二吐 5.7836 · 未突破"]);
+        assert.equal(chart.selected, selected);
+        assert.deepEqual(rendered.range, range);
+    }
+    chart.updateWaveProjectionHover(null);
+    assert.equal(rendered.guides.length, 0);
+    chart.selected = null;
+    chart.focusTrade("2024-03-05");
+    assert.deepEqual(
+        rendered.guides.map((guide) => guide.stage),
+        ["one_p", "two_t"],
+    );
+    chart.options.levels = false;
+    chart.drawLevels();
+    assert.equal(rendered.guides.length, 0);
+});
+
+test("an explicitly selected N keeps both target labels alongside hovered ABC targets", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xinhua_2024_n_targets.json", import.meta.url)));
+    const { chart, rendered } = chartHarness(fixture.view.bars);
+    chart.setTheory({ ...fixture.theory, shapes: [], lecture_drawing: { strokes: [] } });
+    chart.selectAnnotation(fixture.theory.events[0].id, false);
+    chart.hoveredWaveProjection = {
+        id: "overlapping-abc",
+        kind: "wave-projection",
+        category: "wave-projection",
+        time: "2024-03-04",
+        raw: { originTime: "2024-02-29", origin: 4.3, aTime: "2024-03-01", aHigh: 4.7, bTime: "2024-03-04", bLow: 4.4 },
+        levels: [
+            { name: "C 浪目标 1×A", stage: "c_equal", price: 5.5, anchor_at: "2024-03-04", available_at: "2024-03-04" },
+        ],
+    };
+    rendered.range = { from: 8, to: fixture.view.bars.length - 1 };
+    chart.drawLevels();
+    assert.deepEqual(
+        rendered.guides.map((guide) => guide.stage),
+        ["c_equal", "one_p", "two_t"],
+    );
+    const labels = targetLabels(chart, rendered.guides, () => -100);
+    assert.ok(labels.some((label) => /一饱.*5\.2891.*图外/.test(label)));
+    assert.ok(labels.some((label) => /二吐.*5\.7836.*图外/.test(label)));
+    const nGuides = rendered.guides.filter((guide) => guide.stage === "one_p" || guide.stage === "two_t");
+    assert.ok(nGuides.every((guide) => guide.start === "2024-03-04" && guide.end === null));
+});
+
+test("N focus stops after two-t, preserves the first break and clears after data or selection changes", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xinhua_2024_n_targets.json", import.meta.url)));
+    const data = [
+        ...fixture.view.bars,
+        { time: "2024-03-21", open: 5.3, high: 5.9, low: 5.2, close: 5.7, volume: 1 },
+        { time: "2024-03-22", open: 5.7, high: 6, low: 5.7, close: 5.9, volume: 1 },
+    ];
+    const { chart, rendered } = chartHarness(data);
+    chart.setTheory({ ...fixture.theory, asof: "2024-03-22", shapes: [], lecture_drawing: { strokes: [] } });
+    chart.updateWaveProjectionHover("2024-03-21");
+    assert.ok(rendered.guides.every((guide) => guide.end === "2024-03-21" && guide.targetState === "已突破"));
+    chart.updateWaveProjectionHover("2024-03-22");
+    assert.equal(rendered.guides.length, 0);
+    chart.focusNTargets("2024-03-05");
+    assert.equal(rendered.guides.length, 2);
+    chart.focusNTargets("2024-03-22");
+    assert.equal(rendered.guides.length, 0);
+    chart.selectAnnotation(fixture.theory.events[0].id, false);
+    assert.equal(rendered.guides.length, 2);
+    chart.setTheory(null);
+    assert.equal(chart.selected, null);
+    assert.equal(chart.focusedNTarget, null);
+    assert.equal(rendered.guides.length, 0);
+    chart.updateWaveProjectionHover("2024-03-05");
+    assert.equal(rendered.guides.length, 0);
+});
+
+test("selected buy targets and focused N targets are shown once per price and stage", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xinhua_2024_n_targets.json", import.meta.url)));
+    const { chart, rendered } = chartHarness(fixture.view.bars);
+    chart.setTheory({ ...fixture.theory, shapes: [], lecture_drawing: { strokes: [] } });
+    const n = chart.nTargetObservations[0].item;
+    chart.selected = {
+        ...n,
+        id: "buy-with-same-targets",
+        kind: "fill",
+        category: "fills",
+        raw: {},
+        time: "2024-03-20",
+    };
+    chart.options.fills = true;
+    chart.updateWaveProjectionHover("2024-03-05");
+    assert.deepEqual(
+        rendered.guides.map((guide) => guide.stage),
+        ["one_p", "two_t"],
+    );
+    assert.equal(targetLabels(chart, rendered.guides).length, 2);
+});
+
+test("a candidate without target levels keeps its reference while N focus adds the two labels", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xinhua_2024_n_targets.json", import.meta.url)));
+    const { chart, rendered } = chartHarness(fixture.view.bars);
+    chart.setTheory({ ...fixture.theory, shapes: [], lecture_drawing: { strokes: [] } });
+    chart.selected = { id: "candidate", kind: "candidate", time: "2024-03-05", price: 4.6 };
+    chart.updateWaveProjectionHover("2024-03-05");
+    assert.deepEqual(
+        rendered.guides.map((guide) => guide.stage),
+        ["one_p", "two_t"],
+    );
+    assert.equal(chart.levelLines.length, 3);
+    assert.equal(chart.selected.id, "candidate");
+});
+
+test("a selected N retains labels when C is clipped at either side or at a fractional viewport boundary", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xinhua_2024_n_targets.json", import.meta.url)));
+    const { chart, rendered } = chartHarness(fixture.view.bars);
+    chart.setTheory({ ...fixture.theory, shapes: [], lecture_drawing: { strokes: [] } });
+    chart.selectAnnotation(fixture.theory.events[0].id, false);
+    for (const range of [
+        { from: 0, to: 1 },
+        { from: 8.5, to: 13.5 },
+    ]) {
+        rendered.range = range;
+        chart.refreshMarkers();
+        const labels = targetLabels(chart, rendered.guides, () => -100);
+        assert.equal(labels.length, 2, JSON.stringify(range));
+        assert.ok(labels.some((label) => /一饱.*图外/.test(label)));
+        assert.ok(labels.some((label) => /二吐.*图外/.test(label)));
+        assert.ok(rendered.guides.every((guide) => guide.start === "2024-03-04" && guide.end === null));
+    }
+    chart.selected = null;
+    chart.focusNTargets(null);
+    rendered.range = { from: 0, to: fixture.view.bars.length - 1 };
+    chart.updateWaveProjectionHover("2024-03-05");
+    rendered.range = { from: 8.5, to: 13.5 };
+    chart.refreshMarkers();
+    assert.equal(chart.hoveredNTarget, null);
+    assert.equal(rendered.guides.length, 0);
 });
 
 function endpointDrawing(chart) {
@@ -633,7 +784,7 @@ test("hovering any A, B or C candle shows that group's targets without changing 
     assert.equal(chart.hoveredWaveProjection, null);
     assert.equal(chart.selected, fill);
     assert.equal(rendered.guides.length, 0);
-    assert.equal(chart.container.dataset.levelCount, 1);
+    assert.equal(chart.container.dataset.levelCount, "1");
     chart.updateWaveProjectionHover(null);
     assert.equal(chart.selected, fill);
 });
@@ -804,7 +955,7 @@ test("repeated navigation replaces the pulse, animates its rings and clears the 
     radii.length = 0;
     overlay.draw(target);
     assert.ok(radii[0] > firstRadius);
-    overlay.tick(overlay.active.startedAt + overlay.active.duration);
+    overlay.tick(overlay.active.startedAt + overlay.active.duration + 1);
     assert.equal(overlay.active, null);
     assert.equal(chart.container.dataset.focusFlashActive, "false");
     assert.equal(chart.container.dataset.focusFlashId, undefined);

@@ -4,6 +4,39 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-260",
+            "name": "positive-n-target-range-focus",
+            "title": "正N范围焦点目标标签",
+            "description": "参考ABC悬停方案，正N结构与一饱二吐区间内的K线悬停、点击和日期定位显示对应目标，修复规则开关及图外锚点导致选中仍无标签。",
+            "scope": "Web共用焦点范围、图表目标叠加及屏幕边缘标签，保留Core目标与交易规则",
+            "dependencies": ["MONOREPO-259", "MONOREPO-216"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "已知正N从结构起点到二吐首次严格突破的范围内任何K线悬停、点击及日期定位均显示同组一饱二吐；提前历史截面不可用",
+                "规则标记和ABC开关不阻挡N目标焦点，ABC与N目标可共存，成交选择和缩放不变，同价同阶段去重",
+                "C点移出视口或目标价格图外仍标识名称、精确价格及原突破状态，原锚点和截断日期不变",
+                "重叠结构匹配明确选中或命中，否则最新已知N；移出、换数据及关闭目标时清理；真实600825三月五日回归",
+                "相关定向测试、格式lint类型构建及Harness通过，完整套件和浏览器未运行项明确记录"
+            ],
+            "verification": [
+                {
+                    "command": "Web node --test tests/n-target-focus.test.mjs tests/wave-c-chart.test.mjs tests/target-level-guides.test.mjs tests/buy-n-targets.test.mjs tests/n-extension-levels.test.mjs tests/annotations.test.mjs tests/wave-c-projection.test.mjs tests/ordinary-c-wave.test.mjs tests/combined-a-chart.test.mjs",
+                    "status": "passed",
+                    "summary": "137项通过；真实新华传媒夹具先复现焦点无目标，修复后覆盖范围逐棒悬停、日期定位、规则和ABC开关独立、ABC并显、同目标去重、候选参考价、两侧图外C点及分数视口、首次严格突破和清理。旧DOM桩断言按字符串校正，动画清理检查使用确定超过结束时间的时刻。"
+                },
+                {
+                    "command": "Web pnpm lint; pnpm typecheck; pnpm build; targeted Prettier; node --check; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "Web lint零错误6条既有警告、类型和最终生产构建通过，相关格式、语法与Harness通过；构建生成next-env差异定向恢复。完整Web套件及浏览器/Playwright未运行，待独立验证。"
+                },
+                {
+                    "command": "saved actual 1508-bar AkShare HTTP payload through current buildAnnotations/nTargetObservations/nTargetAt/targetLevelGuide",
+                    "status": "passed",
+                    "summary": "复用上一轮正式HTTP原始响应，未重跑账户：03-05正N焦点范围02-29..03-20，一饱5.289057414759589、二吐5.783644844765735，原03-04 C点，两目标未突破；03-04截面不借用未来N，03-20原唯一BUY/filled保留。只消费共用理论目标，不改Core交易规则。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-259",
             "name": "positive-n-target-guide-labels",
             "title": "正N一饱二吐目标标识",

@@ -70,7 +70,7 @@ export class TargetGuideOverlay {
         this.projected = this.guides
             .map((guide) => ({
                 ...guide,
-                x: this.chart.timeScale().timeToCoordinate(guide.start),
+                x: this.chart.timeScale().timeToCoordinate(guide.display_at || guide.start),
                 endX: guide.end ? this.chart.timeScale().timeToCoordinate(guide.end) : null,
                 y: this.series.priceToCoordinate(guide.price),
             }))
@@ -97,7 +97,9 @@ export class TargetGuideOverlay {
                         guide.x <= mediaSize.width &&
                         (guide.x >= 0 || (guide.end > guide.start && guide.endX !== null && guide.endX >= 0)) &&
                         (!guide.offscreen ||
-                            ["c_0618", "c_equal", "c_1618", "five_top", "ten_full"].includes(guide.stage)),
+                            ["c_0618", "c_equal", "c_1618", "one_p", "two_t", "five_top", "ten_full"].includes(
+                                guide.stage,
+                            )),
                 )
                 .sort((left, right) => left.displayY - right.displayY);
             const labelYs = visible.map((guide) => guide.displayY - 3);
