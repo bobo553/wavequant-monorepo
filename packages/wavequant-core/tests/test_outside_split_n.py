@@ -12,7 +12,7 @@ from wavequant.domain.market_structure.n_shape import (
 )
 from wavequant.domain.market_structure.price_action import Direction
 from wavequant.domain.models.model import Bar
-from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
+from wavequant.domain.strategies.integrated_strategy import SystemResult, SystemStrategy, generate_system_signals
 from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
 from wavequant.interfaces.charts.visualization import ChartRepository
 
@@ -63,6 +63,37 @@ def test_mirrored_bearish_outside_turn_completes_inverse_n():
     assert result.completion.defense == pytest.approx(6.71)
     assert result.targets.one_p == pytest.approx(6.19)
     assert result.targets.two_t == pytest.approx(5.91)
+    audit = SystemResult([], [dict(
+        event="n_completed", timestamp=inverse[4].timestamp.isoformat(), bar_index=4, known_at=4,
+        origin=0, neckline=1, pullback=3, direction="down", defense=result.completion.defense,
+    )], {})
+    theory = ChartRepository.render_theory(
+        None, inverse, SystemStrategy(), audit, "2025-09-30", geometry={"tertiary_trends": {}},
+    )
+    levels = theory["events"][0]["levels"]
+    assert all("stage" not in level and "display_name" not in level for level in levels)
+    assert [level["price"] for level in levels if level["name"] in ("1P 投影", "2T 投影")] == pytest.approx([6.19, 5.91])
+
+
+def test_target_guides_wait_for_the_completion_knowledge_date():
+    bars, _ = sample()
+    audit = SystemResult([], [dict(
+        event="n_completed", timestamp=bars[4].timestamp.isoformat(), bar_index=4, known_at=5,
+        origin=0, neckline=1, pullback=3, direction="up", defense=3.29,
+    )], {})
+    early = ChartRepository.render_theory(
+        None, bars[:5], SystemStrategy(), audit, "2025-09-29", geometry={"tertiary_trends": {}},
+    )
+    assert early["events"] == []
+    known = ChartRepository.render_theory(
+        None, bars, SystemStrategy(), audit, "2025-09-30", geometry={"tertiary_trends": {}},
+    )
+    event = known["events"][0]
+    assert event["time"] == "2025-09-29"
+    targets = [level for level in event["levels"] if level.get("stage") in ("one_p", "two_t")]
+    assert len(targets) == 2
+    assert all(level["anchor_at"] == "2025-09-26" and level["available_at"] == "2025-09-30"
+               for level in targets)
 
 
 def test_outside_split_requires_explicit_convention_and_directional_body():
@@ -119,4 +150,8 @@ def test_real_daily_pipeline_preserves_september_n_and_prefix():
         None, bars[:attack+1], config, prefix, "2025-09-29", geometry={"tertiary_trends": {}},
     )
     prefix_event = next(e for e in prefix_theory["events"] if e["event"] == "n_completed" and e["bar_index"] == attack)
-    assert not any("stage" in level for level in prefix_event["levels"])
+    targets = {level["stage"]: level for level in prefix_event["levels"] if "stage" in level}
+    assert set(targets) == {"one_p", "two_t"}
+    assert [targets[stage]["price"] for stage in ("one_p", "two_t")] == [3.81, 4.09]
+    assert all(level["anchor_at"] == "2025-09-26" and level["available_at"] == "2025-09-29"
+               for level in targets.values())

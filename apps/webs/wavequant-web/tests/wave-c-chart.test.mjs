@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { buildAnnotations } from "../public/annotations.js";
+
 let reducedMotion = false;
 globalThis.window = {
     LightweightCharts: { LineSeries: "line" },
@@ -140,6 +142,73 @@ function targetLabels(chart, guides, priceToCoordinate = () => 100) {
     overlay.draw({ useMediaCoordinateSpace: (draw) => draw({ context, mediaSize: { width: 2000, height: 200 } }) });
     return labels;
 }
+
+test("confirmed Xinhua N uses the shared one-p and two-t target guides before any buy", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xinhua_2024_n_targets.json", import.meta.url)));
+    const view = {
+        ...fixture.view,
+        asof: "2024-03-05",
+        bars: fixture.view.bars.filter((bar) => bar.time <= "2024-03-05"),
+    };
+    const { chart, rendered } = chartHarness(view.bars);
+    const lines = [];
+    chart.chart.addSeries = (_type, options) => {
+        const line = {
+            options,
+            setData(points) {
+                this.points = points;
+            },
+        };
+        lines.push(line);
+        return line;
+    };
+    chart.data = view;
+    chart.theory = { ...fixture.theory, asof: view.asof };
+    chart.options.rules = true;
+    chart.selected = buildAnnotations(view, chart.theory)[0];
+    assert.equal(chart.selected.raw.event, "n_completed");
+    assert.deepEqual(
+        chart.selected.levels.filter((level) => level.stage).map((level) => level.name),
+        ["一饱（正 N）", "二吐（正 N）"],
+    );
+    assert.deepEqual(
+        fixture.theory.events[0].levels.filter((level) => level.stage).map((level) => level.name),
+        ["1P 投影", "2T 投影"],
+    );
+    assert.equal(view.markers.length, 0);
+    chart.drawLevels();
+    assert.deepEqual(
+        rendered.guides.map(({ stage, name, price, start, end }) => ({ stage, name, price, start, end })),
+        [
+            { stage: "one_p", name: "一饱（正 N）", price: 5.289057414759589, start: "2024-03-04", end: null },
+            { stage: "two_t", name: "二吐（正 N）", price: 5.783644844765735, start: "2024-03-04", end: null },
+        ],
+    );
+    const targets = lines.filter((line) => /一饱|二吐/.test(line.options.title));
+    assert.equal(targets.length, 2);
+    assert.ok(
+        targets.every(
+            (line) => line.points.length === 1 && !line.options.lastValueVisible && !line.options.priceLineVisible,
+        ),
+    );
+    assert.deepEqual(targetLabels(chart, rendered.guides), ["一饱 5.2891 · 未突破", "二吐 5.7836 · 未突破"]);
+    chart.data = fixture.view;
+    chart.theory = fixture.theory;
+    chart.drawLevels();
+    assert.ok(rendered.guides.every((guide) => guide.end === null && guide.start === "2024-03-04"));
+    chart.options.rules = false;
+    chart.drawLevels();
+    assert.equal(rendered.guides.length, 0);
+    chart.options.rules = true;
+    chart.options.levels = false;
+    chart.drawLevels();
+    assert.equal(rendered.guides.length, 0);
+    chart.options.levels = true;
+    chart.selected = null;
+    chart.drawLevels();
+    assert.equal(rendered.guides.length, 0);
+    assert.equal(chart.levelLines.length, 0);
+});
 
 function endpointDrawing(chart) {
     const labels = [],

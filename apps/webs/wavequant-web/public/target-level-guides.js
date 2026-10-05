@@ -25,7 +25,7 @@ export function targetLevelGuide(item, level, bars, asof) {
         start: level.anchor_at,
         end: breakout?.time || null,
         price: level.price,
-        name: level.name,
+        name: level.display_name || level.name,
         ...(cTarget
             ? {
                   targetState: breakout ? "已触及" : ended ? "本段结束未达成" : "待达成",

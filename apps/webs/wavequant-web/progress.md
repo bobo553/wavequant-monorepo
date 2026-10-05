@@ -1,5 +1,8 @@
 # Progress
 
+- MONOREPO-259（2026-10-05）：正 N 一饱、二吐消费 Core 共用出口发布的阶段、C 点和可知日；标记详情与目标线统一中文显示名，保留引擎旧字段和精确价格，不由 Web 重算。确认当天即可按既有左端标识方案绘制，未突破画短虚线，首次严格突破后截断；确认日仍只用收盘。新华传媒 2024-03-05 的实际 1508 日线审计经过当前渲染器生成固定夹具，验证同日 B/C、无 BUY 时也显示一饱 5.2891 和二吐 5.7836、到 03-20 仍未突破，右侧不重复标签，隐藏和取消选择清理目标。
+  `node --test tests/wave-c-chart.test.mjs tests/target-level-guides.test.mjs tests/buy-n-targets.test.mjs tests/annotations.test.mjs tests/n-extension-levels.test.mjs tests/wave-c-projection.test.mjs tests/ordinary-c-wave.test.mjs` 110 项通过，新增真实渲染链先复现无目标标签；两处旧目标测试桩补齐当前端点 overlay 接口。拓扑定向 Vitest 3 项通过；最终 lint 零错误（6 条既有警告）、typecheck、生产 build、相关 Prettier 和 Harness 通过。构建生成的 next-env 路径变化已定向恢复。完整 Web 单测及真实浏览器/Playwright 未运行，待独立验证。默认提交和本地合并，本次不自动推送。
+
 MONOREPO-258常驻验收：c05d8e4经e6d1e13本地合并，main真实3项拓扑通过；13003/API8765均HTTP200且自动加载v91，原始引擎468d1456680c21d8f5904aa51f20bca1c0b341a4801309624a23b029d7eab354与main一致。新wave-entry-evidence.js响应字节与main文件相同。未重启、未修改缓存，用户刷新并重新回测即可；本轮未推送。
 
 - MONOREPO-258：拓扑同步全局 V3 讲义阴母先高后低同日 B/C 正 N，以及原正 N 突破棒收盘、最高价分别严格突破的抵抗失败路径。仍只统计突破当天或次日抵抗、最早第三根 K 线确认、原 N 防守从未失守；新路径要求确认日中大阳且短上影（实体/开盘 ≥3%、实体/振幅 ≥60%、上影/振幅 ≤20%），原严格抵抗阶段纪录路径独立保留。成交原因、详情及复制文本共用 `resistance_attack_bar_break` 的发布证据；日期、价位或任一强势形态字段缺失时只显示缺证据，不由价格推算买点。新深 B 倒 N 恢复路径同时保留整段至少 2/3、结构归属与可知时序、回调低点防守、收盘严格收复杀多高及独立风险门禁说明。
