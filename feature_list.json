@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-276",
+    "activeFeature": "MONOREPO-256",
     "features": [
         {
             "id": "MONOREPO-276",
@@ -10,7 +10,7 @@
             "description": "按用户要求，所有全局V3轧空买点的新买入及加仓必须满足当日强势阳线形态；保留轧空盘态和N目标推演。",
             "scope": "Core共同N轧空入场通道、V95、弱K审计及Web说明、真实襄阳轴承回归",
             "dependencies": ["MONOREPO-275"],
-            "status": "in-progress",
+            "status": "done",
             "acceptanceCriteria": [
                 "所有V3轧空入场含N、恢复及C浪轧空统一要求实体至少开盘3%、至少振幅60%、上影至多振幅20%，等号有效且可选过滤不能绕过",
                 "弱K拒买不消费N，后续有效新确认可重新审核；独立组合A和浅回撤保留自身规则，退出、盘态、五顶十满和历史可知条件不变",
@@ -49,9 +49,9 @@
                     "summary": "按用户节奏未跑完整套件及浏览器端到端。盘中依决策时已见部分K，最后收盘转弱不回溯当时合法成交；真实外部分钟执行待独立验证。"
                 },
                 {
-                    "command": "local main no-ff merge and live formal 000678 June15 account verification",
-                    "status": "not-run",
-                    "summary": "实现和定向门禁完成，待本地合并后核验常驻V95及正式1317棒结果，无推送。"
+                    "command": "local main no-ff merge; HTTP8765/13003 V95; formal 000678 2018..2023-07-04 account and source verification",
+                    "status": "passed",
+                    "summary": "实现71e1b8d由fc0b3aa无冲突no-ff合并本地main。两端自动加载V95/4e654845，引擎128来源逐项SHA256与main精确一致，Web annotations.js HTTP200逐字匹配。正式job44f7c793重算1317根真实日线，逐字段等于旧V94前缀；6/15 LONG=0及BUY=0，旧当天唯一filled加仓被剔除；6/12原N和6/15强轧空保留，原N全部5个投影事件与旧版逐项相同，实际theory五顶6.97/6月28、十满9.37/6月29均已满足。main Harness和8项拓扑通过。无手工重启、缓存改写或推送，恢复256全部原状态及失败证据。"
                 }
             ]
         },
@@ -845,7 +845,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "backlog",
+            "status": "in-progress",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
