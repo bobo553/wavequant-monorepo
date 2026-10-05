@@ -33,6 +33,11 @@
                     "command": "saved actual 1508-bar AkShare HTTP payload through current buildAnnotations/nTargetObservations/nTargetAt/targetLevelGuide",
                     "status": "passed",
                     "summary": "复用上一轮正式HTTP原始响应，未重跑账户：03-05正N焦点范围02-29..03-20，一饱5.289057414759589、二吐5.783644844765735，原03-04 C点，两目标未突破；03-04截面不借用未来N，03-20原唯一BUY/filled保留。只消费共用理论目标，不改Core交易规则。"
+                },
+                {
+                    "command": "main local no-ff merge; Web13003 research and charts.js/n-target-focus.js/target-level-guides.js HTTP; main pnpm harness:check",
+                    "status": "passed",
+                    "summary": "实现2b007e3经47092d7合并本地main，两个检出干净；当前研究页HTTP200，三个模块均HTTP200且逐字匹配main源码。main Harness通过，未重启服务、未运行浏览器/Playwright，未推送。刷新用户页面加载新模块。"
                 }
             ]
         },

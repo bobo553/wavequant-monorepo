@@ -1,5 +1,7 @@
 # Progress
 
+MONOREPO-260 常驻验收：实现 `2b007e3` 经 `47092d7` 合并本地 main。研究页 HTTP200，Web13003 的 `charts.js`、新 `n-target-focus.js` 和 `target-level-guides.js` 均 HTTP200，响应逐字匹配 main 源码；main Harness 通过。仅 HTTP/模块验收，未运行浏览器；刷新页面加载新逻辑，本轮未推送。
+
 - MONOREPO-260（2026-10-05）：修复此前只选中精确正 N 规则点才显示目标的问题。共用 N 焦点观察从已知结构起点延续至二吐首次严格突破当天，悬停、K 线点击和日期定位显示一饱、二吐；独立于规则和 ABC 开关，只受目标开关控制。ABC 与 N 并显，同阶段同价去重；优先明确命中或已选 N，否则最新已知结构。C 点在图窗任一侧或分数缩放边界之外时，标签使用可见显示锚点；目标价格图外显示边缘提示，保留原目标、C 点和突破日期。移出清理临时悬停，换数据/理论清理旧焦点。没有改动 Core 交易规则。
   `node --test tests/n-target-focus.test.mjs tests/wave-c-chart.test.mjs tests/target-level-guides.test.mjs tests/buy-n-targets.test.mjs tests/n-extension-levels.test.mjs tests/annotations.test.mjs tests/wave-c-projection.test.mjs tests/ordinary-c-wave.test.mjs tests/combined-a-chart.test.mjs` 最终 137 项通过。真实新华传媒夹具先复现无标签，覆盖规则关闭、ABC 并显、图外目标与锚点、范围结束、去重、候选参考价及清理；旧测试桩 DOM 值按实际字符串校正，动画结束检查避免浮点时间误差。复用上一轮正式 1508 日线 HTTP 数据核对 03-05 焦点、一饱 5.2891 和二吐 5.7836、03-04 不可知及 03-20 原唯一 BUY/filled；未重跑账户。lint 零错误（6 条既有警告）、typecheck、最终生产构建、相关格式/语法及 Harness 通过。完整 Web 单测和真实浏览器/Playwright 未运行，待独立验证；本轮按默认流程本地合并，不推送。
 
