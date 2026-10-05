@@ -4,6 +4,48 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-272",
+            "name": "two-t-bearish-body-volume-clear",
+            "title": "二饱后实体反包放量清仓",
+            "description": "全局V3在有效正N二饱到位之后，阴线实体覆盖前日阳线实体且量严格超过此前最近阴线时，当日收盘清空余仓，不依赖前日总量或先前减仓。",
+            "scope": "Core全局目标风险、同日执行、策略版本及Web清仓证据",
+            "dependencies": ["MONOREPO-263"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "只使用此前交易日已到二饱且尚未失效的正N，覆盖后来所有交易日且不按股票日期特判",
+                "当日收阴，开盘不低于前阳线收盘、收盘不高于前阳线开盘，至少一端严格扩展实体；量严格大于此前最近阴线的正成交量",
+                "无需大阴线比例、影线包容或量大于前日；清仓优先于减仓，当日模拟收盘卖空且禁止同日买入和加仓",
+                "新华传媒2023-12-18真实日线及前缀一致性通过，边界、失效、T+1和其他既有目标风控回归，Web显示可追溯中文证据"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_two_t_body_volume_clear.py; tests/test_two_t_resistance_risk.py tests/test_wave_exhaustion_exit.py tests/test_guofang_2023_target_exit.py tests/test_wave_target_upper_shadow_exit.py tests/test_xinhuawenxuan_bearish_reversal_exit.py tests/test_target_exit_policy.py tests/test_ten_full_entry.py (scoped groups and affected reruns)",
+                    "status": "passed",
+                    "summary": "新增24项及相邻91项通过，分组有重叠不重复累计。先加回归复现12-18无EXIT等7处缺失；相邻首轮89通过2个旧全清原因被覆盖，保留旧全清优先级后最终新/二饱56项通过（1项已通过的真实先锋用例不重复），追加多股票及最近阴线更新4项通过。覆盖实体边界、严格量、十字线、到位时序、未来/失效目标、全清优先、同日禁买、T+1及正式账户前缀。"
+                },
+                {
+                    "command": "Read-only cached AkShare daily input 2018-01-02..2023-12-19; fresh v93 generate_system_signals and single_stock_result full/prefix; actual filled-order Web reasons",
+                    "status": "passed",
+                    "summary": "只复用已核对的行情和权限，未复用旧信号/审计。1449日线82.58秒完成，12-18唯一SELL/filled清剩余1400股，原始5.27元按5bps滑点5.267365元，余仓0；此前11-02正N在12-11到二饱，最近阴线12-08量23328933，当前69475932小于昨量但满足新规则。12-18与12-19扩展信号、审计、订单前缀相同；实际成交经Web共享helper显示日期、实体价格和量能证据。"
+                },
+                {
+                    "command": "Core targeted strict mypy; modified modules/test mypy; pnpm --filter @wavequant/core typecheck; build; isolated wheel smoke with declared dependencies",
+                    "status": "passed",
+                    "summary": "目标风险模块strict、其余修改模块和新测试显式源路径mypy、既定4文件strict、sdist/wheel及隔离安装导入v93通过。首次隔离--no-deps缺Windows tzdata，按项目声明安装后通过；单独测试路径mypy解析至已安装包缺typed标记，将真实源码与测试一同纳入检查后通过，无忽略或降低门槛。未运行Python格式或lint工具。"
+                },
+                {
+                    "command": "node --test annotations.test.mjs trade-reasons.test.mjs; topology Vitest; Web lint/typecheck/build; targeted Prettier; Node syntax; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "Web60项Node及5项拓扑通过，包含新清仓日期/实体/量能的详情与复制；拓扑新增全清门禁并复核70来源指纹793d0515。最终lint0错误6条既有警告、类型、512MB/4MB生产build、相关格式/语法/差异及Harness通过，next-env生成差异定向恢复。"
+                },
+                {
+                    "command": "Complete Core/Web suites, browser/Playwright and external minute execution",
+                    "status": "not-run",
+                    "summary": "按用户验证节奏未运行完整套件和浏览器/Playwright；真实外部分钟待独立验证，历史账户沿用正式缺分钟日线收盘回退。保留256及263全部既有失败证据，272完成后恢复256为唯一in-progress。本轮默认只本地合并，不推送。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-271",
             "name": "remove-research-hero-copy",
             "title": "移除研究页标题与副标题",

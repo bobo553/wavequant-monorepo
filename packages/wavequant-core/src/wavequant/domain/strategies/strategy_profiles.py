@@ -82,7 +82,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v92_' + variant
+    config['profile_version'] = 'gap_up_bullish_squeeze_v93_' + variant
     config['definition']['a_wave_classification'] = 'ordinary_one_p_inclusive_below_two_t__strong_two_t_inclusive'
     config['definition']['a_wave_invalidation'] = 'strict_low_break_of_a_origin__no_later_c_until_new_a'
     config['definition']['b_wave_pullback'] = 'both_a_classes_may_break_squeeze_low__actual_trading_bar_duration'
@@ -136,6 +136,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         wave_target_upper_shadow_exit='post_b_positive_n_own_one_p_two_t_five_top_or_ten_full_upper_shadow_ge_half_range_cumulative_80_same_close_then_first_later_lower_close_full_clear',
         two_t_resistance_entry_exit='global_larger_n_two_t_reach_or_next_session_upper_ge_half_range_and_body_blocks_buy_add_cumulative_80_then_next_bearish_low_lt_previous_low_close_lt_previous_close_volume_gt_last_bearish_full_clear',
         two_t_next_session_exit='global_first_two_t_reach_upper_shadow_gt_40pct_next_session_bearish_low_lt_previous_low_close_lt_previous_close_volume_gt_last_bearish_same_close_full_clear_without_prior_reduction',
+        two_t_body_volume_exit='global_live_positive_n_two_t_reached_before_today_later_bearish_body_inclusively_engulfs_previous_bullish_body_one_strict_edge_volume_gt_positive_last_bearish_skipping_dojis_no_body_ratio_wick_or_previous_day_volume_gate_same_close_full_clear_over_partial_exits',
         wave_gap_reversal_exit='post_b_new_n_one_p_or_later_volume_gt_previous_open_gt_previous_high_range_ge_8pct_upper_le_20pct_bear_body_ge_5pct_open_or_half_range_cumulative_80_same_close',
         wave_upper_rejection_exit='post_b_new_n_one_p_or_later_volume_gt_previous_new_high_bearish_upper_ge_body_lower_le_20pct_range_ge_8pct_cumulative_80_same_close',
         weak_n_confirmation='uninterrupted_strong_squeeze_or_defense_held_volume_gt_previous_close_above_episode_record_squeeze',

@@ -307,7 +307,15 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
                 detail: "系统信号先于同日新入场判断；触发 EXIT 后该日不再生成 LONG。",
                 source: "integrated_strategy.py · generate_system_signals:550–573",
                 yes: "EXIT 风险信号；停止当日入场",
-                no: "检查 V3 整仓风险",
+                no: "检查二饱后实体反包",
+            },
+            {
+                id: "two-t-body-clear",
+                question: "二饱到位后，阴线实体反包且量超过最近阴线？",
+                detail: "有效正 N 必须在此前交易日已到二饱（二吐/2T）。后续任一交易日收阴，开盘 ≥ 前阳线收盘、收盘 ≤ 前阳线开盘且至少一端严格越过，成交量严格大于此前最近阴线的正成交量即全清；十字线不作阴线量基准。不要求覆盖影线、5% 实体或超过前日成交量，不依赖先前减仓。已失效或未来目标不能触发。整仓退出优先于减仓，并取消同日新买与加仓；T+1 或不可卖时保留待卖执行。",
+                source: "two_t_resistance.py · two_t_resistance_history；backtest.py · run_portfolio",
+                yes: "当日模拟收盘清空余仓",
+                no: "检查 V3 其他整仓风险",
             },
             {
                 id: "hard-risk",
@@ -497,4 +505,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "916f103446d14bb7c40e6dcf372347facd7aa4eb8ddd0dd9f2759f1815bdfd82";
+export const strategySourceDigest = "793d05159f3033c66e11846cc9f2b451e736e0a6105c91d9763b58945a1ea8a3";

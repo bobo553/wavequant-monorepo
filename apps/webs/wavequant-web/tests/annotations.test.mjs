@@ -31,6 +31,7 @@ test("sizing rejection and structural cutoff have explicit Chinese explanations"
     assert.match(reasonText("volume_bearish_outside_clear"), /连续阳线后.*当日清仓/);
     assert.match(reasonText("volume_bullish_gap_bearish_clear"), /前日放量大阳线.*实体中点.*当日收盘清仓/);
     assert.match(reasonText("wave_five_top_gap_volume_clear"), /五顶到达后低开.*前日开盘.*最近阴线.*清空余仓/);
+    assert.match(reasonText("wave_two_t_body_volume_clear"), /二饱到位后.*实体反包.*此前最近阴线.*当日收盘清空余仓/);
     assert.match(reasonText("mother_child_inverse_n_low_break"), /阳子线低点与收盘均被严格跌破.*当日收盘清仓/);
     assert.match(reasonText("inverse_n_new_low_requires_observation"), /跌破昨低.*倒 N.*观望.*禁止新买入或加仓/);
     assert.match(reasonText("volume_bearish_child_reduce_70"), /阴子线.*减仓 70%/);
@@ -783,27 +784,29 @@ test("ten-full entry pause explains A-to-B depth and duration", () => {
         markers: [],
     };
     const [item] = buildAnnotations(candidateView, {
-        events: [{
-            id: "ten-full-risk",
-            event: "entry_rejected",
-            time: "2023-09-01",
-            available_at: "2023-09-01",
-            price: 6.61,
-            attack: 1,
-            reason: "wave_ten_full_pullback_pending",
-            wave_ten_full_reached_date: "2023-08-01",
-            wave_ten_full_high: 8.44,
-            wave_retracement_anchor: 4.27,
-            wave_retracement_anchor_source: "origin",
-            wave_retracement_ratio: 2 / 3,
-            wave_retracement_threshold: 5.66,
-            wave_half_retracement_threshold: 6.355,
-            wave_timed_half_retracement: true,
-            wave_a_duration: 26,
-            wave_b_duration: 20,
-            wave_b_low: 5.82,
-            wave_breakout_window: 23,
-        }],
+        events: [
+            {
+                id: "ten-full-risk",
+                event: "entry_rejected",
+                time: "2023-09-01",
+                available_at: "2023-09-01",
+                price: 6.61,
+                attack: 1,
+                reason: "wave_ten_full_pullback_pending",
+                wave_ten_full_reached_date: "2023-08-01",
+                wave_ten_full_high: 8.44,
+                wave_retracement_anchor: 4.27,
+                wave_retracement_anchor_source: "origin",
+                wave_retracement_ratio: 2 / 3,
+                wave_retracement_threshold: 5.66,
+                wave_half_retracement_threshold: 6.355,
+                wave_timed_half_retracement: true,
+                wave_a_duration: 26,
+                wave_b_duration: 20,
+                wave_b_low: 5.82,
+                wave_breakout_window: 23,
+            },
+        ],
     });
     assert.equal(item.category, "entry-rejections");
     assert.match(item.description, /十满于 2023-08-01 到达，日高 8\.44 元/);

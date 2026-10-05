@@ -8,6 +8,34 @@ import { holdingDrawdownVersion } from "../public/max-drawdown.js";
 import { numberedTradeReasons, tradeReasonItems } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
 
+test("two-T body reversal details and clipboard trace the engulfed candle and previous bearish volume", () => {
+    const marker = {
+        kind: "fill",
+        side: "SELL",
+        reason: "wave_two_t_body_volume_clear",
+        time: "2023-12-18",
+        wave_n_date: "2023-11-02",
+        wave_reached_date: "2023-12-11",
+        wave_reached_price: 5.17802758,
+        engulfed_date: "2023-12-15",
+        previous_open: 5.33952552,
+        previous_close: 5.5716788,
+        observed_open: 5.63224053,
+        observed_close: 5.31933828,
+        observed_volume: 69_475_932,
+        previous_volume: 89_356_897,
+        bearish_reference_date: "2023-12-08",
+        bearish_reference_volume: 23_328_933,
+    };
+    const reasons = numberedTradeReasons(marker).join("\n");
+    assert.match(reasons, /2023-11-02 正 N.*2023-12-11.*二饱/);
+    assert.match(reasons, /实体反包 2023-12-15.*5.6322.*≥.*5.5717.*5.3193.*≤.*5.3395/);
+    assert.match(reasons, /69,475,932 股 >.*2023-12-08.*23,328,933 股.*清空余仓/);
+    assert.doesNotMatch(reasons, /undefined|NaN|89,356,897 股 >|前日成交量/);
+    const view = { symbol: "sh.600825", asof: "2023-12-18", bars: [], metrics: {}, backtest: {} };
+    assert.match(formatFilledTradeCopy(view, marker, "V3", "10%"), /实体反包 2023-12-15.*最近阴线 2023-12-08/);
+});
+
 test("trade detail and clipboard show the same whole-holding entry-cost maximum loss", () => {
     const episode = {
         metric_version: holdingDrawdownVersion,

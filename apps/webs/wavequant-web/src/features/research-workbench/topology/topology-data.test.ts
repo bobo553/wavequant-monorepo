@@ -37,6 +37,13 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("traces the post-two-T body reversal and strict previous bearish volume clear", () => {
+        const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "two-t-body-clear");
+        expect(gate?.detail).toMatch(/此前交易日已到二饱/);
+        expect(gate?.detail).toMatch(/开盘 ≥ 前阳线收盘.*收盘 ≤ 前阳线开盘.*至少一端严格/);
+        expect(gate?.detail).toMatch(/严格大于此前最近阴线.*十字线/);
+        expect(gate?.detail).toMatch(/整仓退出优先于减仓.*取消同日新买与加仓/);
+    });
     it("keeps A classification and lifetime distinct from B squeeze defense", () => {
         const details = topologyFlows
             .flatMap((flow) => flow.gates)
