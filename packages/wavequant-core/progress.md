@@ -1,5 +1,7 @@
 # Progress
 
+MONOREPO-259 常驻验收：实现 `9a61ace` 以 `d745b34` 合并本地 main。API8765 和 Web13003 的版本接口均返回 v91，新引擎 `f9b1cb9e78e5a5b96a48c521c4f0e1c36803557d07ce9b50f0824c291cfd6838` 与 main 的 127 个源码指纹一致。13003 正式 AkShare 接口重算 2018-01-01..2024-03-20 的 1508 日线，03-05 返回两目标的完整阶段、中文名、C 点和可知日，03-20 仍唯一 BUY/filled；响应中的全部源码哈希与 main 完全一致。API 自动加载，无手工重启或缓存改写；加载阶段旧引擎拦截及计算期间短探测超时，完成后两端版本请求均通过。旧页面需刷新并重新回测，本轮未推送。
+
 - MONOREPO-259（2026-10-05）：共用 `ChartRepository.render_theory` 为每个已确认正 N 的一饱、二吐发布 `one_p/two_t` 阶段、C 点锚点、事件可知日及中文显示名。AkShare、通达信和封存理论共用此出口；原 `1P 投影/2T 投影` 名称及测幅价格保留供既有解析使用。只补目标发布信息，不增加买卖条件。新华传媒 03-05 同日 B/C 正 N 从 03-04 C 点标识一饱 5.289057414759589、二吐 5.783644844765735；03-04 截面不可见，03-05 与 03-20 两目标相同，倒 N 保持既有参考线，五顶十满不提前发布。
   `pytest tests/test_xinhua_mother_pullback_squeeze.py tests/test_outside_split_n.py tests/test_mother_pullback_n.py tests/test_market_data_repository.py tests/test_backtest_version.py tests/test_abc_candidate.py -q` 42 项通过。新增真实价格回归先复现缺少 stage，修复后通过，并验证延迟可知日和倒 N。当前 1508 根真实审计通过同一渲染器导出 Web 固定夹具，原 6 个策略来源哈希相同。共用渲染模块额外 mypy 发现的 9 项既有类型问题已补齐声明、明确 Bar 参数及 TypedDict 字段读取，最终 `mypy --follow-imports=silent src/wavequant/interfaces/charts/visualization.py` 无错误；Core 既定严格 typecheck、sdist/wheel、Harness 通过。完整 Core/Web 套件、浏览器和外部分钟待独立验证，未运行 Playwright。本轮按默认流程提交、本地合并，未要求新推送。
 

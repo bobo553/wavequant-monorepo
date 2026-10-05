@@ -32,6 +32,11 @@
                     "command": "Core mypy --follow-imports=silent visualization.py; pnpm --filter @wavequant/core typecheck; build; Web lint; typecheck; build; targeted Prettier; git diff --check; pnpm harness:check",
                     "status": "passed",
                     "summary": "修改渲染模块mypy和既定4文件严格类型检查、sdist/wheel通过；修正该模块9项既有类型问题。Web lint零错误6条既有警告、类型及最终生产构建和相关格式通过；恢复next-env生成路径差异。完整Core/Web套件、真实浏览器/Playwright和外部分钟未运行，待独立验证。"
+                },
+                {
+                    "command": "local main no-ff merge; API8765/Web13003 backtest-version; Web static assets; actual 1508-bar AkShare backtest HTTP; main Web annotations and target-level guides",
+                    "status": "passed",
+                    "summary": "实现9a61ace经d745b34合并本地main；两端HTTP200 v91/f9b1cb9e78e5，127源码及正式回测响应源码指纹与main完全一致，3个Web模块响应逐字相同。2018-01-01..2024-03-20实际1508日线回测发布03-05 one_p5.289057414759589/two_t5.783644844765735、03-04 C点及03-05可知日；main Web模块转换中文名及形成日未突破指南，03-20唯一BUY/filled保留。自动加载阶段旧引擎拦截、计算期间短探测超时后最终两端版本检查通过；未手工重启或缓存改写。本轮未推送，完整套件、浏览器和外部分钟待独立验证。"
                 }
             ]
         },
