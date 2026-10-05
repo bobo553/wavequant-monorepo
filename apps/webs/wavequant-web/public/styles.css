@@ -1825,7 +1825,8 @@ body {
     position: relative;
     display: flex;
     flex-direction: column;
-    min-height: max(560px, calc(100svh - 24px));
+    min-height: 0;
+    align-self: start;
     isolation: isolate;
     overflow: visible;
     container-type: inline-size;
@@ -2434,9 +2435,9 @@ body {
     white-space: nowrap;
 }
 .price-chart {
-    flex: 1 1 355px;
-    min-height: 355px;
-    height: auto;
+    flex: 0 0 auto;
+    min-height: 200px;
+    height: var(--chart-viewport-height, clamp(200px, calc(100svh - 480px), 520px));
     width: 100%;
 }
 .chart-navigation,
@@ -3032,10 +3033,6 @@ tbody tr:hover {
     }
 }
 @media (min-width: 1700px) {
-    .price-chart {
-        flex-basis: 445px;
-        min-height: 445px;
-    }
     .event-list {
         max-height: 430px;
     }
@@ -3381,10 +3378,6 @@ tbody tr:hover {
         padding: 12px;
         font-size: 9px;
         gap: 8px;
-    }
-    .price-chart {
-        flex-basis: 300px;
-        min-height: 300px;
     }
     .two-col {
         grid-template-columns: 1fr;
