@@ -69,6 +69,11 @@
                     "command": "User-authorized delivery with acknowledged main baseline failures; git fetch origin; git merge main; git diff --check main...HEAD",
                     "status": "passed",
                     "summary": "用户在被告知6项main既有失败（其中4项原未获例外）后明确要求合并到main并推送，授权保留这些失败。main ffa270a未新增，特性分支同步无冲突，最终差异检查通过；6项failed记录及256原四项失败均保留。263实现已完成但带failed证据不能标done，留backlog待独立验证，恢复256为唯一in-progress。"
+                },
+                {
+                    "command": "git merge --no-ff feat-新华传媒轧空买点; main pnpm harness:check and topology-data.test.ts; HTTP static modules and backtest-version",
+                    "status": "passed",
+                    "summary": "39ebb54、462fbef及588247f已由dc786d9无冲突no-ff合并本地main，分支同步main；main Harness和4项拓扑通过。13003六个共用Web模块HTTP200且响应逐字匹配main，策略接口返回V3 v92/6c883b9a8d6e。未手工重启或改缓存；实际用户浏览器视觉、完整套件与既有失败仍待独立验证。用户已授权普通推送main，最终远端结果见交付。"
                 }
             ]
         },
