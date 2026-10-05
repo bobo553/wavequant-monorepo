@@ -20,6 +20,11 @@
             ],
             "verification": [
                 {
+                    "command": "main no-ff merge; HTTP 13003 backtest-version and seven Web modules; formal AkShare backtest 2018-01-01..2019-01-17; exact main engine/provenance and actual filled-order Web helper checks",
+                    "status": "passed",
+                    "summary": "f77f0aa以5171b6b无冲突no-ff合并本地main，特性分支已同步；main Harness及6项拓扑通过。实际13003版本v94，129源码引擎f0d1b175...与main逐项相同，七个Web模块HTTP200逐字匹配。正式页面接口255日线HTTP200，01-11唯一当月BUY/filled，2300股、原始5.38269元，决策/执行09:30/same_day_open，01-07正N、01-10昨收与当日开盘防守条件全部明确；01-17无重复BUY。实际成交代入详情/复制helper通过。合并初始探测500，自动重载后200，无手工重启、缓存改写或进程操作。旧页面刷新并重新回测；本任务未推送。"
+                },
+                {
                     "command": "pnpm --filter @wavequant/core python -m pytest tests/test_n_opening_squeeze.py tests/test_ten_full_entry.py tests/test_xinhua_volume_record_squeeze.py tests/test_xinhua_mother_pullback_squeeze.py tests/test_intraday_entry.py tests/test_add_on_entry.py tests/test_trade_evidence_addon.py tests/test_stock_backtest.py -q",
                     "status": "passed",
                     "summary": "最终77项通过，含24项新增。覆盖严格高开、前日可知/失效/守防、六个全局V3方案、同N一次、真实2018起点Jan11首次及Jan17不重复、完整/前缀信号与当日HLCV扰动订单不变、开盘不可买禁止借用收盘许可、同日后续EXIT不撤销开盘成交和T+1、既知五顶十满门禁。旧v90/v91收盘oracle显式关闭新入口保留原断言；十满原双通道测试同样固定旧入口，并单独覆盖新开盘门禁。最初执行回归3失败定位仅收盘填单问题；相邻旧通道用例因新更早高开消耗N而失败，固定被测旧路径后全部通过。"
@@ -47,7 +52,7 @@
                 {
                     "command": "Complete Core/Web suites, browser/Playwright and external historical minute execution",
                     "status": "not-run",
-                    "summary": "依用户当次验证节奏完整套件和浏览器/Playwright未运行，真实视觉与外部分钟留待独立验证，不把模块/DOM验收写成浏览器通过。保留256/263全部既有失败证据并恢复256唯一in-progress；本任务默认提交并本地合并，不推送。本地main常驻版本与正式HTTP账户验收随后补充。"
+                    "summary": "依用户当次验证节奏完整套件和浏览器/Playwright未运行，真实视觉与外部分钟留待独立验证，不把模块/DOM验收写成浏览器通过。保留256/263全部既有失败证据并恢复256唯一in-progress；本任务默认提交并本地合并，不推送。本地main常驻版本与正式HTTP账户验收已通过，具体证据见本条目首项。"
                 }
             ]
         },
