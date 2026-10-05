@@ -28,7 +28,6 @@ export const labels = {
     exit_signal: "风险退出观察",
     long_transition_evidence: "多头趋势链条证据",
     combined_a_pullback_breakout: "组合A回调放量突破",
-    n_opening_gap_squeeze: "正 N 高开轧空 · 开盘买点",
     combined_a_candidate: "组合A回调候选",
     combined_a_invalidated: "组合A回调候选失效",
     squeeze_resumption_observed: "轧空回压后恢复上涨",

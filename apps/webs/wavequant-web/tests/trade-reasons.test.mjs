@@ -8,52 +8,6 @@ import { holdingDrawdownVersion } from "../public/max-drawdown.js";
 import { numberedTradeReasons, tradeReasonItems } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
 
-test("opening squeeze details and clipboard show prior-known N and same-day opening execution", () => {
-    const marker = {
-        kind: "fill",
-        side: "BUY",
-        reason: "system_n_opening_gap_squeeze",
-        time: "2019-01-11",
-        execution_model: "same_day_open",
-        execution_timestamp: "2019-01-11T09:30:00",
-        decision_timestamp: "2019-01-11T09:30:00",
-        price: 5.40265,
-        raw_price: 5.38269,
-        decision_evidence: [
-            {
-                buy_point_type: "n_opening_gap_squeeze",
-                squeeze_confirmation: "known_n_opening_gap",
-                n_opening_attack_date: "2019-01-07",
-                n_opening_known_date: "2019-01-07",
-                opening_price: 5.39995056,
-                prior_bar_date: "2019-01-10",
-                prior_close: 5.37987639,
-                n_opening_defense: 5.16909765,
-                decision_timestamp: "2019-01-11T09:30:00",
-            },
-        ],
-    };
-    const view = { symbol: "sh.600825", asof: "2019-01-11", bars: [], metrics: {}, backtest: {} };
-    const reasons = numberedTradeReasons(marker).join("\n");
-    assert.match(reasons, /2019-01-07 正 N.*已确认可知.*5.4000 > 2019-01-10 收盘 5.3799.*09:30:00/);
-    assert.match(reasons, /不等待本日收盘形态或全天成交量/);
-    const copy = formatFilledTradeCopy(view, marker, "V3", "10%");
-    assert.match(copy, /成交时间：2019-01-11T09:30:00/);
-    assert.match(copy, /当天开盘价加回测滑点/);
-    const dom = new JSDOM("<section></section>");
-    const previousDocument = globalThis.document;
-    globalThis.document = dom.window.document;
-    try {
-        appendTradeEvidence(dom.window.document.querySelector("section"), marker);
-        const details = dom.window.document.querySelector("section").textContent;
-        assert.match(details, /当天开盘价计入回测滑点/);
-        assert.doesNotMatch(details, /undefined|NaN|第一类买点|收盘观察，后续/);
-    } finally {
-        globalThis.document = previousDocument;
-        dom.window.close();
-    }
-});
-
 test("two-T body reversal details and clipboard trace the engulfed candle and previous bearish volume", () => {
     const marker = {
         kind: "fill",

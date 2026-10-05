@@ -60,7 +60,6 @@ class SystemStrategy:
     mature_shallow_inclusive: bool = True
     shallow_base_breakout_enabled: bool = True
     combined_a_entry_enabled: bool = False
-    opening_gap_squeeze_enabled: bool = False
     ten_full_breakout_window: int = 23
     ten_full_retracement_ratio: float = 2/3
     ten_full_retracement_anchor: RetracementAnchor = 'origin'
@@ -94,10 +93,6 @@ class SystemStrategy:
             raise ValueError('shallow base breakout switch must be boolean')
         if type(self.combined_a_entry_enabled) is not bool:
             raise ValueError('combined A entry switch must be boolean')
-        if type(self.opening_gap_squeeze_enabled) is not bool:
-            raise ValueError('opening gap squeeze switch must be boolean')
-        if self.opening_gap_squeeze_enabled and self.buy_point_definition != 'whole_flip_wave_v3':
-            raise ValueError('opening gap squeeze requires V3 positive N candidates')
         if type(self.ten_full_breakout_window) is not int or self.ten_full_breakout_window <= 0:
             raise ValueError('ten-full breakout window must be a positive integer')
         if (type(self.ten_full_retracement_ratio) not in (float, int)
@@ -711,7 +706,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             turn_events[t] = direction
             log(t, 'turn_confirmed', direction=direction.value)
             counts['turn_confirmed'] += 1
-    signals: list[Signal] = []
+    signals = []
     exit_structure_cache = (
         chart_history_cache.setdefault('exit_structure', {}) if chart_history_cache is not None else None)
     current_selections: dict[tuple, tuple[dict[str, Any] | None, str]] = {}
@@ -782,67 +777,6 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         if progress is not None and percent != last_progress:
             progress(percent)
             last_progress = percent
-        opening_signal = None
-        if config.opening_gap_squeeze_enabled and i and bar.open > bars[i - 1].close:
-            from .n_opening_squeeze import opening_n_squeeze, OPENING_SQUEEZE_REASON
-            opening_bar = replace(bar, high=bar.open, low=bar.open, close=bar.open, volume=0)
-            opening_prefix = [*bars[:i], opening_bar]
-            prior_projections = [event for event in projection_events if event['bar_index'] < i]
-            opening_five_top = five_top_entry_history(opening_prefix, prior_projections).get(i)
-            opening_ten_full = ten_full_entry_history(
-                opening_prefix, prior_projections, breakout_window=config.ten_full_breakout_window,
-                retracement_ratio=config.ten_full_retracement_ratio,
-                anchor=config.ten_full_retracement_anchor,
-                timed_half=config.ten_full_timed_half_retracement).get(i)
-            opening_pressure = secondary_resistance.get(i - 1)
-            prior_exit = max((signal.bar_index for signal in signals if signal.side == 'EXIT'), default=-1)
-            for c in sorted(candidates, key=lambda candidate: (candidate['attack'], candidate['n_level']), reverse=True):
-                if (c['setup'].direction != Direction.UP or c['attack'] in emitted_attacks
-                        or c['attack'] <= prior_exit or c['finish'] < i or c['epoch'] != epochs[i - 1]):
-                    continue
-                n = c['n']
-                invalidated_at = next((known for known, inverse_attack in inverse_known
-                                       if inverse_attack > c['attack']), None)
-                opening = opening_n_squeeze(bars, attack=c['attack'], known=max(c['attack'], c['known_at']),
-                                            now=i, defense=n.completion.defense, invalidated_at=invalidated_at)
-                if opening is None:
-                    continue
-                rejected = opening_five_top or opening_ten_full
-                if rejected is not None:
-                    log(i, 'entry_rejected', candidate_channel='n_opening_gap_squeeze',
-                        candidate_attack=c['attack'], decision_timestamp=opening['decision_timestamp'], **rejected)
-                    continue
-                if (opening_pressure is not None and not opening_pressure.get('secondary_resistance_resolved')
-                        and bar.open <= opening_pressure['secondary_resistance_high']):
-                    log(i, 'entry_rejected', candidate_channel='n_opening_gap_squeeze', attack=c['attack'],
-                        reason='secondary_breakout_resistance_unresolved', **opening_pressure)
-                    continue
-                hit = {milestone.name for milestone in n.milestones if milestone.bar_index + c['start'] < i}
-                targets = [getattr(n.targets, name) for name in ('equal_wave', 'one_p', 'two_t')
-                           if name not in hit and getattr(n.targets, name) is not None
-                           and getattr(n.targets, name) > bar.open]
-                projection = next((event for event in reversed(c.get('entry_wave_projection', ()))
-                                   if event.bar_index < i), None)
-                if not targets and projection is not None and projection.target is not None and projection.target > bar.open:
-                    targets = [projection.target]
-                if not targets:
-                    log(i, 'entry_rejected', candidate_channel='n_opening_gap_squeeze', attack=c['attack'],
-                        reason='no_live_structural_risk_reward', decision_timestamp=opening['decision_timestamp'])
-                    continue
-                stop, target = n.completion.defense, targets[0]
-                opening_signal = Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.open, stop,
-                    OPENING_SQUEEZE_REASON, bars[c['attack']].timestamp, c['force'].ratio, None,
-                    MarketRegime.BULL.value, target, config.minimum_reward_risk)
-                signals.append(opening_signal)
-                emitted_attacks.add(c['attack'])
-                log(i, 'long_signal', channel='n_opening_gap_squeeze', attack=c['attack'], stop=stop,
-                    target=target, rvol=None, volume_basis='not_required_at_open', volume_pass=None,
-                    n_level=c['n_level'], execution_model='same_day_open',
-                    target_source='n_measured_target', gross_reward_risk=(target - bar.open) / (bar.open - stop), **opening)
-                log(i, 'long_transition_evidence', channel='n_opening_gap_squeeze',
-                    buy_point_type='n_opening_gap_squeeze', attack=c['attack'],
-                    confirmation_source='known_n_opening_gap', **opening)
-                break
         exits = []
         target_risk = target_resistance.get(i)
         five_top_entry_risk = five_top_entry_risks.get(i)
@@ -901,8 +835,6 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 **({key: value for key, value in target_risk.items() if key not in ('reason', 'exit_fraction')}
                    if target_risk is not None and target_risk['exit_fraction'] == 1.0 else {}),
             })
-            continue
-        if opening_signal is not None:
             continue
         if inverse_entry_risk is not None:
             log(i, 'entry_rejected', candidate_channel='global_inverse_n_low_guard', **inverse_entry_risk)

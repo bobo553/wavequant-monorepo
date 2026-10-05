@@ -55,7 +55,6 @@ const REASONS = {
     system_squeeze_pullback_resume: "轧空回压后恢复上涨",
     system_n_continuation: "N 字延续",
     system_transition_squeeze: "第一类：交替后正 N 轧空",
-    system_n_opening_gap_squeeze: "正 N 后相对昨收高开，开盘轧空买入",
     system_shallow_base_breakout: "0.618 浅回撤待选后横盘放量突破",
     system_wave_push_gap: "转浪再攻击：A 浪回调守低后启动 C 浪",
     system_multilevel_breakout_squeeze: "正 N 与高一级波段突破叠加轧空",

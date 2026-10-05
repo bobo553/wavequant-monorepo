@@ -59,7 +59,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
     config['strategy'].update(buy_point_definition='whole_flip_wave_v3',preflight_reward_risk=False,strict_n_attack_quality=False,
         first_pullback_threshold=thresholds.first,mature_shallow_ratio=thresholds.second,
         first_pullback_basis=thresholds.first_basis,mature_shallow_inclusive=thresholds.second_inclusive,
-        combined_a_entry_enabled=True,opening_gap_squeeze_enabled=True,ten_full_breakout_window=23,ten_full_retracement_ratio=2/3,
+        combined_a_entry_enabled=True,ten_full_breakout_window=23,ten_full_retracement_ratio=2/3,
         ten_full_retracement_anchor='origin',ten_full_timed_half_retracement=True)
     config['profile_version']='whole_flip_wave_v3_'+variant
     config['definition'].update(alternation='confirmed_low_at_or_above_whole_flip_origin',
@@ -82,12 +82,11 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'gap_up_bullish_squeeze_v94_' + variant
-    config['definition']['opening_gap_squeeze'] = 'prior_known_live_positive_n_open_strictly_gt_previous_close_same_day_open_no_current_ohlcv_no_volume_or_later_alternation_required_once_per_n_prior_inverse_exit_pressure_and_known_target_guards'
+    config['profile_version'] = 'gap_up_bullish_squeeze_v93_' + variant
     config['definition']['a_wave_classification'] = 'ordinary_one_p_inclusive_below_two_t__strong_two_t_inclusive'
     config['definition']['a_wave_invalidation'] = 'strict_low_break_of_a_origin__no_later_c_until_new_a'
     config['definition']['b_wave_pullback'] = 'both_a_classes_may_break_squeeze_low__actual_trading_bar_duration'
-    config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout', 'nested_alternation_breakout', 'combined_a_pullback_breakout', 'n_opening_gap_squeeze']
+    config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout', 'nested_alternation_breakout', 'combined_a_pullback_breakout']
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
         rule for rule in config['definition']['exits'] if rule != 'target_observed_then_next_open'
@@ -142,8 +141,8 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         wave_upper_rejection_exit='post_b_new_n_one_p_or_later_volume_gt_previous_new_high_bearish_upper_ge_body_lower_le_20pct_range_ge_8pct_cumulative_80_same_close',
         weak_n_confirmation='uninterrupted_strong_squeeze_or_defense_held_volume_gt_previous_close_above_episode_record_squeeze',
         squeeze_invalidation='later_inverse_n_ends_local_bounce_larger_defense_can_wait_for_fresh_volume_gap',
-        signal_timing='known_n_gap_at_open_consolidation_and_c_wave_gap_intraday_completed_5m_other_entries_close',
-        entry_execution='known_n_opening_gap_same_day_open_other_defended_n_and_c_wave_completed_5m_next_interval_missing_minutes_explicit_daily_close',
+        signal_timing='consolidation_and_c_wave_gap_intraday_completed_5m_other_entries_close',
+        entry_execution='defended_n_and_c_wave_gap_completed_5m_next_interval_missing_minutes_explicit_daily_close',
         reward_risk_policy='execution_price_gate_only_not_signal_preflight',
         alternation='shared_chart_formal_or_qualified_b_positive_n_squeeze',
         staged_exit='verified_5m_closing_window_low_break_35_low_and_price_break_65_next_interval_open_then_weak_rebound_clear',

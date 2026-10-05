@@ -219,7 +219,7 @@ def test_v3_profiles_use_a_origin_two_thirds_and_timed_half(variant):
     profile = whole_wave_profile({"scenarios": {"base": {"execution": {}}}}, variant)
     config = SystemStrategy(**profile["strategy"])
     config.validate()
-    assert profile["profile_version"].startswith("gap_up_bullish_squeeze_v94_")
+    assert profile["profile_version"].startswith("gap_up_bullish_squeeze_v93_")
     assert config.ten_full_breakout_window == 23
     assert config.ten_full_retracement_ratio == 2 / 3
     assert config.ten_full_retracement_anchor == "origin"
@@ -230,8 +230,7 @@ def test_global_gate_blocks_normal_and_shallow_base_entry_channels(monkeypatch):
     raw = json.loads((Path(__file__).parent / "fixtures/xianfeng_2026_strong_squeeze.json").read_text(encoding="utf-8"))
     bars = [Bar(datetime.fromisoformat(day), raw["symbol"], *values)
             for day, *values in raw["bars"] if day <= "2020-06-05"]
-    config = replace(SystemStrategy(**whole_wave_profile({"scenarios": {"base": {"execution": {}}}})["strategy"]),
-                     opening_gap_squeeze_enabled=False)
+    config = SystemStrategy(**whole_wave_profile({"scenarios": {"base": {"execution": {}}}})["strategy"])
     assert any(signal.side == "LONG" and signal.bar_index == len(bars) - 1
                for signal in generate_system_signals(bars, config).signals)
     proof = dict(stop=4.5, target=6.0, counter_ratio=.62, breakout_volume_multiple=2.5)
