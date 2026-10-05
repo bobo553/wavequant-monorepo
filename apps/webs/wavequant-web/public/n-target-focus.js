@@ -41,11 +41,17 @@ export function nTargetObservations(items, bars, asof) {
 export function nTargetAt(observations, time, id, selectedId) {
     if (!time) return null;
     const candidates = observations.filter((observation) => observation.from <= time && time <= observation.to);
-    return (
-        (
-            candidates.find(({ item }) => item.id === id) ||
-            candidates.find(({ item }) => item.id === selectedId) ||
-            candidates[0]
-        )?.item || null
-    );
+    const explicit =
+        candidates.find(({ item }) => item.id === id) || candidates.find(({ item }) => item.id === selectedId);
+    if (explicit) return explicit.item;
+    const completed = candidates.find(({ item }) => item.time <= time);
+    const upcoming = candidates
+        .filter(({ item }) => item.time > time)
+        .reduce(
+            (nearest, candidate) => (!nearest || candidate.item.time < nearest.item.time ? candidate : nearest),
+            null,
+        );
+    // 允许回看已知 N 的形成段，但后续新 N 不覆盖此前已完成的本段 N。
+    if (upcoming && (!completed || completed.item.time < upcoming.from)) return upcoming.item;
+    return completed?.item || upcoming?.item || null;
 }

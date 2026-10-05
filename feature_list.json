@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-261",
+            "name": "positive-n-target-source-binding",
+            "title": "正N目标测幅归属",
+            "description": "历史焦点及原N抵抗失败买点绑定原始突破N，避免后续重叠或同日新N目标覆盖新华传媒02-29低点到03-05突破的特殊阴母N测幅。",
+            "scope": "Web全局N范围匹配、原攻击买点目标归属及真实混合来源回归；保留Core测幅和交易规则",
+            "dependencies": ["MONOREPO-260", "MONOREPO-259"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "真实混合历史下02-29至03-05焦点显示原03-05正N，不被03-19及03-20的新N覆盖；保留显式命中和选中优先及历史不可知约束",
+                "原N抵抗突破买点优先以实际attack_date或原始bar_index绑定目标，即使成交当日有其他N且视图裁剪；原启动C的同日新N优先行为保留",
+                "原N测幅起点为02-29最低4.299882554747297、箱顶为03-05突破最高4.794469984753443；one_p5.289057414759589/two_t5.783644844765735精度及特殊同日B/C保持",
+                "相关定向测试、格式、语法、lint、类型、构建和Harness通过，浏览器及完整套件未运行项记录"
+            ],
+            "verification": [
+                {
+                    "command": "Web node --test tests/n-target-source.test.mjs tests/n-target-focus.test.mjs tests/wave-c-chart.test.mjs tests/target-level-guides.test.mjs tests/buy-n-targets.test.mjs tests/n-extension-levels.test.mjs tests/annotations.test.mjs tests/wave-c-projection.test.mjs tests/ordinary-c-wave.test.mjs tests/combined-a-chart.test.mjs",
+                    "status": "passed",
+                    "summary": "142项通过；4项新增混合真实来源测试先全部复现失败，修复后来源/裁剪索引/缺失未来原N/图表去重通过；3/5原始阴母同日B/C、2/29低点与3/5突破箱顶测幅精度固定，后续新N不覆盖，旧启动C同日新N优先及ABC等相邻行为保留。"
+                },
+                {
+                    "command": "Web pnpm lint; typecheck; build; targeted Prettier; node --check; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "最终lint零错误6条既有警告，类型及生产构建通过，相关格式/语法和Harness通过；next-env构建生成路径定向恢复。完整Web套件和真实浏览器/Playwright未运行，待独立验证。"
+                },
+                {
+                    "command": "actual saved 1508-bar HTTP payload through current Web annotations and N focus helpers",
+                    "status": "passed",
+                    "summary": "复用上一轮正式HTTP响应，未重跑账户；1508日线混合历史03-05焦点绑定原03-05 N/02-29低，A4.299882554747297/X4.794469984753443，目标5.289057414759589/5.783644844765735，03-20 signal和fill均绑定03-05原攻击。交易Core无变更。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-260",
             "name": "positive-n-target-range-focus",
             "title": "正N范围焦点目标标签",

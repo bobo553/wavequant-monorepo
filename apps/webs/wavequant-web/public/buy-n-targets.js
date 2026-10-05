@@ -18,15 +18,16 @@ export function buyNTargetLevels(marker, wave, view, theory) {
               .filter((event) => event.time >= wave.wave_b_low_date && event.shape?.[2]?.time >= wave.wave_b_low_date)
               .at(-1)
         : null;
-    const attack = marker.decision_evidence?.find((proof) => proof.event === "long_signal")?.attack;
-    const attackDate = Number.isInteger(attack) ? view.bars[attack]?.time : null;
-    const source =
-        sameDay ||
-        cN ||
-        (!wave &&
-            events.find(
-                (event) => event.time === attackDate || (Number.isInteger(attack) && event.bar_index === attack),
-            ));
+    const proof = marker.decision_evidence?.find((proof) => proof.event === "long_signal");
+    const attack = proof?.attack;
+    const attackDate = proof?.attack_date;
+    const attackN = attackDate
+        ? events.find((event) => event.time === attackDate)
+        : events.find((event) => Number.isInteger(attack) && event.bar_index === attack) ||
+          events.find((event) => Number.isInteger(attack) && event.time === view.bars[attack]?.time);
+    // 原攻击棒抵抗失败的目标属于原 N；成交日恰好出现的新 N 不改写此测幅。
+    const originalAttack = proof?.squeeze_confirmation === "resistance_attack_bar_break";
+    const source = originalAttack ? attackN : sameDay || cN || (!wave && attackN);
     if (!source) return [];
     const oneP = source.one_p ?? source.levels?.find((level) => level.name === "1P 投影")?.price;
     const twoT = source.two_t ?? source.levels?.find((level) => level.name === "2T 投影")?.price;
