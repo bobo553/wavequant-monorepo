@@ -219,7 +219,7 @@ def test_v3_profiles_use_a_origin_two_thirds_and_timed_half(variant):
     profile = whole_wave_profile({"scenarios": {"base": {"execution": {}}}}, variant)
     config = SystemStrategy(**profile["strategy"])
     config.validate()
-    assert profile["profile_version"].startswith("gap_up_bullish_squeeze_v92_")
+    assert profile["profile_version"].startswith("gap_up_bullish_squeeze_v93_")
     assert config.ten_full_breakout_window == 23
     assert config.ten_full_retracement_ratio == 2 / 3
     assert config.ten_full_retracement_anchor == "origin"

@@ -15,7 +15,7 @@ from wavequant.domain.strategies.wave_exhaustion_exit import (
     FIVE_TOP_GAP_VOLUME_CLEAR, observe_c_equal_near_risk, observe_five_top_child_volume_clear,
     observe_five_top_gap_volume_clear, observe_wave_exhaustion,
 )
-from wavequant.domain.strategies.two_t_resistance import two_t_resistance_history
+from wavequant.domain.strategies.two_t_resistance import TWO_T_BODY_VOLUME_CLEAR, two_t_resistance_history
 from wavequant.domain.strategies.pressure_exit import (
     pressure_exit_history, record_high_resistance_history, record_high_massive_resistance_history,
 )
@@ -651,6 +651,14 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                                 signal_index=pos.signal_index)
                          if config.wave_exhaustion_exit else None)
             target_risk = target_resistance[symbol].get(i)
+            if target_risk is None and any(
+                signal.symbol == symbol and signal.side == 'EXIT'
+                and TWO_T_BODY_VOLUME_CLEAR in signal.reason.split('|')
+                for signal in signal_map.get(when, [])
+            ):
+                # A confirmed global EXIT also wins when replay omits projection metadata.
+                target_risk = dict(reason=TWO_T_BODY_VOLUME_CLEAR, exit_fraction=1.0,
+                                   execution_model='same_day_close')
             if target_risk is not None:
                 if target_risk['exit_fraction'] == 1.0 and (wave_exit is None or wave_exit['exit_fraction'] < 1.0):
                     wave_exit = target_risk
@@ -832,13 +840,13 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                             exit_evidence[symbol]['inverse_observed_index'] = signal.bar_index
                             execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
                         elif any(reason in signal.reason.split('|') for reason in
-                                 ('wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
+                                 (TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
                                    FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
                                    C_EQUAL_NEAR_VOLUME_CLEAR)):
                             i, bar = current[symbol]
                             wave_clear_symbols.add(symbol)
                             pending_exit[symbol] = next(reason for reason in signal.reason.split('|') if reason in
-                                ('wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
+                                (TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
                                   FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
                                   C_EQUAL_NEAR_VOLUME_CLEAR))
                             if pending_exit[symbol] == FIVE_TOP_CHILD_VOLUME_CLEAR:

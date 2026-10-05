@@ -1,11 +1,38 @@
 """Close-known two-T resistance shared by entry selection and holding risk."""
 
+from bisect import bisect_left, bisect_right
 from collections.abc import Mapping, Sequence
 from fractions import Fraction
 from math import isfinite
 
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from ..models.model import Bar
+
+
+TWO_T_BODY_VOLUME_CLEAR = "wave_two_t_body_volume_clear"
+
+
+def _body_volume_reversal(
+    bars: Sequence[Bar], index: int, bearish_index: int | None,
+) -> dict[str, object] | None:
+    """Compare real bodies and the most recent strictly bearish session, skipping dojis."""
+    if index < 1 or bearish_index is None:
+        return None
+    bar, previous, bearish = bars[index], bars[index - 1], bars[bearish_index]
+    if (bar.close >= bar.open or previous.close <= previous.open
+            or bar.open < previous.close or bar.close > previous.open
+            or (bar.open == previous.close and bar.close == previous.open)
+            or bearish.volume <= 0 or bar.volume <= bearish.volume):
+        return None
+    return dict(
+        observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
+        observed_close=bar.close, observed_volume=bar.volume,
+        previous_open=previous.open, previous_high=previous.high,
+        previous_low=previous.low, previous_close=previous.close, previous_volume=previous.volume,
+        engulfed_date=previous.timestamp.date().isoformat(),
+        bearish_reference_date=bearish.timestamp.date().isoformat(),
+        bearish_reference_volume=bearish.volume,
+    )
 
 
 def _long_upper_shadow(bar: Bar) -> bool:
@@ -48,12 +75,14 @@ def two_t_resistance_history(
     *,
     reduction_fraction: float = .8,
 ) -> dict[int, dict[str, object]]:
-    """Observe only the reached two-T candle and its next session.
+    """Share two-T resistance and later volume-backed body reversals globally.
 
     Projection-ready evidence already fixes the original N, first two-T reach,
     and availability date. A newer entry N cannot erase that larger target.
     A first reach with upper shadow strictly over 40% clears on the next-session
     bearish volume double break. Reductions retain the separate 50% threshold.
+    Later body reversals need no warning or minimum body ratio; the target must
+    have been reached before today and remain valid through today's close.
     """
     if not isfinite(reduction_fraction) or not 0 < reduction_fraction < 1:
         raise ValueError("reduction fraction must be between zero and one")
@@ -64,11 +93,18 @@ def two_t_resistance_history(
             key = (attack, origin if type(origin) is int else None)
             invalidated[key] = min(index, invalidated.get(key, index))
     previous_bearish: list[int | None] = []
+    body_candidates: dict[int, dict[str, object]] = {}
     reference = None
     for index, bar in enumerate(bars):
         previous_bearish.append(reference)
+        reversal = _body_volume_reversal(bars, index, reference)
+        if reversal is not None:
+            body_candidates[index] = reversal
         if bar.close < bar.open:
             reference = index
+    body_dates = list(body_candidates)
+    body_risks: dict[int, dict[str, object]] = {}
+    body_sources: dict[int, tuple[int, int, int]] = {}
     risks: dict[int, dict[str, object]] = {}
     for event in events:
         if event.get("event") != "wave_projection_ready":
@@ -95,6 +131,19 @@ def two_t_resistance_history(
         if type(origin) is int and 0 <= origin <= reached:
             target_evidence.update(wave_n_origin_date=bars[origin].timestamp.date().isoformat(),
                                    wave_n_origin_price=bars[origin].low)
+        # Index the few qualifying reversals once instead of rescanning every N's candles.
+        start = bisect_right(body_dates, reached)
+        stop = bisect_left(body_dates, invalidated.get(key, len(bars)))
+        source = (reached, attack, origin if type(origin) is int else -1)
+        for body_index in body_dates[start:stop]:
+            if source <= body_sources.get(body_index, (-1, -1, -1)):
+                continue
+            body_sources[body_index] = source
+            body_risks[body_index] = dict(
+                target_evidence, **body_candidates[body_index],
+                reason=TWO_T_BODY_VOLUME_CLEAR, exit_fraction=1.0,
+                target_trigger="post_two_t_bearish_body_engulf_volume_gt_last_bearish",
+            )
         following = reached + 1
         if following < len(bars) and _upper_shadow_over_forty_percent(bars[reached]):
             confirmation = observe_resistance(bars[reached], bars[following],
@@ -149,4 +198,8 @@ def two_t_resistance_history(
                 "wave_two_t_resistance_volume_clear")
             if clear is not None:
                 risks[following] = clear
+    # Full body-reversal exits take priority over target-window partial reductions.
+    for index, clear in body_risks.items():
+        if risks.get(index, {}).get("exit_fraction") != 1.0:
+            risks[index] = clear
     return risks

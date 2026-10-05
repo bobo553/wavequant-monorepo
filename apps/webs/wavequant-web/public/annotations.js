@@ -106,6 +106,7 @@ const REASONS = {
     wave_two_t_resistance_reduce: "二饱（二吐/2T）到位出现较长上影抵抗，禁买与加仓，持仓累计减仓 80%",
     wave_two_t_resistance_volume_clear: "二饱抵抗后次笔阴线低点与收盘双破，量大于最近阴线，当日清仓",
     wave_two_t_next_volume_clear: "二饱到位日上影超过 40%，次日阴线双破且量大于最近阴线，当日清仓",
+    wave_two_t_body_volume_clear: "二饱到位后阴线实体反包前日阳线，成交量大于此前最近阴线，当日收盘清空余仓",
     wave_upper_rejection_reduce: "目标阶段放量冲高收阴、长上影，当日累计减仓",
     wave_volume_shadows_reduce: "目标阶段放量大振幅、上下长影，当日累计减仓",
     wave_bull_resistance_failed_clear: "目标阶段大阴线击穿多头抵抗低点，当日清仓",
