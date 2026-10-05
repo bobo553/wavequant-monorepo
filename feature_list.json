@@ -4,6 +4,43 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-262",
+            "name": "confirmed-parent-abc-observation",
+            "title": "整段A起点与深B回调ABC标识",
+            "description": "修复新华传媒二月八日起点、三月二十五日A顶、八月二十八日B底缺失，共用已确认父波段与内部正式正N，保留完整A起点并持续跟踪B。",
+            "scope": "Web共用ABC结构观察、因果锚点与图表标识，不改交易引擎",
+            "dependencies": ["MONOREPO-261", "MONOREPO-216"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "真实正式历史识别2024-02-08至03-25的完整A、08-28深B及后续C；内部03-05正N起点仍为02-29，不混用测幅锚点",
+                "只使用已确认同路径端点及内部正式正N；未突破A高前跟踪更低B，记录锚点版本和可知时间，双破A起点失效",
+                "A起、A顶、B/C及已确认C顶标签与路径和目标正确；强A延伸保留等浪达标后发布规则",
+                "保持普通A、讲义路径与正N焦点买点绑定；相关定向测试及静态构建通过，未运行浏览器和完整套件如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "Real HTTP /api/akshare-backtest 2018-01-01..2024-12-31 and independent 2024-09-03 prefix; current waveCProjectionsFromStructure replay",
+                    "status": "passed",
+                    "summary": "原共用函数在1699根真实正式日线没有2024 ABC；修复后A起02-08、A顶03-25、B底08-28（09-03可知）、C顶10-31（11-08可知）。独立1621根正式前缀和完整历史截面输出逐字段相同，03-20唯一BUY/filled保持；价格口径causal_adjusted_equivalent。"
+                },
+                {
+                    "command": "node --test tests/structural-c-wave.test.mjs tests/n-target-source.test.mjs tests/n-target-focus.test.mjs tests/wave-c-chart.test.mjs tests/target-level-guides.test.mjs tests/buy-n-targets.test.mjs tests/n-extension-levels.test.mjs tests/annotations.test.mjs tests/wave-c-projection.test.mjs tests/ordinary-c-wave.test.mjs tests/combined-a-chart.test.mjs",
+                    "status": "passed",
+                    "summary": "150项通过（新增8项），覆盖真实锚点、同源证明、强A二吐严格边界、已确认B逐级刷新及版本、无未来前缀、起点失效和恢复不复活、原C冻结、标签/连线/Canvas端点与目标及内部正N测幅不混用；图表SDK验证不等于浏览器像素验证。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build",
+                    "status": "passed",
+                    "summary": "Web lint零错误、6条既有警告；类型检查及512MB堆/4MB新生代生产构建通过。next-env生成的routes路径已定向恢复。完整Web/Core套件及浏览器/Playwright未运行，待独立验证；Core交易源码未改。"
+                },
+                {
+                    "command": "pnpm harness:check; targeted Prettier; Node syntax; git diff --check; review against main",
+                    "status": "passed",
+                    "summary": "Harness、相关文件格式、四个JS语法和差异检查通过；其余260项功能对象（包括256的四项既有失败）与基线逐字段相同。同日可知且此前已被更低B取代的早期锚点只发布最后一个，避免无有效区间的版本；最终150项及lint/typecheck/build复跑通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-261",
             "name": "positive-n-target-source-binding",
             "title": "正N目标测幅归属",

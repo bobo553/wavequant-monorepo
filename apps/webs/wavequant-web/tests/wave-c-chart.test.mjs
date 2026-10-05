@@ -118,6 +118,51 @@ function ordinaryChart(asof = "2025-01-22") {
     return { ...harness, data };
 }
 
+test("Xinhua parent ABC renders the full A, deep B, C and separate internal N targets", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xinhua_2024_parent_abc.json", import.meta.url)));
+    const data = fixture.bars.map(([time, open, high, low, close, volume]) => ({
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume,
+    }));
+    const { chart, rendered } = chartHarness(data);
+    const originalRange = { ...rendered.range };
+    chart.setTheory({ ...fixture.theory, lecture_drawing: { strokes: [] } });
+    const group = chart.autoWaveProjections.find(
+        (item) => item.raw.originTime === "2024-02-08" && item.raw.aTime === "2024-03-25",
+    );
+    assert.ok(group);
+    assert.equal(group.raw.bTime, "2024-08-28");
+    for (const [start, end] of [
+        ["2024-02-08", "2024-03-25"],
+        ["2024-03-25", "2024-08-28"],
+        ["2024-08-28", "2024-10-31"],
+    ])
+        assert.ok(chart.waveAbLines.some(({ points }) => points[0].time === start && points.at(-1).time === end));
+    assert.ok(chart.annotations.some((item) => item.title === "A 起" && item.time === "2024-02-08"));
+    assert.ok(chart.annotations.some((item) => item.title === "A 顶" && item.time === "2024-03-25"));
+    assert.ok(chart.annotations.some((item) => item.title === "B / C" && item.time === "2024-08-28"));
+    assert.ok(chart.annotations.some((item) => item.title === "C 顶" && item.time === "2024-10-31"));
+    chart.updateWaveProjectionHover("2024-08-28");
+    assert.equal(chart.hoveredWaveProjection.id, group.id);
+    assert.deepEqual(endpointDrawing(chart).labels, ["A 起点 3.5328", "A 终点 6.3893", "B 3.6057", "C 终点 7.6469"]);
+    assert.ok(targetLabels(chart, rendered.guides).some((label) => /本段结束未达成/.test(label)));
+    assert.deepEqual(rendered.range, originalRange);
+    chart.updateWaveProjectionHover("2024-03-05");
+    assert.equal(chart.hoveredWaveProjection.id, group.id);
+    assert.ok(rendered.guides.some((guide) => guide.price === 5.289057414759589));
+    assert.ok(rendered.guides.some((guide) => guide.price === 5.783644844765735));
+    chart.setTheory({ ...fixture.theory, asof: "2024-09-02", lecture_drawing: { strokes: [] } }, false);
+    const previous = chart.autoWaveProjections.find(
+        (item) => item.raw.originTime === "2024-02-08" && item.raw.aTime === "2024-03-25",
+    );
+    assert.equal(previous.raw.bTime, "2024-07-09");
+    assert.equal(previous.raw.cTime, undefined);
+});
+
 function targetLabels(chart, guides, priceToCoordinate = () => 100) {
     const overlay = new TargetGuideOverlay();
     const range = chart.chart.timeScale().getVisibleLogicalRange();
