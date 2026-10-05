@@ -361,6 +361,37 @@ test("a selected N retains labels when C is clipped at either side or at a fract
     assert.equal(rendered.guides.length, 0);
 });
 
+test("mixed Xinhua N history renders original March 5 measurements for range focus and its March 20 buy", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xinhua_2024_n_target_sources.json", import.meta.url)));
+    const { chart, rendered } = chartHarness(fixture.view.bars);
+    chart.data = fixture.view;
+    chart.setTheory(fixture.theory, false);
+    chart.setAnnotationOptions({ tertiaryAbc: false, fills: true, signals: true });
+    const prices = [5.289057414759589, 5.783644844765735];
+    const nGuides = () => rendered.guides.filter((guide) => ["one_p", "two_t"].includes(guide.stage));
+    const original = chart.nTargetObservations.find(({ item }) => item.time === "2024-03-05").item;
+    for (const bar of fixture.view.bars.filter((bar) => bar.time >= "2024-02-29" && bar.time <= "2024-03-18")) {
+        chart.updateWaveProjectionHover(bar.time);
+        assert.equal(chart.hoveredNTarget.id, original.id, bar.time);
+        assert.deepEqual(
+            nGuides().map((guide) => guide.price),
+            prices,
+        );
+    }
+    chart.selectAnnotation(fixture.view.markers.find((marker) => marker.kind === "fill").id, false);
+    assert.equal(chart.selectedNTargetId(), original.id);
+    chart.updateWaveProjectionHover("2024-03-20");
+    assert.equal(chart.hoveredNTarget.id, original.id);
+    assert.deepEqual(
+        nGuides().map((guide) => guide.price),
+        prices,
+    );
+    const labels = targetLabels(chart, nGuides());
+    assert.equal(labels.length, 2);
+    assert.ok(labels.some((label) => label.includes("一饱 5.2891")));
+    assert.ok(labels.some((label) => label.includes("二吐 5.7836")));
+});
+
 function endpointDrawing(chart) {
     const labels = [],
         circles = [],

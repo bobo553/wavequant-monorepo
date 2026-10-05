@@ -507,6 +507,11 @@ export class PriceChart {
             null
         );
     }
+    selectedNTargetId() {
+        if (isPositiveNTarget(this.selected)) return this.selected.id;
+        const date = this.selected?.levels?.find((level) => level.stage === "one_p")?.n_date;
+        return this.nTargetObservations?.find(({ item }) => item.time === date)?.item.id;
+    }
     /** 悬停只临时展示所在 ABC，保留成交选择与图窗；移出后恢复原目标。 */
     updateWaveProjectionHover(time, id) {
         const availableTime = time && this.data?.bars.some((bar) => bar.time === time) ? time : null;
@@ -517,7 +522,7 @@ export class PriceChart {
         this.hoveredWaveId = id || null;
         this.hoveredWaveProjection = this.waveProjectionAt(availableTime, id);
         this.hoveredNTarget = this.options.levels
-            ? nTargetAt(this.nTargetObservations || [], availableTime, id, this.selected?.id)
+            ? nTargetAt(this.nTargetObservations || [], availableTime, id, this.selectedNTargetId())
             : null;
         if (
             previous !== this.hoveredWaveProjection ||
@@ -528,7 +533,12 @@ export class PriceChart {
     }
     focusNTargets(time, id, redraw = true) {
         this.focusedNTime = this.data?.bars.some((bar) => bar.time === time) ? time : null;
-        this.focusedNTarget = nTargetAt(this.nTargetObservations || [], this.focusedNTime, id, this.selected?.id);
+        this.focusedNTarget = nTargetAt(
+            this.nTargetObservations || [],
+            this.focusedNTime,
+            id,
+            this.selectedNTargetId(),
+        );
         if (redraw) this.drawLevels();
     }
     waveProjectionHoverLines() {
@@ -589,7 +599,12 @@ export class PriceChart {
         const previousN = this.hoveredNTarget;
         this.hoveredWaveProjection = this.waveProjectionAt(this.hoveredWaveTime, this.hoveredWaveId);
         this.hoveredNTarget = this.options.levels
-            ? nTargetAt(this.nTargetObservations || [], this.hoveredWaveTime, this.hoveredWaveId, this.selected?.id)
+            ? nTargetAt(
+                  this.nTargetObservations || [],
+                  this.hoveredWaveTime,
+                  this.hoveredWaveId,
+                  this.selectedNTargetId(),
+              )
             : null;
         const displayedProjection = this.hoveredWaveProjection || this.selected || this.autoWaveProjection;
         if (
