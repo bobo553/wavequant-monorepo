@@ -170,6 +170,20 @@ def _ordered_pair(previous: Bar, current: Bar) -> None:
         raise ValueError('bars must be strictly chronological')
 
 
+def teaching_inside(mother: Bar, child: Bar) -> bool:
+    """Treat one shared high or low as containment under the lecture convention."""
+    _ordered_pair(mother, child)
+    return (child.high <= mother.high and child.low >= mother.low
+            and (child.high < mother.high or child.low > mother.low))
+
+
+def teaching_outside(child: Bar, mother: Bar) -> bool:
+    """Treat one shared high or low as encompassing under the lecture convention."""
+    _ordered_pair(child, mother)
+    return (mother.high >= child.high and mother.low <= child.low
+            and (mother.high > child.high or mother.low < child.low))
+
+
 def observe_attack(bars: Sequence[Bar], attack_index: int, level: KeyLevel,
                    *, timeframe: str) -> AttackEvidence:
     """Crossing uses previous close as the known starting side, including gaps.
@@ -230,7 +244,7 @@ def observe_resistance(previous: Bar, current: Bar, *, attack_direction: Directi
     span = current.high-current.low
     fraction = shadow/span if span else None
     long_shadow = (False if not shadow else None if shadow_policy is None else
-                   fraction >= shadow_policy.minimum_range_fraction)
+                   fraction is not None and fraction >= shadow_policy.minimum_range_fraction)
     reasons = []
     if open_body:
         reasons.append('higher_open_bearish_body' if up else 'lower_open_bullish_body')

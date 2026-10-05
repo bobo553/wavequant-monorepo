@@ -1,8 +1,70 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-256",
+    "activeFeature": "MONOREPO-275",
     "features": [
+        {
+            "id": "MONOREPO-275",
+            "name": "shared-edge-n-target-completeness",
+            "title": "共享边界N识别与目标完整性",
+            "description": "修复讲义折线允许等高等低外包、N判定却严格双边导致的漏识别，保留因果确认与首次突破，补真实襄阳轴承及对称边界回归。",
+            "scope": "Core共享边界N几何与后续首次突破、V94、真实历史目标链回归、Web焦点阶段追踪及拓扑来源同步",
+            "dependencies": ["MONOREPO-274"],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "讲义N与折线使用同一外包边界；允许同日确认但不回溯未知折点，严格策略、无方向及无新突破仍受原约束",
+                "真实sz.000678日线识别2023-06-12正N而非6月9日，按同组N推演轧空、五顶和十全并在7月4日达到十全",
+                "覆盖等低、等高、倒N镜像及未来确认、占位、破起点反例；历史前缀、图表目标来源和普通K线焦点/ABC主图目标线通过定向回归",
+                "相关定向测试、类型、构建及Harness通过，独立复核并提交本地main，保留256原状态与失败证据，不推送"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_shared_edge_n.py tests/test_xiangyang_n_projection.py -q; same first32 tests against original main editable Core",
+                    "status": "passed",
+                    "summary": "新34项通过；旧版对首32项为24失败8通过，稳定复现漏N。正倒、等低/高、strict、同日/未来确认、首次实虚攻击/持续占据、破A/延C、完整识别→轧空→目标→渲染及7个历史前缀覆盖；没有注入或mock N。"
+                },
+                {
+                    "command": "pytest tests/test_shared_edge_n.py tests/test_xiangyang_n_projection.py tests/test_n_shape.py tests/test_price_action.py tests/test_lecture_drawing.py tests/test_wave_projection.py tests/test_backtest_version.py -q",
+                    "status": "passed",
+                    "summary": "该次138项及32 subtests通过；新追加两项参数回归另在最终34项通过。原倒N负例按同日锚点可知事实改为forming且无completion/targets，十字星拒绝保留。"
+                },
+                {
+                    "command": "pytest tests/test_n_shape.py tests/test_outside_split_n.py tests/test_polyline.py tests/test_mother_pullback_n.py tests/test_split_n_wave.py -q; pytest tests/test_ten_full_entry.py -q",
+                    "status": "passed",
+                    "summary": "前组70项及4 subtests通过，后组17项通过。既有分步外包、独立阴母B/C分支、几何、讲义折线及十满风控保持。初次包含旧负例预期的组合有1失败，已按新同日已知forming规则修正后重跑通过，未弱化完成条件。"
+                },
+                {
+                    "command": "init.ps1 -Mode quick; pnpm --filter @wavequant/core typecheck; mypy --follow-imports=silent n_shape.py polyline.py price_action.py strategy_profiles.py; pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "最终quick的Harness、全仓非测试lint/typecheck及必要Core/Web构建通过。首次专属venv缺setuptools、API缺mypy，按已声明依赖补齐后重跑通过；新涉及模块4项mypy及既定4项strict通过。合法OHLC影线fraction增加None窄化，price_action回归通过；Core sdist/wheel成功，Web仅6条旧警告。"
+                },
+                {
+                    "command": "real formal daily data prefix 2018..2023-07-04 → generate_system_signals → render_theory(default geometry)",
+                    "status": "passed",
+                    "summary": "实际1317棒、3493审计、251信号、V94/34a9681e引擎；6/12原组N，6/15强轧空，6/28五顶6.97，6/29十满9.37，7/4十满达到。完整真实geometry关联原N，两个目标已满足；全因子1及rawclose相同，无股票日期特判、无fake N。"
+                },
+                {
+                    "command": "independent code-review; topology Vitest targeted; related Prettier and git diff --check",
+                    "status": "passed",
+                    "summary": "独立复核无阻塞；拓扑7项、相关格式和差异通过。共用helper保持polyline兼容导出无cycle，首次攻击/source/确认/失守边界保留。"
+                },
+                {
+                    "command": "node --test tests/n-target-focus.test.mjs tests/wave-c-chart.test.mjs tests/target-level-guides.test.mjs tests/annotations.test.mjs tests/abc-target-auto.test.mjs; Web lint/typecheck/build; topology Vitest",
+                    "status": "passed",
+                    "summary": "最终root94项Node、7项拓扑通过，新增6个Web回归中首3个旧版稳定失败。独立111项及完整真实Core DTO→annotations→drawLevels核对通过。按同组N已发布阶段追踪，hover/pin/ABC主图显示五顶十满，available_at起绘及历史截止保留；失效/暂停参考线不延长或缩短活跃窗口。最终lint0错误6旧警告、typecheck、512MB常规Next build通过；stack-size被Node/worker拒绝后改常规参数重跑成功，next-env生成差异恢复。相关Prettier、JS语法、差异及CodeGraph sync通过；没有浏览器。"
+                },
+                {
+                    "command": "feature commit/sync/no-ff local main merge; HTTP8765/13003 actual V94 and formal sz.000678 2018..2023-07-04",
+                    "status": "not-run",
+                    "summary": "实现与相关验证完成；紧接执行本地合并及正式服务验收，完成后更新状态。不得将尚未执行的HTTP写成通过。"
+                },
+                {
+                    "command": "complete Core/Web suites; browser/Playwright; external minute-data execution",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏未运行完整套件和浏览器端到端；已运行相关定向与非测试门禁，真实视觉和外部分钟执行留待独立验证。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-274",
             "name": "revert-positive-n-opening-gap",
@@ -731,7 +793,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",

@@ -7,7 +7,8 @@ from typing import Mapping, Sequence
 from collections.abc import Mapping as MappingABC
 
 from ..models.model import Bar
-from .price_action import Direction, _index, _positive, _validate_bar, _ordered_pair
+from .price_action import (Direction, _index, _positive, _validate_bar, _ordered_pair,
+                           teaching_inside, teaching_outside)
 from .n_shape import BoxAnchorMode, NSetup, PivotRef
 
 
@@ -39,20 +40,6 @@ def observe_bar_relations(previous: Bar, current: Bar) -> BarRelations:
         h < previous.high and l < previous.low and current.close < previous.low,
         h < previous.high and l > previous.low, h > previous.high and l < previous.low,
         h == previous.high, l == previous.low)
-
-
-def teaching_inside(mother: Bar, child: Bar) -> bool:
-    """Treat one shared high or low as containment in the lecture drawing only."""
-    _ordered_pair(mother, child)
-    return (child.high <= mother.high and child.low >= mother.low
-            and (child.high < mother.high or child.low > mother.low))
-
-
-def teaching_outside(child: Bar, mother: Bar) -> bool:
-    """Treat one shared high or low as encompassing in the lecture drawing only."""
-    _ordered_pair(child, mother)
-    return (mother.high >= child.high and mother.low <= child.low
-            and (mother.high > child.high or mother.low < child.low))
 
 
 @dataclass(frozen=True)

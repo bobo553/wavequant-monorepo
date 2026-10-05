@@ -133,6 +133,158 @@ function xinhuaChart() {
     return { ...harness, data, theory: { ...fixture.theory, lecture_drawing: { strokes: [] } } };
 }
 
+function xiangyangNChart(asof = "2023-07-04") {
+    const fixture = JSON.parse(
+        readFileSync(
+            new URL(
+                "../../../../packages/wavequant-core/tests/fixtures/xiangyang_2023_shared_edge_n.json",
+                import.meta.url,
+            ),
+        ),
+    );
+    const data = fixture.bars
+        .filter(([time]) => time <= asof)
+        .map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }));
+    const harness = chartHarness(data);
+    const event = {
+        id: "xiangyang-june-12-n",
+        event: "n_completed",
+        direction: "up",
+        time: "2023-06-12",
+        available_at: "2023-06-12",
+        price: 5.67,
+        one_p: 6.11,
+        two_t: 6.51,
+        shape: [
+            { time: "2023-06-07", value: 5.31, kind: "L" },
+            { time: "2023-06-08", value: 5.46, kind: "H" },
+            { time: "2023-06-09", value: 5.32, kind: "L" },
+            { time: "2023-06-12", value: 5.71, kind: "H" },
+        ],
+        levels: [
+            { name: "轧空低", price: 5.32 },
+            {
+                name: "1P 投影",
+                display_name: "一饱（正 N）",
+                stage: "one_p",
+                price: 6.11,
+                anchor_at: "2023-06-09",
+                available_at: "2023-06-12",
+            },
+            {
+                name: "2T 投影",
+                display_name: "二吐（正 N）",
+                stage: "two_t",
+                price: 6.51,
+                anchor_at: "2023-06-09",
+                available_at: "2023-06-12",
+            },
+            {
+                name: "五顶（堆箱 · 已满足）",
+                stage: "five_top",
+                price: 6.97,
+                available_at: "2023-06-28",
+                status: "已满足",
+            },
+            {
+                name: "十满（堆箱 · 已满足）",
+                stage: "ten_full",
+                price: 9.37,
+                available_at: "2023-06-29",
+                status: "已满足",
+            },
+        ],
+    };
+    harness.chart.setTheory({ asof, events: [event], shapes: [], lecture_drawing: { strokes: [] } });
+    return harness;
+}
+
+test("candle hover and pinned focus show known five-top and ten-full on the original N", () => {
+    const { chart, rendered } = xiangyangNChart();
+    chart.setAnnotationOptions({ tertiaryAbc: false });
+    const snapshot = structuredClone(chart.nTargetObservations[0].item);
+    chart.updateWaveProjectionHover("2023-06-12");
+    assert.deepEqual(
+        rendered.guides.map(({ stage }) => stage),
+        ["one_p", "two_t", "five_top", "ten_full"],
+    );
+    for (const stage of ["five_top", "ten_full"]) {
+        const guide = rendered.guides.find((guide) => guide.stage === stage);
+        assert.equal(guide.targetState, "已满足");
+        assert.equal(guide.start, stage === "five_top" ? "2023-06-28" : "2023-06-29");
+    }
+    assert.ok(targetLabels(chart, rendered.guides).some((label) => /五顶.*6\.9700.*已满足/.test(label)));
+    assert.ok(targetLabels(chart, rendered.guides).some((label) => /十满.*9\.3700.*已满足/.test(label)));
+    chart.updateWaveProjectionHover(null);
+    assert.equal(rendered.guides.length, 0);
+    chart.focusCandleTargets("2023-07-04");
+    assert.equal(chart.focusedNTarget.id, snapshot.id);
+    chart.updateWaveProjectionHover(null);
+    assert.deepEqual(
+        rendered.guides.map(({ stage }) => stage),
+        ["one_p", "two_t", "five_top", "ten_full"],
+    );
+    assert.deepEqual(chart.focusedNTarget, snapshot);
+});
+
+test("ABC primary targets preserve the focused N extensions and replay hides unpublished stages", () => {
+    const { chart, rendered } = xiangyangNChart();
+    chart.focusCandleTargets("2023-06-12");
+    chart.hoveredWaveProjection = {
+        id: "xiangyang-parent-abc",
+        kind: "wave-projection",
+        category: "wave-projection",
+        time: "2023-06-09",
+        raw: {
+            originTime: "2023-06-07",
+            origin: 5.31,
+            aTime: "2023-06-08",
+            aHigh: 5.46,
+            bTime: "2023-06-09",
+            bLow: 5.32,
+        },
+        levels: [
+            {
+                name: "C 浪目标 1×A",
+                stage: "c_equal",
+                price: 5.47,
+                anchor_at: "2023-06-09",
+                available_at: "2023-06-12",
+            },
+        ],
+    };
+    chart.drawLevels();
+    assert.deepEqual(
+        rendered.guides.map(({ stage }) => stage),
+        ["c_equal", "one_p", "two_t", "five_top", "ten_full"],
+    );
+    for (const [asof, expected] of [
+        ["2023-06-27", ["one_p", "two_t"]],
+        ["2023-06-28", ["one_p", "two_t", "five_top"]],
+        ["2023-06-29", ["one_p", "two_t", "five_top", "ten_full"]],
+    ]) {
+        const replay = xiangyangNChart(asof);
+        replay.chart.focusCandleTargets("2023-06-12");
+        assert.deepEqual(
+            replay.rendered.guides.map(({ stage }) => stage),
+            expected,
+            asof,
+        );
+    }
+});
+
+test("a previously selected full N cannot draw future extensions on an earlier chart asof", () => {
+    const { chart, rendered } = xiangyangNChart();
+    chart.selected = chart.nTargetObservations[0].item;
+    chart.theory = { ...chart.theory, asof: "2023-06-27" };
+    chart.drawLevels();
+    assert.deepEqual(
+        rendered.guides.map(({ stage }) => stage),
+        ["one_p", "two_t"],
+    );
+    assert.equal(chart.levelLines.length, 3);
+});
+
 test("locating an A candle pins its parent ABC endpoints and C targets after the pointer leaves", () => {
     const { chart, rendered, theory } = xinhuaChart();
     chart.setTheory(theory);
@@ -184,7 +336,19 @@ test("a candle focused before theory arrives binds ABC and N targets when the th
     chart.setTheory(theory);
     assert.equal(chart.focusedWaveProjection?.raw.bTime, "2024-08-28");
     assert.equal(chart.focusedNTarget?.time, "2024-03-05");
-    assert.equal(targetLabels(chart, rendered.guides).length, 5);
+    assert.equal(rendered.guides.filter(({ stage }) => stage.startsWith("c_")).length, 3);
+    assert.deepEqual(
+        rendered.guides
+            .filter(({ stage }) => ["one_p", "two_t", "five_top", "ten_full"].includes(stage))
+            .map(({ stage, price, start }) => ({ stage, price, start })),
+        [
+            { stage: "one_p", price: 5.289057414759589, start: "2024-03-04" },
+            { stage: "two_t", price: 5.783644844765735, start: "2024-03-04" },
+            { stage: "five_top", price: 7.267407134784173, start: "2024-03-25" },
+        ],
+    );
+    assert.equal(rendered.guides.find(({ stage }) => stage === "five_top").targetState, "已失效");
+    assert.ok(targetLabels(chart, rendered.guides).some((label) => /五顶.*7\.2674.*已失效/.test(label)));
     chart.setTheory({ ...theory, asof: "2024-09-02" });
     assert.equal(chart.focusedWaveProjection?.raw.bTime, "2024-07-09");
     assert.equal(

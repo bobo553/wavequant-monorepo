@@ -14,7 +14,8 @@ import math
 from typing import Sequence
 
 from ..models.model import Bar
-from .price_action import Direction, KeyLevel, LevelKind, observe_attack, _ordered_pair, _validate_bar
+from .price_action import (Direction, KeyLevel, LevelKind, observe_attack, _ordered_pair,
+                           _validate_bar, teaching_outside)
 
 
 class NStatus(str, Enum):
@@ -270,17 +271,16 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     # The close must cross B's real and virtual levels; no intrabar order is assumed.
     outside_close = (setup.allow_outside_close and setup.source == 'lecture_causal'
                      and setup.pullback.index == known and known > 0
-                     and bars[known].high > bars[known-1].high
-                     and bars[known].low < bars[known-1].low
+                     and teaching_outside(bars[known-1], bars[known])
                      and sign*(bars[known].close-b)>0 and sign*(bars[known].close-bb.close)>0
                      and sign*(bars[known-1].close-bb.close)<=0)
     # The lecture outside candle turns at C before its directional excursion.
     # That excursion belongs to the new attack even if only the wick crosses B.
+    # B and C may become known together at this close under the same convention.
     outside_turn = (setup.allow_outside_close and setup.source == 'lecture_causal'
                     and setup.pullback.index == known and known > 0
-                    and setup.neckline.confirmed_index < known
-                    and bars[known].high > bars[known-1].high
-                    and bars[known].low < bars[known-1].low
+                    and setup.neckline.confirmed_index <= known
+                    and teaching_outside(bars[known-1], bars[known])
                     and sign*(bars[known].close-bars[known].open)>0)
     key_known = setup.neckline.confirmed_index if same_confirmation else known
     real_key = KeyLevel(setup.symbol,timeframe,kind,bb.close,setup.neckline.index,key_known,setup.source)
@@ -324,7 +324,11 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         prev = bars[i-1]
         previous_joint = (sign*(prev.close-bb.close)>0 and
                           sign*((prev.high if up else prev.low)-b)>0)
-        if previous_joint:
+        # A C candle skipped above was not a completed attack. Its directional
+        # wick must not suppress the next candle's fresh crossing; observe_attack
+        # still rejects continued occupancy when the previous close is beyond B.
+        previous_was_turn = outside_turn and not outside_close and i-1 == known
+        if previous_joint and not previous_was_turn:
             continue
         if outside_close and i == known:
             vl, vh = min(bar.low,prev.close), max(bar.high,prev.close)

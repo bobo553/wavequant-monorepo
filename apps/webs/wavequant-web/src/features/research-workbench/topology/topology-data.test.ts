@@ -37,6 +37,24 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("distinguishes shared-boundary outside C from strict mother-candle geometry", () => {
+        const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "n-geometry");
+        expect(gate?.detail).toMatch(/讲义因果外包 C.*等低创新高.*等高创新低/);
+        expect(gate?.detail).toMatch(/两侧完全相等不算外包/);
+        expect(gate?.detail).toMatch(/C 在自身收盘确认.*分步转折.*实体.*攻击方向.*B 与 C.*同一收盘/);
+        expect(gate?.detail).toMatch(/中间其他棒仍检查/);
+        expect(gate?.detail).toMatch(/阳母同日 A\/B.*阴母 A < B = C.*独立严格外包/);
+        expect(gate?.detail).toMatch(/等高、等低和十字星不放宽该分支.*默认严格 N 条件保持/);
+    });
+    it("keeps a wick-only outside C pending until a fresh post-C joint attack", () => {
+        const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "n-attack");
+        expect(gate?.detail).toMatch(/收盘严格越过 B 收盘.*最高严格越过 B 最高.*倒 N 对称/);
+        expect(gate?.detail).toMatch(/C 当天须收盘严格越过 B 两层.*前收盘未越过 B 收盘/);
+        expect(gate?.detail).toMatch(/C 只有影线.*保持形成中.*C 后第一棒.*前收盘重新严格攻击/);
+        expect(gate?.detail).toMatch(/后续收盘无需另加越过 B 极值的门槛/);
+        expect(gate?.detail).toMatch(/持续站上、相等触及、跨棒拼接或未来才确认.*不能补认/);
+        expect(gate?.yes).toMatch(/冻结攻击与防守位/);
+    });
     it("traces the post-two-T body reversal and strict previous bearish volume clear", () => {
         const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "two-t-body-clear");
         expect(gate?.detail).toMatch(/此前交易日已到二饱/);
