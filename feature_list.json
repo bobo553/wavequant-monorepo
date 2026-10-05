@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-271",
+            "name": "remove-research-hero-copy",
+            "title": "移除研究页标题与副标题",
+            "description": "按用户要求去掉研究页让每一个信号都有据可循的主标题和N字结构说明副标题，将保留的研究上下文与SDK标识压缩为紧凑行，减少顶部留白。",
+            "scope": "Web研究页顶部组件与样式",
+            "dependencies": ["MONOREPO-270"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "页面不再显示原主标题及说明副标题，相关文字从DOM移除",
+                "研究上下文与SDK标识保留，标题区收紧内边距及多余外边距",
+                "原图表及进度控件契约保持，相关格式、lint、类型和生产构建通过",
+                "生产DOM和样式核对完成，未运行完整套件和浏览器如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "Production home/research HTML and CSS jsdom checks",
+                    "status": "passed",
+                    "summary": "首页和研究页生产DOM均没有原主标题及说明副标题，保留研究上下文和SDK标识；顶部上下内边距10px/12px、研究标识下外边距为0，四个图表/进度/证据ID唯一。DOM样式核验不执行浏览器布局。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "修改前类型基线及最终lint（零错误6条既有警告）、类型与512MB/4MB命令级生产构建通过；修改组件、样式、E2E源码与状态/进度格式、差异及Harness通过。仅去掉两段文案及收紧留白，运行时图表逻辑保持，next-env生成路径定向恢复。"
+                },
+                {
+                    "command": "Node unit tests, complete Web suite and browser/Playwright verification",
+                    "status": "not-run",
+                    "summary": "纯界面文案与留白调整，未新增或运行单元测试；生产DOM/CSS作为定向核验。依用户规则未运行完整Web套件和浏览器/Playwright，既有默认页E2E断言改为紧凑头部可见且原文案缺失，未执行用例；真实桌面/窄屏视觉待独立验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-270",
             "name": "taller-chart-evidence-below-fold",
             "title": "K线加高自然下推证据",
