@@ -190,6 +190,7 @@ test("legacy C-wave buys without B dates use direct target labels and preserve e
         },
         waveEndpointOverlay: { setPoints() {} },
         clearLevels: PriceChart.prototype.clearLevels,
+        displayedWaveProjection: PriceChart.prototype.displayedWaveProjection,
     };
     PriceChart.prototype.drawLevels.call(fake);
     assert.deepEqual(

@@ -52,6 +52,7 @@ function chartHarness(data = bars) {
         "bullishTurnGuideLines",
         "tertiaryRetracementLines",
         "autoWaveProjections",
+        "autoWaveEvidence",
     ])
         chart[field] = [];
     chart.chart = {
@@ -117,6 +118,119 @@ function ordinaryChart(asof = "2025-01-22") {
     harness.chart.setTheory({ ...fixture.theory, asof, shapes: [], lecture_drawing: { strokes: [] } });
     return { ...harness, data };
 }
+
+function xinhuaChart() {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xinhua_2024_parent_abc.json", import.meta.url)));
+    const data = fixture.bars.map(([time, open, high, low, close, volume]) => ({
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume,
+    }));
+    const harness = chartHarness(data);
+    return { ...harness, data, theory: { ...fixture.theory, lecture_drawing: { strokes: [] } } };
+}
+
+test("locating an A candle pins its parent ABC endpoints and C targets after the pointer leaves", () => {
+    const { chart, rendered, theory } = xinhuaChart();
+    chart.setTheory(theory);
+    assert.equal(chart.focusTrade("2024-03-05"), true);
+    chart.updateWaveProjectionHover(null);
+    assert.equal(chart.focusedWaveProjection?.raw.originTime, "2024-02-08");
+    assert.equal(chart.focusedWaveProjection?.raw.aTime, "2024-03-25");
+    assert.deepEqual(
+        chart.waveEndpointOverlay.points.map(({ time }) => time),
+        ["2024-02-08", "2024-03-25", "2024-08-28", "2024-10-31"],
+    );
+    const cGuides = rendered.guides.filter(({ stage }) => stage.startsWith("c_"));
+    assert.deepEqual(
+        cGuides.map(({ price }) => price),
+        [5.371010663884799, 6.4621916579306, 8.227505412695798],
+    );
+    assert.equal(targetLabels(chart, cGuides).length, 3);
+    assert.ok(cGuides.every(({ display_at }) => display_at === "2024-03-05"));
+    assert.ok(cGuides.every(({ start }) => start >= "2024-08-28"));
+    assert.equal(rendered.guides.filter(({ stage }) => ["one_p", "two_t"].includes(stage)).length, 2);
+});
+
+test("selecting each ABC endpoint keeps that group's labels and targets without hovering", () => {
+    const { chart, rendered, theory } = xinhuaChart();
+    chart.setTheory(theory);
+    const group = chart.autoWaveProjections.find(({ raw }) => raw.originTime === "2024-02-08");
+    for (const annotation of chart.autoWaveEvidence.filter(({ raw }) => raw === group.raw)) {
+        chart.selectAnnotation(annotation.id, false);
+        chart.updateWaveProjectionHover(null);
+        assert.deepEqual(endpointDrawing(chart).labels, [
+            "A 起点 3.5328",
+            "A 终点 6.3893",
+            "B 3.6057",
+            "C 终点 7.6469",
+        ]);
+        assert.equal(rendered.guides.filter(({ stage }) => stage.startsWith("c_")).length, 3);
+        assert.equal(chart.selected.id, annotation.id);
+    }
+    chart.selectAnnotation(group.id, false);
+    assert.equal(endpointDrawing(chart).labels.length, 4);
+    chart.setAnnotationOptions({ tertiaryAbc: false });
+    assert.deepEqual(endpointDrawing(chart).labels, []);
+    assert.equal(rendered.guides.filter(({ stage }) => stage.startsWith("c_")).length, 0);
+});
+
+test("a candle focused before theory arrives binds ABC and N targets when the theory loads", () => {
+    const { chart, rendered, theory } = xinhuaChart();
+    chart.focusTrade("2024-03-05");
+    chart.setTheory(theory);
+    assert.equal(chart.focusedWaveProjection?.raw.bTime, "2024-08-28");
+    assert.equal(chart.focusedNTarget?.time, "2024-03-05");
+    assert.equal(targetLabels(chart, rendered.guides).length, 5);
+    chart.setTheory({ ...theory, asof: "2024-09-02" });
+    assert.equal(chart.focusedWaveProjection?.raw.bTime, "2024-07-09");
+    assert.equal(
+        chart.waveEndpointOverlay.points.some(({ time }) => time === "2024-08-28"),
+        false,
+    );
+    chart.setTheory(null);
+    assert.equal(chart.focusedWaveProjection, null);
+    assert.deepEqual(chart.waveEndpointOverlay.points, []);
+});
+
+test("selecting the internal N retains the parent ABC labels without replacing the N selection", () => {
+    const { chart, rendered, theory } = xinhuaChart();
+    chart.setTheory(theory);
+    const n = chart.nTargetObservations.find(({ item }) => item.time === "2024-03-05").item;
+    chart.selectAnnotation(n.id, false);
+    chart.updateWaveProjectionHover(null);
+    assert.equal(chart.selected, n);
+    assert.equal(chart.focusedWaveProjection?.raw.aTime, "2024-03-25");
+    assert.equal(endpointDrawing(chart).labels.length, 4);
+    assert.equal(rendered.guides.filter(({ stage }) => stage.startsWith("c_")).length, 3);
+    assert.equal(rendered.guides.filter(({ stage }) => ["one_p", "two_t"].includes(stage)).length, 2);
+});
+
+test("a fixed ABC focus survives temporary hovering and layer toggles but clears outside its viewport", () => {
+    const { chart, rendered, data } = ordinaryChart();
+    chart.focusCandleTargets("2024-06-04");
+    const fixed = chart.focusedWaveProjection;
+    const range = { ...rendered.range };
+    assert.ok(fixed);
+    chart.updateWaveProjectionHover("2024-12-12");
+    chart.updateWaveProjectionHover(null);
+    assert.equal(chart.focusedWaveProjection, fixed);
+    assert.equal(rendered.guides.filter(({ stage }) => stage.startsWith("c_")).length, 3);
+    chart.setAnnotationOptions({ tertiaryAbc: false });
+    assert.deepEqual(chart.waveEndpointOverlay.points, []);
+    chart.setAnnotationOptions({ tertiaryAbc: true });
+    assert.equal(chart.focusedWaveProjection, fixed);
+    assert.equal(endpointDrawing(chart).labels.length, 4);
+    assert.deepEqual(rendered.range, range);
+    rendered.range = { from: data.findIndex(({ time }) => time === "2025-05-06"), to: data.length - 1 };
+    chart.refreshMarkers();
+    assert.equal(chart.focusedWaveProjection, null);
+    assert.deepEqual(chart.waveEndpointOverlay.points, []);
+    assert.equal(rendered.guides.filter(({ stage }) => stage.startsWith("c_")).length, 0);
+});
 
 test("Xinhua parent ABC renders the full A, deep B, C and separate internal N targets", () => {
     const fixture = JSON.parse(readFileSync(new URL("./fixtures/xinhua_2024_parent_abc.json", import.meta.url)));
@@ -598,7 +712,8 @@ test("panning from hovered A candles to C replaces the offscreen display anchor 
     const { chart, rendered, data } = ordinaryChart();
     chart.updateWaveProjectionHover("2024-02-23");
     const originalProjection = chart.hoveredWaveProjection;
-    assert.ok(rendered.guides.every(({ start }) => start === "2024-02-23"));
+    assert.ok(rendered.guides.every(({ display_at }) => display_at === "2024-02-23"));
+    assert.ok(rendered.guides.every(({ start }) => start === "2024-07-25"));
     assert.equal(targetLabels(chart, rendered.guides).length, 3);
     rendered.range = {
         from: data.findIndex((bar) => bar.time === "2024-11-01"),
@@ -608,7 +723,7 @@ test("panning from hovered A candles to C replaces the offscreen display anchor 
     chart.refreshMarkers();
     assert.equal(chart.hoveredWaveProjection, null);
     assert.equal(chart.autoWaveProjection, originalProjection);
-    assert.ok(rendered.guides.every(({ start }) => start === "2024-11-01"));
+    assert.ok(rendered.guides.every(({ display_at }) => display_at === "2024-11-01"));
     assert.equal(targetLabels(chart, rendered.guides).length, 3);
     assert.deepEqual(rendered.range, originalRange);
 });
@@ -626,7 +741,8 @@ test("C-tail hover draws three real labels while keeping original target anchors
     assert.ok(labels.some((label) => /C 0\.618.*已触及.*图外/.test(label)));
     assert.ok(labels.some((label) => /等浪.*已触及/.test(label)));
     assert.ok(labels.some((label) => /C 1\.618.*本段结束未达成.*图外/.test(label)));
-    assert.ok(rendered.guides.every((guide) => guide.start === "2024-12-12"));
+    assert.ok(rendered.guides.every((guide) => guide.display_at === "2024-12-12"));
+    assert.ok(rendered.guides.every((guide) => guide.start === "2024-07-25"));
     assert.deepEqual(
         rendered.guides.map(({ firstTouchedAt }) => firstTouchedAt),
         ["2024-10-11", "2024-12-03", null],
@@ -751,6 +867,7 @@ test("hover shows only known endpoints and clears them when ABC or its theory is
 
 test("changing candle data clears hovering ABC endpoints and previous selections", () => {
     const { chart } = ordinaryChart();
+    chart.focusCandleTargets("2024-06-04");
     chart.updateWaveProjectionHover("2024-12-12");
     assert.equal(endpointDrawing(chart).labels.length, 4);
     chart.tooltip = { hidden: false };
@@ -768,6 +885,8 @@ test("changing candle data clears hovering ABC endpoints and previous selections
     };
     chart.setData(replacement);
     assert.equal(chart.hoveredWaveProjection, null);
+    assert.equal(chart.focusedWaveProjection, null);
+    assert.equal(chart.focusedWaveTime, null);
     assert.equal(chart.selected, null);
     assert.equal(chart.theory, null);
     assert.deepEqual(chart.waveEndpointOverlay.points, []);

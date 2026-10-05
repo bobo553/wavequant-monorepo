@@ -7,7 +7,7 @@
             "id": "MONOREPO-263",
             "name": "a-wave-classification-origin-lifecycle",
             "title": "A强弱分类与起点失效规则统一",
-            "description": "按用户确认统一强A高点达到二吐、普通A达到一饱但未达二吐；最低价严格破A起点即永久失效；强弱A的B均可破轧空低，保留实际回调整理时长和后续新A独立生命周期。",
+            "description": "按用户确认统一强A高点达到二吐、普通A达到一饱但未达二吐；最低价严格破A起点即永久失效；强弱A的B均可破轧空低，保留实际回调整理时长和后续新A独立生命周期。；图表悬停、K线点击、日期定位和ABC端点选择统一显示及异步重绑定，保留测幅与可知性。",
             "scope": "Core A/B/C共用规则、整段波浪上下文与测幅、Web共用识别和说明及真实行情/边界定向回归",
             "dependencies": ["MONOREPO-262", "MONOREPO-258"],
             "status": "in-progress",
@@ -16,7 +16,8 @@
                 "最低价严格破原A起点优先失效，价格相等仍有效；后来收复或更高行情不能复活同A及后续C，已结束历史不被新段抹除",
                 "强A和普通A的B均允许破轧空低，记录首次破低、完整回调和底部整理交易日，不制造固定延期或自动买点",
                 "Core、Web观察/目标/成交说明和拓扑规则一致，保留已有量价、结构、风控和执行门禁",
-                "新华传媒与国芳真实锚点、边界及历史前缀和相关测试/类型/构建通过；旧失败及未运行完整套件/浏览器如实记录"
+                "新华传媒与国芳真实锚点、边界及历史前缀和相关测试/类型/构建通过；旧失败及未运行完整套件/浏览器如实记录",
+                "ABC范围内K线点击、日期定位或端点选择固定对应标签与C目标，理论异步加载后重绑定；内部N目标并显，开关控制显示、换数据清理旧选择、移窗清理范围焦点，目标显示位置不改原锚点和可知日"
             ],
             "verification": [
                 {
@@ -48,6 +49,21 @@
                     "command": "Full Core/Web suites; browser/Playwright; external minute execution",
                     "status": "not-run",
                     "summary": "按当前开发验证节奏未运行，待独立验证。179项Core相邻回归的6项失败如实保留，不能宣称全部验证通过；未合并main或推送，服务暂仍main v91。"
+                },
+                {
+                    "command": "node --test 15 affected chart/ABC/N test files",
+                    "status": "passed",
+                    "summary": "183项通过；新增5项定位、端点选择、理论异步加载、N选择共显和焦点生命周期回归，原三条缺失路径先失败。成交/测幅断言保留，旧显示位置断言改用display_at并新增原B锚点不变断言。"
+                },
+                {
+                    "command": "Real /api/akshare-backtest sh.600825 2018-01-01..2026-09-30; replay three chart SDK/Canvas regression paths with full response",
+                    "status": "passed",
+                    "summary": "实际main v91接口2,113根因果复权日线保留A02-08→03-25、B08-28和C10-31；完整输入代入定位、ABC端点选择、焦点先于理论三条回归均通过。C目标5.371010663884799/6.4621916579306/8.227505412695798与内部03-05 N目标共显，历史截面不借未来B。没有浏览器像素验收。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; pnpm harness:check; git diff --check",
+                    "status": "passed",
+                    "summary": "图表补修Web lint0错误6既有警告、类型与512MB/4MB生产构建通过；next-env生成路径定向恢复。格式/Harness/差异检查通过。原Core6项基线失败及合并待确认保持，不重跑无关失败或修改断言；完整单测与浏览器/Playwright未运行。"
                 }
             ]
         },

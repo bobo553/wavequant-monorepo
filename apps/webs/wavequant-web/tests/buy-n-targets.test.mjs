@@ -193,6 +193,7 @@ test("selecting an ordinary C buy draws the broken target to its first break and
             removeSeries() {},
         },
         clearLevels: PriceChart.prototype.clearLevels,
+        displayedWaveProjection: PriceChart.prototype.displayedWaveProjection,
     };
     PriceChart.prototype.drawLevels.call(fake);
     const targets = fake.levelLines.filter((line) => line.options.title.startsWith("C 浪目标"));
