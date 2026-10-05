@@ -1,3 +1,8 @@
+import {
+    confirmedCWaveProjection,
+    knownWavePoint as knownPoint,
+    maximumWaveHigh as maximumHigh,
+} from "./confirmed-c-wave.js";
 import { ordinaryLocalWavePoints } from "./ordinary-local-wave.js";
 
 function isDate(value) {
@@ -7,23 +12,6 @@ function isDate(value) {
         Number.isFinite(Date.parse(value)) &&
         new Date(value).toISOString().slice(0, 10) === value
     );
-}
-
-function knownPoint(point, kind, asof, byTime) {
-    const bar = byTime.get(point?.time);
-    return (
-        point?.kind === kind &&
-        isDate(point.time) &&
-        isDate(point.available_at) &&
-        point.time <= point.available_at &&
-        point.available_at <= asof &&
-        Number.isFinite(point.value) &&
-        point.value === bar?.[kind === "H" ? "high" : "low"]
-    );
-}
-
-function maximumHigh(bars, from, until) {
-    return Math.max(...bars.filter((bar) => bar.time >= from && bar.time <= until).map((bar) => bar.high));
 }
 
 function localWaveStrokes(theory, origin, asof, byTime) {
@@ -101,88 +89,21 @@ export function ordinaryCWaveProjections(bars, theory) {
                     maximumHigh(visible, origin.time, a.time) !== a.value
                 )
                     continue;
-                const afterA = visible.filter((bar) => bar.time > a.time);
-                const breakout = afterA.find((bar) => bar.high > a.value);
-                const lows = points.filter(
-                    (point) =>
-                        knownPoint(point, "L", asof, byTime) &&
-                        point.time > a.time &&
-                        (!breakout || point.time < breakout.time),
-                );
-                const b = lows.reduce(
-                    (bottom, point) => (!bottom || point.value < bottom.value ? point : bottom),
-                    null,
-                );
-                if (!b || b.value >= a.value) continue;
-                const knownAt = [event.available_at, a.available_at, b.available_at].sort().at(-1);
-                if (knownAt > asof) continue;
-                // 中途已确认的高点若在确认前被更高价取代，仍属同段 C 的升级。
-                const completedC = points.find(
-                    (point) =>
-                        knownPoint(point, "H", asof, byTime) &&
-                        isWaveHigh(point) &&
-                        point.time > b.time &&
-                        point.value > a.value &&
-                        point.available_at >= knownAt &&
-                        maximumHigh(visible, b.time, point.available_at) === point.value,
-                );
-                // 极值日至确认日仍是活动结构；该期间起点双破优先，不能被后来归档洗掉。
-                const end = completedC?.available_at || asof;
-                const failedIndex = visible.findIndex(
-                    (bar) =>
-                        bar.time > event.time && bar.time <= end && bar.low < origin.value && bar.close < origin.value,
-                );
-                // B 确认前已双破 A 起点时，没有原组 C；后续收复不能重建它。
-                if (failedIndex >= 0 && visible[failedIndex].time <= knownAt) continue;
-                const amplitude = a.value - origin.value;
-                const anchorVersions = [];
-                for (const low of [...lows].sort(
-                    (left, right) =>
-                        left.available_at.localeCompare(right.available_at) || left.time.localeCompare(right.time),
-                )) {
-                    if (anchorVersions.length && low.value >= anchorVersions.at(-1).bLow) continue;
-                    const versionKnownAt = [event.available_at, a.available_at, low.available_at].sort().at(-1);
-                    const previousVersion = anchorVersions.at(-1);
-                    if (previousVersion) {
-                        previousVersion.supersededAt = versionKnownAt;
-                        previousVersion.validUntil = visible.filter((bar) => bar.time < versionKnownAt).at(-1)?.time;
-                    }
-                    anchorVersions.push({
-                        id: `${origin.time}:${a.time}:${low.time}`,
-                        bTime: low.time,
-                        bLow: low.value,
-                        knownAt: versionKnownAt,
-                        target0618: low.value + 0.618 * amplitude,
-                        target: low.value + amplitude,
-                        target1618: low.value + 1.618 * amplitude,
-                    });
-                }
+                const projection = confirmedCWaveProjection({
+                    bars: visible,
+                    asof,
+                    event,
+                    origin,
+                    a,
+                    points,
+                    isHigh: isWaveHigh,
+                });
+                if (!projection) continue;
                 const observation = {
-                    nTime: event.time,
-                    nHigh: attack.high,
-                    originTime: origin.time,
-                    origin: origin.value,
+                    ...projection,
                     oneP,
                     twoT,
-                    aTime: a.time,
-                    aHigh: a.value,
-                    aKnownAt: a.available_at,
                     aAttackClass: "non_strong",
-                    bTime: b.time,
-                    bLow: b.value,
-                    bKnownAt: b.available_at,
-                    confirmedAt: knownAt,
-                    bBrokeASqueezeLow:
-                        Number.isFinite(event.defense) &&
-                        visible.some((bar) => bar.time > a.time && bar.time <= b.time && bar.low < event.defense),
-                    bRetracementRatio: (a.value - b.value) / amplitude,
-                    aDuration: visible.filter((bar) => bar.time >= origin.time && bar.time <= a.time).length - 1,
-                    bDuration: visible.filter((bar) => bar.time > a.time && bar.time <= b.time).length,
-                    target0618: b.value + 0.618 * amplitude,
-                    target: b.value + amplitude,
-                    target1618: b.value + 1.618 * amplitude,
-                    anchorVersion: `${origin.time}:${a.time}:${b.time}`,
-                    anchorVersions,
                     trendLevel: stroke.trend_level || theory.secondary_trends?.trend_level || 2,
                     ...(stroke.projection_source
                         ? {
@@ -190,23 +111,6 @@ export function ordinaryCWaveProjections(bars, theory) {
                               sourceTrendLevel: 1,
                               formalTrend: false,
                               sourcePath: stroke.source_path,
-                          }
-                        : {}),
-                    aIsValid: failedIndex < 0,
-                    cEligible: failedIndex < 0,
-                    ...(completedC && failedIndex < 0
-                        ? {
-                              cTime: completedC.time,
-                              cHigh: completedC.value,
-                              cKnownAt: completedC.available_at,
-                              targetValidUntil: completedC.time,
-                          }
-                        : {}),
-                    ...(failedIndex >= 0
-                        ? {
-                              invalidatedAt: visible[failedIndex].time,
-                              invalidationReason: "B_BROKE_A_START",
-                              targetValidUntil: visible[failedIndex - 1]?.time,
                           }
                         : {}),
                 };
