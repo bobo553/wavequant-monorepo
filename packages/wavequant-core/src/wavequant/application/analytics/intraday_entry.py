@@ -13,6 +13,7 @@ from wavequant.domain.strategies.integrated_strategy import (
     pivot_history,
 )
 from wavequant.domain.strategies.n_consolidation import consolidation_gap
+from wavequant.domain.strategies.n_opening_squeeze import OPENING_SQUEEZE_REASON
 from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
     wave_confirmation_state,
@@ -46,6 +47,7 @@ def resolve_consolidation_entries(
     """Keep daily-close candidates when no earlier fully verified minute decision exists."""
     signals = list(generated.signals)
     audit = list(generated.audit)
+    opening_days = {signal.bar_index for signal in signals if signal.reason == OPENING_SQUEEZE_REASON}
     executions: dict[tuple[str, int], EntryExecution] = {}
     fallbacks: list[dict[str, object]] = []
     candidates = [
@@ -68,6 +70,8 @@ def resolve_consolidation_entries(
     # current session across later sessions as well as later minutes.
     chart_history_cache: dict = {"source_bars": tuple(bars)}
     for i, bar in enumerate(bars):
+        if i in opening_days:
+            continue
         preceding_daily = daily_waves.get(i - 1)
         if preceding_daily is not None:
             key = (preceding_daily["attack"], preceding_daily["wave_a_high_index"], preceding_daily["wave_b_low_index"])

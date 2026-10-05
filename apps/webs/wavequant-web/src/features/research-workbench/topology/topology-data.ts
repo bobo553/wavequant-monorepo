@@ -25,6 +25,39 @@ export interface ITopologyFlow {
  */
 export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
     {
+        id: "opening-n",
+        label: "正 N 高开轧空",
+        description: "V3 独立开盘入口，使用前日已知正 N 与本日开盘；平开不触发，同 N 首次确认后不重复买入。",
+        mode: "gates",
+        completion: "开盘 LONG 交给当日开盘模拟执行；其后风险按真实时序及 T+1 处理",
+        gates: [
+            {
+                id: "opening-n-known",
+                question: "此前已形成有效且未消费的正 N？",
+                detail: "正 N 完成与可知日都须早于本日；此前最低价未严格跌破原防守，且未被已知后续倒 N 或退出终止。只在此前结构窗口内首次触发，不能借用本日收盘才形成的新 N。",
+                source: "n_opening_squeeze.py · opening_n_squeeze；integrated_strategy.py · generate_system_signals",
+                yes: "比较开盘与昨收",
+                no: "等待有效新正 N",
+            },
+            {
+                id: "opening-n-gap",
+                question: "本日开盘严格高于昨收且高于原 N 防守？",
+                detail: "开盘 > 昨日收盘即可确认轧空，不要求越过昨高，也不等待阳线形态、全天量能或本日新交替；仅使用昨日及之前数据和当前开盘。平开或低开不触发；本日后续阴线、破低及缩量不能倒填撤销已做出的开盘决定。",
+                source: "n_opening_squeeze.py · opening_n_squeeze",
+                yes: "检查此前压力及目标门禁",
+                no: "继续按原有收盘或分钟通道观察",
+            },
+            {
+                id: "opening-n-execute",
+                question: "已知压力、五顶十满与开盘成交约束通过？",
+                detail: "目标与压力只取开盘时已知事实。当天开盘价加滑点模拟买入，保留可买、现金、整手、风险、流动性和可选费后盈亏比；不借用收盘非一字涨停许可。当天后续退出仍按原规则观察，新买部分受 T+1 约束。",
+                source: "backtest.py · execute_entry / run_portfolio；trade_evidence.py · enrich_ledger",
+                yes: "same_day_open 模拟成交",
+                no: "保留拒单原因，不延至收盘补买",
+            },
+        ],
+    },
+    {
         id: "structure",
         label: "① 结构与候选",
         description: "常规 N 买点只使用截至当前交易日已确认的结构；V3 浅回撤横盘突破与组合 A 回调突破另走独立通道。",
@@ -505,4 +538,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "793d05159f3033c66e11846cc9f2b451e736e0a6105c91d9763b58945a1ea8a3";
+export const strategySourceDigest = "3a7548d5e7713987a509d99757988cd11497494859927b5b55a44ead242dc5a3";

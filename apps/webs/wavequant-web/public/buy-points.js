@@ -157,15 +157,16 @@ export class BuyPoints {
                 const name = document.createElement("strong");
                 name.textContent = r.name ? `${r.symbol.split(".")[1]} ${r.name}` : symbolName(r.symbol);
                 const status = document.createElement("span");
-                const classification =
-                    r.buy_point_type === "combined_a_pullback_breakout"
-                        ? label(r.buy_point_type)
-                        : r.buy_point_type
-                          ? `${r.priority === 2 ? "第二类 · 重点" : "第一类"} / ${r.trend_level} 级`
-                          : "";
+                const classification = ["combined_a_pullback_breakout", "n_opening_gap_squeeze"].includes(
+                    r.buy_point_type,
+                )
+                    ? label(r.buy_point_type)
+                    : r.buy_point_type
+                      ? `${r.priority === 2 ? "第二类 · 重点" : "第一类"} / ${r.trend_level} 级`
+                      : "";
                 status.textContent = `${r.signal_date} · ${classification ? `${classification} · ` : ""}${statusNames[r.status]}`;
                 const values = document.createElement("small");
-                values.textContent = `${r.regime} · 参考 ${num(r.raw_reference_price)} 元（原始） · 相对量 ${num(r.rvol)} · 收盘盈亏比 ${num(r.gross_reward_risk)}`;
+                values.textContent = `${r.regime} · 参考 ${num(r.raw_reference_price)} 元（原始） · 相对量 ${num(r.rvol)} · ${r.buy_point_type === "n_opening_gap_squeeze" ? "开盘" : "收盘"}盈亏比 ${num(r.gross_reward_risk)}`;
                 b.append(name, status, values);
                 b.addEventListener("click", () => this.onSelect(r, p));
             }

@@ -4,6 +4,54 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-273",
+            "name": "positive-n-opening-gap-squeeze",
+            "title": "正N高开轧空当日开盘买入",
+            "description": "有效正N在前日已确认后，开盘价严格高于昨收即以开盘确认轧空并当日模拟成交，无需本日阳线或全天量；保留此前失效、退出、压力、目标及执行门禁。",
+            "scope": "Core全局V3开盘入口、执行时序、可知证据及Web说明",
+            "dependencies": ["MONOREPO-272"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "全部V3全局方案启用独立开盘入口，既有封存配置默认关闭；不按股票或日期特判",
+                "严格open>前close，正N完成与可知日早于当前，此前守住原防守且无后续已知倒N或退出；同N只触发一次",
+                "仅使用昨日及之前的数据与本日开盘，禁止当天HLCV、交替或退出倒填影响开盘；保留原压力及五顶十满、现金、费用、流动性与T+1",
+                "真实新华2019-01-17符合高开谓词，完整2018账户如更早高开符合则提前，页面显示正确日期/价格/开盘时间而非收盘依据",
+                "定向回归、因果前缀、当日后续行情扰动、类型和必要构建通过，相关状态与进度记录完整"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core python -m pytest tests/test_n_opening_squeeze.py tests/test_ten_full_entry.py tests/test_xinhua_volume_record_squeeze.py tests/test_xinhua_mother_pullback_squeeze.py tests/test_intraday_entry.py tests/test_add_on_entry.py tests/test_trade_evidence_addon.py tests/test_stock_backtest.py -q",
+                    "status": "passed",
+                    "summary": "最终77项通过，含24项新增。覆盖严格高开、前日可知/失效/守防、六个全局V3方案、同N一次、真实2018起点Jan11首次及Jan17不重复、完整/前缀信号与当日HLCV扰动订单不变、开盘不可买禁止借用收盘许可、同日后续EXIT不撤销开盘成交和T+1、既知五顶十满门禁。旧v90/v91收盘oracle显式关闭新入口保留原断言；十满原双通道测试同样固定旧入口，并单独覆盖新开盘门禁。最初执行回归3失败定位仅收盘填单问题；相邻旧通道用例因新更早高开消耗N而失败，固定被测旧路径后全部通过。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core python ../../.codex-runtime/verify_n_opening.py",
+                    "status": "passed",
+                    "summary": "复用真实固定行情及权限，不复用旧信号；256根2018-01-02..2019-01-18，正式single_stock_result和原执行配置重新计算。01-07正N已知，01-11首次高开买入2300股，原始开5.38、既定5bps模拟5.38269元，same_day_open/09:30；01-17开5.6207663782>前收5.4601730532满足谓词但不重复买入。同日后续交替或抵抗确认不能倒填开盘。历史缺分钟仅用于其他通道的原有显式回退，开盘入口不等待或依赖分钟。"
+                },
+                {
+                    "command": "Core strict mypy n_opening_squeeze.py; explicit modified production modules and test mypy; pnpm --filter @wavequant/core typecheck; pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "纯开盘判据strict、7个修改源码/测试mypy、既定4文件strict以及sdist/wheel通过。新模块在wheel内；测试Optional证据先断言非空后类型通过，无类型忽略。未运行Python格式或lint。"
+                },
+                {
+                    "command": "node --test tests/annotations.test.mjs tests/trade-reasons.test.mjs tests/buy-points.test.mjs tests/combined-a-entry-evidence.test.mjs (Web cwd); pnpm --filter wavequant-web exec vitest run src/features/research-workbench/topology/topology-data.test.ts",
+                    "status": "passed",
+                    "summary": "最终78项Node和6项拓扑通过。详情/复制提供前日已知正N、昨收、开盘和09:30执行，买点列表与三种数据源点击保留独立开盘分类、证据及开盘盈亏比，无undefined或虚构第一类。拓扑独立开盘三门禁，73来源指纹3a7548d5...包含执行/分钟/交易证据。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; targeted Prettier/Node syntax; git diff --check; pnpm harness:check; codegraph sync",
+                    "status": "passed",
+                    "summary": "最终lint0错误6条既有环境变量警告、类型与生产构建通过；相关格式、JS语法、差异与Harness通过，next-env生成差异定向恢复。复核全局启用、新N守防/失效/时间、独立开盘价成交、原压力目标执行门禁与T+1；不按股票日期特判。"
+                },
+                {
+                    "command": "Complete Core/Web suites, browser/Playwright and external historical minute execution",
+                    "status": "not-run",
+                    "summary": "依用户当次验证节奏完整套件和浏览器/Playwright未运行，真实视觉与外部分钟留待独立验证，不把模块/DOM验收写成浏览器通过。保留256/263全部既有失败证据并恢复256唯一in-progress；本任务默认提交并本地合并，不推送。本地main常驻版本与正式HTTP账户验收随后补充。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-272",
             "name": "two-t-bearish-body-volume-clear",
             "title": "二饱后实体反包放量清仓",
