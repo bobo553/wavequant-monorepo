@@ -4,6 +4,37 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-264",
+            "name": "research-controls-below-chart",
+            "title": "研究控件移到图表下方",
+            "description": "按用户要求将数据口径、回测起点和幅度方案对比三个面板整体移到图表工作区下方，保留原有顺序、全局可用性与运行时控件契约。",
+            "scope": "Web研究工作台页面编排",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "数据口径、回测起点和幅度对比面板按原顺序出现在图表工作区下方",
+                "不重复挂载控件，保留原DOM ID、默认值及回测与对比交互",
+                "相关格式、lint、类型及生产构建通过，未运行的浏览器验证如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web exec vitest run tests/research-controls.test.tsx; production research HTML jsdom checks",
+                    "status": "passed",
+                    "summary": "现有控件定向回归1项通过；生产HTML确认三个面板位于图表工作区之后、保持原顺序及全局可用性，8个关键控件ID唯一，回测起点和过滤默认值保持。DOM验证不代替浏览器视觉。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "Web lint零错误（6条既有警告）、类型检查及生产构建通过，构建仅使用命令级512MB堆/4MB新生代；格式、差异与Harness检查通过，next-env生成路径定向恢复。仅调整页面编排，原控件与运行时实现未改。"
+                },
+                {
+                    "command": "Complete Web unit suite and browser/Playwright verification",
+                    "status": "not-run",
+                    "summary": "依用户开发验证节奏未运行完整Web套件及浏览器/Playwright，留待独立验证；本轮以现有定向控件测试、静态检查、生产构建及生成HTML DOM验收。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-263",
             "name": "a-wave-classification-origin-lifecycle",
             "title": "A强弱分类与起点失效规则统一",
