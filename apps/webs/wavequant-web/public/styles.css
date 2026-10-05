@@ -1832,12 +1832,13 @@ body {
 }
 .chart-view-controls {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 8px 12px;
     padding: 6px 16px;
     border-bottom: 1px solid var(--border);
     background: var(--panel);
+    overflow-x: auto;
 }
 .chart-view-tabs {
     display: flex;
@@ -1845,12 +1846,20 @@ body {
     gap: 4px;
 }
 .chart-view-controls .chart-navigation {
-    flex: 1 1 178px;
+    flex: 0 0 auto;
     min-width: 178px;
+    margin-left: auto;
     padding: 0;
     border: 0;
 }
+.chart-view-controls .trade-playback-navigation {
+    flex: 0 0 auto;
+    padding: 0 0 0 12px;
+    border: 0;
+    border-left: 1px solid var(--border);
+}
 .chart-view-controls .chart-navigation-buttons {
+    flex: 0 0 auto;
     flex-wrap: nowrap;
     justify-content: flex-end;
 }
@@ -2572,14 +2581,6 @@ body {
     }
     .trade-playback-controls {
         margin-left: 0;
-    }
-}
-@container (max-width: 430px) {
-    .chart-view-controls .chart-navigation {
-        flex-basis: 100%;
-    }
-    .chart-view-controls .chart-navigation-buttons {
-        justify-content: flex-start;
     }
 }
 .replay-title {
