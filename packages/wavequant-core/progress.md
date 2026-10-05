@@ -1,5 +1,8 @@
 # Progress
 
+- MONOREPO-259（2026-10-05）：共用 `ChartRepository.render_theory` 为每个已确认正 N 的一饱、二吐发布 `one_p/two_t` 阶段、C 点锚点、事件可知日及中文显示名。AkShare、通达信和封存理论共用此出口；原 `1P 投影/2T 投影` 名称及测幅价格保留供既有解析使用。只补目标发布信息，不增加买卖条件。新华传媒 03-05 同日 B/C 正 N 从 03-04 C 点标识一饱 5.289057414759589、二吐 5.783644844765735；03-04 截面不可见，03-05 与 03-20 两目标相同，倒 N 保持既有参考线，五顶十满不提前发布。
+  `pytest tests/test_xinhua_mother_pullback_squeeze.py tests/test_outside_split_n.py tests/test_mother_pullback_n.py tests/test_market_data_repository.py tests/test_backtest_version.py tests/test_abc_candidate.py -q` 42 项通过。新增真实价格回归先复现缺少 stage，修复后通过，并验证延迟可知日和倒 N。当前 1508 根真实审计通过同一渲染器导出 Web 固定夹具，原 6 个策略来源哈希相同。共用渲染模块额外 mypy 发现的 9 项既有类型问题已补齐声明、明确 Bar 参数及 TypedDict 字段读取，最终 `mypy --follow-imports=silent src/wavequant/interfaces/charts/visualization.py` 无错误；Core 既定严格 typecheck、sdist/wheel、Harness 通过。完整 Core/Web 套件、浏览器和外部分钟待独立验证，未运行 Playwright。本轮按默认流程提交、本地合并，未要求新推送。
+
 MONOREPO-258常驻验收：实现c05d8e4以e6d1e13合并本地main，main真实3项拓扑通过；13003代理/API8765均HTTP200且自动加载v91，127源引擎468d1456680c21d8f5904aa51f20bca1c0b341a4801309624a23b029d7eab354与main精确一致，新成交说明helper响应与文件逐字相同。无需重启，未修改缓存或进程；用户刷新页面重新回测旧结果即可，本轮未推送。
 
 - MONOREPO-258（已完成）：全局V3 v91补齐阴母严格外包、已知高→低的同日B/C正N。新华传媒02-29低4.26→03-04高4.53/低4.33→03-05实虚双突破，原防守4.38元。按用户最终补充，以原N突破棒的高点和收盘分别比较，而非等待期间最高价；突破当天或次日已有抵抗，原防守始终完整、最早第三棒，当日高/收分别严格越过原突破高/收且呈中大阳短上影（实体>=开盘3%、>=振幅60%、上影<=振幅20%，用户已确认且等号允许）。弱N仍须量严格超过前日；旧record确认/默认研究/倒N不附加新形态门槛，深B恢复仍保留>=2/3、归属、可知、底防守和杀多高严格收复。

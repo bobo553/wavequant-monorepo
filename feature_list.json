@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-259",
+            "name": "positive-n-target-guide-labels",
+            "title": "正N一饱二吐目标标识",
+            "description": "正N规则标记的一饱、二吐接入已有左端目标标签和因果截断方案，修复新华传媒2024-03-05正N目标只有普通参考线、缺少明确标识的问题。",
+            "scope": "Core共用正N目标发布契约、Web既有目标绘制与真实行情定向回归，统一覆盖AkShare、通达信和封存回测",
+            "dependencies": ["MONOREPO-258", "MONOREPO-215", "MONOREPO-216"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "正N规则标记将引擎发布的一饱、二吐价位接入one_p/two_t阶段及左端中文标签，不由浏览器重算价格",
+                "新华传媒2024-03-05同日B/C正N显示一饱5.289057414759589、二吐5.783644844765735附近精确目标，关联原03-04 C点及03-05可知时间",
+                "沿用未突破短虚线、首次严格突破截断和形成日只用收盘；保留倒N、其他参考价、五顶十满、成交目标与取消/隐藏行为",
+                "相关定向测试、格式、lint、类型和必要构建通过，完整套件与浏览器未运行项明确记录"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_xinhua_mother_pullback_squeeze.py test_outside_split_n.py test_mother_pullback_n.py test_market_data_repository.py test_backtest_version.py test_abc_candidate.py -q",
+                    "status": "passed",
+                    "summary": "42项通过；新回归先复现正N缺stage，修复后真实03-05同日B/C一饱5.289057414759589、二吐5.783644844765735，03-04不可知、03-20目标不变；延迟可知、倒N、五顶十满时序与原买点保留。"
+                },
+                {
+                    "command": "Web node --test wave-c-chart target-level-guides buy-n-targets annotations n-extension-levels wave-c-projection ordinary-c-wave; targeted topology Vitest",
+                    "status": "passed",
+                    "summary": "110项Node及3项拓扑通过；真实1508日线审计经共用渲染器导出的夹具验证正N未有BUY也显示两目标、左端名称价格状态及隐藏取消清理，原6个策略源hash一致；引擎原始名称不变，标记详情使用中文显示名。两处既有测试桩补齐端点overlay接口。"
+                },
+                {
+                    "command": "Core mypy --follow-imports=silent visualization.py; pnpm --filter @wavequant/core typecheck; build; Web lint; typecheck; build; targeted Prettier; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "修改渲染模块mypy和既定4文件严格类型检查、sdist/wheel通过；修正该模块9项既有类型问题。Web lint零错误6条既有警告、类型及最终生产构建和相关格式通过；恢复next-env生成路径差异。完整Core/Web套件、真实浏览器/Playwright和外部分钟未运行，待独立验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-258",
             "name": "defended-n-march-squeeze-entry",
             "title": "正N守线后续轧空买点",

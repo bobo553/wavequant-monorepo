@@ -13,6 +13,7 @@ from wavequant.domain.strategies.integrated_strategy import SystemResult, System
 from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
 from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageError
 from wavequant.infrastructure.market_data.minute import MinuteBar
+from wavequant.interfaces.charts.visualization import ChartRepository
 from wavequant.interfaces.research_tools.stock_backtest import single_stock_result
 
 
@@ -67,6 +68,43 @@ def _longs_for_attack(result: SystemResult, attack: datetime) -> list[Signal]:
 def _missing_historical_minutes(bar: Bar) -> list[MinuteBar]:
     """Use the official missing-minute boundary and configured daily-close fallback."""
     raise MinuteCoverageError(str(bar.timestamp.date()), "2026-07-21", "2026-09-30")
+
+
+def test_march_5_n_publishes_causal_one_p_two_t_guides(xinhua_history: _XinhuaSample) -> None:
+    sample = xinhua_history
+    attack = sample.dates["2024-03-05"]
+    published = []
+    for asof in ("2024-03-04", "2024-03-05", "2024-03-20"):
+        prefix = sample.bars[:sample.dates[asof] + 1]
+        theory = ChartRepository.render_theory(
+            None, prefix, sample.config, sample.generated, asof, geometry={"tertiary_trends": {}},
+        )
+        events = [event for event in theory["events"]
+                  if event["event"] == "n_completed" and event["bar_index"] == attack]
+        if asof == "2024-03-04":
+            assert events == []
+            continue
+        assert len(events) == 1
+        event = events[0]
+        assert event["available_at"] == "2024-03-05"
+        assert [point["time"] for point in event["shape"]] == [
+            "2024-02-29", "2024-03-04", "2024-03-04", "2024-03-05",
+        ]
+        targets = {level["stage"]: level for level in event["levels"] if "stage" in level}
+        for stage, name, price in (
+            ("one_p", "一饱（正 N）", 5.289057414759589),
+            ("two_t", "二吐（正 N）", 5.783644844765735),
+        ):
+            assert targets[stage]["display_name"] == name
+            assert targets[stage]["price"] == pytest.approx(price)
+            assert targets[stage]["price"] == event[stage]
+            assert targets[stage]["anchor_at"] == "2024-03-04"
+            assert targets[stage]["available_at"] == "2024-03-05"
+        if asof == "2024-03-05":
+            assert set(targets) == {"one_p", "two_t"}
+        published.append([targets["one_p"], targets["two_t"]])
+    assert published[0] == published[1]
+    assert all("levels" not in event for event in sample.generated.audit)
 
 
 def test_march_5_mother_pullback_n_buys_march_20_once(xinhua_history: _XinhuaSample) -> None:

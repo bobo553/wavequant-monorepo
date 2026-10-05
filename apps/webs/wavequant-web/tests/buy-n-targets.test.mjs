@@ -175,6 +175,7 @@ test("selecting an ordinary C buy draws the broken target to its first break and
         options: { levels: true, fills: true },
         levelLines: [],
         container: { dataset: {} },
+        waveEndpointOverlay: { setPoints() {} },
         targetGuideOverlay: {
             setGuides(guides) {
                 this.guides = guides;

@@ -13,6 +13,7 @@ import hashlib
 import json
 from pathlib import Path
 from threading import Lock
+from typing import TypedDict
 from zoneinfo import ZoneInfo
 
 from wavequant.infrastructure.market_data.data import fingerprint
@@ -105,11 +106,23 @@ def confirmed_polyline_segments(bars, snapshots, epochs, blocked):
     return segments
 
 
+class _NExtensionLevel(TypedDict):
+    stage: str
+    price: float
+    status: str
+    mode: str
+    available_at: str
+    projection_span: float
+    a_origin: float
+    a_high: float
+    b_low: float | None
+
+
 def metrics_at(equity, trades, capital):
     peak = capital
     drawdown = 0
     points = []
-    exposure = 0
+    exposure = 0.0
     for row in equity:
         value = float(row["equity"])
         peak = max(peak, value)
@@ -148,6 +161,7 @@ class ChartRepository:
         from wavequant.interfaces.charts.akshare_browser import AkShareBrowser
         from wavequant.interfaces.charts.market_data_repository import (
             AkShareMarketDataAdapter,
+            MarketDataAdapter,
             MarketDataRepository,
             TdxMarketDataAdapter,
         )
@@ -166,7 +180,7 @@ class ChartRepository:
             cache_root /= artifact_cache_scope
         self.tdx = TdxBrowser(tdx_root, cache=cache_root) if tdx_root else None
         self.akshare = AkShareBrowser(timeout=akshare_timeout, pinned_history=True) if akshare_enabled else None
-        adapters = []
+        adapters: list[MarketDataAdapter] = []
         if self.akshare is not None:
             adapters.append(AkShareMarketDataAdapter(self.akshare))
         if self.tdx is not None:
@@ -266,15 +280,16 @@ class ChartRepository:
         from wavequant.domain.models.model import Bar
         from wavequant.infrastructure.market_data.io import _validate_bar, _parse_bool
 
-        grouped = {}
+        grouped: dict[str, list[Bar]] = {}
         for row in csv.DictReader(io.StringIO(self._bytes(rid, "snapshot/daily.csv").decode("utf-8-sig"))):
             b = Bar(
                 datetime.fromisoformat(row["timestamp"]),
                 row["symbol"],
-                *(float(row[k]) for k in ("open", "high", "low", "close", "volume")),
-                _parse_bool(row.get("buyable")),
-                _parse_bool(row.get("sellable")),
-                float(row.get("adjustment_factor") or 1),
+                float(row["open"]), float(row["high"]), float(row["low"]),
+                float(row["close"]), float(row["volume"]),
+                buyable=_parse_bool(row.get("buyable")),
+                sellable=_parse_bool(row.get("sellable")),
+                adjustment_factor=float(row.get("adjustment_factor") or 1),
             )
             _validate_bar(b, 0)
             grouped.setdefault(b.symbol, []).append(b)
@@ -774,11 +789,11 @@ class ChartRepository:
             )
             for p in snapshots[i]
         ]
-        events = []
+        events: list[dict[str, object]] = []
         shapes = []
         # Join later, dated projections back to the N the user selects. Keep
         # fulfilled targets for review and label suspended targets explicitly.
-        extension_levels = {}
+        extension_levels: dict[int, dict[str, _NExtensionLevel]] = {}
         for row in result.audit:
             if row['bar_index'] > i:
                 continue
@@ -866,14 +881,21 @@ class ChartRepository:
                     dict(name="颈线（前波收盘）", price=bars[r["neckline"]].close),
                     dict(name="轧空低" if up else "杀多高", price=r["defense"]),
                 ]
-                event["levels"] += [
-                    dict(name=title, price=getattr(targets, key))
-                    for key, title in (("equal_wave", "等浪投影"), ("one_p", "1P 投影"), ("two_t", "2T 投影"))
-                    if getattr(targets, key) is not None
-                ]
-                for level in extension_levels.get(r['bar_index'], {}).values():
-                    title = '五顶' if level['stage'] == 'five_top' else '十满'
-                    event['levels'].append(dict(level, name=f"{title}（{level['mode']} · {level['status']}）"))
+                for key, title in (("equal_wave", "等浪投影"), ("one_p", "1P 投影"), ("two_t", "2T 投影")):
+                    price = getattr(targets, key)
+                    if price is None:
+                        continue
+                    target_level = dict(name=title, price=price)
+                    # Every positive N exposes causal guides, including those without a buy marker.
+                    if up and key in ("one_p", "two_t"):
+                        target_level.update(
+                            stage=key, display_name="一饱（正 N）" if key == "one_p" else "二吐（正 N）",
+                            anchor_at=coords[2]["time"], available_at=event["available_at"],
+                        )
+                    event["levels"].append(target_level)
+                for extension_level in extension_levels.get(r['bar_index'], {}).values():
+                    title = '五顶' if extension_level['stage'] == 'five_top' else '十满'
+                    event['levels'].append(dict(extension_level, name=f"{title}（{extension_level['mode']} · {extension_level['status']}）"))
                 shapes.append(
                     dict(
                         points=coords,
@@ -932,11 +954,13 @@ class ChartRepository:
                                  f"{observation['attack']}-{observation['event']}"),
                 time=date, available_at=date,
                 price=bars[index].close,
-                levels=[dict(name=title, price=observation[key]) for key, title in (
-                    ("a_origin_price", "a 起点"), ("a_high_price", "a 高点 / c 突破参考"),
-                    ("b_low_price", "b 低点 / c 候选失效参考"),
-                    ("two_thirds_price", "a 的 2/3 回撤价"), ("half_price", "a 的 1/2 回撤价"),
-                )],
+                levels=[
+                    dict(name="a 起点", price=observation["a_origin_price"]),
+                    dict(name="a 高点 / c 突破参考", price=observation["a_high_price"]),
+                    dict(name="b 低点 / c 候选失效参考", price=observation["b_low_price"]),
+                    dict(name="a 的 2/3 回撤价", price=observation["two_thirds_price"]),
+                    dict(name="a 的 1/2 回撤价", price=observation["half_price"]),
+                ],
             ))
         return dict(
             asof=asof,

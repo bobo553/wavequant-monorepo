@@ -1035,7 +1035,7 @@ export class PriceChart {
                 color,
                 lineStyle: guide?.targetState === "已触及" || item.kind === "trend" ? 0 : 2,
                 lineWidth: level.stage === "c_equal" ? 2 : 1,
-                title: level.name,
+                title: level.display_name || level.name,
                 lastValueVisible: !targetStages.has(level.stage),
                 priceLineVisible: !guide && (item.kind === "wave-projection" || targetStages.has(level.stage)),
                 crosshairMarkerVisible: false,
@@ -1076,7 +1076,7 @@ export class PriceChart {
                         start,
                         end: points.at(-1).time,
                         price: level.price,
-                        name: level.name,
+                        name: level.display_name || level.name,
                         // 旧记录缺少结构锚点，仍标注目标，但不推断突破状态。
                         statusKnown: false,
                     }),

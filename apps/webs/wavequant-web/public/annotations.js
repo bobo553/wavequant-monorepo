@@ -787,11 +787,13 @@ export function buildAnnotations(view, theory) {
         const abc = ["tertiary_c_candidate", "tertiary_c_breakout", "tertiary_c_invalidated"].includes(event.event);
         const squeezeAlternation = event.event.startsWith("squeeze_alternation_");
         const candidateRejection = event.event === "entry_rejected" || event.event === "entry_preflight_rejected";
-        const eventLevels = (event.levels || []).filter(
-            (level) =>
-                !level.available_at ||
-                (level.available_at <= view.asof && level.available_at <= (theory.asof || view.asof)),
-        );
+        const eventLevels = (event.levels || [])
+            .filter(
+                (level) =>
+                    !level.available_at ||
+                    (level.available_at <= view.asof && level.available_at <= (theory.asof || view.asof)),
+            )
+            .map((level) => (level.display_name ? { ...level, name: level.display_name } : level));
         const attackDate = Number.isInteger(event.attack) ? view.bars[event.attack]?.time : null;
         const riskRatio =
             event.event === "entry_preflight_rejected" && Number.isFinite(event.gross_reward_risk)
