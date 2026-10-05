@@ -4,6 +4,37 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-265",
+            "name": "compact-research-metrics",
+            "title": "研究指标卡压缩为两行",
+            "description": "按用户要求缩小个股净收益、最大回撤、卖出成交和平均仓位指标卡高度；第一行显示名称与数值，第二行显示说明及回撤区间。",
+            "scope": "Web研究指标样式",
+            "dependencies": [],
+            "status": "done",
+            "acceptanceCriteria": [
+                "四张研究指标卡采用两行布局，减少上下内边距与数值字号",
+                "保留指标与说明DOM、回撤区间和按钮定位契约，长说明不撑高卡片",
+                "桌面及窄屏样式一致紧凑，相关格式、lint、类型与生产构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/max-drawdown.test.mjs; production research HTML/CSS jsdom checks",
+                    "status": "passed",
+                    "summary": "现有回撤相关10项回归通过；生产HTML与当前CSS的DOM检查确认四张卡采用26px/14px两行、10px/14px内边距、数值零外边距，回撤数值/区间/说明及8个原ID保留且唯一。DOM样式验证不执行真实浏览器布局。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "Web lint零错误（6条既有警告）、类型与512MB/4MB命令级生产构建通过；修改样式与状态/进度文档格式、差异和Harness通过。仅调整指标卡CSS，React及回撤定位运行时不变，next-env生成路径定向恢复。"
+                },
+                {
+                    "command": "Complete Web unit suite and browser/Playwright verification",
+                    "status": "not-run",
+                    "summary": "依用户验证节奏未运行完整Web单测及浏览器/Playwright，真实桌面/窄屏视觉留待独立验证；本轮运行相关既有定向测试、静态检查、生产构建与DOM样式核对。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-264",
             "name": "research-controls-below-chart",
             "title": "研究控件移到图表下方",
