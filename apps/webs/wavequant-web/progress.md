@@ -1,5 +1,7 @@
 # Progress
 
+MONOREPO-259 常驻验收：`9a61ace` 经 `d745b34` 合并本地 main；Web13003 三个标注/图表/目标模块的 HTTP 响应与文件逐字相同。API8765 和 13003 版本接口均为 v91 / `f9b1cb9e78e5a5b96a48c521c4f0e1c36803557d07ce9b50f0824c291cfd6838`，与 main 全部源码一致。实际 1508 日线正式回测响应通过当前 `buildAnnotations` 和 `targetLevelGuide`，3/5 生成一饱 5.2891、二吐 5.7836 的中文左端指南，C 点 03-04、形成日两目标均未突破；03-20 唯一 BUY/filled 保留。仅 HTTP 和纯模块验证，未运行浏览器；刷新页面重新回测可查看，本轮未推送。
+
 - MONOREPO-259（2026-10-05）：正 N 一饱、二吐消费 Core 共用出口发布的阶段、C 点和可知日；标记详情与目标线统一中文显示名，保留引擎旧字段和精确价格，不由 Web 重算。确认当天即可按既有左端标识方案绘制，未突破画短虚线，首次严格突破后截断；确认日仍只用收盘。新华传媒 2024-03-05 的实际 1508 日线审计经过当前渲染器生成固定夹具，验证同日 B/C、无 BUY 时也显示一饱 5.2891 和二吐 5.7836、到 03-20 仍未突破，右侧不重复标签，隐藏和取消选择清理目标。
   `node --test tests/wave-c-chart.test.mjs tests/target-level-guides.test.mjs tests/buy-n-targets.test.mjs tests/annotations.test.mjs tests/n-extension-levels.test.mjs tests/wave-c-projection.test.mjs tests/ordinary-c-wave.test.mjs` 110 项通过，新增真实渲染链先复现无目标标签；两处旧目标测试桩补齐当前端点 overlay 接口。拓扑定向 Vitest 3 项通过；最终 lint 零错误（6 条既有警告）、typecheck、生产 build、相关 Prettier 和 Harness 通过。构建生成的 next-env 路径变化已定向恢复。完整 Web 单测及真实浏览器/Playwright 未运行，待独立验证。默认提交和本地合并，本次不自动推送。
 
