@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-275",
+    "activeFeature": "MONOREPO-256",
     "features": [
         {
             "id": "MONOREPO-275",
@@ -10,7 +10,7 @@
             "description": "修复讲义折线允许等高等低外包、N判定却严格双边导致的漏识别，保留因果确认与首次突破，补真实襄阳轴承及对称边界回归。",
             "scope": "Core共享边界N几何与后续首次突破、V94、真实历史目标链回归、Web焦点阶段追踪及拓扑来源同步",
             "dependencies": ["MONOREPO-274"],
-            "status": "in-progress",
+            "status": "done",
             "acceptanceCriteria": [
                 "讲义N与折线使用同一外包边界；允许同日确认但不回溯未知折点，严格策略、无方向及无新突破仍受原约束",
                 "真实sz.000678日线识别2023-06-12正N而非6月9日，按同组N推演轧空、五顶和十全并在7月4日达到十全",
@@ -55,8 +55,8 @@
                 },
                 {
                     "command": "feature commit/sync/no-ff local main merge; HTTP8765/13003 actual V94 and formal sz.000678 2018..2023-07-04",
-                    "status": "not-run",
-                    "summary": "实现与相关验证完成；紧接执行本地合并及正式服务验收，完成后更新状态。不得将尚未执行的HTTP写成通过。"
+                    "status": "passed",
+                    "summary": "实现46075f8经6f11541无冲突no-ff合并本地main。实际8765/13003返回V94/7a077751；128来源逐个sha256与main精确一致，已加载引擎保护通过，charts.js与n-target-focus.js HTTP200逐字相同。正式新job6ecdfb84从2018开始截至2023-07-04重算1317棒/3493审计，日线逐项等于原真实前缀，6/12原组N仅一次、6/15强轧空、6/28五顶6.97、6/29十满9.37、7/4十满已满足；两个阶段在同组N实际theory levels中正确可知/已满足。API自动加载，无手工重启或改缓存，无推送。当前恢复256原状态与证据，本轮仅验收文档同步main。"
                 },
                 {
                     "command": "complete Core/Web suites; browser/Playwright; external minute-data execution",
@@ -793,7 +793,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "backlog",
+            "status": "in-progress",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
