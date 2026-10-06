@@ -21,7 +21,9 @@ DEFAULT_SYMBOLS = ["sh.600036", "sh.601318", "sh.600519", "sh.600900",
                    "sh.600276", "sz.002415"]
 FIELDS = "date,code,open,high,low,close,preclose,volume,tradestatus,isST"
 COLUMNS = ["timestamp", "symbol", "open", "high", "low", "close", "volume",
-           "buyable", "sellable", "adjustment_factor"]
+           "buyable", "sellable", "adjustment_factor", "close_sellable", "nonflat_close_sellable",
+           "raw_is_st", "raw_trading_active"]
+BAR_PERMISSION_SCHEMA = "source_close_sell_permissions_v2"
 
 
 def dump_json(path: Path, value: object) -> None:
@@ -46,16 +48,7 @@ def write_dataset(path: Path, rows: list[dict], metadata: dict) -> dict:
     return metadata
 
 
-def opening_permissions(row: dict, symbol: str | None = None) -> tuple[bool, bool]:
-    """Reject suspended and limit-locked opens using the security's board rules.
-
-    Uses open and official preclose, never the day's closing price or volume to
-    infer whether an opening order could have filled.  ``symbol`` is optional
-    only for legacy main-board fixture rows; real adapters must always pass it.
-    No queue simulation or IPO no-limit-window inference is attempted.
-    """
-    if row["tradestatus"] != "1":
-        return False, False
+def _price_limit_bounds(row: dict[str, str], symbol: str | None = None) -> tuple[Decimal, Decimal]:
     d = date.fromisoformat(row["date"])
     st = row["isST"] == "1"
     spec = a_share_security_spec(symbol or "sh.600000", d)
@@ -68,8 +61,43 @@ def opening_permissions(row: dict, symbol: str | None = None) -> tuple[bool, boo
     previous = Decimal(row["preclose"])
     upper = (previous * (1 + rate)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     lower = (previous * (1 - rate)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return lower, upper
+
+
+def lower_limit_price(row: dict[str, str], symbol: str) -> float:
+    """Return the same raw ST/board/date price floor used by opening permissions."""
+    return float(_price_limit_bounds(row, symbol)[0])
+
+
+def opening_permissions(row: dict, symbol: str | None = None) -> tuple[bool, bool]:
+    """Reject suspended and limit-locked opens using the security's board rules.
+
+    Uses open and official preclose, never the day's closing price or volume to
+    infer whether an opening order could have filled.  ``symbol`` is optional
+    only for legacy main-board fixture rows; real adapters must always pass it.
+    No queue simulation or IPO no-limit-window inference is attempted.
+    """
+    if row["tradestatus"] != "1":
+        return False, False
+    lower, upper = _price_limit_bounds(row, symbol)
     price = Decimal(row["open"])
-    return not st and price < upper, price > lower
+    return row["isST"] != "1" and price < upper, price > lower
+
+
+def close_sell_permissions(row: dict[str, str], symbol: str) -> dict[str, bool]:
+    """Derive close/session sell facts from one raw source and its historical status.
+
+    A nonflat session establishes an observed unlocked price, not a closing
+    auction fill or a known minute execution. The execution model opts into
+    that separate simulation assumption explicitly.
+    """
+    active = row["tradestatus"] == "1" and float(row.get("volume") or 0) > 0
+    status = "1" if active else "0"
+    close_sellable = opening_permissions(dict(row, tradestatus=status, open=row["close"]), symbol)[1]
+    nonflat = (active and float(row["high"]) > float(row["low"])
+               and opening_permissions(dict(row, tradestatus=status, open=row["high"]), symbol)[1])
+    return dict(close_sellable=close_sellable, nonflat_close_sellable=nonflat,
+                raw_is_st=row["isST"] == "1", raw_trading_active=active)
 
 
 def fetch_baostock(path: Path, symbols: list[str], start: str, end: str,
@@ -130,6 +158,7 @@ def fetch_baostock(path: Path, symbols: list[str], start: str, end: str,
                 row.update({"timestamp": raw["date"], "symbol": symbol, "volume": raw["volume"] or 0,
                             "buyable": int(buyable), "sellable": int(sellable),
                             "adjustment_factor": factor})
+                row.update(close_sell_permissions(raw, symbol))
                 rows.append(row)
             snapshots.append({"file": str(snapshot.resolve()), "sha256": fingerprint(snapshot),
                               "retrieved_at": source["retrieved_at"]})
@@ -139,6 +168,7 @@ def fetch_baostock(path: Path, symbols: list[str], start: str, end: str,
             bs.logout()
     return write_dataset(path, rows, {
         "kind": "real_market", "source": "BaoStock", "frequency": "daily",
+        "bar_permission_schema": BAR_PERMISSION_SCHEMA,
         "start": start, "end": end, "snapshots": snapshots,
         "price_basis": "back-adjusted OHLC with raw-volume and raw-price factor",
         "limitations": ["Fixed convenience universe; survival/selection bias; not all-market evidence.",
@@ -152,7 +182,7 @@ def synthetic_dataset(path: Path, seed: int = 20260907, sessions: int = 1200,
     if sessions < 50 or symbols < 1:
         raise ValueError("synthetic data requires >=50 sessions and >=1 symbol")
     rng = random.Random(seed)
-    days = []
+    days: list[date] = []
     current = date(2018, 1, 2)
     while len(days) < sessions:
         if current.weekday() < 5:
@@ -161,7 +191,7 @@ def synthetic_dataset(path: Path, seed: int = 20260907, sessions: int = 1200,
     market = [rng.gauss(0, .007) for _ in days]
     rows = []
     for number in range(symbols):
-        price = 12 + number * 4
+        price: float = 12 + number * 4
         for i, day in enumerate(days):
             regime = ((i + number * 17) // 90) % 4
             drift = [.002, -.0015, 0, .0008][regime]

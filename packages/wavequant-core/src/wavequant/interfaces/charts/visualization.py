@@ -278,7 +278,7 @@ class ChartRepository:
         # Parse precisely the verified bytes, not a second mutable file read.
         import io
         from wavequant.domain.models.model import Bar
-        from wavequant.infrastructure.market_data.io import _validate_bar, _parse_bool
+        from wavequant.infrastructure.market_data.io import _validate_bar, _parse_bool, _parse_optional_bool
 
         grouped: dict[str, list[Bar]] = {}
         for row in csv.DictReader(io.StringIO(self._bytes(rid, "snapshot/daily.csv").decode("utf-8-sig"))):
@@ -290,6 +290,10 @@ class ChartRepository:
                 buyable=_parse_bool(row.get("buyable")),
                 sellable=_parse_bool(row.get("sellable")),
                 adjustment_factor=float(row.get("adjustment_factor") or 1),
+                close_sellable=_parse_optional_bool(row.get("close_sellable")),
+                nonflat_close_sellable=_parse_optional_bool(row.get("nonflat_close_sellable")),
+                raw_is_st=_parse_optional_bool(row.get("raw_is_st")),
+                raw_trading_active=_parse_optional_bool(row.get("raw_trading_active")),
             )
             _validate_bar(b, 0)
             grouped.setdefault(b.symbol, []).append(b)

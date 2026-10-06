@@ -24,7 +24,8 @@ from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recov
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
 from .wave_exhaustion_exit import (
     C_EQUAL_NEAR_VOLUME_CLEAR, FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
-    observe_c_equal_near_risk, observe_five_top_child_volume_clear, observe_five_top_gap_volume_clear,
+    observe_c_equal_near_risk, observe_five_top_child_volume_clear,
+    observe_five_top_upper_shadow_clear, observe_five_top_gap_volume_clear,
 )
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
 from .two_t_resistance import two_t_resistance_history
@@ -799,6 +800,14 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         five_top_gap_exit = observe_five_top_gap_volume_clear(bars, i, projection_events) if whole_wave else None
         if five_top_gap_exit is not None and five_top_exit is None:
             exits.append(FIVE_TOP_GAP_VOLUME_CLEAR)
+        five_top_shadow_exit = (
+            observe_five_top_upper_shadow_clear(bars, i, projection_events)
+            if (whole_wave and five_top_exit is None and five_top_gap_exit is None
+                and (target_risk is None or target_risk['exit_fraction'] != 1.0)
+                and (c_equal_risk is None or c_equal_risk['exit_fraction'] < 1.0)) else None
+        )
+        if five_top_shadow_exit is not None:
+            exits.append(five_top_shadow_exit['reason'])
         mother_child_inverse = mother_child_inverse_n_break(bars, i) if whole_wave else None
         if mother_child_inverse is not None:
             exits.append(MOTHER_CHILD_INVERSE_N_LOW_BREAK)
@@ -832,6 +841,8 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 **(five_top_exit or {}),
                 **({key: value for key, value in five_top_gap_exit.items() if key not in ('reason', 'exit_fraction')}
                    if five_top_gap_exit is not None and five_top_exit is None else {}),
+                **({key: value for key, value in five_top_shadow_exit.items() if key != 'reason'}
+                   if five_top_shadow_exit is not None else {}),
                 **({key: value for key, value in target_risk.items() if key not in ('reason', 'exit_fraction')}
                    if target_risk is not None and target_risk['exit_fraction'] == 1.0 else {}),
             })

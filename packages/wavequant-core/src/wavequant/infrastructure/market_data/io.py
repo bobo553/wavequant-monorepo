@@ -25,6 +25,10 @@ def _parse_bool(value: str | None, default: bool = True) -> bool:
     raise ValueError(f"invalid boolean value: {value!r}")
 
 
+def _parse_optional_bool(value: str | None) -> bool | None:
+    return None if value is None or value.strip() == "" else _parse_bool(value)
+
+
 def _parse_timestamp(value: str) -> datetime:
     normalized = value.strip().replace("Z", "+00:00")
     return datetime.fromisoformat(normalized)
@@ -56,6 +60,10 @@ def load_bars(path: str | Path) -> dict[str, list[Bar]]:
                     buyable=_parse_bool(row.get("buyable")),
                     sellable=_parse_bool(row.get("sellable")),
                     adjustment_factor=float(row.get("adjustment_factor") or 1.0),
+                    close_sellable=_parse_optional_bool(row.get("close_sellable")),
+                    nonflat_close_sellable=_parse_optional_bool(row.get("nonflat_close_sellable")),
+                    raw_is_st=_parse_optional_bool(row.get("raw_is_st")),
+                    raw_trading_active=_parse_optional_bool(row.get("raw_trading_active")),
                 )
             except (TypeError, ValueError) as exc:
                 raise ValueError(f"invalid row {row_number}: {exc}") from exc

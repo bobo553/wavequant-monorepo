@@ -3,10 +3,79 @@ import test from "node:test";
 
 import { JSDOM } from "jsdom";
 
+import { formatBlockedTradeCopy } from "../public/blocked-trade-nodes.js";
 import { formatFilledTradeCopy } from "../public/filled-trade-copy.js";
 import { holdingDrawdownVersion } from "../public/max-drawdown.js";
 import { numberedTradeReasons, tradeReasonItems } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
+
+test("five-top body-child clear traces the actual mother body and allows a higher wick", () => {
+    const marker = {
+        id: "body-clear",
+        kind: "fill",
+        side: "SELL",
+        reason: "wave_five_top_body_upper_shadow_clear",
+        time: "2025-04-25",
+        signal_timestamp: "2025-04-25T00:00:00",
+        wave_n_date: "2024-08-30",
+        wave_reached_date: "2025-04-11",
+        wave_reached_stage: "ten_full",
+        wave_reached_price: 10.5736383573,
+        mother_date: "2025-04-24",
+        mother_body_low: 15.5599148436,
+        mother_body_high: 19.0161558053,
+        child_body_low: 17.1172724311,
+        child_body_high: 17.1172724311,
+        observed_high: 19.5352750012,
+        observed_low: 17.1172724311,
+        wave_upper_shadow_fraction: 1,
+        execution_model: "same_day_close",
+        raw_price: 12.53,
+        raw_shares: 100,
+        fill_assumption: "nonflat_limit_close_sell_without_queue_verification",
+        applied_slippage_bps: 0,
+    };
+    const text = numberedTradeReasons(marker).join("\n");
+    assert.match(text, /2025-04-24 母线实体 15\.5599～19\.0162.*17\.1173～17\.1173/);
+    assert.match(text, /今日十字实体/);
+    assert.match(text, /19\.5353.*100\.00%.*100%.*清空余仓/);
+    assert.doesNotMatch(text, /undefined|NaN|开盘 .*< 前收|收盘 .*≤ 开盘/);
+    const view = { symbol: "sh.601086", asof: "2025-04-25", bars: [], metrics: {}, backtest: {} };
+    const copy = formatFilledTradeCopy(view, marker, "V3", "10%");
+    assert.match(copy, /母线实体 15\.5599～19\.0162/);
+    assert.match(copy, /12\.5300.*未验证跌停排队成交.*0 bps/);
+    const document = new JSDOM("<div id='panel'></div>").window.document;
+    const previousDocument = globalThis.document;
+    globalThis.document = document;
+    try {
+        appendTradeEvidence(document.getElementById("panel"), marker);
+        assert.match(document.getElementById("panel").textContent, /母线实体 15\.5599～19\.0162/);
+    } finally {
+        globalThis.document = previousDocument;
+    }
+});
+
+test("intraday body-child reasons use the completed partial body and separate execution time", () => {
+    const text = numberedTradeReasons({
+        reason: "wave_five_top_body_upper_shadow_clear",
+        wave_reached_date: "2025-04-24",
+        wave_reached_stage: "five_top",
+        wave_reached_price: 10,
+        decision_timestamp: "2025-04-25T09:40:00+08:00",
+        execution_timestamp: "2025-04-25T09:40:00+08:00",
+        execution_model: "intraday_5m_next_open",
+        mother_date: "2025-04-24",
+        mother_body_low: 9.8,
+        mother_body_high: 10.1,
+        child_body_low: 9.9,
+        child_body_high: 10,
+        observed_high: 10.5,
+        observed_low: 9.9,
+        wave_upper_shadow_fraction: 5 / 6,
+    }).join("\n");
+    assert.match(text, /2025-04-25 09:40.*9\.8000～10\.1000.*已完成五分钟线.*9\.9000～10\.0000/);
+    assert.doesNotMatch(text, /低开|收盘 .*≤ 开盘|undefined|NaN/);
+});
 
 test("two-T body reversal details and clipboard trace the engulfed candle and previous bearish volume", () => {
     const marker = {
@@ -228,6 +297,214 @@ test("five-top gap clear explains the prior open and bearish-volume reference", 
     assert.match(text, /24\.8662 < 前收 25\.0613.*22\.5537 < 前开 22\.8045/);
     assert.match(text, /52,774,200 股 > 最近阴线 2026-08-26 的 7,902,800 股/);
     assert.doesNotMatch(text, /undefined|NaN/);
+});
+
+test("five-top gap upper-shadow clear traces same-basis Guofang prices in detail and clipboard", () => {
+    const marker = {
+        kind: "signal",
+        side: "SELL",
+        reason: "wave_five_top_gap_upper_shadow_clear",
+        time: "2025-04-25",
+        wave_n_date: "2024-08-30",
+        wave_reached_date: "2025-04-11",
+        wave_reached_stage: "ten_full",
+        wave_reached_price: 10.573638357283865,
+        observed_open: 17.117272431106827,
+        observed_high: 19.535275001183372,
+        observed_low: 17.117272431106827,
+        observed_close: 17.117272431106827,
+        previous_close: 19.016155805347726,
+        wave_upper_shadow_fraction: 1,
+    };
+    const reasons = numberedTradeReasons(marker).join("\n");
+    assert.match(reasons, /2024-08-30 正 N.*2025-04-11 已达到十满 10\.5736/);
+    assert.match(reasons, /17\.1173 < 前收 19\.0162.*收盘 17\.1173 ≤ 开盘.*十字线/);
+    assert.match(reasons, /最高 19\.5353.*最低 17\.1173.*上影占振幅 100\.00% ≥ 50%/);
+    assert.match(reasons, /退出目标为 100%.*清空余仓.*无需放量或此前减仓/);
+    assert.doesNotMatch(reasons, /undefined|NaN|最近阴线|12\.53/);
+    const view = { symbol: "sh.601086", asof: "2025-04-25", bars: [], backtest: { start: "2018-01-01" } };
+    const copy = formatFilledTradeCopy(view, { ...marker, kind: "fill" }, "V3", "");
+    assert.match(copy, /2025-04-11 已达到十满.*17\.1173 < 前收 19\.0162/s);
+    const dom = new JSDOM("<section></section>");
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        appendTradeEvidence(document.querySelector("section"), marker);
+        assert.match(document.querySelector(".trade-reason-list").textContent, /上影占振幅 100\.00%.*退出目标为 100%/);
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
+    assert.match(numberedTradeReasons({ ...marker, wave_reached_stage: "five_top" }).join(" "), /已达到五顶/);
+    const composite = { ...marker, reason: "negative_turn_risk_exit|wave_five_top_gap_upper_shadow_clear" };
+    assert.match(numberedTradeReasons(composite).join(" "), /负扭转风险退出.*17\.1173 < 前收 19\.0162/);
+    const deferred = {
+        ...marker,
+        id: "deferred-2025-04-25",
+        kind: "order",
+        status: "deferred",
+        price: marker.observed_close,
+        reason: "not_sellable",
+        decision_reason: composite.reason,
+        signal_time: marker.time,
+        blockedStage: "execution",
+    };
+    const deferredReasons = numberedTradeReasons(deferred).join(" ");
+    assert.match(deferredReasons, /17\.1173 < 前收 19\.0162.*退出目标为 100%/);
+    assert.doesNotMatch(deferredReasons, /已清空|已成交/);
+    const blockedCopy = formatBlockedTradeCopy(view, [{ time: deferred.time, nodes: [deferred] }], "V3");
+    assert.match(blockedCopy, /执行委托未成交.*当日不满足可卖条件，退出延期/s);
+    const delayedFill = {
+        ...deferred,
+        kind: "fill",
+        status: "filled",
+        reason: marker.reason,
+        time: "2025-04-28",
+        signal_time: undefined,
+        signal_timestamp: "2025-04-25T00:00:00",
+    };
+    const delayedReasons = numberedTradeReasons(delayedFill).join(" ");
+    assert.match(delayedReasons, /判定日 2025-04-25：开盘 17\.1173/);
+    assert.doesNotMatch(delayedReasons, /判定日 2025-04-28|本日开盘/);
+});
+
+test("five-top minute exit renders the supplied decision and execution times independently", () => {
+    const marker = {
+        kind: "fill",
+        side: "SELL",
+        reason: "wave_five_top_gap_upper_shadow_clear",
+        time: "2025-04-25",
+        wave_n_date: "2024-08-30",
+        wave_reached_date: "2025-04-11",
+        wave_reached_stage: "ten_full",
+        wave_reached_price: 10.5736,
+        observed_open: 17.1173,
+        observed_high: 19.5353,
+        observed_low: 17.1173,
+        observed_close: 17.1173,
+        previous_close: 19.0162,
+        wave_upper_shadow_fraction: 1,
+        execution_model: "intraday_5m_next_open",
+        decision_timestamp: "2025-04-25T09:55:00",
+        execution_timestamp: "2025-04-25T10:00:00",
+        timestamp: "2025-04-25T10:00:00",
+        minute_next_open_raw: 12.61,
+        raw_price: 12.603695,
+        price: 12.603695 * 1.3661031469359,
+        adjustment_factor: 1.3661031469359,
+        applied_slippage_bps: 5,
+        remaining_quantity: 0,
+    };
+    const view = {
+        symbol: "sh.601086",
+        variant: "lecture_v3",
+        asof: marker.time,
+        bars: [],
+        backtest: { start: "2018-01-01" },
+    };
+    const copy = formatFilledTradeCopy(view, marker, "V3", "");
+    assert.match(copy, /判定日 2025-04-25 09:55.*累计日内收盘/);
+    assert.match(copy, /决定时间：2025-04-25T09:55:00/);
+    assert.match(copy, /成交时间：2025-04-25T10:00:00/);
+    assert.match(copy, /下一根五分钟开盘原价：12\.6100 元/);
+    assert.match(copy, /已完成五分钟线判定.*模拟成交/);
+    assert.doesNotMatch(copy, /未还原尾盘分钟路径|日线成交原因/);
+    const queueMarker = {
+        ...marker,
+        fill_assumption: "observed_nonflat_limit_intraday_sell_without_queue_verification",
+        minute_next_open_raw: 12.53,
+        raw_price: 12.53,
+        price: 12.53 * marker.adjustment_factor,
+        applied_slippage_bps: 0,
+    };
+    const queueCopy = formatFilledTradeCopy(view, queueMarker, "V3", "");
+    assert.match(queueCopy, /判定时已观察到跌停打开.*下一根分钟开盘原价 12\.5300.*未验证跌停排队成交.*滑点 0 bps/);
+    assert.doesNotMatch(queueCopy, /非一字跌停.*收盘原价|未还原尾盘分钟路径/);
+    // This separate execution record uses a 10 bps model capped by the 12.53 price floor.
+    const floorMarker = {
+        ...marker,
+        minute_next_open_raw: 12.54,
+        raw_price: 12.53,
+        price: 12.53 * marker.adjustment_factor,
+        slippage_price_floor: "a_share_lower_limit",
+        execution_lower_limit_raw: 12.53,
+        applied_slippage_bps: 10000 / 1254,
+    };
+    const floorCopy = formatFilledTradeCopy(view, floorMarker, "V3", "");
+    assert.match(floorCopy, /原始跌停价 12\.5300 元.*实际卖出滑点 7\.9745 bps/);
+    assert.doesNotMatch(floorCopy, /未验证跌停排队成交/);
+    const dom = new JSDOM("<section></section>");
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        appendTradeEvidence(document.querySelector("section"), marker);
+        const text = document.querySelector("section").textContent;
+        assert.match(text, /决定 2025-04-25T09:55:00.*模拟成交 2025-04-25T10:00:00/);
+        assert.match(text, /下一根五分钟线开盘原价 12\.6100 元/);
+        assert.doesNotMatch(text, /本笔按触发当日收盘价/);
+        const queuePanel = document.createElement("section");
+        appendTradeEvidence(queuePanel, queueMarker);
+        assert.match(queuePanel.textContent, /判定时已观察到跌停打开.*12\.5300.*未验证跌停排队成交.*滑点 0 bps/);
+        const floorPanel = document.createElement("section");
+        appendTradeEvidence(floorPanel, floorMarker);
+        assert.match(floorPanel.textContent, /原始跌停价 12\.5300 元.*实际卖出滑点 7\.9745 bps/);
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
+});
+
+test("nonflat limit-down close sell explains raw 12.53, zero slippage and explicit minute fallback", () => {
+    const marker = {
+        kind: "fill",
+        side: "SELL",
+        reason: "wave_five_top_gap_upper_shadow_clear",
+        time: "2025-04-25",
+        wave_n_date: "2024-08-30",
+        wave_reached_date: "2025-04-11",
+        wave_reached_stage: "ten_full",
+        wave_reached_price: 10.5736,
+        observed_open: 17.117272431106827,
+        observed_high: 19.535275001183372,
+        observed_low: 17.117272431106827,
+        observed_close: 17.117272431106827,
+        previous_close: 19.016155805347726,
+        wave_upper_shadow_fraction: 1,
+        execution_model: "same_day_close",
+        decision_timestamp: "2025-04-25T15:00:00",
+        timestamp: "2025-04-25T15:00:00",
+        price: 17.117272431106827,
+        raw_price: 12.53,
+        adjustment_factor: 1.3661031469359,
+        fill_assumption: "nonflat_limit_close_sell_without_queue_verification",
+        applied_slippage_bps: 0,
+        minute_fallback: { reason: "minute_coverage_unavailable", purpose: "five_top_gap_upper_shadow_exit" },
+        remaining_quantity: 0,
+    };
+    const view = {
+        symbol: "sh.601086",
+        variant: "lecture_v3",
+        asof: marker.time,
+        bars: [],
+        backtest: { start: "2018-01-01" },
+    };
+    const copy = formatFilledTradeCopy(view, marker, "V3", "");
+    assert.match(copy, /非一字跌停.*收盘原价 12\.5300 元模拟卖出.*未验证跌停排队成交.*滑点 0 bps/);
+    assert.match(copy, /成交口径：当日收盘价.*未还原尾盘分钟路径/);
+    assert.match(copy, /日线成交原因：当日缺少完整同源分钟线/);
+    assert.doesNotMatch(copy, /下一根五分钟开盘原价|涨停排队|09:55|10:00/);
+    const dom = new JSDOM("<section></section>");
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        appendTradeEvidence(document.querySelector("section"), marker);
+        const text = document.querySelector("section").textContent;
+        assert.match(text, /非一字跌停.*收盘原价 12\.5300.*未验证跌停排队成交.*滑点 0 bps/);
+        assert.match(text, /缺少完整同源分钟线.*回退到日线收盘/);
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
 });
 
 test("bearish outside mother reduction and next-session clear use mother price and volume evidence", () => {

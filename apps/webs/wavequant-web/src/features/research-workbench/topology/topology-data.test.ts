@@ -15,7 +15,11 @@ const strategyDirectories = [
 ];
 const additionalSources = [
     "packages/wavequant-core/src/wavequant/application/analytics/backtest.py",
+    "packages/wavequant-core/src/wavequant/application/analytics/intraday_wave_exit.py",
     "packages/wavequant-core/src/wavequant/application/trading/intent_execution.py",
+    "packages/wavequant-core/src/wavequant/domain/models/model.py",
+    "packages/wavequant-core/src/wavequant/infrastructure/market_data/data.py",
+    "packages/wavequant-core/src/wavequant/infrastructure/market_data/minute.py",
     "apps/webs/wavequant-web/public/wave-entry-evidence.js",
     "apps/webs/wavequant-web/public/combined-a-entry-evidence.js",
     "apps/webs/wavequant-web/public/a-wave-rules.js",
@@ -61,6 +65,30 @@ describe("strategy topology", () => {
         expect(gate?.detail).toMatch(/开盘 ≥ 前阳线收盘.*收盘 ≤ 前阳线开盘.*至少一端严格/);
         expect(gate?.detail).toMatch(/严格大于此前最近阴线.*十字线/);
         expect(gate?.detail).toMatch(/整仓退出优先于减仓.*取消同日新买与加仓/);
+    });
+    it("traces the post-five-top gap and long upper-shadow clear including doji candles", () => {
+        const flow = topologyFlows.find((flow) => flow.id === "exit");
+        const gate = flow?.gates.find((gate) => gate.id === "five-top-gap-upper-shadow-clear");
+        expect(gate?.detail).toMatch(/此前交易日已达到五顶或十满/);
+        expect(gate?.detail).toMatch(/今日开收实体区间被昨日开收实体区间包含.*至少一侧严格.*今日十字实体/);
+        expect(gate?.detail).toMatch(/今日最高可以高于昨日最高.*100%清仓.*不要求低开、收阴或放量/);
+        expect(gate?.detail).toMatch(/两个实体完全相等不算母子.*保留此前低开路径/);
+        expect(gate?.detail).toMatch(/开盘 < 前收.*收盘 ≤ 开盘.*包含十字线/);
+        expect(gate?.detail).toMatch(/最高价减去开收较高值.*正振幅至少 50%.*相等允许/);
+        expect(gate?.detail).toMatch(/无需放量或此前减仓.*当日达到、未来或已失效目标不能触发/);
+        expect(gate?.detail).toMatch(/既有全清.*原退出原因及对应目标证据/);
+        expect(gate?.detail).toMatch(/整仓退出优先于减仓.*退出确认后阻止当日后续新买与加仓/);
+        expect(gate?.detail).toMatch(/确认前已发生的交易及费用保留/);
+        expect(gate?.detail).toMatch(/已完成五分钟线的累计日内 OHLC.*下一根五分钟线开盘.*当刻已观察到的交易权限/);
+        expect(gate?.detail).toMatch(
+            /缺少完整分钟.*日线收盘.*非一字跌停.*原始收盘价、零滑点.*未验证排队.*一字跌停不放行/,
+        );
+        expect(gate?.yes).toMatch(/100%.*分钟或日线回退撮合/);
+        expect(gate?.detail).toMatch(/来源证明曾在跌停价以上成交.*不要求普通收盘可卖标志为真/);
+        expect(gate?.detail).toMatch(/已观察到跌停打开.*下一棒跌停开盘.*零滑点.*未验证排队.*不使用当日日线未来高低/);
+        expect(flow?.gates.findIndex((gate) => gate.id === "five-top-gap-upper-shadow-clear")).toBeLessThan(
+            flow?.gates.findIndex((gate) => gate.id === "partial") ?? -1,
+        );
     });
     it("keeps A classification and lifetime distinct from B squeeze defense", () => {
         const details = topologyFlows

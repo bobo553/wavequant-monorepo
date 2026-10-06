@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import struct
 
+from wavequant.domain.models.a_share_security import is_supported_a_share
 from wavequant.domain.models.model import Bar
 from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
 
@@ -55,7 +56,7 @@ def fetch_baostock_day(symbol: str, day: date) -> list[dict[str, str]]:
     """Read one complete unadjusted session; serialize BaoStock's process-wide socket."""
 
     try:
-        import baostock as bs  # type: ignore[import-untyped]  # BaoStock ships no type metadata.
+        import baostock as bs
     except ImportError as exc:
         raise ValueError("缺少 baostock 分钟行情依赖，无法运行五分钟精确回测") from exc
     with _BAOSTOCK_LOCK:
@@ -148,11 +149,11 @@ class CachedMinuteSource:
             date=day.isoformat(),
             daily=[daily.open, daily.high, daily.low, daily.close, daily.volume, daily.adjustment_factor],
         )
-        rows = self.cache.get("minute", key)  # type: ignore[no-untyped-call]  # Legacy cache API is untyped.
+        rows = self.cache.get("minute", key)
         if rows is None:
             rows = fetch_baostock_day(daily.symbol, day)
             verify_minute_day(rows, daily)
-            self.cache.put("minute", key, rows)  # type: ignore[no-untyped-call]  # Legacy cache API is untyped.
+            self.cache.put("minute", key, rows)
         minute = verify_minute_day(rows, daily)
         self.digests[day.isoformat()] = hashlib.sha256(
             json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()
@@ -167,6 +168,12 @@ class CachedMinuteSource:
             bar_time="Asia/Shanghai interval end",
             session_sha256=dict(self.digests),
         )
+
+
+def _tdx_cent_price(value: float) -> str:
+    # Native lc5 stores A-share cent quotes as float32; restore their tick before
+    # source verification and limit-price permissions see encoding noise.
+    return f"{value:.2f}"
 
 
 class TdxMinuteSource:
@@ -192,6 +199,7 @@ class TdxMinuteSource:
         layout = struct.Struct("<HHfffffII")
         if len(payload) % layout.size:
             raise ValueError("通达信五分钟文件记录不完整")
+        price_text = _tdx_cent_price if is_supported_a_share(daily.symbol) else str
         rows = []
         for packed, clock, opening, high, low, close, _amount, volume, _reserved in layout.iter_unpack(payload):
             stamp = datetime(2004 + packed // 2048, packed % 2048 // 100, packed % 2048 % 100, clock // 60, clock % 60)
@@ -202,10 +210,10 @@ class TdxMinuteSource:
                         time=stamp.strftime("%Y%m%d%H%M%S") + "000",
                         code=daily.symbol,
                         adjustflag="3",
-                        open=str(opening),
-                        high=str(high),
-                        low=str(low),
-                        close=str(close),
+                        open=price_text(opening),
+                        high=price_text(high),
+                        low=price_text(low),
+                        close=price_text(close),
                         volume=str(volume),
                     )
                 )

@@ -13,7 +13,7 @@ from wavequant.domain.strategies.integrated_strategy import SystemStrategy, Syst
 from wavequant.domain.models.model import Bar
 from wavequant.interfaces.charts.akshare_browser import AkShareBrowser
 from wavequant.infrastructure.market_data.akshare_history import AkShareMinuteSource, MinuteCoverageError, sina_factors
-from wavequant.infrastructure.market_data.data import opening_permissions
+from wavequant.infrastructure.market_data.data import BAR_PERMISSION_SCHEMA, close_sell_permissions, opening_permissions
 from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
 from wavequant.application.analytics.trade_evidence import result_markers
 from .stock_backtest import single_stock_result
@@ -23,9 +23,9 @@ from .tdx_backtest import TdxBacktester, decode_research, encode_research
 class AkShareBacktester:
     def __init__(self, browser: AkShareBrowser, cache: str | Path):
         self.browser = browser
-        self.artifacts = ArtifactCache(cache)  # type: ignore[no-untyped-call]  # Legacy cache boundary.
+        self.artifacts = ArtifactCache(cache)  # Legacy cache boundary.
         self.engine = TdxBacktester._engine_hashes()  # Match the loaded strategy code.
-        self.artifacts.clear_backtests_for_engine(self.engine)  # type: ignore[no-untyped-call]  # Legacy cache boundary.
+        self.artifacts.clear_backtests_for_engine(self.engine)  # Legacy cache boundary.
 
     def _verify_engine(self) -> None:
         if TdxBacktester._engine_hashes() != self.engine:  # Shared package fingerprint.
@@ -75,6 +75,10 @@ class AkShareBacktester:
                 dict(date=day, isST="0", tradestatus="1" if bar.volume > 0 else "0",
                      preclose=str(reference), open=str(bar.close)), symbol
             )
+            sell_permissions = close_sell_permissions(
+                dict(date=day, isST="0", tradestatus="1", preclose=str(reference),
+                     close=str(bar.close), high=str(bar.high), low=str(bar.low), volume=str(bar.volume)), symbol
+            )
             bars.append(
                 replace(
                     bar,
@@ -84,6 +88,10 @@ class AkShareBacktester:
                     nonflat_close_buyable=bool(bar.volume > 0 and bar.high > bar.low and opening_permissions(
                         dict(date=day, isST="0", tradestatus="1", preclose=str(reference), open=str(bar.low)), symbol)[0]),
                     sellable=bool(sellable),
+                    close_sellable=sell_permissions["close_sellable"],
+                    nonflat_close_sellable=sell_permissions["nonflat_close_sellable"],
+                    raw_is_st=sell_permissions["raw_is_st"],
+                    raw_trading_active=sell_permissions["raw_trading_active"],
                     adjustment_factor=factor,
                 )
             )
@@ -92,8 +100,8 @@ class AkShareBacktester:
             raise ValueError("所选区间没有同源日线")
         if progress is not None: progress(30, '生成信号')
         config = SystemStrategy(**strategy)
-        config.validate()  # type: ignore[no-untyped-call]  # Legacy strategy boundary.
-        execution = TdxBacktester._execution_for_security(  # type: ignore[no-untyped-call]  # Shared execution rules.
+        config.validate()  # Legacy strategy boundary.
+        execution = TdxBacktester._execution_for_security(  # Shared execution rules.
             execution, a_share_security_spec(symbol, date.fromisoformat(asof))
         )
         minute = AkShareMinuteSource(self.browser.provider, self.artifacts, symbol)
@@ -105,6 +113,7 @@ class AkShareBacktester:
             provider_version=self.browser.provider.version,
             price_basis="causal_adjusted_equivalent",
             volume_unit="shares",
+            bar_permission_schema=BAR_PERMISSION_SCHEMA,
         )
         payload = [
             [bar.timestamp.isoformat(), bar.open, bar.high, bar.low, bar.close, bar.volume, bar.adjustment_factor]
@@ -115,13 +124,13 @@ class AkShareBacktester:
         inputs = dict(
             symbol=symbol, start=start, asof=asof, source=dict(source), strategy=strategy, execution=execution
         )
-        identity = self.artifacts.key("akshare-backtest", inputs)  # type: ignore[no-untyped-call]  # Content address.
+        identity = self.artifacts.key("akshare-backtest", inputs)  # Content address.
         signal_inputs = {name: value for name, value in inputs.items() if name != "execution"}
-        with self.artifacts.lock(identity):  # type: ignore[no-untyped-call]  # Per-input single flight.
-            cached = self.artifacts.get("akshare-backtest", inputs)  # type: ignore[no-untyped-call]  # Legacy cache boundary.
-            signal_key = self.artifacts.key("akshare-signals", signal_inputs)  # type: ignore[no-untyped-call]
-            with self.artifacts.lock(signal_key):  # type: ignore[no-untyped-call]  # Share work across sizing plans.
-                research = self.artifacts.get("akshare-signals", signal_inputs)  # type: ignore[no-untyped-call]
+        with self.artifacts.lock(identity):  # Per-input single flight.
+            cached = self.artifacts.get("akshare-backtest", inputs)  # Legacy cache boundary.
+            signal_key = self.artifacts.key("akshare-signals", signal_inputs)
+            with self.artifacts.lock(signal_key):  # Share work across sizing plans.
+                research = self.artifacts.get("akshare-signals", signal_inputs)
                 if research is None:
                     generated = (generate_system_signals(bars, config)
                                  if progress is None else generate_system_signals(
@@ -129,7 +138,7 @@ class AkShareBacktester:
                                      progress=lambda percent: progress(35+percent*25//100, '生成信号')))
                     research = encode_research(bars, generated)
                     self._verify_engine()
-                    self.artifacts.put("akshare-signals", signal_inputs, research)  # type: ignore[no-untyped-call]
+                    self.artifacts.put("akshare-signals", signal_inputs, research)
                 else:
                     bars, generated = decode_research(research)
                     if progress is not None: progress(60, '读取信号缓存')
@@ -140,7 +149,7 @@ class AkShareBacktester:
             coverage = None
             try:
                 if progress is not None: progress(65, '模拟成交')
-                result = single_stock_result(  # type: ignore[no-untyped-call]  # Existing simulation boundary.
+                result = single_stock_result(  # Existing simulation boundary.
                     bars,
                     strategy,
                     execution,
@@ -172,7 +181,7 @@ class AkShareBacktester:
             if progress is not None: progress(90, '整理结果')
             from wavequant.interfaces.charts.visualization import metrics_at
 
-            _, curve = metrics_at(result["equity"], result["trades"], result["backtest"]["initial_capital"])  # type: ignore[no-untyped-call]  # Shared chart normalization.
+            _, curve = metrics_at(result["equity"], result["trades"], result["backtest"]["initial_capital"])  # Shared chart normalization.
             result["backtest"].update(
                 status="data_unavailable" if coverage else "complete",
                 coverage=coverage,
@@ -210,7 +219,7 @@ class AkShareBacktester:
                     )
                     for bar in bars
                 ],
-                markers=[] if coverage else result_markers(result),  # type: ignore[no-untyped-call]  # Existing chart adapter.
+                markers=[] if coverage else result_markers(result),  # Existing chart adapter.
                 signals=result["signals"],
                 orders=result["orders"],
                 trades=result["trades"],
@@ -222,7 +231,7 @@ class AkShareBacktester:
             )
             if coverage is None:
                 self._verify_engine()
-                self.artifacts.put(  # type: ignore[no-untyped-call]  # Disposable; valid result survives cache failure.
+                self.artifacts.put(  # Disposable; valid result survives cache failure.
                     "akshare-backtest", inputs, dict(view=view)
                 )
             else:

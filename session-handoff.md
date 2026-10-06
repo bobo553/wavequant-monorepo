@@ -1,3 +1,41 @@
+## 2026-10-06 · MONOREPO-279 本地合并已授权
+
+用户在4项main已复现失败及合并例外问题后明确“合并到main”，允许保留这4项失败交付本次修复。复用原worktree/分支，main8eee8d8和特性分支均干净，git merge main已最新无冲突、生产源未变，最终diff复核通过。既定Core/Web定向测试、类型、构建和真实1777棒证据保持；实现51bb919/9f24a62/66a43ec及文档提交待no-ff本地合并，随后核对实际V97/来源/4月25日订单/Web。不推送或创建PR。
+
+279保留failed事实因此按Harness留backlog待独立验证；恢复256唯一in-progress，256原失败和其他字段不动。此前合并待确认段落为当时状态，例外本轮已经解除。完整套件、浏览器/Playwright、实际分钟及实盘队列仍待验证；最终Git/服务验收另记。
+
+## 历史：授权前状态
+
+## 2026-10-06 · MONOREPO-279 V97 实体母子长上影，合并待确认
+
+继续使用 C:/Users/zb/.codex/worktrees/five-top-low-open-exit/wavequant-monorepo / feat-五顶低开长影清仓。用户已确认新增独立条件且两条形态共同前提是此前有效五顶或十满；母子按今日开收区间被昨日包含、至少一侧严格，允许今日十字/阳阴，上影≥半幅→清空余仓。不需低开或放量，旧低开规则、既有全清优先/T+1/因果分钟/来源撮合保持。V3 v97，V1/V2封存不变。
+
+最终Core209+37=246项、10直接mypy/既定strict、sdist/wheel及隔离5模块摘要核验，Web74Node+8拓扑、lint0错误6旧警告、最终74源37c7b95c指纹后build/typecheck均通过。最后仅旧相邻测试类型收窄和状态文档修改，生产源冻结后未变。真实1777 fresh368signals生成92.785秒、账户累计95.707秒、前缀/源码99.001秒；129源a693b708前后相等，TEMP wavequant-279-body-real-probe.json SHA470237b787eff61f130584239583548690a1cbfbc6746024778d46051020b46b。4/25实体母子理由清100原始股raw12.53元余0，母4/24 15.5599..19.0162/子17.1173十字、4/11此前十满。缺真实分钟，same_day_close/0bps/未验队列，filled行five_top_upper_shadow_exit回退明确；正式UI适配后的详情/复制/DOM一致，不宣称实际盘中时刻或实盘排队成交。此前V94对照为复用已验证历史，未声称本轮重算。
+
+main仍8eee8d8/常驻V94；279唯一in-progress，256全部历史不变。4项main既有失败（新华二饱wave_n_date 11/02→11/17，先锋July3两项LONG缺失和对应风险None）及此前独立基线证据保留，不改无关资格/断言。用户新增形态及前提不构成合并豁免；根规则和 docs/agent/codex-global-AGENTS.md:34“检查未通过时先修复，无法通过时说明原因，不合并”仍适用。提交完成后等待明确允许保留4项旧失败，本地同步最新main/复核/受影响检查/no-ff合并并验实际V97源码/Web；不推送、发布、手工改缓存或重启。完整套件/浏览器/Playwright/真实外部分钟未运行。
+
+## 历史 V96 阶段
+
+## 2026-10-06 · MONOREPO-279 V96 已完成执行修复，合并待确认
+
+继续使用 C:/Users/zb/.codex/worktrees/five-top-low-open-exit/wavequant-monorepo、feat-五顶低开长影清仓，main仍8eee8d8/常驻V94。279唯一in-progress，256全部历史保留。V96不再把开盘跌停sellable沿用全天；分钟因果累计/当刻价格权限，来源证明非一字与模型启用时按raw close/next open零滑点模拟SELL。普通滑点有official ST/board/date下限，一字/停牌/未知保守，T+1/流动性/已发生入场及现金顺序保持。旧full理由优先、TDX A股cent精度、naive时区、T+1次日执行字段、成交行fallback关联均补反例并修复。
+
+最终Core执行155+来源78+profile19，Web72Node+8拓扑；相关4+9mypy/既定strict、最终Core包与隔离5模块摘要、Web最终74源b5c81f0e之后build/typecheck/lint/格式通过。真实1777 fresh信号102.335秒、完整前缀/源码验证109.684秒；后续只有backtest.py两行订单fallback元信息，所有生成源码不变，保留原fresh334signals/4742audit并重放账户5.926秒，research/成交/metrics不变。4/25 raw12.53清100原始股余0，same_day_close/0bps/nonflat_limit_close_sell_without_queue_verification，行内缺分钟引用正确。最终129源272f731c前后相等；原probe、fresh-generation-proof及精简summary均在C:/Users/zb/AppData/Local/Temp，不提交；最终probe SHA95603f50e9af53f50db957869af4e76c7da41cc33e8f06a29c197d4811970167。该日无真实历史分钟，不声称盘中实盘排队成交。下方V95的4/28递延记录为已修正的历史阶段。
+
+仍待用户允许保留4项已在main逐项复现的既有失败再本地合并：新华二饱wave_n_date预期11/02实际11/17；先锋C_equal两项July3 LONG缺失及风险None。未改相关资格/断言，不擅自豁免根规则“检查未通过时先修复，无法通过时说明原因，不合并”（docs/agent/codex-global-AGENTS.md:34）。批准后同步最新本地main、复核/受影响检查、no-ff合并并核对实际V96/源码/Web；不自动推送或手工缓存修改。完整套件/浏览器/Playwright/外部分钟仍待验证。
+
+## 历史 V95 阶段
+
+## 2026-10-06 · MONOREPO-279 五顶低开长影清仓，合并待确认
+
+当前会话工作目录为 C:/Users/zb/.codex/worktrees/five-top-low-open-exit/wavequant-monorepo，分支 feat-五顶低开长影清仓，从main 8eee8d8建立。实现、定向检查、正式真实账户和独立复核已完成；未合并main或推送，常驻仍V94。279为唯一in-progress，256暂backlog且原失败证据全部保留。
+
+新规则使用此前有效五顶/十满，open<previous.close、close≤open（包含十字）、上影≥半幅，100%当日退出目标；Fraction保护50%边界，旧全清原因及目标证据优先，T+1/可卖/流动性保持。真实1777棒按最终源码重生，04-25上影100%触发新EXIT，raw12.53跌停不可卖递延；04-28按该原因清100股raw11.27436元余仓0，04-25账户订单前缀相等、128源码前后一致。完整本机证据在 C:/Users/zb/AppData/Local/Temp/wavequant-279-real-probe.json，真实fixture只提交行情和原参数。
+
+新Core36、profile19、Web61/交易说明最终30复跑、拓扑8、相关mypy/strict、Core/Web构建与隔离wheel、lint/类型/格式/Harness及双人复核通过。相邻96通过4失败，明确导入未修改main的独立四例全部同样失败：test_two_t_body_volume_clear.py:162波源期望2023-11-02实际2023-11-17；test_c_equal_near_exit.py:39/71缺July3 long_signal/LONG，:119对应风险None。未改旧断言或无关资格。首次quick生成竞态以最终顺序build/typecheck恢复；探索全依赖mypy938历史问题不作全源验收，定向门禁通过。Node实际24.14.1、仓库.nvmrc24.16.0未安装，系统/锁文件未改。
+
+下一步需用户明确允许保留上述4项main既有失败执行本轮本地合并；根规则及 docs/agent/codex-global-AGENTS.md:34 要求“检查未通过时先修复，无法通过时说明原因，不合并”，本轮暂无例外授权。获得确认后继续复用此worktree/分支，同步最新本地main、复核/检查受影响差异、no-ff本地合并并核对常驻V95源码和Web模块；不自动推送。完整套件、浏览器/Playwright、真实外部分钟仍待独立验证。
+
 ## 2026-10-05 · MONOREPO-274 撤回高开买入
 
 MONOREPO-274撤回完成：2297b54经49550d4无冲突合并本地main；与de00b04相比仅四个审计/状态文档不同，全部生产源码、测试和讲义一致。实际8765/13003均返回V93，128来源引擎54e9bff0...与main和正式账户逐项匹配，七个Web模块逐字相同；255日线正式回测恢复01-17收盘15:00轧空BUY/filled、原始5.98元/600股，无新高开开盘买入原因。相关检查通过，自动加载未操作进程/缓存；已恢复256唯一in-progress且旧失败保持，不推送。

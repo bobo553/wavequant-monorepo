@@ -10,6 +10,9 @@ from ..market_structure.price_action import Direction, ShadowPolicy, observe_res
 
 FIVE_TOP_CHILD_VOLUME_CLEAR = "wave_five_top_child_volume_clear"
 FIVE_TOP_GAP_VOLUME_CLEAR = "wave_five_top_gap_volume_clear"
+FIVE_TOP_GAP_UPPER_SHADOW_CLEAR = "wave_five_top_gap_upper_shadow_clear"
+FIVE_TOP_BODY_UPPER_SHADOW_CLEAR = "wave_five_top_body_upper_shadow_clear"
+FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS = (FIVE_TOP_BODY_UPPER_SHADOW_CLEAR, FIVE_TOP_GAP_UPPER_SHADOW_CLEAR)
 C_EQUAL_NEAR_RESISTANCE_REDUCE = "wave_c_equal_near_resistance_reduce"
 C_EQUAL_NEAR_VOLUME_CLEAR = "wave_c_equal_near_volume_clear"
 
@@ -171,6 +174,71 @@ def observe_five_top_gap_volume_clear(
     )
 
 
+def _five_top_upper_shadow_evidence(
+    bars: Sequence[Bar], index: int, projection_events: Sequence[dict]
+) -> dict | None:
+    """Freeze a prior live milestone and a dominant upper shadow on the observed candle."""
+    if index < 1 or not projection_events:
+        return None
+    bar, previous = bars[index], bars[index - 1]
+    span = Fraction(str(bar.high)) - Fraction(str(bar.low))
+    upper = Fraction(str(bar.high)) - Fraction(str(max(bar.open, bar.close)))
+    if span <= 0 or 2 * upper < span:
+        return None
+    reached = _known_five_top(sorted(projection_events, key=lambda event: event["bar_index"]), index)
+    if reached is None:
+        return None
+    return dict(
+        exit_fraction=1.0,
+        wave_n_date=bars[reached["attack"]].timestamp.date().isoformat(),
+        wave_reached_date=bars[reached["bar_index"]].timestamp.date().isoformat(),
+        wave_reached_stage=reached["reached_stage"], wave_reached_price=reached["reached_target"],
+        wave_upper_shadow_fraction=float(upper / span),
+        observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
+        observed_close=bar.close, observed_volume=bar.volume, previous_close=previous.close,
+        execution_model="same_day_close",
+    )
+
+
+def observe_five_top_gap_upper_shadow_clear(
+    bars: Sequence[Bar], index: int, projection_events: Sequence[dict]
+) -> dict | None:
+    """Clear a prior live five-top on a weak lower open with at least half-range upper shadow."""
+    if index < 1 or bars[index].open >= bars[index - 1].close or bars[index].close > bars[index].open:
+        return None
+    evidence = _five_top_upper_shadow_evidence(bars, index, projection_events)
+    return dict(evidence, reason=FIVE_TOP_GAP_UPPER_SHADOW_CLEAR) if evidence is not None else None
+
+
+def observe_five_top_body_upper_shadow_clear(
+    bars: Sequence[Bar], index: int, projection_events: Sequence[dict]
+) -> dict | None:
+    """Clear a body child with a long upper shadow, including a doji or bullish child."""
+    if index < 1:
+        return None
+    mother, child = bars[index - 1], bars[index]
+    mother_low, mother_high = sorted((Fraction(str(mother.open)), Fraction(str(mother.close))))
+    child_low, child_high = sorted((Fraction(str(child.open)), Fraction(str(child.close))))
+    if (child_low < mother_low or child_high > mother_high
+            or (child_low == mother_low and child_high == mother_high)):
+        return None
+    evidence = _five_top_upper_shadow_evidence(bars, index, projection_events)
+    if evidence is None:
+        return None
+    return dict(evidence, reason=FIVE_TOP_BODY_UPPER_SHADOW_CLEAR,
+                mother_date=mother.timestamp.date().isoformat(), child_date=child.timestamp.date().isoformat(),
+                previous_open=mother.open, mother_body_low=float(mother_low), mother_body_high=float(mother_high),
+                child_body_low=float(child_low), child_body_high=float(child_high))
+
+
+def observe_five_top_upper_shadow_clear(
+    bars: Sequence[Bar], index: int, projection_events: Sequence[dict]
+) -> dict | None:
+    """Prefer the explicit body-child proof when both independently authorized shapes qualify."""
+    return (observe_five_top_body_upper_shadow_clear(bars, index, projection_events)
+            or observe_five_top_gap_upper_shadow_clear(bars, index, projection_events))
+
+
 def observe_wave_exhaustion(
     bars: list[Bar],
     index: int,
@@ -193,7 +261,14 @@ def observe_wave_exhaustion(
         None,
     )
     if ordinary is not None:
-        return _observe_ordinary_c(bars, index, ordinary, config, reduced=reduced, entry_index=entry_index)
+        decision = _observe_ordinary_c(bars, index, ordinary, config, reduced=reduced, entry_index=entry_index)
+        if decision is not None and decision.get("exit_fraction") == 1.0:
+            return decision
+        shadow_clear = observe_five_top_upper_shadow_clear(bars, index, events)
+        if shadow_clear is not None:
+            return observe_five_top_gap_volume_clear(
+                bars, index, sorted(events, key=lambda event: event["bar_index"])) or shadow_clear
+        return decision
     current = _observe_target_candle(bars, index, events, config, reduced=reduced)
     if current is not None and current.get("exit_fraction") == 1.0:
         return current
@@ -232,6 +307,11 @@ def observe_wave_exhaustion(
                 previous_close=bars[index - 1].close,
                 execution_model="same_day_close",
             )
+    shadow_clear = observe_five_top_upper_shadow_clear(bars, index, events)
+    if shadow_clear is not None:
+        # Retain the established full-clear reason when both gap rules apply.
+        return observe_five_top_gap_volume_clear(
+            bars, index, sorted(events, key=lambda event: event["bar_index"])) or shadow_clear
     return current
 
 

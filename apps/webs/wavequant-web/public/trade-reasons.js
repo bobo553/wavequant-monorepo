@@ -22,6 +22,34 @@ export function tradeReasonItems(item) {
             `${item.wave_n_date ? `${item.wave_n_date} 正 N；` : ""}${item.wave_reached_date} 已达到${item.wave_reached_stage === "ten_full" ? "十满" : "五顶"} ${num(item.wave_reached_price, 4)} 元。`,
             `本日开盘 ${num(item.observed_open, 4)} < 前收 ${num(item.previous_close, 4)}，收盘 ${num(item.observed_close, 4)} < 前开 ${num(item.previous_open, 4)}；成交量 ${num(item.observed_volume, 0)} 股 > 最近阴线 ${item.bearish_reference_date} 的 ${num(item.bearish_reference_volume, 0)} 股，当日收盘清空余仓。`,
         );
+    if (
+        (item.decision_reason || item.reason || "").split("|").includes("wave_five_top_body_upper_shadow_clear") &&
+        item.wave_reached_date
+    ) {
+        const decisionAt =
+            item.decision_timestamp || item.signal_time || item.signal_timestamp || item.time || item.timestamp || "";
+        const intraday = item.execution_model === "intraday_5m_next_open";
+        const decisionTime = intraday && decisionAt.length >= 16 ? ` ${decisionAt.slice(11, 16)}` : "";
+        reasons.push(
+            `${item.wave_n_date ? `${item.wave_n_date} 正 N；` : ""}${item.wave_reached_date} 已达到${item.wave_reached_stage === "ten_full" ? "十满" : "五顶"} ${num(item.wave_reached_price, 4)} 元。`,
+            `判定日 ${decisionAt.slice(0, 10)}${decisionTime}：${item.mother_date} 母线实体 ${num(item.mother_body_low, 4)}～${num(item.mother_body_high, 4)} 元，包含${intraday ? "截至已完成五分钟线的" : "本日"}子线实体 ${num(item.child_body_low, 4)}～${num(item.child_body_high, 4)} 元，至少一侧严格包含，允许一侧相等及今日十字实体。`,
+            `子线最高 ${num(item.observed_high, 4)}，最低 ${num(item.observed_low, 4)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)} ≥ 50%。本次退出目标为 100%（清空余仓）。`,
+        );
+    }
+    if (
+        (item.decision_reason || item.reason || "").split("|").includes("wave_five_top_gap_upper_shadow_clear") &&
+        item.wave_reached_date
+    ) {
+        const decisionAt =
+            item.decision_timestamp || item.signal_time || item.signal_timestamp || item.time || item.timestamp || "";
+        const intraday = item.execution_model === "intraday_5m_next_open";
+        const decisionDate = decisionAt.slice(0, 10);
+        const decisionTime = intraday && decisionAt.length >= 16 ? ` ${decisionAt.slice(11, 16)}` : "";
+        reasons.push(
+            `${item.wave_n_date ? `${item.wave_n_date} 正 N；` : ""}${item.wave_reached_date} 已达到${item.wave_reached_stage === "ten_full" ? "十满" : "五顶"} ${num(item.wave_reached_price, 4)} 元。`,
+            `${decisionDate ? `判定日 ${decisionDate}${decisionTime}` : "本次判定"}：开盘 ${num(item.observed_open, 4)} < 前收 ${num(item.previous_close, 4)}，${intraday ? "截至已完成五分钟线的累计日内" : "日线"}收盘 ${num(item.observed_close, 4)} ≤ 开盘（包含十字线）；最高 ${num(item.observed_high, 4)}，最低 ${num(item.observed_low, 4)}，上影占振幅 ${pct(item.wave_upper_shadow_fraction)} ≥ 50%。本次退出目标为 100%（清空余仓），无需放量或此前减仓。`,
+        );
+    }
     if (targetReason === "wave_two_t_resistance_reduce")
         reasons.push(
             `${item.target_warning_date} 二饱（二吐/2T）目标 ${num(item.wave_reached_price, 4)} 元；上影占振幅 ${pct(item.wave_upper_shadow_fraction)}，至少 50% 且不短于实体。禁止新买与加仓，已有持仓累计减仓 ${pct(item.exit_target_fraction)}。`,

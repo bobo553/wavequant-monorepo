@@ -11,7 +11,7 @@ from wavequant.domain.market_structure.wave_projection import WaveProjectionSetu
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.ten_full_entry import TEN_FULL_PULLBACK_PENDING, ten_full_entry_history
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
-from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
+from wavequant.domain.strategies.strategy_profiles import hierarchical_profile, research_profile, whole_wave_profile
 
 
 def sample():
@@ -157,8 +157,8 @@ def test_guofang_august_first_reaches_ten_full_and_post_target_gate_is_causal():
         ("2023-08-14", 6.35, 6.82, 6.31, 6.73),
         ("2023-08-15", 6.54, 7.06, 6.54, 6.98),
     ]
-    bars = [Bar(datetime.fromisoformat(day), "sh.601086", *ohlc, 100)
-            for day, *ohlc in rows]
+    bars = [Bar(datetime.fromisoformat(day), "sh.601086", opening, high, low, close, 100)
+            for day, opening, high, low, close in rows]
     setup = WaveProjectionSetup(0, 1, 2, 4.27, 4.56, 5.14, 4.43)
     events = [dict(asdict(event), origin_index=setup.origin_index)
               for event in wave_projection_history(bars, setup)]
@@ -219,11 +219,38 @@ def test_v3_profiles_use_a_origin_two_thirds_and_timed_half(variant):
     profile = whole_wave_profile({"scenarios": {"base": {"execution": {}}}}, variant)
     config = SystemStrategy(**profile["strategy"])
     config.validate()
-    assert profile["profile_version"].startswith("shared_edge_n_v94_")
+    definition = profile["definition"]
+    assert profile["profile_version"] == "five_top_body_upper_shadow_v97_" + variant
+    assert "five_top_gap_upper_shadow_completed_5m_or_daily_close_clear" in definition["exits"]
+    assert "close_le_open_including_doji" in definition["wave_five_top_gap_upper_shadow_exit"]
+    assert "five_top_body_upper_shadow_completed_5m_or_daily_close_clear" in definition["exits"]
+    assert "child_open_close_interval_within_previous_open_close_interval_one_strict_edge" in definition["wave_five_top_body_upper_shadow_exit"]
+    assert "bullish_bearish_or_doji_child" in definition["wave_five_top_body_upper_shadow_exit"]
+    assert "no_volume_or_prior_reduction_gate" in definition["wave_five_top_gap_upper_shadow_exit"]
+    assert "next_5m_open_uses_observed_opening_permissions" in definition["wave_five_top_gap_upper_shadow_execution"]
+    assert "zero_slippage_without_queue_verification" in definition["nonflat_limit_close_sell"]
+    assert "no_final_daily_extrema" in definition["nonflat_limit_intraday_sell"]
     assert config.ten_full_breakout_window == 23
     assert config.ten_full_retracement_ratio == 2 / 3
     assert config.ten_full_retracement_anchor == "origin"
     assert config.ten_full_timed_half_retracement is True
+
+
+@pytest.mark.parametrize("profile_factory, version", [
+    (research_profile, "lecture_causal_squeeze_v1"),
+    (hierarchical_profile, "lecture_hierarchical_two_buy_points_v2"),
+])
+def test_five_top_gap_upper_shadow_exit_keeps_legacy_profile_definitions(profile_factory, version):
+    profile = profile_factory({"scenarios": {"base": {"execution": {}}}})
+    assert profile["profile_version"] == version
+    assert "wave_five_top_gap_upper_shadow_exit" not in profile["definition"]
+    assert "wave_five_top_body_upper_shadow_exit" not in profile["definition"]
+    assert "wave_five_top_gap_upper_shadow_execution" not in profile["definition"]
+    assert "nonflat_limit_close_sell" not in profile["definition"]
+    assert "nonflat_limit_intraday_sell" not in profile["definition"]
+    assert "five_top_gap_upper_shadow_completed_5m_or_daily_close_clear" not in profile["definition"]["exits"]
+    assert "five_top_body_upper_shadow_completed_5m_or_daily_close_clear" not in profile["definition"]["exits"]
+    assert "target_observed_then_next_open" in profile["definition"]["exits"]
 
 
 def test_global_gate_blocks_normal_and_shallow_base_entry_channels(monkeypatch):

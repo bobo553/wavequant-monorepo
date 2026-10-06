@@ -7,7 +7,8 @@ import struct
 from datetime import date, datetime
 from pathlib import Path
 
-from .data import DEFAULT_SYMBOLS, dump_json, fingerprint, opening_permissions, write_dataset
+from .data import (BAR_PERMISSION_SCHEMA, DEFAULT_SYMBOLS, close_sell_permissions, dump_json,
+                   fingerprint, opening_permissions, write_dataset)
 from wavequant.domain.models.a_share_security import is_supported_a_share
 
 RECORD = struct.Struct('<5If2I')
@@ -25,7 +26,7 @@ def read_day(path: Path) -> list[dict]:
     data = path.read_bytes()
     if not data or len(data) % RECORD.size:
         raise ValueError(f'{path}: empty or truncated 32-byte day records')
-    rows = []
+    rows: list[dict] = []
     for d, op, hi, lo, cl, amount, volume, _ in RECORD.iter_unpack(data):
         day = datetime.strptime(str(d), '%Y%m%d').date()
         if rows and day <= rows[-1]['date']:
@@ -92,6 +93,9 @@ def adjust_rows(raw: list[dict], events: list[dict], start: date, end: date, sym
         row = {key: r[key] * factor for key in ('open','high','low','close')}
         row.update(timestamp=r['date'].isoformat(), symbol=symbol, volume=r['volume'],
                    buyable=int(can_buy), sellable=int(can_sell), adjustment_factor=factor)
+        row.update(close_sell_permissions(dict(date=r['date'].isoformat(), isST='0', tradestatus='1',
+            preclose=str(reference), close=str(r['close']), high=str(r['high']), low=str(r['low']),
+            volume=str(r['volume'])), symbol))
         if include_close_permission:
             row['nonflat_close_buyable'] = bool(r['volume'] > 0 and r['high'] > r['low'] and opening_permissions(
                 dict(date=r['date'].isoformat(), isST='0', tradestatus='1', preclose=str(reference), open=str(r['low'])), symbol)[0])
@@ -126,6 +130,7 @@ def import_tdx(root: Path, output: Path, start: str = '2018-01-01', end: str | N
                             first=converted[0]['timestamp'], last=converted[-1]['timestamp'], rows=len(converted)))
         print(f'TDX {symbol}: {len(converted)} daily bars, latest {converted[-1]["timestamp"]}', flush=True)
     return write_dataset(output, rows, dict(kind='real_market', source='Tongdaxin local .day + gbbq',
+         bar_permission_schema=BAR_PERMISSION_SCHEMA,
          frequency='daily', requested_start=start, requested_end=end,
          start=min(r['timestamp'] for r in rows), end=max(r['timestamp'] for r in rows),
          sources=sources, gbbq_sha256=digest, price_basis='causal multiplicative adjusted equivalent units',
