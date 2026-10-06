@@ -52,6 +52,11 @@
                     "command": "Full Core/Web suites, browser/Playwright, formal full-account signal/fill comparison",
                     "status": "not-run",
                     "summary": "按用户当次规则未运行完整套件、浏览器、Playwright或完整账户差异；本次181项Core与41项Web定向验证不等价于完整验证。全局V3升至v98；结构确认日期可后移，依赖这些结构的历史信号与成交需要重新计算。"
+                },
+                {
+                    "command": "local no-ff merge; main Harness and topology 9 tests; HTTP8765/13003 backtest-version and HTTP13003 akshare-theory sz.000678 asof2025-02-28",
+                    "status": "passed",
+                    "summary": "实现bfbe9d1以7b37419合并本地main，两个检出干净，分支同步main。两端常驻版本为ordered_level_one_retracement_v98_lecture_v3、引擎a28bd5b5a36e与main逐文件源码哈希经API相同序列化完全一致；实际AkShare理论接口12-30高7.29直接连01-13低5.51、低点01-21可知，没有01-07一级点。无需手工重启、改缓存或推送；刷新旧页面并重新计算历史即可。main9拓扑与Harness通过。完整账户差异、完整套件和浏览器仍待独立验证。"
                 }
             ]
         },
