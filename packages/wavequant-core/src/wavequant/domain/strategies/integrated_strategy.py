@@ -13,7 +13,7 @@ from ..market_structure.n_shape import NSetup, PivotRef, BoxAnchorMode, Mileston
 from ..market_structure.price_action import Direction, ShadowPolicy, AttackBasis
 from ..market_state.market_regime import MarketRegime, RegimePhase, RegimePolicy, ResistanceOutcome, WaveBoundary, observe_market_regime
 from ..market_state.control_bar import observe_control_bar
-from ..market_state.candle_strength import strong_bullish_candle, strong_bullish_candle_evidence
+from ..market_state.candle_strength import strong_bullish_candle
 from ..market_structure.trend_structure import observe_structure
 from .bull_eligibility import bull_permission_history
 from .hierarchical_entry import EntryContext
@@ -844,16 +844,6 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             continue
         choices = events.get(i, [])+resumptions.get(i, [])+consolidation_events.get(i, [])+wave_events.get(i, []) if config.regime_filter else [
             (c, c['regime'].frames[0]) for c in candidates if c['attack'] == i]
-        entry_strength: dict[str, object] = dict(strong_bullish_candle_evidence(bar)) if whole_wave else {}
-        # Shape gates V3 squeeze buys after exits, without consuming a setup or
-        # changing its independently observed regime and measured targets.
-        if whole_wave and not entry_strength['confirmation_strong_bullish']:
-            for candidate, _ in choices:
-                if candidate['setup'].direction == Direction.UP:
-                    log(i, 'entry_rejected', reason='entry_requires_strong_bullish_candle',
-                        candidate_channel='global_strong_candle_guard', attack=candidate['attack'],
-                        candidate_attack=candidate['attack'], **entry_strength)
-            choices = []
         def entry_priority(item):
             c, _ = item
             if not hierarchical or c['setup'].direction != Direction.UP:
@@ -1060,7 +1050,6 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             if wave is not None and wave_key is not None:
                 emitted_waves[wave_key] = wave_confirmation_state(wave)
             log(i, 'long_signal', channel=tag, attack=c['attack'], stop=stop, target=targets[0], rvol=rvol,
-                **entry_strength,
                 **(dict(volume_basis='confirmation_volume_over_previous_session',
                         observed_volume=bar.volume, previous_volume=bars[i-1].volume,
                         volume_pass=volume_pass) if whole_wave else {}),
@@ -1082,6 +1071,11 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                         prior_virtual_low=min(bars[i-1].low, bars[i-2].close),
                         confirmation_low=bar.low, confirmation_high=bar.high, confirmation_close=bar.close,
                         prior_close=bars[i-1].close) if whole_wave else {}),
+                **(dict(confirmation_strong_bullish=True,
+                        confirmation_body_open_ratio=(bar.close-bar.open)/bar.open,
+                        confirmation_body_range_ratio=(bar.close-bar.open)/(bar.high-bar.low),
+                        confirmation_upper_shadow_ratio=(bar.high-bar.close)/(bar.high-bar.low))
+                   if confirmation_source == 'resistance_attack_bar_break' else {}),
                 **(wave or {}), **(wave_pressure_recovery or {}), **(consolidation or {}), **reversal_proofs.get((c['attack'], i), {}),
                 **(dict(wave_local_epoch_recovered=epochs[i] != c['epoch'],
                         wave_n_epoch=c['epoch'], entry_local_epoch=epochs[i]) if wave is not None else {}),
