@@ -82,7 +82,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'five_top_gap_upper_shadow_v96_' + variant
+    config['profile_version'] = 'five_top_body_upper_shadow_v97_' + variant
     config['definition']['a_wave_classification'] = 'ordinary_one_p_inclusive_below_two_t__strong_two_t_inclusive'
     config['definition']['a_wave_invalidation'] = 'strict_low_break_of_a_origin__no_later_c_until_new_a'
     config['definition']['b_wave_pullback'] = 'both_a_classes_may_break_squeeze_low__actual_trading_bar_duration'
@@ -92,6 +92,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         rule for rule in config['definition']['exits'] if rule != 'target_observed_then_next_open'
     ]
     config['definition']['exits'].append('five_top_gap_upper_shadow_completed_5m_or_daily_close_clear')
+    config['definition']['exits'].append('five_top_body_upper_shadow_completed_5m_or_daily_close_clear')
     config['definition']['primary_filters'] = [
         ('execution_price_net_rr_1_5' if name == 'next_open_net_rr_1_5' else
          'squeeze_or_nested_alternation_breakout' if name == 'squeeze_regime' else
@@ -142,6 +143,12 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             'prior_daily_live_target_cumulative_session_ohlc_at_completed_5m_'
             'next_5m_open_uses_observed_opening_permissions_'
             'missing_or_incomplete_minutes_explicit_daily_close_fallback'),
+        wave_five_top_body_upper_shadow_exit=(
+            'global_live_positive_n_five_top_or_ten_full_reached_before_today_'
+            'child_open_close_interval_within_previous_open_close_interval_one_strict_edge_'
+            'bullish_bearish_or_doji_child_upper_shadow_ge_half_positive_range_'
+            'no_gap_colour_volume_or_prior_reduction_gate_'
+            'completed_5m_next_open_or_daily_close_full_clear_before_partial_exits'),
         nonflat_limit_close_sell=(
             'enabled_existing_nonflat_limit_close_fill_and_observed_nonflat_close_sellable_'
             'daily_limit_down_close_at_raw_close_zero_slippage_without_queue_verification_'

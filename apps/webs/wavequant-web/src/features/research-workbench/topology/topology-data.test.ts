@@ -70,6 +70,9 @@ describe("strategy topology", () => {
         const flow = topologyFlows.find((flow) => flow.id === "exit");
         const gate = flow?.gates.find((gate) => gate.id === "five-top-gap-upper-shadow-clear");
         expect(gate?.detail).toMatch(/此前交易日已达到五顶或十满/);
+        expect(gate?.detail).toMatch(/今日开收实体区间被昨日开收实体区间包含.*至少一侧严格.*今日十字实体/);
+        expect(gate?.detail).toMatch(/今日最高可以高于昨日最高.*100%清仓.*不要求低开、收阴或放量/);
+        expect(gate?.detail).toMatch(/两个实体完全相等不算母子.*保留此前低开路径/);
         expect(gate?.detail).toMatch(/开盘 < 前收.*收盘 ≤ 开盘.*包含十字线/);
         expect(gate?.detail).toMatch(/最高价减去开收较高值.*正振幅至少 50%.*相等允许/);
         expect(gate?.detail).toMatch(/无需放量或此前减仓.*当日达到、未来或已失效目标不能触发/);

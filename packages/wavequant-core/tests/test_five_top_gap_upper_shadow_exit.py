@@ -304,7 +304,7 @@ def test_global_shadow_exit_yields_to_an_existing_target_full_clear(overlapping_
         legacy_risk = equal_risk
         monkeypatch.setattr(integrated_strategy, "observe_c_equal_near_risk",
                             lambda _bars, index, _events: legacy_risk if index == 2 else None)
-    monkeypatch.setattr(integrated_strategy, "observe_five_top_gap_upper_shadow_clear",
+    monkeypatch.setattr(integrated_strategy, "observe_five_top_upper_shadow_clear",
                         lambda _bars, index, _events: shadow if index == 2 else None)
     profile = whole_wave_profile({"scenarios": {"base": {"execution": {}}}})
     result = generate_system_signals(bars, SystemStrategy(**profile["strategy"]))
@@ -336,13 +336,16 @@ def test_real_guofang_generates_prior_known_target_exit_and_causal_prefix(real_g
     bars, dates, full, prefix = real_guofang
     index = dates["2025-04-25"]
     exit_signal = next(signal for signal in full.signals if signal.bar_index == index and signal.side == "EXIT")
-    assert REASON in exit_signal.reason.split("|")
+    assert "wave_five_top_body_upper_shadow_clear" in exit_signal.reason.split("|")
     assert not any(signal.side == "LONG" and signal.bar_index == index for signal in full.signals)
     evidence = next(event for event in full.audit if event["bar_index"] == index and event["event"] == "exit_signal")
     assert evidence["exit_fraction"] == 1.0
     assert evidence["wave_reached_stage"] in ("five_top", "ten_full")
     assert evidence["wave_reached_date"] < "2025-04-25"
     assert evidence["wave_upper_shadow_fraction"] == 1.0
+    assert evidence["mother_body_low"] == bars[index - 1].open
+    assert evidence["mother_body_high"] == bars[index - 1].close
+    assert evidence["child_body_low"] == evidence["child_body_high"] == bars[index].open
     assert tuple(round(getattr(bars[index], field), 2) for field in ("open", "high", "low", "close")) == (
         17.12, 19.54, 17.12, 17.12)
     assert bars[index].volume == 97_118_640
@@ -365,7 +368,7 @@ def test_real_guofang_opened_lower_limit_clears_at_the_same_close_with_an_explic
     assert clear["timestamp"][:10] == "2025-04-25"
     assert clear["remaining_quantity"] == 0
     assert clear["quantity"] == buy["quantity"]
-    assert clear["reason"] == REASON
+    assert clear["reason"] == "wave_five_top_body_upper_shadow_clear"
     assert clear["execution_model"] == "same_day_close"
     assert clear["price"] / bars[index].adjustment_factor == pytest.approx(12.53)
     assert clear["fill_assumption"] == "nonflat_limit_close_sell_without_queue_verification"
@@ -401,5 +404,5 @@ def test_real_guofang_global_exit_retains_the_missing_minute_fallback_after_a_be
     assert clear["applied_slippage_bps"] == 0.0
     assert "execution_timestamp" not in clear
     fallback = next(evidence for evidence in portfolio.minute_fallbacks if evidence["date"] == "2025-04-25")
-    assert fallback["purpose"] == "five_top_gap_upper_shadow_exit"
+    assert fallback["purpose"] == "five_top_upper_shadow_exit"
     assert clear["minute_fallback"] == fallback

@@ -9,6 +9,74 @@ import { holdingDrawdownVersion } from "../public/max-drawdown.js";
 import { numberedTradeReasons, tradeReasonItems } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
 
+test("five-top body-child clear traces the actual mother body and allows a higher wick", () => {
+    const marker = {
+        id: "body-clear",
+        kind: "fill",
+        side: "SELL",
+        reason: "wave_five_top_body_upper_shadow_clear",
+        time: "2025-04-25",
+        signal_timestamp: "2025-04-25T00:00:00",
+        wave_n_date: "2024-08-30",
+        wave_reached_date: "2025-04-11",
+        wave_reached_stage: "ten_full",
+        wave_reached_price: 10.5736383573,
+        mother_date: "2025-04-24",
+        mother_body_low: 15.5599148436,
+        mother_body_high: 19.0161558053,
+        child_body_low: 17.1172724311,
+        child_body_high: 17.1172724311,
+        observed_high: 19.5352750012,
+        observed_low: 17.1172724311,
+        wave_upper_shadow_fraction: 1,
+        execution_model: "same_day_close",
+        raw_price: 12.53,
+        raw_shares: 100,
+        fill_assumption: "nonflat_limit_close_sell_without_queue_verification",
+        applied_slippage_bps: 0,
+    };
+    const text = numberedTradeReasons(marker).join("\n");
+    assert.match(text, /2025-04-24 母线实体 15\.5599～19\.0162.*17\.1173～17\.1173/);
+    assert.match(text, /今日十字实体/);
+    assert.match(text, /19\.5353.*100\.00%.*100%.*清空余仓/);
+    assert.doesNotMatch(text, /undefined|NaN|开盘 .*< 前收|收盘 .*≤ 开盘/);
+    const view = { symbol: "sh.601086", asof: "2025-04-25", bars: [], metrics: {}, backtest: {} };
+    const copy = formatFilledTradeCopy(view, marker, "V3", "10%");
+    assert.match(copy, /母线实体 15\.5599～19\.0162/);
+    assert.match(copy, /12\.5300.*未验证跌停排队成交.*0 bps/);
+    const document = new JSDOM("<div id='panel'></div>").window.document;
+    const previousDocument = globalThis.document;
+    globalThis.document = document;
+    try {
+        appendTradeEvidence(document.getElementById("panel"), marker);
+        assert.match(document.getElementById("panel").textContent, /母线实体 15\.5599～19\.0162/);
+    } finally {
+        globalThis.document = previousDocument;
+    }
+});
+
+test("intraday body-child reasons use the completed partial body and separate execution time", () => {
+    const text = numberedTradeReasons({
+        reason: "wave_five_top_body_upper_shadow_clear",
+        wave_reached_date: "2025-04-24",
+        wave_reached_stage: "five_top",
+        wave_reached_price: 10,
+        decision_timestamp: "2025-04-25T09:40:00+08:00",
+        execution_timestamp: "2025-04-25T09:40:00+08:00",
+        execution_model: "intraday_5m_next_open",
+        mother_date: "2025-04-24",
+        mother_body_low: 9.8,
+        mother_body_high: 10.1,
+        child_body_low: 9.9,
+        child_body_high: 10,
+        observed_high: 10.5,
+        observed_low: 9.9,
+        wave_upper_shadow_fraction: 5 / 6,
+    }).join("\n");
+    assert.match(text, /2025-04-25 09:40.*9\.8000～10\.1000.*已完成五分钟线.*9\.9000～10\.0000/);
+    assert.doesNotMatch(text, /低开|收盘 .*≤ 开盘|undefined|NaN/);
+});
+
 test("two-T body reversal details and clipboard trace the engulfed candle and previous bearish volume", () => {
     const marker = {
         kind: "fill",

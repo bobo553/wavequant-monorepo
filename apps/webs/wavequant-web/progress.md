@@ -1,3 +1,7 @@
+MONOREPO-279（2026-10-06，V97）母子实体证据展示完成，合并待确认：新增独立中文全清理由，明确此前有效五顶/十满、昨日/今日开收实体边界、至少一侧严格及十字允许、长上影≥50%和100%目标；盘中只显示已完成累计实体，不以最高越过母线否定实体关系。保留旧低开规则。真实4/25 filled订单经正式variant/time/id适配→annotations/reasons/detail/copy/DOM通过，raw12.53/100原始股/余0、缺分钟收盘回退和队列未验证保持，无undefined/NaN。最终Node74、拓扑8、lint0错误6旧warning、74源37c7b95c指纹后build及恢复仅已知next-env行后typecheck通过；V3 v97、V1/V2封存保持。4项main旧失败仍待本轮合并例外，279唯一in-progress，256历史不动，常驻V94未生效，不推送；完整Web/浏览器/Playwright未运行。
+
+历史 V96 阶段：
+
 MONOREPO-279（2026-10-06，V96）展示修复完成、合并待确认：分钟判定与下一棒开始时刻分开，原始成交与复权形态/目标分开，非一字跌停模拟说明队列未验证/0bps，普通floor保护显示实际滑点；明确缺完整同源分钟与日线收盘回退。真实最终4/25 filled记录经过annotations/reasons/detail/copy链确认raw12.53/100原始股/余0及five_top_gap_upper_shadow_exit回退引用，无伪造盘中时刻。最后Node72、拓扑8、lint0错误6旧warning、最终74源b5c81f0e指纹之后build→恢复已知next-env生成行→独立typecheck及8文件格式通过。Core profile19通过、旧全清证据保持；4项main既有失败未获本轮例外，尚未合并/生效，常驻V94、不推送。完整Web和浏览器/Playwright待独立验证。
 
 历史 V95 阶段（本轮 V96 已修正开盘权限沿用问题）：

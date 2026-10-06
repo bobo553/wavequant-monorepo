@@ -35,6 +35,7 @@ def test_real_five_top_child_break_clears_remaining_at_same_close(sample):
     index = dates["2025-11-18"]
     for reduced in (False, True):
         decision = observe_wave_exhaustion(bars, index, events, StrategyConfig(), reduced=reduced)
+        assert decision is not None
         assert decision["reason"] == "wave_five_top_child_volume_clear"
         assert decision["exit_fraction"] == 1.0
         assert decision["wave_reached_stage"] == "five_top"
@@ -52,8 +53,8 @@ def test_real_five_top_child_break_clears_remaining_at_same_close(sample):
                     3.29, "fixture", bars[dates["2025-09-29"]].timestamp, 0, None, "fixture", 10.0)
     config = StrategyConfig(entry_at_close=True, wave_exhaustion_exit=True, exit_on_target=False,
                             max_hold_bars=200, max_participation=1, slippage_bps_per_side=0)
-    kwargs = dict(signals=[signal], config=config, wave_events={bars[0].symbol: events})
-    full = run_portfolio({bars[0].symbol: bars}, **kwargs)
+    full = run_portfolio({bars[0].symbol: bars}, [signal], config,
+                         wave_events={bars[0].symbol: events})
     buy, clear = [o for o in full.orders if o["status"] == "filled"]
     assert (clear["timestamp"][:10], clear["reason"], clear["price"]) == (
         "2025-11-18", "wave_five_top_child_volume_clear", 4.91)
@@ -70,18 +71,22 @@ def test_real_five_top_child_break_clears_remaining_at_same_close(sample):
                            wave_events={bars[0].symbol: prefix_events})
     assert prefix.orders == full.orders
 
-    # The same rule clears the residual after a filled target-shadow reduction.
+    # The independent body-child risk now clears this earlier holding before
+    # the later volume-confirmed child break can sell it again.
     earlier = index - 3
     earlier_signal = replace(signal, timestamp=bars[earlier].timestamp, bar_index=earlier,
                              reference_price=bars[earlier].close)
-    reduced = run_portfolio({bars[0].symbol: prefix_bars}, [earlier_signal], config,
-                            wave_events={bars[0].symbol: prefix_events})
-    buy, reduction, clear = [o for o in reduced.orders if o["status"] == "filled"]
-    assert (reduction["timestamp"][:10], reduction["reason"]) == (
-        "2025-11-14", "wave_target_upper_shadow_reduce")
-    assert clear["reason"] == "wave_five_top_child_volume_clear"
-    assert clear["quantity"] == reduction["remaining_quantity"] < buy["quantity"]
+    earlier_result = run_portfolio({bars[0].symbol: prefix_bars}, [earlier_signal], config,
+                                   wave_events={bars[0].symbol: prefix_events})
+    buy, clear = [o for o in earlier_result.orders if o["status"] == "filled"]
+    assert (clear["timestamp"][:10], clear["reason"]) == (
+        "2025-11-14", "wave_five_top_body_upper_shadow_clear")
+    assert (clear["mother_body_low"], clear["mother_body_high"]) == (4.84, 5.0)
+    assert (clear["child_body_low"], clear["child_body_high"]) == (4.91, 4.96)
+    assert clear["wave_upper_shadow_fraction"] == pytest.approx(7 / 12)
+    assert clear["quantity"] == buy["quantity"]
     assert clear["remaining_quantity"] == 0
+    assert not any(o["side"] == "SELL" and o["timestamp"][:10] == "2025-11-18" for o in earlier_result.orders)
     unrelated = replace(signal, trigger_timestamp=bars[earlier].timestamp)
     foreign = run_portfolio({bars[0].symbol: prefix_bars}, [unrelated], config,
                             wave_events={bars[0].symbol: prefix_events})
@@ -101,7 +106,7 @@ def test_real_five_top_generates_november_exit_signal_and_close_fill(sample):
     assert (exit_event["wave_n_date"], exit_event["wave_reached_date"], exit_event["child_date"]) == (
         "2025-09-29", "2025-10-28", "2025-11-14")
     chart = ChartRepository.render_theory(
-        None, bars[:index + 1], SystemStrategy(**profile["strategy"]), result, "2025-11-18",
+        object.__new__(ChartRepository), bars[:index + 1], SystemStrategy(**profile["strategy"]), result, "2025-11-18",
         geometry={"tertiary_trends": {}},
     )
     chart_exit = next(e for e in chart["events"] if e["event"] == "exit_signal" and e["bar_index"] == index)
@@ -209,6 +214,7 @@ def test_child_close_and_color_are_not_extra_clear_conditions(sample):
     bars[i - 2] = replace(bars[i - 2], open=5.0, close=4.92, volume=40_000_000)
     bars[i] = replace(bars[i], close=4.95)
     decision = observe_wave_exhaustion(bars, i, events, StrategyConfig(), reduced=True)
+    assert decision is not None
     assert decision["reason"] == "wave_five_top_child_volume_clear"
     assert decision["observed_close"] > decision["child_close"]
     assert decision["bearish_reference_date"] == "2025-11-14"
@@ -222,4 +228,5 @@ def test_equal_low_child_with_strict_high_containment_is_allowed(sample):
     bars[i - 2] = replace(bars[i - 2], low=bars[i - 3].low, high=5.02)
     bars[i] = replace(bars[i], low=4.65)
     decision = observe_wave_exhaustion(bars, i, events, StrategyConfig(), reduced=True)
+    assert decision is not None
     assert decision["reason"] == "wave_five_top_child_volume_clear"

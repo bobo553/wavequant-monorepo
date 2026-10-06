@@ -1,3 +1,13 @@
+## 2026-10-06 · MONOREPO-279 V97 实体母子长上影，合并待确认
+
+继续使用 C:/Users/zb/.codex/worktrees/five-top-low-open-exit/wavequant-monorepo / feat-五顶低开长影清仓。用户已确认新增独立条件且两条形态共同前提是此前有效五顶或十满；母子按今日开收区间被昨日包含、至少一侧严格，允许今日十字/阳阴，上影≥半幅→清空余仓。不需低开或放量，旧低开规则、既有全清优先/T+1/因果分钟/来源撮合保持。V3 v97，V1/V2封存不变。
+
+最终Core209+37=246项、10直接mypy/既定strict、sdist/wheel及隔离5模块摘要核验，Web74Node+8拓扑、lint0错误6旧警告、最终74源37c7b95c指纹后build/typecheck均通过。最后仅旧相邻测试类型收窄和状态文档修改，生产源冻结后未变。真实1777 fresh368signals生成92.785秒、账户累计95.707秒、前缀/源码99.001秒；129源a693b708前后相等，TEMP wavequant-279-body-real-probe.json SHA470237b787eff61f130584239583548690a1cbfbc6746024778d46051020b46b。4/25实体母子理由清100原始股raw12.53元余0，母4/24 15.5599..19.0162/子17.1173十字、4/11此前十满。缺真实分钟，same_day_close/0bps/未验队列，filled行five_top_upper_shadow_exit回退明确；正式UI适配后的详情/复制/DOM一致，不宣称实际盘中时刻或实盘排队成交。此前V94对照为复用已验证历史，未声称本轮重算。
+
+main仍8eee8d8/常驻V94；279唯一in-progress，256全部历史不变。4项main既有失败（新华二饱wave_n_date 11/02→11/17，先锋July3两项LONG缺失和对应风险None）及此前独立基线证据保留，不改无关资格/断言。用户新增形态及前提不构成合并豁免；根规则和 docs/agent/codex-global-AGENTS.md:34“检查未通过时先修复，无法通过时说明原因，不合并”仍适用。提交完成后等待明确允许保留4项旧失败，本地同步最新main/复核/受影响检查/no-ff合并并验实际V97源码/Web；不推送、发布、手工改缓存或重启。完整套件/浏览器/Playwright/真实外部分钟未运行。
+
+## 历史 V96 阶段
+
 ## 2026-10-06 · MONOREPO-279 V96 已完成执行修复，合并待确认
 
 继续使用 C:/Users/zb/.codex/worktrees/five-top-low-open-exit/wavequant-monorepo、feat-五顶低开长影清仓，main仍8eee8d8/常驻V94。279唯一in-progress，256全部历史保留。V96不再把开盘跌停sellable沿用全天；分钟因果累计/当刻价格权限，来源证明非一字与模型启用时按raw close/next open零滑点模拟SELL。普通滑点有official ST/board/date下限，一字/停牌/未知保守，T+1/流动性/已发生入场及现金顺序保持。旧full理由优先、TDX A股cent精度、naive时区、T+1次日执行字段、成交行fallback关联均补反例并修复。

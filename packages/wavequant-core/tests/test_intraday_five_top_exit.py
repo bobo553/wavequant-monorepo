@@ -52,6 +52,29 @@ def account(scenario, **changes):
                          wave_events={bars[0].symbol: events}, minute_loader=lambda _bar: minutes)
 
 
+def test_body_child_intraday_exit_can_be_bullish_without_a_lower_open(scenario):
+    bars, events, signal, config, minutes = scenario
+    bars[1] = replace(bars[1], open=10.1, high=10.1, close=9.8)
+    signal = replace(signal, reference_price=9.8)
+    bars[2] = replace(bars[2], open=9.9, high=10.6, low=9.9, close=10.6,
+                      sellable=True, close_sellable=True)
+    minutes = [replace(row, open=9.9, high=9.9, low=9.9, close=9.9) for row in minutes]
+    minutes[0] = replace(minutes[0], high=10.5, close=10.3)
+    minutes[1] = replace(minutes[1], open=10.3, high=10.3, close=10.0)
+    minutes[2] = replace(minutes[2], open=10.0, high=10.0)
+    minutes[-1] = replace(minutes[-1], high=10.6, close=10.6)
+    result = account((bars, events, signal, config, minutes))
+    clear = next(row for row in result.orders if row["side"] == "SELL" and row["status"] == "filled")
+    assert clear["reason"] == "wave_five_top_body_upper_shadow_clear"
+    assert clear["decision_timestamp"][11:16] == clear["execution_timestamp"][11:16] == "09:40"
+    assert clear["execution_model"] == "intraday_5m_next_open"
+    assert clear["mother_body_low"] == 9.8 and clear["mother_body_high"] == 10.1
+    assert clear["child_body_low"] == 9.9 and clear["child_body_high"] == 10.0
+    assert clear["observed_close"] == 10.0 < bars[2].close
+    assert bars[2].open > bars[1].close and bars[2].close > bars[1].open
+    assert clear["remaining_quantity"] == 0
+
+
 def test_completed_partial_candle_clears_at_next_interval_open(scenario):
     bars, events, signal, config, minutes = scenario
     result = account(scenario)
@@ -126,7 +149,7 @@ def test_missing_minutes_is_recorded_as_daily_close_fallback(scenario):
                            replace(config, missing_minute_daily_fallback=True),
                            wave_events={bars[0].symbol: events}, minute_loader=missing)
     assert result.minute_fallbacks
-    assert result.minute_fallbacks[0]["purpose"] == "five_top_gap_upper_shadow_exit"
+    assert result.minute_fallbacks[0]["purpose"] == "five_top_upper_shadow_exit"
     assert result.minute_fallbacks[0]["execution_model"] == "same_day_close"
     with pytest.raises(MinuteCoverageError):
         run_portfolio({bars[0].symbol: bars[:3]}, [signal], config,
@@ -300,7 +323,7 @@ def test_missing_minutes_close_fill_is_explicitly_identified_as_a_fallback(scena
                            wave_events={bars[0].symbol: events}, minute_loader=missing)
     clear = next(order for order in result.orders if order["side"] == "SELL" and order["status"] == "filled")
     assert clear["execution_model"] == "same_day_close"
-    assert clear["minute_fallback"]["purpose"] == "five_top_gap_upper_shadow_exit"
+    assert clear["minute_fallback"]["purpose"] == "five_top_upper_shadow_exit"
     assert "execution_timestamp" not in clear
 
 

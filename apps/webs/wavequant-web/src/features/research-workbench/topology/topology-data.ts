@@ -327,9 +327,9 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             },
             {
                 id: "five-top-gap-upper-shadow-clear",
-                question: "五顶或十满到位后，低开收低且上影占振幅至少 50%？",
-                detail: "有效正 N 必须在此前交易日已达到五顶或十满。当前开盘 < 前收、收盘 ≤ 开盘（包含十字线），上影为最高价减去开收较高值，须占正振幅至少 50%，相等允许。无需放量或此前减仓；当日达到、未来或已失效目标不能触发。同时触发既有全清时沿用原退出原因及对应目标证据。完整同源分钟数据以已完成五分钟线的累计日内 OHLC 判定，下一根五分钟线开盘按当刻已观察到的交易权限模拟卖出；模型启用且已观察到跌停打开时，下一棒跌停开盘也按零滑点模拟，未验证排队，不使用当日日线未来高低。缺少完整分钟时显式回退日线收盘，已启用非一字限价收盘模型且来源证明曾在跌停价以上成交时，非一字跌停按原始收盘价、零滑点模拟，未验证排队；不要求普通收盘可卖标志为真，一字跌停不放行。日线统一收盘动作中整仓退出优先于减仓；分钟退出确认后阻止当日后续新买与加仓，确认前已发生的交易及费用保留。T+1 或当刻不可卖时保留待卖执行。",
-                source: "wave_exhaustion_exit.py · observe_five_top_gap_upper_shadow_clear；intraday_wave_exit.py · observe_intraday_five_top_exit；backtest.py · run_portfolio；data.py · close_sell_permissions",
+                question: "五顶或十满到位后，实体母子长上影或低开收低长上影？",
+                detail: "有效正 N 必须在此前交易日已达到五顶或十满。独立实体母子路径：今日开收实体区间被昨日开收实体区间包含，至少一侧严格包含，允许一侧相等及今日十字实体；实体判断不使用最高最低，今日最高可以高于昨日最高。子线长上影占正振幅至少 50% 即100%清仓，不要求低开、收阴或放量，两个实体完全相等不算母子。保留此前低开路径：当前开盘 < 前收、收盘 ≤ 开盘（包含十字线），上影为最高价减去开收较高值，须占正振幅至少 50%，相等允许。无需放量或此前减仓；当日达到、未来或已失效目标不能触发。同时触发既有全清时沿用原退出原因及对应目标证据。完整同源分钟数据以已完成五分钟线的累计日内 OHLC 判定，下一根五分钟线开盘按当刻已观察到的交易权限模拟卖出；模型启用且已观察到跌停打开时，下一棒跌停开盘也按零滑点模拟，未验证排队，不使用当日日线未来高低。缺少完整分钟时显式回退日线收盘，已启用非一字限价收盘模型且来源证明曾在跌停价以上成交时，非一字跌停按原始收盘价、零滑点模拟，未验证排队；不要求普通收盘可卖标志为真，一字跌停不放行。日线统一收盘动作中整仓退出优先于减仓；分钟退出确认后阻止当日后续新买与加仓，确认前已发生的交易及费用保留。T+1 或当刻不可卖时保留待卖执行。",
+                source: "wave_exhaustion_exit.py · observe_five_top_body_upper_shadow_clear / observe_five_top_upper_shadow_clear；intraday_wave_exit.py · observe_intraday_five_top_exit；backtest.py · run_portfolio；data.py · close_sell_permissions",
                 yes: "按 100% 退出目标进入分钟或日线回退撮合",
                 no: "检查 V3 其他整仓风险",
             },
@@ -522,4 +522,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "b5c81f0e8199253279161fdf2e3ea97fbaf83063dd24a0cb249079c6a0bd4dfa";
+export const strategySourceDigest = "37c7b95ceffc21f31780051806ebac5e14f4bf1f1eb35be9e49ef2fa2c3f18a5";

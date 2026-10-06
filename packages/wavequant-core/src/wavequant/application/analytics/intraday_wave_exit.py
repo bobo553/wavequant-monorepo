@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from wavequant.domain.market_structure.a_wave_rules import a_origin_broken
 from wavequant.domain.models.model import Bar
-from wavequant.domain.strategies.wave_exhaustion_exit import observe_five_top_gap_upper_shadow_clear
+from wavequant.domain.strategies.wave_exhaustion_exit import observe_five_top_upper_shadow_clear
 from wavequant.infrastructure.market_data.data import opening_permissions
 from wavequant.infrastructure.market_data.minute import MinuteBar, verify_minute_day
 
@@ -23,7 +23,12 @@ class PartialSessionCandle:
 
 def five_top_intraday_eligible(bars: Sequence[Bar], index: int, events: Sequence[dict]) -> bool:
     """Require only open-known geometry and a live milestone known before today."""
-    if index < 1 or bars[index].open >= bars[index - 1].close:
+    if index < 1:
+        return False
+    mother, current = bars[index - 1], bars[index]
+    mother_low, mother_high = sorted((mother.open, mother.close))
+    body_candidate = mother_low < mother_high and mother_low <= current.open <= mother_high
+    if current.open >= mother.close and not body_candidate:
         return False
     invalidated = {(event['attack'], event.get('origin_index')) for event in events
                    if event['bar_index'] < index and event['event'] == 'wave_projection_invalidated'}
@@ -62,7 +67,7 @@ def observe_intraday_five_top_exit(
             origin = bars[origin_index].low
         if isinstance(origin, (int, float)) and not isinstance(origin, bool) and a_origin_broken(candle.bar.low, origin):
             known.append(dict(event, event='wave_projection_invalidated', bar_index=index))
-    decision = observe_five_top_gap_upper_shadow_clear([*bars[:index], candle.bar], index, known)
+    decision = observe_five_top_upper_shadow_clear([*bars[:index], candle.bar], index, known)
     if decision is None:
         return None
     return dict(decision, execution_model='intraday_5m_next_open',
