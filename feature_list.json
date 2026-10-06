@@ -25,7 +25,7 @@
                     "summary": "最终新增36项、profile19项通过。原实现先22失败/1通过，新增50%小数精确边界先复现浮点误拒绝后改用Fraction。覆盖十字线、低量、半幅包含等号、二吐/同日/未来/失效反例、真实国芳独立信号前缀、100%同日执行、禁买/T+1/不可卖及旧全清原因和目标证据优先。V1/V2封存定义保留。"
                 },
                 {
-                    "command": "pytest tests/test_wave_exhaustion_exit.py tests/test_five_top_gap_volume_exit.py tests/test_wave_target_upper_shadow_exit.py tests/test_guofang_2023_target_exit.py tests/test_two_t_body_volume_clear.py tests/test_c_equal_near_exit.py -q; clean main four-case baseline comparison",
+                    "command": "pytest tests/test_five_top_child_volume_exit.py tests/test_five_top_gap_volume_exit.py tests/test_wave_exhaustion_exit.py tests/test_two_t_resistance_risk.py tests/test_two_t_body_volume_clear.py tests/test_c_equal_near_exit.py -q; main/src baseline: pytest tests/test_two_t_body_volume_clear.py::test_real_december_18_exit_and_formal_account_prefix_match tests/test_c_equal_near_exit.py -q",
                     "status": "failed",
                     "summary": "相邻96通过、4失败（392.32秒）；明确导入main/src且main不存在新observer的独立基线，同4项逐项复现（140.28秒）。二饱真实新华的wave_n_date期望2023-11-02、实际2023-11-17；C_equal的July3 long_signal/LONG缺失两项和对应目标风险None一项。保留旧断言及失败，不修改无关入场/目标资格。当前任务没有例外授权，按仓库检查失败不合并规则暂不合并main。"
                 },
