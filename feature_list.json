@@ -48,6 +48,11 @@
                     "command": "Complete Core/Web suites and browser/Playwright/external-minute verification",
                     "status": "not-run",
                     "summary": "完整Core/Web与浏览器/Playwright/真实分钟本轮未运行，留待独立验证。初轮扩大到华瓷等旧慢例的调用在规则校准中中止，不记通过，最终只运行已列的相关检查。原256/279历史failed完整保留，没有新增豁免或推送。"
+                },
+                {
+                    "command": "Local main no-ff merge; main frozen 438-bar single_stock_result; GET API8765/Web13003 backtest-version?run=acceptance_20260908_verified&variant=lecture_v3; annotations.js HTTP",
+                    "status": "passed",
+                    "summary": "实现14594e1经5319f37无冲突no-ff合并本地main，专属分支同步同Git树。main Harness通过，明确导入main新observer重放438棒再次确认10/16 LONG=0、BUY=0；10/17 next response_failed，源为既有冻结行情，不伪造原始权限。常驻8765和13003均V98、engine482f2a843e317d62d06e94a6ba1a10881d75afd3dcaa1386824cf2bca17f2141、version219dcfbf...一致；接口会检查当前磁盘源与已加载engine。新中文拒因JS HTTP200。需刷新并重新回测读取新策略；未运行线上AkShare完整账户或真实分钟/浏览器，未推送。"
                 }
             ]
         },
