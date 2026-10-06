@@ -11,7 +11,7 @@ from wavequant.domain.market_structure.wave_projection import WaveProjectionSetu
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.ten_full_entry import TEN_FULL_PULLBACK_PENDING, ten_full_entry_history
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
-from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
+from wavequant.domain.strategies.strategy_profiles import hierarchical_profile, research_profile, whole_wave_profile
 
 
 def sample():
@@ -219,11 +219,26 @@ def test_v3_profiles_use_a_origin_two_thirds_and_timed_half(variant):
     profile = whole_wave_profile({"scenarios": {"base": {"execution": {}}}}, variant)
     config = SystemStrategy(**profile["strategy"])
     config.validate()
-    assert profile["profile_version"].startswith("shared_edge_n_v94_")
+    assert profile["profile_version"] == "five_top_gap_upper_shadow_v95_" + variant
+    assert "five_top_gap_upper_shadow_same_close_clear" in profile["definition"]["exits"]
+    assert "close_le_open_including_doji" in profile["definition"]["wave_five_top_gap_upper_shadow_exit"]
+    assert "no_volume_or_prior_reduction_gate" in profile["definition"]["wave_five_top_gap_upper_shadow_exit"]
     assert config.ten_full_breakout_window == 23
     assert config.ten_full_retracement_ratio == 2 / 3
     assert config.ten_full_retracement_anchor == "origin"
     assert config.ten_full_timed_half_retracement is True
+
+
+@pytest.mark.parametrize("profile_factory, version", [
+    (research_profile, "lecture_causal_squeeze_v1"),
+    (hierarchical_profile, "lecture_hierarchical_two_buy_points_v2"),
+])
+def test_five_top_gap_upper_shadow_exit_keeps_legacy_profile_definitions(profile_factory, version):
+    profile = profile_factory({"scenarios": {"base": {"execution": {}}}})
+    assert profile["profile_version"] == version
+    assert "wave_five_top_gap_upper_shadow_exit" not in profile["definition"]
+    assert "five_top_gap_upper_shadow_same_close_clear" not in profile["definition"]["exits"]
+    assert "target_observed_then_next_open" in profile["definition"]["exits"]
 
 
 def test_global_gate_blocks_normal_and_shallow_base_entry_channels(monkeypatch):

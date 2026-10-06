@@ -82,7 +82,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'shared_edge_n_v94_' + variant
+    config['profile_version'] = 'five_top_gap_upper_shadow_v95_' + variant
     config['definition']['a_wave_classification'] = 'ordinary_one_p_inclusive_below_two_t__strong_two_t_inclusive'
     config['definition']['a_wave_invalidation'] = 'strict_low_break_of_a_origin__no_later_c_until_new_a'
     config['definition']['b_wave_pullback'] = 'both_a_classes_may_break_squeeze_low__actual_trading_bar_duration'
@@ -91,6 +91,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
     config['definition']['exits'] = [
         rule for rule in config['definition']['exits'] if rule != 'target_observed_then_next_open'
     ]
+    config['definition']['exits'].append('five_top_gap_upper_shadow_same_close_clear')
     config['definition']['primary_filters'] = [
         ('execution_price_net_rr_1_5' if name == 'next_open_net_rr_1_5' else
          'squeeze_or_nested_alternation_breakout' if name == 'squeeze_regime' else
@@ -132,6 +133,11 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         wave_exhaustion_exit='wave_entry_uses_positive_n_with_origin_at_or_after_confirmed_b_low_then_own_one_p_two_t_five_top_ten_full_for_abnormal_candle_risk',
         wave_abnormal_followthrough_exit='target_abnormal_candle_first_later_close_strictly_lower_than_previous_same_close_full_clear_without_volume_or_partial_fill_requirement',
         wave_five_top_child_volume_exit='known_active_n_five_top_or_ten_full_reached_before_exit_day_bearish_low_lt_previous_low_close_lt_previous_close_low_lt_child_two_sessions_ago_inclusive_inside_non_doji_mother_one_strict_edge_volume_gt_positive_last_bearish_global_exit_signal_same_close_clear',
+        wave_five_top_gap_upper_shadow_exit=(
+            'global_live_positive_n_five_top_or_ten_full_reached_before_today_'
+            'open_lt_previous_close_close_le_open_including_doji_'
+            'upper_shadow_ge_half_positive_range_no_volume_or_prior_reduction_gate_'
+            'same_close_full_clear_before_partial_exits'),
         wave_five_top_entry='previous_session_pending_named_five_top_close_remaining_reward_le_original_n_box_blocks_all_new_entries_and_additions_independent_of_optional_reward_risk_completed_or_invalidated_goals_expire',
         wave_ten_full_entry='ten_full_reach_day_and_later_entries_paused_until_next_session_after_strict_new_high_within_23_sessions_or_a_origin_to_ten_full_day_high_low_retraces_2_3_or_b_minimum_close_retraces_half_and_b_low_duration_strictly_exceeds_a_rise_duration_late_new_high_does_not_release',
         wave_target_upper_shadow_exit='post_b_positive_n_own_one_p_two_t_five_top_or_ten_full_upper_shadow_ge_half_range_cumulative_80_same_close_then_first_later_lower_close_full_clear',

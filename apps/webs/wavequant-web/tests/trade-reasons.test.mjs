@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { JSDOM } from "jsdom";
 
+import { formatBlockedTradeCopy } from "../public/blocked-trade-nodes.js";
 import { formatFilledTradeCopy } from "../public/filled-trade-copy.js";
 import { holdingDrawdownVersion } from "../public/max-drawdown.js";
 import { numberedTradeReasons, tradeReasonItems } from "../public/trade-reasons.js";
@@ -228,6 +229,75 @@ test("five-top gap clear explains the prior open and bearish-volume reference", 
     assert.match(text, /24\.8662 < 前收 25\.0613.*22\.5537 < 前开 22\.8045/);
     assert.match(text, /52,774,200 股 > 最近阴线 2026-08-26 的 7,902,800 股/);
     assert.doesNotMatch(text, /undefined|NaN/);
+});
+
+test("five-top gap upper-shadow clear traces same-basis Guofang prices in detail and clipboard", () => {
+    const marker = {
+        kind: "signal",
+        side: "SELL",
+        reason: "wave_five_top_gap_upper_shadow_clear",
+        time: "2025-04-25",
+        wave_n_date: "2024-08-30",
+        wave_reached_date: "2025-04-11",
+        wave_reached_stage: "ten_full",
+        wave_reached_price: 10.573638357283865,
+        observed_open: 17.117272431106827,
+        observed_high: 19.535275001183372,
+        observed_low: 17.117272431106827,
+        observed_close: 17.117272431106827,
+        previous_close: 19.016155805347726,
+        wave_upper_shadow_fraction: 1,
+    };
+    const reasons = numberedTradeReasons(marker).join("\n");
+    assert.match(reasons, /2024-08-30 正 N.*2025-04-11 已达到十满 10\.5736/);
+    assert.match(reasons, /17\.1173 < 前收 19\.0162.*收盘 17\.1173 ≤ 开盘.*十字线/);
+    assert.match(reasons, /最高 19\.5353.*最低 17\.1173.*上影占振幅 100\.00% ≥ 50%/);
+    assert.match(reasons, /退出目标为 100%.*清空余仓.*无需放量或此前减仓/);
+    assert.doesNotMatch(reasons, /undefined|NaN|最近阴线|12\.53/);
+    const view = { symbol: "sh.601086", asof: "2025-04-25", bars: [], backtest: { start: "2018-01-01" } };
+    const copy = formatFilledTradeCopy(view, { ...marker, kind: "fill" }, "V3", "");
+    assert.match(copy, /2025-04-11 已达到十满.*17\.1173 < 前收 19\.0162/s);
+    const dom = new JSDOM("<section></section>");
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        appendTradeEvidence(document.querySelector("section"), marker);
+        assert.match(document.querySelector(".trade-reason-list").textContent, /上影占振幅 100\.00%.*退出目标为 100%/);
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
+    assert.match(numberedTradeReasons({ ...marker, wave_reached_stage: "five_top" }).join(" "), /已达到五顶/);
+    const composite = { ...marker, reason: "negative_turn_risk_exit|wave_five_top_gap_upper_shadow_clear" };
+    assert.match(numberedTradeReasons(composite).join(" "), /负扭转风险退出.*17\.1173 < 前收 19\.0162/);
+    const deferred = {
+        ...marker,
+        id: "deferred-2025-04-25",
+        kind: "order",
+        status: "deferred",
+        price: marker.observed_close,
+        reason: "not_sellable",
+        decision_reason: composite.reason,
+        signal_time: marker.time,
+        blockedStage: "execution",
+    };
+    const deferredReasons = numberedTradeReasons(deferred).join(" ");
+    assert.match(deferredReasons, /17\.1173 < 前收 19\.0162.*退出目标为 100%/);
+    assert.doesNotMatch(deferredReasons, /已清空|已成交/);
+    const blockedCopy = formatBlockedTradeCopy(view, [{ time: deferred.time, nodes: [deferred] }], "V3");
+    assert.match(blockedCopy, /执行委托未成交.*当日不满足可卖条件，退出延期/s);
+    const delayedFill = {
+        ...deferred,
+        kind: "fill",
+        status: "filled",
+        reason: marker.reason,
+        time: "2025-04-28",
+        signal_time: undefined,
+        signal_timestamp: "2025-04-25T00:00:00",
+    };
+    const delayedReasons = numberedTradeReasons(delayedFill).join(" ");
+    assert.match(delayedReasons, /判定日 2025-04-25：开盘 17\.1173/);
+    assert.doesNotMatch(delayedReasons, /判定日 2025-04-28|本日开盘/);
 });
 
 test("bearish outside mother reduction and next-session clear use mother price and volume evidence", () => {

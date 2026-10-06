@@ -62,6 +62,20 @@ describe("strategy topology", () => {
         expect(gate?.detail).toMatch(/严格大于此前最近阴线.*十字线/);
         expect(gate?.detail).toMatch(/整仓退出优先于减仓.*取消同日新买与加仓/);
     });
+    it("traces the post-five-top gap and long upper-shadow clear including doji candles", () => {
+        const flow = topologyFlows.find((flow) => flow.id === "exit");
+        const gate = flow?.gates.find((gate) => gate.id === "five-top-gap-upper-shadow-clear");
+        expect(gate?.detail).toMatch(/此前交易日已达到五顶或十满/);
+        expect(gate?.detail).toMatch(/开盘 < 前收.*收盘 ≤ 开盘.*包含十字线/);
+        expect(gate?.detail).toMatch(/最高价减去开收较高值.*正振幅至少 50%.*相等允许/);
+        expect(gate?.detail).toMatch(/无需放量或此前减仓.*当日达到、未来或已失效目标不能触发/);
+        expect(gate?.detail).toMatch(/既有全清.*原退出原因及对应目标证据/);
+        expect(gate?.detail).toMatch(/整仓退出优先于减仓.*取消同日新买与加仓/);
+        expect(gate?.yes).toMatch(/100%.*清空余仓/);
+        expect(flow?.gates.findIndex((gate) => gate.id === "five-top-gap-upper-shadow-clear")).toBeLessThan(
+            flow?.gates.findIndex((gate) => gate.id === "partial") ?? -1,
+        );
+    });
     it("keeps A classification and lifetime distinct from B squeeze defense", () => {
         const details = topologyFlows
             .flatMap((flow) => flow.gates)

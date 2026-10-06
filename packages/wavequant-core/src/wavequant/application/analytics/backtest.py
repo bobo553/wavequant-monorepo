@@ -12,7 +12,8 @@ from wavequant.domain.models.model import Bar, Signal, Trade
 from wavequant.application.analytics.holding_drawdown import holding_drawdowns, drawdown_metrics, holding_fill_time
 from wavequant.domain.strategies.wave_exhaustion_exit import (
     C_EQUAL_NEAR_RESISTANCE_REDUCE, C_EQUAL_NEAR_VOLUME_CLEAR, FIVE_TOP_CHILD_VOLUME_CLEAR,
-    FIVE_TOP_GAP_VOLUME_CLEAR, observe_c_equal_near_risk, observe_five_top_child_volume_clear,
+    FIVE_TOP_GAP_UPPER_SHADOW_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR, observe_c_equal_near_risk,
+    observe_five_top_child_volume_clear, observe_five_top_gap_upper_shadow_clear,
     observe_five_top_gap_volume_clear, observe_wave_exhaustion,
 )
 from wavequant.domain.strategies.two_t_resistance import TWO_T_BODY_VOLUME_CLEAR, two_t_resistance_history
@@ -660,7 +661,9 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 target_risk = dict(reason=TWO_T_BODY_VOLUME_CLEAR, exit_fraction=1.0,
                                    execution_model='same_day_close')
             if target_risk is not None:
-                if target_risk['exit_fraction'] == 1.0 and (wave_exit is None or wave_exit['exit_fraction'] < 1.0):
+                if target_risk['exit_fraction'] == 1.0 and (
+                        wave_exit is None or wave_exit['exit_fraction'] < 1.0
+                        or wave_exit['reason'] == FIVE_TOP_GAP_UPPER_SHADOW_CLEAR):
                     wave_exit = target_risk
                 elif wave_exit is None and not pos.wave_reduced:
                     wave_exit = target_risk
@@ -669,7 +672,9 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 reduction_fraction=config.wave_exhaustion_reduction)
                 if config.wave_exhaustion_exit else None)
             if c_equal_risk is not None:
-                if c_equal_risk['exit_fraction'] == 1.0 and (wave_exit is None or wave_exit['exit_fraction'] < 1.0):
+                if c_equal_risk['exit_fraction'] == 1.0 and (
+                        wave_exit is None or wave_exit['exit_fraction'] < 1.0
+                        or wave_exit['reason'] == FIVE_TOP_GAP_UPPER_SHADOW_CLEAR):
                     wave_exit = c_equal_risk
                 elif wave_exit is None and not pos.wave_reduced:
                     wave_exit = c_equal_risk
@@ -724,6 +729,12 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                     and volume_exit is not None
                     and volume_exit['reason'] == 'volume_bullish_gap_bearish_clear'):
                 pressure = None
+            if (wave_exit is not None and wave_exit['reason'] == FIVE_TOP_GAP_UPPER_SHADOW_CLEAR
+                    and (mother_child_inverse is not None or hard_reason or volume_inverse
+                         or inverse_failure is not None
+                         or (pressure is not None and pressure['exit_fraction'] == 1)
+                         or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
+                wave_exit = None
             if mother_child_inverse is not None:
                 pending_exit[symbol] = MOTHER_CHILD_INVERSE_N_LOW_BREAK
                 exit_evidence[symbol] = dict(
@@ -842,12 +853,14 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                         elif any(reason in signal.reason.split('|') for reason in
                                  (TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
                                    FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
+                                   FIVE_TOP_GAP_UPPER_SHADOW_CLEAR,
                                    C_EQUAL_NEAR_VOLUME_CLEAR)):
                             i, bar = current[symbol]
                             wave_clear_symbols.add(symbol)
                             pending_exit[symbol] = next(reason for reason in signal.reason.split('|') if reason in
                                 (TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
                                   FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
+                                  FIVE_TOP_GAP_UPPER_SHADOW_CLEAR,
                                   C_EQUAL_NEAR_VOLUME_CLEAR))
                             if pending_exit[symbol] == FIVE_TOP_CHILD_VOLUME_CLEAR:
                                 known_events = sorted((wave_events or {}).get(symbol, []),
@@ -860,6 +873,12 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                                       key=lambda event: event['bar_index'])
                                 five_top_evidence = observe_five_top_gap_volume_clear(
                                     grouped[symbol], i, known_events)
+                                if five_top_evidence is not None:
+                                    exit_evidence[symbol].update(
+                                        {key: value for key, value in five_top_evidence.items() if key != 'reason'})
+                            elif pending_exit[symbol] == FIVE_TOP_GAP_UPPER_SHADOW_CLEAR:
+                                five_top_evidence = observe_five_top_gap_upper_shadow_clear(
+                                    grouped[symbol], i, (wave_events or {}).get(symbol, []))
                                 if five_top_evidence is not None:
                                     exit_evidence[symbol].update(
                                         {key: value for key, value in five_top_evidence.items() if key != 'reason'})

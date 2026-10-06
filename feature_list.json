@@ -1,8 +1,61 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-256",
+    "activeFeature": "MONOREPO-279",
     "features": [
+        {
+            "id": "MONOREPO-279",
+            "name": "five-top-gap-upper-shadow-clear",
+            "title": "五顶后低开收低长上影清仓",
+            "description": "五顶此前已到位且有效时，低开、收盘不高于开盘且长上影达到振幅一半即当日清空余仓，包含开收相等，不依赖放量或此前减仓。",
+            "scope": "Core全局退出与账户执行、Web中文证据及国芳2025-04-25回归",
+            "dependencies": ["MONOREPO-275"],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "只使用此前交易日已达到且未失效的五顶或十满，禁止同日及未来目标泄漏",
+                "开盘严格低于前收，收盘不高于开盘，上影占振幅至少一半，开收相等有效且不要求放量",
+                "全清优先于80%减仓，同日禁止所有买入和加仓，沿用T+1、流动性和交易权限",
+                "国芳2025-04-25真实OHLC、完整与前缀一致，复权信号价格与原始成交价格分开核对",
+                "定向回归、相关类型和构建通过，Web展示可追溯中文依据，未运行项如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_five_top_gap_upper_shadow_exit.py -q; pytest tests/test_ten_full_entry.py -q",
+                    "status": "passed",
+                    "summary": "最终新增36项、profile19项通过。原实现先22失败/1通过，新增50%小数精确边界先复现浮点误拒绝后改用Fraction。覆盖十字线、低量、半幅包含等号、二吐/同日/未来/失效反例、真实国芳独立信号前缀、100%同日执行、禁买/T+1/不可卖及旧全清原因和目标证据优先。V1/V2封存定义保留。"
+                },
+                {
+                    "command": "pytest tests/test_wave_exhaustion_exit.py tests/test_five_top_gap_volume_exit.py tests/test_wave_target_upper_shadow_exit.py tests/test_guofang_2023_target_exit.py tests/test_two_t_body_volume_clear.py tests/test_c_equal_near_exit.py -q; clean main four-case baseline comparison",
+                    "status": "failed",
+                    "summary": "相邻96通过、4失败（392.32秒）；明确导入main/src且main不存在新observer的独立基线，同4项逐项复现（140.28秒）。二饱真实新华的wave_n_date期望2023-11-02、实际2023-11-17；C_equal的July3 long_signal/LONG缺失两项和对应目标风险None一项。保留旧断言及失败，不修改无关入场/目标资格。当前任务没有例外授权，按仓库检查失败不合并规则暂不合并main。"
+                },
+                {
+                    "command": "final loaded-source 1777-bar Guofang signals + formal single_stock_result; account cutoff replay; same-source fixture/cache digest comparison",
+                    "status": "passed",
+                    "summary": "2018-01-02至2025-04-30共1777根同源行情和正式账户参数与缓存逐项一致，不复用旧信号/审计，保留原权限和复权因子。最终源码107.58秒生成信号，113.84秒完成账户；128源码前后指纹相等。04-25新EXIT为100%目标，上影1.0，2024-08-30N已04-11到十满10.5736383573；原raw12.53/sellable=False保留，not_sellable递延。04-28同原因filled全部100原始股、raw11.27436元、余仓0，04-25账户订单前缀逐项相同。旧V94无04-25EXIT、04-29才清仓。证据保存在本机临时wavequant-279-real-probe.json，不提交账户缓存。"
+                },
+                {
+                    "command": "mypy --follow-imports=silent modified three Core modules and new test; pnpm --filter @wavequant/core typecheck; build --no-isolation --outdir temporary-directory; isolated wheel smoke",
+                    "status": "passed",
+                    "summary": "最终4直接模块mypy、既定4文件strict、最终sdist/wheel及临时隔离wheel的V95导入/国芳十字全清验证通过。探索性全依赖mypy产生938历史问题，两检出同数量；不作全源类型验收，实际定向门禁通过且未放宽配置。首次quick全仓并发Web build/typecheck导致生成routes缺失，最终顺序build后typecheck通过。Node实际24.14.1（.nvmrc24.16.0当前未安装），pnpm10.26.2；未改变系统版本、依赖声明或锁文件。未运行Python格式/lint。"
+                },
+                {
+                    "command": "node --test annotations.test.mjs trade-reasons.test.mjs; final trade-reasons rerun; topology Vitest; Web lint/build/typecheck and related Prettier/JS syntax",
+                    "status": "passed",
+                    "summary": "Web61项Node通过，判定日期补丁后trade-reasons30项再次通过（重叠不重复累计）；最终拓扑8项及f5ab731d来源指纹通过。最终lint零错误6条既有警告、最终指纹之后的512MB/4MB生产构建、恢复生成next-env行后的类型与相关格式/语法检查通过。真实4/25递延及4/28filled订单经共享helper核对判定日期、目标/上影/退出100%和中文不可卖状态，无已成交误报。"
+                },
+                {
+                    "command": "independent Core/Web diff review; git diff --check; codegraph sync; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "独立复核发现旧target/C_equal全清和新规则重叠可能混用证据，已窄修并新增4项回归，最终双人复核无新增阻塞。差异、索引和Harness通过，无凭据或产物，fixture只含原始行情/参数；保留256全部历史失败，279为唯一in-progress等待本地合并例外确认。"
+                },
+                {
+                    "command": "complete Core/Web suites, browser/Playwright, real external-minute fills and local main merge/live V95 verification",
+                    "status": "not-run",
+                    "summary": "按用户节奏未运行完整套件、浏览器或Playwright；2025分钟缺失沿正式日线收盘回退，不宣称实盘撮合。新实现留在独立特性分支，4项main既有失败未获本轮例外授权，尚未合并、推送或手工重启；常驻服务仍V94。确认例外后同步最新main、复核差异并no-ff本地合并，再核对版本/实际源码与Web模块。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-278",
             "name": "chart-series-removal-reentrancy",
@@ -877,7 +930,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",

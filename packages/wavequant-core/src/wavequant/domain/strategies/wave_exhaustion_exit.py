@@ -10,6 +10,7 @@ from ..market_structure.price_action import Direction, ShadowPolicy, observe_res
 
 FIVE_TOP_CHILD_VOLUME_CLEAR = "wave_five_top_child_volume_clear"
 FIVE_TOP_GAP_VOLUME_CLEAR = "wave_five_top_gap_volume_clear"
+FIVE_TOP_GAP_UPPER_SHADOW_CLEAR = "wave_five_top_gap_upper_shadow_clear"
 C_EQUAL_NEAR_RESISTANCE_REDUCE = "wave_c_equal_near_resistance_reduce"
 C_EQUAL_NEAR_VOLUME_CLEAR = "wave_c_equal_near_volume_clear"
 
@@ -171,6 +172,33 @@ def observe_five_top_gap_volume_clear(
     )
 
 
+def observe_five_top_gap_upper_shadow_clear(
+    bars: Sequence[Bar], index: int, projection_events: Sequence[dict]
+) -> dict | None:
+    """Clear a prior live five-top on a weak lower open with at least half-range upper shadow."""
+    if index < 1 or not projection_events:
+        return None
+    bar, previous = bars[index], bars[index - 1]
+    span = Fraction(str(bar.high)) - Fraction(str(bar.low))
+    upper = Fraction(str(bar.high)) - Fraction(str(max(bar.open, bar.close)))
+    if (bar.open >= previous.close or bar.close > bar.open
+            or span <= 0 or 2 * upper < span):
+        return None
+    reached = _known_five_top(sorted(projection_events, key=lambda event: event["bar_index"]), index)
+    if reached is None:
+        return None
+    return dict(
+        reason=FIVE_TOP_GAP_UPPER_SHADOW_CLEAR, exit_fraction=1.0,
+        wave_n_date=bars[reached["attack"]].timestamp.date().isoformat(),
+        wave_reached_date=bars[reached["bar_index"]].timestamp.date().isoformat(),
+        wave_reached_stage=reached["reached_stage"], wave_reached_price=reached["reached_target"],
+        wave_upper_shadow_fraction=float(upper / span),
+        observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
+        observed_close=bar.close, observed_volume=bar.volume, previous_close=previous.close,
+        execution_model="same_day_close",
+    )
+
+
 def observe_wave_exhaustion(
     bars: list[Bar],
     index: int,
@@ -193,7 +221,14 @@ def observe_wave_exhaustion(
         None,
     )
     if ordinary is not None:
-        return _observe_ordinary_c(bars, index, ordinary, config, reduced=reduced, entry_index=entry_index)
+        decision = _observe_ordinary_c(bars, index, ordinary, config, reduced=reduced, entry_index=entry_index)
+        if decision is not None and decision.get("exit_fraction") == 1.0:
+            return decision
+        shadow_clear = observe_five_top_gap_upper_shadow_clear(bars, index, events)
+        if shadow_clear is not None:
+            return observe_five_top_gap_volume_clear(
+                bars, index, sorted(events, key=lambda event: event["bar_index"])) or shadow_clear
+        return decision
     current = _observe_target_candle(bars, index, events, config, reduced=reduced)
     if current is not None and current.get("exit_fraction") == 1.0:
         return current
@@ -232,6 +267,11 @@ def observe_wave_exhaustion(
                 previous_close=bars[index - 1].close,
                 execution_model="same_day_close",
             )
+    shadow_clear = observe_five_top_gap_upper_shadow_clear(bars, index, events)
+    if shadow_clear is not None:
+        # Retain the established full-clear reason when both gap rules apply.
+        return observe_five_top_gap_volume_clear(
+            bars, index, sorted(events, key=lambda event: event["bar_index"])) or shadow_clear
     return current
 
 

@@ -323,6 +323,14 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
                 detail: "有效正 N 必须在此前交易日已到二饱（二吐/2T）。后续任一交易日收阴，开盘 ≥ 前阳线收盘、收盘 ≤ 前阳线开盘且至少一端严格越过，成交量严格大于此前最近阴线的正成交量即全清；十字线不作阴线量基准。不要求覆盖影线、5% 实体或超过前日成交量，不依赖先前减仓。已失效或未来目标不能触发。整仓退出优先于减仓，并取消同日新买与加仓；T+1 或不可卖时保留待卖执行。",
                 source: "two_t_resistance.py · two_t_resistance_history；backtest.py · run_portfolio",
                 yes: "当日模拟收盘清空余仓",
+                no: "检查五顶后低开长上影",
+            },
+            {
+                id: "five-top-gap-upper-shadow-clear",
+                question: "五顶或十满到位后，低开收低且上影占振幅至少 50%？",
+                detail: "有效正 N 必须在此前交易日已达到五顶或十满。当前开盘 < 前收、收盘 ≤ 开盘（包含十字线），上影为最高价减去开收较高值，须占正振幅至少 50%，相等允许。无需放量或此前减仓；当日达到、未来或已失效目标不能触发。同时触发既有全清时沿用原退出原因及对应目标证据。整仓退出优先于减仓，并取消同日新买与加仓；T+1 或不可卖时保留待卖执行。",
+                source: "wave_exhaustion_exit.py · observe_five_top_gap_upper_shadow_clear；backtest.py · run_portfolio",
+                yes: "当日按 100% 退出目标模拟收盘清空余仓",
                 no: "检查 V3 其他整仓风险",
             },
             {
@@ -502,6 +510,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
 ] as const;
 
 export const topologyProfileNotes = [
+    "V3 v95 新增五顶后低开长上影全清：此前有效正 N 已到五顶或十满，开盘 < 前收、收盘 ≤ 开盘（含十字线）、上影占振幅 ≥ 50% 即当日按 100% 退出目标清空余仓，无需放量或此前减仓。原有入场通道与 V1/V2 封存定义保持各自口径。",
     "V3 组合 A 回调放量突破：C 顶后回调及整理时间严格超过组合内部回调或最末同源子级回调，收盘守住 2/3，放量中大阳线收盘严格突破此前已知回调高点；不要求跳空，沿用全局风控与成交门禁。",
     "V3 新增二级后一级交替低点放量突破：两级低点在前日已依次确认且有效，放量阳线收盘突破一级翻多高及整理高，当日正 N 完成即可确认买点；沿用原防守、测幅与成交检查。",
     "V3 默认：第一类为二/三级确认交替后新正 N；第二类浅回撤 ≤1/3。确认日量能严格大于前日；信号阶段不做毛盈亏比前置筛选。",
@@ -513,4 +522,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "c3089d4da9a5347b86e0b82d5ea1fa6cfe2ea12c777bb8e1f233f31a0a255504";
+export const strategySourceDigest = "f5ab731d2e0e51f651153d0b1cd895efd00f4f71190ef1a16d951ae259d6037e";

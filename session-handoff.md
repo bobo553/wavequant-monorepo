@@ -1,3 +1,13 @@
+## 2026-10-06 · MONOREPO-279 五顶低开长影清仓，合并待确认
+
+当前会话工作目录为 C:/Users/zb/.codex/worktrees/five-top-low-open-exit/wavequant-monorepo，分支 feat-五顶低开长影清仓，从main 8eee8d8建立。实现、定向检查、正式真实账户和独立复核已完成；未合并main或推送，常驻仍V94。279为唯一in-progress，256暂backlog且原失败证据全部保留。
+
+新规则使用此前有效五顶/十满，open<previous.close、close≤open（包含十字）、上影≥半幅，100%当日退出目标；Fraction保护50%边界，旧全清原因及目标证据优先，T+1/可卖/流动性保持。真实1777棒按最终源码重生，04-25上影100%触发新EXIT，raw12.53跌停不可卖递延；04-28按该原因清100股raw11.27436元余仓0，04-25账户订单前缀相等、128源码前后一致。完整本机证据在 C:/Users/zb/AppData/Local/Temp/wavequant-279-real-probe.json，真实fixture只提交行情和原参数。
+
+新Core36、profile19、Web61/交易说明最终30复跑、拓扑8、相关mypy/strict、Core/Web构建与隔离wheel、lint/类型/格式/Harness及双人复核通过。相邻96通过4失败，明确导入未修改main的独立四例全部同样失败：test_two_t_body_volume_clear.py:162波源期望2023-11-02实际2023-11-17；test_c_equal_near_exit.py:39/71缺July3 long_signal/LONG，:119对应风险None。未改旧断言或无关资格。首次quick生成竞态以最终顺序build/typecheck恢复；探索全依赖mypy938历史问题不作全源验收，定向门禁通过。Node实际24.14.1、仓库.nvmrc24.16.0未安装，系统/锁文件未改。
+
+下一步需用户明确允许保留上述4项main既有失败执行本轮本地合并；根规则及 docs/agent/codex-global-AGENTS.md:34 要求“检查未通过时先修复，无法通过时说明原因，不合并”，本轮暂无例外授权。获得确认后继续复用此worktree/分支，同步最新本地main、复核/检查受影响差异、no-ff本地合并并核对常驻V95源码和Web模块；不自动推送。完整套件、浏览器/Playwright、真实外部分钟仍待独立验证。
+
 ## 2026-10-05 · MONOREPO-274 撤回高开买入
 
 MONOREPO-274撤回完成：2297b54经49550d4无冲突合并本地main；与de00b04相比仅四个审计/状态文档不同，全部生产源码、测试和讲义一致。实际8765/13003均返回V93，128来源引擎54e9bff0...与main和正式账户逐项匹配，七个Web模块逐字相同；255日线正式回测恢复01-17收盘15:00轧空BUY/filled、原始5.98元/600股，无新高开开盘买入原因。相关检查通过，自动加载未操作进程/缓存；已恢复256唯一in-progress且旧失败保持，不推送。
