@@ -41,6 +41,14 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("requires the actual next response on post-five-top reattacks across entry channels", () => {
+        const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "five-top-rebreak");
+        expect(gate?.detail).toMatch(/首次直接强势站上.*3%.*60%.*20%/);
+        expect(gate?.detail).toMatch(/当笔即使强势也等待次笔.*下一实际交易日.*虚拟低点/);
+        expect(gate?.detail).toMatch(/第三笔不能回填.*普通正 N、C 波、组合 A、浅回撤和加仓共用门禁/);
+        expect(gate?.detail).toMatch(/其他 N 的轧空标签不能绕过.*低于旧五顶仍沿用原回调门禁/);
+        expect(gate?.no).toContain("wave_five_top_rebreak_response_pending");
+    });
     it("distinguishes shared-boundary outside C from strict mother-candle geometry", () => {
         const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "n-geometry");
         expect(gate?.detail).toMatch(/讲义因果外包 C.*等低创新高.*等高创新低/);

@@ -43,6 +43,14 @@ def test_target_advance_does_not_hide_first_reach_and_expires_on_next_day():
     assert five_top_entry_history(bars[:4], [event]) == risk
 
 
+def test_first_direct_strong_close_strictly_above_five_top_is_exempt():
+    bars, event = sample()
+    bars[3] = replace(bars[3], open=5.0, high=5.5, low=5.0, close=5.5)
+    assert 3 not in five_top_entry_history(bars, [event])
+    bars[2] = replace(bars[2], high=5.5, close=5.43)
+    assert 3 in five_top_entry_history(bars, [event])
+
+
 @pytest.mark.parametrize("change", [dict(state="invalidated", target=None),
                                      dict(state="pullback", target=None),
                                      dict(target_stage="ten_full"),
