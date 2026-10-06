@@ -1,3 +1,5 @@
+MONOREPO-279（2026-10-06）本地合并授权：用户明确要求“合并到main”，本次保留4项已复现main失败交付V97。分支同步main8eee8d8无新增源码差异，74Node/8拓扑及最终构建/类型证据保持；合并后核对常驻版本及Web字节。279留backlog保留failed事实，256恢复唯一in-progress，全部历史证据保持。先前待确认段落是历史；不推送，未运行浏览器或完整套件。
+
 MONOREPO-279（2026-10-06，V97）母子实体证据展示完成，合并待确认：新增独立中文全清理由，明确此前有效五顶/十满、昨日/今日开收实体边界、至少一侧严格及十字允许、长上影≥50%和100%目标；盘中只显示已完成累计实体，不以最高越过母线否定实体关系。保留旧低开规则。真实4/25 filled订单经正式variant/time/id适配→annotations/reasons/detail/copy/DOM通过，raw12.53/100原始股/余0、缺分钟收盘回退和队列未验证保持，无undefined/NaN。最终Node74、拓扑8、lint0错误6旧warning、74源37c7b95c指纹后build及恢复仅已知next-env行后typecheck通过；V3 v97、V1/V2封存保持。4项main旧失败仍待本轮合并例外，279唯一in-progress，256历史不动，常驻V94未生效，不推送；完整Web/浏览器/Playwright未运行。
 
 历史 V96 阶段：

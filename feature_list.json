@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-279",
+    "activeFeature": "MONOREPO-256",
     "features": [
         {
             "id": "MONOREPO-279",
@@ -10,7 +10,7 @@
             "description": "此前有效五顶或十满到位后，实体被昨日包含且长上影达半幅时独立清空余仓；保留低开、收盘不高于开盘且长上影达半幅规则。包含十字子线，完整分钟因果触发，缺分钟按明确非一字跌停收盘模型模拟执行。",
             "scope": "Core两条独立全局退出、分钟与日线撮合、Web实体及目标证据、国芳2025-04-25回归",
             "dependencies": ["MONOREPO-275"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "只使用此前交易日已达到且未失效的五顶或十满，禁止同日及未来目标泄漏",
                 "开盘严格低于前收，收盘不高于开盘，上影占振幅至少一半，开收相等有效且不要求放量",
@@ -116,6 +116,11 @@
                     "command": "V97 final diff review; codegraph sync; git diff --check; pnpm harness:check; pnpm exec prettier --check feature_list.json packages/wavequant-core/progress.md apps/webs/wavequant-web/progress.md session-handoff.md docs/wavequant-a-b-c-rules.md apps/webs/wavequant-web/public/annotations.js apps/webs/wavequant-web/public/trade-reasons.js apps/webs/wavequant-web/tests/trade-reasons.test.mjs apps/webs/wavequant-web/src/features/research-workbench/topology/topology-data.ts apps/webs/wavequant-web/src/features/research-workbench/topology/topology-data.test.ts",
                     "status": "passed",
                     "summary": "V97最终复核确认两个独立条件共用此前有效五顶或十满；母子仅比较开收实体，旧低开、旧全清原因和各自证据保持。生产源冻结后只补测试类型收窄及状态；最后37项回归和10文件mypy通过。CodeGraph同步、差异、10相关文件格式及Harness通过（276功能/18 Node workspace/2 Python workspace/32规则）。更新仅279语义，其他功能和根元信息逐项与HEAD相同，无凭据或构建/账户产物。最终只读确认main干净8eee8d8、常驻shared_edge_n_v94_lecture_v3；失败例外未获授权，暂不合并，不推送。"
+                },
+                {
+                    "command": "User-authorized local main merge; git status --short; git merge main; git diff main...HEAD --check; final branch diff review",
+                    "status": "passed",
+                    "summary": "2026-10-06用户在获知4项已在main复现的既有失败及合并例外问题后明确要求“合并到main”，授权本次保留失败执行本地合并。main8eee8d8和专属worktree均干净；分支同步main已最新，无冲突或生产源变化，既定定向测试/类型/构建证据继续适用，最终33文件差异复核及diff检查通过。待交付提交为51bb919、dfc22ad、9f24a62和66a43ec；不推送或创建PR。失败事实及完整套件/浏览器/真实分钟待验证记录原样保留，按Harness完成门禁279留backlog待独立验证，恢复256唯一in-progress且其全部历史证据不变。此前合并待确认段落为当时历史，本轮例外已获授权。实际合并提交与常驻V97验收另记。"
                 }
             ]
         },
@@ -993,7 +998,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "backlog",
+            "status": "in-progress",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
