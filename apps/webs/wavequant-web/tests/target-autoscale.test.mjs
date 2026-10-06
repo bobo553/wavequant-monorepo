@@ -33,6 +33,8 @@ function renderLevels(kind, raw = {}) {
         container: { dataset: {} },
         levelLines: [],
         clearLevels() {},
+        displayedWaveProjection: PriceChart.prototype.displayedWaveProjection,
+        waveEndpointOverlay: { setPoints() {} },
         targetGuideOverlay: {
             setGuides(items) {
                 guides.push(...items);

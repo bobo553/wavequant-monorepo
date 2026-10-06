@@ -134,6 +134,19 @@ function base(container) {
     return chart;
 }
 
+function clearSeriesCollection(owner, field) {
+    const series = owner[field] ?? [];
+    owner[field] = [];
+    const wasRemoving = owner.removingSeries;
+    owner.removingSeries = true;
+    // SDK 删除序列时会同步触发十字光标回调；先释放归属并禁止清理期间重绘。
+    try {
+        for (const item of series) owner.chart.removeSeries(item);
+    } finally {
+        owner.removingSeries = wasRemoving;
+    }
+}
+
 function waveProjectionRange(item, asof) {
     const projection = item?.raw;
     const knownAt = [projection?.aKnownAt, projection?.bKnownAt, projection?.confirmedAt, item?.time]
@@ -181,6 +194,7 @@ export class PriceChart {
         this.polylineEnabled = false;
         this.polylineKey = "";
         this.levelLines = [];
+        this.removingSeries = false;
         this.waveAbLines = [];
         this.lastFallHighLines = [];
         this.lastFallHighLineKey = "";
@@ -274,7 +288,7 @@ export class PriceChart {
         });
         container.append(this.tooltip);
         this.chart.subscribeCrosshairMove((p) => {
-            if (!this.data) return;
+            if (!this.data || this.removingSeries) return;
             // 鼠标进入卡片时保留当前 K 线，不让图表的离开事件清空卡片。
             if (this.tooltipHovered || this.tooltip.contains(document.activeElement)) return;
             const barIndex = this.data.bars.findIndex((candidate) => candidate.time === p.time);
@@ -877,14 +891,12 @@ export class PriceChart {
         this.focusFlashOverlay.flash({ id: `candle-focus-${bar.time}`, time: bar.time, price: bar.close });
     }
     clearLevels() {
-        for (const s of this.levelLines) this.chart.removeSeries(s);
-        this.levelLines = [];
+        clearSeriesCollection(this, "levelLines");
         this.targetGuideOverlay?.setGuides([]);
         this.container.dataset.levelCount = "0";
     }
     clearLastFallHighGuides() {
-        for (const series of this.lastFallHighLines) this.chart.removeSeries(series);
-        this.lastFallHighLines = [];
+        clearSeriesCollection(this, "lastFallHighLines");
         this.lastFallHighLineKey = "";
         this.container.dataset.lastFallHighGuides = "0";
     }
@@ -917,8 +929,7 @@ export class PriceChart {
         this.container.dataset.lastFallHighGuides = String(this.lastFallHighLines.length);
     }
     clearBullishTurnGuides() {
-        for (const series of this.bullishTurnGuideLines) this.chart.removeSeries(series);
-        this.bullishTurnGuideLines = [];
+        clearSeriesCollection(this, "bullishTurnGuideLines");
         this.bullishTurnGuideKey = "";
         this.container.dataset.bullishTurnGuides = "0";
     }
@@ -951,8 +962,7 @@ export class PriceChart {
         this.container.dataset.bullishTurnGuides = String(this.bullishTurnGuideLines.length);
     }
     clearTertiaryRetracementGuides() {
-        for (const series of this.tertiaryRetracementLines) this.chart.removeSeries(series);
-        this.tertiaryRetracementLines = [];
+        clearSeriesCollection(this, "tertiaryRetracementLines");
         this.tertiaryRetracementKey = "";
         this.container.dataset.tertiaryRetracementGuides = "0";
     }
@@ -996,8 +1006,7 @@ export class PriceChart {
         this.container.dataset.tertiaryRetracementGuides = String(this.tertiaryRetracementLines.length);
     }
     clearCombinedAWavePath() {
-        for (const series of this.combinedAWaveLines || []) this.chart.removeSeries(series);
-        this.combinedAWaveLines = [];
+        clearSeriesCollection(this, "combinedAWaveLines");
         this.combinedAWaveKey = "";
         this.container.dataset.combinedAWaveLegs = "0";
     }
@@ -1029,8 +1038,7 @@ export class PriceChart {
         this.container.dataset.combinedAWaveLegs = String(this.combinedAWaveLines.length);
     }
     clearCombinedARetracementGuides() {
-        for (const series of this.combinedARetracementLines || []) this.chart.removeSeries(series);
-        this.combinedARetracementLines = [];
+        clearSeriesCollection(this, "combinedARetracementLines");
         this.combinedARetracementKey = "";
         this.container.dataset.combinedARetracementGuides = "0";
         this.combinedAGuideOverlay?.setGuides([]);
@@ -1217,8 +1225,7 @@ export class PriceChart {
         this.container.dataset.levelCount = String(this.levelLines.length);
     }
     clearPolyline() {
-        for (const series of this.polylineLines) this.chart.removeSeries(series);
-        this.polylineLines = [];
+        clearSeriesCollection(this, "polylineLines");
         this.polylineKey = "";
         this.lectureOverlay.setStrokes([]);
         this.container.dataset.polylineSegments = "0";
@@ -1239,8 +1246,7 @@ export class PriceChart {
         this.focusedWaveTime = null;
         this.focusedWaveId = null;
         this.waveEndpointOverlay.setPoints(selectedWaveEndpoints(this.selected, this.data?.bars || []));
-        for (const series of this.lines) this.chart.removeSeries(series);
-        this.lines = [];
+        clearSeriesCollection(this, "lines");
         this.clearWaveAbPath();
         this.windowAnnotations = [];
         this.clearLastFallHighGuides();
@@ -1259,8 +1265,7 @@ export class PriceChart {
         this.clearPolyline();
     }
     clearWaveAbPath() {
-        for (const series of this.waveAbLines) this.chart.removeSeries(series);
-        this.waveAbLines = [];
+        clearSeriesCollection(this, "waveAbLines");
         this.container.dataset.waveAbcLegs = "0";
     }
     drawWaveAbPath() {

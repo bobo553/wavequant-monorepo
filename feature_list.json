@@ -4,6 +4,38 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-278",
+            "name": "chart-series-removal-reentrancy",
+            "title": "定位时图表序列重复移除修复",
+            "description": "清理图表序列时阻止SDK同步十字光标回调重入目标线重绘，定位和读取已完成回测不再触发Series not found。",
+            "scope": "Web图表序列生命周期及已完成任务读取定向回归",
+            "dependencies": ["MONOREPO-234"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "实际Lightweight Charts SDK下悬停目标线清理、定位和重复加载不产生Series not found断言",
+                "图表临时线先释放归属，清理期间SDK回调不重入重绘，正常悬停随后恢复",
+                "已完成回测重试只读取原任务，不重新提交计算；图表缩放与目标标识保持",
+                "定向回归、相关格式、Web lint、类型及构建通过，未运行浏览器或完整套件如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/chart-series-lifecycle.test.mjs tests/completed-backtest-result.test.mjs tests/stock-backtest-tasks.test.mjs tests/chart-navigation.test.mjs tests/wave-c-chart.test.mjs tests/combined-a-chart.test.mjs tests/target-autoscale.test.mjs tests/buy-n-targets.test.mjs tests/n-extension-levels.test.mjs",
+                    "status": "passed",
+                    "summary": "91项通过。新11项使用实际Lightweight Charts 5.2.1模型和jsdom，原实现先复现Series not found，修复后覆盖SDK同步十字光标回调、9类序列清理、重复定位/读缓存、无孤儿或重复归属、清理后正常悬停。已完成任务连续读取3次只请求原job一次，计算提交0次。Canvas测量使用固定适配器，不宣称浏览器像素验证。既有target-autoscale测试在main也因缺少当前图表接口失败，仅补齐2个测试替身接口，原断言保留。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; typecheck; build; targeted Prettier; node --check public/charts.js; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "Web lint零错误（6条既有警告）、类型检查和生产构建通过，构建使用512MB堆/4MB新生代；相关格式、JS语法、差异和Harness检查通过。剔除Next生成的next-env.d.ts差异，未增加依赖或改变回测任务计算逻辑。"
+                },
+                {
+                    "command": "Complete Web suite and real browser/Playwright verification",
+                    "status": "not-run",
+                    "summary": "按用户当前验证节奏未运行完整Web套件或Playwright；实际SDK模型回归不替代浏览器操作、像素和设备验收。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-277",
             "name": "revert-squeeze-strong-candle-entry",
             "title": "撤回轧空强势K入场合并",
