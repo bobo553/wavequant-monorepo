@@ -2,9 +2,12 @@
 
 A small geometric turn is input evidence, not automatically a solid-line node.
 HH+HL establishes up; LH+LL establishes down; mixed/equal comparisons hold the
-previous direction. Only a confirmed direction switch finalizes a wave extreme.
+previous direction. A wave switch needs a retracement AFTER the counter-impulse:
+an older holding point cannot confirm a new impulse that has yet to retrace.
 """
 from collections import Counter
+from collections.abc import Sequence
+from typing import Literal, NotRequired, TypedDict
 
 from .polyline import LinePoint, PointKind, ReversalPoint
 from .price_action import Direction
@@ -29,22 +32,51 @@ def _context_key(points, bull):
     return anchor,previous
 
 
-def _wave_reversals(turns):
-    """Aggregate multiple small swings into one confirmed wave, causally."""
-    highs=[]; lows=[]; direction=None; candidate=None; selected=[]
+class _WaveTurn(TypedDict):
+    index: int
+    ordinal: int
+    kind: str
+    value: float
+    time: str
+    available_at: str
+    state: NotRequired[str]
+    source_state: NotRequired[str]
+    source_kind: NotRequired[str]
+    projection_count: NotRequired[int]
+    projection_rank: NotRequired[int]
+
+
+class _WaveReversal(_WaveTurn):
+    source_reversal_available_at: str
+    wave_direction_before: str
+    wave_direction_after: str
+    confirmation_rule: str
+    confirmed_by: list[_WaveTurn]
+    source_turn_position: int
+    confirmed_on_turn: int
+
+
+def _wave_reversals(turns: Sequence[_WaveTurn]) -> list[_WaveReversal]:
+    """Confirm HH then HL (or LL then LH), preserving each whole-wave extreme."""
+    highs: list[tuple[int, _WaveTurn]] = []
+    lows: list[tuple[int, _WaveTurn]] = []
+    direction: Literal['up', 'down'] | None = None
+    candidate: tuple[int, _WaveTurn] | None = None
+    selected: list[_WaveReversal] = []
     for j,p in enumerate(turns):
         (highs if p['kind']=='H' else lows).append((j,p))
         if len(highs)<2 or len(lows)<2:
             continue
         dh=highs[-1][1]['value']-highs[-2][1]['value']
         dl=lows[-1][1]['value']-lows[-2][1]['value']
-        current='up' if dh>0 and dl>0 else 'down' if dh<0 and dl<0 else None
+        current: Literal['up', 'down'] | None = 'up' if dh>0 and dl>0 else 'down' if dh<0 and dl<0 else None
         if direction is None:
             if current is None: continue
             direction=current
             pool=highs if direction=='up' else lows
             candidate=pool[-1]  # Do not import an extreme from pre-direction history.
             continue
+        assert candidate is not None
         target='H' if direction=='up' else 'L'
         sign=1 if direction=='up' else -1
         if p['kind']==target and sign*(p['value']-candidate[1]['value'])>0:
@@ -52,13 +84,19 @@ def _wave_reversals(turns):
         if current is None or current==direction:
             continue  # A small counter-swing or mixed structure is not reversal.
         position,extreme=candidate
+        # A higher high needs a later higher low; a lower low needs a later
+        # lower high. Reusing the holding point BEFORE the new impulse would
+        # freeze a wave while that impulse is still turning on its own bar.
+        if p['kind']!=target:
+            continue
         proof=[highs[-2][1],highs[-1][1],lows[-2][1],lows[-1][1]]
-        selected.append(dict(extreme,source_reversal_available_at=extreme['available_at'],
-                             available_at=p['available_at'],wave_direction_before=direction,
-                             wave_direction_after=current,confirmation_rule='HH_HL_or_LH_LL_switch',
-                             confirmed_by=[dict(index=q['index'],ordinal=q['ordinal'],kind=q['kind'],
-                                                value=q['value'],time=q['time'],available_at=q['available_at']) for q in proof],
-                             source_turn_position=position,confirmed_on_turn=j))
+        selected.append({**extreme, 'source_reversal_available_at':extreme['available_at'],
+                         'available_at':p['available_at'], 'wave_direction_before':direction,
+                         'wave_direction_after':current,
+                         'confirmation_rule':'ordered_HH_then_HL_or_LL_then_LH_switch',
+                         'confirmed_by':[dict(index=q['index'],ordinal=q['ordinal'],kind=q['kind'],
+                                              value=q['value'],time=q['time'],available_at=q['available_at']) for q in proof],
+                         'source_turn_position':position, 'confirmed_on_turn':j})
         direction=current
         pool=[(k,q) for k,q in enumerate(turns[position+1:j+1],position+1) if q['kind']==('H' if direction=='up' else 'L')]
         candidate=(max if direction=='up' else min)(pool,key=lambda v:v[1]['value'])
@@ -184,7 +222,9 @@ def _connect_reversal_strokes(strokes,source_strokes):
 
 
 def _annotate(points, symbol, dates):
-    highs=[]; lows=[]; previous_known=None; all_up=all_down=True
+    highs: list[ReversalPoint] = []
+    lows: list[ReversalPoint] = []
+    previous_known=None; all_up=all_down=True
     high_count=low_count=0
     background=None; anchor=key=attack=None; suspicion=False
     for j,p in enumerate(points):
@@ -244,17 +284,18 @@ def _annotate(points, symbol, dates):
         if key is None:
             anchor,key=_context_key(points[:j+1],background==StructuralTrend.BULL)
             continue
+        assert anchor is not None
         up=background==StructuralTrend.BEAR
         extreme_kind='H' if up else 'L'
         sign=1 if up else -1
         if attack is None:
             # Refresh a continuing trend's extreme and its immediate predecessor.
-            if p['kind']==anchor['kind'] and sign*(p['value']-anchor['value'])<0:
+            if p['kind']==anchor['kind'] and previous is not None and sign*(p['value']-anchor['value'])<0:
                 anchor,key=p,previous; suspicion=False
-            elif p['kind']==anchor['kind'] and previous and sign*(p['value']-anchor['value'])>=0 and sign*(previous['value']-key['value'])<0:
+            elif p['kind']==anchor['kind'] and previous and key is not None and sign*(p['value']-anchor['value'])>=0 and sign*(previous['value']-key['value'])<0:
                 if not suspicion:
                     observation('底部疑虑' if up else '头部疑虑',key=_ref(key)); suspicion=True
-            if p['kind']==extreme_kind and sign*(p['value']-key['value'])>0 and previous:
+            if p['kind']==extreme_kind and key is not None and sign*(p['value']-key['value'])>0 and previous:
                 attack=dict(origin=previous,extreme=p,anchor=anchor,key=key,checked=False)
                 confirmed_extreme={'confirmed_low':_ref(anchor)} if up else {'confirmed_high':_ref(anchor)}
                 observation('翻空为多' if up else '翻多为空',key=_ref(key),
@@ -286,24 +327,31 @@ def reversal_trends(drawing, bars):
            for i,b in enumerate(bars)}
     result=[]; source_strokes=[]; local_count=0
     for stroke in drawing['strokes']:
-        raw=stroke['points']; counts=Counter(p['time'] for p in raw); ranks=Counter(); compact=[]; projected=[]
+        raw=stroke['points']; counts=Counter(p['time'] for p in raw)
+        ranks: Counter[str] = Counter()
+        compact: list[_WaveTurn] = []
+        projected=[]
         for source in raw:
-            p=dict(source,projection_count=counts[source['time']],projection_rank=ranks[source['time']])
+            p: _WaveTurn = {**source, 'index':source['index'], 'ordinal':source['ordinal'],
+                           'kind':source['kind'], 'value':source['value'],
+                           'time':source['time'], 'available_at':source['available_at'],
+                           'projection_count':counts[source['time']],
+                           'projection_rank':ranks[source['time']]}
             ranks[source['time']]+=1
             projected.append(dict(p))
             if compact and p['value']==compact[-1]['value']:
                 continue  # Earliest equal extreme wins; no zero-length reversal.
             compact.append(p)
         source_strokes.append(dict(id=stroke['id'],points=projected))
-        turns=[]
+        turns: list[_WaveTurn] = []
         for left,p,right in zip(compact,compact[1:],compact[2:]):
             if p['state'] in ('seed','developing'):
                 continue
             high=p['value']>left['value'] and p['value']>right['value']
             low=p['value']<left['value'] and p['value']<right['value']
             if high or low:
-                turns.append(dict(p,kind='H' if high else 'L',source_kind=p['kind'],state='reversal',
-                                  source_state=p['state']))
+                turns.append({**p, 'kind':'H' if high else 'L', 'source_kind':p['kind'], 'state':'reversal',
+                              'source_state':p['state']})
         local_count+=len(turns)
         waves=_wave_reversals(turns)
         if waves:
@@ -317,7 +365,9 @@ def reversal_trends(drawing, bars):
                 bear_bull_alternation_lows=bear_bull_alternation_lows(result,trend_level=1,bars=bars),
                 post_alternation_bull_highs=post_alternation_bull_highs(result,trend_level=1,bars=bars),
                 bullish_turn_signals=bullish_turn_signals(result,bars,trend_level=1),
-                aggregation_rule='HH_HL_or_LH_LL_switch_with_confirmed_cross_path_extremes',input_turn_count=local_count,
+                aggregation_rule='ordered_HH_then_HL_or_LL_then_LH_switch_with_confirmed_cross_path_extremes',input_turn_count=local_count,
                 confirmed_wave_count=sum(len(s['points']) for s in result),
                 break_basis='confirmed_polyline_extreme',retracement_threshold=.67,
-                note='先按原折线高低点确认短期多空，再在方向转换时取整段极值；相邻分段以真实已确认原折线极值正式衔接，并作为二级输入；未完成波段不画实线。')
+                note='一级方向转换须先创新高再确认后续抬高低点，或先创新低再确认后续降低高点；'
+                     '不能用推进前的旧回档确认新推进，确认前仍跟踪整段极值；相邻分段以真实已确认原折线极值正式衔接，'
+                     '并作为二级输入；未完成波段不画实线。')

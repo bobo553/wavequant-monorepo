@@ -40,6 +40,16 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
                 no: "停止：输入不可用",
             },
             {
+                id: "level-one-wave",
+                question: "一级转向已按推进后回档确认？",
+                detail: "上涨转换须先有更高高点，再确认其后的更高低点；下跌转换须先有更低低点，再确认其后的更低高点。不能用新推进之前的旧回档提前确认整段转向，相等不成立。未确认前仍更新整段最低或最高端点，已确认端点按当时可知时间发布；母子基础折线不变，二三级和全局策略消费同一正式一级结构。N 候选按独立基础折点形成，一级尚未转向不会单独取消 N 候选；依赖结构背景的买点继续使用此前已知背景。",
+                source: "lecture_trend.py · _wave_reversals / reversal_trends",
+                yes: "发布一级背景，继续独立 N 确认",
+                no: "保持原一级方向，继续独立 N 确认",
+                yesNext: "pivot",
+                noNext: "pivot",
+            },
+            {
                 id: "pivot",
                 question: "确认点足以形成 N 结构？",
                 detail: "按策略配置使用讲义因果、严格折线或日线代理确认点；至少三个点，且不能处于未解决的结构区间。",
@@ -510,6 +520,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
 ] as const;
 
 export const topologyProfileNotes = [
+    "V3 v98 一级趋势有序确认：先创新高再确认其后更高低点，或先创新低再确认其后更低高点；禁止用推进前旧回档提前冻结整段端点。确认前持续跟踪整段极值，基础母子折线约定保持，各级趋势与策略使用同一因果结构。",
     "V3 v96 五顶后低开长上影全清：此前有效正 N 已到五顶或十满，开盘 < 前收、收盘 ≤ 开盘（含十字线）、上影占振幅 ≥ 50% 即按 100% 退出目标清空余仓，无需放量或此前减仓。完整分钟以已完成五分钟线累计行情判定并在下一根开盘模拟；启用既有非一字限价模型且判定时已观察到跌停打开，可按下一棒跌停开盘原价、零滑点模拟。缺分钟显式日线收盘回退，模型允许非一字跌停按原始收盘价、零滑点卖出；两种假设都未验证排队。原有入场通道与 V1/V2 封存定义保持各自口径。",
     "V3 组合 A 回调放量突破：C 顶后回调及整理时间严格超过组合内部回调或最末同源子级回调，收盘守住 2/3，放量中大阳线收盘严格突破此前已知回调高点；不要求跳空，沿用全局风控与成交门禁。",
     "V3 新增二级后一级交替低点放量突破：两级低点在前日已依次确认且有效，放量阳线收盘突破一级翻多高及整理高，当日正 N 完成即可确认买点；沿用原防守、测幅与成交检查。",
@@ -522,4 +533,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "37c7b95ceffc21f31780051806ebac5e14f4bf1f1eb35be9e49ef2fa2c3f18a5";
+export const strategySourceDigest = "d26cd8cd2cfadd68250d45fa48c2948f2678b1f25d26f9ab26e61eacfc484ce4";

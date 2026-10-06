@@ -100,8 +100,9 @@ class LectureTrendTests(unittest.TestCase):
         turns=[dict(index=i,ordinal=0,value=v,kind='H' if i%2==0 else 'L',time=str(i),available_at=str(i+1)) for i,v in enumerate(values)]
         result=_wave_reversals(turns)
         self.assertEqual([(p['kind'],p['value'],p['index']) for p in result],[('L',16,5),('H',31,12),('L',18,19)])
-        self.assertEqual([p['confirmed_on_turn'] for p in result],[8,15,22])
-        self.assertEqual([p['available_at'] for p in result],['9','16','23'])
+        # The holding turn must follow the new counter-impulse, not precede it.
+        self.assertEqual([p['confirmed_on_turn'] for p in result],[9,16,23])
+        self.assertEqual([p['available_at'] for p in result],['10','17','24'])
         self.assertGreater(result[1]['index']-result[0]['index'],1)
         for end in range(4,len(turns)+1):
             prefix=_wave_reversals(turns[:end])
