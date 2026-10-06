@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 from math import isfinite
 
-from ..market_state.candle_strength import strong_bullish_candle
 from ..models.model import Bar
 
 
@@ -33,10 +32,8 @@ def five_top_entry_history(
 
     A same-day advance to ten-full cannot erase the five-top approached by that
     day's entry. On later days, completed or suspended goals no longer block.
-    A first strong close strictly crossing above the target is a direct attack,
-    exempt from the remaining-space gate. Reached-goal reattacks still pass the
-    separate global next-response gate; optional reward/risk settings cannot
-    remove either requirement.
+    All entry channels share this gate; optional reward/risk settings do not
+    change the minimum remaining space of one original N box.
     """
     dated: list[tuple[int, Mapping[str, object]]] = []
     for event in events:
@@ -76,9 +73,6 @@ def five_top_entry_history(
                 invalidated.add(key)
                 active.pop(key)
         near = [(key, goal) for key, goal in active.items() if goal.target - close <= goal.box]
-        if index and strong_bullish_candle(bar):
-            near = [(key, goal) for key, goal in near
-                    if not Decimal(str(bars[index - 1].close)) <= goal.target < close]
         if not near:
             continue
         (attack, origin), goal = min(near, key=lambda item: (item[1].target, -item[0][0]))

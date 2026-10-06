@@ -4,59 +4,6 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
-            "id": "MONOREPO-281",
-            "name": "five-top-rebreak-response-entry",
-            "title": "五顶震荡再攻等待次笔确认",
-            "description": "五顶之后区分直接强势站上和震荡后再攻，共用因果次笔强势或轧空门禁，修复新华文轩2019-10-16误买。",
-            "scope": "Core全局入场及因果状态、Web审计原因与拓扑、真实新华文轩回归",
-            "dependencies": ["MONOREPO-238", "MONOREPO-248"],
-            "status": "done",
-            "acceptanceCriteria": [
-                "已知有效五顶达到后识别直接站上与震荡再攻，不能借未来目标或失效目标",
-                "震荡再攻不得当天预借次笔；次笔仅在当时确认强势K线或真实轧空才可考虑买入",
-                "所有入场通道及加仓共用门禁，保持原防守、退出、量能及成交限制",
-                "新华文轩2019-10-16无LONG及BUY，历史前缀与部分日线缓存重放一致",
-                "直接强势及次笔强势/轧空正例、当笔/次笔空头抵抗反例与相关类型/构建通过，未运行项如实记录"
-            ],
-            "verification": [
-                {
-                    "command": "Original V97 real-prefix reproduction; pytest tests/test_five_top_rebreak_entry.py::test_real_october_16_strong_reattack_cannot_buy_before_its_response -q",
-                    "status": "passed",
-                    "summary": "使用既有新华文轩sh.601811冻结行情438棒（2018-01-02..2019-10-23），OHLC14.892717/16.199650/14.892717/16.199650和量10636787精确匹配用户。旧引擎10/16 LONG来自10/14正N、10/15抵抗、10/16 resistance_record_break；新复现断言先失败。用户明确确认首次直接强势站上例外、震荡再突破等待实际次笔。新门禁复用3%/60%/20%强势标准，原A严格低破失效，首次强势相等触碰可无震荡直接续上，目标冻结、同日新达标不回填。"
-                },
-                {
-                    "command": "Core pytest tests/test_five_top_rebreak_entry.py tests/test_five_top_entry.py tests/test_ten_full_entry.py tests/test_continuous_n_response.py::test_late_response_compares_original_attack_without_resetting_its_defense -q; pytest tests/test_combined_a_entry.py tests/test_combined_a_strategy.py tests/test_five_top_body_upper_shadow_exit.py -q",
-                    "status": "passed",
-                    "summary": "最终两组64+58共122项通过。覆盖真实10/16无LONG与正式账户无BUY、当日历史前缀及部分日线缓存一致、首次直接强势/相等触碰续上、次笔强势（含低开）或本次抵抗失败的干净新高收盘、弱次笔/破虚拟低/第三筆和其他N轧空不能补认、不同目标与升级、未知/失效/未来、普通/组合/浅回撤入口共用门禁。国芳2025-04-03同样属于2024-11-29五顶后再攻，按已确认全局规则改为等待次笔：组合结构58/70/9及价量证据仍在；原其他门禁和成交约束测试显式隔离新全局 veto，不宣称V98准许该日买入。母子长上影34项及V1/V2封存语义保留。此前更广的64项（含星网2019-02-13真实正例、2026-05-28弱线和前缀）455.83秒通过；不重复慢例。"
-                },
-                {
-                    "command": "Core strict mypy new observer; mypy --follow-imports=silent four strategy modules; pnpm --filter @wavequant/core typecheck; python -m build --no-isolation --outdir $env:TEMP/wavequant-281-build; isolated wheel install/import smoke",
-                    "status": "passed",
-                    "summary": "新增observer strict、4个策略模块类型及既定4文件strict基线/最终检查通过；最终sdist/wheel和隔离Windows依赖安装/导入通过，含新模块和V98 profile。首次no-deps smoke缺pyproject已声明tzdata，改为正常依赖安装后修复；未运行Python格式化或lint，不新增依赖、不提交产物。"
-                },
-                {
-                    "command": "Web node --test annotations.test.mjs trade-reasons.test.mjs wave-entry-evidence.test.mjs; topology Vitest; Web lint/typecheck/build; Prettier/JS syntax/diff/CodeGraph/Harness",
-                    "status": "passed",
-                    "summary": "73项Node及最终9项拓扑通过；中文拒因含旧五顶、震荡/当笔/次笔日期，10/16明确次笔未知，10/17展示失败，不从未来重建。全局拓扑覆盖所有独立通道；75来源归一摘要16a4f8c03f674dfa9d732bb4ea44c1b95a299b42f90b6c70c8eb57f4904d364b。Web lint零错误6条旧warning、类型和最终512MB/4MB生产构建通过，恢复仅next-env生成import；相关格式/语法/diff、索引和Harness通过。"
-                },
-                {
-                    "command": "Final frozen-series single_stock_result, 438 real bars",
-                    "status": "passed",
-                    "summary": "冻结438棒的完整正式账户入口及信号已验证10/16 LONG=0、BUY=0；3/08此前五顶14.24715084、9/10震荡、10/16新再攻待次笔，10/17低开收阴response_failed。不宣称线上AkShare/分钟或实盘成交；原始收盘15.37仅来自用户报价，不据此伪造全历史原始权限。"
-                },
-                {
-                    "command": "Complete Core/Web suites and browser/Playwright/external-minute verification",
-                    "status": "not-run",
-                    "summary": "完整Core/Web与浏览器/Playwright/真实分钟本轮未运行，留待独立验证。初轮扩大到华瓷等旧慢例的调用在规则校准中中止，不记通过，最终只运行已列的相关检查。原256/279历史failed完整保留，没有新增豁免或推送。"
-                },
-                {
-                    "command": "Local main no-ff merge; main frozen 438-bar single_stock_result; GET API8765/Web13003 backtest-version?run=acceptance_20260908_verified&variant=lecture_v3; annotations.js HTTP",
-                    "status": "passed",
-                    "summary": "实现14594e1经5319f37无冲突no-ff合并本地main，专属分支同步同Git树。main Harness通过，明确导入main新observer重放438棒再次确认10/16 LONG=0、BUY=0；10/17 next response_failed，源为既有冻结行情，不伪造原始权限。常驻8765和13003均V98、engine482f2a843e317d62d06e94a6ba1a10881d75afd3dcaa1386824cf2bca17f2141、version219dcfbf...一致；接口会检查当前磁盘源与已加载engine。新中文拒因JS HTTP200。需刷新并重新回测读取新策略；未运行线上AkShare完整账户或真实分钟/浏览器，未推送。"
-                }
-            ]
-        },
-        {
             "id": "MONOREPO-280",
             "name": "locate-keeps-stock-return-visible",
             "title": "定位滚动保留个股净收益",

@@ -116,7 +116,6 @@ const REASONS = {
     wave_five_top_gap_upper_shadow_clear: "五顶或十满到位后低开、收盘不高于开盘且上影占振幅至少 50%，触发全仓退出",
     wave_five_top_body_upper_shadow_clear: "五顶或十满到位后，今日实体被昨日实体包含且上影占振幅至少 50%，清空余仓",
     wave_five_top_entry_too_close: "距已知五顶目标不超过原正 N 一箱，禁止新买入或加仓",
-    wave_five_top_rebreak_response_pending: "五顶后震荡再攻须等次笔强势线或本次抵抗失败的轧空确认，禁止提前买入或加仓",
     wave_ten_full_pullback_pending:
         "十满后等待短期再突破、A 段 2/3 回撤，或半幅回撤且 B 段时间长于 A 段，暂缓新买入或加仓",
     volume_inverse_n_clear: "倒 N 确认且成交量超过前日，当日直接清仓",
@@ -816,12 +815,6 @@ export function buildAnnotations(view, theory) {
             )
                 ? `十满于 ${event.wave_ten_full_reached_date} 到达，日高 ${num(event.wave_ten_full_high)} 元；从 ${event.wave_retracement_anchor_source === "b_low" ? "最近 B 浪低点" : "A 段起点"} ${num(event.wave_retracement_anchor)} 元起算，回撤 ${event.wave_retracement_ratio === 0.5 ? "1/2" : "2/3"} 的价格线为 ${num(event.wave_retracement_threshold)} 元。${event.wave_timed_half_retracement && Number.isFinite(event.wave_half_retracement_threshold) ? `另可在 B 段最低收盘达到半幅线 ${num(event.wave_half_retracement_threshold)} 元、且回调至 B 低点的时间严格长于 A 段时解除；当前 A 段 ${event.wave_a_duration} 日、B 段 ${event.wave_b_duration} 日${Number.isFinite(event.wave_b_low) ? `，B 低 ${num(event.wave_b_low)} 元` : ""}。` : ""}${Number.isInteger(event.wave_breakout_window) ? `也可在 ${event.wave_breakout_window} 个交易日内严格突破到达日高点。` : ""}条件在收盘后确认，下一交易日起解除限制。`
                 : "";
-        const fiveTopRebreak =
-            event.reason === "wave_five_top_rebreak_response_pending" &&
-            Number.isFinite(event.wave_five_top_target) &&
-            event.wave_five_top_reached_date
-                ? `${event.wave_n_date ? `${event.wave_n_date} 正 N；` : ""}${event.wave_five_top_reached_date} 已到五顶 ${num(event.wave_five_top_target, 4)} 元。${event.wave_oscillation_date ? `${event.wave_oscillation_date} 起发生震荡；` : ""}${event.wave_rebreak_date ? `${event.wave_rebreak_date} 再攻` : "等待重新攻击"}，${event.wave_response_status === "await_next_session" ? "次笔尚未出现，当前强势阳线也不能代替次笔确认" : event.wave_response_status === "response_failed" ? `${event.wave_response_date} 次笔未通过强势或本次轧空条件` : "尚未获得有效次笔确认"}。首次直接强势站上可放行；震荡再攻仅在下一实际交易日，以已观察强势线或本次抵抗失败、收盘突破当笔高点且守住当笔虚拟低点的轧空考虑买入。既有其他买点的轧空标签不能绕过，后续第三笔不补认。`
-                : "";
         items.push({
             id: event.id,
             time: event.available_at,
@@ -834,7 +827,7 @@ export function buildAnnotations(view, theory) {
                 abc || squeezeAlternation
                     ? abcDescription(event, view)
                     : candidateRejection
-                      ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${fiveTopRisk}${tenFullRisk}${fiveTopRebreak}未产生买入信号，也未提交买单。`
+                      ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${fiveTopRisk}${tenFullRisk}未产生买入信号，也未提交买单。`
                       : spec?.[1] || "当前引擎已记录的规则事件。",
             category: abc ? "tertiary-abc" : candidateRejection ? "entry-rejections" : spec?.[3] || "rules",
             priority: candidateRejection ? 155 : spec?.[2] || 10,

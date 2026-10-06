@@ -220,8 +220,7 @@ def test_v3_profiles_use_a_origin_two_thirds_and_timed_half(variant):
     config = SystemStrategy(**profile["strategy"])
     config.validate()
     definition = profile["definition"]
-    assert profile["profile_version"] == "five_top_rebreak_response_v98_" + variant
-    assert "wait_exact_next_session" in profile["definition"]["five_top_rebreak_entry"]
+    assert profile["profile_version"] == "five_top_body_upper_shadow_v97_" + variant
     assert "five_top_gap_upper_shadow_completed_5m_or_daily_close_clear" in definition["exits"]
     assert "close_le_open_including_doji" in definition["wave_five_top_gap_upper_shadow_exit"]
     assert "five_top_body_upper_shadow_completed_5m_or_daily_close_clear" in definition["exits"]

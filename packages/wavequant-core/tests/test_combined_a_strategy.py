@@ -13,7 +13,6 @@ from wavequant.application.analytics.trade_evidence import enrich_ledger
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
-from wavequant.domain.strategies.five_top_rebreak import FIVE_TOP_REBREAK_PENDING, FiveTopRebreakHistory
 from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
 
 
@@ -29,27 +28,23 @@ def guofang_combined():
     return bars, now, config, generate_system_signals(bars, config)
 
 
-def test_real_combined_structure_survives_but_post_five_top_reattack_waits_for_response(guofang_combined):
+def test_real_consolidation_includes_wait_after_low_and_generates_new_global_route(guofang_combined):
     bars, now, config, generated = guofang_combined
     old = generate_system_signals(bars, replace(config, combined_a_entry_enabled=False))
     assert not any(signal.side == "LONG" and signal.bar_index == now for signal in old.signals)
-    assert not any(signal.side == "LONG" and signal.bar_index == now for signal in generated.signals)
-    rejected = next(event for event in generated.audit if event["bar_index"] == now
-                    and event["event"] == "entry_rejected" and event["reason"] == FIVE_TOP_REBREAK_PENDING)
-    assert rejected["wave_five_top_reached_date"] == "2024-11-29"
-    assert rejected["wave_rebreak_date"] == "2025-04-03"
-    assert rejected["wave_response_status"] == "await_next_session"
+    signal = next(signal for signal in generated.signals if signal.side == "LONG" and signal.bar_index == now)
+    assert signal.reason == "system_combined_a_pullback_breakout"
+    assert signal.reference_price == pytest.approx(7.158380489944116)
+    assert signal.invalidation_price == pytest.approx(5.887904563293728)
+    assert signal.target_price == pytest.approx(9.316823462102839)
     proof = next(event for event in generated.audit if event["bar_index"] == now
-                 and event["event"] == "combined_a_pullback_breakout")
-    assert bars[now].close == pytest.approx(7.158380489944116)
-    assert proof["stop"] == pytest.approx(5.887904563293728)
-    assert proof["target"] == pytest.approx(9.316823462102839)
+                 and event["event"] == "long_transition_evidence")
     assert proof["combined_a_pullback_sessions"] == 58
     assert proof["combined_a_internal_pullback_sessions"] == 70
     assert proof["combined_a_child_pullback_sessions"] == 9
     assert proof["combined_a_pullback_date"] == "2025-01-13"
     assert proof["combined_a_minimum_close"] > proof["combined_a_two_thirds_price"]
-    assert proof["breakout_volume_multiple"] == pytest.approx(20_135_200 / 6_428_999)
+    assert signal.rvol == pytest.approx(20_135_200 / 6_428_999)
 
 
 def test_prefix_and_partial_volume_cache_do_not_borrow_later_breakout(guofang_combined):
@@ -70,9 +65,6 @@ def test_prefix_and_partial_volume_cache_do_not_borrow_later_breakout(guofang_co
 @pytest.mark.parametrize("gate", ["two_t", "five_top", "ten_full", "secondary", "inverse", "new_inverse_low"])
 def test_combined_route_cannot_bypass_global_gates(guofang_combined, monkeypatch, gate):
     bars, now, config, _ = guofang_combined
-    # Isolate each older gate; the real reached-five-top veto is asserted above.
-    monkeypatch.setattr("wavequant.domain.strategies.integrated_strategy.five_top_rebreak_history",
-                        lambda *args, **kwargs: FiveTopRebreakHistory())
     reason = "test_global_gate"
     if gate in ("two_t", "five_top", "ten_full", "secondary"):
         module_name, function_name = {
@@ -103,13 +95,8 @@ def test_combined_route_cannot_bypass_global_gates(guofang_combined, monkeypatch
                and event["reason"] == reason for event in generated.audit)
 
 
-def test_isolated_signal_execution_preserves_real_permissions_and_reward_risk(guofang_combined, monkeypatch):
-    bars, now, config, actual = guofang_combined
-    assert not any(signal.side == "LONG" and signal.bar_index == now for signal in actual.signals)
-    # This execution contract consumes an isolated signal, not a V98 buy permission.
-    monkeypatch.setattr("wavequant.domain.strategies.integrated_strategy.five_top_rebreak_history",
-                        lambda *args, **kwargs: FiveTopRebreakHistory())
-    generated = generate_system_signals(bars, config)
+def test_real_same_close_fill_and_ledger_preserve_permissions_and_reward_risk(guofang_combined):
+    bars, now, config, generated = guofang_combined
     bars = bars[:now + 1]
     signal = next(signal for signal in generated.signals if signal.side == "LONG" and signal.bar_index == now)
     execution = StrategyConfig(entry_at_close=True, nonflat_limit_close_fill=True, exit_on_target=False)
@@ -132,8 +119,6 @@ def test_exhausted_combined_target_does_not_suppress_independent_shallow_route(g
     bars, now, config, _ = guofang_combined
     combined_module = importlib.import_module("wavequant.domain.strategies.integrated_strategy")
     shallow_module = importlib.import_module("wavequant.domain.strategies.shallow_base_breakout")
-    # The fallback's own target validation is independent of the real global veto.
-    monkeypatch.setattr(combined_module, "five_top_rebreak_history", lambda *args, **kwargs: FiveTopRebreakHistory())
     observe_combined = combined_module.combined_a_entry_history
 
     def exhausted(*args, **kwargs):

@@ -94,17 +94,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
                 question: "此前十满到位后的买入限制已解除？",
                 detail: "十满到达当日先暂停所有 V3 新买入与加仓，包括浅回撤横盘突破。A 段取原正 N 起点到十满当日高点；随后 B 段最低价从高点回撤至少 2/3 可在下一交易日起解除，不要求时间。若 B 段最低收盘只达到半幅，则从高点到 B 最低价的交易日间隔必须严格长于 A 段上涨间隔。23 个交易日内严格突破十满高点也可在下一交易日起解除；逾期创新高不能代替回撤条件。",
                 source: "ten_full_entry.py · ten_full_entry_history；integrated_strategy.py · generate_system_signals",
-                yes: "检查五顶震荡再攻",
+                yes: "检查买点分类",
                 no: "拒绝：wave_ten_full_pullback_pending",
-                yesNext: "five-top-rebreak",
-            },
-            {
-                id: "five-top-rebreak",
-                question: "五顶后直接强势，或震荡再攻的次笔已确认？",
-                detail: "只使用此前交易日达到且原 A 未失效的五顶；固定到达时目标，同日新目标不倒推。首次直接强势站上可放行；强势需实体/开盘 ≥3%、实体/振幅 ≥60%、上影/振幅 ≤20%。连续干净收高可续用，低开抵抗或收盘不再上升开始震荡。震荡后阳线收盘严格突破前日最高及五顶为再攻，当笔即使强势也等待次笔；下一实际交易日须收盘继续上升、守住当笔虚拟低点，且为强势线，或当笔空头抵抗被次笔无新抵抗的阳线收盘严格突破当笔最高、确认本次轧空。次笔失败后第三笔不能回填，可开始新的再攻等待下一笔。普通正 N、C 波、组合 A、浅回撤和加仓共用门禁，其他 N 的轧空标签不能绕过；低于旧五顶仍沿用原回调门禁。收盘相等不算站上，原 A 起点严格低破或已知失效不可复活。",
-                source: "five_top_rebreak.py · five_top_rebreak_history；integrated_strategy.py · global_five_top_rebreak_guard",
-                yes: "继续检查买点分类和其他风险",
-                no: "拒绝：wave_five_top_rebreak_response_pending",
                 yesNext: "first-buy",
             },
             {
@@ -519,7 +510,6 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
 ] as const;
 
 export const topologyProfileNotes = [
-    "V3 v98 五顶再攻：首次直接强势站上保留，五顶后震荡再攻必须等下一实际交易日的强势或本次抵抗失败轧空确认。当前强势不借用未来次笔，其他 N 的轧空及独立买点不能绕过。原退出、十满、量能、防守与成交门禁继续适用；V1/V2 封存定义保持。",
     "V3 v96 五顶后低开长上影全清：此前有效正 N 已到五顶或十满，开盘 < 前收、收盘 ≤ 开盘（含十字线）、上影占振幅 ≥ 50% 即按 100% 退出目标清空余仓，无需放量或此前减仓。完整分钟以已完成五分钟线累计行情判定并在下一根开盘模拟；启用既有非一字限价模型且判定时已观察到跌停打开，可按下一棒跌停开盘原价、零滑点模拟。缺分钟显式日线收盘回退，模型允许非一字跌停按原始收盘价、零滑点卖出；两种假设都未验证排队。原有入场通道与 V1/V2 封存定义保持各自口径。",
     "V3 组合 A 回调放量突破：C 顶后回调及整理时间严格超过组合内部回调或最末同源子级回调，收盘守住 2/3，放量中大阳线收盘严格突破此前已知回调高点；不要求跳空，沿用全局风控与成交门禁。",
     "V3 新增二级后一级交替低点放量突破：两级低点在前日已依次确认且有效，放量阳线收盘突破一级翻多高及整理高，当日正 N 完成即可确认买点；沿用原防守、测幅与成交检查。",
@@ -532,4 +522,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "16a4f8c03f674dfa9d732bb4ea44c1b95a299b42f90b6c70c8eb57f4904d364b";
+export const strategySourceDigest = "37c7b95ceffc21f31780051806ebac5e14f4bf1f1eb35be9e49ef2fa2c3f18a5";

@@ -30,7 +30,6 @@ from .wave_exhaustion_exit import (
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
 from .two_t_resistance import two_t_resistance_history
 from .five_top_entry import five_top_entry_history
-from .five_top_rebreak import five_top_rebreak_history
 from .ten_full_entry import RetracementAnchor, ten_full_entry_history
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.wave_strength import StrengthScale, measure_strength
@@ -763,7 +762,6 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         key=lambda event: event["bar_index"],
     ) if whole_wave else []
     five_top_entry_risks = five_top_entry_history(bars, projection_events) if whole_wave else {}
-    five_top_rebreak = five_top_rebreak_history(bars, projection_events) if whole_wave else None
     ten_full_entry_risks = ten_full_entry_history(
         bars, projection_events,
         breakout_window=config.ten_full_breakout_window,
@@ -855,13 +853,6 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         if ten_full_entry_risk is not None:
             log(i, 'entry_rejected', candidate_channel='global_ten_full_pullback_guard', **ten_full_entry_risk)
             continue
-        rebreak_risk = five_top_rebreak.risks.get(i) if five_top_rebreak is not None else None
-        if rebreak_risk is not None:
-            log(i, 'entry_rejected', candidate_channel='global_five_top_rebreak_guard', **rebreak_risk)
-            continue
-        rebreak_confirmation = five_top_rebreak.confirmations.get(i) if five_top_rebreak is not None else None
-        if rebreak_confirmation is not None:
-            log(i, 'five_top_rebreak_confirmed', **rebreak_confirmation)
         choices = events.get(i, [])+resumptions.get(i, [])+consolidation_events.get(i, [])+wave_events.get(i, []) if config.regime_filter else [
             (c, c['regime'].frames[0]) for c in candidates if c['attack'] == i]
         def entry_priority(item):
