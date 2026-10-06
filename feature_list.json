@@ -4,6 +4,58 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-281",
+            "name": "level-one-ordered-retracement-confirmation",
+            "title": "一级趋势按推进后回档确认端点",
+            "description": "修复用反向推进之前的旧回档提前确认一级波段，必须先创新高再确认后续更高低点或先创新低再确认后续更低高点，保留整段极值与历史因果。",
+            "scope": "Core一级趋势聚合、真实行情与镜像边界回归、全局版本和Web策略拓扑说明",
+            "dependencies": ["MONOREPO-275"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "襄阳轴承真实行情2024-12-30高7.29连接2025-01-13低5.51，不连接01-07低5.55",
+                "反向双抬高或双降低须按先推进、再回档的真实折点顺序确认；相等不转向，确认前继续跟踪更低或更高整段极值，上下规则镜像",
+                "只消费当时已确认折点，历史前缀不重画既有确认；母子基础折线与二三级使用共用一级结构",
+                "相关定向回归、类型、构建和Harness通过，策略拓扑与版本同步，未运行完整套件和浏览器如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_level_one_wave_boundary.py tests/test_lecture_trend.py tests/test_secondary_trend.py tests/test_tertiary_trend.py tests/test_lecture_drawing.py tests/test_polyline.py tests/test_trend_structure.py tests/test_ten_full_entry.py tests/test_backtest_version.py tests/test_lecture_strategy.py tests/test_market_data_repository.py tests/test_trend_landmarks.py -q; pytest tests/test_xiangyang_n_projection.py -q",
+                    "status": "passed",
+                    "summary": "最终168项及57子用例、襄阳2023 N/轧空/五顶十满13项通过。新增15项含真实12-30到01-13、镜像、相等、旧回档不能确认新推进、确认前整段极值、所有历史前缀及Core/Web共用快照。旧版新用例首轮12失败2通过；锁整段前界尝试吞掉12-30已撤销，最终仅顺序确认。旧波段测试原端点保持，确认日按新规则后移一折点；基础母子/二三级相邻回归通过。"
+                },
+                {
+                    "command": "read-only D:/TDX/vipdoc/sz/lday/sz000678.day; recompute 2018-start level1/2/3 at 2025-01-10, 01-13, 01-21, 02-28 and 2026-09-30",
+                    "status": "passed",
+                    "summary": "五截面1688/1689/1695/1717/2089根真实原始日线重算：12-30高7.29（01-09可知）接01-13低5.51（01-21可知）；01-10/13没有提前发布低点，后来完整历史同端点且无01-07一级点。一二三级同源重算，非完整账户回测或浏览器视觉验收。"
+                },
+                {
+                    "command": "node --test tests/level-one-wave-endpoint.test.mjs tests/lecture-overlay.test.mjs tests/structure-signals.test.mjs; pnpm exec vitest run src/features/research-workbench/topology/topology-data.test.ts",
+                    "status": "passed",
+                    "summary": "32项Node和9项拓扑通过，实际overlay路径拼接与projectStroke投影正确连接日期/价格且不改写数据；一级顺序门禁和74源码指纹同步。"
+                },
+                {
+                    "command": "mypy --follow-imports=silent lecture_trend.py strategy_profiles.py; pnpm --filter @wavequant/core typecheck; pnpm --filter @wavequant/core build; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web build; restore known next-env generated import; pnpm --filter wavequant-web typecheck; targeted Prettier; git diff --check; CodeGraph init",
+                    "status": "passed",
+                    "summary": "修改两模块mypy、既定四模块strict、sdist/wheel及Web相关格式、lint（0错误6旧warning）、生产构建和类型通过。新worktree初始CodeGraph仅目录无索引，sync提示未初始化后一次init成功722文件；首次quick安装依赖完成并运行静态检查，API环境检查另行解决。默认专属feat-一级趋势端点延续，基线main3cfccbf。Node已补装.nvmrc指定24.16.0，仅任务PATH使用，不改全局版本；pnpm10.26.2。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api typecheck; main fresh mypy --no-incremental comparison; install declared isolated API dependencies and align mypy 2.3.1",
+                    "status": "passed",
+                    "summary": "首次quick因API无mypy失败，临时借用既有环境及新API环境mypy2.4出现58条server检查差异；main现用2.3.1的常规及fresh11文件均通过。按pyproject创建独立API环境并对齐2.3.1（仍在声明>=2.3,<3范围），最终相同API命令11文件通过。不修改API代码、依赖声明或严格门禁；不是main既有失败。"
+                },
+                {
+                    "command": "Node24.16.0: ./init.ps1 -Mode quick; pnpm --filter wavequant-web exec vitest run topology-data.test.ts; final Web build; wheel install into temporary isolated venv and smoke",
+                    "status": "passed",
+                    "summary": "声明版本Node24.16.0/pnpm10.26.2下首次检出quick最终21/21静态任务通过，环境初始失败已解决且不降级检查。最终拓扑9项通过，额外复核明确一级未确认不独立取消基础N候选；Core最终wheel独立安装导入及有序端点/V98烟测通过。完整测试与浏览器仍未运行。"
+                },
+                {
+                    "command": "Full Core/Web suites, browser/Playwright, formal full-account signal/fill comparison",
+                    "status": "not-run",
+                    "summary": "按用户当次规则未运行完整套件、浏览器、Playwright或完整账户差异；本次181项Core与41项Web定向验证不等价于完整验证。全局V3升至v98；结构确认日期可后移，依赖这些结构的历史信号与成交需要重新计算。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-280",
             "name": "locate-keeps-stock-return-visible",
             "title": "定位滚动保留个股净收益",

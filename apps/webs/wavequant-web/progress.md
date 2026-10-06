@@ -1,3 +1,9 @@
+MONOREPO-281（2026-10-07，V98）：一级转向必须先反向推进再确认其后的回档：更高高点后更高低点，或更低低点后更低高点，严格比较。旧回档不能确认新推进；确认前延续整段极值，等值取较早端点，已确认结果前缀稳定。襄阳12-30高7.29连接01-13低5.51（01-21可知），不再连接01-07低5.55。基础母子折线不变，二三级与全局方案共用一级结果，历史信号/成交需重新计算。
+
+181项Core及57子用例、32项Web Node和9项拓扑通过；168项组含新15项真实/镜像/相等/全部历史前缀/共用快照，另13项2023襄阳正N与轧空五顶十满保持。2018起五截面至2026-09-30共2089棒真实原始行情重算正确；图表实际路径拼接及投影正确，不是浏览器像素验收。修改两模块mypy、Core严格四文件、sdist/wheel及Web格式/lint（6旧warning）/类型/生产构建通过。首次环境检查API无mypy，2.4环境出现58错误，按pyproject隔离安装并对齐main现用mypy2.3.1后11文件通过；未改API。Node补装24.16.0仅任务PATH使用。74源码拓扑指纹同步，CodeGraph新worktree一次初始化722文件。
+
+独立worktree `C:/Users/zb/.codex/worktrees/level1-endpoint-continuation/wavequant-monorepo`，分支 `feat-一级趋势端点延续`，基线main3cfccbf。按默认流程本地提交合并，不推送。完整Core/Web套件、浏览器/Playwright与完整账户差异待独立验证；不修改此前256或其他功能的失败事实。声明Node/pnpm下首次检出quick最终21/21静态任务通过，wheel独立安装烟测通过。281标done并恢复256原唯一in-progress及全部旧证据。最终Git及常驻服务结果见本轮交付。
+
 MONOREPO-280（2026-10-06）定位滚动保留个股净收益已实现：用户确认所指为上方净收益百分比；此前price-chart居中或selection-info近邻滚动会将指标移出视口。新增共用scrollChartWithMetrics，以指标区为滚动锚点，实际测量应用壳导航高度并留12px；inline nearest保持横向位置，缺指标区则回退图表卡片/图表。成交节点/账本、拦截、最大回撤、跨日期订单、最新成交、仅看成交与ABC定位共用；原K线选中/区间/闪烁及净收益计算保持。首4例原实现均复现-62/-230px，最终新9例加相邻35Node、市场2项、拓扑8项通过；最终lint0错误6旧警告、生产build、恢复仅已知next-env生成行后的独立typecheck/JS语法/差异/CodeGraph通过。市场旧断言仅适配共用滚动和已有action.force，行为断言保持。DOM受控测量不代表浏览器像素验证，完整Web/浏览器/Playwright按用户规则未跑。280done，恢复256唯一in-progress，其他功能和全部失败证据逐项保持；沿原会话worktree/分支按默认流程本地提交合并，不自动推送，最终Git和服务结果见本轮交付。
 
 MONOREPO-279（2026-10-06）已合并并常驻生效：实现与授权记录经64994b7合并，实际两端口V97/engine 776f62173255；annotations/trade-reasons/trade-review/filled-trade-copy四模块HTTP200且逐字匹配main。main拓扑8项和Harness通过，先前74Node/类型/构建记录保持。正式1777棒接口run akshare-99beefd56403f8cd0233d0c2返回4/25母子全清100原始股raw12.53元余0，4/11十满和4/24母实体证据齐全，缺分钟采用收盘模型、队列未验证。页面刷新并重新回测可读取新版本，未宣称实际用户浏览器视觉验收；不推送/重启/手工改缓存。4项旧失败按用户授权保留，279backlog待独立验证、256唯一in-progress，完整Web/浏览器/Playwright未跑。

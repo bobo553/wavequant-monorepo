@@ -41,6 +41,17 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("requires the holding turn after a fresh level-one counter-impulse", () => {
+        const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "level-one-wave");
+        expect(gate?.detail).toMatch(/先有更高高点.*其后的更高低点/);
+        expect(gate?.detail).toMatch(/先有更低低点.*其后的更低高点/);
+        expect(gate?.detail).toMatch(/不能用新推进之前的旧回档.*相等不成立/);
+        expect(gate?.detail).toMatch(/未确认前.*整段最低或最高端点.*可知时间/);
+        expect(gate?.detail).toMatch(/母子基础折线不变.*全局策略消费同一正式一级结构/);
+        expect(gate?.detail).toMatch(/一级尚未转向不会单独取消 N 候选/);
+        expect(gate?.yesNext).toBe("pivot");
+        expect(gate?.noNext).toBe("pivot");
+    });
     it("distinguishes shared-boundary outside C from strict mother-candle geometry", () => {
         const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "n-geometry");
         expect(gate?.detail).toMatch(/讲义因果外包 C.*等低创新高.*等高创新低/);
