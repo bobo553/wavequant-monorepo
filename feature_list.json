@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-277",
+    "activeFeature": "MONOREPO-256",
     "features": [
         {
             "id": "MONOREPO-277",
@@ -10,7 +10,7 @@
             "description": "按用户请求完整撤回V95轧空强势K统一入场及其验收合并，恢复此前V94；保留275正N识别与五顶十满修复。",
             "scope": "精确撤回5cdfdd9及fc0b3aa，恢复93dea5c源码与测试，核对实际V94服务",
             "dependencies": ["MONOREPO-275"],
-            "status": "in-progress",
+            "status": "done",
             "acceptanceCriteria": [
                 "两次merge通过反向提交撤回，不改写历史、不推送；276不自动重新启用",
                 "生产代码、测试、讲义与93dea5c精确一致，正N识别及五顶十满修复保留",
@@ -49,9 +49,9 @@
                     "summary": "按用户开发验证节奏没有运行完整套件、浏览器端到端和外部分钟；精确恢复旧实现并使用相关定向验证，不顺手修改无关规则。"
                 },
                 {
-                    "command": "local main merge and actual V94 service/account verification",
-                    "status": "not-run",
-                    "summary": "待本地main合并后核验8765/13003恢复V94与实际000678结果，无推送。"
+                    "command": "local main no-ff merge; HTTP8765/13003 V94; formal sz.000678 2018..2023-07-04 exact old result/source comparison",
+                    "status": "passed",
+                    "summary": "撤回5417e81经9270b33无冲突no-ff合并本地main。实际8765/13003自动恢复V94/7a077751，128来源SHA256与main精确相同；annotations/charts/n-target-focus三模块HTTP200逐字匹配，统一强Kreason已移除。正式d720a5fd的1317日线、信号、3493审计、订单、成交、theory与原V94逐项完全一致，6/15恢复唯一BUY/filled400股5.86293元，6/12原N与五顶6.97/十满9.37均保留且已满足。首次热重载连接重置后正常请求成功，无手工重启/缓存改写，不推送；恢复256原in-progress及全部失败证据。"
                 }
             ]
         },
@@ -845,7 +845,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "backlog",
+            "status": "in-progress",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
