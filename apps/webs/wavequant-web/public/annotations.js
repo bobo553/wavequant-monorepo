@@ -134,7 +134,6 @@ const REASONS = {
     attack_not_in_same_bullish_episode: "攻击与当前多头趋势不在同一结构段",
     countermove_too_deep: "回档幅度超限",
     attack_volume_unavailable_or_low: "量能不足或无法计算",
-    entry_requires_strong_bullish_candle: "轧空入场未满足强势 K 线形态，禁止该买点新买入与加仓",
     no_live_structural_risk_reward: "没有有效结构止损或未达目标",
     insufficient_close_gross_reward_risk: "收盘参考盈亏比不足",
     wave_no_alternation_at_attack: "N 字攻击时尚无已确认的空多交替",
@@ -813,23 +812,6 @@ export function buildAnnotations(view, theory) {
             )
                 ? `十满于 ${event.wave_ten_full_reached_date} 到达，日高 ${num(event.wave_ten_full_high)} 元；从 ${event.wave_retracement_anchor_source === "b_low" ? "最近 B 浪低点" : "A 段起点"} ${num(event.wave_retracement_anchor)} 元起算，回撤 ${event.wave_retracement_ratio === 0.5 ? "1/2" : "2/3"} 的价格线为 ${num(event.wave_retracement_threshold)} 元。${event.wave_timed_half_retracement && Number.isFinite(event.wave_half_retracement_threshold) ? `另可在 B 段最低收盘达到半幅线 ${num(event.wave_half_retracement_threshold)} 元、且回调至 B 低点的时间严格长于 A 段时解除；当前 A 段 ${event.wave_a_duration} 日、B 段 ${event.wave_b_duration} 日${Number.isFinite(event.wave_b_low) ? `，B 低 ${num(event.wave_b_low)} 元` : ""}。` : ""}${Number.isInteger(event.wave_breakout_window) ? `也可在 ${event.wave_breakout_window} 个交易日内严格突破到达日高点。` : ""}条件在收盘后确认，下一交易日起解除限制。`
                 : "";
-        const strongCandleRisk =
-            event.reason === "entry_requires_strong_bullish_candle"
-                ? `强势 K 要求实体/开盘 ≥ 3%、实体/振幅 ≥ 60%、上影/振幅 ≤ 20%，等号有效。当前${[
-                      ["实体/开盘", event.confirmation_body_open_ratio],
-                      ["实体/振幅", event.confirmation_body_range_ratio],
-                      ["上影/振幅", event.confirmation_upper_shadow_ratio],
-                  ]
-                      .map(
-                          ([label, ratio]) =>
-                              `${label} ${Number.isFinite(ratio) ? `${num(ratio * 100)}%` : "不可计算"}`,
-                      )
-                      .join("，")}。轧空盘态及目标推演仍保留。`
-                : "";
-        const candidateOutcome =
-            event.reason === "entry_requires_strong_bullish_candle"
-                ? "该轧空候选未产生买入信号，也未提交对应买单。"
-                : "未产生买入信号，也未提交买单。";
         items.push({
             id: event.id,
             time: event.available_at,
@@ -842,7 +824,7 @@ export function buildAnnotations(view, theory) {
                 abc || squeezeAlternation
                     ? abcDescription(event, view)
                     : candidateRejection
-                      ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${fiveTopRisk}${tenFullRisk}${strongCandleRisk}${candidateOutcome}`
+                      ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${fiveTopRisk}${tenFullRisk}未产生买入信号，也未提交买单。`
                       : spec?.[1] || "当前引擎已记录的规则事件。",
             category: abc ? "tertiary-abc" : candidateRejection ? "entry-rejections" : spec?.[3] || "rules",
             priority: candidateRejection ? 155 : spec?.[2] || 10,

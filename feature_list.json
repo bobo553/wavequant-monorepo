@@ -1,57 +1,57 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-256",
+    "activeFeature": "MONOREPO-277",
     "features": [
         {
-            "id": "MONOREPO-276",
-            "name": "strong-candle-squeeze-entry",
-            "title": "强势K线轧空入场门禁",
-            "description": "按用户要求，所有全局V3轧空买点的新买入及加仓必须满足当日强势阳线形态；保留轧空盘态和N目标推演。",
-            "scope": "Core共同N轧空入场通道、V95、弱K审计及Web说明、真实襄阳轴承回归",
+            "id": "MONOREPO-277",
+            "name": "revert-squeeze-strong-candle-entry",
+            "title": "撤回轧空强势K入场合并",
+            "description": "按用户请求完整撤回V95轧空强势K统一入场及其验收合并，恢复此前V94；保留275正N识别与五顶十满修复。",
+            "scope": "精确撤回5cdfdd9及fc0b3aa，恢复93dea5c源码与测试，核对实际V94服务",
             "dependencies": ["MONOREPO-275"],
-            "status": "done",
+            "status": "in-progress",
             "acceptanceCriteria": [
-                "所有V3轧空入场含N、恢复及C浪轧空统一要求实体至少开盘3%、至少振幅60%、上影至多振幅20%，等号有效且可选过滤不能绕过",
-                "弱K拒买不消费N，后续有效新确认可重新审核；独立组合A和浅回撤保留自身规则，退出、盘态、五顶十满和历史可知条件不变",
-                "真实000678的2023-06-15保留轧空但没有LONG或BUY，6月12日正N及五顶6.97、十满9.37保持",
-                "相关定向回归、类型、构建和Harness通过，独立复核并本地合并main，保留256原状态及失败证据，不推送"
+                "两次merge通过反向提交撤回，不改写历史、不推送；276不自动重新启用",
+                "生产代码、测试、讲义与93dea5c精确一致，正N识别及五顶十满修复保留",
+                "相关定向回归、静态/类型/构建及Harness通过，独立复核并合并本地main，服务实际恢复V94",
+                "恢复256原in-progress及全部历史失败证据，仅增加277撤回审计记录"
             ],
             "verification": [
                 {
-                    "command": "pytest tests/test_strong_candle_entry.py tests/test_xiangyang_n_projection.py -q; old implementation reproduction",
+                    "command": "git revert --no-commit -m 1 5cdfdd9; git revert --no-commit -m 1 fc0b3aa; git diff 93dea5c --exit-code",
                     "status": "passed",
-                    "summary": "最终38项通过（新增25项+真实13项）。旧实现新增6/15无LONG断言先1失败；当前保留正N/强轧空/五顶6.97/十满9.37，6/15拒买。覆盖精确3%/60%/20%等号及微小越界、弱后强新确认、不借旧标签、部分K缓存、量能独立、6个V3变体、退出优先和独立通道兼容。"
+                    "summary": "按新到旧两次反向恢复，无冲突，追加撤回审计前整树与93dea5c精确相同；当前仅4个状态/进度/交接文件有本轮审计差异。V94生产、原测试/讲义、原局部攻击棒强K路径及275N/目标修复保留，276全部源码/新25测试/UI规则移除，不改Git历史。"
                 },
                 {
-                    "command": "pytest test_strong_candle_entry test_xiangyang_n_projection test_combined_a_entry test_shallow_base_breakout test_squeeze_resumption test_whole_wave_entry test_entry_preflight test_ten_full_entry test_backtest_version -q; pytest test_multilevel_squeeze -q",
+                    "command": "pytest tests/test_shared_edge_n.py tests/test_xiangyang_n_projection.py tests/test_ten_full_entry.py tests/test_backtest_version.py -q; pytest tests/test_bullish_squeeze_candle.py -q; fixture probe",
                     "status": "passed",
-                    "summary": "最终前组107项40.83秒、后组11项7.54秒通过。星网2/13保留多级及BULL证据，弱K拒买，3/22新有效强K买点及五个信号/完整审计前缀保持。首轮更广集合99通过2失败：组合A临时扩大形态范围已按用户轧空范围恢复，原等号fixture通过；星网旧弱K买入期待按新授权规则更新。首轮先锋2107棒+三个前缀耗时约9分钟已通过，最终不重复该未改动用例。"
+                    "summary": "52项+11项通过。真实124棒fixture直接生成V94信号，6/15弱K但原6/12N LONG恢复，轧空及五顶/十满观察保留、全局强K拒买reason不存在；原攻击棒形态helper精确边界保留。"
                 },
                 {
-                    "command": "mypy --follow-imports=silent candle_strength.py integrated_strategy.py strategy_profiles.py test_strong_candle_entry.py; pnpm --filter @wavequant/core typecheck; pnpm --filter @wavequant/core build",
+                    "command": "Core targeted mypy; pnpm --filter @wavequant/core typecheck; build --no-isolation --outdir temporary-directory",
                     "status": "passed",
-                    "summary": "4修改/新增文件mypy及既定4文件strict通过；sdist/wheel成功。初次TypedDict空分支与复制推断错误，改明确dict[str,object]后实际重跑通过，无Any/ignore掩盖，不运行Python格式或lint。"
+                    "summary": "3模块mypy、既定4文件strict通过，临时目录sdist/wheel构建成功；没有Python格式/lint或产物提交。"
                 },
                 {
-                    "command": "node --test tests/annotations.test.mjs tests/blocked-trade-nodes.test.mjs; topology Vitest; Web lint/typecheck/build; targeted Prettier",
+                    "command": "node --test annotations.test.mjs n-target-focus.test.mjs wave-c-chart.test.mjs; topology Vitest; Web lint/typecheck/build",
                     "status": "passed",
-                    "summary": "35项Node、8项拓扑通过。中文显示弱K三比例/阈值、候选而非成交，并准确说明只拒该轧空买点。最终lint0错误6旧警告、typecheck与512MBNext build成功，next-env生成差异恢复。首轮digest路径错误/旧指纹以及Windows重写CRLF导致lint失败，复核70源码并更新摘要、格式化后均重跑通过。"
+                    "summary": "独立Node80项、拓扑7项通过；旧源码digest匹配，原N五顶/十满显示保持。lint0错误6旧警告、typecheck、512MB常规Next构建通过，next-env生成差异恢复。"
                 },
                 {
-                    "command": "independent code-review; legacy/combined three targeted tests; git diff --check; pnpm harness:check; codegraph sync",
+                    "command": "independent exact revert review; git diff --check; pnpm harness:check; codegraph sync",
                     "status": "passed",
-                    "summary": "独立复核共同轧空所有入口、EXIT优先、候选不消费、独立组合A/浅回撤兼容及分钟因果，无阻塞；3项旧策略/组合边界通过，Harness/差异/索引同步通过。256仅临时backlog，其他字段/所有失败证据与原main逐项相同。"
+                    "summary": "独立复核两merge第一父及范围正确，整树恢复93dea5c无差异、无阻塞。Harness、差异和索引11文件同步通过，256原所有失败证据保留、仅暂backlog。"
                 },
                 {
-                    "command": "complete Core/Web suites; browser/Playwright; external minute execution",
+                    "command": "complete suites; browser/Playwright; external minute execution",
                     "status": "not-run",
-                    "summary": "按用户节奏未跑完整套件及浏览器端到端。盘中依决策时已见部分K，最后收盘转弱不回溯当时合法成交；真实外部分钟执行待独立验证。"
+                    "summary": "按用户开发验证节奏没有运行完整套件、浏览器端到端和外部分钟；精确恢复旧实现并使用相关定向验证，不顺手修改无关规则。"
                 },
                 {
-                    "command": "local main no-ff merge; HTTP8765/13003 V95; formal 000678 2018..2023-07-04 account and source verification",
-                    "status": "passed",
-                    "summary": "实现71e1b8d由fc0b3aa无冲突no-ff合并本地main。两端自动加载V95/4e654845，引擎128来源逐项SHA256与main精确一致，Web annotations.js HTTP200逐字匹配。正式job44f7c793重算1317根真实日线，逐字段等于旧V94前缀；6/15 LONG=0及BUY=0，旧当天唯一filled加仓被剔除；6/12原N和6/15强轧空保留，原N全部5个投影事件与旧版逐项相同，实际theory五顶6.97/6月28、十满9.37/6月29均已满足。main Harness和8项拓扑通过。无手工重启、缓存改写或推送，恢复256全部原状态及失败证据。"
+                    "command": "local main merge and actual V94 service/account verification",
+                    "status": "not-run",
+                    "summary": "待本地main合并后核验8765/13003恢复V94与实际000678结果，无推送。"
                 }
             ]
         },
@@ -845,7 +845,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",

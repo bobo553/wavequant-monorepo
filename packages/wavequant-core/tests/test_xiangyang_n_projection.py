@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from wavequant.domain.market_state.candle_strength import strong_bullish_candle
 from wavequant.domain.market_state.market_regime import MarketRegime
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
@@ -42,9 +41,6 @@ def test_real_shared_low_n_retains_its_squeeze_and_five_ten_projection(xiangyang
                    and e.get("attack") == attack)
     assert squeeze["bar_index"] == dates["2023-06-15"]
     assert squeeze["regime"] == MarketRegime.STRONG_BULL.value
-    confirmation = dates["2023-06-15"]
-    assert not strong_bullish_candle(bars[confirmation])
-    assert not any(signal.side == "LONG" and signal.bar_index == confirmation for signal in result.signals)
     projection = [e for e in result.audit if e["event"].startswith("wave_projection_")
                   and e.get("attack") == attack and e["bar_index"] <= dates["2023-07-04"]]
     assert [e["event"] for e in projection] == [
