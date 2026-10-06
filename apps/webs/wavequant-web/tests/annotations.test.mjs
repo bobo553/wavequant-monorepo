@@ -42,6 +42,47 @@ test("sizing rejection and structural cutoff have explicit Chinese explanations"
     assert.match(reasonText("volume_bearish_child_reduce_70"), /阴子线.*减仓 70%/);
     assert.match(reasonText("volume_bearish_child_break_clear"), /最低价和收盘价均跌破阴子线.*清空余仓/);
 });
+
+test("post-five-top reattack explains an unavailable next response without borrowing a future candle", () => {
+    const view = {
+        symbol: "sh.601811",
+        asof: "2019-10-16",
+        bars: [
+            { time: "2019-10-14", close: 15.63 },
+            { time: "2019-10-16", close: 16.2 },
+            { time: "2019-10-17", close: 15.28 },
+        ],
+        markers: [],
+    };
+    const event = {
+        id: "rebreak",
+        event: "entry_rejected",
+        available_at: "2019-10-16",
+        time: "2019-10-16",
+        attack: 0,
+        reason: "wave_five_top_rebreak_response_pending",
+        wave_n_date: "2019-01-03",
+        wave_five_top_reached_date: "2019-03-08",
+        wave_five_top_target: 14.24715,
+        wave_oscillation_date: "2019-03-14",
+        wave_rebreak_date: "2019-10-16",
+        wave_response_status: "await_next_session",
+        wave_response_date: null,
+    };
+    const items = buildAnnotations(view, { asof: "2019-10-16", events: [event] });
+    const candidate = items.find((item) => item.id === event.id);
+    assert.match(candidate.description, /2019-03-08 已到五顶 14.2472/);
+    assert.match(candidate.description, /2019-10-16 再攻.*次笔尚未出现.*当前强势阳线也不能代替次笔/);
+    assert.match(candidate.description, /其他买点的轧空标签不能绕过.*第三笔不补认/);
+    assert.doesNotMatch(candidate.description, /2019-10-17/);
+    const failed = { ...event, wave_response_status: "response_failed", wave_response_date: "2019-10-17" };
+    assert.match(
+        buildAnnotations({ ...view, asof: "2019-10-17" }, { asof: "2019-10-17", events: [failed] }).find(
+            (item) => item.id === failed.id,
+        ).description,
+        /2019-10-17 次笔未通过/,
+    );
+});
 test("window key follows extreme predecessor, not latest opposite pivot", () => {
     const points = [
         { time: "a", kind: "H", value: 30, available_at: "b" },
