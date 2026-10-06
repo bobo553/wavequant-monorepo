@@ -1,3 +1,5 @@
+MONOREPO-280（2026-10-06）定位滚动保留个股净收益已实现：用户确认所指为上方净收益百分比；此前price-chart居中或selection-info近邻滚动会将指标移出视口。新增共用scrollChartWithMetrics，以指标区为滚动锚点，实际测量应用壳导航高度并留12px；inline nearest保持横向位置，缺指标区则回退图表卡片/图表。成交节点/账本、拦截、最大回撤、跨日期订单、最新成交、仅看成交与ABC定位共用；原K线选中/区间/闪烁及净收益计算保持。首4例原实现均复现-62/-230px，最终新9例加相邻35Node、市场2项、拓扑8项通过；最终lint0错误6旧警告、生产build、恢复仅已知next-env生成行后的独立typecheck/JS语法/差异/CodeGraph通过。市场旧断言仅适配共用滚动和已有action.force，行为断言保持。DOM受控测量不代表浏览器像素验证，完整Web/浏览器/Playwright按用户规则未跑。280done，恢复256唯一in-progress，其他功能和全部失败证据逐项保持；沿原会话worktree/分支按默认流程本地提交合并，不自动推送，最终Git和服务结果见本轮交付。
+
 MONOREPO-279（2026-10-06）已合并并常驻生效：实现与授权记录经64994b7合并，实际两端口V97/engine 776f62173255；annotations/trade-reasons/trade-review/filled-trade-copy四模块HTTP200且逐字匹配main。main拓扑8项和Harness通过，先前74Node/类型/构建记录保持。正式1777棒接口run akshare-99beefd56403f8cd0233d0c2返回4/25母子全清100原始股raw12.53元余0，4/11十满和4/24母实体证据齐全，缺分钟采用收盘模型、队列未验证。页面刷新并重新回测可读取新版本，未宣称实际用户浏览器视觉验收；不推送/重启/手工改缓存。4项旧失败按用户授权保留，279backlog待独立验证、256唯一in-progress，完整Web/浏览器/Playwright未跑。
 
 MONOREPO-279（2026-10-06）本地合并授权：用户明确要求“合并到main”，本次保留4项已复现main失败交付V97。分支同步main8eee8d8无新增源码差异，74Node/8拓扑及最终构建/类型证据保持；合并后核对常驻版本及Web字节。279留backlog保留failed事实，256恢复唯一in-progress，全部历史证据保持。先前待确认段落是历史；不推送，未运行浏览器或完整套件。

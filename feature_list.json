@@ -4,6 +4,43 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-280",
+            "name": "locate-keeps-stock-return-visible",
+            "title": "定位滚动保留个股净收益",
+            "description": "点击成交、拦截、持仓回撤或回测定位后，滚动保留上方个股净收益百分比，避开固定导航遮挡，原K线定位与选中保持。",
+            "scope": "Web定位滚动、共享视口辅助及定向DOM回归",
+            "dependencies": ["MONOREPO-278"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "定位后上方个股净收益百分比留在可视区域且不被固定导航遮挡",
+                "成交节点、账本、被拦截、最大回撤、最新成交与仅看成交的定位共用滚动入口",
+                "原K线区间、选中、闪烁和证据保持；缺指标区时图表定位仍有效",
+                "定向DOM回归、Web格式/lint/类型/构建和Harness通过，未运行完整套件和浏览器如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web typecheck (before edits)",
+                    "status": "passed",
+                    "summary": "修改前Web类型基线通过；从干净main4d49ae5同步专属worktree，无新增主线差异，沿用原会话分支。用户确认所指为上方个股净收益百分比。旧280不存在；256暂backlog且其他字段与全部历史保持，280唯一in-progress。"
+                },
+                {
+                    "command": "Web cwd: node --test tests/chart-focus-scroll.test.mjs tests/chart-viewport-height.test.mjs tests/chart-navigation.test.mjs tests/max-drawdown.test.mjs tests/trade-playback.test.mjs; node --test --test-name-pattern=\"trade letters|running a current-stock\" tests/market-dashboard.test.mjs; pnpm --filter wavequant-web exec vitest run src/features/research-workbench/topology/topology-data.test.ts",
+                    "status": "passed",
+                    "summary": "最终35项Node（1.917秒）、市场工作台2项定向（0.154秒）和拓扑8项（3.05秒）通过。首4条原实现均失败，指标被滚至导航上方-62/-230px；修复后9项新回归覆盖实际app函数、最新成交/订单分支、仅看成交/ABC点击、640/768/1080视口及56/70/98导航测量、旧页面和缺指标/卡片降级。净收益文本保持12.5%，区间/选择/闪烁保持，inline nearest避免水平跳动。仅相关市场测试的旧滚动断言适配共用helper；其已有forceBacktest:true断言过期，改为当前action.force表达式，保留最新成交和无成交断言。实际DOM与受控测量验证，不宣称浏览器像素验收。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; $env:NODE_OPTIONS=\"--max-old-space-size=512 --max-semi-space-size=4\"; pnpm --filter wavequant-web build; restore only next-env generated import; pnpm --filter wavequant-web typecheck; node --check public/app.js and public/chart-focus-scroll.js; git diff --check; codegraph sync",
+                    "status": "passed",
+                    "summary": "Web lint零错误6条既有环境变量warning，生产build（编译10.0秒、TS7.5秒）、构建后恢复仅已知next-env生成import再独立typecheck（8.91秒）通过；JS语法、差异和索引同步通过。仅Web滚动模块和app定位入口，不改图表高度、指标计算、策略/账户或依赖。沿同一专属worktree和feat-五顶低开长影清仓，基线main4d49ae5；本轮不自动推送。"
+                },
+                {
+                    "command": "Full Web suite, browser/Playwright and real-browser pixel/keyboard verification",
+                    "status": "not-run",
+                    "summary": "按用户当次开发规则未运行完整Web套件、浏览器端到端或Playwright；不同视口和固定导航通过真实app控制流、JSDOM与受控几何测量验证，实际浏览器像素/缩放与键盘仍待独立验证。此前279/256全部既有失败证据保留，本轮不触及Core规则或再次豁免。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-279",
             "name": "five-top-gap-upper-shadow-clear",
             "title": "五顶或十满后两类长上影清仓",

@@ -220,7 +220,7 @@ test("trade letters render above trend series and chart drawing primitives", () 
     assert.match(appRuntime, /\$\("fills-only"\)\.disabled = markers\.length === 0/);
     assert.match(
         appRuntime,
-        /\$\("fills-only"\)\.addEventListener\("click",[\s\S]*chart\.selectAnnotation\(marker\.id\);[\s\S]*requestAnimationFrame\(\(\) => \$\("price-chart"\)\.scrollIntoView/,
+        /\$\("fills-only"\)\.addEventListener\("click",[\s\S]*chart\.selectAnnotation\(marker\.id\);[\s\S]*requestAnimationFrame\(\(\) => scrollChartWithMetrics\(\$\("price-chart"\)\)/,
     );
     assert.match(ledgers, /id="fills-only">仅看并定位成交/);
 });
@@ -229,14 +229,14 @@ test("running a current-stock backtest focuses its latest actual B/S fill", () =
     const runtime = readFileSync(join(publicRoot, "app.js"), "utf8");
     assert.match(
         runtime,
-        /\$\("run-stock-backtest"\)\.addEventListener\("click",[\s\S]*loadView\(\{ focusLatestFill: true, forceBacktest: true \}\)/,
+        /\$\("run-stock-backtest"\)\.addEventListener\("click",[\s\S]*loadView\(\{ focusLatestFill: true, forceBacktest: action\.force \}\)/,
     );
     assert.match(
         runtime,
         /const latestFill = data\.markers\.filter\(\(marker\) => marker\.kind === "fill"\)\.at\(-1\)/,
     );
     assert.match(runtime, /chart\.selectAnnotation\(latestFill\.id\)/);
-    assert.match(runtime, /\$\("price-chart"\)\.scrollIntoView\(\{ block: "center", behavior: "instant" \}\)/);
+    assert.match(runtime, /scrollChartWithMetrics\(\$\("price-chart"\)\)/);
     assert.match(runtime, /本次回测没有模拟成交/);
 });
 

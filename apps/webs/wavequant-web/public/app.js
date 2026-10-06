@@ -20,6 +20,7 @@ import {
 import { BuyPoints } from "./buy-points.js";
 import { candleCopyText, previousCandleClose } from "./candle-details.js";
 import { loadMarketTimeframeSnapshot, loadStockCatalog } from "./catalog-cache.js";
+import { scrollChartWithMetrics } from "./chart-focus-scroll.js";
 import { chartNavigationKeyPosition } from "./chart-navigation.js";
 import { bindChartViewportHeight } from "./chart-viewport-height.js";
 import { PerformanceCharts, PriceChart } from "./charts.js";
@@ -713,7 +714,7 @@ function focusHoldingInterval(interval) {
             showBacktestToast("当前 K 线不包含最大亏损对应的持仓区间");
             return;
         }
-        $("price-chart").scrollIntoView({ block: "center", behavior: "instant" });
+        scrollChartWithMetrics($("price-chart"));
     });
 }
 function focusMaximumDrawdown() {
@@ -1784,7 +1785,7 @@ function renderTradeNodes() {
             "aria-label",
             `定位 ${marker.time} ${buy ? "买入" : "卖出"}成交，等价价 ${num(marker.price)} 元`,
         );
-        button.addEventListener("click", () => selectFill(marker, true));
+        button.addEventListener("click", () => selectFill(marker));
         const badge = document.createElement("span");
         badge.className = `trade-node-badge ${buy ? "trade-node-buy" : "trade-node-sell"}`;
         badge.textContent = buy ? "B" : "S";
@@ -2253,6 +2254,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             setChartView("local");
             chart.focus(state.pendingFocus.time);
             detail("已定位", state.pendingFocus.description);
+            requestAnimationFrame(() => scrollChartWithMetrics($("price-chart")));
         } else if (data.backtest?.status === "data_unavailable") {
             detail("同源分钟历史不足", data.evidence);
         } else if (focusLatestFill) {
@@ -2260,7 +2262,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             const latestFill = data.markers.filter((marker) => marker.kind === "fill").at(-1);
             if (latestFill) {
                 chart.selectAnnotation(latestFill.id);
-                requestAnimationFrame(() => $("price-chart").scrollIntoView({ block: "center", behavior: "instant" }));
+                requestAnimationFrame(() => scrollChartWithMetrics($("price-chart")));
             } else {
                 const blockedCount = blockedTradeNodes(data).length;
                 detail(
@@ -2362,23 +2364,21 @@ async function locate(symbol, time, description) {
     showPage("workspace");
     await loadView();
 }
-function selectFill(marker, scrollToChart = false) {
+function selectFill(marker) {
     showPage("workspace");
     setChartView("local");
     $("show-fills").checked = true;
     chart.setAnnotationOptions(annotationOptions());
     chart.selectAnnotation(marker.id);
     chart.flashSelectedAnnotation(marker.id, "execution");
-    (scrollToChart ? $("price-chart") : $("selection-info")).scrollIntoView({
-        block: scrollToChart ? "center" : "nearest",
-    });
+    scrollChartWithMetrics($("price-chart"));
 }
 function selectBlockedNode(marker) {
     showPage("workspace");
     setChartView("local");
     chart.selectAnnotation(marker.id);
     chart.flashSelectedAnnotation(marker.id, marker.blockedStage);
-    $("price-chart").scrollIntoView({ block: "center" });
+    scrollChartWithMetrics($("price-chart"));
 }
 function exportBacktest() {
     if (!state.view || state.loading || state.error) return;
@@ -2812,7 +2812,7 @@ $("fills-only").addEventListener("click", () => {
     const marker = state.view?.markers.filter((m) => m.kind === "fill").at(-1);
     if (marker) {
         chart.selectAnnotation(marker.id);
-        requestAnimationFrame(() => $("price-chart").scrollIntoView({ block: "center", behavior: "instant" }));
+        requestAnimationFrame(() => scrollChartWithMetrics($("price-chart")));
     }
 });
 async function loadHealth() {
@@ -3015,7 +3015,7 @@ $("focus-abc").addEventListener("click", () => {
     updateLayerToggleCount();
     chart.setAnnotationOptions(annotationOptions());
     chart.setTheory(state.theory, true);
-    chart.focusWaveProjection();
+    if (chart.focusWaveProjection()) scrollChartWithMetrics($("price-chart"));
 });
 $("focus-fill").addEventListener("click", () => {
     tradePlayback.pause();
