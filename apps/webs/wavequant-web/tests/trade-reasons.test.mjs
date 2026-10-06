@@ -300,6 +300,145 @@ test("five-top gap upper-shadow clear traces same-basis Guofang prices in detail
     assert.doesNotMatch(delayedReasons, /判定日 2025-04-28|本日开盘/);
 });
 
+test("five-top minute exit renders the supplied decision and execution times independently", () => {
+    const marker = {
+        kind: "fill",
+        side: "SELL",
+        reason: "wave_five_top_gap_upper_shadow_clear",
+        time: "2025-04-25",
+        wave_n_date: "2024-08-30",
+        wave_reached_date: "2025-04-11",
+        wave_reached_stage: "ten_full",
+        wave_reached_price: 10.5736,
+        observed_open: 17.1173,
+        observed_high: 19.5353,
+        observed_low: 17.1173,
+        observed_close: 17.1173,
+        previous_close: 19.0162,
+        wave_upper_shadow_fraction: 1,
+        execution_model: "intraday_5m_next_open",
+        decision_timestamp: "2025-04-25T09:55:00",
+        execution_timestamp: "2025-04-25T10:00:00",
+        timestamp: "2025-04-25T10:00:00",
+        minute_next_open_raw: 12.61,
+        raw_price: 12.603695,
+        price: 12.603695 * 1.3661031469359,
+        adjustment_factor: 1.3661031469359,
+        applied_slippage_bps: 5,
+        remaining_quantity: 0,
+    };
+    const view = {
+        symbol: "sh.601086",
+        variant: "lecture_v3",
+        asof: marker.time,
+        bars: [],
+        backtest: { start: "2018-01-01" },
+    };
+    const copy = formatFilledTradeCopy(view, marker, "V3", "");
+    assert.match(copy, /判定日 2025-04-25 09:55.*累计日内收盘/);
+    assert.match(copy, /决定时间：2025-04-25T09:55:00/);
+    assert.match(copy, /成交时间：2025-04-25T10:00:00/);
+    assert.match(copy, /下一根五分钟开盘原价：12\.6100 元/);
+    assert.match(copy, /已完成五分钟线判定.*模拟成交/);
+    assert.doesNotMatch(copy, /未还原尾盘分钟路径|日线成交原因/);
+    const queueMarker = {
+        ...marker,
+        fill_assumption: "observed_nonflat_limit_intraday_sell_without_queue_verification",
+        minute_next_open_raw: 12.53,
+        raw_price: 12.53,
+        price: 12.53 * marker.adjustment_factor,
+        applied_slippage_bps: 0,
+    };
+    const queueCopy = formatFilledTradeCopy(view, queueMarker, "V3", "");
+    assert.match(queueCopy, /判定时已观察到跌停打开.*下一根分钟开盘原价 12\.5300.*未验证跌停排队成交.*滑点 0 bps/);
+    assert.doesNotMatch(queueCopy, /非一字跌停.*收盘原价|未还原尾盘分钟路径/);
+    // This separate execution record uses a 10 bps model capped by the 12.53 price floor.
+    const floorMarker = {
+        ...marker,
+        minute_next_open_raw: 12.54,
+        raw_price: 12.53,
+        price: 12.53 * marker.adjustment_factor,
+        slippage_price_floor: "a_share_lower_limit",
+        execution_lower_limit_raw: 12.53,
+        applied_slippage_bps: 10000 / 1254,
+    };
+    const floorCopy = formatFilledTradeCopy(view, floorMarker, "V3", "");
+    assert.match(floorCopy, /原始跌停价 12\.5300 元.*实际卖出滑点 7\.9745 bps/);
+    assert.doesNotMatch(floorCopy, /未验证跌停排队成交/);
+    const dom = new JSDOM("<section></section>");
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        appendTradeEvidence(document.querySelector("section"), marker);
+        const text = document.querySelector("section").textContent;
+        assert.match(text, /决定 2025-04-25T09:55:00.*模拟成交 2025-04-25T10:00:00/);
+        assert.match(text, /下一根五分钟线开盘原价 12\.6100 元/);
+        assert.doesNotMatch(text, /本笔按触发当日收盘价/);
+        const queuePanel = document.createElement("section");
+        appendTradeEvidence(queuePanel, queueMarker);
+        assert.match(queuePanel.textContent, /判定时已观察到跌停打开.*12\.5300.*未验证跌停排队成交.*滑点 0 bps/);
+        const floorPanel = document.createElement("section");
+        appendTradeEvidence(floorPanel, floorMarker);
+        assert.match(floorPanel.textContent, /原始跌停价 12\.5300 元.*实际卖出滑点 7\.9745 bps/);
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
+});
+
+test("nonflat limit-down close sell explains raw 12.53, zero slippage and explicit minute fallback", () => {
+    const marker = {
+        kind: "fill",
+        side: "SELL",
+        reason: "wave_five_top_gap_upper_shadow_clear",
+        time: "2025-04-25",
+        wave_n_date: "2024-08-30",
+        wave_reached_date: "2025-04-11",
+        wave_reached_stage: "ten_full",
+        wave_reached_price: 10.5736,
+        observed_open: 17.117272431106827,
+        observed_high: 19.535275001183372,
+        observed_low: 17.117272431106827,
+        observed_close: 17.117272431106827,
+        previous_close: 19.016155805347726,
+        wave_upper_shadow_fraction: 1,
+        execution_model: "same_day_close",
+        decision_timestamp: "2025-04-25T15:00:00",
+        timestamp: "2025-04-25T15:00:00",
+        price: 17.117272431106827,
+        raw_price: 12.53,
+        adjustment_factor: 1.3661031469359,
+        fill_assumption: "nonflat_limit_close_sell_without_queue_verification",
+        applied_slippage_bps: 0,
+        minute_fallback: { reason: "minute_coverage_unavailable", purpose: "five_top_gap_upper_shadow_exit" },
+        remaining_quantity: 0,
+    };
+    const view = {
+        symbol: "sh.601086",
+        variant: "lecture_v3",
+        asof: marker.time,
+        bars: [],
+        backtest: { start: "2018-01-01" },
+    };
+    const copy = formatFilledTradeCopy(view, marker, "V3", "");
+    assert.match(copy, /非一字跌停.*收盘原价 12\.5300 元模拟卖出.*未验证跌停排队成交.*滑点 0 bps/);
+    assert.match(copy, /成交口径：当日收盘价.*未还原尾盘分钟路径/);
+    assert.match(copy, /日线成交原因：当日缺少完整同源分钟线/);
+    assert.doesNotMatch(copy, /下一根五分钟开盘原价|涨停排队|09:55|10:00/);
+    const dom = new JSDOM("<section></section>");
+    const previous = globalThis.document;
+    globalThis.document = dom.window.document;
+    try {
+        appendTradeEvidence(document.querySelector("section"), marker);
+        const text = document.querySelector("section").textContent;
+        assert.match(text, /非一字跌停.*收盘原价 12\.5300.*未验证跌停排队成交.*滑点 0 bps/);
+        assert.match(text, /缺少完整同源分钟线.*回退到日线收盘/);
+    } finally {
+        globalThis.document = previous;
+        dom.window.close();
+    }
+});
+
 test("bearish outside mother reduction and next-session clear use mother price and volume evidence", () => {
     const reduction = tradeReasonItems({
         side: "SELL",

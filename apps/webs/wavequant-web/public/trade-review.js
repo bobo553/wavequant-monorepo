@@ -127,6 +127,18 @@ export function appendTradeEvidence(panel, item, openPosition = null, holdingDra
     );
     if (item.fill_assumption === "nonflat_limit_close_without_queue_verification")
         add("成交假设：非一字涨停按当日收盘价模拟成交，未验证涨停排队成交；成交价不另加正滑点。");
+    if (item.fill_assumption === "nonflat_limit_close_sell_without_queue_verification")
+        add(
+            `成交假设：已观察到非一字跌停，按收盘原价 ${num(item.raw_price, 4)} 元模拟卖出；未验证跌停排队成交，卖出滑点 ${num(item.applied_slippage_bps, 0)} bps。`,
+        );
+    if (item.fill_assumption === "observed_nonflat_limit_intraday_sell_without_queue_verification")
+        add(
+            `成交假设：判定时已观察到跌停打开，按下一根分钟开盘原价 ${num(item.minute_next_open_raw, 4)} 元模拟卖出；未验证跌停排队成交，卖出滑点 ${num(item.applied_slippage_bps, 0)} bps。`,
+        );
+    if (item.slippage_price_floor === "a_share_lower_limit" && Number.isFinite(item.execution_lower_limit_raw))
+        add(
+            `价格边界：原始跌停价 ${num(item.execution_lower_limit_raw, 4)} 元，跌停价约束后的实际卖出滑点 ${num(item.applied_slippage_bps, 4)} bps。`,
+        );
     if (item.fill_assumption === "observed_nonflat_limit_intraday_without_queue_verification")
         add("成交假设：买点前已观察到非一字交易，按下一根分钟开盘价模拟成交；未验证涨停排队，成交价不另加正滑点。");
     if (item.minute_fallback)

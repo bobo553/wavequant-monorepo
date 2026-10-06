@@ -3,13 +3,18 @@ from __future__ import annotations
 
 import math
 import statistics
-from dataclasses import dataclass, field
-from datetime import date, datetime, time
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, time, timedelta
 from typing import Callable
+from zoneinfo import ZoneInfo
 
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
 from wavequant.application.analytics.holding_drawdown import holding_drawdowns, drawdown_metrics, holding_fill_time
+from wavequant.application.analytics.intraday_wave_exit import (
+    PartialSessionCandle, five_top_intraday_eligible, minute_sellable, observe_intraday_five_top_exit,
+    observed_nonflat_minute_sellable, partial_session_candles,
+)
 from wavequant.domain.strategies.wave_exhaustion_exit import (
     C_EQUAL_NEAR_RESISTANCE_REDUCE, C_EQUAL_NEAR_VOLUME_CLEAR, FIVE_TOP_CHILD_VOLUME_CLEAR,
     FIVE_TOP_GAP_UPPER_SHADOW_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR, observe_c_equal_near_risk,
@@ -29,7 +34,29 @@ from wavequant.domain.strategies.staged_exit import (
     observe_staged_exit, observe_inverse_resistance_exit, observe_volume_down_exit,
 )
 from wavequant.infrastructure.market_data.minute import MinuteBar
+from wavequant.infrastructure.market_data.data import lower_limit_price
 from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageError
+
+
+def _staged_session_candles(daily: Bar, minutes: list[MinuteBar]) -> list[PartialSessionCandle]:
+    """Retain staged replay's existing provider-validated or custom-loader contract."""
+    result = []
+    high, low, volume = 0.0, math.inf, 0.0
+    for offset, observed in enumerate(minutes[:-1]):
+        high = max(high, observed.high * daily.adjustment_factor)
+        low = min(low, observed.low * daily.adjustment_factor)
+        volume += observed.volume
+        partial = replace(daily, high=high, low=low, close=observed.close * daily.adjustment_factor, volume=volume)
+        following = minutes[offset + 1]
+        decision_at = observed.timestamp
+        following_at = following.timestamp
+        if decision_at.tzinfo is None:
+            decision_at = decision_at.replace(tzinfo=ZoneInfo('Asia/Shanghai'))
+        if following_at.tzinfo is None:
+            following_at = following_at.replace(tzinfo=ZoneInfo('Asia/Shanghai'))
+        result.append(PartialSessionCandle(partial, decision_at,
+                                           following_at - timedelta(minutes=5), following.open))
+    return result
 
 
 @dataclass
@@ -230,10 +257,20 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
         orders.append(dict(timestamp=when.isoformat(), symbol=symbol, side=side,
                            status=status, reason=reason, **extra))
 
-    def execute_exit(symbol, i, bar, when, reference_price, execution_model):
+    def execute_exit(symbol, i, bar, when, reference_price, execution_model, *,
+                     execution_sellable: bool | None = None, timing: dict[str, object] | None = None):
         nonlocal cash, total_fees, turnover
         pos = positions[symbol]
         evidence = exit_evidence.get(symbol, {})
+        for key in ('fill_assumption', 'applied_slippage_bps', 'slippage_price_floor', 'execution_lower_limit_raw',
+                    'execution_timestamp', 'execution_permission_timestamp', 'minute_next_open_raw',
+                    'observed_nonflat_limit_sellable', 'execution_observed_high', 'execution_observed_low',
+                    'execution_observed_volume', 'execution_trigger_reason'):
+            evidence.pop(key, None)
+        if timing is not None:
+            evidence.update(timing)
+        elif execution_model == 'next_open':
+            evidence['execution_timestamp'] = when.replace(hour=9, minute=30).isoformat()
         fraction = evidence.get('exit_fraction', 1.0)
         lot = config.lot_size / bar.adjustment_factor
         quantity = pos.quantity if fraction == 1 else math.floor(pos.quantity * fraction / lot) * lot
@@ -263,7 +300,24 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             return False
         t1_deferred_quantity = max(0.0, quantity - sellable_quantity)
         quantity = min(quantity, sellable_quantity)
-        reason = ('not_sellable' if not bar.sellable else
+        sellable = (bar.close_sellable
+                    if execution_model == 'same_day_close' and bar.close_sellable is not None
+                    else bar.sellable)
+        if execution_sellable is not None:
+            sellable = execution_sellable
+        if bar.raw_trading_active is False:
+            sellable = False
+        nonflat_close = (execution_model == 'same_day_close' and execution_sellable is None
+                         and bar.nonflat_close_sellable is True
+                         and bar.raw_trading_active is not False
+                         and bar.volume > 0 and bar.high > bar.low)
+        close_queue_fill = not sellable and config.nonflat_limit_close_fill and nonflat_close
+        minute_queue_fill = (not sellable and config.nonflat_limit_close_fill
+                             and execution_model == 'intraday_5m_next_open'
+                             and evidence.get('observed_nonflat_limit_sellable') is True)
+        if close_queue_fill or minute_queue_fill:
+            sellable = True
+        reason = ('not_sellable' if not sellable else
                   'liquidity_capacity' if quantity > capacity(symbol, i, bar) + 1e-8 else '')
         if reason:
             if t1_deferred_quantity > 1e-8:
@@ -271,7 +325,26 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 evidence['execution_model'] = 'next_open'
             log(when, symbol, 'SELL', 'deferred', reason)
             return False
-        price = reference_price * (1-slip)
+        price = reference_price if close_queue_fill or minute_queue_fill else reference_price * (1-slip)
+        evidence['applied_slippage_bps'] = config.slippage_bps_per_side
+        if close_queue_fill or minute_queue_fill:
+            evidence.update(fill_assumption=('nonflat_limit_close_sell_without_queue_verification' if close_queue_fill
+                                            else 'observed_nonflat_limit_intraday_sell_without_queue_verification'),
+                            applied_slippage_bps=0.0)
+        if type(bar.raw_is_st) is bool and bar.raw_trading_active is True and i > 0:
+            lower_raw = lower_limit_price(dict(date=bar.timestamp.date().isoformat(),
+                                               isST='1' if bar.raw_is_st else '0',
+                                               preclose=str(grouped[symbol][i - 1].close / bar.adjustment_factor)), symbol)
+            lower = lower_raw * bar.adjustment_factor
+            evidence['execution_lower_limit_raw'] = lower_raw
+            reference_raw = reference_price / bar.adjustment_factor
+            if reference_raw < lower_raw - max(1e-9, lower_raw * 1e-12):
+                log(when, symbol, 'SELL', 'deferred', 'execution_below_lower_limit')
+                return False
+            if price < lower:
+                price = lower
+                evidence.update(applied_slippage_bps=max(0.0, (reference_price - price) / reference_price * 10000),
+                                slippage_price_floor='a_share_lower_limit')
         notional = price * quantity
         fee = transaction_fee(notional, when, True, config)
         allocated_entry_fee = pos.entry_fee * quantity / pos.quantity
@@ -530,78 +603,148 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             del pending_entry[symbol]
             i, bar = current[symbol]
             execute_entry(symbol, i, bar, when, signal, bar.open)
-        # Intraday entries precede daily observations and cannot use cash released at the close.
-        for symbol, (i, bar) in sorted(current.items(), key=lambda item:
-                entry_executions.get((item[0], item[1][0]), {}).get('timing', {}).get('execution_timestamp', '')):
+        # Only intraday actions share this local clock. Neither an early buy nor
+        # a morning liquidation may use a later entry or later released cash.
+        actions: list[tuple[datetime, int, str, dict | None, PartialSessionCandle | None, bool, bool]] = []
+        for symbol, (i, bar) in current.items():
             entry = entry_executions.get((symbol, i))
             if entry is not None:
+                stamp = datetime.fromisoformat(entry['timing']['execution_timestamp'])
+                stamp = stamp.replace(tzinfo=ZoneInfo('Asia/Shanghai')) if stamp.tzinfo is None else stamp
+                actions.append((stamp, 1, symbol, entry, None, False, False))
+            if not config.staged_exit_intraday:
+                continue
+            pos = positions.get(symbol)
+            events = (wave_events or {}).get(symbol, [])
+            wave_eligible = (config.wave_exhaustion_exit and (pos is not None or entry is not None)
+                             and five_top_intraday_eligible(grouped[symbol], i, events))
+            staged_eligible = False
+            if pos is not None and symbol not in pending_exit:
+                state = pos.staged_exit
+                if not state.recovered and not state.exit_requested and state.reduction_target < 0.65:
+                    support = state.support_index
+                    if support is None:
+                        support = next((j for j in range(i - 2, 0, -1)
+                                        if grouped[symbol][j].low < min(grouped[symbol][j - 1].low,
+                                                                          grouped[symbol][j + 1].low)), None)
+                    staged_eligible = support is not None and bar.low < grouped[symbol][support].low
+            if not wave_eligible and not staged_eligible:
+                continue
+            assert minute_loader is not None
+            try:
+                minute = minute_loader(bar)
+                candles = list(partial_session_candles(bar, minute)) if wave_eligible else _staged_session_candles(bar, minute)
+            except MinuteCoverageError as exc:
+                if not config.missing_minute_daily_fallback:
+                    raise
+                evidence = dict(symbol=symbol, date=bar.timestamp.date().isoformat(),
+                                reason=exc.coverage.get('reason', 'minute_history_missing'), coverage=exc.coverage,
+                                execution_model='same_day_close',
+                                purpose='five_top_gap_upper_shadow_exit' if wave_eligible else 'staged_exit')
+                daily_fallback[symbol] = evidence
+                minute_fallbacks.append(evidence)
+                continue
+            actions.extend((candle.execution_at, 0, symbol, None, candle, staged_eligible, wave_eligible)
+                           for candle in candles)
+        intraday_wave_risks: dict[str, dict] = {}
+        for stamp, _priority, symbol, entry, session_candle, staged_eligible, wave_eligible in sorted(
+                actions, key=lambda action: (action[0], action[1], action[2])):
+            i, bar = current[symbol]
+            if entry is not None:
                 pending_entry.pop(symbol, None)
+                if symbol in wave_clear_symbols:
+                    log(when, symbol, 'BUY', 'cancelled', 'same_day_exit_priority',
+                        signal_timestamp=entry['signal'].timestamp.isoformat(), **entry['timing'])
+                    continue
                 marks[symbol] = entry['price']
                 execute_entry(symbol, i, bar, when, entry['signal'], entry['price'], intraday=entry)
-        # Minute decisions use only completed bars; the next interval's opening
-        # price is a modeled fill, not a broker acknowledgement.
-        if config.staged_exit_intraday:
-            assert minute_loader is not None
-            for symbol in sorted(list(positions)):
-                if symbol not in current or symbol in pending_exit:
+                continue
+            assert session_candle is not None
+            pos = positions.get(symbol)
+            if wave_eligible:
+                risk = intraday_wave_risks.get(symbol)
+                if risk is None:
+                    risk = observe_intraday_five_top_exit(grouped[symbol], i, session_candle,
+                                                         (wave_events or {}).get(symbol, []))
+                    if risk is not None:
+                        intraday_wave_risks[symbol] = risk
+                        wave_clear_symbols.add(symbol)
+                        pending_entry.pop(symbol, None)
+                if risk is not None and pos is not None:
+                    existing = exit_evidence.get(symbol, {})
+                    known_at = existing.get('signal_timestamp', existing.get('decision_timestamp'))
+                    prior_pending_full = (symbol in pending_exit and existing.get('exit_fraction', 1) == 1
+                                          and isinstance(known_at, str)
+                                          and known_at[:10] < bar.timestamp.date().isoformat())
+                    if symbol not in pending_exit or existing.get('exit_fraction', 1) < 1:
+                        pending_exit[symbol] = risk['reason']
+                        exit_evidence[symbol] = dict(
+                            signal_timestamp=risk['decision_timestamp'],
+                            **{key: value for key, value in risk.items() if key != 'reason'},
+                            decision_reason=risk['reason'])
+                    if pending_exit.get(symbol) == FIVE_TOP_GAP_UPPER_SHADOW_CLEAR or prior_pending_full:
+                        if not prior_pending_full and exit_evidence[symbol].get('execution_model') == 'next_open':
+                            continue
+                        filled = execute_exit(symbol, i, bar, stamp, session_candle.next_open_raw * bar.adjustment_factor,
+                                     'intraday_5m_next_open',
+                                     execution_sellable=minute_sellable(bar, grouped[symbol][i - 1], session_candle.next_open_raw),
+                                     timing=dict(execution_timestamp=stamp.isoformat(),
+                                                 minute_next_open_raw=session_candle.next_open_raw,
+                                                 execution_permission_timestamp=session_candle.decision_at.isoformat(),
+                                                 execution_observed_high=session_candle.bar.high,
+                                                 execution_observed_low=session_candle.bar.low,
+                                                 execution_observed_volume=session_candle.bar.volume,
+                                                 **({'execution_trigger_reason': FIVE_TOP_GAP_UPPER_SHADOW_CLEAR}
+                                                    if prior_pending_full else {}),
+                                                 observed_nonflat_limit_sellable=observed_nonflat_minute_sellable(
+                                                     bar, grouped[symbol][i - 1], session_candle)))
+                        if not filled and orders[-1]['reason'] in ('T+1', 'liquidity_capacity'):
+                            exit_evidence[symbol]['execution_model'] = 'next_open'
                     continue
-                i, bar = current[symbol]
-                pos = positions[symbol]
-                if pos.entry_index == i and (symbol, i) in entry_executions:
-                    continue  # A-share T+1: no same-session staged liquidation of this new holding.
-                state = pos.staged_exit
-                if state.recovered or state.exit_requested or state.reduction_target >= 0.65:
-                    continue
-                if state.support_index is None:
-                    support = next((j for j in range(i - 2, 0, -1)
-                                    if grouped[symbol][j].low < min(grouped[symbol][j - 1].low,
-                                                                      grouped[symbol][j + 1].low)), None)
-                    if support is None or bar.low >= grouped[symbol][support].low:
-                        continue
-                elif bar.low >= grouped[symbol][state.support_index].low:
-                    continue
-                try:
-                    minute = minute_loader(bar)
-                except MinuteCoverageError as exc:
-                    if not config.missing_minute_daily_fallback:
-                        raise
-                    evidence = dict(symbol=symbol, date=bar.timestamp.date().isoformat(),
-                                    reason=exc.coverage.get('reason', 'minute_history_missing'), coverage=exc.coverage,
-                                    execution_model='same_day_close')
-                    daily_fallback[symbol] = evidence
-                    minute_fallbacks.append(evidence)
-                    continue
-                day_low = math.inf
-                day_high = 0.0
-                for offset, observed in enumerate(minute[:-1]):
-                    day_low = min(day_low, observed.low * bar.adjustment_factor)
-                    day_high = max(day_high, observed.high * bar.adjustment_factor)
-                    if not time(14, 30) <= observed.timestamp.time() < time(15):
-                        continue
-                    price = observed.close * bar.adjustment_factor
-                    previous_target = state.reduction_target
-                    decision = observe_intraday_staged_exit(grouped[symbol], i, state, day_low, price)
-                    if decision is None:
-                        continue
-                    following = minute[offset + 1]
-                    pending_exit[symbol] = decision['reason']
-                    exit_evidence[symbol] = dict(
-                        signal_timestamp=observed.timestamp.isoformat(),
-                        decision_timestamp=observed.timestamp.isoformat(),
-                        **{key: value for key, value in decision.items() if key != 'reason'},
-                        decision_reason=decision['reason'], stop_price=pos.stop, target_price=pos.target,
-                        observed_low=day_low, observed_high=day_high, observed_close=price,
-                        minute_next_open_raw=following.open,
-                        decision_source='completed_five_minute_bar',
-                        execution_model='intraday_5m_next_open',
-                    )
-                    filled = execute_exit(symbol, i, bar, observed.timestamp,
-                                          following.open * bar.adjustment_factor, 'intraday_5m_next_open')
-                    if not filled and exit_evidence.get(symbol, {}).get('execution_model') != 'next_open':
-                        state.reduction_target = previous_target
-                if exit_evidence.get(symbol, {}).get('execution_model') == 'intraday_5m_next_open':
-                    pending_exit.pop(symbol, None)
-                    exit_evidence.pop(symbol, None)
+            if not staged_eligible or pos is None or symbol in pending_exit:
+                continue
+            if pos.entry_index == i and (symbol, i) in entry_executions:
+                continue
+            state = pos.staged_exit
+            if state.recovered or state.exit_requested or state.reduction_target >= 0.65:
+                continue
+            if not time(14, 30) <= session_candle.decision_at.time() < time(15):
+                continue
+            previous_target = state.reduction_target
+            decision = observe_intraday_staged_exit(grouped[symbol], i, state, session_candle.bar.low, session_candle.bar.close)
+            if decision is None:
+                continue
+            pending_exit[symbol] = decision['reason']
+            exit_evidence[symbol] = dict(
+                signal_timestamp=session_candle.decision_at.isoformat(),
+                decision_timestamp=session_candle.decision_at.isoformat(), execution_timestamp=stamp.isoformat(),
+                **{key: value for key, value in decision.items() if key != 'reason'},
+                decision_reason=decision['reason'], stop_price=pos.stop, target_price=pos.target,
+                observed_low=session_candle.bar.low, observed_high=session_candle.bar.high, observed_close=session_candle.bar.close,
+                minute_next_open_raw=session_candle.next_open_raw, decision_source='completed_five_minute_bar',
+                execution_model='intraday_5m_next_open',
+            )
+            filled = execute_exit(symbol, i, bar, stamp, session_candle.next_open_raw * bar.adjustment_factor,
+                                  'intraday_5m_next_open',
+                                  execution_sellable=minute_sellable(bar, grouped[symbol][i - 1], session_candle.next_open_raw),
+                                  timing=dict(execution_timestamp=stamp.isoformat(),
+                                              minute_next_open_raw=session_candle.next_open_raw,
+                                              execution_permission_timestamp=session_candle.decision_at.isoformat(),
+                                              **(dict(execution_observed_high=session_candle.bar.high,
+                                                      execution_observed_low=session_candle.bar.low,
+                                                      execution_observed_volume=session_candle.bar.volume)
+                                                 if bar.raw_is_st is not None and bar.raw_trading_active is True else {}),
+                                              observed_nonflat_limit_sellable=observed_nonflat_minute_sellable(
+                                                  bar, grouped[symbol][i - 1], session_candle)))
+            if not filled and exit_evidence.get(symbol, {}).get('execution_model') != 'next_open':
+                state.reduction_target = previous_target
+            if exit_evidence.get(symbol, {}).get('execution_model') == 'intraday_5m_next_open':
+                pending_exit.pop(symbol, None)
+                exit_evidence.pop(symbol, None)
+        for symbol in intraday_wave_risks:
+            if symbol in pending_exit and exit_evidence.get(symbol, {}).get('execution_model') == 'intraday_5m_next_open':
+                # A full close-known risk survives a locked last interval.
+                exit_evidence[symbol]['execution_model'] = 'next_open'
         # Old stop applies to today's bar. Newly observed trailing levels apply tomorrow.
         for symbol, pos in positions.items():
             if symbol not in current or (symbol in pending_exit and
@@ -749,7 +892,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 pending_exit[symbol] = wave_exit['reason']
                 exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
                     **{key: value for key, value in wave_exit.items() if key != 'reason'},
-                    decision_reason=wave_exit['reason'], decision_source='wave_exhaustion_risk')
+                    decision_reason=wave_exit['reason'], decision_source='wave_exhaustion_risk',
+                    **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}))
             elif pressure is not None:
                 pending_exit[symbol] = pressure['reason']
                 exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
@@ -882,6 +1026,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                 if five_top_evidence is not None:
                                     exit_evidence[symbol].update(
                                         {key: value for key, value in five_top_evidence.items() if key != 'reason'})
+                                if symbol in daily_fallback:
+                                    exit_evidence[symbol]['minute_fallback'] = daily_fallback[symbol]
                             elif pending_exit[symbol] == C_EQUAL_NEAR_VOLUME_CLEAR:
                                 c_equal_evidence = observe_c_equal_near_risk(
                                     grouped[symbol], i, c_equal_events[symbol],

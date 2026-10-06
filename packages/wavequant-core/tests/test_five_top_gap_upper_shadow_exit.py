@@ -15,6 +15,7 @@ from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
 from wavequant.domain.strategies import wave_exhaustion_exit
 from wavequant.domain.strategies import integrated_strategy
 from wavequant.domain.strategies.two_t_resistance import two_t_resistance_history
+from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageError
 
 
 REASON = "wave_five_top_gap_upper_shadow_clear"
@@ -352,7 +353,7 @@ def test_real_guofang_generates_prior_known_target_exit_and_causal_prefix(real_g
     assert prefix_exit == evidence
 
 
-def test_real_guofang_exit_respects_unsellable_prices_then_clears_at_available_session(real_guofang):
+def test_real_guofang_opened_lower_limit_clears_at_the_same_close_with_an_explicit_model(real_guofang):
     bars, dates, full, _ = real_guofang
     index = dates["2025-04-25"]
     exit_signal = next(signal for signal in full.signals if signal.bar_index == index and signal.side == "EXIT")
@@ -360,12 +361,45 @@ def test_real_guofang_exit_respects_unsellable_prices_then_clears_at_available_s
                               replace(config(), wave_exhaustion_exit=False, nonflat_limit_close_fill=True),
                               wave_events={bars[0].symbol: [event for event in full.audit
                                                             if event["event"].startswith("wave_projection_")]})
-    deferred = next(order for order in portfolio.orders if order["timestamp"][:10] == "2025-04-25"
-                    and order["side"] == "SELL")
-    assert (deferred["status"], deferred["reason"], deferred["decision_reason"], deferred["exit_fraction"]) == (
-        "deferred", "not_sellable", REASON, 1.0)
     buy, clear = [order for order in portfolio.orders if order["status"] == "filled"]
-    assert clear["timestamp"][:10] > "2025-04-25"
+    assert clear["timestamp"][:10] == "2025-04-25"
     assert clear["remaining_quantity"] == 0
     assert clear["quantity"] == buy["quantity"]
     assert clear["reason"] == REASON
+    assert clear["execution_model"] == "same_day_close"
+    assert clear["price"] / bars[index].adjustment_factor == pytest.approx(12.53)
+    assert clear["fill_assumption"] == "nonflat_limit_close_sell_without_queue_verification"
+    assert clear["applied_slippage_bps"] == 0.0
+
+
+def test_real_guofang_global_exit_retains_the_missing_minute_fallback_after_a_below_lot_reduce(real_guofang):
+    bars, dates, full, _ = real_guofang
+    index = dates["2025-04-25"]
+    exit_signal = next(signal for signal in full.signals if signal.bar_index == index and signal.side == "EXIT")
+    buy_signal = replace(entry(bars, dates["2025-04-24"]), trigger_timestamp=bars[dates["2025-04-24"]].timestamp)
+
+    def missing(_bar):
+        raise MinuteCoverageError("2025-04-25", None, None)
+
+    portfolio = run_portfolio(
+        {bars[0].symbol: bars}, [buy_signal, exit_signal],
+        replace(config(), initial_capital=100_000, risk_fraction=0.02, staged_exit_intraday=True,
+                missing_minute_daily_fallback=True, nonflat_limit_close_fill=True),
+        wave_events={bars[0].symbol: [event for event in full.audit
+                                    if event["event"].startswith("wave_projection_")]}, minute_loader=missing,
+    )
+    assert any(order["side"] == "SELL" and order["reason"] == "reduction_below_one_lot"
+               for order in portfolio.orders)
+    buy, clear = [order for order in portfolio.orders if order["status"] == "filled"]
+    assert buy["quantity"] * bars[dates["2025-04-24"]].adjustment_factor == pytest.approx(100)
+    assert clear["quantity"] == buy["quantity"]
+    assert clear["remaining_quantity"] == 0
+    assert clear["timestamp"][:10] == "2025-04-25"
+    assert clear["price"] / bars[index].adjustment_factor == pytest.approx(12.53)
+    assert clear["execution_model"] == "same_day_close"
+    assert clear["decision_source"] == "strategy_exit_signal"
+    assert clear["applied_slippage_bps"] == 0.0
+    assert "execution_timestamp" not in clear
+    fallback = next(evidence for evidence in portfolio.minute_fallbacks if evidence["date"] == "2025-04-25")
+    assert fallback["purpose"] == "five_top_gap_upper_shadow_exit"
+    assert clear["minute_fallback"] == fallback

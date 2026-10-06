@@ -219,10 +219,14 @@ def test_v3_profiles_use_a_origin_two_thirds_and_timed_half(variant):
     profile = whole_wave_profile({"scenarios": {"base": {"execution": {}}}}, variant)
     config = SystemStrategy(**profile["strategy"])
     config.validate()
-    assert profile["profile_version"] == "five_top_gap_upper_shadow_v95_" + variant
-    assert "five_top_gap_upper_shadow_same_close_clear" in profile["definition"]["exits"]
-    assert "close_le_open_including_doji" in profile["definition"]["wave_five_top_gap_upper_shadow_exit"]
-    assert "no_volume_or_prior_reduction_gate" in profile["definition"]["wave_five_top_gap_upper_shadow_exit"]
+    definition = profile["definition"]
+    assert profile["profile_version"] == "five_top_gap_upper_shadow_v96_" + variant
+    assert "five_top_gap_upper_shadow_completed_5m_or_daily_close_clear" in definition["exits"]
+    assert "close_le_open_including_doji" in definition["wave_five_top_gap_upper_shadow_exit"]
+    assert "no_volume_or_prior_reduction_gate" in definition["wave_five_top_gap_upper_shadow_exit"]
+    assert "next_5m_open_uses_observed_opening_permissions" in definition["wave_five_top_gap_upper_shadow_execution"]
+    assert "zero_slippage_without_queue_verification" in definition["nonflat_limit_close_sell"]
+    assert "no_final_daily_extrema" in definition["nonflat_limit_intraday_sell"]
     assert config.ten_full_breakout_window == 23
     assert config.ten_full_retracement_ratio == 2 / 3
     assert config.ten_full_retracement_anchor == "origin"
@@ -237,7 +241,10 @@ def test_five_top_gap_upper_shadow_exit_keeps_legacy_profile_definitions(profile
     profile = profile_factory({"scenarios": {"base": {"execution": {}}}})
     assert profile["profile_version"] == version
     assert "wave_five_top_gap_upper_shadow_exit" not in profile["definition"]
-    assert "five_top_gap_upper_shadow_same_close_clear" not in profile["definition"]["exits"]
+    assert "wave_five_top_gap_upper_shadow_execution" not in profile["definition"]
+    assert "nonflat_limit_close_sell" not in profile["definition"]
+    assert "nonflat_limit_intraday_sell" not in profile["definition"]
+    assert "five_top_gap_upper_shadow_completed_5m_or_daily_close_clear" not in profile["definition"]["exits"]
     assert "target_observed_then_next_open" in profile["definition"]["exits"]
 
 

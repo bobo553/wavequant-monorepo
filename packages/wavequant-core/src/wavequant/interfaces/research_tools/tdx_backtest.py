@@ -14,7 +14,7 @@ from pathlib import Path
 from threading import Lock
 from time import perf_counter
 
-from wavequant.infrastructure.market_data.data import fingerprint
+from wavequant.infrastructure.market_data.data import BAR_PERMISSION_SCHEMA, fingerprint
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, SystemResult, generate_system_signals
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
@@ -58,7 +58,7 @@ class TdxBacktester:
                 actions,decoded_hash=read_actions(path,self.actions_cache)
                 if digest!=decoded_hash or fingerprint(path)!=digest:
                     raise ValueError('通达信除权文件正在更新，请更新结束后重新运行')
-                indexed={}
+                indexed: dict[str, list[str]] = {}
                 for event in actions:
                     indexed.setdefault(event['symbol'],[]).append(json.dumps(event,sort_keys=True))
                 self.actions_by_symbol={s:tuple(events) for s,events in indexed.items()}
@@ -105,6 +105,7 @@ class TdxBacktester:
         # behind a different stock's cold calculation.
         with self.artifacts.lock(self.artifacts.key('stock',symbol)):
             key=json.dumps(dict(symbol=symbol,start=start,asof=asof,strategy=strategy,execution=execution,
+                bar_permission_schema=BAR_PERMISSION_SCHEMA,
                 minute_sha256=self._minute_fingerprint(symbol),
                 minute_data_policy='tdx_native_5m_v1' if execution['staged_exit_intraday'] else None,
                 day_sha256=day_hash,gbbq_sha256=action_hash,engine=engine,
@@ -202,15 +203,17 @@ class TdxBacktester:
         if start>end: raise ValueError('所选区间没有可回测日线')
         converted=adjust_rows(raw,[json.loads(e) for e in events],start,end,symbol,include_close_permission=True)
         if not converted: raise ValueError('所选区间没有可回测日线')
-        bars=[Bar(datetime.fromisoformat(r['timestamp']),symbol,
-                  *(r[k] for k in ('open','high','low','close','volume')),
-                  bool(r['buyable']),bool(r['sellable']),r['adjustment_factor'],
-                  close_buyable=bool(r['close_buyable']), nonflat_close_buyable=bool(r['nonflat_close_buyable'])) for r in converted]
+        bars=[Bar(timestamp=datetime.fromisoformat(r['timestamp']),symbol=symbol,
+                  open=r['open'],high=r['high'],low=r['low'],close=r['close'],volume=r['volume'],
+                  buyable=bool(r['buyable']),sellable=bool(r['sellable']),adjustment_factor=r['adjustment_factor'],
+                  close_buyable=bool(r['close_buyable']), nonflat_close_buyable=bool(r['nonflat_close_buyable']),
+                  close_sellable=bool(r['close_sellable']), nonflat_close_sellable=bool(r['nonflat_close_sellable']),
+                  raw_is_st=bool(r['raw_is_st']), raw_trading_active=bool(r['raw_trading_active'])) for r in converted]
         if progress is not None: progress(30, '生成信号')
         strategy=SystemStrategy(**inputs['strategy']);strategy.validate()
-        generated=generate_system_signals(bars,strategy,
-            **({'progress': lambda percent: progress(35+percent*25//100, '生成信号')}
-               if progress is not None else {}))
+        generated=(generate_system_signals(bars,strategy) if progress is None else
+                   generate_system_signals(bars,strategy,
+                       progress=lambda percent: progress(35+percent*25//100, '生成信号')))
         # Persist chart geometry during the first scan as well as on chart open.
         # It is independent of strategy/execution, but never of price basis.
         from wavequant.interfaces.charts.chart_geometry import cached_geometry
@@ -226,6 +229,7 @@ class TdxBacktester:
         result['backtest'].update(provenance='current_engine_on_local_tdx_prefix',run_id=run_id,
             requested_start=inputs['start'],price_basis='causal_adjusted_equivalent',
             source=dict(day_sha256=inputs['day_sha256'],gbbq_sha256=inputs['gbbq_sha256'],engine=inputs['engine'],
+                        bar_permission_schema=inputs['bar_permission_schema'],
                         minute_sha256=inputs.get('minute_sha256'),
                         decoded_actions_sha256=inputs['decoded_actions_sha256'],minute=minute_source),
             adjustment='固定起点、逐日累乘除权因子；成交等价价 ÷ 当日因子 = 模拟原始成交价',

@@ -113,7 +113,7 @@ const REASONS = {
     wave_bearish_engulf_clear: "目标阶段大阴线反包前日阳线，当日清仓",
     wave_five_top_child_volume_clear: "五顶后收阴，跌破昨低昨收及前天子低，量超过最近阴线，当日清空余仓",
     wave_five_top_gap_volume_clear: "五顶到达后低开，收盘跌破前日开盘且成交量超过此前最近阴线，当日收盘清空余仓",
-    wave_five_top_gap_upper_shadow_clear: "五顶或十满到位后低开、收盘不高于开盘且上影占振幅至少 50%，当日收盘清空余仓",
+    wave_five_top_gap_upper_shadow_clear: "五顶或十满到位后低开、收盘不高于开盘且上影占振幅至少 50%，触发全仓退出",
     wave_five_top_entry_too_close: "距已知五顶目标不超过原正 N 一箱，禁止新买入或加仓",
     wave_ten_full_pullback_pending:
         "十满后等待短期再突破、A 段 2/3 回撤，或半幅回撤且 B 段时间长于 A 段，暂缓新买入或加仓",

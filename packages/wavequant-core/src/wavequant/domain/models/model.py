@@ -23,6 +23,12 @@ class Bar:
     # None preserves legacy/custom-data permission semantics.
     close_buyable: bool | None = None
     nonflat_close_buyable: bool | None = None
+    close_sellable: bool | None = None
+    nonflat_close_sellable: bool | None = None
+    # Source facts authorize a minute-price permission check; unknown/custom
+    # data keeps its original explicit sellable veto instead of guessing ST/status.
+    raw_is_st: bool | None = None
+    raw_trading_active: bool | None = None
 
 
 @dataclass(frozen=True)

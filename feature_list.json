@@ -7,14 +7,16 @@
             "id": "MONOREPO-279",
             "name": "five-top-gap-upper-shadow-clear",
             "title": "五顶后低开收低长上影清仓",
-            "description": "五顶此前已到位且有效时，低开、收盘不高于开盘且长上影达到振幅一半即当日清空余仓，包含开收相等，不依赖放量或此前减仓。",
-            "scope": "Core全局退出与账户执行、Web中文证据及国芳2025-04-25回归",
+            "description": "五顶此前已到位且有效时，低开、收盘不高于开盘且长上影达到振幅一半即清空余仓，包含开收相等；有分钟按已完成部分日线因果触发，缺分钟按明确非一字跌停收盘模型执行。",
+            "scope": "Core全局退出、分钟与日线撮合权限、市场数据边界、Web证据及国芳2025-04-25回归",
             "dependencies": ["MONOREPO-275"],
             "status": "in-progress",
             "acceptanceCriteria": [
                 "只使用此前交易日已达到且未失效的五顶或十满，禁止同日及未来目标泄漏",
                 "开盘严格低于前收，收盘不高于开盘，上影占振幅至少一半，开收相等有效且不要求放量",
-                "全清优先于80%减仓，同日禁止所有买入和加仓，沿用T+1、流动性和交易权限",
+                "全清优先于80%减仓，退出确认后禁止当日后续买入和加仓，不撤销已发生的分钟成交；沿用T+1、流动性和交易权限",
+                "盘中仅使用此前目标与已完成分钟累计OHLCV，下一五分钟开盘按当刻价格权限撮合，不借用最终日线或当日未来失效",
+                "收盘和盘中不沿用开盘跌停权限；明确非一字跌停收盘模拟只在原开关启用和来源证明时成交，价不低于跌停且记录未验证队列假设，一字/停牌/未知权限保守",
                 "国芳2025-04-25真实OHLC、完整与前缀一致，复权信号价格与原始成交价格分开核对",
                 "定向回归、相关类型和构建通过，Web展示可追溯中文依据，未运行项如实记录"
             ],
@@ -53,6 +55,36 @@
                     "command": "complete Core/Web suites, browser/Playwright, real external-minute fills and local main merge/live V95 verification",
                     "status": "not-run",
                     "summary": "按用户节奏未运行完整套件、浏览器或Playwright；2025分钟缺失沿正式日线收盘回退，不宣称实盘撮合。新实现留在独立特性分支，4项main既有失败未获本轮例外授权，尚未合并、推送或手工重启；常驻服务仍V94。确认例外后同步最新main、复核差异并no-ff本地合并，再核对版本/实际源码与Web模块。"
+                },
+                {
+                    "command": "Core cwd: .venv/Scripts/python.exe -m pytest tests/test_intraday_five_top_exit.py tests/test_five_top_gap_upper_shadow_exit.py tests/test_staged_exit.py tests/test_intraday_entry.py tests/test_add_on_entry.py -q --tb=short; & packages/wavequant-core/.venv/Scripts/python.exe -m pytest packages/wavequant-core/tests/test_sell_permission_boundaries.py packages/wavequant-core/tests/test_minute_data.py packages/wavequant-core/tests/test_close_entry.py packages/wavequant-core/tests/test_akshare_history.py packages/wavequant-core/tests/test_integrity.py packages/wavequant-core/tests/test_tdx_backtest.py -q; Core cwd: .venv/Scripts/python.exe -m pytest tests/test_ten_full_entry.py -q",
+                    "status": "passed",
+                    "summary": "V96最终执行5文件155项（7.60秒）、来源6文件78项（8.78秒）、profile19项（13.43秒）通过，共252项不重叠。分钟只用此前有效目标与已完成累计OHLCV；按下一棒开始时间权限成交，午休与naive时区处理明确。退出确认后禁止后续买加，早先成交费用/T+1和现金时序保持；旧全清原因与冻结目标优先。旧开盘权限不再封锁全天，明确来源的非一字跌停模型按raw close/next open零滑点，普通滑点不穿跌停价；一字、停牌、未知权限及关闭模型不假成交。TDX仅A股float32报价恢复cent，ETF/未知和同源校验保持。T+1次日清旧执行证据、旧full委托盘中重试、缺分钟行引用均先失败后窄修。"
+                },
+                {
+                    "command": "Core cwd: .venv/Scripts/python.exe -m mypy --follow-imports=silent src/wavequant/application/analytics/backtest.py src/wavequant/application/analytics/intraday_wave_exit.py tests/test_intraday_five_top_exit.py tests/test_five_top_gap_upper_shadow_exit.py; & packages/wavequant-core/.venv/Scripts/python.exe -m mypy --config-file packages/wavequant-core/pyproject.toml --follow-imports=silent packages/wavequant-core/src/wavequant/domain/models/model.py packages/wavequant-core/src/wavequant/infrastructure/market_data/data.py packages/wavequant-core/src/wavequant/infrastructure/market_data/tdx.py packages/wavequant-core/src/wavequant/infrastructure/market_data/io.py packages/wavequant-core/src/wavequant/infrastructure/market_data/minute.py packages/wavequant-core/src/wavequant/interfaces/research_tools/tdx_backtest.py packages/wavequant-core/src/wavequant/interfaces/research_tools/akshare_backtest.py packages/wavequant-core/src/wavequant/interfaces/charts/visualization.py packages/wavequant-core/tests/test_sell_permission_boundaries.py; pnpm --filter @wavequant/core typecheck; python -m build --no-isolation --outdir temporary-directory; isolated final-wheel install/import/source-hash smoke",
+                    "status": "passed",
+                    "summary": "V96最终4直接模块、9来源/测试文件与既定4文件strict通过，未放宽pyproject配置；移除当前配置下失效ignore，不运行Python格式或lint。元信息最后两行之后最终sdist/wheel成功，临时隔离venv强制安装该最终wheel；backtest/intraday/model/data/minute五模块与最终源码字节摘要一致，site-packages导入及raw12.53价格下限验证通过。构建产物位于TEMP，不提交。"
+                },
+                {
+                    "command": "& packages/wavequant-core/.venv/Scripts/python.exe C:/Users/zb/AppData/Local/Temp/wavequant-279-final-real-probe.py; & packages/wavequant-core/.venv/Scripts/python.exe C:/Users/zb/AppData/Local/Temp/wavequant-279-final-metadata-replay.py",
+                    "status": "passed",
+                    "summary": "V96最终1777根原行情/因子/旧权限与正式账户参数保持；只新增四来源权限字段，fixture原字段逐项相同。fresh生成334 signals/4742 audit用102.335秒，账户前缀/129源码检查全阶段109.684秒，不复用V94信号或缓存。随后仅backtest.py两行链接minute_fallback；所有生成/策略/领域源码不变，保留fresh原proof，独立账户+前缀重放5.926秒，research完全相同、全部订单除新fallback字段外相同、metrics不变；未声称元信息补丁后重生成signals。最终129源前后相等，engine=272f731c52304612c8a1e65e9c0072a71b5cc2ff368c8c815117ecce977355fa。4/25 SELL filled raw12.53元/100原始股/余0/same_day_close/0bps/nonflat_limit_close_sell_without_queue_verification，成交行关联five_top_gap_upper_shadow_exit缺分钟证据，不再递延4/28。无2025真实分钟、无伪造盘中成交时刻；最终probe SHA95603f50e9af53f50db957869af4e76c7da41cc33e8f06a29c197d4811970167，旧V94及初次fresh阶段完整留存TEMP。"
+                },
+                {
+                    "command": "Web cwd: node --test tests/annotations.test.mjs tests/trade-reasons.test.mjs tests/trade-position.test.mjs; pnpm --filter wavequant-web exec vitest run src/features/research-workbench/topology/topology-data.test.ts; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web build; pnpm --filter wavequant-web typecheck; related Prettier --check; real final order through annotations/reasons/detail/copy",
+                    "status": "passed",
+                    "summary": "V96最终Node72、拓扑8通过；74来源指纹b5c81f0e8199253279161fdf2e3ea97fbaf83063dd24a0cb249079c6a0bd4dfa之后生产构建与独立typecheck通过，恢复仅已知next-env生成import差异。lint零错误6条既有环境变量warning，8修改文件格式及diff检查通过。真实最终4/25订单经过共享展示/复制链，raw12.53/100股/余0/0bps、当日缺完整同源分钟、日线收盘模型和队列未验证均明确；分钟判定/执行时间分开，普通价格下限保护显示实际滑点，不冒用最终日线高低授权分钟成交。"
+                },
+                {
+                    "command": "V96 final independent review; codegraph sync; git diff --check; pnpm harness:check; state/doc Prettier --check",
+                    "status": "passed",
+                    "summary": "V96最终Core/来源交叉复核及真实Web展示复验通过；最后状态与进度记录后的Harness通过（276功能、18 Node workspace、2 Python workspace、32规则），CodeGraph同步、差异与5份状态/讲义格式检查通过。首次状态格式检查失败已仅格式化这4份记录后重跑通过，无凭据或构建产物，所有其他feature记录逐项保持。既有4项失败保留，不擅自修改无关入场或断言。"
+                },
+                {
+                    "command": "V96 complete Core/Web suites; browser/Playwright; real historical-minute/broker fills; local main merge/live V96 verification",
+                    "status": "not-run",
+                    "summary": "按用户节奏未运行完整套件、浏览器或Playwright；2025-04-25真实分钟缺失，日线结果不证明实盘排队或精确盘中时刻。4项旧失败已在main复现，相关信号生成逻辑未修改，未重复耗时整套；旧failed证据保留。当前main8eee8d8及常驻shared_edge_n_v94_lecture_v3未变，新V96留专属分支。按根AGENTS及docs/agent/codex-global-AGENTS.md:34检查失败不合并规则，等待用户明确允许保留这4项既有失败后本地合并启用，不推送/发布/手工改缓存。"
                 }
             ]
         },

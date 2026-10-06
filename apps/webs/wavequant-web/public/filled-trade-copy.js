@@ -100,6 +100,18 @@ export function formatFilledTradeCopy(view, marker, variantName, positionLabel, 
     if (marker.execution_model === "same_day_close") lines.push("成交口径：当日收盘价（日线回测，未还原尾盘分钟路径）");
     if (marker.fill_assumption === "nonflat_limit_close_without_queue_verification")
         lines.push("成交假设：非一字涨停按当日收盘价模拟成交，未验证涨停排队成交；成交价不另加正滑点。");
+    if (marker.fill_assumption === "nonflat_limit_close_sell_without_queue_verification")
+        lines.push(
+            `成交假设：已观察到非一字跌停，按收盘原价 ${num(marker.raw_price, 4)} 元模拟卖出；未验证跌停排队成交，卖出滑点 ${num(marker.applied_slippage_bps, 0)} bps。`,
+        );
+    if (marker.fill_assumption === "observed_nonflat_limit_intraday_sell_without_queue_verification")
+        lines.push(
+            `成交假设：判定时已观察到跌停打开，按下一根分钟开盘原价 ${num(marker.minute_next_open_raw, 4)} 元模拟卖出；未验证跌停排队成交，卖出滑点 ${num(marker.applied_slippage_bps, 0)} bps。`,
+        );
+    if (marker.slippage_price_floor === "a_share_lower_limit" && Number.isFinite(marker.execution_lower_limit_raw))
+        lines.push(
+            `价格边界：原始跌停价 ${num(marker.execution_lower_limit_raw, 4)} 元，跌停价约束后的实际卖出滑点 ${num(marker.applied_slippage_bps, 4)} bps。`,
+        );
     if (marker.fill_assumption === "observed_nonflat_limit_intraday_without_queue_verification")
         lines.push(
             "成交假设：买点前已观察到非一字交易，按下一根分钟开盘价模拟成交；未验证涨停排队，成交价不另加正滑点。",

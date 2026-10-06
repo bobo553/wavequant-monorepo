@@ -33,7 +33,7 @@ test("sizing rejection and structural cutoff have explicit Chinese explanations"
     assert.match(reasonText("wave_five_top_gap_volume_clear"), /五顶到达后低开.*前日开盘.*最近阴线.*清空余仓/);
     assert.match(
         reasonText("wave_five_top_gap_upper_shadow_clear"),
-        /五顶或十满.*低开.*收盘不高于开盘.*上影.*50%.*清空余仓/,
+        /五顶或十满.*低开.*收盘不高于开盘.*上影.*50%.*全仓退出/,
     );
     assert.equal(reasonText("not_sellable"), "当日不满足可卖条件，退出延期");
     assert.match(reasonText("wave_two_t_body_volume_clear"), /二饱到位后.*实体反包.*此前最近阴线.*当日收盘清空余仓/);

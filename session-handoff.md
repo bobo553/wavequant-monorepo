@@ -1,3 +1,13 @@
+## 2026-10-06 · MONOREPO-279 V96 已完成执行修复，合并待确认
+
+继续使用 C:/Users/zb/.codex/worktrees/five-top-low-open-exit/wavequant-monorepo、feat-五顶低开长影清仓，main仍8eee8d8/常驻V94。279唯一in-progress，256全部历史保留。V96不再把开盘跌停sellable沿用全天；分钟因果累计/当刻价格权限，来源证明非一字与模型启用时按raw close/next open零滑点模拟SELL。普通滑点有official ST/board/date下限，一字/停牌/未知保守，T+1/流动性/已发生入场及现金顺序保持。旧full理由优先、TDX A股cent精度、naive时区、T+1次日执行字段、成交行fallback关联均补反例并修复。
+
+最终Core执行155+来源78+profile19，Web72Node+8拓扑；相关4+9mypy/既定strict、最终Core包与隔离5模块摘要、Web最终74源b5c81f0e之后build/typecheck/lint/格式通过。真实1777 fresh信号102.335秒、完整前缀/源码验证109.684秒；后续只有backtest.py两行订单fallback元信息，所有生成源码不变，保留原fresh334signals/4742audit并重放账户5.926秒，research/成交/metrics不变。4/25 raw12.53清100原始股余0，same_day_close/0bps/nonflat_limit_close_sell_without_queue_verification，行内缺分钟引用正确。最终129源272f731c前后相等；原probe、fresh-generation-proof及精简summary均在C:/Users/zb/AppData/Local/Temp，不提交；最终probe SHA95603f50e9af53f50db957869af4e76c7da41cc33e8f06a29c197d4811970167。该日无真实历史分钟，不声称盘中实盘排队成交。下方V95的4/28递延记录为已修正的历史阶段。
+
+仍待用户允许保留4项已在main逐项复现的既有失败再本地合并：新华二饱wave_n_date预期11/02实际11/17；先锋C_equal两项July3 LONG缺失及风险None。未改相关资格/断言，不擅自豁免根规则“检查未通过时先修复，无法通过时说明原因，不合并”（docs/agent/codex-global-AGENTS.md:34）。批准后同步最新本地main、复核/受影响检查、no-ff合并并核对实际V96/源码/Web；不自动推送或手工缓存修改。完整套件/浏览器/Playwright/外部分钟仍待验证。
+
+## 历史 V95 阶段
+
 ## 2026-10-06 · MONOREPO-279 五顶低开长影清仓，合并待确认
 
 当前会话工作目录为 C:/Users/zb/.codex/worktrees/five-top-low-open-exit/wavequant-monorepo，分支 feat-五顶低开长影清仓，从main 8eee8d8建立。实现、定向检查、正式真实账户和独立复核已完成；未合并main或推送，常驻仍V94。279为唯一in-progress，256暂backlog且原失败证据全部保留。
