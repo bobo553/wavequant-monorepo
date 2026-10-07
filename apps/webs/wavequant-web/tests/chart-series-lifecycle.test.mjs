@@ -53,7 +53,7 @@ const bars = [...initial.bars, ...history.bars].map(([time, open, high, low, clo
 const data = { symbol: "sz.300163", bars, markers: [], orders: [], asof: history.asof };
 const theory = { ...initial.theory, asof: history.asof, shapes: [], secondary_trends: history.secondary_trends };
 
-function chartHarness() {
+function chartHarness(onKeyboardNavigate = () => {}) {
     const container = document.createElement("div");
     document.body.append(container);
     const chart = new PriceChart(
@@ -61,6 +61,9 @@ function chartHarness() {
         () => {},
         () => {},
         () => {},
+        () => {},
+        () => {},
+        onKeyboardNavigate,
     );
     chart.chart.applyOptions({ autoSize: false, width: 800, height: 500 });
     chart.setData(data);
@@ -80,6 +83,42 @@ const collections = {
     lines: "clearTheory",
     waveAbLines: "clearWaveAbPath",
 };
+
+test("PriceChart arrow navigation updates the real SDK window and stops after destruction", () => {
+    let pauses = 0;
+    const chart = chartHarness(() => pauses++);
+    const container = chart.container;
+    let width = 800;
+    const press = (key) => {
+        const event = new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+        container.dispatchEvent(event);
+        chart.chart.resize(++width, 500, true);
+        return event.defaultPrevented;
+    };
+    try {
+        chart.chart.timeScale().setVisibleLogicalRange({ from: 10, to: 50 });
+        chart.chart.resize(++width, 500, true);
+        container.querySelector("canvas").dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }));
+        assert.equal(document.activeElement, container);
+        assert.equal(press("ArrowUp"), true);
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), { from: 14, to: 46 });
+        assert.equal(press("ArrowLeft"), true);
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), { from: 8, to: 40 });
+        assert.equal(press("ArrowRight"), true);
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), { from: 14, to: 46 });
+        assert.equal(press("ArrowDown"), true);
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), { from: 10, to: 50 });
+        assert.equal(pauses, 4);
+        assertOwnedSeries(chart);
+    } finally {
+        chart.destroy();
+    }
+    const released = new window.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
+    container.dispatchEvent(released);
+    assert.equal(released.defaultPrevented, false);
+    assert.equal(pauses, 4);
+    assert.equal(container.hasAttribute("tabindex"), false);
+});
 
 function assertOwnedSeries(chart) {
     const expected = [chart.candles, chart.volume, ...Object.keys(collections).flatMap((field) => chart[field])];
