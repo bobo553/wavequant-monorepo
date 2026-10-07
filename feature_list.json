@@ -21,7 +21,7 @@
                 {
                     "command": "Final local main d63ffdd/9c1da9e; API8765 TDX/AkShare April8/July27/September30; Web3003 full-chart proxy and actual Canvas commands; main Harness",
                     "status": "passed",
-                    "summary": "最终实现d63ffdd经9c1da9e本地no-ff合并。两源6个实际截面均HTTP200，仅3.45→19.63实线，无countertrend_confirmation或反向虚线。当前完整TTX三层正式点与修正前逐项一致；最新04-08高点已于07-27成为正式二级点，仍不补回三级虚线。3003当前完整图代理与8765点位一致，实际Canvas为1橙色实线/0虚线；不是浏览器像素验证。main Harness通过，未推送，原256全部字段逐项相等。"
+                    "summary": "最终实现d63ffdd经9c1da9e本地no-ff合并。两源6个实际截面均HTTP200，仅3.45→19.63实线，无countertrend_confirmation或反向虚线。当前完整TTX三层正式点与修正前逐项一致；最新04-08高点已于07-27成为正式二级点，仍不补回三级虚线。3003当前完整图代理与8765点位一致，实际Canvas为1橙色实线/0虚线；不是浏览器像素验证。main Harness通过，未推送，原256全部字段逐项相等。 本地Turbopack随后因16MB内存分配失败退出；复用既有pnpm/Next，以忽略目录中的主分支Web-only Webpack启动器恢复PID27600、768MB heap，继续使用已正常运行的API8765。重跑完整图代理/Canvas并请求research实际HTTP200；产品构建配置未修改。"
                 },
                 {
                     "command": "Final Core pytest countertrend/confirmation and secondary/tertiary/landmarks/alternation/chart-history/hierarchical-entry/N regressions",
