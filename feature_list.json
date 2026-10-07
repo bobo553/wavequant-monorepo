@@ -4,6 +4,43 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-287",
+            "name": "chart-keyboard-region-routing",
+            "title": "修复K线区域方向键路由",
+            "description": "将四向快捷键从仅外层容器聚焦扩展到整个K线区域，包括内部SDK元素聚焦和页面中鼠标在图内；捕获按键避免内部处理截断。",
+            "scope": "Web图表快捷键路由、帮助文案、SDK/DOM定向回归、合并推送",
+            "dependencies": ["MONOREPO-286"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "图表外层或内部非编辑元素聚焦时四个方向键均执行相应操作，内部stopPropagation不阻断图窗快捷键",
+                "鼠标在K线区域且页面没有输入/控件焦点时支持四向键及连续按键；移出后恢复页面行为，不抢输入、滑块、按钮、组合键或输入法操作",
+                "图表销毁和移出DOM后不再响应，多个图表保持正确的焦点所有者；提示说明实际使用方式",
+                "定向DOM/SDK回归、格式/lint/类型/构建与Harness通过后合并main并按本会话交付授权推送；不启动Playwright或运行浏览器E2E"
+            ],
+            "verification": [
+                {
+                    "command": "new descendant-focus/hover regressions on old source; node --test chart-keyboard-navigation chart-series-lifecycle chart-navigation chart-viewport-height market-dashboard",
+                    "status": "passed",
+                    "summary": "新增两场景先在旧实现复现不消费按键，修复后43项Node通过。文档捕获按图表区域所有权路由，真实SDK内层canvas持有焦点及stopPropagation时四向键均改变实际图窗，鼠标在图内且页面焦点中也更新SDK。长按、移出、输入/滑块/按钮/组合键保护、隐藏/断连/销毁、多个图表所有者及既有导航/序列生命周期通过。已处理事件回归移到更早的window捕获阶段，保持defaultPrevented保护语义。"
+                },
+                {
+                    "command": "vitest chart-viewport.test.tsx; pnpm wavequant-web lint/typecheck/build; final restored typecheck; targeted Prettier/JS syntax/CodeGraph/diff",
+                    "status": "passed",
+                    "summary": "1项组件测试和43 Node合计44项通过；lint零错误6条旧warning、独立及最终恢复next-env后的类型通过。初次构建worker原生退出，系统可用提交内存不足导致pnpm启动失败；384MB重试明确heap OOM。最终直接调用既有pnpm10.26.2 CLI（父128MB、子512MB及4MB新生代）完整生产build成功，退出0，未改包/构建配置或放宽门禁。源码/测试格式、语法、CodeGraph同步及差异通过。"
+                },
+                {
+                    "command": "pnpm harness:check; state preservation against main; GET exact user research URL; git diff --check",
+                    "status": "passed",
+                    "summary": "Harness284功能、18 Node/2 Python workspace及32规则通过；除新增287外所有原功能与main逐项相同，原activeFeature与256完整恢复。用户指定3003/research查询页面HTTP200，包含K线挂载点、帮助和四向键ARIA；不代表当前浏览器已加载新代码。最终格式与差异通过。"
+                },
+                {
+                    "command": "Current-browser key/visual verification; complete Web/browser/Playwright",
+                    "status": "not-run",
+                    "summary": "用户确认3003/research?page=workspace&symbol=sz.002242&asof=2026-09-30&source=akshare，HTTP200且包含唯一K线容器、提示和四键ARIA。浏览器连接两次nodeRepl.fetch失败，无法读取当前页面真实焦点或发送/观察实际按键；HTTP确认只证明页面代码提供正常，SDK/DOM回归不等于用户浏览器验收。未启动Playwright、运行浏览器E2E或完整Web套件；实际客户端按键和像素验证待独立验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-286",
             "name": "chart-keyboard-focus-after-sdk-click",
             "title": "修复K线方向键焦点丢失",

@@ -21,7 +21,7 @@ export function ChartViewport(): JSX.Element {
                 aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
             />
             <p id="chart-keyboard-help" className="chart-keyboard-help">
-                点击图表或 Tab 聚焦后：↑ 放大 · ↓ 缩小 · ← → 移动，长按连续操作
+                鼠标在 K 线图内或图表聚焦时：↑ 放大 · ↓ 缩小 · ← → 移动，长按连续操作
             </p>
             <div className="chart-position">
                 <div className="chart-position-heading">
