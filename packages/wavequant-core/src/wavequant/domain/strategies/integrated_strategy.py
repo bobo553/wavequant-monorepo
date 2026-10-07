@@ -10,6 +10,7 @@ from typing import Any, Callable, Sequence, cast
 from ..models.model import Bar, Signal
 from ..market_structure.polyline import LinePoint, PointKind, ReversalPoint, observe_polyline, observe_bar_relations
 from ..market_structure.n_shape import NSetup, PivotRef, BoxAnchorMode, MilestoneBasis, observe_n
+from ..market_structure.bottom_n_targets import DeclineStart, PositiveNCompletion, bottom_n_target_history
 from ..market_structure.price_action import Direction, ShadowPolicy, AttackBasis
 from ..market_state.market_regime import MarketRegime, RegimePhase, RegimePolicy, ResistanceOutcome, WaveBoundary, observe_market_regime
 from ..market_state.control_bar import observe_control_bar
@@ -398,6 +399,49 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             two_t=n.targets.two_t,
             **({'mother_pullback_confirmed': True} if mother_pullback else {}),
             **({'outside_close_confirmed': True} if whole_wave and setup.allow_outside_close and setup.pullback.index == t else {}))
+    bottom_targets = None
+    target_retired_at = {}
+    if whole_wave and secondary_levels is not None:
+        declines = []
+        seed_decline = None
+        formal_decline_seen = False
+        for now, levels in secondary_levels.items():
+            high = next((point for point in reversed(levels[1]) if point['kind'] == 'H'), None)
+            if high is not None:
+                formal_decline_seen = True
+                declines.append(DeclineStart(high['index'], now))
+            elif not formal_decline_seen:
+                # A short history may already contain a confirmed initial
+                # falling leg before it has enough turns for level-one reduction.
+                if seed_decline is None:
+                    seed = next((point for point in snapshots[now] if point.point.kind == PointKind.HIGH), None)
+                    if seed is not None:
+                        seed_decline = seed.point.index
+                if seed_decline is not None:
+                    declines.append(DeclineStart(seed_decline, now))
+        bottom_targets = bottom_n_target_history(bars, declines, [
+            PositiveNCompletion(c['setup'].origin.index, c['attack'], max(c['attack'], c['known_at']))
+            for c in candidates if c['setup'].direction == Direction.UP
+        ])
+        for row in audit:
+            if row['event'] != 'n_completed' or row['direction'] != 'up':
+                continue
+            qualification = bottom_targets.qualifications[row['bar_index']]
+            row.update(target_eligible=qualification.eligible,
+                       target_source_attack=qualification.source_attack,
+                       target_decline_index=qualification.decline_index,
+                       target_bottom_index=qualification.bottom_index,
+                       target_qualification_reason=qualification.reason)
+            if not qualification.eligible:
+                row.update(one_p=None, two_t=None)
+        for retired_source in bottom_targets.retirements:
+            target_retired_at[retired_source.attack] = retired_source.bar_index
+            log(retired_source.bar_index, 'n_target_source_retired', attack=retired_source.attack,
+                reason=retired_source.reason)
+    bottom_candidates = {c['attack']: c for c in candidates
+                         if bottom_targets is not None
+                         and c['setup'].direction == Direction.UP
+                         and bottom_targets.qualifications[c['attack']].eligible}
     # A later confirmed inverse N terminates ordinary local-bounce entries.
     # Use its availability, not a pivot source date, to preserve prior signals.
     inverse_known = sorted((max(c['attack'], c['known_at']), c['attack']) for c in candidates
@@ -584,6 +628,8 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         for candidate in candidates:
             if candidate['setup'].direction != Direction.UP:
                 continue
+            if bottom_targets is not None and candidate['attack'] not in bottom_candidates:
+                continue
             n = candidate['n']
             squeeze = next((candidate['start'] + f.bar_index for f in candidate['regime'].frames
                             if f.regime in (MarketRegime.BULL, MarketRegime.STRONG_BULL)), None)
@@ -592,12 +638,18 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 squeeze = min(squeeze, gap_confirmation) if squeeze is not None else gap_confirmation
             if squeeze is None:
                 continue
+            retirement = target_retired_at.get(candidate['attack'], len(bars))
+            measured_bars = bars[:retirement]
             projection_setup = WaveProjectionSetup(
                 candidate['setup'].origin.index, candidate['attack'], squeeze,
                 n.anchors.origin, n.targets.box_anchor, n.targets.two_t, n.completion.defense)
             log(max(squeeze, candidate['known_at']), 'wave_continuation_ready', wave_epoch=candidate['epoch'], **asdict(projection_setup))
-            projection_history = wave_projection_history(bars, projection_setup)
+            projection_history = (wave_projection_history(measured_bars, projection_setup)
+                                  if squeeze < retirement else ())
             candidate['wave_projection'] = projection_history
+            # C follows the historically qualified bottom N's complete A/B,
+            # whose own lifetime is the A origin. A new local descending leg
+            # ends named box guides, not this independent C entry observation.
             for j in range(squeeze + 1, len(bars)):
                 gap_key = (projection_setup, j)
                 if wave_gap_observations is not None and j < len(bars) - 1 and gap_key in wave_gap_observations:
@@ -625,6 +677,10 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     'invalidated': '最低价跌破A起点，转浪失效'}[event.state]
                 log(j, kind, **row)
                 counts[kind] += 1
+            if retirement < len(bars):
+                log(retirement, 'wave_projection_invalidated', attack=candidate['attack'],
+                    origin_index=projection_setup.origin_index, state='invalidated', target=None,
+                    target_stage='five_top', reason='bottom_target_source_retired')
     # Optional opportunity tags use their own confirmation dates, not future shape labels.
     wash_tags = {}
     for new in sorted(candidates, key=lambda c: c['attack']):
@@ -772,8 +828,19 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
     c_equal_events: list[dict] = []
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
     bearish_attacks = {c['attack']: c for c in candidates if c['setup'].direction == Direction.DOWN}
+    bottom_hits: dict[int, set[str]] = {}
     last_progress = -1
     for i, bar in enumerate(bars):
+        live_target_source = bottom_targets.source_at[i] if bottom_targets is not None else None
+        if live_target_source is not None:
+            measured = bottom_candidates[live_target_source]
+            known = max(measured['attack'], measured['known_at'])
+            observed = bar.close if i == known else bar.high
+            reached = bottom_hits.setdefault(live_target_source, set())
+            for stage in ('equal_wave', 'one_p', 'two_t'):
+                target = getattr(measured['n'].targets, stage)
+                if target is not None and observed >= target:
+                    reached.add(stage)
         percent = i * 100 // len(bars)
         if progress is not None and percent != last_progress:
             progress(percent)
@@ -996,10 +1063,20 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             # A grind has lost the attack defense: its still-known original wave
             # boundary, not a fabricated tighter stop, is the remaining support.
             stop = n.anchors.origin if frame.first_defense_breach_index is not None else n.completion.defense
-            hit = {m.name for m in n.milestones if m.bar_index+c['start'] <= i}
-            targets = [getattr(n.targets, name) for name in ('equal_wave', 'one_p', 'two_t')
-                       if name not in hit and getattr(n.targets, name) is not None and getattr(n.targets, name) > bar.close]
-            projection = next((event for event in reversed(c.get('entry_wave_projection', ()))
+            measurement = c
+            stages: tuple[str, ...] = ('equal_wave', 'one_p', 'two_t')
+            if bottom_targets is not None:
+                source = live_target_source
+                measurement = bottom_candidates.get(source, c)
+                if source is None:
+                    stages = ('equal_wave',)
+            measured_n = measurement['n']
+            hit = (bottom_hits[live_target_source] if live_target_source is not None else
+                   {m.name for m in measured_n.milestones if m.bar_index+measurement['start'] <= i})
+            targets = [getattr(measured_n.targets, name) for name in stages
+                       if name not in hit and getattr(measured_n.targets, name) is not None
+                       and getattr(measured_n.targets, name) > bar.close]
+            projection = next((event for event in reversed(measurement.get('entry_wave_projection', ()))
                                if event.bar_index <= i), None)
             if (not targets and 'two_t' in hit and projection is not None
                     and projection.target is not None and projection.target > bar.close):
@@ -1061,6 +1138,10 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             if wave is not None and wave_key is not None:
                 emitted_waves[wave_key] = wave_confirmation_state(wave)
             log(i, 'long_signal', channel=tag, attack=c['attack'], stop=stop, target=targets[0], rvol=rvol,
+                **(dict(target_source_attack=live_target_source,
+                        target_source_date=(bars[live_target_source].timestamp.date().isoformat()
+                                            if live_target_source is not None else None))
+                   if bottom_targets is not None else {}),
                 **(dict(volume_basis='confirmation_volume_over_previous_session',
                         observed_volume=bar.volume, previous_volume=bars[i-1].volume,
                         volume_pass=volume_pass) if whole_wave else {}),

@@ -22,6 +22,7 @@ from wavequant.domain.strategies.integrated_strategy import SystemStrategy, gene
 from wavequant.infrastructure.persistence.operational_store import run_states, alert_states
 from wavequant.application.governance.operations import verify_run
 from wavequant.domain.market_structure.n_shape import project_n_targets, ValueDomain
+from wavequant.domain.market_structure.bottom_n_targets import BOTTOM_N_TARGET_POLICY
 from wavequant.domain.market_structure.price_action import Direction
 from wavequant.infrastructure.filesystem.project_paths import project_path
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
@@ -798,12 +799,16 @@ class ChartRepository:
         # Join later, dated projections back to the N the user selects. Keep
         # fulfilled targets for review and label suspended targets explicitly.
         extension_levels: dict[int, dict[str, _NExtensionLevel]] = {}
+        target_retirements = {row['attack']: row['bar_index'] for row in result.audit
+                              if row['event'] == 'n_target_source_retired' and row['bar_index'] <= i}
         for row in result.audit:
             if row['bar_index'] > i:
                 continue
             if (row['event'] == 'long_signal'
                     and row.get('wave_entry_path') == 'two_t_strong_a_resistance_rebreak'
                     and row.get('wave_five_top_target') is not None):
+                if target_retirements.get(row['attack'], len(bars)) <= row['bar_index']:
+                    continue
                 extension_levels.setdefault(row['attack'], {})['five_top'] = dict(
                     stage='five_top', price=row['wave_five_top_target'], status='观察',
                     mode='强A再攻击', available_at=day(bars[row['bar_index']].timestamp.isoformat()),
@@ -871,6 +876,14 @@ class ChartRepository:
                     for k, j in enumerate(indices)
                 ]
                 event["shape"] = coords
+                if r.get('target_decline_index') is not None:
+                    event['target_decline_date'] = day(bars[r['target_decline_index']].timestamp.isoformat())
+                if r.get('target_bottom_index') is not None:
+                    event['target_bottom_date'] = day(bars[r['target_bottom_index']].timestamp.isoformat())
+                if r.get('target_source_attack') is not None:
+                    event['target_source_date'] = day(bars[r['target_source_attack']].timestamp.isoformat())
+                retired = target_retirements.get(r['bar_index'])
+                valid_until = day(bars[retired - 1].timestamp.isoformat()) if retired is not None else None
                 attack = bars[r["bar_index"]]
                 previous = bars[r["bar_index"] - 1]
                 box = max(attack.high, previous.close) if up else min(attack.low, previous.close)
@@ -886,6 +899,8 @@ class ChartRepository:
                     dict(name="轧空低" if up else "杀多高", price=r["defense"]),
                 ]
                 for key, title in (("equal_wave", "等浪投影"), ("one_p", "1P 投影"), ("two_t", "2T 投影")):
+                    if up and r.get('target_eligible') is False and key != 'equal_wave':
+                        continue
                     price = getattr(targets, key)
                     if price is None:
                         continue
@@ -896,10 +911,17 @@ class ChartRepository:
                             stage=key, display_name="一饱（正 N）" if key == "one_p" else "二吐（正 N）",
                             anchor_at=coords[2]["time"], available_at=event["available_at"],
                         )
+                        if valid_until is not None:
+                            target_level['valid_until'] = valid_until
                     event["levels"].append(target_level)
                 for extension_level in extension_levels.get(r['bar_index'], {}).values():
+                    if up and r.get('target_eligible') is False:
+                        continue
                     title = '五顶' if extension_level['stage'] == 'five_top' else '十满'
-                    event['levels'].append(dict(extension_level, name=f"{title}（{extension_level['mode']} · {extension_level['status']}）"))
+                    extension_guide = dict(extension_level, name=f"{title}（{extension_level['mode']} · {extension_level['status']}）")
+                    if valid_until is not None:
+                        extension_guide['valid_until'] = valid_until
+                    event['levels'].append(extension_guide)
                 shapes.append(
                     dict(
                         points=coords,
@@ -978,6 +1000,8 @@ class ChartRepository:
             computed_from="current_engine_on_selected_prefix",
             engine_sha256=fingerprint(_strategy_source_path()),
             strategy_pivot_mode=config.pivot_mode,
+            **({'n_target_policy': BOTTOM_N_TARGET_POLICY}
+               if config.buy_point_definition == 'whole_flip_wave_v3' and config.pivot_mode == 'lecture_causal' else {}),
             note=(
                 "新版使用讲义递推器的收盘确认转折，过滤同日 N 和非真实高低点；显示连接线本身不作为交易证据。"
                 if config.pivot_mode == "lecture_causal"

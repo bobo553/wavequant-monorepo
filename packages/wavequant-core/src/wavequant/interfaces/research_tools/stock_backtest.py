@@ -19,6 +19,7 @@ def _post_b_wave_exit_events(bars, audit, signal_row):
                    origin_index=b_index, owner_signal_index=owner)]
     for row in audit:
         if (row.get('event') != 'n_completed' or row.get('direction') != 'up'
+                or row.get('target_eligible') is False
                 or row['origin'] < b_index or row['bar_index'] <= b_index):
             continue
         attack = row['bar_index']
@@ -26,7 +27,13 @@ def _post_b_wave_exit_events(bars, audit, signal_row):
         origin_price = bars[row['origin']].low
         defense = row.get('defense', origin_price)
         reached = set()
+        retired = next((e['bar_index'] for e in audit
+                        if e['event'] == 'n_target_source_retired' and e['attack'] == attack), len(bars))
         for j in range(known, len(bars)):
+            if j >= retired:
+                events.append(dict(event='wave_projection_invalidated', attack=attack,
+                                   origin_index=row['origin'], bar_index=j, owner_signal_index=owner))
+                break
             if j > attack and bars[j].low < defense:
                 events.append(dict(event='wave_projection_invalidated', attack=attack,
                                    origin_index=row['origin'], bar_index=j,

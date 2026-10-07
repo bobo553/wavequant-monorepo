@@ -74,6 +74,16 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
                 no: "等待新攻击或跳过失效结构",
             },
             {
+                id: "bottom-n-target-source",
+                question: "这是该轮下跌最低点的首个启动正 N？",
+                detail: "一饱、二吐、五顶、十满共用 Core 发布的底部启动资格。使用当时已确认一级下降段的高点及其后到确认日的最低价，只有从该段最低点形成的首个正 N 冻结原箱。短历史尚无一级端点时，只能使用此前已确认的首个基础高点作为初始下跌依据；没有下跌证据不测算。相等低点保留较早底部；后续续涨、回调局部 N 和跨过已有启动 N 的更大结构不重开目标。新一级下跌确认或原底部严格破位时按可知日结束原目标；原 N 内部后来确认的高点不追溯终止原箱。普通 N 结构与入场识别仍保留，入场、转浪、目标退出和图表使用同一测幅来源，图表不自行补造四档目标。",
+                source: "bottom_n_targets.py · bottom_n_target_history；integrated_strategy.py · generate_system_signals",
+                yes: "冻结底部 N 的四档测幅来源",
+                no: "仅识别结构，沿用已有底部 N 或等待新底部",
+                yesNext: "direction",
+                noNext: "direction",
+            },
+            {
                 id: "direction",
                 question: "这是可参与做多的正 N？",
                 detail: "倒 N 进入风险退出路径，不参与买入。一个攻击只发出一次常规入场；独立的盘整与 C 波证据可另行确认。",
@@ -533,4 +543,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "d26cd8cd2cfadd68250d45fa48c2948f2678b1f25d26f9ab26e61eacfc484ce4";
+export const strategySourceDigest = "33fc8be1859cb26a95f44e7148550c342eda1f8f78cf4fc7104f0abca8a5dee7";

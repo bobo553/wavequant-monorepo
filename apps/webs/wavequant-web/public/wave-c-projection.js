@@ -1,4 +1,5 @@
 import { classifyAAttack, isAOriginBroken } from "./a-wave-rules.js";
+import { isBottomNTargetSource } from "./bottom-n-targets.js";
 import { cWaveExtensionLevel } from "./c-wave-extension.js";
 import { num } from "./labels.js";
 import { ordinaryCWaveLevels, ordinaryCWaveProjections } from "./ordinary-c-wave.js";
@@ -13,7 +14,7 @@ export function waveCProjection(bars, events, selectedTime) {
     if (!Number.isFinite(highBar.high)) return null;
 
     for (const event of [...(events || [])].reverse()) {
-        if (event.event !== "n_completed" || event.direction !== "up") continue;
+        if (!isBottomNTargetSource(event)) continue;
         const attackIndex = bars.findIndex((bar) => bar.time === event.time);
         const originIndex = bars.findIndex((bar) => bar.time === event.shape?.[0]?.time);
         const origin = event.shape?.[0]?.value;
@@ -159,7 +160,8 @@ export function waveCProjectionsFromStructure(bars, theory) {
     const visibleBars = bars.filter((bar) => bar.time <= asof);
     const byTime = new Map(visibleBars.map((bar, index) => [bar.time, { bar, index }]));
     const highs = historicalHighs(theory, asof);
-    const strokes = theory?.lecture_drawing?.strokes || [];
+    // 当前版本只消费 Core 的底部启动资格，浏览器不再拼出额外测幅 N。
+    const strokes = theory?.n_target_policy ? [] : theory?.lecture_drawing?.strokes || [];
     const projections = [];
     for (const high of highs) {
         const a = byTime.get(high.time);

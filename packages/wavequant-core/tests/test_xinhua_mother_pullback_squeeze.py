@@ -70,7 +70,7 @@ def _missing_historical_minutes(bar: Bar) -> list[MinuteBar]:
     raise MinuteCoverageError(str(bar.timestamp.date()), "2026-07-21", "2026-09-30")
 
 
-def test_march_5_n_publishes_causal_one_p_two_t_guides(xinhua_history: _XinhuaSample) -> None:
+def test_march_5_structural_n_does_not_measure_from_a_higher_local_bottom(xinhua_history: _XinhuaSample) -> None:
     sample = xinhua_history
     attack = sample.dates["2024-03-05"]
     published = []
@@ -90,19 +90,14 @@ def test_march_5_n_publishes_causal_one_p_two_t_guides(xinhua_history: _XinhuaSa
         assert [point["time"] for point in event["shape"]] == [
             "2024-02-29", "2024-03-04", "2024-03-04", "2024-03-05",
         ]
-        targets = {level["stage"]: level for level in event["levels"] if "stage" in level}
-        for stage, name, price in (
-            ("one_p", "一饱（正 N）", 5.289057414759589),
-            ("two_t", "二吐（正 N）", 5.783644844765735),
-        ):
-            assert targets[stage]["display_name"] == name
-            assert targets[stage]["price"] == pytest.approx(price)
-            assert targets[stage]["price"] == event[stage]
-            assert targets[stage]["anchor_at"] == "2024-03-04"
-            assert targets[stage]["available_at"] == "2024-03-05"
-        if asof == "2024-03-05":
-            assert set(targets) == {"one_p", "two_t"}
-        published.append([targets["one_p"], targets["two_t"]])
+        assert event["target_eligible"] is False
+        assert event["target_bottom_date"] == "2024-02-08"
+        assert event["target_bottom_date"] < event["shape"][0]["time"]
+        assert event["one_p"] is None and event["two_t"] is None
+        targets = [level for level in event["levels"]
+                   if level.get("stage") in ("one_p", "two_t", "five_top", "ten_full")]
+        assert targets == []
+        published.append(targets)
     assert published[0] == published[1]
     assert all("levels" not in event for event in sample.generated.audit)
 

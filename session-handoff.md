@@ -1,3 +1,15 @@
+## 2026-10-07 · MONOREPO-282 底部启动正N目标，合并待确认
+
+用户确认按一轮下跌最低点首个正N统一测算四档；后续局部N、续涨N、跨启动的大N不重开箱。独立C:/Users/zb/.codex/worktrees/bottom-n-target/wavequant-monorepo，feat-底部正N目标，基线main85f11ab1168a0a5ef6d35b20ace83df648ffcc2a。282唯一in-progress，256暂backlog且原证据完整保留；当前main和8765/13003常驻未改，V99还未生效，不推送或创建PR。
+
+实现：bottom_n_targets.py因果共用资格/来源/退役；integrated_strategy冻结入场测幅来源及消费里程碑，stock_backtest退出拒绝无资格或退役来源，visualization发布来源和有效期；父A/B到C观察维持原A起点生命周期，命名四档目标按后续已确认下降或严格破底退役。Web bottom-n-targets.js及各目标消费者显示底部日、N确认日和有效期，LONG显式无来源不误绑旧N；封存V1/V2不变。新华2023-05-16正确来源05-10底部5.3193382778/05-15确认，一饱7.0756283354、二吐7.9537733642；05-16跨段N不给9.9725/13.1419，05-18破底使来源有效至05-17。
+
+最终99项目标相关Core、135项相关Web/最后25项及10拓扑通过；新模块strict、修改四模块mypy、Core既定四文件及API十一文件strict、Core包构建/新模块字节、Weblint（6旧warning）/类型/最终生产构建通过。首个构建worker异常退出未诊断根因，串行512MB任务NODE_OPTIONS重试通过。独立环境安装后首次quick21/21，Node24.16.0仅任务PATH，pnpm10.26.2；CodeGraph一次init后sync通过，81源码拓扑指纹33fc8be1859cb26a95f44e7148550c342eda1f8f78cf4fc7104f0abca8a5dee7。
+
+仍有5条与main完全相同的失败，分支和main均31项26通过5失败：test_xinhua_mother_pullback_squeeze.py的test_march_5_mother_pullback_n_buys_march_20_once、test_completed_prefix_and_partial_day_cache_preserve_march_20_confirmation、test_formal_daily_close_account_uses_raw_4_84_and_configured_slippage；test_wave_intraday_entry.py的test_old_structural_episode_never_replays_minutes_in_new_episode、test_huaci_early_body_minute_keeps_later_daily_gap_confirmation。main在V98已缺03-20 LONG/BUY及两条华瓷分钟路径，断言未改。临时误截5条世联行C路径已修复且最终通过。TEMP wavequant-bottom-main-baseline.log、wavequant-bottom-baseline-final.log记录两端相同失败集合；wavequant-bottom-core-final2.log记录99通过，wavequant-bottom-web-build-final.log构建通过。完整套件、浏览器/Playwright、完整账户比较、实时V99和外部分钟未运行。
+
+最终Harness279功能/18Node/2Python/32规则、状态格式和diff检查通过，恢复next-env后Web类型再次通过，wheel内五个新增或修改模块均与最终源码字节相同，main85f11ab检出干净。下一步：提交具体修复后请求用户明确允许保留这5条旧失败并本地合并。docs/agent/codex-global-AGENTS.md:34要求“检查未通过时先修复，无法通过时说明原因，不合并”，现未获例外。授权后更新验收/恢复256唯一活动、同步当时最新main/复核受影响检查，no-ff合并后核对main状态与常驻V99实际接口；不自动推送，不修改失败事实，不擅自手工缓存或启动worktree常驻。
+
 MONOREPO-281常驻验收：bfbe9d1经7b37419本地no-ff合并，分支已同步main；两端口8765/13003自动加载V98、engine a28bd5b5a36e与main源码指纹一致。实际13003 AkShare理论HTTP返回12-30高7.29→01-13低5.51（01-21可知），无01-07一级点。main9拓扑与Harness通过；未手工重启、改缓存或推送，两个检出干净。旧页面刷新并重新计算历史；完整账户差异、完整套件及浏览器待独立验证。
 
 ## 2026-10-07 · MONOREPO-281 一级端点有序确认

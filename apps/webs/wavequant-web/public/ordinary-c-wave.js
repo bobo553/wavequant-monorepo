@@ -1,4 +1,5 @@
 import { classifyAAttack } from "./a-wave-rules.js";
+import { isBottomNTargetSource } from "./bottom-n-targets.js";
 import {
     confirmedCWaveProjection,
     knownWavePoint as knownPoint,
@@ -48,8 +49,7 @@ export function ordinaryCWaveProjections(bars, theory) {
     const observations = new Map();
     for (const event of theory?.events || []) {
         if (
-            event.event !== "n_completed" ||
-            event.direction !== "up" ||
+            !isBottomNTargetSource(event, theory) ||
             !isDate(event.time) ||
             !isDate(event.available_at) ||
             event.available_at < event.time ||

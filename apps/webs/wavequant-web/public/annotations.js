@@ -1,4 +1,5 @@
 // Presentation-only mappings. Strategy conditions remain in the Python engine.
+import { bottomNTargetCaption, isBottomNTargetSource } from "./bottom-n-targets.js";
 import { buyNTargetLevels } from "./buy-n-targets.js";
 import { cWaveExtensionLevel } from "./c-wave-extension.js";
 import { combinedAEntryEvidence } from "./combined-a-entry-evidence.js";
@@ -655,7 +656,7 @@ export function buildAnnotations(view, theory) {
     const marketDates = new Set(view.bars.map((b) => b.time));
     const nExtensions = new Map(
         (theory?.events || [])
-            .filter((event) => event.event === "n_completed" && event.direction === "up")
+            .filter((event) => isBottomNTargetSource(event, theory))
             .map((event) => [event.time, event.levels || []]),
     );
     const items = view.markers.map((m) => {
@@ -736,7 +737,15 @@ export function buildAnnotations(view, theory) {
             if (extension) levels.push(extension);
         }
         levels.push(...nTargets);
-        if (strongA && !nTargets.length) {
+        const strongASource =
+            strongA &&
+            theory?.events?.find(
+                (event) => event.time === strongA.wave_entry_n_date && isBottomNTargetSource(event, theory),
+            );
+        const strongASourceLive =
+            strongASource &&
+            !strongASource.levels?.some((level) => level.valid_until && level.valid_until < (signalDate || m.time));
+        if (strongA && !nTargets.length && (!theory?.n_target_policy || strongASourceLive)) {
             const projections = (nExtensions.get(strongA.wave_entry_n_date) || []).filter(
                 (level) =>
                     ["five_top", "ten_full"].includes(level.stage) &&
@@ -794,8 +803,12 @@ export function buildAnnotations(view, theory) {
         const eventLevels = (event.levels || [])
             .filter(
                 (level) =>
-                    !level.available_at ||
-                    (level.available_at <= view.asof && level.available_at <= (theory.asof || view.asof)),
+                    (!(event.event === "n_completed" && event.direction === "up") ||
+                        isBottomNTargetSource(event, theory) ||
+                        (!["one_p", "two_t", "five_top", "ten_full"].includes(level.stage) &&
+                            !["1P 投影", "2T 投影"].includes(level.name))) &&
+                    (!level.available_at ||
+                        (level.available_at <= view.asof && level.available_at <= (theory.asof || view.asof))),
             )
             .map((level) => (level.display_name ? { ...level, name: level.display_name } : level));
         const attackDate = Number.isInteger(event.attack) ? view.bars[event.attack]?.time : null;
@@ -828,7 +841,11 @@ export function buildAnnotations(view, theory) {
                     ? abcDescription(event, view)
                     : candidateRejection
                       ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${fiveTopRisk}${tenFullRisk}未产生买入信号，也未提交买单。`
-                      : spec?.[1] || "当前引擎已记录的规则事件。",
+                      : event.event === "n_completed" && event.direction === "up" && event.target_eligible !== undefined
+                        ? event.target_eligible
+                            ? `${spec?.[1]}测幅来源：${bottomNTargetCaption(event)}。这是已确认下跌段最低点的首个正 N，一饱、二吐、五顶、十满沿用此组。`
+                            : `${spec?.[1]}此 N 仅保留结构识别，不另算一饱、二吐、五顶、十满。${event.target_source_date ? `测幅来源为底部启动正 N ${event.target_source_date}。` : "尚无可用的底部启动测幅来源。"}`
+                        : spec?.[1] || "当前引擎已记录的规则事件。",
             category: abc ? "tertiary-abc" : candidateRejection ? "entry-rejections" : spec?.[3] || "rules",
             priority: candidateRejection ? 155 : spec?.[2] || 10,
             levels: eventLevels,
