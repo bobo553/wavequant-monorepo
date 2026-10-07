@@ -157,14 +157,14 @@ class NShapeTests(unittest.TestCase):
         self.assertEqual(len(run(bars).milestones),1)
         self.assertEqual(len(run(bars,milestone_basis=MilestoneBasis.CLOSE).milestones),0)
 
-    def test_defense_breach_not_automatic_origin_failure(self):
+    def test_defense_breach_ends_measurement_without_erasing_the_known_completion(self):
         bars=fixture()[:5]
         bars[4]=replace(bars[4],low=10)
         r=run(bars)
         self.assertEqual(r.first_defense_breach_index,4)
         self.assertIsNone(r.first_origin_breach_index)
         self.assertEqual(r.status,NStatus.COMPLETED)
-        self.assertEqual(len(r.milestones),1)
+        self.assertEqual(len(r.milestones),0)
 
     def test_origin_break_suspends_new_measurements(self):
         bars=fixture()

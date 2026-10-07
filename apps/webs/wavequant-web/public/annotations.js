@@ -656,7 +656,7 @@ export function buildAnnotations(view, theory) {
     const marketDates = new Set(view.bars.map((b) => b.time));
     const nExtensions = new Map(
         (theory?.events || [])
-            .filter((event) => isBottomNTargetSource(event, theory))
+            .filter((event) => isBottomNTargetSource(event, theory) && event.target_primary !== false)
             .map((event) => [event.time, event.levels || []]),
     );
     const items = view.markers.map((m) => {
@@ -796,6 +796,15 @@ export function buildAnnotations(view, theory) {
         };
     });
     for (const event of theory?.events || []) {
+        if (["n_invalidated", "n_target_source_retired"].includes(event.event)) continue;
+        const asof = theory.asof && theory.asof < view.asof ? theory.asof : view.asof;
+        if (
+            event.event === "n_completed" &&
+            event.direction === "up" &&
+            event.n_invalidated_at &&
+            event.n_invalidated_at <= asof
+        )
+            continue;
         const spec = RULES[event.event];
         const abc = ["tertiary_c_candidate", "tertiary_c_breakout", "tertiary_c_invalidated"].includes(event.event);
         const squeezeAlternation = event.event.startsWith("squeeze_alternation_");
@@ -835,7 +844,11 @@ export function buildAnnotations(view, theory) {
             kind: abc ? "trend-key" : candidateRejection ? "candidate" : "rule",
             side: candidateRejection ? "LONG" : event.direction,
             price: event.price,
-            title: candidateRejection ? "入场候选未通过" : ruleTitle(event),
+            title: candidateRejection
+                ? "入场候选未通过"
+                : event.reformed_from_date
+                  ? `正 N · 重算自 ${event.reformed_from_date}`
+                  : ruleTitle(event),
             description:
                 abc || squeezeAlternation
                     ? abcDescription(event, view)
@@ -843,7 +856,11 @@ export function buildAnnotations(view, theory) {
                       ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${fiveTopRisk}${tenFullRisk}未产生买入信号，也未提交买单。`
                       : event.event === "n_completed" && event.direction === "up" && event.target_eligible !== undefined
                         ? event.target_eligible
-                            ? `${spec?.[1]}测幅来源：${bottomNTargetCaption(event)}。这是已确认下跌段最低点的首个正 N，一饱、二吐、五顶、十满沿用此组。`
+                            ? `${spec?.[1]}测幅来源：${bottomNTargetCaption(event)}。${
+                                  event.reformed_from_date
+                                      ? `原正 N ${event.reformed_from_date} 的轧空低已被严格跌破；从保留的起点与新的回调低重新确认本组，独立测算一饱、二吐。`
+                                      : "这是已确认下跌段最低点的首个正 N，一饱、二吐、五顶、十满沿用此组。"
+                              }`
                             : `${spec?.[1]}此 N 仅保留结构识别，不另算一饱、二吐、五顶、十满。${event.target_source_date ? `测幅来源为底部启动正 N ${event.target_source_date}。` : "尚无可用的底部启动测幅来源。"}`
                         : spec?.[1] || "当前引擎已记录的规则事件。",
             category: abc ? "tertiary-abc" : candidateRejection ? "entry-rejections" : spec?.[3] || "rules",

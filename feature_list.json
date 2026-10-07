@@ -4,6 +4,53 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-289",
+            "name": "positive-n-defense-reformation",
+            "title": "正N轧空低失效与独立重算",
+            "description": "正N轧空低严格跌破后失效，后续突破已形成高点重新确认独立N并分别测幅。",
+            "scope": "Core因果N生命周期、重新突破、独立目标；Web标识与目标过滤；全局规则与定向回归",
+            "dependencies": ["MONOREPO-282", "MONOREPO-283", "MONOREPO-284"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "襄阳轴承07-31与08-15正N轧空低严格跌破即失效，当前图不绘制失效N和其目标",
+                "08-20重新突破两个历史成N高点时保留两组独立正N、目标及来源标识，不按日期或价格去重",
+                "相等不失效，重算只消费当时可知价格；前缀与缓存保持因果一致",
+                "定向测试、类型、必要构建与Harness实际通过，其他验证如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest: positive_n_reformation, bottom_n_targets, bottom_n_target_pipeline, n_shape; wave_projection, target_exit_policy, ten_full_entry, mother/inside_pullback_n, squeeze_confirmation_body, xiangyang_n_projection",
+                    "status": "passed",
+                    "summary": "185项不同定向用例通过（55+129+新增独立退役1）。最终重算文件7项再次通过，单独新增退役1通过；stock_backtest修改后32相关用例再次通过。真实2018起1593根至08-20锁定两个失效日、独立起点/箱顶/目标，完整策略08-19前缀信号与审计逐项一致，未完成08-20缓存回放无未来重算；相等、防守/起点先破、外包同日新低与攻击覆盖。旧N防守跌破仍记目标的断言已按最新规则更正。"
+                },
+                {
+                    "command": "node --test positive-n-reformation, n-target-focus, n-structure-overlay, bottom-n-targets, buy-n-targets; vitest topology-data.test.ts",
+                    "status": "passed",
+                    "summary": "29项Node/SDK/Canvas及10项拓扑通过。两标识、四独立目标、同价不去重、来源ID买点、失效前回放和失效后过滤、两组顶底与同日竖线均有断言。85源码拓扑复核并同步摘要。"
+                },
+                {
+                    "command": "mypy --strict --follow-imports=silent positive_n_reformation.py bottom_n_targets.py; mypy --follow-imports=silent 5修改模块; pnpm --filter @wavequant/core typecheck; pnpm --filter wavequant-api typecheck",
+                    "status": "passed",
+                    "summary": "新模块及底部模块strict通过，5修改模块类型通过，Core4文件/API11文件既定strict通过。最初可空观察字段9处和局部变量类型1处已用明确不变量及独立变量修复，无忽略或放宽。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint/typecheck/build; pnpm --filter @wavequant/core build; wheel/source comparison; prettier --check; git diff --check",
+                    "status": "passed",
+                    "summary": "Node24.16/pnpm10.26.2和既有隔离Python；最终Web lint零错误6旧warning，类型与生产构建通过；Core sdist/wheel与7实现源码逐字一致。首轮Turbo30目标通过；末轮并行重试遇Windows baostock元数据Errno22及ESLint worker EINVAL，改为原命令串行执行均通过，未跳过检查。所有改动JS/JSON/TS/Markdown格式与diff检查通过，next-env生成差异剔除。"
+                },
+                {
+                    "command": "Full Core/Web suites, Playwright/browser, full account comparison",
+                    "status": "not-run",
+                    "summary": "遵循本轮定向验证节奏，未运行完整套件、浏览器/Playwright或完整账户差异；历史账户可能随防守失效和目标重算变化，未把结构标识数量视为重复下单。"
+                },
+                {
+                    "command": "pnpm harness:check; final git diff review and CodeGraph sync",
+                    "status": "passed",
+                    "summary": "本轮单功能状态、依赖、workspace进度和32规则校验通过；最终差异复核仅涉及本功能。289实现完成，恢复256原记录为唯一进行中；代码图按实际修改增量更新。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-288",
             "name": "hierarchical-trend-market-break-confirmation",
             "title": "二三级趋势突破前高即确认",

@@ -801,6 +801,9 @@ class ChartRepository:
         extension_levels: dict[int, dict[str, _NExtensionLevel]] = {}
         target_retirements = {row['attack']: row['bar_index'] for row in result.audit
                               if row['event'] == 'n_target_source_retired' and row['bar_index'] <= i}
+        n_invalidations = {row['n_id']: row for row in result.audit
+                           if row['event'] == 'n_invalidated'
+                           and max(row['bar_index'], row.get('known_at', row['bar_index'])) <= i}
         for row in result.audit:
             if row['bar_index'] > i:
                 continue
@@ -867,6 +870,15 @@ class ChartRepository:
             events.append(event)
             if r["event"] == "n_completed":
                 up = r["direction"] == "up"
+                if r.get('n_id'):
+                    event['id'] = f"n:{r['n_id']}"
+                invalidation = n_invalidations.get(r.get('n_id'))
+                if invalidation is not None:
+                    event['n_invalidated_at'] = day(bars[invalidation['bar_index']].timestamp.isoformat())
+                    event['n_invalidation_reason'] = invalidation['reason']
+                for key in ('reformed_from', 'reformed_root'):
+                    if r.get(key) is not None:
+                        event[f'{key}_date'] = day(bars[r[key]].timestamp.isoformat())
                 indices = [r["origin"], r["neckline"], r["pullback"], r["bar_index"]]
                 coords = [
                     dict(
@@ -882,7 +894,9 @@ class ChartRepository:
                     event['target_bottom_date'] = day(bars[r['target_bottom_index']].timestamp.isoformat())
                 if r.get('target_source_attack') is not None:
                     event['target_source_date'] = day(bars[r['target_source_attack']].timestamp.isoformat())
-                retired = target_retirements.get(r['bar_index'])
+                retired = target_retirements.get(r['bar_index']) if r.get('target_primary', True) else None
+                if invalidation is not None:
+                    retired = min(retired, invalidation['bar_index']) if retired is not None else invalidation['bar_index']
                 valid_until = day(bars[retired - 1].timestamp.isoformat()) if retired is not None else None
                 attack = bars[r["bar_index"]]
                 previous = bars[r["bar_index"] - 1]
@@ -914,7 +928,8 @@ class ChartRepository:
                         if valid_until is not None:
                             target_level['valid_until'] = valid_until
                     event["levels"].append(target_level)
-                for extension_level in extension_levels.get(r['bar_index'], {}).values():
+                for extension_level in (extension_levels.get(r['bar_index'], {}).values()
+                                        if r.get('target_primary', True) else ()):
                     if up and r.get('target_eligible') is False:
                         continue
                     title = '五顶' if extension_level['stage'] == 'five_top' else '十满'
@@ -922,6 +937,8 @@ class ChartRepository:
                     if valid_until is not None:
                         extension_guide['valid_until'] = valid_until
                     event['levels'].append(extension_guide)
+                if invalidation is not None:
+                    continue
                 shapes.append(
                     dict(
                         points=coords,
@@ -929,6 +946,7 @@ class ChartRepository:
                         available_at=event["available_at"],
                         defense=r["defense"],
                         attack_time=event["time"],
+                        n_id=r.get('n_id'),
                     )
                 )
         # Only the last few objects are needed for legible chart overlays; all

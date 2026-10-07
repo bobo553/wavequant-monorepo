@@ -1,0 +1,643 @@
+{
+    "source": "MONOREPO-289 Core generated_system_signals/render_theory; original TDX sz.000678 fixture",
+    "view": {
+        "symbol": "sz.000678",
+        "asof": "2024-08-20",
+        "bars": [
+            {
+                "time": "2024-07-12",
+                "open": 3.89,
+                "high": 3.95,
+                "low": 3.82,
+                "close": 3.86,
+                "volume": 6766600
+            },
+            {
+                "time": "2024-07-15",
+                "open": 3.77,
+                "high": 3.86,
+                "low": 3.72,
+                "close": 3.74,
+                "volume": 5096800
+            },
+            {
+                "time": "2024-07-16",
+                "open": 3.7,
+                "high": 3.81,
+                "low": 3.68,
+                "close": 3.76,
+                "volume": 6269500
+            },
+            {
+                "time": "2024-07-17",
+                "open": 3.79,
+                "high": 3.82,
+                "low": 3.68,
+                "close": 3.68,
+                "volume": 4334300
+            },
+            {
+                "time": "2024-07-18",
+                "open": 3.68,
+                "high": 3.68,
+                "low": 3.57,
+                "close": 3.61,
+                "volume": 5163100
+            },
+            {
+                "time": "2024-07-19",
+                "open": 3.58,
+                "high": 3.65,
+                "low": 3.56,
+                "close": 3.61,
+                "volume": 3716600
+            },
+            {
+                "time": "2024-07-22",
+                "open": 3.62,
+                "high": 3.63,
+                "low": 3.56,
+                "close": 3.6,
+                "volume": 4199500
+            },
+            {
+                "time": "2024-07-23",
+                "open": 3.61,
+                "high": 3.7,
+                "low": 3.59,
+                "close": 3.63,
+                "volume": 6608000
+            },
+            {
+                "time": "2024-07-24",
+                "open": 3.61,
+                "high": 3.64,
+                "low": 3.51,
+                "close": 3.52,
+                "volume": 6224700
+            },
+            {
+                "time": "2024-07-25",
+                "open": 3.5,
+                "high": 3.6,
+                "low": 3.45,
+                "close": 3.57,
+                "volume": 4583800
+            },
+            {
+                "time": "2024-07-26",
+                "open": 3.59,
+                "high": 3.72,
+                "low": 3.57,
+                "close": 3.71,
+                "volume": 6282000
+            },
+            {
+                "time": "2024-07-29",
+                "open": 3.71,
+                "high": 3.82,
+                "low": 3.69,
+                "close": 3.76,
+                "volume": 6659000
+            },
+            {
+                "time": "2024-07-30",
+                "open": 3.75,
+                "high": 3.8,
+                "low": 3.7,
+                "close": 3.77,
+                "volume": 4304100
+            },
+            {
+                "time": "2024-07-31",
+                "open": 3.77,
+                "high": 3.91,
+                "low": 3.76,
+                "close": 3.91,
+                "volume": 7206101
+            },
+            {
+                "time": "2024-08-01",
+                "open": 3.88,
+                "high": 3.96,
+                "low": 3.88,
+                "close": 3.94,
+                "volume": 7290600
+            },
+            {
+                "time": "2024-08-02",
+                "open": 3.91,
+                "high": 3.94,
+                "low": 3.85,
+                "close": 3.86,
+                "volume": 5056700
+            },
+            {
+                "time": "2024-08-05",
+                "open": 3.87,
+                "high": 3.89,
+                "low": 3.73,
+                "close": 3.74,
+                "volume": 5443900
+            },
+            {
+                "time": "2024-08-06",
+                "open": 3.75,
+                "high": 3.81,
+                "low": 3.71,
+                "close": 3.8,
+                "volume": 4600000
+            },
+            {
+                "time": "2024-08-07",
+                "open": 3.82,
+                "high": 3.84,
+                "low": 3.76,
+                "close": 3.83,
+                "volume": 3355500
+            },
+            {
+                "time": "2024-08-08",
+                "open": 3.83,
+                "high": 3.83,
+                "low": 3.73,
+                "close": 3.79,
+                "volume": 3791700
+            },
+            {
+                "time": "2024-08-09",
+                "open": 3.8,
+                "high": 3.83,
+                "low": 3.76,
+                "close": 3.76,
+                "volume": 3084800
+            },
+            {
+                "time": "2024-08-12",
+                "open": 3.74,
+                "high": 3.75,
+                "low": 3.67,
+                "close": 3.68,
+                "volume": 3679500
+            },
+            {
+                "time": "2024-08-13",
+                "open": 3.68,
+                "high": 3.73,
+                "low": 3.65,
+                "close": 3.73,
+                "volume": 3297400
+            },
+            {
+                "time": "2024-08-14",
+                "open": 3.72,
+                "high": 3.75,
+                "low": 3.7,
+                "close": 3.72,
+                "volume": 3358200
+            },
+            {
+                "time": "2024-08-15",
+                "open": 3.76,
+                "high": 3.83,
+                "low": 3.7,
+                "close": 3.82,
+                "volume": 5361000
+            },
+            {
+                "time": "2024-08-16",
+                "open": 3.82,
+                "high": 3.85,
+                "low": 3.75,
+                "close": 3.76,
+                "volume": 4004700
+            },
+            {
+                "time": "2024-08-19",
+                "open": 3.75,
+                "high": 3.8,
+                "low": 3.71,
+                "close": 3.76,
+                "volume": 4104500
+            },
+            {
+                "time": "2024-08-20",
+                "open": 3.78,
+                "high": 4.14,
+                "low": 3.66,
+                "close": 4.14,
+                "volume": 12393087
+            }
+        ],
+        "markers": []
+    },
+    "theory": {
+        "asof": "2024-08-20",
+        "n_target_policy": "decline_floor_n_with_independent_defense_reformations_v2",
+        "events": [
+            {
+                "timestamp": "2024-07-31T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 1578,
+                "event": "n_completed",
+                "direction": "up",
+                "origin": 1574,
+                "neckline": 1576,
+                "pullback": 1577,
+                "known_at": 1577,
+                "defense": 3.76,
+                "counter_ratio": 0.32432432432432434,
+                "n_level": 0,
+                "box_anchor": 3.91,
+                "one_p": 4.37,
+                "two_t": 4.83,
+                "target_eligible": true,
+                "target_source_attack": 1578,
+                "target_decline_index": 1565,
+                "target_bottom_index": 1574,
+                "target_qualification_reason": "first_n_at_decline_floor",
+                "target_primary": true,
+                "n_id": "up:1574:1576:1577:1578",
+                "target_source_id": "up:1574:1576:1577:1578",
+                "id": "n:up:1574:1576:1577:1578",
+                "available_at": "2024-07-31",
+                "time": "2024-07-31",
+                "price": 3.91,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 3.82
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 3.76
+                    },
+                    {
+                        "name": "轧空低",
+                        "price": 3.76
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 4.07
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 4.37,
+                        "stage": "one_p",
+                        "display_name": "一饱（正 N）",
+                        "anchor_at": "2024-07-30",
+                        "available_at": "2024-07-31",
+                        "valid_until": "2024-08-02"
+                    },
+                    {
+                        "name": "2T 投影",
+                        "price": 4.83,
+                        "stage": "two_t",
+                        "display_name": "二吐（正 N）",
+                        "anchor_at": "2024-07-30",
+                        "available_at": "2024-07-31",
+                        "valid_until": "2024-08-02"
+                    }
+                ],
+                "n_invalidated_at": "2024-08-05",
+                "n_invalidation_reason": "squeeze_defense_broken",
+                "shape": [
+                    {
+                        "time": "2024-07-25",
+                        "value": 3.45
+                    },
+                    {
+                        "time": "2024-07-29",
+                        "value": 3.82
+                    },
+                    {
+                        "time": "2024-07-30",
+                        "value": 3.7
+                    },
+                    {
+                        "time": "2024-07-31",
+                        "value": 3.91
+                    }
+                ],
+                "target_decline_date": "2024-07-12",
+                "target_bottom_date": "2024-07-25",
+                "target_source_date": "2024-07-31"
+            },
+            {
+                "timestamp": "2024-08-15T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 1589,
+                "event": "n_completed",
+                "direction": "up",
+                "origin": 1587,
+                "neckline": 1588,
+                "pullback": 1589,
+                "known_at": 1589,
+                "defense": 3.7,
+                "counter_ratio": 0.5,
+                "n_level": 0,
+                "box_anchor": 3.83,
+                "one_p": 4.01,
+                "two_t": 4.19,
+                "outside_close_confirmed": true,
+                "target_eligible": true,
+                "target_source_attack": 1589,
+                "target_decline_index": 1579,
+                "target_bottom_index": 1587,
+                "target_qualification_reason": "first_n_at_decline_floor",
+                "target_primary": true,
+                "n_id": "up:1587:1588:1589:1589",
+                "target_source_id": "up:1587:1588:1589:1589",
+                "id": "n:up:1587:1588:1589:1589",
+                "available_at": "2024-08-15",
+                "time": "2024-08-15",
+                "price": 3.82,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 3.75
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 3.72
+                    },
+                    {
+                        "name": "轧空低",
+                        "price": 3.7
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 3.8
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 4.01,
+                        "stage": "one_p",
+                        "display_name": "一饱（正 N）",
+                        "anchor_at": "2024-08-15",
+                        "available_at": "2024-08-15",
+                        "valid_until": "2024-08-19"
+                    },
+                    {
+                        "name": "2T 投影",
+                        "price": 4.19,
+                        "stage": "two_t",
+                        "display_name": "二吐（正 N）",
+                        "anchor_at": "2024-08-15",
+                        "available_at": "2024-08-15",
+                        "valid_until": "2024-08-19"
+                    }
+                ],
+                "n_invalidated_at": "2024-08-20",
+                "n_invalidation_reason": "squeeze_defense_broken",
+                "shape": [
+                    {
+                        "time": "2024-08-13",
+                        "value": 3.65
+                    },
+                    {
+                        "time": "2024-08-14",
+                        "value": 3.75
+                    },
+                    {
+                        "time": "2024-08-15",
+                        "value": 3.7
+                    },
+                    {
+                        "time": "2024-08-15",
+                        "value": 3.83
+                    }
+                ],
+                "target_decline_date": "2024-08-01",
+                "target_bottom_date": "2024-08-13",
+                "target_source_date": "2024-08-15"
+            },
+            {
+                "timestamp": "2024-08-20T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 1592,
+                "event": "n_completed",
+                "direction": "up",
+                "origin": 1574,
+                "neckline": 1579,
+                "pullback": 1587,
+                "known_at": 1588,
+                "defense": 3.66,
+                "counter_ratio": 0.6078431372549019,
+                "n_level": 1,
+                "box_anchor": 4.14,
+                "one_p": 4.83,
+                "two_t": 5.52,
+                "target_eligible": true,
+                "target_source_attack": 1592,
+                "target_decline_index": 1579,
+                "target_bottom_index": 1574,
+                "target_qualification_reason": "defense_reformed_n",
+                "target_primary": true,
+                "reformed_from": 1578,
+                "reformed_root": 1578,
+                "n_id": "up:1574:1579:1587:1592",
+                "target_source_id": "up:1574:1579:1587:1592",
+                "id": "n:up:1574:1579:1587:1592",
+                "available_at": "2024-08-20",
+                "time": "2024-08-20",
+                "price": 4.14,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 3.96
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 3.94
+                    },
+                    {
+                        "name": "轧空低",
+                        "price": 3.66
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 4.16
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 4.83,
+                        "stage": "one_p",
+                        "display_name": "一饱（正 N）",
+                        "anchor_at": "2024-08-13",
+                        "available_at": "2024-08-20"
+                    },
+                    {
+                        "name": "2T 投影",
+                        "price": 5.52,
+                        "stage": "two_t",
+                        "display_name": "二吐（正 N）",
+                        "anchor_at": "2024-08-13",
+                        "available_at": "2024-08-20"
+                    }
+                ],
+                "reformed_from_date": "2024-07-31",
+                "reformed_root_date": "2024-07-31",
+                "shape": [
+                    {
+                        "time": "2024-07-25",
+                        "value": 3.45
+                    },
+                    {
+                        "time": "2024-08-01",
+                        "value": 3.96
+                    },
+                    {
+                        "time": "2024-08-13",
+                        "value": 3.65
+                    },
+                    {
+                        "time": "2024-08-20",
+                        "value": 4.14
+                    }
+                ],
+                "target_decline_date": "2024-08-01",
+                "target_bottom_date": "2024-07-25",
+                "target_source_date": "2024-08-20"
+            },
+            {
+                "timestamp": "2024-08-20T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 1592,
+                "event": "n_completed",
+                "direction": "up",
+                "origin": 1587,
+                "neckline": 1590,
+                "pullback": 1592,
+                "known_at": 1592,
+                "defense": 3.66,
+                "counter_ratio": 0.9499999999999988,
+                "n_level": 0,
+                "box_anchor": 4.14,
+                "one_p": 4.63,
+                "two_t": 5.12,
+                "target_eligible": true,
+                "target_primary": false,
+                "target_source_attack": 1592,
+                "target_bottom_index": 1587,
+                "target_qualification_reason": "defense_reformed_n",
+                "reformed_from": 1589,
+                "reformed_root": 1589,
+                "n_id": "up:1587:1590:1592:1592",
+                "target_source_id": "up:1587:1590:1592:1592",
+                "id": "n:up:1587:1590:1592:1592",
+                "available_at": "2024-08-20",
+                "time": "2024-08-20",
+                "price": 4.14,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 3.85
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 3.76
+                    },
+                    {
+                        "name": "轧空低",
+                        "price": 3.66
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 3.86
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 4.63,
+                        "stage": "one_p",
+                        "display_name": "一饱（正 N）",
+                        "anchor_at": "2024-08-20",
+                        "available_at": "2024-08-20"
+                    },
+                    {
+                        "name": "2T 投影",
+                        "price": 5.12,
+                        "stage": "two_t",
+                        "display_name": "二吐（正 N）",
+                        "anchor_at": "2024-08-20",
+                        "available_at": "2024-08-20"
+                    }
+                ],
+                "reformed_from_date": "2024-08-15",
+                "reformed_root_date": "2024-08-15",
+                "shape": [
+                    {
+                        "time": "2024-08-13",
+                        "value": 3.65
+                    },
+                    {
+                        "time": "2024-08-16",
+                        "value": 3.85
+                    },
+                    {
+                        "time": "2024-08-20",
+                        "value": 3.66
+                    },
+                    {
+                        "time": "2024-08-20",
+                        "value": 4.14
+                    }
+                ],
+                "target_bottom_date": "2024-08-13",
+                "target_source_date": "2024-08-20"
+            }
+        ],
+        "shapes": [
+            {
+                "points": [
+                    {
+                        "time": "2024-07-25",
+                        "value": 3.45
+                    },
+                    {
+                        "time": "2024-08-01",
+                        "value": 3.96
+                    },
+                    {
+                        "time": "2024-08-13",
+                        "value": 3.65
+                    },
+                    {
+                        "time": "2024-08-20",
+                        "value": 4.14
+                    }
+                ],
+                "direction": "up",
+                "available_at": "2024-08-20",
+                "defense": 3.66,
+                "attack_time": "2024-08-20",
+                "n_id": "up:1574:1579:1587:1592"
+            },
+            {
+                "points": [
+                    {
+                        "time": "2024-08-13",
+                        "value": 3.65
+                    },
+                    {
+                        "time": "2024-08-16",
+                        "value": 3.85
+                    },
+                    {
+                        "time": "2024-08-20",
+                        "value": 3.66
+                    },
+                    {
+                        "time": "2024-08-20",
+                        "value": 4.14
+                    }
+                ],
+                "direction": "up",
+                "available_at": "2024-08-20",
+                "defense": 3.66,
+                "attack_time": "2024-08-20",
+                "n_id": "up:1587:1590:1592:1592"
+            }
+        ]
+    }
+}

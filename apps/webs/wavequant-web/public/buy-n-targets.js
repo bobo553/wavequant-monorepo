@@ -12,7 +12,7 @@ export function buyNTargetLevels(marker, wave, view, theory) {
             (event.available_at || event.time) <= signalDate &&
             (event.available_at || event.time) <= knownAt,
     );
-    const events = knownEvents.filter((event) => isBottomNTargetSource(event, theory));
+    const events = knownEvents.filter((event) => isBottomNTargetSource(event, theory, knownAt));
     const sameDay = events
         .filter((event) => event.time === signalDate)
         .sort((left, right) => (right.n_level || 0) - (left.n_level || 0))[0];
@@ -35,7 +35,11 @@ export function buyNTargetLevels(marker, wave, view, theory) {
     const originalAttack = proof?.squeeze_confirmation === "resistance_attack_bar_break";
     const source =
         proof && Object.hasOwn(proof, "target_source_date")
-            ? events.find((event) => event.time === proof.target_source_date)
+            ? events.find((event) =>
+                  proof.target_source_id
+                      ? event.n_id === proof.target_source_id
+                      : event.time === proof.target_source_date && event.target_primary !== false,
+              )
             : originalAttack
               ? attackN
               : sameDay || cN || (!wave && attackN);
@@ -56,6 +60,7 @@ export function buyNTargetLevels(marker, wave, view, theory) {
         anchor_at: anchor,
         available_at: availableAt,
         n_date: source.time,
+        n_id: source.n_id,
         ...(source.levels?.find((original) => original.stage === level.stage)?.valid_until
             ? { valid_until: source.levels.find((original) => original.stage === level.stage).valid_until }
             : {}),

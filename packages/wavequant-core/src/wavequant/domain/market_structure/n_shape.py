@@ -387,9 +387,9 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
                 defense_breach = i
             if origin_breach is None and sign*(adverse-a)<0:
                 origin_breach = i
-        # An origin break suspends further measurements of this same wave. If a
-        # daily bar also reaches a target, do not invent which happened first.
-        if origin_breach is not None:
+        # A positive N's frozen defense or origin break suspends its measurements.
+        # A same-day target wick cannot outrank failure or revive the old N.
+        if origin_breach is not None or (up and defense_breach is not None):
             continue
         use_close = formation_bar or milestone_basis == MilestoneBasis.CLOSE
         price = bar.close if use_close else bar.high if up else bar.low
