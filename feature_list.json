@@ -58,6 +58,11 @@
                     "command": "related Prettier checks and JS syntax; git diff --check; pnpm harness:check",
                     "status": "passed",
                     "summary": "18个变更格式文件及修改JS语法/差异通过；Harness 287功能、18 Node/2 Python workspace通过，256原记录与main逐项相等。"
+                },
+                {
+                    "command": "merge current main 9c1da9e; pytest test_a_wave_confirmation.py test_hierarchical_countertrend.py; topology 10; Web build/typecheck; Core build/wheel",
+                    "status": "passed",
+                    "summary": "并行会话占用原290，按现有main保留其全部记录，本任务改为291。同步最新main、合并文档和规则图，无算法冲突；33项通过（新增23趋势线用例，累计129个不同Core定向），10拓扑、更新后87源码指纹45aca232e09cfb4a0fec8eae2ff1ad5b88f7b9713b104b18d1529a85f3b060d5、最终Web生产构建/类型、Core包10实现逐字核对通过。所有已有功能记录逐项保持，256仍唯一in-progress。"
                 }
             ]
         },
