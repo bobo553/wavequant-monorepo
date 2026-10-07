@@ -2950,17 +2950,22 @@ tbody tr:hover {
     opacity: 0.6;
 }
 .chart-tooltip {
-    position: absolute;
-    z-index: 10;
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    z-index: 50;
     pointer-events: auto;
     user-select: text;
     background: #152333f5;
     border: 1px solid #4b6481;
     border-radius: 6px;
     padding: 10px;
-    max-width: 285px;
-    max-height: min(65vh, 520px);
+    width: max-content;
+    max-width: min(285px, var(--chart-tooltip-max-width, calc(100vw - 16px)));
+    max-height: min(65vh, 520px, var(--chart-tooltip-max-height, calc(100dvh - 16px)));
     overflow-y: auto;
+    overflow-wrap: anywhere;
+    color: var(--text, #c9d8ea);
     font-size: 11px;
     line-height: 1.7;
     box-shadow: 0 6px 20px #0005;

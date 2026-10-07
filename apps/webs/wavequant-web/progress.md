@@ -1,3 +1,5 @@
+MONOREPO-293（2026-10-07）K线提示框允许超出图窗：按页面/visualViewport坐标定位，右侧有空间时跨出图窗，页面边缘翻转或限位；原生Popover顶层保留DOM主题，旧浏览器移到工作台根部以避开图表卡片的container-type/isolation。复制、选择文本和同K位置稳定保留；滚动/尺寸/Escape/换数据/销毁关闭并清理监听。初版78项定向、8项末轮视口复验、格式/JS语法、lint零错6旧warning、类型与E盘精确副本Webpack生产导出通过；同会话分支feat-三级虚线门禁，复用E盘依赖，无新增依赖或锁变更。并行main先占292，提示框使用293；同步main和最终验收见后续记录。293done，256原字段恢复；完整Web套件、浏览器/Playwright像素待独立验证，不自动推送。
+
 MONOREPO-290最终运行恢复：Turbopack原进程发生16MB内存分配失败，Web与API完整图通过后又退出；已从main用忽略目录 .codex-runtime/wavequant-web-dev-webpack-290.mjs 恢复Web-only Webpack（PID27600、768MB heap、3003），复用现有main API8765（30128）。main revision publisher继续运行，产品配置未修改。恢复后实际当前完整图代理点位/Canvas和research均HTTP200；冻结二级键5.51规则生效，0反向三级虚线。标准 .codex-runtime/wavequant-dev.pid 登记27600。
 
 MONOREPO-290（2026-10-07，最终常驻完整图验收）：d63ffdd经9c1da9e本地no-ff合并。8765两源截至04-08/07-27/09-30共6请求均HTTP200，当前完整图仍只有07-25低3.45→05-15高19.63实线、0反向虚线；不因04-08二级高点后续确认补回。当前完整TTX三层正式点与修正前逐项一致，3003完整图代理点位相同，真实响应Canvas为1橙色实线/0虚线。main Harness通过；104项/21子用例、323日截面与类型/构建证据完整记录，256原字段逐项保留。初版截至04-08的阶段记录已明确标注，最终整段门槛以本记录为准。未推送；完整套件、浏览器/Playwright和完整账户差异待独立验证。

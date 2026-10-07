@@ -4,6 +4,49 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-293",
+            "name": "candle-tooltip-outside-chart",
+            "title": "K线提示框允许超出图窗",
+            "description": "K线提示框按页面视口定位并脱离图表裁剪，边缘K线不再因图窗内限位被提示框覆盖。",
+            "scope": "Web K线提示框浮层、定位、复制与生命周期定向回归",
+            "dependencies": ["MONOREPO-095", "MONOREPO-121"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "光标靠近图窗右侧且页面有空间时，提示框可以跨越图窗边界显示在光标右侧",
+                "提示框不受图表卡片裁剪或层叠限制，主题、行情、标注、复制和文字选择保持有效",
+                "靠近页面边缘时翻转或限位，窄屏和长内容不产生页面横向滚动",
+                "移出、滚动、尺寸变化、切换数据和销毁时清理浮层及监听器",
+                "相关定向测试、格式、lint、类型、必要构建和Harness通过；未运行的视觉验证如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web exec node --test tests/chart-tooltip.test.mjs tests/candle-details.test.mjs tests/chart-series-lifecycle.test.mjs tests/wave-c-chart.test.mjs tests/chart-keyboard-navigation.test.mjs",
+                    "status": "passed",
+                    "summary": "初版78项通过，含8项新增提示框回归；随后还将同步最新main并复验受影响项。旧实现稳定复现右边缘回挤和底部限位两条失败，修改后通过。覆盖实际PriceChart/SDK入口、图外定位、页面边缘翻转、390px、复制/文字选择/同K线位置稳定、原生顶层API契约及保留DOM主题、旧浏览器脱离卡片包含块、滚动/resize/Escape/换数据/销毁。最后8项复验增加visualViewport偏移和缩放事件关闭，全部通过。受控DOM尺寸与Popover替身证明定位和生命周期，不冒充浏览器像素验收。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck",
+                    "status": "passed",
+                    "summary": "ESLint零错误、6条既有环境变量警告，TypeScript通过；Node24.16.0和pnpm10.26.2，仅命令级512MB堆/4MB新生代。public JS及Node测试沿用既有lint忽略，另运行语法和格式检查。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web run prebuild; exact E-drive source snapshot: pnpm --filter wavequant-web exec next build --webpack",
+                    "status": "passed",
+                    "summary": "复用既有E盘依赖及同会话构建副本，1075个源码/记录文件同步，三个修改产品文件SHA逐项一致；Webpack生产编译、构建内类型、5页静态导出通过。无新增依赖、锁文件或产品构建配置变化，不在C盘补装Node依赖。"
+                },
+                {
+                    "command": "targeted Prettier; node --check public/chart-tooltip.js and public/charts.js; git diff --check",
+                    "status": "passed",
+                    "summary": "提示框模块、接入代码、样式、新测试及功能记录的格式和JS语法通过，最终差异无空白错误。"
+                },
+                {
+                    "command": "Complete Web suite and real browser/Playwright visual verification",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏未运行完整Web套件或浏览器/Playwright；真实桌面/窄屏裁剪、顶层绘制、主题和指针跨卡片的像素交互仍待独立视觉验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-291",
             "name": "one-p-confirmed-a-wave-lifecycle",
             "title": "一饱突破确认A与独立C生命周期",
