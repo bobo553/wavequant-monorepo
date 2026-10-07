@@ -565,7 +565,7 @@ function renderChartViewport(state, bars) {
 }
 bindChartViewportHeight(
     $("price-chart"),
-    [document.querySelector(".chart-card .chart-position")],
+    [$("chart-keyboard-help"), document.querySelector(".chart-card .chart-position")],
     $("research-main") ?? $("price-chart").parentElement,
 );
 const chart = new PriceChart(
@@ -575,6 +575,7 @@ const chart = new PriceChart(
     renderVisibleAnnotations,
     (bar, button) => copyHoveredCandle(bar, button),
     renderChartViewport,
+    () => tradePlayback?.pause(),
 );
 bindPressAndHold($("chart-pan-left"), () => {
     tradePlayback?.pause();

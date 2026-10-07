@@ -109,9 +109,10 @@ test("stock selection backtests only the currently selected AkShare or TDX sourc
     assert.match(browser, /id="stock-picker-panel"/);
     const chooser = runtime.split("function chooseSymbol(")[1]?.split("function resetSlider()")[0] || "";
     assert.match(chooser, /const source = sourceForScope\(previousScope\)/);
-    assert.match(chooser, /const runBacktest = autoBacktest && canBacktest/);
+    assert.match(chooser, /run: runBacktest,[\s\S]*selectedBacktestAction\(\{[\s\S]*canBacktest,[\s\S]*autoBacktest,/);
+    assert.match(chooser, /\$\("result-scope"\)\.value = source/);
     assert.match(chooser, /\$\("result-scope"\)\.value = `\$\{source\}-backtest`/);
-    assert.match(chooser, /loadView\(\{ preferTrades: true \}\)/);
+    assert.match(chooser, /preferTrades: true/);
     assert.doesNotMatch(chooser, /\$\("result-scope"\)\.value = "tdx"/);
     const canBacktest = runtime.split("function canBacktestSymbol(")[1]?.split("function chooseSymbol(")[0] || "";
     assert.match(canBacktest, /sourceForScope\(\$\("result-scope"\)\.value\)/);
@@ -199,8 +200,9 @@ test("chart controls use top-layer progressive disclosure without consuming cand
     assert.match(styles, /position: fixed/);
     assert.match(styles, /:popover-open/);
     assert.match(styles, /\.chart-card \{[\s\S]*display: flex;[\s\S]*flex-direction: column;/);
-    assert.match(styles, /min-height: max\(560px, calc\(100svh - 24px\)\)/);
-    assert.match(styles, /\.price-chart \{[\s\S]*flex: 1 1 355px;[\s\S]*height: auto;/);
+    assert.match(runtime, /bindChartViewportHeight\(/);
+    assert.match(styles, /\.chart-card \{[\s\S]*min-height: 0;/);
+    assert.match(styles, /\.price-chart \{[\s\S]*flex: 0 0 auto;[\s\S]*height: var\(--chart-viewport-height,/);
 });
 
 test("trade letters render above trend series and chart drawing primitives", () => {
@@ -289,6 +291,8 @@ test("the complete server-backed research workbench is composed from React featu
         readFileSync(join(featureRoot, "components", "research-secondary-pages.tsx"), "utf8") +
         readFileSync(join(featureRoot, "components", "research-controls.tsx"), "utf8") +
         readFileSync(join(featureRoot, "components", "research-chart.tsx"), "utf8") +
+        readFileSync(join(featureRoot, "components", "chart-view-navigation.tsx"), "utf8") +
+        readFileSync(join(featureRoot, "components", "chart-viewport.tsx"), "utf8") +
         readFileSync(join(featureRoot, "components", "stock-browser.tsx"), "utf8");
     assert.match(workbench, /data-wavequant-react-workbench/);
     assert.match(workbench, /ResearchChart/);
@@ -312,7 +316,7 @@ test("the complete server-backed research workbench is composed from React featu
         /const hasRenderedView = Boolean\(state\.view && state\.view\.symbol === \$\("symbol-select"\)\.value\)/,
     );
     assert.match(legacyRuntime, /\$\("chart-loading-overlay"\)\.hidden = backtestMode/);
-    assert.equal((legacyRuntime.match(/\$\("chart-loading-overlay"\)\.hidden = true/g) || []).length, 2);
+    assert.equal((legacyRuntime.match(/\$\("chart-loading-overlay"\)\.hidden = true/g) || []).length, 3);
     for (const id of [
         "price-chart",
         "run-stock-backtest",

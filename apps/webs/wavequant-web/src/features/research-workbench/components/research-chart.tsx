@@ -1,7 +1,9 @@
 import type { JSX } from "react";
 
-import { IconChevronLeft, IconChevronRight, IconMinus, IconPlus, IconStar } from "@tabler/icons-react";
+import { IconStar } from "@tabler/icons-react";
 
+import { ChartViewNavigation } from "./chart-view-navigation";
+import { ChartViewport } from "./chart-viewport";
 import { TradingViewChartView } from "./tradingview-chart-view";
 
 interface IChartLayer {
@@ -255,111 +257,7 @@ export function ResearchChart(): JSX.Element {
                 </div>
             </div>
 
-            <TradingViewChartView
-                navigation={
-                    <>
-                        <div className="chart-navigation" role="group" aria-label="本地图表视图控制">
-                            <div className="chart-navigation-buttons">
-                                <button
-                                    id="chart-pan-left"
-                                    type="button"
-                                    aria-label="视图左移"
-                                    aria-controls="price-chart"
-                                    title="向较早 K 线移动，长按连续移动"
-                                    disabled
-                                >
-                                    <IconChevronLeft size={17} stroke={1.8} aria-hidden="true" />
-                                </button>
-                                <button
-                                    id="chart-pan-right"
-                                    type="button"
-                                    aria-label="视图右移"
-                                    aria-controls="price-chart"
-                                    title="向较晚 K 线移动，长按连续移动"
-                                    disabled
-                                >
-                                    <IconChevronRight size={17} stroke={1.8} aria-hidden="true" />
-                                </button>
-                                <button
-                                    id="chart-zoom-in"
-                                    type="button"
-                                    aria-label="放大视图"
-                                    aria-controls="price-chart"
-                                    title="显示更少 K 线，长按连续放大"
-                                    disabled
-                                >
-                                    <IconPlus size={17} stroke={1.8} aria-hidden="true" />
-                                </button>
-                                <button
-                                    id="chart-zoom-out"
-                                    type="button"
-                                    aria-label="缩小视图"
-                                    aria-controls="price-chart"
-                                    title="显示更多 K 线，长按连续缩小"
-                                    disabled
-                                >
-                                    <IconMinus size={17} stroke={1.8} aria-hidden="true" />
-                                </button>
-                            </div>
-                        </div>
-                        <div className="trade-playback-navigation">
-                            <div
-                                className="chart-navigation-buttons trade-playback-controls"
-                                role="group"
-                                aria-label="回测买卖点播放"
-                                aria-describedby="trade-playback-current"
-                            >
-                                <button
-                                    id="trade-playback-previous"
-                                    type="button"
-                                    aria-label="上一笔成交"
-                                    aria-controls="price-chart"
-                                    disabled
-                                >
-                                    上一笔
-                                </button>
-                                <button
-                                    id="trade-playback-toggle"
-                                    type="button"
-                                    aria-label="播放买卖点"
-                                    aria-controls="price-chart"
-                                    aria-pressed="false"
-                                    disabled
-                                >
-                                    播放
-                                </button>
-                                <button
-                                    id="trade-playback-next"
-                                    type="button"
-                                    aria-label="下一笔成交"
-                                    aria-controls="price-chart"
-                                    disabled
-                                >
-                                    下一笔
-                                </button>
-                                <label htmlFor="trade-playback-speed">速度</label>
-                                <select id="trade-playback-speed" defaultValue="1600" disabled>
-                                    <option value="3200">0.5×</option>
-                                    <option value="1600">1×</option>
-                                    <option value="800">2×</option>
-                                </select>
-                                <output id="trade-playback-progress" aria-label="成交播放进度">
-                                    0 / 0
-                                </output>
-                                <span id="trade-playback-current" className="sr-only">
-                                    运行当前股票回测后可按成交顺序播放 B/S 点位。
-                                </span>
-                                <span
-                                    id="trade-playback-announcement"
-                                    className="sr-only"
-                                    role="status"
-                                    aria-live="polite"
-                                />
-                            </div>
-                        </div>
-                    </>
-                }
-            />
+            <TradingViewChartView navigation={<ChartViewNavigation />} />
 
             <div id="chart-layers-popover" className="chart-tool-popover chart-layers-popover" popover="manual">
                 <div className="chart-popover-header">
@@ -423,56 +321,7 @@ export function ResearchChart(): JSX.Element {
                 </p>
             </div>
 
-            <div id="ohlc" className="ohlc" aria-live="off">
-                <span id="ohlc-text">鼠标移动至 K 线查看价格</span>
-                <button id="copy-candle" type="button" aria-label="复制当前 K 线数据" disabled>
-                    复制 K 线
-                </button>
-                <span id="candle-copy-feedback" className="candle-copy-feedback" role="status" aria-live="polite" />
-            </div>
-            <div id="price-chart" className="price-chart" aria-label="TradingView K线与成交量图" />
-            <div className="chart-position">
-                <div className="chart-position-heading">
-                    <label htmlFor="chart-position-slider">当前图窗位置</label>
-                    <output id="chart-position-label" htmlFor="chart-position-slider">
-                        等待行情数据
-                    </output>
-                </div>
-                <input
-                    id="chart-position-slider"
-                    type="range"
-                    min="0"
-                    max="0"
-                    step="any"
-                    defaultValue="0"
-                    aria-controls="price-chart"
-                    disabled
-                />
-            </div>
-            <div id="chart-loading-overlay" className="chart-loading-overlay" role="status" aria-live="polite" hidden>
-                <span className="chart-loading-spinner" aria-hidden="true" />
-                <span>正在加载股票数据…</span>
-            </div>
-            <div className="replay">
-                <div className="replay-title">
-                    <span>历史回放</span>
-                    <strong id="asof-label">—</strong>
-                    <span id="replay-mode" className="tag">
-                        最新截面
-                    </span>
-                </div>
-                <div className="replay-controls">
-                    <button id="previous" aria-label="前一根K线">
-                        ‹
-                    </button>
-                    <input id="replay-slider" type="range" min="0" max="0" defaultValue="0" aria-label="回放日期" />
-                    <button id="next" aria-label="后一根K线">
-                        ›
-                    </button>
-                    <button id="latest">到最新</button>
-                </div>
-                <p>按收盘截面回放 · 只呈现当时已确认的信息 · 不模拟盘中高低先后</p>
-            </div>
+            <ChartViewport />
         </article>
     );
 }

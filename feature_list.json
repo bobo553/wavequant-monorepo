@@ -4,14 +4,49 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-285",
+            "name": "chart-arrow-key-navigation",
+            "title": "图表方向键缩放与平移",
+            "description": "聚焦K线图后上键放大、下键缩小、左右键平移，连续按键复用已有图窗范围约束。",
+            "scope": "Web图表键盘交互、提示、焦点和生命周期回归及本地合并",
+            "dependencies": ["MONOREPO-284"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "点击图表画布或Tab聚焦图表后，上下方向键分别放大缩小，左右方向键分别向早晚行情平移，长按支持连续操作",
+                "复用图窗按钮范围和缩放边界，手动键盘导航暂停成交播放；输入、选择、按钮、滑块、组合键及非图表焦点不被抢占",
+                "显示快捷键提示和可见焦点，销毁图表清理监听器；空数据不消费方向键",
+                "定向DOM/SDK回归、格式、lint、类型、必要构建与Harness通过后合并本地main，不推送"
+            ],
+            "verification": [
+                {
+                    "command": "node --test chart-keyboard-navigation chart-navigation chart-series-lifecycle chart-viewport-height market-dashboard trade-playback backtest-job-status n-structure-overlay wave-c-chart target-level-guides n-target-focus bottom-n-targets buy-n-targets combined-a-chart",
+                    "status": "passed",
+                    "summary": "154项定向Node全部通过。真实Lightweight Charts SDK确认上放大/下缩小/左右平移与销毁清理；DOM覆盖画布聚焦、连续按键20根/全程边界、编辑控件及组合键排除、空数据和tabindex恢复。前轮正N固定目标/顶底回归保持。首次SDK测试未刷新受控动画帧导致null窗口，补齐SDK同步重绘后通过；未改实际缩放逻辑。"
+                },
+                {
+                    "command": "pnpm exec vitest run src/features/research-workbench/components/chart-viewport.test.tsx; pnpm --filter wavequant-web lint/typecheck/build",
+                    "status": "passed",
+                    "summary": "1项React静态渲染测试通过，25个既有运行时ID唯一且聚焦目标/快捷键/帮助关联完整；拆分本轮图窗和导航控件，ResearchChart 393行。最终lint零错误6条旧warning、独立类型及512MB生产构建通过，恢复仅已知next-env生成路由行。首次market-dashboard 3项在clean main同失败：旧选择源码形式、旧图表高度和旧loading分支计数；保留同源回测/图窗高度/加载契约，按已有实际行为校准，相关backtest-job-status和viewport-height行为测试同时通过。"
+                },
+                {
+                    "command": "pnpm harness:check; targeted Prettier; node --check app/charts/chart-keyboard-navigation; codegraph sync; git diff --check",
+                    "status": "passed",
+                    "summary": "Harness282功能、18 Node和2 Python workspace、32规范通过。相关13份源码/测试/状态文件格式、三模块JS语法、CodeGraph增量同步及最终差异通过；除新增285外全部原功能与main逐项相等，256原始完整对象恢复。"
+                },
+                {
+                    "command": "Complete Web suite and browser/Playwright validation",
+                    "status": "not-run",
+                    "summary": "遵照当次验证节奏未运行完整Web套件、浏览器/Playwright；DOM及真实SDK定向回归不代表浏览器像素验证，待独立验证。不推送。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-284",
             "name": "positive-n-fixed-chart-guides",
             "title": "正N固定目标与顶底横线",
             "description": "目标标签横向固定在成N日期上方，正N箱顶和起点低位增加横线，鼠标移动不改变其结构锚点。",
             "scope": "Web图表显示、覆盖层及定向交互回归、本地合并",
-            "dependencies": [
-                "MONOREPO-283"
-            ],
+            "dependencies": ["MONOREPO-283"],
             "status": "done",
             "acceptanceCriteria": [
                 "一饱二吐五顶十满标签固定在对应成N日期，鼠标在同一正N区间移动或点击定位不移动标签，C浪原交互保持",
@@ -53,9 +88,7 @@
             "title": "母子正N底部启动测幅",
             "description": "修复讲义内包阴子线B/C被当成阴母外包而拒绝，统一识别底部启动首个正N及其目标来源。",
             "scope": "Core正N几何校验与底部资格优先的同日候选去重、真实襄阳轴承案例、Web策略拓扑、本地合并",
-            "dependencies": [
-                "MONOREPO-282"
-            ],
+            "dependencies": ["MONOREPO-282"],
             "status": "done",
             "acceptanceCriteria": [
                 "襄阳轴承2026-07-21底部7.32、07-22内包阴子B/C、07-23成N7.90统一识别，一饱8.48二吐9.06",

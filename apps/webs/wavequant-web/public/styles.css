@@ -1903,6 +1903,7 @@ body {
         .chart-navigation,
         .trade-playback-navigation,
         #price-chart,
+        .chart-keyboard-help,
         .chart-position,
         #chart-loading-overlay,
         .replay
@@ -2490,6 +2491,7 @@ body {
     cursor: not-allowed;
 }
 .chart-navigation-buttons button:focus-visible,
+.price-chart:focus-visible,
 .chart-position input:focus-visible {
     outline: 2px solid var(--cyan);
     outline-offset: 2px;
@@ -2498,6 +2500,12 @@ body {
     padding: 9px 16px 13px;
     border-top: 1px solid var(--border);
     background: var(--panel);
+}
+.chart-keyboard-help {
+    margin: 0;
+    padding: 6px 16px;
+    color: var(--research-text-soft);
+    font-size: 11px;
 }
 .chart-position-heading {
     display: flex;

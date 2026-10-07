@@ -12,6 +12,7 @@ import {
     visibleLastFallHighGuides,
 } from "./annotations.js";
 import { candleDetails } from "./candle-details.js";
+import { bindChartKeyboardNavigation } from "./chart-keyboard-navigation.js";
 import {
     chartNavigationState,
     panChartRange,
@@ -169,12 +170,14 @@ export class PriceChart {
         onVisible = () => {},
         onCopyCandle = () => {},
         onViewport = () => {},
+        onKeyboardNavigate = () => {},
     ) {
         this.container = container;
         this.onSelect = onSelect;
         this.onVisible = onVisible;
         this.onViewport = onViewport;
         this.chart = base(container);
+        this.unbindKeyboardNavigation = bindChartKeyboardNavigation(container, this, onKeyboardNavigate);
         this.candles = this.chart.addSeries(L.CandlestickSeries, {
             upColor: colors.up,
             downColor: colors.down,
@@ -1500,6 +1503,7 @@ export class PriceChart {
         clearTimeout(this.tooltipHideTimer);
         this.focusFlashOverlay.clear();
         this.container.removeEventListener("pointerup", this.onTertiaryPointerUp);
+        this.unbindKeyboardNavigation();
         this.tooltip.remove();
         themedCharts.delete(this.chart);
         this.chart.remove();
