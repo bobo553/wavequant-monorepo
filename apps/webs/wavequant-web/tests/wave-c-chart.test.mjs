@@ -36,6 +36,76 @@ const bars = [...initial.bars, ...history.bars].map(([time, open, high, low, clo
 }));
 const theory = { ...initial.theory, asof: history.asof, shapes: [], secondary_trends: history.secondary_trends };
 
+test("Core-confirmed A draws a solid leg and labels before any B or C exists", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xiangyang_a_wave_2026.json", import.meta.url)));
+    const data = fixture.bars.map(([time, open, high, low, close, volume]) => ({
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume,
+    }));
+    const { chart, rendered } = chartHarness(data);
+    chart.data.asof = "2026-08-17";
+    chart.setTheory({ ...fixture.theory, asof: "2026-08-17", shapes: [] });
+    assert.equal(chart.autoAObservations.length, 1);
+    assert.equal(chart.autoAObservations[0].aHigh, 9.83);
+    assert.equal(chart.autoWaveProjections.length, 0);
+    assert.ok(chart.annotations.some((marker) => marker.title === "A 确认" && marker.time === "2026-07-31"));
+    assert.ok(chart.annotations.some((marker) => marker.title === "强势 A" && marker.time === "2026-08-05"));
+    assert.deepEqual(chart.waveAbLines[0].points, [
+        { time: "2026-07-21", value: 7.32 },
+        { time: "2026-08-17", value: 9.83 },
+    ]);
+    assert.equal(chart.waveAbLines[0].options.lineStyle, 0);
+    chart.setAnnotationOptions({ tertiaryAbc: false });
+    assert.equal(chart.waveAbLines.length, 0);
+    assert.deepEqual(rendered.guides, []);
+    chart.setTheory(null);
+    assert.deepEqual(chart.autoAObservations, []);
+});
+
+test("Core A markers bind C targets to their own N identity across overlapping projections", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xiangyang_a_wave_2026.json", import.meta.url)));
+    const data = fixture.bars.map(([time, open, high, low, close, volume]) => ({
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume,
+    }));
+    for (const asof of ["2026-08-17", "2026-08-25"]) {
+        const { chart } = chartHarness(data);
+        chart.data.asof = asof;
+        chart.setTheory({ ...fixture.theory, asof, shapes: [] });
+        const marker = chart.autoWaveEvidence.find((item) => item.id.endsWith(":confirmed"));
+        const own = chart.autoWaveProjections[0];
+        chart.autoWaveProjections.push({
+            id: "overlapping-other-n",
+            time: asof,
+            raw: {
+                ...marker.raw,
+                sourceNId: "other-n",
+                trendLevel: 3,
+                aKnownAt: asof,
+                bKnownAt: asof,
+                confirmedAt: asof,
+            },
+            levels: [],
+        });
+        assert.equal(chart.waveProjectionAt(marker.time, marker.id), own || null);
+        chart.selected = marker;
+        assert.equal(chart.displayedWaveProjection(), own || null);
+        if (own) {
+            assert.notEqual(own.raw, marker.raw);
+            assert.equal(own.raw.sourceNId, marker.raw.sourceNId);
+            assert.equal(own.raw.target, 11.4);
+        }
+    }
+});
+
 // Exercise chart state and SDK inputs without opening a browser or claiming a pixel-level check.
 function chartHarness(data = bars) {
     const chart = Object.create(PriceChart.prototype);
@@ -57,7 +127,8 @@ function chartHarness(data = bars) {
     ])
         chart[field] = [];
     chart.chart = {
-        addSeries: () => ({
+        addSeries: (_type, options) => ({
+            options,
             setData(points) {
                 assert.ok(points.every((point, index) => !index || points[index - 1].time < point.time));
                 this.points = points;
@@ -259,6 +330,7 @@ test("the actual July23 N targets stay above the completion candle across hover 
             end: "2026-07-23",
             top: 7.9,
             bottom: 7.32,
+            source: "2026-07-21",
         });
     }
     chart.focusCandleTargets("2026-07-21");
@@ -673,7 +745,7 @@ test("N focus stops after two-t, preserves the first break and clears after data
     assert.equal(rendered.guides.length, 0);
 });
 
-test("selected buy targets and focused N targets are shown once per price and stage", () => {
+test("selected buy and focused N targets share their explicit source identity", () => {
     const fixture = JSON.parse(readFileSync(new URL("./fixtures/xinhua_2024_n_targets.json", import.meta.url)));
     const { chart, rendered } = chartHarness(fixture.view.bars);
     chart.setTheory({ ...fixture.theory, shapes: [], lecture_drawing: { strokes: [] } });
@@ -683,7 +755,7 @@ test("selected buy targets and focused N targets are shown once per price and st
         id: "buy-with-same-targets",
         kind: "fill",
         category: "fills",
-        raw: {},
+        raw: { n_id: n.raw.n_id || n.id },
         time: "2024-03-20",
     };
     chart.options.fills = true;

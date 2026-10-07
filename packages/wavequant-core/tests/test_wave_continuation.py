@@ -179,7 +179,6 @@ def test_real_gap_keeps_whole_b_low_and_equal_a_target():
         "no_gap",
         "broken_origin",
         "no_two_t",
-        "attack_wick_only",
         "no_squeeze",
         "no_pullback",
         "target_exhausted",
@@ -196,10 +195,6 @@ def test_gap_entry_requires_every_condition(case):
         bars[dates["2026-08-21"]] = replace(bars[dates["2026-08-21"]], low=setup.origin - 0.01)
     elif case == "no_two_t":
         setup = replace(setup, two_t=30, box_anchor=(30 + 2 * setup.origin) / 3)
-    elif case == "attack_wick_only":
-        setup = replace(setup, two_t=23, box_anchor=(23 + 2 * setup.origin) / 3)
-        bars[setup.attack_index] = replace(bars[setup.attack_index], high=30)
-        bars[now] = replace(bars[now], close=30.5, high=31)
     elif case == "no_squeeze":
         setup = replace(setup, squeeze_index=now)
     elif case == "no_pullback":
@@ -208,6 +203,18 @@ def test_gap_entry_requires_every_condition(case):
     else:
         bars[now] = replace(bars[now], close=20, high=20)
     assert wave_gap_entry(bars, setup, now) is None
+
+
+def test_attack_wick_reaching_two_t_confirms_strong_a_before_later_c_entry():
+    bars, dates, setup = sample()
+    now = dates["2026-09-15"]
+    setup = replace(setup, two_t=23, box_anchor=(23 + 2 * setup.origin) / 3)
+    bars[setup.attack_index] = replace(bars[setup.attack_index], high=30)
+    bars[now] = replace(bars[now], close=30.5, high=31)
+    proof = wave_gap_entry(bars, setup, now)
+    assert proof is not None
+    assert proof["wave_a_class"] == "strong"
+    assert proof["wave_a_confirmed_date"] == str(bars[setup.attack_index].timestamp.date())
 
 
 def test_equal_defense_is_held_and_symbol_does_not_change_rule():
@@ -225,7 +232,7 @@ def test_volume_gap_does_not_require_final_bullish_body():
     assert wave_gap_entry(bars, setup, now)["wave_gap_trigger"] == "volume"
 
 
-def test_full_global_pipeline_uses_formal_reconfirmation_and_preserves_prefix():
+def test_full_global_pipeline_keeps_qualified_a_sources_and_preserves_prefix():
     bars, dates, _ = sample()
     config = SystemStrategy(
         pivot_mode="lecture_causal",
@@ -239,7 +246,7 @@ def test_full_global_pipeline_uses_formal_reconfirmation_and_preserves_prefix():
     full = generate_system_signals(bars, config)
     day = dates["2026-09-15"]
     buys = [s for s in full.signals if s.side == "LONG" and s.bar_index == day]
-    assert len(buys) == 1
+    assert not buys
     # The supplied Aug 3 setup used by the wave observer is not a completed N
     # under the current lecture reducer. The global pipeline must own its actual
     # Aug 10 N, rather than borrow the unqualified setup's larger C target.
@@ -248,18 +255,20 @@ def test_full_global_pipeline_uses_formal_reconfirmation_and_preserves_prefix():
     assert completed["origin"] == dates["2026-07-27"]
     assert completed["neckline"] == dates["2026-08-06"]
     assert completed["pullback"] == dates["2026-08-07"]
-    assert buys[0].reason == "system_transition_squeeze"
-    assert buys[0].target_price == pytest.approx(completed["one_p"])
-    assert buys[0].invalidation_price == pytest.approx(completed["defense"])
-    proof = next(e for e in full.audit if e["event"] == "long_signal" and e["bar_index"] == day)
-    assert proof["attack"] == attack
-    assert proof["n_origin_date"] == "2026-07-27"
-    assert proof["n_neckline_date"] == "2026-08-06"
-    assert proof["n_pullback_date"] == "2026-08-07"
-    assert proof["squeeze_confirmation"] == "fresh_n_defeats_old_n_resistance"
-    assert "wave_entry_path" not in proof
-    assert proof["rvol"] > 1
-    assert proof["rvol"] == pytest.approx(bars[day].volume / bars[day - 1].volume)
+    # Formal squeeze evidence alone cannot restore a retired target source or
+    # invent an A that never exceeded that N's one-P.
+    assert any(e["event"] == "n_consolidation_gap_confirmed" and e["attack"] == attack
+               and e["bar_index"] == day for e in full.audit)
+    assert any(e["event"] == "n_target_source_retired" and e["attack"] == attack
+               and e["bar_index"] < day for e in full.audit)
+    assert any(e["event"] == "entry_rejected" and e["bar_index"] == day
+               and e["reason"] == "no_live_structural_risk_reward" for e in full.audit)
+    assert not any(e["event"] == "a_wave_confirmed" and e["source_id"] == completed["n_id"] for e in full.audit)
+    new_n = next(e for e in full.audit if e["event"] == "n_completed" and e["bar_index"] == day
+                 and e.get("target_primary") is False and e["target_eligible"])
+    assert new_n["one_p"] > bars[day].high
+    assert any(e["event"] == "a_wave_confirmed" and e["source_id"] == new_n["n_id"]
+               and e["bar_index"] == dates["2026-09-17"] for e in full.audit)
     for end in (dates["2026-08-21"], day - 1, day):
         prefix = generate_system_signals(bars[: end + 1], config)
         assert prefix.signals == [s for s in full.signals if s.bar_index <= end]

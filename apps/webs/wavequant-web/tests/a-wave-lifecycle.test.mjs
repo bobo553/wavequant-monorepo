@@ -27,7 +27,7 @@ const theoryForClass = (ordinary) => {
     return theory;
 };
 
-test("Core and Web share inclusive one-P and two-T classification boundaries", () => {
+test("Core and Web share strict one-P and inclusive two-T classification boundaries", () => {
     for (const entry of boundaries) assert.equal(classifyAAttack(entry.high, entry.one_p, entry.two_t), entry.class);
     assert.equal(classifyAAttack(NaN, 12, 14), null);
     assert.equal(classifyAAttack(true, 12, 14), null);
@@ -91,12 +91,15 @@ test("an N already invalid at the A high cannot supply a new parent measurement"
     }
 });
 
-test("parent one-P equality is ordinary and a high below one-P is unclassified", () => {
+test("parent one-P equality is unclassified and a strict break is ordinary", () => {
     const theory = theoryForClass(true);
     const oneP = theory.events[0].levels.find((level) => level.stage === "one_p");
     theory.events[0].levels.find((level) => level.stage === "two_t").price = aHigh + 1;
     oneP.price = aHigh;
+    assert.equal(findParent(bars, theory), undefined);
+    oneP.price -= 0.01;
     assert.equal(findParent(bars, theory)?.aAttackClass, "non_strong");
+    oneP.price += 0.01;
     oneP.price += 0.01;
     assert.equal(findParent(bars, theory), undefined);
 });
@@ -117,7 +120,7 @@ test("manual selection does not revive an old A after an origin loss during C", 
         available_at: "2024-01-02",
         defense: 9,
         shape: [{ time: "2024-01-01", value: 8 }],
-        levels: [{ stage: "one_p", price: 12 }],
+        levels: [{ stage: "one_p", price: 11.99 }],
     };
     event.n_invalidated_at = "2024-01-04";
     assert.equal(waveCProjection(data.slice(0, 5), [event], "2024-01-03")?.bLow, 8.5);

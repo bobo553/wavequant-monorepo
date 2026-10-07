@@ -796,7 +796,11 @@ export function buildAnnotations(view, theory) {
         };
     });
     for (const event of theory?.events || []) {
-        if (["n_invalidated", "n_target_source_retired"].includes(event.event)) continue;
+        if (
+            ["n_invalidated", "n_target_source_retired"].includes(event.event) ||
+            (theory.a_wave_policy && /^(a_wave_|b_wave_|c_wave_)/.test(event.event))
+        )
+            continue;
         const asof = theory.asof && theory.asof < view.asof ? theory.asof : view.asof;
         if (
             event.event === "n_completed" &&
