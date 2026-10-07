@@ -86,8 +86,11 @@ export class TargetGuideOverlay {
             const visible = this.projected
                 .map((guide) => {
                     const offscreen = guide.y < 4 || guide.y > mediaSize.height - 4;
+                    const offscreenX = guide.fixedAnchor && (guide.x < 0 || guide.x > mediaSize.width);
                     return {
                         ...guide,
+                        x: guide.fixedAnchor ? Math.max(0, Math.min(guide.x, mediaSize.width)) : guide.x,
+                        offscreenX,
                         offscreen,
                         displayY: offscreen ? Math.max(4, Math.min(guide.y, mediaSize.height - 4)) : guide.y,
                     };
@@ -117,7 +120,7 @@ export class TargetGuideOverlay {
                 context.lineWidth = guide.stage === "c_equal" ? 2 : 1;
                 const short = !guide.end || guide.end === guide.start;
                 const anchorX = Math.max(0, short ? guide.x - 18 : guide.x);
-                if (short && !guide.offscreen) {
+                if (short && !guide.offscreen && !guide.offscreenX) {
                     context.setLineDash(guide.targetState === "已触及" ? [] : [4, 3]);
                     context.beginPath();
                     context.moveTo(anchorX, guide.y);
@@ -144,12 +147,23 @@ export class TargetGuideOverlay {
                 const labelX = Math.max(
                     4,
                     Math.min(
-                        guide.labelPosition === "line" ? anchorX + 8 : anchorX - width - 8,
+                        guide.labelPosition === "center"
+                            ? guide.x - width / 2
+                            : guide.labelPosition === "line"
+                              ? anchorX + 8
+                              : anchorX - width - 8,
                         mediaSize.width - width - 4,
                     ),
                 );
                 const labelY = labelYs[index];
-                if (!guide.offscreen && (Math.abs(labelY - (guide.y - 3)) > 1 || labelX + width > anchorX - 8)) {
+                if (
+                    !guide.offscreen &&
+                    !guide.offscreenX &&
+                    (Math.abs(labelY - (guide.y - 3)) > 1 ||
+                        (guide.labelPosition === "center"
+                            ? Math.abs(labelX + width / 2 - guide.x) > 1
+                            : labelX + width > anchorX - 8))
+                ) {
                     const edgeX = anchorX < labelX + width / 2 ? labelX - 2 : labelX + width + 2;
                     context.beginPath();
                     context.moveTo(edgeX, labelY - 6);

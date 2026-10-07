@@ -30,6 +30,7 @@ import { FocusFlashOverlay } from "./focus-flash-overlay.js";
 import { num } from "./labels.js";
 import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
 import { drawdownCandleRange } from "./max-drawdown.js";
+import { NStructureOverlay } from "./n-structure-overlay.js";
 import {
     isNTargetStage,
     isPositiveNTarget,
@@ -249,6 +250,8 @@ export class PriceChart {
         this.candles.attachPrimitive(this.waveEndpointOverlay);
         this.targetGuideOverlay = new TargetGuideOverlay();
         this.candles.attachPrimitive(this.targetGuideOverlay);
+        this.nStructureOverlay = new NStructureOverlay(container);
+        this.candles.attachPrimitive(this.nStructureOverlay);
         this.combinedAGuideOverlay = new TargetGuideOverlay();
         this.candles.attachPrimitive(this.combinedAGuideOverlay);
         this.focusFlashOverlay = new FocusFlashOverlay(container);
@@ -893,6 +896,7 @@ export class PriceChart {
     clearLevels() {
         clearSeriesCollection(this, "levelLines");
         this.targetGuideOverlay?.setGuides([]);
+        this.nStructureOverlay?.setStructure(null);
         this.container.dataset.levelCount = "0";
     }
     clearLastFallHighGuides() {
@@ -1100,6 +1104,7 @@ export class PriceChart {
         const blockedCandidate = item?.kind === "candidate";
         if (!this.data || !this.options.levels) return;
         const asof = this.theory?.asof && this.theory.asof < this.data.asof ? this.theory.asof : this.data.asof;
+        this.nStructureOverlay?.setStructure(focusedN, asof);
         const primaryVisible =
             item &&
             (blockedOrder ||
@@ -1158,21 +1163,13 @@ export class PriceChart {
             else if (!guide && start < this.data.bars.at(-1).time)
                 points.push({ time: this.data.bars.at(-1).time, value: level.price });
             let displayGuide = guide;
-            if (guide && isNTargetStage(level.stage) && focusedN) {
-                const range = this.chart.timeScale().getVisibleLogicalRange();
-                const first = Math.max(0, Math.ceil(range?.from ?? 0));
-                const last = Math.min(this.data.bars.length - 1, Math.floor(range?.to ?? this.data.bars.length - 1));
-                const from = this.data.bars[first]?.time;
-                const to = this.data.bars[last]?.time;
-                const time = this.hoveredNTarget ? this.hoveredWaveTime : this.focusedNTime;
+            if (guide && isNTargetStage(level.stage)) {
                 displayGuide = {
                     ...guide,
-                    display_at:
-                        time && time >= from && time <= to
-                            ? time
-                            : from && (guide.start < from || guide.start > to)
-                              ? from
-                              : guide.start,
+                    // 横向绑定成 N 日期；悬停只选择来源，不移动它的目标标签。
+                    display_at: isPositiveNTarget(item) ? item.time : level.n_date || focusedN?.time || guide.start,
+                    fixedAnchor: true,
+                    labelPosition: "center",
                     targetState: ["one_p", "two_t"].includes(level.stage)
                         ? guide.end
                             ? "已突破"

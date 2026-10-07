@@ -1,8 +1,47 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-256",
+    "activeFeature": "MONOREPO-284",
     "features": [
+        {
+            "id": "MONOREPO-284",
+            "name": "positive-n-fixed-chart-guides",
+            "title": "正N固定目标与顶底横线",
+            "description": "目标标签横向固定在成N日期上方，正N箱顶和起点低位增加横线，鼠标移动不改变其结构锚点。",
+            "scope": "Web图表显示、覆盖层及定向交互回归、本地合并",
+            "dependencies": [
+                "MONOREPO-283"
+            ],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "一饱二吐五顶十满标签固定在对应成N日期，鼠标在同一正N区间移动或点击定位不移动标签，C浪原交互保持",
+                "正N箱顶和起点低点显示两条固定水平线及价格标识，与目标使用同一结构；襄阳07-23顶7.90底7.32",
+                "缩放滚动随行情坐标更新、目标关闭及清理同步移除，未知/不合格/未来结构不补造横线，覆盖层不改变价格轴与测幅",
+                "定向SDK/绘制回归、格式/lint/类型/构建与Harness通过后本地合并，不运行浏览器E2E或推送"
+            ],
+            "verification": [
+                {
+                    "command": "node --test n-structure-overlay wave-c-chart target-level-guides n-target-focus bottom-n-targets buy-n-targets combined-a-chart",
+                    "status": "passed",
+                    "summary": "最终99项通过。新增两例先复现目标随鼠标日期移动；修复后四档都绑定成N日期居中显示，实际襄阳07-23一饱8.48/二吐9.06、顶7.90/底7.32。覆盖鼠标/定位、两条实价横线、缩放滚动、图外边缘标签、关闭/清理、未来与不合格N，旧ABC/成交/目标生命周期保持。原两例图外可见性失败已修复，断言保留，无当前失败。"
+                },
+                {
+                    "command": "targeted Prettier; node --check charts.js/n-structure-overlay.js/target-level-guides.js; pnpm --filter wavequant-web lint/typecheck/build",
+                    "status": "passed",
+                    "summary": "格式/语法、lint零错误6条旧warning、类型与生产构建通过。构建首次TS worker发生系统Zone allocation内存失败，串行重试成功且build_exit_code=0；未更改构建门禁或其他任务进程。"
+                },
+                {
+                    "command": "codegraph sync; git diff --check",
+                    "status": "passed",
+                    "summary": "CodeGraph新增2文件/修改4文件同步、差异检查通过。只变更Web显示，Core V100策略、测幅值与80源策略指纹不变。"
+                },
+                {
+                    "command": "full Web suite; browser/Playwright pixel verification",
+                    "status": "not-run",
+                    "summary": "按用户验证节奏未运行完整Web套件、浏览器或Playwright；已做真实固定行情SDK输入与Canvas绘制回归，不能视为浏览器像素验收。本地合并及HTTP模块核对待下一步执行，不推送。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-283",
             "name": "inside-child-bottom-n-target",
@@ -1216,7 +1255,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",

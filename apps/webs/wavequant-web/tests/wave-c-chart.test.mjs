@@ -21,6 +21,7 @@ globalThis.MutationObserver = class {
 const { PriceChart } = await import("../public/charts.js");
 const { FocusFlashOverlay } = await import("../public/focus-flash-overlay.js");
 const { TargetGuideOverlay } = await import("../public/target-level-guides.js");
+const { NStructureOverlay } = await import("../public/n-structure-overlay.js");
 const { WaveEndpointOverlay } = await import("../public/wave-endpoint-overlay.js");
 
 const initial = JSON.parse(readFileSync(new URL("./fixtures/xianfeng_2020_c_wave.json", import.meta.url)));
@@ -84,6 +85,12 @@ function chartHarness(data = bars) {
         },
     };
     chart.waveEndpointOverlay = new WaveEndpointOverlay(chart.container);
+    chart.nStructureOverlay = new NStructureOverlay(chart.container);
+    chart.nStructureOverlay.attached({
+        chart: chart.chart,
+        series: { priceToCoordinate: (price) => 200 - price * 10 },
+        requestUpdate() {},
+    });
     chart.waveEndpointOverlay.attached({
         chart: chart.chart,
         series: { priceToCoordinate: (price) => 200 - price * 10 },
@@ -225,6 +232,51 @@ test("candle hover and pinned focus show known five-top and ten-full on the orig
         ["one_p", "two_t", "five_top", "ten_full"],
     );
     assert.deepEqual(chart.focusedNTarget, snapshot);
+});
+
+test("the actual July23 N targets stay above the completion candle across hover and pinned focus", () => {
+    const fixture = JSON.parse(
+        readFileSync(new URL("./fixtures/xiangyang_2026_bottom_n_guides.json", import.meta.url)),
+    );
+    const { chart, rendered } = chartHarness(fixture.view.bars);
+    chart.setTheory(fixture.theory);
+    let initial;
+    for (const time of ["2026-07-21", "2026-07-22", "2026-07-23"]) {
+        chart.updateWaveProjectionHover(time);
+        assert.deepEqual(
+            rendered.guides.map(({ display_at }) => display_at),
+            ["2026-07-23", "2026-07-23"],
+        );
+        assert.deepEqual(
+            rendered.guides.map(({ price }) => price),
+            [8.48, 9.06],
+        );
+        assert.ok(rendered.guides.every((guide) => guide.labelPosition === "center" && guide.fixedAnchor));
+        initial ||= structuredClone(rendered.guides);
+        assert.deepEqual(rendered.guides, initial);
+        assert.deepEqual(chart.nStructureOverlay.bounds, {
+            start: "2026-07-21",
+            end: "2026-07-23",
+            top: 7.9,
+            bottom: 7.32,
+        });
+    }
+    chart.focusCandleTargets("2026-07-21");
+    chart.updateWaveProjectionHover(null);
+    assert.deepEqual(rendered.guides, initial);
+    chart.options.levels = false;
+    chart.drawLevels();
+    assert.equal(chart.nStructureOverlay.bounds, null);
+    assert.equal(chart.nStructureOverlay.projected, null);
+});
+
+test("all four N stages keep the same completion anchor while C wave interaction remains separate", () => {
+    const { chart, rendered } = xiangyangNChart();
+    for (const time of ["2023-06-12", "2023-06-28", "2023-07-04"]) {
+        chart.updateWaveProjectionHover(time);
+        assert.equal(rendered.guides.length, 4);
+        assert.ok(rendered.guides.every((guide) => guide.display_at === "2023-06-12"));
+    }
 });
 
 test("ABC primary targets preserve the focused N extensions and replay hides unpublished stages", () => {
