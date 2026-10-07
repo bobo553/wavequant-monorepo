@@ -4,6 +4,53 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-288",
+            "name": "hierarchical-trend-market-break-confirmation",
+            "title": "二三级趋势突破前高即确认",
+            "description": "同级前高被最高价严格突破即确认上涨趋势线，跌破前低对称；末端继续延伸。",
+            "scope": "Core共用因果确认、二三级趋势返回、Web实线与说明、全局规则和回归",
+            "dependencies": ["MONOREPO-281"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "襄阳轴承2025-03-11严格突破2022-08-02高10.66即确认；05-15高19.63为可继续延伸的实线末端",
+                "二三级共用最高/最低价严格突破，同价触碰不确认，来源与关键点必须当时可知，断点不跨越",
+                "趋势确认与末端反转分开，未冻结新高点，前缀证据不因后续创新高改变；正式拐点和策略输入保持其原确认边界",
+                "相关定向测试、类型、构建、格式和Harness实际通过，未执行检查如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest: test_hierarchical_confirmation.py test_secondary_trend.py test_tertiary_trend.py test_xinhuawenxuan_trends.py test_trend_landmarks.py",
+                    "status": "passed",
+                    "summary": "最终47项及21子用例通过；1767根完整真实原始日线锁定03-11首次突破10.66、05-15最高19.63和不变确认日；对称突破、相等、无收盘要求、未知源、同日双破、断点、相等极值保留最早和后续正式起点均覆盖。最初整stroke比较包含变化的input_turn_count，已改为完整正式points比较；最终正式点逐项相等。 已确认极值后的下一级演化继续保留，未确认回档逐段虚线，两级均有回归。"
+                },
+                {
+                    "command": "Core pytest: test_chart_entry_history.py test_chart_entry_history_cache.py test_hierarchical_entry.py test_hierarchical_n.py",
+                    "status": "passed",
+                    "summary": "25项通过，既有分层策略上下文与前缀、缓存和N链保持。"
+                },
+                {
+                    "command": "node --test tests/trend-break-confirmation.test.mjs tests/lecture-overlay.test.mjs; vitest run src/features/research-workbench/topology/topology-data.test.ts",
+                    "status": "passed",
+                    "summary": "28项Canvas/点击说明及10项拓扑通过；同色实线、首次突破证据和末端未固定有断言。拓扑已复核并同步81来源摘要。 实线极值之后的未确认回档仍画虚线，点击说明保持真实确认极值。"
+                },
+                {
+                    "command": "mypy --strict --follow-imports=silent hierarchical_confirmation.py; mypy --follow-imports=silent hierarchical_development.py secondary_trend.py tertiary_trend.py; pnpm exec turbo run lint typecheck --env-mode=loose",
+                    "status": "passed",
+                    "summary": "新模块strict及3修改模块mypy通过。初次secondary四项类型问题已在本次消除；Node24.16/pnpm10.26.2，选定Core/API既有隔离Python，30目标实际通过，含Core4文件/API11文件strict、Web lint零错误6旧warning与类型。init quick首次因Turbo过滤Python配置选到全局无build/mypy而失败，等价门禁传递正确执行器后全部通过。"
+                },
+                {
+                    "command": "Core sdist/wheel and Web Next production builds (Turbo prerequisite gates)",
+                    "status": "passed",
+                    "summary": "最终Core包和Web生产构建通过，Web使用命令级512MB heap/4MB新生代；生成next-env改动已剔除。"
+                },
+                {
+                    "command": "Complete Core/Web suites, browser/Playwright and full account comparison",
+                    "status": "not-run",
+                    "summary": "按本轮验证节奏未运行完整套件、浏览器或完整账户差异；只实施趋势方向/显示规则，不把可延伸极值提前升级为正式策略反转点。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-287",
             "name": "chart-keyboard-region-routing",
             "title": "修复K线区域方向键路由",
