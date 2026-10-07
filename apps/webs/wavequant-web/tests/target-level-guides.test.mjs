@@ -192,6 +192,28 @@ function renderGuides(guides, { width = 600, height = 200, x = 400, endX = 520, 
     return { labels, segments };
 }
 
+test("fixed N labels center over the N candle and stay on the edge without false lines when it is offscreen", () => {
+    const guide = {
+        start: item.time,
+        end: null,
+        price: 8.48,
+        name: "一饱",
+        stage: "one_p",
+        color: "#a29ce0",
+        fixedAnchor: true,
+        labelPosition: "center",
+    };
+    const centered = renderGuides([guide], { x: 300 });
+    assert.equal(centered.labels[0].x + centered.labels[0].width / 2, 300);
+    assert.equal(centered.segments.length, 1);
+    for (const x of [-200, 800]) {
+        const edge = renderGuides([guide], { x });
+        assert.equal(edge.labels.length, 1);
+        assert.ok(edge.labels[0].x >= 4 && edge.labels[0].x + edge.labels[0].width <= 596);
+        assert.equal(edge.segments.length, 0);
+    }
+});
+
 test("reached and pending target labels sit to the left of their line starts without redrawing long lines", () => {
     const { labels, segments } = renderGuides(
         [

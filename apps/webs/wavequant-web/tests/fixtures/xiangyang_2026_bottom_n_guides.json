@@ -1,0 +1,143 @@
+{
+    "source": "Local V100 AkShare backtest response captured 2026-10-07; exact user July21/23 OHLC",
+    "view": {
+        "symbol": "sz.000678",
+        "asof": "2026-07-23",
+        "bars": [
+            {
+                "time": "2026-07-20",
+                "open": 7.87,
+                "high": 8.1,
+                "low": 7.6,
+                "close": 7.69,
+                "volume": 11959696,
+                "factor": 1,
+                "raw_close": 7.69
+            },
+            {
+                "time": "2026-07-21",
+                "open": 7.94,
+                "high": 7.94,
+                "low": 7.32,
+                "close": 7.75,
+                "volume": 13674649,
+                "factor": 1,
+                "raw_close": 7.75
+            },
+            {
+                "time": "2026-07-22",
+                "open": 7.68,
+                "high": 7.74,
+                "low": 7.55,
+                "close": 7.66,
+                "volume": 8320700,
+                "factor": 1,
+                "raw_close": 7.66
+            },
+            {
+                "time": "2026-07-23",
+                "open": 7.63,
+                "high": 7.9,
+                "low": 7.56,
+                "close": 7.87,
+                "volume": 10007811,
+                "factor": 1,
+                "raw_close": 7.87
+            }
+        ],
+        "markers": [],
+        "orders": []
+    },
+    "theory": {
+        "asof": "2026-07-23",
+        "n_target_policy": "first_n_at_confirmed_decline_floor_v1",
+        "events": [
+            {
+                "timestamp": "2026-07-23T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 2056,
+                "event": "n_completed",
+                "direction": "up",
+                "origin": 2054,
+                "neckline": 2055,
+                "pullback": 2055,
+                "known_at": 2056,
+                "defense": 7.56,
+                "counter_ratio": 0.4523809523809524,
+                "n_level": 0,
+                "box_anchor": 7.9,
+                "one_p": 8.48,
+                "two_t": 9.06,
+                "inside_pullback_confirmed": true,
+                "target_eligible": true,
+                "target_source_attack": 2056,
+                "target_decline_index": 2007,
+                "target_bottom_index": 2054,
+                "target_qualification_reason": "first_n_at_decline_floor",
+                "id": "rule-3459",
+                "available_at": "2026-07-23",
+                "time": "2026-07-23",
+                "price": 7.87,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 7.74
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 7.66
+                    },
+                    {
+                        "name": "轧空低",
+                        "price": 7.56
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 7.97
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 8.48,
+                        "stage": "one_p",
+                        "display_name": "一饱（正 N）",
+                        "anchor_at": "2026-07-22",
+                        "available_at": "2026-07-23"
+                    },
+                    {
+                        "name": "2T 投影",
+                        "price": 9.06,
+                        "stage": "two_t",
+                        "display_name": "二吐（正 N）",
+                        "anchor_at": "2026-07-22",
+                        "available_at": "2026-07-23"
+                    }
+                ],
+                "shape": [
+                    {
+                        "time": "2026-07-21",
+                        "value": 7.32
+                    },
+                    {
+                        "time": "2026-07-22",
+                        "value": 7.74
+                    },
+                    {
+                        "time": "2026-07-22",
+                        "value": 7.55
+                    },
+                    {
+                        "time": "2026-07-23",
+                        "value": 7.9
+                    }
+                ],
+                "target_decline_date": "2026-05-14",
+                "target_bottom_date": "2026-07-21",
+                "target_source_date": "2026-07-23"
+            }
+        ],
+        "shapes": [],
+        "lecture_drawing": {
+            "strokes": []
+        }
+    }
+}
