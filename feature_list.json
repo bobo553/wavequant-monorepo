@@ -19,14 +19,19 @@
             ],
             "verification": [
                 {
+                    "command": "GET8765 /api/tdx-backtest asof=2024-08-20, start=2018-01-01; actual response -> buildAnnotations/nTargetObservations/nTargetGroup; HTTP3003 static comparison",
+                    "status": "passed",
+                    "summary": "2506192经5b2373a无冲突no-ff合并，main Harness通过。真实1593日线请求HTTP200、V101：两个有效来源07-31/08-15目标4.83/5.52及4.63/5.12，旧N失效日08-05/08-20，旧形状不再返回。实际响应进入浏览器同用的纯模块，两标识和同焦点四目标一致。3003六个初始修改模块逐字匹配main，8765自动加载V101。首次行情theory只含几何无策略N，改用策略backtest接口；最初股票已有回测占用而拒绝，保留原任务并在完成后重试成功。只HTTP和Node验证，未启动浏览器或清缓存。"
+                },
+                {
                     "command": "Core pytest: positive_n_reformation, bottom_n_targets, bottom_n_target_pipeline, n_shape; wave_projection, target_exit_policy, ten_full_entry, mother/inside_pullback_n, squeeze_confirmation_body, xiangyang_n_projection",
                     "status": "passed",
                     "summary": "185项不同定向用例通过（55+129+新增独立退役1）。最终重算文件7项再次通过，单独新增退役1通过；stock_backtest修改后32相关用例再次通过。真实2018起1593根至08-20锁定两个失效日、独立起点/箱顶/目标，完整策略08-19前缀信号与审计逐项一致，未完成08-20缓存回放无未来重算；相等、防守/起点先破、外包同日新低与攻击覆盖。旧N防守跌破仍记目标的断言已按最新规则更正。"
                 },
                 {
-                    "command": "node --test positive-n-reformation, n-target-focus, n-structure-overlay, bottom-n-targets, buy-n-targets; vitest topology-data.test.ts",
+                    "command": "node --test positive-n-reformation, n-target-focus, n-structure-overlay, bottom-n-targets, buy-n-targets; vitest topology-data.test.ts; a-wave-lifecycle, ordinary-c-wave, structural-c-wave, wave-c-projection",
                     "status": "passed",
-                    "summary": "29项Node/SDK/Canvas及10项拓扑通过。两标识、四独立目标、同价不去重、来源ID买点、失效前回放和失效后过滤、两组顶底与同日竖线均有断言。85源码拓扑复核并同步摘要。"
+                    "summary": "75项Node/SDK/Canvas及10项拓扑通过。两标识、四独立目标、同价不去重、来源ID买点、失效前回放与失效后过滤、两组顶底和同日竖线均有断言。N的当前存活与历史资格分开：A顶前失效不得提供新测幅，已形成父A/B在后续B破轧空低时仍遵循原起点失效边界；普通/强A与手工观察回归通过。85源码复核并同步摘要。"
                 },
                 {
                     "command": "mypy --strict --follow-imports=silent positive_n_reformation.py bottom_n_targets.py; mypy --follow-imports=silent 5修改模块; pnpm --filter @wavequant/core typecheck; pnpm --filter wavequant-api typecheck",

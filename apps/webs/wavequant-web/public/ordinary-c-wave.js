@@ -1,5 +1,5 @@
 import { classifyAAttack } from "./a-wave-rules.js";
-import { isBottomNTargetSource } from "./bottom-n-targets.js";
+import { isActivePositiveN, isQualifiedNTargetSource } from "./bottom-n-targets.js";
 import {
     confirmedCWaveProjection,
     knownWavePoint as knownPoint,
@@ -49,7 +49,7 @@ export function ordinaryCWaveProjections(bars, theory) {
     const observations = new Map();
     for (const event of theory?.events || []) {
         if (
-            !isBottomNTargetSource(event, theory) ||
+            !isQualifiedNTargetSource(event, theory) ||
             !isDate(event.time) ||
             !isDate(event.available_at) ||
             event.available_at < event.time ||
@@ -85,6 +85,7 @@ export function ordinaryCWaveProjections(bars, theory) {
                     !knownPoint(a, "H", asof, byTime) ||
                     !isWaveHigh(a) ||
                     a.time <= event.time ||
+                    !isActivePositiveN(event, a.time) ||
                     classifyAAttack(a.value, oneP, twoT) !== "ordinary" ||
                     maximumHigh(visible, origin.time, a.time) !== a.value
                 )
