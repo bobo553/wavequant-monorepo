@@ -36,6 +36,7 @@ import {
     isNTargetStage,
     isPositiveNTarget,
     nTargetAt,
+    nTargetGroup,
     nTargetGuide,
     nTargetLevels,
     nTargetObservations,
@@ -1107,7 +1108,8 @@ export class PriceChart {
         const blockedCandidate = item?.kind === "candidate";
         if (!this.data || !this.options.levels) return;
         const asof = this.theory?.asof && this.theory.asof < this.data.asof ? this.theory.asof : this.data.asof;
-        this.nStructureOverlay?.setStructure(focusedN, asof);
+        const focusedNs = nTargetGroup(this.nTargetObservations || [], focusedN, asof);
+        this.nStructureOverlay?.setStructures(focusedNs, asof);
         const primaryVisible =
             item &&
             (blockedOrder ||
@@ -1123,8 +1125,8 @@ export class PriceChart {
                 : item.levels;
         const targetStages = new Set(["c_0618", "c_equal", "c_1618", "one_p", "two_t", "five_top", "ten_full"]);
         const levels = primaryLevels.map((level) => ({ item, level }));
-        if (focusedN && focusedN !== item)
-            levels.push(...nTargetLevels(focusedN, asof).map((level) => ({ item: focusedN, level })));
+        for (const source of focusedNs)
+            if (source !== item) levels.push(...nTargetLevels(source, asof).map((level) => ({ item: source, level })));
         const targetGuides = [];
         const seenN = new Set();
         for (const [i, { item, level }] of levels.entries()) {
@@ -1133,7 +1135,7 @@ export class PriceChart {
             if (isPositiveNTarget(item) && isNTargetStage(level.stage) && !nTargetLevels(item, asof).includes(level))
                 continue;
             if (isNTargetStage(level.stage)) {
-                const identity = `${level.stage}:${level.price}`;
+                const identity = `${item.raw?.n_id || item.id}:${level.stage}:${level.price}`;
                 if (seenN.has(identity)) continue;
                 seenN.add(identity);
             }
@@ -1454,7 +1456,7 @@ export class PriceChart {
         const nConnections = selectWaveConnections(
             theory.shapes.flatMap((shape) =>
                 shape.points.slice(1).map((point, index) => ({
-                    group: `n:${shape.trend_level || 1}:${shape.direction}`,
+                    group: `n:${shape.n_id || `${shape.trend_level || 1}:${shape.direction}`}`,
                     color: shape.direction === "up" ? "#60cfc3" : "#cba271",
                     points: [shape.points[index], point],
                 })),

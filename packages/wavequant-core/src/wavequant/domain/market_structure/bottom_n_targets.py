@@ -1,4 +1,4 @@
-"""Freeze one named target box at the first N of a causally confirmed decline."""
+"""Choose the causal daily entry source; independent reformed Ns keep own boxes."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from ..models.model import Bar
 
 
-BOTTOM_N_TARGET_POLICY = "first_n_at_confirmed_decline_floor_v1"
+BOTTOM_N_TARGET_POLICY = "decline_floor_n_with_independent_defense_reformations_v2"
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,8 @@ class PositiveNCompletion:
     origin: int
     attack: int
     known_at: int
+    defense: float | None = None
+    reformed: bool = False
 
 
 @dataclass(frozen=True)
@@ -54,9 +56,9 @@ def bottom_n_target_history(
 ) -> BottomNTargetHistory:
     """Use only known level-one declines; no new box for an internal or folded N.
 
-    A later confirmed declining leg or a strict origin break ends the old box.
-    Equal lows hold the earliest bottom. A failed launch may be replaced only
-    from a new lower bottom. The monotonic minimum queue is O(bars + inputs),
+    A later confirmed decline or strict origin/defense break ends the old box.
+    Equal lows hold the earliest bottom. A separately confirmed defense reformation
+    can restart measurement from a surviving origin. The minimum queue is O(bars + inputs),
     apart from sorting dated inputs, and never validates or scans a future bar.
     """
     starts: dict[int, list[DeclineStart]] = {}
@@ -93,9 +95,15 @@ def bottom_n_target_history(
             if active is not None:
                 retirements.append(TargetRetirement(active.attack, now, "new_confirmed_decline"))
                 active = None
-        if active is not None and now > active.attack and bar.low < bars[active.origin].low:
-            retirements.append(TargetRetirement(active.attack, now, "launch_origin_broken"))
-            active = None
+        if active is not None and now > active.attack:
+            origin_broken = bar.low < bars[active.origin].low
+            defense_broken = active.defense is not None and bar.low < active.defense
+            if origin_broken or defense_broken:
+                retirements.append(TargetRetirement(active.attack, now,
+                    "launch_origin_broken" if origin_broken else "squeeze_defense_broken"))
+                if current is not None:
+                    used.discard((current.index, active.origin))
+                active = None
         if current is not None:
             while minimum and minimum[0] <= current.index:
                 minimum.popleft()
@@ -107,7 +115,10 @@ def bottom_n_target_history(
                 continue
             selected[n.attack] = n
             identity = (current.index, n.origin) if current is not None else None
-            if active is not None:
+            if n.reformed:
+                active = n
+                reason = "defense_reformed_n"
+            elif active is not None:
                 reason = "existing_bottom_launch"
             elif current is None or bottom is None:
                 reason = "confirmed_decline_unavailable"

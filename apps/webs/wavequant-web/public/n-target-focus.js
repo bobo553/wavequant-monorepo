@@ -10,7 +10,7 @@ export function isNTargetStage(stage) {
 
 /** 只读取原 N 已发布的阶段；预估价和缺少可知日的远端目标不延长观察窗口。 */
 export function nTargetLevels(item, asof) {
-    if (!isPositiveNTarget(item) || !asof || item.time > asof || item.raw.available_at > asof) return [];
+    if (!isPositiveNTarget(item, asof) || !asof || item.time > asof || item.raw.available_at > asof) return [];
     return item.levels.filter((level) => {
         if (!isNTargetStage(level.stage) || !Number.isFinite(level.price)) return false;
         if (!BASE_N_STAGES.has(level.stage) && (!level.available_at || level.estimated)) return false;
@@ -40,13 +40,21 @@ export function nTargetGuide(item, level, bars, asof) {
     };
 }
 
-export function isPositiveNTarget(item) {
+export function isPositiveNTarget(item, asof) {
     return (
-        isBottomNTargetSource(item?.raw) &&
+        isBottomNTargetSource(item?.raw, undefined, asof) &&
         ["one_p", "two_t"].every((stage) =>
             item.levels?.some((level) => level.stage === stage && Number.isFinite(level.price) && level.anchor_at),
         )
     );
+}
+
+/** 同一完成日的独立来源一起显示；来源 ID 决定归属，价格相等仍保留。 */
+export function nTargetGroup(observations, focused, asof) {
+    if (!isPositiveNTarget(focused, asof)) return [];
+    return observations
+        .filter(({ item }) => item.time === focused.time && isPositiveNTarget(item, asof))
+        .map(({ item }) => item);
 }
 
 /** 范围在理论更新时冻结；悬停只查询已发布目标，不重算测幅或扫描全部历史。 */
@@ -54,7 +62,7 @@ export function nTargetObservations(items, bars, asof) {
     if (!asof) return [];
     return items
         .flatMap((item) => {
-            if (!isPositiveNTarget(item) || item.time > asof) return [];
+            if (!isPositiveNTarget(item, asof) || item.time > asof) return [];
             const levels = nTargetLevels(item, asof);
             const guides = levels.map((level) => nTargetGuide(item, level, bars, asof));
             if (["one_p", "two_t"].some((stage) => !guides[levels.findIndex((level) => level.stage === stage)]))

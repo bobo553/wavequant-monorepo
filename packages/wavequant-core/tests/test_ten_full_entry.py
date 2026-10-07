@@ -220,8 +220,9 @@ def test_v3_profiles_use_a_origin_two_thirds_and_timed_half(variant):
     config = SystemStrategy(**profile["strategy"])
     config.validate()
     definition = profile["definition"]
-    assert profile["profile_version"] == "inside_child_bottom_n_targets_v100_" + variant
-    assert profile["definition"]["n_target_source"] == "first_positive_n_at_confirmed_level_one_decline_floor"
+    assert profile["profile_version"] == "independent_defense_reformed_n_targets_v101_" + variant
+    assert profile["definition"]["n_target_source"] == "decline_floor_launch_and_independent_defense_reformations"
+    assert profile["definition"]["n_invalidation"] == "strict_low_break_of_frozen_squeeze_defense__hide_failed_n"
     assert "five_top_gap_upper_shadow_completed_5m_or_daily_close_clear" in definition["exits"]
     assert "close_le_open_including_doji" in definition["wave_five_top_gap_upper_shadow_exit"]
     assert "five_top_body_upper_shadow_completed_5m_or_daily_close_clear" in definition["exits"]
