@@ -87,6 +87,27 @@ def test_missing_decline_and_revisited_equal_bottom_do_not_invent_a_source():
     assert not result.qualifications[4].eligible
 
 
+@pytest.mark.parametrize("origins", [(0, 3, 4), (4, 3, 0), (3, 4, 0)])
+def test_same_attack_selects_the_known_floor_before_local_or_cross_cycle_n(origins):
+    history = bars([8, 10, 7, 5, 6, 7])
+    completions = [PositiveNCompletion(origin, 5, 5) for origin in origins]
+    result = bottom_n_target_history(history, [DeclineStart(1, 2)], completions)
+    assert result.qualifications[5].eligible
+    assert result.completions[5] == PositiveNCompletion(3, 5, 5)
+    assert result.source_at[-1] == 5 and not result.retirements
+
+
+def test_later_known_same_attack_candidate_does_not_rewrite_an_earlier_decision():
+    history = bars([10, 5, 6, 7, 8, 9])
+    first = PositiveNCompletion(2, 4, 4)
+    late = PositiveNCompletion(1, 4, 5)
+    full = bottom_n_target_history(history, [DeclineStart(0, 1)], [first, late])
+    prefix = bottom_n_target_history(history[:5], [DeclineStart(0, 1)], [first])
+    assert full.qualifications == prefix.qualifications
+    assert full.completions == prefix.completions == {4: first}
+    assert full.source_at == (None,) * 6
+
+
 @pytest.mark.parametrize("declines, completions", [
     ([DeclineStart(1, 0)], []), ([], [PositiveNCompletion(1, 0, 1)]),
     ([], [PositiveNCompletion(0, 1, 3)]),

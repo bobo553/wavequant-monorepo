@@ -102,3 +102,56 @@ def test_real_targets_are_displayed_on_the_original_n_when_they_become_known(xia
         assert levels["five_top"]["status"] == "已满足"
     if day == "2023-07-04":
         assert levels["ten_full"]["status"] == "已满足"
+
+
+@pytest.fixture(scope="module")
+def xiangyang_inside_history():
+    raw = json.loads((Path(__file__).parent / "fixtures/xiangyang_2026_inside_child_n.json").read_text(encoding="utf8"))
+    bars = tuple(Bar(datetime.fromisoformat(day), raw["symbol"], *values) for day, *values in raw["bars"])
+    dates = {str(bar.timestamp.date()): i for i, bar in enumerate(bars)}
+    config = SystemStrategy(**whole_wave_profile({"scenarios": {"base": {"execution": {}}}})["strategy"])
+    return bars, dates, config, generate_system_signals(bars, config)
+
+
+def test_real_july23_inside_child_n_is_the_first_bottom_launch(xiangyang_inside_history):
+    bars, dates, config, result = xiangyang_inside_history
+    attack = dates["2026-07-23"]
+    event = next(e for e in result.audit if e["event"] == "n_completed"
+                 and e["bar_index"] == attack and e["direction"] == "up")
+    assert [event[key] for key in ("origin", "neckline", "pullback")] == [
+        dates["2026-07-21"], dates["2026-07-22"], dates["2026-07-22"]]
+    assert event["inside_pullback_confirmed"] is True
+    assert event["target_eligible"] is True
+    assert event["target_source_attack"] == attack
+    assert event["target_bottom_index"] == dates["2026-07-21"]
+    assert (event["one_p"], event["two_t"]) == pytest.approx((8.48, 9.06))
+    theory = ChartRepository.render_theory(None, bars[:attack + 1], config, result, "2026-07-23",
+                                          geometry={"tertiary_trends": {}})
+    n = next(e for e in theory["events"] if e["event"] == "n_completed" and e["bar_index"] == attack)
+    assert n["target_bottom_date"] == "2026-07-21"
+    assert n["target_source_date"] == "2026-07-23"
+    levels = {level["stage"]: level["price"] for level in n["levels"] if "stage" in level}
+    assert levels == pytest.approx({"one_p": 8.48, "two_t": 9.06})
+    assert not any(e["event"].startswith("wave_projection_") and e.get("attack") == attack
+                   for e in theory["events"])
+    local = next(e for e in result.audit if e["event"] == "n_completed"
+                 and e["bar_index"] == dates["2026-07-27"] and e["direction"] == "up")
+    assert local["target_eligible"] is False and local["target_source_attack"] == attack
+    assert local["one_p"] is None and local["two_t"] is None
+
+
+@pytest.mark.parametrize("day", ["2026-07-21", "2026-07-22", "2026-07-23", "2026-07-27", "2026-08-10"])
+def test_inside_bottom_n_full_history_and_partial_last_bar_do_not_rewrite_the_prefix(xiangyang_inside_history, day):
+    from dataclasses import replace
+
+    bars, dates, config, full = xiangyang_inside_history
+    end = dates[day]
+    cache = {"source_bars": bars}
+    bar = bars[end]
+    early = generate_system_signals([*bars[:end], replace(bar, high=bar.open, low=bar.open, close=bar.open)],
+                                    config, chart_history_cache=cache)
+    if day == "2026-07-23":
+        assert not any(e["event"] == "n_completed" and e["bar_index"] == end for e in early.audit)
+    prefix = generate_system_signals(bars[:end + 1], config, chart_history_cache=cache)
+    assert prefix.audit == [e for e in full.audit if e["bar_index"] <= end]
+    assert prefix.signals == [s for s in full.signals if s.bar_index <= end]

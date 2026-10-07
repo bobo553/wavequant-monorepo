@@ -1,8 +1,58 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-256",
+    "activeFeature": "MONOREPO-283",
     "features": [
+        {
+            "id": "MONOREPO-283",
+            "name": "inside-child-bottom-n-target",
+            "title": "母子正N底部启动测幅",
+            "description": "修复讲义内包阴子线B/C被当成阴母外包而拒绝，统一识别底部启动首个正N及其目标来源。",
+            "scope": "Core正N几何校验与底部资格优先的同日候选去重、真实襄阳轴承案例、Web策略拓扑、本地合并",
+            "dependencies": [
+                "MONOREPO-282"
+            ],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "襄阳轴承2026-07-21底部7.32、07-22内包阴子B/C、07-23成N7.90统一识别，一饱8.48二吐9.06",
+                "内包只使用已有讲义确认折线及非十字母子阴阳顺序，不放宽严格N或外包母线；相等攻击、未确认、破底及非底部局部N不发布四档",
+                "同攻击的局部内包N不能遮住当时已知底部N，跨段N不能抢占真实底部候选；较晚确认不能改写已发布决定，华瓷原分钟与后续合法入场断言保持",
+                "五顶十满及交易消费同一冻结来源，历史前缀与部分日线不借未来；新华传媒原修复保持",
+                "相关定向测试、类型、构建、拓扑与Harness通过后提交合并本地main，不推送"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_bottom_n_targets.py tests/test_inside_pullback_n.py tests/test_xiangyang_n_projection.py tests/test_bottom_n_target_pipeline.py tests/test_mother_pullback_n.py tests/test_n_shape.py tests/test_shared_edge_n.py tests/test_ten_full_entry.py tests/test_wave_projection.py -q",
+                    "status": "passed",
+                    "summary": "最终161项通过。真实89日线先复现07-23无N；修复后07-21底部/07-22阴子B=C/07-23成N，一饱8.48二吐9.06，07-27不重开箱。覆盖相等边界/十字/严格政策/延迟确认/部分日线/各历史前缀/同攻击底部优先；新华传媒原测幅修复与原阴母外包保持。"
+                },
+                {
+                    "command": "pytest tests/test_intraday_entry.py tests/test_wave_intraday_entry.py tests/test_xinhua_mother_pullback_squeeze.py tests/test_one_p_rebound.py tests/test_stock_backtest.py tests/test_post_b_wave_exit.py -q",
+                    "status": "passed",
+                    "summary": "最终31项通过179.46秒，两批合计192项。初次华瓷同攻击被内包局部N抢占的1失败已修复资格前去重，保留原测试全部断言；未skip/xfail/放宽断言，无当前失败。"
+                },
+                {
+                    "command": "mypy four modified Core modules; Core four/API eleven strict; Python build --no-isolation; wheel source equality",
+                    "status": "passed",
+                    "summary": "修改4模块、Core既定4文件与API11文件类型通过；sdist/wheel成功，最终4源码逐字一致。未运行Python格式/lint。"
+                },
+                {
+                    "command": "node --test bottom-n-targets n-target-focus buy-n-targets; vitest topology-data; pnpm --filter wavequant-web lint/typecheck/build; targeted Prettier",
+                    "status": "passed",
+                    "summary": "21项Node与10项拓扑通过；lint零错误6条旧warning、最终类型与生产构建通过，80唯一源码指纹86d817b008f3840edb5663e1a76a645f771cce5353d76bb86e8a4db5ecada41e。"
+                },
+                {
+                    "command": "actual 2105-bar AkShare Core replay; pnpm harness:check; codegraph sync; git diff --check",
+                    "status": "passed",
+                    "summary": "2018起2105实际日线确认07-21底部/07-23有资格，one_p8.48/two_t9.06；07-27局部N沿用07-23来源。Harness280功能18Node2Python32规范通过，CodeGraph同步、差异检查通过。"
+                },
+                {
+                    "command": "full Core/Web suites; browser/Playwright; live V100 API and complete account comparison",
+                    "status": "not-run",
+                    "summary": "完整套件、浏览器、Playwright和完整账户差异待独立验证；本地合并及V100常驻接口验收待本轮下一步执行，不推送。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-282",
             "name": "bottom-launch-n-target-ownership",
@@ -1161,7 +1211,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",

@@ -82,7 +82,12 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'bottom_launch_n_target_ownership_v99_' + variant
+    config['profile_version'] = 'inside_child_bottom_n_targets_v100_' + variant
+    config['definition']['inside_child_positive_n'] = 'confirmed_lecture_a_before_b_c_bearish_inside_child_non_doji_mother_joint_attack_then_bottom_launch_qualification'
+    config['definition']['limitations'] = [
+        'explicit_lecture_mother_child_order_is_not_observed_intrabar_path',
+        'same_day_vertices_require_explicit_positive_lecture_geometry', 'no_profitability_claim',
+    ]
     config['definition']['n_target_source'] = 'first_positive_n_at_confirmed_level_one_decline_floor'
     config['definition']['a_wave_classification'] = 'ordinary_one_p_inclusive_below_two_t__strong_two_t_inclusive'
     config['definition']['a_wave_invalidation'] = 'strict_low_break_of_a_origin__no_later_c_until_new_a'
