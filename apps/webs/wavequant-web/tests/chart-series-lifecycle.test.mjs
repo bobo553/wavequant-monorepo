@@ -89,16 +89,21 @@ test("PriceChart arrow navigation updates the real SDK window and stops after de
     const chart = chartHarness(() => pauses++);
     const container = chart.container;
     let width = 800;
-    const press = (key) => {
-        const event = new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
-        container.dispatchEvent(event);
+    const press = (key, repeat = false) => {
+        const event = new window.KeyboardEvent("keydown", { key, repeat, bubbles: true, cancelable: true });
+        document.activeElement.dispatchEvent(event);
         chart.chart.resize(++width, 500, true);
         return event.defaultPrevented;
     };
     try {
         chart.chart.timeScale().setVisibleLogicalRange({ from: 10, to: 50 });
         chart.chart.resize(++width, 500, true);
-        container.querySelector("canvas").dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true }));
+        const canvas = container.querySelectorAll("canvas")[1];
+        for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+            canvas.dispatchEvent(
+                new window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: 300, clientY: 200 }),
+            );
+        }
         assert.equal(document.activeElement, container);
         assert.equal(press("ArrowUp"), true);
         assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), { from: 14, to: 46 });
@@ -109,6 +114,30 @@ test("PriceChart arrow navigation updates the real SDK window and stops after de
         assert.equal(press("ArrowDown"), true);
         assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), { from: 10, to: 50 });
         assert.equal(pauses, 4);
+        for (const type of ["pointerdown", "mousedown", "pointermove", "mousemove", "pointerup", "mouseup"]) {
+            const moving = type.includes("move") || type.includes("up");
+            canvas.dispatchEvent(
+                new window.MouseEvent(type, {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: moving ? 380 : 300,
+                    clientY: 200,
+                    buttons: type.includes("up") ? 0 : 1,
+                }),
+            );
+            if (type === "mousedown") assert.equal(document.activeElement, document.body, "SDK removes focus on press");
+        }
+        assert.equal(document.activeElement, container, "ending a drag restores focus even without click");
+        chart.chart.timeScale().setVisibleLogicalRange({ from: 10, to: 50 });
+        chart.chart.resize(++width, 500, true);
+        for (let repeat = 0; repeat < 5; repeat++) assert.equal(press("ArrowUp", true), true);
+        const enlarged = chart.chart.timeScale().getVisibleLogicalRange();
+        assert.ok(Math.abs(enlarged.to - enlarged.from - 20) < 1e-6);
+        for (let repeat = 0; repeat < 2; repeat++) assert.equal(press("ArrowRight", true), true);
+        const moved = chart.chart.timeScale().getVisibleLogicalRange();
+        assert.ok(Math.abs(moved.from - enlarged.from - 8) < 1e-6, "held arrows pan the actual SDK window");
+        assert.ok(Math.abs(moved.to - moved.from - 20) < 1e-6);
+        assert.equal(pauses, 11);
         assertOwnedSeries(chart);
     } finally {
         chart.destroy();
@@ -116,7 +145,7 @@ test("PriceChart arrow navigation updates the real SDK window and stops after de
     const released = new window.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
     container.dispatchEvent(released);
     assert.equal(released.defaultPrevented, false);
-    assert.equal(pauses, 4);
+    assert.equal(pauses, 11);
     assert.equal(container.hasAttribute("tabindex"), false);
 });
 

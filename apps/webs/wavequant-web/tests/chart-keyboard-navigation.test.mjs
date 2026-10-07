@@ -21,19 +21,25 @@ function harness(tabIndex = null) {
         zoom: (direction) => (range = zoomChartRange(chart.navigationState(), 1000, direction)),
     };
     const unbind = bindChartKeyboardNavigation(container, chart, () => pauses++);
-    const key = (key, options = {}, target = container) => {
+    const key = (key, options = {}, target = document.activeElement) => {
         const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...options });
         target.dispatchEvent(event);
         return event.defaultPrevented;
     };
-    const pointer = (target, button = 0) =>
-        target.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button }));
+    const pointer = (target, button = 0, drag = false) => {
+        const events = drag
+            ? ["pointerdown", "mousedown", "pointermove", "mousemove", "pointerup", "mouseup"]
+            : ["pointerdown", "mousedown", "pointerup", "mouseup", "click"];
+        for (const type of events) target.dispatchEvent(new MouseEvent(type, { bubbles: true, button }));
+    };
+    container.focus();
     return { document, container, chart, key, pointer, unbind, range: () => range, pauses: () => pauses };
 }
 
 test("canvas activation focuses the chart; arrows zoom and pan using the existing viewport steps", () => {
     const h = harness();
     const canvas = h.container.querySelector("canvas");
+    h.document.getElementById("outside").focus();
     h.pointer(canvas);
     assert.equal(h.document.activeElement, h.container);
     assert.equal(h.key("ArrowUp"), true);
@@ -45,6 +51,22 @@ test("canvas activation focuses the chart; arrows zoom and pan using the existin
     assert.equal(h.key("ArrowDown"), true);
     assert.deepEqual(h.range(), { from: 400, to: 500 });
     assert.equal(h.pauses(), 4);
+    h.unbind();
+});
+
+test("ending a drag restores keyboard focus after the SDK removes it; mouse-only clicks also activate", () => {
+    const h = harness();
+    const canvas = h.container.querySelector("canvas");
+    canvas.addEventListener("mousedown", () => h.document.activeElement.blur());
+    h.pointer(canvas, 0, true);
+    assert.equal(h.document.activeElement, h.container);
+    assert.equal(h.key("ArrowRight"), true);
+    assert.deepEqual(h.range(), { from: 420, to: 520 });
+    h.document.getElementById("outside").focus();
+    canvas.dispatchEvent(new canvas.ownerDocument.defaultView.MouseEvent("click", { bubbles: true }));
+    assert.equal(h.document.activeElement, h.container);
+    assert.equal(h.key("ArrowUp"), true);
+    assert.deepEqual(h.range(), { from: 430, to: 510 });
     h.unbind();
 });
 
@@ -75,6 +97,7 @@ test("editors, buttons, outside focus, modifiers, composition and already handle
     h.pointer(h.container.querySelector("canvas"), 2);
     assert.equal(h.document.activeElement, outside);
     assert.equal(h.key("ArrowLeft", {}, outside), false);
+    h.container.focus();
     for (const flag of ["ctrlKey", "metaKey", "altKey", "shiftKey", "isComposing"]) {
         assert.equal(h.key("ArrowDown", { [flag]: true }), false);
     }
@@ -99,5 +122,7 @@ test("empty data does not claim keys; teardown removes listeners and preserves e
         h.document.getElementById("outside").focus();
         h.pointer(h.container.querySelector("canvas"));
         assert.equal(h.document.activeElement.id, "outside");
+        h.key("ArrowDown", {}, h.container);
+        assert.equal(h.pauses(), 0);
     }
 });
