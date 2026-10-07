@@ -10,6 +10,7 @@ import { BuyPoints } from "../public/buy-points.js";
 import { combinedAEntryEvidence } from "../public/combined-a-entry-evidence.js";
 import { formatFilledTradeCopy } from "../public/filled-trade-copy.js";
 import { label, num, pct } from "../public/labels.js";
+import { secondaryReclaimEvidence } from "../public/secondary-reclaim-evidence.js";
 import { numberedTradeReasons } from "../public/trade-reasons.js";
 import { appendTradeEvidence } from "../public/trade-review.js";
 import { waveEntryEvidence } from "../public/wave-entry-evidence.js";
@@ -110,6 +111,7 @@ async function scanClickText(match, source, { markerEvidence = match.evidence, i
             document,
             state: { view, error: false },
             combinedAEntryEvidence,
+            secondaryReclaimEvidence,
             reasonText,
             num,
             pct,
@@ -144,6 +146,39 @@ function assertCombinedScanText(text) {
     assert.match(text, /2\/3.*严格突破.*20,135,200.*实体\/开盘.*防守.*目标/s);
     assert.doesNotMatch(text, /undefined|第一类|NaN/);
 }
+
+test("secondary reclaim scan uses its independent proof without an invented N chain", async () => {
+    const reclaim = {
+        event: "long_transition_evidence",
+        buy_point_type: "secondary_resistance_reclaim",
+        trend_level: 2,
+        secondary_high_date: "2024-12-11",
+        secondary_high: 8.17,
+        secondary_high_known_date: "2025-01-21",
+        secondary_attack_date: "2025-02-28",
+        secondary_resistance_date: "2025-03-03",
+        secondary_resistance_high: 8.77,
+        secondary_resistance_known_date: "2025-03-03",
+        secondary_reclaim_type: "body",
+        secondary_reclaim_close: 8.89,
+        secondary_reclaim_body_fraction: 0.19 / 8.7,
+        breakout_volume: 126499296,
+        previous_volume: 80806757,
+        secondary_pullback_low_date: "2025-03-04",
+        secondary_pullback_low: 7.43,
+        secondary_origin_date: "2025-01-13",
+        secondary_origin_low: 5.51,
+        stop: 7.43,
+        target: 9.77,
+    };
+    const match = { ...scanMatch, reason: "system_secondary_resistance_reclaim", evidence: [reclaim] };
+    for (const source of ["akshare", "tdx", "snapshot"]) {
+        const text = await scanClickText(match, source);
+        assert.match(text, /二级突破抵抗放量收复.*2024-12-11/);
+        assert.match(text, /2025-03-03.*8\.7700/);
+        assert.doesNotMatch(text, /第一类.*翻多|交替 —|undefined|NaN/);
+    }
+});
 
 test("combined A trade reasons explain the OR duration, close defense, volume and known breakout", () => {
     assert.equal(reasonText(marker.reason), "组合A回调放量突破");

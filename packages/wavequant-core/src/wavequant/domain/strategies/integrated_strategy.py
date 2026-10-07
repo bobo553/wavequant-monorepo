@@ -21,6 +21,7 @@ from .bull_eligibility import bull_permission_history
 from .hierarchical_entry import EntryContext
 from .shallow_base_breakout import ShallowAlternationCandidate
 from .combined_a_entry import CombinedAContext, combined_a_entry_history
+from .secondary_reclaim_entry import SecondaryHigh, secondary_reclaim_history
 from .attack_quality import v3_positive_n_attack_rejection
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
@@ -63,6 +64,7 @@ class SystemStrategy:
     mature_shallow_inclusive: bool = True
     shallow_base_breakout_enabled: bool = True
     combined_a_entry_enabled: bool = False
+    secondary_reclaim_entry_enabled: bool = False
     ten_full_breakout_window: int = 23
     ten_full_retracement_ratio: float = 2/3
     ten_full_retracement_anchor: RetracementAnchor = 'origin'
@@ -96,6 +98,8 @@ class SystemStrategy:
             raise ValueError('shallow base breakout switch must be boolean')
         if type(self.combined_a_entry_enabled) is not bool:
             raise ValueError('combined A entry switch must be boolean')
+        if type(self.secondary_reclaim_entry_enabled) is not bool:
+            raise ValueError('secondary reclaim entry switch must be boolean')
         if type(self.ten_full_breakout_window) is not int or self.ten_full_breakout_window <= 0:
             raise ValueError('ten-full breakout window must be a positive integer')
         if (type(self.ten_full_retracement_ratio) not in (float, int)
@@ -650,6 +654,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
     secondary_resistance = {}
     shallow_base_proofs: dict[int, dict[str, object]] = {}
     combined_a_proofs: dict[int, dict[str, object]] = {}
+    secondary_reclaim_proofs: dict[int, dict[str, object]] = {}
     combined_candidate_snapshots: dict[int, tuple[CombinedAContext, ...]] | None = (
         {} if whole_wave and config.combined_a_entry_enabled else None)
     shallow_candidate_snapshots: dict[int, ShallowAlternationCandidate | None] | None = (
@@ -682,6 +687,16 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             bars, shallow_candidate_snapshots, minimum_reward_risk=config.minimum_reward_risk)
         for event in shallow_events:
             row = dict(event); j, kind = row.pop('bar_index'), row.pop('event')
+            log(j, kind, **row); counts[kind] += 1
+    if whole_wave and config.secondary_reclaim_entry_enabled:
+        assert secondary_levels is not None
+        secondary_highs = {now: [SecondaryHigh(point['index'], point['value'], point['available_at'])
+                                for point in levels[2] if point['kind'] == 'H']
+                           for now, levels in secondary_levels.items()}
+        reclaim_events, secondary_reclaim_proofs = secondary_reclaim_history(bars, secondary_highs)
+        for event in reclaim_events:
+            row = dict(event)
+            j, kind = cast(int, row.pop('bar_index')), cast(str, row.pop('event'))
             log(j, kind, **row); counts[kind] += 1
     multilevel_proofs = {}
     if combined_candidate_snapshots is not None:
@@ -884,6 +899,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             log(t, 'turn_confirmed', direction=direction.value)
             counts['turn_confirmed'] += 1
     signals = []
+    emitted_secondary_reclaims: set[int] = set()
     exit_structure_cache = (
         chart_history_cache.setdefault('exit_structure', {}) if chart_history_cache is not None else None)
     current_selections: dict[tuple, tuple[dict[str, Any] | None, str]] = {}
@@ -1344,6 +1360,64 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     log(i, 'long_signal', channel='combined_a_pullback_breakout', volume_pass=True,
                         stop=combined_stop, target=combined_target, rvol=combined_rvol)
                     log(i, 'long_transition_evidence', **combined)
+        reclaim = secondary_reclaim_proofs.get(i)
+        if (reclaim is not None and cast(int, reclaim['secondary_attack_index']) not in emitted_secondary_reclaims
+                and not any(s.bar_index == i and s.side == 'LONG' for s in signals)):
+            reclaim_rejection = target_risk or five_top_entry_risk
+            pressure = secondary_resistance.get(i)
+            if (reclaim_rejection is None and pressure is not None
+                    and not pressure.get('secondary_resistance_resolved')
+                    and bar.close <= pressure['secondary_resistance_high']):
+                reclaim_rejection = dict(reason='secondary_breakout_resistance_unresolved', **pressure)
+            if reclaim_rejection is None:
+                from .inverse_reentry import inverse_reentry_rejection
+                reclaim_rejection = inverse_reentry_rejection(
+                    bars, now=i, attack=i, inverse=inverse_reentry,
+                    gap=reclaim['secondary_reclaim_type'] == 'gap')
+            if reclaim_rejection is not None:
+                log(i, 'entry_rejected', candidate_channel='secondary_resistance_reclaim', **reclaim_rejection)
+            else:
+                reclaim_attack = cast(int, reclaim['secondary_attack_index'])
+                reclaimed_peak = cast(float, reclaim['secondary_observed_peak'])
+                reclaim_targets: list[float] = []
+                if secondary_levels is not None:
+                    reclaim_targets.extend(point['value'] for point in secondary_levels.get(i - 1, {}).get(2, ())
+                        if point['kind'] == 'H' and point['available_at'] < i and point['value'] > reclaimed_peak)
+                reclaim_measurement = bottom_candidates.get(live_target_source) if live_target_source is not None else None
+                if reclaim_measurement is not None:
+                    assert live_target_source is not None
+                    hit = bottom_hits[live_target_source]
+                    reclaim_targets.extend(getattr(reclaim_measurement['n'].targets, stage)
+                        for stage in ('equal_wave', 'one_p', 'two_t') if stage not in hit
+                        and getattr(reclaim_measurement['n'].targets, stage) is not None
+                        and getattr(reclaim_measurement['n'].targets, stage) > bar.high)
+                    projection = next((event for event in reversed(reclaim_measurement.get('entry_wave_projection', ()))
+                                       if event.bar_index <= i), None)
+                    if projection is not None and projection.target is not None and projection.target > bar.high:
+                        reclaim_targets.append(projection.target)
+                reclaim_stop = cast(float, reclaim['stop'])
+                reclaim_target = min(reclaim_targets, default=None)
+                reclaim_rr = ((reclaim_target - bar.close) / (bar.close - reclaim_stop)
+                              if reclaim_target is not None and reclaim_stop < bar.close else None)
+                if reclaim_rr is None:
+                    log(i, 'entry_rejected', reason='no_live_structural_risk_reward',
+                        candidate_channel='secondary_resistance_reclaim', **reclaim)
+                elif config.preflight_reward_risk and reclaim_rr < config.minimum_reward_risk:
+                    log(i, 'entry_preflight_rejected', reason='insufficient_close_gross_reward_risk',
+                        candidate_channel='secondary_resistance_reclaim', gross_reward_risk=reclaim_rr,
+                        required_reward_risk=config.minimum_reward_risk, **reclaim)
+                else:
+                    reclaim = dict(reclaim, target=reclaim_target, gross_reward_risk=reclaim_rr,
+                        target_policy='nearest_unhit_known_secondary_or_n_target_or_confirmed_projection')
+                    signals.append(Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close,
+                        reclaim_stop, 'system_secondary_resistance_reclaim', bar.timestamp,
+                        cast(float, reclaim['counter_ratio']), cast(float, reclaim['breakout_volume_multiple']),
+                        '二级突破抵抗放量收复', reclaim_target, config.minimum_reward_risk))
+                    emitted_secondary_reclaims.add(reclaim_attack)
+                    counts['buy_point_secondary_resistance_reclaim'] += 1
+                    log(i, 'long_signal', channel='secondary_resistance_reclaim', volume_pass=True,
+                        stop=reclaim_stop, target=reclaim_target, rvol=reclaim['breakout_volume_multiple'])
+                    log(i, 'long_transition_evidence', **reclaim)
         special = shallow_base_proofs.get(i)
         if special is not None and not any(s.bar_index == i and s.side == 'LONG' for s in signals):
             if five_top_entry_risk is not None:

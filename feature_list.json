@@ -1,8 +1,62 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-256",
+    "activeFeature": "MONOREPO-296",
     "features": [
+        {
+            "id": "MONOREPO-296",
+            "name": "secondary-resistance-reclaim-entry",
+            "title": "二级突破抵抗放量收复买入",
+            "description": "已知二级高点突破当笔或次笔出现空头抵抗，后续放量阳线实体严格超过2%收复抵抗高点，或跳空中大阳收复，增加因果V3买点。",
+            "scope": "Core二级突破收复观察与全局买入、Web成交依据和襄阳真实回归",
+            "dependencies": ["MONOREPO-281", "MONOREPO-288"],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "二级高点按真实可知日消费，冻结突破当笔和次笔抵抗高，不使用未来端点或未来回调",
+                "放量严格超过前日，实体严格超过开盘2%且收盘收复抵抗高，或未回补跳空中大阳收复",
+                "当笔及次笔不提前买，影线突破、相等、缩量和跌破原起点不买，同突破去重",
+                "独立通道不追溯补认旧正N资格，保留全局退出、账户成交及明确选定的压力门禁",
+                "襄阳2024-12-11高8.17、2025-02-28突破与03-03高8.77真实前缀、信号、成交依据一致",
+                "相关定向测试、类型和必要构建通过，状态与进度记录真实验证及待验证项"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest tests/test_secondary_reclaim_entry.py tests/test_secondary_reclaim_strategy.py -q",
+                    "status": "passed",
+                    "summary": "20项新增验证通过。2018起真实行情：12-11高8.17于01-21可知，02-28突破，两笔抵抗高03-03的8.77；03-05实体2.1839%、量比1.56545形成候选，保留二吐9.53长上影禁买。03-11放量未回补跳空生成唯一新通道LONG，防守7.43、最近已知目标12.21；实际V3账户配置、缺分钟回退按收盘模拟filled BUY原价11.44572，开启费用后RR过滤则拒绝。完整后缀、增量前缀证据和信号一致。相等、正好2%、缩量、影线、原点破位、未来高点均不提前买；新增通道开关只在V3默认开启。最后4项完整正式参数回放105.93秒通过。"
+                },
+                {
+                    "command": "Core pytest secondary_reclaim_entry, secondary_resistance, ten_full_entry, whole_wave_entry, inverse_n_entry_guard, two_t_resistance_risk -q",
+                    "status": "failed",
+                    "summary": "较广定向97通过、5失败，237.15秒。失败为乐鑫07-02缺旧二级压力拒因、先锋01-06买点缺失导致2断言、01-26部分日线预期买点缺失、06-09旧买点缺失；未修改断言。clean main b623a7e、main独立venv导入E盘源码同5项逐一重现，154.25秒。不得将失败记为通过或默认豁免本地合并；本次新增20项和81相邻通过。"
+                },
+                {
+                    "command": "Web node --test secondary-reclaim-evidence, combined-a-entry-evidence, wave-entry-evidence, trade-reasons, buy-points; topology Vitest",
+                    "status": "passed",
+                    "summary": "62项Node及14项拓扑通过。独立名称、日期/量价/防守/目标证据、交易详情、扫描3种来源及缺标记回退保持，不误写第一类正N资格；旧组合通道保持。拓扑增加5关独立通道和全局风控说明，90源归一换行指纹f6195a61ba4f495bec36393fdd8a5c04d7eb77c80e59238cb34b67a465e81449。最后标题修正后相关16项复跑通过。"
+                },
+                {
+                    "command": "New module strict mypy; 6 related Core/test targets mypy; Core4 strict typecheck; API11 strict mypy",
+                    "status": "passed",
+                    "summary": "新增模块strict与修改的integrated_strategy/strategy_profiles/trade_evidence及两个新测试类型检查通过；Core既定4与依赖方API11类型通过。临时将未修改hierarchical_entry显式列入检查时发现6项旧类型问题，未扩大本任务目标或添加类型忽略；将正式模块通过MYPYPATH=src解析后相关检查通过。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core build; isolated wheel import and byte comparison; Web lint/typecheck and exact-source Webpack production build",
+                    "status": "passed",
+                    "summary": "Core sdist/wheel与D盘隔离wheel烟测通过，4修改模块字节一致，无新增依赖。Web lint零错误6旧环境变量warning，类型与最终生产构建通过；沿用E盘精确源码快照与原依赖，用命令级512MB/4MB和Webpack，不改产品构建配置。普通策略资金/费用/交易权限继续适用。"
+                },
+                {
+                    "command": "Complete Core/Web suites, browser/Playwright, external minute execution and main live HTTP activation",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏不运行完整套件或浏览器；无真实分钟或券商成交验证。本地main仍b623a7e，未合并、未推送、未重启，当前服务仍旧V102；新通道正式账户适配器在独立工作区已验证，main HTTP启用待合并门禁处理。默认保留二吐抵抗，用户尚未选择例外；不得倒推03-05为已买入。"
+                },
+                {
+                    "command": "18 related Prettier files, final JS syntax/diff/Harness, CodeGraph sync and baseline feature equality review",
+                    "status": "passed",
+                    "summary": "最终18文件格式、JS语法、diff与Harness通过；新模块strict和5相关目标mypy、Core16纯规则测试复跑通过。CodeGraph已同步18代码文件及后续拓扑修改。最终Web14拓扑、单独类型、最终生产构建通过，仍不运行完整套件或浏览器。所有main既有feature对象与基线逐项相等，256仅临时status置backlog且原始完整对象已保存，等待合并门禁处理；未将5项既有失败标为通过。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-295",
             "name": "positive-n-source-colors",
@@ -1775,7 +1829,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",

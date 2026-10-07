@@ -40,6 +40,7 @@ import {
 import { bindPressAndHold } from "./press-and-hold.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
 import { parseResearchLink, resolveResearchLink } from "./research-link.js";
+import { secondaryReclaimEvidence } from "./secondary-reclaim-evidence.js";
 import { StockBacktestTasks } from "./stock-backtest-tasks.js";
 import { StockList } from "./stock-list.js";
 import { StructureSignals } from "./structure-signals.js";
@@ -746,7 +747,7 @@ const buyPoints = new BuyPoints({
         };
     },
     onSelect: async (match, p) => {
-        const combinedEvidence = combinedAEntryEvidence(match.evidence);
+        const entryEvidence = [...combinedAEntryEvidence(match.evidence), ...secondaryReclaimEvidence(match.evidence)];
         $("result-scope").value = p.source === "akshare" ? "akshare" : p.source === "tdx" ? "tdx-backtest" : "stock";
         setTimeframe("1d");
         fillSymbols();
@@ -762,7 +763,7 @@ const buyPoints = new BuyPoints({
         if (p.source === "akshare") {
             detail(
                 "AkShare 当前股票买点信号",
-                `原始不复权在线日线仅用于信号研究；${match.signal_date} · ${match.regime} · 参考 ${num(match.raw_reference_price)} 元 · 相对量 ${num(match.rvol)} · 未模拟成交。${combinedEvidence.length ? `\n${reasonText(match.reason)}。\n${combinedEvidence.join("\n")}` : ""}`,
+                `原始不复权在线日线仅用于信号研究；${match.signal_date} · ${match.regime} · 参考 ${num(match.raw_reference_price)} 元 · 相对量 ${num(match.rvol)} · 未模拟成交。${entryEvidence.length ? `\n${reasonText(match.reason)}。\n${entryEvidence.join("\n")}` : ""}`,
             );
             return;
         }
@@ -781,10 +782,15 @@ const buyPoints = new BuyPoints({
             const note = document.createElement("p");
             note.textContent = `买点筛选证据：盘态 ${match.regime}，相对量 ${num(match.rvol)}，回档比例 ${pct(match.retracement)}，收盘参考盈亏比 ${num(match.gross_reward_risk)}。模拟成交尚需执行风控。`;
             $("selection-info").append(note);
-            if (combinedEvidence.length) {
-                if (!combinedAEntryEvidence(marker.decision_evidence).length) {
+            if (entryEvidence.length) {
+                if (
+                    ![
+                        ...combinedAEntryEvidence(marker.decision_evidence),
+                        ...secondaryReclaimEvidence(marker.decision_evidence),
+                    ].length
+                ) {
                     const line = document.createElement("p");
-                    line.textContent = `${reasonText(match.reason)}。${combinedEvidence.join("")}`;
+                    line.textContent = `${reasonText(match.reason)}。${entryEvidence.join("")}`;
                     $("selection-info").append(line);
                 }
             } else {
@@ -798,8 +804,8 @@ const buyPoints = new BuyPoints({
                     $("selection-info").append(line);
                 }
             }
-        } else if (combinedEvidence.length) {
-            detail("组合 A 买点复核", `${reasonText(match.reason)}。${combinedEvidence.join("")}`);
+        } else if (entryEvidence.length) {
+            detail("买点复核", `${reasonText(match.reason)}。${entryEvidence.join("")}`);
         }
     },
 });

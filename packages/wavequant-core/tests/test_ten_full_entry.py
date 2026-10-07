@@ -220,7 +220,7 @@ def test_v3_profiles_use_a_origin_two_thirds_and_timed_half(variant):
     config = SystemStrategy(**profile["strategy"])
     config.validate()
     definition = profile["definition"]
-    assert profile["profile_version"] == "one_p_confirmed_a_origin_lifetime_v102_" + variant
+    assert profile["profile_version"] == "secondary_resistance_reclaim_v103_" + variant
     assert profile["definition"]["n_target_source"] == "decline_floor_launch_and_independent_defense_reformations"
     assert profile["definition"]["n_invalidation"] == "strict_low_break_of_frozen_squeeze_defense__hide_failed_n"
     assert "five_top_gap_upper_shadow_completed_5m_or_daily_close_clear" in definition["exits"]

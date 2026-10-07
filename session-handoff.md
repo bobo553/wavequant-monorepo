@@ -1,3 +1,13 @@
+## 2026-10-08 · MONOREPO-296 实现完成，合并待门禁处理
+
+会话继续使用C:/Users/zb/.codex/worktrees/level-three-dashed-gate/wavequant-monorepo、feat-三级虚线门禁，已同步main b623a7e。V103二级突破抵抗放量收复通道和独立说明已实现；默认保留二吐、五顶十满、倒N及账户门禁。用户关于03-05是否豁免二吐长上影尚未回答，已明确暂按保留接入；03-05候选拒因9.53二吐抵抗，03-11放量未回补跳空首次LONG。实际V3执行参数账户回放filled BUY原11.44572，防守7.43、最近目标12.21；开费用后RR过滤拒绝。
+
+20新增和81相邻通过，62 Web Node/14拓扑、相关Core/API类型、Core包/D盘wheel和E盘最终Web生产构建通过。5失败：乐鑫07-02缺secondary压力旧拒因，先锋01-06信号/订单旧断言2项、01-26部分日线预期买点和06-09旧买点。clean main b623a7e用main独立venv导入E盘源码同5项154.25秒重现；保留失败，不改断言、忽略类型或绕过门禁。按docs/agent/codex-global-AGENTS.md:34，无法修复不得自动合并；待明确允许保留这些已有失败或另行处理。当前仅独立工作区，main服务仍V102，不推送、不重启。
+
+296在本工作区唯一in-progress，256原始完整对象已保存在D:/.cache/Temp/wavequant-296-original-active.json，除临时status=backlog外所有字段未改；合并前应恢复原对象及activeFeature=256，296保留failed事实不能标done。新源码/测试/说明分别为secondary_reclaim_entry.py、test_secondary_reclaim_entry.py、test_secondary_reclaim_strategy.py、secondary-reclaim-evidence.js、strategy_lecture_v3.md；正式账户与前缀测试均已通过。完整Core/Web、浏览器/Playwright及真实外部分钟未运行。
+
+更早的03-21正式二级端点升级需求仍需区分显示与固定正式端点：当前02-28已按8.17市场突破显示二级实线；完整历史将03-21高并入05-15高。此次优化独立买点，不改变正式趋势端点，勿借未来升级补认02-06资格。
+
 MONOREPO-290最终运行恢复：Turbopack原进程发生16MB内存分配失败，Web与API完整图通过后又退出；已从main用忽略目录 .codex-runtime/wavequant-web-dev-webpack-290.mjs 恢复Web-only Webpack（PID27600、768MB heap、3003），复用现有main API8765（30128）。main revision publisher继续运行，产品配置未修改。恢复后实际当前完整图代理点位/Canvas和research均HTTP200；冻结二级键5.51规则生效，0反向三级虚线。标准 .codex-runtime/wavequant-dev.pid 登记27600。
 
 MONOREPO-290（2026-10-07，最终常驻完整图验收）：d63ffdd经9c1da9e本地no-ff合并。8765两源截至04-08/07-27/09-30共6请求均HTTP200，当前完整图仍只有07-25低3.45→05-15高19.63实线、0反向虚线；不因04-08二级高点后续确认补回。当前完整TTX三层正式点与修正前逐项一致，3003完整图代理点位相同，真实响应Canvas为1橙色实线/0虚线。main Harness通过；104项/21子用例、323日截面与类型/构建证据完整记录，256原字段逐项保留。初版截至04-08的阶段记录已明确标注，最终整段门槛以本记录为准。未推送；完整套件、浏览器/Playwright和完整账户差异待独立验证。
