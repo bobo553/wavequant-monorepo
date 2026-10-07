@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-284",
+    "activeFeature": "MONOREPO-256",
     "features": [
         {
             "id": "MONOREPO-284",
@@ -12,7 +12,7 @@
             "dependencies": [
                 "MONOREPO-283"
             ],
-            "status": "in-progress",
+            "status": "done",
             "acceptanceCriteria": [
                 "一饱二吐五顶十满标签固定在对应成N日期，鼠标在同一正N区间移动或点击定位不移动标签，C浪原交互保持",
                 "正N箱顶和起点低点显示两条固定水平线及价格标识，与目标使用同一结构；襄阳07-23顶7.90底7.32",
@@ -38,7 +38,12 @@
                 {
                     "command": "full Web suite; browser/Playwright pixel verification",
                     "status": "not-run",
-                    "summary": "按用户验证节奏未运行完整Web套件、浏览器或Playwright；已做真实固定行情SDK输入与Canvas绘制回归，不能视为浏览器像素验收。本地合并及HTTP模块核对待下一步执行，不推送。"
+                    "summary": "按用户验证节奏未运行完整Web套件、浏览器或Playwright；已做实际固定行情SDK输入与Canvas绘制回归、常驻模块HTTP核对，不视为浏览器像素验收。未推送。"
+                },
+                {
+                    "command": "local main no-ff merge; live Web3003 charts.js/n-structure-overlay.js/target-level-guides.js source comparison; backtest-version",
+                    "status": "passed",
+                    "summary": "dcf0e06经e739239合并本地main。当前常驻Web为3003，三模块HTTP200且规范化换行后与main逐字一致，Core仍V100。本轮原13003端口不再监听，使用实际现运行的3003完成验收，未修改端口/重启服务/改缓存。99项SDK/Canvas、类型、构建与Harness通过。"
                 }
             ]
         },
@@ -1255,7 +1260,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "backlog",
+            "status": "in-progress",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
