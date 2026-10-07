@@ -206,15 +206,15 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "ab-known",
                 question: "原 N 已轧空，且此前 A/B 可冻结？",
-                detail: "A 顶必须在今天之前出现，随后有真实回落并形成 B；强势 A 与普通 A 的 B 均可跌破轧空低；最低价严格跌破整段 A 起点即失效，相等仍有效，后续没有原组 C，等待新 A。破轧空低后的回调与底部整理按实际交易日持续记录。当天高点不能反过来构造自己的 A/B。",
-                source: "a_wave_rules.py · a_origin_broken；wave_continuation.py · wave_pullback_context",
+                detail: "合格正 N 严格突破一饱即独立确认 A，不等待 B/C、二级翻转或轧空；达到二吐升级强势 A，未结束的 A 高点可延伸。C 入场仍要求原 N 轧空、此前 A 顶及实际回落 B。强势 A 与普通 A 的 B 均可跌破轧空低；最低价严格跌破整段 A 起点即失效，相等仍有效，后续没有原组 C，等待新 A。旧 N 防守或目标退役不撤销已经成立的 A。当天高点不能反过来构造自己的 A/B。",
+                source: "a_wave.py · a_wave_history；a_wave_rules.py · a_origin_broken；wave_continuation.py · wave_pullback_context",
                 yes: "比较 A 与原 N 目标",
                 no: "等待完整 A/B 或防守失效",
             },
             {
                 id: "a-class",
                 question: "A 达到原 N 的 2T？",
-                detail: "A 高点 ≥ 二吐（2T）是强势 A；一饱（1P）≤ A 高点 < 二吐是普通 A。一饱、二吐的等号都表示已达到，未达一饱不分类。强 A 与普通 A 都保留完整 A 起点，内部正 N 不替换父 A。",
+                detail: "A 高点 ≥ 二吐（2T）是强势 A；一饱（1P）< A 高点 < 二吐是普通 A。一饱必须严格突破，二吐的等号表示已达到。强 A 与普通 A 都保留完整 A 起点，内部正 N 不替换父 A。",
                 source: "a_wave_rules.py · classify_a_attack；wave_continuation.py · wave_pullback_context",
                 yes: "强 A：缺口或强实体放量",
                 no: "普通 A：阳线收盘突破已知回档高点",
@@ -530,7 +530,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
 ] as const;
 
 export const topologyProfileNotes = [
-    "V3 v101：最低价严格跌破冻结轧空低即使原正 N 失效，相等仍有效；当前图不绘制失效 N 与目标。守住起点后，用实际波段高点、新回调低和首次实虚攻击创建新 N，同日不同来源独立显示、独立测幅，不按日期或价格去重。买点按来源 ID 取本组目标；日线候选仍择一，不重复下单。",
+    "V3 v102：合格正 N 严格突破一饱立即确认 A，达到二吐升级强势；A 高点可延伸，确认不等待 B/C 或正式二级翻转。A 成立后仅按原点最低价严格破位永久失效，原组不再产生后续 C；旧 N 轧空低失效或目标退役不取消已经成立的 A。独立 N 重算和目标来源规则继续保留，C 观察不直接生成买单。",
     "二、三级趋势线在市场最高价严格突破已知同级前高、或最低价严格跌破已知同级前低时立即确认并画实线。首次突破日冻结，末端继续延伸；方向确认与正式反转端点分开，不提前冻结突破棒或替换策略输入。",
     "V3 v98 一级趋势有序确认：先创新高再确认其后更高低点，或先创新低再确认其后更低高点；禁止用推进前旧回档提前冻结整段端点。确认前持续跟踪整段极值，基础母子折线约定保持，各级趋势与策略使用同一因果结构。",
     "V3 v96 五顶后低开长上影全清：此前有效正 N 已到五顶或十满，开盘 < 前收、收盘 ≤ 开盘（含十字线）、上影占振幅 ≥ 50% 即按 100% 退出目标清空余仓，无需放量或此前减仓。完整分钟以已完成五分钟线累计行情判定并在下一根开盘模拟；启用既有非一字限价模型且判定时已观察到跌停打开，可按下一棒跌停开盘原价、零滑点模拟。缺分钟显式日线收盘回退，模型允许非一字跌停按原始收盘价、零滑点卖出；两种假设都未验证排队。原有入场通道与 V1/V2 封存定义保持各自口径。",
@@ -545,4 +545,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "547e12f8d5e295399e12ffbed7cfef74688e552de3281e1d320ef6120d4db201";
+export const strategySourceDigest = "5b4e157c752344129438ae9b4f8c1b25f94696584990c07411832de48dc4c057";

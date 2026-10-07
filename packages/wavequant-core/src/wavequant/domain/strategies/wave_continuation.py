@@ -10,7 +10,7 @@ from ..models.model import Bar
 
 
 def wave_pullback_context(
-    bars: Sequence[Bar], setup: WaveProjectionSetup, now: int
+    bars: Sequence[Bar], setup: WaveProjectionSetup, now: int, *, a_confirmed_at: int | None = None,
 ) -> dict[str, str | int | float] | None:
     """Freeze A and the known B; B may lose squeeze defense while A remains valid."""
     if not setup.squeeze_index < now < len(bars):
@@ -22,6 +22,13 @@ def wave_pullback_context(
     one_p = float(2 * Fraction(str(setup.box_anchor)) - Fraction(str(setup.origin)))
     a_class = classify_a_attack(bars[peak].high, one_p, setup.two_t)
     if a_class is None:
+        return None
+    confirmed = next((index for index in range(setup.attack_index, now)
+                      if bars[index].high > one_p), None)
+    if confirmed is None or (a_confirmed_at is not None and not setup.attack_index <= a_confirmed_at < now):
+        return None
+    if a_confirmed_at is None and any(bar.low < setup.defense
+                                    for bar in bars[setup.attack_index + 1:confirmed + 1]):
         return None
     strong = a_class == "strong"
     milestone = setup.two_t if strong else one_p
@@ -36,7 +43,7 @@ def wave_pullback_context(
         (
             j
             for j in range(setup.attack_index, now)
-            if (bars[j].close if j == setup.attack_index else bars[j].high) >= milestone
+            if (bars[j].high >= milestone if strong else bars[j].high > milestone)
         ),
         None,
     )
@@ -46,6 +53,7 @@ def wave_pullback_context(
     return dict(
         wave_entry_path="two_t_held_defense_gap_attack" if strong else "one_p_held_defense_rebound",
         wave_a_class=a_class,
+        wave_a_confirmed_date=bars[a_confirmed_at if a_confirmed_at is not None else confirmed].timestamp.date().isoformat(),
         wave_entry_one_p=one_p,
         wave_entry_milestone_date=bars[max(reached, setup.squeeze_index)].timestamp.date().isoformat(),
         wave_entry_n_date=bars[setup.attack_index].timestamp.date().isoformat(),
@@ -102,6 +110,7 @@ def wave_gap_entry(
     now: int,
     *,
     pivots: Sequence[ReversalPoint] = (),
+    a_confirmed_at: int | None = None,
 ) -> dict[str, str | int | float] | None:
     """Confirm an ordinary-A close breakout or a strong-A gap/body continuation.
 
@@ -115,10 +124,10 @@ def wave_gap_entry(
     body = bar.close - bar.open
     strong_body = body >= bar.open * 0.03 and body >= (bar.high - bar.low) * 0.6
     volume_up = bar.volume > prev.volume
-    if not ((gap or body > 0) and bar.low >= setup.defense and bar.close > bars[setup.attack_index].high):
+    if not ((gap or body > 0) and bar.low >= setup.origin and bar.close > bars[setup.attack_index].high):
         return None
     # Freeze A before examining the current attack candle.
-    context = wave_pullback_context(bars, setup, now)
+    context = wave_pullback_context(bars, setup, now, a_confirmed_at=a_confirmed_at)
     if context is None:
         return None
     ordinary = context["wave_a_class"] == "ordinary"

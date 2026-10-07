@@ -1,3 +1,4 @@
+import { aWaveAnnotations, aWaveLegs, aWaveObservations } from "./a-wave-observations.js";
 import {
     avoidLabelCollisions,
     bearBullAlternationLowAnnotations,
@@ -219,6 +220,7 @@ export class PriceChart {
         this.autoWaveProjection = null;
         this.autoWaveProjections = [];
         this.autoCombinedAObservations = [];
+        this.autoAObservations = [];
         this.autoWaveEvidence = [];
         this.hoveredWaveProjection = null;
         this.hoveredWaveTime = null;
@@ -522,11 +524,23 @@ export class PriceChart {
             return range && range.from <= time && time <= range.to;
         });
         const evidence = this.autoWaveEvidence.find((item) => item.id === id);
-        const hit = candidates.find((item) => item.id === id || (evidence && item.raw === evidence.raw));
+        const hit = candidates.find(
+            (item) =>
+                item.id === id ||
+                (evidence &&
+                    (item.raw === evidence.raw ||
+                        (evidence.raw?.sourceNId && item.raw.sourceNId === evidence.raw.sourceNId))),
+        );
         if (hit) return hit;
+        if (evidence?.raw?.sourceNId) return null;
         const selected =
             this.selected?.category === "wave-projection"
-                ? candidates.find((item) => item.id === this.selected.id || item.raw === this.selected.raw)
+                ? candidates.find(
+                      (item) =>
+                          item.id === this.selected.id ||
+                          item.raw === this.selected.raw ||
+                          (this.selected.raw?.sourceNId && item.raw.sourceNId === this.selected.raw.sourceNId),
+                  )
                 : null;
         return (
             selected ||
@@ -546,7 +560,10 @@ export class PriceChart {
         const selected =
             this.selected?.category === "wave-projection"
                 ? this.autoWaveProjections.find(
-                      (item) => item.id === this.selected.id || item.raw === this.selected.raw,
+                      (item) =>
+                          item.id === this.selected.id ||
+                          item.raw === this.selected.raw ||
+                          (this.selected.raw?.sourceNId && item.raw.sourceNId === this.selected.raw.sourceNId),
                   )
                 : null;
         return this.hoveredWaveProjection || this.focusedWaveProjection || selected || null;
@@ -563,7 +580,10 @@ export class PriceChart {
     }
     selectedNTargetId() {
         if (isPositiveNTarget(this.selected)) return this.selected.id;
-        const date = this.selected?.levels?.find((level) => level.stage === "one_p")?.n_date;
+        const level = this.selected?.levels?.find((level) => level.stage === "one_p");
+        const source = level?.n_id;
+        if (source) return this.nTargetObservations?.find(({ item }) => item.raw?.n_id === source)?.item.id;
+        const date = level?.n_date;
         return this.nTargetObservations?.find(({ item }) => item.time === date)?.item.id;
     }
     /** 悬停只临时展示所在 ABC，保留成交选择与图窗；移出后恢复原目标。 */
@@ -1135,7 +1155,12 @@ export class PriceChart {
             if (isPositiveNTarget(item) && isNTargetStage(level.stage) && !nTargetLevels(item, asof).includes(level))
                 continue;
             if (isNTargetStage(level.stage)) {
-                const identity = `${item.raw?.n_id || item.id}:${level.stage}:${level.price}`;
+                const selectedId = item === this.selected && !isPositiveNTarget(item) ? this.selectedNTargetId() : null;
+                const selectedSource = this.nTargetObservations?.find(
+                    ({ item: source }) => source.id === selectedId,
+                )?.item;
+                const sourceId = level.n_id || item.raw?.n_id || selectedSource?.raw?.n_id || selectedId || item.id;
+                const identity = `${sourceId}:${level.stage}:${level.price}`;
                 if (seenN.has(identity)) continue;
                 seenN.add(identity);
             }
@@ -1256,6 +1281,7 @@ export class PriceChart {
         this.clearTertiaryRetracementGuides();
         this.autoCombinedAObservations = [];
         this.container.dataset.combinedAWaveCount = "0";
+        this.autoAObservations = [];
         this.clearCombinedARetracementGuides();
         this.container.dataset.lastFallHighCount = "0";
         this.clearCombinedAWavePath();
@@ -1273,19 +1299,21 @@ export class PriceChart {
     drawWaveAbPath() {
         this.clearWaveAbPath();
         if (!this.options.tertiaryAbc || !this.geometryVisible || !this.data) return;
-        const connections = selectWaveConnections(
-            this.autoWaveProjections.flatMap((item) =>
+        const connections = selectWaveConnections([
+            ...this.autoWaveProjections.flatMap((item) =>
                 waveCProjectionLegs(item.raw).map((leg) => ({
                     ...leg,
                     id: `${item.id}:${leg.title}`,
-                    group: `abc:${item.raw.trendLevel || 2}:${leg.title}`,
+                    group: `abc:${item.raw.sourceNId || item.raw.trendLevel || 2}:${leg.title}`,
+                    ...(item.raw.sourceNId && leg.title === "A 浪" ? { lineStyle: 0 } : {}),
                 })),
             ),
-        );
-        for (const { title, color, points } of connections) {
+            ...aWaveLegs(this.autoAObservations || []),
+        ]);
+        for (const { title, color, points, lineStyle } of connections) {
             const series = this.chart.addSeries(L.LineSeries, {
                 color,
-                lineStyle: 2,
+                lineStyle: lineStyle ?? 2,
                 lineWidth: 2,
                 title,
                 lastValueVisible: false,
@@ -1427,9 +1455,13 @@ export class PriceChart {
             waveCProjectionAnnotation(projection, this.data.bars, asof),
         );
         this.autoWaveProjection = this.autoWaveProjections.at(-1) || null;
-        this.autoWaveEvidence = projections.flatMap((projection) =>
-            waveCProjectionEvidenceAnnotations(projection, this.data.bars, asof),
-        );
+        this.autoAObservations = theory && this.data ? aWaveObservations(this.data.bars, { ...theory, asof }) : [];
+        this.autoWaveEvidence = [
+            ...projections.flatMap((projection) =>
+                waveCProjectionEvidenceAnnotations(projection, this.data.bars, asof),
+            ),
+            ...aWaveAnnotations(this.autoAObservations, this.data?.bars || []),
+        ];
         this.autoCombinedAObservations =
             theory && this.data ? combinedAObservations(this.data.bars, { ...theory, asof }, projections) : [];
         this.annotations = buildAnnotations(this.data, theory);

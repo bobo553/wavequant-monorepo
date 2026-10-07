@@ -4,6 +4,64 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-290",
+            "name": "one-p-confirmed-a-wave-lifecycle",
+            "title": "一饱突破确认A与独立C生命周期",
+            "description": "合格正N突破一饱立即确认可延伸A，达到二吐升级强势；原点严格跌破永久失效且原组无后续C。",
+            "scope": "Core因果A状态与C策略资格、图表独立A标识和测幅、全局规则及真实日线回归",
+            "dependencies": ["MONOREPO-283", "MONOREPO-289"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "襄阳07-23正N一饱8.48，07-31突破即显示A；08-05达到二吐9.06升级强势，08-17/18高点持续延伸",
+                "A确认不依赖后续B/C、正式二级翻转或轧空确认；后续N防守/目标退役不撤销已确认A",
+                "最低价严格跌破A原点永久失效，相等仍有效，原组不再产生后续C；有效A回调和再攻击保留独立C观察及原交易门槛",
+                "Core/Web消费同源版本化A证据，同日来源独立，前缀/部分日线缓存无未来数据",
+                "相关定向测试、类型、必要构建、格式和Harness实际通过，未运行验证如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest: test_a_wave_confirmation.py (10); test_a_wave_lifecycle.py + test_wave_continuation.py (39); adjacent test_wave_projection.py, test_positive_n_reformation.py, test_ten_full_entry.py, test_one_p_rebound.py",
+                    "status": "passed",
+                    "summary": "累计106个不同定向用例通过。最初90例中89通过、1条旧攻击当天影线二吐排除断言失败；按新最高价规则改为强势A正例，最终wave/lifecycle39例全通过。之前完整pipeline旧09-15 BUY断言在main原样失败，按当前退役来源与新09-17 A证据校准，保留完整信号/audit前缀检查。含一饱严格/二吐含等、当日影线、延伸、同日独立身份、破N防守仍守A、同棒破原点优先与永久失效、C完成冻结、真实07-31/08-05/08-17/18/08-25及部分日线缓存。"
+                },
+                {
+                    "command": "node --test tests/a-wave-confirmation.test.mjs tests/a-wave-lifecycle.test.mjs tests/wave-c-chart.test.mjs tests/ordinary-c-wave.test.mjs tests/structural-c-wave.test.mjs tests/positive-n-reformation.test.mjs (Web cwd)",
+                    "status": "passed",
+                    "summary": "90项通过，真实Core响应消费到A实线及确认/强势标识，独立C目标10.18142/11.40，选择按来源ID绑定、未形成B不能借重叠C目标、C结束区间与后续行情隔离、同日重算N四目标保持。SDK输入验证未打开浏览器。"
+                },
+                {
+                    "command": "pnpm exec vitest run src/features/research-workbench/topology/topology-data.test.ts (Web cwd)",
+                    "status": "passed",
+                    "summary": "10项通过，更新V102全局规则与87源码指纹5b4e157c752344129438ae9b4f8c1b25f94696584990c07411832de48dc4c057。"
+                },
+                {
+                    "command": "Core venv mypy --strict a_wave.py a_wave_rules.py; mypy integrated_strategy.py wave_continuation.py strategy_profiles.py visualization.py; pnpm --filter @wavequant/core --filter wavequant-api typecheck",
+                    "status": "passed",
+                    "summary": "新模块及共享边界2文件strict、4修改模块、Core既定4/API既定11文件类型通过；PYTHONPATH明确指向本worktree源码。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core build; inspect wheel source bytes",
+                    "status": "passed",
+                    "summary": "sdist/wheel构建通过，6个新增/修改实现模块逐字匹配源码。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web build; pnpm --filter wavequant-web typecheck",
+                    "status": "passed",
+                    "summary": "最终生产构建及独立类型通过；仅恢复已知next-env生成行。lint0错误6条既有环境变量警告；初次Windows进程3221226505退出后以512MB堆/4MB新生代重跑原检查通过。"
+                },
+                {
+                    "command": "Complete Core/Web suites, browser/Playwright and full-account differential",
+                    "status": "not-run",
+                    "summary": "依用户验证节奏未运行完整套件、浏览器/Playwright或完整账户差异；定向真实日线策略与SDK证据不宣称浏览器像素或未来C/成交验证。"
+                },
+                {
+                    "command": "related Prettier checks and JS syntax; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "18个变更格式文件及修改JS语法/差异通过；Harness 287功能、18 Node/2 Python workspace通过，256原记录与main逐项相等。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-289",
             "name": "positive-n-defense-reformation",
             "title": "正N轧空低失效与独立重算",
