@@ -147,26 +147,32 @@ test("nearby C targets keep their actual price lines while their labels remain r
     assert.match(labels[1].text, /C 0\.618×A 4\.8126/);
 });
 
-function renderGuides(guides, { width = 600, height = 200, x = 400, endX = 520, y = () => 80 } = {}) {
+function renderGuides(
+    guides,
+    { width = 600, height = 200, x = 400, endX = 520, y = () => 80, background = "#fff" } = {},
+) {
     const overlay = new TargetGuideOverlay();
     overlay.attached({
         chart: {
             timeScale: () => ({ timeToCoordinate: (time) => (time === item.time ? x : endX) }),
-            options: () => ({ layout: { background: { color: "#fff" } } }),
+            options: () => ({ layout: { background: { color: background } } }),
         },
         series: { priceToCoordinate: y },
         requestUpdate() {},
     });
     overlay.setGuides(guides);
     const labels = [],
-        segments = [];
+        segments = [],
+        backgrounds = [];
     let dash = [],
         start;
     const context = {
         save() {},
         restore() {},
         beginPath() {},
-        fillRect() {},
+        fillRect(...bounds) {
+            backgrounds.push({ color: this.fillStyle, bounds });
+        },
         setLineDash(value) {
             dash = value;
         },
@@ -189,7 +195,7 @@ function renderGuides(guides, { width = 600, height = 200, x = 400, endX = 520, 
             callback({ context, mediaSize: { width, height } });
         },
     });
-    return { labels, segments };
+    return { labels, segments, backgrounds };
 }
 
 test("fixed N labels center over the N candle and stay on the edge without false lines when it is offscreen", () => {
@@ -355,14 +361,33 @@ test("all three C targets retain distinct edge labels when the hovered A candle 
     assert.equal(segments.length, 0);
 });
 
-test("a touched C reference uses a solid segment while a pending C reference remains dashed", () => {
+test("touched and pending C references both use dashed horizontal segments", () => {
     const guide = { start: item.time, end: null, stage: "c_equal", name: "C 浪目标 1×A（等浪）", price: 8.28 };
     const touched = renderGuides([{ ...guide, targetState: "已触及" }]);
     const pending = renderGuides([{ ...guide, targetState: "待达成" }]);
-    assert.ok(touched.segments.some(({ dash }) => dash.length === 0));
-    assert.ok(pending.segments.some(({ dash }) => dash.length === 2));
+    for (const result of [touched, pending]) {
+        const horizontal = result.segments.filter(({ start, end }) => start[1] === end[1]);
+        assert.equal(horizontal.length, 1);
+        assert.deepEqual(horizontal[0].dash, [4, 3]);
+    }
     assert.match(touched.labels[0].text, /已触及/);
     assert.match(pending.labels[0].text, /待达成/);
+});
+
+test("C, N and combined retracement labels leave the chart background transparent in both themes", () => {
+    const guides = [
+        { stage: "c_equal", name: "C 浪目标 1×A（等浪）", price: 11.4, targetState: "已触及" },
+        { stage: "one_p", name: "一饱", price: 11.15, targetState: "已满足" },
+        { stage: "combined_a_half", name: "组合 A 50%", price: 10.51, targetState: "半幅失守" },
+    ].map((guide) => ({ ...guide, start: item.time, end: null, color: "#a29ce0" }));
+    for (const background of ["#fff", "#101722"]) {
+        const result = renderGuides(guides, { background, y: (price) => price * 10 });
+        assert.equal(result.labels.length, 3);
+        assert.deepEqual(result.backgrounds, []);
+        assert.ok(result.labels.some(({ text }) => /等浪.*已触及/.test(text)));
+        assert.ok(result.labels.some(({ text }) => /一饱.*已满足/.test(text)));
+        assert.ok(result.labels.some(({ text }) => /50%.*半幅失守/.test(text)));
+    }
 });
 
 test("combined retracement labels render above their lines with independent states and clear offscreen", () => {
