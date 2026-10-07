@@ -42,6 +42,11 @@
                     "command": "related Prettier checks and JS syntax; git diff --check; pnpm harness:check",
                     "status": "passed",
                     "summary": "9个变更文件格式、两修改JS语法及差异通过，Harness289功能通过，256原记录完整恢复。"
+                },
+                {
+                    "command": "main no-ff 08077ab; live 3003 two modified modules byte match; captured actual TDX response -> current main SDK and Canvas",
+                    "status": "passed",
+                    "summary": "83b1060经08077ab本地no-ff合并，main Harness通过。实际3003的charts.js与target-level-guides.js HTTP200逐字匹配main，revision08077ab。既有实际70日线TDX响应经当前main消费，08-25 B低8.21的10.18142/11.40在08-26、09-01、09-03悬停时Canvas文字中心均为同一B坐标200px；B移出隐藏、移回恢复通过。未使用浏览器，Core/API策略仍V102，未推送。"
                 }
             ]
         },
