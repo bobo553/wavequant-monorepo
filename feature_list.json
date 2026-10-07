@@ -19,6 +19,11 @@
             ],
             "verification": [
                 {
+                    "command": "Final local main d63ffdd/9c1da9e; API8765 TDX/AkShare April8/July27/September30; Web3003 full-chart proxy and actual Canvas commands; main Harness",
+                    "status": "passed",
+                    "summary": "最终实现d63ffdd经9c1da9e本地no-ff合并。两源6个实际截面均HTTP200，仅3.45→19.63实线，无countertrend_confirmation或反向虚线。当前完整TTX三层正式点与修正前逐项一致；最新04-08高点已于07-27成为正式二级点，仍不补回三级虚线。3003当前完整图代理与8765点位一致，实际Canvas为1橙色实线/0虚线；不是浏览器像素验证。main Harness通过，未推送，原256全部字段逐项相等。"
+                },
+                {
                     "command": "Final Core pytest countertrend/confirmation and secondary/tertiary/landmarks/alternation/chart-history/hierarchical-entry/N regressions",
                     "status": "passed",
                     "summary": "最终35+69共104项及21子用例通过。2089根固定真实原始日线，05-15..09-07共323交易日截面始终保留03-11确认与05-15高19.63，无反向三级虚线。新增正反对称场景证明局部两高两低下降仍守冻结6/14关键位，严格破位才启用虚线；源级先破、同级直接破、触碰、未知键/起点、未确认、断点及首次日期覆盖。"
