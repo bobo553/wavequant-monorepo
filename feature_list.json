@@ -63,6 +63,11 @@
                     "command": "merge current main 9c1da9e; pytest test_a_wave_confirmation.py test_hierarchical_countertrend.py; topology 10; Web build/typecheck; Core build/wheel",
                     "status": "passed",
                     "summary": "并行会话占用原290，按现有main保留其全部记录，本任务改为291。同步最新main、合并文档和规则图，无算法冲突；33项通过（新增23趋势线用例，累计129个不同Core定向），10拓扑、更新后87源码指纹45aca232e09cfb4a0fec8eae2ff1ad5b88f7b9713b104b18d1529a85f3b060d5、最终Web生产构建/类型、Core包10实现逐字核对通过。所有已有功能记录逐项保持，256仍唯一in-progress。"
+                },
+                {
+                    "command": "main no-ff merge 5d86bf8; live 8765/3003 V102 and module bytes; real TDX short-prefix response and 2018-start daily signal replay",
+                    "status": "passed",
+                    "summary": "实现8a25b3c、同步ed52b88、复核b2cd87d经5d86bf8本地no-ff合并。main Harness通过。实际API8765与页面3003 profile V102，133源码engine91c75bcfbcda2aa9ebd02eef0c2c5d8a6218f3f1679edb0a409cabdf6d389dd0与main一致；5修改Web模块HTTP200逐字匹配。实际TDX70根06-01..09-07回测HTTP200，07-31确认A、08-05强势、08-18高10.51、08-25 B低8.21；同一实际响应在08-17截面得到9.83/4标识与C目标10.18142/11.40。额外只读2089日线2018-01-15..09-07（60.025秒）策略重放结论相同，后续C尚未启动，不宣称未来成交或完整账户差异。原页面3003未运行，已用既有main dev:web恢复，未启动浏览器。未推送。"
                 }
             ]
         },
