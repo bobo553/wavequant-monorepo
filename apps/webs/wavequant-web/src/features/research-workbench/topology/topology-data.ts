@@ -60,7 +60,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "n-geometry",
                 question: "N 点次序、边界和窗口成立？",
-                detail: "常规 N 的起点 A、颈线 B、回档 C 按时间排序且保持部分回撤。讲义因果外包 C 接纳等低创新高或等高创新低；两侧完全相等不算外包。C 在自身收盘确认，分步转折时实体须朝攻击方向；B 与 C 可在同一收盘才确认。C 转折后的攻击极值不冒充旧颈线，中间其他棒仍检查。阳母同日 A/B 与全局 V3 正 N 的阴母 A < B = C 保留独立严格外包条件；阴母须收阴且先高后低，等高、等低和十字星不放宽该分支。默认严格 N 条件保持。超过结构窗口的结构跳过。",
+                detail: "常规 N 的起点 A、颈线 B、回档 C 按时间排序且保持部分回撤。讲义因果外包 C 接纳等低创新高或等高创新低；两侧完全相等不算外包。C 在自身收盘确认，分步转折时实体须朝攻击方向；B 与 C 可在同一收盘才确认。C 转折后的攻击极值不冒充旧颈线，中间其他棒仍检查。阳母同日 A/B 与全局 V3 正 N 的阴母 A < B = C 保留独立严格外包条件；阴母须收阴且先高后低，等高、等低和十字星不放宽该分支。默认严格 N 条件保持。内包阴子另用独立 A < B = C 分支，只消费已有确认折线；母线非十字，阴子与前母线至少一侧严格内缩，用子线自己的颈线完成首次实虚攻击，再检查底部首个 N 资格，不以母线旧高替代子线颈线。超过结构窗口的结构跳过。",
                 source: "n_shape.py · NSetup / observe_n；integrated_strategy.py · generate_system_signals",
                 yes: "检查首次实虚攻击",
                 no: "跳过该结构",
@@ -543,4 +543,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "c3d944ed005abb8690b8a94f5811b4ce9a38e4f3d6b2a3e8ac30fac17a32ee83";
+export const strategySourceDigest = "86d817b008f3840edb5663e1a76a645f771cce5353d76bb86e8a4db5ecada41e";

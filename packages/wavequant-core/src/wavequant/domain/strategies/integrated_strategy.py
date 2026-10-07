@@ -11,7 +11,7 @@ from ..models.model import Bar, Signal
 from ..market_structure.polyline import LinePoint, PointKind, ReversalPoint, observe_polyline, observe_bar_relations
 from ..market_structure.n_shape import NSetup, PivotRef, BoxAnchorMode, MilestoneBasis, observe_n
 from ..market_structure.bottom_n_targets import DeclineStart, PositiveNCompletion, bottom_n_target_history
-from ..market_structure.price_action import Direction, ShadowPolicy, AttackBasis
+from ..market_structure.price_action import Direction, ShadowPolicy, AttackBasis, teaching_inside
 from ..market_state.market_regime import MarketRegime, RegimePhase, RegimePolicy, ResistanceOutcome, WaveBoundary, observe_market_regime
 from ..market_state.control_bar import observe_control_bar
 from ..market_state.candle_strength import strong_bullish_candle
@@ -314,10 +314,13 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         mother_impulse = (whole_wave and config.pivot_mode == 'lecture_causal'
             and a.point.kind == PointKind.LOW and a.point.index == b.point.index < c.point.index
             and a.point.ordinal < b.point.ordinal)
-        mother_pullback = (whole_wave and config.pivot_mode == 'lecture_causal'
+        same_bar_pullback = (whole_wave and config.pivot_mode == 'lecture_causal'
             and a.point.kind == PointKind.LOW and b.point.kind == PointKind.HIGH and c.point.kind == PointKind.LOW
             and a.point.index < b.point.index == c.point.index and b.point.ordinal < c.point.ordinal)
-        if not (a.point.index<b.point.index<c.point.index or mother_impulse or mother_pullback):
+        inside_pullback = (same_bar_pullback and b.point.index > 0
+                           and teaching_inside(bars[b.point.index-1], bars[b.point.index]))
+        mother_pullback = same_bar_pullback and not inside_pullback
+        if not (a.point.index<b.point.index<c.point.index or mother_impulse or same_bar_pullback):
             counts['same_bar_n_rejected']+=1
             log(i,'n_geometry_rejected',reason='same_bar_vertices_require_lower_timeframe_n')
             continue
@@ -333,7 +336,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             allow_confirmation_bar=whole_wave,
             allow_outside_close=whole_wave, allow_mother_impulse=mother_impulse,
             staged_defense=whole_wave and direction == Direction.UP,
-            allow_mother_pullback=mother_pullback)
+            allow_mother_pullback=mother_pullback, allow_inside_pullback=inside_pullback)
         offset = max(0, a.point.index-config.volume_lookback)
         finish = min(len(bars)-1, limits[i], i+config.pattern_ttl)
         local, data = _local_setup(setup, offset), bars[offset:finish+1]
@@ -362,9 +365,10 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             continue
         assert n.anchors is not None and n.targets is not None
         t = offset+n.completion.bar_index
-        if (direction, t) in attack_keys:
+        if (direction, t) in attack_keys and not inside_pullback:
             continue
-        attack_keys.add((direction, t))
+        if not inside_pullback:
+            attack_keys.add((direction, t))
         control = memo['control'] if memo is not None and 'control' in memo else observe_control_bar(
             data, local, timeframe='1d', volume_lookback=config.volume_lookback,
             shadow_policy=ShadowPolicy(config.shadow_fraction))
@@ -398,6 +402,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             n_level=n_level, box_anchor=n.targets.box_anchor, one_p=n.targets.one_p,
             two_t=n.targets.two_t,
             **({'mother_pullback_confirmed': True} if mother_pullback else {}),
+            **({'inside_pullback_confirmed': True} if inside_pullback else {}),
             **({'outside_close_confirmed': True} if whole_wave and setup.allow_outside_close and setup.pullback.index == t else {}))
     bottom_targets = None
     target_retired_at = {}
@@ -421,8 +426,28 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     declines.append(DeclineStart(seed_decline, now))
         bottom_targets = bottom_n_target_history(bars, declines, [
             PositiveNCompletion(c['setup'].origin.index, c['attack'], max(c['attack'], c['known_at']))
-            for c in candidates if c['setup'].direction == Direction.UP
+            for c in sorted(candidates, key=lambda item: item['setup'].allow_inside_pullback)
+            if c['setup'].direction == Direction.UP
         ])
+        canonical_candidates = []
+        canonical_attacks = set()
+        for candidate in sorted(candidates, key=lambda item: item['setup'].allow_inside_pullback):
+            key = (candidate['setup'].direction, candidate['attack'])
+            if candidate['setup'].direction == Direction.UP:
+                chosen = bottom_targets.completions[candidate['attack']]
+                if (candidate['setup'].origin.index != chosen.origin
+                        or max(candidate['attack'], candidate['known_at']) != chosen.known_at):
+                    continue
+            if key not in canonical_attacks:
+                canonical_candidates.append(candidate)
+                canonical_attacks.add(key)
+        candidates = canonical_candidates
+        counts['completed_up_n'] = sum(c['setup'].direction == Direction.UP for c in candidates)
+        retained_events = {(c['setup'].direction.value, c['attack'], c['setup'].origin.index,
+                            c['setup'].neckline.index, c['setup'].pullback.index, c['known_at']) for c in candidates}
+        audit[:] = [row for row in audit if row['event'] != 'n_completed'
+                    or tuple(row[key] for key in ('direction', 'bar_index', 'origin', 'neckline', 'pullback', 'known_at'))
+                    in retained_events]
         for row in audit:
             if row['event'] != 'n_completed' or row['direction'] != 'up':
                 continue

@@ -15,7 +15,7 @@ from typing import Sequence
 
 from ..models.model import Bar
 from .price_action import (Direction, KeyLevel, LevelKind, observe_attack, _ordered_pair,
-                           _validate_bar, teaching_outside)
+                           _validate_bar, teaching_inside, teaching_outside)
 
 
 class NStatus(str, Enum):
@@ -79,8 +79,13 @@ class NSetup:
     allow_mother_impulse: bool = False
     staged_defense: bool = False
     allow_mother_pullback: bool = False
+    allow_inside_pullback: bool = False
 
     def __post_init__(self):
+        if type(self.allow_inside_pullback) is not bool:
+            raise ValueError('inside pullback policy must be boolean')
+        if self.allow_inside_pullback and self.allow_mother_pullback:
+            raise ValueError('inside child and outside mother policies must be distinct')
         if type(self.allow_mother_pullback) is not bool:
             raise ValueError('mother pullback policy must be boolean')
         if type(self.staged_defense) is not bool:
@@ -105,7 +110,10 @@ class NSetup:
         mother_pullback = (self.allow_mother_pullback and self.source == 'lecture_causal'
                            and self.direction == Direction.UP
                            and self.origin.index < self.neckline.index == self.pullback.index)
-        if not (self.origin.index < self.neckline.index < self.pullback.index or mother or mother_pullback):
+        inside_pullback = (self.allow_inside_pullback and self.source == 'lecture_causal'
+                           and self.direction == Direction.UP
+                           and self.origin.index < self.neckline.index == self.pullback.index)
+        if not (self.origin.index < self.neckline.index < self.pullback.index or mother or mother_pullback or inside_pullback):
             raise ValueError('A, B, C must be strictly chronological')
         if not self.origin.confirmed_index <= self.neckline.confirmed_index <= self.pullback.confirmed_index:
             raise ValueError('pivot confirmations must be chronological')
@@ -250,10 +258,15 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     a = bars[setup.origin.index].low if up else bars[setup.origin.index].high
     bb = bars[setup.neckline.index]
     if setup.neckline.index == setup.pullback.index:
-        # The lecture's bearish outside path supplies H before L. Strict
-        # geometry keeps this daily convention out of other N policies.
         mother_index = setup.neckline.index
-        if (mother_index == 0 or bb.close >= bb.open
+        if setup.allow_inside_pullback:
+            # The confirmed lecture path orders a bearish child's H before L.
+            # Its preceding mother's high belongs to the pre-origin fall.
+            if (mother_index == 0 or bb.close >= bb.open
+                    or bars[mother_index-1].close == bars[mother_index-1].open
+                    or not teaching_inside(bars[mother_index-1], bb)):
+                raise ValueError('inside pullback requires a bearish child of a non-doji mother')
+        elif (mother_index == 0 or bb.close >= bb.open
                 or bb.high <= bars[mother_index-1].high
                 or bb.low >= bars[mother_index-1].low):
             raise ValueError('mother pullback requires an observed bearish outside candle')

@@ -75,6 +75,9 @@ describe("strategy topology", () => {
         expect(gate?.detail).toMatch(/中间其他棒仍检查/);
         expect(gate?.detail).toMatch(/阳母同日 A\/B.*阴母 A < B = C.*独立严格外包/);
         expect(gate?.detail).toMatch(/等高、等低和十字星不放宽该分支.*默认严格 N 条件保持/);
+        expect(gate?.detail).toMatch(/内包阴子.*独立.*A < B = C.*已有确认折线/);
+        expect(gate?.detail).toMatch(/母线非十字.*至少一侧严格内缩.*子线自己的颈线.*首次实虚攻击/);
+        expect(gate?.detail).toMatch(/底部首个 N 资格.*不以母线旧高替代子线颈线/);
     });
     it("keeps a wick-only outside C pending until a fresh post-C joint attack", () => {
         const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "n-attack");

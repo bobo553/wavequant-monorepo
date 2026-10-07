@@ -46,6 +46,7 @@ class BottomNTargetHistory:
     qualifications: dict[int, TargetQualification]
     source_at: tuple[int | None, ...]
     retirements: tuple[TargetRetirement, ...]
+    completions: dict[int, PositiveNCompletion]
 
 
 def bottom_n_target_history(
@@ -74,6 +75,7 @@ def bottom_n_target_history(
     active: PositiveNCompletion | None = None
     used: set[tuple[int, int]] = set()
     decisions: dict[int, TargetQualification] = {}
+    selected: dict[int, PositiveNCompletion] = {}
     sources: list[int | None] = []
     retirements: list[TargetRetirement] = []
     for now, bar in enumerate(bars):
@@ -98,7 +100,12 @@ def bottom_n_target_history(
             while minimum and minimum[0] <= current.index:
                 minimum.popleft()
         bottom = minimum[0] if minimum and current is not None else None
-        for n in sorted(arrivals.get(now, ()), key=lambda item: (item.attack, item.origin)):
+        # A new inside child must neither hide a contemporaneous floor N nor
+        # lose to a cross-cycle N. Resolve only candidates known at this close.
+        for n in sorted(arrivals.get(now, ()), key=lambda item: (item.attack, item.origin != bottom)):
+            if n.attack in selected:
+                continue
+            selected[n.attack] = n
             identity = (current.index, n.origin) if current is not None else None
             if active is not None:
                 reason = "existing_bottom_launch"
@@ -118,4 +125,4 @@ def bottom_n_target_history(
                 current.index if current is not None else None, bottom, reason,
             )
         sources.append(active.attack if active is not None else None)
-    return BottomNTargetHistory(decisions, tuple(sources), tuple(retirements))
+    return BottomNTargetHistory(decisions, tuple(sources), tuple(retirements), selected)
