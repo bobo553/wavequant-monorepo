@@ -172,7 +172,7 @@ def test_old_structural_episode_never_replays_minutes_in_new_episode():
     assert "2026-08-11" not in loaded
 
 
-def test_huaci_early_body_minute_keeps_later_daily_gap_confirmation():
+def test_huaci_local_body_cannot_borrow_missing_n_and_keeps_later_gap():
     from .test_wave_continuation import sample as huaci_sample
     from wavequant.domain.strategies.integrated_strategy import SystemStrategy
 
@@ -206,30 +206,38 @@ def test_huaci_early_body_minute_keeps_later_daily_gap_confirmation():
         ),
     ]
 
+    loaded = []
+
     def load(bar):
+        loaded.append(str(bar.timestamp.date()))
         if bar.timestamp == candle.timestamp:
             return minute
         raise MinuteCoverageError(str(bar.timestamp.date()), None, None, "fixture")
 
+    completed = [event for event in daily.audit if event["event"] == "n_completed"
+                 and event.get("direction") == "up"]
+    assert not any(event["bar_index"] == dates["2026-08-03"] for event in completed)
+    source = next(event for event in completed if event["bar_index"] == dates["2026-08-10"])
+    assert source["target_eligible"] is True
+    ready = next(event for event in daily.audit if event["event"] == "wave_continuation_ready"
+                 and event["attack_index"] == source["bar_index"])
+    assert ready["bar_index"] == gap
     resolved, executions, _ = resolve_consolidation_entries(bars, daily, strategy, load, daily_fallback=True)
-    assert (candle.symbol, body) in executions
-    confirmations = [
-        e
-        for e in resolved.audit
-        if e["event"] == "long_signal" and e.get("wave_entry_path") and e["bar_index"] in (body, gap)
-    ]
-    assert [e["bar_index"] for e in confirmations] == [body, gap]
-    assert [(e["bar_index"], e["wave_confirmation_phase"]) for e in confirmations] == [(body, "body"), (gap, "gap")]
-    assert confirmations[1]["wave_gap_high"] > confirmations[0]["wave_gap_high"]
-    assert [(s.bar_index, s.reason) for s in resolved.signals if s.bar_index in (body, gap) and s.side == "LONG"] == [
-        (body, "system_wave_push_gap"),
-        (gap, "system_wave_push_gap"),
-    ]
-    prefix_bars = bars[: body + 1]
+    assert (candle.symbol, body) not in executions
+    assert str(candle.timestamp.date()) not in loaded
+    confirmations = [event for event in resolved.audit
+                     if event["event"] == "long_signal" and event["bar_index"] in (body, gap)]
+    assert [event["bar_index"] for event in confirmations] == [gap]
+    assert confirmations[0]["attack"] == source["bar_index"]
+    assert confirmations[0]["target_source_attack"] == body
+    assert confirmations[0]["target_source_date"] == "2026-08-26"
+    assert "wave_entry_path" not in confirmations[0]
+    assert [(signal.bar_index, signal.reason) for signal in resolved.signals
+            if signal.bar_index in (body, gap) and signal.side == "LONG"] == [(gap, "system_transition_squeeze")]
+    prefix_bars = bars[:body + 1]
     prefix_daily = generate_system_signals(prefix_bars, strategy)
     prefix, prefix_executions, _ = resolve_consolidation_entries(
-        prefix_bars, prefix_daily, strategy, load, daily_fallback=True
-    )
-    assert (candle.symbol, body) in prefix_executions
-    assert prefix.signals == [s for s in resolved.signals if s.bar_index <= body]
-    assert prefix.audit == [e for e in resolved.audit if e["bar_index"] <= body]
+        prefix_bars, prefix_daily, strategy, load, daily_fallback=True)
+    assert (candle.symbol, body) not in prefix_executions
+    assert prefix.signals == [signal for signal in resolved.signals if signal.bar_index <= body]
+    assert prefix.audit == [event for event in resolved.audit if event["bar_index"] <= body]

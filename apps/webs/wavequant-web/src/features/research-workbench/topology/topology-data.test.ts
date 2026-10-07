@@ -15,6 +15,7 @@ const strategyDirectories = [
 ];
 const additionalSources = [
     "packages/wavequant-core/src/wavequant/application/analytics/backtest.py",
+    "packages/wavequant-core/src/wavequant/application/analytics/intraday_entry.py",
     "packages/wavequant-core/src/wavequant/application/analytics/intraday_wave_exit.py",
     "packages/wavequant-core/src/wavequant/application/trading/intent_execution.py",
     "packages/wavequant-core/src/wavequant/domain/models/model.py",
@@ -28,6 +29,10 @@ const additionalSources = [
     "apps/webs/wavequant-web/public/structural-c-wave.js",
     "apps/webs/wavequant-web/public/wave-c-projection.js",
     "apps/webs/wavequant-web/public/c-wave-extension.js",
+    "apps/webs/wavequant-web/public/bottom-n-targets.js",
+    "apps/webs/wavequant-web/public/n-target-focus.js",
+    "apps/webs/wavequant-web/public/buy-n-targets.js",
+    "apps/webs/wavequant-web/public/annotations.js",
 ];
 
 function sourceDigest(sources: { file: string; content: string }[]): string {
@@ -41,6 +46,16 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("restricts all four measured stages to the first positive N at a known decline floor", () => {
+        const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "bottom-n-target-source");
+        expect(gate?.detail).toMatch(/一饱、二吐、五顶、十满.*底部启动资格/);
+        expect(gate?.detail).toMatch(/最低点形成的首个正 N.*冻结原箱/);
+        expect(gate?.detail).toMatch(/相等低点.*较早底部/);
+        expect(gate?.detail).toMatch(/局部 N.*更大结构不重开目标/);
+        expect(gate?.detail).toMatch(/按可知日.*原 N 内部.*不追溯/);
+        expect(gate?.yesNext).toBe("direction");
+        expect(gate?.noNext).toBe("direction");
+    });
     it("requires the holding turn after a fresh level-one counter-impulse", () => {
         const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "level-one-wave");
         expect(gate?.detail).toMatch(/先有更高高点.*其后的更高低点/);
@@ -121,6 +136,7 @@ describe("strategy topology", () => {
             ),
             ...additionalSources,
         ].sort();
+        expect(new Set(files).size).toBe(files.length);
         const sources = files.map((file) => ({ file, content: readFileSync(resolve(projectRoot, file), "utf8") }));
         const regimeSource = sources.findIndex((source) => source.file.endsWith("/market_state/market_regime.py"));
         expect(regimeSource).toBeGreaterThanOrEqual(0);

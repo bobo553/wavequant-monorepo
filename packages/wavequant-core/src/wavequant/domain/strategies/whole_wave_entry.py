@@ -4,8 +4,10 @@ Type 1: freeze eligibility at attack, or opt into its exact joint confirmation.
 Type 2: after maturity, a new peak and pullback; CLOSE drawdown / (peak-L0).
 These are entry filters, not an alternative drawing algorithm.
 """
+from collections.abc import Sequence
 from dataclasses import asdict
 from fractions import Fraction
+from .hierarchical_entry import EntryContext
 
 
 def price(value):
@@ -16,19 +18,24 @@ def threshold(value):
     return {1/3:Fraction(1,3), .5:Fraction(1,2), 2/3:Fraction(2,3)}[value]
 
 
+def wave_entry_contexts(current: Sequence[EntryContext], at_attack: Sequence[EntryContext], *,
+                        attack: int, asof: int, allow_confirming_n: bool = False) -> list[EntryContext]:
+    """Retain attack-time evidence and this exact N's later joint confirmation."""
+    candidates = list(at_attack)
+    if allow_confirming_n:
+        candidates += [c for c in current if c.confirmation_attack == attack
+                       and attack < c.alternation_index <= asof and c not in candidates]
+    return candidates
+
+
 def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
                       deep_ratio=.5, shallow_ratio=1/3, first_basis='alternation_low',
                       second_inclusive=True, allow_confirming_n=False, allow_same_bar_pullback=False, **unused):
     if not (0 <= low_index <= attack <= asof < len(bars) and (low_index < attack or allow_same_bar_pullback)):
         return None, 'wave_invalid_n_sequence'
     live = {c.episode:c for c in current}; eligible=[]; reasons=[]
-    at_attack = list(at_attack)
-    if allow_confirming_n:
-        # Keep eligibility created by this exact N's confirmation available for
-        # its later squeeze; never backdate it or borrow another N's context.
-        at_attack += [c for c in current if c.confirmation_attack == attack
-                      and attack < c.alternation_index <= asof
-                      and c not in at_attack]
+    at_attack = wave_entry_contexts(current, at_attack, attack=attack, asof=asof,
+                                   allow_confirming_n=allow_confirming_n)
     if not at_attack:
         return None, 'wave_no_alternation_at_attack'
     for ctx in at_attack:

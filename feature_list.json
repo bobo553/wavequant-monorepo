@@ -1,8 +1,62 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-256",
+    "activeFeature": "MONOREPO-282",
     "features": [
+        {
+            "id": "MONOREPO-282",
+            "name": "bottom-launch-n-target-ownership",
+            "title": "底部启动正N独占四档测幅",
+            "description": "按用户确认口径，已确认一轮下跌的最低点首个正N冻结测幅来源；续涨局部N和跨段大N不重开一饱二吐五顶十满。",
+            "scope": "Core共用测幅资格、目标生命周期与交易消费者、Web目标来源，用户追加的五项历史回归及相关分钟/一饱回归校准、本地合并",
+            "dependencies": ["MONOREPO-275", "MONOREPO-281"],
+            "status": "in-progress",
+            "acceptanceCriteria": [
+                "只从当时已确认下跌段最低点的首个正N发布一饱二吐五顶十满；相等低点保留较早底部，局部续涨与跨已有启动结构不重开箱",
+                "新华传媒2023-05-16跨段N不发布9.9725/13.1419；同图使用当前有效底部启动N的冻结目标与来源",
+                "后续确认新下跌或原底部严格破位按可知日终止原目标；图表、转浪、入场目标和目标退出统一消费，历史前缀和部分日线不借未来",
+                "定向回归、相关类型和构建及Harness通过；未运行完整套件和浏览器如实记录",
+                "按用户追加要求解决五项失败：分钟预筛选使用与全局策略相同的存活交替来源；真实新华和华瓷旧断言按现行顺序结构与底部测幅契约更新，并保留合法入场、账户滑点和历史前缀正反例",
+                "转浪在来源退役后才被确认时，不向过去补造投影失效事件；真实华瓷完整历史与分钟前缀审计一致，旧交替背景退役后不反复请求分钟"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_bottom_n_targets.py tests/test_bottom_n_target_pipeline.py tests/test_xiangyang_n_projection.py tests/test_wave_projection.py tests/test_post_b_wave_exit.py tests/test_stock_backtest.py tests/test_five_top_entry.py tests/test_ten_full_entry.py -q",
+                    "status": "passed",
+                    "summary": "最终99项通过；新新华传媒回归首轮3项失败复现旧9.9725/13.1419，修复后05-16跨段N无四档测幅，活动来源05-10底部/05-15确认，一饱7.075628335394026、二吐7.953773364180446，05-18严格破底失效、有效至05-17。所有历史前缀、部分日线缓存、相等低点、晚确认内部高点、缺少下跌证据和目标退出覆盖。襄阳13项保留真实底部N及后续五顶十满。"
+                },
+                {
+                    "command": "node --test tests/bottom-n-targets.test.mjs tests/n-target-focus.test.mjs tests/buy-n-targets.test.mjs; pnpm --filter wavequant-web exec vitest run src/features/research-workbench/topology/topology-data.test.ts",
+                    "status": "passed",
+                    "summary": "初次135项相关Web与后续25项通过；本轮最终21项来源/焦点/买入目标Node及10项拓扑通过。新增分钟背景预筛选说明，纳入intraday_entry源码并清除重复来源，80份唯一源码指纹c3d944ed005abb8690b8a94f5811b4ce9a38e4f3d6b2a3e8ac30fac17a32ee83。当前V99明确资格缺失时不重造局部N；封存V1/V2旧契约保持兼容。"
+                },
+                {
+                    "command": "pytest tests/test_bottom_n_targets.py tests/test_bottom_n_target_pipeline.py tests/test_xiangyang_n_projection.py tests/test_wave_projection.py tests/test_post_b_wave_exit.py tests/test_stock_backtest.py tests/test_five_top_entry.py tests/test_ten_full_entry.py tests/test_intraday_entry.py tests/test_wave_body_breakout.py tests/test_one_p_rebound.py tests/test_xinhua_mother_pullback_squeeze.py tests/test_wave_intraday_entry.py tests/test_whole_wave_entry.py tests/test_joint_n_entry.py -q",
+                    "status": "passed",
+                    "summary": "最终145项全部通过（506.40秒），未豁免、跳过或xfail。初始99ab787与main85f11ab的31项对照曾同5失败：三条新华03-20、一条旧华瓷episode、一条华瓷提前实体分钟。生产修复：分钟前筛选与全局选择共用攻击时或同N联合确认来源，背景已退役不重放；投影确认晚于来源退役时不向过去补造失效事件，完整历史/前缀一致。真实新华03-05局部N仍保留，但03-20没有交替背景，不能补造买入；真实华瓷无08-03已确认N，不借旧假设08-26入场，09-15实际盘整确认保留且测幅来源08-26底部N。四条旧正向断言按已批准结构与目标契约校准，五条合法世联行分钟路径保留。相邻桂林三项亦在未改main复现（3失败1通过），05-28非下降段最低点局部N不产生一饱C入场，外包C未越过B高点仍forming无目标，不抛形态错误；几何正反例保留。正式账户同时验证合法普通成交配置5bps滑点、显式非一字涨停模型零滑点，以及03-20无买入；没有恢复不合格测幅或放宽入场门禁。初始失败日志与原因保留为历史，当前145项已全部通过。"
+                },
+                {
+                    "command": "mypy bottom_n_targets.py; mypy --follow-imports=silent integrated_strategy.py strategy_profiles.py visualization.py stock_backtest.py; pnpm --filter @wavequant/core typecheck; pnpm --filter wavequant-api typecheck; pnpm --filter @wavequant/core build; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; ./init.ps1 -Mode quick",
+                    "status": "passed",
+                    "summary": "新模块strict、修改四模块、Core既定strict四文件和API既定strict十一文件通过；sdist/wheel构建及新模块打包字节核对通过。Web lint零错误六个旧warning、类型和最终生产构建通过。首次并行构建worker异常退出无源码诊断，串行重试且任务NODE_OPTIONS内存512MB后通过，不认定异常根因。首次quick因独立API缺mypy环境失败，按声明隔离安装并使用main同版mypy2.3.1后quick最终21/21。Node24.16.0仅任务PATH、pnpm10.26.2，未改声明或锁文件，已恢复已知next-env构建生成行。"
+                },
+                {
+                    "command": "codegraph init --yes .; codegraph sync; manual code review; pnpm harness:check; pnpm exec prettier --write feature_list.json; git diff --check; final Web typecheck; final wheel byte comparison",
+                    "status": "passed",
+                    "summary": "专属worktree基线main85f11ab，分支feat-底部正N目标；已有.codegraph目录无索引，sync报告未初始化后仅一次init成功725文件，后续sync成功。复核共享来源、可知日期、失效边界、部分日线、LONG显式当前来源/无来源及旧版本兼容；所有四档目标含估算均标底部日和N确认日并继承有效期。未硬编码股票或日期，未改API源码。最终Harness279功能/18Node/2Python/32规则通过；状态格式与diff检查通过，恢复next-env后的Web类型通过，wheel内全部五个新增或修改模块与最终源码字节相同。main仍85f11ab且检出干净。"
+                },
+                {
+                    "command": "Full Core/Web suites, browser/Playwright, formal full-account comparison, live main V99 validation",
+                    "status": "not-run",
+                    "summary": "未运行完整Core/Web套件、浏览器/Playwright、完整账户差异或真实外部分钟。145项定向全部通过，无未解决失败；当前仍在独立分支，main及常驻未改，用户已要求修复后合并，下一步本地no-ff合并及实际V99验证；不推送或创建PR。此前待失败例外阶段已结束，不申请豁免。"
+                },
+                {
+                    "command": "User continuation: 先修复然后合并; final targeted verification and review",
+                    "status": "passed",
+                    "summary": "用户明确要求先修复再本地合并，不采用既有失败豁免。继续99ab787和同一分支；最终145项全部通过，新增两处生产修复及相关旧断言契约校准。修改三模块mypy、Core四文件和API十一文件strict、Core最终sdist/wheel及七个实现模块逐字节核对通过；Web最终lint零错误六旧warning、生产构建和恢复next-env后的类型通过，10项拓扑指纹c3d944ed已复核；待本地合并及常驻验收，不推送。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-281",
             "name": "level-one-ordered-retracement-confirmation",
@@ -1102,7 +1156,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",

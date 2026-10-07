@@ -1,3 +1,4 @@
+import { bottomNTargetCaption, isBottomNTargetSource } from "./bottom-n-targets.js";
 import { targetLevelGuide } from "./target-level-guides.js";
 
 const BASE_N_STAGES = new Set(["one_p", "two_t"]);
@@ -23,6 +24,8 @@ export function nTargetGuide(item, level, bars, asof) {
     if (!nTargetLevels(item, asof).includes(level)) return null;
     const knownAt = level.available_at || item.time;
     const guide = targetLevelGuide(item, { ...level, anchor_at: level.anchor_at || knownAt }, bars, asof);
+    const caption = bottomNTargetCaption(item.raw);
+    if (guide && caption) guide.name = `${guide.name} · ${caption}`;
     if (!guide || BASE_N_STAGES.has(level.stage)) return guide;
     const end = level.valid_until && level.valid_until < asof ? level.valid_until : asof;
     const reached = bars.find((bar) => {
@@ -39,8 +42,7 @@ export function nTargetGuide(item, level, bars, asof) {
 
 export function isPositiveNTarget(item) {
     return (
-        item?.raw?.event === "n_completed" &&
-        item.raw.direction === "up" &&
+        isBottomNTargetSource(item?.raw) &&
         ["one_p", "two_t"].every((stage) =>
             item.levels?.some((level) => level.stage === stage && Number.isFinite(level.price) && level.anchor_at),
         )
