@@ -54,6 +54,42 @@ test("canvas activation focuses the chart; arrows zoom and pan using the existin
     h.unbind();
 });
 
+test("focused SDK descendants receive all four commands even when the SDK stops bubbling", () => {
+    const h = harness();
+    const canvas = h.container.querySelector("canvas");
+    canvas.tabIndex = 0;
+    canvas.addEventListener("keydown", (event) => event.stopPropagation());
+    canvas.focus();
+    assert.equal(h.key("ArrowUp"), true);
+    assert.deepEqual(h.range(), { from: 410, to: 490 });
+    assert.equal(h.key("ArrowLeft"), true);
+    assert.deepEqual(h.range(), { from: 394, to: 474 });
+    assert.equal(h.key("ArrowRight"), true);
+    assert.deepEqual(h.range(), { from: 410, to: 490 });
+    assert.equal(h.key("ArrowDown"), true);
+    assert.deepEqual(h.range(), { from: 400, to: 500 });
+    h.unbind();
+});
+
+test("hovering the chart activates arrows with page focus, while leaving it restores page keys", () => {
+    const h = harness();
+    h.container.blur();
+    h.container.dispatchEvent(new h.document.defaultView.MouseEvent("pointerenter"));
+    assert.equal(h.document.activeElement, h.document.body);
+    assert.equal(h.key("ArrowUp"), true);
+    assert.deepEqual(h.range(), { from: 410, to: 490 });
+    assert.equal(h.key("ArrowLeft", { repeat: true }), true);
+    assert.deepEqual(h.range(), { from: 394, to: 474 });
+    assert.equal(h.key("ArrowRight", { repeat: true }), true);
+    assert.deepEqual(h.range(), { from: 410, to: 490 });
+    assert.equal(h.key("ArrowDown"), true);
+    assert.deepEqual(h.range(), { from: 400, to: 500 });
+    h.container.dispatchEvent(new h.document.defaultView.MouseEvent("pointerleave"));
+    assert.equal(h.key("ArrowUp"), false);
+    assert.deepEqual(h.range(), { from: 400, to: 500 });
+    h.unbind();
+});
+
 test("ending a drag restores keyboard focus after the SDK removes it; mouse-only clicks also activate", () => {
     const h = harness();
     const canvas = h.container.querySelector("canvas");
@@ -103,10 +139,61 @@ test("editors, buttons, outside focus, modifiers, composition and already handle
     }
     assert.equal(h.key("Tab"), false);
     assert.equal(h.key("Home"), false);
-    h.container.addEventListener("keydown", (event) => event.preventDefault(), { capture: true, once: true });
+    h.document.defaultView.addEventListener("keydown", (event) => event.preventDefault(), {
+        capture: true,
+        once: true,
+    });
     assert.equal(h.key("ArrowRight"), true);
     assert.deepEqual(h.range(), { from: 400, to: 500 });
     assert.equal(h.pauses(), 0);
+    h.unbind();
+});
+
+test("hover does not steal keys from input controls; hidden, detached and destroyed charts remain inactive", () => {
+    const h = harness();
+    h.container.dispatchEvent(new h.document.defaultView.MouseEvent("pointerenter"));
+    const range = h.document.createElement("input");
+    range.type = "range";
+    h.container.append(range);
+    for (const target of [
+        h.document.getElementById("outside"),
+        range,
+        ...h.container.querySelectorAll("button,select,[contenteditable]"),
+    ]) {
+        target.focus();
+        for (const arrow of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]) assert.equal(h.key(arrow), false);
+    }
+    h.container.focus();
+    h.container.hidden = true;
+    assert.equal(h.key("ArrowRight"), false);
+    h.container.hidden = false;
+    h.container.remove();
+    assert.equal(h.key("ArrowRight"), false);
+    assert.deepEqual(h.range(), { from: 400, to: 500 });
+    h.document.body.append(h.container);
+    h.unbind();
+    h.container.focus();
+    assert.equal(h.key("ArrowRight"), false);
+    assert.equal(h.pauses(), 0);
+});
+
+test("a hovered chart cannot take arrows from another focused chart", () => {
+    const h = harness();
+    h.container.dispatchEvent(new h.document.defaultView.MouseEvent("pointerenter"));
+    const other = h.document.createElement("div");
+    other.tabIndex = 0;
+    h.document.body.append(other);
+    let otherPans = 0;
+    const releaseOther = bindChartKeyboardNavigation(other, {
+        navigationState: () => chartNavigationState({ from: 20, to: 120 }, 1000),
+        pan: () => otherPans++,
+        zoom: () => {},
+    });
+    other.focus();
+    assert.equal(h.key("ArrowRight"), true);
+    assert.equal(otherPans, 1);
+    assert.deepEqual(h.range(), { from: 400, to: 500 });
+    releaseOther();
     h.unbind();
 });
 

@@ -138,6 +138,31 @@ test("PriceChart arrow navigation updates the real SDK window and stops after de
         assert.ok(Math.abs(moved.from - enlarged.from - 8) < 1e-6, "held arrows pan the actual SDK window");
         assert.ok(Math.abs(moved.to - moved.from - 20) < 1e-6);
         assert.equal(pauses, 11);
+        chart.chart.timeScale().setVisibleLogicalRange({ from: 10, to: 50 });
+        chart.chart.resize(++width, 500, true);
+        canvas.tabIndex = 0;
+        const stopBubbling = (event) => event.stopPropagation();
+        canvas.addEventListener("keydown", stopBubbling);
+        canvas.focus();
+        assert.equal(press("ArrowUp"), true);
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), { from: 14, to: 46 });
+        assert.equal(press("ArrowLeft"), true);
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), { from: 8, to: 40 });
+        assert.equal(press("ArrowRight"), true);
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), { from: 14, to: 46 });
+        assert.equal(press("ArrowDown"), true);
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), { from: 10, to: 50 });
+        canvas.removeEventListener("keydown", stopBubbling);
+        canvas.blur();
+        container.dispatchEvent(new window.MouseEvent("pointermove", { bubbles: true }));
+        assert.equal(document.activeElement, document.body);
+        assert.equal(press("ArrowUp"), true);
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), { from: 14, to: 46 });
+        assert.equal(press("ArrowDown"), true);
+        container.dispatchEvent(new window.MouseEvent("pointerleave"));
+        assert.equal(press("ArrowUp"), false);
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), { from: 10, to: 50 });
+        assert.equal(pauses, 17);
         assertOwnedSeries(chart);
     } finally {
         chart.destroy();
@@ -145,7 +170,7 @@ test("PriceChart arrow navigation updates the real SDK window and stops after de
     const released = new window.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
     container.dispatchEvent(released);
     assert.equal(released.defaultPrevented, false);
-    assert.equal(pauses, 11);
+    assert.equal(pauses, 17);
     assert.equal(container.hasAttribute("tabindex"), false);
 });
 
