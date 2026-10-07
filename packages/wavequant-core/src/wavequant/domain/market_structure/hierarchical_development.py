@@ -5,10 +5,12 @@ break.  Level 2 may additionally promote a breakout high after its separate
 alternation evidence is complete.  While neither route is complete, hiding all
 confirmed source points makes the chart look truncated.  This module exposes
 the intervening evidence without itself promoting level-N structure.
+After a market-confirmed extreme, countertrend evidence requires four known
+source turns reversing both highs and lows before any dashed edge is exposed.
 """
 
 from .lecture_trend import _ref, _wave_reversals
-from .hierarchical_confirmation import market_trend_confirmation, session_date
+from .hierarchical_confirmation import market_trend_confirmation, session_date, source_trend_reversal
 
 
 def _developing_point(point, position, available_at, role, *, trend_level, source_level):
@@ -83,16 +85,21 @@ def hierarchical_developing_path(source, confirmed, *, trend_level, source_level
             dict(_ref(start), state='confirmed', display_only=True, trend_level=trend_level,
                  development_role='formal_start'), origin, endpoint])
         cutoff = len(bars) - 1 if end_index is None else end_index
+        countertrend = source_trend_reversal(
+            source_points, confirmation['direction'], confirmed_direction['endpoint'], cutoff, session_date(bars[cutoff]),
+        )
         for position, point in enumerate(source_points):
-            if (point['index'] <= endpoint['index'] or point['index'] > cutoff
-                    or point['available_at'] > session_date(bars[cutoff])):
+            if (countertrend is None or point['index'] <= endpoint['index'] or point['index'] > cutoff
+                    or point['available_at'] > session_date(bars[cutoff])
+                    or point.get('state') in ('seed', 'developing')):
                 continue
             previous = path[-1]
             if (point['kind'] == previous['kind'] or
                     (point['value'] <= previous['value'] if point['kind'] == 'H' else
                      point['value'] >= previous['value'])):
                 continue
-            pending = _developing_point(point, position, max(known, point['available_at']), 'pending_evidence',
+            pending = _developing_point(point, position, max(countertrend['available_at'], point['available_at']),
+                                        'pending_evidence',
                                         trend_level=trend_level, source_level=source_level)
             pending['edge_state'] = 'developing'
             path.append(pending)
@@ -103,6 +110,7 @@ def hierarchical_developing_path(source, confirmed, *, trend_level, source_level
             available_at=known, endpoint_state='developing', confirmation=confirmation, confirmed_endpoint=endpoint,
             confirmation_rule=confirmation['confirmation_rule'], nested_turn_count=0,
             pending_point_count=len(path)-(1 if prior_direction else 2), points=path,
+            **({'countertrend_confirmation': countertrend} if countertrend is not None else {}),
         )
 
     suffix = source_points[proof_position:]

@@ -33,6 +33,51 @@ class ConfirmedDirection(TypedDict):
     endpoint: TrendReference
 
 
+class SourceReversalConfirmation(TypedDict):
+    available_at: str
+    confirmation_rule: str
+    direction: str
+    confirmed_by: list[TrendReference]
+
+
+def source_trend_reversal(
+    points: Sequence[TrendReference],
+    direction: str,
+    endpoint: TrendReference,
+    end_index: int,
+    asof: str,
+) -> SourceReversalConfirmation | None:
+    """Require four known source turns reversing both highs and lows after the live extreme.
+
+    A single counter-swing or mixed high/low movement is still part of the
+    established trend. The live market extreme itself cannot stand in for a
+    confirmed source turn. Equal prices and evidence beyond the path do not
+    establish a reversal.
+    """
+    window: list[TrendReference] = []
+    sign = 1 if direction == 'up' else -1
+    for point in points:
+        if (point['index'] < endpoint['index'] or point['index'] > end_index
+                or point['available_at'] > asof or point.get('state') in ('seed', 'developing')):
+            continue
+        window = (window + [point])[-4:]
+        if len(window) < 4 or any(left['kind'] == right['kind'] for left, right in zip(window, window[1:])):
+            continue
+        highs = [turn for turn in window if turn['kind'] == 'H']
+        lows = [turn for turn in window if turn['kind'] == 'L']
+        if (len(highs) != 2 or len(lows) != 2
+                or sign * (highs[1]['value'] - highs[0]['value']) >= 0
+                or sign * (lows[1]['value'] - lows[0]['value']) >= 0):
+            continue
+        return dict(
+            available_at=max(turn['available_at'] for turn in window),
+            confirmation_rule='confirmed_source_four_point_reversal',
+            direction='down' if direction == 'up' else 'up',
+            confirmed_by=[source_reference(turn) for turn in window],
+        )
+    return None
+
+
 def session_date(bar: Bar) -> str:
     stamp = bar.timestamp
     if stamp.tzinfo is not None:

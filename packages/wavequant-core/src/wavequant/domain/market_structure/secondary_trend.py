@@ -309,6 +309,7 @@ def secondary_trends(level1,bars):
                 aggregation_rule='level1_structural_key_break_or_confirmed_alternation_promotion',
                 scope='lecture_level2_not_strategy_confirmation',
                 note='市场最高价突破已知同级前高或最低价跌破已知同级前低时，趋势线立即确认并画实线，末端继续延伸；'
+                     '没有新同级突破时，反向虚线须等极值及其后的已确认一级四端高低点均严格反向；'
                      '一级点突破末跌高确认整段低点，跌破末升低确认整段高点；翻空为多高点若同时突破旧二级末跌高，'
                      '并在较高且严格小于2/3的场景回撤后出现已确认非正式二级低点，则在该反转可知日升级为正式二级高点；'
                      '旧二级低点被市场收盘严格跌破后，'
