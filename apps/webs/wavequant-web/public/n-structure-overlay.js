@@ -63,7 +63,7 @@ export class NStructureOverlay {
             nStructureBounds(item, asof)
                 ? (item.raw.shape || []).slice(1).flatMap((end, index) => {
                       const start = item.raw.shape[index];
-                      return start.time === end.time ? [{ start, end }] : [];
+                      return start.time === end.time ? [{ start, end, color: item.color || "#b69af5" }] : [];
                   })
                 : [],
         );
@@ -71,6 +71,7 @@ export class NStructureOverlay {
             .map((item) => ({
                 ...nStructureBounds(item, asof),
                 source: item.raw?.reformed_from_date || item.raw?.shape?.[0]?.time,
+                color: item.color || "#b69af5",
             }))
             .filter((bounds) => bounds.start);
         this.bounds = this.structures[0] || null;
@@ -100,13 +101,13 @@ export class NStructureOverlay {
     draw(target) {
         if (!this.chart || !this.series || !this.bounds) return;
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {
-            for (const { start, end } of this.sameDaySegments) {
+            for (const { start, end, color } of this.sameDaySegments) {
                 const x = this.chart.timeScale().timeToCoordinate(start.time);
                 const y1 = this.series.priceToCoordinate(start.value),
                     y2 = this.series.priceToCoordinate(end.value);
                 if (![x, y1, y2].every(Number.isFinite) || x < 0 || x > mediaSize.width) continue;
                 context.save();
-                context.strokeStyle = "#60cfc3";
+                context.strokeStyle = color;
                 context.lineWidth = 2;
                 context.setLineDash([]);
                 context.beginPath();
@@ -125,8 +126,8 @@ export class NStructureOverlay {
                 const from = Math.max(0, center - half),
                     to = Math.min(mediaSize.width, center + half);
                 context.save();
-                context.strokeStyle = "#a29ce0";
-                context.fillStyle = "#a29ce0";
+                context.strokeStyle = bounds.color;
+                context.fillStyle = bounds.color;
                 context.lineWidth = 2;
                 context.setLineDash([]);
                 context.font = "600 11px ui-sans-serif, system-ui, sans-serif";

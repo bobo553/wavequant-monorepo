@@ -66,6 +66,30 @@ test("Core-confirmed A draws a solid leg and labels before any B or C exists", (
     assert.deepEqual(chart.autoAObservations, []);
 });
 
+test("actual August20 N markers, structure paths and targets share each independent source color", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/xiangyang_2024_reformed_ns.json", import.meta.url)));
+    const { chart, rendered } = chartHarness(fixture.view.bars);
+    chart.options.rules = true;
+    chart.setTheory({ ...fixture.theory, polyline_segments: [] });
+    const sources = chart.nTargetObservations.map(({ item }) => item);
+    assert.equal(sources.length, 2);
+    assert.equal(new Set(sources.map((source) => source.color)).size, 2);
+    for (const source of sources) {
+        const marker = rendered.markers.find((marker) => marker.id === source.id);
+        assert.equal(marker.color, source.color);
+        assert.match(marker.text, /正 N/);
+        const shape = fixture.theory.shapes.find((shape) => shape.n_id === source.raw.n_id);
+        const line = chart.lines.find(
+            ({ points }) => points[0].time === shape.points[0].time && points[0].value === shape.points[0].value,
+        );
+        assert.equal(line.options.color, source.color);
+        chart.updateWaveProjectionHover(fixture.view.asof, source.id);
+        const guides = rendered.guides.filter((guide) => guide.name.includes(source.raw.reformed_from_date));
+        assert.equal(guides.length, 2);
+        assert.ok(guides.every((guide) => guide.color === source.color));
+    }
+});
+
 test("C target labels stay anchored above the actual August25 B low across hover and selection", () => {
     const fixture = JSON.parse(readFileSync(new URL("./fixtures/xiangyang_a_wave_2026.json", import.meta.url)));
     const data = fixture.bars.map(([time, open, high, low, close, volume]) => ({
@@ -401,6 +425,7 @@ test("the actual July23 N targets stay above the completion candle across hover 
             top: 7.9,
             bottom: 7.32,
             source: "2026-07-21",
+            color: chart.hoveredNTarget.color,
         });
     }
     chart.focusCandleTargets("2026-07-21");
