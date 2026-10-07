@@ -1207,29 +1207,17 @@ export class PriceChart {
                         : guide.targetState,
                 };
             }
-            if (guide && item.kind === "wave-projection" && ["c_0618", "c_equal", "c_1618"].includes(level.stage)) {
-                const visibleRange = this.chart.timeScale().getVisibleLogicalRange();
-                const visibleStart = this.data.bars[Math.max(0, Math.ceil(visibleRange?.from || 0))]?.time;
-                const visibleEnd =
-                    this.data.bars[
-                        Math.min(this.data.bars.length - 1, Math.floor(visibleRange?.to ?? this.data.bars.length - 1))
-                    ]?.time;
-                const focusTime =
-                    this.hoveredWaveProjection === item
-                        ? this.hoveredWaveTime
-                        : this.focusedWaveProjection === item
-                          ? this.focusedWaveTime
-                          : null;
-                const displayStart =
-                    focusTime && focusTime >= visibleStart && focusTime <= visibleEnd
-                        ? focusTime
-                        : visibleStart && (guide.start < visibleStart || guide.start > visibleEnd)
-                          ? visibleStart
-                          : guide.start;
-                // 标签随复盘光标或可见 C 区间出现；历史锚点、可知日与首次触及时间不改。
+            if (guide && ["c_0618", "c_equal", "c_1618"].includes(level.stage)) {
+                // 显示横向绑定 B 低日期；可知日与首次触及证据仍使用原目标锚点。
                 displayGuide = {
                     ...guide,
-                    display_at: displayStart,
+                    display_at:
+                        item.raw?.bTime ||
+                        item.levels?.find((candidate) => ["c_0618", "c_equal"].includes(candidate.stage))?.anchor_at ||
+                        guide.start,
+                    fixedAnchor: true,
+                    labelPosition: "center",
+                    hideWhenAnchorOffscreen: true,
                 };
             }
             if (targetStages.has(level.stage))
