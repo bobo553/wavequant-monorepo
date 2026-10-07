@@ -651,6 +651,36 @@ function abcDescription(event, view) {
     return `a：${date(event.a_origin_index)} ${num(event.a_origin_price)} → ${date(event.a_high_index)} ${num(event.a_high_price)}；b 低点：${date(event.b_low_index)} ${num(event.b_low_price)}。${squeezeConditionText(event)}时间按交易 K 线间隔计算，b 截止低点，不含等待 N 的时间。${date(event.attack)} 正 N，${date(event.candidate_index)} ${event.regime}确认。${outcome}结构、策略买入信号与实际成交分别判断。`;
 }
 
+function isPositiveNAnnotation(item) {
+    return item.kind === "rule" && item.raw?.event === "n_completed" && item.side === "up";
+}
+
+/** 按可知日和来源 ID 固定配色；保留失效来源的色位，存活来源不会因此换色。 */
+function positiveNSourceColors(events, asof) {
+    const sources = new Map();
+    for (const event of events || []) {
+        if (event.event !== "n_completed" || event.direction !== "up" || event.available_at > asof) continue;
+        const date = event.available_at || event.time;
+        if (!sources.has(date)) sources.set(date, new Set());
+        sources.get(date).add(event.n_id || event.id);
+    }
+    const palette = ["#b69af5", "#ebbc70", "#60cfc3", "#75a9e2", "#e38aac", "#a7bf69", "#e69369", "#d884d3"];
+    const colors = new Map();
+    for (const [date, ids] of sources) {
+        for (const [index, id] of [...ids].sort().entries()) {
+            const hue = (index * 137.508) % 360;
+            const channel = (offset) => {
+                const k = (offset + hue / 30) % 12;
+                return Math.round(255 * (0.65 - 0.21 * Math.max(-1, Math.min(k - 3, 9 - k, 1))))
+                    .toString(16)
+                    .padStart(2, "0");
+            };
+            colors.set(`${date}:${id}`, palette[index] || `#${channel(0)}${channel(8)}${channel(4)}`);
+        }
+    }
+    return colors;
+}
+
 export function buildAnnotations(view, theory) {
     if (!view) return [];
     const marketDates = new Set(view.bars.map((b) => b.time));
@@ -907,6 +937,11 @@ export function buildAnnotations(view, theory) {
         const signal = priceMatches.length === 1 ? priceMatches[0] : candidates.length === 1 ? candidates[0] : null;
         if (signal) (signal.executionRiskRejections ||= []).push(rejection);
     }
+    const nColors = positiveNSourceColors(theory?.events, theory?.asof < view.asof ? theory.asof : view.asof);
+    for (const item of knownItems) {
+        if (isPositiveNAnnotation(item))
+            item.color = nColors.get(`${item.time}:${item.raw.n_id || item.id}`) || "#b69af5";
+    }
     return knownItems;
 }
 export function visibleAnnotations(items, options) {
@@ -944,8 +979,13 @@ export function markerGroups(items, options, span = 140) {
     const groups = [];
     const rules = new Map();
     const candidates = new Map();
-    for (const item of visibleAnnotations(items, options)) {
-        if (item.kind === "rule" || item.category === "entry-rejections") {
+    const visible = visibleAnnotations(items, options);
+    const nCounts = new Map();
+    for (const item of visible.filter(isPositiveNAnnotation)) nCounts.set(item.time, (nCounts.get(item.time) || 0) + 1);
+    for (const item of visible) {
+        const independentN =
+            isPositiveNAnnotation(item) && (nCounts.get(item.time) > 1 || (item.color && item.color !== "#b69af5"));
+        if ((item.kind === "rule" && !independentN) || item.category === "entry-rejections") {
             const grouped = item.category === "entry-rejections" ? candidates : rules;
             if (!grouped.has(item.time)) grouped.set(item.time, []);
             grouped.get(item.time).push(item);
@@ -1012,9 +1052,11 @@ export function markerGroups(items, options, span = 140) {
                               : isRule
                                 ? item.category === "diagnostic"
                                     ? "#8292a9"
-                                    : item.raw?.event === "n_completed" && item.side === "down"
-                                      ? "#40d6a3"
-                                      : "#b69af5"
+                                    : item.color
+                                      ? item.color
+                                      : item.raw?.event === "n_completed" && item.side === "down"
+                                        ? "#40d6a3"
+                                        : "#b69af5"
                                 : item.kind === "order"
                                   ? "#8292a9"
                                   : buy
@@ -1031,7 +1073,13 @@ export function markerGroups(items, options, span = 140) {
                             : isRule
                               ? "circle"
                               : "circle",
-                    text: isRule && span > 70 && index % Math.ceil(span / 70) !== 0 ? "" : text,
+                    text:
+                        isRule &&
+                        !(isPositiveNAnnotation(item) && nCounts.get(item.time) > 1) &&
+                        span > 70 &&
+                        index % Math.ceil(span / 70) !== 0
+                            ? ""
+                            : text,
                     size: isFill
                         ? 1.5
                         : isCandidateRejection
@@ -1061,7 +1109,7 @@ export function avoidLabelCollisions(groups, timeToX) {
     }
     for (const g of groups.filter((g) => g.items[0].kind === "fill")) {
         const box = bounds(g);
-        if (box) occupied.push(box);
+        if (box) occupied.push({ box, nTime: null });
     }
     const ranked = groups
         .filter((g) => g.items[0].kind !== "fill")
@@ -1070,8 +1118,16 @@ export function avoidLabelCollisions(groups, timeToX) {
         if (!g.marker.text) continue;
         const box = bounds(g);
         if (!box) continue;
-        if (occupied.some((b) => box[0] < b[1] + 8 && box[1] > b[0] - 8)) g.marker.text = "";
-        else occupied.push(box);
+        const nTime = isPositiveNAnnotation(g.items[0]) ? g.time : null;
+        // 同日独立 N 由 SDK 在 K 线上方纵向排列，两个来源文字可同时保留。
+        if (
+            occupied.some(
+                ({ box: other, nTime: otherTime }) =>
+                    !(nTime && nTime === otherTime) && box[0] < other[1] + 8 && box[1] > other[0] - 8,
+            )
+        )
+            g.marker.text = "";
+        else occupied.push({ box, nTime });
     }
     return groups;
 }

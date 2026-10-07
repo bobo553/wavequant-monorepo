@@ -4,6 +4,48 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-295",
+            "name": "positive-n-source-colors",
+            "title": "同位置正N与目标按来源同色",
+            "description": "同一K线的独立正N分开标识并分配不同颜色，各自测幅目标、文字和原N几何沿用来源色。",
+            "scope": "Web正N标识分组、颜色绑定及目标Canvas显示",
+            "dependencies": ["MONOREPO-289", "MONOREPO-294"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "襄阳2024-08-20两个来源正N分别显示不同颜色，目标4.83/5.52与4.63/5.12各自与来源同色",
+                "悬停、选择、缩放、事件排序及同价目标不串色；失效来源不画，回放不使用未来来源",
+                "一饱、二吐、五顶、十满、买点携带的同源目标、正N顶底与几何共用来源色，透明背景和已触及虚线保留",
+                "相关定向测试、格式/lint/类型/构建与Harness实际通过，完整套件和浏览器按用户节奏不运行"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/positive-n-reformation.test.mjs tests/annotations.test.mjs tests/n-structure-overlay.test.mjs tests/n-target-focus.test.mjs tests/wave-c-chart.test.mjs tests/buy-n-targets.test.mjs tests/bottom-n-targets.test.mjs tests/n-target-source.test.mjs tests/target-level-guides.test.mjs tests/combined-a-chart.test.mjs (Web cwd)",
+                    "status": "passed",
+                    "summary": "148项通过。真实襄阳08-20两来源分别紫色#b69af5（4.83/5.52）和金色#ebbc70（4.63/5.12），SDK输入为2独立标记且宽视窗保留两文字；原实现先复现合并标记与目标/边界颜色不对应。目标线/Canvas文字/原N几何/同日垂线均用来源色；事件逆序、同价、BUY目标明确n_id、无未来、单组失效与同日其他规则均不串色。普通规则原分组、倒N绿点、固定锚点、透明背景、虚线和清理保留。"
+                },
+                {
+                    "command": "pnpm exec vitest run src/features/research-workbench/topology/topology-data.test.ts (Web cwd)",
+                    "status": "passed",
+                    "summary": "最终13项通过，颜色来源说明及88源指纹f35a1b993e41d8e297ca6c37564d7a893d3cc413bc362016dcb198d0a454c312验证通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "最终lint零错误6条既有环境变量warning；单独类型及最终生产构建通过。构建使用命令级512MB/4MB，仅恢复Next已知生成行。纯显示修复，不改Core/API测幅和策略。"
+                },
+                {
+                    "command": "Complete Web suite and browser/Playwright pixel validation",
+                    "status": "not-run",
+                    "summary": "按用户验证节奏未运行完整Web、浏览器或Playwright；SDK输入与受控Canvas验证不等同浏览器像素验收。"
+                },
+                {
+                    "command": "10 related Prettier checks; 3 changed JS syntax; git diff --check; pnpm harness:check; restored Next generation then typecheck; codegraph sync",
+                    "status": "passed",
+                    "summary": "最终10文件格式、3修改JS语法、差异、292功能Harness与恢复生成行后的类型通过；CodeGraph同步7文件。main既有291功能记录逐字段保持，256原始记录完整恢复。无凭据、构建产物或无关文件。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-294",
             "name": "transparent-chart-labels-dashed-touched-targets",
             "title": "已触及目标虚线与图上标签透明",

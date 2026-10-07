@@ -1152,12 +1152,18 @@ export class PriceChart {
             if (level.available_at && level.available_at > asof) continue;
             if (isPositiveNTarget(item) && isNTargetStage(level.stage) && !nTargetLevels(item, asof).includes(level))
                 continue;
+            let nSource = null;
             if (isNTargetStage(level.stage)) {
                 const selectedId = item === this.selected && !isPositiveNTarget(item) ? this.selectedNTargetId() : null;
                 const selectedSource = this.nTargetObservations?.find(
                     ({ item: source }) => source.id === selectedId,
                 )?.item;
                 const sourceId = level.n_id || item.raw?.n_id || selectedSource?.raw?.n_id || selectedId || item.id;
+                nSource = isPositiveNTarget(item)
+                    ? item
+                    : this.nTargetObservations?.find(
+                          ({ item: source }) => source.raw?.n_id === sourceId || source.id === sourceId,
+                      )?.item;
                 const identity = `${sourceId}:${level.stage}:${level.price}`;
                 if (seenN.has(identity)) continue;
                 seenN.add(identity);
@@ -1167,7 +1173,7 @@ export class PriceChart {
                 isPositiveNTarget(item) && isNTargetStage(level.stage)
                     ? nTargetGuide(item, level, this.data.bars, asof)
                     : targetLevelGuide(item, level, this.data.bars, asof);
-            const color = ["#ebbc70", "#a29ce0", "#5ebeb0"][i % 3];
+            const color = nSource ? nSource.color || "#b69af5" : ["#ebbc70", "#a29ce0", "#5ebeb0"][i % 3];
             const s = this.chart.addSeries(L.LineSeries, {
                 color,
                 lineStyle: item.kind === "trend" && !targetStages.has(level.stage) ? 0 : 2,
@@ -1471,11 +1477,16 @@ export class PriceChart {
         this.refreshMarkers();
         this.drawLevels();
         if (!theory || !this.data || !geometry) return;
+        const nShapeColors = new Map(
+            this.annotations
+                .filter((item) => item.raw?.event === "n_completed" && item.side === "up" && item.raw.n_id)
+                .map((item) => [item.raw.n_id, item.color]),
+        );
         const nConnections = selectWaveConnections(
             theory.shapes.flatMap((shape) =>
                 shape.points.slice(1).map((point, index) => ({
                     group: `n:${shape.n_id || `${shape.trend_level || 1}:${shape.direction}`}`,
-                    color: shape.direction === "up" ? "#60cfc3" : "#cba271",
+                    color: shape.direction === "up" ? nShapeColors.get(shape.n_id) || "#60cfc3" : "#cba271",
                     points: [shape.points[index], point],
                 })),
             ),

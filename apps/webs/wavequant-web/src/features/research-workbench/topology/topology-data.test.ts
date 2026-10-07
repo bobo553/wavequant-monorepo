@@ -51,6 +51,13 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("documents independent positive N colors shared by their targets", () => {
+        const note = topologyProfileNotes.find((text) => text.includes("独立正 N 按来源 ID"));
+        expect(note).toMatch(/分开标识.*不同颜色/);
+        expect(note).toMatch(/一饱、二吐、五顶、十满.*目标文字.*对应来源色/);
+        expect(note).toMatch(/同价目标不去重、不串色/);
+        expect(note).toMatch(/已失效来源不显示但保留其色位.*不读取未来/);
+    });
     it("documents dashed touched targets and transparent chart labels", () => {
         const note = topologyProfileNotes.find((text) => text.includes("已触及的 C 目标横线"));
         expect(note).toMatch(/统一用虚线.*长线.*短线样式一致/);
