@@ -1,12 +1,10 @@
-## 2026-10-07 · MONOREPO-282 修复验收完成，待本地合并
+## 2026-10-07 · 待独立验证与原活动恢复
 
-用户明确“先修复然后合并”，不申请既有失败例外。继续C:/Users/zb/.codex/worktrees/bottom-n-target/wavequant-monorepo、feat-底部正N目标；初始实现99ab787，main85f11ab仍干净/常驻V98，补修已实现待提交。282唯一in-progress、256暂backlog且全部旧字段保留。底部首个N冻结四档，局部/跨段N不重开箱，来源文案及有效期全链共用，新华2023-05-16源为05-10底部/05-15确认，一饱7.0756/二吐7.9538，05-18破底终止。
+MONOREPO-282已完成：99ab787/d62b4f8经3c2f564本地no-ff合并，145项定向及类型/构建通过，无本轮未解决失败或豁免。两端8765/13003实际V99、main130源engine7e861ee88d4097866a3044da19f7c2fe5b935c4cf53c90797c4263deee863b8e一致，7实际Web模块相同；实际2018起1302棒新华2023-05-16行情与用户相同，底部05-10/05-15 N，一饱7.0756283354、二吐7.9537733642，05-16跨段N不测四档。TEMP wavequant-bottom-live-proof-2018.json及响应SHA0a84ea64e528442f887be4abe288c8772f6ffee1fbf87191e6f93fb90c638c95，145结果wavequant-repair-all-final.log。没有手工重启/改缓存或推送。
 
-追加修复：C分钟前筛选共用攻击时或同N联合确认来源，只接受昨日仍存活背景，旧价格防守位不触发多余重放；投影在来源退役之后才确认时，不回填过去的失效事件。四条原新华/华瓷正向断言按当前真实结构更新，并保留正规成交/分钟正例；桂林相邻三项同main旧失败已校准局部N与形成中契约。无数据/股票/日期硬编码、未放松交易或目标资格。保留原初5失败/main及桂林3失败/main证据；新增前缀发现的回溯失效已修复。
+仍待独立安排完整Core/Web套件、浏览器/Playwright、全历史/全部参数账户信号/成交差异及真实外部分钟验证；当前实际单股接口样例不等同这些全量项目。日常继续遵守用户的验证节奏，未经当次明确要求不运行浏览器/Playwright或完整Web套件。
 
-最终145项定向全部通过（TEMP wavequant-repair-all-final.log，506.40秒），未skip/xfail；最终Web21Node/10拓扑，初次135Node证据保留。修改三模块mypy、Core严格四文件/API十一文件、Core最终包及七模块字节、Web最终lint（六旧warning）/类型/构建通过。80唯一源码指纹c3d944ed005abb8690b8a94f5811b4ce9a38e4f3d6b2a3e8ac30fac17a32ee83，CodeGraph sync8文件通过；next-env已知生成行已恢复。完整套件、浏览器/Playwright、完整账户差异、真实外部分钟未运行。
-
-下一步：最终Harness/格式和diff复核，提交补修、同步最新main/no-ff本地合并，核对8765/13003 V99和实际用户日期目标来源，再更新282为done并恢复256唯一in-progress、提交合并验收记录。不推送、创建PR或手工改缓存/重启；不得再次询问已明确授权的本地合并。
+282已done，MONOREPO-256恢复唯一in-progress且所有字段与原main85f11ab逐项相等，原失败证据保留。继续使用同会话feat-底部正N目标及C:/Users/zb/.codex/worktrees/bottom-n-target/wavequant-monorepo，后续工作先同步最新main；本次代码和服务交付已结束。
 
 MONOREPO-281常驻验收：bfbe9d1经7b37419本地no-ff合并，分支已同步main；两端口8765/13003自动加载V98、engine a28bd5b5a36e与main源码指纹一致。实际13003 AkShare理论HTTP返回12-30高7.29→01-13低5.51（01-21可知），无01-07一级点。main9拓扑与Harness通过；未手工重启、改缓存或推送，两个检出干净。旧页面刷新并重新计算历史；完整账户差异、完整套件及浏览器待独立验证。
 
