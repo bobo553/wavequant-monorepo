@@ -214,6 +214,30 @@ test("fixed N labels center over the N candle and stay on the edge without false
     }
 });
 
+test("fixed C labels center above B and disappear when B leaves the pane without relocating", () => {
+    const guide = {
+        start: item.time,
+        end: "2026-05-20",
+        price: 11.4,
+        name: "C 浪目标 1×A",
+        stage: "c_equal",
+        color: "#a29ce0",
+        fixedAnchor: true,
+        labelPosition: "center",
+        hideWhenAnchorOffscreen: true,
+    };
+    for (const x of [240, 300, 400]) {
+        const centered = renderGuides([guide], { x });
+        assert.equal(centered.labels.length, 1);
+        assert.equal(centered.labels[0].x + centered.labels[0].width / 2, x);
+    }
+    for (const x of [-200, -0.1, 600.1, 800]) {
+        const hidden = renderGuides([guide], { x, endX: 400 });
+        assert.equal(hidden.labels.length, 0);
+        assert.equal(hidden.segments.length, 0);
+    }
+});
+
 test("reached and pending target labels sit to the left of their line starts without redrawing long lines", () => {
     const { labels, segments } = renderGuides(
         [

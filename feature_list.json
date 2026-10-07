@@ -20,9 +20,9 @@
             ],
             "verification": [
                 {
-                    "command": "pnpm --filter wavequant-web exec node --test tests/chart-tooltip.test.mjs tests/candle-details.test.mjs tests/chart-series-lifecycle.test.mjs tests/wave-c-chart.test.mjs tests/chart-keyboard-navigation.test.mjs",
+                    "command": "pnpm --filter wavequant-web exec node --test tests/chart-tooltip.test.mjs tests/candle-details.test.mjs tests/chart-series-lifecycle.test.mjs tests/wave-c-chart.test.mjs tests/chart-keyboard-navigation.test.mjs tests/target-level-guides.test.mjs",
                     "status": "passed",
-                    "summary": "初版78项通过，含8项新增提示框回归；随后还将同步最新main并复验受影响项。旧实现稳定复现右边缘回挤和底部限位两条失败，修改后通过。覆盖实际PriceChart/SDK入口、图外定位、页面边缘翻转、390px、复制/文字选择/同K线位置稳定、原生顶层API契约及保留DOM主题、旧浏览器脱离卡片包含块、滚动/resize/Escape/换数据/销毁。最后8项复验增加visualViewport偏移和缩放事件关闭，全部通过。受控DOM尺寸与Popover替身证明定位和生命周期，不冒充浏览器像素验收。"
+                    "summary": "初版78项通过；同步main08077ab的C目标固定B位置后最终96项全部通过，含8项新增提示框回归。旧实现稳定复现右边缘回挤和底部限位两条失败，修改后通过。覆盖实际PriceChart/SDK入口、图外定位、页面边缘翻转、390px、复制/文字选择/同K线位置稳定、原生顶层API契约及保留DOM主题、旧浏览器脱离卡片包含块、滚动/resize/Escape/换数据/销毁和visualViewport偏移及缩放事件关闭。原C目标/N/ABC与方向键回归保持。受控DOM尺寸与Popover替身证明定位和生命周期，不冒充浏览器像素验收。"
                 },
                 {
                     "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck",
@@ -32,7 +32,12 @@
                 {
                     "command": "pnpm --filter wavequant-web run prebuild; exact E-drive source snapshot: pnpm --filter wavequant-web exec next build --webpack",
                     "status": "passed",
-                    "summary": "复用既有E盘依赖及同会话构建副本，1075个源码/记录文件同步，三个修改产品文件SHA逐项一致；Webpack生产编译、构建内类型、5页静态导出通过。无新增依赖、锁文件或产品构建配置变化，不在C盘补装Node依赖。"
+                    "summary": "复用既有E盘依赖及同会话构建副本，源码/记录文件同步；同步最新main后五个相关产品文件SHA逐项一致，最终Webpack生产编译、构建内类型、5页静态导出通过。无新增依赖、锁文件或产品构建配置变化，不在C盘补装Node依赖。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec vitest run src/features/research-workbench/topology/topology-data.test.ts",
+                    "status": "passed",
+                    "summary": "同步main后11项通过。首轮10通过、1指纹失败，因charts.js新增提示框浮层接入；复核策略路径未改变，仅更新源码指纹9335afbc，原C目标固定B日期说明与门槛完整保留。重新运行原检查全部通过，无豁免。"
                 },
                 {
                     "command": "targeted Prettier; node --check public/chart-tooltip.js and public/charts.js; git diff --check",
@@ -43,6 +48,53 @@
                     "command": "Complete Web suite and real browser/Playwright visual verification",
                     "status": "not-run",
                     "summary": "按用户开发验证节奏未运行完整Web套件或浏览器/Playwright；真实桌面/窄屏裁剪、顶层绘制、主题和指针跨卡片的像素交互仍待独立视觉验证。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-292",
+            "name": "c-wave-target-fixed-b-anchor",
+            "title": "C浪目标标识固定B浪低点上方",
+            "description": "C目标标签固定对应B低日期，不随光标或可见区重定位，B离开视口时不把标识挪到边缘。",
+            "scope": "Web C目标显示锚点与Canvas裁切，保留测幅/可知日期和策略逻辑",
+            "dependencies": ["MONOREPO-291"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "襄阳2026-08-25 B低8.21的C目标10.18142/11.40横向居中于B日期，悬停/选择不会改变锚点",
+                "所有C目标档位使用各自B日期，滚动缩放后跟随该K线坐标；B不在视口时不搬移到可见区",
+                "目标价格、原结构锚点、首次触及/可知日期、A失效和独立来源保持",
+                "定向测试/格式/lint/类型/必要构建及Harness实际通过；不运行浏览器或完整套件"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/wave-c-chart.test.mjs tests/target-level-guides.test.mjs tests/c-wave-extension.test.mjs tests/positive-n-reformation.test.mjs tests/combined-a-chart.test.mjs (Web cwd)",
+                    "status": "passed",
+                    "summary": "95项通过。新增2条用例先在原实现复现移动与边缘搬移，修改后通过；另有成交1.618目标显示绑定B但保留较晚发布锚点。真实襄阳08-25 B低8.21的10.18142/11.40目标在08-26、09-01、09-03悬停及选择/缩放均固定B。移出/移回、边缘/小数边界、N原提示、等浪触及和1.618可知时点、组合参考、相邻源保留；旧跟随光标/可见区断言按新需求改为固定B，原价格/时点和视口断言仍验证。"
+                },
+                {
+                    "command": "pnpm exec vitest run src/features/research-workbench/topology/topology-data.test.ts (Web cwd)",
+                    "status": "passed",
+                    "summary": "11项通过，新增固定B显示说明及将Canvas目标模块纳入88源码指纹be7fdf3776ba492cd6a0ce0668856cb1bf50cb9136130d288068a241999ff360。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "lint0错误6条既有环境变量warning，类型和最终生产构建通过。只恢复Next构建生成的已知next-env行；未改Core/API策略或提高C目标。"
+                },
+                {
+                    "command": "Complete Web suite, browser/Playwright and Core strategy tests",
+                    "status": "not-run",
+                    "summary": "按用户验证节奏未运行完整套件或浏览器/Playwright；纯Web显示调整没有改Core，未重复策略回归。SDK与Canvas受控验证不等同浏览器像素验收。"
+                },
+                {
+                    "command": "related Prettier checks and JS syntax; git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "9个变更文件格式、两修改JS语法及差异通过，Harness289功能通过，256原记录完整恢复。"
+                },
+                {
+                    "command": "main no-ff 08077ab; live 3003 two modified modules byte match; captured actual TDX response -> current main SDK and Canvas",
+                    "status": "passed",
+                    "summary": "83b1060经08077ab本地no-ff合并，main Harness通过。实际3003的charts.js与target-level-guides.js HTTP200逐字匹配main，revision08077ab。既有实际70日线TDX响应经当前main消费，08-25 B低8.21的10.18142/11.40在08-26、09-01、09-03悬停时Canvas文字中心均为同一B坐标200px；B移出隐藏、移回恢复通过。未使用浏览器，Core/API策略仍V102，未推送。"
                 }
             ]
         },

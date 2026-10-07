@@ -84,6 +84,7 @@ export class TargetGuideOverlay {
             context.textBaseline = "bottom";
             context.textAlign = "left";
             const visible = this.projected
+                .filter((guide) => !guide.hideWhenAnchorOffscreen || (guide.x >= 0 && guide.x <= mediaSize.width))
                 .map((guide) => {
                     const offscreen = guide.y < 4 || guide.y > mediaSize.height - 4;
                     const offscreenX = guide.fixedAnchor && (guide.x < 0 || guide.x > mediaSize.width);

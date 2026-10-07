@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { strategySourceDigest, topologyFlows } from "./topology-data";
+import { strategySourceDigest, topologyFlows, topologyProfileNotes } from "./topology-data";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../../../..");
 const strategyDirectories = [
@@ -35,6 +35,7 @@ const additionalSources = [
     "apps/webs/wavequant-web/public/n-target-focus.js",
     "apps/webs/wavequant-web/public/n-structure-overlay.js",
     "apps/webs/wavequant-web/public/charts.js",
+    "apps/webs/wavequant-web/public/target-level-guides.js",
     "apps/webs/wavequant-web/public/buy-n-targets.js",
     "apps/webs/wavequant-web/public/annotations.js",
 ];
@@ -50,6 +51,13 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("documents fixed B-date labels without changing C target timing", () => {
+        const note = topologyProfileNotes.find((text) => text.includes("C 浪目标标识"));
+        expect(note).toMatch(/固定.*B 低点日期上方/);
+        expect(note).toMatch(/0\.618.*等浪.*1\.618/);
+        expect(note).toMatch(/离开图窗.*隐藏.*移回.*恢复原位置/);
+        expect(note).toMatch(/可知日.*首次触及.*保持原规则/);
+    });
     it("qualifies the decline-floor launch and independent defense reformations", () => {
         const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "bottom-n-target-source");
         expect(gate?.detail).toMatch(/一饱、二吐、五顶、十满.*底部启动资格/);
