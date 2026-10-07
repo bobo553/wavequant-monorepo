@@ -37,6 +37,64 @@
                     "command": "Complete Web suite and browser/Playwright pixel validation",
                     "status": "not-run",
                     "summary": "依用户验证节奏未运行完整Web、浏览器或Playwright；Canvas与SDK输入断言不等同于浏览器像素验收。"
+                },
+                {
+                    "command": "Sync latest main 2732507; 122 focused Node tests including chart-tooltip; 12 topology tests; final Web lint/typecheck/build and Prettier/Harness/diff",
+                    "status": "passed",
+                    "summary": "保留提示框293和标签294两独立记录，解决进度/状态/源码摘要并发冲突；最终122 Node和12拓扑、lint零错误6旧warning及生产构建通过。88源合并后指纹82a20cb6233cc271883e5b4c046125f170221d7c86efbf675ced3130618b77e6。原main其他功能记录完整保留，256原记录不变；恢复生成行后类型、9文件格式、291功能Harness与差异检查均通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-293",
+            "name": "candle-tooltip-outside-chart",
+            "title": "K线提示框允许超出图窗",
+            "description": "K线提示框按页面视口定位并脱离图表裁剪，边缘K线不再因图窗内限位被提示框覆盖。",
+            "scope": "Web K线提示框浮层、定位、复制与生命周期定向回归",
+            "dependencies": ["MONOREPO-095", "MONOREPO-121"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "光标靠近图窗右侧且页面有空间时，提示框可以跨越图窗边界显示在光标右侧",
+                "提示框不受图表卡片裁剪或层叠限制，主题、行情、标注、复制和文字选择保持有效",
+                "靠近页面边缘时翻转或限位，窄屏和长内容不产生页面横向滚动",
+                "移出、滚动、尺寸变化、切换数据和销毁时清理浮层及监听器",
+                "相关定向测试、格式、lint、类型、必要构建和Harness通过；未运行的视觉验证如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web exec node --test tests/chart-tooltip.test.mjs tests/candle-details.test.mjs tests/chart-series-lifecycle.test.mjs tests/wave-c-chart.test.mjs tests/chart-keyboard-navigation.test.mjs tests/target-level-guides.test.mjs",
+                    "status": "passed",
+                    "summary": "初版78项通过；同步main08077ab的C目标固定B位置后最终96项全部通过，含8项新增提示框回归。旧实现稳定复现右边缘回挤和底部限位两条失败，修改后通过。覆盖实际PriceChart/SDK入口、图外定位、页面边缘翻转、390px、复制/文字选择/同K线位置稳定、原生顶层API契约及保留DOM主题、旧浏览器脱离卡片包含块、滚动/resize/Escape/换数据/销毁和visualViewport偏移及缩放事件关闭。原C目标/N/ABC与方向键回归保持。受控DOM尺寸与Popover替身证明定位和生命周期，不冒充浏览器像素验收。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck",
+                    "status": "passed",
+                    "summary": "ESLint零错误、6条既有环境变量警告，TypeScript通过；Node24.16.0和pnpm10.26.2，仅命令级512MB堆/4MB新生代。public JS及Node测试沿用既有lint忽略，另运行语法和格式检查。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web run prebuild; exact E-drive source snapshot: pnpm --filter wavequant-web exec next build --webpack",
+                    "status": "passed",
+                    "summary": "复用既有E盘依赖及同会话构建副本，源码/记录文件同步；同步最新main后五个相关产品文件SHA逐项一致，最终Webpack生产编译、构建内类型、5页静态导出通过。无新增依赖、锁文件或产品构建配置变化，不在C盘补装Node依赖。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec vitest run src/features/research-workbench/topology/topology-data.test.ts",
+                    "status": "passed",
+                    "summary": "同步main后11项通过。首轮10通过、1指纹失败，因charts.js新增提示框浮层接入；复核策略路径未改变，仅更新源码指纹9335afbc，原C目标固定B日期说明与门槛完整保留。重新运行原检查全部通过，无豁免。"
+                },
+                {
+                    "command": "targeted Prettier; node --check public/chart-tooltip.js and public/charts.js; git diff --check",
+                    "status": "passed",
+                    "summary": "提示框模块、接入代码、样式、新测试及功能记录的格式和JS语法通过，最终差异无空白错误。"
+                },
+                {
+                    "command": "main HTTP GET :3003/charts.js, /chart-tooltip.js, /styles.css and /research; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "实现abbf056及同步0cec521经9b29245本地no-ff合并。期间main dde1911仅新增C目标验收记录，产品源码保持相同；所有原功能记录保留。常驻3003三个修改产品文件均HTTP200且原始字节SHA与main逐项一致，research HTTP200，main Harness通过。分支同步最新main，未推送；HTTP文件验收不代表浏览器像素验证。"
+                },
+                {
+                    "command": "Complete Web suite and real browser/Playwright visual verification",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏未运行完整Web套件或浏览器/Playwright；真实桌面/窄屏裁剪、顶层绘制、主题和指针跨卡片的像素交互仍待独立视觉验证。"
                 }
             ]
         },
