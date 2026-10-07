@@ -4,7 +4,7 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
-            "id": "MONOREPO-290",
+            "id": "MONOREPO-291",
             "name": "one-p-confirmed-a-wave-lifecycle",
             "title": "一饱突破确认A与独立C生命周期",
             "description": "合格正N突破一饱立即确认可延伸A，达到二吐升级强势；原点严格跌破永久失效且原组无后续C。",
@@ -58,6 +58,53 @@
                     "command": "related Prettier checks and JS syntax; git diff --check; pnpm harness:check",
                     "status": "passed",
                     "summary": "18个变更格式文件及修改JS语法/差异通过；Harness 287功能、18 Node/2 Python workspace通过，256原记录与main逐项相等。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-290",
+            "name": "hierarchical-countertrend-dash-gate",
+            "title": "四端趋势反向虚线按整段扭转生成",
+            "description": "已确认二三级趋势极值之后，无同级新破位及下一级整段趋势扭转时不画反向虚线；局部高低点下降不算扭转。",
+            "scope": "Core共享发展路径证据门禁、全局规则及真实襄阳行情回归",
+            "dependencies": ["MONOREPO-288"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "襄阳轴承2025-05-15到2026-04-08三级趋势没有多余反向虚线，当前完整历史也不补回；3.45到19.63已确认实线保持",
+                "冻结极值之前最后已知下一级末升低或末跌高，实际严格破位才确认下一级整段扭转；局部两高两低反向不算，相等、未知与跨路径不启用",
+                "同级市场严格突破继续立即确认实线，不提前冻结极值、升级正式拐点或修改策略输入",
+                "定向回归、类型、构建和Harness实际通过，未执行检查如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "Final Core pytest countertrend/confirmation and secondary/tertiary/landmarks/alternation/chart-history/hierarchical-entry/N regressions",
+                    "status": "passed",
+                    "summary": "最终35+69共104项及21子用例通过。2089根固定真实原始日线，05-15..09-07共323交易日截面始终保留03-11确认与05-15高19.63，无反向三级虚线。新增正反对称场景证明局部两高两低下降仍守冻结6/14关键位，严格破位才启用虚线；源级先破、同级直接破、触碰、未知键/起点、未确认、断点及首次日期覆盖。"
+                },
+                {
+                    "command": "Latest full-history regression following initial April8-only acceptance",
+                    "status": "passed",
+                    "summary": "初版fab8972曾只验证截至04-08，补查当前完整图发现局部四端下降在04-15生成反向证明、07-27又补回04-08高点，故继续修正。最终使用极值前二级末升低01-13低5.51，后续11.22和14.44局部下降不等于整段扭转，323个前缀含后续确认日均通过。初次更新四条合成断言把01-11破位误写01-12已纠正，最终无未解决失败或豁免。"
+                },
+                {
+                    "command": "Web 28 Canvas tests; final 10 topology tests; Web lint/typecheck; changed-module mypy and turbo lint/typecheck --only",
+                    "status": "passed",
+                    "summary": "原28渲染器能力回归保留；最终10拓扑、85源b0f3720ec6752ee673eca5be33e370172915bf7b46d000a5f8b5306afb1dd353、新模块strict及3修改模块按Core配置、20/20静态目标通过，含Core4/API11严格类型与Web零错误6旧warning。API用D盘独立本分支editable环境，无类型忽略或源码豁免。"
+                },
+                {
+                    "command": "Final Core sdist/wheel, 4 module byte checks, clean D-drive wheel source-key smoke; exact-source E-drive Next build --webpack",
+                    "status": "passed",
+                    "summary": "最终Core包、4模块字节核对与干净wheel冻结键/首次严格破位烟测通过；并行原生进程一次异常后串行原构建通过。Web最新精确源码副本生产构建通过。首次C盘Node安装不足中止，复用E盘既有依赖；未继续安装Node包到C盘，未改产品构建配置。"
+                },
+                {
+                    "command": "Initial local main merge and April8-only HTTP acceptance (fab8972/b8e8a45)",
+                    "status": "passed",
+                    "summary": "阶段验收保留：04-08截面两源均只有3.45到19.63实线、0反向虚线，TTX三层正式点不变，Web代理与Canvas一致。原服务停止后既有NoBrowser脚本恢复PID29752、3003/8765。此记录不代表当前完整图最终验收；最终门槛修正后另行核查完整图。"
+                },
+                {
+                    "command": "Complete Core/Web suites, browser/Playwright and full account comparison",
+                    "status": "not-run",
+                    "summary": "按本轮验证节奏未运行完整套件、浏览器或完整账户差异；正式拐点与策略输入未修改，纯显示门禁另有完整行情及定向证据。"
                 }
             ]
         },
