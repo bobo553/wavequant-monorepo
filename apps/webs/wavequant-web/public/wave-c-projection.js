@@ -14,7 +14,7 @@ export function waveCProjection(bars, events, selectedTime) {
     if (!Number.isFinite(highBar.high)) return null;
 
     for (const event of [...(events || [])].reverse()) {
-        if (!isBottomNTargetSource(event)) continue;
+        if (!isBottomNTargetSource(event, undefined, selectedTime)) continue;
         const attackIndex = bars.findIndex((bar) => bar.time === event.time);
         const originIndex = bars.findIndex((bar) => bar.time === event.shape?.[0]?.time);
         const origin = event.shape?.[0]?.value;

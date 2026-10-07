@@ -38,6 +38,7 @@ test("Core and Web share inclusive one-P and two-T classification boundaries", (
 for (const ordinary of [false, true]) {
     test(`${ordinary ? "ordinary" : "strong"} parent A survives the long B below squeeze defense`, () => {
         const theory = theoryForClass(ordinary);
+        theory.events[0].n_invalidated_at = "2024-04-16";
         const projection = findParent(bars, theory);
         assert.equal(projection.aAttackClass, ordinary ? "non_strong" : "strong");
         assert.equal(projection.bTime, "2024-08-28");
@@ -82,6 +83,14 @@ for (const ordinary of [false, true]) {
     });
 }
 
+test("an N already invalid at the A high cannot supply a new parent measurement", () => {
+    for (const ordinary of [false, true]) {
+        const theory = theoryForClass(ordinary);
+        theory.events[0].n_invalidated_at = "2024-03-25";
+        assert.equal(findParent(bars, theory), undefined);
+    }
+});
+
 test("parent one-P equality is ordinary and a high below one-P is unclassified", () => {
     const theory = theoryForClass(true);
     const oneP = theory.events[0].levels.find((level) => level.stage === "one_p");
@@ -110,7 +119,9 @@ test("manual selection does not revive an old A after an origin loss during C", 
         shape: [{ time: "2024-01-01", value: 8 }],
         levels: [{ stage: "one_p", price: 12 }],
     };
+    event.n_invalidated_at = "2024-01-04";
     assert.equal(waveCProjection(data.slice(0, 5), [event], "2024-01-03")?.bLow, 8.5);
+    assert.equal(waveCProjection(data.slice(0, 5), [{ ...event, n_invalidated_at: "2024-01-03" }], "2024-01-03"), null);
     assert.equal(waveCProjection(data, [event], "2024-01-03"), null);
     data.push({ time: "2024-01-07", high: 20, low: 10, close: 19 });
     assert.equal(waveCProjection(data, [event], "2024-01-03"), null);

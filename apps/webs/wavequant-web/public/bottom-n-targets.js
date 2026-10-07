@@ -4,10 +4,14 @@ export function isActivePositiveN(event, asof) {
 }
 
 export function isBottomNTargetSource(event, theory, asof = theory?.asof) {
+    return isQualifiedNTargetSource(event, theory) && isActivePositiveN(event, asof);
+}
+
+/** 历史资格保留给已经形成的父 A/B；当前 N 的存活另按截面判断。 */
+export function isQualifiedNTargetSource(event, theory) {
     return (
         event?.event === "n_completed" &&
         event.direction === "up" &&
-        isActivePositiveN(event, asof) &&
         event.target_eligible !== false &&
         (!theory?.n_target_policy || event.target_eligible === true)
     );

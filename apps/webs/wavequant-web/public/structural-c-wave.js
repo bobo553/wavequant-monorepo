@@ -1,5 +1,5 @@
 import { classifyAAttack } from "./a-wave-rules.js";
-import { isBottomNTargetSource } from "./bottom-n-targets.js";
+import { isActivePositiveN, isQualifiedNTargetSource } from "./bottom-n-targets.js";
 import { confirmedCWaveProjection, knownWavePoint, maximumWaveHigh } from "./confirmed-c-wave.js";
 
 /** 已确认父 A 的起点独立于内部正 N；一级小回调不会提前截断整段 B。 */
@@ -9,7 +9,7 @@ export function structuralCWaveProjections(bars, theory) {
     const byTime = new Map(visible.map((bar) => [bar.time, bar]));
     const observations = new Map();
     const events = [...(theory?.events || [])]
-        .filter((event) => isBottomNTargetSource(event, theory))
+        .filter((event) => isQualifiedNTargetSource(event, theory))
         .sort((left, right) => (left.time || "").localeCompare(right.time || ""));
     for (const parent of theory?.secondary_trends?.strokes || []) {
         for (const origin of parent.points || []) {
@@ -46,6 +46,7 @@ export function structuralCWaveProjections(bars, theory) {
                     candidate.time < a.time &&
                     candidate.time <= candidate.available_at &&
                     candidate.available_at <= a.time &&
+                    isActivePositiveN(candidate, a.time) &&
                     Number.isFinite(byTime.get(candidate.time)?.high) &&
                     Number.isFinite(oneP) &&
                     Number.isFinite(twoT) &&
