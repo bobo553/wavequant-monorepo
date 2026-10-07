@@ -91,7 +91,9 @@ def test_ordinary_rebound_requires_target_defense_and_known_close_break():
     assert proof["wave_entry_two_t_date"] == ""
     assert "wave_c_1618_target" not in proof
     assert wave_gap_entry(bars, setup, 7, pivots=[replace(pivot, confirmed_index=7)]) is None
-    for change in [{"close": 18}, {"low": 11.9}, {"open": 18.1}, {"close": 16.5}]:
+    below_n_defense = bars[:-1] + [replace(bars[-1], low=11.9)]
+    assert wave_gap_entry(below_n_defense, setup, 7, pivots=[pivot])["wave_b_low"] == 11.9
+    for change in [{"close": 18}, {"low": 9.99}, {"open": 18.1}, {"close": 16.5}]:
         altered = bars[:-1] + [replace(bars[-1], **change)]
         assert wave_gap_entry(altered, setup, 7, pivots=[pivot]) is None
     below = replace(setup, box_anchor=16, two_t=28)

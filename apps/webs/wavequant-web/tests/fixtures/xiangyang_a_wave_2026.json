@@ -1,0 +1,1328 @@
+{
+    "bars": [
+        ["2026-06-01", 11.44, 11.84, 11.37, 11.65, 8836394],
+        ["2026-06-02", 11.75, 12.16, 11.7, 12.16, 17978772],
+        ["2026-06-03", 12.02, 12.24, 11.79, 11.92, 14569612],
+        ["2026-06-04", 11.81, 11.95, 11.52, 11.68, 10982950],
+        ["2026-06-05", 11.58, 12.12, 11.32, 11.83, 15457220],
+        ["2026-06-08", 11.36, 11.77, 11.36, 11.48, 10254110],
+        ["2026-06-09", 11.8, 11.8, 11.45, 11.6, 9124763],
+        ["2026-06-10", 11.45, 11.55, 11.36, 11.38, 8061045],
+        ["2026-06-11", 11, 11.14, 10.24, 10.24, 16758030],
+        ["2026-06-12", 10.17, 10.29, 9.49, 9.78, 19974964],
+        ["2026-06-15", 9.8, 9.95, 9.68, 9.87, 11721178],
+        ["2026-06-16", 9.85, 10.35, 9.54, 10.05, 17595475],
+        ["2026-06-17", 9.93, 9.93, 9.61, 9.64, 12180621],
+        ["2026-06-18", 9.55, 10, 9.41, 9.72, 15133834],
+        ["2026-06-22", 9.62, 9.64, 8.75, 8.97, 26733915],
+        ["2026-06-23", 8.81, 9.35, 8.7, 9.23, 22519866],
+        ["2026-06-24", 9.24, 9.29, 8.81, 8.95, 14141622],
+        ["2026-06-25", 8.94, 8.98, 8.54, 8.72, 17182783],
+        ["2026-06-26", 8.64, 8.64, 8.34, 8.35, 13791984],
+        ["2026-06-29", 8.35, 8.41, 8.05, 8.35, 13076100],
+        ["2026-06-30", 8.31, 8.55, 8.26, 8.5, 11439359],
+        ["2026-07-01", 8.55, 9.13, 8.5, 8.94, 20145223],
+        ["2026-07-02", 8.95, 9.36, 8.88, 8.98, 17391267],
+        ["2026-07-03", 9.09, 9.83, 9.05, 9.59, 33833311],
+        ["2026-07-06", 9.5, 9.5, 8.96, 8.98, 22978401],
+        ["2026-07-07", 9.01, 9.23, 8.53, 8.54, 14363209],
+        ["2026-07-08", 8.53, 8.53, 8.25, 8.26, 11303535],
+        ["2026-07-09", 8.18, 8.29, 7.89, 8.09, 12264630],
+        ["2026-07-10", 8.05, 8.69, 7.99, 8.47, 18056763],
+        ["2026-07-13", 8.43, 8.44, 7.91, 7.94, 12887000],
+        ["2026-07-14", 7.93, 8.04, 7.76, 8.02, 9214887],
+        ["2026-07-15", 7.96, 8.27, 7.92, 8.1, 9510800],
+        ["2026-07-16", 8.02, 8.39, 8, 8.3, 13234025],
+        ["2026-07-17", 8.28, 8.4, 7.75, 7.87, 12535325],
+        ["2026-07-20", 7.87, 8.1, 7.6, 7.69, 11959696],
+        ["2026-07-21", 7.94, 7.94, 7.32, 7.75, 13674649],
+        ["2026-07-22", 7.68, 7.74, 7.55, 7.66, 8320700],
+        ["2026-07-23", 7.63, 7.9, 7.56, 7.87, 10007811],
+        ["2026-07-24", 7.86, 7.86, 7.65, 7.66, 6359727],
+        ["2026-07-27", 7.61, 7.96, 7.59, 7.94, 9084819],
+        ["2026-07-28", 7.89, 8.08, 7.85, 7.96, 6570820],
+        ["2026-07-29", 7.9, 8.15, 7.9, 8.1, 8612017],
+        ["2026-07-30", 8.07, 8.25, 8, 8.11, 8983893],
+        ["2026-07-31", 8.19, 8.5, 8.19, 8.45, 12876091],
+        ["2026-08-03", 8.62, 9.04, 8.48, 8.88, 18664696],
+        ["2026-08-04", 8.83, 8.97, 8.7, 8.89, 14039900],
+        ["2026-08-05", 8.97, 9.06, 8.84, 9.02, 12900700],
+        ["2026-08-06", 8.98, 9.16, 8.81, 8.94, 11577546],
+        ["2026-08-07", 9, 9, 8.65, 8.82, 10029050],
+        ["2026-08-10", 8.88, 8.98, 8.65, 8.96, 8115054],
+        ["2026-08-11", 8.99, 9.11, 8.78, 9.05, 11163216],
+        ["2026-08-12", 9.05, 9.27, 8.96, 9.19, 11973116],
+        ["2026-08-13", 9.18, 9.26, 9, 9.01, 8803941],
+        ["2026-08-14", 9.01, 9.05, 8.85, 8.94, 6612400],
+        ["2026-08-17", 8.91, 9.83, 8.83, 9.55, 50493555],
+        ["2026-08-18", 9.56, 10.51, 9.25, 10.51, 45928767],
+        ["2026-08-19", 10.19, 10.3, 9.46, 9.46, 31574460],
+        ["2026-08-20", 9.08, 9.08, 8.51, 8.58, 43431699],
+        ["2026-08-21", 8.56, 8.69, 8.32, 8.61, 23768237],
+        ["2026-08-24", 8.67, 8.77, 8.26, 8.32, 16392211],
+        ["2026-08-25", 8.27, 8.85, 8.21, 8.65, 24224725],
+        ["2026-08-26", 8.66, 8.97, 8.58, 8.77, 19313734],
+        ["2026-08-27", 8.66, 9.04, 8.63, 8.98, 15972472],
+        ["2026-08-28", 9, 9.04, 8.83, 8.86, 10761401],
+        ["2026-08-31", 8.85, 9.07, 8.79, 9.05, 11048300],
+        ["2026-09-01", 9.03, 9.19, 9, 9.14, 9454600],
+        ["2026-09-02", 9.06, 9.31, 9.03, 9.24, 12049446],
+        ["2026-09-03", 9.25, 9.54, 9.24, 9.34, 18406964],
+        ["2026-09-04", 9.5, 9.59, 9.18, 9.22, 16201125],
+        ["2026-09-07", 9.25, 9.42, 9.17, 9.37, 8945300]
+    ],
+    "theory": {
+        "lecture_drawing": {
+            "strokes": []
+        },
+        "reversal_trends": {
+            "strokes": []
+        },
+        "secondary_trends": {
+            "strokes": []
+        },
+        "tertiary_trends": {
+            "strokes": []
+        },
+        "asof": "2026-09-07",
+        "n_target_policy": "decline_floor_n_with_independent_defense_reformations_v2",
+        "a_wave_policy": "one_p_break_confirmed_a_origin_lifetime_v1",
+        "events": [
+            {
+                "timestamp": "2026-06-11T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 8,
+                "event": "n_completed",
+                "direction": "down",
+                "origin": 4,
+                "neckline": 5,
+                "pullback": 6,
+                "known_at": 7,
+                "defense": 11.38,
+                "counter_ratio": 0.5789473684210527,
+                "n_level": 0,
+                "box_anchor": 10.24,
+                "one_p": 8.36,
+                "two_t": 6.48,
+                "id": "rule-2",
+                "available_at": "2026-06-11",
+                "time": "2026-06-11",
+                "price": 10.24,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 11.36
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 11.48
+                    },
+                    {
+                        "name": "杀多高",
+                        "price": 11.38
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 11.04
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 8.36
+                    },
+                    {
+                        "name": "2T 投影",
+                        "price": 6.48
+                    }
+                ],
+                "shape": [
+                    {
+                        "time": "2026-06-05",
+                        "value": 12.12
+                    },
+                    {
+                        "time": "2026-06-08",
+                        "value": 11.36
+                    },
+                    {
+                        "time": "2026-06-09",
+                        "value": 11.8
+                    },
+                    {
+                        "time": "2026-06-11",
+                        "value": 10.24
+                    }
+                ]
+            },
+            {
+                "timestamp": "2026-06-16T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 11,
+                "event": "n_completed",
+                "direction": "up",
+                "origin": 9,
+                "neckline": 10,
+                "pullback": 11,
+                "known_at": 11,
+                "defense": 9.54,
+                "counter_ratio": 0.8913043478260869,
+                "n_level": 0,
+                "box_anchor": 10.35,
+                "one_p": 11.21,
+                "two_t": 12.07,
+                "outside_close_confirmed": true,
+                "target_eligible": true,
+                "target_source_attack": 11,
+                "target_decline_index": 2,
+                "target_bottom_index": 9,
+                "target_qualification_reason": "first_n_at_decline_floor",
+                "target_primary": true,
+                "n_id": "up:9:10:11:11",
+                "target_source_id": "up:9:10:11:11",
+                "id": "n:up:9:10:11:11",
+                "available_at": "2026-06-16",
+                "time": "2026-06-16",
+                "price": 10.05,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 9.95
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 9.87
+                    },
+                    {
+                        "name": "轧空低",
+                        "price": 9.54
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 10.0
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 11.21,
+                        "stage": "one_p",
+                        "display_name": "一饱（正 N）",
+                        "anchor_at": "2026-06-16",
+                        "available_at": "2026-06-16",
+                        "valid_until": "2026-06-17"
+                    },
+                    {
+                        "name": "2T 投影",
+                        "price": 12.07,
+                        "stage": "two_t",
+                        "display_name": "二吐（正 N）",
+                        "anchor_at": "2026-06-16",
+                        "available_at": "2026-06-16",
+                        "valid_until": "2026-06-17"
+                    }
+                ],
+                "n_invalidated_at": "2026-06-18",
+                "n_invalidation_reason": "origin_broken",
+                "shape": [
+                    {
+                        "time": "2026-06-12",
+                        "value": 9.49
+                    },
+                    {
+                        "time": "2026-06-15",
+                        "value": 9.95
+                    },
+                    {
+                        "time": "2026-06-16",
+                        "value": 9.54
+                    },
+                    {
+                        "time": "2026-06-16",
+                        "value": 10.35
+                    }
+                ],
+                "target_decline_date": "2026-06-03",
+                "target_bottom_date": "2026-06-12",
+                "target_source_date": "2026-06-16"
+            },
+            {
+                "timestamp": "2026-06-18T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 13,
+                "event": "n_completed",
+                "direction": "down",
+                "origin": 2,
+                "neckline": 9,
+                "pullback": 11,
+                "known_at": 12,
+                "defense": 10,
+                "counter_ratio": 0.31272727272727274,
+                "n_level": 1,
+                "box_anchor": 9.41,
+                "one_p": 6.58,
+                "two_t": 3.75,
+                "id": "rule-9",
+                "available_at": "2026-06-18",
+                "time": "2026-06-18",
+                "price": 9.72,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 9.49
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 9.78
+                    },
+                    {
+                        "name": "杀多高",
+                        "price": 10
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 7.6
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 6.58
+                    },
+                    {
+                        "name": "2T 投影",
+                        "price": 3.75
+                    }
+                ],
+                "shape": [
+                    {
+                        "time": "2026-06-03",
+                        "value": 12.24
+                    },
+                    {
+                        "time": "2026-06-12",
+                        "value": 9.49
+                    },
+                    {
+                        "time": "2026-06-16",
+                        "value": 10.35
+                    },
+                    {
+                        "time": "2026-06-18",
+                        "value": 9.41
+                    }
+                ]
+            },
+            {
+                "timestamp": "2026-07-09T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 27,
+                "event": "n_completed",
+                "direction": "down",
+                "origin": 2,
+                "neckline": 19,
+                "pullback": 23,
+                "known_at": 24,
+                "defense": 8.29,
+                "counter_ratio": 0.42482100238663484,
+                "n_level": 1,
+                "box_anchor": 7.89,
+                "one_p": 3.54,
+                "two_t": null,
+                "id": "rule-23",
+                "available_at": "2026-07-09",
+                "time": "2026-07-09",
+                "price": 8.09,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 8.05
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 8.35
+                    },
+                    {
+                        "name": "杀多高",
+                        "price": 8.29
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 5.64
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 3.54
+                    }
+                ],
+                "shape": [
+                    {
+                        "time": "2026-06-03",
+                        "value": 12.24
+                    },
+                    {
+                        "time": "2026-06-29",
+                        "value": 8.05
+                    },
+                    {
+                        "time": "2026-07-03",
+                        "value": 9.83
+                    },
+                    {
+                        "time": "2026-07-09",
+                        "value": 7.89
+                    }
+                ]
+            },
+            {
+                "timestamp": "2026-07-14T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 30,
+                "event": "n_completed",
+                "direction": "down",
+                "origin": 23,
+                "neckline": 27,
+                "pullback": 28,
+                "known_at": 29,
+                "defense": 8.04,
+                "counter_ratio": 0.41237113402061853,
+                "n_level": 0,
+                "box_anchor": 7.76,
+                "one_p": 5.69,
+                "two_t": 3.62,
+                "id": "rule-28",
+                "available_at": "2026-07-14",
+                "time": "2026-07-14",
+                "price": 8.02,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 7.89
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 8.09
+                    },
+                    {
+                        "name": "杀多高",
+                        "price": 8.04
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 6.75
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 5.69
+                    },
+                    {
+                        "name": "2T 投影",
+                        "price": 3.62
+                    }
+                ],
+                "shape": [
+                    {
+                        "time": "2026-07-03",
+                        "value": 9.83
+                    },
+                    {
+                        "time": "2026-07-09",
+                        "value": 7.89
+                    },
+                    {
+                        "time": "2026-07-10",
+                        "value": 8.69
+                    },
+                    {
+                        "time": "2026-07-14",
+                        "value": 7.76
+                    }
+                ]
+            },
+            {
+                "timestamp": "2026-07-20T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 34,
+                "event": "n_completed",
+                "direction": "down",
+                "origin": 28,
+                "neckline": 30,
+                "pullback": 33,
+                "known_at": 33,
+                "defense": 8.1,
+                "counter_ratio": 0.6881720430107527,
+                "n_level": 0,
+                "box_anchor": 7.6,
+                "one_p": 6.51,
+                "two_t": 5.42,
+                "id": "rule-32",
+                "available_at": "2026-07-20",
+                "time": "2026-07-20",
+                "price": 7.69,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 7.76
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 8.02
+                    },
+                    {
+                        "name": "杀多高",
+                        "price": 8.1
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 7.47
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 6.51
+                    },
+                    {
+                        "name": "2T 投影",
+                        "price": 5.42
+                    }
+                ],
+                "shape": [
+                    {
+                        "time": "2026-07-10",
+                        "value": 8.69
+                    },
+                    {
+                        "time": "2026-07-14",
+                        "value": 7.76
+                    },
+                    {
+                        "time": "2026-07-17",
+                        "value": 8.4
+                    },
+                    {
+                        "time": "2026-07-20",
+                        "value": 7.6
+                    }
+                ]
+            },
+            {
+                "timestamp": "2026-07-23T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 37,
+                "event": "n_completed",
+                "direction": "up",
+                "origin": 35,
+                "neckline": 36,
+                "pullback": 36,
+                "known_at": 37,
+                "defense": 7.56,
+                "counter_ratio": 0.4523809523809524,
+                "n_level": 0,
+                "box_anchor": 7.9,
+                "one_p": 8.48,
+                "two_t": 9.06,
+                "inside_pullback_confirmed": true,
+                "target_eligible": true,
+                "target_source_attack": 37,
+                "target_decline_index": 2,
+                "target_bottom_index": 35,
+                "target_qualification_reason": "first_n_at_decline_floor",
+                "target_primary": true,
+                "n_id": "up:35:36:36:37",
+                "target_source_id": "up:35:36:36:37",
+                "id": "n:up:35:36:36:37",
+                "available_at": "2026-07-23",
+                "time": "2026-07-23",
+                "price": 7.87,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 7.74
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 7.66
+                    },
+                    {
+                        "name": "轧空低",
+                        "price": 7.56
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 7.97
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 8.48,
+                        "stage": "one_p",
+                        "display_name": "一饱（正 N）",
+                        "anchor_at": "2026-07-22",
+                        "available_at": "2026-07-23",
+                        "valid_until": "2026-08-21"
+                    },
+                    {
+                        "name": "2T 投影",
+                        "price": 9.06,
+                        "stage": "two_t",
+                        "display_name": "二吐（正 N）",
+                        "anchor_at": "2026-07-22",
+                        "available_at": "2026-07-23",
+                        "valid_until": "2026-08-21"
+                    },
+                    {
+                        "stage": "five_top",
+                        "price": 10.57,
+                        "status": "已失效",
+                        "mode": "堆箱",
+                        "available_at": "2026-08-18",
+                        "projection_span": 1.74,
+                        "a_origin": 7.32,
+                        "a_high": 9.27,
+                        "b_low": 8.83,
+                        "name": "五顶（堆箱 · 已失效）",
+                        "valid_until": "2026-08-21"
+                    }
+                ],
+                "shape": [
+                    {
+                        "time": "2026-07-21",
+                        "value": 7.32
+                    },
+                    {
+                        "time": "2026-07-22",
+                        "value": 7.74
+                    },
+                    {
+                        "time": "2026-07-22",
+                        "value": 7.55
+                    },
+                    {
+                        "time": "2026-07-23",
+                        "value": 7.9
+                    }
+                ],
+                "target_decline_date": "2026-06-03",
+                "target_bottom_date": "2026-07-21",
+                "target_source_date": "2026-07-23"
+            },
+            {
+                "timestamp": "2026-07-27T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 39,
+                "event": "n_completed",
+                "direction": "up",
+                "origin": 36,
+                "neckline": 37,
+                "pullback": 39,
+                "known_at": 39,
+                "defense": 7.59,
+                "counter_ratio": 0.8857142857142857,
+                "n_level": 0,
+                "box_anchor": 7.96,
+                "one_p": null,
+                "two_t": null,
+                "outside_close_confirmed": true,
+                "target_eligible": false,
+                "target_source_attack": 37,
+                "target_decline_index": 2,
+                "target_bottom_index": 35,
+                "target_qualification_reason": "existing_bottom_launch",
+                "target_primary": true,
+                "n_id": "up:36:37:39:39",
+                "target_source_id": null,
+                "id": "n:up:36:37:39:39",
+                "available_at": "2026-07-27",
+                "time": "2026-07-27",
+                "price": 7.94,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 7.9
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 7.87
+                    },
+                    {
+                        "name": "轧空低",
+                        "price": 7.59
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 7.94
+                    }
+                ],
+                "shape": [
+                    {
+                        "time": "2026-07-22",
+                        "value": 7.55
+                    },
+                    {
+                        "time": "2026-07-23",
+                        "value": 7.9
+                    },
+                    {
+                        "time": "2026-07-27",
+                        "value": 7.59
+                    },
+                    {
+                        "time": "2026-07-27",
+                        "value": 7.96
+                    }
+                ],
+                "target_decline_date": "2026-06-03",
+                "target_bottom_date": "2026-07-21",
+                "target_source_date": "2026-07-23"
+            },
+            {
+                "timestamp": "2026-07-31T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 43,
+                "event": "a_wave_confirmed",
+                "source_id": "up:35:36:36:37",
+                "origin_index": 35,
+                "attack_index": 37,
+                "one_p": 8.48,
+                "two_t": 9.06,
+                "a_class": "ordinary",
+                "phase": "a",
+                "confirmed_index": 43,
+                "strong_index": null,
+                "a_high_index": 43,
+                "a_top_known_at": null,
+                "b_low_index": null,
+                "b_known_at": null,
+                "c_high_index": null,
+                "c_known_at": null,
+                "origin_date": "2026-07-21",
+                "attack_date": "2026-07-23",
+                "confirmed_date": "2026-07-31",
+                "strong_date": null,
+                "a_high_date": "2026-07-31",
+                "a_top_known_at_date": null,
+                "b_low_date": null,
+                "b_known_at_date": null,
+                "c_high_date": null,
+                "c_known_at_date": null,
+                "origin_price": 7.32,
+                "a_high_price": 8.5,
+                "b_low_price": null,
+                "c_high_price": null,
+                "id": "rule-48",
+                "available_at": "2026-07-31",
+                "time": "2026-07-31",
+                "price": 8.45,
+                "levels": []
+            },
+            {
+                "timestamp": "2026-08-03T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 44,
+                "event": "a_wave_extended",
+                "source_id": "up:35:36:36:37",
+                "origin_index": 35,
+                "attack_index": 37,
+                "one_p": 8.48,
+                "two_t": 9.06,
+                "a_class": "ordinary",
+                "phase": "a",
+                "confirmed_index": 43,
+                "strong_index": null,
+                "a_high_index": 44,
+                "a_top_known_at": null,
+                "b_low_index": null,
+                "b_known_at": null,
+                "c_high_index": null,
+                "c_known_at": null,
+                "origin_date": "2026-07-21",
+                "attack_date": "2026-07-23",
+                "confirmed_date": "2026-07-31",
+                "strong_date": null,
+                "a_high_date": "2026-08-03",
+                "a_top_known_at_date": null,
+                "b_low_date": null,
+                "b_known_at_date": null,
+                "c_high_date": null,
+                "c_known_at_date": null,
+                "origin_price": 7.32,
+                "a_high_price": 9.04,
+                "b_low_price": null,
+                "c_high_price": null,
+                "id": "rule-53",
+                "available_at": "2026-08-03",
+                "time": "2026-08-03",
+                "price": 8.88,
+                "levels": []
+            },
+            {
+                "timestamp": "2026-08-05T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 46,
+                "event": "a_wave_upgraded",
+                "source_id": "up:35:36:36:37",
+                "origin_index": 35,
+                "attack_index": 37,
+                "one_p": 8.48,
+                "two_t": 9.06,
+                "a_class": "strong",
+                "phase": "a",
+                "confirmed_index": 43,
+                "strong_index": 46,
+                "a_high_index": 46,
+                "a_top_known_at": null,
+                "b_low_index": null,
+                "b_known_at": null,
+                "c_high_index": null,
+                "c_known_at": null,
+                "origin_date": "2026-07-21",
+                "attack_date": "2026-07-23",
+                "confirmed_date": "2026-07-31",
+                "strong_date": "2026-08-05",
+                "a_high_date": "2026-08-05",
+                "a_top_known_at_date": null,
+                "b_low_date": null,
+                "b_known_at_date": null,
+                "c_high_date": null,
+                "c_known_at_date": null,
+                "origin_price": 7.32,
+                "a_high_price": 9.06,
+                "b_low_price": null,
+                "c_high_price": null,
+                "id": "rule-58",
+                "available_at": "2026-08-05",
+                "time": "2026-08-05",
+                "price": 9.02,
+                "levels": []
+            },
+            {
+                "timestamp": "2026-08-05T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 46,
+                "event": "n_completed",
+                "direction": "up",
+                "origin": 39,
+                "neckline": 44,
+                "pullback": 45,
+                "known_at": 45,
+                "defense": 8.84,
+                "counter_ratio": 0.23448275862068965,
+                "n_level": 0,
+                "box_anchor": 9.06,
+                "one_p": null,
+                "two_t": null,
+                "target_eligible": false,
+                "target_source_attack": 37,
+                "target_decline_index": 2,
+                "target_bottom_index": 35,
+                "target_qualification_reason": "existing_bottom_launch",
+                "target_primary": true,
+                "n_id": "up:39:44:45:46",
+                "target_source_id": null,
+                "id": "n:up:39:44:45:46",
+                "available_at": "2026-08-05",
+                "time": "2026-08-05",
+                "price": 9.02,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 9.04
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 8.88
+                    },
+                    {
+                        "name": "轧空低",
+                        "price": 8.84
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 10.15
+                    }
+                ],
+                "n_invalidated_at": "2026-08-06",
+                "n_invalidation_reason": "squeeze_defense_broken",
+                "shape": [
+                    {
+                        "time": "2026-07-27",
+                        "value": 7.59
+                    },
+                    {
+                        "time": "2026-08-03",
+                        "value": 9.04
+                    },
+                    {
+                        "time": "2026-08-04",
+                        "value": 8.7
+                    },
+                    {
+                        "time": "2026-08-05",
+                        "value": 9.06
+                    }
+                ],
+                "target_decline_date": "2026-06-03",
+                "target_bottom_date": "2026-07-21",
+                "target_source_date": "2026-07-23"
+            },
+            {
+                "timestamp": "2026-08-06T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 47,
+                "event": "a_wave_extended",
+                "source_id": "up:35:36:36:37",
+                "origin_index": 35,
+                "attack_index": 37,
+                "one_p": 8.48,
+                "two_t": 9.06,
+                "a_class": "strong",
+                "phase": "a",
+                "confirmed_index": 43,
+                "strong_index": 46,
+                "a_high_index": 47,
+                "a_top_known_at": null,
+                "b_low_index": null,
+                "b_known_at": null,
+                "c_high_index": null,
+                "c_known_at": null,
+                "origin_date": "2026-07-21",
+                "attack_date": "2026-07-23",
+                "confirmed_date": "2026-07-31",
+                "strong_date": "2026-08-05",
+                "a_high_date": "2026-08-06",
+                "a_top_known_at_date": null,
+                "b_low_date": null,
+                "b_known_at_date": null,
+                "c_high_date": null,
+                "c_known_at_date": null,
+                "origin_price": 7.32,
+                "a_high_price": 9.16,
+                "b_low_price": null,
+                "c_high_price": null,
+                "id": "rule-61",
+                "available_at": "2026-08-06",
+                "time": "2026-08-06",
+                "price": 8.94,
+                "levels": []
+            },
+            {
+                "timestamp": "2026-08-12T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 51,
+                "event": "a_wave_extended",
+                "source_id": "up:35:36:36:37",
+                "origin_index": 35,
+                "attack_index": 37,
+                "one_p": 8.48,
+                "two_t": 9.06,
+                "a_class": "strong",
+                "phase": "a",
+                "confirmed_index": 43,
+                "strong_index": 46,
+                "a_high_index": 51,
+                "a_top_known_at": null,
+                "b_low_index": null,
+                "b_known_at": null,
+                "c_high_index": null,
+                "c_known_at": null,
+                "origin_date": "2026-07-21",
+                "attack_date": "2026-07-23",
+                "confirmed_date": "2026-07-31",
+                "strong_date": "2026-08-05",
+                "a_high_date": "2026-08-12",
+                "a_top_known_at_date": null,
+                "b_low_date": null,
+                "b_known_at_date": null,
+                "c_high_date": null,
+                "c_known_at_date": null,
+                "origin_price": 7.32,
+                "a_high_price": 9.27,
+                "b_low_price": null,
+                "c_high_price": null,
+                "id": "rule-69",
+                "available_at": "2026-08-12",
+                "time": "2026-08-12",
+                "price": 9.19,
+                "levels": []
+            },
+            {
+                "timestamp": "2026-08-12T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 51,
+                "event": "n_completed",
+                "direction": "up",
+                "origin": 35,
+                "neckline": 47,
+                "pullback": 48,
+                "known_at": 49,
+                "defense": 8.65,
+                "counter_ratio": 0.27717391304347827,
+                "n_level": 1,
+                "box_anchor": 9.27,
+                "one_p": null,
+                "two_t": null,
+                "target_eligible": false,
+                "target_source_attack": 37,
+                "target_decline_index": 2,
+                "target_bottom_index": 35,
+                "target_qualification_reason": "existing_bottom_launch",
+                "target_primary": true,
+                "n_id": "up:35:47:48:51",
+                "target_source_id": null,
+                "id": "n:up:35:47:48:51",
+                "available_at": "2026-08-12",
+                "time": "2026-08-12",
+                "price": 9.19,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 9.16
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 8.94
+                    },
+                    {
+                        "name": "轧空低",
+                        "price": 8.65
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 10.49
+                    }
+                ],
+                "n_invalidated_at": "2026-08-20",
+                "n_invalidation_reason": "squeeze_defense_broken",
+                "shape": [
+                    {
+                        "time": "2026-07-21",
+                        "value": 7.32
+                    },
+                    {
+                        "time": "2026-08-06",
+                        "value": 9.16
+                    },
+                    {
+                        "time": "2026-08-07",
+                        "value": 8.65
+                    },
+                    {
+                        "time": "2026-08-12",
+                        "value": 9.27
+                    }
+                ],
+                "target_decline_date": "2026-06-03",
+                "target_bottom_date": "2026-07-21",
+                "target_source_date": "2026-07-23"
+            },
+            {
+                "timestamp": "2026-08-17T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 54,
+                "event": "a_wave_extended",
+                "source_id": "up:35:36:36:37",
+                "origin_index": 35,
+                "attack_index": 37,
+                "one_p": 8.48,
+                "two_t": 9.06,
+                "a_class": "strong",
+                "phase": "a",
+                "confirmed_index": 43,
+                "strong_index": 46,
+                "a_high_index": 54,
+                "a_top_known_at": null,
+                "b_low_index": null,
+                "b_known_at": null,
+                "c_high_index": null,
+                "c_known_at": null,
+                "origin_date": "2026-07-21",
+                "attack_date": "2026-07-23",
+                "confirmed_date": "2026-07-31",
+                "strong_date": "2026-08-05",
+                "a_high_date": "2026-08-17",
+                "a_top_known_at_date": null,
+                "b_low_date": null,
+                "b_known_at_date": null,
+                "c_high_date": null,
+                "c_known_at_date": null,
+                "origin_price": 7.32,
+                "a_high_price": 9.83,
+                "b_low_price": null,
+                "c_high_price": null,
+                "id": "rule-79",
+                "available_at": "2026-08-17",
+                "time": "2026-08-17",
+                "price": 9.55,
+                "levels": []
+            },
+            {
+                "timestamp": "2026-08-17T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 54,
+                "event": "n_completed",
+                "direction": "up",
+                "origin": 48,
+                "neckline": 51,
+                "pullback": 54,
+                "known_at": 54,
+                "defense": 8.83,
+                "counter_ratio": 0.7096774193548387,
+                "n_level": 0,
+                "box_anchor": 9.83,
+                "one_p": null,
+                "two_t": null,
+                "outside_close_confirmed": true,
+                "target_eligible": false,
+                "target_source_attack": 37,
+                "target_decline_index": 2,
+                "target_bottom_index": 35,
+                "target_qualification_reason": "existing_bottom_launch",
+                "target_primary": true,
+                "n_id": "up:48:51:54:54",
+                "target_source_id": null,
+                "id": "n:up:48:51:54:54",
+                "available_at": "2026-08-17",
+                "time": "2026-08-17",
+                "price": 9.55,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 9.27
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 9.19
+                    },
+                    {
+                        "name": "轧空低",
+                        "price": 8.83
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 9.45
+                    }
+                ],
+                "n_invalidated_at": "2026-08-20",
+                "n_invalidation_reason": "origin_broken",
+                "shape": [
+                    {
+                        "time": "2026-08-07",
+                        "value": 8.65
+                    },
+                    {
+                        "time": "2026-08-12",
+                        "value": 9.27
+                    },
+                    {
+                        "time": "2026-08-17",
+                        "value": 8.83
+                    },
+                    {
+                        "time": "2026-08-17",
+                        "value": 9.83
+                    }
+                ],
+                "target_decline_date": "2026-06-03",
+                "target_bottom_date": "2026-07-21",
+                "target_source_date": "2026-07-23"
+            },
+            {
+                "timestamp": "2026-08-18T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 55,
+                "event": "a_wave_extended",
+                "source_id": "up:35:36:36:37",
+                "origin_index": 35,
+                "attack_index": 37,
+                "one_p": 8.48,
+                "two_t": 9.06,
+                "a_class": "strong",
+                "phase": "a",
+                "confirmed_index": 43,
+                "strong_index": 46,
+                "a_high_index": 55,
+                "a_top_known_at": null,
+                "b_low_index": null,
+                "b_known_at": null,
+                "c_high_index": null,
+                "c_known_at": null,
+                "origin_date": "2026-07-21",
+                "attack_date": "2026-07-23",
+                "confirmed_date": "2026-07-31",
+                "strong_date": "2026-08-05",
+                "a_high_date": "2026-08-18",
+                "a_top_known_at_date": null,
+                "b_low_date": null,
+                "b_known_at_date": null,
+                "c_high_date": null,
+                "c_known_at_date": null,
+                "origin_price": 7.32,
+                "a_high_price": 10.51,
+                "b_low_price": null,
+                "c_high_price": null,
+                "id": "rule-89",
+                "available_at": "2026-08-18",
+                "time": "2026-08-18",
+                "price": 10.51,
+                "levels": []
+            },
+            {
+                "timestamp": "2026-08-24T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 59,
+                "event": "a_wave_top_confirmed",
+                "source_id": "up:35:36:36:37",
+                "origin_index": 35,
+                "attack_index": 37,
+                "one_p": 8.48,
+                "two_t": 9.06,
+                "a_class": "strong",
+                "phase": "b",
+                "confirmed_index": 43,
+                "strong_index": 46,
+                "a_high_index": 55,
+                "a_top_known_at": 59,
+                "b_low_index": 59,
+                "b_known_at": 59,
+                "c_high_index": null,
+                "c_known_at": null,
+                "origin_date": "2026-07-21",
+                "attack_date": "2026-07-23",
+                "confirmed_date": "2026-07-31",
+                "strong_date": "2026-08-05",
+                "a_high_date": "2026-08-18",
+                "a_top_known_at_date": "2026-08-24",
+                "b_low_date": "2026-08-24",
+                "b_known_at_date": "2026-08-24",
+                "c_high_date": null,
+                "c_known_at_date": null,
+                "origin_price": 7.32,
+                "a_high_price": 10.51,
+                "b_low_price": 8.26,
+                "c_high_price": null,
+                "id": "rule-103",
+                "available_at": "2026-08-24",
+                "time": "2026-08-24",
+                "price": 8.32,
+                "levels": []
+            },
+            {
+                "timestamp": "2026-08-25T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 60,
+                "event": "b_wave_updated",
+                "source_id": "up:35:36:36:37",
+                "origin_index": 35,
+                "attack_index": 37,
+                "one_p": 8.48,
+                "two_t": 9.06,
+                "a_class": "strong",
+                "phase": "b",
+                "confirmed_index": 43,
+                "strong_index": 46,
+                "a_high_index": 55,
+                "a_top_known_at": 59,
+                "b_low_index": 60,
+                "b_known_at": 60,
+                "c_high_index": null,
+                "c_known_at": null,
+                "origin_date": "2026-07-21",
+                "attack_date": "2026-07-23",
+                "confirmed_date": "2026-07-31",
+                "strong_date": "2026-08-05",
+                "a_high_date": "2026-08-18",
+                "a_top_known_at_date": "2026-08-24",
+                "b_low_date": "2026-08-25",
+                "b_known_at_date": "2026-08-25",
+                "c_high_date": null,
+                "c_known_at_date": null,
+                "origin_price": 7.32,
+                "a_high_price": 10.51,
+                "b_low_price": 8.21,
+                "c_high_price": null,
+                "id": "rule-107",
+                "available_at": "2026-08-25",
+                "time": "2026-08-25",
+                "price": 8.65,
+                "levels": []
+            },
+            {
+                "timestamp": "2026-08-31T00:00:00",
+                "symbol": "sz.000678",
+                "bar_index": 64,
+                "event": "n_completed",
+                "direction": "up",
+                "origin": 60,
+                "neckline": 62,
+                "pullback": 64,
+                "known_at": 64,
+                "defense": 8.79,
+                "counter_ratio": 0.30120481927710846,
+                "n_level": 0,
+                "box_anchor": 9.07,
+                "one_p": 9.93,
+                "two_t": 10.79,
+                "outside_close_confirmed": true,
+                "target_eligible": true,
+                "target_source_attack": 64,
+                "target_decline_index": 55,
+                "target_bottom_index": 60,
+                "target_qualification_reason": "first_n_at_decline_floor",
+                "target_primary": true,
+                "n_id": "up:60:62:64:64",
+                "target_source_id": "up:60:62:64:64",
+                "id": "n:up:60:62:64:64",
+                "available_at": "2026-08-31",
+                "time": "2026-08-31",
+                "price": 9.05,
+                "levels": [
+                    {
+                        "name": "颈线（高低点）",
+                        "price": 9.04
+                    },
+                    {
+                        "name": "颈线（前波收盘）",
+                        "price": 8.98
+                    },
+                    {
+                        "name": "轧空低",
+                        "price": 8.79
+                    },
+                    {
+                        "name": "等浪投影",
+                        "price": 9.62
+                    },
+                    {
+                        "name": "1P 投影",
+                        "price": 9.93,
+                        "stage": "one_p",
+                        "display_name": "一饱（正 N）",
+                        "anchor_at": "2026-08-31",
+                        "available_at": "2026-08-31"
+                    },
+                    {
+                        "name": "2T 投影",
+                        "price": 10.79,
+                        "stage": "two_t",
+                        "display_name": "二吐（正 N）",
+                        "anchor_at": "2026-08-31",
+                        "available_at": "2026-08-31"
+                    }
+                ],
+                "shape": [
+                    {
+                        "time": "2026-08-25",
+                        "value": 8.21
+                    },
+                    {
+                        "time": "2026-08-27",
+                        "value": 9.04
+                    },
+                    {
+                        "time": "2026-08-31",
+                        "value": 8.79
+                    },
+                    {
+                        "time": "2026-08-31",
+                        "value": 9.07
+                    }
+                ],
+                "target_decline_date": "2026-08-18",
+                "target_bottom_date": "2026-08-25",
+                "target_source_date": "2026-08-31"
+            }
+        ]
+    }
+}

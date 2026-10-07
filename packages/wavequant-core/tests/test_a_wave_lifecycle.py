@@ -30,7 +30,7 @@ def test_a_classification_contract(case):
     assert classify_a_attack(case["high"], case["one_p"], case["two_t"]) == case["class"]
 
 
-@pytest.mark.parametrize("high,a_class", [(12, "ordinary"), (14, "strong")])
+@pytest.mark.parametrize("high,a_class", [(12.01, "ordinary"), (14, "strong")])
 def test_b_can_break_squeeze_low_for_both_a_classes_and_retains_actual_duration(high, a_class):
     bars, setup = sample(high)
     context = wave_pullback_context(bars, setup, 6)
@@ -49,7 +49,7 @@ def test_b_can_break_squeeze_low_for_both_a_classes_and_retains_actual_duration(
         assert not any(event.state == "invalidated" for event in wave_projection_history(bars, setup))
 
 
-@pytest.mark.parametrize("high", [12, 14])
+@pytest.mark.parametrize("high", [12.01, 14])
 def test_origin_equality_holds_but_a_wick_break_cancels_old_c_even_after_recovery(high):
     bars, setup = sample(high)
     bars[4] = replace(bars[4], low=8)

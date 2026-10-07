@@ -23,6 +23,7 @@ from wavequant.infrastructure.persistence.operational_store import run_states, a
 from wavequant.application.governance.operations import verify_run
 from wavequant.domain.market_structure.n_shape import project_n_targets, ValueDomain
 from wavequant.domain.market_structure.bottom_n_targets import BOTTOM_N_TARGET_POLICY
+from wavequant.domain.market_structure.a_wave import A_WAVE_POLICY
 from wavequant.domain.market_structure.price_action import Direction
 from wavequant.infrastructure.filesystem.project_paths import project_path
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
@@ -1018,7 +1019,8 @@ class ChartRepository:
             computed_from="current_engine_on_selected_prefix",
             engine_sha256=fingerprint(_strategy_source_path()),
             strategy_pivot_mode=config.pivot_mode,
-            **({'n_target_policy': BOTTOM_N_TARGET_POLICY}
+            **({'n_target_policy': BOTTOM_N_TARGET_POLICY,
+                'a_wave_policy': A_WAVE_POLICY}
                if config.buy_point_definition == 'whole_flip_wave_v3' and config.pivot_mode == 'lecture_causal' else {}),
             note=(
                 "新版使用讲义递推器的收盘确认转折，过滤同日 N 和非真实高低点；显示连接线本身不作为交易证据。"

@@ -1,3 +1,4 @@
+import { aWaveCProjections } from "./a-wave-observations.js";
 import { classifyAAttack, isAOriginBroken } from "./a-wave-rules.js";
 import { isBottomNTargetSource } from "./bottom-n-targets.js";
 import { cWaveExtensionLevel } from "./c-wave-extension.js";
@@ -27,7 +28,7 @@ export function waveCProjection(bars, events, selectedTime) {
             event.available_at > selectedTime ||
             !Number.isFinite(origin) ||
             !Number.isFinite(oneP) ||
-            (highIndex === attackIndex ? highBar.close < oneP : highBar.high < oneP) ||
+            highBar.high <= oneP ||
             !Number.isFinite(event.defense) ||
             bars.slice(originIndex + 1).some((bar) => isAOriginBroken(bar, origin)) ||
             bars.slice(attackIndex, highIndex).some((bar) => bar.high > highBar.high)
@@ -66,9 +67,10 @@ export function waveCProjection(bars, events, selectedTime) {
 export function waveCProjectionLevels(projection, bars = [], asof) {
     if (projection.aAttackClass === "non_strong") return ordinaryCWaveLevels(projection, asof);
     const parent = projection.projectionSource === "confirmed_parent_wave";
-    const availableAt = parent ? projection.confirmedAt : projection.bTime;
+    const independent = projection.projectionSource === "one_p_confirmed_a";
+    const availableAt = parent || independent ? projection.confirmedAt : projection.bTime;
     if (
-        parent &&
+        (parent || independent) &&
         ((asof && availableAt > asof) || (projection.invalidatedAt && (!asof || projection.invalidatedAt <= asof)))
     )
         return [];
@@ -92,7 +94,7 @@ export function waveCProjectionLevels(projection, bars = [], asof) {
     ];
     const extension = cWaveExtensionLevel(projection, bars, asof);
     if (extension) levels.push(extension);
-    if (parent && projection.cTime && (!asof || projection.cKnownAt <= asof))
+    if ((parent || independent) && projection.cTime && (!asof || projection.cKnownAt <= asof))
         return levels.map((level) => ({ ...level, c_ended_at: projection.cTime, c_end_known_at: projection.cKnownAt }));
     return levels;
 }
@@ -286,6 +288,7 @@ export function waveCProjectionsFromStructure(bars, theory) {
         }
         if (found) projections.push(found);
     }
+    const independent = aWaveCProjections(visibleBars, theory);
     const parents = structuralCWaveProjections(bars, theory);
     const confirmed = [
         ...ordinaryCWaveProjections(bars, theory).filter(
@@ -298,7 +301,11 @@ export function waveCProjectionsFromStructure(bars, theory) {
             (projection) =>
                 !confirmed.some((item) => item.originTime === projection.originTime && item.aTime === projection.aTime),
         ),
-        ...confirmed,
+        ...confirmed.filter(
+            (item) =>
+                !independent.some((source) => source.nTime === item.nTime && source.originTime === item.originTime),
+        ),
+        ...independent,
     ].sort((left, right) => left.aTime.localeCompare(right.aTime));
 }
 
@@ -324,7 +331,7 @@ export function waveCProjectionAnnotation(projection, bars = [], asof) {
         ? levels.map((level) => targetLevelGuide({ time: projection.bTime }, level, bars, asof))
         : [];
     return {
-        id: `wave-c:${projection.nTime}:${projection.aTime}${ordinary || parent ? `:${projection.anchorVersion}` : ""}`,
+        id: `wave-c:${projection.sourceNId || projection.nTime}:${projection.aTime}${ordinary || parent || projection.sourceNId ? `:${projection.anchorVersion}` : ""}`,
         time: projection.bTime,
         sourceTime: projection.aTime,
         kind: "wave-projection",
@@ -336,11 +343,13 @@ export function waveCProjectionAnnotation(projection, bars = [], asof) {
         priority: 200,
         title: "B / C",
         description:
-            (parent
-                ? `整段 A 结构观察：A 起点 ${projection.originTime} ${num(projection.origin, 4)} 元，A 顶 ${projection.aTime} ${num(projection.aHigh, 4)} 元，于 ${projection.aKnownAt} 按二级结构确认。内部正 N ${projection.nTime} 的起点为 ${projection.nOriginTime} ${num(projection.nOrigin, 4)} 元；${ordinary ? `A 顶达到一饱 ${num(projection.oneP, 4)}、未达二吐 ${num(projection.twoT, 4)}，属于普通 A。` : `A 顶已达二吐 ${num(projection.twoT, 4)}，属于强势 A。`}内部正 N 不替换整段 A 起点。B 低 ${projection.bTime} ${num(projection.bLow, 4)} 元，于 ${projection.bKnownAt} 按同路径一级端点确认；突破 A 顶前持续跟踪更低的 B，锚点版本 ${projection.anchorVersion}。A 幅度 = A 高 − A 起点；C 目标 0.618×A / 1×A 为 ${num(projection.target0618, 4)} / ${num(projection.target, 4)} 元，生效 ${projection.confirmedAt}。${extension ? (ordinary ? `普通 A 同时观察 1.618×A 目标 ${num(extension.price, 4)} 元。` : `${extension.available_at} 已满足等浪，增加 1.618×A 目标 ${num(extension.price, 4)} 元。`) : ""}${completed ? `C 顶 ${projection.cTime} ${num(projection.cHigh, 4)} 元，于 ${projection.cKnownAt} 确认，原段目标截至 C 顶。` : ""}${projection.invalidatedAt ? `${projection.invalidatedAt} 最低价严格跌破 A 起点，原组 C 目标作废；保留历史标识。` : ""}仅为结构与测幅观察，不产生买卖信号。`
-                : ordinary
-                  ? `普通 A 结构观察：A 起点 ${projection.originTime} ${num(projection.origin, 4)} 元；内部正 N ${projection.nTime}，不替换 A 起点。A 顶 ${projection.aTime} ${num(projection.aHigh, 4)} 元，未达既有二吐 ${num(projection.twoT, 4)}，属于非强攻击 A。B 低 ${projection.bTime} ${num(projection.bLow, 4)} 元，于 ${projection.bKnownAt} ${local ? "按正 N 原点的局部波段观察确认" : "按二级结构确认"}；${projection.bBrokeASqueezeLow ? "B 期间已破 A 的轧空低，仍守住 A 起点；" : ""}回撤 ${(projection.bRetracementRatio * 100).toFixed(2)}%，A / B 为 ${projection.aDuration} / ${projection.bDuration} 个交易日。A 幅度 = A 高 − A 起点；三档 C 目标为 ${num(projection.target0618, 4)} / ${num(projection.target, 4)}（等浪）/ ${num(projection.target1618, 4)} 元，目标生效 ${projection.confirmedAt}。${targetStates.map((state, index) => (state ? `${["0.618", "1（等浪）", "1.618"][index]}×A：${state.targetState}${state.firstTouchedAt ? `，首次 ${state.firstTouchedAt}` : ""}；` : "")).join("")}${completed ? `C 顶 ${projection.cTime} ${num(projection.cHigh, 4)} 元，于 ${projection.cKnownAt} 确认结束，目标触及状态冻结在本段；` : ""}${projection.invalidatedAt ? `${projection.invalidatedAt} 最低价严格跌破 A 起点，A 失效，原组 C 目标作废；` : ""}${local ? "正 N 组内局部二级观察，来源为一级已确认端点" : `波段级别 ${projection.trendLevel}`}，锚点版本 ${projection.anchorVersion}。仅为结构与测幅观察，不产生买卖信号。`
-                  : `${observed ? "讲义折线结构观察：" : ""}正 N ${projection.nTime} 后${observed ? `，${projection.squeezeTime} 出现轧空式放量续攻` : ""}，A 浪高点 ${projection.aTime} ${num(projection.aHigh)} 高于一饱 ${num(projection.oneP)}；B 浪低点 ${projection.bTime} ${num(projection.bLow)}${projection.bKnownAt ? `，于 ${projection.bKnownAt} 确认并固定历史端点` : ""}。B 期间最低价未严格跌破 A 起点 ${num(projection.origin)}。A 幅度 = A 高 − 正 N 起点；B 低 + 0.618×A = ${num(projection.target0618, 4)} 元，B 低 + 1×A = ${num(projection.target)} 元。${extension ? `${extension.available_at} 已满足 1×A，增加 B 低 + 1.618×A = ${num(extension.price, 4)} 元。` : ""}${projection.invalidatedAt ? `${projection.invalidatedAt} 最低价严格跌破起点，目标有效区间截至 ${projection.targetValidUntil}；保留历史标识。` : ""}仅为测幅观察，不保证到达。`) +
+            (projection.projectionSource === "one_p_confirmed_a"
+                ? `正 N 一饱突破确认 A：${projection.aConfirmedAt} 突破 ${num(projection.oneP, 4)} 元；${projection.strongAt ? `${projection.strongAt} 达二吐 ${num(projection.twoT, 4)} 元升级强势 A；` : "普通 A；"}A 起点 ${projection.originTime} ${num(projection.origin, 4)} 元，A 顶 ${projection.aTime} ${num(projection.aHigh, 4)} 元。B 低 ${projection.bTime} ${num(projection.bLow, 4)} 元，C 观察位为 ${num(projection.target0618, 4)} / ${num(projection.target, 4)} 元。${projection.invalidatedAt ? `${projection.invalidatedAt} A 起点失守，原组后续 C 作废。` : "A 起点守住，保留 C 观察。"}不因内部 N 防守或目标退役撤销已确认 A。`
+                : parent
+                  ? `整段 A 结构观察：A 起点 ${projection.originTime} ${num(projection.origin, 4)} 元，A 顶 ${projection.aTime} ${num(projection.aHigh, 4)} 元，于 ${projection.aKnownAt} 按二级结构确认。内部正 N ${projection.nTime} 的起点为 ${projection.nOriginTime} ${num(projection.nOrigin, 4)} 元；${ordinary ? `A 顶达到一饱 ${num(projection.oneP, 4)}、未达二吐 ${num(projection.twoT, 4)}，属于普通 A。` : `A 顶已达二吐 ${num(projection.twoT, 4)}，属于强势 A。`}内部正 N 不替换整段 A 起点。B 低 ${projection.bTime} ${num(projection.bLow, 4)} 元，于 ${projection.bKnownAt} 按同路径一级端点确认；突破 A 顶前持续跟踪更低的 B，锚点版本 ${projection.anchorVersion}。A 幅度 = A 高 − A 起点；C 目标 0.618×A / 1×A 为 ${num(projection.target0618, 4)} / ${num(projection.target, 4)} 元，生效 ${projection.confirmedAt}。${extension ? (ordinary ? `普通 A 同时观察 1.618×A 目标 ${num(extension.price, 4)} 元。` : `${extension.available_at} 已满足等浪，增加 1.618×A 目标 ${num(extension.price, 4)} 元。`) : ""}${completed ? `C 顶 ${projection.cTime} ${num(projection.cHigh, 4)} 元，于 ${projection.cKnownAt} 确认，原段目标截至 C 顶。` : ""}${projection.invalidatedAt ? `${projection.invalidatedAt} 最低价严格跌破 A 起点，原组 C 目标作废；保留历史标识。` : ""}仅为结构与测幅观察，不产生买卖信号。`
+                  : ordinary
+                    ? `普通 A 结构观察：A 起点 ${projection.originTime} ${num(projection.origin, 4)} 元；内部正 N ${projection.nTime}，不替换 A 起点。A 顶 ${projection.aTime} ${num(projection.aHigh, 4)} 元，未达既有二吐 ${num(projection.twoT, 4)}，属于非强攻击 A。B 低 ${projection.bTime} ${num(projection.bLow, 4)} 元，于 ${projection.bKnownAt} ${local ? "按正 N 原点的局部波段观察确认" : "按二级结构确认"}；${projection.bBrokeASqueezeLow ? "B 期间已破 A 的轧空低，仍守住 A 起点；" : ""}回撤 ${(projection.bRetracementRatio * 100).toFixed(2)}%，A / B 为 ${projection.aDuration} / ${projection.bDuration} 个交易日。A 幅度 = A 高 − A 起点；三档 C 目标为 ${num(projection.target0618, 4)} / ${num(projection.target, 4)}（等浪）/ ${num(projection.target1618, 4)} 元，目标生效 ${projection.confirmedAt}。${targetStates.map((state, index) => (state ? `${["0.618", "1（等浪）", "1.618"][index]}×A：${state.targetState}${state.firstTouchedAt ? `，首次 ${state.firstTouchedAt}` : ""}；` : "")).join("")}${completed ? `C 顶 ${projection.cTime} ${num(projection.cHigh, 4)} 元，于 ${projection.cKnownAt} 确认结束，目标触及状态冻结在本段；` : ""}${projection.invalidatedAt ? `${projection.invalidatedAt} 最低价严格跌破 A 起点，A 失效，原组 C 目标作废；` : ""}${local ? "正 N 组内局部二级观察，来源为一级已确认端点" : `波段级别 ${projection.trendLevel}`}，锚点版本 ${projection.anchorVersion}。仅为结构与测幅观察，不产生买卖信号。`
+                    : `${observed ? "讲义折线结构观察：" : ""}正 N ${projection.nTime} 后${observed ? `，${projection.squeezeTime} 出现轧空式放量续攻` : ""}，A 浪高点 ${projection.aTime} ${num(projection.aHigh)} 高于一饱 ${num(projection.oneP)}；B 浪低点 ${projection.bTime} ${num(projection.bLow)}${projection.bKnownAt ? `，于 ${projection.bKnownAt} 确认并固定历史端点` : ""}。B 期间最低价未严格跌破 A 起点 ${num(projection.origin)}。A 幅度 = A 高 − 正 N 起点；B 低 + 0.618×A = ${num(projection.target0618, 4)} 元，B 低 + 1×A = ${num(projection.target)} 元。${extension ? `${extension.available_at} 已满足 1×A，增加 B 低 + 1.618×A = ${num(extension.price, 4)} 元。` : ""}${projection.invalidatedAt ? `${projection.invalidatedAt} 最低价严格跌破起点，目标有效区间截至 ${projection.targetValidUntil}；保留历史标识。` : ""}仅为测幅观察，不保证到达。`) +
             ` A 起点最低价严格跌破即失效，相等仍有效；失效后原组没有后续 C，等待新 A。强势 A 与普通 A 的 B 均可跌破轧空低。${Number.isInteger(projection.bDuration) ? `B 回调至低点 ${projection.bDuration} 个交易日。` : ""}${Number.isInteger(projection.bFormationDuration) ? `含底部确认整理共 ${projection.bFormationDuration} 个交易日；底部至确认 ${projection.bConsolidationDuration} 日。` : ""}${projection.bSqueezeBreakAt ? `首次跌破轧空低 ${projection.bSqueezeBreakAt}，回调整理按实际过程持续跟踪。` : ""}`,
         sourceLabel: parent
             ? "已确认二级 A 与同路径一级 B/C · 结构观察"

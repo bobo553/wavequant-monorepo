@@ -25,6 +25,7 @@ const additionalSources = [
     "apps/webs/wavequant-web/public/wave-entry-evidence.js",
     "apps/webs/wavequant-web/public/combined-a-entry-evidence.js",
     "apps/webs/wavequant-web/public/a-wave-rules.js",
+    "apps/webs/wavequant-web/public/a-wave-observations.js",
     "apps/webs/wavequant-web/public/confirmed-c-wave.js",
     "apps/webs/wavequant-web/public/ordinary-c-wave.js",
     "apps/webs/wavequant-web/public/structural-c-wave.js",
@@ -130,7 +131,8 @@ describe("strategy topology", () => {
             .flatMap((flow) => flow.gates)
             .map((gate) => gate.detail)
             .join("\n");
-        expect(details).toMatch(/一饱.*≤.*A 高点.*<.*二吐/);
+        expect(details).toMatch(/一饱.*<.*A 高点.*<.*二吐/);
+        expect(details).toMatch(/严格突破一饱即独立确认 A.*不等待 B\/C、二级翻转或轧空/);
         expect(details).toMatch(/二吐.*强势|强势.*二吐/);
         expect(details).toMatch(/最低价.*严格.*A 起点/);
         expect(details).toMatch(/B.*跌破轧空低/);

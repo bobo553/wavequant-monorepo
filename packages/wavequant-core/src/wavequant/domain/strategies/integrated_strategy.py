@@ -407,6 +407,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             **({'outside_close_confirmed': True} if whole_wave and setup.allow_outside_close and setup.pullback.index == t else {}))
     bottom_targets = None
     target_retired_at = {}
+    a_confirmations = {}
     if whole_wave and secondary_levels is not None:
         declines = []
         seed_decline = None
@@ -522,6 +523,34 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                         known_at=max(now, row['known_at']), direction='up',
                         reason='origin_broken' if origin_broken else 'squeeze_defense_broken')
                     break
+        from dataclasses import asdict
+        from ..market_structure.a_wave import AWaveSeed, AWaveTurn, a_wave_history
+        invalidated_at = {row['n_id']: max(row['bar_index'], row['known_at']) for row in audit
+                          if row['event'] == 'n_invalidated'}
+        seeds = [AWaveSeed(
+            row['n_id'], row['origin'], row['bar_index'], max(row['bar_index'], row['known_at']),
+            row['one_p'], row['two_t'], row['defense'],
+            min(invalidated_at.get(row['n_id'], len(bars)),
+                target_retired_at.get(row['bar_index'], len(bars)) if row['target_primary'] else len(bars)),
+        ) for row in positive_events if row['target_eligible']]
+        turns = { (point['index'], point['available_at']) for levels in secondary_levels.values()
+                  for point in levels[1] if point['kind'] == 'H' }
+        for observation in a_wave_history(bars, seeds, [AWaveTurn(*turn) for turn in sorted(turns)]):
+            payload = asdict(observation)
+            now, kind = payload.pop('bar_index'), payload.pop('event')
+            for a_field in ('origin_index', 'attack_index', 'confirmed_index', 'strong_index',
+                        'a_high_index', 'a_top_known_at', 'b_low_index', 'b_known_at', 'c_high_index', 'c_known_at'):
+                index = payload[a_field]
+                payload[a_field.replace('_index', '_date') if a_field.endswith('_index') else a_field + '_date'] = (
+                    bars[index].timestamp.date().isoformat() if index is not None else None)
+            payload.update(origin_price=bars[observation.origin_index].low,
+                           a_high_price=bars[observation.a_high_index].high,
+                           b_low_price=bars[observation.b_low_index].low if observation.b_low_index is not None else None,
+                           c_high_price=bars[observation.c_high_index].high if observation.c_high_index is not None else None)
+            log(now, kind, **payload)
+            counts[kind] += 1
+            if kind == 'a_wave_confirmed':
+                a_confirmations[observation.source_id] = now
     bottom_candidates = {c['attack']: c for c in candidates
                          if bottom_targets is not None
                          and c['setup'].direction == Direction.UP
@@ -714,6 +743,11 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 continue
             if bottom_targets is not None and candidate['attack'] not in bottom_candidates:
                 continue
+            identity = positive_n_identity(candidate['setup'].origin.index, candidate['setup'].neckline.index,
+                                           candidate['setup'].pullback.index, candidate['attack'])
+            a_confirmed_at = a_confirmations.get(identity)
+            if secondary_levels is not None and a_confirmed_at is None:
+                continue
             n = candidate['n']
             squeeze = next((candidate['start'] + f.bar_index for f in candidate['regime'].frames
                             if f.regime in (MarketRegime.BULL, MarketRegime.STRONG_BULL)), None)
@@ -735,14 +769,16 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             # whose own lifetime is the A origin. A new local descending leg
             # ends named box guides, not this independent C entry observation.
             for j in range(squeeze + 1, len(bars)):
-                gap_key = (projection_setup, j)
+                gap_key = (projection_setup, a_confirmed_at, j)
                 if wave_gap_observations is not None and j < len(bars) - 1 and gap_key in wave_gap_observations:
                     proof = wave_gap_observations[gap_key]
                 else:
-                    proof = wave_gap_entry(bars, projection_setup, j, pivots=snapshots.get(j-1, ()))
+                    proof = wave_gap_entry(bars, projection_setup, j, pivots=snapshots.get(j-1, ()),
+                                           a_confirmed_at=a_confirmed_at)
                     if wave_gap_observations is not None and j < len(bars) - 1:
                         wave_gap_observations[gap_key] = proof
                 if proof is not None:
+                    proof = dict(proof, wave_a_source_id=identity)
                     frame = next((f for f in candidate['regime'].frames if candidate['start'] + f.bar_index == squeeze),
                                  candidate['regime'].frames[0])
                     wave_events[j].append((candidate, frame))

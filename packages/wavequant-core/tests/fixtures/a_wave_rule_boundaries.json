@@ -1,6 +1,7 @@
 [
     { "high": 11.99, "one_p": 12, "two_t": 14, "class": null },
-    { "high": 12, "one_p": 12, "two_t": 14, "class": "ordinary" },
+    { "high": 12, "one_p": 12, "two_t": 14, "class": null },
+    { "high": 12.01, "one_p": 12, "two_t": 14, "class": "ordinary" },
     { "high": 13.99, "one_p": 12, "two_t": 14, "class": "ordinary" },
     { "high": 14, "one_p": 12, "two_t": 14, "class": "strong" },
     { "high": 15, "one_p": 12, "two_t": 14, "class": "strong" },
