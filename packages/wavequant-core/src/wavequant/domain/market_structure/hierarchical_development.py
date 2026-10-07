@@ -5,8 +5,8 @@ break.  Level 2 may additionally promote a breakout high after its separate
 alternation evidence is complete.  While neither route is complete, hiding all
 confirmed source points makes the chart look truncated.  This module exposes
 the intervening evidence without itself promoting level-N structure.
-After a market-confirmed extreme, countertrend evidence requires four known
-source turns reversing both highs and lows before any dashed edge is exposed.
+After a market-confirmed extreme, countertrend evidence requires a strict break
+of the source trend's frozen key before any dashed edge is exposed.
 """
 
 from .lecture_trend import _ref, _wave_reversals
@@ -87,6 +87,7 @@ def hierarchical_developing_path(source, confirmed, *, trend_level, source_level
         cutoff = len(bars) - 1 if end_index is None else end_index
         countertrend = source_trend_reversal(
             source_points, confirmation['direction'], confirmed_direction['endpoint'], cutoff, session_date(bars[cutoff]),
+            bars,
         )
         for position, point in enumerate(source_points):
             if (countertrend is None or point['index'] <= endpoint['index'] or point['index'] > cutoff

@@ -3,7 +3,7 @@
 Confirmed level-3 points remain immutable structural reversals. A separate
 display-only path exposes confirmed nested level-2 turns plus the unresolved
 tail after the latest reversal. After a market-confirmed extreme, a countertrend
-tail waits for four known level-2 turns reversing both highs and lows. Strict market breaks of the
+tail waits for a strict break of level 2's frozen pre-extreme key. Strict market breaks of the
 same-level key confirm a solid trend independently of the live endpoint.
 """
 from zoneinfo import ZoneInfo
@@ -51,6 +51,6 @@ def tertiary_trends(level2,bars):
                 aggregation_rule='level2_structural_key_break',scope='lecture_level3_not_strategy_confirmation',
                 note='仅以已确认二级点为输入；突破二级末跌高确认整段低点，跌破二级末升低确认整段高点；'
                      '市场最高价突破已知同级前高或最低价跌破已知同级前低时，趋势线立即确认并画实线，末端继续延伸；'
-                     '没有新同级突破时，反向虚线须等极值及其后的已确认二级四端高低点均严格反向；'
+                     '没有新同级突破时，反向虚线须等极值之前冻结的二级末升低或末跌高严格破位确认趋势扭转；'
                      '最后一个正式三级点之后的已确认二级演化另作纯显示发展路径，不进入正式点、策略或回测；'
                      '不等待67%交替，不跨断点。')
