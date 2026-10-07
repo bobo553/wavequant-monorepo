@@ -45,6 +45,11 @@
                     "summary": "提示框模块、接入代码、样式、新测试及功能记录的格式和JS语法通过，最终差异无空白错误。"
                 },
                 {
+                    "command": "main HTTP GET :3003/charts.js, /chart-tooltip.js, /styles.css and /research; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "实现abbf056及同步0cec521经9b29245本地no-ff合并。期间main dde1911仅新增C目标验收记录，产品源码保持相同；所有原功能记录保留。常驻3003三个修改产品文件均HTTP200且原始字节SHA与main逐项一致，research HTTP200，main Harness通过。分支同步最新main，未推送；HTTP文件验收不代表浏览器像素验证。"
+                },
+                {
                     "command": "Complete Web suite and real browser/Playwright visual verification",
                     "status": "not-run",
                     "summary": "按用户开发验证节奏未运行完整Web套件或浏览器/Playwright；真实桌面/窄屏裁剪、顶层绘制、主题和指针跨卡片的像素交互仍待独立视觉验证。"
