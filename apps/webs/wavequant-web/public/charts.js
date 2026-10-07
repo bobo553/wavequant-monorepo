@@ -21,6 +21,7 @@ import {
     tradePointRange,
     zoomChartRange,
 } from "./chart-navigation.js";
+import { bindChartTooltipLayer, hideChartTooltip } from "./chart-tooltip.js";
 import {
     combinedAAnnotations,
     combinedAObservations,
@@ -287,15 +288,15 @@ export class PriceChart {
             clearTimeout(this.tooltipHideTimer);
         });
         this.tooltip.addEventListener("pointerleave", () => {
-            this.tooltipHovered = false;
-            this.tooltip.hidden = true;
+            this.hideTooltip();
             this.updateWaveProjectionHover(null);
         });
         this.tooltip.addEventListener("focusin", () => clearTimeout(this.tooltipHideTimer));
         this.tooltip.addEventListener("focusout", () => {
-            if (!this.tooltipHovered) this.tooltip.hidden = true;
+            if (!this.tooltipHovered) this.hideTooltip();
         });
         container.append(this.tooltip);
+        this.tooltipLayer = bindChartTooltipLayer(container, this.tooltip, () => this.hideTooltip());
         this.chart.subscribeCrosshairMove((p) => {
             if (!this.data || this.removingSeries) return;
             // 鼠标进入卡片时保留当前 K 线，不让图表的离开事件清空卡片。
@@ -312,17 +313,15 @@ export class PriceChart {
             if (!p.point || !bar) {
                 clearTimeout(this.tooltipHideTimer);
                 this.tooltipHideTimer = setTimeout(() => {
-                    if (!this.tooltipHovered && !this.tooltip.contains(document.activeElement))
-                        this.tooltip.hidden = true;
+                    if (!this.tooltipHovered && !this.tooltip.contains(document.activeElement)) this.hideTooltip();
                 }, 150);
                 return;
             }
             clearTimeout(this.tooltipHideTimer);
-            // Keep the tooltip still while traversing the chart-to-card gap. If it
-            // follows every pointer move, its copy button continually escapes the cursor.
+            // 同一根K线保留卡片位置，让鼠标能穿过间隙点击复制按钮。
             const positionTooltip = this.tooltip.hidden || this.tooltipBarTime !== bar.time;
             this.tooltipBarTime = bar.time;
-            this.tooltip.hidden = false;
+            this.tooltipLayer.show();
             this.tooltip.replaceChildren();
             const heading = document.createElement("div");
             heading.className = "chart-tooltip-heading";
@@ -381,13 +380,7 @@ export class PriceChart {
             const hint = document.createElement("small");
             hint.textContent = items.length ? "点击标识查看规则 · 提示文字可选中复制" : "选中提示文字可单独复制";
             this.tooltip.append(hint);
-            if (positionTooltip) {
-                this.tooltip.style.left =
-                    Math.max(4, Math.min(p.point.x + 16, container.clientWidth - this.tooltip.offsetWidth - 4)) + "px";
-                this.tooltip.style.top =
-                    Math.max(4, Math.min(p.point.y + 12, container.clientHeight - this.tooltip.offsetHeight - 4)) +
-                    "px";
-            }
+            if (positionTooltip) this.tooltipLayer.position(p.point);
         });
         this.chart.subscribeClick((p) => {
             this.focusCandleTargets(p.time, p.hoveredObjectId);
@@ -430,6 +423,11 @@ export class PriceChart {
             this.updateViewport();
         });
     }
+    hideTooltip() {
+        clearTimeout(this.tooltipHideTimer);
+        this.tooltipHovered = false;
+        hideChartTooltip(this.tooltip);
+    }
     setData(data, options = {}) {
         this.focusFlashOverlay.clear();
         clearTimeout(this.tooltipHideTimer);
@@ -450,7 +448,7 @@ export class PriceChart {
         this.focusedWaveTime = null;
         this.focusedWaveId = null;
         this.waveEndpointOverlay.setPoints([]);
-        this.tooltip.hidden = true;
+        this.hideTooltip();
         this.clearTheory();
         this.clearLevels();
         this.candles.setData(data.bars.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
@@ -1327,7 +1325,7 @@ export class PriceChart {
         if (!show && this.selected?.kind === "trend" && this.selected.raw.trend_level === 1) {
             this.selected = null;
             this.clearLevels();
-            this.tooltip.hidden = true;
+            this.hideTooltip();
         }
         this.clearPolyline();
         this.refreshMarkers();
@@ -1340,7 +1338,7 @@ export class PriceChart {
         if (!show && this.selected?.kind === "trend" && this.selected.raw.trend_level === 2) {
             this.selected = null;
             this.clearLevels();
-            this.tooltip.hidden = true;
+            this.hideTooltip();
         }
         this.clearPolyline();
         this.refreshMarkers();
@@ -1354,7 +1352,7 @@ export class PriceChart {
         ) {
             this.selected = null;
             this.clearLevels();
-            this.tooltip.hidden = true;
+            this.hideTooltip();
         }
         this.clearPolyline();
         this.refreshMarkers();
@@ -1526,7 +1524,7 @@ export class PriceChart {
         this.focusFlashOverlay.clear();
         this.container.removeEventListener("pointerup", this.onTertiaryPointerUp);
         this.unbindKeyboardNavigation();
-        this.tooltip.remove();
+        this.tooltipLayer.destroy();
         themedCharts.delete(this.chart);
         this.chart.remove();
     }

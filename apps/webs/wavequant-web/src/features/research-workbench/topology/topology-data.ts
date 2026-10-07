@@ -546,4 +546,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "be7fdf3776ba492cd6a0ce0668856cb1bf50cb9136130d288068a241999ff360";
+export const strategySourceDigest = "9335afbc11b81726235e88734f097938c2c96cf4c87c4b08e5e3ac3471e26f02";
