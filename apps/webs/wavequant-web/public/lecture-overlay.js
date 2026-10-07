@@ -356,9 +356,11 @@ export class LectureOverlay {
                             : this.highlightTeaching && teaching
                               ? "#50dfd2"
                               : "#ffd36d";
-                    // 发展路径会随已确认的下一级结构继续延伸，虚线用于
-                    // 避免把内部转折误读成正式二级或三级反转点。
-                    ctx.setLineDash(secondaryDeveloping || tertiaryDeveloping ? [7, 4] : reversal ? [] : [5, 3]);
+                    // 突破已确认同级关键位后趋势线为实线，末端仍可继续延伸。
+                    const unresolved =
+                        (secondaryDeveloping || tertiaryDeveloping) &&
+                        (stroke.state !== "confirmed" || b.point.edge_state === "developing");
+                    ctx.setLineDash(unresolved ? [7, 4] : reversal ? [] : [5, 3]);
                     ctx.beginPath();
                     ctx.moveTo(a.x, a.y);
                     ctx.lineTo(b.x, b.y);
@@ -475,6 +477,31 @@ export class LectureOverlay {
                 rising = stroke.wave_direction === "up",
                 nestedCount = stroke.nested_turn_count ?? Math.max(0, stroke.points.length - 2),
                 pendingCount = stroke.pending_point_count ?? 0;
+            const confirmation = stroke.confirmation;
+            if (stroke.state === "confirmed" && confirmation) {
+                const key = confirmation.broken_key,
+                    proof = confirmation.confirmed_by,
+                    liveEndpoint = stroke.confirmed_endpoint || endpoint;
+                return {
+                    id,
+                    time: confirmation.available_at,
+                    sourceTime: p.time,
+                    kind: "trend",
+                    category: "rules",
+                    price: p.value,
+                    title: `${prefix}${rising ? "上涨" : "下跌"}趋势已确认 · 末端延伸`,
+                    description: `${proof.time} ${rising ? "最高价" : "最低价"} ${proof.value} 严格${rising ? "突破前高" : "跌破前低"} ${key.time} ${key.value}，当日确认${name}${rising ? "上涨" : "下跌"}趋势并显示实线。当前端点 ${liveEndpoint.time} ${liveEndpoint.value} 仍可随行情继续延伸，尚未固定为正式反转点；其后未确认回调继续显示虚线。`,
+                    sourceLabel: `${name}趋势线 · 突破即确认`,
+                    levels: [],
+                    raw: {
+                        point: p,
+                        stroke,
+                        trend_level: level,
+                        source_level: sourceLevel,
+                        scope: "display_only_developing_path",
+                    },
+                };
+            }
             return {
                 id,
                 time: endpoint.available_at,

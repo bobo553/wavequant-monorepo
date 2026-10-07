@@ -199,7 +199,10 @@ def _level2_high_promotion(points,base,candidate,old_key):
 
 def _structural_reversals(points, *, source_level=1):
     """Reduce source points with strict key breaks plus the level-2 promotion route."""
-    highs=[]; lows=[]; direction=None; anchor=None; key=None; selected=[]; promotion=None
+    highs: list[int] = []
+    lows: list[int] = []
+    selected: list[dict[str, object]] = []
+    direction=None; anchor=None; key=None; promotion=None
     for j,p in enumerate(points):
         (highs if p['kind']=='H' else lows).append(j)
         if direction is None:
@@ -253,6 +256,7 @@ def _structural_reversals(points, *, source_level=1):
                              wave_direction_before=direction,wave_direction_after='down' if up else 'up'))
         # Keep the whole intervening wave, not merely the bar that broke the key.
         direction='down' if up else 'up'
+        assert anchor is not None
         pool=[k for k in range(anchor+1,j+1) if points[k]['kind']==('L' if up else 'H')]
         anchor=(min if up else max)(pool,key=lambda k:points[k]['value'])
         key=anchor-1
@@ -271,7 +275,7 @@ def secondary_trends(level1,bars):
     dates={(b.timestamp.astimezone(ZoneInfo('Asia/Shanghai')) if b.timestamp.tzinfo else b.timestamp).date().isoformat():i
            for i,b in enumerate(bars)}
     strokes=[]; developing_strokes=[]
-    for source in level1['strokes']:
+    for source_index,source in enumerate(level1['strokes']):
         points=_structural_reversals(source['points'])
         if not points:
             continue
@@ -285,7 +289,10 @@ def secondary_trends(level1,bars):
         strokes.append(dict(id='secondary-'+source['id'],source_path=source['id'],kind='secondary',
                             trend_level=2,points=points,input_turn_count=len(source['points']),
                             key_transitions=transitions))
-        tail=hierarchical_developing_path(source,points,trend_level=2,source_level=1,kind='secondary')
+        next_sources=[later for later in level1['strokes'][source_index+1:] if later['points']]
+        end_index=next_sources[0]['points'][0]['index']-1 if next_sources else len(bars)-1
+        tail=hierarchical_developing_path(source,points,trend_level=2,source_level=1,kind='secondary',
+                                         bars=bars,end_index=end_index)
         if tail:
             developing_strokes.append(tail)
     return dict(name='二级趋势线',trend_level=2,source_level=1,strokes=strokes,
@@ -301,7 +308,8 @@ def secondary_trends(level1,bars):
                 key_transition_count=sum(len(s['key_transitions']) for s in strokes),
                 aggregation_rule='level1_structural_key_break_or_confirmed_alternation_promotion',
                 scope='lecture_level2_not_strategy_confirmation',
-                note='一级点突破末跌高确认整段低点，跌破末升低确认整段高点；翻空为多高点若同时突破旧二级末跌高，'
+                note='市场最高价突破已知同级前高或最低价跌破已知同级前低时，趋势线立即确认并画实线，末端继续延伸；'
+                     '一级点突破末跌高确认整段低点，跌破末升低确认整段高点；翻空为多高点若同时突破旧二级末跌高，'
                      '并在较高且严格小于2/3的场景回撤后出现已确认非正式二级低点，则在该反转可知日升级为正式二级高点；'
                      '旧二级低点被市场收盘严格跌破后，'
                      '末跌高换锚到后续已确认二级低点左侧高点；开放尾部尚无下一二级低点时，可用已确认二级高点及其'

@@ -1,9 +1,10 @@
-"""Derive confirmed and developing level-3 trends from level-2 structure.
+"""Derive formal reversals and immediately confirmed live level-3 trends.
 
 Confirmed level-3 points remain immutable structural reversals. A separate
 display-only path exposes confirmed nested level-2 turns plus the unresolved
 tail after the latest reversal, so charts do not look truncated while the
-opposite level-2 key has not yet been broken.
+opposite level-2 key has not yet been broken. Strict market breaks of the
+same-level key confirm a solid trend independently of the live endpoint.
 """
 from zoneinfo import ZoneInfo
 
@@ -22,7 +23,7 @@ def tertiary_trends(level2,bars):
     dates={(b.timestamp.astimezone(ZoneInfo('Asia/Shanghai')) if b.timestamp.tzinfo else b.timestamp).date().isoformat():i
            for i,b in enumerate(bars)}
     strokes=[]; developing_strokes=[]
-    for source in level2['strokes']:
+    for source_index,source in enumerate(level2['strokes']):
         points=_structural_reversals(source['points'],source_level=2)
         if not points:
             continue
@@ -31,7 +32,10 @@ def tertiary_trends(level2,bars):
             p['levels'].insert(0,dict(name='二级'+('末升低' if p['flip']=='翻多为空' else '末跌高'),price=p['broken_key']['value']))
         strokes.append(dict(id='tertiary-'+source['id'],source_path=source['id'],kind='tertiary',
                             trend_level=3,points=points,input_turn_count=len(source['points'])))
-        tail=hierarchical_developing_path(source,points,trend_level=3,source_level=2,kind='tertiary')
+        next_sources=[later for later in level2['strokes'][source_index+1:] if later['points']]
+        end_index=next_sources[0]['points'][0]['index']-1 if next_sources else len(bars)-1
+        tail=hierarchical_developing_path(source,points,trend_level=3,source_level=2,kind='tertiary',
+                                         bars=bars,end_index=end_index)
         if tail:
             developing_strokes.append(tail)
     return dict(name='三级趋势线',trend_level=3,source_level=2,strokes=strokes,
@@ -46,5 +50,6 @@ def tertiary_trends(level2,bars):
                 developing_point_count=sum(len(s['points']) for s in developing_strokes),
                 aggregation_rule='level2_structural_key_break',scope='lecture_level3_not_strategy_confirmation',
                 note='仅以已确认二级点为输入；突破二级末跌高确认整段低点，跌破二级末升低确认整段高点；'
+                     '市场最高价突破已知同级前高或最低价跌破已知同级前低时，趋势线立即确认并画实线，末端继续延伸；'
                      '最后一个正式三级点之后的已确认二级演化另作纯显示发展路径，不进入正式点、策略或回测；'
                      '不等待67%交替，不跨断点。')
