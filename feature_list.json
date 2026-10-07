@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-283",
+    "activeFeature": "MONOREPO-256",
     "features": [
         {
             "id": "MONOREPO-283",
@@ -12,7 +12,7 @@
             "dependencies": [
                 "MONOREPO-282"
             ],
-            "status": "in-progress",
+            "status": "done",
             "acceptanceCriteria": [
                 "襄阳轴承2026-07-21底部7.32、07-22内包阴子B/C、07-23成N7.90统一识别，一饱8.48二吐9.06",
                 "内包只使用已有讲义确认折线及非十字母子阴阳顺序，不放宽严格N或外包母线；相等攻击、未确认、破底及非底部局部N不发布四档",
@@ -47,9 +47,14 @@
                     "summary": "2018起2105实际日线确认07-21底部/07-23有资格，one_p8.48/two_t9.06；07-27局部N沿用07-23来源。Harness280功能18Node2Python32规范通过，CodeGraph同步、差异检查通过。"
                 },
                 {
-                    "command": "full Core/Web suites; browser/Playwright; live V100 API and complete account comparison",
+                    "command": "full Core/Web suites; browser/Playwright; external minutes and complete account comparison",
                     "status": "not-run",
-                    "summary": "完整套件、浏览器、Playwright和完整账户差异待独立验证；本地合并及V100常驻接口验收待本轮下一步执行，不推送。"
+                    "summary": "完整套件、浏览器/Playwright、真实外部分钟和完整账户差异待独立验证；定向验证与实际HTTP/悬浮数据已通过，未推送。"
+                },
+                {
+                    "command": "local main no-ff merge; 8765/13003 backtest-version; actual AkShare prefix response; main buildAnnotations/nTargetAt/nTargetGuide",
+                    "status": "passed",
+                    "summary": "7ef4cf5经e7cd367合并本地main。8765/13003自动加载V100，main130源engine bed410a7c8668af4b30c380b6205949131ad1591c59c99c8818eeb2f564bc5a3逐字一致。13003实际2018起2057日线至2026-07-23，07-21及07-23 OHLC/量/rawclose与用户完全一致；正N形状07-21低7.32→07-22高7.74/低7.55→07-23高7.90，有资格且源日期07-23。一饱8.48二吐9.06；main实际悬浮选择同N，标签显示底部07-21/正N07-23，无未来五顶十满。run akshare-141df10ef53917f035feafce；响应SHA 4f58efb58caebf4a486c333a8eeef11528799df10f5ada37f9945977ba174be4。合并后main10拓扑/Harness通过；未手工重启、改缓存或推送。"
                 }
             ]
         },
@@ -1211,7 +1216,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "backlog",
+            "status": "in-progress",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
