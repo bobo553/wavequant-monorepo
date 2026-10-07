@@ -51,6 +51,13 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("documents dashed touched targets and transparent chart labels", () => {
+        const note = topologyProfileNotes.find((text) => text.includes("已触及的 C 目标横线"));
+        expect(note).toMatch(/统一用虚线.*长线.*短线样式一致/);
+        expect(note).toMatch(/状态、价格和首次触及日期保留/);
+        expect(note).toMatch(/目标、正 N 与组合回撤文字均为透明背景/);
+        expect(note).toMatch(/趋势方向确认的实线规则保持/);
+    });
     it("documents fixed B-date labels without changing C target timing", () => {
         const note = topologyProfileNotes.find((text) => text.includes("C 浪目标标识"));
         expect(note).toMatch(/固定.*B 低点日期上方/);

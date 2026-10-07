@@ -1036,6 +1036,16 @@ test("ordinary Guofang ABC draws all three targets and adds the C high only afte
         rendered.guides.map(({ targetState }) => targetState),
         ["已触及", "已触及", "本段结束未达成"],
     );
+    for (const guide of rendered.guides) {
+        const line = chart.levelLines.find(({ options }) => options.title === guide.name);
+        assert.equal(line.options.lineStyle, 2);
+        assert.equal(line.options.lastValueVisible, false);
+        assert.equal(line.options.priceLineVisible, false);
+        assert.deepEqual(line.points.at(-1), {
+            time: guide.end || guide.start,
+            value: guide.price,
+        });
+    }
     assert.deepEqual(rendered.range, originalRange);
 });
 

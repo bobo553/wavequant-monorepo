@@ -4,6 +4,48 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-294",
+            "name": "transparent-chart-labels-dashed-touched-targets",
+            "title": "已触及目标虚线与图上标签透明",
+            "description": "已触及C目标统一使用虚线，图内目标和回撤标签不再绘制背景色。",
+            "scope": "Web目标线样式与共享Canvas文字绘制",
+            "dependencies": ["MONOREPO-292"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "已触及的C目标长线和短线均为虚线，保留状态、价格和首次触及日期",
+                "图上的目标、正N与组合回撤文字透明背景，不遮挡K线或网格；已有透明端点和成交标签保持",
+                "C目标仍固定对应B低点日期上方，保留避让、图窗裁切和清理行为",
+                "定向测试、格式、lint、类型、必要构建及Harness实际通过，不启动浏览器或完整Web套件"
+            ],
+            "verification": [
+                {
+                    "command": "node --test tests/wave-c-chart.test.mjs tests/target-level-guides.test.mjs tests/combined-a-chart.test.mjs tests/wave-endpoint-overlay.test.mjs tests/trade-marker-overlay.test.mjs tests/n-structure-overlay.test.mjs tests/lecture-overlay.test.mjs (Web cwd)",
+                    "status": "passed",
+                    "summary": "114项通过。旧实现3项回归先复现已触及长线/短线实线与文字底色；最终SDK线输入为虚线，保留首次触及终点、状态和固定B。共享C/正N/组合回撤Canvas浅深色均没有背景矩形绘制，原端点/成交/正N/教学标识及避让裁切清理回归保留。初次新增断言误将未达目标当长线，已改为原短线锚点，最终无失败。"
+                },
+                {
+                    "command": "pnpm exec vitest run src/features/research-workbench/topology/topology-data.test.ts (Web cwd)",
+                    "status": "passed",
+                    "summary": "12项通过，补充虚线与透明文字说明并刷新88源指纹e38c9aed260236378db639fd1600124d0250dbbe0b19402891231e2c291a75cf。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; JS syntax and git diff --check; pnpm harness:check",
+                    "status": "passed",
+                    "summary": "lint零错误6条既有环境变量warning、恢复已知Next生成行前后类型、512MB/4MB生产构建、两修改JS语法、差异及290功能Harness通过。纯显示调整，未改Core/API或趋势确认规则。"
+                },
+                {
+                    "command": "Complete Web suite and browser/Playwright pixel validation",
+                    "status": "not-run",
+                    "summary": "依用户验证节奏未运行完整Web、浏览器或Playwright；Canvas与SDK输入断言不等同于浏览器像素验收。"
+                },
+                {
+                    "command": "Sync latest main 2732507; 122 focused Node tests including chart-tooltip; 12 topology tests; final Web lint/typecheck/build and Prettier/Harness/diff",
+                    "status": "passed",
+                    "summary": "保留提示框293和标签294两独立记录，解决进度/状态/源码摘要并发冲突；最终122 Node和12拓扑、lint零错误6旧warning及生产构建通过。88源合并后指纹82a20cb6233cc271883e5b4c046125f170221d7c86efbf675ced3130618b77e6。原main其他功能记录完整保留，256原记录不变；恢复生成行后类型、9文件格式、291功能Harness与差异检查均通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-293",
             "name": "candle-tooltip-outside-chart",
             "title": "K线提示框允许超出图窗",

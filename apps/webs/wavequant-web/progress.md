@@ -1,3 +1,5 @@
+MONOREPO-294（2026-10-08）已触及目标虚线与图内标签透明已实现：C目标长线和单根K线短段统一虚线，已触及状态、首次触及日期与B低固定锚点保留；共享C/正N/组合回撤文字取消背景矩形，原端点和成交标签已经透明。同步main提示框功能后122项定向Node及12项拓扑通过，含原实现3条复现、浅深色背景、避让裁切与清理；最终88源指纹82a20cb6。Web lint零错误6旧warning、类型、生产构建、语法/差异及291功能Harness通过。仅恢复Next构建已知生成行；Core/API未改。完整Web与浏览器/Playwright待独立验证；256原字段完整恢复，本地提交合并，不自动推送。
+
 MONOREPO-293（2026-10-07，main交付验收）：实现abbf056、同步0cec521经9b29245本地no-ff合并；同期dde1911仅补C目标验收记录，产品源码相同并保留全部原记录。main常驻3003的charts.js/chart-tooltip.js/styles.css均HTTP200且原始字节SHA与main一致，research HTTP200，Harness通过。最终96项Node/11项拓扑及格式/语法/lint/类型/精确E盘Webpack生产构建证据完整；293done，原256全部字段保持。刷新页面即可加载新提示框。未推送，完整Web套件与浏览器/Playwright像素仍待独立验证。
 
 MONOREPO-293（2026-10-07）K线提示框允许超出图窗已完成：按页面/visualViewport定位，右侧有空间时跨出图窗，页面边缘翻转或限位；原生Popover顶层保留DOM主题，旧浏览器移到工作台根部避开图表卡片的container-type/isolation。复制、选择文本、同K位置稳定保留，滚动/尺寸/Escape/换数据/销毁清理。实现abbf056，同会话feat-三级虚线门禁，保留并行main08077ab的固定B目标。最终96项Node/11项拓扑、格式/JS语法、lint零错6旧warning、类型和E盘精确副本Webpack生产导出通过；指纹9335afbc与更新后的图表接入一致，首轮指纹失败已修正重验，无豁免。复用E盘依赖，无新增依赖或锁变更；293done，main所有原功能/256原字段完整保留。完整Web套件与浏览器/Playwright像素待独立验证；本地合并和常驻文件结果见交付，不自动推送。

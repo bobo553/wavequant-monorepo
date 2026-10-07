@@ -114,7 +114,6 @@ export class TargetGuideOverlay {
             if (labelYs.length) labelYs[labelYs.length - 1] = Math.min(labelYs.at(-1), mediaSize.height - 4);
             for (let index = labelYs.length - 2; index >= 0; index--)
                 labelYs[index] = Math.min(labelYs[index], labelYs[index + 1] - spacing);
-            const background = this.chart.options?.().layout?.background?.color || "#101722";
             for (const [index, guide] of visible.entries()) {
                 context.strokeStyle = guide.color;
                 context.fillStyle = guide.color;
@@ -122,7 +121,7 @@ export class TargetGuideOverlay {
                 const short = !guide.end || guide.end === guide.start;
                 const anchorX = Math.max(0, short ? guide.x - 18 : guide.x);
                 if (short && !guide.offscreen && !guide.offscreenX) {
-                    context.setLineDash(guide.targetState === "已触及" ? [] : [4, 3]);
+                    context.setLineDash([4, 3]);
                     context.beginPath();
                     context.moveTo(anchorX, guide.y);
                     context.lineTo(Math.min(mediaSize.width, guide.x + 18), guide.y);
@@ -171,8 +170,6 @@ export class TargetGuideOverlay {
                     context.lineTo(anchorX, guide.y);
                     context.stroke();
                 }
-                context.fillStyle = background;
-                context.fillRect(labelX - 2, labelY - 14, width + 4, 16);
                 context.fillStyle = guide.color;
                 context.fillText(label, labelX, labelY, width);
             }
