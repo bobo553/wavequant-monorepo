@@ -124,7 +124,7 @@ def test_later_formal_origin_keeps_first_market_confirmation_and_live_endpoint(l
 
 
 @pytest.mark.parametrize('level,kind', [(2, 'secondary'), (3, 'tertiary')])
-def test_source_evolution_after_the_confirmed_extreme_stays_visible_and_unconfirmed(level, kind):
+def test_source_pullback_after_the_confirmed_extreme_waits_for_a_four_point_reversal(level, kind):
     bars, points = setup()
     bars.extend([Bar(datetime(2025, 1, 6), 'TEST', 9, 10, 8, 9, 100),
                  Bar(datetime(2025, 1, 7), 'TEST', 8, 9, 7, 8, 100),
@@ -139,7 +139,7 @@ def test_source_evolution_after_the_confirmed_extreme_stays_visible_and_unconfir
     result = hierarchical_developing_path(dict(id='source', points=points), [anchor], trend_level=level,
                                           source_level=level-1, kind=kind, bars=bars)
     assert [(point['kind'], point['value']) for point in result['points']] == [
-        ('H', 10), ('L', 6), ('H', 11), ('L', 7), ('H', 10)]
+        ('H', 10), ('L', 6), ('H', 11)]
     assert result['confirmed_endpoint']['time'] == '2025-01-05'
-    assert all(point['edge_state'] == 'developing' for point in result['points'][3:])
+    assert 'countertrend_confirmation' not in result
     assert result['confirmation']['available_at'] == '2025-01-05'

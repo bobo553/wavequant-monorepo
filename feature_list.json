@@ -4,6 +4,48 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-290",
+            "name": "hierarchical-countertrend-dash-gate",
+            "title": "高层趋势反向虚线按四端证据生成",
+            "description": "已确认二三级趋势极值之后，未发生同级突破或下一级四端趋势扭转时不画反向虚线。",
+            "scope": "Core共享发展路径证据门禁、全局规则及真实襄阳行情回归",
+            "dependencies": ["MONOREPO-288"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "襄阳轴承2025-05-15到2026-04-08三级趋势没有多余反向虚线，3.45到19.63已确认实线保持",
+                "下一级四端高低点严格同向反转才启用反向发展虚线，证据未齐、相等、未知和跨路径不启用",
+                "同级市场严格突破继续立即确认实线，不提前冻结极值、升级正式拐点或修改策略输入",
+                "定向回归、类型、构建和Harness实际通过，未执行检查如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_hierarchical_countertrend.py test_hierarchical_confirmation.py; secondary/tertiary/landmarks/alternation/chart-history/hierarchical-entry/N targeted regressions",
+                    "status": "passed",
+                    "summary": "33+69共102项及21子用例通过。新增先在旧逻辑复现15失败/4通过，修复后通过。1985根真实原始日线，2025-05-15..2026-04-08共219交易日截面均保留03-11首次确认和05-15高19.63，无反向三级虚线。上涨/下跌镜像、相等、混合、未来、未确认源、断点、四端首次齐备和同级直接破位均覆盖；相邻分层策略与缓存回归通过。"
+                },
+                {
+                    "command": "node --test trend-break-confirmation.test.mjs lecture-overlay.test.mjs; vitest topology-data.test.ts",
+                    "status": "passed",
+                    "summary": "28项Canvas/说明及10项拓扑通过，85来源摘要3067b6e360aa321246d889a1947d8ca29c96ea88648ba06505d016f14c053820。不把渲染器收到虚线就能绘制的能力测试当成业务资格；门禁由Core决定。"
+                },
+                {
+                    "command": "mypy --strict --follow-imports=silent hierarchical_confirmation.py; mypy --config-file Core/pyproject.toml --follow-imports=silent 4 changed modules; Core typecheck; API typecheck; turbo run lint typecheck --only --env-mode=loose",
+                    "status": "passed",
+                    "summary": "新确认模块strict、4修改模块check_untyped_defs、Core既定4文件和API11文件strict通过。Node24.16.0/pnpm10.26.2，20/20静态目标最终通过，Web零错误6旧warning。首次quick安装因C盘不足中止；复用既有Node依赖。API跨检出editable路径曾出现58/65错误，D盘独立环境正确安装本分支Core/API后标准命令通过，未改源码或忽略规则。"
+                },
+                {
+                    "command": "Core sdist/wheel; 4 packaged module byte comparisons; clean D-drive wheel install smoke; exact-source E-drive snapshot Next build --webpack",
+                    "status": "passed",
+                    "summary": "最终Core构建及4模块字节核对、D盘干净环境wheel导入及反向证据烟测通过。C到E依赖复用使Turbopack根路径及Webpack跨盘失败；E盘只读源码副本复用依赖并通过Next生产构建，拓扑源码与工作分支逐字匹配，无产品配置变更。Git原worktree保留，不额外安装Node包到C盘。"
+                },
+                {
+                    "command": "Complete Core/Web suites, browser/Playwright and full account comparison",
+                    "status": "not-run",
+                    "summary": "按本轮开发验证节奏未运行完整套件、浏览器或完整账户差异；只修改纯显示反向路径门禁，正式拐点及策略输入保持原确认边界。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-289",
             "name": "positive-n-defense-reformation",
             "title": "正N轧空低失效与独立重算",
