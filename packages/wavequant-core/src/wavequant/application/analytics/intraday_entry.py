@@ -13,6 +13,7 @@ from wavequant.domain.strategies.integrated_strategy import (
     pivot_history,
 )
 from wavequant.domain.strategies.n_consolidation import consolidation_gap
+from wavequant.domain.strategies.hierarchical_entry import EntryContext
 from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
     wave_confirmation_state,
@@ -61,6 +62,11 @@ def resolve_consolidation_entries(
         if e["event"] == "wave_continuation_ready"
     ]
     snapshots, epochs = pivot_history(bars, strategy)[:2] if wave_candidates else ({}, {})
+    wave_context_history: dict[int, tuple[EntryContext, ...]] = {}
+    if wave_candidates and strategy.buy_point_definition == "whole_flip_wave_v3":
+        from wavequant.domain.strategies.chart_entry_history import chart_entry_history
+
+        wave_context_history = chart_entry_history(bars, audit=audit)[0]
     daily_waves = {e["bar_index"]: e for e in audit if e["event"] == "long_signal" and e.get("wave_entry_path")}
     consumed_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
     # Every minute prefix takes all earlier bars from this fixed full-history
@@ -120,6 +126,19 @@ def resolve_consolidation_entries(
             epoch = epochs.get(setup.attack_index) if epoch is None else epoch
             if known >= i or bar.open < setup.defense or epoch != epochs.get(i - 1):
                 continue
+            if wave_context_history:
+                from wavequant.domain.strategies.whole_wave_entry import wave_entry_contexts
+
+                # A defended price box cannot request replay after its entry
+                # context has retired. Today's partial bar still owns decisions.
+                current = wave_context_history.get(i - 1, ())
+                live = {context.episode for context in current}
+                available = wave_entry_contexts(
+                    current, wave_context_history.get(setup.attack_index, ()),
+                    attack=setup.attack_index, asof=i - 1, allow_confirming_n=True,
+                )
+                if not any(context.episode in live for context in available):
+                    continue
             context = wave_pullback_context(bars, setup, i)
             if context is not None and bar.open <= bars[i - 1].high:
                 highs = [

@@ -267,8 +267,8 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
             {
                 id: "execution-time",
                 question: "信号仍有效，执行时点已到？",
-                detail: "V3 常规买点按当天收盘模拟，盘整与 C 波可在已完成的 5 分钟证据后入场；待执行信号超出 TTL 则到期，不补造历史成交。",
-                source: "backtest.py · run_backtest:349–378, 546–598；strategy_profiles.py · whole_wave_profile execution",
+                detail: "V3 常规买点按当天收盘模拟，盘整与 C 波可在已完成的 5 分钟证据后入场；C 波分钟请求先用昨日已知且仍存活的攻击时交替或同一 N 联合确认预筛选，旧结构仅守住价格防守位不能反复请求分钟。实际确认仍重放已完成分钟前缀，不借今日最终行情。待执行信号超出 TTL 则到期，不补造历史成交。",
+                source: "backtest.py · run_backtest:349–378, 546–598；intraday_entry.py · resolve_consolidation_entries；whole_wave_entry.py · wave_entry_contexts；strategy_profiles.py · whole_wave_profile execution",
                 yes: "取得实际执行价格",
                 no: "到期或未确认：不成交",
             },
@@ -543,4 +543,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "33fc8be1859cb26a95f44e7148550c342eda1f8f78cf4fc7104f0abca8a5dee7";
+export const strategySourceDigest = "c3d944ed005abb8690b8a94f5811b4ce9a38e4f3d6b2a3e8ac30fac17a32ee83";

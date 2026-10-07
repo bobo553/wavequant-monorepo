@@ -677,7 +677,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     'invalidated': '最低价跌破A起点，转浪失效'}[event.state]
                 log(j, kind, **row)
                 counts[kind] += 1
-            if retirement < len(bars):
+            if max(squeeze, candidate['known_at']) < retirement < len(bars):
                 log(retirement, 'wave_projection_invalidated', attack=candidate['attack'],
                     origin_index=projection_setup.origin_index, state='invalidated', target=None,
                     target_stage='five_top', reason='bottom_target_source_retired')

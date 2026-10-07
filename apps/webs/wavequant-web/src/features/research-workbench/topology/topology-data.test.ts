@@ -15,6 +15,7 @@ const strategyDirectories = [
 ];
 const additionalSources = [
     "packages/wavequant-core/src/wavequant/application/analytics/backtest.py",
+    "packages/wavequant-core/src/wavequant/application/analytics/intraday_entry.py",
     "packages/wavequant-core/src/wavequant/application/analytics/intraday_wave_exit.py",
     "packages/wavequant-core/src/wavequant/application/trading/intent_execution.py",
     "packages/wavequant-core/src/wavequant/domain/models/model.py",
@@ -32,8 +33,6 @@ const additionalSources = [
     "apps/webs/wavequant-web/public/n-target-focus.js",
     "apps/webs/wavequant-web/public/buy-n-targets.js",
     "apps/webs/wavequant-web/public/annotations.js",
-    "apps/webs/wavequant-web/public/ordinary-c-wave.js",
-    "apps/webs/wavequant-web/public/structural-c-wave.js",
 ];
 
 function sourceDigest(sources: { file: string; content: string }[]): string {
@@ -137,6 +136,7 @@ describe("strategy topology", () => {
             ),
             ...additionalSources,
         ].sort();
+        expect(new Set(files).size).toBe(files.length);
         const sources = files.map((file) => ({ file, content: readFileSync(resolve(projectRoot, file), "utf8") }));
         const regimeSource = sources.findIndex((source) => source.file.endsWith("/market_state/market_regime.py"));
         expect(regimeSource).toBeGreaterThanOrEqual(0);

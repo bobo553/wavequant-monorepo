@@ -11,6 +11,7 @@ import pytest
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.domain.strategies.integrated_strategy import SystemResult, SystemStrategy, generate_system_signals
 from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
+from wavequant.domain.strategies.chart_entry_history import chart_entry_history
 from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageError
 from wavequant.infrastructure.market_data.minute import MinuteBar
 from wavequant.interfaces.charts.visualization import ChartRepository
@@ -102,7 +103,7 @@ def test_march_5_structural_n_does_not_measure_from_a_higher_local_bottom(xinhua
     assert all("levels" not in event for event in sample.generated.audit)
 
 
-def test_march_5_mother_pullback_n_buys_march_20_once(xinhua_history: _XinhuaSample) -> None:
+def test_march_5_mother_pullback_cannot_backdate_missing_hierarchy(xinhua_history: _XinhuaSample) -> None:
     sample = xinhua_history
     attack, now = sample.dates["2024-03-05"], sample.dates["2024-03-20"]
     completion = [event for event in sample.generated.audit
@@ -120,34 +121,24 @@ def test_march_5_mother_pullback_n_buys_march_20_once(xinhua_history: _XinhuaSam
     assert mother.high > child.high and mother.low < child.low
     assert all(bar.low >= n["defense"] for bar in sample.bars[attack + 1:now + 1])
     signals = _longs_for_attack(sample.generated, sample.bars[attack].timestamp)
-    assert [str(signal.timestamp.date()) for signal in signals] == ["2024-03-20"]
-    signal = signals[0]
-    assert signal.reference_price == sample.bars[now].close
-    assert signal.invalidation_price == pytest.approx(n["defense"])
-    assert signal.target_price == pytest.approx(n["one_p"])
-    assert signal.reference_price < n["one_p"]
-    assert signal.rvol == pytest.approx(35_527_071 / 32_519_279)
-    proof = next(event for event in sample.generated.audit
-                 if event["event"] == "long_signal" and event["bar_index"] == now and event["attack"] == attack)
-    assert proof["squeeze_confirmation"] == "resistance_attack_bar_break"
-    assert proof["n_attack_high"] == sample.bars[attack].high
-    assert proof["n_attack_close"] == sample.bars[attack].close
-    assert proof["confirmation_high"] == sample.bars[now].high
-    assert proof["confirmation_close"] == sample.bars[now].close
-    assert proof["confirmation_high"] > proof["n_attack_high"]
-    assert proof["confirmation_close"] > proof["n_attack_close"]
-    assert proof["confirmation_strong_bullish"] is True
-    assert proof["confirmation_body_open_ratio"] == pytest.approx(0.04310344827586207)
-    assert proof["confirmation_body_range_ratio"] == pytest.approx(0.8695652173913043)
-    assert proof["confirmation_upper_shadow_ratio"] == pytest.approx(0.13043478260869565)
-    assert proof["n_resistance_date"] == "2024-03-05"
-    assert proof["n_resistance_window_start"] == "2024-03-05"
-    assert proof["n_resistance_window_end"] == "2024-03-06"
-    assert proof["weak_n_resolved_by_attack_bar_break"] is True
-    assert proof["weak_n_resolved_by_volume_record"] is False
+    assert signals == []
+    contexts, _ = chart_entry_history(sample.bars, audit=sample.generated.audit)
+    assert contexts[attack] == contexts[now] == ()
+    rejection = [event for event in sample.generated.audit
+                 if event["event"] == "entry_rejected" and event["bar_index"] == now
+                 and event.get("attack") == attack]
+    assert [event["reason"] for event in rejection] == ["wave_no_alternation_at_attack"]
+    assert n["target_eligible"] is False
+    assert n["one_p"] is None and n["two_t"] is None
+    candle = sample.bars[now]
+    assert candle.high > sample.bars[attack].high
+    assert candle.close > sample.bars[attack].close
+    assert (candle.close - candle.open) / candle.open == pytest.approx(0.04310344827586207)
+    assert (candle.close - candle.open) / (candle.high - candle.low) == pytest.approx(0.8695652173913043)
+    assert candle.volume / sample.bars[now - 1].volume == pytest.approx(35_527_071 / 32_519_279)
 
 
-def test_completed_prefix_and_partial_day_cache_preserve_march_20_confirmation(
+def test_completed_prefix_and_partial_day_cache_preserve_march_20_rejection(
     xinhua_history: _XinhuaSample,
 ) -> None:
     sample = xinhua_history
@@ -166,8 +157,10 @@ def test_completed_prefix_and_partial_day_cache_preserve_march_20_confirmation(
     replay = generate_system_signals(completed, sample.config, chart_history_cache=cache)
     assert replay.signals == prefix.signals
     assert replay.audit == prefix.audit
-    assert [str(signal.timestamp.date()) for signal in _longs_for_attack(
-        replay, sample.bars[attack].timestamp)] == ["2024-03-20"]
+    assert _longs_for_attack(replay, sample.bars[attack].timestamp) == []
+    assert any(event["event"] == "entry_rejected" and event["bar_index"] == now
+               and event.get("attack") == attack and event["reason"] == "wave_no_alternation_at_attack"
+               for event in replay.audit)
 
 
 def test_broken_original_march_5_defense_cannot_revive_at_march_20(xinhua_history: _XinhuaSample) -> None:
@@ -181,7 +174,7 @@ def test_broken_original_march_5_defense_cannot_revive_at_march_20(xinhua_histor
     assert not _longs_for_attack(generated, sample.bars[attack].timestamp)
 
 
-def test_formal_daily_close_account_uses_raw_4_84_and_configured_slippage(xinhua_history: _XinhuaSample) -> None:
+def test_formal_daily_close_account_keeps_valid_fills_and_rejects_march_20(xinhua_history: _XinhuaSample) -> None:
     sample = xinhua_history
     now = sample.dates["2024-03-20"]
     assert sample.config.strict_n_attack_quality is False
@@ -198,25 +191,22 @@ def test_formal_daily_close_account_uses_raw_4_84_and_configured_slippage(xinhua
     )
     orders = [order for order in result["orders"]
               if order["side"] == "BUY" and order["timestamp"].startswith("2024-03-20")]
-    assert len(orders) == 1
-    order = orders[0]
-    assert order["status"] == "filled"
+    assert orders == []
+    assert sample.bars[now].close / sample.bars[now].adjustment_factor == pytest.approx(4.84)
+    buys = [order for order in result["orders"] if order["side"] == "BUY" and order["status"] == "filled"]
+    assert buys
+    assert buys[0]["applied_slippage_bps"] == 0
+    order = next(order for order in buys if order.get("applied_slippage_bps") != 0)
+    decision = datetime.fromisoformat(order["signal_timestamp"])
+    candle = sample.bars[sample.dates[str(decision.date())]]
     assert order["execution_model"] == "same_day_close"
-    assert order["reference_price"] / sample.bars[now].adjustment_factor == pytest.approx(4.84)
-    assert order["raw_price"] == pytest.approx(4.84 * (1 + sample.execution["slippage_bps_per_side"] / 10_000))
+    assert order["reference_price"] == pytest.approx(candle.close)
+    assert order["raw_price"] == pytest.approx(
+        candle.close / candle.adjustment_factor * (1 + sample.execution["slippage_bps_per_side"] / 10_000))
     assert order["raw_shares"] >= 100
     assert order["position_quantity_before"] == 0
     proof = next(event for event in order["decision_evidence"] if event["event"] == "long_signal")
-    assert proof["squeeze_confirmation"] == "resistance_attack_bar_break"
-    assert proof["n_attack_high"] == sample.bars[sample.dates["2024-03-05"]].high
-    assert proof["n_attack_close"] == sample.bars[sample.dates["2024-03-05"]].close
-    assert proof["confirmation_high"] == sample.bars[now].high
-    assert proof["confirmation_close"] == sample.bars[now].close
-    assert proof["confirmation_high"] > proof["n_attack_high"]
-    assert proof["confirmation_close"] > proof["n_attack_close"]
-    assert proof["confirmation_strong_bullish"] is True
-    assert proof["confirmation_body_open_ratio"] == pytest.approx(0.04310344827586207)
-    assert proof["confirmation_body_range_ratio"] == pytest.approx(0.8695652173913043)
-    assert proof["confirmation_upper_shadow_ratio"] == pytest.approx(0.13043478260869565)
-    assert proof["weak_n_resolved_by_attack_bar_break"] is True
-    assert proof["weak_n_resolved_by_volume_record"] is False
+    assert proof["target_source_attack"] is not None
+    source = next(event for event in sample.generated.audit
+                  if event["event"] == "n_completed" and event["bar_index"] == proof["target_source_attack"])
+    assert source["target_eligible"] is True

@@ -6,20 +6,28 @@ from wavequant.domain.strategies.integrated_strategy import generate_system_sign
 from .test_completed_wave_recovery import config
 
 
-def test_guilin_one_p_rebound():
+def test_guilin_local_n_cannot_create_one_p_rebound_targets():
     raw = json.loads((Path(__file__).parent / "fixtures/guilin_2020_rebound.json").read_text())
     bars = [Bar(datetime.fromisoformat(d), raw["symbol"], *v) for d, *v in raw["bars"]]
     now = next(i for i, b in enumerate(bars) if str(b.timestamp.date()) == "2020-07-06")
     result = generate_system_signals(bars, config())
-    proof = next(e for e in result.audit if e["event"] == "long_signal" and e["bar_index"] == now)
-    assert proof["wave_entry_n_date"] == "2020-05-28"
-    assert proof["wave_a_class"] == "ordinary"
-    assert proof["wave_a_high_date"] == "2020-06-08"
-    assert proof["wave_b_low_date"] == "2020-06-29"
-    assert proof["wave_gap_trigger"] == "rebound_close_breakout"
-    assert "wave_c_1618_target" not in proof
-    prefix = generate_system_signals(bars[: now + 1], config())
-    assert prefix.signals == [s for s in result.signals if s.bar_index <= now]
+    attack = next(i for i, bar in enumerate(bars) if str(bar.timestamp.date()) == "2020-05-28")
+    n = next(event for event in result.audit if event["event"] == "n_completed"
+             and event["bar_index"] == attack and event["direction"] == "up")
+    assert n["outside_close_confirmed"] is True
+    assert n["target_eligible"] is False
+    assert n["target_qualification_reason"] == "origin_is_not_decline_floor"
+    assert bars[n["target_bottom_index"]].low < bars[n["origin"]].low
+    assert n["one_p"] is None and n["two_t"] is None
+    assert not any(event["event"] == "wave_continuation_ready" and event["attack_index"] == attack
+                   for event in result.audit)
+    assert not any(signal.side == "LONG" and signal.bar_index == now for signal in result.signals)
+    assert any(event["event"] == "entry_rejected" and event["bar_index"] == now
+               and event.get("attack") == attack and event["reason"] == "wave_no_alternation_at_attack"
+               for event in result.audit)
+    prefix = generate_system_signals(bars[:now + 1], config())
+    assert prefix.signals == [signal for signal in result.signals if signal.bar_index <= now]
+    assert prefix.audit == [event for event in result.audit if event["bar_index"] <= now]
 
 
 def test_positive_outside_close_is_explicit_and_never_intrabar_order():
@@ -50,10 +58,11 @@ def test_positive_outside_close_is_explicit_and_never_intrabar_order():
     for wrong in [replace(setup, allow_outside_close=False), replace(setup, source="other")]:
         with pytest.raises(ValueError):
             observe_n(bars, wrong, timeframe="1d", milestone_basis=MilestoneBasis.EXTREME)
-    with pytest.raises(ValueError):
-        observe_n(
-            bars[:2] + [replace(bars[2], close=12)], setup, timeframe="1d", milestone_basis=MilestoneBasis.EXTREME
-        )
+    pending = observe_n(
+        bars[:2] + [replace(bars[2], close=12)], setup, timeframe="1d", milestone_basis=MilestoneBasis.EXTREME)
+    assert pending.completion is None
+    assert pending.status.value == "forming"
+    assert pending.targets is None and not pending.milestones
 
 
 def test_ordinary_rebound_requires_target_defense_and_known_close_break():
@@ -89,7 +98,7 @@ def test_ordinary_rebound_requires_target_defense_and_known_close_break():
     assert wave_gap_entry(bars, below, 7, pivots=[pivot]) is None
 
 
-def test_ordinary_rebound_minutes_honor_optional_volume_filter():
+def test_optional_volume_filter_cannot_revive_unqualified_local_rebound():
     from dataclasses import replace
     from wavequant.application.analytics.intraday_entry import resolve_consolidation_entries
     from wavequant.infrastructure.market_data.minute import MinuteBar
@@ -110,13 +119,14 @@ def test_ordinary_rebound_minutes_honor_optional_volume_filter():
             return minute
         raise MinuteCoverageError(str(bar.timestamp.date()), None, None, "fixture")
 
-    for volume_filter, when, price in [(True, "09:40:00", 4.90), (False, "09:35:00", 4.88)]:
+    for volume_filter in (True, False):
         strategy = replace(config(), volume_filter=volume_filter)
         generated = generate_system_signals(bars, strategy)
         resolved, executions, _ = resolve_consolidation_entries(bars, generated, strategy, load, daily_fallback=True)
-        entry = executions[b.symbol, now]
-        assert entry["timing"]["decision_timestamp"].endswith(when)
-        assert entry["price"] == price
-        proof = next(e for e in resolved.audit if e["event"] == "long_signal" and e["bar_index"] == now)
-        assert proof["squeeze_confirmation"] == "one_p_wave_rebound"
-        assert proof["wave_body_fraction"] < 0.03
+        assert (b.symbol, now) not in executions
+        assert not any(signal.bar_index == now and signal.side == "LONG" for signal in resolved.signals)
+        n = next(event for event in generated.audit if event["event"] == "n_completed"
+                 and event["timestamp"].startswith("2020-05-28") and event["direction"] == "up")
+        assert n["target_eligible"] is False
+        assert not any(event["event"] == "wave_gap_observed" and event.get("attack") == n["bar_index"]
+                       for event in resolved.audit)
