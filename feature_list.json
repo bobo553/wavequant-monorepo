@@ -4,6 +4,43 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-286",
+            "name": "chart-keyboard-focus-after-sdk-click",
+            "title": "修复K线方向键焦点丢失",
+            "description": "图表SDK在mousedown主动blur导致方向键入口失效；完成点击或拖动后恢复画布容器焦点，以实际焦点路由回归按键。",
+            "scope": "Web图表激活与定向SDK事件链回归、验收及本地合并",
+            "dependencies": ["MONOREPO-285"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "真实SDK顶层画布完整pointer/mouse点击事件后，焦点仍在图表且上下左右方向键实际改变视图",
+                "拖动结束保留图表焦点，按住方向键连续导航，非画布/右键/输入控件不抢焦点，销毁移除所有激活监听",
+                "回归通过实际document.activeElement派发键盘事件，覆盖SDK blur及既有边界，不依赖直接给容器派发按键掩盖焦点错误",
+                "相关定向测试、格式、lint、类型与构建通过后完成合并；不运行浏览器E2E"
+            ],
+            "verification": [
+                {
+                    "command": "Real SDK full pointer/mouse click regression before repair; node --test chart-keyboard-navigation chart-series-lifecycle chart-navigation after repair",
+                    "status": "passed",
+                    "summary": "修复前新回归在真实SDK顶层画布完整点击后明确失败：activeElement为body。旧测试仅pointerdown且按键直接派发容器，漏过SDK mousedown.blur。改为pointerup/click恢复后最终23项通过；按实际焦点派发四向按键、完整拖动无click恢复、5次repeat缩放到20根、2次repeat横移8根、点击fallback、非画布/右键/输入/组合键/销毁和既有SDK序列所有权均通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint/typecheck/build; targeted Prettier; node --check chart-keyboard-navigation.js; codegraph sync; git diff --check",
+                    "status": "passed",
+                    "summary": "lint零错误6条旧warning；独立类型、512MB生产构建及剔除仅已知next-env生成行后的最终类型通过。三源码/测试格式、JS语法、CodeGraph增量同步和差异通过。仅恢复交互末尾焦点，不改键盘映射、图窗幅度、拖动事件或策略。"
+                },
+                {
+                    "command": "pnpm harness:check; state preservation check against main; git diff --check",
+                    "status": "passed",
+                    "summary": "Harness283功能、18 Node和2 Python workspace、32规则通过；除新增286之外所有main原功能对象逐项相等，原activeFeature和256完整恢复，工作区仅5项本轮变更。"
+                },
+                {
+                    "command": "Complete Web suite and browser/Playwright",
+                    "status": "not-run",
+                    "summary": "按用户验证节奏不跑完整Web和浏览器/Playwright。实际SDK的DOM事件链回归已通过，但不宣称真实浏览器像素验收；用户此前合并推送授权沿用于本次同功能缺陷交付。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-285",
             "name": "chart-arrow-key-navigation",
             "title": "图表方向键缩放与平移",

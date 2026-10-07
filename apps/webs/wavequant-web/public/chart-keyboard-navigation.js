@@ -7,7 +7,8 @@ export function bindChartKeyboardNavigation(container, chart, onNavigate = () =>
         ["ArrowLeft", () => chart.pan(-1)],
         ["ArrowRight", () => chart.pan(1)],
     ]);
-    const onPointerDown = (event) => {
+    // SDK 会在 mousedown/touchstart 移除焦点，须在交互结束后恢复键盘入口。
+    const focusCanvas = (event) => {
         if (event.button === 0 && event.target?.tagName === "CANVAS") container.focus({ preventScroll: true });
     };
     const onKeyDown = (event) => {
@@ -27,10 +28,12 @@ export function bindChartKeyboardNavigation(container, chart, onNavigate = () =>
         onNavigate();
         navigate();
     };
-    container.addEventListener("pointerdown", onPointerDown);
+    container.addEventListener("pointerup", focusCanvas);
+    container.addEventListener("click", focusCanvas);
     container.addEventListener("keydown", onKeyDown);
     return () => {
-        container.removeEventListener("pointerdown", onPointerDown);
+        container.removeEventListener("pointerup", focusCanvas);
+        container.removeEventListener("click", focusCanvas);
         container.removeEventListener("keydown", onKeyDown);
         if (originalTabIndex === null) container.removeAttribute("tabindex");
     };
