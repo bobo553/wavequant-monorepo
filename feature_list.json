@@ -19,6 +19,11 @@
             ],
             "verification": [
                 {
+                    "command": "Local main no-ff merge; API8765 TDX/AkShare theory 2026-04-08; Web3003 proxy; actual response LectureOverlay Canvas commands; main Harness",
+                    "status": "passed",
+                    "summary": "实现fab8972经b8e8a45本地no-ff合并。实际两源HTTP200，仅保留07-25低3.45到05-15高19.63实线，首次确认03-11，反向虚线0；通达信一二三级正式点与修复前逐项完全一致。实际响应消费到Canvas为1条橙色实线、0虚线，Web代理与API点位逐项一致；不代替浏览器像素验证。原常驻服务已停止，既有restart-wavequant.ps1 -NoBrowser从main恢复PID29752、Web3003/API8765就绪；main Harness通过。未推送。"
+                },
+                {
                     "command": "Core pytest test_hierarchical_countertrend.py test_hierarchical_confirmation.py; secondary/tertiary/landmarks/alternation/chart-history/hierarchical-entry/N targeted regressions",
                     "status": "passed",
                     "summary": "33+69共102项及21子用例通过。新增先在旧逻辑复现15失败/4通过，修复后通过。1985根真实原始日线，2025-05-15..2026-04-08共219交易日截面均保留03-11首次确认和05-15高19.63，无反向三级虚线。上涨/下跌镜像、相等、混合、未来、未确认源、断点、四端首次齐备和同级直接破位均覆盖；相邻分层策略与缓存回归通过。"
