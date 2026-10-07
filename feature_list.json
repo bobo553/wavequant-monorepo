@@ -19,6 +19,11 @@
             ],
             "verification": [
                 {
+                    "command": "GET API8765 /api/{tdx,akshare}-theory?symbol=sz.000678&asof=2025-03-10|2025-03-11|2025-05-15; HTTP3003 module byte comparison; main Harness/topology checks",
+                    "status": "passed",
+                    "summary": "实现cf430d2以c64fbd1本地no-ff合并，main Harness及10拓扑通过。两数据源6个常驻请求均HTTP200：03-10仍为原已确认下跌，03-11最高11.44严格越过2022-08-02高10.66即确认上涨，05-15 confirmed_endpoint=19.63且首次确认日保持03-11。3003实际app.js与lecture-overlay.js逐字匹配main，8765自动加载新规则。未手工重启、清缓存或推送；只HTTP验证，未启动浏览器/Playwright。最终wheel四个实现模块与源码逐字一致，next-env生成修改已剔除并重新类型通过。"
+                },
+                {
                     "command": "Core pytest: test_hierarchical_confirmation.py test_secondary_trend.py test_tertiary_trend.py test_xinhuawenxuan_trends.py test_trend_landmarks.py",
                     "status": "passed",
                     "summary": "最终47项及21子用例通过；1767根完整真实原始日线锁定03-11首次突破10.66、05-15最高19.63和不变确认日；对称突破、相等、无收盘要求、未知源、同日双破、断点、相等极值保留最早和后续正式起点均覆盖。最初整stroke比较包含变化的input_turn_count，已改为完整正式points比较；最终正式点逐项相等。 已确认极值后的下一级演化继续保留，未确认回档逐段虚线，两级均有回归。"
