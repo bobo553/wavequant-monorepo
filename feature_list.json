@@ -4,6 +4,37 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-299",
+            "name": "target-label-normal-font",
+            "title": "目标标签使用常规字重",
+            "description": "图表C浪、一饱二吐、五顶十满等目标标签统一使用常规字重。",
+            "scope": "Web共享目标文字绘图和对应拓扑源指纹",
+            "dependencies": ["MONOREPO-294"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "目标名称、价格及状态使用400常规字重，维持原字号和字体",
+                "目标颜色、定位、避让、价格和策略逻辑保持",
+                "相关定向检查、类型和必要构建通过；不运行浏览器或完整Web套件"
+            ],
+            "verification": [
+                {
+                    "command": "Node target-level-guides/wave-c-chart/n-target-focus/combined-a-chart; topology Vitest; seven-stage draw smoke",
+                    "status": "passed",
+                    "summary": "90项定向Node和15项拓扑通过，7种C/N目标实际调用共享绘图均为400常规字重。只改字重，维持12px原字体、来源色、目标值、状态及定位避让；无新增低影响样式测试。90源归一摘要c5ed981012ae5fa3633a2f759d46baee95f1f721658d2ac680535d761f928450。"
+                },
+                {
+                    "command": "Web typecheck/lint; exact-source Webpack production build; related Prettier and diff checks",
+                    "status": "passed",
+                    "summary": "类型通过，最终lint零错误6旧环境变量warning；最初拓扑TS换行不符合格式，已格式化修改文件并重验，语义无额外改动。生产构建编译13.2秒/类型11.8秒通过，目标静态模块与构建源字节一致，拓扑TS仅换行归一；最终代码差异两行，未改Core/API或依赖。"
+                },
+                {
+                    "command": "Complete Web suite and real browser/Playwright visual validation",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏未运行完整Web或浏览器/Playwright。本轮字体是共享Canvas设置，定向绘图与构建已验证，实际像素效果可刷新研究页面检查。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-298",
             "name": "server-watchlists-strategy-refresh",
             "title": "自选股服务端保存及策略自动回测",

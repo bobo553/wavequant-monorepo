@@ -80,7 +80,7 @@ export class TargetGuideOverlay {
     draw(target) {
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {
             context.save();
-            context.font = "600 12px ui-sans-serif, system-ui, sans-serif";
+            context.font = "400 12px ui-sans-serif, system-ui, sans-serif";
             context.textBaseline = "bottom";
             context.textAlign = "left";
             const visible = this.projected
