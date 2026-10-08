@@ -43,6 +43,7 @@ export class IdleWatchlistBacktests {
         onCompleted,
         onRejected,
         onEngineChanged,
+        serverManaged = false,
         serverJobs = () => [],
         historicalSymbols = () => new Set(),
         hasCapacity = () => true,
@@ -58,6 +59,7 @@ export class IdleWatchlistBacktests {
             onCompleted,
             onRejected,
             onEngineChanged,
+            serverManaged,
             serverJobs,
             historicalSymbols,
             hasCapacity,
@@ -201,7 +203,7 @@ export class IdleWatchlistBacktests {
         const completed = this.completedJobs.get(params.symbol);
         return completed?.path === path &&
             backtestArgumentsKey(path, completed.params) === backtestArgumentsKey(path, params)
-            ? completed.params.backtest_job
+            ? completed.params.backtest_job || null
             : null;
     }
 
@@ -275,13 +277,13 @@ export class IdleWatchlistBacktests {
             return false;
         if (record.status === "completed" && record.result_valid === true) {
             const available = Boolean(record.result_available && record.job && !this.unavailableJobs.has(record.job));
-            const nextStatus = available ? "completed" : "historical";
+            const nextStatus = available || record.persisted_current === true ? "completed" : "historical";
             if (this.statuses.get(member.symbol) === nextStatus) return false;
             this.statuses.set(member.symbol, nextStatus);
-            if (available) {
+            if (available || record.persisted_current === true) {
                 this.completedJobs.set(member.symbol, {
                     path: record.path,
-                    params: { ...record.params, backtest_job: record.job },
+                    params: { ...record.params, ...(available ? { backtest_job: record.job } : {}) },
                 });
             } else this.completedJobs.delete(member.symbol);
             if (Number.isInteger(record.fill_count)) this.fillCounts.set(member.symbol, record.fill_count);
@@ -380,6 +382,7 @@ export class IdleWatchlistBacktests {
         }
         if (this.checking || this.active) return;
         if (!(await this.ensureVersion(snapshot))) return;
+        if (this.serverManaged) return;
         if (!this.enabled || !this.isIdle() || !this.strategyVersion || !this.hasCapacity()) return;
         const serverJobs = this.serverJobs();
         if (serverJobs.some((job) => job.status === "running")) return;

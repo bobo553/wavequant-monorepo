@@ -2439,7 +2439,6 @@ const ratioComparison = new RatioComparison({
         loadView();
     },
 });
-const autoBacktestPreferenceKey = "wavequant.watchlists.auto-backtest.v2";
 const sharedBacktestCompletionPrefix = "wavequant.watchlists.backtest-done.v2:";
 const sharedBacktestCompletionTtlMs = 60_000;
 let lastSharedBacktestPrune = 0;
@@ -2448,6 +2447,15 @@ for (const eventName of ["pointerdown", "keydown", "input", "wheel"]) {
     document.addEventListener(eventName, () => (lastWorkbenchInteraction = Date.now()), { passive: true });
 }
 const watchlistBacktests = new IdleWatchlistBacktests({
+    serverManaged: true,
+    onEngineChanged: () => {
+        stockBacktestTasks.tasks.clear();
+        buyPoints.contextChanged();
+        structureSignals.contextChanged();
+        queueMicrotask(() => {
+            if (!state.loading) void loadView();
+        });
+    },
     serverJobs: () => serverBacktestSnapshot.jobs,
     historicalSymbols: () =>
         new Set(
@@ -2673,8 +2681,102 @@ const watchlistBacktests = new IdleWatchlistBacktests({
                                     ? "正在核对策略版本…"
                                     : `准备按列表顺序回测 · 已完成 ${completed}/${total}，失败 ${failed}`;
         renderServerBacktestStatuses();
+        const refresh = serverBacktestSnapshot.watchlist_refresh;
+        if (refresh && refresh.source === source) {
+            $("watchlist-backtest-retry").disabled = !(refresh.failed || failed);
+            progress.max = Math.max(1, refresh.total || total);
+            progress.value = (refresh.completed || 0) + (refresh.failed || 0);
+            status.textContent =
+                refresh.error ||
+                (refresh.status === "paused"
+                    ? "服务器自动回测已暂停"
+                    : refresh.status === "running"
+                      ? `服务器正在回测 ${symbolName(refresh.symbol)} · 全部分类已完成 ${refresh.completed}/${refresh.total}`
+                      : `服务器自动回测 · 全部分类已完成 ${refresh.completed}/${refresh.total}，失败 ${refresh.failed}；策略更新后自动重跑`);
+        }
     },
 });
+async function applySavedWatchlistSettings(savedSettings, keepSource = false) {
+    const context = savedSettings.context;
+    if (state.catalog.runs.some((run) => run.id === context.run)) $("run-select").value = context.run;
+    $("variant-select").value = context.variant === "lecture_v3_c50" ? "lecture_v3" : context.variant;
+    $("second-pullback-select").value = context.variant === "lecture_v3_c50" ? "half" : "third";
+    $("scenario-select").value = context.scenario;
+    $("backtest-start").value = context.start;
+    $("backtest-volume-filter").checked = context.volume_filter === "true";
+    $("backtest-net-reward-risk-filter").checked = context.net_reward_risk_filter === "true";
+    $("backtest-shallow-base-breakout").checked = context.shallow_base_breakout_enabled === "true";
+    $("backtest-capital").value = String(Number(context.initial_capital) / 10_000);
+    $("backtest-buy-ratio").value = String(Number(context.max_position_weight) * 100);
+    watchlistBacktests.setEnabled(savedSettings.enabled);
+    if (!keepSource && context.source !== sourceForScope($("result-scope").value)) {
+        await ensureSourceCatalog(context.source);
+        $("result-scope").value = context.source;
+        syncSourceOptions();
+    }
+}
+let lastServerWatchlistContext = null;
+let serverWatchlistsReady = false;
+let watchlistServerSync = null;
+let lastServerChartJob = null;
+let localWatchlistSettingsRevision = 0;
+document.addEventListener("change", (event) => {
+    if (
+        [
+            "run-select",
+            "variant-select",
+            "scenario-select",
+            "result-scope",
+            "second-pullback-select",
+            "backtest-start",
+            "backtest-volume-filter",
+            "backtest-net-reward-risk-filter",
+            "backtest-shallow-base-breakout",
+            "backtest-capital",
+            "backtest-buy-ratio",
+        ].includes(event.target.id)
+    )
+        localWatchlistSettingsRevision++;
+});
+async function syncSavedWatchlists() {
+    if (watchlistServerSync || !watchlists.available || !serverWatchlistsReady) return;
+    const settingsRevision = localWatchlistSettingsRevision;
+    watchlistServerSync = (async () => {
+        const current = watchlistBacktests.snapshot();
+        if (current) {
+            const { group: _group, cutoff: _cutoff, ...context } = current.context;
+            const key = JSON.stringify([context, watchlistBacktests.enabled]);
+            if (key !== lastServerWatchlistContext) {
+                await watchlists.storage.configure(context, watchlistBacktests.enabled);
+                lastServerWatchlistContext = key;
+            }
+        }
+        await watchlists.refresh();
+        if (settingsRevision !== localWatchlistSettingsRevision) return;
+        const saved = watchlists.storage.document?.settings;
+        if (saved) {
+            const currentSnapshot = watchlistBacktests.snapshot();
+            const currentContext = currentSnapshot?.context;
+            const changed =
+                saved.enabled !== watchlistBacktests.enabled ||
+                Object.keys(saved.context).some((key) => String(currentContext?.[key]) !== saved.context[key]);
+            if (changed) {
+                await applySavedWatchlistSettings(saved);
+                fillSymbols();
+                const { group: _group, cutoff: _cutoff, ...restored } = watchlistBacktests.snapshot()?.context || {};
+                lastServerWatchlistContext = JSON.stringify([restored, watchlistBacktests.enabled]);
+                if (!state.loading) void loadView();
+            }
+        }
+    })()
+        .catch((error) => {
+            watchlists.announce(`服务器同步失败：${error.message}；稍后重试`);
+        })
+        .finally(() => {
+            watchlistServerSync = null;
+        });
+    return watchlistServerSync;
+}
 function syncServerBacktestHistory() {
     return adoptServerBacktestHistory(watchlistBacktests, serverBacktestSnapshot.recent, stockBacktestTasks);
 }
@@ -2733,6 +2835,27 @@ async function refreshServerBacktestStatuses() {
             syncServerBacktestHistory();
             renderServerBacktestStatuses();
             watchlistBacktests.emit();
+            const symbol = $("symbol-select").value;
+            const member = watchlistBacktests.members.find((item) => item.symbol === symbol);
+            const context = watchlistBacktests.context;
+            if (member && context && !state.loading) {
+                const expected = watchlistBacktestRequest(member, context);
+                const completed = snapshot.recent?.find(
+                    (item) =>
+                        item.symbol === symbol &&
+                        item.status === "completed" &&
+                        item.result_valid &&
+                        item.result_available &&
+                        item.version === watchlistBacktests.strategyVersion &&
+                        backtestArgumentsKey(item.path, item.params) ===
+                            backtestArgumentsKey(expected.path, expected.params),
+                );
+                if (completed && completed.job !== lastServerChartJob) {
+                    lastServerChartJob = completed.job;
+                    $("result-scope").value = `${context.source}-backtest`;
+                    void loadView({ preferTrades: true });
+                }
+            }
         })
         .catch(() => {
             const expired = expiredBacktestSnapshot(serverBacktestSnapshot, serverBacktestSnapshotSeenAt);
@@ -2747,26 +2870,24 @@ async function refreshServerBacktestStatuses() {
     return serverBacktestStatusRequest;
 }
 setInterval(() => {
-    if (document.visibilityState === "visible") void refreshServerBacktestStatuses();
+    if (document.visibilityState === "visible") {
+        void refreshServerBacktestStatuses();
+        void syncSavedWatchlists();
+    }
 }, 3_000);
 void refreshServerBacktestStatuses();
-try {
-    watchlistBacktests.setEnabled(localStorage.getItem(autoBacktestPreferenceKey) !== "false");
-} catch {
-    watchlistBacktests.setEnabled(true);
-}
+watchlistBacktests.setEnabled(true);
 $("watchlist-auto-backtest-toggle").addEventListener("click", () => {
+    localWatchlistSettingsRevision++;
     watchlistBacktests.setEnabled(!watchlistBacktests.enabled);
-    try {
-        localStorage.setItem(autoBacktestPreferenceKey, String(watchlistBacktests.enabled));
-    } catch {
-        // 当前会话内的暂停状态仍然有效。
-    }
+    void syncSavedWatchlists();
 });
-window.addEventListener("storage", (event) => {
-    if (event.key === autoBacktestPreferenceKey) watchlistBacktests.setEnabled(event.newValue !== "false");
+$("watchlist-backtest-retry").addEventListener("click", () => {
+    void watchlists.storage
+        .retry()
+        .then(() => watchlistBacktests.retryFailed())
+        .catch((error) => watchlists.announce(error.message));
 });
-$("watchlist-backtest-retry").addEventListener("click", () => watchlistBacktests.retryFailed());
 document.addEventListener("visibilitychange", () => {
     lastWorkbenchInteraction = Date.now();
     if (document.visibilityState !== "visible" && tradePlayback.playing) {
@@ -2777,7 +2898,10 @@ document.addEventListener("visibilitychange", () => {
     void watchlistBacktests.tick();
 });
 window.addEventListener("pagehide", () => tradePlayback.pause());
-window.addEventListener("wavequant:watchlists-changed", () => void watchlistBacktests.tick());
+window.addEventListener("wavequant:watchlists-changed", () => {
+    void watchlistBacktests.tick();
+    void syncSavedWatchlists();
+});
 $("backtest-start").addEventListener("change", () => {
     buyPoints.contextChanged();
     structureSignals.contextChanged();
@@ -3093,8 +3217,12 @@ async function start() {
         state.lastResolvedScope = initialSource;
         $("run-select").replaceChildren();
         for (const r of state.catalog.runs) option($("run-select"), r.id, r.id.replace("acceptance_", ""));
-        let sourceError = !state[initialSource].with_daily
-            ? `${initialSource === "akshare" ? "AkShare" : "通达信"}目录暂无可用行情，请重新选择或稍后重试。`
+        const savedSettings = watchlists.storage.document?.settings;
+        if (savedSettings) await applySavedWatchlistSettings(savedSettings, Boolean(requestedStock));
+        const restoredSource = sourceForScope($("result-scope").value) || initialSource;
+        state.lastResolvedScope = restoredSource;
+        let sourceError = !state[restoredSource].with_daily
+            ? `${restoredSource === "akshare" ? "AkShare" : "通达信"}目录暂无可用行情，请重新选择或稍后重试。`
             : "";
         let linkedStock = null;
         if (!sourceError && requestedStock) {
@@ -3118,6 +3246,8 @@ async function start() {
             return;
         }
         if (linkedStock?.asof) preserveCutoff(linkedStock.asof);
+        serverWatchlistsReady = true;
+        void syncSavedWatchlists();
         await loadView();
         if (linkedStock) {
             const notices = [];
@@ -3128,6 +3258,7 @@ async function start() {
         }
         if (requestedPage && Object.hasOwn(titles, requestedPage)) showPage(requestedPage);
         watchlistBacktests.start();
+        void syncSavedWatchlists();
         if (
             !linkedStock &&
             firstWatchlistSymbol &&

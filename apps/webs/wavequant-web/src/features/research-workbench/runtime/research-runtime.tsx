@@ -2,6 +2,12 @@
 
 import { useEffect } from "react";
 
+import { type TWatchlistDocument, WatchlistDocumentSchema } from "@repo/contracts";
+
+type TWatchlistWindow = Window & {
+    wavequantParseWatchlistDocument?: (value: unknown) => TWatchlistDocument;
+};
+
 function ensureScript(id: string, src: string, type?: "module"): Promise<void> {
     const current = document.getElementById(id) as HTMLScriptElement | null;
     if (current?.dataset.loaded === "true") return Promise.resolve();
@@ -34,6 +40,8 @@ function ensureScript(id: string, src: string, type?: "module"): Promise<void> {
 export function ResearchRuntime(): null {
     useEffect(() => {
         let active = true;
+        const runtimeWindow: TWatchlistWindow = window;
+        runtimeWindow.wavequantParseWatchlistDocument = (value: unknown) => WatchlistDocumentSchema.parse(value);
 
         void ensureScript("wavequant-lightweight-charts", "/vendor/lightweight-charts.js")
             .then(() => {

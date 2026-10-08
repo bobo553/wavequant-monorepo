@@ -1,4 +1,5 @@
 import { formatBacktestProgress } from "./backtest-job-status.js";
+import { createServerWatchlistStorage } from "./server-watchlists.js";
 
 const DATABASE_NAME = "wavequant-user-data";
 const DATABASE_VERSION = 1;
@@ -35,6 +36,7 @@ function validGroup(group) {
     return (
         group &&
         typeof group.id === "string" &&
+        group.id.length > 0 &&
         group.id.length <= 64 &&
         typeof group.name === "string" &&
         group.name.trim().length > 0 &&
@@ -294,7 +296,7 @@ function waitForTransaction(transaction) {
     });
 }
 
-export const watchlistStorage = {
+export const legacyWatchlistStorage = {
     async load() {
         const database = await openWatchlistDatabase();
         try {
@@ -327,6 +329,11 @@ export const watchlistStorage = {
     },
 };
 
+export const watchlistStorage = createServerWatchlistStorage({
+    normalize: normalizeWatchlistSnapshot,
+    legacy: legacyWatchlistStorage,
+});
+
 export class Watchlists {
     constructor({ onSelect, storage = watchlistStorage }) {
         this.onSelect = onSelect;
@@ -354,7 +361,7 @@ export class Watchlists {
             try {
                 localStorage.setItem(SELECTED_GROUP_KEY, this.selectedGroupId);
             } catch {
-                // 当前会话仍可使用；分类数据本身继续由 IndexedDB 持久化。
+                // 分类数据继续由服务器保存。
             }
             this.render();
             window.dispatchEvent(new CustomEvent("wavequant:watchlists-changed"));
@@ -385,15 +392,14 @@ export class Watchlists {
         this.renderRailState();
         try {
             this.state = await this.storage.load();
-            await this.storage.save(this.state);
             this.available = true;
             try {
                 const saved = localStorage.getItem(SELECTED_GROUP_KEY);
                 if (saved && this.state.groups.some((group) => group.id === saved)) this.selectedGroupId = saved;
             } catch {
-                // 选中分类偏好不可用不影响 IndexedDB 中的自选数据。
+                // 选中分类偏好不可用不影响服务器中的自选数据。
             }
-            this.announce("自选股已从浏览器本地数据加载");
+            this.announce("自选股已从服务器加载");
         } catch (error) {
             this.available = false;
             this.announce(`自选股存储不可用：${error.message}`);
@@ -549,9 +555,11 @@ export class Watchlists {
     }
 
     async commit(nextState, message, beforeRender) {
+        if (this.saving) return false;
+        this.saving = true;
         try {
-            await this.storage.save(nextState);
-            this.state = normalizeWatchlistSnapshot(nextState);
+            const saved = await this.storage.save(nextState);
+            this.state = normalizeWatchlistSnapshot(saved || nextState);
             this.available = true;
             if (beforeRender) await beforeRender;
             this.render();
@@ -559,8 +567,26 @@ export class Watchlists {
             window.dispatchEvent(new CustomEvent("wavequant:watchlists-changed"));
             return true;
         } catch (error) {
+            if (error.httpStatus === 409) {
+                this.saving = false;
+                await this.refresh().catch(() => {});
+            }
             this.announce(`保存失败：${error.message}`);
             return false;
+        } finally {
+            this.saving = false;
+        }
+    }
+
+    async refresh() {
+        if (this.saving || !this.storage.refresh) return;
+        await this.storage.refresh();
+        const next = normalizeWatchlistSnapshot(this.storage.document.snapshot);
+        if (JSON.stringify(next) !== JSON.stringify(this.state)) {
+            this.state = next;
+            if (!next.groups.some((group) => group.id === this.selectedGroupId)) this.selectedGroupId = "default";
+            this.render();
+            window.dispatchEvent(new CustomEvent("wavequant:watchlists-changed"));
         }
     }
 

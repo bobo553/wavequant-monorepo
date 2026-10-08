@@ -1,3 +1,5 @@
+MONOREPO-298（2026-10-08）：新增WatchlistSnapshotSchema、WatchlistSettingsSchema、WatchlistDocumentSchema与类型，统一自选股票、分类、顺序、修订、回测来源/参数及暂停字段。Web运行时复用Zod校验，服务端输入另有边界和数量校验；契约构建、Web与Nest API消费者类型通过，9项Web存储/契约与后台观察回归通过。无新依赖。
+
 # Progress
 
 ## Current State
