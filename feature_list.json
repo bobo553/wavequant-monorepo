@@ -4,6 +4,54 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-298",
+            "name": "server-watchlists-strategy-refresh",
+            "title": "自选股服务端保存及策略自动回测",
+            "description": "服务器持久化自选分类、股票顺序和回测设置，迁移浏览器旧数据；策略引擎变化后后台自动重新回测全部自选股。",
+            "scope": "WaveQuant API存储与后台队列、Web迁移同步与结果刷新、共享契约",
+            "dependencies": ["MONOREPO-176", "MONOREPO-182", "MONOREPO-297"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "服务器保存分类及股票顺序，重启和跨浏览器可恢复；版本冲突不覆盖他端数据",
+                "浏览器旧自选股幂等合并迁移，不删除本地备份或覆盖服务器分类",
+                "服务器保存回测参数及暂停状态，关闭页面仍能完成；策略/参数/行情变化自动重新回测所有分类去重股票",
+                "共享现有回测任务容量、同股互斥和真实策略门禁，旧版本结果不标作新完成；失败退避及重启恢复",
+                "前端同步进度、收益、回撤和当前图表，新版本失效旧缓存；定向测试、类型和必要构建通过"
+            ],
+            "verification": [
+                {
+                    "command": "API Python pytest tests/test_watchlists.py tests/test_server.py tests/test_backtest_jobs.py -q",
+                    "status": "passed",
+                    "summary": "最终62项及10子用例20.67秒通过。实际SQLite并发修订、重启分类/顺序/暂停、事务迁移幂等、错误输入不破坏数据、策略/参数/截止日变化、全分类同股去重、失败三次退避与重启恢复；HTTP POST受理并关闭客户端后真实BacktestJobs继续执行两股，保留手动任务互斥和容量。股票/截止日错配及data_unavailable不记成功，Host/Origin/JSON边界与其他写入口405保持。追加首次迁移保留空闲分类ID、服务器同ID不同分类名时映射新ID的回归，避免破坏选中分类偏好。"
+                },
+                {
+                    "command": "Web node --test server-watchlists, watchlists, watchlist-backtest-queue, backtest-job-status, stock-backtest-tasks, market-dashboard",
+                    "status": "passed",
+                    "summary": "62项定向Node通过，9项新服务端存储/契约/观察回归覆盖迁移回包丢失复用token、服务器离线不冒充本地保存、409重新读取且明确失败、共享Zod校验、数值参数转字符串、暂停和配置幂等、服务端模式不重复启动浏览器回测、持久完成指标和旧策略拒绝。既有DOM不反复刷新和排序保持。初次类型因共享node_modules仍指向main旧契约声明失败，按新契约构建现有忽略产物后通过；旧初始source字符串断言已改为服务器恢复后的来源，行为保持并复验。"
+                },
+                {
+                    "command": "API13 strict mypy; contracts build; Web/Nest API typecheck; Web lint; JS syntax; topology Vitest",
+                    "status": "passed",
+                    "summary": "两个新API模块与原11文件strict通过；契约tsup、Web和Nest API两个实际消费者类型通过，Web lint零错误6旧环境变量warning；新JS语法及15项拓扑通过。初次Window声明命名与新Python变量类型问题已修正重验，无类型或lint豁免，无Python格式/lint工具。策略Core源码及90源拓扑摘要未变。"
+                },
+                {
+                    "command": "API python -m build --no-isolation and wheel byte comparison; exact-source Web production Webpack build and static export comparison",
+                    "status": "passed",
+                    "summary": "API最终sdist/wheel通过，server/watchlists/watchlist_refresh三个打包模块与最终源字节一致。沿用E盘精确构建副本与原依赖，Webpack生产导出编译10.5秒/类型15.5秒通过；最终静态脚本同步导出并经Node回归与字节复核，TS构建源未变。无新增依赖、锁变更或全量回测。"
+                },
+                {
+                    "command": "Complete Core/Web/API suites; browser/Playwright; actual browser IndexedDB migration and complete real-watchlist backtests",
+                    "status": "not-run",
+                    "summary": "遵循用户开发验证节奏，未运行完整套件、浏览器或Playwright。真实用户浏览器旧数据只能首次刷新页面后迁移；服务器队列及实际HTTP边界已自动验证，全部真实自选股票的完整耗时回放与浏览器操作仍待单独验收。Core既有策略/风控与历史失败证据保持，不能宣称全套通过。"
+                },
+                {
+                    "command": "Related Prettier, git diff --check, pnpm harness:check, CodeGraph sync and original feature preservation",
+                    "status": "passed",
+                    "summary": "16路径格式、差异及295功能/18 Node/2 Python/32规则Harness通过。CodeGraph同步新存储、后台与前端链路；复核真实请求边界、修订冲突与持久完成摘要去重，防止旧完成与当前摘要交替。所有原main功能对象含MONOREPO-256逐项保持，恢复其唯一in-progress，不覆盖历史失败。最终Web静态导出、两TS构建源和三个API wheel文件与源字节一致；同会话分支默认本地no-ff合并，不推送。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-297",
             "name": "two-t-high-extension-stacking",
             "title": "二吐后叠箱按高点延伸识别",

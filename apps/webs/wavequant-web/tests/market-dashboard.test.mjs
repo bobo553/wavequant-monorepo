@@ -43,7 +43,7 @@ test("research workbench exposes AkShare as a read-only online market source", (
     assert.match(runtime, /查询全市场结构/);
     assert.match(runtime, /买点与结构仅读服务器预计算结果/);
     assert.match(runtime, /\$\("result-scope"\)\.value = initialSource/);
-    assert.match(runtime, /let sourceError = !state\[initialSource\]\.with_daily/);
+    assert.match(runtime, /let sourceError = !state\[restoredSource\]\.with_daily/);
     assert.match(runtime, /resolveResearchLink\(requestedStock, \{ \[initialSource\]: state\[initialSource\] \}\)/);
     assert.match(runtime, /for \(const r of state\.catalog\.runs\) option\(\$\("run-select"\)/);
     assert.doesNotMatch(runtime, /ensureSourceCatalog\(fallbackSource\)/);
@@ -53,7 +53,7 @@ test("research workbench exposes AkShare as a read-only online market source", (
     assert.doesNotMatch(runtime, /if \(isAkShare\(\) && tab !== "all"\) return/);
 });
 
-test("research workbench provides categorized local watchlists and structure-result shortcuts", () => {
+test("research workbench provides categorized server watchlists with a local migration source", () => {
     const browser = readFileSync(
         join(sourceRoot, "features", "research-workbench", "components", "stock-browser.tsx"),
         "utf8",
@@ -93,6 +93,8 @@ test("research workbench provides categorized local watchlists and structure-res
     assert.doesNotMatch(watchlists, /点击查看/);
     assert.match(structures, /addAllToWatchlist/);
     assert.match(watchlists, /wavequant-user-data/);
+    assert.match(watchlists, /createServerWatchlistStorage/);
+    assert.match(rail, /服务器按自选顺序回测全部分类/);
     assert.match(watchlists, /keyPath: \["groupId", "symbol"\]/);
     assert.match(watchlists, /默认分类不能删除/);
 });

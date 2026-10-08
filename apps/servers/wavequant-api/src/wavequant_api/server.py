@@ -26,6 +26,8 @@ from .application import (
 from .infrastructure import Infrastructure, InfrastructureSettings
 from .application.limit_up_ladder import LimitUpLadderService
 from .backtest_jobs import BacktestJobCapacity, BacktestJobConflict, BacktestJobSymbolBusy, BacktestJobs
+from .watchlists import MAX_BODY, WatchlistConflict, WatchlistStore, record, settings
+from .watchlist_refresh import WatchlistRefresh
 
 
 APPS_ROOT = Path(__file__).resolve().parents[4]
@@ -144,6 +146,91 @@ def make_server(
         on_error=log_backtest_job_error,
         history_path=Path(history_root) / ".backtest-history.sqlite" if history_root is not None else None,
         engine_version=engine_version,
+    )
+
+    def start_backtest(path, q):
+        required = {"run", "variant", "symbol", "asof", "scenario", "start"}
+        optional = {
+            "volume_filter",
+            "net_reward_risk_filter",
+            "shallow_base_breakout_enabled",
+            "initial_capital",
+            "max_position_weight",
+            "backtest_job",
+        }
+        if not required <= set(q) or set(q) - required - optional:
+            raise ValueError("invalid TDX backtest arguments")
+        filter_values = q.get("volume_filter", ["true"])
+        if len(filter_values) != 1:
+            raise ValueError("volume_filter must be provided once")
+        volume_filter = filter_values[0]
+        if volume_filter not in ("true", "false"):
+            raise ValueError("volume_filter must be true or false")
+        risk_values = q.get("net_reward_risk_filter", ["false"])
+        if len(risk_values) != 1 or risk_values[0] not in ("true", "false"):
+            raise ValueError("net_reward_risk_filter must be true or false and provided once")
+        shallow_values = q.get("shallow_base_breakout_enabled", ["true"])
+        if len(shallow_values) != 1 or shallow_values[0] not in ("true", "false"):
+            raise ValueError("shallow_base_breakout_enabled must be true or false and provided once")
+        initial_capital = backtest_positive_number(q, "initial_capital", 100_000, 1_000_000_000)
+        max_position_weight = backtest_positive_number(q, "max_position_weight", 1.0, 1.0)
+        backtest_args = tuple(q[k][0] for k in ("run", "variant", "symbol", "asof", "scenario", "start"))
+        options = dict(
+            volume_filter=volume_filter == "true",
+            net_reward_risk_filter=risk_values[0] == "true",
+            shallow_base_breakout_enabled=shallow_values[0] == "true",
+            initial_capital=initial_capital,
+            max_position_weight=max_position_weight,
+        )
+        backtest = (
+            repository.akshare_backtest if path == "/api/akshare-backtest" else repository.tdx_backtest
+        )
+        job_id = q.get("backtest_job", [None])[0] or str(uuid4())
+        validate_backtest_job_id(job_id)
+        signature = json.dumps([path, backtest_args, options], sort_keys=True, allow_nan=False)
+        normalized_params = dict(
+            zip(("run", "variant", "symbol", "asof", "scenario", "start"), backtest_args)
+        )
+        normalized_params.update(
+            volume_filter=volume_filter,
+            net_reward_risk_filter=risk_values[0],
+            shallow_base_breakout_enabled=shallow_values[0],
+            initial_capital=str(int(initial_capital))
+            if initial_capital.is_integer()
+            else str(initial_capital),
+            max_position_weight=str(int(max_position_weight))
+            if max_position_weight.is_integer()
+            else str(max_position_weight),
+        )
+        try:
+            strategy_version = repository.backtest_version(backtest_args[0], backtest_args[1])["version"]
+        except (KeyError, ValueError):
+            strategy_version = None
+        return backtest_jobs.start(
+            job_id,
+            signature,
+            lambda: backtest(
+                *backtest_args,
+                **options,
+                progress=lambda percent, stage: backtest_jobs.update_progress(job_id, percent, stage),
+            ),
+            symbol=q["symbol"][0],
+            details={
+                "path": path,
+                "params": normalized_params,
+                "symbol": q["symbol"][0],
+                "version": strategy_version,
+            },
+        )
+
+    watchlist_store = WatchlistStore(Path(history_root) / ".watchlists.sqlite") if history_root is not None else None
+    watchlist_refresh = (
+        WatchlistRefresh(
+            watchlist_store, backtest_jobs,
+            version=lambda run, variant: repository.backtest_version(run, variant)["version"],
+            catalog=lambda source: repository.market_data.catalog(source),
+            submit=start_backtest,
+        ) if watchlist_store is not None else None
     )
 
     class Handler(BaseHTTPRequestHandler):
@@ -292,6 +379,14 @@ def make_server(
                     else:
                         self.send_versioned_catalog(repository.market_data.catalog("akshare"))
                     return
+                if url.path == "/api/watchlists":
+                    if url.query:
+                        raise ValueError("自选股不接受查询参数")
+                    if watchlist_store is None:
+                        self.send(503, {"error": "服务器自选存储不可用"})
+                    else:
+                        self.send(200, watchlist_store.load())
+                    return
                 q = parse_qs(url.query, strict_parsing=True, keep_blank_values=True)
                 if any(len(v) != 1 for v in q.values()):
                     raise ValueError("duplicate query arguments")
@@ -329,7 +424,18 @@ def make_server(
                 if url.path == "/api/backtest-jobs":
                     if q:
                         raise ValueError("backtest jobs status takes no arguments")
-                    self.send(200, backtest_jobs.snapshot())
+                    status = backtest_jobs.snapshot()
+                    if watchlist_store and watchlist_refresh:
+                        # Current-version checks remain in the Web queue; summaries survive job-body expiry.
+                        recent = {}
+                        for item in watchlist_store.summaries() + status["recent"]:
+                            key = json.dumps([item.get("path"), item.get("params"), item.get("version")], sort_keys=True)
+                            previous = recent.get(key)
+                            if previous and previous.get("persisted_current") and not item.get("result_available"):
+                                continue
+                            recent[key] = item
+                        status["recent"] = list(recent.values())
+                    self.send(200, {**status, "watchlist_refresh": watchlist_refresh.state() if watchlist_refresh else None})
                     return
                 if url.path == "/api/market-timeframe":
                     if set(q) != {"source", "symbol", "asof", "timeframe"}:
@@ -409,79 +515,7 @@ def make_server(
                     self.send(200, repository.stock_summary(*(q[k][0] for k in ("run", "variant", "asof", "scenario"))))
                     return
                 if url.path in ("/api/tdx-backtest", "/api/akshare-backtest"):
-                    required = {"run", "variant", "symbol", "asof", "scenario", "start"}
-                    optional = {
-                        "volume_filter",
-                        "net_reward_risk_filter",
-                        "shallow_base_breakout_enabled",
-                        "initial_capital",
-                        "max_position_weight",
-                        "backtest_job",
-                    }
-                    if not required <= set(q) or set(q) - required - optional:
-                        raise ValueError("invalid TDX backtest arguments")
-                    filter_values = q.get("volume_filter", ["true"])
-                    if len(filter_values) != 1:
-                        raise ValueError("volume_filter must be provided once")
-                    volume_filter = filter_values[0]
-                    if volume_filter not in ("true", "false"):
-                        raise ValueError("volume_filter must be true or false")
-                    risk_values = q.get("net_reward_risk_filter", ["false"])
-                    if len(risk_values) != 1 or risk_values[0] not in ("true", "false"):
-                        raise ValueError("net_reward_risk_filter must be true or false and provided once")
-                    shallow_values = q.get("shallow_base_breakout_enabled", ["true"])
-                    if len(shallow_values) != 1 or shallow_values[0] not in ("true", "false"):
-                        raise ValueError("shallow_base_breakout_enabled must be true or false and provided once")
-                    initial_capital = backtest_positive_number(q, "initial_capital", 100_000, 1_000_000_000)
-                    max_position_weight = backtest_positive_number(q, "max_position_weight", 1.0, 1.0)
-                    backtest_args = tuple(q[k][0] for k in ("run", "variant", "symbol", "asof", "scenario", "start"))
-                    options = dict(
-                        volume_filter=volume_filter == "true",
-                        net_reward_risk_filter=risk_values[0] == "true",
-                        shallow_base_breakout_enabled=shallow_values[0] == "true",
-                        initial_capital=initial_capital,
-                        max_position_weight=max_position_weight,
-                    )
-                    backtest = (
-                        repository.akshare_backtest if url.path == "/api/akshare-backtest" else repository.tdx_backtest
-                    )
-                    job_id = q.get("backtest_job", [None])[0] or str(uuid4())
-                    validate_backtest_job_id(job_id)
-                    signature = json.dumps([url.path, backtest_args, options], sort_keys=True, allow_nan=False)
-                    normalized_params = dict(
-                        zip(("run", "variant", "symbol", "asof", "scenario", "start"), backtest_args)
-                    )
-                    normalized_params.update(
-                        volume_filter=volume_filter,
-                        net_reward_risk_filter=risk_values[0],
-                        shallow_base_breakout_enabled=shallow_values[0],
-                        initial_capital=str(int(initial_capital))
-                        if initial_capital.is_integer()
-                        else str(initial_capital),
-                        max_position_weight=str(int(max_position_weight))
-                        if max_position_weight.is_integer()
-                        else str(max_position_weight),
-                    )
-                    try:
-                        strategy_version = repository.backtest_version(backtest_args[0], backtest_args[1])["version"]
-                    except (KeyError, ValueError):
-                        strategy_version = None
-                    job = backtest_jobs.start(
-                        job_id,
-                        signature,
-                        lambda: backtest(
-                            *backtest_args,
-                            **options,
-                            progress=lambda percent, stage: backtest_jobs.update_progress(job_id, percent, stage),
-                        ),
-                        symbol=q["symbol"][0],
-                        details={
-                            "path": url.path,
-                            "params": normalized_params,
-                            "symbol": q["symbol"][0],
-                            "version": strategy_version,
-                        },
-                    )
+                    job = start_backtest(url.path, q)
                     job.done.wait()
                     _, result, error = backtest_jobs.outcome(job)
                     if error is not None:
@@ -529,7 +563,59 @@ def make_server(
                 self.send(500, {"error": "chart service error; check server logs"})
 
         def do_POST(self):
-            self.send(405, {"error": "read-only server: signal calculations run only in background workers"})
+            if self.path != "/api/watchlists":
+                self.send(405, {"error": "mutations only supported for watchlists"})
+                return
+            valid = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
+            origin = self.headers.get("Origin")
+            if (self.headers.get("Host", "") not in valid
+                or (origin and origin not in {f"http://{host}" for host in valid} | proxy_origins)
+                or self.headers.get("Sec-Fetch-Site") == "cross-site"):
+                self.send(403, {"error": "cross-origin access denied"})
+                return
+            if watchlist_store is None:
+                self.send(503, {"error": "服务器自选存储不可用"})
+                return
+            try:
+                if self.headers.get_content_type() != "application/json" or self.headers.get("Transfer-Encoding"):
+                    raise ValueError("仅接受JSON自选数据")
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= MAX_BODY:
+                    self.send(413, {"error": "自选数据大小超出限制"})
+                    self.close_connection = True
+                    return
+                self.connection.settimeout(5)
+                raw = self.rfile.read(length)
+                if len(raw) != length:
+                    raise ValueError("自选数据不完整")
+                body = record(json.loads(raw))
+                action = body.get("action")
+                if action == "save":
+                    result = watchlist_store.save(body.get("revision"), body.get("snapshot"))
+                elif action == "import":
+                    result = watchlist_store.import_legacy(body.get("token"), body.get("snapshot"))
+                elif action == "settings":
+                    config = settings(body.get("settings"))
+                    context = record(config["context"])
+                    repository.backtest_version(context["run"], context["variant"])
+                    result = watchlist_store.save(body.get("revision"), config, field="settings")
+                elif action == "retry":
+                    watchlist_store.retry()
+                    result = watchlist_store.load()
+                else:
+                    raise ValueError("自选操作无效")
+                if watchlist_refresh:
+                    watchlist_refresh.wake.set()
+                self.send(200, result)
+            except WatchlistConflict as exc:
+                self.send(409, {"error": str(exc), "code": "WATCHLIST_CONFLICT"})
+            except (ValueError, UnicodeError, KeyError, TimeoutError):
+                self.send(400, {"error": "自选数据或回测参数无效"})
+            except Exception:
+                logging.exception("watchlist save failed")
+                self.send(503, {"error": "服务器自选存储暂不可用"})
+            finally:
+                self.close_connection = True
 
         def reject_mutation(self):
             self.send(405, {"error": "read-only server: mutations disabled"})
@@ -538,7 +624,16 @@ def make_server(
         do_DELETE = reject_mutation
         do_PATCH = reject_mutation
 
-    return ThreadingHTTPServer((host, port), Handler)
+    class WatchlistHTTPServer(ThreadingHTTPServer):
+        def server_close(self):
+            if watchlist_refresh:
+                watchlist_refresh.close()
+            super().server_close()
+
+    server = WatchlistHTTPServer((host, port), Handler)
+    if watchlist_refresh:
+        watchlist_refresh.start()
+    return server
 
 
 def serve_dashboard(

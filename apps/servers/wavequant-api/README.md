@@ -126,6 +126,16 @@ $env:WAVEQUANT_DATABASE_URL = "postgresql+psycopg://wavequant:<password>@127.0.0
 
 `GET /api/backtest-jobs` 返回运行中的 `jobs` 及最近任务的 `recent`。完成摘要包含规范化请求参数、策略版本、状态、实际成交笔数和 `result_available`；前端只在这些字段与当前自选股回测条件一致时恢复已完成状态。摘要写入结果根目录的 `.backtest-history.sqlite`，最多保留 256 条、7 天，服务重启后仍可读取；完整结果按原有上限最多保留 24 条、15 分钟。服务端没有匹配记录时，不能仅凭浏览器标记宣称已完成。
 
+## 服务器自选股与自动刷新
+
+`GET /api/watchlists` 返回 `revision`、`snapshot` 和 `settings`。自选分类、股票顺序、当前回测参数、暂停状态、迁移标识与后台完成摘要保存到结果根目录的 `.watchlists.sqlite`，备份时一起保留。当前是同一 loopback 服务的单用户自选列表；连接该服务的浏览器共享数据。
+
+`POST /api/watchlists` 接受 JSON：`action=save` 携带 `revision` 和 `snapshot`；`action=settings` 携带 `revision` 和 `settings`；版本冲突返回409，不覆盖另一页面的新数据。`action=import` 携带浏览器稳定 `token` 和旧 `snapshot`，事务内按分类名与股票去重合并；重复迁移幂等，本地 IndexedDB 备份保留。`action=retry` 重新开放失败任务。仅此路径开放写入，仍校验 Host、Origin、JSON 类型及4MiB请求体上限，其余写入口保持405。接口字段以 `@repo/contracts` 的 Watchlist 契约为准。
+
+首次研究页加载同步有效的回测设置后，服务器覆盖全部分类、按保存顺序逐股执行，相同股票去重。页面关闭后继续运行；服务器重启恢复已完成记录并重试未完成项。策略指纹、回测参数或行情截止日变化会产生新的任务标识并刷新信号、成交、收益和回撤。复用已有任务容量与同股互斥，优先等待手动回测；失败最多尝试三次并退避，不标为已完成。手动暂停保存在服务器，策略更新不会撤销暂停。
+
+`GET /api/backtest-jobs` 新增 `watchlist_refresh` 进度，`recent` 合并当前自选的持久完成摘要。`persisted_current=true` 表示该股票和参数已由服务器完成，允许完整任务正文过期后保留指标；打开图表时仍经现有回测入口读取真实结果。前端同时核对策略版本、数据源、截止日和全部参数，旧摘要不能冒充当前完成。
+
 ## 每日涨停天梯
 
 `GET /api/limit-up-ladder?date=2026-09-21&refresh=false` 通过 AkShare `stock_zt_pool_em` 读取指定日期东方财富涨停池；省略日期使用北京时间当天。仅接受 YYYY-MM-DD、非未来日期；refresh=true 强制重新读取。
