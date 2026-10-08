@@ -48,6 +48,11 @@
                     "command": "Related Prettier, git diff --check, pnpm harness:check, CodeGraph sync and original feature preservation",
                     "status": "passed",
                     "summary": "16路径格式、差异及295功能/18 Node/2 Python/32规则Harness通过。CodeGraph同步新存储、后台与前端链路；复核真实请求边界、修订冲突与持久完成摘要去重，防止旧完成与当前摘要交替。所有原main功能对象含MONOREPO-256逐项保持，恢复其唯一in-progress，不覆盖历史失败。最终Web静态导出、两TS构建源和三个API wheel文件与源字节一致；同会话分支默认本地no-ff合并，不推送。"
+                },
+                {
+                    "command": "main merge/Harness; live GET API8765 and Web3003 watchlists/backtest-jobs and four public scripts",
+                    "status": "passed",
+                    "summary": "实现74e75fa经eba6b71 no-ff合并本地main，分支已同步；main Harness通过。两个实际入口watchlists HTTP200/revision0、1默认分类、0成员，后台状态waiting，确认新持久接口与队列已生效。3003四个public脚本逐字节匹配main，无手工重启、清缓存或服务端写入用户数据。用户首次刷新研究页后由原浏览器迁移自选并同步有效回测设置，当前等待首次配置；浏览器和全部真实自选股完整回放未执行。工作区干净，不推送。"
                 }
             ]
         },
