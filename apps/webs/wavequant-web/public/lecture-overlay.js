@@ -12,6 +12,67 @@ export function formatPivotPrice(value) {
     return Number.isFinite(price) ? pivotPriceFormatter.format(price) : "";
 }
 
+/** 证书决定展示口径；收盘转向证据不能被改写为同级最高／最低价突破。 */
+export function trendConfirmationPresentation(confirmation, level) {
+    if (!confirmation || !["up", "down"].includes(confirmation.direction)) return null;
+    const rising = confirmation.direction === "up",
+        name = ["原折线", "一级", "二级", "三级"][level],
+        sourceName = ["原折线", "一级", "二级"][level - 1],
+        key = confirmation.broken_key,
+        proof = confirmation.confirmed_by,
+        known = confirmation.available_at,
+        evidence = (point) => `${point.time} ${point.value}（${point.available_at} 可知）`;
+    if (!name || !key?.time || !Number.isFinite(key.value) || !proof?.time || !Number.isFinite(proof.value) || !known)
+        return null;
+    if (confirmation.confirmation_rule === "source_key_break_alternation_then_market_turn") {
+        const flip = rising ? confirmation.flip_high : confirmation.flip_low,
+            counter = rising ? confirmation.alternation_low : confirmation.alternation_high;
+        if (
+            !sourceName ||
+            !key.available_at ||
+            !flip?.time ||
+            !Number.isFinite(flip.value) ||
+            !flip.available_at ||
+            !counter?.time ||
+            !Number.isFinite(counter.value) ||
+            !counter.available_at ||
+            proof.kind !== "K" ||
+            flip.kind !== (rising ? "H" : "L") ||
+            counter.kind !== (rising ? "L" : "H")
+        )
+            return null;
+        const alternation = rising ? "空多交替" : "多空交替",
+            turn = rising ? "转多" : "转空",
+            keyName = rising ? "末跌高" : "末升低";
+        return {
+            description: `下级${sourceName}${keyName} ${evidence(key)}，先由 ${evidence(flip)} 严格${rising ? "突破" : "跌破"}；随后 ${evidence(counter)} 完成${alternation}；${proof.time} 收盘 ${proof.value} 再次严格${rising ? "突破该突破高点" : "跌破该跌破低点"} ${flip.value}，${turn}后确认${name}${rising ? "上涨" : "下跌"}趋势。完整链于 ${known} 才可知。`,
+            sourceLabel: `${name}趋势线 · 下级突破、交替后收盘${turn}`,
+            summary: `${known} 交替后收盘${turn}确认${rising ? "上涨" : "下跌"}（下级${keyName} ${key.time}，${key.value}）`,
+        };
+    }
+    if (
+        confirmation.confirmation_rule !== "strict_same_level_market_key_break" ||
+        proof.kind === "K" ||
+        !key.available_at
+    )
+        return null;
+    const keyName = rising ? "末跌高" : "末升低";
+    return {
+        description: `${proof.time} ${rising ? "最高价" : "最低价"} ${proof.value} 严格${rising ? "突破" : "跌破"}本级${name}${keyName} ${evidence(key)}，于 ${known} 确认${name}${rising ? "上涨" : "下跌"}趋势。`,
+        sourceLabel: `${name}趋势线 · 本级关键位突破即确认`,
+        summary: `${known} ${rising ? "突破本级末跌高确认上涨" : "跌破本级末升低确认下跌"}（${key.time}，${key.value}）`,
+    };
+}
+
+function hasPublishedDevelopingDirection(stroke) {
+    if (
+        stroke.confirmation_policy !== "two_routes_v106" ||
+        !["secondary-developing", "tertiary-developing"].includes(stroke.kind)
+    )
+        return true;
+    return !!trendConfirmationPresentation(stroke.confirmation, stroke.kind === "secondary-developing" ? 2 : 3);
+}
+
 /**
  * 为被服务端规则边界拆开的相邻讲义路径补一条纯显示边。
  * 只接受相邻 K 线上几何方向成立的 H/L 端点，避免用前端连线掩盖缺失交易日、
@@ -84,7 +145,9 @@ export function connectedTrendStrokes(strokes, connections) {
     for (let index = 1; index < paths.length; index++) {
         const previous = paths[index - 1],
             next = paths[index],
-            link = links.get(`${previous.id}→${next.id}`);
+            link = [previous, next].some((path) => path.confirmation_policy === "two_routes_v106")
+                ? null
+                : links.get(`${previous.id}→${next.id}`);
         if (!link) {
             result.push(current);
             current = {
@@ -180,6 +243,8 @@ function trendConnections(strokes, sourceStrokes, level) {
             right = paths[i],
             a = left.points.at(-1),
             b = right.points[0];
+        // 新版路径边界由服务端确认规则决定，几何衔接不能补回被拒绝的趋势边。
+        if ([left, right].some((path) => path.confirmation_policy === "two_routes_v106")) continue;
         if (order(a, b) >= 0) continue;
         const known = a.available_at > b.available_at ? a.available_at : b.available_at;
         const candidates = raw.filter(
@@ -270,7 +335,7 @@ export class LectureOverlay {
         return this;
     }
     setStrokes(strokes) {
-        this.strokes = strokes;
+        this.strokes = strokes.filter(hasPublishedDevelopingDirection);
         this.updateAllViews();
         this.requestUpdate?.();
     }
@@ -334,6 +399,7 @@ export class LectureOverlay {
             // Map 同时收集正式一级端点和一级显示桥节点；连接首尾与正式端点重合时只画一次。
             const levelOneLabels = new Map();
             for (const { stroke, points } of this.projected) {
+                if (!hasPublishedDevelopingDirection(stroke)) continue;
                 const connection = stroke.kind === "reversal-connection" || stroke.kind === "secondary-connection";
                 const secondaryDeveloping = stroke.kind === "secondary-developing",
                     tertiaryDeveloping = stroke.kind === "tertiary-developing",
@@ -356,7 +422,7 @@ export class LectureOverlay {
                             : this.highlightTeaching && teaching
                               ? "#50dfd2"
                               : "#ffd36d";
-                    // 突破已确认同级关键位后趋势线为实线，末端仍可继续延伸。
+                    // 任一完整确认路线成立后画实线，末端仍可继续延伸。
                     const unresolved =
                         (secondaryDeveloping || tertiaryDeveloping) &&
                         (stroke.state !== "confirmed" || b.point.edge_state === "developing");
@@ -404,7 +470,9 @@ export class LectureOverlay {
     }
     hitTest(x, y) {
         // Real vertices take priority over display-only connectors.
-        for (const { stroke, points } of [...this.projected].reverse())
+        for (const { stroke, points } of this.projected
+            .filter(({ stroke }) => hasPublishedDevelopingDirection(stroke))
+            .reverse())
             for (const p of points)
                 if (
                     !["reversal-connection", "secondary-connection"].includes(stroke.kind) &&
@@ -434,7 +502,7 @@ export class LectureOverlay {
         const [, strokeId, index] = id.split(":");
         const stroke = this.strokes.find((s) => s.id === strokeId);
         const p = stroke?.points[Number(index)];
-        if (!p) return null;
+        if (!p || !hasPublishedDevelopingDirection(stroke)) return null;
         const teaching = stroke.kind === "teaching" || !!p.teaching_path_id;
         if (stroke.kind === "reversal-connection" || stroke.kind === "secondary-connection") {
             const secondary = stroke.kind === "secondary-connection",
@@ -481,7 +549,8 @@ export class LectureOverlay {
             if (stroke.state === "confirmed" && confirmation) {
                 const key = confirmation.broken_key,
                     proof = confirmation.confirmed_by,
-                    liveEndpoint = stroke.confirmed_endpoint || endpoint;
+                    liveEndpoint = stroke.confirmed_endpoint || endpoint,
+                    presentation = trendConfirmationPresentation(confirmation, level);
                 return {
                     id,
                     time: confirmation.available_at,
@@ -490,8 +559,11 @@ export class LectureOverlay {
                     category: "rules",
                     price: p.value,
                     title: `${prefix}${rising ? "上涨" : "下跌"}趋势已确认 · 末端延伸`,
-                    description: `${proof.time} ${rising ? "最高价" : "最低价"} ${proof.value} 严格${rising ? "突破前高" : "跌破前低"} ${key.time} ${key.value}，当日确认${name}${rising ? "上涨" : "下跌"}趋势并显示实线。当前端点 ${liveEndpoint.time} ${liveEndpoint.value} 仍可随行情继续延伸，尚未固定为正式反转点；其后未确认回调继续显示虚线。`,
-                    sourceLabel: `${name}趋势线 · 突破即确认`,
+                    description:
+                        (presentation?.description ||
+                            `${proof.time} ${rising ? "最高价" : "最低价"} ${proof.value} 严格${rising ? "突破前高" : "跌破前低"} ${key.time} ${key.value}，当日确认${name}${rising ? "上涨" : "下跌"}趋势并显示实线。`) +
+                        `当前端点 ${liveEndpoint.time} ${liveEndpoint.value} 仍可随行情继续延伸，尚未固定为正式反转点；其后反向段须有独立完整确认依据。`,
+                    sourceLabel: presentation?.sourceLabel || `${name}趋势线 · 突破即确认`,
                     levels: [],
                     raw: {
                         point: p,
@@ -532,14 +604,27 @@ export class LectureOverlay {
                 proof = p.confirmed_by;
             const promotedByAlternation =
                 p.confirmation_rule === "level1_old_level2_key_break_alternation_and_nested_reversal";
-            const directUpgrade = p.confirmation_rule === "level1_confirmed_high_breaks_known_level2_last_fall_high";
+            const directUpgrade =
+                p.confirmation_rule === `level${level - 1}_confirmed_high_breaks_known_level${level}_last_fall_high`;
+            const presentation = trendConfirmationPresentation(
+                p.kind === "H" ? p.incoming_trend_confirmation : p.trend_confirmation,
+                level,
+            );
+            const sourceKnown = p[`source_level${level - 1}_available_at`],
+                sourceKnownText = sourceKnown === undefined ? "" : `（${sourceKnown} 可知）`,
+                keyKnownText = key?.available_at === undefined ? "" : `（${key.available_at} 可知）`;
+            if (stroke.confirmation_policy === "two_routes_v106" && p.kind === "L" && !presentation) return null;
             const description = directUpgrade
-                ? `已确认一级高点 ${p.time} ${p.value} 严格突破此前已知二级末跌高 ${key.time} ${key.value}，于 ${p.available_at} 直接升级二级高点；后续回调按当时可知证据独立确认，不等待回撤比例或嵌套低点，也不等于买卖信号。`
-                : p.confirmation_rule === "confirmed_alternation_then_high_breakout"
-                  ? `空多交替已确认后，${proof.time} 最高价 ${proof.value} 严格突破原空翻多高点，确认多头。原空翻多高点至空多交替低点确认为正式${name}趋势线，${p.available_at} 才可知；不要求收盘越过旧高点，也不把突破 K 当作已确认波段顶。`
-                  : promotedByAlternation
-                    ? `基于一级趋势线：${p.label}（${p.value}）先突破旧二级末跌高 ${key.label}（${key.value}）；随后 ${p.alternation.point.label}（${p.alternation.point.value}）完成 ${(p.alternation.retracement_ratio * 100).toFixed(2)}% 的场景回撤，并由非正式二级低点 ${p.provisional_reversal.label}（${p.provisional_reversal.value}）在 ${p.available_at} 完成确认，才把该高点升级为正式二级高点。证据按确认日可见，不倒填、不等于买卖信号。`
-                    : `基于${source}趋势线：${proof.label}（${proof.value}）${p.flip === "翻空为多" ? "突破末跌高" : "跌破末升低"} ${key.label}（${key.value}），确认整段${p.kind === "H" ? "最高" : "最低"}点。可跨多个${source}拐点，不等待67%交替；不等于买卖信号。`;
+                ? `${presentation?.description || ""}已确认${source}高点 ${p.time} ${p.value}${sourceKnownText} 严格突破此前已知${name}末跌高 ${key.time} ${key.value}${keyKnownText}，于 ${p.available_at} 直接升级${name}高点；后续回调按当时可知证据独立确认，不等待回撤比例或嵌套低点，也不等于买卖信号。`
+                : presentation
+                  ? `${presentation.description}该${name}${p.kind === "H" ? "高点" : "低点"}于 ${p.available_at} 正式发布，不等于买卖信号。`
+                  : stroke.confirmation_policy === "two_routes_v106"
+                    ? `${name}下降段的已确认压力高点 ${p.time} ${p.value}，于 ${p.available_at} 可知。上涨趋势仍须突破本级末跌高，或下级突破后完成空多交替及后续收盘转多；该关键位不是买卖信号。`
+                    : p.confirmation_rule === "confirmed_alternation_then_high_breakout"
+                      ? `空多交替已确认后，${proof.time} 最高价 ${proof.value} 严格突破原空翻多高点，确认多头。原空翻多高点至空多交替低点确认为正式${name}趋势线，${p.available_at} 才可知；不要求收盘越过旧高点，也不把突破 K 当作已确认波段顶。`
+                      : promotedByAlternation
+                        ? `基于一级趋势线：${p.label}（${p.value}）先突破旧二级末跌高 ${key.label}（${key.value}）；随后 ${p.alternation.point.label}（${p.alternation.point.value}）完成 ${(p.alternation.retracement_ratio * 100).toFixed(2)}% 的场景回撤，并由非正式二级低点 ${p.provisional_reversal.label}（${p.provisional_reversal.value}）在 ${p.available_at} 完成确认，才把该高点升级为正式二级高点。证据按确认日可见，不倒填、不等于买卖信号。`
+                        : `基于${source}趋势线：${proof.label}（${proof.value}）${p.flip === "翻空为多" ? "突破末跌高" : "跌破末升低"} ${key.label}（${key.value}），确认整段${p.kind === "H" ? "最高" : "最低"}点。可跨多个${source}拐点，不等待67%交替；不等于买卖信号。`;
             return {
                 id,
                 time: p.available_at,
@@ -549,7 +634,12 @@ export class LectureOverlay {
                 price: p.value,
                 title: `${prefix}${p.label} · ${name}${p.kind === "H" ? "高点" : "低点"} · ${p.flip}`,
                 description,
-                sourceLabel: `${name}趋势线 · 在${source}结构突破确认日可知`,
+                sourceLabel: directUpgrade
+                    ? `${name}趋势线 · 已确认${source}高点直接升级`
+                    : presentation?.sourceLabel ||
+                      (stroke.confirmation_policy === "two_routes_v106"
+                          ? `${name}趋势线 · 已确认下降压力关键位`
+                          : `${name}趋势线 · 在${source}结构突破确认日可知`),
                 levels: p.levels,
                 raw: {
                     point: p,
@@ -568,6 +658,11 @@ export class LectureOverlay {
                         (e.ratio !== undefined ? `（${(e.ratio * 100).toFixed(2)}%）` : ""),
                 )
                 .join("；");
+            const presentation = trendConfirmationPresentation(
+                p.kind === "H" ? p.incoming_trend_confirmation : p.trend_confirmation,
+                1,
+            );
+            if (stroke.confirmation_policy === "two_routes_v106" && p.kind === "L" && !presentation) return null;
             return {
                 id,
                 time: p.available_at,
@@ -576,8 +671,16 @@ export class LectureOverlay {
                 category: "rules",
                 price: p.value,
                 title: `${p.label} · ${p.reversal}${p.kind === "H" ? "高点" : "低点"}`,
-                description: `一级趋势线：原折线的高、低点同时转向才确认，实线跨过中间小拐点。最近两组波段高低点：${p.trend}。${events || "此点无新增转换观察。"} 不等于策略确认或买卖信号。`,
-                sourceLabel: "一级趋势线 · 在短期方向转换确认日可知",
+                description: presentation
+                    ? `${presentation.description}该一级端点于 ${p.available_at} 正式发布。${events || ""} 不等于策略确认或买卖信号。`
+                    : stroke.confirmation_policy === "two_routes_v106"
+                      ? `一级下降段的已确认压力高点 ${p.time} ${p.value}，于 ${p.available_at} 可知。上涨趋势仍须突破一级末跌高，或原折线突破后完成空多交替及后续收盘转多。`
+                      : `一级趋势线：原折线的高、低点同时转向才确认，实线跨过中间小拐点。最近两组波段高低点：${p.trend}。${events || "此点无新增转换观察。"} 不等于策略确认或买卖信号。`,
+                sourceLabel:
+                    presentation?.sourceLabel ||
+                    (stroke.confirmation_policy === "two_routes_v106"
+                        ? "一级趋势线 · 已确认下降压力关键位"
+                        : "一级趋势线 · 在短期方向转换确认日可知"),
                 levels: p.levels,
                 raw: { point: p, trend_level: 1, scope: "lecture_wave_structure_not_strategy_confirmation" },
             };

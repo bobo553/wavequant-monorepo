@@ -22,7 +22,7 @@ def countertrend_fixture(level, rising=True):
     bars[1] = Bar(bar.timestamp, bar.symbol, bar.open, 17 if not rising else bar.high,
                   3 if rising else bar.low, bar.close, bar.volume)
     points[1]['value'] = 3 if rising else 17
-    for index, kind, value in [(2, 'H', 9), (3, 'L', 6)]:
+    for index, kind, value in [(2, 'H', 9.0), (3, 'L', 6.0)]:
         bar = bars[index]
         bars[index] = Bar(bar.timestamp, bar.symbol, bar.open, 14 if not rising and index == 3 else bar.high,
                           6 if rising and index == 3 else bar.low, bar.close, bar.volume)
@@ -30,10 +30,10 @@ def countertrend_fixture(level, rising=True):
                            kind=kind if rising else ('L' if kind == 'H' else 'H'),
                            value=value if rising else 20 - value, label=kind,
                            available_at=bar.timestamp.date().isoformat()))
-    values = [(9, 10, 8, 9), (8, 9, 7, 8), (9, 10, 8, 9),
+    values: list[tuple[float,float,float,float]] = [(9, 10, 8, 9), (8, 9, 7, 8), (9, 10, 8, 9),
               (9, 10, 8, 9), (8, 9, 6.5, 8), (8, 9, 7, 8)]
     if not rising:
-        values = [tuple(20 - value for value in (op, lo, hi, cl)) for op, hi, lo, cl in values]
+        values = [(20 - op, 20 - lo, 20 - hi, 20 - cl) for op, hi, lo, cl in values]
     bars.extend(Bar(datetime(2025, 1, index + 6), 'TEST', *row, 100)
                 for index, row in enumerate(values))
     for index, kind, value, known_day in [(4, 'H', 11, 6), (6, 'L', 7, 8),
@@ -53,9 +53,26 @@ def developing(bars, source, formal, level, end_index=None):
                                        bars=bars, end_index=end_index)
 
 
+def completed_countertrend_fixture(level, rising=True):
+    """Known source flip, partial holding turn, then a later strict close turn."""
+    bars, source, formal = countertrend_fixture(level, rising)
+    values = [(6.1, 6.5, 5.5, 5.8), (6.6, 8, 6.3, 7.8),
+              (6.4, 7, 6, 6.2), (5.8, 6, 5.2, 5.4)]
+    if not rising:
+        values = [(20 - op, 20 - lo, 20 - hi, 20 - cl) for op, hi, lo, cl in values]
+    bars.extend(Bar(datetime(2025, 1, index + 12), 'TEST', *row, 100)
+                for index, row in enumerate(values))
+    for index, kind, value, known_day in [(10, 'H', 9, 12), (11, 'L', 5.5, 13), (12, 'H', 8, 14)]:
+        actual_kind = kind if rising else ('H' if kind == 'L' else 'L')
+        source['points'].append(dict(index=index, ordinal=0, time=bars[index].timestamp.date().isoformat(),
+                                     kind=actual_kind, value=value if rising else 20 - value,
+                                     available_at=f'2025-01-{known_day:02d}', label=actual_kind))
+    return bars, source, formal
+
+
 @pytest.mark.parametrize('level', [2, 3])
 @pytest.mark.parametrize('rising', [True, False])
-def test_local_four_point_decline_is_not_a_turn_until_the_frozen_source_key_breaks(level, rising):
+def test_source_key_break_alone_cannot_turn_local_four_point_geometry_into_dashes(level, rising):
     bars, source, formal = countertrend_fixture(level, rising)
     before = copy.deepcopy(source)
     pending = developing(bars[:10], source, formal, level)
@@ -66,19 +83,72 @@ def test_local_four_point_decline_is_not_a_turn_until_the_frozen_source_key_brea
     assert developing(bars, source, formal, level)['points'][-1]['value'] == (11 if rising else 9)
     bars.append(Bar(datetime(2025, 1, 12), 'TEST', 8 if rising else 12, 9 if rising else 14.5,
                     5.5 if rising else 11, 8 if rising else 12, 100))
-    confirmed = developing(bars, source, formal, level)
-    assert len(confirmed['points']) == 6
-    assert confirmed['countertrend_confirmation']['available_at'] == '2025-01-12'
-    assert confirmed['countertrend_confirmation']['direction'] == ('down' if rising else 'up')
-    assert all(point['available_at'] >= '2025-01-12' for point in confirmed['points'][3:])
-    assert all(point['edge_state'] == 'developing' for point in confirmed['points'][3:])
-    assert confirmed['confirmation'] == pending['confirmation']
+    broken = developing(bars, source, formal, level)
+    assert len(broken['points']) == 3
+    assert 'countertrend_confirmation' not in broken
+    assert broken['confirmation'] == pending['confirmation']
     extended_bars = bars + [Bar(datetime(2025, 1, 13), 'TEST', 8, 9, 7, 8, 100)]
     if not rising:
         extended_bars[-1] = Bar(datetime(2025, 1, 13), 'TEST', 12, 13, 11, 12, 100)
     extended = developing(extended_bars, source, formal, level)
-    assert extended['countertrend_confirmation'] == confirmed['countertrend_confirmation']
+    assert len(extended['points']) == 3
+    assert 'countertrend_confirmation' not in extended
+    assert extended['confirmation'] == pending['confirmation']
     assert source == before
+
+
+@pytest.mark.parametrize('level', [2, 3])
+@pytest.mark.parametrize('rising', [True, False])
+def test_completed_known_source_cycle_enables_countertrend_dashes_in_both_directions(level, rising):
+    bars, source, formal = completed_countertrend_fixture(level, rising)
+    before = copy.deepcopy((source, formal))
+    for point in source['points']:
+        bar = bars[point['index']]
+        assert point['value'] == (bar.high if point['kind'] == 'H' else bar.low)
+    initial = developing(bars[:10], source, formal, level)
+    for end in range(11, len(bars)):
+        pending = developing(bars[:end], source, formal, level)
+        assert len(pending['points']) == 3
+        assert 'countertrend_confirmation' not in pending
+        assert pending['confirmation'] == initial['confirmation']
+    complete = developing(bars, source, formal, level)
+    proof = complete['countertrend_confirmation']
+    assert proof['confirmation_rule'] == 'source_key_break_alternation_then_market_turn'
+    assert proof['available_at'] == '2025-01-15'
+    assert proof['direction'] == ('down' if rising else 'up')
+    assert proof['broken_key']['value'] == (6 if rising else 14)
+    assert proof['source_break_available_at'] == '2025-01-13'
+    assert proof['alternation_available_at'] == '2025-01-14'
+    assert proof['flip_low' if rising else 'flip_high']['value'] == (5.5 if rising else 14.5)
+    assert proof['alternation_high' if rising else 'alternation_low']['value'] == (8 if rising else 12)
+    assert 0 < proof['retracement_ratio'] < 2 / 3
+    assert len(complete['points']) > 3
+    assert all(point['available_at'] >= '2025-01-15' for point in complete['points'][3:])
+    assert all(point['edge_state'] == 'developing' for point in complete['points'][3:])
+    assert complete['confirmation'] == initial['confirmation']
+    assert (source, formal) == before
+
+
+@pytest.mark.parametrize('level', [2, 3])
+@pytest.mark.parametrize('rising', [True, False])
+@pytest.mark.parametrize('boundary', ['equal_close', 'unknown_flip', 'unknown_holding', 'holding_broken', 'path_cutoff'])
+def test_countertrend_cycle_needs_known_holding_and_a_strict_later_close(level, rising, boundary):
+    bars, source, formal = completed_countertrend_fixture(level, rising)
+    if boundary == 'equal_close':
+        bar = bars[-1]
+        bars[-1] = Bar(bar.timestamp, bar.symbol, bar.open, bar.high, bar.low,
+                       5.5 if rising else 14.5, bar.volume)
+    elif boundary == 'unknown_flip':
+        source['points'][-2]['available_at'] = '2025-01-16'
+    elif boundary == 'unknown_holding':
+        source['points'][-1]['available_at'] = '2025-01-16'
+    elif boundary == 'holding_broken':
+        bar = bars[13]
+        bars[13] = Bar(bar.timestamp, bar.symbol, bar.open, 8.1 if rising else bar.high,
+                       bar.low if rising else 11.9, bar.close, bar.volume)
+    pending = developing(bars, source, formal, level, 13 if boundary == 'path_cutoff' else None)
+    assert len(pending['points']) == 3
+    assert 'countertrend_confirmation' not in pending
 
 
 @pytest.mark.parametrize('level', [2, 3])
@@ -138,6 +208,7 @@ def test_xiangyang_may2025_to_april2026_has_no_tertiary_countertrend_dashes():
         first = reversal_trends(lecture_drawing(prefix), prefix)
         second = secondary_trends(first, prefix)
         third = tertiary_trends(second, prefix)
+        assert third['developing_strokes'], f'live tertiary path disappeared on {end}'
         tail = third['developing_strokes'][-1]
         assert tail['state'] == 'confirmed'
         assert tail['confirmation']['available_at'] == '2025-03-11'

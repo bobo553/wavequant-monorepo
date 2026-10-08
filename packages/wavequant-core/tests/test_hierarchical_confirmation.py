@@ -53,12 +53,23 @@ def test_unconfirmed_more_extreme_origin_and_same_bar_double_break_cannot_confir
 
 
 @pytest.mark.parametrize('field', ['key', 'origin'])
-def test_unknown_key_or_origin_never_backdates_confirmation(field):
-    bars, points = setup()
+@pytest.mark.parametrize('rising', [True, False])
+def test_unknown_key_or_origin_never_backdates_confirmation(field, rising):
+    bars, points = setup(rising)
     points[0 if field == 'key' else 1]['available_at'] = '2025-01-06'
     assert market_trend_confirmation(points, points[0], 0, bars, 4) is None
-    bars.append(Bar(datetime(2025, 1, 6), 'TEST', 10, 12, 9, 11, 100))
+    bars.append(Bar(datetime(2025, 1, 6), 'TEST', 10, 12 if rising else 11,
+                    9 if rising else 8, 11 if rising else 9, 100))
     result = market_trend_confirmation(points, points[0], 0, bars, 5)
+    if field == 'key':
+        # A newly published key cannot retroactively authorize that day's break.
+        assert result is None
+        bars.append(Bar(datetime(2025, 1, 7), 'TEST', 11 if rising else 9, 13 if rising else 10,
+                        10 if rising else 7, 12 if rising else 8, 100))
+        result = market_trend_confirmation(points, points[0], 0, bars, 6)
+        assert result is not None
+        assert result['confirmation']['available_at'] == '2025-01-07'
+        return
     assert result is not None
     assert result['confirmation']['available_at'] == '2025-01-06'
 
@@ -112,7 +123,19 @@ def test_xiangyang_first_break_and_may_endpoint_use_real_full_daily_history():
     later = [point for stroke in results['2025-05-15']['strokes'] for point in stroke['points']
              if point['available_at'] > '2025-03-11']
     assert [(point['time'], point['value'], point['available_at']) for point in later] == [
-        ('2024-07-25', 3.45, '2025-04-02')]
+        ('2024-07-25', 3.45, '2025-04-02'), ('2025-03-21', 18.9, '2025-04-02')]
+    promoted = later[-1]
+    assert promoted['confirmation_rule'] == 'level2_confirmed_high_breaks_known_level3_last_fall_high'
+    assert promoted['trend_level'] == 3
+    assert promoted['source_level2_available_at'] == '2025-04-02'
+    assert promoted['broken_key']['kind'] == 'H'
+    assert promoted['broken_key']['value'] == 10.66
+    assert promoted['broken_key']['time'] == '2022-08-02'
+    assert promoted['confirmed_by']['kind'] == 'H'
+    assert promoted['confirmed_by']['time'] == '2025-03-21'
+    assert promoted['confirmed_by']['value'] == 18.9
+    assert promoted['source_level2_position'] >= 0
+    assert promoted['confirmed_on_level2'] >= promoted['source_level2_position']
     assert all(point['time'] != '2025-05-15' for stroke in results['2025-05-15']['strokes'] for point in stroke['points'])
 
 

@@ -9,6 +9,7 @@ import {
     projectStroke,
     reversalConnections,
     secondaryConnections,
+    trendConfirmationPresentation,
 } from "../public/lecture-overlay.js";
 
 test("adjacent lecture paths keep a display-only L-H edge across their source boundary", () => {
@@ -1089,4 +1090,252 @@ test("mixed main path shares junction coordinates and emphasis never removes leg
     draw();
     assert.equal(segments.length, 4);
     assert.ok(segments.every((s) => s.color === "#ffd36d"));
+});
+
+test("new confirmation paths cannot be reconnected from lower-level geometry", () => {
+    const point = (index, kind, value) => ({
+        index,
+        ordinal: 0,
+        kind,
+        value,
+        time: `d${index}`,
+        available_at: "z",
+        state: "confirmed",
+    });
+    for (const [kind, connect] of [
+        ["reversal", reversalConnections],
+        ["secondary", secondaryConnections],
+    ]) {
+        const paths = [
+            { id: "left", kind, points: [point(1, "L", 4.4)] },
+            { id: "right", kind, points: [point(8, "L", 4.82)] },
+        ];
+        const source = [
+            { id: "source", kind: kind === "secondary" ? "reversal" : "ordinary", points: [point(4, "H", 5.85)] },
+        ];
+        const legacyLinks = connect(paths, source);
+        assert.equal(legacyLinks.length, 1);
+        const published = paths.map((path) => ({ ...path, confirmation_policy: "two_routes_v106" }));
+        const before = structuredClone({ published, source });
+        assert.deepEqual(connect(published, source), []);
+        assert.deepEqual(
+            connectedTrendStrokes(published, legacyLinks).map((path) => path.points),
+            paths.map((path) => path.points),
+        );
+        assert.deepEqual({ published, source }, before);
+        assert.deepEqual(connect([published[0], paths[1]], source), []);
+        assert.deepEqual(
+            connect(
+                [
+                    { ...published[0], points: [point(1, "L", 4.4)] },
+                    { ...published[1], points: [point(8, "H", 5.85)] },
+                ],
+                source,
+            ),
+            [],
+        );
+    }
+});
+
+function cycleConfirmation(rising = true) {
+    const ref = (time, value, kind, available_at = time) => ({ time, value, kind, available_at });
+    return {
+        confirmation_rule: "source_key_break_alternation_then_market_turn",
+        direction: rising ? "up" : "down",
+        available_at: "2019-02-12",
+        broken_key: ref("2018-11-23", rising ? 5.85 : 5.4, rising ? "H" : "L", "2018-12-13"),
+        origin: ref("2018-12-18", rising ? 4.82 : 6.35, rising ? "L" : "H", "2019-01-14"),
+        confirmed_by: {
+            ...ref("2019-02-12", rising ? 6.16 : 5.15, "K"),
+            market_high: rising ? 6.2 : 5.6,
+            market_low: rising ? 6.0 : 5.0,
+        },
+        [rising ? "flip_high" : "flip_low"]: ref("2019-01-14", rising ? 6.01 : 5.2, rising ? "H" : "L", "2019-01-23"),
+        [rising ? "alternation_low" : "alternation_high"]: ref(
+            "2019-01-22",
+            rising ? 5.4 : 5.6,
+            rising ? "L" : "H",
+            "2019-01-25",
+        ),
+    };
+}
+
+test("all formal hierarchy endpoints describe the source cycle and its later closing turn", () => {
+    for (const [level, kind] of [
+        [1, "reversal"],
+        [2, "secondary"],
+        [3, "tertiary"],
+    ]) {
+        for (const rising of [true, false]) {
+            const confirmation = cycleConfirmation(rising),
+                point = {
+                    time: "2018-12-18",
+                    value: rising ? 4.82 : 6.35,
+                    kind: rising ? "L" : "H",
+                    label: rising ? "L2" : "H2",
+                    available_at: "2019-02-12",
+                    levels: [],
+                    observations: [],
+                    [rising ? "trend_confirmation" : "incoming_trend_confirmation"]: confirmation,
+                },
+                overlay = new LectureOverlay({ dataset: {} });
+            overlay.strokes = [{ id: "cycle", kind, confirmation_policy: "two_routes_v106", points: [point] }];
+            const item = overlay.annotation("drawing:cycle:0");
+            assert.match(item.description, new RegExp(`下级${["原折线", "一级", "二级"][level - 1]}`));
+            assert.match(item.description, /2018-12-13 可知/);
+            assert.match(item.description, /2019-01-25 可知/);
+            assert.match(
+                item.description,
+                rising ? /空多交替.*2019-02-12 收盘 6\.16.*转多/ : /多空交替.*2019-02-12 收盘 5\.15.*转空/,
+            );
+            assert.doesNotMatch(item.description, /2019-02-12 (最高价|最低价)/);
+            assert.equal(item.raw.trend_level, level);
+        }
+    }
+});
+
+test("developing cycle annotations and summary distinguish closing turns from own-key wick breaks", () => {
+    for (const [level, kind] of [
+        [2, "secondary-developing"],
+        [3, "tertiary-developing"],
+    ]) {
+        for (const rising of [true, false]) {
+            const confirmation = cycleConfirmation(rising),
+                overlay = new LectureOverlay({ dataset: {} });
+            overlay.strokes = [
+                {
+                    id: "developing-cycle",
+                    kind,
+                    state: "confirmed",
+                    display_only: true,
+                    confirmation_policy: "two_routes_v106",
+                    wave_direction: confirmation.direction,
+                    confirmation,
+                    points: [
+                        { time: "2018-12-18", value: rising ? 4.82 : 6.35 },
+                        { time: "2019-02-12", value: rising ? 6.2 : 5.0 },
+                    ],
+                },
+            ];
+            const item = overlay.annotation("drawing:developing-cycle:1");
+            assert.match(item.description, rising ? /收盘 6\.16/ : /收盘 5\.15/);
+            assert.match(item.sourceLabel, rising ? /交替后收盘转多/ : /交替后收盘转空/);
+            assert.match(
+                trendConfirmationPresentation(confirmation, level).summary,
+                rising ? /交替后收盘转多确认上涨/ : /交替后收盘转空确认下跌/,
+            );
+            assert.doesNotMatch(item.description, /最高价 6\.16|最低价 5\.15/);
+        }
+    }
+    const ownKey = {
+        ...cycleConfirmation(),
+        confirmation_rule: "strict_same_level_market_key_break",
+        alternation_low: null,
+        confirmed_by: { time: "2019-02-12", kind: "H", value: 6.2 },
+    };
+    const own = trendConfirmationPresentation(ownKey, 2);
+    assert.match(own.description, /最高价 6\.2.*本级二级末跌高/);
+    assert.doesNotMatch(own.description, /收盘|交替/);
+    assert.match(own.summary, /突破本级末跌高确认上涨/);
+});
+
+test("incomplete new-policy cycles cannot fall back to unconfirmed development drawings", () => {
+    const overlay = new LectureOverlay({ dataset: {} }),
+        confirmation = { ...cycleConfirmation(), alternation_low: null },
+        stroke = {
+            id: "incomplete",
+            kind: "secondary-developing",
+            state: "confirmed",
+            confirmation_policy: "two_routes_v106",
+            wave_direction: "up",
+            confirmation,
+            points: [
+                { time: "a", value: 4.4 },
+                { time: "b", value: 5.85 },
+            ],
+        };
+    assert.equal(trendConfirmationPresentation(confirmation, 2), null);
+    overlay.setStrokes([stroke]);
+    assert.deepEqual(overlay.strokes, []);
+    overlay.strokes = [stroke];
+    overlay.projected = [
+        { stroke, points: stroke.points.map((point, index) => ({ point, index, x: index, y: index })) },
+    ];
+    overlay.draw({
+        useMediaCoordinateSpace: (fn) =>
+            fn({
+                context: {
+                    save() {},
+                    restore() {},
+                    stroke() {
+                        assert.fail("no line without the full certificate");
+                    },
+                },
+            }),
+    });
+    assert.equal(overlay.annotation("drawing:incomplete:0"), null);
+    assert.equal(overlay.hitTest(0, 0), null);
+});
+
+test("a direct tertiary high upgrade names the confirmed secondary source and own tertiary key", () => {
+    const overlay = new LectureOverlay({ dataset: {} });
+    overlay.strokes = [
+        {
+            id: "direct-third",
+            kind: "tertiary",
+            confirmation_policy: "two_routes_v106",
+            points: [
+                {
+                    kind: "H",
+                    label: "H3",
+                    time: "2025-03-21",
+                    value: 19.63,
+                    available_at: "2025-04-02",
+                    confirmation_rule: "level2_confirmed_high_breaks_known_level3_last_fall_high",
+                    broken_key: { time: "2022-08-02", value: 10.66 },
+                    levels: [],
+                },
+            ],
+        },
+    ];
+    const item = overlay.annotation("drawing:direct-third:0");
+    assert.match(item.description, /已确认二级高点.*此前已知三级末跌高.*直接升级三级高点/);
+    assert.match(item.sourceLabel, /已确认二级高点直接升级/);
+    assert.doesNotMatch(item.description, /已确认一级高点|跌破末升低|场景回撤/);
+});
+
+test("a direct upgraded high retains the earlier complete incoming cycle and both knowledge dates", () => {
+    const overlay = new LectureOverlay({ dataset: {} }),
+        incoming = {
+            ...cycleConfirmation(),
+            broken_key: { time: "2018-09-25", kind: "H", value: 5.78, available_at: "2018-10-11" },
+            origin: { time: "2018-10-19", kind: "L", value: 4.4, available_at: "2018-10-24" },
+        },
+        high = {
+            kind: "H",
+            label: "H2",
+            time: "2019-03-21",
+            value: 9.84,
+            available_at: "2019-03-26",
+            source_level1_available_at: "2019-03-26",
+            confirmation_rule: "level1_confirmed_high_breaks_known_level2_last_fall_high",
+            broken_key: { time: "2018-07-03", kind: "H", value: 6.85, available_at: "2018-10-24" },
+            incoming_trend_confirmation: incoming,
+            levels: [],
+        };
+    overlay.strokes = [
+        { id: "composite-high", kind: "secondary", confirmation_policy: "two_routes_v106", points: [high] },
+    ];
+
+    const item = overlay.annotation("drawing:composite-high:0");
+    assert.equal(item.time, "2019-03-26");
+    assert.equal(item.sourceTime, "2019-03-21");
+    assert.match(item.description, /下级一级末跌高 2018-09-25 5\.78（2018-10-11 可知）/);
+    assert.match(item.description, /2019-01-22 5\.4（2019-01-25 可知）.*空多交替/);
+    assert.match(item.description, /2019-02-12 收盘 6\.16.*转多.*完整链于 2019-02-12 才可知/);
+    assert.match(item.description, /已确认一级高点 2019-03-21 9\.84（2019-03-26 可知）/);
+    assert.match(item.description, /二级末跌高 2018-07-03 6\.85（2018-10-24 可知）/);
+    assert.match(item.description, /2019-03-26 直接升级二级高点/);
+    assert.doesNotMatch(item.description, /2019-02-12 最高价 6\.16|2019-02-12 直接升级二级高点/);
+    assert.match(item.sourceLabel, /一级高点直接升级/);
 });

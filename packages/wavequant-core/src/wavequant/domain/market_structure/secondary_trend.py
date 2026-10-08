@@ -8,10 +8,12 @@ waits for both the source high and its formal base low, without borrowing a
 later pullback.
 """
 from copy import deepcopy
+from collections.abc import Mapping
 from zoneinfo import ZoneInfo
 
 from .hierarchical_development import hierarchical_developing_path
 from .lecture_trend import _annotate, _ref
+from .trend_publication import publish_uptrends
 from .trend_landmarks import (
     bear_bull_alternation_lows,
     bear_to_bull_highs,
@@ -120,7 +122,7 @@ def last_fall_high_reanchors(points,bars,*,trend_level=2):
     return events
 
 
-def _level2_high_promotion(points,base,candidate,old_key,published_on):
+def _level2_high_promotion(points,base,candidate,old_key,published_on,*,source_level=1):
     """Publish a confirmed source high breaking a previously known formal key.
 
     ``old_key`` retains its formal level-2 publication date; the original
@@ -140,18 +142,18 @@ def _level2_high_promotion(points,base,candidate,old_key,published_on):
     price_session=high['index'] if type(known) is int else high['time']
     if known>=price_session:
         return None
-    return dict(high,source_label=high['label'],trend_level=2,
+    return dict(high,source_label=high['label'],trend_level=source_level+1,
                 available_at=max(high['available_at'],base['available_at']),
-                source_level1_available_at=high['available_at'],
-                source_level1_position=candidate,confirmed_on_level1=published_on,
-                confirmation_rule='level1_confirmed_high_breaks_known_level2_last_fall_high',
-                flip='二级末跌高突破升级',broken_key=_ref(old_key),confirmed_by=_ref(high),
+                **{f'source_level{source_level}_available_at':high['available_at'],
+                   f'source_level{source_level}_position':candidate,f'confirmed_on_level{source_level}':published_on},
+                confirmation_rule=f'level{source_level}_confirmed_high_breaks_known_level{source_level+1}_last_fall_high',
+                flip=('二级' if source_level==1 else '三级')+'末跌高突破升级',broken_key=_ref(old_key),confirmed_by=_ref(high),
                 source_confirmation=deepcopy(high.get('confirmed_by')),
                 wave_direction_before='up',wave_direction_after='down')
 
 
-def _structural_reversals(points, *, source_level=1):
-    """Reduce strict source-key breaks and immediate confirmed level-1 upgrades."""
+def _candidate_structural_reversals(points, *, source_level=1):
+    """Track structural keys; candidates do not themselves authorize a trend."""
     highs: list[int] = []
     lows: list[int] = []
     selected: list[dict[str, object]] = []
@@ -188,10 +190,10 @@ def _structural_reversals(points, *, source_level=1):
             continue
         if p['kind']==target and sign*(p['value']-points[anchor]['value'])>0:
             anchor=j; key=j-1
-            if source_level==1 and up and selected and selected[-1]['kind']=='L':
+            if up and selected and selected[-1]['kind']=='L':
                 old_key=next((k for k in range(len(selected)-2,-1,-1)
                               if selected[k]['kind']=='H'),None)
-                promoted=(_level2_high_promotion(points,selected[-1],j,selected[old_key],j)
+                promoted=(_level2_high_promotion(points,selected[-1],j,selected[old_key],j,source_level=source_level)
                            if old_key is not None else None)
                 if promoted is not None:
                     selected.append(promoted)
@@ -216,13 +218,14 @@ def _structural_reversals(points, *, source_level=1):
         pool=[k for k in range(anchor+1,j+1) if points[k]['kind']==('L' if up else 'H')]
         anchor=(min if up else max)(pool,key=lambda k:points[k]['value'])
         key=anchor-1
-        if source_level==1 and not up and len(selected)>=2 and selected[-2]['kind']=='H':
+        if not up and len(selected)>=2 and selected[-2]['kind']=='H':
             promoted=_level2_high_promotion(
                 points,
                 selected[-1],
                 anchor,
                 selected[-2],
                 j,
+                source_level=source_level,
             )
             if promoted is not None:
                 selected.append(promoted)
@@ -230,28 +233,44 @@ def _structural_reversals(points, *, source_level=1):
     return selected
 
 
+def _structural_reversals(points, *, source_level=1, bars=()):
+    """Publish only complete upward confirmations from the shared gate."""
+    return publish_uptrends(_candidate_structural_reversals(points,source_level=source_level),
+                            points,bars,source_level=source_level)
+
+
 def secondary_trends(level1,bars):
     dates={(b.timestamp.astimezone(ZoneInfo('Asia/Shanghai')) if b.timestamp.tzinfo else b.timestamp).date().isoformat():i
            for i,b in enumerate(bars)}
-    strokes=[]; developing_strokes=[]
-    for source_index,source in enumerate(level1['strokes']):
-        points=_structural_reversals(source['points'])
+    strokes=[]; developing_strokes=[]; candidate_strokes=[]
+    # A confirmed descending extreme remains a structural pressure reference
+    # even when the following upward trend has not earned permission to draw.
+    source_strokes=level1.get('structure_strokes',level1['strokes'])
+    for source_index,source in enumerate(source_strokes):
+        candidates=_candidate_structural_reversals(source['points'])
+        _annotate(candidates,bars[0].symbol,dates)
+        candidate_strokes.append(dict(id='secondary-'+source['id'],source_path=source['id'],points=candidates))
+        next_sources=[later for later in source_strokes[source_index+1:] if later['points']]
+        end_index=next_sources[0]['points'][0]['index']-1 if next_sources else len(bars)-1
+        points=publish_uptrends(candidates,source['points'],bars[:end_index+1],source_level=1)
         if not points:
             continue
         _annotate(points,bars[0].symbol,dates)
         for p in points:
+            levels=p.get('levels'); broken_key=p.get('broken_key')
+            if not isinstance(levels,list) or not isinstance(broken_key,Mapping):
+                raise ValueError('annotated trend points require levels and a frozen key')
             if p['confirmation_rule']=='level1_confirmed_high_breaks_known_level2_last_fall_high':
-                p['levels'].insert(0,dict(name='已突破的旧二级末跌高',price=p['broken_key']['value']))
+                levels.insert(0,dict(name='已突破的旧二级末跌高',price=broken_key['value']))
             else:
-                p['levels'].insert(0,dict(name='一级'+('末升低' if p['flip']=='翻多为空' else '末跌高'),price=p['broken_key']['value']))
+                levels.insert(0,dict(name='一级'+('末升低' if p['flip']=='翻多为空' else '末跌高'),price=broken_key['value']))
         transitions=last_fall_high_reanchors(points,bars,trend_level=2)
         strokes.append(dict(id='secondary-'+source['id'],source_path=source['id'],kind='secondary',
                             trend_level=2,points=points,input_turn_count=len(source['points']),
-                            key_transitions=transitions))
-        next_sources=[later for later in level1['strokes'][source_index+1:] if later['points']]
-        end_index=next_sources[0]['points'][0]['index']-1 if next_sources else len(bars)-1
+                            key_transitions=transitions,confirmation_policy='two_routes_v106'))
+        public_source=next((item['points'] for item in level1['strokes'] if item['id']==source['id']),source['points'])
         tail=hierarchical_developing_path(source,points,trend_level=2,source_level=1,kind='secondary',
-                                         bars=bars,end_index=end_index)
+                                         bars=bars,end_index=end_index,structural=candidates,qualified_source_points=public_source)
         if tail:
             developing_strokes.append(tail)
     return dict(name='二级趋势线',trend_level=2,source_level=1,strokes=strokes,
@@ -259,20 +278,21 @@ def secondary_trends(level1,bars):
                 bear_bull_alternation_lows=bear_bull_alternation_lows(strokes,trend_level=2,source_strokes=level1['strokes'],bars=bars),
                 post_alternation_bull_highs=post_alternation_bull_highs(strokes,trend_level=2,source_strokes=level1['strokes'],bars=bars),
                 bullish_turn_signals=bullish_turn_signals(strokes,bars,trend_level=2,source_strokes=level1['strokes']),
-                developing_strokes=developing_strokes,
+                developing_strokes=developing_strokes,candidate_strokes=candidate_strokes,structure_strokes=candidate_strokes,
                 input_turn_count=sum(len(s['points']) for s in level1['strokes']),
                 confirmed_wave_count=sum(len(s['points']) for s in strokes),
                 developing_wave_count=len(developing_strokes),
                 developing_point_count=sum(len(s['points']) for s in developing_strokes),
                 key_transition_count=sum(len(s['key_transitions']) for s in strokes),
-                aggregation_rule='level1_structural_key_break_or_known_level2_key_high_upgrade',
+                aggregation_rule='same_level_key_break_or_lower_level_break_alternation_turn',
                 scope='lecture_level2_not_strategy_confirmation',
                 note='市场最高价突破已知同级前高或最低价跌破已知同级前低时，趋势线立即确认并画实线，末端继续延伸；'
-                     '没有新同级突破时，反向虚线须等极值之前冻结的一级末升低或末跌高严格破位确认趋势扭转；'
-                     '一级点突破末跌高确认整段低点，跌破末升低确认整段高点；已确认一级高点若严格突破其价格日之前'
+                     '上涨只由本级末跌高突破，或一级末跌高突破后已确认空多交替并由后续收盘转多确认；'
+                     '仅有一级突破不发布二级上涨或虚线。反向虚线同样须有完整突破、交替、后续收盘转向；'
+                     '已确认一级高点若严格突破其价格日之前'
                      '已知的正式二级末跌高，则在一级高点及本段二级低点均可知时直接升级，不等待回撤或嵌套低点；'
                      '旧二级低点被市场收盘严格跌破后，'
                      '末跌高换锚到后续已确认二级低点左侧高点；开放尾部尚无下一二级低点时，可用已确认二级高点及其'
                      '一级确认低点换锚，但不把一级点升级为二级点；最后一个正式二级点之后的已确认一级演化另作'
                      '纯显示发展路径，不进入正式点、三级趋势、策略或回测；直接升级不倒用之后的一级低点确认后续段；'
-                     '普通关键位突破不等待67%交替；不跨原路径断点。')
+                     '下降已确认结构极值只用于冻结压力与候选归并，不授予其后上涨权限；不跨原路径断点。')

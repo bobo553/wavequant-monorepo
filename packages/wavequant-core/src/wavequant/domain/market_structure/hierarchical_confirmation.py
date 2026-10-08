@@ -1,7 +1,7 @@
 """Confirm a trend direction at a market break without freezing its live end."""
 
 from collections.abc import Sequence
-from typing import NotRequired, TypedDict
+from typing import NotRequired, TypedDict, cast
 from zoneinfo import ZoneInfo
 
 from ..models.model import Bar
@@ -41,27 +41,24 @@ def source_trend_reversal(
     asof: str,
     bars: Sequence[Bar],
 ) -> DirectionConfirmation | None:
-    """Reverse only after breaking the source trend's frozen pre-extreme key.
-
-    Locally lower highs and lows do not turn a whole rising trend while its
-    last-rise low holds. Never roll that key to a later counter-swing low;
-    falling trends mirror this rule. Reuse the existing causal market-break
-    protocol, including known origins and ambiguous same-bar breaks.
-    """
-    key_kind = 'L' if direction == 'up' else 'H'
-    formal_points = [point for point in points if point['index'] <= end_index and point['available_at'] <= asof
-                     and point.get('state') not in ('seed', 'developing')]
-    candidates = [(position, point) for position, point in enumerate(formal_points)
-                  if point['kind'] == key_kind and point['index'] < endpoint['index']
-                  and point['available_at'] <= endpoint['available_at']
-                  and point['available_at'] <= asof and point.get('state') not in ('seed', 'developing')]
-    if not candidates:
+    """Require a complete opposite source cycle, preserving the frozen key."""
+    from .trend_confirmation import qualify_downtrend, qualify_uptrend
+    cutoff=min(end_index,len(bars)-1)
+    while cutoff>=0 and session_date(bars[cutoff])>asof:
+        cutoff-=1
+    if cutoff<0 or not 0<=endpoint['index']<=cutoff:
         return None
-    position, key = candidates[-1]
-    result = market_trend_confirmation(formal_points, key, position, bars, end_index)
-    if result is None or result['confirmation']['direction'] == direction:
-        return None
-    return {**result['confirmation'], 'confirmation_rule': 'strict_source_trend_key_break'}
+    key_kind='L' if direction=='up' else 'H'
+    frozen_date=session_date(bars[endpoint['index']])
+    frozen_source=[point for point in points if not (
+        point['kind']==key_kind and point['index']<endpoint['index'] and point['available_at']>=frozen_date)]
+    for position,origin in enumerate(frozen_source):
+        if any(origin[field]!=endpoint[field] for field in ('index','kind','value')):
+            continue
+        qualify=qualify_downtrend if direction=='up' else qualify_uptrend
+        result=qualify(frozen_source,origin,position,None,bars,cutoff)
+        return cast(DirectionConfirmation,result) if result is not None else None
+    return None
 
 
 def session_date(bar: Bar) -> str:
@@ -114,7 +111,7 @@ def market_trend_confirmation(
             if origin is None or (point["value"] < origin["value"] if rising else point["value"] > origin["value"]):
                 origin = point
             cursor += 1
-        if origin is None or date < anchor["available_at"] or index <= origin["index"]:
+        if origin is None or date <= anchor["available_at"] or index <= origin["index"]:
             continue
         stale_origin = adverse < origin["value"] if rising else adverse > origin["value"]
         if stale_origin:

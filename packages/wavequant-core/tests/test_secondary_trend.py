@@ -5,13 +5,14 @@ import unittest
 from wavequant.domain.models.model import Bar
 from wavequant.domain.market_structure.secondary_trend import (
     _level2_high_promotion,
-    _structural_reversals,
+    _candidate_structural_reversals,
     last_fall_high_reanchors,
     secondary_trends,
 )
 
 
 def fixture(values, first='L'):
+    """Geometry fixture: placeholder candles do not certify a public trend."""
     bars=[Bar(datetime(2026,1,1)+timedelta(days=i),'TEST',50,100,1,50,100) for i in range(len(values)+1)]
     points=[]
     for i,value in enumerate(values):
@@ -22,13 +23,26 @@ def fixture(values, first='L'):
     return bars,dict(strokes=[dict(id='level1-test',kind='reversal',points=points)])
 
 
+def market_fixture(values, first='L'):
+    """Match each source extreme to a valid candle and its next-day proof."""
+    bars, source = fixture(values, first)
+    for point in source['strokes'][0]['points']:
+        value = point['value']
+        low, high = (value, value + 1) if point['kind'] == 'L' else (value - 1, value)
+        middle = (low + high) / 2
+        bars[point['index']] = Bar(bars[point['index']].timestamp, 'TEST', middle, high, low, middle, 100)
+    last = bars[len(values)-1]
+    bars[-1] = Bar(bars[-1].timestamp, 'TEST', last.open, last.high, last.low, last.close, 100)
+    return bars, source
+
+
 class SecondaryTrendTests(unittest.TestCase):
     values=[20,30,10,20,14,26,18,35,28,45,36,42,30,36,24,31,26,38,30,42]
 
-    def test_figure_wave_extremes_not_breakout_points(self):
+    def test_candidate_wave_extremes_do_not_authorize_public_rising_lines(self):
         bars,level1=fixture(self.values)
         result=secondary_trends(level1,bars)
-        points=result['strokes'][0]['points']
+        points=result['candidate_strokes'][0]['points']
         self.assertEqual([(p['kind'],p['value'],p['source_level1_position']) for p in points],
                          [('L',10,2),('H',45,9),('L',24,14)])
         self.assertEqual([p['confirmed_on_level1'] for p in points],[7,14,17])
@@ -39,20 +53,18 @@ class SecondaryTrendTests(unittest.TestCase):
         self.assertEqual(result['trend_level'],2)
         self.assertEqual(result['source_level'],1)
         self.assertLess(result['confirmed_wave_count'],result['input_turn_count'])
-        self.assertEqual(
-            [(p['value'],p['confirmed_low']['value'],p['available_at']) for p in result['bear_to_bull_highs']],
-            [(35,10,level1['strokes'][0]['points'][7]['available_at']),
-             (38,24,level1['strokes'][0]['points'][17]['available_at'])],
-        )
+        self.assertEqual([(p['kind'],p['value']) for p in result['strokes'][0]['points']],[('H',45)])
+        self.assertEqual(result['bear_to_bull_highs'],[])
+        self.assertEqual(result['developing_strokes'],[])
         self.assertIn('bear_bull_alternation_lows',result)
         self.assertIn('post_alternation_bull_highs',result)
         self.assertIn('bullish_turn_signals',result)
 
-    def test_prefix_stability_no_future_repainting(self):
+    def test_candidate_prefix_stability_no_future_repainting(self):
         bars,source=fixture(self.values)
-        turns=source['strokes'][0]['points']; full=_structural_reversals(turns)
+        turns=source['strokes'][0]['points']; full=_candidate_structural_reversals(turns)
         for end in range(len(turns)+1):
-            self.assertEqual(_structural_reversals(turns[:end]),[p for p in full if p['confirmed_on_level1']<end])
+            self.assertEqual(_candidate_structural_reversals(turns[:end]),[p for p in full if p['confirmed_on_level1']<end])
 
     promotion_base=[20,30,10,20,14,26,18,35,28,45,36,42,30,36,24,31,26]
 
@@ -62,7 +74,7 @@ class SecondaryTrendTests(unittest.TestCase):
         turns[-1]['confirmed_by']=[dict(turns[-2])]
         before=copy.deepcopy(turns)
 
-        confirmed=_structural_reversals(turns)
+        confirmed=_candidate_structural_reversals(turns)
 
         self.assertEqual([(p['kind'],p['value']) for p in confirmed],
                          [('L',10),('H',45),('L',24),('H',50)])
@@ -85,7 +97,7 @@ class SecondaryTrendTests(unittest.TestCase):
         for high,tail in [(50,[]),(50,[30]),(48,[32])]:
             with self.subTest(high=high,tail=tail):
                 _,source=fixture([*self.promotion_base,high,*tail])
-                points=_structural_reversals(source['strokes'][0]['points'])
+                points=_candidate_structural_reversals(source['strokes'][0]['points'])
                 self.assertEqual([(p['kind'],p['value']) for p in points],
                                  [('L',10),('H',45),('L',24),('H',high)])
 
@@ -93,7 +105,7 @@ class SecondaryTrendTests(unittest.TestCase):
         for high in [44,45]:
             with self.subTest(high=high):
                 _,source=fixture([*self.promotion_base,high])
-                self.assertEqual([(p['kind'],p['value']) for p in _structural_reversals(source['strokes'][0]['points'])],
+                self.assertEqual([(p['kind'],p['value']) for p in _candidate_structural_reversals(source['strokes'][0]['points'])],
                                  [('L',10),('H',45),('L',24)])
 
     def test_old_formal_key_must_be_known_before_the_source_high_price_date(self):
@@ -105,7 +117,7 @@ class SecondaryTrendTests(unittest.TestCase):
                 for point in turns[14:]:
                     point['available_at']=max(point['available_at'],known)
                 turns[-1]['available_at']=(datetime.fromisoformat(turns[-1]['time'])+timedelta(days=3)).date().isoformat()
-                points=_structural_reversals(turns)
+                points=_candidate_structural_reversals(turns)
                 self.assertEqual([(p['kind'],p['value']) for p in points],
                                  [('L',10),('H',45),('L',24)]+([('H',50)] if upgrades else []))
 
@@ -117,7 +129,7 @@ class SecondaryTrendTests(unittest.TestCase):
                 for point in turns:
                     point['available_at']=max(point['index']+1,known if point['index']>=14 else 0)
                 turns[-1]['available_at']=20
-                points=_structural_reversals(turns)
+                points=_candidate_structural_reversals(turns)
                 self.assertEqual([(p['kind'],p['value']) for p in points],
                                  [('L',10),('H',45),('L',24)]+([('H',50)] if upgrades else []))
 
@@ -127,14 +139,14 @@ class SecondaryTrendTests(unittest.TestCase):
                 _,source=fixture([*self.promotion_base,50])
                 source['strokes'][0]['points'][-1]['state']=state
                 self.assertNotIn(('H',50),[(p['kind'],p['value']) for p in
-                                          _structural_reversals(source['strokes'][0]['points'])])
+                                          _candidate_structural_reversals(source['strokes'][0]['points'])])
 
     def test_direct_upgrade_waits_for_causal_next_low_and_continues_reducing(self):
         _,source=fixture([*self.promotion_base,50,36,42,35,40,34,39,33,51])
         turns=source['strokes'][0]['points']
-        before=_structural_reversals(turns[:18])
-        one_low=_structural_reversals(turns[:19])
-        full=_structural_reversals(turns)
+        before=_candidate_structural_reversals(turns[:18])
+        one_low=_candidate_structural_reversals(turns[:19])
+        full=_candidate_structural_reversals(turns)
 
         self.assertEqual(before,one_low)
         self.assertEqual([(p['kind'],p['value']) for p in full],
@@ -142,7 +154,7 @@ class SecondaryTrendTests(unittest.TestCase):
         self.assertEqual(full[-2]['available_at'],turns[25]['available_at'])
         self.assertEqual(full[-1]['available_at'],turns[25]['available_at'])
         for end in range(len(turns)+1):
-            self.assertEqual(_structural_reversals(turns[:end]),
+            self.assertEqual(_candidate_structural_reversals(turns[:end]),
                              [p for p in full if p['confirmed_on_level1']<end])
 
     def test_earlier_impulse_high_waits_for_later_formal_low_publication(self):
@@ -153,7 +165,7 @@ class SecondaryTrendTests(unittest.TestCase):
                 if indexed:
                     for point in turns:
                         point['available_at']=point['index']+1
-                formal=_structural_reversals(turns[:17])
+                formal=_candidate_structural_reversals(turns[:17])
                 old_key=formal[-1]
                 base=dict(turns[14],available_at=turns[21]['available_at'],trend_level=2)
                 before=copy.deepcopy(turns)
@@ -178,7 +190,7 @@ class SecondaryTrendTests(unittest.TestCase):
                 turns=source['strokes'][0]['points']
                 turns[18].update(index=index,ordinal=ordinal,value=value)
 
-                points=_structural_reversals(turns)
+                points=_candidate_structural_reversals(turns)
 
                 self.assertEqual([(p['kind'],p['value']) for p in points],
                                  [('L',10),('H',45),('L',24),('H',50)])
@@ -188,7 +200,7 @@ class SecondaryTrendTests(unittest.TestCase):
         turns=source['strokes'][0]['points']
         turns[18].update(index=17,ordinal=1,time=turns[17]['time'])
 
-        points=_structural_reversals(turns)
+        points=_candidate_structural_reversals(turns)
 
         self.assertEqual([(p['kind'],p['value']) for p in points],
                          [('L',10),('H',45),('L',24),('H',50),('L',36),('H',51)])
@@ -198,8 +210,8 @@ class SecondaryTrendTests(unittest.TestCase):
         _,source=fixture([*self.promotion_base,38,30,50])
         turns=source['strokes'][0]['points']
 
-        before=_structural_reversals(turns[:19])
-        after=_structural_reversals(turns)
+        before=_candidate_structural_reversals(turns[:19])
+        after=_candidate_structural_reversals(turns)
 
         self.assertEqual([(p['kind'],p['value']) for p in before],[('L',10),('H',45),('L',24)])
         self.assertEqual([(p['kind'],p['value']) for p in after],
@@ -210,52 +222,69 @@ class SecondaryTrendTests(unittest.TestCase):
 
     def test_ordinary_key_break_still_confirms_a_later_lower_high(self):
         _,source=fixture([*self.promotion_base,50,36,42,35,40,34,39,33,41,36,43,37,42,32])
-        points=_structural_reversals(source['strokes'][0]['points'])
+        points=_candidate_structural_reversals(source['strokes'][0]['points'])
 
         self.assertEqual([(p['kind'],p['value']) for p in points],
                          [('L',10),('H',45),('L',24),('H',50),('L',33),('H',43)])
         self.assertEqual(points[-1]['confirmation_rule'],'level1_structural_key_break')
         self.assertEqual(points[-1]['broken_key']['value'],36)
 
-    def test_direct_upgrade_does_not_apply_to_level2_source_points(self):
+    def test_candidate_direct_same_level_upgrade_also_applies_to_level2_source_points(self):
         _,source=fixture([*self.promotion_base,50,36,42,35])
-        points=_structural_reversals(source['strokes'][0]['points'],source_level=2)
-        self.assertEqual([(p['kind'],p['value']) for p in points],[('L',10),('H',45),('L',24)])
-        self.assertTrue(all(p['confirmation_rule']=='level2_structural_key_break' for p in points))
+        points=_candidate_structural_reversals(source['strokes'][0]['points'],source_level=2)
+        self.assertEqual([(p['kind'],p['value']) for p in points],[('L',10),('H',45),('L',24),('H',50)])
+        self.assertEqual(points[-1]['confirmation_rule'],'level2_confirmed_high_breaks_known_level3_last_fall_high')
+        self.assertEqual(points[-1]['trend_level'],3)
+        self.assertEqual(points[-1]['broken_key']['value'],45)
 
-    def test_developing_path_keeps_confirmed_points_immutable_and_exposes_long_tail(self):
-        """A wide frozen key must not hide confirmed level-1 development."""
+    def test_unqualified_source_evolution_stays_private_without_a_developing_tail(self):
+        """Nested source geometry alone is not a trend or display permission."""
         values=[20,30,10,20,14,26,18,35,28,45,36,42,30,36,24,31,26,38,30,42,
                 35,40,34,39,33,41,36,43,37,42]
         bars,source=fixture(values)
         before=copy.deepcopy(source)
-
         result=secondary_trends(source,bars)
         formal=result['strokes'][0]['points']
-        path=result['developing_strokes'][0]['points']
-
         self.assertEqual(source,before)
-        self.assertEqual([(p['kind'],p['value']) for p in formal],[('L',10),('H',45),('L',24)])
-        self.assertEqual([(p['kind'],p['value']) for p in path],
-                         [('L',24),('H',42),('L',33),('H',41),('L',36),
-                          ('H',43),('L',37),('H',42)])
-        self.assertEqual([p['source_level1_position'] for p in path],[14,19,24,25,26,27,28,29])
-        self.assertEqual([p['development_role'] for p in path],
-                         ['formal_start','confirmed_nested_turn','confirmed_nested_turn','pending_evidence',
-                          'pending_evidence','pending_evidence','pending_evidence','active_endpoint'])
-        self.assertEqual(result['confirmed_wave_count'],3)
-        self.assertEqual(result['developing_point_count'],8)
-        self.assertTrue(all(p['display_only'] for p in path))
-        self.assertTrue(all(left['available_at']<=right['available_at'] for left,right in zip(path,path[1:])))
-        for point in path[1:]:
+        self.assertEqual([(p['kind'],p['value']) for p in formal],[('H',45)])
+        self.assertEqual(result['confirmed_wave_count'],1)
+        self.assertEqual(result['developing_strokes'],[])
+        self.assertEqual(result['developing_point_count'],0)
+        private=result['candidate_strokes'][0]['points']
+        self.assertEqual([(p['kind'],p['value']) for p in private],[('L',10),('H',45),('L',24)])
+        for point in private:
             original=source['strokes'][0]['points'][point['source_level1_position']]
             for field in ['time','index','ordinal','kind','value']:
                 self.assertEqual(point[field],original[field])
             self.assertGreaterEqual(point['available_at'],original['available_at'])
 
+    def test_public_own_key_break_certificate_and_dated_prefixes(self):
+        bars,source=market_fixture([*self.promotion_base,50])
+        before=copy.deepcopy(source)
+        full=secondary_trends(source,bars)
+        points=full['strokes'][0]['points']
+        self.assertEqual([(p['kind'],p['value']) for p in points],[('H',45),('L',24),('H',50)])
+        low,high=points[-2:]
+        proof=low['trend_confirmation']
+        self.assertEqual(low['confirmation_rule'],'strict_same_level_market_key_break')
+        self.assertEqual(proof['broken_key']['available_at'],points[0]['available_at'])
+        self.assertEqual((proof['confirmed_by']['index'],proof['confirmed_by']['value']),(17,50))
+        self.assertGreater(proof['confirmed_by']['value'],proof['broken_key']['value'])
+        self.assertEqual(high['confirmation_rule'],'level1_confirmed_high_breaks_known_level2_last_fall_high')
+        self.assertGreaterEqual(high['available_at'],low['available_at'])
+        raw=source['strokes'][0]['points']
+        for end in range(1,len(bars)+1):
+            asof=bars[end-1].timestamp.date().isoformat()
+            prefix=copy.deepcopy(source)
+            prefix['strokes'][0]['points']=[p for p in raw if p['available_at']<=asof]
+            result=secondary_trends(prefix,bars[:end])
+            self.assertEqual([p for stroke in result['strokes'] for p in stroke['points']],
+                             [p for p in points if p['available_at']<=asof])
+        self.assertEqual(source,before)
+
     def test_mirrored_bull_and_bear_rules(self):
         _,a=fixture(self.values); _,b=fixture([100-v for v in self.values],first='H')
-        up=_structural_reversals(a['strokes'][0]['points']); down=_structural_reversals(b['strokes'][0]['points'])
+        up=_candidate_structural_reversals(a['strokes'][0]['points']); down=_candidate_structural_reversals(b['strokes'][0]['points'])
         self.assertEqual([p['source_level1_position'] for p in up],[p['source_level1_position'] for p in down])
         self.assertEqual([p['confirmed_on_level1'] for p in up],[p['confirmed_on_level1'] for p in down])
         self.assertEqual([p['value'] for p in down],[100-p['value'] for p in up])
@@ -263,8 +292,8 @@ class SecondaryTrendTests(unittest.TestCase):
     def test_key_frozen_until_new_extreme_and_touch_is_not_break(self):
         _,source=fixture([30,20,28,18,26,16,24,17,25,17.5,26,18,27],first='H')
         turns=source['strokes'][0]['points']
-        self.assertEqual(_structural_reversals(turns[:-1]),[])
-        result=_structural_reversals(turns)
+        self.assertEqual(_candidate_structural_reversals(turns[:-1]),[])
+        result=_candidate_structural_reversals(turns)
         self.assertEqual([(p['value'],p['confirmed_on_level1'],p['broken_key']['value']) for p in result],[(16,12,26)])
 
     def test_no_cross_path_and_no_mutation_or_coordinate_changes(self):
