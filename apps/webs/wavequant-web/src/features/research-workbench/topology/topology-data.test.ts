@@ -24,6 +24,7 @@ const additionalSources = [
     "packages/wavequant-core/src/wavequant/infrastructure/market_data/minute.py",
     "apps/webs/wavequant-web/public/wave-entry-evidence.js",
     "apps/webs/wavequant-web/public/combined-a-entry-evidence.js",
+    "apps/webs/wavequant-web/public/secondary-reclaim-evidence.js",
     "apps/webs/wavequant-web/public/a-wave-rules.js",
     "apps/webs/wavequant-web/public/a-wave-observations.js",
     "apps/webs/wavequant-web/public/confirmed-c-wave.js",
@@ -51,6 +52,20 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("documents the independent causal secondary resistance recovery entry", () => {
+        const note = topologyProfileNotes.find((text) => text.includes("V3 v103"));
+        expect(note).toMatch(/已知二级高点.*当笔或次笔.*空头抵抗/);
+        expect(note).toMatch(/放量.*实体严格超过开盘 2%.*收盘.*抵抗高点/);
+        expect(note).toMatch(/跳空中大阳.*原起点.*最近未触及/);
+        expect(note).toMatch(/旧正 N.*不追溯.*全局风险/);
+        const flow = topologyFlows.find((item) => item.id === "secondary-reclaim");
+        expect(flow?.gates).toHaveLength(5);
+        expect(flow?.gates[0]?.detail).toMatch(/前一交易日.*正式二级高点.*未来/);
+        expect(flow?.gates[1]?.detail).toMatch(/固定抵抗高点.*不在这两笔提前买入/);
+        expect(flow?.gates[2]?.detail).toMatch(/严格大于开盘 2%.*3%.*60%/);
+        expect(flow?.gates[3]?.detail).toMatch(/关闭一般放量过滤也不能免除/);
+        expect(flow?.gates[4]?.detail).toMatch(/二吐抵抗.*不跳过近目标.*收盘确认/);
+    });
     it("documents independent positive N colors shared by their targets", () => {
         const note = topologyProfileNotes.find((text) => text.includes("独立正 N 按来源 ID"));
         expect(note).toMatch(/分开标识.*不同颜色/);

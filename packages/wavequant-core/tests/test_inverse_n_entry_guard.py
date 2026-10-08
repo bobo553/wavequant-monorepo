@@ -43,7 +43,14 @@ def test_january_26_lower_low_and_inverse_neckline_break_is_observation_without_
     assert rejection["inverse_rebound_known_date"] == "2026-01-26"
     assert rejection["inverse_observed_low"] == 4.81
     assert not rejection["inverse_close_break"]
-    assert any(s.side == "LONG" and s.bar_index == dates["2026-01-06"] for s in result.signals)
+    assert any(s.side == "LONG" and s.bar_index == dates["2025-09-16"] for s in result.signals)
+    # The old January buy borrowed targets from an N above the decline floor.
+    source = next(e for e in result.audit if e["event"] == "n_completed"
+                  and e["bar_index"] == dates["2025-10-21"] and e.get("direction") == "up")
+    assert source["target_qualification_reason"] == "origin_is_not_decline_floor"
+    assert source["target_eligible"] is False
+    assert source["one_p"] is None and source["two_t"] is None
+    assert not any(s.side == "LONG" and s.bar_index == dates["2026-01-06"] for s in result.signals)
 
 
 def sample():
@@ -97,7 +104,7 @@ def test_unbroken_unavailable_invalid_or_stale_inverse_cannot_block_entry(failur
     assert inverse_n_low_entry_risk(bars, 5, points) is None
 
 
-def test_prefix_and_cached_partial_day_never_backdate_or_reuse_missing_new_low(xianfeng_january):
+def test_prefix_and_cached_partial_day_never_backdate_or_reuse_missing_new_low(xianfeng_january, monkeypatch):
     bars, dates, config = xianfeng_january
     now = dates["2026-01-26"]
     full = generate_system_signals(bars, config)
@@ -106,15 +113,24 @@ def test_prefix_and_cached_partial_day_never_backdate_or_reuse_missing_new_low(x
     assert prefix.audit == [e for e in full.audit if e["bar_index"] <= now]
     before = generate_system_signals(bars[:now], config)
     assert before.audit == [e for e in prefix.audit if e["bar_index"] < now]
+    # Isolate the global low guard with an otherwise valid standalone entry;
+    # eligibility must not depend on the retired October measured-N source.
+    proof = dict(stop=4.2, target=8.0, counter_ratio=.62, breakout_volume_multiple=3)
+    monkeypatch.setattr("wavequant.domain.strategies.shallow_base_breakout.shallow_base_history",
+                        lambda *args, **kwargs: ([], {now: proof}))
+    controlled_prefix = generate_system_signals(bars[:now + 1], config)
     cache = {"source_bars": tuple(bars)}
     partial = [*bars[:now], replace(bars[now], low=4.93)]
     early = generate_system_signals(partial, config, chart_history_cache=cache)
     assert any(s.side == "LONG" and s.bar_index == now for s in early.signals)
+    fresh = generate_system_signals(partial, config)
+    assert early.signals == fresh.signals
+    assert early.audit == fresh.audit
     assert not any(e["bar_index"] == now and e.get("reason") == "inverse_n_new_low_requires_observation"
                    for e in early.audit)
     completed = generate_system_signals(bars[:now + 1], config, chart_history_cache=cache)
-    assert completed.signals == prefix.signals
-    assert completed.audit == prefix.audit
+    assert completed.signals == controlled_prefix.signals == prefix.signals
+    assert completed.audit == controlled_prefix.audit == prefix.audit
 
 
 def test_january_26_cannot_fill_or_add_even_with_optional_reward_risk_off(xianfeng_january):
@@ -133,7 +149,7 @@ def test_january_26_cannot_fill_or_add_even_with_optional_reward_risk_off(xianfe
 
     view = single_stock_result(bars, config.__dict__, execution, minute_loader=no_minutes)
     assert not any(o["side"] == "BUY" and o["timestamp"].startswith("2026-01-26") for o in view["orders"])
-    assert any(o["side"] == "BUY" and o["status"] == "filled" and o["timestamp"].startswith("2026-01-06")
+    assert any(o["side"] == "BUY" and o["status"] == "filled" and o["timestamp"].startswith("2025-09-16")
                for o in view["orders"])
 
 

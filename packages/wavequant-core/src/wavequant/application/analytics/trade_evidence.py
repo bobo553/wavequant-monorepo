@@ -122,6 +122,23 @@ def enrich_ledger(bars, result, generated, strategy):
                     order['entry_conditions'][3]=check('突破量 / 前20日均量',proof['breakout_volume_multiple'],
                         '≥ 2 且 > 前日量',proof['breakout_volume_multiple']>=2
                         and proof['breakout_volume']>proof['previous_volume'])
+                if proof and proof.get('buy_point_type')=='secondary_resistance_reclaim':
+                    gap = proof['secondary_reclaim_type'] == 'gap'
+                    body = proof['secondary_reclaim_body_fraction']
+                    order['entry_conditions'][0]=check('已知二级突破抵抗',proof,
+                        '已确认二级高 → 突破当笔或次笔空头抵抗 → 后续放量收复',
+                        proof['secondary_high_known_date']<proof['secondary_attack_date']
+                        and proof['secondary_resistance_known_date']<bar.timestamp.date().isoformat())
+                    order['entry_conditions'][1]=check('跳空中大阳收复' if gap else '阳线实体收复',
+                        proof['secondary_reclaim_close'],f"> {proof['secondary_resistance_high']}",
+                        proof['secondary_reclaim_close']>proof['secondary_resistance_high']
+                        and (body>=.03 and proof['secondary_reclaim_body_range_fraction']>=.6
+                             and proof['secondary_reclaim_unfilled_gap'] if gap else body>.02))
+                    order['entry_conditions'][2]=check('回调防守',proof['secondary_pullback_low'],
+                        f"≥ 原起点 {proof['secondary_origin_low']}",
+                        proof['secondary_pullback_low']>=proof['secondary_origin_low'])
+                    order['entry_conditions'][3]=check('放量 / 前日量',signal.rvol,'> 1（必需）',
+                        proof['previous_volume']>0 and proof['breakout_volume']>proof['previous_volume'])
                 if proof and proof.get('buy_point_type')=='combined_a_pullback_breakout':
                     sessions = proof['combined_a_pullback_sessions']
                     internal = proof['combined_a_internal_pullback_sessions']

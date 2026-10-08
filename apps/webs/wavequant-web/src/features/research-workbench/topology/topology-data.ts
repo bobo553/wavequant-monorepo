@@ -478,6 +478,55 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
         ],
     },
     {
+        id: "secondary-reclaim",
+        label: "二级抵抗收复",
+        description: "V3 独立通道，按当时已知二级高点及突破两笔抵抗确认；不补认旧 N 的交替资格。",
+        mode: "gates",
+        completion: "新通道每次突破只生成一次 LONG，再由账户门禁决定是否成交",
+        gates: [
+            {
+                id: "secondary-reclaim-known",
+                question: "最高价首次突破此前已知二级高点？",
+                detail: "只消费前一交易日已经发布的正式二级高点；前高不超过该高点，本日最高严格越过。未来才确认的端点不能补认历史突破。",
+                source: "secondary_reclaim_entry.py · secondary_reclaim_history",
+                yes: "冻结二级高点、攻击日和原起点",
+                no: "不产生该通道候选",
+            },
+            {
+                id: "secondary-reclaim-resistance",
+                question: "突破当笔或次笔出现空头抵抗？",
+                detail: "按已有空头抵抗观察器识别，取突破当笔、次笔两笔最高价作为固定抵抗高点；其后观察不能改写这两笔，也不在这两笔提前买入。",
+                source: "secondary_reclaim_entry.py；price_action.py · observe_resistance",
+                yes: "从第三笔起观察收复",
+                no: "结束该候选",
+            },
+            {
+                id: "secondary-reclaim-price",
+                question: "原起点未破且实体或跳空中大阳收复？",
+                detail: "后续最低价不得严格跌破突破前原起点，相等可守；实际回调低点继续更新。收盘严格超过固定抵抗高，阳线实体严格大于开盘 2%；或开盘和最低均高于前高、开盘高于抵抗高，实体至少开盘 3%且至少振幅 60%。",
+                source: "secondary_reclaim_entry.py · secondary_reclaim_history",
+                yes: "检查本日量能",
+                no: "继续观察，原起点破位后永久结束",
+            },
+            {
+                id: "secondary-reclaim-volume",
+                question: "成交量严格超过前一交易日？",
+                detail: "前日量必须为正，本日量严格大于前日量；该通道把放量作为必需条件，关闭一般放量过滤也不能免除。",
+                source: "secondary_reclaim_entry.py · secondary_reclaim_history",
+                yes: "发布收复候选并检查风险",
+                no: "不产生本日买点",
+            },
+            {
+                id: "secondary-reclaim-risk",
+                question: "全局风险、目标空间及账户门禁通过？",
+                detail: "二吐抵抗、五顶十满、倒 N 观望及退出仍拦截；更高的未解除二级压力也须收复。以实际回调低为防守，选最近未触及的已知二级/N/已确认投影目标，不跳过近目标制造盈亏比。保留费用后盈亏比开关、仓位、流动性、T+1与成交权限，日线只在收盘确认。",
+                source: "integrated_strategy.py · generate_system_signals；backtest.py；trade_evidence.py",
+                yes: "二级突破抵抗放量收复 LONG，再评估 BUY",
+                no: "记录具体拒因，不补造成交",
+            },
+        ],
+    },
+    {
         id: "shallow-base",
         label: "浅回撤待选突破",
         description:
@@ -530,6 +579,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
 ] as const;
 
 export const topologyProfileNotes = [
+    "V3 v103：已知二级高点突破当笔或次笔出现空头抵抗，固定两笔抵抗高点；后续放量且阳线实体严格超过开盘 2%、收盘严格收复抵抗高点，或未回补跳空中大阳收复，增加独立买点。原起点保持，实际回调低点作防守，使用最近未触及的已知结构/N/已确认投影目标，同一次突破只买一次；旧正 N 的交替资格不追溯补认，全局风险门禁继续执行。",
     "同一 K 线的独立正 N 按来源 ID 分开标识并使用不同颜色，一饱、二吐、五顶、十满目标与目标文字、正 N 顶底和结构连线均沿用对应来源色；买点携带的目标也按来源 ID 匹配。同价目标不去重、不串色；悬停、选择、缩放与事件排序不换色，已失效来源不显示但保留其色位，回放不读取未来来源。",
     "已触及的 C 目标横线统一用虚线，长线与单根 K 线的短线样式一致；已触及状态、价格和首次触及日期保留。图内目标、正 N 与组合回撤文字均为透明背景，不覆盖 K 线与网格；原趋势方向确认的实线规则保持。",
     "C 浪目标标识固定在对应 B 低点日期上方，0.618、等浪与已可知 1.618 共用该显示锚点；悬停、选择和平移不会将其移到其他日期。B 离开图窗时隐藏，移回后恢复原位置。目标价格、可知日和首次触及证据保持原规则。",
@@ -548,4 +598,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "f35a1b993e41d8e297ca6c37564d7a893d3cc413bc362016dcb198d0a454c312";
+export const strategySourceDigest = "f6195a61ba4f495bec36393fdd8a5c04d7eb77c80e59238cb34b67a465e81449";

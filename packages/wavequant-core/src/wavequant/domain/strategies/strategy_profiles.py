@@ -59,7 +59,8 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
     config['strategy'].update(buy_point_definition='whole_flip_wave_v3',preflight_reward_risk=False,strict_n_attack_quality=False,
         first_pullback_threshold=thresholds.first,mature_shallow_ratio=thresholds.second,
         first_pullback_basis=thresholds.first_basis,mature_shallow_inclusive=thresholds.second_inclusive,
-        combined_a_entry_enabled=True,ten_full_breakout_window=23,ten_full_retracement_ratio=2/3,
+        combined_a_entry_enabled=True,secondary_reclaim_entry_enabled=True,
+        ten_full_breakout_window=23,ten_full_retracement_ratio=2/3,
         ten_full_retracement_anchor='origin',ten_full_timed_half_retracement=True)
     config['profile_version']='whole_flip_wave_v3_'+variant
     config['definition'].update(alternation='confirmed_low_at_or_above_whole_flip_origin',
@@ -82,7 +83,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'one_p_confirmed_a_origin_lifetime_v102_' + variant
+    config['profile_version'] = 'secondary_resistance_reclaim_v103_' + variant
     config['definition']['inside_child_positive_n'] = 'confirmed_lecture_a_before_b_c_bearish_inside_child_non_doji_mother_joint_attack_then_bottom_launch_qualification'
     config['definition']['limitations'] = [
         'explicit_lecture_mother_child_order_is_not_observed_intrabar_path',
@@ -95,7 +96,9 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
     config['definition']['a_wave_confirmation'] = 'independent_of_b_c_second_level_flip_or_squeeze__developing_top_may_extend'
     config['definition']['a_wave_invalidation'] = 'strict_low_break_of_a_origin__no_later_c_until_new_a'
     config['definition']['b_wave_pullback'] = 'both_a_classes_may_break_squeeze_low__actual_trading_bar_duration'
-    config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout', 'nested_alternation_breakout', 'combined_a_pullback_breakout']
+    config['definition']['channels'] = [*config['definition']['channels'], 'multilevel_breakout_squeeze', 'wave_push_gap', 'shallow_base_breakout', 'nested_alternation_breakout', 'combined_a_pullback_breakout', 'secondary_resistance_reclaim']
+    config['definition']['secondary_resistance_reclaim'] = (
+        'known_formal_secondary_high_attack_or_next_session_bear_resistance_frozen_two_bar_high_then_later_volume_gt_previous_bull_body_gt_2pct_open_close_gt_resistance_or_unfilled_gap_mid_large_bull_reclaim_actual_pullback_stop_nearest_unhit_known_target_once_all_global_risks')
     config['definition']['multilevel_buy'] = 'new_n_crosses_known_higher_high_then_held_defense_volume_close_record_break'
     config['definition']['exits'] = [
         rule for rule in config['definition']['exits'] if rule != 'target_observed_then_next_open'
@@ -242,6 +245,7 @@ def research_profile(legacy: dict[str, Any]) -> dict[str, Any]:
     config['strategy'].pop('first_pullback_threshold')
     config['strategy'].pop('first_pullback_basis')
     config['strategy'].pop('mature_shallow_inclusive')
+    config['strategy'].pop('secondary_reclaim_entry_enabled')
     config['profile_version']='lecture_causal_squeeze_v1'
     config['definition']=dict(
         structure='same_lecture_reducer_close_confirmed_only',

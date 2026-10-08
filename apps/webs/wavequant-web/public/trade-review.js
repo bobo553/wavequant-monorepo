@@ -85,6 +85,7 @@ export function appendTradeEvidence(panel, item, openPosition = null, holdingDra
         );
     } else if (
         proof &&
+        proof.buy_point_type !== "secondary_resistance_reclaim" &&
         proof.buy_point_type !== "combined_a_pullback_breakout" &&
         proof.channel !== "combined_a_pullback_breakout"
     ) {

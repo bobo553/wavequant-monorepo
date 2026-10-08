@@ -1,5 +1,6 @@
 import { combinedAEntryEvidence } from "./combined-a-entry-evidence.js";
 import { num } from "./labels.js";
+import { secondaryReclaimEvidence } from "./secondary-reclaim-evidence.js";
 
 /** Explain the published engine path without reconstructing a buy signal from prices. */
 export function attackBarBreakSqueezeEvidence(evidence) {
@@ -28,6 +29,8 @@ export function attackBarBreakSqueezeEvidence(evidence) {
 }
 
 export function waveEntryEvidence(evidence) {
+    const reclaim = secondaryReclaimEvidence(evidence);
+    if (reclaim.length) return reclaim;
     const combined = combinedAEntryEvidence(evidence);
     if (combined.length) return combined;
     const wave = evidence?.find((e) =>
