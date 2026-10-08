@@ -1,22 +1,23 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-296",
+    "activeFeature": "MONOREPO-256",
     "features": [
         {
             "id": "MONOREPO-296",
             "name": "secondary-resistance-reclaim-entry",
             "title": "二级突破抵抗放量收复买入",
             "description": "已知二级高点突破当笔或次笔出现空头抵抗，后续放量阳线实体严格超过2%收复抵抗高点，或跳空中大阳收复，增加因果V3买点。",
-            "scope": "Core二级突破收复观察与全局买入、Web成交依据和襄阳真实回归",
+            "scope": "Core二级突破收复观察与全局买入、Web成交依据、襄阳真实回归及五项旧测试预期修复",
             "dependencies": ["MONOREPO-281", "MONOREPO-288"],
-            "status": "in-progress",
+            "status": "done",
             "acceptanceCriteria": [
                 "二级高点按真实可知日消费，冻结突破当笔和次笔抵抗高，不使用未来端点或未来回调",
                 "放量严格超过前日，实体严格超过开盘2%且收盘收复抵抗高，或未回补跳空中大阳收复",
                 "当笔及次笔不提前买，影线突破、相等、缩量和跌破原起点不买，同突破去重",
                 "独立通道不追溯补认旧正N资格，保留全局退出、账户成交及明确选定的压力门禁",
                 "襄阳2024-12-11高8.17、2025-02-28突破与03-03高8.77真实前缀、信号、成交依据一致",
+                "修正五项沿用旧测幅来源或未确认二级高点的回归预期，保留真实来源资格、逆N部分日线缓存拦截及有效目标次日清仓对照",
                 "相关定向测试、类型和必要构建通过，状态与进度记录真实验证及待验证项"
             ],
             "verification": [
@@ -26,9 +27,14 @@
                     "summary": "20项新增验证通过。2018起真实行情：12-11高8.17于01-21可知，02-28突破，两笔抵抗高03-03的8.77；03-05实体2.1839%、量比1.56545形成候选，保留二吐9.53长上影禁买。03-11放量未回补跳空生成唯一新通道LONG，防守7.43、最近已知目标12.21；实际V3账户配置、缺分钟回退按收盘模拟filled BUY原价11.44572，开启费用后RR过滤则拒绝。完整后缀、增量前缀证据和信号一致。相等、正好2%、缩量、影线、原点破位、未来高点均不提前买；新增通道开关只在V3默认开启。最后4项完整正式参数回放105.93秒通过。"
                 },
                 {
-                    "command": "Core pytest secondary_reclaim_entry, secondary_resistance, ten_full_entry, whole_wave_entry, inverse_n_entry_guard, two_t_resistance_risk -q",
-                    "status": "failed",
-                    "summary": "较广定向97通过、5失败，237.15秒。失败为乐鑫07-02缺旧二级压力拒因、先锋01-06买点缺失导致2断言、01-26部分日线预期买点缺失、06-09旧买点缺失；未修改断言。clean main b623a7e、main独立venv导入E盘源码同5项逐一重现，154.25秒。不得将失败记为通过或默认豁免本地合并；本次新增20项和81相邻通过。"
+                    "command": "Core pytest tests/test_secondary_reclaim_entry.py tests/test_secondary_resistance.py tests/test_ten_full_entry.py tests/test_whole_wave_entry.py tests/test_inverse_n_entry_guard.py tests/test_two_t_resistance_risk.py -q",
+                    "status": "passed",
+                    "summary": "修复后103项全部通过，294.42秒；无跳过、xfail或策略门禁豁免。五项原失败来自旧预期：乐鑫07-02仍应受已知01-14高18.6421约束，当日高16.7556未突破，不能借04-30旧键；先锋旧01-06买点借10-21不在下降底部的N测幅，现明确拒绝且用09-16真实有效信号/filled BUY验证已有买入；01-26部分日线用独立合格候选隔离全局逆N门禁，低4.93可以买、完成低4.81拦截，缓存/新算/后缀审计逐项一致；先锋06-09半幅以下上影不构成抵抗，但05-18目标已于06-01退役且全局回调序列不合格，不能据此复活旧买入或次日退役目标清仓。新增有效目标对照仍验证06-09可以买及06-10放量双破清仓。以下为修复前原始失败记录，保留历史事实，不代表当前状态：较广定向97通过、5失败，237.15秒。失败为乐鑫07-02缺旧二级压力拒因、先锋01-06买点缺失导致2断言、01-26部分日线预期买点缺失、06-09旧买点缺失；未修改断言。clean main b623a7e、main独立venv导入E盘源码同5项逐一重现，154.25秒。不得将失败记为通过或默认豁免本地合并；本次新增20项和81相邻通过。"
+                },
+                {
+                    "command": "Core pytest tests/test_bottom_n_targets.py tests/test_a_wave_confirmation.py tests/test_a_wave_lifecycle.py -q; related 3 test-file mypy; @wavequant/core typecheck",
+                    "status": "passed",
+                    "summary": "额外41项来源资格及A原点生命周期通过（0.80秒）；逆N和有效二吐买入/清仓对照15项通过（7.09秒）；测试类型修正后11项边界复跑通过（0.36秒）。三个修改测试文件mypy及Core既定4文件strict类型通过；补齐一处OHLC四元组标注及数值类型断言，未加类型忽略。生产策略未为旧断言放宽底部资格、压力、逆N或上影门禁。"
                 },
                 {
                     "command": "Web node --test secondary-reclaim-evidence, combined-a-entry-evidence, wave-entry-evidence, trade-reasons, buy-points; topology Vitest",
@@ -46,14 +52,14 @@
                     "summary": "Core sdist/wheel与D盘隔离wheel烟测通过，4修改模块字节一致，无新增依赖。Web lint零错误6旧环境变量warning，类型与最终生产构建通过；沿用E盘精确源码快照与原依赖，用命令级512MB/4MB和Webpack，不改产品构建配置。普通策略资金/费用/交易权限继续适用。"
                 },
                 {
-                    "command": "Complete Core/Web suites, browser/Playwright, external minute execution and main live HTTP activation",
+                    "command": "Complete Core/Web suites, browser/Playwright and external minute execution",
                     "status": "not-run",
-                    "summary": "按用户开发验证节奏不运行完整套件或浏览器；无真实分钟或券商成交验证。本地main仍b623a7e，未合并、未推送、未重启，当前服务仍旧V102；新通道正式账户适配器在独立工作区已验证，main HTTP启用待合并门禁处理。默认保留二吐抵抗，用户尚未选择例外；不得倒推03-05为已买入。"
+                    "summary": "按用户开发验证节奏未运行完整套件或浏览器/Playwright；无真实分钟或券商成交验证。包含test_wave_entry_epoch.py的其他旧买点历史预期未纳入本轮五项范围，完整账户差异待独立验证。二吐抵抗默认保留，03-05不得倒推为已买入。正式账户适配器在独立工作区已验证03-11新通道收盘回退成交。"
                 },
                 {
                     "command": "18 related Prettier files, final JS syntax/diff/Harness, CodeGraph sync and baseline feature equality review",
                     "status": "passed",
-                    "summary": "最终18文件格式、JS语法、diff与Harness通过；新模块strict和5相关目标mypy、Core16纯规则测试复跑通过。CodeGraph已同步18代码文件及后续拓扑修改。最终Web14拓扑、单独类型、最终生产构建通过，仍不运行完整套件或浏览器。所有main既有feature对象与基线逐项相等，256仅临时status置backlog且原始完整对象已保存，等待合并门禁处理；未将5项既有失败标为通过。"
+                    "summary": "最终18文件格式、JS语法、diff与Harness通过；新模块strict和5相关目标mypy、Core16纯规则测试复跑通过。CodeGraph已同步18代码文件及后续拓扑修改。最终Web14拓扑、单独类型、最终生产构建通过，仍不运行完整套件或浏览器。所有main既有feature对象与基线逐项相等，256仅临时status置backlog且原始完整对象已保存，等待合并门禁处理；未将5项既有失败标为通过。 本轮五项旧预期已实质修正并全部通过，历史失败文本保留；CodeGraph再同步3个测试，未跳过测试。提交前恢复256完整原对象及activeFeature，其他main功能字段逐项保持。"
                 }
             ]
         },
@@ -1829,7 +1835,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "backlog",
+            "status": "in-progress",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",

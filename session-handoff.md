@@ -1,10 +1,8 @@
-## 2026-10-08 · MONOREPO-296 实现完成，合并待门禁处理
+## 2026-10-08 · MONOREPO-296 验收完成
 
-会话继续使用C:/Users/zb/.codex/worktrees/level-three-dashed-gate/wavequant-monorepo、feat-三级虚线门禁，已同步main b623a7e。V103二级突破抵抗放量收复通道和独立说明已实现；默认保留二吐、五顶十满、倒N及账户门禁。用户关于03-05是否豁免二吐长上影尚未回答，已明确暂按保留接入；03-05候选拒因9.53二吐抵抗，03-11放量未回补跳空首次LONG。实际V3执行参数账户回放filled BUY原11.44572，防守7.43、最近目标12.21；开费用后RR过滤拒绝。
+五项已有失败已按现行来源资格和可知二级结构修复：103项较广全部通过，额外41项底部来源及A生命周期通过；可买/逆N拦截缓存、有效二吐买入/次日清仓对照通过。生产门禁没有为旧买点预期放宽，修复前97通过/5失败与clean main重现的历史事实保留在feature296验证摘要。3修改测试mypy与Core4严格类型通过，两个测试类型问题已修正重验。新二级收复功能的20项、Web62/拓扑14、相关类型及构建既有通过证据保持。
 
-20新增和81相邻通过，62 Web Node/14拓扑、相关Core/API类型、Core包/D盘wheel和E盘最终Web生产构建通过。5失败：乐鑫07-02缺secondary压力旧拒因，先锋01-06信号/订单旧断言2项、01-26部分日线预期买点和06-09旧买点。clean main b623a7e用main独立venv导入E盘源码同5项154.25秒重现；保留失败，不改断言、忽略类型或绕过门禁。按docs/agent/codex-global-AGENTS.md:34，无法修复不得自动合并；待明确允许保留这些已有失败或另行处理。当前仅独立工作区，main服务仍V102，不推送、不重启。
-
-296在本工作区唯一in-progress，256原始完整对象已保存在D:/.cache/Temp/wavequant-296-original-active.json，除临时status=backlog外所有字段未改；合并前应恢复原对象及activeFeature=256，296保留failed事实不能标done。新源码/测试/说明分别为secondary_reclaim_entry.py、test_secondary_reclaim_entry.py、test_secondary_reclaim_strategy.py、secondary-reclaim-evidence.js、strategy_lecture_v3.md；正式账户与前缀测试均已通过。完整Core/Web、浏览器/Playwright及真实外部分钟未运行。
+296done，256原完整对象及唯一in-progress恢复，所有既有main功能字段保持。本轮按用户明确请求提交并合并本地main，不推送；具体Git结果以本轮交付及仓库历史为准，无待用户许可事项。新通道默认保留二吐长上影风控，03-05候选仍拒绝，03-11正式账户收盘回退买入已验证。完整Core/Web、浏览器/Playwright、真实外部分钟、全部账户差异及其他旧买点历史预期（如test_wave_entry_epoch.py）待独立验证，不将未运行项写成通过。
 
 更早的03-21正式二级端点升级需求仍需区分显示与固定正式端点：当前02-28已按8.17市场突破显示二级实线；完整历史将03-21高并入05-15高。此次优化独立买点，不改变正式趋势端点，勿借未来升级补认02-06资格。
 

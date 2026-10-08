@@ -25,15 +25,39 @@ def xianfeng_june():
     return bars, config, generate_system_signals(bars, config)
 
 
-def test_xianfeng_below_half_shadow_does_not_block_smaller_n_buy(xianfeng_june):
+def test_xianfeng_below_half_shadow_does_not_revive_retired_target_or_unqualified_buy(xianfeng_june):
     bars, config, result = xianfeng_june
-    assert any(s.side == "LONG" and str(s.timestamp.date()) == "2026-06-09" for s in result.signals)
+    assert not any(s.side == "LONG" and str(s.timestamp.date()) == "2026-06-09" for s in result.signals)
     assert not any(e["event"] == "target_resistance_observed"
                    and e["timestamp"][:10] == "2026-06-09" for e in result.audit)
-    clear = next(s for s in result.signals if s.side == "EXIT" and str(s.timestamp.date()) == "2026-06-10")
+    assert any(e["event"] == "entry_rejected" and e["timestamp"].startswith("2026-06-09")
+               and e.get("reason") == "wave_second_peak_pullback_sequence" for e in result.audit)
+    # This N's named guides were retired before June 9. An independent A can
+    # remain visible without reviving those guides or creating an entry.
+    retired = next(e for e in result.audit if e["event"] == "wave_projection_invalidated"
+                   and e.get("reason") == "bottom_target_source_retired"
+                   and str(bars[e["attack"]].timestamp.date()) == "2026-05-18")
+    assert retired["timestamp"].startswith("2026-06-01")
+    assert not any(e["event"] == "target_resistance_observed"
+                   and e["timestamp"].startswith("2026-06-10") for e in result.audit)
+
+
+def test_under_half_shadow_allows_qualified_entry_and_live_target_next_day_clear(monkeypatch):
+    bars, event = target_pair()
+    config = SystemStrategy(**whole_wave_profile({"scenarios": {"base": {"execution": {}}}})["strategy"])
+    proof = dict(stop=5.94, target=8.45, counter_ratio=.2, breakout_volume_multiple=2)
+    monkeypatch.setattr("wavequant.domain.strategies.shallow_base_breakout.shallow_base_history",
+                        lambda *args, **kwargs: ([], {5: proof}))
+    # Publish a live, already known target to test risk independently of source
+    # retirement in the full history. Use the real June price/volume sequence.
+    monkeypatch.setattr("wavequant.domain.strategies.integrated_strategy.two_t_resistance_history",
+                        lambda visible, audit: two_t_resistance_history(visible, [event]))
+    result = generate_system_signals(bars[:7], config)
+    assert any(s.side == "LONG" and s.bar_index == 5 for s in result.signals)
+    assert not any(e["event"] == "target_resistance_observed" and e["bar_index"] == 5 for e in result.audit)
+    clear = next(s for s in result.signals if s.side == "EXIT" and s.bar_index == 6)
     assert "wave_two_t_next_volume_clear" in clear.reason
-    evidence = next(e for e in result.audit if e["event"] == "target_resistance_observed"
-                    and e["timestamp"].startswith("2026-06-10"))
+    evidence = next(e for e in result.audit if e["event"] == "target_resistance_observed" and e["bar_index"] == 6)
     assert evidence["wave_reached_date"] == "2026-06-09"
     assert evidence["wave_reached_price"] == 7.30
     assert evidence["bearish_reference_date"] == "2026-06-04"
@@ -92,7 +116,9 @@ def test_next_session_clear_requires_previous_upper_shadow_strictly_over_forty_p
     ("2023-04-27", (21.124277080296686, 22.54185783045961, 20.68273553516397, 21.71687231192217), 38_504_580, 21.101038051605485, True),
     ("2026-09-17", (16.611534025820525, 17.529895256516294, 16.31441715706601, 17.070714641168408), 16_572_600, 17.50288463208406, False),
 ])
-def test_xinhua_actual_under_half_candles_do_not_trigger_two_t_reduction(day, prices, volume, target, clears):
+def test_xinhua_actual_under_half_candles_do_not_trigger_two_t_reduction(
+    day: str, prices: tuple[float, float, float, float], volume: float, target: float, clears: bool,
+) -> None:
     opened, _, low, closed = prices
     timestamp = datetime.fromisoformat(day)
     before = Bar(timestamp - timedelta(days=1), "sh.601811", opened, opened, low, low, 1)
@@ -201,7 +227,10 @@ def test_warning_and_clear_have_strict_price_and_volume_boundaries(invalid):
         assert risks[6]["reason"] == "wave_two_t_next_volume_clear"
     else:
         assert 5 in risks
-        assert 6 not in risks or risks[6]["exit_fraction"] < 1
+        if 6 in risks:
+            fraction = risks[6]["exit_fraction"]
+            assert isinstance(fraction, (int, float))
+            assert fraction < 1
 
 
 def test_target_invalidation_on_confirmation_day_does_not_cancel_protective_clear():

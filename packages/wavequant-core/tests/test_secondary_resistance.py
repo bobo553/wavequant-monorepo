@@ -20,7 +20,7 @@ def test_resisted_secondary_break_needs_later_confirmation_not_same_or_next_bar(
     assert secondary_resistance_history(bars, {}) == {}
 
 
-def test_lexin_july2_secondary_pressure_blocks_local_squeeze():
+def test_lexin_july2_does_not_borrow_unconfirmed_secondary_pressure():
     raw = json.loads((Path(__file__).parent / "fixtures/lexin_2026_squeeze.json").read_text(encoding="utf-8"))
     bars = [Bar(datetime.fromisoformat(day), raw["symbol"], *values) for day, *values in raw["bars"]]
     config = SystemStrategy(
@@ -28,18 +28,19 @@ def test_lexin_july2_secondary_pressure_blocks_local_squeeze():
     )
     result = generate_system_signals(bars, config)
     assert not any(s.side == "LONG" and str(s.timestamp.date()) == "2026-07-02" for s in result.signals)
-    rejection = next(
-        e
-        for e in result.audit
-        if e["event"] == "entry_rejected"
-        and e["timestamp"].startswith("2026-07-02")
-        and e["reason"] == "secondary_breakout_resistance_unresolved"
-    )
-    assert rejection["secondary_high_date"] == "2026-04-30"
-    cutoff = rejection["bar_index"]
+    cutoff = next(i for i, bar in enumerate(bars) if str(bar.timestamp.date()) == "2026-07-02")
+    key = next(e["key"] for e in reversed(result.audit) if e["event"] == "hierarchy_resistance_key"
+               and e["bar_index"] < cutoff)
+    # The latest confirmed secondary pressure is higher than this local rally;
+    # April 30 cannot replace it merely because it is a newer source high.
+    assert str(bars[key["index"]].timestamp.date()) == "2026-01-14"
+    assert key["value"] > bars[cutoff].high
+    rejections = [e for e in result.audit if e["event"] == "entry_rejected" and e["bar_index"] == cutoff]
+    assert any(e["reason"] == "wave_second_peak_pullback_sequence" for e in rejections)
+    assert not any(e["reason"] == "secondary_breakout_resistance_unresolved" for e in rejections)
     prefix = generate_system_signals(bars[: cutoff + 1], config)
     assert prefix.signals == [s for s in result.signals if s.bar_index <= cutoff]
-    assert rejection in prefix.audit
+    assert all(rejection in prefix.audit for rejection in rejections)
     assert any(s.side == "LONG" and str(s.timestamp.date()) == "2026-08-04" for s in result.signals)
 
 
