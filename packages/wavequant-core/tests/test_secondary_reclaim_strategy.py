@@ -25,22 +25,22 @@ def xiangyang_reclaim():
                      preflight_reward_risk=False)
     cache: dict = {}
     # Save the pre-entry prefix checkpoint for an actual resumed session replay.
-    entry = next(index for index, bar in enumerate(bars) if str(bar.timestamp.date()) == "2025-03-11")
+    entry = next(index for index, bar in enumerate(bars) if str(bar.timestamp.date()) == "2025-03-07")
     prior = generate_system_signals(bars[:entry], config, chart_history_cache=cache)
     resumed = generate_system_signals(bars[:entry + 1], config, chart_history_cache=cache)
     generated = generate_system_signals(bars, config)
     return bars, config, generated, entry, prior, resumed
 
 
-def test_real_candidate_keeps_two_t_risk_and_waits_for_later_gap(xiangyang_reclaim):
+def test_real_high_extension_publishes_target_and_keeps_other_entry_risks(xiangyang_reclaim):
     bars, _, generated, entry, _, _ = xiangyang_reclaim
     longs = [signal for signal in generated.signals if signal.side == "LONG"
              and signal.reason == "system_secondary_resistance_reclaim"
              and str(signal.timestamp.date()) >= "2025-02-28"]
     assert [signal.bar_index for signal in longs] == [entry]
-    assert longs[0].reference_price == 11.44
+    assert longs[0].reference_price == 9.45
     assert longs[0].invalidation_price == 7.43
-    assert longs[0].target_price == 12.21
+    assert longs[0].target_price == 10.87
     rejected = next(event for event in generated.audit if event["event"] == "entry_rejected"
                     and event.get("candidate_channel") == "secondary_resistance_reclaim"
                     and event["timestamp"].startswith("2025-03-05"))
@@ -51,11 +51,20 @@ def test_real_candidate_keeps_two_t_risk_and_waits_for_later_gap(xiangyang_recla
     assert proof["secondary_high_date"] == "2024-12-11"
     assert proof["secondary_attack_date"] == "2025-02-28"
     assert proof["secondary_resistance_date"] == "2025-03-03"
-    assert proof["secondary_reclaim_type"] == "gap"
-    assert proof["secondary_reclaim_unfilled_gap"] is True
-    assert proof["secondary_reclaim_body_fraction"] == pytest.approx(.92 / 10.52)
-    assert proof["secondary_reclaim_body_range_fraction"] >= .6
-    assert bars[entry].low > bars[entry - 1].high
+    assert proof["secondary_reclaim_type"] == "body"
+    assert proof["secondary_reclaim_unfilled_gap"] is False
+    assert proof["secondary_reclaim_body_fraction"] == pytest.approx(.5 / 8.95)
+    assert proof["breakout_volume_multiple"] == pytest.approx(103_579_472 / 98_220_686)
+    stack = next(event for event in generated.audit if event["event"] == "wave_projection_stack"
+                 and event["bar_index"] == entry)
+    assert stack["target"] == 13.55
+    assert stack["projection_span"] == 4.02
+    assert stack["rule"] == "five_top_ten_full_v3"
+    assert bars[entry].close < 9.54 < bars[entry].high
+    assert not any(signal.side == "LONG" and str(signal.timestamp.date()) == "2025-02-18"
+                   for signal in generated.signals)
+    assert any(event["timestamp"].startswith("2025-03-11") and event["event"] == "secondary_reclaim_candidate"
+               and event["secondary_reclaim_type"] == "gap" for event in generated.audit)
 
 
 def test_full_suffix_and_incremental_prefix_keep_identical_signals_and_evidence(xiangyang_reclaim):
@@ -78,18 +87,18 @@ def test_account_fill_and_optional_reward_risk_gate_remain_real(xiangyang_reclai
 
     view = single_stock_result(bars, asdict(config), asdict(execution), generated, minute_loader=no_minutes)
     orders = [order for order in view["orders"] if order["side"] == "BUY"
-              and order["timestamp"].startswith("2025-03-11")]
+              and order["timestamp"].startswith("2025-03-07")]
     assert len(orders) == 1
     order = orders[0]
     assert order["status"] == "filled"
-    assert order["raw_price"] == pytest.approx(11.44572)
-    assert order["signal_timestamp"].startswith("2025-03-11")
+    assert order["raw_price"] == pytest.approx(9.454725)
+    assert order["signal_timestamp"].startswith("2025-03-07")
     assert any(event.get("buy_point_type") == "secondary_resistance_reclaim" for event in order["decision_evidence"])
     assert all(condition["passed"] is True for condition in order["entry_conditions"][:4])
     strict = single_stock_result(bars[:entry + 1], asdict(config),
                                  asdict(replace(execution, net_reward_risk_filter=True)), resumed, minute_loader=no_minutes)
     assert not any(order["side"] == "BUY" and order["status"] == "filled"
-                   and order["timestamp"].startswith("2025-03-11") for order in strict["orders"])
+                   and order["timestamp"].startswith("2025-03-07") for order in strict["orders"])
 
 
 def test_global_default_enables_route_and_legacy_modes_leave_it_off():

@@ -52,6 +52,14 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("documents high extension and the whole three-in-one stacking box without granting an automatic buy", () => {
+        const note = topologyProfileNotes.find((text) => text.includes("V3 v104"));
+        expect(note).toMatch(/二吐.*未拉回.*最高价严格创新高.*不等待收盘创高/);
+        expect(note).toMatch(/三合一整箱.*底部到二吐的 3H.*二吐加 3H/);
+        expect(note).toMatch(/新发布目标当日只用收盘.*不倒用同根最高价/);
+        expect(note).toMatch(/9 或 13 细浪.*不借未来浪数/);
+        expect(note).toMatch(/放量、抵抗、目标与账户门禁/);
+    });
     it("documents the independent causal secondary resistance recovery entry", () => {
         const note = topologyProfileNotes.find((text) => text.includes("V3 v103"));
         expect(note).toMatch(/已知二级高点.*当笔或次笔.*空头抵抗/);

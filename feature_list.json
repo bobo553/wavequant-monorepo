@@ -4,6 +4,65 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-297",
+            "name": "two-t-high-extension-stacking",
+            "title": "二吐后叠箱按高点延伸识别",
+            "description": "二吐后的三合一整箱未拉回且高点严格继续创新高时进入叠箱观察，不额外等待收盘超过旧高；图表和入场使用同期可知投影。",
+            "scope": "Core叠箱观察与襄阳买入目标回归、Web拓扑说明及V3版本",
+            "dependencies": ["MONOREPO-291", "MONOREPO-296"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "三合一整箱为底部到二吐的3H，叠一箱五顶仍为T2+3H，不误改为原N单倍H",
+                "二吐到达后无拉回且高点严格突破此前高点时确认叠箱，不要求收盘创高；相等不算新延伸，拉回及原点破位保持",
+                "新发布投影不倒用确认K线高点触及目标；已知目标后续观察、首个可知日和缓存前缀保持因果",
+                "襄阳03-05二吐抵抗仍拦买，03-07高10.11/收9.45进入叠箱；最近目标10.87可用于二级收复候选，信号和账户回放一致",
+                "既有二吐、五顶十满、逆N及费用后盈亏比门禁继续，03-11不重复同一二级突破买点；02-18高一级结构限制不顺带改动",
+                "9或13细浪仅作为可能的延伸推演，不用未来小浪数量或缺少小级别数据补确认；定向测试、类型、必要构建和状态证据实际通过"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest tests/test_wave_projection.py tests/test_ten_full_entry.py tests/test_a_wave_lifecycle.py tests/test_secondary_reclaim_entry.py -q",
+                    "status": "passed",
+                    "summary": "82项16.46秒通过。先用最小输入复现3个旧收盘创高门槛失败，再修正为高点严格延伸；相等不算、拉回优先、原点失效、新目标不倒用同根高点、两种目标策略及所有可见前缀保持。五顶整箱3H及最近小箱H两种目标不混淆，波浪细浪数量不由未来补认。"
+                },
+                {
+                    "command": "Core pytest tests/test_wave_projection.py tests/test_two_t_resistance_risk.py tests/test_inverse_n_entry_guard.py tests/test_five_top_entry.py tests/test_ten_full_entry.py -q",
+                    "status": "passed",
+                    "summary": "118项252.38秒通过，含最终类型修正后的图表序列化与目标可知日；二吐抵抗、逆N部分日线缓存、五顶十满及拉回/原点边界继续。两个基础组与4项真实策略共153个不同Core用例，collect-only核对153；未运行完整Core。"
+                },
+                {
+                    "command": "Core pytest tests/test_secondary_reclaim_strategy.py -q",
+                    "status": "passed",
+                    "summary": "最终4项198.82秒通过，完整2018起行情及截至03-06/03-07的恢复缓存、后缀信号/证据一致。03-05二吐9.53长上影仍拒绝，03-07高10.11/收9.45按高点叠箱发布五顶13.55/整箱4.02，二级收复首次LONG收9.45、防守7.43、最近目标10.87、量比1.0545586。正式V3账户缺分钟回退实际filled BUY原9.454725；开启费用后RR1.5仍拒绝，同一02-28突破03-11跳空候选不重复买，02-18仍无交替资格。初次139.96秒运行3通过/1失败仅成交价误沿用前涨停4bp预期，按当前普通5bp实际成交修正并重验，无执行规则豁免。"
+                },
+                {
+                    "command": "2 changed source modules strict mypy; 3 changed test-file mypy; @wavequant/core typecheck; API11 strict typecheck",
+                    "status": "passed",
+                    "summary": "最终两个修改模块strict、三个测试按Core pyproject检查、Core既定4文件及API11文件通过。首次显式覆盖旧test_wave_projection.py发现两处None传实例及一处可空目标比较，改用实际无I/O渲染实例并断言目标非空；无类型忽略、格式或Python lint工具。"
+                },
+                {
+                    "command": "Web node --test annotations, wave-c-chart, target-level-guides, secondary-reclaim-evidence; topology Vitest; Web lint/typecheck; exact-source Webpack production build",
+                    "status": "passed",
+                    "summary": "102项Node及15项拓扑通过。新增V104最高价/整箱/新目标可知日/细浪推演/买入门禁说明；90源归一换行摘要3fa73274542e62e7201d07bad1855e0027ef07485e3a1c4a89f94b17fbca97ab。Web lint零错误6旧环境变量warning，类型及最终生产构建通过（命令级512MB/4MB，沿用E盘精确源码及现有依赖，Webpack编译17.9秒/TS11.7秒）。无新浏览器验证。"
+                },
+                {
+                    "command": "@wavequant/core build; isolated D-drive wheel install, byte comparison and real March7 projection smoke",
+                    "status": "passed",
+                    "summary": "sdist/wheel通过；沿用D盘隔离wheel环境无依赖重装新wheel，2修改模块与当前源码逐字节一致，真实襄阳03-07整箱13.55及最近小箱10.87、V104 profile与三合一字段通过，无新增依赖。"
+                },
+                {
+                    "command": "Complete Core/Web suites, browser/Playwright, real external minute fills and full account-history comparison",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏未运行完整套件或浏览器。真实外部分钟/排队和全历史全部参数账户差异仍待独立验证；正式策略回放的缺分钟收盘回退不宣称实盘成交。其他历史旧买点预期保持原待验证记录，本轮只修正最高价叠箱。"
+                },
+                {
+                    "command": "8-file Prettier; git diff --check; pnpm harness:check; CodeGraph sync; original feature preservation and exact build source review",
+                    "status": "passed",
+                    "summary": "最终8份文档/拓扑格式、差异与294功能Harness通过；CodeGraph同步7代码/测试文件。生产构建的2 Python及2拓扑文件和当前源码逐字节一致；所有既有main功能对象保留，256完整原对象恢复，未覆盖任何旧失败证据。默认同会话feat-三级虚线门禁提交并no-ff本地合并，不推送。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-296",
             "name": "secondary-resistance-reclaim-entry",
             "title": "二级突破抵抗放量收复买入",

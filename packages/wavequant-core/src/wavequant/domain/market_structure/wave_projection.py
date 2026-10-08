@@ -68,7 +68,7 @@ class WaveProjectionEvent:
     target_stage: str = "five_top"
     projection_span: float = 0.0
     reached_stage: str | None = None
-    rule: str = "five_top_ten_full_v2"
+    rule: str = "five_top_ten_full_v3"
 
 
 def wave_projection_history(
@@ -81,8 +81,9 @@ def wave_projection_history(
     """Replay one N through ready, stacking, pullback, pushing and invalidation.
 
     Equality reaches a target and holds support; breaks and reattacks are strict.
-    Only a target known before a bar may use its high. New same-bar projections
-    use the close. Support loss wins over simultaneous upside observations.
+    An uncorrected high extension starts stacking without requiring a record
+    close. Only a target known before a bar may use its high. New same-bar
+    projections use the close. Support loss wins over simultaneous upside.
     Time is O(visible bars), including arbitrarily large multi-box price gaps.
     """
     end = len(bars) - 1 if asof_index is None else asof_index
@@ -200,9 +201,10 @@ def wave_projection_history(
             else:
                 continue
         elif state == "ready":
-            if bar.close <= previous_peak:
+            if bar.high <= previous_peak:
                 continue
-            # T2 + 3H = X + 5H, with X the original N box high.
+            # 高点延伸确认叠箱观察；新目标仍只用收盘验证，不能倒用本根高点。
+            # 三合一整箱为3H：T2 + 3H = X + 5H，不是原N小箱的一倍H。
             state, target = "stacking", _price(setup.two_t) + (span if named else box)
             emit(i, "wave_projection_stack")
             observed = bar.close
