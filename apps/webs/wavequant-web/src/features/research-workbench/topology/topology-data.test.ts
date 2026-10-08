@@ -52,6 +52,12 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("uses the same complete confirmation routes at all three trend levels", () => {
+        const note = topologyProfileNotes.find((text) => text.includes("V3 v106"));
+        expect(note).toMatch(/一、二、三级.*本级末跌高.*下一级末跌高突破.*空多交替.*收盘转多/);
+        expect(note).toMatch(/缺交替.*不升级.*基础折线.*因果证书/);
+        expect(note).toMatch(/本级突破直接升级.*深回调买点保留/);
+    });
     it("separates causal direct promotion from the independent deep B reclaim", () => {
         const flow = topologyFlows.find((item) => item.id === "secondary-pullback");
         expect(flow?.gates).toHaveLength(3);
@@ -116,14 +122,12 @@ describe("strategy topology", () => {
         expect(gate?.yesNext).toBe("direction");
         expect(gate?.noNext).toBe("direction");
     });
-    it("requires the holding turn after a fresh level-one counter-impulse", () => {
+    it("requires a complete trend certificate before using structural background", () => {
         const gate = topologyFlows.flatMap((flow) => flow.gates).find((gate) => gate.id === "level-one-wave");
-        expect(gate?.detail).toMatch(/先有更高高点.*其后的更高低点/);
-        expect(gate?.detail).toMatch(/先有更低低点.*其后的更低高点/);
-        expect(gate?.detail).toMatch(/不能用新推进之前的旧回档.*相等不成立/);
-        expect(gate?.detail).toMatch(/未确认前.*整段最低或最高端点.*可知时间/);
-        expect(gate?.detail).toMatch(/母子基础折线不变.*全局策略消费同一正式一级结构/);
-        expect(gate?.detail).toMatch(/一级尚未转向不会单独取消 N 候选/);
+        expect(gate?.detail).toMatch(/一、二、三级.*本级末跌高.*下一级末跌高突破.*空多交替.*收盘.*翻多高点/);
+        expect(gate?.detail).toMatch(/仅有下级突破.*不能提前升级.*相等、未知/);
+        expect(gate?.detail).toMatch(/一级使用基础折线.*同一证书可知日/);
+        expect(gate?.detail).toMatch(/N 候选仍按独立基础折点形成.*继续等待/);
         expect(gate?.yesNext).toBe("pivot");
         expect(gate?.noNext).toBe("pivot");
     });

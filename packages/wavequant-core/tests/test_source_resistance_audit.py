@@ -27,13 +27,19 @@ def test_xianfeng_source_high_is_checked_and_june9_actually_resolves_resistance(
     assert resolved["secondary_attack_date"] == "2026-05-25"
     assert resolved["secondary_resistance_high"] == 6.66
     assert resolved["secondary_confirmation_close"] == 6.94
-    signal = next(s for s in full.signals if s.side == "LONG" and s.bar_index == at["2026-06-09"])
-    assert str(signal.trigger_timestamp.date()) == "2026-05-25"
-    proof = next(
-        e for e in full.audit if e["event"] == "long_transition_evidence" and e["bar_index"] == signal.bar_index
-    )
-    assert proof["counter_ratio"] == 0.125
-    assert proof["secondary_high_date"] == "2026-02-02"
+    # Clearing resistance cannot restore a target source retired by a confirmed decline.
+    assert not any(s.side == "LONG" and s.bar_index == at["2026-06-09"] for s in full.signals)
+    assert any(e["event"] == "entry_rejected" and e["bar_index"] == at["2026-06-09"]
+               and e.get("attack") == at["2026-05-25"]
+               and e["reason"] == "no_live_structural_risk_reward" for e in full.audit)
+    assert any(e["event"] == "n_target_source_retired" and e["bar_index"] == at["2026-06-01"]
+               and e["attack"] == at["2026-05-18"] and e["reason"] == "new_confirmed_decline"
+               for e in full.audit)
+    current_n = next(e for e in full.audit if e["event"] == "n_completed"
+                     and e["bar_index"] == at["2026-06-09"] and e.get("target_primary"))
+    assert current_n["target_eligible"] is False
+    assert current_n["target_source_attack"] is None
+    assert current_n["one_p"] is None and current_n["two_t"] is None
     prefix = generate_system_signals(bars[:-1], config)
     assert prefix.signals == [s for s in full.signals if s.bar_index < len(bars) - 1]
     assert not any(e.get("secondary_resistance_resolved") for e in prefix.audit if e["timestamp"].startswith("2026-06"))

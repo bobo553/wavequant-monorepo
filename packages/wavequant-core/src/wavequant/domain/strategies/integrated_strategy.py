@@ -242,12 +242,14 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
     folded_sets: list[tuple[int, Sequence[ReversalPoint], int]] = []
     folded_cache = chart_history_cache.setdefault('folded_n', {}) if chart_history_cache is not None else None
     secondary_levels = None
+    confirmed_declines: dict[int, tuple[DeclineStart, ...]] = {}
     if whole_wave and config.pivot_mode == 'lecture_causal':
         from .hierarchical_entry import hierarchical_history
         from .hierarchical_n import hierarchical_n_candidates
         from .folded_n import folded_positive_n_candidates, folded_inverse_n_candidates
         secondary_levels, _ = hierarchical_history(
-            bars, prefix_cache=chart_history_cache.setdefault('hierarchy', {}) if chart_history_cache is not None else None)
+            bars, prefix_cache=chart_history_cache.setdefault('hierarchy', {}) if chart_history_cache is not None else None,
+            decline_sink=confirmed_declines)
         larger = hierarchical_n_candidates(bars, history=secondary_levels)
         for i in range(len(bars)):
             earliest = max(epochs[i], i-config.structure_window)
@@ -420,11 +422,11 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         declines = []
         seed_decline = None
         formal_decline_seen = False
-        for now, levels in secondary_levels.items():
-            high = next((point for point in reversed(levels[1]) if point['kind'] == 'H'), None)
+        for now, highs in confirmed_declines.items():
+            high = highs[-1] if highs else None
             if high is not None:
                 formal_decline_seen = True
-                declines.append(DeclineStart(high['index'], now))
+                declines.append(DeclineStart(high.index, now))
             elif not formal_decline_seen:
                 # A short history may already contain a confirmed initial
                 # falling leg before it has enough turns for level-one reduction.
@@ -541,8 +543,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             min(invalidated_at.get(row['n_id'], len(bars)),
                 target_retired_at.get(row['bar_index'], len(bars)) if row['target_primary'] else len(bars)),
         ) for row in positive_events if row['target_eligible']]
-        turns = { (point['index'], point['available_at']) for levels in secondary_levels.values()
-                  for point in levels[1] if point['kind'] == 'H' }
+        turns = { (point.index, point.known_at) for highs in confirmed_declines.values() for point in highs }
         for observation in a_wave_history(bars, seeds, [AWaveTurn(*turn) for turn in sorted(turns)]):
             payload = asdict(observation)
             now, kind = payload.pop('bar_index'), payload.pop('event')

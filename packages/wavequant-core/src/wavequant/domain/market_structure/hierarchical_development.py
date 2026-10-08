@@ -1,206 +1,151 @@
-"""Build live trend paths and distinguish direction from endpoint confirmation.
+"""Expose live higher-level paths only after a complete direction proof."""
 
-Formal points at level N normally exist after a source-level structural key
-break.  Level 2 may additionally promote a breakout high after its separate
-alternation evidence is complete.  While neither route is complete, hiding all
-confirmed source points makes the chart look truncated.  This module exposes
-the intervening evidence without itself promoting level-N structure.
-After a market-confirmed extreme, countertrend evidence requires a strict break
-of the source trend's frozen key before any dashed edge is exposed.
-"""
-
-from .lecture_trend import _ref, _wave_reversals
-from .hierarchical_confirmation import market_trend_confirmation, session_date, source_trend_reversal
+from .lecture_trend import _ref
+from typing import cast
+from .hierarchical_confirmation import DirectionConfirmation, TrendReference, market_trend_confirmation, session_date, source_trend_reversal
+from .trend_confirmation import qualify_downtrend, qualify_uptrend
 
 
-def _developing_point(point, position, available_at, role, *, trend_level, source_level):
-    """Copy one confirmed source point into a higher-level inspection path."""
-    result = _ref(point)
-    result.update(
-        available_at=available_at,
-        state='developing',
-        trend_level=trend_level,
-        **{f'source_level{source_level}_position': position},
-        source_label=point['label'],
-        display_only=True,
-        development_role=role,
-    )
+def _canonical_confirmation(proof):
+    """A first market proof keeps one shape across later formal publication."""
+    result=dict(proof)
+    for field in ('origin','broken_key','confirmed_by'):
+        point=proof[field]
+        result[field]={name:point[name] for name in ('index','time','kind','value','available_at','label')}
+        result[field]['ordinal']=point.get('ordinal',0)
+    if proof['confirmation_rule']=='strict_same_level_market_key_break':
+        result.pop('flip_high',None)
+        result.pop('flip_low',None)
+        result.pop('alternation_low',None)
+        result.pop('alternation_high',None)
     return result
 
 
-def _strongest(points, kind):
-    """Choose the strongest point of one kind; equal prices keep the first."""
-    candidates = [item for item in points if item[1]['kind'] == kind]
-    if not candidates:
+def _cycle_direction(source_points, start, position, bars, cutoff):
+    """Choose the first completed source cycle after a frozen formal key."""
+    rising=start['kind']=='H'
+    origin_kind='L' if rising else 'H'
+    qualify=qualify_uptrend if rising else qualify_downtrend
+    proofs=[]
+    for origin_position in range(position+1,len(source_points)):
+        origin=source_points[origin_position]
+        if origin['kind']!=origin_kind or origin['index']>cutoff:
+            continue
+        proof=qualify(source_points,origin,origin_position,None,bars,cutoff)
+        if proof is not None:
+            proofs.append(proof)
+    return cast(DirectionConfirmation,min(proofs,key=lambda proof:str(proof['available_at']))) if proofs else None
+
+
+def _live_endpoint(confirmation,bars,cutoff):
+    rising=confirmation['direction']=='up'
+    origin=confirmation['origin']
+    if origin['index']>=cutoff:
         return None
-    return (max if kind == 'H' else min)(candidates, key=lambda item: item[1]['value'])
+    positions=range(origin['index']+1,cutoff+1)
+    position=(max if rising else min)(positions,key=lambda index:bars[index].high if rising else bars[index].low)
+    date=session_date(bars[position])
+    return dict(index=position,ordinal=0,time=date,kind='H' if rising else 'L',
+                value=bars[position].high if rising else bars[position].low,
+                available_at=max(date,confirmation['available_at']),label='当前高点' if rising else '当前低点')
 
 
-def hierarchical_developing_path(source, confirmed, *, trend_level, source_level, kind, bars=(), end_index=None):
-    """Return the causal, display-only path after the latest formal point.
+def _countertrend_cycle(source_points,endpoint,bars,cutoff):
+    """A live extreme becomes a source origin only after its own confirmation."""
+    return source_trend_reversal(source_points,'up' if endpoint['kind']=='H' else 'down',endpoint,
+                                 cutoff,session_date(bars[cutoff]),bars)
 
-    A strict market break of the same-level key confirms the trend direction
-    immediately. Its live extreme is still not a frozen reversal or input to
-    another level. Without that break, the latest formal point fixes the
-    direction of the unfinished
-    higher-level structure.  The path then applies the existing wave reducer to
-    confirmed source points, preserving both confirmed internal turns and every
-    point in the unresolved final tail.  It never mutates ``source`` or
-    ``confirmed`` and is never valid input for another trend level, a strategy,
-    or a backtest.
+
+def hierarchical_developing_path(source,confirmed,*,trend_level,source_level,kind,bars=(),end_index=None,structural=(),qualified_source_points=None):
+    """Share the two direction routes while keeping the endpoint display-only.
+
+    A source-key break alone grants neither a solid rising direction nor an
+    inspection dash. Completed proofs freeze their first knowledge date; a
+    changing live extreme never becomes input to another level or a strategy.
     """
-    if not confirmed:
+    if not confirmed or not bars:
         return None
-    start = confirmed[-1]
-    proof_field = f'confirmed_on_level{source_level}'
-    source_position_field = f'source_level{source_level}_position'
-    proof_position = start.get(proof_field)
-    source_points = source['points']
-    if not isinstance(proof_position, int) or proof_position >= len(source_points):
+    cutoff=len(bars)-1 if end_index is None else min(end_index,len(bars)-1)
+    if cutoff<0:
         return None
-
-    confirmed_direction = market_trend_confirmation(
-        source_points, start, start[source_position_field], bars,
-        len(bars) - 1 if end_index is None else end_index,
-    ) if bars else None
-    prior_direction = False
-    if not confirmed_direction and bars and len(confirmed) > 1:
-        previous = confirmed[-2]
-        established = market_trend_confirmation(
-            source_points, previous, previous[source_position_field], bars,
-            len(bars) - 1 if end_index is None else end_index,
-        )
-        if established and all(established['confirmation']['origin'][field] == start[field]
-                               for field in ('index', 'kind', 'value')):
-            confirmed_direction = established
-            prior_direction = True
-    if confirmed_direction:
-        confirmation = confirmed_direction['confirmation']
-        known = confirmation['available_at']
-        origin = dict(confirmation['origin'], state='confirmed', display_only=True,
-                      available_at=known, trend_level=trend_level, development_role='confirmed_direction_origin')
-        endpoint = dict(confirmed_direction['endpoint'], state='developing', display_only=True,
-                        trend_level=trend_level, development_role='active_endpoint')
-        path = ([origin, endpoint] if prior_direction else [
-            dict(_ref(start), state='confirmed', display_only=True, trend_level=trend_level,
-                 development_role='formal_start'), origin, endpoint])
-        cutoff = len(bars) - 1 if end_index is None else end_index
-        countertrend = source_trend_reversal(
-            source_points, confirmation['direction'], confirmed_direction['endpoint'], cutoff, session_date(bars[cutoff]),
-            bars,
-        )
-        for position, point in enumerate(source_points):
-            if (countertrend is None or point['index'] <= endpoint['index'] or point['index'] > cutoff
-                    or point['available_at'] > session_date(bars[cutoff])
-                    or point.get('state') in ('seed', 'developing')):
-                continue
-            previous = path[-1]
-            if (point['kind'] == previous['kind'] or
-                    (point['value'] <= previous['value'] if point['kind'] == 'H' else
-                     point['value'] >= previous['value'])):
-                continue
-            pending = _developing_point(point, position, max(countertrend['available_at'], point['available_at']),
-                                        'pending_evidence',
-                                        trend_level=trend_level, source_level=source_level)
-            pending['edge_state'] = 'developing'
-            path.append(pending)
-        return dict(
-            id=f'{kind}-developing-{source["id"]}', source_path=source['id'], kind=f'{kind}-developing',
-            trend_level=trend_level, source_level=source_level, state='confirmed', display_only=True,
-            initial_direction=start['wave_direction_after'], wave_direction=confirmation['direction'],
-            available_at=known, endpoint_state='developing', confirmation=confirmation, confirmed_endpoint=endpoint,
-            confirmation_rule=confirmation['confirmation_rule'], nested_turn_count=0,
-            pending_point_count=len(path)-(1 if prior_direction else 2), points=path,
-            **({'countertrend_confirmation': countertrend} if countertrend is not None else {}),
-        )
-
-    suffix = source_points[proof_position:]
-    nested = _wave_reversals(suffix)
-    initial_kind = 'H' if start['wave_direction_after'] == 'up' else 'L'
-    start_ref = _ref(start)
-    start_ref.update(
-        state='confirmed',
-        trend_level=trend_level,
-        **{source_position_field: start[source_position_field]},
-        display_only=True,
-        development_role='formal_start',
-    )
-    path = [start_ref]
-
-    # If the nested reducer first confirms the opposite kind, retain the
-    # preceding candidate that geometrically connects the formal point to it.
-    first_position = proof_position + nested[0]['source_turn_position'] if nested else len(source_points) - 1
-    if not nested or nested[0]['kind'] != initial_kind:
-        initial = _strongest(
-            enumerate(source_points[proof_position:first_position + 1], proof_position),
-            initial_kind,
-        )
-        if initial:
-            position, point = initial
-            known = max(start['available_at'], point['available_at'])
-            path.append(
-                _developing_point(
-                    point,
-                    position,
-                    known,
-                    'confirmed_candidate',
-                    trend_level=trend_level,
-                    source_level=source_level,
-                )
-            )
-
-    for turn in nested:
-        position = proof_position + turn['source_turn_position']
-        known = max(start['available_at'], turn['available_at'])
-        path.append(
-            _developing_point(
-                turn,
-                position,
-                known,
-                'confirmed_nested_turn',
-                trend_level=trend_level,
-                source_level=source_level,
-            )
-        )
-
-    # A reducer omits its unresolved tail by design.  Retain that evidence so
-    # the inspection line reaches the most recently confirmed source point.
-    if nested:
-        last_position = proof_position + nested[-1]['source_turn_position']
-        for position, point in enumerate(source_points[last_position + 1:], last_position + 1):
-            known = max(path[-1]['available_at'], point['available_at'])
-            path.append(
-                _developing_point(
-                    point,
-                    position,
-                    known,
-                    'pending_evidence',
-                    trend_level=trend_level,
-                    source_level=source_level,
-                )
-            )
-
-    if len(path) < 2:
+    keys=[point for point in structural if point['available_at']<=session_date(bars[cutoff])]
+    keys=keys or confirmed
+    start=keys[-1]
+    public=next((point for point in reversed(confirmed)
+                 if all(point[field]==start[field] for field in ('index','kind','value'))),None)
+    position_field=f'source_level{source_level}_position'
+    source_points=source['points']
+    position=start.get(position_field)
+    if not isinstance(position,int) or not 0<=position<len(source_points):
         return None
-    path[-1]['development_role'] = 'active_endpoint'
-    active_direction = 'up' if path[-1]['kind'] == 'H' else 'down'
-    return dict(
-        id=f'{kind}-developing-{source["id"]}',
-        source_path=source['id'],
-        kind=f'{kind}-developing',
-        trend_level=trend_level,
-        source_level=source_level,
-        state='developing',
-        display_only=True,
-        initial_direction=start['wave_direction_after'],
-        wave_direction=active_direction,
-        available_at=path[-1]['available_at'],
-        nested_turn_count=sum(p['development_role'] == 'confirmed_nested_turn' for p in path),
-        pending_point_count=sum(
-            p['development_role'] in ('pending_evidence', 'active_endpoint') for p in path
-        ),
-        confirmation_rule=(
-            f'confirmed_level{source_level}_development_path_after_last_level{trend_level}_reversal'
-        ),
-        points=path,
-    )
+    direct=market_trend_confirmation(source_points,start,position,bars,cutoff)
+    prior_direction=False
+    if direct is None and len(keys)>1:
+        previous=keys[-2]
+        established=market_trend_confirmation(source_points,previous,previous[position_field],bars,cutoff)
+        if established and all(established['confirmation']['origin'][field]==start[field]
+                               for field in ('index','kind','value')):
+            direct=established
+            prior_direction=True
+    confirmation=direct['confirmation'] if direct else None
+    endpoint=direct['endpoint'] if direct else None
+    active=confirmed[-1].get('incoming_trend_confirmation') or confirmed[-1].get('trend_confirmation')
+    if active is not None and active['available_at']<=session_date(bars[cutoff]):
+        origin=active['origin']
+        origin_position=next((index for index,point in enumerate(source_points)
+                              if all(point[field]==origin[field] for field in ('index','kind','value'))),None)
+        opposite=(market_trend_confirmation(source_points,cast(TrendReference,dict(origin,available_at=active['available_at'])),
+                                             origin_position,bars,cutoff) if origin_position is not None else None)
+        if opposite is not None:
+            if direct is None or direct['confirmation']['available_at']<=opposite['confirmation']['available_at']:
+                confirmation=opposite['confirmation']; endpoint=opposite['endpoint']
+        else:
+            confirmation=cast(DirectionConfirmation,dict(active))
+            endpoint=cast(TrendReference,_live_endpoint(confirmation,bars,cutoff))
+        prior_direction=True
+    if confirmation is None:
+        published=(public or start).get('incoming_trend_confirmation') or (public or start).get('trend_confirmation')
+        if published and published['available_at']<=session_date(bars[cutoff]):
+            confirmation=cast(DirectionConfirmation,dict(published))
+            prior_direction=True
+        else:
+            confirmation=_cycle_direction(source_points,start,position,bars,cutoff)
+            prior_direction=True
+        if confirmation is None:
+            return None
+        endpoint=cast(TrendReference,_live_endpoint(confirmation,bars,cutoff))
+    if endpoint is None:
+        return None
+    confirmation=cast(DirectionConfirmation,_canonical_confirmation(confirmation))
+    known=confirmation['available_at']
+    origin=dict(confirmation['origin'],state='confirmed',display_only=True,available_at=known,
+                trend_level=trend_level,development_role='confirmed_direction_origin')
+    endpoint=cast(TrendReference,dict(endpoint,state='developing',display_only=True,trend_level=trend_level,
+                  development_role='active_endpoint'))
+    path=[origin,endpoint] if prior_direction else [
+        dict(_ref(start),state='confirmed',display_only=True,trend_level=trend_level,
+             development_role='formal_start'),origin,endpoint]
+    counter_sources=source_points if qualified_source_points is None else qualified_source_points
+    countertrend=_countertrend_cycle(counter_sources,endpoint,bars,cutoff)
+    for source_position,point in enumerate(source_points):
+        if (countertrend is None or point['index']<=endpoint['index'] or point['index']>cutoff
+                or point['available_at']>session_date(bars[cutoff])
+                or point.get('state') in ('seed','developing')):
+            continue
+        previous=path[-1]
+        if point['kind']==previous['kind'] or (point['value']<=previous['value'] if point['kind']=='H'
+                                             else point['value']>=previous['value']):
+            continue
+        pending=dict(_ref(point),available_at=max(countertrend['available_at'],point['available_at']),
+                     state='developing',display_only=True,trend_level=trend_level,
+                     **{position_field:source_position},source_label=point['label'],
+                     development_role='pending_evidence',edge_state='developing')
+        path.append(pending)
+    return dict(id=f'{kind}-developing-{source["id"]}',source_path=source['id'],kind=f'{kind}-developing',
+                trend_level=trend_level,source_level=source_level,state='confirmed',display_only=True,
+                confirmation_policy='two_routes_v106',
+                initial_direction=start['wave_direction_after'],wave_direction=confirmation['direction'],
+                available_at=known,endpoint_state='developing',confirmation=confirmation,
+                confirmed_endpoint=endpoint,confirmation_rule=confirmation['confirmation_rule'],nested_turn_count=0,
+                pending_point_count=len(path)-(1 if prior_direction else 2),points=path,
+                **({'countertrend_confirmation':countertrend} if countertrend is not None else {}))

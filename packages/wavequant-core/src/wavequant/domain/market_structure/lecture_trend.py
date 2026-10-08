@@ -325,7 +325,7 @@ def reversal_trends(drawing, bars):
     from zoneinfo import ZoneInfo
     dates={(b.timestamp.astimezone(ZoneInfo('Asia/Shanghai')) if b.timestamp.tzinfo else b.timestamp).date().isoformat():i
            for i,b in enumerate(bars)}
-    result=[]; source_strokes=[]; local_count=0
+    result=[]; source_strokes=[]; local_count=0; candidate_strokes=[]; source_kinds={}
     for stroke in drawing['strokes']:
         raw=stroke['points']; counts=Counter(p['time'] for p in raw)
         ranks: Counter[str] = Counter()
@@ -352,15 +352,33 @@ def reversal_trends(drawing, bars):
             if high or low:
                 turns.append({**p, 'kind':'H' if high else 'L', 'source_kind':p['kind'], 'state':'reversal',
                               'source_state':p['state']})
+                source_kinds[(stroke['id'],p['index'],p['ordinal'])]='H' if high else 'L'
         local_count+=len(turns)
         waves=_wave_reversals(turns)
         if waves:
             result.append(dict(id=f'reversal-{stroke["id"]}',source_path=stroke['id'],kind='reversal',points=waves,
                                input_turn_count=len(turns)))
-    result=_connect_reversal_strokes(result,source_strokes)
+    # Continuity is candidate evidence. Qualifying each fragment first would
+    # lose a known pressure anchor or the whole-wave low across its boundary.
+    candidates=_connect_reversal_strokes(result,source_strokes)
+    result=[]
+    from .trend_publication import publish_uptrends
+    for stroke in candidates:
+        ancestors=set(stroke['source_paths'])
+        source_points=sorted((dict(point,kind=source_kinds.get((source['id'],point['index'],point['ordinal']),point['kind']))
+                              for source in source_strokes if source['id'] in ancestors
+                              for point in source['points']),key=_point_order)
+        positions={_point_order(point):position for position,point in enumerate(source_points)}
+        points=[dict(point,source_turn_position=positions[_point_order(point)]) for point in stroke['points']]
+        _annotate(points,bars[0].symbol,dates)
+        candidate_strokes.append(dict(stroke,points=points))
+        published=publish_uptrends(points,source_points,bars,source_level=0)
+        if published:
+            result.append(dict(stroke,points=published,confirmation_policy='two_routes_v106'))
     for stroke in result:
         _annotate(stroke['points'],bars[0].symbol,dates)
-    return dict(strokes=result,trend_level=1,name='一级趋势线',scope='lecture_wave_structure_not_strategy_confirmation',
+    return dict(strokes=result,candidate_strokes=candidate_strokes,structure_strokes=candidate_strokes,
+                trend_level=1,name='一级趋势线',scope='lecture_wave_structure_not_strategy_confirmation',
                 bear_to_bull_highs=bear_to_bull_highs(result,trend_level=1),
                 bear_bull_alternation_lows=bear_bull_alternation_lows(result,trend_level=1,bars=bars),
                 post_alternation_bull_highs=post_alternation_bull_highs(result,trend_level=1,bars=bars),
@@ -368,6 +386,7 @@ def reversal_trends(drawing, bars):
                 aggregation_rule='ordered_HH_then_HL_or_LL_then_LH_switch_with_confirmed_cross_path_extremes',input_turn_count=local_count,
                 confirmed_wave_count=sum(len(s['points']) for s in result),
                 break_basis='confirmed_polyline_extreme',retracement_threshold=.67,
-                note='一级方向转换须先创新高再确认后续抬高低点，或先创新低再确认后续降低高点；'
+                note='一级上涨与二、三级使用相同两路线：本级末跌高严格突破，或基础折线末跌高突破、空多交替、后续收盘转多；'
+                     '有序高低点转换只生成内部结构候选，不单独授予上涨权限；'
                      '不能用推进前的旧回档确认新推进，确认前仍跟踪整段极值；相邻分段以真实已确认原折线极值正式衔接，'
                      '并作为二级输入；未完成波段不画实线。')

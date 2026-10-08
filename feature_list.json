@@ -4,6 +4,64 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-301",
+            "name": "global-trend-confirmation-routes",
+            "title": "各级趋势确认统一两条因果路线",
+            "description": "各级上涨只有本级末跌高突破，或下级末跌高突破、空多交替、转多完整顺序才能确认，修复襄阳2018年提前绘制二级趋势。",
+            "scope": "Core一二三级正式与发展趋势、共享策略回放及Web规则证据",
+            "dependencies": ["MONOREPO-300"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "一二三级复用相同两路线，严格突破本级已知末跌高可直接确认",
+                "下级路线完整经过突破、已确认空多交替、转多，缺少或顺序错误时不升级",
+                "襄阳2018-10-19至2018-11-23不提前绘制二级上涨；2022年有效本级突破保留",
+                "正式节点、虚线、图表和策略使用因果证据，不借未来点、等值或未知键",
+                "定向回归与前缀缓存一致，版本更新使旧回测失效，状态和进度记录实际验证"
+            ],
+            "verification": [
+                {
+                    "command": "pytest trend_confirmation_boundaries/global_trend_confirmation/global_trend_confirmation_real/trend_confirmation_entry_refresh/hierarchical_entry/lecture_trend/secondary_trend/tertiary_trend/hierarchical_confirmation/secondary_pullback_entry -q",
+                    "status": "passed",
+                    "summary": "最终153项及47子用例通过；原候选结构只保留下降压力/更高层归并，公开上涨须本级已知末跌高严格突破或下级突破、部分交替、后续收盘转多。2018错误二级实线与虚线消失，2019完整证书与2022直接升级5.76→6.67保留。日期/整数、同日序号、未知键、等值、破位、跨分段与两路线先后竞争均覆盖。"
+                },
+                {
+                    "command": "pytest tests/test_hierarchical_countertrend.py -q",
+                    "status": "passed",
+                    "summary": "最终47项通过，含2025-05-15到2026-04-08的每个实际交易日前缀；三级原上涨证书03-11保持，无无依据反向虚线；上下方向完整源级循环与缺知日/防守破位反例覆盖。"
+                },
+                {
+                    "command": "pytest tests/test_secondary_pullback_strategy.py -q; pytest confirmed_decline_history + chart cache/hierarchical_entry/bottom_n_targets/a_wave group -q",
+                    "status": "passed",
+                    "summary": "最终真实8项及下降边界/缓存邻接53项通过。初次8项有1项N资格失败：上涨发布过滤误删测幅需要的已确认下降边界；修复为独立DeclineStart通道，未修改旧真实断言或放宽生产门禁。6月2日高点在6月9日确认可知，六月20真实底部N恢复7.16/8.53；部分末棒和缓存请求开关不借未来。七月19参考5.45、防守4.81、目标6.67，默认净RR账户filled；逐日缓存、全后缀、RR提高/preflight/关闭通道保持。"
+                },
+                {
+                    "command": "pytest secondary_resistance/source_resistance_audit/confirmed_descent_pressure/trend_confirmation_entry_refresh/chart_entry_history/chart_entry_history_cache -q",
+                    "status": "passed",
+                    "summary": "46项真实压力/边界/缓存测试通过，含25个新增来源、方向、可知日、未知价格与真实乐心几何前缀。Jan14二级下降压力18.642107088自Apr17可用，July2不买；Aug4旧买入仅依赖未突破二级末跌高、95.4%深B且未后续收盘转多的未确认二级背景，按新规则排除，独立July24底部N目标15.742/17.402及Aug4普通A测幅保留。先锋May25冻结Feb2压力5.99，June9收盘6.94解除抵抗6.66，但没有有效N目标来源，仍由no_live_structural_risk_reward拒绝；真正main e3c26c7完整策略运行已有相同三条拒绝，修正陈旧必买断言。压力解除与买入许可独立，未放宽风险或借用其他N目标。 原相邻6文件组实际48通过/1旧Aug4断言失败，已修正并由本组完整复验通过；48项覆盖2025-03-07收复、叠箱观察、实际账户、原二吐抵抗、来源/A生命周期及增量前缀。已解决失败只保留历史说明，不标记成当前未决失败；未把原49项命令写为全部通过。"
+                },
+                {
+                    "command": "Node --test lecture-overlay/level-one-wave-endpoint/structural-c-wave/secondary-reclaim-evidence; topology-data Vitest",
+                    "status": "passed",
+                    "summary": "46项Node和17项拓扑通过。两条确认链统一说明，直接升级H同时保留incoming完整源级证书；9个真实快照327点、67条源级证书无遗漏/误过滤。前端不补无证书几何，93源指纹d33e82b12e904a1efcc63466d359c5cde6cac3ba05dd74a237fa7ad6c6445b44，全局V106触发既有策略缓存及自选刷新。"
+                },
+                {
+                    "command": "Core gate strict mypy 2; changed sources mypy 9; added/changed tests mypy; Core strict 4; API strict 11; Web typecheck/lint",
+                    "status": "passed",
+                    "summary": "全部通过，Web最终0错误6条既有环境变量warning。源指纹更新引入的CRLF格式错误已修复复验；无新增依赖、无Python格式或lint工具。因果截止仅跳过不可能胜过既有证明的后知候选，第一个合法源证书早退仍取与本级证书最早结果；12个竞争/破位/非单调反例及300棒完整SystemResult精确比对、真实回归保持。"
+                },
+                {
+                    "command": "Core build --no-isolation and wheel bytes; exact source Web snapshot Webpack production build; Harness/diff/feature-preservation review",
+                    "status": "passed",
+                    "summary": "Core sdist/wheel通过，11个新/改生产模块与wheel换行归一字节一致；Web精确源码生产构建通过。既有features全部逐字段恢复，256原活动状态和失败记录完整保留；复核后按流程提交、同步main并no-ff本地合并，不自动推送。"
+                },
+                {
+                    "command": "Complete Core/Web suites, real browser/Playwright, external-minute and all-stock account comparisons",
+                    "status": "not-run",
+                    "summary": "按用户开发节奏未运行完整套件或浏览器；实际日线账户、增量前缀和关键历史已验证。外部分钟及其他股票全账户差异待独立验证，256已有未完成项保留。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-300",
             "name": "secondary-direct-upgrade-deep-reclaim",
             "title": "二级突破直接升级与深回调收复",

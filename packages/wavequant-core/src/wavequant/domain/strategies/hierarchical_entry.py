@@ -5,32 +5,68 @@ reduced independently; an endpoint seen only later is never traded earlier.
 The first alternation needs a higher low, not a 2/3 retracement threshold.
 """
 from dataclasses import dataclass, asdict
+from typing import TypedDict, cast
 
+from ..market_structure.bottom_n_targets import DeclineStart
 from ..market_structure.lecture_drawing import lecture_drawing
 from ..market_structure.lecture_trend import _wave_reversals
-from ..market_structure.secondary_trend import _structural_reversals
+from ..market_structure.secondary_trend import _candidate_structural_reversals
+from ..market_structure.trend_publication import publish_uptrends
+
+
+class _DrawingPoint(TypedDict):
+    index: int
+    ordinal: int
+    kind: str
+    value: float
+    state: str
+    available_at: object
+
+
+class _HistoryPoint(TypedDict):
+    index: int
+    ordinal: int
+    kind: str
+    value: float
+    available_at: int
+    label: str
 
 
 def _identity(p):
     return p['index'], p['ordinal'], p['kind'], p['value']
 
 
-def hierarchical_history(bars, *, prefix_cache=None):
-    """Reuse the drawing reducers, but freeze availability on each daily prefix."""
-    history = {}; epochs = {}; previous = {0: {}, 1: {}, 2: {}, 3: {}}
+def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tuple[DeclineStart, ...]] | None = None):
+    """Freeze candidate knowledge separately from qualified trading history.
+
+    A confirmed descending pressure or low stays available to the next
+    structural reducer even when its following rise has not qualified. Only
+    the shared direction gate publishes points to trading contexts. A separate
+    dated decline channel preserves confirmed high boundaries for measurement.
+    """
+    history = {}; epochs = {}
+    decline_history: dict[int, tuple[DeclineStart, ...]] = {}
+    if decline_sink is not None:
+        decline_sink.clear()
+    previous: dict[int, dict[tuple[int, int, str, float], int]] = {0: {}, 1: {}, 2: {}, 3: {}}
     last_epoch = None
     last = len(bars) - 1
-    prefix_key = tuple(bars[:-1])
+    cache_version = 'daily_trend_confirmation_declines_v1'
+    wants_declines = decline_sink is not None
+    prefix_key = (cache_version, tuple(bars[:-1]), wants_declines)
     cached_key = prefix_cache.get('key') if prefix_cache is not None else None
     resume_start = (last if cached_key == prefix_key else
-                    last - 1 if cached_key == tuple(bars[:-2]) else 0)
+                    last - 1 if cached_key == (cache_version, tuple(bars[:-2]), wants_declines) else 0)
     if resume_start:
-        saved_history, saved_epochs, saved_previous, last_epoch = prefix_cache['checkpoint']
+        saved_history, saved_epochs, saved_previous, last_epoch, saved_declines = prefix_cache['checkpoint']
         # Each dated level consists of freshly built dictionaries that become
         # read-only after publication. Only the outer maps grow on replay.
         history, epochs, previous = (
             saved_history.copy(), saved_epochs.copy(),
             {level: known.copy() for level, known in saved_previous.items()})
+        decline_history = saved_declines.copy()
+        if decline_sink is not None:
+            decline_sink.update(decline_history)
 
     def accept(i, epoch, raw):
         nonlocal previous, last_epoch
@@ -39,7 +75,7 @@ def hierarchical_history(bars, *, prefix_cache=None):
         if epoch != last_epoch:
             previous = {0: {}, 1: {}, 2: {}, 3: {}}
         last_epoch = epoch; epochs[i] = epoch
-        compact = []
+        compact: list[_DrawingPoint] = []
         for p in raw:
             if not compact or p['value'] != compact[-1]['value']:
                 compact.append(p)
@@ -53,7 +89,7 @@ def hierarchical_history(bars, *, prefix_cache=None):
                 turns.append(dict(p, kind=kind))
 
         def freeze(points, level):
-            frozen = []
+            frozen: list[_HistoryPoint] = []
             now = {}
             for p in points:
                 key = _identity(p)
@@ -62,25 +98,34 @@ def hierarchical_history(bars, *, prefix_cache=None):
                 if frozen:
                     known = max(known, frozen[-1]['available_at'])
                 q = dict(p, available_at=known, label=f'{p["kind"]}{len(frozen)+1}')
-                now[key] = known; frozen.append(q)
+                now[key] = known; frozen.append(cast(_HistoryPoint, q))
             previous[level] = now
             return frozen
 
         turns = freeze(turns, 0)
         levels = {}; source = turns
+        prefix = bars[:i+1]
         for level in (1, 2, 3):
-            reduced = _wave_reversals(source) if level == 1 else _structural_reversals(source, source_level=level-1)
+            reduced = (_wave_reversals(source) if level == 1 else
+                       _candidate_structural_reversals(source, source_level=level-1))
             # The reducer's confirmation trigger may occur after the extreme itself.
             reduced = [dict(p, available_index=p['available_at']) for p in reduced]
-            source = freeze(reduced, level)
+            candidate_source = freeze(reduced, level)
+            if level == 1 and decline_sink is not None:
+                decline_history[i] = tuple(DeclineStart(point['index'], point['available_at'])
+                                           for point in candidate_source if point['kind'] == 'H'
+                                           and point.get('wave_direction_after') == 'down')
+                decline_sink[i] = decline_history[i]
+            published = publish_uptrends(candidate_source, source, prefix, source_level=level-1)
             levels[level] = tuple(dict(index=p['index'], ordinal=p['ordinal'], kind=p['kind'],
-                                      value=p['value'], available_at=p['available_at']) for p in source)
+                                      value=p['value'], available_at=p['available_at']) for p in published)
+            source = candidate_source
         history[i] = levels
         if prefix_cache is not None and resume_start != last and i == last - 1:
             prefix_cache['key'] = prefix_key
             prefix_cache['checkpoint'] = (
                 history.copy(), epochs.copy(),
-                {level: known.copy() for level, known in previous.items()}, last_epoch)
+                {level: known.copy() for level, known in previous.items()}, last_epoch, decline_history.copy())
 
     lecture_drawing(bars, on_step=accept)
     return history, epochs
@@ -161,6 +206,7 @@ class _LevelState:
             if previous and p['kind'] == ('H' if self.direction == 'up' else 'L'):
                 self.anchor, self.key = p, previous
             return
+        assert self.anchor is not None
         if self.direction == 'up':
             if p['kind'] == 'H' and p['value'] > self.anchor['value']:
                 self.anchor, self.key = p, previous

@@ -3,13 +3,14 @@ import unittest
 
 from wavequant.domain.models.model import Bar
 from wavequant.domain.market_structure.lecture_trend import (
+    _WaveTurn,
     _annotate,
     _connect_reversal_strokes,
     _wave_reversals,
     reversal_trends,
 )
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
-from wavequant.domain.market_structure.secondary_trend import secondary_trends
+from wavequant.domain.market_structure.secondary_trend import _candidate_structural_reversals, secondary_trends
 
 
 def fixture(values):
@@ -97,7 +98,8 @@ class LectureTrendTests(unittest.TestCase):
 
     def test_wave_line_spans_many_small_turns(self):
         values=[30,20,28,18,26,16,24,17,27,19,29,21,31,23,30,22,28,20,26,18,24,19,27,21]
-        turns=[dict(index=i,ordinal=0,value=v,kind='H' if i%2==0 else 'L',time=str(i),available_at=str(i+1)) for i,v in enumerate(values)]
+        turns: list[_WaveTurn]=[dict(index=i,ordinal=0,value=v,kind='H' if i%2==0 else 'L',
+                                    time=str(i),available_at=str(i+1)) for i,v in enumerate(values)]
         result=_wave_reversals(turns)
         self.assertEqual([(p['kind'],p['value'],p['index']) for p in result],[('L',16,5),('H',31,12),('L',18,19)])
         # The holding turn must follow the new counter-impulse, not precede it.
@@ -110,7 +112,8 @@ class LectureTrendTests(unittest.TestCase):
 
     def test_mixed_or_equal_structure_does_not_trigger_wave_reversal(self):
         values=[10,20,12,22,11,24,11,24]
-        turns=[dict(index=i,ordinal=0,value=v,kind='L' if i%2==0 else 'H',time=str(i),available_at=str(i+1)) for i,v in enumerate(values)]
+        turns: list[_WaveTurn]=[dict(index=i,ordinal=0,value=v,kind='L' if i%2==0 else 'H',
+                                    time=str(i),available_at=str(i+1)) for i,v in enumerate(values)]
         self.assertEqual(_wave_reversals(turns),[])
 
     def test_derivation_does_not_mutate_base_polyline(self):
@@ -130,8 +133,8 @@ class LectureTrendTests(unittest.TestCase):
         self.assertTrue(all(point['value']>point['broken_key']['value']
                             for point in result['bear_to_bull_highs']))
 
-    def test_cross_path_base_extreme_becomes_formal_level_one_and_secondary_input(self):
-        """A displayed H-L-H bridge must not disappear at the next trend level."""
+    def test_cross_path_base_extreme_enters_secondary_candidates_but_requires_trend_permission(self):
+        """Continuity evidence preserves source geometry without granting an upward trend."""
         bars=[Bar(datetime(2026,1,1)+timedelta(days=i),'TEST',8,9,6,8,100) for i in range(16)]
 
         def point(index,kind,value,state='reversal'):
@@ -159,7 +162,21 @@ class LectureTrendTests(unittest.TestCase):
         dates={bar.timestamp.date().isoformat():i for i,bar in enumerate(bars)}
         _annotate(merged[0]['points'],'TEST',dates)
         level2=secondary_trends(dict(strokes=merged),bars)
-        self.assertEqual([p['value'] for p in level2['strokes'][0]['points']],[6.32,7.52,6.34])
+        candidates=_candidate_structural_reversals(merged[0]['points'])
+        self.assertEqual([p['value'] for p in candidates],[6.32,7.52,6.34])
+        actual=level2['candidate_strokes'][0]['points']
+        self.assertEqual(len(actual),len(candidates))
+        stable=['index','ordinal','time','kind','value','available_at','source_level1_position',
+                'confirmed_on_level1','source_level1_available_at','confirmation_rule','flip']
+        references=['index','ordinal','time','kind','value','available_at']
+        for published,candidate in zip(actual,candidates):
+            self.assertEqual({field:published[field] for field in stable},
+                             {field:candidate[field] for field in stable})
+            for proof in ['broken_key','confirmed_by']:
+                self.assertEqual({field:published[proof][field] for field in references},
+                                 {field:candidate[proof][field] for field in references})
+        self.assertEqual([p['value'] for p in level2['strokes'][0]['points']],[7.52])
+        self.assertEqual(level2['developing_strokes'],[])
 
 
 if __name__=='__main__':unittest.main()

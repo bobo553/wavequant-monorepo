@@ -1,8 +1,9 @@
 """Replay entry contexts through the same causal hierarchy used by charts."""
 
 from dataclasses import asdict, replace
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
+from math import isfinite
 from typing import cast
 
 from ..market_structure.lecture_drawing import lecture_drawing
@@ -11,6 +12,115 @@ from ..market_structure.secondary_trend import secondary_trends, _bar_date
 from ..market_structure.tertiary_trend import tertiary_trends
 from ..models.model import Bar
 from .hierarchical_entry import EntryContext
+
+
+_CONFIRMATION_CACHE_VERSION = "daily_trend_confirmation_descent_pressure_v2"
+
+
+def _confirmed_descent_pressures(
+    level: Mapping[str, object], dates: Mapping[str, int], asof_index: int,
+) -> list[dict[str, object]]:
+    """Retain confirmed downward pressures without publishing an upward trend.
+
+    A higher-level rise can fail its publication gate while its following
+    downward reversal is still a confirmed structural fact. Only that level's
+    dated descent highs are eligible; raw lower-level highs are not pressures.
+    """
+    paths = level.get("structure_strokes", level.get("strokes", ()))
+    if not isinstance(paths, (list, tuple)):
+        return []
+    pressures: list[dict[str, object]] = []
+    for raw_path in paths:
+        if not isinstance(raw_path, Mapping):
+            continue
+        path = cast(Mapping[str, object], raw_path)
+        if path.get("display_only"):
+            continue
+        vertices = path.get("points")
+        if not isinstance(vertices, (list, tuple)):
+            continue
+        for raw_point in vertices:
+            if not isinstance(raw_point, Mapping):
+                continue
+            point = cast(Mapping[str, object], raw_point)
+            if (point.get("kind") != "H" or point.get("wave_direction_after") != "down"
+                    or point.get("state") not in ("confirmed", "reversal", "teaching")
+                    or point.get("display_only")):
+                continue
+            if point.get("trend_level", 2) != 2:
+                continue
+            index, value, known = point.get("index"), point.get("value"), point.get("available_at")
+            if type(index) is not int or not 0 <= index <= asof_index:
+                continue
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or not isfinite(value) or value <= 0:
+                continue
+            known_index = dates.get(known) if isinstance(known, str) else known if type(known) is int else None
+            if known_index is None or not index <= known_index <= asof_index:
+                continue
+            pressure: dict[str, object] = dict(index=index, value=value, source="confirmed_descent",
+                                               available_at=known, known_index=known_index)
+            for field in ("confirmation_rule", "broken_key", "confirmed_by"):
+                if field in point:
+                    pressure[field] = point[field]
+            pressures.append(pressure)
+    return pressures
+
+
+def _has_confirmation_price_cross(
+    raw: Sequence[object], levels: Sequence[tuple[Mapping[str, object], Mapping[str, object]]],
+    previous: Bar, current: Bar, asof: str, asof_index: int,
+) -> bool:
+    """Refresh price certificates even when no confirmed source vertex changed.
+
+    A live candle may complete a source close re-cross or a same-level extreme
+    break. Candidate skeletons retain pressures absent from public strokes;
+    raw points also retain pressures from the base level. Unknown evidence and
+    developing endpoints never manufacture a refresh threshold.
+    """
+    points: list[object] = list(raw)
+    for pair in levels:
+        for level in pair:
+            for field in ("strokes", "candidate_strokes"):
+                paths = level.get(field)
+                if not isinstance(paths, (list, tuple)):
+                    continue
+                for raw_path in paths:
+                    if not isinstance(raw_path, Mapping):
+                        continue
+                    path = cast(Mapping[str, object], raw_path)
+                    vertices = path.get("points")
+                    if isinstance(vertices, (list, tuple)):
+                        points.extend(vertices)
+    for raw_point in points:
+        if not isinstance(raw_point, Mapping):
+            continue
+        point = cast(Mapping[str, object], raw_point)
+        if point.get("state") in ("seed", "developing") or point.get("display_only"):
+            continue
+        value, known = point.get("value"), point.get("available_at")
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            continue
+        if isinstance(known, str):
+            if known > asof:
+                continue
+            newly_known = known == asof
+            newly_eligible = known == _bar_date(previous)
+        elif type(known) is int:
+            if known > asof_index:
+                continue
+            newly_known = known == asof_index
+            newly_eligible = known == asof_index - 1
+        else:
+            continue
+        if newly_known or newly_eligible:
+            return True
+        if point.get("kind") == "H" and (previous.high <= value < current.high
+                                         or previous.close <= value < current.close):
+            return True
+        if point.get("kind") == "L" and (previous.low >= value > current.low
+                                         or previous.close >= value > current.close):
+            return True
+    return False
 
 
 def _copy_replay_state(state):
@@ -72,6 +182,7 @@ def chart_entry_history(
         shallow_candidate_sink is not None,
         combined_candidate_sink is not None,
         secondary_pullback_sink is not None,
+        _CONFIRMATION_CACHE_VERSION,
     )
     cached_key = prefix_cache.get("key") if prefix_cache is not None else None
     if cached_key == prefix_key:
@@ -84,6 +195,7 @@ def chart_entry_history(
         and cached_key[2] == (shallow_candidate_sink is not None)
         and cached_key[3] == (combined_candidate_sink is not None)
         and cached_key[4] == (secondary_pullback_sink is not None)
+        and cached_key[5] == _CONFIRMATION_CACHE_VERSION
     ):
         # Yesterday was unfinished when the prior checkpoint was saved. Replay
         # its final candle, then today's partial candle, from the older state.
@@ -110,7 +222,8 @@ def chart_entry_history(
         if previous_epoch is not None and epoch != previous_epoch and len(previous_raw) > 1:
             closed.append(dict(id=f"lecture-{previous_epoch}", points=previous_raw))
         previous_epoch, previous_raw = epoch, raw
-        # Extending the final developing vertex cannot change a confirmed turn.
+        # Source vertices determine the skeleton; market prices can separately
+        # publish a previously unqualified trend on an otherwise unchanged day.
         current_signature = (
             epoch,
             tuple(
@@ -119,7 +232,10 @@ def chart_entry_history(
                 if p["state"] != "developing"
             ),
         )
-        if current_signature != signature:
+        market_refresh = current_signature == signature and i > 0 and _has_confirmation_price_cross(
+            [*(point for path in closed for point in path["points"]), *raw],
+            levels, bars[i - 1], bars[i], _bar_date(bars[i]), i)
+        if current_signature != signature or market_refresh:
             signature = current_signature
             drawing = dict(strokes=[*closed, *([dict(id=f"lecture-{epoch}", points=raw)] if len(raw) > 1 else [])])
             prefix = bars[: i + 1]
@@ -135,6 +251,7 @@ def chart_entry_history(
             candidates = [dict(index=p['index'], value=p['value'], source='formal')
                           for stroke in second['strokes'] for p in stroke['points']
                           if p['kind'] == 'H' and p.get('state') != 'developing']
+            candidates += _confirmed_descent_pressures(second, dates, i)
             candidates += [dict(index=a['high']['index'], value=a['high']['value'], source='confirmed_source')
                            for a in squeeze_anchors(second, dates, first) if a['known_index'] <= i]
             key = max(candidates, key=lambda p: (p['index'], p['value']), default=None)
