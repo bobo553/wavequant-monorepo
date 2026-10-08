@@ -58,6 +58,11 @@
                     "command": "Complete Core/Web suites, real browser/Playwright, external-minute and all-stock account comparisons",
                     "status": "not-run",
                     "summary": "按用户开发节奏未运行完整套件或浏览器；实际日线账户、增量前缀和关键历史已验证。外部分钟及其他股票全账户差异待独立验证，256已有未完成项保留。"
+                },
+                {
+                    "command": "Main runtime read-only HTTP: API catalog/backtest-version, Web proxy catalog/research, TDX theory 2018-12-13 and 2022-07-19",
+                    "status": "passed",
+                    "summary": "本地main no-ff合并后恢复原API8765与Web3003，6项HTTP检查通过；lecture_v3加载global V106且引擎f054ee0939cc与main全部Core源码一致，Web代理及research 200。真实TDX前缀无2018-10-19到11-23非法二级上涨，2022-06-24 H6.67严格突破2020-11-20末跌高5.76，2022-07-04已确认可知。只读接口未启动额外账户回测，未使用浏览器。Harness初次因已解决旧失败仍写当前failed状态而拒绝，已改为最终通过记录中的历史说明，随后实际通过；所有旧features与256原失败记录逐字段完整保留。"
                 }
             ]
         },
