@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import datetime, timedelta
+from typing import Literal
 
 import pytest
 
@@ -61,9 +62,47 @@ def test_named_large_goals_do_not_replace_nearest_entry_risk_targets():
     assert named[-1].target_stage == "five_top"
 
 
-def test_equal_close_and_wick_only_above_record_do_not_confirm_stacking():
+def test_a_higher_high_with_equal_close_confirms_stacking_observation_without_a_retroactive_hit():
     events = wave_projection_history(bars_with((21.8, 30, 21, 21.8)), SETUP)
-    assert len(events) == 1
+    assert len(events) == 2
+    assert events[-1].event == "wave_projection_stack"
+    assert events[-1].target == 35.6
+    assert events[-1].reached_target is None
+
+
+@pytest.mark.parametrize("policy,target", [("named_stages", 35.6), ("nearest_box", 26.4)])
+def test_two_t_high_extension_stacks_without_waiting_for_a_record_close(
+    policy: Literal["named_stages", "nearest_box"], target: float,
+) -> None:
+    bars = bars_with((21, 21.7, 20.9, 21.2), (21.2, 22.8, 21.1, 21.6), (21.6, 24, 21.5, 23))
+    bars[6] = replace(bars[6], close=21)
+    assert bars[8].close < bars[6].high < bars[8].high
+    assert bars[8].close > bars[7].close
+    events = wave_projection_history(bars, SETUP, target_policy=policy)
+    stacking = next(event for event in events if event.event == "wave_projection_stack")
+    assert stacking.bar_index == 8
+    assert stacking.target == target
+    for end in range(6, len(bars)):
+        assert wave_projection_history(bars[:end + 1], SETUP, target_policy=policy) == tuple(
+            event for event in events if event.bar_index <= end)
+
+
+@pytest.mark.parametrize("high,extends", [(21.79, False), (21.8, False), (21.8001, True)])
+def test_stacking_high_extension_is_strict_even_when_the_close_is_below_the_old_peak(
+    high: float, extends: bool,
+) -> None:
+    bars = bars_with((21, 21.7, 20.9, 21.2), (21.2, high, 21.1, 21.6))
+    bars[6] = replace(bars[6], close=21)
+    events = wave_projection_history(bars, SETUP)
+    assert any(event.event == "wave_projection_stack" for event in events) is extends
+
+
+def test_a_new_high_with_a_pullback_close_keeps_the_pullback_path():
+    bars = bars_with((21, 21.7, 20.9, 21.2), (21.2, 22.8, 20.9, 21.1))
+    bars[6] = replace(bars[6], close=21)
+    events = wave_projection_history(bars, SETUP)
+    assert events[-1].state == "pullback"
+    assert not any(event.event == "wave_projection_stack" for event in events)
 
 
 def test_confirmation_high_cannot_retroactively_hit_a_new_target():
@@ -128,7 +167,7 @@ def test_chart_n_click_exposes_dated_five_ten_levels_and_pauses_only_the_live_st
 
     def levels(end):
         view = ChartRepository.render_theory(
-            None,
+            object.__new__(ChartRepository),
             bars[: end + 1],
             SystemStrategy(),
             result,
@@ -169,7 +208,7 @@ def test_strong_a_buy_exposes_five_top_before_legacy_push_and_preserves_its_date
 
     def levels(end):
         theory = ChartRepository.render_theory(
-            None, bars[: end + 1], SystemStrategy(), result,
+            object.__new__(ChartRepository), bars[: end + 1], SystemStrategy(), result,
             bars[end].timestamp.date().isoformat(), geometry=dict(tertiary_trends={}),
         )
         n = next(event for event in theory["events"] if event["event"] == "n_completed")
@@ -229,6 +268,7 @@ def test_large_gap_crosses_boxes_in_one_event_without_unbounded_loop():
     events = wave_projection_history(bars_with((22, 1000001, 22, 1000000)), SETUP)
     assert len(events) == 3
     assert events[-1].crossed_boxes == 1  # Only the previously known stage can be hit.
+    assert events[-1].target is not None
     assert events[-1].target > 1000000
 
 

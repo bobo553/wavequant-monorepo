@@ -83,7 +83,9 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'secondary_resistance_reclaim_v103_' + variant
+    config['profile_version'] = 'two_t_high_extension_stacking_v104_' + variant
+    config['definition']['stacking_confirmation'] = 'post_two_t_no_pullback_strict_high_extension_no_record_close'
+    config['definition']['stacking_box'] = 'three_in_one_two_t_minus_origin'
     config['definition']['inside_child_positive_n'] = 'confirmed_lecture_a_before_b_c_bearish_inside_child_non_doji_mother_joint_attack_then_bottom_launch_qualification'
     config['definition']['limitations'] = [
         'explicit_lecture_mother_child_order_is_not_observed_intrabar_path',
