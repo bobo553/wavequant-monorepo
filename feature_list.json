@@ -4,6 +4,59 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-300",
+            "name": "secondary-direct-upgrade-deep-reclaim",
+            "title": "二级突破直接升级与深回调收复",
+            "description": "修正已确认一级高突破此前已知二级末跌高的直接升级，并增加同源深回调后放量实体收复独立入场；真实襄阳2022年历史前缀、缓存与账户验证。",
+            "scope": "Core二级趋势与策略确认、真实前缀/缓存/账户回归、Web证据与版本同步",
+            "dependencies": ["MONOREPO-038", "MONOREPO-097", "MONOREPO-297"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "真实2018起行情定位2020-11-20二级末跌高及2022-06-24上涨高点，突破后不等待无关未来二级转折才能升级",
+                "升级依据及可知日可追溯，触及相等、未突破、未知压力和历史前缀不提前升级",
+                "2022-07-18回调及07-19跳空放量沿实际价量、空多交替、目标和账户门禁核查，不凭股票日期强制买入",
+                "修正结构和买入共用同一因果事实，图表与策略/部分日线缓存保持一致，既有退出及收益风险门禁保留",
+                "相关定向测试、类型、必要构建和状态复核完成，按规则本地合并不自动推送"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_secondary_pullback_strategy.py -q",
+                    "status": "passed",
+                    "summary": "最终同源约束下8项真实2018前缀回归通过，152.55秒；07-19参考5.45/防守4.81/目标6.67，默认净盈亏比账户filled，原价含滑点5.452725。07-18缩量不入；逐日缓存至08-23和完整后缀全部信号及证据一致；提高RR、显式preflight与关闭通道均拒绝。"
+                },
+                {
+                    "command": "pytest secondary/tertiary/hierarchy confirmation+countertrend/landmarks/N/entry+cache/squeeze/xinhua targeted group; final pytest secondary_pullback_entry+secondary_trend+hierarchical_confirmation",
+                    "status": "passed",
+                    "summary": "相邻组113项/40子用例初次通过、1项后续合法正式点的旧断言失败；按实际可知日过滤保留逐字段历史不变，并明确04-02新确认的3.45低点，复跑12项通过。最终3文件47项/43子用例通过；直接升级22项/19子用例、独立观察器13项/24子用例覆盖未知键、相等、深回撤、源未确认、整数/日期、同日序号、跨路径、失效与未来数据反例。"
+                },
+                {
+                    "command": "pytest test_secondary_reclaim_strategy.py test_secondary_reclaim_entry.py test_whole_wave_entry.py test_secondary_resistance.py test_positive_n_reformation.py test_bottom_n_target_pipeline.py -q",
+                    "status": "passed",
+                    "summary": "49项相邻策略回归全部通过，508.66秒；原03-07收复、逆N/目标/防守边界保持，无跳过或豁免。"
+                },
+                {
+                    "command": "Node --test seven related evidence/overlay/structural-C/trade files; topology-data Vitest",
+                    "status": "passed",
+                    "summary": "92项Node与16项拓扑通过。直接升级提示、二级深回调收复中文理由/扫描分类/详情共用引擎证据，不虚构新N或未回补跳空；直接升级A仍沿用已确认来源B计算C投影。91源指纹8be4fad085f1af6be6be281c98b75f3a888498b55bdff608752844cfe1f987ea；V105引擎发布触发已有缓存与自选自动刷新机制。"
+                },
+                {
+                    "command": "Core configured mypy 8 changed source/test files; Core strict 4; observer+tests strict 2; API strict 11; Web typecheck/lint",
+                    "status": "passed",
+                    "summary": "全部通过，Web零错误6旧环境变量warning。初次重复bar_index接入异常、局部变量类型冲突和正在修改first接口时的阶段测试/类型错误均修复后复验；旧层级测试补充非空证明与定长tuple后类型通过。没有Python格式或lint工具、没有新增依赖。"
+                },
+                {
+                    "command": "Core build --no-isolation; wheel module byte checks; exact logic Web snapshot Webpack production build; Harness/diff/feature-preservation audit",
+                    "status": "passed",
+                    "summary": "Core sdist/wheel通过，5变更模块与wheel换行归一字节一致；E盘Web同源码构建通过，16.5秒编译/10.5秒类型/5页。Web源码只存在拓扑换行归一差异及生成next-env，生产静态模块字节一致；Harness与差异检查通过。MONOREPO-256完整原对象恢复，所有既有feature字段保持。"
+                },
+                {
+                    "command": "Complete Core/Web suites, real browser/Playwright and external-minute execution",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏未运行完整套件或浏览器/Playwright；真实日线默认账户与增量前缀已验证，外部分钟和其他股票完整账户差异待独立验证。旧MONOREPO-256全部未完成项/失败证据保留。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-299",
             "name": "target-label-normal-font",
             "title": "目标标签使用常规字重",

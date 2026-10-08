@@ -23,19 +23,20 @@ def _copy_replay_state(state):
     (
         history, events, active, first_seen, retired, closed, previous_epoch,
         previous_raw, signature, landmarks, invalidated, levels,
-        shallow_candidate, resistance_key, anchors_at_attack, prior_shallow, prior_combined,
+        shallow_candidate, resistance_key, anchors_at_attack, prior_shallow, prior_combined, prior_pullback,
     ) = state
     return (
         history.copy(), events.copy(), active.copy(), first_seen.copy(),
         retired.copy(), closed.copy(), previous_epoch, deepcopy(previous_raw),
         signature, landmarks.copy(), invalidated.copy(), levels,
         shallow_candidate, resistance_key, anchors_at_attack.copy(),
-        prior_shallow.copy(), prior_combined.copy(),
+        prior_shallow.copy(), prior_combined.copy(), prior_pullback.copy(),
     )
 
 
 def chart_entry_history(
-    bars: Sequence[Bar], *, audit=(), shallow_candidate_sink=None, combined_candidate_sink=None, prefix_cache=None
+    bars: Sequence[Bar], *, audit=(), shallow_candidate_sink=None, combined_candidate_sink=None,
+    secondary_pullback_sink=None, prefix_cache=None
 ) -> tuple[dict[int, tuple[EntryContext, ...]], list[dict[str, object]]]:
     """Share confirmed landmarks, including cross-path continuity, with trading.
 
@@ -70,6 +71,7 @@ def chart_entry_history(
         frozenset(i for i in attacks if i < last),
         shallow_candidate_sink is not None,
         combined_candidate_sink is not None,
+        secondary_pullback_sink is not None,
     )
     cached_key = prefix_cache.get("key") if prefix_cache is not None else None
     if cached_key == prefix_key:
@@ -81,6 +83,7 @@ def chart_entry_history(
         and cached_key[1] == frozenset(i for i in attacks if i < last - 1)
         and cached_key[2] == (shallow_candidate_sink is not None)
         and cached_key[3] == (combined_candidate_sink is not None)
+        and cached_key[4] == (secondary_pullback_sink is not None)
     ):
         # Yesterday was unfinished when the prior checkpoint was saved. Replay
         # its final candle, then today's partial candle, from the older state.
@@ -91,12 +94,14 @@ def chart_entry_history(
         (
             history, events, active, first_seen, retired, closed, previous_epoch,
             previous_raw, signature, landmarks, invalidated, levels,
-            shallow_candidate, resistance_key, anchors_at_attack, prior_shallow, prior_combined,
+            shallow_candidate, resistance_key, anchors_at_attack, prior_shallow, prior_combined, prior_pullback,
         ) = _copy_replay_state(prefix_cache["checkpoint"])
         if shallow_candidate_sink is not None:
             shallow_candidate_sink.update(prior_shallow)
         if combined_candidate_sink is not None:
             combined_candidate_sink.update(prior_combined)
+        if secondary_pullback_sink is not None:
+            secondary_pullback_sink.update(prior_pullback)
 
     def accept(i, epoch, raw):
         nonlocal previous_epoch, previous_raw, signature, landmarks, active, invalidated, levels, resistance_key, shallow_candidate
@@ -160,6 +165,11 @@ def chart_entry_history(
             combined_candidate_sink[i] = combined_a_contexts_from_geometry(
                 bars, cast(GeometryLevel, drawing), cast(GeometryLevel, first),
                 cast(GeometryLevel, second), cast(GeometryLevel, third), dates, i, audit)
+        if secondary_pullback_sink is not None and levels:
+            from .secondary_pullback_entry import secondary_pullback_candidates
+            drawing = dict(strokes=[*closed, *([dict(id=f"lecture-{epoch}", points=raw)] if len(raw) > 1 else [])])
+            secondary_pullback_sink[i] = secondary_pullback_candidates(
+                bars, drawing, levels[0][0], dates, i, first=levels[0][1])
         current = {}
         for low in landmarks:
             high = low["confirmed_flip_high"]
@@ -222,6 +232,7 @@ def chart_entry_history(
                 shallow_candidate, resistance_key, anchors_at_attack,
                 dict(shallow_candidate_sink or {}),
                 dict(combined_candidate_sink or {}),
+                dict(secondary_pullback_sink or {}),
             ))
 
     lecture_drawing(bars, on_step=accept)

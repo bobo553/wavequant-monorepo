@@ -2,6 +2,34 @@ import { num, pct } from "./labels.js";
 
 /** Consume the engine's dated proof; candle geometry alone never creates a buy. */
 export function secondaryReclaimEvidence(evidence) {
+    const pullback = evidence?.find((entry) => entry.buy_point_type === "secondary_deep_pullback_reclaim");
+    if (pullback) {
+        if (
+            ![
+                pullback.secondary_high,
+                pullback.secondary_pullback_low,
+                pullback.reclaim_ceiling,
+                pullback.confirmation_close,
+                pullback.reclaim_body_fraction,
+                pullback.breakout_volume,
+                pullback.previous_volume,
+                pullback.stop,
+                pullback.target,
+            ].every(Number.isFinite) ||
+            ![
+                pullback.secondary_high_date,
+                pullback.secondary_high_known_date,
+                pullback.secondary_pullback_low_date,
+                pullback.reclaim_ceiling_date,
+            ].every((date) => typeof date === "string" && date)
+        )
+            return ["二级深回调放量收复：引擎已记录该买点，当前结果缺少完整日期、价位或量价依据。"];
+        return [
+            `二级深回调放量收复：${pullback.secondary_high_date} 高点 ${num(pullback.secondary_high, 4)} 突破此前已知二级末跌高，于 ${pullback.secondary_high_known_date} 升级；回调低点 ${pullback.secondary_pullback_low_date} ${num(pullback.secondary_pullback_low, 4)} 守住原起点。`,
+            `${pullback.reclaim_type === "gap" ? "未回补跳空中大阳收复" : "放量阳线实体收复"}：收盘 ${num(pullback.confirmation_close, 4)} > 抵抗阶段高 ${pullback.reclaim_ceiling_date} ${num(pullback.reclaim_ceiling, 4)}；实体/开盘 ${pct(pullback.reclaim_body_fraction)}，成交量 ${num(pullback.breakout_volume, 0)} 股 > 前日 ${num(pullback.previous_volume, 0)} 股。`,
+            `防守 ${num(pullback.stop, 4)}，回测二级 A 高点目标 ${num(pullback.target, 4)}；回调低点由本次收复确认买入资格，正式趋势低点继续按结构确认日显示。`,
+        ];
+    }
     const proof = evidence?.find((entry) => entry.buy_point_type === "secondary_resistance_reclaim");
     if (!proof) return [];
     if (

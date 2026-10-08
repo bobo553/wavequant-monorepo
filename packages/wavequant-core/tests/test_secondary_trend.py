@@ -4,6 +4,7 @@ import unittest
 
 from wavequant.domain.models.model import Bar
 from wavequant.domain.market_structure.secondary_trend import (
+    _level2_high_promotion,
     _structural_reversals,
     last_fall_high_reanchors,
     secondary_trends,
@@ -53,59 +54,174 @@ class SecondaryTrendTests(unittest.TestCase):
         for end in range(len(turns)+1):
             self.assertEqual(_structural_reversals(turns[:end]),[p for p in full if p['confirmed_on_level1']<end])
 
-    def test_breakout_high_promotes_after_shallow_pullback_and_nested_reversal(self):
-        """A new bull leg may formalize its high without first losing its origin low.
+    promotion_base=[20,30,10,20,14,26,18,35,28,45,36,42,30,36,24,31,26]
 
-        The level-1 high at position 17 both confirms the preceding formal
-        level-2 low and exceeds the preceding formal level-2 high (the old
-        level-2 last-fall-high).  Position 18 is the first confirmed pullback:
-        ``(50 - 36) / (50 - 24) = 7 / 13 < 2/3``.  The nested level-1 reducer
-        later confirms position 24 as an informal level-2 low at position 26.
-        Only that final proof may promote position 17 to a formal level-2 high.
-        """
-        values=[20,30,10,20,14,26,18,35,28,45,36,42,30,36,24,31,26,
-                50,36,42,35,40,34,39,33,41,36,43,37,42]
-        _,source=fixture(values); turns=source['strokes'][0]['points']
+    def test_known_level2_key_break_promotes_source_high_without_a_later_low(self):
+        _,source=fixture([*self.promotion_base,50])
+        turns=source['strokes'][0]['points']
+        turns[-1]['confirmed_by']=[dict(turns[-2])]
+        before=copy.deepcopy(turns)
 
-        before=_structural_reversals(turns[:26])
-        confirmed=_structural_reversals(turns[:27])
+        confirmed=_structural_reversals(turns)
 
-        self.assertEqual([(p['kind'],p['value']) for p in before],
-                         [('L',10),('H',45),('L',24)])
         self.assertEqual([(p['kind'],p['value']) for p in confirmed],
                          [('L',10),('H',45),('L',24),('H',50)])
         promoted=confirmed[-1]
         self.assertEqual(promoted['source_level1_position'],17)
-        self.assertEqual(promoted['confirmed_on_level1'],26)
-        self.assertEqual(promoted['available_at'],turns[26]['available_at'])
-        self.assertEqual(promoted['confirmation_rule'],
-                         'level1_old_level2_key_break_alternation_and_nested_reversal')
+        self.assertEqual(promoted['confirmed_on_level1'],17)
+        self.assertEqual(promoted['available_at'],turns[17]['available_at'])
+        self.assertEqual(promoted['source_level1_available_at'],turns[17]['available_at'])
+        self.assertEqual(promoted['confirmation_rule'],'level1_confirmed_high_breaks_known_level2_last_fall_high')
+        self.assertEqual(promoted['flip'],'二级末跌高突破升级')
         self.assertEqual((promoted['broken_key']['kind'],promoted['broken_key']['value']),('H',45))
-        self.assertEqual((promoted['alternation']['point']['kind'],
-                          promoted['alternation']['point']['value']),('L',36))
-        self.assertAlmostEqual(promoted['alternation']['retracement_ratio'],7/13)
-        self.assertEqual((promoted['provisional_reversal']['kind'],
-                          promoted['provisional_reversal']['value']),('L',33))
+        self.assertEqual(promoted['broken_key']['available_at'],turns[14]['available_at'])
+        self.assertEqual((promoted['confirmed_by']['kind'],promoted['confirmed_by']['value']),('H',50))
+        self.assertEqual(promoted['source_confirmation'],turns[17]['confirmed_by'])
+        self.assertNotIn('alternation',promoted)
+        self.assertNotIn('provisional_reversal',promoted)
+        self.assertEqual(turns,before)
+
+    def test_upgrade_survives_missing_deep_and_two_thirds_pullbacks(self):
+        for high,tail in [(50,[]),(50,[30]),(48,[32])]:
+            with self.subTest(high=high,tail=tail):
+                _,source=fixture([*self.promotion_base,high,*tail])
+                points=_structural_reversals(source['strokes'][0]['points'])
+                self.assertEqual([(p['kind'],p['value']) for p in points],
+                                 [('L',10),('H',45),('L',24),('H',high)])
+
+    def test_equal_or_lower_level2_key_is_not_a_direct_upgrade(self):
+        for high in [44,45]:
+            with self.subTest(high=high):
+                _,source=fixture([*self.promotion_base,high])
+                self.assertEqual([(p['kind'],p['value']) for p in _structural_reversals(source['strokes'][0]['points'])],
+                                 [('L',10),('H',45),('L',24)])
+
+    def test_old_formal_key_must_be_known_before_the_source_high_price_date(self):
+        for offset,upgrades in [(-1,True),(0,False),(1,False)]:
+            with self.subTest(offset=offset):
+                _,source=fixture([*self.promotion_base,50])
+                turns=source['strokes'][0]['points']
+                known=(datetime.fromisoformat(turns[-1]['time'])+timedelta(days=offset)).date().isoformat()
+                for point in turns[14:]:
+                    point['available_at']=max(point['available_at'],known)
+                turns[-1]['available_at']=(datetime.fromisoformat(turns[-1]['time'])+timedelta(days=3)).date().isoformat()
+                points=_structural_reversals(turns)
+                self.assertEqual([(p['kind'],p['value']) for p in points],
+                                 [('L',10),('H',45),('L',24)]+([('H',50)] if upgrades else []))
+
+    def test_integer_availability_uses_source_price_index_and_formal_key_proof(self):
+        for known,upgrades in [(16,True),(17,False),(18,False)]:
+            with self.subTest(known=known):
+                _,source=fixture([*self.promotion_base,50])
+                turns=source['strokes'][0]['points']
+                for point in turns:
+                    point['available_at']=max(point['index']+1,known if point['index']>=14 else 0)
+                turns[-1]['available_at']=20
+                points=_structural_reversals(turns)
+                self.assertEqual([(p['kind'],p['value']) for p in points],
+                                 [('L',10),('H',45),('L',24)]+([('H',50)] if upgrades else []))
+
+    def test_seed_or_developing_source_high_cannot_upgrade(self):
+        for state in ['seed','developing']:
+            with self.subTest(state=state):
+                _,source=fixture([*self.promotion_base,50])
+                source['strokes'][0]['points'][-1]['state']=state
+                self.assertNotIn(('H',50),[(p['kind'],p['value']) for p in
+                                          _structural_reversals(source['strokes'][0]['points'])])
+
+    def test_direct_upgrade_waits_for_causal_next_low_and_continues_reducing(self):
+        _,source=fixture([*self.promotion_base,50,36,42,35,40,34,39,33,51])
+        turns=source['strokes'][0]['points']
+        before=_structural_reversals(turns[:18])
+        one_low=_structural_reversals(turns[:19])
         full=_structural_reversals(turns)
+
+        self.assertEqual(before,one_low)
+        self.assertEqual([(p['kind'],p['value']) for p in full],
+                         [('L',10),('H',45),('L',24),('H',50),('L',33),('H',51)])
+        self.assertEqual(full[-2]['available_at'],turns[25]['available_at'])
+        self.assertEqual(full[-1]['available_at'],turns[25]['available_at'])
         for end in range(len(turns)+1):
             self.assertEqual(_structural_reversals(turns[:end]),
                              [p for p in full if p['confirmed_on_level1']<end])
 
-    def test_alternation_promotion_rejects_missing_key_break_and_two_thirds_boundary(self):
-        """Both the old level-2 key break and strict retracement gate are required."""
-        base=[20,30,10,20,14,26,18,35,28,45,36,42,30,36,24,31,26]
-        tail=[42,35,40,34,39,33,41,36,43,37,42]
+    def test_earlier_impulse_high_waits_for_later_formal_low_publication(self):
+        for indexed in [False,True]:
+            with self.subTest(indexed=indexed):
+                _,source=fixture([*self.promotion_base,50,36,42,35,40])
+                turns=source['strokes'][0]['points']
+                if indexed:
+                    for point in turns:
+                        point['available_at']=point['index']+1
+                formal=_structural_reversals(turns[:17])
+                old_key=formal[-1]
+                base=dict(turns[14],available_at=turns[21]['available_at'],trend_level=2)
+                before=copy.deepcopy(turns)
 
-        # 44 confirms the prior L24 through its level-1 key, but it remains below
-        # the old formal level-2 high 45 and therefore cannot use this route.
-        _,source=fixture([*base,44,34,*tail[1:]])
-        self.assertEqual([(p['kind'],p['value']) for p in _structural_reversals(source['strokes'][0]['points'])],
-                         [('L',10),('H',45),('L',24)])
+                for end in range(18,len(turns)+1):
+                    upgraded=_level2_high_promotion(turns[:end],base,17,old_key,21)
+                    if end<=21:
+                        self.assertIsNone(upgraded)
+                    else:
+                        self.assertIsNotNone(upgraded)
+                        assert upgraded is not None
+                        self.assertEqual(upgraded['available_at'],base['available_at'])
+                        self.assertEqual(upgraded['source_level1_available_at'],turns[17]['available_at'])
+                        self.assertEqual(upgraded['confirmed_on_level1'],21)
+                        self.assertEqual(upgraded['source_level1_position'],17)
+                self.assertEqual(turns,before)
 
-        # Equality at 2/3 is not a valid scene pullback; the rule is strict.
-        _,source=fixture([*base,48,32,*tail[1:]])
-        self.assertEqual([(p['kind'],p['value']) for p in _structural_reversals(source['strokes'][0]['points'])],
-                         [('L',10),('H',45),('L',24)])
+    def test_waiting_low_requires_a_later_coordinate_and_strictly_lower_price(self):
+        for index,ordinal,value in [(16,0,36),(17,0,36),(18,0,50),(18,0,51)]:
+            with self.subTest(index=index,ordinal=ordinal,value=value):
+                _,source=fixture([*self.promotion_base,50,36,51])
+                turns=source['strokes'][0]['points']
+                turns[18].update(index=index,ordinal=ordinal,value=value)
+
+                points=_structural_reversals(turns)
+
+                self.assertEqual([(p['kind'],p['value']) for p in points],
+                                 [('L',10),('H',45),('L',24),('H',50)])
+
+    def test_waiting_low_accepts_a_later_ordinal_on_the_same_price_session(self):
+        _,source=fixture([*self.promotion_base,50,36,51])
+        turns=source['strokes'][0]['points']
+        turns[18].update(index=17,ordinal=1,time=turns[17]['time'])
+
+        points=_structural_reversals(turns)
+
+        self.assertEqual([(p['kind'],p['value']) for p in points],
+                         [('L',10),('H',45),('L',24),('H',50),('L',36),('H',51)])
+        self.assertEqual((points[-2]['index'],points[-2]['ordinal']),(17,1))
+
+    def test_later_confirmed_high_can_upgrade_after_the_low_was_already_formal(self):
+        _,source=fixture([*self.promotion_base,38,30,50])
+        turns=source['strokes'][0]['points']
+
+        before=_structural_reversals(turns[:19])
+        after=_structural_reversals(turns)
+
+        self.assertEqual([(p['kind'],p['value']) for p in before],[('L',10),('H',45),('L',24)])
+        self.assertEqual([(p['kind'],p['value']) for p in after],
+                         [('L',10),('H',45),('L',24),('H',50)])
+        self.assertEqual(after[-1]['confirmed_on_level1'],19)
+        self.assertEqual(after[-1]['broken_key']['value'],45)
+        self.assertEqual(after[-1]['available_at'],turns[-1]['available_at'])
+
+    def test_ordinary_key_break_still_confirms_a_later_lower_high(self):
+        _,source=fixture([*self.promotion_base,50,36,42,35,40,34,39,33,41,36,43,37,42,32])
+        points=_structural_reversals(source['strokes'][0]['points'])
+
+        self.assertEqual([(p['kind'],p['value']) for p in points],
+                         [('L',10),('H',45),('L',24),('H',50),('L',33),('H',43)])
+        self.assertEqual(points[-1]['confirmation_rule'],'level1_structural_key_break')
+        self.assertEqual(points[-1]['broken_key']['value'],36)
+
+    def test_direct_upgrade_does_not_apply_to_level2_source_points(self):
+        _,source=fixture([*self.promotion_base,50,36,42,35])
+        points=_structural_reversals(source['strokes'][0]['points'],source_level=2)
+        self.assertEqual([(p['kind'],p['value']) for p in points],[('L',10),('H',45),('L',24)])
+        self.assertTrue(all(p['confirmation_rule']=='level2_structural_key_break' for p in points))
 
     def test_developing_path_keeps_confirmed_points_immutable_and_exposes_long_tail(self):
         """A wide frozen key must not hide confirmed level-1 development."""

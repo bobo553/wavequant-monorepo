@@ -825,6 +825,26 @@ test("promoted secondary high explains old key, scene pullback, and provisional 
     assert.match(item.description, /不倒填/);
 });
 
+test("direct secondary upgrade explains its own known key without a future pullback", () => {
+    const overlay = new LectureOverlay({ dataset: {} });
+    const point = {
+        time: "2022-06-24",
+        value: 6.67,
+        kind: "H",
+        label: "H3",
+        available_at: "2022-07-04",
+        flip: "二级末跌高突破升级",
+        confirmation_rule: "level1_confirmed_high_breaks_known_level2_last_fall_high",
+        broken_key: { time: "2020-11-20", value: 5.76 },
+        confirmed_by: { time: "2022-06-24", value: 6.67 },
+        levels: [],
+    };
+    overlay.strokes = [{ id: "secondary-direct", kind: "secondary", points: [point] }];
+    const item = overlay.annotation("drawing:secondary-direct:0");
+    assert.match(item.description, /2022-06-24.*6\.67.*此前已知.*2020-11-20.*5\.76.*2022-07-04.*直接升级/);
+    assert.doesNotMatch(item.description, /跌破末升低|完成.*场景回撤/);
+});
+
 test("tertiary solid line and annotation use level-two evidence", () => {
     const overlay = new LectureOverlay({ dataset: {} }),
         segments = [],

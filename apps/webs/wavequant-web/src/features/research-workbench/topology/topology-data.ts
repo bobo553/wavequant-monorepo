@@ -25,6 +25,39 @@ export interface ITopologyFlow {
  */
 export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
     {
+        id: "secondary-pullback",
+        label: "二级深回调收复",
+        description: "V3 独立通道：二级高直接升级后，深回调放量收复抵抗；保留结构可知日与账户筛选。",
+        mode: "gates",
+        completion: "同一二级 A 只生成一次 LONG，再由账户判断成交",
+        gates: [
+            {
+                id: "secondary-direct-upgrade",
+                question: "已确认一级高严格突破此前已知二级末跌高？",
+                detail: "旧正式二级高在一级高价格日之前已知，一级高已确认且严格越线才直接升级；升级可知日不得早于来源高和二级起点的确认日。不等待未来回撤或嵌套低点，相等、未知或发展中端点不升级。",
+                source: "secondary_trend.py · _level2_high_promotion",
+                yes: "发布正式二级 A，独立观察后续回调",
+                no: "继续已有趋势确认",
+            },
+            {
+                id: "secondary-deep-observed-b",
+                question: "A 后深回调低守住起点且抵抗折点已知？",
+                detail: "仅消费前日已知的直接升级 A；回撤至少 2/3 且不足整波，基础折线 H→L 已确认、H 在低点价格日之前已知，L 为 A 后实际最低。新高结束旧 A，原起点破位撤销；观察低点不提前升为正式二级低，也不伪造新正 N。",
+                source: "secondary_pullback_entry.py · secondary_pullback_candidates",
+                yes: "冻结低点及抵抗依据",
+                no: "等待新的已知回调证据",
+            },
+            {
+                id: "secondary-deep-reclaim",
+                question: "守低、放量强阳收复并通过全局与账户风险？",
+                detail: "本日量严格大于正数前日量，收盘严格超过冻结折线高至前日全部反弹高；实体严格大于开盘 2%且至少振幅 50%，或未回补跳空中大阳至少 3%和60%。以前日实际低防守、回测 A 高为最近结构目标；二吐、五顶十满、未解除二级压力、倒 N 与费用后盈亏比等门禁仍执行。此前无量越线不算买点，首次合格放量收复独立确认。",
+                source: "secondary_pullback_entry.py；integrated_strategy.py；backtest.py",
+                yes: "二级深回调放量收复 LONG，再评估 BUY",
+                no: "记录拒因，继续观察",
+            },
+        ],
+    },
+    {
         id: "structure",
         label: "① 结构与候选",
         description: "常规 N 买点只使用截至当前交易日已确认的结构；V3 浅回撤横盘突破与组合 A 回调突破另走独立通道。",
@@ -579,6 +612,7 @@ export const topologyFlows: readonly [ITopologyFlow, ...ITopologyFlow[]] = [
 ] as const;
 
 export const topologyProfileNotes = [
+    "V3 v105：已确认一级高严格突破其价格日之前已知的二级末跌高，直接升级二级高，不等待未来回撤或嵌套。后续深回调至少 2/3 且未破原起点，前日已确认基础抵抗高和实际低；放量强阳收复抵抗阶段高，独立确认买点。观察低点不提前升级正式二级低、不伪造正 N 或未回补跳空。实际 B 防守、A 高目标，保留二吐、五顶十满、倒 N、费用后盈亏比和成交门禁。",
     "V3 v104：二吐到达后未拉回、后续最高价严格创新高即进入叠箱观察，不等待收盘创高；相等不算延伸，已形成拉回继续走 B 再攻路径，原点破位仍失效。三合一整箱为底部到二吐的 3H，再叠一箱五顶为二吐加 3H；最近入场小箱目标继续单独筛选。新发布目标当日只用收盘判断触及，不倒用同根最高价。9 或 13 细浪仅为可能的延伸推演，不借未来浪数确认；叠箱观察仍须通过放量、抵抗、目标与账户门禁才可买入。",
     "V3 v103：已知二级高点突破当笔或次笔出现空头抵抗，固定两笔抵抗高点；后续放量且阳线实体严格超过开盘 2%、收盘严格收复抵抗高点，或未回补跳空中大阳收复，增加独立买点。原起点保持，实际回调低点作防守，使用最近未触及的已知结构/N/已确认投影目标，同一次突破只买一次；旧正 N 的交替资格不追溯补认，全局风险门禁继续执行。",
     "同一 K 线的独立正 N 按来源 ID 分开标识并使用不同颜色，一饱、二吐、五顶、十满目标与目标文字、正 N 顶底和结构连线均沿用对应来源色；买点携带的目标也按来源 ID 匹配。同价目标不去重、不串色；悬停、选择、缩放与事件排序不换色，已失效来源不显示但保留其色位，回放不读取未来来源。",
@@ -599,4 +633,4 @@ export const topologyProfileNotes = [
 ] as const;
 
 /** 策略源码指纹；策略或证据逻辑变更时，复核路径后在此更新。 */
-export const strategySourceDigest = "c5ed981012ae5fa3633a2f759d46baee95f1f721658d2ac680535d761f928450";
+export const strategySourceDigest = "8be4fad085f1af6be6be281c98b75f3a888498b55bdff608752844cfe1f987ea";

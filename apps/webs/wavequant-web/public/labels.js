@@ -29,6 +29,7 @@ export const labels = {
     long_transition_evidence: "多头趋势链条证据",
     combined_a_pullback_breakout: "组合A回调放量突破",
     secondary_resistance_reclaim: "二级突破抵抗放量收复",
+    secondary_deep_pullback_reclaim: "二级深回调放量收复",
     secondary_reclaim_breakout_observed: "二级高点突破观察",
     secondary_reclaim_resistance_observed: "二级突破空头抵抗",
     secondary_reclaim_candidate: "二级抵抗收复候选",

@@ -19,7 +19,7 @@ from wavequant.domain.models.model import Bar
 def setup(rising=True):
     values = [(9, 10, 8, 9), (7, 8, 6, 7), (8, 9, 7, 8), (9, 10, 8, 9), (9, 11, 8, 9)]
     if not rising:
-        values = [tuple(20 - value for value in (op, lo, hi, cl)) for op, hi, lo, cl in values]
+        values = [(20 - op, 20 - lo, 20 - hi, 20 - cl) for op, hi, lo, cl in values]
     bars = [Bar(datetime(2025, 1, 1) + timedelta(days=index), 'TEST', *row, 100)
             for index, row in enumerate(values)]
     points = [dict(index=index, ordinal=0, time=bars[index].timestamp.date().isoformat(), kind=kind, value=value,
@@ -35,6 +35,7 @@ def test_strict_market_break_confirms_without_close_and_equal_price_does_not(ris
     before = copy.deepcopy(points)
     assert market_trend_confirmation(points, points[0], 0, bars, 3) is None
     result = market_trend_confirmation(points, points[0], 0, bars, 4)
+    assert result is not None
     assert result['confirmation']['available_at'] == '2025-01-05'
     assert result['confirmation']['direction'] == ('up' if rising else 'down')
     assert result['confirmation']['confirmed_by']['value'] == (11 if rising else 9)
@@ -57,7 +58,9 @@ def test_unknown_key_or_origin_never_backdates_confirmation(field):
     points[0 if field == 'key' else 1]['available_at'] = '2025-01-06'
     assert market_trend_confirmation(points, points[0], 0, bars, 4) is None
     bars.append(Bar(datetime(2025, 1, 6), 'TEST', 10, 12, 9, 11, 100))
-    assert market_trend_confirmation(points, points[0], 0, bars, 5)['confirmation']['available_at'] == '2025-01-06'
+    result = market_trend_confirmation(points, points[0], 0, bars, 5)
+    assert result is not None
+    assert result['confirmation']['available_at'] == '2025-01-06'
 
 
 def test_path_boundary_and_prefix_proof_with_extending_endpoint():
@@ -66,6 +69,7 @@ def test_path_boundary_and_prefix_proof_with_extending_endpoint():
     bars.extend([Bar(datetime(2025, 1, 6), 'TEST', 11, 13, 9, 12, 100),
                  Bar(datetime(2025, 1, 7), 'TEST', 11, 13, 9, 12, 100)])
     extended = market_trend_confirmation(points, points[0], 0, bars, 6)
+    assert first is not None and extended is not None
     assert extended['confirmation'] == first['confirmation']
     assert extended['endpoint']['time'] == '2025-01-06'
     assert extended['endpoint']['value'] == 13
@@ -97,11 +101,18 @@ def test_xiangyang_first_break_and_may_endpoint_use_real_full_daily_history():
     assert first['confirmation'] == last['confirmation']
     assert last['confirmation']['available_at'] == '2025-03-11'
     assert last['confirmation']['broken_key']['value'] == 10.66
+    # The direct secondary upgrade makes this origin formal earlier; the
+    # developing path starts there instead of repeating the preceding key.
     assert [(point['time'], point['value']) for point in last['points']] == [
-        ('2022-08-02', 10.66), ('2024-07-25', 3.45), ('2025-05-15', 19.63)]
+        ('2024-07-25', 3.45), ('2025-05-15', 19.63)]
     assert last['endpoint_state'] == last['points'][-1]['state'] == 'developing'
     assert [stroke['points'] for stroke in results['2025-03-11']['strokes']] == [
-        stroke['points'] for stroke in results['2025-05-15']['strokes']]
+        [point for point in stroke['points'] if point['available_at'] <= '2025-03-11']
+        for stroke in results['2025-05-15']['strokes']]
+    later = [point for stroke in results['2025-05-15']['strokes'] for point in stroke['points']
+             if point['available_at'] > '2025-03-11']
+    assert [(point['time'], point['value'], point['available_at']) for point in later] == [
+        ('2024-07-25', 3.45, '2025-04-02')]
     assert all(point['time'] != '2025-05-15' for stroke in results['2025-05-15']['strokes'] for point in stroke['points'])
 
 
