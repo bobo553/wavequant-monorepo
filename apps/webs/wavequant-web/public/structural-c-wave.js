@@ -21,9 +21,15 @@ export function structuralCWaveProjections(bars, theory) {
                 continue;
             const a = parent.points.find(
                 (point) =>
-                    point.flip === "翻多为空" &&
                     knownWavePoint(point, "H", asof, byTime) &&
-                    knownWavePoint(point.confirmed_by, "L", asof, byTime) &&
+                    ((point.flip === "翻多为空" && knownWavePoint(point.confirmed_by, "L", asof, byTime)) ||
+                        (point.confirmation_rule === "level1_confirmed_high_breaks_known_level2_last_fall_high" &&
+                            knownWavePoint(point.confirmed_by, "H", asof, byTime) &&
+                            point.confirmed_by.time === point.time &&
+                            point.confirmed_by.value === point.value &&
+                            knownWavePoint(point.broken_key, "H", asof, byTime) &&
+                            point.broken_key.available_at < point.time &&
+                            point.value > point.broken_key.value)) &&
                     point.time === origin.confirmed_by?.time &&
                     point.value === origin.confirmed_by?.value &&
                     point.preceding_turn?.time === origin.time &&

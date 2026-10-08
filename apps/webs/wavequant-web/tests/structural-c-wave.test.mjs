@@ -19,6 +19,18 @@ const observe = (asof = fixture.asof, data = bars, theory = fixture.theory) =>
     find(waveCProjectionsFromStructure(data, { ...theory, asof }));
 const parentPoints = (theory) => theory.secondary_trends.strokes.flatMap((stroke) => stroke.points);
 
+test("directly upgraded parent A keeps confirmed B projection and rejects an unknown key", () => {
+    const theory = structuredClone(fixture.theory);
+    const high = parentPoints(theory).find((point) => point.time === "2024-03-25");
+    high.flip = "二级末跌高突破升级";
+    high.confirmation_rule = "level1_confirmed_high_breaks_known_level2_last_fall_high";
+    high.confirmed_by = { ...high, confirmed_by: undefined };
+    high.broken_key = { kind: "H", time: bars[0].time, value: bars[0].high, available_at: bars[0].time };
+    assert.deepEqual(observe(fixture.asof, bars, theory), observe());
+    high.broken_key.available_at = high.time;
+    assert.equal(find(structuralCWaveProjections(bars, theory)), undefined);
+});
+
 test("genuine Xinhua parent A retains February 8 separately from the internal March 5 N", () => {
     const before = structuredClone(fixture);
     const projection = observe();

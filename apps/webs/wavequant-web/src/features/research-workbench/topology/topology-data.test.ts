@@ -52,6 +52,14 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("separates causal direct promotion from the independent deep B reclaim", () => {
+        const flow = topologyFlows.find((item) => item.id === "secondary-pullback");
+        expect(flow?.gates).toHaveLength(3);
+        expect(flow?.gates[0]?.detail).toMatch(/价格日之前已知.*可知日.*不得早于.*不等待未来/);
+        expect(flow?.gates[1]?.detail).toMatch(/前日已知.*至少 2\/3.*基础折线.*不提前升.*不伪造新正 N/);
+        expect(flow?.gates[2]?.detail).toMatch(/量严格大于.*2%.*50%.*费用后盈亏比.*无量越线/);
+        expect(topologyProfileNotes.find((note) => note.includes("V3 v105"))).toMatch(/实际 B 防守、A 高目标/);
+    });
     it("documents high extension and the whole three-in-one stacking box without granting an automatic buy", () => {
         const note = topologyProfileNotes.find((text) => text.includes("V3 v104"));
         expect(note).toMatch(/二吐.*未拉回.*最高价严格创新高.*不等待收盘创高/);

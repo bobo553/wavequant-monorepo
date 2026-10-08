@@ -22,6 +22,7 @@ from .hierarchical_entry import EntryContext
 from .shallow_base_breakout import ShallowAlternationCandidate
 from .combined_a_entry import CombinedAContext, combined_a_entry_history
 from .secondary_reclaim_entry import SecondaryHigh, secondary_reclaim_history
+from .secondary_pullback_entry import SecondaryPullbackCandidate, secondary_pullback_history
 from .attack_quality import v3_positive_n_attack_rejection
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
@@ -65,6 +66,7 @@ class SystemStrategy:
     shallow_base_breakout_enabled: bool = True
     combined_a_entry_enabled: bool = False
     secondary_reclaim_entry_enabled: bool = False
+    secondary_pullback_entry_enabled: bool = False
     ten_full_breakout_window: int = 23
     ten_full_retracement_ratio: float = 2/3
     ten_full_retracement_anchor: RetracementAnchor = 'origin'
@@ -100,6 +102,8 @@ class SystemStrategy:
             raise ValueError('combined A entry switch must be boolean')
         if type(self.secondary_reclaim_entry_enabled) is not bool:
             raise ValueError('secondary reclaim entry switch must be boolean')
+        if type(self.secondary_pullback_entry_enabled) is not bool:
+            raise ValueError('secondary pullback entry switch must be boolean')
         if type(self.ten_full_breakout_window) is not int or self.ten_full_breakout_window <= 0:
             raise ValueError('ten-full breakout window must be a positive integer')
         if (type(self.ten_full_retracement_ratio) not in (float, int)
@@ -655,6 +659,9 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
     shallow_base_proofs: dict[int, dict[str, object]] = {}
     combined_a_proofs: dict[int, dict[str, object]] = {}
     secondary_reclaim_proofs: dict[int, dict[str, object]] = {}
+    secondary_pullback_proofs: dict[int, dict[str, object]] = {}
+    secondary_pullback_snapshots: dict[int, tuple[SecondaryPullbackCandidate, ...]] | None = (
+        {} if whole_wave and config.secondary_pullback_entry_enabled else None)
     combined_candidate_snapshots: dict[int, tuple[CombinedAContext, ...]] | None = (
         {} if whole_wave and config.combined_a_entry_enabled else None)
     shallow_candidate_snapshots: dict[int, ShallowAlternationCandidate | None] | None = (
@@ -671,6 +678,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             hierarchy_permissions, hierarchy_events = chart_entry_history(
                 bars, audit=audit, shallow_candidate_sink=shallow_candidate_snapshots,
                 combined_candidate_sink=combined_candidate_snapshots,
+                secondary_pullback_sink=secondary_pullback_snapshots,
                 prefix_cache=chart_history_cache.setdefault('chart', {}) if chart_history_cache is not None else None)
             assert secondary_levels is not None
             secondary_resistance = secondary_resistance_history(
@@ -699,6 +707,12 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             j, kind = cast(int, row.pop('bar_index')), cast(str, row.pop('event'))
             log(j, kind, **row); counts[kind] += 1
     multilevel_proofs = {}
+    if secondary_pullback_snapshots is not None:
+        pullback_events, secondary_pullback_proofs = secondary_pullback_history(bars, secondary_pullback_snapshots)
+        for event in pullback_events:
+            row = dict(event)
+            j, kind = cast(int, row.pop('bar_index')), cast(str, row.pop('event'))
+            log(j, kind, **row); counts[kind] += 1
     if combined_candidate_snapshots is not None:
         combined_events, combined_a_proofs = combined_a_entry_history(bars, combined_candidate_snapshots)
         for event in combined_events:
@@ -900,6 +914,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             counts['turn_confirmed'] += 1
     signals = []
     emitted_secondary_reclaims: set[int] = set()
+    emitted_secondary_pullbacks: set[tuple[int, int]] = set()
     exit_structure_cache = (
         chart_history_cache.setdefault('exit_structure', {}) if chart_history_cache is not None else None)
     current_selections: dict[tuple, tuple[dict[str, Any] | None, str]] = {}
@@ -1360,6 +1375,40 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     log(i, 'long_signal', channel='combined_a_pullback_breakout', volume_pass=True,
                         stop=combined_stop, target=combined_target, rvol=combined_rvol)
                     log(i, 'long_transition_evidence', **combined)
+        pullback = secondary_pullback_proofs.get(i)
+        if pullback is not None:
+            pullback = {key: value for key, value in pullback.items() if key != 'bar_index'}
+            pullback_identity = cast(int, pullback['origin_index']), cast(int, pullback['flip_high_index'])
+            if (pullback_identity not in emitted_secondary_pullbacks
+                    and not any(s.bar_index == i and s.side == 'LONG' for s in signals)):
+                pullback_rejection = target_risk or five_top_entry_risk
+                pressure = secondary_resistance.get(i)
+                if (pullback_rejection is None and pressure is not None
+                        and not pressure.get('secondary_resistance_resolved')
+                        and bar.close <= pressure['secondary_resistance_high']):
+                    pullback_rejection = dict(reason='secondary_breakout_resistance_unresolved', **pressure)
+                if pullback_rejection is None:
+                    from .inverse_reentry import inverse_reentry_rejection
+                    pullback_rejection = inverse_reentry_rejection(bars, now=i, attack=i, inverse=inverse_reentry,
+                        gap=pullback['reclaim_type'] == 'gap')
+                if pullback_rejection is not None:
+                    log(i, 'entry_rejected', candidate_channel='secondary_deep_pullback_reclaim', **pullback_rejection)
+                else:
+                    pullback_rr = cast(float, pullback['gross_reward_risk'])
+                    if config.preflight_reward_risk and pullback_rr < config.minimum_reward_risk:
+                        log(i, 'entry_preflight_rejected', reason='insufficient_close_gross_reward_risk',
+                            candidate_channel='secondary_deep_pullback_reclaim',
+                            required_reward_risk=config.minimum_reward_risk, **pullback)
+                    else:
+                        signals.append(Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close,
+                            cast(float, pullback['stop']), 'system_secondary_deep_pullback_reclaim', bar.timestamp,
+                            cast(float, pullback['counter_ratio']), cast(float, pullback['breakout_volume_multiple']),
+                            '二级深回调放量收复', cast(float, pullback['target']), config.minimum_reward_risk))
+                        emitted_secondary_pullbacks.add(pullback_identity)
+                        counts['buy_point_secondary_deep_pullback_reclaim'] += 1
+                        log(i, 'long_signal', channel='secondary_deep_pullback_reclaim', volume_pass=True,
+                            stop=pullback['stop'], target=pullback['target'], rvol=pullback['breakout_volume_multiple'])
+                        log(i, 'long_transition_evidence', **pullback)
         reclaim = secondary_reclaim_proofs.get(i)
         if (reclaim is not None and cast(int, reclaim['secondary_attack_index']) not in emitted_secondary_reclaims
                 and not any(s.bar_index == i and s.side == 'LONG' for s in signals)):

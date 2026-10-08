@@ -157,9 +157,11 @@ export class BuyPoints {
                 const name = document.createElement("strong");
                 name.textContent = r.name ? `${r.symbol.split(".")[1]} ${r.name}` : symbolName(r.symbol);
                 const status = document.createElement("span");
-                const classification = ["combined_a_pullback_breakout", "secondary_resistance_reclaim"].includes(
-                    r.buy_point_type,
-                )
+                const classification = [
+                    "combined_a_pullback_breakout",
+                    "secondary_resistance_reclaim",
+                    "secondary_deep_pullback_reclaim",
+                ].includes(r.buy_point_type)
                     ? label(r.buy_point_type)
                     : r.buy_point_type
                       ? `${r.priority === 2 ? "第二类 · 重点" : "第一类"} / ${r.trend_level} 级`
