@@ -15,14 +15,15 @@ def test_minute_prefix_reuses_prior_hierarchy_without_changing_current_evidence(
     original = module.reversal_trends
     calls = []
 
-    def counted(drawing, prefix):
+    def counted(drawing, prefix, *, n_target_trend_confirmation_enabled=False):
         calls.append(len(prefix))
-        return original(drawing, prefix)
+        return original(drawing, prefix,
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
 
     monkeypatch.setattr(module, "reversal_trends", counted)
-    cache = {}
+    cache: dict[str, object] = {}
     first = [*bars[:-1], replace(bars[-1], high=bars[-1].high + 0.1)]
-    first_sink = {}
+    first_sink: dict[int, object] = {}
     module.chart_entry_history(first, audit=(), shallow_candidate_sink=first_sink, prefix_cache=cache)
     initial_reductions = len(calls)
     assert initial_reductions > 1
@@ -31,11 +32,11 @@ def test_minute_prefix_reuses_prior_hierarchy_without_changing_current_evidence(
     # cached path must still calculate today's step and agree with full replay.
     second = [*bars[:-1], replace(bars[-1], high=bars[-1].high + 0.5, low=bars[-1].low - 0.2)]
     calls.clear()
-    cached_sink = {}
+    cached_sink: dict[int, object] = {}
     cached = module.chart_entry_history(second, audit=(), shallow_candidate_sink=cached_sink, prefix_cache=cache)
     cached_reductions = len(calls)
     calls.clear()
-    full_sink = {}
+    full_sink: dict[int, object] = {}
     full = module.chart_entry_history(second, audit=(), shallow_candidate_sink=full_sink)
 
     assert cached == full
@@ -46,7 +47,7 @@ def test_minute_prefix_reuses_prior_hierarchy_without_changing_current_evidence(
     # A completed replay must not mutate the checkpoint used by the next
     # intraday observation of the same session.
     third = [*bars[:-1], replace(bars[-1], high=bars[-1].high + 0.7, low=bars[-1].low - 0.3)]
-    third_sink = {}
+    third_sink: dict[int, object] = {}
     assert module.chart_entry_history(third, shallow_candidate_sink=third_sink, prefix_cache=cache) == (
         module.chart_entry_history(third, shallow_candidate_sink={}))
 
@@ -57,12 +58,13 @@ def test_prior_bar_change_invalidates_hierarchy_checkpoint(monkeypatch):
     original = module.reversal_trends
     calls = []
 
-    def counted(drawing, prefix):
+    def counted(drawing, prefix, *, n_target_trend_confirmation_enabled=False):
         calls.append(len(prefix))
-        return original(drawing, prefix)
+        return original(drawing, prefix,
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
 
     monkeypatch.setattr(module, "reversal_trends", counted)
-    cache = {}
+    cache: dict[str, object] = {}
     module.chart_entry_history(bars, prefix_cache=cache)
     baseline = len(calls)
     assert baseline > 1
@@ -86,7 +88,7 @@ def test_hierarchical_reducer_reuses_only_prior_days(monkeypatch):
         return original(points)
 
     monkeypatch.setattr(module, "_wave_reversals", counted)
-    cache = {}
+    cache: dict[str, object] = {}
     first = [*bars[:-1], replace(bars[-1], high=bars[-1].high + 0.1)]
     module.hierarchical_history(first, prefix_cache=cache)
     initial_reductions = len(calls)
@@ -114,7 +116,7 @@ def test_lecture_pivots_reuse_only_prior_days_and_rebuild_episode_limits(monkeyp
         return original(*args, **kwargs)
 
     monkeypatch.setattr(module, "ReversalPoint", counted)
-    cache = {}
+    cache: dict[str, object] = {}
     first = [*bars[:-1], replace(bars[-1], high=bars[-1].high + 0.1)]
     module.lecture_pivot_history(first, prefix_cache=cache)
     initial_points = len(calls)
@@ -132,7 +134,7 @@ def test_lecture_pivots_reuse_only_prior_days_and_rebuild_episode_limits(monkeyp
 
 def test_whole_wave_signal_replay_matches_uncached_prefix(monkeypatch):
     bars = sample()[0][:120]
-    cache = {}
+    cache: dict[str, object] = {}
     first = [*bars[:-1], replace(bars[-1], high=bars[-1].high + 0.1)]
     second = [*bars[:-1], replace(bars[-1], high=bars[-1].high + 0.5, low=bars[-1].low - 0.2)]
     strategy = config()
@@ -208,29 +210,30 @@ def test_hierarchy_checkpoints_advance_one_completed_session(monkeypatch):
     next_session = [*bars[:-1], replace(bars[-1], high=bars[-1].high + 0.2)]
 
     chart = import_module("wavequant.domain.strategies.chart_entry_history")
-    chart_cache = {}
-    prior_sink = {}
+    chart_cache: dict[str, object] = {}
+    prior_sink: dict[int, object] = {}
     chart.chart_entry_history(prior_session, shallow_candidate_sink=prior_sink, prefix_cache=chart_cache)
     chart_calls = []
     original_reversals = chart.reversal_trends
 
-    def counted_reversals(drawing, prefix):
+    def counted_reversals(drawing, prefix, *, n_target_trend_confirmation_enabled=False):
         chart_calls.append(len(prefix))
-        return original_reversals(drawing, prefix)
+        return original_reversals(drawing, prefix,
+                                  n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
 
     monkeypatch.setattr(chart, "reversal_trends", counted_reversals)
-    cached_sink = {}
+    cached_sink: dict[int, object] = {}
     cached_chart = chart.chart_entry_history(next_session, shallow_candidate_sink=cached_sink, prefix_cache=chart_cache)
     cached_reductions = len(chart_calls)
     chart_calls.clear()
-    full_sink = {}
+    full_sink: dict[int, object] = {}
     assert cached_chart == chart.chart_entry_history(next_session, shallow_candidate_sink=full_sink)
     assert cached_sink == full_sink
     assert cached_reductions <= 2
     assert len(chart_calls) > cached_reductions
 
     hierarchy = import_module("wavequant.domain.strategies.hierarchical_entry")
-    hierarchy_cache = {}
+    hierarchy_cache: dict[str, object] = {}
     hierarchy.hierarchical_history(prior_session, prefix_cache=hierarchy_cache)
     original_wave = hierarchy._wave_reversals
     wave_calls = []
@@ -245,7 +248,7 @@ def test_hierarchy_checkpoints_advance_one_completed_session(monkeypatch):
     assert cached_hierarchy == hierarchy.hierarchical_history(next_session)
 
     pivot = import_module("wavequant.domain.strategies.lecture_strategy")
-    pivot_cache = {}
+    pivot_cache: dict[str, object] = {}
     pivot.lecture_pivot_history(prior_session, prefix_cache=pivot_cache)
     cached_pivots = pivot.lecture_pivot_history(next_session, prefix_cache=pivot_cache)
     assert cached_pivots == pivot.lecture_pivot_history(next_session)

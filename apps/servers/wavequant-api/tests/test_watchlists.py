@@ -25,7 +25,29 @@ def configured(enabled: bool = True) -> dict[str, object]:
     return {"enabled": enabled, "context": {"run": "example", "variant": "lecture_v3", "scenario": "base",
             "source": "akshare", "start": "2018-01-01", "volume_filter": "false",
             "net_reward_risk_filter": "false", "shallow_base_breakout_enabled": "true",
+            "n_target_trend_confirmation_enabled": "false",
             "initial_capital": "100000", "max_position_weight": "1"}}
+
+
+def test_n_target_settings_migrate_old_context_and_persist_strict_strings(tmp_path: Path) -> None:
+    store = WatchlistStore(tmp_path / "watchlists.sqlite")
+    legacy = configured()
+    legacy["context"].pop("n_target_trend_confirmation_enabled")
+    # Simulate a document saved before the new setting existed.
+    with store.connect() as connection:
+        payload = json.loads(connection.execute("SELECT payload FROM watchlist_document WHERE id=1").fetchone()[0])
+        payload["settings"] = legacy
+        connection.execute("UPDATE watchlist_document SET payload=? WHERE id=1", (json.dumps(payload),))
+    doc = store.load()
+    assert doc["settings"]["context"]["n_target_trend_confirmation_enabled"] == "false"
+    selected = configured()
+    selected["context"]["n_target_trend_confirmation_enabled"] = "true"
+    store.save(doc["revision"], selected, field="settings")
+    assert WatchlistStore(store.path).load()["settings"]["context"]["n_target_trend_confirmation_enabled"] == "true"
+    for invalid in (True, False, "yes", "True", "1", "", " true "):
+        selected["context"]["n_target_trend_confirmation_enabled"] = invalid
+        with pytest.raises(ValueError):
+            settings(selected)
 
 
 def test_restart_order_settings_and_conflicting_saves(tmp_path: Path) -> None:
@@ -148,6 +170,25 @@ def test_all_groups_dedup_restart_engine_and_market_refresh(tmp_path: Path) -> N
     assert restarted.state()["completed"] == 0
 
 
+def test_n_target_setting_change_rebuilds_background_jobs_with_same_context(tmp_path: Path) -> None:
+    store, state, calls, create = refresh_fixture(tmp_path)
+    refresh = create()
+    refresh.tick()
+    assert calls[0][1]["n_target_trend_confirmation_enabled"] == ["false"]
+    complete(calls[0][2])
+    refresh.tick()
+    complete(calls[1][2])
+    refresh.tick()
+    assert refresh.state()["completed"] == 2
+    selected = configured()
+    selected["context"]["n_target_trend_confirmation_enabled"] = "true"
+    store.save(store.load()["revision"], selected, field="settings")
+    create().tick()
+    assert calls[-1][1]["n_target_trend_confirmation_enabled"] == ["true"]
+    assert state["version"] == "v1"
+    assert len(calls) == 3
+
+
 def test_pause_parameter_change_and_bounded_retry_survive_restart(tmp_path: Path) -> None:
     store, state, calls, create = refresh_fixture(tmp_path)
     refresh = create(); refresh.tick()
@@ -215,7 +256,8 @@ def test_http_persistence_origin_body_conflict_and_read_only_other_routes(tmp_pa
         server.shutdown(); server.server_close(); thread.join(5)
 
 
-def test_real_http_settings_start_background_jobs_after_the_client_disconnects(tmp_path: Path) -> None:
+@pytest.mark.parametrize("n_target_enabled", [False, True])
+def test_real_http_settings_start_background_jobs_after_the_client_disconnects(tmp_path: Path, n_target_enabled: bool) -> None:
     all_started = Event()
     calls = []
     def backtest(*args, **kwargs):
@@ -242,11 +284,15 @@ def test_real_http_settings_start_background_jobs_after_the_client_disconnects(t
             connection.close()
     try:
         document = save({"action": "save", "revision": 0, "snapshot": saved(("sz.000678", "sh.600001"))})
-        save({"action": "settings", "revision": document["revision"], "settings": configured()})
+        selected = configured()
+        selected["context"]["n_target_trend_confirmation_enabled"] = str(n_target_enabled).lower()
+        accepted = save({"action": "settings", "revision": document["revision"], "settings": selected})
+        assert accepted["settings"]["context"]["n_target_trend_confirmation_enabled"] == str(n_target_enabled).lower()
         # No browser task or HTTP backtest call follows the accepted setting.
         assert all_started.wait(8)
         assert [call[0][2] for call in calls] == ["sz.000678", "sh.600001"]
         assert calls[0][1]["volume_filter"] is False
         assert calls[0][1]["initial_capital"] == 100000
+        assert all(call[1]["n_target_trend_confirmation_enabled"] is n_target_enabled for call in calls)
     finally:
         server.shutdown(); server.server_close(); thread.join(5)

@@ -86,7 +86,7 @@ pnpm --filter wavequant-api structures:watch:akshare
 - 算法指纹：`wavequant-core` 全部 Python 源码的内容摘要；
 - 查询口径：运行、策略版本、数据源、股票范围、执行场景、回放日期和回测起点。
 
-因此每日行情更新会产生新快照；部署包含算法或策略配置变更的代码并重启 Worker 后，也会因算法指纹不同主动重建。通达信全市场结果一次性原子发布；AkShare 按股票分片原子发布，市场查询聚合每只股票的最新完成版本，任何中断都不会暴露半份股票结果。结构结果写入 `wavequant_structure_signal_snapshots`，买点结果写入 `wavequant_buy_signal_snapshots`。Redis 分别使用 `signal:structure:v2:*` 与 `signal:buy:v1:*` 命名空间，且始终可以由 SQL 重建。
+因此每日行情更新会产生新快照；部署包含算法或策略配置变更的代码并重启 Worker 后，也会因算法指纹不同主动重建。通达信全市场结果一次性原子发布；AkShare 按股票分片原子发布，市场查询聚合每只股票的最新完成版本，任何中断都不会暴露半份股票结果。结构结果写入 `wavequant_structure_signal_snapshots`，买点结果写入 `wavequant_buy_signal_snapshots`。Redis 分别使用 `signal:structure:v5:*` 与 `signal:buy:v1:*` 命名空间，且始终可以由 SQL 重建。
 
 前端通过只读接口按最近 1/5/20 个交易日过滤同一份 20 日完整快照；结构接口还可按信号类型和趋势级别缩小范围。AkShare 结构查询不接收当前股票作为筛选范围，而是返回服务器已发布覆盖范围内所有匹配股票。若当天或当前算法版本尚无任何完成分片，接口返回带 Worker 操作提示的 `503`，不会悄悄回退到在线计算。
 
@@ -102,6 +102,14 @@ pnpm --filter wavequant-api timeframes:watch
 ```
 
 默认使用 AkShare；可传 `--timeframe-source tdx`。定向补算可重复传入 `--timeframe-symbol`，大目录可通过 `--timeframe-shard-count 4 --timeframe-shard-index 0..3` 分片。一次股票行情读取会派生五个周期；已存在相同数据与算法版本时直接跳过，行情修订或算法升级则发布新快照。
+
+### N 达标趋势选项
+
+理论图表、周期图表、回测、结构扫描与买点扫描共用可选参数 `n_target_trend_confirmation_enabled=true|false`，缺省 `false`；只接受一次、小写的布尔字符串。开启后各级趋势允许已完成正 N / 倒 N 严格超过一饱目标的独立确认路线。自选股 `settings.context` 保存同名字符串，旧设置缺失时补为 `"false"`；参数变化会刷新后台回测。
+
+信号和周期 Worker 每次默认按 `false`、`true` 顺序生成两个隔离读模型，沿用同一股票范围、分片与并发上限。已存在同模式数据和算法指纹的快照会跳过；HTTP 扫描仍只读取已发布的 SQL/Redis 结果。算法版本、图表快照、内存缓存、Redis 与 ETag 均按选项隔离，开启模式不会回退到关闭模式的结果。
+
+定向补算可用 `--n-target-trend-confirmation-enabled true` 或 `false` 只生成指定模式；不附值的该选项等同 `true`。用户策略仍默认关闭，双模式预计算只为切换选项准备读模型。
 
 若采用推荐的 PostgreSQL，在 API 虚拟环境中安装 `postgres` extra，并使用显式 psycopg 3 URL：
 

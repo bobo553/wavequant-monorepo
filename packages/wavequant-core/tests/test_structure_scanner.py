@@ -190,6 +190,8 @@ class StructureScannerTests(unittest.TestCase):
             dict(self.params, lookback=2),
             dict(self.params, source="remote"),
             dict(self.params, path="secret"),
+            dict(self.params, n_target_trend_confirmation_enabled=1),
+            dict(self.params, n_target_trend_confirmation_enabled="false"),
         ):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 self.scanner.start(invalid)
@@ -206,12 +208,12 @@ class StructureScannerTests(unittest.TestCase):
             },
             _path=lambda symbol: SimpleNamespace(stat=lambda: file_stat),
             bars=lambda symbol, asof: bars,
-            theory=lambda symbol, asof: theory(),
+            theory=lambda symbol, asof, n_target_trend_confirmation_enabled=False: theory(),
         )
         repository = SimpleNamespace(
             tdx=tdx,
             _run=lambda run: None,
-            strategy_config=lambda run, variant: {},
+            strategy_config=lambda run, variant, n_target_trend_confirmation_enabled=False: {},
             runs={"test": {"report": {"data": {"end": "2026-01-05"}}}},
         )
         scanner = StructureScanner(repository)
@@ -275,7 +277,8 @@ class StructureScannerTests(unittest.TestCase):
         self.assertEqual(response["snapshot"]["providers"], ["akshare"])
         market_data.catalog.assert_not_called()
         market_data.window.assert_called_once_with("akshare", "sh.600000", "2026-01-05")
-        market_data.theory.assert_called_once_with("akshare", "sh.600000", "2026-01-05")
+        market_data.theory.assert_called_once_with("akshare", "sh.600000", "2026-01-05",
+                                                  n_target_trend_confirmation_enabled=False)
 
 
 if __name__ == "__main__":

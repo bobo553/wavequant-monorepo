@@ -346,16 +346,27 @@ class ChartRepository:
             raise ValueError("no bars available as of selected date")
         return bars
 
-    def strategy_config(self, rid, variant):
+    def strategy_config(self, rid, variant, *, n_target_trend_confirmation_enabled: bool = False):
+        if type(n_target_trend_confirmation_enabled) is not bool:
+            raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         variants = self._json(rid, "research/report.json")["variants"]
         if variant in WAVE_PROFILES:
-            return whole_wave_profile(variants["strict_full"], variant)
-        if variant in (PROFILE_ID, HIERARCHICAL_PROFILE_ID):
+            config = whole_wave_profile(variants["strict_full"], variant)
+        elif variant in (PROFILE_ID, HIERARCHICAL_PROFILE_ID):
             # Only execution scenarios inherit the selected frozen experiment.
-            return (hierarchical_profile if variant == HIERARCHICAL_PROFILE_ID else research_profile)(
+            config = (hierarchical_profile if variant == HIERARCHICAL_PROFILE_ID else research_profile)(
                 variants["strict_full"]
             )
-        return variants[variant]
+        else:
+            config = variants[variant]
+        routes = 'same_level_key_break_or_lower_key_break_alternation_turn'
+        if n_target_trend_confirmation_enabled:
+            routes += '_or_source_n_strict_one_p_target'
+        return dict(config,
+                    strategy=dict(config['strategy'],
+                                  n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled),
+                    definition=dict(config.get('definition', {}), trend_confirmation_routes=routes,
+                                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled))
 
     def backtest_version(self, rid, variant):
         """Identify the loaded engine and selected profile for idle backtest queues."""
@@ -458,25 +469,30 @@ class ChartRepository:
         )
 
     @lru_cache(maxsize=32)
-    def _stock_signals(self, rid, variant, symbol, asof):
+    def _stock_signals(self, rid, variant, symbol, asof, n_target_trend_confirmation_enabled: bool = False):
         bars = self.selection(rid, variant, symbol, asof)
-        strategy = self.strategy_config(rid, variant)["strategy"]
+        strategy = self.strategy_config(rid, variant,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)["strategy"]
         return generate_system_signals(bars, SystemStrategy(**strategy))
 
-    def stock_view(self, rid, variant, symbol, asof, scenario="base"):
+    def stock_view(self, rid, variant, symbol, asof, scenario="base", *,
+                   n_target_trend_confirmation_enabled: bool = False):
+        if type(n_target_trend_confirmation_enabled) is not bool:
+            raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         self.selection(rid, variant, symbol, asof, scenario)
         with self.stock_lock:
-            return self._stock_view(rid, variant, symbol, asof, scenario)
+            return self._stock_view(rid, variant, symbol, asof, scenario, n_target_trend_confirmation_enabled)
 
     @lru_cache(maxsize=64)
-    def _stock_view(self, rid, variant, symbol, asof, scenario):
+    def _stock_view(self, rid, variant, symbol, asof, scenario, n_target_trend_confirmation_enabled: bool = False):
         bars = self.selection(rid, variant, symbol, asof, scenario)
-        config = self.strategy_config(rid, variant)
+        config = self.strategy_config(rid, variant,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         result = single_stock_result(
             bars,
             config["strategy"],
             config["scenarios"][scenario]["execution"],
-            self._stock_signals(rid, variant, symbol, asof),
+            self._stock_signals(rid, variant, symbol, asof, n_target_trend_confirmation_enabled),
         )
         _, curve = metrics_at(result["equity"], result["trades"], result["backtest"]["initial_capital"])
         markers = result_markers(result)
@@ -519,7 +535,8 @@ class ChartRepository:
             comparison="相同资金与风控的独立账户，不是共享组合结果的拆分。",
         )
 
-    def akshare_signal_view(self, rid, variant, symbol, asof, scenario="base", start="1990-01-01"):
+    def akshare_signal_view(self, rid, variant, symbol, asof, scenario="base", start="1990-01-01", *,
+                            n_target_trend_confirmation_enabled: bool = False):
         """Generate signal evidence for one online symbol without simulating fills."""
         self._run(rid)
         if variant not in VARIANTS or scenario not in SCENARIOS:
@@ -534,7 +551,8 @@ class ChartRepository:
         bars = [bar for bar in selection.bars if bar.timestamp.date().isoformat() >= start]
         if not bars:
             raise ValueError("所选起点后没有 AkShare 日线")
-        config = self.strategy_config(rid, variant)
+        config = self.strategy_config(rid, variant,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         generated = generate_system_signals(bars, SystemStrategy(**config["strategy"]))
 
         def serial(value):
@@ -632,16 +650,19 @@ class ChartRepository:
             account_scope="independent_single_stock",
         )
 
-    def theory(self, rid, variant, symbol, asof):
+    def theory(self, rid, variant, symbol, asof, *, n_target_trend_confirmation_enabled: bool = False):
+        if type(n_target_trend_confirmation_enabled) is not bool:
+            raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         self.selection(rid, variant, symbol, asof)
         with self.theory_lock:
-            return self._theory(rid, variant, symbol, asof)
+            return self._theory(rid, variant, symbol, asof, n_target_trend_confirmation_enabled)
 
     @lru_cache(maxsize=24)
-    def _theory(self, rid, variant, symbol, asof):
+    def _theory(self, rid, variant, symbol, asof, n_target_trend_confirmation_enabled: bool = False):
         bars = self.selection(rid, variant, symbol, asof)
-        config = SystemStrategy(**self.strategy_config(rid, variant)["strategy"])
-        result = self._stock_signals(rid, variant, symbol, asof)
+        config = SystemStrategy(**self.strategy_config(rid, variant,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)["strategy"])
+        result = self._stock_signals(rid, variant, symbol, asof, n_target_trend_confirmation_enabled)
         return self.render_theory(bars, config, result, asof)
 
     def tdx_backtest(
@@ -656,6 +677,7 @@ class ChartRepository:
         volume_filter=True,
         net_reward_risk_filter=False,
         shallow_base_breakout_enabled=True,
+        n_target_trend_confirmation_enabled: bool = False,
         initial_capital=100_000,
         max_position_weight=1.0,
         progress=None,
@@ -671,7 +693,8 @@ class ChartRepository:
             raise ValueError("shallow_base_breakout_enabled must be a boolean")
         if self.tdx_backtester is None:
             raise ValueError("通达信目录未配置")
-        config = self.strategy_config(rid, variant)
+        config = self.strategy_config(rid, variant,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         # Never mutate a sealed profile: the effective strategy is the cache key,
         # so checked and unchecked backtests remain independently reproducible.
         strategy = dict(config["strategy"], volume_filter=volume_filter,
@@ -700,7 +723,8 @@ class ChartRepository:
             if theory is None:
                 from .chart_geometry import cached_geometry
 
-                geometry = cached_geometry(cache, bars, view["price_basis"], view["backtest"]["source"]["engine"])
+                geometry = cached_geometry(cache, bars, view["price_basis"], view["backtest"]["source"]["engine"],
+                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
                 theory = self.render_theory(bars, SystemStrategy(**strategy), result, asof, geometry=geometry)
                 self.tdx_backtester._verify(dict(view["backtest"]["source"], symbol=symbol))
                 cache.put("adjusted_theory", key, theory)
@@ -743,6 +767,7 @@ class ChartRepository:
         volume_filter=True,
         net_reward_risk_filter=False,
         shallow_base_breakout_enabled=True,
+        n_target_trend_confirmation_enabled: bool = False,
         initial_capital=100_000,
         max_position_weight=1.0,
         progress=None,
@@ -755,7 +780,8 @@ class ChartRepository:
             raise ValueError('backtest filters must be boolean')
         if self.akshare_backtester is None:
             raise ValueError('AKShare 数据源未配置')
-        profile = self.strategy_config(rid, variant)
+        profile = self.strategy_config(rid, variant,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         strategy = dict(profile['strategy'], volume_filter=volume_filter,
                         shallow_base_breakout_enabled=shallow_base_breakout_enabled)
         execution = dict(
@@ -952,15 +978,22 @@ class ChartRepository:
                 )
         # Only the last few objects are needed for legible chart overlays; all
         # dated event evidence is available in the event panel.
-        if geometry is None:
+        if geometry is None or any(
+            geometry[name].get('n_target_trend_confirmation_enabled', False)
+            != config.n_target_trend_confirmation_enabled
+            for name in ('reversal_trends', 'secondary_trends', 'tertiary_trends') if name in geometry
+        ):
             drawing = lecture_drawing(bars)
-            level1 = reversal_trends(drawing, bars)
-            level2 = secondary_trends(level1, bars)
+            level1 = reversal_trends(drawing, bars,
+                n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
+            level2 = secondary_trends(level1, bars,
+                n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
             geometry = dict(
                 lecture_drawing=drawing,
                 reversal_trends=level1,
                 secondary_trends=level2,
-                tertiary_trends=tertiary_trends(level2, bars),
+                tertiary_trends=tertiary_trends(level2, bars,
+                    n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled),
             )
         from ...domain.market_structure.squeeze_alternation import squeeze_landmarks
         from ...domain.market_structure.alternation_breakout import promote_alternation_segments
@@ -979,7 +1012,8 @@ class ChartRepository:
             if level == 2:
                 # Level 3 must consume the same ordered level-2 geometry shown
                 # on the chart, including newly confirmed local segments.
-                geometry["tertiary_trends"] = tertiary_trends(geometry[name], bars)
+                geometry["tertiary_trends"] = tertiary_trends(geometry[name], bars,
+                    n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
         dates = {day(bar.timestamp.isoformat()): index for index, bar in enumerate(bars)}
         anchors = [
             AbcAnchor(
@@ -1019,6 +1053,7 @@ class ChartRepository:
             computed_from="current_engine_on_selected_prefix",
             engine_sha256=fingerprint(_strategy_source_path()),
             strategy_pivot_mode=config.pivot_mode,
+            n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled,
             **({'n_target_policy': BOTTOM_N_TARGET_POLICY,
                 'a_wave_policy': A_WAVE_POLICY}
                if config.buy_point_definition == 'whole_flip_wave_v3' and config.pivot_mode == 'lecture_causal' else {}),

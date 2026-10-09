@@ -32,6 +32,14 @@ test("structure context ignores the selected stock for every market source", () 
     assert.equal(structureScanContextKey(params), structureScanContextKey({ ...params, symbol: "sh.600519" }));
     const akshare = { ...params, source: "akshare", symbol: "sh.600519" };
     assert.equal(structureScanContextKey(akshare), structureScanContextKey({ ...akshare, symbol: "sz.000651" }));
+    assert.notEqual(
+        structureScanContextKey(params),
+        structureScanContextKey({ ...params, n_target_trend_confirmation_enabled: true }),
+    );
+    assert.equal(
+        structureScanContextKey(params),
+        structureScanContextKey({ ...params, n_target_trend_confirmation_enabled: false }),
+    );
 });
 
 test("structure markets use a stable server cache order", () => {

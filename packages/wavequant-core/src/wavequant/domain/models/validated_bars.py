@@ -8,7 +8,7 @@ from .model import Bar
 @dataclass(frozen=True, init=False)
 class ValidatedBars(Sequence):
     _values: tuple
-    def __init__(self, bars):
+    def __init__(self, bars: Sequence[Bar]) -> None:
         from ..market_state.wave_strength import validate_prefix
         values = tuple(bars)
         # Only frozen model Bars qualify, not mutable duck-typed records.

@@ -42,7 +42,7 @@ def read_names(path):
 class TdxBrowser:
     def __init__(self, root, cache=None):
         from wavequant.interfaces.research_tools.tdx_backtest import TdxBacktester
-        self.root=Path(root).resolve(); self._catalog=None; self._loaded_at=0
+        self.root=Path(root).resolve(); self._catalog=None; self._loaded_at=0.0
         self.artifacts=ArtifactCache(cache or project_path('data', 'cache'))
         self.engine=TdxBacktester._engine_hashes()
 
@@ -109,7 +109,7 @@ class TdxBrowser:
     def _bars(self,symbol,asof,digest):
         rows=read_day(self._path(symbol))
         values=[Bar(datetime.combine(r['date'],datetime.min.time()),symbol,
-                    *(r[k] for k in ('open','high','low','close','volume')),False,False)
+                    r['open'],r['high'],r['low'],r['close'],r['volume'],buyable=False,sellable=False)
                 for r in rows if r['date'].isoformat()<=asof]
         if not values: raise ValueError('该回放日期之前没有日线数据')
         if fingerprint(self._path(symbol))!=digest: raise ValueError('通达信日线正在更新，请稍后重试')
@@ -124,16 +124,19 @@ class TdxBrowser:
                     markers=[],signals=[],orders=[],trades=[],curve=[],metrics=None,
                     evidence='通达信原始不复权日线，仅行情与讲义绘图；未执行回测，除权缺口可能影响形态。')
 
-    def theory(self,symbol,asof):
+    def theory(self,symbol,asof,*,n_target_trend_confirmation_enabled: bool = False):
+        if type(n_target_trend_confirmation_enabled) is not bool:
+            raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         from wavequant.interfaces.research_tools.tdx_backtest import TdxBacktester
         path=self._path(symbol);digest=fingerprint(path)
         engine=TdxBacktester._engine_hashes()
         if engine!=self.engine: raise ValueError('画线代码已变更，请重启服务后重试')
-        key=dict(symbol=symbol,asof=asof,day_sha256=digest,engine=engine,price_basis='raw_unadjusted')
+        key=dict(symbol=symbol,asof=asof,day_sha256=digest,engine=engine,price_basis='raw_unadjusted',
+                 n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         with self.artifacts.lock(self.artifacts.key('raw_theory',key)):
             result=self.artifacts.get('raw_theory',key)
             if result is None:
-                result=self._theory(symbol,asof,digest)
+                result=self._theory(symbol,asof,digest,n_target_trend_confirmation_enabled)
                 if fingerprint(path)!=digest or TdxBacktester._engine_hashes()!=engine:
                     self._theory.cache_clear()
                     raise ValueError('行情或代码正在更新，请重启后重试')
@@ -143,12 +146,15 @@ class TdxBrowser:
             return result
 
     @lru_cache(maxsize=8)
-    def _theory(self,symbol,asof,digest):
+    def _theory(self,symbol,asof,digest,n_target_trend_confirmation_enabled: bool = False):
         bars=self.bars(symbol,asof); drawing=lecture_drawing(bars)
-        first=reversal_trends(drawing,bars);second=secondary_trends(first,bars)
+        first=reversal_trends(drawing,bars,n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        second=secondary_trends(first,bars,n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         return dict(asof=asof,points=[],polyline_segments=[],events=[],shapes=[],counts={},
                     lecture_drawing=drawing,reversal_trends=first,secondary_trends=second,
-                    tertiary_trends=tertiary_trends(second,bars),interrupted=False,
+                    tertiary_trends=tertiary_trends(second,bars,
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled),interrupted=False,
+                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                     computed_from='tdx_raw_prefix_display_only',price_basis='raw_unadjusted')
 
 

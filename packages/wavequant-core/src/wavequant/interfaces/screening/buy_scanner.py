@@ -41,7 +41,7 @@ def buy_match(view,asof,lookback):
         target=signal.get('target_price')
         evidence=[e for e in view.get('audit',[]) if e['timestamp']==when and
                   e['event'] in ('long_signal','long_transition_evidence')]
-        proof=next((e for e in evidence if e['event']=='long_transition_evidence'),{})
+        proof: dict[str,object]=next((e for e in evidence if e['event']=='long_transition_evidence'),{})
         return dict(symbol=view['symbol'],signal_date=day,status=status,regime=signal['regime'],
             reference_price=signal['reference_price'],raw_reference_price=signal['reference_price']/bar['factor'],
             stop=signal['invalidation_price'],target=target,rvol=signal['rvol'],retracement=signal['retracement'],
@@ -66,11 +66,15 @@ class BuyScanner:
 
     def start(self,params):
         expected={'run','variant','scenario','source','asof','start','lookback'}
-        if set(params) not in (expected,expected|{'symbol'}):
+        optional={'symbol','n_target_trend_confirmation_enabled'}
+        if not expected <= set(params) <= expected | optional:
             raise ValueError('invalid screening arguments')
         from wavequant.interfaces.charts.visualization import VARIANTS,SCENARIOS
         if self.engine_hashes()!=self.engine: raise ValueError('策略代码已变更，请重启服务后再扫描')
         p=dict(params);repo=self.repository;repo._run(p['run'])
+        p.setdefault('n_target_trend_confirmation_enabled',False)
+        if type(p['n_target_trend_confirmation_enabled']) is not bool:
+            raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         if p['variant'] not in VARIANTS or p['scenario'] not in SCENARIOS or p['source'] not in ('tdx','snapshot','akshare'):
             raise ValueError('invalid screening source or strategy')
         if (p['source']=='akshare') != ('symbol' in p):
@@ -79,10 +83,11 @@ class BuyScanner:
         for key in ('start','asof'):
             if not isinstance(p[key],str) or date.fromisoformat(p[key]).isoformat()!=p[key]: raise ValueError('invalid date')
         if p['start']>p['asof']: raise ValueError('回测起点不能晚于回放日期')
-        config=repo.strategy_config(p['run'],p['variant'])
+        config=repo.strategy_config(p['run'],p['variant'],
+            n_target_trend_confirmation_enabled=p['n_target_trend_confirmation_enabled'])
         if config['strategy'].get('entry_policy','transitioned_squeeze') not in ('transitioned_squeeze','hierarchical_two_buy_points'):
             raise ValueError('买点筛选仅支持趋势交替后的轧空策略')
-        skipped=Counter();stocks=[];versions={};action_hash=None
+        skipped: Counter[str]=Counter();stocks=[];versions={};action_hash=None
         if p['source']=='tdx':
             if repo.tdx is None: raise ValueError('通达信目录未配置')
             action_path=repo.tdx.root/'T0002/hq_cache/gbbq'
@@ -148,12 +153,14 @@ class BuyScanner:
                             self.jobs[ident]['performance'][field]+=1
                     elif p['source']=='snapshot':
                         end=repo.bars(p['run'])[symbol][-1].timestamp.date().isoformat()
-                        view=repo.stock_view(p['run'],p['variant'],symbol,min(end,p['asof']),p['scenario'])
+                        view=repo.stock_view(p['run'],p['variant'],symbol,min(end,p['asof']),p['scenario'],
+                            n_target_trend_confirmation_enabled=p['n_target_trend_confirmation_enabled'])
                         match,skip=buy_match(view,p['asof'],p['lookback'])
                         gates=funnel(view,p['lookback'])
                     else:
                         view=repo.akshare_signal_view(
-                            p['run'],p['variant'],symbol,p['asof'],p['scenario'],p['start'])
+                            p['run'],p['variant'],symbol,p['asof'],p['scenario'],p['start'],
+                            n_target_trend_confirmation_enabled=p['n_target_trend_confirmation_enabled'])
                         match,skip=buy_match(view,p['asof'],p['lookback'])
                         gates=funnel(view,p['lookback'])
                     with self.lock:

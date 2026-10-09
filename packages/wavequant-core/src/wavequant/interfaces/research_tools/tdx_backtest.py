@@ -215,9 +215,10 @@ class TdxBacktester:
                    generate_system_signals(bars,strategy,
                        progress=lambda percent: progress(35+percent*25//100, '生成信号')))
         # Persist chart geometry during the first scan as well as on chart open.
-        # It is independent of strategy/execution, but never of price basis.
+        # Price basis and the selected trend rule belong to its cache key.
         from wavequant.interfaces.charts.chart_geometry import cached_geometry
-        cached_geometry(self.artifacts,bars,'causal_adjusted_equivalent',inputs['engine'])
+        cached_geometry(self.artifacts,bars,'causal_adjusted_equivalent',inputs['engine'],
+                        n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)
         return bars,generated,all_raw,start
 
     def _view(self,key,inputs,bars,result,sessions,minute_source=None):

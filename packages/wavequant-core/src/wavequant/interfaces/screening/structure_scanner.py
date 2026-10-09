@@ -110,21 +110,30 @@ class StructureScanner:
         self.engine_hashes = TdxBacktester._engine_hashes
         self.engine = self.engine_hashes()
 
-    def algorithm_version(self):
+    def algorithm_version(self, *, n_target_trend_confirmation_enabled: bool = False):
         """Return a stable digest for every Python file affecting Core theory."""
+        if type(n_target_trend_confirmation_enabled) is not bool:
+            raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         if self.engine_hashes() != self.engine:
             raise RuntimeError("结构算法文件已变化，请由进程管理器重启 Worker 后自动重建")
-        encoded = json.dumps(self.engine, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode()
+        encoded = json.dumps(dict(engine=self.engine,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled),
+            ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode()
         return hashlib.sha256(encoded).hexdigest()
 
     def current_akshare(self, params):
         """Filter confirmed landmarks for one cached/on-demand AkShare symbol."""
         expected = {"run", "variant", "source", "symbol", "asof", "lookback", "signal_type", "trend_level"}
-        if set(params) != expected or params.get("source") != "akshare":
+        if set(params) not in (expected, expected | {'n_target_trend_confirmation_enabled'}) or params.get("source") != "akshare":
             raise ValueError("invalid AkShare structure query")
         request = dict(params)
+        request.setdefault('n_target_trend_confirmation_enabled', False)
+        enabled = request['n_target_trend_confirmation_enabled']
+        if type(enabled) is not bool:
+            raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         self.repository._run(request["run"])
-        self.repository.strategy_config(request["run"], request["variant"])
+        self.repository.strategy_config(request["run"], request["variant"],
+            n_target_trend_confirmation_enabled=enabled)
         if type(request["lookback"]) is not int or request["lookback"] not in (1, 5, 20):
             raise ValueError("lookback must be 1, 5 or 20")
         if type(request["trend_level"]) is not int or request["trend_level"] not in (0, 1, 2, 3):
@@ -149,7 +158,8 @@ class StructureScanner:
         selection = self.repository.market_data.window("akshare", request["symbol"], request["asof"])
         bars = list(selection.bars)
         sessions = [bar.timestamp.date().isoformat() for bar in bars]
-        theory = self.repository.market_data.theory("akshare", request["symbol"], request["asof"])
+        theory = self.repository.market_data.theory("akshare", request["symbol"], request["asof"],
+            n_target_trend_confirmation_enabled=enabled)
         results, stale = structure_matches(
             theory,
             sessions,
@@ -183,7 +193,7 @@ class StructureScanner:
                 supplemented_bars=selection.supplemented_bars,
                 computed_at=datetime.now().astimezone().isoformat(),
                 data_version=theory.get("data_version", hashlib.sha256(encoded).hexdigest()),
-                algorithm_version=self.algorithm_version(),
+                algorithm_version=self.algorithm_version(n_target_trend_confirmation_enabled=enabled),
             ),
             notice=(
                 "AkShare 当前股票在线原始不复权结构分析；未进行全市场抓取或交易。"
@@ -209,7 +219,7 @@ class StructureScanner:
         """Freeze the eligible universe and derive its inexpensive source fingerprint."""
         if self.repository.tdx is None:
             raise ValueError("通达信目录未配置")
-        skipped = Counter()
+        skipped: Counter[str] = Counter()
         stocks = []
         versions = {}
         digest = hashlib.sha256()
@@ -241,15 +251,20 @@ class StructureScanner:
 
     def start(self, params):
         expected = {"run", "variant", "source", "asof", "lookback", "signal_type", "trend_level"}
-        if set(params) != expected:
+        if set(params) not in (expected, expected | {'n_target_trend_confirmation_enabled'}):
             raise ValueError("invalid structure screening arguments")
         if self.engine_hashes() != self.engine:
             raise ValueError("画线代码已变更，请重启服务后再搜索")
 
         request = dict(params)
+        request.setdefault('n_target_trend_confirmation_enabled', False)
+        enabled = request['n_target_trend_confirmation_enabled']
+        if type(enabled) is not bool:
+            raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         repository = self.repository
         repository._run(request["run"])
-        repository.strategy_config(request["run"], request["variant"])
+        repository.strategy_config(request["run"], request["variant"],
+            n_target_trend_confirmation_enabled=enabled)
         if request["source"] not in ("tdx", "snapshot"):
             raise ValueError("invalid structure screening source")
         if request["signal_type"] not in {"any", *LANDMARK_FIELDS}:
@@ -261,7 +276,7 @@ class StructureScanner:
         if not isinstance(request["asof"], str) or date.fromisoformat(request["asof"]).isoformat() != request["asof"]:
             raise ValueError("invalid date")
 
-        skipped = Counter()
+        skipped: Counter[str] = Counter()
         stocks = []
         versions = {}
         data_version = None
@@ -306,7 +321,7 @@ class StructureScanner:
                 created_at=datetime.now().astimezone().isoformat(),
                 error=None,
                 performance=dict(elapsed_seconds=0),
-                algorithm_version=self.algorithm_version(),
+                algorithm_version=self.algorithm_version(n_target_trend_confirmation_enabled=enabled),
                 data_version=data_version,
                 notice="只搜索已确认结构地标；发生日不等于确认可用日，结果不构成买卖建议。",
             )
@@ -337,11 +352,13 @@ class StructureScanner:
                         if (stat.st_mtime_ns, stat.st_size) != versions[symbol]:
                             raise RuntimeError("搜索期间日线已更新，请重新搜索")
                         bars = repository.tdx.bars(symbol, params["asof"])
-                        theory = repository.tdx.theory(symbol, params["asof"])
+                        theory = repository.tdx.theory(symbol, params["asof"],
+                            n_target_trend_confirmation_enabled=params['n_target_trend_confirmation_enabled'])
                     else:
                         source_bars = repository.bars(params["run"])[symbol]
                         bars = [bar for bar in source_bars if bar.timestamp.date().isoformat() <= params["asof"]]
-                        theory = repository.theory(params["run"], params["variant"], symbol, params["asof"])
+                        theory = repository.theory(params["run"], params["variant"], symbol, params["asof"],
+                            n_target_trend_confirmation_enabled=params['n_target_trend_confirmation_enabled'])
                     sessions = [bar.timestamp.date().isoformat() for bar in bars]
                     matches, stale = structure_matches(
                         theory,

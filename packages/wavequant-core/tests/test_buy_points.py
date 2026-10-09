@@ -67,7 +67,7 @@ class ScannerTests(unittest.TestCase):
             bars=lambda r:{s:[SimpleNamespace(timestamp=datetime(2026,1,6))] for s in ('sh.600000','sh.600001')},
             runs={'test':{'report':{'data':{'end':'2026-01-06'}}}},stock_view=Mock(return_value=view()))
         self.scanner=BuyScanner(self.repo)
-        self.repo.strategy_config=lambda *args:self.repo._json()['variants']['strict_full']
+        self.repo.strategy_config=lambda *args,n_target_trend_confirmation_enabled=False:self.repo._json()['variants']['strict_full']
         self.params=dict(run='test',variant='strict_full',scenario='base',source='snapshot',
             asof='2026-01-06',start='2020-01-01',lookback=1)
 
@@ -87,7 +87,7 @@ class ScannerTests(unittest.TestCase):
 
     def test_match_published_while_next_stock_is_still_blocked(self):
         entered=Event();release=Event()
-        def stock(*args):
+        def stock(*args,n_target_trend_confirmation_enabled=False):
             if args[2]=='sh.600001': entered.set();release.wait(3)
             result=view();result['symbol']=args[2];return result
         self.repo.stock_view.side_effect=stock
@@ -104,7 +104,7 @@ class ScannerTests(unittest.TestCase):
     def test_waiter_wakes_on_result_without_waiting_for_completion(self):
         from concurrent.futures import ThreadPoolExecutor
         first=Event();second=Event();allow_first=Event();allow_second=Event()
-        def stock(*args):
+        def stock(*args,n_target_trend_confirmation_enabled=False):
             (first if args[2]=='sh.600000' else second).set()
             (allow_first if args[2]=='sh.600000' else allow_second).wait(3)
             result=view();result['symbol']=args[2];return result
@@ -126,7 +126,7 @@ class ScannerTests(unittest.TestCase):
             finally:allow_first.set();allow_second.set();self.wait(job['id'])
 
     def test_terminal_failure_revokes_previously_visible_matches(self):
-        def stock(*args):
+        def stock(*args,n_target_trend_confirmation_enabled=False):
             if args[2]=='sh.600001':raise RuntimeError('source changed')
             return view()
         self.repo.stock_view.side_effect=stock
@@ -141,7 +141,7 @@ class ScannerTests(unittest.TestCase):
 
     def test_cancel_and_deduplicate_active_job(self):
         entered=Event();release=Event()
-        def slow(*args):entered.set();release.wait(3);return view()
+        def slow(*args,n_target_trend_confirmation_enabled=False):entered.set();release.wait(3);return view()
         self.repo.stock_view.side_effect=slow
         job=self.scanner.start(self.params);self.assertTrue(entered.wait(2))
         self.assertEqual(self.scanner.start(self.params)['id'],job['id'])
@@ -164,13 +164,16 @@ class ScannerTests(unittest.TestCase):
         self.assertEqual(job['status'],'completed');self.assertEqual(job['total'],1)
         self.assertEqual(job['results'][0]['name'],'在线样本')
         self.repo.akshare_signal_view.assert_called_once_with(
-            'test','strict_full','sh.600000','2026-01-06','base','2020-01-01')
+            'test','strict_full','sh.600000','2026-01-06','base','2020-01-01',
+            n_target_trend_confirmation_enabled=False)
         self.repo.stock_view.assert_not_called()
 
     def test_input_guards(self):
         for bad in (dict(self.params,lookback=0),dict(self.params,lookback=True),dict(self.params,source='all'),
                     dict(self.params,start='2027-01-01'),dict(self.params,path='/secret'),
-                    dict(self.params,source='akshare'),dict(self.params,symbol='sh.600000')):
+                    dict(self.params,source='akshare'),dict(self.params,symbol='sh.600000'),
+                    dict(self.params,n_target_trend_confirmation_enabled=1),
+                    dict(self.params,n_target_trend_confirmation_enabled='false')):
             with self.assertRaises(ValueError):self.scanner.start(bad)
         with self.assertRaises(ValueError):self.scanner.get('missing')
 

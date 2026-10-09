@@ -9,7 +9,7 @@ export const ratioPlans = [
     ["lecture_v3_d67_c50", ">2/3 / ≤1/2"],
     ["lecture_v3_close_d50_c50", "收盘 >1/2 / 收盘 <1/2"],
 ];
-/** @typedef {{run:string,symbol:string,asof:string,start:string,scenario:string,volume_filter:boolean,net_reward_risk_filter:boolean,shallow_base_breakout_enabled:boolean,initial_capital?:number,max_position_weight?:number,local:boolean,source?:string}} RatioContext */
+/** @typedef {{run:string,symbol:string,asof:string,start:string,scenario:string,volume_filter:boolean,net_reward_risk_filter:boolean,shallow_base_breakout_enabled:boolean,n_target_trend_confirmation_enabled?:boolean,initial_capital?:number,max_position_weight?:number,local:boolean,source?:string}} RatioContext */
 export const ratioContextKey = (p) =>
     JSON.stringify([
         p.run,
@@ -20,6 +20,7 @@ export const ratioContextKey = (p) =>
         p.volume_filter,
         p.net_reward_risk_filter ?? false,
         p.shallow_base_breakout_enabled ?? true,
+        p.n_target_trend_confirmation_enabled ?? false,
         p.initial_capital,
         p.max_position_weight,
         p.local,
@@ -87,6 +88,7 @@ export class RatioComparison {
                     volume_filter,
                     net_reward_risk_filter = false,
                     shallow_base_breakout_enabled = true,
+                    n_target_trend_confirmation_enabled = false,
                     ...params
                 } = p;
                 const view = await this.api(
@@ -96,6 +98,7 @@ export class RatioComparison {
                         volume_filter: String(volume_filter),
                         net_reward_risk_filter: String(net_reward_risk_filter),
                         shallow_base_breakout_enabled: String(shallow_base_breakout_enabled),
+                        n_target_trend_confirmation_enabled: String(n_target_trend_confirmation_enabled),
                         variant,
                     },
                     this.controller.signal,

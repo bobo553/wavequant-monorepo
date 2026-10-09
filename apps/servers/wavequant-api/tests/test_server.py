@@ -843,7 +843,7 @@ class VisualizationTests(unittest.TestCase):
                 self.assert_source(source)
                 return {**self.source.view(symbol, asof), "timeframe": timeframe}
 
-            def theory(self, source, symbol, asof, timeframe="1d"):
+            def theory(self, source, symbol, asof, timeframe="1d", *, n_target_trend_confirmation_enabled=False):
                 self.assert_source(source)
                 return {**self.source.theory(symbol, asof), "timeframe": timeframe}
 

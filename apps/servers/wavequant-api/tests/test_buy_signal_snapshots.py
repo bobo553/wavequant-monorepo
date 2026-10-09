@@ -15,6 +15,7 @@ class FakeBuyScanner:
 
     def start(self, params):
         self.starts += 1
+        self.params = params
         return {"id": "buy-job", "status": "running", "revision": 0}
 
     def get(self, identifier, *, after, timeout):
@@ -42,8 +43,8 @@ class FakeRepository:
         self.buy_scanner = FakeBuyScanner()
         self.runs = {"run-001": {"report": {"data": {"end": "2026-09-07"}}}}
 
-    def strategy_config(self, run, variant):
-        return {"strategy": {"entry_policy": "transitioned_squeeze"}, "scenarios": {"base": {"execution": {}}}}
+    def strategy_config(self, run, variant, *, n_target_trend_confirmation_enabled=False):
+        return {"strategy": {"entry_policy": "transitioned_squeeze", "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled}, "scenarios": {"base": {"execution": {}}}}
 
     def bars(self, run):
         return {"sh.600000": [], "sz.000001": []}
@@ -63,6 +64,25 @@ class FakeCache:
 
 
 class BuySignalSnapshotServiceTests(unittest.TestCase):
+    def test_n_target_option_partitions_publication_and_query_versions(self) -> None:
+        arguments = ("run-001", "lecture_v1", "base", "snapshot", "2020-01-01")
+        disabled = self.service.refresh(*arguments, asof="2026-09-07")
+        self.assertIs(self.repository.buy_scanner.params["n_target_trend_confirmation_enabled"], False)
+        with self.assertRaises(BuySignalSnapshotUnavailable):
+            self.service.query({**self.params, "n_target_trend_confirmation_enabled": True})
+        enabled = self.service.refresh(*arguments, asof="2026-09-07", n_target_trend_confirmation_enabled=True)
+        self.assertIs(self.repository.buy_scanner.params["n_target_trend_confirmation_enabled"], True)
+        self.assertNotEqual(disabled["snapshot_id"], enabled["snapshot_id"])
+        off = self.service.query(self.params)
+        on = self.service.query({**self.params, "n_target_trend_confirmation_enabled": True})
+        self.assertEqual(off["snapshot"]["id"], disabled["snapshot_id"])
+        self.assertEqual(on["snapshot"]["id"], enabled["snapshot_id"])
+        self.assertIs(off["params"]["n_target_trend_confirmation_enabled"], False)
+        self.assertIs(on["params"]["n_target_trend_confirmation_enabled"], True)
+        self.assertEqual(self.repository.buy_scanner.starts, 2)
+        with self.assertRaises(ValueError):
+            self.service.query({**self.params, "n_target_trend_confirmation_enabled": "true"})
+
     def setUp(self) -> None:
         self.database = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))
         self.addCleanup(self.database.close)

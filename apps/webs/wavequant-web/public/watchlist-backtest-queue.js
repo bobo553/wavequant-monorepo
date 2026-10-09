@@ -24,6 +24,7 @@ export function watchlistBacktestRequest(member, context) {
         volume_filter: context.volume_filter,
         net_reward_risk_filter: context.net_reward_risk_filter,
         shallow_base_breakout_enabled: context.shallow_base_breakout_enabled,
+        n_target_trend_confirmation_enabled: context.n_target_trend_confirmation_enabled ?? "false",
         initial_capital: context.initial_capital,
         max_position_weight: context.max_position_weight,
         symbol: member.symbol,

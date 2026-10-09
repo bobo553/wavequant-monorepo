@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { comparisonValues, ratioContextKey, ratioPlans } from "../public/ratio-comparison.js";
+import { JSDOM } from "jsdom";
+
+import { RatioComparison, comparisonValues, ratioContextKey, ratioPlans } from "../public/ratio-comparison.js";
 
 test("six explicit independent ratios and empty sample is not a zero win rate", () => {
     assert.equal(new Set(ratioPlans.map((p) => p[0])).size, 6);
@@ -31,6 +33,8 @@ test("comparison invalidates source date cost symbol start and volume filter but
         assert.notEqual(ratioContextKey(p), ratioContextKey({ ...p, [field]: "changed" }));
     assert.notEqual(ratioContextKey(p), ratioContextKey({ ...p, volume_filter: false }));
     assert.notEqual(ratioContextKey(p), ratioContextKey({ ...p, net_reward_risk_filter: true }));
+    assert.notEqual(ratioContextKey(p), ratioContextKey({ ...p, n_target_trend_confirmation_enabled: true }));
+    assert.equal(ratioContextKey(p), ratioContextKey({ ...p, n_target_trend_confirmation_enabled: false }));
     assert.notEqual(
         ratioContextKey({ ...p, shallow_base_breakout_enabled: true }),
         ratioContextKey({ ...p, shallow_base_breakout_enabled: false }),
@@ -57,4 +61,52 @@ test("comparison draws holding loss from the entry-cost MAE metric, with legacy 
     };
     assert.equal(comparisonValues(view)[5], "-12.00%");
     assert.equal(comparisonValues({ ...view, metrics: { max_drawdown: -0.01 } })[5], "—");
+});
+
+test("every comparison plan transmits the current N target option with omitted settings defaulting off", async () => {
+    const before = globalThis.document,
+        dom = new JSDOM(
+            '<button id="compare-ratios"></button><button id="cancel-ratios"></button><p id="ratio-status"></p><tbody id="ratio-results"></tbody>',
+        );
+    const resultTable = dom.window.document.createElement("tbody");
+    resultTable.id = "ratio-results";
+    dom.window.document.body.append(resultTable);
+    globalThis.document = dom.window.document;
+    try {
+        for (const enabled of [undefined, false, true]) {
+            const calls = [],
+                comparison = new RatioComparison({
+                    getContext: () => ({
+                        run: "r",
+                        symbol: "sz.000678",
+                        asof: "2018-09-25",
+                        start: "2018-01-01",
+                        scenario: "base",
+                        volume_filter: false,
+                        shallow_base_breakout_enabled: true,
+                        source: "akshare",
+                        local: true,
+                        ...(enabled === undefined ? {} : { n_target_trend_confirmation_enabled: enabled }),
+                    }),
+                    onSelect() {},
+                    api: async (path, params) => {
+                        calls.push({ path, params });
+                        return { backtest: { counts: {} }, metrics: { trades: 0, total_return: 0 } };
+                    },
+                });
+            await comparison.run();
+            assert.equal(calls.length, ratioPlans.length);
+            assert.ok(
+                calls.every(
+                    ({ path, params }) =>
+                        path === "/api/akshare-backtest" &&
+                        params.n_target_trend_confirmation_enabled === String(enabled ?? false),
+                ),
+            );
+        }
+    } finally {
+        if (before === undefined) delete globalThis.document;
+        else globalThis.document = before;
+        dom.window.close();
+    }
 });
