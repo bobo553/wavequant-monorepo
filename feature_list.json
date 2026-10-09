@@ -1,13 +1,13 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-305",
+    "activeFeature": "MONOREPO-256",
     "features": [
         {
             "id": "MONOREPO-305",
             "name": "confirmed-wave-single-render-owner",
             "title": "同波正式与发展连接单一展示",
-            "status": "in-progress",
+            "status": "done",
             "dependencies": ["MONOREPO-303", "MONOREPO-304"],
             "description": "襄阳2024-07-25低点的正式三级上涨与同证书发展延伸同时绘制造成双线。Core发布稳定因果波身份，Web对同波选择唯一可见连接，保留确认锚点与日期。",
             "scope": "Core同波因果身份、二三级正式与发展发布、Web primitive绘制与实际AkShare缓存链",
@@ -48,6 +48,21 @@
                     "command": "full Core/Web suites; browser/Playwright; external minute checks",
                     "status": "not-run",
                     "summary": "按开发验证节奏运行定向检查；用户未要求浏览器E2E。完整套件和外部分钟留待独立验证，不记为通过。"
+                },
+                {
+                    "command": "node wavequant-305-runtime-smoke.mjs / isolated main production API8779, AkShare, Web3003 primitive",
+                    "status": "passed",
+                    "summary": "代码cbb83eb已合入本地main00786e8。独立main生产API8779真实AkShare四截止回放及Web3003实际模块绘图通过：7/25低3.45单条延伸至5/15高19.63，3/10未确认0条，4/2高18.90单条；正式3/21高18.90记录保持。旧ETag返回200并更新，再请求304；algorithm f1c5327ac63b、snapshot d08e79ed3a70、行情data_version不变。原3003/8765持久快照链路受本地MySQL握手及Docker无响应阻塞，待恢复后核验；未擅自重启共享服务。"
+                },
+                {
+                    "command": "existing Web3003/API8765 persistent SQL integration completion",
+                    "status": "not-run",
+                    "summary": "原页面链路尝试未完成：两次离线回退及直接API240秒超时。只读线程诊断确认请求停于本地MySQL13306握手；docker ps/status同样无响应，start确认已运行。独立实例使用同一main make_server及真实AkShare读取，关闭SQL后HTTP/ETag/绘图全部通过。尚未获准重启共享Docker，持久快照链路待服务恢复后核验。"
+                },
+                {
+                    "command": "pnpm harness:check; targeted Prettier; git diff --check/review",
+                    "status": "passed",
+                    "summary": "302功能/18 Node/2 Python/32规则通过；初始双线回归复现失败、修复后通过。已有301功能与原活动256逐字段保持；本地提交跳过钩子，无推送。"
                 }
             ]
         },
@@ -2360,7 +2375,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "backlog",
+            "status": "in-progress",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
