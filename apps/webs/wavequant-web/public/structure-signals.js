@@ -78,6 +78,7 @@ export const structureScanContextKey = (params) =>
         params.signal_type,
         params.trend_level,
         params.markets,
+        params.n_target_trend_confirmation_enabled ?? false,
     ]);
 
 /** 先显示最新确认，再按级别和证券代码提供确定顺序。 */
@@ -188,7 +189,8 @@ export class StructureSignals {
         if (!this.watchlists || !this.response) return;
         const unique = new Map();
         for (const result of this.response.results)
-            if (!unique.has(result.symbol)) unique.set(result.symbol, { symbol: result.symbol, name: result.name || "" });
+            if (!unique.has(result.symbol))
+                unique.set(result.symbol, { symbol: result.symbol, name: result.name || "" });
         await this.watchlists.addStocks([...unique.values()]);
         this.syncWatchlistActions();
     }
@@ -203,7 +205,9 @@ export class StructureSignals {
         const symbols = [...new Set((this.response?.results || []).map((result) => result.symbol))];
         const allAdded = symbols.length > 0 && symbols.every((symbol) => this.watchlists.has(symbol));
         addAll.disabled = !ready || !symbols.length || allAdded;
-        addAll.textContent = allAdded ? "当前结果已全部加入" : `当前结果全部加入${symbols.length ? `（${symbols.length}）` : ""}`;
+        addAll.textContent = allAdded
+            ? "当前结果已全部加入"
+            : `当前结果全部加入${symbols.length ? `（${symbols.length}）` : ""}`;
         for (const button of document.querySelectorAll(".structure-watchlist-add")) {
             const added = ready && this.watchlists.has(button.dataset.symbol);
             const stockName = button.dataset.name || button.dataset.symbol;

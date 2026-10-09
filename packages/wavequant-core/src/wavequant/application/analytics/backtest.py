@@ -148,7 +148,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                   positive_n_bars: dict[str, dict[int, int]] | None = None,
                   wave_events: dict[str, list[dict]] | None = None,
                   entry_executions: dict | None = None,
-                  progress: Callable[[int], None] | None = None) -> BacktestResult:
+                  progress: Callable[[int], None] | None = None, *,
+                  n_target_trend_confirmation_enabled: bool = False) -> BacktestResult:
     """Entries use explicit next-open or same-close simulation; exits retain their model.
 
     Volume capacity is a prior-bar estimate, not an auction fill guarantee. Adjusted
@@ -156,6 +157,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
     Stops (and targets when enabled) observed in OHLC request next-open exits;
     they are NOT stop fills. V3 measured milestones do not liquidate holdings.
     """
+    if type(n_target_trend_confirmation_enabled) is not bool:
+        raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
     config.validate()
     entry_executions = entry_executions or {}
     if config.staged_exit_intraday and minute_loader is None:
@@ -196,7 +199,9 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
         from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
         from wavequant.domain.strategies.trend_flip_exit import trend_flip_exit_history
         trend_flip_risks = {symbol: trend_flip_exit_history(
-            history, hierarchical_history(history)[0], reduction_fraction=config.wave_exhaustion_reduction)
+            history, hierarchical_history(history,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)[0],
+            reduction_fraction=config.wave_exhaustion_reduction)
                             for symbol, history in grouped.items()}
     wave_lookup: dict[str, dict[datetime, list[dict]]] = {symbol: {} for symbol in grouped}
     target_resistance = {symbol: two_t_resistance_history(

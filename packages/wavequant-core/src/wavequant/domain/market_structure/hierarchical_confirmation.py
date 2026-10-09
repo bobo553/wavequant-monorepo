@@ -41,6 +41,7 @@ def source_trend_reversal(
     end_index: int,
     asof: str,
     bars: Sequence[Bar],
+    *, n_target_trend_confirmation_enabled: bool = False,
 ) -> DirectionConfirmation | None:
     """Require a complete opposite source cycle, preserving the frozen key."""
     from .trend_confirmation import qualify_downtrend, qualify_uptrend
@@ -57,7 +58,8 @@ def source_trend_reversal(
         if any(origin[field]!=endpoint[field] for field in ('index','kind','value')):
             continue
         qualify=qualify_downtrend if direction=='up' else qualify_uptrend
-        result=qualify(frozen_source,origin,position,None,bars,cutoff)
+        result=qualify(frozen_source,origin,position,None,bars,cutoff,
+                       n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         return cast(DirectionConfirmation,result) if result is not None else None
     return None
 

@@ -40,6 +40,15 @@ class StructureSnapshotService:
         # Resolve code identity once at process start. Interactive queries do
         # not hash source files or invoke any Core calculation.
         self.algorithm_version = repository.structure_scanner.algorithm_version()
+        self._algorithm_versions = {
+            False: self.algorithm_version,
+            True: repository.structure_scanner.algorithm_version(n_target_trend_confirmation_enabled=True),
+        }
+
+    def algorithm_version_for(self, enabled: bool) -> str:
+        if type(enabled) is not bool:
+            raise ValueError("n_target_trend_confirmation_enabled must be a boolean")
+        return str(self._algorithm_versions[enabled])
 
     def refresh(
         self,
@@ -50,6 +59,7 @@ class StructureSnapshotService:
         symbol: str | None = None,
         asof: str | None = None,
         market_total: int | None = None,
+        n_target_trend_confirmation_enabled: bool = False,
     ) -> dict[str, object]:
         database = self.infrastructure.database
         if database is None:
@@ -106,7 +116,7 @@ class StructureSnapshotService:
             # suspended stock can legitimately resolve to an older last bar;
             # using that per-stock date as the snapshot key would make it
             # disappear from an otherwise complete market snapshot.
-        algorithm_version = self.algorithm_version
+        algorithm_version = self.algorithm_version_for(n_target_trend_confirmation_enabled)
         data_version = source_state["data_version"]
         existing = database.find_structure_snapshot(
             run,
@@ -134,6 +144,7 @@ class StructureSnapshotService:
                     algorithm_version=algorithm_version,
                     data_version=data_version,
                     payload={
+                        "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
                         "results": [],
                         "stale": 0,
                         "skip_reasons": {"not_listed_asof": 1},
@@ -155,6 +166,7 @@ class StructureSnapshotService:
             "lookback": 20,
             "signal_type": "any",
             "trend_level": 0,
+            "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
         }
         if symbol is not None:
             request["symbol"] = symbol
@@ -172,6 +184,7 @@ class StructureSnapshotService:
             if after.get("data_version") != data_version:
                 raise RuntimeError("结构预计算期间行情版本变化，未发布混合版本结果")
         payload = {
+            "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
             "results": job["results"],
             "stale": job["stale"],
             "skip_reasons": job["skip_reasons"],
@@ -200,10 +213,15 @@ class StructureSnapshotService:
     def query(self, params: dict[str, object]) -> dict[str, object]:
         """Return a bounded filter over SQL/Redis without invoking Core theory."""
         expected = {"run", "variant", "source", "asof", "lookback", "signal_type", "trend_level"}
-        optional = {"symbol", "markets"}
+        optional = {"symbol", "markets", "n_target_trend_confirmation_enabled"}
         if not expected.issubset(params) or not set(params).issubset(expected | optional):
             raise ValueError("invalid precomputed structure query")
         query_params = dict(params)
+        enabled = params.get("n_target_trend_confirmation_enabled", False)
+        if type(enabled) is not bool:
+            raise ValueError("n_target_trend_confirmation_enabled must be a boolean")
+        algorithm_version = self.algorithm_version_for(enabled)
+        query_params["n_target_trend_confirmation_enabled"] = enabled
         compatibility_symbol = query_params.pop("symbol", None)
         selected_markets = self._parse_markets(query_params.get("markets"))
         market_key = ",".join(selected_markets)
@@ -242,13 +260,17 @@ class StructureSnapshotService:
             # Structure landmarks depend on market data and the structure
             # engine, not on the selected buy-strategy profile. Reuse shards
             # across variants to avoid false unavailable states.
-            generations = database.list_structure_snapshot_generations(run, source, asof)
+            # Historical generations can serve a rebuilding client only if
+            # they used the same rule. Legacy payloads represent disabled N.
+            generations = database.list_structure_snapshot_generations(
+                run, source, asof, n_target_trend_confirmation_enabled=enabled
+            )
             current_generation = next(
                 (
                     generation
                     for generation in generations
                     if generation["asof"] == asof
-                    and generation["algorithm_version"] == self.algorithm_version
+                    and generation["algorithm_version"] == algorithm_version
                 ),
                 None,
             )
@@ -286,7 +308,7 @@ class StructureSnapshotService:
             ]
             complete_healthy_generations.sort(
                 key=lambda generation: (
-                    generation["algorithm_version"] == self.algorithm_version,
+                    generation["algorithm_version"] == algorithm_version,
                     str(generation["asof"]),
                     str(generation["updated_at"] or ""),
                 ),
@@ -309,7 +331,7 @@ class StructureSnapshotService:
                     None,
                     source,
                     asof,
-                    self.algorithm_version,
+                    algorithm_version,
                 )
             else:
                 # A numerically complete generation whose vast majority of
@@ -321,7 +343,7 @@ class StructureSnapshotService:
             if not serving_shards:
                 pending_id = hashlib.sha256(
                     json.dumps(
-                        {"run": run, "source": source, "asof": asof, "algorithm": self.algorithm_version},
+                        {"run": run, "source": source, "asof": asof, "algorithm": algorithm_version},
                         sort_keys=True,
                     ).encode("utf-8")
                 ).hexdigest()
@@ -334,7 +356,7 @@ class StructureSnapshotService:
                         "requested_asof": asof,
                         "is_fallback": False,
                         "computed_at": None,
-                        "algorithm_version": self.algorithm_version,
+                        "algorithm_version": algorithm_version,
                         "data_version": "pending",
                     },
                     "total": 0,
@@ -365,7 +387,7 @@ class StructureSnapshotService:
                 serving_shards,
             )
         else:
-            stored_snapshot = database.find_structure_snapshot(run, variant, source, asof, self.algorithm_version)
+            stored_snapshot = database.find_structure_snapshot(run, variant, source, asof, algorithm_version)
             if stored_snapshot is None:
                 raise StructureSnapshotUnavailable(
                     "该行情日或当前算法版本尚无完成快照；后台 Worker 将在检测到变化后自动重建"
@@ -377,7 +399,7 @@ class StructureSnapshotService:
         snapshot = market_snapshot
 
         cache_key = (
-            f"signal:structure:v4:{snapshot.snapshot_id}:{current_published}:{expected_stocks}:"
+            f"signal:structure:v5:{enabled}:{snapshot.snapshot_id}:{current_published}:{expected_stocks}:"
             f"{signal_type}:{trend_level}:{lookback}:{cache_market_key}"
         )
 
@@ -414,7 +436,7 @@ class StructureSnapshotService:
                     "id": snapshot.snapshot_id,
                     "asof": snapshot.asof,
                     "requested_asof": asof,
-                    "is_fallback": snapshot.asof != asof or snapshot.algorithm_version != self.algorithm_version,
+                    "is_fallback": snapshot.asof != asof or snapshot.algorithm_version != algorithm_version,
                     "computed_at": computed_at.astimezone(timezone.utc).isoformat() if computed_at else None,
                     "algorithm_version": snapshot.algorithm_version,
                     "data_version": snapshot.data_version,

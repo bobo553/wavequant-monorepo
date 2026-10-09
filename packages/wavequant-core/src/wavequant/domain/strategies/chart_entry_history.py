@@ -14,7 +14,7 @@ from ..models.model import Bar
 from .hierarchical_entry import EntryContext
 
 
-_CONFIRMATION_CACHE_VERSION = "daily_trend_confirmation_descent_pressure_v3"
+_CONFIRMATION_CACHE_VERSION = "daily_configurable_n_target_trend_confirmation_descent_pressure_v109"
 
 
 def _confirmed_descent_pressures(
@@ -69,6 +69,7 @@ def _confirmed_descent_pressures(
 def _has_confirmation_price_cross(
     raw: Sequence[object], levels: Sequence[tuple[Mapping[str, object], Mapping[str, object]]],
     previous: Bar, current: Bar, asof: str, asof_index: int,
+    *, n_target_trend_confirmation_enabled: bool = False,
 ) -> bool:
     """Refresh price certificates even when no confirmed source vertex changed.
 
@@ -80,6 +81,20 @@ def _has_confirmation_price_cross(
     points: list[object] = list(raw)
     for pair in levels:
         for level in pair:
+            observations = level.get('n_target_observations', ()) if n_target_trend_confirmation_enabled else ()
+            if isinstance(observations, (list, tuple)):
+                for observation in observations:
+                    if not isinstance(observation, Mapping):
+                        continue
+                    known, target = observation.get('available_at'), observation.get('one_p_target')
+                    if not isinstance(target, (int, float)) or isinstance(target, bool) or not isfinite(target):
+                        continue
+                    if not ((isinstance(known, str) and known <= asof)
+                            or (type(known) is int and known <= asof_index)):
+                        continue
+                    if (observation.get('direction') == 'up' and previous.high <= target < current.high
+                            or observation.get('direction') == 'down' and previous.low >= target > current.low):
+                        return True
             for field in ("strokes", "candidate_strokes"):
                 paths = level.get(field)
                 if not isinstance(paths, (list, tuple)):
@@ -91,6 +106,7 @@ def _has_confirmation_price_cross(
                     vertices = path.get("points")
                     if isinstance(vertices, (list, tuple)):
                         points.extend(vertices)
+    known_anchor_count = 0
     for raw_point in points:
         if not isinstance(raw_point, Mapping):
             continue
@@ -112,6 +128,7 @@ def _has_confirmation_price_cross(
             newly_eligible = known == asof_index - 1
         else:
             continue
+        known_anchor_count += 1
         if newly_known or newly_eligible:
             return True
         if point.get("kind") == "H" and (previous.high <= value < current.high
@@ -120,6 +137,11 @@ def _has_confirmation_price_cross(
         if point.get("kind") == "L" and (previous.low >= value > current.low
                                          or previous.close >= value > current.close):
             return True
+    # A one-p target is outside its source pivots. Continuing market extremes
+    # must therefore recheck a known three-anchor N even without a pivot cross.
+    if (n_target_trend_confirmation_enabled and not levels and known_anchor_count >= 3
+            and (current.high > previous.high or current.low < previous.low)):
+        return True
     return False
 
 
@@ -146,7 +168,7 @@ def _copy_replay_state(state):
 
 def chart_entry_history(
     bars: Sequence[Bar], *, audit=(), shallow_candidate_sink=None, combined_candidate_sink=None,
-    secondary_pullback_sink=None, prefix_cache=None
+    secondary_pullback_sink=None, prefix_cache=None, n_target_trend_confirmation_enabled: bool = False,
 ) -> tuple[dict[int, tuple[EntryContext, ...]], list[dict[str, object]]]:
     """Share confirmed landmarks, including cross-path continuity, with trading.
 
@@ -154,6 +176,8 @@ def chart_entry_history(
     never an invented formal higher-level vertex. Its first observed date wins
     over an earlier price date, even when a later prefix joins drawing paths.
     """
+    if type(n_target_trend_confirmation_enabled) is not bool:
+        raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
     dates = {_bar_date(bar): i for i, bar in enumerate(bars)}
     history = {}
     events = []
@@ -183,6 +207,7 @@ def chart_entry_history(
         combined_candidate_sink is not None,
         secondary_pullback_sink is not None,
         _CONFIRMATION_CACHE_VERSION,
+        n_target_trend_confirmation_enabled,
     )
     cached_key = prefix_cache.get("key") if prefix_cache is not None else None
     if cached_key == prefix_key:
@@ -196,6 +221,7 @@ def chart_entry_history(
         and cached_key[3] == (combined_candidate_sink is not None)
         and cached_key[4] == (secondary_pullback_sink is not None)
         and cached_key[5] == _CONFIRMATION_CACHE_VERSION
+        and cached_key[6] == n_target_trend_confirmation_enabled
     ):
         # Yesterday was unfinished when the prior checkpoint was saved. Replay
         # its final candle, then today's partial candle, from the older state.
@@ -234,14 +260,18 @@ def chart_entry_history(
         )
         market_refresh = current_signature == signature and i > 0 and _has_confirmation_price_cross(
             [*(point for path in closed for point in path["points"]), *raw],
-            levels, bars[i - 1], bars[i], _bar_date(bars[i]), i)
+            levels, bars[i - 1], bars[i], _bar_date(bars[i]), i,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         if current_signature != signature or market_refresh:
             signature = current_signature
             drawing = dict(strokes=[*closed, *([dict(id=f"lecture-{epoch}", points=raw)] if len(raw) > 1 else [])])
             prefix = bars[: i + 1]
-            first = reversal_trends(drawing, prefix)
-            second = secondary_trends(first, prefix)
-            third = tertiary_trends(second, prefix)
+            first = reversal_trends(drawing, prefix,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+            second = secondary_trends(first, prefix,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+            third = tertiary_trends(second, prefix,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
             levels = ((second, first), (third, second))
             if shallow_candidate_sink is not None:
                 from .shallow_base_breakout import shallow_candidate_from_geometry

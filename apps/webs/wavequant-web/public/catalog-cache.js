@@ -59,8 +59,15 @@ export const stockCatalogStorage = {
     },
 };
 
-export function marketTimeframeCacheKey(source, symbol, requestedAsOf, timeframe) {
-    return `v1:${source}:${symbol}:${requestedAsOf}:${timeframe}`;
+export function marketTimeframeCacheKey(
+    source,
+    symbol,
+    requestedAsOf,
+    timeframe,
+    nTargetTrendConfirmationEnabled = false,
+) {
+    if (typeof nTargetTrendConfirmationEnabled !== "boolean") throw new TypeError("N 一饱趋势确认开关必须为布尔值");
+    return `v2:${source}:${symbol}:${requestedAsOf}:${timeframe}:n-target-${nTargetTrendConfirmationEnabled}`;
 }
 
 export const marketTimeframeStorage = {
@@ -187,16 +194,23 @@ export async function loadMarketTimeframeSnapshot(
     symbol,
     requestedAsOf,
     timeframe,
-    { fetcher = fetch, storage = marketTimeframeStorage } = {},
+    { fetcher = fetch, storage = marketTimeframeStorage, nTargetTrendConfirmationEnabled = false } = {},
 ) {
-    const key = marketTimeframeCacheKey(source, symbol, requestedAsOf, timeframe);
+    const key = marketTimeframeCacheKey(source, symbol, requestedAsOf, timeframe, nTargetTrendConfirmationEnabled);
     let cached = null;
     try {
-        cached = await storage.get(key);
+        const entry = await storage.get(key);
+        cached = entry?.key === key ? entry : null;
     } catch {
         // IndexedDB can be unavailable in private browsing; network remains authoritative.
     }
-    const query = new URLSearchParams({ source, symbol, asof: requestedAsOf, timeframe });
+    const query = new URLSearchParams({
+        source,
+        symbol,
+        asof: requestedAsOf,
+        timeframe,
+        n_target_trend_confirmation_enabled: String(nTargetTrendConfirmationEnabled),
+    });
     try {
         const response = await fetcher(`/api/market-timeframe?${query}`, {
             cache: "no-store",
@@ -213,7 +227,7 @@ export async function loadMarketTimeframeSnapshot(
         if (etag) {
             try {
                 await storage.put({
-                    schemaVersion: 1,
+                    schemaVersion: 2,
                     key,
                     source,
                     symbol,

@@ -64,7 +64,7 @@ class FakeDailyRepository:
             "evidence": "规范日线。",
         }
 
-    def theory(self, source: str, symbol: str, asof: str) -> dict[str, object]:
+    def theory(self, source: str, symbol: str, asof: str, *, n_target_trend_confirmation_enabled: bool = False) -> dict[str, object]:
         return {"asof": asof, "data_source": source, "symbol": symbol, "computed_from": "daily"}
 
 
@@ -80,6 +80,43 @@ class FakeTimeframeCache:
 
 
 class MarketTimeframeServiceTests(unittest.TestCase):
+    def test_n_target_option_partitions_all_timeframes_sql_redis_and_memory(self) -> None:
+        snapshots = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))
+        self.addCleanup(snapshots.close)
+        snapshots.initialize()
+        repository, cache = FakeDailyRepository(), FakeTimeframeCache()
+        service = MarketTimeframeService(repository, snapshots=snapshots, cache=cache)
+        for source in ("tdx", "akshare"):
+            service.precompute(source, "sz.000678", "2026-04-01")
+            for timeframe in ("1d", "1w", "1mo", "3mo", "1y"):
+                with self.assertRaises(LookupError):
+                    service.bundle(source, "sz.000678", "2026-04-01", timeframe,
+                                   compute_if_missing=False, n_target_trend_confirmation_enabled=True)
+            service.precompute(source, "sz.000678", "2026-04-01", n_target_trend_confirmation_enabled=True)
+            for timeframe in ("1d", "1w", "1mo", "3mo", "1y"):
+                with self.subTest(source=source, timeframe=timeframe):
+                    off = service.bundle(source, "sz.000678", "2026-04-01", timeframe, compute_if_missing=False)
+                    on = service.bundle(source, "sz.000678", "2026-04-01", timeframe,
+                                        compute_if_missing=False, n_target_trend_confirmation_enabled=True)
+                    self.assertEqual(off["view"]["bars"], on["view"]["bars"])
+                    self.assertEqual(off["data_version"], on["data_version"])
+                    self.assertNotEqual(off["algorithm_version"], on["algorithm_version"])
+                    self.assertNotEqual(off["snapshot_id"], on["snapshot_id"])
+                    self.assertIs(off["theory"]["n_target_trend_confirmation_enabled"], False)
+                    self.assertIs(on["theory"]["n_target_trend_confirmation_enabled"], True)
+        self.assertEqual(len(service._theory), 16)
+        self.assertEqual(len(cache.values), 20)
+        restarted = MarketTimeframeService(repository, snapshots=snapshots, cache=cache)
+        with patch.object(repository, "theory", side_effect=AssertionError("must read stored option")):
+            for enabled in (False, True):
+                stored = restarted.bundle("tdx", "sz.000678", "2026-04-01", "1d",
+                                          compute_if_missing=False, n_target_trend_confirmation_enabled=enabled)
+                self.assertIs(stored["n_target_trend_confirmation_enabled"], enabled)
+        cache.values.clear()
+        sql_only = restarted.bundle("tdx", "sz.000678", "2026-04-01", "1w",
+                                    compute_if_missing=False, n_target_trend_confirmation_enabled=True)
+        self.assertIs(sql_only["theory"]["n_target_trend_confirmation_enabled"], True)
+
     def setUp(self) -> None:
         self.service = MarketTimeframeService(FakeDailyRepository())
 

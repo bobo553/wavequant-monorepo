@@ -12,6 +12,7 @@ from ..market_structure.lecture_drawing import lecture_drawing
 from ..market_structure.lecture_trend import _wave_reversals
 from ..market_structure.secondary_trend import _candidate_structural_reversals
 from ..market_structure.trend_publication import publish_uptrends
+from ..market_structure.n_trend_reversals import n_target_reversals
 
 
 class _DrawingPoint(TypedDict):
@@ -36,7 +37,8 @@ def _identity(p):
     return p['index'], p['ordinal'], p['kind'], p['value']
 
 
-def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tuple[DeclineStart, ...]] | None = None):
+def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tuple[DeclineStart, ...]] | None = None,
+                         n_target_trend_confirmation_enabled: bool = False):
     """Freeze candidate knowledge separately from qualified trading history.
 
     A confirmed descending pressure or low stays available to the next
@@ -44,6 +46,8 @@ def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tup
     the shared direction gate publishes points to trading contexts. A separate
     dated decline channel preserves confirmed high boundaries for measurement.
     """
+    if type(n_target_trend_confirmation_enabled) is not bool:
+        raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
     history = {}; epochs = {}
     decline_history: dict[int, tuple[DeclineStart, ...]] = {}
     if decline_sink is not None:
@@ -51,12 +55,13 @@ def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tup
     previous: dict[int, dict[tuple[int, int, str, float], int]] = {0: {}, 1: {}, 2: {}, 3: {}}
     last_epoch = None
     last = len(bars) - 1
-    cache_version = 'daily_trend_confirmation_declines_v2'
+    cache_version = 'daily_configurable_n_target_trend_confirmation_declines_v110'
     wants_declines = decline_sink is not None
-    prefix_key = (cache_version, tuple(bars[:-1]), wants_declines)
+    prefix_key = (cache_version, tuple(bars[:-1]), wants_declines, n_target_trend_confirmation_enabled)
     cached_key = prefix_cache.get('key') if prefix_cache is not None else None
     resume_start = (last if cached_key == prefix_key else
-                    last - 1 if cached_key == (cache_version, tuple(bars[:-2]), wants_declines) else 0)
+                    last - 1 if cached_key == (cache_version, tuple(bars[:-2]), wants_declines,
+                                               n_target_trend_confirmation_enabled) else 0)
     if resume_start:
         saved_history, saved_epochs, saved_previous, last_epoch, saved_declines = prefix_cache['checkpoint']
         # Each dated level consists of freshly built dictionaries that become
@@ -103,11 +108,14 @@ def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tup
             return frozen
 
         turns = freeze(turns, 0)
-        levels = {}; source = turns
+        levels = {}; source = turns; qualified_source = turns
         prefix = bars[:i+1]
         for level in (1, 2, 3):
             reduced = (_wave_reversals(source) if level == 1 else
                        _candidate_structural_reversals(source, source_level=level-1))
+            if n_target_trend_confirmation_enabled:
+                reduced = n_target_reversals(reduced, source, prefix, source_level=level-1,
+                    qualified_source=qualified_source, n_target_trend_confirmation_enabled=True)
             # The reducer's confirmation trigger may occur after the extreme itself.
             reduced = [dict(p, available_index=p['available_at']) for p in reduced]
             candidate_source = freeze(reduced, level)
@@ -116,10 +124,13 @@ def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tup
                                            for point in candidate_source if point['kind'] == 'H'
                                            and point.get('wave_direction_after') == 'down')
                 decline_sink[i] = decline_history[i]
-            published = publish_uptrends(candidate_source, source, prefix, source_level=level-1)
+            published = publish_uptrends(candidate_source, source, prefix, source_level=level-1,
+                qualified_source=qualified_source,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
             levels[level] = tuple(dict(index=p['index'], ordinal=p['ordinal'], kind=p['kind'],
                                       value=p['value'], available_at=p['available_at']) for p in published)
             source = candidate_source
+            qualified_source = published
         history[i] = levels
         if prefix_cache is not None and resume_start != last and i == last - 1:
             prefix_cache['key'] = prefix_key

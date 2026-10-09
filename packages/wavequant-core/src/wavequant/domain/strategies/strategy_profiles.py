@@ -83,7 +83,10 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'global_trend_confirmation_routes_v111_' + variant
+    config['profile_version'] = 'configurable_n_target_trend_confirmation_v111_' + variant
+    config['definition']['trend_confirmation_routes'] = 'same_level_key_break_or_lower_key_break_alternation_turn'
+    config['definition']['n_target_trend_confirmation_enabled'] = False
+    config['definition']['optional_trend_confirmation_route'] = 'source_n_strict_one_p_target'
     config['definition']['secondary_high_promotion'] = 'confirmed_source_high_strictly_breaks_formal_secondary_key_known_before_high_price_session_no_future_pullback'
     config['definition']['stacking_confirmation'] = 'post_two_t_no_pullback_strict_high_extension_no_record_close'
     config['definition']['stacking_box'] = 'three_in_one_two_t_minus_origin'

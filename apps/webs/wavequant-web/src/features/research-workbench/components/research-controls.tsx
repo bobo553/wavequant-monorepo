@@ -110,6 +110,13 @@ export function ResearchControls(): JSX.Element {
                     <input type="checkbox" id="backtest-shallow-base-breakout" defaultChecked />
                     启用浅回撤横盘突破买点
                 </label>
+                <label
+                    className="backtest-volume-filter"
+                    title="默认关闭。勾选后，一、二、三级趋势可由下级已确认正 N 严格超过一饱确认上涨，倒 N 严格低于下跌一饱确认下跌；相等触及不确认。一饱按实际攻击箱体计算。"
+                >
+                    <input type="checkbox" id="n-target-trend-confirmation" />
+                    正/倒 N 超一饱确认趋势
+                </label>
                 <button id="run-stock-backtest">运行当前股票回测</button>
                 <div
                     id="stock-backtest-status"

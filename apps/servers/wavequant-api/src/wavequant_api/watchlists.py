@@ -82,6 +82,10 @@ def settings(value: object) -> dict[str, object]:
     for key in ("run", "variant", "scenario", "source", "start", "volume_filter", "net_reward_risk_filter",
                 "shallow_base_breakout_enabled", "initial_capital", "max_position_weight"):
         normalized[key] = text(context.get(key), 128)
+    n_target = context.get("n_target_trend_confirmation_enabled", "false")
+    if not isinstance(n_target, str) or n_target not in {"true", "false"}:
+        raise ValueError("N达标趋势开关无效")
+    normalized["n_target_trend_confirmation_enabled"] = n_target
     if normalized["source"] not in {"akshare", "tdx"}:
         raise ValueError("回测数据源无效")
     date.fromisoformat(normalized["start"])
@@ -118,7 +122,10 @@ class WatchlistStore:
     def load(self) -> dict[str, object]:
         with closing(self.connect()) as connection:
             revision, payload = connection.execute("SELECT revision, payload FROM watchlist_document WHERE id=1").fetchone()
-        return {"revision": revision, **record(json.loads(payload))}
+        document = record(json.loads(payload))
+        if document.get("settings") is not None:
+            document["settings"] = settings(document["settings"])
+        return {"revision": revision, **document}
 
     def save(self, revision: object, value: object, *, field: str = "snapshot") -> dict[str, object]:
         normalized = snapshot(value) if field == "snapshot" else settings(value)

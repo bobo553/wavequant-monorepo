@@ -320,13 +320,15 @@ def _annotate(points, symbol, dates):
             anchor,key=p,previous; attack=None; suspicion=False
 
 
-def reversal_trends(drawing, bars):
+def reversal_trends(drawing, bars, *, n_target_trend_confirmation_enabled: bool = False):
     # Drawing sessions are Shanghai dates, including timezone-aware market bars.
     from zoneinfo import ZoneInfo
     dates={(b.timestamp.astimezone(ZoneInfo('Asia/Shanghai')) if b.timestamp.tzinfo else b.timestamp).date().isoformat():i
            for i,b in enumerate(bars)}
-    result=[]; source_strokes=[]; local_count=0; candidate_strokes=[]; source_kinds={}
-    for stroke in drawing['strokes']:
+    from .n_trend_reversals import n_target_reversals
+    result=[]; source_strokes=[]; local_count=0; candidate_strokes=[]; source_kinds={}; developing_strokes=[]
+    n_targets: list[dict[str,object]]=[]
+    for stroke_index,stroke in enumerate(drawing['strokes']):
         raw=stroke['points']; counts=Counter(p['time'] for p in raw)
         ranks: Counter[str] = Counter()
         compact: list[_WaveTurn] = []
@@ -354,7 +356,12 @@ def reversal_trends(drawing, bars):
                               'source_state':p['state']})
                 source_kinds[(stroke['id'],p['index'],p['ordinal'])]='H' if high else 'L'
         local_count+=len(turns)
-        waves=_wave_reversals(turns)
+        geometric_waves=_wave_reversals(turns)
+        later=drawing['strokes'][stroke_index+1:]
+        cutoff=later[0]['points'][0]['index'] if later else len(bars)
+        waves=(n_target_reversals(geometric_waves,turns,bars[:cutoff],source_level=0,target_sink=n_targets,
+                                 n_target_trend_confirmation_enabled=True)
+               if n_target_trend_confirmation_enabled else geometric_waves)
         if waves:
             result.append(dict(id=f'reversal-{stroke["id"]}',source_path=stroke['id'],kind='reversal',points=waves,
                                input_turn_count=len(turns)))
@@ -362,24 +369,44 @@ def reversal_trends(drawing, bars):
     # lose a known pressure anchor or the whole-wave low across its boundary.
     candidates=_connect_reversal_strokes(result,source_strokes)
     result=[]
-    from .trend_publication import LEG_CONFIRMATION_POLICY, WAVE_DISPLAY_POLICY, confirmed_trend_legs, publish_uptrends
+    from .trend_publication import LEG_CONFIRMATION_POLICY, OPTIONAL_LEG_CONFIRMATION_POLICY, WAVE_DISPLAY_POLICY, confirmed_trend_legs, publish_uptrends
     for stroke in candidates:
         ancestors=set(stroke['source_paths'])
-        source_points=sorted((dict(point,kind=source_kinds.get((source['id'],point['index'],point['ordinal']),point['kind']))
+        last_source=max(index for index,source in enumerate(source_strokes) if source['id'] in ancestors)
+        following=[source for source in source_strokes[last_source+1:] if source['points']]
+        cutoff=following[0]['points'][0]['index'] if following else len(bars)
+        market=bars[:cutoff]
+        source_points=sorted((dict(point,label=point.get('label',point['kind']),
+                                  kind=source_kinds.get((source['id'],point['index'],point['ordinal']),point['kind']))
                               for source in source_strokes if source['id'] in ancestors
                               for point in source['points']),key=_point_order)
         positions={_point_order(point):position for position,point in enumerate(source_points)}
         points=[dict(point,source_turn_position=positions[_point_order(point)]) for point in stroke['points']]
         _annotate(points,bars[0].symbol,dates)
         candidate_strokes.append(dict(stroke,points=points))
-        published=publish_uptrends(points,source_points,bars,source_level=0)
+        published=publish_uptrends(points,source_points,market,source_level=0,
+                                  n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         if published:
-            result.append(dict(stroke,points=published,confirmation_policy='two_routes_v106',
-                               leg_confirmation_policy=LEG_CONFIRMATION_POLICY,wave_display_policy=WAVE_DISPLAY_POLICY,
-                               confirmed_legs=confirmed_trend_legs(published,trend_level=1,source_path=stroke['id'])))
+            public=dict(stroke,points=published,confirmation_policy='trend_routes_v110',
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                        leg_confirmation_policy=OPTIONAL_LEG_CONFIRMATION_POLICY if n_target_trend_confirmation_enabled else LEG_CONFIRMATION_POLICY,
+                        wave_display_policy=WAVE_DISPLAY_POLICY,
+                        confirmed_legs=confirmed_trend_legs(published,trend_level=1,source_path=stroke['id']))
+            result.append(public)
+            if n_target_trend_confirmation_enabled and any(
+                    point.get('trend_confirmation_route')=='source_n_strict_one_p_target' for point in published):
+                from .hierarchical_development import hierarchical_developing_path
+                tail=hierarchical_developing_path(dict(id=stroke['id'],points=source_points),published,
+                        trend_level=1,source_level=0,kind='reversal',bars=market,structural=points,
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+                if tail:
+                    developing_strokes.append(tail)
     for stroke in result:
         _annotate(stroke['points'],bars[0].symbol,dates)
     return dict(strokes=result,candidate_strokes=candidate_strokes,structure_strokes=candidate_strokes,
+                developing_strokes=developing_strokes,
+                n_target_observations=n_targets,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                 trend_level=1,name='一级趋势线',scope='lecture_wave_structure_not_strategy_confirmation',
                 bear_to_bull_highs=bear_to_bull_highs(result,trend_level=1),
                 bear_bull_alternation_lows=bear_bull_alternation_lows(result,trend_level=1,bars=bars),
@@ -388,7 +415,10 @@ def reversal_trends(drawing, bars):
                 aggregation_rule='ordered_HH_then_HL_or_LL_then_LH_switch_with_confirmed_cross_path_extremes',input_turn_count=local_count,
                 confirmed_wave_count=sum(len(s['points']) for s in result),
                 break_basis='confirmed_polyline_extreme',retracement_threshold=.67,
-                note='一级上涨与二、三级使用相同两路线：本级末跌高严格突破，或基础折线末跌高突破、空多交替、后续收盘转多；'
+                note=('一级与二、三级使用相同三路线：本级关键位严格突破，或基础折线关键位突破、交替、后续收盘转向，'
+                      '或正N/倒N完成后严格超过攻击箱测算的一饱确认对应趋势；等值不确认，首次证书冻结；'
+                      if n_target_trend_confirmation_enabled else
+                      '一级与二、三级使用相同两路线：本级关键位严格突破，或基础折线关键位突破、交替、后续收盘转向；')+
                      '有序高低点转换只生成内部结构候选，不单独授予上涨权限；'
                      '不能用推进前的旧回档确认新推进，确认前仍跟踪整段极值；相邻分段以真实已确认原折线极值正式衔接，'
                      '并作为二级输入；未完成波段不画实线。')

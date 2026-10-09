@@ -85,7 +85,8 @@ def run_validation_suite(csv_path, protocol_path, output):
         write_signals(output/name/'signals.csv',signals)
         row=dict(strategy=asdict(strategy),folds=[],scenarios={})
         for f in folds:
-            result=run_portfolio(grouped,signals,base_execution,*f['test'])
+            result=run_portfolio(grouped,signals,base_execution,*f['test'],
+                n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)
             save_result(output/name/'folds'/str(f['fold']),result)
             row['folds'].append(dict(fold=f['fold'],metrics=result.metrics,diagnostics=execution_diagnostics(result)))
         scenarios={
@@ -99,7 +100,8 @@ def run_validation_suite(csv_path, protocol_path, output):
             'capacity_half':replace(base_execution,max_participation=base_execution.max_participation/2),
         }
         for scenario,execution in scenarios.items():
-            result=run_portfolio(grouped,signals,execution)
+            result=run_portfolio(grouped,signals,execution,
+                n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)
             save_result(output/name/scenario,result)
             row['scenarios'][scenario]=dict(metrics=result.metrics,diagnostics=execution_diagnostics(result),
                                            execution=execution.to_dict())
