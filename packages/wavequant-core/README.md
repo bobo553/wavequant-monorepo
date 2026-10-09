@@ -77,6 +77,8 @@ pnpm --filter wavequant-api dashboard
 
 ## 统一价格行为基础
 
+十九项 K 线、折线反转、窗口趋势、翻向交替、头底疑虑与 N 攻击虚拟价已封装为可复用基础入口，见 [折线趋势定义基座](docs/trend_primitives_contract.md)。相邻棒与 N 共用严格比较和虚高虚低；趋势入口保留窗口、确认时间和冻结锚点。可运行示例：`examples/trend_primitives.py`。
+
 突破、跌破、抵抗和三笔顺序的独立底层定义位于 `wavequant/domain/market_structure/price_action.py`，说明见 `docs/price_action_contract.md`。关键点必须事先确认并显式传入；分别记录盘中/收盘越过；长影默认不设阈值；第三笔只记录确认事实，不替上层判断抵抗成功或趋势反转。
 
 可运行示例：`.venv\Scripts\python.exe -m examples.price_action_basics`。后续 N 字、六态、量能和交易模块可消费这些不可修改的观测结果；旧研究代理保留兼容行为，尚未全部迁移。
