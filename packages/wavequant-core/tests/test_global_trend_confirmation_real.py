@@ -79,8 +79,30 @@ def _formal_signature(level: Mapping[str, object], asof: str) -> list[tuple[obje
     )
 
 
-def _assert_uptrend_certificate(proof: object, bars: Sequence[Bar], asof: str) -> None:
+def _assert_trend_certificate(proof: object, bars: Sequence[Bar], asof: str) -> None:
     assert isinstance(proof, dict)
+    if proof['confirmation_rule']=='source_n_strict_one_p_target':
+        up=proof['direction']=='up'
+        sign=1 if up else -1
+        origin,neckline,pullback,completion,trigger=(proof[name] for name in
+            ('origin','n_neckline','n_pullback','n_completion','confirmed_by'))
+        assert all(isinstance(point,dict) for point in (origin,neckline,pullback,completion,trigger))
+        assert (origin['kind'],neckline['kind'],pullback['kind'])==(('L','H','L') if up else ('H','L','H'))
+        assert origin['index']<neckline['index']<=pullback['index']<=completion['index']<=trigger['index']
+        assert 0<sign*(pullback['value']-origin['value'])<sign*(neckline['value']-origin['value'])
+        assert max(origin['available_at'],neckline['available_at'],pullback['available_at'])<=completion['available_at']
+        assert completion['available_at']<=trigger['available_at']==proof['available_at']<=asof
+        assert proof['one_p_target']==pytest.approx(2*proof['box_anchor']-origin['value'])
+        _assert_evidence_known(proof,proof['available_at'],len(bars)-1)
+        bar=bars[trigger['index']]
+        observed=bar.close if trigger['index']==completion['index'] else bar.high if up else bar.low
+        assert trigger['value']==observed
+        assert sign*(observed-proof['one_p_target'])>0
+        for prior in bars[completion['index']+1:trigger['index']+1]:
+            adverse=prior.low if up else prior.high
+            assert sign*(adverse-origin['value'])>=0
+            assert sign*(adverse-proof['defense'])>=0
+        return
     assert proof["direction"] == "up"
     key, origin, turn = proof["broken_key"], proof["origin"], proof["confirmed_by"]
     assert all(isinstance(point, dict) for point in (key, origin, turn))
@@ -146,11 +168,11 @@ def test_every_hierarchy_keeps_its_proof_known_and_formal_points_prefix_invarian
             published = cast(str, point["available_at"])
             _assert_evidence_known(point, published, dates[published])
             if point.get("trend_confirmation") is not None:
-                _assert_uptrend_certificate(point["trend_confirmation"], prefix, asof)
+                _assert_trend_certificate(point["trend_confirmation"], prefix, asof)
         for stroke in _records(level.get("developing_strokes", [])):
             proof = stroke.get("confirmation")
             if isinstance(proof, dict) and proof.get("direction") == "up":
-                _assert_uptrend_certificate(proof, prefix, asof)
+                _assert_trend_certificate(proof, prefix, asof)
         assert _formal_signature(level, asof) == _formal_signature(later, asof)
 
 

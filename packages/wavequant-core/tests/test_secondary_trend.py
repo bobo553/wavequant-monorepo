@@ -263,11 +263,12 @@ class SecondaryTrendTests(unittest.TestCase):
         before=copy.deepcopy(source)
         full=secondary_trends(source,bars)
         points=full['strokes'][0]['points']
-        self.assertEqual([(p['kind'],p['value']) for p in points],[('H',45),('L',24),('H',50)])
+        self.assertEqual([(p['kind'],p['value']) for p in points],[('L',10),('H',45),('L',24),('H',50)])
+        self.assertEqual(points[0]['trend_confirmation']['confirmation_rule'],'source_n_strict_one_p_target')
         low,high=points[-2:]
         proof=low['trend_confirmation']
         self.assertEqual(low['confirmation_rule'],'strict_same_level_market_key_break')
-        self.assertEqual(proof['broken_key']['available_at'],points[0]['available_at'])
+        self.assertEqual(proof['broken_key']['available_at'],points[1]['available_at'])
         self.assertEqual((proof['confirmed_by']['index'],proof['confirmed_by']['value']),(17,50))
         self.assertGreater(proof['confirmed_by']['value'],proof['broken_key']['value'])
         self.assertEqual(high['confirmation_rule'],'level1_confirmed_high_breaks_known_level2_last_fall_high')

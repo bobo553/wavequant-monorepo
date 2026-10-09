@@ -147,7 +147,7 @@ class TrendConfirmationEntryRefreshTests(unittest.TestCase):
             return []
 
         def publish(_candidates: object, source: Sequence[dict[str, object]], prefix: Sequence[Bar], *,
-                    source_level: int) -> list[dict[str, object]]:
+                    source_level: int, qualified_source: object = None) -> list[dict[str, object]]:
             self.assertTrue(all(type(point["available_at"]) is int for point in source))
             if source_level == 0:
                 first_lengths.append(len(prefix))

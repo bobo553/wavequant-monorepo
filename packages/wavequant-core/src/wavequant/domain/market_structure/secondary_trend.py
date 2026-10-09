@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from .hierarchical_development import hierarchical_developing_path
 from .lecture_trend import _annotate, _ref
 from .trend_publication import publish_uptrends
+from .n_trend_reversals import n_target_reversals
 from .trend_landmarks import (
     bear_bull_alternation_lows,
     bear_to_bull_highs,
@@ -235,7 +236,9 @@ def _candidate_structural_reversals(points, *, source_level=1):
 
 def _structural_reversals(points, *, source_level=1, bars=()):
     """Publish only complete upward confirmations from the shared gate."""
-    return publish_uptrends(_candidate_structural_reversals(points,source_level=source_level),
+    candidates=n_target_reversals(_candidate_structural_reversals(points,source_level=source_level),
+                                 points,bars,source_level=source_level)
+    return publish_uptrends(candidates,
                             points,bars,source_level=source_level)
 
 
@@ -243,16 +246,21 @@ def secondary_trends(level1,bars):
     dates={(b.timestamp.astimezone(ZoneInfo('Asia/Shanghai')) if b.timestamp.tzinfo else b.timestamp).date().isoformat():i
            for i,b in enumerate(bars)}
     strokes=[]; developing_strokes=[]; candidate_strokes=[]
+    n_targets: list[dict[str,object]]=[]
     # A confirmed descending extreme remains a structural pressure reference
     # even when the following upward trend has not earned permission to draw.
     source_strokes=level1.get('structure_strokes',level1['strokes'])
     for source_index,source in enumerate(source_strokes):
-        candidates=_candidate_structural_reversals(source['points'])
-        _annotate(candidates,bars[0].symbol,dates)
-        candidate_strokes.append(dict(id='secondary-'+source['id'],source_path=source['id'],points=candidates))
         next_sources=[later for later in source_strokes[source_index+1:] if later['points']]
         end_index=next_sources[0]['points'][0]['index']-1 if next_sources else len(bars)-1
-        points=publish_uptrends(candidates,source['points'],bars[:end_index+1],source_level=1)
+        public_source: list[dict[str,object]]=next((item['points'] for item in level1['strokes'] if item['id']==source['id']),[])
+        candidates=_candidate_structural_reversals(source['points'])
+        candidates=n_target_reversals(candidates,source['points'],bars[:end_index+1],source_level=1,
+                                     qualified_source=public_source,target_sink=n_targets)
+        _annotate(candidates,bars[0].symbol,dates)
+        candidate_strokes.append(dict(id='secondary-'+source['id'],source_path=source['id'],points=candidates))
+        points=publish_uptrends(candidates,source['points'],bars[:end_index+1],source_level=1,
+                               qualified_source=public_source)
         if not points:
             continue
         _annotate(points,bars[0].symbol,dates)
@@ -267,8 +275,7 @@ def secondary_trends(level1,bars):
         transitions=last_fall_high_reanchors(points,bars,trend_level=2)
         strokes.append(dict(id='secondary-'+source['id'],source_path=source['id'],kind='secondary',
                             trend_level=2,points=points,input_turn_count=len(source['points']),
-                            key_transitions=transitions,confirmation_policy='two_routes_v106'))
-        public_source=next((item['points'] for item in level1['strokes'] if item['id']==source['id']),source['points'])
+                            key_transitions=transitions,confirmation_policy='trend_routes_v108'))
         tail=hierarchical_developing_path(source,points,trend_level=2,source_level=1,kind='secondary',
                                          bars=bars,end_index=end_index,structural=candidates,qualified_source_points=public_source)
         if tail:
@@ -279,15 +286,17 @@ def secondary_trends(level1,bars):
                 post_alternation_bull_highs=post_alternation_bull_highs(strokes,trend_level=2,source_strokes=level1['strokes'],bars=bars),
                 bullish_turn_signals=bullish_turn_signals(strokes,bars,trend_level=2,source_strokes=level1['strokes']),
                 developing_strokes=developing_strokes,candidate_strokes=candidate_strokes,structure_strokes=candidate_strokes,
+                n_target_observations=n_targets,
                 input_turn_count=sum(len(s['points']) for s in level1['strokes']),
                 confirmed_wave_count=sum(len(s['points']) for s in strokes),
                 developing_wave_count=len(developing_strokes),
                 developing_point_count=sum(len(s['points']) for s in developing_strokes),
                 key_transition_count=sum(len(s['key_transitions']) for s in strokes),
-                aggregation_rule='same_level_key_break_or_lower_level_break_alternation_turn',
+                aggregation_rule='same_level_key_break_or_lower_level_break_alternation_turn_or_n_strict_one_p',
                 scope='lecture_level2_not_strategy_confirmation',
                 note='市场最高价突破已知同级前高或最低价跌破已知同级前低时，趋势线立即确认并画实线，末端继续延伸；'
-                     '上涨只由本级末跌高突破，或一级末跌高突破后已确认空多交替并由后续收盘转多确认；'
+                     '一级来源正N/倒N完成后严格超过攻击箱测算的一饱，也独立确认二级对应趋势；'
+                     '原上涨两路线为本级末跌高突破，或一级末跌高突破后已确认空多交替并由后续收盘转多确认；'
                      '仅有一级突破不发布二级上涨或虚线。反向虚线同样须有完整突破、交替、后续收盘转向；'
                      '已确认一级高点若严格突破其价格日之前'
                      '已知的正式二级末跌高，则在一级高点及本段二级低点均可知时直接升级，不等待回撤或嵌套低点；'

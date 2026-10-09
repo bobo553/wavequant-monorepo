@@ -14,7 +14,7 @@ from ..models.model import Bar
 from .hierarchical_entry import EntryContext
 
 
-_CONFIRMATION_CACHE_VERSION = "daily_trend_confirmation_descent_pressure_v3"
+_CONFIRMATION_CACHE_VERSION = "daily_n_target_trend_confirmation_descent_pressure_v3"
 
 
 def _confirmed_descent_pressures(
@@ -80,6 +80,20 @@ def _has_confirmation_price_cross(
     points: list[object] = list(raw)
     for pair in levels:
         for level in pair:
+            observations = level.get('n_target_observations', ())
+            if isinstance(observations, (list, tuple)):
+                for observation in observations:
+                    if not isinstance(observation, Mapping):
+                        continue
+                    known, target = observation.get('available_at'), observation.get('one_p_target')
+                    if not isinstance(target, (int, float)) or isinstance(target, bool) or not isfinite(target):
+                        continue
+                    if not ((isinstance(known, str) and known <= asof)
+                            or (type(known) is int and known <= asof_index)):
+                        continue
+                    if (observation.get('direction') == 'up' and previous.high <= target < current.high
+                            or observation.get('direction') == 'down' and previous.low >= target > current.low):
+                        return True
             for field in ("strokes", "candidate_strokes"):
                 paths = level.get(field)
                 if not isinstance(paths, (list, tuple)):
@@ -91,6 +105,7 @@ def _has_confirmation_price_cross(
                     vertices = path.get("points")
                     if isinstance(vertices, (list, tuple)):
                         points.extend(vertices)
+    known_anchor_count = 0
     for raw_point in points:
         if not isinstance(raw_point, Mapping):
             continue
@@ -112,6 +127,7 @@ def _has_confirmation_price_cross(
             newly_eligible = known == asof_index - 1
         else:
             continue
+        known_anchor_count += 1
         if newly_known or newly_eligible:
             return True
         if point.get("kind") == "H" and (previous.high <= value < current.high
@@ -120,6 +136,10 @@ def _has_confirmation_price_cross(
         if point.get("kind") == "L" and (previous.low >= value > current.low
                                          or previous.close >= value > current.close):
             return True
+    # A one-p target is outside its source pivots. Continuing market extremes
+    # must therefore recheck a known three-anchor N even without a pivot cross.
+    if not levels and known_anchor_count >= 3 and (current.high > previous.high or current.low < previous.low):
+        return True
     return False
 
 

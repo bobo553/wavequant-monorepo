@@ -36,6 +36,8 @@ const additionalSources = [
     "apps/webs/wavequant-web/public/n-target-focus.js",
     "apps/webs/wavequant-web/public/n-structure-overlay.js",
     "apps/webs/wavequant-web/public/charts.js",
+    "apps/webs/wavequant-web/public/lecture-overlay.js",
+    "apps/webs/wavequant-web/public/app.js",
     "apps/webs/wavequant-web/public/target-level-guides.js",
     "apps/webs/wavequant-web/public/buy-n-targets.js",
     "apps/webs/wavequant-web/public/annotations.js",
@@ -53,11 +55,14 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 
 describe("strategy topology", () => {
     it("uses the same complete confirmation routes at all three trend levels", () => {
-        const note = topologyProfileNotes.find((text) => text.includes("V3 v107"));
+        const note = topologyProfileNotes.find((text) => text.includes("V3 v108"));
         expect(note).toMatch(/一、二、三级.*本级末跌高.*下一级末跌高突破.*空多交替.*收盘转多/);
         expect(note).toMatch(/缺交替.*不升级.*基础折线.*因果证书/);
         expect(note).toMatch(/本级突破直接升级.*深回调买点保留/);
         expect(note).toMatch(/整段最低价.*局部确认起点.*原低点.*可知日.*不提前/);
+        expect(note).toMatch(/正 N 严格超过一饱三条路线.*倒 N 下跌对称.*严格低于一饱.*相等触及不算/);
+        expect(note).toMatch(/实际攻击 X.*2×X−A.*不用旧颈线 B.*N 完成与达标当天.*原点破位、未来点或跨路径/);
+        expect(note).toMatch(/首次确认日冻结、末端继续延伸.*反转端点.*前端不按几何补线/);
     });
     it("separates causal direct promotion from the independent deep B reclaim", () => {
         const flow = topologyFlows.find((item) => item.id === "secondary-pullback");
@@ -129,6 +134,8 @@ describe("strategy topology", () => {
         expect(gate?.detail).toMatch(/仅有下级突破.*不能提前升级.*相等、未知/);
         expect(gate?.detail).toMatch(/一级使用基础折线.*同一证书可知日/);
         expect(gate?.detail).toMatch(/N 候选仍按独立基础折点形成.*继续等待/);
+        expect(gate?.detail).toMatch(/同路径下级已确认正 N.*实际攻击箱体锚点 X.*2×X−A.*倒 N 对称.*严格低于下跌一饱/);
+        expect(gate?.detail).toMatch(/相等触及不确认.*不把旧颈线 B.*N 完成和达标当天.*原点破位、跨路径或未来来源/);
         expect(gate?.yesNext).toBe("pivot");
         expect(gate?.noNext).toBe("pivot");
     });

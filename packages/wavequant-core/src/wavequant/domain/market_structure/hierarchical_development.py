@@ -4,6 +4,7 @@ from .lecture_trend import _ref
 from typing import cast
 from .hierarchical_confirmation import DirectionConfirmation, TrendReference, market_trend_confirmation, session_date, source_trend_reversal
 from .trend_confirmation import qualify_downtrend, qualify_uptrend
+from .n_trend_confirmation import qualified_n_source
 
 
 def _canonical_confirmation(proof):
@@ -21,7 +22,7 @@ def _canonical_confirmation(proof):
     return result
 
 
-def _cycle_direction(source_points, start, position, bars, cutoff):
+def _cycle_direction(source_points, start, position, bars, cutoff, n_source):
     """Choose the first completed source cycle after a frozen formal key."""
     rising=start['kind']=='H'
     origin_kind='L' if rising else 'H'
@@ -31,7 +32,7 @@ def _cycle_direction(source_points, start, position, bars, cutoff):
         origin=source_points[origin_position]
         if origin['kind']!=origin_kind or origin['index']>cutoff:
             continue
-        proof=qualify(source_points,origin,origin_position,None,bars,cutoff)
+        proof=qualify(source_points,origin,origin_position,None,bars,cutoff,n_source=n_source)
         if proof is not None:
             proofs.append(proof)
     return cast(DirectionConfirmation,min(proofs,key=lambda proof:str(proof['available_at']))) if proofs else None
@@ -39,7 +40,7 @@ def _cycle_direction(source_points, start, position, bars, cutoff):
 
 def _live_endpoint(confirmation,bars,cutoff):
     rising=confirmation['direction']=='up'
-    origin=confirmation['origin']
+    origin=confirmation.get('wave_origin',confirmation['origin'])
     if origin['index']>=cutoff:
         return None
     positions=range(origin['index']+1,cutoff+1)
@@ -57,7 +58,7 @@ def _countertrend_cycle(source_points,endpoint,bars,cutoff):
 
 
 def hierarchical_developing_path(source,confirmed,*,trend_level,source_level,kind,bars=(),end_index=None,structural=(),qualified_source_points=None):
-    """Share the two direction routes while keeping the endpoint display-only.
+    """Share the three direction routes while keeping the endpoint display-only.
 
     A source-key break alone grants neither a solid rising direction nor an
     inspection dash. Completed proofs freeze their first knowledge date; a
@@ -73,8 +74,9 @@ def hierarchical_developing_path(source,confirmed,*,trend_level,source_level,kin
     start=keys[-1]
     public=next((point for point in reversed(confirmed)
                  if all(point[field]==start[field] for field in ('index','kind','value'))),None)
-    position_field=f'source_level{source_level}_position'
+    position_field='source_turn_position' if source_level==0 else f'source_level{source_level}_position'
     source_points=source['points']
+    n_source=qualified_n_source(source_points,qualified_source_points) if qualified_source_points is not None else source_points
     position=start.get(position_field)
     if not isinstance(position,int) or not 0<=position<len(source_points):
         return None
@@ -89,9 +91,9 @@ def hierarchical_developing_path(source,confirmed,*,trend_level,source_level,kin
             prior_direction=True
     confirmation=direct['confirmation'] if direct else None
     endpoint=direct['endpoint'] if direct else None
-    active=confirmed[-1].get('incoming_trend_confirmation') or confirmed[-1].get('trend_confirmation')
+    active=confirmed[-1].get('trend_confirmation') or confirmed[-1].get('incoming_trend_confirmation')
     if active is not None and active['available_at']<=session_date(bars[cutoff]):
-        origin=active['origin']
+        origin=active.get('wave_origin',active['origin'])
         origin_position=next((index for index,point in enumerate(source_points)
                               if all(point[field]==origin[field] for field in ('index','kind','value'))),None)
         opposite=(market_trend_confirmation(source_points,cast(TrendReference,dict(origin,available_at=active['available_at'])),
@@ -104,12 +106,12 @@ def hierarchical_developing_path(source,confirmed,*,trend_level,source_level,kin
             endpoint=cast(TrendReference,_live_endpoint(confirmation,bars,cutoff))
         prior_direction=True
     if confirmation is None:
-        published=(public or start).get('incoming_trend_confirmation') or (public or start).get('trend_confirmation')
+        published=(public or start).get('trend_confirmation') or (public or start).get('incoming_trend_confirmation')
         if published and published['available_at']<=session_date(bars[cutoff]):
             confirmation=cast(DirectionConfirmation,dict(published))
             prior_direction=True
         else:
-            confirmation=_cycle_direction(source_points,start,position,bars,cutoff)
+            confirmation=_cycle_direction(source_points,start,position,bars,cutoff,n_source)
             prior_direction=True
         if confirmation is None:
             return None
@@ -118,7 +120,7 @@ def hierarchical_developing_path(source,confirmed,*,trend_level,source_level,kin
         return None
     confirmation=cast(DirectionConfirmation,_canonical_confirmation(confirmation))
     known=confirmation['available_at']
-    origin=dict(confirmation['origin'],state='confirmed',display_only=True,available_at=known,
+    origin=dict(confirmation.get('wave_origin',confirmation['origin']),state='confirmed',display_only=True,available_at=known,
                 trend_level=trend_level,development_role='confirmed_direction_origin')
     endpoint=cast(TrendReference,dict(endpoint,state='developing',display_only=True,trend_level=trend_level,
                   development_role='active_endpoint'))
@@ -143,7 +145,7 @@ def hierarchical_developing_path(source,confirmed,*,trend_level,source_level,kin
         path.append(pending)
     return dict(id=f'{kind}-developing-{source["id"]}',source_path=source['id'],kind=f'{kind}-developing',
                 trend_level=trend_level,source_level=source_level,state='confirmed',display_only=True,
-                confirmation_policy='two_routes_v106',
+                confirmation_policy='trend_routes_v108',
                 initial_direction=start['wave_direction_after'],wave_direction=confirmation['direction'],
                 available_at=known,endpoint_state='developing',confirmation=confirmation,
                 confirmed_endpoint=endpoint,confirmation_rule=confirmation['confirmation_rule'],nested_turn_count=0,

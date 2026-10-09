@@ -25,6 +25,7 @@ class DirectionConfirmation(TypedDict):
     direction: str
     broken_key: TrendReference
     origin: TrendReference
+    wave_origin: NotRequired[TrendReference]
     confirmed_by: TrendReference
 
 

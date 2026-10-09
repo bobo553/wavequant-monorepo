@@ -138,7 +138,7 @@ def test_real_july_origin_and_confirmation_are_stable_at_every_daily_prefix():
         july_lows = [point for stroke in prefix['strokes'] for point in stroke['points']
                      if point['kind'] == 'L' and point['time'].startswith('2018-07')]
         assert [(point['time'], point['value']) for point in july_lows] == (
-            [('2018-07-11', 4.84)] if asof >= '2018-08-01' else []), asof
+            [('2018-07-11', 4.84)] if asof >= '2018-07-27' else []), asof
 
 
 def test_real_xiangyang_july_rally_uses_july11_not_the_later_july16_floor() -> None:
@@ -151,7 +151,7 @@ def test_real_xiangyang_july_rally_uses_july11_not_the_later_july16_floor() -> N
     points = [point for stroke in first['strokes'] for point in stroke['points']]
     july_lows = [point for point in points if point['kind'] == 'L' and point['time'].startswith('2018-07')]
     assert [(point['time'], point['value'], point['available_at']) for point in july_lows] == [
-        ('2018-07-11', 4.84, '2018-08-01'),
+        ('2018-07-11', 4.84, '2018-07-27'),
     ]
     certificate = july_lows[0]['trend_confirmation']
     assert (certificate['origin']['time'], certificate['origin']['value']) == ('2018-07-16', 5.0)

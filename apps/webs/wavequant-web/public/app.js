@@ -28,7 +28,7 @@ import { combinedAEntryEvidence } from "./combined-a-entry-evidence.js";
 import { reuseCompletedBacktest } from "./completed-backtest-result.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
-import { trendConfirmationPresentation } from "./lecture-overlay.js";
+import { trendConfirmationPresentation, usesCausalTrendConfirmation } from "./lecture-overlay.js";
 import {
     holdingDrawdownCurve,
     holdingDrawdownForMarker,
@@ -1489,9 +1489,6 @@ function showAnnotationDetails(items) {
 function renderVisibleAnnotations(items, range) {
     $("focus-abc").disabled = chart.autoWaveProjections.length === 0;
     const t = range.trend;
-    $("trend-summary").textContent = t
-        ? `一级趋势线 · 视窗：${t.windowTrend} · 最新局部：${t.trend}（至 ${t.latestKnown}）｜视窗末跌高 ${num(t.lastFallHigh?.value)} · 末升低 ${num(t.lastRiseLow?.value)} · 点击一级转折点查看依据`
-        : "一级趋势线：当前无已确认波段，或图层已关闭；等待本级关键位突破，或原折线突破后完成交替及收盘转向。";
     const s = range.secondaryTrend;
     const secondaryDeveloping = range.secondaryDeveloping,
         secondaryDevelopingStart = secondaryDeveloping?.points[0],
@@ -1501,21 +1498,28 @@ function renderVisibleAnnotations(items, range) {
             : "";
     const confirmedTrendText = (stroke, name) => {
         const confirmation = stroke.confirmation;
-        const presentation = trendConfirmationPresentation(confirmation, name === "二级" ? 2 : 3);
-        if (!confirmation || (stroke.confirmation_policy === "two_routes_v106" && !presentation))
-            return `${name}趋势线：等待本级关键位突破，或下级突破后完成交替及收盘转向。`;
+        const level = stroke.trend_level ?? ["一级", "二级", "三级"].indexOf(name) + 1,
+            presentation = trendConfirmationPresentation(confirmation, level);
+        if (!confirmation || (usesCausalTrendConfirmation(stroke) && !presentation))
+            return `${name}趋势线：等待本级关键位突破、下级完整交替后收盘转向，或下级 N 严格超过一饱。`;
         const endpoint = stroke.confirmed_endpoint || stroke.points.at(-1),
             rising = confirmation.direction === "up";
         return `${name}趋势线 · ${presentation?.summary || `${confirmation.available_at} ${rising ? "突破前高确认上涨" : "跌破前低确认下跌"}（${confirmation.broken_key.time}，${num(confirmation.broken_key.value)}）`}｜实线末端继续延伸：${endpoint.time} ${num(endpoint.value)}`;
     };
+    $("trend-summary").textContent =
+        range.primaryDeveloping?.state === "confirmed"
+            ? confirmedTrendText(range.primaryDeveloping, "一级")
+            : t
+              ? `一级趋势线 · 视窗：${t.windowTrend} · 最新局部：${t.trend}（至 ${t.latestKnown}）｜视窗末跌高 ${num(t.lastFallHigh?.value)} · 末升低 ${num(t.lastRiseLow?.value)} · 点击一级转折点查看依据`
+              : "一级趋势线：当前无已确认波段，或图层已关闭；等待本级关键位突破、原折线完整交替后收盘转向，或原折线 N 严格超过一饱。";
     $("secondary-trend-summary").textContent =
         secondaryDeveloping?.state === "confirmed"
             ? confirmedTrendText(secondaryDeveloping, "二级")
             : s
-              ? `二级趋势线 · 视窗：${s.windowTrend} · 最新局部：${s.trend}（至 ${s.latestKnown}）｜二级末跌高 ${num(s.lastFallHigh?.value)} · 末升低 ${num(s.lastRiseLow?.value)}${secondaryDevelopmentText} · 点击二级转折点查看本级突破或一级完整交替转向依据`
+              ? `二级趋势线 · 视窗：${s.windowTrend} · 最新局部：${s.trend}（至 ${s.latestKnown}）｜二级末跌高 ${num(s.lastFallHigh?.value)} · 末升低 ${num(s.lastRiseLow?.value)}${secondaryDevelopmentText} · 点击二级转折点查看本级突破、一级完整交替转向或 N 一饱达标依据`
               : secondaryDeveloping
                 ? `二级趋势线 · 发展路径 ${secondaryDeveloping.points.length} 点：${secondaryDevelopingStart.time} ${secondaryDevelopingStart.label} ${num(secondaryDevelopingStart.value)} → 当前${secondaryDeveloping.wave_direction === "up" ? "上涨" : "下跌"}候选 ${secondaryDevelopingEnd.time} ${secondaryDevelopingEnd.label} ${num(secondaryDevelopingEnd.value)}｜紫色虚线点均来自已确认一级结构，不升级为正式二级反转`
-                : "二级趋势线：当前无已确认波段，或图层已关闭；等待二级关键位突破，或一级突破后完成交替及收盘转向。";
+                : "二级趋势线：当前无已确认波段，或图层已关闭；等待二级关键位突破、一级完整交替后收盘转向，或一级 N 严格超过一饱。";
     const u = range.tertiaryTrend;
     const developing = range.tertiaryDeveloping,
         developingStart = developing?.points[0],
@@ -1524,10 +1528,10 @@ function renderVisibleAnnotations(items, range) {
         developing?.state === "confirmed"
             ? confirmedTrendText(developing, "三级")
             : u
-              ? `三级趋势线 · 视窗：${u.windowTrend} · 最新局部：${u.trend}（至 ${u.latestKnown}）｜三级末跌高 ${num(u.lastFallHigh?.value)} · 末升低 ${num(u.lastRiseLow?.value)} · 点击三级转折点查看本级突破或二级完整交替转向依据`
+              ? `三级趋势线 · 视窗：${u.windowTrend} · 最新局部：${u.trend}（至 ${u.latestKnown}）｜三级末跌高 ${num(u.lastFallHigh?.value)} · 末升低 ${num(u.lastRiseLow?.value)} · 点击三级转折点查看本级突破、二级完整交替转向或 N 一饱达标依据`
               : developing
                 ? `三级趋势线 · 完整发展路径 ${developing.points.length} 点：${developingStart.time} ${developingStart.label} ${num(developingStart.value)} → 当前${developing.wave_direction === "up" ? "上涨" : "下跌"}候选 ${developingEnd.time} ${developingEnd.label} ${num(developingEnd.value)}｜橙色虚线点均来自已确认二级结构，不升级为正式三级反转`
-                : "三级趋势线：当前无已确认波段，或图层已关闭；等待三级关键位突破，或二级突破后完成交替及收盘转向。";
+                : "三级趋势线：当前无已确认波段，或图层已关闭；等待三级关键位突破、二级完整交替后收盘转向，或二级 N 严格超过一饱。";
     $("annotation-count").textContent = `当前图窗 ${range.from} — ${range.to} · ${items.length} 项`;
     $("events").replaceChildren();
     if (!items.length) {

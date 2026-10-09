@@ -10,6 +10,7 @@ from typing import Literal
 
 from ..models.model import Bar
 from .hierarchical_confirmation import session_date
+from .n_trend_confirmation import NConfirmationContext, prepare_n_confirmation_context, qualify_n_trend
 
 
 SAME_LEVEL_KEY_BREAK = "strict_same_level_market_key_break"
@@ -84,10 +85,13 @@ class ConfirmationContext:
     session_indices: Mapping[str, int] | None
     references: tuple[_Reference | None, ...]
     ordered: bool
+    n_source: Sequence[Mapping[str, object]]
+    n_context: NConfirmationContext | None
 
 
 def prepare_confirmation_context(
     source: Sequence[Mapping[str, object]], bars: Sequence[Bar] | None, end_index: int,
+    *, n_source: Sequence[Mapping[str, object]] | None = None,
 ) -> ConfirmationContext:
     """Parse one immutable source/clock snapshot without looking past cutoff."""
     if type(end_index) is not int or end_index < 0 or bars is not None and end_index >= len(bars):
@@ -100,7 +104,10 @@ def prepare_confirmation_context(
     ordered = (not any(left.order >= right.order for left, right in zip(known, known[1:]))
                and not any(left.known is not None and right.known is not None and left.known > right.known
                            for left, right in zip(known, known[1:])))
-    return ConfirmationContext(id(source), id(bars), end_index, market, sessions, references, ordered)
+    n_points = source if n_source is None else n_source
+    n_context = prepare_n_confirmation_context(n_points, bars, end_index) if bars is not None else None
+    return ConfirmationContext(id(source), id(bars), end_index, market, sessions, references, ordered,
+                               n_points, n_context)
 
 
 def _public(point: _Reference) -> dict[str, object]:
@@ -149,13 +156,14 @@ def _qualify(
     source: Sequence[Mapping[str, object]], origin: Mapping[str, object], source_position: int,
     same_level_key: Mapping[str, object] | None, bars: Sequence[Bar] | None, end_index: int, *, up: bool,
     context: ConfirmationContext | None = None,
+    n_source: Sequence[Mapping[str, object]] | None = None,
 ) -> dict[str, object] | None:
     if (type(end_index) is not int or end_index < 0 or type(source_position) is not int
             or not 0 <= source_position < len(source) or bars is not None and end_index >= len(bars)):
         return None
-    prepared = context if context is not None else prepare_confirmation_context(source, bars, end_index)
+    prepared = context if context is not None else prepare_confirmation_context(source, bars, end_index, n_source=n_source)
     if (prepared.source_identity != id(source) or prepared.bars_identity != id(bars)
-            or prepared.end_index != end_index):
+            or prepared.end_index != end_index or id(prepared.n_source) != id(source if n_source is None else n_source)):
         raise ValueError("a confirmation context must match its source and market prefix")
     supplied = prepared.references[source_position]
     base = supplied if origin is source[source_position] else _reference(origin, prepared.session_indices, end_index)
@@ -199,13 +207,19 @@ def _qualify(
                 confirmed = _bar_reference(market, index, up, isinstance(base.available, int))
                 proofs.append((index, _certificate(base, own_key, confirmed, up, SAME_LEVEL_KEY_BREAK)))
                 break
+    n_proof = qualify_n_trend(prepared.n_source, prepared.n_source[source_position], source_position,
+                             bars, end_index, up=up, context=prepared.n_context)
+    if n_proof is not None:
+        trigger = n_proof['confirmed_by']
+        assert isinstance(trigger, dict) and isinstance(trigger['index'], int)
+        proofs.append((trigger['index'], n_proof))
     frozen = next((point for point in reversed(references[:source_position])
                    if point is not None and point.kind == key_kind), None)
     if frozen is None or sign * (frozen.value - base.value) <= 0:
         return min(proofs, key=lambda item: item[0])[1] if proofs else None
     flips: list[tuple[int, _Reference, _Reference]] = []
     strongest: _Reference | None = None
-    causal_limit = min(failed, proofs[0][0] if proofs else end_index + 1)
+    causal_limit = min(failed, min((proof[0] for proof in proofs), default=end_index + 1))
     for position in range(source_position + 1, len(source)):
         point = references[position]
         # Known times are monotone; these cycles cannot precede failure or the first own-key proof.
@@ -257,8 +271,9 @@ def qualify_uptrend(
     source: Sequence[Mapping[str, object]], origin: Mapping[str, object], source_position: int,
     same_level_key: Mapping[str, object] | None, bars: Sequence[Bar] | None, end_index: int, *,
     context: ConfirmationContext | None = None,
+    n_source: Sequence[Mapping[str, object]] | None = None,
 ) -> dict[str, object] | None:
-    """Certify the first own-key break or complete frozen-source bullish cycle.
+    """Certify the first own-key break, source cycle or strict N target break.
 
     Raw hierarchy geometry does not supply permission. Higher source attacks
     may retry a failed pullback with a fresh retracement origin, while the
@@ -266,13 +281,16 @@ def qualify_uptrend(
     an earlier certificate. Without bars only a confirmed source own-key break
     can qualify; date-clock inputs must already be a known source prefix.
     """
-    return _qualify(source, origin, source_position, same_level_key, bars, end_index, up=True, context=context)
+    return _qualify(source, origin, source_position, same_level_key, bars, end_index, up=True,
+                    context=context, n_source=n_source)
 
 
 def qualify_downtrend(
     source: Sequence[Mapping[str, object]], origin: Mapping[str, object], source_position: int,
     same_level_key: Mapping[str, object] | None, bars: Sequence[Bar] | None, end_index: int, *,
     context: ConfirmationContext | None = None,
+    n_source: Sequence[Mapping[str, object]] | None = None,
 ) -> dict[str, object] | None:
-    """Mirror the same certificate for developing downward direction only."""
-    return _qualify(source, origin, source_position, same_level_key, bars, end_index, up=False, context=context)
+    """Mirror the same three certificates for a downward direction."""
+    return _qualify(source, origin, source_position, same_level_key, bars, end_index, up=False,
+                    context=context, n_source=n_source)

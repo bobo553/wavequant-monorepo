@@ -4,6 +4,59 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-304",
+            "name": "all-level-n-one-p-trend-confirmation",
+            "title": "各级正倒N超一饱确认趋势段",
+            "description": "正N和倒N在因果完成后严格超过一饱即独立确认一二三级趋势，补齐襄阳2018年9月的一级上涨段。",
+            "scope": "Core共享趋势确认、三层候选与回放、Web证据及定向回归",
+            "dependencies": ["MONOREPO-301", "MONOREPO-302", "MONOREPO-303"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "正N严格超过攻击箱锚点测算的一饱确认上涨，倒N严格低于对称目标确认下跌",
+                "一二三级共享第三路线，已有两条因果确认路线保持有效",
+                "真实襄阳09-11低4.94与09-25高5.78形成一级段，一饱5.32于09-20首次严格超过",
+                "等值、未来来源、完成前价格、防守失效与跨路径不提供确认，公开端点和回放前缀一致",
+                "更新缓存版本与中文证据，定向检查、状态及进度记录实际验证"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_n_trend_confirmation.py tests/test_n_trend_levels.py tests/test_n_trend_path_boundaries.py tests/test_n_target_trend_real.py tests/test_unconfirmed_wave_origin.py tests/test_level_one_wave_boundary.py tests/test_global_trend_confirmation_real.py tests/test_global_trend_confirmation.py tests/test_trend_confirmation_boundaries.py tests/test_lecture_trend.py tests/test_secondary_trend.py tests/test_tertiary_trend.py -q",
+                    "status": "passed",
+                    "summary": "同步main两次后最终245项及19子用例通过。真实09-14攻击X5.13/一饱5.32、09-20高5.34首次严格超过、09-11低4.94→09-25高5.78恢复；正倒镜像、三层实际入口、日期/整数/同日来源、等值、防守/原点、首证书、迟知峰、公开源资格和跨路径均覆盖。原更早整段低点保持；七月新增N候选使07-11低4.84在07-27可发布，沿用07-26局部证明，修复后知原点N覆盖早证明的缺陷。旧07-11的08-01断言按新路线更新，真正前缀稳定断言完整保留；唯一旧aggregation_rule字符串失败已修正并22项复跑通过。"
+                },
+                {
+                    "command": "pytest tests/test_trend_confirmation_entry_refresh.py tests/test_hierarchical_entry.py tests/test_chart_entry_history_cache.py -q; pytest tests/test_trend_confirmation_entry_refresh.py tests/test_n_trend_levels.py -q",
+                    "status": "passed",
+                    "summary": "缓存组29项通过，1个旧测试替身因新增qualified_source关键字失败；更新签名后68项及4子用例完整通过，含8项入口refresh和60项三层新行为。缓存版本更新、部分末棒重放、来源与纯价格达标刷新保留。只按冻结已知N目标跨越定向刷新，避免每个普通新高低都重建历史；不重复运行已经通过的较慢缓存组。"
+                },
+                {
+                    "command": "pytest tests/test_hierarchical_countertrend.py -q",
+                    "status": "passed",
+                    "summary": "47项通过，耗时1016.78秒，包含襄阳2025-05-15到2026-04-08实际交易日前缀。原三级证书与无依据反向虚线边界保留，N新路线只消费真实已公开的下一级源点。"
+                },
+                {
+                    "command": "Core strict mypy 4 shared/new gates; mypy 9 changed sources + 5 tests; Core typecheck 4; API strict --follow-imports=silent 11; Core build and wheel byte verification",
+                    "status": "passed",
+                    "summary": "全部通过，13个生产模块在wheel中换行归一后与最终源码逐字相同。首次worktree quick因缺build依赖失败，按已声明lock配置专属venv后相关Core门禁与构建通过；API检查按既有静态边界运行，修正解释器/导入环境后通过，无新增依赖、无Python格式或lint工具。"
+                },
+                {
+                    "command": "Node --test trend-n-confirmation/lecture-overlay/level-one-wave-endpoint/structural-c-wave; topology-data Vitest; Web lint/typecheck/production Webpack build; artifact byte verification",
+                    "status": "passed",
+                    "summary": "46项Node、17项拓扑通过；Web类型、lint零错误6条既有warning和精确E盘源码快照生产构建通过，7个Web改动文件与构建快照逐字一致。三路线与一级发展段同源展示，缺证书/未来/等值拒画，旧政策禁止几何补线保持；97源指纹同步。初次C/E跨盘依赖Junction引起Webpack路径错误，改在同盘精确副本构建后通过；V108 selector旧字符串已修正重验。"
+                },
+                {
+                    "command": "pnpm harness:check; pnpm exec prettier --check; git diff --check; git diff --cached --check; topology source digest verification",
+                    "status": "passed",
+                    "summary": "Harness301功能/18 Node/2 Python/32规则、改动文档及Web格式、差异检查通过；97源指纹与最终生产源码一致。所有原300个Feature对象完整保持，304完成后恢复256原in-progress。用户要求本次仅保留feat-N达标趋势确认分支提交，不合并main、不推送、不修改常驻服务。"
+                },
+                {
+                    "command": "Complete Core/Web suites, browser/Playwright, external-minute execution and all-stock account comparisons",
+                    "status": "not-run",
+                    "summary": "按用户开发节奏未运行完整套件或浏览器；真实日线结构、策略N事件与关键历史前缀已定向验证。外部分钟、其他股票完整账户差异和浏览器像素待独立验证，256原未完成状态与全部既有失败记录保持。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-303",
             "name": "market-timeframe-core-dependency-cache-invalidation",
             "title": "行情周期快照完整算法依赖失效",
