@@ -1,13 +1,13 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-304",
+    "activeFeature": "MONOREPO-256",
     "features": [
         {
             "id": "MONOREPO-304",
             "name": "formal-trend-leg-direction-confirmation",
             "title": "正式趋势连接段独立方向确认",
-            "status": "in-progress",
+            "status": "done",
             "dependencies": ["MONOREPO-301", "MONOREPO-302", "MONOREPO-303"],
             "description": "高点升级、回调方向及整波结束分别确认。各级反向未获独立证书时，同向创新高/低延伸原波；不把后续上涨证明借给此前下降，不凭邻接锚点截断二级上涨。",
             "scope": "Core三级图表发布、共用连接段方向证明、Web绘制/说明、缓存及真实AkShare周期链",
@@ -57,7 +57,17 @@
                 {
                     "command": "full Core/Web suites, browser/Playwright and external minute validation",
                     "status": "not-run",
-                    "reason": "遵循当次定向开发验证节奏；用户未要求浏览器E2E。全套与外部分钟留待独立验证，未记为通过。"
+                    "summary": "遵循当次定向开发验证节奏；用户未要求浏览器E2E。全套与外部分钟留待独立验证，未记为通过。"
+                },
+                {
+                    "command": "node wavequant-304-runtime-smoke.mjs / main Web3003 proxy + actual AkShare snapshots",
+                    "status": "passed",
+                    "summary": "代码98cab69已no-ff合并本地main d450fc9。自动API重启就绪后真实Web3003 AkShare三截止HTTP核验及生产primitive绘制通过：3/29仍为10/19→3/21上涨；4/25及最新截止延伸10/19→4/18，3/21→3/29及3/29另起上涨均未绘制。高9.84越6.85升级保留。旧ETag返回200替换，再次304复用；行情data_version保持，新算法8843528fbbc2/快照af284b87ca0e。7/11低4.84及2022升级保持，静态资源200。首次重启窗口回退旧离线缓存，待服务就绪后重试通过。无浏览器操作；未推送。"
+                },
+                {
+                    "command": "pnpm harness:check; Prettier targeted checks; git diff --check; branch/main review",
+                    "status": "passed",
+                    "summary": "301功能/18 Node/2 Python/32规则通过，差异与相关格式检查通过。提交标题<35字符，跳过本地钩子，无冲突；旧300功能与活动状态逐字段恢复。"
                 }
             ]
         },
@@ -2302,7 +2312,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "backlog",
+            "status": "in-progress",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
