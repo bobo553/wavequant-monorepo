@@ -7,6 +7,7 @@ from typing import Mapping, Sequence
 from collections.abc import Mapping as MappingABC
 
 from ..models.model import Bar
+from .candle_primitives import BarRelations as BarRelations, observe_bar_relations as observe_bar_relations
 from .price_action import (Direction, _index, _positive, _validate_bar, _ordered_pair,
                            teaching_inside, teaching_outside)
 from .n_shape import BoxAnchorMode, NSetup, PivotRef
@@ -15,31 +16,6 @@ from .n_shape import BoxAnchorMode, NSetup, PivotRef
 class PointKind(str, Enum):
     HIGH = 'H'
     LOW = 'L'
-
-
-@dataclass(frozen=True)
-class BarRelations:
-    shrinking_head: bool
-    shrinking_foot: bool
-    extending_head: bool
-    falling_tail: bool
-    sunrise: bool
-    sunset: bool
-    inside: bool
-    outside: bool
-    equal_high: bool
-    equal_low: bool
-
-
-def observe_bar_relations(previous: Bar, current: Bar) -> BarRelations:
-    _ordered_pair(previous, current)
-    h, l = current.high, current.low
-    return BarRelations(h < previous.high, l > previous.low,
-        h > previous.high, l < previous.low,
-        h > previous.high and l > previous.low and current.close > previous.high,
-        h < previous.high and l < previous.low and current.close < previous.low,
-        h < previous.high and l > previous.low, h > previous.high and l < previous.low,
-        h == previous.high, l == previous.low)
 
 
 @dataclass(frozen=True)

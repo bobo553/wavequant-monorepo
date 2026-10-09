@@ -384,7 +384,7 @@ def observe_trend_transition(bars: Sequence[Bar], points: Sequence[ReversalPoint
         a, b, c = known[j-2:j+1]
         if (a.point.kind == anchor.point.kind and c.point.kind == anchor.point.kind
                 and sign*(c.point.price-a.point.price) >= 0
-                and sign*(b.point.price-key.price) < 0
+                and sign*(b.point.price-key.price) <= 0
                 and sign*(c.point.price-anchor.point.price) >= 0
                 and c.confirmed_index > context.asof_index
                 and (attack is None or c.confirmed_index < attack.bar_index)

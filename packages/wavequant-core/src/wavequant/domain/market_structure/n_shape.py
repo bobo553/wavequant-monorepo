@@ -14,6 +14,7 @@ import math
 from typing import Sequence
 
 from ..models.model import Bar
+from .candle_primitives import virtual_high, virtual_low
 from .price_action import (Direction, KeyLevel, LevelKind, observe_attack, _ordered_pair,
                            _validate_bar, teaching_inside, teaching_outside)
 
@@ -344,7 +345,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         if previous_joint and not previous_was_turn:
             continue
         if outside_close and i == known:
-            vl, vh = min(bar.low,prev.close), max(bar.high,prev.close)
+            vl, vh = virtual_low(prev, bar), virtual_high(prev, bar)
             completion = NCompletion(i,bar.timestamp,True,True,vl,vh,vl if up else vh,'轧空低' if up else '杀多高')
             break
         real = observe_attack(bars,i,real_key,timeframe=timeframe)
@@ -352,7 +353,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         # Occupancy beyond both levels alone must not create a belated attack.
         if not (real.close_crossed or virtual.intrabar_crossed):
             continue
-        vl, vh = min(bar.low,bars[i-1].close),max(bar.high,bars[i-1].close)
+        vl, vh = virtual_low(prev, bar), virtual_high(prev, bar)
         defense = vl if up else vh
         if setup.staged_defense and first_stage is not None:
             # A touch may anchor the response, but never completes N: both

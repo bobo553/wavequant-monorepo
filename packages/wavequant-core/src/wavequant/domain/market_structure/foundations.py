@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from typing import TypedDict
 
 from ..models.model import Bar
+from .candle_primitives import observe_bar_relations, virtual_high, virtual_low
 
 # Canonical low-level API for new consumers. Older helpers below remain lecture
 # proxies for backwards compatibility, not the definitions of basic price action.
@@ -29,20 +31,42 @@ def _pair(current: Bar, previous: Bar) -> None:
             raise ValueError('inconsistent OHLC')
 
 
-def bar_relations(current: Bar, previous: Bar) -> dict:
+class LegacyBarRelations(TypedDict):
+    """Historical dictionary contract, including the original lifting_foot name."""
+
+    virtual_low: float
+    virtual_high: float
+    shrinking_head: bool
+    lifting_foot: bool
+    extending_head: bool
+    falling_tail: bool
+    sunrise: bool
+    sunset: bool
+    inside: bool
+    outside: bool
+    equal_high: bool
+    equal_low: bool
+    requires_lower_timeframe: bool
+
+
+def bar_relations(current: Bar, previous: Bar) -> LegacyBarRelations:
     """Exact inequalities from slide 16; equal highs/lows remain explicit."""
-    _pair(current, previous)
-    h, l = current.high, current.low
-    return dict(virtual_low=min(l, previous.close), virtual_high=max(h, previous.close),
-                shrinking_head=h < previous.high, lifting_foot=l > previous.low,
-                extending_head=h > previous.high, falling_tail=l < previous.low,
-                sunrise=h > previous.high and l > previous.low and current.close > previous.high,
-                sunset=h < previous.high and l < previous.low and current.close < previous.low,
-                inside=h < previous.high and l > previous.low,
-                outside=h > previous.high and l < previous.low,
-                equal_high=h == previous.high, equal_low=l == previous.low,
-                requires_lower_timeframe=h < previous.high and l > previous.low or
-                                         h > previous.high and l < previous.low)
+    relation = observe_bar_relations(previous, current)
+    return LegacyBarRelations(
+        virtual_low=virtual_low(previous, current),
+        virtual_high=virtual_high(previous, current),
+        shrinking_head=relation.shrinking_head,
+        lifting_foot=relation.shrinking_foot,
+        extending_head=relation.extending_head,
+        falling_tail=relation.falling_tail,
+        sunrise=relation.sunrise,
+        sunset=relation.sunset,
+        inside=relation.inside,
+        outside=relation.outside,
+        equal_high=relation.equal_high,
+        equal_low=relation.equal_low,
+        requires_lower_timeframe=relation.inside or relation.outside,
+    )
 
 
 def n_break_evidence(current: Bar, previous: Bar, *, direction: str,

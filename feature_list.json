@@ -4,6 +4,59 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-310",
+            "name": "reusable-polyline-trend-definition-primitives",
+            "title": "折线趋势十九项定义共享基座",
+            "status": "done",
+            "dependencies": ["MONOREPO-301", "MONOREPO-289"],
+            "description": "封装相邻K线六项关系、已确认反转与窗口关键点、全窗口多空趋势、翻向交替及头底证据和正倒N攻击虚拟价，复用已有因果规则。",
+            "scope": "Core基础函数、旧折线/N调用复用、定义契约与定向回归",
+            "acceptanceCriteria": [
+                "六项K线关系严格比较且独立输出，旧polyline及foundations调用兼容；虚低min(今低,昨收)、虚高max(今高,昨收)共用",
+                "反转以真实确认时间可知；默认窗口极值和指定极点向左最近反转锚点正确，缺少左侧结构返回None",
+                "全窗口每组高低点同时严格升降才判多空，不足保留未知；翻向、严格67%/33%交替与弱回档、疑虑及成形分离",
+                "正倒N攻击虚价仅从已完成N观察取值，量增不变成资格门槛，历史与当前有效性分离；保留分步N操作防守语义",
+                "相关定向回归、修改模块类型、构建安装烟测、Harness与差异复核实际通过；完整套件和浏览器未跑如实记录"
+            ],
+            "verification": [
+                {
+                    "command": "./init.ps1 -Mode quick",
+                    "status": "passed",
+                    "summary": "Node24.16.0/pnpm10.26.2，初始化Harness、lint、类型与依赖构建最终21/21通过。初次缺Python工具、API依赖及editable安装，补齐独立环境并与既有mypy2.3.1对齐后重跑通过；未改业务或检查配置。"
+                },
+                {
+                    "command": "python -m pytest tests/test_candle_primitives.py tests/test_trend_primitives.py tests/test_n_defense.py tests/test_polyline.py tests/test_foundations.py tests/test_n_shape.py tests/test_trend_structure.py tests/test_price_action.py tests/test_control_washout.py tests/test_lecture_drawing.py tests/test_lecture_trend.py tests/test_trend_confirmation_boundaries.py tests/test_trend_leg_confirmation.py tests/test_trend_wave_continuation.py tests/test_n_trend_confirmation.py tests/test_trend_landmarks.py tests/test_global_trend_confirmation.py tests/test_hierarchical_countertrend.py --deselect=tests/test_hierarchical_countertrend.py::test_xiangyang_may2025_to_april2026_has_no_tertiary_countertrend_dashes -q",
+                    "status": "passed",
+                    "summary": "最终500项及65子用例通过，3.51秒，1项完整历史用例另列待验证。覆盖十九定义、图008四个锚点、严格等值、67%/33%、确认时间、整个窗口趋势、翻向/交替/疑虑/成形、历史失效和现有分级趋势回归。"
+                },
+                {
+                    "command": "pytest tests/test_trend_primitives.py -k key_touch -q; focused new primitives and trend structure tests",
+                    "status": "passed",
+                    "summary": "新回归先复现底部和头部两个触线子用例失败；仅把疑虑阶段未越关键位条件改为<=0，修复后156项/8子用例通过，严格攻击条件保持。最终500项组包含该回归。"
+                },
+                {
+                    "command": "python -m mypy --strict <3 primitive modules, 3 new tests, example>; python -m mypy <foundations, polyline, n_shape, trend_structure>",
+                    "status": "passed",
+                    "summary": "新增7文件strict及修改4旧源码类型通过。例程实际运行正确；原Core4/API11类型检查亦在quick中通过。未运行Python格式化或lint。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core build; clean-wheel installation and wavequant-trend-wheel-smoke.py",
+                    "status": "passed",
+                    "summary": "最终sdist/wheel构建通过；独立干净venv安装wheel及声明tzdata，三个新入口从安装包导入并运行；7相关模块与源码逐字节一致，不使用editable作wheel烟测。"
+                },
+                {
+                    "command": "pnpm harness:check; pnpm exec prettier --check <feature state, Core progress, README, contract>; git diff --check/review",
+                    "status": "passed",
+                    "summary": "状态和进度、合同及源码最终复核。所有原功能对象和MONOREPO-256全部字段恢复；不提交构建生成的Web next-env变化、凭据或产物。CodeGraph已sync，旧导入和字典兼容。"
+                },
+                {
+                    "command": "test_xiangyang_may2025_to_april2026_has_no_tertiary_countertrend_dashes; complete Core/Web suites; browser/Playwright; full-account historical differences",
+                    "status": "not-run",
+                    "summary": "补充18文件整组最后一条完整历史重算耗时超过三分钟后停止，未声称整组通过；排除这1项重跑500项实际通过。该历史项、完整套件、浏览器及完整账户差异留待独立验证，未新增后台或定时任务。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-309",
             "name": "active-wave-extreme-before-local-confirmation",
             "title": "整波极值与局部确认时间分离",
