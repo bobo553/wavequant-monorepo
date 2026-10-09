@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 from .hierarchical_development import hierarchical_developing_path
 from .lecture_trend import _annotate, _ref
-from .trend_publication import LEG_CONFIRMATION_POLICY, annotate_published_legs, confirmed_trend_legs, publish_uptrends
+from .trend_publication import LEG_CONFIRMATION_POLICY, WAVE_DISPLAY_POLICY, annotate_published_legs, confirmed_trend_legs, publish_uptrends
 from .trend_landmarks import (
     bear_bull_alternation_lows,
     bear_to_bull_highs,
@@ -269,7 +269,8 @@ def secondary_trends(level1,bars):
         strokes.append(dict(id='secondary-'+source['id'],source_path=source['id'],kind='secondary',
                             trend_level=2,points=points,input_turn_count=len(source['points']),
                             key_transitions=transitions,confirmation_policy='two_routes_v106',
-                            leg_confirmation_policy=LEG_CONFIRMATION_POLICY,confirmed_legs=confirmed_trend_legs(points)))
+                            leg_confirmation_policy=LEG_CONFIRMATION_POLICY,wave_display_policy=WAVE_DISPLAY_POLICY,
+                            confirmed_legs=confirmed_trend_legs(points,trend_level=2,source_path=source['id'])))
         public_source=next((item['points'] for item in level1['strokes'] if item['id']==source['id']),source['points'])
         tail=hierarchical_developing_path(source,points,trend_level=2,source_level=1,kind='secondary',
                                          bars=bars,end_index=end_index,structural=candidates,qualified_source_points=public_source)

@@ -125,6 +125,71 @@ export function publishedTrendSegments(stroke, projected) {
     });
 }
 
+const waveDisplayPolicy = "one_connection_per_confirmed_wave_v109";
+const trendSegmentKey = (a, b) =>
+    JSON.stringify([a, b].map((point) => [point.index, point.ordinal ?? 0, point.time, point.kind, point.value]));
+
+/** 同一因果波只保留一个连接；比较显示极值，不在浏览器重算升级资格。 */
+export function selectPublishedTrendSegments(projected) {
+    const groups = projected
+        .filter(({ stroke }) => hasPublishedDevelopingDirection(stroke))
+        .map(({ stroke, points }) => ({ stroke, points, segments: publishedTrendSegments(stroke, points) }));
+    const owners = new Map();
+    const hidden = new Set();
+    for (const group of groups) {
+        const { stroke } = group;
+        if (stroke.wave_display_policy !== waveDisplayPolicy) continue;
+        const waveIds = new Map(
+            (Array.isArray(stroke.confirmed_legs) ? stroke.confirmed_legs : [])
+                .filter((leg) => leg.points?.length === 2)
+                .map((leg) => [trendSegmentKey(...leg.points), leg.wave_id]),
+        );
+        for (const segment of group.segments) {
+            const [a, b] = segment;
+            if (a.x == null || a.y == null || b.x == null || b.y == null) continue;
+            const developing = ["secondary-developing", "tertiary-developing"].includes(stroke.kind);
+            const waveId = developing
+                ? stroke.state === "confirmed" &&
+                  a.point.development_role === "confirmed_direction_origin" &&
+                  b.point.development_role === "active_endpoint" &&
+                  b.point.edge_state !== "developing" &&
+                  stroke.wave_id
+                : waveIds.get(trendSegmentKey(a.point, b.point));
+            if (typeof waveId !== "string" || !waveId.startsWith("trend-wave-v1:")) continue;
+            const rising = a.point.kind === "L" && b.point.kind === "H";
+            if (!rising && !(a.point.kind === "H" && b.point.kind === "L")) continue;
+            const key = JSON.stringify([
+                stroke.trend_level,
+                stroke.source_path,
+                waveId,
+                a.point.index,
+                a.point.ordinal ?? 0,
+                a.point.time,
+                a.point.kind,
+                a.point.value,
+            ]);
+            const current = owners.get(key);
+            const value = b.point.value,
+                priorValue = current?.segment[1].point.value;
+            const stronger = current && (rising ? value > priorValue : value < priorValue);
+            const equalEarlier =
+                current &&
+                value === priorValue &&
+                (b.point.index < current.segment[1].point.index ||
+                    (b.point.index === current.segment[1].point.index &&
+                        (b.point.ordinal ?? 0) < (current.segment[1].point.ordinal ?? 0)));
+            const equalFormal =
+                current && sameTrendPoint(b.point, current.segment[1].point) && current.developing && !developing;
+            if (!current || stronger || equalEarlier || equalFormal) {
+                if (current) hidden.add(current.segment);
+                owners.set(key, { group, segment, developing });
+            } else hidden.add(segment);
+        }
+    }
+    for (const group of groups) group.segments = group.segments.filter((segment) => !hidden.has(segment));
+    return groups;
+}
+
 /**
  * 为被服务端规则边界拆开的相邻讲义路径补一条纯显示边。
  * 只接受相邻 K 线上几何方向成立的 H/L 端点，避免用前端连线掩盖缺失交易日、
@@ -450,7 +515,7 @@ export class LectureOverlay {
             ctx.font = "10px sans-serif";
             // Map 同时收集正式一级端点和一级显示桥节点；连接首尾与正式端点重合时只画一次。
             const levelOneLabels = new Map();
-            for (const { stroke, points } of this.projected) {
+            for (const { stroke, points, segments } of selectPublishedTrendSegments(this.projected)) {
                 if (!hasPublishedDevelopingDirection(stroke)) continue;
                 const connection = stroke.kind === "reversal-connection" || stroke.kind === "secondary-connection";
                 const secondaryDeveloping = stroke.kind === "secondary-developing",
@@ -460,7 +525,6 @@ export class LectureOverlay {
                         stroke.kind === "secondary" || stroke.kind === "secondary-connection" || secondaryDeveloping,
                     reversal = stroke.kind === "reversal" || connection || secondary || tertiary;
                 ctx.lineWidth = tertiary ? 3.5 : secondary ? 3 : reversal ? 2 : 2.5;
-                const segments = publishedTrendSegments(stroke, points);
                 for (const [a, b] of segments) {
                     if (a.x === null || b.x === null || a.y === null || b.y === null) continue;
                     const teaching = stroke.kind === "teaching" || b.point.edge_kind === "teaching";

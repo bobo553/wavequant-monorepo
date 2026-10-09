@@ -4,6 +4,7 @@ from .lecture_trend import _ref
 from typing import cast
 from .hierarchical_confirmation import DirectionConfirmation, TrendReference, market_trend_confirmation, session_date, source_trend_reversal
 from .trend_confirmation import qualify_downtrend, qualify_uptrend
+from .trend_publication import WAVE_DISPLAY_POLICY, trend_wave_identity
 
 
 def _canonical_confirmation(proof):
@@ -154,6 +155,8 @@ def hierarchical_developing_path(source,confirmed,*,trend_level,source_level,kin
     return dict(id=f'{kind}-developing-{source["id"]}',source_path=source['id'],kind=f'{kind}-developing',
                 trend_level=trend_level,source_level=source_level,state='confirmed',display_only=True,
                 confirmation_policy='two_routes_v106',
+                wave_display_policy=WAVE_DISPLAY_POLICY,
+                wave_id=trend_wave_identity(confirmation,trend_level=trend_level,source_path=source['id']),
                 initial_direction=start['wave_direction_after'],wave_direction=confirmation['direction'],
                 available_at=known,endpoint_state='developing',confirmation=confirmation,
                 confirmed_endpoint=endpoint,confirmation_rule=confirmation['confirmation_rule'],nested_turn_count=0,

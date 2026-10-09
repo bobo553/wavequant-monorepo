@@ -52,6 +52,12 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 }
 
 describe("strategy topology", () => {
+    it("keeps a single displayed connection for a formal wave and its live continuation", () => {
+        const note = topologyProfileNotes.find((text) => text.includes("V3 v109"));
+        expect(note).toMatch(/正式连接.*发展延伸.*wave_id.*首个确认日期/);
+        expect(note).toMatch(/只画一条.*相同端点.*正式证据.*无法投影.*保留正式线/);
+        expect(note).toMatch(/不同等级.*证书.*不能.*同起点合并.*交易输入保持/);
+    });
     it("uses the same complete confirmation routes at all three trend levels", () => {
         const note = topologyProfileNotes.find((text) => text.includes("V3 v108"));
         expect(note).toMatch(/一、二、三级.*本级末跌高.*下一级末跌高突破.*空多交替.*收盘转多/);

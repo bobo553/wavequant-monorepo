@@ -1,6 +1,9 @@
 """Keep causal anchor publication separate from qualified directional waves."""
 
 from collections.abc import Mapping, Sequence
+from fractions import Fraction
+import hashlib
+import json
 from math import isfinite
 from typing import TypeAlias, cast
 
@@ -10,6 +13,45 @@ from .hierarchical_confirmation import session_date
 
 Moment: TypeAlias = int | str
 LEG_CONFIRMATION_POLICY = 'two_routes_each_direction_v108'
+WAVE_DISPLAY_POLICY = 'one_connection_per_confirmed_wave_v109'
+
+
+def _wave_reference(value: object) -> tuple[object, ...] | None:
+    if not isinstance(value, Mapping):
+        return None
+    index, ordinal, price = value.get('index'), value.get('ordinal', 0), value.get('value')
+    known, time, kind = value.get('available_at'), value.get('time'), value.get('kind')
+    if (type(index) is not int or index < 0 or type(ordinal) is not int or ordinal < 0
+            or type(price) not in (int, float) or not isfinite(cast(float, price))
+            or not isinstance(time, str) or not time or kind not in ('H', 'L', 'K')
+            or not (type(known) is int or isinstance(known, str) and bool(known))):
+        return None
+    return index, ordinal, time, kind, str(Fraction(str(price))), known
+
+
+def trend_wave_identity(proof: Mapping[str, object], *, trend_level: int, source_path: str) -> str | None:
+    """Name a causal wave independently of its changing displayed endpoint.
+
+    Labels and direct-route rendering fields are not new proofs. Origin,
+    source boundary, level and every required first-known evidence are; equal
+    prices or dates alone must never collapse independently confirmed waves.
+    """
+    rule = proof.get('confirmation_rule')
+    if (type(trend_level) is not int or trend_level not in (1, 2, 3) or not source_path or proof.get('direction') not in ('up', 'down')
+            or rule not in ('strict_same_level_market_key_break', 'source_key_break_alternation_then_market_turn')):
+        return None
+    fields = ['origin', 'broken_key', 'confirmed_by']
+    if rule == 'source_key_break_alternation_then_market_turn':
+        fields += ['flip_high', 'alternation_low'] if proof['direction'] == 'up' else ['flip_low', 'alternation_high']
+    references = [_wave_reference(proof.get(field)) for field in fields]
+    if rule == 'source_key_break_alternation_then_market_turn':
+        references.append(_wave_reference(proof.get('retracement_origin', proof.get('origin'))))
+    wave_origin = _wave_reference(proof.get('wave_origin', proof.get('origin')))
+    known = proof.get('available_at')
+    if any(ref is None for ref in references) or wave_origin is None or not (type(known) is int or isinstance(known, str) and bool(known)):
+        return None
+    payload = [trend_level, source_path, proof['direction'], rule, known, references, wave_origin]
+    return 'trend-wave-v1:' + hashlib.sha256(json.dumps(payload, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
 
 
 def _moment(point: Mapping[str, object]) -> Moment:
@@ -123,7 +165,9 @@ def _wave_holds(proof: Mapping[str, object], bars: Sequence[Bar], endpoint: Mapp
     return all(isfinite(price) and (price >= value if rising else price <= value) for price in prices)
 
 
-def confirmed_trend_legs(points: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+def confirmed_trend_legs(
+    points: Sequence[Mapping[str, object]], *, trend_level: int | None = None, source_path: str = '',
+) -> list[dict[str, object]]:
     """An unqualified retracement cannot terminate or restart a higher wave.
 
     Retain published anchors as independent evidence, but consolidate same-
@@ -142,6 +186,9 @@ def confirmed_trend_legs(points: Sequence[Mapping[str, object]]) -> list[dict[st
             continue
         leg = dict(points=[dict(origin), dict(point)], direction=direction, confirmation=dict(proof),
                    available_at=point['available_at'])
+        wave_id = trend_wave_identity(proof, trend_level=trend_level, source_path=source_path) if trend_level is not None else None
+        if wave_id is not None:
+            leg['wave_id'] = wave_id
         if legs and legs[-1]['direction'] == direction and _same_origin(cast(Mapping[str, object], legs[-1]['confirmation']), origin):
             last_points = cast(list[Mapping[str, object]], legs[-1]['points'])
             previous = cast(float, last_points[-1]['value'])
