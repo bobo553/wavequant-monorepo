@@ -313,8 +313,19 @@ class TrendTransition:
         return '翻空为多' if self.direction == Direction.UP else '翻多为空'
 
     @property
-    def formation_name(self):
-        return ('底部成形' if self.direction == Direction.UP else '头部成形') if self.attack else None
+    def formation_name(self) -> str | None:
+        """A prior observable suspicion and its later key attack form the pattern.
+
+        This is historical evidence, so a later invalidation does not erase a
+        formation already observed. Direct attacks without suspicion are flips.
+        """
+        if (
+            self.attack is None
+            or self.suspicion_index is None
+            or not 0 <= self.suspicion_index < self.attack.bar_index <= self.asof_index
+        ):
+            return None
+        return '底部成形' if self.direction == Direction.UP else '头部成形'
 
     @property
     def alternation_name(self):

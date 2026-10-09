@@ -46,7 +46,7 @@ class StructureTests(unittest.TestCase):
     def test_figure_008_all_four_named_key_mappings(self):
         labels = ['L1', 'H1', 'L0', 'H2', 'L2', 'H3', 'L3', 'H4', 'L4',
                   'H0', 'L5', 'H5', 'L6', 'H6', 'L7', 'H7', 'L8']
-        prices = [20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 36, 42, 30, 36, 24, 31, 26]
+        prices = [20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 38, 42, 32, 36, 24, 29, 26]
         pts = [point(i, K.LOW if label.startswith('L') else K.HIGH, price)
                for i, (label, price) in enumerate(zip(labels, prices))]
         r = context(pts, end=17)
@@ -81,7 +81,10 @@ class StructureTests(unittest.TestCase):
             (K.LOW, 22), (K.HIGH, 27), (K.LOW, 18)])]
         r = context(pts, end=13)
         self.assertEqual(r.last_rise_low.price, 13)
-        self.assertEqual(preceding_turn(r.points, r.points[-2]).point.price, 22)
+        prior = preceding_turn(r.points, r.points[-2])
+        if prior is None:
+            self.fail('the selected high must have its preceding confirmed low')
+        self.assertEqual(prior.point.price, 22)
 
     def test_window_scope_and_missing_left_context(self):
         r = context(end=15, start=6)
@@ -134,15 +137,23 @@ class StructureTests(unittest.TestCase):
                point(4, K.HIGH, 25), point(6, K.LOW, 15)]
         self.assertIsNone(observe_abc(pts, direction=Direction.DOWN, asof_index=6))
         r = observe_abc(pts, direction=Direction.DOWN, asof_index=7)
+        if r is None:
+            self.fail('the confirmed three-leg countertrend must expose ABC evidence')
         self.assertEqual((r.first_leg, r.third_leg), (10, 10))
         self.assertTrue(r.equal_wave_or_more)
         shorter = pts[:-1]+[point(6, K.LOW, 16)]
-        self.assertFalse(observe_abc(shorter, direction=Direction.DOWN, asof_index=7).equal_wave_or_more)
+        shorter_evidence = observe_abc(shorter, direction=Direction.DOWN, asof_index=7)
+        if shorter_evidence is None:
+            self.fail('a shorter third leg remains observable ABC evidence')
+        self.assertFalse(shorter_evidence.equal_wave_or_more)
 
     def test_abc_mirror_and_invalid_geometry(self):
         pts = [point(0, K.LOW, 10), point(2, K.HIGH, 20),
                point(4, K.LOW, 15), point(6, K.HIGH, 25)]
-        self.assertTrue(observe_abc(pts, direction=Direction.UP, asof_index=7).equal_wave_or_more)
+        evidence = observe_abc(pts, direction=Direction.UP, asof_index=7)
+        if evidence is None:
+            self.fail('the mirrored confirmed ABC must expose evidence')
+        self.assertTrue(evidence.equal_wave_or_more)
         pts[2] = point(4, K.LOW, 9)
         self.assertIsNone(observe_abc(pts, direction=Direction.UP, asof_index=7))
 

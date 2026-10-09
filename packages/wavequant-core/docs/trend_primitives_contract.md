@@ -1,6 +1,6 @@
 # 折线趋势定义基座
 
-这些基础函数对应十九项定义，供折线、图表和策略组合复用。输入使用同股票、同周期、同复权口径的有序 `Bar` 和已确认 `ReversalPoint`；函数没有 I/O 或交易副作用。实现位置：`wavequant.domain.market_structure`。
+这些基础函数对应二十个基础概念（原条目 19 包含轧空低与杀多高），供折线、图表和策略组合复用。输入使用同股票、同周期、同复权口径的有序 `Bar` 和已确认 `ReversalPoint`；函数没有 I/O 或交易副作用。实现位置：`wavequant.domain.market_structure`。图示分段和完整命名时序见 [图 008 组合契约](figure008_contract.md)。
 
 ## 相邻 K 线关系
 
@@ -80,3 +80,20 @@ bull = is_bull_trend(context)
 ```
 
 完整可执行示例见 `examples/trend_primitives.py`。这些入口没有新增盈亏优化或替换已验证的高层趋势确认规则。
+
+## 组合调用
+
+`trend_foundations.observe_trend_foundations` 将各基座组合成一次观察，保留单独入口供已有调用方复用：
+
+```python
+from wavequant.domain.market_structure.trend_foundations import observe_trend_foundations
+
+snapshot = observe_trend_foundations(
+    bars, confirmed_points, symbol="EXAMPLE", timeframe="1d",
+    window_start=0, asof_index=len(bars) - 1,
+    transition_context=frozen_context,  # 此前已知的多头或空头背景
+    n_setup=known_n_setup,              # 可省略；没有 N 时不产生 N 防守位
+)
+```
+
+默认按高／低严格越线，与图 008 的翻向定义一致；收盘口径显式选 `AttackBasis.CLOSE`。首次 K 棒没有昨日数据，相邻关系与虚拟价返回 `None`。缺少冻结背景时不推断翻向；缺少已完成 N 时不返回轧空低／杀多高。`examples/figure008_foundations.py` 给出完整可执行的图示分段调用。

@@ -4,6 +4,65 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-311",
+            "name": "figure008-composed-trend-foundations",
+            "title": "图008二十项定义组合基座",
+            "status": "done",
+            "dependencies": ["MONOREPO-310"],
+            "description": "图008只作为逻辑参考；统一二十个概念的组合观察入口，支持任意转折数量/段长/价格尺度，补齐完整命名时序示例与通用变形回归，成形名称共用疑虑后攻击证据。",
+            "scope": "Core无IO组合入口、图008示意样本/示例、成形名称一致性、契约与定向验证",
+            "acceptanceCriteria": [
+                "Lx/Hx只在示例/测试中说明，不进入生产接口，不硬编码点数或段长；变化时按实际相邻点及确认时间重新计算",
+                "组合入口复用既有K线/反转/趋势/N基座；默认高低严格突破，收盘口径可选，未提供背景不猜趋势翻向",
+                "图008四个关键映射、L0至H0多头、H0至L7空头及L8后混合窗口与因果确认时间一致",
+                "H4翻多与L4交替、H5疑虑与L7翻空成形、H7交替与L8底部疑虑分离；数字仅为示意，不从图片猜67%/33%或abc内部",
+                "旧formation_name与组合信号均须疑虑先于严格攻击，直接翻向不冒充成形，历史失效不抹除已知事件",
+                "只消费可见行情和已可知拐点，拒绝来源价格/股票/周期/窗口不符；新增定向测试、类型、构建安装和Harness实际通过"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest 20 focused candle/polyline/N/trend/figure008 files --deselect=tests/test_hierarchical_countertrend.py::test_xiangyang_may2025_to_april2026_has_no_tertiary_countertrend_dashes -q",
+                    "status": "passed",
+                    "summary": "最终557项及414子用例通过，4.26秒，1项旧耗时完整历史用例未重复。新增46组合观察及11图示/变形测试，涵盖任意点数、时间间隔/每段K棒数量、价格缩放平移、额外正反转改变实际相邻冲量、窗口、来源/股票/周期/时间校验、未来数据隔离、N证据可选和旧新观察器对照。"
+                },
+                {
+                    "command": "pytest test_trend_primitives.py -k direct_flip -q; related trend tests",
+                    "status": "passed",
+                    "summary": "先复现没有疑虑的直接翻向却输出formation_name成形失败，修正旧property并让新信号共用它后通过；成形要求0<=疑虑确认<攻击<=当前，失效后的历史事件保留。旧测试新增明确非None断言，6处类型问题修正且原价格/ABC行为断言保持。"
+                },
+                {
+                    "command": "MYPYPATH=src python -m mypy --strict --explicit-package-bases <2 source modules, 3 tests, 2 examples>; mypy trend_structure.py test_trend_structure.py",
+                    "status": "passed",
+                    "summary": "最终7文件strict及2旧源/测试类型通过。最初单查examples因namespace重复及editable无py.typed无法定位源码，按静态源目录路由修正后通过；没有修改运行时sys.path、放宽strict或添加ignore。相关旧测试可空类型以实际存在性断言修复。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core typecheck; pnpm --filter wavequant-api typecheck",
+                    "status": "passed",
+                    "summary": "复用已初始化的本会话环境，Node24.16.0/pnpm10.26.2/Core4与API11既定严格类型通过；本轮未重新跑全仓init或不相关构建。"
+                },
+                {
+                    "command": "python -m examples.figure008_foundations",
+                    "status": "passed",
+                    "summary": "示例由统一组合入口实际输出四个关键映射、分段bull/bear/mixed及H4/L4、H5/L7/H7/L8因果链路。价格和确认日明确为合成工程样本，两个41%左右比率仅属于示意输入，不从图片推断<33%、abc内部或量增。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core build; fresh wheel venv install and wavequant-figure008-wheel-smoke.py",
+                    "status": "passed",
+                    "summary": "最终sdist/wheel构建通过，新的干净venv安装wheel及tzdata后，组合/前缀/N烟测通过；8个相关模块与当前源码逐字节相同。未用editable替代安装包验证。"
+                },
+                {
+                    "command": "pnpm harness:check; pnpm exec prettier --check <feature state, Core progress/README, contracts>; git diff --check/review; codegraph sync",
+                    "status": "passed",
+                    "summary": "最终状态/文档及差异复核，旧307个功能对象含256全部字段完整恢复。用户图片拷贝与原文件SHA256一致，仅为文档逻辑参考；无固定形状生产约束。CodeGraph已同步9个源码/测试文件，独立只读复核无阻塞。"
+                },
+                {
+                    "command": "complete Core/Web suites, old full-history countertrend case, browser/Playwright, full-account replay",
+                    "status": "not-run",
+                    "summary": "遵循开发验证节奏，未运行完整套件/浏览器/完整账户。本轮仅新基座及相关定向回归；旧完整历史耗时项保持待独立验证，不声称已通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-310",
             "name": "reusable-polyline-trend-definition-primitives",
             "title": "折线趋势十九项定义共享基座",

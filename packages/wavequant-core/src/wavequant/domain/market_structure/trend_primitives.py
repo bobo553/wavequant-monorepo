@@ -246,7 +246,7 @@ def observe_trend_definition_signals(transition: TrendTransition) -> TrendDefini
     alternation = alternation_index is not None
     up = transition.direction == Direction.UP
     flip = attack is not None
-    formed = suspicion and flip
+    formed = transition.formation_name is not None
     return TrendDefinitionSignals(
         asof_index=transition.asof_index,
         direction=transition.direction,
