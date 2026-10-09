@@ -83,6 +83,11 @@
                     "command": "pytest targeted groups; pnpm harness:check; pnpm exec prettier --check; git diff --check",
                     "status": "passed",
                     "summary": "最终287定向Python项/47子用例、48前端项通过；2022真实买点及2025叠箱、相邻乐心压力与逐日前缀保持。初次验证记录格式错误修正后Harness299功能/18 Node/2 Python/32规则通过，格式和差异检查通过。完整套件/浏览器/外部分钟待验证。"
+                },
+                {
+                    "command": "python wavequant-302-runtime-july.py; python wavequant-302-runtime-smoke.py",
+                    "status": "passed",
+                    "summary": "代码提交8e2157c已no-ff合并本地main 7e64dc5；合并后API8765/Web3003共7项只读HTTP核验通过，实际TDX一级低点2018-07-11/4.84、8/1发布，局部确认7/16及证明7/26保持。V107引擎84f4058d9523与main一致；2018错误二级仍排除、2022的6.67严格越已知5.76升级保持，页面/代理200。未推送；完整套件/浏览器待验证。"
                 }
             ]
         },
