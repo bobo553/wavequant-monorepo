@@ -4,6 +4,89 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-302",
+            "name": "level-one-whole-wave-extreme-origin",
+            "title": "一级趋势整段极值与确认时间分离",
+            "description": "定位并修正襄阳轴承一级低点误选2018-07-16的问题，以2018-07-11的真实最低价为波段端点，保持独立确认可知日。",
+            "scope": "Core基础折线、一级整段归并及共享策略回放；按实际影响同步Web版本指纹",
+            "dependencies": ["MONOREPO-301"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "原始低点2018-07-11的4.84用于整段一级低点，不用2018-07-16的5.00替代",
+                "价格极值与确认可知日分离，逐日前缀未满足确认规则时不提前发布",
+                "修改共用归并规则，覆盖对称高点、同价最早端点、未确认及跨分段边界",
+                "保持各级两路线确认与策略回放、缓存一致，关键历史定向回归通过",
+                "记录实际类型检查、测试、构建和未运行验证，保留全部原功能与256活动记录"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest packages/wavequant-core/tests/test_unconfirmed_wave_origin.py -q (included in final 14-file run)",
+                    "status": "passed",
+                    "summary": "初始最小复现3失败：公开低点2018-07-16为5.00；基础及候选结构仍有2018-07-11的4.84。共享发布器保留守住的整段极值，局部证书起点及关键位/确认日不改；无行情/破位/新公开H分段不继承。"
+                },
+                {
+                    "command": "python -m pytest packages/wavequant-core/tests/test_unconfirmed_wave_origin.py packages/wavequant-core/tests/test_level_one_wave_boundary.py packages/wavequant-core/tests/test_lecture_trend.py packages/wavequant-core/tests/test_secondary_trend.py packages/wavequant-core/tests/test_tertiary_trend.py packages/wavequant-core/tests/test_global_trend_confirmation.py packages/wavequant-core/tests/test_global_trend_confirmation_real.py packages/wavequant-core/tests/test_trend_confirmation_boundaries.py packages/wavequant-core/tests/test_trend_confirmation_entry_refresh.py packages/wavequant-core/tests/test_hierarchical_entry.py packages/wavequant-core/tests/test_confirmed_decline_history.py packages/wavequant-core/tests/test_confirmed_descent_pressure.py packages/wavequant-core/tests/test_chart_entry_history.py packages/wavequant-core/tests/test_chart_entry_history_cache.py -q",
+                    "status": "passed",
+                    "summary": "pytest 14个趋势/日期/确认/下降压力/缓存文件：195 passed、23 subtests；新测试16项含三个等级、整数/日期时钟、同价最早、原点破位、较低新低、后来破位与真实每日前缀。修复初轮引入的跨新发布H继承，新增拒绝用例后复验通过。"
+                },
+                {
+                    "command": "python -m pytest packages/wavequant-core/tests/test_unconfirmed_wave_origin.py packages/wavequant-core/tests/test_level_one_wave_boundary.py -q",
+                    "status": "passed",
+                    "summary": "短2025一级几何夹具的2项陈旧失败在main ddff902复现（2 failed/13 passed）；断言转到structure_strokes并显式确认缺全局证书时不发布，实际几何快照与日期不变。"
+                },
+                {
+                    "command": "python -m mypy --strict packages/wavequant-core/src/wavequant/domain/market_structure/trend_publication.py; pnpm --filter @wavequant/core typecheck; mypy changed cache/profile/tests",
+                    "status": "passed",
+                    "summary": "publisher mypy --strict 1源码通过；缓存/配置与两个相关测试mypy 5文件通过（旧无类型函数体未严格检查）；pnpm --filter @wavequant/core typecheck：4 strict源码通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec vitest run src/features/research-workbench/topology/topology-data.test.ts; node --test tests/lecture-overlay.test.mjs; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web lint",
+                    "status": "passed",
+                    "summary": "Web topology Vitest 17、lecture-overlay Node 31、typecheck通过；lint零错误及6个既有环境变量warning；未运行完整Web/Core套件和浏览器E2E。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core build; python wavequant-301-validation.py wheel/snapshot; pnpm prebuild; pnpm exec next build --webpack (exact short-path snapshot)",
+                    "status": "passed",
+                    "summary": "Core wheel/sdist成功，5模块字节一致（4修改源码及既有pullback模块）；Web完整源码短路径快照1100文件字节核验，prebuild与Webpack生产构建通过。93源指纹19f6e879c2ce6b86f9b17193ca9d03d1aefdf273e6035d5bcbc91951f686074f。"
+                },
+                {
+                    "command": "python -m pytest packages/wavequant-core/tests/test_secondary_pullback_strategy.py packages/wavequant-core/tests/test_secondary_pullback_entry.py -q",
+                    "status": "passed",
+                    "summary": "pytest test_secondary_pullback_strategy.py test_secondary_pullback_entry.py：21 passed、24 subtests（385.60s）；2022-07-19真实信号/默认净RR成交、未触及最近目标、开关/严格风险门禁与完整/缓存前缀一致保持。"
+                },
+                {
+                    "command": "python -m pytest packages/wavequant-core/tests/test_secondary_reclaim_strategy.py -q",
+                    "status": "passed",
+                    "summary": "pytest test_secondary_reclaim_strategy.py：4 passed（502.29s）；2025-03-07抵抗收复信号、叠箱13.55、完整/缓存前缀、原价9.454725成交与净RR开启后拒绝均保持。"
+                },
+                {
+                    "command": "python -m pytest packages/wavequant-core/tests/test_hierarchical_countertrend.py packages/wavequant-core/tests/test_secondary_reclaim_entry.py packages/wavequant-core/tests/test_secondary_resistance.py -q",
+                    "status": "passed",
+                    "summary": "pytest test_hierarchical_countertrend.py test_secondary_reclaim_entry.py test_secondary_resistance.py：67 passed（592.45s）；逐日counter及相邻乐心未确认二级不授予上涨背景、独立测幅/压力门禁保持。"
+                },
+                {
+                    "command": "python -c (isolated generated wheel import and V107 profile)",
+                    "status": "passed",
+                    "summary": "独立新进程从生成wheel导入共享publisher并核验V107 profile通过。未运行完整Core/Web套件、浏览器E2E、外部分钟/其他股票全账户差异，既有MONOREPO-256原失败保留。"
+                },
+                {
+                    "command": "complete Core/Web suite; browser E2E; external minute/full other-stock account replay",
+                    "status": "not-run",
+                    "summary": "按用户日常验证节奏运行直接相关定向检查，未要求浏览器/完整套件；外部分钟不在当前原始日线缺陷范围，保留待验证。"
+                },
+                {
+                    "command": "pnpm harness:check (corrected verification schema)",
+                    "status": "passed",
+                    "summary": "首次记录误用字符串导致Harness拒绝；按command/status/summary记录已实际通过的检查并复验，保留全部原功能对象。"
+                },
+                {
+                    "command": "pytest targeted groups; pnpm harness:check; pnpm exec prettier --check; git diff --check",
+                    "status": "passed",
+                    "summary": "最终287定向Python项/47子用例、48前端项通过；2022真实买点及2025叠箱、相邻乐心压力与逐日前缀保持。初次验证记录格式错误修正后Harness299功能/18 Node/2 Python/32规则通过，格式和差异检查通过。完整套件/浏览器/外部分钟待验证。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-301",
             "name": "global-trend-confirmation-routes",
             "title": "各级趋势确认统一两条因果路线",
