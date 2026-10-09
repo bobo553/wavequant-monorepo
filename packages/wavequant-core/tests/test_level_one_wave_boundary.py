@@ -75,7 +75,7 @@ def test_real_xiangyang_december_high_connects_to_january_13_low(xiangyang_bars)
     base = lecture_drawing(xiangyang_bars)
     before = deepcopy(base)
     result = reversal_trends(base, xiangyang_bars)
-    points = next(stroke['points'] for stroke in result['strokes']
+    points = next(stroke['points'] for stroke in result['structure_strokes']
                   if any(point['time'] == '2024-12-30' for point in stroke['points']))
     position = next(index for index, point in enumerate(points) if point['time'] == '2024-12-30')
     assert [(point['time'], point['kind'], point['value']) for point in points[position:position + 2]] == [
@@ -88,19 +88,21 @@ def test_real_xiangyang_december_high_connects_to_january_13_low(xiangyang_bars)
     fields = ('index', 'ordinal', 'time', 'kind', 'value', 'state', 'available_at', 'projection_count', 'projection_rank')
     snapshot = [dict(id=stroke['id'], kind=stroke['kind'],
                      points=[{key:point[key] for key in fields} for point in stroke['points']])
-                for stroke in result['strokes']]
+                for stroke in result['structure_strokes']]
     assert snapshot == raw['level_one_strokes']
 
 
 @pytest.mark.parametrize('asof', ['2025-01-10', '2025-01-13', '2025-01-14', '2025-01-20', '2025-01-21'])
-def test_real_january_low_is_published_only_after_ordered_retracement_confirms(xiangyang_bars, asof):
+def test_real_january_low_is_structural_only_after_ordered_retracement_confirms(xiangyang_bars, asof):
     bars = [bar for bar in xiangyang_bars if str(bar.timestamp.date()) <= asof]
     result = reversal_trends(lecture_drawing(bars), bars)
-    lows = [point for stroke in result['strokes'] for point in stroke['points']
+    lows = [point for stroke in result['structure_strokes'] for point in stroke['points']
             if point['kind'] == 'L' and point['time'].startswith('2025-01')]
     assert [(point['time'], point['value']) for point in lows] == (
         [('2025-01-13', 5.51)] if asof >= '2025-01-21' else []
     )
+    # The short fixture certifies geometry, but not either global upward route.
+    assert not any(point['time'] == '2025-01-13' for stroke in result['strokes'] for point in stroke['points'])
 
 
 def test_real_confirmed_level_one_points_are_stable_at_every_history_prefix(xiangyang_bars):

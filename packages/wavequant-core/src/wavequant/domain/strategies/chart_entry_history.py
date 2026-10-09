@@ -14,7 +14,7 @@ from ..models.model import Bar
 from .hierarchical_entry import EntryContext
 
 
-_CONFIRMATION_CACHE_VERSION = "daily_trend_confirmation_descent_pressure_v2"
+_CONFIRMATION_CACHE_VERSION = "daily_trend_confirmation_descent_pressure_v3"
 
 
 def _confirmed_descent_pressures(
