@@ -53,11 +53,13 @@ function sourceDigest(sources: { file: string; content: string }[]): string {
 
 describe("strategy topology", () => {
     it("uses the same complete confirmation routes at all three trend levels", () => {
-        const note = topologyProfileNotes.find((text) => text.includes("V3 v107"));
+        const note = topologyProfileNotes.find((text) => text.includes("V3 v108"));
         expect(note).toMatch(/一、二、三级.*本级末跌高.*下一级末跌高突破.*空多交替.*收盘转多/);
         expect(note).toMatch(/缺交替.*不升级.*基础折线.*因果证书/);
         expect(note).toMatch(/本级突破直接升级.*深回调买点保留/);
         expect(note).toMatch(/整段最低价.*局部确认起点.*原低点.*可知日.*不提前/);
+        expect(note).toMatch(/锚点升级不批准反向回调.*末升低跌破.*多空交替.*收盘转空/);
+        expect(note).toMatch(/反向未确认.*整波起点.*延伸原波.*confirmed_legs/);
     });
     it("separates causal direct promotion from the independent deep B reclaim", () => {
         const flow = topologyFlows.find((item) => item.id === "secondary-pullback");

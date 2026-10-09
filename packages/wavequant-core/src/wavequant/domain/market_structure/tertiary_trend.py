@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from .hierarchical_development import hierarchical_developing_path
 from .lecture_trend import _annotate
 from .secondary_trend import _candidate_structural_reversals
-from .trend_publication import publish_uptrends
+from .trend_publication import LEG_CONFIRMATION_POLICY, annotate_published_legs, confirmed_trend_legs, publish_uptrends
 from .trend_landmarks import (
     bear_bull_alternation_lows,
     bear_to_bull_highs,
@@ -35,6 +35,7 @@ def tertiary_trends(level2,bars):
         points=publish_uptrends(candidates,source['points'],bars[:end_index+1],source_level=2)
         if not points:
             continue
+        points=annotate_published_legs(points,source['points'],bars[:end_index+1],source_level=2)
         _annotate(points,bars[0].symbol,dates)
         for p in points:
             levels=p.get('levels'); broken_key=p.get('broken_key')
@@ -42,7 +43,8 @@ def tertiary_trends(level2,bars):
                 raise ValueError('annotated trend points require levels and a frozen key')
             levels.insert(0,dict(name='二级'+('末升低' if p['flip']=='翻多为空' else '末跌高'),price=broken_key['value']))
         strokes.append(dict(id='tertiary-'+source['id'],source_path=source['id'],kind='tertiary',
-                            trend_level=3,points=points,input_turn_count=len(source['points']),confirmation_policy='two_routes_v106'))
+                            trend_level=3,points=points,input_turn_count=len(source['points']),confirmation_policy='two_routes_v106',
+                            leg_confirmation_policy=LEG_CONFIRMATION_POLICY,confirmed_legs=confirmed_trend_legs(points)))
         public_source=next((item['points'] for item in level2['strokes'] if item['id']==source['id']),source['points'])
         tail=hierarchical_developing_path(source,points,trend_level=3,source_level=2,kind='tertiary',
                                          bars=bars,end_index=end_index,structural=candidates,qualified_source_points=public_source)

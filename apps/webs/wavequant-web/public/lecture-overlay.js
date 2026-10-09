@@ -73,6 +73,58 @@ function hasPublishedDevelopingDirection(stroke) {
     return !!trendConfirmationPresentation(stroke.confirmation, stroke.kind === "secondary-developing" ? 2 : 3);
 }
 
+const legPolicy = "two_routes_each_direction_v108";
+const sameTrendPoint = (a, b) =>
+    !!a &&
+    !!b &&
+    ["index", "time", "kind", "value"].every((field) => a[field] === b[field]) &&
+    (a.ordinal ?? 0) === (b.ordinal ?? 0);
+
+/** 正式连接只消费 Python 发布的逐方向证书与整波端点，不从相邻锚点推断等级。 */
+export function publishedTrendSegments(stroke, projected) {
+    if (stroke.leg_confirmation_policy !== legPolicy)
+        return projected.slice(1).map((point, index) => [projected[index], point]);
+    const level = { reversal: 1, secondary: 2, tertiary: 3 }[stroke.kind];
+    if (!level || !Array.isArray(stroke.confirmed_legs)) return [];
+    return stroke.confirmed_legs.flatMap((leg) => {
+        const [start, end] = leg.points ?? [],
+            proof = leg.confirmation;
+        if (!start || !end || !trendConfirmationPresentation(proof, level)) return [];
+        const rising = proof.direction === "up",
+            origin = proof.wave_origin ?? proof.origin;
+        const evidence = [
+            proof.origin,
+            proof.broken_key,
+            proof.confirmed_by,
+            proof.wave_origin,
+            proof.flip_high,
+            proof.flip_low,
+            proof.alternation_low,
+            proof.alternation_high,
+        ].filter(Boolean);
+        if (
+            leg.direction !== proof.direction ||
+            start.kind !== (rising ? "L" : "H") ||
+            end.kind !== (rising ? "H" : "L") ||
+            !sameTrendPoint(start, origin) ||
+            typeof proof.available_at !== "string" ||
+            typeof end.available_at !== "string" ||
+            proof.available_at > end.available_at ||
+            start.available_at > end.available_at ||
+            leg.available_at !== end.available_at ||
+            !Number.isInteger(proof.confirmed_by.index) ||
+            end.index < proof.confirmed_by.index ||
+            start.index > end.index ||
+            (start.index === end.index && (start.ordinal ?? 0) >= (end.ordinal ?? 0)) ||
+            evidence.some((point) => typeof point.available_at !== "string" || point.available_at > proof.available_at)
+        )
+            return [];
+        const a = projected.find(({ point }) => sameTrendPoint(point, start)),
+            b = projected.find(({ point }) => sameTrendPoint(point, end));
+        return a && b ? [[a, b]] : [];
+    });
+}
+
 /**
  * 为被服务端规则边界拆开的相邻讲义路径补一条纯显示边。
  * 只接受相邻 K 线上几何方向成立的 H/L 端点，避免用前端连线掩盖缺失交易日、
@@ -408,9 +460,8 @@ export class LectureOverlay {
                         stroke.kind === "secondary" || stroke.kind === "secondary-connection" || secondaryDeveloping,
                     reversal = stroke.kind === "reversal" || connection || secondary || tertiary;
                 ctx.lineWidth = tertiary ? 3.5 : secondary ? 3 : reversal ? 2 : 2.5;
-                for (let i = 1; i < points.length; i++) {
-                    const a = points[i - 1],
-                        b = points[i];
+                const segments = publishedTrendSegments(stroke, points);
+                for (const [a, b] of segments) {
                     if (a.x === null || b.x === null || a.y === null || b.y === null) continue;
                     const teaching = stroke.kind === "teaching" || b.point.edge_kind === "teaching";
                     ctx.strokeStyle = tertiary
@@ -600,6 +651,35 @@ export class LectureOverlay {
                 source = third ? "二级" : "一级",
                 prefix = third ? "Ⅲ·" : "Ⅱ·",
                 level = third ? 3 : 2;
+            if (
+                stroke.leg_confirmation_policy === legPolicy &&
+                !stroke.confirmed_legs?.some((leg) => leg.points?.some((point) => sameTrendPoint(point, p)))
+            ) {
+                const rising = p.active_trend_confirmation?.direction !== "down";
+                const upgrade =
+                    p.kind === "H" &&
+                    p.confirmation_rule === `level${level - 1}_confirmed_high_breaks_known_level${level}_last_fall_high`
+                        ? `${p.time} 已确认${source}高点 ${p.value} 严格突破此前已知${name}末跌高 ${p.broken_key.time} ${p.broken_key.value}，于 ${p.available_at} 升级成立。`
+                        : "";
+                return {
+                    id,
+                    time: p.available_at,
+                    sourceTime: p.time,
+                    kind: "trend",
+                    category: "rules",
+                    price: p.value,
+                    title: `${prefix}${name}${rising ? "上涨" : "下跌"}内的${p.kind === "H" ? "高点" : "低点"}参考`,
+                    description: `${upgrade}该锚点于 ${p.available_at} 可知。端点升级或随后同向确认不能证明此前反向走势属于${name}；反向走势须独立满足本级${rising ? "末升低跌破" : "末跌高突破"}，或下级突破、交替、后续收盘${rising ? "转空" : "转多"}。未成立时保持原${rising ? "上涨" : "下跌"}波段，创新${rising ? "高" : "低"}后延伸；内部回调按实际成立的下级或折线走势展示。`,
+                    sourceLabel: `${name}内部参考锚点 · 回调等级独立确认`,
+                    levels: p.levels,
+                    raw: {
+                        point: p,
+                        stroke_id: stroke.id,
+                        trend_level: level,
+                        scope: `lecture_level${level}_reference_not_confirmed_reversal`,
+                    },
+                };
+            }
             const key = p.broken_key,
                 proof = p.confirmed_by;
             const promotedByAlternation =
