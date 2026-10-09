@@ -14,7 +14,9 @@ export function formatPivotPrice(value) {
 
 /** 新旧因果政策都禁止前端用几何连接补造趋势确认。 */
 export function usesCausalTrendConfirmation(stroke) {
-    return ["two_routes_v106", "trend_routes_v108", "trend_routes_v109"].includes(stroke?.confirmation_policy);
+    return ["two_routes_v106", "trend_routes_v108", "trend_routes_v109", "trend_routes_v110"].includes(
+        stroke?.confirmation_policy,
+    );
 }
 
 /** 证书决定展示口径；下级 N 达标、收盘转向与本级关键位分别说明。 */
@@ -125,6 +127,125 @@ function hasPublishedDevelopingDirection(stroke) {
         stroke.trend_level ??
         ["reversal-developing", "secondary-developing", "tertiary-developing"].indexOf(stroke.kind) + 1;
     return !!trendConfirmationPresentation(stroke.confirmation, level);
+}
+
+const legPolicy = "two_routes_each_direction_v108";
+const sameTrendPoint = (a, b) =>
+    !!a &&
+    !!b &&
+    ["index", "time", "kind", "value"].every((field) => a[field] === b[field]) &&
+    (a.ordinal ?? 0) === (b.ordinal ?? 0);
+
+/** 正式连接只消费 Python 发布的逐方向证书与整波端点，不从相邻锚点推断等级。 */
+export function publishedTrendSegments(stroke, projected) {
+    if (![legPolicy, "enabled_routes_each_direction_v110"].includes(stroke.leg_confirmation_policy))
+        return projected.slice(1).map((point, index) => [projected[index], point]);
+    const level = { reversal: 1, secondary: 2, tertiary: 3 }[stroke.kind];
+    if (!level || !Array.isArray(stroke.confirmed_legs)) return [];
+    return stroke.confirmed_legs.flatMap((leg) => {
+        const [start, end] = leg.points ?? [],
+            proof = leg.confirmation;
+        if (!start || !end || !trendConfirmationPresentation(proof, level)) return [];
+        const rising = proof.direction === "up",
+            origin = proof.wave_origin ?? proof.origin;
+        const evidence = [
+            proof.origin,
+            proof.broken_key,
+            proof.confirmed_by,
+            proof.wave_origin,
+            proof.flip_high,
+            proof.flip_low,
+            proof.alternation_low,
+            proof.alternation_high,
+        ].filter(Boolean);
+        if (
+            leg.direction !== proof.direction ||
+            start.kind !== (rising ? "L" : "H") ||
+            end.kind !== (rising ? "H" : "L") ||
+            !sameTrendPoint(start, origin) ||
+            typeof proof.available_at !== "string" ||
+            typeof end.available_at !== "string" ||
+            proof.available_at > end.available_at ||
+            start.available_at > end.available_at ||
+            leg.available_at !== end.available_at ||
+            !Number.isInteger(proof.confirmed_by.index) ||
+            end.index < proof.confirmed_by.index ||
+            start.index > end.index ||
+            (start.index === end.index && (start.ordinal ?? 0) >= (end.ordinal ?? 0)) ||
+            evidence.some((point) => typeof point.available_at !== "string" || point.available_at > proof.available_at)
+        )
+            return [];
+        const a = projected.find(({ point }) => sameTrendPoint(point, start)),
+            b = projected.find(({ point }) => sameTrendPoint(point, end));
+        return a && b ? [[a, b]] : [];
+    });
+}
+
+const waveDisplayPolicy = "one_connection_per_confirmed_wave_v109";
+const trendSegmentKey = (a, b) =>
+    JSON.stringify([a, b].map((point) => [point.index, point.ordinal ?? 0, point.time, point.kind, point.value]));
+
+/** 同一因果波只保留一个连接；比较显示极值，不在浏览器重算升级资格。 */
+export function selectPublishedTrendSegments(projected) {
+    const groups = projected
+        .filter(({ stroke }) => hasPublishedDevelopingDirection(stroke))
+        .map(({ stroke, points }) => ({ stroke, points, segments: publishedTrendSegments(stroke, points) }));
+    const owners = new Map();
+    const hidden = new Set();
+    for (const group of groups) {
+        const { stroke } = group;
+        if (stroke.wave_display_policy !== waveDisplayPolicy) continue;
+        const waveIds = new Map(
+            (Array.isArray(stroke.confirmed_legs) ? stroke.confirmed_legs : [])
+                .filter((leg) => leg.points?.length === 2)
+                .map((leg) => [trendSegmentKey(...leg.points), leg.wave_id]),
+        );
+        for (const segment of group.segments) {
+            const [a, b] = segment;
+            if (a.x == null || a.y == null || b.x == null || b.y == null) continue;
+            const developing = ["reversal-developing", "secondary-developing", "tertiary-developing"].includes(
+                stroke.kind,
+            );
+            const waveId = developing
+                ? stroke.state === "confirmed" &&
+                  a.point.development_role === "confirmed_direction_origin" &&
+                  b.point.development_role === "active_endpoint" &&
+                  b.point.edge_state !== "developing" &&
+                  stroke.wave_id
+                : waveIds.get(trendSegmentKey(a.point, b.point));
+            if (typeof waveId !== "string" || !waveId.startsWith("trend-wave-v1:")) continue;
+            const rising = a.point.kind === "L" && b.point.kind === "H";
+            if (!rising && !(a.point.kind === "H" && b.point.kind === "L")) continue;
+            const key = JSON.stringify([
+                stroke.trend_level,
+                stroke.source_path,
+                waveId,
+                a.point.index,
+                a.point.ordinal ?? 0,
+                a.point.time,
+                a.point.kind,
+                a.point.value,
+            ]);
+            const current = owners.get(key);
+            const value = b.point.value,
+                priorValue = current?.segment[1].point.value;
+            const stronger = current && (rising ? value > priorValue : value < priorValue);
+            const equalEarlier =
+                current &&
+                value === priorValue &&
+                (b.point.index < current.segment[1].point.index ||
+                    (b.point.index === current.segment[1].point.index &&
+                        (b.point.ordinal ?? 0) < (current.segment[1].point.ordinal ?? 0)));
+            const equalFormal =
+                current && sameTrendPoint(b.point, current.segment[1].point) && current.developing && !developing;
+            if (!current || stronger || equalEarlier || equalFormal) {
+                if (current) hidden.add(current.segment);
+                owners.set(key, { group, segment, developing });
+            } else hidden.add(segment);
+        }
+    }
+    for (const group of groups) group.segments = group.segments.filter((segment) => !hidden.has(segment));
+    return groups;
 }
 
 /**
@@ -453,7 +574,7 @@ export class LectureOverlay {
             ctx.font = "10px sans-serif";
             // Map 同时收集正式一级端点和一级显示桥节点；连接首尾与正式端点重合时只画一次。
             const levelOneLabels = new Map();
-            for (const { stroke, points } of this.projected) {
+            for (const { stroke, points, segments } of selectPublishedTrendSegments(this.projected)) {
                 if (!hasPublishedDevelopingDirection(stroke)) continue;
                 const connection = stroke.kind === "reversal-connection" || stroke.kind === "secondary-connection";
                 const reversalDeveloping = stroke.kind === "reversal-developing",
@@ -464,9 +585,7 @@ export class LectureOverlay {
                         stroke.kind === "secondary" || stroke.kind === "secondary-connection" || secondaryDeveloping,
                     reversal = stroke.kind === "reversal" || reversalDeveloping || connection || secondary || tertiary;
                 ctx.lineWidth = tertiary ? 3.5 : secondary ? 3 : reversal ? 2 : 2.5;
-                for (let i = 1; i < points.length; i++) {
-                    const a = points[i - 1],
-                        b = points[i];
+                for (const [a, b] of segments) {
                     if (a.x === null || b.x === null || a.y === null || b.y === null) continue;
                     const teaching = stroke.kind === "teaching" || b.point.edge_kind === "teaching";
                     ctx.strokeStyle = tertiary
@@ -657,6 +776,35 @@ export class LectureOverlay {
                 source = third ? "二级" : "一级",
                 prefix = third ? "Ⅲ·" : "Ⅱ·",
                 level = third ? 3 : 2;
+            if (
+                stroke.leg_confirmation_policy === legPolicy &&
+                !stroke.confirmed_legs?.some((leg) => leg.points?.some((point) => sameTrendPoint(point, p)))
+            ) {
+                const rising = p.active_trend_confirmation?.direction !== "down";
+                const upgrade =
+                    p.kind === "H" &&
+                    p.confirmation_rule === `level${level - 1}_confirmed_high_breaks_known_level${level}_last_fall_high`
+                        ? `${p.time} 已确认${source}高点 ${p.value} 严格突破此前已知${name}末跌高 ${p.broken_key.time} ${p.broken_key.value}，于 ${p.available_at} 升级成立。`
+                        : "";
+                return {
+                    id,
+                    time: p.available_at,
+                    sourceTime: p.time,
+                    kind: "trend",
+                    category: "rules",
+                    price: p.value,
+                    title: `${prefix}${name}${rising ? "上涨" : "下跌"}内的${p.kind === "H" ? "高点" : "低点"}参考`,
+                    description: `${upgrade}该锚点于 ${p.available_at} 可知。端点升级或随后同向确认不能证明此前反向走势属于${name}；反向走势须独立满足本级${rising ? "末升低跌破" : "末跌高突破"}，或下级突破、交替、后续收盘${rising ? "转空" : "转多"}。未成立时保持原${rising ? "上涨" : "下跌"}波段，创新${rising ? "高" : "低"}后延伸；内部回调按实际成立的下级或折线走势展示。`,
+                    sourceLabel: `${name}内部参考锚点 · 回调等级独立确认`,
+                    levels: p.levels,
+                    raw: {
+                        point: p,
+                        stroke_id: stroke.id,
+                        trend_level: level,
+                        scope: `lecture_level${level}_reference_not_confirmed_reversal`,
+                    },
+                };
+            }
             const key = p.broken_key,
                 proof = p.confirmed_by;
             const promotedByAlternation =

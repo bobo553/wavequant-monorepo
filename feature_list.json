@@ -4,7 +4,7 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
-            "id": "MONOREPO-306",
+            "id": "MONOREPO-308",
             "name": "existing-execution-research-baseline-followup",
             "title": "既有执行断言与研究类型基线待修",
             "description": "305的补充检查发现两项既有真实执行断言和三个研究模块类型问题；逐项main对照相同。记录未完成问题，保留原断言及失败证据，未在选项任务中扩展修复。",
@@ -35,19 +35,19 @@
             ]
         },
         {
-            "id": "MONOREPO-305",
+            "id": "MONOREPO-307",
             "name": "optional-n-target-trend-confirmation",
             "title": "正倒N超一饱趋势确认默认关闭选项",
             "description": "将各级正倒N严格超一饱确认规则改为全局可勾选配置，未选择时沿用既有两条确认路线。",
             "scope": "共享Core策略/图表/扫描、API参数与缓存、Web选项和持久化契约",
-            "dependencies": ["MONOREPO-304"],
+            "dependencies": ["MONOREPO-306"],
             "status": "done",
             "acceptanceCriteria": [
                 "全局选项默认未勾选，旧配置缺字段按false；非法布尔值拒绝",
                 "选中时一二三级正倒N超一饱行为保持，关闭时所有入口均不应用该路线",
                 "图表、回测、扫描与后台自选回测使用同一配置，设置保存恢复一致",
                 "逐日回放、内存/持久化/浏览器缓存及ETag按选项隔离，切换不复用另一模式结果",
-                "真实襄阳样本和对称三层开关对照通过，完成定向验证并仅提交现有特性分支"
+                "真实襄阳样本和对称三层开关对照通过；同步最新main并复验后按用户最新授权合并main、正常推送"
             ],
             "verification": [
                 {
@@ -68,7 +68,7 @@
                 {
                     "command": ".venv/Scripts/python.exe -m pytest tests/test_n_trend_execution_option.py tests/test_intraday_entry.py tests/test_stock_backtest.py tests/test_trend_flip_exit.py -k \"not xidian\" -q; .venv/Scripts/python.exe -m mypy src/wavequant/application/analytics/intraday_entry.py src/wavequant/application/analytics/backtest.py src/wavequant/interfaces/research_tools/stock_backtest.py tests/test_n_trend_execution_option.py --follow-imports=skip",
                     "status": "passed",
-                    "summary": "新增执行选项及旧普通分钟/单股/趋势翻转定向33项通过，执行3模块与新测试mypy通过。仅此小规模门禁通过。复核三层公开路径、共享确认/发布/发展、逐日完整及续算缓存、持久化几何和图表缓存。补齐分钟波形上下文、趋势翻转离场重算与保有SystemStrategy的研究消费者；主链按同一选项运行，关闭时排除残留N证书及N候选。额外历史断言与研究类型检查在main同样失败，原断言保留；实际失败证据单独记录于MONOREPO-306待修，不视为通过。"
+                    "summary": "新增执行选项及旧普通分钟/单股/趋势翻转定向33项通过，执行3模块与新测试mypy通过。仅此小规模门禁通过。复核三层公开路径、共享确认/发布/发展、逐日完整及续算缓存、持久化几何和图表缓存。补齐分钟波形上下文、趋势翻转离场重算与保有SystemStrategy的研究消费者；主链按同一选项运行，关闭时排除残留N证书及N候选。额外历史断言与研究类型检查在main同样失败，原断言保留；实际失败证据单独记录于MONOREPO-308待修，不视为通过。"
                 },
                 {
                     "command": "API pytest test_market_timeframes/test_buy_signal_snapshots/test_structure_snapshots/test_watchlists/test_cli/test_n_target_option/test_infrastructure; pytest tests/test_server.py -q",
@@ -89,11 +89,21 @@
                     "command": "Complete Core/Web suites, browser/Playwright, external-minute execution, physical dual-mode Worker and all-stock account comparisons",
                     "status": "not-run",
                     "summary": "按用户开发验证节奏未运行完整套件或浏览器，未重复323交易日昂贵countertrend用例（304已有历史证据）。真实日线和账户消费者按两种模式定向覆盖；外部分钟成交、实际Worker周期、外部基础设施和其他股票完整账户差异待独立验证，不写成已通过。"
+                },
+                {
+                    "command": "pytest n_trend_wave_merge/n_trend_option/n_trend_levels/n_trend_path_boundaries/n_target_trend_real/trend_leg_confirmation/trend_wave_continuation/n_trend_option_consumers/n_trend_execution_option; pytest existing direction/replay groups excluding xiangyang_may2025_to_april2026; API pytest option/timeframes/snapshots/watchlists/CLI; Node N/leg/wave/settings/cache/watchlists; topology/controls Vitest",
+                    "status": "passed",
+                    "summary": "同步本地main d2f35d8后，Core两组198与238项及23子用例通过（1个昂贵逐日样本未重复）；API65项及35子用例、Web93项Node和19项拓扑/组件通过。保留main逐方向confirmed_legs和同波唯一展示；启用N证明使用包含N前三锚点、完成、X与目标的完整波身份，三层正倒N正式/发展连接同波只显示一次。N新来源周期不会被既有同向旧波吞掉，普通局部证书仍延伸旧波；襄阳09-11→09-25及默认关闭对照保持。初次合并两项真实样本失败后修复周期所有权，新增6项Core和双向三层Web回归后完整复跑通过。功能ID碰撞重新分配306/307/308，main全部302对象逐项保留，256未完成证据完整保持。"
+                },
+                {
+                    "command": "Core strict 4 shared gates + 4 standard modules; mypy 4 merged level/development modules + new test; API 11 strict --follow-imports=silent; Web lint/typecheck; contracts/Core/API builds; exact-source Webpack production build; artifact byte verification; Harness/Prettier/diff checks",
+                    "status": "passed",
+                    "summary": "相关类型、构建、状态、格式及差异检查通过；Web lint零错误、6条既有warning。V110默认关闭选项与main V108方向连接/V109同波展示共同生效，115源指纹更新。API沿用既有workspace源码与未标注Core包边界，纠正MYPYPATH/导入检查命令后标准11文件门禁通过，未修改类型忽略或弱化门禁。用户本轮已授权合并main并推送，执行结果见Git日志与本轮交付；不改写远端历史。完整套件、浏览器、外部分钟和既有基线待修记录仍保留。"
                 }
             ]
         },
         {
-            "id": "MONOREPO-304",
+            "id": "MONOREPO-306",
             "name": "all-level-n-one-p-trend-confirmation",
             "title": "各级正倒N超一饱确认趋势段",
             "description": "正N和倒N在因果完成后严格超过一饱即独立确认一二三级趋势，补齐襄阳2018年9月的一级上涨段。",
@@ -142,6 +152,137 @@
                     "command": "Complete Core/Web suites, browser/Playwright, external-minute execution and all-stock account comparisons",
                     "status": "not-run",
                     "summary": "按用户开发节奏未运行完整套件或浏览器；真实日线结构、策略N事件与关键历史前缀已定向验证。外部分钟、其他股票完整账户差异和浏览器像素待独立验证，256原未完成状态与全部既有失败记录保持。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-305",
+            "name": "confirmed-wave-single-render-owner",
+            "title": "同波正式与发展连接单一展示",
+            "status": "done",
+            "dependencies": ["MONOREPO-303", "MONOREPO-304"],
+            "description": "襄阳2024-07-25低点的正式三级上涨与同证书发展延伸同时绘制造成双线。Core发布稳定因果波身份，Web对同波选择唯一可见连接，保留确认锚点与日期。",
+            "scope": "Core同波因果身份、二三级正式与发展发布、Web primitive绘制与实际AkShare缓存链",
+            "acceptanceCriteria": [
+                "真实AkShare同一7/25低3.45同一3/11证书只能绘制一条三级上涨，延伸19.63时不同时画至18.90旧连接",
+                "正式点/策略/价格/可知日期保持；发展端点仍为显示用途，不升级或进入策略",
+                "同价同端点优先正式证据；同波创新高低由延伸接续，隐藏或缺发展线时保留正式连接",
+                "不同等级/路径/方向/原点/确认日及不同两类证书不合并，待决反向尾部保留自身显示口径",
+                "真实截止回放、生产primitive绘制和旧ETag失效核验；旧301功能及256活动失败逐字段保留"
+            ],
+            "verification": [
+                {
+                    "command": "pytest 14 focused trend/wave/history/cache/entry files; final wave identity pytest",
+                    "status": "passed",
+                    "summary": "260项/64子用例通过；18新Core用例覆盖真实7/25、因果身份隔离、两路线证书、03/21/04/02/05/15回放。补齐source-cycle实际回撤原点身份后18项再次通过。"
+                },
+                {
+                    "command": "wavequant-305-input-audit.py / actual full AkShare snapshot",
+                    "status": "passed",
+                    "summary": "266一级/65二级/15三级正式点、每条正式段的证书和全部发展端点逐项与V108真实快照相同。7/25低3.45、3/21高18.90、5/15当前高19.63同一3/11确认，formal/live wave_id一致。"
+                },
+                {
+                    "command": "trend_publication strict mypy; 4 impacted source mypy; pnpm Core/API typecheck",
+                    "status": "passed",
+                    "summary": "1 strict/4受影响源码、Core4/API11配置strict通过；无新增依赖。"
+                },
+                {
+                    "command": "Node overlay/leg/continuation/break tests; topology Vitest",
+                    "status": "passed",
+                    "summary": "73绘图项/18拓扑项通过；包含17新绘图用例，输入正逆序、相同端点优先正式、缺失/不完整/无法投影的发展线、来源/等级/身份/ordinal隔离、反向尾部及下降镜像。93源摘要5e41b9f28f23。"
+                },
+                {
+                    "command": "pnpm wavequant-web typecheck/lint; Core build/wheel bytes; short-path Web production build",
+                    "status": "passed",
+                    "summary": "Web类型及lint零错6既有warning；Core sdist/wheel及7模块字节通过；1106文件精确短路径Node24 Webpack生产构建通过。"
+                },
+                {
+                    "command": "full Core/Web suites; browser/Playwright; external minute checks",
+                    "status": "not-run",
+                    "summary": "按开发验证节奏运行定向检查；用户未要求浏览器E2E。完整套件和外部分钟留待独立验证，不记为通过。"
+                },
+                {
+                    "command": "node wavequant-305-runtime-smoke.mjs / isolated main production API8779, AkShare, Web3003 primitive",
+                    "status": "passed",
+                    "summary": "代码cbb83eb已合入本地main00786e8。独立main生产API8779真实AkShare四截止回放及Web3003实际模块绘图通过：7/25低3.45单条延伸至5/15高19.63，3/10未确认0条，4/2高18.90单条；正式3/21高18.90记录保持。旧ETag返回200并更新，再请求304；algorithm f1c5327ac63b、snapshot d08e79ed3a70、行情data_version不变。原3003/8765持久快照链路受本地MySQL握手及Docker无响应阻塞，待恢复后核验；未擅自重启共享服务。"
+                },
+                {
+                    "command": "existing Web3003/API8765 persistent SQL integration completion",
+                    "status": "not-run",
+                    "summary": "原页面链路尝试未完成：两次离线回退及直接API240秒超时。只读线程诊断确认请求停于本地MySQL13306握手；docker ps/status同样无响应，start确认已运行。独立实例使用同一main make_server及真实AkShare读取，关闭SQL后HTTP/ETag/绘图全部通过。尚未获准重启共享Docker，持久快照链路待服务恢复后核验。"
+                },
+                {
+                    "command": "pnpm harness:check; targeted Prettier; git diff --check/review",
+                    "status": "passed",
+                    "summary": "302功能/18 Node/2 Python/32规则通过；初始双线回归复现失败、修复后通过。已有301功能与原活动256逐字段保持；本地提交跳过钩子，无推送。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-304",
+            "name": "formal-trend-leg-direction-confirmation",
+            "title": "正式趋势连接段独立方向确认",
+            "status": "done",
+            "dependencies": ["MONOREPO-301", "MONOREPO-302", "MONOREPO-303"],
+            "description": "高点升级、回调方向及整波结束分别确认。各级反向未获独立证书时，同向创新高/低延伸原波；不把后续上涨证明借给此前下降，不凭邻接锚点截断二级上涨。",
+            "scope": "Core三级图表发布、共用连接段方向证明、Web绘制/说明、缓存及真实AkShare周期链",
+            "acceptanceCriteria": [
+                "3/21高点升级保留；3/29两条下降路线均未成立，不画二级下降或另开二级上涨，04/18新高可知后延伸自10/19的整波上涨",
+                "一二三级正式下降段须本级末升低严格跌破，或下级跌破、交替、后续收盘转空；上涨证明不能审批下降段",
+                "方向证书按端点发布时可知行情计算，不提前、不借未来、无行情及错路径/错方向不补线",
+                "保留结构候选、压力测幅、合法上涨背景与既有历史买点，Web绘制直接消费Core方向证书",
+                "真实AkShare周期缓存失效和绘图段验证通过；保留全部原功能及256活动失败记录"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest 13 focused trend/history/cache/entry files",
+                    "status": "passed",
+                    "summary": "242项/64子用例通过；含27项新逐方向及波段延续用例。下降与后续新上涨的两条路线独立转换，真实回放与未来端点边界保持。"
+                },
+                {
+                    "command": "wavequant-304-input-audit.py / actual AkShare 2026-10-08 bundle",
+                    "status": "passed",
+                    "summary": "全历史266一级/65二级/15三级锚点的index/ordinal/kind/value/available_at与main旧快照逐项相同；3/21升级、7/11原低4.84及2022的6.67越5.76依据保留。方向连接独立归并。"
+                },
+                {
+                    "command": "mypy strict trend_publication + 5 impacted sources in Core configuration; pnpm Core/API typecheck",
+                    "status": "passed",
+                    "summary": "新发布门禁1 strict、受影响5源码及Core4/API11配置strict实际通过；修正wave_origin可选引用类型，未降低配置。"
+                },
+                {
+                    "command": "Node --test trend-leg-confirmation/lecture-overlay/trend-break-confirmation; topology Vitest",
+                    "status": "passed",
+                    "summary": "56前端绘图项及17拓扑项通过，覆盖三个等级、双路线下降、反向未知、错路径/序号、未来证据、过早端点、整波延伸及旧数据兼容；93源摘要152af7cd77be。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web typecheck && lint",
+                    "status": "passed",
+                    "summary": "类型通过，lint零错6项既有环境变量warning。"
+                },
+                {
+                    "command": "Core python -m build --no-isolation; wavequant-301-validation.py wheel",
+                    "status": "passed",
+                    "summary": "sdist/wheel构建通过，修改模块逐字节核验通过；无新增依赖。"
+                },
+                {
+                    "command": "1103-file byte-identical short snapshot; pnpm prebuild; next build --webpack",
+                    "status": "passed",
+                    "summary": "Windows短路径复制逐文件核验，Node24生产Webpack编译、类型、静态路由生成通过。"
+                },
+                {
+                    "command": "full Core/Web suites, browser/Playwright and external minute validation",
+                    "status": "not-run",
+                    "summary": "遵循当次定向开发验证节奏；用户未要求浏览器E2E。全套与外部分钟留待独立验证，未记为通过。"
+                },
+                {
+                    "command": "node wavequant-304-runtime-smoke.mjs / main Web3003 proxy + actual AkShare snapshots",
+                    "status": "passed",
+                    "summary": "代码98cab69已no-ff合并本地main d450fc9。自动API重启就绪后真实Web3003 AkShare三截止HTTP核验及生产primitive绘制通过：3/29仍为10/19→3/21上涨；4/25及最新截止延伸10/19→4/18，3/21→3/29及3/29另起上涨均未绘制。高9.84越6.85升级保留。旧ETag返回200替换，再次304复用；行情data_version保持，新算法8843528fbbc2/快照af284b87ca0e。7/11低4.84及2022升级保持，静态资源200。首次重启窗口回退旧离线缓存，待服务就绪后重试通过。无浏览器操作；未推送。"
+                },
+                {
+                    "command": "pnpm harness:check; Prettier targeted checks; git diff --check; branch/main review",
+                    "status": "passed",
+                    "summary": "301功能/18 Node/2 Python/32规则通过，差异与相关格式检查通过。提交标题<35字符，跳过本地钩子，无冲突；旧300功能与活动状态逐字段恢复。"
                 }
             ]
         },

@@ -369,7 +369,7 @@ def reversal_trends(drawing, bars, *, n_target_trend_confirmation_enabled: bool 
     # lose a known pressure anchor or the whole-wave low across its boundary.
     candidates=_connect_reversal_strokes(result,source_strokes)
     result=[]
-    from .trend_publication import publish_uptrends
+    from .trend_publication import LEG_CONFIRMATION_POLICY, OPTIONAL_LEG_CONFIRMATION_POLICY, WAVE_DISPLAY_POLICY, annotate_published_legs, confirmed_trend_legs, publish_uptrends
     for stroke in candidates:
         ancestors=set(stroke['source_paths'])
         last_source=max(index for index,source in enumerate(source_strokes) if source['id'] in ancestors)
@@ -387,8 +387,13 @@ def reversal_trends(drawing, bars, *, n_target_trend_confirmation_enabled: bool 
         published=publish_uptrends(points,source_points,market,source_level=0,
                                   n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         if published:
-            public=dict(stroke,points=published,confirmation_policy='trend_routes_v109',
+            published=annotate_published_legs(published,source_points,market,source_level=0,
                         n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+            public=dict(stroke,points=published,confirmation_policy='trend_routes_v110',
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                        leg_confirmation_policy=OPTIONAL_LEG_CONFIRMATION_POLICY if n_target_trend_confirmation_enabled else LEG_CONFIRMATION_POLICY,
+                        wave_display_policy=WAVE_DISPLAY_POLICY,
+                        confirmed_legs=confirmed_trend_legs(published,trend_level=1,source_path=stroke['id']))
             result.append(public)
             if n_target_trend_confirmation_enabled and any(
                     point.get('trend_confirmation_route')=='source_n_strict_one_p_target' for point in published):

@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 from .hierarchical_development import hierarchical_developing_path
 from .lecture_trend import _annotate, _ref
-from .trend_publication import publish_uptrends
+from .trend_publication import LEG_CONFIRMATION_POLICY, OPTIONAL_LEG_CONFIRMATION_POLICY, WAVE_DISPLAY_POLICY, annotate_published_legs, confirmed_trend_legs, publish_uptrends
 from .n_trend_reversals import n_target_reversals
 from .trend_landmarks import (
     bear_bull_alternation_lows,
@@ -269,6 +269,8 @@ def secondary_trends(level1,bars, *, n_target_trend_confirmation_enabled: bool =
                                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         if not points:
             continue
+        points=annotate_published_legs(points,source['points'],bars[:end_index+1],source_level=1,
+                    qualified_source=public_source,n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         _annotate(points,bars[0].symbol,dates)
         for p in points:
             levels=p.get('levels'); broken_key=p.get('broken_key')
@@ -281,8 +283,11 @@ def secondary_trends(level1,bars, *, n_target_trend_confirmation_enabled: bool =
         transitions=last_fall_high_reanchors(points,bars,trend_level=2)
         strokes.append(dict(id='secondary-'+source['id'],source_path=source['id'],kind='secondary',
                             trend_level=2,points=points,input_turn_count=len(source['points']),
-                            key_transitions=transitions,confirmation_policy='trend_routes_v109',
-                            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled))
+                            key_transitions=transitions,confirmation_policy='trend_routes_v110',
+                            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                            leg_confirmation_policy=OPTIONAL_LEG_CONFIRMATION_POLICY if n_target_trend_confirmation_enabled else LEG_CONFIRMATION_POLICY,
+                            wave_display_policy=WAVE_DISPLAY_POLICY,
+                            confirmed_legs=confirmed_trend_legs(points,trend_level=2,source_path=source['id'])))
         tail=hierarchical_developing_path(source,points,trend_level=2,source_level=1,kind='secondary',
                                          bars=bars,end_index=end_index,structural=candidates,qualified_source_points=public_source,
                                          n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)

@@ -1,4 +1,6 @@
-MONOREPO-305（2026-10-09）：WatchlistSettingsSchema.context新增n_target_trend_confirmation_enabled，沿用请求协议字符串true/false枚举，缺字段默认false。共享契约构建及Web消费者类型、保存/恢复、后台队列定向回归通过；任务Web依赖指向本任务契约产物，主检出依赖未修改。
+MONOREPO-306/307（2026-10-09，合并阶段V110）：用户最新授权合并main并推送。已同步main d2f35d8并保留逐方向确认和同波唯一展示；N选项仍默认关闭，启用时独立N新周期和完整证书波身份生效。Core198/238项及23子用例、API65项及35子用例、Web93项与19拓扑/组件、相关类型及构建通过。main全部302个功能对象完整保留，旧本任务304/305/306重新编号306/307/308；既有基线失败仍在308待修。Git合并与推送结果以当前交付和日志为准，完整套件/浏览器/外部分钟未运行。
+
+MONOREPO-307（2026-10-09）：WatchlistSettingsSchema.context新增n_target_trend_confirmation_enabled，沿用请求协议字符串true/false枚举，缺字段默认false。共享契约构建及Web消费者类型、保存/恢复、后台队列定向回归通过；任务Web依赖指向本任务契约产物，主检出依赖未修改。
 
 MONOREPO-298（2026-10-08）：新增WatchlistSnapshotSchema、WatchlistSettingsSchema、WatchlistDocumentSchema与类型，统一自选股票、分类、顺序、修订、回测来源/参数及暂停字段。Web运行时复用Zod校验，服务端输入另有边界和数量校验；契约构建、Web与Nest API消费者类型通过，9项Web存储/契约与后台观察回归通过。无新依赖。
 

@@ -1,0 +1,2032 @@
+{
+    "symbol": "sz.000678",
+    "source": "akshare",
+    "price_basis": "raw_unadjusted",
+    "secondary_stroke": {
+        "id": "secondary-reversal-continuous-lecture-0-lecture-4799",
+        "source_path": "reversal-continuous-lecture-0-lecture-4799",
+        "kind": "secondary",
+        "trend_level": 2,
+        "points": [
+            {
+                "index": 4899,
+                "ordinal": 0,
+                "kind": "L",
+                "value": 4.4,
+                "time": "2018-10-19",
+                "state": "reversal",
+                "available_at": "2019-02-12",
+                "edge_kind": "ordinary",
+                "projection_count": 1,
+                "projection_rank": 0,
+                "source_kind": "L",
+                "source_state": "confirmed",
+                "source_reversal_available_at": "2018-10-22",
+                "wave_direction_before": "down",
+                "wave_direction_after": "up",
+                "confirmation_rule": "source_key_break_alternation_then_market_turn",
+                "confirmed_by": {
+                    "index": 4924,
+                    "ordinal": 0,
+                    "time": "2018-11-23",
+                    "kind": "H",
+                    "value": 5.85,
+                    "available_at": "2018-12-13",
+                    "label": "H217"
+                },
+                "source_turn_position": 3270,
+                "confirmed_on_turn": 70,
+                "label": "L26",
+                "reversal": "正反转",
+                "observations": [
+                    {
+                        "title": "回档未通过交替条件",
+                        "available_at": "2019-02-12",
+                        "basis": "confirmed_polyline_extreme",
+                        "ratio": 1.4762419006479481
+                    }
+                ],
+                "levels": [
+                    {
+                        "name": "一级末跌高",
+                        "price": 5.78
+                    },
+                    {
+                        "name": "L26 的末跌高",
+                        "price": 18.07
+                    }
+                ],
+                "preceding_turn": {
+                    "index": 4116,
+                    "ordinal": 0,
+                    "time": "2015-06-15",
+                    "kind": "H",
+                    "value": 18.07,
+                    "available_at": "2015-06-24",
+                    "label": "H26"
+                },
+                "trend": "高低点不同向或相等",
+                "window_trend": "高低点不同向或相等",
+                "source_label": "L216",
+                "trend_level": 2,
+                "source_level1_available_at": "2018-10-24",
+                "source_level1_position": 431,
+                "confirmed_on_level1": 432,
+                "flip": "翻空为多",
+                "broken_key": {
+                    "index": 4886,
+                    "ordinal": 0,
+                    "time": "2018-09-25",
+                    "kind": "H",
+                    "value": 5.78,
+                    "available_at": "2018-10-11",
+                    "label": "H216"
+                },
+                "structural_confirmation_rule": "level1_structural_key_break",
+                "trend_confirmation": {
+                    "available_at": "2019-02-12",
+                    "confirmation_rule": "source_key_break_alternation_then_market_turn",
+                    "direction": "up",
+                    "broken_key": {
+                        "index": 4886,
+                        "ordinal": 0,
+                        "time": "2018-09-25",
+                        "kind": "H",
+                        "value": 5.78,
+                        "available_at": "2018-10-11",
+                        "label": "H216"
+                    },
+                    "origin": {
+                        "index": 4899,
+                        "ordinal": 0,
+                        "time": "2018-10-19",
+                        "kind": "L",
+                        "value": 4.4,
+                        "available_at": "2018-10-24",
+                        "label": "L216"
+                    },
+                    "confirmed_by": {
+                        "index": 4974,
+                        "ordinal": 0,
+                        "time": "2019-02-12",
+                        "kind": "K",
+                        "value": 6.16,
+                        "available_at": "2019-02-12",
+                        "label": "转多",
+                        "close": 6.16,
+                        "market_high": 6.2,
+                        "market_low": 6.0
+                    },
+                    "flip_high": {
+                        "index": 4958,
+                        "ordinal": 0,
+                        "time": "2019-01-14",
+                        "kind": "H",
+                        "value": 6.01,
+                        "available_at": "2019-01-23",
+                        "label": "H219"
+                    },
+                    "alternation_low": {
+                        "index": 4964,
+                        "ordinal": 0,
+                        "time": "2019-01-22",
+                        "kind": "L",
+                        "value": 5.4,
+                        "available_at": "2019-01-25",
+                        "label": "L219"
+                    },
+                    "retracement_origin": {
+                        "index": 4949,
+                        "ordinal": 0,
+                        "time": "2018-12-28",
+                        "kind": "L",
+                        "value": 4.92,
+                        "available_at": "2019-01-08",
+                        "label": "L218"
+                    },
+                    "retracement_ratio": 0.5596330275229358,
+                    "source_break_available_at": "2019-01-23",
+                    "alternation_available_at": "2019-01-25"
+                },
+                "trend_confirmation_route": "lower_level_break_alternation_turn",
+                "incoming_trend_state": "confirmed",
+                "incoming_trend_confirmation": {
+                    "available_at": "2015-07-03",
+                    "confirmation_rule": "strict_same_level_market_key_break",
+                    "direction": "down",
+                    "broken_key": {
+                        "index": 4090,
+                        "ordinal": 0,
+                        "time": "2015-05-08",
+                        "kind": "L",
+                        "value": 8.81,
+                        "available_at": "2015-06-24",
+                        "label": "L33"
+                    },
+                    "origin": {
+                        "index": 4116,
+                        "ordinal": 0,
+                        "time": "2015-06-15",
+                        "kind": "H",
+                        "value": 18.07,
+                        "available_at": "2015-06-24",
+                        "label": "H179"
+                    },
+                    "confirmed_by": {
+                        "index": 4129,
+                        "ordinal": 0,
+                        "time": "2015-07-03",
+                        "kind": "L",
+                        "value": 8.01,
+                        "available_at": "2015-07-03",
+                        "label": "当前低点"
+                    },
+                    "flip_low": {
+                        "index": 4129,
+                        "ordinal": 0,
+                        "time": "2015-07-03",
+                        "kind": "L",
+                        "value": 8.01,
+                        "available_at": "2015-07-03",
+                        "label": "当前低点"
+                    },
+                    "alternation_high": null,
+                    "wave_origin": {
+                        "index": 4116,
+                        "ordinal": 0,
+                        "time": "2015-06-15",
+                        "kind": "H",
+                        "value": 18.07,
+                        "available_at": "2015-06-24",
+                        "label": "H33"
+                    }
+                },
+                "active_trend_confirmation": {
+                    "available_at": "2015-07-03",
+                    "confirmation_rule": "strict_same_level_market_key_break",
+                    "direction": "down",
+                    "broken_key": {
+                        "index": 4090,
+                        "ordinal": 0,
+                        "time": "2015-05-08",
+                        "kind": "L",
+                        "value": 8.81,
+                        "available_at": "2015-06-24",
+                        "label": "L33"
+                    },
+                    "origin": {
+                        "index": 4116,
+                        "ordinal": 0,
+                        "time": "2015-06-15",
+                        "kind": "H",
+                        "value": 18.07,
+                        "available_at": "2015-06-24",
+                        "label": "H179"
+                    },
+                    "confirmed_by": {
+                        "index": 4129,
+                        "ordinal": 0,
+                        "time": "2015-07-03",
+                        "kind": "L",
+                        "value": 8.01,
+                        "available_at": "2015-07-03",
+                        "label": "当前低点"
+                    },
+                    "flip_low": {
+                        "index": 4129,
+                        "ordinal": 0,
+                        "time": "2015-07-03",
+                        "kind": "L",
+                        "value": 8.01,
+                        "available_at": "2015-07-03",
+                        "label": "当前低点"
+                    },
+                    "alternation_high": null,
+                    "wave_origin": {
+                        "index": 4116,
+                        "ordinal": 0,
+                        "time": "2015-06-15",
+                        "kind": "H",
+                        "value": 18.07,
+                        "available_at": "2015-06-24",
+                        "label": "H33"
+                    }
+                }
+            },
+            {
+                "index": 5001,
+                "ordinal": 0,
+                "kind": "H",
+                "value": 9.84,
+                "time": "2019-03-21",
+                "state": "reversal",
+                "available_at": "2019-03-26",
+                "edge_kind": "ordinary",
+                "projection_count": 1,
+                "projection_rank": 0,
+                "source_kind": "H",
+                "source_state": "confirmed",
+                "source_reversal_available_at": "2019-03-22",
+                "wave_direction_before": "up",
+                "wave_direction_after": "down",
+                "confirmation_rule": "level1_confirmed_high_breaks_known_level2_last_fall_high",
+                "confirmed_by": {
+                    "index": 5001,
+                    "ordinal": 0,
+                    "time": "2019-03-21",
+                    "kind": "H",
+                    "value": 9.84,
+                    "available_at": "2019-03-26",
+                    "label": "H220"
+                },
+                "source_turn_position": 3337,
+                "confirmed_on_turn": 137,
+                "label": "H27",
+                "reversal": "负反转",
+                "observations": [],
+                "levels": [
+                    {
+                        "name": "已突破的旧二级末跌高",
+                        "price": 6.85
+                    },
+                    {
+                        "name": "H27 的末升低",
+                        "price": 4.4
+                    }
+                ],
+                "preceding_turn": {
+                    "index": 4899,
+                    "ordinal": 0,
+                    "time": "2018-10-19",
+                    "kind": "L",
+                    "value": 4.4,
+                    "available_at": "2019-02-12",
+                    "label": "L26"
+                },
+                "trend": "空头趋势",
+                "window_trend": "高低点不同向或相等",
+                "source_label": "H220",
+                "trend_level": 2,
+                "source_level1_available_at": "2019-03-26",
+                "source_level1_position": 438,
+                "confirmed_on_level1": 438,
+                "flip": "二级末跌高突破升级",
+                "broken_key": {
+                    "index": 4827,
+                    "ordinal": 1,
+                    "time": "2018-07-03",
+                    "kind": "H",
+                    "value": 6.85,
+                    "available_at": "2018-10-24",
+                    "label": "H212"
+                },
+                "source_confirmation": [
+                    {
+                        "index": 5001,
+                        "ordinal": 0,
+                        "kind": "H",
+                        "value": 9.84,
+                        "time": "2019-03-21",
+                        "available_at": "2019-03-22"
+                    },
+                    {
+                        "index": 5003,
+                        "ordinal": 0,
+                        "kind": "H",
+                        "value": 9.35,
+                        "time": "2019-03-25",
+                        "available_at": "2019-03-26"
+                    },
+                    {
+                        "index": 4999,
+                        "ordinal": 1,
+                        "kind": "L",
+                        "value": 8.89,
+                        "time": "2019-03-19",
+                        "available_at": "2019-03-20"
+                    },
+                    {
+                        "index": 5002,
+                        "ordinal": 0,
+                        "kind": "L",
+                        "value": 8.8,
+                        "time": "2019-03-22",
+                        "available_at": "2019-03-25"
+                    }
+                ],
+                "incoming_trend_confirmation": {
+                    "available_at": "2019-02-12",
+                    "confirmation_rule": "source_key_break_alternation_then_market_turn",
+                    "direction": "up",
+                    "broken_key": {
+                        "index": 4886,
+                        "ordinal": 0,
+                        "time": "2018-09-25",
+                        "kind": "H",
+                        "value": 5.78,
+                        "available_at": "2018-10-11",
+                        "label": "H216"
+                    },
+                    "origin": {
+                        "index": 4899,
+                        "ordinal": 0,
+                        "time": "2018-10-19",
+                        "kind": "L",
+                        "value": 4.4,
+                        "available_at": "2018-10-24",
+                        "label": "L216"
+                    },
+                    "confirmed_by": {
+                        "index": 4974,
+                        "ordinal": 0,
+                        "time": "2019-02-12",
+                        "kind": "K",
+                        "value": 6.16,
+                        "available_at": "2019-02-12",
+                        "label": "转多",
+                        "close": 6.16,
+                        "market_high": 6.2,
+                        "market_low": 6.0
+                    },
+                    "flip_high": {
+                        "index": 4958,
+                        "ordinal": 0,
+                        "time": "2019-01-14",
+                        "kind": "H",
+                        "value": 6.01,
+                        "available_at": "2019-01-23",
+                        "label": "H219"
+                    },
+                    "alternation_low": {
+                        "index": 4964,
+                        "ordinal": 0,
+                        "time": "2019-01-22",
+                        "kind": "L",
+                        "value": 5.4,
+                        "available_at": "2019-01-25",
+                        "label": "L219"
+                    },
+                    "retracement_origin": {
+                        "index": 4949,
+                        "ordinal": 0,
+                        "time": "2018-12-28",
+                        "kind": "L",
+                        "value": 4.92,
+                        "available_at": "2019-01-08",
+                        "label": "L218"
+                    },
+                    "retracement_ratio": 0.5596330275229358,
+                    "source_break_available_at": "2019-01-23",
+                    "alternation_available_at": "2019-01-25"
+                },
+                "incoming_trend_state": "confirmed",
+                "active_trend_confirmation": {
+                    "available_at": "2019-02-12",
+                    "confirmation_rule": "source_key_break_alternation_then_market_turn",
+                    "direction": "up",
+                    "broken_key": {
+                        "index": 4886,
+                        "ordinal": 0,
+                        "time": "2018-09-25",
+                        "kind": "H",
+                        "value": 5.78,
+                        "available_at": "2018-10-11",
+                        "label": "H216"
+                    },
+                    "origin": {
+                        "index": 4899,
+                        "ordinal": 0,
+                        "time": "2018-10-19",
+                        "kind": "L",
+                        "value": 4.4,
+                        "available_at": "2018-10-24",
+                        "label": "L216"
+                    },
+                    "confirmed_by": {
+                        "index": 4974,
+                        "ordinal": 0,
+                        "time": "2019-02-12",
+                        "kind": "K",
+                        "value": 6.16,
+                        "available_at": "2019-02-12",
+                        "label": "转多",
+                        "close": 6.16,
+                        "market_high": 6.2,
+                        "market_low": 6.0
+                    },
+                    "flip_high": {
+                        "index": 4958,
+                        "ordinal": 0,
+                        "time": "2019-01-14",
+                        "kind": "H",
+                        "value": 6.01,
+                        "available_at": "2019-01-23",
+                        "label": "H219"
+                    },
+                    "alternation_low": {
+                        "index": 4964,
+                        "ordinal": 0,
+                        "time": "2019-01-22",
+                        "kind": "L",
+                        "value": 5.4,
+                        "available_at": "2019-01-25",
+                        "label": "L219"
+                    },
+                    "retracement_origin": {
+                        "index": 4949,
+                        "ordinal": 0,
+                        "time": "2018-12-28",
+                        "kind": "L",
+                        "value": 4.92,
+                        "available_at": "2019-01-08",
+                        "label": "L218"
+                    },
+                    "retracement_ratio": 0.5596330275229358,
+                    "source_break_available_at": "2019-01-23",
+                    "alternation_available_at": "2019-01-25"
+                }
+            },
+            {
+                "index": 5007,
+                "ordinal": 0,
+                "kind": "L",
+                "value": 8.5,
+                "time": "2019-03-29",
+                "state": "reversal",
+                "available_at": "2019-04-25",
+                "edge_kind": "ordinary",
+                "projection_count": 1,
+                "projection_rank": 0,
+                "source_kind": "L",
+                "source_state": "confirmed",
+                "source_reversal_available_at": "2019-04-01",
+                "wave_direction_before": "down",
+                "wave_direction_after": "up",
+                "confirmation_rule": "strict_same_level_market_key_break",
+                "confirmed_by": {
+                    "index": 5020,
+                    "ordinal": 0,
+                    "time": "2019-04-18",
+                    "kind": "H",
+                    "value": 11.3,
+                    "available_at": "2019-04-25",
+                    "label": "H221"
+                },
+                "source_turn_position": 3340,
+                "confirmed_on_turn": 140,
+                "label": "L27",
+                "reversal": "正反转",
+                "observations": [],
+                "levels": [
+                    {
+                        "name": "一级末跌高",
+                        "price": 9.84
+                    },
+                    {
+                        "name": "L27 的末跌高",
+                        "price": 9.84
+                    }
+                ],
+                "preceding_turn": {
+                    "index": 5001,
+                    "ordinal": 0,
+                    "time": "2019-03-21",
+                    "kind": "H",
+                    "value": 9.84,
+                    "available_at": "2019-03-26",
+                    "label": "H27"
+                },
+                "trend": "高低点不同向或相等",
+                "window_trend": "高低点不同向或相等",
+                "source_label": "L220",
+                "trend_level": 2,
+                "source_level1_available_at": "2019-04-10",
+                "source_level1_position": 439,
+                "confirmed_on_level1": 440,
+                "flip": "翻空为多",
+                "broken_key": {
+                    "index": 5001,
+                    "ordinal": 0,
+                    "time": "2019-03-21",
+                    "kind": "H",
+                    "value": 9.84,
+                    "available_at": "2019-03-26",
+                    "label": "H220"
+                },
+                "structural_confirmation_rule": "level1_structural_key_break",
+                "trend_confirmation": {
+                    "available_at": "2019-04-10",
+                    "confirmation_rule": "strict_same_level_market_key_break",
+                    "direction": "up",
+                    "broken_key": {
+                        "index": 5001,
+                        "ordinal": 0,
+                        "time": "2019-03-21",
+                        "kind": "H",
+                        "value": 9.84,
+                        "available_at": "2019-03-26",
+                        "label": "H35"
+                    },
+                    "origin": {
+                        "index": 5007,
+                        "ordinal": 0,
+                        "time": "2019-03-29",
+                        "kind": "L",
+                        "value": 8.5,
+                        "available_at": "2019-04-10",
+                        "label": "L220"
+                    },
+                    "confirmed_by": {
+                        "index": 5014,
+                        "ordinal": 0,
+                        "time": "2019-04-10",
+                        "kind": "H",
+                        "value": 10.97,
+                        "available_at": "2019-04-10",
+                        "label": "当前高点"
+                    },
+                    "flip_high": {
+                        "index": 5014,
+                        "ordinal": 0,
+                        "time": "2019-04-10",
+                        "kind": "H",
+                        "value": 10.97,
+                        "available_at": "2019-04-10",
+                        "label": "当前高点"
+                    },
+                    "alternation_low": null
+                },
+                "trend_confirmation_route": "same_level_key_break",
+                "incoming_trend_state": "unconfirmed",
+                "active_trend_confirmation": {
+                    "available_at": "2019-02-12",
+                    "confirmation_rule": "source_key_break_alternation_then_market_turn",
+                    "direction": "up",
+                    "broken_key": {
+                        "index": 4886,
+                        "ordinal": 0,
+                        "time": "2018-09-25",
+                        "kind": "H",
+                        "value": 5.78,
+                        "available_at": "2018-10-11",
+                        "label": "H216"
+                    },
+                    "origin": {
+                        "index": 4899,
+                        "ordinal": 0,
+                        "time": "2018-10-19",
+                        "kind": "L",
+                        "value": 4.4,
+                        "available_at": "2018-10-24",
+                        "label": "L216"
+                    },
+                    "confirmed_by": {
+                        "index": 4974,
+                        "ordinal": 0,
+                        "time": "2019-02-12",
+                        "kind": "K",
+                        "value": 6.16,
+                        "available_at": "2019-02-12",
+                        "label": "转多",
+                        "close": 6.16,
+                        "market_high": 6.2,
+                        "market_low": 6.0
+                    },
+                    "flip_high": {
+                        "index": 4958,
+                        "ordinal": 0,
+                        "time": "2019-01-14",
+                        "kind": "H",
+                        "value": 6.01,
+                        "available_at": "2019-01-23",
+                        "label": "H219"
+                    },
+                    "alternation_low": {
+                        "index": 4964,
+                        "ordinal": 0,
+                        "time": "2019-01-22",
+                        "kind": "L",
+                        "value": 5.4,
+                        "available_at": "2019-01-25",
+                        "label": "L219"
+                    },
+                    "retracement_origin": {
+                        "index": 4949,
+                        "ordinal": 0,
+                        "time": "2018-12-28",
+                        "kind": "L",
+                        "value": 4.92,
+                        "available_at": "2019-01-08",
+                        "label": "L218"
+                    },
+                    "retracement_ratio": 0.5596330275229358,
+                    "source_break_available_at": "2019-01-23",
+                    "alternation_available_at": "2019-01-25"
+                }
+            },
+            {
+                "index": 5020,
+                "ordinal": 0,
+                "kind": "H",
+                "value": 11.3,
+                "time": "2019-04-18",
+                "state": "reversal",
+                "available_at": "2019-04-25",
+                "edge_kind": "ordinary",
+                "projection_count": 1,
+                "projection_rank": 0,
+                "source_kind": "H",
+                "source_state": "confirmed",
+                "source_reversal_available_at": "2019-04-19",
+                "wave_direction_before": "up",
+                "wave_direction_after": "down",
+                "confirmation_rule": "level1_confirmed_high_breaks_known_level2_last_fall_high",
+                "confirmed_by": {
+                    "index": 5020,
+                    "ordinal": 0,
+                    "time": "2019-04-18",
+                    "kind": "H",
+                    "value": 11.3,
+                    "available_at": "2019-04-25",
+                    "label": "H221"
+                },
+                "source_turn_position": 3347,
+                "confirmed_on_turn": 149,
+                "label": "H28",
+                "reversal": "负反转",
+                "observations": [],
+                "levels": [
+                    {
+                        "name": "已突破的旧二级末跌高",
+                        "price": 9.84
+                    },
+                    {
+                        "name": "H28 的末升低",
+                        "price": 8.5
+                    }
+                ],
+                "preceding_turn": {
+                    "index": 5007,
+                    "ordinal": 0,
+                    "time": "2019-03-29",
+                    "kind": "L",
+                    "value": 8.5,
+                    "available_at": "2019-04-25",
+                    "label": "L27"
+                },
+                "trend": "多头趋势",
+                "window_trend": "高低点不同向或相等",
+                "source_label": "H221",
+                "trend_level": 2,
+                "source_level1_available_at": "2019-04-25",
+                "source_level1_position": 440,
+                "confirmed_on_level1": 440,
+                "flip": "二级末跌高突破升级",
+                "broken_key": {
+                    "index": 5001,
+                    "ordinal": 0,
+                    "time": "2019-03-21",
+                    "kind": "H",
+                    "value": 9.84,
+                    "available_at": "2019-03-26",
+                    "label": "H220"
+                },
+                "source_confirmation": [
+                    {
+                        "index": 5022,
+                        "ordinal": 0,
+                        "kind": "H",
+                        "value": 11.03,
+                        "time": "2019-04-22",
+                        "available_at": "2019-04-22"
+                    },
+                    {
+                        "index": 5024,
+                        "ordinal": 1,
+                        "kind": "H",
+                        "value": 10.22,
+                        "time": "2019-04-24",
+                        "available_at": "2019-04-25"
+                    },
+                    {
+                        "index": 5021,
+                        "ordinal": 0,
+                        "kind": "L",
+                        "value": 10.43,
+                        "time": "2019-04-19",
+                        "available_at": "2019-04-22"
+                    },
+                    {
+                        "index": 5023,
+                        "ordinal": 0,
+                        "kind": "L",
+                        "value": 9.8,
+                        "time": "2019-04-23",
+                        "available_at": "2019-04-24"
+                    }
+                ],
+                "incoming_trend_confirmation": {
+                    "available_at": "2019-04-10",
+                    "confirmation_rule": "strict_same_level_market_key_break",
+                    "direction": "up",
+                    "broken_key": {
+                        "index": 5001,
+                        "ordinal": 0,
+                        "time": "2019-03-21",
+                        "kind": "H",
+                        "value": 9.84,
+                        "available_at": "2019-03-26",
+                        "label": "H35"
+                    },
+                    "origin": {
+                        "index": 5007,
+                        "ordinal": 0,
+                        "time": "2019-03-29",
+                        "kind": "L",
+                        "value": 8.5,
+                        "available_at": "2019-04-10",
+                        "label": "L220"
+                    },
+                    "confirmed_by": {
+                        "index": 5014,
+                        "ordinal": 0,
+                        "time": "2019-04-10",
+                        "kind": "H",
+                        "value": 10.97,
+                        "available_at": "2019-04-10",
+                        "label": "当前高点"
+                    },
+                    "flip_high": {
+                        "index": 5014,
+                        "ordinal": 0,
+                        "time": "2019-04-10",
+                        "kind": "H",
+                        "value": 10.97,
+                        "available_at": "2019-04-10",
+                        "label": "当前高点"
+                    },
+                    "alternation_low": null
+                },
+                "incoming_trend_state": "confirmed",
+                "active_trend_confirmation": {
+                    "available_at": "2019-02-12",
+                    "confirmation_rule": "source_key_break_alternation_then_market_turn",
+                    "direction": "up",
+                    "broken_key": {
+                        "index": 4886,
+                        "ordinal": 0,
+                        "time": "2018-09-25",
+                        "kind": "H",
+                        "value": 5.78,
+                        "available_at": "2018-10-11",
+                        "label": "H216"
+                    },
+                    "origin": {
+                        "index": 4899,
+                        "ordinal": 0,
+                        "time": "2018-10-19",
+                        "kind": "L",
+                        "value": 4.4,
+                        "available_at": "2018-10-24",
+                        "label": "L216"
+                    },
+                    "confirmed_by": {
+                        "index": 4974,
+                        "ordinal": 0,
+                        "time": "2019-02-12",
+                        "kind": "K",
+                        "value": 6.16,
+                        "available_at": "2019-02-12",
+                        "label": "转多",
+                        "close": 6.16,
+                        "market_high": 6.2,
+                        "market_low": 6.0
+                    },
+                    "flip_high": {
+                        "index": 4958,
+                        "ordinal": 0,
+                        "time": "2019-01-14",
+                        "kind": "H",
+                        "value": 6.01,
+                        "available_at": "2019-01-23",
+                        "label": "H219"
+                    },
+                    "alternation_low": {
+                        "index": 4964,
+                        "ordinal": 0,
+                        "time": "2019-01-22",
+                        "kind": "L",
+                        "value": 5.4,
+                        "available_at": "2019-01-25",
+                        "label": "L219"
+                    },
+                    "retracement_origin": {
+                        "index": 4949,
+                        "ordinal": 0,
+                        "time": "2018-12-28",
+                        "kind": "L",
+                        "value": 4.92,
+                        "available_at": "2019-01-08",
+                        "label": "L218"
+                    },
+                    "retracement_ratio": 0.5596330275229358,
+                    "source_break_available_at": "2019-01-23",
+                    "alternation_available_at": "2019-01-25"
+                }
+            }
+        ],
+        "input_turn_count": 441,
+        "key_transitions": [
+            {
+                "id": "level2-last-fall-high-reanchor-389-892-2002-01-07",
+                "kind": "last_fall_high_reanchor",
+                "trend_level": 2,
+                "available_at": "2002-01-07",
+                "confirmation_rule": "market_close_break_and_confirmed_replacement_key",
+                "active_low_source_level": 2,
+                "previous_key": {
+                    "index": 336,
+                    "ordinal": 0,
+                    "time": "1998-06-04",
+                    "kind": "H",
+                    "value": 13.29,
+                    "available_at": "1998-06-08",
+                    "label": "H2"
+                },
+                "broken_low": {
+                    "index": 389,
+                    "ordinal": 0,
+                    "time": "1998-08-18",
+                    "kind": "L",
+                    "value": 7.4,
+                    "available_at": "1999-07-12",
+                    "label": "L2"
+                },
+                "active_low": {
+                    "index": 892,
+                    "ordinal": 0,
+                    "time": "2000-09-19",
+                    "kind": "L",
+                    "value": 13.3,
+                    "available_at": "2000-11-13",
+                    "label": "L4"
+                },
+                "new_key": {
+                    "index": 877,
+                    "ordinal": 0,
+                    "time": "2000-08-29",
+                    "kind": "H",
+                    "value": 15.55,
+                    "available_at": "2000-09-01",
+                    "label": "H4"
+                },
+                "confirmed_by": {
+                    "index": 1200,
+                    "time": "2002-01-07",
+                    "available_at": "2002-01-07",
+                    "kind": "K",
+                    "label": "收盘跌破 K线",
+                    "value": 7.19,
+                    "open": 7.42,
+                    "high": 7.42,
+                    "low": 7.1,
+                    "previous_close": 7.49,
+                    "break_basis": "close_cross"
+                }
+            },
+            {
+                "id": "level2-last-fall-high-reanchor-719-892-2001-12-27",
+                "kind": "last_fall_high_reanchor",
+                "trend_level": 2,
+                "available_at": "2001-12-27",
+                "confirmation_rule": "market_close_break_and_confirmed_replacement_key",
+                "active_low_source_level": 2,
+                "previous_key": {
+                    "index": 605,
+                    "ordinal": 0,
+                    "time": "1999-07-12",
+                    "kind": "H",
+                    "value": 13.5,
+                    "available_at": "1999-07-21",
+                    "label": "H3"
+                },
+                "broken_low": {
+                    "index": 719,
+                    "ordinal": 0,
+                    "time": "1999-12-27",
+                    "kind": "L",
+                    "value": 7.57,
+                    "available_at": "2000-07-31",
+                    "label": "L3"
+                },
+                "active_low": {
+                    "index": 892,
+                    "ordinal": 0,
+                    "time": "2000-09-19",
+                    "kind": "L",
+                    "value": 13.3,
+                    "available_at": "2000-11-13",
+                    "label": "L4"
+                },
+                "new_key": {
+                    "index": 877,
+                    "ordinal": 0,
+                    "time": "2000-08-29",
+                    "kind": "H",
+                    "value": 15.55,
+                    "available_at": "2000-09-01",
+                    "label": "H4"
+                },
+                "confirmed_by": {
+                    "index": 1196,
+                    "time": "2001-12-27",
+                    "available_at": "2001-12-27",
+                    "kind": "K",
+                    "label": "收盘跌破 K线",
+                    "value": 7.47,
+                    "open": 7.58,
+                    "high": 7.68,
+                    "low": 7.4,
+                    "previous_close": 7.59,
+                    "break_basis": "close_cross"
+                }
+            },
+            {
+                "id": "level2-last-fall-high-reanchor-1898-2096-2008-10-27",
+                "kind": "last_fall_high_reanchor",
+                "trend_level": 2,
+                "available_at": "2008-10-27",
+                "confirmation_rule": "market_close_break_and_confirmed_replacement_key",
+                "active_low_source_level": 2,
+                "previous_key": {
+                    "index": 1600,
+                    "ordinal": 0,
+                    "time": "2004-04-09",
+                    "kind": "H",
+                    "value": 6.13,
+                    "available_at": "2004-06-11",
+                    "label": "H7"
+                },
+                "broken_low": {
+                    "index": 1898,
+                    "ordinal": 0,
+                    "time": "2005-07-11",
+                    "kind": "L",
+                    "value": 2.45,
+                    "available_at": "2005-08-17",
+                    "label": "L7"
+                },
+                "active_low": {
+                    "index": 2096,
+                    "ordinal": 0,
+                    "time": "2006-08-07",
+                    "kind": "L",
+                    "value": 2.51,
+                    "available_at": "2007-06-07",
+                    "label": "L10"
+                },
+                "new_key": {
+                    "index": 2078,
+                    "ordinal": 0,
+                    "time": "2006-06-05",
+                    "kind": "H",
+                    "value": 6.1,
+                    "available_at": "2006-07-19",
+                    "label": "H10"
+                },
+                "confirmed_by": {
+                    "index": 2633,
+                    "time": "2008-10-27",
+                    "available_at": "2008-10-27",
+                    "kind": "K",
+                    "label": "收盘跌破 K线",
+                    "value": 2.4,
+                    "open": 2.67,
+                    "high": 2.7,
+                    "low": 2.4,
+                    "previous_close": 2.67,
+                    "break_basis": "close_cross"
+                }
+            },
+            {
+                "id": "level2-last-fall-high-reanchor-1998-2052-2006-08-07",
+                "kind": "last_fall_high_reanchor",
+                "trend_level": 2,
+                "available_at": "2006-08-07",
+                "confirmation_rule": "market_close_break_and_confirmed_replacement_key",
+                "active_low_source_level": 2,
+                "previous_key": {
+                    "index": 1939,
+                    "ordinal": 0,
+                    "time": "2005-09-06",
+                    "kind": "H",
+                    "value": 3.77,
+                    "available_at": "2005-11-14",
+                    "label": "H8"
+                },
+                "broken_low": {
+                    "index": 1998,
+                    "ordinal": 0,
+                    "time": "2005-12-05",
+                    "kind": "L",
+                    "value": 2.7,
+                    "available_at": "2006-02-13",
+                    "label": "L8"
+                },
+                "active_low": {
+                    "index": 2052,
+                    "ordinal": 0,
+                    "time": "2006-03-03",
+                    "kind": "L",
+                    "value": 3.1,
+                    "available_at": "2006-03-14",
+                    "label": "L9"
+                },
+                "new_key": {
+                    "index": 2039,
+                    "ordinal": 0,
+                    "time": "2006-02-14",
+                    "kind": "H",
+                    "value": 3.42,
+                    "available_at": "2006-03-07",
+                    "label": "H9"
+                },
+                "confirmed_by": {
+                    "index": 2096,
+                    "time": "2006-08-07",
+                    "available_at": "2006-08-07",
+                    "kind": "K",
+                    "label": "收盘跌破 K线",
+                    "value": 2.55,
+                    "open": 2.73,
+                    "high": 2.74,
+                    "low": 2.51,
+                    "previous_close": 2.79,
+                    "break_basis": "close_cross"
+                }
+            },
+            {
+                "id": "level2-last-fall-high-reanchor-2755-3188-2011-12-14",
+                "kind": "last_fall_high_reanchor",
+                "trend_level": 2,
+                "available_at": "2011-12-14",
+                "confirmation_rule": "market_close_break_and_confirmed_replacement_key",
+                "active_low_source_level": 2,
+                "previous_key": {
+                    "index": 2751,
+                    "ordinal": 0,
+                    "time": "2009-04-22",
+                    "kind": "H",
+                    "value": 5.06,
+                    "available_at": "2009-04-24",
+                    "label": "H13"
+                },
+                "broken_low": {
+                    "index": 2755,
+                    "ordinal": 0,
+                    "time": "2009-04-28",
+                    "kind": "L",
+                    "value": 4.18,
+                    "available_at": "2009-05-12",
+                    "label": "L13"
+                },
+                "active_low": {
+                    "index": 3188,
+                    "ordinal": 0,
+                    "time": "2011-02-22",
+                    "kind": "L",
+                    "value": 8.18,
+                    "available_at": "2011-03-22",
+                    "label": "L18"
+                },
+                "new_key": {
+                    "index": 3181,
+                    "ordinal": 0,
+                    "time": "2011-02-11",
+                    "kind": "H",
+                    "value": 9.23,
+                    "available_at": "2011-02-22",
+                    "label": "H18"
+                },
+                "confirmed_by": {
+                    "index": 3381,
+                    "time": "2011-12-14",
+                    "available_at": "2011-12-14",
+                    "kind": "K",
+                    "label": "收盘跌破 K线",
+                    "value": 4.15,
+                    "open": 4.2,
+                    "high": 4.28,
+                    "low": 4.11,
+                    "previous_close": 4.22,
+                    "break_basis": "close_cross"
+                }
+            },
+            {
+                "id": "level2-last-fall-high-reanchor-2855-3188-2011-12-05",
+                "kind": "last_fall_high_reanchor",
+                "trend_level": 2,
+                "available_at": "2011-12-05",
+                "confirmation_rule": "market_close_break_and_confirmed_replacement_key",
+                "active_low_source_level": 2,
+                "previous_key": {
+                    "index": 2821,
+                    "ordinal": 0,
+                    "time": "2009-08-05",
+                    "kind": "H",
+                    "value": 7.75,
+                    "available_at": "2009-08-19",
+                    "label": "H16"
+                },
+                "broken_low": {
+                    "index": 2855,
+                    "ordinal": 0,
+                    "time": "2009-09-29",
+                    "kind": "L",
+                    "value": 4.93,
+                    "available_at": "2009-11-10",
+                    "label": "L16"
+                },
+                "active_low": {
+                    "index": 3188,
+                    "ordinal": 0,
+                    "time": "2011-02-22",
+                    "kind": "L",
+                    "value": 8.18,
+                    "available_at": "2011-03-22",
+                    "label": "L18"
+                },
+                "new_key": {
+                    "index": 3181,
+                    "ordinal": 0,
+                    "time": "2011-02-11",
+                    "kind": "H",
+                    "value": 9.23,
+                    "available_at": "2011-02-22",
+                    "label": "H18"
+                },
+                "confirmed_by": {
+                    "index": 3374,
+                    "time": "2011-12-05",
+                    "available_at": "2011-12-05",
+                    "kind": "K",
+                    "label": "收盘跌破 K线",
+                    "value": 4.74,
+                    "open": 4.99,
+                    "high": 4.99,
+                    "low": 4.72,
+                    "previous_close": 4.99,
+                    "break_basis": "close_cross"
+                }
+            },
+            {
+                "id": "level2-last-fall-high-reanchor-3035-3188-2011-10-11",
+                "kind": "last_fall_high_reanchor",
+                "trend_level": 2,
+                "available_at": "2011-10-11",
+                "confirmation_rule": "market_close_break_and_confirmed_replacement_key",
+                "active_low_source_level": 2,
+                "previous_key": {
+                    "index": 2989,
+                    "ordinal": 0,
+                    "time": "2010-04-22",
+                    "kind": "H",
+                    "value": 10.08,
+                    "available_at": "2010-04-29",
+                    "label": "H17"
+                },
+                "broken_low": {
+                    "index": 3035,
+                    "ordinal": 0,
+                    "time": "2010-07-02",
+                    "kind": "L",
+                    "value": 5.58,
+                    "available_at": "2011-02-22",
+                    "label": "L17"
+                },
+                "active_low": {
+                    "index": 3188,
+                    "ordinal": 0,
+                    "time": "2011-02-22",
+                    "kind": "L",
+                    "value": 8.18,
+                    "available_at": "2011-03-22",
+                    "label": "L18"
+                },
+                "new_key": {
+                    "index": 3181,
+                    "ordinal": 0,
+                    "time": "2011-02-11",
+                    "kind": "H",
+                    "value": 9.23,
+                    "available_at": "2011-02-22",
+                    "label": "H18"
+                },
+                "confirmed_by": {
+                    "index": 3336,
+                    "time": "2011-10-11",
+                    "available_at": "2011-10-11",
+                    "kind": "K",
+                    "label": "收盘跌破 K线",
+                    "value": 5.57,
+                    "open": 5.89,
+                    "high": 5.94,
+                    "low": 5.51,
+                    "previous_close": 5.78,
+                    "break_basis": "close_cross"
+                }
+            },
+            {
+                "id": "level2-last-fall-high-reanchor-3946-4090-2018-06-11",
+                "kind": "last_fall_high_reanchor",
+                "trend_level": 2,
+                "available_at": "2018-06-11",
+                "confirmation_rule": "market_close_break_and_confirmed_replacement_key",
+                "active_low_source_level": 2,
+                "previous_key": {
+                    "index": 3940,
+                    "ordinal": 0,
+                    "time": "2014-08-20",
+                    "kind": "H",
+                    "value": 6.24,
+                    "available_at": "2014-08-28",
+                    "label": "H21"
+                },
+                "broken_low": {
+                    "index": 3946,
+                    "ordinal": 0,
+                    "time": "2014-08-28",
+                    "kind": "L",
+                    "value": 5.45,
+                    "available_at": "2014-10-14",
+                    "label": "L21"
+                },
+                "active_low": {
+                    "index": 4090,
+                    "ordinal": 0,
+                    "time": "2015-05-08",
+                    "kind": "L",
+                    "value": 8.81,
+                    "available_at": "2015-06-24",
+                    "label": "L25"
+                },
+                "new_key": {
+                    "index": 4081,
+                    "ordinal": 0,
+                    "time": "2015-04-24",
+                    "kind": "H",
+                    "value": 10.64,
+                    "available_at": "2015-05-13",
+                    "label": "H25"
+                },
+                "confirmed_by": {
+                    "index": 4812,
+                    "time": "2018-06-11",
+                    "available_at": "2018-06-11",
+                    "kind": "K",
+                    "label": "收盘跌破 K线",
+                    "value": 5.37,
+                    "open": 5.45,
+                    "high": 5.48,
+                    "low": 5.35,
+                    "previous_close": 5.45,
+                    "break_basis": "close_cross"
+                }
+            },
+            {
+                "id": "level2-last-fall-high-reanchor-4018-4090-2018-05-30",
+                "kind": "last_fall_high_reanchor",
+                "trend_level": 2,
+                "available_at": "2018-05-30",
+                "confirmation_rule": "market_close_break_and_confirmed_replacement_key",
+                "active_low_source_level": 2,
+                "previous_key": {
+                    "index": 4005,
+                    "ordinal": 0,
+                    "time": "2014-11-27",
+                    "kind": "H",
+                    "value": 7.78,
+                    "available_at": "2015-01-19",
+                    "label": "H23"
+                },
+                "broken_low": {
+                    "index": 4018,
+                    "ordinal": 0,
+                    "time": "2015-01-19",
+                    "kind": "L",
+                    "value": 5.6,
+                    "available_at": "2015-03-24",
+                    "label": "L23"
+                },
+                "active_low": {
+                    "index": 4090,
+                    "ordinal": 0,
+                    "time": "2015-05-08",
+                    "kind": "L",
+                    "value": 8.81,
+                    "available_at": "2015-06-24",
+                    "label": "L25"
+                },
+                "new_key": {
+                    "index": 4081,
+                    "ordinal": 0,
+                    "time": "2015-04-24",
+                    "kind": "H",
+                    "value": 10.64,
+                    "available_at": "2015-05-13",
+                    "label": "H25"
+                },
+                "confirmed_by": {
+                    "index": 4804,
+                    "time": "2018-05-30",
+                    "available_at": "2018-05-30",
+                    "kind": "K",
+                    "label": "收盘跌破 K线",
+                    "value": 5.59,
+                    "open": 5.74,
+                    "high": 5.74,
+                    "low": 5.56,
+                    "previous_close": 5.82,
+                    "break_basis": "close_cross"
+                }
+            },
+            {
+                "id": "level2-last-fall-high-reanchor-4057-4090-2015-07-03",
+                "kind": "last_fall_high_reanchor",
+                "trend_level": 2,
+                "available_at": "2015-07-03",
+                "confirmation_rule": "market_close_break_and_confirmed_replacement_key",
+                "active_low_source_level": 2,
+                "previous_key": {
+                    "index": 4053,
+                    "ordinal": 0,
+                    "time": "2015-03-16",
+                    "kind": "H",
+                    "value": 8.58,
+                    "available_at": "2015-03-24",
+                    "label": "H24"
+                },
+                "broken_low": {
+                    "index": 4057,
+                    "ordinal": 0,
+                    "time": "2015-03-20",
+                    "kind": "L",
+                    "value": 8.12,
+                    "available_at": "2015-04-20",
+                    "label": "L24"
+                },
+                "active_low": {
+                    "index": 4090,
+                    "ordinal": 0,
+                    "time": "2015-05-08",
+                    "kind": "L",
+                    "value": 8.81,
+                    "available_at": "2015-06-24",
+                    "label": "L25"
+                },
+                "new_key": {
+                    "index": 4081,
+                    "ordinal": 0,
+                    "time": "2015-04-24",
+                    "kind": "H",
+                    "value": 10.64,
+                    "available_at": "2015-05-13",
+                    "label": "H25"
+                },
+                "confirmed_by": {
+                    "index": 4129,
+                    "time": "2015-07-03",
+                    "available_at": "2015-07-03",
+                    "kind": "K",
+                    "label": "收盘跌破 K线",
+                    "value": 8.01,
+                    "open": 8.4,
+                    "high": 8.9,
+                    "low": 8.01,
+                    "previous_close": 8.9,
+                    "break_basis": "close_cross"
+                }
+            }
+        ],
+        "confirmation_policy": "two_routes_v106",
+        "leg_confirmation_policy": "two_routes_each_direction_v108",
+        "confirmed_legs": [
+            {
+                "points": [
+                    {
+                        "index": 4899,
+                        "ordinal": 0,
+                        "kind": "L",
+                        "value": 4.4,
+                        "time": "2018-10-19",
+                        "state": "reversal",
+                        "available_at": "2019-02-12",
+                        "edge_kind": "ordinary",
+                        "projection_count": 1,
+                        "projection_rank": 0,
+                        "source_kind": "L",
+                        "source_state": "confirmed",
+                        "source_reversal_available_at": "2018-10-22",
+                        "wave_direction_before": "down",
+                        "wave_direction_after": "up",
+                        "confirmation_rule": "source_key_break_alternation_then_market_turn",
+                        "confirmed_by": {
+                            "index": 4924,
+                            "ordinal": 0,
+                            "time": "2018-11-23",
+                            "kind": "H",
+                            "value": 5.85,
+                            "available_at": "2018-12-13",
+                            "label": "H217"
+                        },
+                        "source_turn_position": 3270,
+                        "confirmed_on_turn": 70,
+                        "label": "L26",
+                        "reversal": "正反转",
+                        "observations": [
+                            {
+                                "title": "回档未通过交替条件",
+                                "available_at": "2019-02-12",
+                                "basis": "confirmed_polyline_extreme",
+                                "ratio": 1.4762419006479481
+                            }
+                        ],
+                        "levels": [
+                            {
+                                "name": "一级末跌高",
+                                "price": 5.78
+                            },
+                            {
+                                "name": "L26 的末跌高",
+                                "price": 18.07
+                            }
+                        ],
+                        "preceding_turn": {
+                            "index": 4116,
+                            "ordinal": 0,
+                            "time": "2015-06-15",
+                            "kind": "H",
+                            "value": 18.07,
+                            "available_at": "2015-06-24",
+                            "label": "H26"
+                        },
+                        "trend": "高低点不同向或相等",
+                        "window_trend": "高低点不同向或相等",
+                        "source_label": "L216",
+                        "trend_level": 2,
+                        "source_level1_available_at": "2018-10-24",
+                        "source_level1_position": 431,
+                        "confirmed_on_level1": 432,
+                        "flip": "翻空为多",
+                        "broken_key": {
+                            "index": 4886,
+                            "ordinal": 0,
+                            "time": "2018-09-25",
+                            "kind": "H",
+                            "value": 5.78,
+                            "available_at": "2018-10-11",
+                            "label": "H216"
+                        },
+                        "structural_confirmation_rule": "level1_structural_key_break",
+                        "trend_confirmation": {
+                            "available_at": "2019-02-12",
+                            "confirmation_rule": "source_key_break_alternation_then_market_turn",
+                            "direction": "up",
+                            "broken_key": {
+                                "index": 4886,
+                                "ordinal": 0,
+                                "time": "2018-09-25",
+                                "kind": "H",
+                                "value": 5.78,
+                                "available_at": "2018-10-11",
+                                "label": "H216"
+                            },
+                            "origin": {
+                                "index": 4899,
+                                "ordinal": 0,
+                                "time": "2018-10-19",
+                                "kind": "L",
+                                "value": 4.4,
+                                "available_at": "2018-10-24",
+                                "label": "L216"
+                            },
+                            "confirmed_by": {
+                                "index": 4974,
+                                "ordinal": 0,
+                                "time": "2019-02-12",
+                                "kind": "K",
+                                "value": 6.16,
+                                "available_at": "2019-02-12",
+                                "label": "转多",
+                                "close": 6.16,
+                                "market_high": 6.2,
+                                "market_low": 6.0
+                            },
+                            "flip_high": {
+                                "index": 4958,
+                                "ordinal": 0,
+                                "time": "2019-01-14",
+                                "kind": "H",
+                                "value": 6.01,
+                                "available_at": "2019-01-23",
+                                "label": "H219"
+                            },
+                            "alternation_low": {
+                                "index": 4964,
+                                "ordinal": 0,
+                                "time": "2019-01-22",
+                                "kind": "L",
+                                "value": 5.4,
+                                "available_at": "2019-01-25",
+                                "label": "L219"
+                            },
+                            "retracement_origin": {
+                                "index": 4949,
+                                "ordinal": 0,
+                                "time": "2018-12-28",
+                                "kind": "L",
+                                "value": 4.92,
+                                "available_at": "2019-01-08",
+                                "label": "L218"
+                            },
+                            "retracement_ratio": 0.5596330275229358,
+                            "source_break_available_at": "2019-01-23",
+                            "alternation_available_at": "2019-01-25"
+                        },
+                        "trend_confirmation_route": "lower_level_break_alternation_turn",
+                        "incoming_trend_state": "confirmed",
+                        "incoming_trend_confirmation": {
+                            "available_at": "2015-07-03",
+                            "confirmation_rule": "strict_same_level_market_key_break",
+                            "direction": "down",
+                            "broken_key": {
+                                "index": 4090,
+                                "ordinal": 0,
+                                "time": "2015-05-08",
+                                "kind": "L",
+                                "value": 8.81,
+                                "available_at": "2015-06-24",
+                                "label": "L33"
+                            },
+                            "origin": {
+                                "index": 4116,
+                                "ordinal": 0,
+                                "time": "2015-06-15",
+                                "kind": "H",
+                                "value": 18.07,
+                                "available_at": "2015-06-24",
+                                "label": "H179"
+                            },
+                            "confirmed_by": {
+                                "index": 4129,
+                                "ordinal": 0,
+                                "time": "2015-07-03",
+                                "kind": "L",
+                                "value": 8.01,
+                                "available_at": "2015-07-03",
+                                "label": "当前低点"
+                            },
+                            "flip_low": {
+                                "index": 4129,
+                                "ordinal": 0,
+                                "time": "2015-07-03",
+                                "kind": "L",
+                                "value": 8.01,
+                                "available_at": "2015-07-03",
+                                "label": "当前低点"
+                            },
+                            "alternation_high": null,
+                            "wave_origin": {
+                                "index": 4116,
+                                "ordinal": 0,
+                                "time": "2015-06-15",
+                                "kind": "H",
+                                "value": 18.07,
+                                "available_at": "2015-06-24",
+                                "label": "H33"
+                            }
+                        },
+                        "active_trend_confirmation": {
+                            "available_at": "2015-07-03",
+                            "confirmation_rule": "strict_same_level_market_key_break",
+                            "direction": "down",
+                            "broken_key": {
+                                "index": 4090,
+                                "ordinal": 0,
+                                "time": "2015-05-08",
+                                "kind": "L",
+                                "value": 8.81,
+                                "available_at": "2015-06-24",
+                                "label": "L33"
+                            },
+                            "origin": {
+                                "index": 4116,
+                                "ordinal": 0,
+                                "time": "2015-06-15",
+                                "kind": "H",
+                                "value": 18.07,
+                                "available_at": "2015-06-24",
+                                "label": "H179"
+                            },
+                            "confirmed_by": {
+                                "index": 4129,
+                                "ordinal": 0,
+                                "time": "2015-07-03",
+                                "kind": "L",
+                                "value": 8.01,
+                                "available_at": "2015-07-03",
+                                "label": "当前低点"
+                            },
+                            "flip_low": {
+                                "index": 4129,
+                                "ordinal": 0,
+                                "time": "2015-07-03",
+                                "kind": "L",
+                                "value": 8.01,
+                                "available_at": "2015-07-03",
+                                "label": "当前低点"
+                            },
+                            "alternation_high": null,
+                            "wave_origin": {
+                                "index": 4116,
+                                "ordinal": 0,
+                                "time": "2015-06-15",
+                                "kind": "H",
+                                "value": 18.07,
+                                "available_at": "2015-06-24",
+                                "label": "H33"
+                            }
+                        }
+                    },
+                    {
+                        "index": 5020,
+                        "ordinal": 0,
+                        "kind": "H",
+                        "value": 11.3,
+                        "time": "2019-04-18",
+                        "state": "reversal",
+                        "available_at": "2019-04-25",
+                        "edge_kind": "ordinary",
+                        "projection_count": 1,
+                        "projection_rank": 0,
+                        "source_kind": "H",
+                        "source_state": "confirmed",
+                        "source_reversal_available_at": "2019-04-19",
+                        "wave_direction_before": "up",
+                        "wave_direction_after": "down",
+                        "confirmation_rule": "level1_confirmed_high_breaks_known_level2_last_fall_high",
+                        "confirmed_by": {
+                            "index": 5020,
+                            "ordinal": 0,
+                            "time": "2019-04-18",
+                            "kind": "H",
+                            "value": 11.3,
+                            "available_at": "2019-04-25",
+                            "label": "H221"
+                        },
+                        "source_turn_position": 3347,
+                        "confirmed_on_turn": 149,
+                        "label": "H28",
+                        "reversal": "负反转",
+                        "observations": [],
+                        "levels": [
+                            {
+                                "name": "已突破的旧二级末跌高",
+                                "price": 9.84
+                            },
+                            {
+                                "name": "H28 的末升低",
+                                "price": 8.5
+                            }
+                        ],
+                        "preceding_turn": {
+                            "index": 5007,
+                            "ordinal": 0,
+                            "time": "2019-03-29",
+                            "kind": "L",
+                            "value": 8.5,
+                            "available_at": "2019-04-25",
+                            "label": "L27"
+                        },
+                        "trend": "多头趋势",
+                        "window_trend": "高低点不同向或相等",
+                        "source_label": "H221",
+                        "trend_level": 2,
+                        "source_level1_available_at": "2019-04-25",
+                        "source_level1_position": 440,
+                        "confirmed_on_level1": 440,
+                        "flip": "二级末跌高突破升级",
+                        "broken_key": {
+                            "index": 5001,
+                            "ordinal": 0,
+                            "time": "2019-03-21",
+                            "kind": "H",
+                            "value": 9.84,
+                            "available_at": "2019-03-26",
+                            "label": "H220"
+                        },
+                        "source_confirmation": [
+                            {
+                                "index": 5022,
+                                "ordinal": 0,
+                                "kind": "H",
+                                "value": 11.03,
+                                "time": "2019-04-22",
+                                "available_at": "2019-04-22"
+                            },
+                            {
+                                "index": 5024,
+                                "ordinal": 1,
+                                "kind": "H",
+                                "value": 10.22,
+                                "time": "2019-04-24",
+                                "available_at": "2019-04-25"
+                            },
+                            {
+                                "index": 5021,
+                                "ordinal": 0,
+                                "kind": "L",
+                                "value": 10.43,
+                                "time": "2019-04-19",
+                                "available_at": "2019-04-22"
+                            },
+                            {
+                                "index": 5023,
+                                "ordinal": 0,
+                                "kind": "L",
+                                "value": 9.8,
+                                "time": "2019-04-23",
+                                "available_at": "2019-04-24"
+                            }
+                        ],
+                        "incoming_trend_confirmation": {
+                            "available_at": "2019-04-10",
+                            "confirmation_rule": "strict_same_level_market_key_break",
+                            "direction": "up",
+                            "broken_key": {
+                                "index": 5001,
+                                "ordinal": 0,
+                                "time": "2019-03-21",
+                                "kind": "H",
+                                "value": 9.84,
+                                "available_at": "2019-03-26",
+                                "label": "H35"
+                            },
+                            "origin": {
+                                "index": 5007,
+                                "ordinal": 0,
+                                "time": "2019-03-29",
+                                "kind": "L",
+                                "value": 8.5,
+                                "available_at": "2019-04-10",
+                                "label": "L220"
+                            },
+                            "confirmed_by": {
+                                "index": 5014,
+                                "ordinal": 0,
+                                "time": "2019-04-10",
+                                "kind": "H",
+                                "value": 10.97,
+                                "available_at": "2019-04-10",
+                                "label": "当前高点"
+                            },
+                            "flip_high": {
+                                "index": 5014,
+                                "ordinal": 0,
+                                "time": "2019-04-10",
+                                "kind": "H",
+                                "value": 10.97,
+                                "available_at": "2019-04-10",
+                                "label": "当前高点"
+                            },
+                            "alternation_low": null
+                        },
+                        "incoming_trend_state": "confirmed",
+                        "active_trend_confirmation": {
+                            "available_at": "2019-02-12",
+                            "confirmation_rule": "source_key_break_alternation_then_market_turn",
+                            "direction": "up",
+                            "broken_key": {
+                                "index": 4886,
+                                "ordinal": 0,
+                                "time": "2018-09-25",
+                                "kind": "H",
+                                "value": 5.78,
+                                "available_at": "2018-10-11",
+                                "label": "H216"
+                            },
+                            "origin": {
+                                "index": 4899,
+                                "ordinal": 0,
+                                "time": "2018-10-19",
+                                "kind": "L",
+                                "value": 4.4,
+                                "available_at": "2018-10-24",
+                                "label": "L216"
+                            },
+                            "confirmed_by": {
+                                "index": 4974,
+                                "ordinal": 0,
+                                "time": "2019-02-12",
+                                "kind": "K",
+                                "value": 6.16,
+                                "available_at": "2019-02-12",
+                                "label": "转多",
+                                "close": 6.16,
+                                "market_high": 6.2,
+                                "market_low": 6.0
+                            },
+                            "flip_high": {
+                                "index": 4958,
+                                "ordinal": 0,
+                                "time": "2019-01-14",
+                                "kind": "H",
+                                "value": 6.01,
+                                "available_at": "2019-01-23",
+                                "label": "H219"
+                            },
+                            "alternation_low": {
+                                "index": 4964,
+                                "ordinal": 0,
+                                "time": "2019-01-22",
+                                "kind": "L",
+                                "value": 5.4,
+                                "available_at": "2019-01-25",
+                                "label": "L219"
+                            },
+                            "retracement_origin": {
+                                "index": 4949,
+                                "ordinal": 0,
+                                "time": "2018-12-28",
+                                "kind": "L",
+                                "value": 4.92,
+                                "available_at": "2019-01-08",
+                                "label": "L218"
+                            },
+                            "retracement_ratio": 0.5596330275229358,
+                            "source_break_available_at": "2019-01-23",
+                            "alternation_available_at": "2019-01-25"
+                        }
+                    }
+                ],
+                "direction": "up",
+                "confirmation": {
+                    "available_at": "2019-02-12",
+                    "confirmation_rule": "source_key_break_alternation_then_market_turn",
+                    "direction": "up",
+                    "broken_key": {
+                        "index": 4886,
+                        "ordinal": 0,
+                        "time": "2018-09-25",
+                        "kind": "H",
+                        "value": 5.78,
+                        "available_at": "2018-10-11",
+                        "label": "H216"
+                    },
+                    "origin": {
+                        "index": 4899,
+                        "ordinal": 0,
+                        "time": "2018-10-19",
+                        "kind": "L",
+                        "value": 4.4,
+                        "available_at": "2018-10-24",
+                        "label": "L216"
+                    },
+                    "confirmed_by": {
+                        "index": 4974,
+                        "ordinal": 0,
+                        "time": "2019-02-12",
+                        "kind": "K",
+                        "value": 6.16,
+                        "available_at": "2019-02-12",
+                        "label": "转多",
+                        "close": 6.16,
+                        "market_high": 6.2,
+                        "market_low": 6.0
+                    },
+                    "flip_high": {
+                        "index": 4958,
+                        "ordinal": 0,
+                        "time": "2019-01-14",
+                        "kind": "H",
+                        "value": 6.01,
+                        "available_at": "2019-01-23",
+                        "label": "H219"
+                    },
+                    "alternation_low": {
+                        "index": 4964,
+                        "ordinal": 0,
+                        "time": "2019-01-22",
+                        "kind": "L",
+                        "value": 5.4,
+                        "available_at": "2019-01-25",
+                        "label": "L219"
+                    },
+                    "retracement_origin": {
+                        "index": 4949,
+                        "ordinal": 0,
+                        "time": "2018-12-28",
+                        "kind": "L",
+                        "value": 4.92,
+                        "available_at": "2019-01-08",
+                        "label": "L218"
+                    },
+                    "retracement_ratio": 0.5596330275229358,
+                    "source_break_available_at": "2019-01-23",
+                    "alternation_available_at": "2019-01-25"
+                },
+                "available_at": "2019-04-25"
+            }
+        ]
+    },
+    "lower_defense": {
+        "time": "2019-01-22",
+        "kind": "L",
+        "value": 5.4,
+        "available_at": "2019-01-25"
+    },
+    "bars": [
+        {
+            "low": 4.4,
+            "high": 4.7,
+            "open": 4.5,
+            "time": "2018-10-19",
+            "close": 4.68,
+            "factor": 1,
+            "volume": 1003700.0,
+            "raw_close": 4.68
+        },
+        {
+            "low": 9.18,
+            "high": 9.84,
+            "open": 9.21,
+            "time": "2019-03-21",
+            "close": 9.2,
+            "factor": 1,
+            "volume": 13197064.0,
+            "raw_close": 9.2
+        },
+        {
+            "low": 8.5,
+            "high": 8.82,
+            "open": 8.76,
+            "time": "2019-03-29",
+            "close": 8.79,
+            "factor": 1,
+            "volume": 5314218.0,
+            "raw_close": 8.79
+        },
+        {
+            "low": 10.63,
+            "high": 11.3,
+            "open": 10.94,
+            "time": "2019-04-18",
+            "close": 10.71,
+            "factor": 1,
+            "volume": 11629840.0,
+            "raw_close": 10.71
+        }
+    ],
+    "expected_legs": [["2018-10-19", "2019-04-18"]],
+    "rejected_leg": ["2019-03-21", "2019-03-29"]
+}

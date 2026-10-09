@@ -83,7 +83,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'configurable_n_target_trend_confirmation_v109_' + variant
+    config['profile_version'] = 'configurable_n_target_trend_confirmation_v110_' + variant
     config['definition']['trend_confirmation_routes'] = 'same_level_key_break_or_lower_key_break_alternation_turn'
     config['definition']['n_target_trend_confirmation_enabled'] = False
     config['definition']['optional_trend_confirmation_route'] = 'source_n_strict_one_p_target'

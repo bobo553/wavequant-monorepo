@@ -5,6 +5,7 @@ from typing import cast
 from .hierarchical_confirmation import DirectionConfirmation, TrendReference, market_trend_confirmation, session_date, source_trend_reversal
 from .trend_confirmation import qualify_downtrend, qualify_uptrend
 from .n_trend_confirmation import N_TARGET_CONFIRMATION, is_n_target_reversal, qualified_n_source
+from .trend_publication import WAVE_DISPLAY_POLICY, trend_wave_identity
 
 
 def _canonical_confirmation(proof):
@@ -61,11 +62,19 @@ def _countertrend_cycle(source_points,endpoint,bars,cutoff,n_target_trend_confir
 
 def _direction_proof(point, n_target_trend_confirmation_enabled):
     """A disabled optional route cannot reuse a certificate from an earlier run."""
-    for field in ('trend_confirmation', 'incoming_trend_confirmation'):
+    def enabled(field):
         proof=point.get(field)
-        if proof and (n_target_trend_confirmation_enabled or proof.get('confirmation_rule')!=N_TARGET_CONFIRMATION):
-            return proof
-    return None
+        return proof if proof and (n_target_trend_confirmation_enabled or proof.get('confirmation_rule')!=N_TARGET_CONFIRMATION) else None
+    active=enabled('active_trend_confirmation')
+    outgoing=enabled('trend_confirmation')
+    if active is not None:
+        if outgoing and n_target_trend_confirmation_enabled and outgoing.get('confirmation_rule')==N_TARGET_CONFIRMATION:
+            prior=active.get('wave_origin',active['origin'])
+            origin=outgoing.get('wave_origin',outgoing['origin'])
+            if any(prior.get(field)!=origin.get(field) for field in ('index','ordinal','kind','value')):
+                return outgoing
+        return outgoing if outgoing and outgoing['direction']!=active['direction'] else active
+    return (outgoing if point['kind']=='L' else enabled('incoming_trend_confirmation')) or outgoing
 
 
 def hierarchical_developing_path(source,confirmed,*,trend_level,source_level,kind,bars=(),end_index=None,structural=(),qualified_source_points=None,n_target_trend_confirmation_enabled: bool = False):
@@ -161,8 +170,10 @@ def hierarchical_developing_path(source,confirmed,*,trend_level,source_level,kin
         path.append(pending)
     return dict(id=f'{kind}-developing-{source["id"]}',source_path=source['id'],kind=f'{kind}-developing',
                 trend_level=trend_level,source_level=source_level,state='confirmed',display_only=True,
-                confirmation_policy='trend_routes_v109',
+                confirmation_policy='trend_routes_v110',
                 n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                wave_display_policy=WAVE_DISPLAY_POLICY,
+                wave_id=trend_wave_identity(confirmation,trend_level=trend_level,source_path=source['id']),
                 initial_direction=start['wave_direction_after'],wave_direction=confirmation['direction'],
                 available_at=known,endpoint_state='developing',confirmation=confirmation,
                 confirmed_endpoint=endpoint,confirmation_rule=confirmation['confirmation_rule'],nested_turn_count=0,

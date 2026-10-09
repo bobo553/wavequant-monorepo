@@ -6,6 +6,7 @@ import {
     connectedTrendStrokes,
     reversalConnections,
     secondaryConnections,
+    selectPublishedTrendSegments,
     trendConfirmationPresentation,
     usesCausalTrendConfirmation,
 } from "../public/lecture-overlay.js";
@@ -52,6 +53,73 @@ function developingStroke(level, rising = true) {
         ],
     };
 }
+
+test("enabled N legs and their same-wave continuation render once at all three levels", () => {
+    for (const level of [1, 2, 3]) {
+        for (const rising of [true, false]) {
+            const proof = nConfirmation(rising);
+            for (const [field, index] of Object.entries({
+                origin: 0,
+                n_neckline: 1,
+                n_pullback: 2,
+                n_completion: 3,
+                confirmed_by: 4,
+            }))
+                Object.assign(proof[field], { index, ordinal: 0 });
+            const origin = { ...proof.origin },
+                endpoint = { ...proof.confirmed_by },
+                waveId = `trend-wave-v1:n-route-${level}-${rising}`,
+                formal = {
+                    kind: ["", "reversal", "secondary", "tertiary"][level],
+                    trend_level: level,
+                    source_path: "source",
+                    confirmation_policy: "trend_routes_v110",
+                    leg_confirmation_policy: "enabled_routes_each_direction_v110",
+                    wave_display_policy: "one_connection_per_confirmed_wave_v109",
+                    points: [origin, endpoint],
+                    confirmed_legs: [
+                        {
+                            points: [origin, endpoint],
+                            direction: proof.direction,
+                            confirmation: proof,
+                            available_at: endpoint.available_at,
+                            wave_id: waveId,
+                        },
+                    ],
+                },
+                live = {
+                    ...formal,
+                    kind: ["", "reversal-developing", "secondary-developing", "tertiary-developing"][level],
+                    state: "confirmed",
+                    confirmation: proof,
+                    wave_id: waveId,
+                    points: [
+                        { ...origin, development_role: "confirmed_direction_origin" },
+                        {
+                            ...endpoint,
+                            index: 5,
+                            time: "2018-09-25",
+                            available_at: "2018-09-25",
+                            value: endpoint.value + (rising ? 0.2 : -0.2),
+                            development_role: "active_endpoint",
+                        },
+                    ],
+                },
+                project = (stroke) => ({
+                    stroke,
+                    points: stroke.points.map((point) => ({ point, x: point.index, y: point.value })),
+                }),
+                prepare = () => {
+                    delete live.leg_confirmation_policy;
+                    delete live.confirmed_legs;
+                    return selectPublishedTrendSegments([project(formal), project(live)]);
+                },
+                groups = prepare();
+            assert.equal(groups[0].segments.length, 0);
+            assert.equal(groups[1].segments.length, 1);
+        }
+    }
+});
 
 test("all three levels name source N and actual attack target without changing its confirmation route", () => {
     for (const level of [1, 2, 3]) {
@@ -189,7 +257,7 @@ test("new and legacy causal policies both reject geometry that reconnects separa
         available_at: "z",
         state: "confirmed",
     });
-    for (const policy of ["two_routes_v106", "trend_routes_v108", "trend_routes_v109"]) {
+    for (const policy of ["two_routes_v106", "trend_routes_v108", "trend_routes_v110"]) {
         assert.equal(usesCausalTrendConfirmation({ confirmation_policy: policy }), true);
         for (const [kind, connect] of [
             ["reversal", reversalConnections],

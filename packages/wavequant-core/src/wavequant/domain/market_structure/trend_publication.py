@@ -1,14 +1,66 @@
 """Publish qualified trend vertices while retaining their whole-wave extremes."""
 
 from collections.abc import Mapping, Sequence
+from fractions import Fraction
+import hashlib
+import json
 from math import isfinite
 from typing import TypeAlias, cast
 
 from ..models.model import Bar
-from .trend_confirmation import ConfirmationContext, prepare_confirmation_context, qualify_uptrend
+from .trend_confirmation import ConfirmationContext, prepare_confirmation_context, qualify_downtrend, qualify_uptrend
 from .n_trend_confirmation import N_TARGET_CONFIRMATION, is_n_target_reversal, qualified_n_source
+from .hierarchical_confirmation import session_date
 
 Moment: TypeAlias = int | str
+LEG_CONFIRMATION_POLICY = 'two_routes_each_direction_v108'
+OPTIONAL_LEG_CONFIRMATION_POLICY = 'enabled_routes_each_direction_v110'
+WAVE_DISPLAY_POLICY = 'one_connection_per_confirmed_wave_v109'
+
+
+def _wave_reference(value: object) -> tuple[object, ...] | None:
+    if not isinstance(value, Mapping):
+        return None
+    index, ordinal, price = value.get('index'), value.get('ordinal', 0), value.get('value')
+    known, time, kind = value.get('available_at'), value.get('time'), value.get('kind')
+    if (type(index) is not int or index < 0 or type(ordinal) is not int or ordinal < 0
+            or type(price) not in (int, float) or not isfinite(cast(float, price))
+            or not isinstance(time, str) or not time or kind not in ('H', 'L', 'K')
+            or not (type(known) is int or isinstance(known, str) and bool(known))):
+        return None
+    return index, ordinal, time, kind, str(Fraction(str(price))), known
+
+
+def trend_wave_identity(proof: Mapping[str, object], *, trend_level: int, source_path: str) -> str | None:
+    """Name a causal wave independently of its changing displayed endpoint.
+
+    Labels and direct-route rendering fields are not new proofs. Origin,
+    source boundary, level and every required first-known evidence are; equal
+    prices or dates alone must never collapse independently confirmed waves.
+    """
+    rule = proof.get('confirmation_rule')
+    if (type(trend_level) is not int or trend_level not in (1, 2, 3) or not source_path or proof.get('direction') not in ('up', 'down')
+            or rule not in ('strict_same_level_market_key_break', 'source_key_break_alternation_then_market_turn', N_TARGET_CONFIRMATION)):
+        return None
+    fields = ['origin', 'broken_key', 'confirmed_by']
+    if rule == 'source_key_break_alternation_then_market_turn':
+        fields += ['flip_high', 'alternation_low'] if proof['direction'] == 'up' else ['flip_low', 'alternation_high']
+    if rule == N_TARGET_CONFIRMATION:
+        fields += ['n_neckline', 'n_pullback', 'n_completion']
+    references = [_wave_reference(proof.get(field)) for field in fields]
+    if rule == 'source_key_break_alternation_then_market_turn':
+        references.append(_wave_reference(proof.get('retracement_origin', proof.get('origin'))))
+    wave_origin = _wave_reference(proof.get('wave_origin', proof.get('origin')))
+    known = proof.get('available_at')
+    if any(ref is None for ref in references) or wave_origin is None or not (type(known) is int or isinstance(known, str) and bool(known)):
+        return None
+    payload = [trend_level, source_path, proof['direction'], rule, known, references, wave_origin]
+    if rule == N_TARGET_CONFIRMATION:
+        anchor, target = proof.get('box_anchor'), proof.get('one_p_target')
+        if any(type(value) not in (int, float) or not isfinite(cast(float, value)) for value in (anchor, target)):
+            return None
+        payload += [str(Fraction(str(anchor))), str(Fraction(str(target)))]
+    return 'trend-wave-v1:' + hashlib.sha256(json.dumps(payload, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
 
 
 def _moment(point: Mapping[str, object]) -> Moment:
@@ -33,6 +85,139 @@ def _held_wave_floor(origin: Mapping[str, object], bars: Sequence[Bar], through_
         return False
     return all(isfinite(bars[position].low) and bars[position].low >= value
                for position in range(index + 1, through_index + 1))
+
+
+def _same_origin(proof: Mapping[str, object], point: Mapping[str, object]) -> bool:
+    origin = proof.get('wave_origin', proof.get('origin'))
+    return isinstance(origin, Mapping) and all(
+        origin.get(field, 0 if field == 'ordinal' else None) == point.get(field, 0 if field == 'ordinal' else None)
+        for field in ('index', 'ordinal', 'kind', 'value')
+    )
+
+
+def annotate_published_legs(
+    points: Sequence[Mapping[str, object]], source: Sequence[Mapping[str, object]], bars: Sequence[Bar],
+    *, source_level: int, qualified_source: Sequence[Mapping[str, object]] | None = None,
+    n_target_trend_confirmation_enabled: bool = False,
+) -> list[dict[str, object]]:
+    """A vertex's outgoing proof cannot authorize its incoming opposite leg.
+
+    Keep independently published anchors for pressure, measurement and legal
+    rising backgrounds. Certify each displayed H-to-L leg against its frozen
+    preceding public low or a complete lower-level bearish cycle. The cutoff
+    is the endpoint's own publication session, never the later history tail.
+    Missing market/source evidence fails closed. Reuse one parsing context at
+    a time so historical charts do not retain a context for every endpoint.
+    """
+    result = [dict(point) for point in points]
+    sessions = {session_date(bar): index for index, bar in enumerate(bars)}
+    position_field = 'source_turn_position' if source_level == 0 else f'source_level{source_level}_position'
+    context: ConfirmationContext | None = None
+    active: Mapping[str, object] | None = None
+    extreme: Mapping[str, object] | None = None
+    n_source = (qualified_n_source(source, qualified_source)
+                if n_target_trend_confirmation_enabled and qualified_source is not None else source)
+    for offset in range(1, len(result)):
+        previous, point = result[offset - 1], result[offset]
+        direction = 'up' if previous['kind'] == 'L' and point['kind'] == 'H' else 'down'
+        point['incoming_trend_state'] = 'unconfirmed'
+        proof = point.get('incoming_trend_confirmation') if direction == 'up' else None
+        if not n_target_trend_confirmation_enabled and isinstance(proof, Mapping) and proof.get('confirmation_rule') == N_TARGET_CONFIRMATION:
+            proof = None
+        origin: Mapping[str, object] = previous
+        if direction == 'down':
+            point.pop('incoming_trend_confirmation', None)
+            position = origin.get(position_field)
+            known = _moment(point)
+            cutoff = sessions.get(known, -1) if isinstance(known, str) else known
+            if (bars and previous['kind'] == 'H' and point['kind'] == 'L'
+                    and type(position) is int and 0 <= position < len(source) and 0 <= cutoff < len(bars)
+                    and all(origin.get(field, 0 if field == 'ordinal' else None)
+                            == source[position].get(field, 0 if field == 'ordinal' else None)
+                            for field in ('index', 'ordinal', 'kind', 'value'))):
+                key = next((item for item in reversed(result[:offset - 1]) if item['kind'] == 'L'), None)
+                if context is None or context.end_index != cutoff:
+                    context = prepare_confirmation_context(source, bars, cutoff, n_source=n_source,
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+                proof = qualify_downtrend(source, source[position], position, key, bars, cutoff, context=context,
+                    n_source=n_source,n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        trigger = proof.get('confirmed_by') if isinstance(proof, Mapping) else None
+        if (isinstance(proof, Mapping) and isinstance(trigger, Mapping)
+                and type(trigger.get('index')) is int and cast(int, point['index']) >= cast(int, trigger['index'])
+                and proof.get('direction') == direction and _same_origin(proof, origin)
+                and _later(_moment(proof), _moment(point)) == _moment(point)):
+            if direction == 'down' and active is not None and active['direction'] == 'up' and extreme is not None:
+                wave_position = extreme.get(position_field)
+                if type(wave_position) is int and 0 <= wave_position < len(source):
+                    wave_origin = source[wave_position]
+                    if (not _same_origin(dict(origin=extreme), origin) and _same_origin(dict(origin=wave_origin), extreme)
+                            and _later(_moment(wave_origin), _moment(proof)) == _moment(proof)
+                            and _wave_holds(dict(proof, wave_origin=wave_origin), bars, cast(Mapping[str, object], proof['confirmed_by']))):
+                        proof = dict(proof, wave_origin={field: wave_origin[field] for field in
+                                     ('index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'label') if field in wave_origin})
+            point['incoming_trend_confirmation'] = dict(proof)
+            point['incoming_trend_state'] = 'confirmed'
+            # An enabled N earns a separate source cycle; ordinary local proofs
+            # retain the original wave until its opposite direction qualifies.
+            continued = (active is not None and active['direction'] == direction and _wave_holds(active, bars, point)
+                         and not (n_target_trend_confirmation_enabled and proof.get('confirmation_rule') == N_TARGET_CONFIRMATION
+                                  and not _same_origin(active, origin)))
+            if not continued:
+                active = proof
+                extreme = point
+            elif extreme is not None and (cast(float, point['value']) > cast(float, extreme['value'])
+                                          if direction == 'up' else cast(float, point['value']) < cast(float, extreme['value'])):
+                extreme = point
+        else:
+            point.pop('incoming_trend_confirmation', None)
+        if active is not None:
+            point['active_trend_confirmation'] = dict(active)
+    return result
+
+
+def _wave_holds(proof: Mapping[str, object], bars: Sequence[Bar], endpoint: Mapping[str, object]) -> bool:
+    origin = cast(Mapping[str, object], proof.get('wave_origin', proof['origin']))
+    start, end, value = cast(int, origin['index']), cast(int, endpoint['index']), cast(float, origin['value'])
+    if not bars or not 0 <= start < end < len(bars):
+        return False
+    rising = proof['direction'] == 'up'
+    prices = (bar.low if rising else bar.high for bar in bars[start:end + 1])
+    return all(isfinite(price) and (price >= value if rising else price <= value) for price in prices)
+
+
+def confirmed_trend_legs(
+    points: Sequence[Mapping[str, object]], *, trend_level: int | None = None, source_path: str = '',
+) -> list[dict[str, object]]:
+    """An unqualified retracement cannot terminate or restart a higher wave.
+
+    Retain published anchors as independent evidence, but consolidate same-
+    direction extremes until the opposite direction earns its own proof.
+    """
+    legs: list[dict[str, object]] = []
+    for point in points:
+        proof = point.get('active_trend_confirmation')
+        if point.get('incoming_trend_state') != 'confirmed' or not isinstance(proof, Mapping):
+            continue
+        direction = proof['direction']
+        if point['kind'] != ('H' if direction == 'up' else 'L'):
+            continue
+        origin = next((item for item in points if _same_origin(proof, item)), None)
+        if origin is None:
+            continue
+        leg = dict(points=[dict(origin), dict(point)], direction=direction, confirmation=dict(proof),
+                   available_at=point['available_at'])
+        wave_id = trend_wave_identity(proof, trend_level=trend_level, source_path=source_path) if trend_level is not None else None
+        if wave_id is not None:
+            leg['wave_id'] = wave_id
+        if legs and legs[-1]['direction'] == direction and _same_origin(cast(Mapping[str, object], legs[-1]['confirmation']), origin):
+            last_points = cast(list[Mapping[str, object]], legs[-1]['points'])
+            previous = cast(float, last_points[-1]['value'])
+            value = cast(float, point['value'])
+            if (value > previous if direction == 'up' else value < previous):
+                legs[-1] = leg
+        else:
+            legs.append(leg)
+    return legs
 
 
 def publish_uptrends(
