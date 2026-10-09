@@ -17,6 +17,11 @@ from .price_action import Direction, teaching_inside
 N_TARGET_CONFIRMATION = "source_n_strict_one_p_target"
 
 
+def is_n_target_reversal(point: Mapping[str, object]) -> bool:
+    """Identify candidate vertices introduced by the optional N trend route."""
+    return point.get("confirmation_rule") in (N_TARGET_CONFIRMATION, "n_origin_breach_confirms_wave_endpoint")
+
+
 def _source_identity(point: Mapping[str, object]) -> tuple[int, int, str, Fraction] | None:
     index, ordinal, kind, value = point.get("index"), point.get("ordinal", 0), point.get("kind"), point.get("value")
     if (type(index) is not int or index < 0 or type(ordinal) is not int or ordinal < 0

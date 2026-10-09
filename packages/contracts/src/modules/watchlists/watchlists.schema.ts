@@ -36,6 +36,7 @@ export const WatchlistSettingsSchema = z.object({
         volume_filter: z.enum(["true", "false"]),
         net_reward_risk_filter: z.enum(["true", "false"]),
         shallow_base_breakout_enabled: z.enum(["true", "false"]),
+        n_target_trend_confirmation_enabled: z.enum(["true", "false"]).default("false"),
         initial_capital: z
             .string()
             .refine((value) => Number.isFinite(Number(value)) && Number(value) > 0 && Number(value) <= 1e9),

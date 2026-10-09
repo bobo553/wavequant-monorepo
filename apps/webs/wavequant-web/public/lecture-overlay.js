@@ -14,7 +14,7 @@ export function formatPivotPrice(value) {
 
 /** 新旧因果政策都禁止前端用几何连接补造趋势确认。 */
 export function usesCausalTrendConfirmation(stroke) {
-    return ["two_routes_v106", "trend_routes_v108"].includes(stroke?.confirmation_policy);
+    return ["two_routes_v106", "trend_routes_v108", "trend_routes_v109"].includes(stroke?.confirmation_policy);
 }
 
 /** 证书决定展示口径；下级 N 达标、收盘转向与本级关键位分别说明。 */
@@ -676,7 +676,7 @@ export class LectureOverlay {
                 : presentation
                   ? `${presentation.description}该${name}${p.kind === "H" ? "高点" : "低点"}于 ${p.available_at} 正式发布，不等于买卖信号。`
                   : usesCausalTrendConfirmation(stroke)
-                    ? `${name}下降段的已确认压力高点 ${p.time} ${p.value}，于 ${p.available_at} 可知。上涨趋势仍须突破本级末跌高，或下级突破后完成空多交替及后续收盘转多，或下级正 N 严格超过一饱；该关键位不是买卖信号。`
+                    ? `${name}下降段的已确认压力高点 ${p.time} ${p.value}，于 ${p.available_at} 可知。上涨趋势仍须具备当前方案启用的完整确认依据；该关键位不是买卖信号。`
                     : p.confirmation_rule === "confirmed_alternation_then_high_breakout"
                       ? `空多交替已确认后，${proof.time} 最高价 ${proof.value} 严格突破原空翻多高点，确认多头。原空翻多高点至空多交替低点确认为正式${name}趋势线，${p.available_at} 才可知；不要求收盘越过旧高点，也不把突破 K 当作已确认波段顶。`
                       : promotedByAlternation
@@ -731,7 +731,7 @@ export class LectureOverlay {
                 description: presentation
                     ? `${presentation.description}该一级端点于 ${p.available_at} 正式发布。${events || ""} 不等于策略确认或买卖信号。`
                     : usesCausalTrendConfirmation(stroke)
-                      ? `一级下降段的已确认压力高点 ${p.time} ${p.value}，于 ${p.available_at} 可知。上涨趋势仍须突破一级末跌高，或原折线突破后完成空多交替及后续收盘转多，或原折线正 N 严格超过一饱。`
+                      ? `一级下降段的已确认压力高点 ${p.time} ${p.value}，于 ${p.available_at} 可知。上涨趋势仍须具备当前方案启用的完整确认依据。`
                       : `一级趋势线：原折线的高、低点同时转向才确认，实线跨过中间小拐点。最近两组波段高低点：${p.trend}。${events || "此点无新增转换观察。"} 不等于策略确认或买卖信号。`,
                 sourceLabel:
                     presentation?.sourceLabel ||

@@ -4,6 +4,95 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-306",
+            "name": "existing-execution-research-baseline-followup",
+            "title": "既有执行断言与研究类型基线待修",
+            "description": "305的补充检查发现两项既有真实执行断言和三个研究模块类型问题；逐项main对照相同。记录未完成问题，保留原断言及失败证据，未在选项任务中扩展修复。",
+            "scope": "Core既有真实分钟/趋势翻转测试与独立研究模块",
+            "dependencies": [],
+            "status": "backlog",
+            "acceptanceCriteria": [
+                "定位并修复或依据最终规则校正乐居607与xidian823两项历史断言，保留因果和默认配置边界",
+                "整理三个独立研究模块既有16条类型问题，原研究与压力对照行为保持",
+                "针对实际修正执行定向复验，区分已通过与仍待验证，不改测试规避失败"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_wave_intraday_entry.py::test_c_wave_uses_first_cumulative_volume_trigger_without_final_candle[False] -q -x; pytest tests/test_trend_flip_exit.py::test_xidian_first_adverse_candle_exits_with_known_tertiary_key_and_prefix -q -x",
+                    "status": "failed",
+                    "summary": "分支两项分别出现KeyError(sz.002285,607)与KeyError823。使用main源码、确认导入路径后逐项复现同样失败（波形27.07秒、xidian5.35秒）；原断言未改，属于已存在的基线失败，记录为待修。"
+                },
+                {
+                    "command": "mypy system_research.py validation_suite.py strategy_evidence.py --follow-imports=skip; same main-source baseline comparison",
+                    "status": "failed",
+                    "summary": "分支与main均为16条既有类型错误，类别及位置一致，仅新增参数行使行号平移。未新增类型问题；历史类型整理超出当前范围，记录为待修。"
+                },
+                {
+                    "command": "pytest tests/test_n_trend_execution_option.py tests/test_intraday_entry.py tests/test_wave_intraday_entry.py tests/test_trend_flip_exit.py tests/test_stock_backtest.py -q",
+                    "status": "not-run",
+                    "summary": "较大定向组在旧长fixture失败后中止，没有完整结果；已替换为明确通过的小组及逐项main基线对照，未称整组通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-305",
+            "name": "optional-n-target-trend-confirmation",
+            "title": "正倒N超一饱趋势确认默认关闭选项",
+            "description": "将各级正倒N严格超一饱确认规则改为全局可勾选配置，未选择时沿用既有两条确认路线。",
+            "scope": "共享Core策略/图表/扫描、API参数与缓存、Web选项和持久化契约",
+            "dependencies": ["MONOREPO-304"],
+            "status": "done",
+            "acceptanceCriteria": [
+                "全局选项默认未勾选，旧配置缺字段按false；非法布尔值拒绝",
+                "选中时一二三级正倒N超一饱行为保持，关闭时所有入口均不应用该路线",
+                "图表、回测、扫描与后台自选回测使用同一配置，设置保存恢复一致",
+                "逐日回放、内存/持久化/浏览器缓存及ETag按选项隔离，切换不复用另一模式结果",
+                "真实襄阳样本和对称三层开关对照通过，完成定向验证并仅提交现有特性分支"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_n_trend_option.py tests/test_n_trend_levels.py tests/test_n_trend_path_boundaries.py tests/test_n_target_trend_real.py tests/test_trend_confirmation_entry_refresh.py -q",
+                    "status": "passed",
+                    "summary": "116项及4子用例通过。三层正倒镜像默认等于False、True保持N证书，等值/不可知/跨路径不放宽；真实襄阳09-11低4.94至09-25高5.78仅选中时因09-20超一饱5.32获得N趋势确认。所有方案默认关闭、严格配置输入及两类逐日前缀缓存跨模式冷启动一致。"
+                },
+                {
+                    "command": "pytest tests/test_n_trend_confirmation.py tests/test_unconfirmed_wave_origin.py tests/test_level_one_wave_boundary.py tests/test_global_trend_confirmation_real.py tests/test_global_trend_confirmation.py tests/test_trend_confirmation_boundaries.py tests/test_lecture_trend.py tests/test_secondary_trend.py tests/test_tertiary_trend.py -q",
+                    "status": "passed",
+                    "summary": "162项及19子用例通过。关闭后恢复原有两路线、公开点和07-11/4.84于08-01发布，开启保持V108的07-27；未认证来源不得提供交易背景，原点、防守和首证书边界保持。旧测试的默认路线元数据及端点预期恢复，显式开启的新N用例保持。"
+                },
+                {
+                    "command": "pytest tests/test_trend_confirmation_entry_refresh.py tests/test_hierarchical_entry.py tests/test_chart_entry_history_cache.py tests/test_hierarchical_countertrend.py -k 'not xiangyang_may2025_to_april2026' -q; pytest tests/test_structure_scanner.py tests/test_buy_points.py -q; pytest tests/test_n_trend_option_consumers.py -q",
+                    "status": "passed",
+                    "summary": "缓存/入口/趋势组76项及4子用例通过，1个昂贵完整逐日样本本轮未重复；原扫描组24项及7子用例通过，真实行情消费者组通过。覆盖SQLite几何跨进程复用、AkShare/行情缓存、V3渲染不借另一模式几何、V2账户执行缓存以及两类扫描。复核补齐分钟入场和趋势翻转离场重算接线，相关回归结果见下一条。旧替身签名先失败后已修复并完整复跑，无失败豁免。"
+                },
+                {
+                    "command": ".venv/Scripts/python.exe -m pytest tests/test_n_trend_execution_option.py tests/test_intraday_entry.py tests/test_stock_backtest.py tests/test_trend_flip_exit.py -k \"not xidian\" -q; .venv/Scripts/python.exe -m mypy src/wavequant/application/analytics/intraday_entry.py src/wavequant/application/analytics/backtest.py src/wavequant/interfaces/research_tools/stock_backtest.py tests/test_n_trend_execution_option.py --follow-imports=skip",
+                    "status": "passed",
+                    "summary": "新增执行选项及旧普通分钟/单股/趋势翻转定向33项通过，执行3模块与新测试mypy通过。仅此小规模门禁通过。复核三层公开路径、共享确认/发布/发展、逐日完整及续算缓存、持久化几何和图表缓存。补齐分钟波形上下文、趋势翻转离场重算与保有SystemStrategy的研究消费者；主链按同一选项运行，关闭时排除残留N证书及N候选。额外历史断言与研究类型检查在main同样失败，原断言保留；实际失败证据单独记录于MONOREPO-306待修，不视为通过。"
+                },
+                {
+                    "command": "API pytest test_market_timeframes/test_buy_signal_snapshots/test_structure_snapshots/test_watchlists/test_cli/test_n_target_option/test_infrastructure; pytest tests/test_server.py -q",
+                    "status": "passed",
+                    "summary": "API两组分别75项/35子用例与35项/10子用例通过，1个依赖外部基础设施的集成项跳过。补齐stock-view后9项选项HTTP定向通过。缺省False、非法/重复参数拒绝；周期SQL/Redis/LRU/ETag、扫描snapshot和fallback按模式隔离，旧自选缺字段恢复false。Worker默认顺序预计算关闭/开启两模式，可显式限制单模式；未实际启动Worker或外部服务。"
+                },
+                {
+                    "command": "node --test buy-points/catalog-cache/ratio-comparison/server-watchlists/structure-signals/trend-n-confirmation/watchlist-backtest-queue; Vitest topology-data/research-controls; Web lint/typecheck; contracts build; Core/API mypy and build; production Webpack build; artifact byte verification",
+                    "status": "passed",
+                    "summary": "首组62项Node、补充请求/保存组38项Node、最终17拓扑及1选项组件通过；Web类型、lint零错误6条既有warning、共享契约构建、Core4既定strict/共享4strict/主消费修改模块与测试类型、API11strict、Core/API包及精确同盘Web生产构建通过。最终39项真实消费者/执行选项组通过。27个Core与7个API改动模块在wheel中与源码换行归一后逐字一致；21个Web和2个契约改动文件及16个契约产物与构建副本一致。115源指纹同步；前端依赖固定到本任务契约产物，未修改main依赖或服务。"
+                },
+                {
+                    "command": "pnpm harness:check; pnpm exec prettier --check changed Web/schema/docs/progress/feature_list; git diff --check; git diff --cached --check; CodeGraph sync; topology source digest verification",
+                    "status": "passed",
+                    "summary": "状态、进度、格式、差异及指纹检查通过；原301个Feature对象逐项完整保留，305完成后恢复256原in-progress及原验证记录。只提交feat-N达标趋势确认，不合并main、不推送、不重启main常驻服务。"
+                },
+                {
+                    "command": "Complete Core/Web suites, browser/Playwright, external-minute execution, physical dual-mode Worker and all-stock account comparisons",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏未运行完整套件或浏览器，未重复323交易日昂贵countertrend用例（304已有历史证据）。真实日线和账户消费者按两种模式定向覆盖；外部分钟成交、实际Worker周期、外部基础设施和其他股票完整账户差异待独立验证，不写成已通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-304",
             "name": "all-level-n-one-p-trend-confirmation",
             "title": "各级正倒N超一饱确认趋势段",

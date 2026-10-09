@@ -34,6 +34,7 @@ class BuySignalSnapshotService:
         *,
         symbol: str | None = None,
         asof: str | None = None,
+        n_target_trend_confirmation_enabled: bool = False,
     ) -> dict[str, object]:
         database = self.infrastructure.database
         if database is None:
@@ -49,7 +50,9 @@ class BuySignalSnapshotService:
         if start > selected_asof:
             raise ValueError("回测起点不能晚于回放日期")
 
-        algorithm_version = self._algorithm_version(run, variant, scenario)
+        algorithm_version = self._algorithm_version(
+            run, variant, scenario, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled
+        )
         data_version = self._data_version(source, run, selected_asof, symbol)
         existing = database.find_buy_signal_snapshot(
             run,
@@ -66,6 +69,7 @@ class BuySignalSnapshotService:
             return self._refresh_result(existing, "current")
 
         params: dict[str, object] = {
+            "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
             "run": run,
             "variant": variant,
             "scenario": scenario,
@@ -83,7 +87,9 @@ class BuySignalSnapshotService:
             job = self.repository.buy_scanner.get(job["id"], after=job["revision"], timeout=20)
         if job["status"] != "completed":
             raise RuntimeError(job.get("error") or f"买点预计算未完成：{job['status']}")
-        if self._algorithm_version(run, variant, scenario) != algorithm_version:
+        if self._algorithm_version(
+            run, variant, scenario, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled
+        ) != algorithm_version:
             raise RuntimeError("买点预计算期间算法版本变化，未发布混合版本结果")
         if self._data_version(source, run, selected_asof, symbol) != data_version:
             raise RuntimeError("买点预计算期间行情版本变化，未发布混合版本结果")
@@ -122,7 +128,7 @@ class BuySignalSnapshotService:
     def query(self, params: dict[str, object]) -> dict[str, object]:
         expected = {"run", "variant", "scenario", "source", "asof", "start", "lookback"}
         online_expected = expected | {"symbol"}
-        if set(params) not in (expected, online_expected):
+        if set(params) - {"n_target_trend_confirmation_enabled"} not in (expected, online_expected):
             raise ValueError("invalid precomputed buy signal query")
         run, variant, scenario, source, asof, start = (
             params[name] for name in ("run", "variant", "scenario", "source", "asof", "start")
@@ -144,7 +150,13 @@ class BuySignalSnapshotService:
         database = self.infrastructure.database
         if database is None:
             raise BuySignalSnapshotUnavailable("买点读模型未配置；请启动数据库并运行信号预计算 Worker")
-        algorithm_version = self._algorithm_version(run, variant, scenario)
+        enabled = params.get("n_target_trend_confirmation_enabled", False)
+        if type(enabled) is not bool:
+            raise ValueError("n_target_trend_confirmation_enabled must be a boolean")
+        query_params = {**params, "n_target_trend_confirmation_enabled": enabled}
+        algorithm_version = self._algorithm_version(
+            run, variant, scenario, n_target_trend_confirmation_enabled=enabled
+        )
         snapshot = database.find_buy_signal_snapshot(
             run,
             variant,
@@ -179,7 +191,7 @@ class BuySignalSnapshotService:
             computed_at = snapshot.updated_at or snapshot.created_at
             return {
                 "status": "ready",
-                "params": dict(params),
+                "params": query_params,
                 "snapshot": {
                     "id": snapshot.snapshot_id,
                     "asof": snapshot.asof,
@@ -205,8 +217,14 @@ class BuySignalSnapshotService:
             raise RuntimeError("买点快照缓存格式无效")
         return {str(key): value for key, value in cached.items()}
 
-    def _algorithm_version(self, run: str, variant: str, scenario: str) -> str:
-        config = self.repository.strategy_config(run, variant)
+    def _algorithm_version(
+        self, run: str, variant: str, scenario: str, *, n_target_trend_confirmation_enabled: bool = False
+    ) -> str:
+        if type(n_target_trend_confirmation_enabled) is not bool:
+            raise ValueError("n_target_trend_confirmation_enabled must be a boolean")
+        config = self.repository.strategy_config(
+            run, variant, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled
+        )
         execution = config["scenarios"][scenario]["execution"]
         payload = ["buy-signal-v1", self.repository.buy_scanner.engine, config["strategy"], execution]
         return hashlib.sha256(

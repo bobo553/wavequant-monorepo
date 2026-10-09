@@ -2,19 +2,80 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import patch
 import unittest
 
-from wavequant_api.cli import _akshare_scope_shard, refresh_signals, refresh_timeframes
+from wavequant_api.cli import _akshare_scope_shard, main, parser, refresh_signals, refresh_structures, refresh_timeframes
 
 
 class AkShareStructureWorkerTests(unittest.TestCase):
+    def test_n_target_cli_defaults_to_both_and_threads_explicit_selection_to_every_worker(self) -> None:
+        self.assertIsNone(parser().parse_args([]).n_target_trend_confirmation_enabled)
+        self.assertTrue(parser().parse_args(["--n-target-trend-confirmation-enabled"]).n_target_trend_confirmation_enabled)
+        self.assertFalse(parser().parse_args(["--n-target-trend-confirmation-enabled", "false"]).n_target_trend_confirmation_enabled)
+        calls: list[tuple[str, dict[str, object]]] = []
+
+        class StructureService:
+            def refresh(self, *args: object, **kwargs: object) -> dict[str, object]:
+                calls.append(("structure", kwargs))
+                return {"status": "published"}
+
+        class BuyService:
+            def refresh(self, *args: object, **kwargs: object) -> dict[str, object]:
+                calls.append(("buy", kwargs))
+                return {"status": "published"}
+
+        class TimeframeService:
+            def precompute(self, *args: object, **kwargs: object) -> dict[str, object]:
+                calls.append(("timeframe", kwargs))
+                return {"published": ["1d"], "unchanged": []}
+
+        repository = SimpleNamespace(market_data=SimpleNamespace(catalog=lambda _: {"stocks": []}))
+        infrastructure = SimpleNamespace(database=object())
+        with patch("wavequant_api.cli.StructureSnapshotService", return_value=StructureService()), patch(
+            "wavequant_api.cli.BuySignalSnapshotService", return_value=BuyService()
+        ), patch("wavequant_api.cli.MarketTimeframeService", return_value=TimeframeService()):
+            for enabled in (False, True):
+                refresh_structures(infrastructure, repository, run="example", variant="lecture_v1", asof="2026-09-25",
+                                   n_target_trend_confirmation_enabled=enabled)
+                refresh_signals(infrastructure, repository, run="example", variant="lecture_v2", scenario="base",
+                                source="akshare", symbols=["sz.000678"], start="2018-01-01", asof="2026-09-25",
+                                family="all", n_target_trend_confirmation_enabled=enabled)
+                refresh_timeframes(infrastructure, repository, source="akshare", symbols=["sz.000678"],
+                                   asof="2026-09-25", n_target_trend_confirmation_enabled=enabled)
+                self.assertEqual([name for name, _ in calls[-4:]], ["structure", "structure", "buy", "timeframe"])
+                self.assertTrue(all(values["n_target_trend_confirmation_enabled"] is enabled for _, values in calls[-4:]))
+
+    def test_worker_cycle_builds_both_modes_serially_or_only_the_explicit_mode(self) -> None:
+        for action, target in (("--refresh-structures", "refresh_structures"),
+                               ("--refresh-signals", "refresh_signals"),
+                               ("--refresh-timeframes", "refresh_timeframes")):
+            for arguments, expected in (([], [False, True]),
+                                        (["--n-target-trend-confirmation-enabled"], [True]),
+                                        (["--n-target-trend-confirmation-enabled", "true"], [True]),
+                                        (["--n-target-trend-confirmation-enabled", "false"], [False])):
+                with self.subTest(action=action, arguments=arguments):
+                    infrastructure = SimpleNamespace(close=lambda: None)
+                    with patch("sys.argv", ["wavequant-api", action, *arguments]), patch(
+                        "wavequant_api.cli.InfrastructureSettings.from_env", return_value=object()
+                    ), patch("wavequant_api.cli.Infrastructure.from_settings", return_value=infrastructure), patch(
+                        "wavequant_api.cli.ChartRepository", return_value=object()
+                    ), patch(f"wavequant_api.cli.{target}", return_value={"status": "current"}) as refresh, redirect_stdout(StringIO()):
+                        main()
+                    self.assertEqual([call.kwargs["n_target_trend_confirmation_enabled"] for call in refresh.call_args_list], expected)
+                    self.assertTrue(all(call.kwargs.get("shard_count", 1) == 1 for call in refresh.call_args_list))
+
     def test_market_latest_date_is_not_downgraded_to_the_first_stock_session(self) -> None:
         calls: list[dict[str, object]] = []
 
         class Service:
             algorithm_version = "a" * 64
+
+            def algorithm_version_for(self, enabled: bool) -> str:
+                return self.algorithm_version
 
             def refresh(self, run: str, variant: str, **kwargs: object) -> dict[str, object]:
                 calls.append(kwargs)
@@ -93,6 +154,9 @@ class AkShareStructureWorkerTests(unittest.TestCase):
         class Service:
             algorithm_version = "a" * 64
 
+            def algorithm_version_for(self, enabled: bool) -> str:
+                return self.algorithm_version
+
             def refresh(self, run: str, variant: str, **kwargs: object) -> dict[str, object]:
                 symbol = kwargs["symbol"]
                 if not isinstance(symbol, str):
@@ -158,7 +222,7 @@ class AkShareStructureWorkerTests(unittest.TestCase):
         calls: list[tuple[str, str, str]] = []
 
         class Service:
-            def precompute(self, source: str, symbol: str, asof: str) -> dict[str, object]:
+            def precompute(self, source: str, symbol: str, asof: str, **options: object) -> dict[str, object]:
                 calls.append((source, symbol, asof))
                 return {
                     "published": ["1d", "1w"] if symbol == "sh.600000" else [],

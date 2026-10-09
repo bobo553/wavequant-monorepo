@@ -95,8 +95,10 @@ def run_strategy_evidence(tdx_root, protocol_path, output, tests, *, workers=4):
             row=dict(config=asdict(cfg),event_counts=dict(event_counts),rejection_observations=dict(reasons),
                      count_unit='dated_observations_not_independent_trades',periods={},stress={})
             for label,(begin,end) in periods.items():
-                r=run_portfolio(grouped,signals,execution,begin,end)
-                s=run_portfolio(grouped,signals,stress,begin,end)
+                r=run_portfolio(grouped,signals,execution,begin,end,
+                    n_target_trend_confirmation_enabled=cfg.n_target_trend_confirmation_enabled)
+                s=run_portfolio(grouped,signals,stress,begin,end,
+                    n_target_trend_confirmation_enabled=cfg.n_target_trend_confirmation_enabled)
                 save_result(output/name/label,r); save_result(output/name/(label+'_cost2x'),s)
                 traded=len({t.symbol for t in r.trades})
                 row['periods'][label]=dict(metrics=r.metrics,diagnostics=execution_diagnostics(r),traded_symbols=traded,
@@ -131,15 +133,20 @@ def run_strategy_evidence(tdx_root, protocol_path, output, tests, *, workers=4):
         for f in folds:
             train={}
             for name in protocol['candidates']:
-                a=run_portfolio(grouped,all_signals[name],execution,*f['train'])
-                b=run_portfolio(grouped,all_signals[name],stress,*f['train'])
+                a=run_portfolio(grouped,all_signals[name],execution,*f['train'],
+                    n_target_trend_confirmation_enabled=configs[name].n_target_trend_confirmation_enabled)
+                b=run_portfolio(grouped,all_signals[name],stress,*f['train'],
+                    n_target_trend_confirmation_enabled=configs[name].n_target_trend_confirmation_enabled)
                 train[name]=dict(trades=a.metrics['trades'],traded_symbols=len({t.symbol for t in a.trades}),
                     total_return=a.metrics['total_return'],cost_2x_return=b.metrics['total_return'])
             choice=choose_development(train,minimum_trades=stat_cfg['minimum_closed_trades'],
                                       minimum_symbols=stat_cfg['minimum_symbols_with_closed_trades'])
             chosen=[] if choice=='CASH' else all_signals[choice]
-            val=run_portfolio(grouped,chosen,execution,*f['validation'])
-            r=run_portfolio(grouped,chosen,execution,*f['test'])
+            selected_n_routes=False if choice=='CASH' else configs[choice].n_target_trend_confirmation_enabled
+            val=run_portfolio(grouped,chosen,execution,*f['validation'],
+                n_target_trend_confirmation_enabled=selected_n_routes)
+            r=run_portfolio(grouped,chosen,execution,*f['test'],
+                n_target_trend_confirmation_enabled=selected_n_routes)
             save_result(output/'rolling'/str(f['fold'])/'validation',val)
             save_result(output/'rolling'/str(f['fold'])/'test',r)
             rolling.append(dict(f,selected_from_train_only=choice,train_scores=train,validation_metrics=val.metrics,

@@ -229,12 +229,15 @@ class MarketDataRepository:
             "evidence": self._evidence(window),
         }
 
-    def theory(self, source: str | None, symbol: str, asof: str) -> dict[str, Any]:
+    def theory(self, source: str | None, symbol: str, asof: str, *,
+               n_target_trend_confirmation_enabled: bool = False) -> dict[str, Any]:
         """Run the same domain theory regardless of the selected provider."""
 
+        if type(n_target_trend_confirmation_enabled) is not bool:
+            raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         window = self.window(source, symbol, asof)
         digest = self._bars_digest(window.bars)
-        key = f"{window.requested_source}:{symbol}:{window.asof}:{digest}"
+        key = f"{window.requested_source}:{symbol}:{window.asof}:{digest}:{n_target_trend_confirmation_enabled}"
         with self._lock:
             cached = self._theory.get(key)
             if cached is not None:
@@ -243,8 +246,10 @@ class MarketDataRepository:
         bars = list(window.bars)
         # These legacy market-structure builders have no typed boundary yet.
         drawing = lecture_drawing(bars)  # type: ignore[no-untyped-call]
-        first = reversal_trends(drawing, bars)  # type: ignore[no-untyped-call]
-        second = secondary_trends(first, bars)  # type: ignore[no-untyped-call]
+        first = reversal_trends(
+            drawing, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        second = secondary_trends(
+            first, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         result = {
             "asof": window.asof,
             "requested_asof": window.requested_asof,
@@ -263,7 +268,9 @@ class MarketDataRepository:
             "lecture_drawing": drawing,
             "reversal_trends": first,
             "secondary_trends": second,
-            "tertiary_trends": tertiary_trends(second, bars),  # type: ignore[no-untyped-call]
+            "tertiary_trends": tertiary_trends(
+                second, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled),
+            "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
             "interrupted": False,
             "computed_from": "canonical_market_data_repository",
             "price_basis": "raw_unadjusted",

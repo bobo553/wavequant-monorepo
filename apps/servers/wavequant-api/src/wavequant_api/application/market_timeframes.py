@@ -45,7 +45,9 @@ class DailyMarketDataRepository(Protocol):
     def view(self, source: str, symbol: str, asof: str) -> dict[str, Any]:
         """Return a validated daily market view."""
 
-    def theory(self, source: str, symbol: str, asof: str) -> dict[str, Any]:
+    def theory(
+        self, source: str, symbol: str, asof: str, *, n_target_trend_confirmation_enabled: bool = False
+    ) -> dict[str, Any]:
         """Return canonical daily display theory."""
 
 
@@ -164,23 +166,39 @@ class MarketTimeframeService:
             "evidence": f"{evidence}；服务器由规范日线按自然周期聚合为{TIMEFRAME_LABELS[timeframe]}。",
         }
 
-    def theory(self, source: str, symbol: str, asof: str, timeframe: str = "1d") -> dict[str, Any]:
+    def theory(
+        self,
+        source: str,
+        symbol: str,
+        asof: str,
+        timeframe: str = "1d",
+        *,
+        n_target_trend_confirmation_enabled: bool = False,
+    ) -> dict[str, Any]:
         """Compute display-only structure from the same bars returned by :meth:`view`."""
 
+        if type(n_target_trend_confirmation_enabled) is not bool:
+            raise ValueError("n_target_trend_confirmation_enabled must be a boolean")
         if timeframe == "1d":
             # Calling the Core daily theory preserves every existing contract
             # and cache behavior without duplicating the canonical path.
-            theory = self.repository.theory(source, symbol, asof)
+            theory = self.repository.theory(
+                source, symbol, asof, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled
+            )
             return {
                 **theory,
                 "timeframe": timeframe,
                 "timeframe_label": TIMEFRAME_LABELS[timeframe],
                 "is_partial_last_bar": False,
                 "timeframe_source": "provider_daily",
+                "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
             }
 
         view = self.view(source, symbol, asof, timeframe)
-        return self._theory_from_view(source, symbol, asof, timeframe, view)
+        return self._theory_from_view(
+            source, symbol, asof, timeframe, view,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+        )
 
     def bundle(
         self,
@@ -190,13 +208,15 @@ class MarketTimeframeService:
         timeframe: str = "1d",
         *,
         compute_if_missing: bool = True,
+        n_target_trend_confirmation_enabled: bool = False,
     ) -> dict[str, Any]:
         """Read a precomputed display bundle, with a safe rollout fallback."""
 
         self._validate_timeframe(timeframe)
+        algorithm_version = self._option_algorithm_version(n_target_trend_confirmation_enabled)
         if self.snapshots is not None:
             stored = self.snapshots.find_market_timeframe_snapshot(
-                source, symbol, timeframe, asof, self.algorithm_version
+                source, symbol, timeframe, asof, algorithm_version
             )
             if stored is not None:
                 hot = self._read_hot_cache(stored.snapshot_id)
@@ -207,7 +227,10 @@ class MarketTimeframeService:
         if not compute_if_missing:
             raise LookupError("该股票周期快照尚未预计算")
         daily = self.repository.view(source, symbol, asof)
-        payload = self._build_bundle(source, symbol, asof, timeframe, daily)
+        payload = self._build_bundle(
+            source, symbol, asof, timeframe, daily,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+        )
         stored = self._publish(payload)
         return {**payload, "cache_state": "computed_on_demand" if stored is None else "precomputed"}
 
@@ -217,12 +240,15 @@ class MarketTimeframeService:
         symbol: str,
         asof: str,
         timeframes: Sequence[str] = tuple(TIMEFRAME_LABELS),
+        *,
+        n_target_trend_confirmation_enabled: bool = False,
     ) -> dict[str, Any]:
         """Idempotently materialize every requested period from one daily read."""
 
         if self.snapshots is None:
             raise RuntimeError("周期预计算需要配置持久化数据库")
         requested = tuple(dict.fromkeys(timeframes))
+        algorithm_version = self._option_algorithm_version(n_target_trend_confirmation_enabled)
         for timeframe in requested:
             self._validate_timeframe(timeframe)
         daily = self.repository.view(source, symbol, asof)
@@ -236,13 +262,16 @@ class MarketTimeframeService:
                 symbol,
                 timeframe,
                 asof,
-                self.algorithm_version,
+                algorithm_version,
                 data_version=data_version,
             )
             if current is not None:
                 unchanged.append(timeframe)
                 continue
-            payload = self._build_bundle(source, symbol, asof, timeframe, daily, view=view)
+            payload = self._build_bundle(
+                source, symbol, asof, timeframe, daily, view=view,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+            )
             self._publish(payload)
             published.append(timeframe)
         return {
@@ -262,14 +291,23 @@ class MarketTimeframeService:
         daily: dict[str, Any],
         *,
         view: dict[str, Any] | None = None,
+        n_target_trend_confirmation_enabled: bool = False,
     ) -> dict[str, Any]:
         current_view = view or self._view_from_daily(daily, timeframe)
         data_version = str(current_view["data_version"])
         if timeframe == "1d":
-            theory = {**self.theory(source, symbol, asof, timeframe), "data_version": data_version}
+            theory = {
+                **self.theory(source, symbol, asof, timeframe,
+                              n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled),
+                "data_version": data_version,
+            }
         else:
-            theory = self._theory_from_view(source, symbol, asof, timeframe, current_view)
-        identity = ":".join((source, symbol, timeframe, asof, data_version, self.algorithm_version))
+            theory = self._theory_from_view(
+                source, symbol, asof, timeframe, current_view,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+            )
+        algorithm_version = self._option_algorithm_version(n_target_trend_confirmation_enabled)
+        identity = ":".join((source, symbol, timeframe, asof, data_version, algorithm_version))
         snapshot_id = hashlib.sha256(identity.encode()).hexdigest()
         return {
             "schema_version": TIMEFRAME_SNAPSHOT_SCHEMA_VERSION,
@@ -279,7 +317,8 @@ class MarketTimeframeService:
             "timeframe": timeframe,
             "requested_asof": asof,
             "resolved_asof": str(current_view["asof"]),
-            "algorithm_version": self.algorithm_version,
+            "algorithm_version": algorithm_version,
+            "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
             "data_version": data_version,
             "view": current_view,
             "theory": theory,
@@ -337,11 +376,13 @@ class MarketTimeframeService:
         asof: str,
         timeframe: str,
         view: dict[str, Any],
+        *,
+        n_target_trend_confirmation_enabled: bool = False,
     ) -> dict[str, Any]:
         """Compute matching overlays from an already aggregated view."""
 
         data_version = str(view["data_version"])
-        key = f"{source}:{symbol}:{view['asof']}:{timeframe}:{data_version}"
+        key = f"{source}:{symbol}:{view['asof']}:{timeframe}:{data_version}:{n_target_trend_confirmation_enabled}"
         with self._lock:
             cached = self._theory.get(key)
             if cached is not None:
@@ -349,8 +390,8 @@ class MarketTimeframeService:
                 return cached
         bars = [self._to_bar(symbol, row) for row in self._bars(view)]
         drawing = lecture_drawing(bars)
-        first = reversal_trends(drawing, bars)
-        second = secondary_trends(first, bars)
+        first = reversal_trends(drawing, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        second = secondary_trends(first, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         result = {
             "asof": view["asof"],
             "requested_asof": view.get("requested_asof", asof),
@@ -373,7 +414,10 @@ class MarketTimeframeService:
             "lecture_drawing": drawing,
             "reversal_trends": first,
             "secondary_trends": second,
-            "tertiary_trends": tertiary_trends(second, bars),
+            "tertiary_trends": tertiary_trends(
+                second, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled
+            ),
+            "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
             "interrupted": False,
             "computed_from": "api_calendar_timeframe_from_canonical_daily",
             "price_basis": view.get("price_basis", "raw_unadjusted"),
@@ -384,6 +428,12 @@ class MarketTimeframeService:
             while len(self._theory) > 32:
                 self._theory.popitem(last=False)
         return result
+
+    def _option_algorithm_version(self, enabled: bool) -> str:
+        if type(enabled) is not bool:
+            raise ValueError("n_target_trend_confirmation_enabled must be a boolean")
+        identity = f"{self.algorithm_version}:n_target_trend_confirmation_enabled:{enabled}"
+        return hashlib.sha256(identity.encode()).hexdigest()
 
     @staticmethod
     def _validate_timeframe(timeframe: str) -> None:

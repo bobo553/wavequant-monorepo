@@ -20,8 +20,8 @@ class FakeStructureScanner:
         self.names: dict[str, str] = {}
         self.stale = 0
 
-    def algorithm_version(self) -> str:
-        return self.algorithm
+    def algorithm_version(self, *, n_target_trend_confirmation_enabled: bool = False) -> str:
+        return ("e" + self.algorithm[1:]) if n_target_trend_confirmation_enabled else self.algorithm
 
     def latest_tdx_session(self) -> str:
         return "2026-09-07"
@@ -31,6 +31,7 @@ class FakeStructureScanner:
 
     def start(self, params: dict[str, object]) -> dict[str, object]:
         self.starts += 1
+        self.params = params
         return {"id": f"job-{self.starts}", "status": "running", "revision": 0}
 
     def get(self, identifier: str, *, after: int, timeout: int) -> dict[str, object]:
@@ -38,7 +39,7 @@ class FakeStructureScanner:
             "id": identifier,
             "status": "completed",
             "revision": after + 1,
-            "algorithm_version": self.algorithm,
+            "algorithm_version": self.algorithm_version(n_target_trend_confirmation_enabled=bool(self.params.get("n_target_trend_confirmation_enabled", False))),
             "data_version": self.data,
             "total": 5_549,
             "processed": 5_549,
@@ -137,6 +138,45 @@ class FakeCache:
 
 
 class StructureSnapshotServiceTests(unittest.TestCase):
+    def test_n_target_option_partitions_tdx_publication_and_queries(self) -> None:
+        disabled = self.service.refresh("run-001", "lecture_v1")
+        self.assertIs(self.scanner.params["n_target_trend_confirmation_enabled"], False)
+        with self.assertRaises(StructureSnapshotUnavailable):
+            self.service.query({**self.params, "n_target_trend_confirmation_enabled": True})
+        enabled = self.service.refresh("run-001", "lecture_v1", n_target_trend_confirmation_enabled=True)
+        self.assertIs(self.scanner.params["n_target_trend_confirmation_enabled"], True)
+        self.assertNotEqual(disabled["snapshot_id"], enabled["snapshot_id"])
+        off = self.service.query(self.params)
+        explicit_off = self.service.query({**self.params, "n_target_trend_confirmation_enabled": False})
+        on = self.service.query({**self.params, "n_target_trend_confirmation_enabled": True})
+        self.assertEqual(off["snapshot"]["id"], explicit_off["snapshot"]["id"])
+        self.assertEqual(off["snapshot"]["id"], disabled["snapshot_id"])
+        self.assertEqual(on["snapshot"]["id"], enabled["snapshot_id"])
+        self.assertIs(off["params"]["n_target_trend_confirmation_enabled"], False)
+        self.assertIs(on["params"]["n_target_trend_confirmation_enabled"], True)
+        self.assertEqual(self.scanner.starts, 2)
+        with self.assertRaises(ValueError):
+            self.service.query({**self.params, "n_target_trend_confirmation_enabled": "true"})
+
+    def test_n_target_akshare_fallback_never_serves_the_opposite_option(self) -> None:
+        self.service.refresh("run-001", "lecture_v1", source="akshare", symbol="sh.600519",
+                             asof="2026-09-07", market_total=1)
+        params = {**self.params, "source": "akshare", "asof": "2026-09-14"}
+        before = self.scanner.online_calculations
+        self.assertTrue(self.service.query(params)["snapshot"]["is_fallback"])
+        enabled_params = {**params, "n_target_trend_confirmation_enabled": True}
+        empty = self.service.query(enabled_params)
+        self.assertEqual(empty["status"], "rebuilding")
+        self.assertEqual(empty["results"], [])
+        self.assertFalse(empty["snapshot"]["is_fallback"])
+        self.assertEqual(self.scanner.online_calculations, before)
+        self.service.refresh("run-001", "lecture_v1", source="akshare", symbol="sh.600519",
+                             asof="2026-09-07", market_total=1, n_target_trend_confirmation_enabled=True)
+        fallback = self.service.query(enabled_params)
+        self.assertTrue(fallback["snapshot"]["is_fallback"])
+        self.assertEqual(fallback["snapshot"]["algorithm_version"], self.service.algorithm_version_for(True))
+        self.assertNotEqual(fallback["snapshot"]["id"], self.service.query(params)["snapshot"]["id"])
+
     def setUp(self) -> None:
         self.database = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))
         self.addCleanup(self.database.close)
@@ -173,7 +213,7 @@ class StructureSnapshotServiceTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in five_day_level_two["results"]], ["old-low"])
         self.assertEqual([row["id"] for row in five_day_bullish_turn["results"]], ["old-bullish-turn"])
         self.assertEqual(self.scanner.starts, 1, "interactive queries must never invoke Core calculation")
-        self.assertTrue(all(key.startswith("signal:structure:v4:") for key in self.cache.keys))
+        self.assertTrue(all(key.startswith("signal:structure:v5:") for key in self.cache.keys))
 
     def test_data_or_algorithm_change_creates_a_new_snapshot(self) -> None:
         first = self.service.refresh("run-001", "lecture_v1")

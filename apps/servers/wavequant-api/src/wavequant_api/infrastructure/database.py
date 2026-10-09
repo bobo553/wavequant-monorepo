@@ -430,6 +430,7 @@ class ResearchRunRepository:
         asof: str,
         *,
         limit: int = 100,
+        n_target_trend_confirmation_enabled: bool = False,
     ) -> Sequence[Mapping[str, Any]]:
         """Describe published per-symbol generations at or before a requested market date.
 
@@ -443,6 +444,8 @@ class ResearchRunRepository:
             raise ValueError("asof must use YYYY-MM-DD")
         if type(limit) is not int or not 1 <= limit <= 500:
             raise ValueError("limit must be between 1 and 500")
+        if type(n_target_trend_confirmation_enabled) is not bool:
+            raise ValueError("n_target_trend_confirmation_enabled must be a boolean")
         ranked = (
             select(
                 structure_signal_snapshots.c.asof,
@@ -478,7 +481,11 @@ class ResearchRunRepository:
                 func.max(ranked.c.payload["market_total"].as_integer()).label("market_total"),
                 func.coalesce(func.sum(ranked.c.payload["stale"].as_integer()), 0).label("stale_stocks"),
             )
-            .where(ranked.c.scope_rank == 1)
+            .where(
+                ranked.c.scope_rank == 1,
+                func.coalesce(ranked.c.payload["n_target_trend_confirmation_enabled"].as_boolean(), False)
+                == n_target_trend_confirmation_enabled,
+            )
             .group_by(ranked.c.asof, ranked.c.algorithm_version)
             .order_by(ranked.c.asof.desc(), func.max(ranked.c.updated_at).desc())
             .limit(limit)

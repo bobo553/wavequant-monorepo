@@ -35,6 +35,8 @@ test("scan context ignores selected symbol for market scans but tracks it for Ak
     assert.equal(scanContextKey(p), scanContextKey({ ...p, symbol: "sh.600519" }));
     const akshare = { ...p, source: "akshare", symbol: "sh.600519" };
     assert.notEqual(scanContextKey(akshare), scanContextKey({ ...akshare, symbol: "sz.000651" }));
+    assert.notEqual(scanContextKey(p), scanContextKey({ ...p, n_target_trend_confirmation_enabled: true }));
+    assert.equal(scanContextKey(p), scanContextKey({ ...p, n_target_trend_confirmation_enabled: false }));
 });
 test("recent dates sort first; stable symbol ordering and input is immutable", () => {
     const rows = [

@@ -67,6 +67,7 @@ class SystemStrategy:
     combined_a_entry_enabled: bool = False
     secondary_reclaim_entry_enabled: bool = False
     secondary_pullback_entry_enabled: bool = False
+    n_target_trend_confirmation_enabled: bool = False
     ten_full_breakout_window: int = 23
     ten_full_retracement_ratio: float = 2/3
     ten_full_retracement_anchor: RetracementAnchor = 'origin'
@@ -104,6 +105,8 @@ class SystemStrategy:
             raise ValueError('secondary reclaim entry switch must be boolean')
         if type(self.secondary_pullback_entry_enabled) is not bool:
             raise ValueError('secondary pullback entry switch must be boolean')
+        if type(self.n_target_trend_confirmation_enabled) is not bool:
+            raise ValueError('N target trend confirmation switch must be boolean')
         if type(self.ten_full_breakout_window) is not int or self.ten_full_breakout_window <= 0:
             raise ValueError('ten-full breakout window must be a positive integer')
         if (type(self.ten_full_retracement_ratio) not in (float, int)
@@ -249,7 +252,8 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         from .folded_n import folded_positive_n_candidates, folded_inverse_n_candidates
         secondary_levels, _ = hierarchical_history(
             bars, prefix_cache=chart_history_cache.setdefault('hierarchy', {}) if chart_history_cache is not None else None,
-            decline_sink=confirmed_declines)
+            decline_sink=confirmed_declines,
+            n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
         larger = hierarchical_n_candidates(bars, history=secondary_levels)
         for i in range(len(bars)):
             earliest = max(epochs[i], i-config.structure_window)
@@ -671,7 +675,8 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         from .hierarchical_entry import hierarchical_history
         from .secondary_resistance import secondary_resistance_history
         if secondary_levels is None:
-            secondary_levels, _ = hierarchical_history(bars)
+            secondary_levels, _ = hierarchical_history(
+                bars, n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
     if hierarchical:
         from .hierarchical_entry import hierarchical_history, context_history, select_entry
         if whole_wave:
@@ -680,12 +685,14 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 bars, audit=audit, shallow_candidate_sink=shallow_candidate_snapshots,
                 combined_candidate_sink=combined_candidate_snapshots,
                 secondary_pullback_sink=secondary_pullback_snapshots,
-                prefix_cache=chart_history_cache.setdefault('chart', {}) if chart_history_cache is not None else None)
+                prefix_cache=chart_history_cache.setdefault('chart', {}) if chart_history_cache is not None else None,
+                n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
             assert secondary_levels is not None
             secondary_resistance = secondary_resistance_history(
                 bars, secondary_levels, key_events=hierarchy_events, include_resolved=True)
         else:
-            levels, level_epochs = hierarchical_history(bars)
+            levels, level_epochs = hierarchical_history(
+                bars, n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
             hierarchy_permissions, hierarchy_events = context_history(bars, levels, level_epochs, whole_wave=False)
         for event in hierarchy_events:
             row = dict(event); j, kind = row.pop('bar_index'), row.pop('event')

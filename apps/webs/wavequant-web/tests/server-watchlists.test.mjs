@@ -16,6 +16,7 @@ const context = {
     volume_filter: "false",
     net_reward_risk_filter: "false",
     shallow_base_breakout_enabled: "true",
+    n_target_trend_confirmation_enabled: "false",
     initial_capital: "100000",
     max_position_weight: "1",
 };
@@ -107,6 +108,37 @@ test("a failed server read never falls back to local data or overwrites server d
 test("server response is checked against the shared contract before use", async () => {
     const { subject } = fixture({ request: async () => ({ ...document(), revision: -1 }) });
     await assert.rejects(subject.load());
+});
+
+test("old watchlist settings default N target trend off and reject noncanonical persisted flags", () => {
+    const old = { ...context };
+    delete old.n_target_trend_confirmation_enabled;
+    const parsed = cleanDocument({ ...document(), settings: { enabled: true, context: old } });
+    assert.equal(parsed.settings.context.n_target_trend_confirmation_enabled, "false");
+    for (const invalid of [true, false, 0, 1, null, "1", "TRUE"])
+        assert.throws(() =>
+            cleanDocument({
+                ...document(),
+                settings: { enabled: true, context: { ...context, n_target_trend_confirmation_enabled: invalid } },
+            }),
+        );
+});
+
+test("watchlist option survives a server reload and both flag transitions are persisted", async () => {
+    const { subject, calls } = fixture({ old: snapshot() });
+    await subject.load();
+    await subject.configure({ ...context, n_target_trend_confirmation_enabled: true }, true);
+    assert.equal(subject.document.settings.context.n_target_trend_confirmation_enabled, "true");
+    await subject.refresh();
+    assert.equal(subject.document.settings.context.n_target_trend_confirmation_enabled, "true");
+    await subject.configure({ ...context, n_target_trend_confirmation_enabled: false }, true);
+    assert.equal(subject.document.settings.context.n_target_trend_confirmation_enabled, "false");
+    assert.deepEqual(
+        calls
+            .filter((body) => body?.action === "settings")
+            .map((body) => body.settings.context.n_target_trend_confirmation_enabled),
+        ["true", "false"],
+    );
 });
 
 test("saving uses the current revision and stale writes remain failures", async () => {

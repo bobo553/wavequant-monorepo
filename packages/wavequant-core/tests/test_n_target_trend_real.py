@@ -37,7 +37,8 @@ def _points(level: Mapping[str, object], field: str = "strokes") -> list[Mapping
 
 def _first_level(bars: Sequence[Bar], asof: str) -> Mapping[str, object]:
     prefix = [bar for bar in bars if bar.timestamp.date().isoformat() <= asof]
-    return cast(Mapping[str, object], reversal_trends(lecture_drawing(prefix), prefix))
+    return cast(Mapping[str, object], reversal_trends(
+        lecture_drawing(prefix), prefix, n_target_trend_confirmation_enabled=True))
 
 
 def _origin(level: Mapping[str, object]) -> Mapping[str, object]:

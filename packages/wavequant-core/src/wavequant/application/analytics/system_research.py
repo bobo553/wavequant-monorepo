@@ -74,13 +74,15 @@ def run_system_research(csv_path: Path, output: Path, protocol_path: Path, tests
         results[name] = {}
         diagnostics[name] = {}
         for label, (begin, end) in periods.items():
-            r = run_portfolio(grouped, signals, execution, begin, end)
+            r = run_portfolio(grouped, signals, execution, begin, end,
+                n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
             save_result(output/name/label, r)
             results[name][label] = r.metrics
             diagnostics[name][label] = execution_diagnostics(r)
         stress_config = replace(execution, commission_bps_per_side=execution.commission_bps_per_side*2,
             minimum_commission=execution.minimum_commission*2, slippage_bps_per_side=execution.slippage_bps_per_side*2)
-        stress = run_portfolio(grouped, signals, stress_config, *periods['diagnostic'])
+        stress = run_portfolio(grouped, signals, stress_config, *periods['diagnostic'],
+            n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
         results[name]['cost_2x'] = stress.metrics
         diagnostics[name]['cost_2x'] = execution_diagnostics(stress)
         save_result(output/name/'cost_2x', stress)
@@ -113,7 +115,8 @@ def run_system_research(csv_path: Path, output: Path, protocol_path: Path, tests
     for name in ('strict_full', 'proxy_full'):
         annual[name] = {}
         for year in range(2024, int(last[:4])+1):
-            r = run_portfolio(grouped, signal_sets[name], execution, f'{year}-01-01', min(f'{year}-12-31', last))
+            r = run_portfolio(grouped, signal_sets[name], execution, f'{year}-01-01', min(f'{year}-12-31', last),
+                n_target_trend_confirmation_enabled=configs[name]['n_target_trend_confirmation_enabled'])
             annual[name][str(year)] = r.metrics
             save_result(output/name/'annual'/str(year), r)
     quality = audit_data(csv_path)

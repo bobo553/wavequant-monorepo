@@ -28,9 +28,11 @@ def test_frozen_n_target_refreshes_without_crossing_a_source_vertex(level: int, 
     before = _public(level, bars[:10], source, up=up)
     levels: tuple[tuple[Mapping[str, object], Mapping[str, object]], ...] = ((before, {}),)
     assert before['n_target_observations']
-    assert _has_confirmation_price_cross([], levels, bars[9], bars[10], '2024-01-11', 10)
+    assert _has_confirmation_price_cross([], levels, bars[9], bars[10], '2024-01-11', 10,
+                                         n_target_trend_confirmation_enabled=True)
     equal = replace(bars[10], high=bars[9].high) if up else replace(bars[10], low=bars[9].low)
-    assert not _has_confirmation_price_cross([], levels, bars[9], equal, '2024-01-11', 10)
+    assert not _has_confirmation_price_cross([], levels, bars[9], equal, '2024-01-11', 10,
+                                             n_target_trend_confirmation_enabled=True)
 
 
 def _sample(*, up: bool = True) -> tuple[list[Bar], list[dict[str, object]]]:
@@ -72,8 +74,9 @@ def _position_field(source_level: int) -> str:
 
 def _public(
     level: int, bars: Sequence[Bar], source: Sequence[Mapping[str, object]], *, up: bool,
-    next_source: Sequence[Mapping[str, object]] = (),
+    next_source: Sequence[Mapping[str, object]] = (), enabled: bool | None = True,
 ) -> Mapping[str, object]:
+    options = {} if enabled is None else {'n_target_trend_confirmation_enabled': enabled}
     first_points = [dict(point) for point in source]
     first = dict(id="source-first", points=first_points)
     paths = [first]
@@ -84,11 +87,11 @@ def _public(
             end = len(bars) - 1
             tail = dict(_reference(bars, end, "H" if up else "L", end), state="developing")
             first_points.append(tail)
-        return cast(Mapping[str, object], reversal_trends(dict(strokes=paths), bars))
+        return cast(Mapping[str, object], reversal_trends(dict(strokes=paths), bars, **options))
     predecessor = dict(strokes=paths)
     if level == 2:
-        return cast(Mapping[str, object], secondary_trends(predecessor, bars))
-    return cast(Mapping[str, object], tertiary_trends(predecessor, bars))
+        return cast(Mapping[str, object], secondary_trends(predecessor, bars, **options))
+    return cast(Mapping[str, object], tertiary_trends(predecessor, bars, **options))
 
 
 @pytest.mark.parametrize("level", (1, 2, 3))
@@ -159,8 +162,8 @@ def test_old_own_key_certificate_wins_over_a_later_n_target(source_level: int) -
     field = _position_field(source_level)
     candidates = [dict(source[0], confirmation_rule="existing_structural_pressure", **{field: 0}),
                   dict(source[1], available_at="2024-01-07", confirmation_rule="existing_structural_low", **{field: 1})]
-    merged = n_target_reversals(candidates, source, bars, source_level=source_level)
-    public = publish_uptrends(merged, source, bars, source_level=source_level)
+    merged = n_target_reversals(candidates, source, bars, source_level=source_level, n_target_trend_confirmation_enabled=True)
+    public = publish_uptrends(merged, source, bars, source_level=source_level, n_target_trend_confirmation_enabled=True)
     origin = next(point for point in public if point["index"] == 1)
     proof = origin["trend_confirmation"]
     assert isinstance(proof, dict)
@@ -177,10 +180,14 @@ def test_later_n_at_the_held_floor_cannot_replace_an_earlier_local_certificate(s
                   for position in (0, 1, 2, 3)]
     candidates[1]["available_at"] = "2024-01-07"
     candidates[3]["available_at"] = "2024-01-08"
-    earlier_candidates = n_target_reversals(candidates, source, bars[:8], source_level=source_level)
-    later_candidates = n_target_reversals(candidates, source, bars, source_level=source_level)
-    earlier = publish_uptrends(earlier_candidates, source, bars[:8], source_level=source_level)
-    later = publish_uptrends(later_candidates, source, bars, source_level=source_level)
+    earlier_candidates = n_target_reversals(candidates, source, bars[:8], source_level=source_level,
+                                           n_target_trend_confirmation_enabled=True)
+    later_candidates = n_target_reversals(candidates, source, bars, source_level=source_level,
+                                         n_target_trend_confirmation_enabled=True)
+    earlier = publish_uptrends(earlier_candidates, source, bars[:8], source_level=source_level,
+                               n_target_trend_confirmation_enabled=True)
+    later = publish_uptrends(later_candidates, source, bars, source_level=source_level,
+                             n_target_trend_confirmation_enabled=True)
     early_low = next(point for point in earlier if point["kind"] == "L")
     late_low = next(point for point in later if point["kind"] == "L")
     assert early_low["index"] == late_low["index"] == 1
@@ -203,8 +210,8 @@ def test_unknown_local_candidate_does_not_backdate_an_older_market_certificate(s
                   for position in (0, 1, 2, 3)]
     candidates[1]["available_at"] = "2024-01-07"
     candidates[3]["available_at"] = "2024-01-12"
-    merged = n_target_reversals(candidates, source, bars, source_level=source_level)
-    public = publish_uptrends(merged, source, bars, source_level=source_level)
+    merged = n_target_reversals(candidates, source, bars, source_level=source_level, n_target_trend_confirmation_enabled=True)
+    public = publish_uptrends(merged, source, bars, source_level=source_level, n_target_trend_confirmation_enabled=True)
     origin = next(point for point in public if point["kind"] == "L")
     proof = origin["trend_confirmation"]
     assert isinstance(proof, dict)
@@ -233,8 +240,9 @@ def test_later_lower_or_higher_n_does_not_rewrite_an_earlier_qualified_origin(
                     30 - bar.close, bar.volume) for bar in bars]
         source = [dict(point, kind="L" if point["kind"] == "H" else "H", value=30 - cast(float, point["value"]))
                   for point in source]
-    earlier = n_target_reversals([], source, bars[:11], source_level=source_level)
-    later = n_target_reversals([], source, bars, source_level=source_level)
+    earlier = n_target_reversals([], source, bars[:11], source_level=source_level,
+                                n_target_trend_confirmation_enabled=True)
+    later = n_target_reversals([], source, bars, source_level=source_level, n_target_trend_confirmation_enabled=True)
     prefix = [point for point in later if cast(str, point["available_at"]) <= "2024-01-11"]
     assert prefix == earlier
     assert earlier[0]["index"] == 1
@@ -277,7 +285,7 @@ def test_defense_failure_after_certification_does_not_fix_the_wave_endpoint(up: 
                    30 - last.close, last.volume)
     bars.append(last)
     source.append(_reference(bars, 10, "H" if up else "L", 11))
-    result = n_target_reversals([], source, bars, source_level=1)
+    result = n_target_reversals([], source, bars, source_level=1, n_target_trend_confirmation_enabled=True)
     assert any(point["index"] == 1 for point in result)
     assert not any(point["index"] == 10 for point in result)
 
@@ -292,18 +300,19 @@ def test_inverse_n_high_never_grants_a_bullish_landmark(level: int) -> None:
     assert not level_view["bear_to_bull_highs"]
     assert not level_view["bear_bull_alternation_lows"]
     assert not level_view["bullish_turn_signals"]
-    assert qualify_uptrend(source, source[1], 1, None, bars, len(bars) - 1) is None
+    assert qualify_uptrend(source, source[1], 1, None, bars, len(bars) - 1, n_target_trend_confirmation_enabled=True) is None
 
 
 def test_cached_chart_replay_keeps_inverse_n_from_granting_upward_entry_permission() -> None:
     bars, source = _sample(up=False)
     cache: dict[str, object] = {}
-    chart_entry_history(bars[:10], prefix_cache=cache)
-    cached = chart_entry_history(bars, prefix_cache=cache)
-    assert cached == chart_entry_history(bars)
+    chart_entry_history(bars[:10], prefix_cache=cache, n_target_trend_confirmation_enabled=True)
+    cached = chart_entry_history(bars, prefix_cache=cache, n_target_trend_confirmation_enabled=True)
+    assert cached == chart_entry_history(bars, n_target_trend_confirmation_enabled=True)
     history, events = cached
     assert history[10] == ()
     assert not events
     # Both bars are beyond every prior source low. The frozen N target still
     # needs a new replay when its market extreme extends across one P.
-    assert _has_confirmation_price_cross(source, (), bars[9], bars[10], "2024-01-11", 10)
+    assert _has_confirmation_price_cross(source, (), bars[9], bars[10], "2024-01-11", 10,
+                                         n_target_trend_confirmation_enabled=True)

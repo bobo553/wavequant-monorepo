@@ -5,7 +5,9 @@ from typing import cast
 
 from ..models.model import Bar
 from .hierarchical_confirmation import session_date
-from .n_trend_confirmation import N_TARGET_CONFIRMATION, prepare_n_confirmation_context, qualified_n_source, qualify_n_trend
+from .n_trend_confirmation import (
+    N_TARGET_CONFIRMATION, is_n_target_reversal, prepare_n_confirmation_context, qualified_n_source, qualify_n_trend,
+)
 
 
 def _order(point: Mapping[str, object]) -> tuple[int, int]:
@@ -32,6 +34,7 @@ def n_target_reversals(
     bars: Sequence[Bar], *, source_level: int,
     qualified_source: Sequence[Mapping[str, object]] | None = None,
     target_sink: list[dict[str, object]] | None = None,
+    n_target_trend_confirmation_enabled: bool = False,
 ) -> list[dict[str, object]]:
     """Merge qualified N origins without turning each small swing into a wave.
 
@@ -39,6 +42,8 @@ def n_target_reversals(
     opposite N can end that wave independently of an older structural key.
     Candidate knowledge remains distinct from a later endpoint's price date.
     """
+    if not n_target_trend_confirmation_enabled:
+        return [dict(point) for point in candidates if not is_n_target_reversal(point)]
     merged = {_order(point): dict(point) for point in candidates}
     if not bars:
         return list(merged.values())

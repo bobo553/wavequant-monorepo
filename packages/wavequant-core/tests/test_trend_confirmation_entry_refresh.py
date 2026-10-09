@@ -43,7 +43,8 @@ def empty_level(*args: object, **kwargs: object) -> dict[str, object]:
     return dict(strokes=[], candidate_strokes=[], bear_bull_alternation_lows=[])
 
 
-def fake_first(_drawing: object, bars: Sequence[Bar]) -> dict[str, object]:
+def fake_first(_drawing: object, bars: Sequence[Bar], *,
+               n_target_trend_confirmation_enabled: bool = False) -> dict[str, object]:
     lows: list[dict[str, object]] = []
     if len(bars) > 3 and bars[-1].close > 6.0:
         def ref(index: int, kind: str, price: float) -> dict[str, object]:
@@ -147,7 +148,8 @@ class TrendConfirmationEntryRefreshTests(unittest.TestCase):
             return []
 
         def publish(_candidates: object, source: Sequence[dict[str, object]], prefix: Sequence[Bar], *,
-                    source_level: int, qualified_source: object = None) -> list[dict[str, object]]:
+                    source_level: int, qualified_source: object = None,
+                    n_target_trend_confirmation_enabled: bool = False) -> list[dict[str, object]]:
             self.assertTrue(all(type(point["available_at"]) is int for point in source))
             if source_level == 0:
                 first_lengths.append(len(prefix))

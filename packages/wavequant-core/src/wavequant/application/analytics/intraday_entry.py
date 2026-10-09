@@ -66,7 +66,8 @@ def resolve_consolidation_entries(
     if wave_candidates and strategy.buy_point_definition == "whole_flip_wave_v3":
         from wavequant.domain.strategies.chart_entry_history import chart_entry_history
 
-        wave_context_history = chart_entry_history(bars, audit=audit)[0]
+        wave_context_history = chart_entry_history(bars, audit=audit,
+            n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)[0]
     daily_waves = {e["bar_index"]: e for e in audit if e["event"] == "long_signal" and e.get("wave_entry_path")}
     consumed_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
     # Every minute prefix takes all earlier bars from this fixed full-history

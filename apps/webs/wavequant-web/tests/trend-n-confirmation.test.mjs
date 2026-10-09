@@ -189,7 +189,7 @@ test("new and legacy causal policies both reject geometry that reconnects separa
         available_at: "z",
         state: "confirmed",
     });
-    for (const policy of ["two_routes_v106", "trend_routes_v108"]) {
+    for (const policy of ["two_routes_v106", "trend_routes_v108", "trend_routes_v109"]) {
         assert.equal(usesCausalTrendConfirmation({ confirmation_policy: policy }), true);
         for (const [kind, connect] of [
             ["reversal", reversalConnections],

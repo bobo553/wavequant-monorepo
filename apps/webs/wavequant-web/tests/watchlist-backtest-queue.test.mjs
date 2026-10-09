@@ -1,7 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { IdleWatchlistBacktests } from "../public/watchlist-backtest-queue.js";
+import {
+    IdleWatchlistBacktests,
+    backtestArgumentsKey,
+    watchlistBacktestRequest,
+} from "../public/watchlist-backtest-queue.js";
+
+test("watchlist N target option defaults off and enabled jobs cannot reuse disabled arguments", () => {
+    const member = { symbol: "sz.000678", asof: "2018-09-25" },
+        context = { run: "example", variant: "lecture_v3", source: "akshare" },
+        defaultRequest = watchlistBacktestRequest(member, context),
+        off = watchlistBacktestRequest(member, { ...context, n_target_trend_confirmation_enabled: "false" }),
+        on = watchlistBacktestRequest(member, { ...context, n_target_trend_confirmation_enabled: "true" });
+    assert.equal(defaultRequest.params.n_target_trend_confirmation_enabled, "false");
+    assert.deepEqual(defaultRequest, off);
+    assert.notEqual(backtestArgumentsKey(off.path, off.params), backtestArgumentsKey(on.path, on.params));
+});
 
 const result = (member) => ({
     symbol: member.symbol,
@@ -123,6 +138,7 @@ test("a matching completed stock task updates the watchlist without running it a
         volume_filter: "true",
         net_reward_risk_filter: "false",
         shallow_base_breakout_enabled: "true",
+        n_target_trend_confirmation_enabled: "false",
         initial_capital: 100_000,
         max_position_weight: 1,
     };
@@ -208,6 +224,7 @@ test("server completion restores a watchlist badge after reload without a local 
         volume_filter: "true",
         net_reward_risk_filter: "false",
         shallow_base_breakout_enabled: "true",
+        n_target_trend_confirmation_enabled: "false",
         initial_capital: 100_000,
         max_position_weight: 1,
     };

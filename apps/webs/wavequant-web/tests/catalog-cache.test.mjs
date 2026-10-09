@@ -159,7 +159,11 @@ test("an internal Core rule revision replaces a cached AkShare low with July 11 
         algorithm_version: "e".repeat(64),
         theory: theory(point("2018-07-11", 4.84)),
     };
-    const storage = memoryStorage({ etag: '"old-rule"', bundle: old });
+    const storage = memoryStorage({
+        key: marketTimeframeCacheKey("akshare", "sz.000678", "2026-09-07", "1d"),
+        etag: '"old-rule"',
+        bundle: old,
+    });
     const result = await loadMarketTimeframeSnapshot("akshare", "sz.000678", "2026-09-07", "1d", {
         storage,
         fetcher: async (_path, options) => {
@@ -179,7 +183,11 @@ test("an internal Core rule revision replaces a cached AkShare low with July 11 
 });
 
 test("timeframe snapshot falls back to IndexedDB during a server outage", async () => {
-    const storage = memoryStorage({ etag: '"snapshot"', bundle });
+    const storage = memoryStorage({
+        key: marketTimeframeCacheKey("akshare", "sh.600519", "2026-09-07", "1w"),
+        etag: '"snapshot"',
+        bundle,
+    });
     const result = await loadMarketTimeframeSnapshot("akshare", "sh.600519", "2026-09-07", "1w", {
         storage,
         fetcher: async () => {
@@ -189,4 +197,66 @@ test("timeframe snapshot falls back to IndexedDB during a server outage", async 
 
     assert.equal(result.browser_cache, "offline");
     assert.match(result.cache_warning, /浏览器缓存/);
+});
+
+test("N target trend option defaults off and isolates its timeframe cache without truthy coercion", () => {
+    const args = ["akshare", "sz.000678", "2018-09-25", "1d"];
+    assert.equal(marketTimeframeCacheKey(...args), marketTimeframeCacheKey(...args, false));
+    assert.notEqual(marketTimeframeCacheKey(...args, false), marketTimeframeCacheKey(...args, true));
+    assert.notEqual(marketTimeframeCacheKey(...args), `v1:${args.join(":")}`);
+    for (const invalid of ["false", "true", 0, 1, null])
+        assert.throws(() => marketTimeframeCacheKey(...args, invalid), /布尔值/);
+});
+
+test("changing N target option requests separate authoritative snapshots and revalidates only the matching cache", async () => {
+    const values = new Map(),
+        requests = [],
+        storage = { get: async (key) => values.get(key), put: async (value) => values.set(value.key, value) };
+    const fetcher = async (path, options) => {
+        const enabled = new URL(path, "https://wavequant.test").searchParams.get("n_target_trend_confirmation_enabled");
+        requests.push({ enabled, etag: options.headers["If-None-Match"] });
+        const etag = `"n-target-${enabled}"`;
+        if (options.headers["If-None-Match"] === etag)
+            return new Response(null, { status: 304, headers: { ETag: etag } });
+        return new Response(
+            JSON.stringify({
+                ...bundle,
+                theory: { reversal_trends: { n_target_trend_confirmation_enabled: enabled === "true" } },
+            }),
+            { status: 200, headers: { ETag: etag } },
+        );
+    };
+    for (const enabled of [false, true, false, true]) {
+        const result = await loadMarketTimeframeSnapshot("akshare", "sh.600519", "2026-09-07", "1w", {
+            storage,
+            fetcher,
+            nTargetTrendConfirmationEnabled: enabled,
+        });
+        assert.equal(result.theory.reversal_trends.n_target_trend_confirmation_enabled, enabled);
+    }
+    assert.deepEqual(requests, [
+        { enabled: "false", etag: undefined },
+        { enabled: "true", etag: undefined },
+        { enabled: "false", etag: '"n-target-false"' },
+        { enabled: "true", etag: '"n-target-true"' },
+    ]);
+    assert.equal(values.size, 2);
+});
+
+test("old or opposite-option cache cannot serve a failed N-option request", async () => {
+    for (const oldKey of [
+        "v1:akshare:sh.600519:2026-09-07:1w",
+        marketTimeframeCacheKey("akshare", "sh.600519", "2026-09-07", "1w", true),
+    ]) {
+        await assert.rejects(
+            loadMarketTimeframeSnapshot("akshare", "sh.600519", "2026-09-07", "1w", {
+                storage: memoryStorage({ key: oldKey, etag: '"old"', bundle }),
+                fetcher: async (_path, options) => {
+                    assert.equal(options.headers["If-None-Match"], undefined);
+                    throw new Error("offline");
+                },
+            }),
+            /offline/,
+        );
+    }
 });

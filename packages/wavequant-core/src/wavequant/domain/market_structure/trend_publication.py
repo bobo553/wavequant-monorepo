@@ -6,7 +6,7 @@ from typing import TypeAlias, cast
 
 from ..models.model import Bar
 from .trend_confirmation import ConfirmationContext, prepare_confirmation_context, qualify_uptrend
-from .n_trend_confirmation import N_TARGET_CONFIRMATION, qualified_n_source
+from .n_trend_confirmation import N_TARGET_CONFIRMATION, is_n_target_reversal, qualified_n_source
 
 Moment: TypeAlias = int | str
 
@@ -42,6 +42,7 @@ def publish_uptrends(
     *,
     source_level: int,
     qualified_source: Sequence[Mapping[str, object]] | None = None,
+    n_target_trend_confirmation_enabled: bool = False,
 ) -> list[dict[str, object]]:
     """Keep structural candidates private until their rising leg is qualified.
 
@@ -63,15 +64,26 @@ def publish_uptrends(
     end_index = len(bars) - 1 if bars else max(
         (value for item in source for value in (item['index'],item.get('available_at')) if type(value) is int), default=-1)
     position_field = 'source_turn_position' if source_level == 0 else f'source_level{source_level}_position'
-    n_source = qualified_n_source(source, qualified_source) if qualified_source is not None else source
+    n_source = (qualified_n_source(source, qualified_source)
+                if n_target_trend_confirmation_enabled and qualified_source is not None else source)
     for offset, candidate in enumerate(candidates):
+        if not n_target_trend_confirmation_enabled and is_n_target_reversal(candidate):
+            continue
         point = dict(candidate)
+        if not n_target_trend_confirmation_enabled:
+            for field in ('trend_confirmation', 'incoming_trend_confirmation'):
+                proof = point.get(field)
+                if isinstance(proof, Mapping) and proof.get('confirmation_rule') == N_TARGET_CONFIRMATION:
+                    point.pop(field)
+            point.pop('n_target_confirmation', None)
+            if point.get('trend_confirmation_route') == N_TARGET_CONFIRMATION:
+                point.pop('trend_confirmation_route')
         if point['kind'] == 'H':
             # A causally confirmed descending pressure anchor is independent
             # of whether its preceding rising leg was qualified for display.
             pressure = candidate
             descending = point.get('n_target_confirmation')
-            if isinstance(descending, Mapping):
+            if n_target_trend_confirmation_enabled and isinstance(descending, Mapping):
                 point['trend_confirmation'] = dict(descending)
                 point['trend_confirmation_route'] = N_TARGET_CONFIRMATION
             if result and result[-1]['kind'] == 'H':
@@ -102,18 +114,24 @@ def publish_uptrends(
             continue
         key = pressure
         if context is None and end_index >= 0:
-            context = prepare_confirmation_context(source, market, end_index, n_source=n_source)
+            context = prepare_confirmation_context(
+                source, market, end_index, n_source=n_source,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+            )
         if context is not None and context.references[position] is not None:
             if (pending_origin is None or not _held_wave_floor(pending_origin, bars, cast(int, point['index']))
                     or cast(float, point['value']) < cast(float, pending_origin['value'])):
                 pending_origin = point
         confirmation = qualify_uptrend(source, origin, position, key, market, end_index,
-                                       context=context, n_source=n_source)
+                                       context=context, n_source=n_source,
+                                       n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         if confirmation is None:
             continue
         earliest = _later(_moment(point), _moment(confirmation))
         future_key = key
         for later_candidate in candidates[offset + 1:]:
+            if not n_target_trend_confirmation_enabled and is_n_target_reversal(later_candidate):
+                continue
             if later_candidate['kind'] == 'H':
                 trigger = cast(Mapping[str, object], confirmation['confirmed_by'])
                 if cast(int, later_candidate['index']) >= cast(int, trigger['index']):
@@ -130,7 +148,8 @@ def publish_uptrends(
                     later_origin.get(field, 0 if field == 'ordinal' else None) for field in identity):
                 raise ValueError('a trend candidate must match its actual source origin')
             local = qualify_uptrend(source, later_origin, later_position, future_key, market, end_index,
-                                    context=context, n_source=n_source)
+                                    context=context, n_source=n_source,
+                                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
             if local is None:
                 continue
             local_trigger = cast(Mapping[str, object], local['confirmed_by'])

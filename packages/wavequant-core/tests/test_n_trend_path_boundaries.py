@@ -51,7 +51,7 @@ def _old_candidate(points: list[Mapping[str, object]]) -> list[dict[str, object]
 def test_an_old_candidate_cannot_borrow_the_next_paths_market_target(monkeypatch: pytest.MonkeyPatch) -> None:
     bars, drawing = sample()
     monkeypatch.setattr(lecture_trend, "_wave_reversals", _old_candidate)
-    result = lecture_trend.reversal_trends(drawing, bars)
+    result = lecture_trend.reversal_trends(drawing, bars, n_target_trend_confirmation_enabled=True)
     assert not any(point["index"] == 3 for path in result["strokes"] for point in path["points"])
 
 
@@ -60,7 +60,7 @@ def test_a_target_before_the_break_keeps_its_tail_inside_the_original_path(monke
     bars[10] = replace(bars[10], high=10.1)
     bars[12] = replace(bars[12], high=15)
     monkeypatch.setattr(lecture_trend, "_wave_reversals", _old_candidate)
-    result = lecture_trend.reversal_trends(drawing, bars)
+    result = lecture_trend.reversal_trends(drawing, bars, n_target_trend_confirmation_enabled=True)
     origin = next(point for path in result["strokes"] for point in path["points"] if point["index"] == 3)
     assert origin["available_at"] == "2024-01-11"
     assert origin["trend_confirmation"]["confirmed_by"]["index"] == 10
@@ -87,7 +87,7 @@ def test_origin_failure_cannot_promote_an_unavailable_source_peak(invalid: str) 
         source[-1]["state"] = "unknown"
     else:
         source[-1]["display_only"] = True
-    candidates = n_target_reversals([], source, bars, source_level=0)
+    candidates = n_target_reversals([], source, bars, source_level=0, n_target_trend_confirmation_enabled=True)
     assert not any(point["index"] == 10 for point in candidates)
     for point in candidates:
         known = point["available_at"]
@@ -148,7 +148,8 @@ def test_n_source_mask_never_borrows_an_unpublished_or_unmatched_anchor(invalid:
 def test_higher_n_route_cannot_use_the_lower_levels_unpublished_abc(level: int) -> None:
     bars, source = _n_source_sample(dated=True)
     lower = dict(strokes=[dict(id="same", points=[source[0]])], structure_strokes=[dict(id="same", points=source)])
-    result = secondary_trends(lower, bars) if level == 2 else tertiary_trends(lower, bars)
+    build = secondary_trends if level == 2 else tertiary_trends
+    result = build(lower, bars, n_target_trend_confirmation_enabled=True)
     assert not any(point["index"] == 1 for path in result["strokes"] for point in path["points"])
     assert not any(point["index"] == 1 for path in result["developing_strokes"] for point in path["points"])
 
@@ -161,10 +162,14 @@ def test_an_origin_breach_endpoint_waits_for_its_public_source_peak() -> None:
                        time=bars[10].timestamp.date().isoformat(), state="reversal", label="H10"))
     public = [dict(point) for point in source]
     public[-1]["available_at"] = 20
-    before_candidates = n_target_reversals([], source, bars[:12], source_level=1, qualified_source=public)
-    later_candidates = n_target_reversals([], source, bars, source_level=1, qualified_source=public)
-    before = publish_uptrends(before_candidates, source, bars[:12], source_level=1, qualified_source=public)
-    later = publish_uptrends(later_candidates, source, bars, source_level=1, qualified_source=public)
+    before_candidates = n_target_reversals([], source, bars[:12], source_level=1, qualified_source=public,
+                                          n_target_trend_confirmation_enabled=True)
+    later_candidates = n_target_reversals([], source, bars, source_level=1, qualified_source=public,
+                                         n_target_trend_confirmation_enabled=True)
+    before = publish_uptrends(before_candidates, source, bars[:12], source_level=1, qualified_source=public,
+                              n_target_trend_confirmation_enabled=True)
+    later = publish_uptrends(later_candidates, source, bars, source_level=1, qualified_source=public,
+                             n_target_trend_confirmation_enabled=True)
     endpoint = next(point for point in later if point["index"] == 10)
     assert endpoint["available_at"] == 20
     assert [point for point in later if isinstance(point["available_at"], int) and point["available_at"] <= 11] == before

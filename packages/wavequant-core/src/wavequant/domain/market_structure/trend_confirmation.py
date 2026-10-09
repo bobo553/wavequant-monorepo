@@ -87,11 +87,13 @@ class ConfirmationContext:
     ordered: bool
     n_source: Sequence[Mapping[str, object]]
     n_context: NConfirmationContext | None
+    n_target_trend_confirmation_enabled: bool
 
 
 def prepare_confirmation_context(
     source: Sequence[Mapping[str, object]], bars: Sequence[Bar] | None, end_index: int,
     *, n_source: Sequence[Mapping[str, object]] | None = None,
+    n_target_trend_confirmation_enabled: bool = False,
 ) -> ConfirmationContext:
     """Parse one immutable source/clock snapshot without looking past cutoff."""
     if type(end_index) is not int or end_index < 0 or bars is not None and end_index >= len(bars):
@@ -105,9 +107,10 @@ def prepare_confirmation_context(
                and not any(left.known is not None and right.known is not None and left.known > right.known
                            for left, right in zip(known, known[1:])))
     n_points = source if n_source is None else n_source
-    n_context = prepare_n_confirmation_context(n_points, bars, end_index) if bars is not None else None
+    n_context = (prepare_n_confirmation_context(n_points, bars, end_index)
+                 if bars is not None and n_target_trend_confirmation_enabled else None)
     return ConfirmationContext(id(source), id(bars), end_index, market, sessions, references, ordered,
-                               n_points, n_context)
+                               n_points, n_context, n_target_trend_confirmation_enabled)
 
 
 def _public(point: _Reference) -> dict[str, object]:
@@ -157,13 +160,18 @@ def _qualify(
     same_level_key: Mapping[str, object] | None, bars: Sequence[Bar] | None, end_index: int, *, up: bool,
     context: ConfirmationContext | None = None,
     n_source: Sequence[Mapping[str, object]] | None = None,
+    n_target_trend_confirmation_enabled: bool = False,
 ) -> dict[str, object] | None:
     if (type(end_index) is not int or end_index < 0 or type(source_position) is not int
             or not 0 <= source_position < len(source) or bars is not None and end_index >= len(bars)):
         return None
-    prepared = context if context is not None else prepare_confirmation_context(source, bars, end_index, n_source=n_source)
+    prepared = context if context is not None else prepare_confirmation_context(
+        source, bars, end_index, n_source=n_source,
+        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+    )
     if (prepared.source_identity != id(source) or prepared.bars_identity != id(bars)
-            or prepared.end_index != end_index or id(prepared.n_source) != id(source if n_source is None else n_source)):
+            or prepared.end_index != end_index or id(prepared.n_source) != id(source if n_source is None else n_source)
+            or prepared.n_target_trend_confirmation_enabled != n_target_trend_confirmation_enabled):
         raise ValueError("a confirmation context must match its source and market prefix")
     supplied = prepared.references[source_position]
     base = supplied if origin is source[source_position] else _reference(origin, prepared.session_indices, end_index)
@@ -207,8 +215,9 @@ def _qualify(
                 confirmed = _bar_reference(market, index, up, isinstance(base.available, int))
                 proofs.append((index, _certificate(base, own_key, confirmed, up, SAME_LEVEL_KEY_BREAK)))
                 break
-    n_proof = qualify_n_trend(prepared.n_source, prepared.n_source[source_position], source_position,
-                             bars, end_index, up=up, context=prepared.n_context)
+    n_proof = (qualify_n_trend(prepared.n_source, prepared.n_source[source_position], source_position,
+                              bars, end_index, up=up, context=prepared.n_context)
+               if n_target_trend_confirmation_enabled else None)
     if n_proof is not None:
         trigger = n_proof['confirmed_by']
         assert isinstance(trigger, dict) and isinstance(trigger['index'], int)
@@ -272,6 +281,7 @@ def qualify_uptrend(
     same_level_key: Mapping[str, object] | None, bars: Sequence[Bar] | None, end_index: int, *,
     context: ConfirmationContext | None = None,
     n_source: Sequence[Mapping[str, object]] | None = None,
+    n_target_trend_confirmation_enabled: bool = False,
 ) -> dict[str, object] | None:
     """Certify the first own-key break, source cycle or strict N target break.
 
@@ -282,7 +292,8 @@ def qualify_uptrend(
     can qualify; date-clock inputs must already be a known source prefix.
     """
     return _qualify(source, origin, source_position, same_level_key, bars, end_index, up=True,
-                    context=context, n_source=n_source)
+                    context=context, n_source=n_source,
+                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
 
 
 def qualify_downtrend(
@@ -290,7 +301,9 @@ def qualify_downtrend(
     same_level_key: Mapping[str, object] | None, bars: Sequence[Bar] | None, end_index: int, *,
     context: ConfirmationContext | None = None,
     n_source: Sequence[Mapping[str, object]] | None = None,
+    n_target_trend_confirmation_enabled: bool = False,
 ) -> dict[str, object] | None:
     """Mirror the same three certificates for a downward direction."""
     return _qualify(source, origin, source_position, same_level_key, bars, end_index, up=False,
-                    context=context, n_source=n_source)
+                    context=context, n_source=n_source,
+                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)

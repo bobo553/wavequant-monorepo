@@ -320,7 +320,7 @@ def _annotate(points, symbol, dates):
             anchor,key=p,previous; attack=None; suspicion=False
 
 
-def reversal_trends(drawing, bars):
+def reversal_trends(drawing, bars, *, n_target_trend_confirmation_enabled: bool = False):
     # Drawing sessions are Shanghai dates, including timezone-aware market bars.
     from zoneinfo import ZoneInfo
     dates={(b.timestamp.astimezone(ZoneInfo('Asia/Shanghai')) if b.timestamp.tzinfo else b.timestamp).date().isoformat():i
@@ -359,7 +359,9 @@ def reversal_trends(drawing, bars):
         geometric_waves=_wave_reversals(turns)
         later=drawing['strokes'][stroke_index+1:]
         cutoff=later[0]['points'][0]['index'] if later else len(bars)
-        waves=n_target_reversals(geometric_waves,turns,bars[:cutoff],source_level=0,target_sink=n_targets)
+        waves=(n_target_reversals(geometric_waves,turns,bars[:cutoff],source_level=0,target_sink=n_targets,
+                                 n_target_trend_confirmation_enabled=True)
+               if n_target_trend_confirmation_enabled else geometric_waves)
         if waves:
             result.append(dict(id=f'reversal-{stroke["id"]}',source_path=stroke['id'],kind='reversal',points=waves,
                                input_turn_count=len(turns)))
@@ -382,14 +384,18 @@ def reversal_trends(drawing, bars):
         points=[dict(point,source_turn_position=positions[_point_order(point)]) for point in stroke['points']]
         _annotate(points,bars[0].symbol,dates)
         candidate_strokes.append(dict(stroke,points=points))
-        published=publish_uptrends(points,source_points,market,source_level=0)
+        published=publish_uptrends(points,source_points,market,source_level=0,
+                                  n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         if published:
-            public=dict(stroke,points=published,confirmation_policy='trend_routes_v108')
+            public=dict(stroke,points=published,confirmation_policy='trend_routes_v109',
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
             result.append(public)
-            if any(point.get('trend_confirmation_route')=='source_n_strict_one_p_target' for point in published):
+            if n_target_trend_confirmation_enabled and any(
+                    point.get('trend_confirmation_route')=='source_n_strict_one_p_target' for point in published):
                 from .hierarchical_development import hierarchical_developing_path
                 tail=hierarchical_developing_path(dict(id=stroke['id'],points=source_points),published,
-                        trend_level=1,source_level=0,kind='reversal',bars=market,structural=points)
+                        trend_level=1,source_level=0,kind='reversal',bars=market,structural=points,
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
                 if tail:
                     developing_strokes.append(tail)
     for stroke in result:
@@ -397,6 +403,7 @@ def reversal_trends(drawing, bars):
     return dict(strokes=result,candidate_strokes=candidate_strokes,structure_strokes=candidate_strokes,
                 developing_strokes=developing_strokes,
                 n_target_observations=n_targets,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                 trend_level=1,name='一级趋势线',scope='lecture_wave_structure_not_strategy_confirmation',
                 bear_to_bull_highs=bear_to_bull_highs(result,trend_level=1),
                 bear_bull_alternation_lows=bear_bull_alternation_lows(result,trend_level=1,bars=bars),
@@ -405,8 +412,10 @@ def reversal_trends(drawing, bars):
                 aggregation_rule='ordered_HH_then_HL_or_LL_then_LH_switch_with_confirmed_cross_path_extremes',input_turn_count=local_count,
                 confirmed_wave_count=sum(len(s['points']) for s in result),
                 break_basis='confirmed_polyline_extreme',retracement_threshold=.67,
-                note='一级与二、三级使用相同三路线：本级关键位严格突破，或基础折线关键位突破、交替、后续收盘转向，'
-                     '或正N/倒N完成后严格超过攻击箱测算的一饱确认对应趋势；等值不确认，首次证书冻结；'
+                note=('一级与二、三级使用相同三路线：本级关键位严格突破，或基础折线关键位突破、交替、后续收盘转向，'
+                      '或正N/倒N完成后严格超过攻击箱测算的一饱确认对应趋势；等值不确认，首次证书冻结；'
+                      if n_target_trend_confirmation_enabled else
+                      '一级与二、三级使用相同两路线：本级关键位严格突破，或基础折线关键位突破、交替、后续收盘转向；')+
                      '有序高低点转换只生成内部结构候选，不单独授予上涨权限；'
                      '不能用推进前的旧回档确认新推进，确认前仍跟踪整段极值；相邻分段以真实已确认原折线极值正式衔接，'
                      '并作为二级输入；未完成波段不画实线。')

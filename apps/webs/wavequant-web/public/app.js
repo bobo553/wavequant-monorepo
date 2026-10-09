@@ -41,6 +41,12 @@ import {
 import { bindPressAndHold } from "./press-and-hold.js";
 import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
 import { parseResearchLink, resolveResearchLink } from "./research-link.js";
+import {
+    researchNTargetPreference,
+    researchViewRequest,
+    watchlistSettingsRestoration,
+    watchlistSettingsToSave,
+} from "./research-settings.js";
 import { secondaryReclaimEvidence } from "./secondary-reclaim-evidence.js";
 import { StockBacktestTasks } from "./stock-backtest-tasks.js";
 import { StockList } from "./stock-list.js";
@@ -105,6 +111,7 @@ if (typeof chartPreferences.showTrendPrices === "boolean")
     $("show-trend-prices").checked = chartPreferences.showTrendPrices;
 if (typeof chartPreferences.showTertiaryRetracement === "boolean")
     $("show-tertiary-retracement").checked = chartPreferences.showTertiaryRetracement;
+$("n-target-trend-confirmation").checked = researchNTargetPreference(null, chartPreferences);
 const timeframeTabs = [...$("timeframe-select").querySelectorAll("[role=tab][data-timeframe]")];
 const selectedTimeframe = () => $("timeframe-select").dataset.value || "1d";
 function setTimeframe(timeframe, { focus = false } = {}) {
@@ -745,6 +752,7 @@ const buyPoints = new BuyPoints({
             ...(isAkShare() ? { symbol: p.symbol } : {}),
             asof: p.asof,
             start: isLocal() || isAkShare() ? $("backtest-start").value : currentRun().start,
+            n_target_trend_confirmation_enabled: $("n-target-trend-confirmation").checked,
         };
     },
     onSelect: async (match, p) => {
@@ -821,6 +829,7 @@ const structureSignals = new StructureSignals({
             variant: params.variant,
             source: isAkShare() ? "akshare" : isLocal() ? "tdx" : "snapshot",
             asof: params.asof,
+            n_target_trend_confirmation_enabled: $("n-target-trend-confirmation").checked,
         };
     },
     onSelect: async (match, params) => {
@@ -1321,7 +1330,7 @@ function renderMetrics() {
                 .map(([key, n]) => `${reasonText(key)} × ${n}`)
                 .join("；");
         $("backtest-details").textContent =
-            `${symbolName(state.view.symbol)} · 独立回测 ${bt.start} — ${bt.end}｜量能过滤${bt.strategy.volume_filter ? (bt.strategy.buy_point_definition === "whole_flip_wave_v3" ? "开启（确认时量 ＞ 昨日全天量；C 浪跳空突破可独立触发）" : `开启（攻击日量比 ≥ ${num(bt.strategy.minimum_rvol)}）`) : "关闭"}；${bt.strategy.buy_point_definition === "whole_flip_wave_v3" ? `浅回撤横盘突破${bt.strategy.shallow_base_breakout_enabled ? "开启" : "关闭"}；` : ""}成交价含费净盈亏比过滤${netRiskEnabled ? "开启" : "关闭"}；初始资金 ${num(bt.initial_capital, 0)} 元，单股仓位上限 ${pct(bt.execution.max_position_weight)}。年化 ${pct(m.annualized_return)} · 胜率 ${m.win_rate === null ? "—（无平仓）" : pct(m.win_rate)} · Sharpe ${num(m.sharpe)} · 费用 ${num(m.fees)} 元。买入成交 ${d.entry_fills} · 已平仓 ${d.closed_trades} · 未平仓 ${d.open_positions} · 期末未执行信号 ${m.unexecuted_end_signals}。${d.entry_fills ? "成交样本不等于策略有效。" : `未产生成交：入场信号 ${bt.counts.long_signals || 0}，委托尝试 ${d.entry_attempts}；可开启“筛选 / 中断”查看未通过条件。`}${reasons ? `拒单原因：${reasons}。` : ""}${bt.open_positions.map((p) => `未平仓 ${num(p.quantity)} 等价份额，累计已实现 ${num(p.realized_pnl)} 元，剩余浮动盈亏 ${num(p.unrealized_pnl)} 元，整笔当前盈亏 ${num(p.total_pnl)} 元（${pct(p.net_return)}，含未实现部分）。`).join("")}`;
+            `${symbolName(state.view.symbol)} · 独立回测 ${bt.start} — ${bt.end}｜量能过滤${bt.strategy.volume_filter ? (bt.strategy.buy_point_definition === "whole_flip_wave_v3" ? "开启（确认时量 ＞ 昨日全天量；C 浪跳空突破可独立触发）" : `开启（攻击日量比 ≥ ${num(bt.strategy.minimum_rvol)}）`) : "关闭"}；${bt.strategy.buy_point_definition === "whole_flip_wave_v3" ? `浅回撤横盘突破${bt.strategy.shallow_base_breakout_enabled ? "开启" : "关闭"}；` : ""}正/倒 N 超一饱趋势确认${bt.strategy.n_target_trend_confirmation_enabled === true ? "开启" : "关闭"}；成交价含费净盈亏比过滤${netRiskEnabled ? "开启" : "关闭"}；初始资金 ${num(bt.initial_capital, 0)} 元，单股仓位上限 ${pct(bt.execution.max_position_weight)}。年化 ${pct(m.annualized_return)} · 胜率 ${m.win_rate === null ? "—（无平仓）" : pct(m.win_rate)} · Sharpe ${num(m.sharpe)} · 费用 ${num(m.fees)} 元。买入成交 ${d.entry_fills} · 已平仓 ${d.closed_trades} · 未平仓 ${d.open_positions} · 期末未执行信号 ${m.unexecuted_end_signals}。${d.entry_fills ? "成交样本不等于策略有效。" : `未产生成交：入场信号 ${bt.counts.long_signals || 0}，委托尝试 ${d.entry_attempts}；可开启“筛选 / 中断”查看未通过条件。`}${reasons ? `拒单原因：${reasons}。` : ""}${bt.open_positions.map((p) => `未平仓 ${num(p.quantity)} 等价份额，累计已实现 ${num(p.realized_pnl)} 元，剩余浮动盈亏 ${num(p.unrealized_pnl)} 元，整笔当前盈亏 ${num(p.total_pnl)} 元（${pct(p.net_return)}，含未实现部分）。`).join("")}`;
         if (bt.execution.missing_minute_daily_fallback) {
             const p = document.createElement("p");
             const days = bt.minute_fallbacks || [];
@@ -1489,6 +1498,11 @@ function showAnnotationDetails(items) {
 function renderVisibleAnnotations(items, range) {
     $("focus-abc").disabled = chart.autoWaveProjections.length === 0;
     const t = range.trend;
+    const optionalNRoute = (level) =>
+        state.theory?.[["", "reversal_trends", "secondary_trends", "tertiary_trends"][level]]
+            ?.n_target_trend_confirmation_enabled === true
+            ? "，或下级 N 严格超过一饱"
+            : "";
     const s = range.secondaryTrend;
     const secondaryDeveloping = range.secondaryDeveloping,
         secondaryDevelopingStart = secondaryDeveloping?.points[0],
@@ -1501,7 +1515,7 @@ function renderVisibleAnnotations(items, range) {
         const level = stroke.trend_level ?? ["一级", "二级", "三级"].indexOf(name) + 1,
             presentation = trendConfirmationPresentation(confirmation, level);
         if (!confirmation || (usesCausalTrendConfirmation(stroke) && !presentation))
-            return `${name}趋势线：等待本级关键位突破、下级完整交替后收盘转向，或下级 N 严格超过一饱。`;
+            return `${name}趋势线：等待本级关键位突破、下级完整交替后收盘转向${optionalNRoute(level)}。`;
         const endpoint = stroke.confirmed_endpoint || stroke.points.at(-1),
             rising = confirmation.direction === "up";
         return `${name}趋势线 · ${presentation?.summary || `${confirmation.available_at} ${rising ? "突破前高确认上涨" : "跌破前低确认下跌"}（${confirmation.broken_key.time}，${num(confirmation.broken_key.value)}）`}｜实线末端继续延伸：${endpoint.time} ${num(endpoint.value)}`;
@@ -1511,15 +1525,15 @@ function renderVisibleAnnotations(items, range) {
             ? confirmedTrendText(range.primaryDeveloping, "一级")
             : t
               ? `一级趋势线 · 视窗：${t.windowTrend} · 最新局部：${t.trend}（至 ${t.latestKnown}）｜视窗末跌高 ${num(t.lastFallHigh?.value)} · 末升低 ${num(t.lastRiseLow?.value)} · 点击一级转折点查看依据`
-              : "一级趋势线：当前无已确认波段，或图层已关闭；等待本级关键位突破、原折线完整交替后收盘转向，或原折线 N 严格超过一饱。";
+              : `一级趋势线：当前无已确认波段，或图层已关闭；等待本级关键位突破、原折线完整交替后收盘转向${optionalNRoute(1)}。`;
     $("secondary-trend-summary").textContent =
         secondaryDeveloping?.state === "confirmed"
             ? confirmedTrendText(secondaryDeveloping, "二级")
             : s
-              ? `二级趋势线 · 视窗：${s.windowTrend} · 最新局部：${s.trend}（至 ${s.latestKnown}）｜二级末跌高 ${num(s.lastFallHigh?.value)} · 末升低 ${num(s.lastRiseLow?.value)}${secondaryDevelopmentText} · 点击二级转折点查看本级突破、一级完整交替转向或 N 一饱达标依据`
+              ? `二级趋势线 · 视窗：${s.windowTrend} · 最新局部：${s.trend}（至 ${s.latestKnown}）｜二级末跌高 ${num(s.lastFallHigh?.value)} · 末升低 ${num(s.lastRiseLow?.value)}${secondaryDevelopmentText} · 点击二级转折点查看实际确认依据`
               : secondaryDeveloping
                 ? `二级趋势线 · 发展路径 ${secondaryDeveloping.points.length} 点：${secondaryDevelopingStart.time} ${secondaryDevelopingStart.label} ${num(secondaryDevelopingStart.value)} → 当前${secondaryDeveloping.wave_direction === "up" ? "上涨" : "下跌"}候选 ${secondaryDevelopingEnd.time} ${secondaryDevelopingEnd.label} ${num(secondaryDevelopingEnd.value)}｜紫色虚线点均来自已确认一级结构，不升级为正式二级反转`
-                : "二级趋势线：当前无已确认波段，或图层已关闭；等待二级关键位突破、一级完整交替后收盘转向，或一级 N 严格超过一饱。";
+                : `二级趋势线：当前无已确认波段，或图层已关闭；等待二级关键位突破、一级完整交替后收盘转向${optionalNRoute(2)}。`;
     const u = range.tertiaryTrend;
     const developing = range.tertiaryDeveloping,
         developingStart = developing?.points[0],
@@ -1528,10 +1542,10 @@ function renderVisibleAnnotations(items, range) {
         developing?.state === "confirmed"
             ? confirmedTrendText(developing, "三级")
             : u
-              ? `三级趋势线 · 视窗：${u.windowTrend} · 最新局部：${u.trend}（至 ${u.latestKnown}）｜三级末跌高 ${num(u.lastFallHigh?.value)} · 末升低 ${num(u.lastRiseLow?.value)} · 点击三级转折点查看本级突破、二级完整交替转向或 N 一饱达标依据`
+              ? `三级趋势线 · 视窗：${u.windowTrend} · 最新局部：${u.trend}（至 ${u.latestKnown}）｜三级末跌高 ${num(u.lastFallHigh?.value)} · 末升低 ${num(u.lastRiseLow?.value)} · 点击三级转折点查看实际确认依据`
               : developing
                 ? `三级趋势线 · 完整发展路径 ${developing.points.length} 点：${developingStart.time} ${developingStart.label} ${num(developingStart.value)} → 当前${developing.wave_direction === "up" ? "上涨" : "下跌"}候选 ${developingEnd.time} ${developingEnd.label} ${num(developingEnd.value)}｜橙色虚线点均来自已确认二级结构，不升级为正式三级反转`
-                : "三级趋势线：当前无已确认波段，或图层已关闭；等待三级关键位突破、二级完整交替后收盘转向，或二级 N 严格超过一饱。";
+                : `三级趋势线：当前无已确认波段，或图层已关闭；等待三级关键位突破、二级完整交替后收盘转向${optionalNRoute(3)}。`;
     $("annotation-count").textContent = `当前图窗 ${range.from} — ${range.to} · ${items.length} 项`;
     $("events").replaceChildren();
     if (!items.length) {
@@ -2002,8 +2016,19 @@ async function loadTheory(request, sequence, preloaded = null) {
                 : await api(
                       isAkShare() ? "/api/akshare-theory" : isTdx() ? "/api/tdx-theory" : "/api/theory",
                       isMarketBrowse()
-                          ? { symbol: request.symbol, asof: request.asof, timeframe: request.timeframe }
-                          : { run: request.run, variant: request.variant, symbol: request.symbol, asof: request.asof },
+                          ? {
+                                symbol: request.symbol,
+                                asof: request.asof,
+                                timeframe: request.timeframe,
+                                n_target_trend_confirmation_enabled: $("n-target-trend-confirmation").checked,
+                            }
+                          : {
+                                run: request.run,
+                                variant: request.variant,
+                                symbol: request.symbol,
+                                asof: request.asof,
+                                n_target_trend_confirmation_enabled: $("n-target-trend-confirmation").checked,
+                            },
                   ));
         if (sequence !== state.sequence) return;
         state.theory = data;
@@ -2121,6 +2146,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             volume_filter: String($("backtest-volume-filter").checked),
             net_reward_risk_filter: String($("backtest-net-reward-risk-filter").checked),
             shallow_base_breakout_enabled: String($("backtest-shallow-base-breakout").checked),
+            n_target_trend_confirmation_enabled: String($("n-target-trend-confirmation").checked),
             ...(isTdxBacktest() ? currentBacktestSizing() : {}),
         };
         const backtestPath = isAkShare() ? "/api/akshare-backtest" : "/api/tdx-backtest";
@@ -2175,20 +2201,22 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             );
             renderStockBacktestStatus();
         }
+        const snapshotRequest = researchViewRequest(
+            $("result-scope").value,
+            viewParams,
+            $("n-target-trend-confirmation").checked,
+        );
         const data = isMarketBrowse()
             ? (timeframeBundle = await loadMarketTimeframeSnapshot(
                   isAkShare() ? "akshare" : "tdx",
                   request.symbol,
                   request.asof,
                   request.timeframe,
+                  { nTargetTrendConfirmationEnabled: $("n-target-trend-confirmation").checked },
               )).view
             : task
               ? await task.promise
-              : await api(
-                    $("result-scope").value === "stock" ? "/api/stock-view" : "/api/view",
-                    viewParams,
-                    requestSignal,
-                );
+              : await api(snapshotRequest.path, snapshotRequest.params, requestSignal);
         if (sequence !== state.sequence) return;
         state.view = data;
         state.loading = false;
@@ -2435,6 +2463,7 @@ const ratioComparison = new RatioComparison({
             volume_filter: $("backtest-volume-filter").checked,
             net_reward_risk_filter: $("backtest-net-reward-risk-filter").checked,
             shallow_base_breakout_enabled: $("backtest-shallow-base-breakout").checked,
+            n_target_trend_confirmation_enabled: $("n-target-trend-confirmation").checked,
             local: (isLocal() || isAkShare()) && sizing !== null,
             source: isAkShare() ? "akshare" : "tdx",
         };
@@ -2500,6 +2529,7 @@ const watchlistBacktests = new IdleWatchlistBacktests({
             volume_filter: String($("backtest-volume-filter").checked),
             net_reward_risk_filter: String($("backtest-net-reward-risk-filter").checked),
             shallow_base_breakout_enabled: String($("backtest-shallow-base-breakout").checked),
+            n_target_trend_confirmation_enabled: String($("n-target-trend-confirmation").checked),
             ...sizing,
         };
         const members = watchlists.orderedAvailableMembers(sourceUniverse).map((member) => ({
@@ -2714,6 +2744,7 @@ async function applySavedWatchlistSettings(savedSettings, keepSource = false) {
     $("backtest-volume-filter").checked = context.volume_filter === "true";
     $("backtest-net-reward-risk-filter").checked = context.net_reward_risk_filter === "true";
     $("backtest-shallow-base-breakout").checked = context.shallow_base_breakout_enabled === "true";
+    $("n-target-trend-confirmation").checked = researchNTargetPreference(savedSettings, chartPreferences);
     $("backtest-capital").value = String(Number(context.initial_capital) / 10_000);
     $("backtest-buy-ratio").value = String(Number(context.max_position_weight) * 100);
     watchlistBacktests.setEnabled(savedSettings.enabled);
@@ -2740,6 +2771,7 @@ document.addEventListener("change", (event) => {
             "backtest-volume-filter",
             "backtest-net-reward-risk-filter",
             "backtest-shallow-base-breakout",
+            "n-target-trend-confirmation",
             "backtest-capital",
             "backtest-buy-ratio",
         ].includes(event.target.id)
@@ -2751,11 +2783,16 @@ async function syncSavedWatchlists() {
     const settingsRevision = localWatchlistSettingsRevision;
     watchlistServerSync = (async () => {
         const current = watchlistBacktests.snapshot();
-        if (current) {
-            const { group: _group, cutoff: _cutoff, ...context } = current.context;
-            const key = JSON.stringify([context, watchlistBacktests.enabled]);
+        const settings = watchlistSettingsToSave(
+            current,
+            watchlists.storage.document?.settings,
+            watchlistBacktests.enabled,
+            $("n-target-trend-confirmation").checked,
+        );
+        if (settings) {
+            const key = JSON.stringify([settings.context, settings.enabled]);
             if (key !== lastServerWatchlistContext) {
-                await watchlists.storage.configure(context, watchlistBacktests.enabled);
+                await watchlists.storage.configure(settings.context, settings.enabled);
                 lastServerWatchlistContext = key;
             }
         }
@@ -2763,13 +2800,20 @@ async function syncSavedWatchlists() {
         if (settingsRevision !== localWatchlistSettingsRevision) return;
         const saved = watchlists.storage.document?.settings;
         if (saved) {
-            const currentSnapshot = watchlistBacktests.snapshot();
-            const currentContext = currentSnapshot?.context;
-            const changed =
-                saved.enabled !== watchlistBacktests.enabled ||
-                Object.keys(saved.context).some((key) => String(currentContext?.[key]) !== saved.context[key]);
-            if (changed) {
-                await applySavedWatchlistSettings(saved);
+            const restoration = watchlistSettingsRestoration(
+                watchlistBacktests.snapshot(),
+                saved,
+                watchlistBacktests.enabled,
+                $("n-target-trend-confirmation").checked,
+            );
+            if (restoration?.kind === "n-target") {
+                $("n-target-trend-confirmation").checked = restoration.enabled;
+                ratioComparison.contextChanged();
+                buyPoints.contextChanged();
+                structureSignals.contextChanged();
+                if (!state.loading) void loadView();
+            } else if (restoration?.kind === "context") {
+                await applySavedWatchlistSettings(restoration.settings);
                 fillSymbols();
                 const { group: _group, cutoff: _cutoff, ...restored } = watchlistBacktests.snapshot()?.context || {};
                 lastServerWatchlistContext = JSON.stringify([restored, watchlistBacktests.enabled]);
@@ -2934,6 +2978,23 @@ $("backtest-shallow-base-breakout").addEventListener("change", () => {
     ratioComparison.contextChanged();
     buyPoints.contextChanged();
     if (isTdxBacktest()) loadView();
+});
+$("n-target-trend-confirmation").addEventListener("change", () => {
+    chartPreferences = {
+        ...chartPreferences,
+        nTargetTrendConfirmationEnabled: $("n-target-trend-confirmation").checked,
+    };
+    try {
+        localStorage.setItem(chartPreferenceKey, JSON.stringify(chartPreferences));
+    } catch {
+        // 无服务器上下文时复用浏览器偏好；存储不可用仍保持当前会话选择。
+    }
+    ratioComparison.contextChanged();
+    buyPoints.contextChanged();
+    structureSignals.contextChanged();
+    void watchlistBacktests.tick();
+    void syncSavedWatchlists();
+    if (state.catalog) void loadView();
 });
 $("run-stock-backtest").addEventListener("click", () => {
     const source = sourceForScope($("result-scope").value);

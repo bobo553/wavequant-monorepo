@@ -18,7 +18,7 @@ class TertiaryTrendTests(unittest.TestCase):
         result=tertiary_trends(source,bars)
         self.assertEqual(source,before)
         self.assertEqual((result['trend_level'],result['source_level']),(3,2))
-        self.assertEqual(result['aggregation_rule'],'same_level_key_break_or_lower_level_break_alternation_turn_or_n_strict_one_p')
+        self.assertEqual(result['aggregation_rule'],'same_level_key_break_or_lower_level_break_alternation_turn')
         stroke=result['strokes'][0]; points=stroke['points']; raw=source['strokes'][0]['points']
         self.assertEqual(stroke['source_path'],'secondary-fixture')
         self.assertEqual([(p['kind'],p['value']) for p in points],[('H',45)])
@@ -113,13 +113,12 @@ class TertiaryTrendTests(unittest.TestCase):
         before=copy.deepcopy(source)
         full=tertiary_trends(source,bars)
         points=full['strokes'][0]['points']
-        self.assertEqual([(p['kind'],p['value']) for p in points],[('L',10),('H',45),('L',24),('H',50)])
-        self.assertEqual(points[0]['trend_confirmation']['confirmation_rule'],'source_n_strict_one_p_target')
+        self.assertEqual([(p['kind'],p['value']) for p in points],[('H',45),('L',24),('H',50)])
         low,high=points[-2:]
         proof=low['trend_confirmation']
         self.assertEqual(proof['confirmation_rule'],'strict_same_level_market_key_break')
         self.assertGreater(proof['confirmed_by']['value'],proof['broken_key']['value'])
-        self.assertEqual(proof['broken_key']['available_at'],points[1]['available_at'])
+        self.assertEqual(proof['broken_key']['available_at'],points[0]['available_at'])
         self.assertEqual(high['confirmation_rule'],'level2_confirmed_high_breaks_known_level3_last_fall_high')
         self.assertEqual((high['trend_level'],high['source_level2_position']),(3,17))
         self.assertNotIn('source_level1_position',high)

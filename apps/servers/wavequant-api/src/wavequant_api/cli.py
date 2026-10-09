@@ -28,6 +28,21 @@ def default_results_root() -> Path:
     return packaged if packaged.exists() or not legacy.exists() else legacy
 
 
+def _n_target_cli_value(value: str) -> bool:
+    if value not in {"true", "false"}:
+        raise argparse.ArgumentTypeError("N confirmation option must be true or false")
+    return value == "true"
+
+
+def _n_target_modes(selected: bool | None) -> tuple[bool, ...]:
+    """Build both read models serially unless the Worker selects one mode."""
+    if selected is None:
+        return False, True
+    if type(selected) is not bool:
+        raise ValueError("n_target_trend_confirmation_enabled must be a boolean")
+    return (selected,)
+
+
 def parser() -> argparse.ArgumentParser:
     """Build the API command-line contract."""
     value = argparse.ArgumentParser(description="WaveQuant local read-only HTTP API")
@@ -35,6 +50,10 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--port", type=int, default=8765)
     value.add_argument("--tdx-root", type=Path, default=Path("D:/TDX"))
     value.add_argument("--disable-akshare", action="store_true", help="disable the optional AkShare market-data source")
+    value.add_argument(
+        "--n-target-trend-confirmation-enabled", nargs="?", const=True, default=None, type=_n_target_cli_value,
+        help="precompute only true/false mode; omitted builds both modes serially (bare option selects true)",
+    )
     value.add_argument("--akshare-timeout", type=float, default=30.0, help="AkShare call timeout in seconds (1-60)")
     value.add_argument("--web-root", type=Path)
     value.add_argument(
@@ -154,12 +173,14 @@ def refresh_structures(
     run: str | None,
     variant: str,
     asof: str | None,
+    n_target_trend_confirmation_enabled: bool = False,
 ) -> dict[str, object]:
     """Run one idempotent refresh used by both cron and the resident worker."""
     return StructureSnapshotService(repository, infrastructure).refresh(
         _structure_run(repository, run),
         variant,
         asof=asof,
+        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
     )
 
 
@@ -177,6 +198,7 @@ def refresh_signals(
     family: str,
     shard_count: int = 1,
     shard_index: int = 0,
+    n_target_trend_confirmation_enabled: bool = False,
 ) -> list[dict[str, object]]:
     """Refresh independently published scopes so interrupted runs are resumable."""
     if not 1 <= shard_count <= 16 or not 0 <= shard_index < shard_count:
@@ -237,7 +259,7 @@ def refresh_signals(
                     None,
                     source,
                     selected_asof,
-                    structure_service.algorithm_version,
+                    structure_service.algorithm_version_for(n_target_trend_confirmation_enabled),
                 )
                 if snapshot.scope_symbol is not None
             }
@@ -265,6 +287,7 @@ def refresh_signals(
                         symbol=symbol,
                         asof=selected_asof,
                         market_total=market_total,
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                     )
                 )
             except (ValueError, RuntimeError, OSError) as exc:
@@ -292,6 +315,7 @@ def refresh_signals(
                         start,
                         symbol=symbol,
                         asof=selected_asof,
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                     )
                 )
             except (ValueError, RuntimeError, OSError) as exc:
@@ -318,6 +342,7 @@ def refresh_timeframes(
     asof: str | None,
     shard_count: int = 1,
     shard_index: int = 0,
+    n_target_trend_confirmation_enabled: bool = False,
 ) -> dict[str, object]:
     """Materialize all chart periods, skipping unchanged data versions."""
 
@@ -352,7 +377,7 @@ def refresh_timeframes(
     failed: list[dict[str, str]] = []
     for symbol in scopes:
         try:
-            result = service.precompute(source, symbol, selected_asof)
+            result = service.precompute(source, symbol, selected_asof, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
             published += len(result["published"])
             unchanged += len(result["unchanged"])
         except (ValueError, RuntimeError, OSError) as exc:
@@ -420,41 +445,45 @@ def main() -> None:
                 )
                 while True:
                     try:
-                        result = (
-                            refresh_structures(
-                                infrastructure,
-                                repository,
-                                run=args.structure_run,
-                                variant=args.structure_variant,
-                                asof=args.structure_asof,
+                        for n_target_enabled in _n_target_modes(args.n_target_trend_confirmation_enabled):
+                            result = (
+                                refresh_structures(
+                                    infrastructure,
+                                    repository,
+                                    run=args.structure_run,
+                                    variant=args.structure_variant,
+                                    asof=args.structure_asof,
+                                    n_target_trend_confirmation_enabled=n_target_enabled,
+                                )
+                                if args.refresh_structures or args.watch_structures
+                                else refresh_signals(
+                                    infrastructure,
+                                    repository,
+                                    run=args.structure_run,
+                                    variant=args.structure_variant,
+                                    scenario=args.signal_scenario,
+                                    source=args.signal_source,
+                                    symbols=args.signal_symbol,
+                                    start=args.signal_start,
+                                    asof=args.structure_asof,
+                                    family=args.signal_family,
+                                    shard_count=args.signal_shard_count,
+                                    shard_index=args.signal_shard_index,
+                                    n_target_trend_confirmation_enabled=n_target_enabled,
+                                )
+                                if args.refresh_signals or args.watch_signals
+                                else refresh_timeframes(
+                                    infrastructure,
+                                    repository,
+                                    source=args.timeframe_source,
+                                    symbols=args.timeframe_symbol,
+                                    asof=args.timeframe_asof,
+                                    shard_count=args.timeframe_shard_count,
+                                    shard_index=args.timeframe_shard_index,
+                                    n_target_trend_confirmation_enabled=n_target_enabled,
+                                )
                             )
-                            if args.refresh_structures or args.watch_structures
-                            else refresh_signals(
-                                infrastructure,
-                                repository,
-                                run=args.structure_run,
-                                variant=args.structure_variant,
-                                scenario=args.signal_scenario,
-                                source=args.signal_source,
-                                symbols=args.signal_symbol,
-                                start=args.signal_start,
-                                asof=args.structure_asof,
-                                family=args.signal_family,
-                                shard_count=args.signal_shard_count,
-                                shard_index=args.signal_shard_index,
-                            )
-                            if args.refresh_signals or args.watch_signals
-                            else refresh_timeframes(
-                                infrastructure,
-                                repository,
-                                source=args.timeframe_source,
-                                symbols=args.timeframe_symbol,
-                                asof=args.timeframe_asof,
-                                shard_count=args.timeframe_shard_count,
-                                shard_index=args.timeframe_shard_index,
-                            )
-                        )
-                        print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
+                            print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
                     except (ValueError, RuntimeError, OSError):
                         if args.refresh_structures or args.refresh_signals or args.refresh_timeframes:
                             raise
