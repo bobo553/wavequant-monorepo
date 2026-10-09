@@ -112,7 +112,7 @@ class TrendPrimitiveTests(unittest.TestCase):
     def test_figure_008_keys_cover_all_four_named_mappings(self) -> None:
         labels = ['L1', 'H1', 'L0', 'H2', 'L2', 'H3', 'L3', 'H4', 'L4',
                   'H0', 'L5', 'H5', 'L6', 'H6', 'L7', 'H7', 'L8']
-        prices = [20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 36, 42, 30, 36, 24, 31, 26]
+        prices = [20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 38, 42, 32, 36, 24, 29, 26]
         points = [
             _point(index, PointKind.LOW if label.startswith('L') else PointKind.HIGH, price)
             for index, (label, price) in enumerate(zip(labels, prices))
@@ -278,6 +278,7 @@ class TrendDefinitionSignalTests(unittest.TestCase):
         for data, pivots in ((bars, points), _mirror(bars, points)):
             transition = _transition(data, pivots, end=15)
             self.assertIsNone(transition.suspicion_index)
+            self.assertIsNone(transition.formation_name)
             signals = observe_trend_definition_signals(transition)
             self.assertTrue(signals.flip_to_bull or signals.flip_to_bear)
             self.assertFalse(signals.head_formed)
