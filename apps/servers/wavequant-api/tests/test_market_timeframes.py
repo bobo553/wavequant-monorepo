@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import date
 import unittest
+from unittest.mock import patch
 
 from wavequant_api.application.market_timeframes import MarketTimeframeService
 from wavequant_api.infrastructure import ResearchRunRepository
@@ -64,6 +66,17 @@ class FakeDailyRepository:
 
     def theory(self, source: str, symbol: str, asof: str) -> dict[str, object]:
         return {"asof": asof, "data_source": source, "symbol": symbol, "computed_from": "daily"}
+
+
+class FakeTimeframeCache:
+    def __init__(self) -> None:
+        self.values: dict[str, object] = {}
+
+    def get_json(self, key: str) -> object | None:
+        return self.values.get(key)
+
+    def set_json(self, key: str, value: object, *, ttl_seconds: int | None = None) -> None:
+        self.values[key] = value
 
 
 class MarketTimeframeServiceTests(unittest.TestCase):
@@ -142,6 +155,51 @@ class MarketTimeframeServiceTests(unittest.TestCase):
         self.assertEqual(bundle["view"]["timeframe"], "3mo")
         self.assertEqual(bundle["theory"]["data_version"], bundle["data_version"])
         self.assertEqual(bundle["cache_state"], "precomputed")
+
+    def test_algorithm_version_changes_with_an_internal_core_rule_without_outer_function_changes(self) -> None:
+        engine_path = "wavequant.interfaces.research_tools.tdx_backtest.TdxBacktester._engine_hashes"
+        with patch(engine_path, return_value={"domain/market_structure/trend_publication.py": "a" * 64}):
+            previous = MarketTimeframeService(FakeDailyRepository()).algorithm_version
+        with patch(engine_path, return_value={"domain/market_structure/trend_publication.py": "b" * 64}):
+            current = MarketTimeframeService(FakeDailyRepository()).algorithm_version
+            repeated = MarketTimeframeService(FakeDailyRepository()).algorithm_version
+        self.assertNotEqual(previous, current)
+        self.assertEqual(current, repeated)
+
+    def test_core_rule_change_replaces_all_stored_timeframes_without_changing_market_data(self) -> None:
+        snapshots = ResearchRunRepository(create_engine("sqlite+pysqlite:///:memory:"))
+        self.addCleanup(snapshots.close)
+        snapshots.initialize()
+        engine_path = "wavequant.interfaces.research_tools.tdx_backtest.TdxBacktester._engine_hashes"
+        repository = FakeDailyRepository()
+        cache = FakeTimeframeCache()
+        previous: dict[tuple[str, str], dict[str, object]] = {}
+        with patch(engine_path, return_value={"domain/market_structure/trend_publication.py": "a" * 64}):
+            old = MarketTimeframeService(repository, snapshots=snapshots, cache=cache)
+            for source in ("akshare", "tdx"):
+                old.precompute(source, "sz.000678", "2026-04-01")
+                for timeframe in ("1d", "1w", "1mo", "3mo", "1y"):
+                    previous[source, timeframe] = old.bundle(
+                        source, "sz.000678", "2026-04-01", timeframe, compute_if_missing=False
+                    )
+        old_cache = deepcopy(cache.values)
+        self.assertEqual(len(old_cache), 10)
+        with patch(engine_path, return_value={"domain/market_structure/trend_publication.py": "b" * 64}):
+            current = MarketTimeframeService(repository, snapshots=snapshots, cache=cache)
+            for (source, timeframe), stored in previous.items():
+                with self.subTest(source=source, timeframe=timeframe):
+                    with self.assertRaises(LookupError):
+                        current.bundle(source, "sz.000678", "2026-04-01", timeframe, compute_if_missing=False)
+                    rebuilt = current.bundle(source, "sz.000678", "2026-04-01", timeframe)
+                    self.assertEqual(stored["data_version"], rebuilt["data_version"])
+                    self.assertNotEqual(stored["algorithm_version"], rebuilt["algorithm_version"])
+                    self.assertNotEqual(stored["snapshot_id"], rebuilt["snapshot_id"])
+                    self.assertEqual(current.bundle(source, "sz.000678", "2026-04-01", timeframe)["snapshot_id"],
+                                     rebuilt["snapshot_id"])
+                    self.assertEqual(old.bundle(source, "sz.000678", "2026-04-01", timeframe)["snapshot_id"],
+                                     stored["snapshot_id"])
+        self.assertEqual(len(cache.values), 20)
+        self.assertTrue(all(cache.values[key] == value for key, value in old_cache.items()))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,63 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-303",
+            "name": "market-timeframe-core-dependency-cache-invalidation",
+            "title": "行情周期快照完整算法依赖失效",
+            "status": "done",
+            "dependencies": ["MONOREPO-302"],
+            "description": "补齐AkShare实际图表周期快照对Core内部规则的版本依赖，避免直接理论已修正而SQL/Redis/IndexedDB旧快照仍合法返回7月16日低点。",
+            "scope": "API行情周期算法指纹、持久化与条件请求回归；Web缓存链定向验证",
+            "acceptanceCriteria": [
+                "Core内部规则变化而外层函数不变时也产生新周期算法版本和ETag",
+                "旧SQL/Redis快照不当作当前版本，按请求重算；新版本重复访问仍复用",
+                "实际AkShare market-timeframe接口返回2018-07-11/4.84，旧ETag请求200且更新后304",
+                "覆盖TDX/AkShare与五种周期、浏览器缓存替换及实际绘图输入，保留全部旧功能对象与256原失败"
+            ],
+            "verification": [
+                {
+                    "command": "GET /api/akshare-theory and /api/market-timeframe (before fix)",
+                    "status": "passed",
+                    "summary": "复现真实遗漏：最新AkShare直接理论为7/11低4.84，但图表周期接口旧预计算版本fd8b6c7e返回7/16低5.00、snapshot b09a7f7c；已保存真实旧快照用于条件请求及绘图验证。"
+                },
+                {
+                    "command": "pytest tests/test_market_timeframes.py tests/test_server.py -q",
+                    "status": "passed",
+                    "summary": "43通过/20子用例。新版本跟踪完整Core指纹，保持API聚合可执行指纹；初始复现1失败及10分源/周期子用例失败，修复后8周期项及10子用例通过。补充SQL+热缓存重建/旧快照隔离/重复复用后再跑8项全部通过；不删除历史快照。"
+                },
+                {
+                    "command": "mypy --no-incremental --strict src/wavequant_api/infrastructure src/wavequant_api/application src/wavequant_api/cli.py; mypy --strict market_timeframes.py test_market_timeframes.py",
+                    "status": "passed",
+                    "summary": "配置正确的API专属环境及PYTHONPATH=src，冷缓存11源码strict、修改源码/测试2文件strict通过。初次runner环境导致76条server.py导入错误；main冷缓存11通过，校正任务导入路径后11冷缓存通过，没有降低strict或修改检查配置。"
+                },
+                {
+                    "command": "node --test tests/catalog-cache.test.mjs tests/lecture-overlay.test.mjs tests/level-one-wave-endpoint.test.mjs",
+                    "status": "passed",
+                    "summary": "41前端缓存/绘图/端点项通过；即使行情不变、路径ID不变，算法及ETag更新会替换旧7/16低为7/11低，旧数据不被原地修改。"
+                },
+                {
+                    "command": "pytest packages/wavequant-core/tests/test_unconfirmed_wave_origin.py -q",
+                    "status": "passed",
+                    "summary": "16共享发布规则及逐日前缀项通过，Core行情/策略源码未再次修改，V107确认时间和两条确认门禁保持。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api build",
+                    "status": "passed",
+                    "summary": "API wheel/sdist构建成功；使用既有专属依赖，无新增依赖。"
+                },
+                {
+                    "command": "full Core/Web/API suites; browser E2E; repeated Web production build",
+                    "status": "not-run",
+                    "summary": "遵循用户开发节奏，只做直接相关回归；未要求浏览器，Web生产源码未改，不重复其构建。外部分钟及其他股票全账户差异待验证。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-api typecheck/build; wheel byte check; pnpm harness:check; prettier --check; git diff --check",
+                    "status": "passed",
+                    "summary": "配置专属API解释器及任务src导入路径后，标准pnpm typecheck 11源码通过；API sdist/wheel重新构建并核验修改模块字节通过。Harness300功能/18 Node/2 Python/32规则、5文件Prettier及git diff检查通过；Web测试mjs按既有配置被ESLint忽略，未称其通过。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-302",
             "name": "level-one-whole-wave-extreme-origin",
             "title": "一级趋势整段极值与确认时间分离",
