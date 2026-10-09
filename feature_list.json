@@ -1,8 +1,71 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-256",
+    "activeFeature": "MONOREPO-309",
     "features": [
+        {
+            "id": "MONOREPO-309",
+            "name": "active-wave-extreme-before-local-confirmation",
+            "title": "整波极值与局部确认时间分离",
+            "status": "in-progress",
+            "dependencies": ["MONOREPO-302", "MONOREPO-304", "MONOREPO-305"],
+            "description": "二级上涨已于2022-06-20确认，7/18局部证书8/23可知不能排除同波8/2高10.66或改连2023/7/4低高9.77。增量共享方向状态依据真实反向确认切换整波。",
+            "scope": "Core一二三级共用发布状态、整波极值和因果证书，Web源摘要及真实AkShare绘图缓存验证",
+            "acceptanceCriteria": [
+                "真实AkShare二级整波从4/27低4.06连接8/2高10.66，后续下降从8/2出发，不改成2023/7/4高9.77",
+                "继续使用6/20原确认，不借8/23局部未来证书；7/18未确认的二级下降不能终止原上涨",
+                "无原整波证书、原点失守或已获合法反向确认时不得继承旧波；高低镜像及等值稳定",
+                "所有等级使用同一增量方向状态，避免每个候选重复注解完整历史；不硬编码股票或日期",
+                "保留既有2018低点、2019未确认回调和2024三级单线规则；最新main原305功能及256活动失败逐字段恢复"
+            ],
+            "verification": [
+                {
+                    "command": "pytest 15 focused trend/wave/history/cache/entry files -q",
+                    "status": "passed",
+                    "summary": "357项及64子用例通过，237.52秒；97新增用例覆盖三个等级、高低镜像、真实发布前缀、先后证书、等值稳定、合法私有反向及未知/未来可知日期。旧实现新回归先复现9失败/6通过，修正后通过。"
+                },
+                {
+                    "command": "pytest 14 selected real secondary pullback/reclaim and 2018 origin nodes -q",
+                    "status": "not-run",
+                    "summary": "14项补充真实测试仍在运行；当前2022的8项通过，2025及2018对照待完成。该组不写成已通过。"
+                },
+                {
+                    "command": "wavequant-306-full-history.py / actual 6822-bar AkShare snapshot",
+                    "status": "passed",
+                    "summary": "全部私有structure_strokes价格/日期/ordinal/可知时间与V109逐项相同；正式I286/II71/III15。原二级4/27低4.06→8/2高10.66沿6/20证书，8/2→2023/4/26低4.77在4/26独立转空；4/26→7/4高9.77属6/28新证书，不删合法后波高点。"
+                },
+                {
+                    "command": "strict mypy publisher; 5 impacted Core sources; pnpm Core/API typecheck",
+                    "status": "passed",
+                    "summary": "发布模块1 strict、5相关源码、Core4/API11配置strict通过。增量状态及最近低点引用移除重复完整前缀注解，不降低类型要求。"
+                },
+                {
+                    "command": "Node overlay/leg/continuation/break tests; topology Vitest; Web typecheck/lint",
+                    "status": "passed",
+                    "summary": "73生产绘图项、18拓扑项通过；Web类型及lint零错6既有环境变量warning。93源指纹4c989126940bf37ab60457c6ca877630f0dbb6f7b882c72b0986daaca5baf68a。"
+                },
+                {
+                    "command": "Core sdist/wheel build and module bytes; clean-wheel actual history smoke; Web production build",
+                    "status": "passed",
+                    "summary": "Core包及6模块规范换行字节核验通过；D盘干净venv安装声明依赖后真实6822日线烟测通过。首次no-deps缺既有tzdata，按pyproject声明安装后修正；未新增依赖。1107文件逐字节短路径副本、Node24 Webpack生产构建通过。"
+                },
+                {
+                    "command": "full Core/Web suites; browser/Playwright; external minute/full-account differences",
+                    "status": "not-run",
+                    "summary": "按开发验证节奏只运行相关定向检查；用户未要求浏览器E2E。完整套件、外部分钟及全部账户差异留待独立验证，不记为通过。"
+                },
+                {
+                    "command": "existing Web3003/API8765 persistent SQL integration completion",
+                    "status": "not-run",
+                    "summary": "只读13306测试仍无MySQL greeting，原持久链路受既有Docker/数据库环境阻塞。独立实例关闭SQL、复用同一main生产handler和真实AkShare核验，不代表原持久链路通过；未修改共享配置或擅自重启Docker。"
+                },
+                {
+                    "command": "pnpm harness:check; targeted Prettier; git diff --check/review",
+                    "status": "passed",
+                    "summary": "303功能/18 Node/2 Python/32规则通过，相关格式和差异复核通过；提交跳过本地钩子，按流程本地no-ff合并，不自动推送。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-305",
             "name": "confirmed-wave-single-render-owner",
@@ -2375,7 +2438,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",

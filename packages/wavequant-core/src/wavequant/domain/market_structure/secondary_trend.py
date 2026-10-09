@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 from .hierarchical_development import hierarchical_developing_path
 from .lecture_trend import _annotate, _ref
-from .trend_publication import LEG_CONFIRMATION_POLICY, WAVE_DISPLAY_POLICY, annotate_published_legs, confirmed_trend_legs, publish_uptrends
+from .trend_publication import LEG_CONFIRMATION_POLICY, WAVE_DISPLAY_POLICY, confirmed_trend_legs, publish_uptrends
 from .trend_landmarks import (
     bear_bull_alternation_lows,
     bear_to_bull_highs,
@@ -255,7 +255,6 @@ def secondary_trends(level1,bars):
         points=publish_uptrends(candidates,source['points'],bars[:end_index+1],source_level=1)
         if not points:
             continue
-        points=annotate_published_legs(points,source['points'],bars[:end_index+1],source_level=1)
         _annotate(points,bars[0].symbol,dates)
         for p in points:
             levels=p.get('levels'); broken_key=p.get('broken_key')

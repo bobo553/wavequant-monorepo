@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from .hierarchical_development import hierarchical_developing_path
 from .lecture_trend import _annotate
 from .secondary_trend import _candidate_structural_reversals
-from .trend_publication import LEG_CONFIRMATION_POLICY, WAVE_DISPLAY_POLICY, annotate_published_legs, confirmed_trend_legs, publish_uptrends
+from .trend_publication import LEG_CONFIRMATION_POLICY, WAVE_DISPLAY_POLICY, confirmed_trend_legs, publish_uptrends
 from .trend_landmarks import (
     bear_bull_alternation_lows,
     bear_to_bull_highs,
@@ -35,7 +35,6 @@ def tertiary_trends(level2,bars):
         points=publish_uptrends(candidates,source['points'],bars[:end_index+1],source_level=2)
         if not points:
             continue
-        points=annotate_published_legs(points,source['points'],bars[:end_index+1],source_level=2)
         _annotate(points,bars[0].symbol,dates)
         for p in points:
             levels=p.get('levels'); broken_key=p.get('broken_key')

@@ -86,72 +86,118 @@ def _same_origin(proof: Mapping[str, object], point: Mapping[str, object]) -> bo
     )
 
 
-def annotate_published_legs(
-    points: Sequence[Mapping[str, object]], source: Sequence[Mapping[str, object]], bars: Sequence[Bar],
-    *, source_level: int,
-) -> list[dict[str, object]]:
-    """A vertex's outgoing proof cannot authorize its incoming opposite leg.
+def _known_leg_proof(
+    proof: object, point: Mapping[str, object], direction: str, origin: Mapping[str, object],
+) -> bool:
+    trigger = proof.get('confirmed_by') if isinstance(proof, Mapping) else None
+    return (isinstance(proof, Mapping) and isinstance(trigger, Mapping)
+            and type(trigger.get('index')) is int and cast(int, point['index']) >= cast(int, trigger['index'])
+            and proof.get('direction') == direction and _same_origin(proof, origin)
+            and _later(_moment(proof), _moment(point)) == _moment(point))
 
-    Keep independently published anchors for pressure, measurement and legal
-    rising backgrounds. Certify each displayed H-to-L leg against its frozen
-    preceding public low or a complete lower-level bearish cycle. The cutoff
-    is the endpoint's own publication session, never the later history tail.
-    Missing market/source evidence fails closed. Reuse one parsing context at
-    a time so historical charts do not retain a context for every endpoint.
+
+class _PublishedTrendState:
+    """Share causal direction tracking before and after a candidate is exposed.
+
+    A local proof does not reset an active wave. A real opposite proof does,
+    including on a private candidate lacking permission for its next up leg.
+    Retain only the current parsing context, proof and extreme.
     """
-    result = [dict(point) for point in points]
-    sessions = {session_date(bar): index for index, bar in enumerate(bars)}
-    position_field = 'source_turn_position' if source_level == 0 else f'source_level{source_level}_position'
-    context: ConfirmationContext | None = None
-    active: Mapping[str, object] | None = None
-    extreme: Mapping[str, object] | None = None
-    for offset in range(1, len(result)):
-        previous, point = result[offset - 1], result[offset]
+
+    def __init__(self, source: Sequence[Mapping[str, object]], bars: Sequence[Bar], source_level: int) -> None:
+        self.source = source
+        self.bars = bars
+        self.sessions = {session_date(bar): index for index, bar in enumerate(bars)}
+        self.position_field = 'source_turn_position' if source_level == 0 else f'source_level{source_level}_position'
+        self.context: ConfirmationContext | None = None
+        self.active: Mapping[str, object] | None = None
+        self.extreme: Mapping[str, object] | None = None
+
+    def continuation(self, point: Mapping[str, object], direction: str) -> Mapping[str, object] | None:
+        known = _moment(point)
+        cutoff = self.sessions.get(known, -1) if isinstance(known, str) else known
+        if not 0 <= cast(int, point['index']) <= cutoff < len(self.bars):
+            return None
+        active = self.active
+        if active is None or active['direction'] != direction or not _wave_holds(active, self.bars, point):
+            return None
+        position = point.get(self.position_field)
+        if (type(position) is not int or not 0 <= position < len(self.source)
+                or not _same_origin(dict(origin=self.source[position]), point)):
+            return None
+        source_point = self.source[position]
+        if (source_point.get('state') in ('seed', 'developing')
+                or _later(_moment(source_point), _moment(point)) != _moment(point)):
+            return None
+        origin = cast(Mapping[str, object], active.get('wave_origin', active['origin']))
+        return active if _known_leg_proof(active, point, direction, origin) else None
+
+    def annotate(
+        self, point: dict[str, object], previous: Mapping[str, object], key: Mapping[str, object] | None,
+    ) -> None:
         direction = 'up' if previous['kind'] == 'L' and point['kind'] == 'H' else 'down'
         point['incoming_trend_state'] = 'unconfirmed'
         proof = point.get('incoming_trend_confirmation') if direction == 'up' else None
         origin: Mapping[str, object] = previous
         if direction == 'down':
             point.pop('incoming_trend_confirmation', None)
-            position = origin.get(position_field)
+            position = origin.get(self.position_field)
             known = _moment(point)
-            cutoff = sessions.get(known, -1) if isinstance(known, str) else known
-            if (bars and previous['kind'] == 'H' and point['kind'] == 'L'
-                    and type(position) is int and 0 <= position < len(source) and 0 <= cutoff < len(bars)
+            cutoff = self.sessions.get(known, -1) if isinstance(known, str) else known
+            if (self.bars and previous['kind'] == 'H' and point['kind'] == 'L'
+                    and type(position) is int and 0 <= position < len(self.source) and 0 <= cutoff < len(self.bars)
                     and all(origin.get(field, 0 if field == 'ordinal' else None)
-                            == source[position].get(field, 0 if field == 'ordinal' else None)
+                            == self.source[position].get(field, 0 if field == 'ordinal' else None)
                             for field in ('index', 'ordinal', 'kind', 'value'))):
-                key = next((item for item in reversed(result[:offset - 1]) if item['kind'] == 'L'), None)
-                if context is None or context.end_index != cutoff:
-                    context = prepare_confirmation_context(source, bars, cutoff)
-                proof = qualify_downtrend(source, source[position], position, key, bars, cutoff, context=context)
-        trigger = proof.get('confirmed_by') if isinstance(proof, Mapping) else None
-        if (isinstance(proof, Mapping) and isinstance(trigger, Mapping)
-                and type(trigger.get('index')) is int and cast(int, point['index']) >= cast(int, trigger['index'])
-                and proof.get('direction') == direction and _same_origin(proof, origin)
-                and _later(_moment(proof), _moment(point)) == _moment(point)):
+                if self.context is None or self.context.end_index != cutoff:
+                    self.context = prepare_confirmation_context(self.source, self.bars, cutoff)
+                proof = qualify_downtrend(self.source, self.source[position], position, key, self.bars,
+                                          cutoff, context=self.context)
+        if not _known_leg_proof(proof, point, direction, origin):
+            continued = self.continuation(point, direction)
+            if continued is not None:
+                proof = continued
+                origin = cast(Mapping[str, object], continued.get('wave_origin', continued['origin']))
+        if isinstance(proof, Mapping) and _known_leg_proof(proof, point, direction, origin):
+            active, extreme = self.active, self.extreme
             if direction == 'down' and active is not None and active['direction'] == 'up' and extreme is not None:
-                wave_position = extreme.get(position_field)
-                if type(wave_position) is int and 0 <= wave_position < len(source):
-                    wave_origin = source[wave_position]
+                wave_position = extreme.get(self.position_field)
+                if type(wave_position) is int and 0 <= wave_position < len(self.source):
+                    wave_origin = self.source[wave_position]
                     if (not _same_origin(dict(origin=extreme), origin) and _same_origin(dict(origin=wave_origin), extreme)
                             and _later(_moment(wave_origin), _moment(proof)) == _moment(proof)
-                            and _wave_holds(dict(proof, wave_origin=wave_origin), bars, cast(Mapping[str, object], proof['confirmed_by']))):
+                            and _wave_holds(dict(proof, wave_origin=wave_origin), self.bars,
+                                            cast(Mapping[str, object], proof['confirmed_by']))):
                         proof = dict(proof, wave_origin={field: wave_origin[field] for field in
                                      ('index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'label') if field in wave_origin})
             point['incoming_trend_confirmation'] = dict(proof)
             point['incoming_trend_state'] = 'confirmed'
-            continued = active is not None and active['direction'] == direction and _wave_holds(active, bars, point)
-            if not continued:
-                active = proof
-                extreme = point
+            same_wave = active is not None and active['direction'] == direction and _wave_holds(active, self.bars, point)
+            if not same_wave:
+                self.active = proof
+                self.extreme = point
             elif extreme is not None and (cast(float, point['value']) > cast(float, extreme['value'])
                                           if direction == 'up' else cast(float, point['value']) < cast(float, extreme['value'])):
-                extreme = point
+                self.extreme = point
         else:
             point.pop('incoming_trend_confirmation', None)
-        if active is not None:
-            point['active_trend_confirmation'] = dict(active)
+        if self.active is not None:
+            point['active_trend_confirmation'] = dict(self.active)
+
+
+def annotate_published_legs(
+    points: Sequence[Mapping[str, object]], source: Sequence[Mapping[str, object]], bars: Sequence[Bar],
+    *, source_level: int,
+) -> list[dict[str, object]]:
+    """Certify incoming legs at their own publication cutoff, preserving the active wave."""
+    result = [dict(point) for point in points]
+    state = _PublishedTrendState(source, bars, source_level)
+    last_low: Mapping[str, object] | None = None
+    for offset in range(1, len(result)):
+        previous = result[offset - 1]
+        state.annotate(result[offset], previous, last_low)
+        if previous['kind'] == 'L':
+            last_low = previous
     return result
 
 
@@ -211,8 +257,10 @@ def publish_uptrends(
 
     A first confirmed descending H supplies the initial frozen pressure key.
     It grants no rising line. A rejected L cannot expose its following H as a
-    completed rising wave. A local candidate H preceding the actual proof
-    cannot end the whole impulse; retain the original low until a real peak.
+    completed rising wave. The first certificate cannot authorize a preceding
+    peak; a still-active earlier certificate can preserve its own whole-wave
+    peak regardless of a later local certificate. Qualify reverse candidates
+    independently of permission for their subsequent rising leg.
     Rejected rising fragments retain their held whole-wave floor. A later
     legal local certificate grants permission without moving that price anchor
     to its higher B. The certificate keeps its own origin and dates; wave_origin
@@ -223,6 +271,8 @@ def publish_uptrends(
     pressure: Mapping[str, object] | None = None
     pending_origin: Mapping[str, object] | None = None
     context: ConfirmationContext | None = None
+    state = _PublishedTrendState(source, bars, source_level)
+    last_low: Mapping[str, object] | None = None
     market = bars or None
     end_index = len(bars) - 1 if bars else max(
         (value for item in source for value in (item['index'],item.get('available_at')) if type(value) is int), default=-1)
@@ -234,6 +284,14 @@ def publish_uptrends(
             # of whether its preceding rising leg was qualified for display.
             pressure = candidate
             if result and result[-1]['kind'] == 'H':
+                continued = state.continuation(point, 'up')
+                if (continued is not None and len(result) > 1
+                        and cast(float, point['value']) > cast(float, result[-1]['value'])):
+                    point['available_at'] = _later(_moment(point), _moment(result[-1]))
+                    point['incoming_trend_confirmation'] = dict(continued)
+                    state.annotate(point, result[-2], last_low)
+                    result[-1] = point
+                    pending_origin = None
                 continue
             if result:
                 proof = result[-1].get('trend_confirmation')
@@ -242,10 +300,14 @@ def publish_uptrends(
                     if isinstance(trigger, Mapping):
                         trigger_index, point_index = trigger.get('index'), point.get('index')
                         if isinstance(trigger_index, int) and isinstance(point_index, int) and point_index < trigger_index:
-                            continue
+                            continued = state.continuation(point, 'up')
+                            if continued is None:
+                                continue
+                            proof = continued
                 point['available_at'] = _later(_moment(point), _moment(result[-1]))
                 if isinstance(proof, Mapping):
                     point['incoming_trend_confirmation'] = dict(proof)
+                state.annotate(point, result[-1], last_low)
             result.append(point)
             pending_origin = None
             continue
@@ -268,6 +330,8 @@ def publish_uptrends(
                 pending_origin = point
         confirmation = qualify_uptrend(source, origin, position, key, market, end_index, context=context)
         if confirmation is None:
+            if result and result[-1]['kind'] == 'H':
+                state.annotate(point, result[-1], last_low)
             continue
         candidate_known = _moment(point)
         trigger = cast(Mapping[str, object], confirmation['confirmed_by'])
@@ -281,12 +345,17 @@ def publish_uptrends(
                 if field in source[wave_position]
             })
         point['available_at'] = _later(_later(_moment(point), candidate_known), _moment(confirmation))
+        if result:
+            point['available_at'] = _later(_moment(point), _moment(result[-1]))
         point['structural_confirmation_rule'] = point['confirmation_rule']
         point['confirmation_rule'] = confirmation['confirmation_rule']
         point['trend_confirmation'] = confirmation
         point['trend_confirmation_route'] = (
             'lower_level_break_alternation_turn' if confirmation.get('alternation_low') is not None else 'same_level_key_break'
         )
+        if result:
+            state.annotate(point, result[-1], last_low)
         result.append(point)
+        last_low = point
         pending_origin = None
     return result
