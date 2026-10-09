@@ -34,6 +34,8 @@ API 直接依赖 `wavequant-core[akshare,tdx]`，完整安装会包含现场复�
 
 图表统一读取 `GET /api/market-timeframe?source=akshare&symbol=sh.600519&asof=YYYY-MM-DD&timeframe=1d`；原有 view/theory 路由保留兼容。周期支持 `1d`、`1w`、`1mo`、`3mo`、`1y`。周/月/季/年由服务器从规范日线按自然周期聚合，使用首开、最高、最低、末收、成交量求和，并以周期内最后一个实际交易日作为时间。统一接口把 K 线与同周期画线作为同一版本 bundle 返回，并支持 ETag 条件请求。正常行情由 Worker 提前生成；部署过渡期或历史回放缺少特定截止日时，API 会在服务器端计算并原子补写，浏览器仍只消费完整快照，不自行计算或混配画线。信号查询仍使用只读 `GET /api/structure-signals` 与 `GET /api/buy-signals`。
 
+周期快照的算法版本同时包含完整 Core 源码指纹和 API 周期聚合逻辑。内部趋势归并、确认门禁或发布规则变化时，即使外层绘图函数和行情 K 线都没有变化，也必须生成新版本：旧 SQL/Redis 快照不再命中，所请求的截面重新计算，新 ETag 使浏览器替换旧画线。只有当前完整算法版本及行情版本一致时才返回 `304`，不能用旧画线搭配新行情。
+
 ## MySQL 与 Redis
 
 复制本地配置并替换两个密码占位符：

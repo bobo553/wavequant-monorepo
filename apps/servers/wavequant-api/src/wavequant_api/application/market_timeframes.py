@@ -16,13 +16,14 @@ import json
 import logging
 from threading import Lock
 from types import CodeType
-from typing import Any, Protocol, Sequence, cast
+from typing import Any, Callable, Protocol, Sequence, cast
 
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing  # type: ignore[import-untyped]
 from wavequant.domain.market_structure.lecture_trend import reversal_trends  # type: ignore[import-untyped]
 from wavequant.domain.market_structure.secondary_trend import secondary_trends  # type: ignore[import-untyped]
 from wavequant.domain.market_structure.tertiary_trend import tertiary_trends  # type: ignore[import-untyped]
 from wavequant.domain.models.model import Bar  # type: ignore[import-untyped]
+from wavequant.interfaces.research_tools.tdx_backtest import TdxBacktester  # type: ignore[import-untyped]
 
 
 TIMEFRAME_LABELS = {
@@ -34,7 +35,7 @@ TIMEFRAME_LABELS = {
 }
 TIMEFRAME_SNAPSHOT_SCHEMA_VERSION = 1
 TIMEFRAME_ALGORITHM_VERSION_SEED = (
-    b"wavequant-market-timeframes:v3:calendar-aggregation+lecture-drawing+invalidated-bull-flips"
+    b"wavequant-market-timeframes:v4:calendar-aggregation+complete-core-engine"
 )
 
 
@@ -92,13 +93,17 @@ class MarketTimeframeService:
 
     @classmethod
     def _algorithm_digest(cls) -> str:
-        """Bind snapshots to executable aggregation and drawing logic."""
+        """Bind snapshots to API aggregation and the complete canonical Core revision."""
 
         digest = hashlib.sha256(TIMEFRAME_ALGORITHM_VERSION_SEED)
+        # The public drawing functions delegate to shared reducers and proof
+        # validators. Their own bytecode can stay unchanged after a rule fix.
+        # Reuse Core's full revision so SQL, Redis and browser ETags all expire.
+        engine_hashes = cast(Callable[[], dict[str, str]], TdxBacktester._engine_hashes)()
+        digest.update(json.dumps(engine_hashes, sort_keys=True, separators=(",", ":")).encode())
 
         def update_code(code: CodeType) -> None:
-            # Hash executable semantics without filenames or line numbers, so
-            # unrelated formatting does not invalidate the entire catalog.
+            # API filenames and line offsets do not change executable semantics.
             digest.update(code.co_code)
             digest.update(repr(code.co_names).encode())
             for constant in code.co_consts:
