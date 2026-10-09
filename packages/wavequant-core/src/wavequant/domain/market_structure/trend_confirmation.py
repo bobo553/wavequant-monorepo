@@ -274,5 +274,5 @@ def qualify_downtrend(
     same_level_key: Mapping[str, object] | None, bars: Sequence[Bar] | None, end_index: int, *,
     context: ConfirmationContext | None = None,
 ) -> dict[str, object] | None:
-    """Mirror the same certificate for developing downward direction only."""
+    """Mirror the same two routes for independently qualified downward legs."""
     return _qualify(source, origin, source_position, same_level_key, bars, end_index, up=False, context=context)

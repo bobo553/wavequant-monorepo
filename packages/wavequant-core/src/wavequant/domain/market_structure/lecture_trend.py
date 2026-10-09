@@ -362,7 +362,7 @@ def reversal_trends(drawing, bars):
     # lose a known pressure anchor or the whole-wave low across its boundary.
     candidates=_connect_reversal_strokes(result,source_strokes)
     result=[]
-    from .trend_publication import publish_uptrends
+    from .trend_publication import LEG_CONFIRMATION_POLICY, annotate_published_legs, confirmed_trend_legs, publish_uptrends
     for stroke in candidates:
         ancestors=set(stroke['source_paths'])
         source_points=sorted((dict(point,kind=source_kinds.get((source['id'],point['index'],point['ordinal']),point['kind']))
@@ -374,7 +374,9 @@ def reversal_trends(drawing, bars):
         candidate_strokes.append(dict(stroke,points=points))
         published=publish_uptrends(points,source_points,bars,source_level=0)
         if published:
-            result.append(dict(stroke,points=published,confirmation_policy='two_routes_v106'))
+            published=annotate_published_legs(published,source_points,bars,source_level=0)
+            result.append(dict(stroke,points=published,confirmation_policy='two_routes_v106',
+                               leg_confirmation_policy=LEG_CONFIRMATION_POLICY,confirmed_legs=confirmed_trend_legs(published)))
     for stroke in result:
         _annotate(stroke['points'],bars[0].symbol,dates)
     return dict(strokes=result,candidate_strokes=candidate_strokes,structure_strokes=candidate_strokes,

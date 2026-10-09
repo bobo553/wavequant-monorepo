@@ -1,8 +1,66 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-256",
+    "activeFeature": "MONOREPO-304",
     "features": [
+        {
+            "id": "MONOREPO-304",
+            "name": "formal-trend-leg-direction-confirmation",
+            "title": "正式趋势连接段独立方向确认",
+            "status": "in-progress",
+            "dependencies": ["MONOREPO-301", "MONOREPO-302", "MONOREPO-303"],
+            "description": "高点升级、回调方向及整波结束分别确认。各级反向未获独立证书时，同向创新高/低延伸原波；不把后续上涨证明借给此前下降，不凭邻接锚点截断二级上涨。",
+            "scope": "Core三级图表发布、共用连接段方向证明、Web绘制/说明、缓存及真实AkShare周期链",
+            "acceptanceCriteria": [
+                "3/21高点升级保留；3/29两条下降路线均未成立，不画二级下降或另开二级上涨，04/18新高可知后延伸自10/19的整波上涨",
+                "一二三级正式下降段须本级末升低严格跌破，或下级跌破、交替、后续收盘转空；上涨证明不能审批下降段",
+                "方向证书按端点发布时可知行情计算，不提前、不借未来、无行情及错路径/错方向不补线",
+                "保留结构候选、压力测幅、合法上涨背景与既有历史买点，Web绘制直接消费Core方向证书",
+                "真实AkShare周期缓存失效和绘图段验证通过；保留全部原功能及256活动失败记录"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest 13 focused trend/history/cache/entry files",
+                    "status": "passed",
+                    "summary": "242项/64子用例通过；含27项新逐方向及波段延续用例。下降与后续新上涨的两条路线独立转换，真实回放与未来端点边界保持。"
+                },
+                {
+                    "command": "wavequant-304-input-audit.py / actual AkShare 2026-10-08 bundle",
+                    "status": "passed",
+                    "summary": "全历史266一级/65二级/15三级锚点的index/ordinal/kind/value/available_at与main旧快照逐项相同；3/21升级、7/11原低4.84及2022的6.67越5.76依据保留。方向连接独立归并。"
+                },
+                {
+                    "command": "mypy strict trend_publication + 5 impacted sources in Core configuration; pnpm Core/API typecheck",
+                    "status": "passed",
+                    "summary": "新发布门禁1 strict、受影响5源码及Core4/API11配置strict实际通过；修正wave_origin可选引用类型，未降低配置。"
+                },
+                {
+                    "command": "Node --test trend-leg-confirmation/lecture-overlay/trend-break-confirmation; topology Vitest",
+                    "status": "passed",
+                    "summary": "56前端绘图项及17拓扑项通过，覆盖三个等级、双路线下降、反向未知、错路径/序号、未来证据、过早端点、整波延伸及旧数据兼容；93源摘要152af7cd77be。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web typecheck && lint",
+                    "status": "passed",
+                    "summary": "类型通过，lint零错6项既有环境变量warning。"
+                },
+                {
+                    "command": "Core python -m build --no-isolation; wavequant-301-validation.py wheel",
+                    "status": "passed",
+                    "summary": "sdist/wheel构建通过，修改模块逐字节核验通过；无新增依赖。"
+                },
+                {
+                    "command": "1103-file byte-identical short snapshot; pnpm prebuild; next build --webpack",
+                    "status": "passed",
+                    "summary": "Windows短路径复制逐文件核验，Node24生产Webpack编译、类型、静态路由生成通过。"
+                },
+                {
+                    "command": "full Core/Web suites, browser/Playwright and external minute validation",
+                    "status": "not-run",
+                    "reason": "遵循当次定向开发验证节奏；用户未要求浏览器E2E。全套与外部分钟留待独立验证，未记为通过。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-303",
             "name": "market-timeframe-core-dependency-cache-invalidation",
@@ -2244,7 +2302,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
