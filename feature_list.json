@@ -57,6 +57,11 @@
                     "command": "pnpm --filter wavequant-api typecheck/build; wheel byte check; pnpm harness:check; prettier --check; git diff --check",
                     "status": "passed",
                     "summary": "配置专属API解释器及任务src导入路径后，标准pnpm typecheck 11源码通过；API sdist/wheel重新构建并核验修改模块字节通过。Harness300功能/18 Node/2 Python/32规则、5文件Prettier及git diff检查通过；Web测试mjs按既有配置被ESLint忽略，未称其通过。"
+                },
+                {
+                    "command": "node wavequant-303-browser-cache-smoke.mjs (real Web proxy /api/market-timeframe old ETag -> 200 -> 304; IndexedDB loader and actual drawing projection)",
+                    "status": "passed",
+                    "summary": "代码3f93baa已no-ff合并本地main 5165e41。真实Web3003 AkShare周期请求携带旧b09a7f7c ETag返回200，完整浏览器缓存加载器替换旧7/16低5.00为7/11低4.84（8/1发布）；相同行情data_version保持，projectStroke坐标确认为7/11且一级无7/16低；第二次请求304复用新版。新算法6950a82be711、新快照cc20c08e0b77。不是只验证直接theory。未运行浏览器，未推送。"
                 }
             ]
         },
