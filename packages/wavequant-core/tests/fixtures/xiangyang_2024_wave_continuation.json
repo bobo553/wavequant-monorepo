@@ -1,0 +1,985 @@
+{
+    "symbol": "sz.000678",
+    "source": "akshare",
+    "price_basis": "raw_unadjusted",
+    "asof": "2026-10-08",
+    "formal_stroke": {
+        "id": "tertiary-secondary-reversal-continuous-lecture-0-lecture-5808",
+        "source_path": "secondary-reversal-continuous-lecture-0-lecture-5808",
+        "kind": "tertiary",
+        "trend_level": 3,
+        "confirmation_policy": "two_routes_v106",
+        "leg_confirmation_policy": "two_routes_each_direction_v108",
+        "wave_display_policy": "one_connection_per_confirmed_wave_v109",
+        "points": [
+            {
+                "index": 6290,
+                "ordinal": 0,
+                "kind": "L",
+                "value": 3.45,
+                "time": "2024-07-25",
+                "state": "reversal",
+                "available_at": "2025-04-02",
+                "edge_kind": "ordinary",
+                "projection_count": 1,
+                "projection_rank": 0,
+                "source_kind": "L",
+                "source_state": "confirmed",
+                "source_reversal_available_at": "2024-07-26",
+                "wave_direction_before": "down",
+                "wave_direction_after": "up",
+                "confirmation_rule": "strict_same_level_market_key_break",
+                "confirmed_by": {
+                    "index": 6447,
+                    "ordinal": 0,
+                    "time": "2025-03-21",
+                    "kind": "H",
+                    "value": 18.9,
+                    "available_at": "2025-04-02",
+                    "label": "H44"
+                },
+                "source_turn_position": 4228,
+                "confirmed_on_turn": 307,
+                "label": "L7",
+                "reversal": "正反转",
+                "observations": [],
+                "levels": [
+                    {
+                        "name": "二级末跌高",
+                        "price": 9.77
+                    },
+                    {
+                        "name": "L7 的末跌高",
+                        "price": 11.3
+                    }
+                ],
+                "preceding_turn": {
+                    "index": 5020,
+                    "ordinal": 0,
+                    "time": "2019-04-18",
+                    "kind": "H",
+                    "value": 11.3,
+                    "available_at": "2019-09-12",
+                    "label": "H7"
+                },
+                "trend": "高低点不同向或相等",
+                "window_trend": "高低点不同向或相等",
+                "source_label": "L43",
+                "trend_level": 3,
+                "source_level1_available_at": "2024-07-30",
+                "source_level1_position": 547,
+                "confirmed_on_level1": 548,
+                "flip": "翻空为多",
+                "broken_key": {
+                    "index": 6032,
+                    "ordinal": 1,
+                    "time": "2023-07-04",
+                    "kind": "H",
+                    "value": 9.77,
+                    "available_at": "2024-03-01",
+                    "label": "H42"
+                },
+                "source_level2_available_at": "2024-08-15",
+                "source_level2_position": 84,
+                "confirmed_on_level2": 87,
+                "structural_confirmation_rule": "level2_structural_key_break",
+                "trend_confirmation": {
+                    "available_at": "2025-03-11",
+                    "confirmation_rule": "strict_same_level_market_key_break",
+                    "direction": "up",
+                    "broken_key": {
+                        "index": 5810,
+                        "ordinal": 0,
+                        "time": "2022-08-02",
+                        "kind": "H",
+                        "value": 10.66,
+                        "available_at": "2023-05-29",
+                        "label": "H12"
+                    },
+                    "origin": {
+                        "index": 6290,
+                        "ordinal": 0,
+                        "time": "2024-07-25",
+                        "kind": "L",
+                        "value": 3.45,
+                        "available_at": "2024-08-15",
+                        "label": "L43"
+                    },
+                    "confirmed_by": {
+                        "index": 6439,
+                        "ordinal": 0,
+                        "time": "2025-03-11",
+                        "kind": "H",
+                        "value": 11.44,
+                        "available_at": "2025-03-11",
+                        "label": "当前高点"
+                    },
+                    "flip_high": {
+                        "index": 6439,
+                        "ordinal": 0,
+                        "time": "2025-03-11",
+                        "kind": "H",
+                        "value": 11.44,
+                        "available_at": "2025-03-11",
+                        "label": "当前高点"
+                    },
+                    "alternation_low": null
+                },
+                "trend_confirmation_route": "same_level_key_break",
+                "incoming_trend_state": "confirmed",
+                "incoming_trend_confirmation": {
+                    "available_at": "2019-05-06",
+                    "confirmation_rule": "strict_same_level_market_key_break",
+                    "direction": "down",
+                    "broken_key": {
+                        "index": 4090,
+                        "ordinal": 0,
+                        "time": "2015-05-08",
+                        "kind": "L",
+                        "value": 8.81,
+                        "available_at": "2015-06-24",
+                        "label": "L9"
+                    },
+                    "origin": {
+                        "index": 5020,
+                        "ordinal": 0,
+                        "time": "2019-04-18",
+                        "kind": "H",
+                        "value": 11.3,
+                        "available_at": "2019-04-25",
+                        "label": "H36"
+                    },
+                    "confirmed_by": {
+                        "index": 5029,
+                        "ordinal": 0,
+                        "time": "2019-05-06",
+                        "kind": "L",
+                        "value": 8.27,
+                        "available_at": "2019-05-06",
+                        "label": "当前低点"
+                    },
+                    "flip_low": {
+                        "index": 5029,
+                        "ordinal": 0,
+                        "time": "2019-05-06",
+                        "kind": "L",
+                        "value": 8.27,
+                        "available_at": "2019-05-06",
+                        "label": "当前低点"
+                    },
+                    "alternation_high": null
+                },
+                "active_trend_confirmation": {
+                    "available_at": "2019-05-06",
+                    "confirmation_rule": "strict_same_level_market_key_break",
+                    "direction": "down",
+                    "broken_key": {
+                        "index": 4090,
+                        "ordinal": 0,
+                        "time": "2015-05-08",
+                        "kind": "L",
+                        "value": 8.81,
+                        "available_at": "2015-06-24",
+                        "label": "L9"
+                    },
+                    "origin": {
+                        "index": 5020,
+                        "ordinal": 0,
+                        "time": "2019-04-18",
+                        "kind": "H",
+                        "value": 11.3,
+                        "available_at": "2019-04-25",
+                        "label": "H36"
+                    },
+                    "confirmed_by": {
+                        "index": 5029,
+                        "ordinal": 0,
+                        "time": "2019-05-06",
+                        "kind": "L",
+                        "value": 8.27,
+                        "available_at": "2019-05-06",
+                        "label": "当前低点"
+                    },
+                    "flip_low": {
+                        "index": 5029,
+                        "ordinal": 0,
+                        "time": "2019-05-06",
+                        "kind": "L",
+                        "value": 8.27,
+                        "available_at": "2019-05-06",
+                        "label": "当前低点"
+                    },
+                    "alternation_high": null
+                }
+            },
+            {
+                "index": 6447,
+                "ordinal": 0,
+                "kind": "H",
+                "value": 18.9,
+                "time": "2025-03-21",
+                "state": "reversal",
+                "available_at": "2025-04-02",
+                "edge_kind": "teaching",
+                "teaching_path_id": "child-mother-6447",
+                "teaching_ordinal": 3,
+                "projection_count": 1,
+                "projection_rank": 0,
+                "source_kind": "H",
+                "source_state": "confirmed",
+                "source_reversal_available_at": "2025-03-21",
+                "wave_direction_before": "up",
+                "wave_direction_after": "down",
+                "confirmation_rule": "level2_confirmed_high_breaks_known_level3_last_fall_high",
+                "confirmed_by": {
+                    "index": 6447,
+                    "ordinal": 0,
+                    "time": "2025-03-21",
+                    "kind": "H",
+                    "value": 18.9,
+                    "available_at": "2025-04-02",
+                    "label": "H44"
+                },
+                "source_turn_position": 4329,
+                "confirmed_on_turn": 410,
+                "label": "H8",
+                "reversal": "负反转",
+                "observations": [
+                    {
+                        "title": "翻空为多",
+                        "available_at": "2025-04-02",
+                        "basis": "confirmed_polyline_extreme",
+                        "key": {
+                            "index": 877,
+                            "ordinal": 0,
+                            "time": "2000-08-29",
+                            "kind": "H",
+                            "value": 15.55,
+                            "available_at": "2000-09-01",
+                            "label": "H3"
+                        },
+                        "formation": "底部成形",
+                        "confirmed_low": {
+                            "index": 1898,
+                            "ordinal": 0,
+                            "time": "2005-07-11",
+                            "kind": "L",
+                            "value": 2.45,
+                            "available_at": "2007-06-08",
+                            "label": "L3"
+                        }
+                    }
+                ],
+                "levels": [
+                    {
+                        "name": "二级末跌高",
+                        "price": 10.66
+                    },
+                    {
+                        "name": "H8 的末升低",
+                        "price": 3.45
+                    },
+                    {
+                        "name": "转换依据：末跌高",
+                        "price": 15.55
+                    }
+                ],
+                "preceding_turn": {
+                    "index": 6290,
+                    "ordinal": 0,
+                    "time": "2024-07-25",
+                    "kind": "L",
+                    "value": 3.45,
+                    "available_at": "2025-04-02",
+                    "label": "L7"
+                },
+                "trend": "高低点不同向或相等",
+                "window_trend": "高低点不同向或相等",
+                "source_label": "H44",
+                "trend_level": 3,
+                "source_level1_available_at": "2025-04-02",
+                "source_level1_position": 564,
+                "confirmed_on_level1": 564,
+                "flip": "三级末跌高突破升级",
+                "broken_key": {
+                    "index": 5810,
+                    "ordinal": 0,
+                    "time": "2022-08-02",
+                    "kind": "H",
+                    "value": 10.66,
+                    "available_at": "2023-05-29",
+                    "label": "H41"
+                },
+                "source_confirmation": {
+                    "index": 6447,
+                    "ordinal": 0,
+                    "time": "2025-03-21",
+                    "kind": "H",
+                    "value": 18.9,
+                    "available_at": "2025-04-02",
+                    "label": "H283"
+                },
+                "source_level2_available_at": "2025-04-02",
+                "source_level2_position": 87,
+                "confirmed_on_level2": 87,
+                "incoming_trend_confirmation": {
+                    "available_at": "2025-03-11",
+                    "confirmation_rule": "strict_same_level_market_key_break",
+                    "direction": "up",
+                    "broken_key": {
+                        "index": 5810,
+                        "ordinal": 0,
+                        "time": "2022-08-02",
+                        "kind": "H",
+                        "value": 10.66,
+                        "available_at": "2023-05-29",
+                        "label": "H12"
+                    },
+                    "origin": {
+                        "index": 6290,
+                        "ordinal": 0,
+                        "time": "2024-07-25",
+                        "kind": "L",
+                        "value": 3.45,
+                        "available_at": "2024-08-15",
+                        "label": "L43"
+                    },
+                    "confirmed_by": {
+                        "index": 6439,
+                        "ordinal": 0,
+                        "time": "2025-03-11",
+                        "kind": "H",
+                        "value": 11.44,
+                        "available_at": "2025-03-11",
+                        "label": "当前高点"
+                    },
+                    "flip_high": {
+                        "index": 6439,
+                        "ordinal": 0,
+                        "time": "2025-03-11",
+                        "kind": "H",
+                        "value": 11.44,
+                        "available_at": "2025-03-11",
+                        "label": "当前高点"
+                    },
+                    "alternation_low": null
+                },
+                "incoming_trend_state": "confirmed",
+                "active_trend_confirmation": {
+                    "available_at": "2025-03-11",
+                    "confirmation_rule": "strict_same_level_market_key_break",
+                    "direction": "up",
+                    "broken_key": {
+                        "index": 5810,
+                        "ordinal": 0,
+                        "time": "2022-08-02",
+                        "kind": "H",
+                        "value": 10.66,
+                        "available_at": "2023-05-29",
+                        "label": "H12"
+                    },
+                    "origin": {
+                        "index": 6290,
+                        "ordinal": 0,
+                        "time": "2024-07-25",
+                        "kind": "L",
+                        "value": 3.45,
+                        "available_at": "2024-08-15",
+                        "label": "L43"
+                    },
+                    "confirmed_by": {
+                        "index": 6439,
+                        "ordinal": 0,
+                        "time": "2025-03-11",
+                        "kind": "H",
+                        "value": 11.44,
+                        "available_at": "2025-03-11",
+                        "label": "当前高点"
+                    },
+                    "flip_high": {
+                        "index": 6439,
+                        "ordinal": 0,
+                        "time": "2025-03-11",
+                        "kind": "H",
+                        "value": 11.44,
+                        "available_at": "2025-03-11",
+                        "label": "当前高点"
+                    },
+                    "alternation_low": null
+                }
+            }
+        ],
+        "confirmed_legs": [
+            {
+                "points": [
+                    {
+                        "index": 6290,
+                        "ordinal": 0,
+                        "kind": "L",
+                        "value": 3.45,
+                        "time": "2024-07-25",
+                        "state": "reversal",
+                        "available_at": "2025-04-02",
+                        "edge_kind": "ordinary",
+                        "projection_count": 1,
+                        "projection_rank": 0,
+                        "source_kind": "L",
+                        "source_state": "confirmed",
+                        "source_reversal_available_at": "2024-07-26",
+                        "wave_direction_before": "down",
+                        "wave_direction_after": "up",
+                        "confirmation_rule": "strict_same_level_market_key_break",
+                        "confirmed_by": {
+                            "index": 6447,
+                            "ordinal": 0,
+                            "time": "2025-03-21",
+                            "kind": "H",
+                            "value": 18.9,
+                            "available_at": "2025-04-02",
+                            "label": "H44"
+                        },
+                        "source_turn_position": 4228,
+                        "confirmed_on_turn": 307,
+                        "label": "L7",
+                        "reversal": "正反转",
+                        "observations": [],
+                        "levels": [
+                            {
+                                "name": "二级末跌高",
+                                "price": 9.77
+                            },
+                            {
+                                "name": "L7 的末跌高",
+                                "price": 11.3
+                            }
+                        ],
+                        "preceding_turn": {
+                            "index": 5020,
+                            "ordinal": 0,
+                            "time": "2019-04-18",
+                            "kind": "H",
+                            "value": 11.3,
+                            "available_at": "2019-09-12",
+                            "label": "H7"
+                        },
+                        "trend": "高低点不同向或相等",
+                        "window_trend": "高低点不同向或相等",
+                        "source_label": "L43",
+                        "trend_level": 3,
+                        "source_level1_available_at": "2024-07-30",
+                        "source_level1_position": 547,
+                        "confirmed_on_level1": 548,
+                        "flip": "翻空为多",
+                        "broken_key": {
+                            "index": 6032,
+                            "ordinal": 1,
+                            "time": "2023-07-04",
+                            "kind": "H",
+                            "value": 9.77,
+                            "available_at": "2024-03-01",
+                            "label": "H42"
+                        },
+                        "source_level2_available_at": "2024-08-15",
+                        "source_level2_position": 84,
+                        "confirmed_on_level2": 87,
+                        "structural_confirmation_rule": "level2_structural_key_break",
+                        "trend_confirmation": {
+                            "available_at": "2025-03-11",
+                            "confirmation_rule": "strict_same_level_market_key_break",
+                            "direction": "up",
+                            "broken_key": {
+                                "index": 5810,
+                                "ordinal": 0,
+                                "time": "2022-08-02",
+                                "kind": "H",
+                                "value": 10.66,
+                                "available_at": "2023-05-29",
+                                "label": "H12"
+                            },
+                            "origin": {
+                                "index": 6290,
+                                "ordinal": 0,
+                                "time": "2024-07-25",
+                                "kind": "L",
+                                "value": 3.45,
+                                "available_at": "2024-08-15",
+                                "label": "L43"
+                            },
+                            "confirmed_by": {
+                                "index": 6439,
+                                "ordinal": 0,
+                                "time": "2025-03-11",
+                                "kind": "H",
+                                "value": 11.44,
+                                "available_at": "2025-03-11",
+                                "label": "当前高点"
+                            },
+                            "flip_high": {
+                                "index": 6439,
+                                "ordinal": 0,
+                                "time": "2025-03-11",
+                                "kind": "H",
+                                "value": 11.44,
+                                "available_at": "2025-03-11",
+                                "label": "当前高点"
+                            },
+                            "alternation_low": null
+                        },
+                        "trend_confirmation_route": "same_level_key_break",
+                        "incoming_trend_state": "confirmed",
+                        "incoming_trend_confirmation": {
+                            "available_at": "2019-05-06",
+                            "confirmation_rule": "strict_same_level_market_key_break",
+                            "direction": "down",
+                            "broken_key": {
+                                "index": 4090,
+                                "ordinal": 0,
+                                "time": "2015-05-08",
+                                "kind": "L",
+                                "value": 8.81,
+                                "available_at": "2015-06-24",
+                                "label": "L9"
+                            },
+                            "origin": {
+                                "index": 5020,
+                                "ordinal": 0,
+                                "time": "2019-04-18",
+                                "kind": "H",
+                                "value": 11.3,
+                                "available_at": "2019-04-25",
+                                "label": "H36"
+                            },
+                            "confirmed_by": {
+                                "index": 5029,
+                                "ordinal": 0,
+                                "time": "2019-05-06",
+                                "kind": "L",
+                                "value": 8.27,
+                                "available_at": "2019-05-06",
+                                "label": "当前低点"
+                            },
+                            "flip_low": {
+                                "index": 5029,
+                                "ordinal": 0,
+                                "time": "2019-05-06",
+                                "kind": "L",
+                                "value": 8.27,
+                                "available_at": "2019-05-06",
+                                "label": "当前低点"
+                            },
+                            "alternation_high": null
+                        },
+                        "active_trend_confirmation": {
+                            "available_at": "2019-05-06",
+                            "confirmation_rule": "strict_same_level_market_key_break",
+                            "direction": "down",
+                            "broken_key": {
+                                "index": 4090,
+                                "ordinal": 0,
+                                "time": "2015-05-08",
+                                "kind": "L",
+                                "value": 8.81,
+                                "available_at": "2015-06-24",
+                                "label": "L9"
+                            },
+                            "origin": {
+                                "index": 5020,
+                                "ordinal": 0,
+                                "time": "2019-04-18",
+                                "kind": "H",
+                                "value": 11.3,
+                                "available_at": "2019-04-25",
+                                "label": "H36"
+                            },
+                            "confirmed_by": {
+                                "index": 5029,
+                                "ordinal": 0,
+                                "time": "2019-05-06",
+                                "kind": "L",
+                                "value": 8.27,
+                                "available_at": "2019-05-06",
+                                "label": "当前低点"
+                            },
+                            "flip_low": {
+                                "index": 5029,
+                                "ordinal": 0,
+                                "time": "2019-05-06",
+                                "kind": "L",
+                                "value": 8.27,
+                                "available_at": "2019-05-06",
+                                "label": "当前低点"
+                            },
+                            "alternation_high": null
+                        }
+                    },
+                    {
+                        "index": 6447,
+                        "ordinal": 0,
+                        "kind": "H",
+                        "value": 18.9,
+                        "time": "2025-03-21",
+                        "state": "reversal",
+                        "available_at": "2025-04-02",
+                        "edge_kind": "teaching",
+                        "teaching_path_id": "child-mother-6447",
+                        "teaching_ordinal": 3,
+                        "projection_count": 1,
+                        "projection_rank": 0,
+                        "source_kind": "H",
+                        "source_state": "confirmed",
+                        "source_reversal_available_at": "2025-03-21",
+                        "wave_direction_before": "up",
+                        "wave_direction_after": "down",
+                        "confirmation_rule": "level2_confirmed_high_breaks_known_level3_last_fall_high",
+                        "confirmed_by": {
+                            "index": 6447,
+                            "ordinal": 0,
+                            "time": "2025-03-21",
+                            "kind": "H",
+                            "value": 18.9,
+                            "available_at": "2025-04-02",
+                            "label": "H44"
+                        },
+                        "source_turn_position": 4329,
+                        "confirmed_on_turn": 410,
+                        "label": "H8",
+                        "reversal": "负反转",
+                        "observations": [
+                            {
+                                "title": "翻空为多",
+                                "available_at": "2025-04-02",
+                                "basis": "confirmed_polyline_extreme",
+                                "key": {
+                                    "index": 877,
+                                    "ordinal": 0,
+                                    "time": "2000-08-29",
+                                    "kind": "H",
+                                    "value": 15.55,
+                                    "available_at": "2000-09-01",
+                                    "label": "H3"
+                                },
+                                "formation": "底部成形",
+                                "confirmed_low": {
+                                    "index": 1898,
+                                    "ordinal": 0,
+                                    "time": "2005-07-11",
+                                    "kind": "L",
+                                    "value": 2.45,
+                                    "available_at": "2007-06-08",
+                                    "label": "L3"
+                                }
+                            }
+                        ],
+                        "levels": [
+                            {
+                                "name": "二级末跌高",
+                                "price": 10.66
+                            },
+                            {
+                                "name": "H8 的末升低",
+                                "price": 3.45
+                            },
+                            {
+                                "name": "转换依据：末跌高",
+                                "price": 15.55
+                            }
+                        ],
+                        "preceding_turn": {
+                            "index": 6290,
+                            "ordinal": 0,
+                            "time": "2024-07-25",
+                            "kind": "L",
+                            "value": 3.45,
+                            "available_at": "2025-04-02",
+                            "label": "L7"
+                        },
+                        "trend": "高低点不同向或相等",
+                        "window_trend": "高低点不同向或相等",
+                        "source_label": "H44",
+                        "trend_level": 3,
+                        "source_level1_available_at": "2025-04-02",
+                        "source_level1_position": 564,
+                        "confirmed_on_level1": 564,
+                        "flip": "三级末跌高突破升级",
+                        "broken_key": {
+                            "index": 5810,
+                            "ordinal": 0,
+                            "time": "2022-08-02",
+                            "kind": "H",
+                            "value": 10.66,
+                            "available_at": "2023-05-29",
+                            "label": "H41"
+                        },
+                        "source_confirmation": {
+                            "index": 6447,
+                            "ordinal": 0,
+                            "time": "2025-03-21",
+                            "kind": "H",
+                            "value": 18.9,
+                            "available_at": "2025-04-02",
+                            "label": "H283"
+                        },
+                        "source_level2_available_at": "2025-04-02",
+                        "source_level2_position": 87,
+                        "confirmed_on_level2": 87,
+                        "incoming_trend_confirmation": {
+                            "available_at": "2025-03-11",
+                            "confirmation_rule": "strict_same_level_market_key_break",
+                            "direction": "up",
+                            "broken_key": {
+                                "index": 5810,
+                                "ordinal": 0,
+                                "time": "2022-08-02",
+                                "kind": "H",
+                                "value": 10.66,
+                                "available_at": "2023-05-29",
+                                "label": "H12"
+                            },
+                            "origin": {
+                                "index": 6290,
+                                "ordinal": 0,
+                                "time": "2024-07-25",
+                                "kind": "L",
+                                "value": 3.45,
+                                "available_at": "2024-08-15",
+                                "label": "L43"
+                            },
+                            "confirmed_by": {
+                                "index": 6439,
+                                "ordinal": 0,
+                                "time": "2025-03-11",
+                                "kind": "H",
+                                "value": 11.44,
+                                "available_at": "2025-03-11",
+                                "label": "当前高点"
+                            },
+                            "flip_high": {
+                                "index": 6439,
+                                "ordinal": 0,
+                                "time": "2025-03-11",
+                                "kind": "H",
+                                "value": 11.44,
+                                "available_at": "2025-03-11",
+                                "label": "当前高点"
+                            },
+                            "alternation_low": null
+                        },
+                        "incoming_trend_state": "confirmed",
+                        "active_trend_confirmation": {
+                            "available_at": "2025-03-11",
+                            "confirmation_rule": "strict_same_level_market_key_break",
+                            "direction": "up",
+                            "broken_key": {
+                                "index": 5810,
+                                "ordinal": 0,
+                                "time": "2022-08-02",
+                                "kind": "H",
+                                "value": 10.66,
+                                "available_at": "2023-05-29",
+                                "label": "H12"
+                            },
+                            "origin": {
+                                "index": 6290,
+                                "ordinal": 0,
+                                "time": "2024-07-25",
+                                "kind": "L",
+                                "value": 3.45,
+                                "available_at": "2024-08-15",
+                                "label": "L43"
+                            },
+                            "confirmed_by": {
+                                "index": 6439,
+                                "ordinal": 0,
+                                "time": "2025-03-11",
+                                "kind": "H",
+                                "value": 11.44,
+                                "available_at": "2025-03-11",
+                                "label": "当前高点"
+                            },
+                            "flip_high": {
+                                "index": 6439,
+                                "ordinal": 0,
+                                "time": "2025-03-11",
+                                "kind": "H",
+                                "value": 11.44,
+                                "available_at": "2025-03-11",
+                                "label": "当前高点"
+                            },
+                            "alternation_low": null
+                        }
+                    }
+                ],
+                "direction": "up",
+                "confirmation": {
+                    "available_at": "2025-03-11",
+                    "confirmation_rule": "strict_same_level_market_key_break",
+                    "direction": "up",
+                    "broken_key": {
+                        "index": 5810,
+                        "ordinal": 0,
+                        "time": "2022-08-02",
+                        "kind": "H",
+                        "value": 10.66,
+                        "available_at": "2023-05-29",
+                        "label": "H12"
+                    },
+                    "origin": {
+                        "index": 6290,
+                        "ordinal": 0,
+                        "time": "2024-07-25",
+                        "kind": "L",
+                        "value": 3.45,
+                        "available_at": "2024-08-15",
+                        "label": "L43"
+                    },
+                    "confirmed_by": {
+                        "index": 6439,
+                        "ordinal": 0,
+                        "time": "2025-03-11",
+                        "kind": "H",
+                        "value": 11.44,
+                        "available_at": "2025-03-11",
+                        "label": "当前高点"
+                    },
+                    "flip_high": {
+                        "index": 6439,
+                        "ordinal": 0,
+                        "time": "2025-03-11",
+                        "kind": "H",
+                        "value": 11.44,
+                        "available_at": "2025-03-11",
+                        "label": "当前高点"
+                    },
+                    "alternation_low": null
+                },
+                "available_at": "2025-04-02",
+                "wave_id": "trend-wave-v1:0bb1b2abda672dcb288989c0e31cb42dfd6c53ed85aa7fc99958ca7ee28570df"
+            }
+        ]
+    },
+    "developing_stroke": {
+        "id": "tertiary-developing-secondary-reversal-continuous-lecture-0-lecture-5808",
+        "source_path": "secondary-reversal-continuous-lecture-0-lecture-5808",
+        "kind": "tertiary-developing",
+        "trend_level": 3,
+        "source_level": 2,
+        "state": "confirmed",
+        "display_only": true,
+        "confirmation_policy": "two_routes_v106",
+        "wave_display_policy": "one_connection_per_confirmed_wave_v109",
+        "wave_id": "trend-wave-v1:0bb1b2abda672dcb288989c0e31cb42dfd6c53ed85aa7fc99958ca7ee28570df",
+        "initial_direction": "down",
+        "wave_direction": "up",
+        "available_at": "2025-03-11",
+        "endpoint_state": "developing",
+        "confirmation": {
+            "available_at": "2025-03-11",
+            "confirmation_rule": "strict_same_level_market_key_break",
+            "direction": "up",
+            "broken_key": {
+                "index": 5810,
+                "time": "2022-08-02",
+                "kind": "H",
+                "value": 10.66,
+                "available_at": "2023-05-29",
+                "label": "H12",
+                "ordinal": 0
+            },
+            "origin": {
+                "index": 6290,
+                "time": "2024-07-25",
+                "kind": "L",
+                "value": 3.45,
+                "available_at": "2024-08-15",
+                "label": "L43",
+                "ordinal": 0
+            },
+            "confirmed_by": {
+                "index": 6439,
+                "time": "2025-03-11",
+                "kind": "H",
+                "value": 11.44,
+                "available_at": "2025-03-11",
+                "label": "当前高点",
+                "ordinal": 0
+            }
+        },
+        "confirmed_endpoint": {
+            "index": 6482,
+            "ordinal": 0,
+            "time": "2025-05-15",
+            "kind": "H",
+            "value": 19.63,
+            "available_at": "2025-05-15",
+            "label": "当前高点",
+            "state": "developing",
+            "display_only": true,
+            "trend_level": 3,
+            "development_role": "active_endpoint"
+        },
+        "confirmation_rule": "strict_same_level_market_key_break",
+        "nested_turn_count": 0,
+        "pending_point_count": 1,
+        "points": [
+            {
+                "index": 6290,
+                "time": "2024-07-25",
+                "kind": "L",
+                "value": 3.45,
+                "available_at": "2025-03-11",
+                "label": "L43",
+                "ordinal": 0,
+                "state": "confirmed",
+                "display_only": true,
+                "trend_level": 3,
+                "development_role": "confirmed_direction_origin"
+            },
+            {
+                "index": 6482,
+                "ordinal": 0,
+                "time": "2025-05-15",
+                "kind": "H",
+                "value": 19.63,
+                "available_at": "2025-05-15",
+                "label": "当前高点",
+                "state": "developing",
+                "display_only": true,
+                "trend_level": 3,
+                "development_role": "active_endpoint"
+            }
+        ]
+    },
+    "bars": [
+        {
+            "time": "2024-07-25",
+            "open": 3.5,
+            "high": 3.6,
+            "low": 3.45,
+            "close": 3.57,
+            "raw_close": 3.57,
+            "volume": 4583800,
+            "factor": 1
+        },
+        {
+            "time": "2025-03-21",
+            "open": 18.87,
+            "high": 18.9,
+            "low": 17.01,
+            "close": 17.01,
+            "raw_close": 17.01,
+            "volume": 100959480,
+            "factor": 1
+        },
+        {
+            "time": "2025-05-15",
+            "open": 18,
+            "high": 19.63,
+            "low": 16.34,
+            "close": 18.04,
+            "raw_close": 18.04,
+            "volume": 163780356,
+            "factor": 1
+        }
+    ],
+    "expected_connection": ["2024-07-25", "2025-05-15"]
+}
