@@ -13,7 +13,10 @@ def _canonical_confirmation(proof):
     result=dict(proof)
     for field in ('origin','broken_key','confirmed_by'):
         point=proof[field]
-        result[field]={name:point[name] for name in ('index','time','kind','value','available_at','label')}
+        result[field]={name:point[name] for name in ('index','time','kind','value','available_at')}
+        # 标签只用于展示。新归并来源或可选N来源可不带旧局部编号，不能因此
+        # 丢弃已有真实价格/日期证书；坐标与可知日仍为必填，不允许用默认值补造。
+        result[field]['label']=point.get('label',point['kind'])
         result[field]['ordinal']=point.get('ordinal',0)
     if proof['confirmation_rule']=='strict_same_level_market_key_break':
         result.pop('flip_high',None)

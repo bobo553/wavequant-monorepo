@@ -24,7 +24,7 @@ def test_larger_n_folds_lower_correction_without_repainting(monkeypatch):
     assert hierarchical_n.hierarchical_n_candidates([])=={}
 
 
-def test_guilin_dec2_larger_n_does_not_confirm_on_dec6_resistance():
+def test_guilin_dec2_n_keeps_its_formal_source_level_and_rejects_dec6_resistance():
     raw=json.loads((Path(__file__).parent/'fixtures'/'guilin_2022_hierarchy.json').read_text(encoding='utf-8'))
     bars=[Bar(datetime.fromisoformat(day),raw['symbol'],*values) for day,*values in raw['bars']]
     config=SystemStrategy(pivot_mode='lecture_causal',entry_policy='hierarchical_two_buy_points',
@@ -32,9 +32,16 @@ def test_guilin_dec2_larger_n_does_not_confirm_on_dec6_resistance():
     full=generate_system_signals(bars,config)
     event=next(e for e in full.audit if e['event']=='n_completed' and e['direction']=='up'
                and e['timestamp'].startswith('2022-12-02'))
-    assert event['n_level']==2
+    # Private lower-level geometry cannot supply a formal level-2 N. The same
+    # completed price shape remains available through its actual level-1 source.
+    assert event['n_level']==1
+    assert not any(e['event']=='n_completed' and e['direction']=='up' and e['n_level'] in (2,3)
+                   and all(e[field]==event[field] for field in ('origin','neckline','pullback','bar_index'))
+                   for e in full.audit)
     assert [bars[event[k]].timestamp.date().isoformat() for k in ('origin','neckline','pullback')]==[
-        '2022-04-27','2022-06-30','2022-10-12']
+        '2022-05-09','2022-06-30','2022-10-12']
+    assert bars[event['known_at']].timestamp.date().isoformat()=='2022-10-13'
+    assert event['target_eligible'] is False and event['target_qualification_reason']=='origin_is_not_decline_floor'
     confirmation=next(b for b in bars if b.timestamp.date().isoformat()=='2022-12-06')
     assert confirmation.high-max(confirmation.open,confirmation.close) > (confirmation.high-confirmation.low)/2
     assert not any(e['event']=='regime_confirmation' and e['attack']==event['bar_index']

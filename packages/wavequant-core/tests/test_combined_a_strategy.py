@@ -1,5 +1,6 @@
 """The combined-A route shares global risk gates and real execution rules."""
 
+from copy import deepcopy
 from dataclasses import asdict, replace
 from datetime import datetime
 import importlib
@@ -11,8 +12,8 @@ import pytest
 from wavequant.application.analytics.backtest import run_portfolio
 from wavequant.application.analytics.trade_evidence import enrich_ledger
 from wavequant.domain.models.config import StrategyConfig
-from wavequant.domain.models.model import Bar
-from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
+from wavequant.domain.models.model import Bar, Signal
+from wavequant.domain.strategies.integrated_strategy import SystemResult, SystemStrategy, generate_system_signals
 from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
 
 
@@ -28,23 +29,67 @@ def guofang_combined():
     return bars, now, config, generate_system_signals(bars, config)
 
 
-def test_real_consolidation_includes_wait_after_low_and_generates_new_global_route(guofang_combined):
+@pytest.fixture
+def authorized_combined_execution(guofang_combined):
+    """执行用例注入固定策略许可；真实全局拒绝由上面的独立回归覆盖。"""
     bars, now, config, generated = guofang_combined
-    old = generate_system_signals(bars, replace(config, combined_a_entry_enabled=False))
-    assert not any(signal.side == "LONG" and signal.bar_index == now for signal in old.signals)
-    signal = next(signal for signal in generated.signals if signal.side == "LONG" and signal.bar_index == now)
-    assert signal.reason == "system_combined_a_pullback_breakout"
-    assert signal.reference_price == pytest.approx(7.158380489944116)
-    assert signal.invalidation_price == pytest.approx(5.887904563293728)
-    assert signal.target_price == pytest.approx(9.316823462102839)
-    proof = next(event for event in generated.audit if event["bar_index"] == now
-                 and event["event"] == "long_transition_evidence")
+    proof = max((event for event in generated.audit if event['bar_index'] == now
+                 and event['event'] == 'combined_a_pullback_breakout'), key=lambda event: event['c_high_index'])
+    bar = bars[now]
+    signal = Signal(bar.timestamp, bar.symbol, now, 'LONG', bar.close, proof['stop'],
+                    'system_combined_a_pullback_breakout', bar.timestamp, proof['counter_ratio'],
+                    proof['breakout_volume_multiple'], '组合A回调放量突破', proof['target'],
+                    config.minimum_reward_risk)
+    authorization = dict(timestamp=bar.timestamp.isoformat(), symbol=bar.symbol, bar_index=now,
+                         test_authorization='fixed_combined_permission_for_execution_only')
+    audit = [*generated.audit,
+             dict(proof, event='long_transition_evidence', **authorization),
+             dict(authorization, event='long_signal', channel='combined_a_pullback_breakout', volume_pass=True)]
+    return bars, now, config, SystemResult([signal], audit, {'long_signals': 1})
+
+
+@pytest.fixture(scope='module')
+def guofang_completed_cache(guofang_combined):
+    """先真实计算完整当日，再给独立门禁用例复用不可变的历史结构。"""
+    bars, now, config, _ = guofang_combined
+    cache = {'source_bars': tuple(bars)}
+    generate_system_signals(bars[:now + 1], config, chart_history_cache=cache)
+    return cache
+
+
+def _fresh_context_cache(completed):
+    """每个门禁保留自己的可变缓存；固定行情证书仍引用同一不可变序列。"""
+    cache = deepcopy(completed)
+    cache['source_bars'] = completed['source_bars']
+    return cache
+
+
+def test_real_consolidation_keeps_local_evidence_but_obeys_new_formal_secondary_resistance(guofang_combined):
+    _, now, _, generated = guofang_combined
+    # 正式来源按新定义重算后，3/17 H 已在 4/1 可知；4/3 是其当笔抵抗，
+    # 局部组合 A 达标不能跳过至少两笔后再确认的既有全局抵抗门禁。
+    assert not any(signal.side == "LONG" and signal.bar_index == now for signal in generated.signals)
+    # 同日可有多个历史组合达标，交易路由按既有规则选择最新 C。
+    proof = max((event for event in generated.audit if event["bar_index"] == now
+                 and event["event"] == "combined_a_pullback_breakout"), key=lambda event: event['c_high_index'])
     assert proof["combined_a_pullback_sessions"] == 58
-    assert proof["combined_a_internal_pullback_sessions"] == 70
+    assert proof["combined_a_internal_pullback_sessions"] == 9
     assert proof["combined_a_child_pullback_sessions"] == 9
+    assert proof["combined_a_known_date"] == "2025-01-08"
     assert proof["combined_a_pullback_date"] == "2025-01-13"
     assert proof["combined_a_minimum_close"] > proof["combined_a_two_thirds_price"]
-    assert signal.rvol == pytest.approx(20_135_200 / 6_428_999)
+    assert proof["stop"] == pytest.approx(5.887904563293728)
+    assert proof["target"] == pytest.approx(9.316823462102839)
+    assert proof["breakout_volume_multiple"] == pytest.approx(20_135_200 / 6_428_999)
+    rejection = next(event for event in generated.audit if event["bar_index"] == now
+                     and event["event"] == "entry_rejected"
+                     and event.get("candidate_channel") == "combined_a_pullback_breakout")
+    assert rejection["reason"] == "secondary_breakout_resistance_unresolved"
+    assert rejection["secondary_high_date"] == "2025-03-17"
+    assert rejection["secondary_high"] == pytest.approx(7.049092238189244)
+    assert rejection["secondary_attack_date"] == "2025-04-03"
+    assert rejection["secondary_resistance_high"] == pytest.approx(7.158380489944116)
+    assert rejection["secondary_current_resistance"] is True
 
 
 def test_prefix_and_partial_volume_cache_do_not_borrow_later_breakout(guofang_combined):
@@ -63,9 +108,14 @@ def test_prefix_and_partial_volume_cache_do_not_borrow_later_breakout(guofang_co
 
 
 @pytest.mark.parametrize("gate", ["two_t", "five_top", "ten_full", "secondary", "inverse", "new_inverse_low"])
-def test_combined_route_cannot_bypass_global_gates(guofang_combined, monkeypatch, gate):
+def test_combined_route_cannot_bypass_global_gates(guofang_combined, guofang_completed_cache, monkeypatch, gate):
     bars, now, config, _ = guofang_combined
     reason = "test_global_gate"
+    if gate != 'secondary':
+        # 每个门禁用例只注入被测拒绝；新真实二级抵抗已由独立真实回归覆盖，
+        # 不能让它提前短路 inverse 等下游门禁而失去这些用例的测试职责。
+        pressure_module = importlib.import_module('wavequant.domain.strategies.secondary_resistance')
+        monkeypatch.setattr(pressure_module, 'secondary_resistance_history', lambda *args, **kwargs: {})
     if gate in ("two_t", "five_top", "ten_full", "secondary"):
         module_name, function_name = {
             "two_t": ("integrated_strategy", "two_t_resistance_history"),
@@ -89,14 +139,15 @@ def test_combined_route_cannot_bypass_global_gates(guofang_combined, monkeypatch
         risk = {"reason": reason, "inverse_neckline_date": "2025-03-17", "inverse_rebound_date": "2025-03-26"}
         monkeypatch.setattr(module, "inverse_n_low_entry_risk",
                             lambda bars, index, points: risk if index == now else None)
-    generated = generate_system_signals(bars[:now + 1], config)
+    generated = generate_system_signals(bars[:now + 1], config,
+                                       chart_history_cache=_fresh_context_cache(guofang_completed_cache))
     assert not any(signal.side == "LONG" and signal.bar_index == now for signal in generated.signals)
     assert any(event["event"] == "entry_rejected" and event["bar_index"] == now
                and event["reason"] == reason for event in generated.audit)
 
 
-def test_real_same_close_fill_and_ledger_preserve_permissions_and_reward_risk(guofang_combined):
-    bars, now, config, generated = guofang_combined
+def test_authorized_same_close_fill_and_ledger_preserve_permissions_and_reward_risk(authorized_combined_execution):
+    bars, now, config, generated = authorized_combined_execution
     bars = bars[:now + 1]
     signal = next(signal for signal in generated.signals if signal.side == "LONG" and signal.bar_index == now)
     execution = StrategyConfig(entry_at_close=True, nonflat_limit_close_fill=True, exit_on_target=False)
@@ -115,10 +166,16 @@ def test_real_same_close_fill_and_ledger_preserve_permissions_and_reward_risk(gu
     assert not any(order["status"] == "filled" for order in poor_reward.orders)
 
 
-def test_exhausted_combined_target_does_not_suppress_independent_shallow_route(guofang_combined, monkeypatch):
+def test_exhausted_combined_target_does_not_suppress_independent_shallow_route(
+    guofang_combined, guofang_completed_cache, monkeypatch,
+):
     bars, now, config, _ = guofang_combined
     combined_module = importlib.import_module("wavequant.domain.strategies.integrated_strategy")
     shallow_module = importlib.import_module("wavequant.domain.strategies.shallow_base_breakout")
+    pressure_module = importlib.import_module('wavequant.domain.strategies.secondary_resistance')
+    # 该用例只检查耗尽组合目标与独立浅回撤路由的优先级，固定授权避免真实
+    # 二级抵抗同时否定两个候选；真实抵抗不能绕过的断言另有专门回归。
+    monkeypatch.setattr(pressure_module, 'secondary_resistance_history', lambda *args, **kwargs: {})
     observe_combined = combined_module.combined_a_entry_history
 
     def exhausted(*args, **kwargs):
@@ -130,7 +187,8 @@ def test_exhausted_combined_target_does_not_suppress_independent_shallow_route(g
     special = dict(stop=6.0, target=9.5, counter_ratio=0.62, breakout_volume_multiple=3.13,
                    buy_point_type="shallow_base_breakout")
     monkeypatch.setattr(shallow_module, "shallow_base_history", lambda *args, **kwargs: ([], {now: special}))
-    generated = generate_system_signals(bars[:now + 1], config)
+    generated = generate_system_signals(bars[:now + 1], config,
+                                       chart_history_cache=_fresh_context_cache(guofang_completed_cache))
     signal = next(signal for signal in generated.signals if signal.side == "LONG" and signal.bar_index == now)
     assert signal.reason == "system_shallow_base_breakout"
     assert any(event["bar_index"] == now and event["event"] == "entry_rejected"

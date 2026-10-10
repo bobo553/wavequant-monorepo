@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from datetime import datetime,timedelta
 import unittest
 
@@ -11,6 +12,7 @@ from wavequant.domain.market_structure.lecture_trend import (
 )
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
 from wavequant.domain.market_structure.secondary_trend import _candidate_structural_reversals, secondary_trends
+from wavequant.domain.market_structure.trend_levels import trend_reversals
 
 
 def fixture(values):
@@ -164,17 +166,23 @@ class LectureTrendTests(unittest.TestCase):
         level2=secondary_trends(dict(strokes=merged),bars)
         candidates=_candidate_structural_reversals(merged[0]['points'])
         self.assertEqual([p['value'] for p in candidates],[6.32,7.52,6.34])
+        # The compatibility key-break helper remains unchanged. Production
+        # requires ordered confirmation and has no later higher low for 6.34.
+        candidates=trend_reversals(merged[0]['points'],trend_level=2)
+        self.assertEqual([p['value'] for p in candidates],[6.32,7.52])
         actual=level2['candidate_strokes'][0]['points']
         self.assertEqual(len(actual),len(candidates))
         stable=['index','ordinal','time','kind','value','available_at','source_level1_position',
-                'confirmed_on_level1','source_level1_available_at','confirmation_rule','flip']
+                'confirmed_on_level1','source_level1_available_at','confirmation_rule','direction_definition']
         references=['index','ordinal','time','kind','value','available_at']
         for published,candidate in zip(actual,candidates):
             self.assertEqual({field:published[field] for field in stable},
                              {field:candidate[field] for field in stable})
             for proof in ['broken_key','confirmed_by']:
+                candidate_reference=candidate[proof]
+                assert isinstance(candidate_reference,Mapping)
                 self.assertEqual({field:published[proof][field] for field in references},
-                                 {field:candidate[proof][field] for field in references})
+                                 {field:candidate_reference[field] for field in references})
         self.assertEqual([p['value'] for p in level2['strokes'][0]['points']],[7.52])
         self.assertEqual(level2['developing_strokes'],[])
 

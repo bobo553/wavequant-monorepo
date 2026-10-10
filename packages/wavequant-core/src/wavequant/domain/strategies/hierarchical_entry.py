@@ -4,13 +4,15 @@ Drawing vertices have a price date AND an observation date. Each prefix is
 reduced independently; an endpoint seen only later is never traded earlier.
 The first alternation needs a higher low, not a 2/3 retracement threshold.
 """
+from collections.abc import Mapping
 from dataclasses import dataclass, asdict
 from typing import TypedDict, cast
 
 from ..market_structure.bottom_n_targets import DeclineStart
 from ..market_structure.lecture_drawing import lecture_drawing
-from ..market_structure.lecture_trend import _wave_reversals
-from ..market_structure.secondary_trend import _candidate_structural_reversals
+from ..market_structure.trend_levels import trend_reversals
+from ..market_structure.trend_level_upgrades import promote_trend_key_breaks
+from ..market_structure.trend_structure import StructuralTrend, classify_trend_prices
 from ..market_structure.trend_publication import publish_uptrends
 from ..market_structure.n_trend_reversals import n_target_reversals
 
@@ -39,12 +41,13 @@ def _identity(p):
 
 def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tuple[DeclineStart, ...]] | None = None,
                          n_target_trend_confirmation_enabled: bool = False):
-    """Freeze candidate knowledge separately from qualified trading history.
+    """按每个交易日可知的正式来源递归生成一、二、三级回测历史。
 
-    A confirmed descending pressure or low stays available to the next
-    structural reducer even when its following rise has not qualified. Only
-    the shared direction gate publishes points to trading contexts. A separate
-    dated decline channel preserves confirmed high boundaries for measurement.
+    一级输入折线反转，二级输入一级已发布点，三级输入二级已发布点；
+    私有候选只可用于本级许可检查及独立下降测幅通道，不能绕过下级发布门禁。
+    发生坐标与可知索引分别冻结：后来重新出现或修改的点，从重新可知的当天
+    才进入策略，不倒填到其价格日。缓存版本覆盖归并和升级规则，旧检查点
+    不可在新规则下继续追加；部分日线重算仍以同一前缀规则验证。
     """
     if type(n_target_trend_confirmation_enabled) is not bool:
         raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
@@ -55,7 +58,7 @@ def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tup
     previous: dict[int, dict[tuple[int, int, str, float], int]] = {0: {}, 1: {}, 2: {}, 3: {}}
     last_epoch = None
     last = len(bars) - 1
-    cache_version = 'daily_configurable_n_target_trend_confirmation_declines_v110'
+    cache_version = 'daily_recursive_ordered_trend_definitions_v112'
     wants_declines = decline_sink is not None
     prefix_key = (cache_version, tuple(bars[:-1]), wants_declines, n_target_trend_confirmation_enabled)
     cached_key = prefix_cache.get('key') if prefix_cache is not None else None
@@ -111,8 +114,7 @@ def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tup
         levels = {}; source = turns; qualified_source = turns
         prefix = bars[:i+1]
         for level in (1, 2, 3):
-            reduced = (_wave_reversals(source) if level == 1 else
-                       _candidate_structural_reversals(source, source_level=level-1))
+            reduced = promote_trend_key_breaks(source,trend_reversals(source,trend_level=level),trend_level=level)
             if n_target_trend_confirmation_enabled:
                 reduced = n_target_reversals(reduced, source, prefix, source_level=level-1,
                     qualified_source=qualified_source, n_target_trend_confirmation_enabled=True)
@@ -120,16 +122,32 @@ def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tup
             reduced = [dict(p, available_index=p['available_at']) for p in reduced]
             candidate_source = freeze(reduced, level)
             if level == 1 and decline_sink is not None:
-                decline_history[i] = tuple(DeclineStart(point['index'], point['available_at'])
-                                           for point in candidate_source if point['kind'] == 'H'
-                                           and point.get('wave_direction_after') == 'down')
+                # 普通下降定义与严格低点突破是独立证据。同一个H可先作为
+                # 上涨升级端点而可知，后来才被已确认L的严格破位证明为
+                # 下降起点；不能改写H的旧方向，也不能因旧方向为up漏收新事实。
+                # 下降测幅通道只用这份证据自己的可知日，不倒填到H价格日。
+                declines = {point['index']: point['available_at'] for point in candidate_source
+                            if point['kind'] == 'H' and point.get('wave_direction_after') == 'down'}
+                for point in candidate_source:
+                    upgrade = point.get('upgrade_evidence')
+                    if (point['kind'] != 'L' or not isinstance(upgrade, Mapping)
+                            or upgrade.get('direction') != 'down' or upgrade.get('role') != 'endpoint'):
+                        continue
+                    origin = upgrade.get('origin')
+                    if (not isinstance(origin, Mapping) or origin.get('kind') != 'H'
+                            or type(origin.get('index')) is not int or type(origin.get('available_at')) is not int):
+                        continue
+                    index = cast(int, origin['index'])
+                    known = max(point['available_at'], cast(int, origin['available_at']))
+                    declines[index] = min(declines.get(index, known), known)
+                decline_history[i] = tuple(DeclineStart(index, declines[index]) for index in sorted(declines))
                 decline_sink[i] = decline_history[i]
             published = publish_uptrends(candidate_source, source, prefix, source_level=level-1,
                 qualified_source=qualified_source,
                 n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
             levels[level] = tuple(dict(index=p['index'], ordinal=p['ordinal'], kind=p['kind'],
                                       value=p['value'], available_at=p['available_at']) for p in published)
-            source = candidate_source
+            source = published
             qualified_source = published
         history[i] = levels
         if prefix_cache is not None and resume_start != last and i == last - 1:
@@ -202,8 +220,9 @@ class _LevelState:
             # equal comparisons remain unknown instead of being guessed.
             if len(highs) < 2 or len(lows) < 2:
                 return
-            dh = highs[-1]['value']-highs[-2]['value']; dl = lows[-1]['value']-lows[-2]['value']
-            self.direction = 'up' if dh > 0 and dl > 0 else 'down' if dh < 0 and dl < 0 else None
+            trend = classify_trend_prices([q['value'] for q in highs[-2:]],
+                                           [q['value'] for q in lows[-2:]],trend_level=self.level)
+            self.direction = 'up' if trend == StructuralTrend.BULL else 'down' if trend == StructuralTrend.BEAR else None
             if self.direction is None:
                 return
             self.anchor = (max if self.direction == 'up' else min)(

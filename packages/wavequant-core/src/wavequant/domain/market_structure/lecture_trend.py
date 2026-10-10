@@ -7,7 +7,7 @@ an older holding point cannot confirm a new impulse that has yet to retrace.
 """
 from collections import Counter
 from collections.abc import Sequence
-from typing import Literal, NotRequired, TypedDict
+from typing import NotRequired, TypedDict, cast
 
 from .polyline import LinePoint, PointKind, ReversalPoint
 from .price_action import Direction
@@ -17,7 +17,12 @@ from .trend_landmarks import (
     bullish_turn_signals,
     post_alternation_bull_highs,
 )
-from .trend_structure import StructuralTrend, retracement_evidence
+from .trend_levels import trend_reversals
+from .trend_level_upgrades import promote_trend_key_breaks
+from .trend_primitives import last_fall_high, last_rise_low, negative_reversal, positive_reversal
+from .trend_structure import (
+    StructuralTrend, TrendPriceState, observe_structure, preceding_turn, retracement_evidence,
+)
 
 
 def _ref(p):
@@ -25,11 +30,24 @@ def _ref(p):
                 kind=p['kind'], value=p['value'], available_at=p['available_at'], label=p['label'])
 
 
-def _context_key(points, bull):
-    candidates=[p for p in points if p['kind']==('H' if bull else 'L')]
-    anchor=(max if bull else min)(candidates,key=lambda p:p['value'])
-    previous=next((p for p in reversed(points[:points.index(anchor)]) if p['kind']!=anchor['kind']),None)
-    return anchor,previous
+def _context_key(points, bull, *, symbol, dates, trend_level):
+    """按公共定义选择整窗极值以及其左侧最近的相反反转。
+
+    多头背景冻结最高点之前的末升低，空头背景冻结最低点之前的末跌高。
+    左侧最近点与窗口最高/最低价是两项不同条件；不能用更早的更高点、
+    更晚的回调点或当前图表最右点替换该关键位。typed adapter仅统一证据表示，
+    原始字典保留实际股票、坐标、ordinal和已知日期供后续事件引用。
+    """
+    typed=tuple(ReversalPoint(LinePoint(p['index'],p['ordinal'],PointKind(p['kind']),p['value']),
+                              dates[p['available_at']],'published_trend_definition') for p in points)
+    context=observe_structure(typed,symbol=symbol,timeframe='source',window_start=typed[0].point.index,
+                              asof_index=typed[-1].confirmed_index,trend_level=trend_level)
+    anchor=context.window_high if bull else context.window_low
+    assert anchor is not None
+    key=(last_rise_low(context,trend_level=trend_level) if bull else
+         last_fall_high(context,trend_level=trend_level))
+    previous=preceding_turn(typed,anchor) if key is not None else None
+    return points[typed.index(anchor)],points[typed.index(previous)] if previous is not None else None
 
 
 class _WaveTurn(TypedDict):
@@ -57,50 +75,12 @@ class _WaveReversal(_WaveTurn):
 
 
 def _wave_reversals(turns: Sequence[_WaveTurn]) -> list[_WaveReversal]:
-    """Confirm HH then HL (or LL then LH), preserving each whole-wave extreme."""
-    highs: list[tuple[int, _WaveTurn]] = []
-    lows: list[tuple[int, _WaveTurn]] = []
-    direction: Literal['up', 'down'] | None = None
-    candidate: tuple[int, _WaveTurn] | None = None
-    selected: list[_WaveReversal] = []
-    for j,p in enumerate(turns):
-        (highs if p['kind']=='H' else lows).append((j,p))
-        if len(highs)<2 or len(lows)<2:
-            continue
-        dh=highs[-1][1]['value']-highs[-2][1]['value']
-        dl=lows[-1][1]['value']-lows[-2][1]['value']
-        current: Literal['up', 'down'] | None = 'up' if dh>0 and dl>0 else 'down' if dh<0 and dl<0 else None
-        if direction is None:
-            if current is None: continue
-            direction=current
-            pool=highs if direction=='up' else lows
-            candidate=pool[-1]  # Do not import an extreme from pre-direction history.
-            continue
-        assert candidate is not None
-        target='H' if direction=='up' else 'L'
-        sign=1 if direction=='up' else -1
-        if p['kind']==target and sign*(p['value']-candidate[1]['value'])>0:
-            candidate=(j,p)
-        if current is None or current==direction:
-            continue  # A small counter-swing or mixed structure is not reversal.
-        position,extreme=candidate
-        # A higher high needs a later higher low; a lower low needs a later
-        # lower high. Reusing the holding point BEFORE the new impulse would
-        # freeze a wave while that impulse is still turning on its own bar.
-        if p['kind']!=target:
-            continue
-        proof=[highs[-2][1],highs[-1][1],lows[-2][1],lows[-1][1]]
-        selected.append({**extreme, 'source_reversal_available_at':extreme['available_at'],
-                         'available_at':p['available_at'], 'wave_direction_before':direction,
-                         'wave_direction_after':current,
-                         'confirmation_rule':'ordered_HH_then_HL_or_LL_then_LH_switch',
-                         'confirmed_by':[dict(index=q['index'],ordinal=q['ordinal'],kind=q['kind'],
-                                              value=q['value'],time=q['time'],available_at=q['available_at']) for q in proof],
-                         'source_turn_position':position, 'confirmed_on_turn':j})
-        direction=current
-        pool=[(k,q) for k,q in enumerate(turns[position+1:j+1],position+1) if q['kind']==('H' if direction=='up' else 'L')]
-        candidate=(max if direction=='up' else min)(pool,key=lambda v:v[1]['value'])
-    return selected
+    """保留一级旧调用入口，方向判定委托同一个按级别传参的公共归并器。
+
+    转折L/H只表示局部正/负反转；正式方向变化还需同类高、低点都严格同向，
+    且持稳点发生在反向推进之后。突破升级另有独立通道，不由此函数猜测。
+    """
+    return cast(list[_WaveReversal], trend_reversals(turns, trend_level=1))
 
 
 def _point_order(point):
@@ -221,16 +201,23 @@ def _connect_reversal_strokes(strokes,source_strokes):
     return merged
 
 
-def _annotate(points, symbol, dates):
-    highs: list[ReversalPoint] = []
-    lows: list[ReversalPoint] = []
-    previous_known=None; all_up=all_down=True
+def _annotate(points, symbol, dates, *, trend_level=1):
+    """为本级已确认点附加公共定义及独立关键位事件的展示证据。
+
+    TrendPriceState同步给出最近两组的局部方向与整个路径的严格方向；
+    后者要求“每一个”同类点均升高或降低，相等和混合不会被最新局部方向覆盖。
+    below-67%交替和严格关键位突破仍是独立事件，单个正/负反转不等于趋势翻向。
+    日期由原始available_at映射至行情索引，绝不以绘图的price index替代确认日。
+    """
+    price_state=TrendPriceState(trend_level=trend_level)
+    previous_known=None
     high_count=low_count=0
     background=None; anchor=key=attack=None; suspicion=False
     for j,p in enumerate(points):
         if p['kind']=='H': high_count+=1; p['label']=f'H{high_count}'
         else: low_count+=1; p['label']=f'L{low_count}'
-        p['reversal']='负反转' if p['kind']=='H' else '正反转'
+        p['trend_level']=trend_level
+        p['source_level']=trend_level-1
         p['observations']=[]; p['levels']=[]
         previous=points[j-1] if j else None
         if previous:
@@ -239,6 +226,9 @@ def _annotate(points, symbol, dates):
             p['levels'].append(dict(name=f'{p["label"]} 的{name}',price=previous['value']))
         current=ReversalPoint(LinePoint(p['index'],p['ordinal'],PointKind(p['kind']),p['value']),
                               dates[p['available_at']],'lecture_geometric_turn_not_strategy')
+        p['reversal']=('正反转' if positive_reversal(current,asof_index=current.confirmed_index,trend_level=trend_level)
+                       else '负反转' if negative_reversal(current,asof_index=current.confirmed_index,trend_level=trend_level)
+                       else None)
         if previous_known:
             if ((current.point.index,current.point.ordinal)<=
                     (previous_known.point.index,previous_known.point.ordinal)
@@ -248,24 +238,10 @@ def _annotate(points, symbol, dates):
             if ((current.point.kind==PointKind.HIGH and current.point.price<=previous_known.point.price)
                     or (current.point.kind==PointKind.LOW and current.point.price>=previous_known.point.price)):
                 raise ValueError('nonzero alternating high/low legs required')
-        same_kind=highs if current.point.kind==PointKind.HIGH else lows
-        if same_kind:
-            all_up=all_up and current.point.price>same_kind[-1].point.price
-            all_down=all_down and current.point.price<same_kind[-1].point.price
-        same_kind.append(current)
+        price_state.append(current.point.kind,current.point.price)
         previous_known=current
-
-        if len(highs)<2 or len(lows)<2:
-            trend=window_trend=StructuralTrend.UNKNOWN
-        else:
-            higher_high=highs[-1].point.price>highs[-2].point.price
-            higher_low=lows[-1].point.price>lows[-2].point.price
-            lower_high=highs[-1].point.price<highs[-2].point.price
-            lower_low=lows[-1].point.price<lows[-2].point.price
-            trend=(StructuralTrend.BULL if higher_high and higher_low else
-                   StructuralTrend.BEAR if lower_high and lower_low else StructuralTrend.MIXED)
-            window_trend=(StructuralTrend.BULL if all_up else
-                          StructuralTrend.BEAR if all_down else StructuralTrend.MIXED)
+        trend=price_state.trend
+        window_trend=price_state.window_trend
         p['trend']=trend.value
         p['window_trend']=window_trend.value
 
@@ -279,10 +255,10 @@ def _annotate(points, symbol, dates):
         if background is None:
             if trend in (StructuralTrend.BULL,StructuralTrend.BEAR):
                 background=trend
-                anchor,key=_context_key(points[:j+1],background==StructuralTrend.BULL)
+                anchor,key=_context_key(points[:j+1],background==StructuralTrend.BULL,symbol=symbol,dates=dates,trend_level=trend_level)
             continue
         if key is None:
-            anchor,key=_context_key(points[:j+1],background==StructuralTrend.BULL)
+            anchor,key=_context_key(points[:j+1],background==StructuralTrend.BULL,symbol=symbol,dates=dates,trend_level=trend_level)
             continue
         assert anchor is not None
         up=background==StructuralTrend.BEAR
@@ -321,6 +297,12 @@ def _annotate(points, symbol, dates):
 
 
 def reversal_trends(drawing, bars, *, n_target_trend_confirmation_enabled: bool = False):
+    """一级趋势以已确认高低折线为来源，保留发生日与首次可知日。
+
+    未确认seed/developing不充当正负反转或升级证据。普通方向归并与严格
+    高/低点突破升级共用后续发布许可，但保持各自确认规则及证据；可选N确认
+    按既有开关工作。跨路径衔接只可复用当时已确认的真实折线极值。
+    """
     # Drawing sessions are Shanghai dates, including timezone-aware market bars.
     from zoneinfo import ZoneInfo
     dates={(b.timestamp.astimezone(ZoneInfo('Asia/Shanghai')) if b.timestamp.tzinfo else b.timestamp).date().isoformat():i
@@ -356,7 +338,7 @@ def reversal_trends(drawing, bars, *, n_target_trend_confirmation_enabled: bool 
                               'source_state':p['state']})
                 source_kinds[(stroke['id'],p['index'],p['ordinal'])]='H' if high else 'L'
         local_count+=len(turns)
-        geometric_waves=_wave_reversals(turns)
+        geometric_waves=promote_trend_key_breaks(turns,_wave_reversals(turns),trend_level=1)
         later=drawing['strokes'][stroke_index+1:]
         cutoff=later[0]['points'][0]['index'] if later else len(bars)
         waves=(n_target_reversals(geometric_waves,turns,bars[:cutoff],source_level=0,target_sink=n_targets,
@@ -382,7 +364,9 @@ def reversal_trends(drawing, bars, *, n_target_trend_confirmation_enabled: bool 
                               for point in source['points']),key=_point_order)
         positions={_point_order(point):position for position,point in enumerate(source_points)}
         points=[dict(point,source_turn_position=positions[_point_order(point)]) for point in stroke['points']]
-        _annotate(points,bars[0].symbol,dates)
+        # 候选并集可以同时保留已升级上涨端点H和后来确认的整波H。
+        # 它们是不同可知时点的来源参考，尚不是一条正式高低交替路径；
+        # 先由publisher独立验证/归并同波端点，再给正式路径标注正负反转。
         candidate_strokes.append(dict(stroke,points=points))
         published=publish_uptrends(points,source_points,market,source_level=0,
                                   n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
@@ -413,9 +397,13 @@ def reversal_trends(drawing, bars, *, n_target_trend_confirmation_enabled: bool 
                 post_alternation_bull_highs=post_alternation_bull_highs(result,trend_level=1,bars=bars),
                 bullish_turn_signals=bullish_turn_signals(result,bars,trend_level=1),
                 aggregation_rule='ordered_HH_then_HL_or_LL_then_LH_switch_with_confirmed_cross_path_extremes',input_turn_count=local_count,
+                trend_definition_rule='shared_six_definitions_and_strict_same_level_extreme_upgrade',
                 confirmed_wave_count=sum(len(s['points']) for s in result),
                 break_basis='confirmed_polyline_extreme',retracement_threshold=.67,
-                note=('一级与二、三级使用相同三路线：本级关键位严格突破，或基础折线关键位突破、交替、后续收盘转向，'
+                note='六个定义按级别共用：一级读取基础高低折线，二级读取正式一级趋势，三级读取正式二级趋势；'
+                     '同类高低点均严格升/降才成立多头/空头定义，局部正负反转不单独改变趋势方向；'
+                     '已确认来源高点或低点严格突破此前已知本级同类极点时直接升级，不等待后续回调；'+
+                     ('一级与二、三级使用相同三路线：本级关键位严格突破，或基础折线关键位突破、交替、后续收盘转向，'
                       '或正N/倒N完成后严格超过攻击箱测算的一饱确认对应趋势；等值不确认，首次证书冻结；'
                       if n_target_trend_confirmation_enabled else
                       '一级与二、三级使用相同两路线：本级关键位严格突破，或基础折线关键位突破、交替、后续收盘转向；')+

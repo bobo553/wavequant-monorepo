@@ -8,7 +8,7 @@ from typing import cast
 
 import pytest
 
-from wavequant.domain.market_structure import secondary_trend, tertiary_trend
+from wavequant.domain.market_structure import secondary_trend, tertiary_trend, trend_levels
 from wavequant.domain.market_structure.hierarchical_confirmation import TrendReference, market_trend_confirmation
 from wavequant.domain.market_structure.hierarchical_development import hierarchical_developing_path
 from wavequant.domain.market_structure.trend_confirmation import qualify_uptrend
@@ -107,21 +107,25 @@ def test_formal_publication_cannot_borrow_the_first_market_bar_of_the_next_sourc
     low = dict(source[1], **{position_field: 1}, wave_direction_before="down", wave_direction_after="up",
                flip="翻空为多", confirmation_rule="structure", broken_key=source[0])
 
-    def candidates(points: Sequence[Mapping[str, object]], *, source_level: int = 1) -> list[dict[str, object]]:
+    def candidates(points: Sequence[Mapping[str, object]], *, trend_level: int) -> list[dict[str, object]]:
         # The reducer's confirmed output isolates the path cutoff from its geometry.
+        assert trend_level == level
         return deepcopy([high, low]) if points and points[0]["index"] == 0 else []
 
     module = secondary_trend if level == 2 else tertiary_trend
-    monkeypatch.setattr(module, "_candidate_structural_reversals", candidates)
-    lower = dict(strokes=[], structure_strokes=[dict(id="old", points=source[:2]),
-                                               dict(id="next", points=source[2:])])
+    # Secondary imports the shared reducer at its boundary; tertiary keeps its
+    # resolved reference at module scope. Patch the actual lookup in each case.
+    reducer_owner = trend_levels if level == 2 else tertiary_trend
+    monkeypatch.setattr(reducer_owner, "trend_reversals", candidates)
+    lower = dict(strokes=[dict(id="old", points=source[:2]), dict(id="next", points=source[2:])],
+                 structure_strokes=[dict(id="old", points=source)])
     result = module.secondary_trends(lower, bars) if level == 2 else module.tertiary_trends(lower, bars)
     old_public = next(path for path in result["strokes"] if path["source_path"] == "old")
     assert [point["kind"] for point in old_public["points"]] == ["H"]
     assert all(point.get("trend_confirmation") is None for point in old_public["points"])
 
 
-def test_daily_history_keeps_confirmed_candidate_lows_for_the_next_level_without_publishing_their_rise(monkeypatch):
+def test_daily_history_higher_level_never_uses_an_unpublished_lower_level_low(monkeypatch):
     bars, source = _sample()
     bars.extend([Bar(START + timedelta(days=6), "sz.test", 9, 10.5, 8.5, 10, 100),
                  Bar(START + timedelta(days=7), "sz.test", 10, 12, 9, 11.5, 100)])
@@ -143,28 +147,26 @@ def test_daily_history_keeps_confirmed_candidate_lows_for_the_next_level_without
                             available_at=index, state="developing"))
             on_step(index, 0, raw)
 
-    def waves(points):
-        if len(points) < 4:
-            return []
-        return [dict(point, available_at=6, source_turn_position=position,
-                     confirmation_rule="structure", wave_direction_after="down" if point["kind"] == "H" else "up")
-                for position, point in enumerate(points)]
-
-    def candidates(points, *, source_level=1):
-        if source_level != 1 or len(points) < 4:
-            return []
-        seen.append(tuple((point["kind"], point["index"], point["available_at"]) for point in points))
-        return [dict(points[position], source_level1_position=position, confirmation_rule="structure")
-                for position in (2, 3)]
+    def candidates(points: Sequence[Mapping[str, object]], *, trend_level: int) -> list[dict[str, object]]:
+        if trend_level == 1:
+            if len(points) < 4:
+                return []
+            return [dict(point, available_at=6, source_turn_position=position, trend_level=1,
+                         confirmation_rule="structure", wave_direction_after="down" if point["kind"] == "H" else "up")
+                    for position, point in enumerate(points)]
+        if trend_level == 2:
+            seen.append(tuple((point["kind"], point["index"], point["available_at"]) for point in points))
+        return []
 
     monkeypatch.setattr(hierarchical_entry, "lecture_drawing", drawing)
-    monkeypatch.setattr(hierarchical_entry, "_wave_reversals", waves)
-    monkeypatch.setattr(hierarchical_entry, "_candidate_structural_reversals", candidates)
+    monkeypatch.setattr(hierarchical_entry, "trend_reversals", candidates)
     history, _ = hierarchical_entry.hierarchical_history(bars)
-    assert ("L", 5, 6) in seen[0]
-    assert [point["kind"] for point in history[6][2]] == ["H"]
-    assert [(point["kind"], point["index"], point["available_at"]) for point in history[7][2]] == [
-        ("H", 3, 6), ("L", 5, 7)]
+    assert ("L", 5, 6) not in seen[6]
+    assert not any(kind == "L" and index == 5 for kind, index, _ in seen[7])
+    assert seen[7] == (("H", 0, 6), ("L", 1, 7))
+    assert seen == [tuple((point["kind"], point["index"], point["available_at"]) for point in history[now][1])
+                    for now in range(len(bars))]
+    assert history[6][2] == () and history[7][2] == ()
     assert not any(point["kind"] == "L" and point["index"] == 5 for point in history[6][1])
     cache: dict[str, object] = {}
     assert hierarchical_entry.hierarchical_history(bars, prefix_cache=cache)[0] == history

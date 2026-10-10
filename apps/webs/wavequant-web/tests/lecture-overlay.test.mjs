@@ -846,6 +846,75 @@ test("direct secondary upgrade explains its own known key without a future pullb
     assert.doesNotMatch(item.description, /跌破末升低|完成.*场景回撤/);
 });
 
+test("a direct low upgrade explains its strict lower break without claiming a bullish attack", () => {
+    const overlay = new LectureOverlay({ dataset: {} });
+    const point = {
+        time: "2026-01-10",
+        value: 8,
+        kind: "L",
+        label: "L3",
+        available_at: "2026-01-11",
+        flip: "二级末升低突破升级",
+        confirmation_rule: "level1_confirmed_low_breaks_known_level2_last_rise_low",
+        broken_key: { time: "2026-01-03", value: 9, available_at: "2026-01-04" },
+        confirmed_by: { time: "2026-01-10", value: 8 },
+        levels: [],
+    };
+    overlay.strokes = [{ id: "secondary-low-upgrade", kind: "secondary", points: [point] }];
+    const item = overlay.annotation("drawing:secondary-low-upgrade:0");
+    assert.match(item.description, /已确认一级低点.*8.*严格跌破.*二级末升低.*9.*直接升级二级低点/);
+    assert.doesNotMatch(item.description, /高点直接升级|突破末跌高/);
+});
+
+test("ordered holding evidence is described separately from a strict key attack", () => {
+    const overlay = new LectureOverlay({ dataset: {} });
+    const point = {
+        time: "2026-01-01",
+        value: 10,
+        kind: "L",
+        label: "L1",
+        reversal: "正反转",
+        available_at: "2026-01-07",
+        confirmation_rule: "ordered_HH_then_HL_or_LL_then_LH_switch",
+        broken_key: { time: "2025-12-31", value: 30 },
+        confirmed_by: { time: "2026-01-06", value: 18, kind: "L" },
+        levels: [],
+    };
+    overlay.strokes = [{ id: "secondary-ordered", kind: "secondary", points: [point] }];
+    const item = overlay.annotation("drawing:secondary-ordered:0");
+    assert.match(item.description, /两个高点和两个低点均严格同向.*持稳点已确认/);
+    assert.match(item.title, /正反转/);
+    assert.doesNotMatch(item.description, /18.*突破末跌高/);
+    assert.doesNotMatch(item.title, /undefined|翻空为多/);
+});
+
+test("a level-one low endpoint exposes its independent descending certificate before a rebound", () => {
+    const overlay = new LectureOverlay({ dataset: {} });
+    const point = {
+        time: "2026-01-10",
+        available_at: "2026-01-11",
+        value: 8,
+        kind: "L",
+        label: "L3",
+        reversal: "正反转",
+        observations: [],
+        active_trend_confirmation: {
+            direction: "down",
+            confirmation_rule: "strict_same_level_market_key_break",
+            available_at: "2026-01-10",
+            broken_key: { time: "2026-01-03", value: 9, available_at: "2026-01-04" },
+            confirmed_by: { time: "2026-01-10", value: 8, available_at: "2026-01-10" },
+        },
+    };
+    overlay.strokes = [
+        { id: "level-one-low-upgrade", kind: "reversal", confirmation_policy: "trend_routes_v110", points: [point] },
+    ];
+    const item = overlay.annotation("drawing:level-one-low-upgrade:0");
+    assert.ok(item);
+    assert.match(item.description, /8.*严格跌破.*一级末升低.*9/);
+    assert.doesNotMatch(item.description, /突破末跌高|确认.*上涨/);
+});
+
 test("tertiary solid line and annotation use level-two evidence", () => {
     const overlay = new LectureOverlay({ dataset: {} }),
         segments = [],

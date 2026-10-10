@@ -23,7 +23,7 @@ class TertiaryTrendTests(unittest.TestCase):
         self.assertEqual(stroke['source_path'],'secondary-fixture')
         self.assertEqual([(p['kind'],p['value']) for p in points],[('H',45)])
         self.assertEqual([p['source_level2_position'] for p in points],[9])
-        self.assertEqual([p['confirmed_on_level2'] for p in points],[14])
+        self.assertEqual([p['confirmed_on_level2'] for p in points],[13])
         self.assertEqual([(p['kind'],p['value']) for p in result['candidate_strokes'][0]['points']],
                          [('L',10),('H',45),('L',24)])
         self.assertEqual(result['developing_strokes'],[])
@@ -90,7 +90,7 @@ class TertiaryTrendTests(unittest.TestCase):
         result=tertiary_trends(source,bars)
         self.assertEqual([(p['kind'],p['value']) for p in result['strokes'][0]['points']],[('H',45)])
         self.assertEqual([(p['kind'],p['value']) for p in result['candidate_strokes'][0]['points']],
-                         [('L',10),('H',45),('L',24)])
+                         [('L',10),('H',45),('L',24),('H',42),('L',33),('H',43)])
         self.assertEqual(result['developing_strokes'],[])
         self.assertEqual(result['developing_point_count'],0)
         self.assertEqual(source,before)
@@ -107,6 +107,8 @@ class TertiaryTrendTests(unittest.TestCase):
         self.assertEqual(result['developing_strokes'],[])
 
     def test_public_level_three_own_key_upgrade_carries_a_real_market_certificate(self):
+        # The strictly broken level-3 high independently upgrades the confirmed
+        # level-2 high even while the ordered reversal has no later holding low.
         values=[20,30,10,20,14,26,18,35,28,45,36,42,30,36,24,31,26,50]
         bars,source=market_fixture(values)
         source['strokes'][0].update(id='secondary-market',kind='secondary',trend_level=2)
@@ -120,7 +122,8 @@ class TertiaryTrendTests(unittest.TestCase):
         self.assertGreater(proof['confirmed_by']['value'],proof['broken_key']['value'])
         self.assertEqual(proof['broken_key']['available_at'],points[0]['available_at'])
         self.assertEqual(high['confirmation_rule'],'level2_confirmed_high_breaks_known_level3_last_fall_high')
-        self.assertEqual((high['trend_level'],high['source_level2_position']),(3,17))
+        self.assertEqual((high['trend_level'],high['source_level2_position'],high['confirmed_on_level2']),(3,17,17))
+        self.assertEqual(high['available_at'],source['strokes'][0]['points'][17]['available_at'])
         self.assertNotIn('source_level1_position',high)
         self.assertGreaterEqual(high['available_at'],low['available_at'])
         raw=source['strokes'][0]['points']

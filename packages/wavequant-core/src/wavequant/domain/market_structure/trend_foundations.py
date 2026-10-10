@@ -16,7 +16,9 @@ from .n_shape import MilestoneBasis, NObservation, NSetup, observe_n
 from .polyline import PointKind, ReversalPoint
 from .price_action import AttackBasis, Direction, _index, _ordered_pair, _validate_bar
 from .trend_primitives import TrendDefinitionSignals, observe_trend_definition_signals
-from .trend_structure import StructureContext, TrendTransition, observe_structure, observe_trend_transition
+from .trend_structure import (
+    StructureContext, TrendTransition, _trend_level, observe_structure, observe_trend_transition,
+)
 
 __all__ = ['TrendFoundations', 'observe_trend_foundations']
 
@@ -95,6 +97,8 @@ def observe_trend_foundations(
     attack_basis: AttackBasis = AttackBasis.INTRABAR,
     n_setup: NSetup | None = None,
     milestone_basis: MilestoneBasis = MilestoneBasis.EXTREME,
+    trend_level: int = 1,
+    source_level: int | None = None,
 ) -> TrendFoundations:
     """Observe the existing foundations without inferring pivots or transition seeds.
 
@@ -102,6 +106,19 @@ def observe_trend_foundations(
     L4). ``AttackBasis.CLOSE`` explicitly requests close confirmation instead.
     Only bars through ``asof_index`` and reversals confirmed by that index affect
     the result. A missing transition context or N setup produces absent evidence.
+    Trend definitions consume the same ``trend_level - 1`` evidence as
+    observe_structure; a frozen transition context must have the requested level.
+
+    trend_level=1 从折线反转读取六定义，2 从一级趋势反转读取，3 从二级趋势反转
+    读取；source_level 省略时使用紧邻下级 trend_level-1，显式错源立即拒绝。
+    level 只确定输入来源，不改变正/负反转、最近左侧关键位或严格高低点升降公式。
+    传入的 transition_context 可冻结在更早时点，但必须匹配标的、周期和级别，
+    避免把一级冻结关键位当作二级、三级关键位进行后续攻击与交替判断。
+
+    价格发生日和确认日各自保留；可见 OHLC 只截到 asof_index，来源反转也必须在
+    该日已经确认。缺少足够高低点时 structure 方向保持 UNKNOWN，缺少左侧转折
+    时关键位保持 None；缺少 transition_context 或 n_setup 时对应证据保持缺失。
+    组合入口把同一观察日期和级别传给结构与转折观察器，不另造第二套趋势定义。
 
     Raises:
         ValueError: For invalid windows, OHLC/time order, source pivot prices,
@@ -111,6 +128,7 @@ def observe_trend_foundations(
     The wrapper copies/filters its visible inputs a constant number of times and
     adds no daily replay; existing observers retain their own complexity.
     """
+    source_level = _trend_level(trend_level, source_level)
     if (not isinstance(bars, Sequence) or isinstance(bars, (str, bytes))
             or not isinstance(points, Sequence) or isinstance(points, (str, bytes))):
         raise ValueError('bar and reversal sequences required')
@@ -127,8 +145,9 @@ def observe_trend_foundations(
     if transition_context is not None and (
         not isinstance(transition_context, StructureContext)
         or transition_context.symbol != symbol or transition_context.timeframe != timeframe
+        or transition_context.trend_level != trend_level or transition_context.source_level != source_level
     ):
-        raise ValueError('transition context requires matching symbol and timeframe')
+        raise ValueError('transition context requires matching symbol and timeframe, and trend level')
     if n_setup is not None and (
         not isinstance(n_setup, NSetup) or n_setup.symbol != symbol or n_setup.timeframe != timeframe
     ):
@@ -138,6 +157,7 @@ def observe_trend_foundations(
     visible_points = _visible_points(points, visible_bars, end=end)
     structure = observe_structure(
         visible_points, symbol=symbol, timeframe=timeframe, window_start=window_start, asof_index=end,
+        trend_level=trend_level, source_level=source_level,
     )
     relation = None
     low = high = None

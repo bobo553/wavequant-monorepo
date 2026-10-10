@@ -98,14 +98,28 @@ def test_replay_cache_switching_matches_a_cold_replay(builder: _Replay, first_mo
     assert builder(bars, prefix_cache=cache, n_target_trend_confirmation_enabled=first_mode) == initial
 
 
-def test_real_september_segment_is_visible_only_when_the_option_is_selected(xiangyang: tuple[Bar, ...]) -> None:
+def test_real_september_down_endpoint_requires_separate_selected_n_up_permission(xiangyang: tuple[Bar, ...]) -> None:
     bars = [bar for bar in xiangyang if bar.timestamp.date().isoformat() <= '2018-09-25']
     drawing = lecture_drawing(bars)
     default = reversal_trends(drawing, bars)
     unchecked = reversal_trends(drawing, bars, n_target_trend_confirmation_enabled=False)
     selected = reversal_trends(drawing, bars, n_target_trend_confirmation_enabled=True)
     assert default == unchecked
-    assert not any(point['time'] == '2018-09-11' for point in _points(default))
+    low = next(point for point in _points(default) if point['time'] == '2018-09-11')
+    # 默认已由真实低点4.94跌破已知本级L5.04授予独立下降。可选N通道控制
+    # 同一低点之后的上涨许可，而不是控制这个真实下降端点是否存在。
+    assert (low['kind'], low['value'], low['available_at']) == ('L', 4.94, '2018-09-12')
+    down = low['incoming_trend_confirmation']
+    assert isinstance(down, dict) and down['direction'] == 'down'
+    assert down['confirmation_rule'] == 'strict_same_level_market_key_break'
+    assert down['available_at'] == '2018-09-11'
+    key = down['broken_key']
+    assert isinstance(key, dict) and (key['time'], key['value']) == ('2018-08-06', 5.04)
+    assert low.get('trend_confirmation') is None
+    assert not any(_records(stroke['points'])[0]['time'] == '2018-09-11'
+                   and isinstance(stroke.get('confirmation'), dict)
+                   and cast(dict[str, object], stroke['confirmation']).get('direction') == 'up'
+                   for stroke in _records(default['developing_strokes']))
     tail = next(stroke for stroke in _records(selected['developing_strokes'])
                 if _records(stroke['points'])[0]['time'] == '2018-09-11')
     assert [(point['time'], point['value']) for point in _records(tail['points'])] == [

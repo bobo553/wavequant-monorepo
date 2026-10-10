@@ -36,15 +36,16 @@ def _declines(sink: Mapping[int, tuple[DeclineStart, ...]]) -> list[DeclineStart
     return [DeclineStart(highs[-1].index, now) for now, highs in sink.items() if highs]
 
 
-def test_june_two_high_is_a_known_june_nine_descent_without_a_qualified_public_rising_wave(xiangyang_declines):
+def test_existing_june_two_upgraded_high_gains_an_independent_june_eight_descent(xiangyang_declines):
     bars, dates, history, sink = xiangyang_declines
-    high, known = dates["2022-06-02"], dates["2022-06-09"]
+    high, known = dates["2022-06-02"], dates["2022-06-08"]
     assert bars[high].high == 5.31
-    assert all(point.index != high for point in sink[dates["2022-06-08"]])
+    assert all(point.index != high for point in sink[dates["2022-06-07"]])
     assert sink[known][-1] == DeclineStart(high, known)
-    assert sink[dates["2022-06-20"]][-1] == DeclineStart(high, known)
-    assert not any(point["index"] == high for point in history[known][1])
-    assert not any(point["index"] == dates["2022-04-27"] for point in history[known][1])
+    assert sink[dates["2022-06-09"]][-1] == DeclineStart(high, known)
+    assert sink[dates["2022-06-20"]][-1] == DeclineStart(dates["2022-06-13"], dates["2022-06-14"])
+    assert any(point["index"] == high and point["available_at"] == dates["2022-06-06"]
+               for point in history[dates["2022-06-06"]][1])
     assert all(point.known_at <= now for now, points in sink.items() for point in points)
 
 
@@ -58,14 +59,15 @@ def test_the_confirmed_descent_restores_the_june_twenty_floor_n_without_admittin
     launch = dates["2022-06-20"]
     qualification = measured.qualifications[launch]
     assert qualification.eligible and qualification.reason == "first_n_at_decline_floor"
-    assert qualification.decline_index == dates["2022-06-02"]
+    assert qualification.decline_index == dates["2022-06-13"]
     assert qualification.bottom_index == dates["2022-06-14"]
     assert qualification.source_attack == launch
     assert all(not measured.qualifications[dates[attack]].eligible for _, attack in shapes[:-1])
     public_declines = [DeclineStart(highs[-1]["index"], now) for now, levels in history.items()
                        if (highs := [point for point in levels[1] if point["kind"] == "H"])]
     wrong = bottom_n_target_history(bars, public_declines, completions).qualifications[launch]
-    assert not wrong.eligible and wrong.bottom_index == dates["2022-04-27"]
+    assert not wrong.eligible and wrong.reason == "origin_is_not_decline_floor"
+    assert wrong.decline_index == dates["2022-06-15"] and wrong.bottom_index == dates["2022-06-16"]
     targets = project_n_targets(
         bars[dates["2022-06-14"]].low, bars[dates["2022-06-15"]].high, bars[dates["2022-06-16"]].low,
         box_anchor=bars[launch].high, direction=Direction.UP, domain=ValueDomain.PRICE,
@@ -73,9 +75,9 @@ def test_the_confirmed_descent_restores_the_june_twenty_floor_n_without_admittin
     assert targets.one_p == 7.16 and targets.two_t == 8.53
 
 
-def test_cached_partial_confirmation_cannot_borrow_the_final_june_nine_decline(xiangyang_declines):
+def test_cached_partial_confirmation_cannot_borrow_the_final_june_eight_decline(xiangyang_declines):
     bars, dates, history, full_sink = xiangyang_declines
-    prefix = bars[:dates["2022-06-09"] + 1]
+    prefix = bars[:dates["2022-06-08"] + 1]
     high = dates["2022-06-02"]
     cache: dict[str, object] = {}
     observed = full_sink.copy()
@@ -100,23 +102,23 @@ def test_requesting_the_decline_channel_invalidates_a_checkpoint_without_that_ch
             for index in range(8)]
     cache: dict[str, object] = {}
     expected = hierarchical_entry.hierarchical_history(bars, prefix_cache=cache)
-    original = hierarchical_entry._wave_reversals
-    calls = []
+    original = hierarchical_entry.trend_reversals
+    calls: list[int] = []
 
-    def counted(points):
-        calls.append(1)
-        return original(points)
+    def counted(points: Sequence[Mapping[str, object]], *, trend_level: int) -> list[dict[str, object]]:
+        calls.append(trend_level)
+        return original(points, trend_level=trend_level)
 
-    monkeypatch.setattr(hierarchical_entry, "_wave_reversals", counted)
+    monkeypatch.setattr(hierarchical_entry, "trend_reversals", counted)
     sink: dict[int, tuple[DeclineStart, ...]] = {}
     assert hierarchical_entry.hierarchical_history(bars, prefix_cache=cache, decline_sink=sink) == expected
-    assert len(calls) == len(bars) and set(sink) == set(range(len(bars)))
+    assert calls == [1, 2, 3] * len(bars) and set(sink) == set(range(len(bars)))
     calls.clear()
     assert hierarchical_entry.hierarchical_history(bars, prefix_cache=cache, decline_sink=sink) == expected
-    assert len(calls) == 1
+    assert calls == [1, 2, 3]
     calls.clear()
     assert hierarchical_entry.hierarchical_history(bars, prefix_cache=cache) == expected
-    assert len(calls) == len(bars)
+    assert calls == [1, 2, 3] * len(bars)
 
 
 def test_system_measurement_and_a_top_turns_use_the_decline_channel_when_public_history_has_no_high(monkeypatch):
@@ -125,8 +127,10 @@ def test_system_measurement_and_a_top_turns_use_the_decline_channel_when_public_
     source = DeclineStart(3, 5)
 
     def hierarchy(prefix: Sequence[Bar], *, prefix_cache: object = None,
-                  decline_sink: dict[int, tuple[DeclineStart, ...]] | None = None):
+                  decline_sink: dict[int, tuple[DeclineStart, ...]] | None = None,
+                  n_target_trend_confirmation_enabled: bool = False):
         assert decline_sink is not None
+        assert n_target_trend_confirmation_enabled is False
         decline_sink.update({now: (source,) if now >= source.known_at else () for now in range(len(prefix))})
         return ({now: {level: () for level in (1, 2, 3)} for now in range(len(prefix))},
                 {now: 0 for now in range(len(prefix))})
