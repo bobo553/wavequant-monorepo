@@ -28,9 +28,10 @@ NESTED_MACRO = (
     110, 230, 120, 240, 130, 250, 120, 240, 90, 210,
     100, 220, 110, 230, 100, 220, 80, 200, 90, 210, 100, 220,
 )
-NESTED_SECONDARY = ((12, 'L', 500, 7), (27, 'H', 1200, 10), (36, 'L', 525, 15),
-                    (51, 'H', 1225, 18), (60, 'L', 550, 23), (75, 'H', 1250, 26),
-                    (84, 'L', 450, 31), (99, 'H', 1150, 34), (108, 'L', 400, 39))
+# 最后一列是紧邻一级来源中两类证据首次齐全的位置；不额外等下一同类holding。
+NESTED_SECONDARY = ((12, 'L', 500, 6), (27, 'H', 1200, 10), (36, 'L', 525, 14),
+                    (51, 'H', 1225, 18), (60, 'L', 550, 22), (75, 'H', 1250, 26),
+                    (84, 'L', 450, 30), (99, 'H', 1150, 34), (108, 'L', 400, 38))
 StructureHistory = dict[int, dict[int, tuple[dict[str, object], ...]]]
 
 
@@ -132,23 +133,24 @@ def test_figure008_uses_identical_point_rules_and_own_knowledge_dates(level: int
     source = _points((*FIGURE_008, 33, 30, 42), source_level=level - 1, integer_clock=integer_clock)
     before = deepcopy(source)
     result = judge_trend(source, trend_level=level)
-    moments: tuple[object, ...] = (7, 14, 19) if integer_clock else (_day(7), _day(14), _day(19))
+    # H5、L12、H17各自补齐本轮另一类严格升降证据，来源确认后立即定义整波。
+    moments: tuple[object, ...] = (6, 13, 18) if integer_clock else (_day(6), _day(13), _day(18))
     assert _geometry(result.points) == [(2, 0, 'L', 10, moments[0]), (9, 0, 'H', 45, moments[1]),
                                        (14, 0, 'L', 24, moments[2])]
     assert [point['wave_direction_after'] for point in result.points] == ['up', 'down', 'up']
     assert [point['trend_level'] for point in result.points] == [level] * 3
     assert [point['source_level'] for point in result.points] == [level - 1] * 3
     field = 'confirmed_on_turn' if level == 1 else f'confirmed_on_level{level - 1}'
-    assert [point[field] for point in result.points] == [6, 13, 18]
+    assert [point[field] for point in result.points] == [5, 12, 17]
     assert source == before
 
 
 @pytest.mark.parametrize('integer_clock', (False, True))
 def test_asof_reduces_known_source_prefix_instead_of_filtering_the_final_line(integer_clock: bool) -> None:
     source = _points((*FIGURE_008, 33, 30, 42), integer_clock=integer_clock)
-    golden = {6: [], 7: [(2, 'L', 10)], 13: [(2, 'L', 10)],
-              14: [(2, 'L', 10), (9, 'H', 45)], 18: [(2, 'L', 10), (9, 'H', 45)],
-              19: [(2, 'L', 10), (9, 'H', 45), (14, 'L', 24)]}
+    golden = {5: [], 6: [(2, 'L', 10)], 12: [(2, 'L', 10)],
+              13: [(2, 'L', 10), (9, 'H', 45)], 17: [(2, 'L', 10), (9, 'H', 45)],
+              18: [(2, 'L', 10), (9, 'H', 45), (14, 'L', 24)]}
     for index, expected in golden.items():
         asof = index if integer_clock else _day(index)
         known = ([point for point in source if cast(int, point['available_at']) <= index] if integer_clock else
@@ -164,7 +166,7 @@ def test_strict_key_break_immediately_adds_origin_and_endpoint_without_future_ho
     source = _points((*FIGURE_008, 50), source_level=level - 1, mirror=mirror)
     before = judge_trend(source, trend_level=level, asof=_day(17))
     result = judge_trend(source, trend_level=level, asof=_day(18))
-    expected = [(2, 0, 'L', 10, _day(7)), (9, 0, 'H', 45, _day(14)),
+    expected = [(2, 0, 'L', 10, _day(6)), (9, 0, 'H', 45, _day(13)),
                 (14, 0, 'L', 24, _day(18)), (17, 0, 'H', 50, _day(18))]
     if mirror:
         expected = [(index, ordinal, 'H' if kind == 'L' else 'L', 100 - value, known)
@@ -179,7 +181,7 @@ def test_strict_key_break_immediately_adds_origin_and_endpoint_without_future_ho
     assert proof['available_at'] == _day(18)
     key = proof['broken_key']
     assert isinstance(key, Mapping)
-    assert (key['index'], key['value'], key['available_at']) == (9, 55 if mirror else 45, _day(14))
+    assert (key['index'], key['value'], key['available_at']) == (9, 55 if mirror else 45, _day(13))
     assert len(source) == 18
 
 
@@ -228,15 +230,19 @@ def test_formal_wrappers_keep_the_entire_judged_line_when_only_bars_change(level
 @pytest.mark.parametrize('level', (2, 3))
 def test_separate_source_paths_never_supply_each_others_reversal_or_strict_break(level: int) -> None:
     source = _points((*FIGURE_008, 50), source_level=level - 1)
-    predecessor: dict[str, object] = dict(strokes=[dict(id='left', points=source[:13]),
-                                                   dict(id='right', points=source[13:])])
-    expected = judge_trend(source[:13], trend_level=level, asof=_day(12))
-    right = judge_trend(source[13:], trend_level=level, asof=_day(18))
-    assert _geometry(expected.points) == [(2, 0, 'L', 10, _day(7))]
-    assert right.points == ()
+    # 在L12之前断路：左侧只有较低H11，不能借右侧L12补齐下降定义H9。
+    # 右侧随后可凭自己的两高两低形成L14，但没有本路径旧H9，不能升级H17。
+    predecessor: dict[str, object] = dict(strokes=[dict(id='left', points=source[:12]),
+                                                   dict(id='right', points=source[12:])])
+    expected = judge_trend(source[:12], trend_level=level, asof=_day(18))
+    right = judge_trend(source[12:], trend_level=level, asof=_day(18))
+    assert _geometry(expected.points) == [(2, 0, 'L', 10, _day(6))]
+    assert _geometry(right.points) == [(14, 0, 'L', 24, _day(18))]
+    assert not any(point.get('upgrade_evidence') is not None for point in right.candidates)
     derive = secondary_trends if level == 2 else tertiary_trends
     observed = derive(predecessor, _bars(source, market=True))
-    assert _structure(_stroke_points(observed)) == _structure(expected.points)
+    assert _structure(_stroke_points(observed)) == _structure((*expected.points, *right.points))
+    assert not any(point['index'] in (9, 17) for point in _stroke_points(observed))
 
 
 def test_same_kind_merge_keeps_the_selected_extremes_own_later_knowledge_date() -> None:
@@ -244,11 +250,11 @@ def test_same_kind_merge_keeps_the_selected_extremes_own_later_knowledge_date() 
     source[17]['available_at'] = 19
     early = judge_trend(source, asof=22)
     before = _structure(early.points)
-    later = judge_trend(source, asof=24)
+    later = judge_trend(source, asof=23)
     assert _geometry(early.points)[-1] == (21, 0, 'H', 53, 22)
-    assert _geometry(later.points)[-1] == (19, 0, 'H', 55, 24)
+    assert _geometry(later.points)[-1] == (19, 0, 'H', 55, 23)
     assert [(point['index'], point['value'], point['available_at']) for point in later.candidates
-            if point['index'] in (19, 21)] == [(19, 55, 24), (21, 53, 22)]
+            if point['index'] in (19, 21)] == [(19, 55, 23), (21, 53, 22)]
     assert all(left['kind'] != right['kind'] for left, right in zip(later.points, later.points[1:]))
     assert _structure(early.points) == before
     known = [point for point in source if cast(int, point['available_at']) <= 22]
@@ -319,7 +325,8 @@ def test_real_history_recurses_over_geometry_while_returning_only_strategy_quali
     # 只记录真实判断入口，不替换计算结果或折线来源。
     with patch('wavequant.domain.strategies.hierarchical_entry.judge_trend', side_effect=observe):
         qualified, epochs = hierarchical_entry.hierarchical_history(bars, structure_sink=structures)
-    golden = ((3, 0, 'L', 10, 8), (10, 0, 'H', 45, 15), (15, 0, 'L', 24, 20))
+    # 真实逐日折线的来源发生位置比图008点数组偏移1；确认仍取两类证据齐全首日。
+    golden = ((3, 0, 'L', 10, 7), (10, 0, 'H', 45, 14), (15, 0, 'L', 24, 19))
     assert epochs == {index: 0 for index in range(len(bars))}
     for now in range(len(bars)):
         assert _geometry(structures[now][1]) == [point for point in golden if point[-1] <= now]
@@ -328,7 +335,7 @@ def test_real_history_recurses_over_geometry_while_returning_only_strategy_quali
         assert source_contracts[(now, 2)] == judgements[(now, 1)]
         assert source_contracts[(now, 3)] == judgements[(now, 2)]
         assert structures[now][2] == structures[now][3] == ()
-        assert _geometry(qualified[now][1]) == ([(10, 0, 'H', 45, 15)] if now >= 15 else [])
+        assert _geometry(qualified[now][1]) == ([(10, 0, 'H', 45, 14)] if now >= 14 else [])
         assert qualified[now][2] == qualified[now][3] == ()
     assert sources[(21, 2)] == list(golden)
     assert len(qualified[21][1]) == 1

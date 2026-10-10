@@ -11399,6 +11399,64 @@
                     "summary": "按用户验证节奏未运行，待独立验证；定向通过不替代完整套件或实际浏览器验收。本轮仅本地提交与合并，不推送、发布或重启共享服务。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-318",
+            "name": "trend-direction-evidence-order",
+            "title": "修复高低点齐备后的趋势确认延迟",
+            "status": "done",
+            "dependencies": ["MONOREPO-317"],
+            "description": "统一趋势函数按两类已确认高低点共同严格升降判断方向，消除额外先后顺序；核对襄阳1997两段连续几何。",
+            "scope": "Core统一趋势判定、因果缓存版本、详细注释与真实短前缀回归。",
+            "acceptanceCriteria": [
+                "一级输入折线高低点，二级输入全部一级高低点，三级输入全部二级高低点；共享相同价格公式。",
+                "HH与HL、LL与LH齐备即可按真实可知日确认，两类证据均需严格，不等待额外未来holding点。",
+                "襄阳1997-03-10至04-28连续覆盖，保留符合定义的中间反转；08-19低点的上涨证据于08-26齐备，09-04高点于09-05可知。",
+                "严格高低点突破升级、未完成点排除、候选独立知识日及策略资格隔离保留。",
+                "三级镜像、顺序对照、等价/单边反例、真实两源行情、因果前缀与warm缓存回归通过，并完成相关类型和构建检查。"
+            ],
+            "verification": [
+                {
+                    "command": "D:/Temp/wavequant-trend-levels-venv/Scripts/python.exe -m pytest packages/wavequant-core/tests/test_xiangyang_1997_trend_segments.py -q; isolated HEAD reducer red replay",
+                    "status": "passed",
+                    "summary": "最终真实两源196日线回归9项通过；旧函数仅内存替换lookup后4项真实缺陷回归失败，当前全部通过。三月至四月连续子链保留4/4 H19.20@4/7、4/11 L17.48@4/14，至4/28 H24.27@4/29；8/19起点两类证据8/26齐备，9/4高9/5可知。59处真实收盘分差不影响目标几何，无个股或日期特判。"
+                },
+                {
+                    "command": "python -m pytest tests/test_trend_levels.py tests/test_trend_structural_tail.py tests/test_trend_pair_order.py tests/test_trend_candidate_ledger.py tests/test_confirmed_descent_pressure.py tests/test_unconfirmed_wave_origin.py -q",
+                    "status": "passed",
+                    "summary": "134项通过；最后类型边界增强后origin单文件16项复验通过。新增36个三级/高低镜像顺序、等价、单边及迟知反例；真实Lexin普通下降3/5与严格下降3/24独立，held-floor资格7/30不借几何7/17日期。旧顺序门槛断言按四个真实来源证据迁移，未来及路径拒绝门禁保留。"
+                },
+                {
+                    "command": "python -m pytest tests/test_trend_judgement_core.py tests/test_trend_level_upgrades.py tests/test_recursive_trend_judgement.py tests/test_trend_down_upgrade_publication.py tests/test_trend_levels.py tests/test_trend_structural_tail.py tests/test_trend_candidate_ledger.py tests/test_trend_confirmation_boundaries.py -q",
+                    "status": "passed",
+                    "summary": "291项通过；严格升级公式未改，旧key来源/早ordinary及晚strict账本/同坐标独立方向/三级递归/asof边界均验证。严格origin测试从event_sink取真实独立证明，并增加合法发布对照，没有伪造许可证或删拒绝断言。"
+                },
+                {
+                    "command": "python -m pytest packages/wavequant-core/tests/test_lecture_trend.py packages/wavequant-core/tests/test_staged_trend_pipeline.py packages/wavequant-core/tests/test_trend_confirmation_boundaries.py packages/wavequant-core/tests/test_xiangyang_1997_trend_segments.py -q",
+                    "status": "passed",
+                    "summary": "39项通过；最终新增四月中间点保护后1997文件9项复验通过，测试类型增强后lecture12项复验通过。按完整级别处理、epoch断点、cold/warm/append及末根部分K线强断言保留；N/行情证书不筛掉下级几何。"
+                },
+                {
+                    "command": "python -m pytest packages/wavequant-core/tests/test_trend_definition_levels.py packages/wavequant-core/tests/test_trend_primitives.py packages/wavequant-core/tests/test_trend_foundations.py packages/wavequant-core/tests/test_figure008_foundations.py packages/wavequant-core/tests/test_trend_structure.py packages/wavequant-core/tests/test_trend_qualification_ledger.py packages/wavequant-core/tests/test_chart_entry_permissions.py packages/wavequant-core/tests/test_n_trend_option_consumers.py packages/wavequant-core/tests/test_trend_annotation_clock.py packages/wavequant-core/tests/test_empty_epoch_path_cutoff.py packages/wavequant-core/tests/test_structural_permission_promotion.py packages/wavequant-core/tests/test_chart_staging_resources.py -q -k \"not daily_history\"; pytest test_trend_qualification_ledger.py test_trend_confirmation_entry_refresh.py test_artifact_cache.py test_chart_entry_history_cache.py -q -k \"not daily_history\"",
+                    "status": "passed",
+                    "summary": "第一组339项/357子测试通过，2个旧ledger日期断言失败后按齐备时点修正；包含它的资格/缓存4文件最终23项/4子测试通过，ledger另2项复验通过。真实证据与几何最早日期仍分离，原策略门禁不放宽；最终没有未解决的已运行失败。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core typecheck; mypy --strict --follow-imports=silent trend_levels.py trend_judgement.py; config-file mypy 5 production modules and changed test modules; pnpm --filter @wavequant/core build; wheel source-byte check",
+                    "status": "passed",
+                    "summary": "Core4文件严格基线、2个判定模块strict、5修改生产模块标准mypy及各所有者修改测试mypy通过；源码包/wheel构建成功，5修改生产模块逐一匹配wheel源码。未运行Python格式化或lint工具。"
+                },
+                {
+                    "command": "node --max-old-space-size=128 node_modules/prettier/bin/prettier.cjs --check feature_list.json packages/wavequant-core/progress.md packages/wavequant-core/docs/trend_primitives_contract.md packages/wavequant-core/tests/fixtures/xiangyang_1997_trend_segments.json; node scripts/harness/validate-state.mjs; git diff --check; original-feature preservation assertion; independent reviews",
+                    "status": "passed",
+                    "summary": "JSON/Markdown格式、Harness、差异检查及两个独立复核通过。首次pnpm exec Prettier遇系统内存不足，改为直接CLI/128MiB后格式检查通过；不修改共享服务。原314功能对象与activeFeature逐字段保持，仅新增318done，保留256原失败记录。"
+                },
+                {
+                    "command": "完整Core/Web套件、浏览器/Playwright、完整账户/分钟回测及运行中完整图交互验收",
+                    "status": "not-run",
+                    "summary": "按用户验证节奏待独立验证；已核对修改前真实AkShare1997短前缀API载荷及实际Web纯函数连接，不能写成修改后浏览器通过。旧版本首次快照重算和加载超时性能问题不属于本轮，未宣称修复。"
+                }
+            ]
         }
     ]
 }

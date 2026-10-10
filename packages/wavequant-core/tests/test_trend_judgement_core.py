@@ -47,7 +47,9 @@ def test_all_levels_keep_strict_mirrored_upgrade_without_a_future_holding_turn(l
     source = _source((*FIGURE_008, 50), level=level, mirror=mirror)
     before = deepcopy(source)
     result = judge_trend(source, trend_level=level)
-    expected = [(2, 'L', 10, 7), (9, 'H', 45, 14), (14, 'L', 24, 18), (17, 'H', 50, 18)]
+    # L4> L2 后 H5>H3 已补齐多头证据；H11<H9 后 L12<L10 补齐空头证据。
+    # 各自在6、13首次可知，不等待后一个同类 holding 点；严格本级突破仍在18。
+    expected = [(2, 'L', 10, 6), (9, 'H', 45, 13), (14, 'L', 24, 18), (17, 'H', 50, 18)]
     if mirror:
         expected = [(index, 'H' if kind == 'L' else 'L', 100 - price, known)
                     for index, kind, price, known in expected]
@@ -57,6 +59,11 @@ def test_all_levels_keep_strict_mirrored_upgrade_without_a_future_holding_turn(l
     assert isinstance(proof, Mapping) and proof['role'] == 'endpoint'
     direction = 'down' if mirror else 'up'
     assert proof['direction'] == endpoint['wave_direction_before'] == endpoint['wave_direction_after'] == direction
+    key, attack = proof['broken_key'], proof['confirmed_by']
+    assert isinstance(key, Mapping) and isinstance(attack, Mapping)
+    assert (key['index'], key['value'], key['available_at']) == (9, 55 if mirror else 45, 13)
+    assert (attack['index'], attack['value'], attack['available_at']) == (17, 50, 18)
+    assert not any(point['index'] == 17 for point in judge_trend(source, trend_level=level, asof=17).candidates)
     assert (result.trend_level, result.source_level) == (level, level - 1)
     assert all(point['state'] == 'reversal' for point in result.points)
     assert [point['label'] for point in result.points] == (['H1', 'L1', 'H2', 'L2'] if mirror else ['L1', 'H1', 'L2', 'H2'])
@@ -65,14 +72,30 @@ def test_all_levels_keep_strict_mirrored_upgrade_without_a_future_holding_turn(l
     assert source == before
 
 
-def test_asof_filters_source_before_a_future_holding_turn_can_complete_the_wave() -> None:
-    source = _source(FIGURE_008)
-    assert judge_trend(source, asof=6).points == ()
-    assert _geometry(judge_trend(source, asof=7)) == [(2, 'L', 10, 7)]
-    assert _geometry(judge_trend(source, asof=7)) == _geometry(judge_trend(source[:7]))
+@pytest.mark.parametrize('level', [1, 2, 3])
+@pytest.mark.parametrize('mirror', [False, True])
+@pytest.mark.parametrize('cutoff,pivot,trigger', [(6, 2, 5), (13, 9, 12)])
+def test_asof_confirms_only_when_both_kinds_are_known_without_waiting_for_a_holding_turn(
+    level: int, mirror: bool, cutoff: int, pivot: int, trigger: int,
+) -> None:
+    source = _source(FIGURE_008, level=level, mirror=mirror)
+    before = judge_trend(source, trend_level=level, asof=cutoff - 1)
+    after = judge_trend(source, trend_level=level, asof=cutoff)
+    # 第一例最后补齐的是H，第二例是L；方向取决于两类极值，知识日取齐全时点。
+    # 完整输入中的未来 holding 点不能提前参与，冷前缀与asof投影必须完全一致。
+    assert not any(point['index'] == pivot for point in before.candidates)
+    fact = next(point for point in after.candidates if point['index'] == pivot)
+    assert fact['available_at'] == cutoff
+    field = 'confirmed_on_turn' if level == 1 else f'confirmed_on_level{level - 1}'
+    assert fact[field] == trigger
+    proof = cast(Sequence[Mapping[str, object]], fact['definition_evidence'])
+    assert max(cast(int, point['available_at']) for point in proof) == cutoff
+    assert len(proof) == 4 and {point['kind'] for point in proof} == {'H', 'L'}
+    assert _geometry(after) == _geometry(judge_trend(source[:cutoff], trend_level=level))
+    assert _geometry(after) == _geometry(judge_trend(source, trend_level=level, asof=cutoff + 1))
 
 
-@pytest.mark.parametrize('clock,cutoff,known', [('numeric', '7', '7'), ('date', '2024-01-08', '2024-01-08')])
+@pytest.mark.parametrize('clock,cutoff,known', [('numeric', '6', '6'), ('date', '2024-01-07', '2024-01-07')])
 def test_numeric_and_date_cutoffs_match_the_source_clock(clock: str, cutoff: str, known: str) -> None:
     source = _source(FIGURE_008, clock=clock)
     assert _geometry(judge_trend(source, asof=cutoff)) == [(2, 'L', 10, known)]
@@ -95,11 +118,12 @@ def test_filtered_or_unfinished_sources_keep_original_positions(level: int) -> N
 def test_later_higher_point_keeps_own_known_date_and_retains_replaced_event() -> None:
     source = _source((*FIGURE_008, 50, 30, 55, 35, 53, 29, 48))
     source[17]['available_at'] = 19
-    earlier, later = judge_trend(source, asof=22), judge_trend(source, asof=24)
+    earlier, later = judge_trend(source, asof=22), judge_trend(source, asof=23)
     assert _geometry(earlier)[-1] == (21, 'H', 53, 22)
-    assert _geometry(later)[-1] == (19, 'H', 55, 24)
+    # 较低H21与较低L22在23齐全，H19的整波极值到23才确认；不能回填22。
+    assert _geometry(later)[-1] == (19, 'H', 55, 23)
     assert [(point['index'], point['value'], point['available_at']) for point in later.candidates
-            if point['index'] in (19, 21)] == [(19, 55, 24), (21, 53, 22)]
+            if point['index'] in (19, 21)] == [(19, 55, 23), (21, 53, 22)]
     assert all(left['kind'] != right['kind'] for left, right in zip(later.points, later.points[1:]))
 
 
@@ -107,13 +131,15 @@ def test_later_higher_point_keeps_own_known_date_and_retains_replaced_event() ->
 @pytest.mark.parametrize('mirror', [False, True])
 def test_ordinary_reverse_fact_survives_an_earlier_same_coordinate_strict_endpoint(level: int, mirror: bool) -> None:
     source = _source((*FIGURE_008, 50, 30, 48, 28, 46), level=level, mirror=mirror)
-    before = judge_trend(source, trend_level=level, asof=21)
-    after = judge_trend(source, trend_level=level, asof=22)
+    # H17严格突破先在18成立；更低H19与更低L20在21补齐反向普通定义。
+    # 两份事实虽然坐标相同，方向和知识日不同，不能互相覆盖或倒写。
+    before = judge_trend(source, trend_level=level, asof=20)
+    after = judge_trend(source, trend_level=level, asof=21)
     earlier = [point for point in before.candidates if point['index'] == 17]
     facts = [point for point in after.candidates if point['index'] == 17]
     initial, reverse = ('down', 'up') if mirror else ('up', 'down')
     assert len(earlier) == 1 and earlier[0]['available_at'] == 18
-    assert [(point['available_at'], point['wave_direction_after']) for point in facts] == [(18, initial), (22, reverse)]
+    assert [(point['available_at'], point['wave_direction_after']) for point in facts] == [(18, initial), (21, reverse)]
     assert facts[0]['wave_direction_before'] == initial
     assert facts[1]['wave_direction_before'] == initial
     assert facts[0].get('upgrade_evidence') is not None
@@ -134,22 +160,25 @@ def test_later_strict_origin_fact_survives_an_earlier_same_coordinate_ordinary_o
     events: list[dict[str, object]] = []
     earliest = promote_trend_key_breaks(source, ordinary, trend_level=level, event_sink=events)
     assert earliest == promote_trend_key_breaks(source, ordinary, trend_level=level)
-    assert next(point for point in earliest if point['index'] == 14)['available_at'] == 19
+    # 普通定义在H17=44可知的18成立，但44未超过本级旧H9=45。
+    # H19=50在20才独立严格破位；几何继续保留早ordinary，账本追加晚strict。
+    assert next(point for point in earliest if point['index'] == 14)['available_at'] == 18
     upgrade = next(point for point in events if point['index'] == 14)
     assert upgrade['available_at'] == 20
     proof = upgrade['upgrade_evidence']
     assert isinstance(proof, Mapping) and proof['role'] == 'origin'
     assert proof['direction'] == ('down' if mirror else 'up')
 
-    before = judge_trend(source, trend_level=level, asof=19)
+    assert not any(point['index'] == 14 for point in judge_trend(source, trend_level=level, asof=17).candidates)
+    before = judge_trend(source, trend_level=level, asof=18)
     after = judge_trend(source, trend_level=level, asof=20)
     assert len([point for point in before.candidates if point['index'] == 14]) == 1
     facts = [point for point in after.candidates if point['index'] == 14]
-    assert [point['available_at'] for point in facts] == [19, 20]
+    assert [point['available_at'] for point in facts] == [18, 20]
     assert facts[0].get('upgrade_evidence') is None
     assert facts[1]['upgrade_evidence'] is not None
     geometry = next(point for point in after.points if point['index'] == 14)
-    assert geometry['available_at'] == 19 and geometry.get('upgrade_evidence') is None
+    assert geometry['available_at'] == 18 and geometry.get('upgrade_evidence') is None
 
 
 def test_equal_extreme_keeps_earliest_coordinate_without_equal_key_upgrade() -> None:

@@ -152,9 +152,9 @@ def test_lexin_strict_and_ordered_pressure_use_their_own_lower_level_dates(
     pressures = _confirmed_descent_pressures(second, dates, len(bars) - 1)
     january = [point for point in pressures if point["index"] == dates["2026-01-14"]]
 
-    up_key = _lexin_reference(dates, '2025-11-27', 'H', 16.238397005037697, '2025-11-28', 'H233')
-    up_origin = _lexin_reference(dates, '2025-12-16', 'L', 13.962884793147548, '2025-12-17', 'L233')
-    up_turn = _lexin_reference(dates, '2026-01-14', 'H', 18.642107088020254, '2026-01-15', 'H234')
+    up_key = _lexin_reference(dates, '2025-11-27', 'H', 16.238397005037697, '2025-11-28', 'H266')
+    up_origin = _lexin_reference(dates, '2025-12-16', 'L', 13.962884793147548, '2025-12-17', 'L267')
+    up_turn = _lexin_reference(dates, '2026-01-14', 'H', 18.642107088020254, '2026-01-15', 'H268')
     up_rule = 'level1_confirmed_high_breaks_known_level2_last_fall_high'
     up_evidence = dict(direction='up', role='endpoint', available_at='2026-01-15',
                        confirmation_rule=up_rule, origin=up_origin, broken_key=up_key, confirmed_by=up_turn)
@@ -172,27 +172,43 @@ def test_lexin_strict_and_ordered_pressure_use_their_own_lower_level_dates(
     for reference in (up_key, up_origin, up_turn):
         _assert_lexin_source(reference, first)
 
-    # 一月的上涨许可不能让后来下降提前可知。三月末来源低点仍发展时，
-    # 两条下降证据都不存在；其后相同事实在四月快照中也不倒填到价格日。
+    # 普通空头的最后必要来源为三月低点：LH 已于 3/2 可知，LL 于 3/5
+    # 可知，不能再等未来另一高点。三月末严格突破是另一份后知事实。
+    ordered_turn = _lexin_reference(dates, '2026-03-04', 'L', 14.347478406424756, '2026-03-05', 'L269')
+    ordered_rule = 'ordered_HH_then_HL_or_LL_then_LH_switch'
+    ordinary_pressure = dict(
+        index=1946, value=18.642107088020254, source='confirmed_descent', available_at='2026-03-05',
+        known_index=1976, confirmation_rule=ordered_rule, broken_key=up_origin, confirmed_by=ordered_turn)
+    assert not any(point['index'] == 1946
+                   for point in _confirmed_descent_pressures(second, dates, dates['2026-03-04']))
+    assert [point for point in _confirmed_descent_pressures(second, dates, dates['2026-03-05'])
+            if point['index'] == 1946] == [ordinary_pressure]
     assert _confirmed_descent_pressures(second, dates, dates['2026-03-23']) == [
         point for point in pressures if cast(int, point['known_index']) <= dates['2026-03-23']]
-    assert not any(point['index'] == 1946
-                   for point in _confirmed_descent_pressures(second, dates, dates['2026-03-23']))
+    ordinary_candidates = [point for point in _points(second, 'structure_strokes')
+                           if point['time'] == '2026-01-14' and point['confirmation_rule'] == ordered_rule]
+    assert len(ordinary_candidates) == 1
+    evidence = [
+        up_turn, _lexin_reference(dates, '2026-02-11', 'H', 16.05678335432346, '2026-03-02', 'H269'),
+        _lexin_reference(dates, '2026-02-02', 'L', 15.362378219239613, '2026-02-09', 'L268', ordinal=1),
+        ordered_turn,
+    ]
+    assert ordinary_candidates[0]['definition_evidence'] == evidence
+    assert ordinary_candidates[0]['direction_definition'] == '空头趋势'
+    for reference in evidence:
+        _assert_lexin_source(reference, first)
     if asof == '2026-03-23':
-        assert january == []
+        assert january == [ordinary_pressure]
         assert not any(point['time'] == '2026-03-23' for point in _points(first, 'strokes'))
         assert not any(point['time'] == '2026-03-23' for point in _points(second, 'qualified_strokes'))
         return
 
-    down_turn = _lexin_reference(dates, '2026-03-23', 'L', 12.809103953315923, '2026-03-24', 'L236')
+    down_turn = _lexin_reference(dates, '2026-03-23', 'L', 12.809103953315923, '2026-03-24', 'L270')
     down_rule = 'level1_confirmed_low_breaks_known_level2_last_rise_low'
-    ordered_turn = _lexin_reference(dates, '2026-03-11', 'H', 15.212814036298477, '2026-03-24', 'H236')
-    ordered_rule = 'ordered_HH_then_HL_or_LL_then_LH_switch'
     assert january == [
+        ordinary_pressure,
         dict(index=1946, value=18.642107088020254, source='confirmed_descent', available_at='2026-03-24',
              known_index=1989, confirmation_rule=f'{down_rule}_origin', broken_key=up_origin, confirmed_by=down_turn),
-        dict(index=1946, value=18.642107088020254, source='confirmed_descent', available_at='2026-03-24',
-             known_index=1989, confirmation_rule=ordered_rule, broken_key=up_origin, confirmed_by=ordered_turn),
     ]
     assert cast(float, down_turn['value']) < cast(float, up_origin['value'])
     down_evidence = dict(direction='down', role='endpoint', available_at='2026-03-24',
@@ -207,40 +223,30 @@ def test_lexin_strict_and_ordered_pressure_use_their_own_lower_level_dates(
     assert len(candidates) == 2
     strict = next(point for point in candidates if point['confirmation_rule'] == f'{down_rule}_origin')
     assert strict['upgrade_evidence'] == dict(down_evidence, role='origin')
-    ordinary = next(point for point in candidates if point['confirmation_rule'] == ordered_rule)
-    evidence = [
-        _lexin_reference(dates, '2026-02-11', 'H', 16.05678335432346, '2026-03-02', 'H235'), ordered_turn,
-        _lexin_reference(dates, '2026-02-02', 'L', 15.362378219239613, '2026-02-09', 'L234', ordinal=1),
-        _lexin_reference(dates, '2026-03-04', 'L', 14.347478406424756, '2026-03-05', 'L235'),
-    ]
-    assert ordinary['definition_evidence'] == evidence
-    assert ordinary['direction_definition'] == '空头趋势'
-    for reference in [down_turn, *evidence]:
-        _assert_lexin_source(reference, first)
+    _assert_lexin_source(down_turn, first)
 
-    if asof == '2026-05-20':
+    if asof in ('2026-05-20', '2026-07-02'):
         assert any(point['time'] == '2026-04-30' and point['available_at'] == '2026-05-06'
                    for point in _points(first, 'strokes'))
-        assert not any(point['time'] == '2026-04-30' for point in _points(second, 'strokes'))
-        assert not any(point['time'] == '2026-04-30' for point in _points(second, 'qualified_strokes'))
-    if asof == "2026-07-02":
+        # 5/19 低点完成 LL，且更低高点已知；不再借 5/21 才知的另一高点。
         april_evidence = [
-            _lexin_reference(dates, '2026-04-30', 'H', 15.768338144365554, '2026-05-06', 'H238'),
-            _lexin_reference(dates, '2026-05-19', 'H', 15.008843481531517, '2026-05-21', 'H239', ordinal=1),
-            _lexin_reference(dates, '2026-04-24', 'L', 14.667973084155763, '2026-05-06', 'L237'),
-            _lexin_reference(dates, '2026-05-19', 'L', 14.58833709088516, '2026-05-19', 'L238'),
+            _lexin_reference(dates, '2026-04-30', 'H', 15.768338144365554, '2026-05-06', 'H273'),
+            _lexin_reference(dates, '2026-05-14', 'H', 15.33230993587487, '2026-05-19', 'H274'),
+            _lexin_reference(dates, '2026-05-12', 'L', 15.020517229659871, '2026-05-14', 'L273'),
+            _lexin_reference(dates, '2026-05-19', 'L', 14.58833709088516, '2026-05-19', 'L274'),
         ]
         for field in ('strokes', 'qualified_strokes'):
             points = [point for point in _points(second, field) if point['time'] == '2026-04-30']
             assert len(points) == 1
-            assert (points[0]['value'], points[0]['available_at']) == (15.768338144365554, '2026-05-21')
+            assert (points[0]['value'], points[0]['available_at']) == (15.768338144365554, '2026-05-19')
             assert points[0]['confirmation_rule'] == ordered_rule
-            assert points[0]['confirmed_by'] == april_evidence[1]
+            assert points[0]['confirmed_by'] == april_evidence[-1]
             assert points[0]['definition_evidence'] == april_evidence
         for reference in april_evidence:
             _assert_lexin_source(reference, first)
-        latest_key = _lexin_reference(dates, '2026-06-08', 'L', 12.475022922508597, '2026-06-09', 'L243')
-        latest_turn = _lexin_reference(dates, '2026-06-12', 'L', 12.205467543889137, '2026-06-12', 'L244')
+    if asof == "2026-07-02":
+        latest_key = _lexin_reference(dates, '2026-06-08', 'L', 12.475022922508597, '2026-06-09', 'L279')
+        latest_turn = _lexin_reference(dates, '2026-06-12', 'L', 12.205467543889137, '2026-06-12', 'L280')
         assert max(pressures, key=lambda point: cast(int, point['index'])) == dict(
             index=2040, value=13.04648032518185, source='confirmed_descent', available_at='2026-06-12',
             known_index=2043, confirmation_rule=f'{down_rule}_origin', broken_key=latest_key, confirmed_by=latest_turn)

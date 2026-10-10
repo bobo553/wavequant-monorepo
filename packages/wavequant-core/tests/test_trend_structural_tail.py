@@ -65,6 +65,9 @@ def test_raw_path_seed_boundary_survives_peak_extraction_and_recursive_adaptatio
     monkeypatch: pytest.MonkeyPatch, has_right_turns: bool,
 ) -> None:
     left = _source(1)[:15]
+    # 两对定义现在于 L12 已齐备。延迟这个必要来源至真实路径断点，继续
+    # 验证旧路径不能借新 epoch 的首根行情获得资格，而非依赖旧确认顺序。
+    left[12]['available_at'] = left[14]['time']
     left[-1] = dict(left[-1], state='developing')
     right = [dict(left[-1], state='seed')]
     if has_right_turns:
@@ -94,6 +97,8 @@ def test_raw_path_seed_boundary_survives_peak_extraction_and_recursive_adaptatio
     bars = [Bar(datetime(2026, 1, 1)+timedelta(days=i), 'test', 50, 51, 49, 50, 100) for i in range(20)]
     first = trend_lines(source, bars)
     assert cutoffs[0] == 14
+    left_geometry = next(stroke for stroke in _paths(first) if stroke['source_path'] == 'left')
+    assert _points(left_geometry)[-1]['available_at'] == left[14]['time']
     # H 的压力可知日正好在断点日，不能借用新路径的首根 K 线进入策略视图。
     assert not any(stroke['source_path'] == 'left' for stroke in _paths(first, 'qualified_strokes'))
     upper_source = high_low_points_from_strokes(first['strokes'])

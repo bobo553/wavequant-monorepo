@@ -30,7 +30,8 @@ def test_strict_known_key_break_promotes_whole_wave_without_a_later_holding_turn
     regular = trend_reversals(source, trend_level=level)
     before = deepcopy((source, regular))
 
-    promoted = promote_trend_key_breaks(source, regular, trend_level=level)
+    events: list[dict[str, object]] = []
+    promoted = promote_trend_key_breaks(source, regular, trend_level=level, event_sink=events)
 
     assert (source, regular) == before
     assert [point['index'] for point in promoted][-2:] == [14, 17]
@@ -46,8 +47,16 @@ def test_strict_known_key_break_promotes_whole_wave_without_a_later_holding_turn
     assert endpoint['wave_direction_after'] == ('down' if mirror else 'up')
     evidence = endpoint['upgrade_evidence']
     assert isinstance(evidence, dict) and evidence['role'] == 'endpoint'
-    origin_evidence = origin['upgrade_evidence']
+    # 两类普通升降证据已在攻击点可知时齐全，origin保留自己的普通定义。
+    # 同日独立严格突破仍必须记入账本，不能要求返回并集覆盖早ordinary证明。
+    assert origin.get('upgrade_evidence') is None
+    upgraded_origin = next(point for point in events if point['index'] == 14)
+    origin_evidence = upgraded_origin['upgrade_evidence']
     assert isinstance(origin_evidence, dict) and origin_evidence['role'] == 'origin'
+    assert origin_evidence['available_at'] == origin['available_at']
+    key = evidence['broken_key']
+    assert isinstance(key, dict)
+    assert (key['index'], key['value'], key['available_at']) == (9, 55 if mirror else 45, '2026-01-14')
 
 
 @pytest.mark.parametrize('mirror', [False, True])
@@ -63,16 +72,23 @@ def test_equal_or_unbroken_level_key_never_upgrades(attack: int, mirror: bool) -
 @pytest.mark.parametrize('offset', [-1, 0, 1])
 def test_old_key_first_known_must_precede_attack_price_date(integer_clock: bool, offset: int) -> None:
     source = source_points(VALUES, level=1)
-    regular = trend_reversals(source, trend_level=2)
     if integer_clock:
         for point in source:
             index = point['index']
             assert isinstance(index, int)
             point['available_at'] = index + 1
-        regular = trend_reversals(source, trend_level=2)
-        regular[-1]['available_at'] = 17 + offset
+    regular = trend_reversals(source, trend_level=2)
+    # 普通L14现在更早存在，不能再把regular[-1]误当作本级旧H9关键位。
+    # 严格旧关键位的门禁比较真实攻击价格日；攻击自己的确认日还在其后一天。
+    key = next(point for point in regular if point['index'] == 9)
+    if integer_clock:
+        attack_index = source[17]['index']
+        assert isinstance(attack_index, int)
+        key['available_at'] = attack_index + offset
     else:
-        regular[-1]['available_at'] = (date(2026, 1, 18) + timedelta(days=offset)).isoformat()
+        attack_time = source[17]['time']
+        assert isinstance(attack_time, str)
+        key['available_at'] = (date.fromisoformat(attack_time) + timedelta(days=offset)).isoformat()
 
     result = promote_trend_key_breaks(source, regular, trend_level=2)
 
@@ -80,8 +96,12 @@ def test_old_key_first_known_must_precede_attack_price_date(integer_clock: bool,
 
 
 @pytest.mark.parametrize('mirror', [False, True])
-def test_future_ordered_origin_is_not_borrowed_before_its_confirmation(mirror: bool) -> None:
-    source = source_points([*VALUES, 30], level=1, mirror=mirror)
+def test_future_ordinary_origin_is_not_borrowed_before_its_confirmation(mirror: bool) -> None:
+    values = [*VALUES, 30]
+    # L16与L14相等，使H17单边破位时普通多头定义尚不齐全；L18才抬高。
+    # 相等不确认的真实来源保留“早strict／晚ordinary”因果场景，无人工倒填日期。
+    values[16] = values[14]
+    source = source_points(values, level=1, mirror=mirror)
     regular = trend_reversals(source, trend_level=2)
     future_origin = next(point for point in regular if point['index'] == 14)
     assert future_origin['available_at'] == '2026-01-20'
@@ -97,7 +117,7 @@ def test_future_ordered_origin_is_not_borrowed_before_its_confirmation(mirror: b
 def test_unknown_current_level_key_cannot_be_borrowed_from_future_candidates() -> None:
     source = source_points(VALUES, level=1)
     regular = trend_reversals(source, trend_level=2)
-    regular[-1]['available_at'] = '2026-02-01'
+    next(point for point in regular if point['index'] == 9)['available_at'] = '2026-02-01'
 
     result = promote_trend_key_breaks(source, regular, trend_level=2)
 
@@ -171,7 +191,7 @@ def test_upgrade_rejects_cross_level_source_and_candidates() -> None:
 def test_current_level_key_requires_its_actual_confirmed_source_provenance(field: str, value: object) -> None:
     source = source_points(VALUES, level=1)
     regular = trend_reversals(source, trend_level=2)
-    regular[-1][field] = value
+    next(point for point in regular if point['index'] == 9)[field] = value
 
     with pytest.raises(ValueError, match='source provenance'):
         promote_trend_key_breaks(source, regular, trend_level=2)

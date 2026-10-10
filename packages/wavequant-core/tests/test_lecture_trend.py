@@ -1,5 +1,6 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime,timedelta
+from typing import cast
 import unittest
 
 from wavequant.domain.models.model import Bar
@@ -22,6 +23,14 @@ def fixture(values):
                  available_at=bars[min(i+1,len(bars)-1)].timestamp.date().isoformat())
             for i,(b,v) in enumerate(zip(bars,values))]
     return bars,dict(strokes=[dict(id='test',points=points)])
+
+
+def _paths(bundle: Mapping[str,object],field: str='strokes') -> Sequence[Mapping[str,object]]:
+    return cast(Sequence[Mapping[str,object]],bundle[field])
+
+
+def _points(path: Mapping[str,object]) -> Sequence[Mapping[str,object]]:
+    return cast(Sequence[Mapping[str,object]],path['points'])
 
 
 class LectureTrendTests(unittest.TestCase):
@@ -65,8 +74,9 @@ class LectureTrendTests(unittest.TestCase):
         bars,drawing=fixture([35,30,20,28,18,26,16,24,17,27,19,29,21,31,23,30,22,28,20,26,18,24,19,27,21,30])
         drawing['strokes'].append(dict(id='second',points=[dict(p) for p in drawing['strokes'][0]['points']]))
         result=reversal_trends(drawing,bars)
-        self.assertEqual(len(result['strokes']),2)
-        self.assertNotEqual(result['strokes'][0]['id'],result['strokes'][1]['id'])
+        strokes=_paths(result)
+        self.assertEqual(len(strokes),2)
+        self.assertNotEqual(strokes[0]['id'],strokes[1]['id'])
 
     def test_ordinary_confirmed_turns_stay_fixed_as_developing_tail_extends(self):
         rows=[(10,12,9,11),(12,14,10,13),(11,13,8,12),(10,12,6,11),(8,13,7,12),(10,15,8,14)]
@@ -104,9 +114,12 @@ class LectureTrendTests(unittest.TestCase):
                                     time=str(i),available_at=str(i+1)) for i,v in enumerate(values)]
         result=_wave_reversals(turns)
         self.assertEqual([(p['kind'],p['value'],p['index']) for p in result],[('L',16,5),('H',31,12),('L',18,19)])
-        # The holding turn must follow the new counter-impulse, not precede it.
-        self.assertEqual([p['confirmed_on_turn'] for p in result],[9,16,23])
-        self.assertEqual([p['available_at'] for p in result],['10','17','24'])
+        # 同类高点和低点都严格同向即成立，不额外等待另一种拐点再次出现。
+        self.assertEqual([p['confirmed_on_turn'] for p in result],[8,15,22])
+        self.assertEqual([p['available_at'] for p in result],['9','16','23'])
+        self.assertEqual([[p['index'] for p in cast(Sequence[Mapping[str,object]],
+                          cast(Mapping[str,object],wave)['definition_evidence'])] for wave in result],
+                         [[6,8,5,7],[12,14,13,15],[20,22,19,21]])
         self.assertGreater(result[1]['index']-result[0]['index'],1)
         for end in range(4,len(turns)+1):
             prefix=_wave_reversals(turns[:end])
@@ -126,14 +139,15 @@ class LectureTrendTests(unittest.TestCase):
         self.assertEqual(drawing,before)
         self.assertEqual(result['trend_level'],1)
         self.assertEqual(result['name'],'一级趋势线')
-        self.assertGreater(result['input_turn_count'],result['confirmed_wave_count'])
+        self.assertGreater(cast(int,result['input_turn_count']),cast(int,result['confirmed_wave_count']))
         self.assertIn('bear_to_bull_highs',result)
         self.assertIn('bear_bull_alternation_lows',result)
         self.assertIn('post_alternation_bull_highs',result)
         self.assertIn('bullish_turn_signals',result)
-        self.assertTrue(all(point['trend_level']==1 for point in result['bear_to_bull_highs']))
-        self.assertTrue(all(point['value']>point['broken_key']['value']
-                            for point in result['bear_to_bull_highs']))
+        highs=cast(Sequence[Mapping[str,object]],result['bear_to_bull_highs'])
+        self.assertTrue(all(point['trend_level']==1 for point in highs))
+        self.assertTrue(all(cast(float,point['value'])>
+                            cast(float,cast(Mapping[str,object],point['broken_key'])['value']) for point in highs))
 
     def test_cross_path_base_extreme_enters_secondary_candidates_but_requires_trend_permission(self):
         """Continuity evidence preserves source geometry without granting an upward trend."""
@@ -166,11 +180,10 @@ class LectureTrendTests(unittest.TestCase):
         level2=secondary_trends(dict(strokes=merged),bars)
         candidates=_candidate_structural_reversals(merged[0]['points'])
         self.assertEqual([p['value'] for p in candidates],[6.32,7.52,6.34])
-        # The compatibility key-break helper remains unchanged. Production
-        # requires ordered confirmation and has no later higher low for 6.34.
+        # 旧关键位 helper 保持兼容；统一高低点判断尚无支持 6.34 翻多的更高低点。
         candidates=trend_reversals(merged[0]['points'],trend_level=2)
         self.assertEqual([p['value'] for p in candidates],[6.32,7.52])
-        actual=level2['candidate_strokes'][0]['points']
+        actual=_points(_paths(level2,'candidate_strokes')[0])
         self.assertEqual(len(actual),len(candidates))
         stable=['index','ordinal','time','kind','value','available_at','source_level1_position',
                 'confirmed_on_level1','source_level1_available_at','confirmation_rule','direction_definition']
@@ -181,10 +194,21 @@ class LectureTrendTests(unittest.TestCase):
             for proof in ['broken_key','confirmed_by']:
                 candidate_reference=candidate[proof]
                 assert isinstance(candidate_reference,Mapping)
-                self.assertEqual({field:published[proof][field] for field in references},
+                published_reference=cast(Mapping[str,object],published[proof])
+                self.assertEqual({field:published_reference[field] for field in references},
                                  {field:candidate_reference[field] for field in references})
-        self.assertEqual([p['value'] for p in level2['strokes'][0]['points']],[7.52])
-        self.assertEqual(level2['developing_strokes'],[])
+        geometry=_points(_paths(level2)[0])
+        self.assertEqual([(p['index'],p['kind'],p['value'],p['available_at']) for p in geometry],
+                         [(6,'L',6.32,'2026-01-11'),(10,'H',7.52,'2026-01-14')])
+        # 连通低点进入正式几何，行情资格仍不能由连通证据授予。
+        self.assertEqual([p['value'] for p in _points(_paths(level2,'qualified_strokes')[0])],[7.52])
+        self.assertIsNone(geometry[0].get('trend_confirmation'))
+        developing=_paths(level2,'developing_strokes')[0]
+        self.assertEqual([(p['index'],p['kind'],p['value'],p['available_at']) for p in _points(developing)],
+                         [(10,'H',7.52,'2026-01-14'),(13,'L',6.34,'2026-01-15')])
+        self.assertTrue(developing['display_only'])
+        self.assertEqual(developing['wave_direction'],'down')
+        self.assertEqual(developing['confirmed_legs'],[])
 
 
 if __name__=='__main__':unittest.main()
