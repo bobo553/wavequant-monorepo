@@ -23,7 +23,8 @@ def test_strategy_nodes_use_earliest_structure_while_late_facts_remain_in_the_le
         for i, value in enumerate(values)]
     events = mutable_points(judge_trend(source).candidates)
     facts = [event for event in events if event['index'] == 17]
-    assert {event['available_at'] for event in facts} == {18, 22}
+    # H19 已降低，L20 再降低时两类下降证据齐备；无须等待后续 H21。
+    assert {event['available_at'] for event in facts} == {18, 21}
     ledger = list(reversed(events)) if reverse_ledger else events
     before = deepcopy(ledger)
     original = publish_uptrends
@@ -50,4 +51,4 @@ def test_strategy_nodes_use_earliest_structure_while_late_facts_remain_in_the_le
     assert node['available_at'] == 18
     assert cast(Mapping[str, object], node['upgrade_evidence'])['direction'] == 'up'
     assert ledger == before
-    assert {event['available_at'] for event in events if event['index'] == 17} == {18, 22}
+    assert {event['available_at'] for event in events if event['index'] == 17} == {18, 21}

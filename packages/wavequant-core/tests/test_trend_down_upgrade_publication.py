@@ -126,8 +126,38 @@ def paired_sample() -> tuple[list[Bar], list[dict[str, object]], list[dict[str, 
                            state='reversal', label=f'{kind}{index}', trend_level=1))
     bars.append(Bar(start + timedelta(days=len(values)), 'TEST', bars[-1].open,
                     bars[-1].high, bars[-1].low, bars[-1].close, 100))
-    points = promote_trend_key_breaks(source, trend_reversals(source, trend_level=2), trend_level=2)
+    events: list[dict[str, object]] = []
+    points = promote_trend_key_breaks(source, trend_reversals(source, trend_level=2),
+                                    trend_level=2, event_sink=events)
+    # 本样本专门验证“严格下降升级起点”复制边界，不验证最早几何的归并选择。
+    # 无先后限制后，H14同日已有普通证明，默认并集会正确保留ordinary；测试
+    # 必须选回真实event_sink中的独立strict-origin，才能进入来源身份校验分支。
+    # 坐标、价格和可知日均不改写，也不伪造升级证据；普通优先另有公共判定测试。
+    strict_origin = next(point for point in events if point['index'] == 14)
+    evidence = strict_origin['upgrade_evidence']
+    assert isinstance(evidence, Mapping) and evidence['direction'] == 'down' and evidence['role'] == 'origin'
+    origin_position = next(index for index, point in enumerate(points) if point['index'] == 14)
+    assert all(points[origin_position][field] == strict_origin[field]
+               for field in ('index', 'ordinal', 'kind', 'value', 'time', 'available_at'))
+    points[origin_position] = strict_origin
     return bars, source, points
+
+
+def test_real_paired_down_origin_and_endpoint_publish_their_own_strict_key_proof() -> None:
+    bars, source, points = paired_sample()
+
+    published = publish_uptrends(points, source, bars, source_level=1)
+
+    assert [(point['index'], point['kind'], point['value']) for point in published[-2:]] == [
+        (14, 'H', 76.0), (17, 'L', 50.0),
+    ]
+    proof = cast(Mapping[str, object], published[-1]['incoming_trend_confirmation'])
+    origin = cast(Mapping[str, object], proof['origin'])
+    key = cast(Mapping[str, object], proof['broken_key'])
+    assert proof['direction'] == 'down' and proof['confirmation_rule'] == 'strict_same_level_market_key_break'
+    assert (origin['index'], origin['kind'], origin['value']) == (14, 'H', 76.0)
+    assert (key['index'], key['kind'], key['value']) == (9, 'L', 55.0)
+    assert bars[17].low == 50.0 < cast(float, key['value'])
 
 
 @pytest.mark.parametrize(('field', 'value'), [

@@ -30,7 +30,7 @@ def reference_values(points: Sequence[Mapping[str, object]], field: str) -> list
 
 
 @pytest.mark.parametrize('level', [1, 2, 3])
-def test_levels_share_whole_wave_extremes_and_ordered_confirmation(level: int) -> None:
+def test_levels_share_whole_wave_extremes_and_pair_confirmation(level: int) -> None:
     turns = source_turns(VALUES, source_level=level - 1)
     before = deepcopy(turns)
 
@@ -39,7 +39,7 @@ def test_levels_share_whole_wave_extremes_and_ordered_confirmation(level: int) -
     assert turns == before
     assert [(point['kind'], point['value']) for point in result] == [('L', 10), ('H', 45), ('L', 24)]
     assert [point['available_at'] for point in result] == [
-        turns[6]['available_at'], turns[13]['available_at'], turns[18]['available_at'],
+        turns[5]['available_at'], turns[12]['available_at'], turns[17]['available_at'],
     ]
     source_field = 'source_turn_position' if level == 1 else f'source_level{level - 1}_position'
     assert [point[source_field] for point in result] == [2, 9, 14]
@@ -50,20 +50,28 @@ def test_levels_share_whole_wave_extremes_and_ordered_confirmation(level: int) -
         assert len(evidence) == 4
     if level > 1:
         assert reference_values(result, 'broken_key') == [30, 28, 36]
-        assert reference_values(result, 'confirmed_by') == [18, 36, 30]
+        assert reference_values(result, 'confirmed_by') == [26, 30, 38]
 
 
 @pytest.mark.parametrize('level', [1, 2, 3])
-def test_new_high_without_later_holding_low_is_not_a_reversal(level: int) -> None:
+def test_confirmed_higher_high_can_follow_an_already_confirmed_higher_low(level: int) -> None:
     turns = source_turns([10, 20, 8, 18, 9, 22], source_level=level - 1)
 
-    assert trend_reversals(turns, trend_level=level) == []
+    # L9 已经抬高；H22 一旦确认，两对证据均严格上涨，不再等未来 holding L。
+    assert trend_reversals(turns[:-1], trend_level=level) == []
+    unfinished = deepcopy(turns)
+    unfinished[-1]['state'] = 'developing'
+    assert trend_reversals(unfinished, trend_level=level) == []
+    result = trend_reversals(turns, trend_level=level)
+    assert [(point['kind'], point['value']) for point in result] == [('L', 8)]
+    assert result[0]['available_at'] == '2026-01-07'
+    field = 'confirmed_on_turn' if level == 1 else f'confirmed_on_level{level - 1}'
+    assert result[0][field] == 5
 
     turns.extend(source_turns([12], source_level=level - 1))
     turns[-1].update(index=6, time='2026-01-07', available_at='2026-01-08')
-    result = trend_reversals(turns, trend_level=level)
-    assert [(point['kind'], point['value']) for point in result] == [('L', 8)]
-    assert result[0]['available_at'] == '2026-01-08'
+    # 后续点不会倒改这个已经成立的方向事实及首次可知日。
+    assert trend_reversals(turns, trend_level=level) == result
 
 
 @pytest.mark.parametrize('level', [1, 2, 3])
@@ -93,7 +101,8 @@ def test_every_source_prefix_keeps_its_first_confirmation_evidence(level: int) -
 
 @pytest.mark.parametrize('state', ['seed', 'developing'])
 def test_unfinished_source_turn_cannot_confirm_a_wave(state: str) -> None:
-    turns = source_turns(VALUES[:14], source_level=1)
+    # LL 是这次空头方向的最后必要证据；旧 fixture 排除的是已经不再必要的后续 H。
+    turns = source_turns(VALUES[:13], source_level=1)
     turns[-1]['state'] = state
 
     result = trend_reversals(turns, trend_level=2)
@@ -101,7 +110,7 @@ def test_unfinished_source_turn_cannot_confirm_a_wave(state: str) -> None:
 
 
 def test_display_only_source_turn_cannot_confirm_a_wave() -> None:
-    turns = source_turns(VALUES[:14], source_level=2)
+    turns = source_turns(VALUES[:13], source_level=2)
     turns[-1]['display_only'] = True
 
     result = trend_reversals(turns, trend_level=3)
@@ -175,8 +184,8 @@ def test_integer_clock_keeps_original_source_positions_and_confirmation_indices(
     result = trend_reversals(turns, trend_level=3)
 
     assert [point['source_level2_position'] for point in result] == [2, 10, 15]
-    assert [point['confirmed_on_level2'] for point in result] == [7, 14, 19]
-    assert [point['available_at'] for point in result] == [7, 14, 19]
+    assert [point['confirmed_on_level2'] for point in result] == [6, 13, 18]
+    assert [point['available_at'] for point in result] == [6, 13, 18]
 
 
 def test_legacy_numeric_string_clocks_compare_indices_numerically() -> None:
@@ -186,7 +195,7 @@ def test_legacy_numeric_string_clocks_compare_indices_numerically() -> None:
 
     result = trend_reversals(turns, trend_level=1)
 
-    assert [point['available_at'] for point in result] == ['7', '14', '19']
+    assert [point['available_at'] for point in result] == ['6', '13', '18']
 
 
 def test_missing_optional_source_ordinal_and_label_have_canonical_output_defaults() -> None:
@@ -210,7 +219,7 @@ def test_third_level_metadata_describes_its_direct_source_without_inherited_firs
     result = trend_reversals(turns, trend_level=3)
 
     assert [point['source_level2_position'] for point in result] == [2, 9, 14]
-    assert [point['confirmed_on_level2'] for point in result] == [6, 13, 18]
+    assert [point['confirmed_on_level2'] for point in result] == [5, 12, 17]
     assert [point['source_level2_available_at'] for point in result] == [
         turns[2]['available_at'], turns[9]['available_at'], turns[14]['available_at'],
     ]

@@ -83,7 +83,7 @@ def hierarchical_history(
     previous: dict[int, dict[tuple[int, int, str, float], int]] = {0: {}, 1: {}, 2: {}, 3: {}}
     last_epoch = None
     last = len(bars) - 1
-    cache_version = 'level_first_daily_point_geometry_and_independent_permissions_v114'
+    cache_version = 'level_first_daily_point_geometry_and_independent_permissions_v115'
     wants_declines = decline_sink is not None
     wants_structure = structure_sink is not None
     prefix_key = (cache_version, tuple(bars[:-1]), wants_declines, n_target_trend_confirmation_enabled, wants_structure)

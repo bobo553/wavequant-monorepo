@@ -138,12 +138,13 @@ def _later_moment(left: Moment, right: Moment) -> Moment:
 def trend_reversals(
     points: Sequence[Mapping[str, object]], *, trend_level: int,
 ) -> list[dict[str, object]]:
-    """按相同的有序 HH→HL／LL→LH 定义提取任一级的整波极值。
+    """按高点、低点共同严格升降的定义提取任一级的整波极值。
 
     多头方向由高点与低点同时严格抬高确认，空头方向完全镜像。上涨整波
-    结束时必须先有更低低点、随后有更低高点；下跌整波则必须先有更高
-    高点、随后有更高低点。同价触碰、两类反转点不同向和旧 holding 点
-    都不能确认新的反向整波，局部正／负反转也不自动改变整波多空方向。
+    结束时必须同时有更低低点和更低高点；下跌整波则必须同时有更高
+    高点和更高低点。两类证据不限定先后：HL→HH 与 HH→HL 都能确认多头，
+    LH→LL 与 LL→LH 都能确认空头。来源自身必须已经反转确认，单个局部
+    正／负反转、相等极值或高低不同向仍不足以改变本级整波方向。
 
     初始方向只使用最近两类点，不从方向确立前的历史导入极值；方向成立
     后持续保存整波最高 H／最低 L。价格坐标保留原日期，知识日期覆盖
@@ -202,7 +203,11 @@ def trend_reversals(
         sign = 1 if direction == 'up' else -1
         if point.kind == target and sign * (point.value - turns[candidate].value) > 0:
             candidate = position
-        if current is None or current == direction or point.kind != target:
+        # 方向只由两类已确认极值共同决定。旧代码还要求最后证据与旧整波
+        # 极值同类，导致先抬低、后创新高的多头要等待另一低点才被接纳。
+        # point 已通过来源可知校验；无论最后补齐的是 H 还是 L，都在真实
+        # 可知日确认，既不等待未来 holding 点，也不把单边突破冒充趋势。
+        if current is None or current == direction:
             continue
         extreme = turns[candidate]
         evidence = [turns[index] for index in [*highs[-2:], *lows[-2:]]]
@@ -210,6 +215,8 @@ def trend_reversals(
         key = _reference(source_positions[preceding]) if preceding is not None else None
         proof = [_reference(turn) for turn in evidence]
         result = _candidate_from_source(extreme)
+        # confirmation_rule 的历史协议名称保留，避免改动证据消费者；名称
+        # 中的 then 不再是额外门槛，真实充分条件和确认日由四个来源点证明。
         result.update(trend_level=trend_level, source_level=source_level, available_at=prefix_known,
                       wave_direction_before=direction, wave_direction_after=current,
                       direction_definition=current_trend.value, broken_key=key,

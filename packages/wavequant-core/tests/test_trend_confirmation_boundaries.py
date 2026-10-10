@@ -174,11 +174,17 @@ def test_daily_history_higher_level_uses_complete_lower_level_geometry_independe
         for level in (2, 3):
             assert seen[(now, level)] == _coordinates(structures[now][level - 1])
             assert all(point[-1] <= now for point in seen[(now, level)])
-    assert structures[6][1] == ()
-    assert _coordinates(structures[7][1]) == ((2, 0, "L", 10, 7),)
-    assert _coordinates(structures[18][1]) == ((2, 0, "L", 10, 7), (9, 0, "H", 45, 14))
-    assert seen[(19, 2)] == ((2, 0, "L", 10, 7), (9, 0, "H", 45, 14), (14, 0, "L", 24, 19))
-    assert _coordinates(history[19][1]) == ((9, 0, "H", 45, 14),)
+    # 结构首次可知日由两组严格比较齐备决定，策略资格保持独立。
+    assert structures[5][1] == ()
+    assert _coordinates(structures[6][1]) == ((2, 0, "L", 10, 6),)
+    assert _coordinates(structures[7][1]) == ((2, 0, "L", 10, 6),)
+    assert history[6][1] == ()
+    assert _coordinates(structures[12][1]) == ((2, 0, "L", 10, 6),)
+    assert _coordinates(structures[13][1]) == ((2, 0, "L", 10, 6), (9, 0, "H", 45, 13))
+    assert _coordinates(structures[17][1]) == ((2, 0, "L", 10, 6), (9, 0, "H", 45, 13))
+    assert _coordinates(structures[18][1]) == ((2, 0, "L", 10, 6), (9, 0, "H", 45, 13), (14, 0, "L", 24, 18))
+    assert seen[(19, 2)] == ((2, 0, "L", 10, 6), (9, 0, "H", 45, 13), (14, 0, "L", 24, 18))
+    assert _coordinates(history[19][1]) == ((9, 0, "H", 45, 13),)
     assert seen[(19, 2)] != _coordinates(history[19][1])
 
     for end in (8, 15, 19):

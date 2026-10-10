@@ -98,8 +98,8 @@ def test_whole_wave_origin_is_shared_by_all_levels_and_availability_clocks(sourc
     low = next(point for point in published if point['kind'] == 'L')
     assert (low['index'], low['value'], low['available_at']) == (1, 2.0, 6 if indexed_clock else '2026-01-07')
     proof = low['trend_confirmation']
-    assert proof['origin']['index'] == 4
-    assert proof['wave_origin']['index'] == 1
+    assert _mapping(_mapping(proof)['origin'])['index'] == 4
+    assert _mapping(_mapping(proof)['wave_origin'])['index'] == 1
 
 
 def test_a_new_actual_lower_floor_replaces_the_old_wave_origin():
@@ -108,7 +108,7 @@ def test_a_new_actual_lower_floor_replaces_the_old_wave_origin():
     source[4]['value'] = candidates[-2]['value'] = 1.0
     low = next(point for point in publish_uptrends(candidates, source, bars, source_level=0) if point['kind'] == 'L')
     assert (low['index'], low['value']) == (4, 1.0)
-    assert 'wave_origin' not in low['trend_confirmation']
+    assert 'wave_origin' not in _mapping(low['trend_confirmation'])
 
 
 def test_later_price_breach_does_not_rewrite_a_completed_wave_certificate():
@@ -116,7 +116,24 @@ def test_later_price_breach_does_not_rewrite_a_completed_wave_certificate():
     bars[6] = replace(bars[6], low=1.0)
     low = next(point for point in publish_uptrends(candidates, source, bars, source_level=0) if point['kind'] == 'L')
     assert (low['index'], low['value']) == (1, 2.0)
-    assert low['trend_confirmation']['confirmed_by']['index'] == 5
+    assert _mapping(_mapping(low['trend_confirmation'])['confirmed_by'])['index'] == 5
+
+
+def _mapping(value: object) -> Mapping[str, object]:
+    """校验测试读取的字典证据边界，不把生产返回的 object 当作隐式许可。"""
+    assert isinstance(value, Mapping)
+    return cast(Mapping[str, object], value)
+
+
+def _points(bundle: Mapping[str, object], field: str) -> list[Mapping[str, object]]:
+    paths = bundle[field]
+    assert isinstance(paths, list)
+    result: list[Mapping[str, object]] = []
+    for path in cast(list[Mapping[str, object]], paths):
+        points = path['points']
+        assert isinstance(points, list)
+        result.extend(cast(list[Mapping[str, object]], points))
+    return result
 
 
 def test_real_july_origin_and_confirmation_are_stable_at_every_daily_prefix():
@@ -124,41 +141,63 @@ def test_real_july_origin_and_confirmation_are_stable_at_every_daily_prefix():
     history = [Bar(datetime.fromisoformat(day), raw['symbol'], *prices)
                for day, *prices in raw['rows'] if day <= '2018-08-10']
     full = reversal_trends(lecture_drawing(history), history)
-    fields = ('time', 'kind', 'value', 'available_at', 'trend_confirmation')
+    fields = ('time', 'kind', 'value', 'available_at')
     for end, bar in enumerate(history, 1):
         asof = str(bar.timestamp.date())
         if asof < '2018-07-11':
             continue
         bars = history[:end]
         prefix = reversal_trends(lecture_drawing(bars), bars)
-        actual = [tuple(point.get(field) for field in fields) for stroke in prefix['strokes'] for point in stroke['points']]
-        expected = [tuple(point.get(field) for field in fields) for stroke in full['strokes'] for point in stroke['points']
-                    if point['available_at'] <= asof]
+        actual = [tuple(point.get(field) for field in fields) for point in _points(prefix, 'strokes')]
+        expected = [tuple(point.get(field) for field in fields) for point in _points(full, 'strokes')
+                    if cast(str, point['available_at']) <= asof]
         assert actual == expected, asof
-        july_lows = [point for stroke in prefix['strokes'] for point in stroke['points']
-                     if point['kind'] == 'L' and point['time'].startswith('2018-07')]
+        july_lows = [point for point in _points(prefix, 'strokes')
+                     if point['kind'] == 'L' and cast(str, point['time']).startswith('2018-07')]
         assert [(point['time'], point['value']) for point in july_lows] == (
-            [('2018-07-11', 4.84)] if asof >= '2018-08-01' else []), asof
+            [('2018-07-11', 4.84), ('2018-07-16', 5.0)] if asof >= '2018-07-30' else
+            [('2018-07-11', 4.84)] if asof >= '2018-07-17' else []), asof
+        # 六定义能先确认几何反转，held-floor 策略许可仍需真实市场突破；
+        # 在正式上级候选尚未知前不能凭 7/26 的市场证明提前发布交易资格。
+        permission_fields = (*fields, 'trend_confirmation')
+        permissions = [tuple(point.get(field) for field in permission_fields)
+                       for point in _points(prefix, 'qualified_strokes')]
+        expected_permissions = [tuple(point.get(field) for field in permission_fields)
+                                for point in _points(full, 'qualified_strokes')
+                                if cast(str, point['available_at']) <= asof]
+        assert permissions == expected_permissions, asof
+        qualified_lows = [point for point in _points(prefix, 'qualified_strokes')
+                          if point['kind'] == 'L' and cast(str, point['time']).startswith('2018-07')]
+        assert [(point['time'], point['value'], point['available_at']) for point in qualified_lows] == (
+            [('2018-07-11', 4.84, '2018-07-30')] if asof >= '2018-07-30' else []), asof
 
 
-def test_real_xiangyang_july_rally_uses_july11_not_the_later_july16_floor() -> None:
+def test_real_xiangyang_july_qualification_uses_july11_not_the_later_july16_floor() -> None:
     raw = json.loads((Path(__file__).parent / 'fixtures/xiangyang_2025_trend_break.json').read_text(encoding='utf-8'))
     bars = [Bar(datetime.fromisoformat(day), raw['symbol'], *prices)
             for day, *prices in raw['rows'] if day <= '2018-08-10']
     drawing = lecture_drawing(bars)
     before = deepcopy(drawing)
     first = reversal_trends(drawing, bars)
-    points = [point for stroke in first['strokes'] for point in stroke['points']]
-    july_lows = [point for point in points if point['kind'] == 'L' and point['time'].startswith('2018-07')]
-    assert [(point['time'], point['value'], point['available_at']) for point in july_lows] == [
-        ('2018-07-11', 4.84, '2018-08-01'),
+    geometry = _points(first, 'strokes')
+    assert [(point['time'], point['value'], point['available_at']) for point in geometry
+            if point['kind'] == 'L' and cast(str, point['time']).startswith('2018-07')] == [
+        ('2018-07-11', 4.84, '2018-07-17'), ('2018-07-16', 5.0, '2018-07-30'),
     ]
-    certificate = july_lows[0]['trend_confirmation']
-    assert (certificate['origin']['time'], certificate['origin']['value']) == ('2018-07-16', 5.0)
-    assert (certificate['wave_origin']['time'], certificate['wave_origin']['value']) == ('2018-07-11', 4.84)
-    assert certificate['broken_key']['time'] == '2018-07-13'
-    assert certificate['broken_key']['available_at'] == '2018-07-23'
-    assert certificate['available_at'] == certificate['confirmed_by']['time'] == '2018-07-26'
+    assert all('trend_confirmation' not in point for point in geometry)
+    points = _points(first, 'qualified_strokes')
+    july_lows = [point for point in points if point['kind'] == 'L' and cast(str, point['time']).startswith('2018-07')]
+    assert [(point['time'], point['value'], point['available_at']) for point in july_lows] == [
+        ('2018-07-11', 4.84, '2018-07-30'),
+    ]
+    certificate = _mapping(july_lows[0]['trend_confirmation'])
+    origin, wave_origin = _mapping(certificate['origin']), _mapping(certificate['wave_origin'])
+    broken_key, confirmed_by = _mapping(certificate['broken_key']), _mapping(certificate['confirmed_by'])
+    assert (origin['time'], origin['value']) == ('2018-07-16', 5.0)
+    assert (wave_origin['time'], wave_origin['value']) == ('2018-07-11', 4.84)
+    assert broken_key['time'] == '2018-07-13'
+    assert broken_key['available_at'] == '2018-07-23'
+    assert certificate['available_at'] == confirmed_by['time'] == '2018-07-26'
     assert [(point['time'], point['value']) for point in points if point['kind'] == 'H'
-            and point['time'].startswith('2018-07')] == [('2018-07-03', 6.85), ('2018-07-30', 6.66)]
+            and cast(str, point['time']).startswith('2018-07')] == [('2018-07-03', 6.85), ('2018-07-30', 6.66)]
     assert drawing == before

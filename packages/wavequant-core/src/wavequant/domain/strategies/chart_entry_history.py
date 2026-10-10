@@ -20,7 +20,7 @@ from ..models.model import Bar
 from .hierarchical_entry import EntryContext
 
 
-_CONFIRMATION_CACHE_VERSION = "staged_point_geometry_independent_strategy_permissions_v114"
+_CONFIRMATION_CACHE_VERSION = "staged_point_geometry_independent_strategy_permissions_v115"
 
 
 @dataclass(slots=True)

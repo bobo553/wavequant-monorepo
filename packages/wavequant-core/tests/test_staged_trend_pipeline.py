@@ -266,8 +266,13 @@ def test_level_stages_reset_each_epoch_without_borrowing_another_paths_higher_po
     complete, structures, trace = _observe_hierarchy(bars)
     _, epochs = cast(tuple[object, dict[int, int]], complete)
     assert (epochs[39], epochs[40], epochs[41], epochs[80]) == (0, 40, 41, 41)
-    assert _geometry(structures[39][2]) == [(12, 0, 'L', 500, 27), (27, 0, 'H', 1200, 36)]
-    assert _geometry(structures[80][2]) == [(53, 0, 'L', 600, 68), (68, 0, 'H', 1300, 77)]
+    # 高、低两组同向证据齐备当天确认；新路径仍须自行形成证据。
+    assert structures[21][2] == ()
+    assert _geometry(structures[22][2]) == [(12, 0, 'L', 500, 22)]
+    assert _geometry(structures[39][2]) == [(12, 0, 'L', 500, 22), (27, 0, 'H', 1200, 36)]
+    assert structures[62][2] == ()
+    assert _geometry(structures[63][2]) == [(53, 0, 'L', 600, 63)]
+    assert _geometry(structures[80][2]) == [(53, 0, 'L', 600, 63), (68, 0, 'H', 1300, 77)]
     assert all(daily[3] == () for daily in structures.values())
     assert all(cast(int, point['index']) >= 41 for now, daily in structures.items() if now >= 41
                for level in (1, 2, 3) for point in daily[level])
@@ -283,7 +288,7 @@ def test_level_stages_reset_each_epoch_without_borrowing_another_paths_higher_po
 def test_chart_collector_keeps_closed_epoch_snapshots_causal_during_warm_and_partial_cache_replays() -> None:
     bars = _multiple_path_bars(count=40)
     complete, geometry, trace = _observe_chart(bars)
-    assert _geometry(geometry[2]) == [(53, 0, 'L', 600, (START + timedelta(days=68)).date().isoformat()),
+    assert _geometry(geometry[2]) == [(53, 0, 'L', 600, (START + timedelta(days=63)).date().isoformat()),
                                       (68, 0, 'H', 1300, (START + timedelta(days=77)).date().isoformat())]
     assert geometry[3] == ()
     _assert_stages(trace, (0, 1, 2, 3))
