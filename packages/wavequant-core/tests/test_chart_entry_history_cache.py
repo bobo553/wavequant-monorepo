@@ -12,15 +12,18 @@ from .test_wave_continuation import sample
 def test_minute_prefix_reuses_prior_hierarchy_without_changing_current_evidence(monkeypatch):
     module = import_module("wavequant.domain.strategies.chart_entry_history")
     bars = sample()[0][:120]
-    original = module.reversal_trends
+    original = module.attach_trend_permissions
     calls = []
 
-    def counted(drawing, prefix, *, n_target_trend_confirmation_enabled=False):
-        calls.append(len(prefix))
-        return original(drawing, prefix,
+    def counted(prepared, prefix, *, qualified_source_points=None,
+                n_target_trend_confirmation_enabled=False):
+        # 几何阶段已经按所有日期完成；原逐日刷新次数对应独立资格阶段。
+        if prepared['trend_level'] == 1:
+            calls.append(len(prefix))
+        return original(prepared, prefix, qualified_source_points=qualified_source_points,
                         n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
 
-    monkeypatch.setattr(module, "reversal_trends", counted)
+    monkeypatch.setattr(module, "attach_trend_permissions", counted)
     cache: dict[str, object] = {}
     first = [*bars[:-1], replace(bars[-1], high=bars[-1].high + 0.1)]
     first_sink: dict[int, object] = {}
@@ -55,15 +58,17 @@ def test_minute_prefix_reuses_prior_hierarchy_without_changing_current_evidence(
 def test_prior_bar_change_invalidates_hierarchy_checkpoint(monkeypatch):
     module = import_module("wavequant.domain.strategies.chart_entry_history")
     bars = sample()[0][:80]
-    original = module.reversal_trends
+    original = module.attach_trend_permissions
     calls = []
 
-    def counted(drawing, prefix, *, n_target_trend_confirmation_enabled=False):
-        calls.append(len(prefix))
-        return original(drawing, prefix,
+    def counted(prepared, prefix, *, qualified_source_points=None,
+                n_target_trend_confirmation_enabled=False):
+        if prepared['trend_level'] == 1:
+            calls.append(len(prefix))
+        return original(prepared, prefix, qualified_source_points=qualified_source_points,
                         n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
 
-    monkeypatch.setattr(module, "reversal_trends", counted)
+    monkeypatch.setattr(module, "attach_trend_permissions", counted)
     cache: dict[str, object] = {}
     module.chart_entry_history(bars, prefix_cache=cache)
     baseline = len(calls)
@@ -80,14 +85,17 @@ def test_prior_bar_change_invalidates_hierarchy_checkpoint(monkeypatch):
 def test_hierarchical_reducer_reuses_only_prior_days(monkeypatch):
     module = import_module("wavequant.domain.strategies.hierarchical_entry")
     bars = sample()[0][:120]
-    original = module._wave_reversals
+    original = module.judge_trend
     calls = []
+    stages = []
 
-    def counted(points):
-        calls.append(len(points))
-        return original(points)
+    def counted(points, *, trend_level=1, asof=None):
+        stages.append((trend_level, asof))
+        if trend_level == 1:
+            calls.append(len(points))
+        return original(points, trend_level=trend_level, asof=asof)
 
-    monkeypatch.setattr(module, "_wave_reversals", counted)
+    monkeypatch.setattr(module, "judge_trend", counted)
     cache: dict[str, object] = {}
     first = [*bars[:-1], replace(bars[-1], high=bars[-1].high + 0.1)]
     module.hierarchical_history(first, prefix_cache=cache)
@@ -96,8 +104,10 @@ def test_hierarchical_reducer_reuses_only_prior_days(monkeypatch):
 
     second = [*bars[:-1], replace(bars[-1], high=bars[-1].high + 0.5, low=bars[-1].low - 0.2)]
     calls.clear()
+    stages.clear()
     cached = module.hierarchical_history(second, prefix_cache=cache)
     cached_reductions = len(calls)
+    assert stages == [(1, 119), (2, 119), (3, 119)]
     calls.clear()
     full = module.hierarchical_history(second)
     assert cached == full
@@ -214,14 +224,16 @@ def test_hierarchy_checkpoints_advance_one_completed_session(monkeypatch):
     prior_sink: dict[int, object] = {}
     chart.chart_entry_history(prior_session, shallow_candidate_sink=prior_sink, prefix_cache=chart_cache)
     chart_calls = []
-    original_reversals = chart.reversal_trends
+    original_permissions = chart.attach_trend_permissions
 
-    def counted_reversals(drawing, prefix, *, n_target_trend_confirmation_enabled=False):
-        chart_calls.append(len(prefix))
-        return original_reversals(drawing, prefix,
-                                  n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+    def counted_permissions(prepared, prefix, *, qualified_source_points=None,
+                            n_target_trend_confirmation_enabled=False):
+        if prepared['trend_level'] == 1:
+            chart_calls.append(len(prefix))
+        return original_permissions(prepared, prefix, qualified_source_points=qualified_source_points,
+                                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
 
-    monkeypatch.setattr(chart, "reversal_trends", counted_reversals)
+    monkeypatch.setattr(chart, "attach_trend_permissions", counted_permissions)
     cached_sink: dict[int, object] = {}
     cached_chart = chart.chart_entry_history(next_session, shallow_candidate_sink=cached_sink, prefix_cache=chart_cache)
     cached_reductions = len(chart_calls)
@@ -235,16 +247,20 @@ def test_hierarchy_checkpoints_advance_one_completed_session(monkeypatch):
     hierarchy = import_module("wavequant.domain.strategies.hierarchical_entry")
     hierarchy_cache: dict[str, object] = {}
     hierarchy.hierarchical_history(prior_session, prefix_cache=hierarchy_cache)
-    original_wave = hierarchy._wave_reversals
+    original_judge = hierarchy.judge_trend
     wave_calls = []
+    stages = []
 
-    def counted_wave(points):
-        wave_calls.append(1)
-        return original_wave(points)
+    def counted_judge(points, *, trend_level=1, asof=None):
+        stages.append((trend_level, asof))
+        if trend_level == 1:
+            wave_calls.append(1)
+        return original_judge(points, trend_level=trend_level, asof=asof)
 
-    monkeypatch.setattr(hierarchy, "_wave_reversals", counted_wave)
+    monkeypatch.setattr(hierarchy, "judge_trend", counted_judge)
     cached_hierarchy = hierarchy.hierarchical_history(next_session, prefix_cache=hierarchy_cache)
     assert len(wave_calls) == 2
+    assert stages == [(1, 118), (1, 119), (2, 118), (2, 119), (3, 118), (3, 119)]
     assert cached_hierarchy == hierarchy.hierarchical_history(next_session)
 
     pivot = import_module("wavequant.domain.strategies.lecture_strategy")

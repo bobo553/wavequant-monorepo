@@ -11341,6 +11341,64 @@
                     "summary": "685298a经8331b3d合并本地main。Web3003五个模块HTTP200且与main文件逐字一致；实际AkShare 3303日线与理论计算得到历史1.618目标5.54082、生效2020-06-16、有效至2024-01-31。当前2026-05-18高5.20、等浪6.22无延伸；Core仍v83。未推送，完整Web与浏览器待独立验证。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-317",
+            "name": "level-first-staged-trend-pipeline",
+            "title": "按完整层级顺序计算三级趋势",
+            "status": "done",
+            "dependencies": ["MONOREPO-315"],
+            "description": "每只股票先完整计算折线高低点，再依次完整计算一级、二级、三级高低点，统一入口与历史回放保持因果边界。",
+            "scope": "Core趋势阶段编排、多路径与历史回放入口、缓存隔离、详细注释及定向回归。",
+            "acceptanceCriteria": [
+                "全部折线高低点计算完成后才开始一级，全部一级完成后才开始二级，全部二级完成后才开始三级。",
+                "各级继续调用同一judge_trend函数，一级首参折线高低点、二级首参全部一级输出、三级首参全部二级输出。",
+                "多路径边界与层级顺序一致，不在逐路径或逐棒循环内交错跨级。",
+                "历史和策略依实际可知日期消费结果，不借未来；严格高低突破升级与证书仅控制策略资格保持。",
+                "阶段调用顺序、非空三级、多路径、历史前缀/cache回归及必要类型/构建实际验证。"
+            ],
+            "verification": [
+                {
+                    "command": "D:/Temp/wavequant-trend-levels-venv/Scripts/python.exe -m pytest -q tests/test_staged_trend_pipeline.py tests/test_recursive_trend_judgement.py tests/test_trend_judgement_core.py tests/test_trend_definition_levels.py tests/test_trend_primitives.py tests/test_trend_foundations.py tests/test_figure008_foundations.py tests/test_trend_level_upgrades.py tests/test_trend_structure.py tests/test_chart_entry_permissions.py tests/test_trend_candidate_ledger.py tests/test_trend_qualification_ledger.py tests/test_trend_confirmation_entry_refresh.py tests/test_confirmed_descent_pressure.py tests/test_n_trend_option_consumers.py tests/test_trend_annotation_clock.py tests/test_chart_staging_resources.py tests/test_empty_epoch_path_cutoff.py tests/test_structural_permission_promotion.py tests/test_artifact_cache.py tests/test_chart_entry_history_cache.py -k 'not daily_history'",
+                    "status": "passed",
+                    "summary": "最终21文件517项、361子用例通过（227.65秒）。真实OHLC三级非空与多路径、四阶段调用顺序、N模式几何一致、前缀/同日修订/追加/返回值修改隔离、跨epoch/首空路径cap40、所有临时资源成功和失败关闭、只升资格不重算三级与未突破计数正确、三种时钟/同坐标真实起点及公开点独立日期均覆盖。Lexin六实际前缀按当前统一判定逐字段核验：上升资格1/15、两下降事实3/24、4/16与4/17稳定、4/30二级高点5/21可知、6/9压力6/12可知；旧证书筛几何和旧私有4/17日期断言由真实新定义证明替代。"
+                },
+                {
+                    "command": "D:/Temp/wavequant-trend-levels-venv/Scripts/python.exe .codex-runtime/check-staged-history-baseline.py",
+                    "status": "passed",
+                    "summary": "124根实际OHLC按本会话保存的旧逐日编排隔离差分：N开/关的完整策略history、geometry/epochs、下降ledger、chart events及shallow/pullback sinks全部相等；昨日checkpoint、append和partial回放相等。阶段顺序两项修前红、修后绿；未突破计数两项修前5!=2、修后绿；空epoch首cap实际None/41修为40。定向tracemalloc纯准备阶段124/248根约4.30/7.07MiB，避免原全日期三层证据树48.15/204.63MiB峰值；测量不代表完整账户峰值或通用性能保证。"
+                },
+                {
+                    "command": "MYPYPATH=src python -m mypy --strict src/wavequant/domain/market_structure/trend_staging.py src/wavequant/domain/market_structure/trend_pipeline.py src/wavequant/domain/market_structure/trend_lines.py tests/test_trend_annotation_clock.py tests/test_chart_staging_resources.py",
+                    "status": "passed",
+                    "summary": "最终5个strict目标通过，几何/资格标注只白名单回写派生字段，无Any/ignore豁免。纯判定与阶段存储分离，内部临时序列仅读取本请求自己写出的可信对象，资源统一关闭。"
+                },
+                {
+                    "command": "MYPYPATH=src python -m mypy src/wavequant/domain/strategies/hierarchical_entry.py src/wavequant/domain/strategies/chart_entry_history.py src/wavequant/interfaces/charts/chart_geometry.py src/wavequant/interfaces/charts/visualization.py tests/test_staged_trend_pipeline.py tests/test_empty_epoch_path_cutoff.py tests/test_structural_permission_promotion.py tests/test_chart_entry_permissions.py tests/test_trend_confirmation_entry_refresh.py tests/test_confirmed_descent_pressure.py; python -m mypy --follow-imports=silent tests/test_chart_entry_history_cache.py",
+                    "status": "passed",
+                    "summary": "最终10个源码/回归联合标准检查与缓存测试单文件定向类型通过。缓存测试默认mypy曾连带进入两个未修改测试依赖test_wave_continuation.py/test_completed_wave_recovery.py，报告其60项既有类型错误；最终定向命令只校验本次修改目标，不宣称这些依赖或全Core类型通过。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core typecheck; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web exec node --test tests/recursive-trend-geometry.test.mjs tests/lecture-overlay.test.mjs tests/trend-wave-continuation.test.mjs tests/trend-n-confirmation.test.mjs",
+                    "status": "passed",
+                    "summary": "Core既定4文件strict、Web类型与67项相关Node消费回归通过；本轮没有Web源码变更。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core build; D:/Temp/wavequant-staged-trend-wheel-20261010/Scripts/python.exe -m pip install packages/wavequant-core/dist/wavequant_core-0.4.0-py3-none-any.whl; isolated python .codex-runtime/staged-trend-wheel-smoke.py",
+                    "status": "passed",
+                    "summary": "最终sdist/wheel构建成功；新建隔离环境安装声明的tzdata依赖及wheel，从site-packages导入，全部一级→二级→三级顺序、真实非空三级H75=1250、N独立几何、warm因果历史/三级知日108及强制暂存关闭通过；7个修改生产模块包内字节逐一匹配最终源码。"
+                },
+                {
+                    "command": "targeted Prettier; pnpm harness:check; codegraph sync; git diff --check; original feature object preservation assertion; independent code review",
+                    "status": "passed",
+                    "summary": "相关JSON/Markdown格式、Harness、CodeGraph同步及最终差异复核通过。独立审查发现的许可计数、空epoch截止、无label与同坐标起点时钟均有精确回归并修复；全部313个旧功能对象及原activeFeature逐字段保持，仅新增317done；不修改256旧失败记录。"
+                },
+                {
+                    "command": "完整Core/Web套件、其他重daily_history用例、浏览器/Playwright及完整账户/分钟集成",
+                    "status": "not-run",
+                    "summary": "按用户验证节奏未运行，待独立验证；定向通过不替代完整套件或实际浏览器验收。本轮仅本地提交与合并，不推送、发布或重启共享服务。"
+                }
+            ]
         }
     ]
 }

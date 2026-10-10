@@ -26,10 +26,8 @@ from wavequant.domain.market_structure.bottom_n_targets import BOTTOM_N_TARGET_P
 from wavequant.domain.market_structure.a_wave import A_WAVE_POLICY
 from wavequant.domain.market_structure.price_action import Direction
 from wavequant.infrastructure.filesystem.project_paths import project_path
-from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
-from wavequant.domain.market_structure.lecture_trend import reversal_trends
-from wavequant.domain.market_structure.secondary_trend import secondary_trends
 from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
+from wavequant.domain.market_structure.trend_pipeline import calculate_trend_hierarchy
 from wavequant.domain.market_structure.abc_candidate import AbcAnchor, tertiary_abc_observations
 from wavequant.interfaces.research_tools.stock_backtest import single_stock_result
 from wavequant.application.analytics.trade_evidence import result_markers
@@ -983,18 +981,9 @@ class ChartRepository:
             != config.n_target_trend_confirmation_enabled
             for name in ('reversal_trends', 'secondary_trends', 'tertiary_trends') if name in geometry
         ):
-            drawing = lecture_drawing(bars)
-            level1 = reversal_trends(drawing, bars,
+            # 与缓存入口共用四个完整阶段，图表不能另写一条逐棒/逐路径递归链。
+            geometry = calculate_trend_hierarchy(bars,
                 n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
-            level2 = secondary_trends(level1, bars,
-                n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
-            geometry = dict(
-                lecture_drawing=drawing,
-                reversal_trends=level1,
-                secondary_trends=level2,
-                tertiary_trends=tertiary_trends(level2, bars,
-                    n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled),
-            )
         from ...domain.market_structure.squeeze_alternation import squeeze_landmarks
         from ...domain.market_structure.alternation_breakout import promote_alternation_segments
         geometry = dict(geometry)
@@ -1008,8 +997,19 @@ class ChartRepository:
                         if (p["confirmed_bear_low"]["index"], p["confirmed_flip_high"]["index"], p["index"])
                         not in identities]
             geometry[name] = dict(geometry[name], bear_bull_alternation_lows=[*ordinary, *additions])
-            geometry[name] = promote_alternation_segments(geometry[name], bars, result.audit, level)
-            if level == 2:
+            structural = geometry[name].get('scope') == 'structural_trend_points_with_independent_strategy_permissions'
+            if structural:
+                # 三个高低点阶段已经完成。交易证书只丰富资格视图，不能把新增
+                # 资格段倒塞进二级来源、再计算一次三级，更不能改变正式几何。
+                permissions = dict(geometry[name], strokes=geometry[name].get('qualified_strokes', []))
+                promoted = promote_alternation_segments(permissions, bars, result.audit, level)
+                geometry[name] = dict(geometry[name], qualified_strokes=promoted['strokes'],
+                    # 尚无突破时发布器保留旧几何计数；策略计数必须只统计本次资格点。
+                    strategy_confirmed_wave_count=sum(len(stroke['points']) for stroke in promoted['strokes']))
+            else:
+                # 显式传入的旧几何保留旧资格/结构混合契约；新缓存不再生成这种结果。
+                geometry[name] = promote_alternation_segments(geometry[name], bars, result.audit, level)
+            if level == 2 and not structural:
                 # Level 3 must consume the same ordered level-2 geometry shown
                 # on the chart, including newly confirmed local segments.
                 geometry["tertiary_trends"] = tertiary_trends(geometry[name], bars,

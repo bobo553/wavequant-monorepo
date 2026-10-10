@@ -2,10 +2,7 @@
 from dataclasses import asdict
 import hashlib
 
-from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
-from wavequant.domain.market_structure.lecture_trend import reversal_trends
-from wavequant.domain.market_structure.secondary_trend import secondary_trends
-from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
+from wavequant.domain.market_structure.trend_pipeline import calculate_trend_hierarchy
 from wavequant.infrastructure.persistence.artifact_cache import canonical
 
 
@@ -14,16 +11,13 @@ def cached_geometry(cache,bars,price_basis,engine,*,n_target_trend_confirmation_
         raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
     rows=[dict(asdict(b),timestamp=b.timestamp.isoformat()) for b in bars]
     key=dict(bars_sha256=hashlib.sha256(canonical(rows).encode()).hexdigest(),
-             price_basis=price_basis,engine=engine,
+             price_basis=price_basis,engine=engine, computation_policy='complete_level_first_v114',
              n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
     with cache.lock(cache.key('geometry',key)):
         result=cache.get('geometry',key)
         if result is None:
-            drawing=lecture_drawing(bars)
-            first=reversal_trends(drawing,bars,n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
-            second=secondary_trends(first,bars,n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
-            result=dict(lecture_drawing=drawing,reversal_trends=first,
-                        secondary_trends=second,tertiary_trends=tertiary_trends(second,bars,
-                            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled))
+            # 缓存与无缓存图表共用完整层级编排，不能保存旧逐路径/跨级中间结果。
+            result=calculate_trend_hierarchy(bars,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
             cache.put('geometry',key,result)
         return result

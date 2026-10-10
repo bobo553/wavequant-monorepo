@@ -46,6 +46,11 @@ def empty_level(*args: object, **kwargs: object) -> dict[str, object]:
     return dict(strokes=[], candidate_strokes=[], bear_bull_alternation_lows=[])
 
 
+def fake_prepared(_source: Sequence[Mapping[str, object]], *, trend_level: int = 1,
+                  symbol: str = 'STRUCTURE') -> dict[str, object]:
+    return dict(empty_level(), trend_level=trend_level)
+
+
 def fake_first(_drawing: object, bars: Sequence[Bar], *,
                n_target_trend_confirmation_enabled: bool = False) -> dict[str, object]:
     lows: list[dict[str, object]] = []
@@ -59,6 +64,14 @@ def fake_first(_drawing: object, bars: Sequence[Bar], *,
                          confirmed_flip_high=ref(1, "H", 6.0), confirmed_bear_low=ref(0, "L", 4.0),
                          broken_key=ref(0, "H", 5.5)))
     return dict(strokes=[dict(id="first", points=[])], candidate_strokes=[], bear_bull_alternation_lows=lows)
+
+
+def fake_permissions(prepared: Mapping[str, object], bars: Sequence[Bar], *,
+                     qualified_source_points: Sequence[Mapping[str, object]] | None = None,
+                     n_target_trend_confirmation_enabled: bool = False) -> dict[str, object]:
+    result = (fake_first(prepared, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+              if prepared['trend_level'] == 1 else empty_level())
+    return dict(result, qualified_strokes=result['strokes'])
 
 
 class TrendConfirmationEntryRefreshTests(unittest.TestCase):
@@ -97,9 +110,8 @@ class TrendConfirmationEntryRefreshTests(unittest.TestCase):
         self.assertTrue(_has_confirmation_price_cross(points, (), bars[2], replace(bars[3], close=5.8),
                                                      "2026-01-04", 3))
 
-    @patch("wavequant.domain.strategies.chart_entry_history.tertiary_trends", side_effect=empty_level)
-    @patch("wavequant.domain.strategies.chart_entry_history.secondary_trends", side_effect=empty_level)
-    @patch("wavequant.domain.strategies.chart_entry_history.reversal_trends", side_effect=fake_first)
+    @patch("wavequant.domain.strategies.chart_entry_history.attach_trend_permissions", side_effect=fake_permissions)
+    @patch("wavequant.domain.strategies.chart_entry_history.prepare_trend_lines", side_effect=fake_prepared)
     @patch("wavequant.domain.strategies.chart_entry_history.lecture_drawing", side_effect=fake_drawing)
     def test_chart_observes_market_certificate_on_unchanged_raw_source(self, *_mocks: object) -> None:
         bars = bars_fixture()
@@ -110,9 +122,8 @@ class TrendConfirmationEntryRefreshTests(unittest.TestCase):
         self.assertEqual([(event["bar_index"], event["event"]) for event in events],
                          [(3, "hierarchy_alternation_ready")])
 
-    @patch("wavequant.domain.strategies.chart_entry_history.tertiary_trends", side_effect=empty_level)
-    @patch("wavequant.domain.strategies.chart_entry_history.secondary_trends", side_effect=empty_level)
-    @patch("wavequant.domain.strategies.chart_entry_history.reversal_trends", side_effect=fake_first)
+    @patch("wavequant.domain.strategies.chart_entry_history.attach_trend_permissions", side_effect=fake_permissions)
+    @patch("wavequant.domain.strategies.chart_entry_history.prepare_trend_lines", side_effect=fake_prepared)
     @patch("wavequant.domain.strategies.chart_entry_history.lecture_drawing", side_effect=fake_drawing)
     def test_changed_unfinished_bar_replays_certificate_without_cache_contamination(self, *_mocks: object) -> None:
         bars = bars_fixture()
@@ -124,9 +135,8 @@ class TrendConfirmationEntryRefreshTests(unittest.TestCase):
         self.assertEqual(cache["checkpoint"], checkpoint)
         self.assertEqual(chart_entry_history(bars, prefix_cache=cache), chart_entry_history(bars))
 
-    @patch("wavequant.domain.strategies.chart_entry_history.tertiary_trends", side_effect=empty_level)
-    @patch("wavequant.domain.strategies.chart_entry_history.secondary_trends", side_effect=empty_level)
-    @patch("wavequant.domain.strategies.chart_entry_history.reversal_trends", side_effect=fake_first)
+    @patch("wavequant.domain.strategies.chart_entry_history.attach_trend_permissions", side_effect=fake_permissions)
+    @patch("wavequant.domain.strategies.chart_entry_history.prepare_trend_lines", side_effect=fake_prepared)
     @patch("wavequant.domain.strategies.chart_entry_history.lecture_drawing", side_effect=fake_drawing)
     def test_prequalification_cache_is_not_reused(self, *_mocks: object) -> None:
         bars = bars_fixture()
@@ -163,9 +173,9 @@ class TrendConfirmationEntryRefreshTests(unittest.TestCase):
         with patch("wavequant.domain.strategies.hierarchical_entry.judge_trend", side_effect=observe), \
                 patch("wavequant.domain.strategies.hierarchical_entry.qualify_trend_structure", side_effect=qualify):
             history, _ = hierarchical_history(bars)
-        self.assertEqual(calls, [(1, 1, 2), (2, 0, 2), (3, 0, 2), (1, 1, 3), (2, 0, 3), (3, 0, 3)])
+        self.assertEqual(calls, [(1, 1, 2), (1, 1, 3), (2, 0, 2), (2, 0, 3), (3, 0, 2), (3, 0, 3)])
         self.assertEqual(first_lengths, [3, 4])
-        self.assertEqual(higher_lengths, [(1, 3), (2, 3), (1, 4), (2, 4)])
+        self.assertEqual(higher_lengths, [(1, 3), (1, 4), (2, 3), (2, 4)])
         self.assertTrue(all(not points for levels in history.values() for points in levels.values()))
 
 
