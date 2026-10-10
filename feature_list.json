@@ -4,6 +4,63 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-313",
+            "name": "restore-eslint-tsup-and-mobile-config",
+            "title": "恢复剩余共享配置与移动端检查入口",
+            "status": "done",
+            "dependencies": ["MONOREPO-312"],
+            "description": "用户明确授权恢复主工作区17个已删除配置文件，补齐仍被使用的ESLint、tsup共享包和移动设计系统检查入口。",
+            "scope": "恢复当前main原文件、修复本地依赖安装并验证共享配置和相关消费者；记录进度，产品源码、依赖声明和锁文件保持原版本。",
+            "acceptanceCriteria": [
+                "恢复ESLint配置包10文件、tsup配置包6文件和移动设计系统eslint.config.mjs，源码内容与当前main逐项一致",
+                "现存workspace依赖不存在缺失内部包，冻结锁文件安装及共享配置加载通过",
+                "共享配置与相关包构建、移动设计系统及Web相关静态检查实际通过",
+                "保留全部原功能对象及历史失败证据，更新受影响progress与Harness记录；完整测试和浏览器不运行"
+            ],
+            "verification": [
+                {
+                    "command": "pre-restore isolated dependency resolution/ESLint --print-config; git restore --source=main --worktree -- <17 approved paths>; Git blob and workspace dependency checks",
+                    "status": "passed",
+                    "summary": "恢复前隔离环境复现缺失@repo/eslint的workspace解析与ESLint导入错误；恢复后17个文件逐项与main Git blob一致，19份manifest的52条内部引用均找到目标包，恢复阶段没有源码差异。"
+                },
+                {
+                    "command": "CI=true pnpm install --frozen-lockfile --offline --ignore-scripts (main)",
+                    "status": "passed",
+                    "summary": "主工作区原安装链接不完整，首轮非交互安装因无TTY停止；使用仅当前命令生效的CI标记后按冻结锁文件重建本地依赖，1575包、下载0，3分56.5秒完成。依赖声明、锁文件及持久环境配置均未修改。"
+                },
+                {
+                    "command": "pnpm exec turbo run build --filter=@repo/eslint --filter=@repo/tsup --filter=@repo/contracts --filter=@repo/env --filter=@repo/design-system-mobile --filter=@repo/design-system-web --filter=@repo/async-ui --filter=@repo/vitest --filter=@repo/playwright --filter=@repo/create-project --concurrency=2 --force (main and session worktree)",
+                    "status": "passed",
+                    "summary": "两个工作区均强制重跑10项构建并全部通过，覆盖共享配置及其相关消费者的ESM/CJS和声明输出；主工作区20.391秒，会话worktree49.829秒，非缓存通过。Playwright配置包只打包，没有运行浏览器。"
+                },
+                {
+                    "command": "pnpm --workspace-concurrency=2 --filter mobile --filter api --filter admin --filter h5 --filter wavequant-web --filter @repo/create-project --filter @repo/design-system-mobile --filter @repo/design-system-web --filter @repo/async-ui -r run lint (main and session worktree)",
+                    "status": "passed",
+                    "summary": "两个工作区的9个现存ESLint消费者均通过，零错误；Web各有6条既有turbo环境变量警告，没有禁用或绕过检查。"
+                },
+                {
+                    "command": "pnpm --workspace-concurrency=1 --filter wavequant-web --filter @repo/design-system-mobile -r run typecheck (main)",
+                    "status": "passed",
+                    "summary": "主工作区Web与移动设计系统独立tsc --noEmit均通过，保留原严格配置。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web build (main); NODE_OPTIONS=--max-old-space-size=512 --max-semi-space-size=4 RAYON_NUM_THREADS=2",
+                    "status": "passed",
+                    "summary": "新安装依赖下Next.js16.2.6 Turbopack生产构建通过，编译22.6秒、类型19.4秒、静态页面5/5。随后仅恢复本次构建生成的next-env路由导入行，产品源码保持原版本。"
+                },
+                {
+                    "command": "pnpm harness:check; targeted Prettier; git diff --check and final review; full prior feature object comparison",
+                    "status": "passed",
+                    "summary": "会话worktree Harness310功能/18 Node/2 Python/32规则通过；状态及受影响进度格式、差异检查通过。全部309个原功能对象、MONOREPO-256完整活动失败证据与原顶层字段保留，本任务只新增恢复验证记录。"
+                },
+                {
+                    "command": "complete Web unit suite, browser/Playwright, full-workspace verify and device checks",
+                    "status": "not-run",
+                    "summary": "遵循用户验证节奏，本次只恢复原配置并运行相关静态检查与构建，完整单测、浏览器/设备及全仓完整验证留待独立验证，没有产品逻辑变更。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-312",
             "name": "restore-missing-typescript-workspace-config",
             "title": "恢复Web缺失的TypeScript配置包",
