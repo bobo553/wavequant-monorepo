@@ -4,6 +4,44 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-316",
+            "name": "restore-candle-copy-shortcut",
+            "title": "修复K线信息快捷键复制",
+            "status": "done",
+            "dependencies": ["MONOREPO-121"],
+            "description": "显式处理Ctrl+C和Meta+C，图表或浮层卡片内复制当前K线信息，保留输入框和选中文字的原生复制。",
+            "scope": "Web K线快捷键事件、浮层焦点边界、定向回归及验证记录。",
+            "acceptanceCriteria": [
+                "图表悬停与外置提示卡片悬停/焦点均可通过Ctrl+C或Meta+C复制当前K线完整信息。",
+                "无需依赖无选区时浏览器是否派发原生copy事件，复用既有剪贴板写入与权限失败兼容。",
+                "输入框、可编辑内容、已有文字选择和其他页面不被接管；隐藏、加载、错误及无当前K线时不复制。",
+                "原生copy与键盘快捷键使用相同范围判断，按键和提示卡片真实事件通过定向回归。",
+                "复制按钮仍有焦点时移出卡片保留K线，真正失焦后关闭并清理悬停目标。"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web exec node --test tests/candle-clipboard.test.mjs tests/candle-details.test.mjs tests/chart-tooltip.test.mjs tests/chart-keyboard-navigation.test.mjs",
+                    "status": "passed",
+                    "summary": "72项定向回归通过；旧handler最小事件复现确认图外卡片原生copy与无原生copy的Ctrl+C均0次写入。覆盖外置卡片悬停/焦点、Ctrl/Meta、真实PriceChart移出后快捷键、输入/选区保留、失焦/重载隔离、异步权限兼容及成功/失败反馈。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build; targeted Prettier; node --check; git diff --check",
+                    "status": "passed",
+                    "summary": "Web lint零错误（6条既有warning，public JS及mjs按既有配置排除）；类型检查、最终Next16.2.6 Turbopack生产构建、相关格式、模块语法和差异检查通过。详细中文注释与独立复核完成，无新增依赖。"
+                },
+                {
+                    "command": "完整Web单测与真实浏览器/Playwright",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏，本轮只运行与复制修复直接相关的定向事件回归，未运行完整套件或浏览器验证，待独立验证；不把JSDOM事件测试称为真实浏览器通过。"
+                },
+                {
+                    "command": "pnpm harness:check; codegraph sync; original feature object preservation assertion",
+                    "status": "passed",
+                    "summary": "Harness313功能/18 Node/2 Python/32规则通过；CodeGraph同步。全部312个原功能对象及原activeFeature逐字段保持，只添加316完成记录。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-315",
             "name": "point-first-recursive-trend-judgement",
             "title": "统一高低点递归趋势判断入口",

@@ -18,6 +18,7 @@ import {
     groupBlockedTradeNodes,
 } from "./blocked-trade-nodes.js";
 import { BuyPoints } from "./buy-points.js";
+import { bindCandleClipboard } from "./candle-clipboard.js";
 import { candleCopyText, previousCandleClose } from "./candle-details.js";
 import { loadMarketTimeframeSnapshot, loadStockCatalog } from "./catalog-cache.js";
 import { scrollChartWithMetrics } from "./chart-focus-scroll.js";
@@ -999,6 +1000,8 @@ function fallbackCopyText(text, focusTarget) {
     field.style.position = "fixed";
     field.style.opacity = "0";
     document.body.append(field);
+    // 兼容复制的原生 copy 事件必须属于这个输入框，避免被图表快捷键入口重新接管。
+    field.focus({ preventScroll: true });
     field.select();
     try {
         return document.execCommand("copy");
@@ -1055,24 +1058,17 @@ async function copyHoveredCandle(bar, button = $("copy-candle")) {
     if (bar === currentCandle) showCandleCopyFeedback(bar, button, copied);
 }
 $("copy-candle").addEventListener("click", () => copyHoveredCandle(currentCandle));
-document.addEventListener("copy", (event) => {
-    // 仅接管悬停 K 线时的原生复制；输入框、选中文字和其他页面仍使用浏览器默认行为。
-    if (
-        !currentCandle ||
-        state.page !== "workspace" ||
-        state.loading ||
-        state.error ||
-        chart.tooltip.hidden ||
-        !chart.container.matches(":hover") ||
-        !event.clipboardData ||
-        (event.target instanceof Element &&
-            event.target.closest("input, textarea, select, [contenteditable], [role=textbox]")) ||
-        window.getSelection()?.toString()
-    )
-        return;
-    event.clipboardData.setData("text/plain", currentCandleCopyText(currentCandle));
-    event.preventDefault();
-    showCandleCopyFeedback(currentCandle, $("copy-candle"), true);
+bindCandleClipboard(chart, {
+    // 行情重载与回放会改变顶部价格；只复制当前可见卡片所对应的 K 线，避免旧日期混入新股票。
+    getCandle: () => (currentCandle?.time === chart.tooltipBarTime ? currentCandle : null),
+    isEnabled: () =>
+        state.page === "workspace" &&
+        !state.loading &&
+        !state.error &&
+        chart.container.closest(".chart-card")?.dataset.chartView !== "tradingview",
+    copyText: currentCandleCopyText,
+    copyCandle: copyHoveredCandle,
+    onCopied: (bar) => showCandleCopyFeedback(bar, $("copy-candle"), true),
 });
 async function copyCurrentSymbol() {
     const text = $("symbol-copy-text").textContent.trim();

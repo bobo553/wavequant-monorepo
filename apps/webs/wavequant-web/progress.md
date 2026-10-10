@@ -1,3 +1,5 @@
+MONOREPO-316（2026-10-10）：修复Ctrl+C复制K线信息。显式键盘入口与原生copy共用图表/外置卡片范围，复用按钮异步剪贴板及兼容写入；保留输入框和选中文字的原生复制。焦点留在复制按钮时移出卡片继续可复制，真正失焦后清理；加载、错误、TradingView与卡片日期错位不复制旧棒。旧handler事件复现两项均0次写入，修复后72项定向Node（含真实PriceChart事件）通过；类型、最终Next16.2.6 Turbopack构建、lint零错6旧warning、格式/语法/Harness通过，独立复核无P1/P2。完整Web与浏览器/Playwright待独立验证，保留main既有状态记录，不推送。
+
 MONOREPO-315（2026-10-10，V113）：趋势线由统一首参高低点递归判定，K/交替/N仅策略资格。三层结构段无证书也绘制，高低标注与仅显示发展尾部保留；new policy不在前端跨server路径连接。图表说明同步实际来源，未闭合尾部不进入上级或交易。67项定向Node、类型、lint零错6旧warning、Next16.2.6 Turbopack生产构建、格式/Harness通过；完整Web/浏览器/Playwright待独立验证。Core486项/404子用例及包/非空三级wheel验证通过；main既有记录保留，本地合并，不推送。
 
 MONOREPO-314（2026-10-10）：一二三级入口说明同步六个共同定义和逐级正式来源，严格高低升级均保留。图表区分low跌破/普通holding方向/N证书，一级低点能显示独立下降证书；不把局部反转或显示发展尾部当上级许可。51项相关Node、lint零错6条既有warning、类型及最终Next16.2.6 Turbopack生产构建、格式/Harness通过。Core趋势及原波身份定向见Core进度；完整Web套件和浏览器/Playwright未运行，历史结果需重算。本地feat-三级趋势统一提交合并，不推送。
