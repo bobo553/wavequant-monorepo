@@ -4,6 +4,71 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-315",
+            "name": "point-first-recursive-trend-judgement",
+            "title": "统一高低点递归趋势判断入口",
+            "status": "done",
+            "dependencies": ["MONOREPO-314"],
+            "description": "统一judge_trend首参数为直接下级高低点：一级折线、二级一级输出、三级二级输出。三层应用入口和逐日历史共用；高低点决定趋势线，K线/交替/可选N仅核验策略资格。",
+            "scope": "Core纯点递归、图表/历史适配、完整同坐标结构事实及独立策略资格、因果前缀/路径断点/缓存隔离、详细中文注释与合同、前端显示和相关定向验证。",
+            "acceptanceCriteria": [
+                "judge_trend(high_low_points, trend_level=...)首参数始终为直接下级高低点，输出points直接逐层递归。",
+                "一级图表和逐日历史共用polyline_turns；三层旧独立生产循环已移除，级别仅区分来源身份及显示。",
+                "六个公共定义及严格本级高/低突破立即升级保留；相等不升级，价格日与自身知日/实际source位置不混用。",
+                "K线与N只影响qualified_strokes/策略资格；相同高低点的几何、结构证据及发展尾端不被证书筛掉。",
+                "同坐标早升级/晚普通反转/晚严格升级分别留证；几何最早知日及下降最早事实正确，未来证据不倒填。",
+                "路径原seed断点递归保留，策略不借下一路径行情；未闭合显示尾端不进入上级。",
+                "冷暖/partial/append前缀一致，公开历史修改不污染cache；相关测试、类型、构建、wheel和复核实际通过。"
+            ],
+            "verification": [
+                {
+                    "command": "D:\\Temp\\wavequant-trend-levels-venv\\Scripts\\python.exe -m pytest -q tests/test_trend_judgement_core.py tests/test_recursive_trend_judgement.py tests/test_trend_structural_tail.py tests/test_trend_candidate_ledger.py tests/test_trend_qualification_ledger.py tests/test_chart_entry_permissions.py tests/test_chart_entry_history.py tests/test_trend_level_pipeline.py tests/test_trend_confirmation_boundaries.py tests/test_trend_confirmation_entry_refresh.py tests/test_n_trend_option_consumers.py tests/test_combined_a_local_geometry.py tests/test_trend_definition_levels.py tests/test_trend_primitives.py tests/test_trend_foundations.py tests/test_figure008_foundations.py tests/test_trend_structure.py tests/test_trend_level_upgrades.py tests/test_trend_levels.py tests/test_n_trend_source_license.py tests/test_trend_down_upgrade_publication.py tests/test_n_trend_same_coordinate.py -k 'not daily_history'",
+                    "status": "passed",
+                    "summary": "最终486项、404子用例通过，3项重daily_history未运行。完整三级非空嵌套fixture与直接/应用入口完整proof差分；图008/严格高低镜像/等值/未知日期/来源身份/旧数学保护；真实OHLC两视图、N缓存/仓库/扫描模式独立；cold/warm/partial/append缓存、返回历史修改隔离；图表策略资格消费与raw seed断点不借行情均覆盖。"
+                },
+                {
+                    "command": "D:\\Temp\\wavequant-trend-levels-venv\\Scripts\\python.exe -m pytest -q tests/test_trend_candidate_ledger.py tests/test_trend_qualification_ledger.py tests/test_recursive_trend_judgement.py tests/test_trend_judgement_core.py",
+                    "status": "passed",
+                    "summary": "最终补充81项通过（与486项重叠）。H17=50升级@18、ordinary-down@22与strict-down-origin@23各自完整proof保留；canonical H17仍18，下降测幅从22可知，晚23不覆盖。完整ledger和资格节点最早日期独立，无N/publisher改几何。"
+                },
+                {
+                    "command": "MYPYPATH=src D:\\Temp\\wavequant-trend-levels-venv\\Scripts\\python.exe -m mypy --strict src/wavequant/domain/market_structure/trend_judgement.py src/wavequant/domain/market_structure/trend_lines.py src/wavequant/domain/market_structure/trend_level_upgrades.py tests/test_trend_judgement_core.py tests/test_chart_entry_permissions.py tests/test_trend_structural_tail.py tests/test_trend_qualification_ledger.py tests/test_trend_candidate_ledger.py",
+                    "status": "passed",
+                    "summary": "最终8个strict目标通过；新判定/通用driver、升级event_sink和5份新回归均校验，无Any/ignore豁免。"
+                },
+                {
+                    "command": "MYPYPATH=src D:\\Temp\\wavequant-trend-levels-venv\\Scripts\\python.exe -m mypy src/wavequant/domain/market_structure/lecture_trend.py src/wavequant/domain/market_structure/secondary_trend.py src/wavequant/domain/market_structure/tertiary_trend.py src/wavequant/domain/strategies/hierarchical_entry.py src/wavequant/domain/strategies/chart_entry_history.py tests/test_recursive_trend_judgement.py tests/test_trend_level_pipeline.py tests/test_trend_confirmation_boundaries.py tests/test_trend_confirmation_entry_refresh.py tests/test_n_trend_option_consumers.py",
+                    "status": "passed",
+                    "summary": "最终10个目标联合检查通过；5修改旧生产源码与5迁移/集成测试，包含dict[str,object]资格消费边界校验。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core typecheck; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web lint",
+                    "status": "passed",
+                    "summary": "Core既定4文件strict和Web类型通过；Web lint零错误，6条既有环境变量warning。"
+                },
+                {
+                    "command": "node --test tests/recursive-trend-geometry.test.mjs tests/lecture-overlay.test.mjs tests/trend-wave-continuation.test.mjs tests/trend-n-confirmation.test.mjs",
+                    "status": "passed",
+                    "summary": "实际67项全部通过；三层无证书结构线/低点标注/仅显示尾部保留、新协议禁止前端跨server路径补线；旧显示兼容。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core build; clean wheel pip install --no-deps --force-reinstall; .codex-runtime/recursive-trend-wheel-smoke.py; pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "最终Core sdist/wheel通过；隔离wheel安装从site-packages导入，图008价格与知识日期、124点非空三级递归、N独立几何通过，8个修改生产模块wheel字节与源码完全一致。Web Next16.2.6 Turbopack生产构建通过。"
+                },
+                {
+                    "command": "targeted Prettier; pnpm harness:check; codegraph sync; git diff --check; independent code review",
+                    "status": "passed",
+                    "summary": "状态、受影响workspace进度、合同/前端格式、Harness及最终差异/CodeGraph同步通过；独立审查发现的cache别名、同坐标晚事实丢失、最早下降覆盖和资格绕过均有精确回归修复。main所有既有功能对象含256完整保留。"
+                },
+                {
+                    "command": "Full Core/Web suites; 3 excluded daily_history cases; browser/Playwright; all-account/minute integration",
+                    "status": "not-run",
+                    "summary": "未运行，待独立验证；本轮定向项不替代完整套件。高低点决定几何后旧波段/级别和策略资格需按新规则重新计算。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-314",
             "name": "unified-three-level-trend-definitions",
             "title": "统一三级趋势定义与突破升级",

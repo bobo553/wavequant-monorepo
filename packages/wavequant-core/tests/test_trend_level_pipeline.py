@@ -51,6 +51,15 @@ def _geometry(points: Sequence[Mapping[str, object]]) -> list[tuple[object, ...]
     return [(point['index'], point['kind'], point['value'], point['available_at']) for point in points]
 
 
+def _records(value: object) -> list[dict[str, object]]:
+    assert isinstance(value, list) and all(isinstance(item, dict) for item in value)
+    return cast(list[dict[str, object]], value)
+
+
+def _result_points(result: Mapping[str, object], field: str = 'strokes') -> list[dict[str, object]]:
+    return [point for stroke in _records(result[field]) for point in _records(stroke['points'])]
+
+
 def _market_fixture(values: Sequence[float], *, source_level: int, mirror: bool = False,
                     first: str = 'L') -> tuple[list[Bar], _TrendSource]:
     bars, source = _fixture(values, source_level=source_level)
@@ -113,22 +122,26 @@ class TrendLevelPipelineTests(unittest.TestCase):
                 bars, source = (_primary_market_fixture(values, mirror=True) if level == 1 else
                                 _market_fixture(values, source_level=level - 1, mirror=True))
                 result = derive(source, bars)
-                published = [point for stroke in result['strokes'] for point in stroke['points']]
+                published = _result_points(result)
                 self.assertEqual([(point['kind'], point['value']) for point in published[-2:]], [('H', 76), ('L', 50)])
                 endpoint = published[-1]
                 position_field = 'source_turn_position' if level == 1 else f'source_level{level - 1}_position'
                 confirmation_field = 'confirmed_on_turn' if level == 1 else f'confirmed_on_level{level - 1}'
-                self.assertEqual(endpoint[position_field], 18 if level == 1 else 17)
+                # 来源位置相对于规范化高低点，原折线seed不再占一个来源位置。
+                self.assertEqual(endpoint[position_field], 17)
                 self.assertEqual(endpoint[confirmation_field], 17)
                 source_endpoint = source['strokes'][0]['points'][18 if level == 1 else 17]
+                self.assertEqual(endpoint['index'], source_endpoint['index'])
                 self.assertEqual(endpoint['available_at'], source_endpoint['available_at'])
-                evidence = endpoint['upgrade_evidence']
+                evidence = cast(Mapping[str, object], endpoint['upgrade_evidence'])
                 self.assertEqual(evidence['direction'], 'down')
-                self.assertEqual((evidence['broken_key']['value'], evidence['confirmed_by']['value']), (55, 50))
-                self.assertLess(evidence['broken_key']['available_at'], evidence['confirmed_by']['time'])
-                legs = [leg for stroke in result['strokes'] for leg in stroke['confirmed_legs']]
+                key = cast(Mapping[str, object], evidence['broken_key'])
+                attack = cast(Mapping[str, object], evidence['confirmed_by'])
+                self.assertEqual((key['value'], attack['value']), (55, 50))
+                self.assertLess(cast(str, key['available_at']), cast(str, attack['time']))
+                legs = [leg for stroke in _records(result['strokes']) for leg in _records(stroke['confirmed_legs'])]
                 self.assertTrue(any(leg['direction'] == 'down'
-                                    and [point['value'] for point in leg['points']] == [76, 50] for leg in legs))
+                                    and [point['value'] for point in _records(leg['points'])] == [76, 50] for leg in legs))
 
     def test_equal_or_late_known_low_key_never_publishes_a_mirrored_direct_upgrade(self) -> None:
         for level, derive in ((2, secondary_trends), (3, tertiary_trends)):
@@ -140,9 +153,8 @@ class TrendLevelPipelineTests(unittest.TestCase):
                         for point in raw[9:17]:
                             point['available_at'] = max(cast(str, point['available_at']), cast(str, raw[17]['time']))
                     result = derive(source, bars)
-                    self.assertFalse(any(point.get('upgrade_evidence', {}).get('role') == 'endpoint'
-                                         and point['index'] == 17 for stroke in result['strokes']
-                                         for point in stroke['points']))
+                    self.assertFalse(any(cast(Mapping[str, object], point.get('upgrade_evidence', {})).get('role') == 'endpoint'
+                                         and point['index'] == 17 for point in _result_points(result)))
 
     def test_figure008_ordered_confirmation_is_identical_at_all_three_levels(self) -> None:
         geometries = []
@@ -170,17 +182,26 @@ class TrendLevelPipelineTests(unittest.TestCase):
                 bars, source = _fixture(FIGURE_008, source_level=level - 1)
                 before = copy.deepcopy(source)
                 result = derive(source, bars)
-                points = result['candidate_strokes'][0]['points']
+                points = _result_points(result, 'candidate_strokes')
                 candidates.append(_geometry(points))
                 self.assertEqual([(point['kind'], point['value']) for point in points],
                                  [('L', 10), ('H', 45), ('L', 24)])
                 self.assertEqual([point[f'confirmed_on_level{level - 1}'] for point in points], [6, 13, 18])
                 self.assertEqual((result['trend_level'], result['source_level']), (level, level - 1))
                 self.assertEqual(source, before)
-                # Placeholder candles cannot certify the private rising legs.
-                self.assertEqual([(point['kind'], point['value']) for stroke in result['strokes']
-                                  for point in stroke['points']], [('H', 45)])
-                self.assertEqual(result['developing_strokes'], [])
+                # 高低点决定完整趋势线；占位行情只影响独立策略资格。
+                self.assertEqual([(point['kind'], point['value']) for point in _result_points(result)],
+                                 [('L', 10), ('H', 45), ('L', 24)])
+                self.assertEqual([(point['kind'], point['value']) for point in _result_points(result, 'qualified_strokes')],
+                                 [('H', 45)])
+                tails = _records(result['developing_strokes'])
+                self.assertEqual(len(tails), 1)
+                tail = tails[0]
+                self.assertEqual((tail['state'], tail['display_only'], tail['wave_direction']), ('candidate', True, 'up'))
+                self.assertEqual(_geometry(_records(tail['points'])),
+                                 [(14, 'L', 24, '2026-01-20'), (19, 'H', 42, '2026-01-21')])
+                self.assertEqual(tail['confirmed_legs'], [])
+                self.assertNotIn('confirmation', tail)
         self.assertEqual(candidates[0], candidates[1])
 
     def test_private_structure_candidates_never_supply_higher_level_input(self) -> None:
@@ -236,15 +257,18 @@ class TrendLevelPipelineTests(unittest.TestCase):
                     self.assertEqual(trend_reversals(raw[:end], trend_level=level),
                                      [point for point in full if cast(int, point[field]) < end])
 
-    def test_recursive_production_does_not_promote_unpublished_lower_level_extremes(self) -> None:
+    def test_recursive_production_uses_every_lower_level_geometric_point_without_strategy_filtering(self) -> None:
         bars, source = _fixture(FIGURE_008, source_level=1)
         level2 = secondary_trends(source, bars)
-        self.assertEqual([(point['kind'], point['value']) for stroke in level2['structure_strokes']
-                          for point in stroke['points']], [('L', 10), ('H', 45), ('L', 24)])
+        self.assertEqual([(point['kind'], point['value']) for point in _result_points(level2, 'structure_strokes')],
+                         [('L', 10), ('H', 45), ('L', 24)])
         level3 = tertiary_trends(level2, bars)
-        self.assertEqual(level3['input_turn_count'], 1)
+        self.assertEqual([(point['kind'], point['value']) for point in _result_points(level2, 'qualified_strokes')], [('H', 45)])
+        self.assertEqual(level3['input_turn_count'], 3)
+        self.assertEqual([(point['kind'], point['value']) for point in _result_points(level3, 'source_strokes')],
+                         [('L', 10), ('H', 45), ('L', 24)])
         self.assertEqual(level3['strokes'], [])
-        self.assertEqual([point for stroke in level3['candidate_strokes'] for point in stroke['points']], [])
+        self.assertEqual(_result_points(level3, 'candidate_strokes'), [])
 
     def test_primary_production_metadata_identifies_polyline_source_and_formal_wave(self) -> None:
         # Padding supplies the neighboring vertices required to identify every
@@ -261,16 +285,17 @@ class TrendLevelPipelineTests(unittest.TestCase):
         before = copy.deepcopy(drawing)
         result = reversal_trends(drawing, bars)
         self.assertEqual(result['trend_level'], 1)
-        candidates = result['candidate_strokes'][0]['points']
+        candidates = _result_points(result, 'candidate_strokes')
         self.assertEqual([(point['index'], point['kind'], point['value']) for point in candidates],
                          [(3, 'L', 10), (10, 'H', 45), (15, 'L', 24)])
         self.assertEqual([point['confirmed_on_turn'] for point in candidates], [6, 13, 18])
         self.assertTrue(all(point['trend_level'] == 1 and point['source_level'] == 0 for point in candidates))
         self.assertEqual(drawing, before)
 
-    def test_daily_history_higher_levels_reference_only_published_lower_level_points(self) -> None:
+    def test_daily_history_higher_levels_reference_only_lower_level_geometric_points(self) -> None:
         bars = _market_history()
-        snapshots, _ = hierarchical_history(bars)
+        snapshots: dict[int, dict[int, tuple[dict[str, object], ...]]] = {}
+        hierarchical_history(bars, structure_sink=snapshots)
         self.assertGreater(max(len(levels[2]) for levels in snapshots.values()), 0)
         identity_fields = ('index', 'ordinal', 'kind', 'value')
         for now, levels in snapshots.items():
@@ -280,10 +305,10 @@ class TrendLevelPipelineTests(unittest.TestCase):
                 for point in levels[level]:
                     identity = tuple(point[field] for field in identity_fields)
                     self.assertIn(identity, lower, (now, level, identity))
-                    self.assertGreaterEqual(point['available_at'], lower[identity]['available_at'])
-                    self.assertLessEqual(point['available_at'], now)
+                    self.assertGreaterEqual(cast(int, point['available_at']), cast(int, lower[identity]['available_at']))
+                    self.assertLessEqual(cast(int, point['available_at']), now)
                     price_field = 'high' if point['kind'] == 'H' else 'low'
-                    self.assertEqual(point['value'], getattr(bars[point['index']], price_field))
+                    self.assertEqual(point['value'], getattr(bars[cast(int, point['index'])], price_field))
 
     def test_daily_history_prefix_and_partial_bar_cache_keep_recursive_sources_causal(self) -> None:
         bars = _market_history()

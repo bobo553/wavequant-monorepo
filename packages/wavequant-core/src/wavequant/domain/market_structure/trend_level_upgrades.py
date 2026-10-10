@@ -6,6 +6,7 @@
 """
 
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 
 from .trend_levels import Moment, _SourceTurn, _candidate_from_source, _later_moment, _reference, _source_turns
 
@@ -138,6 +139,7 @@ def _promoted_point(
 
 def promote_trend_key_breaks(
     source: Sequence[Mapping[str, object]], candidates: Sequence[Mapping[str, object]], *, trend_level: int,
+    event_sink: list[dict[str, object]] | None = None,
 ) -> list[dict[str, object]]:
     """将严格本级关键位突破与普通有序趋势候选合并，保持高低镜像与因果来源。
 
@@ -157,6 +159,9 @@ def promote_trend_key_breaks(
     返回按价格位置排序的候选并集。独立升级更早确认同一个整波起点时，
     保留该更早证据，不借用普通候选的未来四点证明。此处结构资格仍交给
     原有 publication gate 检查真实行情，升级函数不代替交易许可。
+    event_sink额外收集每一份真实严格升级证据；同坐标早期事实仍用于推进
+    关键位状态，但后知升级不能因此消失。该审计通道不改变默认最早并集，
+    不改写已知日期，也不让尚未知的后续证明提前取得资格。
     非法等级、来源、价格、坐标或不一致时钟抛出 ValueError。
     """
     if type(trend_level) is not int or trend_level not in (1, 2, 3):
@@ -215,6 +220,10 @@ def promote_trend_key_breaks(
         for source_point, endpoint in ((origin, False), (attack, True)):
             raw = _promoted_point(source_point, attack=attack, origin=origin, key=key,
                                   trend_level=trend_level, known=known, endpoint=endpoint)
+            if event_sink is not None:
+                # 起点可能已有更早普通证明；几何并集只保留早事实，完整证据
+                # 账本仍需记下这次独立严格突破，且不与调用者共用嵌套容器。
+                event_sink.append(deepcopy(raw))
             promoted = _SourceTurn(raw, source_point.position, source_point.index, source_point.ordinal,
                                    source_point.kind, source_point.value, source_point.time, known,
                                    source_point.reversal)
