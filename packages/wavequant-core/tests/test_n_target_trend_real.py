@@ -73,15 +73,25 @@ def test_real_one_p_target_qualifies_the_origin_on_the_first_strict_hit(
 ) -> None:
     before = _first_level(xiangyang, "2018-09-19")
     known = _first_level(xiangyang, "2018-09-20")
-    assert not any(point["time"] == "2018-09-11" for point in _points(before))
+    structural = _origin(before)
+    assert structural["available_at"] == "2018-09-12"
+    assert structural.get("trend_confirmation") is None
+    descending = structural["upgrade_evidence"]
+    assert isinstance(descending, dict)
+    assert descending["direction"] == "down" and descending["available_at"] == "2018-09-12"
+    assert descending["broken_key"]["time"] == "2018-08-06" and descending["broken_key"]["value"] == 5.04
+    assert descending["broken_key"]["available_at"] == "2018-08-28"
+    assert structural["value"] < descending["broken_key"]["value"]
     origin = _origin(known)
     proof = origin["trend_confirmation"]
     assert isinstance(proof, dict)
     assert origin["value"] == 4.94
-    assert origin["available_at"] == "2018-09-20"
+    assert origin["available_at"] == "2018-09-12"
     assert origin["trend_confirmation_route"] == "source_n_strict_one_p_target"
     assert proof["available_at"] == "2018-09-20"
     assert proof["one_p_target"] == pytest.approx(5.32)
+    assert proof["confirmed_by"]["time"] == "2018-09-20"
+    assert proof["confirmed_by"]["value"] == 5.34 > proof["one_p_target"]
 
 
 def test_real_qualified_impulse_keeps_its_unconfirmed_peak_developing(
@@ -109,7 +119,11 @@ def test_real_one_p_impulse_remains_one_formal_segment_in_later_history(
                for left, right in zip(_records(stroke["points"]), _records(stroke["points"])[1:])
                if left["time"] == "2018-09-11" and right["time"] == "2018-09-25")
     assert [(point["kind"], point["value"]) for point in leg] == [("L", 4.94), ("H", 5.78)]
-    assert leg[0]["available_at"] == "2018-09-20"
+    assert leg[0]["available_at"] == "2018-09-12"
+    proof = leg[0]["trend_confirmation"]
+    assert isinstance(proof, dict)
+    assert proof["available_at"] == "2018-09-20" and proof["one_p_target"] == pytest.approx(5.32)
+    assert proof["confirmed_by"]["value"] == 5.34 > proof["one_p_target"]
     assert cast(str, leg[1]["available_at"]) >= "2018-09-26"
 
 
@@ -120,4 +134,8 @@ def test_real_n_confirmation_is_not_rewritten_by_later_history(
     prefix = _origin(_first_level(xiangyang, asof))
     later = _origin(_first_level(xiangyang, "2019-02-26"))
     assert prefix["trend_confirmation"] == later["trend_confirmation"]
-    assert prefix["available_at"] == later["available_at"] == "2018-09-20"
+    assert prefix["available_at"] == later["available_at"] == "2018-09-12"
+    proof = prefix["trend_confirmation"]
+    assert isinstance(proof, dict)
+    assert proof["available_at"] == "2018-09-20" and proof["one_p_target"] == pytest.approx(5.32)
+    assert proof["confirmed_by"]["time"] == "2018-09-20" and proof["confirmed_by"]["value"] == 5.34

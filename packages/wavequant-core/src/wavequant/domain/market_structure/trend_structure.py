@@ -9,7 +9,7 @@ from typing import Sequence
 from ..models.model import Bar
 from .polyline import PointKind, ReversalPoint
 from .price_action import (AttackBasis, AttackEvidence, Direction, KeyLevel, LevelKind,
-                           _index, _ordered_pair, _validate_bar, observe_attack)
+                           _index, _ordered_pair, _positive, _validate_bar, observe_attack)
 
 
 class StructuralTrend(str, Enum):
@@ -19,8 +19,164 @@ class StructuralTrend(str, Enum):
     UNKNOWN = '已确认拐点不足'
 
 
+def _trend_level(trend_level: int, source_level: int | None = None) -> int:
+    """Validate one recursive definition and return its immediate source level."""
+    # 紧邻下级是定义的来源约束：2级不能绕过1级直接读取折线，3级不能直接读取1级。
+    if type(trend_level) is not int or trend_level not in (1, 2, 3):
+        raise ValueError('trend_level must be 1, 2 or 3')
+    expected_source = trend_level - 1
+    if source_level is not None and (type(source_level) is not int or source_level != expected_source):
+        raise ValueError('source_level must equal trend_level - 1')
+    return expected_source
+
+
+def _classify_trend_comparisons(
+    high_count: int, low_count: int, *, all_up: bool, all_down: bool,
+) -> StructuralTrend:
+    if high_count < 2 or low_count < 2:
+        return StructuralTrend.UNKNOWN
+    if all_up:
+        return StructuralTrend.BULL
+    if all_down:
+        return StructuralTrend.BEAR
+    return StructuralTrend.MIXED
+
+
+@dataclass
+class _TrendPriceSequence:
+    """一类点的固定大小摘要；全窗升降一旦被反例破坏，就不能被后续局部恢复覆盖。"""
+
+    count: int = 0
+    previous: float | None = None
+    all_up: bool = True
+    all_down: bool = True
+    latest_up: bool = False
+    latest_down: bool = False
+
+    def append(self, price: float) -> None:
+        if self.previous is not None:
+            self.latest_up = price > self.previous
+            self.latest_down = price < self.previous
+            self.all_up = self.all_up and self.latest_up
+            self.all_down = self.all_down and self.latest_down
+        self.previous = price
+        self.count += 1
+
+
+class TrendPriceState:
+    """Incrementally classify confirmed prices from one immediate lower level.
+
+    Create one state for one source path and observation window, append each
+    known price in that kind's chronological order, and replace the state when
+    the source or window changes. Confirmation dates, source membership and
+    causal ordering remain the caller's responsibility. The state retains no
+    price history: append and both direction properties take O(1) time/space.
+    Invalid levels, PointKind or prices raise ValueError without changing state.
+
+    一级状态消费折线高低点，二级消费一级趋势高低点，三级消费二级趋势高低点。
+    两类点分别保存数量、上一价格、最近一对升降及全窗是否一直升降，因而无需保留
+    或重复扫描整段历史，追加 n 个点总耗时 O(n)，辅助状态始终 O(1)。严格 >/< 的
+    比较同时服务批量分类与增量分类；相等让该对的上升、下降都不成立。
+
+    一个实例只属于一个来源路径及一个累积观察窗口。切换标的、来源路径、级别或
+    窗口起点时必须新建实例；追加式摘要不能删除被滑动窗口淘汰的早期反例。调用方
+    只在确认时点已到达后追加点，并保证各同类点的来源顺序，本类不猜测确认日期。
+    """
+
+    def __init__(self, *, trend_level: int) -> None:
+        self._source_level = _trend_level(trend_level)
+        self._trend_level = trend_level
+        self._highs = _TrendPriceSequence()
+        self._lows = _TrendPriceSequence()
+
+    @property
+    def trend_level(self) -> int:
+        return self._trend_level
+
+    @property
+    def source_level(self) -> int:
+        return self._source_level
+
+    def append(self, kind: PointKind, price: float) -> None:
+        """追加一个已确认下级高/低价；非法种类或价格不会改变已有窗口状态。
+
+        确认资格由调用方决定，发生在历史较早位置的点不能仅按绘图日期提前加入。
+        允许高、低两类证据数量不同，各自只与其上一同类点比较。
+        """
+        if not isinstance(kind, PointKind):
+            raise ValueError('PointKind required')
+        _positive(price, 'trend price')
+        (self._highs if kind == PointKind.HIGH else self._lows).append(price)
+
+    @property
+    def trend(self) -> StructuralTrend:
+        """最近两高两低的局部方向，用于追踪当前结构。
+
+        最近高点和低点均严格抬高为 BULL，均严格降低为 BEAR；相等或方向不同为
+        MIXED。任一类不足两个点为 UNKNOWN。此属性不会替代全窗“每一个”的判定。
+        """
+        return _classify_trend_comparisons(
+            self._highs.count, self._lows.count,
+            all_up=self._highs.latest_up and self._lows.latest_up,
+            all_down=self._highs.latest_down and self._lows.latest_down,
+        )
+
+    @property
+    def window_trend(self) -> StructuralTrend:
+        """整个累积窗口每一对同类点的严格方向。
+
+        所有相邻高点及所有相邻低点都严格上升才为 BULL，都严格下降才为 BEAR；
+        任一相等或混合方向为 MIXED。缺少两高或两低为 UNKNOWN，避免空序列的
+        all=True 被误当成有足够证据的多头或空头趋势。
+        """
+        return _classify_trend_comparisons(
+            self._highs.count, self._lows.count,
+            all_up=self._highs.all_up and self._lows.all_up,
+            all_down=self._highs.all_down and self._lows.all_down,
+        )
+
+
+def classify_trend_prices(
+    highs: Sequence[float], lows: Sequence[float], *, trend_level: int,
+) -> StructuralTrend:
+    """Classify every successive high/low using the same rule at levels 1–3.
+
+    Each input is chronological evidence from the immediate lower level. Both
+    kinds need at least two prices. Every pair must strictly rise for BULL or
+    strictly fall for BEAR; equality and mixed directions produce MIXED.
+    Invalid levels, sequences or nonpositive/nonfinite prices raise ValueError.
+    The observer makes one linear pass without copying price sequences.
+
+    highs 与 lows 分别按来源顺序提供所有已确认高价和低价：一级来自折线，二级
+    来自一级趋势，三级来自二级趋势。多头需所有 H[i] > H[i-1] 且所有 L[j] >
+    L[j-1]；空头把两种比较均替换为 <。相等或任何不同向比较返回 MIXED，每种
+    少于两个价格返回 UNKNOWN。level 不引入额外阈值，三个级别仅改变证据来源。
+    批量入口复用 TrendPriceState 的逐对比较及最终分类，避免与实时状态出现分歧。
+    """
+    state = TrendPriceState(trend_level=trend_level)
+    for kind, prices in ((PointKind.HIGH, highs), (PointKind.LOW, lows)):
+        if not isinstance(prices, Sequence) or isinstance(prices, (str, bytes)):
+            raise ValueError('chronological high and low price sequences required')
+        for price in prices:
+            state.append(kind, price)
+    return state.window_trend
+
+
 @dataclass(frozen=True)
 class StructureContext:
+    """冻结在 asof_index 的窗口事实，供六项趋势定义复用。
+
+    points 仅包含窗口中已经确认的来源拐点，point.index 表示价格发生位置，
+    confirmed_index 表示首次可知位置。trend 比较最近两高两低，window_trend
+    比较全窗所有同类相邻点；两者有意分开，近期恢复不能掩盖早期相等或逆向反例。
+    window_low/high 保留最早出现的同价极值，关键位取该极值左侧最近相反拐点。
+
+    trend_level=1/2/3 分别对应折线/一级趋势/二级趋势来源，source_level 必须为
+    trend_level-1。Context 不可重新标记为另一个级别，也不能混用不同观察窗口。
+    不足两高或两低时方向为 UNKNOWN，各单项同类比较不足时为 None；缺少可用
+    极值或左侧反转时对应对象为 None，调用方须保留这种证据缺失状态。
+    """
+
     symbol: str
     timeframe: str
     window_start: int
@@ -36,6 +192,13 @@ class StructureContext:
     last_fall_high: KeyLevel | None
     last_rise_low: KeyLevel | None
     window_trend: StructuralTrend
+    trend_level: int = 1
+    source_level: int = 0
+
+    def __post_init__(self) -> None:
+        if type(self.source_level) is not int:
+            raise ValueError('source_level must equal trend_level - 1')
+        _trend_level(self.trend_level, self.source_level)
 
 
 def _known_points(
@@ -83,6 +246,9 @@ def preceding_turn(points: Sequence[ReversalPoint], target: ReversalPoint) -> Re
     This is the shared definition behind ``末跌高`` and ``末升低``. It is
     intentionally relative to one selected extreme; it is neither the latest
     pivot on the chart nor the highest/lowest pivot in the whole window.
+
+    在有序来源序列中，只取目标之前最近的异类点：低点取左侧最近高点，高点取
+    左侧最近低点。选点依据是相对位置而非价格大小，右侧拐点永远不能充当关键位。
 
     Raises:
         ValueError: If ``target`` is not part of the confirmed sequence.
@@ -132,15 +298,30 @@ def observe_structure(
     timeframe: str,
     window_start: int,
     asof_index: int,
+    trend_level: int = 1,
+    source_level: int | None = None,
 ) -> StructureContext:
     """Observe trend direction and frozen reversal keys as of one bar.
 
     The function compares the two latest confirmed highs and lows for the local
     trend, and all same-kind pivots for the full-window trend. The window's
     earliest equal low/high remains the anchor so a later touch cannot silently
-    rewrite historical context.
+    rewrite historical context. Level 1 consumes the polyline (source 0), level 2
+    consumes level 1 and level 3 consumes level 2. A mismatched source is rejected.
+
+    points 必须提供紧邻下级的已确认反转：trend_level=1 用折线，2 用一级趋势，
+    3 用二级趋势。source_level 省略时推导为 trend_level-1，显式错误来源抛
+    ValueError。窗口只纳入发生位置不早于 window_start、确认日不晚于 asof_index
+    的点，因此完整历史和截至观察日的前缀应产生相同结果。
+
+    局部 trend 只比较最近两高两低；全窗 window_trend 要求每一相邻同类高/低点
+    严格同向，任一相等或混合即 MIXED，任一类不足两个点即 UNKNOWN。默认末跌高
+    从窗口最低点向左取最近高点，末升低从窗口最高点向左取最近低点；极值同价时
+    保留最早锚点，不让后来的触碰改写历史关键位。仅执行一次窗口观察，不推断新
+    拐点、不补造左侧上下文，也不把结构观察自动转换为交易指令。
     """
 
+    source_level = _trend_level(trend_level, source_level)
     _index(window_start, 'window_start')
     _index(asof_index, 'asof_index')
     if (window_start > asof_index or not isinstance(symbol, str) or not symbol.strip()
@@ -155,33 +336,14 @@ def observe_structure(
     higher_low = lows[-1].point.price > lows[-2].point.price if len(lows) >= 2 else None
     lower_low = lows[-1].point.price < lows[-2].point.price if len(lows) >= 2 else None
 
-    if higher_high is None or higher_low is None:
-        trend = StructuralTrend.UNKNOWN
-    elif higher_high and higher_low:
-        trend = StructuralTrend.BULL
-    elif lower_high and lower_low:
-        trend = StructuralTrend.BEAR
-    else:
-        trend = StructuralTrend.MIXED
-
-    all_up = all(
-        current.point.price > previous.point.price
-        for same_kind_points in (highs, lows)
-        for previous, current in zip(same_kind_points, same_kind_points[1:])
+    high_prices = [point.point.price for point in highs]
+    low_prices = [point.point.price for point in lows]
+    trend = classify_trend_prices(
+        high_prices[-2:], low_prices[-2:], trend_level=trend_level,
     )
-    all_down = all(
-        current.point.price < previous.point.price
-        for same_kind_points in (highs, lows)
-        for previous, current in zip(same_kind_points, same_kind_points[1:])
+    window_trend = classify_trend_prices(
+        high_prices, low_prices, trend_level=trend_level,
     )
-    if higher_high is None or higher_low is None:
-        window_trend = StructuralTrend.UNKNOWN
-    elif all_up:
-        window_trend = StructuralTrend.BULL
-    elif all_down:
-        window_trend = StructuralTrend.BEAR
-    else:
-        window_trend = StructuralTrend.MIXED
 
     # Earliest equal extreme wins; a touch does not silently replace the anchor.
     window_low = min(lows, key=lambda point: point.point.price) if lows else None
@@ -220,6 +382,8 @@ def observe_structure(
         last_fall_high,
         last_rise_low,
         window_trend,
+        trend_level,
+        source_level,
     )
 
 
@@ -305,11 +469,11 @@ class TrendTransition:
     rule_version: str = 'frozen_extreme_key_decimal_67_v1'
 
     @property
-    def suspicion_name(self):
+    def suspicion_name(self) -> str:
         return '底部疑虑' if self.direction == Direction.UP else '头部疑虑'
 
     @property
-    def break_name(self):
+    def break_name(self) -> str:
         return '翻空为多' if self.direction == Direction.UP else '翻多为空'
 
     @property
@@ -328,7 +492,7 @@ class TrendTransition:
         return '底部成形' if self.direction == Direction.UP else '头部成形'
 
     @property
-    def alternation_name(self):
+    def alternation_name(self) -> str:
         return '空多交替' if self.direction == Direction.UP else '多空交替'
 
 
@@ -357,7 +521,8 @@ def observe_trend_transition(bars: Sequence[Bar], points: Sequence[ReversalPoint
         raise ValueError('known frozen extreme and preceding key required')
     known = _known_points(points, context.window_start, end)
     original = observe_structure(points, symbol=context.symbol, timeframe=context.timeframe,
-                                 window_start=context.window_start, asof_index=context.asof_index)
+                                 window_start=context.window_start, asof_index=context.asof_index,
+                                 trend_level=context.trend_level, source_level=context.source_level)
     if original != context:
         raise ValueError('supplied points changed the frozen context')
     for i in range(end+1):

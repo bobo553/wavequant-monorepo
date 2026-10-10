@@ -810,9 +810,21 @@ export class LectureOverlay {
             const promotedByAlternation =
                 p.confirmation_rule === "level1_old_level2_key_break_alternation_and_nested_reversal";
             const directUpgrade =
-                p.confirmation_rule === `level${level - 1}_confirmed_high_breaks_known_level${level}_last_fall_high`;
+                (p.kind === "H" &&
+                    p.confirmation_rule ===
+                        `level${level - 1}_confirmed_high_breaks_known_level${level}_last_fall_high`) ||
+                (p.kind === "L" &&
+                    p.confirmation_rule === `level${level - 1}_confirmed_low_breaks_known_level${level}_last_rise_low`);
+            // 普通高低点方向证据与严格关键位升级是两个通道。最后的持稳点
+            // 可能没有突破关键位，展示时不能把它描述成翻多/翻空攻击棒。
+            const orderedDefinition =
+                p.confirmation_rule === "ordered_HH_then_HL_or_LL_then_LH_switch" ||
+                p.structural_confirmation_rule === "ordered_HH_then_HL_or_LL_then_LH_switch";
+            const endpointName = p.kind === "H" ? "高点" : "低点";
+            const keyName = p.kind === "H" ? "末跌高" : "末升低";
+            const crossing = p.kind === "H" ? "突破" : "跌破";
             const presentation = trendConfirmationPresentation(
-                p.kind === "H" ? p.incoming_trend_confirmation : p.trend_confirmation,
+                (p.kind === "H" ? p.incoming_trend_confirmation : p.trend_confirmation) || p.active_trend_confirmation,
                 level,
             );
             const sourceKnown = p[`source_level${level - 1}_available_at`],
@@ -820,16 +832,18 @@ export class LectureOverlay {
                 keyKnownText = key?.available_at === undefined ? "" : `（${key.available_at} 可知）`;
             if (usesCausalTrendConfirmation(stroke) && p.kind === "L" && !presentation) return null;
             const description = directUpgrade
-                ? `${presentation?.description || ""}已确认${source}高点 ${p.time} ${p.value}${sourceKnownText} 严格突破此前已知${name}末跌高 ${key.time} ${key.value}${keyKnownText}，于 ${p.available_at} 直接升级${name}高点；后续回调按当时可知证据独立确认，不等待回撤比例或嵌套低点，也不等于买卖信号。`
+                ? `${presentation?.description || ""}已确认${source}${endpointName} ${p.time} ${p.value}${sourceKnownText} 严格${crossing}此前已知${name}${keyName} ${key.time} ${key.value}${keyKnownText}，于 ${p.available_at} 直接升级${name}${endpointName}；后续回调按当时可知证据独立确认，不等待回撤比例或嵌套${p.kind === "H" ? "低点" : "高点"}，也不等于买卖信号。`
                 : presentation
                   ? `${presentation.description}该${name}${p.kind === "H" ? "高点" : "低点"}于 ${p.available_at} 正式发布，不等于买卖信号。`
-                  : usesCausalTrendConfirmation(stroke)
-                    ? `${name}下降段的已确认压力高点 ${p.time} ${p.value}，于 ${p.available_at} 可知。上涨趋势仍须具备当前方案启用的完整确认依据；该关键位不是买卖信号。`
-                    : p.confirmation_rule === "confirmed_alternation_then_high_breakout"
-                      ? `空多交替已确认后，${proof.time} 最高价 ${proof.value} 严格突破原空翻多高点，确认多头。原空翻多高点至空多交替低点确认为正式${name}趋势线，${p.available_at} 才可知；不要求收盘越过旧高点，也不把突破 K 当作已确认波段顶。`
-                      : promotedByAlternation
-                        ? `基于一级趋势线：${p.label}（${p.value}）先突破旧二级末跌高 ${key.label}（${key.value}）；随后 ${p.alternation.point.label}（${p.alternation.point.value}）完成 ${(p.alternation.retracement_ratio * 100).toFixed(2)}% 的场景回撤，并由非正式二级低点 ${p.provisional_reversal.label}（${p.provisional_reversal.value}）在 ${p.available_at} 完成确认，才把该高点升级为正式二级高点。证据按确认日可见，不倒填、不等于买卖信号。`
-                        : `基于${source}趋势线：${proof.label}（${proof.value}）${p.flip === "翻空为多" ? "突破末跌高" : "跌破末升低"} ${key.label}（${key.value}），确认整段${p.kind === "H" ? "最高" : "最低"}点。可跨多个${source}拐点，不等待67%交替；不等于买卖信号。`;
+                  : orderedDefinition
+                    ? `基于${source}已确认高低点，两个高点和两个低点均严格同向，且反向推进之后的持稳点已确认，整段${endpointName}于 ${p.available_at} 可知。相等或混合不确认方向；正负反转、末跌高/末升低突破以及直接升级分别保留各自证据，不等于买卖信号。`
+                    : usesCausalTrendConfirmation(stroke)
+                      ? `${name}下降段的已确认压力高点 ${p.time} ${p.value}，于 ${p.available_at} 可知。上涨趋势仍须具备当前方案启用的完整确认依据；该关键位不是买卖信号。`
+                      : p.confirmation_rule === "confirmed_alternation_then_high_breakout"
+                        ? `空多交替已确认后，${proof.time} 最高价 ${proof.value} 严格突破原空翻多高点，确认多头。原空翻多高点至空多交替低点确认为正式${name}趋势线，${p.available_at} 才可知；不要求收盘越过旧高点，也不把突破 K 当作已确认波段顶。`
+                        : promotedByAlternation
+                          ? `基于一级趋势线：${p.label}（${p.value}）先突破旧二级末跌高 ${key.label}（${key.value}）；随后 ${p.alternation.point.label}（${p.alternation.point.value}）完成 ${(p.alternation.retracement_ratio * 100).toFixed(2)}% 的场景回撤，并由非正式二级低点 ${p.provisional_reversal.label}（${p.provisional_reversal.value}）在 ${p.available_at} 完成确认，才把该高点升级为正式二级高点。证据按确认日可见，不倒填、不等于买卖信号。`
+                          : `基于${source}趋势线：${proof.label}（${proof.value}）${p.flip === "翻空为多" ? "突破末跌高" : "跌破末升低"} ${key.label}（${key.value}），确认整段${p.kind === "H" ? "最高" : "最低"}点。可跨多个${source}拐点，不等待67%交替；不等于买卖信号。`;
             return {
                 id,
                 time: p.available_at,
@@ -837,10 +851,10 @@ export class LectureOverlay {
                 kind: "trend",
                 category: "rules",
                 price: p.value,
-                title: `${prefix}${p.label} · ${name}${p.kind === "H" ? "高点" : "低点"} · ${p.flip}`,
+                title: `${prefix}${p.label} · ${name}${endpointName} · ${p.flip || p.reversal || "高低点方向确认"}`,
                 description,
                 sourceLabel: directUpgrade
-                    ? `${name}趋势线 · 已确认${source}高点直接升级`
+                    ? `${name}趋势线 · 已确认${source}${endpointName}直接升级`
                     : presentation?.sourceLabel ||
                       (usesCausalTrendConfirmation(stroke)
                           ? `${name}趋势线 · 已确认下降压力关键位`
@@ -864,7 +878,7 @@ export class LectureOverlay {
                 )
                 .join("；");
             const presentation = trendConfirmationPresentation(
-                p.kind === "H" ? p.incoming_trend_confirmation : p.trend_confirmation,
+                (p.kind === "H" ? p.incoming_trend_confirmation : p.trend_confirmation) || p.active_trend_confirmation,
                 1,
             );
             if (usesCausalTrendConfirmation(stroke) && p.kind === "L" && !presentation) return null;

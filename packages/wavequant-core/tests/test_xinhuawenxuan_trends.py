@@ -38,12 +38,19 @@ def test_real_secondary_events_form_one_nonoverlapping_ordered_path_and_tertiary
     assert all(s["id"] != "secondary-alternation-1502-2056" for s in result["strokes"])
     third = tertiary_trends(result, bars)
     assert [[(p["time"], p["kind"]) for p in s["points"]] for s in third["strokes"]] == [
-        [("2019-03-13", "H"), ("2021-02-04", "L")]
+        [("2019-03-13", "H"), ("2021-02-04", "L"), ("2023-05-05", "H"),
+         ("2024-02-06", "L"), ("2025-08-29", "H")]
     ]
     development = third["developing_strokes"][0]
     assert development["points"][0]["time"] == "2021-02-04"
     assert ("2023-05-05", "H") in [(p["time"], p["kind"]) for p in development["points"]]
-    assert ("2023-05-05", "H") not in [(p["time"], p["kind"]) for s in third["strokes"] for p in s["points"]]
+    upgraded = next(p for s in third["strokes"] for p in s["points"] if p["time"] == "2023-05-05")
+    proof = upgraded["upgrade_evidence"]
+    assert upgraded["available_at"] == proof["available_at"] == "2023-08-09"
+    assert proof["broken_key"]["time"] == "2019-03-13"
+    assert proof["broken_key"]["available_at"] == "2019-10-29" < upgraded["time"]
+    assert upgraded["value"] > proof["broken_key"]["value"]
+    assert proof["confirmed_by"]["time"] == upgraded["time"]
 
 
 def test_first_source_extreme_without_preceding_key_can_initialize_later_valid_structure():
@@ -51,7 +58,7 @@ def test_first_source_extreme_without_preceding_key_can_initialize_later_valid_s
     points = base["strokes"][0]["points"]
     assert points[0]["kind"] == "L"
     assert points[0]["value"] < min(p["value"] for p in points[1:] if p["kind"] == "L")
-    assert [(p["time"], p["kind"]) for p in _structural_reversals(points, source_level=2)] == [("2021-02-04", "L")]
+    assert [(p["time"], p["kind"]) for p in _structural_reversals(points, source_level=2)] == [("2023-05-05", "H")]
 
 
 def test_prefix_does_not_use_later_alternation_or_future_third_point():

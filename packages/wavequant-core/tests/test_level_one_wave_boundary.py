@@ -1,14 +1,17 @@
 """A wave reversal needs a confirmed retracement after its counter-impulse."""
 
 from copy import deepcopy
+from collections import Counter
+from collections.abc import Sequence
 from datetime import datetime
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
-from wavequant.domain.market_structure.lecture_trend import _wave_reversals, reversal_trends
+from wavequant.domain.market_structure.lecture_trend import _WaveTurn, _wave_reversals, reversal_trends
 from wavequant.domain.models.model import Bar
 
 
@@ -71,38 +74,87 @@ def xiangyang_bars():
     return [Bar(datetime.fromisoformat(day), raw['symbol'], *values) for day, *values in raw['bars']]
 
 
-def test_real_xiangyang_december_high_connects_to_january_13_low(xiangyang_bars):
+def test_real_ordered_wave_preserves_january_13_low_while_key_breaks_upgrade_earlier(xiangyang_bars):
     base = lecture_drawing(xiangyang_bars)
     before = deepcopy(base)
     result = reversal_trends(base, xiangyang_bars)
-    points = next(stroke['points'] for stroke in result['structure_strokes']
-                  if any(point['time'] == '2024-12-30' for point in stroke['points']))
+    # fixture是一条已确认交替折线路径，直接观察公共普通归并器，保留旧有序证据。
+    # 完整candidate并集另含用户保留的独立高低点突破，不再等于普通波段快照。
+    raw_points = base['strokes'][0]['points']
+    counts = Counter(point['time'] for point in raw_points)
+    ranks: dict[str, int] = {}
+    source = []
+    for point in raw_points:
+        if point['state'] not in ('seed', 'developing'):
+            source.append(dict(point, state='reversal', projection_count=counts[point['time']],
+                               projection_rank=ranks.get(point['time'], 0)))
+        ranks[point['time']] = ranks.get(point['time'], 0) + 1
+    points = [dict(point) for point in _wave_reversals(cast(Sequence[_WaveTurn], source))]
     position = next(index for index, point in enumerate(points) if point['time'] == '2024-12-30')
     assert [(point['time'], point['kind'], point['value']) for point in points[position:position + 2]] == [
         ('2024-12-30', 'H', 7.29), ('2025-01-13', 'L', 5.51),
     ]
     assert not any(point['time'] == '2025-01-07' for point in points)
     assert points[position + 1]['available_at'] == '2025-01-21'
+    promoted = next(stroke['points'] for stroke in result['structure_strokes']
+                  if any(point['time'] == '2024-12-30' for point in stroke['points']))
+    january = [point for point in promoted if point['kind'] == 'L' and '2025-01-01' <= point['time'] <= '2025-01-13']
+    assert [(point['time'], point['value'], point['available_at']) for point in january] == [
+        ('2025-01-07', 5.55, '2025-01-08'), ('2025-01-13', 5.51, '2025-01-14'),
+    ]
+    assert [(point['broken_key']['time'], point['broken_key']['value']) for point in january] == [
+        ('2024-12-23', 6.08), ('2025-01-07', 5.55),
+    ]
+    assert all(point['upgrade_evidence']['direction'] == 'down' for point in january)
     assert base == before
     raw = json.loads((Path(__file__).parent / 'fixtures/xiangyang_2025_level_one_low.json').read_text(encoding='utf-8'))
     fields = ('index', 'ordinal', 'time', 'kind', 'value', 'state', 'available_at', 'projection_count', 'projection_rank')
-    snapshot = [dict(id=stroke['id'], kind=stroke['kind'],
-                     points=[{key:point[key] for key in fields} for point in stroke['points']])
-                for stroke in result['structure_strokes']]
+    snapshot = [dict(id='reversal-'+base['strokes'][0]['id'], kind='reversal',
+                     points=[{key:point[key] for key in fields} for point in points])]
     assert snapshot == raw['level_one_strokes']
 
 
 @pytest.mark.parametrize('asof', ['2025-01-10', '2025-01-13', '2025-01-14', '2025-01-20', '2025-01-21'])
-def test_real_january_low_is_structural_only_after_ordered_retracement_confirms(xiangyang_bars, asof):
+def test_real_january_ordered_confirmation_and_break_upgrade_have_separate_knowledge_dates(xiangyang_bars, asof):
     bars = [bar for bar in xiangyang_bars if str(bar.timestamp.date()) <= asof]
     result = reversal_trends(lecture_drawing(bars), bars)
     lows = [point for stroke in result['structure_strokes'] for point in stroke['points']
             if point['kind'] == 'L' and point['time'].startswith('2025-01')]
-    assert [(point['time'], point['value']) for point in lows] == (
-        [('2025-01-13', 5.51)] if asof >= '2025-01-21' else []
+    expected = [('2025-01-07', 5.55, '2025-01-08')]
+    if asof >= '2025-01-14':
+        expected.append(('2025-01-13', 5.51, '2025-01-14'))
+    assert [(point['time'], point['value'], point['available_at']) for point in lows] == expected
+    source = [dict(point, state='reversal') for stroke in lecture_drawing(bars)['strokes'] for point in stroke['points']
+              if point['state'] not in ('seed', 'developing')]
+    ordered = [point for point in _wave_reversals(cast(Sequence[_WaveTurn], source))
+               if point['kind'] == 'L' and point['time'].startswith('2025-01')]
+    assert [(point['time'], point['value'], point['available_at']) for point in ordered] == (
+        [('2025-01-13', 5.51, '2025-01-21')] if asof >= '2025-01-21' else []
     )
-    # The short fixture certifies geometry, but not either global upward route.
-    assert not any(point['time'] == '2025-01-13' for stroke in result['strokes'] for point in stroke['points'])
+    published = [point for stroke in result['strokes'] for point in stroke['points']
+                 if point['time'] == '2025-01-13']
+    if asof < '2025-01-14':
+        assert not published
+    else:
+        # 普通LL→LH要等1/21；独立低点突破则1/13价格破L5.55，1/14确认
+        # 本级L5.51即可发布下降端点。下降证书不能自动授权该L之后的上涨。
+        assert len(published) == 1
+        point = published[0]
+        assert (point['kind'], point['value'], point['available_at']) == ('L', 5.51, '2025-01-14')
+        assert point['incoming_trend_state'] == 'confirmed'
+        proof = point['incoming_trend_confirmation']
+        assert proof['direction'] == 'down' and proof['available_at'] == '2025-01-13'
+        assert (proof['broken_key']['time'], proof['broken_key']['value']) == ('2025-01-07', 5.55)
+        assert (proof['confirmed_by']['time'], proof['confirmed_by']['value']) == ('2025-01-13', 5.51)
+        if asof < '2025-01-16':
+            assert point.get('trend_confirmation') is None
+        else:
+            # 同坐标L后续可凭1/16独立高点突破再获上涨证书；保留下降端点
+            # 原先1/14的公开日期，不能让后续许可倒填到1/14或改写下降许可。
+            up = point['trend_confirmation']
+            assert up['direction'] == 'up' and up['available_at'] == '2025-01-16'
+            assert (up['broken_key']['time'], up['broken_key']['value']) == ('2025-01-10', 6.42)
+            assert (up['confirmed_by']['time'], up['confirmed_by']['value']) == ('2025-01-16', 6.46)
 
 
 def test_real_confirmed_level_one_points_are_stable_at_every_history_prefix(xiangyang_bars):

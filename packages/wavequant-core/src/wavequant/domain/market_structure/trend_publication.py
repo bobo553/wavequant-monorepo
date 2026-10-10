@@ -297,6 +297,7 @@ def publish_uptrends(
     result: list[dict[str, object]] = []
     pressure: Mapping[str, object] | None = None
     pending_origin: Mapping[str, object] | None = None
+    pending_down_origin: Mapping[str, object] | None = None
     context: ConfirmationContext | None = None
     state = _PublishedTrendState(source, bars, source_level, qualified_source=qualified_source,
                                  n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
@@ -319,6 +320,17 @@ def publish_uptrends(
             if point.get('trend_confirmation_route') == N_TARGET_CONFIRMATION:
                 point.pop('trend_confirmation_route')
         if point['kind'] == 'H':
+            upgrade = point.get('upgrade_evidence')
+            if (isinstance(upgrade, Mapping) and upgrade.get('direction') == 'down'
+                    and upgrade.get('role') == 'origin'):
+                # 下降升级起点是攻击旧低点之前的真实整段高点。它可以低于
+                # 上一个压力H，不能由“上涨创新高延伸”分支提前丢弃；先保存，
+                # 等配对低点获得独立下降证书后再决定公开的整波起点。
+                position = point.get(position_field)
+                if (type(position) is not int or not 0 <= position < len(source)
+                        or not _same_origin(dict(origin=source[position]), point)):
+                    raise ValueError('a trend upgrade must identify its actual source origin')
+                pending_down_origin = point
             # A causally confirmed descending pressure anchor is independent
             # of whether its preceding rising leg was qualified for display.
             pressure = candidate
@@ -354,6 +366,8 @@ def publish_uptrends(
             result.append(point)
             pending_origin = None
             continue
+        # 普通上涨原点与直接下降升级端点共用真实来源校验。升级描述本身
+        # 不授予改写坐标/价格的权限，必须先核对本点，再走各方向资格门禁。
         position = point.get(position_field)
         if type(position) is not int or not 0 <= position < len(source):
             raise ValueError('a trend candidate must identify its actual source origin')
@@ -362,6 +376,85 @@ def publish_uptrends(
         if tuple(point.get(field, 0 if field == 'ordinal' else None) for field in identity) != tuple(
                 origin.get(field, 0 if field == 'ordinal' else None) for field in identity):
             raise ValueError('a trend candidate must match its actual source origin')
+        upgrade = point.get('upgrade_evidence')
+        if (isinstance(upgrade, Mapping) and upgrade.get('direction') == 'down'
+                and upgrade.get('role') == 'endpoint'):
+            # 严格跌破已知本级低点是独立的下降升级许可，不必等随后反弹。
+            # 普通L候选仍需后续上涨资格；只有本通道可在尚无上涨时发布下降末端。
+            # 起点必须是已有真实H，且本级下降证书、原点/来源/可知日全由共同
+            # annotate门禁重新验证，不能沿用下一级携来的许可证。
+            if result:
+                previous = result[-1] if result[-1]['kind'] == 'H' else result[-2] if len(result) >= 2 else None
+                key = last_low
+                paired_key: Mapping[str, object] | None = None
+                reference, upgraded_key = upgrade.get('origin'), point.get('broken_key')
+                # 同坐标H可能更早已有上涨或N证据，此时归并器保留早证书，
+                # 不再把其顶层role改写为后来下降的origin。配对以真实坐标
+                # 找回本级候选，下降知识仍由本次端点/旧低点自己的日期决定。
+                paired = pending_down_origin
+                if isinstance(reference, Mapping) and (paired is None
+                        or not _same_origin(dict(origin=reference), paired)):
+                    paired = next((item for item in candidates if item['kind'] == 'H'
+                        and _same_origin(dict(origin=reference), item)), None)
+                if (paired is not None and isinstance(reference, Mapping)
+                        and _same_origin(dict(origin=reference), paired)
+                        and isinstance(upgraded_key, Mapping)):
+                    # 本级旧低点可已由共同定义确认，却因后续上涨尚未达标而未
+                    # 进入公开上升链。只接受本次候选集合中真实已知的本级L，
+                    # 不把任意下级低点或伪造的升级字段当作本级突破证据。
+                    known_key = next((item for item in candidates if item['kind'] == 'L'
+                        and _same_origin(dict(origin=upgraded_key), item)
+                        and _moment(item) == _moment(upgraded_key)), None)
+                    source_key = next((item for item in source
+                        if _same_origin(dict(origin=upgraded_key), item)), None)
+                    if (known_key is not None and source_key is not None
+                            and _later(_moment(source_key), _moment(upgraded_key)) == _moment(upgraded_key)
+                            and _later(_moment(paired), _moment(point)) == _moment(point)
+                            and _later(_moment(upgraded_key), _moment(point)) == _moment(point)):
+                        previous, key, paired_key = dict(paired), upgraded_key, known_key
+                if previous is not None and previous['kind'] == 'H':
+                    state.annotate(point, previous, key)
+                    if point.get('incoming_trend_state') == 'confirmed':
+                        # 同一个L可以先因跌破旧低成为下降末端，随后再独立
+                        # 获得本级突破、下级完整交替或启用的N上涨证书。上行
+                        # 用当前整体截止重新取证，下降仍按本端点自己的截止
+                        # 取证；两份证书各自保留日期，不能让下降分支的continue
+                        # 吞掉后来合法上涨，也不能把后来上涨借给此前下降。
+                        outgoing = qualify_uptrend(source, source[position], position, pressure, market, end_index,
+                            n_source=n_source, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+                        if outgoing is not None:
+                            point['trend_confirmation'] = outgoing
+                            point['trend_confirmation_route'] = outgoing['confirmation_rule']
+                        # 已公开压力H也属于历史事实，不能为展示新下降原点
+                        # 删除它。需要接入另一个真实H时，把已定义的旧L作为
+                        # 独立压力参考衔接，再加入配对H；二者从本次突破才公开，
+                        # 不倒填到之前仍未获准的日期，不凭参考点授予上涨权限。
+                        active = point.get('active_trend_confirmation')
+                        if (result[-1]['kind'] == 'H' and isinstance(active, Mapping)
+                                and _same_origin(active, previous)
+                                and not _same_origin(active, result[-1])):
+                            if (paired_key is None
+                                    or (paired_key['index'], paired_key.get('ordinal', 0)) <=
+                                       (result[-1]['index'], result[-1].get('ordinal', 0))
+                                    or (paired_key['index'], paired_key.get('ordinal', 0)) >=
+                                       (previous['index'], previous.get('ordinal', 0))):
+                                continue
+                            reference_low = dict(paired_key, available_at=_moment(point))
+                            reference_low['incoming_trend_state'] = 'unconfirmed'
+                            reference_low.pop('incoming_trend_confirmation', None)
+                            reference_high = dict(previous, available_at=_moment(point))
+                            reference_high['incoming_trend_state'] = 'unconfirmed'
+                            reference_high.pop('incoming_trend_confirmation', None)
+                            result.extend((reference_low, reference_high))
+                        if result[-1]['kind'] == 'L':
+                            if cast(float, point['value']) < cast(float, result[-1]['value']):
+                                result[-1] = point
+                        else:
+                            result.append(point)
+                        last_low = point
+                        pending_origin = None
+                        pending_down_origin = None
+            continue
         if result and result[-1]['kind'] == 'L':
             continue
         key = pressure

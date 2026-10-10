@@ -4,6 +4,79 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-314",
+            "name": "unified-three-level-trend-definitions",
+            "title": "统一三级趋势定义与突破升级",
+            "status": "done",
+            "dependencies": ["MONOREPO-311"],
+            "description": "按图008将末跌高、末升低、正反转、负反转、多头趋势、空头趋势各自实现为公共函数，通过trend_level区分一级、二级、三级；共用严格高低比较和确认时间，保留高低点严格突破即升级，补充详细中文注释。",
+            "scope": "Core六定义及逐级正式来源归并、独立高低突破升级、双向发布/后续上涨证书、下降测幅事实、局部ABC隔离、图表说明及相关定向测试；不修改K线折线规则或N开关默认值。",
+            "acceptanceCriteria": [
+                "六公共入口支持合法trend_level和立即下级source_level；图008 L0/H1、L7/H6、H0/L4、H4/L3映射一致。",
+                "一级从基础高低折线、二级从正式一级、三级从正式二级计算；共享HH→HL/LL→LH方向归并，私有/显示尾端不绕级。",
+                "每组同类高低都严格同向才满足多空定义；相等、混合、缺点及局部正负反转不自动改变全局方向。",
+                "高低镜像严格突破此前已知本级关键位直接升级，不等后续回调；来源、整波极值、同坐标独立证据及其知日不混用。",
+                "详细中文职责/因果/边界注释、定向算法/生产/真实历史测试、类型/格式/构建/干净安装与独立复核实际通过；未运行项明确记录。"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest -q tests/test_trend_definition_levels.py tests/test_trend_primitives.py tests/test_trend_structure.py tests/test_trend_foundations.py tests/test_figure008_foundations.py tests/test_trend_levels.py tests/test_trend_level_upgrades.py tests/test_global_trend_confirmation.py tests/test_n_trend_same_coordinate.py tests/test_n_trend_option.py tests/test_n_trend_levels.py tests/test_n_trend_path_boundaries.py tests/test_trend_down_upgrade_publication.py tests/test_trend_leg_confirmation.py tests/test_level_one_wave_boundary.py tests/test_n_trend_source_license.py",
+                    "status": "passed",
+                    "summary": "最终源码520项/357子用例通过；六定义跨三级、图008、严格高低镜像、相等/迟知、知识包络、来源许可证隔离、35项下降发布/伪造来源/配对键、同坐标N和普通后续上涨证书、实际前缀与整波证据均覆盖。新增N污染回归21项修前15失败/6通过，修后全通过，覆盖三个来源级别、新origin/失守endpoint和旧本级证书保持。"
+                },
+                {
+                    "command": "python -m pytest -q tests/test_trend_confirmation_boundaries.py tests/test_n_trend_confirmation.py; python -m pytest -q tests/test_n_trend_source_license.py tests/test_n_trend_same_coordinate.py",
+                    "status": "passed",
+                    "summary": "最后确认边界/N确认36项通过；独立审查员运行新N来源/同坐标33项通过，复核导入边界与审计引用未发现剩余P1/P2。"
+                },
+                {
+                    "command": "python -m pytest -q tests/test_trend_definition_levels.py tests/test_trend_primitives.py tests/test_trend_foundations.py tests/test_figure008_foundations.py tests/test_trend_structure.py tests/test_trend_down_upgrade_publication.py tests/test_trend_leg_confirmation.py tests/test_global_trend_confirmation.py tests/test_level_one_wave_boundary.py tests/test_n_trend_option.py tests/test_completed_wave_recovery.py",
+                    "status": "passed",
+                    "summary": "普通与下降证书修复后352项/357子用例通过（与上一组重叠，不能相加）。石联617棒一次真实完整生成、日历史快照复用的两前缀signals/audit回放及独立cold前缀几何/关键位核对通过；7/20尚无正式交替不能借July21/Aug7未来许可。原压力/逆向恢复单元门禁保留，合法许可后的执行/volume/filter职责独立验证，没有跳过失败。"
+                },
+                {
+                    "command": "python -m pytest -q tests/test_trend_level_pipeline.py tests/test_secondary_trend.py tests/test_tertiary_trend.py tests/test_lecture_trend.py tests/test_trend_wave_continuation.py tests/test_xinhuawenxuan_trends.py tests/test_n_target_trend_real.py -k 'not daily_history'",
+                    "status": "passed",
+                    "summary": "最终受影响生产/真实图表子集82项/62子用例通过；三层H76→L50正式下降镜像、严格破55且不等后续holding，真实独立波及波身份、新华文轩公开来源、结构9/12与N上涨证书9/20分别保留。"
+                },
+                {
+                    "command": "python -m pytest -q tests/test_confirmed_decline_history.py; python -m pytest -q tests/test_hierarchical_n.py; python -m pytest -q tests/test_trend_level_pipeline.py tests/test_hierarchical_n.py -k 'daily_history or actual_guangdong or guilin or hierarchy or historical'",
+                    "status": "passed",
+                    "summary": "下降事实修复后5项真实历史通过；最终Guilin2项通过，最终日递归/历史子集3项及3子用例通过。6/2高点先上涨@6/6，独立下降从6/8才可知；6/20实际下降源为6/13，公开H不自动当下降。二三级逐日输入始终等于下一级正式已发布点，缓存/部分日线不借未来。"
+                },
+                {
+                    "command": "python -m pytest -q tests/test_combined_a_local_geometry.py tests/test_combined_a_entry.py -k \"not guofang\"; python -m pytest -q tests/test_a_wave_lifecycle.py tests/test_a_wave_confirmation.py tests/test_combined_a_strategy.py::test_new_route_is_v3_only_and_boolean_validation_is_explicit; python -m pytest -q tests/test_combined_a_strategy.py::test_real_consolidation_keeps_local_evidence_but_obeys_new_formal_secondary_resistance tests/test_combined_a_strategy.py::test_authorized_same_close_fill_and_ledger_preserve_permissions_and_reward_risk; python -m pytest -q tests/test_combined_a_strategy.py -k \"gates or exhausted\"; python -m pytest -q tests/test_combined_a_strategy.py::test_prefix_and_partial_volume_cache_do_not_borrow_later_breakout tests/test_combined_a_strategy.py::test_new_route_is_v3_only_and_boolean_validation_is_explicit; python -m pytest -q tests/test_combined_a_entry.py::test_guofang_april_3_real_geometry_and_prefix_consistency",
+                    "status": "passed",
+                    "summary": "局部15项、A生命周期/确认26项、完整策略11项在定向批次2/7/2全部实际通过（重叠不能相加）；fresh完整/短前缀/部分量验证2项365.16秒，独立302/548棒两套国纺真实几何与前缀2项455.25秒。ABC只保存坐标、严格局部关键位与flip，不继承全局级别/升级许可证；正式1→3误用仍被拒绝。国纺latestC1/3、known1/8、58天/internal9保留，4/3新二级抵抗精确拒绝LONG。上述慢测在最后N新点来源清理前启动；该边界以新增21项真实N污染回归及最终520/82项复验为准，不冒称重跑慢测。"
+                },
+                {
+                    "command": "python -m mypy src/wavequant/domain/market_structure/lecture_trend.py src/wavequant/domain/market_structure/secondary_trend.py src/wavequant/domain/market_structure/tertiary_trend.py src/wavequant/domain/market_structure/hierarchical_development.py src/wavequant/domain/strategies/hierarchical_entry.py; python -m mypy --strict src/wavequant/domain/market_structure/trend_structure.py src/wavequant/domain/market_structure/trend_primitives.py src/wavequant/domain/market_structure/trend_foundations.py src/wavequant/domain/market_structure/trend_levels.py src/wavequant/domain/market_structure/trend_level_upgrades.py src/wavequant/domain/market_structure/trend_publication.py src/wavequant/domain/market_structure/n_trend_reversals.py src/wavequant/domain/strategies/combined_a_entry.py tests/test_n_trend_source_license.py; targeted new and migrated tests mypy; pnpm --filter @wavequant/core typecheck; pnpm --filter wavequant-web typecheck",
+                    "status": "passed",
+                    "summary": "最终13个修改生产源码类型检查通过；8共享/发布/局部模块strict、新增及迁移测试类型、Core4既定strict和Web类型通过。未引入any、ts-ignore、无范围eslint-disable或Python类型豁免。"
+                },
+                {
+                    "command": "./init.ps1 -Mode quick; pnpm --filter @wavequant/core build; clean wheel install and .codex-runtime/trend-level-wheel-smoke.py",
+                    "status": "passed",
+                    "summary": "首次独立worktree quick21/21基线通过（任务隔离Python环境）；最终Core sdist/wheel构建、干净安装六定义×三级、严格高低升级×三级烟测通过，wheel内13个修改源码与最终文件逐字一致。"
+                },
+                {
+                    "command": "node --test tests/lecture-overlay.test.mjs tests/trend-publication-overlay.test.mjs tests/trend-wave-continuation.test.mjs tests/n-trend-option.test.mjs; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "最终Web51项定向Node测试、lint零错误（6条既有环境变量warning）、Next16.2.6 Turbopack生产构建通过。低点跌破说明与普通持稳方向证据分开；一级低点不等待反弹也能显示合法下降证书。"
+                },
+                {
+                    "command": "targeted Prettier; pnpm harness:check; codegraph sync; git diff --check; independent code review; original main feature-object preservation",
+                    "status": "passed",
+                    "summary": "状态、进度与合同格式/Harness/差异检查、CodeGraph增量同步和独立复核通过；P1来源伪造/配对origin/证书吞并/N来源复制已回归修复。当前main所有已有功能对象和256活动失败记录逐字段保留，仅新增本任务。"
+                },
+                {
+                    "command": "Full Core/Web unit suites; browser/Playwright; all-symbol/account comparison; live external-minute integration",
+                    "status": "not-run",
+                    "summary": "本轮未运行，待独立验证；实际运行的定向项不替代完整套件。新严格逐级规则会改变部分历史级别、整波与买点资格，需重算历史。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-313",
             "name": "restore-eslint-tsup-and-mobile-config",
             "title": "恢复剩余共享配置与移动端检查入口",

@@ -133,13 +133,15 @@ def test_guofang_april_3_real_geometry_and_prefix_consistency(fixture):
     proof = proofs[signal]
     assert proof["combined_a_origin_date"] == "2024-02-08"
     assert proof["combined_a_top_date"] == "2025-01-03"
-    assert proof["combined_a_known_date"] == "2025-01-22"
-    assert proof["combined_a_internal_pullback_sessions"] == 70
+    # 新正式一级高低点更密，最新合法局部 ABC 为 12/12→12/25→1/3；
+    # 1/7 来源低点严格破其局部关键位，于 1/8 才确认 C，不能沿用旧少点链日期。
+    assert proof["combined_a_known_date"] == "2025-01-08"
+    assert proof["combined_a_internal_pullback_sessions"] == 9
     assert proof["combined_a_child_pullback_sessions"] == 9
     assert proof["combined_a_pullback_sessions"] == 58
-    assert proof["combined_a_breakout_date"] == "2025-03-17"
-    assert proof["combined_a_breakout_known_date"] == "2025-03-26"
-    assert proof["combined_a_breakout_price"] == pytest.approx(7.049092238189244)
+    assert proof["combined_a_breakout_date"] == "2025-03-27"
+    assert proof["combined_a_breakout_known_date"] == "2025-04-01"
+    assert proof["combined_a_breakout_price"] == pytest.approx(6.584617168231039)
     assert proof["combined_a_two_thirds_price"] == pytest.approx(5.918296563582128)
     assert proof["confirmation_close"] == pytest.approx(7.158380489944116)
     assert proof["breakout_volume"] == 20_135_200

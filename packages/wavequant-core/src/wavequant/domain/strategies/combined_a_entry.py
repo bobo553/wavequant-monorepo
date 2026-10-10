@@ -7,10 +7,10 @@ An arbitrary four-pivot sequence is never promoted into a combined wave.
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import NotRequired, Protocol, TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 from zoneinfo import ZoneInfo
 
-from ..market_structure.secondary_trend import _structural_reversals
+from ..market_structure.trend_publication import publish_uptrends
 from ..models.model import Bar
 
 
@@ -51,13 +51,87 @@ class _PositiveN(TypedDict):
     formal: bool
 
 
-class _StructuralReducer(Protocol):
-    def __call__(self, points: Sequence[GeometryPoint], *, source_level: int = 1) -> list[GeometryPoint]: ...
+def _local_reference(point: GeometryPoint) -> dict[str, object]:
+    """局部证据只引用来源坐标、价格及其首次可知日，不传递正式级许可证。"""
+    fields = ('index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'label')
+    source = cast(Mapping[str, object], point)
+    return {field: source[field] for field in fields if field in source}
 
 
-# The existing reducer publishes these same point fields but has a dynamic
-# signature. Keep its compatibility adaptation at this single typed boundary.
-_reduce_local_points = cast(_StructuralReducer, _structural_reversals)
+def _reduce_local_points(points: Sequence[GeometryPoint], *, source_level: int = 2) -> list[GeometryPoint]:
+    """保留原 N 起点内局部 ABC 的严格关键位降采样，隔离正式趋势递归入口。
+
+    这里的输入仍是一级已确认点，输出仅进入 ordinary-local:* 私有测幅路径。
+    source_level 沿用旧局部适配器的位置字段命名，不能据此宣称一级点成为
+    正式三级来源；正式一级→二级→三级仍须走公共趋势入口并校验真实级别。
+
+    局部 ABC 继续由原严格末跌高／末升低突破确认，保留其 flip 和知识日期，
+    与 Web ordinaryLocalWavePoints 的局部几何语义一致。它等待当前整波
+    极值左侧关键位被严格反向突破，不执行全局高点／低点直接升级；等值
+    不构成突破。既有无行情发布门禁仍检查已确认来源的真实关键位突破，
+    不把任意四拐点当成组合 A。
+
+    正式来源点携带的是其自身等级的授权，不能变成局部路径的许可。
+    尤其来源下降升级的 endpoint 角色不能让本地 ABC 的 L 绕过原上涨
+    资格门禁；只转入几何字段，本地反转及发布证据在局部边界重新判断。
+    """
+    geometry_fields = ('index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'state', 'label')
+    geometry = cast(list[GeometryPoint], [
+        {field: cast(Mapping[str, object], point)[field] for field in geometry_fields if field in point}
+        for point in points
+    ])
+    candidates: list[GeometryPoint] = []
+    highs: list[int] = []
+    lows: list[int] = []
+    direction: str | None = None
+    anchor: int | None = None
+    key: int | None = None
+    for position, point in enumerate(geometry):
+        (highs if point['kind'] == 'H' else lows).append(position)
+        if direction is None:
+            if len(highs) < 2 or len(lows) < 2:
+                continue
+            high_change = geometry[highs[-1]]['value'] - geometry[highs[-2]]['value']
+            low_change = geometry[lows[-1]]['value'] - geometry[lows[-2]]['value']
+            direction = 'up' if high_change > 0 and low_change > 0 else (
+                'down' if high_change < 0 and low_change < 0 else None)
+            if direction is None:
+                continue
+            pool = highs if direction == 'up' else lows
+            anchor = (max if direction == 'up' else min)(pool, key=lambda index: geometry[index]['value'])
+            # 窗口首点没有左侧关键位时，只以最近已确认同类点开启局部观察。
+            if anchor == 0:
+                anchor = pool[-1]
+            key = anchor - 1 if anchor > 0 else None
+            continue
+        assert anchor is not None
+        up = direction == 'up'
+        target = 'H' if up else 'L'
+        sign = 1 if up else -1
+        if point['kind'] == target and sign * (point['value'] - geometry[anchor]['value']) > 0:
+            anchor, key = position, position - 1
+        if key is None or point['kind'] == target or sign * (point['value'] - geometry[key]['value']) >= 0:
+            continue
+        extreme = geometry[anchor]
+        candidate = dict(cast(Mapping[str, object], extreme), available_at=point['available_at'],
+                         confirmation_rule='n_origin_local_structural_key_break',
+                         local_wave_turn='up_to_down' if up else 'down_to_up',
+                         flip='翻多为空' if up else '翻空为多', broken_key=_local_reference(geometry[key]),
+                         confirmed_by=_local_reference(point), wave_direction_before=direction,
+                         wave_direction_after='down' if up else 'up',
+                         **{f'source_level{source_level}_position': anchor,
+                            f'source_level{source_level}_available_at': extreme['available_at'],
+                            f'confirmed_on_level{source_level}': position})
+        candidates.append(cast(GeometryPoint, candidate))
+        # 新方向的起点取整段反向区间极值；相同极值保留最早来源，不能
+        # 缩到突破 K 本身，也不能读取尚未确认的后续 holding point。
+        direction = 'down' if up else 'up'
+        pool = [index for index in range(anchor + 1, position + 1)
+                if geometry[index]['kind'] == ('L' if up else 'H')]
+        anchor = (min if up else max)(pool, key=lambda index: geometry[index]['value'])
+        key = anchor - 1
+    published = publish_uptrends(candidates, geometry, (), source_level=source_level)
+    return cast(list[GeometryPoint], published)
 
 
 def _bar_date(bar: Bar) -> str:

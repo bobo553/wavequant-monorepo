@@ -45,10 +45,13 @@ class SecondaryTrendTests(unittest.TestCase):
         points=result['candidate_strokes'][0]['points']
         self.assertEqual([(p['kind'],p['value'],p['source_level1_position']) for p in points],
                          [('L',10,2),('H',45,9),('L',24,14)])
-        self.assertEqual([p['confirmed_on_level1'] for p in points],[7,14,17])
+        # Higher highs need the later higher low; lower lows need the later
+        # lower high. All levels now share this ordered reversal evidence.
+        self.assertEqual([p['confirmed_on_level1'] for p in points],[6,13,18])
         self.assertEqual([p['broken_key']['value'] for p in points],[30,28,36])
-        self.assertEqual([p['flip'] for p in points],['翻空为多','翻多为空','翻空为多'])
-        self.assertEqual(points[0]['available_at'],level1['strokes'][0]['points'][7]['available_at'])
+        self.assertEqual([p['direction_definition'] for p in points],['多头趋势','空头趋势','多头趋势'])
+        self.assertTrue(all('flip' not in p for p in points))
+        self.assertEqual(points[0]['available_at'],level1['strokes'][0]['points'][6]['available_at'])
         self.assertGreater(points[0]['available_at'],points[0]['time'])
         self.assertEqual(result['trend_level'],2)
         self.assertEqual(result['source_level'],1)
@@ -251,7 +254,8 @@ class SecondaryTrendTests(unittest.TestCase):
         self.assertEqual(result['developing_strokes'],[])
         self.assertEqual(result['developing_point_count'],0)
         private=result['candidate_strokes'][0]['points']
-        self.assertEqual([(p['kind'],p['value']) for p in private],[('L',10),('H',45),('L',24)])
+        self.assertEqual([(p['kind'],p['value']) for p in private],
+                         [('L',10),('H',45),('L',24),('H',42),('L',33),('H',43)])
         for point in private:
             original=source['strokes'][0]['points'][point['source_level1_position']]
             for field in ['time','index','ordinal','kind','value']:
@@ -259,6 +263,8 @@ class SecondaryTrendTests(unittest.TestCase):
             self.assertGreaterEqual(point['available_at'],original['available_at'])
 
     def test_public_own_key_break_certificate_and_dated_prefixes(self):
+        # Strictly clearing a known level-2 high is an independent upgrade;
+        # it does not wait for the holding low required by ordered geometry.
         bars,source=market_fixture([*self.promotion_base,50])
         before=copy.deepcopy(source)
         full=secondary_trends(source,bars)
@@ -271,6 +277,8 @@ class SecondaryTrendTests(unittest.TestCase):
         self.assertEqual((proof['confirmed_by']['index'],proof['confirmed_by']['value']),(17,50))
         self.assertGreater(proof['confirmed_by']['value'],proof['broken_key']['value'])
         self.assertEqual(high['confirmation_rule'],'level1_confirmed_high_breaks_known_level2_last_fall_high')
+        self.assertEqual((high['source_level1_position'],high['confirmed_on_level1']),(17,17))
+        self.assertEqual(high['available_at'],source['strokes'][0]['points'][17]['available_at'])
         self.assertGreaterEqual(high['available_at'],low['available_at'])
         raw=source['strokes'][0]['points']
         for end in range(1,len(bars)+1):

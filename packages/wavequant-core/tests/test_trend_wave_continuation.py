@@ -83,8 +83,19 @@ def test_source_cycles_keep_their_flip_and_counter_evidence_in_wave_identity():
     assert identity(changed, level=2) is None
 
 
-@pytest.mark.parametrize('cutoff,peak', [('2025-03-21', 18.9), ('2025-04-02', 18.9), ('2025-05-15', 19.63)])
-def test_the_real_july_floor_keeps_its_wave_identity_through_causal_replay(cutoff, peak):
+@pytest.mark.parametrize('cutoff,origin_date,origin_price,endpoint_date,endpoint_price,direction,known,'
+                         'key_date,key_price,key_known,trigger_date,trigger_price', [
+    ('2025-03-21', '2025-01-13', 5.51, '2025-03-20', 18.9, 'up', '2025-02-28',
+     '2024-12-11', 8.17, '2024-12-12', '2025-02-28', 8.69),
+    ('2025-04-02', '2025-03-21', 18.9, '2025-03-31', 11.39, 'down', '2025-03-28',
+     '2025-03-17', 12.27, '2025-03-21', '2025-03-28', 11.74),
+    ('2025-05-15', '2025-04-29', 10.65, '2025-05-15', 19.63, 'up', '2025-04-30',
+     '2025-04-15', 12.24, '2025-04-16', '2025-04-30', 12.48),
+])
+def test_the_real_active_wave_keeps_its_identity_after_independent_key_breaks(
+    cutoff, origin_date, origin_price, endpoint_date, endpoint_price, direction, known,
+    key_date, key_price, key_known, trigger_date, trigger_price,
+):
     raw = json.loads((Path(__file__).parent / 'fixtures/xiangyang_2025_trend_break.json').read_text(encoding='utf-8'))
     bars = [Bar(datetime.fromisoformat(day), raw['symbol'], *prices) for day, *prices in raw['rows'] if day <= cutoff]
     first = reversal_trends(lecture_drawing(bars), bars)
@@ -92,11 +103,25 @@ def test_the_real_july_floor_keeps_its_wave_identity_through_causal_replay(cutof
     third = tertiary_trends(second, bars)
     tail = third['developing_strokes'][-1]
     origin = next(p for p in tail['points'] if p['development_role'] == 'confirmed_direction_origin')
-    assert origin['time'] == '2024-07-25' and tail['confirmed_endpoint']['value'] == peak
-    assert tail['confirmation']['available_at'] == '2025-03-11'
+    assert origin['time'] == origin_date and origin['value'] == origin_price
+    assert tail['confirmed_endpoint']['time'] == endpoint_date and tail['confirmed_endpoint']['value'] == endpoint_price
+    proof = tail['confirmation']
+    assert proof['confirmation_rule'] == 'strict_same_level_market_key_break'
+    assert proof['direction'] == direction and proof['available_at'] == known
+    key, trigger = proof['broken_key'], proof['confirmed_by']
+    assert (key['time'], key['value'], key['available_at']) == (key_date, key_price, key_known)
+    assert (trigger['time'], trigger['value']) == (trigger_date, trigger_price)
+    assert key_known < trigger_date <= known <= cutoff
+    assert (trigger_price > key_price) if direction == 'up' else (trigger_price < key_price)
+    assert any(all(point[field] == key[field] for field in ('index', 'ordinal', 'kind', 'value', 'available_at'))
+               for stroke in second['strokes'] for point in stroke['points'])
     assert tail['points'][-1]['time'] <= cutoff
+    matching = []
     for stroke in third['strokes']:
         for leg in stroke['confirmed_legs']:
-            if leg['points'][0]['time'] == '2024-07-25':
+            if leg['points'][0]['time'] == origin_date:
+                matching.append(leg)
                 assert leg['wave_id'] == tail['wave_id']
+                assert {field: leg['confirmation'][field] for field in proof} == proof
                 assert leg['points'][-1]['available_at'] <= cutoff
+    assert matching
