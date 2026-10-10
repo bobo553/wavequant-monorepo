@@ -1,24 +1,11 @@
-"""Derive the level-1 trend line (一级趋势线) from the confirmed base polyline.
-
-A small geometric turn is input evidence, not automatically a solid-line node.
-HH+HL establishes up; LH+LL establishes down; mixed/equal comparisons hold the
-previous direction. A wave switch needs a retracement AFTER the counter-impulse:
-an older holding point cannot confirm a new impulse that has yet to retrace.
-"""
-from collections import Counter
-from collections.abc import Sequence
+"""基础折线适配及共享定义展示；生产趋势判断统一进入 point-first judge。"""
+from collections.abc import Mapping, Sequence
 from typing import NotRequired, TypedDict, cast
 
+from ..models.model import Bar
 from .polyline import LinePoint, PointKind, ReversalPoint
 from .price_action import Direction
-from .trend_landmarks import (
-    bear_bull_alternation_lows,
-    bear_to_bull_highs,
-    bullish_turn_signals,
-    post_alternation_bull_highs,
-)
 from .trend_levels import trend_reversals
-from .trend_level_upgrades import promote_trend_key_breaks
 from .trend_primitives import last_fall_high, last_rise_low, negative_reversal, positive_reversal
 from .trend_structure import (
     StructuralTrend, TrendPriceState, observe_structure, preceding_turn, retracement_evidence,
@@ -296,117 +283,13 @@ def _annotate(points, symbol, dates, *, trend_level=1):
             anchor,key=p,previous; attack=None; suspicion=False
 
 
-def reversal_trends(drawing, bars, *, n_target_trend_confirmation_enabled: bool = False):
-    """一级趋势以已确认高低折线为来源，保留发生日与首次可知日。
+def reversal_trends(drawing: Mapping[str, object], bars: Sequence[Bar], *,
+                    n_target_trend_confirmation_enabled: bool = False) -> dict[str, object]:
+    """一级只把基础折线转成真实高低点，再调用共同的单层判断入口。
 
-    未确认seed/developing不充当正负反转或升级证据。普通方向归并与严格
-    高/低点突破升级共用后续发布许可，但保持各自确认规则及证据；可选N确认
-    按既有开关工作。跨路径衔接只可复用当时已确认的真实折线极值。
+    K线和N开关只传给独立策略资格视图；不在这里判断趋势或筛选结构点。
     """
-    # Drawing sessions are Shanghai dates, including timezone-aware market bars.
-    from zoneinfo import ZoneInfo
-    dates={(b.timestamp.astimezone(ZoneInfo('Asia/Shanghai')) if b.timestamp.tzinfo else b.timestamp).date().isoformat():i
-           for i,b in enumerate(bars)}
-    from .n_trend_reversals import n_target_reversals
-    result=[]; source_strokes=[]; local_count=0; candidate_strokes=[]; source_kinds={}; developing_strokes=[]
-    n_targets: list[dict[str,object]]=[]
-    for stroke_index,stroke in enumerate(drawing['strokes']):
-        raw=stroke['points']; counts=Counter(p['time'] for p in raw)
-        ranks: Counter[str] = Counter()
-        compact: list[_WaveTurn] = []
-        projected=[]
-        for source in raw:
-            p: _WaveTurn = {**source, 'index':source['index'], 'ordinal':source['ordinal'],
-                           'kind':source['kind'], 'value':source['value'],
-                           'time':source['time'], 'available_at':source['available_at'],
-                           'projection_count':counts[source['time']],
-                           'projection_rank':ranks[source['time']]}
-            ranks[source['time']]+=1
-            projected.append(dict(p))
-            if compact and p['value']==compact[-1]['value']:
-                continue  # Earliest equal extreme wins; no zero-length reversal.
-            compact.append(p)
-        source_strokes.append(dict(id=stroke['id'],points=projected))
-        turns: list[_WaveTurn] = []
-        for left,p,right in zip(compact,compact[1:],compact[2:]):
-            if p['state'] in ('seed','developing'):
-                continue
-            high=p['value']>left['value'] and p['value']>right['value']
-            low=p['value']<left['value'] and p['value']<right['value']
-            if high or low:
-                turns.append({**p, 'kind':'H' if high else 'L', 'source_kind':p['kind'], 'state':'reversal',
-                              'source_state':p['state']})
-                source_kinds[(stroke['id'],p['index'],p['ordinal'])]='H' if high else 'L'
-        local_count+=len(turns)
-        geometric_waves=promote_trend_key_breaks(turns,_wave_reversals(turns),trend_level=1)
-        later=drawing['strokes'][stroke_index+1:]
-        cutoff=later[0]['points'][0]['index'] if later else len(bars)
-        waves=(n_target_reversals(geometric_waves,turns,bars[:cutoff],source_level=0,target_sink=n_targets,
-                                 n_target_trend_confirmation_enabled=True)
-               if n_target_trend_confirmation_enabled else geometric_waves)
-        if waves:
-            result.append(dict(id=f'reversal-{stroke["id"]}',source_path=stroke['id'],kind='reversal',points=waves,
-                               input_turn_count=len(turns)))
-    # Continuity is candidate evidence. Qualifying each fragment first would
-    # lose a known pressure anchor or the whole-wave low across its boundary.
-    candidates=_connect_reversal_strokes(result,source_strokes)
-    result=[]
-    from .trend_publication import LEG_CONFIRMATION_POLICY, OPTIONAL_LEG_CONFIRMATION_POLICY, WAVE_DISPLAY_POLICY, confirmed_trend_legs, publish_uptrends
-    for stroke in candidates:
-        ancestors=set(stroke['source_paths'])
-        last_source=max(index for index,source in enumerate(source_strokes) if source['id'] in ancestors)
-        following=[source for source in source_strokes[last_source+1:] if source['points']]
-        cutoff=following[0]['points'][0]['index'] if following else len(bars)
-        market=bars[:cutoff]
-        source_points=sorted((dict(point,label=point.get('label',point['kind']),
-                                  kind=source_kinds.get((source['id'],point['index'],point['ordinal']),point['kind']))
-                              for source in source_strokes if source['id'] in ancestors
-                              for point in source['points']),key=_point_order)
-        positions={_point_order(point):position for position,point in enumerate(source_points)}
-        points=[dict(point,source_turn_position=positions[_point_order(point)]) for point in stroke['points']]
-        # 候选并集可以同时保留已升级上涨端点H和后来确认的整波H。
-        # 它们是不同可知时点的来源参考，尚不是一条正式高低交替路径；
-        # 先由publisher独立验证/归并同波端点，再给正式路径标注正负反转。
-        candidate_strokes.append(dict(stroke,points=points))
-        published=publish_uptrends(points,source_points,market,source_level=0,
-                                  n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
-        if published:
-            public=dict(stroke,points=published,confirmation_policy='trend_routes_v110',
-                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-                        leg_confirmation_policy=OPTIONAL_LEG_CONFIRMATION_POLICY if n_target_trend_confirmation_enabled else LEG_CONFIRMATION_POLICY,
-                        wave_display_policy=WAVE_DISPLAY_POLICY,
-                        confirmed_legs=confirmed_trend_legs(published,trend_level=1,source_path=stroke['id']))
-            result.append(public)
-            if n_target_trend_confirmation_enabled and any(
-                    point.get('trend_confirmation_route')=='source_n_strict_one_p_target' for point in published):
-                from .hierarchical_development import hierarchical_developing_path
-                tail=hierarchical_developing_path(dict(id=stroke['id'],points=source_points),published,
-                        trend_level=1,source_level=0,kind='reversal',bars=market,structural=points,
-                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
-                if tail:
-                    developing_strokes.append(tail)
-    for stroke in result:
-        _annotate(stroke['points'],bars[0].symbol,dates)
-    return dict(strokes=result,candidate_strokes=candidate_strokes,structure_strokes=candidate_strokes,
-                developing_strokes=developing_strokes,
-                n_target_observations=n_targets,
-                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-                trend_level=1,name='一级趋势线',scope='lecture_wave_structure_not_strategy_confirmation',
-                bear_to_bull_highs=bear_to_bull_highs(result,trend_level=1),
-                bear_bull_alternation_lows=bear_bull_alternation_lows(result,trend_level=1,bars=bars),
-                post_alternation_bull_highs=post_alternation_bull_highs(result,trend_level=1,bars=bars),
-                bullish_turn_signals=bullish_turn_signals(result,bars,trend_level=1),
-                aggregation_rule='ordered_HH_then_HL_or_LL_then_LH_switch_with_confirmed_cross_path_extremes',input_turn_count=local_count,
-                trend_definition_rule='shared_six_definitions_and_strict_same_level_extreme_upgrade',
-                confirmed_wave_count=sum(len(s['points']) for s in result),
-                break_basis='confirmed_polyline_extreme',retracement_threshold=.67,
-                note='六个定义按级别共用：一级读取基础高低折线，二级读取正式一级趋势，三级读取正式二级趋势；'
-                     '同类高低点均严格升/降才成立多头/空头定义，局部正负反转不单独改变趋势方向；'
-                     '已确认来源高点或低点严格突破此前已知本级同类极点时直接升级，不等待后续回调；'+
-                     ('一级与二、三级使用相同三路线：本级关键位严格突破，或基础折线关键位突破、交替、后续收盘转向，'
-                      '或正N/倒N完成后严格超过攻击箱测算的一饱确认对应趋势；等值不确认，首次证书冻结；'
-                      if n_target_trend_confirmation_enabled else
-                      '一级与二、三级使用相同两路线：本级关键位严格突破，或基础折线关键位突破、交替、后续收盘转向；')+
-                     '有序高低点转换只生成内部结构候选，不单独授予上涨权限；'
-                     '不能用推进前的旧回档确认新推进，确认前仍跟踪整段极值；相邻分段以真实已确认原折线极值正式衔接，'
-                     '并作为二级输入；未完成波段不画实线。')
+    from .trend_lines import polyline_high_low_points, trend_lines
+
+    return trend_lines(polyline_high_low_points(drawing), bars, trend_level=1,
+                       n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)

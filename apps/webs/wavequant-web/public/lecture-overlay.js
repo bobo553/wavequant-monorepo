@@ -12,11 +12,15 @@ export function formatPivotPrice(value) {
     return Number.isFinite(price) ? pivotPriceFormatter.format(price) : "";
 }
 
-/** 新旧因果政策都禁止前端用几何连接补造趋势确认。 */
+/** 各版本都保持服务端的路径归属，前端连接不能补造上一级来源或策略资格。 */
 export function usesCausalTrendConfirmation(stroke) {
-    return ["two_routes_v106", "trend_routes_v108", "trend_routes_v109", "trend_routes_v110"].includes(
-        stroke?.confirmation_policy,
-    );
+    return [
+        "two_routes_v106",
+        "trend_routes_v108",
+        "trend_routes_v109",
+        "trend_routes_v110",
+        "point_first_recursive_six_definitions_v113",
+    ].includes(stroke?.confirmation_policy);
 }
 
 /** 证书决定展示口径；下级 N 达标、收盘转向与本级关键位分别说明。 */
@@ -118,6 +122,7 @@ export function trendConfirmationPresentation(confirmation, level) {
 }
 
 function hasPublishedDevelopingDirection(stroke) {
+    if (stroke.leg_confirmation_policy === "high_low_point_geometry_v113" && stroke.display_only) return true;
     if (
         !usesCausalTrendConfirmation(stroke) ||
         !["reversal-developing", "secondary-developing", "tertiary-developing"].includes(stroke.kind)
@@ -136,8 +141,12 @@ const sameTrendPoint = (a, b) =>
     ["index", "time", "kind", "value"].every((field) => a[field] === b[field]) &&
     (a.ordinal ?? 0) === (b.ordinal ?? 0);
 
-/** 正式连接只消费 Python 发布的逐方向证书与整波端点，不从相邻锚点推断等级。 */
+/** 高低点结构连接独立于策略证书；旧版本仍按原逐方向证书展示。 */
 export function publishedTrendSegments(stroke, projected) {
+    // 六定义判出的相邻高低点就是趋势线。confirmed_legs只说明交易资格，
+    // 空证书不能删线，后来获得N证书也不能增加或改变这条结构几何。
+    if (stroke.leg_confirmation_policy === "high_low_point_geometry_v113")
+        return projected.slice(1).map((point, index) => [projected[index], point]);
     if (![legPolicy, "enabled_routes_each_direction_v110"].includes(stroke.leg_confirmation_policy))
         return projected.slice(1).map((point, index) => [projected[index], point]);
     const level = { reversal: 1, secondary: 2, tertiary: 3 }[stroke.kind];
@@ -767,6 +776,36 @@ export class LectureOverlay {
                     trend_level: level,
                     source_level: sourceLevel,
                     scope: "display_only_developing_path",
+                },
+            };
+        }
+        if (stroke.leg_confirmation_policy === "high_low_point_geometry_v113") {
+            const level = stroke.trend_level ?? { reversal: 1, secondary: 2, tertiary: 3 }[stroke.kind],
+                name = ["", "一级", "二级", "三级"][level],
+                source = ["折线", "一级趋势线", "二级趋势线"][level - 1],
+                upgrade = p.upgrade_evidence,
+                key = p.broken_key;
+            const basis = upgrade
+                ? upgrade.role === "endpoint"
+                    ? `${source}已确认${p.kind === "H" ? "高点" : "低点"} ${p.time} ${p.value} 严格${upgrade.direction === "up" ? "突破" : "跌破"}此前已知本级${key.kind === "H" ? "高点" : "低点"} ${key.time} ${key.value}，立即升级，不等待后续回调。`
+                    : `这是严格${upgrade.direction === "up" ? "向上突破" : "向下跌破"}的整波${p.kind === "L" ? "最低" : "最高"}起点，和配对攻击端点分别保留真实来源及可知日期。`
+                : `两个同类高点和两个同类低点严格同向，按共同规则确定整波转折；局部正负反转不单独代表多空方向易位。`;
+            return {
+                id,
+                time: p.available_at,
+                sourceTime: p.time,
+                kind: "trend",
+                category: "rules",
+                price: p.value,
+                title: `${p.label} · ${name}${p.kind === "H" ? "高点" : "低点"} · ${p.reversal}`,
+                description: `同一判断函数读取${source}高低点。${basis}该结构点于 ${p.available_at} 可知。趋势线不因缺少策略证书而删除；K线突破、交替及可选N证书另行决定策略资格。`,
+                sourceLabel: `${name}趋势线 · 统一高低点递归判断`,
+                levels: p.levels || [],
+                raw: {
+                    point: p,
+                    stroke_id: stroke.id,
+                    trend_level: level,
+                    scope: "structural_trend_not_strategy_permission",
                 },
             };
         }

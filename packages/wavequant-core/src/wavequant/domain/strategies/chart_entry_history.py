@@ -14,7 +14,42 @@ from ..models.model import Bar
 from .hierarchical_entry import EntryContext
 
 
-_CONFIRMATION_CACHE_VERSION = "daily_configurable_n_target_trend_confirmation_descent_pressure_v109"
+_CONFIRMATION_CACHE_VERSION = "daily_point_geometry_independent_strategy_permissions_v113"
+
+
+def _strategy_permission_view(level: Mapping[str, object]) -> dict[str, object]:
+    """策略只读取独立资格路径，不能把趋势线结构点当作交易许可证。
+
+    新协议的 strokes 是高低点决定的结构，qualified_strokes 才保留行情
+    确认证书。显式空资格必须保持空，不能用几何作 fallback。缺少新字段
+    的旧存储／旧调用者沿用其原有已发布 strokes 契约；候选下降压力和
+    刷新阈值仍作为独立约束保留，不因该视图获得上涨或交替资格。
+    """
+    result = dict(level)
+    if 'qualified_strokes' not in level:
+        return result
+    qualified = level['qualified_strokes']
+    if not isinstance(qualified, (list, tuple)):
+        raise ValueError('qualified_strokes must be an explicit sequence of strategy permissions')
+    result['strokes'] = qualified
+    return result
+
+
+def _permission_records(value: object, field: str) -> tuple[Mapping[str, object], ...]:
+    """显式解析资格视图中的记录序列，不把宽泛元数据当作可迭代路径。
+
+    趋势入口以object承载几何、证书和展示附件；选择资格字段之后仍需在
+    消费边界确认其容器形状。价格与坐标由原领域判定器校验，这里只保证
+    路径、点、观察或地标可以按字符串字段读取，不以类型断言放行未知对象。
+    """
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        raise ValueError(f'{field} must be a sequence of permission records')
+    records: list[Mapping[str, object]] = []
+    for record in value:
+        if not isinstance(record, Mapping) or any(not isinstance(key, str) for key in record):
+            raise ValueError(f'{field} must contain mappings with string keys')
+        records.append(cast(Mapping[str, object], record))
+    return tuple(records)
 
 
 def _confirmed_descent_pressures(
@@ -170,7 +205,7 @@ def chart_entry_history(
     bars: Sequence[Bar], *, audit=(), shallow_candidate_sink=None, combined_candidate_sink=None,
     secondary_pullback_sink=None, prefix_cache=None, n_target_trend_confirmation_enabled: bool = False,
 ) -> tuple[dict[int, tuple[EntryContext, ...]], list[dict[str, object]]]:
-    """Share confirmed landmarks, including cross-path continuity, with trading.
+    """Share independently qualified landmarks with trading.
 
     Only a prefix is reduced. A source-confirmed pullback is entry evidence,
     never an invented formal higher-level vertex. Its first observed date wins
@@ -272,6 +307,9 @@ def chart_entry_history(
                 n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
             third = tertiary_trends(second, prefix,
                 n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+            # 三层先用结构输出完成统一递归，再选择交易视图。若提前把一级
+            # 几何替换成持证点，二／三级结构又会受行情证书筛选，违反纯点契约。
+            first, second, third = (_strategy_permission_view(level) for level in (first, second, third))
             levels = ((second, first), (third, second))
             if shallow_candidate_sink is not None:
                 from .shallow_base_breakout import shallow_candidate_from_geometry
@@ -279,7 +317,8 @@ def chart_entry_history(
             # The source-confirmed A high is already tradable evidence before
             # it is promoted to a formal vertex of its own level.
             candidates = [dict(index=p['index'], value=p['value'], source='formal')
-                          for stroke in second['strokes'] for p in stroke['points']
+                          for stroke in _permission_records(second['strokes'], 'strokes')
+                          for p in _permission_records(stroke['points'], 'stroke points')
                           if p['kind'] == 'H' and p.get('state') != 'developing']
             candidates += _confirmed_descent_pressures(second, dates, i)
             candidates += [dict(index=a['high']['index'], value=a['high']['value'], source='confirmed_source')
@@ -289,15 +328,19 @@ def chart_entry_history(
             if resistance_identity != resistance_key:
                 events.append(dict(bar_index=i, event='hierarchy_resistance_key', trend_level=2, key=key))
                 resistance_key = resistance_identity
-            landmarks = [item for level in (first, second, third) for item in level["bear_bull_alternation_lows"]]
+            landmarks = [item for level in (first, second, third)
+                         for item in _permission_records(level["bear_bull_alternation_lows"], 'alternation lows')]
             invalidated = set()
             for level in (first, second, third):
-                paths = {stroke["id"]: stroke["points"] for stroke in level["strokes"]}
-                for low in level["bear_bull_alternation_lows"]:
+                paths = {cast(str, stroke["id"]): _permission_records(stroke["points"], 'stroke points')
+                         for stroke in _permission_records(level["strokes"], 'strokes')}
+                for low in _permission_records(level["bear_bull_alternation_lows"], 'alternation lows'):
                     if any(
-                        (p["index"], p["ordinal"]) > (low["index"], low.get("ordinal", 0))
-                        and any(event["title"] == "翻多为空" for event in p.get("observations", []))
-                        for p in paths[low["source_path"]]
+                        (cast(int, p["index"]), cast(int, p["ordinal"])) >
+                        (cast(int, low["index"]), cast(int, low.get("ordinal", 0)))
+                        and any(event["title"] == "翻多为空"
+                                for event in _permission_records(p.get("observations", []), 'point observations'))
+                        for p in paths[cast(str, low["source_path"])]
                     ):
                         invalidated.add(low["id"])
         if i in attacks:

@@ -5,25 +5,15 @@ reduced independently; an endpoint seen only later is never traded earlier.
 The first alternation needs a higher low, not a 2/3 retracement threshold.
 """
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass, asdict
 from typing import TypedDict, cast
 
 from ..market_structure.bottom_n_targets import DeclineStart
 from ..market_structure.lecture_drawing import lecture_drawing
-from ..market_structure.trend_levels import trend_reversals
-from ..market_structure.trend_level_upgrades import promote_trend_key_breaks
+from ..market_structure.trend_judgement import judge_trend, mutable_points
+from ..market_structure.trend_lines import polyline_turns, qualify_trend_structure
 from ..market_structure.trend_structure import StructuralTrend, classify_trend_prices
-from ..market_structure.trend_publication import publish_uptrends
-from ..market_structure.n_trend_reversals import n_target_reversals
-
-
-class _DrawingPoint(TypedDict):
-    index: int
-    ordinal: int
-    kind: str
-    value: float
-    state: str
-    available_at: object
 
 
 class _HistoryPoint(TypedDict):
@@ -40,11 +30,14 @@ def _identity(p):
 
 
 def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tuple[DeclineStart, ...]] | None = None,
+                         structure_sink: dict[int, dict[int, tuple[dict[str, object], ...]]] | None = None,
                          n_target_trend_confirmation_enabled: bool = False):
-    """按每个交易日可知的正式来源递归生成一、二、三级回测历史。
+    """按每个交易日高低点递归判断结构，再独立建立策略资格历史。
 
-    一级输入折线反转，二级输入一级已发布点，三级输入二级已发布点；
-    私有候选只可用于本级许可检查及独立下降测幅通道，不能绕过下级发布门禁。
+    唯一判别器是judge_trend：一级输入折线，二级输入一级结构高低点，
+    三级输入二级结构高低点。资格点、N证书和显示尾端均不代替结构来源。
+    structure_sink暴露这份几何历史；原返回history仍只包含获本级独立
+    策略许可的点，避免让绘图资格自动授予交易权限。
     发生坐标与可知索引分别冻结：后来重新出现或修改的点，从重新可知的当天
     才进入策略，不倒填到其价格日。缓存版本覆盖归并和升级规则，旧检查点
     不可在新规则下继续追加；部分日线重算仍以同一前缀规则验证。
@@ -52,29 +45,36 @@ def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tup
     if type(n_target_trend_confirmation_enabled) is not bool:
         raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
     history = {}; epochs = {}
+    structural_history: dict[int, dict[int, tuple[dict[str, object], ...]]] = {}
     decline_history: dict[int, tuple[DeclineStart, ...]] = {}
     if decline_sink is not None:
         decline_sink.clear()
+    if structure_sink is not None:
+        structure_sink.clear()
     previous: dict[int, dict[tuple[int, int, str, float], int]] = {0: {}, 1: {}, 2: {}, 3: {}}
     last_epoch = None
     last = len(bars) - 1
-    cache_version = 'daily_recursive_ordered_trend_definitions_v112'
+    cache_version = 'daily_point_geometry_and_independent_permissions_v113'
     wants_declines = decline_sink is not None
-    prefix_key = (cache_version, tuple(bars[:-1]), wants_declines, n_target_trend_confirmation_enabled)
+    wants_structure = structure_sink is not None
+    prefix_key = (cache_version, tuple(bars[:-1]), wants_declines, n_target_trend_confirmation_enabled, wants_structure)
     cached_key = prefix_cache.get('key') if prefix_cache is not None else None
     resume_start = (last if cached_key == prefix_key else
                     last - 1 if cached_key == (cache_version, tuple(bars[:-2]), wants_declines,
-                                               n_target_trend_confirmation_enabled) else 0)
+                                               n_target_trend_confirmation_enabled, wants_structure) else 0)
     if resume_start:
-        saved_history, saved_epochs, saved_previous, last_epoch, saved_declines = prefix_cache['checkpoint']
-        # Each dated level consists of freshly built dictionaries that become
-        # read-only after publication. Only the outer maps grow on replay.
+        saved_history, saved_epochs, saved_previous, last_epoch, saved_declines, saved_structure = prefix_cache['checkpoint']
+        # 公开历史／sink允许调用方编辑；缓存快照必须独立拥有嵌套点字典，
+        # 不能让一次读取后的修改倒写旧日期，造成warm与fresh计算不同。
         history, epochs, previous = (
-            saved_history.copy(), saved_epochs.copy(),
+            deepcopy(saved_history), saved_epochs.copy(),
             {level: known.copy() for level, known in saved_previous.items()})
         decline_history = saved_declines.copy()
+        structural_history = deepcopy(saved_structure)
         if decline_sink is not None:
             decline_sink.update(decline_history)
+        if structure_sink is not None:
+            structure_sink.update(structural_history)
 
     def accept(i, epoch, raw):
         nonlocal previous, last_epoch
@@ -83,18 +83,8 @@ def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tup
         if epoch != last_epoch:
             previous = {0: {}, 1: {}, 2: {}, 3: {}}
         last_epoch = epoch; epochs[i] = epoch
-        compact: list[_DrawingPoint] = []
-        for p in raw:
-            if not compact or p['value'] != compact[-1]['value']:
-                compact.append(p)
-        turns = []
-        for left, p, right in zip(compact, compact[1:], compact[2:]):
-            if p['state'] in ('seed', 'developing'):
-                continue
-            kind = ('H' if p['value'] > max(left['value'], right['value']) else
-                    'L' if p['value'] < min(left['value'], right['value']) else None)
-            if kind:
-                turns.append(dict(p, kind=kind))
+        # 与一级图表使用同一零级峰谷来源，epoch 在各层一致保留路径边界。
+        turns = polyline_turns(raw, source_path=f'lecture-{epoch}')
 
         def freeze(points, level):
             frozen: list[_HistoryPoint] = []
@@ -105,29 +95,34 @@ def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tup
                 known = max(previous[level].get(key, i), p.get('available_index', 0))
                 if frozen:
                     known = max(known, frozen[-1]['available_at'])
-                q = dict(p, available_at=known, label=f'{p["kind"]}{len(frozen)+1}')
+                # 本级标签由统一判断器规范化。历史入口只冻结观察时钟，不能
+                # 再按整序列编号，否则下一层完整来源证明会与直接递归不同。
+                q = dict(p, available_at=known, label=p.get('label', p['kind']))
                 now[key] = known; frozen.append(cast(_HistoryPoint, q))
             previous[level] = now
             return frozen
 
         turns = freeze(turns, 0)
-        levels = {}; source = turns; qualified_source = turns
+        levels = {}; structures = {}; source = turns; qualified_source = turns
         prefix = bars[:i+1]
         for level in (1, 2, 3):
-            reduced = promote_trend_key_breaks(source,trend_reversals(source,trend_level=level),trend_level=level)
-            if n_target_trend_confirmation_enabled:
-                reduced = n_target_reversals(reduced, source, prefix, source_level=level-1,
-                    qualified_source=qualified_source, n_target_trend_confirmation_enabled=True)
-            # The reducer's confirmation trigger may occur after the extreme itself.
-            reduced = [dict(p, available_index=p['available_at']) for p in reduced]
-            candidate_source = freeze(reduced, level)
+            judgement = judge_trend(source, trend_level=level, asof=i)
+            # 首次出现/重新出现的几何点按本次观察冻结知识日，策略证书不参与此步。
+            geometry = freeze([dict(p, available_index=p['available_at'])
+                               for p in mutable_points(judgement.points)], level)
+            candidate_source = mutable_points(judgement.candidates)
             if level == 1 and decline_sink is not None:
                 # 普通下降定义与严格低点突破是独立证据。同一个H可先作为
                 # 上涨升级端点而可知，后来才被已确认L的严格破位证明为
                 # 下降起点；不能改写H的旧方向，也不能因旧方向为up漏收新事实。
                 # 下降测幅通道只用这份证据自己的可知日，不倒填到H价格日。
-                declines = {point['index']: point['available_at'] for point in candidate_source
-                            if point['kind'] == 'H' and point.get('wave_direction_after') == 'down'}
+                declines: dict[int, int] = {}
+                for point in candidate_source:
+                    if point['kind'] == 'H' and point.get('wave_direction_after') == 'down':
+                        index, known = cast(int, point['index']), cast(int, point['available_at'])
+                        # 同一高点可被普通下降与后来严格破低分别证明。两份事实
+                        # 都保留，测幅起点采用最早真实下降知日，不能被晚证据覆盖。
+                        declines[index] = min(declines.get(index, known), known)
                 for point in candidate_source:
                     upgrade = point.get('upgrade_evidence')
                     if (point['kind'] != 'L' or not isinstance(upgrade, Mapping)
@@ -138,23 +133,32 @@ def hierarchical_history(bars, *, prefix_cache=None, decline_sink: dict[int, tup
                             or type(origin.get('index')) is not int or type(origin.get('available_at')) is not int):
                         continue
                     index = cast(int, origin['index'])
-                    known = max(point['available_at'], cast(int, origin['available_at']))
+                    known = max(cast(int, point['available_at']), cast(int, origin['available_at']))
                     declines[index] = min(declines.get(index, known), known)
                 decline_history[i] = tuple(DeclineStart(index, declines[index]) for index in sorted(declines))
                 decline_sink[i] = decline_history[i]
-            published = publish_uptrends(candidate_source, source, prefix, source_level=level-1,
+            published = qualify_trend_structure(candidate_source, source, prefix, trend_level=level,
                 qualified_source=qualified_source,
                 n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
             levels[level] = tuple(dict(index=p['index'], ordinal=p['ordinal'], kind=p['kind'],
                                       value=p['value'], available_at=p['available_at']) for p in published)
-            source = published
+            if wants_structure:
+                structures[level] = tuple(dict(index=p['index'], ordinal=p['ordinal'], kind=p['kind'],
+                    value=p['value'], available_at=p['available_at']) for p in geometry)
+            # 同一函数的几何输出才是下一层输入。获证书的子集只给下一层资格核验。
+            source = geometry
             qualified_source = published
         history[i] = levels
+        if wants_structure:
+            structural_history[i] = structures
+        if structure_sink is not None:
+            structure_sink[i] = structures
         if prefix_cache is not None and resume_start != last and i == last - 1:
             prefix_cache['key'] = prefix_key
             prefix_cache['checkpoint'] = (
-                history.copy(), epochs.copy(),
-                {level: known.copy() for level, known in previous.items()}, last_epoch, decline_history.copy())
+                deepcopy(history), epochs.copy(),
+                {level: known.copy() for level, known in previous.items()}, last_epoch, decline_history.copy(),
+                deepcopy(structural_history))
 
     lecture_drawing(bars, on_step=accept)
     return history, epochs

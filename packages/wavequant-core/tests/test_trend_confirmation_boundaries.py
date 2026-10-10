@@ -1,6 +1,6 @@
 """The public and developing entrances obey the same causal boundaries."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -8,10 +8,12 @@ from typing import cast
 
 import pytest
 
-from wavequant.domain.market_structure import secondary_trend, tertiary_trend, trend_levels
 from wavequant.domain.market_structure.hierarchical_confirmation import TrendReference, market_trend_confirmation
 from wavequant.domain.market_structure.hierarchical_development import hierarchical_developing_path
 from wavequant.domain.market_structure.trend_confirmation import qualify_uptrend
+from wavequant.domain.market_structure.trend_judgement import TrendJudgement, judge_trend
+from wavequant.domain.market_structure.trend_levels import Moment
+from wavequant.domain.market_structure.trend_lines import qualify_trend_structure
 from wavequant.domain.market_structure.trend_publication import publish_uptrends
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies import hierarchical_entry
@@ -97,80 +99,104 @@ def test_the_first_session_after_key_confirmation_refreshes_a_newly_eligible_mar
 
 
 @pytest.mark.parametrize("level", (2, 3))
-def test_formal_publication_cannot_borrow_the_first_market_bar_of_the_next_source_path(level, monkeypatch):
+def test_qualification_cannot_borrow_the_first_market_bar_of_the_next_source_path(level: int) -> None:
     bars, source = _sample()
     source_level = level - 1
     position_field = f"source_level{source_level}_position"
-    high = dict(source[0], available_at="2024-01-03", **{position_field: 0},
+    high = dict(source[0], available_at="2024-01-03", trend_level=level, **{position_field: 0},
                 wave_direction_before="up", wave_direction_after="down", flip="翻多为空",
                 confirmation_rule="structure", broken_key=source[1])
-    low = dict(source[1], **{position_field: 1}, wave_direction_before="down", wave_direction_after="up",
-               flip="翻空为多", confirmation_rule="structure", broken_key=source[0])
+    low = dict(source[1], trend_level=level, **{position_field: 1}, wave_direction_before="down",
+               wave_direction_after="up", flip="翻空为多", confirmation_rule="structure", broken_key=source[0])
+    candidates, old_source = [high, low], source[:2]
+    original_candidates, original_source = deepcopy(candidates), deepcopy(old_source)
+    cutoff = cast(int, source[2]["index"])
+    # 这里只核验已知本级结构的独立资格；下一路径的首根 K 不属于旧路径前缀。
+    old_permissions = qualify_trend_structure(candidates, old_source, bars[:cutoff], trend_level=level)
+    assert [(point["index"], point["kind"]) for point in old_permissions] == [(0, "H")]
+    assert all(point.get("trend_confirmation") is None for point in old_permissions)
 
-    def candidates(points: Sequence[Mapping[str, object]], *, trend_level: int) -> list[dict[str, object]]:
-        # The reducer's confirmed output isolates the path cutoff from its geometry.
-        assert trend_level == level
-        return deepcopy([high, low]) if points and points[0]["index"] == 0 else []
-
-    module = secondary_trend if level == 2 else tertiary_trend
-    # Secondary imports the shared reducer at its boundary; tertiary keeps its
-    # resolved reference at module scope. Patch the actual lookup in each case.
-    reducer_owner = trend_levels if level == 2 else tertiary_trend
-    monkeypatch.setattr(reducer_owner, "trend_reversals", candidates)
-    lower = dict(strokes=[dict(id="old", points=source[:2]), dict(id="next", points=source[2:])],
-                 structure_strokes=[dict(id="old", points=source)])
-    result = module.secondary_trends(lower, bars) if level == 2 else module.tertiary_trends(lower, bars)
-    old_public = next(path for path in result["strokes"] if path["source_path"] == "old")
-    assert [point["kind"] for point in old_public["points"]] == ["H"]
-    assert all(point.get("trend_confirmation") is None for point in old_public["points"])
+    full_permissions = qualify_trend_structure(candidates, old_source, bars[:cutoff + 1], trend_level=level)
+    assert [(point["index"], point["kind"]) for point in full_permissions] == [(0, "H"), (1, "L")]
+    licensed_low = full_permissions[1]
+    proof = cast(Mapping[str, object], licensed_low["trend_confirmation"])
+    attack = cast(Mapping[str, object], proof["confirmed_by"])
+    key = cast(Mapping[str, object], proof["broken_key"])
+    assert licensed_low["available_at"] == proof["available_at"] == "2024-01-04"
+    assert proof["direction"] == "up" and proof["confirmation_rule"] == "strict_same_level_market_key_break"
+    assert (attack["index"], attack["kind"], attack["value"], attack["time"]) == (3, "H", 11, "2024-01-04")
+    assert (key["index"], key["kind"], key["value"], key["available_at"]) == (0, "H", 10, "2024-01-03")
+    assert candidates == original_candidates and old_source == original_source
 
 
-def test_daily_history_higher_level_never_uses_an_unpublished_lower_level_low(monkeypatch):
-    bars, source = _sample()
-    bars.extend([Bar(START + timedelta(days=6), "sz.test", 9, 10.5, 8.5, 10, 100),
-                 Bar(START + timedelta(days=7), "sz.test", 10, 12, 9, 11.5, 100)])
-    source[3]["available_at"] = 6
-    for known, point in zip((0, 2, 4, 6), source):
-        point["available_at"] = known
-    seen = []
+def _coordinates(points: Sequence[Mapping[str, object]]) -> tuple[tuple[int, int, str, float, int], ...]:
+    return tuple((cast(int, point["index"]), cast(int, point["ordinal"]), cast(str, point["kind"]),
+                  cast(float, point["value"]), cast(int, point["available_at"])) for point in points)
 
-    def drawing(prefix, *, on_step):
-        for index, bar in enumerate(prefix):
-            raw = [dict(_point(0, "L", 8, 0), available_at=0, state="seed")]
-            for point in source:
-                known = point["available_at"]
-                assert isinstance(known, int)
-                if known <= index:
-                    raw.append(dict(point, ordinal=1 if point["index"] == 0 else 0))
-            kind = "L" if raw[-1]["kind"] == "H" else "H"
-            raw.append(dict(_point(index, kind, bar.low if kind == "L" else bar.high, index),
-                            available_at=index, state="developing"))
+
+def test_daily_history_higher_level_uses_complete_lower_level_geometry_independently_of_permissions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    values = (20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 38, 42, 32, 36, 24, 29, 26, 33, 30, 42, 34)
+    following: list[Bar] = []
+    for index, value in enumerate(values):
+        low = value if index % 2 == 0 else value - 1
+        high = 40 if index == 0 else value + 1 if index % 2 == 0 else value
+        following.append(Bar(START + timedelta(days=index), "sz.test", (high + low) / 2,
+                             high, low, (high + low) / 2, 100))
+    bars = following[:-1]
+    seen: dict[tuple[int, int], tuple[tuple[int, int, str, float, int], ...]] = {}
+
+    def drawing(prefix: Sequence[Bar], *, on_step: Callable[[int, int, list[dict[str, object]]], None]) -> None:
+        # 仅控制绘图端口；全部真实峰谷、统一判断与行情资格规则仍执行生产实现。
+        for index, _ in enumerate(prefix):
+            raw = [dict(_point(0, "H", 40, 0), state="seed")]
+            for source_index in range(index):
+                raw.append(dict(_point(source_index, "L" if source_index % 2 == 0 else "H",
+                                       values[source_index], source_index + 1),
+                                ordinal=1 if source_index == 0 else 0))
+            raw.append(dict(_point(index, "L" if index % 2 == 0 else "H", values[index], index),
+                            state="developing", ordinal=1 if index == 0 else 0))
             on_step(index, 0, raw)
 
-    def candidates(points: Sequence[Mapping[str, object]], *, trend_level: int) -> list[dict[str, object]]:
-        if trend_level == 1:
-            if len(points) < 4:
-                return []
-            return [dict(point, available_at=6, source_turn_position=position, trend_level=1,
-                         confirmation_rule="structure", wave_direction_after="down" if point["kind"] == "H" else "up")
-                    for position, point in enumerate(points)]
-        if trend_level == 2:
-            seen.append(tuple((point["kind"], point["index"], point["available_at"]) for point in points))
-        return []
+    def observe_judgement(
+        points: Sequence[Mapping[str, object]], *, trend_level: int = 1, asof: Moment | None = None,
+    ) -> TrendJudgement:
+        assert type(asof) is int
+        seen[(asof, trend_level)] = _coordinates(points)
+        return judge_trend(points, trend_level=trend_level, asof=asof)
 
     monkeypatch.setattr(hierarchical_entry, "lecture_drawing", drawing)
-    monkeypatch.setattr(hierarchical_entry, "trend_reversals", candidates)
-    history, _ = hierarchical_entry.hierarchical_history(bars)
-    assert ("L", 5, 6) not in seen[6]
-    assert not any(kind == "L" and index == 5 for kind, index, _ in seen[7])
-    assert seen[7] == (("H", 0, 6), ("L", 1, 7))
-    assert seen == [tuple((point["kind"], point["index"], point["available_at"]) for point in history[now][1])
-                    for now in range(len(bars))]
-    assert history[6][2] == () and history[7][2] == ()
-    assert not any(point["kind"] == "L" and point["index"] == 5 for point in history[6][1])
+    monkeypatch.setattr(hierarchical_entry, "judge_trend", observe_judgement)
+    structures: dict[int, dict[int, tuple[dict[str, object], ...]]] = {}
+    history, epochs = hierarchical_entry.hierarchical_history(bars, structure_sink=structures)
+    for now in range(len(bars)):
+        for level in (2, 3):
+            assert seen[(now, level)] == _coordinates(structures[now][level - 1])
+            assert all(point[-1] <= now for point in seen[(now, level)])
+    assert structures[6][1] == ()
+    assert _coordinates(structures[7][1]) == ((2, 0, "L", 10, 7),)
+    assert _coordinates(structures[18][1]) == ((2, 0, "L", 10, 7), (9, 0, "H", 45, 14))
+    assert seen[(19, 2)] == ((2, 0, "L", 10, 7), (9, 0, "H", 45, 14), (14, 0, "L", 24, 19))
+    assert _coordinates(history[19][1]) == ((9, 0, "H", 45, 14),)
+    assert seen[(19, 2)] != _coordinates(history[19][1])
+
+    for end in (8, 15, 19):
+        prefix_structures: dict[int, dict[int, tuple[dict[str, object], ...]]] = {}
+        prefix_history, prefix_epochs = hierarchical_entry.hierarchical_history(
+            bars[:end], structure_sink=prefix_structures)
+        assert prefix_history == {now: history[now] for now in range(end)}
+        assert prefix_epochs == {now: epochs[now] for now in range(end)}
+        assert prefix_structures == {now: structures[now] for now in range(end)}
+
     cache: dict[str, object] = {}
-    assert hierarchical_entry.hierarchical_history(bars, prefix_cache=cache)[0] == history
-    assert hierarchical_entry.hierarchical_history(bars, prefix_cache=cache)[0] == history
-    following = [*bars, Bar(START + timedelta(days=8), "sz.test", 10, 12, 9.5, 11.3, 100)]
-    assert hierarchical_entry.hierarchical_history(following, prefix_cache=cache) == (
-        hierarchical_entry.hierarchical_history(following))
+    for _ in range(2):
+        cached_structures: dict[int, dict[int, tuple[dict[str, object], ...]]] = {}
+        assert hierarchical_entry.hierarchical_history(bars, prefix_cache=cache,
+            structure_sink=cached_structures) == (history, epochs)
+        assert cached_structures == structures
+    warm_structures: dict[int, dict[int, tuple[dict[str, object], ...]]] = {}
+    fresh_structures: dict[int, dict[int, tuple[dict[str, object], ...]]] = {}
+    assert hierarchical_entry.hierarchical_history(following, prefix_cache=cache, structure_sink=warm_structures) == (
+        hierarchical_entry.hierarchical_history(following, structure_sink=fresh_structures))
+    assert warm_structures == fresh_structures

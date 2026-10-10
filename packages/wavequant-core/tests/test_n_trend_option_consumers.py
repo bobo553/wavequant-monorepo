@@ -151,7 +151,7 @@ def _assert_geometry_mode(geometry: Mapping[str, object], enabled: bool) -> None
     first = _record(geometry["reversal_trends"])
     origin = [
         point
-        for field in ("strokes", "developing_strokes")
+        for field in ("qualified_strokes",)
         for stroke in _records(first[field])
         for point in _records(stroke["points"])
         if point["time"] == "2018-09-11"
@@ -162,6 +162,22 @@ def _assert_geometry_mode(geometry: Mapping[str, object], enabled: bool) -> None
         proof = _record(origin[0]["trend_confirmation"])
         assert proof["available_at"] == "2018-09-20"
         assert proof["one_p_target"] == pytest.approx(5.32)
+    # N 只增加独立策略证书。真实缓存/行情消费者不能再把这个许可附在几何点上。
+    for name in LEVELS:
+        for field in ("strokes", "developing_strokes"):
+            for stroke in _records(_record(geometry[name])[field]):
+                for point in _records(stroke["points"]):
+                    assert point.get("trend_confirmation_route") != "source_n_strict_one_p_target"
+                    assert "n_target_confirmation" not in point
+
+
+def _assert_same_geometry(left: Mapping[str, object], right: Mapping[str, object]) -> None:
+    """比较完整几何点和显示尾部，不只比较价格坐标而漏掉证据／知识日期。"""
+    for name in LEVELS:
+        for field in ("strokes", "developing_strokes"):
+            a = [stroke["points"] for stroke in _records(_record(left[name])[field])]
+            b = [stroke["points"] for stroke in _records(_record(right[name])[field])]
+            assert a == b
 
 
 @pytest.mark.parametrize("first_mode", (False, True))
@@ -176,6 +192,7 @@ def test_persistent_geometry_keeps_modes_separate_after_reopening(
                                    n_target_trend_confirmation_enabled=enabled)
         _assert_geometry_mode(geometry, enabled)
         modes[enabled] = geometry
+    _assert_same_geometry(modes[False], modes[True])
     with closing(sqlite3.connect(cache.path)) as connection:
         assert connection.execute("SELECT COUNT(*) FROM artifacts WHERE namespace = 'geometry'").fetchone()[0] == 2
     reopened = ArtifactCache(tmp_path)
@@ -192,6 +209,7 @@ def test_market_repository_returns_the_correct_cached_mode(bars: tuple[Bar, ...]
     switched = repository.theory("akshare", SYMBOL, ASOF, n_target_trend_confirmation_enabled=not first_mode)
     _assert_geometry_mode(initial, first_mode)
     _assert_geometry_mode(switched, not first_mode)
+    _assert_same_geometry(initial, switched)
     assert repository.theory("akshare", SYMBOL, ASOF,
                              n_target_trend_confirmation_enabled=first_mode) is initial
     unchecked = initial if not first_mode else switched

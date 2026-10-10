@@ -1525,7 +1525,7 @@ function renderVisibleAnnotations(items, range) {
             ? confirmedTrendText(range.primaryDeveloping, "一级")
             : t
               ? `一级趋势线 · 视窗：${t.windowTrend} · 最新局部：${t.trend}（至 ${t.latestKnown}）｜视窗末跌高 ${num(t.lastFallHigh?.value)} · 末升低 ${num(t.lastRiseLow?.value)} · 点击一级转折点查看依据`
-              : `一级趋势线：当前无已确认波段，或图层已关闭；等待本级关键位突破、原折线完整交替后收盘转向${optionalNRoute(1)}。`;
+              : `一级趋势线：当前无可用结构，或图层已关闭；等待折线高低点形成同向趋势或严格突破本级旧高低点，策略资格另行核验。`;
     $("secondary-trend-summary").textContent =
         secondaryDeveloping?.state === "confirmed"
             ? confirmedTrendText(secondaryDeveloping, "二级")
@@ -1533,7 +1533,7 @@ function renderVisibleAnnotations(items, range) {
               ? `二级趋势线 · 视窗：${s.windowTrend} · 最新局部：${s.trend}（至 ${s.latestKnown}）｜二级末跌高 ${num(s.lastFallHigh?.value)} · 末升低 ${num(s.lastRiseLow?.value)}${secondaryDevelopmentText} · 点击二级转折点查看实际确认依据`
               : secondaryDeveloping
                 ? `二级趋势线 · 发展路径 ${secondaryDeveloping.points.length} 点：${secondaryDevelopingStart.time} ${secondaryDevelopingStart.label} ${num(secondaryDevelopingStart.value)} → 当前${secondaryDeveloping.wave_direction === "up" ? "上涨" : "下跌"}候选 ${secondaryDevelopingEnd.time} ${secondaryDevelopingEnd.label} ${num(secondaryDevelopingEnd.value)}｜紫色虚线点均来自已确认一级结构，不升级为正式二级反转`
-                : `二级趋势线：当前无已确认波段，或图层已关闭；等待二级关键位突破、一级完整交替后收盘转向${optionalNRoute(2)}。`;
+                : `二级趋势线：当前无可用结构，或图层已关闭；统一函数继续判断一级趋势线高低点，策略资格另行核验。`;
     const u = range.tertiaryTrend;
     const developing = range.tertiaryDeveloping,
         developingStart = developing?.points[0],
@@ -1545,7 +1545,7 @@ function renderVisibleAnnotations(items, range) {
               ? `三级趋势线 · 视窗：${u.windowTrend} · 最新局部：${u.trend}（至 ${u.latestKnown}）｜三级末跌高 ${num(u.lastFallHigh?.value)} · 末升低 ${num(u.lastRiseLow?.value)} · 点击三级转折点查看实际确认依据`
               : developing
                 ? `三级趋势线 · 完整发展路径 ${developing.points.length} 点：${developingStart.time} ${developingStart.label} ${num(developingStart.value)} → 当前${developing.wave_direction === "up" ? "上涨" : "下跌"}候选 ${developingEnd.time} ${developingEnd.label} ${num(developingEnd.value)}｜橙色虚线点均来自已确认二级结构，不升级为正式三级反转`
-                : `三级趋势线：当前无已确认波段，或图层已关闭；等待三级关键位突破、二级完整交替后收盘转向${optionalNRoute(3)}。`;
+                : `三级趋势线：当前无可用结构，或图层已关闭；统一函数继续判断二级趋势线高低点，策略资格另行核验。`;
     $("annotation-count").textContent = `当前图窗 ${range.from} — ${range.to} · ${items.length} 项`;
     $("events").replaceChildren();
     if (!items.length) {

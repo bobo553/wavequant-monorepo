@@ -1,27 +1,17 @@
-"""Derive level-2 trends from confirmed level-1 structural evidence.
+"""二级薄适配器：一级结构高低点直接传入统一趋势判断。
 
-The primary route freezes the last-fall-high or last-rise-low of its running
-extreme until a new extreme or opposite break. A confirmed level-1 high also
-becomes a formal level-2 high when it strictly clears a formal level-2
-last-fall-high that was known before that high's price session. Publication
-waits for both the source high and its formal base low, without borrowing a
-later pullback.
+本模块的旧私有工具仅保留兼容测试及历史调用；生产 secondary_trends
+不调用这些独立循环。所有级别都由 judge_trend 判别，资格视图只核验策略。
 """
 from copy import deepcopy
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from zoneinfo import ZoneInfo
 
-from .hierarchical_development import hierarchical_developing_path
-from .lecture_trend import _annotate, _ref
-from .trend_publication import LEG_CONFIRMATION_POLICY, OPTIONAL_LEG_CONFIRMATION_POLICY, WAVE_DISPLAY_POLICY, confirmed_trend_legs, publish_uptrends
+from ..models.model import Bar
+from .lecture_trend import _ref
+from .trend_publication import publish_uptrends
 from .n_trend_reversals import n_target_reversals
 from .trend_level_upgrades import promote_trend_key_breaks
-from .trend_landmarks import (
-    bear_bull_alternation_lows,
-    bear_to_bull_highs,
-    bullish_turn_signals,
-    post_alternation_bull_highs,
-)
 
 
 def _bar_date(bar):
@@ -248,90 +238,15 @@ def _structural_reversals(points, *, source_level=1, bars=(), n_target_trend_con
                             n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
 
 
-def secondary_trends(level1,bars, *, n_target_trend_confirmation_enabled: bool = False):
-    """二级只消费正式一级点，沿用与一级、三级一致的六项定义。
+def secondary_trends(level1: Mapping[str, object], bars: Sequence[Bar], *,
+                     n_target_trend_confirmation_enabled: bool = False) -> dict[str, object]:
+    """一级趋势线的高低点直接成为首参数，不另写二级判断规则。
 
-    structure_strokes是未获发布许可的私有候选，不是一级正式来源；显示用
-    developing尾端也不能升级。严格突破已知本级高点/低点的独立升级保留，
-    升级证据和有序高低点确认分开；原有市场突破/交替发布证书仍逐波校验。
-    后续路径的首根行情不属于前一路径，计算和证书只消费本路径截止前缀。
+    qualified_strokes仅给策略证书核验使用，下一层的结构来源始终是strokes。
     """
-    dates={(b.timestamp.astimezone(ZoneInfo('Asia/Shanghai')) if b.timestamp.tzinfo else b.timestamp).date().isoformat():i
-           for i,b in enumerate(bars)}
-    strokes=[]; developing_strokes=[]; candidate_strokes=[]
-    n_targets: list[dict[str,object]]=[]
-    from .trend_levels import trend_reversals
-    source_strokes=level1['strokes']
-    for source_index,source in enumerate(source_strokes):
-        next_sources=[later for later in source_strokes[source_index+1:] if later['points']]
-        end_index=next_sources[0]['points'][0]['index']-1 if next_sources else len(bars)-1
-        public_source: list[dict[str,object]]=next((item['points'] for item in level1['strokes'] if item['id']==source['id']),[])
-        candidates=promote_trend_key_breaks(source['points'],trend_reversals(source['points'],trend_level=2),
-                                           trend_level=2)
-        if n_target_trend_confirmation_enabled:
-            candidates=n_target_reversals(candidates,source['points'],bars[:end_index+1],source_level=1,
-                                         qualified_source=public_source,target_sink=n_targets,
-                                         n_target_trend_confirmation_enabled=True)
-        # 升级端点与后来有序确认的极值可同类并存；私有候选不冒充正式反转链。
-        candidate_strokes.append(dict(id='secondary-'+source['id'],source_path=source['id'],points=candidates))
-        points=publish_uptrends(candidates,source['points'],bars[:end_index+1],source_level=1,
-                               qualified_source=public_source,
-                               n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
-        if not points:
-            continue
-        _annotate(points,bars[0].symbol,dates,trend_level=2)
-        for p in points:
-            levels=p.get('levels'); broken_key=p.get('broken_key')
-            if not isinstance(levels,list) or not isinstance(broken_key,Mapping):
-                raise ValueError('annotated trend points require levels and a frozen key')
-            if p.get('upgrade_evidence') is not None:
-                levels.insert(0,dict(name='已突破的旧二级'+('末跌高' if broken_key['kind']=='H' else '末升低'),
-                                     price=broken_key['value']))
-            else:
-                levels.insert(0,dict(name='一级'+('末升低' if p['kind']=='H' else '末跌高'),price=broken_key['value']))
-        transitions=last_fall_high_reanchors(points,bars,trend_level=2)
-        strokes.append(dict(id='secondary-'+source['id'],source_path=source['id'],kind='secondary',
-                            trend_level=2,points=points,input_turn_count=len(source['points']),
-                            key_transitions=transitions,confirmation_policy='trend_routes_v110',
-                            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-                            leg_confirmation_policy=OPTIONAL_LEG_CONFIRMATION_POLICY if n_target_trend_confirmation_enabled else LEG_CONFIRMATION_POLICY,
-                            wave_display_policy=WAVE_DISPLAY_POLICY,
-                            confirmed_legs=confirmed_trend_legs(points,trend_level=2,source_path=source['id'])))
-        tail=hierarchical_developing_path(source,points,trend_level=2,source_level=1,kind='secondary',
-                                         bars=bars,end_index=end_index,structural=candidates,qualified_source_points=public_source,
-                                         n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
-        if tail:
-            developing_strokes.append(tail)
-    return dict(name='二级趋势线',trend_level=2,source_level=1,strokes=strokes,
-                bear_to_bull_highs=bear_to_bull_highs(strokes,trend_level=2),
-                bear_bull_alternation_lows=bear_bull_alternation_lows(strokes,trend_level=2,source_strokes=level1['strokes'],bars=bars),
-                post_alternation_bull_highs=post_alternation_bull_highs(strokes,trend_level=2,source_strokes=level1['strokes'],bars=bars),
-                bullish_turn_signals=bullish_turn_signals(strokes,bars,trend_level=2,source_strokes=level1['strokes']),
-                developing_strokes=developing_strokes,candidate_strokes=candidate_strokes,structure_strokes=candidate_strokes,
-                n_target_observations=n_targets,
-                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-                input_turn_count=sum(len(s['points']) for s in level1['strokes']),
-                confirmed_wave_count=sum(len(s['points']) for s in strokes),
-                developing_wave_count=len(developing_strokes),
-                developing_point_count=sum(len(s['points']) for s in developing_strokes),
-                key_transition_count=sum(len(s['key_transitions']) for s in strokes),
-                aggregation_rule=('same_level_key_break_or_lower_level_break_alternation_turn_or_n_strict_one_p'
-                                  if n_target_trend_confirmation_enabled else
-                                  'same_level_key_break_or_lower_level_break_alternation_turn'),
-                scope='lecture_level2_not_strategy_confirmation',
-                trend_definition_rule='shared_six_definitions_and_strict_same_level_extreme_upgrade',
-                note='六个定义与一级、三级共用，本级只读取正式一级趋势点；'
-                     '同类高低点均严格升/降才成立多头/空头定义，局部正负反转不单独改变趋势方向；'
-                     '已确认一级高点或低点严格突破此前已知二级同类极点时直接升级，不等待后续回调；'
-                     '市场最高价突破已知同级前高或最低价跌破已知同级前低时，趋势线立即确认并画实线，末端继续延伸；'
-                     +('一级来源正N/倒N完成后严格超过攻击箱测算的一饱，也独立确认二级对应趋势；'
-                       if n_target_trend_confirmation_enabled else '')+
-                     '原上涨两路线为本级末跌高突破，或一级末跌高突破后已确认空多交替并由后续收盘转多确认；'
-                     '仅有一级突破不发布二级上涨或虚线。反向虚线同样须有完整突破、交替、后续收盘转向；'
-                     '已确认一级高点若严格突破其价格日之前'
-                     '已知的正式二级末跌高，则在一级高点及本段二级低点均可知时直接升级，不等待回撤或嵌套低点；'
-                     '旧二级低点被市场收盘严格跌破后，'
-                     '末跌高换锚到后续已确认二级低点左侧高点；开放尾部尚无下一二级低点时，可用已确认二级高点及其'
-                     '一级确认低点换锚，但不把一级点升级为二级点；最后一个正式二级点之后的已确认一级演化另作'
-                     '纯显示发展路径，不进入正式点、三级趋势、策略或回测；直接升级不倒用之后的一级低点确认后续段；'
-                     '下降已确认结构极值只用于冻结压力与候选归并，不授予其后上涨权限；不跨原路径断点。')
+    from .trend_lines import high_low_points_from_strokes, trend_lines
+
+    points = high_low_points_from_strokes(level1.get('strokes'))
+    qualified = high_low_points_from_strokes(level1.get('qualified_strokes', level1.get('strokes')))
+    return trend_lines(points, bars, trend_level=2, qualified_source_points=qualified,
+                       n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)

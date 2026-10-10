@@ -1,10 +1,12 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Callable, TypedDict, cast
 import unittest
 from unittest.mock import patch
 
+from wavequant.domain.market_structure.trend_judgement import TrendJudgement, judge_trend
+from wavequant.domain.market_structure.trend_lines import qualify_trend_structure
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.chart_entry_history import _has_confirmation_price_cross, chart_entry_history
 from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
@@ -17,6 +19,7 @@ class _SourcePoint(TypedDict):
     value: float
     state: str
     available_at: str
+    time: str
 
 
 def bars_fixture() -> list[Bar]:
@@ -28,7 +31,7 @@ def bars_fixture() -> list[Bar]:
 
 def raw_fixture() -> list[_SourcePoint]:
     return [dict(index=index, ordinal=0, kind=kind, value=value, state="confirmed",
-                 available_at=f"2026-01-{index + 1:02d}")
+                 time=f"2026-01-{index + 1:02d}", available_at=f"2026-01-{index + 1:02d}")
             for index, kind, value in [(0, "L", 4.0), (1, "H", 6.0), (2, "L", 5.0)]]
 
 
@@ -131,38 +134,36 @@ class TrendConfirmationEntryRefreshTests(unittest.TestCase):
         self.assertEqual(chart_entry_history(bars, prefix_cache=old), chart_entry_history(bars))
 
     @patch("wavequant.domain.strategies.hierarchical_entry.lecture_drawing", side_effect=fake_drawing)
-    def test_integer_history_uses_qualified_reducers_with_exact_prefixes(self, _drawing: object) -> None:
+    def test_integer_history_uses_shared_judgement_and_exact_prefix_qualification(self, _drawing: object) -> None:
         bars = bars_fixture()
         first_lengths: list[int] = []
         higher_lengths: list[tuple[int, int]] = []
-        first_calls: list[int] = []
-        higher_calls: list[int] = []
+        calls: list[tuple[int, int, int | str | None]] = []
 
-        def first(source: Sequence[dict[str, object]]) -> list[dict[str, object]]:
-            first_calls.append(len(source))
+        def observe(source: Sequence[Mapping[str, object]], *, trend_level: int = 1,
+                    asof: int | str | None = None) -> TrendJudgement:
+            calls.append((trend_level, len(source), asof))
             self.assertTrue(all(type(point["available_at"]) is int for point in source))
-            return []
+            return judge_trend(source, trend_level=trend_level, asof=asof)
 
-        def higher(_source: object, *, source_level: int) -> list[dict[str, object]]:
-            higher_calls.append(source_level)
-            return []
-
-        def publish(_candidates: object, source: Sequence[dict[str, object]], prefix: Sequence[Bar], *,
-                    source_level: int, qualified_source: object = None,
+        def qualify(candidates: Sequence[Mapping[str, object]], source: Sequence[Mapping[str, object]],
+                    prefix: Sequence[Bar], *, trend_level: int,
+                    qualified_source: Sequence[Mapping[str, object]] | None = None,
                     n_target_trend_confirmation_enabled: bool = False) -> list[dict[str, object]]:
             self.assertTrue(all(type(point["available_at"]) is int for point in source))
+            source_level = trend_level - 1
             if source_level == 0:
                 first_lengths.append(len(prefix))
             else:
                 higher_lengths.append((source_level, len(prefix)))
-            return []
+            return qualify_trend_structure(candidates, source, prefix, trend_level=trend_level,
+                qualified_source=qualified_source,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
 
-        with patch("wavequant.domain.strategies.hierarchical_entry._wave_reversals", side_effect=first), \
-                patch("wavequant.domain.strategies.hierarchical_entry._candidate_structural_reversals", side_effect=higher), \
-                patch("wavequant.domain.strategies.hierarchical_entry.publish_uptrends", side_effect=publish):
+        with patch("wavequant.domain.strategies.hierarchical_entry.judge_trend", side_effect=observe), \
+                patch("wavequant.domain.strategies.hierarchical_entry.qualify_trend_structure", side_effect=qualify):
             history, _ = hierarchical_history(bars)
-        self.assertEqual(len(first_calls), 2)
-        self.assertEqual(higher_calls, [1, 2, 1, 2])
+        self.assertEqual(calls, [(1, 1, 2), (2, 0, 2), (3, 0, 2), (1, 1, 3), (2, 0, 3), (3, 0, 3)])
         self.assertEqual(first_lengths, [3, 4])
         self.assertEqual(higher_lengths, [(1, 3), (2, 3), (1, 4), (2, 4)])
         self.assertTrue(all(not points for levels in history.values() for points in levels.values()))
