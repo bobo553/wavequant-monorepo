@@ -288,12 +288,19 @@ export class PriceChart {
             clearTimeout(this.tooltipHideTimer);
         });
         this.tooltip.addEventListener("pointerleave", () => {
+            // 卡片按钮拥有键盘焦点时保留当前 K 线，鼠标移出不能中断 Ctrl+C。
+            // 焦点真正离开后由 focusout 关闭；没有焦点时仍按原悬停规则即时关闭。
+            this.tooltipHovered = false;
+            if (this.tooltip.contains(document.activeElement)) return;
             this.hideTooltip();
             this.updateWaveProjectionHover(null);
         });
         this.tooltip.addEventListener("focusin", () => clearTimeout(this.tooltipHideTimer));
-        this.tooltip.addEventListener("focusout", () => {
-            if (!this.tooltipHovered) this.hideTooltip();
+        this.tooltip.addEventListener("focusout", (event) => {
+            if (!this.tooltipHovered && !this.tooltip.contains(event.relatedTarget)) {
+                this.hideTooltip();
+                this.updateWaveProjectionHover(null);
+            }
         });
         container.append(this.tooltip);
         this.tooltipLayer = bindChartTooltipLayer(container, this.tooltip, () => this.hideTooltip());

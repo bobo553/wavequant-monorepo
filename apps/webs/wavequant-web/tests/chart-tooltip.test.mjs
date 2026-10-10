@@ -5,6 +5,8 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import * as LightweightCharts from "lightweight-charts";
 
+import { bindCandleClipboard } from "../public/candle-clipboard.js";
+
 const dom = new JSDOM('<div data-wavequant-react-workbench><article class="chart-card"></article></div>', {
     pretendToBeVisual: true,
 });
@@ -167,6 +169,46 @@ test("fallback layer leaves chart containment while retaining its workbench them
         assert.equal(h.chart.tooltip.parentElement, h.container.closest("[data-wavequant-react-workbench]"));
         assert.equal(h.chart.tooltip.closest(".chart-card"), null);
     } finally {
+        h.dispose();
+    }
+});
+
+test("a focused copy button retains its candle when the pointer leaves the outside card", () => {
+    const h = harness();
+    const keyboardCopies = [];
+    const unbind = bindCandleClipboard(h.chart, {
+        getCandle: () => bars.find((bar) => bar.time === h.chart.tooltipBarTime),
+        isEnabled: () => true,
+        copyText: (bar) => bar.time,
+        copyCandle: (bar) => keyboardCopies.push(bar),
+        onCopied: () => {},
+    });
+    try {
+        h.hover();
+        h.chart.tooltip.dispatchEvent(new window.MouseEvent("pointerenter"));
+        const button = h.chart.tooltip.querySelector("button");
+        button.focus();
+        h.chart.tooltip.dispatchEvent(new window.MouseEvent("pointerleave"));
+        h.hover(0, 0, null);
+        assert.equal(h.chart.tooltip.hidden, false, "keyboard focus keeps the current candle available");
+        assert.equal(h.chart.tooltipHovered, false, "leaving ends pointer ownership without discarding focus");
+        assert.equal(h.chart.tooltipBarTime, bars[1].time);
+        const shortcut = new window.KeyboardEvent("keydown", {
+            key: "c",
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        button.dispatchEvent(shortcut);
+        assert.equal(shortcut.defaultPrevented, true);
+        assert.deepEqual(keyboardCopies, [bars[1]], "the real chart card remains eligible for Ctrl+C");
+        button.click();
+        assert.deepEqual(h.copied, [bars[1]]);
+        button.blur();
+        assert.equal(h.chart.tooltip.hidden, true, "leaving both focus and pointer closes the card");
+        assert.equal(h.chart.hoveredWaveTime, null, "closing the card releases its temporary target context");
+    } finally {
+        unbind();
         h.dispose();
     }
 });
