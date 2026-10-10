@@ -29,19 +29,22 @@ def test_chart_recurses_geometry_then_supplies_only_explicit_permissions_to_stra
     bars = [Bar(datetime(2024, 1, 1) + timedelta(days=i), 'test', 6, 8, 4, 6, 100) for i in range(3)]
     geometry_levels = [_level(level, licensed=licensed) for level in (1, 2, 3)]
     before = deepcopy(geometry_levels)
-    recursive_inputs: list[object] = []
+    recursive_inputs: list[tuple[int, list[Mapping[str, object]]]] = []
+    permission_inputs: list[tuple[int, Sequence[Mapping[str, object]] | None]] = []
     strategy_inputs: list[tuple[Mapping[str, object], Mapping[str, object]]] = []
 
-    def first(drawing: object, market: Sequence[Bar], **options: object) -> dict[str, object]:
-        return geometry_levels[0]
+    def prepare(source: Sequence[Mapping[str, object]], *, trend_level: int = 1,
+                symbol: str = 'STRUCTURE') -> dict[str, object]:
+        if trend_level > 1:
+            recursive_inputs.append((trend_level, list(source)))
+        return dict(geometry_levels[trend_level - 1], qualified_strokes=[])
 
-    def second(source: Mapping[str, object], market: Sequence[Bar], **options: object) -> dict[str, object]:
-        recursive_inputs.append(source['strokes'])
-        return geometry_levels[1]
-
-    def third(source: Mapping[str, object], market: Sequence[Bar], **options: object) -> dict[str, object]:
-        recursive_inputs.append(source['strokes'])
-        return geometry_levels[2]
+    def attach(prepared: Mapping[str, object], market: Sequence[Bar], *,
+               qualified_source_points: Sequence[Mapping[str, object]] | None = None,
+               n_target_trend_confirmation_enabled: bool = False) -> dict[str, object]:
+        level = cast(int, prepared['trend_level'])
+        permission_inputs.append((level, qualified_source_points))
+        return geometry_levels[level - 1]
 
     def drawing(market: Sequence[Bar], *, on_step: Callable[[int, int, object], None]) -> None:
         raw = [dict(index=0, ordinal=0, kind='H', value=8, time='2024-01-01',
@@ -56,20 +59,28 @@ def test_chart_recurses_geometry_then_supplies_only_explicit_permissions_to_stra
     # 边界生产者提供两份明确不同的视图，本回归验证真实chart_entry_history
     # 调用链的选择职责；不假装这套小夹具重新证明市场许可证的数值规则。
     module = 'wavequant.domain.strategies.chart_entry_history'
-    monkeypatch.setattr(f'{module}.reversal_trends', first)
-    monkeypatch.setattr(f'{module}.secondary_trends', second)
-    monkeypatch.setattr(f'{module}.tertiary_trends', third)
+    monkeypatch.setattr(f'{module}.prepare_trend_lines', prepare)
+    monkeypatch.setattr(f'{module}.attach_trend_permissions', attach)
     monkeypatch.setattr(f'{module}.lecture_drawing', drawing)
     monkeypatch.setattr('wavequant.domain.market_structure.squeeze_alternation.squeeze_anchors', anchors)
 
     history, events = chart_entry_history(bars)
 
-    assert recursive_inputs and recursive_inputs[0] == geometry_levels[0]['strokes']
-    assert recursive_inputs[1] == geometry_levels[1]['strokes']
+    assert {level for level, _ in recursive_inputs} == {2, 3}
+    for level, points in recursive_inputs:
+        paths = cast(Sequence[Mapping[str, object]], geometry_levels[level - 2]['strokes'])
+        expected = [dict(point, source_path=path['id']) for path in paths
+                    for point in cast(Sequence[Mapping[str, object]], path['points'])]
+        assert points == expected
+    assert {level for level, _ in permission_inputs} == {1, 2, 3}
+    for level, source in permission_inputs:
+        if level > 1:
+            assert source is not None
+            assert [point['value'] for point in source] == ([8] if licensed else [])
     assert strategy_inputs
-    for level, source in strategy_inputs:
-        assert level['strokes'] == level['qualified_strokes']
-        assert source['strokes'] == source['qualified_strokes']
+    for strategy_level, strategy_source in strategy_inputs:
+        assert strategy_level['strokes'] == strategy_level['qualified_strokes']
+        assert strategy_source['strokes'] == strategy_source['qualified_strokes']
     keys = [event['key'] for event in events if event['event'] == 'hierarchy_resistance_key']
     if licensed:
         assert keys and cast(Mapping[str, object], keys[0])['value'] == 8
