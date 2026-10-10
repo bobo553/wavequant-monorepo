@@ -4,6 +4,63 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-312",
+            "name": "restore-missing-typescript-workspace-config",
+            "title": "恢复Web缺失的TypeScript配置包",
+            "status": "done",
+            "dependencies": [],
+            "description": "用户授权恢复主工作区已删除的七个共享TypeScript配置文件，修复Next.js无法解析@repo/typescript/next.json；配置内容、依赖声明与工作区链接本身不变。",
+            "scope": "恢复已批准的TypeScript包七个原文件及两个确认空的依赖安装目录，验证Web及现有配置消费者；其他十七项既有删除不变，产品源码/依赖声明/锁文件不变。",
+            "acceptanceCriteria": [
+                "复现主工作区TS6053并证实workspace链接正确、目标配置缺失；用户明确授权恢复七个指定文件",
+                "恢复文件与当前main版本一致，不修改tsconfig继承方式、依赖版本、锁文件或其他既有删除",
+                "主工作区Web配置解析、类型检查和Next.js16.2.6 Turbopack生产构建实际通过",
+                "现有共享配置消费者解析及会话worktree相关lint、状态/进度格式与Harness通过；完整单测及浏览器不运行"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web exec tsc --showConfig (before and after approved restore)",
+                    "status": "passed",
+                    "summary": "修复前主工作区稳定复现TS6053；同一main版本完整配置在会话worktree解析和生产构建通过。恢复七个已批准文件后主工作区解析与独立类型检查通过；恢复文件SHA256逐一相同，其余十七项删除保留。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web typecheck (main)",
+                    "status": "passed",
+                    "summary": "恢复配置后独立tsc --noEmit通过；保留严格模式和原有extends。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web build (main); NODE_OPTIONS=--max-old-space-size=512 --max-semi-space-size=4 RAYON_NUM_THREADS=2",
+                    "status": "passed",
+                    "summary": "首轮构建已消除tsconfig错误，但发现两个依赖目录为空及Zone Allocation内存失败；补齐原版本依赖并仅限制本次进程资源后，最终Turbopack16.2.6编译10.1秒/类型9.2秒、静态页5/5完整通过，未改构建配置。"
+                },
+                {
+                    "command": "pnpm --dir D:/Temp/wavequant-tsconfig-312-deps install --ignore-scripts; package-byte comparison and require smoke",
+                    "status": "passed",
+                    "summary": "初次离线解析缺少registry元数据，正常命令复用两个缓存包（下载0）；锁定class-variance-authority0.7.1/clsx2.1.1，内容与已通过的frozen-lockfile工作安装逐文件一致。仅向确认空的两个主工作区虚拟存储目录复制，两个实际导入通过，仓库声明/锁文件没有改变。"
+                },
+                {
+                    "command": "TypeScript readConfigFile/parseJsonConfigFileContent on 14 current @repo/typescript consumers",
+                    "status": "passed",
+                    "summary": "主工作区14个现存配置的共享继承路径均解析通过，涵盖Web/Admin/H5/Nest/Mobile及共享包；不是全仓类型检查，不包含尚未获准恢复的其他删除文件。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web build (session worktree)",
+                    "status": "passed",
+                    "summary": "会话worktree原main版本的解析、生产构建及lint通过（0错误、6条既有环境变量警告）；主工作区仍有其他ESLint/tsup文件删除，不擅自恢复。"
+                },
+                {
+                    "command": "complete Web unit suite, browser/Playwright, root full-workspace verification",
+                    "status": "not-run",
+                    "summary": "遵循用户验证节奏不运行完整单测与浏览器。主工作区另17项既有删除保留，不将worktree静态检查写成整个主工作区门禁通过。"
+                },
+                {
+                    "command": "pnpm harness:check; pnpm exec prettier --check <feature and both affected progress files>; git diff --check/review",
+                    "status": "passed",
+                    "summary": "会话worktree Harness309功能/18 Node/2 Python/32规则通过；最终原308个功能对象及256全部历史证据逐项保留，只有本任务新增修复记录。恢复的七个原配置没有产品源码差异，两个安装包内容已逐文件验证；其余十七项主工作区删除完整保留。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-311",
             "name": "figure008-composed-trend-foundations",
             "title": "图008二十项定义组合基座",
