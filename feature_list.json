@@ -11455,6 +11455,11 @@
                     "command": "完整Core/Web套件、浏览器/Playwright、完整账户/分钟回测及运行中完整图交互验收",
                     "status": "not-run",
                     "summary": "按用户验证节奏待独立验证；已核对修改前真实AkShare1997短前缀API载荷及实际Web纯函数连接，不能写成修改后浏览器通过。旧版本首次快照重算和加载超时性能问题不属于本轮，未宣称修复。"
+                },
+                {
+                    "command": "合并main后 urllib GET 9200/3003 /api/market-timeframe?source=akshare&symbol=sz.000678&asof=1997-10-31&timeframe=1d；9200同接口asof=1997-09-05",
+                    "status": "passed",
+                    "summary": "代码d420e81经c559e2c本地no-ff合并。API自动重载，真实196日线HTTP200/5.52秒；algorithm ef3e91f0f84e→8e647e4dd80d，行情data_version不变。4/4 H19.20、4/11 L17.48等目标坐标和8/19 L10.45于8/26翻多验证通过；9/5实际前缀HTTP200/3.88秒，发展线8/19→9/4 H12.30已出现，完整前缀中该高点9/11普通反向确认独立。Web3003代理200且新引擎及快照一致。仅只读HTTP，无浏览器、完整账户重刷或完整历史加载性能验收。"
                 }
             ]
         }
