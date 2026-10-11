@@ -11755,7 +11755,7 @@
             "id": "MONOREPO-324",
             "name": "complete-trend-wave-between-local-reversals",
             "title": "修复1999区间公共趋势缺线",
-            "status": "planned",
+            "status": "done",
             "dependencies": ["MONOREPO-321"],
             "description": "定位襄阳轴承1999年2月至4月一级趋势缺失，并修复所有级别共用趋势状态的普遍遗漏。",
             "scope": "统一趋势判定、整波端点/来源身份、缓存版本及历史/镜像/因果回归。",
@@ -11807,9 +11807,14 @@
                     "summary": "旧main实际HTTP200/9.792秒、556棒，引擎d9a0ac7bab24，目标一级仅2/4H与4/22L，直接复现中间缺线。行情版本2384f51e7dc8已保存供合并后对照；不重启、不手工刷缓存/队列。"
                 },
                 {
-                    "command": "post-merge live target interval, full Core/Web suites, browser/Playwright and whole account refresh",
+                    "command": "git local no-ff merge and bounded post-merge GET 3003 market-timeframe at 1999-04-30; actual-source four-reference audit",
+                    "status": "passed",
+                    "summary": "实现5339ad7经7335206本地no-ff合并main，feat-三级趋势统一同步同树，未推送。首次GET500、随后恢复HTTP200，最终556棒18.307秒；新引擎fcbc8aea2153/v117替代d9a0ac7bab24，行情版本2384f51e7dc8不变。三层88/9/1点，所有owned/v117及上级结束来源检查通过；目标6点恢复且完整四点严格同向、知识日和实际path均核验。AkShare实际3/12 close10.10为十字星，TDX10.08非十字星，缺少TDX当日两个折线反转使3/15H应等3/19才闭合；内存仅替换这1字段即得TDX3/18，未改真实数据或算法日期。4/13–14真实断点不跨接。未手工重启、清缓存或刷队列；API实际耗时不与纯几何或整账户性能等同。"
+                },
+                {
+                    "command": "full Core/Web suites, browser/Playwright, whole watchlist completion and minute backtest validation",
                     "status": "not-run",
-                    "summary": "合并后服务目标区间仍待实际只读核验；完整套件、浏览器/Playwright、全自选股及分钟回测待独立验证。局部样本或缓存版本更新不能写成整队刷新已完成。"
+                    "summary": "按用户节奏未运行完整Core/Web或浏览器/Playwright，完整自选股重算完成与分钟回测待独立验证；v117隔离和556棒真实HTTP通过不代表全队列完成。"
                 }
             ]
         }
