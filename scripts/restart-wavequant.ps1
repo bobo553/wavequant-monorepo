@@ -1,6 +1,10 @@
 [CmdletBinding()]
 param(
     [int]$PreferredApiPort = 8765,
+    [ValidateSet("off", "akshare", "tdx", "all")]
+    [string]$Signals = "off",
+    [ValidateRange(1, 16)]
+    [int]$StructureWorkers = 1,
     [switch]$NoBrowser
 )
 
@@ -148,9 +152,10 @@ $stdoutLog = Join-Path $runtimeDirectory "wavequant-dev-$timestamp.stdout.log"
 $stderrLog = Join-Path $runtimeDirectory "wavequant-dev-$timestamp.stderr.log"
 
 $env:WAVEQUANT_API_PORT = [string]$apiPort
+$env:WAVEQUANT_DEV_STRUCTURE_WORKERS = [string]$StructureWorkers
 $developmentProcess = Start-Process `
     -FilePath "pnpm.cmd" `
-    -ArgumentList "--filter", "wavequant-web", "dev" `
+    -ArgumentList "--filter", "wavequant-web", "dev", "--signals=$Signals" `
     -WorkingDirectory $repositoryRoot `
     -RedirectStandardOutput $stdoutLog `
     -RedirectStandardError $stderrLog `
@@ -171,6 +176,7 @@ catch {
 
 Write-Host "WaveQuant is ready: $webUrl" -ForegroundColor Green
 Write-Host "API port: $apiPort"
+Write-Host "Signal scans: $Signals (AkShare shards: $StructureWorkers)"
 Write-Host "Logs: $stdoutLog"
 if (-not $NoBrowser) {
     Start-Process $webUrl

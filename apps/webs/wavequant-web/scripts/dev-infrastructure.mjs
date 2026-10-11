@@ -40,12 +40,23 @@ export function isInfrastructureConfigured(environment = process.env) {
 /** Keep the full-catalog AkShare refresh bounded while allowing local overrides. */
 export function resolveStructureWorkerCount(environment = process.env) {
     if (disabledValues.has(String(environment.WAVEQUANT_DEV_STRUCTURE_WORKERS || "").toLowerCase())) return 0;
-    // Full-market rebuilds are background work. Two local shards keep them
-    // progressing without starving the API, chart rendering and backtests.
-    // Faster build agents can still opt into a larger explicit value.
-    const value = Number(environment.WAVEQUANT_DEV_STRUCTURE_WORKERS || 2);
+    // 扫描按需开启后默认仅用一个分片，为网页/API 留出 CPU 和内存。
+    const value = Number(environment.WAVEQUANT_DEV_STRUCTURE_WORKERS || 1);
     if (!Number.isInteger(value) || value < 1 || value > 16) {
         throw new Error("WAVEQUANT_DEV_STRUCTURE_WORKERS must be 1-16 or false");
     }
     return value;
+}
+
+/** 日常开发不扫描；显式选择数据源后才创建对应的后台进程。 */
+export function resolveSignalWorkerPlan(mode = "off", environment = process.env) {
+    const normalized = String(mode).trim().toLowerCase();
+    if (disabledValues.has(normalized)) return { tdx: false, akshareShards: 0 };
+    if (!["akshare", "tdx", "all"].includes(normalized)) {
+        throw new Error("--signals must be off, akshare, tdx or all");
+    }
+    return {
+        tdx: normalized === "tdx" || normalized === "all",
+        akshareShards: normalized === "akshare" || normalized === "all" ? resolveStructureWorkerCount(environment) : 0,
+    };
 }

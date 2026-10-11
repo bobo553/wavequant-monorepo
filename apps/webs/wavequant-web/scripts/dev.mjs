@@ -8,7 +8,7 @@ import { assertMainRuntime, startMainRevisionPublisher } from "../../../../scrip
 import {
     isInfrastructureConfigured,
     loadEnvironmentDefaults,
-    resolveStructureWorkerCount,
+    resolveSignalWorkerPlan,
     shouldStartBundledInfrastructure,
 } from "./dev-infrastructure.mjs";
 
@@ -28,6 +28,8 @@ const pnpmCli = process.env.npm_execpath;
 const apiPort = process.env.WAVEQUANT_API_PORT || "8765";
 const webPort = process.env.WAVEQUANT_WEB_PORT || "3003";
 const webOrigin = `http://127.0.0.1:${webPort}`;
+const signalsOption = process.argv.slice(2).find((argument) => argument.startsWith("--signals="));
+const signalWorkerPlan = resolveSignalWorkerPlan(signalsOption?.slice("--signals=".length));
 const firstExisting = (...candidates) => candidates.find((candidate) => candidate && existsSync(candidate));
 const resultsRoot = firstExisting(
     process.env.WAVEQUANT_RESULTS_ROOT,
@@ -151,11 +153,13 @@ if (resultsRoot) {
     runPnpm(apiArguments, monorepoRoot, { label: "API" });
 
     if (infrastructureConfigured) {
-        runPnpm(apiCliArguments("--watch-signals", "--signal-source", "tdx"), monorepoRoot, {
-            label: "TDX signal worker",
-            restart: true,
-        });
-        const workerCount = resolveStructureWorkerCount();
+        if (signalWorkerPlan.tdx) {
+            runPnpm(apiCliArguments("--watch-signals", "--signal-source", "tdx"), monorepoRoot, {
+                label: "TDX signal worker",
+                restart: true,
+            });
+        }
+        const workerCount = signalWorkerPlan.akshareShards;
         for (let index = 0; index < workerCount; index++) {
             runPnpm(
                 apiCliArguments(
@@ -173,7 +177,12 @@ if (resultsRoot) {
                 { label: `AkShare structure worker ${index + 1}/${workerCount}`, restart: true },
             );
         }
-        console.log(`[wavequant-web] Structure workers: TDX + ${workerCount} AkShare shard(s).`);
+        console.log(
+            `[wavequant-web] Signal workers: ${signalWorkerPlan.tdx ? 1 : 0} TDX + ${workerCount} AkShare shard(s).`,
+        );
+        if (!signalWorkerPlan.tdx && workerCount === 0) {
+            console.log("[wavequant-web] Background scans are off; use --signals=akshare, tdx or all when needed.");
+        }
     }
 } else {
     console.warn(

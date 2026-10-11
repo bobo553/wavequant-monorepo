@@ -7,6 +7,7 @@ import test from "node:test";
 import {
     isInfrastructureConfigured,
     loadEnvironmentDefaults,
+    resolveSignalWorkerPlan,
     resolveStructureWorkerCount,
     shouldStartBundledInfrastructure,
 } from "../scripts/dev-infrastructure.mjs";
@@ -61,9 +62,46 @@ test("structure read models are enabled only when a database URL is present", ()
     assert.equal(isInfrastructureConfigured({ WAVEQUANT_DATABASE_URL: "sqlite+pysqlite:///:memory:" }), true);
 });
 
-test("AkShare structure workers default to two foreground-safe bounded shards", () => {
-    assert.equal(resolveStructureWorkerCount({}), 2);
+test("on-demand AkShare workers default to one bounded shard", () => {
+    assert.equal(resolveStructureWorkerCount({}), 1);
     assert.equal(resolveStructureWorkerCount({ WAVEQUANT_DEV_STRUCTURE_WORKERS: "4" }), 4);
     assert.equal(resolveStructureWorkerCount({ WAVEQUANT_DEV_STRUCTURE_WORKERS: "off" }), 0);
     assert.throws(() => resolveStructureWorkerCount({ WAVEQUANT_DEV_STRUCTURE_WORKERS: "17" }), /must be 1-16/);
+});
+
+test("ordinary development starts no signal scanner even with a configured shard count", () => {
+    assert.deepEqual(resolveSignalWorkerPlan(undefined, {}), { tdx: false, akshareShards: 0 });
+    assert.deepEqual(resolveSignalWorkerPlan(undefined, { WAVEQUANT_DEV_STRUCTURE_WORKERS: "4" }), {
+        tdx: false,
+        akshareShards: 0,
+    });
+    for (const mode of ["off", "0", "false", "no", " OFF "]) {
+        assert.deepEqual(resolveSignalWorkerPlan(mode, {}), { tdx: false, akshareShards: 0 });
+    }
+});
+
+test("explicit scanning starts only the requested source with one default process", () => {
+    assert.deepEqual(resolveSignalWorkerPlan("akshare", {}), { tdx: false, akshareShards: 1 });
+    assert.deepEqual(resolveSignalWorkerPlan("tdx", {}), { tdx: true, akshareShards: 0 });
+    assert.deepEqual(resolveSignalWorkerPlan("all", {}), { tdx: true, akshareShards: 1 });
+    assert.deepEqual(resolveSignalWorkerPlan("AKSHARE", { WAVEQUANT_DEV_STRUCTURE_WORKERS: "2" }), {
+        tdx: false,
+        akshareShards: 2,
+    });
+    assert.deepEqual(resolveSignalWorkerPlan("akshare", { WAVEQUANT_DEV_STRUCTURE_WORKERS: "off" }), {
+        tdx: false,
+        akshareShards: 0,
+    });
+});
+
+test("invalid scan modes and unsafe explicit shard counts fail before startup", () => {
+    for (const mode of ["", "true", "both", "anything"]) {
+        assert.throws(() => resolveSignalWorkerPlan(mode, {}), /--signals must be/);
+    }
+    for (const count of ["17", "-1", "1.5", "invalid"]) {
+        assert.throws(
+            () => resolveSignalWorkerPlan("akshare", { WAVEQUANT_DEV_STRUCTURE_WORKERS: count }),
+            /must be 1-16/,
+        );
+    }
 });

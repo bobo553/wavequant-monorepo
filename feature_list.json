@@ -4,6 +4,34 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-319",
+            "name": "on-demand-development-signal-scanners",
+            "title": "开发后台扫描默认关闭并按需低并发启动",
+            "status": "done",
+            "dependencies": [],
+            "description": "日常开发保留网页/API及数据库，关闭默认TDX和AkShare扫描；显式选择来源后才启用扫描，AkShare默认一个分片。",
+            "scope": "Web开发启动器、信号进程计划、PowerShell重启入口、定向测试与操作说明；不改计算算法、行情或数据库记录。",
+            "acceptanceCriteria": [
+                "普通dev和restart默认off，同时不启动TDX和AkShare，但保留网页/API与基础设施。",
+                "显式akshare只启动该来源且默认一个分片；tdx只启动TDX；all才同时开启两种来源。",
+                "非法模式和AkShare并发输入在创建子进程前拒绝，显式关闭分片仍生效。",
+                "重启脚本提供Signals和StructureWorkers参数，不使用全局Python终止，不停止数据库。",
+                "说明扫描关闭时快照不自动刷新、切换模式会短暂重启网页/API。"
+            ],
+            "verification": [
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/dev-infrastructure.test.mjs apps/servers/wavequant-api/tests/python-dev-restart.test.mjs; node --check dev.mjs/dev-infrastructure.mjs; PowerShell Parser.ParseFile; targeted Prettier; node scripts/harness/validate-state.mjs; git diff --check",
+                    "status": "passed",
+                    "summary": "11项定向启动/守护回归通过，默认关闭、单来源低并发、显式分片、非法输入和受管子进程停止覆盖；JS语法、PowerShell AST、相关格式、Harness及差异检查通过。独立只读复核无阻塞问题。"
+                },
+                {
+                    "command": "完整Web单测、完整生产构建和浏览器/Playwright",
+                    "status": "not-run",
+                    "summary": "仅修改开发启动工具，不改UI、API计算或产物；按用户规则运行定向检查，完整验证留待独立时段。未启动浏览器或执行扫描。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-316",
             "name": "restore-candle-copy-shortcut",
             "title": "修复K线信息快捷键复制",
