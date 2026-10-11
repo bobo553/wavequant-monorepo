@@ -185,6 +185,31 @@ function validatedTimeframeBundle(body) {
     return body;
 }
 
+/** 完整缓存只作为同身份行情候选；年度请求不等待 IndexedDB，也不写入此存储。 */
+export async function readCachedMarketTimeframeSnapshot(
+    source,
+    symbol,
+    requestedAsOf,
+    timeframe,
+    { storage = marketTimeframeStorage, nTargetTrendConfirmationEnabled = false } = {},
+) {
+    const key = marketTimeframeCacheKey(source, symbol, requestedAsOf, timeframe, nTargetTrendConfirmationEnabled);
+    try {
+        const entry = await storage.get(key);
+        if (entry?.key !== key) return null;
+        const bundle = validatedTimeframeBundle(entry.bundle);
+        return bundle.source === source &&
+            bundle.symbol === symbol &&
+            bundle.requested_asof === requestedAsOf &&
+            bundle.timeframe === timeframe &&
+            bundle.view.symbol === symbol
+            ? bundle
+            : null;
+    } catch {
+        return null;
+    }
+}
+
 /**
  * Load one coherent candle+drawing bundle. The lookup key identifies the user
  * request while ETag identifies its immutable data/algorithm result.
@@ -194,7 +219,16 @@ export async function loadMarketTimeframeSnapshot(
     symbol,
     requestedAsOf,
     timeframe,
-    { fetcher = fetch, storage = marketTimeframeStorage, nTargetTrendConfirmationEnabled = false } = {},
+    {
+        fetcher = fetch,
+        storage = marketTimeframeStorage,
+        nTargetTrendConfirmationEnabled = false,
+        signal,
+        timeoutMs = 45_000,
+        expectedDataVersion,
+        expectedPriceBasis,
+        expectedResolvedAsOf,
+    } = {},
 ) {
     const key = marketTimeframeCacheKey(source, symbol, requestedAsOf, timeframe, nTargetTrendConfirmationEnabled);
     let cached = null;
@@ -211,18 +245,52 @@ export async function loadMarketTimeframeSnapshot(
         timeframe,
         n_target_trend_confirmation_enabled: String(nTargetTrendConfirmationEnabled),
     });
+    const validateIdentity = (bundle) => {
+        if (
+            bundle.source !== source ||
+            bundle.symbol !== symbol ||
+            bundle.requested_asof !== requestedAsOf ||
+            bundle.timeframe !== timeframe ||
+            bundle.view.symbol !== symbol
+        )
+            throw new Error("周期快照与当前股票请求不一致");
+        if (
+            expectedDataVersion &&
+            (bundle.data_version !== expectedDataVersion || bundle.view.data_version !== expectedDataVersion)
+        ) {
+            const error = new Error("行情版本已变化，请重试后加载完整趋势");
+            error.code = "MARKET_DATA_VERSION_CHANGED";
+            throw error;
+        }
+        if (
+            (expectedPriceBasis && bundle.view.price_basis !== expectedPriceBasis) ||
+            (expectedResolvedAsOf && bundle.resolved_asof !== expectedResolvedAsOf) ||
+            (expectedDataVersion &&
+                (bundle.view.asof !== bundle.resolved_asof || (bundle.view.timeframe || "1d") !== timeframe))
+        ) {
+            const error = new Error("完整趋势与已加载行情的价格口径或截面不一致，请重试");
+            error.code = "MARKET_DATA_VERSION_CHANGED";
+            throw error;
+        }
+        return bundle;
+    };
     try {
+        signal?.throwIfAborted();
+        const deadline = AbortSignal.timeout(timeoutMs);
         const response = await fetcher(`/api/market-timeframe?${query}`, {
             cache: "no-store",
             headers: cached?.etag ? { "If-None-Match": cached.etag } : {},
+            signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
         });
         if (response.status === 304) {
             if (!cached) throw new Error("服务器返回 304，但本地周期快照不存在");
-            return { ...cached.bundle, browser_cache: "validated" };
+            signal?.throwIfAborted();
+            return { ...validateIdentity(validatedTimeframeBundle(cached.bundle)), browser_cache: "validated" };
         }
         const body = await response.json();
+        signal?.throwIfAborted();
         if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
-        const bundle = validatedTimeframeBundle(body);
+        const bundle = validateIdentity(validatedTimeframeBundle(body));
         const etag = response.headers.get("ETag");
         if (etag) {
             try {
@@ -246,13 +314,16 @@ export async function loadMarketTimeframeSnapshot(
         }
         return { ...bundle, browser_cache: etag && cached?.etag === etag ? "validated" : "updated" };
     } catch (error) {
+        if (signal?.aborted) throw signal.reason;
+        if (error.code === "MARKET_DATA_VERSION_CHANGED") throw error;
         if (cached) {
             return {
-                ...cached.bundle,
+                ...validateIdentity(validatedTimeframeBundle(cached.bundle)),
                 browser_cache: "offline",
                 cache_warning: "服务器周期快照校验失败，当前使用浏览器缓存",
             };
         }
+        if (error.name === "TimeoutError") throw new Error("完整趋势请求超时；已加载的 K 线仍可查看");
         throw error;
     }
 }

@@ -4,6 +4,49 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-326",
+            "name": "annual-market-bars-progressive-loading",
+            "title": "行情按年渐进显示与可取消加载",
+            "status": "done",
+            "dependencies": [],
+            "description": "先返回实际最新年份OHLC，再按可用年份倒序补历史；完整趋势独立后台读取，消除首屏等待全历史理论。",
+            "scope": "行情只读分页API、共享契约、Web加载和视窗保留、定向验证；不改价格口径或截断趋势计算。",
+            "acceptanceCriteria": [
+                "最新有数据年份先显示，2026、2025等按实际年份倒序补历史，并显示加载进度。",
+                "分页不调用理论计算，先完成周期聚合后分年；各页固定来源、股票、截止日、周期和数据版本。",
+                "切换股票取消旧请求，超时或失败保留已显示行情并可重试，旧结果不覆盖新选择。",
+                "补历史保留当前视窗，完整趋势只能消费匹配的全历史版本，预览不充当完整回测。",
+                "保留MONOREPO-256原活动状态和全部旧功能对象；运行改动直接相关检查，不运行浏览器或完整Web套件。"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest API test_market_bars.py/test_market_timeframes.py + 3 HTTP regressions; WAVEQUANT_API_PYTHON=task venv pnpm --filter wavequant-api typecheck; python -m build --no-isolation apps/servers/wavequant-api; wheel/sdist byte comparison",
+                    "status": "passed",
+                    "summary": "59项与20子用例通过，12 API源码严格类型及service/server/test定向类型通过；sdist/wheel成功且新module/server源码入包字节一致。年度/跨年聚合/未来日历/空年/严格参数/409/ETag/缓存TTL容量与副本隔离覆盖。"
+                },
+                {
+                    "command": "pnpm --filter @repo/contracts build; Web targeted node --test (market-bars-loader/catalog-cache/chart-series-lifecycle); vitest run (market-bars-app/chart-viewport/market-bars-contract); pnpm --filter wavequant-web lint/typecheck/build",
+                    "status": "passed",
+                    "summary": "Node41项、Vitest15项通过，实际app9项、组件1项、共享契约5项；共享包构建、Web lint（6既有warning无错误）、类型和默认Turbopack生产构建通过。首屏交互、取消竞态、超时/失败/重试、视窗、完整趋势同版本/同口径/同实际截止、拒绝截断缓存/账户复用覆盖。跨盘共享依赖造成的初次构建/类型环境问题通过任务本地离线冻结安装修复，锁文件和主检出依赖未改。"
+                },
+                {
+                    "command": "node .codex-runtime/verify-annual-pages.mjs; API real source annual serialization artifact",
+                    "status": "passed",
+                    "summary": "真实sz.000678截至2010-04-30，14页按2010→1997倒序，经实际API DTO+共享Zod+Webloader重组2995bars与原数据逐行一致，全链hash固定，首页78bars/13304B，对应完整轻量view432910B；保留同年2010-12-31未来交易日。一次源读，分页不调用theory。该字节对比不等于冷源读取时间保证。"
+                },
+                {
+                    "command": "targeted Prettier; 4 public JS node --check; pnpm harness:check; CodeGraph sync; git diff --check; original feature object preservation audit; final diff review",
+                    "status": "passed",
+                    "summary": "格式/语法、Harness、索引及差异检查通过；全部322原功能对象和256活动状态逐字段保留。API与Web交叉独立复核后修复future sessions、resolved cutoff及截断缓存等边界。"
+                },
+                {
+                    "command": "full Web/API suite, browser/Playwright, live provider cold-load and full trend integration",
+                    "status": "not-run",
+                    "summary": "按用户日常开发规则未运行完整套件、浏览器或Playwright。首次冷行情仍需原源完整读取；44MiB完整趋势仅移到首屏后的独立后台，不宣称其网络载荷已缩减。常驻API/Web新版本实际HTTP验收将在同会话趋势修复完成后进行。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-319",
             "name": "on-demand-development-signal-scanners",
             "title": "开发后台扫描默认关闭并按需低并发启动",

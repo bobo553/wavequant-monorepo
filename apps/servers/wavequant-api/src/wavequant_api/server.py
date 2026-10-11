@@ -25,6 +25,9 @@ from .application import (
 )
 from .infrastructure import Infrastructure, InfrastructureSettings
 from .application.limit_up_ladder import LimitUpLadderService
+from .application.market_bars import (
+    MarketBarsService, MarketBarsVersionChanged, market_bars_etag, parse_market_bars_query,
+)
 from .backtest_jobs import BacktestJobCapacity, BacktestJobConflict, BacktestJobSymbolBusy, BacktestJobs
 from .watchlists import MAX_BODY, WatchlistConflict, WatchlistStore, record, settings
 from .watchlist_refresh import WatchlistRefresh
@@ -139,6 +142,7 @@ def make_server(
         if market_data is not None
         else None
     )
+    market_bars = MarketBarsService(market_timeframes) if market_timeframes is not None else None
 
     def log_backtest_job_error(job_id: str, error: Exception) -> None:
         if backtest_job_error(error)[0] == 500:
@@ -448,6 +452,17 @@ def make_server(
                         status["recent"] = list(recent.values())
                     self.send(200, {**status, "watchlist_refresh": watchlist_refresh.state() if watchlist_refresh else None})
                     return
+                if url.path == "/api/market-bars":
+                    request = parse_market_bars_query(q)
+                    if request.source == "tdx" and repository.tdx is None:
+                        raise ValueError("通达信目录未配置")
+                    if request.source == "akshare" and repository.akshare is None:
+                        raise AkShareUnavailable("AkShare 数据源已禁用")
+                    if market_bars is None:
+                        raise ValueError("行情仓库未配置")
+                    page = market_bars.page(request)
+                    self.send_versioned_payload(page, market_bars_etag(page))
+                    return
                 if url.path == "/api/market-timeframe":
                     expected = {"source", "symbol", "asof", "timeframe"}
                     if set(q) - {"n_target_trend_confirmation_enabled"} != expected:
@@ -560,6 +575,8 @@ def make_server(
                     else repository.theory(*args, n_target_trend_confirmation_enabled=n_target_option(q))
                 )
                 self.send(200, result)
+            except MarketBarsVersionChanged as exc:
+                self.send(409, {"error": str(exc), "code": "MARKET_DATA_VERSION_CHANGED"})
             except (BuySignalSnapshotUnavailable, StructureSnapshotUnavailable, AkShareUnavailable, LookupError) as exc:
                 self.send(503, {"error": str(exc)})
             except BacktestJobConflict as exc:

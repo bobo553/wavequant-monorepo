@@ -84,6 +84,27 @@ const collections = {
     waveAbLines: "clearWaveAbPath",
 };
 
+test("annual history prepends and final complete installation preserve the real SDK viewport", () => {
+    const chart = chartHarness();
+    try {
+        const original = { from: 10.25, to: 50.75 };
+        chart.chart.timeScale().setVisibleLogicalRange(original);
+        chart.chart.resize(801, 500, true);
+        const firstYear = Number(data.bars[0].time.slice(0, 4));
+        const previous = [1, 2, 3].map((day) => ({ ...data.bars[0], time: `${firstYear - 1}-01-0${day}` }));
+        const merged = { ...data, bars: [...previous, ...data.bars] };
+        chart.setData(merged, { preserveViewport: true });
+        chart.chart.resize(802, 500, true);
+        const shifted = { from: original.from + previous.length, to: original.to + previous.length };
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), shifted);
+        chart.setData({ ...merged, markers: [] }, { preserveViewport: true });
+        chart.chart.resize(803, 500, true);
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), shifted);
+    } finally {
+        chart.destroy();
+    }
+});
+
 test("PriceChart arrow navigation updates the real SDK window and stops after destruction", () => {
     let pauses = 0;
     const chart = chartHarness(() => pauses++);

@@ -39,6 +39,9 @@ describe("chart keyboard entry and existing navigation controls", () => {
             "chart-position-slider",
             "chart-position-label",
             "chart-loading-overlay",
+            "stock-data-load-status",
+            "stock-data-load-message",
+            "stock-data-load-retry",
             "asof-label",
             "replay-mode",
             "previous",
@@ -48,5 +51,7 @@ describe("chart keyboard entry and existing navigation controls", () => {
         ]) {
             expect(host.querySelectorAll(`#${id}`), `${id} has one runtime owner`).toHaveLength(1);
         }
+        expect(host.querySelector("#stock-data-load-status")?.getAttribute("aria-live")).toBe("polite");
+        expect(host.querySelector("#stock-data-load-retry")?.hasAttribute("hidden")).toBe(true);
     });
 });

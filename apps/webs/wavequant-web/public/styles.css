@@ -2022,6 +2022,18 @@ body {
 .chart-loading-overlay[hidden] {
     display: none;
 }
+.stock-data-load-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    color: var(--cyan);
+    font-size: 12px;
+}
+.stock-data-load-status[hidden] {
+    display: none;
+}
 .chart-loading-spinner {
     width: 18px;
     height: 18px;

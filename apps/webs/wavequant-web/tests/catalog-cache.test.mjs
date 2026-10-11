@@ -151,6 +151,7 @@ test("an internal Core rule revision replaces a cached AkShare low with July 11 
         ...bundle,
         symbol: "sz.000678",
         timeframe: "1d",
+        view: { ...bundle.view, symbol: "sz.000678" },
         theory: theory(point("2018-07-16", 5)),
     };
     const replacement = {
@@ -180,6 +181,88 @@ test("an internal Core rule revision replaces a cached AkShare low with July 11 
     assert.equal(storage.current().etag, '"new-rule"');
     assert.deepEqual(storage.current().bundle.theory, replacement.theory);
     assert.deepEqual(old.theory.reversal_trends.strokes[0].points, [point("2018-07-16", 5)]);
+});
+
+test("switching stocks aborts a snapshot fetch without returning offline cached geometry", async () => {
+    const storage = memoryStorage({
+        key: marketTimeframeCacheKey("akshare", bundle.symbol, bundle.requested_asof, bundle.timeframe),
+        etag: '"snapshot"',
+        bundle,
+    });
+    const controller = new AbortController();
+    const request = loadMarketTimeframeSnapshot("akshare", bundle.symbol, bundle.requested_asof, bundle.timeframe, {
+        signal: controller.signal,
+        storage,
+        fetcher: (_url, { signal }) =>
+            new Promise((_, reject) => {
+                signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+                controller.abort();
+            }),
+    });
+    await assert.rejects(request, { name: "AbortError" });
+});
+
+test("full geometry with another data version cannot replace already displayed annual bars", async () => {
+    await assert.rejects(
+        loadMarketTimeframeSnapshot("akshare", bundle.symbol, bundle.requested_asof, bundle.timeframe, {
+            storage: memoryStorage(),
+            expectedDataVersion: "other-version",
+            fetcher: async () => new Response(JSON.stringify(bundle)),
+        }),
+        { code: "MARKET_DATA_VERSION_CHANGED" },
+    );
+});
+
+test("a stalled uncached full snapshot has a deadline", async () => {
+    await assert.rejects(
+        loadMarketTimeframeSnapshot("akshare", bundle.symbol, bundle.requested_asof, bundle.timeframe, {
+            storage: memoryStorage(),
+            timeoutMs: 10,
+            fetcher: (_url, { signal }) =>
+                new Promise((_, reject) => {
+                    const keeper = setTimeout(() => {}, 100);
+                    signal.addEventListener(
+                        "abort",
+                        () => {
+                            clearTimeout(keeper);
+                            reject(signal.reason);
+                        },
+                        { once: true },
+                    );
+                }),
+        }),
+        /完整趋势请求超时/,
+    );
+});
+
+test("full snapshot validates the displayed resolved cutoff, view version and price basis before installation", async () => {
+    const coherent = {
+        ...bundle,
+        view: {
+            ...bundle.view,
+            asof: bundle.resolved_asof,
+            data_version: bundle.data_version,
+            timeframe: bundle.timeframe,
+            price_basis: "raw_unadjusted",
+        },
+    };
+    const incompatible = [
+        { ...coherent, resolved_asof: "2026-09-03", view: { ...coherent.view, asof: "2026-09-03" } },
+        { ...coherent, view: { ...coherent.view, data_version: "different-view-version" } },
+        { ...coherent, view: { ...coherent.view, price_basis: "causal_adjusted" } },
+    ];
+    for (const changed of incompatible) {
+        await assert.rejects(
+            loadMarketTimeframeSnapshot("akshare", bundle.symbol, bundle.requested_asof, bundle.timeframe, {
+                storage: memoryStorage(),
+                expectedDataVersion: bundle.data_version,
+                expectedResolvedAsOf: bundle.resolved_asof,
+                expectedPriceBasis: "raw_unadjusted",
+                fetcher: async () => new Response(JSON.stringify(changed)),
+            }),
+            { code: "MARKET_DATA_VERSION_CHANGED" },
+        );
+    }
 });
 
 test("timeframe snapshot falls back to IndexedDB during a server outage", async () => {

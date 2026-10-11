@@ -32,7 +32,13 @@ pnpm --filter wavequant-api python -- -m wavequant_api.cli --root "E:\WorkSpace\
 
 API 直接依赖 `wavequant-core[akshare,tdx]`，完整安装会包含现场复权回测所需的 `pytdx`、`pandas`，以及在线行情浏览使用的 AkShare。AkShare 提供只读行情、讲义结构绘图和当前股票信号分析；不会逐股抓取在线全市场，也不进入封存回测或交易证据。可用 `--akshare-timeout 30` 调整单次调用上限，或用 `--disable-akshare` 显式关闭。历史日线先短时探测 `stock_zh_a_hist`；该上游不可用时优先回退到速度更快的官方 `stock_zh_a_daily`，最后才使用按年份请求的 `stock_zh_a_hist_tx`。响应会标明实际接口。
 
-图表统一读取 `GET /api/market-timeframe?source=akshare&symbol=sh.600519&asof=YYYY-MM-DD&timeframe=1d`；原有 view/theory 路由保留兼容。周期支持 `1d`、`1w`、`1mo`、`3mo`、`1y`。周/月/季/年由服务器从规范日线按自然周期聚合，使用首开、最高、最低、末收、成交量求和，并以周期内最后一个实际交易日作为时间。统一接口把 K 线与同周期画线作为同一版本 bundle 返回，并支持 ETag 条件请求。正常行情由 Worker 提前生成；部署过渡期或历史回放缺少特定截止日时，API 会在服务器端计算并原子补写，浏览器仍只消费完整快照，不自行计算或混配画线。信号查询仍使用只读 `GET /api/structure-signals` 与 `GET /api/buy-signals`。
+图表先读取 `GET /api/market-bars?source=akshare&symbol=sh.600519&asof=YYYY-MM-DD&timeframe=1d`，显示最新有数据的年份，再按 `next_year` 倒序补齐历史。`source` 仅接受 `tdx`、`akshare`，周期支持 `1d`、`1w`、`1mo`、`3mo`、`1y`。历史页追加 `year=YYYY&data_version=<首包的64位小写SHA256>`；指定年份必须携带版本。空年份返回空 K 线并跳到上一有数据年份，不同版本返回 `409` 和 `code=MARKET_DATA_VERSION_CHANGED`，调用方需重新加载最新页。重复、未知或非法查询参数返回 `400`。
+
+年度响应包含 `schema_version=1`、`source`、`symbol`、`requested_asof`、`resolved_asof`、`timeframe`、`data_version`、`year`、`next_year`（末页为 `null`）、`has_more`、降序 `available_years`、`history_start`、`history_end`、`total_bars` 与轻量 `view`。`view.bars`、`view.sessions` 只传输该年度；完整源交易日历在该年已知的后续日期仍保留，供历史回放导航。`view.asof` 和 `view.data_version` 保持完整截面身份，不改成年末。K 线保留 `time/open/high/low/close/raw_close/volume`，源提供时保留 `factor`；不伪造回测账户或收益。周/月/季/年先从完整规范日线按自然周期聚合，再切年份，跨年周线不会被拆断。
+
+年度入口只读取规范 OHLC，不执行趋势或读取 SQL 周期快照。同一 `source/symbol/asof/timeframe` 的完整轻量截面在本进程缓存 30 秒，最多保留最近使用的 16 组，后续年度复用同一前缀；过期重新读取并校验版本。首次冷请求仍需源读取完整历史和周期聚合，其耗时取决于本地文件或上游，不保证即时返回。响应支持按源、股票、截面、周期、年度及行情版本隔离的 ETag，条件命中返回 `304`；读取时刻和趋势规则不影响 OHLC ETag。
+
+完整画线独立读取 `GET /api/market-timeframe?source=akshare&symbol=sh.600519&asof=YYYY-MM-DD&timeframe=1d`，仍基于完整历史生成同版本 bundle，不能用年度切片计算趋势。原有 view/theory 路由保留兼容。正常行情由 Worker 提前生成；部署过渡期或历史回放缺少特定截止日时，API 会在服务器端计算并原子补写。信号查询仍使用只读 `GET /api/structure-signals` 与 `GET /api/buy-signals`。
 
 周期快照的算法版本同时包含完整 Core 源码指纹和 API 周期聚合逻辑。内部趋势归并、确认门禁或发布规则变化时，即使外层绘图函数和行情 K 线都没有变化，也必须生成新版本：旧 SQL/Redis 快照不再命中，所请求的截面重新计算，新 ETag 使浏览器替换旧画线。只有当前完整算法版本及行情版本一致时才返回 `304`，不能用旧画线搭配新行情。
 
