@@ -110,7 +110,7 @@ class _PublishedTrendState:
 
     A local proof does not reset an active wave. A real opposite proof does,
     including on a private candidate lacking permission for its next up leg.
-    Retain only the current parsing context, proof and extreme.
+    Retain one static snapshot and the latest prefix context, proof and extreme.
     """
 
     def __init__(self, source: Sequence[Mapping[str, object]], bars: Sequence[Bar], source_level: int,
@@ -123,9 +123,44 @@ class _PublishedTrendState:
         self.bars = bars
         self.sessions = {session_date(bar): index for index, bar in enumerate(bars)}
         self.position_field = 'source_turn_position' if source_level == 0 else f'source_level{source_level}_position'
+        self.parsed_context: ConfirmationContext | None = None
         self.context: ConfirmationContext | None = None
         self.active: Mapping[str, object] | None = None
         self.extreme: Mapping[str, object] | None = None
+
+    def confirmation_context(self, cutoff: int) -> ConfirmationContext:
+        """同次路径发布共享静态解析，各方向证书仍使用自身真实截止前缀。
+
+        完整快照只在第一次核验时准备，复用来源坐标／日期／Fraction 解析。
+        下降腿常有不同的首次可知日，不能把完整快照直接授给早日；它们通过
+        prepare_confirmation_context 投影并重新验证可知来源及 N 前缀。上涨
+        和下降升级后的独立上涨使用整体截止时，复用同一完整上下文即可。
+        只保留完整快照与最近一个投影，不为每个历史日期积累解析缓存。
+        启用 N 时沿用原来的实际 cutoff 构建路径，避免仅为了静态复用而
+        提前解析完整 N 行情；N 的首次核验、来源校验和异常边界保持原样。
+        """
+        if self.n_enabled:
+            if self.context is None or self.context.end_index != cutoff:
+                self.context = prepare_confirmation_context(
+                    self.source, self.bars or None, cutoff, n_source=self.n_source,
+                    n_target_trend_confirmation_enabled=True,
+                )
+            return self.context
+        if self.parsed_context is None:
+            market = self.bars or None
+            snapshot_end = len(self.bars) - 1 if self.bars else cutoff
+            self.parsed_context = prepare_confirmation_context(
+                self.source, market, snapshot_end, n_source=self.n_source,
+                n_target_trend_confirmation_enabled=self.n_enabled,
+            )
+        if self.parsed_context.end_index == cutoff:
+            return self.parsed_context
+        if self.context is None or self.context.end_index != cutoff:
+            self.context = prepare_confirmation_context(
+                self.source, self.bars or None, cutoff, n_source=self.n_source,
+                n_target_trend_confirmation_enabled=self.n_enabled, parsed_context=self.parsed_context,
+            )
+        return self.context
 
     def continuation(self, point: Mapping[str, object], direction: str) -> Mapping[str, object] | None:
         known = _moment(point)
@@ -167,11 +202,8 @@ class _PublishedTrendState:
                     and all(origin.get(field, 0 if field == 'ordinal' else None)
                             == self.source[position].get(field, 0 if field == 'ordinal' else None)
                             for field in ('index', 'ordinal', 'kind', 'value'))):
-                if self.context is None or self.context.end_index != cutoff:
-                    self.context = prepare_confirmation_context(self.source, self.bars, cutoff, n_source=self.n_source,
-                        n_target_trend_confirmation_enabled=self.n_enabled)
                 proof = qualify_downtrend(self.source, self.source[position], position, key, self.bars,
-                                          cutoff, context=self.context, n_source=self.n_source,
+                                          cutoff, context=self.confirmation_context(cutoff), n_source=self.n_source,
                                           n_target_trend_confirmation_enabled=self.n_enabled)
         if not _known_leg_proof(proof, point, direction, origin):
             continued = self.continuation(point, direction)
@@ -421,6 +453,7 @@ def publish_uptrends(
                         # 取证；两份证书各自保留日期，不能让下降分支的continue
                         # 吞掉后来合法上涨，也不能把后来上涨借给此前下降。
                         outgoing = qualify_uptrend(source, source[position], position, pressure, market, end_index,
+                            context=state.confirmation_context(end_index),
                             n_source=n_source, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
                         if outgoing is not None:
                             point['trend_confirmation'] = outgoing
@@ -459,10 +492,7 @@ def publish_uptrends(
             continue
         key = pressure
         if context is None and end_index >= 0:
-            context = prepare_confirmation_context(
-                source, market, end_index, n_source=n_source,
-                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-            )
+            context = state.confirmation_context(end_index)
         if context is not None and context.references[position] is not None:
             if (pending_origin is None or not _held_wave_floor(pending_origin, bars, cast(int, point['index']))
                     or cast(float, point['value']) < cast(float, pending_origin['value'])):

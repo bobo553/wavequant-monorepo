@@ -1,7 +1,7 @@
 """Causal direction certificates shared by all trend hierarchy levels."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from fractions import Fraction
 from math import isfinite
@@ -90,23 +90,63 @@ class ConfirmationContext:
     n_target_trend_confirmation_enabled: bool
 
 
+def _reference_at_cutoff(
+    reference: _Reference | None, session_indices: Mapping[str, int] | None, end_index: int,
+) -> _Reference | None:
+    """复用静态价格解析，但按当前行情前缀重新取得来源点的真实可知位置。
+
+    完整快照的无效点在更短前缀中仍无效；合法点却可能在较短前缀中尚未
+    可知。日期时钟还不能直接沿用完整快照的 known：同一个交易日有多根
+    行情时，日期映射保留当前前缀的最后一根，而完整快照可能映射到未来
+    的同日行情。仅复用 raw／Fraction 等静态值，日期位置必须重新查询。
+    """
+    if reference is None or reference.index > end_index:
+        return None
+    if isinstance(reference.available, int):
+        return reference if reference.available <= end_index else None
+    known = session_indices.get(reference.available) if session_indices is not None else None
+    if session_indices is not None and (known is None or known < reference.index):
+        return None
+    return reference if known == reference.known else replace(reference, known=known)
+
+
 def prepare_confirmation_context(
     source: Sequence[Mapping[str, object]], bars: Sequence[Bar] | None, end_index: int,
     *, n_source: Sequence[Mapping[str, object]] | None = None,
     n_target_trend_confirmation_enabled: bool = False,
+    parsed_context: ConfirmationContext | None = None,
 ) -> ConfirmationContext:
-    """Parse one immutable source/clock snapshot without looking past cutoff."""
+    """建立当前截止位置的证书上下文，可复用同次发布的静态解析快照。
+
+    parsed_context 只能来自同一只读 source／bars／N 来源及相同开关，且其
+    截止位置不得早于当前 cutoff。它提供已冻结的坐标、日期格式和精确价格
+    解析，不提供未来的证书资格。较短 cutoff 仍建立真实行情前缀、日期映射、
+    可知来源及 ordered 判定；N 上下文也在这个真实前缀中独立重新计算。
+    相同 cutoff 的上下文本来就是同一事实，可直接复用。身份或范围不匹配
+    显式抛出 ValueError，不能用另一条路径、另一天或另一种 N 模式补资格。
+    """
     if type(end_index) is not int or end_index < 0 or bars is not None and end_index >= len(bars):
         raise ValueError("a confirmation context requires an available market prefix")
+    n_points = source if n_source is None else n_source
+    if parsed_context is not None:
+        if (parsed_context.source_identity != id(source) or parsed_context.bars_identity != id(bars)
+                or id(parsed_context.n_source) != id(n_points)
+                or parsed_context.n_target_trend_confirmation_enabled != n_target_trend_confirmation_enabled
+                or type(parsed_context.end_index) is not int or parsed_context.end_index < end_index
+                or bars is not None and parsed_context.end_index >= len(bars)
+                or len(parsed_context.references) != len(source)):
+            raise ValueError("a parsed confirmation context must match its source and cover the market prefix")
+        if parsed_context.end_index == end_index:
+            return parsed_context
     market = tuple(bars[:end_index + 1]) if bars is not None else None
     sessions = (MappingProxyType({session_date(bar): index for index, bar in enumerate(market)})
                 if market is not None else None)
-    references = tuple(_reference(point, sessions, end_index) for point in source)
+    references = (tuple(_reference(point, sessions, end_index) for point in source) if parsed_context is None else
+                  tuple(_reference_at_cutoff(point, sessions, end_index) for point in parsed_context.references))
     known = [point for point in references if point is not None]
     ordered = (not any(left.order >= right.order for left, right in zip(known, known[1:]))
                and not any(left.known is not None and right.known is not None and left.known > right.known
                            for left, right in zip(known, known[1:])))
-    n_points = source if n_source is None else n_source
     n_context = (prepare_n_confirmation_context(n_points, bars, end_index)
                  if bars is not None and n_target_trend_confirmation_enabled else None)
     return ConfirmationContext(id(source), id(bars), end_index, market, sessions, references, ordered,

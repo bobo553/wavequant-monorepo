@@ -1,16 +1,18 @@
 """An independent next drawing path cannot certify or extend an older N."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime, timedelta
+from typing import cast
 
 import pytest
 
-from wavequant.domain.market_structure import lecture_trend
-from wavequant.domain.market_structure.n_trend_confirmation import qualified_n_source, qualify_n_trend
+from wavequant.domain.market_structure import lecture_trend, trend_lines
+from wavequant.domain.market_structure.n_trend_confirmation import N_TARGET_CONFIRMATION, qualified_n_source, qualify_n_trend
 from wavequant.domain.market_structure.n_trend_reversals import n_target_reversals
 from wavequant.domain.market_structure.secondary_trend import secondary_trends
 from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
+from wavequant.domain.market_structure.trend_judgement import TrendJudgement, judge_trend
 from wavequant.domain.market_structure.trend_publication import publish_uptrends
 from wavequant.domain.models.model import Bar
 
@@ -38,35 +40,97 @@ def sample() -> tuple[list[Bar], dict[str, object]]:
     return bars, dict(strokes=[dict(id="old", points=old), dict(id="next", points=new)])
 
 
-def _old_candidate(points: list[Mapping[str, object]]) -> list[dict[str, object]]:
-    origin = next((point for point in points if point["index"] == 3 and point["kind"] == "L"), None)
-    if origin is None:
-        return []
-    # Isolate publication from the unrelated ordered-direction geometry gate.
-    # The source origin and every actual N proof remain unmodified.
-    return [dict(origin, available_at="2024-01-11", source_turn_position=2,
-                 confirmation_rule="known_structural_origin", wave_direction_before="down", wave_direction_after="up")]
+def _records(value: object) -> list[Mapping[str, object]]:
+    assert isinstance(value, (list, tuple))
+    assert all(isinstance(item, Mapping) for item in value)
+    return cast(list[Mapping[str, object]], list(value))
 
 
-def test_an_old_candidate_cannot_borrow_the_next_paths_market_target(monkeypatch: pytest.MonkeyPatch) -> None:
+def _points(result: Mapping[str, object], field: str) -> list[Mapping[str, object]]:
+    return [point for path in _records(result[field]) for point in _records(path['points'])]
+
+
+def _proof(value: Mapping[str, object], field: str) -> Mapping[str, object]:
+    proof = value[field]
+    assert isinstance(proof, Mapping)
+    return proof
+
+
+@pytest.fixture
+def common_judgements(monkeypatch: pytest.MonkeyPatch) -> list[TrendJudgement]:
+    decisions: list[TrendJudgement] = []
+
+    def observe(points: Sequence[Mapping[str, object]], *, trend_level: int = 1,
+                asof: int | str | None = None) -> TrendJudgement:
+        # 旧 _wave_reversals 已退出公开链路。观察当前真正调用的 judge_trend，
+        # 不伪造结构候选或许可证，使路径门禁测试同时覆盖真实六定义判断。
+        decision = judge_trend(points, trend_level=trend_level, asof=asof)
+        decisions.append(decision)
+        return decision
+
+    monkeypatch.setattr(trend_lines, 'judge_trend', observe)
+    return decisions
+
+
+def test_an_old_candidate_cannot_borrow_the_next_paths_market_target(common_judgements: list[TrendJudgement]) -> None:
     bars, drawing = sample()
-    monkeypatch.setattr(lecture_trend, "_wave_reversals", _old_candidate)
     result = lecture_trend.reversal_trends(drawing, bars, n_target_trend_confirmation_enabled=True)
-    assert not any(point["index"] == 3 for path in result["strokes"] for point in path["points"])
+    assert len(common_judgements) == 1 and common_judgements[0].trend_level == 1
+    assert [point['index'] for point in common_judgements[0].points] == [3]
+    geometry = _points(result, 'strokes')
+    assert [point['index'] for point in geometry] == [3]
+    assert geometry[0]['available_at'] == '2024-01-11'
+    assert 'trend_confirmation' not in geometry[0]
+    # 证书只控制策略资格，不能把普通 HH+HL 已确认的 L3 从几何中删除。
+    # 拒绝断言移到真实公开资格视图，仍要求旧起点不能取得下一路径的达标许可。
+    assert _records(result['qualified_strokes']) == []
+    source = _records(_records(result['source_strokes'])[0]['points'])
+    assert [point['index'] for point in source] == [1, 2, 3, 5, 7, 9]
+    assert qualify_n_trend(source, source[2], 2, bars[:11], 10, up=True) is None
+    borrowed = qualify_n_trend(source, source[2], 2, bars, 12, up=True)
+    assert borrowed is not None and borrowed['confirmation_rule'] == N_TARGET_CONFIRMATION
+    assert borrowed['available_at'] == '2024-01-13'
+    assert _proof(borrowed, 'confirmed_by')['index'] == 12
+    assert borrowed['one_p_target'] == 10
+    disabled = lecture_trend.reversal_trends(drawing, bars, n_target_trend_confirmation_enabled=False)
+    assert _points(disabled, 'strokes') == geometry
+    tails = _records(result['developing_strokes'])
+    assert tails and all(path['source_path'] == 'old' for path in tails)
+    assert all(cast(int, point['index']) < 11 for path in tails for point in _records(path['points']))
 
 
-def test_a_target_before_the_break_keeps_its_tail_inside_the_original_path(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_target_before_the_break_keeps_its_tail_inside_the_original_path(common_judgements: list[TrendJudgement]) -> None:
     bars, drawing = sample()
     bars[10] = replace(bars[10], high=10.1)
     bars[12] = replace(bars[12], high=15)
-    monkeypatch.setattr(lecture_trend, "_wave_reversals", _old_candidate)
     result = lecture_trend.reversal_trends(drawing, bars, n_target_trend_confirmation_enabled=True)
-    origin = next(point for path in result["strokes"] for point in path["points"] if point["index"] == 3)
+    assert len(common_judgements) == 1 and [point['index'] for point in common_judgements[0].points] == [3]
+    geometry = _points(result, 'strokes')
+    assert [point['index'] for point in geometry] == [3]
+    assert geometry[0]['available_at'] == '2024-01-11'
+    assert 'trend_confirmation' not in geometry[0]
+    origin = next(point for point in _points(result, 'qualified_strokes') if point['index'] == 3)
     assert origin["available_at"] == "2024-01-11"
-    assert origin["trend_confirmation"]["confirmed_by"]["index"] == 10
-    assert result["developing_strokes"]
-    for path in result["developing_strokes"]:
-        assert all(point["index"] < 11 for point in path["points"])
+    proof = _proof(origin, 'trend_confirmation')
+    assert proof['confirmation_rule'] == N_TARGET_CONFIRMATION
+    assert proof['available_at'] == '2024-01-11'
+    assert _proof(proof, 'confirmed_by')['index'] == 10
+    assert _proof(proof, 'origin')['available_at'] == '2024-01-05'
+    assert _proof(proof, 'n_neckline')['index'] == 5
+    assert _proof(proof, 'n_pullback')['index'] == 7
+    assert _proof(proof, 'n_completion')['index'] == 9
+    assert proof['one_p_target'] == 10
+    # 后一路径的更大 H12=15 不得替换旧 N 于 index10（1月11日）取得的独立证明，也不得
+    # 延长显示尾部。N开关只增加 qualified_strokes，几何和原始尾部完全一致。
+    disabled = lecture_trend.reversal_trends(drawing, bars, n_target_trend_confirmation_enabled=False)
+    assert _points(disabled, 'strokes') == geometry
+    assert _records(disabled['qualified_strokes']) == []
+    tails = _records(result['developing_strokes'])
+    assert tails and tails == _records(disabled['developing_strokes'])
+    for path in tails:
+        assert path['source_path'] == 'old'
+        assert [point['index'] for point in _records(path['points'])] == [3, 9]
+        assert all(cast(int, point['index']) < 11 for point in _records(path['points']))
 
 
 @pytest.mark.parametrize("invalid", ("future", "unknown", "display"))
@@ -150,8 +214,8 @@ def test_higher_n_route_cannot_use_the_lower_levels_unpublished_abc(level: int) 
     lower = dict(strokes=[dict(id="same", points=[source[0]])], structure_strokes=[dict(id="same", points=source)])
     build = secondary_trends if level == 2 else tertiary_trends
     result = build(lower, bars, n_target_trend_confirmation_enabled=True)
-    assert not any(point["index"] == 1 for path in result["strokes"] for point in path["points"])
-    assert not any(point["index"] == 1 for path in result["developing_strokes"] for point in path["points"])
+    assert not any(point["index"] == 1 for point in _points(result, 'strokes'))
+    assert not any(point["index"] == 1 for point in _points(result, 'developing_strokes'))
 
 
 def test_an_origin_breach_endpoint_waits_for_its_public_source_peak() -> None:
