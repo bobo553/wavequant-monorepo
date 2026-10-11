@@ -11651,6 +11651,53 @@
                     "summary": "两个轻接口实际200（4.864/0.059秒），自动批次从ebcfe0bb变为a2228668，running/12股/完成0/失败0，原起点2018-01-01。确认新版本自动开始重算，尚未验收全部完成；没有手工重刷、终止队列或重启共享服务。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-322",
+            "name": "copy-current-pointer-candle-after-editor-focus",
+            "title": "修复残留焦点阻断当前K线快捷键复制",
+            "status": "done",
+            "dependencies": ["MONOREPO-316"],
+            "description": "按当前鼠标所在图表或提示卡片复制K线；外部编辑器无选区的残留焦点不阻断快捷键，复制卡片后鼠标回图表恢复当前日期，真实文本选择仍保持原生复制。",
+            "scope": "Web K线剪贴板范围判断、提示卡片与图表焦点转交、真实事件定向回归及验证记录。",
+            "acceptanceCriteria": [
+                "鼠标在当前K线/提示卡片时，Ctrl+C或Meta+C复制当前日期的完整信息，无需先点击画布，外部无选区输入焦点残留不阻断。",
+                "真实文字/输入选区、鼠标在编辑器及图内编辑器保留原生复制；无图表上下文、隐藏、加载、错误及切股不复制旧K线。",
+                "提示卡片复制按钮有焦点时无有效光标离开通知保留当前K线，鼠标回画布另一根K线后更新日期并转交焦点，快捷键复制新K线。",
+                "键盘/原生copy共用判断，既有异步剪贴板与失败回退不递归，不盗取外部编辑器焦点；定向回归、类型、lint、必要构建及复核通过。"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web exec node --test tests/candle-clipboard.test.mjs tests/candle-details.test.mjs tests/chart-tooltip.test.mjs tests/chart-keyboard-navigation.test.mjs",
+                    "status": "passed",
+                    "summary": "原有72项基线通过；新测试在旧binder 71项57通过/14失败、旧PriceChart 11项10通过/1失败，精确复现外部编辑器焦点残留阻断和复制卡片后日期卡住。最终增加实际chart-position滑块矩阵后4文件99项全部通过（2.204秒、零跳过）；覆盖搜索/date/range/select残留焦点、图表/外置卡片、原生copy完整字段、Ctrl/Meta、异步/重复/失败回退/选区/shadow/隐藏/重载及真实PriceChart两日期事件。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "最终Web类型、Next16.2.6 Turbopack生产构建通过；lint零错误、6条既有环境变量warning。既有ESLint/TypeScript配置不覆盖public JS及mjs，未称其被lint或TS验证；这些文件另以语法、定向事件回归和只读复核验证。"
+                },
+                {
+                    "command": "node --check apps/webs/wavequant-web/public/candle-clipboard.js; node --check apps/webs/wavequant-web/public/charts.js; node --check apps/webs/wavequant-web/tests/candle-clipboard.test.mjs; node --check apps/webs/wavequant-web/tests/chart-tooltip.test.mjs; targeted Prettier; git diff --check",
+                    "status": "passed",
+                    "summary": "两生产模块及两测试模块语法通过，修改文件格式和差异检查通过；详细中文原因/焦点边界/输入选区/兼容复制注释齐备，无新依赖或后端算法变更。"
+                },
+                {
+                    "command": "independent read-only review of clipboard intent, crosshair focus and regression assertions",
+                    "status": "passed",
+                    "summary": "三代理独立只读复核无未解决P1/P2；真实键盘target仍为旧编辑器，activeElement与composedPath都走同一意图判别。输入选区、原生textarea兼容copy、shadow及图内编辑器拒绝均保留，鼠标指向图表复制不强制编辑器失焦；聚焦卡片返回画布先转交焦点再更新当前bar。"
+                },
+                {
+                    "command": "node --max-old-space-size=128 scripts/harness/validate-state.mjs; codegraph sync; original feature preservation assertion",
+                    "status": "passed",
+                    "summary": "最终状态与进度后检查Harness/CodeGraph；318个main原功能对象和唯一活动256/root元数据逐字段保留，只新增322完成记录。"
+                },
+                {
+                    "command": "full Web unit suite and real browser/Playwright clipboard validation",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏未运行完整Web套件或启动浏览器/Playwright。99项为Node/JSDOM及真实PriceChart回调接线，不称浏览器系统剪贴板验收；搜索选股→悬停Ctrl+C、卡片复制后换日期待独立手工浏览器复核。"
+                }
+            ]
         }
     ]
 }

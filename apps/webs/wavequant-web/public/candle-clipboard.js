@@ -7,10 +7,29 @@ export function bindCandleClipboard(chart, { getCandle, isEnabled, copyText, cop
     const { container, tooltip } = chart;
     const doc = container.ownerDocument;
     const editable = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]';
-    const isEditable = (element) => Boolean(element?.closest?.(editable));
+    const regions = [container, tooltip];
+
+    const preservesEditorCopy = (element, pointerInChart) => {
+        const field = element?.closest?.(editable);
+        if (!field) return false;
+        // 搜索选股和日期/滑块操作不会移走输入焦点。光标已经回到 K 线且没有
+        // 输入选区时，残留焦点不应阻断复制；这里仅判断意图，不强制输入框失焦。
+        // 图内编辑、编辑器自身悬停、独立输入事件及 shadow 编辑器仍归原生复制。
+        if (
+            !pointerInChart ||
+            field.matches(":hover") ||
+            regions.some((region) => region.contains(field)) ||
+            (field !== doc.activeElement && !field.contains(doc.activeElement))
+        )
+            return true;
+        // input/textarea 的选区不一定出现在 document.getSelection() 中。
+        // execCommand 的临时 textarea 也依赖此保护，避免兼容复制重新接管自身。
+        return typeof field.selectionStart === "number" && field.selectionEnd > field.selectionStart;
+    };
 
     const candleForEvent = (event) => {
-        // 焦点停在输入框时，即使鼠标恰好悬停图表，也不能覆盖用户复制的输入内容。
+        const pointerInChart = regions.some((region) => region.matches(":hover"));
+        // 当前光标所在 K 线优先于图外无选区的旧焦点，真正的输入选区仍优先。
         // 文字选区优先于整根 K 线，卡片内单独选择字段仍走浏览器原生复制。
         if (
             event.defaultPrevented ||
@@ -19,16 +38,16 @@ export function bindCandleClipboard(chart, { getCandle, isEnabled, copyText, cop
             container.closest("[hidden], [inert]") ||
             !tooltip.isConnected ||
             tooltip.closest("[hidden], [inert]") ||
-            isEditable(doc.activeElement) ||
-            event.composedPath().some(isEditable) ||
+            preservesEditorCopy(doc.activeElement, pointerInChart) ||
+            event.composedPath().some((element) => preservesEditorCopy(element, pointerInChart)) ||
             doc.getSelection()?.toString()
         )
             return null;
 
-        const ownsFocusOrTarget = [container, tooltip].some(
+        const ownsFocusOrTarget = regions.some(
             (region) => region.contains(doc.activeElement) || region.contains(event.target),
         );
-        if (!ownsFocusOrTarget && !container.matches(":hover") && !tooltip.matches(":hover")) return null;
+        if (!ownsFocusOrTarget && !pointerInChart) return null;
         return getCandle();
     };
 

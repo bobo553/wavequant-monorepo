@@ -102,6 +102,31 @@ function assertUntouched(h, event) {
     assert.deepEqual(h.nativeWrites, []);
 }
 
+const externalControls = [
+    ["stock search", '<input id="stock-search" type="search" value="襄阳轴承">'],
+    ["date", '<input id="asof" type="date" value="2026-10-10">'],
+    ["chart position", '<input id="chart-position" type="range" min="0" max="100" value="20">'],
+    ["select", '<select id="symbol-select"><option>sz.000678</option></select>'],
+];
+
+function focusedExternalControl(h, markup) {
+    const holder = h.document.createElement("div");
+    holder.innerHTML = markup;
+    h.document.body.append(holder);
+    const control = holder.firstElementChild;
+    control.focus();
+    if (typeof control.selectionStart === "number")
+        control.setSelectionRange(control.value.length, control.value.length);
+    assert.equal(h.document.activeElement, control);
+    assert.equal(h.window.getSelection().toString(), "");
+    return control;
+}
+
+function hovered(element) {
+    const matches = element.matches.bind(element);
+    element.matches = (selector) => (selector === ":hover" ? true : matches(selector));
+}
+
 for (const init of [
     { key: "c", ctrlKey: true },
     { key: "C", ctrlKey: true },
@@ -248,19 +273,83 @@ for (const [name, markup] of [
         holder.innerHTML = markup;
         h.document.body.append(holder);
         const target = holder.querySelector("span") ?? holder.firstElementChild;
+        hovered(holder.firstElementChild);
         assertUntouched(h, h.key(target));
         assertUntouched(h, h.copy(target));
     });
 }
 
-test("an editable active element wins even when a chart event and chart hover supply context", (t) => {
+for (const [name, markup] of externalControls) {
+    for (const region of ["containerHovered", "tooltipHovered"]) {
+        test(`${name} residual focus without a selection permits keyboard and native candle copying during ${region}`, (t) => {
+            const h = harness(t);
+            const control = focusedExternalControl(h, markup);
+            h[region] = true;
+            // 键盘事件仍派发给残留焦点的输入控件；真正鼠标范围才决定当前 K 线。
+            assert.equal(h.key(control).defaultPrevented, true);
+            assert.deepEqual(h.copied, [bar]);
+            assert.equal(h.copy(control).defaultPrevented, true);
+            assert.deepEqual(h.nativeWrites, [["text/plain", `snapshot:${bar.time}:${bar.close}`]]);
+            assert.deepEqual(h.feedback, [bar]);
+            assert.equal(h.document.activeElement, control);
+        });
+    }
+    test(`${name} residual focus without actual chart hover keeps native copying even for a chart target`, (t) => {
+        const h = harness(t);
+        const control = focusedExternalControl(h, markup);
+        assertUntouched(h, h.key(control));
+        assertUntouched(h, h.copy(control));
+        assertUntouched(h, h.key(h.canvas));
+        assertUntouched(h, h.copy(h.canvas));
+    });
+}
+
+for (const [name, markup] of [
+    ["input", '<input value="selected text">'],
+    ["textarea", "<textarea>selected text</textarea>"],
+]) {
+    test(`${name} input selection retains native copying while the chart is hovered`, (t) => {
+        const h = harness(t);
+        const control = focusedExternalControl(h, markup);
+        control.setSelectionRange(0, control.value.length);
+        h.containerHovered = true;
+        assert.equal(h.window.getSelection().toString(), "");
+        assert.equal(control.selectionEnd - control.selectionStart, control.value.length);
+        assertUntouched(h, h.key(control));
+        assertUntouched(h, h.copy(control));
+        assertUntouched(h, h.key(h.canvas));
+        assertUntouched(h, h.copy(h.canvas));
+        assert.equal(control.selectionEnd - control.selectionStart, control.value.length);
+    });
+}
+
+for (const region of ["container", "tooltip"]) {
+    test(`an editable control inside the ${region} keeps native copying without an input selection`, (t) => {
+        const h = harness(t);
+        const input = h.document.createElement("input");
+        input.value = "unselected text";
+        h[region].append(input);
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+        h.containerHovered = true;
+        assertUntouched(h, h.key(input));
+        assertUntouched(h, h.copy(input));
+        assertUntouched(h, h.key(h.canvas));
+        assertUntouched(h, h.copy(h.canvas));
+    });
+}
+
+test("a contenteditable text selection takes precedence over actual chart hover", (t) => {
     const h = harness(t);
-    h.containerHovered = true;
-    const input = h.document.createElement("input");
-    h.document.body.append(input);
-    input.focus();
-    assertUntouched(h, h.key());
-    assertUntouched(h, h.copy());
+    const editor = focusedExternalControl(h, '<div contenteditable="true" tabindex="0">selected text</div>');
+    const range = h.document.createRange();
+    range.selectNodeContents(editor);
+    h.window.getSelection().removeAllRanges();
+    h.window.getSelection().addRange(range);
+    h.tooltipHovered = true;
+    assert.equal(h.window.getSelection().toString(), "selected text");
+    assertUntouched(h, h.key(editor));
+    assertUntouched(h, h.copy(editor));
 });
 
 test("an editable field in a shadow root is recognized through the composed event path", (t) => {
@@ -442,6 +531,56 @@ test("application keyboard wiring writes the visible candle through the existing
     assert.deepEqual(h.nativeWrites, []);
 });
 
+for (const [name, markup] of externalControls) {
+    for (const region of ["containerHovered", "tooltipHovered"]) {
+        test(`application wiring copies the visible candle with ${name} residual focus during ${region}`, async (t) => {
+            const h = harness(t, { bind: false });
+            installApplicationCopy(h);
+            const control = focusedExternalControl(h, markup);
+            h[region] = true;
+            assert.equal(h.key(control).defaultPrevented, true);
+            await setImmediate();
+            const expected = candleCopyText(bar, "测试股票（sh.600000）", 10);
+            assert.deepEqual(h.asyncWrites, [expected]);
+            assert.equal(h.topButton.textContent, "已复制");
+            assert.equal(h.topButton.dataset.copyState, "success");
+            assert.equal(h.document.getElementById("candle-copy-feedback").textContent, "已复制 2026-10-10 K 线数据");
+            assert.deepEqual(h.nativeWrites, []);
+            assert.equal(h.copy(control).defaultPrevented, true);
+            assert.deepEqual(h.nativeWrites, [["text/plain", expected]]);
+            assert.deepEqual(h.asyncWrites, [expected]);
+            assert.equal(h.document.activeElement, control);
+        });
+    }
+}
+
+test("application copying with stock-search residual focus awaits the asynchronous write and consumes repeats", async (t) => {
+    const h = harness(t, { bind: false });
+    let finish;
+    const pending = new Promise((resolve) => {
+        finish = resolve;
+    });
+    installApplicationCopy(h, {
+        writeText: async (text) => {
+            h.asyncWrites.push(text);
+            await pending;
+        },
+    });
+    const control = focusedExternalControl(h, externalControls[0][1]);
+    h.containerHovered = true;
+    assert.equal(h.key(control).defaultPrevented, true);
+    assert.equal(h.key(control, { repeat: true }).defaultPrevented, true);
+    assert.deepEqual(h.asyncWrites, [candleCopyText(bar, "测试股票（sh.600000）", 10)]);
+    assert.equal(h.topButton.textContent, "复制 K 线");
+    assert.equal(h.topButton.dataset.copyState, undefined);
+    finish();
+    await setImmediate();
+    assert.equal(h.asyncWrites.length, 1);
+    assert.equal(h.topButton.dataset.copyState, "success");
+    assert.equal(h.document.getElementById("candle-copy-feedback").textContent, "已复制 2026-10-10 K 线数据");
+    assert.deepEqual(h.nativeWrites, []);
+});
+
 test("application native copying formats synchronously without invoking the asynchronous clipboard API", (t) => {
     const h = harness(t, { bind: false });
     installApplicationCopy(h);
@@ -507,7 +646,7 @@ for (const [name, arrange] of [
 test("the application fallback focuses and selects its textarea without reentering candle-copy capture", async (t) => {
     const h = harness(t, { bind: false });
     h.containerHovered = true;
-    h.container.focus();
+    const control = focusedExternalControl(h, externalControls[0][1]);
     const fallbackValues = [];
     h.document.execCommand = (command) => {
         assert.equal(command, "copy");
@@ -517,6 +656,7 @@ test("the application fallback focuses and selects its textarea without reenteri
         assert.equal(field.selectionEnd, field.value.length);
         fallbackValues.push(field.value);
         assert.equal(h.copy(field).defaultPrevented, false);
+        assert.equal(h.copy(h.document).defaultPrevented, false);
         return true;
     };
     installApplicationCopy(h, {
@@ -524,7 +664,7 @@ test("the application fallback focuses and selects its textarea without reenteri
             throw new Error("permission denied");
         },
     });
-    assert.equal(h.key().defaultPrevented, true);
+    assert.equal(h.key(control).defaultPrevented, true);
     await setImmediate();
     assert.equal(fallbackValues.length, 1);
     assert.match(fallbackValues[0], /日期：2026-10-10/);
