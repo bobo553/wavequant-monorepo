@@ -1,4 +1,4 @@
-MONOREPO-319（2026-10-11）：普通dev与restart默认关闭全部后台信号扫描，保留网页/API及MySQL/Redis；显式--signals=akshare默认一个分片，tdx只开TDX，all才同时开启。重启入口提供-Signals/-StructureWorkers，保留两层守护，不全局结束Python。7项定向启动规则、JS语法、PowerShell AST、相关Prettier及差异检查通过，独立只读复核无阻塞问题。只改开发启动工具，不改算法/UI/数据库记录；完整Web套件、生产构建及浏览器/Playwright待独立验证。已有315个功能对象与原activeFeature保持；本地提交合并，不推送。扫描关闭期间保留旧快照但不自动刷新。
+MONOREPO-319（2026-10-11）：普通dev与restart默认关闭全部后台信号扫描，保留网页/API及MySQL/Redis；显式--signals=akshare默认一个分片，tdx只开TDX，all才同时开启。重启入口提供-Signals/-StructureWorkers，保留两层守护，不全局结束Python。11项定向启动/守护回归、JS语法、PowerShell AST、相关Prettier、Harness及差异检查通过，独立只读复核无阻塞问题。6b3b540经4dd4d7a本地no-ff合并后，验证受管根再以off重启；三处Web/API HTTP均200，MySQL/Redis持续healthy，间隔10秒两次扫描进程均0。内存诊断峰值98.9%降至70.9%，可用4.63GiB；后续CPU38-40%，其他后台负载仍在，不宣称全部消除。只改开发启动工具，不改算法/UI/数据库记录；完整Web套件、生产构建及浏览器/Playwright待独立验证。已有315个功能对象与原activeFeature保持；本地提交合并，不推送。扫描关闭期间保留旧快照但不自动刷新。
 
 MONOREPO-316（2026-10-10）：修复Ctrl+C复制K线信息。显式键盘入口与原生copy共用图表/外置卡片范围，复用按钮异步剪贴板及兼容写入；保留输入框和选中文字的原生复制。焦点留在复制按钮时移出卡片继续可复制，真正失焦后清理；加载、错误、TradingView与卡片日期错位不复制旧棒。旧handler事件复现两项均0次写入，修复后72项定向Node（含真实PriceChart事件）通过；类型、最终Next16.2.6 Turbopack构建、lint零错6旧warning、格式/语法/Harness通过，独立复核无P1/P2。完整Web与浏览器/Playwright待独立验证，保留main既有状态记录，不推送。
 

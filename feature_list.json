@@ -25,6 +25,11 @@
                     "summary": "11项定向启动/守护回归通过，默认关闭、单来源低并发、显式分片、非法输入和受管子进程停止覆盖；JS语法、PowerShell AST、相关格式、Harness及差异检查通过。独立只读复核无阻塞问题。"
                 },
                 {
+                    "command": "main: scripts/restart-wavequant.ps1 -Signals off -StructureWorkers 1 -NoBrowser; HTTP GET Web3003/API8765 catalog; two process samples 10 seconds apart",
+                    "status": "passed",
+                    "summary": "6b3b540经4dd4d7a本地no-ff合并，验证受管根PID28056后切换轻量模式。日志0 TDX+0 AkShare，11:11:04/11:11:15两次扫描进程均0，无守护复活。Web首页、3003代理catalog、8765 API catalog均200，API包装/实际进程保留，MySQL/Redis持续healthy。内存从诊断峰值98.9%降至70.9%，可用4.63GiB；该后续采样CPU38-40%，不宣称其他后台负载已消除。不启动浏览器、不删除数据。"
+                },
+                {
                     "command": "完整Web单测、完整生产构建和浏览器/Playwright",
                     "status": "not-run",
                     "summary": "仅修改开发启动工具，不改UI、API计算或产物；按用户规则运行定向检查，完整验证留待独立时段。未启动浏览器或执行扫描。"
