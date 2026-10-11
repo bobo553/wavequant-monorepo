@@ -4,6 +4,39 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-319",
+            "name": "on-demand-development-signal-scanners",
+            "title": "开发后台扫描默认关闭并按需低并发启动",
+            "status": "done",
+            "dependencies": [],
+            "description": "日常开发保留网页/API及数据库，关闭默认TDX和AkShare扫描；显式选择来源后才启用扫描，AkShare默认一个分片。",
+            "scope": "Web开发启动器、信号进程计划、PowerShell重启入口、定向测试与操作说明；不改计算算法、行情或数据库记录。",
+            "acceptanceCriteria": [
+                "普通dev和restart默认off，同时不启动TDX和AkShare，但保留网页/API与基础设施。",
+                "显式akshare只启动该来源且默认一个分片；tdx只启动TDX；all才同时开启两种来源。",
+                "非法模式和AkShare并发输入在创建子进程前拒绝，显式关闭分片仍生效。",
+                "重启脚本提供Signals和StructureWorkers参数，不使用全局Python终止，不停止数据库。",
+                "说明扫描关闭时快照不自动刷新、切换模式会短暂重启网页/API。"
+            ],
+            "verification": [
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/dev-infrastructure.test.mjs apps/servers/wavequant-api/tests/python-dev-restart.test.mjs; node --check dev.mjs/dev-infrastructure.mjs; PowerShell Parser.ParseFile; targeted Prettier; node scripts/harness/validate-state.mjs; git diff --check",
+                    "status": "passed",
+                    "summary": "11项定向启动/守护回归通过，默认关闭、单来源低并发、显式分片、非法输入和受管子进程停止覆盖；JS语法、PowerShell AST、相关格式、Harness及差异检查通过。独立只读复核无阻塞问题。"
+                },
+                {
+                    "command": "main: scripts/restart-wavequant.ps1 -Signals off -StructureWorkers 1 -NoBrowser; HTTP GET Web3003/API8765 catalog; two process samples 10 seconds apart",
+                    "status": "passed",
+                    "summary": "6b3b540经4dd4d7a本地no-ff合并，验证受管根PID28056后切换轻量模式。日志0 TDX+0 AkShare，11:11:04/11:11:15两次扫描进程均0，无守护复活。Web首页、3003代理catalog、8765 API catalog均200，API包装/实际进程保留，MySQL/Redis持续healthy。内存从诊断峰值98.9%降至70.9%，可用4.63GiB；该后续采样CPU38-40%，不宣称其他后台负载已消除。不启动浏览器、不删除数据。"
+                },
+                {
+                    "command": "完整Web单测、完整生产构建和浏览器/Playwright",
+                    "status": "not-run",
+                    "summary": "仅修改开发启动工具，不改UI、API计算或产物；按用户规则运行定向检查，完整验证留待独立时段。未启动浏览器或执行扫描。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-316",
             "name": "restore-candle-copy-shortcut",
             "title": "修复K线信息快捷键复制",
@@ -11460,6 +11493,59 @@
                     "command": "合并main后 urllib GET 9200/3003 /api/market-timeframe?source=akshare&symbol=sz.000678&asof=1997-10-31&timeframe=1d；9200同接口asof=1997-09-05",
                     "status": "passed",
                     "summary": "代码d420e81经c559e2c本地no-ff合并。API自动重载，真实196日线HTTP200/5.52秒；algorithm ef3e91f0f84e→8e647e4dd80d，行情data_version不变。4/4 H19.20、4/11 L17.48等目标坐标和8/19 L10.45于8/26翻多验证通过；9/5实际前缀HTTP200/3.88秒，发展线8/19→9/4 H12.30已出现，完整前缀中该高点9/11普通反向确认独立。Web3003代理200且新引擎及快照一致。仅只读HTTP，无浏览器、完整账户重刷或完整历史加载性能验收。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-320",
+            "name": "trend-prefix-confirmation-parsing",
+            "title": "复用趋势资格静态解析降低长历史开销",
+            "status": "done",
+            "dependencies": ["MONOREPO-318"],
+            "description": "同一路径发布只解析一次源高低点静态值，按每个真实行情前缀重建可知状态，减少完整历史图表重复解析。",
+            "scope": "Core确认上下文、策略资格发布器、因果差分回归和完整TDX只读几何/自选刷新证据。",
+            "acceptanceCriteria": [
+                "完整折线→全部一级→全部二级→全部三级公式、几何、严格升级及策略资格结果保持。",
+                "复用仅限同一次发布相同source/bars/N身份；每个cutoff仍过滤未来点、重判source顺序并独立构建N上下文。",
+                "整数与日期时钟、重复交易日、迟知/无效来源、空行情及错误身份有与旧完整解析一致的定向回归。",
+                "真实512棒完整载荷逐字段差分一致，解析调用数减少；完整6805棒三级几何与资格按实际验证范围记录。",
+                "相关类型、定向回归、构建及复核通过；实际自选股新版本刷新状态与完整历史加载限制作真实记录。"
+            ],
+            "verification": [
+                {
+                    "command": "python -m pytest packages/wavequant-core/tests/test_confirmation_context_prefix_reuse.py packages/wavequant-core/tests/test_global_trend_confirmation.py packages/wavequant-core/tests/test_trend_confirmation_boundaries.py packages/wavequant-core/tests/test_trend_down_upgrade_publication.py packages/wavequant-core/tests/test_trend_qualification_ledger.py packages/wavequant-core/tests/test_trend_confirmation_entry_refresh.py packages/wavequant-core/tests/test_n_trend_source_license.py packages/wavequant-core/tests/test_n_trend_path_boundaries.py packages/wavequant-core/tests/test_staged_trend_pipeline.py packages/wavequant-core/tests/test_xiangyang_1997_trend_segments.py packages/wavequant-core/tests/test_active_wave_endpoint.py -q",
+                    "status": "passed",
+                    "summary": "最终11文件342项及4子测试通过（31.44秒），不排除旧真实用例。新增94项逐前缀对照冷解析/复用/直接资格，覆盖整数/日期/混合时钟、高低镜像、重复交易日、未来无效来源、失序及独立N。初次2项N路径和4项真实整波失败在HEAD原生产模块逐项重放相同；迁移至独立qualified_strokes及真实7/29物理路径断点，并核对实际四点定义证据、局部/整波许可、下降/后续上涨独立日期及峰的来源知日。未删拒绝门禁或改生产初始化。"
+                },
+                {
+                    "command": "python .codex-runtime/benchmark-trend-prefix-319.py before 512; python .codex-runtime/benchmark-trend-prefix-319.py after 512; profile-trend-continue.py before/after",
+                    "status": "passed",
+                    "summary": "相同512根本地TDX、默认N关闭、无行情/策略缓存的三次对照，完整三级JSON逐字段一致（SHA256 49adc480a396dcd81712364d94f45a9562549f3cc40b5c65d24010a0820842d4）。墙钟中位1.1562492→0.5141598秒（约55.5%下降），CPU中位1.125→0.515625秒；trend_confirmation._reference静态解析48648→826次。单次profile受共享CPU影响，不据其墙钟推断完整回测性能；诊断文件319为本轮初始编号，不覆盖并行main319。"
+                },
+                {
+                    "command": "isolated local TDX full6805 pure-geometry and qualified-hierarchy verification scripts",
+                    "status": "passed",
+                    "summary": "raw sz.000678行情1997-01-06至2026-09-07共6805棒；纯几何6.864秒零违规，最终含资格冷图16.2136秒/CPU16.1094秒。三级1835/1118/836点、13/12/9路径及每点知日与纯基线逐一一致；3327资格点/6314独立证书/22787来源引用均不借未来或下一路径。两段1997连续子链保留。初次诊断脚本sourceLevel0别名映射错误导致假异常，修正助手后复验，不修改生产规则；未执行逐日策略或账户/分钟模拟。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core typecheck; python -m mypy --config-file pyproject.toml --strict --follow-imports=silent trend_confirmation.py trend_publication.py test_confirmation_context_prefix_reuse.py test_n_trend_path_boundaries.py; mypy test_active_wave_endpoint.py; pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "Core既定4文件strict、2生产及2测试strict通过，最终真实整波测试单文件标准mypy通过；既有13处object边界用只读guards收窄，不改旧样例或旧断言。最终sdist和wheel构建成功，两修改生产模块与包内字节完全一致；未运行Python格式化或lint。"
+                },
+                {
+                    "command": "read-only HTTP GET 3003 /api/backtest-jobs and /api/watchlists; pre-optimization /api/market-timeframe full-history GET (20-second deadline)",
+                    "status": "passed",
+                    "summary": "优化前实际两个轻接口200，自选12股，参数start=2018-01-01，000678当时已有2026-10-09有效结果，601086处于65%模拟成交预处理。11:21再次只读HTTP：jobs0.297秒/watchlists0.233秒均200，完成1/运行1/失败0/其余10待完成；601086已608.7秒，版本551b3a06与队列一致，两接口没有engine字段。完整历史GET在20秒期限内未完成，明确保留加载限制；源码核对该阶段会重复构建逐日趋势历史，不据此推断分钟网络错误。并行任务已合并后台扫描轻量模式，合并后新引擎接口另记。"
+                },
+                {
+                    "command": "node --max-old-space-size=128 node_modules/prettier/bin/prettier.cjs --check feature_list.json packages/wavequant-core/progress.md packages/wavequant-core/docs/trend_primitives_contract.md; node scripts/harness/validate-state.mjs; codegraph sync; git diff --check; verify-320-package-state.py; independent read-only review",
+                    "status": "passed",
+                    "summary": "相关格式、Harness、CodeGraph与差异检查通过，全部316个最新main功能对象和根元数据逐字段保留，只新增320；并行319及活动256原失败记录不改。最终两个生产模块及94/16回归、合同独立复核无P1/P2；一处索引/日期注释歧义已修正。真实测试无跨路径许可借用，包内两源码字节逐一核对通过。"
+                },
+                {
+                    "command": "完整Core/Web单测、浏览器/Playwright、完整自选股账户与真实分钟集成",
+                    "status": "not-run",
+                    "summary": "遵循用户验证节奏待独立验证；未触发全自选刷新或终止运行中任务。固定512/6805棒的纯计算证据不代表网络、账户模拟、逐日策略历史或全队列已刷新；重复逐日历史开销本轮未消除。"
                 }
             ]
         }
