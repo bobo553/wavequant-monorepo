@@ -11634,6 +11634,21 @@
                     "command": "full Core/Web suites, browser/Playwright, complete watchlist backtests and external minute data",
                     "status": "not-run",
                     "summary": "待独立验证；按用户开发验证节奏不运行浏览器/完整Web套件。本轮局部回归和固定图审计不代表完整账户或全行情加载验收。"
+                },
+                {
+                    "command": "git commit; git merge main; git merge --no-ff feat-三级趋势统一; git merge --ff-only main",
+                    "status": "passed",
+                    "summary": "实现提交c3d9768经449a62e本地no-ff合并main，同会话分支同步同树、两个检出干净；未推送。后续只提交运行验收记录，不改生产。"
+                },
+                {
+                    "command": "GET http://127.0.0.1:3003/api/market-timeframe?source=akshare&symbol=sz.000678&asof=1997-10-31&timeframe=1d",
+                    "status": "passed",
+                    "summary": "合并后首次GET在既有source watcher自动重启API期间500，日志ECONNREFUSED 127.0.0.1:8765；服务恢复后实际196棒HTTP200/16.335秒，engine d9a0ac7bab24替换旧5d95677287c0，行情data_version不变。三层点23/3/0，全部几何owned/v116，所有上级来源已结束且知识日不早于结束日，3/10、4/28、8/19、9/4存在，4/28高点于5/15真正闭合。保存完整载荷验证，不把短前缀写成完整加载性能。"
+                },
+                {
+                    "command": "GET http://127.0.0.1:3003/api/backtest-jobs; GET http://127.0.0.1:3003/api/watchlists",
+                    "status": "passed",
+                    "summary": "两个轻接口实际200（4.864/0.059秒），自动批次从ebcfe0bb变为a2228668，running/12股/完成0/失败0，原起点2018-01-01。确认新版本自动开始重算，尚未验收全部完成；没有手工重刷、终止队列或重启共享服务。"
                 }
             ]
         }
