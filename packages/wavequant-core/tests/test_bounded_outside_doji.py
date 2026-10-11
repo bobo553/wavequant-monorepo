@@ -121,14 +121,20 @@ def test_outside_doji_does_not_treat_a_seed_as_a_confirmed_opposite_anchor(risin
 
 
 @pytest.mark.parametrize('rising', [False, True])
-def test_outside_doji_requires_a_strict_new_directional_extreme(rising: bool) -> None:
+@pytest.mark.parametrize('counter', [15.0, 16.0])
+def test_equal_outside_doji_keeps_the_original_endpoint_and_knowledge_clock(
+    rising: bool, counter: float,
+) -> None:
+    """2010-03-09 的等高十字星否证必断路旧断言；等值只保留来源，不确认反转。"""
     data = _bars([(12, 14, 10, 13), (14, 16, 12, 15), (13, 14, 11, 12),
-                  (13.5, 14, 11, 12), (12, 15, 11, 12)], rising=rising)
+                  (13.5, 14, 11, 12), (12, counter, 11, 12)], rising=rising)
     before = _draw(data[:4])
     assert _points(before)[-1]['index'] == 2
     drawing = _draw(data)
-    assert [issue['index'] for issue in _records(drawing['issues'])] == [4]
+    assert drawing['issues'] == []
     assert _points(drawing) == _points(before)
+    assert prepare_trend_lines(polyline_high_low_points(drawing), trend_level=1, symbol='TEST') == (
+        prepare_trend_lines(polyline_high_low_points(before), trend_level=1, symbol='TEST'))
 
 
 @pytest.fixture(scope='module')
@@ -283,11 +289,11 @@ def test_chart_history_cache_replays_bounded_doji_partial_and_appended_bars_like
         assert chart_entry_history(prefix, prefix_cache=cache) == chart_entry_history(prefix)
     key = cache['key']
     assert isinstance(key, tuple)
-    version = 'polyline_owned_completed_source_geometry_independent_permissions_v118'
+    version = 'polyline_owned_completed_source_geometry_independent_permissions_v119'
     assert version in key
     # 已改变折线来源语义的旧检查点必须被拒绝，不能借其较早断路历史。
     stale_cache: dict[str, object] = dict(cache, key=tuple(
-        version.removesuffix('v118')+'v117' if item == version else item for item in key
+        version.removesuffix('v119')+'v118' if item == version else item for item in key
     ), checkpoint=object())
     assert chart_entry_history(data, prefix_cache=stale_cache) == chart_entry_history(data)
     assert stale_cache['key'] == cache['key']

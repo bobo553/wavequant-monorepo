@@ -53,7 +53,7 @@ pnpm restart:wavequant -Signals off -NoBrowser
 
 手动启动时可用 `pnpm --filter wavequant-web dev --signals=akshare`、`--signals=tdx` 或 `--signals=all`（同时开启两种来源）；默认 `--signals=off`。AkShare 默认一个分片，显式 `WAVEQUANT_DEV_STRUCTURE_WORKERS=1..16` 可以调整并发，`false` 禁止 AkShare 分片；该变量不会单独启用扫描，也不会关闭显式选择的 TDX。启用的 Worker 异常退出后仍在 5 秒后重启；未启用的扫描不会被守护程序拉起。可设置 `WAVEQUANT_DEV_AUTO_INFRA=false` 禁止启动器管理 Compose。
 
-启动器会优先读取 `WAVEQUANT_RESULTS_ROOT` 与 `WAVEQUANT_TDX_ROOT`；当前迁移机器未设置变量时会回退到 `E:\WorkSpace\股票\results\operations_v1` 和 `D:\TDX`。研究页可从“数据 / 结果口径”选择 AkShare 或通达信，并通过图表标题区的单行 Tab 切换日、周、月、季、年 K 线；键盘方向键、Home、End 同样可切换。K 线与结构画线从服务器同一个版本化预计算 bundle 读取，最后一个未完成周期会明确提示。浏览器 IndexedDB 的 `market-timeframes` 表按来源、股票、请求日期和周期缓存最多 40 份 bundle，用 ETag 只同步变化的数据；短暂离线时可安全复用完整旧 bundle。封存样本与策略回测仍锁定日线，避免聚合行情改变成交语义。“符合买点”和“结构信号”继续只查询服务器预先发布到 SQL/Redis 的结果。
+启动器会优先读取 `WAVEQUANT_RESULTS_ROOT` 与 `WAVEQUANT_TDX_ROOT`；当前迁移机器未设置变量时会回退到 `E:\WorkSpace\股票\results\operations_v1` 和 `D:\TDX`。研究页可从“数据 / 结果口径”选择 AkShare 或通达信，并通过图表标题区的单行 Tab 切换日、周、月、季、年 K 线；键盘方向键、Home、End 同样可切换。K 线先显示最新有数据的年份，再倒序补齐历史并保留当前视窗，完整趋势在匹配行情版本后独立加载；最后一个未完成周期会明确提示。浏览器 IndexedDB 的 `market-timeframes` 表按来源、股票、请求日期和周期缓存最多 40 份 bundle，完整趋势每次必须通过服务器 `200` 或 ETag `304` 校验，以便行情不变时也能替换已更新的趋势规则。服务器不可用时保留已核验行情预览并提示重试。封存样本与策略回测仍锁定日线，避免聚合行情改变成交语义。“符合买点”和“结构信号”继续只查询服务器预先发布到 SQL/Redis 的结果。
 
 研究图表提供“本地研究图 / TradingView 画图”切换。前者保留本地行情、结构线、回测 B/S 与回放；后者按需嵌入 TradingView 官方 Advanced Real-Time Chart，开启完整绘图侧栏，并将 `sh.600519` / `sz.002396` 映射到 `SSE:600519` / `SZSE:002396`。嵌入图只使用 TradingView 的独立行情，不能读取 AkShare/通达信数据、因果复权或本地策略叠加；沪深市场在其 Widget 中为日终数据。切回本地图不会销毁嵌入图；切换本地股票后需点击“同步当前股票”，重载外部图表可能丢失未保存的画线。该功能需要浏览器能访问 `s3.tradingview.com`，失败时页面会提供重试和官网入口。若以后需让 TradingView 图直接消费本地数据，应取得官方 Advanced Charts 私有库授权并另接 Datafeed API，不应把公开 Widget 当作本地数据适配器。
 

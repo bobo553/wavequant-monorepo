@@ -326,6 +326,28 @@ describe("real research app annual loading events", () => {
         expect(element("price-chart")).toHaveAttribute("aria-busy", "false");
     });
 
+    it("keeps validated cached candles without installing unvalidated old rules on server failure", async () => {
+        const { marketTimeframeCacheKey, marketTimeframeStorage } = await import("../public/catalog-cache.js");
+        const cached = completeBundle();
+        vi.spyOn(marketTimeframeStorage, "get").mockResolvedValue({
+            key: marketTimeframeCacheKey("tdx", symbol, requestedAsOf, "1d"),
+            etag: '"v118"',
+            bundle: { ...cached, theory: { ...cached.theory, rule_version: "v118" } },
+        });
+        setupRequests(async (url) =>
+            url.pathname === "/api/market-timeframe"
+                ? json({ error: "当前趋势版本暂不可用" }, 503)
+                : json(annualPage(Number(url.searchParams.get("year") || 2026))),
+        );
+        await startApp();
+        await vi.waitFor(() => expect(element("stock-data-load-retry").hidden).toBe(false));
+        expect(chartState.chart!.data!.bars).toEqual(cached.view.bars);
+        expect(chartState.theory).not.toHaveBeenCalled();
+        expect(element("stock-data-load-message")).toHaveTextContent("完整趋势加载失败");
+        expect(element("error").hidden).toBe(true);
+        expect(element("price-chart")).toHaveAttribute("aria-busy", "false");
+    });
+
     it("a first-page timeout clears the in-progress status and exposes retry", async () => {
         const timeout = AbortSignal.timeout.bind(AbortSignal);
         vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) =>

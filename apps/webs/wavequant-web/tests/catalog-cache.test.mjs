@@ -265,21 +265,83 @@ test("full snapshot validates the displayed resolved cutoff, view version and pr
     }
 });
 
-test("timeframe snapshot falls back to IndexedDB during a server outage", async () => {
+test("timeframe snapshot rejects unvalidated cached geometry during a server outage", async () => {
     const storage = memoryStorage({
         key: marketTimeframeCacheKey("akshare", "sh.600519", "2026-09-07", "1w"),
         etag: '"snapshot"',
         bundle,
     });
-    const result = await loadMarketTimeframeSnapshot("akshare", "sh.600519", "2026-09-07", "1w", {
-        storage,
-        fetcher: async () => {
-            throw new TypeError("network failed");
-        },
-    });
+    await assert.rejects(
+        loadMarketTimeframeSnapshot("akshare", "sh.600519", "2026-09-07", "1w", {
+            storage,
+            fetcher: async () => {
+                throw new TypeError("network failed");
+            },
+        }),
+        /network failed/,
+    );
+    assert.deepEqual(storage.current().bundle, bundle);
+});
 
-    assert.equal(result.browser_cache, "offline");
-    assert.match(result.cache_warning, /浏览器缓存/);
+test("matching candles cannot authorize an old algorithm on server failure", async () => {
+    const cached = {
+        ...bundle,
+        view: {
+            ...bundle.view,
+            asof: bundle.resolved_asof,
+            data_version: bundle.data_version,
+            timeframe: bundle.timeframe,
+            price_basis: "raw_unadjusted",
+        },
+        theory: { rule_version: "v118", lecture_drawing: { teaching_paths: [] } },
+    };
+    for (const status of [500, 503]) {
+        const storage = memoryStorage({
+            key: marketTimeframeCacheKey(cached.source, cached.symbol, cached.requested_asof, cached.timeframe),
+            etag: '"old-v118"',
+            bundle: cached,
+        });
+        await assert.rejects(
+            loadMarketTimeframeSnapshot(cached.source, cached.symbol, cached.requested_asof, cached.timeframe, {
+                storage,
+                expectedDataVersion: cached.data_version,
+                expectedResolvedAsOf: cached.resolved_asof,
+                expectedPriceBasis: cached.view.price_basis,
+                fetcher: async () =>
+                    new Response(JSON.stringify({ error: "current algorithm unavailable" }), { status }),
+            }),
+            /current algorithm unavailable/,
+        );
+        assert.deepEqual(storage.current().bundle, cached);
+    }
+});
+
+test("a cached complete geometry does not bypass the server validation deadline", async () => {
+    const storage = memoryStorage({
+        key: marketTimeframeCacheKey(bundle.source, bundle.symbol, bundle.requested_asof, bundle.timeframe),
+        etag: '"old-v118"',
+        bundle,
+    });
+    await assert.rejects(
+        loadMarketTimeframeSnapshot(bundle.source, bundle.symbol, bundle.requested_asof, bundle.timeframe, {
+            storage,
+            timeoutMs: 10,
+            fetcher: (_url, { signal }) =>
+                new Promise((_, reject) => {
+                    const keeper = setTimeout(() => {}, 100);
+                    signal.addEventListener(
+                        "abort",
+                        () => {
+                            clearTimeout(keeper);
+                            reject(signal.reason);
+                        },
+                        { once: true },
+                    );
+                }),
+        }),
+        /完整趋势请求超时/,
+    );
+    assert.deepEqual(storage.current().bundle, bundle);
 });
 
 test("N target trend option defaults off and isolates its timeframe cache without truthy coercion", () => {

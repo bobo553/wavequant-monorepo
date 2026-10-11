@@ -3,9 +3,9 @@
 Contained and encompassing pairs follow the candle-colour teaching order, with
 same-direction legs collapsed. This order is not an observed intraday path.
 An inside doji with a known incoming direction uses only the opposite extreme.
-A bounded outside doji extends only the incoming extreme; genuinely undefined
-paths still delimit runs. Teaching evidence retains original vertices when a
-developing endpoint extends.
+A bounded outside doji extends only the incoming extreme, retaining the original
+point on equality; genuinely undefined paths still delimit runs. Teaching
+evidence retains original vertices when a developing endpoint extends.
 """
 from collections.abc import Mapping, Sequence
 from typing import cast
@@ -22,9 +22,9 @@ def _bounded_outside_doji(
 ) -> bool:
     """外包十字星仅在已确认对向边界内延伸现有未结束腿。
 
-    新的同向极值一定发生，但母线两个极值的先后仍未知。只有对向极值
-    未越过上一已确认对向点、同向极值严格推进时，才保留原路径的单侧
-    延伸；不画母线另一极值，也不把本次延伸当成反转确认。seed 没有
+    母线两个极值的先后仍未知。只有对向极值未越过上一已确认对向点、
+    同向极值不退回时，才保留原路径的单侧延伸；等值不移动原点及其
+    可知日。不画母线另一极值，也不把本次延伸当成反转确认。seed 没有
     反转证据，不能充当此边界；双向越界或缺少来向仍须保留真正断路。
     """
     if direction is None or len(points) < 2 or bar.open != bar.close:
@@ -37,8 +37,26 @@ def _bounded_outside_doji(
         return False
     sign = 1 if up else -1
     extreme, boundary = (bar.high, bar.low) if up else (bar.low, bar.high)
-    return (sign * (extreme - cast(float, endpoint['value'])) > 0
+    return (sign * (extreme - cast(float, endpoint['value'])) >= 0
             and sign * (boundary - cast(float, anchor['value'])) >= 0)
+
+
+def _prior_doji_touched_endpoint(
+    points: Sequence[Mapping[str, object]], child: Bar, direction: Direction | None,
+    epoch: int, child_index: int,
+) -> bool:
+    """活动路径的较早尾点可在前一十字星上等值触及，不能借用其他路径。
+
+    等值不改端点日期，因此仅比较前日 index 会丢失真实承接。只允许有
+    正式对向锚约束的 developing 尾点；锚与尾都必须属于当前 epoch，且
+    child 的对应极值精确等于尾点。不推断 child 另一极值的先后。
+    """
+    if not _bounded_outside_doji(points, child, direction):
+        return False
+    anchor, endpoint = points[-2:]
+    extreme = child.high if direction == Direction.UP else child.low
+    return (epoch <= cast(int, anchor['index']) <= cast(int, endpoint['index']) < child_index
+            and endpoint['value'] == extreme)
 
 
 def lecture_drawing(bars, *, on_step=None):
@@ -82,7 +100,8 @@ def lecture_drawing(bars, *, on_step=None):
                         mother_child_path(bars[i-1], bars[i], mother_index=i-1))
             if (outside and not teaching.vertices and bars[i-1].open == bars[i-1].close
                     and bars[i].open != bars[i].close and direction is not None
-                    and points and points[-1]['index'] == i-1):
+                    and points and (points[-1]['index'] == i-1
+                                    or _prior_doji_touched_endpoint(points, bars[i-1], direction, start, i-1))):
                 # The known child endpoint is enough to join the coloured mother;
                 # no order is inferred for the other extreme of the doji child.
                 endpoint = points[-1]
@@ -203,6 +222,7 @@ def lecture_drawing(bars, *, on_step=None):
             )
         sign = 1 if direction == Direction.UP else -1
         delta = sign * (next_point['value'] - candidate['value'])
+        # 等值十字星只保留来源连续性；不移动旧端点，也不刷新确认或完成时钟。
         if not reverse and delta > 0:
             # Extend the single unfinished extreme; never restart at the mother.
             next_point['edge_kind'] = candidate.get('edge_kind', 'ordinary')

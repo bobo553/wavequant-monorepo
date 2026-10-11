@@ -316,13 +316,7 @@ export async function loadMarketTimeframeSnapshot(
     } catch (error) {
         if (signal?.aborted) throw signal.reason;
         if (error.code === "MARKET_DATA_VERSION_CHANGED") throw error;
-        if (cached) {
-            return {
-                ...validateIdentity(validatedTimeframeBundle(cached.bundle)),
-                browser_cache: "offline",
-                cache_warning: "服务器周期快照校验失败，当前使用浏览器缓存",
-            };
-        }
+        // OHLC 版本不能证明缓存中的趋势规则仍是当前版本；失败时由年度预览保留行情。
         if (error.name === "TimeoutError") throw new Error("完整趋势请求超时；已加载的 K 线仍可查看");
         throw error;
     }
