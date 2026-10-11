@@ -11750,6 +11750,68 @@
                     "summary": "按用户开发验证节奏未运行完整Web或浏览器/Playwright。定向Node/JSDOM只证明应用事件、资格及文本I/O，不称trusted快捷键系统剪贴板真实浏览器验收；页面刷新后实际复制仍待手工复核。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-324",
+            "name": "complete-trend-wave-between-local-reversals",
+            "title": "修复1999区间公共趋势缺线",
+            "status": "planned",
+            "dependencies": ["MONOREPO-321"],
+            "description": "定位襄阳轴承1999年2月至4月一级趋势缺失，并修复所有级别共用趋势状态的普遍遗漏。",
+            "scope": "统一趋势判定、整波端点/来源身份、缓存版本及历史/镜像/因果回归。",
+            "acceptanceCriteria": [
+                "真实000678折线高低点依据严格两高两低定义形成一级趋势，不按股票或日期补线；保留合法中间反转。",
+                "一级折线→全部一级→全部二级→全部三级共用公共函数，完整结束来源及严格突破既有本级键升级保持，不重新引入无许可跨级重叠。",
+                "边界、镜像、不同级别及历史前缀回归复现旧缺陷，策略资格与几何仍分离，相关类型/构建及独立复核完成。",
+                "旧缓存隔离、实际服务目标区间核验和本地提交合并记录明确；完整账户和浏览器验证不得以局部样本冒充。"
+            ],
+            "verification": [
+                {
+                    "command": "isolated e5362ea production replay: polyline identity, phase identity, actual 598-bar 1999 fixture",
+                    "status": "passed",
+                    "summary": "新一级100项在旧代码60失败/40通过（48个篡改拒绝项因无法生成旧合法种子先失败），phase40项旧实现全失败；真实上市以来598棒10项旧实现5失败/5通过。修复未按股票或日期补线；一级来源不再误套二/三级单趋势段升格门禁，严格HHHL/LLLH公式保持。"
+                },
+                {
+                    "command": "pytest 19 directly affected files; targeted replay of the three real continuation parameters",
+                    "status": "passed",
+                    "summary": "最终公共判定/递归/升级/因果/N来源/完成身份/真实1999共19文件683通过、3个旧2025身份断言失败（15.62秒）；逐引用核实并补强四点、直接来源完成、前一日拒绝及开放端点递归排除后，原3参数全通过（4.38秒）。其余683项生产同树保持，通过结果不与重叠分组相加。40phase、100一级及38上级身份均绿；真实1999恢复2/4H→2/5L→3/15H→3/26L→4/5H，实际完成日3/3、3/5、3/18、4/1、4/9。4/13–14原折线断点隔离；新路径4/22L反转4/23、完成4/30，不能强连跨路径。"
+                },
+                {
+                    "command": "pytest staged pipeline, real 1997, chart confirmation history, cache/strategy integration targeted groups",
+                    "status": "passed",
+                    "summary": "集成组初次171通过/6失败及4子用例（38.41秒），6个旧时钟/身份断言逐个迁移实际四点和完成来源并全部定向复验通过（34.11秒）；追加普通非空40→9→1递归2项通过。四阶段顺序、epoch、warm/append/partial缓存和几何/晚资格双时钟保持；没有重复慢全组或运行完整Core/Web套件。"
+                },
+                {
+                    "command": "bounded complete calculate_trend_hierarchy snapshots: actual fixture 512 and 598 bars, proof-by-proof overlap audit",
+                    "status": "passed",
+                    "summary": "两快照各只计算一次，0.429/0.435秒，I/II/III点数83/9/1及95/9/1；I-II各1重叠，II-III及I-III均0，违规0。唯一重叠H1998-11-24=11.1→L12-21=8.3有真实已完成直接一级来源并严格破先前已知II低键9.35；不能用当日key或开放源。普通II/III仍必须真实内部下级反转，方向账本不递归；不外推API或全账户性能。"
+                },
+                {
+                    "command": "mypy --strict three common modules and three new test modules; related nine-file mypy; pnpm --filter @wavequant/core typecheck",
+                    "status": "passed",
+                    "summary": "公共3模块及新增3测试strict通过，3缓存/6修改测试定向9文件通过（既有未注解函数body范围提示保留），Core既定4严格基线通过。整波wave_origin冻结原起点，四点全量方向比较、本波范围极值比较分别守边界，不借旧phase极值拒绝新波，不以局部回调缩小本波。"
+                },
+                {
+                    "command": "python -m build --no-isolation; isolated wheel smoke and six changed production module byte comparisons",
+                    "status": "passed",
+                    "summary": "sdist/wheel构建通过；隔离wheel导入，6修改生产模块逐字节匹配，普通一级→二级→三级40/9/1非空递归、v117、开放来源排除通过。生成协议与几何/两种历史缓存均v117隔离旧结果，详细中文边界注释和合同同步。"
+                },
+                {
+                    "command": "independent reviews; targeted Prettier, Harness, CodeGraph sync and git diff --check",
+                    "status": "passed",
+                    "summary": "三代理分别复核一级门禁/phase验证、缓存合同及真实2025断言，未见未解决P1/P2。提交前格式/Harness/CodeGraph/差异检查及320个原功能对象、root元数据和唯一活动256逐字段保留验证。"
+                },
+                {
+                    "command": "bounded GET http://127.0.0.1:3003/api/market-timeframe?source=akshare&symbol=sz.000678&asof=1999-04-30&timeframe=1d before local merge",
+                    "status": "passed",
+                    "summary": "旧main实际HTTP200/9.792秒、556棒，引擎d9a0ac7bab24，目标一级仅2/4H与4/22L，直接复现中间缺线。行情版本2384f51e7dc8已保存供合并后对照；不重启、不手工刷缓存/队列。"
+                },
+                {
+                    "command": "post-merge live target interval, full Core/Web suites, browser/Playwright and whole account refresh",
+                    "status": "not-run",
+                    "summary": "合并后服务目标区间仍待实际只读核验；完整套件、浏览器/Playwright、全自选股及分钟回测待独立验证。局部样本或缓存版本更新不能写成整队刷新已完成。"
+                }
+            ]
         }
     ]
 }

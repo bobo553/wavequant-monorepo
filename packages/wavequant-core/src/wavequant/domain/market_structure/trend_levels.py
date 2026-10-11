@@ -20,7 +20,7 @@ WaveDirection: TypeAlias = Literal['up', 'down']
 
 __all__ = ['completed_source_points', 'trend_reversals']
 
-_WAVE_COMPLETION_POLICY = 'whole_wave_v116'
+_WAVE_COMPLETION_POLICY = 'whole_wave_v117'
 
 
 def _proof_order(reference: Mapping[str, object]) -> tuple[int, int]:
@@ -124,30 +124,57 @@ def _completed_source_point(raw: Mapping[str, object]) -> dict[str, object] | No
     expected = ('up', 'down') if raw.get('kind') == 'H' else ('down', 'up')
     if (before, after) != expected:
         raise ValueError('wave completion requires a genuine opposite-direction reversal')
+    definition = evidence.get('definition_evidence')
     identity_proof = evidence.get('lower_wave_identity_evidence')
+    wave_origin: Mapping[str, object] | None = None
     if identity_proof is not None:
         if not isinstance(identity_proof, Mapping) or identity_proof.get('available_at') != completed:
             raise ValueError('whole-wave identity requires its actual knowledge date')
-        identity_refs = [identity_proof.get(field) for field in ('origin', 'interior', 'endpoint')]
+        # 一级的直接来源是折线反转，严格两高两低已足以确认趋势；折线的一条
+        # 价格腿不是“已存在的下级趋势线”，不能为防二/三级重叠再要求虚构内点。
+        # 此证明只允许零级折线→一级，递归趋势来源仍必须有真实组合波拓扑。
+        polyline_identity = identity_proof.get('basis') == 'polyline_four_point_definition'
+        if polyline_identity and (type(raw.get('trend_level')) is not int or raw.get('trend_level') != 1
+                or type(raw.get('source_level')) is not int or raw.get('source_level') != 0 or definition is None):
+            raise ValueError('polyline identity requires first-level four-point definition evidence')
+        if identity_proof.get('basis') not in (None, 'polyline_four_point_definition'):
+            raise ValueError('unsupported whole-wave identity basis')
+        identity_fields = ('origin', 'endpoint') if polyline_identity else ('origin', 'interior', 'endpoint')
+        identity_refs = [identity_proof.get(field) for field in identity_fields]
         if not all(isinstance(ref, Mapping) for ref in identity_refs):
             raise ValueError('ordinary whole-wave identity requires real lower topology')
-        identity_origin, identity_interior, identity_endpoint = cast(list[Mapping[str, object]], identity_refs)
+        references = cast(list[Mapping[str, object]], identity_refs)
+        identity_origin, identity_endpoint = references[0], references[-1]
         if (_proof_order(identity_origin) != _proof_order(raw) or identity_origin.get('kind') != raw.get('kind')
                 or identity_origin.get('value') != raw.get('value') or identity_origin.get('time') != raw.get('time')
-                or not _proof_order(identity_origin) < _proof_order(identity_interior) < _proof_order(identity_endpoint)
+                or not _proof_order(identity_origin) < _proof_order(identity_endpoint)
+                or not polyline_identity and not (
+                    _proof_order(identity_origin) < _proof_order(references[1]) < _proof_order(identity_endpoint))
                 or identity_endpoint.get('kind') == identity_origin.get('kind')):
             raise ValueError('ordinary whole-wave identity requires a composite lower wave')
-        for ref in (identity_origin, identity_interior, identity_endpoint):
+        if 'wave_origin' in identity_proof:
+            phase_origin = identity_proof['wave_origin']
+            if not isinstance(phase_origin, Mapping):
+                raise ValueError('whole-wave origin requires a real source reference')
+            if (phase_origin.get('kind') == raw.get('kind')
+                    or not _proof_order(phase_origin) < _proof_order(raw)):
+                raise ValueError('whole-wave origin must precede its opposite-kind extreme')
+            wave_origin = phase_origin
+            references = [*references, wave_origin]
+        for ref in references:
             value = ref.get('value')
             if (ref.get('kind') not in ('H', 'L') or type(value) not in (int, float)
                     or not isfinite(cast(float, value)) or cast(float, value) <= 0):
                 raise ValueError('whole-wave identity requires finite positive lower prices')
             if _later_moment(_proof_known(ref), completed_clock) != completed_clock:
                 raise ValueError('whole-wave identity cannot borrow future lower knowledge')
+        if wave_origin is not None:
+            wave_sign = 1 if before == 'up' else -1
+            if wave_sign * (cast(float, identity_origin['value']) - cast(float, wave_origin['value'])) <= 0:
+                raise ValueError('whole-wave origin requires a real directional price leg')
         sign = 1 if after == 'up' else -1
         if sign * (cast(float, identity_endpoint.get('value', 0)) - cast(float, identity_origin.get('value', 0))) <= 0:
             raise ValueError('whole-wave identity requires a real opposite lower leg')
-    definition = evidence.get('definition_evidence')
     if definition is not None and identity_proof is None:
         raise ValueError('ordinary owned completion requires lower-wave identity evidence')
     upgrade = evidence.get('upgrade_evidence')
@@ -176,11 +203,20 @@ def _completed_source_point(raw: Mapping[str, object]) -> dict[str, object] | No
             prices[kind].append(float(price))
         if len(prices['H']) != 2 or len(prices['L']) != 2:
             raise ValueError('ordinary wave completion requires both source kinds')
+        # 两高两低决定反向定义，实际波起点决定“本波极值”的价格区间。
+        # 严格突破较小旧 key 后，比较基准里可以仍有上一波更高/更低的点；
+        # 不能把它归进新波而拒绝合法闭合。本波范围内的反例仍必须拒绝。
+        same_kind_prices = prices[cast(str, raw.get('kind'))]
+        if wave_origin is not None:
+            boundary = _proof_order(wave_origin)
+            same_kind_prices = [cast(float, ref['value']) for ref in refs
+                                if ref['kind'] == raw.get('kind') and _proof_order(ref) > boundary]
         endpoint_price = raw.get('value')
         if (not isinstance(endpoint_price, (int, float)) or isinstance(endpoint_price, bool)
                 or not isfinite(endpoint_price) or endpoint_price <= 0
-                or raw.get('kind') == 'H' and endpoint_price < max(prices['H'])
-                or raw.get('kind') == 'L' and endpoint_price > min(prices['L'])):
+                or not same_kind_prices
+                or raw.get('kind') == 'H' and endpoint_price < max(same_kind_prices)
+                or raw.get('kind') == 'L' and endpoint_price > min(same_kind_prices)):
             raise ValueError('ordinary completion must retain its true whole-wave extreme')
         trend = classify_trend_prices(prices['H'], prices['L'], trend_level=1)
         if trend != (StructuralTrend.BULL if after == 'up' else StructuralTrend.BEAR):

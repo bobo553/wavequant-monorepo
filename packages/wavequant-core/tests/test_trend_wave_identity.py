@@ -1,4 +1,4 @@
-"""方向反转不自动授予单下级波本级身份；共同状态保留组合波与严格升级。"""
+"""趋势段递归不自动授予单下级波上级身份；折线普通定义另有专项覆盖。"""
 
 from collections.abc import Mapping
 from copy import deepcopy
@@ -42,7 +42,7 @@ def _source(case: int, *, level: int, mirror: bool, real_dates: bool) -> list[di
             for position, (index, time, kind, value, known) in enumerate(REAL_CASES[case])]
 
 
-@pytest.mark.parametrize('level', (1, 2, 3))
+@pytest.mark.parametrize('level', (2, 3))
 @pytest.mark.parametrize('mirror', (False, True))
 @pytest.mark.parametrize('real_dates', (False, True))
 @pytest.mark.parametrize('case', (0, 1))
@@ -50,6 +50,8 @@ def test_a_single_lower_counter_wave_keeps_direction_facts_without_upper_identit
     level: int, mirror: bool, real_dates: bool, case: int,
 ) -> None:
     source = _source(case, level=level, mirror=mirror, real_dates=real_dates)
+    # 此处保护的是“已存在的下级趋势段”不能普通自升级。grade0 折线由四点
+    # 定义直接形成一级趋势，正确正例和同序列边界在 test_polyline_trend_identity。
     original = deepcopy(source)
     result = judge_trend(source, trend_level=level)
     assert result.points == ()
@@ -65,7 +67,7 @@ def test_a_single_lower_counter_wave_keeps_direction_facts_without_upper_identit
         assert judge_trend(source, trend_level=level, asof=cutoff) == judge_trend(source[:size], trend_level=level)
 
 
-@pytest.mark.parametrize('level', (1, 2, 3))
+@pytest.mark.parametrize('level', (2, 3))
 @pytest.mark.parametrize('mirror', (False, True))
 def test_a_later_composite_wave_acquires_identity_without_backdating_the_pending_fact(
     level: int, mirror: bool,
@@ -119,11 +121,13 @@ def test_one_completed_lower_wave_can_upgrade_a_real_old_upper_key_and_keep_its_
 
 @pytest.mark.parametrize('mutation', ('missing_identity', 'missing_marker_and_identity', 'missing_marker', 'future_interior', 'direct_child', 'invalid_price'))
 def test_owned_completion_requires_its_real_causal_composite_identity(mutation: str) -> None:
-    source = _source(0, level=1, mirror=False, real_dates=False)
+    # 组合拓扑是趋势段升格的身份门禁；用一级来源判定二级，避免把该门禁
+    # 错加到原始折线。所有未来 interior / 相邻 endpoint 等拒绝断言保持。
+    source = _source(0, level=2, mirror=False, real_dates=False)
     source += [dict(index=index, ordinal=0, time=str(index), kind='H' if index % 2 == 0 else 'L',
-                    value=value, available_at=index + 1, trend_level=0, state='confirmed')
+                    value=value, available_at=index + 1, trend_level=1, state='confirmed')
                for index, value in ((8, 13.0), (9, 11.0))]
-    point = mutable_points(judge_trend(source).points)[0]
+    point = mutable_points(judge_trend(source, trend_level=2).points)[0]
     completion = cast(dict[str, object], point['wave_completion_evidence'])
     identity = cast(dict[str, object], completion['lower_wave_identity_evidence'])
     if mutation in ('missing_identity', 'missing_marker_and_identity'):
@@ -139,7 +143,7 @@ def test_owned_completion_requires_its_real_causal_composite_identity(mutation: 
     else:
         identity['endpoint'] = deepcopy(identity['interior'])
     with pytest.raises(ValueError):
-        completed_source_points([point], source_level=1)
+        completed_source_points([point], source_level=2)
 
 
 @pytest.mark.parametrize('level', (1, 2, 3))

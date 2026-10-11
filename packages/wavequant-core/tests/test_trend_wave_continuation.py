@@ -15,6 +15,8 @@ from wavequant.domain.market_structure.secondary_trend import secondary_trends
 from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
 from wavequant.domain.market_structure.hierarchical_development import hierarchical_developing_path
 from wavequant.domain.market_structure.trend_confirmation import qualify_uptrend
+from wavequant.domain.market_structure.trend_judgement import judge_trend
+from wavequant.domain.market_structure.trend_levels import completed_source_points
 from wavequant.domain.market_structure.trend_publication import trend_wave_identity
 from wavequant.domain.models.model import Bar
 
@@ -166,23 +168,115 @@ def test_the_real_whole_active_wave_keeps_its_identity_after_an_independent_comp
     key, trigger = _mapping(proof['broken_key']), _mapping(proof['confirmed_by'])
     # 旧8.03只是局部方向事实。III真正拥有的旧整波高点为9.77；II的
     # 12月H8.17没有破该key，不能把它的单段上涨许可冒作III许可。
-    assert (key['time'], key['value'], key['available_at']) == ('2023-07-04', 9.77, '2024-06-26')
+    assert (key['time'], key['value'], key['available_at']) == ('2023-07-04', 9.77, '2024-03-29')
     assert (trigger['time'], trigger['value']) == ('2025-03-07', 10.11)
     assert cast(str, key['available_at']) < cast(str, trigger['time']) <= cast(str, proof['available_at']) <= cutoff
     assert cast(float, trigger['value']) > cast(float, key['value'])
-    assert any(all(point[field] == key[field] for field in ('index', 'ordinal', 'kind', 'value', 'available_at'))
-               for point in _records(qualified['points']))
+    owned_key = next(point for point in _records(qualified['points'])
+                     if all(point[field] == key[field] for field in ('index', 'ordinal', 'kind', 'value', 'available_at')))
+    assert (owned_key['wave_identity_state'], owned_key['wave_completed_at']) == ('owned', '2024-03-29')
+    key_completion = _mapping(owned_key['wave_completion_evidence'])
+    assert (key_completion['available_at'], key_completion['wave_direction_before'],
+            key_completion['wave_direction_after']) == ('2024-03-29', 'up', 'down')
+    # 新一级折线身份规则使实际II来源在3/29补齐LL/LH。III已有真实内部
+    # 下级反转的组合波，故当日即闭合；6/26是另一份较晚strict证明，不能
+    # 覆盖这份最早结束知识，更不能把2023年的几何日期当作闭合日期。
+    key_refs = _records(key_completion['definition_evidence'])
+    assert [(point['kind'], point['time'], point['value'], point['available_at']) for point in key_refs] == [
+        ('H', '2023-07-04', 9.77, '2023-08-02'),
+        ('H', '2024-01-18', 7.5, '2024-03-01'),
+        ('L', '2023-10-23', 5.81, '2023-12-14'),
+        ('L', '2024-02-08', 3.78, '2024-03-29'),
+    ]
+    assert cast(float, key_refs[1]['value']) < cast(float, key_refs[0]['value'])
+    assert cast(float, key_refs[3]['value']) < cast(float, key_refs[2]['value'])
+    for reference in key_refs:
+        actual_source = next(point for point in source_points
+                             if all(point[field] == reference[field]
+                                    for field in ('index', 'ordinal', 'kind', 'value', 'time', 'available_at')))
+        assert actual_source['wave_identity_state'] == 'owned'
+        assert actual_source['wave_completed_at'] == reference['available_at']
+    key_identity = _mapping(key_completion['lower_wave_identity_evidence'])
+    assert [(_mapping(key_identity[field])['time'], _mapping(key_identity[field])['value'])
+            for field in ('origin', 'interior', 'endpoint')] == [
+        ('2023-07-04', 9.77), ('2023-10-23', 5.81), ('2024-02-08', 3.78),
+    ]
+    assert key_identity['available_at'] == key_completion['available_at']
+    before_key = judge_trend(source_points, trend_level=3, asof='2024-03-28')
+    assert not any(point['time'] == '2023-07-04' for point in before_key.points)
+    first_key = judge_trend(source_points, trend_level=3, asof='2024-03-29')
+    assert next(point for point in first_key.points if point['time'] == '2023-07-04')['wave_completed_at'] == '2024-03-29'
     assert cast(str, _records(tail['points'])[-1]['time']) <= cutoff
     wave_id = identity(proof, path=path)
     assert wave_id is not None and wave_id == tail['wave_id']
-    # 策略发展波从已结束II低点取得本级market许可；证书不授予III整波
-    # 几何身份。III仍只拥有9.77高点，7月低点不会由N/行情证书反向插入。
+    # 策略发展波从已结束II低点取得本级market许可。该低点另有独立的
+    # III严格下降升级身份，开放端点不能仅因行情许可变成已结束III来源。
     whole_origin = next(point for point in source_points if point['time'] == '2024-07-25')
     assert (whole_origin['value'], whole_origin['available_at'], whole_origin['wave_completed_at']) == (
-        3.45, '2024-10-21', '2024-10-21')
-    assert not any(point['time'] == '2024-07-25' for point in _records(qualified['points']))
-    assert not any(point['time'] == '2024-07-25' for stroke in _records(third['strokes'])
-                   for point in _records(stroke['points']))
+        3.45, '2024-08-30', '2024-08-30')
+    assert whole_origin['source_geometry_available_at'] == '2024-07-30'
+    origin_completion = _mapping(whole_origin['wave_completion_evidence'])
+    assert (origin_completion['available_at'], origin_completion['wave_direction_before'],
+            origin_completion['wave_direction_after']) == ('2024-08-30', 'down', 'up')
+    # II低点自身的复合上涨也由真实已完成I点确认，不借用2025年的market
+    # 资格。8/30已补齐严格HH/HL和实际内部反转，故无需等后来10/21证明。
+    origin_refs = _records(origin_completion['definition_evidence'])
+    assert [(point['kind'], point['time'], point['value'], point['available_at']) for point in origin_refs] == [
+        ('H', '2024-08-16', 3.85, '2024-08-20'),
+        ('H', '2024-08-22', 5.01, '2024-08-30'),
+        ('L', '2024-08-13', 3.65, '2024-08-19'),
+        ('L', '2024-08-20', 3.66, '2024-08-22'),
+    ]
+    assert cast(float, origin_refs[1]['value']) > cast(float, origin_refs[0]['value'])
+    assert cast(float, origin_refs[3]['value']) > cast(float, origin_refs[2]['value'])
+    for reference in origin_refs:
+        actual_lower = next(point for stroke in _records(second['source_strokes'])
+                            for point in _records(stroke['points'])
+                            if all(point[field] == reference[field]
+                                   for field in ('index', 'ordinal', 'kind', 'value', 'time', 'available_at')))
+        assert actual_lower['wave_identity_state'] == 'owned'
+        assert actual_lower['wave_completed_at'] == reference['available_at']
+    origin_identity = _mapping(origin_completion['lower_wave_identity_evidence'])
+    assert [(_mapping(origin_identity[field])['time'], _mapping(origin_identity[field])['value'])
+            for field in ('origin', 'interior', 'endpoint')] == [
+        ('2024-07-25', 3.45), ('2024-08-01', 3.96), ('2024-08-22', 5.01),
+    ]
+    assert origin_identity['available_at'] == origin_completion['available_at']
+    geometry_origin = next(point for stroke in _records(third['strokes'])
+                           for point in _records(stroke['points']) if point['time'] == '2024-07-25')
+    qualified_origin = next(point for point in _records(qualified['points']) if point['time'] == '2024-07-25')
+    for open_origin in (geometry_origin, qualified_origin):
+        assert (open_origin['value'], open_origin['available_at'], open_origin['wave_identity_state']) == (
+            3.45, '2024-08-30', 'owned')
+        assert (open_origin['wave_direction_before'], open_origin['wave_direction_after']) == ('down', 'down')
+        assert 'wave_completed_at' not in open_origin and 'wave_completion_evidence' not in open_origin
+        down_upgrade = _mapping(open_origin['upgrade_evidence'])
+        assert (down_upgrade['direction'], down_upgrade['role'], down_upgrade['available_at']) == (
+            'down', 'endpoint', '2024-08-30')
+        assert (_mapping(down_upgrade['origin'])['time'], _mapping(down_upgrade['origin'])['value']) == (
+            '2023-07-04', 9.77)
+        down_key = _mapping(down_upgrade['broken_key'])
+        down_attack = _mapping(down_upgrade['confirmed_by'])
+        assert (down_key['time'], down_key['value'], down_key['available_at']) == (
+            '2022-10-10', 5.29, '2023-05-16')
+        assert (down_attack['time'], down_attack['value'], down_attack['available_at']) == (
+            '2024-07-25', 3.45, '2024-08-30')
+        assert cast(str, down_key['available_at']) < cast(str, down_attack['time']) < cast(str, down_attack['available_at'])
+        assert cast(float, down_attack['value']) < cast(float, down_key['value'])
+        assert completed_source_points([open_origin], source_level=3) == []
+    down_owned_key = next(point for stroke in _records(third['strokes'])
+                          for point in _records(stroke['points']) if point['time'] == '2022-10-10')
+    assert (down_owned_key['wave_identity_state'], down_owned_key['wave_completed_at']) == ('owned', '2023-05-16')
+    before_origin = judge_trend(source_points, trend_level=3, asof='2024-08-29')
+    assert not any(point['time'] == '2024-07-25' for point in before_origin.points)
+    first_origin = judge_trend(source_points, trend_level=3, asof='2024-08-30')
+    first_down_endpoint = next(point for point in first_origin.points if point['time'] == '2024-07-25')
+    assert first_down_endpoint['available_at'] == '2024-08-30' and 'wave_completed_at' not in first_down_endpoint
+    # 上涨策略许可仍独立等到3/7才成立；它既不重置已拥有的下降极值，
+    # 也不能把这个开放端点升级成可供下一级消费的完成反转。
+    outgoing_permission = _mapping(qualified_origin['trend_confirmation'])
+    assert (outgoing_permission['direction'], outgoing_permission['available_at']) == ('up', '2025-03-07')
+    assert identity(outgoing_permission, path=path) == wave_id
     dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
     whole_position = source_points.index(whole_origin)
     assert qualify_uptrend(source_points, whole_origin, whole_position, key, bars, dates['2025-03-06']) is None

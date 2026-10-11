@@ -62,6 +62,24 @@ def _stroke_points(bundle: Mapping[str, object]) -> list[Mapping[str, object]]:
             for point in cast(Sequence[Mapping[str, object]], path['points'])]
 
 
+def _assert_completed_definition_sources(
+    point: Mapping[str, object], source: Sequence[Mapping[str, object]],
+) -> None:
+    # 每个上级方向证据必须对应真实已结束的直接下级点，不能借其较早几何日。
+    evidence = cast(Sequence[Mapping[str, object]], point['definition_evidence'])
+    assert len(evidence) == 4
+    for reference in evidence:
+        matches = [actual for actual in source if all(actual[field] == reference[field]
+                   for field in ('index', 'ordinal', 'kind', 'value', 'time'))]
+        assert len(matches) == 1
+        actual = matches[0]
+        assert actual['wave_identity_state'] == 'owned'
+        assert actual['available_at'] == reference['available_at']
+        assert cast(str, actual['wave_completed_at']) <= cast(str, reference['available_at'])
+        assert cast(str, reference['available_at']) <= cast(str, point['available_at'])
+    assert point['available_at'] == max(cast(str, reference['available_at']) for reference in evidence)
+
+
 def _multiple_path_bars(*, count: int | None = None) -> list[Bar]:
     first = _nested_bars()[:count]
     # 无阴阳顺序的十字星母子关系形成真实断点，不可借前一路径确认后一条。
@@ -137,35 +155,36 @@ def test_hierarchical_history_completes_all_polyline_and_level_stages_before_the
     _, structures, trace = _observe_hierarchy(bars)
     assert len(bars) == 124
     assert {level: max(len(daily[level]) for daily in structures.values()) for level in (1, 2, 3)} == {
-        1: 38, 2: 9, 3: 1}
-    assert all(daily[3] == () for now, daily in structures.items() if now < 121)
-    assert _geometry(structures[121][3]) == [(75, 0, 'H', 1250, 121)]
-    assert structures[123][3] == structures[121][3]
+        1: 39, 2: 9, 3: 1}
+    assert all(daily[3] == () for now, daily in structures.items() if now < 120)
+    assert _geometry(structures[120][3]) == [(75, 0, 'H', 1250, 120)]
+    assert structures[123][3] == structures[120][3]
     first = trend_lines_module.prepare_trend_lines(trend_lines_module.polyline_high_low_points(lecture_drawing(bars)))
     second = trend_lines_module.prepare_trend_lines(trend_lines_module.high_low_points_from_strokes(first['strokes']),
                                                   trend_level=2)
     source = trend_lines_module.high_low_points_from_strokes(second['strokes'])
-    assert trend_lines_module.judge_trend(source, trend_level=3, asof='2026-05-01').points == ()
-    known = trend_lines_module.judge_trend(source, trend_level=3, asof='2026-05-02').points
-    assert _geometry(known) == [(75, 0, 'H', 1250, '2026-05-02')]
-    assert known[0]['wave_identity_state'] == 'owned' and known[0]['wave_completed_at'] == '2026-05-02'
+    assert trend_lines_module.judge_trend(source, trend_level=3, asof='2026-04-30').points == ()
+    known = trend_lines_module.judge_trend(source, trend_level=3, asof='2026-05-01').points
+    assert _geometry(known) == [(75, 0, 'H', 1250, '2026-05-01')]
+    assert known[0]['wave_identity_state'] == 'owned' and known[0]['wave_completed_at'] == '2026-05-01'
     proof = cast(Sequence[Mapping[str, object]], known[0]['definition_evidence'])
     assert [(point['index'], point['kind'], point['value'], point['available_at']) for point in proof] == [
-        (75, 'H', 1250, '2026-03-30'), (99, 'H', 1150, '2026-04-23'),
-        (84, 'L', 450, '2026-04-08'), (108, 'L', 400, '2026-05-02'),
+        (75, 'H', 1250, '2026-03-29'), (99, 'H', 1150, '2026-04-22'),
+        (84, 'L', 450, '2026-04-07'), (108, 'L', 400, '2026-05-01'),
     ]
     identity = cast(Mapping[str, object], known[0]['lower_wave_identity_evidence'])
-    assert identity['available_at'] == '2026-05-02'
+    assert identity['available_at'] == '2026-05-01'
     assert [(cast(Mapping[str, object], identity[field])['index'],
              cast(Mapping[str, object], identity[field])['available_at']) for field in ('origin', 'interior', 'endpoint')] == [
-        (75, '2026-03-30'), (84, '2026-04-08'), (108, '2026-05-02')]
+        (75, '2026-03-29'), (84, '2026-04-07'), (108, '2026-05-01')]
+    _assert_completed_definition_sources(known[0], source)
     _assert_stages(trace, (0, 1, 2, 3))
 
 
 def test_chart_entry_history_completes_every_date_of_a_level_before_judging_the_next_level() -> None:
     bars = _nested_bars()
     _, geometry, trace = _observe_chart(bars)
-    assert _geometry(geometry[3]) == [(75, 0, 'H', 1250, (START + timedelta(days=121)).date().isoformat())]
+    assert _geometry(geometry[3]) == [(75, 0, 'H', 1250, (START + timedelta(days=120)).date().isoformat())]
     assert any(event.level == 2 and event.point_count == 9 for event in trace)
     assert any(event.level == 3 and event.point_count == 1 for event in trace)
     _assert_stages(trace, (0, 1, 2, 3))
@@ -242,23 +261,31 @@ def test_actual_prepare_and_permissions_preserve_early_geometry_later_closure_an
     geometry = {point['index']: point for point in _stroke_points(prepared)}
     licensed = {point['index']: point for path in cast(Sequence[Mapping[str, object]], attached['qualified_strokes'])
                 for point in cast(Sequence[Mapping[str, object]], path['points'])}
-    assert (geometry[36]['available_at'], geometry[36]['wave_completed_at']) == ('2026-02-19', '2026-02-19')
+    assert (geometry[36]['available_at'], geometry[36]['wave_completed_at']) == ('2026-02-18', '2026-02-18')
     assert (licensed[36]['available_at'], licensed[36]['source_geometry_available_at'],
-            licensed[36]['wave_completed_at']) == ('2026-02-21', '2026-02-19', '2026-02-19')
+            licensed[36]['wave_completed_at']) == ('2026-02-21', '2026-02-18', '2026-02-18')
     certificate = cast(Mapping[str, object], licensed[36]['trend_confirmation'])
     assert (certificate['confirmation_rule'], certificate['available_at']) == (
         'strict_same_level_market_key_break', '2026-02-21')
     assert (cast(Mapping[str, object], certificate['broken_key'])['index'],
             cast(Mapping[str, object], certificate['confirmed_by'])['index']) == (27, 51)
     assert (cast(Mapping[str, object], certificate['broken_key'])['available_at'],
-            cast(Mapping[str, object], certificate['confirmed_by'])['available_at']) == ('2026-02-10', '2026-02-21')
+            cast(Mapping[str, object], certificate['confirmed_by'])['available_at']) == ('2026-02-09', '2026-02-21')
+    assert [(point['index'], point['kind'], point['value'], point['available_at'])
+            for point in cast(Sequence[Mapping[str, object]], geometry[36]['definition_evidence'])] == [
+        (39, 'H', 1125, '2026-02-12'), (45, 'H', 1175, '2026-02-18'),
+        (36, 'L', 525, '2026-02-09'), (42, 'L', 575, '2026-02-15'),
+    ]
+    _assert_completed_definition_sources(geometry[36], source)
+    assert not any(point['index'] == 36 for point in trend_lines_module.judge_trend(
+        source, trend_level=2, asof='2026-02-17').points)
     # 同坐标先严格升级、后普通闭合；资格选择早证明不能吞掉后来的真实闭合树。
-    assert (geometry[51]['available_at'], geometry[51]['wave_completed_at']) == ('2026-02-25', '2026-03-06')
+    assert (geometry[51]['available_at'], geometry[51]['wave_completed_at']) == ('2026-02-24', '2026-03-05')
     candidates = [point for path in cast(Sequence[Mapping[str, object]], prepared['candidate_strokes'])
                   for point in cast(Sequence[Mapping[str, object]], path['points']) if point['index'] == 51]
-    early = next(point for point in candidates if point['available_at'] == '2026-02-25')
-    pending = next(point for point in candidates if point['available_at'] == '2026-03-03')
-    ordinary = next(point for point in candidates if point['available_at'] == '2026-03-06')
+    early = next(point for point in candidates if point['available_at'] == '2026-02-24')
+    pending = next(point for point in candidates if point['available_at'] == '2026-03-02')
+    ordinary = next(point for point in candidates if point['available_at'] == '2026-03-05')
     assert cast(Mapping[str, object], early['upgrade_evidence'])['role'] == 'endpoint'
     assert 'wave_completed_at' not in early
     assert pending['wave_identity_state'] == 'direction_only' and 'wave_completed_at' not in pending
@@ -266,23 +293,24 @@ def test_actual_prepare_and_permissions_preserve_early_geometry_later_closure_an
     assert ordinary['wave_identity_state'] == 'owned'
     assert [(point['index'], point['kind'], point['value'], point['available_at'])
             for point in cast(Sequence[Mapping[str, object]], ordinary['definition_evidence'])] == [
-        (51, 'H', 1225, '2026-02-25'), (57, 'H', 1175, '2026-03-03'),
-        (54, 'L', 575, '2026-02-28'), (60, 'L', 550, '2026-03-06'),
+        (51, 'H', 1225, '2026-02-24'), (57, 'H', 1175, '2026-03-02'),
+        (54, 'L', 575, '2026-02-27'), (60, 'L', 550, '2026-03-05'),
     ]
+    _assert_completed_definition_sources(ordinary, source)
     assert (licensed[51]['available_at'], licensed[51]['source_geometry_available_at'],
-            licensed[51]['wave_completed_at']) == ('2026-02-25', '2026-02-25', '2026-03-06')
-    prefix_source = [point for point in source if cast(str, point['available_at']) <= '2026-03-05']
+            licensed[51]['wave_completed_at']) == ('2026-02-24', '2026-02-24', '2026-03-05')
+    prefix_source = [point for point in source if cast(str, point['available_at']) <= '2026-03-04']
     prefix = trend_lines_module.prepare_trend_lines(prefix_source, trend_level=2)
     open_high = next(point for point in _stroke_points(prefix) if point['index'] == 51)
-    assert open_high['available_at'] == '2026-02-25' and 'wave_completed_at' not in open_high
+    assert open_high['available_at'] == '2026-02-24' and 'wave_completed_at' not in open_high
     assert not any(point['index'] == 51 for point in trend_lines_module.high_low_points_from_strokes(prefix['strokes']))
     for index in (36, 51):
         assert licensed[index]['wave_completion_evidence'] == geometry[index]['wave_completion_evidence']
         assert licensed[index]['wave_completion_evidence'] is not geometry[index]['wave_completion_evidence']
     projected = {point['index']: point for point in trend_lines_module.high_low_points_from_strokes(attached['qualified_strokes'])}
-    assert (projected[36]['available_at'], projected[51]['available_at']) == ('2026-02-21', '2026-03-06')
+    assert (projected[36]['available_at'], projected[51]['available_at']) == ('2026-02-21', '2026-03-05')
     assert (projected[36]['source_geometry_available_at'], projected[51]['source_geometry_available_at']) == (
-        '2026-02-19', '2026-02-25')
+        '2026-02-18', '2026-02-24')
     assert prepared == before and _stroke_points(attached) == _stroke_points(prepared)
 
 
@@ -340,33 +368,45 @@ def test_level_stages_reset_each_epoch_without_borrowing_another_paths_higher_po
     complete, structures, trace = _observe_hierarchy(bars)
     _, epochs = cast(tuple[object, dict[int, int]], complete)
     assert (epochs[39], epochs[40], epochs[41], epochs[80]) == (0, 40, 41, 41)
-    # 下级高点几何在22日可知，25日真实闭合才可供二级使用；新路径仍须自行完成。
-    assert all(structures[now][2] == () for now in range(25))
-    assert _geometry(structures[25][2]) == [(12, 0, 'L', 500, 25)]
-    assert _geometry(structures[39][2]) == [(12, 0, 'L', 500, 25)]
-    first = trend_lines_module.prepare_trend_lines(trend_lines_module.polyline_high_low_points(lecture_drawing(bars[:26])))
+    # 下级高点几何在22日可知，24日折线四点闭合才可供二级使用；新路径仍须自行完成。
+    assert all(structures[now][2] == () for now in range(24))
+    assert _geometry(structures[24][2]) == [(12, 0, 'L', 500, 24)]
+    assert _geometry(structures[39][2]) == [(12, 0, 'L', 500, 24), (27, 0, 'H', 1200, 39)]
+    first = trend_lines_module.prepare_trend_lines(trend_lines_module.polyline_high_low_points(lecture_drawing(bars[:25])))
     high = next(point for point in _stroke_points(first) if point['index'] == 21)
-    assert (high['available_at'], high['wave_completed_at']) == ('2026-01-23', '2026-01-26')
+    assert (high['available_at'], high['wave_completed_at']) == ('2026-01-23', '2026-01-25')
     direct_source = trend_lines_module.high_low_points_from_strokes(first['strokes'])
     projected = next(point for point in direct_source if point['index'] == 21)
-    assert (projected['available_at'], projected['source_geometry_available_at']) == ('2026-01-26', '2026-01-23')
+    assert (projected['available_at'], projected['source_geometry_available_at']) == ('2026-01-25', '2026-01-23')
     second = trend_lines_module.prepare_trend_lines(direct_source, trend_level=2)
     proof = cast(Sequence[Mapping[str, object]], _stroke_points(second)[0]['definition_evidence'])
     assert [(point['index'], point['kind'], point['value'], point['available_at']) for point in proof] == [
-        (15, 'H', 1100, '2026-01-20'), (21, 'H', 1150, '2026-01-26'),
-        (12, 'L', 500, '2026-01-17'), (18, 'L', 550, '2026-01-23'),
+        (15, 'H', 1100, '2026-01-19'), (21, 'H', 1150, '2026-01-25'),
+        (12, 'L', 500, '2026-01-16'), (18, 'L', 550, '2026-01-22'),
     ]
+    _assert_completed_definition_sources(_stroke_points(second)[0], direct_source)
     full_first = trend_lines_module.prepare_trend_lines(trend_lines_module.polyline_high_low_points(lecture_drawing(bars[:40])))
-    full_second = trend_lines_module.prepare_trend_lines(trend_lines_module.high_low_points_from_strokes(full_first['strokes']),
-                                                       trend_level=2)
+    full_source = trend_lines_module.high_low_points_from_strokes(full_first['strokes'])
+    full_second = trend_lines_module.prepare_trend_lines(full_source, trend_level=2)
     rejected = next(point for path in cast(Sequence[Mapping[str, object]], full_second['candidate_strokes'])
                     for point in cast(Sequence[Mapping[str, object]], path['points']) if point['index'] == 27)
-    assert (rejected['available_at'], rejected['wave_identity_state']) == ('2026-02-07', 'direction_only')
+    assert (rejected['available_at'], rejected['wave_identity_state']) == ('2026-02-06', 'direction_only')
     assert 'wave_completed_at' not in rejected and 'wave_completion_evidence' not in rejected
-    assert [point['index'] for point in trend_lines_module.high_low_points_from_strokes(full_second['strokes'])] == [12]
-    assert all(structures[now][2] == () for now in range(41, 66))
-    assert _geometry(structures[66][2]) == [(53, 0, 'L', 600, 66)]
-    assert _geometry(structures[80][2]) == [(53, 0, 'L', 600, 66)]
+    owned = next(point for point in _stroke_points(full_second) if point['index'] == 27)
+    assert (owned['available_at'], owned['wave_completed_at']) == ('2026-02-09', '2026-02-09')
+    assert [(point['index'], point['kind'], point['value'], point['available_at'])
+            for point in cast(Sequence[Mapping[str, object]], owned['definition_evidence'])] == [
+        (27, 'H', 1200, '2026-01-31'), (33, 'H', 1150, '2026-02-06'),
+        (30, 'L', 550, '2026-02-03'), (36, 'L', 525, '2026-02-09'),
+    ]
+    _assert_completed_definition_sources(owned, full_source)
+    assert not any(point['index'] == 27 for point in trend_lines_module.judge_trend(
+        full_source, trend_level=2, asof='2026-02-08').points)
+    assert [point['index'] for point in trend_lines_module.high_low_points_from_strokes(full_second['strokes'])] == [12, 27]
+    assert all(structures[now][2] == () for now in range(41, 65))
+    assert _geometry(structures[65][2]) == [(53, 0, 'L', 600, 65)]
+    assert _geometry(structures[79][2]) == [(53, 0, 'L', 600, 65)]
+    assert _geometry(structures[80][2]) == [(53, 0, 'L', 600, 65), (68, 0, 'H', 1300, 80)]
     assert all(daily[3] == () for daily in structures.values())
     assert all(cast(int, point['index']) >= 41 for now, daily in structures.items() if now >= 41
                for level in (1, 2, 3) for point in daily[level])
@@ -382,8 +422,26 @@ def test_level_stages_reset_each_epoch_without_borrowing_another_paths_higher_po
 def test_chart_collector_keeps_closed_epoch_snapshots_causal_during_warm_and_partial_cache_replays() -> None:
     bars = _multiple_path_bars(count=40)
     complete, geometry, trace = _observe_chart(bars)
-    assert _geometry(geometry[2]) == [(53, 0, 'L', 600, (START + timedelta(days=66)).date().isoformat())]
+    assert _geometry(geometry[2]) == [
+        (53, 0, 'L', 600, (START + timedelta(days=65)).date().isoformat()),
+        (68, 0, 'H', 1300, (START + timedelta(days=80)).date().isoformat()),
+    ]
     assert geometry[3] == ()
+    first = trend_lines_module.prepare_trend_lines(trend_lines_module.polyline_high_low_points(lecture_drawing(bars)))
+    source = [point for point in trend_lines_module.high_low_points_from_strokes(first['strokes'])
+              if cast(int, point['index']) >= 41]
+    high = geometry[2][1]
+    assert high['wave_completed_at'] == '2026-03-22' and high['wave_identity_state'] == 'owned'
+    assert [(point['index'], point['kind'], point['value'], point['available_at'])
+            for point in cast(Sequence[Mapping[str, object]], high['definition_evidence'])] == [
+        (68, 'H', 1300, '2026-03-13'), (74, 'H', 1250, '2026-03-19'),
+        (71, 'L', 650, '2026-03-16'), (77, 'L', 625, '2026-03-22'),
+    ]
+    _assert_completed_definition_sources(high, source)
+    identity = cast(Mapping[str, object], high['lower_wave_identity_evidence'])
+    assert [cast(Mapping[str, object], identity[field])['index'] for field in ('origin', 'interior', 'endpoint')] == [68, 71, 77]
+    assert not any(point['index'] == 68 for point in trend_lines_module.judge_trend(
+        source, trend_level=2, asof='2026-03-21').points)
     _assert_stages(trace, (0, 1, 2, 3))
     cache: dict[str, object] = {}
     for end in (40, 41, 42, 80, 81):

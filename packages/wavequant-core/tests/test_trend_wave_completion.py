@@ -13,7 +13,7 @@ from wavequant.domain.market_structure.trend_lines import high_low_points_from_s
 
 
 START = date(2026, 1, 1)
-POLICY = 'whole_wave_v116'
+POLICY = 'whole_wave_v117'
 FIGURE = (20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 38, 42, 32, 36, 24, 29, 26)
 LATE_CLOSE = (*FIGURE, 50, 30, 48, 32, 46, 28)
 ProjectSource = Callable[..., list[dict[str, object]]]

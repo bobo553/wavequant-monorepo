@@ -309,29 +309,49 @@ def test_three_nonempty_levels_consume_the_complete_previous_judgement_without_r
                for index, value in enumerate(NESTED_MACRO[1:-1], start=1)]
     assert len(source) == 124
     assert _geometry(first.points) == primary
-    assert [point['confirmed_on_turn'] for point in first.points] == [3 * index + 3 for index in range(1, 41)]
+    assert [point['confirmed_on_turn'] for point in first.points] == [3 * index + 2 for index in range(1, 41)]
     assert _geometry(second.points) == [(index, 0, kind, value, known)
                                        for index, kind, value, _ in NESTED_SECONDARY]
     assert [point['confirmed_on_level1'] for point in second.points] == [position for *_, position in NESTED_SECONDARY]
     assert _geometry(third.points) == [(75, 0, 'H', 1250, known)]
     assert third.points[0]['confirmed_on_level2'] == 8
     assert third.points[0]['wave_direction_after'] == 'down'
-    # 每个宏观拐点先在微波pair齐全时得到方向事实，直到下一宏观端点
-    # 才有跨真实内点的组合波身份。保留40→9→1非空递归，也保留全部早事实。
+    # 一级折线四点齐全即可取得身份，证明只引用真实两端；上级仍要求真实组合波。
+    # 保留40→9→1非空递归、全部原始坐标和每份四点来源，不能虚构内部趋势段。
     for index, point in enumerate(first.points, start=1):
-        direction = next(fact for fact in first.candidates if fact['index'] == 3 * index
-                         and fact.get('wave_identity_state') == 'direction_only')
+        direction = next(fact for fact in first.candidates if fact['index'] == 3 * index)
         assert direction['confirmed_on_turn'] == 3 * index + 2
-        assert 'wave_completed_at' not in direction
+        assert direction['wave_identity_state'] == 'owned' and direction['wave_completed_at'] == known
+        proof = cast(Sequence[Mapping[str, object]], direction['definition_evidence'])
+        indices = ((3 * index, 3 * index + 2, 3 * index - 1, 3 * index + 1) if point['kind'] == 'H' else
+                   (3 * index - 1, 3 * index + 1, 3 * index, 3 * index + 2))
+        assert [(reference['index'], reference['kind'], reference['value'], reference['available_at'])
+                for reference in proof] == [(position, source[position]['kind'], source[position]['value'], known)
+                                           for position in indices]
         identity = point['lower_wave_identity_evidence']
         assert isinstance(identity, Mapping)
-        origin, interior, endpoint = identity['origin'], identity['interior'], identity['endpoint']
-        assert all(isinstance(ref, Mapping) for ref in (origin, interior, endpoint))
-        refs = cast(tuple[Mapping[str, object], Mapping[str, object], Mapping[str, object]],
-                    (origin, interior, endpoint))
-        assert [ref['index'] for ref in refs] == [3 * index, 3 * index + 1, 3 * index + 3]
+        assert identity['basis'] == 'polyline_four_point_definition' and 'interior' not in identity
+        origin, endpoint = identity['origin'], identity['endpoint']
+        assert all(isinstance(ref, Mapping) for ref in (origin, endpoint))
+        refs = cast(tuple[Mapping[str, object], Mapping[str, object]], (origin, endpoint))
+        assert [ref['index'] for ref in refs] == [3 * index, 3 * index + 1]
         assert all(ref['value'] == source[cast(int, ref['index'])]['value'] for ref in refs)
         assert identity['available_at'] == point['wave_completed_at'] == known
+    for judgement, lower in ((second, first.points), (third, second.points)):
+        direct = {point['index']: point for point in lower}
+        for point in judgement.points:
+            identity = cast(Mapping[str, object], point['lower_wave_identity_evidence'])
+            assert 'interior' in identity and 'basis' not in identity
+            upper_refs = [cast(Mapping[str, object], identity[field]) for field in ('origin', 'interior', 'endpoint')]
+            assert cast(int, upper_refs[0]['index']) < cast(int, upper_refs[1]['index']) < cast(int, upper_refs[2]['index'])
+            proof = cast(Sequence[Mapping[str, object]], point['definition_evidence'])
+            assert len(proof) == 4
+            for reference in (*upper_refs, *proof):
+                actual = direct[reference['index']]
+                assert actual['wave_identity_state'] == 'owned' and actual['wave_completed_at'] == known
+                assert all(reference[field] == actual[field]
+                           for field in ('index', 'ordinal', 'kind', 'value', 'time', 'available_at', 'label'))
+            assert identity['available_at'] == point['wave_completed_at'] == known
     # 三级H75的真正下降组合是H75→L84→L108；H99可知时只有H75→L84
     # 单段，不能将早方向事实当三级闭合。四点公式仍严格LL+LH，身份用实际下级内点。
     third_identity = third.points[0]['lower_wave_identity_evidence']
