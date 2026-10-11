@@ -11693,6 +11693,11 @@
                     "summary": "最终状态与进度后检查Harness/CodeGraph；318个main原功能对象和唯一活动256/root元数据逐字段保留，只新增322完成记录。"
                 },
                 {
+                    "command": "git local no-ff merge; bounded GET http://127.0.0.1:3003/candle-clipboard.js and /charts.js with source comparison",
+                    "status": "passed",
+                    "summary": "实现dfc7f34经65c049c本地no-ff合并main，同会话feat-三级趋势统一已同步；未推送。3003两脚本实际HTTP200（0.018/0.006秒），响应逐字与已合并源码一致且Cache-Control为public,max-age=0。现有页面需刷新加载新模块；此核验仅证明服务已返回新脚本，不称真实浏览器系统剪贴板通过。"
+                },
+                {
                     "command": "full Web unit suite and real browser/Playwright clipboard validation",
                     "status": "not-run",
                     "summary": "按用户开发验证节奏未运行完整Web套件或启动浏览器/Playwright。99项为Node/JSDOM及真实PriceChart回调接线，不称浏览器系统剪贴板验收；搜索选股→悬停Ctrl+C、卡片复制后换日期待独立手工浏览器复核。"
