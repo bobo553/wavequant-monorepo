@@ -39,9 +39,9 @@ def xiangyang_leg():
             for day, *prices in raw['rows'] if day <= '2019-04-30']
     first = reversal_trends(lecture_drawing(bars), bars)
     second = secondary_trends(first, bars)
-    _assert_no_owned_secondary(first, second)
+    _assert_secondary_ownership_and_source_dates(first, second)
     stroke = next(s for s in _paths(first, 'qualified_strokes') if any(p['time'] == '2018-10-19' for p in s['points']))
-    # 此段只取得一级整波身份；二级普通方向事实不能借一级许可证递归。
+    # 二级身份来自闭合一级组合波；交易证书仍按自己的方向独立核验。
     source = next(s['points'] for s in _paths(first, 'source_strokes') if s['id'] == stroke['source_path'])
     # 与公共资格适配器相同，仅给未命名的原始折线点补种类标签。
     source = [dict(p, label=p.get('label', p['kind'])) for p in source]
@@ -49,23 +49,70 @@ def xiangyang_leg():
     return bars, stroke, source, private
 
 
-def _assert_no_owned_secondary(first, second):
-    assert second['strokes'] == second['qualified_strokes'] == second['developing_strokes'] == []
-    assert high_low_points_from_strokes(second['strokes']) == []
+def _assert_secondary_ownership_and_source_dates(first, second):
     projected = high_low_points_from_strokes(first['strokes'])
     assert [p for s in second['source_strokes'] for p in s['points']] == projected
+    owned = [p for s in _paths(second, 'strokes') for p in cast(list, s['points'])]
+    assert [(p['time'], p['kind'], p['value'], p['available_at'], p['wave_completed_at'])
+            for p in owned[:2]] == [
+        ('2018-07-03', 'H', 6.85, '2018-10-26', '2018-10-26'),
+        ('2018-10-19', 'L', 4.4, '2018-12-03', '2018-12-03'),
+    ]
+    assert [[(p['time'], p['value'], p['available_at']) for p in point['definition_evidence']]
+            for point in owned[:2]] == [
+        [('2018-09-25', 5.78, '2018-10-10'), ('2018-10-23', 4.95, '2018-10-26'),
+         ('2018-09-11', 4.94, '2018-09-26'), ('2018-10-19', 4.4, '2018-10-24')],
+        [('2018-10-23', 4.95, '2018-10-26'), ('2018-11-23', 5.85, '2018-12-03'),
+         ('2018-10-19', 4.4, '2018-10-24'), ('2018-10-25', 4.56, '2018-10-31')],
+    ]
+    # 组合波必须有已结束的直接一级四点，不能借几何早日期或单条子波升级。
+    for point in owned[:2]:
+        evidence = point['definition_evidence']
+        assert len(evidence) == 4
+        sign = 1 if point['kind'] == 'L' else -1
+        assert sign*(evidence[1]['value']-evidence[0]['value']) > 0
+        assert sign*(evidence[3]['value']-evidence[2]['value']) > 0
+        assert point['available_at'] == max(reference['available_at'] for reference in evidence)
+        identity = point['lower_wave_identity_evidence']
+        assert identity['origin']['index'] < identity['interior']['index'] < identity['endpoint']['index']
+        for reference in [*evidence, *(identity[field] for field in ('origin', 'interior', 'endpoint'))]:
+            matches = [source for source in projected if all(source[field] == reference[field]
+                       for field in ('index', 'ordinal', 'time', 'kind', 'value', 'available_at'))]
+            assert len(matches) == 1
+            assert matches[0]['wave_identity_state'] == 'owned'
+            assert matches[0]['wave_completed_at'] <= reference['available_at'] <= point['available_at']
+            assert matches[0]['source_path'] == 'reversal-lecture-83'
+        assert point['wave_identity_state'] == 'owned'
+        assert point['confirmation_rule'] == 'ordered_HH_then_HL_or_LL_then_LH_switch'
+        assert 'trend_confirmation' not in point
+    assert len(owned) == 3
+    assert owned[-1]['wave_identity_state'] == 'owned' and 'wave_completed_at' not in owned[-1]
+    assert owned[-1]['upgrade_evidence']['confirmation_rule'] == 'level1_confirmed_high_breaks_known_level2_last_fall_high'
+    assert (owned[-1]['broken_key']['time'], owned[-1]['broken_key']['value'],
+            owned[-1]['broken_key']['available_at']) == ('2018-07-03', 6.85, '2018-10-26')
+    attack = owned[-1]['upgrade_evidence']['confirmed_by']
+    assert attack['value'] > 6.85 and owned[-1]['available_at'] == attack['available_at']
+    attack_source = [p for p in projected if all(p[field] == attack[field]
+                     for field in ('index', 'ordinal', 'kind', 'value', 'available_at'))]
+    assert len(attack_source) == 1 and attack_source[0]['wave_completed_at'] <= attack['available_at']
+    assert [(p['time'], p['value'], p['available_at'])
+            for p in high_low_points_from_strokes(second['strokes'])] == [
+        ('2018-07-03', 6.85, '2018-10-26'), ('2018-10-19', 4.4, '2018-12-03'),
+    ]
+    qualified_low = next(p for s in second['qualified_strokes'] for p in s['points'] if p['kind'] == 'L')
+    assert (qualified_low['time'], qualified_low['value']) == ('2018-10-19', 4.4)
+    assert qualified_low['available_at'] == qualified_low['trend_confirmation']['available_at'] == '2019-02-12'
+    assert qualified_low['available_at'] > owned[1]['available_at']
     facts = [p for s in second['candidate_strokes'] for p in s['points']]
+    facts = [fact for fact in facts if fact['wave_identity_state'] == 'direction_only']
     assert [(p['time'], p['kind'], p['value'], p['available_at'], p['wave_direction_after'])
             for p in facts] == [
         ('2018-07-03', 'H', 6.85, '2018-09-07', 'down'),
-        ('2018-10-19', 'L', 4.4, '2018-12-25', 'up'),
     ]
     assert [[(p['time'], p['value'], p['available_at']) for p in fact['definition_evidence']]
             for fact in facts] == [
-        [('2018-08-15', 5.8, '2018-08-21'), ('2018-08-27', 5.39, '2018-09-04'),
+        [('2018-08-15', 5.8, '2018-08-20'), ('2018-08-27', 5.39, '2018-09-04'),
          ('2018-08-20', 5.08, '2018-08-28'), ('2018-09-03', 5.07, '2018-09-07')],
-        [('2018-09-25', 5.78, '2018-10-10'), ('2018-11-23', 5.85, '2018-12-03'),
-         ('2018-10-19', 4.4, '2018-11-05'), ('2018-12-18', 4.82, '2018-12-25')],
     ]
     for fact in facts:
         assert fact['wave_identity_state'] == 'direction_only'
@@ -75,13 +122,46 @@ def _assert_no_owned_secondary(first, second):
     march_high = next((p for p in projected if p['time'] == '2019-03-21'), None)
     if march_high is not None:
         assert (march_high['source_geometry_available_at'], march_high['available_at']) == (
-            '2019-03-22', '2019-04-01',
+            '2019-03-22', '2019-03-26',
         )
     march_low = next((p for p in projected if p['time'] == '2019-03-29'), None)
     if march_low is not None:
         assert (march_low['source_geometry_available_at'], march_low['available_at']) == (
             '2019-04-09', '2019-04-09',
         )
+
+
+@pytest.mark.parametrize('cutoff,expected', [
+    ('2018-10-25', []),
+    ('2018-10-26', [('2018-07-03', 'H', 6.85, '2018-10-26')]),
+    ('2018-11-30', [('2018-07-03', 'H', 6.85, '2018-10-26')]),
+    ('2018-12-03', [('2018-07-03', 'H', 6.85, '2018-10-26'),
+                    ('2018-10-19', 'L', 4.4, '2018-12-03')]),
+])
+def test_secondary_composite_identity_waits_for_its_own_completed_direct_sources(cutoff, expected, xiangyang_leg):
+    bars, _, _, _ = xiangyang_leg
+    prefix = [bar for bar in bars if bar.timestamp.date().isoformat() <= cutoff]
+    first = reversal_trends(lecture_drawing(prefix), prefix)
+    second = secondary_trends(first, prefix)
+    owned = [p for s in _paths(second, 'strokes') for p in cast(list, s['points'])]
+    assert [(p['time'], p['kind'], p['value'], p['available_at']) for p in owned] == expected
+    complete_first = reversal_trends(lecture_drawing(bars), bars)
+    source = [p for p in high_low_points_from_strokes(complete_first['strokes'])
+              if p['source_path'] == 'reversal-lecture-83']
+    visible = judge_trend(source, trend_level=2, asof=cutoff)
+    assert [(p['time'], p['kind'], p['value'], p['available_at']) for p in visible.points] == expected
+    if not owned:
+        facts = [p for s in _paths(second, 'candidate_strokes') for p in cast(list, s['points'])]
+        assert len(facts) == 1 and facts[0]['wave_identity_state'] == 'direction_only'
+        assert 'wave_completed_at' not in facts[0]
+    else:
+        projected = high_low_points_from_strokes(first['strokes'])
+        for point in owned:
+            assert point['available_at'] == point['wave_completed_at'] <= cutoff
+            for reference in point['definition_evidence']:
+                matches = [p for p in projected if all(p[field] == reference[field]
+                           for field in ('index', 'ordinal', 'kind', 'value', 'available_at'))]
+                assert len(matches) == 1 and matches[0]['wave_completed_at'] <= reference['available_at']
 
 
 def test_complete_lower_cycle_independently_authorizes_the_march_downward_leg(xiangyang_leg):
@@ -257,7 +337,7 @@ def test_replay_waits_for_the_down_endpoint_then_opens_the_independent_april_up_
     bars = [Bar(datetime.fromisoformat(day), raw['symbol'], *prices) for day, *prices in raw['rows'] if day <= cutoff]
     first = reversal_trends(lecture_drawing(bars), bars)
     second = secondary_trends(first, bars)
-    _assert_no_owned_secondary(first, second)
+    _assert_secondary_ownership_and_source_dates(first, second)
     stroke = next(s for s in _paths(first, 'qualified_strokes') if any(p['time'] == '2018-10-19' for p in s['points']))
     geometry = next(s for s in _paths(first, 'strokes') if s['id'] == stroke['id'])
     wave = next(leg for leg in stroke['confirmed_legs'] if leg['points'][0]['time'] == '2018-10-19')
@@ -267,13 +347,19 @@ def test_replay_waits_for_the_down_endpoint_then_opens_the_independent_april_up_
     complete_wave = next(leg for leg in complete['confirmed_legs'] if leg['points'][0]['time'] == '2018-10-19')
     assert wave['confirmation'] == complete_wave['confirmation']
     if cutoff == '2019-03-29':
-        # 3/29价格已发生，但折线L尚未知，本级H也尚未真实闭合。
-        # 后来的4/1折线确认、4/9整波身份都不能倒填这个前缀。
+        # 3/29价格已发生，但折线L尚未知；此前H由3/26完整反转证明闭合。
+        # 4/9低点整波身份不能倒填；开放二级攻击高也不能提前进入三级来源。
         assert not any(leg['direction'] == 'down' for leg in stroke['confirmed_legs']
                        if leg['points'][0]['time'] >= '2019-03-21')
         assert not any(p['time'] == '2019-03-29' for p in geometry['points'])
-        assert 'wave_completed_at' not in geometry['points'][-1]
-        assert not any(p['time'] == '2019-03-21' for s in _paths(second, 'source_strokes') for p in s['points'])
+        assert geometry['points'][-1]['available_at'] == '2019-03-22'
+        assert geometry['points'][-1]['wave_completed_at'] == '2019-03-26'
+        recursive_high = next(p for s in _paths(second, 'source_strokes') for p in s['points']
+                              if p['time'] == '2019-03-21')
+        assert (recursive_high['source_geometry_available_at'], recursive_high['available_at']) == (
+            '2019-03-22', '2019-03-26',
+        )
+        assert not any(p['time'] == '2019-03-21' for p in high_low_points_from_strokes(second['strokes']))
     else:
         down = next(leg for leg in stroke['confirmed_legs'] if leg['direction'] == 'down'
                     and leg['points'][0]['time'] == '2019-03-21')

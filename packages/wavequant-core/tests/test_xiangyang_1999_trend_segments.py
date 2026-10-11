@@ -1,4 +1,4 @@
-"""真实上市起点的完整前缀保护一级普通反转及十字星路径隔离。
+"""真实上市起点的完整前缀保护一级普通反转及有边界十字星连续性。
 
 原始 OHLCV 来自本地通达信日线，不以报告首尾两根 K 线构造趋势。保留
 上市以来的状态，使 1999 年的旧关键位和整波极值确实由之前历史推导。
@@ -182,41 +182,43 @@ def test_real_early_strict_peak_requires_its_own_later_reversal_before_recursion
     assert projected['source_geometry_available_at'] == '1999-02-05'
 
 
-def test_real_doji_breaks_do_not_connect_the_old_high_to_the_new_path_low(xiangyang_1999: tuple[Bar, ...]) -> None:
+def test_real_bounded_doji_keeps_the_high_and_low_in_one_trend_path(xiangyang_1999: tuple[Bar, ...]) -> None:
     prefix = _prefix(xiangyang_1999, '1999-04-30')
     drawing = _mapping(_drawing(prefix))
     issues = _records(drawing['issues'])
-    assert [(point['index'], point['time']) for point in issues] == [(543, '1999-04-13'), (544, '1999-04-14')]
+    assert issues == [] and drawing['intrabar_incomplete'] is True
     source = polyline_high_low_points(drawing)
-    old = [point for point in source if point['source_path'] == 'lecture-0']
-    new = [point for point in source if point['source_path'] == 'lecture-544']
-    assert old and new and all(point['source_path_end_index'] == 543 for point in old)
-    assert all(cast(int, point['index']) < 543 for point in old)
-    assert all(cast(int, point['index']) >= 544 for point in new)
+    assert source and {point['source_path'] for point in source} == {'lecture-0'}
+    assert all('source_path_end_index' not in point for point in source)
+    doji_low = _find(source, ('1999-04-13', 'L', 9.43))
+    assert doji_low['available_at'] == '1999-04-14'
+    assert doji_low['intrabar_order_resolved'] is False
+    assert ('1999-04-13', 'H', 9.74) not in [_coordinate(point) for point in source]
     bundle = prepare_trend_lines(source, trend_level=1, symbol='sz.000678')
-    assert bundle['_path_market_end_indices'] == {'lecture-0': 543, 'lecture-544': None}
-    for field in ('strokes', 'developing_strokes'):
-        for stroke in _records(bundle[field]):
-            points = _records(stroke['points'])
-            indices = [cast(int, point['index']) for point in points]
-            assert all(index < 543 for index in indices) or all(index >= 544 for index in indices)
-            assert not ({508, 550} <= set(indices)), '报告区间有真实折线断点，不能补造首尾跳连'
+    assert bundle['_path_market_end_indices'] == {'lecture-0': None}
+    points = _path_points(bundle, 'lecture-0')
+    peak = _find(points, ('1999-04-05', 'H', 10.18))
+    low = _find(points, ('1999-04-22', 'L', 8.80))
+    assert points.index(low) == points.index(peak) + 1
+    assert (peak['available_at'], low['available_at'], low['wave_completed_at']) == (
+        '1999-04-09', '1999-04-23', '1999-04-30',
+    )
 
 
 @pytest.mark.parametrize('asof', ['1999-04-23', '1999-04-29'])
-def test_real_new_path_low_is_known_but_cannot_enter_second_level_before_completion(
+def test_real_continuous_path_low_is_known_but_cannot_enter_second_level_before_completion(
     xiangyang_1999: tuple[Bar, ...], asof: str,
 ) -> None:
     coordinate = ('1999-04-22', 'L', 8.80)
-    low = _find(_source(xiangyang_1999, asof, 'lecture-544'), coordinate)
+    low = _find(_source(xiangyang_1999, asof), coordinate)
     assert low['available_at'] == '1999-04-23'
     bundle = _geometry(xiangyang_1999, asof)
     assert coordinate not in [_coordinate(point) for point in high_low_points_from_strokes(bundle['strokes'])]
 
 
-def test_real_new_path_low_enters_the_direct_source_on_its_actual_reversal_day(xiangyang_1999: tuple[Bar, ...]) -> None:
+def test_real_continuous_path_low_enters_the_direct_source_on_its_actual_reversal_day(xiangyang_1999: tuple[Bar, ...]) -> None:
     coordinate = ('1999-04-22', 'L', 8.80)
-    source = _source(xiangyang_1999, '1999-04-30', 'lecture-544')
+    source = _source(xiangyang_1999, '1999-04-30')
     ordinary = [point for point in trend_reversals(source, trend_level=1) if _coordinate(point) == coordinate]
     assert len(ordinary) == 1 and ordinary[0]['available_at'] == '1999-04-30'
     evidence = _records(ordinary[0]['definition_evidence'])

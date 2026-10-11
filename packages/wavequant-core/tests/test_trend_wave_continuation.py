@@ -172,9 +172,19 @@ def test_the_real_whole_active_wave_keeps_its_identity_after_an_independent_comp
     assert (trigger['time'], trigger['value']) == ('2025-03-07', 10.11)
     assert cast(str, key['available_at']) < cast(str, trigger['time']) <= cast(str, proof['available_at']) <= cutoff
     assert cast(float, trigger['value']) > cast(float, key['value'])
-    owned_key = next(point for point in _records(qualified['points'])
+    # 连续来源保留2022年的10.66压力高点，策略视图不会把此前未获上涨
+    # 许可的较低9.77峰顶另行发布；完整几何仍拥有它及其独立闭合证据。
+    owned_key = next(point for stroke in _records(third['strokes']) if stroke['source_path'] == path
+                     for point in _records(stroke['points'])
                      if all(point[field] == key[field] for field in ('index', 'ordinal', 'kind', 'value', 'available_at')))
+    assert not any(all(point[field] == key[field] for field in ('index', 'ordinal', 'kind', 'value'))
+                   for point in _records(qualified['points']))
     assert (owned_key['wave_identity_state'], owned_key['wave_completed_at']) == ('owned', '2024-03-29')
+    assert owned_key['available_at'] == key['available_at'] == '2024-03-29'
+    recursive_key = completed_source_points([owned_key], source_level=3)
+    assert len(recursive_key) == 1
+    assert (recursive_key[0]['available_at'], recursive_key[0]['source_geometry_available_at']) == (
+        owned_key['wave_completed_at'], owned_key['available_at'])
     key_completion = _mapping(owned_key['wave_completion_evidence'])
     assert (key_completion['available_at'], key_completion['wave_direction_before'],
             key_completion['wave_direction_after']) == ('2024-03-29', 'up', 'down')

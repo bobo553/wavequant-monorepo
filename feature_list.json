@@ -11817,6 +11817,68 @@
                     "summary": "按用户节奏未运行完整Core/Web或浏览器/Playwright，完整自选股重算完成与分钟回测待独立验证；v117隔离和556棒真实HTTP通过不代表全队列完成。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-325",
+            "name": "bounded-outside-doji-trend-continuity",
+            "title": "修复有界外包十字星切断趋势链",
+            "status": "done",
+            "dependencies": ["MONOREPO-324"],
+            "description": "先复现襄阳轴承1999年4月5日至22日一级缺线，纠正将有已确认对向边界的外包十字星日内顺序未知误当整条来源断路的问题。",
+            "scope": "Core折线单极值延伸、三缓存隔离、合同及真实/镜像/断路/前缀回归；不改六趋势定义，不针对股票日期补线。",
+            "acceptanceCriteria": [
+                "来向已知、对向锚点已确认、同向极值严格推进且对向不越界时，外包十字星仅延伸来向单极值，当日不确认反转且始终标注日内顺序未知。",
+                "方向未知、仅seed或对向越界仍保留真实断路；母线另一极值不得被虚构为来源，知识日期不能倒填。",
+                "真实4/5高10.18与4/22低8.80形成同一路径一级线；4/23几何可知、4/30整波结束才递归，三个级别及策略资格继续分离。",
+                "旧回放/几何缓存隔离，定向回归、相关类型/构建及独立复核完成，记录网页与完整套件的实际验证范围。"
+            ],
+            "verification": [
+                {
+                    "command": "isolated original HEAD lecture_drawing replay against test_bounded_outside_doji.py",
+                    "status": "passed",
+                    "summary": "新21项在旧HEAD单绘图模块重放13失败/8通过，当前21通过；真实4/13 outside doji误清来向、4/14再reset根因独立复现。拒绝未知来向、seed、对向越界、同向相等；延伸当日仍developing且未知日内顺序标记持久。"
+                },
+                {
+                    "command": "pytest 13 directly affected files (polyline, drawing, bounded doji, real1999, common judgement/recursion/identity/upgrades, confirmation and path barriers) -q",
+                    "status": "passed",
+                    "summary": "最终507项及36 subtests通过（28.64秒）。新三级来源几何不由证书筛选，真实断路和开放来源门禁保持；前次3个2025资格集合误用已逐真实完整几何核验迁移。最后仅补可信点字段类型与cast后，直接3文件60项及32 subtests再次通过（3.80秒）。"
+                },
+                {
+                    "command": "pytest staged pipeline/real1997/active endpoint group; pytest chart history cache/leg confirmation/structural promotion group; migrated real files targeted reruns",
+                    "status": "passed",
+                    "summary": "初两组113通过/7失败及33通过/5 setup errors均定位为此前错误断路导致旧身份/日期断言；未改生产门禁。active全文件99通过（原97+2闭合边界；最后补断言的原3参数再通过），continuation18通过，leg全文件31通过（原27+4前缀）。其余阶段/1997/cache/permission通过保持；各组有重叠，不合计为全Core。II真实四点全部匹配闭合直接I源，6/15触及旧5.45拒绝、6/20才许可；III完整几何9.77与资格集合独立。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core typecheck; mypy --config-file packages/wavequant-core/pyproject.toml --follow-imports=silent four modified production modules and five modified test files",
+                    "status": "passed",
+                    "summary": "Core既定4文件strict通过，按项目check_untyped_defs配置的9修改文件全部类型通过；Python按规则直接编辑，不运行格式/lint工具。额外广范围mypy尝试出现179项报告，本轮仅承诺指定9文件最终通过，完整Core类型待独立核验，未冒称通过。"
+                },
+                {
+                    "command": "python -m build --no-isolation; isolated wheel install, four module byte comparison and fixed556-bar hierarchy/cache smoke",
+                    "status": "passed",
+                    "summary": "Core sdist/wheel与隔离安装通过，最终四生产模块源码/包内/安装位置逐字节核验。真实556棒至4/30 I/II/III为88/10/1点，issues空且同lecture0，4/5H10.18→4/22L8.8连线；高4/9知、低4/23知、4/30结束，不提前递归。几何及两历史缓存v118，损坏v117检查点拒绝，完成协议whole_wave_v117不变。"
+                },
+                {
+                    "command": "independent root-cause, production and cross-agent historical-test review; targeted Prettier; pnpm harness:check; codegraph sync; git diff --check; original state object preservation",
+                    "status": "passed",
+                    "summary": "独立源/图表排查、生产和三旧真实测试交叉复核无未解决P1/P2；合同精确区分4/13外包十字星与4/14内包阳线。格式/Harness/CodeGraph/差异检查通过，全部321旧功能对象和根元数据及唯一活动256保持，只新增325。"
+                },
+                {
+                    "command": "完整初始化门禁与Web生产构建/后续全仓类型链（待验证）",
+                    "status": "not-run",
+                    "summary": "整条初始化链未完成。实际init.ps1 -Mode quick的Harness322/18Node/2Python/32rules和11前置任务通过；Web Turbopack因worktree复用node_modules Junction越出filesystem root失败，后续全仓类型未执行。失败详情保留，不能将完整链写成已通过。当前Core修复必需的项目配置9文件类型、既定4严格基线及最终包构建独立通过，不为完成该可选全仓链扩大Web配置改动。"
+                },
+                {
+                    "command": "bounded GET http://127.0.0.1:3003/api/market-timeframe?source=akshare&symbol=sz.000678&asof=1999-04-30&timeframe=1d; loopback listener snapshot",
+                    "status": "not-run",
+                    "summary": "实际GET连接被拒绝（WinError10061/2.097秒）；3000/3001/3003/8765/9200均无监听，未能验收运行网页/接口。固定行情及隔离包验证不代表当前页面已重算，待服务开启后验证；未开启或重启共享服务。"
+                },
+                {
+                    "command": "full Core/Web suites, browser/Playwright, whole watchlist completion and minute backtests",
+                    "status": "not-run",
+                    "summary": "按用户开发节奏待独立验证；未自动推送、刷新完整自选队列、清缓存或重启共享服务，局部固定行情不称全账户完成。"
+                }
+            ]
         }
     ]
 }

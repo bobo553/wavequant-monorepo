@@ -14,6 +14,7 @@ from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
 from wavequant.domain.market_structure.lecture_trend import reversal_trends
 from wavequant.domain.market_structure.secondary_trend import secondary_trends
 from wavequant.domain.market_structure.trend_lines import polyline_high_low_points
+from wavequant.domain.market_structure.trend_levels import completed_source_points
 from wavequant.domain.market_structure.trend_confirmation import qualify_uptrend
 from wavequant.domain.market_structure.trend_publication import annotate_published_legs, confirmed_trend_legs, publish_uptrends
 from wavequant.domain.models.model import Bar
@@ -192,91 +193,101 @@ def test_real_secondary_wave_preserves_its_same_path_peak_and_independent_descen
     # 二级必须从当时可知的一级高低点判断，不能用后来行情许可筛选一级来源。
     # 两高、两低同向分别确认上涨和下降；各证据的来源可知日仍独立保留。
     candidates = mappings(next(s['points'] for s in mappings(second['candidate_strokes']) if s['id'] == geometry['id']))
-    low_definition = next(p for p in candidates if p['time'] == '2022-04-27')
-    high_definition = next(p for p in candidates if p['time'] == '2022-06-02'
+    low_definition = next(p for p in candidates if p['time'] == '2022-04-27'
+                          and p['confirmation_rule'] == 'ordered_HH_then_HL_or_LL_then_LH_switch')
+    high_definition = next(p for p in candidates if p['time'] == '2022-08-02'
                            and p['confirmation_rule'] == 'ordered_HH_then_HL_or_LL_then_LH_switch')
-    assert low_definition['available_at'] == '2022-06-06'
+    assert (low_definition['available_at'], low_definition['wave_completed_at']) == ('2022-07-04', '2022-07-04')
     assert [(p['time'], p['kind'], p['value'], p['available_at'])
             for p in mappings(low_definition['definition_evidence'])] == [
-        ('2022-04-18', 'H', 5.00, '2022-04-28'), ('2022-05-31', 'H', 5.16, '2022-06-01'),
-        ('2022-04-27', 'L', 4.06, '2022-04-28'), ('2022-06-01', 'L', 4.67, '2022-06-06'),
+        ('2022-06-02', 'H', 5.31, '2022-06-09'), ('2022-06-24', 'H', 6.67, '2022-07-04'),
+        ('2022-04-27', 'L', 4.06, '2022-05-13'), ('2022-06-14', 'L', 4.42, '2022-06-16'),
     ]
-    assert high_definition['available_at'] == '2022-06-13'
+    assert (high_definition['available_at'], high_definition['wave_completed_at']) == ('2022-09-13', '2022-09-13')
     assert [(p['time'], p['kind'], p['value'], p['available_at'])
             for p in mappings(high_definition['definition_evidence'])] == [
-        ('2022-06-02', 'H', 5.31, '2022-06-06'), ('2022-06-08', 'H', 4.88, '2022-06-13'),
-        ('2022-06-01', 'L', 4.67, '2022-06-06'), ('2022-06-08', 'L', 4.50, '2022-06-08'),
+        ('2022-08-02', 'H', 10.66, '2022-08-09'), ('2022-08-18', 'H', 8.16, '2022-08-24'),
+        ('2022-08-12', 'L', 6.77, '2022-08-23'), ('2022-09-01', 'L', 6.08, '2022-09-13'),
     ]
     source_stroke = next(s for s in mappings(first['strokes']) if s['id'] == geometry['source_path'])
+    source_points = mappings(next(s['points'] for s in mappings(second['source_strokes'])
+                                  if s['id'] == geometry['source_path']))
     for definition in (low_definition, high_definition):
+        assert definition['wave_identity_state'] == 'owned'
         for reference in mappings(definition['definition_evidence']):
-            actual = next(p for p in mappings(source_stroke['points']) if (p['index'], p.get('ordinal', 0)) ==
+            actual = next(p for p in source_points if (p['index'], p.get('ordinal', 0)) ==
                           (reference['index'], reference.get('ordinal', 0)))
             assert tuple(actual[field] for field in ('kind', 'value', 'available_at')) == tuple(
                 reference[field] for field in ('kind', 'value', 'available_at'))
+            assert actual['wave_identity_state'] == 'owned'
+            assert actual['wave_completed_at'] == reference['available_at']
 
     wave = next(leg for leg in mappings(stroke['confirmed_legs']) if leg['direction'] == 'up'
                 and mappings(leg['points'])[0]['time'] == '2022-04-27')
-    assert [(p['time'], p['value']) for p in mappings(wave['points'])] == [('2022-04-27', 4.06), ('2022-06-24', 6.67)]
+    assert [(p['time'], p['value']) for p in mappings(wave['points'])] == [('2022-04-27', 4.06), ('2022-08-02', 10.66)]
     proof = mapping(wave['confirmation'])
     assert proof['confirmation_rule'] == 'strict_same_level_market_key_break'
-    assert proof['available_at'] == '2022-06-15'
-    origin, key, trigger, wave_origin = (
-        mapping(proof[field]) for field in ('origin', 'broken_key', 'confirmed_by', 'wave_origin'))
+    assert proof['available_at'] == '2022-06-20'
+    origin, key, trigger = (mapping(proof[field]) for field in ('origin', 'broken_key', 'confirmed_by'))
+    wave_origin = mapping(proof.get('wave_origin', origin))
     assert (origin['time'], origin['value'], origin['available_at']) == (
-        '2022-06-14', 4.42, '2022-06-14')
+        '2022-04-27', 4.06, '2022-05-13')
     assert (key['time'], key['value'], key['available_at']) == (
-        '2022-06-02', 5.31, '2022-06-13')
-    assert (trigger['time'], trigger['value']) == ('2022-06-15', 5.45)
+        '2022-03-24', 5.45, '2022-05-13')
+    assert (trigger['time'], trigger['value']) == ('2022-06-20', 5.79)
     assert price(trigger['value']) > price(key['value'])
     assert (wave_origin['time'], wave_origin['value'], wave_origin['available_at']) == (
-        '2022-04-27', 4.06, '2022-04-28')
-    assert mappings(wave['points'])[0]['available_at'] == '2022-06-16'
-    assert mappings(wave['points'])[-1]['available_at'] == '2022-06-27'
-    later_local = next(p for p in mappings(stroke['points']) if p['time'] == '2022-06-16')
-    assert later_local['incoming_trend_state'] == 'unconfirmed'
-    assert mapping(later_local['trend_confirmation'])['available_at'] == '2022-06-22'
-    assert later_local['active_trend_confirmation'] == proof
+        '2022-04-27', 4.06, '2022-05-13')
+    assert mappings(wave['points'])[0]['available_at'] == '2022-05-13'
+    assert mappings(wave['points'])[-1]['available_at'] == '2022-08-09'
+    # 连续路径保留较高的旧二级压力。6/15只触及5.45，一级5.31峰不能
+    # 越级替代旧key，未完成的一级高点也不能用既有行情许可证提前发布。
+    assert not any(p['time'] == '2022-06-02' for p in candidates)
+    assert not any(p['time'] == '2022-06-14' for p in mappings(geometry['points']))
+    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+    source_origin = next(p for p in source_points if p['time'] == '2022-04-27')
+    origin_position = source_points.index(source_origin)
+    assert qualify_uptrend(source_points, source_origin, origin_position, key, bars, dates['2022-06-15']) is None
+    assert qualify_uptrend(source_points, source_origin, origin_position, key, bars, dates['2022-06-20']) == proof
 
-    # 后来的局部上涨许可不能改写已有整波起点；真正独立的下降许可却必须
-    # 终止该上涨。下降的旧低点已于6/27可知，6/29低价严格跌破后才取得证书。
-    low = next(p for p in mappings(stroke['points']) if p['time'] == '2022-07-18')
+    # 下级局部反转不改写二级整波起点；真正独立的下降许可却必须
+    # 终止该上涨。下降的旧低点已于9/27可知，9/29低价严格跌破后才取得证书。
+    low = next(p for p in mappings(stroke['points']) if p['time'] == '2022-10-10')
     assert low['incoming_trend_state'] == 'confirmed'
     following = next(leg for leg in mappings(stroke['confirmed_legs']) if leg['direction'] == 'down'
-                     and mappings(leg['points'])[0]['time'] == '2022-06-24')
-    assert [(p['time'], p['value']) for p in mappings(following['points'])] == [('2022-06-24', 6.67), ('2022-07-18', 4.81)]
+                     and mappings(leg['points'])[0]['time'] == '2022-08-02')
+    assert [(p['time'], p['value']) for p in mappings(following['points'])] == [('2022-08-02', 10.66), ('2022-10-10', 5.29)]
     down = mapping(following['confirmation'])
     assert down['direction'] == 'down' and down['confirmation_rule'] == 'strict_same_level_market_key_break'
-    assert down['available_at'] == '2022-06-29'
+    assert down['available_at'] == '2022-09-29'
     origin, key, trigger = (mapping(down[field]) for field in ('origin', 'broken_key', 'confirmed_by'))
     assert (origin['time'], origin['value'], origin['available_at']) == (
-        '2022-06-24', 6.67, '2022-06-27')
+        '2022-09-20', 7.65, '2022-09-27')
+    assert (mapping(down['wave_origin'])['time'], mapping(down['wave_origin'])['value']) == ('2022-08-02', 10.66)
     assert (key['time'], key['value'], key['available_at']) == (
-        '2022-06-22', 5.31, '2022-06-27')
-    assert (trigger['time'], trigger['value']) == ('2022-06-29', 5.25)
+        '2022-09-01', 6.08, '2022-09-27')
+    assert (trigger['time'], trigger['value']) == ('2022-09-29', 5.79)
     assert price(trigger['value']) < price(key['value'])
     assert low['incoming_trend_confirmation'] == down
-    assert mapping(low['trend_confirmation'])['direction'] == 'up'
-    assert mapping(low['trend_confirmation'])['available_at'] == '2022-07-19'
     assert low['active_trend_confirmation'] == down
 
-    # 7/29真实折线断点已关闭旧路径。8/2高点属于新路径，虽在8/3成为
-    # 折线反转，也不能越级借给旧二级整波；新路径的初始化边界本例不改变。
-    restart = next(issue['index'] for issue in drawing['issues'] if issue['time'] == '2022-07-29')
-    assert restart == 1092
-    assert all(p['source_path_end_index'] == restart for p in mappings(source_stroke['points']))
+    # 7/29外包十字星在已确认对向边界内只延伸上行，8/2高点属于原路径。
+    # 零级8/3反转、一级8/9闭合、二级9/13闭合分别保留，不能同日越级。
+    assert not any(issue['time'] == '2022-07-29' for issue in drawing['issues'])
+    assert not any('source_path_end_index' in p for p in mappings(source_stroke['points']))
     august_source = next(p for p in polyline_high_low_points(drawing)
                          if p['time'] == '2022-08-02' and p['kind'] == 'H')
     assert (august_source['value'], august_source['available_at'], august_source['source_path']) == (
-        10.66, '2022-08-03', 'lecture-1092')
-    assert not any(p['time'] == '2022-08-02' for s in mappings(first['strokes']) for p in mappings(s['points']))
-    assert all(type(p['index']) is int and p['index'] < restart for p in mappings(geometry['points']))
-    assert all(type(trigger['index']) is int and trigger['index'] < restart
-               for leg in mappings(stroke['confirmed_legs'])
-               for trigger in (mapping(mapping(leg['confirmation'])['confirmed_by']),))
+        10.66, '2022-08-03', 'lecture-738')
+    first_peak = next(p for p in mappings(source_stroke['points']) if p['time'] == '2022-08-02')
+    assert (first_peak['available_at'], first_peak['wave_completed_at']) == ('2022-08-03', '2022-08-09')
+    second_peak = next(p for p in mappings(geometry['points']) if p['time'] == '2022-08-02')
+    assert (second_peak['available_at'], second_peak['wave_completed_at']) == ('2022-08-09', '2022-09-13')
 
 
-@pytest.mark.parametrize('cutoff', ('2022-06-23', '2022-06-24', '2022-06-27', '2022-06-28'))
+@pytest.mark.parametrize('cutoff', (
+    '2022-06-23', '2022-06-24', '2022-06-27', '2022-06-28', '2022-07-01', '2022-07-04',
+))
 def test_real_same_path_peak_waits_for_its_source_day_despite_an_earlier_wave_certificate(cutoff):
     raw = json.loads((Path(__file__).parent / 'fixtures/xiangyang_2025_trend_break.json').read_text(encoding='utf-8'))
     bars = [Bar(datetime.fromisoformat(day), raw['symbol'], *prices) for day, *prices in raw['rows'] if day <= cutoff]
@@ -286,18 +297,35 @@ def test_real_same_path_peak_waits_for_its_source_day_despite_an_earlier_wave_ce
     peaks = [p for s in mappings(second['strokes']) for p in mappings(s['points']) if p['time'] == '2022-06-24']
     qualified_peaks = [p for s in mappings(second['qualified_strokes'])
                        for p in mappings(s['points']) if p['time'] == '2022-06-24']
-    wave = next(leg for s in mappings(second['qualified_strokes']) for leg in mappings(s['confirmed_legs'])
-                if leg['direction'] == 'up' and mappings(leg['points'])[0]['time'] == '2022-04-27')
-    assert mapping(wave['confirmation'])['available_at'] == '2022-06-15'
-    # 行情许可较早存在，也不能把尚未反转确认的下级峰提前递归或发布。
+    completed_peaks = [p for s in mappings(second['source_strokes'])
+                       for p in mappings(s['points']) if p['time'] == '2022-06-24']
+    qualified_origin = next(p for s in mappings(second['qualified_strokes'])
+                            for p in mappings(s['points']) if p['time'] == '2022-04-27')
+    proof = mapping(qualified_origin['trend_confirmation'])
+    assert proof['available_at'] == '2022-06-20'
+    assert (mapping(proof['broken_key'])['time'], mapping(proof['broken_key'])['value']) == ('2022-03-24', 5.45)
+    waves = [leg for s in mappings(second['qualified_strokes']) for leg in mappings(s['confirmed_legs'])
+             if leg['direction'] == 'up' and mappings(leg['points'])[0]['time'] == '2022-04-27']
+    # 较早行情许可不替代整波闭合：一级峰6/27仅可绘图，7/4才是二级来源。
     if cutoff < '2022-06-27':
-        assert not source_peaks and not peaks and not qualified_peaks
+        assert not source_peaks
     else:
-        assert len(source_peaks) == len(peaks) == len(qualified_peaks) == 1
-        assert source_peaks[0]['value'] == peaks[0]['value'] == qualified_peaks[0]['value'] == 6.67
-        assert source_peaks[0]['available_at'] == peaks[0]['available_at'] == qualified_peaks[0]['available_at'] == (
-            '2022-06-27')
+        assert len(source_peaks) == 1
+        assert (source_peaks[0]['value'], source_peaks[0]['available_at']) == (6.67, '2022-06-27')
+    if cutoff < '2022-07-04':
+        assert not completed_peaks and not peaks and not qualified_peaks and not waves
+        if source_peaks:
+            assert 'wave_completed_at' not in source_peaks[0]
+            assert completed_source_points(source_peaks, source_level=1) == []
+    else:
+        assert len(completed_peaks) == len(peaks) == len(qualified_peaks) == len(waves) == 1
+        assert source_peaks[0]['wave_completed_at'] == '2022-07-04'
+        assert completed_peaks[0]['source_geometry_available_at'] == '2022-06-27'
+        assert completed_peaks[0]['available_at'] == peaks[0]['available_at'] == qualified_peaks[0]['available_at'] == (
+            '2022-07-04')
+        assert completed_peaks[0]['value'] == peaks[0]['value'] == qualified_peaks[0]['value'] == 6.67
         peak = qualified_peaks[0]
-        assert mapping(peak['incoming_trend_confirmation'])['available_at'] == '2022-06-15'
-        assert mapping(mapping(peak['active_trend_confirmation'])['wave_origin'])['time'] == '2022-04-27'
-        assert [(p['time'], p['value']) for p in mappings(wave['points'])] == [('2022-04-27', 4.06), ('2022-06-24', 6.67)]
+        assert mapping(peak['incoming_trend_confirmation'])['available_at'] == '2022-06-20'
+        assert mapping(mapping(peak['active_trend_confirmation'])['origin'])['time'] == '2022-04-27'
+        assert [(p['time'], p['value']) for p in mappings(waves[0]['points'])] == [('2022-04-27', 4.06), ('2022-06-24', 6.67)]
+        assert completed_source_points(peaks, source_level=2) == []
