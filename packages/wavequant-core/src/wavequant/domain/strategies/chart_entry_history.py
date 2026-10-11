@@ -20,8 +20,8 @@ from ..models.model import Bar
 from .hierarchical_entry import EntryContext
 
 
-# 折线四点即可取得一级身份，趋势来源仍须整波闭合；隔离旧身份门槛及结束时钟。
-_CONFIRMATION_CACHE_VERSION = "polyline_owned_completed_source_geometry_independent_permissions_v117"
+# 有已确认对向边界的外包十字星保留单极值延伸；隔离旧断路来源与逐日资格检查点。
+_CONFIRMATION_CACHE_VERSION = "polyline_owned_completed_source_geometry_independent_permissions_v118"
 
 
 @dataclass(slots=True)
