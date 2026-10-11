@@ -283,3 +283,8 @@ Web信号、成交详情和复制共用完整组合proof，扫描列表已补独
 功能保持 `in-progress`：Core 全量 971 通过、1 项 `tests/test_folded_n.py::test_guofang_july29_n_survives_internal_smaller_swings` 失败（入场证据 `alternation_index` 预期 643、实际 621，未改动的入场逻辑）。此前 3 个 Python 文件的 Ruff 格式检查失败仅作为历史记录；该工具已从项目门禁移除。Harness 要求 done 功能所有适用验证记录均通过，故当前保留测试失败证据与活动状态。后续需明确处理这项既有测试失败，再复跑相关验证并将 MONOREPO-165 标记 done；不要为通过门禁盲目更改已确认的退出规则。
 
 完整 Web lint 当前复跑通过；本任务新增的国芳、桂林聚焦 E2E 与更新的旧桂林用例定向 ESLint 也通过，未触碰并行改动。旧桂林浏览器用例的其他年份断言完整保留，在 2025-11-06 买点处已有独立失败。
+2026-10-11 · 趋势功能与剩余加载性能：MONOREPO-318/320已完成并本地合入main，同会话继续复用 `feat-三级趋势统一` / `C:/Users/zb/.codex/worktrees/trend-levels/wavequant-monorepo`，最新代码合并848e923、运行证据03df217，未推送。统一三级递归、完整阶段、严格升级及独立资格保留；342项/4子用例和相关类型/构建通过，512棒冷计算中位1.16→0.51秒，完整TDX6805棒含资格图16.21秒。实际3003短前缀新引擎5d956772、196棒200/4.514秒，完整载荷仅版本/快照/抓取时间与318不同。自选自动切至ebcfe0bb新批次，2018-01-01起点保持，11:24时12股未全部完成；完整2026-10-09图一次GET仍在45.085秒期限内未返回，不能视为完整加载问题已解决。
+
+下一步加载性能定位必须区分两条调用链。日线 `market_timeframes.py` bundle→repository.view/theory→单次三级，**不调用逐日history或generate_system_signals**。现有可测边界：同bundle两次window/provider读取、theory只有查写锁而无相同冷key单次计算、SQL/Redis/HTTP多次处理完整证据树（196棒响应已2.11MB）、HTTP先dumps再判ETag、同进程回测线程CPU竞争；具体45秒主因尚无阶段profile，禁止写成已证实网络或逐日重放。复用须同source/symbol/asof/bar digest/N/price basis/engine，不能把2018起causal_adjusted回测历史给1997起raw图。
+
+回测单独存在重复历史：`integrated_strategy.py`生成信号取得带decline_sink的hierarchical_history，`backtest.py`趋势退出又做无sink历史，`intraday_entry.py`再做chart_entry_history；现有prefix key含wants_declines及sink/audit模式，简单传同cache会失配。后续优化应只共享同次完整日线已核验结果，分钟partial今日仍独立取证，不能持久化全树或借未来资格。本轮只读定位，没有实现这些额外改动，也未手工重启/重刷或运行浏览器。保留旧256失败事实，完整账户/分钟及全队列新版本结果待独立验证。旧309的8/2峰断言已由318契约取代：7/29物理路径断点隔离8/2新路径；当前同路径整波峰和独立反向证书有真实强回归。
