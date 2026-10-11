@@ -165,9 +165,11 @@ def promote_trend_key_breaks(
     ``source`` 只能来自完整结束的直接下级：一级消费折线，二级消费一级，
     三级消费二级；开放升级点和显示尾端由共同来源校验排除。``candidates`` 是
     共同定义的方向账本，只有取得 owned 身份的闭合点才可成为本级 key。
-    普通相反方向若整波退化为一条直接下级波，保持 pending，不改变既有
+    普通相反方向若整波退化为一条直接下级趋势波，保持 pending，不改变既有
     owned 方向、起点或极值。以后反向波包含真实内部下级拐点成为组合波，
     或严格突破旧本级 key，才在实际身份可知日关闭和切换本级整波。
+    一级来源是折线反转，直接以同一严格四点定义确认，不能把二/三级的
+    趋势段升格门禁施加给折线。此边界只区分来源身份，不改变价格公式。
 
     下级 H 严格高于本级旧 H 时，在旧 H 与攻击 H 之间的已知下级 L 中取
     整波最低点；下级 L 严格低于本级旧 L 时，镜像取整波最高 H。相等极值
@@ -196,7 +198,8 @@ def promote_trend_key_breaks(
     for points in (source, candidates):
         if not isinstance(points, Sequence) or isinstance(points, (str, bytes, bytearray)):
             raise ValueError('source and candidates must be sequences of mappings')
-    turns = _source_turns(source, trend_level - 1)
+    source_level = trend_level - 1
+    turns = _source_turns(source, source_level)
     # 本级普通事件只借投影时钟进入 key 树，返回 ledger/geometry 必须仍为
     # 原事件自己的副本，不能把“供上级消费”的来源审计字段混回本级输出。
     regular = _source_turns(candidates, trend_level, retain_geometry=True, accept_direction_facts=True)
@@ -288,18 +291,28 @@ def promote_trend_key_breaks(
                                                               attack_position + 1)
                 if counter is not None:
                     left, right = source_positions[_order(whole_extreme)], source_positions[_order(counter)]
-                    # 真正组合波须包含两端之间的实际已结束下级拐点。不是最终
-                    # 坐标去重，也不按日期/价格阈值猜测；单 child 保留方向事实，
-                    # 等组合波身份或本级旧 key 严格突破成立才允许切换 owned。
-                    if right - left > 1:
+                    # 递归趋势线必须包含实际内部下级拐点，单 child 只能等待
+                    # 组合波或严格破旧 key。零级折线只提供价格反转，不是待升格
+                    # 的下级趋势线；否则第一条折线腿已是区间极值时，即便以后
+                    # 多次出现严格LL/LH或HH/HL，一级也会被永远锁在旧方向。
+                    if source_level == 0 or right - left > 1:
                         opposite = preceding_sources[whole_extreme.reversal]
                         proof = [*recent['H'], *recent['L']]
                         raw = _ordinary_point(whole_extreme, proof, attack, trend_level=trend_level,
                             direction=owned_direction, current=current, prefix_known=prefix_known,
                             key=_reference(opposite) if opposite is not None else None, owned=True)
-                        raw['lower_wave_identity_evidence'] = dict(available_at=prefix_known,
-                            origin=_reference(whole_extreme), interior=_reference(turns[left + 1]),
-                            endpoint=_reference(counter))
+                        identity_proof: dict[str, object] = dict(available_at=prefix_known,
+                            origin=_reference(whole_extreme), endpoint=_reference(counter))
+                        if source_level == 0:
+                            identity_proof['basis'] = 'polyline_four_point_definition'
+                        else:
+                            identity_proof['interior'] = _reference(turns[left + 1])
+                        if whole_origin is not None:
+                            # 严格突破较小旧 key 可以先开启新波；四点比较仍可能
+                            # 含上一个波的更高H/更低L。保留真正整波起点作为极值
+                            # 校验边界，不能改取最新局部回调来排除本波反例。
+                            identity_proof['wave_origin'] = _reference(whole_origin)
+                        raw['lower_wave_identity_evidence'] = identity_proof
                         _stamp_wave_completion(raw, closed=True)
                         publish_owned(raw, whole_extreme, prefix_known, closed=True)
                         whole_origin, whole_extreme, owned_direction = whole_extreme, counter, current

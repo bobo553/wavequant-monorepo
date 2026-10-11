@@ -83,8 +83,8 @@ def hierarchical_history(
     previous: dict[int, dict[tuple[int, int, str, float], int]] = {0: {}, 1: {}, 2: {}, 3: {}}
     last_epoch = None
     last = len(bars) - 1
-    # 旧逐日来源没有本级整波闭合证明，不能直接恢复后继续递归。
-    cache_version = 'level_first_completed_source_wave_geometry_and_independent_permissions_v116'
+    # 旧检查点的一级身份门槛与结束来源协议不同，不能恢复后继续递归。
+    cache_version = 'level_first_polyline_owned_completed_source_geometry_and_independent_permissions_v117'
     wants_declines = decline_sink is not None
     wants_structure = structure_sink is not None
     prefix_key = (cache_version, tuple(bars[:-1]), wants_declines, n_target_trend_confirmation_enabled, wants_structure)
