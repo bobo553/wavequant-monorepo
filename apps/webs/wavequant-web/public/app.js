@@ -997,6 +997,7 @@ function syncSymbolCopy() {
 function fallbackCopyText(text, focusTarget) {
     const field = document.createElement("textarea");
     field.value = text;
+    field.dataset.clipboardFallback = "true";
     field.style.position = "fixed";
     field.style.opacity = "0";
     document.body.append(field);
@@ -1052,20 +1053,40 @@ function currentCandleCopyText(bar) {
         previousCandleClose(state.view?.bars, bar),
     );
 }
+function copyableRenderedCandle(bar) {
+    const view = chart.data;
+    const source = sourceForScope($("result-scope").value);
+    const renderedSource = view?.data_source ?? sourceForScope(view?.result_scope || "");
+    // 普通图加载完成后会自动在后台回测同股，失败时也明确保留可操作的旧图。
+    // loading/error 描述请求状态，不能否决画面上的 K 线；按钮和快捷键必须共用
+    // 当前渲染快照、股票及棒身份，换股或真实行情遮罩出现时才拒绝复制旧数据。
+    if (
+        !bar ||
+        !view ||
+        view !== state.view ||
+        view.symbol !== $("symbol-select").value ||
+        (source && source !== renderedSource) ||
+        (view.timeframe || "1d") !== activeTimeframe() ||
+        !view.bars.includes(bar) ||
+        state.page !== "workspace" ||
+        chart.container.closest("[hidden], [inert]") ||
+        chart.container.closest(".chart-card")?.dataset.chartView === "tradingview" ||
+        chart.container.getAttribute("aria-busy") === "true" ||
+        !$("chart-loading-overlay").hidden
+    )
+        return null;
+    return bar;
+}
 async function copyHoveredCandle(bar, button = $("copy-candle")) {
-    if (!bar) return;
+    if (!copyableRenderedCandle(bar)) return;
     const copied = await writeClipboardText(currentCandleCopyText(bar), button);
     if (bar === currentCandle) showCandleCopyFeedback(bar, button, copied);
 }
 $("copy-candle").addEventListener("click", () => copyHoveredCandle(currentCandle));
 bindCandleClipboard(chart, {
-    // 行情重载与回放会改变顶部价格；只复制当前可见卡片所对应的 K 线，避免旧日期混入新股票。
+    // 卡片日期约束保证光标没有离开本根 K 线；资格与按钮共用渲染事实，不受后台回测阻断。
     getCandle: () => (currentCandle?.time === chart.tooltipBarTime ? currentCandle : null),
-    isEnabled: () =>
-        state.page === "workspace" &&
-        !state.loading &&
-        !state.error &&
-        chart.container.closest(".chart-card")?.dataset.chartView !== "tradingview",
+    isEnabled: () => Boolean(copyableRenderedCandle(currentCandle)),
     copyText: currentCandleCopyText,
     copyCandle: copyHoveredCandle,
     onCopied: (bar) => showCandleCopyFeedback(bar, $("copy-candle"), true),

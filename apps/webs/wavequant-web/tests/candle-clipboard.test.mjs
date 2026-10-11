@@ -16,7 +16,11 @@ function harness(t, { bind = true, copyCandle } = {}) {
     const dom = new JSDOM(
         '<article class="chart-card" data-chart-view="primary"><div id="chart" tabindex="0"><canvas></canvas></div></article>' +
             '<aside id="tooltip"><span id="details">日期与收盘价</span><button id="card-copy">复制</button></aside>' +
-            '<button id="copy-candle">复制 K 线</button><div id="candle-copy-feedback"></div><p id="outside">其他内容</p>',
+            '<button id="copy-candle">复制 K 线</button><div id="candle-copy-feedback"></div><p id="outside">其他内容</p>' +
+            '<select id="symbol-select"><option value="sh.600000">测试股票</option><option value="sz.000678">襄阳轴承</option></select>' +
+            '<select id="result-scope"><option value="akshare">AkShare</option><option value="akshare-backtest">AkShare 回测</option><option value="tdx">通达信</option></select>' +
+            '<div id="timeframe-select" data-value="1d"></div>' +
+            '<div id="chart-loading-overlay" hidden></div>',
         { pretendToBeVisual: true },
     );
     const document = dom.window.document;
@@ -106,7 +110,7 @@ const externalControls = [
     ["stock search", '<input id="stock-search" type="search" value="襄阳轴承">'],
     ["date", '<input id="asof" type="date" value="2026-10-10">'],
     ["chart position", '<input id="chart-position" type="range" min="0" max="100" value="20">'],
-    ["select", '<select id="symbol-select"><option>sz.000678</option></select>'],
+    ["select", '<select id="residual-select"><option>sz.000678</option></select>'],
 ];
 
 function focusedExternalControl(h, markup) {
@@ -115,8 +119,6 @@ function focusedExternalControl(h, markup) {
     h.document.body.append(holder);
     const control = holder.firstElementChild;
     control.focus();
-    if (typeof control.selectionStart === "number")
-        control.setSelectionRange(control.value.length, control.value.length);
     assert.equal(h.document.activeElement, control);
     assert.equal(h.window.getSelection().toString(), "");
     return control;
@@ -142,6 +144,30 @@ for (const init of [
         assert.deepEqual(h.formatted, []);
         assert.deepEqual(h.feedback, []);
         assert.deepEqual(h.nativeWrites, []);
+    });
+}
+
+for (const key of ["с", "Process"]) {
+    test(`physical KeyC copies the current candle with logical key ${key} and body keyboard focus`, (t) => {
+        const h = harness(t);
+        h.containerHovered = true;
+        assert.equal(h.document.activeElement, h.document.body);
+        assert.equal(h.key(h.document.activeElement, { key, code: "KeyC" }).defaultPrevented, true);
+        assert.deepEqual(h.copied, [bar]);
+    });
+}
+
+for (const init of [
+    { key: "Process", code: "KeyX" },
+    { key: "с", code: "KeyS" },
+    { key: "Process", code: "KeyC", isComposing: true },
+    { key: "Process", code: "KeyC", altKey: true },
+    { key: "Process", code: "KeyC", shiftKey: true },
+]) {
+    test(`physical shortcut preserves native behavior for ${JSON.stringify(init)}`, (t) => {
+        const h = harness(t);
+        h.containerHovered = true;
+        assertUntouched(h, h.key(h.document.activeElement, init));
     });
 }
 
@@ -308,11 +334,12 @@ for (const [name, markup] of [
     ["input", '<input value="selected text">'],
     ["textarea", "<textarea>selected text</textarea>"],
 ]) {
-    test(`${name} input selection retains native copying while the chart is hovered`, (t) => {
+    test(`${name} input selection retains native copying when the pointer remains on its editor`, (t) => {
         const h = harness(t);
         const control = focusedExternalControl(h, markup);
         control.setSelectionRange(0, control.value.length);
         h.containerHovered = true;
+        hovered(control);
         assert.equal(h.window.getSelection().toString(), "");
         assert.equal(control.selectionEnd - control.selectionStart, control.value.length);
         assertUntouched(h, h.key(control));
@@ -502,7 +529,7 @@ function installApplicationCopy(
             page: "workspace",
             loading: false,
             error: null,
-            view: { symbol: "sh.600000", bars: [{ time: "2026-10-09", close: 10 }, bar] },
+            view: { symbol: "sh.600000", data_source: "akshare", bars: [{ time: "2026-10-09", close: 10 }, bar] },
         },
         candleCopyFeedbackTimer: undefined,
         $: (id) => h.document.getElementById(id),
@@ -510,9 +537,29 @@ function installApplicationCopy(
         candleCopyText,
         previousCandleClose,
         bindCandleClipboard,
+        activateHeaderStockSearch: () => {},
+        requestAnimationFrame: (callback) => callback(),
+        isMarketBrowse: () => ["akshare", "tdx"].includes(h.document.getElementById("result-scope").value),
+        selectedTimeframe: () => h.document.getElementById("timeframe-select").dataset.value,
     };
+    h.chart.data = context.state.view;
     // 执行应用真实的按钮、快捷键、格式化及反馈接线，只替代系统剪贴板 I/O。
     runInNewContext(source, context);
+    const scopeStart = appSource.indexOf("const sourceForScope =");
+    const scopeEnd = appSource.indexOf("\n", scopeStart);
+    assert.ok(scopeStart >= 0 && scopeEnd > scopeStart, "the production source-scope fragment must remain present");
+    runInNewContext(appSource.slice(scopeStart, scopeEnd), context);
+    const timeframeStart = appSource.indexOf("const activeTimeframe =");
+    const timeframeEnd = appSource.indexOf("\n", timeframeStart);
+    assert.ok(
+        timeframeStart >= 0 && timeframeEnd > timeframeStart,
+        "the production active-timeframe fragment must remain present",
+    );
+    runInNewContext(appSource.slice(timeframeStart, timeframeEnd), context);
+    const focusStart = appSource.indexOf("function focusStockSearch() {");
+    const focusEnd = appSource.indexOf("\nwindow.addEventListener(", focusStart);
+    assert.ok(focusStart >= 0 && focusEnd > focusStart, "the production search-focus fragment must remain present");
+    runInNewContext(appSource.slice(focusStart, focusEnd), context);
     h.unbind = context.boundCleanup;
     return context;
 }
@@ -529,6 +576,85 @@ test("application keyboard wiring writes the visible candle through the existing
     assert.equal(h.topButton.textContent, "已复制");
     assert.equal(h.document.getElementById("candle-copy-feedback").textContent, "已复制 2026-10-10 K 线数据");
     assert.deepEqual(h.nativeWrites, []);
+});
+
+for (const region of ["containerHovered", "tooltipHovered"]) {
+    for (const selectionEcho of ["none", "no DOM range", "collapsed body range"]) {
+        test(`real search focus and select preserves its residual selection while ${region} copies with ${selectionEcho}`, async (t) => {
+            const h = harness(t, { bind: false });
+            const context = installApplicationCopy(h);
+            const control = focusedExternalControl(
+                h,
+                '<input id="header-stock-search" type="search" value="襄阳轴承">',
+            );
+            context.focusStockSearch();
+            assert.equal(h.document.activeElement, control);
+            assert.deepEqual([control.selectionStart, control.selectionEnd], [0, control.value.length]);
+            if (selectionEcho !== "none") {
+                const range = h.document.createRange();
+                range.selectNodeContents(h.document.body);
+                range.collapse(true);
+                // 浏览器可能回显输入选区文字，但它不是选中了卡片或正文的 DOM Range。
+                h.document.getSelection = () => ({
+                    toString: () => control.value,
+                    isCollapsed: false,
+                    anchorNode: h.document.body,
+                    focusNode: h.document.body,
+                    anchorOffset: 0,
+                    focusOffset: 0,
+                    rangeCount: selectionEcho === "no DOM range" ? 0 : 1,
+                    getRangeAt: () => range,
+                });
+            }
+            h[region] = true;
+            assert.equal(h.key(h.document.activeElement).defaultPrevented, true);
+            await setImmediate();
+            const expected = candleCopyText(bar, "测试股票（sh.600000）", 10);
+            assert.deepEqual(h.asyncWrites, [expected]);
+            assert.equal(h.topButton.dataset.copyState, "success");
+            assert.equal(h.copy(h.document.activeElement).defaultPrevented, true);
+            assert.deepEqual(h.nativeWrites, [["text/plain", expected]]);
+            assert.equal(h.document.activeElement, control);
+            assert.deepEqual([control.selectionStart, control.selectionEnd], [0, control.value.length]);
+            h[region] = false;
+            assert.equal(h.key(control).defaultPrevented, false);
+            assert.equal(h.copy(control).defaultPrevented, false);
+            assert.deepEqual(h.asyncWrites, [expected]);
+            assert.deepEqual(h.nativeWrites, [["text/plain", expected]]);
+        });
+    }
+}
+
+for (const status of ["loading", "error"]) {
+    test(`application copies the same visible stock during background ${status} through all copy entries`, async (t) => {
+        const h = harness(t, { bind: false });
+        const context = installApplicationCopy(h);
+        context.state[status] = status === "error" ? "background backtest failed" : true;
+        h.document.getElementById("result-scope").value = "akshare-backtest";
+        assert.equal(h.chart.data, context.state.view);
+        h.containerHovered = true;
+        assert.equal(h.key(h.document.activeElement).defaultPrevented, true);
+        await setImmediate();
+        const expected = candleCopyText(bar, "测试股票（sh.600000）", 10);
+        assert.deepEqual(h.asyncWrites, [expected]);
+        assert.equal(h.copy(h.document).defaultPrevented, true);
+        assert.deepEqual(h.nativeWrites, [["text/plain", expected]]);
+        h.topButton.click();
+        await setImmediate();
+        assert.deepEqual(h.asyncWrites, [expected, expected]);
+        assert.equal(h.topButton.dataset.copyState, "success");
+    });
+}
+
+test("requested AkShare data resolved through TDX remains copyable as the displayed logical source", async (t) => {
+    const h = harness(t, { bind: false });
+    const context = installApplicationCopy(h);
+    context.state.view.resolved_source = "tdx";
+    assert.equal(context.state.view.data_source, "akshare");
+    h.containerHovered = true;
+    assert.equal(h.key(h.document.activeElement).defaultPrevented, true);
+    await setImmediate();
+    assert.deepEqual(h.asyncWrites, [candleCopyText(bar, "测试股票（sh.600000）", 10)]);
 });
 
 for (const [name, markup] of externalControls) {
@@ -600,15 +726,51 @@ for (const [name, arrange] of [
         },
     ],
     [
-        "loading",
+        "a replaced chart snapshot",
         (h, context) => {
-            context.state.loading = true;
+            h.chart.data = { ...context.state.view };
         },
     ],
     [
-        "an error",
+        "a changed stock selector",
+        (h) => {
+            h.document.getElementById("symbol-select").value = "sz.000678";
+        },
+    ],
+    [
+        "a visible chart loading overlay",
+        (h) => {
+            h.document.getElementById("chart-loading-overlay").hidden = false;
+        },
+    ],
+    [
+        "an aria-busy chart",
+        (h) => {
+            h.container.setAttribute("aria-busy", "true");
+        },
+    ],
+    [
+        "a candle absent from the rendered bars despite matching date and prices",
         (h, context) => {
-            context.state.error = "network";
+            context.currentCandle = { ...bar };
+        },
+    ],
+    [
+        "no rendered chart data",
+        (h) => {
+            h.chart.data = null;
+        },
+    ],
+    [
+        "a changed market source for the same stock",
+        (h) => {
+            h.document.getElementById("result-scope").value = "tdx";
+        },
+    ],
+    [
+        "a changed timeframe for the same stock",
+        (h) => {
+            h.document.getElementById("timeframe-select").dataset.value = "1w";
         },
     ],
     [
@@ -640,6 +802,12 @@ for (const [name, arrange] of [
         assert.deepEqual(h.asyncWrites, []);
         assert.deepEqual(h.nativeWrites, []);
         assert.equal(h.topButton.textContent, "复制 K 线");
+        if (name !== "an old candle date") {
+            h.topButton.click();
+            await setImmediate();
+            assert.deepEqual(h.asyncWrites, []);
+            assert.equal(h.topButton.dataset.copyState, undefined);
+        }
     });
 }
 
@@ -657,6 +825,7 @@ test("the application fallback focuses and selects its textarea without reenteri
         fallbackValues.push(field.value);
         assert.equal(h.copy(field).defaultPrevented, false);
         assert.equal(h.copy(h.document).defaultPrevented, false);
+        assert.equal(field.dataset.clipboardFallback, "true");
         return true;
     };
     installApplicationCopy(h, {
@@ -672,6 +841,36 @@ test("the application fallback focuses and selects its textarea without reenteri
     assert.equal(h.document.querySelector("textarea"), null);
     assert.equal(h.document.activeElement, h.topButton);
     assert.equal(h.topButton.textContent, "已复制");
+});
+
+test("a marked application fallback for other text cannot be replaced by candle copying even without an input selection", async (t) => {
+    const h = harness(t, { bind: false });
+    h.containerHovered = true;
+    const fallbackValues = [];
+    h.document.execCommand = (command) => {
+        assert.equal(command, "copy");
+        const field = h.document.activeElement;
+        assert.equal(field.tagName, "TEXTAREA");
+        field.setSelectionRange(field.value.length, field.value.length);
+        assert.equal(h.copy(h.document).defaultPrevented, false);
+        assert.equal(h.copy(field).defaultPrevented, false);
+        assert.equal(field.dataset.clipboardFallback, "true");
+        fallbackValues.push(field.value);
+        return true;
+    };
+    const context = installApplicationCopy(h, {
+        writeText: async () => {
+            throw new Error("permission denied");
+        },
+    });
+    const text = "股票：襄阳轴承（sz.000678）";
+    assert.equal(await context.writeClipboardText(text, h.topButton), true);
+    assert.deepEqual(fallbackValues, [text]);
+    assert.deepEqual(h.nativeWrites, []);
+    assert.equal(h.topButton.textContent, "复制 K 线");
+    assert.equal(h.topButton.dataset.copyState, undefined);
+    assert.equal(h.document.querySelector("textarea"), null);
+    assert.equal(h.document.activeElement, h.topButton);
 });
 
 test("the application reports failure when both clipboard permission and the fallback fail", async (t) => {
