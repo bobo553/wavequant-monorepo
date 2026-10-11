@@ -12,24 +12,31 @@ export function bindCandleClipboard(chart, { getCandle, isEnabled, copyText, cop
     const preservesEditorCopy = (element, pointerInChart) => {
         const field = element?.closest?.(editable);
         if (!field) return false;
-        // 搜索选股和日期/滑块操作不会移走输入焦点。光标已经回到 K 线且没有
-        // 输入选区时，残留焦点不应阻断复制；这里仅判断意图，不强制输入框失焦。
+        // 搜索框会 focus()+select()，选股后留下的焦点和全选仍属于旧操作。
+        // 光标已经回到 K 线时以当前图表为复制意图，不清选区、不强制输入框失焦。
         // 图内编辑、编辑器自身悬停、独立输入事件及 shadow 编辑器仍归原生复制。
         if (
+            field.dataset.clipboardFallback === "true" ||
             !pointerInChart ||
             field.matches(":hover") ||
             regions.some((region) => region.contains(field)) ||
             (field !== doc.activeElement && !field.contains(doc.activeElement))
         )
             return true;
-        // input/textarea 的选区不一定出现在 document.getSelection() 中。
-        // execCommand 的临时 textarea 也依赖此保护，避免兼容复制重新接管自身。
-        return typeof field.selectionStart === "number" && field.selectionEnd > field.selectionStart;
+        // 图外编辑器的选区保留原样；鼠标回到该编辑器后仍可正常复制其文字。
+        // 兼容复制的临时 textarea 由显式标记保护，不能误把它当作残留焦点。
+        return false;
     };
 
     const candleForEvent = (event) => {
         const pointerInChart = regions.some((region) => region.matches(":hover"));
-        // 当前光标所在 K 线优先于图外无选区的旧焦点，真正的输入选区仍优先。
+        const selection = doc.getSelection();
+        // 只按实际 DOM Range 保护选中的提示字段/正文。输入框的选区由上方
+        // 编辑器意图判断负责，不能再因 Selection 回显输入文字而重复阻断。
+        const selectedDocumentText = Array.from({ length: selection?.rangeCount ?? 0 }, (_, index) =>
+            selection.getRangeAt(index),
+        ).some((range) => !range.collapsed && range.toString());
+        // 当前光标所在 K 线优先于图外旧编辑焦点，包括搜索框遗留的全选。
         // 文字选区优先于整根 K 线，卡片内单独选择字段仍走浏览器原生复制。
         if (
             event.defaultPrevented ||
@@ -40,7 +47,7 @@ export function bindCandleClipboard(chart, { getCandle, isEnabled, copyText, cop
             tooltip.closest("[hidden], [inert]") ||
             preservesEditorCopy(doc.activeElement, pointerInChart) ||
             event.composedPath().some((element) => preservesEditorCopy(element, pointerInChart)) ||
-            doc.getSelection()?.toString()
+            selectedDocumentText
         )
             return null;
 
@@ -53,7 +60,7 @@ export function bindCandleClipboard(chart, { getCandle, isEnabled, copyText, cop
 
     const onKeyDown = (event) => {
         if (
-            event.key.toLowerCase() !== "c" ||
+            (event.key.toLowerCase() !== "c" && event.code !== "KeyC") ||
             !(event.ctrlKey || event.metaKey) ||
             event.altKey ||
             event.shiftKey ||
@@ -78,7 +85,7 @@ export function bindCandleClipboard(chart, { getCandle, isEnabled, copyText, cop
     };
 
     // 图表 SDK 可能截断画布事件冒泡；捕获阶段保证快捷键与右键原生复制入口一致。
-    // 按钮的 execCommand 兼容复制产生的事件以 textarea 为目标，会被可编辑判断放行。
+    // 按钮的 execCommand 兼容复制以带标记的 textarea 为目标，始终交给原生复制。
     doc.addEventListener("keydown", onKeyDown, true);
     doc.addEventListener("copy", onCopy, true);
     return () => {

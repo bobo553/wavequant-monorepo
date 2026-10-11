@@ -11703,6 +11703,48 @@
                     "summary": "按用户开发验证节奏未运行完整Web套件或启动浏览器/Playwright。99项为Node/JSDOM及真实PriceChart回调接线，不称浏览器系统剪贴板验收；搜索选股→悬停Ctrl+C、卡片复制后换日期待独立手工浏览器复核。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-323",
+            "name": "copy-rendered-candle-during-background-backtest",
+            "title": "统一K线复制资格与搜索选区意图",
+            "status": "done",
+            "dependencies": ["MONOREPO-322"],
+            "description": "修复用户复测快捷键仍无效：搜索框自动全选遗留及同股后台回测/失败不能阻断当前可见K线，按钮与快捷键共用渲染资格。",
+            "scope": "Web当前渲染K线复制资格、编辑器残留选区意图、兼容剪贴板保护及真实应用事件定向回归。",
+            "acceptanceCriteria": [
+                "执行真实搜索框focus/select后，鼠标位于K线或提示卡片时快捷键复制当前棒；输入框选区不被清空，鼠标在编辑器或无图表上下文时保留原生复制。",
+                "同股票同源同周期已渲染图在后台回测加载/失败期间可复制，按钮与快捷键资格一致；换股、换源、换周期、真实遮罩/busy及非当前快照棒拒绝旧数据。",
+                "提示/正文真实DOM文本选区、图内编辑器、独立编辑目标/shadow保留原生复制；标记临时textarea的兼容复制不被K线入口覆盖。",
+                "缺陷旧代码RED与修复定向回归、相关静态检查/构建/独立复核通过，状态和本地合并记录齐备；浏览器和完整Web套件按用户节奏待独立验证。"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm --filter wavequant-web exec node --test tests/candle-clipboard.test.mjs tests/candle-details.test.mjs tests/chart-tooltip.test.mjs tests/chart-keyboard-navigation.test.mjs",
+                    "status": "passed",
+                    "summary": "最终4文件122项通过（2796.899ms，零失败/跳过）。同99项新增复制用例在6205140旧实现为77通过/22失败，精确复现真实focusStockSearch自动全选、残留输入选区/Selection回显、同股同源同周期已渲染图后台loading/error、按钮共门禁、非ASCII KeyC、换股/换源/周期/遮罩/棒身份拒绝及兼容textarea标记保护；完整字段、原生/异步事件结果已核，未启动浏览器。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "相关Web类型及Next16.2.6 Turbopack生产构建通过，lint零错6条既有环境变量warning。public JS/mjs不在既有lint/TypeScript覆盖范围，另以语法、真实应用片段事件回归及独立复核验证。构建生成next-env路径已按原样恢复，不提交产物。"
+                },
+                {
+                    "command": "node --check changed public modules and regression test; targeted Prettier; git diff --check; independent read-only review",
+                    "status": "passed",
+                    "summary": "修改文件语法/格式/差异及独立只读复核通过，无未解决P1/P2。copyableRenderedCandle统一按钮/快捷键资格，data_source为请求源不会误禁resolved_source供应商回退；实际DOM Range保护正文文字，临时textarea明确放行；未强制输入失焦或清选区。"
+                },
+                {
+                    "command": "node --max-old-space-size=128 scripts/harness/validate-state.mjs; codegraph sync; original feature preservation assertion",
+                    "status": "passed",
+                    "summary": "最终状态后Harness/CodeGraph及原功能逐字段保留检查；319个原功能与唯一活动256/root元数据保持，只新增323。"
+                },
+                {
+                    "command": "full Web unit suite and real browser/Playwright clipboard validation",
+                    "status": "not-run",
+                    "summary": "按用户开发验证节奏未运行完整Web或浏览器/Playwright。定向Node/JSDOM只证明应用事件、资格及文本I/O，不称trusted快捷键系统剪贴板真实浏览器验收；页面刷新后实际复制仍待手工复核。"
+                }
+            ]
         }
     ]
 }
