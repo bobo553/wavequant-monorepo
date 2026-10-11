@@ -43,7 +43,9 @@ def calculate_trend_hierarchy(
     for level in (1, 2, 3):
         current = prepare_trend_lines(source, trend_level=level, symbol=symbol)
         prepared[level] = current
-        source = high_low_points_from_strokes(current['strokes'])
+        if level < 3:
+            # 只在确有下一级时投影已结束来源；三级完成后不创建不存在的四级输入。
+            source = high_low_points_from_strokes(current['strokes'])
 
     results: dict[int, dict[str, object]] = {}
     qualified_source = None
@@ -52,6 +54,7 @@ def calculate_trend_hierarchy(
             qualified_source_points=qualified_source,
             n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         results[level] = current
-        qualified_source = high_low_points_from_strokes(current['qualified_strokes'])
+        if level < 3:
+            qualified_source = high_low_points_from_strokes(current['qualified_strokes'])
     return TrendHierarchy(lecture_drawing=drawing_result, reversal_trends=results[1],
                           secondary_trends=results[2], tertiary_trends=results[3])

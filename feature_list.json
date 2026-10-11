@@ -11553,6 +11553,89 @@
                     "summary": "遵循用户验证节奏待独立验证；未触发全自选刷新或终止运行中任务。固定512/6805棒的纯计算证据不代表网络、账户模拟、逐日策略历史或全队列已刷新；重复逐日历史开销本轮未消除。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-321",
+            "name": "hierarchical-trend-wave-continuation",
+            "title": "修复趋势整波身份与跨级递归重叠",
+            "status": "done",
+            "dependencies": ["MONOREPO-320"],
+            "description": "公共判断区分普通方向事实和本级整波身份；完成的直接下级组合波按共同高低定义取得本级身份，单条下级波只有严格突破已知本级键才可升格。同向升级保留整波起点，开放端点不可递归，几何/结束/策略资格三种时钟独立。",
+            "scope": "Core公共趋势判定、升级归并、递归来源与缓存版本，详细中文注释、真实重叠审计与定向回归。",
+            "acceptanceCriteria": [
+                "一级折线、二级一级、三级二级始终调用相同公共函数及高低共同严格升降公式。",
+                "同向突破延续同一上级整波极值，不把未破上级反向键的局部回调补为新上级起点。",
+                "单个直接下级段与上级同段必须有已知上级键严格突破证据，来源段端点已完成；相等、未来键、未完成/显示点均拒绝。",
+                "普通方向切换、严格反向突破和同向延续各保留独立证明与真实可知日，证书不筛选几何或倒填日期。",
+                "跨级重叠反例、高低镜像、因果前缀、递归、真实1997区间及缓存回归通过，相关类型/构建/复核完成。"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_trend_wave_completion.py tests/test_trend_wave_identity.py tests/test_trend_judgement_core.py tests/test_recursive_trend_judgement.py tests/test_trend_level_upgrades.py tests/test_trend_down_upgrade_publication.py tests/test_trend_levels.py tests/test_trend_pair_order.py tests/test_trend_candidate_ledger.py tests/test_trend_confirmation_boundaries.py tests/test_structural_permission_promotion.py tests/test_n_trend_source_license.py tests/test_n_trend_same_coordinate.py tests/test_n_trend_path_boundaries.py tests/test_n_trend_option.py tests/test_trend_wave_continuation.py -q",
+                    "status": "passed",
+                    "summary": "最终16文件546项通过（11.54秒），镜像/三级/整数与日期/未来隔离/单child拒绝及合法严格例外/同向整波/独立N许可均保留。"
+                },
+                {
+                    "command": "pytest tests/test_trend_level_pipeline.py tests/test_secondary_trend.py tests/test_tertiary_trend.py -q",
+                    "status": "passed",
+                    "summary": "最终3兼容文件44项及65子用例通过（124.80秒）；较早46失败/2错误均为整波身份与资格视图旧预期，真实引用和拒绝门禁核对后修正并逐组复验，不删除测试或放宽生产。"
+                },
+                {
+                    "command": "pytest tests/test_trend_leg_confirmation.py -q --tb=short",
+                    "status": "passed",
+                    "summary": "最终27项通过（1.07秒），真实2019一级下降/上涨证书独立，二级仅方向事实不能取得身份；4/8拒绝、4/9真正闭合及首证书时钟保留。"
+                },
+                {
+                    "command": "pytest tests/test_xiangyang_1997_trend_segments.py tests/test_staged_trend_pipeline.py tests/test_chart_entry_history_cache.py tests/test_empty_epoch_path_cutoff.py -q; affected historical assertions rerun after proof migration",
+                    "status": "passed",
+                    "summary": "完整4文件初次29通过/9失败（110.97秒）；全部9个旧身份失败已按真实闭合引用迁移，6个历史/分阶段断言及4个最近左侧关键位断言定向通过（有重叠，不合计）。两缓存组15项初次通过，生产最后最近键修复不改几何和缓存策略，不重复长历史。"
+                },
+                {
+                    "command": "pytest tests/test_trend_wave_completion.py with isolated original HEAD production modules",
+                    "status": "passed",
+                    "summary": "新增第一阶段74项在原生产代码50失败/24通过，证实回归能复现开放端点提前递归、局部起点重启和结束时钟混淆；原两个真实残余单child最小反例亦复现错误。"
+                },
+                {
+                    "command": "python .codex-runtime/audit_321_completed_overlap.py",
+                    "status": "passed",
+                    "summary": "固定512棒1997-01-06至1999-02-09完整一次几何：I/II重叠60→1、II/III43→0、I/III38→0、三级重叠38→0；唯一重叠H1998-11-24→L1998-12-21有真实本级已知键及完成直接下级整段严格突破，违规[]。本次wall0.355/CPU0.359秒，仅本样本，不代表账户/接口性能。"
+                },
+                {
+                    "command": "mypy --strict --follow-imports=silent src/wavequant/domain/market_structure/trend_levels.py src/wavequant/domain/market_structure/trend_level_upgrades.py src/wavequant/domain/market_structure/trend_judgement.py src/wavequant/domain/market_structure/trend_lines.py; mypy --follow-imports=silent src/wavequant/domain/market_structure/trend_pipeline.py src/wavequant/domain/strategies/chart_entry_history.py src/wavequant/domain/strategies/hierarchical_entry.py src/wavequant/interfaces/charts/chart_geometry.py",
+                    "status": "passed",
+                    "summary": "4公共判别模块strict和4编排/缓存/图表模块定向类型通过，详细中文职责、身份边界和因果注释齐备；不称全Core源码类型通过。"
+                },
+                {
+                    "command": "mypy --strict --follow-imports=silent tests/test_trend_wave_completion.py tests/test_trend_wave_identity.py tests/test_trend_judgement_core.py tests/test_recursive_trend_judgement.py tests/test_n_trend_option.py tests/test_trend_wave_continuation.py tests/test_trend_level_upgrades.py tests/test_trend_down_upgrade_publication.py; mypy --follow-imports=silent tests/test_trend_level_pipeline.py tests/test_secondary_trend.py tests/test_tertiary_trend.py tests/test_xiangyang_1997_trend_segments.py tests/test_staged_trend_pipeline.py tests/test_trend_leg_confirmation.py tests/test_chart_entry_history_cache.py tests/test_empty_epoch_path_cutoff.py",
+                    "status": "passed",
+                    "summary": "所有14个新增/修改测试文件分别完成实际类型检查：共同5文件strict、root2文件strict、identity strict、3兼容与3历史/资格文件定向通过；另2未修改缓存测试定向通过。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core typecheck",
+                    "status": "passed",
+                    "summary": "最终Core既定4文件strict通过。"
+                },
+                {
+                    "command": "python -m build packages/wavequant-core --no-isolation --outdir .codex-runtime/trend-321-dist; python -I .codex-runtime/verify-trend-321-wheel.py",
+                    "status": "passed",
+                    "summary": "最终sdist/wheel通过，干净wheel8修改源码字节相同，隔离导入和三级同向整波/开放端点拒绝烟测通过；后续只修改测试与状态文档。"
+                },
+                {
+                    "command": "independent review of eight production modules and migrated tests",
+                    "status": "passed",
+                    "summary": "两轮独立生产复核及跨代理测试复核无未解决P1/P2。来源验证、真实II/III非空正例和关闭/许可时钟拒绝保留，非前端隐藏/坐标去重补丁。"
+                },
+                {
+                    "command": "node --max-old-space-size=128 node_modules/prettier/bin/prettier.cjs --check feature_list.json packages/wavequant-core/progress.md packages/wavequant-core/docs/trend_primitives_contract.md session-handoff.md; node --max-old-space-size=128 scripts/harness/validate-state.mjs; codegraph sync; git diff --check",
+                    "status": "passed",
+                    "summary": "完成状态与进度后执行最终格式/Harness/CodeGraph/差异检查，317个main原功能对象、唯一活动256及其失败证据逐字段保留。"
+                },
+                {
+                    "command": "full Core/Web suites, browser/Playwright, complete watchlist backtests and external minute data",
+                    "status": "not-run",
+                    "summary": "待独立验证；按用户开发验证节奏不运行浏览器/完整Web套件。本轮局部回归和固定图审计不代表完整账户或全行情加载验收。"
+                }
+            ]
         }
     ]
 }

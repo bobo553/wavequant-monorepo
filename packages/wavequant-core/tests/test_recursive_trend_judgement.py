@@ -28,10 +28,11 @@ NESTED_MACRO = (
     110, 230, 120, 240, 130, 250, 120, 240, 90, 210,
     100, 220, 110, 230, 100, 220, 80, 200, 90, 210, 100, 220,
 )
-# 最后一列是紧邻一级来源中两类证据首次齐全的位置；不额外等下一同类holding。
-NESTED_SECONDARY = ((12, 'L', 500, 6), (27, 'H', 1200, 10), (36, 'L', 525, 14),
-                    (51, 'H', 1225, 18), (60, 'L', 550, 22), (75, 'H', 1250, 26),
-                    (84, 'L', 450, 30), (99, 'H', 1150, 34), (108, 'L', 400, 38))
+# 最后一列是紧邻一级来源中完整组合波身份首次成立的位置。只有一条
+# 下级反向段的早方向事实留在账本；它不能关闭本级整波或供三级递归。
+NESTED_SECONDARY = ((12, 'L', 500, 6), (27, 'H', 1200, 11), (36, 'L', 525, 14),
+                    (51, 'H', 1225, 19), (60, 'L', 550, 22), (75, 'H', 1250, 27),
+                    (84, 'L', 450, 30), (99, 'H', 1150, 35), (108, 'L', 400, 38))
 StructureHistory = dict[int, dict[int, tuple[dict[str, object], ...]]]
 
 
@@ -245,20 +246,55 @@ def test_separate_source_paths_never_supply_each_others_reversal_or_strict_break
     assert not any(point['index'] in (9, 17) for point in _stroke_points(observed))
 
 
-def test_same_kind_merge_keeps_the_selected_extremes_own_later_knowledge_date() -> None:
-    source = _points((*FIGURE_008, 50, 30, 55, 35, 53, 29, 48), integer_clock=True)
-    source[17]['available_at'] = 19
-    early = judge_trend(source, asof=22)
+@pytest.mark.parametrize('integer_clock', (False, True))
+@pytest.mark.parametrize('mirror', (False, True))
+def test_same_kind_merge_preserves_whole_extreme_geometry_and_independent_later_completion(
+    integer_clock: bool, mirror: bool,
+) -> None:
+    source = _points((*FIGURE_008, 50, 30, 55, 35, 53, 29, 48), integer_clock=integer_clock, mirror=mirror)
+    delayed: int | str = 19 if integer_clock else _day(19)
+    early_cutoff: int | str = 22 if integer_clock else _day(22)
+    late_cutoff: int | str = 23 if integer_clock else _day(23)
+    geometry_known: int | str = 20 if integer_clock else _day(20)
+    source[17]['available_at'] = delayed
+    early = judge_trend(source, asof=early_cutoff)
     before = _structure(early.points)
-    later = judge_trend(source, asof=23)
-    assert _geometry(early.points)[-1] == (21, 0, 'H', 53, 22)
-    assert _geometry(later.points)[-1] == (19, 0, 'H', 55, 23)
+    later = judge_trend(source, asof=late_cutoff)
+    kind, whole_price, local_price = ('L', 45, 47) if mirror else ('H', 55, 53)
+    # 同向严格攻击一直沿用整波L14（镜像H14），20可知的H19=55不能被
+    # 后来的局部H21=53取代。镜像取整波最低45，结束日仍由两类反向证据齐全决定。
+    extreme = min if mirror else max
+    whole = extreme(source[17:22:2], key=lambda point: cast(int, point['value']))
+    assert (whole['index'], whole['value']) == (19, whole_price)
+    assert _geometry(early.points)[-1] == _geometry(later.points)[-1] == (19, 0, kind, whole_price, geometry_known)
+    assert 'wave_completed_at' not in early.points[-1]
+    assert later.points[-1]['wave_completed_at'] == late_cutoff
+    completion = later.points[-1]['wave_completion_evidence']
+    assert isinstance(completion, Mapping)
+    assert (completion['index'], completion['value'], completion['available_at']) == (19, whole_price, late_cutoff)
+    assert completion['wave_direction_before'] == ('down' if mirror else 'up')
+    assert completion['wave_direction_after'] == ('up' if mirror else 'down')
+    refs = completion['definition_evidence']
+    assert isinstance(refs, tuple) and all(isinstance(point, Mapping) for point in refs)
+    typed_refs = cast(Sequence[Mapping[str, object]], refs)
+    assert [point['kind'] for point in typed_refs] == ['H', 'H', 'L', 'L']
+    assert [point['index'] for point in typed_refs] == ([20, 22, 19, 21] if mirror else [19, 21, 20, 22])
+    assert [point['value'] for point in typed_refs] == ([65, 71, 45, 47] if mirror else [55, 53, 35, 29])
+    assert max(cast(int | str, point['available_at']) for point in typed_refs) == late_cutoff
     assert [(point['index'], point['value'], point['available_at']) for point in later.candidates
-            if point['index'] in (19, 21)] == [(19, 55, 23), (21, 53, 22)]
+            if point['index'] in (19, 21)] == [
+                (19, whole_price, geometry_known), (19, whole_price, late_cutoff)]
+    # 再越过旧key但未延伸本级极值的H21/L21不能重复取得上级身份；
+    # 该真实下级价格与确认时钟仍在整波反向定义中，不能为了压缩而删除证据。
+    assert (source[21]['kind'], source[21]['value'], source[21]['available_at']) == (kind, local_price, early_cutoff)
+    assert any(point['index'] == 21 and point['value'] == local_price for point in typed_refs)
+    assert not any(point['index'] in (18, 20) for point in later.points)
     assert all(left['kind'] != right['kind'] for left, right in zip(later.points, later.points[1:]))
     assert _structure(early.points) == before
-    known = [point for point in source if cast(int, point['available_at']) <= 22]
-    assert early == judge_trend(known, asof=22)
+    assert 'wave_completed_at' not in early.points[-1]
+    known = ([point for point in source if cast(int, point['available_at']) <= 22] if integer_clock else
+             [point for point in source if cast(str, point['available_at']) <= _day(22)])
+    assert early == judge_trend(known, asof=early_cutoff)
 
 
 @pytest.mark.parametrize('integer_clock', (False, True))
@@ -273,13 +309,35 @@ def test_three_nonempty_levels_consume_the_complete_previous_judgement_without_r
                for index, value in enumerate(NESTED_MACRO[1:-1], start=1)]
     assert len(source) == 124
     assert _geometry(first.points) == primary
-    assert [point['confirmed_on_turn'] for point in first.points] == [3 * index + 2 for index in range(1, 41)]
+    assert [point['confirmed_on_turn'] for point in first.points] == [3 * index + 3 for index in range(1, 41)]
     assert _geometry(second.points) == [(index, 0, kind, value, known)
                                        for index, kind, value, _ in NESTED_SECONDARY]
     assert [point['confirmed_on_level1'] for point in second.points] == [position for *_, position in NESTED_SECONDARY]
     assert _geometry(third.points) == [(75, 0, 'H', 1250, known)]
-    assert third.points[0]['confirmed_on_level2'] == 7
+    assert third.points[0]['confirmed_on_level2'] == 8
     assert third.points[0]['wave_direction_after'] == 'down'
+    # 每个宏观拐点先在微波pair齐全时得到方向事实，直到下一宏观端点
+    # 才有跨真实内点的组合波身份。保留40→9→1非空递归，也保留全部早事实。
+    for index, point in enumerate(first.points, start=1):
+        direction = next(fact for fact in first.candidates if fact['index'] == 3 * index
+                         and fact.get('wave_identity_state') == 'direction_only')
+        assert direction['confirmed_on_turn'] == 3 * index + 2
+        assert 'wave_completed_at' not in direction
+        identity = point['lower_wave_identity_evidence']
+        assert isinstance(identity, Mapping)
+        origin, interior, endpoint = identity['origin'], identity['interior'], identity['endpoint']
+        assert all(isinstance(ref, Mapping) for ref in (origin, interior, endpoint))
+        refs = cast(tuple[Mapping[str, object], Mapping[str, object], Mapping[str, object]],
+                    (origin, interior, endpoint))
+        assert [ref['index'] for ref in refs] == [3 * index, 3 * index + 1, 3 * index + 3]
+        assert all(ref['value'] == source[cast(int, ref['index'])]['value'] for ref in refs)
+        assert identity['available_at'] == point['wave_completed_at'] == known
+    # 三级H75的真正下降组合是H75→L84→L108；H99可知时只有H75→L84
+    # 单段，不能将早方向事实当三级闭合。四点公式仍严格LL+LH，身份用实际下级内点。
+    third_identity = third.points[0]['lower_wave_identity_evidence']
+    assert isinstance(third_identity, Mapping)
+    assert [cast(Mapping[str, object], third_identity[field])['index']
+            for field in ('origin', 'interior', 'endpoint')] == [75, 84, 108]
     assert source == before
     early: int | str = 123 if integer_clock else _day(123)
     assert judge_trend(source, asof=early).points == ()

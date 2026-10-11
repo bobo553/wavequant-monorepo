@@ -20,7 +20,8 @@ from ..models.model import Bar
 from .hierarchical_entry import EntryContext
 
 
-_CONFIRMATION_CACHE_VERSION = "staged_point_geometry_independent_strategy_permissions_v115"
+# 本级延伸端点与整波闭合时钟分开；旧检查点把端点当下级已结束来源，必须隔离。
+_CONFIRMATION_CACHE_VERSION = "completed_source_wave_geometry_independent_permissions_v116"
 
 
 @dataclass(slots=True)

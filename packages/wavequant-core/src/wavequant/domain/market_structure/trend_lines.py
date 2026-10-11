@@ -7,6 +7,7 @@
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from bisect import bisect_right
+from copy import deepcopy
 from math import isfinite
 from typing import Protocol, cast
 
@@ -15,7 +16,7 @@ from .hierarchical_confirmation import session_date
 from .lecture_trend import _annotate
 from .n_trend_reversals import n_target_reversals
 from .trend_judgement import judge_trend, mutable_points
-from .trend_levels import Moment, _later_moment, _strip_source_license
+from .trend_levels import Moment, _completed_source_point, _later_moment, _strip_source_license, completed_source_points
 from .trend_landmarks import (
     bear_bull_alternation_lows, bear_to_bull_highs, bullish_turn_signals, post_alternation_bull_highs,
 )
@@ -42,7 +43,9 @@ def high_low_points_from_strokes(strokes: object) -> list[dict[str, object]]:
     """将分段中的高低点展开，显式保留路径断点；不读取私有候选或显示尾部。
 
     source_path 只用来保持输入路径的边界，不参与价格判别。每层的正式
-    geometry strokes 都能通过本适配器直接成为下一层的首参数。
+    geometry strokes 的已结束点通过共同门禁成为下一层首参数。严格升级的
+    开放端点仍可绘图，但不能递归；副本使用真实整波结束日，原图形自己的
+    earliest available_at 保持不变，直接 judge(points) 与本适配器完全一致。
     """
     if not isinstance(strokes, Sequence) or isinstance(strokes, (str, bytes)):
         raise ValueError('trend strokes must be a sequence')
@@ -55,10 +58,19 @@ def high_low_points_from_strokes(strokes: object) -> list[dict[str, object]]:
         points = stroke.get('points')
         if not isinstance(points, Sequence) or isinstance(points, (str, bytes)):
             raise ValueError('trend stroke points must be a sequence')
+        path_points: list[dict[str, object]] = []
         for point in points:
             if not isinstance(point, Mapping) or any(not isinstance(key, str) for key in point):
                 raise ValueError('trend points must be mappings with string keys')
-            result.append(dict(cast(Mapping[str, object], point), source_path=stroke['id']))
+            path_points.append(dict(cast(Mapping[str, object], point), source_path=stroke['id']))
+        if path_points:
+            level = path_points[0].get('trend_level', 0)
+            if type(level) is not int or level not in (0, 1, 2, 3):
+                raise ValueError('recursive strokes must belong to a direct source level')
+            # 原始高低折线仍需 seed 和最后邻点来提取中间真正峰谷；它不是
+            # 已生成的趋势线，不能在三点几何投影之前丢掉这些边界邻点。
+            # 一级及以上才有开放升级端点，需要和直接 judge 共用结束门禁。
+            result.extend(path_points if level == 0 else completed_source_points(path_points, source_level=level))
     return result
 
 
@@ -374,14 +386,37 @@ def qualify_trend_structure(
     # 结构节点，不能让晚证明把早已知关键位变成晚知，或重复追加同一节点。
     # 独立事实仍完整保存在 judge.candidates／candidate_strokes 中。
     earliest: dict[tuple[int, int], dict[str, object]] = {}
+    completions: dict[tuple[int, int], dict[str, object]] = {}
     for point in mutable_points(candidates):
+        # 行情和 N 只核验本级已有波的策略资格，不能授予 pending 方向事实
+        # 整波身份，否则资格递归会把同一条下级波重新恢复为上级假波。
+        if point.get('wave_identity_state') == 'direction_only':
+            continue
         identity = cast(int, point['index']), cast(int, point.get('ordinal', 0))
+        if 'wave_completed_at' in point:
+            # 只核验、收集真实整波结束事实，不用结束证明替换较早策略候选。
+            # 同坐标 earlystrict18 与 lateordinary23 的完整账本是唯一来源。
+            _completed_source_point(point)
+            previous_completion = completions.get(identity)
+            if previous_completion is None or _later_moment(cast(Moment, point['wave_completed_at']),
+                    cast(Moment, previous_completion['wave_completed_at'])) == previous_completion['wave_completed_at']:
+                completions[identity] = point
         previous = earliest.get(identity)
         if previous is None or (_later_moment(cast(Moment, point['available_at']),
                 cast(Moment, previous['available_at'])) == previous['available_at']
                 and point['available_at'] != previous['available_at']):
             earliest[identity] = point
     qualified = [earliest[key] for key in sorted(earliest)]
+    for point in qualified:
+        if 'wave_completion_policy' not in point:
+            continue
+        # publication 可把 available_at 改为许可证真正可知日27；此前 geometry18
+        # 与实际整波结束23必须分别保存，不能拿晚许可证日期反过来否定结构。
+        point.setdefault('source_geometry_available_at', point['available_at'])
+        completion = completions.get((cast(int, point['index']), cast(int, point.get('ordinal', 0))))
+        if completion is not None:
+            for field in ('wave_completion_policy', 'wave_completed_at', 'wave_completion_evidence'):
+                point[field] = deepcopy(completion[field])
     if n_target_trend_confirmation_enabled:
         qualified = n_target_reversals(qualified, source, bars, source_level=source_level,
             qualified_source=qualified_source, target_sink=n_target_sink, n_target_trend_confirmation_enabled=True)

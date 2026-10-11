@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from wavequant.domain.market_structure.trend_level_upgrades import promote_trend_key_breaks
+from wavequant.domain.market_structure.trend_judgement import judge_trend
 from wavequant.domain.market_structure.trend_levels import trend_reversals
 from wavequant.domain.market_structure.trend_publication import confirmed_trend_legs, publish_uptrends
 from wavequant.domain.models.model import Bar
@@ -50,7 +51,7 @@ def test_strict_known_key_break_promotes_whole_wave_without_a_later_holding_turn
     # 两类普通升降证据已在攻击点可知时齐全，origin保留自己的普通定义。
     # 同日独立严格突破仍必须记入账本，不能要求返回并集覆盖早ordinary证明。
     assert origin.get('upgrade_evidence') is None
-    upgraded_origin = next(point for point in events if point['index'] == 14)
+    upgraded_origin = next(point for point in events if point['index'] == 14 and 'upgrade_evidence' in point)
     origin_evidence = upgraded_origin['upgrade_evidence']
     assert isinstance(origin_evidence, dict) and origin_evidence['role'] == 'origin'
     assert origin_evidence['available_at'] == origin['available_at']
@@ -65,7 +66,10 @@ def test_equal_or_unbroken_level_key_never_upgrades(attack: int, mirror: bool) -
     source = source_points([*VALUES[:-1], attack], level=1, mirror=mirror)
     regular = trend_reversals(source, trend_level=2)
 
-    assert promote_trend_key_breaks(source, regular, trend_level=2) == regular
+    result = promote_trend_key_breaks(source, regular, trend_level=2)
+    assert [point['index'] for point in result] == [point['index'] for point in regular]
+    assert all('upgrade_evidence' not in point for point in result)
+    assert all(point['wave_identity_state'] == 'owned' for point in result)
 
 
 @pytest.mark.parametrize('integer_clock', [False, True])
@@ -77,18 +81,17 @@ def test_old_key_first_known_must_precede_attack_price_date(integer_clock: bool,
             index = point['index']
             assert isinstance(index, int)
             point['available_at'] = index + 1
-    regular = trend_reversals(source, trend_level=2)
-    # 普通L14现在更早存在，不能再把regular[-1]误当作本级旧H9关键位。
-    # 严格旧关键位的门禁比较真实攻击价格日；攻击自己的确认日还在其后一天。
-    key = next(point for point in regular if point['index'] == 9)
+    # H9 的真实结束依赖 L12 的反向组合证据。延迟这个必要下级来源，
+    # 共同状态重建出的 H9 结束日才会真实推迟；不能仅篡改方向事实日期。
     if integer_clock:
         attack_index = source[17]['index']
         assert isinstance(attack_index, int)
-        key['available_at'] = attack_index + offset
+        source[12]['available_at'] = attack_index + offset
     else:
         attack_time = source[17]['time']
         assert isinstance(attack_time, str)
-        key['available_at'] = (date.fromisoformat(attack_time) + timedelta(days=offset)).isoformat()
+        source[12]['available_at'] = (date.fromisoformat(attack_time) + timedelta(days=offset)).isoformat()
+    regular = trend_reversals(source, trend_level=2)
 
     result = promote_trend_key_breaks(source, regular, trend_level=2)
 
@@ -116,12 +119,14 @@ def test_future_ordinary_origin_is_not_borrowed_before_its_confirmation(mirror: 
 
 def test_unknown_current_level_key_cannot_be_borrowed_from_future_candidates() -> None:
     source = source_points(VALUES, level=1)
+    source[12]['available_at'] = '2026-02-01'
     regular = trend_reversals(source, trend_level=2)
-    next(point for point in regular if point['index'] == 9)['available_at'] = '2026-02-01'
 
     result = promote_trend_key_breaks(source, regular, trend_level=2)
 
-    assert not any(point['index'] in (9, 17) for point in result)
+    assert not any(point['index'] == 17 for point in result)
+    key = next(point for point in result if point['index'] == 9)
+    assert key['wave_completed_at'] == '2026-02-01'
 
 
 @pytest.mark.parametrize('mirror', [False, True])
@@ -141,23 +146,36 @@ def test_upgraded_endpoint_cannot_invent_a_reverse_origin_without_a_new_source_t
 
     result = promote_trend_key_breaks(source, regular, trend_level=2)
 
-    assert [point['index'] for point in result][-2:] == [14, 17]
-    assert not any(point['index'] == 18 for point in result)
+    # 同类攻击可以延伸端点，但不能伪造反向起点；并集保留两份攻击审计，
+    # 公共判断函数只保留整波 L14→H18，开放 H17 不成为新的闭合关键位。
+    assert [point['index'] for point in result][-3:] == [14, 17, 18]
+    assert all(point['kind'] == 'H' and 'wave_completed_at' not in point for point in result[-2:])
+    judgement = judge_trend(source, trend_level=2)
+    assert [point['index'] for point in judgement.points][-2:] == [14, 18]
+    evidence = result[-1]['upgrade_evidence']
+    assert isinstance(evidence, dict)
+    assert isinstance(evidence['origin'], dict) and evidence['origin']['index'] == 14
+    assert isinstance(evidence['broken_key'], dict) and evidence['broken_key']['index'] == 9
 
 
 @pytest.mark.parametrize('mirror', [False, True])
-def test_a_later_causal_source_origin_can_upgrade_against_the_first_upgraded_key(mirror: bool) -> None:
+def test_a_later_same_direction_attack_extends_the_whole_wave_without_a_local_origin(mirror: bool) -> None:
     source = source_points([*VALUES, 30, 60], level=1, mirror=mirror)
     regular = trend_reversals(source, trend_level=2)
 
     result = promote_trend_key_breaks(source, regular, trend_level=2)
 
-    assert [point['index'] for point in result][-4:] == [14, 17, 18, 19]
+    assert [point['index'] for point in result][-3:] == [14, 17, 19]
+    assert not any(point['index'] == 18 for point in result)
+    assert [point['index'] for point in judge_trend(source, trend_level=2).points][-2:] == [14, 19]
     assert result[-1]['available_at'] == source[19]['available_at']
     evidence = result[-1]['upgrade_evidence']
     assert isinstance(evidence, dict)
     key = evidence['broken_key']
-    assert isinstance(key, dict) and key['index'] == 17
+    assert isinstance(key, dict) and key['index'] == 9
+    origin = evidence['origin']
+    assert isinstance(origin, dict) and origin['index'] == 14
+    assert 'wave_completed_at' not in result[-1]
 
 
 @pytest.mark.parametrize('state', ['seed', 'developing'])
@@ -166,7 +184,9 @@ def test_unfinished_source_attack_is_ineligible(state: str) -> None:
     source[-1]['state'] = state
     regular = trend_reversals(source, trend_level=2)
 
-    assert promote_trend_key_breaks(source, regular, trend_level=2) == regular
+    result = promote_trend_key_breaks(source, regular, trend_level=2)
+    assert [point['index'] for point in result] == [point['index'] for point in regular]
+    assert not any(point['index'] == 17 or 'upgrade_evidence' in point for point in result)
 
 
 @pytest.mark.parametrize('level', [True, 0, 4, 2.0])
@@ -188,12 +208,24 @@ def test_upgrade_rejects_cross_level_source_and_candidates() -> None:
 
 
 @pytest.mark.parametrize('field,value', [('value', 44), ('time', '2026-01-09'), ('available_at', '2026-01-10')])
-def test_current_level_key_requires_its_actual_confirmed_source_provenance(field: str, value: object) -> None:
+@pytest.mark.parametrize('generated', [False, True])
+def test_current_level_key_requires_its_actual_confirmed_source_provenance(
+    field: str, value: object, generated: bool,
+) -> None:
     source = source_points(VALUES, level=1)
-    regular = trend_reversals(source, trend_level=2)
-    next(point for point in regular if point['index'] == 9)[field] = value
+    regular = [dict(point) for point in judge_trend(source, trend_level=2).points if 'wave_completed_at' in point]
+    key = next(point for point in regular if point['index'] == 9)
+    if not generated:
+        # 旧人工 confirmed/reversal 输入兼容也必须保留原来源门禁；新生成
+        # 输入另有结束证明自洽校验，不能把它的失败当成旧门禁仍生效的证据。
+        for point in regular:
+            for completion_field in ('wave_completion_policy', 'wave_completed_at', 'wave_completion_evidence',
+                                     'wave_identity_state', 'lower_wave_identity_evidence'):
+                point.pop(completion_field, None)
+    key[field] = value
 
-    with pytest.raises(ValueError, match='source provenance'):
+    message = 'wave completion evidence must match' if generated and field != 'available_at' else 'source provenance'
+    with pytest.raises(ValueError, match=message):
         promote_trend_key_breaks(source, regular, trend_level=2)
 
 
