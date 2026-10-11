@@ -1,6 +1,6 @@
 MONOREPO-323（2026-10-11）：继续修复用户复测Ctrl+C无反馈。真实选股focusStockSearch会focus/select全选，上一轮fixture主动折叠选区遗漏；普通图完成后自动进入同股后台回测/失败保留可操作图，快捷键却由全局loading/error静默拒绝。现copyableRenderedCandle为按钮/快捷键共同资格，核对实际chart.data与state.view、股票、请求源、周期、棒身份、页面/local及真实busy/overlay/hidden；同股背景请求不阻断已渲染棒。鼠标位于图表/卡片时允许图外旧编辑器残留全选，不清选区/强制blur；真实DOM Range、编辑器自身/图内/独立/shadow继续原生。临时textarea显式clipboardFallback标记防止K线覆盖兼容复制其他内容，物理KeyC兼容非ASCII键位，保留composition/Alt/Shift拒绝。
 
-最终122项4文件定向回归通过（2796.899ms、零跳过），相关类型/lint零错6旧warning/Next生产构建、语法/格式/独立复核/Harness/CodeGraph通过；319原功能与活动256保持。仅前端复制改动，同会话分支本地提交合并，不推送，不重刷行情或手工重启服务；完整Web和真实浏览器/Playwright待独立验证，不将JSDOM模拟写成系统剪贴板已通过。
+最终122项4文件定向回归通过（2796.899ms、零跳过），相关类型/lint零错6旧warning/Next生产构建、语法/格式/独立复核/Harness/CodeGraph通过；319原功能与活动256保持。仅前端复制改动，实现7b62366经0f46f50本地no-ff合并main，feat-三级趋势统一已同步；不推送，不重刷行情或手工重启服务。3003的app.js/candle-clipboard.js均HTTP200（0.016/0.005秒），逐字匹配合并源码，max-age=0；已打开页面须完整刷新模块。完整Web和真实浏览器/Playwright待独立验证，不将JSDOM模拟写成系统剪贴板已通过。
 
 MONOREPO-322（2026-10-11）：修复当前光标K线Ctrl+C。用户确认提示和按钮正常、只有快捷键失效；源码证明搜索Enter选股、日期/回放/位置滑块不移焦点，旧activeElement及composedPath可编辑判断无条件阻断。现图表/外置卡片真实悬停且图外当前编辑器无选区时允许复制当前K线，输入选区、编辑器自身悬停、图内编辑器、独立编辑target与shadow路径、文档选区仍原生复制；无hover不接管图外输入，未强制输入框失焦。提示卡片复制按钮焦点不再屏蔽鼠标回画布的新bar：无point/bar仍保留卡片，新有效bar先转交图表焦点再重建提示，Ctrl+C和按钮都复制新日期；共用现有格式、异步I/O和权限失败textarea回退，详细中文边界注释已补。
 

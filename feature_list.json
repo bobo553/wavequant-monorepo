@@ -11740,6 +11740,11 @@
                     "summary": "最终状态后Harness/CodeGraph及原功能逐字段保留检查；319个原功能与唯一活动256/root元数据保持，只新增323。"
                 },
                 {
+                    "command": "git local no-ff merge; bounded GET http://127.0.0.1:3003/app.js and /candle-clipboard.js with source comparison",
+                    "status": "passed",
+                    "summary": "实现7b62366经0f46f50本地no-ff合并main，feat-三级趋势统一已同步，未推送。两实际脚本HTTP200（0.016/0.005秒），响应逐字匹配合并源码，Cache-Control为public,max-age=0；已打开页面须完整刷新模块。此核验只证明服务返回新脚本，不称真实浏览器系统剪贴板验收。"
+                },
+                {
                     "command": "full Web unit suite and real browser/Playwright clipboard validation",
                     "status": "not-run",
                     "summary": "按用户开发验证节奏未运行完整Web或浏览器/Playwright。定向Node/JSDOM只证明应用事件、资格及文本I/O，不称trusted快捷键系统剪贴板真实浏览器验收；页面刷新后实际复制仍待手工复核。"
