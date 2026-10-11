@@ -306,10 +306,17 @@ export class PriceChart {
         this.tooltipLayer = bindChartTooltipLayer(container, this.tooltip, () => this.hideTooltip());
         this.chart.subscribeCrosshairMove((p) => {
             if (!this.data || this.removingSeries) return;
-            // 鼠标进入卡片时保留当前 K 线，不让图表的离开事件清空卡片。
-            if (this.tooltipHovered || this.tooltip.contains(document.activeElement)) return;
+            // 鼠标仍在卡片内时保留该 K 线，不让底层画布通知抢走卡片。
+            if (this.tooltipHovered) return;
             const barIndex = this.data.bars.findIndex((candidate) => candidate.time === p.time);
             const bar = this.data.bars[barIndex];
+            if (this.tooltip.contains(document.activeElement)) {
+                // 卡片按钮的焦点只保护离开画布的无效通知；真实光标回到 K 线
+                // 必须更新日期。先转交焦点再重建卡片，避免移除聚焦按钮触发
+                // focusout 后关闭刚更新的提示，或继续复制上一次的 K 线。
+                if (!p.point || !bar) return;
+                container.focus({ preventScroll: true });
+            }
             this.updateWaveProjectionHover(p.point && bar ? bar.time : null, p.hoveredObjectId);
             if (bar) onHover(bar);
             const candleItems = this.itemsAt(p.time, p.hoveredObjectId);

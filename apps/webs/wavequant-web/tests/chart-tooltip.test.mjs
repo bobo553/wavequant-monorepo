@@ -65,9 +65,10 @@ function harness({ viewportWidth = 1600, viewportHeight = 900, left = 250, top =
     Object.defineProperty(container, "clientHeight", { value: 500 });
     container.getBoundingClientRect = () => ({ left, top, width, height: 500, right: left + width, bottom: top + 500 });
     const copied = [];
+    const hovered = [];
     const chart = new PriceChart(
         container,
-        () => {},
+        (bar) => hovered.push(bar),
         () => {},
         () => {},
         (bar) => copied.push(bar),
@@ -82,6 +83,7 @@ function harness({ viewportWidth = 1600, viewportHeight = 900, left = 250, top =
         chart,
         container,
         copied,
+        hovered,
         hover,
         dispose() {
             chart.destroy();
@@ -209,6 +211,110 @@ test("a focused copy button retains its candle when the pointer leaves the outsi
         assert.equal(h.chart.hoveredWaveTime, null, "closing the card releases its temporary target context");
     } finally {
         unbind();
+        h.dispose();
+    }
+});
+
+test("returning to another candle releases card focus and Ctrl+C copies the actual new hover", async () => {
+    const h = harness();
+    const keyboardCopies = [];
+    // 复制读取PriceChart真实onHover回调交付的K线，不能只从tooltip日期反查
+    // 数据来掩盖图表当前K线与卡片不一致的问题。
+    const unbind = bindCandleClipboard(h.chart, {
+        getCandle: () => h.hovered.at(-1),
+        isEnabled: () => true,
+        copyText: (bar) => bar.time,
+        copyCandle: (bar) => keyboardCopies.push(bar),
+        onCopied: () => {},
+    });
+    try {
+        h.hover();
+        h.chart.tooltip.dispatchEvent(new window.MouseEvent("pointerenter"));
+        const oldButton = h.chart.tooltip.querySelector("button");
+        oldButton.focus();
+        // 鼠标仍在卡片上时保持原K线，即使SDK派发了其他日期的通知。
+        h.hover(20, 100, bars[0].time);
+        assert.equal(h.chart.tooltipBarTime, bars[1].time);
+        assert.deepEqual(h.hovered, [bars[1]]);
+        h.chart.tooltip.dispatchEvent(new window.MouseEvent("pointerleave"));
+        h.hover(0, 0, null);
+        crosshairCallbacks.get(h.chart.chart)({ time: bars[0].time });
+        await new Promise((resolve) => setTimeout(resolve, 180));
+        assert.equal(document.activeElement, oldButton);
+        assert.equal(h.chart.tooltip.hidden, false, "an empty canvas-leave notification keeps the focused candle");
+        assert.equal(h.chart.tooltipBarTime, bars[1].time);
+        assert.deepEqual(h.hovered, [bars[1]], "a time without a canvas point cannot change the current candle");
+        const retainedCopy = new window.KeyboardEvent("keydown", {
+            key: "c",
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        oldButton.dispatchEvent(retainedCopy);
+        assert.equal(retainedCopy.defaultPrevented, true);
+        assert.deepEqual(keyboardCopies, [bars[1]]);
+
+        h.hover(20, 100, bars[0].time);
+        assert.equal(h.chart.tooltipBarTime, bars[0].time);
+        assert.deepEqual(h.hovered, [bars[1], bars[0]], "the SDK callback delivers the newly pointed candle");
+        assert.equal(document.activeElement, h.container, "valid canvas hover restores chart keyboard ownership");
+        assert.equal(oldButton.isConnected, false, "the old date's button is no longer the copy target");
+        assert.equal(h.chart.tooltip.hidden, false, "focus transfer does not close the replacement card");
+        assert.match(h.chart.tooltip.textContent, /2026-09-29 · K 线/);
+        assert.equal(h.chart.hoveredWaveTime, bars[0].time);
+        const currentCopy = new window.KeyboardEvent("keydown", {
+            key: "c",
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        h.container.dispatchEvent(currentCopy);
+        assert.equal(currentCopy.defaultPrevented, true);
+        assert.deepEqual(keyboardCopies, [bars[1], bars[0]], "Ctrl+C copies the new candle's actual OHLC record");
+        h.chart.tooltip.querySelector("button").click();
+        assert.deepEqual(h.copied, [bars[0]], "the regenerated copy button also uses the new candle");
+    } finally {
+        unbind();
+        h.dispose();
+    }
+});
+
+test("moving focused card ownership to another page control closes it and releases Ctrl+C", () => {
+    const h = harness();
+    const outside = document.createElement("button");
+    outside.textContent = "其他页面控件";
+    document.body.append(outside);
+    const keyboardCopies = [];
+    const unbind = bindCandleClipboard(h.chart, {
+        getCandle: () => h.hovered.at(-1),
+        isEnabled: () => true,
+        copyText: (bar) => bar.time,
+        copyCandle: (bar) => keyboardCopies.push(bar),
+        onCopied: () => {},
+    });
+    try {
+        h.hover();
+        h.chart.tooltip.dispatchEvent(new window.MouseEvent("pointerenter"));
+        h.chart.tooltip.querySelector("button").focus();
+        h.chart.tooltip.dispatchEvent(new window.MouseEvent("pointerleave"));
+        h.hover(0, 0, null);
+        assert.equal(h.chart.tooltip.hidden, false);
+        outside.focus();
+        assert.equal(h.chart.tooltip.hidden, true);
+        assert.equal(h.chart.hoveredWaveTime, null);
+        assert.equal(document.activeElement, outside);
+        const shortcut = new window.KeyboardEvent("keydown", {
+            key: "c",
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+        });
+        outside.dispatchEvent(shortcut);
+        assert.equal(shortcut.defaultPrevented, false);
+        assert.deepEqual(keyboardCopies, [], "an unrelated page control cannot copy a retained chart candle");
+    } finally {
+        unbind();
+        outside.remove();
         h.dispose();
     }
 });
