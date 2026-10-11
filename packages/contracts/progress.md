@@ -1,3 +1,5 @@
+MONOREPO-326（2026-10-11）：新增MarketBarSchema/MarketBarsViewSchema/MarketBarsPageSchema及推导类型，校验年度坐标、固定全截面身份、SHA256版本、真实可用年降序和分页连续性。允许历史截面后的同年已知交易日，React运行时安装同一Zod解析器供public年度loader使用，移除手写重复响应校验。共享契约构建、5项契约回归与Web消费者类型及生产构建通过；真实14页/2995bars共享schema与实际loader组合校验通过。无新增依赖或价格口径变化。
+
 MONOREPO-306/307（2026-10-09，合并阶段V110）：用户最新授权合并main并推送。已同步main d2f35d8并保留逐方向确认和同波唯一展示；N选项仍默认关闭，启用时独立N新周期和完整证书波身份生效。Core198/238项及23子用例、API65项及35子用例、Web93项与19拓扑/组件、相关类型及构建通过。main全部302个功能对象完整保留，旧本任务304/305/306重新编号306/307/308；既有基线失败仍在308待修。Git合并与推送结果以当前交付和日志为准，完整套件/浏览器/外部分钟未运行。
 
 MONOREPO-307（2026-10-09）：WatchlistSettingsSchema.context新增n_target_trend_confirmation_enabled，沿用请求协议字符串true/false枚举，缺字段默认false。共享契约构建及Web消费者类型、保存/恢复、后台队列定向回归通过；任务Web依赖指向本任务契约产物，主检出依赖未修改。

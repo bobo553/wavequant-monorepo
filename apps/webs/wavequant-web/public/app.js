@@ -20,7 +20,7 @@ import {
 import { BuyPoints } from "./buy-points.js";
 import { bindCandleClipboard } from "./candle-clipboard.js";
 import { candleCopyText, previousCandleClose } from "./candle-details.js";
-import { loadMarketTimeframeSnapshot, loadStockCatalog } from "./catalog-cache.js";
+import { loadMarketTimeframeSnapshot, loadStockCatalog, readCachedMarketTimeframeSnapshot } from "./catalog-cache.js";
 import { scrollChartWithMetrics } from "./chart-focus-scroll.js";
 import { chartNavigationKeyPosition } from "./chart-navigation.js";
 import { bindChartViewportHeight } from "./chart-viewport-height.js";
@@ -30,6 +30,7 @@ import { reuseCompletedBacktest } from "./completed-backtest-result.js";
 import { formatFilledTradeCopy } from "./filled-trade-copy.js";
 import { label, names, num, pct, symbolName } from "./labels.js";
 import { trendConfirmationPresentation, usesCausalTrendConfirmation } from "./lecture-overlay.js";
+import { loadMarketBarsHistory, marketPreviewMatches } from "./market-bars-loader.js";
 import {
     holdingDrawdownCurve,
     holdingDrawdownForMarker,
@@ -1056,7 +1057,14 @@ function currentCandleCopyText(bar) {
 function copyableRenderedCandle(bar) {
     const view = chart.data;
     const source = sourceForScope($("result-scope").value);
-    const renderedSource = view?.data_source ?? sourceForScope(view?.result_scope || "");
+    const selection = state.marketSelection;
+    const renderedSource =
+        view?.result_scope !== "stock" &&
+        selection?.symbol === view?.symbol &&
+        selection.resolvedAsOf === view?.asof &&
+        selection.timeframe === (view?.timeframe || "1d")
+            ? selection.source
+            : (view?.data_source ?? sourceForScope(view?.result_scope || ""));
     // 普通图加载完成后会自动在后台回测同股，失败时也明确保留可操作的旧图。
     // loading/error 描述请求状态，不能否决画面上的 K 线；按钮和快捷键必须共用
     // 当前渲染快照、股票及棒身份，换股或真实行情遮罩出现时才拒绝复制旧数据。
@@ -2018,7 +2026,113 @@ function renderTables() {
 function renderEvents() {
     chart.refreshMarkers();
 }
+function marketViewMatches(view, request, source) {
+    return marketPreviewMatches(view, { ...request, source }, state.marketSelection);
+}
+function marketLoadStatus(message, retry = false) {
+    $("stock-data-load-status").hidden = !message;
+    $("stock-data-load-message").textContent = message;
+    $("stock-data-load-retry").hidden = !retry;
+}
+async function loadProgressiveMarketView(request, sequence, signal) {
+    const source = isAkShare() ? "akshare" : "tdx";
+    const nTargetTrendConfirmationEnabled = $("n-target-trend-confirmation").checked;
+    let cachedBundle = null;
+    void readCachedMarketTimeframeSnapshot(source, request.symbol, request.asof, request.timeframe, {
+        nTargetTrendConfirmationEnabled,
+    }).then((bundle) => {
+        cachedBundle = bundle;
+    });
+    const initialPreview =
+        marketViewMatches(state.view, request, source) && state.marketDataVersion
+            ? { view: state.view, selection: state.marketSelection }
+            : null;
+    const history = await loadMarketBarsHistory(
+        { source, symbol: request.symbol, asof: request.asof, timeframe: request.timeframe },
+        {
+            signal,
+            initialPreview,
+            getCachedBundle: () => cachedBundle,
+            onPage: ({ page, view, loadedYears, totalYears, cachedBundle: reused }) => {
+                signal.throwIfAborted();
+                if (sequence !== state.sequence) throw new DOMException("股票请求已切换", "AbortError");
+                const preserveViewport = marketViewMatches(state.view, request, source);
+                state.marketSelection = {
+                    kind: "market",
+                    source,
+                    symbol: request.symbol,
+                    requestedAsOf: request.asof,
+                    resolvedAsOf: page.resolved_asof,
+                    dataVersion: page.data_version,
+                    priceBasis: page.view.price_basis,
+                    timeframe: request.timeframe,
+                    sequence,
+                };
+                state.view = view;
+                state.marketPreview = true;
+                state.loading = false;
+                state.marketDataVersion = page.data_version;
+                syncStockBrowserMode(false, false);
+                state[source === "tdx" ? "tdxSessions" : "akshareSessions"][
+                    `${view.symbol}:${view.timeframe || "1d"}`
+                ] = view.sessions;
+                preserveCutoff(view.asof);
+                $("timeframe-tag").textContent = timeframes[view.timeframe || "1d"].tag;
+                $("partial-timeframe").hidden = !view.is_partial_last_bar;
+                $("price-basis").textContent = view.price_basis === "raw_unadjusted" ? "原始不复权" : "因果复权";
+                document.querySelector(".metric-grid").hidden = true;
+                renderTables();
+                chart.setData(view, {
+                    volume: $("show-volume").checked,
+                    markers: false,
+                    annotations: annotationOptions(),
+                    preserveViewport,
+                });
+                const last = view.bars.at(-1);
+                if (last) describeBar(last);
+                $("price-chart").dataset.symbol = view.symbol;
+                tradingViewWidget.setLocalSymbol(view.symbol);
+                $("loading").hidden = true;
+                $("chart-loading-overlay").hidden = true;
+                $("price-chart").setAttribute("aria-busy", "false");
+                renderRunStockBacktestButton();
+                $("selected-stock-summary").textContent =
+                    `${symbolName(view.symbol)} · ${view.asof} · 已显示 ${view.bars.length} 根 K 线，历史与完整趋势继续加载。`;
+                $("theory-status").textContent = "历史加载完成后统一安装完整趋势";
+                marketLoadStatus(
+                    reused
+                        ? "已复用同版本完整行情，正在校验完整趋势…"
+                        : `已加载 ${page.year} 年 · ${loadedYears}/${totalYears} 年 · ${view.bars.length}/${page.total_bars} 根 K 线${page.next_year ? `；正在加载 ${page.next_year} 年…` : "；正在加载完整趋势…"}`,
+                );
+                if (
+                    state.pendingFocus &&
+                    !state.previewFocusApplied &&
+                    view.bars[0]?.time <= state.pendingFocus.time &&
+                    last?.time >= state.pendingFocus.time
+                ) {
+                    chart.focus(state.pendingFocus.time);
+                    state.previewFocusApplied = true;
+                }
+            },
+        },
+    );
+    signal.throwIfAborted();
+    marketLoadStatus(`历史行情已加载 · ${history.view.bars.length} 根 K 线；正在加载完整趋势…`);
+    return loadMarketTimeframeSnapshot(source, request.symbol, request.asof, request.timeframe, {
+        nTargetTrendConfirmationEnabled,
+        signal,
+        expectedDataVersion: history.dataVersion,
+        expectedPriceBasis: history.view.price_basis,
+        expectedResolvedAsOf: history.view.asof,
+    });
+}
+$("stock-data-load-retry").addEventListener("click", () => void loadView({ marketRetry: true }));
 async function loadTheory(request, sequence, preloaded = null) {
+    if (sequence !== state.sequence) return;
+    if (state.marketPreview) {
+        $("theory-status").textContent = "历史行情与完整趋势加载完成后显示结构";
+        return;
+    }
     if (preloaded) state.theory = preloaded;
     if (!$("show-theory").checked && !$("show-rules").checked && !$("show-tertiary-abc").checked) {
         $("theory-status").textContent = "规则、折线与 ABC 观察已关闭";
@@ -2046,6 +2160,7 @@ async function loadTheory(request, sequence, preloaded = null) {
                                 asof: request.asof,
                                 n_target_trend_confirmation_enabled: $("n-target-trend-confirmation").checked,
                             },
+                      state.controller?.signal,
                   ));
         if (sequence !== state.sequence) return;
         state.theory = data;
@@ -2074,13 +2189,18 @@ async function loadTheory(request, sequence, preloaded = null) {
                     : `${symbolName(request.symbol)} · ${data.asof}。规则圆点标在可知日期；信号圆点不等于成交。B / S 字母锚定实际成交价，点击可查看价格、颈线、防守位与目标投影。`,
             );
     } catch (error) {
-        if (sequence !== state.sequence) return;
+        if (sequence !== state.sequence || error.name === "AbortError") return;
         $("theory-status").textContent = "标注不可用";
         detail("理论标注加载失败", error.message);
         renderEvents();
     }
 }
-async function loadView({ focusLatestFill = false, preferTrades = focusLatestFill, forceBacktest = false } = {}) {
+async function loadView({
+    focusLatestFill = false,
+    preferTrades = focusLatestFill,
+    forceBacktest = false,
+    marketRetry = false,
+} = {}) {
     state.lastResolvedScope = $("result-scope").value;
     syncSymbolCopy();
     syncProfileScope();
@@ -2092,9 +2212,13 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
     state.summaryController?.abort();
     $("stock-results-body").replaceChildren();
     state.loading = true;
+    state.marketLoading = isMarketBrowse();
     tradePlayback.setView(null);
     state.error = false;
     state.theory = null;
+    state.marketPreview = false;
+    state.previewFocusApplied = false;
+    marketLoadStatus("");
     state.selectedAnnotationId = null;
     if (!$("trade-nodes-tab").hidden) {
         $("trade-nodes-panel").setAttribute("aria-busy", "true");
@@ -2119,6 +2243,25 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
     showPage(state.page);
     syncDate();
     const request = select();
+    if (
+        marketRetry &&
+        isMarketBrowse() &&
+        state.marketSelection?.source === sourceForScope($("result-scope").value) &&
+        state.marketSelection.symbol === request.symbol &&
+        state.marketSelection.timeframe === request.timeframe
+    )
+        request.asof = state.marketSelection.requestedAsOf;
+    if (isMarketBrowse() && marketViewMatches(state.view, request, isAkShare() ? "akshare" : "tdx")) {
+        state.marketPreview = true;
+        state.marketSelection = { ...state.marketSelection, sequence };
+        $("loading").hidden = true;
+        $("chart-loading-overlay").hidden = true;
+        $("price-chart").setAttribute("aria-busy", "false");
+    }
+    if (isMarketBrowse()) {
+        chart.clearTheory();
+        marketLoadStatus(`正在加载 ${request.asof.slice(0, 4)} 年行情…`);
+    }
     const updateBacktestProgress = (message, running = true) => {
         if (sequence !== state.sequence) return;
         const summary = $("selected-stock-summary");
@@ -2224,19 +2367,17 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             $("n-target-trend-confirmation").checked,
         );
         const data = isMarketBrowse()
-            ? (timeframeBundle = await loadMarketTimeframeSnapshot(
-                  isAkShare() ? "akshare" : "tdx",
-                  request.symbol,
-                  request.asof,
-                  request.timeframe,
-                  { nTargetTrendConfirmationEnabled: $("n-target-trend-confirmation").checked },
-              )).view
+            ? (timeframeBundle = await loadProgressiveMarketView(request, sequence, requestSignal)).view
             : task
               ? await task.promise
               : await api(snapshotRequest.path, snapshotRequest.params, requestSignal);
         if (sequence !== state.sequence) return;
         state.view = data;
         state.loading = false;
+        state.marketLoading = false;
+        state.marketPreview = false;
+        if (timeframeBundle) state.marketDataVersion = timeframeBundle.data_version;
+        marketLoadStatus("");
         const showTrades = data.result_scope === "stock" && Boolean(data.backtest);
         if (showTrades && (preferTrades || $("trade-nodes-tab").hidden)) {
             state.tradeNodeFilter = "all";
@@ -2281,6 +2422,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             volume: $("show-volume").checked,
             markers: $("show-markers").checked,
             annotations: annotationOptions(),
+            preserveViewport: Boolean(timeframeBundle),
         });
         tradePlayback.setView(data);
         describeBar(data.bars.at(-1));
@@ -2322,7 +2464,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
         $("loading").hidden = true;
         $("chart-loading-overlay").hidden = true;
         $("price-chart").setAttribute("aria-busy", "false");
-        if (state.pendingFocus) {
+        if (state.pendingFocus && !state.previewFocusApplied) {
             setChartView("local");
             chart.focus(state.pendingFocus.time);
             detail("已定位", state.pendingFocus.description);
@@ -2354,6 +2496,26 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
         loadStockSummary(request, sequence);
     } catch (error) {
         if (error.name === "AbortError" || sequence !== state.sequence) return;
+        state.marketLoading = false;
+        if (
+            !backtestMode &&
+            state.marketPreview &&
+            state.marketSelection?.sequence === sequence &&
+            marketViewMatches(state.view, request, isAkShare() ? "akshare" : "tdx")
+        ) {
+            state.loading = false;
+            state.error = false;
+            $("loading").hidden = true;
+            $("chart-loading-overlay").hidden = true;
+            $("price-chart").setAttribute("aria-busy", "false");
+            marketLoadStatus(
+                `${error.year ? `${error.year} 年行情` : "完整趋势"}加载失败：${error.message}。已显示的 K 线仍可查看。`,
+                true,
+            );
+            $("theory-status").textContent = "完整结构尚未加载，当前只显示行情";
+            renderRunStockBacktestButton();
+            return;
+        }
         if (
             backtestMode &&
             completedResultRequest &&
@@ -2379,6 +2541,7 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
         }
         state.loading = false;
         state.error = true;
+        if (!backtestMode && isMarketBrowse()) marketLoadStatus(`行情加载失败：${error.message}。可重试加载。`, true);
         $("loading").hidden = true;
         $("chart-loading-overlay").hidden = true;
         $("error").hidden = false;
@@ -2400,6 +2563,13 @@ async function loadView({ focusLatestFill = false, preferTrades = focusLatestFil
             copyError.setAttribute("aria-label", copied ? "加载失败信息已复制" : "复制加载失败信息失败，请重试");
         });
         $("error").append(copyError);
+        if (!backtestMode && isMarketBrowse()) {
+            const retry = document.createElement("button");
+            retry.type = "button";
+            retry.textContent = "重试加载行情";
+            retry.addEventListener("click", () => void loadView({ marketRetry: true }));
+            $("error").append(retry);
+        }
         if (backtestMode) {
             const retry = document.createElement("button");
             retry.type = "button";
@@ -2507,7 +2677,7 @@ const watchlistBacktests = new IdleWatchlistBacktests({
         buyPoints.contextChanged();
         structureSignals.contextChanged();
         queueMicrotask(() => {
-            if (!state.loading) void loadView();
+            if (!state.loading && !state.marketLoading) void loadView();
         });
     },
     serverJobs: () => serverBacktestSnapshot.jobs,
@@ -2643,6 +2813,7 @@ const watchlistBacktests = new IdleWatchlistBacktests({
     isIdle: () =>
         document.visibilityState === "visible" &&
         !state.loading &&
+        !state.marketLoading &&
         ![...stockBacktestTasks.tasks.values()].some((task) => task.status === "running") &&
         !ratioComparison.running &&
         Date.now() - lastWorkbenchInteraction >= 5_000,
@@ -2653,6 +2824,7 @@ const watchlistBacktests = new IdleWatchlistBacktests({
             !job ||
             !source ||
             state.loading ||
+            state.marketLoading ||
             state.view?.symbol !== result.symbol ||
             state.view.asof !== result.asof ||
             $("symbol-select").value !== result.symbol ||
@@ -2828,13 +3000,13 @@ async function syncSavedWatchlists() {
                 ratioComparison.contextChanged();
                 buyPoints.contextChanged();
                 structureSignals.contextChanged();
-                if (!state.loading) void loadView();
+                if (!state.loading && !state.marketLoading) void loadView();
             } else if (restoration?.kind === "context") {
                 await applySavedWatchlistSettings(restoration.settings);
                 fillSymbols();
                 const { group: _group, cutoff: _cutoff, ...restored } = watchlistBacktests.snapshot()?.context || {};
                 lastServerWatchlistContext = JSON.stringify([restored, watchlistBacktests.enabled]);
-                if (!state.loading) void loadView();
+                if (!state.loading && !state.marketLoading) void loadView();
             }
         }
     })()
@@ -2907,7 +3079,7 @@ async function refreshServerBacktestStatuses() {
             const symbol = $("symbol-select").value;
             const member = watchlistBacktests.members.find((item) => item.symbol === symbol);
             const context = watchlistBacktests.context;
-            if (member && context && !state.loading) {
+            if (member && context && !state.loading && !state.marketLoading) {
                 const expected = watchlistBacktestRequest(member, context);
                 const completed = snapshot.recent?.find(
                     (item) =>
@@ -3094,6 +3266,14 @@ $("result-scope").addEventListener("change", async () => {
     const targetScope = $("result-scope").value;
     const source = sourceForScope(targetScope);
     if (source && !loadedCatalogs.has(source)) {
+        state.controller?.abort();
+        state.summaryController?.abort();
+        state.loading = false;
+        state.marketLoading = true;
+        $("loading").hidden = true;
+        $("chart-loading-overlay").hidden = true;
+        $("price-chart").setAttribute("aria-busy", "false");
+        marketLoadStatus("");
         $("result-scope").value = state.lastResolvedScope || "stock";
         $("result-scope").disabled = true;
         $("stock-source-notice").textContent = `正在读取${source === "tdx" ? "通达信" : "AkShare"}股票目录…`;
@@ -3109,6 +3289,7 @@ $("result-scope").addEventListener("change", async () => {
             return;
         } finally {
             $("result-scope").disabled = false;
+            state.marketLoading = false;
         }
         $("result-scope").value = targetScope;
     }

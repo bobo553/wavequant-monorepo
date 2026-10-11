@@ -45,6 +45,12 @@ export function ChartViewport(): JSX.Element {
                 <span className="chart-loading-spinner" aria-hidden="true" />
                 <span>正在加载股票数据…</span>
             </div>
+            <div id="stock-data-load-status" className="stock-data-load-status" role="status" aria-live="polite" hidden>
+                <span id="stock-data-load-message" />
+                <button id="stock-data-load-retry" type="button" hidden>
+                    重试加载
+                </button>
+            </div>
             <div className="replay">
                 <div className="replay-title">
                     <span>历史回放</span>

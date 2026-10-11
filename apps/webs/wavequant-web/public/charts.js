@@ -443,6 +443,15 @@ export class PriceChart {
         hideChartTooltip(this.tooltip);
     }
     setData(data, options = {}) {
+        const oldData = this.data;
+        const oldRange =
+            options.preserveViewport &&
+            oldData?.symbol === data.symbol &&
+            (oldData.timeframe || "1d") === (data.timeframe || "1d")
+                ? this.chart.timeScale().getVisibleLogicalRange()
+                : null;
+        const oldFirst = oldData?.bars[0]?.time;
+        const shift = oldFirst ? data.bars.findIndex((bar) => bar.time === oldFirst) : -1;
         this.focusFlashOverlay.clear();
         clearTimeout(this.tooltipHideTimer);
         this.tooltipHovered = false;
@@ -469,7 +478,13 @@ export class PriceChart {
         this.setVolume(options.volume !== false);
         this.setAnnotationOptions({ signals: options.markers !== false, ...options.annotations });
         const end = data.bars.length - 1;
-        this.chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, end - 140), to: end + 6 });
+        this.chart
+            .timeScale()
+            .setVisibleLogicalRange(
+                oldRange && shift >= 0
+                    ? { from: oldRange.from + shift, to: oldRange.to + shift }
+                    : { from: Math.max(0, end - 140), to: end + 6 },
+            );
         this.updateViewport();
     }
     navigationState() {
