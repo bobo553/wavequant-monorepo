@@ -11543,6 +11543,11 @@
                     "summary": "相关格式、Harness、CodeGraph与差异检查通过，全部316个最新main功能对象和根元数据逐字段保留，只新增320；并行319及活动256原失败记录不改。最终两个生产模块及94/16回归、合同独立复核无P1/P2；一处索引/日期注释歧义已修正。真实测试无跨路径许可借用，包内两源码字节逐一核对通过。"
                 },
                 {
+                    "command": "合并main848e923后只读GET 3003 /api/market-timeframe?source=akshare&symbol=sz.000678&asof=1997-10-31&timeframe=1d；/api/backtest-jobs；/api/watchlists；一次2026-10-09完整图GET（45秒期限）",
+                    "status": "passed",
+                    "summary": "新引擎已实际加载：1997短前缀HTTP200/4.514秒、196棒，algorithm8e647e4dd80d→5d95677287c0，行情data_version不变。与318保存的完整API载荷递归对照，仅algorithm_version、snapshot_id、view.fetched_at三项差异，其余几何/证书/信号完全一致。轻接口0.273/0.286秒均200，自选自动从551b3a06切至ebcfe0bb新版本，12股重算、000678当时30%生成信号/9.7秒，完成0/失败0；start2018-01-01保持。未手工刷新/终止job/重启服务。完整历史单次GET在45.085秒期限内仍未返回，明确不能宣称完整加载或12股重刷已完成；局部优化不消除其余预处理开销。"
+                },
+                {
                     "command": "完整Core/Web单测、浏览器/Playwright、完整自选股账户与真实分钟集成",
                     "status": "not-run",
                     "summary": "遵循用户验证节奏待独立验证；未触发全自选刷新或终止运行中任务。固定512/6805棒的纯计算证据不代表网络、账户模拟、逐日策略历史或全队列已刷新；重复逐日历史开销本轮未消除。"
