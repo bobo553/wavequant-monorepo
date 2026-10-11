@@ -4,6 +4,85 @@
     "activeFeature": "MONOREPO-256",
     "features": [
         {
+            "id": "MONOREPO-327",
+            "name": "equal-extreme-doji-trend-continuity",
+            "title": "等值外包十字星保留一级趋势连续性",
+            "status": "done",
+            "dependencies": ["MONOREPO-325", "MONOREPO-326"],
+            "description": "2010-03-09等高外包十字星错误清空已确认路径；将安全边界与严格端点推进分开，并以同路径已知证据承接后续母线。",
+            "scope": "Core讲义源折线及引擎缓存版本、镜像/拒绝/两源真实前缀回归、修复后完整趋势缓存验证；不按用户首尾日期硬补线，不改变整波完成定义。",
+            "acceptanceCriteria": [
+                "安全等高/等低十字星保留原端点、ordinal、知识日、路径与确认/完成状态，只有严格推进才替换。",
+                "后续有色外包母线只在同一活动路径、已确认/teaching对向锚、developing同向尾、上一doji同价极值和不越锚边界下承接。",
+                "无来向、seed、越锚、异路径/未来坐标、已结束端点及非同价child仍拒绝；不推断同日盘中顺序。",
+                "两源真实2010-03-03至03-25相关路径恢复，3/25高7.98到3/26才可知、3/30才完成；未来扩展不重写知识时钟。",
+                "1999既有三级结果保持；修复后的完整趋势不能由未获当前服务端验证的旧geometry替代。",
+                "v119三缓存失效，保留whole_wave_v117，相关定向测试/类型/包构建及消费者验证通过。"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest test_bounded_outside_doji.py test_equal_outside_doji.py test_lecture_drawing.py test_empty_epoch_path_cutoff.py test_staged_trend_pipeline.py test_n_trend_option_consumers.py -q; strict/configured mypy; pnpm --filter @wavequant/core typecheck",
+                    "status": "passed",
+                    "summary": "直接相关6文件148项与32子用例通过；新equal测试52 cases包含16个方向/颜色/母线等值或推进/1或3次重复镜像。4个strict基线、4生产+2测试配置类型及新测试单文件strict通过。越锚/seed/未知方向/异epoch/已结束/未来坐标等拒绝守护保留。"
+                },
+                {
+                    "command": "real dual-source 2995-bar causal prefixes; HEAD-v118 comparison; 598-bar 1999 hierarchy deep comparison; source-level independent review",
+                    "status": "passed",
+                    "summary": "两源上市以来真实前缀定位3/9等高6.94误断，修复后3/8至3/9原point字典及一级输出不变，保留lecture-0。3/11H7.35可知3/12、完成3/18；3/15L6.61可知和完成3/26；3/25H7.98可知3/26、完成3/30；不按3/3至3/25首尾硬补线。1999完整598棒所有层级与上版深度相同。独立8正/7负镜像及2源隔离旧代码对照无因果阻碍。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core build; isolated wheel install and -I smoke; 4 source/sdist/wheel/installed byte comparisons",
+                    "status": "passed",
+                    "summary": "Core sdist/wheel和隔离部署通过，4修改模块逐字节一致，新helper、3个v119缓存及拒绝v118检查点生效。whole_wave_v117不变；隔离包两源各2995棒知识时钟、1999 556棒88/10/1及4/5→4/22链通过。wheel SHA256 23c5d46fab654e56355ddac760ef5131943c703d6a811bac02b53c2c6b499ca5。"
+                },
+                {
+                    "command": "API test_market_timeframes.py; test_server.py -k backtest_version/akshare_routes/theory_engine/cached_verified; Core test_tdx_backtest.py -k engine/version; API standard strict 12 files",
+                    "status": "passed",
+                    "summary": "API9项/20子用例、API版本消费者4项、Core引擎2项通过；12 API源码严格类型通过。源码149文件指纹包含新helper，API聚合版本绑定完整引擎；候选新engine d4300fd1、APIalgorithm ee5a4772，无需修改API OHLC ETag。"
+                },
+                {
+                    "command": "Web node --test catalog-cache.test.mjs market-bars-loader.test.mjs; vitest run market-bars-app.test.tsx; Web lint/typecheck/build; Prettier/node --check",
+                    "status": "passed",
+                    "summary": "Node30项、实际app10项通过；网络/500/503/timeout不可返回未验证的旧v118geometry，304/新算法200仍有效，已核验缓存只复用行情预览，完整趋势失败可交互重试。Web lint无错误（6旧warning）、类型、默认Turbopack生产构建、相关格式/JS语法通过。"
+                },
+                {
+                    "command": "isolated HEAD original four production modules and candidate replay, exact JUnit case/failure message comparison; pnpm harness:check; CodeGraph sync; original feature preservation and diff review",
+                    "status": "passed",
+                    "summary": "扩展11文件330 passed/32 subtests及8 failed已如实独立登记328 backlog；8项在HEAD四原模块与候选逐条failure message相同，零新增失败，旧测试未改。原323个功能对象及256活动状态逐字段保留，Harness/索引/差异与独立复核通过。"
+                },
+                {
+                    "command": "full Core/Web suites, browser/Playwright, full account and external minute data validation",
+                    "status": "not-run",
+                    "summary": "按用户日常开发节奏未执行完整套件或浏览器；328保留8个原基线失败待独立修复。常驻新版本将以本地合并后轻量重启及只读HTTP验证记录，不把未验证项写为通过。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-328",
+            "name": "preexisting-confirmation-pressure-regression-baseline",
+            "title": "既有确认与压力测试基线失败",
+            "status": "backlog",
+            "dependencies": [],
+            "description": "327扩展检查发现8项旧测试失败；在两个隔离进程分别恢复HEAD完整4生产模块与候选，逐用例failure message相同，未发现候选新增失败。",
+            "scope": "保存test_hierarchical_confirmation及test_confirmed_descent_pressure现有基线诊断；本轮不改旧测试断言或额外算法。",
+            "acceptanceCriteria": [
+                "完整保存候选和HEAD源码SHA、trace/JUnit及逐用例对比，避免将失败计作已通过。",
+                "后续独立核对真实2025确认时钟、有效time的压力测试输入及乐心6截面；修复后重新验证，不跳过或弱化门禁。"
+            ],
+            "verification": [
+                {
+                    "command": "Core expanded 11-file targeted pytest group including test_hierarchical_confirmation.py and test_confirmed_descent_pressure.py",
+                    "status": "failed",
+                    "summary": "330 passed/32 subtests，8 failed。失败为2025真实确认1项、压力fake fixture缺有效time1项及乐心6截面；两旧测试文件未改。"
+                },
+                {
+                    "command": "two isolated Python processes with HEAD original four modules vs candidate; compare per-case JUnit failure messages",
+                    "status": "passed",
+                    "summary": "HEAD 8 failed/15.90s，候选8 failed/16.09s；用例名和failure message逐条完全相同，零候选新增失败。trace、HEAD源码SHA及对比JSON保存在ignored .codex-runtime/feature327-*。直接相关通过集合另记327。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-326",
             "name": "annual-market-bars-progressive-loading",
             "title": "行情按年渐进显示与可取消加载",

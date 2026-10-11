@@ -1,3 +1,5 @@
+MONOREPO-327（2026-10-11）：移除完整趋势的离线旧bundle回退；行情hash不能证明趋势规则仍当前，network/500/503/timeout只保留已核验行情预览并提示重试，完整趋势每次经本次200/304确认。目录离线缓存保留，年度预览仍可复用经首包同hash/同价格口径/完整bars门禁核验的缓存。Node30、真实app10、Web lint（6旧warning）/类型/默认Turbopack构建、格式/语法通过；README同步年度加载和新趋势校验行为。浏览器/完整Web套件待独立验证。
+
 MONOREPO-326（2026-10-11）：行情改为最新实际可用年先显示，按available_years倒序补历史，首包后可查看/复制并保留视窗。全历史同版本趋势后台一次安装；切股/源/周期取消旧链，首年/后页/完整趋势失败或超时保留可用行情并重试，周末请求日期与resolved日期分开，未来交易日历独立合并，拒绝截断缓存和同股账户预览。共享Zod统一边界；Node41、Vitest15（真实app9/组件1/契约5）通过，Web lint（6旧warning）、类型、默认Turbopack构建、相关格式/语法通过。真实14年2995bars跨API/schema/loader重组逐字段相同，首包13304B/78bars；首次冷源读和44MiB完整理论未被宣称优化。任务依赖已离线冻结本地安装，无锁文件变更，主检出依赖未改。完整套件/浏览器/Playwright待独立验证。
 
 MONOREPO-323（2026-10-11）：继续修复用户复测Ctrl+C无反馈。真实选股focusStockSearch会focus/select全选，上一轮fixture主动折叠选区遗漏；普通图完成后自动进入同股后台回测/失败保留可操作图，快捷键却由全局loading/error静默拒绝。现copyableRenderedCandle为按钮/快捷键共同资格，核对实际chart.data与state.view、股票、请求源、周期、棒身份、页面/local及真实busy/overlay/hidden；同股背景请求不阻断已渲染棒。鼠标位于图表/卡片时允许图外旧编辑器残留全选，不清选区/强制blur；真实DOM Range、编辑器自身/图内/独立/shadow继续原生。临时textarea显式clipboardFallback标记防止K线覆盖兼容复制其他内容，物理KeyC兼容非ASCII键位，保留composition/Alt/Shift拒绝。
