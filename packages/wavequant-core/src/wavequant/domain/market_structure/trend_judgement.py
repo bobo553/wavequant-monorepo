@@ -177,6 +177,8 @@ def _canonical_points(candidates: Sequence[Mapping[str, object]]) -> list[dict[s
 
     先按知识日期纳入候选，再按真实价格位置归并；未知事件没有机会参与
     极值选择。同类 H 保留最高点、L 保留最低点；相等时坐标最早者保留。
+    几何首次可知时间和整波结束时间独立：同坐标更晚的真实反向证明只
+    追加结束知识，不改写开放端点自身日期，也不由相邻异类点猜测结束。
     替换端点只复制新端点自己的 available_at，绝不把同组更早的知识日
     移给后来才知的更大／更小极值。原端点及严格突破证明仍留在 candidates。
     """
@@ -185,7 +187,15 @@ def _canonical_points(candidates: Sequence[Mapping[str, object]]) -> list[dict[s
     # 整个前缀。来源和候选已通过公共校验，同坐标的较晚证据不能倒写早事实。
     by_order: dict[tuple[int, int], dict[str, object]] = {}
     for point in known_events:
-        by_order.setdefault(_order(point), dict(point))
+        selected = by_order.setdefault(_order(point), dict(point))
+        if 'wave_completed_at' in point:
+            # 仅 join 独立结束字段，保留早期 geometry available_at、升级证据
+            # 与 confirmed_by，防止把 laterclosed23 倒填到 earliest18。
+            existing = selected.get('wave_completed_at')
+            completed = cast(Moment, point['wave_completed_at'])
+            if existing is None or _later_moment(completed, cast(Moment, existing)) == existing:
+                for field in ('wave_completion_policy', 'wave_completed_at', 'wave_completion_evidence'):
+                    selected[field] = point[field]
     result: list[dict[str, object]] = []
     for point in sorted(by_order.values(), key=_order):
         if result and point['kind'] == result[-1]['kind']:
@@ -210,7 +220,8 @@ def judge_trend(
     只校验来源与填写元数据，不选择另一套价格公式。普通方向要求 HH 与 HL／
     LL 与 LH 都已可知，两类证据不限定先后；严格已知本级 H/L 突破升级仍
     共用同一底层实现。严格升级
-    仍可同时确认真实整波起点与单向端点，不等待未来 holding 点；上涨
+    仍可同时确认真实整波起点与单向端点；直接下级端点自身必须已经完整
+    结束，不能把仅有价格反转的开放趋势尾端递归升级。上涨
     端点的 up→up 或下降端点的 down→down 证据不被改成反向整波许可。
 
     asof 必须在源点判断之前过滤知识日期：完整输入中的未来点不能先
@@ -218,7 +229,11 @@ def judge_trend(
     位置不会因为筛选或跳过未完点而改变。下级交易证书由共享复制边界
     清除，只保存 source_confirmation 审计引用；K 线和 N 证书不参与。
 
-    没有普通闭合证据或严格升级证据时返回空结构，不新增闭合门槛，也
+    几何首次可知日与 wave_completed_at 分别保留，只有真实反向证明才
+    产生结束知识。普通方向转变若只是单条直接下级波，保留 direction_only
+    账本但不能关闭/重启本级整波；真正组合波或合法严格旧 key 突破才授予
+    owned 身份。下一层先投影结束时钟再判断，同一规则用于三级。
+    没有普通闭合证据或严格升级证据时返回空结构，也
     不制造缺失尾端。纯显示发展线和独立策略资格由外部通用流程负责。
     输入不会被修改，结果及嵌套证据容器只读；mutable_points 可取得副本。
     """
@@ -232,7 +247,10 @@ def judge_trend(
     upgrade_events: list[dict[str, object]] = []
     merged = promote_trend_key_breaks(source, ordinary, trend_level=trend_level, event_sink=upgrade_events)
     candidates = _restore_source_positions(_complete_candidates(ordinary, [*merged, *upgrade_events]), positions, source_level)
-    points = _canonical_points(candidates)
+    # 普通方向账本完整保留，但只有共同整波状态授予身份的事件可递归。
+    # pending 单 child 不得通过后来价格排序自动拼出假反向波。
+    owned = _restore_source_positions(_complete_candidates([], [*merged, *upgrade_events]), positions, source_level)
+    points = _canonical_points(owned)
     # 本级交替点具有统一递归表示：初级输入可能叫confirmed或teaching，
     # 但输出已经由本级定义判定，不能让presentation改state/label后再递归
     # 改变下一层的完整来源引用。候选仍保存原来源状态、标签及独立证明。

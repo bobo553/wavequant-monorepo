@@ -113,7 +113,7 @@ class TrendLevelPipelineTests(unittest.TestCase):
                 self.assertEqual([(point['kind'], point['value']) for point in ordered],
                                  [('L', 10), ('H', 45), ('L', 24), ('H', 55)])
                 field = 'confirmed_on_turn' if level == 1 else f'confirmed_on_level{level - 1}'
-                self.assertEqual(ordered[-1][field], 23)
+                self.assertEqual(ordered[-1][field], 22)
 
     def test_strict_low_key_break_publishes_a_mirrored_endpoint_without_a_later_holding_high(self) -> None:
         values = (*FIGURE_008[:17], 50)
@@ -169,8 +169,10 @@ class TrendLevelPipelineTests(unittest.TestCase):
                                  [('L', 10), ('H', 45), ('L', 24)])
                 self.assertEqual([point['trend_level'] for point in points], [level] * 3)
                 self.assertEqual([point['source_level'] for point in points], [level - 1] * 3)
+                self.assertTrue(all(point['wave_identity_state'] == 'direction_only' for point in points))
+                self.assertTrue(all('wave_completed_at' not in point for point in points))
                 field = 'confirmed_on_turn' if level == 1 else f'confirmed_on_level{level - 1}'
-                self.assertEqual([point[field] for point in points], [6, 13, 18])
+                self.assertEqual([point[field] for point in points], [5, 12, 17])
                 self.assertEqual(raw, before)
         self.assertEqual(geometries[0], geometries[1])
         self.assertEqual(geometries[1], geometries[2])
@@ -186,8 +188,10 @@ class TrendLevelPipelineTests(unittest.TestCase):
                 candidates.append(_geometry(points))
                 self.assertEqual([(point['kind'], point['value']) for point in points],
                                  [('L', 10), ('H', 45), ('L', 24)])
-                self.assertEqual([point[f'confirmed_on_level{level - 1}'] for point in points], [6, 13, 18])
+                self.assertEqual([point[f'confirmed_on_level{level - 1}'] for point in points], [5, 12, 17])
                 self.assertEqual((result['trend_level'], result['source_level']), (level, level - 1))
+                self.assertTrue(all(point['wave_identity_state'] == 'owned' for point in points))
+                self.assertTrue(all('lower_wave_identity_evidence' in point for point in points))
                 self.assertEqual(source, before)
                 # 高低点决定完整趋势线；占位行情只影响独立策略资格。
                 self.assertEqual([(point['kind'], point['value']) for point in _result_points(result)],
@@ -199,7 +203,7 @@ class TrendLevelPipelineTests(unittest.TestCase):
                 tail = tails[0]
                 self.assertEqual((tail['state'], tail['display_only'], tail['wave_direction']), ('candidate', True, 'up'))
                 self.assertEqual(_geometry(_records(tail['points'])),
-                                 [(14, 'L', 24, '2026-01-20'), (19, 'H', 42, '2026-01-21')])
+                                 [(14, 'L', 24, '2026-01-19'), (19, 'H', 42, '2026-01-21')])
                 self.assertEqual(tail['confirmed_legs'], [])
                 self.assertNotIn('confirmation', tail)
         self.assertEqual(candidates[0], candidates[1])
@@ -231,7 +235,8 @@ class TrendLevelPipelineTests(unittest.TestCase):
         for level in (1, 2, 3):
             for state in ('seed', 'developing', 'display_only'):
                 with self.subTest(trend_level=level, state=state):
-                    _, source = _fixture(FIGURE_008[:7], source_level=level - 1)
+                    # H5才补齐HH+HL；不能把较晚L6标未完却错误要求此前合法方向消失。
+                    _, source = _fixture(FIGURE_008[:6], source_level=level - 1)
                     points = source['strokes'][0]['points']
                     if state == 'display_only':
                         points[-1]['display_only'] = True
@@ -288,7 +293,7 @@ class TrendLevelPipelineTests(unittest.TestCase):
         candidates = _result_points(result, 'candidate_strokes')
         self.assertEqual([(point['index'], point['kind'], point['value']) for point in candidates],
                          [(3, 'L', 10), (10, 'H', 45), (15, 'L', 24)])
-        self.assertEqual([point['confirmed_on_turn'] for point in candidates], [6, 13, 18])
+        self.assertEqual([point['confirmed_on_turn'] for point in candidates], [5, 12, 17])
         self.assertTrue(all(point['trend_level'] == 1 and point['source_level'] == 0 for point in candidates))
         self.assertEqual(drawing, before)
 

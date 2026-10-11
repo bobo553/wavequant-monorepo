@@ -83,7 +83,8 @@ def hierarchical_history(
     previous: dict[int, dict[tuple[int, int, str, float], int]] = {0: {}, 1: {}, 2: {}, 3: {}}
     last_epoch = None
     last = len(bars) - 1
-    cache_version = 'level_first_daily_point_geometry_and_independent_permissions_v115'
+    # 旧逐日来源没有本级整波闭合证明，不能直接恢复后继续递归。
+    cache_version = 'level_first_completed_source_wave_geometry_and_independent_permissions_v116'
     wants_declines = decline_sink is not None
     wants_structure = structure_sink is not None
     prefix_key = (cache_version, tuple(bars[:-1]), wants_declines, n_target_trend_confirmation_enabled, wants_structure)
@@ -120,7 +121,13 @@ def hierarchical_history(
             known = max(previous[level].get(key, now_index), cast(int, point.get('available_index', 0)))
             if frozen:
                 known = max(known, frozen[-1]['available_at'])
-            current = cast(_HistoryPoint, dict(point, available_at=known, label=point.get('label', point['kind'])))
+            current_data = dict(point, available_at=known, label=point.get('label', point['kind']))
+            if 'wave_completion_policy' in point:
+                # 历史重现可以晚于真实结束证明。原几何出现日、整波结束日与
+                # 本次重新观察日各自保留，递归来源取后两者的较晚日；不能把
+                # 重新观察日倒写进结束证据，也不能用旧结束日提前消费重现点。
+                current_data.setdefault('source_geometry_available_at', point['available_at'])
+            current = cast(_HistoryPoint, current_data)
             prior = prior_points[level].get(key)
             if prior is not None and prior == current:
                 current = prior

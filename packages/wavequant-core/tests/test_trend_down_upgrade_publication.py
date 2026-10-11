@@ -133,7 +133,7 @@ def paired_sample() -> tuple[list[Bar], list[dict[str, object]], list[dict[str, 
     # 无先后限制后，H14同日已有普通证明，默认并集会正确保留ordinary；测试
     # 必须选回真实event_sink中的独立strict-origin，才能进入来源身份校验分支。
     # 坐标、价格和可知日均不改写，也不伪造升级证据；普通优先另有公共判定测试。
-    strict_origin = next(point for point in events if point['index'] == 14)
+    strict_origin = next(point for point in events if point['index'] == 14 and 'upgrade_evidence' in point)
     evidence = strict_origin['upgrade_evidence']
     assert isinstance(evidence, Mapping) and evidence['direction'] == 'down' and evidence['role'] == 'origin'
     origin_position = next(index for index, point in enumerate(points) if point['index'] == 14)

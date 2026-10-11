@@ -11,7 +11,7 @@ import pytest
 
 from wavequant.domain.market_structure.trend_judgement import TrendJudgement, judge_trend, mutable_points
 from wavequant.domain.market_structure.trend_level_upgrades import promote_trend_key_breaks
-from wavequant.domain.market_structure.trend_levels import trend_reversals
+from wavequant.domain.market_structure.trend_levels import completed_source_points, trend_reversals
 
 
 FIGURE_008 = (20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 38, 42, 32, 36, 24, 29, 26)
@@ -65,7 +65,10 @@ def test_all_levels_keep_strict_mirrored_upgrade_without_a_future_holding_turn(l
     assert (attack['index'], attack['value'], attack['available_at']) == (17, 50, 18)
     assert not any(point['index'] == 17 for point in judge_trend(source, trend_level=level, asof=17).candidates)
     assert (result.trend_level, result.source_level) == (level, level - 1)
+    # reversal 仍表示公开几何拐点；严格同向尾端尚未结束整波，不能凭该状态递归。
     assert all(point['state'] == 'reversal' for point in result.points)
+    assert [point['wave_completed_at'] for point in result.points[:-1]] == [6, 13, 18]
+    assert 'wave_completed_at' not in endpoint and 'wave_completion_evidence' not in endpoint
     assert [point['label'] for point in result.points] == (['H1', 'L1', 'H2', 'L2'] if mirror else ['L1', 'H1', 'L2', 'H2'])
     assert result.candidates[0]['label'] == 'source-2'
     assert result.candidates[0]['state'] == 'confirmed'
@@ -119,11 +122,31 @@ def test_later_higher_point_keeps_own_known_date_and_retains_replaced_event() ->
     source = _source((*FIGURE_008, 50, 30, 55, 35, 53, 29, 48))
     source[17]['available_at'] = 19
     earlier, later = judge_trend(source, asof=22), judge_trend(source, asof=23)
-    assert _geometry(earlier)[-1] == (21, 'H', 53, 22)
-    # 较低H21与较低L22在23齐全，H19的整波极值到23才确认；不能回填22。
-    assert _geometry(later)[-1] == (19, 'H', 55, 23)
+    # H19=55在20已严格突破旧已结束H9=45，之后H21=53仍高于旧关键位，
+    # 但不能把整波最高55替换为局部53，也不能在回调L18/L20另起上级波。
+    whole_high = max(source[17:22:2], key=lambda point: cast(int, point['value']))
+    assert (whole_high['index'], whole_high['value']) == (19, 55)
+    assert _geometry(earlier)[-1] == _geometry(later)[-1] == (19, 'H', 55, 20)
+    assert not any(point['index'] in (18, 20) for point in later.points)
+    assert 'wave_completed_at' not in earlier.points[-1]
+    # 较低H21=53与较低L22=29在23才齐全；结束知识独立于几何20，不能回填22。
+    assert later.points[-1]['wave_completed_at'] == 23
+    completion = later.points[-1]['wave_completion_evidence']
+    assert isinstance(completion, Mapping)
+    assert (completion['index'], completion['value'], completion['available_at']) == (19, 55, 23)
+    assert completion['wave_direction_before'] == 'up' and completion['wave_direction_after'] == 'down'
+    evidence = completion['definition_evidence']
+    assert isinstance(evidence, tuple)
+    assert [(point['index'], point['value']) for point in cast(Sequence[Mapping[str, object]], evidence)] == (
+        [(19, 55), (21, 53), (20, 35), (22, 29)])
+    # H21虽仍在旧H9之上，却未延伸本级H19=55；它只作为真实下级反向
+    # 证据保留在结束证明中，不再重复取得一个上级严格端点身份。
     assert [(point['index'], point['value'], point['available_at']) for point in later.candidates
-            if point['index'] in (19, 21)] == [(19, 55, 23), (21, 53, 22)]
+            if point['index'] in (19, 21)] == [(19, 55, 20), (19, 55, 23)]
+    assert (source[21]['kind'], source[21]['value'], source[21]['available_at']) == ('H', 53, 22)
+    assert any(point['index'] == 21 and point['value'] == 53 for point in cast(Sequence[Mapping[str, object]], evidence))
+    assert judge_trend(source[:22], asof=22) == earlier
+    assert 'wave_completed_at' not in earlier.points[-1]
     assert all(left['kind'] != right['kind'] for left, right in zip(later.points, later.points[1:]))
 
 
@@ -134,6 +157,7 @@ def test_ordinary_reverse_fact_survives_an_earlier_same_coordinate_strict_endpoi
     # H17严格突破先在18成立；更低H19与更低L20在21补齐反向普通定义。
     # 两份事实虽然坐标相同，方向和知识日不同，不能互相覆盖或倒写。
     before = judge_trend(source, trend_level=level, asof=20)
+    frozen_before = mutable_points(before.points)
     after = judge_trend(source, trend_level=level, asof=21)
     earlier = [point for point in before.candidates if point['index'] == 17]
     facts = [point for point in after.candidates if point['index'] == 17]
@@ -149,7 +173,27 @@ def test_ordinary_reverse_fact_survives_an_earlier_same_coordinate_strict_endpoi
     geometry = [point for point in after.points if point['index'] == 17]
     assert len(geometry) == 1 and geometry[0]['available_at'] == 18
     assert geometry[0]['wave_direction_after'] == initial
-    assert before.points == after.points
+    # 几何和最早strict事实不变；仅在真实反向21出现后加入整波结束知识。
+    # 比较所有非结束字段，避免用只比较坐标掩盖许可证/来源被后来事实覆盖。
+    completion_fields = {'wave_completed_at', 'wave_completion_evidence', 'wave_completion_policy'}
+    assert [{key: value for key, value in point.items() if key not in completion_fields} for point in before.points] == (
+        [{key: value for key, value in point.items() if key not in completion_fields} for point in after.points])
+    assert 'wave_completed_at' not in before.points[-1]
+    assert geometry[0]['wave_completed_at'] == 21
+    completion = geometry[0]['wave_completion_evidence']
+    assert isinstance(completion, Mapping)
+    assert (completion['available_at'], completion['wave_direction_before'], completion['wave_direction_after']) == (
+        21, initial, reverse)
+    assert completion['definition_evidence'] == facts[1]['definition_evidence']
+    assert mutable_points(before.points) == frozen_before
+    assert before == judge_trend(source[:20], trend_level=level, asof=20)
+    assert after == judge_trend(source[:21], trend_level=level, asof=21)
+    if level < 3:
+        early_source = completed_source_points(before.points, source_level=level)
+        late_source = completed_source_points(after.points, source_level=level)
+        assert not any(point['index'] == 17 for point in early_source)
+        supplied = next(point for point in late_source if point['index'] == 17)
+        assert (supplied['available_at'], supplied['source_geometry_available_at'], supplied['wave_completed_at']) == (21, 18, 21)
 
 
 @pytest.mark.parametrize('level', [1, 2, 3])
@@ -163,7 +207,12 @@ def test_later_strict_origin_fact_survives_an_earlier_same_coordinate_ordinary_o
     # 普通定义在H17=44可知的18成立，但44未超过本级旧H9=45。
     # H19=50在20才独立严格破位；几何继续保留早ordinary，账本追加晚strict。
     assert next(point for point in earliest if point['index'] == 14)['available_at'] == 18
-    upgrade = next(point for point in events if point['index'] == 14)
+    # event_sink同时保留真正owned普通事实和独立严格事实，不能只按坐标
+    # 取第一项，把早ordinary18误当成晚strict20。
+    assert [point['available_at'] for point in events if point['index'] == 14] == [18, 20]
+    upgrade = next(point for point in events if point['index'] == 14
+                   and isinstance(point.get('upgrade_evidence'), Mapping)
+                   and cast(Mapping[str, object], point['upgrade_evidence'])['role'] == 'origin')
     assert upgrade['available_at'] == 20
     proof = upgrade['upgrade_evidence']
     assert isinstance(proof, Mapping) and proof['role'] == 'origin'
@@ -179,13 +228,46 @@ def test_later_strict_origin_fact_survives_an_earlier_same_coordinate_ordinary_o
     assert facts[1]['upgrade_evidence'] is not None
     geometry = next(point for point in after.points if point['index'] == 14)
     assert geometry['available_at'] == 18 and geometry.get('upgrade_evidence') is None
+    assert geometry['wave_completed_at'] == 18
+    assert not any(point['index'] == 18 for point in after.points)
+    later_upgrade = facts[1]['upgrade_evidence']
+    assert isinstance(later_upgrade, Mapping)
+    strict_origin = later_upgrade['origin']
+    assert isinstance(strict_origin, Mapping)
+    assert strict_origin['index'] == 14
 
 
-def test_equal_extreme_keeps_earliest_coordinate_without_equal_key_upgrade() -> None:
-    result = judge_trend(_source((*FIGURE_008, 50, 30, 50, 35, 48, 29, 47)))
-    highs = [point for point in result.points if point['value'] == 50]
+@pytest.mark.parametrize('high', (45, 50))
+def test_equal_extreme_keeps_earliest_coordinate_and_breaks_only_a_closed_strictly_lower_key(high: int) -> None:
+    result = judge_trend(_source((*FIGURE_008, high, 30, high, 35, high - 2, 29, high - 3)))
+    highs = [point for point in result.points if point['value'] == high and cast(int, point['index']) >= 17]
     assert len(highs) == 1 and highs[0]['index'] == 17
-    assert not any(point['index'] == 19 and point.get('upgrade_evidence') is not None for point in result.candidates)
+    assert highs[0]['wave_completed_at'] == 23
+    upgrades = [point for point in result.candidates if point['index'] == 19 and point.get('upgrade_evidence') is not None]
+    assert upgrades == []
+    if high == 45:
+        # 两个H都只是相等触及已结束H9=45：不得严格升级。
+        assert upgrades == []
+    else:
+        # 首次H17=50严格破旧已结束H9=45，但后来H19=50未延伸整波。
+        # 同价不能重复授予端点身份；首份独立strict证据和真实闭合仍需保留。
+        initial = [point for point in result.candidates if point['index'] == 17
+                   and isinstance(point.get('upgrade_evidence'), Mapping)]
+        assert len(initial) == 1
+        proof = initial[0]['upgrade_evidence']
+        assert isinstance(proof, Mapping)
+        key, origin = proof['broken_key'], proof['origin']
+        assert isinstance(key, Mapping) and isinstance(origin, Mapping)
+        assert (key['index'], key['value'], key['available_at']) == (9, 45, 13)
+        assert origin['index'] == 14 and proof['role'] == 'endpoint'
+        assert initial[0]['available_at'] == 18
+    completion = highs[0]['wave_completion_evidence']
+    assert isinstance(completion, Mapping)
+    refs = completion['definition_evidence']
+    assert isinstance(refs, tuple)
+    assert [(point['index'], point['value']) for point in cast(Sequence[Mapping[str, object]], refs)
+            if point['kind'] == 'H'] == [(19, high), (21, high - 2)]
+    assert not any(point['index'] == 18 for point in result.points)
 
 
 def test_lower_license_is_removed_but_unknown_audit_is_copied_without_aliases() -> None:

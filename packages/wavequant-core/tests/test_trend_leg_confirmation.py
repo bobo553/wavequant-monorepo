@@ -14,6 +14,8 @@ from wavequant.domain.market_structure.hierarchical_development import hierarchi
 from wavequant.domain.market_structure.lecture_trend import reversal_trends
 from wavequant.domain.market_structure.secondary_trend import secondary_trends
 from wavequant.domain.market_structure.trend_confirmation import qualify_downtrend, qualify_uptrend
+from wavequant.domain.market_structure.trend_judgement import judge_trend
+from wavequant.domain.market_structure.trend_lines import high_low_points_from_strokes
 from wavequant.domain.market_structure.trend_publication import annotate_published_legs, confirmed_trend_legs
 from wavequant.domain.models.model import Bar
 
@@ -24,6 +26,12 @@ def _proof(point: Mapping[str, object], field: str) -> Mapping[str, object]:
     return cast(Mapping[str, object], value)
 
 
+def _paths(level, field):
+    paths = level[field]
+    assert isinstance(paths, list)
+    return cast(list[Mapping[str, object]], paths)
+
+
 @pytest.fixture(scope='module')
 def xiangyang_leg():
     raw = json.loads((Path(__file__).parent / 'fixtures/xiangyang_2025_trend_break.json').read_text(encoding='utf-8'))
@@ -31,71 +39,123 @@ def xiangyang_leg():
             for day, *prices in raw['rows'] if day <= '2019-04-30']
     first = reversal_trends(lecture_drawing(bars), bars)
     second = secondary_trends(first, bars)
-    stroke = next(s for s in second['strokes'] if any(p['time'] == '2018-10-19' for p in s['points']))
-    # 二级只能读取正式一级来源；私有本级升级候选仍需独立取得逐方向证书。
-    source = next(s['points'] for s in first['strokes'] if s['id'] == stroke['source_path'])
-    private = next(s['points'] for s in second['candidate_strokes'] if s['source_path'] == stroke['source_path'])
+    _assert_no_owned_secondary(first, second)
+    stroke = next(s for s in _paths(first, 'qualified_strokes') if any(p['time'] == '2018-10-19' for p in s['points']))
+    # 此段只取得一级整波身份；二级普通方向事实不能借一级许可证递归。
+    source = next(s['points'] for s in _paths(first, 'source_strokes') if s['id'] == stroke['source_path'])
+    # 与公共资格适配器相同，仅给未命名的原始折线点补种类标签。
+    source = [dict(p, label=p.get('label', p['kind'])) for p in source]
+    private = next(s['points'] for s in _paths(first, 'candidate_strokes') if s['source_path'] == stroke['source_path'])
     return bars, stroke, source, private
 
 
-def test_known_level_key_break_independently_authorizes_the_march_downward_leg(xiangyang_leg):
+def _assert_no_owned_secondary(first, second):
+    assert second['strokes'] == second['qualified_strokes'] == second['developing_strokes'] == []
+    assert high_low_points_from_strokes(second['strokes']) == []
+    projected = high_low_points_from_strokes(first['strokes'])
+    assert [p for s in second['source_strokes'] for p in s['points']] == projected
+    facts = [p for s in second['candidate_strokes'] for p in s['points']]
+    assert [(p['time'], p['kind'], p['value'], p['available_at'], p['wave_direction_after'])
+            for p in facts] == [
+        ('2018-07-03', 'H', 6.85, '2018-09-07', 'down'),
+        ('2018-10-19', 'L', 4.4, '2018-12-25', 'up'),
+    ]
+    assert [[(p['time'], p['value'], p['available_at']) for p in fact['definition_evidence']]
+            for fact in facts] == [
+        [('2018-08-15', 5.8, '2018-08-21'), ('2018-08-27', 5.39, '2018-09-04'),
+         ('2018-08-20', 5.08, '2018-08-28'), ('2018-09-03', 5.07, '2018-09-07')],
+        [('2018-09-25', 5.78, '2018-10-10'), ('2018-11-23', 5.85, '2018-12-03'),
+         ('2018-10-19', 4.4, '2018-11-05'), ('2018-12-18', 4.82, '2018-12-25')],
+    ]
+    for fact in facts:
+        assert fact['wave_identity_state'] == 'direction_only'
+        assert fact['confirmation_rule'] == 'ordered_HH_then_HL_or_LL_then_LH_switch'
+        assert 'wave_completed_at' not in fact and 'wave_completion_evidence' not in fact
+        assert 'upgrade_evidence' not in fact and 'trend_confirmation' not in fact
+    march_high = next((p for p in projected if p['time'] == '2019-03-21'), None)
+    if march_high is not None:
+        assert (march_high['source_geometry_available_at'], march_high['available_at']) == (
+            '2019-03-22', '2019-04-01',
+        )
+    march_low = next((p for p in projected if p['time'] == '2019-03-29'), None)
+    if march_low is not None:
+        assert (march_low['source_geometry_available_at'], march_low['available_at']) == (
+            '2019-04-09', '2019-04-09',
+        )
+
+
+def test_complete_lower_cycle_independently_authorizes_the_march_downward_leg(xiangyang_leg):
     bars, stroke, source, private = xiangyang_leg
     high = next(p for p in private if p['time'] == '2019-03-21')
     low = next(p for p in private if p['time'] == '2019-03-29')
     prior = next(p for p in reversed(stroke['points']) if p['kind'] == 'L' and p['time'] < high['time'])
-    assert high['value'] == 9.84 and high['broken_key']['value'] == 9.3
-    assert high['broken_key']['time'] == '2019-03-18'
-    assert high['confirmation_rule'] == 'level1_confirmed_high_breaks_known_level2_last_fall_high'
-    assert low['value'] == 8.5 and low['available_at'] == '2019-04-01'
-    assert low['upgrade_evidence']['direction'] == 'down'
-    assert (prior['time'], prior['value']) == ('2019-03-15', 8.23)
-    position = high['source_level1_position']
+    assert high['value'] == 9.84 and high['broken_key']['value'] == 6.01
+    assert (high['broken_key']['time'], high['broken_key']['available_at']) == ('2019-01-14', '2019-01-22')
+    assert high['confirmation_rule'] == 'level0_confirmed_high_breaks_known_level1_last_fall_high'
+    assert low['value'] == 8.5 and low['available_at'] == low['wave_completed_at'] == '2019-04-09'
+    assert low['upgrade_evidence']['direction'] == 'up' and low['upgrade_evidence']['role'] == 'origin'
+    assert (prior['time'], prior['value']) == ('2019-01-22', 5.4)
+    position = high['source_turn_position']
+    assert (source[position]['index'], source[position]['ordinal'], source[position]['value']) == (
+        high['index'], high['ordinal'], high['value'],
+    )
     lower = next(p for p in reversed(source[:position]) if p['kind'] == 'L')
     assert (lower['time'], lower['value']) == ('2019-03-19', 8.89)
-    # 不能拿更早的已显示L8.23或缺失key授权下降。最近本级已定义的L8.89
-    # 虽尚未进入上升发布链，却已知于3/22；3/26 L8.65严格破位独立授予下降。
-    # 许可来自本级真实key，而非后来的4月上涨或尚未确认的下级回调周期。
-    assert qualify_downtrend(source, source[position], position, prior, bars, len(bars) - 1) is None
-    assert qualify_downtrend(source, source[position], position, None, bars, len(bars) - 1) is None
+    assert (lower['ordinal'], lower['available_at']) == (1, '2019-03-20')
+    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+    # 真正一级旧低5.4未被跌破；下降需下级破位、交替高和新的收盘攻击。
+    # 不能把折线L8.89伪装为一级旧低，也不能提前借4月独立上涨证书。
+    assert qualify_downtrend(source, source[position], position, prior, bars, dates['2019-03-26']) is None
+    expected = qualify_downtrend(source, source[position], position, prior, bars, dates['2019-03-27'])
+    assert expected is not None
+    assert qualify_downtrend(source, source[position], position, None, bars, dates['2019-03-27']) == expected
+    wrong = dict(source[position], ordinal=source[position]['ordinal'] + 1)
+    assert qualify_downtrend(source, wrong, position, prior, bars, len(bars) - 1) is None
     endpoint = next(p for p in stroke['points'] if p['time'] == '2019-03-29')
     assert endpoint['incoming_trend_state'] == 'confirmed'
     proof = _proof(endpoint, 'incoming_trend_confirmation')
-    assert proof['direction'] == 'down'
-    assert proof['confirmation_rule'] == 'strict_same_level_market_key_break'
-    assert proof['available_at'] == '2019-03-26'
+    assert proof == expected and proof['direction'] == 'down'
+    assert proof['confirmation_rule'] == 'source_key_break_alternation_then_market_turn'
+    assert proof['available_at'] == '2019-03-27'
     assert (_proof(proof, 'broken_key')['time'], _proof(proof, 'broken_key')['value']) == ('2019-03-19', 8.89)
-    assert _proof(proof, 'broken_key')['available_at'] == '2019-03-22'
-    assert (_proof(proof, 'confirmed_by')['time'], _proof(proof, 'confirmed_by')['value']) == ('2019-03-26', 8.65)
-    assert endpoint['available_at'] == '2019-04-01'
+    assert (_proof(proof, 'broken_key')['ordinal'], _proof(proof, 'broken_key')['available_at']) == (1, '2019-03-20')
+    assert (_proof(proof, 'flip_low')['time'], _proof(proof, 'flip_low')['value'],
+            _proof(proof, 'flip_low')['available_at']) == ('2019-03-22', 8.8, '2019-03-25')
+    assert (_proof(proof, 'alternation_high')['time'], _proof(proof, 'alternation_high')['value'],
+            _proof(proof, 'alternation_high')['available_at']) == ('2019-03-25', 9.35, '2019-03-26')
+    assert (_proof(proof, 'confirmed_by')['time'], _proof(proof, 'confirmed_by')['value']) == ('2019-03-27', 8.79)
+    assert endpoint['available_at'] == '2019-04-09'
+    assert not any(p['time'] == '2019-03-29' for p in judge_trend(source, trend_level=1, asof='2019-04-08').points)
+    owned = next(p for p in judge_trend(source, trend_level=1, asof='2019-04-09').points if p['time'] == '2019-03-29')
+    assert owned['available_at'] == owned['wave_completed_at'] == '2019-04-09'
 
 
 def test_each_direction_keeps_its_independent_march_and_april_certificate(xiangyang_leg):
     _, stroke, _, _ = xiangyang_leg
-    assert stroke.get('leg_confirmation_policy') == 'two_routes_each_direction_v108'
+    assert stroke['view'] == 'strategy_permissions' and stroke['trend_level'] == 1
     march_low = next(p for p in stroke['points'] if p['time'] == '2019-03-29')
     assert march_low['incoming_trend_confirmation']['direction'] == 'down'
-    assert march_low['incoming_trend_confirmation']['available_at'] == '2019-03-26'
+    assert march_low['incoming_trend_confirmation']['available_at'] == '2019-03-27'
     assert march_low['trend_confirmation']['direction'] == 'up'
     assert march_low['trend_confirmation']['available_at'] == '2019-04-02'
-    assert march_low['available_at'] == '2019-04-01'
-    following_high = next(p for p in stroke['points'] if p['time'] == '2019-04-08')
+    assert march_low['available_at'] == march_low['wave_completed_at'] == '2019-04-09'
+    following_high = next(p for p in stroke['points'] if p['time'] == '2019-04-18')
     assert following_high['incoming_trend_state'] == 'confirmed'
     assert following_high['incoming_trend_confirmation']['direction'] == 'up'
     wave = next(leg for leg in stroke['confirmed_legs'] if leg['points'][0]['time'] == '2018-10-19')
     assert [(p['time'], p['value']) for p in wave['points']] == [('2018-10-19', 4.4), ('2019-03-21', 9.84)]
-    # 逐高升级让真实 H6.01 在01-14突破早已知 H5.85；冻结该首次证书，
-    # 不能沿用旧归并模式较晚的02-12日期。3/26真实key下降证书结束这段
-    # 上涨；4月独立上涨不能重写1月首次确认日或把原整波继续延伸到4月高点。
-    assert wave['confirmation']['available_at'] == '2019-01-14'
+    # 首次一级上升证书冻结于11/8；后续下降与4月上涨各自保存证明，
+    # 下级局部高低或非法二级候选不能改写这段整波的级别与起点。
+    assert wave['confirmation']['available_at'] == '2018-11-08'
     assert (wave['confirmation']['broken_key']['time'], wave['confirmation']['broken_key']['value']) == (
-        '2018-11-23', 5.85,
+        '2018-10-17', 4.8,
     )
     assert (wave['confirmation']['confirmed_by']['time'], wave['confirmation']['confirmed_by']['value']) == (
-        '2019-01-14', 6.01,
+        '2018-11-08', 5.0,
     )
     next_wave = next(leg for leg in stroke['confirmed_legs'] if leg['direction'] == 'up'
                      and leg['points'][0]['time'] == '2019-03-29')
-    assert [(p['time'], p['value']) for p in next_wave['points']] == [('2019-03-29', 8.5), ('2019-04-11', 11.2)]
+    assert [(p['time'], p['value']) for p in next_wave['points']] == [('2019-03-29', 8.5), ('2019-04-18', 11.3)]
     assert next_wave['confirmation']['available_at'] == '2019-04-02'
     assert (next_wave['confirmation']['broken_key']['time'], next_wave['confirmation']['broken_key']['value']) == (
         '2019-03-21', 9.84,
@@ -104,16 +164,16 @@ def test_each_direction_keeps_its_independent_march_and_april_certificate(xiangy
         '2019-04-02', 10.01,
     )
     assert following_high['active_trend_confirmation'] == next_wave['confirmation']
-    # 04-16则确实严格跌破正式L10.3，独立下降证书会结束此前上涨；升级通道
-    # 的保留不等于所有局部回调都可授权，必须核对真实旧关键位及首次攻击价。
-    down = next(leg for leg in stroke['confirmed_legs'] if leg['points'][-1]['time'] == '2019-04-16')
-    assert down['direction'] == 'down'
-    assert down['confirmation']['confirmation_rule'] == 'strict_same_level_market_key_break'
-    assert down['confirmation']['available_at'] == '2019-04-16'
-    assert (down['confirmation']['broken_key']['time'], down['confirmation']['broken_key']['value']) == (
-        '2019-04-09', 10.3,
-    )
-    assert down['confirmation']['confirmed_by']['value'] == 10.08
+    # 4/16仅跌破折线L10.3，没有已取得一级身份的同级旧低。
+    # 它不能关闭本级上涨，亦不能借局部回调强造二级趋势。
+    _, _, source, _ = xiangyang_leg
+    local_low = next(p for p in source if p['time'] == '2019-04-09' and p['kind'] == 'L')
+    local_attack = next(p for p in source if p['time'] == '2019-04-16' and p['kind'] == 'L')
+    assert (local_low['value'], local_low['available_at']) == (10.3, '2019-04-10')
+    assert (local_attack['value'], local_attack['available_at']) == (10.08, '2019-04-17')
+    assert not any(p['time'] in ('2019-04-09', '2019-04-16') for p in stroke['points'])
+    assert [(leg['direction'], leg['points'][-1]['time']) for leg in stroke['confirmed_legs']
+            if leg['points'][0]['time'] >= '2019-03-21'] == [('down', '2019-03-29'), ('up', '2019-04-18')]
 
 
 def bearish_sample(level, dates=False):
@@ -186,43 +246,62 @@ def test_missing_or_mismatched_evidence_cannot_publish_a_downward_leg(failure):
 
 
 @pytest.mark.parametrize('cutoff,peak,origin,known', [
-    ('2019-03-29', '2019-03-21', '2018-10-19', '2019-01-14'),
+    ('2019-03-29', '2019-03-21', '2018-10-19', '2018-11-08'),
     ('2019-04-10', '2019-04-08', '2019-03-29', '2019-04-02'),
     ('2019-04-15', '2019-04-11', '2019-03-29', '2019-04-02'),
 ])
-def test_replay_waits_for_the_down_endpoint_then_opens_the_independent_april_up_wave(cutoff, peak, origin, known):
+def test_replay_waits_for_the_down_endpoint_then_opens_the_independent_april_up_wave(
+    cutoff, peak, origin, known, xiangyang_leg,
+):
     raw = json.loads((Path(__file__).parent / 'fixtures/xiangyang_2025_trend_break.json').read_text(encoding='utf-8'))
     bars = [Bar(datetime.fromisoformat(day), raw['symbol'], *prices) for day, *prices in raw['rows'] if day <= cutoff]
     first = reversal_trends(lecture_drawing(bars), bars)
     second = secondary_trends(first, bars)
-    stroke = next(s for s in second['strokes'] if any(p['time'] == '2018-10-19' for p in s['points']))
+    _assert_no_owned_secondary(first, second)
+    stroke = next(s for s in _paths(first, 'qualified_strokes') if any(p['time'] == '2018-10-19' for p in s['points']))
+    geometry = next(s for s in _paths(first, 'strokes') if s['id'] == stroke['id'])
     wave = next(leg for leg in stroke['confirmed_legs'] if leg['points'][0]['time'] == '2018-10-19')
     assert wave['points'][-1]['time'] == '2019-03-21'
-    assert wave['confirmation']['available_at'] == '2019-01-14'
+    assert wave['confirmation']['available_at'] == '2018-11-08'
+    _, complete, _, _ = xiangyang_leg
+    complete_wave = next(leg for leg in complete['confirmed_legs'] if leg['points'][0]['time'] == '2018-10-19')
+    assert wave['confirmation'] == complete_wave['confirmation']
     if cutoff == '2019-03-29':
-        # 价格点虽已发生，但该L需4/1才成为真实可知来源，不能提前公开端点。
+        # 3/29价格已发生，但折线L尚未知，本级H也尚未真实闭合。
+        # 后来的4/1折线确认、4/9整波身份都不能倒填这个前缀。
         assert not any(leg['direction'] == 'down' for leg in stroke['confirmed_legs']
                        if leg['points'][0]['time'] >= '2019-03-21')
+        assert not any(p['time'] == '2019-03-29' for p in geometry['points'])
+        assert 'wave_completed_at' not in geometry['points'][-1]
+        assert not any(p['time'] == '2019-03-21' for s in _paths(second, 'source_strokes') for p in s['points'])
     else:
         down = next(leg for leg in stroke['confirmed_legs'] if leg['direction'] == 'down'
                     and leg['points'][0]['time'] == '2019-03-21')
         assert down['points'][-1]['time'] == '2019-03-29'
-        assert down['confirmation']['available_at'] == '2019-03-26'
+        assert down['confirmation']['available_at'] == '2019-03-27'
+        assert down['confirmation'] == next(leg for leg in complete['confirmed_legs']
+            if leg['direction'] == 'down' and leg['points'][0]['time'] == '2019-03-21')['confirmation']
+        assert down['points'][-1]['available_at'] == '2019-04-09'
         current = next(leg for leg in stroke['confirmed_legs'] if leg['direction'] == 'up'
                        and leg['points'][0]['time'] == origin)
         assert current['points'][-1]['time'] == peak
         assert current['confirmation']['available_at'] == known
-    tail = next(s for s in second['developing_strokes'] if s['source_path'] == stroke['source_path'])
-    assert tail['confirmation']['direction'] == 'up'
-    assert tail['confirmation']['available_at'] == known
-    effective_origin = tail['confirmation'].get('wave_origin', tail['confirmation']['origin'])
-    assert effective_origin['time'] == origin
-    assert tail['points'][0]['time'] == origin and tail['points'][-1]['time'] == peak
-    if cutoff == '2019-03-29':
-        assert tail['confirmation']['origin']['time'] == '2018-12-18'
-    else:
-        assert tail['confirmation']['origin']['time'] == '2019-03-29'
-        assert tail['confirmation']['confirmed_by']['value'] == 10.01
+        complete_up = next(leg for leg in complete['confirmed_legs'] if leg['direction'] == 'up'
+                           and leg['points'][0]['time'] == '2019-03-29')
+        assert current['confirmation'] == complete_up['confirmation']
+        assert current['confirmation']['origin']['time'] == origin
+        assert current['confirmation']['confirmed_by']['value'] == 10.01
+    tail = next(s for s in _paths(first, 'developing_strokes') if s['source_path'] == stroke['source_path'])
+    tail_expectation = {
+        '2019-03-29': [('2019-03-21', 9.84, '2019-03-22'), ('2019-03-22', 8.8, '2019-03-25')],
+        '2019-04-10': [('2019-04-08', 11.07, '2019-04-09'), ('2019-04-09', 10.3, '2019-04-10')],
+        '2019-04-15': [('2019-04-11', 11.2, '2019-04-12'), ('2019-04-12', 10.7, '2019-04-15')],
+    }
+    assert [(p['time'], p['value'], p['available_at']) for p in tail['points']] == tail_expectation[cutoff]
+    assert tail['display_only'] is True and tail['wave_direction'] == 'down'
+    assert tail['points'][-1]['display_only'] is True and tail['confirmed_legs'] == []
+    assert 'confirmation' not in tail and 'wave_completed_at' not in tail['points'][-1]
+    assert all(p['available_at'] <= cutoff for s in _paths(second, 'source_strokes') for p in s['points'])
 
 
 @pytest.mark.parametrize('level', (1, 2, 3))
