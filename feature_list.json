@@ -54,6 +54,11 @@
                     "command": "full Core/Web suites, browser/Playwright, full account and external minute data validation",
                     "status": "not-run",
                     "summary": "按用户日常开发节奏未执行完整套件或浏览器；328保留8个原基线失败待独立修复。常驻新版本将以本地合并后轻量重启及只读HTTP验证记录，不把未验证项写为通过。"
+                },
+                {
+                    "command": "main contracts build + Harness; restart-wavequant.ps1 -Signals off -StructureWorkers 1 -NoBrowser; real Web3003 annual/full-timeframe HTTP and served-script byte comparison",
+                    "status": "passed",
+                    "summary": "a16f23a经3bcf3f3本地no-ff合并，main/特性同步；managed PID28088、API8765/Web3003轻量重启就绪，扫描off，无浏览器。实际首年2026 183bars/25654B/8.548秒，2025 243bars/33933B/87ms，年度304与错误hash409、新3个public脚本逐字节匹配通过。2010全2995bars 200/38.131秒/18815225B；最新6823bars重试200/43.689秒/43579450B，data_version6882984f与首年一致，3/25 H7.98、知3/26/完成3/30、lecture-0在两截面完全相同。实际APIalgorithm f838a9b1（服务运行时不同于任务隔离解释器），以真实响应验证新规则。第一次最新请求44.073秒未获响应，完整载荷延迟独立记录329，未宣称完全提速。"
                 }
             ]
         },
@@ -79,6 +84,32 @@
                     "command": "two isolated Python processes with HEAD original four modules vs candidate; compare per-case JUnit failure messages",
                     "status": "passed",
                     "summary": "HEAD 8 failed/15.90s，候选8 failed/16.09s；用例名和failure message逐条完全相同，零候选新增失败。trace、HEAD源码SHA及对比JSON保存在ignored .codex-runtime/feature327-*。直接相关通过集合另记327。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-329",
+            "name": "full-timeframe-cold-payload-latency",
+            "title": "完整趋势大载荷冷请求延迟",
+            "status": "backlog",
+            "dependencies": ["MONOREPO-326", "MONOREPO-327"],
+            "description": "按年首屏已显示，最新全历史完整趋势仍有冷请求延迟。真实6823bars首次44秒未获响应，重试43.689秒/43.58MB，数据与修复后的2010点身份一致。",
+            "scope": "后续独立阶段profile、完整bundle缓存/序列化/持久化与并发竞争优化；本轮只保留测量，不扩大超时或删掉证明树字段。",
+            "acceptanceCriteria": [
+                "分别定位provider读取、Core几何/资格、SQL/Redis、deepcopy、JSON与HTTP阶段，不以单次墙钟猜主因。",
+                "保持raw价格、全历史因果时钟、几何/资格分离、完整证据与source/symbol/asof/timeframe/data/engine/N隔离，避免重新按年独立计算趋势。",
+                "验证冷与温缓存、首次加载和重试，并明确仍未验证的浏览器/全账户项目。"
+            ],
+            "verification": [
+                {
+                    "command": "GET Web3003 /api/market-timeframe?source=akshare&symbol=sz.000678&asof=2026-10-09&timeframe=1d&n_target_trend_confirmation_enabled=false with 44s deadline",
+                    "status": "failed",
+                    "summary": "44.073秒客户端timeout，未收到headers；不能由此声称服务端永久未完成。已有年度183bars先显示，该失败不遮盖已加载行情。"
+                },
+                {
+                    "command": "same real latest full-timeframe request retry; GET backtest-jobs active count",
+                    "status": "passed",
+                    "summary": "重试HTTP200，headers42.774秒、total43.689秒、43579450B、6823bars、data_version6882984f；修复后的3/25 H7.98/知3/26/完成3/30/source lecture-0保持。同期后台active1；未做阶段profile，不将并发或网络判为已证实主因。"
                 }
             ]
         },
