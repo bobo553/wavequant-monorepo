@@ -1,4 +1,4 @@
-"""已知方向的外包十字星只延伸有已确认对向锚点约束的单极值。"""
+"""外包十字星的基础折线归并保留已确认历史和单一发展极值。"""
 
 import json
 from collections.abc import Callable, Mapping, Sequence
@@ -102,12 +102,18 @@ def test_bounded_outside_doji_preserves_confirmed_history_through_repeated_exten
 
 
 @pytest.mark.parametrize('rising', [False, True])
-def test_outside_doji_still_breaks_when_the_opposite_extreme_crosses_its_confirmed_anchor(rising: bool) -> None:
+def test_outside_doji_keeps_only_the_incoming_extreme_when_its_opposite_crosses_the_anchor(rising: bool) -> None:
     data = _bars([(12, 14, 10, 13), (14, 16, 12, 15), (13, 14, 11, 12),
                   (12, 16.1, 10, 12)], rising=rising)
     drawing = _draw(data)
-    assert [issue['index'] for issue in _records(drawing['issues'])] == [3]
-    assert _points(drawing) == _points(_draw(data[:3]))
+    assert drawing['issues'] == []
+    before, after = _points(_draw(data[:3])), _points(drawing)
+    assert after[:-1] == before[:-1]
+    assert len(after) == len(before)
+    assert _coordinate(after[-1]) == ('2026-01-04', 'H' if rising else 'L', 20 if rising else 10)
+    assert after[-1]['state'] == 'developing'
+    assert after[-1]['intrabar_order_resolved'] is False
+    assert all(point['index'] != 3 for point in after[:-1])
     assert drawing['teaching_paths'] == []
 
 
@@ -289,11 +295,11 @@ def test_chart_history_cache_replays_bounded_doji_partial_and_appended_bars_like
         assert chart_entry_history(prefix, prefix_cache=cache) == chart_entry_history(prefix)
     key = cache['key']
     assert isinstance(key, tuple)
-    version = 'polyline_owned_completed_source_geometry_independent_permissions_v119'
+    version = 'polyline_owned_completed_source_geometry_independent_permissions_v120'
     assert version in key
     # 已改变折线来源语义的旧检查点必须被拒绝，不能借其较早断路历史。
     stale_cache: dict[str, object] = dict(cache, key=tuple(
-        version.removesuffix('v119')+'v118' if item == version else item for item in key
+        version.removesuffix('v120')+'v119' if item == version else item for item in key
     ), checkpoint=object())
     assert chart_entry_history(data, prefix_cache=stale_cache) == chart_entry_history(data)
     assert stale_cache['key'] == cache['key']

@@ -111,7 +111,7 @@ def test_repeated_equal_doji_preserves_old_point_and_connects_only_the_coloured_
 @pytest.mark.parametrize('rising', [False, True])
 @pytest.mark.parametrize('invalid', [
     'other_epoch', 'different_extreme', 'seed_anchor', 'closed_endpoint',
-    'opposite_crossing', 'wrong_direction', 'future_endpoint',
+    'wrong_direction', 'future_endpoint',
 ])
 def test_an_old_endpoint_cannot_borrow_an_unrelated_or_unconfirmed_child(
     rising: bool, invalid: str,
@@ -130,8 +130,6 @@ def test_an_old_endpoint_cannot_borrow_an_unrelated_or_unconfirmed_child(
         points[-2] = dict(points[-2], state='seed')
     elif invalid == 'closed_endpoint':
         points[-1] = dict(points[-1], state='confirmed')
-    elif invalid == 'opposite_crossing':
-        child = _bars([*BASE, (12, 16.1, 11, 12)], rising=rising)[4]
     elif invalid == 'wrong_direction':
         direction = Direction.DOWN if rising else Direction.UP
     else:
@@ -141,13 +139,9 @@ def test_an_old_endpoint_cannot_borrow_an_unrelated_or_unconfirmed_child(
 
 
 @pytest.mark.parametrize('rising', [False, True])
-def test_equal_doji_still_breaks_without_direction_or_when_its_opposite_crosses(rising: bool) -> None:
+def test_equal_doji_still_breaks_without_a_known_direction(rising: bool) -> None:
     unknown = _bars([(12, 14, 10, 12), (12, 15, 9, 12)], rising=rising)
     assert [issue['index'] for issue in _records(_draw(unknown)['issues'])] == [1]
-    crossing = _bars([*BASE, (12, 16.1, 11, 12)], rising=rising)
-    drawing = _draw(crossing)
-    assert [issue['index'] for issue in _records(drawing['issues'])] == [4]
-    assert _points(drawing) == _points(_draw(crossing[:4]))
 
 
 @pytest.fixture(scope='module', params=['akshare', 'tdx'])
