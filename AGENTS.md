@@ -39,7 +39,7 @@ Python 服务、Worker、CLI 和库也按上述职责落位，不单独创建技
 3. 使用 `pnpm -r list --depth -1 --json` 确认受影响的 Node.js workspace；Python 任务再检索对应 `pyproject.toml`，并读取各 workspace 根目录的 `progress.md`。
 4. 在 `feature_list.json` 中只保留一个 `in-progress` 功能，确认其依赖与验收条件。
 5. 读取距离目标文件最近的 `AGENTS.md`，再按下方路由读取必要规范。
-6. 首次检出运行 `./init.ps1 -Mode quick`（Windows）或 `./init.sh --mode quick`（macOS/Linux）；日常任务只运行相关 workspace 的非测试基线检查，自动化测试按变更风险手动执行或交由 CI。
+6. 首次检出按需初始化依赖；开发、调试阶段不运行 Prettier、类型检查或包构建，相关检查统一在实际准备提交代码时执行，避免反复验证。定向测试按变更风险手动执行或交由 CI；不为开发阶段的基线检查自动运行完整验证。
 7. 搜索已有实现、契约、设计系统组件和测试后再修改。
 
 ## 上下文路由
@@ -90,7 +90,7 @@ Python 服务、Worker、CLI 和库也按上述职责落位，不单独创建技
 
 ## 验证命令与完成定义（Verification Commands / Definition of Done）
 
-日常代码修改后可以运行格式检查、lint、类型检查和必要构建。本地提交不运行 Git 钩子检查。现有 GitHub Actions 配置保持不变，在推送 main 或向 main 创建 PR 时执行 Harness、构建、lint、类型和单元测试；其他分支推送不会触发该工作流。按变更风险可手动运行受影响的定向测试；浏览器端到端测试仅在用户当次明确要求时执行。未运行的检查记录为“待验证”，不得写成已通过；已运行的检查失败时先修复。
+开发、调试阶段按风险运行必要的 lint 和定向测试；Prettier、类型检查和包构建统一在实际准备提交代码时执行，不在开发阶段主动运行或反复验证。本地提交不运行 Git 钩子检查。按用户要求，`pnpm harness:check` 已禁用为显式跳过，`verify:quick` 只执行 lint 与类型检查，仅在提交验证阶段按需使用；不运行 Harness 命令，也不直接调用 `scripts/harness/validate-state.mjs` 绕过禁用。保留功能状态、进度和交接记录的维护要求。现有 GitHub Actions 配置保持不变，在推送 main 或向 main 创建 PR 时执行构建、lint、类型和单元测试，原 Harness 步骤只输出禁用提示；其他分支推送不会触发该工作流。按变更风险可手动运行受影响的定向测试；浏览器端到端测试仅在用户当次明确要求时执行。未运行的检查记录为“待验证”，不得写成已通过；已运行的检查失败时先修复。
 
 按风险选择最小充分验证：
 
@@ -99,7 +99,6 @@ pnpm --filter <workspace> lint
 pnpm --filter <workspace> typecheck
 pnpm --filter <workspace> test:unit
 pnpm --filter <workspace> build
-pnpm harness:check
 pnpm verify:quick
 pnpm verify
 ```
