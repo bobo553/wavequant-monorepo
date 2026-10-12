@@ -12032,6 +12032,38 @@
                     "summary": "按用户开发节奏待独立验证；未自动推送、刷新完整自选队列、清缓存或重启共享服务，局部固定行情不称全账户完成。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-333",
+            "name": "disable-harness-command",
+            "title": "禁用Harness并延后开发门禁",
+            "status": "done",
+            "dependencies": [],
+            "description": "按用户要求禁用Harness，Prettier、类型检查与包构建延后至实际准备提交代码时执行。",
+            "scope": "根命令入口显式跳过、verify:quick移除Harness，AGENTS明确开发阶段不执行Prettier、类型检查和包构建，实际提交阶段按需验证且不反复运行；保留状态记录、定向测试和CI配置。",
+            "acceptanceCriteria": [
+                "pnpm harness:check不再执行validate-state.mjs，直接使用只输出禁用提示。",
+                "verify:quick保留lint/typecheck，verify保留测试与构建；既有CI配置不变。",
+                "本轮后续不执行Harness或直接调用状态校验器，格式与配置静态核验实际通过。",
+                "开发、调试阶段不主动执行Prettier、类型检查和包构建，统一在实际准备提交代码时执行；仓库启动与验证规则同步。"
+            ],
+            "verification": [
+                {
+                    "command": "pnpm exec prettier --check package.json AGENTS.md",
+                    "status": "passed",
+                    "summary": "两文件格式检查通过；未运行Harness。"
+                },
+                {
+                    "command": "Python JSON configuration assertions for harness:check, verify:quick, verify and absence of validate-state in command entries",
+                    "status": "passed",
+                    "summary": "根Harness入口仅输出禁用提示，quick不调用Harness而保留lint/typecheck，完整verify仍保留测试与构建；未执行Harness或状态校验器，不把跳过记作校验通过。"
+                },
+                {
+                    "command": "Static inspection of AGENTS startup and verification rules",
+                    "status": "passed",
+                    "summary": "启动流程与验证规则明确Prettier/类型检查/包构建只在实际准备提交阶段执行；开发阶段仅按风险运行必要lint/定向测试，不使用quick自动触发类型检查。既有已运行证据保留，用户新指令之后未自动追加这些检查。"
+                }
+            ]
         }
     ]
 }
