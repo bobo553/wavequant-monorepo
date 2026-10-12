@@ -3,8 +3,9 @@
 Contained and encompassing pairs follow the candle-colour teaching order, with
 same-direction legs collapsed. This order is not an observed intraday path.
 An inside doji with a known incoming direction uses only the opposite extreme.
-A bounded outside doji extends only the incoming extreme, retaining the original
-point on equality; genuinely undefined paths still delimit runs. Teaching
+A directional outside doji extends only the incoming extreme from a confirmed
+opposite anchor, retaining the original point on equality. The other extreme
+does not create a lecture turn; genuinely undefined paths still delimit runs. Teaching
 evidence retains original vertices when a developing endpoint extends.
 """
 from collections.abc import Mapping, Sequence
@@ -17,15 +18,15 @@ from .polyline import (observe_bar_relations, child_mother_path, mother_child_pa
 from .price_action import Direction
 
 
-def _bounded_outside_doji(
+def _directional_outside_doji(
     points: Sequence[Mapping[str, object]], bar: Bar, direction: Direction | None,
 ) -> bool:
-    """外包十字星仅在已确认对向边界内延伸现有未结束腿。
+    """讲义外包十字星按已知来向归并现有未结束腿。
 
-    母线两个极值的先后仍未知。只有对向极值未越过上一已确认对向点、
-    同向极值不退回时，才保留原路径的单侧延伸；等值不移动原点及其
-    可知日。不画母线另一极值，也不把本次延伸当成反转确认。seed 没有
-    反转证据，不能充当此边界；双向越界或缺少来向仍须保留真正断路。
+    此归并约定不判断母线两个极值的真实日内顺序。已有已确认对向锚、
+    发展尾端和来向时，只保留不退回的同向极值；对向极值即使越锚也不
+    进入折线，不凭它确认母线内反转或重置历史。等值不移动旧坐标及其
+    可知日。seed 没有反转证据，不能充当此锚；缺少来向仍保留断路。
     """
     if direction is None or len(points) < 2 or bar.open != bar.close:
         return False
@@ -36,9 +37,8 @@ def _bounded_outside_doji(
             or endpoint.get('kind') != target or endpoint.get('state') != 'developing'):
         return False
     sign = 1 if up else -1
-    extreme, boundary = (bar.high, bar.low) if up else (bar.low, bar.high)
-    return (sign * (extreme - cast(float, endpoint['value'])) >= 0
-            and sign * (boundary - cast(float, anchor['value'])) >= 0)
+    extreme = bar.high if up else bar.low
+    return sign * (extreme - cast(float, endpoint['value'])) >= 0
 
 
 def _prior_doji_touched_endpoint(
@@ -51,7 +51,7 @@ def _prior_doji_touched_endpoint(
     正式对向锚约束的 developing 尾点；锚与尾都必须属于当前 epoch，且
     child 的对应极值精确等于尾点。不推断 child 另一极值的先后。
     """
-    if not _bounded_outside_doji(points, child, direction):
+    if not _directional_outside_doji(points, child, direction):
         return False
     anchor, endpoint = points[-2:]
     extreme = child.high if direction == Direction.UP else child.low
@@ -170,7 +170,7 @@ def lecture_drawing(bars, *, on_step=None):
                 publish(i)
                 continue
             doji_inside_fallback = inside and direction is not None and bool(points)
-            doji_outside_extension = outside and _bounded_outside_doji(points, bars[i], direction)
+            doji_outside_extension = outside and _directional_outside_doji(points, bars[i], direction)
             reason = None if doji_inside_fallback or doji_outside_extension else '十字星包含关系的阴阳顺序未定义'
         else:
             reason = None
@@ -197,8 +197,8 @@ def lecture_drawing(bars, *, on_step=None):
             publish(i)
             continue
 
-        # 外包同时出头落尾，不能由反向关系抢走已验证的单侧延伸，更不能
-        # 在母线内凭空确认新反转；下一根真实相反极值才有机会结束这条腿。
+        # 母线对向极值不参与来向归并，不能由同时出头落尾抢先确认反转。
+        # 下一根真实反向折线关系才有机会结束这条腿。
         reverse = not doji_outside_extension and (
             doji_inside_fallback or ((relation.falling_tail or relation.shrinking_head)
                                      if direction == Direction.UP else
@@ -216,8 +216,8 @@ def lecture_drawing(bars, *, on_step=None):
         if doji_outside_extension:
             outside_doji_seen = True
             next_point.update(
-                drawing_rule='十字星外包：未越过已确认对向极值，只延伸已知方向单极值',
-                drawing_source='known_direction_bounded_single_extreme_for_outside_doji',
+                drawing_rule='讲义十字星外包归并：只延伸已知来向单极值，对向极值不作为折线反转',
+                drawing_source='lecture_known_direction_single_extreme_for_outside_doji',
                 intrabar_order_resolved=False,
             )
         sign = 1 if direction == Direction.UP else -1
@@ -242,5 +242,6 @@ def lecture_drawing(bars, *, on_step=None):
                 scope='lecture_convention_shared_with_causal_pivots', incomplete=bool(issues),
                 intrabar_incomplete=bool(issues or teaching_paths or inside_connections or outside_doji_seen),
                 note='母子与子母按阴阳高低顺序接入主路径，连续同向线段合并；已知方向的十字星内包只连一极值，'
-                     '十字星子线外包时由已知端点接入有阴阳方向的母线；有已确认对向边界的外包十字星'
-                     '只延伸来向单极值，不推断母线内顺序。该顺序是讲义约定，不代表实测日内路径。')
+                     '十字星子线外包时由已知端点接入有阴阳方向的母线；有已确认对向锚的外包十字星'
+                     '按来向单极值归并，不把对向极值补成折线反转，不推断母线内顺序。'
+                     '这些是讲义绘图约定，不代表实测日内路径。')

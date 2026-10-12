@@ -83,8 +83,8 @@ def hierarchical_history(
     previous: dict[int, dict[tuple[int, int, str, float], int]] = {0: {}, 1: {}, 2: {}, 3: {}}
     last_epoch = None
     last = len(bars) - 1
-    # 旧等值十字星断路改变来源 epoch 与结构历史，不能恢复后继续递归。
-    cache_version = 'level_first_polyline_owned_completed_source_geometry_and_independent_permissions_v119'
+    # 外包十字星的单向归并改变来源历史，旧越锚断路检查点不可继续递归。
+    cache_version = 'level_first_polyline_owned_completed_source_geometry_and_independent_permissions_v120'
     wants_declines = decline_sink is not None
     wants_structure = structure_sink is not None
     prefix_key = (cache_version, tuple(bars[:-1]), wants_declines, n_target_trend_confirmation_enabled, wants_structure)

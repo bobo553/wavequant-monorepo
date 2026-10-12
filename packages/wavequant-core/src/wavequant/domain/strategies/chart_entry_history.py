@@ -20,8 +20,8 @@ from ..models.model import Bar
 from .hierarchical_entry import EntryContext
 
 
-# 等值外包十字星保留原点和同路径承接；隔离旧断路来源与逐日资格检查点。
-_CONFIRMATION_CACHE_VERSION = "polyline_owned_completed_source_geometry_independent_permissions_v119"
+# 外包十字星按已知来向归并；旧越锚断路历史不能恢复为新折线来源。
+_CONFIRMATION_CACHE_VERSION = "polyline_owned_completed_source_geometry_independent_permissions_v120"
 
 
 @dataclass(slots=True)

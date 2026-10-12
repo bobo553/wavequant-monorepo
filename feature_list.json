@@ -1,8 +1,91 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-256",
+    "activeFeature": "MONOREPO-330",
     "features": [
+        {
+            "id": "MONOREPO-330",
+            "name": "causal-backtest-computation-performance",
+            "title": "回测因果计算与复用性能优化",
+            "status": "in-progress",
+            "dependencies": ["MONOREPO-327"],
+            "description": "襄阳轴承2018起回测超过一小时仍停在模拟成交65%；先采样和固定输入，再消除重复趋势与前缀证明计算，保持完整账户语义。",
+            "scope": "Core热点算法、同次回测历史复用、阶段进度和可重复差分基准；保留行情来源、复权、知识时钟、分钟覆盖、信号与成交规则，不扩大超时或删除证明字段。",
+            "acceptanceCriteria": [
+                "用真实固定2018-01-15至2026-10-09同源输入保存旧版采样、阶段耗时和输出基线，区分计算与I/O。",
+                "优化首次冷计算而非仅隐藏加载或复用旧版本缓存，同输入的趋势、信号、审计、订单、成交、权益和收益逐项一致。",
+                "复用只限同数据/参数/价基/版本与因果前缀，修订行情、分钟部分日线、N开关、不同起点和调用方修改均不污染。",
+                "固定真实完整回测计算目标两分钟以内，并报告实测速度、数据规模、冷温状态和外部行情耗时；不把采样耗时当基准。",
+                "相关定向回归、类型、构建和独立复核通过，补充永久性能回归与可复用基准，保留既有失败事实。"
+            ],
+            "verification": [
+                {
+                    "command": "GET /api/backtest-jobs; read-only API process CPU sample",
+                    "status": "passed",
+                    "summary": "真实任务sz.000678请求2018-01-01至2026-10-09，源首棒2018-01-15；运行4005.3秒仍65%模拟成交，API进程CPU4013.2秒持续增长。确认需要计算性能优化，尚未据此归因具体函数。"
+                },
+                {
+                    "command": "read-only GET /api/backtest-job?job=1e87fa8b-1a8d-4abc-b6e9-bc8cb34a36a0; freeze actual old API source/config/minute fingerprints",
+                    "status": "passed",
+                    "summary": "旧任务自然完成后保存20,336,464字节完整HTTP结果及账户基线：2107日线、288信号、4294审计、77订单、21交易、65成交及完整curve/持仓回撤/回退证据。实际Bar逐字段、策略及6个消费分钟session与冻结输入完全同；保留本金float和实际upstream覆盖8/6起点。149文件引擎原始摘要已全匹配，唯一landmarks差异仅主检出CRLF并已封存原字节。不把独立配置报告或超时进程当旧账户基线。"
+                },
+                {
+                    "command": "frozen v10 full 2107 chart replay without profiler; full history/events vs HEAD; frozen 512 cProfile",
+                    "status": "passed",
+                    "summary": "完整chart初版679.874秒，2107历史/63事件与HEAD逐值同；五阶段约2.504GB临时行。512独立剖析95.829分析器秒定位重复证据复制与判定；该秒数不作为无分析器性能基准。初版完整回测仍未达到两分钟目标，功能保持in-progress。"
+                },
+                {
+                    "command": "targeted pytest test_confirmed_decline_history.py test_hierarchical_entry.py test_whole_wave_entry.py; isolated HEAD same four failed nodes",
+                    "status": "failed",
+                    "summary": "新增扩展检查30通过/4失败。四项在隔离原HEAD逐条同样失败：下降起点1014/1019对1052/1055、下降索引1052对1058、另一起点1014对1052，以及旧私有trend_reversals spy已无对应入口。不是328的8项或256获准例外的4项，不改旧断言；另记331待独立修复。此记录不覆盖最终冻结检查。"
+                },
+                {
+                    "command": "frozen final330a full 2107 cold1 benchmark --timeout 120 --reuse",
+                    "status": "failed",
+                    "summary": "首轮正式完整冷计算120秒截止时仍在生成信号，峰值1180266496字节；无完整research/account输出，后续cold/cached重复停止。152源文件及3个冻结输入前后摘要相同。330继续in-progress，不能用局部收益宣称两分钟目标已达成。"
+                },
+                {
+                    "command": "compare-pivot-reuse.py on real 2107 bars; pytest test_lecture_pivot_reuse.py test_lecture_strategy.py; mypy lecture_strategy.py test_lecture_pivot_reuse.py",
+                    "status": "passed",
+                    "summary": "实际760748个pivot引用逐字段、类型、确认日与旧冻结源一致，epochs/limits/blocked一致，输入摘要不变。独立ReversalPoint/LinePoint从760748对降至1444对，当前图6993592字节；旧图231747576字节。11定向测试、2文件mypy通过；仅局部对象诊断，完整性能仍待验证。"
+                },
+                {
+                    "command": "restart-wavequant.ps1 -Signals off -StructureWorkers 1 -NoBrowser; GET Web/catalog/backtest-jobs",
+                    "status": "passed",
+                    "summary": "用户重新打开Docker后引擎恢复，main既有服务成功启动，3003/8765就绪，backtest-jobs HTTP200。当前仍运行main78d8953；优化未提交/合并，不能宣称已在网页生效。"
+                },
+                {
+                    "command": "frozen final330b full 2107 cold1 benchmark --timeout 120 --reuse",
+                    "status": "failed",
+                    "summary": "152文件冻结摘要9bd3194436dc808b222d399d7cbff07cd1349292c2e9bfef4f710eb957e9eb09。完整冷计算120秒仍生成信号，无完整research/account；缓存轮因无自有冷结果不可用。峰值128868352字节（约123MiB），源与三输入前后稳定。内存明显下降，但速度目标仍未达成；后续180秒采样诊断仍在hierarchy，不能扩大超时当验收。"
+                },
+                {
+                    "command": "512 owned hierarchy cProfile; targeted ownership/source/candidate/full-frame differential and scoped mypy",
+                    "status": "passed",
+                    "summary": "最新consumer111项及12文件mypy通过，6组source/candidate/both关闭×N完整stage证据树与公开字段类型全等；domain352项及6文件mypy通过，独立HEAD3600前缀/120拒绝相同。512分析器45.14秒仅定位：owned helper2009次11.427累计秒、950万pop/535万id，重复标准证明准入扫描成为主要热点；继续有界认证复用，短样本不替代完整速度验收。"
+                },
+                {
+                    "command": "Chart owned transfer: 111 consumer tests; 19 distinct Chart admission/stage/alias/fallback cases; 13-file mypy",
+                    "status": "passed",
+                    "summary": "Chart两prepare/三attach接入已独立完整阶段字段/类型/键序、history/events及三sidecar对照；N双模式、真实77条非空pullback、公开alias与getter隔离、closed template重复decode、tuple/unknown/NaN/Inf旧复制hook均覆盖。111消费者回归及13文件mypy通过；Chart初次15通过、扩展10通过9未选，覆盖19 distinct cases不重叠相加。v119及趋势语义不变。"
+                },
+                {
+                    "command": "frozen final330c full 2107 cold1 benchmark --timeout 120 --reuse",
+                    "status": "failed",
+                    "summary": "152文件源freeze摘要73c0032a3b9e2f14e98b89e81f2702b68d0729b8b9d001c4510ca8663974ccd1，生产源码摘要527fd53c8973a05cd1a95a91fbf869949157a582a8b3c56831b14aeeedf35296，runner摘要7113c189e72b3674933756ddf4039dc157488e9561f88139f94afbcd0b9e9cb8。首冷120秒仍generate_system_signals，峰值138498048字节(约132MiB)，实际PID27344已停止；无完整research/account，缓存因无自己的cold输出不可用。源字节与3固定输入事后重核均与运行前摘要相同。完整速度及账户/partial差分仍未通过，330保持in-progress。"
+                },
+                {
+                    "command": "frozen final330c full 2107 lineage diagnostic --timeout 900 --reuse; five-second nonblocking py-spy sample",
+                    "status": "failed",
+                    "summary": "诊断保留120秒正式速度目标。signal阶段884.0377506秒结束并进入成交模拟，896.1055247秒到9/28分钟核验，900秒仍未输出完整账户；峰值323088384字节约308MiB。pivot/hierarchy/refresh_chart各1次调用1次命中，chart1次未命中。worker27988已停止、exec4364结束。5秒采样375有效/124读取失败，热点为chart accept、证明编码、阶段恢复及资格；采样开销单独标记，不当速度验收。生产源码与三固定输入事后摘要相同。未完成账户、cached因无自有完整cold结果不可用；下一方案须完整差分及净收益，不扩大时限冒充通过。"
+                },
+                {
+                    "command": "temporary successful qualification proof cache: 32 targeted gates; strict mypy; frozen 128-day typed history differential and CPU probe",
+                    "status": "failed",
+                    "summary": "试验门禁32项及4源strict通过，128日history/epochs/structures/declines完整类型化一致，141命中/96未命中/0拒绝、峰123299B、关闭0B。但CPU0.859375秒对冻结基线0.453125秒，认证成本抵消收益，净性能失败。已仅撤回本轮新接入/模块/测试，全部152 Python源与final330c逐字节一致；ignored successful-proof-cache-rejected封存rollback-report、patch及5原稿。扩展组主动停止不记通过，无自有进程，不删减因果门禁、不扩512或全量测速；已有330验证代码保留。"
+                }
+            ]
+        },
         {
             "id": "MONOREPO-327",
             "name": "equal-extreme-doji-trend-continuity",
@@ -3188,7 +3271,7 @@
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
             "dependencies": ["MONOREPO-248", "MONOREPO-255"],
-            "status": "in-progress",
+            "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
                 "C顶至放量突破当天的回调及整理交易日间隔严格超过内部B或最后已知同源子波段B回调间隔",
@@ -12030,6 +12113,84 @@
                     "command": "full Core/Web suites, browser/Playwright, whole watchlist completion and minute backtests",
                     "status": "not-run",
                     "summary": "按用户开发节奏待独立验证；未自动推送、刷新完整自选队列、清缓存或重启共享服务，局部固定行情不称全账户完成。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-331",
+            "name": "preexisting-confirmed-decline-history-regression",
+            "title": "既有下降趋势历史测试失败",
+            "status": "backlog",
+            "dependencies": [],
+            "description": "330扩展定向检查发现4项原HEAD已存在的下降历史或私有spy失败，逐条保留而不计作通过。",
+            "scope": "独立核对test_confirmed_decline_history的真实起点/确认日及过期私有spy；不在性能优化中修改价格规则或弱化断言。",
+            "acceptanceCriteria": [
+                "隔离保存原HEAD与候选相同失败的用例、源摘要与诊断，不混入328或256的失败证据。",
+                "按实际因果输入判断应修复来源算法还是测试接入，保留完整起点/确认日和资源隔离门禁。"
+            ],
+            "verification": [
+                {
+                    "command": "targeted pytest test_confirmed_decline_history.py test_hierarchical_entry.py test_whole_wave_entry.py; isolated HEAD same four failed nodes",
+                    "status": "failed",
+                    "summary": "新增扩展检查30通过/4失败。四项在隔离原HEAD逐条同样失败：下降起点1014/1019对1052/1055、下降索引1052对1058、另一起点1014对1052，以及旧私有trend_reversals spy已无对应入口。不是328的8项或256获准例外的4项，不改旧断言；另记331待独立修复。此记录不覆盖最终冻结检查。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-332",
+            "name": "global-doji-trend-continuity",
+            "title": "基础折线外包十字星连续归并",
+            "status": "done",
+            "dependencies": ["MONOREPO-327"],
+            "description": "襄阳轴承两个区间缺一级线，根因是基础折线将已有来向的外包十字星对向越锚错误提升为整条路径失效；用户明确一级读基础折线、二级读一级、三级读二级。",
+            "scope": "仅修复基础折线包含归并，已有confirmed/teaching对向点及developing尾时单侧延伸，等值保留原坐标与知识日；三级共用原纯折线判定，不枚举K线顺序或引入共识协议。保留未知方向与seed拒绝，不按股票日期硬补线。",
+            "acceptanceCriteria": [
+                "固定同源原始日线核对用户四个报价与三个断点。",
+                "基础折线有已确认来向时，外包十字星仅归并同向极值，对向越锚不重置路径、不产生同日反转；等值不刷新坐标、ordinal或知识日。",
+                "一级只读基础折线，二级只读一级已结束正式点，三级只读二级已结束正式点；OHLC/N及交易许可只在几何完成后独立核验。",
+                "覆盖镜像、等值、连续包含、后续有色母线、当前epoch、未来/异路径/已结束尾拒绝；保留1999/2010原用例和逐前缀可知/完成日。",
+                "相关定向检查、类型及构建实际通过；正确性变更与330纯性能基线分开记录。"
+            ],
+            "verification": [
+                {
+                    "command": "inspect-reported-gaps.py; compare-doji-orders.py; independent global-doji-branch-review.py; consensus-recursion-counterexample.py",
+                    "status": "passed",
+                    "summary": "四个报价逐OHLC/量一致；2018-05-23(index83)、2020-11-16(678)、2021-02-09(738)对向极值越已确认原始锚，触发flush/reset。两种顺序产生相同部分一级坐标，但原始转折、ordinal与证明不相同；独立固定seed113119第110例证实共同一级点即使交替仍可能递归伪造二级L22(113)。以上是根因诊断，不是修复通过。"
+                },
+                {
+                    "command": "user clarification; independent pure-polyline hierarchy boundary and lecture containment audit",
+                    "status": "passed",
+                    "summary": "用户明确折线→一级→二级→三级，三趋势级不读取K线。独立查证prepare/judge/完成门禁与两历史适配器符合该边界；断源在基础lecture_drawing。此前日内分支共识不是本次实现方向。基础单极值归并的只读内存假设消除三断点，正式修复与回归正在执行；教学约定仍不宣称实测日内高低顺序。"
+                },
+                {
+                    "command": "pytest tests/test_bounded_outside_doji.py tests/test_equal_outside_doji.py tests/test_directional_outside_doji.py plus related real-source suites; mypy owned files; independent boundary review",
+                    "status": "passed",
+                    "summary": "限定4文件修复完成，相关141 passed/36 subtests；旧实现对新增最初16例全部失败。等值/镜像/连续外包/后续有色母线/逐步前缀/严格研究隔离覆盖，类型和diff检查通过。独立复核58十字星+11纯三级知识用例通过（重叠不合计）；lecture源SHA0a0b35b6d7d7188c034f847f9fe3596e9ba0795a8a6620c342b23af393209b8a，无新K线趋势门禁。"
+                },
+                {
+                    "command": "pytest tests/test_directional_doji_cache_versions.py; mypy --strict tests/test_directional_doji_cache_versions.py",
+                    "status": "passed",
+                    "summary": "4项通过：同bar前缀仍拒绝v118/v119 hierarchy检查点；持久geometry新v120忽略旧v119并命中新结果，旧artifact保留，N双模式。新test strict类型通过，三缓存v120，whole_wave_v117不变。"
+                },
+                {
+                    "command": "332-main-isolated snapshot HEAD78d8953; offline pytest six related files; mypy 8 files and strict 2 new tests",
+                    "status": "passed",
+                    "summary": "独立149个main源码快照仅覆盖基础lecture修复与三v120常量，无330新增模块或性能增量；6相关tests145 passed/36 subtests(37.02s)，8files mypy和2newtests strict通过，源码before/after摘要相同。真实完整fixture与包验证继续执行，不宣称已合并或常驻服务生效。"
+                },
+                {
+                    "command": "pytest tests/test_polyline_containment_hierarchy.py; independent HEAD78d8953 isolated offline pytest same module",
+                    "status": "passed",
+                    "summary": "完整5507根同源1997-01-06至2021-04-30 fixture SHA faf45b12…冻结，四报价/三断点/两个区间均同lecture-0。候选25项70.48s、纯main隔离25项127.15s通过；三层正式748/115/10、completed投影747/115/10，三断点日前/当天及11组首次可知/完成边界、全证据asof与独立prefix一致，严格测试类型已有通过。截2018初始化与全1997二级结果不同，未用短窗代替全源。"
+                },
+                {
+                    "command": "HEAD78d8953 isolated offline pytest six modules; mypy 8files/strict2 tests; python -m build --no-isolation; sdist/wheel/offline installed source byte verification and -I -S import",
+                    "status": "passed",
+                    "summary": "仅332基础归并和三v120版本/注释、无330性能增量：145相关tests/36子用例通过，与新25项合计170 distinct cases。此前相关类型通过，sdist/wheel/离线安装所有149源码字节相同、4变更模块真实import通过；显式复制既有tzdata解决-S依赖隔离，无网络。新增真实fixture/test后生产源码字节未改变，最终manifest e2551efc…、wheel106b34ad…。后续遵守用户要求，开发阶段未追加Prettier/types/build/Harness。"
+                },
+                {
+                    "command": "full Core/Web suite; browser/Playwright; full account and real minute replay",
+                    "status": "not-run",
+                    "summary": "按用户节奏只做本次相关定向回归，未要求浏览器或完整套件；全账户/实际分钟与120秒性能仍属330未完成目标，不将几何缺线修复或3秒单截面当作回测提速验收。331既有4失败单独保留，未借328/256例外、未修改旧失败断言。"
                 }
             ]
         },

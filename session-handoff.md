@@ -1,6 +1,44 @@
-## 2026-10-12 · MONOREPO-333 禁用Harness并延后开发门禁
+## 2026-10-12 · MONOREPO-332 基础折线包含归并
 
-按用户明确要求，根harness:check仅输出禁用提示，verify:quick移除Harness调用；开发、调试阶段不执行Prettier、类型检查和包构建，统一在实际准备提交代码时执行且不反复验证。AGENTS同步启动与验证规则，不直接调用状态校验器绕过禁用；原CI配置不改。保留状态维护、定向测试及提交门禁。命令JSON静态断言与规则复核通过，禁用后Harness未执行，不将跳过记作校验通过。继续feat-三级趋势统一，未推送。
+MONOREPO-333已完成并本地合并：ff5f8bc经f81a743合入main，状态clean，未推送。根harness:check仅输出禁用提示，verify:quick移除Harness；AGENTS明确开发阶段不运行Prettier、类型检查或包构建，只在实际准备提交时按需执行且不反复验证，不直接调用校验器绕过禁用。原CI文件保留，状态维护和定向测试保留。配置静态断言与已执行格式证据保留，禁用后的Harness未运行，不把跳过当校验通过。
+
+用户已经明确：基础折线先处理K线包含关系，一级读折线、二级读一级、三级读二级。332已完成，330恢复唯一in-progress并保留所有未完成性能证据；不引入此前讨论的日内分支共识。三级prepare/judge、完成门禁及Chart/Hierarchy历史适配器原本都符合纯折线边界。真正根因是基础lecture_drawing将已知来向的外包十字星对向越锚当成整条路径失效。
+
+限定基础helper已修：同路径confirmed/teaching对向锚、developing尾、来向和同向非退回仍必需；对向越界不reset，只归并同向极值。等值保留原点和可知日，对向极值不补同日反转，后续真实转向才确认。seed/unknown、epoch、未来/已结束尾拒绝保留，intrabar_order_resolved始终False，严格observe_polyline不改。4自有文件141项/36子用例与类型通过，独立只读复核58+11短项通过（与前组重叠不合计）；源码SHA0a0b35b6…，冻结manifest6595957b…。三缓存v120、whole_wave_v117不变；新4项旧v119/v118拒绝及持久geometry隔离测试和strict通过。
+
+同源年度纯行情完整5507根1997-01-06~2021-04-30已封存ignored 332-full-original-bars.json与certificate，source SHA9f5f3a01…、certificate4758232e…，provider AkShare/Sina1.18.94 raw_unadjusted、data_version957cf040…，四报价与重叠791根OHLCV/factor匹配。完整前缀纯几何1.512秒，三断点消失/all lecture-0，I/II/III748/115/10；2018-4/27 H7.06的二级于6/4可知且完成，不能用2018起短样本替代完整初始化。完整fixture新增25项与独立main隔离25项均通过，原隔离六文件145项/36子用例通过；170 distinct cases，不与候选重复相加。相关类型、sdist/wheel/离线安装149源字节和-I -S真实导入已通过，生产4源与最终隔离manifest e2551efc…一致；正确性修复完成，现准备独立提交。worktree有未提交330性能候选，332需仅提交自身来源修复、三个版本增量和测试/文档；隔离main确认不依赖330后才审查本地合并条件。
+
+## 2026-10-12 · 新缺线区间历史诊断（规则已明确）
+
+额外完整对照已结束：root exec4364 exit1，cold worker27988已停止，输出 `.codex-runtime/backtest-performance/final330c-full-lineage-900`。同源2107根signal阶段884.0377506秒结束，896.1055247秒到9/28分钟核验，900秒仍无完整账户，峰值323088384B。pivot/hierarchy/refresh_chart各1/1复用，chart1/0。5秒py-spy非阻塞采样375有效/124读取失败，位于chart accept、证明编码/阶段恢复及资格。源码与三个固定输入事后摘要相同；生产源码摘要527fd53c…，runner实际摘要7113c189…，此前将前者写作runner的标签已更正。延长诊断不替代120秒速度验收。incremental_finish 正在实现显式stage-owned、N关闭的局部成功qualification proof复用，每日publisher仍完整重放；从当日来源位置recipe重建proof而非解冻旧叶子。它需短反例门禁、128/512完整typed及净收益探针，未验证前不当作完成。
+
+上述成功proof试验已结束并撤回。32短门禁及4源strict通过，128完整typed一致；141hit/96miss/0refusal、证据123299B/关闭0B，但CPU0.859375对0.453125秒，净收益为负。3处原生产文件仅撤本轮新增、新模块与测试移至ignored；全部152 Python源与final330c字节完全一致。`.codex-runtime/backtest-performance/successful-proof-cache-rejected`保存rollback-report.json、production.patch及5原稿，RSS未采集；短profile的bar_keys耗时仅作诊断。扩展组因撤回主动停止，不记通过。agent sessions30396/17260/27540及root4364均结束，无后台工作，不再扩512；下轮不要恢复该慢缓存或删减安全门禁。332规则问题尚无回答，正式缺线修复未落地。
+
+用户新增sz.000678的2018-04-27~05-31、2020-11-02~2021-02-22一级缺线，原性能目标仍保留。四个报价与固定真实2107日线逐OHLC/量一致。lecture_drawing在2018-05-23(index83)、2020-11-16(678)、2021-02-09(738)外包十字星对向越已确认锚时flush/reset，一级按source_path分开，根因在来源层。纯性能生产候选未改趋势语义。
+
+不能以后一日严格双升/双降推断母线完整顺序，也不能只取共同一级点再递归。2020-11-16 H5.02/L4.90的H先分支保留旧L4.91/母H5.02，L先分支不保留这两点；同OHLC与后日出口均允许。真实两种/四种顺序的部分一级坐标相同，但ordinal和证明不同。独立seed113119第110例反证：共同完成一级点即使交替仍会在递归产生L22(113)，而一条完整分支的二级结果为空。取max时钟还必须同步合法的完成证明，不能绕过\_validate_completed_source_point。
+
+此前异步问题提出分支共同结构等选项，用户回答纠正了职责边界：三级输入是逐层折线。该历史诊断不作为本次实现协议；当前已按上节332基础归并执行，330保留backlog。正确性变更重新建立基线，不强套330旧账户同值验收。历史证据全部位于ignored `.codex-runtime/backtest-performance`：inspect-reported-gaps.py/reported-gaps-raw-v1.json、compare-doji-orders.py/reported-gaps-conditional-orders.json、global-doji-branch-review.py/json、consensus-recursion-counterexample.py/json。未硬编码股票或日期、未运行浏览器或完整suite。
+
+最新纯复制移交已稳定：consumer111、Chart19 distinct cases覆盖通过，13文件mypy通过；domain最后363通过/1默认False传keyword造成旧spy失败已修，相关文件78通过及strict2源通过。consumer9文件manifest checkpoint-owned-freeze-v4 SHA29ca3e8dc6aac854242360d009e8de83d842c5b90c22dd89bdfc10caa53690f4。152源freeze final330c SHA73c0032a3b9e2f14e98b89e81f2702b68d0729b8b9d001c4510ca8663974ccd1，正式完整cold在120秒仍generate_system_signals，峰值138498048字节约132MiB；缓存因无自身cold输出不可用。root exec session41681结束exit1，worker27344已停止，source/inputs事后重核与前值相同。output final330c-full-acceptance-1/summary.json；正式速度仍失败，无完整账户。代理均已冻结无自有进程。v119保持，lazy未落生产。
+
+## 2026-10-12 · MONOREPO-330 回测性能优化进行中
+
+继续使用 `feat-三级趋势统一` 和 `C:\Users\zb\.codex\worktrees\three-level-trend\wavequant-monorepo`，main 为78d8953且未修改；本节为330性能历史，当前332唯一in-progress，330已恢复backlog待继续。256完整原证据保留。尚无性能任务提交、合并、推送或新服务生效声明。
+
+旧sz.000678完整HTTP账户已自然完成并冻结：真实2107棒2018-01-15至2026-10-09，288信号/4294审计/77订单/65成交/21交易及全部curve、持仓回撤、fallback；旧149源文件raw cert全匹配（landmarks唯差原CRLF已封存），实际float本金配置与上游8/6覆盖单独保存。来源和正式离线基准位于ignored `.codex-runtime/backtest-performance`，永久runner在Core/scripts/benchmark_backtest_replay.py。旧长跑的两次600秒超时不能当完整旧账户基线；现在以自然完成的实际public账户作严格比较。
+
+初版fullchart679.874秒/2.504GB阶段数据，仍未达到120秒完整计算目标。区间/日期索引、JSON独立模板、request fullhistory复用、completion scalar投影、16MiB稳定FrozenPoint准入、原batch循环追加state及有界前日checkpoint已接入。修订/迟知/ordinal碰撞/unknown/nonfinite冷回退，实际两次minute partial由当日2100/2101自身状态恢复，不从最终点裁切。通用C-copy特殊值不等价和deprecated Pickler.fast均未落生产。
+
+冻结final330a完整cold1在120秒仍生成信号，峰值1180266496字节，无research/account完整结果，后续三轮停止。152生产文件冻结摘要5592bf4b5f0860742edfc9ad2023a2dca05bbb8086c703102b62ea523f7a3512及原输入前后均稳定，失败保存在ignored final330a-full-acceptance/summary.json。继续优化，不能标done、构建或合并。根因之一是pivot每日重建760748对相同frozen点，图231747576字节并再次deepcopy；已在lecture_strategy.py仅复用完全相同的既有prior点。实际2107日760748引用的字段/类型/确认时间与旧冻结源全部一致、独立点1444、图6993592字节；11项lecture定向及2文件mypy通过，局部诊断不代替完整性能。
+
+本地Docker由用户重新打开后已恢复；main现有脚本restart-wavequant.ps1 -Signals off -StructureWorkers 1 -NoBrowser成功，3003/8765及backtest-jobs HTTP200。当前运行main78d8953，未生效优化。checkpoint代理继续优化可信pivot只复制容器、层级完整证明bytes模板及未知回退；domain代理继续减少owned候选复制与追加状态的历史证书假miss。代码当前解除冻结，下一完整基准前再次封存源码和全部输入。
+
+后续冻结final330b（152文件，摘要9bd3194436dc808b222d399d7cbff07cd1349292c2e9bfef4f710eb957e9eb09）完整cold1仍120秒timeout，峰值降至128868352B；cached因无自有cold结果不可用。180秒限时采样诊断仍在hierarchy，不当扩大目标或完成。最新consumer111项/12文件mypy、domain352项/6文件mypy、HEAD3600前缀/120拒绝及6组stage全证据字段类型对照均通过，各组重叠不相加。512 cProfile定位owned helper2009次11.427cum、950万pop/535万id的重复证明准入扫描。domain继续有界按完整typed point缓存标准有限JSON准入；consumer保持冻结，root维护记录。所有root长诊断PID已结束，无实际partial完整验证，330仍进行中。
+
+逐点准入缓存完成：356项及HEAD3600前缀/120同旧拒绝通过，strict2src/普通6files mypy通过。完整真实2107末日一级2450证书常驻2596985B、二级1096711B、三级181049B，重复扫描100%命中、0refusal、close归零；8MiB实际bytes+dict容量+4096元数据上界由独立review确认，瞬时序列化/resize内存另计。512hier profiler45.175→37.033秒，helper11.427→1.285cum，仅诊断不当完整提速。verifier的512完整chart+3sidecar profile77.103秒、stage190530078B，prepare/qualify/judge中owned helper仍全部False，正在补prepare/attach私有移交并做公开别名隔离差分。integer-lazy只在ignored探针5.5%收益；非连续重复日期能重排knowledge，默认日期/N/未知均旧路径，lazy尚未落生产。benchmark已加ExitStack关闭checkpoint journals，32项/2strict通过。未新跑2107完整或实际partial，未提交/合并/推送，main仍78d8953。
+
+最后源码冻结后仍需：完整cold/cached各两次120秒无分析器计时、原完整账户逐字段差分/信号审计一致、峰值内存、所有新生产文件sdist/wheel/isolated install逐字节核验、定向类型和回归、最终review及服务HTTP验收。用户未要求浏览器/Playwright或完整套件。331记录4个HEAD既有下降历史/旧spy失败，与328/256分开保留；是否满足本地合并门禁需最终按AGENTS处理，不能借256旧例外覆盖新失败。
 
 ## 2026-10-11 · MONOREPO-325 有界十字星趋势连续性完成
 
