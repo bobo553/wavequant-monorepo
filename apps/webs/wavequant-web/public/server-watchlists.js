@@ -95,8 +95,9 @@ export function createServerWatchlistStorage({
             return previous !== document.revision;
         },
         async configure(context, enabled) {
+            const calculationContext = { ...context, buy_interval_level: context.buy_interval_level ?? "2" };
             const params = Object.fromEntries(
-                Object.entries(context)
+                Object.entries(calculationContext)
                     .filter(([key]) => key !== "group" && key !== "cutoff")
                     .map(([key, value]) => [key, String(value)]),
             );

@@ -124,6 +124,35 @@ test("old watchlist settings default N target trend off and reject noncanonical 
         );
 });
 
+test("persisted buy intervals default to level two and accept only the three canonical levels", () => {
+    const parsed = cleanDocument({ ...document(), settings: { enabled: true, context } });
+    assert.equal(parsed.settings.context.buy_interval_level, "2");
+    for (const buy_interval_level of ["1", "2", "3"]) {
+        const selected = cleanDocument({
+            ...document(), settings: { enabled: true, context: { ...context, buy_interval_level } },
+        });
+        assert.equal(selected.settings.context.buy_interval_level, buy_interval_level);
+    }
+    for (const buy_interval_level of [1, 2, 3, "0", "4", "2.0", null, true])
+        assert.throws(() => cleanDocument({
+            ...document(), settings: { enabled: true, context: { ...context, buy_interval_level } },
+        }));
+});
+
+test("changing the saved interval level persists it and an omitted choice restores the default", async () => {
+    const { subject, calls } = fixture({ old: snapshot() });
+    await subject.load();
+    await subject.configure({ ...context, buy_interval_level: "1" }, true);
+    await subject.refresh();
+    assert.equal(subject.document.settings.context.buy_interval_level, "1");
+    await subject.configure(context, true);
+    assert.equal(subject.document.settings.context.buy_interval_level, "2");
+    await subject.configure({ ...context, buy_interval_level: "3" }, true);
+    assert.equal(subject.document.settings.context.buy_interval_level, "3");
+    assert.deepEqual(calls.filter((body) => body?.action === "settings")
+        .map((body) => body.settings.context.buy_interval_level), ["1", "2", "3"]);
+});
+
 test("watchlist option survives a server reload and both flag transitions are persisted", async () => {
     const { subject, calls } = fixture({ old: snapshot() });
     await subject.load();

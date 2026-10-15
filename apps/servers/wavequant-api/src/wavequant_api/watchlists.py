@@ -86,6 +86,10 @@ def settings(value: object) -> dict[str, object]:
     if not isinstance(n_target, str) or n_target not in {"true", "false"}:
         raise ValueError("N达标趋势开关无效")
     normalized["n_target_trend_confirmation_enabled"] = n_target
+    buy_level = context.get('buy_interval_level', '2')
+    if not isinstance(buy_level, str) or buy_level not in ('1', '2', '3'):
+        raise ValueError('买点筛选级别无效')
+    normalized['buy_interval_level'] = buy_level
     if normalized["source"] not in {"akshare", "tdx"}:
         raise ValueError("回测数据源无效")
     date.fromisoformat(normalized["start"])

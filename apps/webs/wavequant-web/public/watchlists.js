@@ -1,4 +1,4 @@
-import { formatBacktestProgress } from "./backtest-job-status.js";
+import { formatBacktestJobProgress } from "./backtest-job-status.js";
 import { createServerWatchlistStorage } from "./server-watchlists.js";
 
 const DATABASE_NAME = "wavequant-user-data";
@@ -247,6 +247,7 @@ function orderedMembers(state, groupId, universe) {
     const universeBySymbol = new Map(universe.map((stock) => [stock.symbol, stock]));
     return state.memberships
         .filter((membership) => membership.groupId === groupId)
+        .sort((left, right) => left.position - right.position)
         .map((membership) => ({ ...membership, stock: universeBySymbol.get(membership.symbol) }));
 }
 
@@ -255,6 +256,13 @@ export function firstAvailableWatchlistSymbol(state, groupId, universe) {
         orderedMembers(state, groupId, universe).find((member) => member.stock?.has_data !== false && member.stock)
             ?.symbol || ""
     );
+}
+
+export function initialWatchlistSymbol(state, groupId, universe, linkedSymbol = "") {
+    const first = firstAvailableWatchlistSymbol(state, groupId, universe);
+    if (first) return first;
+    const available = universe.filter((stock) => stock.has_data !== false);
+    return available.find((stock) => stock.symbol === linkedSymbol)?.symbol || available[0]?.symbol || "";
 }
 
 function openWatchlistDatabase(indexedDBFactory = globalThis.indexedDB) {
@@ -364,6 +372,8 @@ export class Watchlists {
                 // 分类数据继续由服务器保存。
             }
             this.render();
+            const first = this.firstAvailableSymbol(this.universe);
+            if (first) this.onSelect(first);
             window.dispatchEvent(new CustomEvent("wavequant:watchlists-changed"));
         });
         this.$("watchlist-toggle-current").addEventListener("click", () => {
@@ -426,6 +436,10 @@ export class Watchlists {
         return firstAvailableWatchlistSymbol(this.state, this.selectedGroup.id, stocks);
     }
 
+    initialSymbol(stocks, linkedSymbol = "") {
+        return initialWatchlistSymbol(this.state, this.selectedGroup.id, stocks, linkedSymbol);
+    }
+
     orderedAvailableMembers(stocks = this.universe) {
         return orderedMembers(this.state, this.selectedGroup.id, stocks).filter(
             (member) => member.stock && member.stock.has_data !== false,
@@ -454,14 +468,15 @@ export class Watchlists {
             status === "running"
                 ? this.backtestJobs.find((job) => job.status === "running" && job.symbol === symbol)
                 : null;
-        const percent = formatBacktestProgress(runningJob?.progress_percent);
+        const percent = formatBacktestJobProgress(runningJob);
         assignIfChanged(badge.dataset, "status", status);
         const fills = this.backtestFillCounts[symbol];
         const completedFills = status === "completed" && Number.isInteger(fills) && fills >= 0 ? fills : null;
         const badgeText = {
             pending: "待回测",
             historical: "已回测 · 待更新",
-            running: percent ? `回测中 · ${percent}` : "回测中",
+            updating: "正在更新…",
+            running: percent ? `回测 ${percent}` : "回测中",
             unknown: "状态待确认",
             completed: completedFills === null ? "已完成" : `成交${completedFills}笔`,
             failed: "失败",

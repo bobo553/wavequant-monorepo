@@ -1,12 +1,14 @@
 """Independent single-security diagnostic accounts, never live orders."""
 from dataclasses import asdict
 from datetime import datetime
+from typing import Callable
 import json
 from pathlib import Path
 
 from wavequant.application.analytics.backtest import run_portfolio
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
+from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse
 from wavequant.application.analytics.execution_diagnostics import execution_diagnostics
 from wavequant.application.analytics.trade_evidence import enrich_ledger
 
@@ -69,19 +71,47 @@ def _post_b_wave_exit_events(bars, audit, signal_row):
     return events
 
 
-def single_stock_result(bars, strategy, execution, signal_result=None, *, minute_loader=None, progress=None):
-    if not bars or len({b.symbol for b in bars})!=1:
-        raise ValueError('exactly one nonempty security history required')
-    effective_strategy=SystemStrategy(**strategy); effective_strategy.validate()
-    if signal_result is None: signal_result=generate_system_signals(bars,effective_strategy)
-    config=StrategyConfig(**execution); config.validate()
-    entry_executions: dict = {}
-    entry_fallbacks: list[dict] = []
-    if config.consolidation_entry_intraday:
-        from wavequant.application.analytics.intraday_entry import resolve_consolidation_entries
-        signal_result, entry_executions, entry_fallbacks = resolve_consolidation_entries(
-            bars, signal_result, effective_strategy, minute_loader,
-            daily_fallback=config.missing_minute_daily_fallback)
+def signal_progress_callbacks(
+    callback: Callable[[int, str], None] | None,
+) -> tuple[Callable[[int], None] | None, Callable[[str], None] | None]:
+    if callback is None:
+        return None, None
+    current = 35
+    current_stage = '生成信号'
+
+    def advance(percent: int) -> None:
+        nonlocal current
+        current = max(current, 35 + percent * 25 // 100)
+        callback(current, current_stage)
+
+    def stage(name: str) -> None:
+        nonlocal current_stage
+        current_stage = name
+        callback(current, name)
+
+    return advance, stage
+
+
+def simulation_progress_callbacks(
+    callback: Callable[[int, str], None] | None,
+) -> tuple[Callable[[int], None] | None, Callable[[str], None] | None]:
+    """Report real simulation boundaries without moving its percentage backwards."""
+    if callback is None:
+        return None, None
+    current = 65
+
+    def advance(percent: int) -> None:
+        nonlocal current
+        current = max(current, 65 + percent * 25 // 100)
+        callback(current, '模拟成交')
+
+    def stage(name: str) -> None:
+        callback(current, name)
+
+    return advance, stage
+
+
+def signal_execution_facts(bars, signal_result):
     n_bars: dict[int, int] = {}
     for row in getattr(signal_result, 'audit', []):
         if row.get('event') == 'n_completed' and row.get('direction') == 'up':
@@ -102,15 +132,49 @@ def single_stock_result(bars, strategy, execution, signal_result=None, *, minute
                 a_origin=row['wave_a_origin'], a_high=row['wave_a_high'],
                 a_high_index=row['wave_a_high_index'], b_low=row['wave_b_low'],
                 b_low_index=row['wave_b_low_index']))
-    result=run_portfolio({bars[0].symbol:bars},signal_result.signals,config,minute_loader=minute_loader,positive_n_bars={bars[0].symbol:n_bars},entry_executions=entry_executions,
-        wave_events={bars[0].symbol:wave_events},progress=progress,
+    return n_bars, wave_events
+
+
+def single_stock_result(bars, strategy, execution, signal_result=None, *, minute_loader=None, progress=None,
+                        stage: Callable[[str], None] | None = None,
+                        history_reuse: BacktestHistoryReuse | None = None,
+                        account_result=None, entry_fallbacks_override=None):
+    if not bars or len({b.symbol for b in bars})!=1:
+        raise ValueError('exactly one nonempty security history required')
+    effective_strategy=SystemStrategy(**strategy); effective_strategy.validate()
+    if signal_result is None and account_result is None and effective_strategy.buy_point_definition == 'whole_flip_wave_v3':
+        from .streaming_backtest import streaming_stock_result
+        def daily_progress(percent, message):
+            if stage is not None: stage(message)
+            if progress is not None: progress(percent)
+        return streaming_stock_result(bars,strategy,execution,minute_loader=minute_loader,
+                                      progress=daily_progress)[1]
+    if history_reuse is not None: history_reuse.require_input(bars, effective_strategy)
+    if signal_result is None:
+        signal_result=generate_system_signals(bars,effective_strategy,history_reuse=history_reuse)
+    config=StrategyConfig(**execution); config.validate()
+    entry_executions: dict = {}
+    entry_fallbacks: list[dict] = []
+    if account_result is None and config.consolidation_entry_intraday and signal_result.counts.get('trading_interval_count') != 0:
+        from wavequant.application.analytics.intraday_entry import resolve_consolidation_entries
+        if stage is not None: stage('准备分钟入场历史')
+        signal_result, entry_executions, entry_fallbacks = resolve_consolidation_entries(
+            bars, signal_result, effective_strategy, minute_loader,
+            daily_fallback=config.missing_minute_daily_fallback, stage=stage, history_reuse=history_reuse)
+    n_bars, wave_events = signal_execution_facts(bars, signal_result) if account_result is None else ({}, [])
+    result=account_result if account_result is not None else run_portfolio({bars[0].symbol:bars},signal_result.signals,config,minute_loader=minute_loader,positive_n_bars={bars[0].symbol:n_bars},entry_executions=entry_executions,
+        wave_events={bars[0].symbol:wave_events},progress=progress, stage=stage,
+        history_reuse={bars[0].symbol:history_reuse} if history_reuse is not None else None,
         n_target_trend_confirmation_enabled=effective_strategy.n_target_trend_confirmation_enabled)
+    if entry_fallbacks_override is not None:
+        entry_fallbacks = entry_fallbacks_override
     result.minute_fallbacks.extend(entry_fallbacks)
     for order in result.orders:
         if order['side'] == 'BUY' and order.get('execution_model') == 'same_day_close':
             fallback = next((f for f in entry_fallbacks if f['date'] == order['timestamp'][:10]), None)
             if fallback is not None:
                 order['minute_fallback'] = fallback
+    if stage is not None: stage('整理成交证据')
     screening=enrich_ledger(bars,result,signal_result,strategy)
     def serial(value):
         return json.loads(json.dumps(value,default=lambda obj:obj.isoformat() if isinstance(obj,datetime) else str(obj)))

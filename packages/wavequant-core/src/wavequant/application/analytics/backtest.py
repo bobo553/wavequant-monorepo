@@ -5,11 +5,12 @@ import math
 import statistics
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
-from typing import Callable
+from typing import Callable, Generator, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
+from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse
 from wavequant.application.analytics.holding_drawdown import holding_drawdowns, drawdown_metrics, holding_fill_time
 from wavequant.application.analytics.intraday_wave_exit import (
     PartialSessionCandle, five_top_intraday_eligible, minute_sellable, observe_intraday_five_top_exit,
@@ -23,6 +24,9 @@ from wavequant.domain.strategies.wave_exhaustion_exit import (
     observe_five_top_body_upper_shadow_clear, observe_five_top_gap_volume_clear, observe_wave_exhaustion,
 )
 from wavequant.domain.strategies.two_t_resistance import TWO_T_BODY_VOLUME_CLEAR, two_t_resistance_history
+from wavequant.domain.strategies.limit_up_distribution_exit import (
+    LIMIT_UP_DISTRIBUTION_CLEAR, observe_limit_up_distribution_exit,
+)
 from wavequant.domain.strategies.pressure_exit import (
     pressure_exit_history, record_high_resistance_history, record_high_massive_resistance_history,
 )
@@ -94,6 +98,7 @@ class _Position:
     exit_fees: float = 0.0
     realized_pnl: float = 0.0
     wave_events: list[dict] = field(default_factory=list)
+    wave_triggers: set[datetime] = field(default_factory=set)
     wave_reduced: bool = False
     signal_index: int | None = None
     pressure_warning: dict | None = None
@@ -142,6 +147,16 @@ def run_backtest(bars: list[Bar], signals: list[Signal], config: StrategyConfig)
     return run_portfolio({bars[0].symbol: bars} if bars else {}, signals, config)
 
 
+@dataclass
+class AccountDay:
+    index: int
+    signals: list[Signal]
+    positive_n_bars: dict[int, int]
+    wave_events: list[dict]
+    hierarchy: dict
+    entry_executions: dict
+
+
 def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: StrategyConfig,
                   start: str | None = None, end: str | None = None,
                   minute_loader: Callable[[Bar], list[MinuteBar]] | None = None,
@@ -149,7 +164,34 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                   wave_events: dict[str, list[dict]] | None = None,
                   entry_executions: dict | None = None,
                   progress: Callable[[int], None] | None = None, *,
+                  stage: Callable[[str], None] | None = None,
+                  history_reuse: Mapping[str, BacktestHistoryReuse] | None = None,
                   n_target_trend_confirmation_enabled: bool = False) -> BacktestResult:
+    runner = portfolio_days(grouped, signals, config, start, end, minute_loader,
+        positive_n_bars, wave_events, entry_executions, progress, stage=stage,
+        history_reuse=history_reuse, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+    try:
+        while True:
+            next(runner)
+    except StopIteration as completed:
+        return completed.value
+    finally:
+        runner.close()
+
+
+def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config: StrategyConfig,
+                  start: str | None = None, end: str | None = None,
+                  minute_loader: Callable[[Bar], list[MinuteBar]] | None = None,
+                  positive_n_bars: dict[str, dict[int, int]] | None = None,
+                  wave_events: dict[str, list[dict]] | None = None,
+                  entry_executions: dict | None = None,
+                  progress: Callable[[int], None] | None = None, *,
+                  stage: Callable[[str], None] | None = None,
+                  history_reuse: Mapping[str, BacktestHistoryReuse] | None = None,
+                  n_target_trend_confirmation_enabled: bool = False,
+                  live: bool = False,
+                  on_day: Callable[[int, Sequence[dict], Sequence[Trade], Sequence[dict]], None] | None = None,
+                  ) -> Generator[None, AccountDay | None, BacktestResult]:
     """Entries use explicit next-open or same-close simulation; exits retain their model.
 
     Volume capacity is a prior-bar estimate, not an auction fill guarantee. Adjusted
@@ -160,6 +202,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
     if type(n_target_trend_confirmation_enabled) is not bool:
         raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
     config.validate()
+    if live and (len(grouped) != 1 or start is not None or end is not None or signals):
+        raise ValueError('a live account requires one full stock history and daily signal delivery')
     entry_executions = entry_executions or {}
     if config.staged_exit_intraday and minute_loader is None:
         raise ValueError('五分钟精确减仓需要完整分钟行情来源')
@@ -188,25 +232,31 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 if candle.low < defense or (j in known and any(b.low < defense for b in history[active:j])):
                     active = None
             n_context[symbol].append(active)
+    if stage is not None: stage('准备压力与量价退出风险')
     pressure_risks = {symbol: pressure_exit_history(history, n_context[symbol], config)
-                      if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
+                      if config.pressure_adverse_exit and not live else {} for symbol, history in grouped.items()}
     record_high_risks = {symbol: record_high_resistance_history(history, config)
-                         if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
+                         if config.pressure_adverse_exit and not live else {} for symbol, history in grouped.items()}
     record_volume_risks = {symbol: record_high_massive_resistance_history(history, config)
-                           if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
+                           if config.pressure_adverse_exit and not live else {} for symbol, history in grouped.items()}
     trend_flip_risks: dict[str, dict[int, dict]] = {symbol: {} for symbol in grouped}
-    if config.trend_flip_adverse_exit:
+    if config.trend_flip_adverse_exit and not live:
+        if stage is not None: stage('准备三级趋势退出历史')
         from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
         from wavequant.domain.strategies.trend_flip_exit import trend_flip_exit_history
-        trend_flip_risks = {symbol: trend_flip_exit_history(
-            history, hierarchical_history(history,
-                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)[0],
-            reduction_fraction=config.wave_exhaustion_reduction)
-                            for symbol, history in grouped.items()}
+        for symbol, history in grouped.items():
+            reuse = history_reuse.get(symbol) if history_reuse is not None else None
+            levels = reuse.hierarchy(history,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled) if reuse is not None else None
+            if levels is None:
+                levels = hierarchical_history(history,
+                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+            trend_flip_risks[symbol] = trend_flip_exit_history(
+                history, levels[0], reduction_fraction=config.wave_exhaustion_reduction)
     wave_lookup: dict[str, dict[datetime, list[dict]]] = {symbol: {} for symbol in grouped}
     target_resistance = {symbol: two_t_resistance_history(
         history, (wave_events or {}).get(symbol, []), reduction_fraction=config.wave_exhaustion_reduction)
-        if config.wave_exhaustion_exit else {} for symbol, history in grouped.items()}
+        if config.wave_exhaustion_exit and not live else {} for symbol, history in grouped.items()}
     c_equal_events = {symbol: [event for event in (wave_events or {}).get(symbol, [])
                                if event.get('event') == 'wave_c_equal_target'] for symbol in grouped}
     wave_signal_lookup: dict[str, dict[int, list[dict]]] = {symbol: {} for symbol in grouped}
@@ -223,7 +273,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             else:
                 wave_lookup[symbol].setdefault(history[attack].timestamp, []).append(event)
     signal_map: dict[datetime, list[Signal]] = {}
-    for signal in signals:
+    def accept_signal(signal: Signal) -> None:
         bars = grouped.get(signal.symbol, [])
         if (signal.side not in ('LONG', 'EXIT') or signal.bar_index < 0 or signal.bar_index >= len(bars)
                 or bars[signal.bar_index].timestamp != signal.timestamp
@@ -236,6 +286,9 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 or (signal.minimum_reward_risk > 0 and signal.target_price is None)):
             raise ValueError('invalid signal target/reward-risk')
         signal_map.setdefault(signal.timestamp, []).append(signal)
+    for signal in signals:
+        accept_signal(signal)
+    if stage is not None: stage('逐日模拟撮合')
     cash = config.initial_capital
     positions: dict[str, _Position] = {}
     pending_entry: dict[str, tuple[Signal, int]] = {}
@@ -561,11 +614,72 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 for event in wave_lookup[symbol].get(signal.trigger_timestamp, []):
                     if event not in existing.wave_events:
                         existing.wave_events.append(event)
+        positions[symbol].wave_triggers.add(signal.trigger_timestamp)
         log(when, symbol, 'BUY', 'filled', signal.reason, **detail)
 
     timeline = sorted(calendar)
     last_progress = -1
     for tick, when in enumerate(timeline):
+        day = yield
+        if live:
+            if len(grouped) != 1 or day is None or day.index != tick:
+                raise ValueError('a live account requires one stock and consecutive completed market days')
+            symbol = next(iter(grouped))
+            prefix = grouped[symbol][:tick + 1]
+            candle = prefix[-1]
+            if any(type(available) is not int or type(attack) is not int
+                    or not 0 <= attack <= available <= tick for available, attack in day.positive_n_bars.items()):
+                raise ValueError('invalid live positive N availability')
+            active_n = day.positive_n_bars.get(tick, n_context[symbol][tick - 1] if tick else None)
+            if active_n is not None:
+                defense = min(prefix[active_n].low, prefix[active_n - 1].close) if active_n else prefix[0].low
+                if candle.low < defense or (tick in day.positive_n_bars
+                        and any(bar.low < defense for bar in prefix[active_n:tick])):
+                    active_n = None
+            n_context[symbol][tick] = active_n
+            needs_risk = bool(positions or pending_entry or day.signals)
+            if config.pressure_adverse_exit and needs_risk:
+                pressure_risks[symbol] = pressure_exit_history(prefix, n_context[symbol][:tick + 1], config)
+                record_high_risks[symbol] = record_high_resistance_history(prefix, config)
+                record_volume_risks[symbol] = record_high_massive_resistance_history(prefix, config)
+            if config.trend_flip_adverse_exit and needs_risk:
+                from wavequant.domain.strategies.trend_flip_exit import trend_flip_exit_history
+                trend_flip_risks[symbol] = trend_flip_exit_history(prefix, day.hierarchy,
+                    reduction_fraction=config.wave_exhaustion_reduction)
+            if config.wave_exhaustion_exit and needs_risk:
+                target_resistance[symbol] = two_t_resistance_history(prefix, day.wave_events,
+                    reduction_fraction=config.wave_exhaustion_reduction)
+            c_equal_events[symbol] = [row for row in day.wave_events if row.get('event') == 'wave_c_equal_target']
+            wave_events = {symbol: day.wave_events}
+            wave_lookup[symbol] = {}
+            wave_signal_lookup[symbol] = {}
+            for event in day.wave_events:
+                attack, known = event['attack'], event['bar_index']
+                if type(attack) is not int or type(known) is not int or not 0 <= attack <= known <= tick:
+                    raise ValueError('invalid live wave event availability')
+                owner = event.get('owner_signal_index')
+                if owner is not None:
+                    if type(owner) is not int or not 0 <= owner <= tick:
+                        raise ValueError('invalid live wave event owner')
+                    wave_signal_lookup[symbol].setdefault(owner, []).append(event)
+                else:
+                    wave_lookup[symbol].setdefault(prefix[event['attack']].timestamp, []).append(event)
+            position = positions.get(symbol)
+            if position is not None:
+                owned = wave_signal_lookup[symbol].get(position.signal_index)
+                if owned is not None:
+                    position.wave_events = list(owned)
+                elif not any(event['event'] == 'wave_segment_start' for event in position.wave_events):
+                    for trigger in sorted(position.wave_triggers):
+                        for event in wave_lookup[symbol].get(trigger, ()):
+                            if event not in position.wave_events:
+                                position.wave_events.append(event)
+            if any(signal.bar_index != tick or signal.timestamp != when or signal.symbol != symbol for signal in day.signals):
+                raise ValueError('live signals must belong to the current account day')
+            signal_map[when] = []
+            for signal in day.signals:
+                accept_signal(signal)
+            entry_executions.update(day.entry_executions)
         percent = tick * 100 // len(timeline)
         if progress is not None and percent != last_progress:
             progress(percent)
@@ -876,6 +990,10 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 pressure = None
             if (pressure is not None and pressure['exit_fraction'] < 1
                     and volume_exit is not None
+                    and volume_exit['reason'] == LIMIT_UP_DISTRIBUTION_CLEAR):
+                pressure = None
+            if (pressure is not None and pressure['exit_fraction'] < 1
+                    and volume_exit is not None
                     and volume_exit['reason'] == 'volume_bullish_gap_bearish_clear'):
                 pressure = None
             if (wave_exit is not None and wave_exit['reason'] in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS
@@ -1001,18 +1119,23 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                             exit_evidence[symbol]['inverse_observed_index'] = signal.bar_index
                             execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
                         elif any(reason in signal.reason.split('|') for reason in
-                                 (TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
+                                 (LIMIT_UP_DISTRIBUTION_CLEAR, TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
                                    FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
                                    *FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS,
                                    C_EQUAL_NEAR_VOLUME_CLEAR)):
                             i, bar = current[symbol]
                             wave_clear_symbols.add(symbol)
                             pending_exit[symbol] = next(reason for reason in signal.reason.split('|') if reason in
-                                (TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
+                                (LIMIT_UP_DISTRIBUTION_CLEAR, TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
                                   FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
                                   *FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS,
                                   C_EQUAL_NEAR_VOLUME_CLEAR))
-                            if pending_exit[symbol] == FIVE_TOP_CHILD_VOLUME_CLEAR:
+                            if pending_exit[symbol] == LIMIT_UP_DISTRIBUTION_CLEAR:
+                                distribution = observe_limit_up_distribution_exit(grouped[symbol], i)
+                                if distribution is not None:
+                                    exit_evidence[symbol].update(
+                                        {key: value for key, value in distribution.items() if key != 'reason'})
+                            elif pending_exit[symbol] == FIVE_TOP_CHILD_VOLUME_CLEAR:
                                 known_events = sorted((wave_events or {}).get(symbol, []),
                                                       key=lambda event: event['bar_index'])
                                 five_top_evidence = observe_five_top_child_volume_clear(grouped[symbol], i, known_events)
@@ -1097,6 +1220,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             raise ArithmeticError('portfolio cash/equity invariant failed')
         curve.append(dict(timestamp=when.isoformat(), cash=cash, market_value=market_value,
                           equity=equity, exposure=market_value/equity, positions=len(positions)))
+        if on_day is not None:
+            on_day(tick, orders, trades, curve)
     opened: list[dict] = [dict(symbol=s, entry_time=p.entry_time.isoformat(), entry_price=p.entry_price,
                    quantity=p.quantity, mark=marks[s], mark_time=mark_times[s],
                    unrealized_pnl=p.quantity*(marks[s]-p.entry_price)-p.entry_fee,

@@ -51,40 +51,36 @@ class BottomNTargetHistory:
     completions: dict[int, PositiveNCompletion]
 
 
-def bottom_n_target_history(
-    bars: Sequence[Bar], declines: Sequence[DeclineStart], completions: Sequence[PositiveNCompletion],
-) -> BottomNTargetHistory:
-    """Use only known level-one declines; no new box for an internal or folded N.
+class BottomNTargetState:
+    """Causal target ownership updated once per close; arrivals are known today."""
 
-    A later confirmed decline or strict origin/defense break ends the old box.
-    Equal lows hold the earliest bottom. A separately confirmed defense reformation
-    can restart measurement from a surviving origin. The minimum queue is O(bars + inputs),
-    apart from sorting dated inputs, and never validates or scans a future bar.
-    """
-    starts: dict[int, list[DeclineStart]] = {}
-    arrivals: dict[int, list[PositiveNCompletion]] = {}
-    for decline in declines:
-        if not 0 <= decline.index <= decline.known_at < len(bars):
-            raise ValueError("decline must be known inside the supplied history")
-        starts.setdefault(decline.known_at, []).append(decline)
-    for n in completions:
-        if not 0 <= n.origin < n.attack <= n.known_at < len(bars):
-            raise ValueError("completed N must have causal, chronological indices")
-        arrivals.setdefault(n.known_at, []).append(n)
+    def __init__(self, bars: Sequence[Bar]) -> None:
+        self.bars = bars
+        self.minimum: deque[int] = deque()
+        self.current: DeclineStart | None = None
+        self.active: PositiveNCompletion | None = None
+        self.used: set[tuple[int, int]] = set()
+        self.decisions: dict[int, TargetQualification] = {}
+        self.selected: dict[int, PositiveNCompletion] = {}
+        self.sources: list[int | None] = []
+        self.retirements: list[TargetRetirement] = []
 
-    minimum: deque[int] = deque()
-    current: DeclineStart | None = None
-    active: PositiveNCompletion | None = None
-    used: set[tuple[int, int]] = set()
-    decisions: dict[int, TargetQualification] = {}
-    selected: dict[int, PositiveNCompletion] = {}
-    sources: list[int | None] = []
-    retirements: list[TargetRetirement] = []
-    for now, bar in enumerate(bars):
+    def advance(self, now: int, declines: Sequence[DeclineStart] = (),
+                completions: Sequence[PositiveNCompletion] = ()) -> None:
+        if type(now) is not int or now != len(self.sources) or now >= len(self.bars):
+            raise ValueError('target days must be consecutive and available')
+        if any(not 0 <= value.index <= value.known_at == now for value in declines):
+            raise ValueError('decline arrivals must be known today')
+        if any(not 0 <= value.origin < value.attack <= value.known_at == now for value in completions):
+            raise ValueError('N arrivals must be known today')
+        bars, bar = self.bars, self.bars[now]
+        minimum, current, active = self.minimum, self.current, self.active
+        used, decisions, selected = self.used, self.decisions, self.selected
+        sources, retirements = self.sources, self.retirements
         while minimum and bars[minimum[-1]].low > bar.low:
             minimum.pop()
         minimum.append(now)
-        for decline in sorted(starts.get(now, ()), key=lambda item: item.index):
+        for decline in sorted(declines, key=lambda item: item.index):
             if current is not None and decline.index <= current.index:
                 continue
             # A late confirmation inside the original N cannot retrospectively
@@ -110,7 +106,7 @@ def bottom_n_target_history(
         bottom = minimum[0] if minimum and current is not None else None
         # A new inside child must neither hide a contemporaneous floor N nor
         # lose to a cross-cycle N. Resolve only candidates known at this close.
-        for n in sorted(arrivals.get(now, ()), key=lambda item: (item.attack, item.origin != bottom)):
+        for n in sorted(completions, key=lambda item: (item.attack, item.origin != bottom)):
             if n.attack in selected:
                 continue
             selected[n.attack] = n
@@ -136,4 +132,35 @@ def bottom_n_target_history(
                 current.index if current is not None else None, bottom, reason,
             )
         sources.append(active.attack if active is not None else None)
-    return BottomNTargetHistory(decisions, tuple(sources), tuple(retirements), selected)
+        self.current, self.active = current, active
+
+    def snapshot(self) -> BottomNTargetHistory:
+        return BottomNTargetHistory(self.decisions.copy(), tuple(self.sources),
+                                    tuple(self.retirements), self.selected.copy())
+
+
+def bottom_n_target_history(
+    bars: Sequence[Bar], declines: Sequence[DeclineStart], completions: Sequence[PositiveNCompletion],
+) -> BottomNTargetHistory:
+    """Use only known level-one declines; no new box for an internal or folded N.
+
+    A later confirmed decline or strict origin/defense break ends the old box.
+    Equal lows hold the earliest bottom. A separately confirmed defense reformation
+    can restart measurement from a surviving origin. The minimum queue is O(bars + inputs),
+    apart from sorting dated inputs, and never validates or scans a future bar.
+    """
+    starts: dict[int, list[DeclineStart]] = {}
+    arrivals: dict[int, list[PositiveNCompletion]] = {}
+    for decline in declines:
+        if not 0 <= decline.index <= decline.known_at < len(bars):
+            raise ValueError("decline must be known inside the supplied history")
+        starts.setdefault(decline.known_at, []).append(decline)
+    for n in completions:
+        if not 0 <= n.origin < n.attack <= n.known_at < len(bars):
+            raise ValueError("completed N must have causal, chronological indices")
+        arrivals.setdefault(n.known_at, []).append(n)
+
+    state = BottomNTargetState(bars)
+    for now in range(len(bars)):
+        state.advance(now, starts.get(now, ()), arrivals.get(now, ()))
+    return state.snapshot()

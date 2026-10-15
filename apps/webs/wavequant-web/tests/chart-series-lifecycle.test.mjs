@@ -84,6 +84,70 @@ const collections = {
     waveAbLines: "clearWaveAbPath",
 };
 
+test("running N-confirmed snapshots draw polyline and fills together and preserve the viewport", () => {
+    const chart = chartHarness();
+    const dates = ["2019-01-04", "2019-04-11", "2019-08-06", "2019-08-20", "2019-08-21"];
+    const sample = dates.map((time) => ({ time, open: 5, high: 6, low: 4, close: 5, volume: 100 }));
+    const event = { event: "trend_lifecycle_state", timestamp: dates[3], bar_index: 3,
+        available_index: 3, symbol: "sh.600812", trend_level: 2, source_path: "secondary-reversal-lecture-0",
+        state: "空多交替", direction: "up", cycle_started_index: 1, origin_index: 0, origin_price: 4,
+        flip_index: 1, flip_known_index: 1, breakout_level: 6, counter_index: 2, counter_price: 4.5,
+        alternation_index: 3, special_bull_recovery: true,
+        confirmation_rule: "positive_n_and_squeeze_after_qualified_b",
+        confirmation_evidence: { regime: "轧空", time_path: true }, counter_source_level: 0 };
+    const points = sample.map((bar, index) => ({ time: bar.time, index, ordinal: 0,
+        kind: index % 2 ? "H" : "L", value: index % 2 ? 6 : 4.5, available_at: bar.time, state: "confirmed" }));
+    try {
+        for (const count of [4, 5]) {
+            const current = { symbol: event.symbol, timeframe: "1d", preview_job: "running", asof: dates[count - 1],
+                bars: sample.slice(0, count), market_bars: sample, market_asof: dates.at(-1), orders: [], audit: [event],
+                markers: [{ id: "buy", time: dates[3], kind: "fill", side: "BUY", price: 5 }],
+                backtest: { strategy: { buy_interval_level: 2 } } };
+            chart.setData(current, { preserveViewport: count > 4 });
+            if (count === 4) chart.chart.timeScale().setVisibleLogicalRange({ from: 0, to: 4 });
+            const range = chart.chart.timeScale().getVisibleLogicalRange();
+            chart.setTheory({ asof: current.asof, shapes: [], events: [],
+                lecture_drawing: { strokes: [{ id: "lecture-0", points: points.slice(0, count) }] } }, true, true);
+            assert.equal(chart.candles.data().length, sample.length);
+            assert.equal(chart.volume.data().length, sample.length);
+            assert.equal(chart.data.bars.length, count);
+            assert.equal(chart.waveProjectionAsOf(), dates[count - 1]);
+            assert.ok(Number(chart.container.dataset.polylinePoints) >= count);
+            assert.equal(chart.tradeMarkerOverlay.markers[0].time, dates[3]);
+            assert.equal(chart.tradeMarkerOverlay.markers[0].side, "BUY");
+            assert.equal(chart.groups.some((group) => group.items.some((item) => item.raw?.lifecycle)), true);
+            assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), range);
+        }
+    } finally {
+        chart.destroy();
+    }
+});
+
+test("progress leaves the viewport on unprocessed market dates and completion keeps the same axis", () => {
+    const chart = chartHarness();
+    try {
+        const market = data.bars;
+        const range = { from: market.length - 20, to: market.length + 2 };
+        chart.chart.timeScale().setVisibleLogicalRange(range);
+        for (const processed of [2, 3]) {
+            const view = { ...data, bars: market.slice(0, processed), market_bars: market,
+                market_asof: market.at(-1).time, asof: market[processed - 1].time,
+                preview_job: "same-job", audit: [], signals: [], trades: [] };
+            chart.setData(view, { preserveViewport: true });
+            chart.setTheory({ asof: view.asof, shapes: [], events: [] }, true, true);
+            assert.equal(chart.candles.data().length, market.length);
+            assert.equal(chart.volume.data().length, market.length);
+            assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), range);
+            assert.equal(chart.waveProjectionAsOf(), view.asof);
+        }
+        chart.setData(data, { preserveViewport: true });
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), range);
+        assert.equal(chart.candles.data().length, market.length);
+    } finally {
+        chart.destroy();
+    }
+});
+
 test("annual history prepends and final complete installation preserve the real SDK viewport", () => {
     const chart = chartHarness();
     try {
@@ -100,6 +164,50 @@ test("annual history prepends and final complete installation preserve the real 
         chart.setData({ ...merged, markers: [] }, { preserveViewport: true });
         chart.chart.resize(803, 500, true);
         assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), shifted);
+    } finally {
+        chart.destroy();
+    }
+});
+
+test("a new backtest prefix cannot retain a viewport beyond its last completed day", () => {
+    const chart = chartHarness();
+    try {
+        chart.chart.timeScale().setVisibleLogicalRange({ from: bars.length - 40, to: bars.length + 6 });
+        const prefix = { ...data, bars: bars.slice(0, 10), asof: bars[9].time };
+        chart.setData(prefix, { preserveViewport: true });
+        chart.chart.resize(801, 500, true);
+        const range = chart.chart.timeScale().getVisibleLogicalRange();
+        assert.ok(range.from <= 9 && range.to >= 0, "the first snapshot must be visible");
+        chart.setData({ ...data, bars: bars.slice(0, 20), asof: bars[19].time }, { preserveViewport: true });
+        chart.chart.resize(802, 500, true);
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), range, "later updates keep the viewport");
+    } finally {
+        chart.destroy();
+    }
+});
+
+test("appended and revised candles preserve the current right-edge window and selection", () => {
+    const chart = chartHarness();
+    try {
+        const range = { from: bars.length - 40.5, to: bars.length + 5.5 };
+        chart.chart.timeScale().setVisibleLogicalRange(range);
+        chart.chart.resize(800, 500, true);
+        const selected = { id: "retained-selection", time: bars.at(-1).time };
+        chart.selected = selected;
+        const lastTime = new Date(`${bars.at(-1).time}T00:00:00Z`);
+        lastTime.setUTCDate(lastTime.getUTCDate() + 1);
+        const revised = bars.map((bar, index) => index === 2 ? { ...bar, volume: bar.volume + 1 } : bar);
+        const appended = { ...bars.at(-1), time: lastTime.toISOString().slice(0, 10) };
+        let replacements = 0;
+        const setData = chart.candles.setData.bind(chart.candles);
+        chart.candles.setData = (...args) => { replacements++; return setData(...args); };
+        chart.setData({ ...data, bars: [...revised, appended] }, { preserveViewport: true });
+        chart.chart.resize(800, 500, true);
+        assert.equal(replacements, 0, "a new trading day must not reinstall the candle series");
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), range);
+        assert.equal(chart.selected, selected);
+        assert.equal(chart.candles.data().at(-1).time, appended.time);
+        assert.equal(chart.volume.data()[2].value, revised[2].volume);
     } finally {
         chart.destroy();
     }
@@ -228,6 +336,30 @@ test("target cleanup while the SDK crosshair is active does not reenter redraw o
     } finally {
         chart.destroy();
     }
+});
+
+test("all four N targets leave the candle price scale and visible time range unchanged", () => {
+    const chart = chartHarness();
+    try {
+        const time = bars[1].time;
+        const levels = ["one_p", "two_t", "five_top", "ten_full"].map((stage, index) => ({
+            stage, name: stage, price: 100 + index * 100, anchor_at: time, available_at: time,
+            ...(index > 1 ? { estimated: true, display_only: true } : {}),
+        }));
+        const selected = { id: "display-n", time, kind: "rule", levels,
+            raw: { event: "n_completed", direction: "up", display_target_eligible: true,
+                display_target_level: 2, time, available_at: time, shape: [{ time: bars[0].time }] } };
+        chart.selected = selected;
+        chart.focusedNTarget = selected;
+        chart.nTargetObservations = [{ item: selected, from: bars[0].time, to: data.asof }];
+        chart.options.levels = true;
+        const range = chart.chart.timeScale().getVisibleLogicalRange();
+        chart.drawLevels();
+        assert.equal(chart.levelLines.length, 4);
+        for (const series of chart.levelLines) assert.equal(series.options().autoscaleInfoProvider(() => ({})), null);
+        assert.ok(chart.targetGuideOverlay.guides.every((guide) => guide.hideWhenPriceOffscreen));
+        assert.deepEqual(chart.chart.timeScale().getVisibleLogicalRange(), range);
+    } finally { chart.destroy(); }
 });
 
 test("locating and retrying a completed result uses its cached job without recalculation", async () => {

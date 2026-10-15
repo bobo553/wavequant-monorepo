@@ -127,6 +127,9 @@ const pendingSignals: AbortSignal[] = [];
 function setupRequests(
     market: (url: URL, signal: AbortSignal) => Promise<Response>,
     catalog?: (url: URL) => Promise<Response> | null,
+    backtest?: (url: URL) => Promise<Response> | null,
+    versionRequest?: () => Promise<Response>,
+    recent: { symbol: string; path: string; status: string; result_valid: boolean }[] = [],
 ) {
     vi.stubGlobal(
         "fetch",
@@ -154,11 +157,14 @@ function setupRequests(
                     })
                 );
             if (url.pathname === "/api/watchlists") return json({ error: "测试不启用账户同步" }, 503);
+            if (url.pathname === "/api/backtest-version") return versionRequest?.() ?? json({ version: "test" });
+            if (["/api/tdx-backtest", "/api/akshare-backtest", "/api/backtest-job"].includes(url.pathname))
+                return backtest?.(url) ?? new Promise<Response>(() => {});
             if (url.pathname.startsWith("/api/market-")) {
                 pendingSignals.push(options.signal);
                 return market(url, options.signal);
             }
-            return json({ active: 0, max_active: 4, jobs: [], strategy_version: "test" });
+            return json({ active: 0, max_active: 4, jobs: [], recent, strategy_version: "test" });
         }),
     );
 }
@@ -190,6 +196,108 @@ afterEach(() => {
 });
 
 describe("real research app annual loading events", () => {
+    it("opening a linked stock with historical results refreshes without awaiting its market snapshot", async () => {
+        const jobs: URL[] = [];
+        setupRequests(
+            async () => new Promise<Response>(() => {}),
+            undefined,
+            (url) => {
+                jobs.push(url);
+                return new Promise<Response>(() => {});
+            },
+            undefined,
+            [{ symbol, path: "/api/tdx-backtest", status: "completed", result_valid: true }],
+        );
+        await startApp();
+        await vi.waitFor(() => expect(jobs).toHaveLength(1));
+        expect(jobs[0]!.pathname).toBe("/api/tdx-backtest");
+        expect(jobs[0]!.searchParams.get("symbol")).toBe(symbol);
+        expect(jobs[0]!.searchParams.get("asof")).toBe(requestedAsOf);
+        expect(element("run-stock-backtest")).toHaveAttribute("data-status", "running");
+        expect(chartState.installs).toHaveLength(0);
+    });
+
+    it("a rejected engine version shows a failed update with its reason before a task exists", async () => {
+        setupRequests(
+            async (url) => (url.searchParams.has("year") ? new Promise<Response>(() => {}) : json(annualPage(2026))),
+            undefined,
+            undefined,
+            async () => json({ error: "策略代码已变更，请重启图表服务后再运行" }, 400),
+        );
+        await startApp();
+        await vi.waitFor(() => expect(chartState.installs).toHaveLength(1));
+        const select = element("symbol-select") as HTMLSelectElement;
+        select.value = otherSymbol;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        await vi.waitFor(() => expect(element("run-stock-backtest")).toHaveAttribute("data-status", "failed"));
+        expect(element("run-stock-backtest")).not.toBeDisabled();
+        expect(element("error")).toHaveTextContent("策略代码已变更");
+    });
+
+    it("selecting a stock starts its update without waiting for annual history or full geometry", async () => {
+        const older = deferred<Response>();
+        const jobs: URL[] = [];
+        const marketRequests: URL[] = [];
+        setupRequests(
+            async (url) => {
+                marketRequests.push(url);
+                return url.searchParams.has("year") ? older.promise : json(annualPage(2026));
+            },
+            undefined,
+            (url) => {
+                jobs.push(url);
+                return new Promise<Response>(() => {});
+            },
+        );
+        await startApp();
+        await vi.waitFor(() => expect(marketRequests).toHaveLength(2));
+        const select = element("symbol-select") as HTMLSelectElement;
+        select.value = otherSymbol;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        await vi.waitFor(() => expect(jobs).toHaveLength(1));
+        expect(jobs[0]!.pathname).toBe("/api/tdx-backtest");
+        expect(jobs[0]!.searchParams.get("symbol")).toBe(otherSymbol);
+        expect(jobs[0]!.searchParams.get("asof")).toBe(requestedAsOf);
+        expect(element("run-stock-backtest")).toHaveAttribute("data-status", "running");
+        expect(marketRequests).toHaveLength(2);
+        expect(element("price-chart")).toHaveAttribute("aria-busy", "true");
+        expect(element("chart-loading-overlay").hidden).toBe(false);
+        older.resolve(json(annualPage(2025)));
+        await Promise.resolve();
+        expect(chartState.installs).toHaveLength(1);
+        expect(element("selected-stock-summary")).toHaveTextContent("贵州茅台");
+    });
+
+    it("an unavailable completed result automatically starts one replacement task", async () => {
+        const { IdleWatchlistBacktests } = await import("../public/watchlist-backtest-queue.js");
+        vi.spyOn(IdleWatchlistBacktests.prototype, "hasCompleted").mockImplementation(
+            (selected: string) => selected === otherSymbol,
+        );
+        vi.spyOn(IdleWatchlistBacktests.prototype, "matchingJobId").mockReturnValue("expired-job");
+        const jobs: URL[] = [];
+        setupRequests(
+            async (url) => (url.searchParams.has("year") ? new Promise<Response>(() => {}) : json(annualPage(2026))),
+            undefined,
+            async (url) => {
+                jobs.push(url);
+                if (url.pathname === "/api/backtest-job") return json({ error: "结果文件已失效" }, 404);
+                return new Promise<Response>(() => {});
+            },
+        );
+        await startApp();
+        await vi.waitFor(() => expect(chartState.installs).toHaveLength(1));
+        const select = element("symbol-select") as HTMLSelectElement;
+        select.value = otherSymbol;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        await vi.waitFor(() => expect(jobs).toHaveLength(2));
+        expect(jobs.map((url) => url.pathname)).toEqual(["/api/backtest-job", "/api/tdx-backtest"]);
+        expect(jobs[1]!.searchParams.get("backtest_job")).not.toBe("expired-job");
+        expect(jobs[1]!.searchParams.get("symbol")).toBe(otherSymbol);
+        expect((element("result-scope") as HTMLSelectElement).value).toBe("tdx-backtest");
+        expect(element("stock-picker-feedback")).toHaveTextContent("正在自动更新");
+        expect(element("error").hidden).toBe(true);
+    });
+
     it("publishes the first year interactively, prepends history and installs complete geometry once", async () => {
         const older = deferred<Response>();
         const complete = deferred<Response>();

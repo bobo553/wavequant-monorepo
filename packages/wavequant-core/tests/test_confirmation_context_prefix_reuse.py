@@ -12,11 +12,13 @@ from wavequant.domain.market_structure.trend_confirmation import (
     SAME_LEVEL_KEY_BREAK,
     SOURCE_CYCLE_CONFIRMATION,
     ConfirmationContext,
+    _SuccessfulConfirmations,
     prepare_confirmation_context,
     qualify_downtrend,
     qualify_uptrend,
 )
 from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
 
 
 Clock = Literal['integer', 'date', 'mixed']
@@ -290,3 +292,60 @@ def test_a_projected_context_is_still_bound_to_its_exact_qualification_cutoff() 
     for cutoff in (6, 8):
         with pytest.raises(ValueError, match='context'):
             qualify_uptrend(source, source[1], 1, None, bars, cutoff, context=projected)
+
+
+@pytest.mark.parametrize('up', (False, True))
+def test_terminal_failure_is_reused_only_while_its_actual_source_prefix_is_unchanged(
+    up: bool, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bars, source = _sample(clock='integer', up=up)
+    bars[6] = (replace(bars[6], high=12., close=11.5) if up else
+               replace(bars[6], low=18., close=18.5))
+    bars[7] = replace(bars[7], low=4.) if up else replace(bars[7], high=26.)
+    owner = _MarketRangeIndex.build(tuple(bars))
+    assert owner is not None
+    qualify = qualify_uptrend if up else qualify_downtrend
+
+    def indexed(end: int) -> tuple[tuple[Bar, ...], ConfirmationContext]:
+        prefix = owner.bars[:end+1]
+        context = prepare_confirmation_context(source, prefix, end,
+            _market_index=_MarketPrefixIndex(owner, prefix))
+        return prefix, context
+
+    prefix, context = indexed(7)
+    assert qualify(source, source[1], 1, None, prefix, 7, context=context) is None
+    reuse = owner.confirmation_reuse
+    assert isinstance(reuse, _SuccessfulConfirmations) and reuse.rejections
+    prefix, context = indexed(8)
+    with monkeypatch.context() as guarded:
+        def no_rescan(*args: object, **kwargs: object) -> None:
+            raise AssertionError('an unchanged terminal failure was scanned again')
+        guarded.setattr(owner, 'first_extreme', no_rescan)
+        assert qualify(source, source[1], 1, None, prefix, 8, context=context) is None
+
+    source[3]['available_at'] = 5
+    prefix, context = indexed(8)
+    actual = qualify(source, source[1], 1, None, prefix, 8, context=context)
+    expected = qualify(source, source[1], 1, None, prefix, 8)
+    assert actual == expected and actual is not None
+    assert _evidence(actual, 'confirmed_by')['index'] == 6
+
+
+@pytest.mark.parametrize('clock', ('integer', 'date'))
+def test_cross_day_reference_parsing_keeps_shorter_cutoffs_and_source_revisions(clock: Clock) -> None:
+    bars, source = _sample(clock=clock)
+    owner = _MarketRangeIndex.build(tuple(bars))
+    assert owner is not None
+    for end in (8, 2, 6, 4, 8):
+        prefix = owner.bars[:end+1]
+        actual = prepare_confirmation_context(source, prefix, end,
+            _market_index=_MarketPrefixIndex(owner, prefix))
+        expected = prepare_confirmation_context(source, prefix, end)
+        assert actual.references == expected.references and actual.ordered == expected.ordered
+    source[2].update(value=10.5, label='revised', available_at=7 if clock == 'integer' else '2024-01-08')
+    for end in (6, 8):
+        prefix = owner.bars[:end+1]
+        actual = prepare_confirmation_context(source, prefix, end,
+            _market_index=_MarketPrefixIndex(owner, prefix))
+        expected = prepare_confirmation_context(source, prefix, end)
+        assert actual.references == expected.references and actual.ordered == expected.ordered

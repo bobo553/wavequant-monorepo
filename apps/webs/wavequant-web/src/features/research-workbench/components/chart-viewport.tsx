@@ -11,6 +11,11 @@ export function ChartViewport(): JSX.Element {
                 </button>
                 <span id="candle-copy-feedback" className="candle-copy-feedback" role="status" aria-live="polite" />
             </div>
+            <section id="chart-preparing-state" className="chart-preparing-state" role="status" hidden>
+                <strong>正在准备当前股票的行情与回测</strong>
+                <p id="chart-preparing-message">正在读取日线，行情到达后自动显示。</p>
+                <p>你可以切换股票或调整设置，后台任务会继续计算。</p>
+            </section>
             <div
                 id="price-chart"
                 className="price-chart"
@@ -30,16 +35,54 @@ export function ChartViewport(): JSX.Element {
                         等待行情数据
                     </output>
                 </div>
-                <input
-                    id="chart-position-slider"
-                    type="range"
-                    min="0"
-                    max="0"
-                    step="any"
-                    defaultValue="0"
-                    aria-controls="price-chart"
-                    disabled
-                />
+                <div id="chart-position-timeline">
+                    <div className="chart-position-track">
+                        <div className="chart-position-rail" aria-hidden="true">
+                            <div className="chart-backtest-track">
+                                <span />
+                            </div>
+                            <div className="chart-eligibility-track" data-eligibility-segments="" />
+                        </div>
+                        <input
+                            id="chart-position-slider"
+                            type="range"
+                            min="0"
+                            max="0"
+                            step="any"
+                            defaultValue="0"
+                            aria-controls="price-chart"
+                            aria-describedby="chart-position-legend"
+                            disabled
+                        />
+                    </div>
+                    <div id="chart-position-legend" className="chart-position-legend">
+                        <span>
+                            <i className="chart-progress-key" aria-hidden="true" />
+                            <span data-backtest-progress-label="">等待回测</span>
+                        </span>
+                        <span>
+                            <i className="chart-pending-key" aria-hidden="true" />
+                            未回测
+                        </span>
+                        <span>
+                            <i className="chart-eligibility-key" aria-hidden="true" />
+                            <span data-eligibility-count="">资格区间 0 段</span>
+                            <button
+                                id="copy-eligibility-ranges"
+                                type="button"
+                                disabled
+                                data-copy-eligibility=""
+                                data-feedback-id="eligibility-copy-feedback"
+                                aria-label="复制当前股票的全部已显示资格区间"
+                                title="复制资格区间及确认、结束日期"
+                            >
+                                复制
+                            </button>
+                            <span id="eligibility-copy-feedback" role="status" aria-live="polite" />
+                        </span>
+                        <span>拖动定位图窗中心</span>
+                    </div>
+                </div>
             </div>
             <div id="chart-loading-overlay" className="chart-loading-overlay" role="status" aria-live="polite" hidden>
                 <span className="chart-loading-spinner" aria-hidden="true" />
@@ -59,17 +102,17 @@ export function ChartViewport(): JSX.Element {
                         最新截面
                     </span>
                 </div>
-                <div className="replay-controls">
+                <div id="replay-controls" className="replay-controls" hidden>
                     <button id="previous" aria-label="前一根K线">
                         ‹
                     </button>
-                    <input id="replay-slider" type="range" min="0" max="0" defaultValue="0" aria-label="回放日期" />
+                    <input id="replay-slider" type="hidden" min="0" max="0" defaultValue="0" />
                     <button id="next" aria-label="后一根K线">
                         ›
                     </button>
                     <button id="latest">到最新</button>
                 </div>
-                <p>按收盘截面回放 · 只呈现当时已确认的信息 · 不模拟盘中高低先后</p>
+                <p>股票回测区间固定为 2018-01-01 至最新交易日 · 图表可查看历史行情</p>
             </div>
         </>
     );

@@ -129,7 +129,7 @@ const apiCliArguments = (...extra) => [
     "wavequant-api",
     "python",
     "-m",
-    "wavequant_api.cli",
+    extra.includes("--api-only") ? "wavequant_api.dev" : "wavequant_api.cli",
     "--root",
     resultsRoot,
     ...(tdxRoot ? ["--tdx-root", tdxRoot] : []),

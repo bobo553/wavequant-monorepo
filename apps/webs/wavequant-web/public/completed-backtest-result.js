@@ -1,8 +1,10 @@
 /** Read a finished job without submitting another calculation. */
-export async function reuseCompletedBacktest({ tasks, path, params, version = "", jobId, fetchJob }) {
+export async function reuseCompletedBacktest({ tasks, path, params, version = "", jobId, fetchJob, signal }) {
+    signal?.throwIfAborted();
     const cached = tasks.find(path, params, version);
     if (cached?.status === "completed" || cached?.status === "running") return cached;
     const response = await fetchJob(jobId);
+    signal?.throwIfAborted();
     const result = response?.result;
     if (
         response?.status !== "completed" ||
@@ -12,7 +14,7 @@ export async function reuseCompletedBacktest({ tasks, path, params, version = ""
         !result?.backtest ||
         result.backtest.status === "data_unavailable"
     ) {
-        const error = new Error("已完成的回测结果不可读取，请手动重新运行");
+        const error = new Error("已完成的回测结果不可读取，需要更新");
         error.code = "BACKTEST_COMPLETED_RESULT_UNAVAILABLE";
         throw error;
     }

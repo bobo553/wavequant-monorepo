@@ -3,18 +3,84 @@ import test from "node:test";
 
 import {
     BACKTEST_STATUS_STALE_MS,
+    backtestProgress,
     adoptServerBacktestHistory,
     expiredBacktestSnapshot,
     formatBacktestElapsed,
     formatBacktestProgress,
+    formatBacktestStage,
     historicalBacktestStatuses,
     runningBacktestStatuses,
     selectedBacktestAction,
     selectedBacktestButton,
+    selectedBacktestStatus,
+    selectedRunningBacktestJob,
     visibleWatchlistBacktestState,
 } from "../public/backtest-job-status.js";
 import { StockBacktestTasks } from "../public/stock-backtest-tasks.js";
 import { IdleWatchlistBacktests, watchlistBacktestRequest } from "../public/watchlist-backtest-queue.js";
+
+test("selected stock exposes background progress before a page request is attached", () => {
+    const running = { job: "jiuyang-running", symbol: "sz.002242", path: "/api/tdx-backtest", status: "running",
+        processed_sessions: 850, total_sessions: 2118, processed_asof: "2021-07-01" };
+    const jobs = [
+        { ...running, job: "old-completed", status: "completed" },
+        { ...running, job: "another-stock", symbol: "sh.600812" },
+        running,
+    ];
+    const selected = selectedRunningBacktestJob(jobs, "sz.002242", "tdx");
+    assert.equal(selected, running);
+    assert.match(formatBacktestStage(selected), /已处理850\/2118个交易日/);
+    assert.match(formatBacktestStage(selected), /截至2021-07-01/);
+    assert.match(formatBacktestStage(selected), /交易日进度 40\.1%$/);
+});
+
+test("selected progress cannot leak from another source or survive a completed job", () => {
+    const running = { job: "jiuyang-running", symbol: "sz.002242", path: "/api/tdx-backtest", status: "running" };
+    assert.equal(selectedRunningBacktestJob([running], "sz.002242", "akshare"), null);
+    assert.equal(selectedRunningBacktestJob([running], "sh.600812", "tdx"), null);
+    assert.equal(selectedRunningBacktestJob([running], "sz.002242", null), null);
+    assert.equal(selectedRunningBacktestJob([{ ...running, status: "completed" }], "sz.002242", "tdx"), null);
+    assert.equal(selectedRunningBacktestJob([], "sz.002242", "tdx"), null);
+});
+
+test("progress presents the actual stage even while the overall percentage stays unchanged", () => {
+    assert.equal(formatBacktestStage({ progress_stage: "一级趋势", progress_percent: 35 }), "当前步骤：一级趋势 · 35%");
+    assert.equal(formatBacktestStage({ progress_stage: "二级趋势", progress_percent: 35 }), "当前步骤：二级趋势 · 35%");
+    assert.equal(formatBacktestStage({ progress_stage: "读取行情", progress_percent: 0 }), "当前步骤：读取行情 · 0%");
+    assert.equal(formatBacktestStage({ progress_stage: "  ", progress_percent: 100 }), "");
+    assert.equal(formatBacktestStage({ progress_stage: null, progress_percent: "35" }), "");
+    assert.equal(formatBacktestStage(null), "");
+});
+
+test("market progress uses processed sessions without the overall task weight", () => {
+    const job = { progress_stage: "变化联动 · 已处理57/2118个交易日 · 截至2020-01-01", progress_percent: 35 };
+    assert.deepEqual(backtestProgress(job), { percent: 2.7, scope: "sessions" });
+    assert.match(formatBacktestStage(job), /交易日进度 2\.7%$/);
+    assert.equal(backtestProgress({ ...job, progress_stage: "已处理2118/2118个交易日" }).percent, 100);
+    assert.equal(backtestProgress({ ...job, progress_stage: "已处理99999/100000个交易日" }).percent, 99.9);
+    assert.equal(backtestProgress({ ...job, progress_stage: "已处理57/0个交易日" }), null);
+    assert.equal(backtestProgress({ ...job, progress_stage: "已处理58/57个交易日" }), null);
+});
+
+test("completed snapshot counters take precedence over ahead-of-chart stage text", () => {
+    const job = { processed_sessions: 57, total_sessions: 2118, processed_asof: "2020-01-01",
+        progress_stage: "已处理500/2118个交易日", progress_percent: 60 };
+    assert.deepEqual(backtestProgress(job), { percent: 2.7, scope: "sessions" });
+    assert.match(formatBacktestStage(job), /57\/2118/);
+    assert.match(formatBacktestStage(job), /2020-01-01/);
+    assert.doesNotMatch(formatBacktestStage(job), /500\/2118/);
+});
+
+test("selected update and failure cannot be masked by historical watchlist metadata", () => {
+    assert.equal(selectedBacktestStatus({ fallback: "historical", requestStatus: "updating" }), "updating");
+    assert.equal(selectedBacktestStatus({ fallback: "historical", requestStatus: "updating", taskStatus: "running" }), "running");
+    assert.equal(selectedBacktestStatus({ fallback: "historical", requestStatus: "failed" }), "failed");
+    assert.equal(selectedBacktestStatus({ fallback: "historical", taskStatus: "failed" }), "failed");
+    assert.equal(selectedBacktestStatus({ fallback: "historical", requestStatus: "completed", taskStatus: "completed" }), "completed");
+    assert.equal(selectedBacktestStatus({ fallback: "historical", taskStatus: "running", unavailable: true }), "unknown");
+    assert.equal(selectedBacktestStatus({ fallback: "historical" }), "historical");
+});
 
 test("selecting a stale backtest starts a fresh calculation even from the symbol selector", () => {
     assert.deepEqual(selectedBacktestAction({ historical: true, canBacktest: true, autoBacktest: false }), {

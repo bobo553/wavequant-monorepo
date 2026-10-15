@@ -327,6 +327,18 @@ test("distant offscreen targets keep separate edge labels without drawing false 
     assert.ok(onscreen.segments.some(({ dash }) => dash.length));
 });
 
+test("N target guides disappear outside the pane instead of pinning estimates to an edge", () => {
+    const guide = { start: item.time, end: null, stage: "five_top", name: "五顶（预估叠箱）", price: 15,
+        fixedAnchor: true, hideWhenPriceOffscreen: true, hideWhenAnchorOffscreen: true, targetState: "预估叠箱" };
+    for (const y of [-100, 250]) {
+        const result = renderGuides([guide], { y: () => y });
+        assert.deepEqual(result.labels, []);
+        assert.deepEqual(result.segments, []);
+    }
+    assert.deepEqual(renderGuides([guide], { x: -30, y: () => 80 }).labels, []);
+    assert.match(renderGuides([guide], { x: 100, y: () => 80 }).labels[0].text, /预估/);
+});
+
 test("a C extension outside the price axis still shows its frozen state without a false line", () => {
     const { labels, segments } = renderGuides(
         [

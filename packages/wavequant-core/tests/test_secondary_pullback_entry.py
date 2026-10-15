@@ -4,7 +4,10 @@ from datetime import datetime, timedelta
 from typing import NotRequired, TypedDict, cast
 import unittest
 
+import pytest
+
 from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.trend_market_index import _MarketRangeIndex
 from wavequant.domain.strategies.secondary_pullback_entry import (
     DIRECT_PROMOTION_RULE,
     SecondaryPullbackCandidate,
@@ -74,6 +77,58 @@ def candidate_fixture() -> tuple[list[Bar], SecondaryPullbackCandidate]:
     candidates = secondary_pullback_candidates(bars, drawing, second, dates, 10, first=first_fixture(second))
     assert len(candidates) == 1
     return bars, candidates[0]
+
+
+def test_indexed_secondary_window_matches_each_causal_prefix() -> None:
+    rows, drawing, second, dates = fixture()
+    bars = tuple(rows)
+    owner = _MarketRangeIndex(bars)
+    first = first_fixture(second)
+    for now in range(len(bars)):
+        expected = secondary_pullback_candidates(bars, drawing, second, dates, now, first=first)
+        assert secondary_pullback_candidates(bars, drawing, second, dates, now,
+            first=first, _market_index=owner) == expected
+        assert secondary_pullback_candidates(bars[:now + 1], drawing, second, dates, now, first=first) == expected
+
+
+@pytest.mark.parametrize('change', ('origin_break', 'new_high', 'equal_bottom', 'future_break'))
+def test_secondary_window_pruning_keeps_strict_prices_and_first_bottom(change: str) -> None:
+    rows, drawing, second, dates = fixture()
+    if change == 'origin_break':
+        rows[9] = replace(rows[9], low=4.)
+    elif change == 'new_high':
+        rows[9] = replace(rows[9], high=6.8)
+    elif change == 'equal_bottom':
+        rows[9] = replace(rows[9], low=rows[10].low)
+    else:
+        rows[11] = replace(rows[11], low=4., high=7.)
+    bars = tuple(rows)
+    first = first_fixture(second)
+    expected = secondary_pullback_candidates(bars, drawing, second, dates, 10, first=first)
+    assert secondary_pullback_candidates(bars, drawing, second, dates, 10,
+        first=first, _market_index=_MarketRangeIndex(bars)) == expected
+    assert bool(expected) == (change == 'future_break')
+
+
+def test_quiet_day_still_retires_broken_secondary_window() -> None:
+    bars, candidate = candidate_fixture()
+    bars[11] = replace(bars[11], open=5., close=5., low=4., volume=10)
+    events, proofs = secondary_pullback_history(bars, {10: (candidate,)})
+    assert proofs == {}
+    invalidated = [event for event in events if event['event'] == 'secondary_pullback_invalidated']
+    assert len(invalidated) == 1
+    assert invalidated[0]['reason'] == 'secondary_origin_low_broken'
+
+
+def test_closed_selected_interval_does_not_emit_recovery_or_skip_invalidation() -> None:
+    bars, candidate = candidate_fixture()
+    days = (False,) * len(bars)
+    _, proofs = secondary_pullback_history(bars, {10: (candidate,)}, entry_days=days)
+    assert proofs == {}
+    bars[11] = replace(bars[11], low=4.)
+    events, proofs = secondary_pullback_history(bars, {10: (candidate,)}, entry_days=days)
+    assert proofs == {}
+    assert any(event['event'] == 'secondary_pullback_invalidated' for event in events)
 
 
 class SecondaryPullbackEntryTests(unittest.TestCase):

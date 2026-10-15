@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+export const BuyIntervalLevelSchema = z.enum(["1", "2", "3"]).default("2");
+export type TBuyIntervalLevel = z.infer<typeof BuyIntervalLevelSchema>;
+
 export const WatchlistSnapshotSchema = z.object({
     schemaVersion: z.literal(1),
     groups: z
@@ -37,6 +40,7 @@ export const WatchlistSettingsSchema = z.object({
         net_reward_risk_filter: z.enum(["true", "false"]),
         shallow_base_breakout_enabled: z.enum(["true", "false"]),
         n_target_trend_confirmation_enabled: z.enum(["true", "false"]).default("false"),
+        buy_interval_level: BuyIntervalLevelSchema,
         initial_capital: z
             .string()
             .refine((value) => Number.isFinite(Number(value)) && Number(value) > 0 && Number(value) <= 1e9),

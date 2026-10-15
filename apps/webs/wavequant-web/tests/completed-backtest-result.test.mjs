@@ -4,6 +4,24 @@ import test from "node:test";
 import { reuseCompletedBacktest } from "../public/completed-backtest-result.js";
 import { StockBacktestTasks } from "../public/stock-backtest-tasks.js";
 
+test("a late completed-result response cannot be adopted after changing selection", async () => {
+    let deliver;
+    const response = new Promise((resolve) => { deliver = resolve; });
+    const changes = [];
+    const tasks = new StockBacktestTasks({ run: async () => ({}), onChange: (task) => changes.push(task) });
+    const params = { symbol: "sz.000678", asof: "2026-10-12" };
+    const controller = new AbortController();
+    const reading = reuseCompletedBacktest({
+        tasks, path: "/api/tdx-backtest", params, version: "v1", jobId: "old-job",
+        fetchJob: () => response, signal: controller.signal,
+    });
+    controller.abort();
+    deliver({ status: "completed", result: { ...params, result_scope: "stock", backtest: {} } });
+    await assert.rejects(reading, { name: "AbortError" });
+    assert.equal(tasks.tasks.size, 0);
+    assert.deepEqual(changes, []);
+});
+
 test("selecting a completed stock reads its existing job without submitting a new backtest", async () => {
     let calculations = 0;
     const tasks = new StockBacktestTasks({ run: async () => (++calculations, {}) });

@@ -14,6 +14,7 @@ from wavequant.domain.strategies.integrated_strategy import (
 )
 from wavequant.domain.strategies.n_consolidation import consolidation_gap
 from wavequant.domain.strategies.hierarchical_entry import EntryContext
+from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse
 from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
     wave_confirmation_state,
@@ -43,8 +44,16 @@ def resolve_consolidation_entries(
     minute_loader: Callable[[Bar], list[MinuteBar]] | None,
     *,
     daily_fallback: bool,
+    stage: Callable[[str], None] | None = None,
+    history_reuse: BacktestHistoryReuse | None = None,
+    only_index: int | None = None,
+    session_cache: dict | None = None,
+    prepared_pivots: tuple | None = None,
+    prepared_contexts: dict[int, tuple[EntryContext, ...]] | None = None,
 ) -> tuple[SystemResult, dict[tuple[str, int], EntryExecution], list[dict[str, object]]]:
     """Keep daily-close candidates when no earlier fully verified minute decision exists."""
+    if history_reuse is not None:
+        history_reuse.require_input(bars, strategy)
     signals = list(generated.signals)
     audit = list(generated.audit)
     executions: dict[tuple[str, int], EntryExecution] = {}
@@ -61,20 +70,57 @@ def resolve_consolidation_entries(
         for e in audit
         if e["event"] == "wave_continuation_ready"
     ]
-    snapshots, epochs = pivot_history(bars, strategy)[:2] if wave_candidates else ({}, {})
+    snapshots, epochs = {}, {}
+    if wave_candidates:
+        pivots = prepared_pivots if prepared_pivots is not None else (
+            history_reuse.pivot(bars, strategy) if history_reuse is not None else None)
+        if pivots is None:
+            pivots = pivot_history(bars, strategy)
+            if history_reuse is not None:
+                history_reuse.save_pivot(bars, strategy, pivots)
+        snapshots, epochs = pivots[:2]
     wave_context_history: dict[int, tuple[EntryContext, ...]] = {}
-    if wave_candidates and strategy.buy_point_definition == "whole_flip_wave_v3":
+    if prepared_contexts is not None:
+        wave_context_history = prepared_contexts
+    elif wave_candidates and strategy.buy_point_definition == "whole_flip_wave_v3":
         from wavequant.domain.strategies.chart_entry_history import chart_entry_history
 
-        wave_context_history = chart_entry_history(bars, audit=audit,
-            n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)[0]
+        if history_reuse is not None and history_reuse.hierarchy(
+                bars, n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled) is None:
+            from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
+
+            daily_levels = hierarchical_history(
+                bars, decline_sink={}, _checkpoint_reuse=history_reuse,
+                n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)
+            history_reuse.save_hierarchy(bars, strategy, daily_levels)
+
+        contexts = history_reuse.chart(bars, strategy, audit) if history_reuse is not None else None
+        if contexts is None and history_reuse is not None:
+            contexts = history_reuse.refresh_chart(bars, strategy, audit)
+        if contexts is None:
+            contexts = (chart_entry_history(bars, audit=audit,
+                n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)
+                if history_reuse is None else chart_entry_history(bars, audit=audit,
+                    n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled,
+                    shallow_candidate_sink={} if strategy.shallow_base_breakout_enabled else None,
+                    combined_candidate_sink={} if strategy.combined_a_entry_enabled else None,
+                    secondary_pullback_sink={} if strategy.secondary_pullback_entry_enabled else None,
+                    _history_reuse=history_reuse))
+            if history_reuse is not None:
+                history_reuse.save_chart(bars, strategy, audit, contexts)
+        wave_context_history = contexts[0]
     daily_waves = {e["bar_index"]: e for e in audit if e["event"] == "long_signal" and e.get("wave_entry_path")}
-    consumed_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
+    consumed_waves: dict[tuple[int, int, int], tuple[str, float]] = (
+        session_cache.setdefault('consumed_waves', {}) if session_cache is not None else {})
     # Every minute prefix takes all earlier bars from this fixed full-history
     # input. The strategy may therefore reuse observations ending before the
     # current session across later sessions as well as later minutes.
-    chart_history_cache: dict = {"source_bars": tuple(bars)}
+    chart_history_cache: dict = (session_cache.setdefault('chart', {"source_bars": tuple(bars)})
+        if session_cache is not None else {"source_bars": tuple(bars)})
+    if stage is not None: stage('核验分钟入场')
     for i, bar in enumerate(bars):
+        if only_index is not None and i != only_index:
+            continue
         preceding_daily = daily_waves.get(i - 1)
         if preceding_daily is not None:
             key = (preceding_daily["attack"], preceding_daily["wave_a_high_index"], preceding_daily["wave_b_low_index"])
@@ -171,6 +217,7 @@ def resolve_consolidation_entries(
                     wave_eligible.append(setup)
         if not eligible and not wave_eligible:
             continue
+        if stage is not None: stage(f'核验分钟入场 · {bar.timestamp.date().isoformat()}')
         try:
             minute = minute_loader(bar) if minute_loader is not None else None
             if minute is None:
@@ -227,7 +274,8 @@ def resolve_consolidation_entries(
                 continue
             attempted.add(observation)
             replay = (
-                generate_system_signals(prefix, strategy, chart_history_cache=chart_history_cache)
+                generate_system_signals(prefix, strategy, chart_history_cache=chart_history_cache,
+                    _minute_history_reuse=history_reuse)
                 if strategy.buy_point_definition == "whole_flip_wave_v3"
                 else generate_system_signals(prefix, strategy)
             )

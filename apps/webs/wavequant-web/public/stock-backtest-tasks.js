@@ -2,9 +2,10 @@ import { backtestArgumentsKey } from "./watchlist-backtest-queue.js";
 
 /** Keeps a stock's calculation alive when the visible chart changes. */
 export class StockBacktestTasks {
-    constructor({ run, onChange, createJobId = () => crypto.randomUUID() }) {
-        Object.assign(this, { run, onChange, createJobId });
+    constructor({ run, onChange, createJobId = () => crypto.randomUUID(), maxCompleted = 8 }) {
+        Object.assign(this, { run, onChange, createJobId, maxCompleted });
         this.tasks = new Map();
+        this.chains = new Map();
     }
 
     find(path, params, version = "") {
@@ -15,12 +16,11 @@ export class StockBacktestTasks {
         const key = JSON.stringify([version, backtestArgumentsKey(path, params)]);
         const previous = this.tasks.get(key);
         if (previous?.status === "running" || previous?.status === "completed") return previous;
-        if (this.adoptedKey && this.adoptedKey !== key) this.tasks.delete(this.adoptedKey);
         const task = {
             key,
             version,
             path,
-            params: { ...params, backtest_job: jobId || this.createJobId() },
+            params: { ...params, ...(version ? { strategy_version: version } : {}), backtest_job: jobId || this.createJobId() },
             symbol: params.symbol,
             status: "completed",
             message: "回测已完成",
@@ -31,21 +31,56 @@ export class StockBacktestTasks {
             promise: Promise.resolve(result),
         };
         this.tasks.set(key, task);
-        this.adoptedKey = key;
+        this.pruneCompleted();
         this.onChange?.(task);
         return task;
+    }
+
+    invalidateCompleted() {
+        // In-flight workers retain their symbol lock until they actually finish.
+        for (const [key, task] of this.tasks)
+            if (task.status !== "running") this.tasks.delete(key);
+    }
+
+    pruneCompleted() {
+        const completed = [...this.tasks.values()].filter((task) => task.status === "completed")
+            .sort((left, right) => right.finishedAt - left.finishedAt);
+        for (const task of completed.slice(this.maxCompleted)) this.tasks.delete(task.key);
+    }
+
+    supersede(task) {
+        if (!task) return;
+        task.status = "superseded";
+        task.finishedAt = Date.now();
+        task.error = Object.assign(new Error("回测设置已更新，等待任务已替换为最新设置"), {
+            code: "BACKTEST_REQUEST_SUPERSEDED",
+        });
+        this.tasks.delete(task.key);
+        task.reject(task.error);
+        this.onChange?.(task);
     }
 
     start(path, params, { version = "", force = false, jobId } = {}) {
         const key = JSON.stringify([version, backtestArgumentsKey(path, params)]);
         const previous = this.tasks.get(key);
-        if (previous?.status === "running" || (previous && !force)) return previous;
-        if (this.adoptedKey === key) this.adoptedKey = null;
+        const symbolKey = params.symbol.toLowerCase();
+        const chain = this.chains.get(symbolKey);
+        if (previous?.status === "running" || (previous?.status === "completed" && !force)) {
+            if (chain?.pending && chain.pending !== previous) {
+                this.supersede(chain.pending);
+                chain.pending = null;
+            }
+            return previous;
+        }
+        // A changed strategy may not reuse this stock's old result, even after switching back.
+        for (const [oldKey, task] of this.tasks)
+            if (task.symbol.toLowerCase() === symbolKey && task.version !== version && task.status !== "running")
+                this.tasks.delete(oldKey);
         const task = {
             key,
             version,
             path,
-            params: { ...params, backtest_job: jobId || this.createJobId() },
+            params: { ...params, ...(version ? { strategy_version: version } : {}), backtest_job: jobId || this.createJobId() },
             symbol: params.symbol,
             status: "running",
             message: "正在运行策略并生成成交账本…",
@@ -53,9 +88,30 @@ export class StockBacktestTasks {
             result: null,
             error: null,
         };
+        task.promise = new Promise((resolve, reject) => Object.assign(task, { resolve, reject }));
+        // Selection can change before its caller awaits this task.
+        task.promise.catch(() => {});
         this.tasks.set(key, task);
+        if (chain) {
+            this.supersede(chain.pending);
+            chain.pending = task;
+            task.queued = true;
+            task.waitingForJob = chain.active.params.backtest_job;
+            task.message = "该股票正在回测，结束后仅处理最新设置，并优先读取缓存。";
+            this.onChange?.(task);
+        } else {
+            const next = { active: task, pending: null };
+            this.chains.set(symbolKey, next);
+            this.execute(task, symbolKey, next);
+        }
+        return task;
+    }
+
+    execute(task, symbolKey, chain) {
+        task.queued = false;
+        task.waitingForJob = null;
         this.onChange?.(task);
-        task.promise = Promise.resolve()
+        void Promise.resolve()
             .then(() => this.run(task, (message) => {
                 if (task.message === message) return;
                 task.message = message;
@@ -65,17 +121,24 @@ export class StockBacktestTasks {
                 task.status = "completed";
                 task.result = result;
                 task.finishedAt = Date.now();
+                this.pruneCompleted();
                 this.onChange?.(task);
-                return result;
+                task.resolve(result);
             }, (error) => {
                 task.status = "failed";
                 task.error = error;
                 task.finishedAt = Date.now();
                 this.onChange?.(task);
-                throw error;
+                task.reject(error);
+            })
+            .finally(() => {
+                const next = chain.pending;
+                chain.pending = null;
+                if (next) {
+                    chain.active = next;
+                    if (task.version !== next.version) this.tasks.delete(task.key);
+                    this.execute(next, symbolKey, chain);
+                } else this.chains.delete(symbolKey);
             });
-        // A stock may be left before its caller awaits the result.
-        task.promise.catch(() => {});
-        return task;
     }
 }

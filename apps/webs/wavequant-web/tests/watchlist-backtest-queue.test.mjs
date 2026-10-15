@@ -18,6 +18,23 @@ test("watchlist N target option defaults off and enabled jobs cannot reuse disab
     assert.notEqual(backtestArgumentsKey(off.path, off.params), backtestArgumentsKey(on.path, on.params));
 });
 
+test("watchlist buy intervals default to level two and isolate each level in request identity", () => {
+    const member = { symbol: "sz.000678", asof: "2026-09-25" };
+    for (const source of ["akshare", "tdx"]) {
+        const context = { run: "example", variant: "lecture_v3", source };
+        const defaultRequest = watchlistBacktestRequest(member, context);
+        const requests = ["1", "2", "3"].map((buy_interval_level) =>
+            watchlistBacktestRequest(member, { ...context, buy_interval_level }),
+        );
+        assert.equal(defaultRequest.params.buy_interval_level, "2");
+        assert.deepEqual(defaultRequest, requests[1]);
+        const keys = requests.map(({ path, params }) => backtestArgumentsKey(path, params));
+        assert.equal(new Set(keys).size, 3);
+        const { buy_interval_level, ...oldParams } = defaultRequest.params;
+        assert.equal(backtestArgumentsKey(defaultRequest.path, oldParams), keys[1]);
+    }
+});
+
 const result = (member) => ({
     symbol: member.symbol,
     asof: member.asof,

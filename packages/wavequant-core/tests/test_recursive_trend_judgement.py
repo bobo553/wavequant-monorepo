@@ -14,7 +14,7 @@ from wavequant.domain.market_structure.lecture_trend import reversal_trends
 from wavequant.domain.market_structure.secondary_trend import secondary_trends
 from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
 from wavequant.domain.market_structure.trend_judgement import TrendJudgement, judge_trend
-from wavequant.domain.market_structure.trend_lines import trend_lines
+from wavequant.domain.market_structure.trend_lines import _TrendJudgementCache, trend_lines
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies import hierarchical_entry
 
@@ -388,20 +388,22 @@ def test_real_history_recurses_over_geometry_while_returning_only_strategy_quali
     source_contracts: dict[tuple[int, int], list[dict[str, object]]] = {}
     judgements: dict[tuple[int, int], list[dict[str, object]]] = {}
 
-    def observe(points: Sequence[Mapping[str, object]], *, trend_level: int = 1,
-                asof: int | str | None = None) -> TrendJudgement:
+    original = _TrendJudgementCache.judge
+
+    def observe(cache: _TrendJudgementCache, points: Sequence[Mapping[str, object]], *, path: str, trend_level: int = 1,
+                asof: int | str | None = None, _owned_source: bool = False) -> TrendJudgement:
         assert type(asof) is int
         sources[(asof, trend_level)] = _geometry(points)
         source_contracts[(asof, trend_level)] = _structure(points)
         if trend_level > 1:
             assert all('trend_confirmation' not in point and 'incoming_trend_confirmation' not in point
                        for point in points)
-        result = judge_trend(points, trend_level=trend_level, asof=asof)
+        result = original(cache, points, path=path, trend_level=trend_level, asof=asof, _owned_source=_owned_source)
         judgements[(asof, trend_level)] = _structure(result.points)
         return result
 
     # 只记录真实判断入口，不替换计算结果或折线来源。
-    with patch('wavequant.domain.strategies.hierarchical_entry.judge_trend', side_effect=observe):
+    with patch.object(_TrendJudgementCache, 'judge', observe):
         qualified, epochs = hierarchical_entry.hierarchical_history(bars, structure_sink=structures)
     # 真实逐日折线的来源发生位置比图008点数组偏移1；确认仍取两类证据齐全首日。
     golden = ((3, 0, 'L', 10, 7), (10, 0, 'H', 45, 14), (15, 0, 'L', 24, 19))

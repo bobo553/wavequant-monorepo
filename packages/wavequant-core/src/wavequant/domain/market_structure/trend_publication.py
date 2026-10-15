@@ -8,9 +8,12 @@ from math import isfinite
 from typing import TypeAlias, cast
 
 from ..models.model import Bar
-from .trend_confirmation import ConfirmationContext, prepare_confirmation_context, qualify_downtrend, qualify_uptrend
+from .trend_confirmation import (
+    ConfirmationContext, _PrefixSessions, prepare_confirmation_context, qualify_downtrend, qualify_uptrend,
+)
 from .n_trend_confirmation import N_TARGET_CONFIRMATION, is_n_target_reversal, qualified_n_source
 from .hierarchical_confirmation import session_date
+from .trend_market_index import _MarketPrefixIndex
 
 Moment: TypeAlias = int | str
 LEG_CONFIRMATION_POLICY = 'two_routes_each_direction_v108'
@@ -78,13 +81,24 @@ def _later(left: Moment, right: Moment) -> Moment:
     raise ValueError('one trend path must use one availability representation')
 
 
-def _held_wave_floor(origin: Mapping[str, object], bars: Sequence[Bar], through_index: int) -> bool:
+def _held_wave_floor(origin: Mapping[str, object], bars: Sequence[Bar], through_index: int,
+                     *, _market_index: _MarketPrefixIndex | None = None) -> bool:
     """An earlier floor belongs to the same wave only while its actual price holds."""
     index, value = cast(int, origin['index']), cast(float, origin['value'])
     if not bars or not 0 <= index <= through_index < len(bars) or bars[index].low != value:
         return False
+    if _market_index is not None:
+        if not _market_index.matches(bars):
+            raise ValueError('a market index must match its immutable Bar prefix')
+        if _market_index.owner.exact_prices and _indexed_price(value):
+            return _market_index.first_extreme(index + 1, through_index + 1, value, high=False) is None
     return all(isfinite(bars[position].low) and bars[position].low >= value
                for position in range(index + 1, through_index + 1))
+
+
+def _indexed_price(value: object) -> bool:
+    return (type(value) is float and isfinite(value)
+            or type(value) is int and abs(value) <= 2 ** 53)
 
 
 def _same_origin(proof: Mapping[str, object], point: Mapping[str, object]) -> bool:
@@ -93,6 +107,40 @@ def _same_origin(proof: Mapping[str, object], point: Mapping[str, object]) -> bo
         origin.get(field, 0 if field == 'ordinal' else None) == point.get(field, 0 if field == 'ordinal' else None)
         for field in ('index', 'ordinal', 'kind', 'value')
     )
+
+
+class _OriginLookup:
+    """同次只读发布按原相等语义索引来源，重复坐标保持输入的首个匹配。"""
+
+    def __init__(self, points: Sequence[Mapping[str, object]]) -> None:
+        self.points = points
+        self._index: dict[tuple[object, ...], list[Mapping[str, object]]] | None = {}
+        for point in points:
+            key = self._key(point)
+            if key is None or 'kind' not in point:
+                # 自定义比较／mapping 继续走旧查找，不增加其 __eq__/get 调用。
+                self._index = None
+                break
+            self._index.setdefault(key, []).append(point)
+
+    @staticmethod
+    def _key(point: Mapping[str, object]) -> tuple[object, ...] | None:
+        if type(point) is not dict:
+            return None
+        key = tuple(point.get(field, 0 if field == 'ordinal' else None)
+                    for field in ('index', 'ordinal', 'kind', 'value'))
+        if any(type(value) not in (int, float, bool, str, type(None))
+               or type(value) is float and not isfinite(value) for value in key):
+            return None
+        return key
+
+    def find(self, reference: Mapping[str, object], *, kind: str | None = None,
+             known_point: Mapping[str, object] | None = None) -> Mapping[str, object] | None:
+        key = self._key(reference)
+        indexed = self._index.get(key, ()) if self._index is not None and key is not None else self.points
+        return next((point for point in indexed if (kind is None or point['kind'] == kind)
+            and (self._index is not None and key is not None or _same_origin(dict(origin=reference), point))
+            and (known_point is None or _moment(point) == _moment(known_point))), None)
 
 
 def _known_leg_proof(
@@ -115,13 +163,19 @@ class _PublishedTrendState:
 
     def __init__(self, source: Sequence[Mapping[str, object]], bars: Sequence[Bar], source_level: int,
                  *, qualified_source: Sequence[Mapping[str, object]] | None = None,
-                 n_target_trend_confirmation_enabled: bool = False) -> None:
+                 n_target_trend_confirmation_enabled: bool = False,
+                 _market_index: _MarketPrefixIndex | None = None) -> None:
         self.source = source
         self.n_enabled = n_target_trend_confirmation_enabled
         self.n_source = (qualified_n_source(source, qualified_source)
                          if self.n_enabled and qualified_source is not None else source)
         self.bars = bars
-        self.sessions = {session_date(bar): index for index, bar in enumerate(bars)}
+        if _market_index is not None and not _market_index.matches(bars):
+            raise ValueError('a market index must match its immutable Bar prefix')
+        self.market_index = _market_index
+        self.sessions: Mapping[str, int] = (
+            _PrefixSessions(_market_index.owner.positions, len(bars) - 1) if _market_index is not None else
+            {session_date(bar): index for index, bar in enumerate(bars)})
         self.position_field = 'source_turn_position' if source_level == 0 else f'source_level{source_level}_position'
         self.parsed_context: ConfirmationContext | None = None
         self.context: ConfirmationContext | None = None
@@ -144,6 +198,7 @@ class _PublishedTrendState:
                 self.context = prepare_confirmation_context(
                     self.source, self.bars or None, cutoff, n_source=self.n_source,
                     n_target_trend_confirmation_enabled=True,
+                    _market_index=self.market_index,
                 )
             return self.context
         if self.parsed_context is None:
@@ -152,6 +207,7 @@ class _PublishedTrendState:
             self.parsed_context = prepare_confirmation_context(
                 self.source, market, snapshot_end, n_source=self.n_source,
                 n_target_trend_confirmation_enabled=self.n_enabled,
+                _market_index=self.market_index,
             )
         if self.parsed_context.end_index == cutoff:
             return self.parsed_context
@@ -159,6 +215,7 @@ class _PublishedTrendState:
             self.context = prepare_confirmation_context(
                 self.source, self.bars or None, cutoff, n_source=self.n_source,
                 n_target_trend_confirmation_enabled=self.n_enabled, parsed_context=self.parsed_context,
+                _market_index=self.market_index,
             )
         return self.context
 
@@ -170,7 +227,8 @@ class _PublishedTrendState:
         active = self.active
         if not self.n_enabled and active is not None and active.get('confirmation_rule') == N_TARGET_CONFIRMATION:
             return None
-        if active is None or active['direction'] != direction or not _wave_holds(active, self.bars, point):
+        if active is None or active['direction'] != direction or not _wave_holds(
+                active, self.bars, point, _market_index=self.market_index):
             return None
         position = point.get(self.position_field)
         if (type(position) is not int or not 0 <= position < len(self.source)
@@ -219,13 +277,15 @@ class _PublishedTrendState:
                     if (not _same_origin(dict(origin=extreme), origin) and _same_origin(dict(origin=wave_origin), extreme)
                             and _later(_moment(wave_origin), _moment(proof)) == _moment(proof)
                             and _wave_holds(dict(proof, wave_origin=wave_origin), self.bars,
-                                            cast(Mapping[str, object], proof['confirmed_by']))):
+                                            cast(Mapping[str, object], proof['confirmed_by']),
+                                            _market_index=self.market_index)):
                         proof = dict(proof, wave_origin={field: wave_origin[field] for field in
                                      ('index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'label') if field in wave_origin})
             point['incoming_trend_confirmation'] = dict(proof)
             point['incoming_trend_state'] = 'confirmed'
             # A newly enabled N owns its source cycle; ordinary local proofs extend the active wave.
-            same_wave = (active is not None and active['direction'] == direction and _wave_holds(active, self.bars, point)
+            same_wave = (active is not None and active['direction'] == direction
+                         and _wave_holds(active, self.bars, point, _market_index=self.market_index)
                          and not (self.n_enabled and proof.get('confirmation_rule') == N_TARGET_CONFIRMATION
                                   and not _same_origin(active, origin)))
             if not same_wave:
@@ -258,12 +318,18 @@ def annotate_published_legs(
     return result
 
 
-def _wave_holds(proof: Mapping[str, object], bars: Sequence[Bar], endpoint: Mapping[str, object]) -> bool:
+def _wave_holds(proof: Mapping[str, object], bars: Sequence[Bar], endpoint: Mapping[str, object],
+                *, _market_index: _MarketPrefixIndex | None = None) -> bool:
     origin = cast(Mapping[str, object], proof.get('wave_origin', proof['origin']))
     start, end, value = cast(int, origin['index']), cast(int, endpoint['index']), cast(float, origin['value'])
     if not bars or not 0 <= start < end < len(bars):
         return False
     rising = proof['direction'] == 'up'
+    if _market_index is not None:
+        if not _market_index.matches(bars):
+            raise ValueError('a market index must match its immutable Bar prefix')
+        if _market_index.owner.exact_prices and _indexed_price(value):
+            return _market_index.first_extreme(start, end + 1, value, high=not rising) is None
     prices = (bar.low if rising else bar.high for bar in bars[start:end + 1])
     return all(isfinite(price) and (price >= value if rising else price <= value) for price in prices)
 
@@ -277,6 +343,7 @@ def confirmed_trend_legs(
     direction extremes until the opposite direction earns its own proof.
     """
     legs: list[dict[str, object]] = []
+    origins = _OriginLookup(points)
     for point in points:
         proof = point.get('active_trend_confirmation')
         if point.get('incoming_trend_state') != 'confirmed' or not isinstance(proof, Mapping):
@@ -284,7 +351,8 @@ def confirmed_trend_legs(
         direction = proof['direction']
         if point['kind'] != ('H' if direction == 'up' else 'L'):
             continue
-        origin = next((item for item in points if _same_origin(proof, item)), None)
+        reference = proof.get('wave_origin', proof.get('origin'))
+        origin = origins.find(reference) if isinstance(reference, Mapping) else None
         if origin is None:
             continue
         leg = dict(points=[dict(origin), dict(point)], direction=direction, confirmation=dict(proof),
@@ -311,6 +379,7 @@ def publish_uptrends(
     source_level: int,
     qualified_source: Sequence[Mapping[str, object]] | None = None,
     n_target_trend_confirmation_enabled: bool = False,
+    _market_index: _MarketPrefixIndex | None = None,
 ) -> list[dict[str, object]]:
     """Keep structural candidates private until their rising leg is qualified.
 
@@ -332,13 +401,15 @@ def publish_uptrends(
     pending_down_origin: Mapping[str, object] | None = None
     context: ConfirmationContext | None = None
     state = _PublishedTrendState(source, bars, source_level, qualified_source=qualified_source,
-                                 n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled, _market_index=_market_index)
     last_low: Mapping[str, object] | None = None
     market = bars or None
     end_index = len(bars) - 1 if bars else max(
         (value for item in source for value in (item['index'],item.get('available_at')) if type(value) is int), default=-1)
     position_field = 'source_turn_position' if source_level == 0 else f'source_level{source_level}_position'
     n_source = state.n_source
+    candidate_origins = _OriginLookup(candidates)
+    source_origins = _OriginLookup(source)
     for offset, candidate in enumerate(candidates):
         if not n_target_trend_confirmation_enabled and is_n_target_reversal(candidate):
             continue
@@ -426,19 +497,15 @@ def publish_uptrends(
                 paired = pending_down_origin
                 if isinstance(reference, Mapping) and (paired is None
                         or not _same_origin(dict(origin=reference), paired)):
-                    paired = next((item for item in candidates if item['kind'] == 'H'
-                        and _same_origin(dict(origin=reference), item)), None)
+                    paired = candidate_origins.find(reference, kind='H')
                 if (paired is not None and isinstance(reference, Mapping)
                         and _same_origin(dict(origin=reference), paired)
                         and isinstance(upgraded_key, Mapping)):
                     # 本级旧低点可已由共同定义确认，却因后续上涨尚未达标而未
                     # 进入公开上升链。只接受本次候选集合中真实已知的本级L，
                     # 不把任意下级低点或伪造的升级字段当作本级突破证据。
-                    known_key = next((item for item in candidates if item['kind'] == 'L'
-                        and _same_origin(dict(origin=upgraded_key), item)
-                        and _moment(item) == _moment(upgraded_key)), None)
-                    source_key = next((item for item in source
-                        if _same_origin(dict(origin=upgraded_key), item)), None)
+                    known_key = candidate_origins.find(upgraded_key, kind='L', known_point=upgraded_key)
+                    source_key = source_origins.find(upgraded_key)
                     if (known_key is not None and source_key is not None
                             and _later(_moment(source_key), _moment(upgraded_key)) == _moment(upgraded_key)
                             and _later(_moment(paired), _moment(point)) == _moment(point)
@@ -494,7 +561,8 @@ def publish_uptrends(
         if context is None and end_index >= 0:
             context = state.confirmation_context(end_index)
         if context is not None and context.references[position] is not None:
-            if (pending_origin is None or not _held_wave_floor(pending_origin, bars, cast(int, point['index']))
+            if (pending_origin is None or not _held_wave_floor(pending_origin, bars, cast(int, point['index']),
+                                                            _market_index=_market_index)
                     or cast(float, point['value']) < cast(float, pending_origin['value'])):
                 pending_origin = point
         confirmation = qualify_uptrend(source, origin, position, key, market, end_index,
@@ -533,12 +601,14 @@ def publish_uptrends(
             local_known = _later(_moment(later_candidate), _moment(local))
             if (_later(local_known, earliest) == earliest and local_known != earliest
                     and pending_origin is not None
-                    and _held_wave_floor(pending_origin, bars, cast(int, local_trigger['index']))):
+                    and _held_wave_floor(pending_origin, bars, cast(int, local_trigger['index']),
+                                         _market_index=_market_index)):
                 point, confirmation, earliest = dict(later_candidate), local, local_known
         candidate_known = _moment(point)
         trigger = cast(Mapping[str, object], confirmation['confirmed_by'])
         if (pending_origin is not None and pending_origin is not point
-                and _held_wave_floor(pending_origin, bars, cast(int, trigger['index']))):
+                and _held_wave_floor(pending_origin, bars, cast(int, trigger['index']),
+                                     _market_index=_market_index)):
             point = dict(pending_origin)
             wave_position = cast(int, point[position_field])
             confirmation = dict(confirmation, wave_origin={

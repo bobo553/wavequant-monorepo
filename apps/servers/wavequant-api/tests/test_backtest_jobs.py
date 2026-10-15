@@ -68,6 +68,10 @@ class BacktestJobsTests(unittest.TestCase):
             self.assertGreaterEqual(snapshot["jobs"][0].pop("elapsed_seconds"), 0)
             self.assertEqual(snapshot["jobs"][0].pop("progress_percent"), 0)
             self.assertEqual(snapshot["jobs"][0].pop("progress_stage"), "准备回测")
+            snapshot['jobs'][0].pop('pipeline')
+            self.assertEqual(snapshot['jobs'][0].pop('preview_revision'), 0)
+            for key in ('processed_sessions', 'total_sessions', 'processed_asof'):
+                self.assertIsNone(snapshot['jobs'][0].pop(key))
             self.assertEqual(
                 snapshot,
                 {
@@ -107,7 +111,9 @@ class BacktestJobsTests(unittest.TestCase):
             jobs.update_progress("first", 20, "读取日线")
             jobs.update_progress("missing", 50, "模拟成交")
             by_id = {item["job"]: item for item in jobs.snapshot()["jobs"]}
-            self.assertEqual(jobs.progress(first), {"progress_percent": 46, "progress_stage": "模拟成交"})
+            progress = jobs.progress(first)
+            self.assertEqual(progress['progress_percent'], 46)
+            self.assertEqual(progress['progress_stage'], '模拟成交')
             self.assertEqual(by_id["second"]["progress_percent"], 0)
             with self.assertRaises(ValueError):
                 jobs.update_progress("first", 100, "完成")

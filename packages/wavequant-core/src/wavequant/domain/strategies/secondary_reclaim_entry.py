@@ -6,6 +6,7 @@ from fractions import Fraction
 
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from ..models.model import Bar
+from .buy_intervals import require_entry_days
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class _Episode:
 
 def secondary_reclaim_history(
     bars: Sequence[Bar], highs: Mapping[int, Sequence[SecondaryHigh]],
+    *, entry_days: Sequence[bool] | None = None,
 ) -> tuple[list[dict[str, object]], dict[int, dict[str, object]]]:
     """Observe candidates without granting an exception to global entry risks.
 
@@ -38,6 +40,7 @@ def secondary_reclaim_history(
     may update the actual pullback stop while the pre-attack origin still holds.
     Consuming the previous session's formal highs prevents future endpoint use.
     """
+    require_entry_days(entry_days, len(bars))
     events: list[dict[str, object]] = []
     proofs: dict[int, dict[str, object]] = {}
     episode: _Episode | None = None
@@ -85,6 +88,8 @@ def secondary_reclaim_history(
                                secondary_resistance_high=episode.ceiling,
                                secondary_resistance_known_index=now))
         if now < episode.attack + 2 or not episode.resistance:
+            continue
+        if entry_days is not None and not entry_days[now]:
             continue
         body = Fraction(str(bar.close)) - Fraction(str(bar.open))
         open_price = Fraction(str(bar.open))

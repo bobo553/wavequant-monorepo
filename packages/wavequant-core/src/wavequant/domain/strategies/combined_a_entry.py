@@ -11,7 +11,9 @@ from typing import NotRequired, TypedDict, cast
 from zoneinfo import ZoneInfo
 
 from ..market_structure.trend_publication import publish_uptrends
+from ..market_structure.trend_market_index import _MarketRangeIndex
 from ..models.model import Bar
+from .buy_intervals import require_entry_days
 
 
 class GeometryPoint(TypedDict):
@@ -253,7 +255,7 @@ def _positive_ns(
 
 def _child_durations(
     bars: Sequence[Bar], points: Sequence[GeometryPoint], dates: Mapping[str, int], origin: int, c: int, now: int,
-    positive: Sequence[_PositiveN],
+    positive: Sequence[_PositiveN], *, _market_index: _MarketRangeIndex | None = None,
 ) -> tuple[int, ...]:
     """Keep the latest completed child ABC's B, not a microscopic N counterleg."""
     children: list[tuple[int, int, int]] = []
@@ -272,7 +274,10 @@ def _child_durations(
                 continue
             if a["value"] <= n["one_p"]:
                 continue
-            if max(bar.high for bar in bars[n["origin"] : a["index"] + 1]) != a["value"]:
+            maximum = (bars[_market_index.extreme_position(n["origin"], a["index"] + 1, high=True)].high
+                       if _market_index is not None else
+                       max(bar.high for bar in bars[n["origin"] : a["index"] + 1]))
+            if maximum != a["value"]:
                 continue
             children.append((a["index"], b["index"], b["index"] - a["index"]))
     latest = max(children, default=None)
@@ -282,6 +287,7 @@ def _child_durations(
 def combined_a_contexts_from_geometry(
     bars: Sequence[Bar], drawing: GeometryLevel, first: GeometryLevel, second: GeometryLevel, third: GeometryLevel,
     dates: Mapping[str, int], now: int, audit: Sequence[Mapping[str, object]] = (),
+    *, _market_index: _MarketRangeIndex | None = None,
 ) -> tuple[CombinedAContext, ...]:
     """Use the same formal-N and local structural ABC route as chart projections.
 
@@ -291,14 +297,22 @@ def combined_a_contexts_from_geometry(
     """
     if now < 0 or now >= len(bars):
         return ()
+    if _market_index is not None and (_market_index.bars is not bars or not _market_index.exact_prices):
+        _market_index = None
+    positive = _positive_ns(bars, drawing, dates, now, audit)
+    if not positive:
+        return ()
     paths = {stroke["id"]: stroke for level in (first, second, third)
              for stroke in level.get("strokes", [])}
-    positive = _positive_ns(bars, drawing, dates, now, audit)
     groups: dict[tuple[int, int], tuple[CombinedAContext, bool]] = {}
     for n in positive:
         origin, attack = n["origin"], n["attack"]
         origin_price = bars[origin].low
         if n["known"] > now or not origin_price < n["one_p"] < n["two_t"]:
+            continue
+        # A 必须在 N 之后严格超过一饱；尚未进入该测幅区间时无需做局部 ABC 降采样。
+        if (_market_index is not None and _market_index.supports_price(n["one_p"])
+                and _market_index.first_extreme(attack + 1, now + 1, n["one_p"], high=True) is None):
             continue
         wave_paths: list[tuple[GeometryStroke, bool]] = [(stroke, False) for stroke in second.get("strokes", [])]
         for source in first.get("strokes", []):
@@ -329,9 +343,14 @@ def combined_a_contexts_from_geometry(
                 ai, ap = a["index"], a["value"]
                 if ai <= attack or not n["one_p"] < ap < n["two_t"]:
                     continue
-                if max(bar.high for bar in bars[origin : ai + 1]) != ap:
+                maximum = (bars[_market_index.extreme_position(origin, ai + 1, high=True)].high
+                           if _market_index is not None else max(bar.high for bar in bars[origin : ai + 1]))
+                if maximum != ap:
                     continue
-                first_break = next((index for index in range(ai + 1, now + 1) if bars[index].high > ap), now + 1)
+                first_break = (_market_index.first_extreme(ai + 1, now + 1, ap, high=True)
+                               if _market_index is not None and _market_index.supports_price(ap) else
+                               next((index for index in range(ai + 1, now + 1) if bars[index].high > ap), None))
+                first_break = now + 1 if first_break is None else first_break
                 lows = [point for point in points if ai < point["index"] < first_break
                         and _known_point(point, "L", bars, dates, now)]
                 if not lows:
@@ -344,7 +363,10 @@ def combined_a_contexts_from_geometry(
                           and _known_point(point, "H", bars, dates, now)
                           and point.get("flip") == "翻多为空"
                           and dates[point["available_at"]] >= known
-                          and max(bar.high for bar in bars[bi : dates[point["available_at"]] + 1]) == point["value"]),
+                           and (bars[_market_index.extreme_position(
+                               bi, dates[point["available_at"]] + 1, high=True)].high
+                               if _market_index is not None else
+                               max(bar.high for bar in bars[bi : dates[point["available_at"]] + 1])) == point["value"]),
                          None)
                 if c is None or not origin_price < bp < ap <= c["value"]:
                     continue
@@ -368,7 +390,8 @@ def combined_a_contexts_from_geometry(
                                      key=lambda point: (point.index, point.known_index)))
                 context = CombinedAContext(
                     source_path, origin, origin_price, ai, ap, bi, bp, ci, cp,
-                    combined_known, attack, _child_durations(bars, points, dates, origin, ci, c_known, positive),
+                    combined_known, attack, _child_durations(
+                        bars, points, dates, origin, ci, c_known, positive, _market_index=_market_index),
                     highs,
                 )
                 key = origin, ai
@@ -385,14 +408,19 @@ def combined_a_contexts_from_geometry(
 
 def combined_a_entry_history(
     bars: Sequence[Bar], candidates: Mapping[int, tuple[CombinedAContext, ...]],
+    *, entry_days: Sequence[bool] | None = None,
 ) -> tuple[list[dict[str, object]], dict[int, dict[str, object]]]:
     """Emit one qualified volume/body breakout per confirmed combined A.
 
     Duration includes the consolidation through the breakout session. A lost
     close floor retires that ABC permanently, even if later prices recover.
     """
+    require_entry_days(entry_days, len(bars))
     events: list[dict[str, object]] = []
     proofs: dict[int, dict[str, object]] = {}
+    market_index = _MarketRangeIndex.build(tuple(bars))
+    if market_index is not None and not market_index.exact_prices:
+        market_index = None
     seen: set[tuple[int, int]] = set()
     retired: set[tuple[int, int]] = set()
     for now in range(1, len(bars)):
@@ -408,8 +436,14 @@ def combined_a_entry_history(
             floor = Fraction(str(context.c_price)) - Fraction(2, 3) * (
                 Fraction(str(context.c_price)) - Fraction(str(context.origin_price)))
             pullback = range(context.c_index + 1, now + 1)
-            invalid = next((index for index in pullback if bars[index].low < context.origin_price
-                            or Fraction(str(bars[index].close)) < floor), None)
+            if market_index is not None and market_index.supports_price(context.origin_price):
+                origin_break = market_index.first_extreme(
+                    context.c_index + 1, now + 1, context.origin_price, high=False)
+                close_break = market_index.first_close_below(context.c_index + 1, now + 1, floor)
+                invalid = min((index for index in (origin_break, close_break) if index is not None), default=None)
+            else:
+                invalid = next((index for index in pullback if bars[index].low < context.origin_price
+                                 or Fraction(str(bars[index].close)) < floor), None)
             if invalid is not None:
                 retired.add(context.identity)
                 events.append(dict(bar_index=now, event="combined_a_invalidated", origin_index=context.origin_index,
@@ -417,7 +451,8 @@ def combined_a_entry_history(
                                    invalidation_reason="origin_low_broken" if bars[invalid].low < context.origin_price
                                    else "two_thirds_close_broken"))
                 continue
-            bottom = min(pullback, key=lambda index: (bars[index].low, index))
+            if entry_days is not None and not entry_days[now]:
+                continue
             duration = now - context.c_index
             b_duration = context.b_index - context.a_index
             exceeded_b = duration > b_duration
@@ -443,6 +478,9 @@ def combined_a_entry_history(
                 reference_index, reference_price, reference_known = high.index, high.price, high.known_index
             else:
                 continue
+            # 完整防线失效先更新；只有实际满足突破窗口的日期才提取回调极值和证明。
+            bottom = (market_index.extreme_position(context.c_index + 1, now + 1, high=False)
+                      if market_index is not None else min(pullback, key=lambda index: (bars[index].low, index)))
             retired.add(context.identity)
             proof: dict[str, object] = dict(
                 buy_point_type="combined_a_pullback_breakout", trend_level=context.trend_level,

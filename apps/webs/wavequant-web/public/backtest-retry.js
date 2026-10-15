@@ -1,9 +1,15 @@
 const RETRY_DELAYS_MS = [500, 1_000, 2_000, 4_000, 6_000];
 const JOB_POLL_DELAY_MS = 2_000;
 const MAX_JOB_WAIT_MS = 30 * 60_000;
+const VERSION_RETRY_DELAYS_MS = [1_000, 2_000, 3_000, 5_000, 8_000, 10_000, 15_000, 20_000];
+
+export function readBacktestVersion(request, options = {}) {
+    return retryBacktest(request, { delays: VERSION_RETRY_DELAYS_MS, ...options });
+}
 
 export function isRecoverableBacktestError(error) {
     if (error?.name === "AbortError" || error?.name === "TimeoutError") return false;
+    if (error?.code === "BACKTEST_VERSION_CHANGED") return false;
     if (["BACKTEST_JOB_FAILED", "BACKTEST_JOB_MISSING", "BACKTEST_CAPACITY", "BACKTEST_SYMBOL_RUNNING"].includes(error?.code)) return false;
     if (error?.code === "BACKTEST_POLL_TIMEOUT") return true;
     if (error instanceof TypeError) return true;
@@ -61,7 +67,7 @@ export async function waitForBacktestJob(
         onRetry,
         pollDelay = JOB_POLL_DELAY_MS,
         maxWaitMs = MAX_JOB_WAIT_MS,
-        maxMissingResubmits = 1,
+        maxMissingResubmits = 0,
         now = Date.now,
         sleep = waitForRetry,
     } = {},
@@ -82,7 +88,7 @@ export async function waitForBacktestJob(
             if (signal?.aborted) throw signal.reason;
             if (error?.httpStatus !== 404) throw error;
             if (missingResubmits >= maxMissingResubmits) {
-                const missing = new Error("回测任务已丢失，请重新运行当前股票回测");
+                const missing = new Error("服务重启或任务已失效，已停止自动重算；保留当前图表，请手动重新回测");
                 missing.code = "BACKTEST_JOB_MISSING";
                 throw missing;
             }
@@ -99,7 +105,7 @@ export async function waitForBacktestJob(
         if (job?.status === "completed" && job.result && typeof job.result === "object") return job.result;
         if (job?.status === "failed") {
             const failure = new Error(typeof job.error === "string" && job.error ? job.error : "回测任务失败");
-            failure.code = "BACKTEST_JOB_FAILED";
+            failure.code = job.code === "BACKTEST_VERSION_CHANGED" ? job.code : "BACKTEST_JOB_FAILED";
             if (Number.isInteger(job.http_status)) failure.httpStatus = job.http_status;
             throw failure;
         }

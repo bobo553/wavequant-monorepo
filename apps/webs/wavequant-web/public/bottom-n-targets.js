@@ -18,6 +18,7 @@ export function isQualifiedNTargetSource(event, theory) {
 }
 
 export function bottomNTargetCaption(event) {
+    if (event?.display_target_eligible) return `${event.display_target_level}级资格区间 · 正 N ${event.time}`;
     if (event?.target_eligible !== true) return "";
     const bottom = event.target_bottom_date || event.shape?.[0]?.time;
     return `底部 ${bottom} · 正 N ${event.time}${event.reformed_from_date ? ` · 重算自 ${event.reformed_from_date}` : ""}`;

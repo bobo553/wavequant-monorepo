@@ -4,6 +4,7 @@
 不调用这些独立循环。所有级别都由 judge_trend 判别，资格视图只核验策略。
 """
 from copy import deepcopy
+from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from zoneinfo import ZoneInfo
 
@@ -27,7 +28,7 @@ def _bar_date(bar):
     return timestamp.date().isoformat()
 
 
-def _first_close_break_below(bars,low):
+def _first_close_break_below(bars,low,*,_session_dates=None,_ordered_dates=False):
     """Find the first causal close crossing below an already-known trend low.
 
     A lower intraday wick is intentionally insufficient.  The previous close
@@ -36,8 +37,10 @@ def _first_close_break_below(bars,low):
     from rewriting an earlier chart prefix.
     """
     known=max(low['time'],low['available_at'])
-    for index,(previous,current) in enumerate(zip(bars,bars[1:]),1):
-        time=_bar_date(current)
+    start=max(1,bisect_left(_session_dates,known)) if _session_dates is not None and _ordered_dates else 1
+    for index in range(start,len(bars)):
+        previous,current=bars[index-1],bars[index]
+        time=_session_dates[index] if _session_dates is not None else _bar_date(current)
         if time<known or previous.close<low['value'] or current.close>=low['value']:
             continue
         return dict(index=index,time=time,available_at=time,kind='K',label='收盘跌破 K线',
@@ -64,10 +67,13 @@ def last_fall_high_reanchors(points,bars,*,trend_level=2):
     that makes the replacement key knowable.
     """
     events=[]
+    session_dates=tuple(_bar_date(bar) for bar in bars)
+    ordered_dates=all(left<=right for left,right in zip(session_dates,session_dates[1:]))
     for position,broken_low in enumerate(points):
         if broken_low['kind']!='L':
             continue
-        broken_at=_first_close_break_below(bars,broken_low)
+        broken_at=_first_close_break_below(bars,broken_low,
+            _session_dates=session_dates,_ordered_dates=ordered_dates)
         if broken_at is None:
             continue
         previous_key=next((point for point in reversed(points[:position]) if point['kind']=='H'),None)

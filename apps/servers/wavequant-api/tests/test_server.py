@@ -18,6 +18,7 @@ from sqlalchemy.pool import StaticPool
 
 from wavequant.infrastructure.market_data.akshare import AkShareUnavailable
 from wavequant.infrastructure.persistence.event_store import EventStore
+from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
 from wavequant.interfaces.charts.visualization import ChartRepository, day, metrics_at, confirmed_polyline_segments
 from wavequant_api.infrastructure import (
     Infrastructure,
@@ -453,7 +454,8 @@ class VisualizationTests(unittest.TestCase):
             finally:
                 conn.close()
 
-        with patch.object(self.repo, "tdx_backtest", return_value={"ok": True}) as backtest:
+        with (patch.object(self.repo, "backtest_version", return_value={"version": "fixture-v1"}),
+              patch.object(self.repo, "tdx_backtest", return_value={"ok": True}) as backtest):
             self.assertEqual(request()[0], 200)
             self.assertIs(backtest.call_args.kwargs["volume_filter"], True)
             self.assertIs(backtest.call_args.kwargs["net_reward_risk_filter"], False)
@@ -501,7 +503,8 @@ class VisualizationTests(unittest.TestCase):
             self.assertEqual(backtest.call_count, before)
 
         akshare_base = base.replace("/api/tdx-backtest", "/api/akshare-backtest")
-        with patch.object(self.repo, "akshare_backtest", return_value={"ok": True}) as backtest:
+        with (patch.object(self.repo, "backtest_version", return_value={"version": "fixture-v1"}),
+              patch.object(self.repo, "akshare_backtest", return_value={"ok": True}) as backtest):
             conn = HTTPConnection("127.0.0.1", server.server_port)
             try:
                 conn.request(
@@ -603,7 +606,8 @@ class VisualizationTests(unittest.TestCase):
             finally:
                 conn.close()
 
-        with patch.object(self.repo, "tdx_backtest", side_effect=backtest) as mock:
+        with (patch.object(self.repo, "backtest_version", return_value={"version": "fixture-v1"}),
+              patch.object(self.repo, "tdx_backtest", side_effect=backtest) as mock):
             first = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
             try:
                 first.request("GET", base + f"&backtest_job={job_id}")
@@ -652,14 +656,16 @@ class VisualizationTests(unittest.TestCase):
         self.assertEqual(request("/api/backtest-job?job=unknown-job-0000")[0], 404)
         self.assertEqual(request("/api/backtest-job?job=short")[0], 400)
         self.assertEqual(request("/api/backtest-job?job=unknown-job-0000&extra=1")[0], 400)
-        with patch.object(self.repo, "akshare_backtest", side_effect=ValueError("回测区间无数据")):
+        with (patch.object(self.repo, "backtest_version", return_value={"version": "fixture-v1"}),
+              patch.object(self.repo, "akshare_backtest", side_effect=ValueError("回测区间无数据"))):
             status, body = request(base + "&backtest_job=backtest-invalid-0001")
             self.assertEqual((status, body["error"]), (400, "回测参数或行情数据无效，请检查输入后重试"))
             self.assertEqual(
                 request("/api/backtest-job?job=backtest-invalid-0001"),
                 (200, {"status": "failed", "error": "回测参数或行情数据无效，请检查输入后重试", "http_status": 400}),
             )
-        with patch.object(self.repo, "akshare_backtest", side_effect=AkShareUnavailable("secret provider detail")):
+        with (patch.object(self.repo, "backtest_version", return_value={"version": "fixture-v1"}),
+              patch.object(self.repo, "akshare_backtest", side_effect=AkShareUnavailable("secret provider detail"))):
             status, body = request(base + "&backtest_job=backtest-unavailable-0002")
             self.assertEqual(status, 503)
             self.assertNotIn("secret", body["error"])
@@ -667,7 +673,8 @@ class VisualizationTests(unittest.TestCase):
             self.assertEqual((status, body["status"], body["http_status"]), (200, "failed", 503))
             self.assertNotIn("secret", body["error"])
         with self.assertLogs(level="ERROR") as captured:
-            with patch.object(self.repo, "akshare_backtest", side_effect=RuntimeError("secret internal path")):
+            with (patch.object(self.repo, "backtest_version", return_value={"version": "fixture-v1"}),
+                  patch.object(self.repo, "akshare_backtest", side_effect=RuntimeError("secret internal path"))):
                 status, body = request(base + "&backtest_job=backtest-failure-0002")
                 self.assertEqual(status, 500)
                 self.assertNotIn("secret", body["error"])
@@ -675,6 +682,33 @@ class VisualizationTests(unittest.TestCase):
                 self.assertEqual((status, body["status"], body["http_status"]), (200, "failed", 500))
                 self.assertNotIn("secret", body["error"])
         self.assertEqual(len(captured.output), 1)
+
+    def test_backtest_rejects_stale_strategy_before_starting_and_versions_job_identity(self):
+        server = self.http_server()
+        base = ("/api/akshare-backtest?run=example&variant=lecture_v3&symbol=sh.600825"
+                "&asof=2026-10-13&scenario=base&start=2018-01-01&backtest_job=versioned-job-0001")
+
+        def request(path):
+            conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+            try:
+                conn.request("GET", path)
+                response = conn.getresponse()
+                return response.status, json.loads(response.read())
+            finally:
+                conn.close()
+
+        with (patch.object(self.repo, 'backtest_version', return_value={'version': 'v1'}) as version,
+              patch.object(self.repo, 'akshare_backtest', return_value={'ok': True}) as run):
+            self.assertEqual(request(base + '&strategy_version=old')[0], 400)
+            run.assert_not_called()
+            self.assertEqual(request(base + '&strategy_version=v1')[0], 200)
+            self.assertEqual(run.call_count, 1)
+            version.return_value = {'version': 'v2'}
+            self.assertEqual(request(base + '&strategy_version=v1')[0], 400)
+            self.assertEqual(request(base + '&strategy_version=v2')[0], 409)
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(request(base.replace('0001', '0002') + '&strategy_version=v2')[0], 200)
+            self.assertEqual(run.call_count, 2)
 
     def test_backtest_version_requires_exact_parameters_and_reads_each_time(self):
         server = self.http_server()
@@ -776,12 +810,14 @@ class VisualizationTests(unittest.TestCase):
 
         def run(_symbol, _start, asof, _strategy, execution):
             executions.append(execution.copy())
-            return [], None, {"asof": asof, "price_basis": "causal_adjusted_equivalent", "run_id": "test-run"}
+            return [], None, {"asof": asof, "price_basis": "causal_adjusted_equivalent", "run_id": "test-run",
+                              "backtest": {"source": {"daily_sha256": "fixture", "engine": "v1"}}}
 
-        self.repo.akshare_backtester = SimpleNamespace(run=run)
+        self.repo.akshare_backtester = SimpleNamespace(run=run, artifacts=ArtifactCache(self.root / 'cache'),
+                                                      _verify_engine=lambda: None)
         with (
             patch.object(self.repo, "strategy_config", return_value=profile),
-            patch.object(self.repo, "render_theory", return_value={}),
+            patch.object(self.repo, "render_theory", return_value={}) as render,
         ):
             self.repo.akshare_backtest("example", "lecture_v3", "sz.300154", "2026-09-07", "base", "2018-01-02")
             self.repo.akshare_backtest(
@@ -794,9 +830,11 @@ class VisualizationTests(unittest.TestCase):
                 initial_capital=200_000,
                 max_position_weight=0.4,
             )
-        self.assertEqual([item["initial_capital"] for item in executions], [100_000, 200_000])
-        self.assertEqual([item["max_position_weight"] for item in executions], [1.0, 0.4])
+            self.repo.akshare_backtest("example", "lecture_v3", "sz.300154", "2026-09-07", "base", "2018-01-02")
+        self.assertEqual([item["initial_capital"] for item in executions], [100_000, 200_000, 100_000])
+        self.assertEqual([item["max_position_weight"] for item in executions], [1.0, 0.4, 1.0])
         self.assertEqual(profile["scenarios"]["base"]["execution"], {"initial_capital": 1_000_000})
+        self.assertEqual(render.call_count, 2)
 
     def test_akshare_routes_are_read_only_strict_and_report_provider_failures(self):
         class AkShare:

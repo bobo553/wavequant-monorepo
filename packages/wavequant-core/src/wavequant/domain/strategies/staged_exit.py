@@ -7,6 +7,7 @@ import math
 from zoneinfo import ZoneInfo
 
 from ..models.model import Bar
+from .limit_up_distribution_exit import observe_limit_up_distribution_exit
 from ..market_structure.polyline import observe_bar_relations
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 
@@ -460,6 +461,9 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     """Freeze confirmed support and escalate cumulative reduction without future N bars."""
     if index < 1:
         return None
+    distribution = observe_limit_up_distribution_exit(bars, index)
+    if distribution is not None:
+        return dict(distribution)
     mother_warning = state.bearish_child_mother_warning_index
     if mother_warning is not None and index == mother_warning + 1:
         mother, bar = bars[mother_warning], bars[index]

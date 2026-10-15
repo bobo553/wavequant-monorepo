@@ -16,9 +16,11 @@ from time import perf_counter
 
 from wavequant.infrastructure.market_data.data import BAR_PERMISSION_SCHEMA, fingerprint
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, SystemResult, generate_system_signals
+from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse
+from wavequant.infrastructure.computation.trend_workers import stock_stage_runner
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
-from wavequant.interfaces.research_tools.stock_backtest import single_stock_result
+from wavequant.interfaces.research_tools.stock_backtest import simulation_progress_callbacks, single_stock_result
 from wavequant.infrastructure.market_data.tdx import read_day, read_actions, adjust_rows
 from wavequant.infrastructure.market_data.minute import TdxMinuteSource
 from wavequant.application.analytics.trade_evidence import result_markers
@@ -168,33 +170,47 @@ class TdxBacktester:
             if progress is not None: progress(90, '读取缓存')
             return bars,generated,cached['view'],'disk'
         signal_inputs={k:v for k,v in inputs.items() if k!='execution'}
-        research=self.artifacts.get('signals',signal_inputs)
+        streaming = inputs['strategy'].get('buy_point_definition') == 'whole_flip_wave_v3'
+        research=None if streaming else self.artifacts.get('signals',signal_inputs)
         signal_hit=research is not None
-        if research is None:
-            bars,generated,all_raw,start=self._generate(inputs,events,progress=progress)
-            research=encode_research(bars,generated)
-            research['sessions']=[r['date'].isoformat() for r in all_raw if r['date']>=start]
-            self._verify(inputs)  # Never publish an artifact from a moving source.
-            self.artifacts.put('signals',signal_inputs,research)
-        else:
-            bars,generated=decode_research(research)
-            if progress is not None: progress(60, '读取信号缓存')
-        strategy=SystemStrategy(**inputs['strategy']);strategy.validate()
+        history_reuse=None
         minute_source=TdxMinuteSource(self.browser.root) if inputs['execution']['staged_exit_intraday'] or inputs['execution'].get('consolidation_entry_intraday') else None
-        if progress is not None: progress(65, '模拟成交')
-        result=single_stock_result(bars,asdict(strategy),inputs['execution'],generated,
-                                   minute_loader=minute_source.get if minute_source else None,
-                                   **({'progress': lambda percent: progress(65+percent*25//100, '模拟成交')}
-                                      if progress is not None else {}))
-        if progress is not None: progress(90, '整理结果')
-        view=self._view(key,inputs,bars,result,research['sessions'],
-                        minute_source.provenance() if minute_source else None)
-        self._verify(inputs)
-        self.artifacts.put('backtest',inputs,dict(research=research,view=view))
-        if progress is not None: progress(95, '整理结果')
-        return bars,generated,view,'signals_disk' if signal_hit else 'computed'
+        try:
+            if research is None:
+                bars,generated,all_raw,start,history_reuse=self._generate(inputs,events,progress=progress,
+                    prepare_only=streaming)
+                if streaming:
+                    from .streaming_backtest import streaming_stock_result
+                    generated,result=streaming_stock_result(bars,inputs['strategy'],inputs['execution'],
+                        minute_loader=minute_source.get if minute_source else None,progress=progress)
+                research=encode_research(bars,generated)
+                research['sessions']=[r['date'].isoformat() for r in all_raw if r['date']>=start]
+                self._verify(inputs)  # Never publish an artifact from a moving source.
+                self.artifacts.put('signals',signal_inputs,research)
+            else:
+                bars,generated=decode_research(research)
+                if progress is not None: progress(60, '读取信号缓存')
+            strategy=SystemStrategy(**inputs['strategy']);strategy.validate()
+            if history_reuse is None and not streaming:
+                history_reuse=BacktestHistoryReuse(bars, strategy, stage_runner_factory=stock_stage_runner)
+            if not streaming:
+                if progress is not None: progress(65, '模拟成交')
+                simulation_progress, simulation_stage = simulation_progress_callbacks(progress)
+                result=single_stock_result(bars,asdict(strategy),inputs['execution'],generated,
+                                       minute_loader=minute_source.get if minute_source else None,
+                                       progress=simulation_progress, stage=simulation_stage, history_reuse=history_reuse)
+            if progress is not None: progress(90, '整理结果')
+            view=self._view(key,inputs,bars,result,research['sessions'],
+                            minute_source.provenance() if minute_source else None)
+            self._verify(inputs)
+            self.artifacts.put('backtest',inputs,dict(research=research,view=view))
+            if progress is not None: progress(95, '整理结果')
+            return bars,generated,view,'signals_disk' if signal_hit else 'computed'
+        finally:
+            if history_reuse is not None:
+                history_reuse.close()
 
-    def _generate(self,inputs,events,*,progress=None):
+    def _generate(self,inputs,events,*,progress=None,prepare_only=False):
         symbol=inputs['symbol'];end=date.fromisoformat(inputs['asof'])
         all_raw=read_day(self.browser._path(symbol))
         raw=[r for r in all_raw if r['date']<=end]
@@ -209,17 +225,31 @@ class TdxBacktester:
                   close_buyable=bool(r['close_buyable']), nonflat_close_buyable=bool(r['nonflat_close_buyable']),
                   close_sellable=bool(r['close_sellable']), nonflat_close_sellable=bool(r['nonflat_close_sellable']),
                   raw_is_st=bool(r['raw_is_st']), raw_trading_active=bool(r['raw_trading_active'])) for r in converted]
+        if prepare_only:
+            return bars,None,all_raw,start,None
         if progress is not None: progress(30, '生成信号')
         strategy=SystemStrategy(**inputs['strategy']);strategy.validate()
-        generated=(generate_system_signals(bars,strategy) if progress is None else
-                   generate_system_signals(bars,strategy,
-                       progress=lambda percent: progress(35+percent*25//100, '生成信号')))
-        # Persist chart geometry during the first scan as well as on chart open.
-        # Price basis and the selected trend rule belong to its cache key.
-        from wavequant.interfaces.charts.chart_geometry import cached_geometry
-        cached_geometry(self.artifacts,bars,'causal_adjusted_equivalent',inputs['engine'],
-                        n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)
-        return bars,generated,all_raw,start
+        history_reuse=BacktestHistoryReuse(bars, strategy, stage_runner_factory=stock_stage_runner)
+        try:
+            from .stock_backtest import signal_progress_callbacks
+            signal_progress, signal_stage = signal_progress_callbacks(progress)
+            if strategy.buy_point_definition == 'whole_flip_wave_v3':
+                generated=(generate_system_signals(bars,strategy,history_reuse=history_reuse) if progress is None else
+                           generate_system_signals(bars,strategy,history_reuse=history_reuse,
+                               progress=signal_progress, stage=signal_stage))
+            else:
+                generated=(generate_system_signals(bars,strategy) if progress is None else
+                           generate_system_signals(bars,strategy,
+                               progress=signal_progress, stage=signal_stage))
+            # Persist chart geometry during the first scan as well as on chart open.
+            # Price basis and the selected trend rule belong to its cache key.
+            from wavequant.interfaces.charts.chart_geometry import cached_geometry
+            cached_geometry(self.artifacts,bars,'causal_adjusted_equivalent',inputs['engine'],
+                            n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)
+            return bars,generated,all_raw,start,history_reuse
+        except BaseException:
+            history_reuse.close()
+            raise
 
     def _view(self,key,inputs,bars,result,sessions,minute_source=None):
         symbol=inputs['symbol']
@@ -270,4 +300,6 @@ def decode_research(value):
     bars=[Bar(**dict(b,timestamp=datetime.fromisoformat(b['timestamp']))) for b in value['bars']]
     signals=[Signal(**dict(s,timestamp=datetime.fromisoformat(s['timestamp']),
                           trigger_timestamp=datetime.fromisoformat(s['trigger_timestamp']))) for s in value['signals']]
+    from wavequant.domain.market_structure.calculation_steps import calculation_steps
+    calculation_steps(bars)
     return bars,SystemResult(signals,value['audit'],value['counts'])

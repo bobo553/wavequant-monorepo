@@ -39,6 +39,14 @@ DEFAULT_WEB_ROOT = WEB_WORKSPACE_ROOT / "out"
 BACKTEST_JOB_ID = re.compile(r"[A-Za-z0-9_-]{8,128}\Z")
 
 
+def buy_interval_level_option(query: dict[str, list[str]]) -> int:
+    """买点区间级别缺省为二级；拒绝重复或未支持的级别。"""
+    values = query.get('buy_interval_level', ['2'])
+    if len(values) != 1 or values[0] not in ('1', '2', '3'):
+        raise ValueError('buy_interval_level must be 1, 2 or 3 and provided once')
+    return int(values[0])
+
+
 def n_target_option(query: dict[str, list[str]]) -> bool:
     """Keep the optional N route disabled unless explicitly selected."""
     values = query.get("n_target_trend_confirmation_enabled", ["false"])
@@ -61,6 +69,8 @@ def backtest_positive_number(query: dict[str, list[str]], name: str, default: fl
 
 def backtest_job_error(error: Exception) -> tuple[int, str]:
     """Expose a stable status without relaying raw Core or provider exceptions."""
+    if isinstance(error, ValueError) and '策略代码已变更' in str(error):
+        return 503, '策略服务正在更新，等待重新连接后使用新版本回测'
     if isinstance(error, (BuySignalSnapshotUnavailable, StructureSnapshotUnavailable, AkShareUnavailable, LookupError)):
         return 503, "行情服务暂不可用，请稍后重试"
     if isinstance(error, (ValueError, KeyError, FileNotFoundError)):
@@ -167,9 +177,11 @@ def make_server(
             "net_reward_risk_filter",
             "shallow_base_breakout_enabled",
             "n_target_trend_confirmation_enabled",
+            "buy_interval_level",
             "initial_capital",
             "max_position_weight",
             "backtest_job",
+            "strategy_version",
         }
         if not required <= set(q) or set(q) - required - optional:
             raise ValueError("invalid TDX backtest arguments")
@@ -193,6 +205,7 @@ def make_server(
             net_reward_risk_filter=risk_values[0] == "true",
             shallow_base_breakout_enabled=shallow_values[0] == "true",
             n_target_trend_confirmation_enabled=n_target_option(q),
+            buy_interval_level=buy_interval_level_option(q),
             initial_capital=initial_capital,
             max_position_weight=max_position_weight,
         )
@@ -201,7 +214,6 @@ def make_server(
         )
         job_id = q.get("backtest_job", [None])[0] or str(uuid4())
         validate_backtest_job_id(job_id)
-        signature = json.dumps([path, backtest_args, options], sort_keys=True, allow_nan=False)
         normalized_params = dict(
             zip(("run", "variant", "symbol", "asof", "scenario", "start"), backtest_args)
         )
@@ -210,6 +222,7 @@ def make_server(
             net_reward_risk_filter=risk_values[0],
             shallow_base_breakout_enabled=shallow_values[0],
             n_target_trend_confirmation_enabled=str(options["n_target_trend_confirmation_enabled"]).lower(),
+            buy_interval_level=str(options["buy_interval_level"]),
             initial_capital=str(int(initial_capital))
             if initial_capital.is_integer()
             else str(initial_capital),
@@ -217,10 +230,11 @@ def make_server(
             if max_position_weight.is_integer()
             else str(max_position_weight),
         )
-        try:
-            strategy_version = repository.backtest_version(backtest_args[0], backtest_args[1])["version"]
-        except (KeyError, ValueError):
-            strategy_version = None
+        strategy_version = repository.backtest_version(backtest_args[0], backtest_args[1])["version"]
+        expected_version = q.get("strategy_version", [strategy_version])
+        if expected_version != [strategy_version]:
+            raise ValueError("策略代码已变更，请重新读取当前版本后回测")
+        signature = json.dumps([strategy_version, path, backtest_args, options], sort_keys=True, allow_nan=False)
         return backtest_jobs.start(
             job_id,
             signature,
@@ -413,6 +427,19 @@ def make_server(
                         raise ValueError("one run and variant required for backtest version")
                     self.send(200, repository.backtest_version(q["run"][0], q["variant"][0]))
                     return
+                if url.path == "/api/backtest-preview":
+                    if set(q) != {"job", "after"} or len(q["job"]) != 1 or len(q["after"]) != 1:
+                        raise ValueError("one job ID and preview revision required")
+                    job_id = validate_backtest_job_id(q["job"][0])
+                    after = int(q["after"][0])
+                    if after < 0:
+                        raise ValueError("preview revision must be nonnegative")
+                    job = backtest_jobs.get(job_id)
+                    if job is None:
+                        self.send(404, {"error": "backtest job not found"})
+                        return
+                    self.send(200, dict(job=job_id, **backtest_jobs.preview(job, after)))
+                    return
                 if url.path == "/api/backtest-job":
                     if set(q) != {"job"}:
                         raise ValueError("one backtest job ID required")
@@ -432,9 +459,12 @@ def make_server(
                         )
                     elif error is not None:
                         status, message = backtest_job_error(error)
-                        self.send(200, {"status": "failed", "error": message, "http_status": status})
+                        self.send(200, {"status": "failed", "error": message, "http_status": status,
+                                        **({'code': 'BACKTEST_VERSION_CHANGED'}
+                                           if isinstance(error, ValueError) and '策略代码已变更' in str(error) else {}),
+                                        **backtest_jobs.progress(job)})
                     else:
-                        self.send(200, {"status": "completed", "result": result})
+                        self.send(200, {"status": "completed", "result": result, **backtest_jobs.progress(job)})
                     return
                 if url.path == "/api/backtest-jobs":
                     if q:
@@ -595,7 +625,12 @@ def make_server(
             except BacktestJobCapacity as exc:
                 self.send(503, {"error": str(exc), "code": "BACKTEST_CAPACITY", **exc.snapshot})
             except (ValueError, KeyError, FileNotFoundError) as exc:
-                self.send(400, {"error": str(exc) if isinstance(exc, ValueError) else "required result unavailable"})
+                if isinstance(exc, ValueError) and '策略代码已变更' in str(exc):
+                    code = 'BACKTEST_ENGINE_RELOADING' if '重启' in str(exc) else 'BACKTEST_VERSION_CHANGED'
+                    self.send(503 if code == 'BACKTEST_ENGINE_RELOADING' else 409,
+                              {"error": str(exc), "code": code})
+                else:
+                    self.send(400, {"error": str(exc) if isinstance(exc, ValueError) else "required result unavailable"})
             except Exception:
                 logging.exception("chart service request failed")
                 self.send(500, {"error": "chart service error; check server logs"})

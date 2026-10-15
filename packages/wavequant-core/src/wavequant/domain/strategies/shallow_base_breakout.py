@@ -103,8 +103,12 @@ def shallow_base_history(
     candidates: Mapping[int, ShallowAlternationCandidate | None],
     *,
     minimum_reward_risk: float,
+    entry_days: Sequence[bool] | None = None,
 ) -> tuple[list[dict[str, object]], dict[int, dict[str, object]]]:
     """Return dated pending-low events and first qualified breakout per episode."""
+    from .buy_intervals import require_entry_days
+
+    require_entry_days(entry_days, len(bars))
     events: list[dict[str, object]] = []
     breakouts: dict[int, dict[str, object]] = {}
     seen_candidates: set[tuple[int, int, int, int]] = set()
@@ -134,6 +138,8 @@ def shallow_base_history(
         if not MIN_BASE_SESSIONS <= base_sessions <= MAX_BASE_SESSIONS:
             continue
         if min(bar.low for bar in bars[pullback_index : now + 1]) < candidate.pullback_price:
+            continue
+        if entry_days is not None and not entry_days[now]:
             continue
         base = bars[now - BASE_WINDOW : now]
         base_high = max(bar.high for bar in base)

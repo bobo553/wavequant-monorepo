@@ -1,5 +1,6 @@
 import { bottomNTargetCaption, isBottomNTargetSource } from "./bottom-n-targets.js";
 import { targetLevelGuide } from "./target-level-guides.js";
+import { isEligibilityNTargetSource } from "./eligibility-n-targets.js";
 
 const BASE_N_STAGES = new Set(["one_p", "two_t"]);
 const N_STAGES = ["one_p", "two_t", "five_top", "ten_full"];
@@ -13,7 +14,8 @@ export function nTargetLevels(item, asof) {
     if (!isPositiveNTarget(item, asof) || !asof || item.time > asof || item.raw.available_at > asof) return [];
     return item.levels.filter((level) => {
         if (!isNTargetStage(level.stage) || !Number.isFinite(level.price)) return false;
-        if (!BASE_N_STAGES.has(level.stage) && (!level.available_at || level.estimated)) return false;
+        if (!BASE_N_STAGES.has(level.stage) && (!level.available_at ||
+            (level.estimated && !(isEligibilityNTargetSource(item.raw) && level.display_only)))) return false;
         const knownAt = level.available_at || item.signal_time || item.time;
         return knownAt <= asof;
     });
@@ -26,6 +28,7 @@ export function nTargetGuide(item, level, bars, asof) {
     const guide = targetLevelGuide(item, { ...level, anchor_at: level.anchor_at || knownAt }, bars, asof);
     const caption = bottomNTargetCaption(item.raw);
     if (guide && caption) guide.name = `${guide.name} · ${caption}`;
+    if (guide && level.estimated) return { ...guide, end: null, targetState: "预估叠箱" };
     if (!guide || BASE_N_STAGES.has(level.stage)) return guide;
     const end = level.valid_until && level.valid_until < asof ? level.valid_until : asof;
     const reached = bars.find((bar) => {
@@ -42,7 +45,7 @@ export function nTargetGuide(item, level, bars, asof) {
 
 export function isPositiveNTarget(item, asof) {
     return (
-        isBottomNTargetSource(item?.raw, undefined, asof) &&
+        (isBottomNTargetSource(item?.raw, undefined, asof) || isEligibilityNTargetSource(item?.raw)) &&
         ["one_p", "two_t"].every((stage) =>
             item.levels?.some((level) => level.stage === stage && Number.isFinite(level.price) && level.anchor_at),
         )
@@ -69,7 +72,7 @@ export function nTargetObservations(items, bars, asof) {
                 return [];
             const twoT = guides[levels.findIndex((level) => level.stage === "two_t")];
             const activeLevels = levels.filter(
-                (level, index) => guides[index] && !["回调暂停", "已失效"].includes(level.status),
+                (level, index) => guides[index] && !level.estimated && !["回调暂停", "已失效"].includes(level.status),
             );
             const latest =
                 [...N_STAGES]

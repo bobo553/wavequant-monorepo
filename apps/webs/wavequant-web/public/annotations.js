@@ -1,6 +1,7 @@
 // Presentation-only mappings. Strategy conditions remain in the Python engine.
 import { bottomNTargetCaption, isBottomNTargetSource } from "./bottom-n-targets.js";
 import { buyNTargetLevels } from "./buy-n-targets.js";
+import { isEligibilityNTargetSource } from "./eligibility-n-targets.js";
 import { cWaveExtensionLevel } from "./c-wave-extension.js";
 import { combinedAEntryEvidence } from "./combined-a-entry-evidence.js";
 import { label, num, pct } from "./labels.js";
@@ -109,7 +110,8 @@ const REASONS = {
     wave_two_t_resistance_reduce: "二饱（二吐/2T）到位出现较长上影抵抗，禁买与加仓，持仓累计减仓 80%",
     wave_two_t_resistance_volume_clear: "二饱抵抗后次笔阴线低点与收盘双破，量大于最近阴线，当日清仓",
     wave_two_t_next_volume_clear: "二饱到位日上影超过 40%，次日阴线双破且量大于最近阴线，当日清仓",
-    wave_two_t_body_volume_clear: "二饱到位后阴线实体反包前日阳线，成交量大于此前最近阴线，当日收盘清空余仓",
+    wave_two_t_body_volume_clear: "二吐到位后阴线实体反包前日实体，成交量大于此前最近阴线或前一交易日，当日收盘清空余仓",
+    limit_up_distribution_midpoint_clear: "大涨缩量封板后出现巨量上涨，次日低开至前日实体中点附近并收阴跌破中点，收盘清空余仓",
     wave_upper_rejection_reduce: "目标阶段放量冲高收阴、长上影，当日累计减仓",
     wave_volume_shadows_reduce: "目标阶段放量大振幅、上下长影，当日累计减仓",
     wave_bull_resistance_failed_clear: "目标阶段大阴线击穿多头抵抗低点，当日清仓",
@@ -438,7 +440,9 @@ export function bearToBullHighAnnotations(levelLandmarks, from, to, knownAt = to
                     markerPosition: "atPriceTop",
                     markerShape: "arrowDown",
                     title: `${spec.numeral} 空翻多高点 · ${landmark.label} ${num(landmark.value)}`,
-                    description: `${spec.label}趋势线正式低点 ${low.label}（${low.time}，${num(low.value)}）确认由空翻多时，${landmark.label}（${landmark.time}，${num(landmark.value)}）是完成转换的确认高点${keyText}。整条证据到 ${landmark.available_at} 才可知；它不是浏览器按当前窗口选择的最高价，也不等于买卖信号。`,
+                    description: landmark.special_bull_recovery
+                        ? `${spec.label}趋势线在短暂跌破后收回，再次同级突破，形成特殊空翻多。起涨低点 ${low.time}（${num(low.value)}），空翻多高点 ${landmark.time}（${num(landmark.value)}）${keyText}。同腿高点延伸沿用本次转换；本高点到 ${landmark.available_at} 才确认，不等于买入信号。`
+                        : `${spec.label}趋势线正式低点 ${low.label}（${low.time}，${num(low.value)}）确认由空翻多时，${landmark.label}（${landmark.time}，${num(landmark.value)}）是完成转换的确认高点${keyText}。整条证据到 ${landmark.available_at} 才可知；它不是浏览器按当前窗口选择的最高价，也不等于买卖信号。`,
                     sourceLabel: `${spec.label}趋势线 · Python 空翻多确认高点`,
                     priority: 150 - level,
                     color: spec.color,
@@ -459,6 +463,17 @@ export function bearToBullHighAnnotations(levelLandmarks, from, to, knownAt = to
  * 图窗与回放截面过滤。确认日可以晚于低点所在图窗，但不能晚于当前
  * 回放截面；绝不从 K 线最低价猜测一个尚未确认的交替低点。
  */
+function alternationRuleText(rule) {
+    return {
+        confirmed_higher_pullback_strictly_below_two_thirds: "浅回撤低点确认（含时间条件）",
+        confirmed_higher_pullback_then_confirmed_flip_high_rebreak: "守低后已确认高点再次突破",
+        positive_n_and_squeeze_after_qualified_b: "正 N 与轧空确认",
+        positive_n_consolidation_gap_after_qualified_b: "正 N 整理后跳空放量突破",
+        body_gap_volume_bullish_breakout_after_defended_low: "守低后实体跳空、放量中大阳、收盘突破整理阻力",
+        confirmed_same_level_counter_holds_recovered_flip_origin: "旧版同级低点确认",
+    }[rule] || "后端结构确认";
+}
+
 export function bearBullAlternationLowAnnotations(levelLandmarks, from, to, knownAt = to) {
     return levelLandmarks.flatMap(({ level, landmarks = [] }) => {
         const spec = LAST_FALL_HIGH_LEVELS[level];
@@ -481,7 +496,7 @@ export function bearBullAlternationLowAnnotations(levelLandmarks, from, to, know
                 const invalidated = landmark.invalidated_at && landmark.invalidated_at <= knownAt;
                 const brokenOut = landmark.breakout_at && landmark.breakout_at <= knownAt;
                 const confirmationText = squeeze
-                    ? `价格或时间回调条件合格后，正 N + ${landmark.confirmation_evidence.regime}于 ${landmark.available_at} 确认 b 低点。${invalidated ? `${landmark.invalidated_at} 尚未突破 a 高点就跌破 b 低点，本次交替低点已失效。` : brokenOut ? `${landmark.breakout_at} 最高价已严格突破 a 高点，解除突破前先跌破 b 的失效条件。` : "尚未突破 a 高点前，若最低价跌破 b 低点，本次交替低点失效。"}`
+                    ? `价格或时间回调条件合格后，正 N + ${landmark.confirmation_evidence?.regime || "轧空"}于 ${landmark.available_at} 确认 b 低点。${invalidated ? `${landmark.invalidated_at} 尚未突破 a 高点就跌破 b 低点，本次交替低点已失效。` : brokenOut ? `${landmark.breakout_at} 最高价已严格突破 a 高点，解除突破前先跌破 b 的失效条件。` : "尚未突破 a 高点前，若最低价跌破 b 低点，本次交替低点失效。"}`
                     : rebreak
                       ? `虽回档 ${pct(landmark.retracement_ratio)}，但随后已确认的 ${rebreak.label}（${rebreak.time}，${num(rebreak.value)}）严格突破原空翻多高点；完整证据到 ${landmark.available_at} 才可知。`
                       : `回档严格小于三分之二，完整证据到 ${landmark.available_at} 才可知。`;
@@ -495,7 +510,9 @@ export function bearBullAlternationLowAnnotations(levelLandmarks, from, to, know
                     markerPosition: "atPriceBottom",
                     markerShape: "arrowUp",
                     title: `${spec.numeral} 空多交替低点${invalidated ? "（已失效）" : ""} · ${landmark.label} ${num(landmark.value)}`,
-                    description: squeeze
+                    description: landmark.lifecycle
+                        ? `${spec.label}${landmark.special_bull_recovery ? "特殊空翻多后" : "空翻多后"}，高点 ${high.time}（${num(high.value)}）之后的回撤低点为 ${landmark.time}（${num(landmark.value)}），起涨低点为 ${origin.time}（${num(origin.value)}）。${landmark.special_bull_recovery ? "回撤守住新起涨低点，并满足既有交替结束规则。" : "由后端六态确认交替结束。"}确认依据：${alternationRuleText(landmark.confirmation_rule)}。完整证据到 ${landmark.available_at} 才可知；结构发生日与确认日分开，标注不等于成交。`
+                        : squeeze
                         ? `${spec.label} a 段：${origin.time} ${num(origin.value)} → ${high.time} ${num(high.value)}；b 低点发生于 ${landmark.time}，回档 ${pct(landmark.retracement_ratio)}。${confirmationText}${squeezeConditionText(landmark.confirmation_evidence)}低点日期与确认日期分开记录，结构确认不等于买入成交。`
                         : `${spec.label}趋势线在 ${high.label}（${high.time}，${num(high.value)}）严格突破冻结末跌高 ${key.label}（${key.time}，${num(key.value)}）完成空翻多后，${landmark.label}（${landmark.time}，${num(landmark.value)}）相对 ${origin.label}（${origin.time}，${num(origin.value)}）形成 ${pct(landmark.retracement_ratio)} 回档，并保持高于原空头低点 ${bearLow.label}（${bearLow.time}，${num(bearLow.value)}）。${confirmationText}未确认回档或跌破原低点不会标记。`,
                     sourceLabel: `${spec.label}趋势线 · Python 已确认空多交替低点${squeeze ? "（正 N 轧空确认）" : landmark.source_level < level ? `（${LAST_FALL_HIGH_LEVELS[landmark.source_level]?.label || landmark.source_level}已确认回档证据）` : ""}`,
@@ -503,7 +520,7 @@ export function bearBullAlternationLowAnnotations(levelLandmarks, from, to, know
                     color: invalidated ? "#8292a9" : spec.color,
                     levels: [
                         { name: `${spec.label}空翻多高点`, price: high.value },
-                        { name: `${spec.label}冻结末跌高`, price: key.value },
+                        ...(key ? [{ name: `${spec.label}冻结末跌高`, price: key.value }] : []),
                         { name: `${spec.label}原空头低点`, price: bearLow.value },
                     ],
                     raw: {
@@ -620,6 +637,8 @@ export function ruleTitle(e) {
     return RULES[e.event]?.[0] || label(e.event);
 }
 function squeezeConditionText(event) {
+    // 旧快照可能只有确认类型；缺少说明依据不能阻断成交标记和折线绘制。
+    if (!event) return "确认细节未随本次快照提供。";
     const paths = [];
     if (event.deep_price_path)
         paths.push(
@@ -631,7 +650,7 @@ function squeezeConditionText(event) {
         paths.push(
             `时间条件：b ${event.b_duration} 根 > a ${event.a_duration} 根，且 b 最低收盘 ${num(event.b_minimum_close)} < 1/2 回撤价 ${num(event.half_price)}`,
         );
-    return `${paths.join("；")}。`;
+    return paths.length ? `${paths.join("；")}。` : "";
 }
 
 function abcDescription(event, view) {
@@ -838,7 +857,7 @@ export function buildAnnotations(view, theory) {
             event.event === "n_completed" &&
             event.direction === "up" &&
             event.n_invalidated_at &&
-            event.n_invalidated_at <= asof
+            event.n_invalidated_at <= asof && !isEligibilityNTargetSource(event)
         )
             continue;
         const spec = RULES[event.event];
@@ -850,6 +869,7 @@ export function buildAnnotations(view, theory) {
                 (level) =>
                     (!(event.event === "n_completed" && event.direction === "up") ||
                         isBottomNTargetSource(event, theory) ||
+                        isEligibilityNTargetSource(event) ||
                         (!["one_p", "two_t", "five_top", "ten_full"].includes(level.stage) &&
                             !["1P 投影", "2T 投影"].includes(level.name))) &&
                     (!level.available_at ||
@@ -890,6 +910,8 @@ export function buildAnnotations(view, theory) {
                     ? abcDescription(event, view)
                     : candidateRejection
                       ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${fiveTopRisk}${tenFullRisk}未产生买入信号，也未提交买单。`
+                      : isEligibilityNTargetSource(event)
+                        ? `${spec?.[1] || "已确认正 N。"}${bottomNTargetCaption(event)}，N 于 ${event.n_confirmed_at || event.available_at} 可知，资格于 ${event.display_target_confirmed_at} 确认。展示一饱、二吐及五顶、十满；未正式确认的远端目标标注预估叠箱，不改变策略测幅资格或交易结果。`
                       : event.event === "n_completed" && event.direction === "up" && event.target_eligible !== undefined
                         ? event.target_eligible
                             ? `${spec?.[1]}测幅来源：${bottomNTargetCaption(event)}。${

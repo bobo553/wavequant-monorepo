@@ -13,6 +13,11 @@ from threading import Event, Lock, Thread
 from time import monotonic, time
 from typing import Callable
 
+from wavequant.domain.market_structure.calculation_steps import observe_steps
+from wavequant.infrastructure.persistence.calculation_step_cache import CalculationStepCache
+from wavequant.domain.strategies.market_preview import observe_market_preview
+from .application.backtest_preview import BacktestPreviewPublisher
+
 
 class BacktestJobConflict(Exception):
     """A request ID was already assigned to different backtest arguments."""
@@ -48,6 +53,9 @@ class BacktestJob:
     completed_at: float | None = None
     progress_percent: int = 0
     progress_stage: str = "准备回测"
+    pipeline: dict[str, object] | None = None
+    preview_revision: int = 0
+    preview: dict[str, object] | None = None
 
 
 class BacktestJobs:
@@ -223,8 +231,15 @@ class BacktestJobs:
         result: object = None
         error: Exception | None = None
         succeeded = False
+        recorder = CalculationStepCache(
+            self.history_path.parent / '.calculation-steps' if self.history_path is not None else None,
+            dict(engine=self.engine_version, signature=job.signature),
+            lambda snapshot: self.update_pipeline(job_id, snapshot),
+        )
         try:
-            result = work()
+            preview = BacktestPreviewPublisher(lambda revision, value: self.update_preview(job_id, revision, value))
+            with observe_steps(recorder), observe_market_preview(preview.observe):
+                result = work()
             succeeded = True
         except Exception as exc:
             error = exc
@@ -233,6 +248,10 @@ class BacktestJobs:
             recorded_error = (
                 error if succeeded or error is not None else RuntimeError("backtest worker stopped unexpectedly")
             )
+            try:
+                recorder.finish(result, recorded_error)
+            except (OSError, ValueError, TypeError) as exc:
+                logging.warning('Calculation step recording failed: %s', exc)
             if recorded_error is not None and self.on_error is not None:
                 try:
                     self.on_error(job_id, recorded_error)
@@ -242,8 +261,10 @@ class BacktestJobs:
                 job.result = result
                 job.error = recorded_error
                 job.completed_at = self.clock()
+                job.preview = None
                 item = dict(job.details)
                 item.update(job=job_id, status="failed" if recorded_error is not None else "completed")
+                item['pipeline'] = job.pipeline
                 if isinstance(result, dict):
                     backtest = result.get("backtest")
                     valid_result = (
@@ -292,6 +313,11 @@ class BacktestJobs:
                 elapsed_seconds=round(max(0.0, now - job.started_at), 1),
                 progress_percent=job.progress_percent,
                 progress_stage=job.progress_stage,
+                pipeline=job.pipeline,
+                preview_revision=job.preview_revision,
+                processed_sessions=job.preview.get('processed') if job.preview is not None else None,
+                total_sessions=job.preview.get('total') if job.preview is not None else None,
+                processed_asof=job.preview.get('asof') if job.preview is not None else None,
             )
             running.append(item)
         return {"active": self._active, "max_active": self.max_active, "jobs": running}
@@ -314,7 +340,31 @@ class BacktestJobs:
 
     def progress(self, job: BacktestJob) -> dict[str, object]:
         with self._lock:
-            return {"progress_percent": job.progress_percent, "progress_stage": job.progress_stage}
+            return {"progress_percent": job.progress_percent, "progress_stage": job.progress_stage,
+                    "pipeline": job.pipeline, "preview_revision": job.preview_revision,
+                    "processed_sessions": job.preview.get('processed') if job.preview is not None else None,
+                    "total_sessions": job.preview.get('total') if job.preview is not None else None,
+                    "processed_asof": job.preview.get('asof') if job.preview is not None else None}
+
+    def update_pipeline(self, job_id: str, snapshot: dict[str, object]) -> None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is not None and not job.done.is_set():
+                job.pipeline = snapshot
+
+    def update_preview(self, job_id: str, revision: int, preview: dict[str, object]) -> None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is not None and not job.done.is_set() and revision > job.preview_revision:
+                job.preview_revision = revision
+                job.preview = preview
+                job.progress_stage = (f'同日联动：折线 → 一级 → 二级 → 三级 → B/S及账户 · '
+                    f'已处理{preview["processed"]}/{preview["total"]}个交易日 · 截至{preview["asof"]}')
+
+    def preview(self, job: BacktestJob, after: int) -> dict[str, object]:
+        with self._lock:
+            return dict(revision=job.preview_revision,
+                        preview=job.preview if job.preview_revision > after and not job.done.is_set() else None)
 
     def snapshot(self) -> dict[str, object]:
         """Expose bounded job metadata without serializing backtest results."""

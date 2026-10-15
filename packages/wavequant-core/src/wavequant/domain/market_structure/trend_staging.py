@@ -1,18 +1,22 @@
 """股票级分阶段计算的有界临时行；只读取本请求自己写出的可信对象。"""
 
 from collections.abc import Callable, Iterator
-from pickle import HIGHEST_PROTOCOL, dump, load
+from pickle import HIGHEST_PROTOCOL, dumps, loads
+from struct import Struct
 from tempfile import SpooledTemporaryFile
 from types import TracebackType
 from typing import Generic, Self, TypeVar
+from zlib import compress, decompress
 
 
 _Row = TypeVar('_Row')
 _STAGE_MEMORY_BYTES = 2 * 1024 * 1024
+_HEADER = Struct('>BQ')
+_COMPRESS_AFTER = 64 * 1024
 
 
 class TrendStageRows(Generic[_Row]):
-    """顺序写完一个阶段，再逐行读取，避免保留全历史完整证据树。
+    """保存有界证据流；日内消费者可读取已写前缀，再继续追加。
 
     每个阶段最多在内存保存 2 MiB 序列化内容，超过后由标准库自动移到
     本请求的临时文件；读取时只持有当前行。阶段数固定，因此空间由固定
@@ -22,7 +26,7 @@ class TrendStageRows(Generic[_Row]):
     write 写入的对象，不接受外部文件、路径、缓存或上传内容。decode
     显式校验恢复对象的领域形状；存储位置永不进入图表结果或 checkpoint。
     调用方必须使用 with／ExitStack，保证成功、判点失败或消费失败都关闭
-    临时资源。读阶段封存写入；只允许一个顺序读取器，避免隐式共享游标。
+    临时资源。默认读取封存写入；实时前缀读取恢复写游标。只允许一个读取器。
     """
 
     def __init__(self, decode: Callable[[object], _Row], *, memory_bytes: int = _STAGE_MEMORY_BYTES) -> None:
@@ -31,8 +35,11 @@ class TrendStageRows(Generic[_Row]):
         self._decode = decode
         self._stream = SpooledTemporaryFile(max_size=memory_bytes, mode='w+b')
         self._row_count = 0
+        self._offsets: list[int] = []
         self._sealed = False
         self._reading = False
+        self.raw_bytes = 0
+        self.stored_bytes = 0
 
     @property
     def row_count(self) -> int:
@@ -45,23 +52,48 @@ class TrendStageRows(Generic[_Row]):
     def write(self, row: _Row) -> None:
         if self._sealed:
             raise ValueError('a completed trend stage cannot accept additional rows')
-        dump(row, self._stream, protocol=HIGHEST_PROTOCOL)
+        if self._reading:
+            raise ValueError('a trend stage cannot append while a reader is active')
+        payload = dumps(row, protocol=HIGHEST_PROTOCOL)
+        self.raw_bytes += len(payload)
+        compressed = compress(payload, level=1) if len(payload) >= _COMPRESS_AFTER else payload
+        packed = len(compressed) < len(payload) * .85
+        stored = compressed if packed else payload
+        # 逐行压缩保留完整 pickle 类型与别名；一次写入避免大证据的多次文件回调。
+        self._offsets.append(self._stream.tell())
+        self._stream.write(_HEADER.pack(int(packed), len(stored)))
+        self._stream.write(stored)
+        self.stored_bytes += _HEADER.size + len(stored)
         self._row_count += 1
 
-    def iter_rows(self) -> Iterator[_Row]:
+    def iter_rows(self, *, seal: bool = True, start_row: int = 0) -> Iterator[_Row]:
+        if type(start_row) is not int or not 0 <= start_row <= self._row_count:
+            raise ValueError('invalid trend stage read offset')
         if self._reading:
             raise ValueError('a trend stage permits only one active sequential reader')
-        self._sealed = True
+        self._sealed = self._sealed or seal
         self._reading = True
+        position = self._stream.tell()
         try:
-            self._stream.seek(0)
-            for _ in range(self._row_count):
-                value: object = load(self._stream)
+            if start_row < self._row_count:
+                self._stream.seek(self._offsets[start_row])
+            for _ in range(start_row, self._row_count):
+                header = self._stream.read(_HEADER.size)
+                if len(header) != _HEADER.size:
+                    raise ValueError('owned trend stage has an incomplete row header')
+                packed, length = _HEADER.unpack(header)
+                payload = self._stream.read(length)
+                if len(payload) != length or packed not in (0, 1):
+                    raise ValueError('owned trend stage has an incomplete row payload')
+                value: object = loads(decompress(payload) if packed else payload)
                 yield self._decode(value)
         finally:
+            if not seal:
+                self._stream.seek(position)
             self._reading = False
 
     def close(self) -> None:
+        self._offsets.clear()
         self._stream.close()
 
     def __enter__(self) -> Self:

@@ -20,8 +20,16 @@ def canonical(value):
 
 
 class ArtifactCache:
+    def contains(self, namespace: str, inputs: object) -> bool:
+        """Check retained chunk identity without decompressing all historical rows."""
+        try:
+            with closing(self._connect()) as db:
+                return db.execute('SELECT 1 FROM artifacts WHERE key=?', (self.key(namespace, inputs),)).fetchone() is not None
+        except (OSError, sqlite3.Error):
+            return False
+
     SCHEMA = 1
-    BACKTEST_NAMESPACES = ('backtest', 'signals', 'screen', 'akshare-backtest', 'akshare-signals')
+    BACKTEST_NAMESPACES = ('backtest', 'signals', 'screen', 'akshare-backtest', 'akshare-signals', 'adjusted_theory')
     # Reads use WAL snapshots and can wait for transient filesystem pressure.
     # Writes are disposable optimizations: a busy background precomputation
     # must never make an interactive chart/backtest wait 30 seconds per
@@ -83,7 +91,13 @@ class ArtifactCache:
                         with closing(sqlite3.connect(self.path, timeout=30)) as db, db:
                             if db.execute('PRAGMA journal_mode').fetchone()[0]!='wal':
                                 db.execute('PRAGMA journal_mode=WAL')
-                            db.execute('CREATE TABLE IF NOT EXISTS artifacts (key TEXT PRIMARY KEY, namespace TEXT NOT NULL, payload BLOB NOT NULL, digest TEXT NOT NULL, size INTEGER NOT NULL, created REAL NOT NULL)')
+                            usage_table = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                                                     "AND name='artifact_usage'").fetchone()
+                            if usage_table is None or db.execute('SELECT 1 FROM artifact_usage WHERE id=1').fetchone() is None:
+                                # 迁移标记与触发器在同一事务发布；已初始化的新实例只读确认。
+                                db.execute('BEGIN IMMEDIATE')
+                                db.execute('CREATE TABLE IF NOT EXISTS artifacts (key TEXT PRIMARY KEY, namespace TEXT NOT NULL, payload BLOB NOT NULL, digest TEXT NOT NULL, size INTEGER NOT NULL, created REAL NOT NULL)')
+                                self._initialize_usage(db)
                         break
                     except sqlite3.OperationalError as exc:
                         if 'locked' not in str(exc) or attempt==4:
@@ -92,6 +106,61 @@ class ArtifactCache:
                         time.sleep(.02*(attempt+1))
                 self.ready = True
         return sqlite3.connect(self.path, timeout=timeout_seconds)
+
+    @staticmethod
+    def _initialize_usage(db: sqlite3.Connection) -> None:
+        """容量账本与产物同事务更新；旧库仅在首次迁移时读取全部 size。
+
+        每键账本保留被 REPLACE 覆盖前的大小，兼容旧进程连接默认关闭
+        recursive_triggers 的行为；普通删除、覆盖和回滚都不会重复计费。
+        统计口径仍是压缩 payload 的逻辑大小，不代表 SQLite 物理文件大小。
+        """
+        db.execute('CREATE TABLE IF NOT EXISTS artifact_sizes '
+                   '(key TEXT PRIMARY KEY, size INTEGER NOT NULL) WITHOUT ROWID')
+        db.execute('CREATE TABLE IF NOT EXISTS artifact_usage '
+                   '(id INTEGER PRIMARY KEY CHECK(id=1), total_bytes INTEGER NOT NULL CHECK(total_bytes>=0))')
+        if db.execute('SELECT 1 FROM artifact_usage WHERE id=1').fetchone() is None:
+            db.execute('DELETE FROM artifact_sizes')
+            db.execute('INSERT INTO artifact_sizes SELECT key,size FROM artifacts')
+            db.execute('INSERT INTO artifact_usage SELECT 1,COALESCE(SUM(size),0) FROM artifact_sizes')
+        db.execute('CREATE INDEX IF NOT EXISTS artifacts_eviction_order ON artifacts(created,key,size)')
+        db.execute('''CREATE TRIGGER IF NOT EXISTS artifact_usage_insert AFTER INSERT ON artifacts BEGIN
+            UPDATE artifact_usage SET total_bytes=total_bytes+NEW.size-
+                COALESCE((SELECT size FROM artifact_sizes WHERE key=NEW.key),0) WHERE id=1;
+            INSERT OR REPLACE INTO artifact_sizes(key,size) VALUES(NEW.key,NEW.size);
+        END''')
+        db.execute('''CREATE TRIGGER IF NOT EXISTS artifact_usage_delete AFTER DELETE ON artifacts BEGIN
+            UPDATE artifact_usage SET total_bytes=total_bytes-
+                COALESCE((SELECT size FROM artifact_sizes WHERE key=OLD.key),0) WHERE id=1;
+            DELETE FROM artifact_sizes WHERE key=OLD.key;
+        END''')
+        db.execute('''CREATE TRIGGER IF NOT EXISTS artifact_usage_update AFTER UPDATE OF key,size ON artifacts BEGIN
+            UPDATE artifact_usage SET total_bytes=total_bytes-
+                COALESCE((SELECT size FROM artifact_sizes WHERE key=OLD.key),0) WHERE id=1;
+            DELETE FROM artifact_sizes WHERE key=OLD.key;
+            UPDATE artifact_usage SET total_bytes=total_bytes+NEW.size-
+                COALESCE((SELECT size FROM artifact_sizes WHERE key=NEW.key),0) WHERE id=1;
+            INSERT OR REPLACE INTO artifact_sizes(key,size) VALUES(NEW.key,NEW.size);
+        END''')
+
+    def _evict_over_budget(self, db: sqlite3.Connection, key: str, packed_size: int) -> None:
+        """写事务内读取单行容量，超限时按索引分批淘汰，保留本次产物。"""
+        total = db.execute('SELECT total_bytes FROM artifact_usage WHERE id=1').fetchone()[0]
+        if total <= self.max_bytes:
+            return
+        target = max(self.max_bytes * 9 // 10, packed_size)
+        while total > target:
+            rows = db.execute('SELECT key,size FROM artifacts WHERE key!=? '
+                              'ORDER BY created,key LIMIT 256', (key,)).fetchall()
+            if not rows:
+                break
+            expired = []
+            for old, size in rows:
+                expired.append((old,))
+                total -= size
+                if total <= target:
+                    break
+            db.executemany('DELETE FROM artifacts WHERE key=?', expired)
 
     def get(self, namespace, inputs):
         key = self.key(namespace, inputs)
@@ -120,13 +189,7 @@ class ArtifactCache:
             with closing(self._connect(timeout_seconds=self.WRITE_TIMEOUT_SECONDS)) as db, db:
                 db.execute('INSERT OR REPLACE INTO artifacts VALUES (?,?,?,?,?,?)',
                            (key, namespace, packed, hashlib.sha256(packed).hexdigest(), len(packed), time.time()))
-                total = db.execute('SELECT COALESCE(SUM(size),0) FROM artifacts').fetchone()[0]
-                if total > self.max_bytes:
-                    for old, size in db.execute('SELECT key,size FROM artifacts WHERE key!=? ORDER BY created', (key,)).fetchall():
-                        db.execute('DELETE FROM artifacts WHERE key=?', (old,))
-                        total -= size
-                        if total <= self.max_bytes * .9:
-                            break
+                self._evict_over_budget(db, key, len(packed))
             return True
         except (OSError, sqlite3.Error) as exc:
             logging.warning('Research cache write skipped: %s', exc)

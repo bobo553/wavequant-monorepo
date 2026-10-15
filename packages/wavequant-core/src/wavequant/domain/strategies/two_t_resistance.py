@@ -15,14 +15,16 @@ TWO_T_BODY_VOLUME_CLEAR = "wave_two_t_body_volume_clear"
 def _body_volume_reversal(
     bars: Sequence[Bar], index: int, bearish_index: int | None,
 ) -> dict[str, object] | None:
-    """Compare real bodies and the most recent strictly bearish session, skipping dojis."""
-    if index < 1 or bearish_index is None:
+    """A bearish body covers yesterday; either prior-session volume benchmark suffices."""
+    if index < 1:
         return None
-    bar, previous, bearish = bars[index], bars[index - 1], bars[bearish_index]
-    if (bar.close >= bar.open or previous.close <= previous.open
-            or bar.open < previous.close or bar.close > previous.open
-            or (bar.open == previous.close and bar.close == previous.open)
-            or bearish.volume <= 0 or bar.volume <= bearish.volume):
+    bar, previous = bars[index], bars[index - 1]
+    bearish = bars[bearish_index] if bearish_index is not None and 0 <= bearish_index < index else None
+    top, bottom = max(previous.open, previous.close), min(previous.open, previous.close)
+    above_previous = previous.volume > 0 and bar.volume > previous.volume
+    above_bearish = bearish is not None and bearish.volume > 0 and bar.volume > bearish.volume
+    if (bar.close >= bar.open or top == bottom or bar.open < top or bar.close > bottom
+            or (bar.open == top and bar.close == bottom) or not (above_previous or above_bearish)):
         return None
     return dict(
         observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
@@ -30,8 +32,9 @@ def _body_volume_reversal(
         previous_open=previous.open, previous_high=previous.high,
         previous_low=previous.low, previous_close=previous.close, previous_volume=previous.volume,
         engulfed_date=previous.timestamp.date().isoformat(),
-        bearish_reference_date=bearish.timestamp.date().isoformat(),
-        bearish_reference_volume=bearish.volume,
+        bearish_reference_date=bearish.timestamp.date().isoformat() if bearish is not None else None,
+        bearish_reference_volume=bearish.volume if bearish is not None else None,
+        volume_above_previous=above_previous, volume_above_last_bearish=above_bearish,
     )
 
 
@@ -142,7 +145,7 @@ def two_t_resistance_history(
             body_risks[body_index] = dict(
                 target_evidence, **body_candidates[body_index],
                 reason=TWO_T_BODY_VOLUME_CLEAR, exit_fraction=1.0,
-                target_trigger="post_two_t_bearish_body_engulf_volume_gt_last_bearish",
+                target_trigger="post_two_t_bearish_body_engulf_volume_gt_last_bearish_or_previous",
             )
         following = reached + 1
         if following < len(bars) and _upper_shadow_over_forty_percent(bars[reached]):

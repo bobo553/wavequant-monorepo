@@ -344,9 +344,12 @@ class ChartRepository:
             raise ValueError("no bars available as of selected date")
         return bars
 
-    def strategy_config(self, rid, variant, *, n_target_trend_confirmation_enabled: bool = False):
+    def strategy_config(self, rid, variant, *, n_target_trend_confirmation_enabled: bool = False,
+                        buy_interval_level: int = 2):
         if type(n_target_trend_confirmation_enabled) is not bool:
             raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
+        if type(buy_interval_level) is not int or buy_interval_level not in (1, 2, 3):
+            raise ValueError('buy interval level must be 1, 2 or 3')
         variants = self._json(rid, "research/report.json")["variants"]
         if variant in WAVE_PROFILES:
             config = whole_wave_profile(variants["strict_full"], variant)
@@ -362,9 +365,12 @@ class ChartRepository:
             routes += '_or_source_n_strict_one_p_target'
         return dict(config,
                     strategy=dict(config['strategy'],
-                                  n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled),
+                                  n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                                  buy_interval_level=buy_interval_level),
                     definition=dict(config.get('definition', {}), trend_confirmation_routes=routes,
-                                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled))
+                                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                                    buy_interval_level=buy_interval_level,
+                                    buy_interval_policy='confirmed_alternation_until_bear_flip_or_context_invalidated'))
 
     def backtest_version(self, rid, variant):
         """Identify the loaded engine and selected profile for idle backtest queues."""
@@ -676,6 +682,7 @@ class ChartRepository:
         net_reward_risk_filter=False,
         shallow_base_breakout_enabled=True,
         n_target_trend_confirmation_enabled: bool = False,
+        buy_interval_level: int = 2,
         initial_capital=100_000,
         max_position_weight=1.0,
         progress=None,
@@ -692,7 +699,8 @@ class ChartRepository:
         if self.tdx_backtester is None:
             raise ValueError("通达信目录未配置")
         config = self.strategy_config(rid, variant,
-            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+            buy_interval_level=buy_interval_level)
         # Never mutate a sealed profile: the effective strategy is the cache key,
         # so checked and unchecked backtests remain independently reproducible.
         strategy = dict(config["strategy"], volume_filter=volume_filter,
@@ -714,6 +722,7 @@ class ChartRepository:
             start=start,
             asof=asof,
             strategy=strategy,
+            execution=execution,
             price_basis=view["price_basis"],
         )
         with cache.lock(cache.key("adjusted_theory", key)):
@@ -766,6 +775,7 @@ class ChartRepository:
         net_reward_risk_filter=False,
         shallow_base_breakout_enabled=True,
         n_target_trend_confirmation_enabled: bool = False,
+        buy_interval_level: int = 2,
         initial_capital=100_000,
         max_position_weight=1.0,
         progress=None,
@@ -779,7 +789,8 @@ class ChartRepository:
         if self.akshare_backtester is None:
             raise ValueError('AKShare 数据源未配置')
         profile = self.strategy_config(rid, variant,
-            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+            buy_interval_level=buy_interval_level)
         strategy = dict(profile['strategy'], volume_filter=volume_filter,
                         shallow_base_breakout_enabled=shallow_base_breakout_enabled)
         execution = dict(
@@ -792,7 +803,15 @@ class ChartRepository:
             symbol, start, asof, strategy, execution,
             **({"progress": progress} if progress is not None else {}),
         )
-        theory = self.render_theory(bars, SystemStrategy(**strategy), generated, view['asof'])
+        cache = self.akshare_backtester.artifacts
+        theory_key = dict(source=view['backtest']['source'], symbol=symbol, start=start, asof=asof,
+            strategy=strategy, execution=execution, price_basis=view['price_basis'])
+        with cache.lock(cache.key('adjusted_theory', theory_key)):
+            theory = cache.get('adjusted_theory', theory_key)
+            if theory is None:
+                theory = self.render_theory(bars, SystemStrategy(**strategy), generated, view['asof'])
+                self.akshare_backtester._verify_engine()
+                cache.put('adjusted_theory', theory_key, theory)
         if progress is not None: progress(99, '完成图表')
         theory.update(price_basis=view['price_basis'], data_source='akshare', upstream='sina', run_id=view['run_id'])
         definition = dict(profile.get('definition', {}), net_reward_risk_filter=net_reward_risk_filter,

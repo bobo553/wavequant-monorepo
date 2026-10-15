@@ -13,6 +13,7 @@ from math import isfinite
 from typing import Literal, TypeAlias, cast
 
 from .polyline import LinePoint, PointKind, ReversalPoint
+from .trend_evidence_reuse import _completion_cache
 from .trend_structure import StructuralTrend, classify_trend_prices, preceding_turn
 
 Moment: TypeAlias = int | str
@@ -72,6 +73,11 @@ def _stamp_wave_completion(point: dict[str, object], *, closed: bool, owned: boo
 
 
 def _completed_source_point(raw: Mapping[str, object]) -> dict[str, object] | None:
+    cache = _completion_cache.get()
+    return cache.project(raw, _validate_completed_source_point) if cache is not None else _validate_completed_source_point(raw)
+
+
+def _validate_completed_source_point(raw: Mapping[str, object]) -> dict[str, object] | None:
     """把本级几何知识投影成直接上级可消费的整波结束知识，不修改原节点。
 
     旧的人工 confirmed/reversal 输入没有生成标记，继续作为已确认来源。
@@ -459,6 +465,90 @@ def _ordinary_point(
     return result
 
 
+class _TrendReversalState:
+    """同一已校验、只追加来源的普通定义状态；批量入口也使用此循环。"""
+
+    def __init__(self, trend_level: int) -> None:
+        if type(trend_level) is not int or trend_level not in (1, 2, 3):
+            raise ValueError('trend_level must be 1, 2 or 3')
+        self.trend_level = trend_level
+        self.turns: list[_SourceTurn] = []
+        self.highs: list[int] = []
+        self.lows: list[int] = []
+        self.direction: WaveDirection | None = None
+        self.candidate: int | None = None
+        self.selected: list[dict[str, object]] = []
+        self.prefix_known: Moment | None = None
+        self._latest_sources: dict[str, _SourceTurn] = {}
+        self._sources_by_reversal: dict[ReversalPoint, _SourceTurn] = {}
+        self._preceding_sources: dict[ReversalPoint, _SourceTurn | None] = {}
+
+    def extend(self, appended: Sequence[_SourceTurn]) -> list[dict[str, object]]:
+        reversals = {point.reversal for point in appended}
+        if self.turns and (len(reversals) != len(appended)
+                           or any(reversal in self._sources_by_reversal for reversal in reversals)):
+            # 重复 ReversalPoint key 可能改变过去的 preceding 映射；保留
+            # 全前缀批量行为，不把此修订当作纯追加。
+            combined = [*self.turns, *appended]
+            _TrendReversalState.__init__(self, self.trend_level)
+            return self.extend(combined)
+        start = len(self.turns)
+        if not self.turns:
+            self._preceding_sources = _preceding_sources(appended)
+            self._sources_by_reversal = {point.reversal: point for point in appended}
+            for point in appended:
+                self._latest_sources[point.kind] = point
+        else:
+            for point in appended:
+                opposite = self._latest_sources.get('L' if point.kind == 'H' else 'H')
+                neighbors = (point.reversal,) if opposite is None else (opposite.reversal, point.reversal)
+                prior = preceding_turn(neighbors, point.reversal)
+                self._preceding_sources[point.reversal] = self._sources_by_reversal.get(prior) if prior is not None else None
+                self._sources_by_reversal[point.reversal] = point
+                self._latest_sources[point.kind] = point
+        self.turns.extend(appended)
+        turns, highs, lows = self.turns, self.highs, self.lows
+        direction, candidate, prefix_known = self.direction, self.candidate, self.prefix_known
+        for position, point in enumerate(appended, start):
+            prefix_known = point.available_at if prefix_known is None else _later_moment(prefix_known, point.available_at)
+            (highs if point.kind == 'H' else lows).append(position)
+            current_trend = classify_trend_prices(
+                [turns[index].value for index in highs[-2:]],
+                [turns[index].value for index in lows[-2:]],
+                trend_level=self.trend_level,
+            )
+            current: WaveDirection | None = (
+                'up' if current_trend == StructuralTrend.BULL else
+                'down' if current_trend == StructuralTrend.BEAR else None
+            )
+            if direction is None:
+                if current is None:
+                    continue
+                direction = current
+                candidate = (highs if direction == 'up' else lows)[-1]
+                continue
+            assert candidate is not None
+            target = 'H' if direction == 'up' else 'L'
+            sign = 1 if direction == 'up' else -1
+            if point.kind == target and sign * (point.value - turns[candidate].value) > 0:
+                candidate = position
+            if current is None or current == direction:
+                continue
+            extreme = turns[candidate]
+            evidence = [turns[index] for index in [*highs[-2:], *lows[-2:]]]
+            preceding = self._preceding_sources[extreme.reversal]
+            key = _reference(preceding) if preceding is not None else None
+            result = _ordinary_point(extreme, evidence, point, trend_level=self.trend_level,
+                direction=direction, current=current, prefix_known=prefix_known, key=key)
+            self.selected.append(result)
+            direction = current
+            pool = [index for index in range(candidate + 1, position + 1)
+                    if turns[index].kind == ('H' if direction == 'up' else 'L')]
+            candidate = (max if direction == 'up' else min)(pool, key=lambda index: turns[index].value)
+        self.direction, self.candidate, self.prefix_known = direction, candidate, prefix_known
+        return list(self.selected)
+
+
 def trend_reversals(
     points: Sequence[Mapping[str, object]], *, trend_level: int,
 ) -> list[dict[str, object]]:
@@ -489,52 +579,4 @@ def trend_reversals(
         raise ValueError('trend source points must be a sequence of mappings')
     source_level = trend_level - 1
     turns = _source_turns(points, source_level)
-    highs: list[int] = []
-    lows: list[int] = []
-    direction: WaveDirection | None = None
-    candidate: int | None = None
-    selected: list[dict[str, object]] = []
-    prefix_known: Moment | None = None
-    preceding_sources = _preceding_sources(turns)
-    for position, point in enumerate(turns):
-        prefix_known = point.available_at if prefix_known is None else _later_moment(prefix_known, point.available_at)
-        (highs if point.kind == 'H' else lows).append(position)
-        current_trend = classify_trend_prices(
-            [turns[index].value for index in highs[-2:]],
-            [turns[index].value for index in lows[-2:]],
-            trend_level=trend_level,
-        )
-        current: WaveDirection | None = (
-            'up' if current_trend == StructuralTrend.BULL else
-            'down' if current_trend == StructuralTrend.BEAR else None
-        )
-        if direction is None:
-            if current is None:
-                continue
-            direction = current
-            # 方向确立前的历史不属于新整波，避免导入较早但无本波证据的极值。
-            candidate = (highs if direction == 'up' else lows)[-1]
-            continue
-        assert candidate is not None
-        target = 'H' if direction == 'up' else 'L'
-        sign = 1 if direction == 'up' else -1
-        if point.kind == target and sign * (point.value - turns[candidate].value) > 0:
-            candidate = position
-        # 方向只由两类已确认极值共同决定。旧代码还要求最后证据与旧整波
-        # 极值同类，导致先抬低、后创新高的多头要等待另一低点才被接纳。
-        # point 已通过来源可知校验；无论最后补齐的是 H 还是 L，都在真实
-        # 可知日确认，既不等待未来 holding 点，也不把单边突破冒充趋势。
-        if current is None or current == direction:
-            continue
-        extreme = turns[candidate]
-        evidence = [turns[index] for index in [*highs[-2:], *lows[-2:]]]
-        preceding = preceding_sources[extreme.reversal]
-        key = _reference(preceding) if preceding is not None else None
-        result = _ordinary_point(extreme, evidence, point, trend_level=trend_level,
-                                 direction=direction, current=current, prefix_known=prefix_known, key=key)
-        selected.append(result)
-        direction = current
-        pool = [index for index in range(candidate + 1, position + 1)
-                if turns[index].kind == ('H' if direction == 'up' else 'L')]
-        candidate = (max if direction == 'up' else min)(pool, key=lambda index: turns[index].value)
-    return selected
+    return _TrendReversalState(trend_level).extend(turns)

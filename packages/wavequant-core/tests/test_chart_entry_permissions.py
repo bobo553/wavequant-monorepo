@@ -8,6 +8,7 @@ from typing import cast
 import pytest
 
 from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.trend_lines import _ClosedPreparedPaths, _TrendJudgementCache, _TrendPermissionCache
 from wavequant.domain.strategies.chart_entry_history import _strategy_permission_view, chart_entry_history
 
 
@@ -19,7 +20,8 @@ def _level(level: int, *, licensed: bool) -> dict[str, object]:
     permissions = [dict(path, points=[dict(geometry, value=8,
         incoming_trend_confirmation=dict(direction='up', available_at=time, label='producer-permission'))])] if licensed else []
     return dict(trend_level=level, strokes=[path], qualified_strokes=permissions,
-                candidate_strokes=[], structure_strokes=[], bear_to_bull_highs=[], bear_bull_alternation_lows=[])
+                candidate_strokes=[], structure_strokes=[], source_strokes=[], developing_strokes=[],
+                bear_to_bull_highs=[], bear_bull_alternation_lows=[])
 
 
 @pytest.mark.parametrize('licensed', [False, True])
@@ -34,14 +36,16 @@ def test_chart_recurses_geometry_then_supplies_only_explicit_permissions_to_stra
     strategy_inputs: list[tuple[Mapping[str, object], Mapping[str, object]]] = []
 
     def prepare(source: Sequence[Mapping[str, object]], *, trend_level: int = 1,
-                symbol: str = 'STRUCTURE') -> dict[str, object]:
+                symbol: str = 'STRUCTURE', _judgement_cache: _TrendJudgementCache | None = None,
+                _closed_paths: _ClosedPreparedPaths | None = None, _owned_source: bool = False) -> dict[str, object]:
         if trend_level > 1:
             recursive_inputs.append((trend_level, list(source)))
         return dict(geometry_levels[trend_level - 1], qualified_strokes=[])
 
     def attach(prepared: Mapping[str, object], market: Sequence[Bar], *,
                qualified_source_points: Sequence[Mapping[str, object]] | None = None,
-               n_target_trend_confirmation_enabled: bool = False) -> dict[str, object]:
+               n_target_trend_confirmation_enabled: bool = False, _permission_cache: _TrendPermissionCache | None = None,
+               _owned_candidates: bool = False) -> dict[str, object]:
         level = cast(int, prepared['trend_level'])
         permission_inputs.append((level, qualified_source_points))
         return geometry_levels[level - 1]

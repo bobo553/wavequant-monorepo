@@ -258,9 +258,52 @@ export function StockBrowser(): JSX.Element {
                     买入信号。结果卡片右上角星标用于收藏或移除；点击结果可回到对应股票与回放截面，核验末跌高、确认链和图上标识。
                 </p>
             </section>
-            <p id="selected-stock-summary" className="selected-stock-summary" role="status">
-                选择股票查看对应行情，切换保留回放日期。
-            </p>
+            <div id="selected-stock-summary-row" className="selected-stock-summary-row">
+                <p id="selected-stock-summary" className="selected-stock-summary" role="status">
+                    选择股票查看对应行情，切换保留回放日期。
+                </p>
+                <div className="selected-stock-copy-actions">
+                    <button
+                        id="copy-backtest-progress"
+                        className="backtest-progress-copy"
+                        type="button"
+                        aria-label="复制当前回测进度"
+                        title="复制当前回测进度"
+                        aria-live="polite"
+                    >
+                        复制
+                    </button>
+                    <button
+                        id="copy-eligibility-ranges-summary"
+                        type="button"
+                        className="backtest-progress-copy"
+                        data-copy-eligibility=""
+                        data-feedback-id="eligibility-summary-copy-feedback"
+                        disabled
+                        aria-label="复制当前股票的全部已显示资格区间"
+                        title="复制资格区间及确认、结束日期"
+                    >
+                        复制资格区间
+                    </button>
+                    <span id="eligibility-summary-copy-feedback" role="status" aria-live="polite" />
+                    <div data-current-eligibility-action="" hidden>
+                        <button
+                            id="copy-current-eligibility-range"
+                            type="button"
+                            className="backtest-progress-copy"
+                            data-copy-eligibility="current"
+                            data-default-label="复制当前资格区间"
+                            data-feedback-id="current-eligibility-copy-feedback"
+                            hidden
+                            disabled
+                            aria-label="只复制进度条当前位置所在的资格区间"
+                        >
+                            复制当前资格区间
+                        </button>
+                        <span id="current-eligibility-copy-feedback" role="status" aria-live="polite" />
+                    </div>
+                </div>
+            </div>
         </aside>
     );
 }

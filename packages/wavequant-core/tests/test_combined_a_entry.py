@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.trend_market_index import _MarketRangeIndex
 from wavequant.domain.strategies.chart_entry_history import chart_entry_history
 from wavequant.domain.strategies.combined_a_entry import (
     CombinedAContext,
@@ -110,6 +111,54 @@ def test_bare_four_pivots_without_original_n_are_not_a_combined_a():
     first: GeometryLevel = dict(strokes=[dict(id="source", points=points)])
     second: GeometryLevel = dict(strokes=[dict(id="second", source_path="source", points=points)])
     assert combined_a_contexts_from_geometry(bars, dict(strokes=[]), first, second, dict(strokes=[]), dates, 8) == ()
+
+
+@pytest.mark.parametrize('broken', ('none', 'origin', 'floor', 'equal_floor'))
+def test_indexed_combined_window_preserves_breakout_and_invalidation_audit(
+    monkeypatch: pytest.MonkeyPatch, broken: str,
+) -> None:
+    bars, history, context = setup()
+    if broken == 'origin':
+        bars[5] = replace(bars[5], low=3.9)
+    elif broken == 'floor':
+        bars[5] = replace(bars[5], close=5.5, low=5.4)
+    elif broken == 'equal_floor':
+        context = replace(context, origin_price=3)
+        history = {index: (context,) for index in history}
+        bars[5] = replace(bars[5], low=4.9, close=5)
+    indexed = combined_a_entry_history(bars, history)
+    monkeypatch.setattr(_MarketRangeIndex, 'build', classmethod(lambda cls, market: None))
+    assert combined_a_entry_history(bars, history) == indexed
+
+
+def test_closed_selected_interval_skips_buy_proof_but_keeps_defense_invalidation() -> None:
+    bars, history, _ = setup()
+    days = (False,) * len(bars)
+    _, proofs = combined_a_entry_history(bars, history, entry_days=days)
+    assert proofs == {}
+    bars[5] = replace(bars[5], low=3.9)
+    events, proofs = combined_a_entry_history(bars, history, entry_days=days)
+    assert proofs == {}
+    assert any(event['event'] == 'combined_a_invalidated' for event in events)
+
+
+def test_n_below_combined_a_price_window_skips_local_abc_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    bars = tuple(setup()[0])
+    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+    points: list[GeometryPoint] = [dict(index=index, kind=kind,
+        value=bars[index].high if kind == 'H' else bars[index].low,
+        available_at=bars[index].timestamp.date().isoformat(), state='confirmed')
+        for index, kind in ((0, 'L'), (1, 'H'), (3, 'L'), (4, 'H'))]
+    first: GeometryLevel = dict(strokes=[dict(id='first', points=points)])
+    audit = [dict(event='n_completed', direction='up', origin=0, neckline=1, pullback=2,
+                  bar_index=3, known_at=3, one_p=13., two_t=20.)]
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError('a pre-target interval reached the local ABC reducer')
+
+    monkeypatch.setattr('wavequant.domain.strategies.combined_a_entry._reduce_local_points', forbidden)
+    assert combined_a_contexts_from_geometry(bars, dict(strokes=[]), first, dict(strokes=[]),
+        dict(strokes=[]), dates, 8, audit, _market_index=_MarketRangeIndex(bars)) == ()
 
 
 @pytest.mark.parametrize("fixture", ["guofang_2026_consolidation.json", "guofang_2025_combined_a.json"])
