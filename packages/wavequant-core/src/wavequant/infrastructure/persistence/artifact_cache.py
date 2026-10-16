@@ -41,7 +41,7 @@ class ArtifactCache:
     def __init__(self, root, *, max_bytes=4 * 1024**3):
         self.path = Path(root) / 'artifacts-v1.sqlite'
         self.max_bytes = max_bytes
-        self.locks = WeakValueDictionary()
+        self.locks: WeakValueDictionary[str, RLock] = WeakValueDictionary()
         self.locks_guard = RLock()
         self.ready = False
         self.init_lock = RLock()
@@ -182,7 +182,24 @@ class ArtifactCache:
 
     def put(self, namespace, inputs, data):
         key = self.key(namespace, inputs)
-        packed = zlib.compress(canonical(dict(schema=self.SCHEMA, key=key, data=data)).encode(), 1)
+        payload = canonical(dict(schema=self.SCHEMA, key=key, data=data)).encode()
+        return self._put_payload(namespace, key, payload)
+
+    def _put_json(self, namespace: str, inputs: object, data: bytes) -> bool:
+        """Store JSON already encoded by our calculation recorder, without decoding it.
+
+        The private caller owns these UTF-8 bytes and has applied allow_nan=False;
+        external bytes must continue through the ordinary object-based interface.
+        The envelope and reader retain the existing schema and checksum contract.
+        """
+        key = self.key(namespace, inputs)
+        payload = (b'{"data":' + data + b',"key":' + canonical(key).encode()
+                   + b',"schema":' + canonical(self.SCHEMA).encode() + b'}')
+        return self._put_payload(namespace, key, payload)
+
+    def _put_payload(self, namespace: str, key: str, payload: bytes) -> bool:
+        """Commit either internal encoding through the same compression and transaction."""
+        packed = zlib.compress(payload, 1)
         if len(packed) > self.max_bytes:
             return False
         try:

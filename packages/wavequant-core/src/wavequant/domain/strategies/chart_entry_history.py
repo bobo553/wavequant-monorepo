@@ -972,7 +972,8 @@ def chart_entry_history(
                     cached_lifecycle.setdefault(cast(int, event['bar_index']), []).append(event)
             for daily_events in cached_lifecycle.values():
                 daily_events.sort(key=lambda event: event.get('reason') == 'source_path_ended')
-            lifecycle_reader = market_calculation._checkpoints.iter_changes(start_position=resume_start)
+            lifecycle_reader = market_calculation._checkpoints.iter_changes(
+                start_position=resume_start, _borrow_readonly=True)
             readers.callback(lifecycle_reader.close)
             next_lifecycle = next(lifecycle_reader, None)
         if _stage is not None: _stage('按已确认资格调度有效区间内的策略形态')

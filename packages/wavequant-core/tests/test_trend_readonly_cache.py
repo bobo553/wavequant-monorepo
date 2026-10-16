@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from wavequant.domain.market_structure.trend_judgement import _frozen_point, mutable_points
+from wavequant.domain.market_structure.trend_judgement import TrendJudgement, _frozen_point, mutable_points
 from wavequant.domain.market_structure.trend_readonly_cache import _ReadonlySnapshotCache
 from wavequant.domain.strategies import hierarchy_stream as stream_module
 from wavequant.domain.strategies.hierarchy_stream import HierarchyHistoryStream
@@ -112,3 +112,23 @@ def test_revised_tail_only_decodes_new_points_and_preserves_old_knowledge() -> N
         assert new[1]['proof'] == {'known': 2}
     finally:
         stream.close()
+
+
+def test_recursive_structure_reuse_requires_complete_frozen_knowledge() -> None:
+    point = _frozen_point({'index': 0, 'available_at': 1, 'wave_completed_at': 3})
+    judgement = TrendJudgement(1, 0, (point,), ())
+    assert not stream_module._available_structure(judgement, 2)
+    assert stream_module._available_structure(judgement, 3)
+
+    for raw in (
+        {'index': 0, 'available_at': 4},
+        {'index': 4, 'available_at': 1},
+        {'index': 0, 'available_at': True},
+        {'index': 0, 'available_at': 1, 'wave_completed_at': '2020-01-01'},
+        {'index': 0, 'available_at': 1, 'proof': object()},
+    ):
+        assert not stream_module._available_structure(TrendJudgement(1, 0, (_frozen_point(raw),), ()), 3)
+    unknown_candidate = _frozen_point({'proof': object()})
+    assert not stream_module._available_structure(TrendJudgement(1, 0, (point,), (unknown_candidate,)), 3)
+    assert not stream_module._available_structure(
+        TrendJudgement(1, 0, ({'index': 0, 'available_at': 1},), ()), 3)

@@ -2,6 +2,62 @@
 
 性能改动必须保持同一输入下的完整信号、审计、订单、成交、权益与收益一致。原始行情浏览和因果复权账户使用不同的价格基准、起点和缓存身份，不能互相替代。
 
+## 2026-10-17：当前分支的计算复用
+
+本轮基线为 `feat-三级趋势统一` 的 `a2e9522`，保持当时的策略规则。保留已有失败，不通过调整资格、N、买卖阈值或历史长度取得性能结果。所有测试使用 Core 的 Python 3.14.4 环境；实测为本机串行、独立进程、禁止网络、冷计算各一次，不能推断其他机器或完整历史的固定加速倍数。
+
+### 已实现
+
+1. **未变的层级结构只准备一次。** 一级仍每天调用原判断缓存，全文检查外部来源；相同不可变判断可复用已解码候选与冻结几何。二、三级只在直接下级的私有几何版本未变、知识及完成时钟全部到达、行情通过不可变 `Bar` 检查时复用实体来源及结构判断。每级仅持有当前版本，epoch 改变清空。资格、价格与 N 条件仍每日三级调用原函数，不复用昨日许可。
+2. **同一回测复用证据准入认证。** `_OwnedPointAdmission` 由 `HierarchyHistoryStream` 持有，跨日共享有界的完整证据认证；修改内容、未知值及非有限值沿原认证或复制路径。嵌套上下文恢复原绑定，由请求所有者在正常结束或异常时释放。
+3. **阶段证据每行只编码一次。** `CalculationStepCache` 暂存独立 JSON bytes，写块时直接组成原 schema/key/data 信封，复用原压缩、摘要、事务、容量控制和失败状态。保留原每行默认 JSON 空格对应的 512 KiB 分块预算；持久行内空格也被保留，所以压缩字节数、摘要及实际容量计费可以不同，读取数据和分块边界保持一致。
+4. **生命周期检查点使用已有只读读取。** 仅内部检查点消费者启用 `_borrow_readonly`；仍按原始 bytes 核对行版本，`from_checkpoint` 重建独立可变状态。公开返回对象不共享可变容器。
+
+从计算量看，设交易日数为 D、某级真实结构变化次数为 M：本轮把该级几何重新物化从每日 D 次降为 M 次，高一级判断也只在其直接来源变更时调用。一级来源核验和各级资格仍每天处理，且结构变更时仍可能遍历历史，所以没有把整场回测变成 O(D) 的保证。频繁修订或很短的样本不一定受益。
+
+### 实测与差分
+
+固定行情来自已有国芳 fixture，保留真实日线、权限、复权和全部策略/执行参数。实际调用 `streaming_stock_result` 并启用 24 步证据记录。分钟快照保留已有 42 个真实交易日及覆盖信息，不生成模拟分钟；保留原 fallback=true 配置，但三个窗口均未实际消费分钟、未触发分钟回退，不能视为该路径验收。每次均校验源码和输入前后摘要，完整导出并比较 research、account、分钟来源和所有计算步骤行，未做浮点舍入。
+
+| 窗口 | 旧版耗时 | 本轮耗时 | 旧版 / 本轮 CPU | 完整差分 |
+| --- | ---: | ---: | ---: | --- |
+| 128 日，2018-01-02 至 2018-07-12 | 1.926 秒 | 2.787 秒 | 1.406 / 1.875 秒 | 四份输出相同；短窗未提速 |
+| 512 日，2018-01-02 至 2020-02-13 | 61.341 秒 | 41.129 秒 | 32.203 / 29.281 秒 | 四份输出相同；耗时减 33%，CPU 减 9% |
+| 512 日，2023-03-21 至 2025-04-30 | 29.092 秒 | 21.551 秒 | 23.328 / 16.109 秒 | 四份输出相同；耗时减 26%，CPU 减 31% |
+
+这三组当前策略产生的信号、订单和交易均为零，审计分别为 2、50、35 条。因此它们证明这些窗口的完整输出相同，不能代替有成交账户、1777/2107 日全窗和分钟覆盖的验收。首轮 512 日的约 1.1 GB 峰值包含测试导出整棵证据树，不能视为引擎峰值；后续改成流式导出，2023 起窗口计算峰值旧版 74,215,424 B、本轮 76,365,824 B，没有据此宣称内存降低。768 日旧版诊断在 240 秒截止，最后可见进度为 690/768，未完成、未比较，扩大诊断时限不代表通过原完整回测两分钟目标。
+
+另对非空结构做独立热点测量：旧版先冻结同一 512 日逐日折线帧，两版均从相同 bytes 解码后输入 `HierarchyHistoryStream`。仅计初始化及每日 `advance`，排除折线生成/读取差别及最终导出，两版使用相同轻量调用计数器。
+
+| 指标 | 旧版 | 本轮 |
+| --- | ---: | ---: |
+| 三级历史耗时 / CPU | 24.369 / 24.141 秒 | 16.931 / 16.859 秒 |
+| 结构判断次数（一级 / 二级 / 三级） | 512 / 512 / 512 | 512 / 334 / 132 |
+| 冻结处理次数（含折线） | 2048 | 1004 |
+| 候选及几何解码入口次数 | 3072 | 984 |
+| 资格判断次数 | 1536 | 1536 |
+
+完整 history、epochs、declines 三份输出哈希相同，包含一级 15,286、二级 3,090、三级 216 个累计发布点，以及 10,723 条累计下降记录；热点耗时约减 30.5%，CPU 约减 30.2%。这证明减少了实际重复计算，同时保留逐日许可检查；不是整场回测加速 30% 的承诺。
+
+证据及离线脚本保留在本 worktree 的忽略目录 `.codex-runtime/perf-20261017/`，`baseline-short` / `candidate-short`、`baseline-active` / `candidate-active`、`hierarchy-baseline-512` / `hierarchy-candidate-512` 各自包含 summary 和完整输出。旧源摘要为 `9ee0af1ca71a51f3f7d72d2a495d45260fdb5217e17d546120c379d1f32fc8d9`，本轮最终源摘要为 `1fecb0ec9bffafa99b11dc92b94020023cbbfa0eb6a7a8e6febff930f4a54b70`；首轮 short 候选在类型标注调整前，摘要为 `88271adeb6c01da3be43092bf56cbbf8a9f8378d2ca954750cab0821387b96a1`。
+
+本地复测使用新的输出目录，依次运行，不能并发跑计时任务。下列脚本及冻结源属于本次忽略的诊断证据，不随 Git 提交；长期回归由调用次数与完整前缀差分单测约束。
+
+```powershell
+$python = '.\packages\wavequant-core\.venv\Scripts\python.exe'
+$bench = '.codex-runtime/perf-20261017'
+& $python "$bench/streaming_benchmark.py" --source-root "$bench/baseline-src" --fixture "$bench/guofang-active-512.json" --output "$bench/recheck-old" --sizes 512 --timeout 120 --repeat 1
+& $python "$bench/streaming_benchmark.py" --source-root packages/wavequant-core/src --fixture "$bench/guofang-active-512.json" --output "$bench/recheck-new" --sizes 512 --timeout 120 --repeat 1 --compare "$bench/recheck-old/summary.json"
+& $python "$bench/hierarchy_benchmark.py" --source-root "$bench/baseline-src" --output "$bench/recheck-hierarchy-old" --size 512 --timeout 120
+& $python "$bench/hierarchy_benchmark.py" --source-root packages/wavequant-core/src --output "$bench/recheck-hierarchy-new" --size 512 --timeout 120 --frames-input "$bench/recheck-hierarchy-old/frames.jsonl" --compare "$bench/recheck-hierarchy-old/summary.json"
+```
+
+### 验证状态与后续优先级
+
+316 项定向测试及 8 个子用例通过；排除的 `test_consumer_error_stops_before_the_next_market_date` 在冻结旧源上也失败：进度实际为 `[0, 25]`，旧断言只接受 `[25]`。没有改该断言或生产进度。四个本轮修改源文件 mypy 通过；`chart_entry_history.py` 的 14 条类型错误与旧源逐条一致，仍未通过该文件类型检查。Core wheel/sdist 构建成功。两个独立代码复核未发现阻断问题。完整套件、浏览器/E2E、全窗交易差分未运行，MONOREPO-330 保持 `in-progress`，不合并 main。
+
+要继续取得数量级改善，优先测量每日历史资格发布及完整证据恢复/编码的增长量，把实际新增和修订的工作与不变历史分开；先证实热点和完整结果，再决定数据结构。不能直接合并图表与策略判断缓存：二者的日期时钟、首次可知位置、闭合路径及附加注释不同。也不恢复下方已失败的 R、T—Y 前缀/传输试验，不以增大缓存、并行化 Python 热循环或缩短样本代替算法收益。
+
 ## 定位方法
 
 先在实际慢任务上采样，区分行情 I/O、信号生成、分钟入场准备、退出风险准备、逐日撮合和结果序列化。采样比例只用于定位，不能当作各阶段的精确秒数。使用 `cProfile` 和 `pstats` 查看固定输入的调用次数、累计耗时和调用方，再独立计时；分析器本身会增加开销。

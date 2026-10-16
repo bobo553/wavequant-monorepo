@@ -49,7 +49,7 @@ class CalculationStepCache:
         self.plan: CalculationPlan | None = None
         self.steps: list[dict[str, object]] = [dict(id=i, title=title, status='pending', cache='none', rows=0)
             for i, title in enumerate(STEP_TITLES, 1)]
-        self.buffers: dict[int, list[object]] = {}
+        self.buffers: dict[int, list[bytes]] = {}
         self.sizes: dict[int, int] = {}
         self.chunks: dict[int, list[dict[str, object]]] = {}
         self.started: dict[int, float] = {}
@@ -132,13 +132,14 @@ class CalculationStepCache:
         if self.steps[step - 1]['cache'] == 'available':
             return
         try:
-            value = _json_value(row)
-            size = len(json.dumps(value, ensure_ascii=False, allow_nan=False).encode())
+            # The encoded row both freezes caller-owned values and measures the
+            # existing chunk target; flushing must not serialize its tree again.
+            encoded = json.dumps(_json_value(row), sort_keys=True, ensure_ascii=False, allow_nan=False).encode()
         except (ValueError, TypeError, OverflowError, RecursionError) as exc:
             self.steps[step - 1].update(cache='failed', cache_error=str(exc))
             return
-        self.buffers.setdefault(step, []).append(value)
-        self.sizes[step] = self.sizes.get(step, 0) + size
+        self.buffers.setdefault(step, []).append(encoded)
+        self.sizes[step] = self.sizes.get(step, 0) + len(encoded)
         self.steps[step - 1]['rows'] = cast(int, self.steps[step - 1]['rows']) + 1
         if self.sizes[step] >= 512 * 1024:
             self._flush(step)
@@ -150,8 +151,8 @@ class CalculationStepCache:
         if not rows:
             return
         chunks = self.chunks.setdefault(step, [])
-        key = dict(input=self.inputs, attempt=self.attempt, step=step, chunk=len(chunks))
-        if self.cache is not None and self.cache.put('calculation-chunk', key, rows):
+        key: dict[str, object] = dict(input=self.inputs, attempt=self.attempt, step=step, chunk=len(chunks))
+        if self.cache is not None and self.cache._put_json('calculation-chunk', key, b'[' + b','.join(rows) + b']'):
             chunks.append(key)
         else:
             self.steps[step - 1]['cache'] = 'failed'

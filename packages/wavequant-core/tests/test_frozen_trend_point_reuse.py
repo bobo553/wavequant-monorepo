@@ -75,6 +75,48 @@ def test_borrowed_request_cache_reuses_points_across_days_and_restores_outer_sco
     assert request_cache.memory_used == 0 and request_cache._closed
 
 
+def test_borrowed_admission_reuses_exact_evidence_without_owning_request_lifetime() -> None:
+    admission = judgement._OwnedPointAdmission()
+    point = _point()
+    try:
+        with _frozen_point_scope():
+            outer = judgement._owned_point_admission.get()
+            with _frozen_point_scope(admission=admission):
+                assert judgement._owned_mutable_points([point], True) == [point]
+            assert not admission._closed and admission._misses == 1
+            with _frozen_point_scope(admission=admission):
+                assert judgement._owned_mutable_points([deepcopy(point)], True) == [point]
+                revised = deepcopy(point)
+                cast(dict[str, object], revised['proof'])['known_at'] = 6
+                assert judgement._owned_mutable_points([revised], True) == [revised]
+            assert admission._hits == 1 and admission._misses == 2
+            with pytest.raises(RuntimeError, match='interrupted day'):
+                with _frozen_point_scope(admission=admission):
+                    raise RuntimeError('interrupted day')
+            assert judgement._owned_point_admission.get() is outer
+            assert not admission._closed
+    finally:
+        admission.close()
+    assert admission.memory_used == 0 and admission._closed
+
+
+def test_borrowed_admission_retains_fallback_for_nonfinite_and_unknown_revisions() -> None:
+    admission = judgement._OwnedPointAdmission()
+    point = _point()
+    try:
+        with _frozen_point_scope(admission=admission):
+            judgement._owned_mutable_points([point], True)
+        for leaf in (float('inf'), (1, 2), {1, 2}):
+            revised = dict(point, proof={'leaf': leaf})
+            with _frozen_point_scope(admission=admission):
+                result = judgement._owned_mutable_points([revised], True)
+            assert result == mutable_points([revised])
+            assert result[0]['proof'] is not revised['proof']
+        assert admission._hits == 0
+    finally:
+        admission.close()
+
+
 
 
 
@@ -240,7 +282,7 @@ def test_history_stages_close_independent_caches_and_match_uncached_all_channels
             for index, price in enumerate(prices)]
 
     @contextmanager
-    def uncached() -> Iterator[None]:
+    def uncached(*, memory_bytes: int = 16 * 1024 * 1024) -> Iterator[None]:
         yield None
 
     def result() -> object:
@@ -262,14 +304,15 @@ def test_history_stages_close_independent_caches_and_match_uncached_all_channels
     captured: list[_FrozenPointCache] = []
 
     @contextmanager
-    def observed() -> Iterator[_FrozenPointCache]:
-        with _frozen_point_scope() as cache:
+    def observed(*, memory_bytes: int = 16 * 1024 * 1024) -> Iterator[_FrozenPointCache]:
+        with _frozen_point_scope(memory_bytes=memory_bytes) as cache:
             captured.append(cache)
             yield cache
 
     monkeypatch.setattr(chart, '_frozen_point_scope', observed)
     monkeypatch.setattr(hierarchy, '_frozen_point_scope', observed)
     assert result() == expected
-    assert len(captured) == 6 and all(cache._closed and cache.memory_used == 0 for cache in captured)
+    # The chart cascades all levels in one scope; the independent adapter owns three.
+    assert len(captured) == 4 and all(cache._closed and cache.memory_used == 0 for cache in captured)
     assert any(cache._hits > 0 for cache in captured)
     assert _frozen_point_cache.get() is None

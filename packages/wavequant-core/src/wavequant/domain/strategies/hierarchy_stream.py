@@ -1,16 +1,41 @@
 """Request-owned, append-only history for independent strategy confirmations."""
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import cast
 
 from ..market_structure.bottom_n_targets import DeclineStart
 from ..market_structure.trend_body_reversal import with_price_bodies
-from ..market_structure.trend_judgement import _FrozenPoint, _FrozenPointCache, _frozen_point_scope, mutable_points
+from ..market_structure.trend_judgement import (
+    TrendJudgement, _FrozenPoint, _FrozenPointCache, _OwnedPointAdmission, _frozen_point_scope, mutable_points,
+)
 from ..market_structure.trend_readonly_cache import _ReadonlySnapshotCache
 from ..market_structure.trend_lines import _TrendJudgementCache, polyline_turns, qualify_trend_structure
 from ..market_structure.trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
 from ..models.model import Bar
 from .hierarchical_entry import _HistoryPoint, _identity, _decline_starts
+
+
+@dataclass(slots=True)
+class _PreparedStructure:
+    source_version: object | None
+    source: Sequence[Mapping[str, object]]
+    judgement: TrendJudgement
+    candidates: list[dict[str, object]]
+    geometry: list[_HistoryPoint]
+    reusable: bool
+
+
+def _available_structure(judgement: TrendJudgement, index: int) -> bool:
+    """仅完整冻结且已到知识日的结构能跨日借用；未知证据保持原物化行为。"""
+    if any(type(point) is not _FrozenPoint or point.json_template is None
+           for points in (judgement.points, judgement.candidates) for point in points):
+        return False
+    return all(type(point.get('index')) is int and 0 <= cast(int, point['index']) <= index
+               and type(point.get('available_at')) is int and 0 <= cast(int, point['available_at']) <= index
+               and ('wave_completed_at' not in point or type(point['wave_completed_at']) is int
+                    and 0 <= point['wave_completed_at'] <= index)
+               for point in judgement.points)
 
 
 class HierarchyHistoryStream:
@@ -34,14 +59,20 @@ class HierarchyHistoryStream:
         self.points: dict[int, dict[tuple[int, int, str, float], _HistoryPoint]] = {}
         self.caches: dict[int, _TrendJudgementCache] = {}
         self._frozen_points = _FrozenPointCache()
+        self._point_admission = _OwnedPointAdmission()
         self._decoded = _ReadonlySnapshotCache[dict[str, object]](
             memory_bytes=8 * 1024 * 1024, max_entries=2048, evict=False)
+        # 每级仅持有当前结构。版本来自本次已冻结判定，不能用外部 raw 的身份
+        # 跳过修订校验；下级许可仍每天重新生成，不进入这个几何复用边界。
+        self._prepared: dict[int, _PreparedStructure] = {}
         self._closed = False
 
     def close(self) -> None:
         """释放本次回测的有界点缓存；不改变已交付的历史证据。"""
         self._frozen_points.close()
+        self._point_admission.close()
         self._decoded.clear()
+        self._prepared.clear()
         self._closed = True
 
     def _readonly_points(self, points: Sequence[Mapping[str, object]], *,
@@ -104,6 +135,7 @@ class HierarchyHistoryStream:
             raise ValueError('hierarchy stream requires consecutive available dates')
         if epoch != self.epoch:
             self._decoded.clear()
+            self._prepared.clear()
             self.previous.clear()
             self.points.clear()
             self.caches = {level: _TrendJudgementCache(tail_reuse=True) for level in (1, 2, 3)}
@@ -112,15 +144,29 @@ class HierarchyHistoryStream:
         source: Sequence[Mapping[str, object]] = self._freeze(
             polyline_turns(raw, source_path=f'lecture-{epoch}'), 0, index)
         qualified_source: Sequence[Mapping[str, object]] = source
+        source_version: object | None = None
         levels: dict[int, tuple[dict[str, object], ...]] = {}
-        with _frozen_point_scope(cache=self._frozen_points):
+        with _frozen_point_scope(cache=self._frozen_points, admission=self._point_admission):
             for level in (1, 2, 3):
-                source = with_price_bodies(source, market)
-                judgement = self.caches[level].judge(source, path=f'lecture-{epoch}', trend_level=level,
-                    asof=index, _owned_source=True)
-                candidates = self._readonly_points(judgement.candidates, level=level, kind='candidates')
-                geometry = self._freeze([dict(point, available_index=point['available_at'])
-                    for point in self._readonly_points(judgement.points, level=level, kind='geometry')], level, index)
+                previous = self._prepared.get(level)
+                if (previous is not None and previous.reusable and source_version is not None
+                        and previous.source_version is source_version):
+                    source, judgement = previous.source, previous.judgement
+                else:
+                    source = with_price_bodies(source, market)
+                    judgement = self.caches[level].judge(source, path=f'lecture-{epoch}', trend_level=level,
+                        asof=index, _owned_source=True)
+                if previous is not None and previous.reusable and judgement is previous.judgement:
+                    candidates, geometry, reusable = previous.candidates, previous.geometry, True
+                else:
+                    candidates = self._readonly_points(judgement.candidates, level=level, kind='candidates')
+                    geometry = self._freeze([dict(point, available_index=point['available_at'])
+                        for point in self._readonly_points(judgement.points, level=level, kind='geometry')], level, index)
+                    # 市场索引只接纳 exact frozen Bar 与标准价格；自定义行情对象
+                    # 可能在两天之间改变实体，必须继续走原逐日附加与判断。
+                    reusable = self.market_index is not None and _available_structure(judgement, index)
+                self._prepared[level] = _PreparedStructure(
+                    source_version, source, judgement, candidates, geometry, reusable)
                 published = qualify_trend_structure(candidates, source, market, trend_level=level,
                     qualified_source=qualified_source, _owned_candidates=True,
                     n_target_trend_confirmation_enabled=self.n_enabled, _market_index=prefix)
@@ -129,6 +175,7 @@ class HierarchyHistoryStream:
                 if level == 1:
                     self.declines[index] = _decline_starts(candidates)
                 source, qualified_source = geometry, published
+                source_version = geometry if reusable else None
         self.history[index] = levels
         self.epochs[index] = epoch
         self.index, self.epoch = index, epoch

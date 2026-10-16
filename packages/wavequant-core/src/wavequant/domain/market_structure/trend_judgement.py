@@ -402,12 +402,15 @@ _frozen_point_cache: ContextVar[_FrozenPointCache | None] = ContextVar('trend_fr
 
 @contextmanager
 def _frozen_point_scope(*, memory_bytes: int = 16 * 1024 * 1024,
-                        cache: _FrozenPointCache | None = None) -> Iterator[_FrozenPointCache]:
+                        cache: _FrozenPointCache | None = None,
+                        admission: _OwnedPointAdmission | None = None) -> Iterator[_FrozenPointCache]:
     """绑定当前调用的快照缓存；显式借用的请求缓存由其所有者释放。"""
     owned = cache is None
     if cache is None:
         cache = _FrozenPointCache(memory_bytes=memory_bytes)
-    admission = _OwnedPointAdmission()
+    owned_admission = admission is None
+    if admission is None:
+        admission = _OwnedPointAdmission()
     admission_token = _owned_point_admission.set(admission)
     token = _frozen_point_cache.set(cache)
     try:
@@ -417,7 +420,8 @@ def _frozen_point_scope(*, memory_bytes: int = 16 * 1024 * 1024,
         if owned:
             cache.close()
         _owned_point_admission.reset(admission_token)
-        admission.close()
+        if owned_admission:
+            admission.close()
 
 
 def _frozen_point(point: Mapping[str, object], memo: dict[int, tuple[object, object]] | None = None) -> _FrozenPoint:
