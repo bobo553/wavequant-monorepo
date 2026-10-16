@@ -28,7 +28,12 @@ def _bars() -> list[Bar]:
             for index, row in enumerate(rows)]
 
 
-@pytest.mark.parametrize('old_version', ('v118', 'v119'))
+@pytest.mark.parametrize('old_version', (
+    'level_first_polyline_owned_completed_source_geometry_and_independent_permissions_v118',
+    'level_first_polyline_owned_completed_source_geometry_and_independent_permissions_v119',
+    'level_first_polyline_owned_completed_source_geometry_and_independent_permissions_v120',
+    'level_first_bear_flip_evidence_and_price_bodies_v121',
+))
 def test_hierarchy_rejects_old_checkpoint_even_with_an_identical_bar_prefix(old_version: str) -> None:
     bars = _bars()
     cache: dict[str, object] = {}
@@ -36,9 +41,9 @@ def test_hierarchy_rejects_old_checkpoint_even_with_an_identical_bar_prefix(old_
     expected = hierarchical_history(bars, prefix_cache=cache, structure_sink=structures)
     key = cache['key']
     assert isinstance(key, tuple)
-    current = 'level_first_polyline_owned_completed_source_geometry_and_independent_permissions_v120'
+    current = 'level_first_anchor_close_rejection_v122'
     assert key[0] == current
-    stale: dict[str, object] = dict(cache, key=(current.removesuffix('v120') + old_version, *key[1:]),
+    stale: dict[str, object] = dict(cache, key=(old_version, *key[1:]),
                                     checkpoint=object())
     replayed: dict[int, dict[int, tuple[dict[str, object], ...]]] = {}
     assert hierarchical_history(bars, prefix_cache=stale, structure_sink=replayed) == expected
@@ -47,8 +52,12 @@ def test_hierarchy_rejects_old_checkpoint_even_with_an_identical_bar_prefix(old_
 
 
 @pytest.mark.parametrize('n_enabled', (False, True))
-def test_persistent_geometry_ignores_v119_artifact_without_deleting_it(
-    tmp_path: Path, n_enabled: bool,
+@pytest.mark.parametrize('old_policy', (
+    'complete_level_polyline_owned_closed_source_v119',
+    'complete_level_bear_flip_evidence_and_price_bodies_v123',
+))
+def test_persistent_geometry_ignores_old_artifact_without_deleting_it(
+    tmp_path: Path, n_enabled: bool, old_policy: str,
 ) -> None:
     bars = _bars()
     cache = cast(Callable[[Path], _Cache], ArtifactCache)(tmp_path)
@@ -56,14 +65,14 @@ def test_persistent_geometry_ignores_v119_artifact_without_deleting_it(
     canonical_rows = cast(Callable[[object], str], canonical)(rows)
     old_key = dict(bars_sha256=hashlib.sha256(canonical_rows.encode()).hexdigest(),
                    price_basis='raw_unadjusted', engine='same-engine',
-                   computation_policy='complete_level_polyline_owned_closed_source_v119',
+                   computation_policy=old_policy,
                    n_target_trend_confirmation_enabled=n_enabled)
     old_result = {'obsolete_source': 'outside_doji_anchor_crossing_reset'}
     assert cache.put('geometry', old_key, old_result)
     result = cached_geometry(cache, bars, 'raw_unadjusted', 'same-engine',
                              n_target_trend_confirmation_enabled=n_enabled)
     assert result != old_result
-    current_key = dict(old_key, computation_policy='complete_level_polyline_owned_closed_source_v120')
+    current_key = dict(old_key, computation_policy='complete_level_anchor_close_rejection_v124')
     assert cache.get('geometry', current_key) == result
     assert cached_geometry(cache, bars, 'raw_unadjusted', 'same-engine',
                            n_target_trend_confirmation_enabled=n_enabled) == result

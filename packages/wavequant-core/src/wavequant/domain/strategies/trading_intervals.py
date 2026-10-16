@@ -3,9 +3,11 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from math import isfinite
+from typing import cast
 
 from ..market_structure.trend_lifecycle import _pivot, _records
 from ..market_structure.confirmation_gap import confirmation_gap
+from ..market_structure.source_bear_exit import SOURCE_BEAR_EVENT, SOURCE_BEAR_EXIT, confirmed_source_bear
 from ..models.model import Bar
 
 
@@ -31,7 +33,7 @@ class TradingInterval:
 
 
 class TradingEligibility:
-    """确认交替后开放交易；确认缺口回补或本级已知翻转低点跌破撤销资格。"""
+    """确认交替开放交易；缺口、本级翻转及直接来源空头确认结束资格。"""
 
     def __init__(self, level: int) -> None:
         if type(level) is not int or level not in (1, 2, 3):
@@ -81,6 +83,16 @@ class TradingEligibility:
                     or not 0 < low <= window.confirmation_gap_lower):
                 return None
             return self._close(path, now, 'confirmation_gap_filled')
+        if event.get('event') == SOURCE_BEAR_EVENT:
+            proof = event.get('source_confirmation')
+            if (not isinstance(proof, Mapping) or proof.get('trend_level') != self.level - 1
+                    or not isinstance(event.get('direct_source_path'), str)
+                    or proof.get('source_path') != event.get('direct_source_path')
+                    or event.get('available_index') != now or not confirmed_source_bear(proof, now)):
+                return None
+            # 只有资格关闭；不把下级空头写成本级翻空，也不强制清仓。
+            return self._close(path, now, SOURCE_BEAR_EXIT,
+                key_index=cast(int, proof['flip_index']), key_price=float(cast(float, proof['breakout_level'])))
         if event.get('event') == 'trading_reversal_low_broken':
             index, price = event.get('reversal_low_index'), event.get('reversal_low_price')
             known, low = event.get('reversal_low_known_index'), event.get('market_low')

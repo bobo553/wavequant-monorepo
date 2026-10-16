@@ -28,6 +28,7 @@ from wavequant.domain.market_structure.price_action import Direction
 from wavequant.infrastructure.filesystem.project_paths import project_path
 from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
 from wavequant.domain.market_structure.trend_pipeline import calculate_trend_hierarchy
+from wavequant.domain.market_structure.trend_display import publish_trend_display
 from wavequant.domain.market_structure.abc_candidate import AbcAnchor, tertiary_abc_observations
 from wavequant.interfaces.research_tools.stock_backtest import single_stock_result
 from wavequant.application.analytics.trade_evidence import result_markers
@@ -1060,6 +1061,13 @@ class ChartRepository:
                     dict(name="a 的 1/2 回撤价", price=observation["half_price"]),
                 ],
             ))
+        # 结构不按翻多区间删段；明确未破冻结末跌高的局部反弹按疑虑归并，保留路径连续性。
+        # 放在所有递归/地标推导之后，不能把显示筛选反馈为下一级输入。
+        source_second = geometry.get('secondary_trends')
+        for level, name in ((2, 'secondary_trends'), (3, 'tertiary_trends')):
+            if geometry.get(name, {}).get('scope') == 'structural_trend_points_with_independent_strategy_permissions':
+                geometry[name] = publish_trend_display(geometry[name], result.audit, level=level, asof_index=i,
+                    source_row=source_second if level == 3 else None)
         return dict(
             asof=asof,
             points=points,

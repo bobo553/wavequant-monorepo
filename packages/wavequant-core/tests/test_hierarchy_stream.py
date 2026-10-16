@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
 from wavequant.domain.market_structure.trend_market_index import _MarketRangeIndex
+from wavequant.domain.market_structure.trend_lines import _TrendJudgementCache
 from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
 from wavequant.domain.strategies.hierarchy_stream import HierarchyHistoryStream
 from tests.test_lecture_strategy import history
@@ -57,3 +58,28 @@ class HierarchyStreamTests(unittest.TestCase):
             self.assertEqual(stream.history, saved_history)
             with self.assertRaisesRegex(RuntimeError, 'closed'):
                 stream.advance(*frames[-1])
+
+
+    def test_live_chain_passes_current_price_bodies_to_the_shared_judgement(self):
+        bars = history(18, 80)
+        frames = []
+        lecture_drawing(bars, on_step=lambda index, epoch, raw: frames.append((index, epoch, deepcopy(raw))))
+        judge = _TrendJudgementCache.judge
+        seen = []
+
+        def capture(cache, source, **options):
+            for point in source:
+                bar = bars[point['index']]
+                self.assertEqual(point['price_body'], dict(index=point['index'], time=bar.timestamp.date().isoformat(),
+                    open=bar.open, high=bar.high, low=bar.low, close=bar.close))
+                seen.append(options['trend_level'])
+            return judge(cache, source, **options)
+
+        stream = HierarchyHistoryStream(bars)
+        try:
+            with patch.object(_TrendJudgementCache, 'judge', autospec=True, side_effect=capture):
+                for frame in frames:
+                    stream.advance(*frame)
+        finally:
+            stream.close()
+        self.assertIn(1, seen)

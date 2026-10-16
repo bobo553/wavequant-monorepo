@@ -1,3 +1,31 @@
+2026-10-17 · 提交验证与分支保存（仍有失败）
+
+本轮用户要求提交并推送 feat-三级趋势统一，继续遵守不合并 main。保存累计趋势、资格、性能、预览及复制修复；MONOREPO-330 保持 in-progress。提交验证发现的失败如实记录，本次推送不代表功能已通过完整验收。
+
+passed: node --test tests/candle-clipboard.test.mjs tests/lecture-overlay.test.mjs
+2026-10-17 提交验证：137 passed。修复无渲染数据时 copyableRenderedCandle 提前读取 selection.resolvedAsOf 的异常后复跑通过。
+
+passed: pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck
+2026-10-17 提交验证：lint无错误，6条既有环境变量声明警告；TypeScript检查通过。首次使用错误workspace筛选器未匹配项目，已纠正为wavequant-web并实际执行。
+
+passed: isolated wavequant-web: node <installed-next-cli> build --turbopack
+2026-10-17 提交验证：在忽略目录的隔离副本中更新当前src/public，使用已安装Next CLI完成编译、类型和4个路由静态导出；未占用常驻开发服务的.next。
+
+not-run: NOT RUN: full suites, real-stock replay, Playwright/E2E, Harness
+仅按用户要求保存并推送当前特性分支。完整实股、性能与浏览器验收未运行；不合并main，不标记功能done，不把分支推送当作验收通过。
+
+2026-10-17 · MONOREPO-330 多头疑虑显示与禁止补线（实现待验证）
+
+后端已将未满足本级/直接下级翻多的候选上涨段发布为 observation_strokes。lecture-overlay 对 prevent_display_bridge 路径禁止连接，connectedTrendStrokes 同样拒绝用旧连接恢复被过滤的边；K 线悬停读取后端观察状态，显示二/三级“多头疑虑”，来源受阻时显示冻结末跌高。前端不重算突破、特殊恢复或交易资格，不改变 K 线视窗。
+
+lecture-overlay.test.mjs 补禁止连接、历史知识日期、区间匹配和去重用例，仅编写未执行。保留此前 Ctrl+C 及性能/趋势未提交改动，未运行测试、检查、格式、类型、构建、浏览器或 Git 检查。实际页面与 601086 目标区间待验证，未提交推送合并。
+
+2026-10-17 · MONOREPO-330 K线复制与完整可见行情一致（实现待验证）
+
+用户反馈Ctrl+C无法复制。源码原因：PriceChart悬停从chartMarketBars(view)读取market_bars，copyableRenderedCandle却用view.bars.includes(bar)限制已回测前缀；同日期分别反序列化的对象也无法通过，因此不只是回测未到的日期失效。现将按钮、快捷键和原生copy共用的身份判断改为图表同一完整行情来源，保留股票、数据源、周期、当前快照及交互范围保护。四处加载/进度/完成详情选择统一按可见行情重取当前日期，不再保留过期对象或误用回测尾日。
+
+补部分/完整回测前缀与market_bars独立对象、回测进度以后的可见K线、快照替换后新行情、禁止复制未绘制前缀对象用例，既有测试上下文补实际chartMarketBars依赖。仅编写未运行；按开发阶段要求未执行任何检查、测试、格式、类型、构建、Git检查或浏览器验证。不改后端与策略、不重启服务，刷新前端加载静态脚本后交互待验证。
+
 2026-10-17 · 提交阶段验证
 
 pnpm --filter wavequant-web lint：修复chart-viewport.tsx单处JSX换行后0错误，6条既有turbo环境变量警告。pnpm --filter wavequant-web typecheck通过。node --test tests/engine-reload.test.mjs tests/watchlist-backtest-queue.test.mjs：23通过。为不影响在线.next，把当前Web源码复制到忽略目录commit-web-isolated-20261017构建；pnpm相对包装器首次无法定位Next，改为node <原workspace/node_modules/next/dist/bin/next> build --turbopack后构建和5页生成通过。没有运行浏览器E2E/完整Web套件。本次推送特性分支，不合并main，自动重载端到端及实股行为待验证。

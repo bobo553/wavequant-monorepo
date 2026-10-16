@@ -40,7 +40,7 @@ from .market_calculations import MarketCalculations, MarketDay
 
 
 # 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "close_rejection_wave_boundary_v133"
+_CONFIRMATION_CACHE_VERSION = "direct_source_bear_exit_v138"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -265,7 +265,8 @@ def _chart_calculation_scope(
                             if isinstance(path, str):
                                 caches[offset].remember_source_flip(number, path)
                     if full_history:
-                        events = calculations._advance_lifecycle(number, current, frame.index, frame=frame)
+                        events = calculations._advance_lifecycle(number, current, frame.index, frame=frame,
+                                                                  source_events=events)
                         checkpoint_changed = checkpoint_changed or bool(events)
                         if steps is not None:
                             record_lifecycle(steps, events)
@@ -631,6 +632,7 @@ def chart_entry_history(
     live_owner = (market_calculation._chart_prefix_owner
         if market_calculation is not None and market_calculation.reading_live_day else None)
     cached_lifecycle: dict[int, list[dict[str, object]]] | None = None
+    polyline_lifecycle = PolylineLifecycleSource(dates)
     lifecycle_reader: Iterator[tuple[int, tuple[object, ...]]] | None = None
     next_lifecycle: tuple[int, tuple[object, ...]] | None = None
     current_lifecycle: tuple[object, ...] | None = None
@@ -769,7 +771,7 @@ def chart_entry_history(
             # 三层几何已经完成；这里只追加本级真实行情许可证。保持原刷新
             # 次序和直接下级持证来源，既不重复判点，也不让 N／突破证书改写
             # 下一层来源。未触发旧 gate 的日期仍沿用此前已消费的 levels。
-            # prepared 同样是本次独立恢复的行，借用证明后只读消费许可。
+            # prepared 为本请求只读借用的版本；许可创建独立顶层字段，不修改其证明。
             first = attach_trend_permissions(prepared[0], prefix,
                 n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                 _permission_cache=permission_cache, _owned_candidates=True)
@@ -824,9 +826,10 @@ def chart_entry_history(
                         invalidated.add(low["id"])
         if cached_lifecycle is None:
             # 部分日线带既有检查点，只推进尚未计算的行情后缀。
-            lifecycle_events = lifecycle.advance(prepared, bars, i, dates,
+            lifecycle_events = lifecycle.advance((polyline_lifecycle.advance(frame), *prepared), bars, i, dates,
                 polyline=frame.raw, polyline_path=f'lecture-{frame.epoch}',
                 confirmation_policy=confirmation_policy)
+            lifecycle_events = [event for event in lifecycle_events if event['trend_level'] != 0]
             if steps is not None:
                 record_lifecycle(steps, lifecycle_events)
         else:
@@ -977,7 +980,8 @@ def chart_entry_history(
             for step_number in LIFECYCLE_STEPS: steps.begin(step_number)
         drawing_reader = frames.iter_rows(shared=True, start_index=resume_start)
         readers.callback(drawing_reader.close)
-        trend_readers = [stage.iter_rows(shared=True, start_position=resume_start - frames.start) for stage in prepared]
+        trend_readers = [stage.iter_rows(shared=True, start_position=resume_start - frames.start,
+                                        _reuse_shared=True) for stage in prepared]
         for reader in trend_readers:
             readers.callback(reader.close)
         dated_frames = zip(drawing_reader, *trend_readers)

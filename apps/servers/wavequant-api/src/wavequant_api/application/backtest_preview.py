@@ -6,8 +6,10 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime
 import json
 from time import monotonic
+from typing import cast
 
 from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.trend_display import publish_trend_display
 from wavequant.domain.strategies.market_calculations import MarketDay
 from wavequant.application.analytics.trade_evidence import result_markers
 
@@ -70,6 +72,11 @@ class BacktestPreviewPublisher:
         account['markers'] = result_markers(account)
         account['curve'] = equity
         account['metrics'] = {}
+        for level, (name, row) in enumerate(zip(names, day.levels), start=1):
+            if level >= 2 and row.get('scope') == 'structural_trend_points_with_independent_strategy_permissions':
+                theory[name] = publish_trend_display(cast(Mapping[str, object], theory[name]),
+                    account['audit'], level=level, asof_index=index,
+                    source_row=day.levels[1] if level == 3 else None)
         self.publish(index + 1, dict(symbol=bars[0].symbol, asof=asof, timeframe='1d',
             processed=index + 1, total=len(bars), bars=candles, theory=theory,
             market_bars=self.market_bars, market_asof=self.market_bars[-1]['time'],

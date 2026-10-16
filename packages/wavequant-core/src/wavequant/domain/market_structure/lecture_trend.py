@@ -263,7 +263,8 @@ def _annotate(points, symbol, dates, *, trend_level=1):
                 if not suspicion:
                     observation('底部疑虑' if up else '头部疑虑',key=_ref(key)); suspicion=True
             if p['kind']==extreme_kind and key is not None and sign*(p['value']-key['value'])>0 and previous:
-                attack=dict(origin=previous,extreme=p,anchor=anchor,key=key,checked=False)
+                # 翻多起点是冻结末跌高之后的最低点，局部反弹低点不能另换测幅基准。
+                attack=dict(origin=anchor if up else previous,extreme=p,anchor=anchor,key=key,checked=False)
                 confirmed_extreme={'confirmed_low':_ref(anchor)} if up else {'confirmed_high':_ref(anchor)}
                 observation('翻空为多' if up else '翻多为空',key=_ref(key),
                             formation='底部成形' if up else '头部成形',**confirmed_extreme)
@@ -281,7 +282,7 @@ def _annotate(points, symbol, dates, *, trend_level=1):
             else:
                 observation('回档未通过交替条件' if up else '反弹未通过交替条件',ratio=ratio.ratio)
         elif p['kind']==extreme_kind and sign*(p['value']-attack['extreme']['value'])>0:
-            attack.update(origin=previous,extreme=p,checked=False)
+            attack.update(origin=attack['origin'] if up else previous,extreme=p,checked=False)
         if attack and p['kind']==attack['anchor']['kind'] and sign*(p['value']-attack['anchor']['value'])<0:
             observation('翻多观察失效' if up else '翻空观察失效')
             anchor,key=p,previous; attack=None; suspicion=False

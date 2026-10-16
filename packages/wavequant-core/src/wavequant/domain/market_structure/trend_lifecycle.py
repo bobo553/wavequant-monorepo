@@ -11,11 +11,12 @@ from enum import StrEnum
 from math import isfinite
 
 from ..models.model import Bar
-from .bull_alternation_confirmation import AlternationPolicy, confirm_body_gap_alternation, confirm_recovery_alternation
+from .bull_alternation_confirmation import AlternationPolicy, confirm_bull_alternation
 from .confirmation_gap import confirmation_gap
+from .source_bear_exit import SOURCE_BEAR_EVENT, source_bearish_exits
 
 
-LIFECYCLE_VERSION = 'six_state_close_rejection_geometry_v14'
+LIFECYCLE_VERSION = 'six_state_direct_source_bear_exit_v19'
 
 
 class LifecycleState(StrEnum):
@@ -46,6 +47,7 @@ class _Fact:
     known: int
     origin: _Pivot | None = None
     impulse: _Pivot | None = None
+    broken: _Pivot | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,7 +189,7 @@ def _upgrade_bull_fact(raw: Mapping[str, object], point: _Pivot,
                     context_known, bearish_origin.known)
     if broken.known >= available:
         return None
-    return _Fact('翻空为多', point, available, bearish_origin)
+    return _Fact('翻空为多', point, available, bearish_origin, broken=frozen)
 
 
 def _facts(points: object, dates: Mapping[str, int], now: int) -> tuple[_Fact, ...]:
@@ -214,6 +216,7 @@ def _facts(points: object, dates: Mapping[str, int], now: int) -> tuple[_Fact, .
             impulse = _pivot(impulse_raw, dates, now)
             if (origin_raw is not None and origin is None) or (impulse_raw is not None and impulse is None):
                 continue
+            frozen = None
             if title in ('翻空为多', '翻多为空') and observation.get('key') is not None:
                 frozen = _pivot(observation['key'], dates, now)
                 sign = 1 if up else -1
@@ -221,7 +224,8 @@ def _facts(points: object, dates: Mapping[str, int], now: int) -> tuple[_Fact, .
                         or (frozen.index, frozen.ordinal) >= (point.index, point.ordinal)):
                     continue
             result.append(_Fact(title, point, max(known, point.known,
-                origin.known if origin else 0, impulse.known if impulse else 0), origin, impulse))
+                origin.known if origin else 0, impulse.known if impulse else 0,
+                frozen.known if frozen else 0), origin, impulse, frozen))
             ordinary_bull = ordinary_bull or title == '翻空为多'
         # 本级冻结关键位的正式突破优先；没有正式标记才读取升级证明。
         if not ordinary_bull:
@@ -262,7 +266,8 @@ class TrendLifecycle:
             return (value.index, value.ordinal, value.kind, value.price, value.known) if value else None
 
         def fact(value: _Fact) -> tuple[object, ...]:
-            return value.title, pivot(value.point), value.known, pivot(value.origin), pivot(value.impulse)
+            return (value.title, pivot(value.point), value.known, pivot(value.origin),
+                    pivot(value.impulse), pivot(value.broken))
 
         rows = []
         for key, seen in sorted(self._seen.items()):
@@ -309,11 +314,11 @@ class TrendLifecycle:
                 raise ValueError('invalid lifecycle checkpoint facts')
             result = []
             for row in raw:
-                title, point, known, origin, impulse = sequence(row, 5)
+                title, point, known, origin, impulse, broken = sequence(row, 6)
                 parsed = pivot(point)
                 if not isinstance(title, str) or title not in _TITLES or parsed is None:
                     raise ValueError('invalid lifecycle checkpoint fact')
-                result.append(_Fact(title, parsed, integer(known), pivot(origin), pivot(impulse)))
+                result.append(_Fact(title, parsed, integer(known), pivot(origin), pivot(impulse), pivot(broken)))
             return frozenset(result)
 
         restored = cls()
@@ -379,6 +384,7 @@ class TrendLifecycle:
     def advance(self, levels: Sequence[Mapping[str, object]], bars: Sequence[Bar], now: int,
                 dates: Mapping[str, int], *, polyline: Sequence[Mapping[str, object]] = (),
                 polyline_path: str | None = None,
+                source_events: Sequence[Mapping[str, object]] = (),
                 confirmation_policy: AlternationPolicy = AlternationPolicy()) -> list[dict[str, object]]:
         """Consume one causal date; repeated/rewound dates require a checkpoint."""
         if type(now) is not int or not 0 <= now < len(bars) or now != self._last_index + 1:
@@ -450,8 +456,8 @@ class TrendLifecycle:
                             self._bull_recovery[key] = _BullRecovery(fact)
                         self._consume(key, fact, now, events)
                 self._seen[key] = seen.union(facts)
-                self._advance_bull_recovery(key, points, bars, now, events, source_points, confirmation_policy)
-                self._advance_body_gap(key, points, bars, now, events, source_points)
+                self._advance_bull_recovery(key, points, bars, now, events)
+                self._advance_bull_alternation(key, points, bars, now, events, source_points, confirmation_policy)
                 self._price(key, bars, now, events)
                 pending = self._bull_recovery.get(key)
                 active = self._cycles.get(key)
@@ -474,6 +480,8 @@ class TrendLifecycle:
         self._seen = {key: facts for key, facts in self._seen.items() if key in present}
         self._bull_recovery = {key: state for key, state in self._bull_recovery.items() if key in present}
         self._polyline_known = {key: clocks for key, clocks in self._polyline_known.items() if key in present}
+        # 单级联动借用当日下级事件；整层恢复使用同一次 advance 的下级结果。
+        events.extend(source_bearish_exits(levels, (*source_events, *events), now))
         return events
 
     def _expire_confirmation_gap(self, key: tuple[int, str], bars: Sequence[Bar], now: int,
@@ -543,6 +551,11 @@ class TrendLifecycle:
                 events.append(self._event(key, cycle, now, 'trend_lifecycle_state',
                                           source_event=fact.title, source_known_index=fact.known))
             elif is_break and cycle.state == flip_state:
+                # 同一未结束周期只能延伸攻击极值；局部反弹不能降低原确认门槛。
+                sign = 1 if up else -1
+                if cycle.impulse is not None and (sign * (fact.point.price - cycle.impulse.price) <= 0
+                        or (fact.point.index, fact.point.ordinal) <= (cycle.impulse.index, cycle.impulse.ordinal)):
+                    return
                 cycle = replace(cycle, impulse=fact.point, candidate=None,
                                 evidence=cycle.evidence.union((fact,)))
                 self._cycles[key] = cycle
@@ -558,6 +571,15 @@ class TrendLifecycle:
         impulse = fact.impulse or cycle.impulse
         if impulse is None or impulse.kind != ('H' if up else 'L'):
             return
+        if cycle.impulse is not None and (
+                impulse.index, impulse.ordinal, impulse.price) != (
+                cycle.impulse.index, cycle.impulse.ordinal, cycle.impulse.price):
+            sign = 1 if up else -1
+            if (sign * (impulse.price - cycle.impulse.price) <= 0
+                    or (impulse.index, impulse.ordinal) <= (cycle.impulse.index, cycle.impulse.ordinal)
+                    or impulse.known < cycle.impulse.known):
+                # 交替标签也不能绕过同周期攻击基准，另拼一段更低的反弹。
+                return
         # The shared geometry has already certified the retracement. This layer
         # enforces chronology and never promotes a developing point itself.
         if ((fact.point.index, fact.point.ordinal) <= (impulse.index, impulse.ordinal)
@@ -573,8 +595,7 @@ class TrendLifecycle:
                                   replaces_gap_confirmation_index=prior_gap[0] if prior_gap else None))
 
     def _advance_bull_recovery(self, key: tuple[int, str], points: tuple[_Pivot, ...],
-                               bars: Sequence[Bar], now: int, events: list[dict[str, object]],
-                               polyline: tuple[_Pivot, ...], policy: AlternationPolicy) -> None:
+                               bars: Sequence[Bar], now: int, events: list[dict[str, object]]) -> None:
         """短暂跌破→收回→同级突破→守低且满足既有交替结束规则，各级共用。"""
         pending = self._bull_recovery.get(key)
         if pending is not None and pending.seed.origin is not None:
@@ -631,17 +652,34 @@ class TrendLifecycle:
                             breach_index=updated.breach, recovered_index=updated.recovered,
                             broken_high_index=previous.index, broken_high_price=previous.price))
                         break
+
+    def _advance_bull_alternation(self, key: tuple[int, str], points: tuple[_Pivot, ...],
+                                  bars: Sequence[Bar], now: int, events: list[dict[str, object]],
+                                  polyline: tuple[_Pivot, ...], policy: AlternationPolicy) -> None:
+        """已成立的本级翻多统一确认交替，不等待交易资格内的策略扫描。"""
         cycle = self._cycles.get(key)
-        if (cycle is None or not cycle.recovery or cycle.impulse is None
+        if (cycle is None or not cycle.up or cycle.impulse is None
                 or (cycle.alternated is not None and cycle.confirmation_gap is None)):
             return
-        if min(bar.low for bar in bars[cycle.origin.index + 1:now + 1]) < cycle.origin.price:
+        if cycle.recovery and min(bar.low for bar in bars[cycle.origin.index + 1:now + 1]) < cycle.origin.price:
             self._cycles.pop(key)
             events.append(self._event(key, cycle, now, 'trend_lifecycle_invalidated',
                                       reason='special_bull_origin_broken'))
             return
-        proof = confirm_recovery_alternation(bars, now, origin=cycle.origin, high=cycle.impulse,
-            broken=cycle.structure[0], points=points, polyline=polyline, level=key[0], path=key[1], policy=policy,
+        if cycle.recovery:
+            broken = cycle.structure[0]
+        else:
+            # 关键位随正式翻多事实保存；禁止用此刻最近的局部高点替换末跌高。
+            seed = min((fact for fact in cycle.evidence if fact.title == '翻空为多'
+                        and fact.origin == cycle.origin and fact.broken is not None),
+                       key=lambda fact: (fact.known, fact.point.index, fact.point.ordinal), default=None)
+            broken = seed.broken if seed is not None else None
+        if (broken is None or not {broken, cycle.origin, cycle.impulse}.issubset(points)
+                or not (broken.index, broken.ordinal) < (cycle.origin.index, cycle.origin.ordinal)
+                    < (cycle.impulse.index, cycle.impulse.ordinal)):
+            return
+        proof = confirm_bull_alternation(bars, now, origin=cycle.origin, high=cycle.impulse,
+            broken=broken, points=points, polyline=polyline, level=key[0], path=key[1], policy=policy,
             allow_gap_confirmation=cycle.confirmation_gap is None)
         if proof is None:
             return
@@ -650,37 +688,17 @@ class TrendLifecycle:
         trend_sources = tuple(_Pivot(p.index, p.ordinal, p.kind, p.price, p.known) for p in proof.trend_source)
         prior_gap = cycle.confirmation_gap
         cycle = replace(cycle, state=LifecycleState.BULL_ALTERNATION, counter=point, alternated=now,
-            structure=(*cycle.structure, *trend_sources), confirmation_source=sources,
+            structure=(broken, cycle.origin, cycle.impulse, *trend_sources), confirmation_source=sources,
             confirmation_gap=confirmation_gap(proof.rule, proof.evidence, now))
         self._cycles[key] = cycle
         events.append(self._event(key, cycle, now, 'trend_lifecycle_state',
-            source_event='短暂跌破后空多交替结束', confirmation_rule=proof.rule,
-            confirmation_evidence=proof.evidence, counter_source_level=0 if sources else key[0],
+            source_event='短暂跌破后空多交替结束' if cycle.recovery else '空翻多后空多交替结束',
+            confirmation_rule=proof.rule,
+            confirmation_evidence=dict(proof.evidence or {}, key_index=broken.index, key_price=broken.price,
+                a_origin_index=cycle.origin.index, a_origin_price=cycle.origin.price,
+                a_high_index=cycle.impulse.index, a_high_price=cycle.impulse.price),
+            counter_source_level=0 if sources else key[0],
             replaces_gap_confirmation_index=prior_gap[0] if prior_gap else None))
-
-    def _advance_body_gap(self, key: tuple[int, str], points: tuple[_Pivot, ...],
-                          bars: Sequence[Bar], now: int, events: list[dict[str, object]],
-                          polyline: tuple[_Pivot, ...]) -> None:
-        cycle = self._cycles.get(key)
-        if (cycle is None or cycle.recovery or not cycle.up or cycle.alternated is not None
-                or cycle.impulse is None or not any(fact.title == '翻空为多' for fact in cycle.evidence)):
-            return
-        broken = next((point for point in reversed(points) if point.kind == 'H'
-                       and point.index < cycle.origin.index and point.known <= now), None)
-        if broken is None:
-            return
-        proof = confirm_body_gap_alternation(bars, now, origin=cycle.origin, high=cycle.impulse, polyline=polyline)
-        if proof is None:
-            return
-        low = _Pivot(proof.low.index, proof.low.ordinal, proof.low.kind, proof.low.price, proof.low.known)
-        cycle = replace(cycle, state=LifecycleState.BULL_ALTERNATION, counter=low, alternated=now,
-                        confirmation_source=(low,), structure=(broken,),
-                        confirmation_gap=confirmation_gap(proof.rule, proof.evidence, now))
-        self._cycles[key] = cycle
-        events.append(self._event(key, cycle, now, 'trend_lifecycle_state',
-            source_event='实体跳空放量突破确认空多交替结束', confirmation_rule=proof.rule,
-            confirmation_evidence=dict(proof.evidence or {}, key_index=broken.index, key_price=broken.price),
-            counter_source_level=0))
 
     def _price(self, key: tuple[int, str], bars: Sequence[Bar], now: int,
                events: list[dict[str, object]]) -> None:
@@ -731,8 +749,9 @@ def lifecycle_interval_days(events: Sequence[Mapping[str, object]], size: int, l
     for event in events:
         index = event.get('bar_index')
         if (event.get('trend_level') == level and type(index) is int and 0 <= index < size
-                and event.get('event') in ('trend_lifecycle_state', 'trend_lifecycle_invalidated',
-                                          'trend_lifecycle_confirmation_revoked')):
+                and (event.get('event') in ('trend_lifecycle_state', 'trend_lifecycle_invalidated',
+                                           'trend_lifecycle_confirmation_revoked')
+                     or up and event.get('event') == SOURCE_BEAR_EVENT)):
             dated.setdefault(index, []).append(event)
     opened: set[str] = set()
     wanted = {LifecycleState.BULL_ALTERNATION.value, LifecycleState.BULL_CONFIRMED.value} if up else {
@@ -743,7 +762,8 @@ def lifecycle_interval_days(events: Sequence[Mapping[str, object]], size: int, l
             path = event.get('source_path')
             if not isinstance(path, str):
                 continue
-            if (event.get('event') in ('trend_lifecycle_invalidated', 'trend_lifecycle_confirmation_revoked')
+            if (event.get('event') in ('trend_lifecycle_invalidated', 'trend_lifecycle_confirmation_revoked',
+                                       SOURCE_BEAR_EVENT)
                     or event.get('state') not in wanted):
                 opened.discard(path)
             else:

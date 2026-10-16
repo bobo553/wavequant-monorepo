@@ -323,3 +323,21 @@ def test_persistent_steps_store_reconstructable_drawing_changes_and_sparse_trend
     assert raw == baseline[-1][2]
     # 单向延伸后续记录只替换一个尾点，不把整条历史作为每日存储协议。
     assert all(len(record['points']) == 1 for record in records[2:])
+
+
+def test_cross_reader_borrowing_respects_available_prefix_and_public_isolation() -> None:
+    with TrendChangeRows(_row, row_count=6) as history:
+        history.write_change(0, {'points': []})
+        history.write_change(3, {'points': [_point()]})
+        history.read_limit = 3
+        early = list(history.iter_rows(shared=True, _reuse_shared=True))
+        assert early == [{'points': []}] * 3
+        history.read_limit = 5
+        later = list(history.iter_rows(shared=True, start_position=2, _reuse_shared=True))
+        assert later[0] is early[0]
+        assert later[1]['points'] == [_point()]
+        public = list(history.iter_rows(shared=True, start_position=3))
+        cast(list[object], public[0]['points']).clear()
+        assert later[1]['points'] == [_point()]
+        with pytest.raises(ValueError, match='readonly shared'):
+            list(history.iter_rows(_reuse_shared=True))

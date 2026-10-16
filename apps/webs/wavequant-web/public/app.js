@@ -375,8 +375,8 @@ async function showPreparingCandles(request, sequence, signal) {
         $("loading").hidden = true;
         document.querySelector(".metric-grid").hidden = true;
         describeBar(preserveViewport && currentCandle
-            ? view.bars.find((bar) => bar.time === currentCandle.time) || view.bars.at(-1)
-            : view.bars.at(-1));
+            ? chartMarketBars(view).find((bar) => bar.time === currentCandle.time) || chartMarketBars(view).at(-1)
+            : chartMarketBars(view).at(-1));
         marketLoadStatus("准备回测中：当前 K 线仅供行情浏览；趋势和 B/S 将按本次回测进度显示。");
         preparingCandles.delete(key);
         preparingCandles.set(key, view);
@@ -498,7 +498,7 @@ async function refreshBacktestPreview(job) {
         }
         renderTables();
         describeBar(preserveViewport && currentCandle
-            ? chartMarketBars(view).find((bar) => bar.time === currentCandle.time) || currentCandle
+            ? chartMarketBars(view).find((bar) => bar.time === currentCandle.time) || chartMarketBars(view).at(-1)
             : chartMarketBars(view).at(-1));
         $("price-chart").dataset.symbol = symbol;
         $("price-chart").setAttribute("aria-busy", "false");
@@ -1242,6 +1242,7 @@ function currentCandleCopyText(bar) {
 }
 function copyableRenderedCandle(bar) {
     const view = chart.data;
+    if (!bar || !view) return null;
     const source = sourceForScope($("result-scope").value);
     const selection = state.marketSelection;
     const renderedSource =
@@ -1254,14 +1255,13 @@ function copyableRenderedCandle(bar) {
     // 普通图加载完成后会自动在后台回测同股，失败时也明确保留可操作的旧图。
     // loading/error 描述请求状态，不能否决画面上的 K 线；按钮和快捷键必须共用
     // 当前渲染快照、股票及棒身份，换股或真实行情遮罩出现时才拒绝复制旧数据。
+    // 完整行情独立于回测前缀，已绘制的 K 线不能因尚未回测或对象分开反序列化而被拦截。
     if (
-        !bar ||
-        !view ||
         view !== state.view ||
         view.symbol !== $("symbol-select").value ||
         (source && source !== renderedSource) ||
         (view.timeframe || "1d") !== activeTimeframe() ||
-        !view.bars.includes(bar) ||
+        !chartMarketBars(view).includes(bar) ||
         state.page !== "workspace" ||
         chart.container.closest("[hidden], [inert]") ||
         chart.container.closest(".chart-card")?.dataset.chartView === "tradingview" ||
@@ -2335,8 +2335,8 @@ async function loadProgressiveMarketView(request, sequence, signal) {
                 });
                 const last = view.bars.at(-1);
                 const detailBar = preserveViewport && currentCandle
-                    ? view.bars.find((bar) => bar.time === currentCandle.time) || currentCandle
-                    : view.bars.at(-1);
+                    ? chartMarketBars(view).find((bar) => bar.time === currentCandle.time) || chartMarketBars(view).at(-1)
+                    : chartMarketBars(view).at(-1);
                 if (detailBar) describeBar(detailBar);
                 $("price-chart").dataset.symbol = view.symbol;
                 tradingViewWidget.setLocalSymbol(view.symbol);
@@ -2738,8 +2738,8 @@ async function loadView({
         });
         tradePlayback.setView(data);
         describeBar(preserveChartViewport && currentCandle
-            ? data.bars.find((bar) => bar.time === currentCandle.time) || currentCandle
-            : data.bars.at(-1));
+            ? chartMarketBars(data).find((bar) => bar.time === currentCandle.time) || chartMarketBars(data).at(-1)
+            : chartMarketBars(data).at(-1));
         performance.update(data.curve, holdingDrawdownCurve(data));
         const last = data.bars.at(-1);
         const providerNames = { akshare: "AkShare", tdx: "通达信" };

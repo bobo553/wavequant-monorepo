@@ -8,7 +8,7 @@ import pytest
 from wavequant.domain.strategies.buy_intervals import confirmed_buy_interval_days
 from wavequant.domain.strategies.trading_intervals import TradingEligibility, confirmed_trading_intervals, interval_days
 from wavequant.domain.strategies import integrated_strategy as strategy_module
-from test_backtest_analysis_boundary import _bars, _config
+from tests.test_backtest_analysis_boundary import _bars, _config
 from wavequant.domain.models.model import Bar
 
 

@@ -122,6 +122,34 @@ class BacktestJobsTests(unittest.TestCase):
         self.assertTrue(first.done.wait(5))
         self.assertTrue(second.done.wait(5))
 
+    def test_preview_and_phase_updates_keep_latest_timing_for_their_own_job(self):
+        jobs = BacktestJobs(max_active=2)
+        release = Event()
+        first = jobs.start('timing-first', 'one', lambda: release.wait(5))
+        second = jobs.start('timing-second', 'two', lambda: release.wait(5))
+        try:
+            suffix = ' · 累计耗时：折线趋势 2.0秒，交易结构确认 8.0秒'
+            jobs.update_progress('timing-first', 40, '已处理4/10个交易日' + suffix)
+            jobs.update_preview('timing-first', 1, dict(processed=5, total=10, asof='2024-03-04'))
+            self.assertEqual(jobs.progress(first)['progress_stage'],
+                '同日联动：折线 → 一级 → 二级 → 三级 → B/S及账户 · 已处理5/10个交易日 · 截至2024-03-04' + suffix)
+            jobs.update_progress('timing-first', 50, '正在处理分钟成交')
+            self.assertEqual(jobs.progress(first)['progress_stage'], '正在处理分钟成交' + suffix)
+            replacement = ' · 累计耗时：折线趋势 3.0秒，交易结构确认 9.0秒'
+            jobs.update_progress('timing-first', 50, '已处理5/10个交易日' + replacement)
+            jobs.update_preview('timing-first', 1, dict(processed=4, total=10, asof='2024-03-01'))
+            self.assertEqual(jobs.progress(first)['progress_stage'], '已处理5/10个交易日' + replacement)
+            jobs.update_preview('timing-second', 1, dict(processed=1, total=10, asof='2024-01-02'))
+            self.assertNotIn('累计耗时', jobs.progress(second)['progress_stage'])
+        finally:
+            release.set()
+        self.assertTrue(first.done.wait(5))
+        self.assertTrue(second.done.wait(5))
+        final_stage = jobs.progress(first)['progress_stage']
+        jobs.update_progress('timing-first', 99, '结束后忽略')
+        jobs.update_preview('timing-first', 2, dict(processed=9, total=10, asof='2024-03-08'))
+        self.assertEqual(jobs.progress(first)['progress_stage'], final_stage)
+
     def test_elapsed_seconds_uses_monotonic_job_start_and_does_not_change_capacity(self):
         now = [100.0]
         jobs = BacktestJobs(max_active=1, clock=lambda: now[0])

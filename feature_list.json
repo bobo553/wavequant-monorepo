@@ -8,10 +8,23 @@
             "name": "causal-backtest-computation-performance",
             "title": "回测因果计算与复用性能优化",
             "status": "in-progress",
-            "dependencies": ["MONOREPO-327"],
+            "dependencies": [
+                "MONOREPO-327"
+            ],
             "description": "襄阳轴承2018起回测超过一小时仍停在模拟成交65%；先采样和固定输入，再消除重复趋势与前缀证明计算。按用户新口径增加买点区间级别选项，默认二级、可选一二三级，账户成交与风控规则保留。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过买点扫描与入场判断，趋势推进、N测幅、行情来源、复权、知识时钟、分钟覆盖与持仓退出继续处理，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+                "2026-10-17国芳2020-09-04资格结束：共用直接下级空头确认规则，level仅决定直接来源。当前路径的直接下级完成真实多翻空、多空交替并严格收盘下破翻空低点转空确认后，当天关闭本级资格；候选、孤立标签、其他/已结束路径、非相邻级别、未来证据不触发。不改本级趋势或强制清仓。实时/分阶段/检查点恢复统一结束事件，折线六态一并保留于检查点；N、交易上下文、B/S和区间审计同步关闭。红色及复制终点包含结束日，买入日期不包含该日。六态v19/chart历史v138隔离旧结果；新增回归仅编写，真实601086一级确认日与最终区间待验证。",
+                "2026-10-17最新空翻多起点口径：末跌高之后、本次翻多高点之前的最低点贯穿翻多、回撤测幅、守低、跳空及N/轧空确认，不能改用紧邻攻击高点的局部低点。国芳2020目标为2019-08-28末跌高、2019-11-18起点、2020-03-20高点、2020-04-28回撤低点；修正后仍为约99.4%深回撤，低点本身不授予资格。普通和既有特殊翻多统一confirm_bull_alternation，保留原阈值/确认规则；普通N确认事件也进入交易上下文，严格保留真实同级翻多、知识时钟、来源修订和缺口结束边界。此口径覆盖此前v17以邻近上涨腿起点守低的规则；不再按旧定义断言2024整段必然无资格。六态v18、结构v118、chart历史v137、hierarchy历史v123、完整图v125隔离旧结果；定向回归仅编写，完整实股确认日及B/S待验证。",
+                "2026-10-17项目规则：AGENTS.md明确一二三级调用同一核心趋势函数，仅level及直接来源不同；共用翻转、六态、连续性和尾部规则，同来源/版本/参数复用计算结果，显示层不得二次改写结构。该统一约束覆盖此前分级显示补丁方案；本轮只记录规则，现有trend_display的三级专用投影及调用层迁移仍待实施，不将文档完成记为算法完成。",
+                "2026-10-17三级断线续修：取消仅对二级豁免、三级仍按翻多时间窗口逐腿删线的显示规则。没有审计确认不能作为删除结构的依据；只有同路径、同一来源顶点已有冻结末跌高未破的明确证据且没有有效普通/既有特殊翻多时，才把局部反弹记为疑虑并在原路径中归并真实极值。保留路径ID，后续下降及发展尾线同步使用保留端点，不留下孤立短线、不跨来源补线。改接边不继承被删除边的确认附件；原始递归、六态、交易和资格不变。预览/完整图共用；新增回归仅编写未执行。",
+                "2026-10-17二级趋势断线回归：上一轮发布投影把未翻多的二级结构上涨腿删除并拆分路径，导致连续结构断开。二级完整保留原始strokes/developing_strokes、路径ID、结构/确认附件及计数，六态仅附加疑虑信息，不用前端补线遮掩。三级的冻结末跌高局部反弹限制按最新连续路径规则处理，不能恢复国芳旧段的错误升级。实时预览和完整图共用入口；不更改资格、交易或原始递归输入。回归用例仅编写未运行，实股待验证。",
+                "2026-10-17国芳2018-10-19至2019-04-03：二级冻结末跌高2018-05-28/11.50未破，局部高点抬高保留多头疑虑，不能作为三级正式上涨来源。共用发布投影核对对应来源顶点的冻结关键位、路径ID及知识时钟；特殊翻多直接复用既有状态机确认，不新增或改写连续创新低/恢复/交替条件。局部反弹归并回同路径连续结构而非分段删除；悬停显示疑虑及阻挡关键位，原始候选和交易计算保留。回归仅编写未运行。",
+                "2026-10-17国芳2024-02-08至2025-01-13资格误开：普通跳空确认改用本级攻击高点紧邻的真实上涨腿起点，背景最低点仅保留趋势上下文；同周期翻向及交替两入口均禁止较低反弹重置攻击基准。起点/高点证据随检查点保留，修订关闭资格。六态v17、chart历史v136隔离旧结果。真实1707根截至2025-01-13日线及已发布缩减结构回归、三层/折线边界覆盖，164定向通过；完整账户与页面待验证。",
+                "2026-10-17国芳2022-09-14→09-26误画修复：影线新高例外比较反弹日close与原高点当日close；09-21收盘5.45高于09-14收盘5.39，不能因仍低于原high5.46而保留特殊下降。初次判别、pending续接和递归证据共用规则，缺原收盘证据不触发。缩减三日及已有同源一级证据均覆盖，2024年底原特殊波段保持。结构v117/hierarchy历史v122/完整图v124隔离旧结果，六态/chart历史先升v16/v135后由同工作树其他改动继续升v17/v136；不回退其他改动。129项及2子用例通过，局部类型通过，完整账户/页面待验证。",
+                "2026-10-17 K线复制共用图表完整行情chartMarketBars，不被已回测前缀或不同反序列化对象误拦；进度和完成刷新保留光标日期并重取当前行情对象，股票/来源/周期/快照身份保护不变。新增复制回归只编写未运行。",
+                "2026-10-17国芳二级影线例外：同一次严格翻空可由高点origin或对应低点endpoint证明，核对同级同路径、坐标、旧key和此前可知日；保持high创新高且close未破原高的条件。跨级投影保留证据，实时趋势入口补齐收盘。结构v116/六态v15/chart历史v134/hierarchy历史v121/完整图v123隔离旧缓存。真实已有来源fixture及边界用例仅编写未运行，完整实股待验证。",
+                "2026-10-17针对国芳后期慢点：内部冻结趋势点按不可变模板有界复用，尾部修订不重解码未变前缀；chart策略消费者显式只读借用有界暂存行，公共可变导出独立、原行截断/修订仍校验。每日资格/价格/N/交易判断保持，进度保留累计四阶段耗时并显示最近一日/平均用时。新增边界用例仅编写未运行，完整同源账户差分和性能待验证。",
                 "2026-10-17运行操作：CIM确认当前分支进程所有权后终止18968所属树，隐藏启动新版启动器PID10280；current-branch-20261017-000821日志确认Next3004 Ready和API8766启动。open_in_codex返回queued，页面打开请求已排队。未运行测试/检查/构建或模拟代码变更，自动刷新与后续回测待观察。",
                 "2026-10-17用户改为策略变更终止旧回测并刷新页面：开发启动器在源码稳定2秒后结束所属API进程树再启新引擎，不等旧任务完成；页面独立每3秒读取就绪引擎版本，变化后取消旧订阅并只刷新一次，断网/503/参数变化不触发刷新。替换原等待空闲用例并增加前端版本/断连/去重/取消用例，仅编写未运行，运行链路仍待验证。",
                 "2026-10-16最新澄清覆盖此前实体高口径：仅此前已下级多翻空且当前最高价严格超过原高点时，比较当前收盘与原最高价；收盘未超过则保留特殊交替，开盘不参与阈值、原收盘不作为基准。其他情况仍按高低点。结构v115/生命周期v14/历史v133隔离旧结果；边界回归仅编写未运行，完整实股待验证。",
@@ -43,6 +56,136 @@
                 "图表一级只消费折线来源变化，二/三级只消费直接下级变化；发展尾点同向移动不得触发相同已确认来源重算。折线尾部变更与趋势版本保留真实知识日、修订和路径关闭，逐日还原须与原全前缀基线一致；六态和交易价格条件继续按行情日期推进。"
             ],
             "verification": [
+                {
+                    "command": "node --test tests/candle-clipboard.test.mjs tests/lecture-overlay.test.mjs",
+                    "status": "passed",
+                    "summary": "2026-10-17 提交验证：137 passed。修复无渲染数据时 copyableRenderedCandle 提前读取 selection.resolvedAsOf 的异常后复跑通过。"
+                },
+                {
+                    "command": "API: python -m pytest tests/test_backtest_jobs.py tests/test_backtest_preview.py -q --tb=short",
+                    "status": "passed",
+                    "summary": "2026-10-17 提交验证：13 passed，涵盖预览发布、趋势展示和耗时进度保留。"
+                },
+                {
+                    "command": "Core: python -m pytest tests/test_source_bear_exit.py tests/test_frozen_bull_origin.py tests/test_lifecycle_impulse_defense.py tests/test_recovery_alternation_confirmation.py tests/test_trading_intervals.py tests/test_trend_body_reversal.py tests/test_trend_change_history.py tests/test_trend_staging_payload_cache.py tests/test_chart_live_permission_reuse.py tests/test_directional_doji_cache_versions.py tests/test_hierarchy_stream.py tests/test_trend_display.py tests/test_trend_readonly_cache.py -q --tb=short",
+                    "status": "failed",
+                    "summary": "2026-10-17 提交验证：215 passed、34 failed、2 subtests passed，13.55秒。失败涉及普通N及跳空交替确认、特殊N夹具、策略扫描次数、历史几何/检查点、缓存版本和显示投影断言；未逐项证实基线，不能称全部既有失败。直接来源转空结束资格的新用例通过，但未做国芳真实全历史验收。"
+                },
+                {
+                    "command": "python -m mypy --follow-imports=silent <24个改动/新增Python源码文件>",
+                    "status": "failed",
+                    "summary": "2026-10-17 提交验证：9个文件68条错误，包含动态字段类型收窄、Iterator.close标注、可空上下文、变量类型复用等。未做基线差分，保留为待修复，不视为类型检查通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck",
+                    "status": "passed",
+                    "summary": "2026-10-17 提交验证：lint无错误，6条既有环境变量声明警告；TypeScript检查通过。首次使用错误workspace筛选器未匹配项目，已纠正为wavequant-web并实际执行。"
+                },
+                {
+                    "command": "isolated wavequant-web: node <installed-next-cli> build --turbopack",
+                    "status": "passed",
+                    "summary": "2026-10-17 提交验证：在忽略目录的隔离副本中更新当前src/public，使用已安装Next CLI完成编译、类型和4个路由静态导出；未占用常驻开发服务的.next。"
+                },
+                {
+                    "command": "python -m build --no-isolation --outdir <ignored-output> packages/wavequant-core; python -m build --no-isolation --outdir <ignored-output> apps/servers/wavequant-api",
+                    "status": "passed",
+                    "summary": "2026-10-17 提交验证：Core和API的wheel/sdist均构建成功，产物不提交。"
+                },
+                {
+                    "command": "NOT RUN: full suites, real-stock replay, Playwright/E2E, Harness",
+                    "status": "not-run",
+                    "summary": "仅按用户要求保存并推送当前特性分支。完整实股、性能与浏览器验收未运行；不合并main，不标记功能done，不把分支推送当作验收通过。"
+                },
+                {
+                    "command": "NOT RUN: tests/test_source_bear_exit.py; market_calculations/trading_intervals/lifecycle/checkpoint regressions; full sh.601086 replay",
+                    "status": "not-run",
+                    "summary": "源码定位二级资格过滤一级事件，补直接来源已确认空头的归属本级结束事实，统一实时联动、分阶段读取及检查点恢复。编写三层、因果边界、路径隔离、交易上下文/资格日同步和用户日期缩减夹具回归，未执行；没有测试、检查、构建、Git检查、浏览器、运行探针、新回测或手动重启。实际2020-09-04是否为当前规则最早一级转空确认日仍需真实行情验证，不能将人工事件夹具当作实股通过。未提交推送合并，MONOREPO-330保持in-progress。"
+                },
+                {
+                    "command": "NOT RUN: test_frozen_bull_origin.py; test_lifecycle_impulse_defense.py; test_recovery_alternation_confirmation.py; lifecycle/checkpoint regressions and full sh.601086 replay",
+                    "status": "not-run",
+                    "summary": "只读代码与已有行情/历史证据定位：翻多事件保留2019-11-18低点，标注测幅及普通跳空却换成局部低点，普通分支又缺少资格之前的完整N/轧空确认。按用户最终定义统一冻结起点，正式翻多事实保存末跌高并随检查点恢复；普通/特殊走同一确认函数，普通确认也适配EntryContext。新增三层和折线、深回撤、严格翻多前提、资格确认日不倒填、局部关键位不得替换、检查点/来源修订及策略适配用例，仅编写未执行。没有测试、格式/lint/类型/构建/Harness、Git检查、浏览器、新建回测、主动清缓存或手动重启；旧v17测试通过记录保留为历史，不能证明本次新口径。未提交推送合并，330继续in-progress。"
+                },
+                {
+                    "command": "NOT RUN: documentation-only instruction update",
+                    "status": "not-run",
+                    "summary": "2026-10-17按用户要求将各级共用同一函数写入项目AGENTS.md，并更新功能与交接记录。本轮未修改趋势源码，未执行开发检查、测试、构建、Git检查或运行探针，未提交推送合并。现有分级显示投影仍需后续统一，MONOREPO-330保持in-progress。"
+                },
+                {
+                    "command": "NOT RUN: Core tests/test_trend_display.py; API tests/test_backtest_preview.py; multi-stock third-level chart replay",
+                    "status": "not-run",
+                    "summary": "当前源码表明上轮仍保留level==3的逐腿窗口过滤，flush拆段、ID改写且尾线未跟随保留端点，是三级断线与错接的直接原因。现去掉普遍窗口删线；仅明确冻结末跌高未破的局部反弹在原路径内归并，主线与尾线统一处理，普通图形和身份/附件保持、改接边不借旧证明。补写多级状态变化不删线、真实极值归并、特殊恢复/来源撤销、未来关键位与突破、国芳反例、尾线锚点、独立路径、实时推进/完整投影一致用例，全部未执行。按用户要求没有开发检查、测试、构建、Git检查、浏览器、新回测或手动重启；未提交推送合并，实股图形待验证。"
+                },
+                {
+                    "command": "NOT RUN: Core tests/test_trend_display.py; API tests/test_backtest_preview.py; secondary continuity / tertiary promotion replay",
+                    "status": "not-run",
+                    "summary": "根因由当前源码确认：通用split将每条没有本级翻多窗口的二级L→H删除，flush拆段并赋prevent_display_bridge。已把二级结构与确认状态分开，只对三级限制正式发布；二级原路径/发展尾/附件/计数不改，API及完整图共享修复。补充无翻多、多翻空、来源撤销、资格缺口结束、真实路径边界、预览快照隔离和恢复二级不授权三级的用例，仅编写未执行。遵循开发不检查：无测试、类型、构建、格式、Git检查、浏览器或新回测；未提交、推送、合并。实际个股和界面仍待验证。"
+                },
+                {
+                    "command": "NOT RUN: Core test_trend_display.py; API test_backtest_preview.py; Web lecture-overlay.test.mjs; 601086 full replay",
+                    "status": "not-run",
+                    "summary": "新增二/三级疑虑、11.50冻结关键位拒绝局部假翻多、真实特殊翻多例外、下级来源路径、未来突破不追认旧段、来源撤销/价格失效、发展尾部、预览/完成一致、前端不补线回归；仅编写未执行。正式发布与显示层修改，原始候选递归及策略状态机保留；不声称完整实股验收通过。未运行开发检查/测试/构建/浏览器/Git检查，未提交推送合并。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core python -m pytest tests/test_lifecycle_impulse_defense.py tests/test_trend_lifecycle.py tests/test_bull_recovery.py tests/test_confirmation_gap_expiry.py tests/test_lifecycle_frozen_context.py tests/test_polyline_lifecycle.py -q; python -m build --no-isolation",
+                    "status": "passed",
+                    "summary": "2026-10-17最终164项通过；新增30项包含真实国芳截至2025-01-13的因果生命周期回放与三处检查点恢复，旧v16隔离模块4个实股回归均失败、v17通过。实际行情OHLCV及已发布缩减结构有来源SHA，未重建完整几何或账户。正常跳空守低、迟知高点、严格延伸、证据修订及旧检查点拒绝保持。Core wheel/sdist构建通过，产物在ignored .codex-runtime/guofang-trading-leg-20261017/dist。"
+                },
+                {
+                    "command": "pytest body_gap_alternation/recovery_alternation_confirmation/trading_intervals; mypy --strict --follow-imports=silent trend_lifecycle.py chart_entry_history.py; isolated pre-change lifecycle comparison",
+                    "status": "failed",
+                    "summary": "扩展组原测试11失败：6项旧人工事件缺flip_confirmed，4项N/轧空确认夹具，1项逐日扫描调用次数；在本轮修改前v16生命周期独立加载下同样11失败36通过。首次收集错误来自trading_intervals旧裸导入，改为tests.test_backtest_analysis_boundary后可收集，未降低断言。两个修改模块strict mypy前后均43条且移除行号后诊断完全相同；未隐藏错误或称类型通过。无新误开资格失败，但既有门禁未通过，保留MONOREPO-330唯一in-progress，不提交/合并/推送。完整实股账户、全部现行几何重建、浏览器与全套验证待独立执行。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core exec node scripts/run-python.mjs -m pytest -q tests/test_trend_body_reversal.py tests/test_directional_doji_cache_versions.py tests/test_trend_level_upgrades.py tests/test_trend_lifecycle.py tests/test_hierarchy_stream.py",
+                    "status": "passed",
+                    "summary": "2026-10-17：129 passed、2 subtests passed，10.64秒。新反例先在旧收盘/最高价规则下失败；补齐旧真实来源fixture缺少的原高点OHLC后通过。局部类型检查发现同函数proof变量两种类型，改名后再跑body_reversal与level_upgrades为86 passed（与129重叠，不相加）。已有同源一级证据对照确认旧规则在10-11生成09-14→09-26，新规则不生成；这是固定来源回放，不是完整实股账户验收。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core exec node scripts/run-python.mjs -m mypy --follow-imports=silent src/wavequant/domain/market_structure/trend_body_reversal.py src/wavequant/domain/market_structure/trend_level_upgrades.py; git diff --check",
+                    "status": "passed",
+                    "summary": "2026-10-17：2个改动规则模块类型通过；diff空白检查通过。补充fixture OHLC来自现有guofang_2025_five_top_low_open.json，同日极值精确一致，没有下载或改变行情源。保留已有和工作期间新增的其他未提交修改。"
+                },
+                {
+                    "command": "NOT RUN: full stock/account replay, full Core/Web suites, browser/E2E and package build",
+                    "status": "not-run",
+                    "summary": "2026-10-17本轮只修正特殊二级线收盘基准并做定向验证；未运行浏览器、完整回测或包构建，未手动重启。工作树存在先前及并发未提交修改，本任务依赖其中的证据读取和fixture；未将混合改动自动提交或合并，未推送。MONOREPO-330继续唯一in-progress，其他历史失败和待验收事项保留。"
+                },
+                {
+                    "command": "NOT RUN: candle-clipboard.test.mjs and real browser clipboard interaction",
+                    "status": "not-run",
+                    "summary": "2026-10-17源码定位复制门禁用view.bars而图表悬停用market_bars，已统一行情来源及四处详情刷新。补部分/完整回测、独立对象、快照替换和未绘制对象拒绝用例；遵循用户开发只改代码要求，未执行测试/检查/构建/浏览器/Git操作。仅Web静态脚本修改，刷新后交互待验证。"
+                },
+                {
+                    "command": "read existing guofang-level1-2025.json and current sources",
+                    "status": "passed",
+                    "summary": "诊断事实：12月12日高点闭合保存普通反转，12月25日低点顶层保存严格翻空；旧规则只查高点单一路径。实时HierarchyHistoryStream遗漏收盘输入。旧记录不等于当前完整回测验证。"
+                },
+                {
+                    "command": "targeted body-reversal, hierarchy-stream, cache-version regressions and full stock replay",
+                    "status": "not-run",
+                    "summary": "按用户开发节奏只编写用例，未执行测试、检查、构建或新诊断回测。MONOREPO-330继续in-progress，未提交合并，旧失败证据保留。"
+                },
+                {
+                    "command": "start current branch launcher and read startup logs; open_in_codex 127.0.0.1:3004",
+                    "status": "passed",
+                    "summary": "用户要求重启：启动器PID9700，日志确认Web3004 Ready、首页200及API8766启动，页面打开请求queued。不是趋势修复业务验收。"
+                },
+                {
+                    "command": "read-only GET /api/backtest-jobs; py-spy record --pid 35692 --duration 15 --rate 50 --format raw --threads --nonblocking",
+                    "status": "passed",
+                    "summary": "仅诊断证据：旧任务715秒已推进1667/2130，非卡死；606有效采样/157读取错误、560回测线程栈。策略主调用394、内部三级确认205为包含关系；重复证据序列化/解码为已观察热点。没有新建诊断回测，不代表策略正确性或提速验收。"
+                },
+                {
+                    "command": "read-only GET /api/backtest-jobs after source reload",
+                    "status": "passed",
+                    "summary": "当前服务新任务b0a69bfa已输出累计四阶段、最近一日和平均每交易日耗时，证明预览不再抹掉文案。647已发布交易日/53.5秒处策略确认仍0秒，尚非旧后期样本，不能比较全程加速比例。"
+                },
+                {
+                    "command": "targeted tests: trend_readonly_cache, trend_staging_payload_cache, trend_change_history, hierarchy_stream, chart_live_permission_reuse, API backtest_jobs; full same-input B/S/account comparison",
+                    "status": "not-run",
+                    "summary": "按用户开发阶段不执行检查要求，仅编写回归用例。待提交阶段执行相关验证；本轮未格式/lint/类型/构建/Harness/浏览器测试，性能改动未提交，MONOREPO-330继续in-progress。"
+                },
                 {
                     "command": "python -m pytest <8 changed Core test modules> apps/servers/wavequant-api/tests/test_dev_reload.py apps/servers/wavequant-api/tests/test_dev_reload_restart.py -q --tb=short; node --test apps/webs/wavequant-web/tests/engine-reload.test.mjs apps/webs/wavequant-web/tests/watchlist-backtest-queue.test.mjs; pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; node <installed-next>/dist/bin/next build --turbopack (isolated Web copy); git diff --check",
                     "status": "passed",
@@ -575,7 +718,10 @@
             "name": "equal-extreme-doji-trend-continuity",
             "title": "等值外包十字星保留一级趋势连续性",
             "status": "done",
-            "dependencies": ["MONOREPO-325", "MONOREPO-326"],
+            "dependencies": [
+                "MONOREPO-325",
+                "MONOREPO-326"
+            ],
             "description": "2010-03-09等高外包十字星错误清空已确认路径；将安全边界与严格端点推进分开，并以同路径已知证据承接后续母线。",
             "scope": "Core讲义源折线及引擎缓存版本、镜像/拒绝/两源真实前缀回归、修复后完整趋势缓存验证；不按用户首尾日期硬补线，不改变整波完成定义。",
             "acceptanceCriteria": [
@@ -659,7 +805,10 @@
             "name": "full-timeframe-cold-payload-latency",
             "title": "完整趋势大载荷冷请求延迟",
             "status": "backlog",
-            "dependencies": ["MONOREPO-326", "MONOREPO-327"],
+            "dependencies": [
+                "MONOREPO-326",
+                "MONOREPO-327"
+            ],
             "description": "按年首屏已显示，最新全历史完整趋势仍有冷请求延迟。真实6823bars首次44秒未获响应，重试43.689秒/43.58MB，数据与修复后的2010点身份一致。",
             "scope": "后续独立阶段profile、完整bundle缓存/序列化/持久化与并发竞争优化；本轮只保留测量，不扩大超时或删掉证明树字段。",
             "acceptanceCriteria": [
@@ -761,7 +910,9 @@
             "name": "restore-candle-copy-shortcut",
             "title": "修复K线信息快捷键复制",
             "status": "done",
-            "dependencies": ["MONOREPO-121"],
+            "dependencies": [
+                "MONOREPO-121"
+            ],
             "description": "显式处理Ctrl+C和Meta+C，图表或浮层卡片内复制当前K线信息，保留输入框和选中文字的原生复制。",
             "scope": "Web K线快捷键事件、浮层焦点边界、定向回归及验证记录。",
             "acceptanceCriteria": [
@@ -799,7 +950,9 @@
             "name": "point-first-recursive-trend-judgement",
             "title": "统一高低点递归趋势判断入口",
             "status": "done",
-            "dependencies": ["MONOREPO-314"],
+            "dependencies": [
+                "MONOREPO-314"
+            ],
             "description": "统一judge_trend首参数为直接下级高低点：一级折线、二级一级输出、三级二级输出。三层应用入口和逐日历史共用；高低点决定趋势线，K线/交替/可选N仅核验策略资格。",
             "scope": "Core纯点递归、图表/历史适配、完整同坐标结构事实及独立策略资格、因果前缀/路径断点/缓存隔离、详细中文注释与合同、前端显示和相关定向验证。",
             "acceptanceCriteria": [
@@ -864,7 +1017,9 @@
             "name": "unified-three-level-trend-definitions",
             "title": "统一三级趋势定义与突破升级",
             "status": "done",
-            "dependencies": ["MONOREPO-311"],
+            "dependencies": [
+                "MONOREPO-311"
+            ],
             "description": "按图008将末跌高、末升低、正反转、负反转、多头趋势、空头趋势各自实现为公共函数，通过trend_level区分一级、二级、三级；共用严格高低比较和确认时间，保留高低点严格突破即升级，补充详细中文注释。",
             "scope": "Core六定义及逐级正式来源归并、独立高低突破升级、双向发布/后续上涨证书、下降测幅事实、局部ABC隔离、图表说明及相关定向测试；不修改K线折线规则或N开关默认值。",
             "acceptanceCriteria": [
@@ -937,7 +1092,9 @@
             "name": "restore-eslint-tsup-and-mobile-config",
             "title": "恢复剩余共享配置与移动端检查入口",
             "status": "done",
-            "dependencies": ["MONOREPO-312"],
+            "dependencies": [
+                "MONOREPO-312"
+            ],
             "description": "用户明确授权恢复主工作区17个已删除配置文件，补齐仍被使用的ESLint、tsup共享包和移动设计系统检查入口。",
             "scope": "恢复当前main原文件、修复本地依赖安装并验证共享配置和相关消费者；记录进度，产品源码、依赖声明和锁文件保持原版本。",
             "acceptanceCriteria": [
@@ -1051,7 +1208,9 @@
             "name": "figure008-composed-trend-foundations",
             "title": "图008二十项定义组合基座",
             "status": "done",
-            "dependencies": ["MONOREPO-310"],
+            "dependencies": [
+                "MONOREPO-310"
+            ],
             "description": "图008只作为逻辑参考；统一二十个概念的组合观察入口，支持任意转折数量/段长/价格尺度，补齐完整命名时序示例与通用变形回归，成形名称共用疑虑后攻击证据。",
             "scope": "Core无IO组合入口、图008示意样本/示例、成形名称一致性、契约与定向验证",
             "acceptanceCriteria": [
@@ -1110,7 +1269,10 @@
             "name": "reusable-polyline-trend-definition-primitives",
             "title": "折线趋势十九项定义共享基座",
             "status": "done",
-            "dependencies": ["MONOREPO-301", "MONOREPO-289"],
+            "dependencies": [
+                "MONOREPO-301",
+                "MONOREPO-289"
+            ],
             "description": "封装相邻K线六项关系、已确认反转与窗口关键点、全窗口多空趋势、翻向交替及头底证据和正倒N攻击虚拟价，复用已有因果规则。",
             "scope": "Core基础函数、旧折线/N调用复用、定义契约与定向回归",
             "acceptanceCriteria": [
@@ -1163,7 +1325,11 @@
             "name": "active-wave-extreme-before-local-confirmation",
             "title": "整波极值与局部确认时间分离",
             "status": "done",
-            "dependencies": ["MONOREPO-302", "MONOREPO-304", "MONOREPO-305"],
+            "dependencies": [
+                "MONOREPO-302",
+                "MONOREPO-304",
+                "MONOREPO-305"
+            ],
             "description": "二级上涨已于2022-06-20确认，7/18局部证书8/23可知不能排除同波8/2高10.66或改连2023/7/4低高9.77。增量共享方向状态依据真实反向确认切换整波。",
             "scope": "Core一二三级共用发布状态、整波极值和因果证书，Web源摘要及真实AkShare绘图缓存验证",
             "acceptanceCriteria": [
@@ -1268,7 +1434,9 @@
             "title": "正倒N超一饱趋势确认默认关闭选项",
             "description": "将各级正倒N严格超一饱确认规则改为全局可勾选配置，未选择时沿用既有两条确认路线。",
             "scope": "共享Core策略/图表/扫描、API参数与缓存、Web选项和持久化契约",
-            "dependencies": ["MONOREPO-306"],
+            "dependencies": [
+                "MONOREPO-306"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "全局选项默认未勾选，旧配置缺字段按false；非法布尔值拒绝",
@@ -1336,7 +1504,11 @@
             "title": "各级正倒N超一饱确认趋势段",
             "description": "正N和倒N在因果完成后严格超过一饱即独立确认一二三级趋势，补齐襄阳2018年9月的一级上涨段。",
             "scope": "Core共享趋势确认、三层候选与回放、Web证据及定向回归",
-            "dependencies": ["MONOREPO-301", "MONOREPO-302", "MONOREPO-303"],
+            "dependencies": [
+                "MONOREPO-301",
+                "MONOREPO-302",
+                "MONOREPO-303"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "正N严格超过攻击箱锚点测算的一饱确认上涨，倒N严格低于对称目标确认下跌",
@@ -1388,7 +1560,10 @@
             "name": "confirmed-wave-single-render-owner",
             "title": "同波正式与发展连接单一展示",
             "status": "done",
-            "dependencies": ["MONOREPO-303", "MONOREPO-304"],
+            "dependencies": [
+                "MONOREPO-303",
+                "MONOREPO-304"
+            ],
             "description": "襄阳2024-07-25低点的正式三级上涨与同证书发展延伸同时绘制造成双线。Core发布稳定因果波身份，Web对同波选择唯一可见连接，保留确认锚点与日期。",
             "scope": "Core同波因果身份、二三级正式与发展发布、Web primitive绘制与实际AkShare缓存链",
             "acceptanceCriteria": [
@@ -1451,7 +1626,11 @@
             "name": "formal-trend-leg-direction-confirmation",
             "title": "正式趋势连接段独立方向确认",
             "status": "done",
-            "dependencies": ["MONOREPO-301", "MONOREPO-302", "MONOREPO-303"],
+            "dependencies": [
+                "MONOREPO-301",
+                "MONOREPO-302",
+                "MONOREPO-303"
+            ],
             "description": "高点升级、回调方向及整波结束分别确认。各级反向未获独立证书时，同向创新高/低延伸原波；不把后续上涨证明借给此前下降，不凭邻接锚点截断二级上涨。",
             "scope": "Core三级图表发布、共用连接段方向证明、Web绘制/说明、缓存及真实AkShare周期链",
             "acceptanceCriteria": [
@@ -1519,7 +1698,9 @@
             "name": "market-timeframe-core-dependency-cache-invalidation",
             "title": "行情周期快照完整算法依赖失效",
             "status": "done",
-            "dependencies": ["MONOREPO-302"],
+            "dependencies": [
+                "MONOREPO-302"
+            ],
             "description": "补齐AkShare实际图表周期快照对Core内部规则的版本依赖，避免直接理论已修正而SQL/Redis/IndexedDB旧快照仍合法返回7月16日低点。",
             "scope": "API行情周期算法指纹、持久化与条件请求回归；Web缓存链定向验证",
             "acceptanceCriteria": [
@@ -1582,7 +1763,9 @@
             "title": "一级趋势整段极值与确认时间分离",
             "description": "定位并修正襄阳轴承一级低点误选2018-07-16的问题，以2018-07-11的真实最低价为波段端点，保持独立确认可知日。",
             "scope": "Core基础折线、一级整段归并及共享策略回放；按实际影响同步Web版本指纹",
-            "dependencies": ["MONOREPO-301"],
+            "dependencies": [
+                "MONOREPO-301"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "原始低点2018-07-11的4.84用于整段一级低点，不用2018-07-16的5.00替代",
@@ -1670,7 +1853,9 @@
             "title": "各级趋势确认统一两条因果路线",
             "description": "各级上涨只有本级末跌高突破，或下级末跌高突破、空多交替、转多完整顺序才能确认，修复襄阳2018年提前绘制二级趋势。",
             "scope": "Core一二三级正式与发展趋势、共享策略回放及Web规则证据",
-            "dependencies": ["MONOREPO-300"],
+            "dependencies": [
+                "MONOREPO-300"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "一二三级复用相同两路线，严格突破本级已知末跌高可直接确认",
@@ -1733,7 +1918,11 @@
             "title": "二级突破直接升级与深回调收复",
             "description": "修正已确认一级高突破此前已知二级末跌高的直接升级，并增加同源深回调后放量实体收复独立入场；真实襄阳2022年历史前缀、缓存与账户验证。",
             "scope": "Core二级趋势与策略确认、真实前缀/缓存/账户回归、Web证据与版本同步",
-            "dependencies": ["MONOREPO-038", "MONOREPO-097", "MONOREPO-297"],
+            "dependencies": [
+                "MONOREPO-038",
+                "MONOREPO-097",
+                "MONOREPO-297"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "真实2018起行情定位2020-11-20二级末跌高及2022-06-24上涨高点，突破后不等待无关未来二级转折才能升级",
@@ -1786,7 +1975,9 @@
             "title": "目标标签使用常规字重",
             "description": "图表C浪、一饱二吐、五顶十满等目标标签统一使用常规字重。",
             "scope": "Web共享目标文字绘图和对应拓扑源指纹",
-            "dependencies": ["MONOREPO-294"],
+            "dependencies": [
+                "MONOREPO-294"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "目标名称、价格及状态使用400常规字重，维持原字号和字体",
@@ -1817,7 +2008,11 @@
             "title": "自选股服务端保存及策略自动回测",
             "description": "服务器持久化自选分类、股票顺序和回测设置，迁移浏览器旧数据；策略引擎变化后后台自动重新回测全部自选股。",
             "scope": "WaveQuant API存储与后台队列、Web迁移同步与结果刷新、共享契约",
-            "dependencies": ["MONOREPO-176", "MONOREPO-182", "MONOREPO-297"],
+            "dependencies": [
+                "MONOREPO-176",
+                "MONOREPO-182",
+                "MONOREPO-297"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "服务器保存分类及股票顺序，重启和跨浏览器可恢复；版本冲突不覆盖他端数据",
@@ -1870,7 +2065,10 @@
             "title": "二吐后叠箱按高点延伸识别",
             "description": "二吐后的三合一整箱未拉回且高点严格继续创新高时进入叠箱观察，不额外等待收盘超过旧高；图表和入场使用同期可知投影。",
             "scope": "Core叠箱观察与襄阳买入目标回归、Web拓扑说明及V3版本",
-            "dependencies": ["MONOREPO-291", "MONOREPO-296"],
+            "dependencies": [
+                "MONOREPO-291",
+                "MONOREPO-296"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "三合一整箱为底部到二吐的3H，叠一箱五顶仍为T2+3H，不误改为原N单倍H",
@@ -1929,7 +2127,10 @@
             "title": "二级突破抵抗放量收复买入",
             "description": "已知二级高点突破当笔或次笔出现空头抵抗，后续放量阳线实体严格超过2%收复抵抗高点，或跳空中大阳收复，增加因果V3买点。",
             "scope": "Core二级突破收复观察与全局买入、Web成交依据、襄阳真实回归及五项旧测试预期修复",
-            "dependencies": ["MONOREPO-281", "MONOREPO-288"],
+            "dependencies": [
+                "MONOREPO-281",
+                "MONOREPO-288"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "二级高点按真实可知日消费，冻结突破当笔和次笔抵抗高，不使用未来端点或未来回调",
@@ -1989,7 +2190,10 @@
             "title": "同位置正N与目标按来源同色",
             "description": "同一K线的独立正N分开标识并分配不同颜色，各自测幅目标、文字和原N几何沿用来源色。",
             "scope": "Web正N标识分组、颜色绑定及目标Canvas显示",
-            "dependencies": ["MONOREPO-289", "MONOREPO-294"],
+            "dependencies": [
+                "MONOREPO-289",
+                "MONOREPO-294"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "襄阳2024-08-20两个来源正N分别显示不同颜色，目标4.83/5.52与4.63/5.12各自与来源同色",
@@ -2031,7 +2235,9 @@
             "title": "已触及目标虚线与图上标签透明",
             "description": "已触及C目标统一使用虚线，图内目标和回撤标签不再绘制背景色。",
             "scope": "Web目标线样式与共享Canvas文字绘制",
-            "dependencies": ["MONOREPO-292"],
+            "dependencies": [
+                "MONOREPO-292"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "已触及的C目标长线和短线均为虚线，保留状态、价格和首次触及日期",
@@ -2073,7 +2279,10 @@
             "title": "K线提示框允许超出图窗",
             "description": "K线提示框按页面视口定位并脱离图表裁剪，边缘K线不再因图窗内限位被提示框覆盖。",
             "scope": "Web K线提示框浮层、定位、复制与生命周期定向回归",
-            "dependencies": ["MONOREPO-095", "MONOREPO-121"],
+            "dependencies": [
+                "MONOREPO-095",
+                "MONOREPO-121"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "光标靠近图窗右侧且页面有空间时，提示框可以跨越图窗边界显示在光标右侧",
@@ -2126,7 +2335,9 @@
             "title": "C浪目标标识固定B浪低点上方",
             "description": "C目标标签固定对应B低日期，不随光标或可见区重定位，B离开视口时不把标识挪到边缘。",
             "scope": "Web C目标显示锚点与Canvas裁切，保留测幅/可知日期和策略逻辑",
-            "dependencies": ["MONOREPO-291"],
+            "dependencies": [
+                "MONOREPO-291"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "襄阳2026-08-25 B低8.21的C目标10.18142/11.40横向居中于B日期，悬停/选择不会改变锚点",
@@ -2173,7 +2384,10 @@
             "title": "一饱突破确认A与独立C生命周期",
             "description": "合格正N突破一饱立即确认可延伸A，达到二吐升级强势；原点严格跌破永久失效且原组无后续C。",
             "scope": "Core因果A状态与C策略资格、图表独立A标识和测幅、全局规则及真实日线回归",
-            "dependencies": ["MONOREPO-283", "MONOREPO-289"],
+            "dependencies": [
+                "MONOREPO-283",
+                "MONOREPO-289"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "襄阳07-23正N一饱8.48，07-31突破即显示A；08-05达到二吐9.06升级强势，08-17/18高点持续延伸",
@@ -2241,7 +2455,9 @@
             "title": "四端趋势反向虚线按整段扭转生成",
             "description": "已确认二三级趋势极值之后，无同级新破位及下一级整段趋势扭转时不画反向虚线；局部高低点下降不算扭转。",
             "scope": "Core共享发展路径证据门禁、全局规则及真实襄阳行情回归",
-            "dependencies": ["MONOREPO-288"],
+            "dependencies": [
+                "MONOREPO-288"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "襄阳轴承2025-05-15到2026-04-08三级趋势没有多余反向虚线，当前完整历史也不补回；3.45到19.63已确认实线保持",
@@ -2293,7 +2509,11 @@
             "title": "正N轧空低失效与独立重算",
             "description": "正N轧空低严格跌破后失效，后续突破已形成高点重新确认独立N并分别测幅。",
             "scope": "Core因果N生命周期、重新突破、独立目标；Web标识与目标过滤；全局规则与定向回归",
-            "dependencies": ["MONOREPO-282", "MONOREPO-283", "MONOREPO-284"],
+            "dependencies": [
+                "MONOREPO-282",
+                "MONOREPO-283",
+                "MONOREPO-284"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "襄阳轴承07-31与08-15正N轧空低严格跌破即失效，当前图不绘制失效N和其目标",
@@ -2345,7 +2565,9 @@
             "title": "二三级趋势突破前高即确认",
             "description": "同级前高被最高价严格突破即确认上涨趋势线，跌破前低对称；末端继续延伸。",
             "scope": "Core共用因果确认、二三级趋势返回、Web实线与说明、全局规则和回归",
-            "dependencies": ["MONOREPO-281"],
+            "dependencies": [
+                "MONOREPO-281"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "襄阳轴承2025-03-11严格突破2022-08-02高10.66即确认；05-15高19.63为可继续延伸的实线末端",
@@ -2397,7 +2619,9 @@
             "title": "修复K线区域方向键路由",
             "description": "将四向快捷键从仅外层容器聚焦扩展到整个K线区域，包括内部SDK元素聚焦和页面中鼠标在图内；捕获按键避免内部处理截断。",
             "scope": "Web图表快捷键路由、帮助文案、SDK/DOM定向回归、合并推送",
-            "dependencies": ["MONOREPO-286"],
+            "dependencies": [
+                "MONOREPO-286"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "图表外层或内部非编辑元素聚焦时四个方向键均执行相应操作，内部stopPropagation不阻断图窗快捷键",
@@ -2434,7 +2658,9 @@
             "title": "修复K线方向键焦点丢失",
             "description": "图表SDK在mousedown主动blur导致方向键入口失效；完成点击或拖动后恢复画布容器焦点，以实际焦点路由回归按键。",
             "scope": "Web图表激活与定向SDK事件链回归、验收及本地合并",
-            "dependencies": ["MONOREPO-285"],
+            "dependencies": [
+                "MONOREPO-285"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "真实SDK顶层画布完整pointer/mouse点击事件后，焦点仍在图表且上下左右方向键实际改变视图",
@@ -2471,7 +2697,9 @@
             "title": "图表方向键缩放与平移",
             "description": "聚焦K线图后上键放大、下键缩小、左右键平移，连续按键复用已有图窗范围约束。",
             "scope": "Web图表键盘交互、提示、焦点和生命周期回归及本地合并",
-            "dependencies": ["MONOREPO-284"],
+            "dependencies": [
+                "MONOREPO-284"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "点击图表画布或Tab聚焦图表后，上下方向键分别放大缩小，左右方向键分别向早晚行情平移，长按支持连续操作",
@@ -2508,7 +2736,9 @@
             "title": "正N固定目标与顶底横线",
             "description": "目标标签横向固定在成N日期上方，正N箱顶和起点低位增加横线，鼠标移动不改变其结构锚点。",
             "scope": "Web图表显示、覆盖层及定向交互回归、本地合并",
-            "dependencies": ["MONOREPO-283"],
+            "dependencies": [
+                "MONOREPO-283"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "一饱二吐五顶十满标签固定在对应成N日期，鼠标在同一正N区间移动或点击定位不移动标签，C浪原交互保持",
@@ -2550,7 +2780,9 @@
             "title": "母子正N底部启动测幅",
             "description": "修复讲义内包阴子线B/C被当成阴母外包而拒绝，统一识别底部启动首个正N及其目标来源。",
             "scope": "Core正N几何校验与底部资格优先的同日候选去重、真实襄阳轴承案例、Web策略拓扑、本地合并",
-            "dependencies": ["MONOREPO-282"],
+            "dependencies": [
+                "MONOREPO-282"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "襄阳轴承2026-07-21底部7.32、07-22内包阴子B/C、07-23成N7.90统一识别，一饱8.48二吐9.06",
@@ -2603,7 +2835,10 @@
             "title": "底部启动正N独占四档测幅",
             "description": "按用户确认口径，已确认一轮下跌的最低点首个正N冻结测幅来源；续涨局部N和跨段大N不重开一饱二吐五顶十满。",
             "scope": "Core共用测幅资格、目标生命周期与交易消费者、Web目标来源，用户追加的五项历史回归及相关分钟/一饱回归校准、本地合并",
-            "dependencies": ["MONOREPO-275", "MONOREPO-281"],
+            "dependencies": [
+                "MONOREPO-275",
+                "MONOREPO-281"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "只从当时已确认下跌段最低点的首个正N发布一饱二吐五顶十满；相等低点保留较早底部，局部续涨与跨已有启动结构不重开箱",
@@ -2662,7 +2897,9 @@
             "title": "一级趋势按推进后回档确认端点",
             "description": "修复用反向推进之前的旧回档提前确认一级波段，必须先创新高再确认后续更高低点或先创新低再确认后续更低高点，保留整段极值与历史因果。",
             "scope": "Core一级趋势聚合、真实行情与镜像边界回归、全局版本和Web策略拓扑说明",
-            "dependencies": ["MONOREPO-275"],
+            "dependencies": [
+                "MONOREPO-275"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "襄阳轴承真实行情2024-12-30高7.29连接2025-01-13低5.51，不连接01-07低5.55",
@@ -2719,7 +2956,9 @@
             "title": "定位滚动保留个股净收益",
             "description": "点击成交、拦截、持仓回撤或回测定位后，滚动保留上方个股净收益百分比，避开固定导航遮挡，原K线定位与选中保持。",
             "scope": "Web定位滚动、共享视口辅助及定向DOM回归",
-            "dependencies": ["MONOREPO-278"],
+            "dependencies": [
+                "MONOREPO-278"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "定位后上方个股净收益百分比留在可视区域且不被固定导航遮挡",
@@ -2756,7 +2995,9 @@
             "title": "五顶或十满后两类长上影清仓",
             "description": "此前有效五顶或十满到位后，实体被昨日包含且长上影达半幅时独立清空余仓；保留低开、收盘不高于开盘且长上影达半幅规则。包含十字子线，完整分钟因果触发，缺分钟按明确非一字跌停收盘模型模拟执行。",
             "scope": "Core两条独立全局退出、分钟与日线撮合、Web实体及目标证据、国芳2025-04-25回归",
-            "dependencies": ["MONOREPO-275"],
+            "dependencies": [
+                "MONOREPO-275"
+            ],
             "status": "backlog",
             "acceptanceCriteria": [
                 "只使用此前交易日已达到且未失效的五顶或十满，禁止同日及未来目标泄漏",
@@ -2887,7 +3128,9 @@
             "title": "定位时图表序列重复移除修复",
             "description": "清理图表序列时阻止SDK同步十字光标回调重入目标线重绘，定位和读取已完成回测不再触发Series not found。",
             "scope": "Web图表序列生命周期及已完成任务读取定向回归",
-            "dependencies": ["MONOREPO-234"],
+            "dependencies": [
+                "MONOREPO-234"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "实际Lightweight Charts SDK下悬停目标线清理、定位和重复加载不产生Series not found断言",
@@ -2919,7 +3162,9 @@
             "title": "撤回轧空强势K入场合并",
             "description": "按用户请求完整撤回V95轧空强势K统一入场及其验收合并，恢复此前V94；保留275正N识别与五顶十满修复。",
             "scope": "精确撤回5cdfdd9及fc0b3aa，恢复93dea5c源码与测试，核对实际V94服务",
-            "dependencies": ["MONOREPO-275"],
+            "dependencies": [
+                "MONOREPO-275"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "两次merge通过反向提交撤回，不改写历史、不推送；276不自动重新启用",
@@ -2971,7 +3216,9 @@
             "title": "共享边界N识别与目标完整性",
             "description": "修复讲义折线允许等高等低外包、N判定却严格双边导致的漏识别，保留因果确认与首次突破，补真实襄阳轴承及对称边界回归。",
             "scope": "Core共享边界N几何与后续首次突破、V94、真实历史目标链回归、Web焦点阶段追踪及拓扑来源同步",
-            "dependencies": ["MONOREPO-274"],
+            "dependencies": [
+                "MONOREPO-274"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "讲义N与折线使用同一外包边界；允许同日确认但不回溯未知折点，严格策略、无方向及无新突破仍受原约束",
@@ -3033,7 +3280,9 @@
             "title": "撤回正N高开开盘买入",
             "description": "按用户要求撤回本次高开开盘买入两次main合并和全部实现，恢复此前V93及既有交易/图表行为；撤回的273不自动重新启用。",
             "scope": "精确撤回78cf319与5171b6b、核对de00b04源码及全局V93",
-            "dependencies": ["MONOREPO-272"],
+            "dependencies": [
+                "MONOREPO-272"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "撤回两次合并的全部代码、测试、策略定义和UI说明，不改写Git历史，不推送",
@@ -3084,7 +3333,9 @@
             "title": "二饱后实体反包放量清仓",
             "description": "全局V3在有效正N二饱到位之后，阴线实体覆盖前日阳线实体且量严格超过此前最近阴线时，当日收盘清空余仓，不依赖前日总量或先前减仓。",
             "scope": "Core全局目标风险、同日执行、策略版本及Web清仓证据",
-            "dependencies": ["MONOREPO-263"],
+            "dependencies": [
+                "MONOREPO-263"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "只使用此前交易日已到二饱且尚未失效的正N，覆盖后来所有交易日且不按股票日期特判",
@@ -3131,7 +3382,9 @@
             "title": "移除研究页标题与副标题",
             "description": "按用户要求去掉研究页让每一个信号都有据可循的主标题和N字结构说明副标题，将保留的研究上下文与SDK标识压缩为紧凑行，减少顶部留白。",
             "scope": "Web研究页顶部组件与样式",
-            "dependencies": ["MONOREPO-270"],
+            "dependencies": [
+                "MONOREPO-270"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "页面不再显示原主标题及说明副标题，相关文字从DOM移除",
@@ -3163,7 +3416,9 @@
             "title": "K线加高自然下推证据",
             "description": "按用户澄清增加K线绘图区本身的高度，在首屏剩余空间预算上增加100px并解除原520px上限，让决策证据自然位于首屏之后，组件位置和内容保持。",
             "scope": "Web图表尺寸与首屏布局",
-            "dependencies": ["MONOREPO-269"],
+            "dependencies": [
+                "MONOREPO-269"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "K线绘图区按首屏剩余高度预算增加100px，最小300px，较高窗口也可继续展开",
@@ -3195,7 +3450,9 @@
             "title": "图表高度适配首屏进度条",
             "description": "缩小K线视图默认高度，取消图表卡片近整屏的最小高度，按实际图表起点与窗口剩余空间优先预留当前图窗位置进度区，历史回放保留在下方，窗口及控件尺寸变化时重新适配。",
             "scope": "Web图表尺寸与运行时布局",
-            "dependencies": ["MONOREPO-268"],
+            "dependencies": [
+                "MONOREPO-268"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "常见桌面窗口按实际剩余高度为当前图窗位置进度条预留首屏位置，历史回放保留在下方",
@@ -3227,7 +3484,9 @@
             "title": "移除成交播放三行说明",
             "description": "去掉图表上回测买卖点播放标题、当前成交说明和操作提示的三行可见文字，将成交进度移入原单行控制栏，保留辅助状态与播放交互。",
             "scope": "Web图表播放布局与样式",
-            "dependencies": ["MONOREPO-267"],
+            "dependencies": [
+                "MONOREPO-267"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "图表不再显示播放标题和两行说明，不留空白说明区",
@@ -3259,7 +3518,9 @@
             "title": "成交播放并入图表控制行",
             "description": "将上一笔、播放、下一笔和速度控件并入图表切换与平移缩放所在控制行，保持本地研究图靠左，窄屏通过控制栏内横向滚动保持单行。",
             "scope": "Web图表组件编排与样式",
-            "dependencies": ["MONOREPO-266"],
+            "dependencies": [
+                "MONOREPO-266"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "本地研究图、TradingView、平移缩放及成交播放共用一行，不额外占用播放控制行",
@@ -3385,7 +3646,10 @@
             "title": "A强弱分类与起点失效规则统一",
             "description": "按用户确认统一强A高点达到二吐、普通A达到一饱但未达二吐；最低价严格破A起点即永久失效；强弱A的B均可破轧空低，保留实际回调整理时长和后续新A独立生命周期；图表悬停、K线点击、日期定位和ABC端点选择统一显示及异步重绑定，保留测幅与可知性。",
             "scope": "Core A/B/C共用规则、整段波浪上下文与测幅、Web共用识别和说明及真实行情/边界定向回归",
-            "dependencies": ["MONOREPO-262", "MONOREPO-258"],
+            "dependencies": [
+                "MONOREPO-262",
+                "MONOREPO-258"
+            ],
             "status": "backlog",
             "acceptanceCriteria": [
                 "一饱相等为普通A、二吐相等为强势A，未达一饱不分类；内部N测幅与整段A起点分别保留",
@@ -3459,7 +3723,10 @@
             "title": "整段A起点与深B回调ABC标识",
             "description": "修复新华传媒二月八日起点、三月二十五日A顶、八月二十八日B底缺失，共用已确认父波段与内部正式正N，保留完整A起点并持续跟踪B。",
             "scope": "Web共用ABC结构观察、因果锚点与图表标识，不改交易引擎",
-            "dependencies": ["MONOREPO-261", "MONOREPO-216"],
+            "dependencies": [
+                "MONOREPO-261",
+                "MONOREPO-216"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "真实正式历史识别2024-02-08至03-25的完整A、08-28深B及后续C；内部03-05正N起点仍为02-29，不混用测幅锚点",
@@ -3501,7 +3768,10 @@
             "title": "正N目标测幅归属",
             "description": "历史焦点及原N抵抗失败买点绑定原始突破N，避免后续重叠或同日新N目标覆盖新华传媒02-29低点到03-05突破的特殊阴母N测幅。",
             "scope": "Web全局N范围匹配、原攻击买点目标归属及真实混合来源回归；保留Core测幅和交易规则",
-            "dependencies": ["MONOREPO-260", "MONOREPO-259"],
+            "dependencies": [
+                "MONOREPO-260",
+                "MONOREPO-259"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "真实混合历史下02-29至03-05焦点显示原03-05正N，不被03-19及03-20的新N覆盖；保留显式命中和选中优先及历史不可知约束",
@@ -3538,7 +3808,10 @@
             "title": "正N范围焦点目标标签",
             "description": "参考ABC悬停方案，正N结构与一饱二吐区间内的K线悬停、点击和日期定位显示对应目标，修复规则开关及图外锚点导致选中仍无标签。",
             "scope": "Web共用焦点范围、图表目标叠加及屏幕边缘标签，保留Core目标与交易规则",
-            "dependencies": ["MONOREPO-259", "MONOREPO-216"],
+            "dependencies": [
+                "MONOREPO-259",
+                "MONOREPO-216"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "已知正N从结构起点到二吐首次严格突破的范围内任何K线悬停、点击及日期定位均显示同组一饱二吐；提前历史截面不可用",
@@ -3576,7 +3849,11 @@
             "title": "正N一饱二吐目标标识",
             "description": "正N规则标记的一饱、二吐接入已有左端目标标签和因果截断方案，修复新华传媒2024-03-05正N目标只有普通参考线、缺少明确标识的问题。",
             "scope": "Core共用正N目标发布契约、Web既有目标绘制与真实行情定向回归，统一覆盖AkShare、通达信和封存回测",
-            "dependencies": ["MONOREPO-258", "MONOREPO-215", "MONOREPO-216"],
+            "dependencies": [
+                "MONOREPO-258",
+                "MONOREPO-215",
+                "MONOREPO-216"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "正N规则标记将引擎发布的一饱、二吐价位接入one_p/two_t阶段及左端中文标签，不由浏览器重算价格",
@@ -3613,7 +3890,9 @@
             "title": "正N守线后续轧空买点",
             "description": "全局V3接纳讲义阴母同日先高后低B/C的正N；突破当日或次日已有抵抗且原防守完整时，第三棒起中大阳短上影的高点/收盘分别严格越过原N突破棒，弱N须放量，深B恢复保留原风控；修复新华传媒2024-03-05正N对应03-20买点。",
             "scope": "Core全局正N识别、轧空入场与Web策略说明及真实行情定向回归",
-            "dependencies": ["MONOREPO-257"],
+            "dependencies": [
+                "MONOREPO-257"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "全局V3正N仅显式接纳已知阴母严格外包前棒、H先于L的同日B/C；3/5 N四点及3/20买点真实回归，不按股票/日期特判",
@@ -3681,7 +3960,10 @@
             "title": "正N抵抗限窗及时确认轧空",
             "description": "全局V3正N空头抵抗只取突破当天或第二天，后续低开等K线事实不能延长该N抵抗；已有抵抗失败及原防守完整时及时确认新华传媒2019-02-22买点。",
             "scope": "Core盘态、全局V3入场、Web拓扑与真实新华传媒定向回归",
-            "dependencies": ["MONOREPO-212", "MONOREPO-150"],
+            "dependencies": [
+                "MONOREPO-212",
+                "MONOREPO-150"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "全局V3正N抵抗证据仅在突破当天及下一交易日计入，后续原始K形态可审计但不延长该N抵抗，晚期昨日形态也不能制造局部确认",
@@ -3754,7 +4036,10 @@
             "title": "组合A回调放量突破买入",
             "description": "已知ABC组合A从C顶到突破日含横盘整理的时间严格超过内部B或最末同源子ABC的B回调时间，整段收盘守2/3，放量中大阳线严格突破时增加全局V3入场通道。",
             "scope": "Core因果组合识别、全局买入与风控、Web成交证据及国芳真实回归",
-            "dependencies": ["MONOREPO-248", "MONOREPO-255"],
+            "dependencies": [
+                "MONOREPO-248",
+                "MONOREPO-255"
+            ],
             "status": "backlog",
             "acceptanceCriteria": [
                 "复用已知同源ABC结构及前置来源高点，不依赖未来C确认或目标级升级",
@@ -3843,7 +4128,9 @@
             "title": "组合A回撤线标注低点突破",
             "description": "回撤线状态依据最低价与收盘：低点严格突破而收盘未跌破时显示对应标签，收盘跌破仍失守；保留前轮高点截止与最近组合规则。",
             "scope": "Web组合A回撤线状态与低点证据",
-            "dependencies": ["MONOREPO-254"],
+            "dependencies": [
+                "MONOREPO-254"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "仅在低点严格低于阈值且收盘大于等于阈值时标注低点突破收盘没有跌破，不显示高点已突破标签",
@@ -3874,7 +4161,9 @@
             "title": "组合A回撤线止于高点突破",
             "description": "最近组合A的50%与2/3回撤线，在未被收盘跌破时止于后续K线首次严格突破组合A高点的位置。",
             "scope": "Web组合A回撤线终点与标签状态",
-            "dependencies": ["MONOREPO-253"],
+            "dependencies": [
+                "MONOREPO-253"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "两条虚线分别止于首次收盘跌破或组合A高点突破中先发生的事件，当天低收盘失守优先标记",
@@ -3905,7 +4194,9 @@
             "title": "组合A回撤线标注与跌破截断",
             "description": "最近组合A的50%与2/3回撤线从C顶画到各自首次收盘跌破K线，标签直接标在线上，不借未来确认或未来跌破。",
             "scope": "Web组合A回撤展示，保留历史分析与交易规则",
-            "dependencies": ["MONOREPO-252"],
+            "dependencies": [
+                "MONOREPO-252"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "仅最近已确认组合A同时显示50%及2/3回撤线与图内标签，关闭和清理同步移除",
@@ -3936,7 +4227,9 @@
             "title": "仅显示最近一组组合A",
             "description": "组合A显示按当前可知截面只取C端点最近且同顶起点最近的一组，统一连线、端点、半幅和失守标签，保留全历史记录。",
             "scope": "Web组合A显示，不修改交易或历史ABC分析",
-            "dependencies": ["MONOREPO-251"],
+            "dependencies": [
+                "MONOREPO-251"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "国芳旧5.5365与新6.7679半幅同时存在时只显示最近6.7679及对应端点",
@@ -3967,7 +4260,9 @@
             "title": "二三级趋势补线唯一连接",
             "description": "统一二三级趋势确认补线的重叠、重复和共享端点规则，修复国芳2025-05-29正式三级高点两条出线；保留独立审计与正常一进一出。",
             "scope": "Core趋势图路径发布及Core/Web回归，不修改信号、成交或买卖规则",
-            "dependencies": ["MONOREPO-250"],
+            "dependencies": [
+                "MONOREPO-250"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "国芳2025-05-29三级趋势点最多一条出线",
@@ -4018,7 +4313,9 @@
             "title": "同级同类波段端点连线去重",
             "description": "修复先锋新材07-06多组历史ABC共用C顶导致同级同类线分叉，核对06-08原路径；显示端点最多一进一出。",
             "scope": "Web波段连线显示与端点回归，不修改交易规则",
-            "dependencies": ["MONOREPO-249"],
+            "dependencies": [
+                "MONOREPO-249"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "先锋新材2026-06-08与07-06同级同类型每个点至多一根入线和一根出线",
@@ -4054,7 +4351,9 @@
             "title": "ABC组合A浪连线与端点标签",
             "description": "连接已确认ABC组合的原A起点与C终点，并显示组合A起与组合A顶标识。",
             "scope": "Web组合A浪图表显示和定向回归",
-            "dependencies": ["MONOREPO-248"],
+            "dependencies": [
+                "MONOREPO-248"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "组合A浪从原A起点连接至已确认C终点，端点使用各自真实日期与价格标识",
@@ -4095,7 +4394,9 @@
             "title": "ABC组合大A半幅回调观察",
             "description": "固定二三级末跌高的已确认来源显示上下文，将已确认C后重叠且守起点的ABC组合为更大A，绘制50%虚线并观察守半放量突破。",
             "scope": "Web组合ABC观察、50%独立虚线与强K图表标识及定向回归，不修改交易引擎",
-            "dependencies": ["MONOREPO-247"],
+            "dependencies": [
+                "MONOREPO-247"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "前置末跌高在内部N截面冻结；二级或三级任一级有同源已确认来源点即可，标明源级已确认/目标级显示上下文，不借未来正式升级或额外要求突破旧key",
@@ -4146,7 +4447,11 @@
             "title": "非强攻击ABC悬停及C浪三档目标",
             "description": "补齐真实全历史中普通A的正N原点局部观察，保留守住A起点的深长B；光标在ABC任意K线上展示本组标识、0.618、等浪和1.618目标，结束或失效后冻结。",
             "scope": "Web正式N原点局部波段观察、ABC区间悬停、C目标标签与生命周期及国芳全历史回归；沿用全局二级与交易口径",
-            "dependencies": ["MONOREPO-162", "MONOREPO-232", "MONOREPO-239"],
+            "dependencies": [
+                "MONOREPO-162",
+                "MONOREPO-232",
+                "MONOREPO-239"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "A起点与正N确认节点分离；未达既有二吐的A不标为强攻击，缺失证据保持待判定",
@@ -4244,7 +4549,9 @@
             "title": "十满后按 A 段回调价幅与时间禁买",
             "description": "十满后的全局 V3 入场暂停改以 A 段起点至十满高点计算：B 最低价达到 2/3 回撤可不看时间；仅 B 最低收盘达到半幅时，须从 A 高到 B 低的交易日间隔严格长于 A 上涨间隔。23 日内严格创新高的原例外保留。",
             "scope": "Core 十满后全局门禁及策略版本、Web 拒买说明与拓扑、国芳集团 2023-09-01 回归",
-            "dependencies": ["MONOREPO-245"],
+            "dependencies": [
+                "MONOREPO-245"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "A 段以原正 N 起点至十满到达日高点计算；B 时间从十满日到后续最低价日，以交易 K 线间隔计量",
@@ -4271,7 +4578,9 @@
             "title": "修正十满后默认 V3 深回撤禁买门槛",
             "description": "十满后默认 V3 沿用第二类浅回撤上限 1/3 对应的 2/3 深回撤；半幅方案保持 1/2，显式深回撤方案保持原值。国芳 2023-08-15 未触及深回撤线，不再买入。",
             "scope": "Core V3 配置与策略版本、Web 拓扑说明、国芳 2023-08-15 历史回归",
-            "dependencies": ["MONOREPO-244"],
+            "dependencies": [
+                "MONOREPO-244"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "默认 lecture_v3 十满后的深回撤比例为 2/3；c50 方案为 1/2，显式 d50/d67 方案保持自身比例",
@@ -4302,7 +4611,9 @@
             "title": "十满后未及时突破则等深回撤再买",
             "description": "V3 正 N 十满到达日起暂缓所有新买入与加仓；随后 23 个交易日内严格突破到达日最高价，或从该高点回撤至十满前最近 B 浪低点与高点幅度的 1/2（深回撤变体为 2/3）后，下一交易日解除。逾期创新高不能替代深回撤。",
             "scope": "Core 全局 V3 入场门禁和策略版本、Web 中文原因与拓扑、国芳集团 2023-08-01 样本回归",
-            "dependencies": ["MONOREPO-243"],
+            "dependencies": [
+                "MONOREPO-243"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "十满以当日已知投影事件确认，当日及未解除期间所有 V3 入场通道和加仓都不产生 LONG；同日既有 EXIT 优先",
@@ -4331,7 +4642,9 @@
             "title": "五顶后低开放量跌破前开清仓",
             "description": "正 N 在此前交易日已达到五顶或十满后，当日低开、收盘严格低于前日开盘且成交量严格高于此前最近阴线时，持仓当日收盘清空。",
             "scope": "Core 全局 V3 信号与持仓回测、策略版本、Web 原因及拓扑说明、国芳集团 2026-09-15 回归",
-            "dependencies": ["MONOREPO-242"],
+            "dependencies": [
+                "MONOREPO-242"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "五顶或十满须在此前交易日已到达且未失效，当前交易日到达或已失效不触发",
@@ -4388,7 +4701,9 @@
             "title": "衔接十字星子母折线",
             "description": "讲义主折线已有十字星子线端点时，沿非十字星母线的阴阳高低顺序接入外包母线，替代此前将所有外包十字星标记未解的处理。",
             "scope": "Core 讲义折线、国芳集团 2024-09-13 样本及分级趋势回归",
-            "dependencies": ["MONOREPO-240"],
+            "dependencies": [
+                "MONOREPO-240"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "国芳集团 2024-09-12 十字星子线的已知高点接入 09-13 阴母线高低点，前后主路径连续，后续 09-23 折点保留",
@@ -4409,7 +4724,9 @@
             "title": "补画等高内包十字星折线",
             "description": "已知折线方向遇内包十字星时，强制转向子线相反极值，修复等高或等低关系下普通反转判据未触发导致缺线。",
             "scope": "Core 讲义折线与国芳集团 2024-09-23 实际样本回归",
-            "dependencies": ["MONOREPO-207"],
+            "dependencies": [
+                "MONOREPO-207"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "国芳集团 2024-09-20 高点与 09-23 高点相等时，讲义主折线从前高连至 09-23 低点，并在 09-24 反弹后保留该转折",
@@ -4430,7 +4747,9 @@
             "title": "有效转浪买点跨局部折线阶段",
             "description": "独立且防守有效的A/B/C再攻击保留较大波段生命周期，修复先锋2026-01-06放量突破已识别却被局部折线重启静默丢弃的问题。",
             "scope": "Core全局转浪入场、策略版本、因果审计及定向回归",
-            "dependencies": ["MONOREPO-233"],
+            "dependencies": [
+                "MONOREPO-233"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "有效独立C浪允许跨局部折线阶段，普通局部N仍保持自身阶段限制",
@@ -4463,7 +4782,9 @@
             "title": "持仓归零分段及已清仓最大回撤",
             "description": "每次零持仓首次买入至数量归零独立计算成本MAE，清仓后本轮归零，再次买入重算；最终最大回撤取已清仓轮次中最深亏损，未清仓不混入。",
             "scope": "Core持仓轮次/成本MAE/归零曲线、Web最终指标/逐轮明细/定位/对比/自选收益及API完成摘要",
-            "dependencies": ["MONOREPO-197"],
+            "dependencies": [
+                "MONOREPO-197"
+            ],
             "status": "backlog",
             "acceptanceCriteria": [
                 "每轮仅实际首次买入至数量归零的完全卖出参与计算；每次归零后下轮独立重算，空仓行情不参与",
@@ -4521,7 +4842,9 @@
             "title": "二级后一级交替放量突破买入",
             "description": "已知且有效的二级交替低点之后再确认一级交替低点，守住两低且阳线放量收盘突破一级翻多高及整理高时，当天正N完成即可确认买点。",
             "scope": "Core全局V3信号、同源证据与Web买入说明；华瓷2024年1月历史前缀回归",
-            "dependencies": ["MONOREPO-229"],
+            "dependencies": [
+                "MONOREPO-229"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "华瓷2023-10-23二级低点11-08可知；12-28一级低点2024-01-05可知；01-17量4557338且收14.9195突破13.9041，当天生成LONG",
@@ -4563,7 +4886,9 @@
             "title": "结构未解退出遇高开收高先观察",
             "description": "全局持仓回测对单独的结构未解退出延迟判断：次日高开于昨收则观察收盘，收盘仍高于昨收时撤销该退出并等待后续卖出信号；收盘不高于昨收时当日收盘退出。止损及其他明确退出保持优先。",
             "scope": "Core 全局持仓退出执行、国芳2026年9月真实日线与定向回归",
-            "dependencies": ["MONOREPO-228"],
+            "dependencies": [
+                "MONOREPO-228"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "国芳09-04结构未解信号在09-07开盘高于09-04收盘、收盘继续走高时不卖，保持持仓且无遗留待卖单",
@@ -4589,7 +4914,9 @@
             "title": "C浪近等浪空头抵抗减仓及放量双破清仓",
             "description": "已知强A的C浪等浪目标首次进入下方一分钱内且出现空头抵抗K线时按配置累计减仓；后续首次低点和收盘严格双破昨日且量超过此前最近阴线时生成EXIT，有持仓当日收盘清空余仓。",
             "scope": "Core同源目标审计、全局信号与单股回测；先锋2026年7月日线及Web成交说明",
-            "dependencies": ["MONOREPO-227"],
+            "dependencies": [
+                "MONOREPO-227"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "先锋07-02/03强A续攻信号给出C浪等浪8.57；07-06最高8.56相差0.01且上影占振幅74.36%，虽收阳仍为空头抵抗，默认累计减仓80%",
@@ -4621,7 +4948,9 @@
             "title": "五顶后放量双破昨日及前天子低清仓",
             "description": "已知有效正N在此前交易日达到五顶或十满后，阴线低点和收盘严格双破昨日、低点跌破前天子线，且量超过此前最近阴线，当日生成EXIT；有持仓则收盘清空余仓。",
             "scope": "Core 全局目标后退出信号与模拟成交、先锋真实日线及Web原因",
-            "dependencies": ["MONOREPO-226"],
+            "dependencies": [
+                "MONOREPO-226"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "先锋09-29形成正N，10-28高4.99达到五顶4.93；11-18低4.85跌破昨低4.99及11-14子低4.91，收4.91低于昨收5.19，量63288181大于11-11阴量63172500，生成EXIT",
@@ -4653,7 +4982,9 @@
             "title": "外包回踩分步正N及先锋九月测幅",
             "description": "C棒按讲义先回踩后攻击时，虚颈线试探属于后续攻击，等待后来实虚突破完成N，冻结首次试探防守及完成日箱顶。",
             "scope": "Core 全局讲义正倒N、测幅及同源图表事件",
-            "dependencies": ["MONOREPO-224"],
+            "dependencies": [
+                "MONOREPO-224"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "先锋2025-09-29识别09-23/24/26三锚点正N，1P3.81、2T4.09、防守3.29，09-26仅虚突破不能完成",
@@ -4685,7 +5016,9 @@
             "title": "旧高突破巨量阴线抵抗减三成与次笔清仓",
             "description": "全局旧高突破当笔或次笔巨量收阴并出现空头抵抗时累计减仓30%；下一交易日继续巨量收阴且收盘更低则直接清空，均量基准冻结于突破前。",
             "scope": "Core 历史高点持仓风控、成交证据、Web 卖出原因与先锋实际样本",
-            "dependencies": ["MONOREPO-224"],
+            "dependencies": [
+                "MONOREPO-224"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "先锋2022-03-21突破2021-09-22高4.56后仍收5.07，巨量194599622收阴抵抗应累计减30%；03-22量152565213虽较警示量小但继续巨量收阴且收4.42，应清余仓",
@@ -4712,7 +5045,10 @@
             "title": "子母线阴母放量反包减仓与次日双破清仓",
             "description": "全局持仓遇后出现的阴母线反包前一根子线，母线量严格大于此前最近阴线时按原仓累计减70%；下一交易日低点和收盘严格低于母线低点与收盘时清空余仓。",
             "scope": "Core 子母线持仓风控、成交证据、Web 卖出原因与新华文轩实际样本",
-            "dependencies": ["MONOREPO-223", "MONOREPO-220"],
+            "dependencies": [
+                "MONOREPO-223",
+                "MONOREPO-220"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "新华文轩2024-01-29阴母与01-26子线等高且低点更低，母线量3106650大于01-22最近阴线量2868478，01-29累计减仓70%；01-30低点与收盘双破母线则收盘清仓",
@@ -4739,7 +5075,10 @@
             "title": "恢复子线放量减仓与放量双破直清",
             "description": "替代 MONOREPO-222 的无量减仓：恢复原子线放量减仓判据；新增独立清仓要求后续K线低点和收盘严格低于子线，成交量大于子线或跌破前最近阴线，满足时当日收盘直接清空。",
             "scope": "Core 母子形态持仓风险、成交证据、Web 原因说明",
-            "dependencies": ["MONOREPO-220", "MONOREPO-222"],
+            "dependencies": [
+                "MONOREPO-220",
+                "MONOREPO-222"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "子线减仓仍需量严格大于组合前最近阴线，并满足原阳母/阴母判据；不按无量母子形态减仓，不改原放量母子退出路径",
@@ -4766,7 +5105,10 @@
             "title": "阴子线母子形态减仓与次日双破清仓",
             "description": "历史实现：全局 V3 母子阴子线无量减仓及次日双破清仓；已由 MONOREPO-223 按用户要求恢复原子线放量门槛，并改为放量双破独立清仓。以下验收与验证保留为当时记录。",
             "scope": "Core 持仓形态风控与回测、Web 成交说明、先锋新材 2020 年真实价格回归",
-            "dependencies": ["MONOREPO-214", "MONOREPO-220"],
+            "dependencies": [
+                "MONOREPO-214",
+                "MONOREPO-220"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "2020-08-11 母线和 08-12 阴子线同低 5.21 元，08-12 子量 15,799,059 股低于此前阴线仍于当日累计减仓 70%",
@@ -4792,7 +5134,10 @@
             "title": "五顶十满显示不压缩K线",
             "description": "五顶、十满目标退出价格轴自动缩放，图外时在目标线左端对应位置显示方向、真实价格与预估标识，进入图窗后恢复原有虚线。",
             "scope": "Web 目标线价格缩放与左侧目标标签",
-            "dependencies": ["MONOREPO-215", "MONOREPO-216"],
+            "dependencies": [
+                "MONOREPO-215",
+                "MONOREPO-216"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "C 浪与正 N 买点的五顶、十满，无论预估或确认均不扩展K线价格轴",
@@ -4818,7 +5163,10 @@
             "title": "阴母阴子放量减仓与破子低清仓",
             "description": "全局 V3 补充阴母阴子包容组合，允许一侧等高或等低，子线量严格超过组合前最近阴线时累计减仓70%；后续任一交易日最低价严格跌破子低时当日收盘清空。",
             "scope": "Core 持仓量价风控、交易证据、Web 原因说明与先锋实际行情回归",
-            "dependencies": ["MONOREPO-214", "MONOREPO-219"],
+            "dependencies": [
+                "MONOREPO-214",
+                "MONOREPO-219"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "先锋2026-04-17阴母与04-20阴子低点同为4.89仍属于包容，子量20778797>组合前04-15阴量15569200，当日累计减仓70%",
@@ -4855,7 +5203,9 @@
             "title": "二饱次日放量双破独立清仓",
             "description": "全局 V3 在二饱首次到位日上影严格超过 40%，次日收阴、低点与收盘严格双破前日且量超过最近阴线时，不依赖 50% 上影减仓警示在收盘清仓。",
             "scope": "全局 V3 信号、成交清仓、Web 原因与真实先锋回归",
-            "dependencies": ["MONOREPO-218"],
+            "dependencies": [
+                "MONOREPO-218"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "先锋 2026-06-09 上影不足 50% 仍可买，06-10 阴线今低 6.32 < 6.54、今收 6.47 < 6.94 且量 50,750,501 > 最近阴线 06-04 的 36,051,401，当日清仓",
@@ -4892,7 +5242,9 @@
             "title": "二饱抵抗上影门槛恢复 50%",
             "description": "按用户要求，将二饱全局抵抗门禁的上影占振幅门槛从三分之一恢复为至少 50%，同步判定、抵抗证据、策略定义、原因文案及真实样本回归。",
             "scope": "全局 V3 二饱风险、Web 原因说明与定向回归",
-            "dependencies": ["MONOREPO-217"],
+            "dependencies": [
+                "MONOREPO-217"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "上影占振幅恰好 50% 可触发，低于 50% 不触发二饱禁买、减仓或由该警示派生的次笔清仓",
@@ -4929,7 +5281,10 @@
             "title": "全局二吐抵抗禁买与放量清仓",
             "description": "二吐到位当笔或次笔出现较长上影抵抗时禁止新买与加仓，持仓减仓；次笔阴线低点与收盘双破前日且量超过最近阴线时清仓，风险不因候选属于更小新 N 而消失。初始三分之一上影门槛及相关历史验收已由 MONOREPO-218 的 50% 口径替代。",
             "scope": "全局 V3 信号、成交风险门禁、因果审计和先锋真实日线回归",
-            "dependencies": ["MONOREPO-214", "MONOREPO-216"],
+            "dependencies": [
+                "MONOREPO-214",
+                "MONOREPO-216"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "先锋 2026-06-09 到达 7.30 元二吐且上影占振幅 47.4%、与实体等长，不再产生较小 N 的 LONG 或加仓；持仓按累计 80% 减仓",
@@ -4966,7 +5321,9 @@
             "title": "C 浪目标标签左侧贴线显示",
             "description": "C 浪及启动正 N 目标改为目标线左端的直接标注，去除右侧重复价格标签；避让相近目标并保留引线和预估标识。",
             "scope": "wavequant-web 目标图层与标签布局",
-            "dependencies": ["MONOREPO-215"],
+            "dependencies": [
+                "MONOREPO-215"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "已突破与未突破目标均贴近线段左端显示名称、价格、突破状态；右侧价格轴不重复显示目标标签",
@@ -4997,7 +5354,9 @@
             "title": "C 浪目标截断与启动正 N 测幅",
             "description": "点击 C 浪买点时，两档目标从 B 上方画到首次严格突破；未突破用短虚线标识。启动正 N 另画一饱、二吐与注明预估的五顶、十满，后续以已知叠箱／堆箱目标更新。",
             "scope": "wavequant-web 买点目标组装、图表线段与短线覆盖层、历史回放及先锋样本回归",
-            "dependencies": ["MONOREPO-214"],
+            "dependencies": [
+                "MONOREPO-214"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "C 浪 0.618 和等幅目标从 B 点日期画到首次突破 K 线；未突破不延伸到图窗末日，改为 B 上方固定宽度短虚线，保留目标名称与价格",
@@ -5029,7 +5388,9 @@
             "title": "先锋新材 C 浪目标与阴子线退出",
             "description": "普通 A 浪持仓达到 C 浪 0.618 观察位后遇收低长上影先减仓，后续收低并双破警示 K 清仓；阳母阴子放量门槛改为严格超过此前最近阴线，并在次日双破时清仓。",
             "scope": "wavequant-core 出场识别、单股回测事件归属、wavequant-web 成交说明与真实历史样本回归",
-            "dependencies": ["MONOREPO-170"],
+            "dependencies": [
+                "MONOREPO-170"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "先锋新材 2026-01-29 普通 A 浪买点的 C 浪 0.618 观察位为 5.50666 元；01-30 首触目标，02-02 收低长上影按累计 80% 目标减仓，02-04 收低且跌破警示 K 低点与收盘后清余仓",
@@ -5060,7 +5421,9 @@
             "title": "国芳阴母阳子双破当日清仓",
             "description": "母线收阴、阳子线被严格内包时，下一根最低价跌破子线低点且收盘跌破子线收盘也构成母子倒 N；退出依据使用实际子线价，不依赖绘图折线是否保留子低点。",
             "scope": "wavequant-core V3 母子倒 N 识别与回测、wavequant-web 清仓说明",
-            "dependencies": ["MONOREPO-208"],
+            "dependencies": [
+                "MONOREPO-208"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "国芳集团 2023-03-22 阴母与 03-23 阳子严格内包，03-24 最低 5.4889 低于子低 5.5658、收盘 5.5274 低于子收 5.6428，当日产生母子倒 N EXIT",
@@ -5092,7 +5455,9 @@
             "title": "正 N 后跳空阳线确认轧空",
             "description": "正 N 后已有抵抗且原防守未破时，跳空高开收阳并收盘突破本轮此前全部高点可在长上影下确认轧空，保留买点资格和明确的审计来源。",
             "scope": "wavequant-core 全局盘态确认、V3 买点审计和规则文档",
-            "dependencies": ["MONOREPO-164"],
+            "dependencies": [
+                "MONOREPO-164"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "开盘严格高于前高、收阳且收盘严格突破本轮 N 先前高点，已有抵抗与原 N 防守未破时允许长上影确认轧空",
@@ -5153,7 +5518,9 @@
             "title": "自选股回测状态不再交替显示",
             "description": "队列状态变化和服务器轮询统一读取完整的队列快照，保留当前数据源，避免已完成状态被误判为历史待更新。",
             "scope": "wavequant-web 自选股回测状态合并与来源匹配",
-            "dependencies": ["MONOREPO-209"],
+            "dependencies": [
+                "MONOREPO-209"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "相同来源的已完成回测在队列通知和服务器轮询后均保持已完成",
@@ -5179,7 +5546,10 @@
             "title": "自选股轮询不再反复刷新列表",
             "description": "回测任务每三秒轮询时仅更新实际变化的状态字段，股票列表保持原有行、焦点和滚动位置，自选股状态未变化时不写入 DOM。",
             "scope": "wavequant-web 左侧股票列表与自选股回测状态",
-            "dependencies": ["MONOREPO-204", "MONOREPO-206"],
+            "dependencies": [
+                "MONOREPO-204",
+                "MONOREPO-206"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "回测状态及耗时更新时不重建股票行，已聚焦的股票按钮保持不变",
@@ -5206,7 +5576,9 @@
             "title": "母子阳线跌破子低形成倒 N 当日清仓",
             "description": "母子阳线讲义路径依次形成母高、子低、子高，后续一日今低严格小于昨低且今收严格小于昨收时，V3 全局策略发布倒 N 清仓信号并于当日收盘清空已有持仓。",
             "scope": "wavequant-core V3 信号、回测执行及 wavequant-web 退出说明",
-            "dependencies": ["MONOREPO-207"],
+            "dependencies": [
+                "MONOREPO-207"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "国芳集团 2022-07-04 跌破 07-01 子线低点，即使收盘站回、成交量低于前日，已有持仓仍于当日收盘清仓且余仓为零",
@@ -5243,7 +5615,9 @@
             "title": "母子子母折线重算与历史回测",
             "description": "空心阳线与阴影阴线确定母子、子母各四种高低顺序，同向段合并；讲义主折线与分级趋势、正 N、V3 信号共同重算，并用历史日线样本核对成交变化。",
             "scope": "wavequant-core 讲义折线、分级策略、历史回测与 wavequant-web 绘图说明",
-            "dependencies": ["MONOREPO-162"],
+            "dependencies": [
+                "MONOREPO-162"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "母子和子母八种阴阳组合按顺序连接，相邻同向段只保留一线，母阳子阴直接由母高连子低",
@@ -5270,7 +5644,10 @@
             "title": "回测状态跟随所选数据源",
             "description": "研究工作台选择 AkShare 或通达信后，股票列表、自选股、回测按钮和进度只读取该来源的回测任务与历史状态，切换来源时立即刷新。",
             "scope": "wavequant-web 研究工作台回测状态显示",
-            "dependencies": ["MONOREPO-179", "MONOREPO-182"],
+            "dependencies": [
+                "MONOREPO-179",
+                "MONOREPO-182"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 与通达信同一股票的运行中及历史回测状态互不覆盖",
@@ -5291,7 +5668,9 @@
             "title": "新华文轩放量阴线反包当日清仓",
             "description": "连续阳线前最近阴线作为量能基准；当日阴线最高价不低于前高、收盘严格低于前低且成交量严格超过基准阴线时，持仓于当日收盘清空。",
             "scope": "wavequant-core 全局 V3 放量退出、策略定义与 wavequant-web 成交解释",
-            "dependencies": ["MONOREPO-171"],
+            "dependencies": [
+                "MONOREPO-171"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "新华文轩 2026-08-04 相对 2026-07-28 放量且收破 08-03 低点，已有持仓当日收盘清仓、余仓为零",
@@ -5312,7 +5691,9 @@
             "title": "已完成自选股状态显示成交笔数",
             "description": "已完成且有有效成交笔数时将首行状态改为“成交xx笔”，移除第二行重复的成交笔数；笔数暂缺时保留“已完成”。",
             "scope": "wavequant-web 自选股回测状态文案与两行布局",
-            "dependencies": ["MONOREPO-203"],
+            "dependencies": [
+                "MONOREPO-203"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "已完成且笔数有效时首行显示“成交xx笔”，包含 0 笔场景",
@@ -5334,7 +5715,9 @@
             "title": "自选股名称与代码紧邻显示",
             "description": "取消股票名称的弹性填满，让名称和股票代码紧邻显示，状态继续固定在首行右侧；长名称在代码前截断。",
             "scope": "wavequant-web 自选股首行布局",
-            "dependencies": ["MONOREPO-202"],
+            "dependencies": [
+                "MONOREPO-202"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "短股票名称和代码紧邻显示，状态仍位于首行右侧",
@@ -5355,7 +5738,9 @@
             "title": "优化自选股双行条目视觉层级",
             "description": "参考近期列表与拖动设计实践，为自选股条目统一背景、悬停和选中状态，改善名称、状态与回测指标的可读性，同时保持整行拖动及两行布局。",
             "scope": "wavequant-web 自选股侧栏视觉样式",
-            "dependencies": ["MONOREPO-201"],
+            "dependencies": [
+                "MONOREPO-201"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "首行名称、代码和状态，次行成交、收益和最大回撤的层级清晰且长名称可截断",
@@ -5376,7 +5761,9 @@
             "title": "修正自选股图标两侧实际留白",
             "description": "修正研究工作台通用按钮内边距覆盖自选股拖拽图标与股票按钮样式的问题，让图标两侧真正保持紧凑，并同步整行拖动提示。",
             "scope": "wavequant-web 自选股列表样式与说明",
-            "dependencies": ["MONOREPO-200"],
+            "dependencies": [
+                "MONOREPO-200"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "图标按钮不再继承通用按钮的左右 11px 内边距，文字按钮保持窄内边距",
@@ -5397,7 +5784,9 @@
             "title": "自选股整行拖动与图标两侧收紧",
             "description": "整条自选股列表项可用鼠标上下拖动，触屏长按文字区域后拖动排序，普通触屏滑动可滚动列表；缩小左侧拖拽图标两边的间距。",
             "scope": "wavequant-web 自选股列表拖拽与布局",
-            "dependencies": ["MONOREPO-199"],
+            "dependencies": [
+                "MONOREPO-199"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "从股票文字区域或图标都能拖动整条自选股排序，点击股票仍可正常切换",
@@ -5419,7 +5808,9 @@
             "title": "自选股图标间距缩小并改为两行文字",
             "description": "压缩自选股拖拽图标与文字之间的留白，将名称、代码、状态放在首行，成交笔数、收益与最大回撤放在第二行。",
             "scope": "wavequant-web 自选股列表布局",
-            "dependencies": ["MONOREPO-198"],
+            "dependencies": [
+                "MONOREPO-198"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "自选股左侧图标与文字更紧凑，已完成股票的信息稳定排在两行",
@@ -5440,7 +5831,10 @@
             "title": "自选股显示最大回撤并将已完成放在首行",
             "description": "自选股回测结果增加最大回撤；状态放在股票名同一行，成交笔数移至代码行，并保留刷新后的指标。",
             "scope": "wavequant-api 回测任务摘要与 wavequant-web 自选股列表",
-            "dependencies": ["MONOREPO-193", "MONOREPO-197"],
+            "dependencies": [
+                "MONOREPO-193",
+                "MONOREPO-197"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "已完成状态与股票名在首行，成交笔数、收益和最大回撤各自清楚显示",
@@ -5461,7 +5855,9 @@
             "title": "最大回撤区间标识与点击定位",
             "description": "研究页显示最大回撤峰值至谷值的日期，点击指标或绩效页入口时切回本地 K 线图并定位该日期区间。",
             "scope": "wavequant-web 研究指标、本地 K 线与绩效页入口",
-            "dependencies": ["MONOREPO-194"],
+            "dependencies": [
+                "MONOREPO-194"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "最大回撤显示历史峰值至谷值日期，初始资金为峰值时标明起点；无回撤时不提供无效定位",
@@ -5482,7 +5878,9 @@
             "title": "自选股待更新优先和待回测顺序自动运行",
             "description": "自动回测默认启用，先更新列表中已回测待更新的股票；没有其他回测时，按列表顺序启动最上面的待回测股票，保留手动暂停偏好。",
             "scope": "wavequant-web 自选股自动回测调度与状态提示",
-            "dependencies": ["MONOREPO-195"],
+            "dependencies": [
+                "MONOREPO-195"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "显示已回测待更新的股票无需点击即可优先进入自动更新队列",
@@ -5504,7 +5902,9 @@
             "title": "复制回测加载错误并保留本地完成结果",
             "description": "回测加载失败提示增加复制按钮；服务器完成结果正文过期时，状态同步优先保留浏览器仍可读取的完成任务，避免递归更新阻断图表展示。",
             "scope": "wavequant-web 研究页错误提示与回测任务状态同步",
-            "dependencies": ["MONOREPO-192"],
+            "dependencies": [
+                "MONOREPO-192"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "加载失败提示可一键复制完整错误和说明，复制反馈可见，重试按钮文字不进入剪贴板",
@@ -5553,7 +5953,9 @@
             "title": "自选股单股回测进度百分比",
             "description": "服务端为每只运行中的回测任务报告阶段和百分比，自选股列表在对应股票上同步展示。",
             "scope": "wavequant-core 回测阶段、wavequant-api 任务快照、wavequant-web 自选股状态",
-            "dependencies": ["MONOREPO-181"],
+            "dependencies": [
+                "MONOREPO-181"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "运行中的每只回测任务独立报告 0–99% 的阶段进度，完成后显示已完成",
@@ -5574,7 +5976,9 @@
             "title": "已完成单股回测直接显示成交标识",
             "description": "选中已完成的股票回测时直接读取现有任务结果；普通行情失败不再阻断回测展示，按钮按当前展示状态区分查看与重新运行。",
             "scope": "wavequant-web 选股、任务复用和回测状态显示",
-            "dependencies": ["MONOREPO-190"],
+            "dependencies": [
+                "MONOREPO-190"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "已完成的当前股票回测直接读取原任务并显示 B/S 成交标识，不提交新计算",
@@ -5617,7 +6021,9 @@
             "title": "选中待更新股票时自动重跑回测",
             "description": "股票显示已回测待更新时，点击股票列表、自选股或在当前股票选择器中选中它，自动发起新的当前股票回测；已完成结果继续复用。",
             "scope": "wavequant-web 选股与单股回测",
-            "dependencies": ["MONOREPO-182"],
+            "dependencies": [
+                "MONOREPO-182"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "选中已回测待更新且有日线的股票时，自动以新任务 ID 回测并展示新结果",
@@ -5638,7 +6044,9 @@
             "title": "强 A 浪后续缺口确认与已有持仓加仓",
             "description": "V3 强 A 浪的实体突破与随后严格更高的跳空突破分阶段确认；已有该股持仓时允许后续合格买点按剩余仓位、风险、流动性和现金加仓，合并交易成本并保留 T+1。",
             "scope": "WaveQuant Core 全局 V3 信号、回测执行和交易账本，Web 成交详情及策略拓扑，华瓷股份回归",
-            "dependencies": ["MONOREPO-161"],
+            "dependencies": [
+                "MONOREPO-161"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "华瓷 2026-08-26 实体突破与 09-15 严格更高跳空分别产生因果确认；相同阶段不重复，历史前缀一致",
@@ -5670,7 +6078,9 @@
             "title": "点击转浪买点补齐 A 浪起点标注",
             "description": "转浪买入证据携带原正 N 的起点日期；选中买入成交时在 K 线上标出 A 起点、A 高、B 低和 C 确认。",
             "scope": "wavequant-core 转浪证据与 wavequant-web K 线叠加标注",
-            "dependencies": ["MONOREPO-173"],
+            "dependencies": [
+                "MONOREPO-173"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "乐心股份 2025-02-10 买点的 A 起点取 2024-09-18、约 10.5900 元，不误用 2024-09-25 正 N 日期",
@@ -5691,7 +6101,10 @@
             "title": "二三级末跌高突破后长上影减仓与收低清仓",
             "description": "持仓突破已确认二级或三级末跌高后，长上影不利 K 线按累计 80% 目标减仓；其后首次收盘低于前一交易日时清掉余仓。",
             "scope": "wavequant-core 趋势退出与回测成交",
-            "dependencies": ["MONOREPO-142", "MONOREPO-185"],
+            "dependencies": [
+                "MONOREPO-142",
+                "MONOREPO-185"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "仅使用前一交易日已知的二级或三级末跌高，收盘严格突破后才启用",
@@ -5739,7 +6152,10 @@
             "title": "二饱以上长上影减仓与首次收低清仓",
             "description": "持仓本笔 N 已到二饱、五顶或十满阶段后，长上影占当日振幅至少一半即按累计 80% 目标减仓；之后首次收盘低于前一交易日时，当日清掉余仓。",
             "scope": "wavequant-core 目标阶段退出与回测成交",
-            "dependencies": ["MONOREPO-108", "MONOREPO-156"],
+            "dependencies": [
+                "MONOREPO-108",
+                "MONOREPO-156"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "二饱、五顶、十满阶段均识别长上影，且不依赖收阴或放量",
@@ -5766,7 +6182,9 @@
             "title": "自选股列表拖拽调整顺序",
             "description": "自选股侧栏支持上下拖动和方向键调整股票顺序，保存到 IndexedDB；刷新及自动回测队列沿用该顺序。",
             "scope": "wavequant-web 自选股排序、侧栏交互与浏览器回归",
-            "dependencies": ["MONOREPO-176"],
+            "dependencies": [
+                "MONOREPO-176"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "当前分类的股票可通过手柄上下拖动，并可用方向键调整顺序",
@@ -5793,7 +6211,10 @@
             "title": "量化代码变更后自动清理旧回测缓存",
             "description": "量化 Core 的 Python 源码指纹变化且开发服务重启时，自动清理各作用域的回测结果、信号和筛选缓存以及 API 历史完成摘要；网页自动队列在引擎版本变化时暂停，手动回测接口保持可用。",
             "scope": "wavequant-core ArtifactCache 和 ChartRepository；wavequant-api 回测任务历史与服务启动；wavequant-web 自动队列",
-            "dependencies": ["MONOREPO-181", "MONOREPO-182"],
+            "dependencies": [
+                "MONOREPO-181",
+                "MONOREPO-182"
+            ],
             "status": "backlog",
             "acceptanceCriteria": [
                 "量化代码版本变化后自动清理所有现有作用域的回测派生缓存，同版本重启不重复清理",
@@ -5825,7 +6246,9 @@
             "title": "自选股完成状态与服务器同步",
             "description": "服务端持久化有界完成记录；自选股刷新页面后按策略版本、股票、数据源、截止日和参数恢复已完成状态，旧条件的记录明确标为待更新。",
             "scope": "wavequant-api 任务状态快照；wavequant-web 自选股回测状态、任务复用与浏览器回归",
-            "dependencies": ["MONOREPO-180"],
+            "dependencies": [
+                "MONOREPO-180"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "手动回测完成后自选股显示已完成及真实成交笔数，总进度同步更新",
@@ -5859,7 +6282,9 @@
             "title": "乐心股份长回测热点与运行状态修复",
             "description": "定位 300562 长时间回测的真实计算热点，消除重复历史重算，并公开运行耗时及可靠状态。",
             "scope": "wavequant-core 分钟确认性能，wavequant-api 回测任务耗时，wavequant-web 状态与失联处理",
-            "dependencies": ["MONOREPO-180"],
+            "dependencies": [
+                "MONOREPO-180"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "现场确认当前运行任务数量、乐心任务状态及主要耗时位置，并说明其与并行上限的关系",
@@ -5896,7 +6321,9 @@
             "title": "回测并行状态同步与同股互斥",
             "description": "服务端统一登记单股回测，公开运行快照；达到并行上限或同股已有任务时直接拒绝，并同步前端自选股状态及提示。",
             "scope": "wavequant-api 回测任务和状态接口；wavequant-web 自选股状态、容量提示与自动派发",
-            "dependencies": ["MONOREPO-176"],
+            "dependencies": [
+                "MONOREPO-176"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 和 TDX 对同一股票最多一个运行任务，无 ID 请求也遵守并行上限",
@@ -5928,7 +6355,10 @@
             "title": "华瓷强势 C 浪持仓加仓及所选数据源隔离",
             "description": "全局 V3 对同一强势 A/B 的更高跳空确认允许持仓内再买入，合并整笔成本并遵守仓位、风险与 T+1；行情、回测与自动队列只使用当前显式选择的数据源。",
             "scope": "wavequant-core 波段和执行账本、行情源选择，wavequant-web 源切换与成交展示、真实 AkShare 回测",
-            "dependencies": ["MONOREPO-157", "MONOREPO-176"],
+            "dependencies": [
+                "MONOREPO-157",
+                "MONOREPO-176"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "华瓷 2026-09-15 在原 08-26 持仓上形成同一交易编号的实际加仓，展示强 A、B 低和 C 浪目标证据",
@@ -5970,7 +6400,9 @@
             "title": "自选股自动回测完成后展示成交标记",
             "description": "自动队列完成的真实回测结果要能进入当前股票图表，切换到已完成股票时复用对应任务；零成交需明确显示，不把短时跨标签提示伪装成结果。",
             "scope": "wavequant-web 自动回测任务复用、股票切换、状态文案及浏览器回归",
-            "dependencies": ["MONOREPO-176"],
+            "dependencies": [
+                "MONOREPO-176"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "当前股票自动回测完成后，图表展示该股票实际回测结果和买卖成交标记",
@@ -5997,7 +6429,9 @@
             "title": "点击三级波段端点显示三分位虚线",
             "description": "点击三级正式端点或发展路径端点时，按该端点所属结构向前寻找来源级别的已确认波段端点，计算前一段的 1/3 和 2/3 价格参考线，并让各线止于此后首次严格跌破或突破的 K 线。",
             "scope": "wavequant-web 三级趋势端点点击、三分位参考线及交互回归",
-            "dependencies": ["MONOREPO-107"],
+            "dependencies": [
+                "MONOREPO-107"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "点击三级趋势线高点或低点后，图上显示截至该点的前一波段 1/3、2/3 水平虚线和价格；发展路径取其二级来源波段",
@@ -6034,7 +6468,9 @@
             "title": "长回测任务恢复与空闲自选股顺序回测",
             "description": "长时间回测断连后保持任务结果可查，单股回测期间保持股票操作可用；空闲时按自选股列表顺序回测，并在策略版本变化后重新运行。",
             "scope": "wavequant-api 回测任务与策略版本接口、wavequant-core 指纹守卫、wavequant-web 手动状态及自选股空闲队列",
-            "dependencies": ["MONOREPO-120"],
+            "dependencies": [
+                "MONOREPO-120"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "TDX 与 AkShare 回测超过页面请求时限后继续查询同一任务，展示结果或真实错误，不重复计算",
@@ -6083,7 +6519,9 @@
             "title": "旧阳线高点突破受阻当日减仓及收低清余仓",
             "description": "V3 全局持仓盘中突破至少 20 个交易日前的近 120 日未受空头抵抗阳线最高价，但遭空头抵抗且收盘未站稳并出现不利 K 时，当日按整手减半；实际成交后首次收低清空剩余持仓。",
             "scope": "Core 旧高压力退出与持仓状态、V3 策略版本、Web 成交说明及桂林旅游 2022-02 回归",
-            "dependencies": ["MONOREPO-174"],
+            "dependencies": [
+                "MONOREPO-174"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桂林旅游 2022-02-11 突破 2021-09-10 阳线最高价受阻并出现不利 K，当日减仓；02-14 空头抵抗可追溯；02-15 首次收低清余仓",
@@ -6114,7 +6552,9 @@
             "title": "压力区未回补跳空先减半与突破受阻后清仓",
             "description": "V3 全局持仓在正 N 上攻巨量阴线压力区时，未回补跳空且收高的不利 K 先减半，减仓成交后首次收跌清余仓；大幅上涨后突破旧压力遇空头抵抗，后续首次不利 K 清仓。",
             "scope": "Core 压力退出与持仓状态、V3 策略版本、Web 成交说明和策略拓扑、桂林旅游真实日线夹具回归",
-            "dependencies": ["MONOREPO-171"],
+            "dependencies": [
+                "MONOREPO-171"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桂林旅游 2022-06-27 未回补跳空且收高，当日减仓 50%；2022-06-29 首次收跌清空剩余持仓",
@@ -6150,7 +6590,9 @@
             "title": "点击买入成交标注 A/B/C 浪关键点",
             "description": "在选中转浪买入成交时，按决策时已知证据将 A 高、B 低和 C 确认价标在对应 K 线上。",
             "scope": "wavequant-web 成交点击、K 线叠加标注与回归",
-            "dependencies": ["MONOREPO-162"],
+            "dependencies": [
+                "MONOREPO-162"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "点击转浪买入成交后，在图上对应日期和价位显示 A、B、C 确认标注，并将三点纳入可视范围",
@@ -6176,7 +6618,9 @@
             "title": "0.618 浅回撤待选后横盘放量突破买点开关",
             "description": "V3 将至少 0.618 且未达 2/3 的短浅回撤作为交替待选；守低横盘数十根 K 线后，由放量大阳线收盘突破区间确认独立买点，默认开启并可关闭。",
             "scope": "Core 因果买点、TDX/AkShare 当前股票回测 API、Web 开关与理由、真实国芳和反例回归",
-            "dependencies": ["MONOREPO-171"],
+            "dependencies": [
+                "MONOREPO-171"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "国芳集团 2025-01-13 的 0.618 至 2/3 回撤仅成为待选，2025-04-03 守低横盘放量突破可触发买点，不提前写成正式二三级交替",
@@ -6203,7 +6647,9 @@
             "title": "巨量高开反包下跌当日清仓",
             "description": "V3 全局持仓遇到巨量高开、强阴线收盘覆盖前一交易日整根 K 线时，直接清空余仓，优先于普通放量收跌和目标阶段跳空回落减仓。",
             "scope": "Core 全局放量退出、策略版本与文档、Web 成交解释和真实国芳回测",
-            "dependencies": ["MONOREPO-170"],
+            "dependencies": [
+                "MONOREPO-170"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "国芳集团 2020-08-14 高开巨量反包后，07-30 持仓当日模拟清仓且余仓为零，不再执行目标阶段部分减仓",
@@ -6234,7 +6680,10 @@
             "title": "普通 A 浪 C 等浪目标异常 K 减仓与收低清仓",
             "description": "一饱已达、二吐未达的普通 A 浪形成 C 反弹持仓后，C 达等浪目标并出现放量长上影等异常 K 时按既有目标异常累计减仓比例处理；此后首次收低时当日收盘清余仓。",
             "scope": "Core 普通 A 浪持仓目标退出、Web 成交说明、策略拓扑与国芳真实回测",
-            "dependencies": ["MONOREPO-162", "MONOREPO-168"],
+            "dependencies": [
+                "MONOREPO-162",
+                "MONOREPO-168"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "国芳集团 2020-05-21 普通 A 浪 C 反弹持仓在 06-02 触及等浪目标并出现放量长上影，当日模拟减仓",
@@ -6265,7 +6714,9 @@
             "title": "市场看盘全视图对齐行情与复盘样式",
             "description": "统一市场看盘标题、工具栏、视图切换、指标卡片与各子视图的研究工作台视觉规范，并修复窄屏横向溢出。",
             "scope": "wavequant-web 市场看盘八个视图的页面样式、顶部操作与窄屏回归",
-            "dependencies": ["MONOREPO-014"],
+            "dependencies": [
+                "MONOREPO-014"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "市场看盘标题、筛选面板、卡片、表格和选中态沿用行情与复盘的颜色、边框、圆角与密度",
@@ -6286,7 +6737,9 @@
             "title": "研究页策略拓扑与变更同步门禁",
             "description": "在研究页左侧新增策略拓扑入口，使用 tldraw 显示默认 V3 的结构、入场、C 波、模拟执行和退出判断，并以源码指纹要求策略变更时复核拓扑。",
             "scope": "wavequant-web 研究页导航、拓扑画布、策略维护校验及桌面/窄屏回归",
-            "dependencies": ["MONOREPO-166"],
+            "dependencies": [
+                "MONOREPO-166"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "左侧策略拓扑页签和可分享深链可在桌面与窄屏打开，旧工作区不与拓扑同时显示",
@@ -6307,7 +6760,9 @@
             "title": "选定 A 浪高点绘制 C 浪等浪目标",
             "description": "正 N 后所选 A 高严格越过一饱，按当前历史截面的后续 B 低计算并画出 C 浪等浪观察价。",
             "scope": "Web K 线选择、等浪投影和浏览器回归",
-            "dependencies": ["MONOREPO-162"],
+            "dependencies": [
+                "MONOREPO-162"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "点击合格 A 高 K 线时展示 B 低 +（A 高 − 正 N 起点）的目标价和依据",
@@ -6328,7 +6783,9 @@
             "title": "二级趋势重叠与三级趋势缺失修复",
             "description": "复核新华文轩真实点位，阻止跨越已确认二级拐点的补充边重复绘制，并修复三级结构缺少前置键的初始化。",
             "scope": "共享趋势几何、图表与真实浏览器验证",
-            "dependencies": ["MONOREPO-145"],
+            "dependencies": [
+                "MONOREPO-145"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "新华文轩二级正式线不出现覆盖多段已确认拐点的额外边",
@@ -6354,7 +6811,9 @@
             "title": "目标异常K线次日收盘走低清仓",
             "description": "目标异常形态后的下一交易日收盘严格降低时当日清空余仓。",
             "scope": "共享退出规则与成交证据及回归",
-            "dependencies": ["MONOREPO-155"],
+            "dependencies": [
+                "MONOREPO-155"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "华瓷08-12清空余仓，不等08-19",
@@ -6385,7 +6844,9 @@
             "title": "正N二饱后放量冲高收阴退出",
             "description": "补齐持仓正N达到目标后上影拒绝形态，按当日收盘累计减仓80%。",
             "scope": "共享退出规则、证据展示与真实回测",
-            "dependencies": ["MONOREPO-152"],
+            "dependencies": [
+                "MONOREPO-152"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "华瓷08-03正N达到二饱后08-11当日减仓",
@@ -6416,7 +6877,9 @@
             "title": "涨停天梯股票跳转行情与复盘",
             "description": "天梯及明细链接携带股票和日期，复盘初始化加载目标行情。",
             "scope": "Web天梯链接、研究页参数解析及浏览器回归",
-            "dependencies": ["MONOREPO-153"],
+            "dependencies": [
+                "MONOREPO-153"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "卡片和明细代码/名称可打开行情与复盘并保留日期",
@@ -6442,7 +6905,9 @@
             "title": "AkShare每日涨停天梯与日期切换",
             "description": "以真实涨停池替换天梯演示数据，按日期查询、连板分组与导出。",
             "scope": "API AkShare适配/缓存、共享契约、Web天梯和浏览器验证",
-            "dependencies": ["MONOREPO-151"],
+            "dependencies": [
+                "MONOREPO-151"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "天梯和明细来自所选日期的AkShare涨停池，无数据不使用演示或其他日期数据",
@@ -6473,7 +6938,9 @@
             "title": "第二类浅回撤门槛独立选择",
             "description": "默认≤1/3，可选择<1/2，并贯穿回测与缓存身份。 补充旧净盈亏比浏览器用例超时，限制见Web progress.md；选择器独立真实回测已通过。",
             "scope": "V3配置与Web选择、对照回测和边界验证",
-            "dependencies": ["MONOREPO-150"],
+            "dependencies": [
+                "MONOREPO-150"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "默认≤1/3，可切换<1/2",
@@ -6504,7 +6971,9 @@
             "title": "研究页 Ctrl+K 搜索真实股票列表",
             "description": "将研究页头部搜索外观改为真实输入框，修复 Ctrl+K 无法直接输入搜索的问题，并移除右侧重复搜索入口。",
             "scope": "Web 共享外壳搜索路由、旧研究工作台桥接及浏览器回归。",
-            "dependencies": ["MONOREPO-093"],
+            "dependencies": [
+                "MONOREPO-093"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "研究页头部使用真实搜索输入框，Ctrl+K 直接聚焦并全选，不打开虚构 SIM 搜索对话框",
@@ -6531,7 +7000,9 @@
             "title": "第二类严格半幅回撤与放量反转轧空",
             "description": "默认第二类改为浅回撤<1/2，保留全局资格，修复先锋五月十八日放量反转漏买。",
             "scope": "全局V3确认、因果证据与回归",
-            "dependencies": ["MONOREPO-148"],
+            "dependencies": [
+                "MONOREPO-148"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "默认lecture_v3第二类严格<1/2，等于边界拒绝，页面和证据同步",
@@ -6562,7 +7033,9 @@
             "title": "旧正N该回不回确认链失守后禁止局部反弹复活",
             "description": "修复星网2026-05-28误把旧N下跌后的局部反弹确认轧空。",
             "scope": "共享盘态局部轧空生命周期与回归",
-            "dependencies": ["MONOREPO-148"],
+            "dependencies": [
+                "MONOREPO-148"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "5月28日无误买",
@@ -6598,9 +7071,15 @@
             "title": "正N与高一级波段突破叠加轧空",
             "description": "修复星网2019年2月13日多级叠加轧空缺失。",
             "scope": "V3共享买点、双重结构证据及回归",
-            "dependencies": ["MONOREPO-147"],
+            "dependencies": [
+                "MONOREPO-147"
+            ],
             "status": "done",
-            "acceptanceCriteria": ["实际2月13日确认并成交", "未确认、破防守、旧抵抗不得放宽", "前缀一致且保留此前反例"],
+            "acceptanceCriteria": [
+                "实际2月13日确认并成交",
+                "未确认、破防守、旧抵抗不得放宽",
+                "前缀一致且保留此前反例"
+            ],
             "verification": [
                 {
                     "command": "Core pytest full and targeted; lint; typecheck; build",
@@ -6630,7 +7109,9 @@
             "title": "新正N强轧空及时解除旧倒N门槛",
             "description": "修复先锋8月4日强轧空被旧反弹高门槛拖延至8月7日。",
             "scope": "全局V3再入场判定、因果证据及回归",
-            "dependencies": ["MONOREPO-145"],
+            "dependencies": [
+                "MONOREPO-145"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "全新正N强轧空在首次确认日入场",
@@ -6666,7 +7147,9 @@
             "title": "成熟浅回撤买点的多级抵抗审计",
             "description": "复现先锋六月九日入场并校验成熟资格、抵抗生命周期及全局规则。",
             "scope": "V3策略因果证据、全局规则及回归",
-            "dependencies": ["MONOREPO-145"],
+            "dependencies": [
+                "MONOREPO-145"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "解释实际买入证据并逐日核对一级二级抵抗",
@@ -6697,7 +7180,9 @@
             "title": "交替后最高价突破确认多头及正式趋势段",
             "description": "西点08-20最高突破旧翻多高后，高低段确认为三级实线；共享策略突破事件。",
             "scope": "Core共享突破及图形证据、Web说明与回归",
-            "dependencies": ["MONOREPO-144"],
+            "dependencies": [
+                "MONOREPO-144"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "08-20高突破确认多头，无需收盘越过旧高",
@@ -6723,7 +7208,9 @@
             "title": "整段深回撤后收复杀多高与抵抗高确认入场",
             "description": "整段回撤达到2/3并满足交替时，新的正N收复旧倒N杀多高且收盘突破抵抗阶段高点可入场。",
             "scope": "全局V3交替证据、轧空事件和倒N恢复门槛",
-            "dependencies": ["MONOREPO-142"],
+            "dependencies": [
+                "MONOREPO-142"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "西点2026-08-07基于08-03正N买入而非08-06",
@@ -6754,7 +7241,9 @@
             "title": "二三级末跌高虚线按锚点视窗显示",
             "description": "二、三级末跌高横向虚线只在末跌高 K 或首次突破 K 位于当前视窗时显示。",
             "scope": "Web 图表末跌高辅助线可见性与回归测试；一级虚线规则保持原样。",
-            "dependencies": ["MONOREPO-061"],
+            "dependencies": [
+                "MONOREPO-061"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "二、三级末跌高 K 与突破 K 都在屏幕外时不显示对应横向虚线",
@@ -6780,7 +7269,9 @@
             "title": "高层级翻多受阻后不利形态全清",
             "description": "已确认三级末跌高被收盘突破，当笔或次笔空抵后出现不利K线当日全清。",
             "scope": "全局V3独立风险规则、证据与页面",
-            "dependencies": ["MONOREPO-141"],
+            "dependencies": [
+                "MONOREPO-141"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "西点2025-08-13清仓而非08-18",
@@ -6811,7 +7302,9 @@
             "title": "目标阶段放量跳空高开回落减仓",
             "description": "识别目标后高开近最高价、长阴回落但仍高于前收的异常K线，累计减仓80%。",
             "scope": "全局V3目标形态退出、成交证据及Web说明",
-            "dependencies": ["MONOREPO-140"],
+            "dependencies": [
+                "MONOREPO-140"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "瑞凌2024-10-08五顶阶段触发80%累计减仓",
@@ -6842,7 +7335,9 @@
             "title": "倒N后需新正N越B高或放量跳空恢复买入",
             "description": "对称补充折叠倒N识别，倒N后禁止旧N普通反弹入场；新正N加轧空或守大N放量跳空均须收盘越倒N反弹B高。",
             "scope": "全局V3盘态确认与入场门槛",
-            "dependencies": ["MONOREPO-139"],
+            "dependencies": [
+                "MONOREPO-139"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "乐心2022-01-18倒N被识别且01-21无LONG或BUY",
@@ -6873,7 +7368,9 @@
             "title": "目标阶段多头抵抗失败直接清仓",
             "description": "修复低开大阴线击穿多头抵抗虚拟低但未满足严格反包造成的延迟清仓。",
             "scope": "全局V3退出与交易说明",
-            "dependencies": ["MONOREPO-138"],
+            "dependencies": [
+                "MONOREPO-138"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "乐心2022-01-18若有余仓应当日全清；完整回测遵循更早有效退出",
@@ -6904,7 +7401,9 @@
             "title": "空多交替增加收盘深度与时间门槛",
             "description": "收盘未达2/3且回调短于上涨一半时间时，等待收盘突破A高；等于一半不拦截。",
             "scope": "共享交替标记与V3资格",
-            "dependencies": ["MONOREPO-137"],
+            "dependencies": [
+                "MONOREPO-137"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "4月23日短回调不在5月10日直接确认为交替",
@@ -6930,7 +7429,9 @@
             "title": "全局V3非一字涨停允许收盘模拟成交",
             "description": "用户明确允许非一字成交；保留一字和分钟撮合限制。",
             "scope": "Core成交假设与同源适配、Web详情及国芳回归",
-            "dependencies": ["MONOREPO-136"],
+            "dependencies": [
+                "MONOREPO-136"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "国芳8月28日实际回测生成模拟买单",
@@ -6956,7 +7457,9 @@
             "title": "同N轧空与交替当日共同确认入场",
             "description": "修复交替当天已确认但仍强制等待另一个N的延迟。",
             "scope": "全局V3时序与真实乐心回归",
-            "dependencies": ["MONOREPO-135"],
+            "dependencies": [
+                "MONOREPO-135"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "2019年2月18日关联2月14日N入场",
@@ -6982,9 +7485,15 @@
             "title": "二级高点突破抵抗独立约束买入",
             "description": "小N轧空不得覆盖二级突破当笔次笔抵抗。",
             "scope": "Core全局V3及真实乐心回归",
-            "dependencies": ["MONOREPO-134"],
+            "dependencies": [
+                "MONOREPO-134"
+            ],
             "status": "done",
-            "acceptanceCriteria": ["7月2日不买并说明4月30日二级压力", "后续抵抗未失败前不入场", "8月4日买点与前缀回归"],
+            "acceptanceCriteria": [
+                "7月2日不买并说明4月30日二级压力",
+                "后续抵抗未失败前不入场",
+                "8月4日买点与前缀回归"
+            ],
             "verification": [
                 {
                     "command": "Core test:unit; lint; typecheck; build; harness:check; codegraph sync",
@@ -7004,7 +7513,9 @@
             "title": "弱量价正N后续放量突破整理高点及时入场",
             "description": "修复已确认轧空仍被原N量价门槛拦截的延迟买点。",
             "scope": "Core全局V3资格门槛、真实乐心与既有股票回归",
-            "dependencies": ["MONOREPO-133"],
+            "dependencies": [
+                "MONOREPO-133"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "乐心7月24日N于8月4日轧空可入场",
@@ -7030,7 +7541,10 @@
             "title": "当日收盘与守防守跳空放量盘中买入",
             "description": "V3当日执行，整理后新正N按已完成分钟确认，保留原N防守与放量条件。",
             "scope": "Core执行、同源分钟证据及Web成交口径",
-            "dependencies": ["MONOREPO-130", "MONOREPO-132"],
+            "dependencies": [
+                "MONOREPO-130",
+                "MONOREPO-132"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "普通日线买点当日收盘模拟，旧策略保留次开盘默认",
@@ -7056,7 +7570,9 @@
             "title": "局部轧空确认不得仍为空头抵抗",
             "description": "修复国芳2026-07-16低开阳线误判抵抗失败及07-17买单。",
             "scope": "Core局部确认及真实回归",
-            "dependencies": ["MONOREPO-131"],
+            "dependencies": [
+                "MONOREPO-131"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "低开阳线、长上影及高开阴线不能同时作为局部抵抗失败确认",
@@ -7082,7 +7598,9 @@
             "title": "正N后高开收阴不能确认局部轧空",
             "description": "国芳2022-05-23仍为空头抵抗，取消05-24误买并保留05-16及05-18正N。 本次2022年成交与完整历史信号验证通过；补充全区间成交尝试受2026-08-19五分钟/日线量不一致阻塞，见Core进度记录。",
             "scope": "Core局部轧空确认与回归",
-            "dependencies": ["MONOREPO-129"],
+            "dependencies": [
+                "MONOREPO-129"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "高开阴线及平收实体不能仅靠高于前收确认局部轧空",
@@ -7108,7 +7626,10 @@
             "title": "正N整理后跳空放量再攻击买点",
             "description": "补全包络N及守防守整理后的跳空放量再攻击，区分信号与实际成交；分钟量缺失透明日线回退。",
             "scope": "Core候选/入场/分钟完整性与Web证据及回归",
-            "dependencies": ["MONOREPO-129", "MONOREPO-132"],
+            "dependencies": [
+                "MONOREPO-129",
+                "MONOREPO-132"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "核对7月29日正N与6月29日二级交替证据",
@@ -7129,7 +7650,9 @@
             "title": "目标阶段放量双长影减八成及阴线反包清仓",
             "description": "关联本笔入场N的已达目标，异常大波动累计减80%，大阴线反包清仓。",
             "scope": "Core目标背景与退出、Web证据、实际回归",
-            "dependencies": ["MONOREPO-128"],
+            "dependencies": [
+                "MONOREPO-128"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桂林2026-09-11当日累计减80%，09-15当日清仓",
@@ -7155,7 +7678,9 @@
             "title": "正N结构与突破量价强度分离",
             "description": "V3结构正N不再因放量及2%实体门槛消失，弱突破仍要求连续强轧空才入场；旧严格口径可选。",
             "scope": "Core正N资格与真实回测回归",
-            "dependencies": ["MONOREPO-127"],
+            "dependencies": [
+                "MONOREPO-127"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桂林2025-11-03正N进入观察并在后续首次轧空时产生买点",
@@ -7181,7 +7706,9 @@
             "title": "倒N确认终止旧正N轧空入场资格",
             "description": "防止倒N后局部反弹继续复用旧正N产生买点。",
             "scope": "Core候选生命周期及真实回测/页面回归",
-            "dependencies": ["MONOREPO-126"],
+            "dependencies": [
+                "MONOREPO-126"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桂林2025-02-14倒N后不再产生2-17买信号和2-18买单",
@@ -7207,7 +7734,9 @@
             "title": "正N上攻巨量阴线压力区遇不利形态清仓",
             "description": "按历史可知压力及N状态，长上影、收盘转弱或破前低触发完整退出。",
             "scope": "Core压力退出、成交证据、Web显示与回归",
-            "dependencies": ["MONOREPO-125"],
+            "dependencies": [
+                "MONOREPO-125"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桂林2024-12-13压力区长上影当日清仓",
@@ -7233,7 +7762,9 @@
             "title": "放量倒N当日直接清仓",
             "description": "倒N确认且成交量超过前日，清仓优先于同日部分减仓。",
             "scope": "Core退出优先级、Web原因及真实回归",
-            "dependencies": ["MONOREPO-124"],
+            "dependencies": [
+                "MONOREPO-124"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桂林2023-07-13直接清空且不要求收盘低于前收",
@@ -7258,7 +7789,9 @@
             "title": "较大级别正N突破接入该回不回入场",
             "description": "补充已确认二三级波段的N候选，不再只取最近细浪三个点。",
             "scope": "Core 多级N候选及入场证据、实际回测回归。",
-            "dependencies": ["MONOREPO-123"],
+            "dependencies": [
+                "MONOREPO-123"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桂林旅游12-02较大N被识别，并由12-05/06抵抗确认决定入场",
@@ -7284,7 +7817,9 @@
             "title": "正N回踩确认当日突破不漏判",
             "description": "V3正N允许历史C确认当日完成首次突破，仍等待该回不回确认入场。",
             "scope": "Core正N时序、回归及实际买点验证。",
-            "dependencies": ["MONOREPO-122"],
+            "dependencies": [
+                "MONOREPO-122"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桂林旅游2022-11-01正N按当天信息识别",
@@ -7310,7 +7845,9 @@
             "title": "正 N 范围内小实体三成减仓",
             "description": "放量下跌中，小实体且整根K处于有效正N突破K范围时降为三成，并允许后续升级七成。",
             "scope": "Core 因果N上下文、减仓分档、Web证据及回归。",
-            "dependencies": ["MONOREPO-119"],
+            "dependencies": [
+                "MONOREPO-119"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桂林旅游12-20触发12-21累计三成",
@@ -7336,7 +7873,9 @@
             "title": "股票 K 线提示与复制增加涨跌幅",
             "description": "按当前图表价格口径计算相邻 K 线收盘涨跌幅，并保持悬停提示和复制信息一致。",
             "scope": "Web K 线详情、悬停提示、复制文本和回归测试。",
-            "dependencies": ["MONOREPO-095"],
+            "dependencies": [
+                "MONOREPO-095"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "悬停股票 K 线显示相对前一根 K 线收盘价的有符号涨跌幅",
@@ -7362,7 +7901,9 @@
             "title": "AkShare 当前股票回测结果缓存与信号复用",
             "description": "按已验证行情、复权、策略、执行参数与引擎版本缓存个股回测，减少重复运行等待。",
             "scope": "Core AkShare 回测适配器与回归测试；不修改策略或交易规则。",
-            "dependencies": ["MONOREPO-119"],
+            "dependencies": [
+                "MONOREPO-119"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "相同股票、历史截面与参数的再次请求复用完整结果，浏览器响应显著快于原始重复计算",
@@ -7393,7 +7934,9 @@
             "title": "放量下跌七成减仓与冻结支撑清仓",
             "description": "成交量超过前日的下跌阴线，次日累计减仓七成；跌破冻结回踩低点当日清仓。",
             "scope": "Core V3 退出状态、执行证据、Web 详情与测试。",
-            "dependencies": ["MONOREPO-118"],
+            "dependencies": [
+                "MONOREPO-118"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桂林旅游09-22触发09-23减仓七成目标",
@@ -7419,7 +7962,9 @@
             "title": "倒 N 减仓后多头抵抗失败当日清仓",
             "description": "倒 N 成交后立即跟踪局部多头抵抗，失败时清空余仓，不等待新的支撑破位段。",
             "scope": "Core 退出状态与回测、Web 成交原因及验证。",
-            "dependencies": ["MONOREPO-117"],
+            "dependencies": [
+                "MONOREPO-117"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "瑞凌2026-05-26收盘清空余仓，不延至06-02",
@@ -7445,7 +7990,9 @@
             "title": "默认满仓上限与未平仓收益展示",
             "description": "当前股票回测默认买入仓位上限改为 100%，最后一笔未卖出持仓按回放截止日估值展示盈亏与收益率。",
             "scope": "WaveQuant Web 回测设置与交易复核、API 默认参数、Core 个股回测收益分解；不改变已平仓交易定义。",
-            "dependencies": ["MONOREPO-116"],
+            "dependencies": [
+                "MONOREPO-116"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "当前股票回测页面和 API 缺省买入仓位上限均为 100%，仍保留风险、流动性、现金及整手约束",
@@ -7476,7 +8023,9 @@
             "title": "当前股票回测资金与买入比例可配置",
             "description": "当前股票回测支持按万元设置初始资金、按百分比设置每笔买入仓位上限，默认 10 万元与 50%。",
             "scope": "WaveQuant Web 回测设置、TDX/AkShare API 参数与 Core 执行配置；封存组合保持原口径。",
-            "dependencies": ["MONOREPO-102"],
+            "dependencies": [
+                "MONOREPO-102"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "页面默认显示 10 万元和 50%，修改后当前股票回测与五组幅度对比均使用新值",
@@ -7507,7 +8056,9 @@
             "title": "外包线倒 N 当日减仓",
             "description": "识别反弹与跌破同日的收盘倒 N，V3 当日累计减仓九成。",
             "scope": "Core 倒 N、成交策略及 Web 原因文案。",
-            "dependencies": ["MONOREPO-114"],
+            "dependencies": [
+                "MONOREPO-114"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "2026-05-21 倒 N 当日确认并成交，前缀一致",
@@ -7533,7 +8084,9 @@
             "title": "买入至清仓整笔盈亏统计",
             "description": "分批卖出累计盈亏，净收益率固定以原始买入含费成本为分母，清仓才计为完整交易。",
             "scope": "Core 回测账本、统计和未平仓汇总；Web 成交卡片、复制及交易表。",
-            "dependencies": ["MONOREPO-113"],
+            "dependencies": [
+                "MONOREPO-113"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "多次减仓仅在最终清仓生成一笔交易，累计金额与费用守恒",
@@ -7559,7 +8112,9 @@
             "title": "正 N 该回不回入场与退出链一致",
             "description": "V3 采用局部抵抗失败确认入场，修复回踩减仓被高点门槛延误和母子线倒 N 遗漏。",
             "scope": "Core V3 确认策略、退出参照、倒 N 候选、证据与回归。",
-            "dependencies": ["MONOREPO-112"],
+            "dependencies": [
+                "MONOREPO-112"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "入场依据正 N 后抵抗失败，不等待整段创新高",
@@ -7585,7 +8140,9 @@
             "title": "修复倒 N 在 C 确认当日漏报",
             "description": "V3 倒 N 允许历史 C 在当前收盘确认且同棒首次破颈线；不前移信号、不更改正 N 入场。",
             "scope": "N 时序、V3 接入、真实瑞凌回归与完整回测。",
-            "dependencies": ["MONOREPO-111"],
+            "dependencies": [
+                "MONOREPO-111"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "瑞凌 2025-05-19 确认倒 N 并产生 EXIT，05-20 补卖九成",
@@ -7611,7 +8168,9 @@
             "title": "首次减仓后倒 N 累计减仓九成",
             "description": "V3 首次支撑减仓后，确认倒 N 将累计减仓补至原持仓 90%；其他清仓风控优先。",
             "scope": "Core 执行配置与累计数量、成交解释、回归及瑞凌实测。",
-            "dependencies": ["MONOREPO-110"],
+            "dependencies": [
+                "MONOREPO-110"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "已发生支撑减仓后，独立倒 N 信号仅补卖到原持仓九成",
@@ -7637,7 +8196,9 @@
             "title": "分钟缺失按当日日线成交",
             "description": "按交易日自动选择分钟或日线收盘撮合，保留同源与成交证据。",
             "scope": "Core 执行与数据覆盖、V3 配置、Web 说明和真实回测验证。",
-            "dependencies": ["MONOREPO-109"],
+            "dependencies": [
+                "MONOREPO-109"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "缺少当天分钟时使用当日日线收盘撮合，其他交易日仍优先分钟",
@@ -7663,7 +8224,9 @@
             "title": "V3 目标退出修正与同源行情回测",
             "description": "V3 到达测幅目标不自动清仓；在线日线、分钟线及复权因子统一 AKShare / 新浪，数据不足保留推演并明确标记未完成回测。",
             "scope": "Core 退出配置、固定上游行情与分钟校验、API 同源回测端点、Web 来源保持和覆盖说明、回归及真实瑞凌验证。",
-            "dependencies": ["MONOREPO-108"],
+            "dependencies": [
+                "MONOREPO-108"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "全部 V3 方案关闭仅因测幅目标到达而清仓，V1/V2 和默认执行行为保持兼容",
@@ -7734,7 +8297,9 @@
             "description": "迁移 Astar 项目的完整 Agent 规则分类，并适配当前 TypeScript、NestJS、Next.js 与 Expo 技术栈。",
             "title": "迁移完整 Agent 工程规范",
             "scope": "覆盖 architecture、algorithms、backend、frontend、data-warehouse、operations 与 ai 规则，更新上下文路由并移除源项目专属约束。",
-            "dependencies": ["MONOREPO-001"],
+            "dependencies": [
+                "MONOREPO-001"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "源 docs/agent 的全部规则领域在当前项目均有对应文件",
@@ -7766,7 +8331,9 @@
             "description": "切换项目仓库标识与链接，并将已验证代码推送到新的 GitHub 仓库。",
             "title": "迁移 GitHub 远端仓库",
             "scope": "更新仓库元数据和应用内 GitHub 链接，保留旧远端为 upstream，并推送 main 到新 origin。",
-            "dependencies": ["MONOREPO-002"],
+            "dependencies": [
+                "MONOREPO-002"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "package 和页面中的仓库链接指向 bobo553/monorepo-template",
@@ -7798,7 +8365,10 @@
             "description": "参考 next-shadcn-dashboard-starter 建立符合当前仓库规范的 B 端管理后台模板。",
             "title": "新增 B 端管理后台模板",
             "scope": "新增 apps/webs/admin，复用共享设计系统，提供响应式应用壳、仪表盘、图表、列表、状态页与验证入口。",
-            "dependencies": ["MONOREPO-001", "MONOREPO-002"],
+            "dependencies": [
+                "MONOREPO-001",
+                "MONOREPO-002"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "管理后台作为独立 Next.js workspace 可运行和构建",
@@ -7836,7 +8406,9 @@
             "description": "新增基于 Python、PyPA、Ruff、mypy 与 pytest 官方最佳实践的 Python 工程规范。",
             "title": "新增 Python 工程规范",
             "scope": "新增 Python 通用、测试与打包规则，更新根路由、规则索引、Harness 和仓库进度。",
-            "dependencies": ["MONOREPO-002"],
+            "dependencies": [
+                "MONOREPO-002"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "Python 任务可从根 AGENTS.md 路由到独立规则域",
@@ -7874,7 +8446,10 @@
             "description": "将偏 Admin 的 Web 模板规则扩展为适用于各类 PC Web 页面，并保留管理后台专项约束。",
             "title": "优化 PC Web 与 Admin 模板规则",
             "scope": "新增 PC Web 页面专项规范，更新 Web 目录、前端、设计系统、根路由、Harness 与仓库进度。",
-            "dependencies": ["MONOREPO-002", "MONOREPO-004"],
+            "dependencies": [
+                "MONOREPO-002",
+                "MONOREPO-004"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "apps/webs 明确覆盖官网、内容、门户、业务应用与 Admin 等 PC Web 场景",
@@ -7912,7 +8487,11 @@
             "description": "新增仓库内 CLI，根据现有 H5、Admin、API 与 Mobile 模板安全创建项目。",
             "title": "新增模板项目创建 CLI",
             "scope": "新增 apps/tools/create-project workspace、根命令、模板复制与改写逻辑、测试、文档、Harness 和进度记录。",
-            "dependencies": ["MONOREPO-001", "MONOREPO-004", "MONOREPO-006"],
+            "dependencies": [
+                "MONOREPO-001",
+                "MONOREPO-004",
+                "MONOREPO-006"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "CLI 支持 h5、admin、api 与 mobile 模板并提供交互和非交互用法",
@@ -7951,7 +8530,11 @@
             "description": "将面向用户、分享和移动浏览器场景的通用 Web 模板明确命名为 H5。",
             "title": "将通用 Web 模板重命名为 H5",
             "scope": "将通用 Web 模板迁移并重命名为 apps/webs/h5，同步 workspace、环境变量、部署、脚手架、规则、文档和状态。",
-            "dependencies": ["MONOREPO-001", "MONOREPO-004", "MONOREPO-007"],
+            "dependencies": [
+                "MONOREPO-001",
+                "MONOREPO-004",
+                "MONOREPO-007"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "apps/webs 保持扁平 workspace 布局，Admin 继续位于 apps/webs/admin",
@@ -7989,7 +8572,11 @@
             "description": "建立面向用户与贡献者的公开 Roadmap，并与机器可校验的 Feature 状态保持单一事实来源。",
             "title": "新增公开项目 Roadmap",
             "scope": "新增 ROADMAP.md，明确 Now、Next、Later 与 Delivered 边界，更新入口文档、智能体规则和 Harness 引用校验。",
-            "dependencies": ["MONOREPO-002", "MONOREPO-007", "MONOREPO-008"],
+            "dependencies": [
+                "MONOREPO-002",
+                "MONOREPO-007",
+                "MONOREPO-008"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "ROADMAP.md 面向公开读者说明项目方向、当前重点、候选方向和已交付基础",
@@ -8027,7 +8614,11 @@
             "description": "将现有 WaveQuant Python 量化研究与浏览器工作台迁入统一 monorepo，并接入仓库状态、质量和 CI 门禁。",
             "title": "迁移 WaveQuant 量化研究工作台",
             "scope": "迁移 E:/WorkSpace/股票 当前工作树到 apps/tools/wavequant，采用 Python src 布局、pnpm workspace、统一依赖与验证入口，并保留研究行为。",
-            "dependencies": ["MONOREPO-005", "MONOREPO-007", "MONOREPO-009"],
+            "dependencies": [
+                "MONOREPO-005",
+                "MONOREPO-007",
+                "MONOREPO-009"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "源项目当前受版本控制及未忽略的工作树内容完整迁入 apps/tools/wavequant，且不复制 Git 历史、虚拟环境、缓存、数据和结果产物",
@@ -8070,7 +8661,9 @@
             "description": "将 WaveQuant 本地工具拆分为独立 Web、API 与 Python 核心 workspace，并保持现有研究行为和本地运行体验。",
             "title": "拆分 WaveQuant Web、API 与核心包",
             "scope": "把静态数据工作台迁入 apps/webs/wavequant-web，把 Python HTTP 服务迁入 apps/servers/wavequant-api，把研究领域与 CLI 迁入 packages/wavequant-core，建立单向依赖、独立门禁和统一启动文档。",
-            "dependencies": ["MONOREPO-010"],
+            "dependencies": [
+                "MONOREPO-010"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "WaveQuant Web、API 和核心研究能力分别位于 apps/webs、apps/servers 与 packages，旧 apps/tools/wavequant workspace 不再存在",
@@ -8113,7 +8706,9 @@
             "description": "为 WaveQuant API 增加可切换 SQL 持久化与 Redis 缓存基础设施，并提供 MySQL 本地运行环境。",
             "title": "新增 WaveQuant MySQL 与 Redis 能力",
             "scope": "在 apps/servers/wavequant-api 中新增数据库配置、研究运行记录仓储、Redis JSON 缓存与健康检查，提供显式初始化命令、MySQL/Redis Compose、本地配置示例和架构选型说明；保留核心包 SQLite 离线证据库。",
-            "dependencies": ["MONOREPO-011"],
+            "dependencies": [
+                "MONOREPO-011"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "WaveQuant API 支持通过环境变量连接 MySQL，并以可移植 SQLAlchemy 模型读写研究运行记录",
@@ -8146,7 +8741,9 @@
             "description": "根据 WaveQuant v2 设计稿还原全景市场看盘与涨停阶梯页面，并保留原有服务端研究工作台。",
             "title": "还原 WaveQuant 全景市场看盘页面",
             "scope": "在 apps/webs/wavequant-web 中将提供的离线原型拆分为 CSP 兼容的 HTML、CSS 与 JavaScript 默认页面，保留原有研究工作台到 /research，扩展 Python 静态资源白名单及 Web/API 自动验证。",
-            "dependencies": ["MONOREPO-011"],
+            "dependencies": [
+                "MONOREPO-011"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "默认根页面高保真呈现市场总览、涨停阶梯及设计稿中的全景看盘信息架构",
@@ -8184,7 +8781,9 @@
             "description": "将 WaveQuant 全景看盘从独立静态原型迁移为符合仓库规范的 React、Next.js App Router 与共享 shadcn 设计系统应用。",
             "title": "将 WaveQuant 看盘页迁移到 Next.js",
             "scope": "参考 apps/webs/admin 的工程结构重建 apps/webs/wavequant-web，使用 Server/Client Component 边界、features 分层、@repo/design-system-web 原语、Tailwind CSS、ECharts、Vitest 与 Playwright，并保留原研究工作台的 API 访问路径。",
-            "dependencies": ["MONOREPO-013"],
+            "dependencies": [
+                "MONOREPO-013"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "wavequant-web 使用 Next.js App Router、React 19、Tailwind CSS 4 和共享 @repo/design-system-web，不在应用内复制 shadcn UI 原语",
@@ -8222,7 +8821,9 @@
             "description": "补齐 Next.js 版本相对 WaveQuant 全景看盘 v2 原型缺失的功能与跨模块入口，确保迁移不造成行为退化。",
             "title": "补齐 WaveQuant v2 原型功能",
             "scope": "以原始单文件原型、使用说明和验收报告为行为基线，补齐共享时间/范围上下文、搜索、钻取、观察组、异动、多屏、复盘、导出、设置和原量化模块导航，并增加可重复的组件与浏览器回归。",
-            "dependencies": ["MONOREPO-014"],
+            "dependencies": [
+                "MONOREPO-014"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "市场看盘八个视图均保留原型的主要动作，不以静态占位卡替代交互",
@@ -8261,7 +8862,9 @@
             "description": "以 E:\\WorkSpace\\股票 当前完整工作树及其 web 页面为唯一迁移基线，确认核心、服务和页面功能在 monorepo 中无缺失。",
             "title": "完整迁移股票项目及原 Web 工作台",
             "scope": "逐项核对源项目 Python 模块、CLI、配置、文档、脚本、505 项测试和 web 工作台 38 项行为契约；将原 web 工作台恢复为默认产品入口，同时保留全景市场页为独立路由。",
-            "dependencies": ["MONOREPO-015"],
+            "dependencies": [
+                "MONOREPO-015"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "源项目当前未忽略工作树中的 Python 研究、回测、数据、纸面执行、运维、可视化和 CLI 能力均映射到 core 或 API，不遗漏源测试契约",
@@ -8305,7 +8908,9 @@
             "description": "将原股票项目 Web 研究工作台从 public 静态兼容页迁移为可直接启动的 Next.js App Router 与 React 功能页面。",
             "title": "将完整研究工作台迁移为 Next.js React 页面",
             "scope": "以 E:\\WorkSpace\\股票\\web 为功能和页面基线，在 apps/webs/wavequant-web 内建立 React 页面编排、业务组件、运行时适配和开发期 API 启动链路，保留全部 DOM/HTTP 行为契约并移除默认静态页跳转。",
-            "dependencies": ["MONOREPO-016"],
+            "dependencies": [
+                "MONOREPO-016"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "默认 / 与 /research 均由 Next.js App Router 直接渲染 React 研究工作台，不再跳转 public/research.html",
@@ -8349,7 +8954,9 @@
             "description": "参考 next-shadcn-dashboard-starter 的信息架构改造 WaveQuant Web 应用壳，同时保持研究工作台与全景市场功能完整。",
             "title": "改造 WaveQuant Dashboard 布局与应用壳",
             "scope": "在 apps/webs/wavequant-web 内统一可折叠侧栏、移动端抽屉、顶部工具栏、面包屑和内容滚动边界，复用共享 shadcn 原语，并保持所有现有路由、DOM 契约和业务交互。",
-            "dependencies": ["MONOREPO-017"],
+            "dependencies": [
+                "MONOREPO-017"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "研究工作台与全景市场使用统一的响应式 Dashboard 应用壳",
@@ -8390,7 +8997,9 @@
             "description": "参考 next-shadcn-dashboard-starter 的 data-theme 机制，为 WaveQuant 增加与涨跌语义解耦的证券蓝 UI 主题色。",
             "title": "新增适合股票行情的证券蓝主题色",
             "scope": "在 wavequant-web 的现有设置、状态持久化、shadcn token、旧研究工作台 token 与市场图表中增加证券蓝主题，保持明暗模式和涨跌配色逻辑独立。",
-            "dependencies": ["MONOREPO-018"],
+            "dependencies": [
+                "MONOREPO-018"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "界面设置提供 WaveQuant 青和证券蓝两套 UI 主题色",
@@ -8429,7 +9038,9 @@
             "description": "将 wavequant-core 的扁平 Python 模块重构为四层、十三个功能子域，并将仓库消费者升级到唯一规范导入路径。",
             "title": "重构 WaveQuant Core 分层架构",
             "scope": "按业务职责整理 src/wavequant，在 domain、application、infrastructure、interfaces 四层内继续拆分模型、市场结构、市场状态、策略、研究、交易、运维、行情、持久化、文件系统、图表、研究工具和筛选子域；将普通导入、延迟导入、测试 patch 和 CLI 升级到唯一规范路径，删除扁平兼容模块，不改变既有策略、研究、回测、执行与数据行为。",
-            "dependencies": ["MONOREPO-019"],
+            "dependencies": [
+                "MONOREPO-019"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "核心实现按 domain、application、infrastructure、interfaces 分层，并在每层按功能子域继续细分",
@@ -8467,7 +9078,9 @@
             "description": "将可复用的 React 异步视图、弹框调度与 Webpack 资源治理能力接入 monorepo 共享包。",
             "title": "接入共享 Async UI 运行时",
             "scope": "纳入 @repo/async-ui workspace，提供可取消的异步加载状态机、类型化弹框注册与调度、唯一 PopupHost、稳定优先级队列及独立 Webpack 清单和预算检查入口。",
-            "dependencies": ["MONOREPO-001"],
+            "dependencies": [
+                "MONOREPO-001"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "异步 loader 支持并发复用、超时、重试、取消、终态失败和显式 reset",
@@ -8495,7 +9108,9 @@
             "description": "在研究 K 线图中按一级、二级和三级趋势结构标识当前图窗末跌高，帮助直接核验结构定义。",
             "title": "标识各级末跌高定义",
             "scope": "复用既有分级趋势返回值，在来源高点绘制分级标签，并以水平引导线连接其对应的图窗最低已确认低点；不修改趋势算法、策略和回测。",
-            "dependencies": ["MONOREPO-020"],
+            "dependencies": [
+                "MONOREPO-020"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "一级、二级和三级末跌高使用各自趋势线中图窗最低已确认低点的 preceding_turn",
@@ -8528,7 +9143,9 @@
             "description": "在研究 K 线图中为一级趋势线的已确认高低点显示紧凑价格标签。",
             "title": "显示一级趋势端点价格",
             "scope": "仅在一级趋势线 Canvas 图层标注端点价格，高点置于上方、低点置于下方，限制字号与小数位，不修改趋势算法和其他图层。",
-            "dependencies": ["MONOREPO-022"],
+            "dependencies": [
+                "MONOREPO-022"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "一级趋势线所有当前可见的已确认 H/L 端点显示价格",
@@ -8561,7 +9178,9 @@
             "description": "末跌高被同级已确认高点严格突破后，将图中水平虚线延长到突破 K 线。",
             "title": "延长末跌高虚线到突破 K 线",
             "scope": "在现有视窗末跌高标识中识别对应低点之后首个严格越过关键位的同级已确认 H，并调整显示终点；不改变趋势、策略和回测算法。",
-            "dependencies": ["MONOREPO-022"],
+            "dependencies": [
+                "MONOREPO-022"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "突破点必须位于对应低点之后、属于同一路径且为已确认同级 H",
@@ -8594,7 +9213,9 @@
             "description": "为一级趋势线端点价格数字提供独立的显示开关。",
             "title": "切换一级点位价格数字",
             "scope": "在研究图表图层设置中增加默认开启的一级点位价格开关，只控制 9px 价格文字，并在本地保存偏好；不改变一级趋势线、端点、末跌高、策略和回测逻辑。",
-            "dependencies": ["MONOREPO-023"],
+            "dependencies": [
+                "MONOREPO-023"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "研究图表提供一级点位价格复选框且默认开启",
@@ -8627,7 +9248,9 @@
             "description": "修复首创环保一级趋势线跨路径衔接中价格方向错误的伪低低线。",
             "title": "保证一级趋势衔接高低交替",
             "scope": "跨一级路径显示衔接除 H/L 类型交替外还必须满足 L→H 上涨、H→L 下跌；直接方向不成立时使用期间已知的确认来源极值补成四点交替桥，没有真实证据则断开。不改变趋势确认、末跌高、策略和回测逻辑。",
-            "dependencies": ["MONOREPO-023"],
+            "dependencies": [
+                "MONOREPO-023"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "所有一级跨路径显示衔接同时满足端点类型和价格方向交替",
@@ -8660,7 +9283,10 @@
             "description": "显示一级跨路径桥接节点的价格并保持正式趋势点语义不变。",
             "title": "显示一级桥接节点价格",
             "scope": "一级点位价格开启时，同时标注正式一级反转端点和显示桥采用的真实来源极值；连接首尾去重。桥接点仍为 display_only，不参与末跌高、二三级趋势、策略或回测。",
-            "dependencies": ["MONOREPO-025", "MONOREPO-026"],
+            "dependencies": [
+                "MONOREPO-025",
+                "MONOREPO-026"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "首创环保 2026-06-02 显示价格 3.28，2026-06-30 显示价格 2.68",
@@ -8693,7 +9319,10 @@
             "description": "让一级末跌高标注与页面连续显示路径采用同一组高低点。",
             "title": "统一一级显示路径与末跌高",
             "scope": "仅在浏览器图表的一级视窗摘要中，将正式一级分段与有真实来源的 display_only 桥拼成连续显示路径；最低显示低点左侧最近交替高点作为图上末跌高。服务端理论数据、二三级趋势、策略与回测保持不变。",
-            "dependencies": ["MONOREPO-026", "MONOREPO-027"],
+            "dependencies": [
+                "MONOREPO-026",
+                "MONOREPO-027"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "首创环保当前视窗最低显示低点为 2026-06-30 L 2.68",
@@ -8726,7 +9355,9 @@
             "description": "修复首创环保讲义折线在相邻来源路径边界处遗漏连接的问题。",
             "title": "连接相邻讲义折线路径",
             "scope": "仅在浏览器图表中为时间相邻、端点高低类型交替且价格方向成立的讲义路径补充 display_only 虚线连接；不修改服务端讲义路径、一级趋势、末跌高、策略或回测。",
-            "dependencies": ["MONOREPO-028"],
+            "dependencies": [
+                "MONOREPO-028"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "首创环保 2026-06-03 L 3.21 与 2026-06-04 H 3.29 之间显示连续的讲义虚线",
@@ -8759,7 +9390,9 @@
             "description": "让各级末跌高水平虚线延长到市场价格首次实际突破的 K 线，而不是等待新的同级趋势高点。",
             "title": "按实际 K 线延长末跌高虚线",
             "scope": "研究图表使用当前行情 K 线，在对应低点可知后寻找首根收盘价严格由末跌高下方穿越到上方的 K 线作为显示终点；只调整图表标识，不改变一二三级趋势确认、策略或回测。",
-            "dependencies": ["MONOREPO-024"],
+            "dependencies": [
+                "MONOREPO-024"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "皖通高速二级末跌高 2025-06-20 H3 18.58 的虚线延长到 2026-07-20 K 线",
@@ -8792,7 +9425,10 @@
             "description": "将一级趋势跨讲义路径衔接统一到 Python 领域层，使图表展示与二、三级趋势使用同一组正式一级点。",
             "title": "统一一级趋势显示与分级计算",
             "scope": "把已有的跨路径真实来源极值衔接规则迁入 wavequant-core，保留因果确认时间和来源元数据；Web 只渲染服务端正式一级点。",
-            "dependencies": ["MONOREPO-026", "MONOREPO-028"],
+            "dependencies": [
+                "MONOREPO-026",
+                "MONOREPO-028"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "华夏银行 2026-01-23 的 6.32 作为正式一级趋势低点返回",
@@ -8835,7 +9471,10 @@
             "description": "二级结构旧低被市场收盘严格跌破后，将当前末跌高迁移到后续已确认二级低点左侧的二级高点。",
             "title": "修正二级末跌高下移",
             "scope": "由 wavequant-core 根据二级点和行情收盘生成可追溯的旧低跌破换锚事件，Web 只按服务端事件选择当前二级低点与末跌高；不修改二级趋势点本身、策略或回测。",
-            "dependencies": ["MONOREPO-030", "MONOREPO-031"],
+            "dependencies": [
+                "MONOREPO-030",
+                "MONOREPO-031"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "华夏银行 2026-01-23 L34 6.32 在 2026-08-31 收盘 6.23 严格跌破后失去当前二级低点锚点",
@@ -8878,7 +9517,10 @@
             "description": "没有收盘突破时，末跌高虚线仍可延伸到服务端已确认的同级高点严格突破 K 线。",
             "title": "补齐已确认高点突破虚线",
             "scope": "图表末跌高虚线优先采用市场收盘严格突破；若不存在，则采用 Python 已确认同级趋势高点的严格价格突破，并校验该点在图窗截止日已经可知；不修改趋势点、策略或回测。",
-            "dependencies": ["MONOREPO-030", "MONOREPO-032"],
+            "dependencies": [
+                "MONOREPO-030",
+                "MONOREPO-032"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "民生银行一级末跌高 2026-06-15 H293 3.65 的虚线延伸到 2026-08-03 H294 3.67 K 线",
@@ -8911,7 +9553,10 @@
             "description": "三级末跌高被二级高点突破并确认三级低点后，继续显示从该低点到当前二级极值的发展中三级尾段。",
             "title": "补齐三级趋势发展尾段",
             "scope": "由 wavequant-core 从已确认二级点生成纯显示、可因果回放的发展中三级尾段；Web 只渲染服务端返回的尾段并明确区分正式三级反转点。正式三级点、四级输入、策略和回测保持不变。",
-            "dependencies": ["MONOREPO-020", "MONOREPO-033"],
+            "dependencies": [
+                "MONOREPO-020",
+                "MONOREPO-033"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "上海电力 2007-05-30 三级末跌高 H1 12.97 被 2015-06-02 二级 H12 34.50 突破后，显示 2008-11-06 三级 L2 2.68 到 H12 34.50 的发展中上涨尾段",
@@ -8954,7 +9599,9 @@
             "description": "三级正式反转长期未完成时，完整显示其后已经确认可知的二级结构演化与当前候选端点。",
             "title": "补全三级趋势发展路径",
             "scope": "保留三级正式结构突破规则；Core 参照分层趋势的确认与发展边界，从最后一个正式三级点开始生成只读发展路径，Web 完整渲染而不自行选点。",
-            "dependencies": ["MONOREPO-034"],
+            "dependencies": [
+                "MONOREPO-034"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "上海电力三级发展路径不再截止于 2015-06-02，而是覆盖其后已确认二级结构并延伸到当前已确认候选点",
@@ -8997,7 +9644,10 @@
             "description": "二级趋势尾部的旧低被收盘严格跌破且后续二级高点已确认时，将末跌高换锚到该高点。",
             "title": "修正二级尾部末跌高下移",
             "scope": "由 wavequant-core 扩展二级末跌高的因果换锚规则：没有后续正式二级低点时，允许使用已经确认的后续二级高点及其一级确认低点作为当前尾部证据；Web 只消费服务端事件，不自行重算业务规则。",
-            "dependencies": ["MONOREPO-032", "MONOREPO-035"],
+            "dependencies": [
+                "MONOREPO-032",
+                "MONOREPO-035"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "上海电力二级 L26 2026-04-28 16.73 被 2026-06-23 收盘 16.29 严格跌破后失去当前低点锚点",
@@ -9045,7 +9695,10 @@
             "description": "正式二级反转长期未完成时，完整显示其后已经确认可知的一级结构演化与当前候选端点。",
             "title": "补全二级趋势发展路径",
             "scope": "保留二级正式结构的冻结关键位与严格突破规则；Core 生成最后一个正式二级点之后的只读发展路径，Web 使用同色虚线渲染并明确区分正式二级反转点。",
-            "dependencies": ["MONOREPO-031", "MONOREPO-035"],
+            "dependencies": [
+                "MONOREPO-031",
+                "MONOREPO-035"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "中大力德正式二级线保持结束于 2022-05-27 L9 13.16，不能伪造后续正式二级反转点",
@@ -9088,7 +9741,10 @@
             "description": "突破旧二级末跌高后，以场景回撤和已确认的非正式二级反转点升级突破高点。",
             "title": "补充二级高点交替升级规则",
             "scope": "由 wavequant-core 在既有一级结构严格突破规则之外，增加仅适用于二级趋势的因果升级通道：翻空为多的一级高点必须先突破上一正式二级末跌高，随后完成严格小于 2/3 的较高回撤，并由一级结构确认出非正式二级反转低点，才能升级为正式二级高点；Web 只展示 Python 返回的证据。",
-            "dependencies": ["MONOREPO-031", "MONOREPO-037"],
+            "dependencies": [
+                "MONOREPO-031",
+                "MONOREPO-037"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "中大力德 2022-08-03 H70 49.56 突破 2021-12-01 正式二级末跌高 H8 27.71 后进入升级候选",
@@ -9131,7 +9787,10 @@
             "description": "计算各级翻空为多结构的确认高点，并在研究 K 线图中提供可核验标识。",
             "title": "标识各级空翻多确认高点",
             "scope": "由 wavequant-core 从每一级正式趋势的翻空为多确认链中生成高点地标，保存来源低点、被冻结的末跌高、确认日和路径；Web 参考末跌高标识按当前图窗展示，不按窗口最高价重算业务点。",
-            "dependencies": ["MONOREPO-022", "MONOREPO-038"],
+            "dependencies": [
+                "MONOREPO-022",
+                "MONOREPO-038"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "一级、二级和三级趋势均由 Core 输出翻空为多确认高点，且每个高点可追溯到正式低点、突破依据和因果可用日",
@@ -9174,7 +9833,9 @@
             "description": "修正空翻多高点资格，所有级别都必须有冻结末跌高且由确认高点严格突破。",
             "title": "严格校验空翻多末跌高突破",
             "scope": "Core 统一校验一级、二级、三级空翻多地标：一级只消费真实翻空为多观察事件，二三级只消费带完整突破证据的正式低点；确认高点必须严格高于冻结末跌高。Web 继续只展示 Core 合格结果。",
-            "dependencies": ["MONOREPO-039"],
+            "dependencies": [
+                "MONOREPO-039"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "普通 down-to-up 波向切换不再自动生成一级空翻多高点",
@@ -9217,7 +9878,9 @@
             "description": "计算各级空翻多之后已经确认的空多交替低点，并在研究 K 线图中提供可核验标识。",
             "title": "标识已确认空多交替低点",
             "scope": "由 wavequant-core 从每一级真实空翻多观察链中生成已确认的回档低点地标，保存空翻多高点、原空头低点、冻结末跌高、回档比例与可用日；Web 只按图窗和因果日期展示。",
-            "dependencies": ["MONOREPO-040"],
+            "dependencies": [
+                "MONOREPO-040"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "低点必须来自 Core 已确认的空多交替观察，且严格发生在合格空翻多高点之后",
@@ -9265,7 +9928,9 @@
             "description": "标识各级空多交替低点之后第一段已确认多头上涨趋势的高点。",
             "title": "标识空多交替后的多头段高点",
             "scope": "由 wavequant-core 在每个已确认空多交替低点之后，仅选择同一路径中第一个已确认、价格上涨的同级高点，并保存交替低点、前置空翻多证据和因果可用日；Web 只按图窗与回放日期显示。",
-            "dependencies": ["MONOREPO-041"],
+            "dependencies": [
+                "MONOREPO-041"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "高点必须是已确认空多交替低点之后同一路径的第一个同级点，且类型为 H、价格严格高于交替低点",
@@ -9313,7 +9978,10 @@
             "description": "按回放日期、确认窗口和趋势级别搜索近期出现空翻多或空多交替低点的股票。",
             "title": "新增转多与空多交替低点搜索",
             "scope": "复用 Core 已确认的各级结构地标，对本地通达信或封存样本执行可取消的逐股搜索；以地标可用日而非事后发生日匹配窗口，Web 提供信号类型、级别和窗口筛选并可定位到原图复核。",
-            "dependencies": ["MONOREPO-041", "MONOREPO-042"],
+            "dependencies": [
+                "MONOREPO-041",
+                "MONOREPO-042"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "支持搜索空翻多高点和空多交替低点，并可选择全部、一级、二级或三级趋势",
@@ -9362,7 +10030,10 @@
             "description": "在行情或结构算法版本变化后后台重建结构信号读模型，前端请求只读取已完成快照。",
             "title": "结构信号每日预计算与直接查询",
             "scope": "为结构信号增加带行情指纹和 Core 算法指纹的持久化快照、幂等刷新 Worker、定时变更检测和只读查询 API；MySQL/PostgreSQL 保存事实快照，Redis 缓存查询，前端不再在请求链路逐股计算。",
-            "dependencies": ["MONOREPO-012", "MONOREPO-043"],
+            "dependencies": [
+                "MONOREPO-012",
+                "MONOREPO-043"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "后台一次计算全部类型、全部级别和最近 20 个交易日的结构地标，1/5/20 日查询复用同一快照",
@@ -9406,7 +10077,9 @@
             "description": "增加 AkShare 沪深京 A 股列表与日线行情数据源，并复用现有只读图表和结构分析能力。",
             "title": "接入 AkShare A 股数据源",
             "scope": "在 Core 增加可注入、可缓存的 AkShare 适配器，API 提供独立目录、行情和理论端点，Web 可切换 AkShare 浏览；联网数据不进入封存回测、买点扫描或持久研究证据。",
-            "dependencies": ["MONOREPO-044"],
+            "dependencies": [
+                "MONOREPO-044"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 依赖版本与许可证明确记录，并通过 API workspace 的独立 Python 环境安装",
@@ -9445,7 +10118,9 @@
             "description": "允许在 AkShare 行情口径下分析当前股票的买点和结构信号。",
             "title": "启用 AkShare 当前股票信号分析",
             "scope": "复用已缓存的 AkShare 当前股票日线，按所选策略计算买点信号并按确认窗口筛选结构地标；不对在线全市场逐股抓取，不执行回测成交或交易。",
-            "dependencies": ["MONOREPO-045"],
+            "dependencies": [
+                "MONOREPO-045"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 口径下符合买点和结构信号标签可操作，并明确范围是当前股票",
@@ -9478,7 +10153,10 @@
             "description": "以统一适配器隔离 AkShare、通达信等行情源，使来源切换不影响图表、结构和信号领域逻辑。",
             "title": "统一行情数据适配器与规范仓库",
             "scope": "在 Core 建立稳定的市场数据端口、AkShare/通达信适配器和规范仓库；目录与日线缺失由备用源补齐，重复日期保留主源值，并向 API/Web 提供完整来源证据。",
-            "dependencies": ["MONOREPO-045", "MONOREPO-046"],
+            "dependencies": [
+                "MONOREPO-045",
+                "MONOREPO-046"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 与通达信实现相同的目录、日线和元数据适配器端口，第三方结构不进入领域算法",
@@ -9521,7 +10199,11 @@
             "description": "将买点与结构信号提前计算并分别持久化，交互查询只读取 SQL/Redis 读模型。",
             "title": "统一信号预计算与分表缓存",
             "scope": "为买点和结构信号建立独立的 SQL 快照表与 Redis 命名空间；后台 Worker 根据行情数据版本和算法版本幂等重建、完成后原子发布，Web 查询链路不再执行信号计算。",
-            "dependencies": ["MONOREPO-044", "MONOREPO-046", "MONOREPO-047"],
+            "dependencies": [
+                "MONOREPO-044",
+                "MONOREPO-046",
+                "MONOREPO-047"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "买点信号和结构信号分别保存到独立 SQL 表，数据库是事实来源，Redis 仅保存有 TTL 的可重建查询缓存",
@@ -9561,7 +10243,9 @@
             "description": "将 AkShare 结构信号从当前股票快照改为服务器预计算覆盖范围内的市场级股票列表。",
             "title": "修复 AkShare 全市场结构信号查询",
             "scope": "保留按股票可恢复的后台计算分片，在查询层聚合相同运行、行情日与结构算法版本的已发布 AkShare 分片；结构地标跨买点策略复用，前端筛选不再绑定当前股票，并明确预计算覆盖与空结果状态。",
-            "dependencies": ["MONOREPO-048"],
+            "dependencies": [
+                "MONOREPO-048"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 结构信号查询不携带当前股票，返回服务器已预计算覆盖范围内所有满足筛选条件的股票列表",
@@ -9599,7 +10283,9 @@
             "description": "为预计算市场结构查询增加板块多选，并在服务端排除名称包含星号的风险警示股票。",
             "title": "增加市场结构板块筛选",
             "scope": "支持上证主板、深证主板、创业板、科创板和北京市场多选，默认上证主板、深证主板、创业板；服务端只过滤已发布快照，统一去掉名称包含 * 或全角星号的股票，并按市场组合隔离 Redis 缓存。",
-            "dependencies": ["MONOREPO-049"],
+            "dependencies": [
+                "MONOREPO-049"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "结构信号页面支持上证、深证、创业板、科创板和北京市场多选，默认选中上证、深证和创业板",
@@ -9642,7 +10328,9 @@
             "description": "修复确认日明显晚于发生日时，空多交替低点在历史图窗中被错误隐藏的问题。",
             "title": "补齐空多交替低点标识",
             "scope": "将空多交替低点的图窗范围与因果可知截止日分离：标识位置继续使用真实低点日期，是否可见使用当前行情回放截面判断；查询结果定位后自动选中对应分级标识。",
-            "dependencies": ["MONOREPO-050"],
+            "dependencies": [
+                "MONOREPO-050"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "已在当前回放截面确认的空多交替低点，即使确认日晚于当前历史图窗右边界也显示在真实低点日期",
@@ -9679,7 +10367,9 @@
             "description": "把空多交替确认后首次收盘突破空翻多高点发布为可查询的转多信号，并补齐图表标识与证据连线。",
             "title": "增加转多结构信号",
             "scope": "Core 按各级已确认空多交替及原空翻多高点，在交替可知日之后识别收盘价首次从下向上严格突破；API 只查询预计算快照；Web 以与空翻多标识一致的分级样式展示交替低点和突破 K，并从空翻多高点绘制虚线到突破 K。",
-            "dependencies": ["MONOREPO-051"],
+            "dependencies": [
+                "MONOREPO-051"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "空多交替低点按空翻多标识的分级颜色、箭头和价格锚点对称展示",
@@ -9717,7 +10407,9 @@
             "description": "修复 AkShare 市场结构覆盖数被误解为市场总量的问题，并恢复指定回放日的全目录后台补算。",
             "title": "明确 AkShare 全市场预计算进度",
             "scope": "结构查询继续只读取已发布快照；Web 使用已加载的 AkShare 目录展示已发布数、全目录总数和当前板块筛选规模，并在未完成时标明后台重建中；常驻 Worker 固定补算 2026-09-07 全目录。",
-            "dependencies": ["MONOREPO-052"],
+            "dependencies": [
+                "MONOREPO-052"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "页面将已发布快照数与 AkShare 全目录总数明确区分，不再把 296 显示成全市场总量",
@@ -9755,7 +10447,9 @@
             "description": "将股票目录持久化到浏览器 IndexedDB，并仅在服务端目录版本变化时同步替换。",
             "title": "增加股票列表 IndexedDB 缓存",
             "scope": "为通达信与 AkShare 股票目录提供稳定 ETag；Web 启动时读取 IndexedDB 并发起条件校验，304 复用缓存、200 原子更新，服务不可用时降级使用已有缓存。",
-            "dependencies": ["MONOREPO-053"],
+            "dependencies": [
+                "MONOREPO-053"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "通达信和 AkShare 股票目录分别保存到 IndexedDB，不写入 localStorage",
@@ -9798,7 +10492,9 @@
             "description": "让 AkShare 全目录结构 Worker 以稳定并行分片完成当前有效股票的服务端预计算，并消除重复目录扫描和逐股上游超时。",
             "title": "加速 AkShare 全市场断点续算",
             "scope": "Worker 仅覆盖 AkShare 当前有效目录，支持按证券代码稳定分片并行；同一行情日与算法版本只处理尚未发布的股票，默认市场优先；慢速备用接口只拉近期增量并由本地通达信补齐历史；单股计算不再重建合并目录，趋势前缀状态增量维护，失效的新浪源采用熔断；停牌股票仍归入统一市场基准日；市场组合使用合法 Redis 缓存键。",
-            "dependencies": ["MONOREPO-054"],
+            "dependencies": [
+                "MONOREPO-054"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 结构全目录刷新将未发布股票排在已发布股票之前",
@@ -9850,7 +10546,9 @@
             "description": "为行情浏览增加日、周、月、季、年 K 线，并让服务器聚合、结构图层和历史回放使用同一周期口径。",
             "title": "增加多周期 K 线与联动功能",
             "scope": "AkShare 与通达信行情浏览支持 1 日、1 周、1 月、1 季、1 年周期；API 展示服务从 Core 规范日线确定性聚合 OHLCV，理论结构按所选周期重新计算，Web 同步周期标签、回放日期、图层、状态和偏好；封存回测及日线信号快照保持原口径和算法版本。",
-            "dependencies": ["MONOREPO-055"],
+            "dependencies": [
+                "MONOREPO-055"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "研究图表提供日线、周线、月线、季线和年线选项，默认日线并保存用户偏好",
@@ -9894,7 +10592,9 @@
             "description": "把占用图表高度的图层开关、图例和趋势说明改为图表顶部的渐进披露工具，并为每项提供可访问的详细提示。",
             "title": "优化图表工具与说明交互",
             "scope": "保留既有图层 ID、计算与显示语义；将图层、折线口径和图例说明集中到图表标题栏，使用悬停、键盘聚焦和点击固定的浮层展示详细定义与实时趋势摘要，适配桌面和窄屏且不持续占用 K 线高度。",
-            "dependencies": ["MONOREPO-056"],
+            "dependencies": [
+                "MONOREPO-056"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "图层开关、折线口径与图例入口位于图表顶部工具栏，不再以多行常驻内容挤压 K 线高度",
@@ -9933,7 +10633,9 @@
             "description": "将周期选择升级为单行 Tab，并为服务端预计算的多周期 K 线与结构画线建立版本化 SQL/Redis 和浏览器 IndexedDB 缓存。",
             "title": "预计算并缓存多周期行情与画线",
             "scope": "日、周、月、季、年使用可键盘操作的单行周期 Tab；API 以股票、来源、回放截止日、周期、数据版本和算法版本发布完整行情/理论只读快照，提供条件请求；Web 按相同维度在 IndexedDB 保存有界缓存，ETag 未变化复用、变化时原子替换、离线时明确降级。",
-            "dependencies": ["MONOREPO-057"],
+            "dependencies": [
+                "MONOREPO-057"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "周期选择以日、周、月、季、年单行 Tab 展示，支持点击、方向键、Home/End、可见焦点和禁用状态",
@@ -9977,7 +10679,9 @@
             "description": "让研究工作台 K 线画布随图表卡片和视口高度自适应，消除固定像素高度造成的可视区域浪费。",
             "title": "让 K 线画布填满图表卡片",
             "scope": "仅调整研究图表卡片与 K 线宿主的弹性高度约束；保留标题、OHLC、历史回放、图层交互和行情绘制语义。",
-            "dependencies": ["MONOREPO-058"],
+            "dependencies": [
+                "MONOREPO-058"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "图表卡片使用纵向弹性布局，K 线宿主填满标题、OHLC 和回放区之外的剩余高度",
@@ -10015,7 +10719,9 @@
             "description": "让统一开发命令自动加载结构读模型基础设施配置、等待依赖健康并托管预计算 Worker。",
             "title": "保证结构快照随页面服务可用",
             "scope": "修复 wavequant-web 开发启动器未向 API 注入 .env.infrastructure 的问题；仅在本地 loopback MySQL/Redis 配置下管理 Compose，幂等初始化数据库，并托管通达信与 AkShare 结构 Worker。",
-            "dependencies": ["MONOREPO-059"],
+            "dependencies": [
+                "MONOREPO-059"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "统一开发命令加载本地 SQL/Redis 配置但不覆盖终端显式环境变量，且不输出连接凭据",
@@ -10053,7 +10759,9 @@
             "description": "让转多信号箭头始终显示在对应突破 K 线最低点下方。",
             "title": "将转多标记移到 K 线低点下方",
             "scope": "仅调整转多信号的图表标记定位；保留突破日期、收盘价详情、空翻多高点虚线和服务器预计算语义。",
-            "dependencies": ["MONOREPO-060"],
+            "dependencies": [
+                "MONOREPO-060"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "转多信号使用跟随蜡烛最低价的 belowBar 定位，不再锚定突破收盘价",
@@ -10089,7 +10797,9 @@
             "description": "当前低点跌破空翻多前低后，撤销已失效的空翻多高点并沿用新的末跌高结构。",
             "title": "撤销前低跌破后的空翻多高点",
             "scope": "在 Core 统一地标发布层为一级、二级、三级增加严格前低跌破失效规则；同步提升多周期快照算法版本并触发后台结构快照重建，不针对个股硬编码。",
-            "dependencies": ["MONOREPO-061"],
+            "dependencies": [
+                "MONOREPO-061"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "任一级别空翻多高点在其确认前低被后续同级低点严格跌破后不再发布",
@@ -10137,7 +10847,9 @@
             "description": "消除策略服务重启后的当前股票冷回测误失败，并为代理异常提供稳定可读的错误信息。",
             "title": "修复当前股票回测冷启动失败",
             "scope": "完整重启统一图表/API 服务以加载最新策略引擎；仅为 TDX 当前股票回测配置独立长时限，并稳健处理 Next.js 代理返回的非 JSON 错误。",
-            "dependencies": ["MONOREPO-062"],
+            "dependencies": [
+                "MONOREPO-062"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "统一服务重启后当前策略引擎与结果版本一致，不再触发策略代码已变更保护",
@@ -10170,7 +10882,9 @@
             "description": "让 AkShare 结构查询在行情日或算法版本重建期间持续读取上一份完整快照，并在新分区完整后自动切换。",
             "title": "彻底消除 AkShare 结构快照不可用窗口",
             "scope": "修正 AkShare Worker 的市场日期选择；为分片写入全市场预期数量，基于 SQL 已发布代际选择完整读模型，并在 Web 明确展示上一完整快照与当前重建进度。",
-            "dependencies": ["MONOREPO-063"],
+            "dependencies": [
+                "MONOREPO-063"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare Worker 始终使用目录市场最新日作为分区日期，不再被首只股票的停牌或最后交易日降级",
@@ -10204,7 +10918,9 @@
             "description": "为研究工作台增加可分类、持久化且可从结构信号快速收集股票的自选股功能。",
             "title": "增加分类自选股与结构信号快捷收藏",
             "scope": "在 Web 独立 IndexedDB 用户数据域中维护自选分类和成员，提供分类增删改、当前股票增删、结构结果单只及批量加入，并完成桌面与窄屏交互回归。",
-            "dependencies": ["MONOREPO-064"],
+            "dependencies": [
+                "MONOREPO-064"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "自选股使用独立版本化 IndexedDB 存储，不与可清理的行情缓存共用生命周期",
@@ -10243,7 +10959,9 @@
             "description": "将分类自选股改为独立可收缩侧栏，并为当前股票提供直观星标收藏入口。",
             "title": "增加自选股侧栏与股票星标",
             "scope": "把自选股从右侧股票筛选页签移到工作区左列，支持折叠持久化；在图表标题区提供可访问的星标收藏状态与切换交互。",
-            "dependencies": ["MONOREPO-065"],
+            "dependencies": [
+                "MONOREPO-065"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桌面工作区左侧提供独立自选股列，分类、列表、增删改与切股功能完整保留",
@@ -10282,7 +11000,9 @@
             "description": "修复 AkShare 全市场结构快照使用服务器自然日导致绝大多数股票过期、结构信号结果为空的问题。",
             "title": "修复 AkShare 结构信号全市场空结果",
             "scope": "按中国市场交易日历和数据就绪时点确定最后已完成交易日；把全市场日期一致性纳入快照健康判断，异常代际不再替换上一份健康快照。",
-            "dependencies": ["MONOREPO-064"],
+            "dependencies": [
+                "MONOREPO-064"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "AkShare 目录 latest 不再依赖服务器所在时区的 date.today()",
@@ -10316,7 +11036,10 @@
             "description": "补齐三级空翻多高点及其后首次严格收盘突破的结构证据和图表引导线。",
             "title": "补齐三级空翻多高点突破标识",
             "scope": "由 Core 统一生成各级显式空翻多高点，允许已确认高点在没有后续空多交替低点时直接识别首次严格收盘再突破；Web 仅消费证据并绘制高点到突破 K 线的虚线。",
-            "dependencies": ["MONOREPO-052", "MONOREPO-062"],
+            "dependencies": [
+                "MONOREPO-052",
+                "MONOREPO-062"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "三级显式翻空为多观察可替换同一确认低点产生的临时低级别地标",
@@ -10345,7 +11068,10 @@
             "description": "让沪深主板、创业板、科创板和北交所使用各自交易制度执行当前股票回测。",
             "title": "支持全部 A 股板块回测",
             "scope": "建立板块证券规格模型，按代码、交易日适配涨跌幅限制、最小申报数量和数量步长；扩展 TDX 数据、除权事件与回测入口的沪深京市场识别，同时继续拒绝缺少历史时点状态证据的 ST/退市股票。",
-            "dependencies": ["MONOREPO-047", "MONOREPO-063"],
+            "dependencies": [
+                "MONOREPO-047",
+                "MONOREPO-063"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "沪深主板、创业板、科创板和北交所代码均可进入回测执行模型",
@@ -10374,7 +11100,9 @@
             "description": "用卡片右上角统一星标替代收藏和移除文字按钮。",
             "title": "统一收藏与移除为右上角星标",
             "scope": "结构结果卡片与自选列表行采用同一个空心/实心星标切换收藏状态，保留键盘、读屏和提示文本，并避免图标遮挡股票信息。",
-            "dependencies": ["MONOREPO-066"],
+            "dependencies": [
+                "MONOREPO-066"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "结构结果卡片右上角以空心星标表示未收藏、实心星标表示已收藏",
@@ -10408,7 +11136,9 @@
             "description": "修复后台全市场计算与共享研究缓存争用导致当前股票回测长时间无响应的问题。",
             "title": "恢复当前股票回测的前台响应",
             "scope": "将 API、TDX 信号 Worker 和 AkShare 分片的研究工件拆到独立缓存域，并让可丢弃写入短等待降级，避免每个缓存阶段因 SQLite 写锁阻塞 30 秒；降低本地 AkShare 默认分片并发，同时修正全部板块已支持回测后的旧页面说明。",
-            "dependencies": ["MONOREPO-069"],
+            "dependencies": [
+                "MONOREPO-069"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "后台 Worker 占用研究缓存写锁时，有效回测结果不再因每次缓存写入等待 30 秒",
@@ -10444,7 +11174,9 @@
             "description": "将策略模拟成交点在 K 线上简洁标为 B 和 S，并去掉规则确认的方块图形。",
             "title": "统一图表买卖点 B/S 标识",
             "scope": "仅调整研究图表成交标识的分层、形状、文字及图例；真实成交由独立顶层 B/S 字母显示，保留成交价格坐标、信号与规则的不同语义，以及点击复核能力。",
-            "dependencies": ["MONOREPO-071"],
+            "dependencies": [
+                "MONOREPO-071"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "真实模拟买入和卖出分别显示紧凑 B、S，仍定位到实际成交价且可点击查看详情",
@@ -10482,7 +11214,9 @@
             "description": "当前股票回测图表中的倒 N 规则圆点使用绿色，与其他规则圆点区分。",
             "title": "倒 N 规则圆点改为绿色",
             "scope": "只调整倒 N 完成事件的图表标识颜色及图例，不改变规则判定、位置、形状和其他标识。",
-            "dependencies": ["MONOREPO-072"],
+            "dependencies": [
+                "MONOREPO-072"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "倒 N 完成事件的圆点显示绿色，正 N 和其他规则仍保持原色",
@@ -10513,7 +11247,9 @@
             "description": "在当前股票回测图上标出执行风控拒绝的买入尝试，并悬停说明未成交原因。",
             "title": "风控拒单半透明点与原因提示",
             "scope": "复用回测响应已有取消委托证据；仅为执行风控拒单添加独立图层、半透明圆点、悬停提示和可点击复核，不改变策略或成交计算。",
-            "dependencies": ["MONOREPO-073"],
+            "dependencies": [
+                "MONOREPO-073"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "风控拒绝的买入委托在尝试日期与拟买价显示半透明圆点，默认可见且不带 B/S",
@@ -10550,7 +11286,9 @@
             "description": "将研究图表标题里的股票下拉选择改为可点击复制的股票文本。",
             "title": "图表股票名称点击复制",
             "scope": "仅修改图表标题股票展示与复制反馈；保留股票列表、自选股和结构结果中的切股流程。",
-            "dependencies": ["MONOREPO-074"],
+            "dependencies": [
+                "MONOREPO-074"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "图表标题不再显示股票下拉框，当前股票代码和名称以文本显示并随切股更新",
@@ -10581,7 +11319,9 @@
             "description": "优化自选股列表星标和股票行的视觉密度。",
             "title": "自选股单行与无边框图标",
             "scope": "仅调整自选股星标和侧栏股票行展示，不改变 IndexedDB 数据或收藏与切股语义。",
-            "dependencies": ["MONOREPO-075"],
+            "dependencies": [
+                "MONOREPO-075"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "自选股相关星标使用现有图标库图标，移除星标按钮边框",
@@ -10612,7 +11352,9 @@
             "description": "在个股回测图上显示每次未通过策略入场筛选的候选评估，悬停复核原因。",
             "title": "入场候选点与筛选原因提示",
             "scope": "只消费回测理论事件的候选拒绝证据；同日候选合并图点但保留逐项原因，不改变策略计算或成交。",
-            "dependencies": ["MONOREPO-076"],
+            "dependencies": [
+                "MONOREPO-076"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "所有入场候选拒绝事件都可在独立默认开启的图层查看；同日候选不因图点重叠丢失",
@@ -10644,7 +11386,9 @@
             "description": "研究工作台首次打开时默认展示当前自选分类中的第一只可用股票。",
             "title": "默认展示首只自选股",
             "scope": "仅调整初始选股；无可用自选股时沿用原默认值，后续切股和数据源切换不变。",
-            "dependencies": ["MONOREPO-066"],
+            "dependencies": [
+                "MONOREPO-066"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "首次加载按当前自选分类列表顺序展示第一只在当前数据源可用的股票",
@@ -10670,7 +11414,9 @@
             "description": "个股回测结果就绪后右侧切换为可定位 K 线的交易时间线，普通行情仍保留股票目录。",
             "title": "回测后右侧展示交易节点",
             "scope": "仅调整研究工作台右侧面板的回测状态展示和交互，不修改 Python 回测策略或成交数据。",
-            "dependencies": ["MONOREPO-072"],
+            "dependencies": [
+                "MONOREPO-072"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "个股回测结果就绪后隐藏全部股票页签，默认显示交易节点；行情浏览恢复全部股票页签",
@@ -10697,7 +11443,10 @@
             "description": "将执行风控未通过原因归入原买入信号点提示，不再额外绘制拒单点。",
             "title": "风控拒单归入原信号提示",
             "scope": "仅调整研究图表的标识、提示和图层说明；保留 Python 回测结果、B/S 成交与入场候选点。",
-            "dependencies": ["MONOREPO-074", "MONOREPO-079"],
+            "dependencies": [
+                "MONOREPO-074",
+                "MONOREPO-079"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "执行风控拒单不再产生独立圆点，原买入信号点悬停可见尝试日期、拟买价、中文拒单原因和未成交说明",
@@ -10729,7 +11478,9 @@
             "description": "研究工作台切换股票页签和行情口径时，实验快照与策略版本选择不再被错误禁用。",
             "title": "修复研究快照与策略下拉框",
             "scope": "仅修复研究页控制状态及交互回归，不改动策略计算或数据源。",
-            "dependencies": ["MONOREPO-079"],
+            "dependencies": [
+                "MONOREPO-079"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "默认 AkShare 全部股票状态下可选择实验快照和策略版本",
@@ -10761,7 +11512,9 @@
             "description": "增加第一类按最低收盘价严格深于半幅、第二类按最低收盘价严格浅于半幅的独立双买点方案。",
             "title": "新增收盘价半幅双买点策略",
             "scope": "仅新增独立策略配置、Python 判定与证据、Web 选择和对比入口；原四组、数据源及退出规则不变。",
-            "dependencies": ["MONOREPO-081"],
+            "dependencies": [
+                "MONOREPO-081"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "第一类从 H0 到已确认交替低点的最低收盘价计算整段跌幅，严格大于 1/2 才通过，恰等于不通过",
@@ -10793,7 +11546,10 @@
             "description": "在当前股票回测的交易节点中区分已成交、策略筛选拒绝和执行层取消，支持原因查看与 K 线定位。",
             "title": "交易节点展示被拦截候选和委托",
             "scope": "仅扩展 Web 交易节点侧栏与图表定位，不改变 Python 信号、风控、成交或常驻图点规则。",
-            "dependencies": ["MONOREPO-079", "MONOREPO-080"],
+            "dependencies": [
+                "MONOREPO-079",
+                "MONOREPO-080"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "当前股票回测的交易节点可在已成交与被拦截两个子 Tab 间切换，原成交列表和 B/S 筛选不回归",
@@ -10820,7 +11576,9 @@
             "description": "点击被拦截候选或取消委托时，在对应 K 线参考价处短暂闪烁提示点位。",
             "title": "被拦截节点定位闪烁提示",
             "scope": "仅扩展 Web 图表的瞬时定位反馈，不修改策略、风控、成交或常驻标记。",
-            "dependencies": ["MONOREPO-083"],
+            "dependencies": [
+                "MONOREPO-083"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "点击筛选未通过候选和执行层取消委托后，在对应 K 线价格坐标处出现明显但短暂的闪烁提示",
@@ -10847,7 +11605,10 @@
             "description": "修复瑞凌股份交替低点漏标，并按二三级交替后的正 N 轧空定义第一类买点。",
             "title": "修复二三级交替低点与第一类买点",
             "scope": "Core 交替证据、第一类买点级别及 Web 标识说明和回归。",
-            "dependencies": ["MONOREPO-082", "MONOREPO-084"],
+            "dependencies": [
+                "MONOREPO-082",
+                "MONOREPO-084"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "复核瑞凌股份 2026-07-21 的低点、波段锚点与因果确认日",
@@ -10888,7 +11649,10 @@
             "description": "把同一交易日的策略候选拒绝和执行层取消合并为一条侧栏记录，同时保留原因与逐条图表定位。",
             "title": "被拦截交易节点按日期合并",
             "scope": "仅调整 Web 当前股票回测交易节点的被拦截列表呈现，不改变策略、风控、成交或图表常驻标记。",
-            "dependencies": ["MONOREPO-083", "MONOREPO-084"],
+            "dependencies": [
+                "MONOREPO-083",
+                "MONOREPO-084"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "被拦截子标签按交易日计数和展示，同日仅有一张卡，跨日倒序不变",
@@ -10914,7 +11678,10 @@
             "description": "点击回测 B/S 成交点时，在对应 K 线成交价处显示短暂定位提示。",
             "title": "回测买卖点增加 K 线定位效果",
             "scope": "仅扩展 Web 回测成交标记与交易节点的交互反馈，不改变成交数据和常驻图层。",
-            "dependencies": ["MONOREPO-084", "MONOREPO-086"],
+            "dependencies": [
+                "MONOREPO-084",
+                "MONOREPO-086"
+            ],
             "status": "backlog",
             "acceptanceCriteria": [
                 "点击右侧 B/S 交易节点或图上的 B/S 成交标记，聚焦对应 K 线并显示短暂定位效果",
@@ -10929,7 +11696,9 @@
             "description": "在保留本地研究图的同时增加独立的 TradingView Advanced Real-Time Chart 绘图视图。",
             "title": "加入 TradingView 完整绘图视图",
             "scope": "仅扩展 Web 研究图表视图与官方嵌入组件，不替换现有图表、回测逻辑或本地行情数据源。",
-            "dependencies": ["MONOREPO-086"],
+            "dependencies": [
+                "MONOREPO-086"
+            ],
             "status": "blocked",
             "acceptanceCriteria": [
                 "本地研究图及原有图层、历史回放和回测交互保持可用，用户可切换到独立 TradingView 绘图视图",
@@ -10961,7 +11730,10 @@
             "description": "在每笔买入成交记录中展示成交后账户仓位，区别于全回测期间的日均仓位。",
             "title": "买入成交列表显示单笔仓位",
             "scope": "Core 买入成交账本字段及 Web 交易节点和 B/S 成交账本，不改变策略下单或平均仓位计算。",
-            "dependencies": ["MONOREPO-084", "MONOREPO-086"],
+            "dependencies": [
+                "MONOREPO-084",
+                "MONOREPO-086"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "每笔已成交买单保存成交额、费用后的账户权益及买入后仓位比例",
@@ -10992,7 +11764,9 @@
             "description": "修复本地开发代理在冷回测计算超过 30 秒时提前断开并向页面返回 HTTP 500。",
             "title": "冷回测不再被开发代理提前中断",
             "scope": "仅调整 wavequant-web 开发环境的 API rewrite 超时，不改变回测算法、生产静态导出或其他 API 契约。",
-            "dependencies": ["MONOREPO-089"],
+            "dependencies": [
+                "MONOREPO-089"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "开发代理等待时间长于前端回测请求的 300 秒截止时间",
@@ -11018,7 +11792,9 @@
             "description": "以三级空翻多整段的同口径低高锚点绘制三分回撤参考线，并提供持久化显示开关。",
             "title": "三级空翻多三分回撤参考线",
             "scope": "Web 本地研究图水平辅助线与图层设置，不改变地标或策略判定。",
-            "dependencies": ["MONOREPO-085"],
+            "dependencies": [
+                "MONOREPO-085"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "瑞凌股份 2024-02-06 至 2025-03-20 整段显示 1/3、2/3 回撤线并延伸到回档区",
@@ -11049,7 +11825,9 @@
             "description": "在回测被拦截交易节点中复制单日或全部原始拦截信息，保留同日多事件证据。",
             "title": "被拦截交易记录一键复制",
             "scope": "仅扩展 Web 回测侧栏的文本导出和交互反馈，不改变策略、成交或图表定位逻辑。",
-            "dependencies": ["MONOREPO-086"],
+            "dependencies": [
+                "MONOREPO-086"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "每个日期卡可一键复制该日全部原始拦截事件，列表可复制当前回测全部日期",
@@ -11076,7 +11854,9 @@
             "description": "各级空翻多之后的已确认较高回档低点可由随后已确认高点严格再突破原空翻多高点完成空多交替，并修复历史图窗漏显晚确认高点。",
             "title": "空翻多高点再突破确认各级交替低点",
             "scope": "Core 一级至三级结构地标、结构搜索结果及 Web 标记说明；不改变正式趋势折线和独立回测策略的交易门槛。",
-            "dependencies": ["MONOREPO-085"],
+            "dependencies": [
+                "MONOREPO-085"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "西点药业 2025-08-11 三级空翻多高点 36.98 在确认后可见，2026-07-21 的 21.88 低点由 2026-08-20 已确认高点 39.98 再突破确认",
@@ -11108,7 +11888,9 @@
             "description": "在研究工作台选择可回测股票后立即运行当前股票回测，移除右侧全部股票标签并保留可搜索的选股入口。",
             "title": "选股即运行当前股票回测",
             "scope": "仅调整 Web 研究工作台的显式切股交互和右侧选股面板，不改变行情、信号复核或回测算法。",
-            "dependencies": ["MONOREPO-092"],
+            "dependencies": [
+                "MONOREPO-092"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "全市场列表、自选股等显式切股入口选中可回测股票后自动发起当前股票回测，连续切换只展示最新选择",
@@ -11140,7 +11922,9 @@
             "description": "本地研究图悬停 K 线时展示日期、开高低收和成交量，并可复制当前选中的 K 线数据。",
             "title": "K 线悬停信息与一键复制",
             "scope": "仅扩展 Web 本地研究图的信息提示和复制交互，保留原有标注详情与行情口径。",
-            "dependencies": ["MONOREPO-092"],
+            "dependencies": [
+                "MONOREPO-092"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "普通 K 线悬停显示日期、开高低收、成交量及可用时的原始收盘价，原有标注提示继续可见",
@@ -11176,7 +11960,10 @@
             "description": "三级 a/b/c 候选支持最低价三分之二或长时间且最低收盘低于半幅两条路径，在正 N 轧空确认后提示 c 启动并跟踪突破和失效。",
             "title": "三级 a/b/c 启动候选与时间回调条件",
             "scope": "Core 结构观察与 Web 图表证据，候选与正式交替、策略 LONG、成交分开表达。",
-            "dependencies": ["MONOREPO-091", "MONOREPO-094"],
+            "dependencies": [
+                "MONOREPO-091",
+                "MONOREPO-094"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "价格路径为 b 最低价 ≥ a 的 2/3 回撤价，时间路径为 b 交易棒数 > a 且 b 最低收盘价 < a 的 1/2 回撤价，两者取或",
@@ -11212,7 +11999,10 @@
             "title": "正 N 轧空确认空多交替并跟踪失效",
             "description": "价格或时间回调合格后，以正 N 轧空确认二三级 b 低点，统一 V3 图表与交易证据，未突破 a 高点先破 b 则失效。",
             "scope": "Core 交替识别、V3 策略入口与图表状态证据；保留既有突破确认路径。",
-            "dependencies": ["MONOREPO-094", "MONOREPO-096"],
+            "dependencies": [
+                "MONOREPO-094",
+                "MONOREPO-096"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "回调条件保持价格含等于、时间及最低收盘严格比较，新增 N 轧空确认路径",
@@ -11248,7 +12038,10 @@
             "title": "成交节点复制与首次破位分批退出",
             "description": "成交节点右侧复制成交和 K 线信息；V3 首次低价与收盘分别破位减仓，最高价未突破反弹 2/3 后收盘再破低点清仓。",
             "scope": "Web 成交节点及证据；Core V3 执行、部分卖出账本及 CSV 导出。",
-            "dependencies": ["MONOREPO-095", "MONOREPO-097"],
+            "dependencies": [
+                "MONOREPO-095",
+                "MONOREPO-097"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "成交节点复制包含成交原因、数量、剩余持仓、判定锚点与 K 线，支持键盘和窄屏",
@@ -11280,7 +12073,9 @@
             "title": "策略源码变更自动重启图表服务与预计算 Worker",
             "description": "开发环境中监测 Core/API Python 源码变化，稳定保存后重启长驻 API 和 Worker，避免旧进程引擎指纹导致回测失败。",
             "scope": "调整 wavequant-api 的本地开发 Python 启动包装和 Web 当前股票回测的短暂恢复重试；不放宽回测引擎的版本一致性校验或修改生产进程。",
-            "dependencies": ["MONOREPO-098"],
+            "dependencies": [
+                "MONOREPO-098"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "本地长驻 API 与信号/结构 Worker 在策略或 API Python 源码稳定变更后自动重启，快速连续保存只产生一次重启",
@@ -11312,7 +12107,9 @@
             "title": "尾盘 35% / 65% 分档减仓",
             "description": "最低价跌破减 35%，最新价也跌破参照收盘减到原持仓 65%；尾盘当日执行。",
             "scope": "V3 五分钟行情核验、尾盘分档判定与回测成交、来源追踪、Web 时间和复制信息；真实券商通道另行接入。",
-            "dependencies": ["MONOREPO-098"],
+            "dependencies": [
+                "MONOREPO-098"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "14:30 至 15:00 使用当时可见价格判断，等于不算跌破",
@@ -11344,7 +12141,9 @@
             "title": "修复正 N 轧空买点触发",
             "description": "修正讲义折线 N 起点反向影线校验，V3 轧空确认买点不再被收盘盈亏比预筛选隐藏。",
             "scope": "Core N 几何校验、V3 策略配置、回归与策略说明；下一开盘执行风控保留。",
-            "dependencies": ["MONOREPO-097"],
+            "dependencies": [
+                "MONOREPO-097"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "7 月 27 日突破 7 月 22 日颈线形成正 N，8 月 4 日轧空触发 LONG",
@@ -11375,7 +12174,9 @@
             "title": "次开盘含费净盈亏比过滤默认关闭选项",
             "description": "按用户澄清，将次开盘含费净盈亏比不足的执行门槛改为可选，当前股票回测默认不勾选；交替确认规则保持原有实现。",
             "scope": "Core 执行配置、当前股票回测 API、Web 回测选项、幅度比较及缓存隔离。",
-            "dependencies": ["MONOREPO-101"],
+            "dependencies": [
+                "MONOREPO-101"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "默认不勾选且当前股票回测 API 缺省不执行净盈亏比门槛",
@@ -11411,7 +12212,10 @@
             "title": "选股时保持默认 AkShare 行情口径",
             "description": "研究工作台默认使用 AkShare；从 AkShare 股票列表或自选股切换股票时不隐式改为通达信回测，显式回测仍可切换。",
             "scope": "仅调整 wavequant-web 研究工作台选股交互、对应回归与使用说明，不改变行情或回测计算。",
-            "dependencies": ["MONOREPO-093", "MONOREPO-102"],
+            "dependencies": [
+                "MONOREPO-093",
+                "MONOREPO-102"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "首次进入研究工作台默认选择可用的 AkShare 行情",
@@ -11438,7 +12242,10 @@
             "title": "当日分档减仓成交与实际平仓比例",
             "description": "V3 日线当日收盘撮合，35% / 65% 累计目标，卖出前单股持仓中的实际平仓比例。",
             "scope": "Core 分批退出及共享成交记账、V3 配置、Web 节点详情复制和回归。",
-            "dependencies": ["MONOREPO-098", "MONOREPO-101"],
+            "dependencies": [
+                "MONOREPO-098",
+                "MONOREPO-101"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "瑞凌 05-15 对比 05-09 双破位，当日卖出；仅低点破位目标 35%，双破位 65%",
@@ -11470,7 +12277,10 @@
             "title": "V3 正 N 入场要求先确认交替及合格突破棒",
             "description": "阻止尚未确认的空多交替使用同一正 N 入场；突破日成交量须严格超过前一交易日，阳线实体须足够大。",
             "scope": "Core V3 正 N 候选门槛、交替时序、版本，Web 交替提示与回归；不改变原始 N 几何和旧策略。",
-            "dependencies": ["MONOREPO-097", "MONOREPO-104"],
+            "dependencies": [
+                "MONOREPO-097",
+                "MONOREPO-104"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "确认交替的正 N 只能确认交替，不能反向获得当日新许可；后续新正 N 才可入场",
@@ -11508,7 +12318,9 @@
             "title": "主控 N 二吐后叠箱与堆箱持续推演",
             "description": "正 N 确认轧空且满足二吐后，持续推演叠箱与回调再攻击的堆箱等浪目标。",
             "scope": "Core V3 转浪观察、入场目标续接、配置版本、审计和策略说明；保留原持仓退出规则。",
-            "dependencies": ["MONOREPO-105"],
+            "dependencies": [
+                "MONOREPO-105"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "二吐完成并守住轧空低后观察转浪；不回续涨为叠箱，回调守低再攻击为堆箱",
@@ -11541,7 +12353,9 @@
             "title": "三级三分回撤线停在首次跌破 K 线",
             "description": "三级趋势线 1/3 与 2/3 回撤参考线分别在后续最低价首次严格跌破各自价格的 K 线终止，不继续延长。",
             "scope": "仅 Web 三级回撤辅助线数据生成、图表回归与说明；不改服务端结构或交易策略。",
-            "dependencies": ["MONOREPO-091"],
+            "dependencies": [
+                "MONOREPO-091"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "1/3 和 2/3 分别停在各自首次最低价严格跌破的 K 线，触线不截断、后续反弹不恢复延伸",
@@ -11573,7 +12387,9 @@
             "title": "原 N 字点击展示五顶十满递推目标线",
             "description": "按用户明确的叠箱/堆箱公式生成五顶，五顶满足后放大至十满，并关联原 N 字详情与参考线。",
             "scope": "Core 命名目标与图表契约、Web 日期门控/价格轴/说明、真实瑞凌验证；原最近入场目标保持兼容。",
-            "dependencies": ["MONOREPO-106"],
+            "dependencies": [
+                "MONOREPO-106"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "叠箱五顶=X+5H，堆箱五顶=B+3H；五顶满足后按起涨点至五顶段实际高点放大十满",
@@ -11605,7 +12421,10 @@
             "title": "二吐后守住轧空低的堆箱放量跳空买点",
             "description": "二吐完成后的 A/B 结构独立保留，合格原 N 守住轧空低后以放量跳空确认 C 浪入场和等浪目标。",
             "scope": "Core V3 全局转浪入场、证据及回归；不硬编码股票日期。",
-            "dependencies": ["MONOREPO-155", "MONOREPO-156"],
+            "dependencies": [
+                "MONOREPO-155",
+                "MONOREPO-156"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "二吐后回调守住原轧空低，放量跳空阳线触发 C 浪候选，不要求回到原突破 K 线内",
@@ -11642,7 +12461,9 @@
             "title": "大C浪按整段A浪推演1.618与2.618目标",
             "description": "明确完成二吐的整段A、回调B及后续大C的关系；等浪为中间观察位，追加相对A幅度的扩展目标，避免混用原N小a/c。",
             "scope": "Core V3转浪目标证据、图表参考位、Web详情复制及说明；保留既有入场与退出门槛。",
-            "dependencies": ["MONOREPO-157"],
+            "dependencies": [
+                "MONOREPO-157"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "扩展目标为B低+1.618*(A高-A起点)、B低+2.618*(A高-A起点)",
@@ -11674,7 +12495,9 @@
             "title": "二吐后堆箱盘中突破或放量买入",
             "description": "完成A/B旧抵抗解除；全局V3放量统一超过昨日，C浪跳空突破回调折线高点或累计量超过昨日可盘中触发。",
             "scope": "Core V3全部方案转浪、量能、同源分钟成交与日线回退；Web证据和全局说明，不硬编码股票日期。",
-            "dependencies": ["MONOREPO-158"],
+            "dependencies": [
+                "MONOREPO-158"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "世联行2020-06-01原N、07-03二吐、07-17 B低、07-20放量跳空形成C买点并成交",
@@ -11715,7 +12538,9 @@
             "title": "目标阶段放量高开相对回落减仓",
             "description": "修复二吐当日阴线不足5%但回落占振幅过半漏减仓。",
             "scope": "Core全局目标退出，不硬编码股票日期。",
-            "dependencies": ["MONOREPO-159"],
+            "dependencies": [
+                "MONOREPO-159"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "目标阶段放量跳空高开振幅至少8%，阴线实体达到振幅一半亦累计减仓80%",
@@ -11741,7 +12566,9 @@
             "title": "守低转浪放量阳线突破买入",
             "description": "C浪新增非跳空放量实体突破路径，盘中确认及当日B低。",
             "scope": "Core全局V3及Web证据",
-            "dependencies": ["MONOREPO-160"],
+            "dependencies": [
+                "MONOREPO-160"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "世联行2026-09-16非跳空买入，次日不重复",
@@ -11772,7 +12599,9 @@
             "title": "一饱普通A浪后C反弹入场",
             "description": "补齐外包阳线正N及一饱未二吐普通A回调后的阳线折线突破。",
             "scope": "Core全局V3、分钟回放及Web证据",
-            "dependencies": ["MONOREPO-161"],
+            "dependencies": [
+                "MONOREPO-161"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "桂林05-28正N、06-08 A高、06-29 B低、07-06买点",
@@ -11798,7 +12627,9 @@
             "title": "分步N防守与跨局部N的ABC买点",
             "description": "V54按首次虚实试探至完成日及前收冻结防守，补齐母K正N与新N抵抗突破重确认。",
             "scope": "Core全局V3、Web证据与回归",
-            "dependencies": ["MONOREPO-162"],
+            "dependencies": [
+                "MONOREPO-162"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "真实行情定位07-03 N、07-14轧空、08-03 A、08-31 B及09-17启动",
@@ -11824,7 +12655,9 @@
             "title": "放量收跌当日减仓与次日走弱清仓",
             "description": "全局 V3 放量收跌默认按原持仓累计 70% 于当日收盘模拟减仓；次一交易日低开收阴，或收阴且收盘跌破警示日低点，均于当日收盘清余仓。保留小实体正 N 例外和原回踩低点清仓规则。",
             "scope": "Core 全局退出策略、Web 说明与回归",
-            "dependencies": ["MONOREPO-162"],
+            "dependencies": [
+                "MONOREPO-162"
+            ],
             "status": "blocked",
             "acceptanceCriteria": [
                 "国芳集团 2020-05-13 给定行情触发当日累计 70% 减仓；05-14 虽高开但收阴并收盘跌破警示日低点，当日清空余仓，05-20 不再退出同笔持仓",
@@ -11919,7 +12752,9 @@
             "title": "先锋新材2020年C浪测幅与图表目标",
             "description": "讲义折线补足早期正N图表观察，A浪正N起点低收双破才撤销B段测幅，自动从B日期画出C浪目标。",
             "scope": "Web图表测幅观察、目标线及定向回归",
-            "dependencies": ["MONOREPO-215"],
+            "dependencies": [
+                "MONOREPO-215"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "2020-02-04正N起点、03-02 A高、04-28 B低给出4.0508与4.62元两档观察位",
@@ -11954,7 +12789,9 @@
             "title": "定位保留图表缩放并简化回撤文案",
             "description": "按用户要求去掉已清仓显示字样，所有日期、成交、持仓区间和ABC定位只移动视窗，保留当前K线缩放。",
             "scope": "Web回撤文案、自选股文案、K线定位和定向回归",
-            "dependencies": ["MONOREPO-232"],
+            "dependencies": [
+                "MONOREPO-232"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "最大回撤卡片、详情日期、自选股、对比表格与持仓说明不再显示已清仓字样",
@@ -11982,7 +12819,9 @@
             "title": "K线定位后的光圈提示",
             "description": "定位完成后在目标K线复用已有点击光圈，方便用户识别定位位置，保留当前缩放比例。",
             "scope": "Web K线定位反馈与动画定向回归",
-            "dependencies": ["MONOREPO-234"],
+            "dependencies": [
+                "MONOREPO-234"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "普通日期、成交、持仓区间与ABC定位成功后在目标K线上显示短暂光圈",
@@ -12035,7 +12874,9 @@
             "title": "倒N创昨低新低当日观望",
             "description": "修复先锋2026-01-26跌破昨低与已知倒N颈线后仍买入的问题，全局V3在当日阻止所有新买入和加仓。",
             "scope": "Core全局入场门禁、因果审计、策略版本及Web原因说明",
-            "dependencies": ["MONOREPO-237"],
+            "dependencies": [
+                "MONOREPO-237"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "早于当日的H-L-较低H锚点当日已知，首次跌破颈线低点且创昨低新低时观望",
@@ -12068,7 +12909,9 @@
             "title": "C浪满足等浪后显示1.618目标",
             "description": "C浪首次满足1倍A浪测幅后按同一A/B锚点追加1.618目标，目标线从达标日期开始显示，支持自动ABC及交易标记。",
             "scope": "Web测幅观察、买点和成交目标、目标线与历史回放",
-            "dependencies": ["MONOREPO-232"],
+            "dependencies": [
+                "MONOREPO-232"
+            ],
             "status": "done",
             "acceptanceCriteria": [
                 "达到1倍后计算B低加1.618乘A高减A起点，保留已有0.618和1倍目标",
@@ -12100,7 +12943,9 @@
             "name": "level-first-staged-trend-pipeline",
             "title": "按完整层级顺序计算三级趋势",
             "status": "done",
-            "dependencies": ["MONOREPO-315"],
+            "dependencies": [
+                "MONOREPO-315"
+            ],
             "description": "每只股票先完整计算折线高低点，再依次完整计算一级、二级、三级高低点，统一入口与历史回放保持因果边界。",
             "scope": "Core趋势阶段编排、多路径与历史回放入口、缓存隔离、详细注释及定向回归。",
             "acceptanceCriteria": [
@@ -12158,7 +13003,9 @@
             "name": "trend-direction-evidence-order",
             "title": "修复高低点齐备后的趋势确认延迟",
             "status": "done",
-            "dependencies": ["MONOREPO-317"],
+            "dependencies": [
+                "MONOREPO-317"
+            ],
             "description": "统一趋势函数按两类已确认高低点共同严格升降判断方向，消除额外先后顺序；核对襄阳1997两段连续几何。",
             "scope": "Core统一趋势判定、因果缓存版本、详细注释与真实短前缀回归。",
             "acceptanceCriteria": [
@@ -12221,7 +13068,9 @@
             "name": "trend-prefix-confirmation-parsing",
             "title": "复用趋势资格静态解析降低长历史开销",
             "status": "done",
-            "dependencies": ["MONOREPO-318"],
+            "dependencies": [
+                "MONOREPO-318"
+            ],
             "description": "同一路径发布只解析一次源高低点静态值，按每个真实行情前缀重建可知状态，减少完整历史图表重复解析。",
             "scope": "Core确认上下文、策略资格发布器、因果差分回归和完整TDX只读几何/自选刷新证据。",
             "acceptanceCriteria": [
@@ -12279,7 +13128,9 @@
             "name": "hierarchical-trend-wave-continuation",
             "title": "修复趋势整波身份与跨级递归重叠",
             "status": "done",
-            "dependencies": ["MONOREPO-320"],
+            "dependencies": [
+                "MONOREPO-320"
+            ],
             "description": "公共判断区分普通方向事实和本级整波身份；完成的直接下级组合波按共同高低定义取得本级身份，单条下级波只有严格突破已知本级键才可升格。同向升级保留整波起点，开放端点不可递归，几何/结束/策略资格三种时钟独立。",
             "scope": "Core公共趋势判定、升级归并、递归来源与缓存版本，详细中文注释、真实重叠审计与定向回归。",
             "acceptanceCriteria": [
@@ -12377,7 +13228,9 @@
             "name": "copy-current-pointer-candle-after-editor-focus",
             "title": "修复残留焦点阻断当前K线快捷键复制",
             "status": "done",
-            "dependencies": ["MONOREPO-316"],
+            "dependencies": [
+                "MONOREPO-316"
+            ],
             "description": "按当前鼠标所在图表或提示卡片复制K线；外部编辑器无选区的残留焦点不阻断快捷键，复制卡片后鼠标回图表恢复当前日期，真实文本选择仍保持原生复制。",
             "scope": "Web K线剪贴板范围判断、提示卡片与图表焦点转交、真实事件定向回归及验证记录。",
             "acceptanceCriteria": [
@@ -12429,7 +13282,9 @@
             "name": "copy-rendered-candle-during-background-backtest",
             "title": "统一K线复制资格与搜索选区意图",
             "status": "done",
-            "dependencies": ["MONOREPO-322"],
+            "dependencies": [
+                "MONOREPO-322"
+            ],
             "description": "修复用户复测快捷键仍无效：搜索框自动全选遗留及同股后台回测/失败不能阻断当前可见K线，按钮与快捷键共用渲染资格。",
             "scope": "Web当前渲染K线复制资格、编辑器残留选区意图、兼容剪贴板保护及真实应用事件定向回归。",
             "acceptanceCriteria": [
@@ -12476,7 +13331,9 @@
             "name": "complete-trend-wave-between-local-reversals",
             "title": "修复1999区间公共趋势缺线",
             "status": "done",
-            "dependencies": ["MONOREPO-321"],
+            "dependencies": [
+                "MONOREPO-321"
+            ],
             "description": "定位襄阳轴承1999年2月至4月一级趋势缺失，并修复所有级别共用趋势状态的普遍遗漏。",
             "scope": "统一趋势判定、整波端点/来源身份、缓存版本及历史/镜像/因果回归。",
             "acceptanceCriteria": [
@@ -12543,7 +13400,9 @@
             "name": "bounded-outside-doji-trend-continuity",
             "title": "修复有界外包十字星切断趋势链",
             "status": "done",
-            "dependencies": ["MONOREPO-324"],
+            "dependencies": [
+                "MONOREPO-324"
+            ],
             "description": "先复现襄阳轴承1999年4月5日至22日一级缺线，纠正将有已确认对向边界的外包十字星日内顺序未知误当整条来源断路的问题。",
             "scope": "Core折线单极值延伸、三缓存隔离、合同及真实/镜像/断路/前缀回归；不改六趋势定义，不针对股票日期补线。",
             "acceptanceCriteria": [
@@ -12625,7 +13484,9 @@
             "name": "global-doji-trend-continuity",
             "title": "基础折线外包十字星连续归并",
             "status": "done",
-            "dependencies": ["MONOREPO-327"],
+            "dependencies": [
+                "MONOREPO-327"
+            ],
             "description": "襄阳轴承两个区间缺一级线，根因是基础折线将已有来向的外包十字星对向越锚错误提升为整条路径失效；用户明确一级读基础折线、二级读一级、三级读二级。",
             "scope": "仅修复基础折线包含归并，已有confirmed/teaching对向点及developing尾时单侧延伸，等值保留原坐标与知识日；三级共用原纯折线判定，不枚举K线顺序或引入共识协议。保留未知方向与seed拒绝，不按股票日期硬补线。",
             "acceptanceCriteria": [

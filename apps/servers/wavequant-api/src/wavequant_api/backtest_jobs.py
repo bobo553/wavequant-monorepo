@@ -53,6 +53,7 @@ class BacktestJob:
     completed_at: float | None = None
     progress_percent: int = 0
     progress_stage: str = "准备回测"
+    timing_summary: str = ""
     pipeline: dict[str, object] | None = None
     preview_revision: int = 0
     preview: dict[str, object] | None = None
@@ -336,7 +337,10 @@ class BacktestJobs:
             job = self._jobs.get(job_id)
             if job is not None and not job.done.is_set() and percent >= job.progress_percent:
                 job.progress_percent = percent
-                job.progress_stage = stage
+                description, marker, timing = stage.partition(' · 累计耗时：')
+                if marker:
+                    job.timing_summary = marker + timing
+                job.progress_stage = description + job.timing_summary
 
     def progress(self, job: BacktestJob) -> dict[str, object]:
         with self._lock:
@@ -359,7 +363,8 @@ class BacktestJobs:
                 job.preview_revision = revision
                 job.preview = preview
                 job.progress_stage = (f'同日联动：折线 → 一级 → 二级 → 三级 → B/S及账户 · '
-                    f'已处理{preview["processed"]}/{preview["total"]}个交易日 · 截至{preview["asof"]}')
+                    f'已处理{preview["processed"]}/{preview["total"]}个交易日 · 截至{preview["asof"]}'
+                    f'{job.timing_summary}')
 
     def preview(self, job: BacktestJob, after: int) -> dict[str, object]:
         with self._lock:

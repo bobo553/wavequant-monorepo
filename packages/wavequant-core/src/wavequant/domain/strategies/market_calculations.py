@@ -147,7 +147,8 @@ class MarketCalculations:
             raise ValueError('lifecycle calculation requires complete history starting at market index 0')
 
     def _advance_lifecycle(self, level: int, row: Mapping[str, object], index: int, *,
-                           frame: ChartDrawingFrame | None = None) -> list[dict[str, object]]:
+                           frame: ChartDrawingFrame | None = None,
+                           source_events: Sequence[Mapping[str, object]] = ()) -> list[dict[str, object]]:
         """趋势入口内部在当天更新六态；不重新遍历已处理行情。"""
         self._require_full_history()
         lifecycle = self._lifecycles.get(level)
@@ -156,7 +157,7 @@ class MarketCalculations:
         events = lifecycle.advance((row,), self._bars, index, self._dates,
             polyline=frame.raw if frame is not None else (),
             polyline_path=f'lecture-{frame.epoch}' if frame is not None else None,
-            confirmation_policy=self.confirmation_policy)
+            confirmation_policy=self.confirmation_policy, source_events=source_events)
         self._daily_events[level] = events
         if level in self._eligibility:
             for event in events:
@@ -193,7 +194,8 @@ class MarketCalculations:
     def _save_lifecycle_checkpoint(self, index: int) -> None:
         if self._checkpoints is None:
             return
-        snapshots = [self._lifecycles[level].checkpoint() for level in (1, 2, 3)]
+        snapshots = [self._lifecycles[level].checkpoint() for level in (0, 1, 2, 3)
+                     if level in self._lifecycles]
         version = snapshots[0][0]
         rows = tuple(row for snapshot in snapshots for row in cast(tuple[object, ...], snapshot[2]))
         self._checkpoints.write_change(index, (version, index, rows))
@@ -202,11 +204,17 @@ class MarketCalculations:
         self._require_full_history()
         if level in self._lifecycle_events:
             return
+        if level == 1 and 0 not in self._lifecycle_events:
+            self._calculate_lifecycle(0)
+        source_by_day: dict[int, list[Mapping[str, object]]] = {}
+        for event in self._lifecycle_events.get(level - 1, ()):
+            source_by_day.setdefault(cast(int, event['bar_index']), []).append(event)
         rows = self._lifecycle_rows(level)
         frames = self._frames.iter_rows(shared=True)
         try:
             for (index, row), frame in zip(rows, frames, strict=True):
-                self._advance_lifecycle(level, row, index, frame=frame)
+                self._advance_lifecycle(level, row, index, frame=frame,
+                                        source_events=source_by_day.get(index, ()))
         finally:
             rows.close()
             frames.close()

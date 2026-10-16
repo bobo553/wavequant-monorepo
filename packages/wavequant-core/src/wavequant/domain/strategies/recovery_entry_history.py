@@ -1,4 +1,4 @@
-"""Expose confirmed recovery alternations to the existing entry selectors."""
+"""Expose shared lifecycle alternation proofs to the existing entry selectors."""
 
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
@@ -35,13 +35,10 @@ def merge_recovery_entry_history(
                 continue
             if event.get('state') == '转多确认' and key in active:
                 active[key] = replace(active[key], maturity_index=now)
-            body_gap = event.get('confirmation_rule') == 'body_gap_volume_bullish_breakout_after_defended_low'
-            if event.get('special_bull_recovery') is not True and not body_gap:
-                continue
             if event.get('state') != '空多交替' or changed is not True:
                 continue
             proof = event.get('confirmation_evidence')
-            if body_gap and event.get('special_bull_recovery') is not True and isinstance(proof, Mapping):
+            if event.get('special_bull_recovery') is not True and isinstance(proof, Mapping):
                 event = dict(event, recovery_key_index=proof.get('key_index'), recovery_key_price=proof.get('key_price'))
             indices = ('origin_index', 'recovery_key_index', 'cycle_started_index', 'flip_index', 'counter_index')
             prices = ('origin_price', 'recovery_key_price', 'breakout_level', 'counter_price')

@@ -96,7 +96,9 @@ def daily_signals(
                     f'累计耗时：折线趋势 {market_seconds:.1f}秒，'
                     f'交易结构确认 {state.hierarchy_seconds:.1f}秒，'
                     f'买卖规则 {max(0.0, decision_seconds - state.hierarchy_seconds):.1f}秒，'
-                    f'账户/分钟/快照 {account_seconds:.1f}秒')
+                    f'账户/分钟/快照 {account_seconds:.1f}秒；'
+                    f'最近一日 {monotonic() - last_finished:.3f}秒，'
+                    f'平均每交易日 {(market_seconds + decision_seconds + account_seconds) / (index + 1):.3f}秒')
             if progress is not None:
                 progress(percent)
             last_percent = percent

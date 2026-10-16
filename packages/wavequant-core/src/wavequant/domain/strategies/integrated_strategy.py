@@ -25,6 +25,7 @@ from ..market_state.candle_strength import strong_bullish_candle
 from ..market_structure.trend_structure import observe_structure
 from ..market_structure.trend_market_index import _MarketRangeIndex
 from .bull_eligibility import bull_permission_history
+from ..market_structure.source_bear_exit import SOURCE_BEAR_EXIT
 from .hierarchical_entry import EntryContext
 from .buy_intervals import confirmed_buy_interval_days
 from .backtest_history_reuse import BacktestHistoryReuse
@@ -356,7 +357,8 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     confirmation_gap_lower=interval.confirmation_gap_lower,
                     confirmation_gap_upper=interval.confirmation_gap_upper,
                     confirmation_gap_kind=interval.confirmation_gap_kind,
-                    display_end_inclusive=interval.end_reason in ('reversal_low_broken', 'confirmation_gap_filled'))
+                    display_end_inclusive=interval.end_reason in (
+                        'reversal_low_broken', 'confirmation_gap_filled', SOURCE_BEAR_EXIT))
     hierarchical = config.entry_policy == 'hierarchical_two_buy_points'
     whole_wave = config.buy_point_definition == 'whole_flip_wave_v3'
     if config.entry_policy == 'transitioned_squeeze':

@@ -81,13 +81,17 @@ def test_defended_n_consolidation_gap_reuses_original_gap_and_volume_rules():
 
 
 @pytest.mark.parametrize('level', [1, 2, 3])
-def test_confirming_n_context_is_available_only_on_confirmation_day_and_closes_with_source(level):
+@pytest.mark.parametrize('special', [False, True])
+def test_confirming_n_context_is_available_only_on_confirmation_day_and_closes_with_source(level, special):
     bars, _, _ = sample()
     event = dict(event='trend_lifecycle_state', bar_index=9, available_index=9, trend_level=level,
-        source_path='path', special_bull_recovery=True, flip_confirmed=True, state='空多交替', direction='up',
+        source_path='path', special_bull_recovery=special, flip_confirmed=True, state='空多交替', direction='up',
         cycle_started_index=3, origin_index=0, origin_price=4, recovery_key_index=1, recovery_key_price=10,
         flip_index=2, flip_known_index=3, breakout_level=16, counter_index=5, counter_ordinal=0,
-        counter_price=7, alternation_index=9, confirmation_evidence=dict(attack=8))
+        counter_price=7, alternation_index=9, confirmation_rule='positive_n_and_squeeze_after_qualified_b',
+        confirmation_evidence=dict(attack=8, key_index=1, key_price=10))
+    if not special:
+        event.update(recovery_key_index=None, recovery_key_price=None)
     invalidated = dict(event='trend_lifecycle_invalidated', bar_index=10, trend_level=level,
                        source_path='path', reason='source_evidence_revised')
     history = merge_recovery_entry_history(bars, {}, [event, invalidated])

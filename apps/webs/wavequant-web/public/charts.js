@@ -35,7 +35,7 @@ import {
 } from "./combined-a-wave.js";
 import { FocusFlashOverlay } from "./focus-flash-overlay.js";
 import { num } from "./labels.js";
-import { LectureOverlay, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
+import { LectureOverlay, bullishObservationLabels, lectureConnections, secondaryConnections } from "./lecture-overlay.js";
 import { drawdownCandleRange } from "./max-drawdown.js";
 import { NStructureOverlay } from "./n-structure-overlay.js";
 import {
@@ -362,6 +362,11 @@ export class PriceChart {
             shortcut.addEventListener("click", () => onCopyCandle(bar, shortcut));
             heading.append(title, shortcut);
             this.tooltip.append(heading);
+            for (const label of bullishObservationLabels(this.theory, bar.time)) {
+                const observation = document.createElement("div");
+                observation.textContent = label;
+                this.tooltip.append(observation);
+            }
             if (this.eligibilityBoundaryOverlay.contains(barIndex)) {
                 const confirmation = document.createElement("div");
                 confirmation.textContent = `${["", "一级", "二级", "三级"][this.eligibilityBoundaryOverlay.level]}${this.eligibilityBoundaryOverlay.labelAt(barIndex)}：${bar.time}（淡蓝背景；结束日停止新增买入，已有持仓继续按退出规则处理）`;

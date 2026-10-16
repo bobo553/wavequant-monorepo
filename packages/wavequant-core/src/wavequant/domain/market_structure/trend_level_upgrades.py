@@ -15,7 +15,7 @@ from .trend_levels import (
 )
 
 from .trend_structure import StructuralTrend, classify_trend_prices
-from .trend_body_reversal import BODY_REVERSAL_RULE, body_reference, point_close, rejects_wick_extension
+from .trend_body_reversal import BODY_REVERSAL_RULE, body_reference, rejects_wick_extension
 
 __all__ = ['promote_trend_key_breaks']
 
@@ -293,7 +293,7 @@ class _TrendUpgradeState:
             origins_by_kind[attack.kind].update(attack_position, attack)
             recent[attack.kind].append(attack)
             recent[attack.kind] = recent[attack.kind][-2:]
-            # 已结束的下级翻空之后，最高价创新高但收盘未越过原高点，不能
+            # 已结束的下级翻空之后，最高价创新高但收盘未超过原高点当日收盘，不能
             # 覆盖该高点。随后再破翻空低点才确认组合下降波，保留真实四点。
             if source_level > 0 and owned_direction == 'up' and whole_extreme is not None and attack.kind == 'H':
                 counter = recent['L'][-1] if recent['L'] else None
@@ -307,22 +307,21 @@ class _TrendUpgradeState:
                     body_rejection = None
                 elif attack.kind == 'H':
                     if attack.value > anchor.value:
-                        closing = point_close(attack.source)
-                        if closing is None or closing > anchor.value:
+                        if not rejects_wick_extension(anchor.source, counter.source, attack.source):
                             body_rejection = None
                         else:
                             body_rejection = anchor, counter, attack
                             continue
                 elif _order(attack) > _order(rebound) and attack.value < counter.value:
-                    proof = dict(available_at=prefix_known, anchor=body_reference(anchor.source),
-                                 counter=body_reference(counter.source), rebound=body_reference(rebound.source),
-                                 endpoint=body_reference(attack.source))
+                    reversal_proof = dict(available_at=prefix_known, anchor=body_reference(anchor.source),
+                                          counter=body_reference(counter.source), rebound=body_reference(rebound.source),
+                                          endpoint=body_reference(attack.source))
                     for actual, endpoint in ((anchor, False), (attack, True)):
                         raw = _candidate_from_source(actual)
                         raw.update(trend_level=trend_level, source_level=source_level, available_at=prefix_known,
                             confirmation_rule=BODY_REVERSAL_RULE, confirmed_by=_reference(attack),
                             wave_direction_before='down' if endpoint else 'up', wave_direction_after='down',
-                            body_reversal_evidence=deepcopy(proof))
+                            body_reversal_evidence=deepcopy(reversal_proof))
                         if source_level == 0:
                             raw.update(source_turn_position=actual.position, confirmed_on_turn=attack.position)
                         else:
@@ -335,7 +334,7 @@ class _TrendUpgradeState:
                     continue
                 if body_rejection is not None:
                     # 交替尚未破位时，不能再让包含该影线的普通四点比较
-                    # 生成另一份“最高价极值”结束证明；只等破低或收盘突破原高。
+                    # 生成另一份“最高价极值”结束证明；只等破低或新高的收盘超过原收盘。
                     continue
             classification = classify_trend_prices([point.value for point in recent['H']],
                                                    [point.value for point in recent['L']], trend_level=trend_level)

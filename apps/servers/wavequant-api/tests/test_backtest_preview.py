@@ -64,3 +64,128 @@ def test_preview_requires_account_alignment_and_preserves_real_bs():
     assert published[0]['signals'][0]['side'] == 'LONG'
     result['orders'].clear()
     assert published[0]['orders'], 'later mutation cannot erase an already published fill'
+
+
+def test_preview_publishes_same_own_level_observation_policy_as_completed_chart():
+    from copy import deepcopy
+
+    from wavequant.domain.market_structure.trend_display import publish_trend_display
+
+    bars = tuple(Bar(datetime(2026, 1, 1) + timedelta(days=i), 'TEST', 10, 12, 9, 11, 100)
+                 for i in range(4))
+    points = [dict(index=i, ordinal=0, time=bars[i].timestamp.date().isoformat(),
+                   available_at=bars[i].timestamp.date().isoformat(), kind=kind, value=price)
+              for i, (kind, price) in enumerate([('H', 12), ('L', 9), ('H', 11), ('L', 10)])]
+    row = dict(scope='structural_trend_points_with_independent_strategy_permissions',
+               strokes=[dict(id='path', source_path='path', kind='secondary', points=points)],
+               developing_strokes=[])
+    before = deepcopy(row)
+    day = MarketDay(ChartDrawingFrame(3, 0, [], dict(strokes=[])),
+                    ({'strokes': []}, row, {'strokes': []}), (), (False, False, False))
+    result = dict(signals=[], orders=[], trades=[], audit=[],
+                  equity=[dict(timestamp=bar.timestamp.isoformat(), equity=100) for bar in bars])
+    published = []
+    publisher = BacktestPreviewPublisher(lambda _, value: published.append(value))
+    publisher.observe(bars, day, result)
+    preview = published[-1]['theory']['secondary_trends']
+    completed = publish_trend_display(row, result['audit'], level=2, asof_index=3)
+    assert preview['strokes'] == completed['strokes']
+    assert preview['strokes'] == before['strokes'], 'a missing flip must not cut the secondary path'
+    assert [point['index'] for point in preview['strokes'][0]['points']] == [0, 1, 2, 3]
+    assert not preview['strokes'][0].get('prevent_display_bridge')
+    assert preview['observation_strokes'] == completed['observation_strokes']
+    assert preview['observation_strokes'][0]['state'] == '多头疑虑'
+    assert [point['index'] for point in preview['observation_strokes'][0]['points']] == [1, 2]
+    assert row == before
+
+    result['audit'] = [dict(event='trend_lifecycle_state', timestamp=bars[2].timestamp.isoformat(),
+        bar_index=2, available_index=2, trend_level=2, source_path='path', direction='up',
+        source_event='翻空为多', state='空翻多', origin_index=1, flip_index=2,
+        flip_known_index=2, flip_confirmed=True)]
+    publisher.observe(bars, day, result)
+    updated = published[-1]['theory']['secondary_trends']
+    assert updated['observation_strokes'] == []
+    assert updated['strokes'] == preview['strokes'], 'flip confirmation changes state, not connectivity'
+    assert [point['index'] for point in updated['strokes'][0]['points']] == [0, 1, 2, 3]
+    assert preview['observation_strokes'], 'a later confirmation must not rewrite an older snapshot'
+
+
+def test_preview_preserves_secondary_continuity_without_authorizing_tertiary_promotion():
+    from copy import deepcopy
+
+    bars = tuple(Bar(datetime(2026, 1, 1) + timedelta(days=i), 'TEST', 10, 12, 9, 11, 100)
+                 for i in range(4))
+    points = [dict(index=i, ordinal=0, time=bars[i].timestamp.date().isoformat(),
+                   available_at=bars[i].timestamp.date().isoformat(), kind=kind, value=price)
+              for i, (kind, price) in enumerate([('H', 12), ('L', 9), ('H', 11), ('L', 10)])]
+    scope = 'structural_trend_points_with_independent_strategy_permissions'
+    secondary = dict(scope=scope, strokes=[dict(id='secondary-path', source_path='first-path',
+                                              points=points)], developing_strokes=[])
+    tertiary = dict(scope=scope, strokes=[dict(id='tertiary-path', source_path='secondary-path',
+                                             points=deepcopy(points[1:3]))], developing_strokes=[])
+    points[2]['lifecycle_context'] = dict(direction='up', key=dict(points[0]))
+    day = MarketDay(ChartDrawingFrame(3, 0, [], dict(strokes=[])),
+                    ({'strokes': []}, secondary, tertiary), (), (False, False, False))
+    own_flip = dict(event='trend_lifecycle_state', timestamp=bars[2].timestamp.isoformat(),
+                    bar_index=2, available_index=2, trend_level=3, source_path='tertiary-path',
+                    direction='up', source_event='翻空为多', state='空翻多', origin_index=1,
+                    flip_index=2, flip_known_index=2, flip_confirmed=True)
+    result = dict(signals=[], orders=[], trades=[], audit=[own_flip],
+                  equity=[dict(timestamp=bar.timestamp.isoformat(), equity=100) for bar in bars])
+    published = []
+    publisher = BacktestPreviewPublisher(lambda _, value: published.append(value))
+
+    publisher.observe(bars, day, result)
+    before = published[-1]['theory']
+    assert before['secondary_trends']['strokes'] == secondary['strokes']
+    assert [point['index'] for point in before['tertiary_trends']['strokes'][0]['points']] == [1]
+    assert before['tertiary_trends']['observation_strokes'][0]['reason'] == 'source_level_bull_flip_unconfirmed'
+
+    result['audit'].append(dict(own_flip, trend_level=2, source_path='secondary-path',
+                               special_bull_recovery=True, source_event='短暂跌破后同级再次空翻多'))
+    publisher.observe(bars, day, result)
+    after = published[-1]['theory']
+    assert after['secondary_trends']['strokes'] == before['secondary_trends']['strokes']
+    assert after['secondary_trends']['observation_strokes'] == []
+    assert [point['index'] for point in after['tertiary_trends']['strokes'][0]['points']] == [1, 2]
+    assert [point['index'] for point in before['tertiary_trends']['strokes'][0]['points']] == [1]
+
+
+def test_preview_and_completed_projection_keep_third_level_tail_connected_during_advance():
+    from copy import deepcopy
+
+    from wavequant.domain.market_structure.trend_display import publish_trend_display
+
+    bars = tuple(Bar(datetime(2026, 1, 1) + timedelta(days=i), 'TEST', 10, 12, 9, 11, 100)
+                 for i in range(5))
+    points = [dict(index=i, ordinal=0, time=bars[i].timestamp.date().isoformat(),
+                   available_at=bars[i].timestamp.date().isoformat(), kind=kind, value=price)
+              for i, (kind, price) in enumerate([('H', 12), ('L', 9), ('H', 11), ('L', 8), ('H', 13)])]
+    scope = 'structural_trend_points_with_independent_strategy_permissions'
+    published = []
+    publisher = BacktestPreviewPublisher(lambda _, value: published.append(value))
+    for index in (3, 4):
+        source_points = deepcopy(points[:index + 1])
+        source_points[2]['lifecycle_context'] = dict(direction='up', key=dict(points[0]))
+        second = dict(scope=scope, strokes=[dict(id='secondary-path', source_path='first-path',
+                                                points=source_points)])
+        third = dict(scope=scope, strokes=[dict(id='tertiary-path', source_path='secondary-path',
+                                               points=deepcopy(points[:index]))],
+                     developing_strokes=[dict(id='third-tail', source_path='secondary-path', display_only=True,
+                                               points=deepcopy(points[index - 1:index + 1]))])
+        result = dict(signals=[], orders=[], trades=[], audit=[],
+                      equity=[dict(timestamp=bar.timestamp.isoformat(), equity=100) for bar in bars[:index + 1]])
+        day = MarketDay(ChartDrawingFrame(index, 0, [], dict(strokes=[])),
+                        ({'strokes': []}, second, third), (), (False, False, False))
+        publisher.observe(bars, day, result)
+        preview = published[-1]['theory']['tertiary_trends']
+        completed = publish_trend_display(third, [], level=3, asof_index=index, source_row=second)
+        assert preview['strokes'] == completed['strokes']
+        assert preview['developing_strokes'] == completed['developing_strokes']
+        assert len(preview['strokes']) == 1
+        assert preview['strokes'][0]['id'] == 'tertiary-path'
+        assert preview['strokes'][0]['points'][-1] == preview['developing_strokes'][0]['points'][0]
+    first_tail = published[0]['theory']['tertiary_trends']['developing_strokes'][0]
+    last_tail = published[-1]['theory']['tertiary_trends']['developing_strokes'][0]
+    assert [point['index'] for point in first_tail['points']] == [0, 3]
+    assert [point['index'] for point in last_tail['points']] == [3, 4]

@@ -54,12 +54,14 @@ class TrendChangeRows(Generic[_Row]):
         self._positions.append(position)
         self._last_position = position
 
-    def iter_changes(self, *, start_position: int = 0) -> Iterator[tuple[int, _Row]]:
+    def iter_changes(self, *, start_position: int = 0,
+                     _borrow_readonly: bool = False) -> Iterator[tuple[int, _Row]]:
         if type(start_position) is not int or not 0 <= start_position <= self.row_count:
             raise ValueError('invalid trend history read position')
         # Each change owns a complete dated state. Seek to the predecessor instead of decoding old proofs.
         start_row = max(0, bisect_right(self._positions, start_position) - 1)
-        reader = self._rows.iter_rows(seal=self.read_limit is None, start_row=start_row)
+        reader = self._rows.iter_rows(seal=self.read_limit is None, start_row=start_row,
+                                      _borrow_readonly=_borrow_readonly)
         try:
             for position, row in reader:
                 if self.read_limit is not None and position >= self.read_limit:
@@ -68,10 +70,13 @@ class TrendChangeRows(Generic[_Row]):
         finally:
             reader.close()
 
-    def iter_rows(self, *, shared: bool = False, start_position: int = 0) -> Iterator[_Row]:
+    def iter_rows(self, *, shared: bool = False, start_position: int = 0,
+                  _reuse_shared: bool = False) -> Iterator[_Row]:
+        if _reuse_shared and not shared:
+            raise ValueError('cross-reader reuse requires readonly shared rows')
         position = start_position
         current: _Row | None = None
-        with_changes = self.iter_changes(start_position=start_position)
+        with_changes = self.iter_changes(start_position=start_position, _borrow_readonly=_reuse_shared)
         try:
             for changed_at, row in with_changes:
                 if current is not None:

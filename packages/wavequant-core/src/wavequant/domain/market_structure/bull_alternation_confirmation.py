@@ -1,4 +1,4 @@
-"""Confirm a defended recovery pullback using the existing alternation rules.
+"""Confirm an ordinary or recovery pullback using the same alternation rules.
 
 This observer produces structural evidence before trading permission exists.
 It never generates an order or promotes a polyline low into a trend vertex.
@@ -99,12 +99,12 @@ def confirm_body_gap_alternation(
     ))
 
 
-def confirm_recovery_alternation(
+def confirm_bull_alternation(
     bars: Sequence[Bar], now: int, *, origin: ConfirmedTurn, high: ConfirmedTurn,
     broken: ConfirmedTurn, points: Sequence[ConfirmedTurn], polyline: Sequence[ConfirmedTurn],
     level: int, path: str, policy: AlternationPolicy = AlternationPolicy(), allow_gap_confirmation: bool = True,
 ) -> AlternationProof | None:
-    """守新低是前提，再复用浅回撤、重突破、N轧空或整理跳空的确认条件。"""
+    """守住已确认翻多起点，再以浅回撤、重突破、N轧空或跳空确认交替。"""
     if not (origin.index < high.index <= now < len(bars)):
         return None
     if any(point.known > now for point in (origin, high, broken, *points, *polyline)):
@@ -130,7 +130,7 @@ def confirm_recovery_alternation(
                     if ratio < 2 / 3 else 'confirmed_higher_pullback_then_confirmed_flip_high_rebreak',
                     trend_source=(counter, rebreak) if ratio >= 2 / 3 and rebreak is not None else (counter,))
 
-    # Only the unfinished special cycle observes these bounded N candidates.
+    # Ordinary and special flips both observe these bounded N candidates.
     # Their vertices come from the current causal polyline, never future trend lows.
     anchor = dict(origin=_reference(origin, bars), high=_reference(high, bars),
                   key=_reference(broken, bars), source_path=path, trend_level=level,
@@ -203,3 +203,7 @@ def confirm_recovery_alternation(
                         else 'positive_n_and_squeeze_after_qualified_b')
                 return AlternationProof(low, rule, tuple(dict.fromkeys((low, a, b, c))), dict(event))
     return None
+
+
+# 保留旧调用名，普通与特殊分支使用同一个确认实现。
+confirm_recovery_alternation = confirm_bull_alternation

@@ -119,7 +119,7 @@ def hierarchical_history(
     last_epoch = None
     last = len(bars) - 1
     # 外包十字星的单向归并改变来源历史，旧越锚断路检查点不可继续递归。
-    cache_version = 'level_first_polyline_owned_completed_source_geometry_and_independent_permissions_v120'
+    cache_version = 'level_first_frozen_bull_origin_v123'
     wants_declines = decline_sink is not None
     wants_structure = structure_sink is not None
     prefix_key = (cache_version, tuple(bars[:-1]), wants_declines, n_target_trend_confirmation_enabled, wants_structure)

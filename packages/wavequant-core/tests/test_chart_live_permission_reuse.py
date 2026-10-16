@@ -8,6 +8,7 @@ from typing import cast
 import pytest
 
 import wavequant.domain.strategies.chart_entry_history as chart_module
+from wavequant.domain.market_structure.trend_staging import TrendStageRows
 from wavequant.domain.market_structure.trend_lines import _TrendPermissionCache, attach_trend_permissions
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.backtest_analysis import BacktestAnalysis, prepare_backtest_analysis
@@ -81,7 +82,15 @@ def test_live_gap_replays_only_unfinished_suffix_and_matches_cold_results(
         permission_cache = current_cache
         owner._strategy_permission_cache = None
         try:
-            cold = _read(current, None, enabled=enabled)
+            original_reader = TrendStageRows.iter_rows
+
+            def fresh_reader(stage: TrendStageRows[object], *, seal: bool = True, start_row: int = 0,
+                             _borrow_readonly: bool = False) -> Iterator[object]:
+                return original_reader(stage, seal=seal, start_row=start_row, _borrow_readonly=False)
+
+            with monkeypatch.context() as fresh:
+                fresh.setattr(TrendStageRows, 'iter_rows', fresh_reader)
+                cold = _read(current, None, enabled=enabled)
         finally:
             owner._strategy_permission_cache = current_cache
         assert _typed(warm) == _typed(cold)

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
     LectureOverlay,
+    bullishObservationLabels,
     connectedTrendStrokes,
     formatPivotPrice,
     lectureConnections,
@@ -11,6 +12,28 @@ import {
     secondaryConnections,
     trendConfirmationPresentation,
 } from "../public/lecture-overlay.js";
+
+test("own-level bullish observations are labelled without bridging their hidden legs", () => {
+    const point = (index, kind, value) => ({ index, ordinal: 0, kind, value,
+        time: `2020-01-0${index}`, available_at: "2020-01-05", state: "confirmed" });
+    const paths = [
+        { id: "left", kind: "secondary", points: [point(1, "H", 12), point(2, "L", 5)] },
+        { id: "right", kind: "secondary", points: [point(4, "H", 7), point(5, "L", 6)] },
+    ];
+    const legacy = secondaryConnections(paths);
+    assert.equal(legacy.length, 1);
+    const published = paths.map((path) => ({ ...path, prevent_display_bridge: true }));
+    assert.deepEqual(secondaryConnections(published), []);
+    assert.equal(connectedTrendStrokes(published, legacy).length, 2);
+    const observation = { state: "多头疑虑", confirmed: false, available_at: "2020-01-05",
+        points: [point(2, "L", 5), point(4, "H", 7)] };
+    const theory = { asof: "2020-01-05", secondary_trends: { observation_strokes: [observation] },
+        tertiary_trends: { observation_strokes: [observation, observation] } };
+    assert.equal(bullishObservationLabels(theory, "2020-01-03").length, 2);
+    assert.deepEqual(bullishObservationLabels(theory, "2020-01-01"), []);
+    assert.deepEqual(bullishObservationLabels(theory, "2020-01-06"), []);
+    assert.deepEqual(bullishObservationLabels({ ...theory, asof: "2020-01-04" }, "2020-01-03"), []);
+});
 
 test("adjacent lecture paths keep a display-only L-H edge across their source boundary", () => {
     const point = (index, time, kind, value) => ({

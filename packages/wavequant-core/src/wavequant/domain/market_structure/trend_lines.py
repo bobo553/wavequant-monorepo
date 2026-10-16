@@ -33,8 +33,8 @@ from .trend_landmarks import (
 from .trend_publication import confirmed_trend_legs, publish_uptrends
 from .trend_structure import _trend_level
 
-STRUCTURAL_LEG_POLICY = 'high_low_point_close_rejection_v115'
-STRUCTURAL_RULE = 'point_first_recursive_close_rejection_v115'
+STRUCTURAL_LEG_POLICY = 'high_low_point_frozen_bull_origin_v118'
+STRUCTURAL_RULE = 'point_first_recursive_frozen_bull_origin_v118'
 _NAMES = {1: '一级', 2: '二级', 3: '三级'}
 _KINDS = {1: 'reversal', 2: 'secondary', 3: 'tertiary'}
 _GEOMETRY_ANNOTATION_FIELDS = (
@@ -1016,7 +1016,7 @@ def prepare_trend_lines(
         stroke: dict[str, object] = dict(id=identifier, source_path=path, source_paths=[path], kind=kind,
             trend_level=trend_level, points=points, input_turn_count=len(source), key_transitions=[],
             confirmation_policy=STRUCTURAL_RULE, leg_confirmation_policy=STRUCTURAL_LEG_POLICY,
-            wave_display_policy='structural_points_independent_strategy_permissions_v115',
+            wave_display_policy='structural_points_independent_strategy_permissions_v118',
             structural_legs=_structural_legs(points), confirmed_legs=[])
         strokes.append(stroke)
         if _closed_paths is not None and cutoff is not None:

@@ -98,3 +98,45 @@ def test_decode_failure_releases_reader_and_keeps_fresh_decoding() -> None:
 def test_payload_cache_rejects_invalid_limits(cache_bytes: object) -> None:
     with pytest.raises(ValueError, match='nonnegative integer'):
         staging.TrendStageRows(_identity, payload_cache_bytes=cast(int, cache_bytes))
+
+
+def test_private_readonly_versions_are_reused_without_changing_public_reads() -> None:
+    decodes = 0
+
+    def decode(value: object) -> object:
+        nonlocal decodes
+        decodes += 1
+        return value
+
+    with staging.TrendStageRows(decode) as stage:
+        stage.write(_row(1))
+        first = list(stage.iter_rows(seal=False, _borrow_readonly=True))[0]
+        again = list(stage.iter_rows(seal=False, _borrow_readonly=True))[0]
+        assert first is again
+        assert decodes == 1
+        public = cast(dict[str, object], list(stage.iter_rows(seal=False))[0])
+        cast(list[object], public['first']).clear()
+        assert first == _row(1)
+        assert list(stage.iter_rows(seal=False))[0] == _row(1)
+        stage.write(_row(2))
+        latest = list(stage.iter_rows(seal=False, start_row=1, _borrow_readonly=True))[0]
+        assert latest == _row(2) and latest is not first
+        assert 0 < stage._readonly_cache.memory_used <= 4 * 1024 * 1024
+        stage._stream.truncate(stage.stored_bytes - 1)
+        with pytest.raises(ValueError, match='incomplete row payload'):
+            list(stage.iter_rows(seal=False, start_row=1, _borrow_readonly=True))
+    assert stage._readonly_cache.memory_used == 0
+
+
+def test_readonly_cache_checks_same_length_payload_revisions() -> None:
+    with staging.TrendStageRows(_identity) as stage:
+        stage.write({'value': 1})
+        first = list(stage.iter_rows(seal=False, _borrow_readonly=True))[0]
+        replacement = staging.dumps({'value': 2}, protocol=staging.HIGHEST_PROTOCOL)
+        assert len(replacement) + staging._HEADER.size == stage.stored_bytes
+        stage._stream.seek(staging._HEADER.size)
+        stage._stream.write(replacement)
+        stage._stream.seek(stage.stored_bytes)
+        second = list(stage.iter_rows(seal=False, _borrow_readonly=True))[0]
+        assert first == {'value': 1}
+        assert second == {'value': 2}

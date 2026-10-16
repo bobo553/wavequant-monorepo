@@ -1,4 +1,4 @@
-"""下级已翻空后的影线新高例外：只用收盘是否越过原最高价判定。"""
+"""下级已翻空后的影线新高例外：收盘不能超过原高点当日收盘。"""
 
 from collections.abc import Mapping, Sequence
 from math import isfinite
@@ -40,31 +40,69 @@ def point_close(point: Mapping[str, object]) -> float | None:
     return closing
 
 
-def rejects_wick_extension(anchor: Mapping[str, object], counter: Mapping[str, object],
-                           rebound: Mapping[str, object]) -> bool:
-    """必须先有该高点的下级严格翻空证明；孤立上影线不能阻止正常延伸。"""
-    if counter.get('kind') != 'L' or cast(float, rebound['value']) <= cast(float, anchor['value']):
+def _same_point(left: Mapping[str, object], right: Mapping[str, object]) -> bool:
+    return all(left.get(field, 0 if field == 'ordinal' else None)
+               == right.get(field, 0 if field == 'ordinal' else None)
+               for field in ('index', 'ordinal', 'kind', 'value', 'time'))
+
+
+def _prior_bear_flip(anchor: Mapping[str, object], counter: Mapping[str, object],
+                     rebound: Mapping[str, object]) -> bool:
+    """同一严格翻空可存于高点闭合证明或低点攻击证明，不依赖归并时的优先项。"""
+    from .trend_levels import _later_moment, _stamp_wave_completion, _validate_completed_source_point
+
+    level = anchor.get('trend_level')
+    if (type(level) is not int or level < 1 or counter.get('trend_level') != level
+            or rebound.get('trend_level') != level):
+        return False
+    paths = [point['source_path'] for point in (anchor, counter, rebound) if 'source_path' in point]
+    if any(type(path) is not str for path in paths) or paths and any(path != paths[0] for path in paths):
         return False
     completion = anchor.get('wave_completion_evidence')
-    if not isinstance(completion, Mapping):
+    proofs = ((completion.get('upgrade_evidence') if isinstance(completion, Mapping) else None, 'origin'),
+              (counter.get('upgrade_evidence'), 'endpoint'))
+    for proof, role in proofs:
+        if not isinstance(proof, Mapping) or proof.get('direction') != 'down' or proof.get('role') != role:
+            continue
+        origin, attack = proof.get('origin'), proof.get('confirmed_by')
+        if (not isinstance(origin, Mapping) or not isinstance(attack, Mapping)
+                or not _same_point(origin, anchor) or not _same_point(attack, counter)):
+            continue
+        known = proof.get('available_at')
+        price_time = rebound.get('index') if type(known) is int else rebound.get('time')
+        if (not (type(known) is int or isinstance(known, str) and known)
+                or not (type(price_time) is int or isinstance(price_time, str) and price_time)):
+            continue
+        # 用共同严格破位校验验证这份事实，包括旧关键位、真实坐标和可知日；
+        # 临时 origin 只用于校验证据，不发布新节点，也不覆盖原有普通闭合证明。
+        closed = dict(origin, available_at=known, trend_level=level, source_level=level - 1,
+            wave_direction_before='up', wave_direction_after='down',
+            confirmation_rule=proof.get('confirmation_rule'), upgrade_evidence=dict(proof, role='origin'))
+        try:
+            if known == price_time or _later_moment(known, price_time) != price_time:
+                continue
+            _stamp_wave_completion(closed, closed=True)
+            if _validate_completed_source_point(closed) is not None:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def rejects_wick_extension(anchor: Mapping[str, object], counter: Mapping[str, object],
+                           rebound: Mapping[str, object]) -> bool:
+    """同一高点已由下级严格翻空，影线创新高而收盘未超过原收盘才保留交替。"""
+    if (anchor.get('kind') != 'H' or counter.get('kind') != 'L' or rebound.get('kind') != 'H'
+            or cast(float, rebound['value']) <= cast(float, anchor['value'])):
         return False
-    proof = completion.get('upgrade_evidence')
-    if (not isinstance(proof, Mapping) or proof.get('direction') != 'down'
-            or proof.get('role') != 'origin'):
-        return False
-    origin, attack = proof.get('origin'), proof.get('confirmed_by')
-    if not isinstance(origin, Mapping) or not isinstance(attack, Mapping):
-        return False
-    fields = ('index', 'ordinal', 'kind', 'value')
-    if not (all(origin.get(field, 0) == anchor.get(field, 0) for field in fields)
-            and all(attack.get(field, 0) == counter.get(field, 0) for field in fields)):
-        return False
-    closing = point_close(rebound)
-    return closing is not None and closing <= cast(float, anchor['value'])
+    closing, anchor_closing = point_close(rebound), point_close(anchor)
+    return (closing is not None and anchor_closing is not None and closing <= anchor_closing
+            and _prior_bear_flip(anchor, counter, rebound))
 
 
 def body_reference(point: Mapping[str, object]) -> dict[str, object]:
     fields = ('index', 'ordinal', 'kind', 'value', 'time', 'available_at', 'label', 'price_body',
               'trend_level', 'source_level', 'state', 'wave_completion_policy', 'wave_identity_state',
-              'wave_completed_at', 'wave_completion_evidence', 'source_geometry_available_at')
+              'wave_completed_at', 'wave_completion_evidence', 'source_geometry_available_at',
+              'upgrade_evidence', 'confirmation_rule', 'source_path')
     return {field: point[field] for field in fields if field in point}

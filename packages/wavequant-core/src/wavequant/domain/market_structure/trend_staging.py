@@ -10,6 +10,8 @@ from types import TracebackType
 from typing import Generic, Self, TypeVar
 from zlib import compress, decompress
 
+from .trend_readonly_cache import _ReadonlySnapshotCache
+
 
 _Row = TypeVar('_Row')
 _STAGE_MEMORY_BYTES = 2 * 1024 * 1024
@@ -23,7 +25,8 @@ class TrendStageRows(Generic[_Row]):
 
     每个阶段最多在内存保存 2 MiB 序列化内容，超过后由标准库自动移到
     本请求的临时文件。另以最多 2 MiB 保存最近两行的压缩及原始字节，
-    避免同一前驱版本跨日反复解压；不缓存恢复后的可变对象。阶段数固定，
+    避免同一前驱版本跨日反复解压。显式私有只读借用另有 4 MiB 解码缓存，
+    默认读取仍恢复独立可变对象。阶段数固定，
     空间由固定缓冲上限及单行直接来源规模限定。
 
     pickle 仅作为内部对象往返协议：本类创建自己的临时流，只能读取
@@ -50,6 +53,7 @@ class TrendStageRows(Generic[_Row]):
         self._payload_cache_limit = payload_cache_bytes
         self._payload_cache: OrderedDict[int, tuple[bytes, bytes]] = OrderedDict()
         self._payload_cache_size = 0
+        self._readonly_cache = _ReadonlySnapshotCache[_Row](memory_bytes=4 * 1024 * 1024, max_entries=2)
 
     def _remember_payload(self, row: int, stored: bytes, payload: bytes) -> None:
         # 字节不可变，公开读取仍执行 loads/decode，保留每次还原的类型、
@@ -94,7 +98,8 @@ class TrendStageRows(Generic[_Row]):
             self._remember_payload(self._row_count, stored, payload)
         self._row_count += 1
 
-    def iter_rows(self, *, seal: bool = True, start_row: int = 0) -> Iterator[_Row]:
+    def iter_rows(self, *, seal: bool = True, start_row: int = 0,
+                  _borrow_readonly: bool = False) -> Iterator[_Row]:
         if type(start_row) is not int or not 0 <= start_row <= self._row_count:
             raise ValueError('invalid trend stage read offset')
         if self._reading:
@@ -113,6 +118,12 @@ class TrendStageRows(Generic[_Row]):
                 payload = self._stream.read(length)
                 if len(payload) != length or packed not in (0, 1):
                     raise ValueError('owned trend stage has an incomplete row payload')
+                # 仍读取并校验真实行，缓存不能掩盖截断或内容变化。
+                token = header + payload if _borrow_readonly else b''
+                borrowed = self._readonly_cache.get(row, token) if _borrow_readonly else None
+                if borrowed is not None:
+                    yield borrowed[0]
+                    continue
                 if packed:
                     cached = self._payload_cache.get(row)
                     if cached is not None and cached[0] == payload:
@@ -123,7 +134,10 @@ class TrendStageRows(Generic[_Row]):
                         self._remember_payload(row, payload, unpacked)
                         payload = unpacked
                 value: object = loads(payload)
-                yield self._decode(value)
+                decoded = self._decode(value)
+                if _borrow_readonly:
+                    self._readonly_cache.put(row, token, decoded)
+                yield decoded
         finally:
             if not seal:
                 self._stream.seek(position)
@@ -133,6 +147,7 @@ class TrendStageRows(Generic[_Row]):
         self._offsets.clear()
         self._payload_cache.clear()
         self._payload_cache_size = 0
+        self._readonly_cache.clear()
         self._stream.close()
 
     def __enter__(self) -> Self:
