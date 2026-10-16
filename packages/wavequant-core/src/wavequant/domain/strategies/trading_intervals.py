@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from math import isfinite
 
 from ..market_structure.trend_lifecycle import _pivot, _records
+from ..market_structure.confirmation_gap import confirmation_gap
 from ..models.model import Bar
 
 
@@ -22,10 +23,15 @@ class TradingInterval:
     start_low_price: float | None = None
     end_key_index: int | None = None
     end_key_price: float | None = None
+    confirmation_gap_index: int | None = None
+    confirmation_gap_lower: float | None = None
+    confirmation_gap_upper: float | None = None
+    confirmation_gap_kind: str | None = None
+    gap_replaced_index: int | None = None
 
 
 class TradingEligibility:
-    """确认交替后开放交易；跌破本级已知翻转低点立即撤销资格。"""
+    """确认交替后开放交易；确认缺口回补或本级已知翻转低点跌破撤销资格。"""
 
     def __init__(self, level: int) -> None:
         if type(level) is not int or level not in (1, 2, 3):
@@ -57,6 +63,24 @@ class TradingEligibility:
         if now < self._last_index:
             raise ValueError('trading eligibility requires chronological events')
         self._last_index = now
+        if event.get('event') == 'trend_lifecycle_confirmation_revoked' and event.get('reason') == 'confirmation_gap_filled':
+            position = self._opened.get(path)
+            if position is None:
+                return None
+            window = self._intervals[position]
+            low = event.get('market_low')
+            if (window.confirmation_gap_index is None or window.confirmation_gap_lower is None
+                    or window.gap_replaced_index is not None
+                    or now <= window.start_index
+                    or event.get('qualification_index') != window.start_index
+                    or event.get('confirmation_gap_index') != window.confirmation_gap_index
+                    or event.get('confirmation_gap_lower') != window.confirmation_gap_lower
+                    or event.get('confirmation_gap_upper') != window.confirmation_gap_upper
+                    or event.get('confirmation_gap_kind') != window.confirmation_gap_kind
+                    or type(low) not in (int, float) or not isfinite(low)
+                    or not 0 < low <= window.confirmation_gap_lower):
+                return None
+            return self._close(path, now, 'confirmation_gap_filled')
         if event.get('event') == 'trading_reversal_low_broken':
             index, price = event.get('reversal_low_index'), event.get('reversal_low_price')
             known, low = event.get('reversal_low_known_index'), event.get('market_low')
@@ -82,6 +106,15 @@ class TradingEligibility:
                 or not 0 <= flip <= known <= now or not flip <= counter <= now
                 or event.get('alternation_index') != now):
             return None
+        gap = confirmation_gap(event.get('confirmation_rule'), event.get('confirmation_evidence'), now)
+        if state == '空多交替' and path in self._opened:
+            position = self._opened[path]
+            window = self._intervals[position]
+            if (event.get('replaces_gap_confirmation_index') == window.confirmation_gap_index
+                    and window.confirmation_gap_index is not None and gap is None):
+                # 新的独立确认维持同一窗口；旧缺口此后不再决定该窗口的资格。
+                self._intervals[position] = replace(window, gap_replaced_index=now)
+            return None
         if state == '空多交替' and path not in self._opened:
             ordinal = event.get('counter_ordinal', 0)
             price = event.get('counter_price')
@@ -90,11 +123,34 @@ class TradingEligibility:
             self._opened[path] = len(self._intervals)
             self._intervals.append(TradingInterval(self.level, path, now, flip,
                 start_low_index=counter, start_low_ordinal=ordinal,
-                start_low_price=float(price) if type(price) in (int, float) and isfinite(price) and price > 0 else None))
+                start_low_price=float(price) if type(price) in (int, float) and isfinite(price) and price > 0 else None,
+                confirmation_gap_index=gap[0] if gap else None,
+                confirmation_gap_lower=gap[1] if gap else None,
+                confirmation_gap_upper=gap[2] if gap else None,
+                confirmation_gap_kind=gap[3] if gap else None))
             return True
         if state == '多空交替':
             return self._close(path, now, 'bear_alternation_completed', flip)
         return None
+
+    def close_on_confirmation_gap_fill(self, bars: Sequence[Bar], now: int) -> list[dict[str, object]]:
+        """周期因其他价格规则退出后，仍需收尾仅依赖跳空的资格窗口。"""
+        events: list[dict[str, object]] = []
+        for window in self.active_intervals:
+            if (window.confirmation_gap_lower is None or window.gap_replaced_index is not None
+                    or now <= window.start_index or bars[now].low > window.confirmation_gap_lower):
+                continue
+            event: dict[str, object] = dict(event='trend_lifecycle_confirmation_revoked',
+                state='空多交替', reason='confirmation_gap_filled', bar_index=now, available_index=now,
+                trend_level=self.level, source_path=window.source_path, qualification_index=window.start_index,
+                confirmation_gap_index=window.confirmation_gap_index,
+                confirmation_gap_lower=window.confirmation_gap_lower,
+                confirmation_gap_upper=window.confirmation_gap_upper,
+                confirmation_gap_kind=window.confirmation_gap_kind, market_low=bars[now].low)
+            if self.observe(event) is False:
+                event['buy_eligible'] = False
+                events.append(event)
+        return events
 
     def close_on_reversal_low_break(
         self, row: Mapping[str, object], bars: Sequence[Bar], now: int, dates: Mapping[str, int],

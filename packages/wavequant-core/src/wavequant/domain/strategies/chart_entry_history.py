@@ -40,7 +40,7 @@ from .market_calculations import MarketCalculations, MarketDay
 
 
 # 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "frozen_flip_prerequisite_v128"
+_CONFIRMATION_CACHE_VERSION = "close_rejection_wave_boundary_v133"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -246,7 +246,7 @@ def _chart_calculation_scope(
                         checkpoint_changed = True
                         if source is None:
                             raise ValueError('a trend requires its initial source on the first date')
-                        result = prepare_trend_lines(source, trend_level=number, symbol=symbol,
+                        result = prepare_trend_lines(source, trend_level=number, symbol=symbol, bars=bars,
                             _judgement_cache=caches[offset], _closed_paths=paths[offset], _owned_source=True)
                         latest[offset] = result
                         source_keys[offset] = key
@@ -332,6 +332,7 @@ def _chart_calculation_scope(
             paths.clear()
             latest.clear()
             source_keys.clear()
+            calculations._strategy_permission_cache = None
 
 
 @contextmanager
@@ -627,6 +628,8 @@ def chart_entry_history(
     anchors_at_attack = {}
     lifecycle = TrendLifecycle()
     market_calculation = _prepared_history.calculations if _prepared_history is not None else None
+    live_owner = (market_calculation._chart_prefix_owner
+        if market_calculation is not None and market_calculation.reading_live_day else None)
     cached_lifecycle: dict[int, list[dict[str, object]]] | None = None
     lifecycle_reader: Iterator[tuple[int, tuple[object, ...]]] | None = None
     next_lifecycle: tuple[int, tuple[object, ...]] | None = None
@@ -669,10 +672,17 @@ def chart_entry_history(
             else:
                 prefix_cache.update(seed)
             cached_key = prefix_cache['key']
-    if past_attack_certificate is not None and cached_key == prefix_key:
+    saved_entry_days = prefix_cache.get('_entry_days') if prefix_cache is not None else None
+    same_live_prefix = (live_owner is None or prefix_cache is not None
+        and prefix_cache.get('_live_owner') is live_owner
+        and isinstance(saved_entry_days, tuple) and entry_days is not None
+        and len(saved_entry_days) <= len(entry_days)
+        and tuple(entry_days[:len(saved_entry_days)]) == saved_entry_days)
+    if same_live_prefix and past_attack_certificate is not None and cached_key == prefix_key:
         resume_start = last
     elif (
-        cached_key is not None
+        same_live_prefix
+        and cached_key is not None
         and len(cached_key) == len(prefix_key)
         and cached_key[0] == tuple(bars[:-2])
         and cached_key[1] == frozenset(i for i in attacks if i < last - 1)
@@ -687,6 +697,19 @@ def chart_entry_history(
         # Yesterday was unfinished when the prior checkpoint was saved. Replay
         # its final candle, then today's partial candle, from the older state.
         resume_start = last - 1
+    elif (
+        live_owner is not None and same_live_prefix
+        and isinstance(cached_key, tuple) and len(cached_key) == len(prefix_key)
+        and isinstance(cached_key[0], tuple) and 0 < len(cached_key[0]) < last - 1
+        and cached_key[0] == bars[:len(cached_key[0])]
+        and cached_key[1] == frozenset(i for i in attacks if i < len(cached_key[0]))
+        and cached_key[2:7] == prefix_key[2:7]
+        and cached_key[7] is not None
+        and cached_key[7] == _past_attack_digest(audit, len(cached_key[0]) - 1)
+    ):
+        # 无资格空仓时允许跳过多日调用；旧未完成日和间隔后缀仍按原顺序回放。
+        # 完整攻击证据及已观察资格前缀必须一致，不能只用日期命中旧检查点。
+        resume_start = len(cached_key[0])
     else:
         resume_start = 0
     if resume_start:
@@ -708,7 +731,8 @@ def chart_entry_history(
          event['pivot_ordinal'], event['available_at'])
         for event in events if event.get('event') == 'hierarchy_bear_flip'
     }
-    permission_cache = _TrendPermissionCache(bars)
+    permission_cache = (market_calculation._permission_cache_for(bars)
+        if market_calculation is not None else _TrendPermissionCache(bars))
     market_index = permission_cache._market_index
 
     def accept(frame: _ChartDrawingFrame, prepared: Sequence[Mapping[str, object]]) -> None:
@@ -915,6 +939,8 @@ def chart_entry_history(
         if (prefix_cache is not None and past_attack_certificate is not None
                 and resume_start != last and i == last - 1):
             prefix_cache["key"] = prefix_key
+            prefix_cache['_live_owner'] = live_owner
+            prefix_cache['_entry_days'] = tuple(entry_days) if entry_days is not None else None
             prefix_cache["checkpoint"] = _copy_replay_state((
                 history, events, active, first_seen, retired, closed, previous_epoch,
                 previous_raw, signature, landmarks, invalidated, levels,

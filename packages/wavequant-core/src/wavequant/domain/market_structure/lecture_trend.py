@@ -205,7 +205,7 @@ def _annotate(points, symbol, dates, *, trend_level=1):
         else: low_count+=1; p['label']=f'L{low_count}'
         p['trend_level']=trend_level
         p['source_level']=trend_level-1
-        p['observations']=[]; p['levels']=[]
+        p['observations']=[]; p['levels']=[]; p['lifecycle_context']=None
         previous=points[j-1] if j else None
         if previous:
             name='末升低' if p['kind']=='H' else '末跌高'
@@ -249,6 +249,10 @@ def _annotate(points, symbol, dates, *, trend_level=1):
             continue
         assert anchor is not None
         up=background==StructuralTrend.BEAR
+        # 资格入口复用本级冻结关键位；局部升级证书不能另选末跌高。
+        # 逐点重新写入，避免将下级或旧路径上下文带入当前级别。
+        p['lifecycle_context']=dict(direction='up' if up else 'down',
+                                    key=_ref(key),origin=_ref(anchor),available_at=p['available_at'])
         extreme_kind='H' if up else 'L'
         sign=1 if up else -1
         if attack is None:

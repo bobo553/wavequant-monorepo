@@ -2705,18 +2705,21 @@ body {
 .chart-progress-key { background: #3b82f6; }
 .chart-pending-key { background: var(--border); }
 .chart-eligibility-key { background: #ef7180; }
-#copy-eligibility-ranges {
+#copy-eligibility-ranges,
+#copy-current-eligibility-range-timeline {
     padding: 1px 6px;
     min-height: 22px;
     font-size: 10px;
     line-height: 1.4;
     color: #3b82f6;
 }
-#copy-eligibility-ranges:disabled {
+#copy-eligibility-ranges:disabled,
+#copy-current-eligibility-range-timeline:disabled {
     opacity: 0.45;
     cursor: not-allowed;
 }
-#eligibility-copy-feedback {
+#eligibility-copy-feedback,
+#current-eligibility-timeline-copy-feedback {
     color: var(--research-text-soft);
 }
 .chart-position input:disabled {

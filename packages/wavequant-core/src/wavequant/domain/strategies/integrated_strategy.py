@@ -29,6 +29,7 @@ from .hierarchical_entry import EntryContext
 from .buy_intervals import confirmed_buy_interval_days
 from .backtest_history_reuse import BacktestHistoryReuse
 from .signal_clock import SignalClock
+from .strategy_history_cache import StrategyHistoryCache, StrategyHistoryView, first_positive_n_invalidation
 from .shallow_base_breakout import ShallowAlternationCandidate
 from .combined_a_entry import CombinedAContext, combined_a_entry_history
 from .secondary_reclaim_entry import SecondaryHigh, secondary_reclaim_history
@@ -339,7 +340,11 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 start_low_time=(bars[interval.start_low_index].timestamp.date().isoformat()
                                 if interval.start_low_index is not None else None),
                 start_low_price=interval.start_low_price,
-                qualification_index=interval.start_index)
+                qualification_index=interval.start_index,
+                confirmation_gap_index=interval.confirmation_gap_index,
+                confirmation_gap_lower=interval.confirmation_gap_lower,
+                confirmation_gap_upper=interval.confirmation_gap_upper,
+                confirmation_gap_kind=interval.confirmation_gap_kind)
             if interval.end_index is not None:
                 log(interval.end_index, 'trading_interval_closed', trend_level=interval.trend_level,
                     source_path=interval.source_path, start_index=interval.start_index,
@@ -347,7 +352,11 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     reversal_low_index=interval.end_key_index, reversal_low_price=interval.end_key_price,
                     reversal_low_time=(bars[interval.end_key_index].timestamp.date().isoformat()
                                        if interval.end_key_index is not None else None),
-                    display_end_inclusive=interval.end_reason == 'reversal_low_broken')
+                    confirmation_gap_index=interval.confirmation_gap_index,
+                    confirmation_gap_lower=interval.confirmation_gap_lower,
+                    confirmation_gap_upper=interval.confirmation_gap_upper,
+                    confirmation_gap_kind=interval.confirmation_gap_kind,
+                    display_end_inclusive=interval.end_reason in ('reversal_low_broken', 'confirmation_gap_filled'))
     hierarchical = config.entry_policy == 'hierarchical_two_buy_points'
     whole_wave = config.buy_point_definition == 'whole_flip_wave_v3'
     if config.entry_policy == 'transitioned_squeeze':
@@ -407,6 +416,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                         folded_cache[folded_key] = folded
                 folded_sets.extend((i, points, level) for points, level in folded)
     candidate_observations = None
+    history_observations: StrategyHistoryView | None = None
     if chart_history_cache is not None:
         # IntradayEntry supplies the complete fixed series as a certificate:
         # every day before the partial last bar must match that source exactly.
@@ -428,7 +438,14 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             chart_history_cache['washout_observations'] = {}
             chart_history_cache['wave_gap_observations'] = {}
             chart_history_cache['wave_selection_observations'] = {}
+            chart_history_cache.pop('strategy_history_observations', None)
         candidate_observations = chart_history_cache['candidate_observations']
+        if fixed_source:
+            history_cache = chart_history_cache.get('strategy_history_observations')
+            if not isinstance(history_cache, StrategyHistoryCache) or history_cache.source is not source_bars:
+                history_cache = StrategyHistoryCache(source_bars)
+                chart_history_cache['strategy_history_observations'] = history_cache
+            history_observations = history_cache.bind(bars)
     washout_observations = chart_history_cache['washout_observations'] if chart_history_cache is not None else None
     wave_gap_observations = chart_history_cache['wave_gap_observations'] if chart_history_cache is not None else None
     if _analysis is not None:
@@ -452,7 +469,9 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
     if whole_wave:
         from .inverse_n_entry import inverse_n_low_entry_risk
         for now, known_points, _ in candidate_sets:
-            risk = inverse_n_low_entry_risk(bars, now, known_points)
+            risk = (inverse_n_low_entry_risk(bars, now, known_points) if history_observations is None else
+                history_observations.observe('inverse_n_low_entry', now, (tuple(known_points[-3:]),),
+                    lambda: inverse_n_low_entry_risk(bars, now, known_points)))
             if risk is not None and (
                 now not in inverse_entry_risks
                 or (str(risk['inverse_neckline_date']), str(risk['inverse_rebound_date']))
@@ -684,13 +703,15 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             identity = positive_n_identity(row['origin'], row['neckline'], row['pullback'], row['bar_index'])
             row['n_id'] = identity
             row['target_source_id'] = identity if row['target_eligible'] else None
-            for now in range(row['bar_index'] + 1, len(bars)):
-                origin_broken = bars[now].low < bars[row['origin']].low
-                if origin_broken or bars[now].low < row['defense']:
-                    log(now, 'n_invalidated', n_id=identity, attack=row['bar_index'],
-                        known_at=max(now, row['known_at']), direction='up',
-                        reason='origin_broken' if origin_broken else 'squeeze_defense_broken')
-                    break
+            invalidation = (first_positive_n_invalidation(bars, origin=row['origin'],
+                attack=row['bar_index'], defense=row['defense']) if history_observations is None else
+                history_observations.first_positive_n_invalidation(origin=row['origin'],
+                    attack=row['bar_index'], defense=row['defense']))
+            if invalidation is not None:
+                origin_broken = bars[invalidation].low < bars[row['origin']].low
+                log(invalidation, 'n_invalidated', n_id=identity, attack=row['bar_index'],
+                    known_at=max(invalidation, row['known_at']), direction='up',
+                    reason='origin_broken' if origin_broken else 'squeeze_defense_broken')
         from dataclasses import asdict
         from ..market_structure.a_wave import AWaveSeed, AWaveTurn, a_wave_history
         invalidated_at = {row['n_id']: max(row['bar_index'], row['known_at']) for row in audit
@@ -775,7 +796,10 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 j = offset + f.bar_index
                 if candidate['n_level'] < 1 and (t, j) not in recovery_gap_confirmations:
                     continue
-                proof = consolidation_gap(bars, attack=t, now=j, defense=n.completion.defense)
+                proof = (consolidation_gap(bars, attack=t, now=j, defense=n.completion.defense)
+                    if history_observations is None else history_observations.observe(
+                        'consolidation_gap', j, (t, n.completion.defense),
+                        lambda: consolidation_gap(bars, attack=t, now=j, defense=n.completion.defense)))
                 if proof is not None:
                     consolidation_events[j].append((candidate, f))
                     consolidation_proofs[t, j] = proof
@@ -1028,8 +1052,10 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     target_stage='five_top', reason='bottom_target_source_retired')
     # Optional opportunity tags use their own confirmation dates, not future shape labels.
     wash_tags = {}
-    for new in sorted(candidates, key=lambda c: c['attack']):
-        for old in sorted(candidates, key=lambda c: c['attack'], reverse=True):
+    washout_newest = sorted(candidates, key=lambda c: c['attack'], reverse=True)
+    washout_oldest = sorted(candidates, key=lambda c: c['attack'])
+    for new in washout_oldest:
+        for old in washout_newest:
             if (old['setup'].direction != new['setup'].direction or old['epoch'] != new['epoch'] or
                     not 0 < new['attack']-old['attack'] <= config.structure_window or
                     old['attack'] >= new['setup'].origin.index):

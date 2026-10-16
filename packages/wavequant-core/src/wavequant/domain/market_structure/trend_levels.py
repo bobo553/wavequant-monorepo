@@ -59,7 +59,7 @@ def _completion_evidence(point: Mapping[str, object]) -> dict[str, object]:
     """
     fields = ('index', 'ordinal', 'kind', 'value', 'time', 'available_at',
               'wave_direction_before', 'wave_direction_after', 'confirmation_rule',
-              'definition_evidence', 'upgrade_evidence', 'lower_wave_identity_evidence')
+              'definition_evidence', 'upgrade_evidence', 'lower_wave_identity_evidence', 'body_reversal_evidence')
     return {field: deepcopy(point[field]) for field in fields if field in point}
 
 
@@ -184,7 +184,36 @@ def _validate_completed_source_point(raw: Mapping[str, object]) -> dict[str, obj
     if definition is not None and identity_proof is None:
         raise ValueError('ordinary owned completion requires lower-wave identity evidence')
     upgrade = evidence.get('upgrade_evidence')
-    if definition is not None:
+    body_reversal = evidence.get('body_reversal_evidence')
+    if body_reversal is not None:
+        from .trend_body_reversal import BODY_REVERSAL_RULE, rejects_wick_extension
+
+        if (not isinstance(body_reversal, Mapping) or evidence.get('confirmation_rule') != BODY_REVERSAL_RULE
+                or body_reversal.get('available_at') != completed or expected != ('up', 'down')):
+            raise ValueError('body rejection completion requires its own bearish reversal proof')
+        body_refs = [body_reversal.get(field) for field in ('anchor', 'counter', 'rebound', 'endpoint')]
+        if not all(isinstance(ref, Mapping) for ref in body_refs):
+            raise ValueError('body rejection requires four real lower-level points')
+        anchor, counter, rebound, endpoint = cast(list[Mapping[str, object]], body_refs)
+        if (not _proof_order(anchor) < _proof_order(counter) < _proof_order(rebound) < _proof_order(endpoint)
+                or endpoint.get('kind') != 'L' or not rejects_wick_extension(anchor, counter, rebound)
+                or any(anchor.get(field, 0) != raw.get(field, 0)
+                       for field in ('index', 'ordinal', 'kind', 'value', 'time'))):
+            raise ValueError('body rejection must retain the original high and actual lower topology')
+        source_level = raw.get('source_level')
+        if (type(source_level) is not int or source_level < 1 or raw.get('trend_level') != source_level + 1
+                or any(ref.get('trend_level') != source_level for ref in (anchor, counter, rebound, endpoint))):
+            raise ValueError('body rejection must use the direct lower trend level')
+        for ref in (anchor, counter, rebound, endpoint):
+            value = ref.get('value')
+            if (type(value) not in (int, float) or not isfinite(cast(float, value)) or cast(float, value) <= 0
+                    or _later_moment(_proof_known(ref), completed_clock) != completed_clock):
+                raise ValueError('body rejection cannot borrow future or invalid lower prices')
+            if _validate_completed_source_point(ref) is None:
+                raise ValueError('body rejection requires completed lower waves')
+        if cast(float, endpoint['value']) >= cast(float, counter['value']):
+            raise ValueError('body rejection requires a strict break of the counter low')
+    elif definition is not None:
         if not isinstance(definition, Sequence) or isinstance(definition, (str, bytes)) or len(definition) != 4:
             raise ValueError('ordinary wave completion requires two highs and two lows')
         refs: list[Mapping[str, object]] = []
@@ -396,7 +425,7 @@ def _strip_source_license(source: Mapping[str, object]) -> dict[str, object]:
         'wave_display_policy', 'confirmation_policy', 'n_target_trend_confirmation_enabled',
         'structural_confirmation_rule', 'definition_evidence', 'direction_definition', 'upgrade_evidence',
         'wave_completion_policy', 'wave_completed_at', 'wave_completion_evidence', 'source_geometry_available_at',
-        'wave_identity_state', 'lower_wave_identity_evidence',
+        'wave_identity_state', 'lower_wave_identity_evidence', 'body_reversal_evidence',
     ):
         result.pop(field, None)
     # 来源的确认链只用于说明这个下级点为何已存在，不能供本级 publisher 授权。

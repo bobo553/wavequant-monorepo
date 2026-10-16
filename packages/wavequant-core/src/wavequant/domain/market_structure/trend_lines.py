@@ -24,6 +24,7 @@ from .n_trend_reversals import n_target_reversals
 from .trend_judgement import TrendJudgement, _TrendJudgementState, _owned_mutable_points, judge_trend, mutable_points
 from .trend_evidence_reuse import _geometry_signature
 from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
+from .trend_body_reversal import with_price_bodies
 from .trend_confirmation import _PrefixSessions
 from .trend_levels import Moment, _completed_source_point, _later_moment, _strip_source_license, completed_source_points
 from .trend_landmarks import (
@@ -32,13 +33,13 @@ from .trend_landmarks import (
 from .trend_publication import confirmed_trend_legs, publish_uptrends
 from .trend_structure import _trend_level
 
-STRUCTURAL_LEG_POLICY = 'high_low_point_geometry_v113'
-STRUCTURAL_RULE = 'point_first_recursive_six_definitions_v113'
+STRUCTURAL_LEG_POLICY = 'high_low_point_close_rejection_v115'
+STRUCTURAL_RULE = 'point_first_recursive_close_rejection_v115'
 _NAMES = {1: '一级', 2: '二级', 3: '三级'}
 _KINDS = {1: 'reversal', 2: 'secondary', 3: 'tertiary'}
 _GEOMETRY_ANNOTATION_FIELDS = (
     'label', 'trend_level', 'source_level', 'trend', 'window_trend', 'reversal',
-    'observations', 'levels', 'preceding_turn',
+    'observations', 'levels', 'preceding_turn', 'lifecycle_context',
 )
 _ANNOTATION_REFERENCE_FIELDS = frozenset(('index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'label'))
 
@@ -932,6 +933,7 @@ def _structural_tail(source: Sequence[Mapping[str, object]], points: Sequence[Ma
 
 def prepare_trend_lines(
     high_low_points: Sequence[Mapping[str, object]], *, trend_level: int = 1, symbol: str = 'STRUCTURE',
+    bars: Sequence[Bar] = (),
     _judgement_cache: _TrendJudgementCache | None = None,
     _closed_paths: _ClosedPreparedPaths | None = None,
     _owned_source: bool = False,
@@ -940,8 +942,8 @@ def prepare_trend_lines(
 
     一级来源是全部基础折线高低点，二、三级只读取已经完成的紧邻下级
     strokes。各路径统一调用 judge_trend；六定义标注、候选账本和显示尾部
-    都只读取这些点。symbol 仅标识展示上下文，不提供行情或改变判断规则。
-    本函数没有行情或 N 开关，也不生成或核验交易证书。
+    都读取这些点。bars仅为来源点附上当日实体，供下级翻空后的影线反弹
+    分支使用；没有对应实体证据时仍按原高低价定义，不猜测实体或交易许可。
     调用方可依次准备完整一级、二级、三级，再按同样顺序附加各级资格。
 
     来源、正式点和候选账本各自拥有独立副本，调用者的嵌套证据不会被
@@ -952,7 +954,7 @@ def prepare_trend_lines(
     工作集只能读取，公共可变导出仍在导出边界逐点独立物化。
     """
     source_level = _trend_level(trend_level)
-    groups = _source_groups(high_low_points)
+    groups = _source_groups(with_price_bodies(high_low_points, bars) if bars else high_low_points)
     strokes: list[dict[str, object]] = []
     developing_strokes: list[dict[str, object]] = []
     candidates: list[dict[str, object]] = []
@@ -1014,7 +1016,7 @@ def prepare_trend_lines(
         stroke: dict[str, object] = dict(id=identifier, source_path=path, source_paths=[path], kind=kind,
             trend_level=trend_level, points=points, input_turn_count=len(source), key_transitions=[],
             confirmation_policy=STRUCTURAL_RULE, leg_confirmation_policy=STRUCTURAL_LEG_POLICY,
-            wave_display_policy='structural_points_independent_strategy_permissions_v113',
+            wave_display_policy='structural_points_independent_strategy_permissions_v115',
             structural_legs=_structural_legs(points), confirmed_legs=[])
         strokes.append(stroke)
         if _closed_paths is not None and cutoff is not None:
@@ -1210,7 +1212,7 @@ def trend_lines(
     if type(n_target_trend_confirmation_enabled) is not bool:
         raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
     prepared = prepare_trend_lines(high_low_points, trend_level=trend_level,
-                                   symbol=bars[0].symbol if bars else 'STRUCTURE')
+                                   symbol=bars[0].symbol if bars else 'STRUCTURE', bars=bars)
     return attach_trend_permissions(prepared, bars,
         n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
         qualified_source_points=qualified_source_points)

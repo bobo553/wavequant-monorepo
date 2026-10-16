@@ -107,6 +107,8 @@ def test_local_upgrade_below_frozen_bearish_key_cannot_open_guofang_like_window(
     origin = point(3, 'L', 5.0613496932515005, 4)
     origin['observations'] = [dict(title='底部疑虑', available_at=4, key=dict(frozen))]
     high = point(5, 'H', 6.680981595091979, 6)
+    high['lifecycle_context'] = dict(direction='up', available_at=6,
+                                    key=dict(frozen), origin=dict(bottom))
     high['upgrade_evidence'] = dict(direction='up', role='endpoint', available_at=6,
         origin=dict(origin), broken_key=dict(local), confirmed_by=dict(high))
     low = point(6, 'L', 5.213190184049045, 7)

@@ -4,7 +4,10 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
+
+if TYPE_CHECKING:
+    from ..market_structure.trend_lines import _TrendPermissionCache
 
 from ..market_structure.polyline_lifecycle import polyline_lifecycle_rows
 from ..market_structure.trend_history_changes import TrendChangeRows
@@ -75,10 +78,23 @@ class MarketCalculations:
         self._pending_events: dict[int, list[dict[str, object]]] = {}
         self._eligibility = {level: TradingEligibility(level) for level in (1, 2, 3)}
         self._checkpoints: TrendChangeRows[tuple[object, ...]] | None = None
+        self._chart_prefix_owner = object()
+        self._strategy_permission_cache: '_TrendPermissionCache | None' = None
 
     def _require_open(self) -> None:
         if self._frames.closed:
             raise RuntimeError('market calculations are closed outside their resource scope')
+
+    def _permission_cache_for(self, bars: Sequence[Bar]) -> '_TrendPermissionCache':
+        """同一请求复用有界许可模板；分钟尾行情修订使用独立市场索引。"""
+        from ..market_structure.trend_lines import _TrendPermissionCache
+
+        self._require_open()
+        if self._strategy_permission_cache is None:
+            self._strategy_permission_cache = _TrendPermissionCache(self._bars)
+        if self._strategy_permission_cache.covers(bars):
+            return self._strategy_permission_cache
+        return _TrendPermissionCache(bars)
 
     @property
     def frames(self) -> ChartDrawingHistory:
@@ -147,6 +163,7 @@ class MarketCalculations:
                 changed = self._eligibility[level].observe(event)
                 if changed is not None:
                     event['buy_eligible'] = changed
+            events.extend(self._eligibility[level].close_on_confirmation_gap_fill(self._bars, index))
             events.extend(self._eligibility[level].close_on_reversal_low_break(row, self._bars, index, self._dates))
         self._pending_events.setdefault(level, []).extend(events)
         return events

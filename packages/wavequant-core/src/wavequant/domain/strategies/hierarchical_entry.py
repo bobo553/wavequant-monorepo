@@ -19,6 +19,7 @@ from ..market_structure.trend_staging import TrendStageRows
 from ..market_structure.trend_evidence_reuse import _cache_completion_projections
 from ..market_structure.trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
 from ..market_structure.trend_stage_work import HierarchyStageResult
+from ..market_structure.trend_body_reversal import with_price_bodies
 from ..models.model import Bar
 
 if TYPE_CHECKING:
@@ -242,6 +243,7 @@ def hierarchical_history(
                         prior_points[level] = {}
                     stage_epoch = frame.epoch
                     if computed is None:
+                        source = with_price_bodies(source, bars)
                         judgement = judgement_cache.judge(source, path=f'lecture-{frame.epoch}', trend_level=level,
                                                          asof=i, _owned_source=True)
                         geometry_points = mutable_points(judgement.points)

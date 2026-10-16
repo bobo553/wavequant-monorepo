@@ -102,7 +102,7 @@ def confirm_body_gap_alternation(
 def confirm_recovery_alternation(
     bars: Sequence[Bar], now: int, *, origin: ConfirmedTurn, high: ConfirmedTurn,
     broken: ConfirmedTurn, points: Sequence[ConfirmedTurn], polyline: Sequence[ConfirmedTurn],
-    level: int, path: str, policy: AlternationPolicy = AlternationPolicy(),
+    level: int, path: str, policy: AlternationPolicy = AlternationPolicy(), allow_gap_confirmation: bool = True,
 ) -> AlternationProof | None:
     """守新低是前提，再复用浅回撤、重突破、N轧空或整理跳空的确认条件。"""
     if not (origin.index < high.index <= now < len(bars)):
@@ -111,7 +111,8 @@ def confirm_recovery_alternation(
         raise ValueError('alternation confirmation requires causal points')
     if min(bar.low for bar in bars[origin.index + 1:now + 1]) < origin.price:
         return None
-    gap = confirm_body_gap_alternation(bars, now, origin=origin, high=high, polyline=polyline)
+    gap = (confirm_body_gap_alternation(bars, now, origin=origin, high=high, polyline=polyline)
+           if allow_gap_confirmation else None)
     if gap is not None:
         return gap
     counter = next((point for point in points if point.kind == 'L' and point.index > high.index), None)
@@ -179,7 +180,8 @@ def confirm_recovery_alternation(
             elif policy.squeeze_pullback_entries and observe_squeeze_resumption(bars, now,
                     frame=frame, offset=offset, attack_index=attack, defense=n.completion.defense) is not None:
                 triggers.append(dict(event='squeeze_resumption_observed', bar_index=now, attack=attack))
-        gap = consolidation_gap(bars, attack=attack, now=now, defense=n.completion.defense)
+        gap = (consolidation_gap(bars, attack=attack, now=now, defense=n.completion.defense)
+               if allow_gap_confirmation else None)
         if gap is not None:
             triggers.insert(0, dict(gap, event='n_consolidation_gap_confirmed', bar_index=now, attack=attack))
         if not triggers:

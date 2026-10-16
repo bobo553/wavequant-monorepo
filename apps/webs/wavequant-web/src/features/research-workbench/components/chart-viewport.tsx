@@ -78,6 +78,25 @@ export function ChartViewport(): JSX.Element {
                             >
                                 复制
                             </button>
+                            <span data-current-eligibility-action="" hidden>
+                                <button
+                                    id="copy-current-eligibility-range-timeline"
+                                    type="button"
+                                    data-copy-eligibility="current"
+                                    data-default-label="复制当前区间"
+                                    data-feedback-id="current-eligibility-timeline-copy-feedback"
+                                    aria-label="只复制进度条当前位置所在的交易资格区间"
+                                    hidden
+                                    disabled
+                                >
+                                    复制当前区间
+                                </button>
+                                <span
+                                    id="current-eligibility-timeline-copy-feedback"
+                                    role="status"
+                                    aria-live="polite"
+                                />
+                            </span>
                             <span id="eligibility-copy-feedback" role="status" aria-live="polite" />
                         </span>
                         <span>拖动定位图窗中心</span>

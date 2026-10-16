@@ -14,6 +14,7 @@ import {
     visibleWatchlistBacktestState,
 } from "./backtest-job-status.js";
 import { retryBacktest, readBacktestVersion } from "./backtest-retry.js";
+import { createEngineReloadMonitor } from "./engine-reload.js";
 import { renderBacktestPipeline } from "./backtest-pipeline.js";
 import { backtestPreviewView } from "./backtest-preview.js";
 import { chartMarketBars, preparationRetainsMarket } from "./chart-market-bars.js";
@@ -2976,6 +2977,35 @@ const ratioComparison = new RatioComparison({
     },
 });
 const sharedBacktestCompletionPrefix = "wavequant.watchlists.backtest-done.v2:";
+let reloadingForEngine = false;
+function reloadForEngineChange() {
+    if (reloadingForEngine) return;
+    reloadingForEngine = true;
+    state.sequence++;
+    state.controller?.abort();
+    state.summaryController?.abort();
+    watchlistBacktests.stop();
+    engineReloadMonitor.stop();
+    stockBacktestTasks.invalidateCompleted();
+    setSelectedStockSummary("策略代码已更新，正在刷新页面并加载新版本回测。", "running");
+    window.location.reload();
+}
+const engineReloadMonitor = createEngineReloadMonitor({
+    readVersion: (signal) => {
+        const run = $("run-select").value;
+        const variant = $("variant-select").value;
+        if (!run || !variant) return null;
+        return api("/api/backtest-version", { run, variant }, signal);
+    },
+    onReload: reloadForEngineChange,
+    onUnavailable: (error) => {
+        if (error?.httpStatus === 503) {
+            $("stock-picker-feedback").hidden = false;
+            $("stock-picker-feedback").textContent = "策略服务更新中，新版本就绪后将自动刷新页面。";
+        }
+    },
+});
+window.addEventListener("pagehide", () => engineReloadMonitor.stop());
 const sharedBacktestCompletionTtlMs = 60_000;
 let lastSharedBacktestPrune = 0;
 let lastWorkbenchInteraction = Date.now();
@@ -2988,9 +3018,7 @@ const watchlistBacktests = new IdleWatchlistBacktests({
         stockBacktestTasks.invalidateCompleted();
         buyPoints.contextChanged();
         structureSignals.contextChanged();
-        // 版本通知不撤销当前订阅、不清图、不提交另一个前台任务。
-        $("stock-picker-feedback").hidden = false;
-        $("stock-picker-feedback").textContent = "策略代码已更新。当前图表保留，正在运行的任务不因版本通知重开；新规则用于后续回测。";
+        reloadForEngineChange();
     },
     serverJobs: () => serverBacktestSnapshot.jobs,
     historicalSymbols: () =>
@@ -3807,6 +3835,7 @@ async function start() {
         state.lastResolvedScope = initialSource;
         $("run-select").replaceChildren();
         for (const r of state.catalog.runs) option($("run-select"), r.id, r.id.replace("acceptance_", ""));
+        engineReloadMonitor.start();
         const savedSettings = watchlists.storage.document?.settings;
         if (savedSettings) await applySavedWatchlistSettings(savedSettings, Boolean(requestedStock));
         const restoredSource = sourceForScope($("result-scope").value) || initialSource;

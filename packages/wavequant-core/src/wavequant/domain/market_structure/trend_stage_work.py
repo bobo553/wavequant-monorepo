@@ -12,6 +12,7 @@ from .trend_lines import (
     high_low_points_from_strokes, prepare_trend_lines, qualify_trend_structure,
 )
 from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
+from .trend_body_reversal import with_price_bodies
 
 
 StageKind = Literal['hierarchy', 'geometry', 'permissions', 'sidecars']
@@ -52,7 +53,7 @@ def _hierarchy_source(points: Sequence[Mapping[str, object]]) -> list[dict[str, 
         'index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'label', 'state', 'display_only',
         'trend_level', 'source_level', 'source_path', 'source_path_end_index', 'confirmed_by',
         'wave_completion_policy', 'wave_identity_state', 'wave_completed_at',
-        'wave_completion_evidence', 'source_geometry_available_at',
+        'wave_completion_evidence', 'source_geometry_available_at', 'price_body',
     )
     return [{field: point[field] for field in fields if field in point} for point in points]
 
@@ -88,10 +89,11 @@ class TrendStageComputer:
             self.label = label
         if kind == 'geometry':
             source, symbol = cast(tuple[Sequence[Mapping[str, object]], str], value)
-            return prepare_trend_lines(source, trend_level=level, symbol=symbol,
+            return prepare_trend_lines(source, trend_level=level, symbol=symbol, bars=self.bars,
                                        _judgement_cache=self.judgements, _owned_source=True)
         if kind == 'hierarchy':
             source, qualified = cast(tuple[Sequence[Mapping[str, object]], Sequence[Mapping[str, object]]], value)
+            source = with_price_bodies(source, self.bars)
             judgement = self.judgements.judge(source, path='date-stage', trend_level=level,
                                                asof=index, _owned_source=True)
             geometry = mutable_points(judgement.points)

@@ -155,8 +155,8 @@ def make_server(
     market_bars = MarketBarsService(market_timeframes) if market_timeframes is not None else None
 
     def log_backtest_job_error(job_id: str, error: Exception) -> None:
-        if backtest_job_error(error)[0] == 500:
-            logging.error("backtest job %s failed", job_id, exc_info=(type(error), error, error.__traceback__))
+        # Core validation failures need a traceback too; public errors remain sanitized.
+        logging.error("backtest job %s failed", job_id, exc_info=(type(error), error, error.__traceback__))
 
     history_root = getattr(repository, "root", None)
     engine = getattr(repository, "backtest_engine", None)

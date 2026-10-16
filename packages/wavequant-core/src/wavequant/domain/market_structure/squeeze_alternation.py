@@ -92,7 +92,10 @@ def squeeze_alternations(bars, audit, anchors_at_attack):
             if not events or (*identity, events[0]["b_low_index"]) in used:
                 continue
             if gap_confirmation:
-                events = [dict(e, confirmation_source="defended_n_consolidation_gap") for e in events]
+                events = [dict(e, confirmation_source="defended_n_consolidation_gap",
+                               gap_confirmation_index=now,
+                               gap_previous_high=trigger.get('gap_previous_high'),
+                               gap_low=trigger.get('gap_low')) for e in events]
             if events[0].get('deep_price_path') and bars[now].close <= max(b.high for b in bars[attack:now]):
                 continue
             from .alternation_duration import short_shallow_pullback

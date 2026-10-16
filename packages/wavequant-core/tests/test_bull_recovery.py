@@ -1,4 +1,4 @@
-"""短暂收盘跌破后的同级再次空翻多；缩减夹具，不代替实股完整回放。"""
+"""最多三日连续创新低后的同级再次空翻多；缩减夹具，不代替实股完整回放。"""
 
 from copy import deepcopy
 from dataclasses import replace
@@ -75,12 +75,46 @@ def test_zero_to_three_consecutive_closes_are_allowed(below_days):
     assert len(special_states(events)) == 2
 
 
-def test_fourth_close_rejects_recovery_even_if_later_price_recovers():
+def test_four_closes_below_origin_do_not_expire_without_consecutive_lower_lows():
     bars, row = recovery_case()
     bars[5] = replace(bars[5], close=4.02, low=4.0)
     _, events = replay(bars, row)
-    assert not special_states(events)
-    assert any(event.get('reason') == 'four_consecutive_closes_below_original_low' for event in events)
+    assert len(special_states(events)) == 2
+    assert not any(event['event'] == 'trend_lifecycle_recovery_expired' for event in events)
+
+
+@pytest.mark.parametrize('level', [0, 1, 2, 3])
+@pytest.mark.parametrize('close', [4.0, 4.08])
+def test_fourth_consecutive_lower_low_expires_even_with_close_reclaimed(level, close):
+    bars, row = recovery_case(level)
+    for index, low in enumerate((3.90, 3.89, 3.88, 3.87), start=2):
+        bars[index] = replace(bars[index], low=low, close=close)
+    book, before = replay(bars, row, end=5)
+    assert not any(event['event'] == 'trend_lifecycle_recovery_expired' for event in before)
+    _, after = replay(bars, row, begin=5, engine=TrendLifecycle.from_checkpoint(book.checkpoint()))
+    assert not special_states(before + after)
+    expiry = next(event for event in after if event['event'] == 'trend_lifecycle_recovery_expired')
+    assert expiry['bar_index'] == 5 and expiry['consecutive_lower_lows'] == 4
+    assert expiry['reason'] == 'four_consecutive_lower_lows'
+
+
+@pytest.mark.parametrize('reset_low', [3.88, 3.89])
+def test_equal_or_higher_low_resets_streak_without_confirming_alternation(reset_low):
+    from wavequant.domain.market_structure.trend_lifecycle import _BullRecovery, advance_bull_recovery
+
+    _, row = recovery_case()
+    seed = next(fact for fact in _facts(row['strokes'][0]['points'], {}, 1)
+                if fact.title == '翻空为多')
+    state = _BullRecovery(seed)
+    previous_low = 5.4
+    for now, low in enumerate((3.90, 3.89, 3.88, reset_low, 3.87, 3.86, 3.85), start=2):
+        state = advance_bull_recovery(state, low, 4.0, now, previous_low=previous_low)
+        assert state is not None
+        assert state.recovered is None
+        assert state.consecutive_lower_lows == (now - 1 if now < 5 else now - 5)
+        previous_low = low
+    state = advance_bull_recovery(state, 3.86, 4.08, 9, previous_low=previous_low)
+    assert state.recovered == 9 and state.consecutive_lower_lows == 0
 
 
 def test_intraday_break_can_recover_on_the_same_day_but_equal_close_cannot():
@@ -91,7 +125,7 @@ def test_intraday_break_can_recover_on_the_same_day_but_equal_close_cannot():
     assert len(special_states(events)) == 2
     recovery = next(event for event in events if event['event'] == 'trend_lifecycle_recovered')
     assert recovery['breach_index'] == recovery['recovered_index'] == 2
-    assert recovery['consecutive_below_closes'] == 0
+    assert recovery['consecutive_lower_lows'] == 1
     bars, row = recovery_case()
     for index in range(5, len(bars)):
         bars[index] = replace(bars[index], close=4.05, low=min(bars[index].low, 4.05))
@@ -178,6 +212,8 @@ def upgrade_recovery_case(level=2):
     impulse = point(10, 'H', 5.78, 11)
     counter = point(12, 'L', 4, 13)
     for high, low, broken in ((first, origin, key), (impulse, new_origin, new_key)):
+        high['lifecycle_context'] = dict(direction='up', available_at=high['available_at'],
+                                         key=dict(broken), origin=dict(low))
         high['upgrade_evidence'] = dict(direction='up', role='endpoint',
             available_at=high['available_at'], confirmed_by=dict(high),
             broken_key=dict(broken), origin=dict(low))
@@ -218,6 +254,8 @@ def test_upgrade_uses_own_level_clock_and_does_not_duplicate_display_observation
     points[-2]['upgrade_evidence']['available_at'] = 9
     points[-2]['upgrade_evidence']['confirmed_by'].update(index=9, available_at=9)
     points[-3]['available_at'] = 10
+    points[-2]['lifecycle_context']['origin']['available_at'] = 10
+    points[-2]['lifecycle_context']['available_at'] = 10
     assert not any(fact.point.index == 9 for fact in _facts(points, {}, 9))
     fact = next(fact for fact in _facts(points, {}, 10) if fact.point.index == 9)
     assert fact.known == 10 and fact.origin.known == 10
@@ -246,6 +284,7 @@ def test_august_counter_survives_zero_close_break_and_same_leg_high_extension(le
     early = deepcopy(final)
     high = early['strokes'][0]['points'][-2]
     high.update(index=9, time='2019-03-04', available_at=9, value=4.7)
+    high['lifecycle_context']['available_at'] = 9
     high['upgrade_evidence']['available_at'] = 9
     high['upgrade_evidence']['confirmed_by'].update(index=9, available_at=9, value=4.7)
     book, before = replay(bars, early, end=11)
@@ -253,7 +292,7 @@ def test_august_counter_survives_zero_close_break_and_same_leg_high_extension(le
     _, after = replay(bars, final, begin=11, engine=restored)
     events = before + after
     recovery = next(event for event in events if event['event'] == 'trend_lifecycle_recovered')
-    assert recovery['consecutive_below_closes'] == 0
+    assert recovery['consecutive_lower_lows'] == 1
     assert bars[recovery['recovered_index']].timestamp.date().isoformat() == '2018-10-19'
     assert not any(event.get('reason') == 'source_evidence_revised' for event in after)
     extension = next(event for event in after if event.get('confirmation_rule') ==
@@ -270,4 +309,4 @@ def test_touching_original_low_does_not_start_recovery():
     _, row = upgrade_recovery_case()
     seed = next(fact for fact in _facts(row['strokes'][0]['points'], {}, 2) if fact.point.index == 2)
     state = _BullRecovery(seed)
-    assert advance_bull_recovery(state, 3.95, 4.06, 3) == state
+    assert advance_bull_recovery(state, 3.95, 4.06, 3, previous_low=5.48) == state

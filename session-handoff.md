@@ -1,3 +1,61 @@
+2026-10-17 · 当前提交推送
+
+用户明确提交并推送，延续不合并main。Core/API定向185通过、Web定向23通过，Webtypecheck通过；修复JSX换行后lint无错误/6条已有警告，隔离Web副本Next构建通过，git diff --check通过。初次隔离构建pnpm包装器路径失败后用原已安装Next绝对入口成功；未影响在线.next。证据commit-targeted-20261017.log、commit-web-build-20261017.log。没有执行Harness、浏览器E2E、全量套件、Python全量类型或实股回测；历史完整Core53失败及未验收事项保留。功能330保持in-progress，不因本次定向通过声称整体通过。将当前累计趋势、缓存、资格、重载和复制按钮修改保存到feat-三级趋势统一。
+
+2026-10-17 · 最新要求：策略变更停旧任务、重载服务、刷新页面（实现待验证）
+
+运行操作已完成：通过CIM确认18968启动器及其29728 Web子进程属于当前worktree后，taskkill /PID 18968 /T /F终止所属树；Start-Process -WindowStyle Hidden启动.codex-runtime/start-current-branch.mjs，新启动器PID10280，日志current-branch-20261017-000821。日志确认Next3004 Ready、API8766启动；没有发起额外回测或测试。CUA当前无可用IAB标签，open_in_codex已将3004页面打开请求排队到当前会话，不能声称已确认浏览器自动刷新。下一次真实源码变更的自动重载/页面刷新仍待观察。
+
+已覆盖此前“等空闲重载/不自动刷新”的要求。API dev源码稳定2秒即stop_child旧API所属树再启动，不查询active数量；Windows杀树失败且仍存活拒绝并跑，POSIX独立会话按组终止。前端新增engine-reload.js独立3秒就绪版本轮询、5秒超时、不重叠；仅engine_version变化触发一次页面刷新，参数变化/断连/503不刷新。app取消旧订阅、失效已完成内存任务，原版本缓存和服务端自选调度继续生效。测试仅编写未运行，无开发检查、构建或浏览器测试。正在替换当前运行启动器并刷新现有页面，后续自动重载链路仍待实际观察；本轮不提交、不推送、不合并。
+
+2026-10-16 · 最新澄清：只在已翻空且最高价创新高的特殊情况比较收盘（实现待验证）
+
+已把实体高max(open,close)比较改成当前close与原anchor.value最高价比较，不能用原close作为门槛。先有下级严格翻空和更高high，close <= 原high才保留特殊交替；pending期间未突破原high的内部反弹不读收盘、不取消观察。后续close > 原high恢复正常延伸；严格破翻空低点才发布组合下降，保留真实坐标和原知识时钟。trend_body_reversal.point_close、升级状态、递归证据共用此规则。结构v115/生命周期v14/历史v133排除旧口径。测试补充仅编写未运行，未执行检查、新回测、重启或Git操作；完整实股待验证。下文实体高描述为此前历史，以上述最新规则为准。
+
+2026-10-16 · 最新任务：国芳2024年底影线反弹覆盖二级波段边界（实现待验证）
+
+用户最初说7月25日→1月3日缺线；已有缓存实际识别并延伸到5月29日。澄清后目标为2024-07-25→2024-12-12上涨段、2024-12-12→2025-01-13下降段：12月25日一级严格翻空，1月3日影线高9.316823但实体高约8.47低于12月12日实体高8.906993，应属于反弹交替。仅几何H/L比较使整波极值被覆盖。
+
+已新增trend_body_reversal来源实体/证据助手；TrendUpgradeState在下级严格翻空、影线新高而实体未破时保存原H，直到再破翻空低点才闭合原上涨并发布下降L，实体真突破可恢复正常延伸。递归结束证据新增body_reversal_evidence分支验证直接下级闭合、真实四点/实体/知识日。prepare_trend_lines可接收bars，仅按来源坐标附当日实体；chart_entry_history、trend_pipeline、trend_stage_work和hierarchical_entry串行路径同步，紧凑来源保留price_body。结构v114/生命周期v13/历史v132。原3连低规则、冻结关键位保护及checkpoint变量修复保留。
+
+新增test_trend_body_reversal.py仅编写未运行；没有执行检查、测试、新回测、浏览器、重启或Git操作。完整国芳新结果、递归一致性、相邻B/S回归待验证，不得声称通过。只读缓存manifest 3d7825b5ed0f0f06d54a71ccab8124d26cb151ee573d614357a46cd0bdb136f5，诊断文件.codex-runtime/guofang-level1-2025.json及guofang-level2-latest.json；读取一级历史时曾因一次累积全部行耗尽内存，已改为二分索引只读目标缓存块，未修改缓存。1月13日来源L到1月22日整波结束才可递归，确认时间不可回填。
+
+2026-10-16 · 最新规则：特殊分支最多连续3天最低价降低（实现待验证）
+
+用户明确按每日最低价比较：跌破原低点启动观察后，最多连续3天low<前日low，第4天失效，持平/抬高归零。不是累计3天，也不再限制收盘低于原低点的连续天数。advance_bull_recovery新增previous_low必填关键字参数，所有生产/测试直接调用同步；严格收盘收回、同级再次突破及既有交替确认条件保留。计数命名consecutive_lower_lows、失效审计four_consecutive_lower_lows，检查点、生命周期v12和历史v131同步。新增边界/恢复用例只编写未运行；升级夹具同时补上前轮要求的本级冻结上下文。
+
+继续feat-三级趋势统一专属worktree，不做开发检查、新回测、重启、提交推送合并。规则实股结果与相邻特殊恢复回归待验证；不要声称已通过。MONOREPO-330仍in-progress，前轮国芳本级冻结关键位修复和checkpoint变量修复保留。
+
+2026-10-16 · 当前任务：601086未二级翻多却出现交易资格（实现待验证）
+
+当前分支feat-三级趋势统一，工作目录C:/Users/zb/.codex/worktrees/three-level-trend/wavequant-monorepo。只读当前完成的c07cdd2d回测：既有step10几何仍冻结2020-08-14末跌高8.974745；step24却把2021-06-21局部高点4.380019的突破当二级翻多，导致2021至2023多段错误资格。2021-04-27有底部疑虑，局部起点2021-07-28无标签，旧的起点专属检查被绕过。
+
+已让lecture_trend._annotate发布当前本级lifecycle_context，通过trend_lines派生字段白名单传递；trend_lifecycle升级回退严格验证对应冻结key和本级空头origin，缺失/未突破/未来上下文不能开翻多，正式观察与特殊恢复独立保留。生命周期v11、chart_entry_history缓存v130排除旧资格。新增test_lifecycle_frozen_context.py与旧反例补充，仅写未运行。遵循开发不检查，不运行新回测、测试、构建、浏览器、Git检查；未重启/提交推送合并。完整601086无错误资格及600812特殊分支仍待验证，feature330保持in-progress。不要恢复已回退的00:37及80%减仓等规则。
+
+诊断数据仅在.codex-runtime/guofang-qualification-current-audit.json和guofang-level2-history.json，非代码资产。既有manifest为79f0e9c82e4f8864b138c95c4a46a130f0c51ae21fff1059725d9bb6331a6323；本轮读取时已有7股完成0失败（上次checkpoint修复之后），旧“12股均失败”仅历史记录，勿再当成当前状态。
+
+2026-10-16 · 当前任务：00:31版本12股全部回测失败（实现待验证）
+
+用户已明确回退00:31并重启，现有服务版本306f4194下12股均因invalid lifecycle checkpoint shape失败。根因为TrendLifecycle.from_checkpoint的gap局部变量被candidate解包为bool，后续误用4字段缺口解包；改成saved_gap/candidate_gap分离，无更改13字段或策略语义，不恢复之后被回退的功能。新增缺口/候选组合、0至3级检查点恢复用例未运行；API对所有任务错误记录完整内部堆栈。遵循开发不检查，未运行测试/构建/浏览器/新回测，无提交合并推送。等待现有服务自动空闲重载，完整实际回测恢复仍待验证；保持MONOREPO-330 in-progress，历史失败记录保留。
+
+2026-10-16 · 跳空交替确认在缺口回补后撤销（实现待验证）
+
+用户最终要求“回补只结束跳空确认空多交替结束的确认”。Core已实现缺口确认凭据及局部撤销，保留空翻多周期继续等其他规则/新跳空；其他独立确认已接替则不因旧缺口回补关闭资格。没有改动原买卖/账户退出条件。共享三层资格事件、N资格、窗口审计和图示终点；生命周期v10、历史v129隔离旧缓存。新增test_confirmation_gap_expiry.py只编写未运行；未做开发验证、新回测、重启、提交/推送/合并，MONOREPO-330保持in-progress。
+
+现有600825缓存实际在2026-02-10以body_gap_volume_bullish_breakout_after_defended_low开启二级资格（低点2026-02-06）；TDX原价2月9日开收6.92，2月10日开6.97收7.22，2月11日低6.87收6.93。按最低价触及确认缺口下沿6.92，2月11日应撤销此跳空确认；不是收盘跌破下沿。后续提交时验证生命周期/资格/检查点及完整回测，检查普通/特殊非缺口确认接替、来源失效后残留窗口、重获资格及图示/复制结束日。不宣称当前运行中的旧任务已更新。
+
+2026-10-15 · 追加 Web 当前资格区间复制入口（实现待验证）
+
+ChartViewport 在 copy-eligibility-ranges 旁新增“复制当前区间”，独立 ID 为 copy-current-eligibility-range-timeline；复用现有 current 资格匹配和剪贴板处理，仅滑块在已显示资格区间内时显示，移出隐藏。styles.css 沿用蓝色小按钮样式。只改前端入口及样式，未运行任何验证、未重启、未提交/推送/合并；刷新页面加载，滑块移入/移出及复制内容待验证。MONOREPO-330继续in-progress。
+
+2026-10-15 · 当前未提交性能优化（feat-三级趋势统一，保持策略口径）
+
+用户要求提高策略计算性能且不得修改策略逻辑。本轮修改 Core：integrated_strategy.py 接入 strategy_history_cache.py 的同源封闭观察复用、正N失效追加扫描，并移出重复洗盘排序；chart_entry_history.py/market_calculations.py 保存请求级许可缓存，在精确证据匹配时跨多日续接；trend_staging.py 有界复用最近两行压缩/原始字节，公开还原结果仍独立。未删除两条确认链，未更改资格、N成立、B/S、成交或账户规则。缓存限定同请求、同参数与当日可知前缀，修订回退，正常/异常关闭清理。
+
+新增 test_strategy_history_cache.py、test_chart_live_permission_reuse.py、test_trend_staging_payload_cache.py，均未运行。本轮遵从开发阶段不做任何检查/验证的要求，没有 Git 状态/差异检查、测试、lint、格式、类型、构建、浏览器、新回测、测速、提交/推送/合并或服务重启。源码已改不代表当前运行任务已切换引擎；不要宣称达到两分钟或给出提速倍数。
+
+下次实际提交阶段先执行新缓存定向用例，再对同源完整回测比较趋势、确认时钟、B/S、审计、订单/成交及权益；同时处理下方已记录回归失败。重点检查跨多日续接、不同资格掩码/旧攻击证据、分钟尾K线修订、较短回放及内存上界。MONOREPO-330仍in-progress；不要改写此前失败证据。
+
 2026-10-15 · 提交阶段验证与分支保存（未通过全部回归）
 
 用户要求提交并推送 feat-三级趋势统一，明确不合并 main。本次保存累计实现及已知失败，MONOREPO-330 保持 in-progress；不代表完整验收通过。此前“未运行”的记录是各开发阶段历史，本段为最新提交验证结果。

@@ -28,8 +28,8 @@ def calculate_trend_hierarchy(
     不能在某条路径或某根K线内提前跨级。各级仍调用同一个judge_trend，
     prepare只保留来源、结构点和各自可知日，严格高低点突破升级规则不变。
 
-    bars应当已截到请求日期。N、K线和交替证书只在三个几何阶段完成后
-    附加；无证书的高低点也参与递归，发展尾部仍由正式点适配器排除。
+    bars应当已截到请求日期。来源点的当日实体只供翻空后影线反弹判断；
+    N和交易交替证书仍在几何之外附加，发展尾部由正式点适配器排除。
     中间结果由本次调用独立拥有，各级只读前级来源，不维护共享全局状态。
     """
     if type(n_target_trend_confirmation_enabled) is not bool:
@@ -41,7 +41,7 @@ def calculate_trend_hierarchy(
     symbol = bars[0].symbol if bars else 'STRUCTURE'
     prepared: dict[int, dict[str, object]] = {}
     for level in (1, 2, 3):
-        current = prepare_trend_lines(source, trend_level=level, symbol=symbol)
+        current = prepare_trend_lines(source, trend_level=level, symbol=symbol, bars=bars)
         prepared[level] = current
         if level < 3:
             # 只在确有下一级时投影已结束来源；三级完成后不创建不存在的四级输入。
