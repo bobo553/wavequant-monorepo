@@ -58,7 +58,7 @@ test("comparison draws holding loss from the entry-cost MAE metric, with legacy 
         backtest: { counts: {} },
         metrics: {
             max_drawdown: -0.01,
-            holding_drawdown_version: "holding_entry_cost_mae_cycle_v2",
+            holding_drawdown_version: "holding_entry_cost_mae_cycle_v3",
             holding_max_drawdown: -0.12,
         },
     };

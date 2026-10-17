@@ -1,7 +1,7 @@
 import { tradePointRange } from "./chart-navigation.js";
 import { num, pct } from "./labels.js";
 
-export const holdingDrawdownVersion = "holding_entry_cost_mae_cycle_v2";
+export const holdingDrawdownVersion = "holding_entry_cost_mae_cycle_v3";
 
 /** 已清仓轮次中最深的买入至卖出亏损。 */
 export function holdingDrawdownValue(metrics) {
@@ -17,10 +17,13 @@ export function holdingDrawdownText(metrics) {
 
 export function holdingDrawdownNote(metrics) {
     if (metrics?.holding_drawdown_version !== holdingDrawdownVersion) return "旧结果未计算持仓最大亏损，请重新回测";
+    const scope = metrics.holding_drawdown_observation_scope === "qualified_sessions"
+        ? "；仅观察有效资格日和结束日，区间外冻结"
+        : "";
     if (metrics.holding_drawdown_status === "no_entry_fills") return "无买入成交，暂无持仓最大亏损";
-    if (metrics.holding_drawdown_status === "no_closed_cycles") return "暂无完全卖出的持仓；未清仓的本轮亏损见持仓明细";
-    if (metrics.holding_drawdown_status === "incomplete") return "盘中成交边界缺少完整分钟线，最大亏损尚无法确认";
-    return "已完全卖出的各轮持仓中最大亏损；每轮独立计算，未清仓不计入；减仓不重置，加仓按当时均价；不含费用";
+    if (metrics.holding_drawdown_status === "no_closed_cycles") return `暂无完全卖出的持仓；未清仓的本轮亏损见持仓明细${scope}`;
+    if (metrics.holding_drawdown_status === "incomplete") return `盘中成交边界缺少完整分钟线，最大亏损尚无法确认${scope}`;
+    return `已完全卖出的各轮持仓中最大亏损；每轮独立计算，未清仓不计入；减仓不重置，加仓按当时均价；不含费用${scope}`;
 }
 
 /** 按真实成交的清仓边界归零，每个日期只使用当时已观察到的亏损。 */
@@ -76,9 +79,11 @@ export function holdingDrawdownLines(episode) {
     if (!episode || episode.metric_version !== holdingDrawdownVersion) return [];
     const period = `${episode.entry_time} → ${episode.exit_time || `${episode.asof}（未清仓）`}`;
     const incomplete = episode.coverage !== "complete";
+    const qualified = episode.observation_scope === "qualified_sessions";
     return [
-        `整笔持仓最大亏损${incomplete ? "（已观察下界，数据不完整）" : ""}：${pct(episode.observed_max_drawdown)}；买入至卖出 ${period}`,
+        `${qualified ? "资格日持仓" : "整笔持仓"}最大亏损${incomplete ? "（已观察下界，数据不完整）" : ""}：${pct(episode.observed_max_drawdown)}；买入至卖出 ${period}`,
         `成本 ${num(episode.cost_price, 4)} 元 → ${episode.low_time} 最低 ${num(episode.low_price, 4)} 元；该低点浮亏 ${num(episode.loss_amount)} 元（复权等价口径，不含费用）；截至 ${episode.asof}`,
+        ...(qualified ? [`仅观察有效资格日和结束日；跳过 ${episode.excluded_sessions || 0} 个区间外交易日；最后观察 ${episode.observed_through || episode.entry_time}`] : []),
     ];
 }
 

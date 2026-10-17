@@ -3,7 +3,7 @@
 from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
-from typing import Callable, TypedDict
+from typing import TYPE_CHECKING, Callable, TypedDict
 
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.domain.strategies.integrated_strategy import (
@@ -14,7 +14,7 @@ from wavequant.domain.strategies.integrated_strategy import (
 )
 from wavequant.domain.strategies.n_consolidation import consolidation_gap
 from wavequant.domain.strategies.hierarchical_entry import EntryContext
-from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse
+from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse, MinuteTradingScope
 from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
     wave_confirmation_state,
@@ -26,6 +26,9 @@ from wavequant.domain.market_structure.polyline import PointKind
 from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageError
 from wavequant.infrastructure.market_data.data import opening_permissions
 from wavequant.infrastructure.market_data.minute import MinuteBar
+
+if TYPE_CHECKING:
+    from wavequant.domain.strategies.backtest_analysis import BacktestAnalysis
 
 
 class EntryExecution(TypedDict):
@@ -50,16 +53,29 @@ def resolve_consolidation_entries(
     session_cache: dict | None = None,
     prepared_pivots: tuple | None = None,
     prepared_contexts: dict[int, tuple[EntryContext, ...]] | None = None,
+    prepared_analysis: 'BacktestAnalysis | None' = None,
+    trading_window_start: int | None = None,
 ) -> tuple[SystemResult, dict[tuple[str, int], EntryExecution], list[dict[str, object]]]:
     """Keep daily-close candidates when no earlier fully verified minute decision exists."""
     if history_reuse is not None:
         history_reuse.require_input(bars, strategy)
+    minute_scope = None
+    if prepared_analysis is not None:
+        if (prepared_analysis.bars != tuple(bars) or only_index is None or only_index != len(bars) - 1
+                or trading_window_start is None):
+            raise ValueError('prepared minute replay requires the current daily prefix and window')
+        minute_scope = MinuteTradingScope.from_analysis(prepared_analysis,
+            index=only_index, window_start=trading_window_start)
+        # A close-confirmed new qualification cannot authorize earlier minutes.
+        if minute_scope is None:
+            return generated, {}, []
     signals = list(generated.signals)
     audit = list(generated.audit)
     executions: dict[tuple[str, int], EntryExecution] = {}
     fallbacks: list[dict[str, object]] = []
     candidates = [
         e for e in audit if e["event"] == "n_completed" and e.get("direction") == "up" and e.get("n_level", 0) >= 1
+        and (minute_scope is None or minute_scope.window_start <= e.get('known_at', e['bar_index']) < minute_scope.index)
     ]
     wave_candidates = [
         (
@@ -69,6 +85,7 @@ def resolve_consolidation_entries(
         )
         for e in audit
         if e["event"] == "wave_continuation_ready"
+        and (minute_scope is None or minute_scope.window_start <= e['bar_index'] < minute_scope.index)
     ]
     snapshots, epochs = {}, {}
     if wave_candidates:
@@ -275,9 +292,9 @@ def resolve_consolidation_entries(
             attempted.add(observation)
             replay = (
                 generate_system_signals(prefix, strategy, chart_history_cache=chart_history_cache,
-                    _minute_history_reuse=history_reuse)
+                    _minute_history_reuse=history_reuse, _minute_scope=minute_scope)
                 if strategy.buy_point_definition == "whole_flip_wave_v3"
-                else generate_system_signals(prefix, strategy)
+                else generate_system_signals(prefix, strategy, _minute_scope=minute_scope)
             )
             proof = next(
                 (

@@ -7,7 +7,7 @@ import math
 from typing import Sequence
 
 from ..models.model import Bar
-from ..market_structure.n_shape import NCompletion, NSetup, NStatus, MilestoneBasis, observe_n
+from ..market_structure.n_shape import NCompletion, NObservation, NSetup, NStatus, MilestoneBasis, observe_n
 from ..market_structure.price_action import (Direction, KeyLevel, LevelKind, ResistanceEvidence,
                            ShadowPolicy, observe_resistance)
 
@@ -51,13 +51,23 @@ class ControlBarObservation:
 
 def observe_control_bar(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
                         volume_lookback: int, shadow_policy: ShadowPolicy | None,
-                        asof_index: int | None = None) -> ControlBarObservation:
+                        asof_index: int | None = None,
+                        measurement_start: int | None = None,
+                        _prepared_n: NObservation | None = None) -> ControlBarObservation:
     if type(volume_lookback) is not int or volume_lookback < 1:
         raise ValueError('positive integer volume_lookback required')
     if shadow_policy is not None and not isinstance(shadow_policy, ShadowPolicy):
         raise ValueError('explicit ShadowPolicy or None required')
-    n = observe_n(bars, setup, timeframe=timeframe, milestone_basis=MilestoneBasis.CLOSE,
-                  asof_index=asof_index)
+    end = len(bars) - 1 if asof_index is None else asof_index
+    if measurement_start is not None and (type(measurement_start) is not int
+            or not 0 <= measurement_start <= end):
+        raise ValueError('control measurement start must be available')
+    n = (_prepared_n if _prepared_n is not None else
+         observe_n(bars, setup, timeframe=timeframe, milestone_basis=MilestoneBasis.CLOSE,
+                   asof_index=asof_index, measurement_start=measurement_start))
+    if _prepared_n is not None and (timeframe != setup.timeframe
+            or n.asof_index != (len(bars) - 1 if asof_index is None else asof_index)):
+        raise ValueError('prepared N must belong to this market prefix')
     if n.completion is None:
         return ControlBarObservation(n.asof_index, n.status, setup.direction)
     t = n.completion.bar_index
@@ -77,12 +87,14 @@ def observe_control_bar(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     level = KeyLevel(setup.symbol, timeframe, LevelKind.SUPPORT if up else LevelKind.RESISTANCE,
         n.completion.defense, t, t, 'completed_n_virtual_defense')
     response = (observe_resistance(bars[t], bars[t+1], attack_direction=setup.direction,
-                                   shadow_policy=shadow_policy) if t+1 <= n.asof_index else None)
+                                   shadow_policy=shadow_policy) if t+1 <= n.asof_index
+                and (measurement_start is None or t + 1 >= measurement_start) else None)
     first_extreme = first_close = None
     frames = []
-    for i in range(t+1, n.asof_index+1):
+    for i in range(max(t + 1, measurement_start or 0), n.asof_index+1):
         b = bars[i]
-        intrabar = sign*((b.low if up else b.high)-level.price) < 0
+        adverse = b.close if measurement_start == i else b.low if up else b.high
+        intrabar = sign*(adverse-level.price) < 0
         close = sign*(b.close-level.price) < 0
         if intrabar and first_extreme is None:
             first_extreme = i

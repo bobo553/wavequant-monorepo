@@ -1,16 +1,17 @@
 """独立日期快照的计算端口；交易状态和阶段顺序仍由历史调用者拥有。"""
 
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from typing import Literal, Protocol, TypedDict, cast
 
 from ..models.model import Bar
 from .trend_evidence_reuse import _completion_projection_scope
 from .trend_judgement import _FrozenPointCache, _frozen_point_scope, mutable_points
 from .trend_lines import (
-    _TrendJudgementCache, _TrendPermissionCache, attach_trend_permissions,
+    _TrendJudgementCache, _TrendPermissionCache, _legacy_pending_bull_n, attach_trend_permissions,
     high_low_points_from_strokes, prepare_trend_lines, qualify_trend_structure,
 )
+from .n_trend_confirmation import _NPermissionProofs, _reuse_n_permissions
 from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
 from .trend_body_reversal import with_price_bodies
 
@@ -68,6 +69,7 @@ class TrendStageComputer:
         self.dates = {_bar_date(bar): position for position, bar in enumerate(bars)}
         self.market = _MarketRangeIndex.build(bars)
         self.permissions = _TrendPermissionCache(bars, memory_bytes=2 * 1024 * 1024)
+        self.n_proofs = {level: _NPermissionProofs() for level in (1, 2, 3)}
         self.scope = ExitStack()
         self.label: tuple[StageKind, int] | None = None
         self.frozen: _FrozenPointCache | None = None
@@ -75,6 +77,7 @@ class TrendStageComputer:
 
     def close(self) -> None:
         self.scope.close()
+        self.n_proofs.clear()
 
     def compute(self, kind: StageKind, index: int, value: object, *, level: int,
                 n_enabled: bool, options: tuple[bool, ...]) -> object:
@@ -100,31 +103,50 @@ class TrendStageComputer:
             candidates = mutable_points(judgement.candidates)
             market = self.bars[:index+1]
             prefix = _MarketPrefixIndex(self.market, market) if self.market is not None else None
-            published = qualify_trend_structure(candidates, source, market, trend_level=level,
-                qualified_source=qualified, _market_index=prefix, _owned_candidates=True,
-                n_target_trend_confirmation_enabled=n_enabled)
+            deferred_n = len(options) > 1 and options[1]
+            if deferred_n:
+                published = []
+            else:
+                n_scope = (_reuse_n_permissions(self.n_proofs[level], market,
+                    allow_new=_legacy_pending_bull_n(geometry, market, trend_level=level))
+                    if n_enabled else nullcontext())
+                with n_scope:
+                    published = qualify_trend_structure(candidates, source, market, trend_level=level,
+                        qualified_source=qualified, _market_index=prefix, _owned_candidates=True,
+                        n_target_trend_confirmation_enabled=n_enabled)
             if not n_enabled:
                 # 历史公开许可仅有这五字段；完整几何继续递归。N关闭时下级
                 # 许可全文没有消费者，不应作为下一阶段来源账本重复传输。
                 published = [{name: point[name] for name in
                               ('index', 'ordinal', 'kind', 'value', 'available_at')} for point in published]
                 geometry = _hierarchy_source(geometry)
-            candidates = ([{name: point[name] for name in
-                            ('index', 'kind', 'wave_direction_after', 'available_at', 'upgrade_evidence')
-                            if name in point} for point in candidates]
-                          if level == 1 and options and options[0] else [])
+            if not deferred_n:
+                candidates = ([{name: point[name] for name in
+                                ('index', 'kind', 'wave_direction_after', 'available_at', 'upgrade_evidence')
+                                if name in point} for point in candidates]
+                              if level == 1 and options and options[0] else [])
             return HierarchyStageResult(geometry=geometry, candidates=candidates, published=published)
         if kind == 'permissions':
             prepared = cast(Sequence[Mapping[str, object]], value)
             market = self.bars[:index+1]
+            pending = [frozenset(cast(str, stroke['id'])
+                for stroke in cast(Sequence[Mapping[str, object]], row['strokes'])
+                if ((cutoff := cast(Mapping[str, int | None], row['_path_market_end_indices'])[
+                    cast(str, stroke['source_path'])]) is None or index < cutoff)
+                and _legacy_pending_bull_n(cast(Sequence[Mapping[str, object]], stroke['points']),
+                    market, trend_level=number)) if n_enabled else frozenset()
+                for number, row in enumerate(prepared, 1)]
             first = attach_trend_permissions(prepared[0], market, _permission_cache=self.permissions,
-                _owned_candidates=True, n_target_trend_confirmation_enabled=n_enabled)
+                _owned_candidates=True, n_target_trend_confirmation_enabled=n_enabled,
+                _n_confirmation_paths=pending[0])
             second = attach_trend_permissions(prepared[1], market, _permission_cache=self.permissions,
                 qualified_source_points=high_low_points_from_strokes(first['qualified_strokes']) if n_enabled else None,
-                _owned_candidates=True, n_target_trend_confirmation_enabled=n_enabled)
+                _owned_candidates=True, n_target_trend_confirmation_enabled=n_enabled,
+                _n_confirmation_paths=pending[1])
             third = attach_trend_permissions(prepared[2], market, _permission_cache=self.permissions,
                 qualified_source_points=high_low_points_from_strokes(second['qualified_strokes']) if n_enabled else None,
-                _owned_candidates=True, n_target_trend_confirmation_enabled=n_enabled)
+                _owned_candidates=True, n_target_trend_confirmation_enabled=n_enabled,
+                _n_confirmation_paths=pending[2])
             # 主消费器立即用qualified_strokes覆盖strokes；在线路传输前完成
             # 同一视图转换，避免传递随后被覆盖的整份几何。几何仍在阶段流中。
             return tuple(dict(result, strokes=result['qualified_strokes']) for result in (first, second, third))

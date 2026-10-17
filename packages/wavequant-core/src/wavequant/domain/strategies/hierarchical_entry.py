@@ -5,7 +5,7 @@ reduced independently; an endpoint seen only later is never traded earlier.
 The first alternation needs a higher low, not a 2/3 retracement threshold.
 """
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from copy import deepcopy
 from dataclasses import dataclass, asdict
 from typing import TYPE_CHECKING, TypedDict, cast
@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, TypedDict, cast
 from ..market_structure.bottom_n_targets import DeclineStart
 from ..market_structure.lecture_drawing import lecture_drawing
 from ..market_structure.trend_judgement import _frozen_point_scope, judge_trend, mutable_points
-from ..market_structure.trend_lines import _TrendJudgementCache, polyline_turns, qualify_trend_structure
+from ..market_structure.trend_lines import _TrendJudgementCache, _legacy_pending_bull_n, polyline_turns, qualify_trend_structure
+from ..market_structure.n_trend_confirmation import _NPermissionProofs, _reuse_n_permissions
 from ..market_structure.trend_structure import StructuralTrend, classify_trend_prices
 from ..market_structure.trend_staging import TrendStageRows
 from ..market_structure.trend_evidence_reuse import _cache_completion_projections
@@ -119,7 +120,7 @@ def hierarchical_history(
     last_epoch = None
     last = len(bars) - 1
     # 外包十字星的单向归并改变来源历史，旧越锚断路检查点不可继续递归。
-    cache_version = 'level_first_frozen_bull_origin_v123'
+    cache_version = 'level_first_shared_daily_permissions_v125'
     wants_declines = decline_sink is not None
     wants_structure = structure_sink is not None
     prefix_key = (cache_version, tuple(bars[:-1]), wants_declines, n_target_trend_confirmation_enabled, wants_structure)
@@ -139,6 +140,15 @@ def hierarchical_history(
     resume_start = (last if cached_key == prefix_key else
                     last - 1 if cached_key == (cache_version, tuple(bars[:-2]), wants_declines,
                                                n_target_trend_confirmation_enabled, wants_structure) else 0)
+    saved_n_proofs = prefix_cache.get('_n_permission_proofs') if prefix_cache is not None else None
+    owns_n_proofs = (isinstance(saved_n_proofs, dict) and set(saved_n_proofs) == {1, 2, 3}
+                    and all(type(value) is _NPermissionProofs for value in saved_n_proofs.values()))
+    if resume_start and n_target_trend_confirmation_enabled and not owns_n_proofs:
+        # 外部日期检查点没有 N 证明所有权时，从真实历史需求日恢复，不能在
+        # 已确认日期临时重算 N，或把五字段展示点冒充完整证明。
+        resume_start = 0
+    n_proofs = (cast(dict[int, _NPermissionProofs], saved_n_proofs)
+                if resume_start and owns_n_proofs else {level: _NPermissionProofs() for level in (1, 2, 3)})
     if resume_start:
         saved_history, saved_epochs, saved_previous, last_epoch, saved_declines, saved_structure = prefix_cache['checkpoint']
         # 公开历史／sink允许调用方编辑；缓存快照必须独立拥有嵌套点字典，
@@ -232,8 +242,10 @@ def hierarchical_history(
                         pending_frames[dated.index] = dated
                         yield dated.index, (dated.source, dated.qualified_source)
 
+                # 并行单日任务没有前日 N 证明所有权，N 许可由下面的顺序消费者
+                # 按本级需求生成；worker 只返回相同几何及完整候选。
                 work = (stage_runner.map('hierarchy', dated_sources(), level=level,
-                            n_enabled=n_target_trend_confirmation_enabled, options=(wants_declines,)) if stage_runner is not None else
+                            n_enabled=False, options=(wants_declines, n_target_trend_confirmation_enabled)) if stage_runner is not None else
                         ((index, None) for index, _ in dated_sources()))
                 for index, computed in work:
                     frame = pending_frames.pop(index)
@@ -251,6 +263,8 @@ def hierarchical_history(
                     else:
                         result = cast(HierarchyStageResult, computed)
                         geometry_points, candidate_source = result['geometry'], result['candidates']
+                        if n_target_trend_confirmation_enabled:
+                            source = with_price_bodies(source, bars)
                     # 首次出现/重新出现的几何点按本次观察冻结知识日，策略证书不参与此步。
                     geometry = freeze([dict(p, available_index=p['available_at'])
                                        for p in geometry_points], level, i)
@@ -261,18 +275,19 @@ def hierarchical_history(
                         # 下降测幅通道只用这份证据自己的可知日，不倒填到H价格日。
                         decline_history[i] = _decline_starts(candidate_source)
                         decline_sink[i] = decline_history[i]
-                    if computed is not None:
+                    if computed is not None and not n_target_trend_confirmation_enabled:
                         published = cast(HierarchyStageResult, computed)['published']
-                    elif market_index is None:
-                        published = qualify_trend_structure(candidate_source, source, bars[:i+1], trend_level=level,
-                            qualified_source=qualified_source, _owned_candidates=True,
-                            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
                     else:
-                        market_prefix = _MarketPrefixIndex(market_index, market_bars[:i+1])
-                        published = qualify_trend_structure(candidate_source, source, market_prefix.bars,
-                            trend_level=level, qualified_source=qualified_source, _market_index=market_prefix,
-                            _owned_candidates=True,
-                            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+                        market = market_bars[:i+1]
+                        market_prefix = _MarketPrefixIndex(market_index, market) if market_index is not None else None
+                        n_scope = (_reuse_n_permissions(n_proofs[level], market,
+                            allow_new=_legacy_pending_bull_n(geometry, market, trend_level=level))
+                            if n_target_trend_confirmation_enabled else nullcontext())
+                        with n_scope:
+                            published = qualify_trend_structure(candidate_source, source, market,
+                                trend_level=level, qualified_source=qualified_source, _market_index=market_prefix,
+                                _owned_candidates=True,
+                                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
                     history[i][level] = tuple(dict(index=p['index'], ordinal=p['ordinal'], kind=p['kind'],
                                               value=p['value'], available_at=p['available_at']) for p in published)
                     if wants_structure:
@@ -301,6 +316,8 @@ def hierarchical_history(
     if prefix_cache is not None and frame_count and resume_start != last and last - 1 in epochs:
         # 阶段完成后才保存完整检查点；最后一根未完K线不能污染昨日三个级别的状态。
         prefix_cache['key'] = prefix_key
+        if n_target_trend_confirmation_enabled:
+            prefix_cache['_n_permission_proofs'] = n_proofs
         prefix_cache['checkpoint'] = (
             deepcopy({i: value for i, value in history.items() if i < last}),
             {i: value for i, value in epochs.items() if i < last},

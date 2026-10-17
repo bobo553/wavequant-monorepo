@@ -35,7 +35,13 @@ def test_live_account_matches_existing_fills_and_keeps_pending_orders(at_close):
     finally:
         runner.close()
     assert actual is not None
-    assert actual.orders == expected.orders
+    actual_orders, expected_orders = deepcopy(actual.orders), deepcopy(expected.orders)
+    for row in (*actual_orders, *expected_orders):
+        if 'holding_drawdown' in row:
+            row['holding_drawdown'].pop('observation_scope')
+    assert actual_orders == expected_orders
+    assert actual.orders[-1]['holding_drawdown']['observation_scope'] == 'qualified_sessions'
+    assert expected.orders[-1]['holding_drawdown']['observation_scope'] == 'full_holding_cycle'
     assert actual.equity == expected.equity
     assert actual.trades == expected.trades
     assert [index for index, _, _ in snapshots] == list(range(len(bars)))
@@ -56,6 +62,97 @@ def test_live_account_rejects_skipped_day_before_publishing():
         assert not snapshots
     finally:
         runner.close()
+
+
+@pytest.mark.parametrize('blocked_close', [False, True])
+def test_eligibility_close_liquidates_once_and_never_trades_the_gap(blocked_close):
+    bars = [Bar(datetime(2026, 1, 5) + timedelta(days=i), 'TEST', 10, 11, 9.5, 10.2, 1_000_000)
+            for i in range(8)]
+    bars[3] = replace(bars[3], sellable=not blocked_close)
+    bars[4] = replace(bars[4], low=1, close=2)
+    buy = Signal(bars[1].timestamp, 'TEST', 1, 'LONG', 10.2, 9, 'entry', bars[0].timestamp, 0, 2, 'B', 15)
+    runner = portfolio_days({'TEST': bars}, [], StrategyConfig(entry_at_close=False,
+        net_reward_risk_filter=False), live=True)
+    next(runner)
+    result = None
+    try:
+        for index in range(len(bars)):
+            try:
+                runner.send(AccountDay(index, [buy] if index == 1 else [], {}, [], {}, {},
+                    trading_eligible=index in (1, 2, 6, 7), eligibility_closed=index == 3,
+                    trading_window_start=6 if index >= 6 else 1))
+            except StopIteration as completed:
+                result = completed.value
+    finally:
+        runner.close()
+    assert result is not None
+    sells = [row for row in result.orders if row['side'] == 'SELL' and row['status'] == 'filled']
+    assert len(sells) == 1
+    assert sells[0]['reason'] == 'trading_eligibility_closed'
+    assert sells[0]['timestamp'] == bars[6 if blocked_close else 3].timestamp.isoformat()
+    assert sells[0]['execution_model'] == ('next_open' if blocked_close else 'same_day_close')
+    assert not any(row['timestamp'] in {bars[4].timestamp.isoformat(), bars[5].timestamp.isoformat()}
+        for row in result.orders)
+    assert [row['equity'] for row in result.equity[3:6]] == [result.equity[3]['equity']] * 3
+
+
+def test_eligibility_close_cancels_pending_buy_before_matching():
+    bars = [Bar(datetime(2026, 1, 5) + timedelta(days=i), 'TEST', 10, 11, 9.5, 10.2, 1_000_000)
+            for i in range(4)]
+    buy = Signal(bars[1].timestamp, 'TEST', 1, 'LONG', 10.2, 9, 'entry', bars[0].timestamp, 0, 2, 'B', 15)
+    runner = portfolio_days({'TEST': bars}, [], StrategyConfig(entry_at_close=False,
+        net_reward_risk_filter=False), live=True)
+    next(runner)
+    result = None
+    try:
+        for index in range(len(bars)):
+            try:
+                runner.send(AccountDay(index, [buy] if index == 1 else [], {}, [], {}, {},
+                    trading_eligible=index == 1, eligibility_closed=index == 2, trading_window_start=1))
+            except StopIteration as completed:
+                result = completed.value
+    finally:
+        runner.close()
+    assert result is not None
+    assert not any(row['status'] == 'filled' for row in result.orders)
+    assert [(row['side'], row['status'], row['reason']) for row in result.orders] == [
+        ('BUY', 'cancelled', 'trading_eligibility_closed')]
+
+
+def test_authoritative_n_state_does_not_keep_a_departed_source(monkeypatch):
+    from wavequant.application.analytics import backtest as module
+
+    bars = [Bar(datetime(2026, 1, 5) + timedelta(days=i), 'TEST', 10, 11, 9.5, 10.2, 1_000_000)
+            for i in range(4)]
+    buy = Signal(bars[1].timestamp, 'TEST', 1, 'LONG', 10.2, 9, 'entry', bars[0].timestamp, 0, 2, 'B', 15)
+    observations = []
+
+    class PressureCursor:
+        start_index = 1
+
+        def advance(self, index, context):
+            observations.append((index, context[-1]))
+            return {}, {}, {}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(module, 'PressureExitStream', lambda *args, **kwargs: PressureCursor())
+    runner = portfolio_days({'TEST': bars}, [], StrategyConfig(entry_at_close=False,
+        net_reward_risk_filter=False, pressure_adverse_exit=True), live=True)
+    next(runner)
+    try:
+        for index in range(len(bars)):
+            try:
+                runner.send(AccountDay(index, [buy] if index == 1 else [],
+                    {1: 1} if index in (1, 2) else {}, [], {}, {},
+                    trading_eligible=index > 0, trading_window_start=1,
+                    positive_n_authoritative=True))
+            except StopIteration:
+                assert index == len(bars) - 1
+    finally:
+        runner.close()
+    assert observations == [(1, 1), (2, 1), (3, None)]
 
 
 def test_live_history_read_restores_writer_and_does_not_seal_it():

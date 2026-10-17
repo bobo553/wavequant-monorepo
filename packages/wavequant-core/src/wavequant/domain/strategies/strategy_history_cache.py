@@ -13,11 +13,12 @@ _Result = TypeVar('_Result')
 
 
 def first_positive_n_invalidation(
-    bars: Sequence[Bar], *, origin: int, attack: int, defense: float,
+    bars: Sequence[Bar], *, origin: int, attack: int, defense: float, start_index: int = 0,
 ) -> int | None:
     """Return the same first origin/defense breach used by the strategy audit."""
-    for now in range(attack + 1, len(bars)):
-        if bars[now].low < bars[origin].low or bars[now].low < defense:
+    for now in range(max(attack + 1, start_index), len(bars)):
+        observed = bars[now].close if start_index > 0 and now == start_index else bars[now].low
+        if observed < bars[origin].low or observed < defense:
             return now
     return None
 
@@ -44,7 +45,7 @@ class StrategyHistoryCache:
         self.source = tuple(source)
         self.capacity = capacity
         self._observations: OrderedDict[tuple[Hashable, ...], object] = OrderedDict()
-        self._invalidations: OrderedDict[tuple[int, int, float, float], _InvalidationScan] = OrderedDict()
+        self._invalidations: OrderedDict[tuple[int, int, float, float, int], _InvalidationScan] = OrderedDict()
 
     def bind(self, bars: Sequence[Bar]) -> 'StrategyHistoryView | None':
         values = tuple(bars)
@@ -87,12 +88,13 @@ class StrategyHistoryView:
         self.cache._remember(key, result)
         return result
 
-    def first_positive_n_invalidation(self, *, origin: int, attack: int, defense: float) -> int | None:
+    def first_positive_n_invalidation(self, *, origin: int, attack: int, defense: float,
+                                     start_index: int = 0) -> int | None:
         origin_low = self.bars[origin].low
-        key = (origin, attack, origin_low, defense)
+        key = (origin, attack, origin_low, defense, start_index)
         scan = self.cache._invalidations.get(key)
         if scan is None:
-            scan = _InvalidationScan(attack)
+            scan = _InvalidationScan(max(attack, start_index - 1))
             self.cache._invalidations[key] = scan
             if len(self.cache._invalidations) > self.cache.capacity:
                 self.cache._invalidations.popitem(last=False)
@@ -100,7 +102,8 @@ class StrategyHistoryView:
         if scan.first is None:
             for now in range(scan.through + 1, self.sealed_through + 1):
                 scan.through = now
-                if self.bars[now].low < origin_low or self.bars[now].low < defense:
+                observed = self.bars[now].close if start_index > 0 and now == start_index else self.bars[now].low
+                if observed < origin_low or observed < defense:
                     scan.first = now
                     break
         # A shorter replay cannot observe a breach cached from a later close.
@@ -108,7 +111,8 @@ class StrategyHistoryView:
             return scan.first
         # An intraday replacement of the last candle is evaluated but never saved.
         last = len(self.bars) - 1
-        if last > self.sealed_through and last > attack:
-            if self.bars[last].low < origin_low or self.bars[last].low < defense:
+        if last > self.sealed_through and last > attack and last >= start_index:
+            observed = self.bars[last].close if start_index > 0 and last == start_index else self.bars[last].low
+            if observed < origin_low or observed < defense:
                 return last
         return None

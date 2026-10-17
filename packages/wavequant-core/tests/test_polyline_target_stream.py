@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from test_n_shape import fixture, mirror, setup
+from .test_n_shape import fixture, mirror, setup
 from wavequant.domain.market_structure.n_shape import MilestoneBasis, observe_n
 from wavequant.domain.market_structure.price_action import Direction
 from wavequant.domain.models.validated_bars import ValidatedBars

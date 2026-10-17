@@ -440,6 +440,7 @@ export class PriceChart {
                           this.theory.events,
                           p.time,
                           this.autoWaveProjections.find((item) => item.raw.aTime === p.time)?.raw,
+                          this.theory,
                       )
                     : null;
             if (!projection) {

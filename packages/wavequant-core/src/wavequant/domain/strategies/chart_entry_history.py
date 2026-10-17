@@ -40,7 +40,7 @@ from .market_calculations import MarketCalculations, MarketDay
 
 
 # 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "source_bear_structure_break_v139"
+_CONFIRMATION_CACHE_VERSION = "shared_daily_qualified_trade_windows_v141"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -329,6 +329,7 @@ def _chart_calculation_scope(
         try:
             yield calculations
         finally:
+            calculations._close_shared_history()
             caches.clear()
             paths.clear()
             latest.clear()
@@ -586,6 +587,7 @@ def chart_entry_history(
     _stage: Callable[[str], None] | None = None,
     _prepared_history: 'BacktestAnalysis | None' = None,
     _confirmation_policy: AlternationPolicy | None = None,
+    _entry_days: tuple[bool, ...] | None = None,
 ) -> tuple[dict[int, tuple[EntryContext, ...]], list[dict[str, object]]]:
     """读取趋势确认产生的调度资格，仅在有效窗口准备策略形态。
 
@@ -599,7 +601,7 @@ def chart_entry_history(
     bars = tuple(bars)
     if _prepared_history is not None and _prepared_history.bars != bars:
         raise ValueError('prepared analysis must match the exact market input')
-    entry_days = _prepared_history.buy_days if _prepared_history is not None else None
+    entry_days = _prepared_history.buy_days if _prepared_history is not None else _entry_days
     if entry_days is not None and len(entry_days) != len(bars):
         raise ValueError('prepared trading eligibility must cover the market history')
     cache_version = _CONFIRMATION_CACHE_VERSION
@@ -609,7 +611,7 @@ def chart_entry_history(
     cache_version += ':' + sha256(repr(confirmation_policy).encode()).hexdigest()
     if entry_days is not None:
         # 带区间裁剪的策略缓存不能冒充旧的全历史分钟检查点。
-        cache_version += (':live-causal-v1' if _prepared_history.calculations is not None
+        cache_version += (':live-causal-v1' if _prepared_history is not None and _prepared_history.calculations is not None
             and _prepared_history.calculations.reading_live_day else ':' + sha256(bytes(entry_days)).hexdigest())
     steps = calculation_steps(bars)
     dates = {_bar_date(bar): i for i, bar in enumerate(bars)}
@@ -745,9 +747,29 @@ def chart_entry_history(
         if previous_epoch is not None and epoch != previous_epoch and len(previous_raw) > 1:
             closed.append(_closed_drawing_path(previous_epoch, previous_raw, epoch))
         previous_epoch, previous_raw = epoch, raw
-        # 策略中的前一日形态仅预热一日；不把预热日变成可买入日期。
-        strategy_day = (entry_days is None or entry_days[i]
-                        or i + 1 < len(bars) and entry_days[i + 1])
+        # 交易形态只在当天资格成立后启动；下一日资格不能回填本日计算。
+        strategy_day = entry_days is None or entry_days[i]
+        if cached_lifecycle is None:
+            # 本级真实翻多必须先成立，才允许按需准备资格内部的 N 证明。
+            lifecycle_events = lifecycle.advance((polyline_lifecycle.advance(frame), *prepared), bars, i, dates,
+                polyline=frame.raw, polyline_path=f'lecture-{frame.epoch}',
+                confirmation_policy=confirmation_policy)
+            lifecycle_events = [event for event in lifecycle_events if event['trend_level'] != 0]
+            if steps is not None:
+                record_lifecycle(steps, lifecycle_events)
+        else:
+            lifecycle_events = cached_lifecycle.get(i, [])
+            while next_lifecycle is not None and next_lifecycle[0] <= i:
+                current_lifecycle = next_lifecycle[1]
+                assert lifecycle_reader is not None
+                next_lifecycle = next(lifecycle_reader, None)
+            needs_state = (checkpoint_channel is not None and i in checkpoint_channel.store.targets
+                           or prefix_cache is not None and i == last - 1)
+            if needs_state:
+                if current_lifecycle is None:
+                    raise ValueError('prepared lifecycle checkpoint is missing for this market date')
+                version, _saved_index, saved_rows = current_lifecycle
+                lifecycle = TrendLifecycle.from_checkpoint((version, i, saved_rows))
         # Source vertices determine the skeleton; market prices can separately
         # publish a previously unqualified trend on an otherwise unchanged day.
         current_signature = (
@@ -772,17 +794,32 @@ def chart_entry_history(
             # 次序和直接下级持证来源，既不重复判点，也不让 N／突破证书改写
             # 下一层来源。未触发旧 gate 的日期仍沿用此前已消费的 levels。
             # prepared 为本请求只读借用的版本；许可创建独立顶层字段，不修改其证明。
-            first = attach_trend_permissions(prepared[0], prefix,
-                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-                _permission_cache=permission_cache, _owned_candidates=True)
-            second = attach_trend_permissions(prepared[1], prefix,
-                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-                qualified_source_points=high_low_points_from_strokes(first['qualified_strokes']),
-                _permission_cache=permission_cache, _owned_candidates=True)
-            third = attach_trend_permissions(prepared[2], prefix,
-                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-                qualified_source_points=high_low_points_from_strokes(second['qualified_strokes']),
-                _permission_cache=permission_cache, _owned_candidates=True)
+            shared = (market_calculation._shared_permissions_at(i,
+                n_enabled=n_target_trend_confirmation_enabled)
+                if live_owner is not None and market_calculation is not None else None)
+            if shared is not None:
+                first, second, third = shared
+            else:
+                permission_lifecycle = lifecycle
+                if n_target_trend_confirmation_enabled and cached_lifecycle is not None:
+                    if current_lifecycle is None:
+                        raise ValueError('prepared lifecycle checkpoint is missing for this market date')
+                    version, _saved_index, saved_rows = current_lifecycle
+                    permission_lifecycle = TrendLifecycle.from_checkpoint((version, i, saved_rows))
+                first = attach_trend_permissions(prepared[0], prefix,
+                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                    _permission_cache=permission_cache, _owned_candidates=True,
+                    _n_confirmation_paths=permission_lifecycle.pending_bull_paths(1))
+                second = attach_trend_permissions(prepared[1], prefix,
+                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                    qualified_source_points=high_low_points_from_strokes(first['qualified_strokes']),
+                    _permission_cache=permission_cache, _owned_candidates=True,
+                    _n_confirmation_paths=permission_lifecycle.pending_bull_paths(2))
+                third = attach_trend_permissions(prepared[2], prefix,
+                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                    qualified_source_points=high_low_points_from_strokes(second['qualified_strokes']),
+                    _permission_cache=permission_cache, _owned_candidates=True,
+                    _n_confirmation_paths=permission_lifecycle.pending_bull_paths(3))
             first, second, third = (_strategy_permission_view(level) for level in (first, second, third))
             levels = ((second, first), (third, second))
             if shallow_candidate_sink is not None:
@@ -824,28 +861,6 @@ def chart_entry_history(
                         for p in paths[cast(str, low["source_path"])]
                     ):
                         invalidated.add(low["id"])
-        if cached_lifecycle is None:
-            # 部分日线带既有检查点，只推进尚未计算的行情后缀。
-            lifecycle_events = lifecycle.advance((polyline_lifecycle.advance(frame), *prepared), bars, i, dates,
-                polyline=frame.raw, polyline_path=f'lecture-{frame.epoch}',
-                confirmation_policy=confirmation_policy)
-            lifecycle_events = [event for event in lifecycle_events if event['trend_level'] != 0]
-            if steps is not None:
-                record_lifecycle(steps, lifecycle_events)
-        else:
-            lifecycle_events = cached_lifecycle.get(i, [])
-            while next_lifecycle is not None and next_lifecycle[0] <= i:
-                current_lifecycle = next_lifecycle[1]
-                assert lifecycle_reader is not None
-                next_lifecycle = next(lifecycle_reader, None)
-            needs_state = (checkpoint_channel is not None and i in checkpoint_channel.store.targets
-                           or prefix_cache is not None and i == last - 1)
-            if needs_state:
-                if current_lifecycle is None:
-                    raise ValueError('prepared lifecycle checkpoint is missing for this market date')
-                # 无事件日状态相同，只有行情时钟向前；不会重新执行六态判定。
-                version, _saved_index, saved_rows = current_lifecycle
-                lifecycle = TrendLifecycle.from_checkpoint((version, i, saved_rows))
         events.extend(dict(event) for event in lifecycle_events)
         if strategy_day and i in attacks:
             anchors_at_attack[i] = [anchor for level, source in levels for anchor in squeeze_anchors(level, dates, source)]
@@ -948,9 +963,9 @@ def chart_entry_history(
                 history, events, active, first_seen, retired, closed, previous_epoch,
                 previous_raw, signature, landmarks, invalidated, levels,
                 shallow_candidate, resistance_key, anchors_at_attack, lifecycle,
-                dict(shallow_candidate_sink or {}),
-                dict(combined_candidate_sink or {}),
-                dict(secondary_pullback_sink or {}),
+                shallow_candidate_sink if shallow_candidate_sink is not None else {},
+                combined_candidate_sink if combined_candidate_sink is not None else {},
+                secondary_pullback_sink if secondary_pullback_sink is not None else {},
             ))
 
     def bind_market_calculation(current: MarketCalculations) -> None:

@@ -29,6 +29,7 @@ from .market_preview import publish_market_preview
 
 if TYPE_CHECKING:
     from .backtest_history_reuse import BacktestHistoryReuse
+    from .hierarchy_stream import HierarchyHistoryStream
     from .integrated_strategy import SystemStrategy
 
 
@@ -48,6 +49,10 @@ class BacktestAnalysis:
     scan_days: tuple[bool, ...] = ()
     calculations: MarketCalculations | None = None
     n_sources: list[EligibleNSource] = field(default_factory=list)
+    # Exclusive closure dates bound trading observers without changing anchor clocks.
+    n_window_ends: dict[tuple[str, int], int] = field(default_factory=dict)
+    scoped_n_observations: dict[tuple[EligibleNSource, int], NObservation] = field(default_factory=dict)
+    hierarchy: 'HierarchyHistoryStream | None' = None
 
 
 @contextmanager
@@ -99,6 +104,7 @@ def prepare_backtest_analysis(
             current.pivots[2][i] = end
         targets.finish()
         current.n_observations = targets.observations
+        current.scoped_n_observations = targets.scoped_observations
 
     def prepare_strategy_inputs() -> None:
         current = require_analysis()
@@ -123,7 +129,9 @@ def prepare_backtest_analysis(
             config.volume_lookback, config.shadow_fraction, config.strict_n_attack_quality,
             config.squeeze_pullback_entries)
         analysis = BacktestAnalysis(market, current.frames, (),
-            (pivot_state.snapshots, pivot_state.epochs, {}, pivot_state.blocked), calculations=current)
+            (pivot_state.snapshots, pivot_state.epochs, {}, pivot_state.blocked), calculations=current,
+            hierarchy=(current.prepare_shared_hierarchy(n_enabled=config.n_target_trend_confirmation_enabled)
+                if config.buy_point_definition == 'whole_flip_wave_v3' and config.pivot_mode == 'lecture_causal' else None))
 
     def advance_market_day(day: MarketDay) -> None:
         nonlocal last_progress
@@ -131,8 +139,15 @@ def prepare_backtest_analysis(
         frame = day.frame
         points = pivot_state.advance(frame.index, frame.epoch, frame.raw)
         sources = n_sources.advance(frame.index, points, day.lifecycle_events)
+        eligible = day.permits_buy(config.buy_interval_level)
+        active_scopes = {(window.source_path, window.start_index)
+                         for window in n_sources.eligibility.active_intervals}
+        for window in n_sources.eligibility.intervals:
+            if window.end_index is not None:
+                current.n_window_ends[window.source_path, window.start_index] = window.end_index
         current.n_sources.extend(sources)
-        targets.advance(frame.index, sources, interrupted=frame.index in pivot_state.blocked)
+        targets.advance(frame.index, sources, interrupted=frame.index in pivot_state.blocked,
+                        buy_eligible=eligible, active_scopes=active_scopes)
         current.pivots[2][frame.index] = len(market) - 1
         if frame.index in pivot_state.blocked:
             for prior in range(frame.index - 1, -1, -1):
@@ -145,7 +160,6 @@ def prepare_backtest_analysis(
             assert calculations is not None
             count = frame.index + 1
             previous_eligible = current.buy_days[-1] if current.buy_days else False
-            eligible = day.permits_buy(config.buy_interval_level)
             current.buy_days += (eligible,)
             current.scan_days += (eligible or previous_eligible,)
             current.lifecycle_events.extend(dict(event) for event in day.lifecycle_events)
@@ -159,6 +173,7 @@ def prepare_backtest_analysis(
             try:
                 prefix = replace(current, bars=market[:count], levels=histories,
                     n_observations=targets.current_observations(),
+                    scoped_n_observations=targets.current_scoped_observations(),
                     trading_intervals=calculations.trading_intervals(config.buy_interval_level))
                 on_day(day, prefix)
             finally:

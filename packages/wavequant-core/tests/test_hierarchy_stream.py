@@ -54,7 +54,7 @@ class HierarchyStreamTests(unittest.TestCase):
                         for index in range(8):
                             # A new path must restart the same source even when both are empty.
                             stream.advance(index, 0 if index < 4 else 4, [])
-                        self.assertEqual(judged_levels.count(1), 8)
+                        self.assertEqual(judged_levels.count(1), 2)
                         self.assertEqual(judged_levels.count(2), 2)
                         self.assertEqual(judged_levels.count(3), 2)
                         self.assertEqual(qualify.call_count, 24)

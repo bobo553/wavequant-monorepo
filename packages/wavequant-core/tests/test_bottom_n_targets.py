@@ -16,6 +16,58 @@ def bars(lows):
             for i, low in enumerate(lows)]
 
 
+def test_incremental_target_history_matches_every_prefix_without_replaying_old_days():
+    from wavequant.domain.market_structure.bottom_n_targets import BottomNTargetHistoryStream
+
+    history = bars([10, 5, 6, 7, 10, 8, 6, 7, 8])
+    declines = [DeclineStart(0, 1), DeclineStart(4, 7)]
+    completions = [PositiveNCompletion(1, 3, 3, 5.5), PositiveNCompletion(6, 8, 8, 6.5, True)]
+    stream = BottomNTargetHistoryStream(history)
+    for index in range(len(history)):
+        starts = [value for value in declines if value.known_at <= index]
+        arrivals = [value for value in completions if value.known_at <= index]
+        actual = stream.advance(index, starts, arrivals)
+        assert actual == bottom_n_target_history(history[:index + 1], starts, arrivals)
+        assert stream.advance(index, starts, arrivals) == actual
+    assert stream.processed_days == len(history)
+
+
+def test_target_history_repairs_same_length_revision_deletion_and_late_arrivals():
+    from wavequant.domain.market_structure.bottom_n_targets import BottomNTargetHistoryStream
+
+    history = bars([10, 5, 6, 7, 10, 8, 6, 7, 8])
+    declines = [DeclineStart(0, 1)]
+    completions = [PositiveNCompletion(1, 3, 3, 5.5), PositiveNCompletion(6, 8, 8)]
+    stream = BottomNTargetHistoryStream(history)
+    stream.advance(8, declines, completions)
+    completions[0] = replace(completions[0], defense=7.5)
+    assert stream.advance(8, declines, completions) == bottom_n_target_history(history, declines, completions)
+    declines.append(DeclineStart(4, 7))
+    assert stream.advance(8, declines, completions) == bottom_n_target_history(history, declines, completions)
+    completions.pop(0)
+    assert stream.advance(8, declines, completions) == bottom_n_target_history(history, declines, completions)
+    actual = stream.advance(8, declines, completions)
+    actual.qualifications.clear()
+    assert stream.advance(8, declines, completions) == bottom_n_target_history(history, declines, completions)
+    assert stream.advance(3, declines[:1], []) == bottom_n_target_history(history[:4], declines[:1], [])
+
+
+def test_target_streams_own_market_source_and_do_not_share_reformed_eligibility():
+    from wavequant.domain.market_structure.bottom_n_targets import BottomNTargetHistoryStream
+
+    history = bars([10, 5, 6, 7, 10, 8, 6, 7, 8])
+    original = tuple(history)
+    ordinary = BottomNTargetHistoryStream(history)
+    reformed = BottomNTargetHistoryStream(history)
+    history[4] = replace(history[4], low=1)
+    decline = [DeclineStart(0, 1)]
+    completion = [PositiveNCompletion(6, 8, 8)]
+    assert ordinary.advance(8, decline, completion) == bottom_n_target_history(original, decline, completion)
+    reformed_completion = [replace(completion[0], reformed=True)]
+    assert reformed.advance(8, decline, reformed_completion).qualifications[8].eligible
+    assert not ordinary.advance(8, decline, completion).qualifications[8].eligible
+
+
 def test_first_floor_n_owns_all_following_local_and_cross_cycle_candidates():
     history = bars([10, 9, 8, 5, 6, 7, 8, 7, 9])
     declines = [DeclineStart(0, 2)]

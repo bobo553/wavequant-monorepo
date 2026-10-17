@@ -8,6 +8,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from bisect import bisect_right
 from copy import deepcopy
+from contextlib import nullcontext
 from dataclasses import dataclass
 from math import isfinite
 from io import BytesIO
@@ -21,6 +22,7 @@ from ..models.model import Bar
 from .hierarchical_confirmation import session_date
 from .lecture_trend import _annotate
 from .n_trend_reversals import n_target_reversals
+from .n_trend_confirmation import _NPermissionProofs, _reuse_n_permissions
 from .trend_judgement import TrendJudgement, _TrendJudgementState, _owned_mutable_points, judge_trend, mutable_points
 from .trend_evidence_reuse import _geometry_signature
 from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
@@ -33,8 +35,8 @@ from .trend_landmarks import (
 from .trend_publication import confirmed_trend_legs, publish_uptrends
 from .trend_structure import _trend_level
 
-STRUCTURAL_LEG_POLICY = 'high_low_point_frozen_bull_origin_v118'
-STRUCTURAL_RULE = 'point_first_recursive_frozen_bull_origin_v118'
+STRUCTURAL_LEG_POLICY = 'high_low_point_frozen_wave_key_v119'
+STRUCTURAL_RULE = 'point_first_recursive_frozen_wave_key_v119'
 _NAMES = {1: '一级', 2: '二级', 3: '三级'}
 _KINDS = {1: 'reversal', 2: 'secondary', 3: 'tertiary'}
 _GEOMETRY_ANNOTATION_FIELDS = (
@@ -310,6 +312,7 @@ class _ClosedPermissionEntry:
     payload: bytes
     immutable: tuple[object, ...]
     memory_bytes: int
+    n_demand: bool | None = None
 
 
 def _immutable_copy_leaf(value: object) -> bool:
@@ -388,6 +391,20 @@ class _TrendPermissionCache:
         self._finite = _FiniteEvidenceCertificates()
         self._memory_bytes = memory_bytes
         self._payload_bytes = 0
+        self._active_candidates: dict[int, _TrendCandidateCache] = {}
+        self._n_permissions: dict[tuple[int, str], _NPermissionProofs] = {}
+
+    def n_permissions(self, level: int, path: str) -> _NPermissionProofs:
+        key = level, path
+        if key not in self._n_permissions:
+            self._n_permissions[key] = _NPermissionProofs()
+        return self._n_permissions[key]
+
+    def candidates(self, level: int) -> '_TrendCandidateCache':
+        """每级只保存开放路径的当前只读候选版本，不缓存每日行情结论。"""
+        if level not in self._active_candidates:
+            self._active_candidates[level] = _TrendCandidateCache()
+        return self._active_candidates[level]
 
     def _discard(self, key: tuple[int, str]) -> None:
         previous = self._paths.pop(key, None)
@@ -415,11 +432,12 @@ class _TrendPermissionCache:
     def get(
         self, key: tuple[int, str], source: Sequence[Mapping[str, object]],
         candidates: Sequence[Mapping[str, object]], qualified_source: Sequence[Mapping[str, object]] | None,
-        prefix: _VerifiedMarketPrefix, market_end: int, enabled: bool,
+        prefix: _VerifiedMarketPrefix, market_end: int, enabled: bool, *, n_demand: bool | None = None,
     ) -> tuple[list[dict[str, object]], list[dict[str, object]], list[dict[str, object]], list[dict[str, object]]] | None:
         previous = self._paths.get(key)
         if (prefix.owner is not self or not 0 <= market_end <= prefix.length <= len(self._bars)
-                or previous is None or previous.enabled != enabled or previous.market_end != market_end):
+                or previous is None or previous.enabled != enabled or previous.market_end != market_end
+                or previous.n_demand != n_demand):
             return None
         signature = self._source_signature(source, candidates, qualified_source)
         if signature is None or signature != previous.signature:
@@ -437,6 +455,7 @@ class _TrendPermissionCache:
         candidates: Sequence[Mapping[str, object]], qualified_source: Sequence[Mapping[str, object]] | None,
         prefix: _VerifiedMarketPrefix, market_end: int, enabled: bool,
         payload: tuple[list[dict[str, object]], list[dict[str, object]], list[dict[str, object]], list[dict[str, object]]],
+        *, n_demand: bool | None = None,
     ) -> None:
         if prefix.owner is not self or not 0 <= market_end <= prefix.length <= len(self._bars):
             return
@@ -462,7 +481,7 @@ class _TrendPermissionCache:
         # 上界包含 dict 扩容前的保守余量；超限只丢缓存，资格仍走原发布器。
         if self._payload_bytes + added + 2 * getsizeof(self._paths) + 1024 > self._memory_bytes:
             return
-        self._paths[key] = _ClosedPermissionEntry(signature, market_end, enabled, encoded, immutable, added)
+        self._paths[key] = _ClosedPermissionEntry(signature, market_end, enabled, encoded, immutable, added, n_demand)
         self._payload_bytes += added
 
 
@@ -473,6 +492,7 @@ class _DefinitionAnnotator(Protocol):
 
 class _OwnedCandidateOptions(TypedDict, total=False):
     _owned_candidates: bool
+    _candidate_cache: '_TrendCandidateCache'
 
 
 def high_low_points_from_strokes(strokes: object) -> list[dict[str, object]]:
@@ -709,6 +729,40 @@ def _permission_leg(left: Mapping[str, object], right: Mapping[str, object]) -> 
                  else cast(float, right['value']) < cast(float, left['value'])))
 
 
+def _legacy_pending_bull_n(
+    geometry: Sequence[Mapping[str, object]], bars: Sequence[Bar], *, trend_level: int,
+) -> bool:
+    """旧整数历史只投影已判定本级证据，不用下级趋势或裸 flip 标签授权 N。
+
+    复用共同的冻结关键位标注和六态事实校验；不重新 judge，不生成几何点。
+    真实翻多后到交替/反向/失效前才申请新证明，旧证明由独立缓存继续投影。
+    """
+    from .trend_lifecycle import _clock, _facts, _records
+
+    _trend_level(trend_level)
+    if not bars or not geometry:
+        return False
+    now = len(bars) - 1
+    dates = {session_date(bar): index for index, bar in enumerate(bars)}
+    available = [dict(point) for point in geometry
+                 if (known := _clock(point.get('available_at'), dates)) is not None and known <= now]
+    if not available:
+        return False
+    annotation_dates: dict[object, int] = dict(dates)
+    annotation_dates.update({index: index for index in range(len(bars))})
+    annotation_dates.update({str(index): index for index in range(len(bars))})
+    _annotate_geometry(available, bars[0].symbol, annotation_dates, trend_level=trend_level)
+    events = [(fact.known, fact.point.index, fact.point.ordinal, fact.title)
+              for fact in _facts(available, dates, now)
+              if fact.title in ('翻空为多', '翻多为空', '空多交替')]
+    for point in available:
+        for observation in _records(point.get('observations')):
+            known = _clock(observation.get('available_at'), dates)
+            if observation.get('title') == '翻多观察失效' and known is not None and known <= now:
+                events.append((known, cast(int, point['index']), cast(int, point['ordinal']), '翻多观察失效'))
+    return bool(events) and sorted(events)[-1][3] == '翻空为多'
+
+
 def _permission_origin(point: Mapping[str, object], dates: Mapping[object, int]) -> dict[str, object] | None:
     """仅消费本次 incoming 证明的完整真实起点，不借旧 active 压力波的起点。"""
     proof = point.get('incoming_trend_confirmation')
@@ -817,27 +871,15 @@ def _qualification_candidates(
     return _owned_mutable_points(candidates, owned)
 
 
-def qualify_trend_structure(
-    candidates: Sequence[Mapping[str, object]], source: Sequence[Mapping[str, object]], bars: Sequence[Bar],
-    *, trend_level: int, qualified_source: Sequence[Mapping[str, object]] | None = None,
-    n_target_trend_confirmation_enabled: bool = False, n_target_sink: list[dict[str, object]] | None = None,
-    _market_index: _MarketPrefixIndex | None = None,
-    _owned_candidates: bool = False,
+def _prepare_qualification_candidates(
+    candidates: Sequence[Mapping[str, object]], *, owned: bool,
 ) -> list[dict[str, object]]:
-    """原发布器只建立策略许可，返回值不能再成为趋势线或下一层的输入。
-
-    N 的行情达标证明只追加到这个独立视图。每份许可证仍用本级真实来源、
-    知识日及行情前缀重新核验，下级证书不授予上级交易资格。
-    """
-    source_level = _trend_level(trend_level)
-    if not bars:
-        return []
     # 完整账本可在同一坐标保留早升级与晚普通反转。旧资格发布器消费的是
     # 结构节点，不能让晚证明把早已知关键位变成晚知，或重复追加同一节点。
     # 独立事实仍完整保存在 judge.candidates／candidate_strokes 中。
     earliest: dict[tuple[int, int], dict[str, object]] = {}
     completions: dict[tuple[int, int], dict[str, object]] = {}
-    for point in _qualification_candidates(candidates, _owned_candidates and not n_target_trend_confirmation_enabled):
+    for point in _qualification_candidates(candidates, owned):
         # 行情和 N 只核验本级已有波的策略资格，不能授予 pending 方向事实
         # 整波身份，否则资格递归会把同一条下级波重新恢复为上级假波。
         if point.get('wave_identity_state') == 'direction_only':
@@ -867,6 +909,48 @@ def qualify_trend_structure(
         if completion is not None:
             for field in ('wave_completion_policy', 'wave_completed_at', 'wave_completion_evidence'):
                 point[field] = deepcopy(completion[field])
+    return qualified
+
+
+class _TrendCandidateCache:
+    """只复用结构候选整理，行情许可继续按原前缀逐日独立核验。"""
+
+    def __init__(self) -> None:
+        self._source: Sequence[Mapping[str, object]] | None = None
+        self._prepared: list[dict[str, object]] = []
+
+    def prepare(self, candidates: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+        if candidates is self._source:
+            return self._prepared
+        prepared = _prepare_qualification_candidates(candidates, owned=True)
+        # 只接纳内部标准只读工作集；未知值仍保留逐次复制/校验的公开行为。
+        signature = _geometry_signature(candidates)
+        if signature is not None and _FiniteEvidenceCertificates().certify(candidates, signature):
+            self._source, self._prepared = candidates, prepared
+        else:
+            self._source, self._prepared = None, []
+        return prepared
+
+
+def qualify_trend_structure(
+    candidates: Sequence[Mapping[str, object]], source: Sequence[Mapping[str, object]], bars: Sequence[Bar],
+    *, trend_level: int, qualified_source: Sequence[Mapping[str, object]] | None = None,
+    n_target_trend_confirmation_enabled: bool = False, n_target_sink: list[dict[str, object]] | None = None,
+    _market_index: _MarketPrefixIndex | None = None,
+    _owned_candidates: bool = False,
+    _candidate_cache: _TrendCandidateCache | None = None,
+) -> list[dict[str, object]]:
+    """原发布器只建立策略许可，返回值不能再成为趋势线或下一层的输入。
+
+    N 的行情达标证明只追加到这个独立视图。每份许可证仍用本级真实来源、
+    知识日及行情前缀重新核验，下级证书不授予上级交易资格。
+    """
+    source_level = _trend_level(trend_level)
+    if not bars:
+        return []
+    owned = _owned_candidates and not n_target_trend_confirmation_enabled
+    qualified = (_candidate_cache.prepare(candidates) if owned and _candidate_cache is not None else
+                 _prepare_qualification_candidates(candidates, owned=owned))
     if n_target_trend_confirmation_enabled:
         qualified = n_target_reversals(qualified, source, bars, source_level=source_level,
             qualified_source=qualified_source, target_sink=n_target_sink, n_target_trend_confirmation_enabled=True)
@@ -1016,7 +1100,7 @@ def prepare_trend_lines(
         stroke: dict[str, object] = dict(id=identifier, source_path=path, source_paths=[path], kind=kind,
             trend_level=trend_level, points=points, input_turn_count=len(source), key_transitions=[],
             confirmation_policy=STRUCTURAL_RULE, leg_confirmation_policy=STRUCTURAL_LEG_POLICY,
-            wave_display_policy='structural_points_independent_strategy_permissions_v118',
+            wave_display_policy='structural_points_independent_strategy_permissions_v119',
             structural_legs=_structural_legs(points), confirmed_legs=[])
         strokes.append(stroke)
         if _closed_paths is not None and cutoff is not None:
@@ -1067,6 +1151,7 @@ def attach_trend_permissions(
     qualified_source_points: Sequence[Mapping[str, object]] | None = None,
     _permission_cache: _TrendPermissionCache | None = None,
     _owned_candidates: bool = False,
+    _n_confirmation_paths: frozenset[str] | None = None,
 ) -> dict[str, object]:
     """只给已完成的本级结构附加资格和命名事件，不再判断或归并几何。
 
@@ -1081,6 +1166,8 @@ def attach_trend_permissions(
     需要可变导出时应在导出边界另行复制。私有截止表不进入公开结果。
     私有 _owned_candidates 同样只允许阶段工作集的只读移交；N、未知
     审计值及需要归一化的容器仍沿用原公共复制，公共调用默认不移交。
+    私有 _n_confirmation_paths 只授权本级已翻多且待确认的路径计算新 N；
+    不在集合中的路径仍可使用来源证书未失效的既有 N 证明。
     """
     if type(n_target_trend_confirmation_enabled) is not bool:
         raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
@@ -1124,24 +1211,39 @@ def attach_trend_permissions(
             market = market_index.bars
         permission_source = [dict(point, label=point.get('label', point.get('kind', ''))) for point in source]
         qualified_source = qualified_groups.get(path, []) if qualified_source_points is not None else None
+        n_demand = (f'{kind}-{path}' in _n_confirmation_paths
+                    if n_target_trend_confirmation_enabled and _n_confirmation_paths is not None else None)
         # 开放路径会收到新行情；只有断点已真实到达、原行情和全部来源一致的
         # 关闭路径可复用。缓存不存未来资格，也不把最终证书倒裁成历史。
         cached = (_permission_cache.get((trend_level, path), permission_source, candidates_by_path[path],
-                    qualified_source, verified_prefix, len(market), n_target_trend_confirmation_enabled)
+                    qualified_source, verified_prefix, len(market), n_target_trend_confirmation_enabled,
+                    n_demand=n_demand)
                   if verified_prefix is not None and _permission_cache is not None
                   and cutoff is not None and cutoff <= len(bars) else None)
         if cached is None:
             path_targets: list[dict[str, object]] = []
-            if market_index is None:
-                permissions = qualify_trend_structure(candidates_by_path[path], permission_source, market,
-                    trend_level=trend_level, qualified_source=qualified_source,
-                    n_target_sink=path_targets, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-                    **owned_options)
-            else:
-                permissions = qualify_trend_structure(candidates_by_path[path], permission_source, market,
-                    trend_level=trend_level, qualified_source=qualified_source,
-                    n_target_sink=path_targets, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-                    _market_index=market_index, **owned_options)
+            candidate_cache = (_permission_cache.candidates(trend_level)
+                if cutoff is None and _permission_cache is not None and _owned_candidates else None)
+            candidate_options = owned_options.copy()
+            if candidate_cache is not None:
+                candidate_options['_candidate_cache'] = candidate_cache
+            n_scope = (_reuse_n_permissions(
+                _permission_cache.n_permissions(trend_level, path)
+                    if _permission_cache is not None and verified_prefix is not None
+                    and _permission_cache._market_index is not None else _NPermissionProofs(),
+                market, allow_new=n_demand is True)
+                if n_target_trend_confirmation_enabled and _n_confirmation_paths is not None else nullcontext())
+            with n_scope:
+                if market_index is None:
+                    permissions = qualify_trend_structure(candidates_by_path[path], permission_source, market,
+                        trend_level=trend_level, qualified_source=qualified_source,
+                        n_target_sink=path_targets, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                        **candidate_options)
+                else:
+                    permissions = qualify_trend_structure(candidates_by_path[path], permission_source, market,
+                        trend_level=trend_level, qualified_source=qualified_source,
+                        n_target_sink=path_targets, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                        _market_index=market_index, **candidate_options)
             if permissions and market:
                 # 命名资格附件只写本次许可，不倒写几何首次可知日。
                 permission_dates: dict[object, int] = (
@@ -1163,7 +1265,7 @@ def attach_trend_permissions(
                     and cutoff is not None and cutoff <= len(bars)):
                 _permission_cache.put((trend_level, path), permission_source, candidates_by_path[path],
                     qualified_source, verified_prefix, len(market), n_target_trend_confirmation_enabled,
-                    (permissions, legs, transitions, path_targets))
+                    (permissions, legs, transitions, path_targets), n_demand=n_demand)
         else:
             permissions, legs, transitions, path_targets = cached
         n_targets.extend(path_targets)

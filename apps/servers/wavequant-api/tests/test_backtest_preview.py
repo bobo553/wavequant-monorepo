@@ -1,4 +1,7 @@
 from datetime import datetime, timedelta
+from dataclasses import asdict, dataclass, is_dataclass
+import json
+import math
 
 import pytest
 
@@ -138,7 +141,7 @@ def test_preview_preserves_secondary_continuity_without_authorizing_tertiary_pro
     publisher.observe(bars, day, result)
     before = published[-1]['theory']
     assert before['secondary_trends']['strokes'] == secondary['strokes']
-    assert [point['index'] for point in before['tertiary_trends']['strokes'][0]['points']] == [1]
+    assert [point['index'] for point in before['tertiary_trends']['strokes'][0]['points']] == [1, 2]
     assert before['tertiary_trends']['observation_strokes'][0]['reason'] == 'source_level_bull_flip_unconfirmed'
 
     result['audit'].append(dict(own_flip, trend_level=2, source_path='secondary-path',
@@ -148,7 +151,7 @@ def test_preview_preserves_secondary_continuity_without_authorizing_tertiary_pro
     assert after['secondary_trends']['strokes'] == before['secondary_trends']['strokes']
     assert after['secondary_trends']['observation_strokes'] == []
     assert [point['index'] for point in after['tertiary_trends']['strokes'][0]['points']] == [1, 2]
-    assert [point['index'] for point in before['tertiary_trends']['strokes'][0]['points']] == [1]
+    assert [point['index'] for point in before['tertiary_trends']['strokes'][0]['points']] == [1, 2]
 
 
 def test_preview_and_completed_projection_keep_third_level_tail_connected_during_advance():
@@ -187,5 +190,53 @@ def test_preview_and_completed_projection_keep_third_level_tail_connected_during
         assert preview['strokes'][0]['points'][-1] == preview['developing_strokes'][0]['points'][0]
     first_tail = published[0]['theory']['tertiary_trends']['developing_strokes'][0]
     last_tail = published[-1]['theory']['tertiary_trends']['developing_strokes'][0]
-    assert [point['index'] for point in first_tail['points']] == [0, 3]
+    assert [point['index'] for point in first_tail['points']] == [2, 3]
     assert [point['index'] for point in last_tail['points']] == [3, 4]
+
+
+def test_preview_value_matches_original_json_types_and_owns_nested_account_values():
+    from wavequant_api.application.backtest_preview import _preview_value
+
+    @dataclass
+    class Evidence:
+        timestamp: datetime
+        values: list[object]
+
+    evidence = Evidence(datetime(2026, 1, 2, 15, 30), [True, 1, 1.0, -0.0, None, ('nested', 2)])
+    value = {'evidence': evidence, 'non_string_keys': {None: 'empty', 2: False}}
+
+    def original_default(item):
+        if isinstance(item, datetime):
+            return item.isoformat()
+        if is_dataclass(item):
+            return asdict(item)
+        raise TypeError(type(item).__name__)
+
+    expected = json.loads(json.dumps(value, default=original_default, allow_nan=False))
+    actual = _preview_value(value)
+    assert actual == expected
+    assert json.dumps(actual) == json.dumps(expected)
+    assert [type(item) for item in actual['evidence']['values']] == [bool, int, float, float, type(None), list]
+    assert math.copysign(1, actual['evidence']['values'][3]) == -1
+    evidence.values.append('later')
+    assert actual == expected
+    with pytest.raises(ValueError):
+        _preview_value({'equity': float('nan')})
+    with pytest.raises(TypeError):
+        _preview_value({'unsupported': object()})
+
+
+def test_throttled_day_does_not_copy_or_encode_account_before_publication():
+    bars = tuple(Bar(datetime(2026, 1, 1) + timedelta(days=index), 'TEST', 10, 12, 9, 11, 100)
+                 for index in range(3))
+    published = []
+    publisher = BacktestPreviewPublisher(lambda revision, value: published.append(value), clock=lambda: 0.0)
+    result = dict(signals=[], orders=[], trades=[], audit=[], backtest={},
+                  equity=[dict(timestamp=bars[0].timestamp.isoformat(), equity=100)])
+    day = MarketDay(ChartDrawingFrame(0, 0, [], {'strokes': []}),
+                    ({'strokes': []},) * 3, (), (False, False, False))
+    publisher.observe(bars, day, result)
+    skipped = MarketDay(ChartDrawingFrame(1, 0, [], {'strokes': []}), day.levels, (), (False, False, False))
+    publisher.observe(bars, skipped, {'unsupported': object()})
+    assert len(published) == 1
+    assert published[0]['processed'] == 1

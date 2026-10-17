@@ -493,11 +493,13 @@ class ChartRepository:
         bars = self.selection(rid, variant, symbol, asof, scenario)
         config = self.strategy_config(rid, variant,
             n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        signals = (None if config['strategy'].get('buy_point_definition') == 'whole_flip_wave_v3'
+                   else self._stock_signals(rid, variant, symbol, asof, n_target_trend_confirmation_enabled))
         result = single_stock_result(
             bars,
             config["strategy"],
             config["scenarios"][scenario]["execution"],
-            self._stock_signals(rid, variant, symbol, asof, n_target_trend_confirmation_enabled),
+            signals,
         )
         _, curve = metrics_at(result["equity"], result["trades"], result["backtest"]["initial_capital"])
         markers = result_markers(result)
@@ -827,6 +829,7 @@ class ChartRepository:
                     strategy_profile=dict(id=variant, version=profile.get('profile_version', variant), definition=definition))
 
     def render_theory(self, bars, config, result, asof, *, geometry=None):
+        qualified_windows = config.buy_point_definition == 'whole_flip_wave_v3'
         snapshots, epochs, limits, blocked = pivot_history(bars, config)
         segments = confirmed_polyline_segments(bars, snapshots, epochs, blocked)
         i = len(bars) - 1
@@ -843,9 +846,21 @@ class ChartRepository:
         shapes = []
         # Join later, dated projections back to the N the user selects. Keep
         # fulfilled targets for review and label suspended targets explicitly.
-        extension_levels: dict[int, dict[str, _NExtensionLevel]] = {}
-        target_retirements = {row['attack']: row['bar_index'] for row in result.audit
-                              if row['event'] == 'n_target_source_retired' and row['bar_index'] <= i}
+        def target_scope(row):
+            identity = row.get('n_id') or row.get('target_source_id')
+            if identity is not None:
+                return ('n', identity)
+            return (row.get('attack', row['bar_index']), row.get('window_start'), row.get('source_path'))
+
+        extension_levels: dict[tuple, dict[str, _NExtensionLevel]] = {}
+        target_retirements: dict[tuple, int] = {}
+        window_closures: dict[tuple, int] = {}
+        for row in result.audit:
+            if row['event'] == 'n_target_source_retired' and row['bar_index'] <= i:
+                scope = target_scope(row)
+                target_retirements[scope] = min(target_retirements.get(scope, len(bars)), row['bar_index'])
+                if row.get('reason') == 'trading_eligibility_closed':
+                    window_closures[scope] = min(window_closures.get(scope, len(bars)), row['bar_index'])
         n_invalidations = {row['n_id']: row for row in result.audit
                            if row['event'] == 'n_invalidated'
                            and max(row['bar_index'], row.get('known_at', row['bar_index'])) <= i}
@@ -855,9 +870,9 @@ class ChartRepository:
             if (row['event'] == 'long_signal'
                     and row.get('wave_entry_path') == 'two_t_strong_a_resistance_rebreak'
                     and row.get('wave_five_top_target') is not None):
-                if target_retirements.get(row['attack'], len(bars)) <= row['bar_index']:
+                if target_retirements.get(target_scope(row), len(bars)) <= row['bar_index']:
                     continue
-                extension_levels.setdefault(row['attack'], {})['five_top'] = dict(
+                extension_levels.setdefault(target_scope(row), {})['five_top'] = dict(
                     stage='five_top', price=row['wave_five_top_target'], status='观察',
                     mode='强A再攻击', available_at=day(bars[row['bar_index']].timestamp.isoformat()),
                     projection_span=row['wave_entry_two_t'] - row['wave_a_origin'],
@@ -867,7 +882,7 @@ class ChartRepository:
                 continue
             if not row['event'].startswith('wave_projection_'):
                 continue
-            levels = extension_levels.setdefault(row['attack'], {})
+            levels = extension_levels.setdefault(target_scope(row), {})
             reached = row.get('reached_stage')
             if reached in levels:
                 levels[reached]['status'] = '已满足'
@@ -939,7 +954,8 @@ class ChartRepository:
                     event['target_bottom_date'] = day(bars[r['target_bottom_index']].timestamp.isoformat())
                 if r.get('target_source_attack') is not None:
                     event['target_source_date'] = day(bars[r['target_source_attack']].timestamp.isoformat())
-                retired = target_retirements.get(r['bar_index']) if r.get('target_primary', True) else None
+                retirements = target_retirements if r.get('target_primary', True) else window_closures
+                retired = retirements.get(target_scope(r))
                 if invalidation is not None:
                     retired = min(retired, invalidation['bar_index']) if retired is not None else invalidation['bar_index']
                 valid_until = day(bars[retired - 1].timestamp.isoformat()) if retired is not None else None
@@ -973,7 +989,7 @@ class ChartRepository:
                         if valid_until is not None:
                             target_level['valid_until'] = valid_until
                     event["levels"].append(target_level)
-                for extension_level in (extension_levels.get(r['bar_index'], {}).values()
+                for extension_level in (extension_levels.get(target_scope(r), {}).values()
                                         if r.get('target_primary', True) else ()):
                     if up and r.get('target_eligible') is False:
                         continue
@@ -1044,7 +1060,8 @@ class ChartRepository:
             for high in geometry["tertiary_trends"].get("bear_to_bull_highs", [])
             if high["available_at"] in dates
         ]
-        for observation in tertiary_abc_observations(bars, anchors, result.audit):
+        abc_observations = () if qualified_windows else tertiary_abc_observations(bars, anchors, result.audit)
+        for observation in abc_observations:
             index = observation["bar_index"]
             date = day(bars[index].timestamp.isoformat())
             events.append(dict(
@@ -1070,6 +1087,7 @@ class ChartRepository:
                     source_row=source_second if level == 3 else None)
         return dict(
             asof=asof,
+            trading_observation_policy='qualified_windows_v1' if qualified_windows else 'legacy_v1',
             points=points,
             polyline_segments=segments,
             **geometry,

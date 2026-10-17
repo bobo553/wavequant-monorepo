@@ -15,7 +15,7 @@ from typing import Literal, cast
 
 from ..models.model import Bar
 from .hierarchical_confirmation import session_date
-from .n_trend_confirmation import NConfirmationContext, prepare_n_confirmation_context, qualify_n_trend
+from .n_trend_confirmation import NConfirmationContext, _lazy_n_permissions, prepare_n_confirmation_context, qualify_n_trend
 from .trend_market_index import _MarketPrefixIndex
 from .trend_evidence_reuse import _geometry_signature
 
@@ -397,7 +397,7 @@ def prepare_confirmation_context(
             else:
                 proof_prefixes = tuple(prefixes)
     n_context = (prepare_n_confirmation_context(n_points, bars, end_index)
-                 if bars is not None and n_target_trend_confirmation_enabled else None)
+                 if bars is not None and n_target_trend_confirmation_enabled and not _lazy_n_permissions() else None)
     return ConfirmationContext(id(source), id(bars), end_index, market, sessions, references, ordered,
                                n_points, n_context, n_target_trend_confirmation_enabled, _market_index,
                                visibility, proof_prefixes, reference_stops, visible_stop,

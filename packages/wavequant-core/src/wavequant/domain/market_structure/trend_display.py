@@ -1,4 +1,4 @@
-"""Publish continuous structure without promoting proven local bullish doubts.
+"""Publish observation metadata without changing shared structural geometry.
 
 Candidate geometry remains the input to recursive structure and lifecycle
 calculation. This projection consumes their existing causal events, never
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import cast
 
 
-TREND_DISPLAY_POLICY = 'continuous_paths_frozen_key_observation_v3'
+TREND_DISPLAY_POLICY = 'shared_structure_observation_only_v4'
 
 
 @dataclass(slots=True)
@@ -128,56 +128,13 @@ def _unbroken_key(point: Mapping[str, object]) -> Mapping[str, object] | None:
     return cast(Mapping[str, object], key)
 
 
-def _replace_path(stroke: Mapping[str, object], points: Sequence[Mapping[str, object]],
-                  original: Sequence[Mapping[str, object]]) -> dict[str, object]:
-    """Retain path identity and only the evidence for edges that still exist."""
-    prior = _rows(stroke.get('points'))
-    if len(prior) == len(points) and all(left is right for left, right in zip(prior, points)):
-        return dict(stroke)
-    identities = [_point_id(point) for point in points]
-    positions = {identity: position for position, identity in enumerate(identities)}
-    original_positions = {_point_id(point): position for position, point in enumerate(original)}
-
-    def retained(leg: Mapping[str, object]) -> bool:
-        leg_ids = [_point_id(point) for point in _rows(leg.get('points'))]
-        position = positions.get(leg_ids[0]) if leg_ids else None
-        return (len(leg_ids) >= 2 and position is not None
-                and identities[position:position + len(leg_ids)] == leg_ids)
-
-    old_legs = {tuple(_point_id(point) for point in _rows(leg.get('points'))): leg
-                for leg in _rows(stroke.get('structural_legs'))}
-    legs: list[dict[str, object]] = []
-    for left, right in zip(points, points[1:]):
-        old = old_legs.get((_point_id(left), _point_id(right)))
-        if old is not None:
-            legs.append(dict(old))
-            continue
-        start, end = original_positions[_point_id(left)], original_positions[_point_id(right)]
-        dates = [cast(str, point['available_at']) for point in original[start:end + 1]
-                 if isinstance(point.get('available_at'), str)]
-        legs.append(dict(points=[dict(left), dict(right)],
-                         direction='up' if left.get('kind') == 'L' else 'down',
-                         available_at=max(dates) if dates else right.get('available_at'),
-                         basis=TREND_DISPLAY_POLICY, display_only=True))
-    result = dict(stroke, points=list(points), structural_legs=legs,
-                  confirmed_legs=[dict(leg) for leg in _rows(stroke.get('confirmed_legs')) if retained(leg)],
-                  prevent_display_bridge=True, lifecycle_display_policy=TREND_DISPLAY_POLICY)
-    if stroke.get('display_only') is True and points:
-        result.update(confirmed_anchor=dict(points[0]),
-                      wave_direction='up' if points[0].get('kind') == 'L' else 'down')
-    return result
-
-
 def publish_trend_display(row: Mapping[str, object], audit: Sequence[Mapping[str, object]],
                           *, level: int, asof_index: int,
                           source_row: Mapping[str, object] | None = None) -> dict[str, object]:
-    """Keep structure independent of lifecycle windows and trading eligibility.
+    """追加观察元数据；正式点、发展尾端和已有腿的证据原样来自共用核心。
 
-    Missing audit confirmation is observation metadata, not evidence to erase a
-    structural leg. Only an explicit unbroken frozen key can reject a local
-    third-level bullish promotion. Its existing valid flip history, including
-    special recovery, takes precedence. Rejected counter-swings are folded into
-    their original path's extreme; they never split a path into orphaned lines.
+    冻结关键位约束在共同整波升级状态中处理。六态确认、特殊恢复和交易
+    资格只影响观察提示，不能在图表发布时生成另一份结构或重新锚定端点。
     """
     windows = _bull_windows(audit, level, asof_index, row)
     starts = {path: [span.start for span in spans] for path, spans in windows.items()}
@@ -185,21 +142,23 @@ def publish_trend_display(row: Mapping[str, object], audit: Sequence[Mapping[str
     source_ends = {path: [span.end for span in spans] for path, spans in source_windows.items()}
     source_points = {str(stroke.get('id', '')): {_point_id(point): point for point in _rows(stroke.get('points'))}
                      for stroke in _rows(source_row.get('strokes'))} if source_row is not None else {}
+    strokes, tails = _rows(row.get('strokes')), _rows(row.get('developing_strokes'))
+    tail_owners: dict[tuple[object, ...], str] = {}
+    for stroke in strokes:
+        points = _rows(stroke.get('points'))
+        if points:
+            tail_owners[(stroke.get('source_path'), *_point_id(points[-1]))] = str(stroke.get('id', ''))
     observations: list[dict[str, object]] = []
-
-    def project(stroke: Mapping[str, object], tail: Mapping[str, object] | None = None,
-                *, owner: str | None = None) -> tuple[dict[str, object], dict[str, object] | None]:
-        formal = _rows(stroke.get('points'))
-        tail_points = _rows(tail.get('points')) if tail is not None else []
-        points = formal + tail_points[1:]
+    for stroke in (*strokes, *tails):
+        points = _rows(stroke.get('points'))
         if len(points) < 2:
-            return dict(stroke), dict(tail) if tail is not None else None
-        # 六态事件 source_path 是本级 ID，几何 source_path 是直接下级 ID。
-        path = owner if owner is not None else str(stroke.get('id', ''))
+            continue
+        path = str(stroke.get('id', ''))
+        if stroke.get('display_only') is True:
+            path = tail_owners.get((stroke.get('source_path'), *_point_id(points[0])), path)
         source_path = str(stroke.get('source_path', ''))
         spans, lower_spans = windows.get(path, []), source_windows.get(source_path, [])
         source = source_points.get(source_path, {})
-        rejected: set[tuple[object, ...]] = set()
         for left, right in zip(points, points[1:]):
             if left.get('kind') != 'L' or right.get('kind') != 'H':
                 continue
@@ -214,75 +173,14 @@ def publish_trend_display(row: Mapping[str, object], audit: Sequence[Mapping[str
                 and lower_spans[lower_position].breakout <= cast(int, end))
             own_key = _unbroken_key(right)
             lower_key = _unbroken_key(source.get(_point_id(right), {}))
-            blocked_own = own_key is not None and not own_confirmed
-            blocked_source = lower_key is not None and not lower_confirmed
-            blocked = level == 3 and (blocked_own or blocked_source)
-            if not own_confirmed or blocked:
+            source_doubt = lower_key is not None and not lower_confirmed
+            own_doubt = own_key is not None and not own_confirmed
+            if not own_confirmed or own_doubt or source_doubt:
                 observations.append(dict(id=f"{stroke.get('id', path)}:bull-doubt:{start}",
                     source_path=path, trend_level=level, state='多头疑虑', confirmed=False,
-                    reason='source_level_bull_flip_unconfirmed' if blocked_source else 'own_level_bull_flip_unconfirmed',
+                    reason='source_level_bull_flip_unconfirmed' if source_doubt else 'own_level_bull_flip_unconfirmed',
                     source_level=level - 1, source_key=dict(lower_key) if lower_key is not None else None,
                     points=[dict(left), dict(right)], available_at=right.get('available_at'), display_only=True))
-            if blocked:
-                rejected.add(_point_id(right))
-        if not rejected:
-            return dict(stroke), dict(tail) if tail is not None else None
-
-        # 仅在同一原始路径内归并：未成立的反弹不能切断原下降波，
-        # 后续更低 L 延伸原极值，更高 L 留作疑虑；合法反转沿保留的极值衔接。
-        continuous: list[Mapping[str, object]] = []
-        for point in points:
-            if _point_id(point) in rejected:
-                continue
-            if continuous and point.get('kind') == continuous[-1].get('kind'):
-                sign = 1 if point.get('kind') == 'H' else -1
-                if sign * (cast(float, point['value']) - cast(float, continuous[-1]['value'])) > 0:
-                    continuous[-1] = point
-            else:
-                continuous.append(point)
-        published_tail = None
-        if tail is not None and tail_points and continuous and continuous[-1] is tail_points[-1]:
-            if len(continuous) >= 2:
-                published_tail = _replace_path(tail, continuous[-2:], points)
-            continuous = continuous[:-1]
-        return _replace_path(stroke, continuous, points), published_tail
-
-    original_strokes, original_tails = _rows(row.get('strokes')), _rows(row.get('developing_strokes'))
-    tails_by_anchor: dict[tuple[object, ...], list[int]] = {}
-    for position, tail in enumerate(original_tails):
-        points = _rows(tail.get('points'))
-        if len(points) >= 2:
-            tails_by_anchor.setdefault((tail.get('source_path'), *_point_id(points[0])), []).append(position)
-    strokes: list[dict[str, object]] = []
-    tails: dict[int, dict[str, object]] = {}
-    consumed: set[int] = set()
-    for stroke in original_strokes:
-        points = _rows(stroke.get('points'))
-        matches = tails_by_anchor.get((stroke.get('source_path'), *_point_id(points[-1])), []) if points else []
-        match = matches[0] if len(matches) == 1 and matches[0] not in consumed else None
-        projected, tail = project(stroke, original_tails[match] if match is not None else None)
-        strokes.append(projected)
-        if match is not None:
-            consumed.add(match)
-            if tail is not None:
-                tails[match] = tail
-    for position, tail in enumerate(original_tails):
-        if position not in consumed:
-            projected, _ = project(tail)
-            if len(_rows(projected.get('points'))) >= 2:
-                tails[position] = projected
-    developing = [tails[position] for position in sorted(tails)]
-    result = dict(row, strokes=strokes, developing_strokes=developing,
-                  observation_strokes=observations, lifecycle_display_policy=TREND_DISPLAY_POLICY)
-    # 保留既有计数口径；只有真正归并了顶点才更新显示计数。
-    changed = (len(developing) != len(original_tails)
-        or any(len(_rows(after.get('points'))) != len(_rows(before.get('points')))
-               for after, before in zip(strokes, original_strokes))
-        or any([_point_id(point) for point in _rows(after.get('points'))]
-               != [_point_id(point) for point in _rows(before.get('points'))]
-               for after, before in zip(developing, original_tails)))
-    if changed:
-        result.update(confirmed_wave_count=sum(len(_rows(stroke.get('points'))) for stroke in strokes),
-                      developing_wave_count=len(developing),
-                      developing_point_count=sum(len(_rows(stroke.get('points'))) for stroke in developing))
-    return result
+    return dict(row, strokes=[dict(stroke) for stroke in strokes],
+                developing_strokes=[dict(tail) for tail in tails], observation_strokes=observations,
+                lifecycle_display_policy=TREND_DISPLAY_POLICY)

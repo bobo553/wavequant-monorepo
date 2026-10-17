@@ -16,7 +16,8 @@ from wavequant.domain.strategies.market_calculations import MarketDay
 from wavequant.domain.strategies.market_preview import publish_market_preview
 from wavequant.infrastructure.market_data.minute import MinuteBar
 
-from .stock_backtest import signal_execution_facts, single_stock_result
+from .stock_backtest import single_stock_result
+from .signal_execution_stream import SignalExecutionFactsStream
 
 
 def streaming_stock_result(
@@ -35,6 +36,7 @@ def streaming_stock_result(
     account: BacktestResult | None = None
     fallbacks: list[dict] = []
     minute_cache: dict = {'chart': {'source_bars': tuple(bars)}}
+    execution_facts: SignalExecutionFactsStream | None = None
     steps = calculation_steps(bars)
     if steps is not None:
         steps.set_plan(resolve_calculation_plan())
@@ -60,16 +62,18 @@ def streaming_stock_result(
         n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
 
     def consume(day: MarketDay, analysis: BacktestAnalysis, generated: SystemResult, state: DailySignalState) -> None:
-        nonlocal current_day, current_result, account
+        nonlocal current_day, current_result, account, execution_facts
         current_day = day
         index = day.frame.index
         prefix = bars[:index + 1]
         executions: dict = {}
-        if account_config.consolidation_entry_intraday and analysis.scan_days[-1]:
+        eligible = bool(analysis.buy_days[-1])
+        if account_config.consolidation_entry_intraday and eligible:
             resolved, executions, daily_fallbacks = resolve_consolidation_entries(prefix, generated, config,
                 minute_loader, daily_fallback=account_config.missing_minute_daily_fallback,
                 only_index=index, session_cache=minute_cache,
-                prepared_pivots=analysis.pivots, prepared_contexts=state.permissions)
+                prepared_pivots=analysis.pivots, prepared_contexts=state.permissions,
+                prepared_analysis=analysis, trading_window_start=state.window_start)
             generated.signals = resolved.signals
             generated.audit = resolved.audit
             generated.counts = resolved.counts
@@ -81,15 +85,28 @@ def streaming_stock_result(
                 and row['event'] in ('long_signal', 'long_transition_evidence', 'exit_signal'))
             fallbacks.extend(daily_fallbacks)
         current_result = generated
-        n_bars, wave_events = signal_execution_facts(prefix, generated)
+        if eligible:
+            if execution_facts is None or execution_facts.start_index != state.window_start:
+                execution_facts = SignalExecutionFactsStream(bars, start_index=state.window_start)
+            n_bars, wave_events = execution_facts.advance(index, generated.audit)
+            n_bars = execution_facts.active_positive_n_bars
+        else:
+            execution_facts = None
+            n_bars, wave_events = {}, []
+        account_day = AccountDay(index,
+            [signal for signal in generated.signals if signal.bar_index == index],
+            n_bars, wave_events, state.hierarchy, executions,
+            hierarchy_owner=state.hierarchy_stream, risk_histories=state.risk_histories,
+            trading_eligible=eligible, trading_window_start=state.window_start,
+            positive_n_authoritative=True,
+            eligibility_closed=(not eligible and len(analysis.buy_days) > 1 and analysis.buy_days[-2]))
         try:
-            runner.send(AccountDay(index,
-                [signal for signal in generated.signals if signal.bar_index == index],
-                n_bars, wave_events, state.hierarchy, executions))
+            runner.send(account_day)
         except StopIteration as completed:
             if index != len(bars) - 1:
                 raise RuntimeError('account completed before the market') from completed
             account = completed.value
+        state.account_risk_required = account_day.risk_required
 
     current_stage = '同日联动：准备折线、趋势、交易与账户'
 

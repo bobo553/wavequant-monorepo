@@ -1,6 +1,7 @@
 """Causal six-state contracts; fixtures supply already certified geometry."""
 
 from copy import deepcopy
+from collections import UserDict
 from dataclasses import replace
 from datetime import datetime, timedelta
 
@@ -65,6 +66,54 @@ def replay(bars, level, *, through=None, book=None, begin=0):
     for now in range(begin, len(bars) if through is None else through):
         events.extend(engine.advance([level], bars, now, dates))
     return engine, events
+
+
+@pytest.mark.parametrize('level', [1, 2, 3])
+@pytest.mark.parametrize('up', [True, False])
+def test_owned_structure_reuse_preserves_future_facts_and_daily_close_confirmation(level, up):
+    bars, geometry = scenario(level, up)
+    expected, expected_events = replay(bars, geometry)
+    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+    engine = TrendLifecycle()
+    events = []
+    saved = None
+    for now in range(len(bars)):
+        events.extend(engine.advance([geometry], bars, now, dates, _owned_structure=True))
+        if now == 4:
+            saved = engine._structure_facts[(level, 'path')]
+        if now == 5:
+            assert engine._structure_facts[(level, 'path')] is saved
+    assert events == expected_events
+    assert engine.checkpoint() == expected.checkpoint()
+
+
+def test_owned_structure_revision_and_checkpoint_restore_do_not_reuse_old_facts():
+    bars, geometry = scenario()
+    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+    cached, ordinary = TrendLifecycle(), TrendLifecycle()
+    for now in range(3):
+        assert cached.advance([geometry], bars, now, dates, _owned_structure=True) == ordinary.advance(
+            [geometry], bars, now, dates)
+    cached = TrendLifecycle.from_checkpoint(cached.checkpoint())
+    revised = deepcopy(geometry)
+    revised['strokes'][0]['points'][1]['observations'] = []
+    for now in range(3, len(bars)):
+        assert cached.advance([revised], bars, now, dates, _owned_structure=True) == ordinary.advance(
+            [revised], bars, now, dates)
+    assert cached.checkpoint() == ordinary.checkpoint()
+
+
+def test_owned_structure_with_unknown_nested_mapping_keeps_daily_parsing():
+    bars, geometry = scenario()
+    points = geometry['strokes'][0]['points']
+    points[1]['observations'][0] = UserDict(points[1]['observations'][0])
+    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+    cached, ordinary = TrendLifecycle(), TrendLifecycle()
+    for now in range(len(bars)):
+        assert cached.advance([geometry], bars, now, dates, _owned_structure=True) == ordinary.advance(
+            [geometry], bars, now, dates)
+        assert cached._structure_facts == {}
+    assert cached.checkpoint() == ordinary.checkpoint()
 
 
 @pytest.mark.parametrize('level', [1, 2, 3])

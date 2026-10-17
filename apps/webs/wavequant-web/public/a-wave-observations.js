@@ -19,10 +19,19 @@ export function aWaveObservations(bars, theory) {
     const asof = theory.asof || bars.at(-1)?.time;
     const byTime = new Map(bars.filter((bar) => bar.time <= asof).map((bar) => [bar.time, bar]));
     const sources = new Map();
+    const windowClosures = new Map();
+    for (const event of theory.events || []) {
+        const identity = event.n_id || event.target_source_id;
+        if (event.event !== "n_target_source_retired" || event.reason !== "trading_eligibility_closed" ||
+            typeof identity !== "string" || !event.available_at || event.available_at > asof) continue;
+        const previous = windowClosures.get(identity);
+        if (!previous || event.available_at < previous) windowClosures.set(identity, event.available_at);
+    }
     const events = [...(theory.events || [])]
         .filter((event) => EVENTS.has(event.event) && event.time <= event.available_at && event.available_at <= asof)
         .sort((left, right) => left.available_at.localeCompare(right.available_at));
     for (const event of events) {
+        if (windowClosures.get(event.source_id) <= event.available_at) continue;
         if (
             typeof event.source_id !== "string" ||
             !event.source_id ||
@@ -100,7 +109,19 @@ export function aWaveObservations(bars, theory) {
                 : {}),
         });
     }
-    return [...sources.values()];
+    return [...sources.values()].map((source) => {
+        const closedAt = windowClosures.get(source.sourceNId);
+        if (!closedAt) return source;
+        const cutoff = bars.filter((bar) => bar.time < closedAt).at(-1)?.time;
+        const until = (existing) => existing && existing < cutoff ? existing : cutoff;
+        return {
+            ...source,
+            cEligible: false,
+            tradingWindowClosedAt: closedAt,
+            targetValidUntil: until(source.targetValidUntil),
+            anchorVersions: source.anchorVersions.map((anchor) => ({ ...anchor, validUntil: until(anchor.validUntil) })),
+        };
+    });
 }
 
 /** 已确认 A 的 B/C 不依赖二级翻转；失效后保留历史端点并撤销未来 C 目标。 */
@@ -127,7 +148,7 @@ export function aWaveCProjections(bars, theory) {
 export function aWaveAnnotations(observations, bars) {
     const byTime = new Map(bars.map((bar) => [bar.time, bar]));
     return observations.flatMap((item) => {
-        const description = `正 N ${item.nTime}；${item.aConfirmedAt} 严格突破一饱 ${num(item.oneP, 4)} 元确认 A。${item.strongAt ? `${item.strongAt} 达到二吐 ${num(item.twoT, 4)} 元升级强势 A。` : "当前为普通 A。"}A 起点 ${item.originTime} ${num(item.origin, 4)} 元；高点 ${item.aTime} ${num(item.aHigh, 4)} 元${item.phase === "a" ? "，仍可延伸" : ""}。${item.invalidatedAt ? `${item.invalidatedAt} 最低价严格跌破起点，A 永久失效，原组没有后续 C。` : "起点未严格跌破，保留后续 C 观察；相等仍有效。"}`;
+        const description = `正 N ${item.nTime}；${item.aConfirmedAt} 严格突破一饱 ${num(item.oneP, 4)} 元确认 A。${item.strongAt ? `${item.strongAt} 达到二吐 ${num(item.twoT, 4)} 元升级强势 A。` : "当前为普通 A。"}A 起点 ${item.originTime} ${num(item.origin, 4)} 元；高点 ${item.aTime} ${num(item.aHigh, 4)} 元${item.phase === "a" && !item.tradingWindowClosedAt ? "，仍可延伸" : ""}。${item.tradingWindowClosedAt ? `${item.tradingWindowClosedAt} 交易资格结束，保留区间内历史事实，停止后续 A/C 观察。` : item.invalidatedAt ? `${item.invalidatedAt} 最低价严格跌破起点，A 永久失效，原组没有后续 C。` : "起点未严格跌破，保留后续 C 观察；相等仍有效。"}`;
         const shared = {
             kind: "wave-projection",
             category: "wave-projection",
@@ -157,7 +178,7 @@ export function aWaveAnnotations(observations, bars) {
                 "top",
                 item.aTime,
                 item.aHigh,
-                item.invalidatedAt ? "A 顶 · 已失效" : item.phase === "a" ? "A 高 · 可延伸" : "A 顶",
+                item.tradingWindowClosedAt ? "A 顶 · 资格已结束" : item.invalidatedAt ? "A 顶 · 已失效" : item.phase === "a" ? "A 高 · 可延伸" : "A 顶",
                 true,
             ),
             ...(item.cTime ? [marker("c-top", item.cTime, item.cHigh, "C 顶", true)] : []),

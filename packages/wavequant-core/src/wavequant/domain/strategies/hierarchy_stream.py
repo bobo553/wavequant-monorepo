@@ -1,8 +1,9 @@
 """Request-owned, append-only history for independent strategy confirmations."""
 
 from collections.abc import Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from ..market_structure.bottom_n_targets import DeclineStart
 from ..market_structure.trend_body_reversal import with_price_bodies
@@ -10,10 +11,17 @@ from ..market_structure.trend_judgement import (
     TrendJudgement, _FrozenPoint, _FrozenPointCache, _OwnedPointAdmission, _frozen_point_scope, mutable_points,
 )
 from ..market_structure.trend_readonly_cache import _ReadonlySnapshotCache
-from ..market_structure.trend_lines import _TrendJudgementCache, polyline_turns, qualify_trend_structure
+from ..market_structure.trend_evidence_reuse import _geometry_signature
+from ..market_structure.trend_lines import (
+    _TrendCandidateCache, _TrendJudgementCache, _legacy_pending_bull_n, polyline_turns, qualify_trend_structure,
+)
+from ..market_structure.n_trend_confirmation import _NPermissionProofs, _reuse_n_permissions
 from ..market_structure.trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
 from ..models.model import Bar
 from .hierarchical_entry import _HistoryPoint, _identity, _decline_starts
+
+if TYPE_CHECKING:
+    from .market_calculations import MarketDay
 
 
 @dataclass(slots=True)
@@ -46,10 +54,12 @@ class HierarchyHistoryStream:
     synchronous strategy/account consumer; no previous day is recalculated.
     """
 
-    def __init__(self, bars: Sequence[Bar], *, n_enabled: bool = False) -> None:
+    def __init__(self, bars: Sequence[Bar], *, n_enabled: bool = False, shared: bool = False) -> None:
         self.bars = tuple(bars)
-        self.market_index = _MarketRangeIndex.build(self.bars)
+        self.market_index = None if shared else _MarketRangeIndex.build(self.bars)
         self.n_enabled = n_enabled
+        self._shared = shared
+        self._dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(self.bars)}
         self.index = -1
         self.epoch: int | None = None
         self.history: dict[int, dict[int, tuple[dict[str, object], ...]]] = {}
@@ -58,6 +68,8 @@ class HierarchyHistoryStream:
         self.previous: dict[int, dict[tuple[int, int, str, float], int]] = {}
         self.points: dict[int, dict[tuple[int, int, str, float], _HistoryPoint]] = {}
         self.caches: dict[int, _TrendJudgementCache] = {}
+        self._candidate_caches: dict[int, _TrendCandidateCache] = {}
+        self._n_proofs = {level: _NPermissionProofs() for level in (1, 2, 3)}
         self._frozen_points = _FrozenPointCache()
         self._point_admission = _OwnedPointAdmission()
         self._decoded = _ReadonlySnapshotCache[dict[str, object]](
@@ -65,6 +77,8 @@ class HierarchyHistoryStream:
         # 每级仅持有当前结构。版本来自本次已冻结判定，不能用外部 raw 的身份
         # 跳过修订校验；下级许可仍每天重新生成，不进入这个几何复用边界。
         self._prepared: dict[int, _PreparedStructure] = {}
+        self._polyline_signature: bytes | None = None
+        self._polyline_version: object | None = None
         self._closed = False
 
     def close(self) -> None:
@@ -73,6 +87,10 @@ class HierarchyHistoryStream:
         self._point_admission.close()
         self._decoded.clear()
         self._prepared.clear()
+        self._candidate_caches.clear()
+        self._n_proofs.clear()
+        self._polyline_signature = None
+        self._polyline_version = None
         self._closed = True
 
     def _readonly_points(self, points: Sequence[Mapping[str, object]], *,
@@ -128,9 +146,83 @@ class HierarchyHistoryStream:
         self.points[level] = reusable
         return frozen
 
+    def _known_index(self, value: object) -> int | None:
+        if type(value) is int:
+            return value if value >= 0 else None
+        if isinstance(value, str):
+            return int(value) if value.isdecimal() else self._dates.get(value)
+        return None
+
+    @staticmethod
+    def _active_points(
+        prepared: Mapping[str, object], view: Mapping[str, object], field: str, index: int,
+    ) -> list[Mapping[str, object]]:
+        cutoffs = cast(Mapping[str, int | None], prepared['_path_market_end_indices'])
+        result: list[Mapping[str, object]] = []
+        for stroke in cast(Sequence[Mapping[str, object]], view[field]):
+            path = cast(str, stroke['source_path'])
+            cutoff = cutoffs[path]
+            if cutoff is None or index < cutoff:
+                result.extend(cast(Sequence[Mapping[str, object]], stroke['points']))
+        return result
+
+    def advance_market_day(
+        self, day: 'MarketDay', permissions: Sequence[Mapping[str, object]],
+    ) -> None:
+        """把共享当日结果投影为整数知识时钟，不再次判断任何级别的几何。
+
+        几何、资格和价格日期仍分别保存。点第一次真正出现在本级许可视图
+        之前不能被策略读取；已发布旧日只追加，后日修订不改写历史。
+        """
+        if self._closed:
+            raise RuntimeError('hierarchy stream has been closed')
+        index, epoch = day.frame.index, day.frame.epoch
+        if not self._shared or index != self.index + 1 or index >= len(self.bars):
+            raise ValueError('shared hierarchy requires consecutive market days')
+        if len(day.levels) != 3 or len(permissions) != 3:
+            raise ValueError('shared hierarchy requires all three immediate levels')
+        if epoch != self.epoch:
+            self.previous.clear()
+            self.points.clear()
+        levels: dict[int, tuple[dict[str, object], ...]] = {}
+        for number, (prepared, view) in enumerate(zip(day.levels, permissions, strict=True), 1):
+            if prepared.get('trend_level') != number or prepared.get('source_level') != number - 1:
+                raise ValueError('shared hierarchy requires immediate lower-level geometry')
+            points: list[Mapping[str, object]] = []
+            for point in self._active_points(prepared, view, 'qualified_strokes', index):
+                known = self._known_index(point.get('available_at'))
+                origin = point.get('index')
+                if type(origin) is not int or known is None or not 0 <= origin <= known <= index:
+                    continue
+                points.append(dict(index=origin, ordinal=point.get('ordinal', 0), kind=point['kind'],
+                    value=point['value'], available_at=known, available_index=known))
+            frozen = self._freeze(points, number, index)
+            projected = tuple(dict(index=point['index'], ordinal=point['ordinal'], kind=point['kind'],
+                value=point['value'], available_at=point['available_at']) for point in frozen)
+            previous = self.history.get(self.index, {}).get(number)
+            levels[number] = previous if previous == projected else projected
+        candidates: list[Mapping[str, object]] = []
+        for point in self._active_points(day.levels[0], day.levels[0], 'candidate_strokes', index):
+            known = self._known_index(point.get('available_at'))
+            if known is None or known > index:
+                continue
+            candidate = dict(point, available_at=known)
+            upgrade = point.get('upgrade_evidence')
+            if isinstance(upgrade, Mapping) and isinstance(upgrade.get('origin'), Mapping):
+                origin = cast(Mapping[str, object], upgrade['origin'])
+                origin_known = self._known_index(origin.get('available_at'))
+                if origin_known is not None:
+                    candidate['upgrade_evidence'] = dict(upgrade, origin=dict(origin, available_at=origin_known))
+            candidates.append(candidate)
+        self.declines[index] = _decline_starts(candidates)
+        self.history[index], self.epochs[index] = levels, epoch
+        self.index, self.epoch = index, epoch
+
     def advance(self, index: int, epoch: int, raw: Sequence[Mapping[str, object]]) -> None:
         if self._closed:
             raise RuntimeError('hierarchy stream has been closed')
+        if self._shared:
+            raise ValueError('shared hierarchy consumes MarketDay, not a second trend calculation')
         if index != self.index + 1 or index >= len(self.bars):
             raise ValueError('hierarchy stream requires consecutive available dates')
         if epoch != self.epoch:
@@ -138,13 +230,20 @@ class HierarchyHistoryStream:
             self._prepared.clear()
             self.previous.clear()
             self.points.clear()
+            self._polyline_signature = None
+            self._polyline_version = None
             self.caches = {level: _TrendJudgementCache(tail_reuse=True) for level in (1, 2, 3)}
+            self._candidate_caches = {level: _TrendCandidateCache() for level in (1, 2, 3)}
         market = self.bars[:index + 1]
         prefix = _MarketPrefixIndex(self.market_index, market) if self.market_index is not None else None
         source: Sequence[Mapping[str, object]] = self._freeze(
             polyline_turns(raw, source_path=f'lecture-{epoch}'), 0, index)
         qualified_source: Sequence[Mapping[str, object]] = source
-        source_version: object | None = None
+        signature = _geometry_signature(source) if self.market_index is not None else None
+        if signature is None or signature != self._polyline_signature:
+            self._polyline_version = object() if signature is not None else None
+        self._polyline_signature = signature
+        source_version = self._polyline_version
         levels: dict[int, tuple[dict[str, object], ...]] = {}
         with _frozen_point_scope(cache=self._frozen_points, admission=self._point_admission):
             for level in (1, 2, 3):
@@ -167,9 +266,14 @@ class HierarchyHistoryStream:
                     reusable = self.market_index is not None and _available_structure(judgement, index)
                 self._prepared[level] = _PreparedStructure(
                     source_version, source, judgement, candidates, geometry, reusable)
-                published = qualify_trend_structure(candidates, source, market, trend_level=level,
-                    qualified_source=qualified_source, _owned_candidates=True,
-                    n_target_trend_confirmation_enabled=self.n_enabled, _market_index=prefix)
+                n_scope = (_reuse_n_permissions(self._n_proofs[level], market,
+                    allow_new=_legacy_pending_bull_n(geometry, market, trend_level=level))
+                    if self.n_enabled else nullcontext())
+                with n_scope:
+                    published = qualify_trend_structure(candidates, source, market, trend_level=level,
+                        qualified_source=qualified_source, _owned_candidates=True,
+                        n_target_trend_confirmation_enabled=self.n_enabled, _market_index=prefix,
+                        _candidate_cache=self._candidate_caches[level])
                 levels[level] = tuple(dict(index=point['index'], ordinal=point['ordinal'], kind=point['kind'],
                     value=point['value'], available_at=point['available_at']) for point in published)
                 if level == 1:

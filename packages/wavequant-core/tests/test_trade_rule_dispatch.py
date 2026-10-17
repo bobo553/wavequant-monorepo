@@ -10,7 +10,7 @@ from wavequant.domain.strategies.integrated_strategy import (
     pivot_history,
 )
 
-from test_integrated_strategy import config, fixture
+from .test_integrated_strategy import config, fixture
 
 
 def prepared_history(*, buy_days=None, scan_days=None, blocked_day=None):

@@ -296,7 +296,8 @@ def test_global_shadow_exit_yields_to_an_existing_target_full_clear(overlapping_
     if legacy == "two_t":
         ready = dict(event="wave_projection_ready", attack=0, bar_index=1, two_t=21.0)
         legacy_risk = two_t_resistance_history(bars, [ready])[2]
-        monkeypatch.setattr(integrated_strategy, "two_t_resistance_history", lambda *_args: {2: legacy_risk})
+        monkeypatch.setattr("wavequant.domain.strategies.daily_risk_histories.DailyRiskHistories.two_t",
+                            lambda _stream, index, *_args, **_options: {2: legacy_risk} if index >= 2 else {})
     else:
         equal = dict(event="wave_c_equal_target", attack=0, bar_index=0, target=23.01, defense=13.0)
         equal_risk = wave_exhaustion_exit.observe_c_equal_near_risk(bars, 2, [equal])

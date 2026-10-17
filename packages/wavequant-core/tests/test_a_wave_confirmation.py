@@ -110,7 +110,7 @@ def test_xiangyang_july_n_confirms_a_july31_and_extends_through_august18():
     assert history[-1].phase == "b"
 
 
-def test_full_strategy_publishes_a_before_b_and_keeps_prefix_and_partial_cache_causal():
+def test_full_strategy_skips_trading_a_without_qualification_and_keeps_prefix_causal():
     data = json.loads((Path(__file__).parent / "fixtures/xiangyang_a_wave_2026.json").read_text(encoding="utf-8"))
     bars = [Bar(datetime.fromisoformat(day), data["symbol"], *values) for day, *values in data["bars"]]
     dates = {str(bar.timestamp.date()): index for index, bar in enumerate(bars)}
@@ -131,5 +131,7 @@ def test_full_strategy_publishes_a_before_b_and_keeps_prefix_and_partial_cache_c
     theory = ChartRepository.render_theory(None, bars, config, full, str(bars[-1].timestamp.date()),
                                           geometry={"secondary_trends": {"strokes": []}})
     assert theory['a_wave_policy'] == 'one_p_break_confirmed_a_origin_lifetime_v1'
-    confirmed = next(row for row in theory['events'] if row['event'] == 'a_wave_confirmed')
-    assert confirmed['available_at'] == confirmed['confirmed_date'] == '2026-07-31'
+    assert full.counts['trading_interval_count'] == 0
+    assert theory['trading_observation_policy'] == 'qualified_windows_v1'
+    assert not any(row['event'].startswith(('a_wave_', 'b_wave_', 'c_wave_'))
+                   for row in theory['events'])

@@ -1,3 +1,9 @@
+2026-10-17 · MONOREPO-330 缓存实际耗时与字节契约（代码已修改，待验证）
+
+回测步骤契约新增可选encoding_seconds、write_seconds、encoded_bytes、reused_bytes，对应Core缓存边界测量和Web展示；elapsed_seconds仍为共享起止跨度，不能相加为独占算法时间。字段兼容旧进度数据。
+
+本轮未运行测试、lint、类型或构建，待提交时验证；MONOREPO-330保持in-progress，旧失败与验证记录保留。
+
 2026-10-15 · 提交阶段验证与分支保存（未通过全部回归）
 
 用户要求提交并推送 feat-三级趋势统一，明确不合并 main。本次保存累计实现及已知失败，MONOREPO-330 保持 in-progress；不代表完整验收通过。此前“未运行”的记录是各开发阶段历史，本段为最新提交验证结果。
@@ -59,3 +65,4 @@ MONOREPO-298（2026-10-08）：新增WatchlistSnapshotSchema、WatchlistSettings
 - 契约变化需同步验证 API、Web 与 Mobile 消费者。
 
 - MONOREPO-153：新增LimitUpStockSchema/LimitUpLadderSchema及推导类型，Web复用验证API响应的日期、来源、连板数和可空数值。包构建和消费者Web类型/构建、真实接口浏览器解析通过。
+2026-10-17 · 本次提交验证补充：contracts build 通过；功能随 MONOREPO-330 保持 in-progress，端到端资格表现和 2120 日性能待验收。

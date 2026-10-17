@@ -8,6 +8,8 @@ from typing import Never, SupportsIndex, cast
 import pytest
 
 from wavequant.domain.models.config import StrategyConfig
+from wavequant.application.analytics.backtest import run_portfolio
+from wavequant.application.analytics.intraday_entry import resolve_consolidation_entries
 from wavequant.domain.models.model import Signal
 from wavequant.domain.market_state.market_regime import MarketRegime
 from wavequant.domain.market_structure.squeeze_alternation import squeeze_alternations
@@ -15,7 +17,7 @@ from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryRe
 from wavequant.domain.strategies.chart_entry_history import chart_entry_history, merge_squeeze_history
 from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
 from wavequant.domain.strategies.integrated_strategy import SystemResult, SystemStrategy, generate_system_signals
-from wavequant.interfaces.research_tools.stock_backtest import single_stock_result
+from wavequant.interfaces.research_tools.stock_backtest import single_stock_result, signal_execution_facts
 
 from .test_lecture_strategy import history
 from .test_squeeze_alternation import fixture as squeeze_fixture
@@ -203,7 +205,7 @@ def test_equal_numbers_with_different_types_do_not_share_evidence(change: str) -
 
 
 @pytest.mark.parametrize('revised_audit', (False, True))
-def test_simulation_reuses_generation_without_replaying_and_preserves_nonempty_ledger(
+def test_explicit_account_reuses_certified_generation_and_preserves_nonempty_ledger(
     monkeypatch: pytest.MonkeyPatch, revised_audit: bool,
 ) -> None:
     bars = history(18, 80)
@@ -229,10 +231,22 @@ def test_simulation_reuses_generation_without_replaying_and_preserves_nonempty_l
         assert reuse.chart(bars, strategy, generated.audit) is None
     execution = StrategyConfig(consolidation_entry_intraday=True, staged_exit_intraday=False,
                                trend_flip_adverse_exit=True, net_reward_risk_filter=False, max_participation=1)
-    expected = single_stock_result(bars, asdict(strategy), execution.to_dict(), generated)
+
+    def account_from_fixture(owner: BacktestHistoryReuse | None = None):
+        resolved, entries, fallbacks = resolve_consolidation_entries(bars, generated, strategy, None,
+            daily_fallback=execution.missing_minute_daily_fallback, history_reuse=owner)
+        n_bars, waves = signal_execution_facts(bars, resolved)
+        account = run_portfolio({bars[0].symbol: bars}, resolved.signals, execution,
+            positive_n_bars={bars[0].symbol: n_bars}, wave_events={bars[0].symbol: waves},
+            entry_executions=entries, history_reuse={bars[0].symbol: owner} if owner is not None else None,
+            n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)
+        return single_stock_result(bars, asdict(strategy), execution.to_dict(), resolved,
+            account_result=account, entry_fallbacks_override=fallbacks)
+
+    expected = account_from_fixture()
     assert any(order['side'] == 'BUY' and order['status'] == 'filled' for order in expected['orders'])
     empty = BacktestHistoryReuse(bars, strategy)
-    assert single_stock_result(bars, asdict(strategy), execution.to_dict(), generated, history_reuse=empty) == expected
+    assert account_from_fixture(empty) == expected
 
     def fail_replay(*args: object, **kwargs: object) -> object:
         raise AssertionError('a complete certified history must not be recomputed')
@@ -240,7 +254,7 @@ def test_simulation_reuses_generation_without_replaying_and_preserves_nonempty_l
     monkeypatch.setattr('wavequant.application.analytics.intraday_entry.pivot_history', fail_replay)
     monkeypatch.setattr('wavequant.domain.strategies.chart_entry_history.chart_entry_history', fail_replay)
     monkeypatch.setattr('wavequant.domain.strategies.hierarchical_entry.hierarchical_history', fail_replay)
-    actual = single_stock_result(bars, asdict(strategy), execution.to_dict(), generated, history_reuse=reuse)
+    actual = account_from_fixture(reuse)
     assert actual == expected
 
 

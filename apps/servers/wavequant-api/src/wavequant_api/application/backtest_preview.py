@@ -2,9 +2,10 @@
 
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, fields, is_dataclass
 from datetime import datetime
 import json
+from math import isfinite
 from time import monotonic
 from typing import cast
 
@@ -12,6 +13,47 @@ from wavequant.domain.models.model import Bar
 from wavequant.domain.market_structure.trend_display import publish_trend_display
 from wavequant.domain.strategies.market_calculations import MarketDay
 from wavequant.application.analytics.trade_evidence import result_markers
+
+
+def _preview_value(value: object) -> object:
+    """发布时一次性复制为 JSON 值；账户全文无需先编码为字符串再解析。"""
+    if value is None or type(value) in (str, bool, int):
+        return value
+    if type(value) is float:
+        if not isfinite(value):
+            raise ValueError('backtest preview requires finite numbers')
+        return value
+    if type(value) is dict and all(type(key) is str for key in cast(dict[object, object], value)):
+        return {key: _preview_value(item) for key, item in value.items()}
+    if type(value) in (list, tuple):
+        return [_preview_value(item) for item in value]
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if is_dataclass(value) and not isinstance(value, type):
+        return {field.name: _preview_value(getattr(value, field.name)) for field in fields(value)}
+
+    def encode(item: object) -> object:
+        if isinstance(item, datetime):
+            return item.isoformat()
+        if is_dataclass(item) and not isinstance(item, type):
+            return asdict(item)
+        raise TypeError(f'unsupported backtest preview value: {type(item).__name__}')
+
+    # 非标准容器、非字符串键和标量子类保留原 JSON 边界行为。
+    return json.loads(json.dumps(value, default=encode, allow_nan=False))
+
+
+def _preview_rows(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list) or any(not isinstance(row, dict) for row in value):
+        raise ValueError('backtest preview requires account record lists')
+    return cast(list[dict[str, object]], value)
+
+
+def _preview_date(row: Mapping[str, object], key: str) -> str:
+    value = row.get(key)
+    if not isinstance(value, str):
+        raise ValueError('backtest preview requires dated account records')
+    return value[:10]
 
 
 class BacktestPreviewPublisher:
@@ -53,29 +95,27 @@ class BacktestPreviewPublisher:
                       shapes=[], events=[], points=[], polyline_segments=[], counts={},
                       computed_from='running_backtest_completed_trading_day')
         candles = self.market_bars[:index + 1]
-        def encode(value: object) -> object:
-            if isinstance(value, datetime):
-                return value.isoformat()
-            if is_dataclass(value) and not isinstance(value, type):
-                return asdict(value)
-            raise TypeError(f'unsupported backtest preview value: {type(value).__name__}')
-        account = json.loads(json.dumps(dict(result), default=encode, allow_nan=False))
-        equity = account.pop('equity')
-        if len(equity) != index + 1 or equity[-1]['timestamp'][:10] != asof:
+        account = cast(dict[str, object], _preview_value(dict(result)))
+        equity = _preview_rows(account.pop('equity'))
+        signals = _preview_rows(account['signals'])
+        orders = _preview_rows(account['orders'])
+        audit = _preview_rows(account['audit'])
+        trades = _preview_rows(account['trades'])
+        if len(equity) != index + 1 or _preview_date(equity[-1], 'timestamp') != asof:
             raise ValueError('backtest preview requires the account to finish the same market day')
-        if any(row['timestamp'][:10] > asof for key in ('signals', 'orders', 'audit') for row in account[key]):
+        if any(_preview_date(row, 'timestamp') > asof for rows in (signals, orders, audit) for row in rows):
             raise ValueError('backtest preview cannot contain future decisions or executions')
-        if any(row['exit_time'][:10] > asof for row in account['trades']):
+        if any(_preview_date(row, 'exit_time') > asof for row in trades):
             raise ValueError('backtest preview cannot contain future trades')
-        for signal in account['signals']:
-            signal['time'] = signal['timestamp'][:10]
+        for signal in signals:
+            signal['time'] = _preview_date(signal, 'timestamp')
         account['markers'] = result_markers(account)
         account['curve'] = equity
         account['metrics'] = {}
         for level, (name, row) in enumerate(zip(names, day.levels), start=1):
             if level >= 2 and row.get('scope') == 'structural_trend_points_with_independent_strategy_permissions':
                 theory[name] = publish_trend_display(cast(Mapping[str, object], theory[name]),
-                    account['audit'], level=level, asof_index=index,
+                    audit, level=level, asof_index=index,
                     source_row=day.levels[1] if level == 3 else None)
         self.publish(index + 1, dict(symbol=bars[0].symbol, asof=asof, timeframe='1d',
             processed=index + 1, total=len(bars), bars=candles, theory=theory,

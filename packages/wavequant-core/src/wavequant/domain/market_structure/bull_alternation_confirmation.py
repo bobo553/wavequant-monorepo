@@ -103,9 +103,14 @@ def confirm_bull_alternation(
     bars: Sequence[Bar], now: int, *, origin: ConfirmedTurn, high: ConfirmedTurn,
     broken: ConfirmedTurn, points: Sequence[ConfirmedTurn], polyline: Sequence[ConfirmedTurn],
     level: int, path: str, policy: AlternationPolicy = AlternationPolicy(), allow_gap_confirmation: bool = True,
+    flip_confirmed_at: int | None = None,
 ) -> AlternationProof | None:
     """守住已确认翻多起点，再以浅回撤、重突破、N轧空或跳空确认交替。"""
-    if not (origin.index < high.index <= now < len(bars)):
+    if (type(level) is not int or level not in (0, 1, 2, 3) or not path
+            or not (origin.index < high.index <= now < len(bars))):
+        return None
+    if flip_confirmed_at is not None and (type(flip_confirmed_at) is not int
+            or not 0 <= flip_confirmed_at <= now):
         return None
     if any(point.known > now for point in (origin, high, broken, *points, *polyline)):
         raise ValueError('alternation confirmation requires causal points')
@@ -154,21 +159,50 @@ def confirm_bull_alternation(
             allow_confirmation_bar=True, allow_outside_close=True, allow_mother_impulse=mother,
             staged_defense=True, allow_mother_pullback=same_bar and not inside, allow_inside_pullback=inside)
         try:
-            n = observe_n(data, setup, timeframe='1d', milestone_basis=MilestoneBasis.EXTREME)
+            n = observe_n(data, setup, timeframe='1d', milestone_basis=MilestoneBasis.EXTREME,
+                          measure_targets=False)
         except ValueError:
             continue
         if n.completion is None:
             continue
         attack = n.completion.bar_index + offset
-        control = observe_control_bar(data, setup, timeframe='1d', volume_lookback=policy.volume_lookback,
-                                      shadow_policy=ShadowPolicy(policy.shadow_fraction))
-        if policy.strict_n_attack_quality and v3_positive_n_attack_rejection(bars[attack], control.volume):
-            continue
+        if policy.strict_n_attack_quality:
+            control = observe_control_bar(data, setup, timeframe='1d', volume_lookback=policy.volume_lookback,
+                                          shadow_policy=ShadowPolicy(policy.shadow_fraction), _prepared_n=n)
+            if v3_positive_n_attack_rejection(bars[attack], control.volume):
+                continue
+        positive = dict(event='n_completed', direction='up', bar_index=attack, known_at=known,
+                        origin=a.index, neckline=b.index, pullback=c.index,
+                        outside_close_confirmed=c.index == attack)
+
+        def confirmed_proof(triggers: Sequence[dict[str, object]]) -> AlternationProof | None:
+            confirmed = squeeze_alternations(bars[:now + 1], [positive, *triggers], {attack: [anchor]})
+            for event in confirmed:
+                if event['event'] != 'squeeze_alternation_confirmed' or event['bar_index'] != now:
+                    continue
+                low = next((point for point in polyline if point.kind == 'L'
+                            and point.index == event['b_low_index'] and point.price == event['b_low_price']), None)
+                if low is not None:
+                    rule = ('positive_n_consolidation_gap_after_qualified_b'
+                            if event.get('confirmation_source') == 'defended_n_consolidation_gap'
+                            else 'positive_n_and_squeeze_after_qualified_b')
+                    return AlternationProof(low, rule, tuple(dict.fromkeys((low, a, b, c))), dict(event))
+            return None
+
+        triggers: list[dict[str, object]] = []
+        gap = (consolidation_gap(bars, attack=attack, now=now, defense=n.completion.defense)
+               if allow_gap_confirmation else None)
+        if gap is not None:
+            triggers.append(dict(gap, event='n_consolidation_gap_confirmed', bar_index=now, attack=attack))
+            proof = confirmed_proof(triggers)
+            if proof is not None:
+                return proof
+        # A completed gap proof needs no second regime replay; ordinary N
+        # confirmation shares the same formation with its downstream observers.
         regime = observe_market_regime(data, setup, timeframe='1d',
             policy=RegimePolicy(ShadowPolicy(policy.shadow_fraction), WaveBoundary.ORIGIN,
-                                local_resistance_failure=True))
+                                local_resistance_failure=True), _prepared_n=n)
         frame = regime.latest
-        triggers: list[dict[str, object]] = []
         if frame is not None:
             reversal = (volume_reversal_squeeze(bars, attack=attack, now=now, origin_low=n.anchors.origin,
                 attack_defense=n.completion.defense, frame=frame, offset=offset) if n.anchors is not None else None)
@@ -180,28 +214,11 @@ def confirm_bull_alternation(
             elif policy.squeeze_pullback_entries and observe_squeeze_resumption(bars, now,
                     frame=frame, offset=offset, attack_index=attack, defense=n.completion.defense) is not None:
                 triggers.append(dict(event='squeeze_resumption_observed', bar_index=now, attack=attack))
-        gap = (consolidation_gap(bars, attack=attack, now=now, defense=n.completion.defense)
-               if allow_gap_confirmation else None)
-        if gap is not None:
-            triggers.insert(0, dict(gap, event='n_consolidation_gap_confirmed', bar_index=now, attack=attack))
         if not triggers:
             continue
-        positive = dict(event='n_completed', direction='up', bar_index=attack, known_at=known,
-                        origin=a.index, neckline=b.index, pullback=c.index,
-                        outside_close_confirmed=c.index == attack)
-        confirmed = squeeze_alternations(bars[:now + 1], [positive, *triggers], {attack: [anchor]})
-        for event in confirmed:
-            if event['event'] != 'squeeze_alternation_confirmed' or event['bar_index'] != now:
-                continue
-            # The existing rule measures the B low. Require that exact low to
-            # already be a polyline vertex; do not manufacture a daily low point.
-            low = next((point for point in polyline if point.kind == 'L'
-                        and point.index == event['b_low_index'] and point.price == event['b_low_price']), None)
-            if low is not None:
-                rule = ('positive_n_consolidation_gap_after_qualified_b'
-                        if event.get('confirmation_source') == 'defended_n_consolidation_gap'
-                        else 'positive_n_and_squeeze_after_qualified_b')
-                return AlternationProof(low, rule, tuple(dict.fromkeys((low, a, b, c))), dict(event))
+        proof = confirmed_proof(triggers)
+        if proof is not None:
+            return proof
     return None
 
 

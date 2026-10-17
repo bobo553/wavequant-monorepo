@@ -266,8 +266,8 @@ def test_global_gate_blocks_normal_and_shallow_base_entry_channels(monkeypatch):
     monkeypatch.setattr("wavequant.domain.strategies.shallow_base_breakout.shallow_base_history",
                         lambda *args, **kwargs: ([], {len(bars) - 1: proof}))
     risk = dict(reason=TEN_FULL_PULLBACK_PENDING, attack=1, wave_ten_full_high=5.0)
-    monkeypatch.setattr("wavequant.domain.strategies.integrated_strategy.ten_full_entry_history",
-                        lambda *args, **kwargs: {len(bars) - 1: risk})
+    monkeypatch.setattr("wavequant.domain.strategies.ten_full_entry.TenFullEntryHistory.advance",
+                        lambda _stream, index, _events: {index: risk} if index == len(bars) - 1 else {})
     result = generate_system_signals(bars, config)
     assert not any(signal.side == "LONG" and signal.bar_index == len(bars) - 1
                    for signal in result.signals)

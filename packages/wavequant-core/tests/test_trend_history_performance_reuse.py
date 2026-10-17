@@ -265,6 +265,31 @@ def test_private_qualification_transfer_retains_full_licenses_and_n_copy_boundar
         assert candidates == original
 
 
+@pytest.mark.parametrize('n_enabled', (False, True))
+def test_candidate_preparation_reuse_preserves_each_market_prefix_and_source_revision(n_enabled: bool) -> None:
+    source = _source()
+    prices = (*VALUES, 45, 51, 48)
+    bars = [Bar(datetime(2024, 1, 1) + timedelta(days=index), 'sz.test', price,
+                price + 1, price - 1, price, 100) for index, price in enumerate(prices)]
+    candidates = mutable_points(trend_lines.judge_trend(source).candidates)
+    original = deepcopy(candidates)
+    cache = trend_lines._TrendCandidateCache()
+    for end in range(len(source), len(bars) + 1):
+        expected = trend_lines.qualify_trend_structure(candidates, source, bars[:end], trend_level=1,
+            n_target_trend_confirmation_enabled=n_enabled)
+        actual = trend_lines.qualify_trend_structure(candidates, source, bars[:end], trend_level=1,
+            n_target_trend_confirmation_enabled=n_enabled, _owned_candidates=True, _candidate_cache=cache)
+        assert actual == expected
+    assert candidates == original
+    revised = deepcopy(candidates)
+    if revised:
+        revised[0]['audit'] = dict(tags=['new-version'])
+    assert trend_lines.qualify_trend_structure(revised, source, bars, trend_level=1,
+        n_target_trend_confirmation_enabled=n_enabled, _owned_candidates=True, _candidate_cache=cache) == (
+            trend_lines.qualify_trend_structure(revised, source, bars, trend_level=1,
+                n_target_trend_confirmation_enabled=n_enabled))
+
+
 @pytest.mark.parametrize('cached', (False, True))
 def test_private_preparation_transfer_preserves_all_recursive_fields_and_public_source_isolation(cached: bool) -> None:
     source = _source()

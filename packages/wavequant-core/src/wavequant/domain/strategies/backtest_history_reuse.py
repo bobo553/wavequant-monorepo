@@ -6,7 +6,7 @@ They contain every original prefix, rather than a truncation of final geometry.
 
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from datetime import datetime, timezone
 from hashlib import sha256
 from functools import lru_cache
@@ -26,6 +26,8 @@ from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.hierarchical_entry import EntryContext
 
 if TYPE_CHECKING:
+    from wavequant.domain.strategies.backtest_analysis import BacktestAnalysis
+    from wavequant.domain.strategies.eligible_polyline_n import EligibleNSource
     from wavequant.domain.strategies.integrated_strategy import SystemStrategy
 
 
@@ -44,6 +46,49 @@ HierarchyHistory = tuple[dict[int, dict[int, tuple[HierarchyPoint, ...]]], dict[
 ChartHistory = tuple[dict[int, tuple[EntryContext, ...]], list[dict[str, object]]]
 ChartAuditCertificate = tuple[tuple[object, ...], tuple[object, ...]]
 ChartAnchors = Mapping[int, Sequence[Mapping[str, object]]]
+
+
+@dataclass(frozen=True, slots=True)
+class MinuteTradingScope:
+    """Minute decisions inherit yesterday's qualified sources, never today's close."""
+
+    index: int
+    window_start: int
+    active_scopes: frozenset[tuple[str, int]]
+    sources: tuple['EligibleNSource', ...]
+    buy_days: tuple[bool, ...]
+    scan_days: tuple[bool, ...]
+    source_bars: tuple[Bar, ...]
+
+    @classmethod
+    def from_analysis(cls, analysis: 'BacktestAnalysis', *, index: int,
+                      window_start: int) -> 'MinuteTradingScope | None':
+        if (type(index) is not int or index != len(analysis.bars) - 1
+                or type(window_start) is not int or not 0 <= window_start <= index):
+            raise ValueError('minute scope requires this completed daily prefix and its window')
+        if (index == 0 or window_start == index or len(analysis.buy_days) != index + 1
+                or not analysis.buy_days[index] or not analysis.buy_days[index - 1]):
+            return None
+        scopes = frozenset((interval.source_path, interval.start_index)
+            for interval in analysis.trading_intervals
+            if interval.start_index < index
+            and (interval.end_index is None or index < interval.end_index))
+        if not scopes:
+            return None
+        sources = tuple(source for source in analysis.n_sources
+            if source.scope in scopes and window_start <= source.known_at < index
+            and all(point.confirmed_index < index for point in source.points))
+        days = tuple(window_start <= day and analysis.buy_days[day] for day in range(index + 1))
+        return cls(index, window_start, scopes, sources, days, days, tuple(analysis.bars))
+
+    def require_input(self, bars: Sequence[Bar]) -> None:
+        if len(bars) != self.index + 1 or tuple(bars[:-1]) != self.source_bars[:-1]:
+            raise ValueError('minute scope cannot cross completed market history')
+        actual, fixed = bars[-1], self.source_bars[-1]
+        partial = replace(fixed, high=actual.high, low=actual.low, close=actual.close, volume=actual.volume)
+        if actual != partial:
+            raise ValueError('minute scope permits only unfinished price and volume changes')
+
 
 _REVERSAL_FIELDS = frozenset(('point', 'confirmed_index', 'source'))
 _LINE_FIELDS = frozenset(('index', 'ordinal', 'kind', 'price'))

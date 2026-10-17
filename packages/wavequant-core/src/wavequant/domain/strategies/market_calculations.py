@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
     from ..market_structure.trend_lines import _TrendPermissionCache
+    from .hierarchy_stream import HierarchyHistoryStream
 
 from ..market_structure.polyline_lifecycle import polyline_lifecycle_rows
 from ..market_structure.trend_history_changes import TrendChangeRows
@@ -80,6 +81,8 @@ class MarketCalculations:
         self._checkpoints: TrendChangeRows[tuple[object, ...]] | None = None
         self._chart_prefix_owner = object()
         self._strategy_permission_cache: '_TrendPermissionCache | None' = None
+        self._shared_hierarchy: 'HierarchyHistoryStream | None' = None
+        self._shared_permission_days: dict[int, tuple[dict[str, object], ...]] = {}
 
     def _require_open(self) -> None:
         if self._frames.closed:
@@ -95,6 +98,58 @@ class MarketCalculations:
         if self._strategy_permission_cache.covers(bars):
             return self._strategy_permission_cache
         return _TrendPermissionCache(bars)
+
+    def prepare_shared_hierarchy(self, *, n_enabled: bool = False) -> 'HierarchyHistoryStream':
+        """在首个交易日前绑定共同日期历史；策略适配器不再计算另一套趋势。"""
+        from .hierarchy_stream import HierarchyHistoryStream
+
+        self._require_open()
+        if self._shared_hierarchy is not None:
+            if self._shared_hierarchy.n_enabled != n_enabled:
+                raise ValueError('shared hierarchy confirmation mode cannot change within a request')
+            return self._shared_hierarchy
+        if self._published_index >= 0:
+            raise ValueError('shared hierarchy must be bound before the first market day')
+        self._shared_hierarchy = HierarchyHistoryStream(self._bars, n_enabled=n_enabled, shared=True)
+        return self._shared_hierarchy
+
+    def _shared_permissions_at(self, index: int, *, n_enabled: bool) -> tuple[dict[str, object], ...] | None:
+        """只借用已真实生成的日期视图；分钟修订和未缓存旧日走各自因果输入。"""
+        self._require_open()
+        if self._shared_hierarchy is None or self._shared_hierarchy.n_enabled != n_enabled:
+            return None
+        return self._shared_permission_days.get(index)
+
+    def _publish_shared_permissions(self, day: MarketDay) -> tuple[dict[str, object], ...]:
+        from ..market_structure.trend_lines import attach_trend_permissions, high_low_points_from_strokes
+
+        assert self._shared_hierarchy is not None
+        market = self._bars[:day.frame.index + 1]
+        cache = self._permission_cache_for(market)
+        views: list[dict[str, object]] = []
+        source: list[dict[str, object]] | None = None
+        for number, prepared in enumerate(day.levels, 1):
+            lifecycle = self._lifecycles.get(number)
+            pending = lifecycle.pending_bull_paths(number) if lifecycle is not None else frozenset()
+            view = attach_trend_permissions(prepared, market,
+                n_target_trend_confirmation_enabled=self._shared_hierarchy.n_enabled,
+                qualified_source_points=source, _permission_cache=cache, _owned_candidates=True,
+                _n_confirmation_paths=pending)
+            views.append(view)
+            source = high_low_points_from_strokes(view['qualified_strokes'])
+        published = tuple(views)
+        self._shared_permission_days[day.frame.index] = published
+        # 完整证据树只保留当前/前日，供同日交易与末日检查点重放借用。
+        # 累积策略历史另存轻量日期/价格字段，不把大树复制到每个历史日。
+        for index in tuple(self._shared_permission_days):
+            if index < day.frame.index - 1:
+                del self._shared_permission_days[index]
+        return published
+
+    def _close_shared_history(self) -> None:
+        if self._shared_hierarchy is not None:
+            self._shared_hierarchy.close()
+        self._shared_permission_days.clear()
 
     @property
     def frames(self) -> ChartDrawingHistory:
@@ -157,7 +212,8 @@ class MarketCalculations:
         events = lifecycle.advance((row,), self._bars, index, self._dates,
             polyline=frame.raw if frame is not None else (),
             polyline_path=f'lecture-{frame.epoch}' if frame is not None else None,
-            confirmation_policy=self.confirmation_policy, source_events=source_events)
+            confirmation_policy=self.confirmation_policy, source_events=source_events,
+            _owned_structure=level > 0)
         self._daily_events[level] = events
         if level in self._eligibility:
             for event in events:
@@ -171,13 +227,17 @@ class MarketCalculations:
 
     def _publish_day(self, frame: ChartDrawingFrame, levels: Sequence[Mapping[str, object]]) -> None:
         """当日三级及资格全部推进后交付，不再次读取已经写入的历史流。"""
-        if self._on_day is None:
+        if self._on_day is None and self._shared_hierarchy is None:
             return
         if len(levels) != 3 or frame.index != self._published_index + 1:
             raise ValueError('market day requires three levels and consecutive dates')
-        self._on_day(MarketDay(frame, tuple(levels),
+        day = MarketDay(frame, tuple(levels),
             tuple(event for level in (1, 2, 3) for event in self._daily_events.get(level, ())),
-            (self._eligibility[1].active, self._eligibility[2].active, self._eligibility[3].active)))
+            (self._eligibility[1].active, self._eligibility[2].active, self._eligibility[3].active))
+        if self._shared_hierarchy is not None:
+            self._shared_hierarchy.advance_market_day(day, self._publish_shared_permissions(day))
+        if self._on_day is not None:
+            self._on_day(day)
         self._published_index = frame.index
 
     def trading_intervals(self, level: int) -> tuple[TradingInterval, ...]:

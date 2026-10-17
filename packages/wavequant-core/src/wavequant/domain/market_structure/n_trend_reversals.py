@@ -7,6 +7,7 @@ from ..models.model import Bar
 from .hierarchical_confirmation import session_date
 from .n_trend_confirmation import (
     N_TARGET_CONFIRMATION, is_n_target_reversal, prepare_n_confirmation_context, qualified_n_source, qualify_n_trend,
+    _anchor, _lazy_n_permissions,
 )
 from .trend_levels import _strip_source_license
 
@@ -58,7 +59,9 @@ def n_target_reversals(
     if not bars:
         return list(merged.values())
     n_source = qualified_n_source(source, qualified_source) if qualified_source is not None else source
-    context = prepare_n_confirmation_context(n_source, bars, len(bars) - 1)
+    context = (None if _lazy_n_permissions() else
+               prepare_n_confirmation_context(n_source, bars, len(bars) - 1))
+    sessions = None
     position_field = 'source_turn_position' if source_level == 0 else f'source_level{source_level}_position'
     for position, origin in enumerate(source):
         up = origin.get('kind') == 'L'
@@ -72,10 +75,13 @@ def n_target_reversals(
                         if sign * ((bars[index].low if up else bars[index].high)
                                    - cast(float, origin['value'])) < 0), None)
         if failure is not None:
+            if context is None and sessions is None:
+                sessions = {session_date(bar): index for index, bar in enumerate(bars)}
             peak_index = max(range(cast(int, origin['index']) + 1, failure),
                              key=lambda index: sign * (bars[index].high if up else bars[index].low))
             extremes = [(index, point) for index, point in enumerate(source)
-                        if context.references[index] is not None
+                        if (context.references[index] is not None if context is not None else
+                            _anchor(n_source[index], bars, sessions or {}, len(bars) - 1) is not None)
                         and _order(origin) < _order(point) and point['index'] == peak_index
                         and point.get('kind') == ('H' if up else 'L')
                         and point.get('state') not in ('seed', 'developing') and not point.get('display_only')]

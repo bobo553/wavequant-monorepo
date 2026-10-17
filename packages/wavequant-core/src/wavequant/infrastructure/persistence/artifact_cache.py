@@ -38,9 +38,10 @@ class ArtifactCache:
     READ_TIMEOUT_SECONDS = 30.0
     WRITE_TIMEOUT_SECONDS = 0.5
 
-    def __init__(self, root, *, max_bytes=4 * 1024**3):
+    def __init__(self, root, *, max_bytes=4 * 1024**3, read_timeout_seconds=READ_TIMEOUT_SECONDS):
         self.path = Path(root) / 'artifacts-v1.sqlite'
         self.max_bytes = max_bytes
+        self.read_timeout_seconds = read_timeout_seconds
         self.locks: WeakValueDictionary[str, RLock] = WeakValueDictionary()
         self.locks_guard = RLock()
         self.ready = False
@@ -82,13 +83,19 @@ class ArtifactCache:
             logging.warning('Research backtest cache invalidation skipped: %s', exc)
             return 0
 
-    def _connect(self, *, timeout_seconds=READ_TIMEOUT_SECONDS):
-        with self.init_lock:
+    def _connect(self, *, timeout_seconds=None):
+        if timeout_seconds is None:
+            timeout_seconds = self.read_timeout_seconds
+        deadline = time.monotonic() + timeout_seconds
+        if not self.init_lock.acquire(timeout=max(0.0, deadline - time.monotonic())):
+            raise sqlite3.OperationalError('cache initialization locked beyond wait budget')
+        try:
             if not self.ready:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 for attempt in range(5):
                     try:
-                        with closing(sqlite3.connect(self.path, timeout=30)) as db, db:
+                        remaining = max(0.0, deadline - time.monotonic())
+                        with closing(sqlite3.connect(self.path, timeout=remaining)) as db, db:
                             if db.execute('PRAGMA journal_mode').fetchone()[0]!='wal':
                                 db.execute('PRAGMA journal_mode=WAL')
                             usage_table = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
@@ -100,12 +107,15 @@ class ArtifactCache:
                                 self._initialize_usage(db)
                         break
                     except sqlite3.OperationalError as exc:
-                        if 'locked' not in str(exc) or attempt==4:
+                        remaining = deadline - time.monotonic()
+                        if 'locked' not in str(exc) or attempt == 4 or remaining <= 0:
                             raise
                         # WAL initialization alone can race across fresh processes.
-                        time.sleep(.02*(attempt+1))
+                        time.sleep(min(.02 * (attempt + 1), remaining))
                 self.ready = True
-        return sqlite3.connect(self.path, timeout=timeout_seconds)
+        finally:
+            self.init_lock.release()
+        return sqlite3.connect(self.path, timeout=max(0.0, deadline - time.monotonic()))
 
     @staticmethod
     def _initialize_usage(db: sqlite3.Connection) -> None:
@@ -175,6 +185,10 @@ class ArtifactCache:
             value = json.loads(zlib.decompress(packed))
             if value['key'] != key or value['schema'] != self.SCHEMA:
                 raise ValueError('artifact identity mismatch')
+            if namespace == 'calculation-chunk':
+                from .calculation_chunk import restore_calculation_chunk
+
+                return restore_calculation_chunk(value['data'])
             return value['data']
         except (OSError, sqlite3.Error, ValueError, KeyError, TypeError, zlib.error) as exc:
             logging.warning('Research cache miss after unreadable artifact %s: %s', key, exc)

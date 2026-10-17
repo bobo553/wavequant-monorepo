@@ -152,7 +152,11 @@ def test_guofang_history_uses_the_same_origin_for_flip_and_alternation(restore_a
     assert events == uninterrupted
 
 
-def test_previous_lifecycle_checkpoint_is_not_reused():
+@pytest.mark.parametrize('old_version', (
+    'six_state_anchor_close_rejection_geometry_v16',
+    'six_state_shared_frozen_wave_key_v21',
+))
+def test_previous_lifecycle_checkpoint_is_not_reused(old_version):
     checkpoint = TrendLifecycle().checkpoint()
     with pytest.raises(ValueError, match='incompatible lifecycle checkpoint'):
-        TrendLifecycle.from_checkpoint(('six_state_anchor_close_rejection_geometry_v16', *checkpoint[1:]))
+        TrendLifecycle.from_checkpoint((old_version, *checkpoint[1:]))

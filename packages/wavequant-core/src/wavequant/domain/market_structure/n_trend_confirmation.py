@@ -1,10 +1,14 @@
 """Certify a trend after a known standard N strictly exceeds its frozen one-p."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
 from fractions import Fraction
 from math import isfinite
+from hashlib import sha256
 from types import MappingProxyType
 
 from ..models.model import Bar
@@ -12,9 +16,92 @@ from ..models.validated_bars import ValidatedBars
 from .hierarchical_confirmation import session_date
 from .n_shape import BoxAnchorMode, MilestoneBasis, NObservation, NSetup, PivotRef, observe_n
 from .price_action import Direction, teaching_inside
+from .trend_evidence_reuse import _geometry_signature
 
 
 N_TARGET_CONFIRMATION = "source_n_strict_one_p_target"
+
+
+class _NPermissionProofs:
+    """一个请求/级别/路径的首个已授权证明；只保存固定长度来源证书。"""
+
+    def __init__(self) -> None:
+        self.proofs: dict[tuple[int, bool, bytes], tuple[int, bytes, dict[str, object], list[dict[str, object]]]] = {}
+        self._bars: tuple[Bar, ...] = ()
+
+    def bind_market(self, bars: Sequence[Bar]) -> None:
+        # 公共可变容器即使复用同一个缓存，也不能把尾日价格修订当作追加。
+        prefix = tuple(bars)
+        common = min(len(prefix), len(self._bars))
+        if prefix[:common] != self._bars[:common]:
+            revised = next(index for index in range(common) if prefix[index] != self._bars[index])
+            self.proofs = {key: saved for key, saved in self.proofs.items() if saved[0] < revised}
+            self._bars = prefix
+        elif len(prefix) > len(self._bars):
+            self._bars = prefix
+
+
+@dataclass
+class _NPermissionScope:
+    proofs: _NPermissionProofs
+    allow_new: bool
+    sessions: Mapping[str, int]
+    signatures: dict[tuple[int, int], tuple[Sequence[Mapping[str, object]], bytes | None]]
+    ordered: dict[tuple[int, int], tuple[Sequence[Mapping[str, object]], bool]]
+
+    def signature(self, source: Sequence[Mapping[str, object]], end: int) -> bytes | None:
+        key = id(source), end
+        saved = self.signatures.get(key)
+        if saved is not None and saved[0] is source:
+            return saved[1]
+        rows = []
+        for point in source:
+            if type(point) is not dict:
+                return None
+            available = point.get('available_at')
+            known = available if type(available) is int else self.sessions.get(available, -1) if isinstance(available, str) else -1
+            if known > end:
+                continue
+            rows.append(tuple((field, point[field]) for field in
+                ('index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'label', 'state', 'display_only')
+                if field in point))
+        encoded = _geometry_signature(tuple(rows))
+        signature = sha256(encoded).digest() if encoded is not None else None
+        self.signatures[key] = source, signature
+        return signature
+
+    def is_ordered(self, source: Sequence[Mapping[str, object]], bars: Sequence[Bar], end: int) -> bool:
+        key = id(source), end
+        saved = self.ordered.get(key)
+        if saved is not None and saved[0] is source:
+            return saved[1]
+        known = [anchor for point in source if (anchor := _anchor(point, bars, self.sessions, end)) is not None]
+        valid = not any(left.order >= right.order or left.known > right.known
+                        for left, right in zip(known, known[1:]))
+        self.ordered[key] = source, valid
+        return valid
+
+
+_n_permission_scope: ContextVar[_NPermissionScope | None] = ContextVar('n_permission_scope', default=None)
+
+
+@contextmanager
+def _reuse_n_permissions(
+    proofs: _NPermissionProofs, bars: Sequence[Bar], *, allow_new: bool,
+) -> Iterator[None]:
+    """仅由已核验行情前缀的权限缓存调用；停算仍允许投影先前有效证明。"""
+    proofs.bind_market(bars)
+    scope = _NPermissionScope(proofs, allow_new,
+        {session_date(bar): index for index, bar in enumerate(bars)}, {}, {})
+    token = _n_permission_scope.set(scope)
+    try:
+        yield
+    finally:
+        _n_permission_scope.reset(token)
+
+
+def _lazy_n_permissions() -> bool:
+    return _n_permission_scope.get() is not None
 
 
 def is_n_target_reversal(point: Mapping[str, object]) -> bool:
@@ -296,6 +383,54 @@ def _target_proof(
 
 
 def qualify_n_trend(
+    source: Sequence[Mapping[str, object]], origin: Mapping[str, object], source_position: int,
+    bars: Sequence[Bar] | None, end_index: int, *, up: bool,
+    context: NConfirmationContext | None = None,
+    target_sink: list[dict[str, object]] | None = None,
+) -> dict[str, object] | None:
+    """Reuse a certified first proof; new N work remains demand-gated."""
+    if (bars is None or type(end_index) is not int or not 0 <= end_index < len(bars)
+            or type(source_position) is not int or not 0 <= source_position < len(source)):
+        return None
+    if context is not None and (context.source_identity != id(source) or context.bars_identity != id(bars)
+                                or context.end_index != end_index):
+        raise ValueError('an N confirmation context must match its source and market prefix')
+    scope = _n_permission_scope.get()
+    if scope is None:
+        return _qualify_n_trend(source, origin, source_position, bars, end_index,
+            up=up, context=context, target_sink=target_sink)
+    identity = _geometry_signature(tuple((field, origin[field]) for field in
+        ('index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'label', 'state', 'display_only')
+        if field in origin))
+    key = (source_position, up, sha256(identity).digest()) if identity is not None else None
+    saved = scope.proofs.proofs.get(key) if key is not None else None
+    if saved is not None:
+        known, certificate, proof, targets = saved
+        if (known <= end_index and scope.signature(source, known) == certificate
+                and scope.is_ordered(source, bars, end_index)):
+            if target_sink is not None:
+                target_sink.extend(deepcopy(targets))
+            return deepcopy(proof)
+    if not scope.allow_new:
+        return None
+    targets: list[dict[str, object]] = []
+    proof = _qualify_n_trend(source, origin, source_position, bars, end_index,
+        up=up, context=context, target_sink=targets)
+    if target_sink is not None:
+        target_sink.extend(targets)
+    if proof is not None and key is not None:
+        available = proof['available_at']
+        known = available if type(available) is int else scope.sessions.get(available, -1) if isinstance(available, str) else -1
+        certificate = scope.signature(source, known) if 0 <= known <= end_index else None
+        if certificate is not None:
+            # 冷读长前缀可能同时见到更晚 N；首个证明只认证其当时已知的目标。
+            certified_targets = [target for target in targets
+                                 if type(target_index := target.get('index')) is int and target_index <= known]
+            scope.proofs.proofs[key] = known, certificate, deepcopy(proof), deepcopy(certified_targets)
+    return proof
+
+
+def _qualify_n_trend(
     source: Sequence[Mapping[str, object]], origin: Mapping[str, object], source_position: int,
     bars: Sequence[Bar] | None, end_index: int, *, up: bool,
     context: NConfirmationContext | None = None,

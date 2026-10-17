@@ -12,7 +12,12 @@ from .backtest_analysis import BacktestAnalysis, prepare_backtest_analysis
 from .integrated_strategy import DailySignalState, SystemResult, SystemStrategy
 from . import integrated_strategy as policy
 from .market_calculations import MarketDay
-from .hierarchy_stream import HierarchyHistoryStream
+from ..market_structure.a_wave import AWaveHistoryStream
+from .daily_risk_histories import DailyRiskHistories
+from .wave_projection_stream import WaveProjectionHistory
+from ..market_structure.bottom_n_targets import BottomNTargetHistoryStream
+from ..market_structure.positive_n_reformation import PositiveNReformationHistory
+from .secondary_resistance import SecondaryResistanceStream
 
 
 def daily_signals(
@@ -29,9 +34,6 @@ def daily_signals(
     """
     market = ValidatedBars(bars)
     state = DailySignalState()
-    if config.buy_point_definition == 'whole_flip_wave_v3' and config.pivot_mode == 'lecture_causal':
-        state.hierarchy_stream = HierarchyHistoryStream(market,
-            n_enabled=config.n_target_trend_confirmation_enabled)
     cache: dict = {'source_bars': tuple(market)}
     result = SystemResult([], [], {})
     last_percent = -1
@@ -65,15 +67,88 @@ def daily_signals(
                 progress(index * 100 // len(market))
             last_report = now
 
-        if analysis.scan_days[-1] or state.has_buy_signal:
-            report_phase('计算交易确认与 B/S')
+        state.hierarchy_stream = analysis.hierarchy
+        state.hierarchy = analysis.hierarchy.history if analysis.hierarchy is not None else {}
+        eligible = bool(analysis.buy_days[-1])
+        scopes = frozenset((interval.source_path, interval.start_index)
+            for interval in analysis.trading_intervals
+            if interval.start_index <= index and (interval.end_index is None or index < interval.end_index))
+        replaced_window = bool(eligible and state.window_scopes and not state.window_scopes.intersection(scopes))
+        ended_window = state.trading_active and (not eligible or replaced_window)
+        departed_scopes = state.window_scopes - scopes
+        closed_targets: list[dict[str, object]] = []
+        if state.trading_active and (ended_window or departed_scopes):
+            # 关闭窗口后只保存已发布事实；下一窗口不得补算空档或复用旧目标状态。
+            departing_rows = [row for row in state.preparation_audit
+                if not str(row.get('event', '')).startswith(('trading_interval_', 'trend_'))
+                and (ended_window or (row.get('source_path'), row.get('qualification_window_start')) in departed_scopes)]
+            state.archived_preparation.extend(departing_rows)
+            retired = set()
+            for row in departing_rows:
+                attack = row.get('bar_index')
+                scope = (row.get('n_id'), attack, row.get('window_start'), row.get('source_path'))
+                if (row.get('event') == 'n_completed' and row.get('direction') == 'up'
+                        and scope not in retired):
+                    retired.add(scope)
+                    closed_targets.append(dict(event='n_target_source_retired', bar_index=index,
+                        timestamp=market[index].timestamp.isoformat(), symbol=market[index].symbol,
+                        attack=attack, n_id=row.get('n_id'), source_path=row.get('source_path'),
+                        qualification_window_start=row.get('qualification_window_start'),
+                        reason='trading_eligibility_closed', window_start=state.window_start))
+            state.archived_preparation.extend(closed_targets)
+            state.preparation_audit = ([] if ended_window else [row for row in state.preparation_audit
+                if (row.get('source_path'), row.get('qualification_window_start')) not in departed_scopes])
+        if ended_window:
+            if state.projection_history is not None:
+                state.projection_history.close()
+            if state.secondary_resistance_history is not None:
+                state.secondary_resistance_history.close()
+            state.permissions = {}
+        if eligible and (not state.trading_active or replaced_window):
+            state.window_start = index
+            state.a_wave_stream = AWaveHistoryStream(market, start_index=index)
+            state.risk_histories = DailyRiskHistories(market,
+                breakout_window=config.ten_full_breakout_window,
+                retracement_ratio=config.ten_full_retracement_ratio,
+                anchor=config.ten_full_retracement_anchor,
+                timed_half=config.ten_full_timed_half_retracement, start_index=index)
+            state.projection_history = WaveProjectionHistory(market, start_index=index)
+            state.bottom_target_history = BottomNTargetHistoryStream(market, start_index=index)
+            state.reformed_target_history = BottomNTargetHistoryStream(market, start_index=index)
+            state.reformation_history = PositiveNReformationHistory(market, start_index=index)
+            state.secondary_resistance_history = SecondaryResistanceStream(
+                market, include_resolved=True, start_index=index,
+            )
+            state.bottom_hits.clear()
+            state.c_equal_events.clear()
+            state.emitted_attacks.clear()
+            state.emitted_nested.clear()
+            state.emitted_nested_owners.clear()
+            state.canonical_n_owners.clear()
+            state.emitted_waves.clear()
+            state.emitted_secondary_reclaims.clear()
+            state.emitted_secondary_pullbacks.clear()
+            cache.clear()
+            cache['source_bars'] = tuple(market)
+        state.trading_active = eligible
+        state.window_scopes = scopes
+        if eligible:
+            report_phase('计算资格区间内交易确认与 B/S')
             result = policy._generate_system_signals(analysis.bars, config, minor_points=minor_points,
                 chart_history_cache=cache, _analysis=analysis, _daily=state, stage=report_phase)
         else:
             events = [dict(row,
                 timestamp=market[int(row['bar_index'])].timestamp.isoformat(), symbol=market[0].symbol)
                 for row in day.lifecycle_events]
-            result = SystemResult(list(result.signals), [*result.audit, *events],
+            for interval in analysis.trading_intervals:
+                if interval.end_index == index:
+                    events.append(dict(event='trading_interval_closed', bar_index=index,
+                        timestamp=market[index].timestamp.isoformat(), symbol=market[index].symbol,
+                        trend_level=interval.trend_level, source_path=interval.source_path,
+                        start_index=interval.start_index, flip_index=interval.end_flip_index,
+                        reason=interval.end_reason, reversal_low_index=interval.end_key_index,
+                        reversal_low_price=interval.end_key_price))
+            result = SystemResult(list(result.signals), [*result.audit, *events, *closed_targets],
                 dict(result.counts, rows=index + 1, trading_interval_count=len(analysis.trading_intervals),
                     interval_skipped_days=result.counts.get('interval_skipped_days', 0) + 1,
                     buy_interval_level=config.buy_interval_level,
@@ -109,8 +184,10 @@ def daily_signals(
         with prepare_backtest_analysis(market, config, on_day=advance):
             pass
     finally:
-        if state.hierarchy_stream is not None:
-            state.hierarchy_stream.close()
+        if state.projection_history is not None:
+            state.projection_history.close()
+        if state.secondary_resistance_history is not None:
+            state.secondary_resistance_history.close()
     if steps is not None:
         # Persist the final derived wave facts; this serializes existing results without replaying decisions.
         for row in result.audit:

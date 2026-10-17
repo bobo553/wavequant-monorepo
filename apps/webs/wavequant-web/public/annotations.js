@@ -171,6 +171,7 @@ const REASONS = {
     already_held: "已有持仓",
     position_limit: "持仓数量达到上限",
     expired: "入场委托已过期",
+    trading_eligibility_closed: "交易资格结束，当日平仓并取消未成交委托",
     countermove_not_below_exact_two_thirds: "回档不小于精确的三分之二",
     same_bar_vertices_require_lower_timeframe_n: "同日高低点不能组成日线 N，须提供次级周期数据",
 };

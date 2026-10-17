@@ -16,6 +16,11 @@ class EligibleNSource:
     low_index: int
     low_ordinal: int
 
+    @property
+    def scope(self) -> tuple[str, int]:
+        """同一组三点在重开窗口中是新的交易观察，不延续已关闭窗口。"""
+        return self.source_path, self.window_start
+
 
 class EligiblePolylineN:
     """Keep window clocks separate from vertex dates; never invent a low vertex.
@@ -43,7 +48,6 @@ class EligiblePolylineN:
             self.eligibility.observe(event)
         result: list[EligibleNSource] = []
         live: set[tuple[str, int]] = set()
-        emitted: set[tuple[ReversalPoint, ...]] = set()
         for window in self.eligibility.active_intervals:
             key = window.source_path, window.start_index
             live.add(key)
@@ -62,9 +66,6 @@ class EligiblePolylineN:
                 if triple in seen:
                     continue
                 seen.add(triple)
-                if triple in emitted:
-                    continue
-                emitted.add(triple)
                 result.append(EligibleNSource((triple[0], triple[1], triple[2]), now,
                     window.source_path, window.start_index, window.start_low_index, window.start_low_ordinal))
             self._previous[key] = suffix

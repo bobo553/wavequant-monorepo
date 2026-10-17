@@ -26,6 +26,37 @@ VALUES = [20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 36, 42, 30, 36, 24, 31, 26, 50
 
 @pytest.mark.parametrize('level', [1, 2, 3])
 @pytest.mark.parametrize('mirror', [False, True])
+@pytest.mark.parametrize('attack_price', [6.96, 11.50, 12.0])
+def test_reverse_upgrade_keeps_the_known_whole_wave_key_instead_of_a_local_key(level, mirror, attack_price):
+    from wavequant.domain.market_structure.trend_level_upgrades import _TrendUpgradeState
+    from wavequant.domain.market_structure.trend_levels import _source_turns
+
+    source = source_points([10, 11.50, 4.91, 6.13, 5.06, attack_price], level=level - 1, mirror=mirror)
+    turns = _source_turns(source, level - 1)
+    # 直接构造已经处理完旧日期的合法状态边界，隔离“选择哪个已闭合 key”
+    # 与普通四点组合波。两份 key 均已知，但当前整波从 11.50 开始。
+    closed = _source_turns([dict(source[position], trend_level=level) for position in (1, 3)], level)
+    events = []
+    state = _TrendUpgradeState(turns, [], trend_level=level, event_sink=events)
+    state.processed_count = len(turns) - 1
+    state.prefix_known = turns[-2].available_at
+    state.owned_direction = 'up' if mirror else 'down'
+    state.whole_origin, state.whole_extreme = turns[1], turns[2]
+    for point in closed:
+        state.keys_by_kind[point.kind].update(state.positions[(point.index, point.ordinal)], point)
+    state.advance()
+    if attack_price <= 11.50:
+        assert events == []
+    else:
+        endpoints = [event for event in events if event['upgrade_evidence']['role'] == 'endpoint']
+        assert len(endpoints) == 1
+        assert endpoints[0]['upgrade_evidence']['broken_key']['index'] == 1
+        assert endpoints[0]['upgrade_evidence']['origin']['index'] == 2
+        assert endpoints[0]['available_at'] == source[-1]['available_at']
+
+
+@pytest.mark.parametrize('level', [1, 2, 3])
+@pytest.mark.parametrize('mirror', [False, True])
 def test_strict_known_key_break_promotes_whole_wave_without_a_later_holding_turn(level: int, mirror: bool) -> None:
     source = source_points(VALUES, level=level - 1, mirror=mirror)
     regular = trend_reversals(source, trend_level=level)

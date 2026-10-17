@@ -1,13 +1,16 @@
 """Causal exits at unbroken supply candles and resisted former record highs."""
 
+from collections.abc import Iterator, Sequence
 from statistics import mean
 
+from ..market_structure.observation_window import observation_window_end
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from ..models.config import StrategyConfig
 from ..models.model import Bar
+from .history_cursor import HistoryCursor
 
 
-def _pressure_evidence(bars: list[Bar], source: int) -> dict:
+def _pressure_evidence(bars: Sequence[Bar], source: int) -> dict:
     supply = bars[source]
     return dict(
         pressure_date=supply.timestamp.date().isoformat(),
@@ -18,14 +21,19 @@ def _pressure_evidence(bars: list[Bar], source: int) -> dict:
     )
 
 
-def record_high_resistance_history(bars: list[Bar], config: StrategyConfig) -> dict[int, dict]:
+def _record_high_resistance_days(
+    bars: Sequence[Bar], config: StrategyConfig, *, start_index: int = 0, end_index: int | None = None,
+) -> Iterator[tuple[int, dict[int, dict]]]:
     """Reduce on a resisted intraday break of an old 120-session record high.
 
     The source must precede the attack by at least 20 sessions. Both the prior
     record and resistance are known at the attack close, without swing labels.
     """
     risks: dict[int, dict] = {}
-    for index in range(20, len(bars)):
+    end = observation_window_end(len(bars), start_index, end_index)
+    record_resistance: dict[int, bool] = {}
+    for index in range(max(20, start_index), end + 1):
+        yield index, risks
         prior = bars[index - 1]
         bar = bars[index]
         start = max(0, index - config.pressure_lookback)
@@ -38,13 +46,13 @@ def record_high_resistance_history(bars: list[Bar], config: StrategyConfig) -> d
             or bar.close > record.high
         ):
             continue
-        if (
-            source == 0
-            or observe_resistance(
+        if source not in record_resistance:
+            # Historical record geometry may qualify an in-window attack; it
+            # does not replay the old candle's risk episode or later responses.
+            record_resistance[source] = source == 0 or observe_resistance(
                 bars[source - 1], record, attack_direction=Direction.UP, shadow_policy=ShadowPolicy(0.5)
-            ).detected
-            is True
-        ):
+            ).detected is True
+        if record_resistance[source]:
             continue
         resistance = observe_resistance(prior, bar, attack_direction=Direction.UP, shadow_policy=ShadowPolicy(0.5))
         if resistance.detected is not True:
@@ -81,10 +89,12 @@ def record_high_resistance_history(bars: list[Bar], config: StrategyConfig) -> d
             previous_high=prior.high,
             previous_low=prior.low,
         )
-    return risks
+    yield end + 1, risks
 
 
-def record_high_massive_resistance_history(bars: list[Bar], config: StrategyConfig) -> dict[int, dict]:
+def _record_high_massive_resistance_days(
+    bars: Sequence[Bar], config: StrategyConfig, *, start_index: int = 0, end_index: int | None = None,
+) -> Iterator[tuple[int, dict[int, dict]]]:
     """Freeze an old high and pre-breakout volume for attack/response bearish resistance.
 
     A volume bearish warning reduces cumulatively by 30%. Only the next session
@@ -94,7 +104,9 @@ def record_high_massive_resistance_history(bars: list[Bar], config: StrategyConf
     candidate: tuple[int, int, float] | None = None
     warning: tuple[int, dict] | None = None
     window = 20
-    for index in range(window, len(bars)):
+    end = observation_window_end(len(bars), start_index, end_index)
+    for index in range(max(window, start_index), end + 1):
+        yield index, result
         bar, previous = bars[index], bars[index - 1]
         if warning is not None:
             warning_index, proof = warning
@@ -148,10 +160,13 @@ def record_high_massive_resistance_history(bars: list[Bar], config: StrategyConf
         result[index] = proof
         warning = index, proof
         candidate = None
-    return result
+    yield end + 1, result
 
 
-def pressure_exit_history(bars: list[Bar], n_context: list[int | None], config: StrategyConfig) -> dict[int, dict]:
+def _pressure_exit_days(
+    bars: Sequence[Bar], n_context: Sequence[int | None], config: StrategyConfig,
+    *, start_index: int = 0, end_index: int | None = None,
+) -> Iterator[tuple[int, dict[int, dict]]]:
     """Only completed bars qualify supply; no future swing confirmation is used.
 
     A supply candle is a 20-session high with a bearish body >= 5% of open
@@ -165,7 +180,10 @@ def pressure_exit_history(bars: list[Bar], n_context: list[int | None], config: 
     armed: tuple[int, int] | None = None
     breakout: tuple[int, int, int] | None = None
     result: dict[int, dict] = {}
-    for index, bar in enumerate(bars):
+    end = observation_window_end(len(bars), start_index, end_index)
+    for index in range(start_index, end + 1):
+        yield index, result
+        bar = bars[index]
         if breakout is not None:
             source, attack, rally_low = breakout
             if index > attack:
@@ -291,4 +309,76 @@ def pressure_exit_history(bars: list[Bar], n_context: list[int | None], config: 
                 and bar.volume >= config.pressure_volume_ratio * volume_mean
             ):
                 candidates.append(index)
-    return result
+    yield end + 1, result
+
+
+def _complete_history(rows: Iterator[tuple[int, dict[int, dict]]], count: int) -> dict[int, dict]:
+    cursor = HistoryCursor(rows, {})
+    try:
+        return cursor.advance(count - 1)
+    finally:
+        cursor.close()
+
+
+def record_high_resistance_history(bars: Sequence[Bar], config: StrategyConfig) -> dict[int, dict]:
+    return _complete_history(_record_high_resistance_days(bars, config), len(bars))
+
+
+def record_high_massive_resistance_history(bars: Sequence[Bar], config: StrategyConfig) -> dict[int, dict]:
+    return _complete_history(_record_high_massive_resistance_days(bars, config), len(bars))
+
+
+def pressure_exit_history(
+    bars: Sequence[Bar], n_context: Sequence[int | None], config: StrategyConfig,
+) -> dict[int, dict]:
+    return _complete_history(_pressure_exit_days(bars, n_context, config), len(bars))
+
+
+class PressureExitStream:
+    """Request-owned prices; only revised already-consumed N context replays pressure."""
+
+    def __init__(
+        self, bars: Sequence[Bar], config: StrategyConfig, *, start_index: int = 0, end_index: int | None = None,
+    ) -> None:
+        self._bars = tuple(bars)
+        self._config = config
+        self.start_index = start_index
+        self.end_index = observation_window_end(len(self._bars), start_index, end_index)
+        self._context: list[int | None] = [None] * start_index
+        self._index = start_index - 1
+        self._closed = False
+        self._pressure = self._new_pressure()
+        self._record = HistoryCursor(_record_high_resistance_days(
+            self._bars, config, start_index=start_index, end_index=self.end_index if self._bars else None,
+        ), {})
+        self._massive = HistoryCursor(_record_high_massive_resistance_days(
+            self._bars, config, start_index=start_index, end_index=self.end_index if self._bars else None,
+        ), {})
+
+    def _new_pressure(self) -> HistoryCursor[dict[int, dict]]:
+        return HistoryCursor(_pressure_exit_days(
+            self._bars, self._context, self._config, start_index=self.start_index,
+            end_index=self.end_index if self._bars else None,
+        ), {})
+
+    def advance(self, index: int, n_context: Sequence[int | None]) -> tuple[dict[int, dict], ...]:
+        if self._closed:
+            raise ValueError('pressure history stream is closed')
+        minimum = self.start_index if self.start_index else -1
+        if type(index) is not int or not minimum <= index <= self.end_index:
+            raise ValueError('pressure history requires a date inside its observation window')
+        if index < self._index or len(n_context) != index + 1:
+            raise ValueError('pressure history requires the exact current prefix')
+        revised = self._context[self.start_index:] != list(n_context[self.start_index:len(self._context)])
+        self._context[self.start_index:] = n_context[self.start_index:]
+        if revised:
+            self._pressure.close()
+            self._pressure = self._new_pressure()
+        self._index = index
+        return (self._pressure.advance(index), self._record.advance(index), self._massive.advance(index))
+
+    def close(self) -> None:
+        self._pressure.close()
+        self._record.close()
+        self._massive.close()
+        self._closed = True

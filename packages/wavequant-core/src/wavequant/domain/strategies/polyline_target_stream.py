@@ -73,17 +73,17 @@ class PolylineTargetStream:
         self.config = config
         self.publish = publish
         self.observations: dict[tuple[NSetup, int, int], NObservation] = {}
+        self.scoped_observations: dict[tuple[EligibleNSource, int], NObservation] = {}
         self._pending: list[_PendingN] = []
-        self._seen: set[tuple[tuple[int, int, int], ...]] = set()
+        self._seen: set[EligibleNSource] = set()
         self._last = -1
+        self.processed_observations = 0
 
     def _register(self, source: EligibleNSource) -> None:
         a, b, c = source.points
-        identity = tuple((point.point.index, point.point.ordinal, point.confirmed_index)
-                         for point in source.points)
-        if identity in self._seen:
+        if source in self._seen:
             return
-        self._seen.add(identity)
+        self._seen.add(source)
         if source.known_at - a.point.index > self.config.structure_window:
             return
         mother_impulse = (a.point.kind == PointKind.LOW
@@ -107,11 +107,23 @@ class PolylineTargetStream:
         self._pending.append(_PendingN(source, setup, local, offset,
             min(len(self.bars) - 1, source.known_at + self.config.pattern_ttl)))
 
-    def advance(self, index: int, sources: Sequence[EligibleNSource], *, interrupted: bool = False) -> None:
+    def advance(self, index: int, sources: Sequence[EligibleNSource], *, interrupted: bool = False,
+                buy_eligible: bool = True, active_scopes: set[tuple[str, int]] | None = None) -> None:
         if type(index) is not int or index != self._last + 1 or index >= len(self.bars):
             raise ValueError('N targets require consecutive market dates')
         if any(source.known_at != index for source in sources):
             raise ValueError('N sources must be delivered on their first knowledge day')
+        if sources and not buy_eligible:
+            raise ValueError('trading N sources require an open eligibility window')
+        if active_scopes is not None and any(source.scope not in active_scopes for source in sources):
+            raise ValueError('trading N sources must belong to a currently open window')
+        retained = []
+        for pending in self._pending:
+            if not buy_eligible or (active_scopes is not None and pending.source.scope not in active_scopes):
+                self._save(pending, index - 1)
+            else:
+                retained.append(pending)
+        self._pending = retained
         if interrupted:
             for pending in self._pending:
                 self._save(pending, index - 1)
@@ -131,12 +143,14 @@ class PolylineTargetStream:
                                           observed_at=self.bars[index].timestamp)
                 else:
                     observation = observe_n(self.bars[pending.offset:index + 1], pending.local,
-                        timeframe='1d', milestone_basis=MilestoneBasis.EXTREME)
+                        timeframe='1d', milestone_basis=MilestoneBasis.EXTREME,
+                        measurement_start=pending.source.known_at - pending.offset)
             except ValueError as error:
                 if self.publish is not None:
                     self.publish(dict(event='n_geometry_rejected', bar_index=index, known_at=pending.source.known_at,
                                       setup=pending.setup, reason=str(error)))
                 continue
+            self.processed_observations += 1
             pending.observation = observation
             if self.publish is not None and (prior is None or observation.completion != prior.completion
                     or observation.milestones != prior.milestones
@@ -158,6 +172,7 @@ class PolylineTargetStream:
     def _save(self, pending: _PendingN, end: int) -> None:
         if pending.observation is not None:
             self.observations[pending.local, pending.offset, end] = pending.observation
+            self.scoped_observations[pending.source, end] = pending.observation
 
     def finish(self) -> None:
         if self._last != len(self.bars) - 1 or self._pending:
@@ -169,4 +184,12 @@ class PolylineTargetStream:
         for pending in self._pending:
             if pending.observation is not None:
                 result[pending.local, pending.offset, self._last] = pending.observation
+        return result
+
+    def current_scoped_observations(self) -> dict[tuple[EligibleNSource, int], NObservation]:
+        """窗口关闭后只保留冻结结果；重开来源不会覆盖旧窗口产物。"""
+        result = dict(self.scoped_observations)
+        for pending in self._pending:
+            if pending.observation is not None:
+                result[pending.source, self._last] = pending.observation
         return result

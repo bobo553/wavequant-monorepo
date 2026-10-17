@@ -380,6 +380,16 @@ class _TrendUpgradeState:
                             publish_owned(raw, whole_extreme, prefix_known, closed=True)
                             whole_origin, whole_extreme, owned_direction = whole_extreme, counter, current
             key = keys_by_kind[attack.kind].query(0, attack_position)
+            # 反向严格升级使用当前整波起点已经闭合的本级关键位。波内较晚的
+            # 局部 key 不能把冻结末跌高／末升低降格；普通组合波仍由上面的
+            # 共同四点定义独立确认，不借六态或交易资格增删几何。
+            attack_direction: WaveDirection = 'up' if attack.kind == 'H' else 'down'
+            if (owned_direction is not None and owned_direction != attack_direction
+                    and whole_origin is not None and whole_origin.kind == attack.kind):
+                origin_position = positions[_order(whole_origin)]
+                frozen = keys_by_kind[attack.kind].query(origin_position, origin_position + 1)
+                if frozen is not None:
+                    key = frozen
             if key is None:
                 continue
             rising = attack.kind == 'H'
@@ -389,7 +399,6 @@ class _TrendUpgradeState:
             origin_kind = 'L' if rising else 'H'
             # 当前整波由 owned 状态决定，不能被 pending 普通方向点重置。严格
             # 同向攻击始终保留原 whole origin；反向攻击必须关闭真实整波极值。
-            attack_direction: WaveDirection = 'up' if rising else 'down'
             continuing = owned_direction == attack_direction and whole_origin is not None
             origin = (whole_origin if continuing else whole_extreme
                       if owned_direction is not None and owned_direction != attack_direction and whole_extreme is not None

@@ -70,6 +70,20 @@ class ArtifactTests(unittest.TestCase):
         self.assertTrue(self.cache.put('interactive',{},dict(valid=True)))
         self.assertEqual(self.cache.get('interactive',{}),dict(valid=True))
 
+    def test_first_writer_initialization_obeys_disposable_write_budget(self):
+        locked = sqlite3.connect(self.cache.path, timeout=1, isolation_level=None)
+        self.addCleanup(locked.close)
+        locked.execute('PRAGMA journal_mode=WAL')
+        locked.execute('BEGIN IMMEDIATE')
+        started = time.perf_counter()
+        with self.assertLogs(level='WARNING'):
+            self.assertFalse(self.cache.put('first-write', {}, dict(valid=True)))
+        self.assertLess(time.perf_counter() - started, 2)
+        self.assertFalse(self.cache.ready)
+        locked.execute('ROLLBACK')
+        self.assertTrue(self.cache.put('first-write', {}, dict(valid=True)))
+        self.assertEqual(self.cache.get('first-write', {}), dict(valid=True))
+
     def assert_usage_matches_artifacts(self):
         with closing(sqlite3.connect(self.cache.path)) as db:
             actual = db.execute('SELECT COALESCE(SUM(size),0) FROM artifacts').fetchone()[0]

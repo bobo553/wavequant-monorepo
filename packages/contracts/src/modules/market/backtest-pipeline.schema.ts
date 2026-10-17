@@ -7,6 +7,10 @@ export const BacktestPipelineStepSchema = z.object({
     cache: z.enum(["none", "buffering", "stored", "available", "partial", "failed"]),
     rows: z.number().int().nonnegative(),
     elapsed_seconds: z.number().nonnegative().optional(),
+    encoding_seconds: z.number().nonnegative().optional(),
+    write_seconds: z.number().nonnegative().optional(),
+    encoded_bytes: z.number().int().nonnegative().optional(),
+    reused_bytes: z.number().int().nonnegative().optional(),
     error: z.string().optional(),
     cache_error: z.string().optional(),
 });

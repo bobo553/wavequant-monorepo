@@ -81,6 +81,69 @@ def test_invalid_or_unknown_seed_cannot_create_a_reformation(xiangyang):
             positive_n_reformations(bars, [seed])
 
 
+def test_reformation_stream_advances_each_family_only_once_and_preserves_full_prefix(xiangyang):
+    from wavequant.domain.market_structure.positive_n_reformation import PositiveNReformationHistory
+
+    bars, _, seeds = xiangyang
+    stream = PositiveNReformationHistory(bars)
+    for end in range(len(bars)):
+        known = [seed for seed in seeds if seed.known_at <= end]
+        actual = stream.advance(end, known)
+        assert actual == positive_n_reformations(bars[:end + 1], known)
+        assert stream.advance(end, known) == actual
+    assert len(actual) == 2
+    assert [value.observation.targets.one_p for value in actual] == [4.83, 4.63]
+    assert stream.processed_days == sum(len(bars) - 1 - seed.attack for seed in seeds)
+
+
+def test_reformation_stream_rebuilds_changed_seed_and_resolves_reordered_duplicate_identity(xiangyang):
+    from wavequant.domain.market_structure.positive_n_reformation import PositiveNReformationHistory
+
+    bars, _, seeds = xiangyang
+    stream = PositiveNReformationHistory(bars)
+    end = len(bars) - 1
+    stream.advance(end, seeds)
+    revised = [replace(seeds[0], defense=3.70, level=2), seeds[1]]
+    assert stream.advance(end, revised) == positive_n_reformations(bars, revised)
+    duplicate = [replace(seeds[1], level=2), replace(seeds[1], level=3)]
+    assert stream.advance(end, duplicate)[0].level == 2
+    duplicate.reverse()
+    assert stream.advance(end, duplicate)[0].level == 3
+    assert stream.advance(end, []) == ()
+    assert not stream.families
+    assert stream.advance(end, seeds) == positive_n_reformations(bars, seeds)
+
+
+def test_reformation_stream_accepts_late_seed_rebuilds_on_rewind_and_owns_market(xiangyang):
+    from wavequant.domain.market_structure.positive_n_reformation import PositiveNReformationHistory
+
+    source, _, seeds = xiangyang
+    bars = list(source)
+    stream = PositiveNReformationHistory(bars)
+    end = len(bars) - 1
+    stream.advance(end, seeds[:1])
+    bars[-1] = replace(bars[-1], low=1)
+    assert stream.advance(end, seeds) == positive_n_reformations(source, seeds)
+    rewind = seeds[0].known_at
+    assert stream.advance(rewind, seeds[:1]) == positive_n_reformations(source[:rewind + 1], seeds[:1])
+    assert stream.advance(end, seeds) == positive_n_reformations(source, seeds)
+
+
+def test_reformation_stream_unknown_seed_type_uses_original_rules_without_serialization_hooks(xiangyang):
+    from wavequant.domain.market_structure.positive_n_reformation import PositiveNReformationHistory
+
+    class DerivedSeed(PositiveNSeed):
+        def __reduce_ex__(self, protocol):
+            raise AssertionError('unknown source must not execute a serialization hook')
+
+    bars, _, seeds = xiangyang
+    seed = seeds[1]
+    derived = DerivedSeed(seed.origin, seed.attack, seed.known_at, seed.defense, seed.level)
+    stream = PositiveNReformationHistory(bars)
+    assert stream.advance(len(bars) - 1, [derived]) == positive_n_reformations(bars, [derived])
+    assert not stream.families
+
+
 def test_independent_same_day_exit_targets_do_not_inherit_another_sources_retirement():
     bars = [Bar(datetime(2024, 1, index + 1), "TEST", low + 1, low + 2, low, low + 1.5, 100)
             for index, low in enumerate((1, 2, 2.5, 3, 3.2, 5))]

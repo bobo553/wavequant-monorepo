@@ -136,6 +136,8 @@ export function ordinaryCWaveLevels(projection, asof) {
     if ((asof && knownAt > asof) || (projection.invalidatedAt && (!asof || projection.invalidatedAt <= asof)))
         return [];
     const completed = projection.cTime && projection.cKnownAt && (!asof || projection.cKnownAt <= asof);
+    const validUntil = completed && (!projection.targetValidUntil || projection.cTime < projection.targetValidUntil)
+        ? projection.cTime : projection.targetValidUntil;
     return [
         ["C 浪目标 0.618×A", projection.target0618, "c_0618"],
         ["C 浪目标 1×A（等浪）", projection.target, "c_equal"],
@@ -147,7 +149,8 @@ export function ordinaryCWaveLevels(projection, asof) {
         available_at: knownAt,
         anchor_at: projection.bTime,
         ...(completed
-            ? { c_ended_at: projection.cTime, c_end_known_at: projection.cKnownAt, valid_until: projection.cTime }
+            ? { c_ended_at: projection.cTime, c_end_known_at: projection.cKnownAt }
             : {}),
+        ...(validUntil ? { valid_until: validUntil } : {}),
     }));
 }

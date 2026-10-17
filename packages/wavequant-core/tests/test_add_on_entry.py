@@ -340,7 +340,9 @@ def test_huaci_supplied_wave_entries_close_cycle_before_next_gap_buy():
     def load(bar):
         raise MinuteCoverageError(str(bar.timestamp.date()), None, None, "fixture_daily_close")
 
-    view = single_stock_result(bars, profile["strategy"], execution, SystemResult(signals, audit, {}), minute_loader=load)
+    # Explicit injected entries exercise the account, not the qualified daily coordinator.
+    fixture_strategy = dict(profile["strategy"], buy_point_definition='legacy_v2')
+    view = single_stock_result(bars, fixture_strategy, execution, SystemResult(signals, audit, {}), minute_loader=load)
     buys = [order for order in view["orders"] if order["side"] == "BUY" and order["status"] == "filled"]
     body_buy = next(order for order in buys if order["timestamp"].startswith("2026-08-26"))
     gap_buy = next(order for order in buys if order["timestamp"].startswith("2026-09-15"))
