@@ -749,11 +749,13 @@ def chart_entry_history(
         previous_epoch, previous_raw = epoch, raw
         # 交易形态只在当天资格成立后启动；下一日资格不能回填本日计算。
         strategy_day = entry_days is None or entry_days[i]
+        live_lifecycle = (market_calculation._live_lifecycle_at(i)
+            if cached_lifecycle is not None and market_calculation is not None else None)
         if cached_lifecycle is None:
             # 本级真实翻多必须先成立，才允许按需准备资格内部的 N 证明。
             lifecycle_events = lifecycle.advance((polyline_lifecycle.advance(frame), *prepared), bars, i, dates,
                 polyline=frame.raw, polyline_path=f'lecture-{frame.epoch}',
-                confirmation_policy=confirmation_policy)
+                confirmation_policy=confirmation_policy, _market_index=market_index)
             lifecycle_events = [event for event in lifecycle_events if event['trend_level'] != 0]
             if steps is not None:
                 record_lifecycle(steps, lifecycle_events)
@@ -766,10 +768,13 @@ def chart_entry_history(
             needs_state = (checkpoint_channel is not None and i in checkpoint_channel.store.targets
                            or prefix_cache is not None and i == last - 1)
             if needs_state:
-                if current_lifecycle is None:
+                if live_lifecycle is not None:
+                    lifecycle = live_lifecycle.copy()
+                elif current_lifecycle is None:
                     raise ValueError('prepared lifecycle checkpoint is missing for this market date')
-                version, _saved_index, saved_rows = current_lifecycle
-                lifecycle = TrendLifecycle.from_checkpoint((version, i, saved_rows))
+                else:
+                    version, _saved_index, saved_rows = current_lifecycle
+                    lifecycle = TrendLifecycle.from_checkpoint((version, i, saved_rows))
         # Source vertices determine the skeleton; market prices can separately
         # publish a previously unqualified trend on an otherwise unchanged day.
         current_signature = (
@@ -802,10 +807,13 @@ def chart_entry_history(
             else:
                 permission_lifecycle = lifecycle
                 if n_target_trend_confirmation_enabled and cached_lifecycle is not None:
-                    if current_lifecycle is None:
+                    if live_lifecycle is not None:
+                        permission_lifecycle = live_lifecycle
+                    elif current_lifecycle is None:
                         raise ValueError('prepared lifecycle checkpoint is missing for this market date')
-                    version, _saved_index, saved_rows = current_lifecycle
-                    permission_lifecycle = TrendLifecycle.from_checkpoint((version, i, saved_rows))
+                    else:
+                        version, _saved_index, saved_rows = current_lifecycle
+                        permission_lifecycle = TrendLifecycle.from_checkpoint((version, i, saved_rows))
                 first = attach_trend_permissions(prepared[0], prefix,
                     n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                     _permission_cache=permission_cache, _owned_candidates=True,
@@ -983,14 +991,17 @@ def chart_entry_history(
         if market_calculation is not None and market_calculation._checkpoints is not None:
             cached_lifecycle = {}
             for number in (1, 2, 3):
-                for event in market_calculation._owned_lifecycle_events(number):
+                for event in market_calculation._lifecycle_events_since(number, resume_start):
                     cached_lifecycle.setdefault(cast(int, event['bar_index']), []).append(event)
             for daily_events in cached_lifecycle.values():
                 daily_events.sort(key=lambda event: event.get('reason') == 'source_path_ended')
-            lifecycle_reader = market_calculation._checkpoints.iter_changes(
-                start_position=resume_start, _borrow_readonly=True)
-            readers.callback(lifecycle_reader.close)
-            next_lifecycle = next(lifecycle_reader, None)
+            # 日线逐日续接只需要前日/当日状态，直接借用独立快照；较旧缺口
+            # 仍读取原始检查点日志，保留分钟修订和历史重放的因果边界。
+            if market_calculation._live_lifecycle_at(resume_start) is None:
+                lifecycle_reader = market_calculation._checkpoints.iter_changes(
+                    start_position=resume_start, _borrow_readonly=True)
+                readers.callback(lifecycle_reader.close)
+                next_lifecycle = next(lifecycle_reader, None)
         if _stage is not None: _stage('按已确认资格调度有效区间内的策略形态')
         if steps is not None and cached_lifecycle is None:
             for step_number in LIFECYCLE_STEPS: steps.begin(step_number)

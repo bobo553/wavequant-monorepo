@@ -4,7 +4,8 @@ Strict lecture runs and daily fractal proxies are separate hypotheses. Canonical
 observers produce dated evidence; only evidence available on a signal bar is used.
 """
 from collections import Counter, defaultdict
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right, insort_right
+from heapq import merge
 from dataclasses import dataclass, field, replace
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence, TypedDict, cast
@@ -254,6 +255,8 @@ class DailySignalState:
     signals: list[Signal] = field(default_factory=list)
     audit: list[dict[str, object]] = field(default_factory=list)
     counts: Counter[str] = field(default_factory=Counter)
+    signal_counts: Counter[str] = field(default_factory=Counter)
+    rejection_counts: Counter[str] = field(default_factory=Counter)
     emitted_attacks: set[int] = field(default_factory=set)
     emitted_nested: set[tuple[int, int]] = field(default_factory=set)
     emitted_waves: dict[tuple[int, int, int], tuple[str, float]] = field(default_factory=dict)
@@ -281,6 +284,28 @@ class DailySignalState:
     archived_preparation: list[dict[str, object]] = field(default_factory=list)
     canonical_n_owners: dict[int, str] = field(default_factory=dict)
     emitted_nested_owners: dict[tuple[int, int], set[str]] = field(default_factory=dict)
+    _ordered_signals: list[Signal] = field(default_factory=list)
+    _ordered_decisions: list[dict[str, object]] = field(default_factory=list)
+    _ordered_archive: list[dict[str, object]] = field(default_factory=list)
+
+    def ordered_result(self, counts: Mapping[str, int]) -> 'SystemResult':
+        """已发布交易和关闭窗口只追加；活跃准备证据允许修订，单独排序后稳定归并。"""
+        def audit_key(row: Mapping[str, object]) -> tuple[int, str]:
+            return cast(int, row['bar_index']), cast(str, row['event'])
+
+        if len(self._ordered_signals) > len(self.signals):
+            self._ordered_signals.clear()
+        for signal in self.signals[len(self._ordered_signals):]:
+            insort_right(self._ordered_signals, signal, key=lambda value: (value.timestamp, value.side))
+        for source, ordered in ((self.audit, self._ordered_decisions),
+                                (self.archived_preparation, self._ordered_archive)):
+            if len(ordered) > len(source):
+                ordered.clear()
+            for row in source[len(ordered):]:
+                insort_right(ordered, row, key=audit_key)
+        audit = list(merge(self._ordered_archive, sorted(self.preparation_audit, key=audit_key),
+                           self._ordered_decisions, key=audit_key))
+        return SystemResult(list(self._ordered_signals), audit, dict(counts))
 
 
 def _qualified_n_identity(origin: int, neckline: int, pullback: int, attack: int,
@@ -1122,9 +1147,17 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             log(j, kind, **row)
             counts[kind] += 1
     nested_proofs = {}
+    selection_market = None
     if whole_wave:
-        from .multilevel_squeeze import multilevel_squeeze
+        selection_market = (_analysis.calculations._permission_cache_for(bars)._market_index
+            if _analysis is not None and _analysis.calculations is not None else
+            _MarketRangeIndex.build(tuple(bars)))
+        if selection_market is not None and not selection_market.exact_prices:
+            selection_market = None
+    if whole_wave:
+        from .multilevel_squeeze import MultilevelResistanceIndex, multilevel_squeeze
         from .nested_alternation_breakout import nested_alternation_breakout
+        resistance_index = MultilevelResistanceIndex(hierarchy_events if hierarchical else ())
         for candidate in candidates:
             if candidate['setup'].direction != Direction.UP:
                 continue
@@ -1145,7 +1178,9 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     events[j].append((candidate, confirmed))
                     counts['nested_alternation_breakout_confirmed'] += 1
                     log(j, 'nested_alternation_breakout_confirmed', attack=candidate['attack'], **nested)
-                proof = multilevel_squeeze(bars, candidate, frame, hierarchy_events)
+                proof = multilevel_squeeze(
+                    selection_market.bars if selection_market is not None else bars,
+                    candidate, frame, resistance_index, _market_index=selection_market)
                 if proof is None:
                     continue
                 j = candidate['start'] + frame.bar_index
@@ -1249,14 +1284,21 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     target_stage='five_top', reason='bottom_target_source_retired', **projection_source)
     # Optional opportunity tags use their own confirmation dates, not future shape labels.
     wash_tags = {}
-    washout_newest = sorted(candidates, key=lambda c: c['attack'], reverse=True)
     washout_oldest = sorted(candidates, key=lambda c: c['attack'])
+    washout_groups = defaultdict(list)
+    for candidate in washout_oldest:
+        washout_groups[candidate['setup'].direction, candidate['epoch']].append(candidate)
+    washout_attacks = {key: [candidate['attack'] for candidate in group]
+                      for key, group in washout_groups.items()}
     for new in washout_oldest:
-        for old in washout_newest:
-            if (old['setup'].direction != new['setup'].direction or old['epoch'] != new['epoch'] or
-                    not 0 < new['attack']-old['attack'] <= config.structure_window or
-                    old['attack'] >= new['setup'].origin.index):
-                continue
+        group_key = new['setup'].direction, new['epoch']
+        group, attacks = washout_groups[group_key], washout_attacks[group_key]
+        start = bisect_left(attacks, new['attack'] - config.structure_window)
+        stop = bisect_left(attacks, min(new['attack'], new['setup'].origin.index))
+        # 只枚举同方向、同 epoch、起点之前且仍在观察窗口内的攻击。
+        # 同日攻击保持原始候选顺序，等价于稳定的降序排序。
+        prior = sorted(group[start:stop], key=lambda c: c['attack'], reverse=True)
+        for old in prior:
             offset = old['start']
             washout_bars = bars[offset:new['attack']+1]
             memo = (
@@ -1364,9 +1406,6 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
     exit_structure_cache = (
         chart_history_cache.setdefault('exit_structure', {}) if chart_history_cache is not None else None)
     current_selections: dict[tuple, tuple[dict[str, Any] | None, str]] = {}
-    selection_market = _MarketRangeIndex.build(tuple(bars)) if whole_wave else None
-    if selection_market is not None and not selection_market.exact_prices:
-        selection_market = None
     historical_selections = (
         chart_history_cache['wave_selection_observations'] if chart_history_cache is not None else None)
     def select_candidate(c,i):
@@ -2009,6 +2048,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         _daily.hierarchy = secondary_levels or {}
         _daily.permissions = hierarchy_permissions
         audit_start, counts_before = len(audit), counts.copy()
+        signal_start = len(signals)
         if _minute_scope is None:
             consume_signal_day(len(bars) - 1)
         else:
@@ -2018,16 +2058,24 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 if _minute_scope.buy_days[index]:
                     consume_signal_day(index)
         _daily.has_buy_signal = has_buy_signal
-        _daily.audit.extend(audit[audit_start:])
+        daily_audit = audit[audit_start:]
+        _daily.audit.extend(daily_audit)
+        _daily.signal_counts.update(signal.side for signal in signals[signal_start:])
+        _daily.rejection_counts.update(row['reason'] for row in daily_audit
+            if row['event'] in ('entry_rejected', 'entry_preflight_rejected'))
         _daily.counts.update(counts - counts_before)
         _daily.preparation_audit = audit[:audit_start]
-        audit = [*_daily.archived_preparation, *_daily.preparation_audit, *_daily.audit]
+        if steps is not None:
+            audit = [*_daily.archived_preparation, *_daily.preparation_audit, *_daily.audit]
         counts = counts_before + _daily.counts
-    counts['long_signals'] = sum(s.side == 'LONG' for s in signals)
-    counts['exit_signals'] = sum(s.side == 'EXIT' for s in signals)
+    counts['long_signals'] = (_daily.signal_counts['LONG'] if _daily is not None else
+                              sum(s.side == 'LONG' for s in signals))
+    counts['exit_signals'] = (_daily.signal_counts['EXIT'] if _daily is not None else
+                              sum(s.side == 'EXIT' for s in signals))
     # Count every gate consistently, including volume, depth and target rejection.
     # These are dated evaluations (not unique N shapes and not exchange rejects).
-    rejections=Counter(r['reason'] for r in audit if r['event'] in ('entry_rejected','entry_preflight_rejected'))
+    rejections = (_daily.rejection_counts if _daily is not None else
+        Counter(r['reason'] for r in audit if r['event'] in ('entry_rejected', 'entry_preflight_rejected')))
     for reason,total in rejections.items(): counts['entry_rejected_'+reason]=total
     counts['entry_candidate_rejections']=sum(rejections.values())
     if progress is not None:
@@ -2038,5 +2086,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 steps.append(2, row)
         steps.complete(2)
         steps.append(24, dict(signals=signals, counts=dict(counts)))
+    if _daily is not None:
+        return _daily.ordered_result(counts)
     return SystemResult(sorted(signals, key=lambda s: (s.timestamp, s.side)),
                         sorted(audit, key=lambda r: (r['bar_index'], r['event'])), dict(counts))

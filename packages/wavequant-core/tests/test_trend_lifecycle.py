@@ -282,6 +282,27 @@ def test_checkpoint_copy_accepts_serialized_lifecycle_in_chart_slot():
     assert restored[15] is not book
 
 
+def test_combined_lifecycle_matches_checkpoint_replay_and_owns_mutable_containers():
+    bars, first = scenario(level=1)
+    _, second = scenario(level=2)
+    first_book, _ = replay(bars, first, through=5)
+    second_book, _ = replay(bars, second, through=5)
+    combined = TrendLifecycle.combine((first_book, second_book))
+    snapshots = first_book.checkpoint(), second_book.checkpoint()
+    expected = (snapshots[0][0], snapshots[0][1], (*snapshots[0][2], *snapshots[1][2]))
+    assert combined.checkpoint() == expected
+    assert combined._cycles is not first_book._cycles
+    assert combined._seen is not first_book._seen
+    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+    restored = TrendLifecycle.from_checkpoint(expected)
+    assert combined.advance((first, second), bars, 5, dates) == restored.advance((first, second), bars, 5, dates)
+    assert (first_book.checkpoint(), second_book.checkpoint()) == snapshots
+    with pytest.raises(ValueError, match='same date and disjoint paths'):
+        TrendLifecycle.combine((first_book, first_book))
+    with pytest.raises(ValueError, match='same date and disjoint paths'):
+        TrendLifecycle.combine((combined, first_book))
+
+
 @pytest.mark.parametrize('level', [1, 2, 3])
 def test_full_six_state_cycle_closes_buys_and_opens_sells(level):
     bars, geometry = scenario(level)

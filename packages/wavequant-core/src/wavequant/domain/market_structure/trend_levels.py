@@ -7,6 +7,7 @@
 """
 
 from collections.abc import Mapping, Sequence
+from bisect import bisect_right
 from copy import deepcopy
 from dataclasses import dataclass
 from math import isfinite
@@ -334,17 +335,18 @@ class _SourceTurn:
 
 def _source_turns(
     points: Sequence[Mapping[str, object]], source_level: int, *, retain_geometry: bool = False,
-    accept_direction_facts: bool = False,
+    accept_direction_facts: bool = False, _position_offset: int = 0,
 ) -> list[_SourceTurn]:
     """统一校验直接下级结束来源；原始位置包含开放点以保持来源可追溯。
 
     retain_geometry 仅供本级候选的 key 索引保留原事件外壳，解析时钟仍
     遵守完成门禁；普通递归及适配器返回的 source 则是同一个结束投影。
+    私有追加账本解析尾部时传入原始位置偏移，并包含上一已校验点以核对边界。
     """
     turns: list[_SourceTurn] = []
     clock: Literal['index', 'numeric_string', 'date_string'] | None = None
     previous_order: tuple[int, int] | None = None
-    for position, raw in enumerate(points):
+    for position, raw in enumerate(points, _position_offset):
         if not isinstance(raw, Mapping):
             raise ValueError('trend source points must be mappings')
         level = raw.get('trend_level')
@@ -512,7 +514,7 @@ class _TrendReversalState:
         self._sources_by_reversal: dict[ReversalPoint, _SourceTurn] = {}
         self._preceding_sources: dict[ReversalPoint, _SourceTurn | None] = {}
 
-    def extend(self, appended: Sequence[_SourceTurn]) -> list[dict[str, object]]:
+    def extend(self, appended: Sequence[_SourceTurn], *, _snapshot: bool = True) -> list[dict[str, object]]:
         reversals = {point.reversal for point in appended}
         if self.turns and (len(reversals) != len(appended)
                            or any(reversal in self._sources_by_reversal for reversal in reversals)):
@@ -520,7 +522,7 @@ class _TrendReversalState:
             # 全前缀批量行为，不把此修订当作纯追加。
             combined = [*self.turns, *appended]
             _TrendReversalState.__init__(self, self.trend_level)
-            return self.extend(combined)
+            return self.extend(combined, _snapshot=_snapshot)
         start = len(self.turns)
         if not self.turns:
             self._preceding_sources = _preceding_sources(appended)
@@ -571,11 +573,16 @@ class _TrendReversalState:
                 direction=direction, current=current, prefix_known=prefix_known, key=key)
             self.selected.append(result)
             direction = current
-            pool = [index for index in range(candidate + 1, position + 1)
-                    if turns[index].kind == ('H' if direction == 'up' else 'L')]
-            candidate = (max if direction == 'up' else min)(pool, key=lambda index: turns[index].value)
+            pool = highs if direction == 'up' else lows
+            tail_start = bisect_right(pool, candidate)
+            # 只访问整波极值之后的异类来源索引；历史原点、同类点和价格
+            # 坐标仍完整保留，等价极值继续选择原来源顺序中的第一个。
+            selected = (max if direction == 'up' else min)(range(tail_start, len(pool)),
+                key=lambda offset: turns[pool[offset]].value)
+            candidate = pool[selected]
         self.direction, self.candidate, self.prefix_known = direction, candidate, prefix_known
-        return list(self.selected)
+        # 同一判定器内部只读借用追加账本；外部调用仍得到独立列表。
+        return list(self.selected) if _snapshot else self.selected
 
 
 def trend_reversals(

@@ -6,6 +6,7 @@ cycles are retained; price confirmation advances once per market date.
 """
 
 from collections.abc import Mapping, Sequence
+from bisect import bisect_left
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from math import isfinite
@@ -14,7 +15,10 @@ from typing import cast
 from ..models.model import Bar
 from .bull_alternation_confirmation import AlternationPolicy, confirm_bull_alternation
 from .confirmation_gap import confirmation_gap
-from .source_bear_exit import SOURCE_BEAR_EVENT, bearish_structure_breaks, source_bearish_exits
+from .trend_market_index import _MarketRangeIndex
+from .source_bear_exit import (
+    SOURCE_BEAR_EVENT, _BearStructureCandidate, _prepare_bearish_structure, source_bearish_exits,
+)
 
 
 LIFECYCLE_VERSION = 'six_state_demand_gated_confirmation_v22'
@@ -83,9 +87,19 @@ class _StructureFacts:
     stroke: Mapping[str, object]
     facts: tuple[_Fact, ...]
     points: tuple[_Pivot, ...]
+    point_orders: tuple[tuple[int, int], ...] | None
     fact_set: frozenset[_Fact]
     point_set: frozenset[_Pivot]
     next_known: int | None
+    bear_candidate: _BearStructureCandidate | None
+
+
+def _point_orders(points: tuple[_Pivot, ...]) -> tuple[tuple[int, int], ...] | None:
+    """每个结构版本只建一次位置索引；非标准顺序保留公开输入的原遍历语义。"""
+    orders = tuple((point.index, point.ordinal) for point in points)
+    if any(previous >= current for previous, current in zip(orders, orders[1:])):
+        return None
+    return orders
 
 
 def _next_structure_clock(value: object, dates: Mapping[str, int], now: int) -> tuple[bool, int | None]:
@@ -137,11 +151,15 @@ def advance_bull_recovery(
     return state
 
 
-def _continued_bull_impulse(cycle: _Cycle, points: tuple[_Pivot, ...]) -> _Cycle | None:
+def _continued_bull_impulse(cycle: _Cycle, points: tuple[_Pivot, ...],
+                            point_orders: tuple[tuple[int, int], ...] | None = None) -> _Cycle | None:
     """同一腿高点向右/向上延伸保留特殊属性；基准或起涨低点修订仍须失效。"""
     if not cycle.recovery or cycle.alternated is not None or len(cycle.structure) != 3 or cycle.impulse is None:
         return None
     broken, origin, previous = cycle.structure
+    if point_orders is not None:
+        start = bisect_left(point_orders, (broken.index, broken.ordinal))
+        points = points[start:start + 3]
     for key, low, high in zip(points, points[1:], points[2:]):
         if (key != broken or low != origin or high.kind != 'H'
                 or (high.index, high.ordinal) < (previous.index, previous.ordinal)
@@ -289,6 +307,9 @@ class TrendLifecycle:
         self._last_index = -1
         self._bear_breaks: dict[tuple[int, str], frozenset[tuple[int, int, int]]] = {}
         self._structure_facts: dict[tuple[int, str], _StructureFacts] = {}
+        self._checkpoint_seen: dict[
+            tuple[int, str], tuple[frozenset[_Fact], tuple[tuple[object, ...], ...]]
+        ] = {}
 
     @staticmethod
     def _needs_bull_confirmation(cycle: _Cycle) -> bool:
@@ -313,6 +334,31 @@ class TrendLifecycle:
         other._bear_breaks = dict(self._bear_breaks)
         return other
 
+    @classmethod
+    def combine(cls, states: Sequence['TrendLifecycle']) -> 'TrendLifecycle':
+        """合并同日不同级别的状态，保留独立容器及不可变事实。
+
+        请求内部的同日消费者可直接续接这些领域值，不必先编码整个历史
+        再逐条解析。几何对象身份缓存不跨引擎复制；重复路径与异日状态拒绝合并。
+        """
+        combined = cls()
+        if not states:
+            return combined
+        combined._last_index = states[0]._last_index
+        occupied: set[tuple[int, str]] = set()
+        for state in states:
+            keys = (state._cycles.keys() | state._seen.keys() | state._bull_recovery.keys()
+                    | state._polyline_known.keys() | state._bear_breaks.keys())
+            if state._last_index != combined._last_index or occupied.intersection(keys):
+                raise ValueError('lifecycle snapshots require the same date and disjoint paths')
+            occupied.update(keys)
+            combined._cycles.update(state._cycles)
+            combined._seen.update(state._seen)
+            combined._bull_recovery.update(state._bull_recovery)
+            combined._polyline_known.update({key: values.copy() for key, values in state._polyline_known.items()})
+            combined._bear_breaks.update(state._bear_breaks)
+        return combined
+
     def checkpoint(self) -> tuple[object, ...]:
         """Only builtin immutable values enter the bounded checkpoint journal."""
         def pivot(value: _Pivot | None) -> tuple[object, ...] | None:
@@ -324,6 +370,12 @@ class TrendLifecycle:
 
         rows = []
         for key, seen in sorted(self._seen.items()):
+            previous_seen = self._checkpoint_seen.get(key)
+            if previous_seen is not None and previous_seen[0] is seen:
+                saved_seen = previous_seen[1]
+            else:
+                saved_seen = tuple(sorted((fact(item) for item in seen), key=repr))
+                self._checkpoint_seen[key] = seen, saved_seen
             cycle = self._cycles.get(key)
             saved = (cycle.state.value, cycle.up, pivot(cycle.origin), cycle.started, pivot(cycle.impulse),
                      pivot(cycle.counter), cycle.alternated, cycle.candidate,
@@ -333,7 +385,7 @@ class TrendLifecycle:
             recovery = self._bull_recovery.get(key)
             pending = (fact(recovery.seed), recovery.breach, recovery.consecutive_lower_lows, recovery.recovered) if recovery else None
             source_clocks = tuple((*point, known) for point, known in sorted(self._polyline_known.get(key, {}).items()))
-            rows.append((key, tuple(sorted((fact(item) for item in seen), key=repr)), saved, pending,
+            rows.append((key, saved_seen, saved, pending,
                          source_clocks, tuple(sorted(self._bear_breaks.get(key, ())))))
         return LIFECYCLE_VERSION, self._last_index, tuple(rows)
 
@@ -451,7 +503,8 @@ class TrendLifecycle:
                 polyline_path: str | None = None,
                 source_events: Sequence[Mapping[str, object]] = (),
                 confirmation_policy: AlternationPolicy = AlternationPolicy(),
-                _owned_structure: bool = False) -> list[dict[str, object]]:
+                _owned_structure: bool = False,
+                _market_index: _MarketRangeIndex | None = None) -> list[dict[str, object]]:
         """Consume one causal date; repeated/rewound dates require a checkpoint.
 
         私有结构借用只接收生成后不再修改的版本。价格、候选和源事件仍每日
@@ -459,6 +512,7 @@ class TrendLifecycle:
         """
         if type(now) is not int or not 0 <= now < len(bars) or now != self._last_index + 1:
             raise ValueError('lifecycle requires consecutive causal market dates')
+        market_index = _market_index if _market_index is not None and bars is _market_index.bars else None
         self._last_index = now
         if not _owned_structure:
             self._structure_facts.clear()
@@ -485,17 +539,21 @@ class TrendLifecycle:
                 if unchanged:
                     assert cached is not None
                     facts, parsed_points = cached.facts, cached.points
+                    point_orders = cached.point_orders
                     fact_set, parsed_set = cached.fact_set, cached.point_set
+                    bear_candidate = cached.bear_candidate
                 else:
                     facts = _facts(stroke.get('points'), dates, now)
                     parsed_points = tuple(point for raw in _records(stroke.get('points'))
                                           if (point := _pivot(raw, dates, now)) is not None)
+                    point_orders = _point_orders(parsed_points)
                     fact_set, parsed_set = frozenset(facts), frozenset(parsed_points)
+                    bear_candidate = _prepare_bearish_structure(stroke, now, dates, facts=facts)
                     if _owned_structure:
                         standard, next_known = _next_structure_clock(stroke.get('points'), dates, now)
                         if standard:
                             self._structure_facts[key] = _StructureFacts(
-                                stroke, facts, parsed_points, fact_set, parsed_set, next_known)
+                                stroke, facts, parsed_points, point_orders, fact_set, parsed_set, next_known, bear_candidate)
                         else:
                             self._structure_facts.pop(key, None)
                 seen = self._seen.get(key, frozenset())
@@ -520,7 +578,7 @@ class TrendLifecycle:
                     self._polyline_known[key] = {(p.index, p.ordinal, p.kind, p.price): p.known for p in source_points}
                 if (cycle is not None and cycle.evidence.issubset(fact_set)
                         and not set(cycle.structure).issubset(point_set)):
-                    continued = _continued_bull_impulse(cycle, points)
+                    continued = _continued_bull_impulse(cycle, points, point_orders)
                     if continued is not None:
                         cycle = continued
                         self._cycles[key] = cycle
@@ -546,11 +604,15 @@ class TrendLifecycle:
                             self._bull_recovery[key] = _BullRecovery(fact)
                         self._consume(key, fact, now, events)
                 if not unchanged:
-                    self._seen[key] = seen.union(facts)
-                self._advance_bull_recovery(key, points, bars, now, events)
-                self._advance_bull_alternation(key, points, bars, now, events, source_points, confirmation_policy)
+                    # 新几何未必增加六态事实；保持未变账本身份，检查点复用已有标量编码。
+                    additions = fact_set.difference(seen)
+                    self._seen[key] = seen.union(additions) if additions else seen
+                self._advance_bull_recovery(key, points, bars, now, events, point_orders, market_index)
+                self._advance_bull_alternation(key, points, bars, now, events, source_points,
+                                               confirmation_policy, point_orders, market_index)
                 self._price(key, bars, now, events)
-                for event in bearish_structure_breaks(stroke, number, bars, now, dates, facts=facts):
+                for event in (bear_candidate.observe(number, bars, now, dates, _market_index=market_index)
+                              if bear_candidate is not None else ()):
                     identity = tuple(cast(int, event[field]) for field in
                                      ('prior_flip_index', 'origin_index', 'flip_index'))
                     break_key = identity[0], identity[1], identity[2]
@@ -581,6 +643,7 @@ class TrendLifecycle:
         self._polyline_known = {key: clocks for key, clocks in self._polyline_known.items() if key in present}
         self._bear_breaks = {key: breaks for key, breaks in self._bear_breaks.items() if key in present}
         self._structure_facts = {key: facts for key, facts in self._structure_facts.items() if key in present}
+        self._checkpoint_seen = {key: facts for key, facts in self._checkpoint_seen.items() if key in present}
         # 单级联动借用当日下级事件；整层恢复使用同一次 advance 的下级结果。
         events.extend(source_bearish_exits(levels, (*source_events, *events), now))
         return events
@@ -696,7 +759,9 @@ class TrendLifecycle:
                                   replaces_gap_confirmation_index=prior_gap[0] if prior_gap else None))
 
     def _advance_bull_recovery(self, key: tuple[int, str], points: tuple[_Pivot, ...],
-                               bars: Sequence[Bar], now: int, events: list[dict[str, object]]) -> None:
+                               bars: Sequence[Bar], now: int, events: list[dict[str, object]],
+                               point_orders: tuple[tuple[int, int], ...] | None = None,
+                               market_index: _MarketRangeIndex | None = None) -> None:
         """短暂跌破→收回→同级突破→守低且满足既有交替结束规则，各级共用。"""
         pending = self._bull_recovery.get(key)
         if pending is not None and pending.seed.origin is not None:
@@ -732,6 +797,9 @@ class TrendLifecycle:
                         rule_version=LIFECYCLE_VERSION))
                 if updated.recovered is not None:
                     # 本级相邻H/L/H，旧高必须早于突破日已知；不能拿最终图回填。
+                    if point_orders is not None and updated.breach is not None:
+                        start = max(0, bisect_left(point_orders, (updated.breach, 0)) - 1)
+                        points = points[start:]
                     for previous, origin, impulse in zip(points, points[1:], points[2:]):
                         if (previous.kind != 'H' or origin.kind != 'L' or impulse.kind != 'H'
                                 or updated.breach is None or origin.index < updated.breach
@@ -740,7 +808,10 @@ class TrendLifecycle:
                                 or impulse.price <= previous.price or impulse.price <= origin.price
                                 or origin.price >= previous.price):
                             continue
-                        if any(bar.low < origin.price for bar in bars[origin.index + 1:now + 1]):
+                        broken = (market_index.first_extreme(origin.index + 1, now + 1, origin.price, high=False)
+                                  is not None if market_index is not None and market_index.supports_price(origin.price)
+                                  else any(bar.low < origin.price for bar in bars[origin.index + 1:now + 1]))
+                        if broken:
                             continue
                         cycle = _Cycle(LifecycleState.BULL_FLIP, True, origin, now, impulse,
                             evidence=frozenset((updated.seed,)), recovery=True,
@@ -757,13 +828,19 @@ class TrendLifecycle:
 
     def _advance_bull_alternation(self, key: tuple[int, str], points: tuple[_Pivot, ...],
                                   bars: Sequence[Bar], now: int, events: list[dict[str, object]],
-                                  polyline: tuple[_Pivot, ...], policy: AlternationPolicy) -> None:
+                                  polyline: tuple[_Pivot, ...], policy: AlternationPolicy,
+                                  point_orders: tuple[tuple[int, int], ...] | None = None,
+                                  market_index: _MarketRangeIndex | None = None) -> None:
         """已成立的本级翻多统一确认交替，不等待交易资格内的策略扫描。"""
         cycle = self._cycles.get(key)
         if cycle is None or not self._needs_bull_confirmation(cycle):
             return
         assert cycle.impulse is not None
-        if cycle.recovery and min(bar.low for bar in bars[cycle.origin.index + 1:now + 1]) < cycle.origin.price:
+        broken_origin = (market_index.first_extreme(cycle.origin.index + 1, now + 1, cycle.origin.price, high=False)
+                         is not None if market_index is not None and market_index.supports_price(cycle.origin.price)
+                         else min(bar.low for bar in bars[cycle.origin.index + 1:now + 1]) < cycle.origin.price
+                         ) if cycle.recovery else False
+        if broken_origin:
             self._cycles.pop(key)
             events.append(self._event(key, cycle, now, 'trend_lifecycle_invalidated',
                                       reason='special_bull_origin_broken'))
@@ -777,15 +854,26 @@ class TrendLifecycle:
                         and fact.origin == cycle.origin and fact.broken is not None),
                        key=lambda fact: (fact.known, fact.point.index, fact.point.ordinal), default=None)
             broken = seed.broken if seed is not None else None
-        if (broken is None or not {broken, cycle.origin, cycle.impulse}.issubset(points)
+        if (broken is None
                 or not (broken.index, broken.ordinal) < (cycle.origin.index, cycle.origin.ordinal)
                     < (cycle.impulse.index, cycle.impulse.ordinal)):
             return
+        if point_orders is None:
+            if not {broken, cycle.origin, cycle.impulse}.issubset(points):
+                return
+        else:
+            for point in (broken, cycle.origin, cycle.impulse):
+                position = bisect_left(point_orders, (point.index, point.ordinal))
+                if position == len(points) or points[position] != point:
+                    return
+            # 冻结关键位与其后续点参与确认；索引核验仍比较完整点证据，不能漏掉同坐标修订。
+            points = points[bisect_left(point_orders, (broken.index, broken.ordinal)):]
         proof = confirm_bull_alternation(bars, now, origin=cycle.origin, high=cycle.impulse,
             broken=broken, points=points, polyline=polyline, level=key[0], path=key[1], policy=policy,
             allow_gap_confirmation=cycle.confirmation_gap is None,
             flip_confirmed_at=(cycle.started if cycle.recovery else
-                               min(fact.known for fact in cycle.evidence if fact.title == '翻空为多')))
+                               min(fact.known for fact in cycle.evidence if fact.title == '翻空为多')),
+            _market_index=market_index)
         if proof is None:
             return
         point = _Pivot(proof.low.index, proof.low.ordinal, proof.low.kind, proof.low.price, proof.low.known)

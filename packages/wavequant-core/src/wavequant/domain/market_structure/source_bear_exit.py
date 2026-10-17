@@ -1,13 +1,15 @@
 """直接来源确认空头后生成本级资格结束事实，不改写本级趋势状态。"""
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from math import isfinite
 from typing import TYPE_CHECKING, cast
 
 from ..models.model import Bar
+from .trend_market_index import _MarketRangeIndex
 
 if TYPE_CHECKING:
-    from .trend_lifecycle import _Fact
+    from .trend_lifecycle import _Fact, _Pivot
 
 
 SOURCE_BEAR_EVENT = 'trading_source_bear_confirmed'
@@ -38,65 +40,103 @@ def _confirmed_structure_break(event: Mapping[str, object], now: int) -> bool:
     return 0 < low < threshold <= previous
 
 
-def bearish_structure_breaks(
-    stroke: Mapping[str, object], level: int, bars: Sequence[Bar], now: int, dates: Mapping[str, int],
+@dataclass(frozen=True, slots=True)
+class _BearStructureCandidate:
+    """一个已解析的结构版本；每日只检查价格，不再次遍历整条趋势。"""
+
+    path: str
+    flip: '_Fact'
+    rebound: '_Pivot'
+    key: '_Pivot'
+    rebound_source: Mapping[str, object]
+
+    def observe(self, level: int, bars: Sequence[Bar], now: int,
+                dates: Mapping[str, int], *,
+                _market_index: _MarketRangeIndex | None = None) -> list[dict[str, object]]:
+        flip, rebound, key = self.flip, self.rebound, self.key
+        if (now == 0 or flip.known >= now or key.known >= now
+                or not bars[now].low < key.price <= bars[now - 1].low):
+            return []
+        invalidated = (_market_index.first_extreme(rebound.index + 1, now + 1, rebound.price, high=True) is not None
+                       if _market_index is not None and bars is _market_index.bars
+                       and _market_index.supports_price(rebound.price)
+                       else any(bars[index].high > rebound.price for index in range(rebound.index + 1, now + 1)))
+        if invalidated:
+            return []
+        # 完整结束证明只在价格满足破位时核验，不能为缓存把重证据工作提前到每次几何变化。
+        from .trend_lifecycle import _pivot
+        from .trend_levels import _completed_source_point
+
+        try:
+            completed = _completed_source_point(self.rebound_source)
+        except ValueError:
+            return []
+        origin = _pivot(completed, dates, now)
+        if origin is None:
+            return []
+        assert flip.origin is not None
+        return [dict(event=STRUCTURE_BEAR_EVENT, bar_index=now, available_index=now,
+            trend_level=level, source_path=self.path, direction='down', flip_confirmed=True,
+            confirmation_rule=STRUCTURE_BEAR_RULE, prior_flip_origin_index=flip.origin.index,
+            prior_flip_index=flip.point.index, prior_flip_known_index=flip.known,
+            origin_index=rebound.index, origin_known_index=origin.known,
+            flip_index=key.index, flip_known_index=key.known, breakout_level=key.price,
+            previous_low=bars[now - 1].low, market_low=bars[now].low)]
+
+
+def _prepare_bearish_structure(
+    stroke: Mapping[str, object], now: int, dates: Mapping[str, int],
     *, facts: Sequence['_Fact'] | None = None,
-) -> list[dict[str, object]]:
-    """已翻空后的下一下降结构破自身前低；六态防守失效不抹掉结构事实。
+) -> _BearStructureCandidate | None:
+    """结构或知识时钟变化时准备；六态防守失效不抹掉结构事实。
 
     仅消费本级正式节点与共用整波完成证明。高点影线越过原翻空高点时，
     复用既有实体拒绝规则；后续更高的反弹不能把旧翻空无限沿用。
     """
     from .trend_lifecycle import _facts, _pivot, _records
-    from .trend_levels import _completed_source_point
     from .trend_body_reversal import rejects_wick_extension
 
     path = stroke.get('id')
-    if now == 0 or not isinstance(path, str):
-        return []
+    if not isinstance(path, str):
+        return None
     raw_points = _records(stroke.get('points'))
     known_facts = _facts(raw_points, dates, now) if facts is None else facts
     flip = next((fact for fact in reversed(known_facts) if fact.title == '翻多为空'), None)
     if flip is None or flip.origin is None or flip.broken is None:
-        return []
+        return None
     points = [(raw, point) for raw in raw_points if (point := _pivot(raw, dates, now)) is not None]
     own = {(p.index, p.ordinal): (raw, p) for raw, p in points}
     # 最近的正式翻空决定当前上下文；不从更早周期中挑选一个可用的标签。
     anchor = own.get((flip.origin.index, flip.origin.ordinal))
     counter = own.get((flip.point.index, flip.point.ordinal))
     if (anchor is None or counter is None or anchor[1] != flip.origin or counter[1] != flip.point
-            or not flip.origin.index < flip.point.index or flip.known >= now):
-        return []
+            or not flip.origin.index < flip.point.index):
+        return None
     following = [(raw, p) for raw, p in points
                  if (p.index, p.ordinal) > (flip.point.index, flip.point.ordinal)]
     if len(following) < 2:
-        return []
+        return None
     rebound_raw, rebound = following[0]
     _, key = following[1]
-    if (rebound.kind != 'H' or key.kind != 'L' or not flip.known < rebound.index < key.index
-            or key.known >= now or not bars[now].low < key.price <= bars[now - 1].low):
-        return []
+    if rebound.kind != 'H' or key.kind != 'L' or not flip.known < rebound.index < key.index:
+        return None
     if rebound.price > flip.origin.price and not rejects_wick_extension(anchor[0], counter[0], rebound_raw):
-        return []
-    if any(bar.high > rebound.price for bar in bars[rebound.index + 1:now + 1]):
-        return []
+        return None
     completion = rebound_raw.get('wave_completion_evidence')
     if not isinstance(completion, Mapping) or completion.get('wave_direction_after') != 'down':
+        return None
+    return _BearStructureCandidate(path, flip, rebound, key, rebound_raw)
+
+
+def bearish_structure_breaks(
+    stroke: Mapping[str, object], level: int, bars: Sequence[Bar], now: int, dates: Mapping[str, int],
+    *, facts: Sequence['_Fact'] | None = None,
+) -> list[dict[str, object]]:
+    """公开输入每次解析；请求内受控结构由生命周期按版本复用候选。"""
+    if now == 0:
         return []
-    try:
-        completed = _completed_source_point(rebound_raw)
-    except ValueError:
-        return []
-    origin = _pivot(completed, dates, now)
-    if origin is None:
-        return []
-    return [dict(event=STRUCTURE_BEAR_EVENT, bar_index=now, available_index=now,
-        trend_level=level, source_path=path, direction='down', flip_confirmed=True,
-        confirmation_rule=STRUCTURE_BEAR_RULE, prior_flip_origin_index=flip.origin.index,
-        prior_flip_index=flip.point.index, prior_flip_known_index=flip.known,
-        origin_index=rebound.index, origin_known_index=origin.known,
-        flip_index=key.index, flip_known_index=key.known, breakout_level=key.price,
-        previous_low=bars[now - 1].low, market_low=bars[now].low)]
+    candidate = _prepare_bearish_structure(stroke, now, dates, facts=facts)
+    return candidate.observe(level, bars, now, dates) if candidate is not None else []
 
 
 def confirmed_source_bear(event: Mapping[str, object], now: int) -> bool:

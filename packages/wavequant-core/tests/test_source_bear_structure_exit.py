@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from tests.test_source_bear_exit import opening, parent
+import wavequant.domain.market_structure.trend_lifecycle as lifecycle_module
 from wavequant.domain.market_structure.source_bear_exit import (
     SOURCE_BEAR_EVENT, SOURCE_BEAR_EXIT, STRUCTURE_BEAR_EVENT,
     bearish_structure_breaks, confirmed_source_bear, source_bearish_exits,
@@ -113,6 +114,53 @@ def test_checkpoint_and_separate_level_replay_preserve_single_exit():
             child = TrendLifecycle.from_checkpoint(child.copy().checkpoint())
             owner = TrendLifecycle.from_checkpoint(owner.checkpoint())
     assert [event['bar_index'] for event in all_exits] == [now]
+
+
+@pytest.mark.parametrize('level', [1, 2, 3])
+def test_owned_bear_candidate_matches_daily_parse_and_still_confirms_on_new_price(level, monkeypatch):
+    bars, stroke = sample()
+    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+    row = dict(trend_level=level, strokes=[stroke])
+    expected = TrendLifecycle()
+    baseline = [expected.advance([row], bars, index, dates) for index in range(len(bars))]
+    original = lifecycle_module._prepare_bearish_structure
+    prepared = []
+
+    def record(stroke, now, dates, *, facts=None):
+        prepared.append(now)
+        return original(stroke, now, dates, facts=facts)
+
+    monkeypatch.setattr(lifecycle_module, '_prepare_bearish_structure', record)
+    reused = TrendLifecycle()
+    actual = [reused.advance([row], bars, index, dates, _owned_structure=True)
+              for index in range(len(bars))]
+    assert actual == baseline
+    breaks = [event for day in actual for event in day if event['event'] == STRUCTURE_BEAR_EVENT]
+    assert [event['bar_index'] for event in breaks] == [dates['2020-11-26']]
+    # 行情每天推进，但结构只在知识时钟变化时解析；没有按日重新扫描旧趋势。
+    assert len(prepared) < len(bars) // 2
+
+
+def test_owned_candidate_rebuilds_for_revised_or_late_completion_and_checkpoint():
+    bars, original = sample()
+    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+    now = dates['2020-11-26']
+    delayed = deepcopy(original)
+    delayed['points'][3]['wave_completed_at'] = now + 1
+    delayed['points'][3]['wave_completion_evidence']['available_at'] = now + 1
+    ordinary, owned = TrendLifecycle(), TrendLifecycle()
+    observed = []
+    for index in range(len(bars)):
+        # 旧版本不可原地改写；证据修订必须使用新结构版本。
+        stroke = delayed if index >= now - 2 else original
+        row = dict(trend_level=1, strokes=[stroke])
+        expected = ordinary.advance([row], bars, index, dates)
+        actual = owned.advance([row], bars, index, dates, _owned_structure=True)
+        assert actual == expected
+        observed.extend(actual)
+        if index == now - 1:
+            owned = TrendLifecycle.from_checkpoint(owned.checkpoint())
+    assert not any(event['event'] == STRUCTURE_BEAR_EVENT and event['bar_index'] == now for event in observed)
 
 
 def test_xianfeng_actual_causal_prefix_ends_level_two_on_november_26():

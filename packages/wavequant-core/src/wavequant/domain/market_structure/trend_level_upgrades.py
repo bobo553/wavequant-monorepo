@@ -7,6 +7,7 @@
 """
 
 from collections.abc import Callable, Mapping, Sequence
+from bisect import insort
 from copy import deepcopy
 
 from .trend_levels import (
@@ -14,7 +15,7 @@ from .trend_levels import (
     _stamp_wave_completion, _ordinary_point, _preceding_sources, WaveDirection,
 )
 
-from .trend_structure import StructuralTrend, classify_trend_prices
+from .trend_structure import StructuralTrend, classify_trend_prices, preceding_turn
 from .trend_body_reversal import BODY_REVERSAL_RULE, body_reference, rejects_wick_extension
 
 __all__ = ['promote_trend_key_breaks']
@@ -180,9 +181,16 @@ class _TrendUpgradeState:
         self.regular = list(regular)
         self.event_sink = event_sink
         self.merged: dict[tuple[int, int, str, float], _SourceTurn] = {}
+        self.merged_order: list[tuple[int, int, str, float]] = []
+        self.updated_merged: dict[tuple[int, int, str, float], _SourceTurn] = {}
+        self.new_merged_keys: list[tuple[int, int, str, float]] = []
         self.orders = sorted({_order(point) for point in [*turns, *regular]})
         self.positions = {order: position for position, order in enumerate(self.orders)}
         self.source_by_order = {_order(point): point for point in turns}
+        self.source_by_reversal = {point.reversal: point for point in turns}
+        self.latest_sources: dict[str, _SourceTurn] = {}
+        for point in turns:
+            self.latest_sources[point.kind] = point
         self.keys_by_kind = {kind: _PointRange(len(self.orders), _latest_key) for kind in ('H', 'L')}
         self.origins_by_kind = {'H': _PointRange(len(self.orders), _highest_origin),
                                'L': _PointRange(len(self.orders), _lowest_origin)}
@@ -197,6 +205,10 @@ class _TrendUpgradeState:
         self.owned_direction: WaveDirection | None = None
         self.whole_origin: _SourceTurn | None = None
         self.whole_extreme: _SourceTurn | None = None
+        # 每个 level/path 只有这两个当前关键位标记，值为完整来源序列的位置。
+        # 历史 key 树继续保留审计及修订恢复资料；普通最新 H/L 不更新标记。
+        self.last_fall_high_position: int | None = None
+        self.last_rise_low_position: int | None = None
         self.recent: dict[str, list[_SourceTurn]] = {'H': [], 'L': []}
         self.source_positions = {_order(point): position for position, point in enumerate(turns)}
         self.preceding_sources = _preceding_sources(turns)
@@ -211,20 +223,22 @@ class _TrendUpgradeState:
         if len(self.orders) != len(self.source_by_order):
             return False
         reversals = {point.reversal for point in turns}
-        if len(reversals) != len(turns) or any(point.reversal in reversals for point in self.turns):
+        if len(reversals) != len(turns) or any(reversal in self.source_by_reversal for reversal in reversals):
             return False
         if self.turns and any(_order(point) <= _order(self.turns[-1]) for point in turns):
             return False
         if self.prefix_known is not None and any(_known_by(point.available_at, self.prefix_known)
                                                 for point in regular):
             return False
-        actual_orders = {*self.source_by_order, *(_order(point) for point in turns)}
-        if any(_order(point) not in actual_orders for point in regular):
+        appended_orders = {_order(point) for point in turns}
+        if any(_order(point) not in self.source_by_order and _order(point) not in appended_orders for point in regular):
             return False
         for point in regular:
             if self.turns:
                 _known_by(point.available_at, self.turns[0].available_at)
         start = len(self.turns)
+        if not self.turns and turns:
+            self.numeric_clock = isinstance(turns[0].available_at, str) and turns[0].available_at.isdecimal()
         self.turns.extend(turns)
         for position, point in enumerate(turns, start):
             order = _order(point)
@@ -232,14 +246,60 @@ class _TrendUpgradeState:
             self.orders.append(order)
             self.source_by_order[order] = point
             self.source_positions[order] = position
+            opposite = self.latest_sources.get('L' if point.kind == 'H' else 'H')
+            neighbors = (point.reversal,) if opposite is None else (opposite.reversal, point.reversal)
+            prior = preceding_turn(neighbors, point.reversal)
+            self.preceding_sources[point.reversal] = self.source_by_reversal.get(prior) if prior is not None else None
+            self.source_by_reversal[point.reversal] = point
+            self.latest_sources[point.kind] = point
         for tree in [*self.keys_by_kind.values(), *self.origins_by_kind.values()]:
             tree.ensure_size(len(self.orders))
-        self.regular.extend(regular)
-        self.regular.sort(key=lambda point: int(point.available_at) if self.numeric_clock else point.available_at)
-        self.preceding_sources = _preceding_sources(self.turns)
+        # 已消费普通事实不晚于 prefix_known；门禁保证新增事实严格更晚，
+        # 因此只对本批排序，旧账本和前驱映射无需重新扫描。
+        self.regular.extend(sorted(regular,
+            key=lambda point: int(point.available_at) if self.numeric_clock else point.available_at))
         return True
 
+    def _store_merged(self, point: _SourceTurn) -> None:
+        identity = _identity(point)
+        if identity not in self.merged:
+            # 来源价格坐标严格唯一，候选也已核对 actual identity；因此完整
+            # identity 顺序与原 (index, ordinal) 稳定顺序相同，不新增同坐标仲裁。
+            insort(self.merged_order, identity)
+            self.new_merged_keys.append(identity)
+        self.merged[identity] = point
+        self.updated_merged[identity] = point
+
+    def _attack_key(self, attack: _SourceTurn, *, direction: WaveDirection | None,
+                    origin: _SourceTurn | None) -> _SourceTurn | None:
+        """从本级当前末跌高／末升低位置续查，反向攻击优先使用冻结整波起点。"""
+        tree = self.keys_by_kind[attack.kind]
+        attack_position = self.positions[_order(attack)]
+        attack_direction = 'up' if attack.kind == 'H' else 'down'
+        key: _SourceTurn | None = None
+        if direction is not None and direction != attack_direction and origin is not None and origin.kind == attack.kind:
+            origin_position = self.positions[_order(origin)]
+            if origin_position < attack_position:
+                key = tree.query(origin_position, origin_position + 1)
+        if key is None:
+            marker = self.last_fall_high_position if attack.kind == 'H' else self.last_rise_low_position
+            start = self.positions[_order(self.turns[marker])] if marker is not None else 0
+            # 迟知来源可能提前把右侧 key 加入树；它不能遮住当前攻击左侧
+            # 的合法关键位。检查点或冷重建仍保留原完整历史查询的边界。
+            if start >= attack_position:
+                start = 0
+            key = tree.query(start, attack_position)
+        if key is not None and _key_known_before_price(key, attack):
+            position = self.source_positions[_order(key)]
+            if attack.kind == 'H':
+                self.last_fall_high_position = position
+            else:
+                self.last_rise_low_position = position
+        return key
+
     def advance(self) -> list[dict[str, object]]:
+        self.updated_merged = {}
+        self.new_merged_keys = []
         turns, regular, trend_level, event_sink = self.turns, self.regular, self.trend_level, self.event_sink
         source_level = trend_level - 1
         merged, positions, source_by_order = self.merged, self.positions, self.source_by_order
@@ -254,7 +314,7 @@ class _TrendUpgradeState:
                                 actual.value, actual.time, known, actual.reversal)
             existing = merged.get(_identity(event))
             if existing is None or not _known_by(existing.available_at, known):
-                merged[_identity(event)] = event
+                self._store_merged(event)
             if closed:
                 _store_closed_key(keys_by_kind[event.kind], positions[_order(event)], event)
             if event_sink is not None:
@@ -280,7 +340,7 @@ class _TrendUpgradeState:
                 if legacy_candidate or point.source.get('wave_identity_state') == 'owned':
                     identity = _identity(point)
                     if identity not in merged or _known_by(point.available_at, merged[identity].available_at):
-                        merged[identity] = point
+                        self._store_merged(point)
                     _store_closed_key(keys_by_kind[point.kind], positions[_order(point)], point)
                     # 已校验 owned 候选可补充闭合 key，但正常来源扫描仍掌握
                     # whole phase；晚外部证明不得重置极值或把 whole origin 拉退。
@@ -379,17 +439,11 @@ class _TrendUpgradeState:
                             _stamp_wave_completion(raw, closed=True)
                             publish_owned(raw, whole_extreme, prefix_known, closed=True)
                             whole_origin, whole_extreme, owned_direction = whole_extreme, counter, current
-            key = keys_by_kind[attack.kind].query(0, attack_position)
             # 反向严格升级使用当前整波起点已经闭合的本级关键位。波内较晚的
             # 局部 key 不能把冻结末跌高／末升低降格；普通组合波仍由上面的
             # 共同四点定义独立确认，不借六态或交易资格增删几何。
             attack_direction: WaveDirection = 'up' if attack.kind == 'H' else 'down'
-            if (owned_direction is not None and owned_direction != attack_direction
-                    and whole_origin is not None and whole_origin.kind == attack.kind):
-                origin_position = positions[_order(whole_origin)]
-                frozen = keys_by_kind[attack.kind].query(origin_position, origin_position + 1)
-                if frozen is not None:
-                    key = frozen
+            key = self._attack_key(attack, direction=owned_direction, origin=whole_origin)
             if key is None:
                 continue
             rising = attack.kind == 'H'
@@ -435,7 +489,7 @@ class _TrendUpgradeState:
         self.owned_direction, self.whole_origin, self.whole_extreme = owned_direction, whole_origin, whole_extreme
         self.body_rejection = body_rejection
         self.processed_count = len(turns)
-        return [dict(point.source) for point in sorted(merged.values(), key=_order)]
+        return [dict(merged[identity].source) for identity in self.merged_order]
 
 
 def promote_trend_key_breaks(

@@ -7,8 +7,9 @@ from types import SimpleNamespace as NS
 import pytest
 
 from wavequant.domain.models.model import Bar
+from wavequant.domain.market_structure.trend_market_index import _MarketRangeIndex
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
-from wavequant.domain.strategies.multilevel_squeeze import multilevel_squeeze
+from wavequant.domain.strategies.multilevel_squeeze import MultilevelResistanceIndex, multilevel_squeeze
 from wavequant.domain.strategies.strategy_profiles import whole_wave_profile
 
 
@@ -64,7 +65,37 @@ def test_multilevel_record_break_requires_both_scales_and_live_defenses(invalid)
         bars[5] = replace(bars[5], low=12.4)
     elif invalid == "too_early":
         frame.bar_index = 4
-    assert (multilevel_squeeze(bars, candidate, frame, keys) is not None) is (invalid is None)
+    expected = multilevel_squeeze(bars, candidate, frame, keys)
+    assert (expected is not None) is (invalid is None)
+    indexed_bars = tuple(bars)
+    assert multilevel_squeeze(indexed_bars, candidate, frame, MultilevelResistanceIndex(keys),
+        _market_index=_MarketRangeIndex.build(indexed_bars)) == expected
+
+
+def test_resistance_index_keeps_attack_time_bounds_and_first_equal_event():
+    events = [
+        dict(event='hierarchy_resistance_key', bar_index=4, trend_level=3, key=dict(index=3, value=12)),
+        dict(event='hierarchy_resistance_key', bar_index=4, trend_level=2, key=dict(index=2, value=12)),
+        dict(event='hierarchy_resistance_key', bar_index=6, trend_level=2, key=dict(index=4, value=18)),
+        dict(event='hierarchy_resistance_key', bar_index=1, trend_level=2, key=dict(index=0, value=30)),
+        dict(event='unrelated_audit', bar_index=1, key=dict(index=1, value=100)),
+    ]
+    index = MultilevelResistanceIndex(events)
+    chosen = index.select(origin=0, attack=6)
+    assert chosen is not None and (chosen.index, chosen.trend_level) == (3, 3)
+    assert index.select(origin=0, attack=4) is None
+    later = index.select(origin=0, attack=7)
+    assert later is not None and (later.index, later.value) == (4, 18)
+    assert index.select(origin=0, attack=6) == chosen
+
+
+def test_resistance_index_rebuilds_after_old_evidence_is_revised():
+    event = dict(event='hierarchy_resistance_key', bar_index=2, trend_level=2, key=dict(index=1, value=12))
+    before = MultilevelResistanceIndex([event]).select(origin=0, attack=3)
+    event['key'] = dict(index=1, value=15)
+    after = MultilevelResistanceIndex([event]).select(origin=0, attack=3)
+    assert before is not None and before.value == 12
+    assert after is not None and after.value == 15
 
 
 def test_xingwang_february13_dual_squeeze_is_causal_and_not_waiting_for_april():
@@ -76,6 +107,10 @@ def test_xingwang_february13_dual_squeeze_is_causal_and_not_waiting_for_april():
         **(whole_wave_profile({"scenarios": {"base": {"execution": {}}}})["strategy"] | {"volume_filter": False})
     )
     full = generate_system_signals(bars, config)
+    assert full.counts['long_signals'] == sum(signal.side == 'LONG' for signal in full.signals)
+    assert full.counts['exit_signals'] == sum(signal.side == 'EXIT' for signal in full.signals)
+    assert full.counts['entry_candidate_rejections'] == sum(
+        event['event'] in ('entry_rejected', 'entry_preflight_rejected') for event in full.audit)
     buy = next(s for s in full.signals if s.side == "LONG")
     assert str(buy.timestamp.date()) == "2019-02-13"
     assert str(buy.trigger_timestamp.date()) == "2019-02-11"
@@ -87,3 +122,4 @@ def test_xingwang_february13_dual_squeeze_is_causal_and_not_waiting_for_april():
         cutoff = next(i for i, b in enumerate(bars) if str(b.timestamp.date()) == day)
         prefix = generate_system_signals(bars[: cutoff + 1], config)
         assert prefix.signals == [s for s in full.signals if s.bar_index <= cutoff]
+        assert prefix.counts['long_signals'] == sum(signal.side == 'LONG' for signal in prefix.signals)

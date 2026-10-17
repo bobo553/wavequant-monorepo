@@ -9,6 +9,8 @@ import pytest
 
 import wavequant.domain.strategies.chart_entry_history as chart_module
 from wavequant.domain.market_structure.trend_staging import TrendStageRows
+from wavequant.domain.market_structure.trend_history_changes import TrendChangeRows
+from wavequant.domain.market_structure.trend_lifecycle import TrendLifecycle
 from wavequant.domain.market_structure.trend_lines import _TrendPermissionCache, attach_trend_permissions
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.backtest_analysis import BacktestAnalysis, prepare_backtest_analysis
@@ -231,3 +233,40 @@ def test_request_permission_cache_is_released_after_consumer_failure() -> None:
             pass
     assert owner is not None
     assert owner._strategy_permission_cache is None
+
+
+def test_consecutive_live_days_reuse_lifecycle_without_reading_or_decoding_the_journal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bars = _multiple_path_bars(count=8)
+    cache: dict[str, object] = {}
+    owner: MarketCalculations | None = None
+
+    def consume(_day: MarketDay, analysis: BacktestAnalysis) -> None:
+        nonlocal owner
+        owner = analysis.calculations
+        assert owner is not None
+        current = replace(analysis, buy_days=(True,) * len(analysis.bars))
+        expected = _typed(_read(current, None))
+        original_changes = TrendChangeRows.iter_changes
+
+        def forbid_checkpoint_read(history: TrendChangeRows[object], *, start_position: int = 0,
+                                   _borrow_readonly: bool = False) -> Iterator[tuple[int, object]]:
+            assert owner is not None
+            if history is owner._checkpoints:
+                raise AssertionError('consecutive live days must not decode lifecycle history')
+            return original_changes(history, start_position=start_position, _borrow_readonly=_borrow_readonly)
+
+        def forbid_checkpoint_restore(_value: object) -> TrendLifecycle:
+            raise AssertionError('live state must not be serialized and parsed again')
+
+        with monkeypatch.context() as live:
+            live.setattr(TrendChangeRows, 'iter_changes', forbid_checkpoint_read)
+            live.setattr(TrendLifecycle, 'from_checkpoint', forbid_checkpoint_restore)
+            assert _typed(_read(current, cache)) == expected
+        assert set(owner._live_lifecycle_days) == set(range(max(0, len(analysis.bars) - 2), len(analysis.bars)))
+
+    with prepare_backtest_analysis(bars, _strategy(), on_day=consume):
+        pass
+    assert owner is not None
+    assert owner._live_lifecycle_days == {}

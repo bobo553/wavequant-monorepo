@@ -8,11 +8,12 @@
 """
 
 from collections import OrderedDict
+from bisect import bisect_left, insort
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import copy, deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from gc import get_referents
 import json
 from math import isfinite
@@ -453,6 +454,7 @@ def _visible_source(
     points: Sequence[Mapping[str, object]], source_level: int, asof: Moment | None,
     *, _validated_turns: list[_SourceTurn] | None = None,
     _owned_source: bool = False,
+    _source_position_offset: int = 0, _validated_position_offset: int = 0,
 ) -> tuple[list[dict[str, object]], tuple[int, ...]]:
     """先建立可知来源前缀；类型校验不属于高低点趋势判断。
 
@@ -462,7 +464,7 @@ def _visible_source(
     不会令输出 source_position 指向别的来源。
     """
     working = _owned_mutable_points(points, _owned_source)
-    turns = _source_turns(working, source_level)
+    turns = _source_turns(working, source_level, _position_offset=_source_position_offset)
     cutoff = _moment_key(asof) if asof is not None else None
     visible: list[dict[str, object]] = []
     positions: list[int] = []
@@ -479,12 +481,85 @@ def _visible_source(
         if _validated_turns is not None:
             # 归并器消费可见子序列的局部位置；原输入位置由 positions 单独恢复。
             # 来源绑定本次 visible 的新顶层副本，不将原位置 provenance 混入状态。
-            position = len(visible) - 1
+            position = _validated_position_offset + len(visible) - 1
             reversal = ReversalPoint(turn.reversal.point, turn.index,
                                      f'level{source_level}_source_position_{position}')
             _validated_turns.append(_SourceTurn(point, position, turn.index, turn.ordinal, turn.kind,
                                                 turn.value, turn.time, turn.available_at, reversal))
     return visible, tuple(positions)
+
+
+@dataclass(frozen=True)
+class _SourceVersion:
+    token: object
+    parent: object | None
+    changed_from: int
+    source: list[dict[str, object]]
+    positions: tuple[int, ...]
+    turns: list[_SourceTurn]
+    certificates: tuple[bytes, ...]
+
+
+class _SourceVersionOwner:
+    """在可变来源入场处认证一次，向内部阶段交付版本及已认证的变化后缀。
+
+    上游目前交付完整快照，因此入场仍需比较各点证据；解析、结束证明及
+    状态认证只处理变化后缀。绝不把可变列表的 identity 或长度当版本证书。
+    """
+
+    def __init__(self, level: int, limit: int) -> None:
+        self.level, self.limit = level, limit
+        self.keys: tuple[bytes, ...] = ()
+        self.current: _SourceVersion | None = None
+
+    def prepare(self, source: Sequence[Mapping[str, object]]) -> _SourceVersion | None:
+        if type(source) not in (list, tuple):
+            self.keys, self.current = (), None
+            return None
+        signatures: list[bytes] = []
+        for point in source:
+            if type(point) is not dict:
+                self.keys, self.current = (), None
+                return None
+            signature = _geometry_signature(point)
+            if signature is None:
+                self.keys, self.current = (), None
+                return None
+            signatures.append(signature)
+        keys = tuple(signatures)
+        previous = self.current
+        changed = 0
+        while changed < min(len(keys), len(self.keys)) and keys[changed] == self.keys[changed]:
+            changed += 1
+        if previous is not None and changed == len(keys) == len(self.keys):
+            return previous
+        try:
+            # 仅变化点需要重新检查有限值；未知对象已在 exact-builtin 编码处拒绝。
+            json.dumps(source[changed:], allow_nan=False)
+        except (TypeError, ValueError):
+            self.keys, self.current = (), None
+            return None
+        boundary = max(0, bisect_left(previous.positions, changed) - 1) if previous is not None else 0
+        start = previous.positions[boundary] if previous is not None and previous.positions else 0
+        turns: list[_SourceTurn] = []
+        tail, positions = _visible_source(source[start:], self.level - 1, None, _validated_turns=turns,
+            _source_position_offset=start, _validated_position_offset=boundary)
+        certificates = tuple(_geometry_signature((position, point)) for position, point in zip(positions, tail))
+        if any(certificate is None for certificate in certificates):
+            self.keys, self.current = (), None
+            return None
+        version = _SourceVersion(object(), previous.token if previous is not None else None,
+            bisect_left(previous.positions, changed) if previous is not None else 0,
+            [*(previous.source[:boundary] if previous is not None else ()), *tail],
+            (*(previous.positions[:boundary] if previous is not None else ()), *positions),
+            [*(previous.turns[:boundary] if previous is not None else ()), *turns],
+            (*(previous.certificates[:boundary] if previous is not None else ()), *cast(tuple[bytes, ...], certificates)))
+        # 不保留版本链；容量不足时调用原公共校验，不截断历史。
+        if sum(getsizeof(key) for key in (*keys, *version.certificates)) * 4 > self.limit:
+            self.keys, self.current = (), None
+            return None
+        self.keys, self.current = keys, version
+        return version
 
 
 def _restore_source_positions(
@@ -573,6 +648,102 @@ def _canonical_points(candidates: Sequence[Mapping[str, object]]) -> list[dict[s
     return result
 
 
+@dataclass
+class _CandidateBucket:
+    ordinary: list[Mapping[str, object]] = field(default_factory=list)
+    events: list[Mapping[str, object]] = field(default_factory=list)
+    merged: dict[tuple[int, int, str, float], Mapping[str, object]] = field(default_factory=dict)
+    candidates: tuple[Mapping[str, object], ...] = ()
+    point: dict[str, object] | None = None
+
+
+class _JudgementLedger:
+    """按坐标追加候选账本；旧坐标补充结束证明时仅重整该桶及受影响几何后缀。"""
+
+    def __init__(self) -> None:
+        self.ordinary_count = 0
+        self.event_count = 0
+        self.buckets: dict[tuple[int, int], _CandidateBucket] = {}
+        self.orders: list[tuple[int, int]] = []
+        self.geometry: list[dict[str, object]] = []
+        self.geometry_orders: list[tuple[int, int]] = []
+        self.points: list[Mapping[str, object]] = []
+        self.counts: list[tuple[int, int]] = [(0, 0)]
+
+    def update(self, ordinary: _TrendReversalState, upgrade: _TrendUpgradeState,
+               events: list[dict[str, object]], positions: Sequence[int], *, initial: bool,
+               level: int) -> tuple[TrendJudgement, list[object]]:
+        dirty: set[tuple[int, int]] = set()
+        changed_objects: list[object] = []
+
+        def bucket(point: Mapping[str, object]) -> _CandidateBucket:
+            order = _order(point)
+            dirty.add(order)
+            if order not in self.buckets:
+                self.buckets[order] = _CandidateBucket()
+                insort(self.orders, order)
+                changed_objects.append(order)
+            return self.buckets[order]
+
+        for point in ordinary.selected[self.ordinary_count:]:
+            bucket(point).ordinary.append(point)
+        for point in events[self.event_count:]:
+            bucket(point).events.append(point)
+        for turn in (upgrade.merged.values() if initial else upgrade.updated_merged.values()):
+            point = turn.source
+            bucket(point).merged[turn.index, turn.ordinal, turn.kind, turn.value] = point
+        self.ordinary_count, self.event_count = len(ordinary.selected), len(events)
+        frozen_memo: dict[int, tuple[object, object]] = {}
+        for order in sorted(dirty):
+            entry = self.buckets[order]
+            upgraded = [*(entry.merged[key] for key in sorted(entry.merged)), *entry.events]
+            candidates = _restore_source_positions(_complete_candidates(entry.ordinary, upgraded), positions, level - 1)
+            entry.candidates = tuple(_frozen_point(point, frozen_memo) for point in candidates)
+            owned = _restore_source_positions(_complete_candidates((), upgraded), positions, level - 1)
+            canonical = _canonical_points(owned)
+            entry.point = canonical[0] if canonical else None
+            changed_objects.extend((entry, entry.candidates, entry.point))
+        if dirty:
+            # 新插入点可能拆开此前被同类极值合并的区间，须从前一已保留端点重放。
+            preceding = bisect_left(self.geometry_orders, min(dirty))
+            boundary = max(0, preceding - 1)
+            start = bisect_left(self.orders, self.geometry_orders[boundary]) if preceding else 0
+            self.geometry = self.geometry[:boundary]
+            self.points = self.points[:boundary]
+            self.counts = self.counts[:boundary + 1]
+            for order in self.orders[start:]:
+                point = self.buckets[order].point
+                if point is None:
+                    continue
+                if self.geometry and point['kind'] == self.geometry[-1]['kind']:
+                    sign = 1 if point['kind'] == 'H' else -1
+                    if sign * (cast(float, point['value']) - cast(float, self.geometry[-1]['value'])) > 0:
+                        self.geometry[-1] = point
+                    continue
+                if self.geometry:
+                    sign = 1 if point['kind'] == 'H' else -1
+                    if sign * (cast(float, point['value']) - cast(float, self.geometry[-1]['value'])) <= 0:
+                        raise ValueError('structural candidates require nonzero alternating high/low legs')
+                self.geometry.append(point)
+            # 起始端点也可能被后续同类极值替换，重新生成它及其后标签。
+            high, low = self.counts[-1]
+            for point in self.geometry[boundary:]:
+                high += point['kind'] == 'H'
+                low += point['kind'] == 'L'
+                count = (high, low)
+                self.counts.append(count)
+                changed_objects.append(count)
+                self.points.append(_frozen_point(dict(point, state='reversal',
+                    label=f"{point['kind']}{high if point['kind'] == 'H' else low}"), frozen_memo))
+            self.geometry_orders = self.geometry_orders[:boundary]
+            new_orders = [_order(point) for point in self.geometry[boundary:]]
+            self.geometry_orders.extend(new_orders)
+            changed_objects.extend(new_orders)
+            changed_objects.extend(self.points[boundary:])
+        return TrendJudgement(level, level - 1, tuple(self.points),
+            tuple(point for order in self.orders for point in self.buckets[order].candidates)), changed_objects
+
+
 def _copy_append_states(
     ordinary: _TrendReversalState, upgrade: _TrendUpgradeState, events: list[dict[str, object]],
 ) -> tuple[_TrendReversalState, _TrendUpgradeState, list[dict[str, object]]]:
@@ -636,10 +807,12 @@ class _TrendJudgementState:
         self.tail_restores = 0
         self.flip_restores = 0
         self._source_keys: tuple[bytes, ...] = ()
+        self._source_version: object | None = None
         self._regular_keys: tuple[bytes, ...] = ()
         self._ordinary: _TrendReversalState | None = None
         self._upgrade: _TrendUpgradeState | None = None
         self._events: list[dict[str, object]] = []
+        self._ledger: _JudgementLedger | None = None
         self._payload_upper_bytes = 0
         self.memory_used = 0
         self.peak_retained_bytes = 0
@@ -688,6 +861,8 @@ class _TrendJudgementState:
                 or certified[:len(saved[0])] != saved[0]):
             return False
         self._ordinary, self._upgrade, self._events = _copy_append_states(*saved[2:])
+        self._ledger = None
+        self._source_version = None
         self._source_keys, self._regular_keys = saved[:2]
         if flip:
             self._checkpoint = None
@@ -708,10 +883,12 @@ class _TrendJudgementState:
         self._checkpoint = None
         self._flip_checkpoint = None
         self._source_keys = ()
+        self._source_version = None
         self._regular_keys = ()
         self._ordinary = None
         self._upgrade = None
         self._events = []
+        self._ledger = None
         self._payload_upper_bytes = 0
         self.memory_used = 0
 
@@ -725,7 +902,8 @@ class _TrendJudgementState:
         seen: set[int] = set()
         size = 0
         state_types = (_TrendJudgementState, _TrendReversalState, _TrendUpgradeState,
-                       _PointRange, _SourceTurn, LinePoint, ReversalPoint)
+                       _PointRange, _SourceTurn, LinePoint, ReversalPoint,
+                       _JudgementLedger, _CandidateBucket)
         while pending:
             value = pending.pop()
             if id(value) in seen:
@@ -744,6 +922,9 @@ class _TrendJudgementState:
                 # 计数字段自身不能令计数结果变化；为所有计数器分别预留
                 # 64 位正整数的完整对象大小，覆盖受支持主机的地址空间。
                 size += len(diagnostics) * getsizeof(2 ** 64)
+            elif type(value) is _FrozenPoint:
+                # slots 快照没有 __dict__；证据与导出模板都属于预算。
+                pending.extend((value.data, value.json_template))
             elif type(value) in state_types:
                 pending.append(vars(value))
             elif type(value) is MappingProxyType:
@@ -760,6 +941,10 @@ class _TrendJudgementState:
         """可变索引只计当前容量，历史证据对象由冷计数或追加准入单独计费。"""
         containers: list[object] = [vars(self), self._source_keys, self._regular_keys]
         containers.extend(_append_state_containers(self._ordinary, self._upgrade, self._events))
+        if self._ledger is not None:
+            containers.extend((self._ledger, vars(self._ledger), *vars(self._ledger).values()))
+            for bucket in self._ledger.buckets.values():
+                containers.extend((bucket, vars(bucket), bucket.ordinary, bucket.events, bucket.merged))
         for checkpoint in (self._checkpoint, self._flip_checkpoint):
             if checkpoint is not None:
                 containers.extend((checkpoint, checkpoint[0], checkpoint[1]))
@@ -774,7 +959,7 @@ class _TrendJudgementState:
 
     def calculate(self, source: Sequence[Mapping[str, object]], positions: Sequence[int],
                   *, _validated_turns: list[_SourceTurn] | None = None,
-                  _certified_standard: bool = False) -> tuple[
+                  _certified_standard: bool = False, _source_revision: _SourceVersion | None = None) -> tuple[
         list[dict[str, object]], list[dict[str, object]], list[dict[str, object]],
     ]:
         if get_ident() != self._thread:
@@ -793,7 +978,8 @@ class _TrendJudgementState:
             except (TypeError, ValueError):
                 finite = False
         # 每次仍完整执行共同来源校验；价格位置、真实结束时钟与原位置都认证。
-        source_keys = tuple(_geometry_signature((position, point)) for position, point in zip(positions, source))
+        source_keys = (_source_revision.certificates if _source_revision is not None else
+                       tuple(_geometry_signature((position, point)) for position, point in zip(positions, source)))
         if not finite or any(key is None for key in source_keys):
             self.clear()
             ordinary = trend_reversals(source, trend_level=self.trend_level)
@@ -802,9 +988,12 @@ class _TrendJudgementState:
             return ordinary, merged, events
         certified = cast(tuple[bytes, ...], source_keys)
         turns = _validated_turns if _validated_turns is not None else _source_turns(source, self.trend_level - 1)
+        version_append = (_source_revision is not None and _source_revision.parent is self._source_version
+                          and self._source_version is not None
+                          and _source_revision.changed_from >= len(self._source_keys))
         appendable = (self._ordinary is not None and self._upgrade is not None
                       and len(certified) >= len(self._source_keys)
-                      and certified[:len(self._source_keys)] == self._source_keys)
+                      and (version_append or certified[:len(self._source_keys)] == self._source_keys))
         restored = False
         if not appendable and self._tail_reuse:
             restored = appendable = self._restore_tail(certified, flip=True)
@@ -820,25 +1009,28 @@ class _TrendJudgementState:
             previous_orders_count = len(self._upgrade.orders)
             previous_high_count, previous_low_count = len(self._ordinary.highs), len(self._ordinary.lows)
             previous_event_count = len(self._events)
-            # 强引用旧记录直至本次追加计数完成，避免替换后 id 重用隐藏新对象。
-            previous_merged = dict(self._upgrade.merged)
             appended = turns[len(self._ordinary.turns):]
             # 公共前驱映射的 key 不能被新来源覆盖；同 K ordinal 保留原规则。
             reversals = {turn.reversal for turn in appended}
             appendable = (len(reversals) == len(appended)
-                          and not any(turn.reversal in reversals for turn in self._ordinary.turns))
+                          and not any(reversal in self._ordinary._sources_by_reversal for reversal in reversals))
             if appendable:
-                ordinary = self._ordinary.extend(appended)
-                regular = _source_turns(ordinary, self.trend_level, retain_geometry=True, accept_direction_facts=True)
-                regular_keys = tuple(_geometry_signature(turn.source) for turn in regular)
-                appendable = (all(key is not None for key in regular_keys)
-                              and len(regular_keys) >= len(self._regular_keys)
-                              and regular_keys[:len(self._regular_keys)] == self._regular_keys
-                              and self._upgrade.append(appended, regular[len(self._regular_keys):]))
+                ordinary = self._ordinary.extend(appended, _snapshot=False)
+                # selected 是本实例只追加的私有账本，旧记录从不改写；来源修订
+                # 已由全文 source_keys 拒绝。仅复核最后一个旧点与新增尾部，
+                # 保留跨批次排序/时钟门禁以及原始候选位置。
+                boundary = max(0, previous_ordinary_count - 1)
+                regular_tail = _source_turns(ordinary[boundary:], self.trend_level,
+                    retain_geometry=True, accept_direction_facts=True, _position_offset=boundary)
+                regular = regular_tail[1:] if previous_ordinary_count else regular_tail
+                appended_keys = tuple(_geometry_signature(turn.source) for turn in regular)
+                regular_keys = (*self._regular_keys, *appended_keys)
+                appendable = (all(key is not None for key in appended_keys)
+                              and self._upgrade.append(appended, regular))
         if not appendable:
             self.clear()
             self._ordinary = _TrendReversalState(self.trend_level)
-            ordinary = self._ordinary.extend(turns)
+            ordinary = self._ordinary.extend(turns, _snapshot=False)
             regular = _source_turns(ordinary, self.trend_level, retain_geometry=True, accept_direction_facts=True)
             regular_keys = tuple(_geometry_signature(turn.source) for turn in regular)
             self._upgrade = _TrendUpgradeState(turns, regular, trend_level=self.trend_level, event_sink=self._events)
@@ -864,15 +1056,13 @@ class _TrendJudgementState:
                 *new_orders, *(upgrade.positions[order] for order in new_orders),
                 *(upgrade.source_positions[order] for order in new_orders),
                 upgrade.regular_cursor, upgrade.processed_count, upgrade.prefix_known, upgrade.owned_direction,
+                upgrade.last_fall_high_position, upgrade.last_rise_low_position,
                 self._ordinary.direction, self._ordinary.candidate, self._ordinary.prefix_known,
                 *(tree.size for tree in [*upgrade.keys_by_kind.values(), *upgrade.origins_by_kind.values()]),
             ]
-            for identity, event in upgrade.merged.items():
-                previous_event = previous_merged.get(identity)
-                if previous_event is not event:
-                    roots.append(event)
-                if identity not in previous_merged:
-                    roots.append(identity)
+            roots.extend(upgrade.updated_merged.values())
+            roots.extend(upgrade.updated_merged)
+            roots.extend(upgrade.new_merged_keys)
             # 新证据可引用旧子树，逐批重复计费形成保守上界；不持有逐日版本、
             # object-id memo 或已被替换的证据。可变顶层容器使用其当前真实容量。
             self._payload_upper_bytes += self._owned_value_bytes(roots)
@@ -896,7 +1086,33 @@ class _TrendJudgementState:
         else:
             self.memory_used = observed_bytes
             self.peak_retained_bytes = max(self.peak_retained_bytes, observed_bytes)
+            self._source_version = _source_revision.token if _source_revision is not None else None
         return ordinary, merged, events
+
+    def finalize(self, ordinary: Sequence[Mapping[str, object]], merged: Sequence[Mapping[str, object]],
+                 events: list[dict[str, object]], positions: Sequence[int]) -> TrendJudgement:
+        if self._ordinary is None or self._upgrade is None or get_ident() != self._thread:
+            return _finalize_judgement(ordinary, merged, events, positions, self.trend_level)
+        initial = self._ledger is None
+        if self._ledger is None:
+            self._ledger = _JudgementLedger()
+        result, changed = self._ledger.update(self._ordinary, self._upgrade, events, positions,
+                                              initial=initial, level=self.trend_level)
+        self._payload_upper_bytes += self._owned_value_bytes(changed)
+        # 账本含共享来源与可变桶；预留固定对象头余量，临近上限再精确校准。
+        observed = self._payload_upper_bytes + self._container_bytes() + 4096
+        if observed > self._limit:
+            self.deep_budget_walks += 1
+            observed = self._owned_bytes()
+            self._payload_upper_bytes = max(0, observed - self._container_bytes())
+        self.peak_observed_bytes = max(self.peak_observed_bytes, observed)
+        if observed > self._limit:
+            self.budget_rejections += 1
+            self.clear()
+        else:
+            self.memory_used = observed
+            self.peak_retained_bytes = max(self.peak_retained_bytes, observed)
+        return result
 
 
 def _finalize_judgement(
@@ -967,7 +1183,8 @@ def judge_trend(
                 raise ValueError('append state must belong to the judged trend level')
             ordinary, merged, upgrade_events = _append_state.calculate(source, positions,
                 _validated_turns=validated_turns, _certified_standard=_certified_standard)
-        return _finalize_judgement(ordinary, merged, upgrade_events, positions, trend_level)
+        return (_append_state.finalize(ordinary, merged, upgrade_events, positions) if _append_state is not None else
+                _finalize_judgement(ordinary, merged, upgrade_events, positions, trend_level))
     except Exception:
         # 来源、升级或冻结异常均不能留下半更新状态；原异常继续交给调用方。
         if _append_state is not None and get_ident() == _append_state._thread:

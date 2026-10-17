@@ -1,3 +1,27 @@
+2026-10-17 · MONOREPO-330 提交阶段代码复核与检查
+
+用户要求提交推送，并要求 CR 不改变功能逻辑。复核修复冻结点 slots 预算崩溃；账本新坐标、计数和几何顺序纳入上界，临界上限精确校准。修改旧故障注入测试以命中新 ledger.finalize，预算断言保守上界。定向测试先发现内存预算漏计并修复；随后新增/相关路径共 444 个通过，兴旺2019-02-13 首买测试和 MarketCalculations 旧六态替身测试失败，两者用分支原 HEAD 归档独立复现为既有失败。另 hierarchy/chart 17 项及6子用例通过。mypy src tests 报1211处/151文件错误，未通过；python -m build 构建 sdist 和 wheel 成功；git diff --check 无空白错误。基线失败未修复，不得宣称全量门禁通过；按规则不合并 main。仅可推送本次特性分支，main 本地比远端超前52提交，不代推其他任务提交。
+2026-10-17 · MONOREPO-330 回测冻结点预算崩溃修复（待提交验证）
+
+用户反馈300163状态查询重试。读取已有服务日志，发现回测反复在trend_judgement._owned_value_bytes调用vars(_FrozenPoint)时抛TypeError；该内部快照为slots对象，无__dict__。已显式遍历data及json_template并保留identity去重，不跳过证据预算。新增嵌套证据、模板和重复引用计数回归源码，未执行。前端提交与查询共用重试文案，提示本身不能证明是查询接口故障；此次修复已定位的计算崩溃，实际恢复仍待验证。未运行测试/检查/探针/回测，未手动重启、提交、合并或推送。
+2026-10-17 · MONOREPO-330 来源版本、增量结果和行情树（待提交验证）
+
+用户要求解释历史认证并继续优化三项。继续既有 C:/Users/zb/.codex/worktrees/three-level-trend/wavequant-monorepo / feat-三级趋势统一，保留先前所有改动。trend_judgement/trend_lines 新增 _SourceVersionOwner：入场比较完整可变快照后生成版本及变化边界，只重新解析变化尾部与前驱，内部state复用证书；上游尚无显式增删delta，入场签名比较及chart阶段门禁仍存在。_JudgementLedger 追加维护坐标桶、冻结候选和受影响几何后缀，旧点补证据、较早坐标插入、尾/翻向回退不可遗漏历史；回退重建，预算计入账本。integrated_strategy 的日线信号/决定/关闭窗口档案维护有序追加索引，活跃准备单独排序并稳定归并。
+
+trend_lifecycle/source_bear_exit/bull_alternation_confirmation 接入 _MarketRangeIndex，MarketCalculations复用权限缓存同一棵树，固定tuple行情可直接复用缓存；公开异行情或非精确价格继续扫描，严格当日截止与同值取早。新增 controlled_trend_versions / incremental_result_order / lifecycle_market_ranges 回归，仅编写未运行；实际提交时核对三层完整证据差分、同类隐藏点恢复、同坐标完成证明、版本修订/回退、市场边界及审计稳定顺序，再做完整实股性能。没有测试/类型/lint/格式/构建/运行探针或提交/合并/推送；330仍in-progress，1–2分钟未实测。完整快照入场、活跃准备、展示标注及输出物化尚有历史开销，不得交接为端到端O(D)。
+
+2026-10-17 · MONOREPO-330 每级最后有效关键位索引（待提交验证）
+
+继续 feat-三级趋势统一 / C:/Users/zb/.codex/worktrees/three-level-trend/wavequant-monorepo。用户明确保留末跌高／末升低之前的历史，各级只维护最后有效位置。trend_level_upgrades 每级每路径新增两个实际读取的索引；冻结整波关键位优先，未闭合普通H/L及迟知点不能提前更新，标记在当前攻击右侧时回退原查询。trend_levels 从H/L位置索引定位整波尾部。trend_lifecycle 缓存受控结构坐标索引，延伸/交替/特殊恢复只遍历必要区间，保留前驱及完整证据比对；乱序/重复和来源修订安全回退。没有删除历史来源、关键位树、审计或图表数据。
+
+新增 test_trend_active_key_indices.py、test_lifecycle_key_windows.py，仅编写未执行。后续提交阶段检查三层镜像、完整前缀与索引结果相等、迟知/修订、冻结key优先、边界前驱与检查点隔离，再验证完整同源国芳2130日与先锋窗口的结果及时间。未运行测试、类型、lint、格式、构建或探针，未提交/合并/推送；330保持in-progress，1–2分钟没有本轮实测结论。
+
+2026-10-17 · MONOREPO-330 国芳长回测重复计算优化（待提交验证）
+
+继续 feat-三级趋势统一 / C:/Users/zb/.codex/worktrees/three-level-trend/wavequant-monorepo。用户报告601086在1302/2130日约5分钟；本轮仅读写代码，未采样运行任务或重新发起回测。已修改共用趋势追加索引/排序、N候选按规则窗口分组配对、多级阻力及行情索引复用、实时当前/前日生命周期状态与事件后缀、未变空头结构候选和seen检查点编码复用。同日三层/六态/B-S/账户及24项产物编号保留；不以固定根数截断历史或增加级别专用业务规则。
+
+关键文件在core的 trend_judgement/trend_level_upgrades/trend_levels、integrated_strategy/multilevel_squeeze、market_calculations/chart_entry_history、trend_lifecycle/source_bear_exit；新增回归仅编写，静态交叉复核不能当运行验证。下一步按用户实际提交安排执行最小充分验证，重点三层每前缀完整证据相等、历史修订冷回退、洗盘窗口边界与同值顺序、当前/前日及分钟旧日恢复、未来知识到达和六态价格事件；再固定同源国芳2130日与先锋完整窗口对照信号、审计、资格、订单、成交、权益和计时。仍有完整输入认证、公开结果物化/审计整理、日志编码的历史成本，不能宣称严格线性或1–2分钟已达标。330保持唯一in-progress，保留既有失败；本轮未测试/构建/类型/lint/格式/探针/浏览器，未主动重启服务、提交、合并或推送。
+
 2026-10-17 · MONOREPO-330 按直接来源共享与资格窗口收紧计算（待提交验证）
 
 继续 feat-三级趋势统一。MarketCalculations 持有唯一市场趋势链，策略/账户通过共享历史适配读取，不再逐日另建一二三级。资格内部 N/轧空仅在对应级别真实空翻多后按需启用，已确认的授权证明复用；同一 N 在控制柱/轧空中共用，不生成交易一饱二吐。

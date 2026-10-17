@@ -24,6 +24,7 @@ from .lecture_trend import _annotate
 from .n_trend_reversals import n_target_reversals
 from .n_trend_confirmation import _NPermissionProofs, _reuse_n_permissions
 from .trend_judgement import TrendJudgement, _TrendJudgementState, _owned_mutable_points, judge_trend, mutable_points
+from .trend_judgement import _SourceVersionOwner
 from .trend_evidence_reuse import _geometry_signature
 from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
 from .trend_body_reversal import with_price_bodies
@@ -87,6 +88,8 @@ class _TrendJudgementCache:
         self._finite = _FiniteEvidenceCertificates()
         self._tail_reuse = tail_reuse
         self._state_memory_bytes = state_memory_bytes
+        self._source_owners: dict[tuple[int, str], _SourceVersionOwner] = {}
+        self._version_results: dict[tuple[int, str], tuple[object, TrendJudgement]] = {}
 
     def remember_source_flip(self, trend_level: int, path: str) -> None:
         """下级翻向首次可知时保存本级状态，不截断仍被关键位引用的前史。"""
@@ -97,6 +100,37 @@ class _TrendJudgementCache:
     def judge(self, source: Sequence[Mapping[str, object]], *, path: str, trend_level: int,
               asof: Moment | None = None, _owned_source: bool = False) -> TrendJudgement:
         _trend_level(trend_level)
+        if _owned_source and asof is None:
+            key = trend_level, path
+            owner = self._source_owners.get(key)
+            if owner is None:
+                owner = self._source_owners[key] = _SourceVersionOwner(trend_level, self._state_memory_bytes)
+            try:
+                version = owner.prepare(source)
+                if version is not None:
+                    previous_version = self._version_results.get(key)
+                    if previous_version is not None and previous_version[0] is version.token:
+                        return previous_version[1]
+                    state = self._states.get(key)
+                    if state is None:
+                        state = self._states[key] = _TrendJudgementState(trend_level,
+                            _tail_reuse=self._tail_reuse, memory_bytes=self._state_memory_bytes)
+                    ordinary, merged, events = state.calculate(version.source, version.positions,
+                        _validated_turns=version.turns, _certified_standard=True, _source_revision=version)
+                    result = state.finalize(ordinary, merged, events, version.positions)
+                    self._version_results[key] = version.token, result
+                    self._paths.pop(key, None)
+                    self._complete_cutoffs.pop(key, None)
+                    return result
+            except Exception:
+                self._source_owners.pop(key, None)
+                self._version_results.pop(key, None)
+                self._states.pop(key, None)
+                self._paths.pop(key, None)
+                self._complete_cutoffs.pop(key, None)
+                raise
+        self._source_owners.pop((trend_level, path), None)
+        self._version_results.pop((trend_level, path), None)
         # 原判断会物化全部来源；忽略点上的未知审计值也必须保留其旧复制行为。
         # 先认证整个容器，不能在未知 Mapping／state 上额外调用 get 或相等比较。
         key = trend_level, path
@@ -1068,7 +1102,8 @@ def prepare_trend_lines(
                 developing_strokes.append(cached_developing)
             continue
         # 历史阶段可移交其独立恢复的私有来源；其他调用保持公共深复制。
-        source = _owned_mutable_points(raw_source, _owned_source)
+        source = (raw_source if _owned_source and _judgement_cache is not None else
+                  _owned_mutable_points(raw_source, _owned_source))
         source_stroke: dict[str, object] = dict(id=path, points=source)
         source_strokes.append(source_stroke)
         if _owned_source:

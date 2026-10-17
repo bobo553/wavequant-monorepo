@@ -1,6 +1,7 @@
 """可按需调用的请求级折线、趋势线及六态计算，共享本次历史与事件缓存。"""
 
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from bisect import bisect_left
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
@@ -83,6 +84,7 @@ class MarketCalculations:
         self._strategy_permission_cache: '_TrendPermissionCache | None' = None
         self._shared_hierarchy: 'HierarchyHistoryStream | None' = None
         self._shared_permission_days: dict[int, tuple[dict[str, object], ...]] = {}
+        self._live_lifecycle_days: dict[int, TrendLifecycle] = {}
 
     def _require_open(self) -> None:
         if self._frames.closed:
@@ -95,6 +97,8 @@ class MarketCalculations:
         self._require_open()
         if self._strategy_permission_cache is None:
             self._strategy_permission_cache = _TrendPermissionCache(self._bars)
+        if type(bars) is tuple and bars is self._bars:
+            return self._strategy_permission_cache
         if self._strategy_permission_cache.covers(bars):
             return self._strategy_permission_cache
         return _TrendPermissionCache(bars)
@@ -150,6 +154,12 @@ class MarketCalculations:
         if self._shared_hierarchy is not None:
             self._shared_hierarchy.close()
         self._shared_permission_days.clear()
+        self._live_lifecycle_days.clear()
+
+    def _live_lifecycle_at(self, index: int) -> TrendLifecycle | None:
+        """借用当前/前日的只读状态；需要续算的消费者必须先 copy。"""
+        self._require_open()
+        return self._live_lifecycle_days.get(index) if self.reading_live_day else None
 
     @property
     def frames(self) -> ChartDrawingHistory:
@@ -213,7 +223,10 @@ class MarketCalculations:
             polyline=frame.raw if frame is not None else (),
             polyline_path=f'lecture-{frame.epoch}' if frame is not None else None,
             confirmation_policy=self.confirmation_policy, source_events=source_events,
-            _owned_structure=level > 0)
+            # 折线适配器也只替换版本，新点的观察在发布前完成；旧点不再改写。
+            _owned_structure=True,
+            _market_index=(self._permission_cache_for(self._bars)._market_index
+                           if type(self._bars) is tuple else None))
         self._daily_events[level] = events
         if level in self._eligibility:
             for event in events:
@@ -234,6 +247,12 @@ class MarketCalculations:
         day = MarketDay(frame, tuple(levels),
             tuple(event for level in (1, 2, 3) for event in self._daily_events.get(level, ())),
             (self._eligibility[1].active, self._eligibility[2].active, self._eligibility[3].active))
+        if self._on_day is not None:
+            self._live_lifecycle_days[frame.index] = TrendLifecycle.combine(
+                tuple(self._lifecycles[number] for number in (0, 1, 2, 3) if number in self._lifecycles))
+            for index in tuple(self._live_lifecycle_days):
+                if index < frame.index - 1:
+                    del self._live_lifecycle_days[index]
         if self._shared_hierarchy is not None:
             self._shared_hierarchy.advance_market_day(day, self._publish_shared_permissions(day))
         if self._on_day is not None:
@@ -244,7 +263,7 @@ class MarketCalculations:
         """借用本级确认过程已经生成的交易区间，不重算逐日资格。"""
         if type(level) is not int or level not in (1, 2, 3):
             raise ValueError('trading eligibility level must be 1, 2 or 3')
-        self._owned_lifecycle_events(level)
+        self._lifecycle_event_rows(level)
         return self._eligibility[level].intervals
 
     def _seal_lifecycle(self, level: int) -> None:
@@ -280,15 +299,27 @@ class MarketCalculations:
             frames.close()
         self._seal_lifecycle(level)
 
-    def _owned_lifecycle_events(self, level: CalculationLevel) -> tuple[dict[str, object], ...]:
-        """只借用已完成的内部事件，读取不会触发计算或扫描历史。"""
+    def _lifecycle_event_rows(self, level: CalculationLevel) -> Sequence[dict[str, object]]:
+        """内部只读账本；日期顺序与 advance 的连续行情时钟一致。"""
         self._require_full_history()
         number = normalize_calculation_level(level)
         if self.reading_live_day and number in self._pending_events:
-            return tuple(self._pending_events[number])
+            return self._pending_events[number]
         if number not in self._lifecycle_events:
             raise RuntimeError('calculate the requested trend before reading its lifecycle events')
         return self._lifecycle_events[number]
+
+    def _owned_lifecycle_events(self, level: CalculationLevel) -> tuple[dict[str, object], ...]:
+        """只借用已完成的内部事件，读取不会触发计算。"""
+        return tuple(self._lifecycle_event_rows(level))
+
+    def _lifecycle_events_since(self, level: CalculationLevel, index: int) -> tuple[dict[str, object], ...]:
+        """只取待续算日期的事件，避免每日复制和筛选整个历史账本。"""
+        if type(index) is not int or not 0 <= index <= len(self._bars):
+            raise ValueError('lifecycle event date must be within the market history')
+        rows = self._lifecycle_event_rows(level)
+        start = bisect_left(rows, index, key=lambda event: cast(int, event['bar_index']))
+        return tuple(rows[start:])
 
     def _lifecycle_rows(self, level: int) -> Iterator[tuple[int, dict[str, object]]]:
         if level == 0:

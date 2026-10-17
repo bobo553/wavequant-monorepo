@@ -10,10 +10,36 @@ from wavequant.domain.market_structure.trend_market_index import _MarketRangeInd
 from wavequant.domain.market_structure.trend_lines import _TrendJudgementCache
 from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
 from wavequant.domain.strategies.hierarchy_stream import HierarchyHistoryStream
+from wavequant.domain.strategies.chart_drawing_history import ChartDrawingFrame
+from wavequant.domain.strategies.market_calculations import MarketDay
 from tests.test_lecture_strategy import history
 
 
 class HierarchyStreamTests(unittest.TestCase):
+    def test_shared_history_reuses_unchanged_points_after_append_and_revision(self):
+        bars = history(18, 5)
+        stream = HierarchyHistoryStream(bars, shared=True)
+        first = dict(index=0, ordinal=0, kind='H', value=12., available_at=0)
+        second = dict(index=1, ordinal=0, kind='L', value=10., available_at=1)
+        revised = dict(second, value=9., available_at=2)
+        try:
+            for index, points in enumerate(([first], [first, second], [first, revised], [first, revised])):
+                prepared = tuple(dict(trend_level=level, source_level=level - 1,
+                    _path_market_end_indices={'source': None}, candidate_strokes=[]) for level in (1, 2, 3))
+                permissions = tuple(dict(qualified_strokes=[dict(source_path='source', points=deepcopy(points))])
+                                    for _ in (1, 2, 3))
+                frame = ChartDrawingFrame(index, 0, [], dict(strokes=[]))
+                stream.advance_market_day(MarketDay(frame, prepared, (), (False, False, False)), permissions)
+            for level in (1, 2, 3):
+                self.assertIs(stream.history[0][level][0], stream.history[1][level][0])
+                self.assertIs(stream.history[1][level][0], stream.history[2][level][0])
+                self.assertIsNot(stream.history[1][level][1], stream.history[2][level][1])
+                self.assertEqual(stream.history[1][level][1]['value'], 10.)
+                self.assertEqual(stream.history[2][level][1]['available_at'], 2)
+                self.assertIs(stream.history[2][level], stream.history[3][level])
+        finally:
+            stream.close()
+
     def test_every_daily_prefix_matches_batch_with_reconstructed_raw_objects(self):
         for enabled in (False, True):
             with self.subTest(n_enabled=enabled):

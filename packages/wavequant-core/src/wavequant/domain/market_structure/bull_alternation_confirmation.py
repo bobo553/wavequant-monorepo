@@ -19,6 +19,7 @@ from .alternation_duration import filter_duration_landmarks, short_shallow_pullb
 from .n_shape import BoxAnchorMode, MilestoneBasis, NSetup, PivotRef, observe_n
 from .price_action import Direction, ShadowPolicy, teaching_inside
 from .squeeze_alternation import squeeze_alternations
+from .trend_market_index import _MarketRangeIndex
 
 
 class ConfirmedTurn(Protocol):
@@ -61,7 +62,7 @@ def _reference(point: ConfirmedTurn, bars: Sequence[Bar]) -> dict[str, object]:
 
 def confirm_body_gap_alternation(
     bars: Sequence[Bar], now: int, *, origin: ConfirmedTurn, high: ConfirmedTurn,
-    polyline: Sequence[ConfirmedTurn],
+    polyline: Sequence[ConfirmedTurn], _market_index: _MarketRangeIndex | None = None,
 ) -> AlternationProof | None:
     """守低后的实体跳空放量中大阳，收盘突破回撤低点以来的已知阻力。"""
     if not 0 <= origin.index < high.index < now < len(bars) or max(origin.known, high.known) > now:
@@ -70,17 +71,26 @@ def confirm_body_gap_alternation(
     if (not medium_bullish_body(bar) or previous.volume <= 0 or bar.volume <= previous.volume
             or bar.open <= max(previous.open, previous.close)):
         return None
-    if min(item.low for item in bars[origin.index + 1:now + 1]) < origin.price:
+    market = (_market_index if _market_index is not None and bars is _market_index.bars
+              and _market_index.exact_prices else None)
+    broken = (market.first_extreme(origin.index + 1, now + 1, origin.price, high=False) is not None
+              if market is not None and market.supports_price(origin.price)
+              else min(item.low for item in bars[origin.index + 1:now + 1]) < origin.price)
+    if broken:
         return None
-    low_index = min(range(high.index + 1, now), key=lambda index: (bars[index].low, index), default=None)
+    low_index = (market.extreme_position(high.index + 1, now, high=False)
+                 if market is not None and high.index + 1 < now else
+                 min(range(high.index + 1, now), key=lambda index: (bars[index].low, index), default=None))
     low = next((point for point in polyline if point.kind == 'L' and point.index == low_index
                 and point.known <= now and point.price == bars[point.index].low), None)
     if low is None or not origin.price < low.price < high.price:
         return None
-    resistance = max(item.high for item in bars[low.index:now])
+    resistance = (bars[market.extreme_position(low.index, now, high=True)].high if market is not None
+                  else max(item.high for item in bars[low.index:now]))
     if bar.close <= resistance:
         return None
-    minimum_close = min(item.close for item in bars[high.index + 1:low.index + 1])
+    minimum_close = (bars[market.lowest_close_position(high.index + 1, low.index + 1)].close if market is not None
+                     else min(item.close for item in bars[high.index + 1:low.index + 1]))
     if (short_shallow_pullback(origin.price, high.price, minimum_close,
                               high.index - origin.index, low.index - high.index)
             and bar.close <= high.price):
@@ -104,6 +114,7 @@ def confirm_bull_alternation(
     broken: ConfirmedTurn, points: Sequence[ConfirmedTurn], polyline: Sequence[ConfirmedTurn],
     level: int, path: str, policy: AlternationPolicy = AlternationPolicy(), allow_gap_confirmation: bool = True,
     flip_confirmed_at: int | None = None,
+    _market_index: _MarketRangeIndex | None = None,
 ) -> AlternationProof | None:
     """守住已确认翻多起点，再以浅回撤、重突破、N轧空或跳空确认交替。"""
     if (type(level) is not int or level not in (0, 1, 2, 3) or not path
@@ -114,9 +125,13 @@ def confirm_bull_alternation(
         return None
     if any(point.known > now for point in (origin, high, broken, *points, *polyline)):
         raise ValueError('alternation confirmation requires causal points')
-    if min(bar.low for bar in bars[origin.index + 1:now + 1]) < origin.price:
+    market = _market_index if _market_index is not None and bars is _market_index.bars else None
+    broken_origin = (market.first_extreme(origin.index + 1, now + 1, origin.price, high=False) is not None
+                     if market is not None and market.supports_price(origin.price)
+                     else min(bar.low for bar in bars[origin.index + 1:now + 1]) < origin.price)
+    if broken_origin:
         return None
-    gap = (confirm_body_gap_alternation(bars, now, origin=origin, high=high, polyline=polyline)
+    gap = (confirm_body_gap_alternation(bars, now, origin=origin, high=high, polyline=polyline, _market_index=market)
            if allow_gap_confirmation else None)
     if gap is not None:
         return gap

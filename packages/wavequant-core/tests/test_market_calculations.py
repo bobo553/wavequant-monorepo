@@ -37,6 +37,24 @@ def test_market_lifecycle_closes_buy_permission_on_known_reversal_low_break():
         assert interval_days(windows, len(bars)) == (False, False, False, False, True, True, False)
 
 
+def test_lifecycle_event_suffix_preserves_same_day_events_without_visiting_old_history() -> None:
+    class OrderedEvents(list[dict[str, object]]):
+        def __iter__(self) -> Iterator[dict[str, object]]:
+            raise AssertionError('a suffix query must seek before iterating the dated event ledger')
+
+    with _calculation_case() as (calculations, _calls, bars):
+        calculations.calculate_polyline()
+        rows = [dict(bar_index=index, event=f'event-{index}-{sequence}')
+                for index in range(len(bars)) for sequence in range(20)]
+        calculations._pending_events[2] = OrderedEvents(rows)
+        calculations.reading_live_day = True
+        assert calculations._lifecycle_events_since(2, len(bars) - 1) == tuple(rows[-20:])
+        assert calculations._lifecycle_events_since(2, len(bars)) == ()
+        calculations.reading_live_day = False
+        calculations._lifecycle_events[2] = tuple(rows)
+        assert calculations._lifecycle_events_since(2, 0) == tuple(rows)
+
+
 def _case(*, up: bool = True) -> tuple[list[Bar], list[dict[str, object]]]:
     values = [(10, 11, 9, 10), (10, 11, 9.5, 10.5), (11, 13, 10, 12),
               (12, 12.5, 11, 12), (12, 13, 11.5, 12.5), (13.2, 14.5, 12, 14),

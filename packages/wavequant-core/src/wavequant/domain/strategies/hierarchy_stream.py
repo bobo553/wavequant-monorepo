@@ -197,10 +197,20 @@ class HierarchyHistoryStream:
                 points.append(dict(index=origin, ordinal=point.get('ordinal', 0), kind=point['kind'],
                     value=point['value'], available_at=known, available_index=known))
             frozen = self._freeze(points, number, index)
-            projected = tuple(dict(index=point['index'], ordinal=point['ordinal'], kind=point['kind'],
-                value=point['value'], available_at=point['available_at']) for point in frozen)
             previous = self.history.get(self.index, {}).get(number)
-            levels[number] = previous if previous == projected else projected
+            projected: list[dict[str, object]] = []
+            unchanged = previous is not None and len(previous) == len(frozen)
+            for position, point in enumerate(frozen):
+                prior = previous[position] if previous is not None and position < len(previous) else None
+                # 日期历史内部只读；尾点变化不应重新分配已发布的轻量前缀。
+                if prior is not None and all(prior[field] == point[field]
+                        for field in ('index', 'ordinal', 'kind', 'value', 'available_at')):
+                    projected.append(prior)
+                else:
+                    unchanged = False
+                    projected.append(dict(index=point['index'], ordinal=point['ordinal'], kind=point['kind'],
+                        value=point['value'], available_at=point['available_at']))
+            levels[number] = previous if unchanged and previous is not None else tuple(projected)
         candidates: list[Mapping[str, object]] = []
         for point in self._active_points(day.levels[0], day.levels[0], 'candidate_strokes', index):
             known = self._known_index(point.get('available_at'))
