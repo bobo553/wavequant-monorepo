@@ -1,3 +1,15 @@
+2026-10-17 · MONOREPO-330 假突破规则提交验证
+
+用户要求提交并推送当前 feat-三级趋势统一。本轮 pytest 执行 test_failed_breakout_exit、test_source_bear_structure_exit、test_source_bear_exit、test_trend_lifecycle、test_trading_intervals、test_trend_body_reversal、test_lifecycle_market_ranges、test_lifecycle_key_windows：217通过、1失败（48.91秒）。新增规则及截至9月9日/11月30日真实因果前缀均确认先锋资格结束2020-09-09；原11月26日破前低规则仍保留。失败 test_no_selected_interval_skips_policy_scan 的旧调用次数断言在HEAD 2464998独立归档src/tests中复现相同失败，未放宽断言或修改无关业务。
+
+定向mypy四个变更源码模块报告13处错误，HEAD 2464998同配置检查原有三个模块复现同样13处既有错误；新增模块未报告错误，整体类型门禁未通过。python -m build --no-isolation成功生成sdist/wheel；git diff --check无错误；feature_list.json有效且唯一in-progress为330。具体命令及证据写入feature_list.json。既有失败不在本轮功能范围，后续另行修复；不合并main。无浏览器/E2E或服务重启，构建及基线归档产物保持忽略。下方“待提交验证”文字为开发时历史记录，本段是本轮实际验证结果。
+
+2026-10-17 · MONOREPO-330 假突破资格结束新增规则（待提交验证）
+
+继续 feat-三级趋势统一 及当前专属 worktree。保留11月26日破前低策略，新增正式多翻空后短暂突破放量阴线收回原高点收盘的资格退出。用户最终口径：巨量为首次突破前20根均量至少2倍；实体跌幅(开盘−收盘)/开盘至少3%；连续3根收盘严格高于末升高点K线收盘价即站稳，不再触发此假突破规则。不是以最高价计站稳，也不是超过3根。先锋目标结束日2020-09-09，末升收盘5.48、当日收盘5.18，不可借9月10日低点或后续整波证明。原破前低事实继续独立产生，资格按先满足者结束。
+
+关键文件：Core market_structure/failed_breakout_exit.py（共用种子、逐日状态、量价证明校验），trend_lifecycle.py（缓存/复制/合并/检查点/来源失效），source_bear_exit.py（直接来源资格路由），strategies/chart_entry_history.py（历史缓存版本），tests/test_failed_breakout_exit.py、test_source_bear_structure_exit.py。生命周期v23/历史v142隔离旧结果。新增边界与真实前缀用例仅编写，未执行开发检查、测试、构建、浏览器或运行探针；未提交、合并、推送或手动重启。下一步仅在用户安排实际提交时做最小充分验证，尤其真实2018起截至9月9日前缀的资格、现存11月26日规则和检查点恢复；不能用下方旧验证记录宣称本轮通过。MONOREPO-330仍in-progress。
+
 2026-10-17 · MONOREPO-330 提交阶段代码复核与检查
 
 用户要求提交推送，并要求 CR 不改变功能逻辑。复核修复冻结点 slots 预算崩溃；账本新坐标、计数和几何顺序纳入上界，临界上限精确校准。修改旧故障注入测试以命中新 ledger.finalize，预算断言保守上界。定向测试先发现内存预算漏计并修复；随后新增/相关路径共 444 个通过，兴旺2019-02-13 首买测试和 MarketCalculations 旧六态替身测试失败，两者用分支原 HEAD 归档独立复现为既有失败。另 hierarchy/chart 17 项及6子用例通过。mypy src tests 报1211处/151文件错误，未通过；python -m build 构建 sdist 和 wheel 成功；git diff --check 无空白错误。基线失败未修复，不得宣称全量门禁通过；按规则不合并 main。仅可推送本次特性分支，main 本地比远端超前52提交，不代推其他任务提交。

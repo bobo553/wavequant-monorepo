@@ -16,6 +16,7 @@ from wavequant.domain.market_structure.source_bear_exit import (
     bearish_structure_breaks, confirmed_source_bear, source_bearish_exits,
 )
 from wavequant.domain.market_structure.trend_lifecycle import TrendLifecycle
+from wavequant.domain.market_structure.failed_breakout_exit import FAILED_BREAKOUT_EVENT
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.market_calculations import market_calculations
 from wavequant.domain.strategies.trading_intervals import TradingEligibility, confirmed_trading_intervals
@@ -113,7 +114,9 @@ def test_checkpoint_and_separate_level_replay_preserve_single_exit():
             combined = TrendLifecycle.from_checkpoint(combined.checkpoint())
             child = TrendLifecycle.from_checkpoint(child.copy().checkpoint())
             owner = TrendLifecycle.from_checkpoint(owner.checkpoint())
-    assert [event['bar_index'] for event in all_exits] == [now]
+    assert [event['bar_index'] for event in all_exits] == [dates['2020-09-09'], now]
+    assert [event['source_confirmation']['event'] for event in all_exits] == [
+        FAILED_BREAKOUT_EVENT, STRUCTURE_BEAR_EVENT]
 
 
 @pytest.mark.parametrize('level', [1, 2, 3])
@@ -163,20 +166,22 @@ def test_owned_candidate_rebuilds_for_revised_or_late_completion_and_checkpoint(
     assert not any(event['event'] == STRUCTURE_BEAR_EVENT and event['bar_index'] == now for event in observed)
 
 
-def test_xianfeng_actual_causal_prefix_ends_level_two_on_november_26():
+@pytest.mark.parametrize('through', ['2020-09-09', '2020-11-30'])
+def test_xianfeng_actual_causal_prefix_uses_earliest_exit_without_future_low(through):
     bars, _ = sample()
     dates = {bar.timestamp.date().isoformat(): i for i, bar in enumerate(bars)}
+    bars = bars[:dates[through] + 1]
     with market_calculations(bars) as calculations:
         calculations.calculate_trend_line(2)
         windows = calculations.trading_intervals(2)
         window = next(row for row in windows if row.start_low_index == dates['2020-04-28'])
-        assert window.end_index == dates['2020-11-26']
+        assert window.end_index == dates['2020-09-09']
         assert window.end_reason == SOURCE_BEAR_EXIT
-        assert (window.end_key_index, window.end_key_price) == (dates['2020-09-10'], 4.29)
+        assert (window.end_key_index, window.end_key_price) == (dates['2020-08-11'], 5.48)
         events = calculations.history_events(2)
         assert confirmed_trading_intervals(events, len(bars), 2) == windows
         exit_event = next(row for row in events if row['event'] == SOURCE_BEAR_EVENT
-                          and row['bar_index'] == dates['2020-11-26'])
+                          and row['bar_index'] == dates['2020-09-09'])
         assert exit_event['buy_eligible'] is False
         proof = exit_event['source_confirmation']
-        assert isinstance(proof, Mapping) and proof['event'] == STRUCTURE_BEAR_EVENT
+        assert isinstance(proof, Mapping) and proof['event'] == FAILED_BREAKOUT_EVENT

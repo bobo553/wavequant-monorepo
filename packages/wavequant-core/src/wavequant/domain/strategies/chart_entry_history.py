@@ -40,7 +40,7 @@ from .market_calculations import MarketCalculations, MarketDay
 
 
 # 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "shared_daily_qualified_trade_windows_v141"
+_CONFIRMATION_CACHE_VERSION = "source_failed_breakout_close_rejection_v142"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:

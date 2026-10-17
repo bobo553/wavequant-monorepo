@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from ..models.model import Bar
 from .trend_market_index import _MarketRangeIndex
+from .failed_breakout_exit import FAILED_BREAKOUT_EVENT, confirmed_failed_breakout
 
 if TYPE_CHECKING:
     from .trend_lifecycle import _Fact, _Pivot
@@ -141,6 +142,8 @@ def bearish_structure_breaks(
 
 def confirmed_source_bear(event: Mapping[str, object], now: int) -> bool:
     """接受完整六态确认或已翻空的后续下降破位，拒绝候选及未来证据。"""
+    if event.get('event') == FAILED_BREAKOUT_EVENT:
+        return confirmed_failed_breakout(event, now)
     if event.get('event') == STRUCTURE_BEAR_EVENT:
         return _confirmed_structure_break(event, now)
     if (event.get('event') != 'trend_lifecycle_state' or event.get('state') != '转空确认'

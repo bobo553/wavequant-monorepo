@@ -16,12 +16,13 @@ from ..models.model import Bar
 from .bull_alternation_confirmation import AlternationPolicy, confirm_bull_alternation
 from .confirmation_gap import confirmation_gap
 from .trend_market_index import _MarketRangeIndex
+from .failed_breakout_exit import FailedBreakoutState, prepare_failed_breakout, STABLE_CLOSE_SESSIONS
 from .source_bear_exit import (
     SOURCE_BEAR_EVENT, _BearStructureCandidate, _prepare_bearish_structure, source_bearish_exits,
 )
 
 
-LIFECYCLE_VERSION = 'six_state_demand_gated_confirmation_v22'
+LIFECYCLE_VERSION = 'six_state_failed_breakout_close_rejection_v23'
 
 
 class LifecycleState(StrEnum):
@@ -92,6 +93,7 @@ class _StructureFacts:
     point_set: frozenset[_Pivot]
     next_known: int | None
     bear_candidate: _BearStructureCandidate | None
+    failed_breakout_seed: _Fact | None
 
 
 def _point_orders(points: tuple[_Pivot, ...]) -> tuple[tuple[int, int], ...] | None:
@@ -306,6 +308,7 @@ class TrendLifecycle:
         self._polyline_known: dict[tuple[int, str], dict[tuple[int, int, str, float], int]] = {}
         self._last_index = -1
         self._bear_breaks: dict[tuple[int, str], frozenset[tuple[int, int, int]]] = {}
+        self._failed_breakouts: dict[tuple[int, str], FailedBreakoutState] = {}
         self._structure_facts: dict[tuple[int, str], _StructureFacts] = {}
         self._checkpoint_seen: dict[
             tuple[int, str], tuple[frozenset[_Fact], tuple[tuple[object, ...], ...]]
@@ -332,6 +335,7 @@ class TrendLifecycle:
         other._polyline_known = {key: values.copy() for key, values in self._polyline_known.items()}
         other._last_index = self._last_index
         other._bear_breaks = dict(self._bear_breaks)
+        other._failed_breakouts = dict(self._failed_breakouts)
         return other
 
     @classmethod
@@ -348,7 +352,7 @@ class TrendLifecycle:
         occupied: set[tuple[int, str]] = set()
         for state in states:
             keys = (state._cycles.keys() | state._seen.keys() | state._bull_recovery.keys()
-                    | state._polyline_known.keys() | state._bear_breaks.keys())
+                    | state._polyline_known.keys() | state._bear_breaks.keys() | state._failed_breakouts.keys())
             if state._last_index != combined._last_index or occupied.intersection(keys):
                 raise ValueError('lifecycle snapshots require the same date and disjoint paths')
             occupied.update(keys)
@@ -357,6 +361,7 @@ class TrendLifecycle:
             combined._bull_recovery.update(state._bull_recovery)
             combined._polyline_known.update({key: values.copy() for key, values in state._polyline_known.items()})
             combined._bear_breaks.update(state._bear_breaks)
+            combined._failed_breakouts.update(state._failed_breakouts)
         return combined
 
     def checkpoint(self) -> tuple[object, ...]:
@@ -385,8 +390,11 @@ class TrendLifecycle:
             recovery = self._bull_recovery.get(key)
             pending = (fact(recovery.seed), recovery.breach, recovery.consecutive_lower_lows, recovery.recovered) if recovery else None
             source_clocks = tuple((*point, known) for point, known in sorted(self._polyline_known.get(key, {}).items()))
+            failed = self._failed_breakouts.get(key)
+            saved_failed = (fact(failed.seed), failed.last, failed.attack, failed.volume_mean,
+                            failed.consecutive, failed.longest, failed.finished) if failed else None
             rows.append((key, saved_seen, saved, pending,
-                         source_clocks, tuple(sorted(self._bear_breaks.get(key, ())))))
+                         source_clocks, tuple(sorted(self._bear_breaks.get(key, ()))), saved_failed))
         return LIFECYCLE_VERSION, self._last_index, tuple(rows)
 
     @classmethod
@@ -430,7 +438,7 @@ class TrendLifecycle:
         restored = cls()
         restored._last_index = last
         for row in rows:
-            identity, seen, raw, pending, source_clocks, bear_breaks = sequence(row, 6)
+            identity, seen, raw, pending, source_clocks, bear_breaks, saved_failed = sequence(row, 7)
             level, path = sequence(identity, 2)
             if type(level) is not int or level not in (0, 1, 2, 3) or not isinstance(path, str):
                 raise ValueError('invalid lifecycle checkpoint path')
@@ -446,6 +454,21 @@ class TrendLifecycle:
                     raise ValueError('invalid bearish structure break order')
                 breaks.append(entry)
             restored._bear_breaks[key] = frozenset(breaks)
+            if saved_failed is not None:
+                seed, observed, attack, mean, consecutive, longest, finished = sequence(saved_failed, 7)
+                parsed_seed = next(iter(facts((seed,))))
+                observed_index = integer(observed)
+                attack_index = integer(attack) if attack is not None else None
+                if (parsed_seed.title != '翻多为空' or parsed_seed.origin is None or parsed_seed.broken is None
+                        or not parsed_seed.origin.index < parsed_seed.point.index <= parsed_seed.known <= observed_index
+                        or (attack_index is not None and not parsed_seed.known < attack_index <= observed_index)
+                        or type(mean) not in (float, int) or not isfinite(cast(float, mean)) or cast(float, mean) < 0
+                        or type(consecutive) is not int or type(longest) is not int
+                        or not 0 <= consecutive <= longest <= STABLE_CLOSE_SESSIONS or type(finished) is not bool
+                        or (longest == STABLE_CLOSE_SESSIONS and not finished)):
+                    raise ValueError('invalid failed breakout checkpoint')
+                restored._failed_breakouts[key] = FailedBreakoutState(parsed_seed, observed_index, attack_index,
+                    float(cast(float, mean)), consecutive, longest, finished)
             if not isinstance(source_clocks, tuple):
                 raise ValueError('invalid polyline confirmation clocks')
             clocks = {}
@@ -542,6 +565,7 @@ class TrendLifecycle:
                     point_orders = cached.point_orders
                     fact_set, parsed_set = cached.fact_set, cached.point_set
                     bear_candidate = cached.bear_candidate
+                    failed_seed = cached.failed_breakout_seed
                 else:
                     facts = _facts(stroke.get('points'), dates, now)
                     parsed_points = tuple(point for raw in _records(stroke.get('points'))
@@ -549,11 +573,13 @@ class TrendLifecycle:
                     point_orders = _point_orders(parsed_points)
                     fact_set, parsed_set = frozenset(facts), frozenset(parsed_points)
                     bear_candidate = _prepare_bearish_structure(stroke, now, dates, facts=facts)
+                    failed_seed = prepare_failed_breakout(facts, parsed_points)
                     if _owned_structure:
                         standard, next_known = _next_structure_clock(stroke.get('points'), dates, now)
                         if standard:
                             self._structure_facts[key] = _StructureFacts(
-                                stroke, facts, parsed_points, point_orders, fact_set, parsed_set, next_known, bear_candidate)
+                                stroke, facts, parsed_points, point_orders, fact_set, parsed_set, next_known,
+                                bear_candidate, failed_seed)
                         else:
                             self._structure_facts.pop(key, None)
                 seen = self._seen.get(key, frozenset())
@@ -611,6 +637,16 @@ class TrendLifecycle:
                 self._advance_bull_alternation(key, points, bars, now, events, source_points,
                                                confirmation_policy, point_orders, market_index)
                 self._price(key, bars, now, events)
+                failed_state = self._failed_breakouts.get(key)
+                if failed_seed is None:
+                    self._failed_breakouts.pop(key, None)
+                else:
+                    if failed_state is None or failed_state.seed != failed_seed:
+                        failed_state = FailedBreakoutState(failed_seed, failed_seed.known)
+                    failed_state, failed_event = failed_state.advance(bars, now, number, path)
+                    self._failed_breakouts[key] = failed_state
+                    if failed_event is not None:
+                        events.append(failed_event)
                 for event in (bear_candidate.observe(number, bars, now, dates, _market_index=market_index)
                               if bear_candidate is not None else ()):
                     identity = tuple(cast(int, event[field]) for field in
@@ -642,6 +678,7 @@ class TrendLifecycle:
         self._bull_recovery = {key: state for key, state in self._bull_recovery.items() if key in present}
         self._polyline_known = {key: clocks for key, clocks in self._polyline_known.items() if key in present}
         self._bear_breaks = {key: breaks for key, breaks in self._bear_breaks.items() if key in present}
+        self._failed_breakouts = {key: state for key, state in self._failed_breakouts.items() if key in present}
         self._structure_facts = {key: facts for key, facts in self._structure_facts.items() if key in present}
         self._checkpoint_seen = {key: facts for key, facts in self._checkpoint_seen.items() if key in present}
         # 单级联动借用当日下级事件；整层恢复使用同一次 advance 的下级结果。
