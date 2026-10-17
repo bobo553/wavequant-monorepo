@@ -1,3 +1,25 @@
+2026-10-18 · MONOREPO-330 升级豁免与回测修复提交验证
+
+2026-10-18用户要求提交并推送feat-三级趋势统一。本轮提交包含已升级波段的有限下级豁免、共同层级调度及华瓷严格闭合顺序异常修复。提交检查仅修正trend_cascade局部变量名复用、chart_entry_history可空结果类型标注和测试未使用导入，不改变业务判定或断言。Core .venv pytest tests/test_trend_level_upgrades.py tests/test_local_trend_definition.py tests/test_formal_key_attacks.py -q --tb=short -p no:cacheprovider：143 passed、6 failed（162.34秒）。隔离HEAD 7097c00同一strict_known_key_break用例仍为相同6失败，预期2026-01-14而实际2026-01-16，既有差异不顺带修改。11个变更模块mypy --follow-imports=silent --no-incremental初检20条错误，消除本次新增4条诊断后剩余16条；与隔离HEAD的9个原有模块错误正文逐项一致，新模块无剩余类型错误。python -m build --no-isolation成功；独立venv安装最终wheel及声明的Windows tzdata依赖后，-I导入新调度/趋势入口/历史版本冒烟成功。第一次--no-deps安装缺tzdata导致导入失败，补齐pyproject已声明依赖后恢复，不涉及项目依赖变更。git diff --check通过。证据主目录.codex-runtime/promotion-submit-{tests,tests-baseline,mypy-final,mypy-baseline,build-final,wheel-smoke}.txt。未执行浏览器/E2E或完整账户回测。按用户要求提交推送特性分支；既有测试与类型门禁失败，故不合并main，MONOREPO-330保留in-progress。
+
+2026-10-18 · MONOREPO-330 华瓷回测严格闭合顺序异常
+
+2026-10-18华瓷回测ValueError修复：日志定位到strict completion must retain key-origin-attack source order。在原有huaci_wave_continuation行情（2021-11-16至2026-09-21）启用ordinary_trend_completion后，以修复前advance逻辑内存对照复现同一异常；非法二级闭合证据将2023-07-31 key用于关闭2022-05-24 origin，attack为2024-01-24。共同_TrendUpgradeState对新增严格闭合同时要求key<origin<attack和原跨价条件；同向延伸保留原起点与正式攻击端点，但不补造顺序非法的起点闭合；反向缺失合法旧key时保留旧整波，不能用局部key替代。资格校验未放宽，不吞ValueError，不修改用户参数；历史缓存升为source_causal_strict_origin_order_v148。
+
+沿用用户此前明确授权的离线回放和定向回归。本轮新增三级、多空、日期/整数时钟及同向/反向24个边界用例，修复前全部复现相同异常；修复后Core .venv执行pytest tests/test_trend_level_upgrades.py tests/test_local_trend_definition.py tests/test_formal_key_attacks.py -q --tb=short：141 passed、6 failed（156.96秒）。6个失败均为既有test_strict_known_key_break_promotes_whole_wave_without_a_later_holding_turn，预期2026-01-14而实际2026-01-16，与既存huaci-baseline-tests.txt相同，保留原断言。新增实股普通完成开/关、直接与回测缓存资格对照：pytest tests/test_formal_key_attacks.py -q -k huaci_ordinary_completion --tb=short，2 passed（5.06秒）；修复前开选项复现原异常，修复后两种选项均完成资格发布。本轮包含华瓷二级破低/破高及前缀对照，没有据此宣称完整账户回测成功。修复后diagnose-huaci-failure.py --full --shared离线逐日回放完成1198根行情（2021-10-19至2026-09-21），绑定真实回测共享层级、闭合投影与资格缓存，未再抛异常；证据huaci-failure-full-after.txt，未执行账户交易及浏览器。证据在主目录.codex-runtime/{strict-order-before,strict-order-after,huaci-window-before,huaci-window-after,huaci-permission-regression}.txt。未运行浏览器/E2E、完整账户回测、类型、构建、格式或Git检查；未提交、合并、推送或手动重启服务。MONOREPO-330保持in-progress。
+
+2026-10-18 · MONOREPO-330 仅已升级波段豁免旧关键位
+
+2026-10-18用户进一步限定：只有末跌高→低点或末升低→高点实际由一级升二/三级、二级升三级后，下级后续独立两高两低才可豁免被升级段旧key；普通未升级趋势不得全局放宽。此规则覆盖上一条无升级证明即可独立确认的实现。新增trend_promotion_scope校验实际严格升级、目标层级、同源路径、真实起止坐标及可知日；_TrendUpgradeState只在升级段范围内允许local_definition，突破任一边界后旧证明不复活。结束证据保留higher_trend_promotion并再次校验；下级豁免元数据在生成上级新点时清除，不继承为上级许可。
+
+共用trend_cascade先取得真实升级证明，再以新增证明版本重新判断受影响层级；相同来源/证明版本本轮复用，收敛后才发布逐日六态/历史，原上级关键位保持独立。全层图表、市场数据/TDX/Akshare入口与逐日行情流接入共同调度。回归覆盖1→2、1→3、2→3及多空/时钟镜像、无升级不豁免、单边/相等不确认、异路径/发展点/未来证明拒绝、闭合证据不得删除升级依据；华瓷实股与前缀/缓存对照使用共同调度。历史缓存v147。
+
+本轮按开发规则仅阅读、编辑和编写回归，未执行测试、运行探针、类型、构建、格式或浏览器验证；没有实际日期、收敛性能或全套一致性验证结论，不能沿用前一提交的通过记录。提交阶段需验证新增test_local_trend_definition.py、test_formal_key_attacks.py及受影响缓存/阶段/六态回归，重点核对华瓷一级后续确认与二级旧高突破时间、路径回退和性能。未提交、推送或重启服务；MONOREPO-330保持in-progress，既有失败保留。
+
+2026-10-18 · MONOREPO-330 本级普通趋势独立确认
+
+2026-10-18用户明确补充：2024-01-24→2024-02-08升级二级后，后续一级高点抬高＋低点抬高即可确认上涨，直到突破二级末跌高才形成二级翻向。共用整波状态区分本级独立四点结构与旧关键位严格突破：已建立整波极值起向右的完整反向四点可以结束本级波，不再被极值左侧旧key锁住；四点跨旧波时维持原门禁。规则不依赖股票、日期或级别，不回传上级未来知识；直接下级来源与组合波拓扑仍校验，六态冻结key不由普通结构替换。新增local_definition_boundary证据并校验四点边界；历史缓存v146。本轮仅代码阅读、编辑和回归编写，实际华瓷日期、三级多空镜像、前缀/缓存及原严格突破回归待提交阶段验证；未运行测试、类型、构建或浏览器，未提交推送。
+
 2026-10-18 · MONOREPO-330 华瓷修复提交验证
 
 2026-10-18华瓷提交验证：用户要求提交并推送feat-三级趋势统一。移除本轮两处冗余cast后，Core .venv执行pytest tests/test_formal_key_attacks.py -q --tb=short -p no:cacheprovider：41 passed/29.67s。11个变更模块mypy --follow-imports=silent --no-incremental报告17处错误，与隔离HEAD 2e2cbf1同配置的错误正文逐项一致，无新增；既有扩展回归失败继续保留。python -m build --no-isolation成功，git diff --check通过。证据主目录.codex-runtime/huaci-submit-{tests,mypy,baseline-mypy,build}.txt。本轮未运行浏览器/E2E或完整账户回测；按用户要求提交推送特性分支，因既有门禁失败不合并main，330保持in-progress。

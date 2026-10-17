@@ -183,6 +183,34 @@ def _validate_completed_source_point(raw: Mapping[str, object]) -> dict[str, obj
         sign = 1 if after == 'up' else -1
         if sign * (cast(float, identity_endpoint.get('value', 0)) - cast(float, identity_origin.get('value', 0))) <= 0:
             raise ValueError('whole-wave identity requires a real opposite lower leg')
+        local_boundary = identity_proof.get('local_definition_boundary')
+        if local_boundary is not None:
+            if (not isinstance(local_boundary, Mapping) or wave_origin is None
+                    or any(local_boundary.get(field, 0) != identity_origin.get(field, 0)
+                           for field in ('index', 'ordinal', 'kind', 'value', 'time', 'available_at'))
+                    or not isinstance(definition, Sequence)
+                    or any(not isinstance(ref, Mapping) or _proof_order(ref) < _proof_order(identity_origin)
+                           for ref in definition)):
+                raise ValueError('local definition requires all four sources from its whole-wave extreme')
+            from .trend_promotion_scope import validate_promotion
+            promotion = identity_proof.get('higher_trend_promotion')
+            if not isinstance(promotion, Mapping):
+                raise ValueError('local definition requires higher-level promotion evidence')
+            promoted, released = validate_promotion(promotion, cast(int, raw['trend_level']))
+            if (_later_moment(released, completed_clock) != completed_clock
+                    or _proof_order(cast(Mapping[str, object], promoted['confirmed_by'])) > _proof_order(identity_origin)):
+                raise ValueError('local completion cannot precede its higher promotion')
+            promoted_origin = cast(Mapping[str, object], promoted['origin'])
+            promoted_end = cast(Mapping[str, object], promoted['confirmed_by'])
+            assert wave_origin is not None
+            within_wave = (_proof_order(wave_origin) == _proof_order(promoted_origin)
+                and _proof_order(identity_origin) == _proof_order(promoted_end)
+                or _proof_order(wave_origin) >= _proof_order(promoted_end))
+            floor = min(cast(float, promoted_origin['value']), cast(float, promoted_end['value']))
+            ceiling = max(cast(float, promoted_origin['value']), cast(float, promoted_end['value']))
+            if (promotion.get('_promotion_target_level') != raw['trend_level'] or not within_wave
+                    or any(not floor <= cast(float, ref['value']) <= ceiling for ref in references)):
+                raise ValueError('local completion must remain within its promoted wave scope')
         reversal_key = identity_proof.get('reversal_key')
         if reversal_key is not None:
             if not isinstance(reversal_key, Mapping):
@@ -518,7 +546,7 @@ def _strip_source_license(source: Mapping[str, object]) -> dict[str, object]:
         'wave_display_policy', 'confirmation_policy', 'n_target_trend_confirmation_enabled',
         'structural_confirmation_rule', 'definition_evidence', 'direction_definition', 'upgrade_evidence',
         'wave_completion_policy', 'wave_completed_at', 'wave_completion_evidence', 'source_geometry_available_at',
-        'wave_identity_state', 'lower_wave_identity_evidence', 'body_reversal_evidence',
+        'wave_identity_state', 'lower_wave_identity_evidence', 'body_reversal_evidence', '_higher_trend_promotions',
     ):
         result.pop(field, None)
     # 来源的确认链只用于说明这个下级点为何已存在，不能供本级 publisher 授权。

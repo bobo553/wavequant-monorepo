@@ -9,6 +9,7 @@
 from collections.abc import Callable, Mapping, Sequence
 from bisect import insort
 from copy import deepcopy
+from typing import cast
 
 from .trend_levels import (
     Moment, _SourceTurn, _candidate_from_source, _later_moment, _reference, _source_turns,
@@ -17,6 +18,7 @@ from .trend_levels import (
 
 from .trend_structure import StructuralTrend, classify_trend_prices, preceding_turn
 from .trend_body_reversal import BODY_REVERSAL_RULE, body_reference, rejects_wick_extension
+from .trend_promotion_scope import source_promotions, validate_promotion
 
 __all__ = ['promote_trend_key_breaks']
 
@@ -183,6 +185,7 @@ class _TrendUpgradeState:
             raise ValueError('ordinary_trend_completion_enabled must be a boolean')
         self.ordinary_trend_completion_enabled = ordinary_trend_completion_enabled
         self.turns = list(turns)
+        self.promotions = source_promotions(turns, trend_level)
         self.regular = list(regular)
         self.event_sink = event_sink
         self.merged: dict[tuple[int, int, str, float], _SourceTurn] = {}
@@ -245,6 +248,8 @@ class _TrendUpgradeState:
         if not self.turns and turns:
             self.numeric_clock = isinstance(turns[0].available_at, str) and turns[0].available_at.isdecimal()
         self.turns.extend(turns)
+        if any('_higher_trend_promotions' in point.source for point in turns):
+            self.promotions = source_promotions(self.turns, self.trend_level)
         for position, point in enumerate(turns, start):
             order = _order(point)
             self.positions[order] = len(self.orders)
@@ -301,6 +306,34 @@ class _TrendUpgradeState:
             else:
                 self.last_rise_low_position = position
         return key
+
+    def _released_promotion(self, origin: _SourceTurn | None, extreme: _SourceTurn,
+                            attack: _SourceTurn, known: Moment) -> Mapping[str, object] | None:
+        if origin is None:
+            return None
+        for record in reversed(self.promotions):
+            proof, released = validate_promotion(record, self.trend_level)
+            if not _known_by(released, known):
+                continue
+            start = cast(Mapping[str, object], proof['origin'])
+            end = cast(Mapping[str, object], proof['confirmed_by'])
+            start_order = cast(int, start['index']), cast(int, start.get('ordinal', 0))
+            end_order = cast(int, end['index']), cast(int, end.get('ordinal', 0))
+            if (_order(extreme) < end_order or not (
+                    _order(origin) == start_order and _order(extreme) == end_order
+                    or _order(origin) >= end_order)):
+                continue
+            # 越过已升级段的任一边界后，旧许可证不能在回撤时复活；新延伸
+            # 必须重新取得上级升级证明。区间树只含当时已处理的直接来源。
+            first, last = self.positions[end_order], self.positions[_order(attack)] + 1
+            high = self.origins_by_kind['H'].query(first, last)
+            low = self.origins_by_kind['L'].query(first, last)
+            ceiling = max(cast(float, start['value']), cast(float, end['value']))
+            floor = min(cast(float, start['value']), cast(float, end['value']))
+            if high is not None and high.value > ceiling or low is not None and low.value < floor:
+                continue
+            return record
+        return None
 
     def advance(self) -> list[dict[str, object]]:
         self.updated_merged = {}
@@ -423,10 +456,12 @@ class _TrendUpgradeState:
                         left, right = source_positions[_order(whole_extreme)], source_positions[_order(counter)]
                         opposite = preceding_sources[whole_extreme.reversal]
                         reversal_sign = 1 if current == 'up' else -1
-                        # 最近两高两低转强可能仍是末跌高下方的反弹（转弱同理）。
-                        # 默认整波结束必须有真实普通翻向，不能将局部方向账本直接
-                        # 发给上一级。关键位固定为整波极值之前的异类来源点，
-                        # 后来的较小反弹高／较高回调低不能降低翻向门槛。
+                        # 只有实际被上级严格升级接管的波段，才解除其下级旧key门槛。
+                        # 四点定义、拓扑、范围和可知时间仍独立满足；普通未升级波不豁免。
+                        proof = [*recent['H'], *recent['L']]
+                        promotion = self._released_promotion(whole_origin, whole_extreme, attack, prefix_known)
+                        local_definition = (promotion is not None
+                            and all(_order(point) >= _order(whole_extreme) for point in proof))
                         ordinary_reversal = (
                             opposite is not None
                             and _key_known_before_price(opposite, counter)
@@ -436,14 +471,16 @@ class _TrendUpgradeState:
                         # 组合波或严格破旧 key。零级折线只提供价格反转，不是待升格
                         # 的下级趋势线；否则第一条折线腿已是区间极值时，即便以后
                         # 多次出现严格LL/LH或HH/HL，一级也会被永远锁在旧方向。
-                        if ((ordinary_reversal or self.ordinary_trend_completion_enabled)
+                        if ((local_definition or ordinary_reversal or self.ordinary_trend_completion_enabled)
                                 and (source_level == 0 or right - left > 1)):
-                            proof = [*recent['H'], *recent['L']]
                             raw = _ordinary_point(whole_extreme, proof, attack, trend_level=trend_level,
                                 direction=owned_direction, current=current, prefix_known=prefix_known,
                                 key=_reference(opposite) if opposite is not None else None, owned=True)
                             identity_proof: dict[str, object] = dict(available_at=prefix_known,
                                 origin=_reference(whole_extreme), endpoint=_reference(counter))
+                            if local_definition:
+                                identity_proof['local_definition_boundary'] = _reference(whole_extreme)
+                                identity_proof['higher_trend_promotion'] = deepcopy(promotion)
                             if ordinary_reversal:
                                 assert opposite is not None
                                 identity_proof['reversal_key'] = _reference(opposite)
@@ -488,14 +525,18 @@ class _TrendUpgradeState:
             # 新反向整波必须从旧 key 另一侧起波；已经由真实反转建立的同向
             # 整波可能因跳空或多步抬高整体位于旧 key 以上／以下，此时再强求
             # 起波 cross 会丢掉合法极值延伸。方向已成立仍不等于端点已闭合。
-            if not continuing and sign * (key.value - origin.value) <= 0:
+            # 局部 key 可被既有同向波突破，但不能倒过来证明其左侧起点闭合。
+            # 反向新波需要真实的 key→origin→attack 顺序，缺失时保留旧整波。
+            closes_origin = (_order(key) < _order(origin) < _order(attack)
+                             and sign * (key.value - origin.value) > 0)
+            if not continuing and not closes_origin:
                 continue
             known = _later_moment(prefix_known, _later_moment(key.available_at, origin.available_at))
             # 同向只新增攻击端点几何；独立 origin 证明仍保留在审计账本，但
             # origin 固定为已有整波起点，绝不改取局部回调 L3/H3，也不重置 key
             # 知识。这样 ordinary14@18 与 laterstrict14@20 均保留，而 H2→L3
             # 的假反向线不会被制造。反向突破才发布整个旧波的真实极值 origin。
-            if continuing and event_sink is not None and sign * (key.value - origin.value) > 0:
+            if continuing and event_sink is not None and closes_origin:
                 event_sink.append(deepcopy(_promoted_point(origin, attack=attack, origin=origin, key=key,
                                                            trend_level=trend_level, known=known, endpoint=False)))
             promoted_points = ((attack, True),) if continuing else ((origin, False), (attack, True))
@@ -523,8 +564,10 @@ def promote_trend_key_breaks(
     ``source`` 只能来自完整结束的直接下级：一级消费折线，二级消费一级，
     三级消费二级；开放升级点和显示尾端由共同来源校验排除。``candidates`` 是
     共同定义的方向账本，只有取得 owned 身份的闭合点才可成为本级 key。
-    普通相反方向没有严格突破整波极值左侧的末跌高／末升低时，只保留方向
-    账本；局部 HH/HL 或 LL/LH 不能单独证明翻向。突破日必须晚于关键位可知日。
+    只有实际升级到更高级别的波段，才允许其下级在升级可知后凭独立
+    HH/HL 或 LL/LH 确认局部反向结构。未升级、异路径或越界后的旧证明
+    不豁免旧关键位；显式普通结束选项继续保持独立用户配置。
+    严格升级的突破日必须晚于关键位可知日。
     普通相反方向若整波退化为一条直接下级趋势波，保持 pending，不改变既有
     owned 方向、起点或极值。以后反向波包含真实内部下级拐点成为组合波，
     或严格突破旧本级 key，才在实际身份可知日关闭和切换本级整波。

@@ -10,9 +10,7 @@ import time
 from wavequant.infrastructure.market_data.tdx import RECORD, read_day
 from wavequant.domain.models.model import Bar
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
-from wavequant.domain.market_structure.lecture_trend import reversal_trends
-from wavequant.domain.market_structure.secondary_trend import secondary_trends
-from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
+from wavequant.domain.market_structure.trend_pipeline import calculate_trend_hierarchy
 from wavequant.infrastructure.market_data.data import fingerprint
 from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
 from wavequant.infrastructure.filesystem.project_paths import project_path
@@ -152,12 +150,10 @@ class TdxBrowser:
     @with_trend_options
     def _theory(self,symbol,asof,digest,n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None):
         bars=self.bars(symbol,asof); drawing=lecture_drawing(bars)
-        first=reversal_trends(drawing,bars,n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
-        second=secondary_trends(first,bars,n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        hierarchy=calculate_trend_hierarchy(bars,drawing=drawing,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         return dict(asof=asof,points=[],polyline_segments=[],events=[],shapes=[],counts={},
-                    lecture_drawing=drawing,reversal_trends=first,secondary_trends=second,
-                    tertiary_trends=tertiary_trends(second,bars,
-                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled),interrupted=False,
+                    **hierarchy,interrupted=False,
                     n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                     computed_from='tdx_raw_prefix_display_only',price_basis='raw_unadjusted')
 

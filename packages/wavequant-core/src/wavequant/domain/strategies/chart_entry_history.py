@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from .backtest_analysis import BacktestAnalysis
 
+from ..market_structure.trend_cascade import prepare_trend_cascade
 from ..market_structure.lecture_drawing import lecture_drawing
 from ..market_structure.secondary_trend import _bar_date
 from ..market_structure.trend_judgement import _frozen_point_scope
@@ -24,7 +25,6 @@ from ..market_structure.trend_lines import (
     attach_trend_permissions,
     high_low_points_from_strokes,
     polyline_high_low_points,
-    prepare_trend_lines,
 )
 from ..market_structure.trend_history_changes import PolylineSourceGate, TrendChangeRows
 from ..market_structure.trend_lifecycle import TrendLifecycle
@@ -42,7 +42,7 @@ from .market_calculations import MarketCalculations, MarketDay
 
 
 # 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "source_causal_formal_key_attacks_v145"
+_CONFIRMATION_CACHE_VERSION = "source_causal_strict_origin_order_v148"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -239,17 +239,21 @@ def _chart_calculation_scope(
                     if base is not base_previous:
                         source = high_low_points_from_strokes(base['strokes'], include_key_break_attacks=True)
                     base_previous = base
+                resolved: Sequence[dict[str, object] | None]
+                if source is not None:
+                    resolved = prepare_trend_cascade(source, symbol=symbol, bars=bars,
+                        first=first, last=level, caches=caches[first-1:level], closed_paths=paths[first-1:level])
+                else:
+                    resolved = [latest[number - 1] for number in range(first, level + 1)]
                 for number in range(first, level + 1):
                     offset, step = number - 1, 3 + (number - 1) * 7
-                    key = _geometry_signature(source) if source is not None else None
-                    changed = latest[offset] is None or source is not None and (
-                        key is None or key != source_keys[offset])
+                    result = resolved[number - first]
+                    if result is None:
+                        raise ValueError('a trend requires its initial source on the first date')
+                    key = _geometry_signature(result)
+                    changed = latest[offset] is None or key is None or key != source_keys[offset]
                     if changed:
                         checkpoint_changed = True
-                        if source is None:
-                            raise ValueError('a trend requires its initial source on the first date')
-                        result = prepare_trend_lines(source, trend_level=number, symbol=symbol, bars=bars,
-                            _judgement_cache=caches[offset], _closed_paths=paths[offset], _owned_source=True)
                         latest[offset] = result
                         source_keys[offset] = key
                         prepared[offset].write_change(frame.index - resume_start, paths[offset].encode(result))
@@ -272,7 +276,6 @@ def _chart_calculation_scope(
                         checkpoint_changed = checkpoint_changed or bool(events)
                         if steps is not None:
                             record_lifecycle(steps, events)
-                    source = high_low_points_from_strokes(current['strokes'], include_key_break_attacks=True) if changed and number < level else None
                 if checkpoint_changed and full_history and first == 1 and level == 3:
                     calculations._save_lifecycle_checkpoint(frame.index)
                 if full_history and first == 1 and level == 3:

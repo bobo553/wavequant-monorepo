@@ -292,3 +292,52 @@ def test_lower_level_publication_certificate_cannot_authorize_an_upper_leg(level
     published = publish_uptrends(candidates, source, bars, source_level=level - 1)
 
     assert confirmed_trend_legs(published) == []
+
+
+@pytest.mark.parametrize('level', [1, 2, 3])
+@pytest.mark.parametrize('mirror', [False, True])
+@pytest.mark.parametrize('integer_clock', [False, True])
+@pytest.mark.parametrize('continuing', [False, True])
+def test_later_key_cannot_reclose_an_earlier_whole_wave_origin(
+    level: int, mirror: bool, integer_clock: bool, continuing: bool,
+) -> None:
+    from wavequant.domain.market_structure.trend_level_upgrades import _TrendUpgradeState
+    from wavequant.domain.market_structure.trend_levels import (
+        _formal_key_attack_point, _source_turns, _validate_completed_source_point,
+    )
+
+    source = source_points([10, 20, 12, 30, 18, 40], level=level - 1, mirror=mirror)
+    if integer_clock:
+        for index, point in enumerate(source):
+            point['available_at'] = index + 1
+    turns = _source_turns(source, level - 1)
+    events = []
+    state = _TrendUpgradeState(turns, [], trend_level=level, event_sink=events, strict_only=True)
+    state.processed_count = len(turns) - 1
+    state.prefix_known = turns[-2].available_at
+    direction = 'down' if mirror else 'up'
+    state.owned_direction = direction if continuing else ('up' if mirror else 'down')
+    state.whole_origin = turns[0] if continuing else turns[1]
+    state.whole_extreme = turns[3] if continuing else turns[2]
+    # 同向突破可延伸原波；但晚于起点的局部 key 不能补造更早的反向闭合证明。
+    key_index = 1 if continuing else 3
+    key = _source_turns([dict(source[key_index], trend_level=level)], level)[0]
+    state.keys_by_kind[key.kind].update(state.positions[(key.index, key.ordinal)], key)
+
+    state.advance()
+
+    for event in events:
+        _validate_completed_source_point(event)
+        _formal_key_attack_point(event)
+    if continuing:
+        assert len(events) == 1
+        assert events[0]['index'] == 5
+        assert events[0]['upgrade_evidence']['role'] == 'endpoint'
+        assert events[0]['upgrade_evidence']['origin']['index'] == 0
+        assert 'wave_completed_at' not in events[0]
+        assert state.whole_origin == turns[0]
+        assert state.whole_extreme == turns[5]
+    else:
+        assert events == []
+        assert state.whole_origin == turns[1]
+        assert state.whole_extreme == turns[2]

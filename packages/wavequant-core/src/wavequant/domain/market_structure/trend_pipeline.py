@@ -5,9 +5,10 @@ from typing import TypedDict, cast
 
 from ..models.model import Bar
 from .lecture_drawing import lecture_drawing
+from .trend_cascade import prepare_trend_cascade
 from .trend_lines import (
     attach_trend_permissions, high_low_points_from_strokes,
-    polyline_high_low_points, prepare_trend_lines,
+    polyline_high_low_points,
 )
 
 
@@ -39,13 +40,7 @@ def calculate_trend_hierarchy(
     drawing_result = draw(bars) if drawing is None else drawing
     source = polyline_high_low_points(drawing_result)
     symbol = bars[0].symbol if bars else 'STRUCTURE'
-    prepared: dict[int, dict[str, object]] = {}
-    for level in (1, 2, 3):
-        current = prepare_trend_lines(source, trend_level=level, symbol=symbol, bars=bars)
-        prepared[level] = current
-        if level < 3:
-            # 只在确有下一级时投影已结束来源；三级完成后不创建不存在的四级输入。
-            source = high_low_points_from_strokes(current['strokes'], include_key_break_attacks=True)
+    prepared = dict(enumerate(prepare_trend_cascade(source, symbol=symbol, bars=bars), 1))
 
     results: dict[int, dict[str, object]] = {}
     qualified_source = None

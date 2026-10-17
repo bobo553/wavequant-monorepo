@@ -9,10 +9,11 @@ from pathlib import Path
 import pytest
 
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
+from wavequant.domain.market_structure.trend_cascade import prepare_trend_cascade
 from wavequant.domain.market_structure.trend_judgement import judge_trend
 from wavequant.domain.market_structure.trend_levels import completed_source_points, formal_key_attack_points
 from wavequant.domain.market_structure.trend_lines import (
-    _TrendJudgementCache, high_low_points_from_strokes, polyline_high_low_points, prepare_trend_lines,
+    _TrendJudgementCache, polyline_high_low_points,
 )
 from wavequant.domain.market_structure.trend_stage_work import _hierarchy_source
 from wavequant.domain.models.model import Bar
@@ -113,13 +114,8 @@ def huaci_bars(cutoff: str = '2024-04-30') -> list[Bar]:
 
 def hierarchy(bars: list[Bar], cache: _TrendJudgementCache | None = None) -> list[dict[str, object]]:
     source = polyline_high_low_points(lecture_drawing(bars))
-    levels = []
-    for level in (1, 2, 3):
-        result = prepare_trend_lines(source, trend_level=level, symbol='sz.001216', bars=bars,
-                                     _judgement_cache=cache, _owned_source=cache is not None)
-        levels.append(result)
-        source = high_low_points_from_strokes(result['strokes'], include_key_break_attacks=True)
-    return levels
+    return prepare_trend_cascade(source, symbol='sz.001216', bars=bars,
+                                 caches=[cache, cache, cache] if cache is not None else None)
 
 
 def points(result: dict[str, object]) -> list[dict[str, object]]:
@@ -134,7 +130,8 @@ def test_huaci_real_decline_breaks_2022_secondary_low_with_its_own_clock() -> No
     assert round(quotes['2024-02-08'].low, 2) == 10.19
     first, second, _ = hierarchy(bars)
     lower = next(point for point in points(first) if point['time'] == '2024-02-08')
-    assert 'wave_completed_at' not in lower
+    # 本级新四点结构可以先结束一级下降，不必等到2025年突破二级高点。
+    assert lower['wave_completed_at'] <= '2024-04-30'
     upper = points(second)
     start, end = upper[-2:]
     assert (start['time'], end['time']) == ('2024-01-24', '2024-02-08')
@@ -215,3 +212,24 @@ def test_huaci_reverse_break_and_bull_flip_run_through_daily_three_level_pipelin
         assert snapshots[cutoff]['strokes'] == cold['strokes']
     assert all(point['time'] != '2024-02-08' for point in points(snapshots['2024-02-08']))
     assert all(point['time'] != '2025-11-24' for point in points(snapshots['2025-11-24']))
+
+
+@pytest.mark.parametrize('ordinary', [False, True])
+def test_huaci_ordinary_completion_keeps_strict_qualification_evidence_valid(ordinary: bool) -> None:
+    from wavequant.domain.market_structure.trend_lines import attach_trend_permissions, _TrendPermissionCache
+    from wavequant.domain.market_structure.trend_options import ordinary_trend_completion
+
+    fixture = json.loads((Path(__file__).parent / 'fixtures/huaci_wave_continuation.json').read_text(encoding='utf-8'))
+    bars = tuple(Bar(datetime.fromisoformat(row[0]), 'sz.001216', *row[1:7]) for row in fixture['bars'])
+    # 固定行情窗口从2021-11-16开始；普通完成开启时，晚局部key曾倒填旧起点闭合。
+    with ordinary_trend_completion(ordinary):
+        source = polyline_high_low_points(lecture_drawing(bars))
+        levels = prepare_trend_cascade(source, symbol='sz.001216', bars=bars)
+        cache = _TrendPermissionCache(bars)
+        for level in levels:
+            direct = attach_trend_permissions(level, bars)
+            cached = attach_trend_permissions(level, bars, _permission_cache=cache, _owned_candidates=True)
+            assert cached == direct
+    second = points(levels[1])
+    assert any(point['time'] == '2024-02-08' for point in second)
+    assert any(point['time'] == '2025-11-24' for point in second)

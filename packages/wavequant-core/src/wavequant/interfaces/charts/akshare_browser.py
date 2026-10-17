@@ -15,9 +15,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
-from wavequant.domain.market_structure.lecture_trend import reversal_trends
-from wavequant.domain.market_structure.secondary_trend import secondary_trends
-from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
+from wavequant.domain.market_structure.trend_pipeline import calculate_trend_hierarchy
 from wavequant.domain.models.model import Bar
 from wavequant.infrastructure.market_data.akshare import AkShareProvider, AkShareUnavailable
 from wavequant.infrastructure.market_data.io import _validate_bar
@@ -379,10 +377,8 @@ class AkShareBrowser:
                 self._theory.move_to_end(key)
                 return cached
         drawing = lecture_drawing(bars)  # type: ignore[no-untyped-call]
-        first = reversal_trends(
-            drawing, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
-        second = secondary_trends(
-            first, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        hierarchy = calculate_trend_hierarchy(bars, drawing=drawing,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         result = dict(
             asof=bars[-1].timestamp.date().isoformat(),
             points=[],
@@ -390,11 +386,7 @@ class AkShareBrowser:
             events=[],
             shapes=[],
             counts={},
-            lecture_drawing=drawing,
-            reversal_trends=first,
-            secondary_trends=second,
-            tertiary_trends=tertiary_trends(
-                second, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled),
+            **hierarchy,
             n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
             interrupted=False,
             computed_from="akshare_raw_prefix_display_only",
