@@ -173,10 +173,14 @@ class _TrendUpgradeState:
     """相同只追加来源的整波状态；新的旧知识候选必须回退完整批量判断。"""
 
     def __init__(self, turns: Sequence[_SourceTurn], regular: Sequence[_SourceTurn], *, trend_level: int,
-                 event_sink: list[dict[str, object]] | None = None) -> None:
+                 event_sink: list[dict[str, object]] | None = None,
+                 ordinary_trend_completion_enabled: bool = False) -> None:
         if type(trend_level) is not int or trend_level not in (1, 2, 3):
             raise ValueError('trend_level must be 1, 2 or 3')
         self.trend_level = trend_level
+        if type(ordinary_trend_completion_enabled) is not bool:
+            raise ValueError('ordinary_trend_completion_enabled must be a boolean')
+        self.ordinary_trend_completion_enabled = ordinary_trend_completion_enabled
         self.turns = list(turns)
         self.regular = list(regular)
         self.event_sink = event_sink
@@ -414,18 +418,32 @@ class _TrendUpgradeState:
                                                                   attack_position + 1)
                     if counter is not None:
                         left, right = source_positions[_order(whole_extreme)], source_positions[_order(counter)]
+                        opposite = preceding_sources[whole_extreme.reversal]
+                        reversal_sign = 1 if current == 'up' else -1
+                        # 最近两高两低转强可能仍是末跌高下方的反弹（转弱同理）。
+                        # 默认整波结束必须有真实普通翻向，不能将局部方向账本直接
+                        # 发给上一级。关键位固定为整波极值之前的异类来源点，
+                        # 后来的较小反弹高／较高回调低不能降低翻向门槛。
+                        ordinary_reversal = (
+                            opposite is not None
+                            and _key_known_before_price(opposite, counter)
+                            and reversal_sign * (counter.value - opposite.value) > 0
+                        )
                         # 递归趋势线必须包含实际内部下级拐点，单 child 只能等待
                         # 组合波或严格破旧 key。零级折线只提供价格反转，不是待升格
                         # 的下级趋势线；否则第一条折线腿已是区间极值时，即便以后
                         # 多次出现严格LL/LH或HH/HL，一级也会被永远锁在旧方向。
-                        if source_level == 0 or right - left > 1:
-                            opposite = preceding_sources[whole_extreme.reversal]
+                        if ((ordinary_reversal or self.ordinary_trend_completion_enabled)
+                                and (source_level == 0 or right - left > 1)):
                             proof = [*recent['H'], *recent['L']]
                             raw = _ordinary_point(whole_extreme, proof, attack, trend_level=trend_level,
                                 direction=owned_direction, current=current, prefix_known=prefix_known,
                                 key=_reference(opposite) if opposite is not None else None, owned=True)
                             identity_proof: dict[str, object] = dict(available_at=prefix_known,
                                 origin=_reference(whole_extreme), endpoint=_reference(counter))
+                            if ordinary_reversal:
+                                assert opposite is not None
+                                identity_proof['reversal_key'] = _reference(opposite)
                             if source_level == 0:
                                 identity_proof['basis'] = 'polyline_four_point_definition'
                             else:
@@ -495,12 +513,15 @@ class _TrendUpgradeState:
 def promote_trend_key_breaks(
     source: Sequence[Mapping[str, object]], candidates: Sequence[Mapping[str, object]], *, trend_level: int,
     event_sink: list[dict[str, object]] | None = None,
+    ordinary_trend_completion_enabled: bool = False,
 ) -> list[dict[str, object]]:
     """统一推进本级整波身份和严格升级，方向账本与整波状态各自保留。
 
     ``source`` 只能来自完整结束的直接下级：一级消费折线，二级消费一级，
     三级消费二级；开放升级点和显示尾端由共同来源校验排除。``candidates`` 是
     共同定义的方向账本，只有取得 owned 身份的闭合点才可成为本级 key。
+    普通相反方向没有严格突破整波极值左侧的末跌高／末升低时，只保留方向
+    账本；局部 HH/HL 或 LL/LH 不能单独证明翻向。突破日必须晚于关键位可知日。
     普通相反方向若整波退化为一条直接下级趋势波，保持 pending，不改变既有
     owned 方向、起点或极值。以后反向波包含真实内部下级拐点成为组合波，
     或严格突破旧本级 key，才在实际身份可知日关闭和切换本级整波。
@@ -541,4 +562,5 @@ def promote_trend_key_breaks(
     regular = _source_turns(candidates, trend_level, retain_geometry=True, accept_direction_facts=True)
     if not turns:
         return []
-    return _TrendUpgradeState(turns, regular, trend_level=trend_level, event_sink=event_sink).advance()
+    return _TrendUpgradeState(turns, regular, trend_level=trend_level, event_sink=event_sink,
+        ordinary_trend_completion_enabled=ordinary_trend_completion_enabled).advance()

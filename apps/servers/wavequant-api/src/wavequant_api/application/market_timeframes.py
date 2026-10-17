@@ -8,6 +8,8 @@ views and overlays can use the exact same aggregated OHLCV sequence.
 
 from __future__ import annotations
 
+from wavequant.domain.market_structure.trend_options import ordinary_completion_enabled, with_trend_options
+
 import calendar
 from collections import OrderedDict
 from datetime import date, datetime
@@ -46,7 +48,7 @@ class DailyMarketDataRepository(Protocol):
         """Return a validated daily market view."""
 
     def theory(
-        self, source: str, symbol: str, asof: str, *, n_target_trend_confirmation_enabled: bool = False
+        self, source: str, symbol: str, asof: str, *, n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None
     ) -> dict[str, Any]:
         """Return canonical daily display theory."""
 
@@ -166,6 +168,7 @@ class MarketTimeframeService:
             "evidence": f"{evidence}；服务器由规范日线按自然周期聚合为{TIMEFRAME_LABELS[timeframe]}。",
         }
 
+    @with_trend_options
     def theory(
         self,
         source: str,
@@ -173,7 +176,7 @@ class MarketTimeframeService:
         asof: str,
         timeframe: str = "1d",
         *,
-        n_target_trend_confirmation_enabled: bool = False,
+        n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None,
     ) -> dict[str, Any]:
         """Compute display-only structure from the same bars returned by :meth:`view`."""
 
@@ -192,6 +195,7 @@ class MarketTimeframeService:
                 "is_partial_last_bar": False,
                 "timeframe_source": "provider_daily",
                 "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
+                "ordinary_trend_completion_enabled": ordinary_completion_enabled(),
             }
 
         view = self.view(source, symbol, asof, timeframe)
@@ -200,6 +204,7 @@ class MarketTimeframeService:
             n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
         )
 
+    @with_trend_options
     def bundle(
         self,
         source: str,
@@ -208,7 +213,7 @@ class MarketTimeframeService:
         timeframe: str = "1d",
         *,
         compute_if_missing: bool = True,
-        n_target_trend_confirmation_enabled: bool = False,
+        n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None,
     ) -> dict[str, Any]:
         """Read a precomputed display bundle, with a safe rollout fallback."""
 
@@ -234,6 +239,7 @@ class MarketTimeframeService:
         stored = self._publish(payload)
         return {**payload, "cache_state": "computed_on_demand" if stored is None else "precomputed"}
 
+    @with_trend_options
     def precompute(
         self,
         source: str,
@@ -241,7 +247,7 @@ class MarketTimeframeService:
         asof: str,
         timeframes: Sequence[str] = tuple(TIMEFRAME_LABELS),
         *,
-        n_target_trend_confirmation_enabled: bool = False,
+        n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None,
     ) -> dict[str, Any]:
         """Idempotently materialize every requested period from one daily read."""
 
@@ -282,6 +288,7 @@ class MarketTimeframeService:
             "unchanged": unchanged,
         }
 
+    @with_trend_options
     def _build_bundle(
         self,
         source: str,
@@ -291,7 +298,7 @@ class MarketTimeframeService:
         daily: dict[str, Any],
         *,
         view: dict[str, Any] | None = None,
-        n_target_trend_confirmation_enabled: bool = False,
+        n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None,
     ) -> dict[str, Any]:
         current_view = view or self._view_from_daily(daily, timeframe)
         data_version = str(current_view["data_version"])
@@ -319,6 +326,7 @@ class MarketTimeframeService:
             "resolved_asof": str(current_view["asof"]),
             "algorithm_version": algorithm_version,
             "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
+            "ordinary_trend_completion_enabled": ordinary_completion_enabled(),
             "data_version": data_version,
             "view": current_view,
             "theory": theory,
@@ -369,6 +377,7 @@ class MarketTimeframeService:
         except Exception as exc:
             logging.warning("market timeframe Redis write failed (%s); SQL remains authoritative", type(exc).__name__)
 
+    @with_trend_options
     def _theory_from_view(
         self,
         source: str,
@@ -377,12 +386,12 @@ class MarketTimeframeService:
         timeframe: str,
         view: dict[str, Any],
         *,
-        n_target_trend_confirmation_enabled: bool = False,
+        n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None,
     ) -> dict[str, Any]:
         """Compute matching overlays from an already aggregated view."""
 
         data_version = str(view["data_version"])
-        key = f"{source}:{symbol}:{view['asof']}:{timeframe}:{data_version}:{n_target_trend_confirmation_enabled}"
+        key = f"{source}:{symbol}:{view['asof']}:{timeframe}:{data_version}:{n_target_trend_confirmation_enabled}:{ordinary_completion_enabled()}"
         with self._lock:
             cached = self._theory.get(key)
             if cached is not None:
@@ -418,6 +427,7 @@ class MarketTimeframeService:
                 second, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled
             ),
             "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
+            "ordinary_trend_completion_enabled": ordinary_completion_enabled(),
             "interrupted": False,
             "computed_from": "api_calendar_timeframe_from_canonical_daily",
             "price_basis": view.get("price_basis", "raw_unadjusted"),
@@ -432,7 +442,7 @@ class MarketTimeframeService:
     def _option_algorithm_version(self, enabled: bool) -> str:
         if type(enabled) is not bool:
             raise ValueError("n_target_trend_confirmation_enabled must be a boolean")
-        identity = f"{self.algorithm_version}:n_target_trend_confirmation_enabled:{enabled}"
+        identity = f"{self.algorithm_version}:n_target_trend_confirmation_enabled:{enabled}:ordinary:{ordinary_completion_enabled()}"
         return hashlib.sha256(identity.encode()).hexdigest()
 
     @staticmethod

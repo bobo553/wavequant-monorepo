@@ -24,7 +24,7 @@ from wavequant.domain.strategies.wave_exhaustion_exit import (
     observe_five_top_body_upper_shadow_clear, observe_five_top_gap_volume_clear, observe_wave_exhaustion,
 )
 from wavequant.domain.strategies.two_t_resistance import (
-    TWO_T_BODY_VOLUME_CLEAR, TwoTResistanceHistory, two_t_resistance_history,
+    BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, HoldingResistanceHistory, holding_resistance_history,
 )
 from wavequant.domain.strategies.limit_up_distribution_exit import (
     LIMIT_UP_DISTRIBUTION_CLEAR, observe_limit_up_distribution_exit,
@@ -257,7 +257,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                         if live and config.pressure_adverse_exit}
     trend_risk_streams = {symbol: TrendFlipExitStream(history, reduction_fraction=config.wave_exhaustion_reduction)
                           for symbol, history in grouped.items() if live and config.trend_flip_adverse_exit}
-    target_streams: dict[str, TwoTResistanceHistory] = {}
+    target_streams: dict[str, HoldingResistanceHistory] = {}
     if config.trend_flip_adverse_exit and not live:
         if stage is not None: stage('准备三级趋势退出历史')
         from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
@@ -272,7 +272,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
             trend_flip_risks[symbol] = trend_flip_exit_history(
                 history, levels[0], reduction_fraction=config.wave_exhaustion_reduction)
     wave_lookup: dict[str, dict[datetime, list[dict]]] = {symbol: {} for symbol in grouped}
-    target_resistance = {symbol: two_t_resistance_history(
+    target_resistance = {symbol: holding_resistance_history(
         history, (wave_events or {}).get(symbol, []), reduction_fraction=config.wave_exhaustion_reduction)
         if config.wave_exhaustion_exit and not live else {} for symbol, history in grouped.items()}
     c_equal_events = {symbol: [event for event in (wave_events or {}).get(symbol, [])
@@ -747,7 +747,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     else:
                         stream = target_streams.get(symbol)
                         if stream is None or stream.start_index != day.trading_window_start:
-                            stream = target_streams[symbol] = TwoTResistanceHistory(grouped[symbol],
+                            stream = target_streams[symbol] = HoldingResistanceHistory(grouped[symbol],
                                 reduction_fraction=config.wave_exhaustion_reduction,
                                 start_index=day.trading_window_start)
                         target_resistance[symbol] = stream.advance(tick, day.wave_events)
@@ -1023,13 +1023,15 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                                                     signal_index=pos.signal_index)
                              if config.wave_exhaustion_exit and (not live or day is not None and day.trading_eligible) else None)
                 target_risk = target_resistance[symbol].get(i)
-                if target_risk is None and any(
-                    signal.symbol == symbol and signal.side == 'EXIT'
-                    and TWO_T_BODY_VOLUME_CLEAR in signal.reason.split('|')
+                body_clear_reason = next((reason
                     for signal in signal_map.get(when, [])
-                ):
+                    if signal.symbol == symbol and signal.side == 'EXIT'
+                    for reason in signal.reason.split('|')
+                    if reason in (BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR)), None)
+                if body_clear_reason is not None and (
+                        target_risk is None or target_risk['exit_fraction'] < 1.0):
                     # A confirmed global EXIT also wins when replay omits projection metadata.
-                    target_risk = dict(reason=TWO_T_BODY_VOLUME_CLEAR, exit_fraction=1.0,
+                    target_risk = dict(reason=body_clear_reason, exit_fraction=1.0,
                                        execution_model='same_day_close')
                 if target_risk is not None:
                     if target_risk['exit_fraction'] == 1.0 and (
@@ -1227,14 +1229,14 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                                 exit_evidence[symbol]['inverse_observed_index'] = signal.bar_index
                                 execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
                             elif any(reason in signal.reason.split('|') for reason in
-                                     (LIMIT_UP_DISTRIBUTION_CLEAR, TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
+                                     (LIMIT_UP_DISTRIBUTION_CLEAR, BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
                                        FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
                                        *FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS,
                                        C_EQUAL_NEAR_VOLUME_CLEAR)):
                                 i, bar = current[symbol]
                                 wave_clear_symbols.add(symbol)
                                 pending_exit[symbol] = next(reason for reason in signal.reason.split('|') if reason in
-                                    (LIMIT_UP_DISTRIBUTION_CLEAR, TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
+                                    (LIMIT_UP_DISTRIBUTION_CLEAR, BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
                                       FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
                                       *FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS,
                                       C_EQUAL_NEAR_VOLUME_CLEAR))

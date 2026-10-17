@@ -1,5 +1,7 @@
 """Causal daily coordination; market and decision state share one advancing date."""
 
+from wavequant.domain.market_structure.trend_options import with_strategy_trend_options
+
 from collections.abc import Callable, Sequence
 from time import monotonic
 
@@ -20,6 +22,7 @@ from ..market_structure.positive_n_reformation import PositiveNReformationHistor
 from .secondary_resistance import SecondaryResistanceStream
 
 
+@with_strategy_trend_options("config")
 def daily_signals(
     bars: Sequence[Bar], config: SystemStrategy, *,
     on_day: Callable[[MarketDay, BacktestAnalysis, SystemResult, DailySignalState], None] | None = None,

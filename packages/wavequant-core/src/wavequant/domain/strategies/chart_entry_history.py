@@ -1,5 +1,7 @@
 """Replay entry contexts through the same causal hierarchy used by charts."""
 
+from wavequant.domain.market_structure.trend_options import ordinary_completion_enabled
+
 from dataclasses import asdict, replace
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager, nullcontext
@@ -40,7 +42,7 @@ from .market_calculations import MarketCalculations, MarketDay
 
 
 # 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "source_failed_breakout_close_rejection_v142"
+_CONFIRMATION_CACHE_VERSION = "source_causal_missing_key_bootstrap_v143"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -604,7 +606,7 @@ def chart_entry_history(
     entry_days = _prepared_history.buy_days if _prepared_history is not None else _entry_days
     if entry_days is not None and len(entry_days) != len(bars):
         raise ValueError('prepared trading eligibility must cover the market history')
-    cache_version = _CONFIRMATION_CACHE_VERSION
+    cache_version = _CONFIRMATION_CACHE_VERSION + ':ordinary:' + str(ordinary_completion_enabled())
     confirmation_policy = (_prepared_history.calculations.confirmation_policy
         if _prepared_history is not None and _prepared_history.calculations is not None
         else _confirmation_policy or AlternationPolicy())

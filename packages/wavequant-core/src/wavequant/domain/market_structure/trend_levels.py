@@ -182,6 +182,24 @@ def _validate_completed_source_point(raw: Mapping[str, object]) -> dict[str, obj
         sign = 1 if after == 'up' else -1
         if sign * (cast(float, identity_endpoint.get('value', 0)) - cast(float, identity_origin.get('value', 0))) <= 0:
             raise ValueError('whole-wave identity requires a real opposite lower leg')
+        reversal_key = identity_proof.get('reversal_key')
+        if reversal_key is not None:
+            if not isinstance(reversal_key, Mapping):
+                raise ValueError('ordinary reversal key requires a source reference')
+            key_price = reversal_key.get('value')
+            if (type(key_price) not in (int, float) or not isfinite(cast(float, key_price))
+                    or cast(float, key_price) <= 0
+                    or reversal_key.get('kind') != identity_endpoint.get('kind')
+                    or not _proof_order(reversal_key) < _proof_order(identity_origin)
+                    or sign * (cast(float, identity_endpoint['value']) - cast(float, key_price)) <= 0):
+                raise ValueError('ordinary reversal requires a strict break of its frozen key')
+            key_known = _proof_known(reversal_key)
+            attack_time = cast(str, identity_endpoint['time'])
+            known_before = (key_known < cast(int, identity_endpoint['index']) if isinstance(key_known, int) else
+                            int(key_known) < int(attack_time) if key_known.isdecimal() and attack_time.isdecimal()
+                            else key_known < attack_time)
+            if not known_before or _later_moment(key_known, completed_clock) != completed_clock:
+                raise ValueError('ordinary reversal key must be known before its attack')
     if definition is not None and identity_proof is None:
         raise ValueError('ordinary owned completion requires lower-wave identity evidence')
     upgrade = evidence.get('upgrade_evidence')

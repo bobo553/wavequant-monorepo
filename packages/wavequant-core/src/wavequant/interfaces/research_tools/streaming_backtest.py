@@ -1,5 +1,7 @@
 """One daily boundary for structure, signals, minute execution and the account."""
 
+from wavequant.domain.market_structure.trend_options import with_strategy_trend_options
+
 from collections.abc import Callable, Sequence
 from dataclasses import asdict
 
@@ -20,6 +22,7 @@ from .stock_backtest import single_stock_result
 from .signal_execution_stream import SignalExecutionFactsStream
 
 
+@with_strategy_trend_options("strategy")
 def streaming_stock_result(
     bars: list[Bar], strategy: dict, execution: dict, *,
     minute_loader: Callable[[Bar], list[MinuteBar]] | None = None,

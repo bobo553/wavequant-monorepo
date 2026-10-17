@@ -86,6 +86,10 @@ def settings(value: object) -> dict[str, object]:
     if not isinstance(n_target, str) or n_target not in {"true", "false"}:
         raise ValueError("N达标趋势开关无效")
     normalized["n_target_trend_confirmation_enabled"] = n_target
+    ordinary = context.get("ordinary_trend_completion_enabled", "false")
+    if not isinstance(ordinary, str) or ordinary not in {"true", "false"}:
+        raise ValueError("ordinary_trend_completion_enabled must be true or false")
+    normalized["ordinary_trend_completion_enabled"] = ordinary
     buy_level = context.get('buy_interval_level', '2')
     if not isinstance(buy_level, str) or buy_level not in ('1', '2', '3'):
         raise ValueError('买点筛选级别无效')

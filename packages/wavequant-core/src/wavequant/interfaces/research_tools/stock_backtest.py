@@ -1,4 +1,6 @@
 """Independent single-security diagnostic accounts, never live orders."""
+
+from wavequant.domain.market_structure.trend_options import with_strategy_trend_options
 from dataclasses import asdict
 from datetime import datetime
 from typing import Callable
@@ -64,6 +66,7 @@ def signal_execution_facts(bars, signal_result):
     return SignalExecutionFactsStream(bars).advance(len(bars) - 1, getattr(signal_result, 'audit', []))
 
 
+@with_strategy_trend_options("strategy")
 def single_stock_result(bars, strategy, execution, signal_result=None, *, minute_loader=None, progress=None,
                         stage: Callable[[str], None] | None = None,
                         history_reuse: BacktestHistoryReuse | None = None,

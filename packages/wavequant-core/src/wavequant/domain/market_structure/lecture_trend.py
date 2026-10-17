@@ -245,7 +245,14 @@ def _annotate(points, symbol, dates, *, trend_level=1):
                 anchor,key=_context_key(points[:j+1],background==StructuralTrend.BULL,symbol=symbol,dates=dates,trend_level=trend_level)
             continue
         if key is None:
-            anchor,key=_context_key(points[:j+1],background==StructuralTrend.BULL,symbol=symbol,dates=dates,trend_level=trend_level)
+            # 路径首点可能恰是整窗最高/最低点，却没有左侧关键位。此时背景
+            # 尚未获得完整身份；后续相反方向成立时必须允许重新初始化，
+            # 否则会永远查询缺失的前驱，吞掉多年后的真实末跌高突破。
+            selected = trend if trend in (StructuralTrend.BULL, StructuralTrend.BEAR) else background
+            candidate_anchor,candidate_key=_context_key(points[:j+1],selected==StructuralTrend.BULL,
+                symbol=symbol,dates=dates,trend_level=trend_level)
+            if candidate_key is not None:
+                background,anchor,key=selected,candidate_anchor,candidate_key
             continue
         assert anchor is not None
         up=background==StructuralTrend.BEAR

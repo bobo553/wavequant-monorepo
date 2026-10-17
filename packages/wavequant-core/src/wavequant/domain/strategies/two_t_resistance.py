@@ -10,6 +10,7 @@ from .event_history import EventHistoryStream
 
 
 TWO_T_BODY_VOLUME_CLEAR = "wave_two_t_body_volume_clear"
+BODY_VOLUME_CLEAR = "bearish_body_volume_clear"
 
 
 def _body_volume_reversal(
@@ -207,3 +208,28 @@ def two_t_resistance_history(
 ) -> dict[int, dict[str, object]]:
     """Batch compatibility uses the same dated reducer as the daily stream."""
     return TwoTResistanceHistory(bars, reduction_fraction=reduction_fraction).advance(len(bars) - 1, events)
+
+
+class HoldingResistanceHistory(TwoTResistanceHistory):
+    """Shared target risks plus independent close-known body reversal clearance."""
+
+    def _reset_state(self) -> None:
+        super()._reset_state()
+        # 资格窗口外不补发交易风险，但最近阴线仍是已知的行情量能基准。
+        self.bearish_index = next((index for index in range(self.start_index - 1, -1, -1)
+            if self.bars[index].close < self.bars[index].open), None)
+
+    def _advance_day(self, index: int) -> None:
+        super()._advance_day(index)
+        reversal = _body_volume_reversal(self.bars, index, self.previous_bearish[index])
+        if reversal is not None and self.history.get(index, {}).get('exit_fraction') != 1.0:
+            self.history[index] = dict(reversal, reason=BODY_VOLUME_CLEAR, exit_fraction=1.0,
+                execution_model='same_day_close',
+                target_trigger='bearish_body_engulf_volume_gt_previous_or_last_bearish')
+
+
+def holding_resistance_history(
+    bars: Sequence[Bar], events: Sequence[Mapping[str, object]], *, reduction_fraction: float = .8,
+) -> dict[int, dict[str, object]]:
+    """The batch and daily account paths share the same independent clearance."""
+    return HoldingResistanceHistory(bars, reduction_fraction=reduction_fraction).advance(len(bars) - 1, events)

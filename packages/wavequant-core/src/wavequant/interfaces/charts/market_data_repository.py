@@ -8,6 +8,8 @@ validated :class:`Bar` objects and one stable read-model contract.
 
 from __future__ import annotations
 
+from wavequant.domain.market_structure.trend_options import ordinary_completion_enabled, with_trend_options
+
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -229,15 +231,16 @@ class MarketDataRepository:
             "evidence": self._evidence(window),
         }
 
+    @with_trend_options
     def theory(self, source: str | None, symbol: str, asof: str, *,
-               n_target_trend_confirmation_enabled: bool = False) -> dict[str, Any]:
+               n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None) -> dict[str, Any]:
         """Run the same domain theory regardless of the selected provider."""
 
         if type(n_target_trend_confirmation_enabled) is not bool:
             raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         window = self.window(source, symbol, asof)
         digest = self._bars_digest(window.bars)
-        key = f"{window.requested_source}:{symbol}:{window.asof}:{digest}:{n_target_trend_confirmation_enabled}"
+        key = f"{window.requested_source}:{symbol}:{window.asof}:{digest}:{n_target_trend_confirmation_enabled}:{ordinary_completion_enabled()}"
         with self._lock:
             cached = self._theory.get(key)
             if cached is not None:
@@ -271,6 +274,7 @@ class MarketDataRepository:
             "tertiary_trends": tertiary_trends(
                 second, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled),
             "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
+            "ordinary_trend_completion_enabled": ordinary_completion_enabled(),
             "interrupted": False,
             "computed_from": "canonical_market_data_repository",
             "price_basis": "raw_unadjusted",

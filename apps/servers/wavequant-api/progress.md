@@ -1,3 +1,17 @@
+2026-10-17 · MONOREPO-330 趋势与交易规则提交验证
+
+用户明确要求提交并推送feat-三级趋势统一。本次提交覆盖普通升降整波结束默认关闭选项及Web/API/contracts传递、缺失初始关键位重建、独立实体反包放量清仓、轧空买入价格门槛和候选正N突破前量二选一。未改变既有失败相关业务逻辑。
+
+Core定向pytest：test_body_volume_clear.py、test_squeeze_buy_quality.py、test_trend_missing_initial_key.py、test_trend_rebound_without_flip.py、test_lifecycle_frozen_context.py，116 passed/71.37秒，含真实国芳三级因果回归。API首次用系统Python收集因缺redis失败，改用项目现有API .venv后test_ordinary_trend_option.py为2 passed/4 subtests。Web两文件node测试首次2项fixture遗漏已有buy_interval_level默认值，补齐明确默认2并保留deepEqual完整断言后10项通过；无产品逻辑变更。pnpm --filter @repo/contracts build、pnpm --filter wavequant-web typecheck成功；Web lint为0错误/6项环境变量警告。Core python -m build --no-isolation成功生成sdist/wheel，git diff --check无错误。
+
+定向mypy --follow-imports=silent检查attack_quality、two_t_resistance、daily_risk_histories、integrated_strategy、trend_options、trend_level_upgrades、lecture_trend共7文件，integrated_strategy仍有25处类型错误。将HEAD 6258955源码隔离归档至主目录.codex-runtime/submit-trend-rules-20261017/baseline，同配置检查已有6文件复现同样25处错误，未新增类型错误但门禁未全通过。保留此前生命周期相邻测试失败记录，本轮不重复当作已通过。不合并main；按用户指令提交并推送特性分支。未运行Web完整构建、浏览器/E2E或完整测试套件，未重启服务。MONOREPO-330保持in-progress。
+
+2026-10-17 · MONOREPO-330 普通升降整波结束选项（待提交验证）
+
+API严格解析普通升降整波结束布尔参数并归入后台任务身份；周期、结构与买点快照按选项区分，历史结构回退按选项过滤。CLI新增 --ordinary-trend-completion-enabled；未指定时串行预计算两种模式，与N模式组合，前台默认依然false。自选设置补默认false；新增解析和设置回归源码，未运行。
+
+本轮按开发规则只阅读、编辑与记录，未运行测试、lint、类型、格式、构建、运行探针或浏览器；未提交/合并/推送。新华传媒2020-11-05至2020-11-23升级与2021-12-09所在资格区间的真实行情回放仍待提交时验证，不能以本轮代码修改宣称样本已验证。MONOREPO-330保持in-progress，既有失败记录保留。
+
 2026-10-17 · MONOREPO-330 长回测预览复制（代码已修改，待验证）
 
 BacktestPreviewPublisher保留三秒节流和同日账户完成边界，标准JSON值改为发布时一次独立复制，不再先全文编码字符串再解析；未知容器和标量子类保留原JSON回退。补充深层隔离、日期拒绝及节流回归源码。配合Core请求内增量计算与缓存计时，不把预览认定为36分钟的最大瓶颈。

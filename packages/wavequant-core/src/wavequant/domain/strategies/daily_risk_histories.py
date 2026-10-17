@@ -7,7 +7,7 @@ from typing import cast
 from ..models.model import Bar
 from .five_top_entry import FiveTopEntryHistory
 from .ten_full_entry import RetracementAnchor, TenFullEntryHistory
-from .two_t_resistance import TwoTResistanceHistory
+from .two_t_resistance import HoldingResistanceHistory
 
 
 @dataclass(frozen=True)
@@ -29,7 +29,7 @@ class DailyRiskHistories:
         self.five_top = FiveTopEntryHistory(self.bars, start_index=start_index)
         self.ten_full = TenFullEntryHistory(self.bars, breakout_window=breakout_window,
             retracement_ratio=retracement_ratio, anchor=anchor, timed_half=timed_half, start_index=start_index)
-        self.two_t_streams: dict[tuple[str, float], TwoTResistanceHistory] = {}
+        self.two_t_streams: dict[tuple[str, float], HoldingResistanceHistory] = {}
 
     def two_t(
         self, index: int, events: Sequence[Mapping[str, object]], *, reduction_fraction: float = .8,
@@ -40,7 +40,7 @@ class DailyRiskHistories:
         key = channel, reduction_fraction
         stream = self.two_t_streams.get(key)
         if stream is None:
-            stream = TwoTResistanceHistory(self.bars, reduction_fraction=reduction_fraction,
+            stream = HoldingResistanceHistory(self.bars, reduction_fraction=reduction_fraction,
                 start_index=self.start_index)
             self.two_t_streams[key] = stream
         return stream.advance(index, events)

@@ -41,14 +41,15 @@ class StructureSnapshotService:
         # not hash source files or invoke any Core calculation.
         self.algorithm_version = repository.structure_scanner.algorithm_version()
         self._algorithm_versions = {
-            False: self.algorithm_version,
-            True: repository.structure_scanner.algorithm_version(n_target_trend_confirmation_enabled=True),
+            (n_enabled, ordinary): repository.structure_scanner.algorithm_version(
+                n_target_trend_confirmation_enabled=n_enabled, ordinary_trend_completion_enabled=ordinary)
+            for n_enabled in (False, True) for ordinary in (False, True)
         }
 
-    def algorithm_version_for(self, enabled: bool) -> str:
-        if type(enabled) is not bool:
-            raise ValueError("n_target_trend_confirmation_enabled must be a boolean")
-        return str(self._algorithm_versions[enabled])
+    def algorithm_version_for(self, enabled: bool, ordinary: bool = False) -> str:
+        if type(enabled) is not bool or type(ordinary) is not bool:
+            raise ValueError("trend options must be booleans")
+        return str(self._algorithm_versions[(enabled, ordinary)])
 
     def refresh(
         self,
@@ -59,7 +60,7 @@ class StructureSnapshotService:
         symbol: str | None = None,
         asof: str | None = None,
         market_total: int | None = None,
-        n_target_trend_confirmation_enabled: bool = False,
+        n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool = False,
     ) -> dict[str, object]:
         database = self.infrastructure.database
         if database is None:
@@ -116,7 +117,7 @@ class StructureSnapshotService:
             # suspended stock can legitimately resolve to an older last bar;
             # using that per-stock date as the snapshot key would make it
             # disappear from an otherwise complete market snapshot.
-        algorithm_version = self.algorithm_version_for(n_target_trend_confirmation_enabled)
+        algorithm_version = self.algorithm_version_for(n_target_trend_confirmation_enabled, ordinary_trend_completion_enabled)
         data_version = source_state["data_version"]
         existing = database.find_structure_snapshot(
             run,
@@ -145,6 +146,7 @@ class StructureSnapshotService:
                     data_version=data_version,
                     payload={
                         "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
+                        "ordinary_trend_completion_enabled": ordinary_trend_completion_enabled,
                         "results": [],
                         "stale": 0,
                         "skip_reasons": {"not_listed_asof": 1},
@@ -167,6 +169,7 @@ class StructureSnapshotService:
             "signal_type": "any",
             "trend_level": 0,
             "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
+            "ordinary_trend_completion_enabled": ordinary_trend_completion_enabled,
         }
         if symbol is not None:
             request["symbol"] = symbol
@@ -185,6 +188,7 @@ class StructureSnapshotService:
                 raise RuntimeError("结构预计算期间行情版本变化，未发布混合版本结果")
         payload = {
             "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
+            "ordinary_trend_completion_enabled": ordinary_trend_completion_enabled,
             "results": job["results"],
             "stale": job["stale"],
             "skip_reasons": job["skip_reasons"],
@@ -213,15 +217,19 @@ class StructureSnapshotService:
     def query(self, params: dict[str, object]) -> dict[str, object]:
         """Return a bounded filter over SQL/Redis without invoking Core theory."""
         expected = {"run", "variant", "source", "asof", "lookback", "signal_type", "trend_level"}
-        optional = {"symbol", "markets", "n_target_trend_confirmation_enabled"}
+        optional = {"symbol", "markets", "n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"}
         if not expected.issubset(params) or not set(params).issubset(expected | optional):
             raise ValueError("invalid precomputed structure query")
         query_params = dict(params)
+        ordinary = params.get("ordinary_trend_completion_enabled", False)
+        if type(ordinary) is not bool:
+            raise ValueError("ordinary_trend_completion_enabled must be a boolean")
         enabled = params.get("n_target_trend_confirmation_enabled", False)
         if type(enabled) is not bool:
             raise ValueError("n_target_trend_confirmation_enabled must be a boolean")
-        algorithm_version = self.algorithm_version_for(enabled)
+        algorithm_version = self.algorithm_version_for(enabled, ordinary)
         query_params["n_target_trend_confirmation_enabled"] = enabled
+        query_params["ordinary_trend_completion_enabled"] = ordinary
         compatibility_symbol = query_params.pop("symbol", None)
         selected_markets = self._parse_markets(query_params.get("markets"))
         market_key = ",".join(selected_markets)
@@ -263,7 +271,7 @@ class StructureSnapshotService:
             # Historical generations can serve a rebuilding client only if
             # they used the same rule. Legacy payloads represent disabled N.
             generations = database.list_structure_snapshot_generations(
-                run, source, asof, n_target_trend_confirmation_enabled=enabled
+                run, source, asof, n_target_trend_confirmation_enabled=enabled, ordinary_trend_completion_enabled=ordinary
             )
             current_generation = next(
                 (

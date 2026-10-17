@@ -22,6 +22,8 @@ const context = {
     net_reward_risk_filter: "false",
     shallow_base_breakout_enabled: "true",
     n_target_trend_confirmation_enabled: "false",
+    ordinary_trend_completion_enabled: "false",
+    buy_interval_level: "2",
     initial_capital: "100000",
     max_position_weight: "1",
 };
@@ -96,6 +98,7 @@ test("server updates restore only the global option when no market queue context
     assert.deepEqual(watchlistSettingsRestoration(null, storage.document.settings, false, false), {
         kind: "n-target",
         enabled: true,
+        ordinaryEnabled: false,
     });
 });
 
@@ -132,7 +135,7 @@ test("only the real stock-view consumer receives the selected option", () => {
     for (const selected of [undefined, false, true]) {
         assert.deepEqual(researchViewRequest("stock", params, selected), {
             path: "/api/stock-view",
-            params: { ...params, n_target_trend_confirmation_enabled: String(selected === true) },
+            params: { ...params, n_target_trend_confirmation_enabled: String(selected === true), ordinary_trend_completion_enabled: "false" },
         });
         assert.deepEqual(researchViewRequest("portfolio", params, selected), { path: "/api/view", params });
     }

@@ -37,6 +37,7 @@ from .trend_landmarks import (
 )
 from .trend_publication import confirmed_trend_legs, publish_uptrends
 from .trend_structure import _trend_level
+from .trend_options import ordinary_completion_enabled
 
 STRUCTURAL_LEG_POLICY = 'high_low_point_frozen_wave_key_v119'
 STRUCTURAL_RULE = 'point_first_recursive_frozen_wave_key_v119'
@@ -89,6 +90,7 @@ class _TrendJudgementCache:
         self._complete_cutoffs: dict[tuple[int, str], int] = {}
         self._finite = _FiniteEvidenceCertificates()
         self._tail_reuse = tail_reuse
+        self._ordinary_completion = ordinary_completion_enabled()
         self._state_memory_bytes = state_memory_bytes
         self._source_owners: dict[tuple[int, str], _SourceVersionOwner] = {}
         self._version_results: dict[tuple[int, str], tuple[object, TrendJudgement]] = {}
@@ -124,6 +126,9 @@ class _TrendJudgementCache:
 
     def judge(self, source: Sequence[Mapping[str, object]], *, path: str, trend_level: int,
               asof: Moment | None = None, _owned_source: bool = False) -> TrendJudgement:
+        if self._ordinary_completion != ordinary_completion_enabled():
+            # 同一实例切换规则时连来源版本、增量状态和翻向检查点一起失效。
+            self.__init__(tail_reuse=self._tail_reuse, state_memory_bytes=self._state_memory_bytes)
         _trend_level(trend_level)
         if _owned_source and asof is None:
             key = trend_level, path

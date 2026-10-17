@@ -79,6 +79,7 @@ export const structureScanContextKey = (params) =>
         params.trend_level,
         params.markets,
         params.n_target_trend_confirmation_enabled ?? false,
+        params.ordinary_trend_completion_enabled ?? false,
     ]);
 
 /** 先显示最新确认，再按级别和证券代码提供确定顺序。 */

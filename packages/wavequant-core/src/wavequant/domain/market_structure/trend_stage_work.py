@@ -14,6 +14,7 @@ from .trend_lines import (
 from .n_trend_confirmation import _NPermissionProofs, _reuse_n_permissions
 from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
 from .trend_body_reversal import with_price_bodies
+from .trend_options import ordinary_trend_completion
 
 
 StageKind = Literal['hierarchy', 'geometry', 'permissions', 'sidecars']
@@ -71,7 +72,7 @@ class TrendStageComputer:
         self.permissions = _TrendPermissionCache(bars, memory_bytes=2 * 1024 * 1024)
         self.n_proofs = {level: _NPermissionProofs() for level in (1, 2, 3)}
         self.scope = ExitStack()
-        self.label: tuple[StageKind, int] | None = None
+        self.label: tuple[StageKind, int, bool] | None = None
         self.frozen: _FrozenPointCache | None = None
         self.judgements = _TrendJudgementCache(tail_reuse=True, state_memory_bytes=32 * 1024 * 1024)
 
@@ -81,7 +82,13 @@ class TrendStageComputer:
 
     def compute(self, kind: StageKind, index: int, value: object, *, level: int,
                 n_enabled: bool, options: tuple[bool, ...]) -> object:
-        label = kind, level
+        enabled = len(options) > 2 and options[2]
+        with ordinary_trend_completion(enabled):
+            return self._compute(kind, index, value, level=level, n_enabled=n_enabled, options=options)
+
+    def _compute(self, kind: StageKind, index: int, value: object, *, level: int,
+                 n_enabled: bool, options: tuple[bool, ...]) -> object:
+        label = kind, level, len(options) > 2 and options[2]
         if kind != 'sidecars' and label != self.label:
             self.scope.close()
             self.scope = ExitStack()

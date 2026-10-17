@@ -9,23 +9,32 @@ export function researchNTargetPreference(saved, preferences) {
         : preferences?.nTargetTrendConfirmationEnabled === true;
 }
 
+export function researchOrdinaryPreference(saved, preferences) {
+    return saved?.context
+        ? saved.context.ordinary_trend_completion_enabled === "true"
+        : preferences?.ordinaryTrendCompletionEnabled === true;
+}
+
 /** 个股封存样本仍重新执行策略，组合封存只读取原成交账本。 */
-export function researchViewRequest(scope, params, nTargetTrendConfirmationEnabled = false) {
+export function researchViewRequest(scope, params, nTargetTrendConfirmationEnabled = false, ordinaryTrendCompletionEnabled = false) {
     requireNTargetOption(nTargetTrendConfirmationEnabled);
+    if (typeof ordinaryTrendCompletionEnabled !== "boolean") throw new TypeError("普通整波确认开关必须为布尔值");
     return scope === "stock"
         ? {
               path: "/api/stock-view",
               params: {
                   ...params,
                   n_target_trend_confirmation_enabled: String(nTargetTrendConfirmationEnabled),
+                  ordinary_trend_completion_enabled: String(ordinaryTrendCompletionEnabled),
               },
           }
         : { path: "/api/view", params: { ...params } };
 }
 
 /** 封存口径借已有合法服务器设置保存全局开关，不新建后台行情上下文。 */
-export function watchlistSettingsToSave(snapshot, saved, enabled, nTargetTrendConfirmationEnabled) {
+export function watchlistSettingsToSave(snapshot, saved, enabled, nTargetTrendConfirmationEnabled, ordinaryTrendCompletionEnabled = false) {
     requireNTargetOption(nTargetTrendConfirmationEnabled);
+    if (typeof ordinaryTrendCompletionEnabled !== "boolean") throw new TypeError("普通整波确认开关必须为布尔值");
     const context = snapshot?.context || saved?.context;
     if (!context) return null;
     const { group: _group, cutoff: _cutoff, ...settingsContext } = context;
@@ -34,17 +43,21 @@ export function watchlistSettingsToSave(snapshot, saved, enabled, nTargetTrendCo
         context: {
             ...settingsContext,
             n_target_trend_confirmation_enabled: String(nTargetTrendConfirmationEnabled),
+            ordinary_trend_completion_enabled: String(ordinaryTrendCompletionEnabled),
         },
     };
 }
 
 /** 无行情队列上下文时只恢复全局开关，保留当前封存口径和方案。 */
-export function watchlistSettingsRestoration(snapshot, saved, enabled, nTargetTrendConfirmationEnabled) {
+export function watchlistSettingsRestoration(snapshot, saved, enabled, nTargetTrendConfirmationEnabled, ordinaryTrendCompletionEnabled = false) {
     requireNTargetOption(nTargetTrendConfirmationEnabled);
+    if (typeof ordinaryTrendCompletionEnabled !== "boolean") throw new TypeError("普通整波确认开关必须为布尔值");
     if (!saved) return null;
     if (!snapshot) {
         const selected = saved.context.n_target_trend_confirmation_enabled === "true";
-        return selected === nTargetTrendConfirmationEnabled ? null : { kind: "n-target", enabled: selected };
+        const ordinary = saved.context.ordinary_trend_completion_enabled === "true";
+        return selected === nTargetTrendConfirmationEnabled && ordinary === ordinaryTrendCompletionEnabled
+            ? null : { kind: "n-target", enabled: selected, ordinaryEnabled: ordinary };
     }
     const changed =
         saved.enabled !== enabled ||

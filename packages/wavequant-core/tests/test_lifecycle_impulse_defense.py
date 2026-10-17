@@ -160,3 +160,30 @@ def test_previous_lifecycle_checkpoint_is_not_reused(old_version):
     checkpoint = TrendLifecycle().checkpoint()
     with pytest.raises(ValueError, match='incompatible lifecycle checkpoint'):
         TrendLifecycle.from_checkpoint((old_version, *checkpoint[1:]))
+
+
+@pytest.mark.parametrize('level', [1, 2, 3])
+@pytest.mark.parametrize('restore_at', [None, 1484, 1504])
+def test_guofang_named_flip_and_deep_low_open_only_on_confirmation(level, restore_at):
+    # 使用既有冻结行情与结构输入核对资格适配链；完整三级几何另需因果回放。
+    fixture = json.loads((Path(__file__).parent / 'fixtures' / 'guofang_2024_impulse_defense.json').read_text('utf-8'))
+    bars = [Bar(datetime.fromisoformat(day), fixture['symbol'], *values)
+            for day, *values in fixture['bars'][:1505]]
+    dates = {bar.timestamp.date().isoformat(): i for i, bar in enumerate(bars)}
+    row = dict(trend_level=level, strokes=[dict(id='path', points=fixture['points'])])
+    # 仅投影本回放前缀已知的折线；不能将更晚的确认日期回填。
+    polyline = [dict(point, available_at=dates[point['available_at']]) for point in fixture['polyline']
+                if point['available_at'] in dates]
+    _, events = replay(bars, row, polyline, restore_at=restore_at)
+    windows = confirmed_trading_intervals(events, len(bars), level)
+    matching = [event for event in events if event.get('state') == '空多交替'
+                and event.get('flip_index') == 1354 and event.get('counter_index') == 1484]
+    assert matching
+    confirmation = matching[0]
+    assert confirmation['bar_index'] == 1504
+    assert confirmation['origin_index'] == 755
+    assert confirmation['confirmation_evidence']['key_index'] == 636
+    assert confirmation['confirmation_rule'] == 'body_gap_volume_bullish_breakout_after_defended_low'
+    days = interval_days(windows, len(bars))
+    assert not any(days[1484:1504])
+    assert days[1504]

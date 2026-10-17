@@ -65,9 +65,11 @@ export function marketTimeframeCacheKey(
     requestedAsOf,
     timeframe,
     nTargetTrendConfirmationEnabled = false,
+    ordinaryTrendCompletionEnabled = false,
 ) {
+    if (typeof ordinaryTrendCompletionEnabled !== "boolean") throw new TypeError("普通升降整波结束开关必须为布尔值");
     if (typeof nTargetTrendConfirmationEnabled !== "boolean") throw new TypeError("N 一饱趋势确认开关必须为布尔值");
-    return `v2:${source}:${symbol}:${requestedAsOf}:${timeframe}:n-target-${nTargetTrendConfirmationEnabled}`;
+    return `v2:${source}:${symbol}:${requestedAsOf}:${timeframe}:n-target-${nTargetTrendConfirmationEnabled}:ordinary-${ordinaryTrendCompletionEnabled}`;
 }
 
 export const marketTimeframeStorage = {
@@ -191,9 +193,9 @@ export async function readCachedMarketTimeframeSnapshot(
     symbol,
     requestedAsOf,
     timeframe,
-    { storage = marketTimeframeStorage, nTargetTrendConfirmationEnabled = false } = {},
+    { storage = marketTimeframeStorage, nTargetTrendConfirmationEnabled = false, ordinaryTrendCompletionEnabled = false } = {},
 ) {
-    const key = marketTimeframeCacheKey(source, symbol, requestedAsOf, timeframe, nTargetTrendConfirmationEnabled);
+    const key = marketTimeframeCacheKey(source, symbol, requestedAsOf, timeframe, nTargetTrendConfirmationEnabled, ordinaryTrendCompletionEnabled);
     try {
         const entry = await storage.get(key);
         if (entry?.key !== key) return null;
@@ -223,6 +225,7 @@ export async function loadMarketTimeframeSnapshot(
         fetcher = fetch,
         storage = marketTimeframeStorage,
         nTargetTrendConfirmationEnabled = false,
+        ordinaryTrendCompletionEnabled = false,
         signal,
         timeoutMs = 45_000,
         expectedDataVersion,
@@ -230,7 +233,7 @@ export async function loadMarketTimeframeSnapshot(
         expectedResolvedAsOf,
     } = {},
 ) {
-    const key = marketTimeframeCacheKey(source, symbol, requestedAsOf, timeframe, nTargetTrendConfirmationEnabled);
+    const key = marketTimeframeCacheKey(source, symbol, requestedAsOf, timeframe, nTargetTrendConfirmationEnabled, ordinaryTrendCompletionEnabled);
     let cached = null;
     try {
         const entry = await storage.get(key);
@@ -244,6 +247,7 @@ export async function loadMarketTimeframeSnapshot(
         asof: requestedAsOf,
         timeframe,
         n_target_trend_confirmation_enabled: String(nTargetTrendConfirmationEnabled),
+        ordinary_trend_completion_enabled: String(ordinaryTrendCompletionEnabled),
     });
     const validateIdentity = (bundle) => {
         if (

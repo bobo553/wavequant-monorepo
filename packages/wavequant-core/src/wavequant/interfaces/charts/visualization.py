@@ -5,6 +5,8 @@ filter bars, fills and closed trades as of the selected Shanghai daily session.
 Theory is computed from that prefix, not by hiding future candles afterwards.
 """
 
+from wavequant.domain.market_structure.trend_options import ordinary_completion_enabled, with_trend_options, with_strategy_trend_options
+
 from dataclasses import asdict
 from datetime import date, datetime
 from functools import lru_cache
@@ -345,7 +347,8 @@ class ChartRepository:
             raise ValueError("no bars available as of selected date")
         return bars
 
-    def strategy_config(self, rid, variant, *, n_target_trend_confirmation_enabled: bool = False,
+    @with_trend_options
+    def strategy_config(self, rid, variant, *, n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None,
                         buy_interval_level: int = 2):
         if type(n_target_trend_confirmation_enabled) is not bool:
             raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
@@ -365,10 +368,10 @@ class ChartRepository:
         if n_target_trend_confirmation_enabled:
             routes += '_or_source_n_strict_one_p_target'
         return dict(config,
-                    strategy=dict(config['strategy'],
+                    strategy=dict(config['strategy'], ordinary_trend_completion_enabled=ordinary_completion_enabled(),
                                   n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                                   buy_interval_level=buy_interval_level),
-                    definition=dict(config.get('definition', {}), trend_confirmation_routes=routes,
+                    definition=dict(config.get('definition', {}), trend_confirmation_routes=routes, ordinary_trend_completion_enabled=ordinary_completion_enabled(),
                                     n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                                     buy_interval_level=buy_interval_level,
                                     buy_interval_policy='confirmed_alternation_until_bear_flip_or_context_invalidated'))
@@ -474,27 +477,30 @@ class ChartRepository:
         )
 
     @lru_cache(maxsize=32)
-    def _stock_signals(self, rid, variant, symbol, asof, n_target_trend_confirmation_enabled: bool = False):
+    @with_trend_options
+    def _stock_signals(self, rid, variant, symbol, asof, n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None):
         bars = self.selection(rid, variant, symbol, asof)
         strategy = self.strategy_config(rid, variant,
             n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)["strategy"]
         return generate_system_signals(bars, SystemStrategy(**strategy))
 
+    @with_trend_options
     def stock_view(self, rid, variant, symbol, asof, scenario="base", *,
-                   n_target_trend_confirmation_enabled: bool = False):
+                   n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None):
         if type(n_target_trend_confirmation_enabled) is not bool:
             raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         self.selection(rid, variant, symbol, asof, scenario)
         with self.stock_lock:
-            return self._stock_view(rid, variant, symbol, asof, scenario, n_target_trend_confirmation_enabled)
+            return self._stock_view(rid, variant, symbol, asof, scenario, n_target_trend_confirmation_enabled, ordinary_trend_completion_enabled=ordinary_completion_enabled())
 
     @lru_cache(maxsize=64)
-    def _stock_view(self, rid, variant, symbol, asof, scenario, n_target_trend_confirmation_enabled: bool = False):
+    @with_trend_options
+    def _stock_view(self, rid, variant, symbol, asof, scenario, n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None):
         bars = self.selection(rid, variant, symbol, asof, scenario)
         config = self.strategy_config(rid, variant,
             n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         signals = (None if config['strategy'].get('buy_point_definition') == 'whole_flip_wave_v3'
-                   else self._stock_signals(rid, variant, symbol, asof, n_target_trend_confirmation_enabled))
+                   else self._stock_signals(rid, variant, symbol, asof, n_target_trend_confirmation_enabled, ordinary_trend_completion_enabled=ordinary_completion_enabled()))
         result = single_stock_result(
             bars,
             config["strategy"],
@@ -542,8 +548,9 @@ class ChartRepository:
             comparison="相同资金与风控的独立账户，不是共享组合结果的拆分。",
         )
 
+    @with_trend_options
     def akshare_signal_view(self, rid, variant, symbol, asof, scenario="base", start="1990-01-01", *,
-                            n_target_trend_confirmation_enabled: bool = False):
+                            n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None):
         """Generate signal evidence for one online symbol without simulating fills."""
         self._run(rid)
         if variant not in VARIANTS or scenario not in SCENARIOS:
@@ -657,21 +664,24 @@ class ChartRepository:
             account_scope="independent_single_stock",
         )
 
-    def theory(self, rid, variant, symbol, asof, *, n_target_trend_confirmation_enabled: bool = False):
+    @with_trend_options
+    def theory(self, rid, variant, symbol, asof, *, n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None):
         if type(n_target_trend_confirmation_enabled) is not bool:
             raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         self.selection(rid, variant, symbol, asof)
         with self.theory_lock:
-            return self._theory(rid, variant, symbol, asof, n_target_trend_confirmation_enabled)
+            return self._theory(rid, variant, symbol, asof, n_target_trend_confirmation_enabled, ordinary_trend_completion_enabled=ordinary_completion_enabled())
 
     @lru_cache(maxsize=24)
-    def _theory(self, rid, variant, symbol, asof, n_target_trend_confirmation_enabled: bool = False):
+    @with_trend_options
+    def _theory(self, rid, variant, symbol, asof, n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None):
         bars = self.selection(rid, variant, symbol, asof)
         config = SystemStrategy(**self.strategy_config(rid, variant,
             n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)["strategy"])
-        result = self._stock_signals(rid, variant, symbol, asof, n_target_trend_confirmation_enabled)
+        result = self._stock_signals(rid, variant, symbol, asof, n_target_trend_confirmation_enabled, ordinary_trend_completion_enabled=ordinary_completion_enabled())
         return self.render_theory(bars, config, result, asof)
 
+    @with_trend_options
     def tdx_backtest(
         self,
         rid,
@@ -684,7 +694,7 @@ class ChartRepository:
         volume_filter=True,
         net_reward_risk_filter=False,
         shallow_base_breakout_enabled=True,
-        n_target_trend_confirmation_enabled: bool = False,
+        n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None,
         buy_interval_level: int = 2,
         initial_capital=100_000,
         max_position_weight=1.0,
@@ -765,6 +775,7 @@ class ChartRepository:
             ),
         )
 
+    @with_trend_options
     def akshare_backtest(
         self,
         rid,
@@ -777,7 +788,7 @@ class ChartRepository:
         volume_filter=True,
         net_reward_risk_filter=False,
         shallow_base_breakout_enabled=True,
-        n_target_trend_confirmation_enabled: bool = False,
+        n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None,
         buy_interval_level: int = 2,
         initial_capital=100_000,
         max_position_weight=1.0,
@@ -828,6 +839,7 @@ class ChartRepository:
         return dict(view, variant=variant, scenario=scenario, parameter_source_run=rid, theory=theory,
                     strategy_profile=dict(id=variant, version=profile.get('profile_version', variant), definition=definition))
 
+    @with_strategy_trend_options("config")
     def render_theory(self, bars, config, result, asof, *, geometry=None):
         qualified_windows = config.buy_point_definition == 'whole_flip_wave_v3'
         snapshots, epochs, limits, blocked = pivot_history(bars, config)

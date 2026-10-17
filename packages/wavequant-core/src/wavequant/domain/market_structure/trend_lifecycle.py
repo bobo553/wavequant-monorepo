@@ -22,7 +22,7 @@ from .source_bear_exit import (
 )
 
 
-LIFECYCLE_VERSION = 'six_state_failed_breakout_close_rejection_v23'
+LIFECYCLE_VERSION = 'six_state_causal_missing_key_bootstrap_v24'
 
 
 class LifecycleState(StrEnum):

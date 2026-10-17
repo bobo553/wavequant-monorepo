@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+from itertools import product
 import json
 import logging
 import os
@@ -53,6 +54,10 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument(
         "--n-target-trend-confirmation-enabled", nargs="?", const=True, default=None, type=_n_target_cli_value,
         help="precompute only true/false mode; omitted builds both modes serially (bare option selects true)",
+    )
+    value.add_argument(
+        "--ordinary-trend-completion-enabled", nargs="?", const=True, default=None, type=_n_target_cli_value,
+        help="precompute only true/false ordinary completion mode; omitted builds both modes serially",
     )
     value.add_argument("--akshare-timeout", type=float, default=30.0, help="AkShare call timeout in seconds (1-60)")
     value.add_argument("--web-root", type=Path)
@@ -174,13 +179,14 @@ def refresh_structures(
     variant: str,
     asof: str | None,
     n_target_trend_confirmation_enabled: bool = False,
+    ordinary_trend_completion_enabled: bool = False,
 ) -> dict[str, object]:
     """Run one idempotent refresh used by both cron and the resident worker."""
     return StructureSnapshotService(repository, infrastructure).refresh(
         _structure_run(repository, run),
         variant,
         asof=asof,
-        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled, ordinary_trend_completion_enabled=ordinary_trend_completion_enabled,
     )
 
 
@@ -199,6 +205,7 @@ def refresh_signals(
     shard_count: int = 1,
     shard_index: int = 0,
     n_target_trend_confirmation_enabled: bool = False,
+    ordinary_trend_completion_enabled: bool = False,
 ) -> list[dict[str, object]]:
     """Refresh independently published scopes so interrupted runs are resumable."""
     if not 1 <= shard_count <= 16 or not 0 <= shard_index < shard_count:
@@ -259,7 +266,7 @@ def refresh_signals(
                     None,
                     source,
                     selected_asof,
-                    structure_service.algorithm_version_for(n_target_trend_confirmation_enabled),
+                    structure_service.algorithm_version_for(n_target_trend_confirmation_enabled, ordinary_trend_completion_enabled),
                 )
                 if snapshot.scope_symbol is not None
             }
@@ -287,7 +294,7 @@ def refresh_signals(
                         symbol=symbol,
                         asof=selected_asof,
                         market_total=market_total,
-                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled, ordinary_trend_completion_enabled=ordinary_trend_completion_enabled,
                     )
                 )
             except (ValueError, RuntimeError, OSError) as exc:
@@ -315,7 +322,7 @@ def refresh_signals(
                         start,
                         symbol=symbol,
                         asof=selected_asof,
-                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled, ordinary_trend_completion_enabled=ordinary_trend_completion_enabled,
                     )
                 )
             except (ValueError, RuntimeError, OSError) as exc:
@@ -343,6 +350,7 @@ def refresh_timeframes(
     shard_count: int = 1,
     shard_index: int = 0,
     n_target_trend_confirmation_enabled: bool = False,
+    ordinary_trend_completion_enabled: bool = False,
 ) -> dict[str, object]:
     """Materialize all chart periods, skipping unchanged data versions."""
 
@@ -377,7 +385,7 @@ def refresh_timeframes(
     failed: list[dict[str, str]] = []
     for symbol in scopes:
         try:
-            result = service.precompute(source, symbol, selected_asof, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+            result = service.precompute(source, symbol, selected_asof, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled, ordinary_trend_completion_enabled=ordinary_trend_completion_enabled)
             published += len(result["published"])
             unchanged += len(result["unchanged"])
         except (ValueError, RuntimeError, OSError) as exc:
@@ -445,7 +453,9 @@ def main() -> None:
                 )
                 while True:
                     try:
-                        for n_target_enabled in _n_target_modes(args.n_target_trend_confirmation_enabled):
+                        for n_target_enabled, ordinary_enabled in product(
+                            _n_target_modes(args.n_target_trend_confirmation_enabled), _n_target_modes(args.ordinary_trend_completion_enabled)
+                        ):
                             result = (
                                 refresh_structures(
                                     infrastructure,
@@ -454,6 +464,7 @@ def main() -> None:
                                     variant=args.structure_variant,
                                     asof=args.structure_asof,
                                     n_target_trend_confirmation_enabled=n_target_enabled,
+                                    ordinary_trend_completion_enabled=ordinary_enabled,
                                 )
                                 if args.refresh_structures or args.watch_structures
                                 else refresh_signals(
@@ -470,6 +481,7 @@ def main() -> None:
                                     shard_count=args.signal_shard_count,
                                     shard_index=args.signal_shard_index,
                                     n_target_trend_confirmation_enabled=n_target_enabled,
+                                    ordinary_trend_completion_enabled=ordinary_enabled,
                                 )
                                 if args.refresh_signals or args.watch_signals
                                 else refresh_timeframes(
@@ -481,6 +493,7 @@ def main() -> None:
                                     shard_count=args.timeframe_shard_count,
                                     shard_index=args.timeframe_shard_index,
                                     n_target_trend_confirmation_enabled=n_target_enabled,
+                                    ordinary_trend_completion_enabled=ordinary_enabled,
                                 )
                             )
                             print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)

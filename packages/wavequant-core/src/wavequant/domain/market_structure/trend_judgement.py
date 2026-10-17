@@ -23,6 +23,7 @@ from types import MappingProxyType
 from typing import cast
 
 from .trend_evidence_reuse import _geometry_signature
+from .trend_options import ordinary_completion_enabled
 from .polyline import LinePoint, ReversalPoint
 from .trend_level_upgrades import _PointRange, _TrendUpgradeState, promote_trend_key_breaks
 from .trend_levels import Moment, _SourceTurn, _TrendReversalState, _later_moment, _source_turns, trend_reversals
@@ -791,12 +792,14 @@ class _TrendJudgementState:
     """单路径追加状态；保留最近来源翻向及尾部检查点，修订只重放有效后缀。"""
 
     def __init__(self, trend_level: int, *, memory_bytes: int = 8 * 1024 * 1024,
-                 _tail_reuse: bool = False) -> None:
+                 _tail_reuse: bool = False, ordinary_trend_completion_enabled: bool | None = None) -> None:
         if type(trend_level) is not int or trend_level not in (1, 2, 3):
             raise ValueError('trend_level must be 1, 2 or 3')
         if type(memory_bytes) is not int or memory_bytes <= 0:
             raise ValueError('judgement memory_bytes must be a positive integer')
         self.trend_level = trend_level
+        self.ordinary_trend_completion_enabled = (ordinary_completion_enabled()
+            if ordinary_trend_completion_enabled is None else ordinary_trend_completion_enabled)
         self._limit = memory_bytes
         self._thread = get_ident()
         self._tail_reuse = _tail_reuse
@@ -969,7 +972,8 @@ class _TrendJudgementState:
         if get_ident() != self._thread:
             ordinary = trend_reversals(source, trend_level=self.trend_level)
             events: list[dict[str, object]] = []
-            merged = promote_trend_key_breaks(source, ordinary, trend_level=self.trend_level, event_sink=events)
+            merged = promote_trend_key_breaks(source, ordinary, trend_level=self.trend_level, event_sink=events,
+                ordinary_trend_completion_enabled=self.ordinary_trend_completion_enabled)
             return ordinary, merged, events
         # 私有入口本身也拒绝未知及非有限审计值；不能依赖某一调用方的准入。
         # 先 exact builtin 编码才使用 C JSON，未知对象没有额外序列化钩子。
@@ -988,7 +992,8 @@ class _TrendJudgementState:
             self.clear()
             ordinary = trend_reversals(source, trend_level=self.trend_level)
             events = []
-            merged = promote_trend_key_breaks(source, ordinary, trend_level=self.trend_level, event_sink=events)
+            merged = promote_trend_key_breaks(source, ordinary, trend_level=self.trend_level, event_sink=events,
+                ordinary_trend_completion_enabled=self.ordinary_trend_completion_enabled)
             return ordinary, merged, events
         certified = cast(tuple[bytes, ...], source_keys)
         turns = _validated_turns if _validated_turns is not None else _source_turns(source, self.trend_level - 1)
@@ -1045,7 +1050,8 @@ class _TrendJudgementState:
             ordinary = self._ordinary.extend(turns, _snapshot=False)
             regular = _source_turns(ordinary, self.trend_level, retain_geometry=True, accept_direction_facts=True)
             regular_keys = tuple(_geometry_signature(turn.source) for turn in regular)
-            self._upgrade = _TrendUpgradeState(turns, regular, trend_level=self.trend_level, event_sink=self._events)
+            self._upgrade = _TrendUpgradeState(turns, regular, trend_level=self.trend_level, event_sink=self._events,
+                ordinary_trend_completion_enabled=self.ordinary_trend_completion_enabled)
             self.cold_runs += 1
         else:
             self.append_runs += 1
@@ -1149,6 +1155,7 @@ def _finalize_judgement(
 
 def judge_trend(
     high_low_points: Sequence[Mapping[str, object]], *, trend_level: int = 1, asof: Moment | None = None,
+    ordinary_trend_completion_enabled: bool | None = None,
     _append_state: _TrendJudgementState | None = None,
     _owned_source: bool = False,
     _certified_standard: bool = False,
@@ -1157,7 +1164,9 @@ def judge_trend(
 
     一级读取折线高低点，二级读取一级 points，三级读取二级 points；级别
     只校验来源与填写元数据，不选择另一套价格公式。普通方向要求 HH 与 HL／
-    LL 与 LH 都已可知，两类证据不限定先后；严格已知本级 H/L 突破升级仍
+    LL 与 LH 都已可知，两类证据不限定先后；方向账本成为整波结束前，还须
+    默认严格突破整波极值左侧、攻击日前已知的反向关键位；显式开启普通升降
+    整波结束选项时允许四点方向先确认结束。严格本级 H/L 突破升级仍
     共用同一底层实现。严格升级
     仍可同时确认真实整波起点与单向端点；直接下级端点自身必须已经完整
     结束，不能把仅有价格反转的开放趋势尾端递归升级。上涨
@@ -1179,6 +1188,13 @@ def judge_trend(
     """
     if type(trend_level) is not int or trend_level not in (1, 2, 3):
         raise ValueError('trend_level must be 1, 2 or 3')
+    ordinary_enabled = (ordinary_completion_enabled() if ordinary_trend_completion_enabled is None
+                        else ordinary_trend_completion_enabled)
+    if type(ordinary_enabled) is not bool:
+        raise ValueError('ordinary_trend_completion_enabled must be a boolean')
+    if _append_state is not None and _append_state.ordinary_trend_completion_enabled != ordinary_enabled:
+        _append_state.clear()
+        _append_state.ordinary_trend_completion_enabled = ordinary_enabled
     if asof is not None:
         _moment_key(asof)
     source_level = trend_level - 1
@@ -1189,7 +1205,8 @@ def judge_trend(
         if _append_state is None:
             ordinary = trend_reversals(source, trend_level=trend_level)
             upgrade_events: list[dict[str, object]] = []
-            merged = promote_trend_key_breaks(source, ordinary, trend_level=trend_level, event_sink=upgrade_events)
+            merged = promote_trend_key_breaks(source, ordinary, trend_level=trend_level, event_sink=upgrade_events,
+                ordinary_trend_completion_enabled=ordinary_enabled)
         else:
             if _append_state.trend_level != trend_level:
                 raise ValueError('append state must belong to the judged trend level')

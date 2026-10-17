@@ -14,6 +14,11 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+                "2026-10-17轧空量能续改：当日成交量严格大于昨天量，或严格大于当前候选正N突破前一根K线成交量，两项任一成立；基准须历史已知且为正数。涨幅/实体或跳空条件保持，绑定当前候选attack，不能借其他N放行；无正N关联补充买点仍只比较昨天量。",
+                "2026-10-17国芳2024-02-27轧空不等于买入：全波策略共用买入入口强制当日放量，且满足前收涨幅严格大于2%并阳线实体不小于上影线，或者开盘严格高于前日最高价。可选volume_filter/strict_n_attack_quality关闭不能绕过，主候选及补充买点同一入口；保留轧空、趋势和资格确认事实，不因买点拒绝取消资格。",
+                "2026-10-17国芳2025-01-03独立清仓：阴线实体覆盖前一交易日非十字实体且至少一端严格越过，成交量严格大于正值前日量或最近阴线量，即同日收盘全仓退出，不再依赖已到达二吐目标。沿用全波策略风险启用与交易资格门控、T+1及可成交限制，禁止同日重新买入；三级趋势和资格本身不因此改写。",
+                "2026-10-17国芳2024资格漏识别：全局趋势注解在初始整窗极值没有左侧关键位时，允许后续已成立反向背景取得完整身份；已有有效关键位仍冻结，三级与多空镜像共用，不按股票或日期打补丁。当前真实因果回放恢复2020-08-14末跌高、2023-08-01翻多高点和2024-02-08交替低点；翻多于2023-10-24可知，正N与轧空于2024-02-27开放资格，至回放截止2024-04-22仍有效，不能回填到结构低点日。",
+                "2026-10-17新华传媒误升级续修：普通高低点升降先认定整波结束成为可选规则，默认关闭；默认须真正普通或特殊翻向，局部反弹不得自动递归升级。三级共用全局函数，严格关键位证据和知识时钟保留；Web/API/回测/后台扫描/缓存与自选设置传递同一选项。新增边界回归仅编写，真实2020-11-05至2020-11-23及2021-12-09资格区间待提交时验证。",
                 "2026-10-17趋势660秒续修：取消闭合门禁全文缓存签名、合并候选认证、复用只读证明和派生注解；步骤缓存使用自包含完整点引用且兼容旧格式。N关闭时不整理无效下级许可点，无所选级别买入资格日期只生成层级历史资格，完整交易附件按实际需求重建，N开启保留原流程。同输入2120日完整430.587秒、趋势393.3秒，全部输出与基线一致；两分钟目标尚未达到，普通边界门禁待提交阶段，保持in-progress。",
                 "2026-10-17先锋1090日至1555日后段加速变慢续修：确认上下文以只读前缀/可见来源窗口替代每次历史截止的全量切片和None填充；回退优先最近匹配检查点，旧翻向检查点仍作较早修订后备。转多、转空、末跌高迁移及短浅回调时长门禁使用同请求行情树，交替地标单次生成后共享；冻结点证据与闭合路径仅在私有只读阶段有界复用解码，公共导出独立。保持完整历史、三层共用规则、严格越位/守位及真实知识日；回归仅编写，实际2120日分段耗时与完整输出差分待验证，不能宣称已达到两分钟或全链路只读尾部。",
                 "2026-10-17新增假突破资格退出：保留既有直接下级转空确认和后续下降破前低规则；已有正式多翻空后，最高价突破末升高点，再收盘严格跌回该高点K线收盘价，且量不少于该次首次突破前20根均量2倍、阴线实体跌幅不少于3%，可结束直接上级资格。按用户最终澄清，连续3根收盘严格高于末升高点K线收盘价即站稳，排除该假突破规则；相等不算站上。三级共用因果状态，检查点/复制/分级重放保留计数与单次触发。先锋新材目标结束日提前到2020-09-09，关键位为2020-08-11收盘5.48，不借用2020-09-10低点或未来整波完成；提交阶段真实前缀及新增边界回归已验证；相关套件的既有失败与类型基线问题另见verification。",
@@ -68,6 +73,16 @@
                 "图表一级只消费折线来源变化，二/三级只消费直接下级变化；发展尾点同向移动不得触发相同已确认来源重算。折线尾部变更与趋势版本保留真实知识日、修订和路径关闭，逐日还原须与原全前缀基线一致；六态和交易价格条件继续按行情日期推进。"
             ],
             "verification": [
+                "2026-10-17提交验证：Core五个直接相关pytest文件116 passed/71.37秒；API使用现有venv后2 passed/4 subtests（系统Python缺redis）；Web node两文件10 passed，fixture补齐已有buy_interval_level=2保持严格断言。contracts build、Web typecheck、Core build成功，Web lint 0错误6警告，git diff --check通过。mypy七文件25错误，在HEAD 6258955隔离同配置六文件复现同样25错误，整体类型门禁未通过，不合并main；按用户要求提交推送特性分支。无Web完整构建/浏览器/E2E/全套测试，前序失败保留。证据根.codex-runtime/submit-trend-rules-20261017。",
+                "2026-10-17仅开发：squeeze_volume_pass统一量能二选一，evaluate_buy逐候选执行门槛，record_squeeze/attack_bar_squeeze及volume_filter复用同一候选结果；成功和拒绝审计记录前N日期/量及两个比较结果，profile更新缓存身份。test_squeeze_buy_quality.py补两条价格路径、量能任一通过、等量拒绝、零量、候选隔离、未来基准及实体失败用例，尚未执行。本轮未运行测试/回放/lint/类型/格式/构建/Git检查/浏览器，待提交验证；CodeGraph仍unable to open database file后使用源码检索。未提交合并推送。",
+                "2026-10-17买入K线门槛仅开发：attack_quality新增squeeze_buy_rejection，integrated_strategy.evaluate_buy在各买点路径前统一门控并记录拒绝证据，策略profile同步规则身份。静态冻结行情2024-02-27实体0.2743024625小于上影0.3134885286，开盘5.6819795812低于前日高5.8909719336，虽放量且涨幅大于2%仍拒绝。新增test_squeeze_buy_quality.py覆盖2%严格边界、实体等于上影、跳空与量能二选一路径及真实样本；未运行测试、回放、lint、类型、格式、构建、Git检查或浏览器，待提交时验证。CodeGraph仍报unable to open database file，使用源码检索继续。未提交合并推送。",
+                "2026-10-17实体反包清仓开发：源码复用_body_volume_reversal，新增HoldingResistanceHistory供策略批量/逐日和账户批量/逐日统一消费，新增独立退出原因并接通收盘执行、全退优先及策略profile身份。静态读取冻结国芳样本：2025-01-03量77049749、前日61793000、最近阴线2024-12-30量57477873，实体一端相等另一端越过。新增test_body_volume_clear.py覆盖真实样本、实体边界、量能二选一、资格窗口起点、无目标清仓与禁止再入；未执行测试/回放/lint/类型/格式/构建/Git检查或浏览器，待提交时验证。CodeGraph explore报unable to open database file后使用源码检索；未提交合并推送。",
+                "2026-10-17用户当次授权离线回放与相关定向验证。diagnose_guofang_qualification.py基于冻结行情运行当前完整K线至三级及生命周期链，修复前0区间，修复后1区间（2024-02-27起）；四个采样日三级几何及完成时钟一致。最终命令PYTHONPATH=src python -m pytest tests/test_trend_missing_initial_key.py tests/test_lifecycle_frozen_context.py tests/test_trend_rebound_without_flip.py -q --tb=short -p no:cacheprovider：77 passed，65.22秒，包含真实行情完整因果回归。此前五文件组合120 passed/18 failed；在进程内恢复本轮修改前_annotate后，test_frozen_bull_origin.py与test_lifecycle_impulse_defense.py同样18 failed/44 passed，确认18项为本轮既有失败，未放宽断言。另named_flip显式结构时钟回归9 passed。未运行lint/类型/构建/格式/浏览器，无提交合并推送；新华传媒真实样本与前端选项链仍待验证。",
+                {
+                    "command": "NOT RUN: Core test_trend_rebound_without_flip.py; API test_ordinary_trend_option.py; Web ordinary-trend-completion.test.mjs and affected option consumers; sh.600825 causal replay",
+                    "status": "not-run",
+                    "summary": "2026-10-17开发阶段新增默认关闭的普通升降整波结束选项、共享严格翻向门禁与请求/缓存隔离。遵守用户开发验证节奏，未运行测试、lint、类型、格式、构建、探针或浏览器。未提交合并推送；保留既有失败与330 in-progress；尚无真实样本已修复的运行证据。"
+                },
                 {
                     "command": "submission: python -m pytest (16 affected test files, see submit-prefix-20261017/pytest.log); retry: python -m pytest tests/test_calculation_step_cache.py tests/test_calculation_step_order_cache.py tests/test_trend_change_history.py -q --tb=short; final: python -m pytest tests/test_backtest_prefix_cost.py tests/test_trend_landmarks.py tests/test_trend_change_history.py -q --tb=short",
                     "status": "failed",

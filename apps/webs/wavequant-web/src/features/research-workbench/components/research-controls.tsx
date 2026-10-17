@@ -136,6 +136,13 @@ export function ResearchControls(): JSX.Element {
                     <input type="checkbox" id="n-target-trend-confirmation" />
                     正/倒 N 超一饱确认趋势
                 </label>
+                <label
+                    className="backtest-volume-filter"
+                    title="默认关闭。勾选后，允许两高两低同时抬高或降低确认普通整波结束；未勾选时仍需真实翻向确认。统一作用于一级、二级和三级趋势。"
+                >
+                    <input type="checkbox" id="ordinary-trend-completion" />
+                    普通高低点升降确认整波结束
+                </label>
                 <button id="run-stock-backtest">运行当前股票回测</button>
                 <div
                     id="stock-backtest-status"

@@ -55,6 +55,7 @@ import { RatioComparison, ratioPlans } from "./ratio-comparison.js";
 import { parseResearchLink, resolveResearchLink } from "./research-link.js";
 import {
     researchNTargetPreference,
+    researchOrdinaryPreference,
     researchViewRequest,
     watchlistSettingsRestoration,
     watchlistSettingsToSave,
@@ -126,6 +127,7 @@ if (typeof chartPreferences.showTrendPrices === "boolean")
 if (typeof chartPreferences.showTertiaryRetracement === "boolean")
     $("show-tertiary-retracement").checked = chartPreferences.showTertiaryRetracement;
 $("n-target-trend-confirmation").checked = researchNTargetPreference(null, chartPreferences);
+$("ordinary-trend-completion").checked = researchOrdinaryPreference(null, chartPreferences);
 const timeframeTabs = [...$("timeframe-select").querySelectorAll("[role=tab][data-timeframe]")];
 const selectedTimeframe = () => $("timeframe-select").dataset.value || "1d";
 function setTimeframe(timeframe, { focus = false } = {}) {
@@ -392,6 +394,7 @@ async function showPreparingCandles(request, sequence, signal) {
     try {
         const cached = await readCachedMarketTimeframeSnapshot(source, request.symbol, request.asof, "1d", {
             nTargetTrendConfirmationEnabled: $("n-target-trend-confirmation").checked,
+            ordinaryTrendCompletionEnabled: $("ordinary-trend-completion").checked,
         });
         if (!current()) return;
         if (!chartMarketBars(state.view).length) present(cached?.view);
@@ -943,6 +946,7 @@ const buyPoints = new BuyPoints({
             asof: p.asof,
             start: isLocal() || isAkShare() ? BACKTEST_START : currentRun().start,
             n_target_trend_confirmation_enabled: $("n-target-trend-confirmation").checked,
+            ordinary_trend_completion_enabled: $("ordinary-trend-completion").checked,
         };
     },
     onSelect: async (match, p) => {
@@ -1020,6 +1024,7 @@ const structureSignals = new StructureSignals({
             source: isAkShare() ? "akshare" : isLocal() ? "tdx" : "snapshot",
             asof: params.asof,
             n_target_trend_confirmation_enabled: $("n-target-trend-confirmation").checked,
+            ordinary_trend_completion_enabled: $("ordinary-trend-completion").checked,
         };
     },
     onSelect: async (match, params) => {
@@ -2282,9 +2287,11 @@ function marketLoadStatus(message, retry = false) {
 async function loadProgressiveMarketView(request, sequence, signal) {
     const source = isAkShare() ? "akshare" : "tdx";
     const nTargetTrendConfirmationEnabled = $("n-target-trend-confirmation").checked;
+    const ordinaryTrendCompletionEnabled = $("ordinary-trend-completion").checked;
     let cachedBundle = null;
     void readCachedMarketTimeframeSnapshot(source, request.symbol, request.asof, request.timeframe, {
         nTargetTrendConfirmationEnabled,
+        ordinaryTrendCompletionEnabled,
     }).then((bundle) => {
         cachedBundle = bundle;
     });
@@ -2371,6 +2378,7 @@ async function loadProgressiveMarketView(request, sequence, signal) {
     marketLoadStatus(`历史行情已加载 · ${history.view.bars.length} 根 K 线；正在加载完整趋势…`);
     return loadMarketTimeframeSnapshot(source, request.symbol, request.asof, request.timeframe, {
         nTargetTrendConfirmationEnabled,
+        ordinaryTrendCompletionEnabled,
         signal,
         expectedDataVersion: history.dataVersion,
         expectedPriceBasis: history.view.price_basis,
@@ -2403,6 +2411,7 @@ async function loadTheory(request, sequence, preloaded = null) {
                                 asof: request.asof,
                                 timeframe: request.timeframe,
                                 n_target_trend_confirmation_enabled: $("n-target-trend-confirmation").checked,
+                                ordinary_trend_completion_enabled: $("ordinary-trend-completion").checked,
                             }
                           : {
                                 run: request.run,
@@ -2410,6 +2419,7 @@ async function loadTheory(request, sequence, preloaded = null) {
                                 symbol: request.symbol,
                                 asof: request.asof,
                                 n_target_trend_confirmation_enabled: $("n-target-trend-confirmation").checked,
+                                ordinary_trend_completion_enabled: $("ordinary-trend-completion").checked,
                             },
                       state.controller?.signal,
                   ));
@@ -2598,6 +2608,7 @@ async function loadView({
             net_reward_risk_filter: String($("backtest-net-reward-risk-filter").checked),
             shallow_base_breakout_enabled: String($("backtest-shallow-base-breakout").checked),
             n_target_trend_confirmation_enabled: String($("n-target-trend-confirmation").checked),
+            ordinary_trend_completion_enabled: String($("ordinary-trend-completion").checked),
             buy_interval_level: $("backtest-buy-interval-level").value,
             ...(isTdxBacktest() ? currentBacktestSizing() : {}),
         };
@@ -2673,6 +2684,7 @@ async function loadView({
             $("result-scope").value,
             viewParams,
             $("n-target-trend-confirmation").checked,
+            $("ordinary-trend-completion").checked,
         );
         const data = isMarketBrowse()
             ? (timeframeBundle = await loadProgressiveMarketView(request, sequence, requestSignal)).view
@@ -2963,6 +2975,7 @@ const ratioComparison = new RatioComparison({
             net_reward_risk_filter: $("backtest-net-reward-risk-filter").checked,
             shallow_base_breakout_enabled: $("backtest-shallow-base-breakout").checked,
             n_target_trend_confirmation_enabled: $("n-target-trend-confirmation").checked,
+            ordinary_trend_completion_enabled: $("ordinary-trend-completion").checked,
             local: (isLocal() || isAkShare()) && sizing !== null,
             buy_interval_level: Number($("backtest-buy-interval-level").value),
             source: isAkShare() ? "akshare" : "tdx",
@@ -3057,6 +3070,7 @@ const watchlistBacktests = new IdleWatchlistBacktests({
             net_reward_risk_filter: String($("backtest-net-reward-risk-filter").checked),
             shallow_base_breakout_enabled: String($("backtest-shallow-base-breakout").checked),
             n_target_trend_confirmation_enabled: String($("n-target-trend-confirmation").checked),
+            ordinary_trend_completion_enabled: String($("ordinary-trend-completion").checked),
             ...sizing,
             buy_interval_level: $("backtest-buy-interval-level").value,
         };
@@ -3257,6 +3271,7 @@ async function applySavedWatchlistSettings(savedSettings, keepSource = false) {
     $("backtest-shallow-base-breakout").checked = context.shallow_base_breakout_enabled === "true";
     $("backtest-buy-interval-level").value = context.buy_interval_level ?? "2";
     $("n-target-trend-confirmation").checked = researchNTargetPreference(savedSettings, chartPreferences);
+    $("ordinary-trend-completion").checked = researchOrdinaryPreference(savedSettings, chartPreferences);
     $("backtest-capital").value = String(Number(context.initial_capital) / 10_000);
     $("backtest-buy-ratio").value = String(Number(context.max_position_weight) * 100);
     watchlistBacktests.setEnabled(savedSettings.enabled);
@@ -3285,6 +3300,7 @@ document.addEventListener("change", (event) => {
             "backtest-shallow-base-breakout",
             "backtest-buy-interval-level",
             "n-target-trend-confirmation",
+            "ordinary-trend-completion",
             "backtest-capital",
             "backtest-buy-ratio",
         ].includes(event.target.id)
@@ -3301,6 +3317,7 @@ async function syncSavedWatchlists() {
             watchlists.storage.document?.settings,
             watchlistBacktests.enabled,
             $("n-target-trend-confirmation").checked,
+            $("ordinary-trend-completion").checked,
         );
         if (settings) {
             const key = JSON.stringify([settings.context, settings.enabled]);
@@ -3318,9 +3335,11 @@ async function syncSavedWatchlists() {
                 saved,
                 watchlistBacktests.enabled,
                 $("n-target-trend-confirmation").checked,
+                $("ordinary-trend-completion").checked,
             );
             if (restoration?.kind === "n-target") {
                 $("n-target-trend-confirmation").checked = restoration.enabled;
+                $("ordinary-trend-completion").checked = restoration.ordinaryEnabled;
                 ratioComparison.contextChanged();
                 buyPoints.contextChanged();
                 structureSignals.contextChanged();
@@ -3515,10 +3534,11 @@ $("backtest-buy-interval-level").addEventListener("change", () => {
     void syncSavedWatchlists();
     if (isTdxBacktest()) loadView();
 });
-$("n-target-trend-confirmation").addEventListener("change", () => {
+for (const optionId of ["n-target-trend-confirmation", "ordinary-trend-completion"]) $(optionId).addEventListener("change", () => {
     chartPreferences = {
         ...chartPreferences,
         nTargetTrendConfirmationEnabled: $("n-target-trend-confirmation").checked,
+        ordinaryTrendCompletionEnabled: $("ordinary-trend-completion").checked,
     };
     try {
         localStorage.setItem(chartPreferenceKey, JSON.stringify(chartPreferences));

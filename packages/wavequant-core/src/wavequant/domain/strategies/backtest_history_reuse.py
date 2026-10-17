@@ -5,6 +5,7 @@ They contain every original prefix, rather than a truncation of final geometry.
 """
 
 from collections.abc import Callable, Mapping, Sequence
+from ..market_structure.trend_options import ordinary_completion_enabled
 from copy import deepcopy
 from dataclasses import dataclass, fields, replace
 from datetime import datetime, timezone
@@ -630,7 +631,8 @@ class BacktestHistoryReuse:
             return None
         if (not matches
                 or type(options[0]) is not bool
-                or options[0] != self._strategy.n_target_trend_confirmation_enabled):
+                or options[0] != self._strategy.n_target_trend_confirmation_enabled
+                or ordinary_completion_enabled() != self._strategy.ordinary_trend_completion_enabled):
             return None
         return self._minute.begin(kind, options, version)
 
@@ -741,7 +743,8 @@ class BacktestHistoryReuse:
         """Read main levels using the only strategy option this reducer accepts."""
         self._require_bars(bars)
         if (type(n_target_trend_confirmation_enabled) is not bool
-                or n_target_trend_confirmation_enabled != self._strategy.n_target_trend_confirmation_enabled):
+                or n_target_trend_confirmation_enabled != self._strategy.n_target_trend_confirmation_enabled
+                or ordinary_completion_enabled() != self._strategy.ordinary_trend_completion_enabled):
             raise ValueError('backtest history reuse requires the same trend confirmation mode')
         return (_decode_hierarchy(self._hierarchy) if isinstance(self._hierarchy, _EncodedHierarchy)
                 else deepcopy(self._hierarchy))
@@ -775,7 +778,8 @@ class BacktestHistoryReuse:
         """
         self._require_bars(bars)
         if (type(n_target_trend_confirmation_enabled) is not bool
-                or n_target_trend_confirmation_enabled != self._strategy.n_target_trend_confirmation_enabled):
+                or n_target_trend_confirmation_enabled != self._strategy.n_target_trend_confirmation_enabled
+                or ordinary_completion_enabled() != self._strategy.ordinary_trend_completion_enabled):
             raise ValueError('backtest history reuse requires the same trend confirmation mode')
         certificate = _chart_audit(audit)
         if certificate is None:

@@ -1,4 +1,6 @@
 """Cache drawing artifacts for an immutable prefix and trend rule selection."""
+
+from wavequant.domain.market_structure.trend_options import ordinary_completion_enabled, with_trend_options
 from dataclasses import asdict
 import hashlib
 
@@ -6,11 +8,12 @@ from wavequant.domain.market_structure.trend_pipeline import calculate_trend_hie
 from wavequant.infrastructure.persistence.artifact_cache import canonical
 
 
-def cached_geometry(cache,bars,price_basis,engine,*,n_target_trend_confirmation_enabled: bool = False):
+@with_trend_options
+def cached_geometry(cache,bars,price_basis,engine,*,n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None):
     if type(n_target_trend_confirmation_enabled) is not bool:
         raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
     rows=[dict(asdict(b),timestamp=b.timestamp.isoformat()) for b in bars]
-    key=dict(bars_sha256=hashlib.sha256(canonical(rows).encode()).hexdigest(),
+    key=dict(ordinary_trend_completion_enabled=ordinary_completion_enabled(),bars_sha256=hashlib.sha256(canonical(rows).encode()).hexdigest(),
              price_basis=price_basis,engine=engine, computation_policy='complete_level_shared_daily_permissions_v127',
              n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
     with cache.lock(cache.key('geometry',key)):

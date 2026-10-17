@@ -3,6 +3,8 @@
 Strict lecture runs and daily fractal proxies are separate hypotheses. Canonical
 observers produce dated evidence; only evidence available on a signal bar is used.
 """
+
+from wavequant.domain.market_structure.trend_options import with_strategy_trend_options
 from collections import Counter, defaultdict
 from bisect import bisect_left, bisect_right, insort_right
 from heapq import merge
@@ -44,7 +46,7 @@ from .shallow_base_breakout import ShallowAlternationCandidate
 from .combined_a_entry import CombinedAContext, combined_a_entry_history
 from .secondary_reclaim_entry import SecondaryHigh, secondary_reclaim_history
 from .secondary_pullback_entry import SecondaryPullbackCandidate, secondary_pullback_history
-from .attack_quality import v3_positive_n_attack_rejection
+from .attack_quality import squeeze_buy_rejection, squeeze_volume_pass, v3_positive_n_attack_rejection
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
 from .wave_exhaustion_exit import (
@@ -53,7 +55,7 @@ from .wave_exhaustion_exit import (
     observe_five_top_upper_shadow_clear, observe_five_top_gap_volume_clear,
 )
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
-from .two_t_resistance import two_t_resistance_history
+from .two_t_resistance import holding_resistance_history
 from .limit_up_distribution_exit import observe_limit_up_distribution_exit
 from .five_top_entry import five_top_entry_history
 from .ten_full_entry import RetracementAnchor, ten_full_entry_history
@@ -90,6 +92,7 @@ class SystemStrategy:
     secondary_reclaim_entry_enabled: bool = False
     secondary_pullback_entry_enabled: bool = False
     n_target_trend_confirmation_enabled: bool = False
+    ordinary_trend_completion_enabled: bool = False
     buy_interval_level: int = 2
     ten_full_breakout_window: int = 23
     ten_full_retracement_ratio: float = 2/3
@@ -128,6 +131,8 @@ class SystemStrategy:
             raise ValueError('secondary reclaim entry switch must be boolean')
         if type(self.secondary_pullback_entry_enabled) is not bool:
             raise ValueError('secondary pullback entry switch must be boolean')
+        if type(self.ordinary_trend_completion_enabled) is not bool:
+            raise ValueError("ordinary trend completion switch must be boolean")
         if type(self.n_target_trend_confirmation_enabled) is not bool:
             raise ValueError('N target trend confirmation switch must be boolean')
         if type(self.buy_interval_level) is not int or self.buy_interval_level not in (1, 2, 3):
@@ -347,6 +352,7 @@ def _handoff_n_owners(state: DailySignalState, owners: Mapping[int, str],
     state.canonical_n_owners = dict(owners)
 
 
+@with_strategy_trend_options("config")
 def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                             minor_points: Sequence[ReversalPoint] | None = None,
                             chart_history_cache: dict | None = None,
@@ -1458,7 +1464,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
     daily_risks = (_daily.risk_histories.advance(len(bars) - 1, audit)
                    if whole_wave and _daily is not None and _daily.risk_histories is not None else None)
     target_resistance = (daily_risks.target_resistance if daily_risks is not None else
-                         two_t_resistance_history(bars, audit) if whole_wave else {})
+                         holding_resistance_history(bars, audit) if whole_wave else {})
     projection_events = sorted(
         (event for event in audit if event["event"].startswith("wave_projection_")),
         key=lambda event: event["bar_index"],
@@ -1567,6 +1573,23 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             counts['buy_interval_skipped_days'] += 1
             return False
         bar = bars[i]
+        def candle_rejection_for(attack: int | None) -> str | None:
+            if not whole_wave:
+                return None
+            before_attack = bars[attack - 1] if attack is not None and 0 < attack <= i else None
+            candle_rejection = squeeze_buy_rejection(bar, bars[i - 1] if i else None, before_attack)
+            if candle_rejection is not None:
+                log(i, 'entry_rejected', reason=candle_rejection,
+                    candidate_channel='global_squeeze_buy_candle',
+                    observed_open=bar.open, observed_close=bar.close, observed_high=bar.high,
+                    observed_volume=bar.volume,
+                    previous_close=bars[i - 1].close if i else None,
+                    previous_high=bars[i - 1].high if i else None,
+                    previous_volume=bars[i - 1].volume if i else None,
+                    candidate_attack=attack,
+                    pre_n_volume=before_attack.volume if before_attack is not None else None,
+                    pre_n_date=before_attack.timestamp.date().isoformat() if before_attack is not None else None)
+            return candle_rejection
         live_target_source = context.live_target_source
         target_risk = context.target_risk
         five_top_entry_risk = context.five_top_entry_risk
@@ -1609,6 +1632,10 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             if c['setup'].direction != Direction.UP or (c['attack'] in emitted_attacks and consolidation is None and wave is None) or (epochs[i] != c['epoch'] and wave is None):
                 continue
             counts['entry_candidate_evaluations'] += 1
+            if candle_rejection_for(c['attack']) is not None:
+                continue
+            squeeze_volume = squeeze_volume_pass(bar, bars[i - 1] if i else None,
+                bars[c['attack'] - 1] if whole_wave and 0 < c['attack'] <= i else None)
             if target_risk is not None:
                 log(i, 'entry_rejected', **target_risk, candidate_attack=c['attack'])
                 continue
@@ -1646,13 +1673,13 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 and frame.first_defense_breach_index is None
                 and bar.high > bars[c['attack']].high and bar.close > bars[c['attack']].close
                 and bar.close > bars[i-1].close and strong_bullish_candle(bar))
-            attack_bar_squeeze = attack_bar_failure and bar.volume > bars[i-1].volume
+            attack_bar_squeeze = attack_bar_failure and squeeze_volume
             record_squeeze = (entry_regime == MarketRegime.BULL
                 and frame.first_defense_breach_index is None
                 and frame.resistance is not None
                 and (frame.resistance.detected is False or i > c['attack'] + 1)
                 and bar.close > frame.continuation_level
-                and bar.volume > bars[i-1].volume)
+                and squeeze_volume)
             if (whole_wave and c.get('attack_quality_warning') is not None
                     and entry_regime != MarketRegime.STRONG_BULL and consolidation is None
                     and wave is None and not record_squeeze and not attack_bar_squeeze
@@ -1709,7 +1736,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             rvol = c['control'].volume.relative_volume
             if whole_wave:
                 rvol = bar.volume/bars[i-1].volume if i and bars[i-1].volume > 0 else None
-            volume_pass = (bar.volume > bars[i-1].volume if whole_wave and i else
+            volume_pass = (squeeze_volume if whole_wave else
                            rvol is not None and rvol >= config.minimum_rvol)
             # A verified C price-break path is the explicit alternative to volume.
             volume_pass = volume_pass or bool(wave and wave.get('wave_gap_trigger') in ('breakout', 'breakout_and_volume'))
@@ -1809,8 +1836,14 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                                             if live_target_source is not None else None))
                    if bottom_targets is not None else {}),
                 **{name: c[name] for name in ('window_start', 'source_path', 'qualification_window_start') if name in c},
-                **(dict(volume_basis='confirmation_volume_over_previous_session',
+                **(dict(volume_basis='confirmation_volume_over_previous_or_pre_n_session',
                         observed_volume=bar.volume, previous_volume=bars[i-1].volume,
+                        pre_n_volume=bars[c['attack']-1].volume if 0 < c['attack'] <= i else None,
+                        pre_n_date=(bars[c['attack']-1].timestamp.date().isoformat()
+                                    if 0 < c['attack'] <= i else None),
+                        volume_above_previous=squeeze_volume_pass(bar, bars[i-1]),
+                        volume_above_pre_n=squeeze_volume_pass(bar, None,
+                            bars[c['attack']-1] if 0 < c['attack'] <= i else None),
                         volume_pass=volume_pass) if whole_wave else {}),
                 weak_n_resolved_by_volume_record=bool(c.get('attack_quality_warning') and record_squeeze and wave is None),
                 weak_n_resolved_by_attack_bar_break=bool(c.get('attack_quality_warning') and attack_bar_squeeze
@@ -1856,6 +1889,9 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     confirmation_source=confirmation_source,
                     **hierarchy_proof)
             break
+        # 独立补充买点未绑定正 N 攻击，不得借用其他候选的低成交量基准。
+        if not any(s.side == 'LONG' for s in signals[context.signal_start:]) and candle_rejection_for(None) is not None:
+            return False
         combined = combined_a_proofs.get(i)
         if combined is not None and not any(s.side == 'LONG' for s in signals[context.signal_start:]):
             combined_rejection = target_risk or five_top_entry_risk

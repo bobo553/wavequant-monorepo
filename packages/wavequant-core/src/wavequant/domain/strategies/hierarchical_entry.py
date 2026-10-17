@@ -4,6 +4,8 @@ Drawing vertices have a price date AND an observation date. Each prefix is
 reduced independently; an endpoint seen only later is never traded earlier.
 The first alternation needs a higher low, not a 2/3 retracement threshold.
 """
+
+from wavequant.domain.market_structure.trend_options import ordinary_completion_enabled
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import ExitStack, nullcontext
 from copy import deepcopy
@@ -120,7 +122,7 @@ def hierarchical_history(
     last_epoch = None
     last = len(bars) - 1
     # 外包十字星的单向归并改变来源历史，旧越锚断路检查点不可继续递归。
-    cache_version = 'level_first_shared_daily_permissions_v125'
+    cache_version = 'level_first_shared_daily_permissions_v125:ordinary:' + str(ordinary_completion_enabled())
     wants_declines = decline_sink is not None
     wants_structure = structure_sink is not None
     prefix_key = (cache_version, tuple(bars[:-1]), wants_declines, n_target_trend_confirmation_enabled, wants_structure)
@@ -245,7 +247,7 @@ def hierarchical_history(
                 # 并行单日任务没有前日 N 证明所有权，N 许可由下面的顺序消费者
                 # 按本级需求生成；worker 只返回相同几何及完整候选。
                 work = (stage_runner.map('hierarchy', dated_sources(), level=level,
-                            n_enabled=False, options=(wants_declines, n_target_trend_confirmation_enabled)) if stage_runner is not None else
+                            n_enabled=False, options=(wants_declines, n_target_trend_confirmation_enabled, ordinary_completion_enabled())) if stage_runner is not None else
                         ((index, None) for index, _ in dated_sources()))
                 for index, computed in work:
                     frame = pending_frames.pop(index)

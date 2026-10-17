@@ -55,6 +55,14 @@ def n_target_option(query: dict[str, list[str]]) -> bool:
     return values[0] == "true"
 
 
+def ordinary_completion_option(query: dict[str, list[str]]) -> bool:
+    """默认关闭普通升降整波确认，只接受一个明确的布尔选项。"""
+    values = query.get("ordinary_trend_completion_enabled", ["false"])
+    if len(values) != 1 or values[0] not in {"true", "false"}:
+        raise ValueError("ordinary_trend_completion_enabled must be true or false and provided once")
+    return values[0] == "true"
+
+
 def backtest_positive_number(query: dict[str, list[str]], name: str, default: float, maximum: float) -> float:
     """Parse one bounded backtest input before it reaches the research engine."""
     raw = query.get(name, [str(default)])[0]
@@ -177,6 +185,7 @@ def make_server(
             "net_reward_risk_filter",
             "shallow_base_breakout_enabled",
             "n_target_trend_confirmation_enabled",
+            "ordinary_trend_completion_enabled",
             "buy_interval_level",
             "initial_capital",
             "max_position_weight",
@@ -204,7 +213,7 @@ def make_server(
             volume_filter=volume_filter == "true",
             net_reward_risk_filter=risk_values[0] == "true",
             shallow_base_breakout_enabled=shallow_values[0] == "true",
-            n_target_trend_confirmation_enabled=n_target_option(q),
+            n_target_trend_confirmation_enabled=n_target_option(q), ordinary_trend_completion_enabled=ordinary_completion_option(q),
             buy_interval_level=buy_interval_level_option(q),
             initial_capital=initial_capital,
             max_position_weight=max_position_weight,
@@ -222,6 +231,7 @@ def make_server(
             net_reward_risk_filter=risk_values[0],
             shallow_base_breakout_enabled=shallow_values[0],
             n_target_trend_confirmation_enabled=str(options["n_target_trend_confirmation_enabled"]).lower(),
+            ordinary_trend_completion_enabled=str(options["ordinary_trend_completion_enabled"]).lower(),
             buy_interval_level=str(options["buy_interval_level"]),
             initial_capital=str(int(initial_capital))
             if initial_capital.is_integer()
@@ -495,7 +505,7 @@ def make_server(
                     return
                 if url.path == "/api/market-timeframe":
                     expected = {"source", "symbol", "asof", "timeframe"}
-                    if set(q) - {"n_target_trend_confirmation_enabled"} != expected:
+                    if set(q) - {"n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"} != expected:
                         raise ValueError("invalid market timeframe arguments")
                     source = q["source"][0]
                     if source not in {"tdx", "akshare"}:
@@ -511,19 +521,20 @@ def make_server(
                         q["symbol"][0],
                         q["asof"][0],
                         q["timeframe"][0],
-                        n_target_trend_confirmation_enabled=n_target_option(q),
+                        n_target_trend_confirmation_enabled=n_target_option(q), ordinary_trend_completion_enabled=ordinary_completion_option(q),
                     )
                     self.send_versioned_payload(bundle, bundle["snapshot_id"])
                     return
                 if url.path == "/api/structure-signals":
                     expected = {"run", "variant", "source", "asof", "lookback", "signal_type", "trend_level"}
-                    optional = {"symbol", "markets", "n_target_trend_confirmation_enabled"}
+                    optional = {"symbol", "markets", "n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"}
                     if not expected.issubset(q) or not set(q).issubset(expected | optional):
                         raise ValueError("invalid precomputed structure query")
                     params = {key: q[key][0] for key in set(q)}
                     params["lookback"] = int(params["lookback"])
                     params["trend_level"] = int(params["trend_level"])
                     params["n_target_trend_confirmation_enabled"] = n_target_option(q)
+                    params["ordinary_trend_completion_enabled"] = ordinary_completion_option(q)
                     if "symbol" in q and params["source"] != "akshare":
                         raise ValueError("symbol is only accepted for legacy AkShare clients")
                     if structure_snapshots is None:
@@ -533,12 +544,13 @@ def make_server(
                 if url.path == "/api/buy-signals":
                     expected = {"run", "variant", "scenario", "source", "asof", "start", "lookback"}
                     online_expected = expected | {"symbol"}
-                    query_keys = set(q) - {"n_target_trend_confirmation_enabled"}
+                    query_keys = set(q) - {"n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"}
                     if query_keys not in (expected, online_expected):
                         raise ValueError("invalid precomputed buy signal query")
                     params = {key: q[key][0] for key in set(q)}
                     params["lookback"] = int(params["lookback"])
                     params["n_target_trend_confirmation_enabled"] = n_target_option(q)
+                    params["ordinary_trend_completion_enabled"] = ordinary_completion_option(q)
                     if (params["source"] == "akshare") != (query_keys == online_expected):
                         raise ValueError("AkShare buy query requires one symbol")
                     if buy_snapshots is None:
@@ -546,7 +558,7 @@ def make_server(
                     self.send(200, buy_snapshots.query(params))
                     return
                 if url.path in ("/api/tdx-view", "/api/tdx-theory"):
-                    theory_options = {"n_target_trend_confirmation_enabled"} if url.path.endswith("-theory") else set()
+                    theory_options = {"n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"} if url.path.endswith("-theory") else set()
                     if set(q) - theory_options not in ({"symbol", "asof"}, {"symbol", "asof", "timeframe"}):
                         raise ValueError("invalid TDX arguments")
                     if repository.tdx is None:
@@ -554,11 +566,11 @@ def make_server(
                     if market_timeframes is None:
                         raise ValueError("行情仓库未配置")
                     method = market_timeframes.view if url.path == "/api/tdx-view" else market_timeframes.theory
-                    options = {"n_target_trend_confirmation_enabled": n_target_option(q)} if theory_options else {}
+                    options = {"n_target_trend_confirmation_enabled": n_target_option(q), "ordinary_trend_completion_enabled": ordinary_completion_option(q)} if theory_options else {}
                     self.send(200, method("tdx", q["symbol"][0], q["asof"][0], q.get("timeframe", ["1d"])[0], **options))
                     return
                 if url.path in ("/api/akshare-view", "/api/akshare-theory"):
-                    theory_options = {"n_target_trend_confirmation_enabled"} if url.path.endswith("-theory") else set()
+                    theory_options = {"n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"} if url.path.endswith("-theory") else set()
                     if set(q) - theory_options not in ({"symbol", "asof"}, {"symbol", "asof", "timeframe"}):
                         raise ValueError("invalid AkShare arguments")
                     if repository.akshare is None:
@@ -566,7 +578,7 @@ def make_server(
                     if market_timeframes is None:
                         raise ValueError("行情仓库未配置")
                     method = market_timeframes.view if url.path == "/api/akshare-view" else market_timeframes.theory
-                    options = {"n_target_trend_confirmation_enabled": n_target_option(q)} if theory_options else {}
+                    options = {"n_target_trend_confirmation_enabled": n_target_option(q), "ordinary_trend_completion_enabled": ordinary_completion_option(q)} if theory_options else {}
                     self.send(200, method("akshare", q["symbol"][0], q["asof"][0], q.get("timeframe", ["1d"])[0], **options))
                     return
                 if url.path == "/api/health":
@@ -593,16 +605,16 @@ def make_server(
                     self.send(404, {"error": "not found"})
                     return
                 expected = {"run", "variant", "symbol", "asof"} | ({"scenario"} if url.path != "/api/theory" else set())
-                optional = {"n_target_trend_confirmation_enabled"} if url.path in ("/api/theory", "/api/stock-view") else set()
+                optional = {"n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"} if url.path in ("/api/theory", "/api/stock-view") else set()
                 if set(q) - optional != expected:
                     raise ValueError("invalid query arguments")
                 args = [q[k][0] for k in ("run", "variant", "symbol", "asof")]
                 result = (
                     repository.view(*args, q["scenario"][0])
                     if url.path == "/api/view"
-                    else repository.stock_view(*args, q["scenario"][0], n_target_trend_confirmation_enabled=n_target_option(q))
+                    else repository.stock_view(*args, q["scenario"][0], n_target_trend_confirmation_enabled=n_target_option(q), ordinary_trend_completion_enabled=ordinary_completion_option(q))
                     if url.path == "/api/stock-view"
-                    else repository.theory(*args, n_target_trend_confirmation_enabled=n_target_option(q))
+                    else repository.theory(*args, n_target_trend_confirmation_enabled=n_target_option(q), ordinary_trend_completion_enabled=ordinary_completion_option(q))
                 )
                 self.send(200, result)
             except MarketBarsVersionChanged as exc:
