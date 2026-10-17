@@ -1,3 +1,23 @@
+2026-10-18 · MONOREPO-330 新华传媒修复提交验证
+
+用户要求提交并推送feat-三级趋势统一，本轮仅复核和记录，未追加业务改动。Core .venv执行pytest tests/test_trend_unanchored_boundary.py tests/test_trading_intervals.py -q --tb=short -p no:cacheprovider：59 passed/1 failed/72.22秒。失败为test_no_selected_interval_skips_policy_scan旧调用次数断言，前一轮已在4c70014隔离源码复现，不修改断言。六个变更模块mypy --follow-imports=silent --no-incremental报告24处错误；同配置隔离4c70014源码同24处，错误正文无新增。日志位于主目录.codex-runtime/submit-xinhua-20261018/{current,baseline}-mypy.txt。首次沙箱执行类型/打包遇到权限错误，正常权限重试后sdist/wheel构建成功，git diff --check通过。
+
+门禁并非全部通过，MONOREPO-330保留in-progress及既有失败。按用户要求提交推送特性分支，不合并main，不重启服务，无浏览器/E2E或完整账户回测。
+
+2026-10-18 · MONOREPO-330 新华传媒交替低点漏识别修复
+
+继续 feat-三级趋势统一，worktree C:/Users/zb/.codex/worktrees/three-level-trend/wavequant-monorepo。用户明确授权本轮离线诊断及定向回归，不含浏览器。本地 xinhua-research-captured.json 的2018-01-02至2026-09-30共2113日冻结行情，2021-05-17、2023-05-16、2024-02-08的复权OHLCV与用户输入吻合。
+
+三个公共断点：一、lecture_trend初始空头背景错误地一直占用无前驱的2018-10-19路径首低，导致后续末跌高、翻多及资格均为空；新增_initial_context_key，仅在极值为无前驱首端时排除该首点，从其后全部已知结构取得背景，不替换已有有效冻结关键位。二、2024-01-23跌破较早交替回调低点时，TrendLifecycle._price清除了仍守住2022-10-28起点的整个翻多周期；现在保留有效翻向依据，清除已失效回调证明，重新等待共同确认。原起点破位仍失效，普通及特殊、多空镜像共用；confirm_bull_alternation拒绝已经被行情跌破的旧同级低点，防止重复复活。三、merge_recovery_entry_history只消费资格首次开窗，遗漏同一开放区间内的新交替；现在通过confirmed_alternation_event复用资格事实门禁，更新同周期当前日起的策略上下文，历史记录及区间起止不回写。
+
+真实因果回放：2021-05-17末跌高6.4940278055852385，2022-10-28翻多起点3.3510821788171428，2023-05-16翻多高6.803100567839622于2023-05-30可知；2024-02-08交替低点3.532767357186747于2024-03-20按positive_n_and_squeeze_after_qualified_b确认，N攻击日2024-03-13。策略上下文同日消费02-08低点，03-19无该上下文；Node纯函数图表投影同样显示02-08低点/03-20可知，不启动浏览器、不用显示补丁。
+
+资格规则保持原契约：2023-08-22开窗，2023-09-14缺口回补关闭；2023-11-21再次开窗，完整冻结行情截至2026-09-30仍开放。较早局部回调防线破位不等于本级资格自动关闭，不能为迎合02-08日期改写成新窗口。2024-10-30严格收盘突破产生转多确认。原2024-04-30前缀与延伸完整历史的全部保存事件及二级结构快照一致；修改前后二级几何、节点自身可知/完成日期一致，不宣称三级逐日全量哈希或完整账户验收。
+
+本轮授权验证：最终初始化/生命周期五文件153 passed/133.50s；随后消费端补修的新用例和资格回归59 passed/1 deselected/63.71s，包含真实K线至三级/六态/资格/策略上下文链。扩展组107 passed/5 failed；隔离4c70014修改前源码按明确PYTHONPATH复现全部5项同错误（一次调用旧断言、三种级别N轧空和盘整跳空旧fixture），未改旧断言或无关业务。被排除的一项就是已单独复现的调用次数失败；不能宣称全套门禁通过。完整2113日趋势与资格回放122.30秒，仅用于功能确认，不是完整账户性能数据。
+
+版本：six_state_anchored_background_bootstrap_v25 / source_causal_anchored_background_bootstrap_v144，旧结果不复用。新增tests/test_trend_unanchored_boundary.py和fixtures/xinhua_2024_alternation.json覆盖三级、多空镜像、严格突破、知识日、起点失效、检查点、旧低点拒绝、开放区间消费及实股因果链。证据位于主目录.codex-runtime/diagnose-xinhua-alternation-20261018.py、xinhua-alternation-{before,after,final,full}-20261018.json、xinhua-alternation-baseline-src。开发阶段未运行lint/类型/格式/构建、浏览器/E2E或完整账户回测，未提交、合并、推送或重启服务；MONOREPO-330保持in-progress，前序失败保留。
+
 2026-10-18 · MONOREPO-330 放量阴线与折线买入限制提交验证
 
 用户要求提交并推送feat-三级趋势统一。本轮仅复核和记录，没有追加业务规则改动。Core .venv执行pytest tests/test_two_t_volume_bearish.py tests/test_polyline_buy_gate.py tests/test_body_volume_clear.py tests/test_squeeze_buy_quality.py -q --tb=short -p no:cacheprovider：59 passed/0.55秒。python -m build --no-isolation成功生成sdist/wheel；git diff --check通过。

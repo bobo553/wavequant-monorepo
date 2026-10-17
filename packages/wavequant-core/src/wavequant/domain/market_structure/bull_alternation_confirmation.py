@@ -136,7 +136,11 @@ def confirm_bull_alternation(
     if gap is not None:
         return gap
     counter = next((point for point in points if point.kind == 'L' and point.index > high.index), None)
-    if counter is not None and origin.price < counter.price < high.price:
+    counter_defended = (counter is not None and not (
+        market.first_extreme(counter.index + 1, now + 1, counter.price, high=False) is not None
+        if market is not None and market.supports_price(counter.price)
+        else any(bar.low < counter.price for bar in bars[counter.index + 1:now + 1])))
+    if counter is not None and counter_defended and origin.price < counter.price < high.price:
         ratio = (high.price - counter.price) / (high.price - origin.price)
         rebreak = next((point for point in points if point.kind == 'H'
                        and point.index > counter.index and point.price > high.price), None)

@@ -37,6 +37,19 @@ def _context_key(points, bull, *, symbol, dates, trend_level):
     return points[typed.index(anchor)],points[typed.index(previous)] if previous is not None else None
 
 
+def _initial_context_key(points, bull, *, symbol, dates, trend_level):
+    """已成立方向的首端极值没有前驱时，从首端之后的完整背景取证。
+
+    路径首低可能属于更早多头，首高可能属于更早空头。它们没有左侧
+    关键位，不能永久占据后来反向背景的极值；只排除这个无前驱首端，
+    保留其后的全部已知点。有效关键位不走此回退，后续继续严格冻结。
+    """
+    anchor, key = _context_key(points, bull, symbol=symbol, dates=dates, trend_level=trend_level)
+    if key is None and len(points) >= 4 and anchor is points[0]:
+        anchor, key = _context_key(points[1:], bull, symbol=symbol, dates=dates, trend_level=trend_level)
+    return anchor, key
+
+
 class _WaveTurn(TypedDict):
     index: int
     ordinal: int
@@ -242,14 +255,14 @@ def _annotate(points, symbol, dates, *, trend_level=1):
         if background is None:
             if trend in (StructuralTrend.BULL,StructuralTrend.BEAR):
                 background=trend
-                anchor,key=_context_key(points[:j+1],background==StructuralTrend.BULL,symbol=symbol,dates=dates,trend_level=trend_level)
+                anchor,key=_initial_context_key(points[:j+1],background==StructuralTrend.BULL,symbol=symbol,dates=dates,trend_level=trend_level)
             continue
         if key is None:
             # 路径首点可能恰是整窗最高/最低点，却没有左侧关键位。此时背景
             # 尚未获得完整身份；后续相反方向成立时必须允许重新初始化，
             # 否则会永远查询缺失的前驱，吞掉多年后的真实末跌高突破。
             selected = trend if trend in (StructuralTrend.BULL, StructuralTrend.BEAR) else background
-            candidate_anchor,candidate_key=_context_key(points[:j+1],selected==StructuralTrend.BULL,
+            candidate_anchor,candidate_key=_initial_context_key(points[:j+1],selected==StructuralTrend.BULL,
                 symbol=symbol,dates=dates,trend_level=trend_level)
             if candidate_key is not None:
                 background,anchor,key=selected,candidate_anchor,candidate_key

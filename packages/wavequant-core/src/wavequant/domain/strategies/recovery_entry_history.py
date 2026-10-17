@@ -7,7 +7,7 @@ from typing import cast
 
 from ..models.model import Bar
 from .hierarchical_entry import EntryContext
-from .trading_intervals import TradingEligibility
+from .trading_intervals import TradingEligibility, confirmed_alternation_event
 
 
 def merge_recovery_entry_history(
@@ -35,8 +35,12 @@ def merge_recovery_entry_history(
                 continue
             if event.get('state') == '转多确认' and key in active:
                 active[key] = replace(active[key], maturity_index=now)
-            if event.get('state') != '空多交替' or changed is not True:
+            if (event.get('state') != '空多交替' or not confirmed_alternation_event(event)
+                    or not any(window.source_path == path and window.start_flip_index == event.get('flip_index')
+                               for window in gates[level].active_intervals)):
                 continue
+            # 同一开放区间仍可确认更晚的交替低点；仅更新当日起的策略上下文，
+            # 不能要求资格重新开窗，也不能回写先前日期的测幅和买入依据。
             proof = event.get('confirmation_evidence')
             if event.get('special_bull_recovery') is not True and isinstance(proof, Mapping):
                 event = dict(event, recovery_key_index=proof.get('key_index'), recovery_key_price=proof.get('key_price'))

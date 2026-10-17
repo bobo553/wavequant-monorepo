@@ -14,6 +14,7 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+                "2026-10-18新华传媒二级交替漏识别：共用背景初始化只在整窗极值为无前驱路径首端时排除该首端，使用其后全部已知结构建立关键位；已有有效关键位保持冻结。交替回调破位但原翻向起点仍守住时，保留翻向证据重新等待确认，旧破位低点不得复活；策略在同一开放资格内接收新交替证据，不改历史区间起止。三级及多空镜像共用，不按股票或日期写判定。冻结行情确认2021-05-17末跌高、2023-05-16翻多高点（2023-05-30可知）、2024-02-08交替低点（2024-03-20正N与轧空确认），图表与策略共用真实确认时钟。",
                 "2026-10-18折线末跌高买入前置门禁：复用折线六态_PolylineStructure确认的空头关键位，未被最高价严格突破前拒绝全波策略所有买点入口；突破依据影线而非收盘，相等不算，关键位及空头锚点须在突破日前可知。局部较低反弹/较高低点不能降低门槛，突破只解除限制，不自动买入。三级结构及资格保持独立，不按国芳日期写特例。",
                 "2026-10-17全局放量阴线与二吐卖出：is_volume_bearish统一收盘低于开盘且当日成交量严格大于昨日或最近阴线的正值历史成交量；不以相对前收涨跌判断阴阳。二吐到达当天及有效后续放量阴线独立触发既有配置的累计减仓，策略及账户拦截新买与加仓，保留原全清优先和真实收盘知识时钟；普通反包与二吐后双破、十满放量阴线消费同一定义。",
                 "2026-10-17轧空量能续改：当日成交量严格大于昨天量，或严格大于当前候选正N突破前一根K线成交量，两项任一成立；基准须历史已知且为正数。涨幅/实体或跳空条件保持，绑定当前候选attack，不能借其他N放行；无正N关联补充买点仍只比较昨天量。",
@@ -75,6 +76,26 @@
                 "图表一级只消费折线来源变化，二/三级只消费直接下级变化；发展尾点同向移动不得触发相同已确认来源重算。折线尾部变更与趋势版本保留真实知识日、修订和路径关闭，逐日还原须与原全前缀基线一致；六态和交易价格条件继续按行情日期推进。"
             ],
             "verification": [
+                {
+                    "command": "submission: .venv/Scripts/python.exe -m pytest tests/test_trend_unanchored_boundary.py tests/test_trading_intervals.py -q --tb=short -p no:cacheprovider; mypy six changed modules with isolated 4c70014 comparison; python -m build --no-isolation; git diff --check",
+                    "status": "failed",
+                    "summary": "2026-10-18用户要求提交推送。本轮59 passed/1 failed/72.22s，旧test_no_selected_interval_skips_policy_scan调用次数失败已在修改前4c70014复现。六模块mypy当前及隔离基线均24 errors，错误正文无新增；日志主仓.codex-runtime/submit-xinhua-20261018。首次沙箱权限失败后正常权限重试，sdist/wheel构建成功，diff空白检查通过。无业务追加修改，不放宽断言。保留in-progress及所有既有失败，仅提交推送特性分支，不合并main，不重启服务。"
+                },
+                {
+                    "command": "python .codex-runtime/diagnose-xinhua-alternation-20261018.py .codex-runtime/xinhua-alternation-full-20261018.json 2026-12-31; compare saved prefix events and secondary snapshots",
+                    "status": "passed",
+                    "summary": "2026-10-18用户授权完整冻结输入延伸回放：2018-01-02至2026-09-30共2113日，122.30秒。2024-02-08交替低点于2024-03-20确认，2024-10-30进一步转多确认。二级资格为2023-08-22至09-14（缺口回补），2023-11-21起至样本结束仍开放，不将新交替低点日期当作窗口起点。全部保存事件及二级快照在2024-04-30前缀与完整延伸历史之间相同。不是完整账户回测或实时服务验收，未重启、提交或推送。"
+                },
+                {
+                    "command": "user-authorized offline replay: diagnose-xinhua-alternation-20261018.py; PYTHONPATH=src python -m pytest tests/test_trend_unanchored_boundary.py tests/test_trend_missing_initial_key.py tests/test_lifecycle_frozen_context.py tests/test_trend_rebound_without_flip.py tests/test_trend_lifecycle.py -q --tb=short -p no:cacheprovider; final consumer regression: tests/test_trend_unanchored_boundary.py tests/test_trading_intervals.py -k \"not test_no_selected_interval_skips_policy_scan\"; Node lifecycleBullLandmarks projection",
+                    "status": "passed",
+                    "summary": "2026-10-18用户明确授权本轮离线诊断及定向回归。三个行情日期与本地冻结2113日输入逐字段吻合。修复前二级无翻多、交替或资格；初始首低2018-10-19没有左侧关键位，遮蔽后续空头；修复后进一步定位2024-01-23回调破位清除整个翻多周期，以及开放资格内新低点被策略消费端忽略。最终五文件153 passed/133.50s；消费端补修后新用例及资格59 passed/1 deselected/63.71s（排除已单独复现的既有调用次数失败）。真实因果链恢复2024-02-08低点，于2024-03-20确认，N攻击日2024-03-13；新低点策略上下文同日接通，无提前许可。Node投影确认低点02-08、可知03-20，03-19不可见，未运行浏览器。修复前后二级几何及其自身可知/完成日期相同；此对比不宣称三级全量哈希核验。完整后续区间补充记录另见下条；类型/lint/构建留提交阶段，未提交合并推送或重启。"
+                },
+                {
+                    "command": "python -m pytest tests/test_trend_unanchored_boundary.py tests/test_trend_lifecycle.py tests/test_trading_intervals.py tests/test_recovery_alternation_confirmation.py -q --tb=short -p no:cacheprovider; isolated 4c70014 source replay of 5 failing cases",
+                    "status": "failed",
+                    "summary": "2026-10-18扩展组107 passed/5 failed。隔离4c70014修改前源码，以明确PYTHONPATH重跑5项，均复现同一错误：test_no_selected_interval_skips_policy_scan一次调用旧断言，以及recovery_alternation_confirmation三种级别N轧空与一项盘整跳空旧fixture未满足现行规则。未修改旧断言或顺带更改其业务规则，不宣称整体门禁通过。原有失败与330 in-progress保留。"
+                },
                 "2026-10-18提交验证：Core .venv pytest test_two_t_volume_bearish/test_polyline_buy_gate/test_body_volume_clear/test_squeeze_buy_quality四文件59 passed/0.55秒；Core build成功，git diff --check通过。mypy五变更模块27错误，HEAD 1ee6c62隔离同配置已有四模块复现同样27错误，无新增但整体门禁未通过，不合并main。真实国芳两段完整链回放仍待验证，无浏览器/E2E/全套测试。本次按用户要求提交推送特性分支；基线日志.codex-runtime/submit-rules-20261018/baseline-mypy.txt。",
                 "2026-10-18仅开发：PolylineBuyGate消费已知折线ReversalPoint，复用现有折线结构算法、源修订重建、逐日持久状态与分段隔离；evaluate_buy在候选选择前统一拒绝并记录关键位索引/价格/可知日，资格空档后补齐市场限制状态不补发交易。新增test_polyline_buy_gate.py覆盖触及/影线突破、回落不撤销已发生突破、局部反弹、迟知、源修订和路径切换，未执行。真实国芳2025-01-09至2025-03-17完整折线链待回放验证，不能宣称已确认实际解除日期。无测试、运行探针、类型、lint、格式、构建、Git检查或浏览器；未提交推送。CodeGraph无法打开索引后使用源码检索。",
                 "2026-10-17仅开发：新增market_state/volume_candle.py及test_two_t_volume_bearish.py，接入two_t_resistance、wave_exhaustion_exit与账户买入门控、减仓状态；识别wave_projection_ready及二吐wave_n_target_reached事件。静态冻结样本2024-10-08开6.7212274829收6.5163120109，量43775910高于前日35545935，虽日涨仍为放量阴线。真实K线回归显式注入已知二吐目标用于隔离风险消费，未冒充重新推导2024-09-24正N测幅。新增全局量能、阴阳、目标当日/未来/失效、批量逐日一致与账户卖出禁买用例未运行；真实N测幅全链回放、测试、类型等待提交验证。无Git检查、提交、推送、浏览器或服务重启；CodeGraph索引无法打开后使用源码检索。",

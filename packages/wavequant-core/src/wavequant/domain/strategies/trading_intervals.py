@@ -32,6 +32,19 @@ class TradingInterval:
     gap_replaced_index: int | None = None
 
 
+def confirmed_alternation_event(event: Mapping[str, object]) -> bool:
+    """资格账本与策略上下文共用同一交替事实及知识时钟门禁。"""
+    now, state = event.get('bar_index'), event.get('state')
+    if (event.get('event') != 'trend_lifecycle_state' or type(now) is not int or now < 0
+            or state not in ('空多交替', '多空交替')
+            or state == '空多交替' and event.get('flip_confirmed') is not True):
+        return False
+    flip, known, counter = event.get('flip_index'), event.get('flip_known_index'), event.get('counter_index')
+    return (type(flip) is int and type(known) is int and type(counter) is int
+            and 0 <= flip <= known <= now and flip <= counter <= now
+            and event.get('alternation_index') == now)
+
+
 class TradingEligibility:
     """确认交替开放交易；缺口、本级翻转及直接来源空头确认结束资格。"""
 
@@ -110,14 +123,10 @@ class TradingEligibility:
         state = event.get('state')
         if state not in ('空多交替', '多空交替'):
             return None
-        # 开窗必须携带本级普通/特殊翻多证明；孤立交替标签及旧版事件不能授权交易。
-        if state == '空多交替' and event.get('flip_confirmed') is not True:
+        # 开窗与开放区间内的上下文更新必须消费相同的正式确认事实。
+        if not confirmed_alternation_event(event):
             return None
-        flip, known, counter = event.get('flip_index'), event.get('flip_known_index'), event.get('counter_index')
-        if (type(flip) is not int or type(known) is not int or type(counter) is not int
-                or not 0 <= flip <= known <= now or not flip <= counter <= now
-                or event.get('alternation_index') != now):
-            return None
+        flip, counter = cast(int, event['flip_index']), cast(int, event['counter_index'])
         gap = confirmation_gap(event.get('confirmation_rule'), event.get('confirmation_evidence'), now)
         if state == '空多交替' and path in self._opened:
             position = self._opened[path]

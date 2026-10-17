@@ -22,7 +22,7 @@ from .source_bear_exit import (
 )
 
 
-LIFECYCLE_VERSION = 'six_state_causal_missing_key_bootstrap_v24'
+LIFECYCLE_VERSION = 'six_state_anchored_background_bootstrap_v25'
 
 
 class LifecycleState(StrEnum):
@@ -943,6 +943,23 @@ class TrendLifecycle:
         if sign * (adverse - defense.price) < 0:
             self._cycles.pop(key)
             events.append(self._event(key, cycle, now, 'trend_lifecycle_invalidated', reason='defense_broken'))
+            # 交替回调可以继续延伸，但不等于原翻向已失败。保留尚未被
+            # 行情突破的冻结起点和翻向证明，让新的回调重新接受统一确认。
+            # 资格是否结束仍由独立账本处理，不能倒改既有区间起点。
+            flip_title = '翻空为多' if cycle.up else '翻多为空'
+            flips = frozenset(fact for fact in cycle.evidence if fact.title == flip_title)
+            if (cycle.counter is not None and sign * (adverse - cycle.origin.price) >= 0
+                    and (flips or cycle.recovery)):
+                pending = replace(cycle,
+                    state=LifecycleState.BULL_FLIP if cycle.up else LifecycleState.BEAR_FLIP,
+                    counter=None, alternated=None, candidate=None,
+                    evidence=cycle.evidence if cycle.recovery else flips,
+                    structure=cycle.structure[:3] if cycle.recovery else (),
+                    confirmation_source=(), confirmation_gap=None)
+                self._cycles[key] = pending
+                events.append(self._event(key, pending, now, 'trend_lifecycle_anchor',
+                    confirmation_rule='countermove_extended_with_frozen_origin_defended',
+                    previous_counter_index=defense.index, previous_counter_price=defense.price))
             return
         confirmed = LifecycleState.BULL_CONFIRMED if cycle.up else LifecycleState.BEAR_CONFIRMED
         if now == 0 or cycle.state == confirmed or cycle.impulse is None:

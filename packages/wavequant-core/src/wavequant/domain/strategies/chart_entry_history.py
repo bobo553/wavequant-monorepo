@@ -42,7 +42,7 @@ from .market_calculations import MarketCalculations, MarketDay
 
 
 # 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "source_causal_missing_key_bootstrap_v143"
+_CONFIRMATION_CACHE_VERSION = "source_causal_anchored_background_bootstrap_v144"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
