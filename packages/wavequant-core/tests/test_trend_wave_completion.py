@@ -188,7 +188,7 @@ def test_one_completed_lower_leg_can_strictly_break_an_already_known_upper_key(
 @pytest.mark.parametrize('level', (2, 3))
 @pytest.mark.parametrize('integer_clock', (False, True))
 @pytest.mark.parametrize('invalid', ('developing', 'display', 'open'))
-def test_display_unfinished_or_still_open_lower_endpoints_never_supply_an_upper_attack(
+def test_only_formal_strict_endpoint_can_attack_before_lower_wave_completion(
     level: int, integer_clock: bool, invalid: str,
 ) -> None:
     early, closed = _lower_snapshots(lower_level=level - 1, mirror=False, integer_clock=integer_clock)
@@ -200,7 +200,16 @@ def test_display_unfinished_or_still_open_lower_endpoints_never_supply_an_upper_
         point['display_only'] = True
     source[-1] = point
     result = judge_trend(source, trend_level=level, asof=_moment(23, integer_clock))
-    assert not any(candidate['index'] == 17 for candidate in result.candidates)
+    if invalid == 'open':
+        endpoint = _point(result, 17)
+        proof = _mapping(endpoint['upgrade_evidence'])
+        assert endpoint['available_at'] == _moment(18, integer_clock)
+        assert _mapping(proof['broken_key'])['index'] == 9
+        assert _mapping(proof['origin'])['index'] == 14
+        assert 'wave_completed_at' not in endpoint
+        assert 'wave_completed_at' not in point
+    else:
+        assert not any(candidate['index'] == 17 for candidate in result.candidates)
 
 
 @pytest.mark.parametrize('level', (2, 3))

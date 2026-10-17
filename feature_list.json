@@ -14,6 +14,7 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+                "2026-10-18华瓷严格关键位升级：普通递归继续只读直接下级结束整波；独立严格路线接受具有完整本级突破证明的直接下级正式端点，保留几何可知日且不伪造完成日，发展/显示端点、等价触碰、未来证明不能升级。一级至三级共用状态与多空镜像规则。稀疏本级结构用实际存在且已知的起点/旧关键位初始化六态背景，不覆盖有效冻结背景。华瓷2024-01-24→2024-02-08跌破2022-04-27低点，二级下降于2024-02-19可知；2024-02-08→2025-11-24突破2024-01-24高点并形成二级空翻多，首次高点2025-11-19于11-20可知，11-24延伸于11-25可知。",
                 "2026-10-18新华传媒二级交替漏识别：共用背景初始化只在整窗极值为无前驱路径首端时排除该首端，使用其后全部已知结构建立关键位；已有有效关键位保持冻结。交替回调破位但原翻向起点仍守住时，保留翻向证据重新等待确认，旧破位低点不得复活；策略在同一开放资格内接收新交替证据，不改历史区间起止。三级及多空镜像共用，不按股票或日期写判定。冻结行情确认2021-05-17末跌高、2023-05-16翻多高点（2023-05-30可知）、2024-02-08交替低点（2024-03-20正N与轧空确认），图表与策略共用真实确认时钟。",
                 "2026-10-18折线末跌高买入前置门禁：复用折线六态_PolylineStructure确认的空头关键位，未被最高价严格突破前拒绝全波策略所有买点入口；突破依据影线而非收盘，相等不算，关键位及空头锚点须在突破日前可知。局部较低反弹/较高低点不能降低门槛，突破只解除限制，不自动买入。三级结构及资格保持独立，不按国芳日期写特例。",
                 "2026-10-17全局放量阴线与二吐卖出：is_volume_bearish统一收盘低于开盘且当日成交量严格大于昨日或最近阴线的正值历史成交量；不以相对前收涨跌判断阴阳。二吐到达当天及有效后续放量阴线独立触发既有配置的累计减仓，策略及账户拦截新买与加仓，保留原全清优先和真实收盘知识时钟；普通反包与二吐后双破、十满放量阴线消费同一定义。",
@@ -76,6 +77,8 @@
                 "图表一级只消费折线来源变化，二/三级只消费直接下级变化；发展尾点同向移动不得触发相同已确认来源重算。折线尾部变更与趋势版本保留真实知识日、修订和路径关闭，逐日还原须与原全前缀基线一致；六态和交易价格条件继续按行情日期推进。"
             ],
             "verification": [
+                "2026-10-18华瓷提交验证：用户要求提交并推送feat-三级趋势统一。移除本轮两处冗余cast后，Core .venv执行pytest tests/test_formal_key_attacks.py -q --tb=short -p no:cacheprovider：41 passed/29.67s。11个变更模块mypy --follow-imports=silent --no-incremental报告17处错误，与隔离HEAD 2e2cbf1同配置的错误正文逐项一致，无新增；既有扩展回归失败继续保留。python -m build --no-isolation成功，git diff --check通过。证据主目录.codex-runtime/huaci-submit-{tests,mypy,baseline-mypy,build}.txt。本轮未运行浏览器/E2E或完整账户回测；按用户要求提交推送特性分支，因既有门禁失败不合并main，330保持in-progress。",
+                "2026-10-18用户明确授权离线回放和定向回归。Core .venv pytest tests/test_formal_key_attacks.py tests/test_trend_unanchored_boundary.py tests/test_trend_missing_initial_key.py tests/test_lifecycle_frozen_context.py tests/test_trend_rebound_without_flip.py -q --tb=short -p no:cacheprovider：156 passed/168.85s，包含华瓷完整逐日回放、独立前缀与缓存对照。扩展升级组27 failed/104 passed，隔离HEAD 2e2cbf1同27失败；扩展边界组103 failed/153 passed，隔离HEAD原四文件同103失败，不能宣称所有回归通过。新正式开放端点规则替换旧一组拒绝断言，发展/显示尾端仍拒绝。证据主目录.codex-runtime/huaci-{final-tests.txt,causal-key-break.json,related-tests.txt,baseline-tests.txt,boundary-final.txt}。未运行lint/类型/构建/格式、浏览器/E2E或完整账户回测；未提交、合并、推送、重启服务，330保持in-progress。",
                 {
                     "command": "submission: .venv/Scripts/python.exe -m pytest tests/test_trend_unanchored_boundary.py tests/test_trading_intervals.py -q --tb=short -p no:cacheprovider; mypy six changed modules with isolated 4c70014 comparison; python -m build --no-isolation; git diff --check",
                     "status": "failed",

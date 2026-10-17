@@ -45,7 +45,7 @@ def calculate_trend_hierarchy(
         prepared[level] = current
         if level < 3:
             # 只在确有下一级时投影已结束来源；三级完成后不创建不存在的四级输入。
-            source = high_low_points_from_strokes(current['strokes'])
+            source = high_low_points_from_strokes(current['strokes'], include_key_break_attacks=True)
 
     results: dict[int, dict[str, object]] = {}
     qualified_source = None

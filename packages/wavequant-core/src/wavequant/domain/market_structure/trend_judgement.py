@@ -1153,6 +1153,39 @@ def _finalize_judgement(
                           tuple(_frozen_point(point, frozen_memo) for point in candidates))
 
 
+def _with_formal_key_breaks(
+    source: Sequence[Mapping[str, object]], result: TrendJudgement, *, asof: Moment | None = None,
+) -> TrendJudgement:
+    """在普通闭合判断之外复用严格突破状态，不让开放下级参与普通四点定义。"""
+    level = result.trend_level
+    if level == 1 or not any(point.get('upgrade_evidence') for point in source):
+        return result
+    turns = _source_turns(mutable_points(source), level - 1, formal_key_attacks=True)
+    if asof is not None:
+        turns = [turn for turn in turns if _later_moment(turn.available_at, asof) == asof]
+    has_early_attack = False
+    for turn in turns:
+        proof, completed = turn.source.get('upgrade_evidence'), turn.source.get('wave_completed_at')
+        if (turn.source.get('wave_identity_state') == 'owned' and isinstance(proof, Mapping)
+                and proof.get('role') == 'endpoint'
+                and (completed is None or _later_moment(turn.available_at, cast(Moment, completed)) != turn.available_at)):
+            has_early_attack = True
+            break
+    if not has_early_attack:
+        return result
+    # 本级候选先恢复原始来源坐标；后续严格状态使用相同原位置，不重排知识日。
+    candidates = mutable_points(result.candidates)
+    regular = [turn for candidate in candidates for turn in _source_turns([candidate], level,
+        retain_geometry=True, accept_direction_facts=True)]
+    events: list[dict[str, object]] = []
+    state = _TrendUpgradeState(turns, regular, trend_level=level, event_sink=events, strict_only=True)
+    promoted = state.advance()
+    if not events:
+        return result
+    return _finalize_judgement(candidates, [*mutable_points(result.points), *promoted], events,
+                               tuple(range(len(source))), level)
+
+
 def judge_trend(
     high_low_points: Sequence[Mapping[str, object]], *, trend_level: int = 1, asof: Moment | None = None,
     ordinary_trend_completion_enabled: bool | None = None,
@@ -1167,10 +1200,10 @@ def judge_trend(
     LL 与 LH 都已可知，两类证据不限定先后；方向账本成为整波结束前，还须
     默认严格突破整波极值左侧、攻击日前已知的反向关键位；显式开启普通升降
     整波结束选项时允许四点方向先确认结束。严格本级 H/L 突破升级仍
-    共用同一底层实现。严格升级
-    仍可同时确认真实整波起点与单向端点；直接下级端点自身必须已经完整
-    结束，不能把仅有价格反转的开放趋势尾端递归升级。上涨
-    端点的 up→up 或下降端点的 down→down 证据不被改成反向整波许可。
+    共用同一底层实现。严格升级可读取具有完整突破证明的直接下级正式端点，
+    不等待下级未来反向结束；普通四点路线仍只读已结束来源。开放端点没有
+    本级旧关键位严格突破时不能升格，发展尾线和仅价格反转不能借此进入。
+    up→up/down→down 不改成下级反向结束许可；本级独立取得其突破证明。
 
     asof 必须在源点判断之前过滤知识日期：完整输入中的未来点不能先
     改变归并结果，再靠末端过滤隐藏。发生坐标与可知日期都保留，原来源
@@ -1212,8 +1245,9 @@ def judge_trend(
                 raise ValueError('append state must belong to the judged trend level')
             ordinary, merged, upgrade_events = _append_state.calculate(source, positions,
                 _validated_turns=validated_turns, _certified_standard=_certified_standard)
-        return (_append_state.finalize(ordinary, merged, upgrade_events, positions) if _append_state is not None else
-                _finalize_judgement(ordinary, merged, upgrade_events, positions, trend_level))
+        result = (_append_state.finalize(ordinary, merged, upgrade_events, positions) if _append_state is not None else
+                  _finalize_judgement(ordinary, merged, upgrade_events, positions, trend_level))
+        return _with_formal_key_breaks(high_low_points, result, asof=asof)
     except Exception:
         # 来源、升级或冻结异常均不能留下半更新状态；原异常继续交给调用方。
         if _append_state is not None and get_ident() == _append_state._thread:

@@ -56,6 +56,7 @@ def _hierarchy_source(points: Sequence[Mapping[str, object]]) -> list[dict[str, 
         'trend_level', 'source_level', 'source_path', 'source_path_end_index', 'confirmed_by',
         'wave_completion_policy', 'wave_identity_state', 'wave_completed_at',
         'wave_completion_evidence', 'source_geometry_available_at', 'price_body', 'upgrade_evidence',
+        'confirmation_rule', 'wave_direction_before', 'wave_direction_after',
     )
     return [{field: point[field] for field in fields if field in point} for point in points]
 

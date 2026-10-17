@@ -31,6 +31,8 @@ from .trend_evidence_reuse import _geometry_signature
 from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
 from .trend_body_reversal import with_price_bodies
 from .trend_confirmation import _PrefixSessions
+from .trend_judgement import _with_formal_key_breaks
+from .trend_levels import formal_key_attack_points
 from .trend_levels import Moment, _completed_source_point, _later_moment, _strip_source_license, completed_source_points
 from .trend_landmarks import (
     bear_bull_alternation_lows, bear_to_bull_highs, bullish_turn_signals, bearish_turn_signals, post_alternation_bull_highs,
@@ -147,7 +149,7 @@ class _TrendJudgementCache:
                             _tail_reuse=self._tail_reuse, memory_bytes=self._state_memory_bytes)
                     ordinary, merged, events = state.calculate(version.source, version.positions,
                         _validated_turns=version.turns, _certified_standard=True, _source_revision=version)
-                    result = state.finalize(ordinary, merged, events, version.positions)
+                    result = _with_formal_key_breaks(source, state.finalize(ordinary, merged, events, version.positions))
                     self._version_results[key] = version.token, result
                     self._paths.pop(key, None)
                     self._complete_cutoffs.pop(key, None)
@@ -566,13 +568,16 @@ class _OwnedCandidateOptions(TypedDict, total=False):
     _candidate_cache: '_TrendCandidateCache'
 
 
-def high_low_points_from_strokes(strokes: object) -> list[dict[str, object]]:
+def high_low_points_from_strokes(
+    strokes: object, *, include_key_break_attacks: bool = False,
+) -> list[dict[str, object]]:
     """将分段中的高低点展开，显式保留路径断点；不读取私有候选或显示尾部。
 
     source_path 只用来保持输入路径的边界，不参与价格判别。每层的正式
     geometry strokes 的已结束点通过共同门禁成为下一层首参数。严格升级的
-    开放端点仍可绘图，但不能递归；副本使用真实整波结束日，原图形自己的
-    earliest available_at 保持不变，直接 judge(points) 与本适配器完全一致。
+    开放端点默认不投影；include_key_break_attacks 供结构递归保留已证明的正式
+    突破端点，让 judge 的严格路线独立判断。普通闭合投影及交易来源仍使用
+    真实整波结束日，发展尾线始终排除；几何首次可知与结束时钟各自保留。
     """
     if not isinstance(strokes, Sequence) or isinstance(strokes, (str, bytes)):
         raise ValueError('trend strokes must be a sequence')
@@ -597,7 +602,8 @@ def high_low_points_from_strokes(strokes: object) -> list[dict[str, object]]:
             # 原始高低折线仍需 seed 和最后邻点来提取中间真正峰谷；它不是
             # 已生成的趋势线，不能在三点几何投影之前丢掉这些边界邻点。
             # 一级及以上才有开放升级端点，需要和直接 judge 共用结束门禁。
-            result.extend(path_points if level == 0 else completed_source_points(path_points, source_level=level))
+            project = formal_key_attack_points if include_key_break_attacks else completed_source_points
+            result.extend(path_points if level == 0 else project(path_points, source_level=level))
     return result
 
 
@@ -771,8 +777,8 @@ def _annotate_geometry(
     只能在此前节点均已可知后成立。旧标注器要求单调知识日，因此仅把
     最小坐标投影的 available_at 临时设为前缀最大值，不修改原节点。
 
-    临时投影不携带 source_confirmation、definition_evidence、upgrade_evidence
-    等证明，避免标注器接触或复制整份账本。只白名单回写派生字段；完整
+    临时投影只额外携带本级严格突破三点证明，不携带 source_confirmation、
+    definition_evidence 或整份祖先账本。只白名单回写派生字段；完整
     _ref 内恢复对应几何节点自己的日期，观察顶层保留累计日期。它既不能
     倒填事件，也不能把累计上下文日期冒充下一层来源的自身可知日。
     坐标顺序、交替种类及非零腿仍由原标注器严格校验，不放宽其公共契约。
@@ -783,8 +789,16 @@ def _annotate_geometry(
     for point in points:
         own_known = cast(Moment, point['available_at'])
         context_known = own_known if context_known is None else _later_moment(context_known, own_known)
-        shadows.append(dict({field: point[field] for field in ('index', 'ordinal', 'time', 'kind', 'value')},
-                            available_at=context_known))
+        shadow = dict({field: point[field] for field in ('index', 'ordinal', 'time', 'kind', 'value')},
+                      available_at=context_known)
+        # 严格突破是独立背景证据，只传本级固定深度的三点证明；不携带
+        # 祖先确认链或把未来结束证据注入标注的当时知识。
+        if isinstance(point.get('upgrade_evidence'), Mapping):
+            shadow.update({field: point[field] for field in (
+                'upgrade_evidence', 'confirmation_rule', 'wave_identity_state', 'wave_completion_policy',
+                'wave_direction_before', 'wave_direction_after',
+            ) if field in point})
+        shadows.append(shadow)
         originals[(cast(int, point['index']), cast(int, point['ordinal']))] = point
     annotate = cast(_DefinitionAnnotator, _annotate)
     annotate(shadows, symbol, dates, trend_level=trend_level)

@@ -263,7 +263,7 @@ def secondary_trends(level1: Mapping[str, object], bars: Sequence[Bar], *,
     """
     from .trend_lines import high_low_points_from_strokes, trend_lines
 
-    points = high_low_points_from_strokes(level1.get('strokes'))
+    points = high_low_points_from_strokes(level1.get('strokes'), include_key_break_attacks=True)
     qualified = high_low_points_from_strokes(level1.get('qualified_strokes', level1.get('strokes')))
     return trend_lines(points, bars, trend_level=2, qualified_source_points=qualified,
                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)

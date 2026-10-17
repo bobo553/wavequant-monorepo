@@ -1,6 +1,7 @@
 """用同一高低点定义递归观察一级、二级和三级趋势。
 
-一级来源为已确认折线反转；二级来源为已结束一级整波点；三级来源为已结束二级整波点。
+一级来源为已确认折线反转；普通递归只使用直接下级已结束整波点。
+严格关键位通道另可读取直接下级具有完整突破证明的正式端点，不伪造其结束。
 正／负反转描述局部折线转向，多／空趋势要求两类同向严格抬高或降低。
 本模块产生整波趋势方向证据；突破已知本级高低点的立即升级是独立通道，
 普通方向变化不能冒充翻空为多、翻多为空或其他严格关键位突破事件。
@@ -19,7 +20,7 @@ from .trend_structure import StructuralTrend, classify_trend_prices, preceding_t
 Moment: TypeAlias = int | str
 WaveDirection: TypeAlias = Literal['up', 'down']
 
-__all__ = ['completed_source_points', 'trend_reversals']
+__all__ = ['completed_source_points', 'formal_key_attack_points', 'trend_reversals']
 
 _WAVE_COMPLETION_POLICY = 'whole_wave_v117'
 
@@ -326,6 +327,77 @@ def _validate_completed_source_point(raw: Mapping[str, object]) -> dict[str, obj
     return result
 
 
+def _formal_key_attack_point(raw: Mapping[str, object]) -> dict[str, object] | None:
+    """正式端点可证明本级价格突破；开放身份不能作为普通组合波结束证明。
+
+    已闭合普通点仍使用真实结束日。严格升级端点使用自身几何可知日，
+    独立校验其起点、旧关键位、攻击坐标及知识链，不伪造 wave_completed_at。
+    """
+    completed = _validate_completed_source_point(raw)
+    upgrade = raw.get('upgrade_evidence')
+    if raw.get('wave_identity_state') != 'owned' or not isinstance(upgrade, Mapping):
+        return completed
+    if upgrade.get('role') != 'endpoint':
+        return completed
+    level = raw.get('trend_level')
+    direction = upgrade.get('direction')
+    attack, origin = upgrade.get('confirmed_by'), upgrade.get('origin')
+    if (type(level) is not int or level not in (1, 2, 3) or raw.get('source_level') != level - 1
+            or direction not in ('up', 'down') or not isinstance(attack, Mapping)
+            or not isinstance(origin, Mapping)):
+        raise ValueError('formal key attack requires its direct-level strict proof')
+    rising = direction == 'up'
+    rule = (f'level{level - 1}_confirmed_' + ('high' if rising else 'low')
+            + f'_breaks_known_level{level}_' + ('last_fall_high' if rising else 'last_rise_low'))
+    if (upgrade.get('confirmation_rule') != rule or raw.get('confirmation_rule') != rule
+            or any(attack.get(field, 0 if field == 'ordinal' else None)
+                   != raw.get(field, 0 if field == 'ordinal' else None)
+                   for field in ('index', 'ordinal', 'kind', 'value', 'time'))
+            or origin.get('kind') != ('L' if rising else 'H')
+            or raw.get('wave_direction_after') != direction
+            or raw.get('wave_direction_before') != direction):
+        raise ValueError('formal key attack must retain its actual endpoint and direction')
+    known = _proof_known(raw)
+    proof_known = upgrade.get('available_at')
+    if not (type(proof_known) is int or isinstance(proof_known, str) and proof_known):
+        raise ValueError('formal key attack requires a proof clock')
+    if _later_moment(proof_known, known) != known:
+        raise ValueError('formal key attack cannot borrow future proof')
+    key = upgrade.get('broken_key')
+    if not isinstance(key, Mapping) or key.get('kind') != attack.get('kind'):
+        raise ValueError('formal key attack requires a matching old key')
+    sign = 1 if rising else -1
+    for ref in (origin, attack, key):
+        price = ref.get('value')
+        if (type(price) not in (int, float) or not isfinite(cast(float, price)) or cast(float, price) <= 0
+                or _later_moment(_proof_known(ref), proof_known) != proof_known):
+            raise ValueError('formal key attack requires finite known references')
+    # 延伸波的原起点可能已经在旧 key 的突破一侧，不能强加新反向起波的跨价条件。
+    # 但真实方向、旧关键位、攻击日前可知与原起点均必须保留。
+    if (sign * (cast(float, attack['value']) - cast(float, key['value'])) <= 0
+            or sign * (cast(float, attack['value']) - cast(float, origin['value'])) <= 0
+            or not _proof_order(key) < _proof_order(attack)
+            or not _proof_order(origin) < _proof_order(attack)):
+        raise ValueError('formal key attack requires a strict directional break')
+    key_known = _proof_known(key)
+    attack_time = cast(str, attack['time'])
+    earlier = (key_known < cast(int, attack['index']) if isinstance(key_known, int) else
+               int(key_known) < int(attack_time) if key_known.isdecimal() and attack_time.isdecimal() else
+               key_known < attack_time)
+    if not earlier:
+        raise ValueError('formal key attack requires a key known before its price date')
+    return dict(raw)
+
+
+def formal_key_attack_points(
+    points: Sequence[Mapping[str, object]], *, source_level: int,
+) -> list[dict[str, object]]:
+    """普通已结束来源加正式严格攻击端点；仅供独立突破路线消费。"""
+    if type(source_level) is not int or source_level not in (0, 1, 2, 3):
+        raise ValueError('source_level must be 0, 1, 2 or 3')
+    return [dict(turn.source) for turn in _source_turns(points, source_level, formal_key_attacks=True)]
+
+
 def completed_source_points(
     points: Sequence[Mapping[str, object]], *, source_level: int,
 ) -> list[dict[str, object]]:
@@ -354,6 +426,7 @@ class _SourceTurn:
 def _source_turns(
     points: Sequence[Mapping[str, object]], source_level: int, *, retain_geometry: bool = False,
     accept_direction_facts: bool = False, _position_offset: int = 0,
+    formal_key_attacks: bool = False,
 ) -> list[_SourceTurn]:
     """统一校验直接下级结束来源；原始位置包含开放点以保持来源可追溯。
 
@@ -373,7 +446,7 @@ def _source_turns(
         if raw.get('state') in ('seed', 'developing') or raw.get('display_only') is True:
             continue
         geometry = raw
-        projected = _completed_source_point(raw)
+        projected = _formal_key_attack_point(raw) if formal_key_attacks else _completed_source_point(raw)
         if accept_direction_facts and raw.get('wave_identity_state') == 'direction_only':
             # 内部方向账本可以参与审计解析，但也必须先经过共同policy/身份
             # 校验；删除policy的direction_only不能降级成legacy closed key。

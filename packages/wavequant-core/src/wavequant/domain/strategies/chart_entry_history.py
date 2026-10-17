@@ -42,7 +42,7 @@ from .market_calculations import MarketCalculations, MarketDay
 
 
 # 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "source_causal_anchored_background_bootstrap_v144"
+_CONFIRMATION_CACHE_VERSION = "source_causal_formal_key_attacks_v145"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -237,7 +237,7 @@ def _chart_calculation_scope(
                     assert base_rows is not None
                     base = next(base_rows)
                     if base is not base_previous:
-                        source = high_low_points_from_strokes(base['strokes'])
+                        source = high_low_points_from_strokes(base['strokes'], include_key_break_attacks=True)
                     base_previous = base
                 for number in range(first, level + 1):
                     offset, step = number - 1, 3 + (number - 1) * 7
@@ -272,7 +272,7 @@ def _chart_calculation_scope(
                         checkpoint_changed = checkpoint_changed or bool(events)
                         if steps is not None:
                             record_lifecycle(steps, events)
-                    source = high_low_points_from_strokes(current['strokes']) if changed and number < level else None
+                    source = high_low_points_from_strokes(current['strokes'], include_key_break_attacks=True) if changed and number < level else None
                 if checkpoint_changed and full_history and first == 1 and level == 3:
                     calculations._save_lifecycle_checkpoint(frame.index)
                 if full_history and first == 1 and level == 3:

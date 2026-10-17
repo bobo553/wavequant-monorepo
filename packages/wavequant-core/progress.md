@@ -1,3 +1,17 @@
+2026-10-18 · MONOREPO-330 华瓷修复提交验证
+
+2026-10-18华瓷提交验证：用户要求提交并推送feat-三级趋势统一。移除本轮两处冗余cast后，Core .venv执行pytest tests/test_formal_key_attacks.py -q --tb=short -p no:cacheprovider：41 passed/29.67s。11个变更模块mypy --follow-imports=silent --no-incremental报告17处错误，与隔离HEAD 2e2cbf1同配置的错误正文逐项一致，无新增；既有扩展回归失败继续保留。python -m build --no-isolation成功，git diff --check通过。证据主目录.codex-runtime/huaci-submit-{tests,mypy,baseline-mypy,build}.txt。本轮未运行浏览器/E2E或完整账户回测；按用户要求提交推送特性分支，因既有门禁失败不合并main，330保持in-progress。
+
+2026-10-18 · MONOREPO-330 华瓷双向严格升级与二级空翻多
+
+继续 feat-三级趋势统一，独立 worktree C:/Users/zb/.codex/worktrees/three-level-trend/wavequant-monorepo。共用趋势核心新增正式严格攻击来源：具有完整严格升级证明的下级端点按自身可知日攻击本级旧关键位，普通四点路线仍须下级整波结束；不将开放端点伪造为已结束，不接受发展/显示尾点。直接层级、真实坐标、方向、严格价差与知识链统一校验。缓存优化入口、二/三级、分阶段及逐日入口使用同一规则。稀疏本级六态从实际存在的严格起点和旧关键位取得背景，并识别反向攻击上一翻向起点；已有有效冻结上下文不被局部攻击替换。
+
+华瓷真实逐日结果：2024-01-24高23.581034907277935至2024-02-08低10.194964125114888，严格跌破2022-04-27低10.88，2024-02-19产生二级下降/翻空。此低点至2025-11-24高26.835505065126593严格突破2024-01-24二级高点；首次二级空翻多高点为2025-11-19，于11-20可知，11-24新高于11-25延伸。没有把发生日当可知日。独立截止日重算与逐日缓存快照对照覆盖关键前后日期。
+
+新增 tests/test_formal_key_attacks.py 与 fixtures/huaci_2024_key_break.json；冻结1022日行情来自仓库原有两份华瓷fixture，2021-11-16起仅取huaci_wave_continuation，之前补上市前缀，不混接重叠价格。覆盖二/三级、多空镜像、相等不破、开放严格端点、完成日期不提前、未来/伪造证明拒绝、只读输入、缓存和阶段投影。六态版本six_state_strict_key_background_v26，历史版本source_causal_formal_key_attacks_v145。
+
+2026-10-18用户明确授权离线回放和定向回归。Core .venv pytest tests/test_formal_key_attacks.py tests/test_trend_unanchored_boundary.py tests/test_trend_missing_initial_key.py tests/test_lifecycle_frozen_context.py tests/test_trend_rebound_without_flip.py -q --tb=short -p no:cacheprovider：156 passed/168.85s，包含华瓷完整逐日回放、独立前缀与缓存对照。扩展升级组27 failed/104 passed，隔离HEAD 2e2cbf1同27失败；扩展边界组103 failed/153 passed，隔离HEAD原四文件同103失败，不能宣称所有回归通过。新正式开放端点规则替换旧一组拒绝断言，发展/显示尾端仍拒绝。证据主目录.codex-runtime/huaci-{final-tests.txt,causal-key-break.json,related-tests.txt,baseline-tests.txt,boundary-final.txt}。未运行lint/类型/构建/格式、浏览器/E2E或完整账户回测；未提交、合并、推送、重启服务，330保持in-progress。
+
 2026-10-18 · MONOREPO-330 新华传媒修复提交验证
 
 用户要求提交并推送feat-三级趋势统一，本轮仅复核和记录，未追加业务改动。Core .venv执行pytest tests/test_trend_unanchored_boundary.py tests/test_trading_intervals.py -q --tb=short -p no:cacheprovider：59 passed/1 failed/72.22秒。失败为test_no_selected_interval_skips_policy_scan旧调用次数断言，前一轮已在4c70014隔离源码复现，不修改断言。六个变更模块mypy --follow-imports=silent --no-incremental报告24处错误；同配置隔离4c70014源码同24处，错误正文无新增。日志位于主目录.codex-runtime/submit-xinhua-20261018/{current,baseline}-mypy.txt。首次沙箱执行类型/打包遇到权限错误，正常权限重试后sdist/wheel构建成功，git diff --check通过。

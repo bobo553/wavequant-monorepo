@@ -174,10 +174,11 @@ class _TrendUpgradeState:
 
     def __init__(self, turns: Sequence[_SourceTurn], regular: Sequence[_SourceTurn], *, trend_level: int,
                  event_sink: list[dict[str, object]] | None = None,
-                 ordinary_trend_completion_enabled: bool = False) -> None:
+                 ordinary_trend_completion_enabled: bool = False, strict_only: bool = False) -> None:
         if type(trend_level) is not int or trend_level not in (1, 2, 3):
             raise ValueError('trend_level must be 1, 2 or 3')
         self.trend_level = trend_level
+        self.strict_only = strict_only
         if type(ordinary_trend_completion_enabled) is not bool:
             raise ValueError('ordinary_trend_completion_enabled must be a boolean')
         self.ordinary_trend_completion_enabled = ordinary_trend_completion_enabled
@@ -359,7 +360,8 @@ class _TrendUpgradeState:
             recent[attack.kind] = recent[attack.kind][-2:]
             # 已结束的下级翻空之后，最高价创新高但收盘未超过原高点当日收盘，不能
             # 覆盖该高点。随后再破翻空低点才确认组合下降波，保留真实四点。
-            if source_level > 0 and owned_direction == 'up' and whole_extreme is not None and attack.kind == 'H':
+            if (not self.strict_only and source_level > 0 and owned_direction == 'up'
+                    and whole_extreme is not None and attack.kind == 'H'):
                 counter = recent['L'][-1] if recent['L'] else None
                 if (counter is not None and _order(whole_extreme) < _order(counter) < _order(attack)
                         and rejects_wick_extension(whole_extreme.source, counter.source, attack.source)):
@@ -402,8 +404,9 @@ class _TrendUpgradeState:
                     continue
             classification = classify_trend_prices([point.value for point in recent['H']],
                                                    [point.value for point in recent['L']], trend_level=trend_level)
-            current: WaveDirection | None = ('up' if classification == StructuralTrend.BULL else
-                                             'down' if classification == StructuralTrend.BEAR else None)
+            current: WaveDirection | None = (None if self.strict_only else
+                'up' if classification == StructuralTrend.BULL else
+                'down' if classification == StructuralTrend.BEAR else None)
             if owned_direction is None and current is not None:
                 owned_direction = current
                 whole_extreme = recent['H' if current == 'up' else 'L'][-1]

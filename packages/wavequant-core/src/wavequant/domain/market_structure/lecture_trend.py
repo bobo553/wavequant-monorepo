@@ -5,7 +5,7 @@ from typing import NotRequired, TypedDict, cast
 from ..models.model import Bar
 from .polyline import LinePoint, PointKind, ReversalPoint
 from .price_action import Direction
-from .trend_levels import trend_reversals
+from .trend_levels import Moment, _formal_key_attack_point, _later_moment, trend_reversals
 from .trend_primitives import last_fall_high, last_rise_low, negative_reversal, positive_reversal
 from .trend_structure import (
     StructuralTrend, TrendPriceState, observe_structure, preceding_turn, retracement_evidence,
@@ -201,6 +201,50 @@ def _connect_reversal_strokes(strokes,source_strokes):
     return merged
 
 
+def _strict_upgrade_context(
+    point: Mapping[str, object], own: Mapping[tuple[int, int], dict[str, object]],
+) -> tuple[dict[str, object], dict[str, object], bool] | None:
+    """稀疏本级结构可用真实严格突破初始化背景，不等待额外两高两低。
+
+    起点与关键位必须都存在于同一本级已知前缀；升级标签及下级较早坐标
+    不能代替本级身份，也不能据此改写已有有效冻结关键位。
+    """
+    proof = point.get('upgrade_evidence')
+    if (point.get('wave_identity_state') != 'owned' or not isinstance(proof, Mapping)
+            or proof.get('role') != 'endpoint'):
+        return None
+    _formal_key_attack_point(point)
+    refs = [proof.get('origin'), proof.get('broken_key')]
+    actual: list[dict[str, object]] = []
+    for ref in refs:
+        if not isinstance(ref, Mapping):
+            return None
+        index, ordinal = ref.get('index'), ref.get('ordinal', 0)
+        if type(index) is not int or type(ordinal) is not int:
+            return None
+        current = own.get((index, ordinal))
+        if (current is None or any(current.get(field) != ref.get(field) for field in ('kind', 'value', 'time'))
+                or _later_moment(cast(Moment, current['available_at']),
+                                 cast(Moment, point['available_at'])) != point['available_at']):
+            return None
+        actual.append(current)
+    origin, key = actual
+    if not _point_order(key) < _point_order(origin) < _point_order(point):
+        return None
+    rising = proof.get('direction') == 'up'
+    sign = 1 if rising else -1
+    if (origin['kind'] != ('L' if rising else 'H') or key['kind'] != point['kind']
+            or sign * (cast(float, point['value']) - cast(float, key['value'])) <= 0
+            or sign * (cast(float, key['value']) - cast(float, origin['value'])) <= 0):
+        return None
+    key_known = cast(Moment, key['available_at'])
+    attack_time = cast(str, point['time'])
+    earlier = (key_known < cast(int, point['index']) if isinstance(key_known, int) else
+               int(key_known) < int(attack_time) if key_known.isdecimal() and attack_time.isdecimal() else
+               key_known < attack_time)
+    return (origin, key, rising) if earlier else None
+
+
 def _annotate(points, symbol, dates, *, trend_level=1):
     """为本级已确认点附加公共定义及独立关键位事件的展示证据。
 
@@ -213,6 +257,7 @@ def _annotate(points, symbol, dates, *, trend_level=1):
     previous_known=None
     high_count=low_count=0
     background=None; anchor=key=attack=None; suspicion=False
+    own_points: dict[tuple[int, int], dict[str, object]] = {}
     for j,p in enumerate(points):
         if p['kind']=='H': high_count+=1; p['label']=f'H{high_count}'
         else: low_count+=1; p['label']=f'L{low_count}'
@@ -252,6 +297,18 @@ def _annotate(points, symbol, dates, *, trend_level=1):
                 ref=extra['key']
                 p['levels'].append(dict(name='转换依据：'+('末跌高' if ref['kind']=='H' else '末升低'),price=ref['value']))
 
+        strict = _strict_upgrade_context(p, own_points)
+        own_points[_point_order(p)] = p
+        if strict is not None:
+            strict_origin, strict_key, strict_up = strict
+            # 相反严格攻击跌破/突破上一翻向的真实起点时，新背景来自本级
+            # 极值与旧关键位；同向延伸或局部较弱 key 不重置现有冻结上下文。
+            reverses_pending = (attack is not None
+                and p['kind'] != attack['extreme']['kind']
+                and _point_order(strict_key) == _point_order(attack['origin']))
+            if background is None or key is None or reverses_pending:
+                background = StructuralTrend.BEAR if strict_up else StructuralTrend.BULL
+                anchor, key, attack, suspicion = strict_origin, strict_key, None, False
         if background is None:
             if trend in (StructuralTrend.BULL,StructuralTrend.BEAR):
                 background=trend
