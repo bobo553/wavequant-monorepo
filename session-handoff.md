@@ -1,3 +1,27 @@
+2026-10-18 · MONOREPO-330 放量阴线与折线买入限制提交验证
+
+用户要求提交并推送feat-三级趋势统一。本轮仅复核和记录，没有追加业务规则改动。Core .venv执行pytest tests/test_two_t_volume_bearish.py tests/test_polyline_buy_gate.py tests/test_body_volume_clear.py tests/test_squeeze_buy_quality.py -q --tb=short -p no:cacheprovider：59 passed/0.55秒。python -m build --no-isolation成功生成sdist/wheel；git diff --check通过。
+
+mypy --follow-imports=silent检查volume_candle、polyline_lifecycle、two_t_resistance、wave_exhaustion_exit、integrated_strategy共5模块，报告27处错误（polyline_lifecycle原校验2处、integrated_strategy25处）。HEAD 1ee6c62隔离归档中同配置检查已有4模块，复现同样27错误，本轮无新增类型错误但整体门禁未通过。基线日志位于主目录.codex-runtime/submit-rules-20261018/baseline-mypy.txt，构建日志submit-rules-20261018-build.txt。未修改既有类型问题或放宽断言。
+
+国芳2024-09-24正N至2024-10-08二吐的真实测幅、2025-01-09至2025-03-17实际折线关键位完整回放仍待验证；新增真实K线用例显式注入目标，仅证明消费规则，不能代替全链结果。未运行浏览器/E2E或完整套件。按用户要求提交推送特性分支，不合并main；MONOREPO-330保持in-progress，前序失败和未验证项保留。
+
+2026-10-18 · MONOREPO-330 折线末跌高突破前禁止买入（待提交验证）
+
+继续feat-三级趋势统一，保留前序未提交放量阴线及二吐规则。用户指出国芳2025-01-09折线末跌高需至2025-03-17突破后才可找买点。按其最高价7.05突破7.02而收盘6.87未越过的口径，突破采用high严格大于key，不要求收盘站上，触及不算。突破仅解除限制，之后仍过买入K线、量能、资格及卖出优先规则。
+
+新增polyline_lifecycle.PolylineBuyGate，直接复用_PolylineStructure的确认折线末跌高判定，不另建趋势公式。消费既有ReversalPoint与其确认日；增量续接，源修订重建，epoch切换隔离。关键位与空头锚点都需早于突破日已知；未突破日记录key索引/价格/可知日。局部反弹不会自动放行；正常新低对末跌高的更新沿现有共享定义。已经真实突破的同一身份不因后来回落重新上锁。策略DailySignalState保留门禁，资格重开不遗忘；补齐空档市场状态而不补发交易。evaluate_buy在所有主/补充候选之前统一阻止，收盘观察不会倒推当天早盘许可，profile规则身份更新缓存。
+
+新增test_polyline_buy_gate.py：严格突破与触及、影线突破但收盘未越位、局部反弹、迟知锚点、源修订、分段及历史拒绝记录不改写。未运行测试/实股回放/类型/lint/格式/构建/Git检查/浏览器，遵循开发阶段规则。国芳真实1月9日至3月17日的完整折线关键位身份与解除日期待提交验证，不以示例或新增源码宣称已复现。CodeGraph explore仍unable to open database file，使用源码检索。未提交合并推送或重启服务；MONOREPO-330保持in-progress，前序失败及待验证项保留。
+
+2026-10-17 · MONOREPO-330 全局放量阴线与二吐卖出（待提交验证）
+
+继续feat-三级趋势统一，前序1ee6c62已提交推送，本轮是新增未提交开发。新增market_state.volume_candle.is_volume_bearish：close < open且成交量大于昨日正值量或最近阴线正值量，要求同股票和历史日期；调用方维护最近阴线，逐日路径不扫描旧K线。反包清仓、二吐抵抗后双破清仓、十满放量阴线复用定义。保留各自价格/目标条件，其他带明确倍数的专用规则不擅自改阈值。
+
+原二吐路径偏重长上影、宽幅反转/大实体及反包，遗漏高开但实体向下的小阴线。TwoTResistanceHistory新增已到二吐且有效期间的放量阴线减仓，含目标到达当天，不受旧两日上影观察窗口限制；支持projection_ready和明确二吐target_reached事件。独立形态使用wave_two_t_volume_bearish_reduce、配置累计减仓比例；原全仓退出仍优先。策略已有共享风险阻止买点；账户同日收盘信号入口同时拦截新买和加仓，减仓记入wave_reduced，T+1/成交限制保留，不改趋势资格。持仓目标观察也消费共用函数；profile包含新定义以区分缓存。
+
+冻结国芳2024-10-08开6.7212274829、收6.5163120109、量43775910，前日量35545935，日涨约5.07%不影响阴线身份。新增test_two_t_volume_bearish.py：量能二选一/严格等量/零量、十字阳线拒绝、二吐当天、未来与失效拒绝、批量逐日一致、账户减仓与禁买。实股K线用例显式注入已知二吐目标以隔离消费路径，没有声称真实2024-09-24正N完整测幅已重跑。依开发规则未运行测试、回放、类型、lint、格式、构建、Git检查或浏览器，全部待提交验证；未提交推送或重启服务。CodeGraph仍报unable to open database file，继续源码检索。MONOREPO-330保持in-progress，前序已知失败保留。
+
 2026-10-17 · MONOREPO-330 趋势与交易规则提交验证
 
 用户明确要求提交并推送feat-三级趋势统一。本次提交覆盖普通升降整波结束默认关闭选项及Web/API/contracts传递、缺失初始关键位重建、独立实体反包放量清仓、轧空买入价格门槛和候选正N突破前量二选一。未改变既有失败相关业务逻辑。

@@ -47,6 +47,7 @@ from .combined_a_entry import CombinedAContext, combined_a_entry_history
 from .secondary_reclaim_entry import SecondaryHigh, secondary_reclaim_history
 from .secondary_pullback_entry import SecondaryPullbackCandidate, secondary_pullback_history
 from .attack_quality import squeeze_buy_rejection, squeeze_volume_pass, v3_positive_n_attack_rejection
+from ..market_structure.polyline_lifecycle import PolylineBuyGate
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
 from .wave_exhaustion_exit import (
@@ -270,6 +271,7 @@ class DailySignalState:
     bottom_hits: dict[int, set[str]] = field(default_factory=dict)
     c_equal_events: list[dict[str, object]] = field(default_factory=list)
     has_buy_signal: bool = False
+    polyline_buy_gate: PolylineBuyGate = field(default_factory=PolylineBuyGate)
     account_risk_required: bool | None = None
     a_wave_stream: 'AWaveHistoryStream | None' = None
     risk_histories: 'DailyRiskHistories | None' = None
@@ -499,6 +501,11 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                         'reversal_low_broken', 'confirmation_gap_filled', SOURCE_BEAR_EXIT))
     hierarchical = config.entry_policy == 'hierarchical_two_buy_points'
     whole_wave = config.buy_point_definition == 'whole_flip_wave_v3'
+    polyline_buy_gate = _daily.polyline_buy_gate if _daily is not None else PolylineBuyGate()
+    if whole_wave:
+        # 独立于交易资格推进，不能在资格重开时遗忘尚未突破的折线关键位。
+        for day_index in range(polyline_buy_gate.index + 1, len(bars)):
+            polyline_buy_gate.advance(day_index, bars[day_index], snapshots[day_index], epochs[day_index])
     if config.entry_policy == 'transitioned_squeeze':
         permissions, permission_events = bull_permission_history(
             bars, snapshots, epochs, blocked, config.structure_window,
@@ -1590,6 +1597,11 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                     pre_n_volume=before_attack.volume if before_attack is not None else None,
                     pre_n_date=before_attack.timestamp.date().isoformat() if before_attack is not None else None)
             return candle_rejection
+        polyline_rejection = polyline_buy_gate.restrictions.get(i) if whole_wave else None
+        if polyline_rejection is not None:
+            log(i, 'entry_rejected', candidate_channel='global_polyline_last_fall_high',
+                **polyline_rejection)
+            return False
         live_target_source = context.live_target_source
         target_risk = context.target_risk
         five_top_entry_risk = context.five_top_entry_risk

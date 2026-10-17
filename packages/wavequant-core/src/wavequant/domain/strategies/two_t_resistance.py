@@ -6,11 +6,13 @@ from math import isfinite
 
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from ..models.model import Bar
+from ..market_state.volume_candle import is_volume_bearish
 from .event_history import EventHistoryStream
 
 
 TWO_T_BODY_VOLUME_CLEAR = "wave_two_t_body_volume_clear"
 BODY_VOLUME_CLEAR = "bearish_body_volume_clear"
+TWO_T_VOLUME_BEARISH_REDUCE = "wave_two_t_volume_bearish_reduce"
 
 
 def _body_volume_reversal(
@@ -24,8 +26,8 @@ def _body_volume_reversal(
     top, bottom = max(previous.open, previous.close), min(previous.open, previous.close)
     above_previous = previous.volume > 0 and bar.volume > previous.volume
     above_bearish = bearish is not None and bearish.volume > 0 and bar.volume > bearish.volume
-    if (bar.close >= bar.open or top == bottom or bar.open < top or bar.close > bottom
-            or (bar.open == top and bar.close == bottom) or not (above_previous or above_bearish)):
+    if (not is_volume_bearish(bar, previous, bearish) or top == bottom or bar.open < top or bar.close > bottom
+            or (bar.open == top and bar.close == bottom)):
         return None
     return dict(
         observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
@@ -59,14 +61,15 @@ def _next_volume_clear(
     reason: str,
 ) -> dict[str, object] | None:
     previous, bar = bars[index - 1], bars[index]
-    if (bar.close >= bar.open or bar.low >= previous.low or bar.close >= previous.close
-            or bearish_index is None or bars[bearish_index].volume <= 0
-            or bar.volume <= bars[bearish_index].volume):
+    bearish = bars[bearish_index] if bearish_index is not None else None
+    if (not is_volume_bearish(bar, previous, bearish)
+            or bar.low >= previous.low or bar.close >= previous.close):
         return None
     return dict(
         evidence, reason=reason, exit_fraction=1.0,
-        bearish_reference_date=bars[bearish_index].timestamp.date().isoformat(),
-        bearish_reference_volume=bars[bearish_index].volume,
+        bearish_reference_date=bearish.timestamp.date().isoformat() if bearish is not None else None,
+        bearish_reference_volume=bearish.volume if bearish is not None else None,
+        previous_volume=previous.volume,
         observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
         observed_close=bar.close, observed_volume=bar.volume,
         previous_low=previous.low, previous_close=previous.close,
@@ -89,7 +92,9 @@ class TwoTResistanceHistory(EventHistoryStream):
         super().__init__(bars, start_index=start_index)
 
     def _accepts(self, event: Mapping[str, object]) -> bool:
-        return event.get('event') in ('wave_projection_ready', 'wave_projection_invalidated')
+        return (event.get('event') in ('wave_projection_ready', 'wave_projection_invalidated')
+                or event.get('event') in ('wave_n_target_reached', 'wave_projection_target_reached')
+                and event.get('reached_stage') == 'two_t')
 
     def _reset_state(self) -> None:
         self.invalidated: dict[tuple[int, int | None], int] = {}
@@ -101,6 +106,8 @@ class TwoTResistanceHistory(EventHistoryStream):
         bar = bars[index]
         self.previous_bearish.append(self.bearish_index)
         reversal = _body_volume_reversal(bars, index, self.bearish_index)
+        bearish = bars[self.bearish_index] if self.bearish_index is not None else None
+        volume_bearish = is_volume_bearish(bar, bars[index - 1] if index else None, bearish)
         if bar.close < bar.open:
             self.bearish_index = index
         for event in self.dated.get(index, ()):
@@ -111,9 +118,10 @@ class TwoTResistanceHistory(EventHistoryStream):
         body_risk: dict[str, object] | None = None
         body_source: tuple[int, int, int] = (-1, -1, -1)
         for event in self.events:
-            if event.get('event') != 'wave_projection_ready':
+            if event.get('event') == 'wave_projection_invalidated':
                 continue
-            reached, attack, target = event.get('bar_index'), event.get('attack'), event.get('two_t')
+            reached, attack = event.get('bar_index'), event.get('attack')
+            target = event.get('two_t', event.get('reached_target'))
             origin = event.get('origin_index')
             if (type(reached) is not int or type(attack) is not int
                     or not 0 <= attack <= reached <= index
@@ -129,7 +137,7 @@ class TwoTResistanceHistory(EventHistoryStream):
                 continue
             # Old targets matter today only for a body reversal. Their small
             # warning window must never rebuild evidence on every later close.
-            if index > reached + 2 and (reversal is None or index >= invalidated):
+            if index > reached + 2 and ((reversal is None and not volume_bearish) or index >= invalidated):
                 continue
             target_evidence: dict[str, object] = dict(
                 attack=attack, wave_n_date=bars[attack].timestamp.date().isoformat(),
@@ -140,6 +148,14 @@ class TwoTResistanceHistory(EventHistoryStream):
             if type(origin) is int and 0 <= origin <= reached:
                 target_evidence.update(wave_n_origin_date=bars[origin].timestamp.date().isoformat(),
                                        wave_n_origin_price=bars[origin].low)
+            if volume_bearish and reached <= index < invalidated and risks.get(index, {}).get('exit_fraction') != 1.0:
+                risks[index] = dict(target_evidence, reason=TWO_T_VOLUME_BEARISH_REDUCE,
+                    exit_fraction=self.reduction_fraction, exit_target_fraction=self.reduction_fraction,
+                    observed_open=bar.open, observed_close=bar.close, observed_volume=bar.volume,
+                    previous_volume=bars[index - 1].volume if index else None,
+                    bearish_reference_date=bearish.timestamp.date().isoformat() if bearish is not None else None,
+                    bearish_reference_volume=bearish.volume if bearish is not None else None,
+                    target_trigger='reached_two_t_volume_bearish')
             source = reached, attack, origin if type(origin) is int else -1
             if reversal is not None and reached < index < invalidated and source > body_source:
                 body_source = source

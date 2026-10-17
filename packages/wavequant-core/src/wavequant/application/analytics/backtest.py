@@ -481,6 +481,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                                         'wave_upper_rejection_reduce', 'wave_target_upper_shadow_reduce',
                                         'wave_ordinary_equal_upper_shadow_reduce', 'wave_c_0618_upper_shadow_reduce',
                                         'wave_target_bearish_reduce', 'wave_two_t_resistance_reduce',
+                                        'wave_two_t_volume_bearish_reduce',
                                         C_EQUAL_NEAR_RESISTANCE_REDUCE):
                 pos.wave_reduced = True
             if pending_exit[symbol] == 'trend_last_fall_high_upper_shadow_reduce':
@@ -1287,9 +1288,11 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     if (config.allow_add_on and symbol not in pending_exit and symbol not in sold_today and
                         current[symbol][0] not in pressure_risks[symbol] and
                         current[symbol][0] not in trend_flip_risks[symbol] and
+                        current[symbol][0] not in target_resistance[symbol] and
                         symbol not in wave_clear_symbols):
                         pending_entry[symbol] = (signal, tick)
                 elif (current[symbol][0] not in pressure_risks[symbol]
+                      and current[symbol][0] not in target_resistance[symbol]
                       and current[symbol][0] not in trend_flip_risks[symbol] and symbol not in wave_clear_symbols):
                     pending_entry[symbol] = (signal, tick)
             for symbol, evidence in observing_structure_exits.items():

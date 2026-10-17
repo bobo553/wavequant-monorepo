@@ -14,6 +14,8 @@ from .price_action import Direction
 from .trend_history_changes import PolylineSourceGate
 from .trend_lines import polyline_turns
 from .trend_structure import retracement_evidence
+from .polyline import ReversalPoint
+from ..models.model import Bar
 
 
 class _DrawingFrame(Protocol):
@@ -159,6 +161,56 @@ class _PolylineStructure:
                 and sign * (point.value - attack.anchor.value) < 0):
             self._anchor, self._key = point, previous
             self._attack, self._suspicion = None, False
+
+
+class PolylineBuyGate:
+    """消费已确认折线，复用六态的末跌高；价格突破仅解除买入限制。"""
+
+    def __init__(self) -> None:
+        self.index = -1
+        self.epoch: int | None = None
+        self.structure = _PolylineStructure()
+        self.previous: tuple[ReversalPoint, ...] = ()
+        self.released: set[tuple[int, int, float, int]] = set()
+        self.restrictions: dict[int, dict[str, object]] = {}
+
+    def advance(
+        self, index: int, bar: Bar, points: Sequence[ReversalPoint], epoch: int,
+    ) -> None:
+        if index != self.index + 1:
+            raise ValueError('polyline buy gate requires consecutive dates')
+        self.index = index
+        if epoch != self.epoch:
+            self.epoch = epoch
+            self.structure = _PolylineStructure()
+            self.previous = ()
+            self.released.clear()
+        known = tuple(point for point in points if point.confirmed_index <= index)
+        if known != self.previous:
+            if known[:len(self.previous)] != self.previous:
+                self.structure = _PolylineStructure()
+                self.previous = ()
+            for position in range(len(self.previous), len(known)):
+                point = known[position]
+                self.structure.append(_Point(point.point.index, point.point.ordinal, point.point.kind.value,
+                    point.point.price, point.confirmed_index))
+            self.previous = known
+        key = self.structure._key if self.structure._bull is False else None
+        if key is None:
+            return
+        anchor = self.structure._anchor
+        known_at = max(key.known, anchor.known if anchor is not None else key.known)
+        identity = key.index, key.ordinal, key.value, known_at
+        if identity in self.released:
+            return
+        # 确认当日不能用此前未知的关键位解释当日影线；收盘后才能用于后续判断。
+        if known_at < index and bar.high > key.value:
+            self.released.add(identity)
+            return
+        self.restrictions[index] = dict(reason='polyline_last_fall_high_not_broken',
+            polyline_key_index=key.index, polyline_key_price=key.value,
+            polyline_key_known_index=known_at, observed_high=bar.high,
+            source_path=f'lecture-{epoch}')
 
 
 class PolylineLifecycleSource:
