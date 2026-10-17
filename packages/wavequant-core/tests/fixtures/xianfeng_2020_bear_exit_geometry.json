@@ -1,0 +1,1100 @@
+{
+  "source": "Frozen endpoint evidence for parser regression only; full causal regression recomputes from bars",
+  "points": [
+    {
+      "available_at": "2020-08-12",
+      "broken_key": {
+        "available_at": "2020-07-30",
+        "index": 617,
+        "kind": "H",
+        "label": "H",
+        "ordinal": 0,
+        "time": "2020-07-20",
+        "value": 5.43
+      },
+      "confirmation_rule": "level0_confirmed_high_breaks_known_level1_last_fall_high_origin",
+      "confirmed_by": {
+        "available_at": "2020-08-12",
+        "index": 633,
+        "kind": "H",
+        "label": "H",
+        "ordinal": 0,
+        "time": "2020-08-11",
+        "value": 5.63
+      },
+      "confirmed_on_turn": 430,
+      "edge_kind": "teaching",
+      "flip": "翻空为多",
+      "index": 630,
+      "kind": "L",
+      "label": "L43",
+      "levels": [
+        {
+          "name": "L43 的末跌高",
+          "price": 5.43
+        }
+      ],
+      "lifecycle_context": {
+        "available_at": "2020-08-12",
+        "direction": "down",
+        "key": {
+          "available_at": "2020-02-04",
+          "index": 504,
+          "kind": "L",
+          "label": "L36",
+          "ordinal": 0,
+          "time": "2020-02-04",
+          "value": 2.9
+        },
+        "origin": {
+          "available_at": "2020-06-29",
+          "index": 602,
+          "kind": "H",
+          "label": "H42",
+          "ordinal": 0,
+          "time": "2020-06-29",
+          "value": 5.43
+        }
+      },
+      "observations": [],
+      "ordinal": 1,
+      "preceding_turn": {
+        "available_at": "2020-07-30",
+        "index": 617,
+        "kind": "H",
+        "label": "H43",
+        "ordinal": 0,
+        "time": "2020-07-20",
+        "value": 5.43
+      },
+      "price_body": {
+        "close": 4.65,
+        "high": 4.83,
+        "index": 630,
+        "low": 4.48,
+        "open": 4.75,
+        "time": "2020-08-06"
+      },
+      "projection_count": 2,
+      "projection_rank": 1,
+      "reversal": "正反转",
+      "source_confirmation": null,
+      "source_kind": "L",
+      "source_label": "L",
+      "source_level": 0,
+      "source_path": "lecture-0",
+      "source_reversal_available_at": "2020-08-07",
+      "source_state": "confirmed",
+      "source_turn_position": 429,
+      "state": "reversal",
+      "teaching_ordinal": 4,
+      "teaching_path_id": "child-mother-630",
+      "time": "2020-08-06",
+      "trend": "高低点不同向或相等",
+      "trend_level": 1,
+      "upgrade_evidence": {
+        "available_at": "2020-08-12",
+        "broken_key": {
+          "available_at": "2020-07-30",
+          "index": 617,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-07-20",
+          "value": 5.43
+        },
+        "confirmation_rule": "level0_confirmed_high_breaks_known_level1_last_fall_high",
+        "confirmed_by": {
+          "available_at": "2020-08-12",
+          "index": 633,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-08-11",
+          "value": 5.63
+        },
+        "direction": "up",
+        "origin": {
+          "available_at": "2020-08-07",
+          "index": 630,
+          "kind": "L",
+          "label": "L",
+          "ordinal": 1,
+          "time": "2020-08-06",
+          "value": 4.48
+        },
+        "role": "origin"
+      },
+      "value": 4.48,
+      "wave_completed_at": "2020-08-12",
+      "wave_completion_evidence": {
+        "available_at": "2020-08-12",
+        "confirmation_rule": "level0_confirmed_high_breaks_known_level1_last_fall_high_origin",
+        "index": 630,
+        "kind": "L",
+        "ordinal": 1,
+        "time": "2020-08-06",
+        "upgrade_evidence": {
+          "available_at": "2020-08-12",
+          "broken_key": {
+            "available_at": "2020-07-30",
+            "index": 617,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-07-20",
+            "value": 5.43
+          },
+          "confirmation_rule": "level0_confirmed_high_breaks_known_level1_last_fall_high",
+          "confirmed_by": {
+            "available_at": "2020-08-12",
+            "index": 633,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-08-11",
+            "value": 5.63
+          },
+          "direction": "up",
+          "origin": {
+            "available_at": "2020-08-07",
+            "index": 630,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 1,
+            "time": "2020-08-06",
+            "value": 4.48
+          },
+          "role": "origin"
+        },
+        "value": 4.48,
+        "wave_direction_after": "up",
+        "wave_direction_before": "down"
+      },
+      "wave_completion_policy": "whole_wave_v117",
+      "wave_direction_after": "up",
+      "wave_direction_before": "down",
+      "wave_identity_state": "owned",
+      "window_trend": "高低点不同向或相等"
+    },
+    {
+      "available_at": "2020-08-12",
+      "broken_key": {
+        "available_at": "2020-07-30",
+        "index": 617,
+        "kind": "H",
+        "label": "H",
+        "ordinal": 0,
+        "time": "2020-07-20",
+        "value": 5.43
+      },
+      "confirmation_rule": "level0_confirmed_high_breaks_known_level1_last_fall_high",
+      "confirmed_by": {
+        "available_at": "2020-08-12",
+        "index": 633,
+        "kind": "H",
+        "label": "H",
+        "ordinal": 0,
+        "time": "2020-08-11",
+        "value": 5.63
+      },
+      "confirmed_on_turn": 430,
+      "edge_kind": "ordinary",
+      "flip": "一级末跌高突破升级",
+      "index": 633,
+      "kind": "H",
+      "label": "H44",
+      "levels": [
+        {
+          "name": "H44 的末升低",
+          "price": 4.48
+        }
+      ],
+      "lifecycle_context": {
+        "available_at": "2020-08-12",
+        "direction": "down",
+        "key": {
+          "available_at": "2020-02-04",
+          "index": 504,
+          "kind": "L",
+          "label": "L36",
+          "ordinal": 0,
+          "time": "2020-02-04",
+          "value": 2.9
+        },
+        "origin": {
+          "available_at": "2020-06-29",
+          "index": 602,
+          "kind": "H",
+          "label": "H42",
+          "ordinal": 0,
+          "time": "2020-06-29",
+          "value": 5.43
+        }
+      },
+      "observations": [],
+      "ordinal": 0,
+      "preceding_turn": {
+        "available_at": "2020-08-12",
+        "index": 630,
+        "kind": "L",
+        "label": "L43",
+        "ordinal": 1,
+        "time": "2020-08-06",
+        "value": 4.48
+      },
+      "price_body": {
+        "close": 5.48,
+        "high": 5.63,
+        "index": 633,
+        "low": 5.21,
+        "open": 5.37,
+        "time": "2020-08-11"
+      },
+      "projection_count": 1,
+      "projection_rank": 0,
+      "reversal": "负反转",
+      "source_confirmation": null,
+      "source_kind": "H",
+      "source_label": "H",
+      "source_level": 0,
+      "source_path": "lecture-0",
+      "source_reversal_available_at": "2020-08-12",
+      "source_state": "confirmed",
+      "source_turn_position": 430,
+      "state": "reversal",
+      "teaching_ordinal": 2,
+      "teaching_path_id": "mother-child-634",
+      "time": "2020-08-11",
+      "trend": "多头趋势",
+      "trend_level": 1,
+      "upgrade_evidence": {
+        "available_at": "2020-08-12",
+        "broken_key": {
+          "available_at": "2020-07-30",
+          "index": 617,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-07-20",
+          "value": 5.43
+        },
+        "confirmation_rule": "level0_confirmed_high_breaks_known_level1_last_fall_high",
+        "confirmed_by": {
+          "available_at": "2020-08-12",
+          "index": 633,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-08-11",
+          "value": 5.63
+        },
+        "direction": "up",
+        "origin": {
+          "available_at": "2020-08-07",
+          "index": 630,
+          "kind": "L",
+          "label": "L",
+          "ordinal": 1,
+          "time": "2020-08-06",
+          "value": 4.48
+        },
+        "role": "endpoint"
+      },
+      "value": 5.63,
+      "wave_completed_at": "2020-08-20",
+      "wave_completion_evidence": {
+        "available_at": "2020-08-20",
+        "confirmation_rule": "level0_confirmed_low_breaks_known_level1_last_rise_low_origin",
+        "index": 633,
+        "kind": "H",
+        "ordinal": 0,
+        "time": "2020-08-11",
+        "upgrade_evidence": {
+          "available_at": "2020-08-20",
+          "broken_key": {
+            "available_at": "2020-08-12",
+            "index": 630,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 1,
+            "time": "2020-08-06",
+            "value": 4.48
+          },
+          "confirmation_rule": "level0_confirmed_low_breaks_known_level1_last_rise_low",
+          "confirmed_by": {
+            "available_at": "2020-08-20",
+            "index": 639,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 0,
+            "time": "2020-08-19",
+            "value": 4.01
+          },
+          "direction": "down",
+          "origin": {
+            "available_at": "2020-08-12",
+            "index": 633,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-08-11",
+            "value": 5.63
+          },
+          "role": "origin"
+        },
+        "value": 5.63,
+        "wave_direction_after": "down",
+        "wave_direction_before": "up"
+      },
+      "wave_completion_policy": "whole_wave_v117",
+      "wave_direction_after": "up",
+      "wave_direction_before": "up",
+      "wave_identity_state": "owned",
+      "window_trend": "高低点不同向或相等"
+    },
+    {
+      "available_at": "2020-08-24",
+      "broken_key": {
+        "available_at": "2020-08-12",
+        "index": 630,
+        "kind": "L",
+        "label": "L",
+        "ordinal": 1,
+        "time": "2020-08-06",
+        "value": 4.48
+      },
+      "confirmation_rule": "level0_confirmed_low_breaks_known_level1_last_rise_low",
+      "confirmed_by": {
+        "available_at": "2020-08-24",
+        "index": 641,
+        "kind": "L",
+        "label": "L",
+        "ordinal": 0,
+        "time": "2020-08-21",
+        "value": 3.92
+      },
+      "confirmed_on_turn": 433,
+      "edge_kind": "teaching",
+      "flip": "一级末升低突破升级",
+      "index": 641,
+      "kind": "L",
+      "label": "L44",
+      "levels": [
+        {
+          "name": "L44 的末跌高",
+          "price": 5.63
+        },
+        {
+          "name": "转换依据：末升低",
+          "price": 4.48
+        }
+      ],
+      "lifecycle_context": {
+        "available_at": "2020-08-24",
+        "direction": "down",
+        "key": {
+          "available_at": "2020-08-12",
+          "index": 630,
+          "kind": "L",
+          "label": "L43",
+          "ordinal": 1,
+          "time": "2020-08-06",
+          "value": 4.48
+        },
+        "origin": {
+          "available_at": "2020-08-12",
+          "index": 633,
+          "kind": "H",
+          "label": "H44",
+          "ordinal": 0,
+          "time": "2020-08-11",
+          "value": 5.63
+        }
+      },
+      "observations": [
+        {
+          "available_at": "2020-08-24",
+          "basis": "confirmed_polyline_extreme",
+          "confirmed_high": {
+            "available_at": "2020-08-12",
+            "index": 633,
+            "kind": "H",
+            "label": "H44",
+            "ordinal": 0,
+            "time": "2020-08-11",
+            "value": 5.63
+          },
+          "formation": "头部成形",
+          "key": {
+            "available_at": "2020-08-12",
+            "index": 630,
+            "kind": "L",
+            "label": "L43",
+            "ordinal": 1,
+            "time": "2020-08-06",
+            "value": 4.48
+          },
+          "title": "翻多为空"
+        }
+      ],
+      "ordinal": 0,
+      "preceding_turn": {
+        "available_at": "2020-08-12",
+        "index": 633,
+        "kind": "H",
+        "label": "H44",
+        "ordinal": 0,
+        "time": "2020-08-11",
+        "value": 5.63
+      },
+      "price_body": {
+        "close": 3.96,
+        "high": 4.06,
+        "index": 641,
+        "low": 3.92,
+        "open": 4.04,
+        "time": "2020-08-21"
+      },
+      "projection_count": 1,
+      "projection_rank": 0,
+      "reversal": "正反转",
+      "source_confirmation": null,
+      "source_kind": "L",
+      "source_label": "L",
+      "source_level": 0,
+      "source_path": "lecture-0",
+      "source_reversal_available_at": "2020-08-24",
+      "source_state": "confirmed",
+      "source_turn_position": 433,
+      "state": "reversal",
+      "teaching_extended": true,
+      "teaching_ordinal": 4,
+      "teaching_path_id": "mother-child-640",
+      "time": "2020-08-21",
+      "trend": "高低点不同向或相等",
+      "trend_level": 1,
+      "upgrade_evidence": {
+        "available_at": "2020-08-24",
+        "broken_key": {
+          "available_at": "2020-08-12",
+          "index": 630,
+          "kind": "L",
+          "label": "L",
+          "ordinal": 1,
+          "time": "2020-08-06",
+          "value": 4.48
+        },
+        "confirmation_rule": "level0_confirmed_low_breaks_known_level1_last_rise_low",
+        "confirmed_by": {
+          "available_at": "2020-08-24",
+          "index": 641,
+          "kind": "L",
+          "label": "L",
+          "ordinal": 0,
+          "time": "2020-08-21",
+          "value": 3.92
+        },
+        "direction": "down",
+        "origin": {
+          "available_at": "2020-08-12",
+          "index": 633,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-08-11",
+          "value": 5.63
+        },
+        "role": "endpoint"
+      },
+      "value": 3.92,
+      "wave_completed_at": "2020-09-01",
+      "wave_completion_evidence": {
+        "available_at": "2020-09-01",
+        "confirmation_rule": "ordered_HH_then_HL_or_LL_then_LH_switch",
+        "definition_evidence": [
+          {
+            "available_at": "2020-08-20",
+            "index": 639,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 1,
+            "time": "2020-08-19",
+            "value": 4.18
+          },
+          {
+            "available_at": "2020-08-31",
+            "index": 646,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-08-28",
+            "value": 4.76
+          },
+          {
+            "available_at": "2020-08-24",
+            "index": 641,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 0,
+            "time": "2020-08-21",
+            "value": 3.92
+          },
+          {
+            "available_at": "2020-09-01",
+            "index": 648,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 0,
+            "time": "2020-09-01",
+            "value": 4.35
+          }
+        ],
+        "index": 641,
+        "kind": "L",
+        "lower_wave_identity_evidence": {
+          "available_at": "2020-09-01",
+          "basis": "polyline_four_point_definition",
+          "endpoint": {
+            "available_at": "2020-08-31",
+            "index": 646,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-08-28",
+            "value": 4.76
+          },
+          "origin": {
+            "available_at": "2020-08-24",
+            "index": 641,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 0,
+            "time": "2020-08-21",
+            "value": 3.92
+          },
+          "wave_origin": {
+            "available_at": "2020-08-12",
+            "index": 633,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-08-11",
+            "value": 5.63
+          }
+        },
+        "ordinal": 0,
+        "time": "2020-08-21",
+        "value": 3.92,
+        "wave_direction_after": "up",
+        "wave_direction_before": "down"
+      },
+      "wave_completion_policy": "whole_wave_v117",
+      "wave_direction_after": "down",
+      "wave_direction_before": "down",
+      "wave_identity_state": "owned",
+      "window_trend": "高低点不同向或相等"
+    },
+    {
+      "available_at": "2020-09-09",
+      "broken_key": {
+        "available_at": "2020-08-20",
+        "index": 633,
+        "kind": "H",
+        "label": "H",
+        "ordinal": 0,
+        "time": "2020-08-11",
+        "value": 5.63
+      },
+      "confirmation_rule": "level0_confirmed_high_breaks_known_level1_last_fall_high",
+      "confirmed_by": {
+        "available_at": "2020-09-09",
+        "index": 654,
+        "kind": "H",
+        "label": "H",
+        "ordinal": 0,
+        "time": "2020-09-09",
+        "value": 6.4
+      },
+      "confirmed_on_turn": 438,
+      "edge_kind": "teaching",
+      "flip": "一级末跌高突破升级",
+      "index": 654,
+      "kind": "H",
+      "label": "H45",
+      "levels": [
+        {
+          "name": "H45 的末升低",
+          "price": 3.92
+        }
+      ],
+      "lifecycle_context": {
+        "available_at": "2020-09-09",
+        "direction": "down",
+        "key": {
+          "available_at": "2020-08-12",
+          "index": 630,
+          "kind": "L",
+          "label": "L43",
+          "ordinal": 1,
+          "time": "2020-08-06",
+          "value": 4.48
+        },
+        "origin": {
+          "available_at": "2020-08-12",
+          "index": 633,
+          "kind": "H",
+          "label": "H44",
+          "ordinal": 0,
+          "time": "2020-08-11",
+          "value": 5.63
+        }
+      },
+      "observations": [
+        {
+          "available_at": "2020-09-09",
+          "basis": "confirmed_polyline_extreme",
+          "ratio": 1.4502923976608186,
+          "title": "反弹未通过交替条件"
+        },
+        {
+          "available_at": "2020-09-09",
+          "basis": "confirmed_polyline_extreme",
+          "title": "翻空观察失效"
+        }
+      ],
+      "ordinal": 0,
+      "preceding_turn": {
+        "available_at": "2020-08-24",
+        "index": 641,
+        "kind": "L",
+        "label": "L44",
+        "ordinal": 0,
+        "time": "2020-08-21",
+        "value": 3.92
+      },
+      "price_body": {
+        "close": 5.18,
+        "high": 6.4,
+        "index": 654,
+        "low": 5.11,
+        "open": 5.94,
+        "time": "2020-09-09"
+      },
+      "projection_count": 1,
+      "projection_rank": 0,
+      "reversal": "负反转",
+      "source_confirmation": null,
+      "source_kind": "H",
+      "source_label": "H",
+      "source_level": 0,
+      "source_path": "lecture-0",
+      "source_reversal_available_at": "2020-09-09",
+      "source_state": "confirmed",
+      "source_turn_position": 438,
+      "state": "reversal",
+      "teaching_ordinal": 3,
+      "teaching_path_id": "child-mother-654",
+      "time": "2020-09-09",
+      "trend": "高低点不同向或相等",
+      "trend_level": 1,
+      "upgrade_evidence": {
+        "available_at": "2020-09-09",
+        "broken_key": {
+          "available_at": "2020-08-20",
+          "index": 633,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-08-11",
+          "value": 5.63
+        },
+        "confirmation_rule": "level0_confirmed_high_breaks_known_level1_last_fall_high",
+        "confirmed_by": {
+          "available_at": "2020-09-09",
+          "index": 654,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-09-09",
+          "value": 6.4
+        },
+        "direction": "up",
+        "origin": {
+          "available_at": "2020-08-24",
+          "index": 641,
+          "kind": "L",
+          "label": "L",
+          "ordinal": 0,
+          "time": "2020-08-21",
+          "value": 3.92
+        },
+        "role": "endpoint"
+      },
+      "value": 6.4,
+      "wave_completed_at": "2020-09-16",
+      "wave_completion_evidence": {
+        "available_at": "2020-09-16",
+        "confirmation_rule": "ordered_HH_then_HL_or_LL_then_LH_switch",
+        "definition_evidence": [
+          {
+            "available_at": "2020-09-09",
+            "index": 654,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-09-09",
+            "value": 6.4
+          },
+          {
+            "available_at": "2020-09-16",
+            "index": 658,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-09-15",
+            "value": 5.26
+          },
+          {
+            "available_at": "2020-09-04",
+            "index": 651,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 0,
+            "time": "2020-09-04",
+            "value": 4.79
+          },
+          {
+            "available_at": "2020-09-11",
+            "index": 655,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 0,
+            "time": "2020-09-10",
+            "value": 4.29
+          }
+        ],
+        "index": 654,
+        "kind": "H",
+        "lower_wave_identity_evidence": {
+          "available_at": "2020-09-16",
+          "basis": "polyline_four_point_definition",
+          "endpoint": {
+            "available_at": "2020-09-11",
+            "index": 655,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 0,
+            "time": "2020-09-10",
+            "value": 4.29
+          },
+          "origin": {
+            "available_at": "2020-09-09",
+            "index": 654,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-09-09",
+            "value": 6.4
+          },
+          "wave_origin": {
+            "available_at": "2020-08-24",
+            "index": 641,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 0,
+            "time": "2020-08-21",
+            "value": 3.92
+          }
+        },
+        "ordinal": 0,
+        "time": "2020-09-09",
+        "value": 6.4,
+        "wave_direction_after": "down",
+        "wave_direction_before": "up"
+      },
+      "wave_completion_policy": "whole_wave_v117",
+      "wave_direction_after": "up",
+      "wave_direction_before": "up",
+      "wave_identity_state": "owned",
+      "window_trend": "高低点不同向或相等"
+    },
+    {
+      "available_at": "2020-10-14",
+      "broken_key": {
+        "available_at": "2020-09-09",
+        "index": 654,
+        "kind": "H",
+        "label": "H",
+        "ordinal": 0,
+        "time": "2020-09-09",
+        "value": 6.4
+      },
+      "confirmation_rule": "ordered_HH_then_HL_or_LL_then_LH_switch",
+      "confirmed_by": [
+        {
+          "available_at": "2020-09-29",
+          "index": 668,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-09-29",
+          "value": 4.54
+        },
+        {
+          "available_at": "2020-10-14",
+          "index": 673,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-10-14",
+          "value": 5.09
+        },
+        {
+          "available_at": "2020-09-29",
+          "index": 667,
+          "kind": "L",
+          "label": "L",
+          "ordinal": 0,
+          "time": "2020-09-28",
+          "value": 4.35
+        },
+        {
+          "available_at": "2020-10-09",
+          "index": 669,
+          "kind": "L",
+          "label": "L",
+          "ordinal": 0,
+          "time": "2020-09-30",
+          "value": 4.38
+        }
+      ],
+      "confirmed_on_turn": 448,
+      "definition_evidence": [
+        {
+          "available_at": "2020-09-29",
+          "index": 668,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-09-29",
+          "value": 4.54
+        },
+        {
+          "available_at": "2020-10-14",
+          "index": 673,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-10-14",
+          "value": 5.09
+        },
+        {
+          "available_at": "2020-09-29",
+          "index": 667,
+          "kind": "L",
+          "label": "L",
+          "ordinal": 0,
+          "time": "2020-09-28",
+          "value": 4.35
+        },
+        {
+          "available_at": "2020-10-09",
+          "index": 669,
+          "kind": "L",
+          "label": "L",
+          "ordinal": 0,
+          "time": "2020-09-30",
+          "value": 4.38
+        }
+      ],
+      "direction_definition": "多头趋势",
+      "edge_kind": "teaching",
+      "index": 655,
+      "kind": "L",
+      "label": "L45",
+      "levels": [
+        {
+          "name": "L45 的末跌高",
+          "price": 6.4
+        }
+      ],
+      "lifecycle_context": {
+        "available_at": "2020-10-14",
+        "direction": "down",
+        "key": {
+          "available_at": "2020-08-24",
+          "index": 641,
+          "kind": "L",
+          "label": "L44",
+          "ordinal": 0,
+          "time": "2020-08-21",
+          "value": 3.92
+        },
+        "origin": {
+          "available_at": "2020-09-09",
+          "index": 654,
+          "kind": "H",
+          "label": "H45",
+          "ordinal": 0,
+          "time": "2020-09-09",
+          "value": 6.4
+        }
+      },
+      "lower_wave_identity_evidence": {
+        "available_at": "2020-10-14",
+        "basis": "polyline_four_point_definition",
+        "endpoint": {
+          "available_at": "2020-09-16",
+          "index": 658,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-09-15",
+          "value": 5.26
+        },
+        "origin": {
+          "available_at": "2020-09-11",
+          "index": 655,
+          "kind": "L",
+          "label": "L",
+          "ordinal": 0,
+          "time": "2020-09-10",
+          "value": 4.29
+        },
+        "wave_origin": {
+          "available_at": "2020-09-09",
+          "index": 654,
+          "kind": "H",
+          "label": "H",
+          "ordinal": 0,
+          "time": "2020-09-09",
+          "value": 6.4
+        }
+      },
+      "observations": [],
+      "ordinal": 0,
+      "preceding_turn": {
+        "available_at": "2020-09-09",
+        "index": 654,
+        "kind": "H",
+        "label": "H45",
+        "ordinal": 0,
+        "time": "2020-09-09",
+        "value": 6.4
+      },
+      "price_body": {
+        "close": 4.4,
+        "high": 5.15,
+        "index": 655,
+        "low": 4.29,
+        "open": 5.04,
+        "time": "2020-09-10"
+      },
+      "projection_count": 1,
+      "projection_rank": 0,
+      "reversal": "正反转",
+      "source_confirmation": null,
+      "source_kind": "L",
+      "source_level": 0,
+      "source_path": "lecture-0",
+      "source_reversal_available_at": "2020-09-11",
+      "source_state": "confirmed",
+      "source_turn_position": 439,
+      "state": "reversal",
+      "teaching_extended": true,
+      "teaching_ordinal": 2,
+      "teaching_path_id": "mother-child-656",
+      "time": "2020-09-10",
+      "trend": "多头趋势",
+      "trend_level": 1,
+      "value": 4.29,
+      "wave_completed_at": "2020-10-14",
+      "wave_completion_evidence": {
+        "available_at": "2020-10-14",
+        "confirmation_rule": "ordered_HH_then_HL_or_LL_then_LH_switch",
+        "definition_evidence": [
+          {
+            "available_at": "2020-09-29",
+            "index": 668,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-09-29",
+            "value": 4.54
+          },
+          {
+            "available_at": "2020-10-14",
+            "index": 673,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-10-14",
+            "value": 5.09
+          },
+          {
+            "available_at": "2020-09-29",
+            "index": 667,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 0,
+            "time": "2020-09-28",
+            "value": 4.35
+          },
+          {
+            "available_at": "2020-10-09",
+            "index": 669,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 0,
+            "time": "2020-09-30",
+            "value": 4.38
+          }
+        ],
+        "index": 655,
+        "kind": "L",
+        "lower_wave_identity_evidence": {
+          "available_at": "2020-10-14",
+          "basis": "polyline_four_point_definition",
+          "endpoint": {
+            "available_at": "2020-09-16",
+            "index": 658,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-09-15",
+            "value": 5.26
+          },
+          "origin": {
+            "available_at": "2020-09-11",
+            "index": 655,
+            "kind": "L",
+            "label": "L",
+            "ordinal": 0,
+            "time": "2020-09-10",
+            "value": 4.29
+          },
+          "wave_origin": {
+            "available_at": "2020-09-09",
+            "index": 654,
+            "kind": "H",
+            "label": "H",
+            "ordinal": 0,
+            "time": "2020-09-09",
+            "value": 6.4
+          }
+        },
+        "ordinal": 0,
+        "time": "2020-09-10",
+        "value": 4.29,
+        "wave_direction_after": "up",
+        "wave_direction_before": "down"
+      },
+      "wave_completion_policy": "whole_wave_v117",
+      "wave_direction_after": "up",
+      "wave_direction_before": "down",
+      "wave_identity_state": "owned",
+      "window_trend": "高低点不同向或相等"
+    }
+  ]
+}

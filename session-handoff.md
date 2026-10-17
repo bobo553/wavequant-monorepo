@@ -1,3 +1,13 @@
+2026-10-17 · MONOREPO-330 先锋新材下级空头结构破前低结束资格
+
+服务/页面：已重启本分支后台进程（Web3004、API8766），Web首页HTTP200、API基础设施健康接口HTTP200；已刷新原Chrome页面，先锋新材因策略版本变化自动重新回测。未以页面完整回测完成作为本轮验收，也未运行浏览器E2E。
+
+继续 feat-三级趋势统一。source_bear_exit 的共用规则补充“已有正式多翻空，后续已确认下降结构跌破自身前低”的直接来源结束事实，仍复用既有影线新高收盘拒绝和整波证书核验；不改写六态/趋势几何，不按股票、日期或级别修线。TrendLifecycle 检查点保存破位去重账本，规则版本v20、chart history缓存v139，避免恢复后重复关闭新窗口。类型收窄只使用原校验后的值。
+
+实股离线行情夹具为本机AKShare原始价格研究的2018-01-02至2020-11-30前缀。完整逐日重算确认：二级2020-04-28结构起点的资格于2020-11-26结束，基准2020-09-10低点4.29，当前最低4.25；e0d7697独立旧源相同前缀仍未结束。冻结最终图的少量几何只用于证据解析负例，不作为因果历史回归输入。
+
+提交前验证：source_bear_structure_exit/source_bear_exit/trading_intervals/trend_body_reversal/trend_lifecycle 定向139 passed，1 deselected，27.62秒；排除的 test_no_selected_interval_skips_policy_scan 在e0d7697旧源同样失败（20次扫描对预期1次）。三个改动相关Python文件mypy通过，Core wheel/sdist通过。完整Core/Web套件、浏览器E2E、全历史账户结果待验证，既有失败记录保留。MONOREPO-330继续唯一in-progress；不合并main、不推送。
+
 2026-10-17 · 最新：不改变策略的回测性能优化
 
 分支仍为 feat-三级趋势统一，worktree 为 C:\Users\zb\.codex\worktrees\three-level-trend\wavequant-monorepo。本轮冻结基线a2e9522，未调整策略规则。修复归档恢复后缺失的Git工作树关联，保留原文件；开始时的缺失文件已随恢复消失，最终修改范围仅本轮Core性能代码、测试与记录。不要切换主工作区或推送/合并main。

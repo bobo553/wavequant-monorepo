@@ -14,6 +14,7 @@
             "description": "襄阳轴承2018起回测超过一小时仍停在模拟成交65%；先采样和固定输入，再消除重复趋势与前缀证明计算。按用户新口径增加买点区间级别选项，默认二级、可选一二三级，账户成交与风控规则保留。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过买点扫描与入场判断，趋势推进、N测幅、行情来源、复权、知识时钟、分钟覆盖与持仓退出继续处理，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+                "2026-10-17 先锋新材2020-11-26：共用来源空头资格规则在既有多翻空后的已确认下降结构严格跌破自身前低时结束直接上级资格；复用影线高点收盘拒绝规则，不要求重新跌破原多翻空低点，不改写六态或几何。一级、二级、三级同函数，检查点保留单次破位账本；真实2018起因果前缀的二级2020-04-28区间应于2020-11-26结束，基准为2020-09-10低点4.29。",
                 "2026-10-17本轮性能优化固定a2e9522现行策略：只复用同次回测已认证且未变的层级几何，资格/价格/N/交易仍逐日执行；阶段缓存避免同一行重复JSON编码，保留原数据形状、完整证据、字节预算、错误及失效语义。以冻结同源行情和参数对照完整信号、审计、订单、成交与权益，不因提速改阈值、区间、知识时钟或行情长度；实测前不承诺倍数。原有失败和待验证项保留，330继续in-progress。",
                 "2026-10-17国芳2020-09-04资格结束：共用直接下级空头确认规则，level仅决定直接来源。当前路径的直接下级完成真实多翻空、多空交替并严格收盘下破翻空低点转空确认后，当天关闭本级资格；候选、孤立标签、其他/已结束路径、非相邻级别、未来证据不触发。不改本级趋势或强制清仓。实时/分阶段/检查点恢复统一结束事件，折线六态一并保留于检查点；N、交易上下文、B/S和区间审计同步关闭。红色及复制终点包含结束日，买入日期不包含该日。六态v19/chart历史v138隔离旧结果；新增回归仅编写，真实601086一级确认日与最终区间待验证。",
                 "2026-10-17最新空翻多起点口径：末跌高之后、本次翻多高点之前的最低点贯穿翻多、回撤测幅、守低、跳空及N/轧空确认，不能改用紧邻攻击高点的局部低点。国芳2020目标为2019-08-28末跌高、2019-11-18起点、2020-03-20高点、2020-04-28回撤低点；修正后仍为约99.4%深回撤，低点本身不授予资格。普通和既有特殊翻多统一confirm_bull_alternation，保留原阈值/确认规则；普通N确认事件也进入交易上下文，严格保留真实同级翻多、知识时钟、来源修订和缺口结束边界。此口径覆盖此前v17以邻近上涨腿起点守低的规则；不再按旧定义断言2024整段必然无资格。六态v18、结构v118、chart历史v137、hierarchy历史v123、完整图v125隔离旧结果；定向回归仅编写，完整实股确认日及B/S待验证。",
@@ -57,6 +58,31 @@
                 "图表一级只消费折线来源变化，二/三级只消费直接下级变化；发展尾点同向移动不得触发相同已确认来源重算。折线尾部变更与趋势版本保留真实知识日、修订和路径关闭，逐日还原须与原全前缀基线一致；六态和交易价格条件继续按行情日期推进。"
             ],
             "verification": [
+                {
+                    "command": "Current branch restart; GET / and GET /api/infrastructure/health; Chrome reload",
+                    "status": "passed",
+                    "summary": "2026-10-17：本分支Web3004及API8766已重启，两个HTTP请求均200，原页面已刷新；先锋新材全历史回测正在自动重算，尚未声称完成。"
+                },
+                {
+                    "command": "Core: python -m pytest tests/test_source_bear_structure_exit.py tests/test_source_bear_exit.py tests/test_trading_intervals.py tests/test_trend_body_reversal.py tests/test_trend_lifecycle.py -q --tb=short -k 'not test_no_selected_interval_skips_policy_scan'",
+                    "status": "passed",
+                    "summary": "2026-10-17：139 passed，1 deselected，27.62秒。包含先锋新材真实2018-01-02至2020-11-30行情逐日重算，二级资格结束2020-11-26、前低2020-09-10/4.29；三级规则、未来/未确认/影线收盘突破负例、检查点及重复破位覆盖。首次跨级夹具错误已修正，不放宽生产整波证书校验。"
+                },
+                {
+                    "command": "Frozen HEAD e0d7697: pytest test_trading_intervals.py::test_no_selected_interval_skips_policy_scan; real causal prefix baseline",
+                    "status": "failed",
+                    "summary": "2026-10-17：独立git archive旧源下同一策略扫描次数断言仍为20次对预期1次，确认既有失败；本轮未修改该行为。旧源相同先锋新材行情前缀窗口end_index/end_reason均None，新版定向实股回归确认2020-11-26结束。"
+                },
+                {
+                    "command": "Core: python -m mypy --follow-imports=silent src/wavequant/domain/market_structure/source_bear_exit.py src/wavequant/domain/market_structure/trend_lifecycle.py tests/test_source_bear_structure_exit.py",
+                    "status": "passed",
+                    "summary": "2026-10-17：3 source files通过；补齐生命周期文件经运行时校验后的类型收窄，保留原值及行为。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "2026-10-17：wheel和sdist成功。未运行完整Core/Web单测、Python格式/lint、Harness或浏览器E2E；既有失败及全历史账户验证继续待处理。"
+                },
                 {
                     "command": "Core: python -m pytest tests/test_hierarchy_stream.py tests/test_trend_readonly_cache.py tests/test_frozen_trend_point_reuse.py tests/test_calculation_step_cache.py tests/test_artifact_cache.py tests/test_chart_live_permission_reuse.py tests/test_trend_staging_payload_cache.py tests/test_trend_append_state.py tests/test_streaming_backtest.py -q --tb=short -k 'not test_consumer_error_stops_before_the_next_market_date'",
                     "status": "passed",

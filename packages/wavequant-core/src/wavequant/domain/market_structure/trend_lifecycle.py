@@ -9,14 +9,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from math import isfinite
+from typing import cast
 
 from ..models.model import Bar
 from .bull_alternation_confirmation import AlternationPolicy, confirm_bull_alternation
 from .confirmation_gap import confirmation_gap
-from .source_bear_exit import SOURCE_BEAR_EVENT, source_bearish_exits
+from .source_bear_exit import SOURCE_BEAR_EVENT, bearish_structure_breaks, source_bearish_exits
 
 
-LIFECYCLE_VERSION = 'six_state_direct_source_bear_exit_v19'
+LIFECYCLE_VERSION = 'six_state_source_bear_structure_break_v20'
 
 
 class LifecycleState(StrEnum):
@@ -129,10 +130,10 @@ def _pivot(value: object, dates: Mapping[str, int], now: int) -> _Pivot | None:
                                     value.get('value'), value.get('kind'))
     known = _clock(value.get('available_at'), dates)
     if (type(index) is not int or type(ordinal) is not int or not 0 <= index <= now or ordinal < 0
-            or type(price) not in (int, float) or not isfinite(price) or kind not in ('H', 'L')
+            or type(price) not in (int, float) or not isfinite(cast(float, price)) or kind not in ('H', 'L')
             or known is None or not index <= known <= now):
         return None
-    return _Pivot(index, ordinal, kind, price, known)
+    return _Pivot(index, ordinal, kind, cast(float, price), known)
 
 
 def _records(value: object) -> tuple[Mapping[str, object], ...]:
@@ -250,6 +251,7 @@ class TrendLifecycle:
         self._bull_recovery: dict[tuple[int, str], _BullRecovery] = {}
         self._polyline_known: dict[tuple[int, str], dict[tuple[int, int, str, float], int]] = {}
         self._last_index = -1
+        self._bear_breaks: dict[tuple[int, str], frozenset[tuple[int, int, int]]] = {}
 
     def copy(self) -> 'TrendLifecycle':
         other = TrendLifecycle()
@@ -258,6 +260,7 @@ class TrendLifecycle:
         other._bull_recovery = self._bull_recovery.copy()
         other._polyline_known = {key: values.copy() for key, values in self._polyline_known.items()}
         other._last_index = self._last_index
+        other._bear_breaks = dict(self._bear_breaks)
         return other
 
     def checkpoint(self) -> tuple[object, ...]:
@@ -280,7 +283,8 @@ class TrendLifecycle:
             recovery = self._bull_recovery.get(key)
             pending = (fact(recovery.seed), recovery.breach, recovery.consecutive_lower_lows, recovery.recovered) if recovery else None
             source_clocks = tuple((*point, known) for point, known in sorted(self._polyline_known.get(key, {}).items()))
-            rows.append((key, tuple(sorted((fact(item) for item in seen), key=repr)), saved, pending, source_clocks))
+            rows.append((key, tuple(sorted((fact(item) for item in seen), key=repr)), saved, pending,
+                         source_clocks, tuple(sorted(self._bear_breaks.get(key, ())))))
         return LIFECYCLE_VERSION, self._last_index, tuple(rows)
 
     @classmethod
@@ -324,12 +328,22 @@ class TrendLifecycle:
         restored = cls()
         restored._last_index = last
         for row in rows:
-            identity, seen, raw, pending, source_clocks = sequence(row, 5)
+            identity, seen, raw, pending, source_clocks, bear_breaks = sequence(row, 6)
             level, path = sequence(identity, 2)
             if type(level) is not int or level not in (0, 1, 2, 3) or not isinstance(path, str):
                 raise ValueError('invalid lifecycle checkpoint path')
             key = level, path
             restored._seen[key] = facts(seen)
+            if not isinstance(bear_breaks, tuple):
+                raise ValueError('invalid bearish structure break ledger')
+            breaks = []
+            for saved_break in bear_breaks:
+                prior, origin, low = sequence(saved_break, 3)
+                entry = integer(prior), integer(origin), integer(low)
+                if not entry[0] < entry[1] < entry[2]:
+                    raise ValueError('invalid bearish structure break order')
+                breaks.append(entry)
+            restored._bear_breaks[key] = frozenset(breaks)
             if not isinstance(source_clocks, tuple):
                 raise ValueError('invalid polyline confirmation clocks')
             clocks = {}
@@ -357,9 +371,9 @@ class TrendLifecycle:
             hint: tuple[bool, bool, float] | None = None
             if candidate is not None:
                 candidate_gap, volume, price = sequence(candidate, 3)
-                if type(candidate_gap) is not bool or type(volume) is not bool or type(price) not in (int, float) or not isfinite(price):
+                if type(candidate_gap) is not bool or type(volume) is not bool or type(price) not in (int, float) or not isfinite(cast(float, price)):
                     raise ValueError('invalid lifecycle checkpoint candidate')
-                hint = candidate_gap, volume, price
+                hint = candidate_gap, volume, cast(float, price)
             if type(recovery) is not bool or not isinstance(structure, tuple) or not isinstance(source, tuple):
                 raise ValueError('invalid lifecycle structure checkpoint')
             parsed_structure = tuple(pivot(item) for item in structure)
@@ -369,12 +383,13 @@ class TrendLifecycle:
             parsed_gap = None
             if saved_gap is not None:
                 gap_index, lower, upper, kind = sequence(saved_gap, 4)
-                integer(gap_index)
+                gap_clock = integer(gap_index)
                 if (kind not in ('body', 'full') or gap_index != alternated or up is not True
                         or type(lower) not in (int, float) or type(upper) not in (int, float)
-                        or not isfinite(lower) or not isfinite(upper) or not 0 < lower < upper):
+                        or not isfinite(cast(float, lower)) or not isfinite(cast(float, upper))
+                        or not 0 < cast(float, lower) < cast(float, upper)):
                     raise ValueError('invalid lifecycle confirmation gap')
-                parsed_gap = gap_index, float(lower), float(upper), kind
+                parsed_gap = gap_clock, float(cast(float, lower)), float(cast(float, upper)), kind
             restored._cycles[key] = _Cycle(LifecycleState(state), up, parsed_origin, integer(started),
                 pivot(impulse), pivot(counter), integer(alternated) if alternated is not None else None,
                 hint, facts(evidence), recovery, tuple(item for item in parsed_structure if item is not None),
@@ -459,6 +474,14 @@ class TrendLifecycle:
                 self._advance_bull_recovery(key, points, bars, now, events)
                 self._advance_bull_alternation(key, points, bars, now, events, source_points, confirmation_policy)
                 self._price(key, bars, now, events)
+                for event in bearish_structure_breaks(stroke, number, bars, now, dates, facts=facts):
+                    identity = tuple(cast(int, event[field]) for field in
+                                     ('prior_flip_index', 'origin_index', 'flip_index'))
+                    break_key = identity[0], identity[1], identity[2]
+                    broken = self._bear_breaks.get(key, frozenset())
+                    if break_key not in broken:
+                        self._bear_breaks[key] = broken.union((break_key,))
+                        events.append(event)
                 pending = self._bull_recovery.get(key)
                 active = self._cycles.get(key)
                 if (pending is not None and pending.breach is None and active is not None
@@ -480,6 +503,7 @@ class TrendLifecycle:
         self._seen = {key: facts for key, facts in self._seen.items() if key in present}
         self._bull_recovery = {key: state for key, state in self._bull_recovery.items() if key in present}
         self._polyline_known = {key: clocks for key, clocks in self._polyline_known.items() if key in present}
+        self._bear_breaks = {key: breaks for key, breaks in self._bear_breaks.items() if key in present}
         # 单级联动借用当日下级事件；整层恢复使用同一次 advance 的下级结果。
         events.extend(source_bearish_exits(levels, (*source_events, *events), now))
         return events
@@ -599,6 +623,7 @@ class TrendLifecycle:
         """短暂跌破→收回→同级突破→守低且满足既有交替结束规则，各级共用。"""
         pending = self._bull_recovery.get(key)
         if pending is not None and pending.seed.origin is not None:
+            recovery_origin = pending.seed.origin
             updated = advance_bull_recovery(pending, bars[now].low, bars[now].close, now,
                                            previous_low=bars[now - 1].low if now else bars[now].low)
             if updated is None:
@@ -616,13 +641,13 @@ class TrendLifecycle:
                         self._cycles.pop(key)
                     events.append(dict(event='trend_lifecycle_invalidated', bar_index=now,
                         available_index=now, trend_level=key[0], source_path=key[1],
-                        reason='bull_recovery_pending', original_low_index=updated.seed.origin.index,
+                        reason='bull_recovery_pending', original_low_index=recovery_origin.index,
                         rule_version=LIFECYCLE_VERSION))
                 if updated.recovered is not None and pending.recovered is None:
                     events.append(dict(event='trend_lifecycle_recovered', bar_index=now,
                         available_index=now, trend_level=key[0], source_path=key[1],
-                        original_low_index=updated.seed.origin.index,
-                        original_low_price=updated.seed.origin.price,
+                        original_low_index=recovery_origin.index,
+                        original_low_price=recovery_origin.price,
                         breach_index=updated.breach, recovered_index=updated.recovered,
                         consecutive_lower_lows=updated.consecutive_lower_lows,
                         market_low=bars[now].low, confirmation_close=bars[now].close,
@@ -648,7 +673,7 @@ class TrendLifecycle:
                         events.append(self._event(key, cycle, now, 'trend_lifecycle_state',
                             source_event='短暂跌破后同级再次空翻多',
                             confirmation_rule='bounded_lower_low_recovery_then_same_level_break',
-                            original_low_index=updated.seed.origin.index,
+                            original_low_index=recovery_origin.index,
                             breach_index=updated.breach, recovered_index=updated.recovered,
                             broken_high_index=previous.index, broken_high_price=previous.price))
                         break
@@ -666,6 +691,7 @@ class TrendLifecycle:
             events.append(self._event(key, cycle, now, 'trend_lifecycle_invalidated',
                                       reason='special_bull_origin_broken'))
             return
+        broken: _Pivot | None
         if cycle.recovery:
             broken = cycle.structure[0]
         else:
@@ -687,6 +713,7 @@ class TrendLifecycle:
         sources = tuple(_Pivot(p.index, p.ordinal, p.kind, p.price, p.known) for p in proof.source)
         trend_sources = tuple(_Pivot(p.index, p.ordinal, p.kind, p.price, p.known) for p in proof.trend_source)
         prior_gap = cycle.confirmation_gap
+        confirmed_impulse = cycle.impulse
         cycle = replace(cycle, state=LifecycleState.BULL_ALTERNATION, counter=point, alternated=now,
             structure=(broken, cycle.origin, cycle.impulse, *trend_sources), confirmation_source=sources,
             confirmation_gap=confirmation_gap(proof.rule, proof.evidence, now))
@@ -696,7 +723,7 @@ class TrendLifecycle:
             confirmation_rule=proof.rule,
             confirmation_evidence=dict(proof.evidence or {}, key_index=broken.index, key_price=broken.price,
                 a_origin_index=cycle.origin.index, a_origin_price=cycle.origin.price,
-                a_high_index=cycle.impulse.index, a_high_price=cycle.impulse.price),
+                a_high_index=confirmed_impulse.index, a_high_price=confirmed_impulse.price),
             counter_source_level=0 if sources else key[0],
             replaces_gap_confirmation_index=prior_gap[0] if prior_gap else None))
 
