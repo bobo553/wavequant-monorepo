@@ -24,7 +24,9 @@ from .lecture_trend import _annotate
 from .n_trend_reversals import n_target_reversals
 from .n_trend_confirmation import _NPermissionProofs, _reuse_n_permissions
 from .trend_judgement import TrendJudgement, _TrendJudgementState, _owned_mutable_points, judge_trend, mutable_points
-from .trend_judgement import _SourceVersionOwner
+from .trend_judgement import _OwnedPointAdmission, _SourceVersionOwner
+from .trend_judgement import _FrozenPoint
+from .trend_readonly_cache import _ReadonlySnapshotCache
 from .trend_evidence_reuse import _geometry_signature
 from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
 from .trend_body_reversal import with_price_bodies
@@ -90,6 +92,29 @@ class _TrendJudgementCache:
         self._state_memory_bytes = state_memory_bytes
         self._source_owners: dict[tuple[int, str], _SourceVersionOwner] = {}
         self._version_results: dict[tuple[int, str], tuple[object, TrendJudgement]] = {}
+        self._point_exports = _ReadonlySnapshotCache[dict[str, object]](
+            memory_bytes=16 * 1024 * 1024, max_entries=4096, evict=False)
+
+    def export_owned(self, points: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+        """内部标注只改点外壳；完整冻结证明按内容解码一次，只读借用。
+
+        公共 mutable_points 仍逐次独立导出，未知对象不进入共享边界。
+        拒绝超额新项，避免顺序历史扫描造成 LRU 全量抖动。
+        """
+        result: list[dict[str, object]] = []
+        for point in points:
+            if type(point) is not _FrozenPoint or point.json_template is None:
+                result.extend(mutable_points((point,)))
+                continue
+            template = point.json_template
+            cached = self._point_exports.get(template, None)
+            if cached is None:
+                exported = mutable_points((point,))[0]
+                self._point_exports.put(template, None, exported)
+            else:
+                exported = cached[0]
+            result.append(dict(exported))
+        return result
 
     def remember_source_flip(self, trend_level: int, path: str) -> None:
         """下级翻向首次可知时保存本级状态，不截断仍被关键位引用的前史。"""
@@ -241,27 +266,32 @@ class _ClosedPreparedPaths:
         self._references: dict[int, _PreparedPathReference] = {}
         self._pending: list[dict[str, object]] = []
         self._finite = _FiniteEvidenceCertificates()
+        self._decoded = _ReadonlySnapshotCache[dict[str, object]](
+            memory_bytes=8 * 1024 * 1024, max_entries=2048, evict=False)
 
     def begin_row(self) -> None:
         self._references.clear()
         self._pending.clear()
 
-    def _restore(self, index: int) -> dict[str, object]:
-        # 仅解码本类白名单编码的内存模板，每次生成独立可变容器。
-        value: object = pickle.loads(self._objects[index])
+    def _restore(self, index: int, *, borrow: bool = False) -> dict[str, object]:
+        # 公共读取独立解码；私有阶段只读借用已认证的不可变版本。
+        cached = self._decoded.get(index, None) if borrow else None
+        value: object = cached[0] if cached is not None else pickle.loads(self._objects[index])
         if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
             raise ValueError('a closed path template requires a mapping')
         result = cast(dict[str, object], value)
+        if borrow and cached is None:
+            self._decoded.put(index, None, result)
         self._references[id(result)] = _PreparedPathReference(self._owner, index)
         self._pending.append(result)
         return result
 
-    def restore(self, saved: _ClosedPreparedPath) -> tuple[
+    def restore(self, saved: _ClosedPreparedPath, *, borrow: bool = False) -> tuple[
         dict[str, object], dict[str, object], dict[str, object] | None, dict[str, object] | None,
     ]:
-        return (self._restore(saved.source_stroke), self._restore(saved.candidate),
-                self._restore(saved.stroke) if saved.stroke is not None else None,
-                self._restore(saved.developing) if saved.developing is not None else None)
+        return (self._restore(saved.source_stroke, borrow=borrow), self._restore(saved.candidate, borrow=borrow),
+                self._restore(saved.stroke, borrow=borrow) if saved.stroke is not None else None,
+                self._restore(saved.developing, borrow=borrow) if saved.developing is not None else None)
 
     def get(self, level: int, path: str, source: Sequence[Mapping[str, object]],
             cutoff: int | None, *, symbol: str = 'STRUCTURE') -> _ClosedPreparedPath | None:
@@ -427,6 +457,8 @@ class _TrendPermissionCache:
         self._payload_bytes = 0
         self._active_candidates: dict[int, _TrendCandidateCache] = {}
         self._n_permissions: dict[tuple[int, str], _NPermissionProofs] = {}
+        self._annotations = _ReadonlySnapshotCache[list[dict[str, object]]](
+            memory_bytes=8 * 1024 * 1024, max_entries=256)
 
     def n_permissions(self, level: int, path: str) -> _NPermissionProofs:
         key = level, path
@@ -694,6 +726,8 @@ def _restore_annotation_references(
     *, labels: Mapping[tuple[int, int], str] | None = None,
 ) -> object:
     """只恢复派生字段中完整点引用的自身可知日，不改命名事件的上下文日期。"""
+    if type(value) in (str, int, float, bool, bytes, type(None)):
+        return value
     if isinstance(value, Mapping):
         if any(not isinstance(key, str) for key in value):
             raise ValueError('annotation fields must use string keys')
@@ -722,6 +756,8 @@ def _restore_annotation_references(
 
 def _annotate_geometry(
     points: list[dict[str, object]], symbol: str, dates: Mapping[object, int], *, trend_level: int,
+    _reference_originals: Mapping[tuple[int, int], Mapping[str, object]] | None = None,
+    _reference_labels: Mapping[tuple[int, int], str] | None = None,
 ) -> None:
     """为几何附加定义注释，原事实时钟与完整上下文时钟各自保留。
 
@@ -751,7 +787,9 @@ def _annotate_geometry(
     for point, shadow in zip(points, shadows):
         for field in _GEOMETRY_ANNOTATION_FIELDS:
             if field in shadow:
-                point[field] = _restore_annotation_references(shadow[field], originals)
+                point[field] = _restore_annotation_references(shadow[field],
+                    originals if _reference_originals is None else _reference_originals,
+                    labels=_reference_labels)
 
 
 def _permission_leg(left: Mapping[str, object], right: Mapping[str, object]) -> bool:
@@ -831,6 +869,8 @@ def _permission_origin(point: Mapping[str, object], dates: Mapping[object, int])
 
 def _annotate_permissions(
     points: list[dict[str, object]], symbol: str, dates: Mapping[object, int], *, trend_level: int,
+    _cache: _ReadonlySnapshotCache[list[dict[str, object]]] | None = None,
+    _cache_key: tuple[int, str] | None = None,
 ) -> None:
     """按合法波段标注策略许可，不能把独立压力点强行拼成一条几何折线。
 
@@ -858,6 +898,28 @@ def _annotate_permissions(
         else:
             origin = _permission_origin(point, dates) if runs else None
             runs.append(([point], origin))
+    signature: bytes | None = None
+    if _cache is not None and _cache_key is not None:
+        # 标注只依赖七个点字段、分段边界、全路径编号及这些知识日的映射；
+        # incoming 证明仍在上面的起点门禁逐日核验，不缓存任何市场许可证。
+        inputs = [[{field: point[field] for field in _ANNOTATION_REFERENCE_FIELDS if field in point}
+                   for point in [*([origin] if origin is not None else []), *run]] for run, origin in runs]
+        standard = all(type(value) in (str, int, float, bool, type(None))
+            and (type(value) is not float or isfinite(value))
+            for run in inputs for point in run for value in point.values())
+        if standard:
+            clocks = [[dates.get(point.get('available_at')) for point in run] for run in inputs]
+            signature = _geometry_signature((symbol, trend_level, inputs, clocks, labels,
+                                              [origin is not None for _, origin in runs]))
+        cached = _cache.get(_cache_key, signature) if signature is not None else None
+        if cached is not None:
+            for point, fields in zip(points, cached[0], strict=True):
+                for field in _GEOMETRY_ANNOTATION_FIELDS:
+                    if field in fields:
+                        point[field] = fields[field]
+                    else:
+                        point.pop(field, None)
+            return
     derived: list[tuple[dict[str, object], dict[str, object]]] = []
     context_dates = dict(dates)
     for run, origin in runs:
@@ -872,12 +934,14 @@ def _annotate_permissions(
             known = shadow['available_at']
             if isinstance(known, str) and known.isdecimal():
                 context_dates[known] = int(known)
-        _annotate_geometry(shadows, symbol, context_dates, trend_level=trend_level)
+        _annotate_geometry(shadows, symbol, context_dates, trend_level=trend_level,
+            _reference_originals=originals, _reference_labels=labels)
         for point, shadow in zip(run, shadows[1:] if origin is not None else shadows):
             identity = cast(int, point['index']), cast(int, point['ordinal'])
             local_label, label = cast(str, shadow['label']), labels[identity]
-            fields = {field: _restore_annotation_references(shadow[field], originals, labels=labels)
-                      for field in _GEOMETRY_ANNOTATION_FIELDS if field in shadow}
+            # 几何标注已经按本段真实来源和全路径编号恢复引用，无需再递归
+            # 复制一遍同一批派生字段。完整证书不在此白名单中。
+            fields = {field: shadow[field] for field in _GEOMETRY_ANNOTATION_FIELDS if field in shadow}
             fields['label'] = label
             # levels 的名称不是点引用，单独修正本点前缀；转换依据名称不变。
             fields['levels'] = [dict(level, name=label + cast(str, level['name'])[len(local_label):])
@@ -891,6 +955,8 @@ def _annotate_permissions(
                 point[field] = fields[field]
             else:
                 point.pop(field, None)
+    if _cache is not None and _cache_key is not None and signature is not None:
+        _cache.put(_cache_key, signature, [fields for _, fields in derived])
 
 
 def _qualification_candidates(
@@ -906,14 +972,16 @@ def _qualification_candidates(
 
 
 def _prepare_qualification_candidates(
-    candidates: Sequence[Mapping[str, object]], *, owned: bool,
+    candidates: Sequence[Mapping[str, object]], *, owned: bool, _certified_standard: bool = False,
 ) -> list[dict[str, object]]:
     # 完整账本可在同一坐标保留早升级与晚普通反转。旧资格发布器消费的是
     # 结构节点，不能让晚证明把早已知关键位变成晚知，或重复追加同一节点。
     # 独立事实仍完整保存在 judge.candidates／candidate_strokes 中。
     earliest: dict[tuple[int, int], dict[str, object]] = {}
     completions: dict[tuple[int, int], dict[str, object]] = {}
-    for point in _qualification_candidates(candidates, owned):
+    working = ([dict(point) for point in candidates] if _certified_standard else
+               _qualification_candidates(candidates, owned))
+    for point in working:
         # 行情和 N 只核验本级已有波的策略资格，不能授予 pending 方向事实
         # 整波身份，否则资格递归会把同一条下级波重新恢复为上级假波。
         if point.get('wave_identity_state') == 'direction_only':
@@ -942,7 +1010,7 @@ def _prepare_qualification_candidates(
         completion = completions.get((cast(int, point['index']), cast(int, point.get('ordinal', 0))))
         if completion is not None:
             for field in ('wave_completion_policy', 'wave_completed_at', 'wave_completion_evidence'):
-                point[field] = deepcopy(completion[field])
+                point[field] = completion[field] if _certified_standard else deepcopy(completion[field])
     return qualified
 
 
@@ -952,14 +1020,16 @@ class _TrendCandidateCache:
     def __init__(self) -> None:
         self._source: Sequence[Mapping[str, object]] | None = None
         self._prepared: list[dict[str, object]] = []
+        self._admission = _OwnedPointAdmission()
 
     def prepare(self, candidates: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
         if candidates is self._source:
             return self._prepared
-        prepared = _prepare_qualification_candidates(candidates, owned=True)
-        # 只接纳内部标准只读工作集；未知值仍保留逐次复制/校验的公开行为。
-        signature = _geometry_signature(candidates)
-        if signature is not None and _FiniteEvidenceCertificates().certify(candidates, signature):
+        # 候选账本是只读版本；逐点认证同时完成借用准入，避免随后再次对
+        # 整个历史账本做 pickle 和 JSON 认证。未知值仍走公共复制边界。
+        standard = type(candidates) in (list, tuple) and all(self._admission.certify(point) for point in candidates)
+        prepared = _prepare_qualification_candidates(candidates, owned=False, _certified_standard=standard)
+        if standard:
             self._source, self._prepared = candidates, prepared
         else:
             self._source, self._prepared = None, []
@@ -1093,7 +1163,8 @@ def prepare_trend_lines(
         cached_path = (_closed_paths.get(trend_level, path, raw_source, cutoff, symbol=symbol)
                        if _closed_paths is not None else None)
         if cached_path is not None and _closed_paths is not None:
-            cached_source, cached_candidate, cached_stroke, cached_developing = _closed_paths.restore(cached_path)
+            cached_source, cached_candidate, cached_stroke, cached_developing = _closed_paths.restore(
+                cached_path, borrow=_owned_source)
             source_strokes.append(cached_source)
             candidates.append(cached_candidate)
             if cached_stroke is not None:
@@ -1112,8 +1183,10 @@ def prepare_trend_lines(
         else:
             judgement = (judge_trend(source, trend_level=trend_level) if _judgement_cache is None else
                          _judgement_cache.judge(source, path=path, trend_level=trend_level))
-        points = mutable_points(judgement.points)
-        events = mutable_points(judgement.candidates)
+        points = (_judgement_cache.export_owned(judgement.points)
+            if _owned_source and _judgement_cache is not None else mutable_points(judgement.points))
+        events = (_judgement_cache.export_owned(judgement.candidates)
+            if _owned_source and _judgement_cache is not None else mutable_points(judgement.candidates))
         identifier = f'{kind}-{path}'
         candidate: dict[str, object] = dict(id=identifier, source_path=path, trend_level=trend_level, points=events)
         candidates.append(candidate)
@@ -1187,6 +1260,7 @@ def attach_trend_permissions(
     _permission_cache: _TrendPermissionCache | None = None,
     _owned_candidates: bool = False,
     _n_confirmation_paths: frozenset[str] | None = None,
+    _hierarchy_only: bool = False,
 ) -> dict[str, object]:
     """只给已完成的本级结构附加资格和命名事件，不再判断或归并几何。
 
@@ -1203,9 +1277,13 @@ def attach_trend_permissions(
     审计值及需要归一化的容器仍沿用原公共复制，公共调用默认不移交。
     私有 _n_confirmation_paths 只授权本级已翻多且待确认的路径计算新 N；
     不在集合中的路径仍可使用来源证书未失效的既有 N 证明。
+    私有 _hierarchy_only 只供关闭 N 时的逐日层级历史使用，不生成交易附件；
+    消费者不能把此轻量结果放入完整交易视图缓存。
     """
     if type(n_target_trend_confirmation_enabled) is not bool:
         raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
+    if _hierarchy_only and n_target_trend_confirmation_enabled:
+        raise ValueError('hierarchy-only permissions require N confirmation to be disabled')
     raw_level = prepared.get('trend_level')
     if type(raw_level) is not int:
         raise ValueError('prepared trend_level must be 1, 2 or 3')
@@ -1229,6 +1307,9 @@ def attach_trend_permissions(
     n_targets: list[dict[str, object]] = []
     kind = _KINDS[trend_level]
     verified_prefix = _permission_cache.prefix(bars) if _permission_cache is not None else None
+    full_market_index = (_MarketPrefixIndex(_permission_cache._market_index, _permission_cache._bars[:len(bars)])
+        if verified_prefix is not None and _permission_cache is not None
+        and _permission_cache._market_index is not None else None)
     owned_options: _OwnedCandidateOptions = {'_owned_candidates': True} if _owned_candidates else {}
     for source_stroke in source_strokes:
         path = source_stroke.get('id')
@@ -1240,9 +1321,9 @@ def attach_trend_permissions(
         # 切成从零开始的新市场，也不能把后一路径的突破借给前一路径。
         market = bars if cutoff is None else bars[:cutoff]
         market_index = None
-        if (verified_prefix is not None and _permission_cache is not None
-                and _permission_cache._market_index is not None and len(market) <= verified_prefix.length):
-            market_index = _MarketPrefixIndex(_permission_cache._market_index, _permission_cache._bars[:len(market)])
+        if full_market_index is not None and len(market) <= len(full_market_index.bars):
+            market_index = (full_market_index if len(market) == len(full_market_index.bars) else
+                _MarketPrefixIndex(full_market_index.owner, full_market_index.bars[:len(market)]))
             market = market_index.bars
         permission_source = [dict(point, label=point.get('label', point.get('kind', ''))) for point in source]
         qualified_source = qualified_groups.get(path, []) if qualified_source_points is not None else None
@@ -1279,13 +1360,21 @@ def attach_trend_permissions(
                         trend_level=trend_level, qualified_source=qualified_source,
                         n_target_sink=path_targets, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                         _market_index=market_index, **candidate_options)
+            if _hierarchy_only:
+                if permissions:
+                    qualified_strokes.append(dict(id=f'{kind}-{path}', source_path=path,
+                        trend_level=trend_level, kind=kind, points=permissions))
+                continue
             if permissions and market:
                 # 命名资格附件只写本次许可，不倒写几何首次可知日。
                 permission_dates: dict[object, int] = (
                     {key: value for key, value in _PrefixSessions(market_index.owner.positions, len(market) - 1).items()}
                     if market_index is not None else {session_date(bar): i for i, bar in enumerate(market)})
                 permission_dates.update({i: i for i in range(len(market))})
-                _annotate_permissions(permissions, market[0].symbol, permission_dates, trend_level=trend_level)
+                _annotate_permissions(permissions, market[0].symbol, permission_dates, trend_level=trend_level,
+                    _cache=(_permission_cache._annotations
+                            if _owned_candidates and _permission_cache is not None else None),
+                    _cache_key=(trend_level, path))
             legs = confirmed_trend_legs(permissions, trend_level=trend_level, source_path=path)
             transitions: list[dict[str, object]] = []
             if permissions:
@@ -1293,7 +1382,8 @@ def attach_trend_permissions(
 
                 reanchors = cast(Callable[..., list[dict[str, object]]], last_fall_high_reanchors)
                 # 旧命名事件仅消费交易所日期，整数历史不补造日期资格。
-                transitions = reanchors(permissions, market, trend_level=trend_level) if all(
+                transitions = reanchors(permissions, market, trend_level=trend_level,
+                    _market_index=market_index) if all(
                     isinstance(point['available_at'], str) and not point['available_at'].isdecimal()
                     for point in permissions) else []
             if (verified_prefix is not None and _permission_cache is not None
@@ -1309,6 +1399,8 @@ def attach_trend_permissions(
             qualified_strokes.append(dict(id=f'{kind}-{path}', source_path=path, trend_level=trend_level,
                 kind=kind, points=permissions, confirmed_legs=legs, key_transitions=transitions,
                 view='strategy_permissions'))
+    if _hierarchy_only:
+        return dict(trend_level=trend_level, qualified_strokes=qualified_strokes)
     source_shells = [dict(stroke) for stroke in source_strokes]
     candidate_shells = [dict(stroke) for stroke in candidate_strokes]
     strokes = [dict(stroke, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
@@ -1318,6 +1410,9 @@ def attach_trend_permissions(
     lows = cast(Callable[..., object], bear_bull_alternation_lows)
     post_highs = cast(Callable[..., object], post_alternation_bull_highs)
     signals = cast(Callable[..., object], bullish_turn_signals)
+    landmark_market = full_market_index.bars if full_market_index is not None else bars
+    alternation_lows = lows(qualified_strokes, trend_level=trend_level, source_strokes=source_shells,
+                           bars=landmark_market, _market_index=full_market_index)
     result = dict(prepared)
     result.pop('_path_market_end_indices')
     result.update(strokes=strokes, source_strokes=source_shells, qualified_strokes=qualified_strokes,
@@ -1327,11 +1422,13 @@ def attach_trend_permissions(
         strategy_confirmed_wave_count=sum(len(cast(list[object], stroke['points'])) for stroke in qualified_strokes),
         key_transition_count=sum(len(cast(list[object], stroke['key_transitions'])) for stroke in qualified_strokes),
         bear_to_bull_highs=highs(qualified_strokes, trend_level=trend_level),
-        bear_bull_alternation_lows=lows(qualified_strokes, trend_level=trend_level, source_strokes=source_shells, bars=bars),
+        bear_bull_alternation_lows=alternation_lows,
         post_alternation_bull_highs=post_highs(qualified_strokes, trend_level=trend_level,
-            source_strokes=source_shells, bars=bars),
-        bullish_turn_signals=signals(qualified_strokes, bars, trend_level=trend_level, source_strokes=source_shells),
-        bearish_turn_signals=bearish_turn_signals(qualified_strokes, bars, trend_level=trend_level))
+            source_strokes=source_shells, bars=landmark_market, _alternation_lows=alternation_lows),
+        bullish_turn_signals=signals(qualified_strokes, landmark_market, trend_level=trend_level,
+            source_strokes=source_shells, _alternation_lows=alternation_lows, _market_index=full_market_index),
+        bearish_turn_signals=bearish_turn_signals(qualified_strokes, landmark_market, trend_level=trend_level,
+            _market_index=full_market_index))
     return result
 
 

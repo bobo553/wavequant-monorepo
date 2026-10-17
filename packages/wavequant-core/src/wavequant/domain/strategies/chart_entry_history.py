@@ -635,9 +635,6 @@ def chart_entry_history(
         if market_calculation is not None and market_calculation.reading_live_day else None)
     cached_lifecycle: dict[int, list[dict[str, object]]] | None = None
     polyline_lifecycle = PolylineLifecycleSource(dates)
-    lifecycle_reader: Iterator[tuple[int, tuple[object, ...]]] | None = None
-    next_lifecycle: tuple[int, tuple[object, ...]] | None = None
-    current_lifecycle: tuple[object, ...] | None = None
     levels: tuple[tuple[dict, dict], ...] = ()
     shallow_candidate = None
     resistance_key = None
@@ -741,7 +738,8 @@ def chart_entry_history(
 
     def accept(frame: _ChartDrawingFrame, prepared: Sequence[Mapping[str, object]]) -> None:
         nonlocal previous_epoch, previous_raw, signature, landmarks, active, invalidated, levels, resistance_key, shallow_candidate
-        nonlocal lifecycle, next_lifecycle, current_lifecycle
+        nonlocal lifecycle
+        current_lifecycle: tuple[object, ...] | None = None
         i, epoch, raw = frame.index, frame.epoch, frame.raw
         event_start = len(events)
         if previous_epoch is not None and epoch != previous_epoch and len(previous_raw) > 1:
@@ -761,12 +759,11 @@ def chart_entry_history(
                 record_lifecycle(steps, lifecycle_events)
         else:
             lifecycle_events = cached_lifecycle.get(i, [])
-            while next_lifecycle is not None and next_lifecycle[0] <= i:
-                current_lifecycle = next_lifecycle[1]
-                assert lifecycle_reader is not None
-                next_lifecycle = next(lifecycle_reader, None)
             needs_state = (checkpoint_channel is not None and i in checkpoint_channel.store.targets
                            or prefix_cache is not None and i == last - 1)
+            if (live_lifecycle is None and (needs_state or n_target_trend_confirmation_enabled and strategy_day)
+                    and market_calculation is not None and market_calculation._checkpoints is not None):
+                current_lifecycle = market_calculation._checkpoints._at(i)
             if needs_state:
                 if live_lifecycle is not None:
                     lifecycle = live_lifecycle.copy()
@@ -820,12 +817,14 @@ def chart_entry_history(
                     _n_confirmation_paths=permission_lifecycle.pending_bull_paths(1))
                 second = attach_trend_permissions(prepared[1], prefix,
                     n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-                    qualified_source_points=high_low_points_from_strokes(first['qualified_strokes']),
+                    qualified_source_points=(high_low_points_from_strokes(first['qualified_strokes'])
+                        if n_target_trend_confirmation_enabled else None),
                     _permission_cache=permission_cache, _owned_candidates=True,
                     _n_confirmation_paths=permission_lifecycle.pending_bull_paths(2))
                 third = attach_trend_permissions(prepared[2], prefix,
                     n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-                    qualified_source_points=high_low_points_from_strokes(second['qualified_strokes']),
+                    qualified_source_points=(high_low_points_from_strokes(second['qualified_strokes'])
+                        if n_target_trend_confirmation_enabled else None),
                     _permission_cache=permission_cache, _owned_candidates=True,
                     _n_confirmation_paths=permission_lifecycle.pending_bull_paths(3))
             first, second, third = (_strategy_permission_view(level) for level in (first, second, third))
@@ -995,26 +994,31 @@ def chart_entry_history(
                     cached_lifecycle.setdefault(cast(int, event['bar_index']), []).append(event)
             for daily_events in cached_lifecycle.values():
                 daily_events.sort(key=lambda event: event.get('reason') == 'source_path_ended')
-            # 日线逐日续接只需要前日/当日状态，直接借用独立快照；较旧缺口
-            # 仍读取原始检查点日志，保留分钟修订和历史重放的因果边界。
-            if market_calculation._live_lifecycle_at(resume_start) is None:
-                lifecycle_reader = market_calculation._checkpoints.iter_changes(
-                    start_position=resume_start, _borrow_readonly=True)
-                readers.callback(lifecycle_reader.close)
-                next_lifecycle = next(lifecycle_reader, None)
+            # 事件逐日重放；状态仅在保存检查点或计算 N 许可时按日期读取。
+            # 区间外的历史状态无需逐版解码，当前/前日仍优先借用实时副本。
         if _stage is not None: _stage('按已确认资格调度有效区间内的策略形态')
         if steps is not None and cached_lifecycle is None:
             for step_number in LIFECYCLE_STEPS: steps.begin(step_number)
         drawing_reader = frames.iter_rows(shared=True, start_index=resume_start)
         readers.callback(drawing_reader.close)
-        trend_readers = [stage.iter_rows(shared=True, start_position=resume_start - frames.start,
-                                        _reuse_shared=True) for stage in prepared]
-        for reader in trend_readers:
-            readers.callback(reader.close)
-        dated_frames = zip(drawing_reader, *trend_readers)
-        for frame, first, second, third in dated_frames:
-            # 先判断窗口和来源/行情触发，再按需计算；不提前派发每天三层资格任务。
-            accept(frame, (first, second, third))
+        if cached_lifecycle is not None and live_owner is not None:
+            for frame in drawing_reader:
+                strategy_day = entry_days is None or entry_days[frame.index]
+                shared = (market_calculation._shared_permissions_at(frame.index,
+                    n_enabled=n_target_trend_confirmation_enabled)
+                    if live_owner is not None and market_calculation is not None else None)
+                # 六态已有独立事件和状态；区间外及同日已发布资格均不读取几何。
+                # 跨资格缺口只定位实际需要的历史前驱，不能逐个解码被跳过的版本。
+                required = strategy_day and shared is None
+                rows = tuple(stage._at(frame.index - frames.start) for stage in prepared) if required else ()
+                accept(frame, rows)
+        else:
+            trend_readers = [stage.iter_rows(shared=True, start_position=resume_start - frames.start,
+                                            _reuse_shared=True) for stage in prepared]
+            for reader in trend_readers:
+                readers.callback(reader.close)
+            for frame, first, second, third in zip(drawing_reader, *trend_readers):
+                accept(frame, (first, second, third))
         if steps is not None and cached_lifecycle is None:
             for step_number in LIFECYCLE_STEPS: steps.complete(step_number)
     if _history_reuse is not None:

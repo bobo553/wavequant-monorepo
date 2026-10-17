@@ -68,7 +68,12 @@ class _ReadonlySnapshotCache(Generic[_Value]):
         previous = self._entries.pop(key, None)
         if previous is not None:
             self._bytes -= previous[2]
-        size = _builtin_size((key, token, value), self._limit - 4096 - 512)
+        if not self._evict and len(self._entries) >= self._max_entries:
+            return
+        remaining = self._limit - 4096 - 512 - (self._bytes if not self._evict else 0)
+        if remaining <= 0:
+            return
+        size = _builtin_size((key, token, value), remaining)
         if size is None:
             return
         charged = size + 512

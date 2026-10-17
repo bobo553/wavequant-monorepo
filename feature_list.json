@@ -14,6 +14,8 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+                "2026-10-17趋势660秒续修：取消闭合门禁全文缓存签名、合并候选认证、复用只读证明和派生注解；步骤缓存使用自包含完整点引用且兼容旧格式。N关闭时不整理无效下级许可点，无所选级别买入资格日期只生成层级历史资格，完整交易附件按实际需求重建，N开启保留原流程。同输入2120日完整430.587秒、趋势393.3秒，全部输出与基线一致；两分钟目标尚未达到，普通边界门禁待提交阶段，保持in-progress。",
+                "2026-10-17先锋1090日至1555日后段加速变慢续修：确认上下文以只读前缀/可见来源窗口替代每次历史截止的全量切片和None填充；回退优先最近匹配检查点，旧翻向检查点仍作较早修订后备。转多、转空、末跌高迁移及短浅回调时长门禁使用同请求行情树，交替地标单次生成后共享；冻结点证据与闭合路径仅在私有只读阶段有界复用解码，公共导出独立。保持完整历史、三层共用规则、严格越位/守位及真实知识日；回归仅编写，实际2120日分段耗时与完整输出差分待验证，不能宣称已达到两分钟或全链路只读尾部。",
                 "2026-10-17新增假突破资格退出：保留既有直接下级转空确认和后续下降破前低规则；已有正式多翻空后，最高价突破末升高点，再收盘严格跌回该高点K线收盘价，且量不少于该次首次突破前20根均量2倍、阴线实体跌幅不少于3%，可结束直接上级资格。按用户最终澄清，连续3根收盘严格高于末升高点K线收盘价即站稳，排除该假突破规则；相等不算站上。三级共用因果状态，检查点/复制/分级重放保留计数与单次触发。先锋新材目标结束日提前到2020-09-09，关键位为2020-08-11收盘5.48，不借用2020-09-10低点或未来整波完成；提交阶段真实前缀及新增边界回归已验证；相关套件的既有失败与类型基线问题另见verification。",
                 "2026-10-17认证/结果续改：内部来源以_SourceVersionOwner生成版本、父版本、最早变化位置及已认证来源，追加仅解析新尾及前驱，内部状态复用证书，公共输入/未知类型/日期回退保留完整校验。上游目前交付完整可变快照，入场签名比较与阶段变化门禁仍存在，不能宣称全链路免历史扫描。共用结果账本按坐标维护候选，旧坐标补充结束证明只更新对应桶并重放必要几何后缀，来源回退重建账本；完整候选和历史点保留。交易信号/已发布决定/已关闭窗口审计追加维护稳定顺序，活跃准备证据独立排序归并。六态守低、特殊恢复、空头反弹失效、实体跳空的低高收盘极值复用请求行情树，严格截止当日、相等取早、异行情与非精确价格回退。新增差分回归仅编写，待提交验证。",
                 "2026-10-17用户澄清：保留完整历史，每个级别/路径维护最后有效末跌高与末升低的完整来源位置索引，正式闭合且攻击日前可知的实际关键位才更新；冻结整波起点优先，普通最新H/L不替代。关键位查询从标记开始，普通翻向用H/L索引定位尾部；六态结构版本缓存坐标索引，延伸只读关键位三点、交替从冻结key开始、特殊恢复保留破位前驱。迟知/修订/检查点及乱序重复输入保持原语义，不删除旧来源、关键位树、证明、审计和图表历史。新增回归仅编写，完整同源输出与性能待提交阶段验证。",
@@ -66,6 +68,36 @@
                 "图表一级只消费折线来源变化，二/三级只消费直接下级变化；发展尾点同向移动不得触发相同已确认来源重算。折线尾部变更与趋势版本保留真实知识日、修订和路径关闭，逐日还原须与原全前缀基线一致；六态和交易价格条件继续按行情日期推进。"
             ],
             "verification": [
+                {
+                    "command": "submission: python -m pytest (16 affected test files, see submit-prefix-20261017/pytest.log); retry: python -m pytest tests/test_calculation_step_cache.py tests/test_calculation_step_order_cache.py tests/test_trend_change_history.py -q --tb=short; final: python -m pytest tests/test_backtest_prefix_cost.py tests/test_trend_landmarks.py tests/test_trend_change_history.py -q --tb=short",
+                    "status": "failed",
+                    "summary": "2026-10-17用户要求提交并推送。首轮562 passed/8 failed/23 errors，23项临时目录权限错误提权重跑后排除（retry为36 passed/2 failed）；类型标注修正后final为65 passed/2 failed。将82d17af归档并隔离PYTHONPATH，对照四个相关文件得到67 passed/7 failed，复现当前8项失败中的7项。新增失败为test_first_eligible_day_uses_shared_permissions_without_prior_day_trade_warmup：用例强制将实际无资格日改为可买入且禁止附件回退，与本次按需完整附件行为冲突；未修复、未削弱断言。其余七项涉及旧替身接口、state字段、读取重叠、冷缓存解析及历史几何/空路径，详见baseline-pytest.log。检查未全通过，不合并main；按用户指令仅提交推送特性分支，330保持in-progress。"
+                },
+                {
+                    "command": "python -m mypy --follow-imports=silent --cache-dir <submission-log-dir>/mypy-cache <15 changed source files> tests/test_backtest_prefix_cost.py; python -m build --no-isolation --outdir <submission-log-dir>/dist; git diff --check",
+                    "status": "failed",
+                    "summary": "2026-10-17提交验证：mypy-final.log为38 errors/6 files，基线39 errors/6 files；按路径和错误正文归一化对照无新增错误，减少旧chart_entry_history Iterator.close错误。修正本轮新增Generator返回类型、数值窄化和测试容器标注，不改变业务或断言。build-final.log成功生成sdist和wheel，git diff --check无空白错误。日志位于E:/WorkSpace/work/wavequant-monorepo/.codex-runtime/submit-prefix-20261017。未执行浏览器E2E、lint或格式化；本次类型标注后未重跑完整2120日性能，430.587秒为此前冻结功能版本实测，不是提交后重新计时。"
+                },
+                {
+                    "command": "user-authorized command summary: streaming_benchmark.py --source-root candidate-v2-src --sizes 768 --profile (v2-profile-768); streaming_benchmark.py --source-root candidate-v{3,4,5}-src --fixture fixture.json --minutes minutes.json --output candidate-v{3,4,5}-full --sizes all --hash-only --timeout 3600 --compare candidate-v2-full/summary.json; report.py; storage_report.py",
+                    "status": "passed",
+                    "summary": "2026-10-17沿用当次授权。cProfile仅定位不作为速度比较；完整回放逐版串行、生产streaming_stock_result/24步持久证据/固定先锋2120日/原参数/真实同源分钟快照，网络禁用。662.017→544.054→488.319→430.587秒，最终趋势393.3秒、买卖规则33.9秒、CPU404.234秒、峰值RSS225579008字节；本次墙钟减少35.0%、趋势减少36.5%，相对最初930.356秒减少53.7%。完整research/account/minute provenance/calculation rows SHA256全部一致，31信号/1296审计/25订单/8交易；candidate-v5-full/summary.json differences=[]。步骤编码21.667秒、写入30.236秒、SQLite84656128字节，完整证据没有删减。工作树src与冻结源码f37a04c3cbf50fbf122f40297419e69915a09447e1704211d66d2bb9b2a50f8e逐文件一致。页面重新加载，Web3004/API8766健康读取200。两分钟目标未达，N开启/其他级别/实际分钟成交组合未覆盖，330保持in-progress；无提交合并推送。证据在主仓.codex-runtime/perf-prefix-20261017。"
+                },
+                {
+                    "command": "NOT RUN: tests/test_backtest_prefix_cost.py; pytest/lint/typecheck/format/build/browser E2E",
+                    "status": "not-run",
+                    "summary": "2026-10-17新增完成门禁不遍历无关审计、满额缓存准入、点引用块完整还原/独立容器/非法引用、派生注解修订和知识时钟、层级轻量资格与完整交易视图边界回归，仅编写。遵守用户开发验证节奏；本轮授权性能采样和完整回测不视为普通单元测试或浏览器E2E授权。剩余历史压缩写入、对象图预算及逐日资格发布热点继续保留在交接，不宣称全链路只访问最后翻向后数据。"
+                },
+                {
+                    "command": "user-authorized streaming_benchmark.py --sizes all --timeout 3600 --repeat 1; candidate-v2-full --hash-only --compare candidate-full/summary.json; baseline-full --hash-only --compare candidate-v2-full/summary.json",
+                    "status": "passed",
+                    "summary": "2026-10-17用户当次授权性能采样和完整回测。先锋2120日真实固定输入、原参数、同源分钟缓存、生产streaming_stock_result和24步持久证据；修改前82d17aff为930.356秒/CPU891.516秒，第一轮索引优化版849.151秒/CPU801.953秒，按需历史读取修复后662.017秒/CPU623.719秒，整批墙钟减少28.8%、CPU减少30.0%。三版全部research/account/minute provenance/calculation rows SHA256一致，31信号/1296审计/25订单/8交易。采样定位到资格缺口先解码三级历史后判需求，改为按日期二分及同日许可复用；六态事件继续逐日推进，状态按需恢复。历史读取修复前后买卖规则229.0→40.1秒，折线趋势约620秒仍在。当前源码与最终冻结源码逐文件相同。Web3004/API8766已恢复及页面重新加载；无pytest/lint/类型/格式/构建/E2E，无提交/合并/推送，330保持in-progress。证据位于本机主仓.codex-runtime/perf-prefix-20261017。"
+                },
+                {
+                    "command": "NOT RUN: test_backtest_prefix_cost.py; same-input 2120-day profiling and complete-result differential replay",
+                    "status": "not-run",
+                    "summary": "2026-10-17继续feat-三级趋势统一，保留启动时trend_lines.py及hierarchy_stream.py已有未提交修改。源码定位确认前缀重复分配、历史命名事件行情回扫、较旧翻向检查点优先及完整证据重复解码，完成共用路径优化和边界回归源码。未执行测试、类型、lint、格式、构建、运行探针或浏览器；未提交、合并、推送或重启。用户提供1090/2120约2分钟、1555/2120约8分钟，尚无对应任务分项profile；不能给出主因耗时占比或修复后速度。"
+                },
                 {
                     "command": "packages/wavequant-core/.venv/Scripts/python.exe -m pytest tests/test_failed_breakout_exit.py tests/test_source_bear_structure_exit.py tests/test_source_bear_exit.py tests/test_trend_lifecycle.py tests/test_trading_intervals.py tests/test_trend_body_reversal.py tests/test_lifecycle_market_ranges.py tests/test_lifecycle_key_windows.py -q --tb=short",
                     "status": "failed",

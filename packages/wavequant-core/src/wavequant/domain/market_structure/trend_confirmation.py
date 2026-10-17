@@ -17,6 +17,7 @@ from ..models.model import Bar
 from .hierarchical_confirmation import session_date
 from .n_trend_confirmation import NConfirmationContext, _lazy_n_permissions, prepare_n_confirmation_context, qualify_n_trend
 from .trend_market_index import _MarketPrefixIndex
+from .trend_prefix_view import _PrefixView, _VisibleReferences
 from .trend_evidence_reuse import _geometry_signature
 
 
@@ -116,9 +117,9 @@ class ConfirmationContext:
     source_identity: int
     bars_identity: int
     end_index: int
-    bars: tuple[Bar, ...] | None
+    bars: Sequence[Bar] | None
     session_indices: Mapping[str, int] | None
-    references: tuple[_Reference | None, ...]
+    references: Sequence[_Reference | None]
     ordered: bool
     n_source: Sequence[Mapping[str, object]]
     n_context: NConfirmationContext | None
@@ -332,7 +333,11 @@ def prepare_confirmation_context(
             raise ValueError("a parsed confirmation context must match its source and cover the market prefix")
         if parsed_context.end_index == end_index:
             return parsed_context
-    market = tuple(bars[:end_index + 1]) if bars is not None else None
+    # 索引已经认证 exact frozen Bar tuple；每个旧确认日只创建 O(1) 窗口。
+    # 公共可变行情仍独立冻结，不能借用调用方之后会改写的列表。
+    market: Sequence[Bar] | None = (
+        _PrefixView(_market_index.bars, range(end_index + 1)) if _market_index is not None else
+        tuple(bars[:end_index + 1]) if bars is not None else None)
     sessions: Mapping[str, int] | None = None
     if market is not None:
         previous_sessions = parsed_context.session_indices if parsed_context is not None else None
@@ -351,7 +356,12 @@ def prepare_confirmation_context(
         if reference_stops is not None:
             stop = reference_stops[stop]
         visible_stop = stop
-        references = parsed_context.references[:stop] + (None,) * (len(source) - stop)
+        original_references = parsed_context.references
+        if isinstance(original_references, _VisibleReferences):
+            # 允许在旧日窗口上继续回退，但不累积逐日包装链。
+            stop = min(stop, original_references.stop)
+            original_references = original_references.source
+        references: Sequence[_Reference | None] = _VisibleReferences(original_references, stop)
         ordered = True
     else:
         parsing: _ReferenceParsingCache | None = None
@@ -444,6 +454,16 @@ def _certificate(
     if retracement_origin is not None:
         proof["retracement_origin"] = _public(retracement_origin)
     return proof
+
+
+def _preceding_reference(
+    references: Sequence[_Reference | None], start: int, stop: int, kind: str,
+) -> _Reference | None:
+    for position in range(stop - 1, start - 1, -1):
+        point = references[position]
+        if point is not None and point.kind == kind:
+            return point
+    return None
 
 
 def _qualify(
@@ -557,8 +577,7 @@ def _qualify(
         trigger = n_proof['confirmed_by']
         assert isinstance(trigger, dict) and isinstance(trigger['index'], int)
         proofs.append((trigger['index'], n_proof))
-    frozen = next((point for point in reversed(references[:source_position])
-                   if point is not None and point.kind == key_kind), None)
+    frozen = _preceding_reference(references, 0, source_position, key_kind)
     if frozen is None or sign * (frozen.value - base.value) <= 0:
         return first_proof(proofs)
     flips: list[tuple[int, _Reference, _Reference]] = []
@@ -573,8 +592,7 @@ def _qualify(
                 or not _known_before_price(frozen, point)
                 or strongest is not None and sign * (point.value - strongest.value) <= 0):
             continue
-        retracement_origin = (next((prior for prior in reversed(references[source_position:position])
-                                   if prior is not None and prior.kind == base.kind), base)
+        retracement_origin = ((_preceding_reference(references, source_position, position, base.kind) or base)
                               if strongest is not None else base)
         strongest = point
         flips.append((position, point, retracement_origin))

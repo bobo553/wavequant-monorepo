@@ -866,8 +866,12 @@ class _TrendJudgementState:
         self._source_keys, self._regular_keys = saved[:2]
         if flip:
             self._checkpoint = None
-        self.deep_budget_walks += 1
-        measured = self._owned_bytes()
+        # 检查点已计入当前预算。恢复只复制索引容器，证据叶子是原对象图的
+        # 子集；沿用其保守负载上界，不能每次尾点修订重新遍历全部历史证据。
+        measured = self._payload_upper_bytes + self._container_bytes() + 4096
+        if measured > self._limit:
+            self.deep_budget_walks += 1
+            measured = self._owned_bytes()
         if measured > self._limit:
             self.clear()
             return False
@@ -996,9 +1000,17 @@ class _TrendJudgementState:
                       and (version_append or certified[:len(self._source_keys)] == self._source_keys))
         restored = False
         if not appendable and self._tail_reuse:
-            restored = appendable = self._restore_tail(certified, flip=True)
-            if not appendable:
-                restored = appendable = self._restore_tail(certified)
+            # 翻向点可能距今很远；选最近仍完全匹配的检查点，避免优先回退
+            # 到旧翻向使每日尾点修订重放整个趋势段。前缀修订仍逐字拒绝。
+            checkpoints = sorted(
+                ((len(saved[0]), flip) for flip, saved in
+                 ((False, self._checkpoint), (True, self._flip_checkpoint)) if saved is not None),
+                reverse=True,
+            )
+            for _, flip in checkpoints:
+                if self._restore_tail(certified, flip=flip):
+                    restored = appendable = True
+                    break
         if appendable and self._tail_reuse and not restored and len(certified) > len(self._source_keys):
             self._save_tail()
         if appendable:

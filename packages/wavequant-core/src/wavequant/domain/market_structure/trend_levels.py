@@ -14,7 +14,6 @@ from math import isfinite
 from typing import Literal, TypeAlias, cast
 
 from .polyline import LinePoint, PointKind, ReversalPoint
-from .trend_evidence_reuse import _completion_cache
 from .trend_structure import StructuralTrend, classify_trend_prices, preceding_turn
 
 Moment: TypeAlias = int | str
@@ -74,8 +73,9 @@ def _stamp_wave_completion(point: dict[str, object], *, closed: bool, owned: boo
 
 
 def _completed_source_point(raw: Mapping[str, object]) -> dict[str, object] | None:
-    cache = _completion_cache.get()
-    return cache.project(raw, _validate_completed_source_point) if cache is not None else _validate_completed_source_point(raw)
+    # 门禁只读取当前点的闭合证明；对整棵继承证据做缓存签名比重新核验更贵，
+    # 且会随历史增长。直接核验保留迟到修订、未知审计对象和原字段引用语义。
+    return _validate_completed_source_point(raw)
 
 
 def _validate_completed_source_point(raw: Mapping[str, object]) -> dict[str, object] | None:

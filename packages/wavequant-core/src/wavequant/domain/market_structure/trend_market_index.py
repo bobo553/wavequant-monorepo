@@ -30,16 +30,21 @@ class _MarketRangeIndex:
         self.low = [inf] * (2 * size)
         self.high = [-inf] * (2 * size)
         self.close = [inf] * (2 * size)
+        self.close_high = [-inf] * (2 * size)
         self.up_previous = [inf] * (2 * size)
         self.up_close = [-inf] * (2 * size)
         self.down_previous = [-inf] * (2 * size)
         self.down_close = [inf] * (2 * size)
         positions: dict[str, list[int]] = {}
+        session_dates: list[str] = []
         for index, bar in enumerate(bars):
-            positions.setdefault(session_date(bar), []).append(index)
+            day = session_date(bar)
+            session_dates.append(day)
+            positions.setdefault(day, []).append(index)
             cursor = size + index
             self.low[cursor], self.high[cursor] = float(bar.low), float(bar.high)
             self.close[cursor] = float(bar.close)
+            self.close_high[cursor] = float(bar.close)
             if index:
                 previous, closing = float(bars[index - 1].close), float(bar.close)
                 if previous < closing:
@@ -50,11 +55,13 @@ class _MarketRangeIndex:
             left, right = 2 * cursor, 2 * cursor + 1
             for values in (self.low, self.close, self.up_previous, self.down_close):
                 values[cursor] = min(values[left], values[right])
-            for values in (self.high, self.up_close, self.down_previous):
+            for values in (self.high, self.close_high, self.up_close, self.down_previous):
                 values[cursor] = max(values[left], values[right])
         self.positions: Mapping[str, tuple[int, ...]] = MappingProxyType(
             {key: tuple(value) for key, value in positions.items()})
         self.unique_sessions = all(len(value) == 1 for value in self.positions.values())
+        self.session_dates = tuple(session_dates)
+        self.ordered_sessions = all(left <= right for left, right in zip(session_dates, session_dates[1:]))
         self.exact_prices = all(type(price) is float or float(price) == price
                                 for bar in bars for price in (bar.low, bar.high, bar.close))
         self.confirmation_reuse: object | None = None
@@ -76,6 +83,13 @@ class _MarketRangeIndex:
 
     def first_extreme(self, start: int, stop: int, price: float, *, high: bool) -> int | None:
         values = self.high if high else self.low
+        return self._first_extreme(values, start, stop, price, high=high)
+
+    def first_close_extreme(self, start: int, stop: int, price: float, *, high: bool) -> int | None:
+        """首个严格收盘越位，不额外要求前收盘位于阈值另一侧。"""
+        return self._first_extreme(self.close_high if high else self.close, start, stop, price, high=high)
+
+    def _first_extreme(self, values: list[float], start: int, stop: int, price: float, *, high: bool) -> int | None:
         stack = [(1, 0, self.size)]
         while stack:
             node, left, right = stack.pop()
@@ -197,3 +211,7 @@ class _MarketPrefixIndex:
     def first_close_turn(self, start: int, stop: int, price: float, *, up: bool) -> int | None:
         self._bounds(start, stop)
         return self.owner.first_close_turn(start, stop, price, up=up)
+
+    def first_close_extreme(self, start: int, stop: int, price: float, *, high: bool) -> int | None:
+        self._bounds(start, stop)
+        return self.owner.first_close_extreme(start, stop, price, high=high)

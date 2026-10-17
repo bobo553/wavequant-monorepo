@@ -1,3 +1,33 @@
+2026-10-17 · MONOREPO-330 提交推送交接
+
+用户要求提交并推送当前feat-三级趋势统一；本次提交阶段只补全类型，不改变业务行为或削弱测试。pytest初轮8项失败中7项在82d17af隔离归档上复现；新增test_first_eligible_day_uses_shared_permissions_without_prior_day_trade_warmup失败尚未解决：测试强制实际无资格日可买入、禁止按需完整附件回退。临时目录23项权限错误已通过提权重跑排除。最后三个直接相关文件为65通过/2项基线失败；变更源码及新测试mypy为38处既有错误，相对基线无新增；sdist/wheel构建成功，diff空白检查通过。完整记录见feature_list.json，日志主仓.codex-runtime/submit-prefix-20261017。检查未全通过，不合并main，按用户指令仅提交推送特性分支。后续需处理共享许可契约及既有检查失败，保持330 in-progress；430.587秒未达两分钟目标，类型标注后未重新完整计时。
+
+2026-10-17 · MONOREPO-330 趋势660秒续修交接
+
+工作树C:/Users/zb/.codex/worktrees/three-level-trend/wavequant-monorepo，继续feat-三级趋势统一，未提交/合并/推送。用户已授权本任务性能采样和完整回测，不需再次询问；普通测试、lint、类型、格式、构建及E2E没有本轮授权。本轮新增边界回归仅编写。
+
+最新冻结版本candidate-v5-src与当前src逐文件相同，摘要f37a04c3cbf50fbf122f40297419e69915a09447e1704211d66d2bb9b2a50f8e。固定先锋2120日及原分钟快照，生产streaming_stock_result/全部24步证据：完整计算662.017→544.054→488.319→430.587秒；最终趋势393.3秒、买卖33.9秒，CPU404.234秒、峰值RSS225,579,008字节。相对本次起点墙钟减少35.0%、趋势减少36.5%，相对原始930.356秒整批减少53.7%。完整research/account/minute provenance/calculation rows哈希均与原始基线一致，candidate-v5-full/summary.json differences=[]，所有采样/回测进程均已退出。
+
+本次处理闭合门禁全文签名、候选重复准入/复制、尾部内存重复深计数、注解重复恢复与版本复用；步骤缓存改为trend_point_refs_v2，完整点在自包含块内去重并独立还原，旧格式可读。步骤编码21.667秒、写入30.236秒，SQLite84,656,128字节。N关闭不再适配无效下级资格；无所选级别买入资格日期只生成层级资格点，轻量视图不进入完整交易缓存，旧日/结束日按实际需要补齐附件。N开启仍走原完整流程。
+
+诊断根E:/WorkSpace/work/wavequant-monorepo/.codex-runtime/perf-prefix-20261017，新增v2-profile-768、candidate-v3/v4/v5-full，report.json与storage-report.json已更新。Web3004/API8766已自动加载源码并再次刷新页面，两项HTTP健康读取200；原启动脚本和日志见下段。本轮未更改主目录3003/8765服务。
+
+330仍in-progress，两分钟目标未达。剩余采样热点：trend_staging.write完整版本pickle/压缩、trend_judgement对象图预算核算、逐日资格发布及完整快照入场。下一步应继续减少这些路径的累计历史工作，保持同源完整差分；不能简单裁掉最后翻向之前的候选/知识证明，也不能把本次N关闭/默认二级/未消费分钟数据的单次结果推广到所有参数。细节见Core progress与docs/backtest-performance。以下为前序记录。
+
+2026-10-17 · MONOREPO-330 页面服务恢复、授权采样与完整回测
+
+用户已明确授权本轮同参数性能采样及完整回测。feat-三级趋势统一 的 Web3004/API8766 已恢复，启动脚本为本工作树 .codex-runtime/start-current-branch.mjs，当前日志 restart-20261017-175920，根进程PID23832；Python源码修改已由dev监督器加载。页面已打开，首页、catalog和带run参数health返回200。
+
+固定先锋2120日全量输入下，修改前82d17aff基线930.356秒，首轮索引优化版849.151秒，追加历史按需读取修复后662.017秒；三版research/account/minute provenance/24步全部证据行SHA256一致，31信号/1296审计/25订单/8交易，整批墙钟减少28.8%。实测根因为无资格缺口补算仍解码所有三级历史及检查点，1861日附近产生百秒空档；原基线同样复现。新增TrendChangeRows._at按日期二分，chart_entry_history先判实际消费需求，再读对应几何/状态；事件和完整历史保留。证据位于E:/WorkSpace/work/wavequant-monorepo/.codex-runtime/perf-prefix-20261017/，候选最新源码摘要b5d5185f，当前工作树源码与它逐文件相同。本轮三场隔离回测均已结束；本轮启动的Web/API服务继续运行。后续继续处理仍约620秒的趋势资格/证据成本。
+
+无pytest/lint/类型/格式/构建/E2E，本轮新增边界用例待提交时验证；未提交、合并、推送。MONOREPO-330仍in-progress，详细数据和限制见Core progress.md及docs/backtest-performance.md。以下为较早阶段记录，未授权说明已由本段更新。
+
+2026-10-17 · MONOREPO-330 先锋后段回测性能续修（待验证）
+
+继续 feat-三级趋势统一 / C:/Users/zb/.codex/worktrees/three-level-trend/wavequant-monorepo。启动时已有 trend_lines.py、hierarchy_stream.py 未提交改动，保留并在前者叠加本轮修复。针对1090/2120约2分钟、1555/2120约8分钟，源码定位并修改：历史确认O(1)窗口、最近有效检查点优先、命名事件/短浅回调行情索引、同日交替地标复用、私有冻结证明及闭合路径解码复用。新增 test_backtest_prefix_cost.py 未执行。文件集中在 Core market_structure，详见 progress.md 与 docs/backtest-performance.md；330仍in-progress，保留原失败记录。
+
+本轮未测试/类型/lint/格式/构建/运行探针/浏览器，未提交、合并、推送、重启。已询问用户是否当次授权同参数采样及完整回测；未收到授权时继续遵守开发阶段禁验证规则。下一步在获得授权或实际提交阶段执行新增及相邻回归，再用固定同源2120日输入比较完整信号、审计、资格、订单、成交、权益和分段耗时。没有本轮profile、主因耗时占比或两分钟性能结论；完整快照认证/候选遍历/历史输出仍存在，不能说全链路只读最后翻向后数据。
+
 2026-10-17 · MONOREPO-330 假突破规则提交验证
 
 用户要求提交并推送当前 feat-三级趋势统一。本轮 pytest 执行 test_failed_breakout_exit、test_source_bear_structure_exit、test_source_bear_exit、test_trend_lifecycle、test_trading_intervals、test_trend_body_reversal、test_lifecycle_market_ranges、test_lifecycle_key_windows：217通过、1失败（48.91秒）。新增规则及截至9月9日/11月30日真实因果前缀均确认先锋资格结束2020-09-09；原11月26日破前低规则仍保留。失败 test_no_selected_interval_skips_policy_scan 的旧调用次数断言在HEAD 2464998独立归档src/tests中复现相同失败，未放宽断言或修改无关业务。

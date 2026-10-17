@@ -83,6 +83,7 @@ class MarketCalculations:
         self._chart_prefix_owner = object()
         self._strategy_permission_cache: '_TrendPermissionCache | None' = None
         self._shared_hierarchy: 'HierarchyHistoryStream | None' = None
+        self._shared_buy_level: int | None = None
         self._shared_permission_days: dict[int, tuple[dict[str, object], ...]] = {}
         self._live_lifecycle_days: dict[int, TrendLifecycle] = {}
 
@@ -103,18 +104,23 @@ class MarketCalculations:
             return self._strategy_permission_cache
         return _TrendPermissionCache(bars)
 
-    def prepare_shared_hierarchy(self, *, n_enabled: bool = False) -> 'HierarchyHistoryStream':
+    def prepare_shared_hierarchy(
+        self, *, n_enabled: bool = False, buy_level: int | None = None,
+    ) -> 'HierarchyHistoryStream':
         """在首个交易日前绑定共同日期历史；策略适配器不再计算另一套趋势。"""
         from .hierarchy_stream import HierarchyHistoryStream
 
         self._require_open()
+        if buy_level is not None and (type(buy_level) is not int or buy_level not in (1, 2, 3)):
+            raise ValueError('buy interval level must be 1, 2 or 3')
         if self._shared_hierarchy is not None:
-            if self._shared_hierarchy.n_enabled != n_enabled:
+            if self._shared_hierarchy.n_enabled != n_enabled or self._shared_buy_level != buy_level:
                 raise ValueError('shared hierarchy confirmation mode cannot change within a request')
             return self._shared_hierarchy
         if self._published_index >= 0:
             raise ValueError('shared hierarchy must be bound before the first market day')
         self._shared_hierarchy = HierarchyHistoryStream(self._bars, n_enabled=n_enabled, shared=True)
+        self._shared_buy_level = buy_level
         return self._shared_hierarchy
 
     def _shared_permissions_at(self, index: int, *, n_enabled: bool) -> tuple[dict[str, object], ...] | None:
@@ -130,19 +136,25 @@ class MarketCalculations:
         assert self._shared_hierarchy is not None
         market = self._bars[:day.frame.index + 1]
         cache = self._permission_cache_for(market)
+        n_enabled = self._shared_hierarchy.n_enabled
+        hierarchy_only = (not n_enabled and self._shared_buy_level is not None
+                          and not day.permits_buy(self._shared_buy_level))
         views: list[dict[str, object]] = []
         source: list[dict[str, object]] | None = None
         for number, prepared in enumerate(day.levels, 1):
             lifecycle = self._lifecycles.get(number)
             pending = lifecycle.pending_bull_paths(number) if lifecycle is not None else frozenset()
             view = attach_trend_permissions(prepared, market,
-                n_target_trend_confirmation_enabled=self._shared_hierarchy.n_enabled,
+                n_target_trend_confirmation_enabled=n_enabled,
                 qualified_source_points=source, _permission_cache=cache, _owned_candidates=True,
-                _n_confirmation_paths=pending)
+                _n_confirmation_paths=pending, _hierarchy_only=hierarchy_only)
             views.append(view)
-            source = high_low_points_from_strokes(view['qualified_strokes'])
+            if n_enabled and number < 3:
+                source = high_low_points_from_strokes(view['qualified_strokes'])
         published = tuple(views)
-        self._shared_permission_days[day.frame.index] = published
+        # 窗口结束日或旧日若需要交易附件，读取方按原日期重新构造完整视图。
+        if not hierarchy_only:
+            self._shared_permission_days[day.frame.index] = published
         # 完整证据树只保留当前/前日，供同日交易与末日检查点重放借用。
         # 累积策略历史另存轻量日期/价格字段，不把大树复制到每个历史日。
         for index in tuple(self._shared_permission_days):

@@ -4,7 +4,7 @@
 替换、确认和路径关闭都写成新版本，不能从最终折线倒裁历史。
 """
 
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from bisect import bisect_right
 from copy import deepcopy
 from types import TracebackType
@@ -67,6 +67,21 @@ class TrendChangeRows(Generic[_Row]):
                 if self.read_limit is not None and position >= self.read_limit:
                     break
                 yield position, row
+        finally:
+            reader.close()
+
+    def _at(self, position: int) -> _Row:
+        """按已知日期借用真实前驱版本，不解码中间变化或下一条未来版本。"""
+        stop = self.row_count if self.read_limit is None else self.read_limit
+        if type(position) is not int or not 0 <= position < stop:
+            raise ValueError('trend history date must be within the readable prefix')
+        row = bisect_right(self._positions, position) - 1
+        if row < 0:
+            raise ValueError('a nonempty trend history requires its initial state')
+        reader = cast(Generator[tuple[int, _Row], None, None],
+            self._rows.iter_rows(seal=self.read_limit is None, start_row=row, _borrow_readonly=True))
+        try:
+            return next(reader)[1]
         finally:
             reader.close()
 

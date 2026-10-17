@@ -130,7 +130,8 @@ def prepare_backtest_analysis(
             config.squeeze_pullback_entries)
         analysis = BacktestAnalysis(market, current.frames, (),
             (pivot_state.snapshots, pivot_state.epochs, {}, pivot_state.blocked), calculations=current,
-            hierarchy=(current.prepare_shared_hierarchy(n_enabled=config.n_target_trend_confirmation_enabled)
+            hierarchy=(current.prepare_shared_hierarchy(n_enabled=config.n_target_trend_confirmation_enabled,
+                buy_level=config.buy_interval_level)
                 if config.buy_point_definition == 'whole_flip_wave_v3' and config.pivot_mode == 'lecture_causal' else None))
 
     def advance_market_day(day: MarketDay) -> None:
