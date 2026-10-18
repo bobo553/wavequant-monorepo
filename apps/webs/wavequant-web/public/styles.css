@@ -1534,8 +1534,8 @@ body {
     align-items: center;
 }
 .heading.research-heading {
-    padding: 10px 0 12px;
-    gap: 12px;
+    padding: 4px 0 6px;
+    gap: 8px;
 }
 .eyebrow {
     font-size: 9px;
@@ -2529,8 +2529,8 @@ body {
 }
 .price-chart {
     flex: 0 0 auto;
-    min-height: 300px;
-    height: var(--chart-viewport-height, max(300px, calc(100svh - 380px)));
+    min-height: 200px;
+    height: var(--chart-viewport-height, max(200px, calc(100svh - 480px)));
     width: 100%;
 }
 .chart-navigation,

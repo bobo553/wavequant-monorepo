@@ -84,6 +84,16 @@
                 "图表一级只消费折线来源变化，二/三级只消费直接下级变化；发展尾点同向移动不得触发相同已确认来源重算。折线尾部变更与趋势版本保留真实知识日、修订和路径关闭，逐日还原须与原全前缀基线一致；六态和交易价格条件继续按行情日期推进。"
             ],
             "verification": [
+                {
+                    "command": "chart viewport targeted node tests; Web lint, typecheck, build; git diff --check",
+                    "status": "passed",
+                    "summary": "2026-10-18用户要求提交推送所有代码。此前趋势修复及提示组件移除已在5e40a45提交；本次剩余6文件为图表首屏高度及标题间距。pnpm exec node --test tests/chart-viewport-height.test.mjs：4 passed；pnpm --filter wavequant-web lint：0错误、6项既有环境变量声明警告；pnpm --filter wavequant-web typecheck与pnpm --filter wavequant-web build通过，Next.js生成4条静态路由；git diff --check通过。已复核生产源码及用例差异，不含交易逻辑改动。未运行浏览器/E2E，首屏实际视觉仍未验证；不将构建成功等同浏览器验证。本次提交并推送feat-三级趋势统一，不合并main；MONOREPO-330整体保持in-progress。"
+                },
+                {
+                    "command": "development edit: compact chart viewport and research heading; checks pending",
+                    "status": "not-run",
+                    "summary": "根据截图压缩首屏图表：移除自适应图高计算额外100px，按视口减去图表文档起点、完整chart-position高度及16px底部留白；CSS最小图高与计算统一为200px，初始fallback同步缩小100px。heading.research-heading上下padding从10/12px减至4/6px，gap从12减至8px。同步既有图高边界、滚动和resize用例预期；未运行测试、类型、构建或浏览器，首屏实际显示待提交时验证。极矮视口仍保留200px最小可读图高。"
+                },
                 "2026-10-18全部代码提交补充：纳入Web图表键盘提示及指标说明移除。pnpm --filter wavequant-web exec vitest run src/features/research-workbench/components/chart-viewport.test.tsx（1 passed）、相关三个TSX文件eslint、pnpm --filter wavequant-web typecheck、node --check apps/webs/wavequant-web/public/app.js均通过。eslint初次仅CRLF错误，规范为LF后重跑通过。Web构建与浏览器未运行。",
                 "2026-10-18 · MONOREPO-330 全部改动提交验证\n\n用户明确要求提交所有代码并推送当前 feat-三级趋势统一。范围包括趋势反向攻击与深回撤确认、因果投影性能优化、突破当棒强势门禁、华瓷资格跳空首五分钟封板执行，以及对应测试和记录。\n\n本轮提交验证：python -m pytest tests/test_gap_limit_execution.py tests/test_qualified_gap_entry.py tests/test_close_entry.py tests/test_breakout_candle_quality.py tests/test_polyline_buy_gate.py tests/test_squeeze_buy_quality.py tests/test_v3_attack_quality.py tests/test_causal_projection_cost.py tests/test_trend_counter_extension.py tests/test_lifecycle_frozen_context.py tests/test_trend_missing_initial_key.py tests/test_trend_unanchored_boundary.py tests/test_streaming_backtest.py::test_daily_coordinator_publishes_fills_before_advancing_market -k \"not causal_three_level_pipeline and not xinhua_full\" -q --tb=short -p no:cacheprovider：212 passed、1 failed、2 deselected，239.52秒。唯一失败 test_v3_rejection_prevents_completed_n_evidence_even_when_optional_volume_filter_is_off 在 git archive HEAD(a1e1b66) 的独立基线再次执行同样失败；不放宽断言，不宣称全绿。首次测试与打包并行遇到临时sdist目录消失导致收集失败，已在打包结束后重跑得到上述结果。\n\n13个变更生产模块运行 python -m mypy --follow-imports=silent --no-incremental：当前与a1e1b66独立基线均43条错误；去除行号逐条比较，新增0、消失0，历史类型问题未解决。python -m build --no-isolation 成功；wheel在独立venv安装成功，python -I 导入分钟执行、趋势投影、历史投影和强势函数、加载Asia/Shanghai成功，确认来自site-packages。验证证据位于主工作目录 .codex-runtime/all-submit-20261018（忽略，不提交运行产物）。\n\n未运行浏览器、完整账户历史、全量Core测试或Python格式/lint；不冒充已验证。已复核源码与测试差异，保留历史失败并维持MONOREPO-330为in-progress。按用户要求提交推送特性分支；门禁尚非全绿，不合并main。",
                 {

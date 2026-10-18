@@ -1,3 +1,11 @@
+2026-10-18 · 图表首屏布局提交验证
+
+2026-10-18用户要求提交推送所有代码。此前趋势修复及提示组件移除已在5e40a45提交；本次剩余6文件为图表首屏高度及标题间距。pnpm exec node --test tests/chart-viewport-height.test.mjs：4 passed；pnpm --filter wavequant-web lint：0错误、6项既有环境变量声明警告；pnpm --filter wavequant-web typecheck与pnpm --filter wavequant-web build通过，Next.js生成4条静态路由；git diff --check通过。已复核生产源码及用例差异，不含交易逻辑改动。未运行浏览器/E2E，首屏实际视觉仍未验证；不将构建成功等同浏览器验证。本次提交并推送feat-三级趋势统一，不合并main；MONOREPO-330整体保持in-progress。
+
+2026-10-18 · MONOREPO-330 图表首屏位置轨道与紧凑标题
+
+根据截图压缩首屏图表：移除自适应图高计算额外100px，按视口减去图表文档起点、完整chart-position高度及16px底部留白；CSS最小图高与计算统一为200px，初始fallback同步缩小100px。heading.research-heading上下padding从10/12px减至4/6px，gap从12减至8px。同步既有图高边界、滚动和resize用例预期；未运行测试、类型、构建或浏览器，首屏实际显示待提交时验证。极矮视口仍保留200px最小可读图高。
+
 2026-10-18 · MONOREPO-330 全部改动提交验证
 
 用户明确要求提交所有代码并推送当前 feat-三级趋势统一。范围包括趋势反向攻击与深回撤确认、因果投影性能优化、突破当棒强势门禁、华瓷资格跳空首五分钟封板执行，以及对应测试和记录。
