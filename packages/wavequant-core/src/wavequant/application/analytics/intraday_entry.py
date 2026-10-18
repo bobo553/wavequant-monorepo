@@ -1,5 +1,6 @@
-"""Replay defended-N gap entries using only completed same-source minute bars."""
+"""Resolve qualified-session gaps and defended-N minute entries."""
 
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
@@ -13,6 +14,7 @@ from wavequant.domain.strategies.integrated_strategy import (
     pivot_history,
 )
 from wavequant.domain.strategies.n_consolidation import consolidation_gap
+from wavequant.domain.strategies.trading_intervals import TradingInterval
 from wavequant.domain.strategies.hierarchical_entry import EntryContext
 from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse, MinuteTradingScope
 from wavequant.domain.strategies.wave_continuation import (
@@ -40,6 +42,102 @@ class EntryExecution(TypedDict):
     remaining_high: float
 
 
+def _qualified_gap_entries(
+    bars: list[Bar], generated: SystemResult, strategy: SystemStrategy,
+    minute_loader: Callable[[Bar], list[MinuteBar]] | None, *, only_index: int | None,
+    intervals: Sequence[TradingInterval] | None,
+) -> tuple[SystemResult, dict[tuple[str, int], EntryExecution], list[dict[str, object]], set[int]]:
+    """消费现有资格区间；用户指定确认日整天可买，缺分钟则开盘模拟。
+
+    不重算资格或要求 N、全天放量。分钟路径只消费已完成的观察棒，
+    资金、仓位、止损、目标和价格限制继续交给同一账户撮合入口。
+    """
+    from wavequant.domain.strategies.trading_intervals import confirmed_trading_intervals
+
+    executions: dict[tuple[str, int], EntryExecution] = {}
+    fallbacks: list[dict[str, object]] = []
+    gap_days: set[int] = set()
+    if strategy.buy_point_definition != 'whole_flip_wave_v3':
+        return generated, executions, fallbacks, gap_days
+    if intervals is None:
+        intervals = confirmed_trading_intervals(generated.audit, len(bars), strategy.buy_interval_level)
+    signals, audit = list(generated.signals), list(generated.audit)
+    for i in ([only_index] if only_index is not None else range(1, len(bars))):
+        if i <= 0 or bars[i].open <= bars[i - 1].high:
+            continue
+        active = [window for window in intervals if window.start_index <= i
+            and (window.end_index is None or i < window.end_index)]
+        window = max(active, key=lambda value: value.start_index, default=None)
+        if window is None:
+            continue
+        bar = bars[i]
+        confirmation = next((row for row in reversed(audit)
+            if row.get('event') == 'trend_lifecycle_state' and row.get('state') == '空多交替'
+            and row.get('trend_level') == strategy.buy_interval_level
+            and row.get('source_path') == window.source_path and row['bar_index'] == window.start_index), None)
+        if confirmation is None or window.start_low_price is None:
+            continue
+        gap_days.add(i)
+        fallback = None
+        try:
+            minute = minute_loader(bar) if minute_loader is not None else []
+        except MinuteCoverageError as exc:
+            minute = []
+            fallback = exc.coverage
+        timing: dict[str, object] = dict(qualification_model='confirmation_day_full_session',
+            qualification_index=window.start_index, trend_level=strategy.buy_interval_level,
+            source_path=window.source_path, gap_open=bar.open, previous_high=bars[i - 1].high)
+        if not minute:
+            decision = execution_at = bar.timestamp.replace(hour=9, minute=30)
+            price, buyable = bar.open, bar.buyable
+            remaining_low, remaining_high = bar.low, bar.high
+            timing.update(execution_model='same_day_open', decision_source='qualified_gap_open_no_minutes',
+                minute_fallback=True, coverage=fallback)
+            fallbacks.append(dict(symbol=bar.symbol, date=bar.timestamp.date().isoformat(),
+                purpose='qualified_gap_entry', reason='minute_history_missing',
+                execution_model='same_day_open', coverage=fallback))
+        else:
+            # 高开高走：至观察时未跌破开盘，完整五分钟收盘严格高于开盘。
+            observed_low = float('inf')
+            for offset, observed in enumerate(minute[:-1]):
+                observed_low = min(observed_low, observed.low * bar.adjustment_factor)
+                if observed_low < bar.open:
+                    break
+                if observed.close * bar.adjustment_factor <= bar.open:
+                    continue
+                following = minute[offset + 1]
+                decision = observed.timestamp
+                execution_at = following.timestamp - timedelta(minutes=5)
+                price = following.open * bar.adjustment_factor
+                buyable, _ = opening_permissions(dict(date=bar.timestamp.date().isoformat(),
+                    isST='1' if bar.raw_is_st else '0',
+                    tradestatus='1' if bar.raw_trading_active is not False and following.volume > 0 else '0',
+                    preclose=str(bars[i - 1].close / bar.adjustment_factor), open=str(following.open)), bar.symbol)
+                remaining_low = min(row.low for row in minute[offset + 1:]) * bar.adjustment_factor
+                remaining_high = max(row.high for row in minute[offset + 1:]) * bar.adjustment_factor
+                timing.update(execution_model='intraday_5m_next_open', decision_source='qualified_gap_rising_minute',
+                    observed_low=observed_low, observed_close=observed.close * bar.adjustment_factor)
+                break
+            else:
+                continue
+            if observed_low < bar.open:
+                continue
+        timing.update(decision_timestamp=decision.isoformat(), execution_timestamp=execution_at.isoformat())
+        signal = Signal(bar.timestamp, bar.symbol, i, 'LONG', price, window.start_low_price,
+            '资格区间跳空买入', decision, 0, None, '跳空高开', confirmation['breakout_level'],
+            strategy.minimum_reward_risk)
+        executions[bar.symbol, i] = dict(signal=signal, price=price, buyable=buyable, timing=timing,
+            remaining_low=remaining_low, remaining_high=remaining_high)
+        signals = [row for row in signals if not (row.bar_index == i and row.side == 'LONG')] + [signal]
+        audit = [row for row in audit if not (row['bar_index'] == i
+            and row['event'] in ('long_signal', 'long_transition_evidence'))]
+        for event in ('long_signal', 'long_transition_evidence'):
+            audit.append(dict(event=event, bar_index=i, timestamp=bar.timestamp.isoformat(), symbol=bar.symbol,
+                buy_point_type='qualified_gap_open', stop=signal.invalidation_price, target=signal.target_price, **timing))
+    return SystemResult(sorted(signals, key=lambda row: (row.timestamp, row.side)), audit,
+        dict(generated.counts, long_signals=sum(row.side == 'LONG' for row in signals))), executions, fallbacks, gap_days
+
+
 def resolve_consolidation_entries(
     bars: list[Bar],
     generated: SystemResult,
@@ -47,6 +145,7 @@ def resolve_consolidation_entries(
     minute_loader: Callable[[Bar], list[MinuteBar]] | None,
     *,
     daily_fallback: bool,
+    qualified_gap_only: bool = False,
     stage: Callable[[str], None] | None = None,
     history_reuse: BacktestHistoryReuse | None = None,
     only_index: int | None = None,
@@ -56,23 +155,30 @@ def resolve_consolidation_entries(
     prepared_analysis: 'BacktestAnalysis | None' = None,
     trading_window_start: int | None = None,
 ) -> tuple[SystemResult, dict[tuple[str, int], EntryExecution], list[dict[str, object]]]:
-    """Keep daily-close candidates when no earlier fully verified minute decision exists."""
+    """Resolve qualified gaps first; keep the existing N minute path for other sessions."""
     if history_reuse is not None:
         history_reuse.require_input(bars, strategy)
-    minute_scope = None
     if prepared_analysis is not None:
         if (prepared_analysis.bars != tuple(bars) or only_index is None or only_index != len(bars) - 1
                 or trading_window_start is None):
             raise ValueError('prepared minute replay requires the current daily prefix and window')
+    generated, gap_executions, gap_fallbacks, gap_days = _qualified_gap_entries(
+        bars, generated, strategy, minute_loader, only_index=only_index,
+        intervals=prepared_analysis.trading_intervals if prepared_analysis is not None else None)
+    if qualified_gap_only or only_index is not None and only_index in gap_days:
+        return generated, gap_executions, gap_fallbacks
+    minute_scope = None
+    if prepared_analysis is not None:
+        assert only_index is not None and trading_window_start is not None
         minute_scope = MinuteTradingScope.from_analysis(prepared_analysis,
             index=only_index, window_start=trading_window_start)
         # A close-confirmed new qualification cannot authorize earlier minutes.
         if minute_scope is None:
-            return generated, {}, []
+            return generated, gap_executions, gap_fallbacks
     signals = list(generated.signals)
     audit = list(generated.audit)
-    executions: dict[tuple[str, int], EntryExecution] = {}
-    fallbacks: list[dict[str, object]] = []
+    executions: dict[tuple[str, int], EntryExecution] = gap_executions
+    fallbacks: list[dict[str, object]] = gap_fallbacks
     candidates = [
         e for e in audit if e["event"] == "n_completed" and e.get("direction") == "up" and e.get("n_level", 0) >= 1
         and (minute_scope is None or minute_scope.window_start <= e.get('known_at', e['bar_index']) < minute_scope.index)
@@ -136,6 +242,8 @@ def resolve_consolidation_entries(
         if session_cache is not None else {"source_bars": tuple(bars)})
     if stage is not None: stage('核验分钟入场')
     for i, bar in enumerate(bars):
+        if i in gap_days:
+            continue
         if only_index is not None and i != only_index:
             continue
         preceding_daily = daily_waves.get(i - 1)

@@ -159,6 +159,17 @@ def enrich_ledger(bars, result, generated, strategy):
                         f"> 内部回调{internal}日" +
                         (f" 或 子级回调{child}日" if child is not None else "（子级回调时长未提供）"),
                         sessions>internal or (child is not None and sessions>child)))
+            if proof and proof.get('buy_point_type') == 'qualified_gap_open':
+                order['entry_conditions'][:4] = [
+                    check('交易资格区间', proof['qualification_index'], '资格确认日整天可买（回测假设）',
+                        proof['qualification_index'] <= signal.bar_index),
+                    check('开盘跳空', proof['gap_open'], f"> {proof['previous_high']}（昨天最高）",
+                        proof['gap_open'] > proof['previous_high']),
+                    check('分钟高开高走', proof.get('observed_close'), '有分钟守开盘走高；缺分钟按开盘成交',
+                        proof.get('minute_fallback') is True or
+                        proof['observed_close'] > proof['gap_open'] <= proof['observed_low']),
+                    check('结构止损与目标', dict(stop=signal.invalidation_price, target=signal.target_price),
+                        '沿用资格低点和翻多高点；实际成交继续校验账户风险', True)]
             order['trigger_timestamp']=signal.trigger_timestamp.isoformat()
         if order['status']=='filled':
             if order['side']=='BUY' and bar.symbol not in active:

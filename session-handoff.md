@@ -1,3 +1,17 @@
+2026-10-18 · MONOREPO-330 资格区间跳空直接买入（最终口径）
+
+2026-10-18用户收敛跳空买入规则：交易资格区间内，当日开盘严格高于昨日最高；有同源分钟数据时，已完成5分钟收盘高于开盘且此前未跌破开盘，用下一根分钟开盘执行；缺少分钟数据/覆盖时直接按当日开盘模拟，无需新N或另一次全天放量确认。用户明确接受资格确认日整天可买的回测假设，成交证据标记confirmation_day_full_session，不能宣传为开盘时已经知道资格。资格级别仍由原一/二/三级区间决定；沿用该区间低点止损、翻多高目标与账户资金/仓位/涨停/盈亏比约束。有分钟但不高开高走不退回开盘买。
+
+本次业务改动仅含intraday_entry.py公共资格跳空执行、streaming_backtest.py统一接入及trade_evidence.py成交条件说明，补充test_qualified_gap_entry.py；普通N分钟开关关闭仍可执行资格跳空。沿用原资格、止损目标及账户风控，不改趋势、策略配置或前端。
+
+python -m pytest tests/test_qualified_gap_entry.py tests/test_close_entry.py tests/test_streaming_backtest.py::test_daily_coordinator_publishes_fills_before_advancing_market -q --tb=short -p no:cacheprovider：2026-10-18提交阶段，以db3502d归档加本次3个业务文件及新测试组成隔离候选；最终23 passed/0.43s。真实1194日华瓷行情用例消费此前已发布并冻结的09-15资格，单日账户09:30按开盘成交，零滑点价格16.987131249638352。不代表本轮重算全历史趋势或账户回测；默认滑点和费用仍生效。证据.codex-runtime/gap-submit-20261018/tests-final.txt。
+
+python -m mypy --follow-imports=silent --no-incremental src/wavequant/application/analytics/intraday_entry.py src/wavequant/application/analytics/trade_evidence.py src/wavequant/interfaces/research_tools/streaming_backtest.py：隔离HEAD同范围与最终候选均为Success: no issues found in 3 source files。提交阶段补齐容器/函数类型及既有校验后的参数收窄，未改业务规则。证据同目录mypy-baseline.txt、mypy-final.txt。
+
+python -m build --no-isolation；独立安装检查：隔离候选成功构建wheel和sdist；新建独立venv安装wheel及声明的Windows tzdata依赖，python -I导入三个相关模块并检查新增入口参数和Asia/Shanghai时区成功。证据同目录build.txt、wheel-install.txt、wheel-smoke.txt。
+
+用户要求仅提交并推送当前feat-三级趋势统一；其他性能和趋势未提交修改保留，不纳入本次暂存，不合并main。MONOREPO-330仍in-progress。此前旧test_intraday_entry.py的3项替身签名不接受_minute_scope，已与HEAD原实现对照为相同失败，证据.codex-runtime/simple-gap-intraday-baseline.txt；本次未改旧断言。前序ordinary_trend_completion=True的连续H空min异常仍为独立未解决项。本轮未运行完整Core、全历史账户回测、浏览器/E2E；按Python规则未运行lint/格式工具，未重启服务。
+
 2026-10-18 · MONOREPO-330 升级豁免与回测修复提交验证
 
 2026-10-18用户要求提交并推送feat-三级趋势统一。本轮提交包含已升级波段的有限下级豁免、共同层级调度及华瓷严格闭合顺序异常修复。提交检查仅修正trend_cascade局部变量名复用、chart_entry_history可空结果类型标注和测试未使用导入，不改变业务判定或断言。Core .venv pytest tests/test_trend_level_upgrades.py tests/test_local_trend_definition.py tests/test_formal_key_attacks.py -q --tb=short -p no:cacheprovider：143 passed、6 failed（162.34秒）。隔离HEAD 7097c00同一strict_known_key_break用例仍为相同6失败，预期2026-01-14而实际2026-01-16，既有差异不顺带修改。11个变更模块mypy --follow-imports=silent --no-incremental初检20条错误，消除本次新增4条诊断后剩余16条；与隔离HEAD的9个原有模块错误正文逐项一致，新模块无剩余类型错误。python -m build --no-isolation成功；独立venv安装最终wheel及声明的Windows tzdata依赖后，-I导入新调度/趋势入口/历史版本冒烟成功。第一次--no-deps安装缺tzdata导致导入失败，补齐pyproject已声明依赖后恢复，不涉及项目依赖变更。git diff --check通过。证据主目录.codex-runtime/promotion-submit-{tests,tests-baseline,mypy-final,mypy-baseline,build-final,wheel-smoke}.txt。未执行浏览器/E2E或完整账户回测。按用户要求提交推送特性分支；既有测试与类型门禁失败，故不合并main，MONOREPO-330保留in-progress。
