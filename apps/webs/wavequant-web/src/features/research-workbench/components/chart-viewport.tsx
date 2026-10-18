@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 
-/** K线画布焦点、方向键提示与图窗位置滑块，保留原有运行时挂载点。 */
+/** K线画布焦点与图窗位置滑块，保留原有运行时挂载点。 */
 export function ChartViewport(): JSX.Element {
     return (
         <>
@@ -22,12 +22,8 @@ export function ChartViewport(): JSX.Element {
                 role="region"
                 tabIndex={0}
                 aria-label="TradingView K线与成交量图"
-                aria-describedby="chart-keyboard-help"
                 aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
             />
-            <p id="chart-keyboard-help" className="chart-keyboard-help">
-                鼠标在 K 线图内或图表聚焦时：↑ 放大 · ↓ 缩小 · ← → 移动，长按连续操作
-            </p>
             <div className="chart-position">
                 <div className="chart-position-heading">
                     <label htmlFor="chart-position-slider">当前图窗位置</label>

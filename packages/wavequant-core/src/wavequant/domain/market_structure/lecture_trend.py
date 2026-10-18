@@ -362,7 +362,25 @@ def _annotate(points, symbol, dates, *, trend_level=1):
             attack.update(origin=attack['origin'] if up else previous,extreme=p,checked=False)
         if attack and p['kind']==attack['anchor']['kind'] and sign*(p['value']-attack['anchor']['value'])<0:
             observation('翻多观察失效' if up else '翻空观察失效')
-            anchor,key=p,previous; attack=None; suspicion=False
+            # 未完成交替的旧翻向被反向突破时，失败本身不能吞掉新的翻向。
+            # 新波从旧攻击整段极值起算，突破的是旧背景冻结极值；局部反弹
+            # 的升级 key 或最近前驱都不能替代它们。必须在攻击日前已知旧 key。
+            reverse_origin,reverse_key=attack['extreme'],attack['anchor']
+            if (_point_order(reverse_key)<_point_order(reverse_origin)<_point_order(p)
+                    and dates[reverse_key['available_at']]<p['index']):
+                reverse_up=not up
+                background=StructuralTrend.BEAR if reverse_up else StructuralTrend.BULL
+                anchor,key=reverse_origin,reverse_key
+                attack=dict(origin=anchor,extreme=p,anchor=anchor,key=key,checked=False)
+                suspicion=False
+                p['lifecycle_context']=dict(direction='up' if reverse_up else 'down',
+                    key=_ref(key),origin=_ref(anchor),available_at=p['available_at'])
+                confirmed_extreme=({'confirmed_low':_ref(anchor)} if reverse_up else
+                                   {'confirmed_high':_ref(anchor)})
+                observation('翻空为多' if reverse_up else '翻多为空',key=_ref(key),
+                    formation='底部成形' if reverse_up else '头部成形',**confirmed_extreme)
+            else:
+                anchor,key=p,previous; attack=None; suspicion=False
 
 
 def reversal_trends(drawing: Mapping[str, object], bars: Sequence[Bar], *,

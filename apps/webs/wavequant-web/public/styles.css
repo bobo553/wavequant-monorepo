@@ -1742,11 +1742,6 @@ body {
 .performance-card-header .drawdown-range-jump {
     margin-left: auto;
 }
-.comparison {
-    font-size: 9px;
-    color: #5c718a;
-    margin: 10px 0 18px;
-}
 .workspace-grid {
     display: grid;
     grid-template-columns: 230px minmax(0, 1fr) 295px;
@@ -1982,7 +1977,6 @@ body {
         .chart-navigation,
         .trade-playback-navigation,
         #price-chart,
-        .chart-keyboard-help,
         .chart-position,
         #chart-loading-overlay,
         .replay
@@ -2591,12 +2585,6 @@ body {
     padding: 9px 16px 13px;
     border-top: 1px solid var(--border);
     background: var(--panel);
-}
-.chart-keyboard-help {
-    margin: 0;
-    padding: 6px 16px;
-    color: var(--research-text-soft);
-    font-size: 11px;
 }
 .chart-position-heading {
     display: flex;
@@ -3417,7 +3405,6 @@ tbody tr:hover {
 [data-wavequant-react-workbench] .sidebar-bottom a,
 [data-wavequant-react-workbench] .metric small,
 [data-wavequant-react-workbench] .metric p,
-[data-wavequant-react-workbench] .comparison,
 [data-wavequant-react-workbench] .chart-legend > span,
 [data-wavequant-react-workbench] .replay-title,
 [data-wavequant-react-workbench] .replay p,
@@ -3624,9 +3611,6 @@ tbody tr:hover {
     .ohlc {
         font-size: 9px;
         padding-left: 12px;
-    }
-    .comparison {
-        line-height: 1.6;
     }
     .card-header small {
         display: none;

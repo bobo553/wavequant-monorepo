@@ -24,7 +24,6 @@ from ..market_structure.trend_lines import (
     _ClosedPreparedPaths,
     attach_trend_permissions,
     high_low_points_from_strokes,
-    polyline_high_low_points,
 )
 from ..market_structure.trend_history_changes import PolylineSourceGate, TrendChangeRows
 from ..market_structure.trend_lifecycle import TrendLifecycle
@@ -38,11 +37,12 @@ from ..models.model import Bar
 from .backtest_history_reuse import BacktestHistoryReuse, _past_attack_digest
 from .hierarchical_entry import EntryContext
 from .chart_drawing_history import ChartDrawingFrame as _ChartDrawingFrame, ChartDrawingHistory
+from .chart_drawing_history import _OwnedDrawingProjection
 from .market_calculations import MarketCalculations, MarketDay
 
 
 # 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "source_causal_strict_origin_order_v148"
+_CONFIRMATION_CACHE_VERSION = "source_causal_extended_counter_v149"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -164,7 +164,7 @@ def _chart_calculation_scope(
             if on_frame is not None:
                 frame = _ChartDrawingFrame(index, epoch, cast(list[dict[str, object]], raw), drawing)
                 if _on_day is not None:
-                    frames.remember_frame(frame)
+                    frames._remember_owned_frame(frame)
                 on_frame(frame)
             drawing_epoch, drawing_raw = epoch, raw
 
@@ -198,7 +198,8 @@ def _chart_calculation_scope(
                 raise ValueError('market day subscriptions require an initial three-level cascade')
             first = len(prepared) + 1
             gate = PolylineSourceGate()
-            polyline = PolylineLifecycleSource(dates)
+            projection = _OwnedDrawingProjection()
+            polyline = PolylineLifecycleSource(dates, _owned_tail=True)
             base_rows = prepared[first - 2].iter_rows(shared=True) if first > 1 else None
             base_previous: dict[str, object] | None = None
             lower_events: dict[int, list[dict[str, object]]] = {}
@@ -230,7 +231,7 @@ def _chart_calculation_scope(
                 events = lower_events.get(frame.index, [])
                 if first == 1:
                     if gate.changed(frame.epoch, frame.raw):
-                        source = polyline_high_low_points(frame.drawing)
+                        source = projection.project(frame)
                     if full_history and not lower_cached:
                         events = calculations._advance_lifecycle(0, polyline.advance(frame), frame.index, frame=frame)
                 else:
@@ -250,8 +251,11 @@ def _chart_calculation_scope(
                     result = resolved[number - first]
                     if result is None:
                         raise ValueError('a trend requires its initial source on the first date')
-                    key = _geometry_signature(result)
-                    changed = latest[offset] is None or key is None or key != source_keys[offset]
+                    # 无来源变化时 resolved 借用本阶段的同一只读版本；逐日行情
+                    # 仍推进六态，但不必反复编码整棵未变化的结构证据。
+                    key = source_keys[offset] if result is latest[offset] else _geometry_signature(result)
+                    changed = result is not latest[offset] and (
+                        latest[offset] is None or key is None or key != source_keys[offset])
                     if changed:
                         checkpoint_changed = True
                         latest[offset] = result

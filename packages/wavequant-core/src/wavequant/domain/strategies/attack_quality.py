@@ -2,6 +2,7 @@
 
 from fractions import Fraction
 
+from ..market_state.candle_strength import bullish_breakout_rejection, medium_bullish_body
 from ..market_state.control_bar import AttackVolume
 from ..models.model import Bar
 
@@ -25,6 +26,9 @@ def squeeze_buy_rejection(
         return 'squeeze_buy_volume_not_above_previous_or_pre_n'
     if previous is None:
         return 'squeeze_buy_previous_price_unavailable'
+    rejection = bullish_breakout_rejection(bar, previous)
+    if rejection is not None:
+        return rejection
     opening, closing, high = _price(bar.open), _price(bar.close), _price(bar.high)
     if opening > _price(previous.high):
         return None
@@ -34,12 +38,6 @@ def squeeze_buy_rejection(
             and body > 0 and body >= high - closing):
         return None
     return 'squeeze_buy_requires_gain_body_or_gap'
-
-
-def medium_bullish_body(bar: Bar) -> bool:
-    """共用中大阳门槛：实体至少开盘价 2%，且至少占当日振幅一半。"""
-    body = _price(bar.close) - _price(bar.open)
-    return body > 0 and body >= _price(bar.open) / 50 and body >= (_price(bar.high) - _price(bar.low)) / 2
 
 
 def v3_positive_n_attack_rejection(bar: Bar, volume: AttackVolume | None) -> str | None:

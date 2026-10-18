@@ -767,7 +767,7 @@ function renderChartViewport(state, bars, view) {
 }
 bindChartViewportHeight(
     $("price-chart"),
-    [$("chart-keyboard-help"), document.querySelector(".chart-card .chart-position")],
+    [document.querySelector(".chart-card .chart-position")],
     $("research-main") ?? $("price-chart").parentElement,
 );
 const chart = new PriceChart(

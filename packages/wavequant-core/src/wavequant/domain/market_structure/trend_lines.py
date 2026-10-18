@@ -6,7 +6,7 @@
 
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from copy import deepcopy
 from contextlib import nullcontext
 from dataclasses import dataclass
@@ -664,6 +664,19 @@ def polyline_high_low_points(drawing: Mapping[str, object]) -> list[dict[str, ob
     return result
 
 
+def _polyline_turn(
+    left: Mapping[str, object], point: Mapping[str, object], right: Mapping[str, object], *, source_path: str,
+) -> dict[str, object] | None:
+    if point.get('state') in ('seed', 'developing') or point.get('display_only') is True:
+        return None
+    value, before, after = (cast(float, item['value']) for item in (point, left, right))
+    kind = 'H' if value > max(before, after) else 'L' if value < min(before, after) else None
+    if kind is None:
+        return None
+    return dict(point, kind=kind, source_kind=point['kind'], source_state=point.get('state'),
+                state='reversal', trend_level=0, source_path=source_path)
+
+
 def polyline_turns(points: Sequence[Mapping[str, object]], *, source_path: str) -> list[dict[str, object]]:
     """图表与逐日历史共用的折线峰谷适配，不在历史入口另写一套判别。
 
@@ -681,14 +694,65 @@ def polyline_turns(points: Sequence[Mapping[str, object]], *, source_path: str) 
             compact.append(projected)
     result: list[dict[str, object]] = []
     for left, point, right in zip(compact, compact[1:], compact[2:]):
-        if point.get('state') in ('seed', 'developing') or point.get('display_only') is True:
-            continue
-        value, before, after = (cast(float, item['value']) for item in (point, left, right))
-        kind = 'H' if value > max(before, after) else 'L' if value < min(before, after) else None
-        if kind is not None:
-            result.append(dict(point, kind=kind, source_kind=point['kind'], source_state=point.get('state'),
-                               state='reversal', trend_level=0, source_path=source_path))
+        turn = _polyline_turn(left, point, right, source_path=source_path)
+        if turn is not None:
+            result.append(turn)
     return result
+
+
+class _OwnedPolylineTurns:
+    """讲义写入者专用尾部投影；已发布前缀不可原地修改。
+
+    尾点所在的整个日期组可能改变 projection_count，最后一个保留峰谷的
+    右邻也可能变化。因此从旧尾日期组开始重投影，并重算前一个邻点，
+    不以固定 K 线根数截断，也不改变等价保早、三点峰谷和确认状态规则。
+    """
+
+    def __init__(self) -> None:
+        self._path: str | None = None
+        self._length = 0
+        self._tail_start = 0
+        self._anchor: Mapping[str, object] | None = None
+        self._positions: list[int] = []
+        self._compact: list[dict[str, object]] = []
+        self._turn_positions: list[int] = []
+        self._turns: list[dict[str, object]] = []
+
+    def project(self, points: Sequence[Mapping[str, object]], *, source_path: str) -> list[dict[str, object]]:
+        retained = (self._path == source_path and len(points) >= self._length
+            and (self._length < 2 or points[self._length - 2] is self._anchor))
+        start = self._tail_start if retained else 0
+        keep = bisect_left(self._positions, start) if retained else 0
+        del self._positions[keep:]
+        del self._compact[keep:]
+        # 原最后保留点的右邻改变；它之前的转折保持原对象与知识日期。
+        affected = self._positions[-1] if self._positions else 0
+        turn_keep = bisect_left(self._turn_positions, affected) if retained else 0
+        del self._turn_positions[turn_keep:]
+        del self._turns[turn_keep:]
+        suffix = points[start:]
+        counts = Counter(str(point['time']) for point in suffix)
+        ranks: Counter[str] = Counter()
+        for position, point in enumerate(suffix, start=start):
+            time = str(point['time'])
+            projected = dict(point, projection_count=counts[time], projection_rank=ranks[time])
+            ranks[time] += 1
+            if not self._compact or projected['value'] != self._compact[-1]['value']:
+                self._positions.append(position)
+                self._compact.append(projected)
+        for position in range(max(1, keep - 1), len(self._compact) - 1):
+            left, point, right = self._compact[position-1:position+2]
+            turn = _polyline_turn(left, point, right, source_path=source_path)
+            if turn is not None:
+                self._turn_positions.append(self._positions[position])
+                self._turns.append(turn)
+        self._path, self._length = source_path, len(points)
+        self._anchor = points[-2] if len(points) > 1 else None
+        tail_start = len(points) - 1
+        while tail_start > 0 and str(points[tail_start-1]['time']) == str(points[-1]['time']):
+            tail_start -= 1
+        self._tail_start = max(0, tail_start)
+        return list(self._turns)
 
 
 def _source_groups(points: Sequence[Mapping[str, object]]) -> dict[str, list[dict[str, object]]]:

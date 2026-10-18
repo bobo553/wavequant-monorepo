@@ -2,7 +2,8 @@
 
 峰谷适配复用图表的包含关系规则；结构事实采用与趋势注释相同的严格
 关键位和小于 67% 的部分回撤定义。价格确认仍由 TrendLifecycle 统一
-处理。本模块不读取 K 线，也不为折线补造下一级趋势或整波许可证。
+处理。结构适配不读取 K 线；独立买入门禁只读当棒与前棒，
+不为折线补造下一级趋势或整波许可证。
 """
 
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -12,9 +13,10 @@ from typing import Protocol, cast
 
 from .price_action import Direction
 from .trend_history_changes import PolylineSourceGate
-from .trend_lines import polyline_turns
+from .trend_lines import _OwnedPolylineTurns, polyline_turns
 from .trend_structure import retracement_evidence
 from .polyline import ReversalPoint
+from ..market_state.candle_strength import bullish_breakout_rejection
 from ..models.model import Bar
 
 
@@ -164,7 +166,7 @@ class _PolylineStructure:
 
 
 class PolylineBuyGate:
-    """消费已确认折线，复用六态的末跌高；价格突破仅解除买入限制。"""
+    """消费已确认折线末跌高；突破当棒同时强势才解除买入限制。"""
 
     def __init__(self) -> None:
         self.index = -1
@@ -172,6 +174,7 @@ class PolylineBuyGate:
         self.structure = _PolylineStructure()
         self.previous: tuple[ReversalPoint, ...] = ()
         self.released: set[tuple[int, int, float, int]] = set()
+        self._previous_bar: Bar | None = None
         self.restrictions: dict[int, dict[str, object]] = {}
 
     def advance(
@@ -179,6 +182,7 @@ class PolylineBuyGate:
     ) -> None:
         if index != self.index + 1:
             raise ValueError('polyline buy gate requires consecutive dates')
+        previous_bar, self._previous_bar = self._previous_bar, bar
         self.index = index
         if epoch != self.epoch:
             self.epoch = epoch
@@ -204,19 +208,26 @@ class PolylineBuyGate:
         if identity in self.released:
             return
         # 确认当日不能用此前未知的关键位解释当日影线；收盘后才能用于后续判断。
+        rejection = 'polyline_last_fall_high_not_broken'
         if known_at < index and bar.high > key.value:
-            self.released.add(identity)
-            return
-        self.restrictions[index] = dict(reason='polyline_last_fall_high_not_broken',
+            candle_rejection = bullish_breakout_rejection(bar, previous_bar)
+            if candle_rejection is None:
+                self.released.add(identity)
+                return
+            rejection = candle_rejection
+        self.restrictions[index] = dict(reason=rejection,
             polyline_key_index=key.index, polyline_key_price=key.value,
             polyline_key_known_index=known_at, observed_high=bar.high,
+            observed_open=bar.open, observed_close=bar.close, observed_low=bar.low,
+            previous_close=previous_bar.close if previous_bar is not None else None,
+            previous_high=previous_bar.high if previous_bar is not None else None,
             source_path=f'lecture-{epoch}')
 
 
 class PolylineLifecycleSource:
     """保存折线六态适配状态，支持绘图回调直接交付当天帧。"""
 
-    def __init__(self, dates: Mapping[str, int]) -> None:
+    def __init__(self, dates: Mapping[str, int], *, _owned_tail: bool = False) -> None:
         self.dates = dates
         self.gate = PolylineSourceGate()
         self.epoch: int | None = None
@@ -224,6 +235,7 @@ class PolylineLifecycleSource:
         self.known_points: dict[_Point, _Point] = {}
         self.row: dict[str, object] = dict(trend_level=0, strokes=[])
         self.previous_index: int | None = None
+        self._projection = _OwnedPolylineTurns() if _owned_tail else None
 
     def advance(self, frame: _DrawingFrame) -> dict[str, object]:
         dates = self.dates
@@ -238,7 +250,8 @@ class PolylineLifecycleSource:
         if self.gate.changed(frame.epoch, frame.raw):
             _validate_raw(frame.raw, dates, frame.index)
             path = f'lecture-{frame.epoch}'
-            projected = polyline_turns(frame.raw, source_path=path)
+            projected = (self._projection.project(frame.raw, source_path=path) if self._projection is not None
+                         else polyline_turns(frame.raw, source_path=path))
             current: dict[_Point, _Point] = {}
             points: list[_Point] = []
             for raw in projected:

@@ -8,6 +8,7 @@ from types import TracebackType
 from typing import Self, cast
 
 from ..market_structure.trend_staging import TrendStageRows
+from ..market_structure.trend_lines import _OwnedPolylineTurns, polyline_high_low_points
 
 
 @dataclass(slots=True)
@@ -16,6 +17,40 @@ class ChartDrawingFrame:
     epoch: int
     raw: list[dict[str, object]]
     drawing: dict[str, object]
+
+
+class _OwnedDrawingProjection:
+    """阶段私有关闭路径只投影一次；开放路径继续调用原峰谷定义。
+
+    仅消费 _closed_drawing_path 发布的只读路径。缺少显式关闭边界时走
+    完整适配器，不能猜测下一条 seed 或丢失跨空 epoch 的真实截止日。
+    保存当前关闭前缀而非每日快照，空间 O(已关闭点数)。
+    """
+
+    def __init__(self) -> None:
+        self._closed: list[Mapping[str, object]] = []
+        self._points: list[dict[str, object]] = []
+        self._active = _OwnedPolylineTurns()
+
+    def project(self, frame: ChartDrawingFrame) -> list[dict[str, object]]:
+        strokes = cast(list[Mapping[str, object]], frame.drawing['strokes'])
+        active = strokes[-1:] if len(frame.raw) > 1 else []
+        closed = strokes[:-1] if active else strokes
+        if (len(closed) < len(self._closed)
+                or any(path is not previous for path, previous in zip(closed, self._closed))):
+            self._closed.clear()
+            self._points.clear()
+        for path in closed[len(self._closed):]:
+            points = cast(Sequence[Mapping[str, object]], path['points'])
+            caps = [point.get('source_path_end_index') for point in points]
+            if not caps or any(type(cap) is not int or not 0 <= cap <= frame.epoch for cap in caps):
+                self._closed.clear()
+                self._points.clear()
+                return polyline_high_low_points(frame.drawing)
+            self._points.extend(polyline_high_low_points(dict(strokes=[path])))
+            self._closed.append(path)
+        turns = self._active.project(frame.raw, source_path=f'lecture-{frame.epoch}')
+        return [*self._points, *turns]
 
 
 def _change(value: object) -> dict[str, object]:
@@ -73,6 +108,18 @@ class ChartDrawingHistory:
     def remember_frame(self, frame: ChartDrawingFrame) -> None:
         # Daily checkpoint consumers need at most yesterday and today; older history stays on disk.
         self._recent.append(deepcopy(frame))
+
+    def _remember_owned_frame(self, frame: ChartDrawingFrame) -> None:
+        """仅供 lecture_drawing 写入者：点发布后只替换，冻结可变列表即可。
+
+        已关闭路径不再写入；当前路径的点字典也不原地修改。公开输入仍走
+        remember_frame 深复制，公开读取仍独立导出，不能把此协议用于任意快照。
+        """
+        raw = list(frame.raw)
+        strokes = []
+        for path in cast(Sequence[dict[str, object]], frame.drawing['strokes']):
+            strokes.append(dict(path, points=raw) if path.get('points') is frame.raw else path)
+        self._recent.append(ChartDrawingFrame(frame.index, frame.epoch, raw, dict(frame.drawing, strokes=strokes)))
 
     def iter_rows(self, *, shared: bool = False, start_index: int | None = None) -> Iterator[ChartDrawingFrame]:
         begin = self.start if start_index is None else start_index

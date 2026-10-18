@@ -135,7 +135,10 @@ def confirm_bull_alternation(
            if allow_gap_confirmation else None)
     if gap is not None:
         return gap
-    counter = next((point for point in points if point.kind == 'L' and point.index > high.index), None)
+    # 回调可以继续创新低；首个低点破位后，应由当前已确认的整段最低点
+    # 接受原确认门禁。相等保留最早坐标，未确认的新低仍由行情守低校验拒绝。
+    counter = min((point for point in points if point.kind == 'L' and point.index > high.index),
+                  key=lambda point: (point.price, point.index, point.ordinal), default=None)
     counter_defended = (counter is not None and not (
         market.first_extreme(counter.index + 1, now + 1, counter.price, high=False) is not None
         if market is not None and market.supports_price(counter.price)

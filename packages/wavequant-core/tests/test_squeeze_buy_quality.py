@@ -25,7 +25,7 @@ def test_price_routes_share_mandatory_volume(
     opened: float, high: float, closed: float, volume: float, accepted: bool,
 ) -> None:
     previous = Bar(datetime(2024, 2, 26), 'sh.601086', 10.0, 10.5, 9.8, 10.0, 100)
-    bar = Bar(datetime(2024, 2, 27), previous.symbol, opened, high, 9.8, closed, volume)
+    bar = Bar(datetime(2024, 2, 27), previous.symbol, opened, high, 10.0, closed, volume)
     assert (squeeze_buy_rejection(bar, previous) is None) is accepted
 
 
@@ -44,7 +44,7 @@ def test_guofang_february_27_is_not_a_buy_candle() -> None:
     assert bar.close > previous.close * 1.02
     assert bar.close - bar.open < bar.high - bar.close
     assert bar.open < previous.high
-    assert squeeze_buy_rejection(bar, previous) == 'squeeze_buy_requires_gain_body_or_gap'
+    assert squeeze_buy_rejection(bar, previous) == 'breakout_low_open'
 
 
 @pytest.mark.parametrize('yesterday_volume,pre_n_volume,current_volume,accepted', [
@@ -59,14 +59,14 @@ def test_each_price_route_accepts_either_candidate_volume_reference(
     previous = Bar(datetime(2024, 2, 26), 'sh.601086', 10, 10.5, 9.8, 10, yesterday_volume)
     before_attack = replace(previous, timestamp=datetime(2024, 2, 20), volume=pre_n_volume)
     bar = Bar(datetime(2024, 2, 27), previous.symbol,
-              10.6 if gap else 10, 10.9 if gap else 10.6, 9.8,
+              10.6 if gap else 10, 10.9 if gap else 10.6, 10.0,
               10.55 if gap else 10.3, current_volume)
     assert (squeeze_buy_rejection(bar, previous, before_attack) is None) is accepted
 
 
 def test_pre_n_reference_is_candidate_local_and_cannot_come_from_future() -> None:
     previous = Bar(datetime(2024, 2, 26), 'sh.601086', 10, 10.5, 9.8, 10, 200)
-    bar = Bar(datetime(2024, 2, 27), previous.symbol, 10, 10.6, 9.8, 10.3, 150)
+    bar = Bar(datetime(2024, 2, 27), previous.symbol, 10, 10.6, 10.0, 10.3, 150)
     low_reference = replace(previous, timestamp=datetime(2024, 2, 20), volume=100)
     high_reference = replace(low_reference, volume=180)
     assert squeeze_buy_rejection(bar, previous, low_reference) is None
@@ -79,4 +79,4 @@ def test_pre_n_volume_cannot_bypass_candle_shape() -> None:
     previous = Bar(datetime(2024, 2, 26), 'sh.601086', 10, 10.5, 9.8, 10, 200)
     before_attack = replace(previous, timestamp=datetime(2024, 2, 20), volume=100)
     bar = Bar(datetime(2024, 2, 27), previous.symbol, 10, 10.61, 9.8, 10.3, 150)
-    assert squeeze_buy_rejection(bar, previous, before_attack) == 'squeeze_buy_requires_gain_body_or_gap'
+    assert squeeze_buy_rejection(bar, previous, before_attack) == 'breakout_requires_gap_or_medium_bullish_body'

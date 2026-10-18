@@ -1,3 +1,9 @@
+2026-10-18全部代码提交补充：纳入Web图表键盘提示及指标说明移除。pnpm --filter wavequant-web exec vitest run src/features/research-workbench/components/chart-viewport.test.tsx（1 passed）、相关三个TSX文件eslint、pnpm --filter wavequant-web typecheck、node --check apps/webs/wavequant-web/public/app.js均通过。eslint初次仅CRLF错误，规范为LF后重跑通过。Web构建与浏览器未运行。
+
+2026-10-18 · MONOREPO-330 移除图表与指标说明组件
+
+移除chart-keyboard-help键盘提示段落及comparison同比/环比说明段落，清理专用CSS、失效aria-describedby和图表高度计算引用；保留快捷键、指标与方案对比功能。同步已有组件测试断言，开发阶段未运行测试、类型、构建或浏览器，待提交时验证。
+
 2026-10-17 · MONOREPO-330 趋势与交易规则提交验证
 
 用户明确要求提交并推送feat-三级趋势统一。本次提交覆盖普通升降整波结束默认关闭选项及Web/API/contracts传递、缺失初始关键位重建、独立实体反包放量清仓、轧空买入价格门槛和候选正N突破前量二选一。未改变既有失败相关业务逻辑。

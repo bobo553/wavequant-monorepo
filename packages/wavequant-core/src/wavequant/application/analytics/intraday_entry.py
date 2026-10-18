@@ -42,6 +42,28 @@ class EntryExecution(TypedDict):
     remaining_high: float
 
 
+def _minute_buy_permissions(
+    bar: Bar, previous: Bar, following: MinuteBar, *,
+    observed_low: float, observed_high: float, observed_volume: float,
+) -> tuple[bool, bool]:
+    """分钟买点共用价格权限；非一字事实只取决策时已观察的量价。
+
+    第二个返回值不是成交许可，账户仍须显式启用非一字涨停成交假设。
+    """
+    permission = dict(date=bar.timestamp.date().isoformat(),
+        isST='1' if bar.raw_is_st else '0',
+        tradestatus='1' if bar.raw_trading_active is not False and following.volume > 0 else '0',
+        preclose=str(previous.close / bar.adjustment_factor))
+    buyable, _ = opening_permissions(dict(permission, open=str(following.open)), bar.symbol)
+    below_limit, _ = opening_permissions(
+        dict(permission, open=str(observed_low / bar.adjustment_factor)), bar.symbol)
+    previous_tick_buyable, _ = opening_permissions(
+        dict(permission, open=str(Decimal(str(following.open)) - Decimal('0.01'))), bar.symbol)
+    observed_nonflat = (not buyable and previous_tick_buyable and below_limit
+        and observed_high > observed_low and observed_volume > 0)
+    return buyable, observed_nonflat
+
+
 def _qualified_gap_entries(
     bars: list[Bar], generated: SystemResult, strategy: SystemStrategy,
     minute_loader: Callable[[Bar], list[MinuteBar]] | None, *, only_index: int | None,
@@ -99,8 +121,11 @@ def _qualified_gap_entries(
         else:
             # 高开高走：至观察时未跌破开盘，完整五分钟收盘严格高于开盘。
             observed_low = float('inf')
+            observed_high = observed_volume = 0.0
             for offset, observed in enumerate(minute[:-1]):
                 observed_low = min(observed_low, observed.low * bar.adjustment_factor)
+                observed_high = max(observed_high, observed.high * bar.adjustment_factor)
+                observed_volume += observed.volume
                 if observed_low < bar.open:
                     break
                 if observed.close * bar.adjustment_factor <= bar.open:
@@ -109,14 +134,14 @@ def _qualified_gap_entries(
                 decision = observed.timestamp
                 execution_at = following.timestamp - timedelta(minutes=5)
                 price = following.open * bar.adjustment_factor
-                buyable, _ = opening_permissions(dict(date=bar.timestamp.date().isoformat(),
-                    isST='1' if bar.raw_is_st else '0',
-                    tradestatus='1' if bar.raw_trading_active is not False and following.volume > 0 else '0',
-                    preclose=str(bars[i - 1].close / bar.adjustment_factor), open=str(following.open)), bar.symbol)
+                buyable, observed_nonflat = _minute_buy_permissions(bar, bars[i - 1], following,
+                    observed_low=observed_low, observed_high=observed_high, observed_volume=observed_volume)
                 remaining_low = min(row.low for row in minute[offset + 1:]) * bar.adjustment_factor
                 remaining_high = max(row.high for row in minute[offset + 1:]) * bar.adjustment_factor
                 timing.update(execution_model='intraday_5m_next_open', decision_source='qualified_gap_rising_minute',
-                    observed_low=observed_low, observed_close=observed.close * bar.adjustment_factor)
+                    observed_low=observed_low, observed_high=observed_high, observed_volume=observed_volume,
+                    observed_close=observed.close * bar.adjustment_factor, minute_next_open_raw=following.open,
+                    observed_nonflat_limit_buyable=observed_nonflat)
                 break
             else:
                 continue
@@ -429,29 +454,8 @@ def resolve_consolidation_entries(
             signal = next(s for s in replay.signals if s.bar_index == i and s.side == "LONG")
             following = minute[offset + 1]
             execution_at = following.timestamp - timedelta(minutes=5)
-            reference = bars[i - 1].close / bar.adjustment_factor
-            buyable, _ = opening_permissions(
-                dict(
-                    date=bar.timestamp.date().isoformat(),
-                    isST="0",
-                    tradestatus="1" if following.volume > 0 else "0",
-                    preclose=str(reference),
-                    open=str(following.open),
-                ),
-                bar.symbol,
-            )
-            permission_row = dict(
-                date=bar.timestamp.date().isoformat(),
-                isST="0",
-                tradestatus="1" if following.volume > 0 else "0",
-                preclose=str(reference),
-            )
-            below_limit, _ = opening_permissions(
-                dict(permission_row, open=str(low / bar.adjustment_factor)), bar.symbol
-            )
-            previous_tick_buyable, _ = opening_permissions(
-                dict(permission_row, open=str(Decimal(str(following.open)) - Decimal("0.01"))), bar.symbol
-            )
+            buyable, observed_nonflat = _minute_buy_permissions(bar, bars[i - 1], following,
+                observed_low=low, observed_high=high, observed_volume=volume)
             timing: dict[str, object] = dict(
                 execution_model="intraday_5m_next_open",
                 decision_source="completed_five_minute_bar",
@@ -463,9 +467,7 @@ def resolve_consolidation_entries(
                 observed_low=low,
                 observed_close=partial.close,
                 minute_next_open_raw=following.open,
-                observed_nonflat_limit_buyable=bool(
-                    not buyable and previous_tick_buyable and below_limit and high > low and volume > 0
-                ),
+                observed_nonflat_limit_buyable=observed_nonflat,
             )
             executions[bar.symbol, i] = dict(
                 signal=signal,

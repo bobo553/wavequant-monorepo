@@ -16,6 +16,32 @@ def _order(point: Mapping[str, object]) -> tuple[int, int]:
     return cast(int, point['index']), cast(int, point.get('ordinal', 0))
 
 
+def _enrich_promotions(
+    source: Sequence[Mapping[str, object]],
+    allowed: Mapping[str, Mapping[bytes, dict[str, object]]],
+) -> list[dict[str, object]]:
+    """按路径和端点定位证明；保持原插入顺序及真实起点存在性门禁。"""
+    actual_orders = {(str(point.get('source_path', 'path-0')), _order(point)) for point in source}
+    indexed: dict[tuple[str, tuple[int, int]], list[dict[str, object]]] = {}
+    for path, records in allowed.items():
+        for record in records.values():
+            endpoint = path, _order(record)
+            # 原实现只在存在对应端点时读取 origin，保留这个校验边界。
+            if endpoint not in actual_orders:
+                continue
+            origin = cast(Mapping[str, object], cast(Mapping[str, object], record['upgrade_evidence'])['origin'])
+            if (path, _order(origin)) in actual_orders:
+                indexed.setdefault(endpoint, []).append(record)
+    enriched: list[dict[str, object]] = []
+    for point in source:
+        item = dict(point)
+        additions = indexed.get((str(point.get('source_path', 'path-0')), _order(point)))
+        if additions:
+            item[PROMOTION_FIELD] = list(additions)
+        enriched.append(item)
+    return enriched
+
+
 def prepare_trend_cascade(
     source: Sequence[Mapping[str, object]], *, symbol: str, bars: Sequence[Bar] = (),
     first: int = 1, last: int = 3,
@@ -36,25 +62,15 @@ def prepare_trend_cascade(
         raise ValueError('trend cascade caches must match requested levels')
     releases: dict[int, dict[str, dict[bytes, dict[str, object]]]] = {level: {} for level in levels}
     seen: dict[tuple[int, bytes], dict[str, object]] = {}
+    # 同一轮收敛中 prepared 是只读版本；相同版本只展开一次直接下级。
+    projections: dict[int, tuple[dict[str, object], list[dict[str, object]]]] = {}
     prepared: dict[int, dict[str, object]] = {}
     while True:
         current_source = source
         for level in levels:
-            allowed = releases[level]
             # 每个证明只附到同路径真实端点，strip_source_license 会在向上
             # 生成新点时清除它，不能继承成其他层的豁免。
-            enriched: list[dict[str, object]] = []
-            actual_orders = {(str(point.get('source_path', 'path-0')), _order(point)) for point in current_source}
-            for point in current_source:
-                item = dict(point)
-                path = str(point.get('source_path', 'path-0'))
-                additions = [record for record in allowed.get(path, {}).values()
-                    if _order(record) == _order(point)
-                    and (path, _order(cast(Mapping[str, object],
-                         cast(Mapping[str, object], record['upgrade_evidence'])['origin']))) in actual_orders]
-                if additions:
-                    item[PROMOTION_FIELD] = additions
-                enriched.append(item)
+            enriched = _enrich_promotions(current_source, releases[level])
             signature = _geometry_signature(enriched)
             cached = seen.get((level, signature)) if signature is not None else None
             if cached is None:
@@ -65,8 +81,19 @@ def prepare_trend_cascade(
                     seen[level, signature] = cached
             prepared[level] = cached
             if level < last:
-                current_source = high_low_points_from_strokes(cached['strokes'], include_key_break_attacks=True)
+                projection = projections.get(level)
+                if projection is None or projection[0] is not cached:
+                    projection = cached, high_low_points_from_strokes(cached['strokes'], include_key_break_attacks=True)
+                    projections[level] = projection
+                current_source = projection[1]
         added = False
+        parents: dict[int, dict[str, Mapping[str, object]]] = {}
+        for lower in range(first, last):
+            paths: dict[str, Mapping[str, object]] = {}
+            for row in _prepared_strokes(prepared[lower], 'candidate_strokes'):
+                # 与旧 next(...) 一致，重复 id 时取第一个，不能被末项覆盖。
+                paths.setdefault(cast(str, row['id']), row)
+            parents[lower] = paths
         for upper in range(first + 1, last + 1):
             for stroke in _prepared_strokes(prepared[upper], 'candidate_strokes'):
                 for point in _prepared_points(stroke):
@@ -82,8 +109,7 @@ def prepare_trend_cascade(
                     # 路径ID由每一级真实来源串接，逐级回溯，绝不按股票日期
                     # 或字符串前缀猜测跨级归属。三级可同时接管一级与二级。
                     for lower in range(upper - 1, first - 1, -1):
-                        parent_stroke = next((row for row in _prepared_strokes(prepared[lower], 'candidate_strokes')
-                                     if row['id'] == parent_path), None)
+                        parent_stroke = parents[lower].get(cast(str, parent_path))
                         if parent_stroke is None:
                             break
                         parent_path = parent_stroke['source_path']

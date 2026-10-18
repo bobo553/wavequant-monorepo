@@ -22,7 +22,7 @@ from .source_bear_exit import (
 )
 
 
-LIFECYCLE_VERSION = 'six_state_strict_key_background_v26'
+LIFECYCLE_VERSION = 'six_state_extended_counter_v27'
 
 
 class LifecycleState(StrEnum):
