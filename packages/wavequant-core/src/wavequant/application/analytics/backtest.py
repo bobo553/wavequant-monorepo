@@ -23,6 +23,7 @@ from wavequant.domain.strategies.wave_exhaustion_exit import (
     observe_five_top_child_volume_clear, observe_five_top_gap_upper_shadow_clear,
     observe_five_top_body_upper_shadow_clear, observe_five_top_gap_volume_clear, observe_wave_exhaustion,
 )
+from wavequant.domain.market_state.volume_candle import volume_bearish_entry_rejection
 from wavequant.domain.strategies.two_t_resistance import (
     BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, HoldingResistanceHistory, holding_resistance_history,
 )
@@ -496,6 +497,13 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
 
     def execute_entry(symbol, i, bar, when, signal, execution_price, *, at_close=False, intraday=None):
         nonlocal cash, total_fees, turnover
+        rejection = volume_bearish_entry_rejection(grouped[symbol], i)
+        if rejection is not None:
+            log(when, symbol, 'BUY', 'cancelled', rejection,
+                signal_timestamp=signal.timestamp.isoformat(),
+                candle_filter_model='full_session_candle_filter',
+                candle_filter_known_at=when.replace(hour=15).isoformat())
+            return
         existing = positions.get(symbol)
         price = execution_price * (1+slip)
         buyable = bar.close_buyable if at_close and bar.close_buyable is not None else bar.buyable
@@ -504,6 +512,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                       execution_timestamp=when.replace(hour=15).isoformat()) if at_close else {}
         if intraday is not None:
             buyable, timing = intraday['buyable'], intraday['timing']
+        timing = dict(timing, candle_filter_model='full_session_candle_filter',
+                      candle_filter_known_at=when.replace(hour=15).isoformat())
         observed_nonflat = (timing.get('observed_nonflat_limit_buyable') is True if intraday is not None else
                             at_close and bar.nonflat_close_buyable is True and bar.volume > 0 and bar.high > bar.low)
         if not buyable and config.nonflat_limit_close_fill and observed_nonflat:
@@ -1197,6 +1207,13 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 symbol = signal.symbol
                 if signal.side == 'LONG' and (symbol, signal.bar_index) in entry_executions:
                     continue
+                if signal.side == 'LONG':
+                    rejection = volume_bearish_entry_rejection(grouped[symbol], current[symbol][0])
+                    if rejection is not None:
+                        log(when, symbol, 'BUY', 'cancelled', rejection,
+                            signal_timestamp=signal.timestamp.isoformat(), decision_source='daily_close')
+                        pending_entry.pop(symbol, None)
+                        continue
                 if signal.side == 'LONG' and current[symbol][0] in target_resistance[symbol]:
                     risk = target_resistance[symbol][current[symbol][0]]
                     log(when, symbol, 'BUY', 'cancelled', str(risk['reason']),

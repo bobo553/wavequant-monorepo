@@ -7,6 +7,8 @@
 from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from bisect import bisect_right
 from copy import deepcopy
+from dataclasses import dataclass
+import pickle
 from types import TracebackType
 from typing import Generic, Self, TypeVar, cast
 
@@ -17,6 +19,12 @@ from .trend_staging import TrendStageRows
 _Row = TypeVar('_Row')
 
 
+@dataclass(frozen=True, slots=True)
+class _EncodedTrendRow:
+    # 仅由同请求的准备阶段生成，不接收外部文件或上传的 pickle。
+    payload: bytes
+
+
 class TrendChangeRows(Generic[_Row]):
     """只存变化版本；日期读取器借用只读版本，不重复恢复相同证明树。
 
@@ -24,11 +32,13 @@ class TrendChangeRows(Generic[_Row]):
 遍历内的只读版本，避免为不变的日期复制同一证明树。
 """
 
-    def __init__(self, decode: Callable[[object], _Row], *, row_count: int) -> None:
+    def __init__(self, decode: Callable[[object], _Row], *, row_count: int,
+                 load_encoded: Callable[[bytes], object] = pickle.loads) -> None:
         if type(row_count) is not int or row_count < 0:
             raise ValueError('trend history length must be a nonnegative integer')
         self.row_count = row_count
         self._decode = decode
+        self._load_encoded = load_encoded
         self._rows = TrendStageRows(self._entry)
         self._last_position = -1
         self._positions: list[int] = []
@@ -36,6 +46,8 @@ class TrendChangeRows(Generic[_Row]):
 
     def _entry(self, value: object) -> tuple[int, _Row]:
         position, row = cast(tuple[int, object], value)
+        if type(row) is _EncodedTrendRow:
+            row = self._load_encoded(row.payload)
         return position, self._decode(row)
 
     @property
@@ -53,6 +65,10 @@ class TrendChangeRows(Generic[_Row]):
         self._rows.write((position, row))
         self._positions.append(position)
         self._last_position = position
+
+    def _write_encoded_change(self, position: int, payload: bytes) -> None:
+        """复用变化识别已生成的可信负载，避免再次遍历完整证明树。"""
+        self.write_change(position, cast(_Row, _EncodedTrendRow(payload)))
 
     def iter_changes(self, *, start_position: int = 0,
                      _borrow_readonly: bool = False) -> Iterator[tuple[int, _Row]]:
@@ -85,6 +101,10 @@ class TrendChangeRows(Generic[_Row]):
         finally:
             reader.close()
 
+    def _readonly_cursor(self) -> '_TrendDateCursor[_Row]':
+        """一次内部消费借用当前目标版本，不向跨读取缓存重复准入整棵证据。"""
+        return _TrendDateCursor(self)
+
     def iter_rows(self, *, shared: bool = False, start_position: int = 0,
                   _reuse_shared: bool = False) -> Iterator[_Row]:
         if _reuse_shared and not shared:
@@ -111,6 +131,53 @@ class TrendChangeRows(Generic[_Row]):
         self._rows.close()
 
     def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None,
+                 traceback: TracebackType | None) -> None:
+        self.close()
+
+
+class _TrendDateCursor(Generic[_Row]):
+    """只保留一次消费的最新目标行，稀疏日期不解码间隔或下一版本。"""
+
+    def __init__(self, history: TrendChangeRows[_Row]) -> None:
+        self._history = history
+        self._row: int | None = None
+        self._current: _Row | None = None
+        self._closed = False
+
+    def at(self, position: int) -> _Row:
+        history = self._history
+        if self._closed or history.closed:
+            raise RuntimeError('trend history date cursor is closed')
+        stop = history.row_count if history.read_limit is None else history.read_limit
+        if type(position) is not int or not 0 <= position < stop:
+            raise ValueError('trend history date must be within the readable prefix')
+        row = bisect_right(history._positions, position) - 1
+        if row < 0:
+            raise ValueError('a nonempty trend history requires its initial state')
+        if row == self._row:
+            return cast(_Row, self._current)
+        # 实际行不可被原地替换；先关闭底层读取器，才将只读结果交给消费者。
+        # 此处不使用只读池，避免每个大版本为一次借用重复扫描完整对象图。
+        reader = cast(Generator[tuple[int, _Row], None, None], history._rows.iter_rows(
+            seal=history.read_limit is None, start_row=row, _borrow_readonly=False))
+        self._row, self._current = None, None
+        try:
+            current = next(reader)[1]
+        finally:
+            reader.close()
+        self._row, self._current = row, current
+        return current
+
+    def close(self) -> None:
+        self._row, self._current = None, None
+        self._closed = True
+
+    def __enter__(self) -> '_TrendDateCursor[_Row]':
+        if self._closed or self._history.closed:
+            raise RuntimeError('trend history date cursor is closed')
         return self
 
     def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None,

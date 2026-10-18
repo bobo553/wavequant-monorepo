@@ -341,3 +341,64 @@ def test_later_key_cannot_reclose_an_earlier_whole_wave_origin(
         assert events == []
         assert state.whole_origin == turns[1]
         assert state.whole_extreme == turns[2]
+
+
+@pytest.mark.parametrize('level', [1, 2, 3])
+@pytest.mark.parametrize('mirror', [False, True])
+@pytest.mark.parametrize('integer_clock', [False, True])
+@pytest.mark.parametrize('earlier_price', [30, 27, 26])
+def test_new_strict_phase_preserves_already_known_extreme_for_later_completion(
+    level: int, mirror: bool, integer_clock: bool, earlier_price: float,
+) -> None:
+    from wavequant.domain.market_structure.trend_level_upgrades import _TrendUpgradeState
+    from wavequant.domain.market_structure.trend_levels import (
+        _formal_key_attack_point, _source_turns, _validate_completed_source_point,
+    )
+
+    # 合成已知状态边界：H3尚不能使用迟知旧key；H5才是合法攻击。
+    # 实际新波从L2开始，H3仍属于它，不能因H5取得升级资格而遗忘。
+    source = source_points([10, 20, 8, earlier_price, 10, 27, 7, 26, 6],
+        level=level - 1, mirror=mirror)
+    if integer_clock:
+        for index, point in enumerate(source):
+            point['available_at'] = index + 1
+    turns = _source_turns(source, level - 1)
+    events = []
+    state = _TrendUpgradeState(turns[:6], [], trend_level=level, event_sink=events, strict_only=True)
+    state.processed_count = 5
+    state.prefix_known = turns[4].available_at
+    state.owned_direction = 'up' if mirror else 'down'
+    state.whole_origin, state.whole_extreme = turns[1], turns[2]
+    for turn in turns[:5]:
+        state.origins_by_kind[turn.kind].update(state.positions[(turn.index, turn.ordinal)], turn)
+        state.recent[turn.kind].append(turn)
+        state.recent[turn.kind] = state.recent[turn.kind][-2:]
+    key_raw = dict(source[1], trend_level=level, available_at=source[3]['available_at'])
+    key = _source_turns([key_raw], level)[0]
+    state.keys_by_kind[key.kind].update(state.positions[(key.index, key.ordinal)], key)
+
+    state.advance()
+
+    expected = 3 if earlier_price >= 27 else 5
+    assert state.whole_origin == turns[2]
+    assert state.whole_extreme == turns[expected]
+    attack = next(event for event in events if event.get('upgrade_evidence', {}).get('role') == 'endpoint')
+    assert attack['index'] == 5
+    assert attack['upgrade_evidence']['confirmed_by']['index'] == 5
+    assert attack['available_at'] == source[5]['available_at']
+    assert 'wave_completed_at' not in attack
+    for event in events:
+        _formal_key_attack_point(event)
+
+    # 后续普通四点闭合仍须经过真实极值、组合下级及来源知识校验。
+    # 仅此用例显式开启普通结束，以隔离旧关键位是否允许反转的独立规则。
+    state.strict_only = False
+    state.ordinary_trend_completion_enabled = True
+    assert state.append(turns[6:], [])
+    state.advance()
+    closures = [event for event in events if event.get('definition_evidence')
+                and event['index'] == expected]
+    assert closures
+    for event in closures:
+        assert event['value'] == source[expected]['value']
+        assert _validate_completed_source_point(event) is not None

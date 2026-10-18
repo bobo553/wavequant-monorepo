@@ -14,7 +14,9 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from .backtest_analysis import BacktestAnalysis
 
-from ..market_structure.trend_cascade import prepare_trend_cascade
+from ..market_structure.trend_lines import _prepared_payload
+from ..market_structure.trend_cascade import _TrendCascadeCache, prepare_trend_cascade
+from ..market_structure.owned_evidence import owned_evidence_scope
 from ..market_structure.lecture_drawing import lecture_drawing
 from ..market_structure.secondary_trend import _bar_date
 from ..market_structure.trend_judgement import _frozen_point_scope
@@ -42,7 +44,7 @@ from .market_calculations import MarketCalculations, MarketDay
 
 
 # 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "source_causal_extended_counter_v149"
+_CONFIRMATION_CACHE_VERSION = "source_causal_delta_pipeline_v153"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -124,6 +126,7 @@ def _chart_calculation_scope(
     几何，六态继续由既有交易检查点恢复，不能把后缀第一天当作历史第零天。
     """
     with ExitStack() as resources:
+        resources.enter_context(owned_evidence_scope())
         if _on_day is not None and resume_start != 0:
             raise ValueError('market day subscriptions require complete history')
         steps = calculation_steps(bars)
@@ -152,6 +155,7 @@ def _chart_calculation_scope(
             nonlocal drawing_epoch, drawing_raw
             if index < resume_start:
                 return
+            publication_started = monotonic()
             closed_path = None
             if drawing_epoch is not None and epoch != drawing_epoch and len(drawing_raw) > 1:
                 closed_path = _closed_drawing_path(drawing_epoch, drawing_raw, epoch)
@@ -165,7 +169,10 @@ def _chart_calculation_scope(
                 frame = _ChartDrawingFrame(index, epoch, cast(list[dict[str, object]], raw), drawing)
                 if _on_day is not None:
                     frames._remember_owned_frame(frame)
+                calculations.timing.publication += monotonic() - publication_started
                 on_frame(frame)
+            else:
+                calculations.timing.publication += monotonic() - publication_started
             drawing_epoch, drawing_raw = epoch, raw
 
         def calculate_polyline() -> None:
@@ -178,7 +185,18 @@ def _chart_calculation_scope(
                 steps.begin(1)
             report('计算折线及变化触发的各级趋势、六态' if on_frame is not None else '计算图表折线历史')
             try:
-                lecture_drawing(bars, on_step=collect)
+                drawing_resumed = monotonic()
+
+                def timed_collect(index: int, epoch: int, raw: Sequence[Mapping[str, object]]) -> None:
+                    nonlocal drawing_resumed
+                    calculations.timing.drawing += monotonic() - drawing_resumed
+                    try:
+                        collect(index, epoch, raw)
+                    finally:
+                        drawing_resumed = monotonic()
+
+                lecture_drawing(bars, on_step=timed_collect)
+                calculations.timing.drawing += monotonic() - drawing_resumed
                 drawn = True
                 if steps is not None:
                     steps.complete(1)
@@ -211,9 +229,10 @@ def _chart_calculation_scope(
                 for event in calculations._owned_lifecycle_events(first - 1):
                     lower_events.setdefault(cast(int, event['bar_index']), []).append(event)
             for number in range(first, level + 1):
-                closed_paths = _ClosedPreparedPaths()
+                closed_paths = resources.enter_context(_ClosedPreparedPaths(_owned_history=True))
                 paths.append(closed_paths)
-                prepared.append(resources.enter_context(TrendChangeRows(closed_paths.decode, row_count=row_count)))
+                prepared.append(resources.enter_context(TrendChangeRows(closed_paths.decode, row_count=row_count,
+                    load_encoded=closed_paths.load_encoded)))
                 caches.append(_TrendJudgementCache(tail_reuse=True, state_memory_bytes=32 * 1024 * 1024))
                 latest.append(None)
                 source_keys.append(None)
@@ -224,64 +243,90 @@ def _chart_calculation_scope(
                         for state_step in range(step + 1, step + 7):
                             steps.begin(state_step)
 
+            round_caches = resources.enter_context(_TrendCascadeCache(caches[first - 1:level]))
+
             def advance(frame: _ChartDrawingFrame) -> None:
                 nonlocal base_previous, last_report
                 source: Sequence[Mapping[str, object]] | None = None
                 checkpoint_changed = False
                 events = lower_events.get(frame.index, [])
+                projection_started = monotonic()
                 if first == 1:
                     if gate.changed(frame.epoch, frame.raw):
                         source = projection.project(frame)
                     if full_history and not lower_cached:
-                        events = calculations._advance_lifecycle(0, polyline.advance(frame), frame.index, frame=frame)
+                        polyline_row = polyline.advance(frame)
+                        calculations.timing.projection += monotonic() - projection_started
+                        lifecycle_started = monotonic()
+                        events = calculations._advance_lifecycle(0, polyline_row, frame.index, frame=frame)
+                        calculations.timing.lifecycle += monotonic() - lifecycle_started
+                    else:
+                        calculations.timing.projection += monotonic() - projection_started
                 else:
                     assert base_rows is not None
                     base = next(base_rows)
                     if base is not base_previous:
                         source = high_low_points_from_strokes(base['strokes'], include_key_break_attacks=True)
                     base_previous = base
+                    calculations.timing.projection += monotonic() - projection_started
                 resolved: Sequence[dict[str, object] | None]
+                geometry_started = monotonic()
                 if source is not None:
                     resolved = prepare_trend_cascade(source, symbol=symbol, bars=bars,
-                        first=first, last=level, caches=caches[first-1:level], closed_paths=paths[first-1:level])
+                        first=first, last=level, caches=caches[first-1:level], closed_paths=paths[first-1:level],
+                        _round_caches=round_caches, _owned_source=True)
                 else:
                     resolved = [latest[number - 1] for number in range(first, level + 1)]
+                calculations.timing.geometry += monotonic() - geometry_started
                 for number in range(first, level + 1):
+                    publication_started = monotonic()
                     offset, step = number - 1, 3 + (number - 1) * 7
                     result = resolved[number - first]
                     if result is None:
                         raise ValueError('a trend requires its initial source on the first date')
                     # 无来源变化时 resolved 借用本阶段的同一只读版本；逐日行情
                     # 仍推进六态，但不必反复编码整棵未变化的结构证据。
-                    key = source_keys[offset] if result is latest[offset] else _geometry_signature(result)
+                    encoded = None if result is latest[offset] else paths[offset].encode(result)
+                    key = source_keys[offset] if encoded is None else _prepared_payload(encoded)
                     changed = result is not latest[offset] and (
                         latest[offset] is None or key is None or key != source_keys[offset])
                     if changed:
                         checkpoint_changed = True
                         latest[offset] = result
                         source_keys[offset] = key
-                        prepared[offset].write_change(frame.index - resume_start, paths[offset].encode(result))
+                        if key is not None:
+                            prepared[offset]._write_encoded_change(frame.index - resume_start, key)
+                        else:
+                            assert encoded is not None
+                            # 未知审计沿用完整原始行，不能将内部块引用带进公共
+                            # pickle 冷路径而破坏跨字段别名或触发额外恢复。
+                            prepared[offset].write_change(frame.index - resume_start, result)
                         if steps is not None:
                             steps.append(step, dict(bar_index=frame.index, trend_level=number,
                                 history_format='trend_changes_v1', history_end_index=len(bars) - 1,
                                 strokes=result['strokes']))
                     current = latest[offset]
                     assert current is not None
+                    calculations.timing.publication += monotonic() - publication_started
+                    lifecycle_started = monotonic()
                     # 翻向发生时冻结下级来源已处理状态；后续修订只重放检查点之后。
                     for event in events:
                         if (event.get('event') == 'trend_lifecycle_state'
                                 and event.get('state') in ('空翻多', '多翻空')):
                             path = event.get('source_path')
                             if isinstance(path, str):
-                                caches[offset].remember_source_flip(number, path)
+                                round_caches.remember_source_flip(number, path)
                     if full_history:
                         events = calculations._advance_lifecycle(number, current, frame.index, frame=frame,
                                                                   source_events=events)
                         checkpoint_changed = checkpoint_changed or bool(events)
                         if steps is not None:
                             record_lifecycle(steps, events)
+                    calculations.timing.lifecycle += monotonic() - lifecycle_started
                 if checkpoint_changed and full_history and first == 1 and level == 3:
+                    publication_started = monotonic()
                     calculations._save_lifecycle_checkpoint(frame.index)
+                    calculations.timing.publication += monotonic() - publication_started
                 if full_history and first == 1 and level == 3:
                     calculations._publish_day(frame, cast(Sequence[Mapping[str, object]], latest))
                 # 整轮完成后统一上报，避免一级先消耗节流额度而长期遮住二、三级。
@@ -595,6 +640,7 @@ def chart_entry_history(
     _checkpoint_reuse: BacktestHistoryReuse | None = None,
     _stage: Callable[[str], None] | None = None,
     _prepared_history: 'BacktestAnalysis | None' = None,
+    _minute_analysis: 'BacktestAnalysis | None' = None,
     _confirmation_policy: AlternationPolicy | None = None,
     _entry_days: tuple[bool, ...] | None = None,
 ) -> tuple[dict[int, tuple[EntryContext, ...]], list[dict[str, object]]]:
@@ -745,7 +791,8 @@ def chart_entry_history(
         if market_calculation is not None else _TrendPermissionCache(bars))
     market_index = permission_cache._market_index
 
-    def accept(frame: _ChartDrawingFrame, prepared: Sequence[Mapping[str, object]]) -> None:
+    def accept(frame: _ChartDrawingFrame, prepared: Sequence[Mapping[str, object]], *,
+               _prepared_at: Callable[[], Sequence[Mapping[str, object]]] | None = None) -> None:
         nonlocal previous_epoch, previous_raw, signature, landmarks, active, invalidated, levels, resistance_key, shallow_candidate
         nonlocal lifecycle
         current_lifecycle: tuple[object, ...] | None = None
@@ -769,7 +816,7 @@ def chart_entry_history(
         else:
             lifecycle_events = cached_lifecycle.get(i, [])
             needs_state = (checkpoint_channel is not None and i in checkpoint_channel.store.targets
-                           or prefix_cache is not None and i == last - 1)
+                           or (prefix_cache is not None or _minute_analysis is not None) and i == last - 1)
             if (live_lifecycle is None and (needs_state or n_target_trend_confirmation_enabled and strategy_day)
                     and market_calculation is not None and market_calculation._checkpoints is not None):
                 current_lifecycle = market_calculation._checkpoints._at(i)
@@ -811,6 +858,8 @@ def chart_entry_history(
             if shared is not None:
                 first, second, third = shared
             else:
+                if _prepared_at is not None:
+                    prepared = _prepared_at()
                 permission_lifecycle = lifecycle
                 if n_target_trend_confirmation_enabled and cached_lifecycle is not None:
                     if live_lifecycle is not None:
@@ -989,6 +1038,39 @@ def chart_entry_history(
         market_calculation = current
         current.confirmation_policy = confirmation_policy
 
+    if _minute_analysis is not None:
+        if (len(_minute_analysis.bars) != len(bars)
+                or _minute_analysis.bars[:-1] != bars[:-1]
+                or bars and replace(bars[-1], high=_minute_analysis.bars[-1].high,
+                    low=_minute_analysis.bars[-1].low, close=_minute_analysis.bars[-1].close,
+                    volume=_minute_analysis.bars[-1].volume) != _minute_analysis.bars[-1]
+                or _minute_analysis.calculations is None
+                or _minute_analysis.calculations.confirmation_policy != confirmation_policy):
+            raise ValueError('minute history requires identical completed bars and confirmation policy')
+        if resume_start < last:
+            # 日线只借出昨天以前的逐日版本；今天的完整 K 线和六态不进入分钟核验。
+            market_calculation = _minute_analysis.calculations
+            cached_lifecycle = {}
+            for number in (1, 2, 3):
+                for event in market_calculation._lifecycle_events_since(number, resume_start):
+                    index = cast(int, event['bar_index'])
+                    if index < last:
+                        cached_lifecycle.setdefault(index, []).append(event)
+            for daily_events in cached_lifecycle.values():
+                daily_events.sort(key=lambda event: event.get('reason') == 'source_path_ended')
+            with ExitStack() as prior_readers:
+                prior_frames = _minute_analysis.frames.iter_rows(shared=True, start_index=resume_start)
+                prior_readers.callback(prior_frames.close)
+                cursors = [prior_readers.enter_context(history._readonly_cursor())
+                           for history in _minute_analysis.levels]
+                for frame in prior_frames:
+                    if frame.index >= last:
+                        break
+                    accept(frame, (), _prepared_at=lambda: tuple(cursor.at(frame.index) for cursor in cursors))
+            resume_start = last
+            cached_lifecycle = None
+            market_calculation = None
+
     # 交易资格只消费联动流已保存的结果；自身分钟续接仍保存完整因果状态。
     frame_source = (nullcontext((_prepared_history.frames, _prepared_history.levels))
         if _prepared_history is not None else _staged_chart_frames(bars, resume_start=resume_start, closed=closed,
@@ -1011,6 +1093,7 @@ def chart_entry_history(
         drawing_reader = frames.iter_rows(shared=True, start_index=resume_start)
         readers.callback(drawing_reader.close)
         if cached_lifecycle is not None and live_owner is not None:
+            trend_cursors = [readers.enter_context(stage._readonly_cursor()) for stage in prepared]
             for frame in drawing_reader:
                 strategy_day = entry_days is None or entry_days[frame.index]
                 shared = (market_calculation._shared_permissions_at(frame.index,
@@ -1019,8 +1102,9 @@ def chart_entry_history(
                 # 六态已有独立事件和状态；区间外及同日已发布资格均不读取几何。
                 # 跨资格缺口只定位实际需要的历史前驱，不能逐个解码被跳过的版本。
                 required = strategy_day and shared is None
-                rows = tuple(stage._at(frame.index - frames.start) for stage in prepared) if required else ()
-                accept(frame, rows)
+                # 实际刷新门禁在 accept 内决定；不刷新日无需恢复未消费的几何。
+                accept(frame, (), _prepared_at=(lambda: tuple(
+                    cursor.at(frame.index - frames.start) for cursor in trend_cursors)) if required else None)
         else:
             trend_readers = [stage.iter_rows(shared=True, start_position=resume_start - frames.start,
                                             _reuse_shared=True) for stage in prepared]

@@ -3,6 +3,7 @@
 from fractions import Fraction
 
 from ..models.model import Bar
+from .volume_candle import volume_bearish_buy_rejection
 
 
 def medium_bullish_body(bar: Bar) -> bool:
@@ -12,12 +13,25 @@ def medium_bullish_body(bar: Bar) -> bool:
     return body > 0 and body >= opening / 50 and body >= (high - low) / 2
 
 
-def bullish_breakout_rejection(bar: Bar, previous: Bar | None) -> str | None:
-    """突破当棒共用强势门槛；低开不能借随后涨幅或较早强棒补证。"""
+def bullish_breakout_rejection(
+    bar: Bar, previous: Bar | None, *, breakout_level: float | None = None,
+) -> str | None:
+    """低开仅在当棒倍量中大阳并收盘突破时豁免，不借其他候选的量。"""
     if previous is None or previous.timestamp >= bar.timestamp:
         return 'breakout_previous_price_unavailable'
+    rejection = volume_bearish_buy_rejection(bar, previous)
+    if rejection is not None:
+        return rejection
     opening = Fraction(str(bar.open))
     if opening < Fraction(str(previous.close)):
+        resistance = Fraction(str(previous.high))
+        if breakout_level is not None:
+            resistance = max(resistance, Fraction(str(breakout_level)))
+        if (previous.volume > 0
+                and Fraction(str(bar.volume)) >= 2 * Fraction(str(previous.volume))
+                and medium_bullish_body(bar)
+                and Fraction(str(bar.close)) > resistance):
+            return None
         return 'breakout_low_open'
     if opening > Fraction(str(previous.high)) or medium_bullish_body(bar):
         return None

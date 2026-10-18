@@ -56,6 +56,7 @@ from .wave_exhaustion_exit import (
     observe_five_top_upper_shadow_clear, observe_five_top_gap_volume_clear,
 )
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
+from ..market_state.volume_candle import volume_bearish_entry_rejection
 from .two_t_resistance import holding_resistance_history
 from .limit_up_distribution_exit import observe_limit_up_distribution_exit
 from .five_top_entry import five_top_entry_history
@@ -361,6 +362,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                             history_reuse: BacktestHistoryReuse | None = None,
                             _minute_history_reuse: BacktestHistoryReuse | None = None,
                             _minute_scope: MinuteTradingScope | None = None,
+                            _minute_analysis: 'BacktestAnalysis | None' = None,
                             progress: Callable[[int], None] | None = None,
                             stage: Callable[[str], None] | None = None) -> SystemResult:
     """Advance root daily market facts and trading decisions on the same clock.
@@ -401,6 +403,7 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             return _generate_system_signals(bars, config, minor_points=minor_points,
                 chart_history_cache=chart_history_cache, history_reuse=history_reuse,
                 _minute_history_reuse=_minute_history_reuse, _minute_scope=_minute_scope,
+                _minute_analysis=_minute_analysis,
                 _daily=state, progress=progress, stage=stage)
         finally:
             if state.projection_history is not None:
@@ -418,6 +421,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                             history_reuse: BacktestHistoryReuse | None = None,
                             _minute_history_reuse: BacktestHistoryReuse | None = None,
                             _minute_scope: MinuteTradingScope | None = None,
+                            _minute_analysis: 'BacktestAnalysis | None' = None,
                             progress: Callable[[int], None] | None = None,
                             stage: Callable[[str], None] | None = None,
                             _analysis: 'BacktestAnalysis | None' = None,
@@ -538,6 +542,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         else:
             secondary_levels, secondary_epochs = hierarchical_history(
                 bars, prefix_cache=chart_history_cache.setdefault('hierarchy', {}) if chart_history_cache is not None else None,
+                _stream_cold=_minute_scope is not None,
                 decline_sink=confirmed_declines,
                 _drawing_frames=(lambda start: ((frame.index, frame.epoch, frame.raw)
                     for frame in _analysis.frames.iter_rows(shared=True, start_index=start)))
@@ -1087,6 +1092,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 _history_reuse=history_reuse,
                 _checkpoint_reuse=_minute_history_reuse,
                 _prepared_history=_analysis,
+                _minute_analysis=_minute_analysis,
                 _entry_days=_minute_scope.buy_days if _minute_scope is not None else None,
                 _confirmation_policy=AlternationPolicy(config.structure_window, config.pattern_ttl,
                     config.volume_lookback, config.shadow_fraction, config.strict_n_attack_quality,
@@ -1580,6 +1586,12 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             counts['buy_interval_skipped_days'] += 1
             return False
         bar = bars[i]
+        volume_rejection = volume_bearish_entry_rejection(bars, i) if whole_wave else None
+        if volume_rejection is not None:
+            log(i, 'entry_rejected', reason=volume_rejection,
+                candidate_channel='global_volume_bearish',
+                observed_open=bar.open, observed_close=bar.close, observed_volume=bar.volume)
+            return False
         def candle_rejection_for(attack: int | None) -> str | None:
             if not whole_wave:
                 return None

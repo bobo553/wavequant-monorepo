@@ -93,6 +93,7 @@ def hierarchical_history(
     n_target_trend_confirmation_enabled: bool = False,
     _checkpoint_reuse: 'BacktestHistoryReuse | None' = None,
     _stage: Callable[[str], None] | None = None,
+    _stream_cold: bool = False,
     _drawing_frames: (Iterator[tuple[int, int, Sequence[Mapping[str, object]]]]
         | Callable[[int], Iterator[tuple[int, int, Sequence[Mapping[str, object]]]]] | None) = None,
 ):
@@ -142,6 +143,13 @@ def hierarchical_history(
     resume_start = (last if cached_key == prefix_key else
                     last - 1 if cached_key == (cache_version, tuple(bars[:-2]), wants_declines,
                                                n_target_trend_confirmation_enabled, wants_structure) else 0)
+    if (_stream_cold and resume_start == 0 and isinstance(cached_key, tuple)
+            and len(cached_key) == len(prefix_key) and cached_key[0] == cache_version
+            and cached_key[2:] == prefix_key[2:] and isinstance(cached_key[1], tuple)
+            and 0 < len(cached_key[1]) < last
+            and cached_key[1] == market_bars[:len(cached_key[1])]):
+        # 两次分钟核验可相隔多日；仍从上次未完成日开始，不能跳过中间行情。
+        resume_start = len(cached_key[1])
     saved_n_proofs = prefix_cache.get('_n_permission_proofs') if prefix_cache is not None else None
     owns_n_proofs = (isinstance(saved_n_proofs, dict) and set(saved_n_proofs) == {1, 2, 3}
                     and all(type(value) is _NPermissionProofs for value in saved_n_proofs.values()))
@@ -164,6 +172,42 @@ def hierarchical_history(
             decline_sink.update(decline_history)
         if structure_sink is not None:
             structure_sink.update(structural_history)
+
+    if _stream_cold and resume_start == 0 and structure_sink is None and checkpoint_channel is None:
+        from .hierarchy_stream import HierarchyHistoryStream
+
+        stream = HierarchyHistoryStream(bars, n_enabled=n_target_trend_confirmation_enabled)
+        saved_previous = {}
+
+        def advance(index: int, epoch: int, raw: Sequence[Mapping[str, object]]) -> None:
+            nonlocal saved_previous
+            stream.advance(index, epoch, raw)
+            if index == last - 1:
+                saved_previous = {level: known.copy() for level, known in stream.previous.items()}
+
+        try:
+            if _stage is not None:
+                _stage('按日增量恢复分钟核验的结构历史')
+            if _drawing_frames is None:
+                lecture_drawing(bars, on_step=advance)
+            else:
+                rows = _drawing_frames(0) if callable(_drawing_frames) else _drawing_frames
+                for index, epoch, raw in rows:
+                    advance(index, epoch, raw)
+            if decline_sink is not None:
+                decline_sink.update(stream.declines)
+            if prefix_cache is not None and last > 0:
+                prefix_cache['key'] = prefix_key
+                if n_target_trend_confirmation_enabled:
+                    prefix_cache['_n_permission_proofs'] = dict(stream._n_proofs)
+                prefix_cache['checkpoint'] = (
+                    deepcopy({i: row for i, row in stream.history.items() if i < last}),
+                    {i: epoch for i, epoch in stream.epochs.items() if i < last},
+                    saved_previous, stream.epochs[last - 1],
+                    {i: row for i, row in stream.declines.items() if i < last} if wants_declines else {}, {})
+            return stream.history, stream.epochs
+        finally:
+            stream.close()
 
     initial_epoch = last_epoch
     checkpoint_previous: dict[int, dict[tuple[int, int, str, float], int]] = {}
@@ -235,7 +279,7 @@ def hierarchical_history(
             if _stage is not None: _stage(f'判定{level}级结构的交易条件历史')
             with _frozen_point_scope():
                 output = staging.enter_context(TrendStageRows(_history_frame)) if level < 3 else None
-                judgement_cache = _TrendJudgementCache()
+                judgement_cache = _TrendJudgementCache(tail_reuse=True)
                 stage_epoch = initial_epoch
                 pending_frames: dict[int, _TrendHistoryFrame] = {}
 

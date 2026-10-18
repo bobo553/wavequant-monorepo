@@ -16,13 +16,13 @@ from .test_polyline_buy_gate import bar, bearish_points, breakout_bar
 
 
 @pytest.mark.parametrize('opening,high,low,close,reason', [
-    (9.99, 10.8, 9.99, 10.7, 'breakout_low_open'),
+    (9.99, 10.8, 9.99, 10.7, None),
     (10, 10.4, 10, 10.2, None),  # Exact 2% body and half range.
     (10, 10.4, 10, 10.199, 'breakout_requires_gap_or_medium_bullish_body'),
     (10, 10.6, 9.7, 10.4, 'breakout_requires_gap_or_medium_bullish_body'),
     (10.3, 10.6, 10.3, 10.35, 'breakout_requires_gap_or_medium_bullish_body'),
     (10.5, 10.6, 10.4, 10.5, 'breakout_requires_gap_or_medium_bullish_body'),
-    (10.501, 10.6, 10.4, 10.5, None),  # Strict gap remains its own price route.
+    (10.501, 10.6, 10.4, 10.5, 'volume_bearish_buy_blocked'),  # Gap cannot waive bearish volume.
 ])
 def test_same_bar_strength_boundaries(
     opening: float, high: float, low: float, close: float, reason: str | None,
@@ -33,9 +33,9 @@ def test_same_bar_strength_boundaries(
 
 
 @pytest.mark.parametrize('pre_n_volume', [50, 500])
-def test_large_gain_and_candidate_volume_cannot_waive_low_open(pre_n_volume: float) -> None:
+def test_pre_n_volume_cannot_replace_double_previous_volume_for_low_open(pre_n_volume: float) -> None:
     previous = Bar(datetime(2026, 7, 15), 'sh.600000', 10, 10.5, 9.8, 10, 100)
-    current = Bar(datetime(2026, 7, 16), previous.symbol, 9.99, 10.8, 9.99, 10.7, 200)
+    current = Bar(datetime(2026, 7, 16), previous.symbol, 9.99, 10.8, 9.99, 10.7, 199)
     before_attack = replace(previous, timestamp=previous.timestamp - timedelta(days=2), volume=pre_n_volume)
     assert squeeze_buy_rejection(current, previous, before_attack) == 'breakout_low_open'
 
@@ -93,7 +93,44 @@ def test_released_polyline_still_leaves_current_candidate_candle_gate_active() -
         gate.advance(index, bar(index), points, 0)
     strong = breakout_bar(4, 9.1)
     gate.advance(4, strong, points, 0)
-    current = replace(bar(5, 9.5), open=strong.close - 0.01, close=9.4, low=8.8, volume=200)
+    current = replace(bar(5, 9.5), open=strong.close - 0.01, close=9.4, low=8.8, volume=199)
     gate.advance(5, current, points, 0)
     assert 5 not in gate.restrictions
     assert squeeze_buy_rejection(current, strong) == 'breakout_low_open'
+
+
+@pytest.mark.parametrize('volume,close,low,key,accepted', [
+    (200, 10.7, 9.9, None, True),
+    (199, 10.7, 9.9, None, False),
+    (200, 10.5, 9.9, None, False),
+    (200, 10.7, 8, None, False),
+    (200, 10.7, 9.9, 10.7, False),
+    (200, 10.7, 9.9, 10.6, True),
+])
+def test_low_open_exception_requires_all_same_bar_evidence(volume, close, low, key, accepted):
+    previous = Bar(datetime(2025, 4, 2), 'sh.600000', 10, 10.5, 9.8, 10, 100)
+    current = Bar(datetime(2025, 4, 3), previous.symbol, 9.9, 10.8, low, close, volume)
+    assert (bullish_breakout_rejection(current, previous, breakout_level=key) is None) is accepted
+    assert bullish_breakout_rejection(current, replace(previous, volume=0), breakout_level=key) is not None
+
+
+def test_guofang_april3_double_volume_low_open_is_no_longer_a_candle_rejection():
+    raw = json.loads((Path(__file__).parent / 'fixtures/guofang_2025_five_top_low_open.json').read_text(encoding='utf-8'))
+    previous, current = [Bar(**dict(row, timestamp=datetime.fromisoformat(row['timestamp'])))
+        for row in raw['bars'] if row['timestamp'][:10] in ('2025-04-02', '2025-04-03')]
+    assert current.open < previous.close
+    assert current.volume >= previous.volume * 2
+    assert current.close > previous.high
+    assert bullish_breakout_rejection(current, previous) is None
+    assert squeeze_buy_rejection(current, previous) is None
+
+
+@pytest.mark.parametrize('close,accepted', [(8.9, False), (9, False), (9.1, True)])
+def test_low_open_exception_must_close_above_the_frozen_polyline_key(close, accepted):
+    gate, points = PolylineBuyGate(), bearish_points()
+    for index in range(4):
+        gate.advance(index, bar(index), points, 0)
+    current = replace(breakout_bar(4, 9.2), open=8.1, low=8, close=close, volume=200)
+    gate.advance(4, current, points, 0)
+    assert (4 not in gate.restrictions) is accepted
+    assert bool(gate.released) is accepted

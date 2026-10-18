@@ -6,6 +6,7 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Callable, TypedDict
 
+from wavequant.domain.market_state.volume_candle import volume_bearish_entry_rejection
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.domain.strategies.integrated_strategy import (
     SystemResult,
@@ -71,7 +72,7 @@ def _qualified_gap_entries(
 ) -> tuple[SystemResult, dict[tuple[str, int], EntryExecution], list[dict[str, object]], set[int]]:
     """消费现有资格区间；用户指定确认日整天可买，缺分钟则开盘模拟。
 
-    不重算资格或要求 N、全天放量。分钟路径只消费已完成的观察棒，
+    不重算资格或要求 N；按用户约定先做全天阴线过滤。分钟定价只消费已完成的观察棒，
     资金、仓位、止损、目标和价格限制继续交给同一账户撮合入口。
     """
     from wavequant.domain.strategies.trading_intervals import confirmed_trading_intervals
@@ -100,6 +101,17 @@ def _qualified_gap_entries(
         if confirmation is None or window.start_low_price is None:
             continue
         gap_days.add(i)
+        rejection = volume_bearish_entry_rejection(bars, i)
+        if rejection is not None:
+            signals = [row for row in signals if not (row.bar_index == i and row.side == 'LONG')]
+            audit = [row for row in audit if not (row['bar_index'] == i
+                and row['event'] in ('long_signal', 'long_transition_evidence'))]
+            audit.append(dict(event='entry_rejected', bar_index=i, symbol=bar.symbol,
+                timestamp=bar.timestamp.isoformat(), reason=rejection,
+                candidate_channel='qualified_gap_open',
+                candle_filter_model='full_session_candle_filter',
+                candle_filter_known_at=bar.timestamp.replace(hour=15).isoformat()))
+            continue
         fallback = None
         try:
             minute = minute_loader(bar) if minute_loader is not None else []
@@ -107,6 +119,8 @@ def _qualified_gap_entries(
             minute = []
             fallback = exc.coverage
         timing: dict[str, object] = dict(qualification_model='confirmation_day_full_session',
+            candle_filter_model='full_session_candle_filter',
+            candle_filter_known_at=bar.timestamp.replace(hour=15).isoformat(),
             qualification_index=window.start_index, trend_level=strategy.buy_interval_level,
             source_path=window.source_path, gap_open=bar.open, previous_high=bars[i - 1].high)
         if not minute:
@@ -271,6 +285,17 @@ def resolve_consolidation_entries(
             continue
         if only_index is not None and i != only_index:
             continue
+        rejection = volume_bearish_entry_rejection(bars, i)
+        if rejection is not None:
+            signals = [row for row in signals if not (row.bar_index == i and row.side == 'LONG')]
+            audit = [row for row in audit if not (row['bar_index'] == i
+                and row['event'] in ('long_signal', 'long_transition_evidence'))]
+            audit.append(dict(event='entry_rejected', bar_index=i, symbol=bar.symbol,
+                timestamp=bar.timestamp.isoformat(), reason=rejection,
+                candidate_channel='global_minute_entry',
+                candle_filter_model='full_session_candle_filter',
+                candle_filter_known_at=bar.timestamp.replace(hour=15).isoformat()))
+            continue
         preceding_daily = daily_waves.get(i - 1)
         if preceding_daily is not None:
             key = (preceding_daily["attack"], preceding_daily["wave_a_high_index"], preceding_daily["wave_b_low_index"])
@@ -423,9 +448,12 @@ def resolve_consolidation_entries(
             if observation in attempted:
                 continue
             attempted.add(observation)
+            if stage is not None:
+                stage(f'核验分钟入场 · {bar.timestamp.date().isoformat()} · {offset + 1}/{len(minute) - 1}')
             replay = (
                 generate_system_signals(prefix, strategy, chart_history_cache=chart_history_cache,
-                    _minute_history_reuse=history_reuse, _minute_scope=minute_scope)
+                    _minute_history_reuse=history_reuse, _minute_scope=minute_scope,
+                    _minute_analysis=prepared_analysis)
                 if strategy.buy_point_definition == "whole_flip_wave_v3"
                 else generate_system_signals(prefix, strategy, _minute_scope=minute_scope)
             )
@@ -458,6 +486,8 @@ def resolve_consolidation_entries(
                 observed_low=low, observed_high=high, observed_volume=volume)
             timing: dict[str, object] = dict(
                 execution_model="intraday_5m_next_open",
+                candle_filter_model="full_session_candle_filter",
+                candle_filter_known_at=bar.timestamp.replace(hour=15).isoformat(),
                 decision_source="completed_five_minute_bar",
                 decision_timestamp=observed.timestamp.isoformat(),
                 execution_timestamp=execution_at.isoformat(),

@@ -6,7 +6,7 @@
 等待 future holding 点。几何首次出现、下级结束和本级方向是三个独立事实。
 """
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, MutableSequence, Sequence
 from bisect import insort
 from copy import deepcopy
 from typing import cast
@@ -19,6 +19,7 @@ from .trend_levels import (
 from .trend_structure import StructuralTrend, classify_trend_prices, preceding_turn
 from .trend_body_reversal import BODY_REVERSAL_RULE, body_reference, rejects_wick_extension
 from .trend_promotion_scope import source_promotions, validate_promotion
+from .trend_frozen_state import FrozenPrefixMap
 
 __all__ = ['promote_trend_key_breaks']
 
@@ -64,7 +65,8 @@ class _PointRange:
         self.size = 1
         while self.size < count:
             self.size *= 2
-        self.points: list[_SourceTurn | None] = [None] * (2 * self.size)
+        # 路径检查点共享已固化的树节点；一次更新仅改 O(log n) 个尾部覆盖。
+        self.points: FrozenPrefixMap[int, _SourceTurn | None] = FrozenPrefixMap()
         self.choose = choose
 
     def _combine(self, left: _SourceTurn | None, right: _SourceTurn | None) -> _SourceTurn | None:
@@ -79,7 +81,7 @@ class _PointRange:
         self.points[cursor] = point
         cursor //= 2
         while cursor:
-            self.points[cursor] = self._combine(self.points[2 * cursor], self.points[2 * cursor + 1])
+            self.points[cursor] = self._combine(self.points.get(2 * cursor), self.points.get(2 * cursor + 1))
             cursor //= 2
 
     def ensure_size(self, count: int) -> None:
@@ -88,21 +90,23 @@ class _PointRange:
         previous_size, previous = self.size, self.points
         while self.size < count:
             self.size *= 2
-        self.points = [None] * (2 * self.size)
-        self.points[self.size:self.size + previous_size] = previous[previous_size:]
+        self.points = FrozenPrefixMap((self.size + position, previous[previous_size + position])
+            for position in range(previous_size) if previous_size + position in previous)
         for cursor in range(self.size - 1, 0, -1):
-            self.points[cursor] = self._combine(self.points[2 * cursor], self.points[2 * cursor + 1])
+            combined = self._combine(self.points.get(2 * cursor), self.points.get(2 * cursor + 1))
+            if combined is not None:
+                self.points[cursor] = combined
 
     def query(self, start: int, end: int) -> _SourceTurn | None:
         left, right = self.size + start, self.size + end
         result: _SourceTurn | None = None
         while left < right:
             if left % 2:
-                result = self._combine(result, self.points[left])
+                result = self._combine(result, self.points.get(left))
                 left += 1
             if right % 2:
                 right -= 1
-                result = self._combine(result, self.points[right])
+                result = self._combine(result, self.points.get(right))
             left //= 2
             right //= 2
         return result
@@ -175,7 +179,7 @@ class _TrendUpgradeState:
     """相同只追加来源的整波状态；新的旧知识候选必须回退完整批量判断。"""
 
     def __init__(self, turns: Sequence[_SourceTurn], regular: Sequence[_SourceTurn], *, trend_level: int,
-                 event_sink: list[dict[str, object]] | None = None,
+                 event_sink: MutableSequence[dict[str, object]] | None = None,
                  ordinary_trend_completion_enabled: bool = False, strict_only: bool = False) -> None:
         if type(trend_level) is not int or trend_level not in (1, 2, 3):
             raise ValueError('trend_level must be 1, 2 or 3')
@@ -335,7 +339,7 @@ class _TrendUpgradeState:
             return record
         return None
 
-    def advance(self) -> list[dict[str, object]]:
+    def advance(self, *, _snapshot: bool = True) -> list[dict[str, object]]:
         self.updated_merged = {}
         self.new_merged_keys = []
         turns, regular, trend_level, event_sink = self.turns, self.regular, self.trend_level, self.event_sink
@@ -546,17 +550,29 @@ class _TrendUpgradeState:
                 publish_owned(raw, source_point, known, closed=not endpoint)
             if not continuing:
                 whole_origin = origin
-            whole_extreme, owned_direction = attack, attack_direction
+                # 关键位可能迟于波内更强的价格点才可用于突破；真实攻击点
+                # 负责升级证明，但不能覆盖新起点之后已经观察到的整波极值。
+                # 树仅包含当前及此前已消费来源，相等价格仍保留最早坐标。
+                whole_extreme = origins_by_kind[attack.kind].query(
+                    positions[_order(origin)] + 1, attack_position + 1)
+                assert whole_extreme is not None  # 当前 attack 已写入且严格位于 origin 右侧。
+            else:
+                whole_extreme = attack
+            owned_direction = attack_direction
         self.regular_cursor, self.prefix_known = regular_cursor, prefix_known
         self.owned_direction, self.whole_origin, self.whole_extreme = owned_direction, whole_origin, whole_extreme
         self.body_rejection = body_rejection
         self.processed_count = len(turns)
-        return [dict(merged[identity].source) for identity in self.merged_order]
+        return self.snapshot() if _snapshot else []
+
+    def snapshot(self) -> list[dict[str, object]]:
+        """只有公共批量输出或状态预算回退需要物化完整 merged 账本。"""
+        return [dict(self.merged[identity].source) for identity in self.merged_order]
 
 
 def promote_trend_key_breaks(
     source: Sequence[Mapping[str, object]], candidates: Sequence[Mapping[str, object]], *, trend_level: int,
-    event_sink: list[dict[str, object]] | None = None,
+    event_sink: MutableSequence[dict[str, object]] | None = None,
     ordinary_trend_completion_enabled: bool = False,
 ) -> list[dict[str, object]]:
     """统一推进本级整波身份和严格升级，方向账本与整波状态各自保留。

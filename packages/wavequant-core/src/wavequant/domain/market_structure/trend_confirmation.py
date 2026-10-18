@@ -62,6 +62,7 @@ class _Reference:
     value: Fraction
     available: str | int
     known: int | None
+    _proof_signature: bytes | None = field(default=None, repr=False, compare=False)
 
     @property
     def order(self) -> tuple[int, int]:
@@ -285,18 +286,23 @@ class _ReferenceParsingCache:
         if any(type(value) not in (str, int, float, bool, type(None))
                or type(value) is float and not isfinite(value) for value in values.values()):
             return _reference(raw, sessions, end_index)
-        signature = _geometry_signature(values)
-        if signature is None:
+        # 保留原编码对字段存在性、精确类型、负零及字符串别名的认证。
+        key = _geometry_signature(values)
+        if key is None:
             return _reference(raw, sessions, end_index)
-        saved = self.entries.get(signature)
+        saved = self.entries.get(key)
         if saved is not None:
             return _reference_at_cutoff(saved[0], sessions, end_index)
         reference = _reference(raw, sessions, end_index)
         if reference is not None:
+            # raw 已只含认证过的不可变标量。同一解析值的证明摘要不会随
+            # 行情截止变化；实际可见位置和市场资格仍由当天上下文独立计算。
+            signature = _geometry_signature(dict(reference.raw))
+            reference = replace(reference, _proof_signature=signature)
             # 保存的 raw 只有不可变标量；保守计入字典、Fraction 和字符串开销。
-            added = getsizeof(signature) + 2048 + sum(getsizeof(value) for value in reference.raw.values())
+            added = getsizeof(key) + getsizeof(signature) + 2048 + sum(getsizeof(value) for value in reference.raw.values())
             if self.memory_bytes + added + 2 * getsizeof(self.entries) <= 4 * 1024 * 1024:
-                self.entries[signature] = reference, added
+                self.entries[key] = reference, added
                 self.memory_bytes += added
         return reference
 
@@ -396,9 +402,11 @@ def prepare_confirmation_context(
             digest = sha256()
             prefixes = [digest.digest()]
             for point in references:
-                if point is not None and not _scalar_reference(point):
-                    break
-                signature = _geometry_signature(dict(point.raw) if point is not None else None)
+                signature = point._proof_signature if point is not None else None
+                if signature is None:
+                    if point is not None and not _scalar_reference(point):
+                        break
+                    signature = _geometry_signature(dict(point.raw) if point is not None else None)
                 if signature is None:
                     break
                 digest.update(len(signature).to_bytes(8, 'big'))

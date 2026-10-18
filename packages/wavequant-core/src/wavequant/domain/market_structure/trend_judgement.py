@@ -9,7 +9,7 @@
 
 from collections import OrderedDict
 from bisect import bisect_left, insort
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, MutableMapping, MutableSequence, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import copy, deepcopy
@@ -22,7 +22,8 @@ from threading import get_ident
 from types import MappingProxyType
 from typing import cast
 
-from .trend_evidence_reuse import _geometry_signature
+from .owned_evidence import CertifiedSource, current_evidence, finite_evidence, owned_signature as _geometry_signature
+from .trend_frozen_state import FrozenPrefixList, FrozenPrefixMap, _IndexArchive, _IndexNode, _SequenceNode, _node_children
 from .trend_options import ordinary_completion_enabled
 from .polyline import LinePoint, ReversalPoint
 from .trend_level_upgrades import _PointRange, _TrendUpgradeState, promote_trend_key_breaks
@@ -32,6 +33,15 @@ __all__ = ['TrendJudgement', 'judge_trend', 'mutable_points']
 
 # 合并解码仅改变模板传输；4 Mi 字符的上界同时限制临时 Unicode 缓冲。
 _MUTABLE_POINT_BATCH_CHARACTERS = 4 * 1024 * 1024
+_EventRows = list[dict[str, object]] | FrozenPrefixList[dict[str, object]]
+
+
+@dataclass(frozen=True, slots=True)
+class _JudgementDelta:
+    token: object
+    parent: object | None
+    points_from: int
+    candidates_from: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +58,7 @@ class TrendJudgement:
     source_level: int
     points: tuple[Mapping[str, object], ...]
     candidates: tuple[Mapping[str, object], ...]
+    _delta: _JudgementDelta | None = field(default=None, compare=False, repr=False)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -504,51 +515,73 @@ class _SourceVersion:
 class _SourceVersionOwner:
     """在可变来源入场处认证一次，向内部阶段交付版本及已认证的变化后缀。
 
-    上游目前交付完整快照，因此入场仍需比较各点证据；解析、结束证明及
-    状态认证只处理变化后缀。绝不把可变列表的 identity 或长度当版本证书。
+    内部生产者交付带证书的来源版本及变化边界；公共可变快照仍逐点比较
+    全文。解析、结束证明及状态认证只处理已认证的变化后缀，不把外部列表
+    的 identity 或长度当版本证书。
     """
 
     def __init__(self, level: int, limit: int) -> None:
         self.level, self.limit = level, limit
         self.keys: tuple[bytes, ...] = ()
         self.current: _SourceVersion | None = None
+        self._certificate_prefix_bytes: list[int] = [0]
+        self._input_version: object | None = None
+
+    def clear(self) -> None:
+        self.keys, self.current = (), None
+        self._certificate_prefix_bytes = [0]
+        self._input_version = None
 
     def prepare(self, source: Sequence[Mapping[str, object]]) -> _SourceVersion | None:
-        if type(source) not in (list, tuple):
-            self.keys, self.current = (), None
+        certified = type(source) is CertifiedSource and source.owner is current_evidence()
+        if type(source) not in (list, tuple) and not certified:
+            self.clear()
             return None
         signatures: list[bytes] = []
-        for point in source:
+        signature_bytes = 0
+        for point in (() if certified else source):
             if type(point) is not dict:
-                self.keys, self.current = (), None
+                self.clear()
                 return None
             signature = _geometry_signature(point)
             if signature is None:
-                self.keys, self.current = (), None
+                self.clear()
                 return None
             signatures.append(signature)
-        keys = tuple(signatures)
+            signature_bytes += getsizeof(signature)
+        versioned = cast(CertifiedSource, source) if certified else None
+        if versioned is not None and versioned.token is self._input_version and self.current is not None:
+            return self.current
+        keys = versioned.keys if versioned is not None else tuple(signatures)
+        if versioned is not None:
+            signature_bytes = versioned.signature_bytes
         previous = self.current
-        changed = 0
+        changed = (versioned.changed_from if versioned is not None
+            and versioned.parent is self._input_version else 0)
         while changed < min(len(keys), len(self.keys)) and keys[changed] == self.keys[changed]:
             changed += 1
         if previous is not None and changed == len(keys) == len(self.keys):
+            self._input_version = versioned.token if versioned is not None else None
             return previous
-        try:
-            # 仅变化点需要重新检查有限值；未知对象已在 exact-builtin 编码处拒绝。
-            json.dumps(source[changed:], allow_nan=False)
-        except (TypeError, ValueError):
-            self.keys, self.current = (), None
+        # 内部不可变节点已经准入；外部可变审计与变化点继续完整检查。
+        if not finite_evidence(source[changed:]):
+            self.clear()
             return None
         boundary = max(0, bisect_left(previous.positions, changed) - 1) if previous is not None else 0
-        start = previous.positions[boundary] if previous is not None and previous.positions else 0
+        # 原首个可见点之前的 display_only／seed 也可能转为有效，不能越过实际修订位置。
+        start = min(changed, previous.positions[boundary]) if previous is not None and previous.positions else 0
         turns: list[_SourceTurn] = []
         tail, positions = _visible_source(source[start:], self.level - 1, None, _validated_turns=turns,
             _source_position_offset=start, _validated_position_offset=boundary)
         certificates = tuple(_geometry_signature((position, point)) for position, point in zip(positions, tail))
         if any(certificate is None for certificate in certificates):
-            self.keys, self.current = (), None
+            self.clear()
             return None
+        certificate_bytes = self._certificate_prefix_bytes[boundary] if previous is not None else 0
+        tail_prefix_bytes: list[int] = []
+        for certificate in certificates:
+            certificate_bytes += getsizeof(certificate)
+            tail_prefix_bytes.append(certificate_bytes)
         version = _SourceVersion(object(), previous.token if previous is not None else None,
             bisect_left(previous.positions, changed) if previous is not None else 0,
             [*(previous.source[:boundary] if previous is not None else ()), *tail],
@@ -556,10 +589,14 @@ class _SourceVersionOwner:
             [*(previous.turns[:boundary] if previous is not None else ()), *turns],
             (*(previous.certificates[:boundary] if previous is not None else ()), *cast(tuple[bytes, ...], certificates)))
         # 不保留版本链；容量不足时调用原公共校验，不截断历史。
-        if sum(getsizeof(key) for key in (*keys, *version.certificates)) * 4 > self.limit:
-            self.keys, self.current = (), None
+        if (signature_bytes + certificate_bytes) * 4 > self.limit:
+            self.clear()
             return None
         self.keys, self.current = keys, version
+        self._input_version = versioned.token if versioned is not None else None
+        # 已保留的证书 bytes 不变；修订只重算后缀费用，仍使用原预算系数和阈值。
+        del self._certificate_prefix_bytes[boundary+1:]
+        self._certificate_prefix_bytes.extend(tail_prefix_bytes)
         return version
 
 
@@ -656,6 +693,7 @@ class _CandidateBucket:
     merged: dict[tuple[int, int, str, float], Mapping[str, object]] = field(default_factory=dict)
     candidates: tuple[Mapping[str, object], ...] = ()
     point: dict[str, object] | None = None
+    base: list[Mapping[str, object]] = field(default_factory=list)
 
 
 class _JudgementLedger:
@@ -664,26 +702,36 @@ class _JudgementLedger:
     def __init__(self) -> None:
         self.ordinary_count = 0
         self.event_count = 0
-        self.buckets: dict[tuple[int, int], _CandidateBucket] = {}
-        self.orders: list[tuple[int, int]] = []
-        self.geometry: list[dict[str, object]] = []
-        self.geometry_orders: list[tuple[int, int]] = []
-        self.points: list[Mapping[str, object]] = []
-        self.counts: list[tuple[int, int]] = [(0, 0)]
+        self.buckets: MutableMapping[tuple[int, int], _CandidateBucket] = {}
+        self.orders: MutableSequence[tuple[int, int]] = []
+        self.geometry: MutableSequence[dict[str, object]] = []
+        self.geometry_orders: MutableSequence[tuple[int, int]] = []
+        self.points: MutableSequence[Mapping[str, object]] = []
+        self.counts: MutableSequence[tuple[int, int]] = [(0, 0)]
+        self.candidates: MutableSequence[Mapping[str, object]] = []
+        self.candidate_offsets: MutableSequence[int] = [0]
+        self.revision: object | None = None
 
     def update(self, ordinary: _TrendReversalState, upgrade: _TrendUpgradeState,
-               events: list[dict[str, object]], positions: Sequence[int], *, initial: bool,
+               events: Sequence[dict[str, object]], positions: Sequence[int], *, initial: bool,
                level: int) -> tuple[TrendJudgement, list[object]]:
         dirty: set[tuple[int, int]] = set()
         changed_objects: list[object] = []
 
         def bucket(point: Mapping[str, object]) -> _CandidateBucket:
             order = _order(point)
-            dirty.add(order)
-            if order not in self.buckets:
-                self.buckets[order] = _CandidateBucket()
-                insort(self.orders, order)
-                changed_objects.append(order)
+            if order not in dirty:
+                previous = self.buckets.get(order)
+                if previous is None:
+                    self.buckets[order] = _CandidateBucket()
+                    insort(self.orders, order)
+                    changed_objects.append(order)
+                else:
+                    # 检查点共享已发布桶；每轮只复制实际修订的桶，旧版本不再修改。
+                    self.buckets[order] = _CandidateBucket(
+                        previous.ordinary.copy(), previous.events.copy(), previous.merged.copy(),
+                        previous.candidates, previous.point, previous.base.copy())
+                dirty.add(order)
             return self.buckets[order]
 
         for point in ordinary.selected[self.ordinary_count:]:
@@ -694,10 +742,15 @@ class _JudgementLedger:
             point = turn.source
             bucket(point).merged[turn.index, turn.ordinal, turn.kind, turn.value] = point
         self.ordinary_count, self.event_count = len(ordinary.selected), len(events)
+        return self._finish(dirty, positions, level, changed_objects)
+
+    def _finish(self, dirty: set[tuple[int, int]], positions: Sequence[int], level: int,
+                changed_objects: list[object]) -> tuple[TrendJudgement, list[object]]:
+        point_change, candidate_change = len(self.points), len(self.candidates)
         frozen_memo: dict[int, tuple[object, object]] = {}
         for order in sorted(dirty):
             entry = self.buckets[order]
-            upgraded = [*(entry.merged[key] for key in sorted(entry.merged)), *entry.events]
+            upgraded = [*entry.base, *(entry.merged[key] for key in sorted(entry.merged)), *entry.events]
             candidates = _restore_source_positions(_complete_candidates(entry.ordinary, upgraded), positions, level - 1)
             entry.candidates = tuple(_frozen_point(point, frozen_memo) for point in candidates)
             owned = _restore_source_positions(_complete_candidates((), upgraded), positions, level - 1)
@@ -705,13 +758,22 @@ class _JudgementLedger:
             entry.point = canonical[0] if canonical else None
             changed_objects.extend((entry, entry.candidates, entry.point))
         if dirty:
+            first = bisect_left(self.orders, min(dirty))
+            candidate_change = self.candidate_offsets[first]
+            del self.candidates[candidate_change:]
+            del self.candidate_offsets[first + 1:]
+            for order in self.orders[first:]:
+                self.candidates.extend(self.buckets[order].candidates)
+                self.candidate_offsets.append(len(self.candidates))
+            changed_objects.extend(self.candidate_offsets[first + 1:])
             # 新插入点可能拆开此前被同类极值合并的区间，须从前一已保留端点重放。
             preceding = bisect_left(self.geometry_orders, min(dirty))
             boundary = max(0, preceding - 1)
+            point_change = boundary
             start = bisect_left(self.orders, self.geometry_orders[boundary]) if preceding else 0
-            self.geometry = self.geometry[:boundary]
-            self.points = self.points[:boundary]
-            self.counts = self.counts[:boundary + 1]
+            del self.geometry[boundary:]
+            del self.points[boundary:]
+            del self.counts[boundary + 1:]
             for order in self.orders[start:]:
                 point = self.buckets[order].point
                 if point is None:
@@ -736,18 +798,62 @@ class _JudgementLedger:
                 changed_objects.append(count)
                 self.points.append(_frozen_point(dict(point, state='reversal',
                     label=f"{point['kind']}{high if point['kind'] == 'H' else low}"), frozen_memo))
-            self.geometry_orders = self.geometry_orders[:boundary]
+            del self.geometry_orders[boundary:]
             new_orders = [_order(point) for point in self.geometry[boundary:]]
             self.geometry_orders.extend(new_orders)
             changed_objects.extend(new_orders)
             changed_objects.extend(self.points[boundary:])
-        return TrendJudgement(level, level - 1, tuple(self.points),
-            tuple(point for order in self.orders for point in self.buckets[order].candidates)), changed_objects
+        delta = _JudgementDelta(object(), self.revision, point_change, candidate_change)
+        self.revision = delta.token
+        return TrendJudgement(level, level - 1, tuple(self.points), tuple(self.candidates), delta), changed_objects
+
+    def reconcile_formal(self, previous_candidates: Sequence[Mapping[str, object]],
+                         candidates: Sequence[Mapping[str, object]], candidate_from: int,
+                         previous_points: Sequence[Mapping[str, object]], points: Sequence[Mapping[str, object]],
+                         point_from: int, upgrade: _TrendUpgradeState, events: Sequence[dict[str, object]],
+                         positions: Sequence[int], level: int) -> tuple[TrendJudgement, list[object]]:
+        """正式旁路使用同一候选归并器，只更新普通输入修订和新增升级所在的桶。"""
+        dirty: set[tuple[int, int]] = set()
+        changed: list[object] = []
+
+        def edit(order: tuple[int, int]) -> _CandidateBucket:
+            if order not in dirty:
+                previous = self.buckets.get(order)
+                if previous is None:
+                    self.buckets[order] = _CandidateBucket()
+                    insort(self.orders, order)
+                else:
+                    self.buckets[order] = _CandidateBucket(previous.ordinary.copy(), previous.events.copy(),
+                        previous.merged.copy(), previous.candidates, previous.point, previous.base.copy())
+                dirty.add(order)
+                changed.append(order)
+            return self.buckets[order]
+
+        for name, old, new, start in (('ordinary', previous_candidates, candidates, candidate_from),
+                                     ('base', previous_points, points, point_from)):
+            # 同坐标可有多条证据；边界前的同桶前缀必须保留，不能整桶清空。
+            removed: dict[tuple[int, int], int] = {}
+            for point in old[start:]:
+                order = _order(point)
+                removed[order] = removed.get(order, 0) + 1
+            for order, count in removed.items():
+                records = getattr(edit(order), name)
+                del records[len(records) - count:]
+            for point in new[start:]:
+                getattr(edit(_order(point)), name).append(mutable_points((point,))[0] if name == 'base' else point)
+        for turn in (upgrade.merged.values() if not self.event_count and not self.revision
+                     else upgrade.updated_merged.values()):
+            point = turn.source
+            edit(_order(point)).merged[turn.index, turn.ordinal, turn.kind, turn.value] = point
+        for point in events[self.event_count:]:
+            edit(_order(point)).events.append(point)
+        self.event_count = len(events)
+        return self._finish(dirty, positions, level, changed)
 
 
 def _copy_append_states(
-    ordinary: _TrendReversalState, upgrade: _TrendUpgradeState, events: list[dict[str, object]],
-) -> tuple[_TrendReversalState, _TrendUpgradeState, list[dict[str, object]]]:
+    ordinary: _TrendReversalState, upgrade: _TrendUpgradeState, events: _EventRows,
+) -> tuple[_TrendReversalState, _TrendUpgradeState, _EventRows]:
     """复制会被追加修改的容器；已发布的来源和证据叶子在状态内保持只读。
 
     追加器替换 merged 的事件、向 selected/event_sink 追加新事件，不修改
@@ -756,7 +862,7 @@ def _copy_append_states(
     copies = copy(ordinary), copy(upgrade)
     for original, cloned in zip((ordinary, upgrade), copies):
         for name, value in vars(original).items():
-            if type(value) in (dict, list):
+            if type(value) in (dict, list, FrozenPrefixList, FrozenPrefixMap):
                 setattr(cloned, name, value.copy())
     cloned_upgrade = copies[1]
     for name in ('keys_by_kind', 'origins_by_kind'):
@@ -774,18 +880,50 @@ def _copy_append_states(
 
 def _append_state_containers(
     ordinary: _TrendReversalState | None, upgrade: _TrendUpgradeState | None,
-    events: list[dict[str, object]],
+    events: _EventRows,
 ) -> list[object]:
     containers: list[object] = [events]
     for state in (ordinary, upgrade):
         if state is not None:
             containers.extend((state, vars(state)))
-            containers.extend(value for value in vars(state).values() if type(value) in (dict, list))
+            containers.extend(value for value in vars(state).values()
+                              if type(value) in (dict, list, FrozenPrefixList, FrozenPrefixMap))
     if upgrade is not None:
         containers.extend(upgrade.recent.values())
         for tree in [*upgrade.keys_by_kind.values(), *upgrade.origins_by_kind.values()]:
             containers.extend((tree, vars(tree), tree.points))
     return containers
+
+
+def _seal_checkpoint_records(ordinary: _TrendReversalState | None, upgrade: _TrendUpgradeState,
+                             events: _EventRows) -> FrozenPrefixList[dict[str, object]]:
+    """封存当前知识版本的追加记录，使长时间没有新关键位时仍能廉价存检查点。
+
+    这是可恢复的版本快照，不推进业务固化线。尾部修订恢复旧版本；价格、
+    资格和整波状态继续演进，不能因为记录共享而把变化区判为已完成。
+    """
+    for state in (ordinary, upgrade):
+        if state is None:
+            continue
+        for name, value in list(vars(state).items()):
+            if type(value) in (dict, FrozenPrefixMap) and name not in (
+                    'keys_by_kind', 'origins_by_kind', 'recent', 'updated_merged'):
+                index = value if type(value) is FrozenPrefixMap else FrozenPrefixMap(value.items())
+                index.freeze()
+                setattr(state, name, index)
+        names = ('turns', 'highs', 'lows', 'selected') if state is ordinary else (
+            'turns', 'regular', 'orders', 'merged_order')
+        for name in names:
+            value = getattr(state, name)
+            records = value if type(value) is FrozenPrefixList else FrozenPrefixList(value)
+            records.freeze(len(records))
+            setattr(state, name, records)
+    for tree in [*upgrade.keys_by_kind.values(), *upgrade.origins_by_kind.values()]:
+        tree.points.freeze()
+    saved = events if type(events) is FrozenPrefixList else FrozenPrefixList(events)
+    saved.freeze(len(saved))
+    upgrade.event_sink = saved
+    return saved
 
 
 class _TrendJudgementState:
@@ -804,9 +942,11 @@ class _TrendJudgementState:
         self._thread = get_ident()
         self._tail_reuse = _tail_reuse
         self._checkpoint: tuple[tuple[bytes, ...], tuple[bytes, ...], _TrendReversalState,
-                                _TrendUpgradeState, list[dict[str, object]]] | None = None
+                                _TrendUpgradeState, _EventRows] | None = None
         self._flip_checkpoint: tuple[tuple[bytes, ...], tuple[bytes, ...], _TrendReversalState,
-                                     _TrendUpgradeState, list[dict[str, object]]] | None = None
+                                     _TrendUpgradeState, _EventRows] | None = None
+        self._checkpoint_ledger: _JudgementLedger | None = None
+        self._flip_checkpoint_ledger: _JudgementLedger | None = None
         self.tail_restores = 0
         self.flip_restores = 0
         self._source_keys: tuple[bytes, ...] = ()
@@ -814,8 +954,12 @@ class _TrendJudgementState:
         self._regular_keys: tuple[bytes, ...] = ()
         self._ordinary: _TrendReversalState | None = None
         self._upgrade: _TrendUpgradeState | None = None
-        self._events: list[dict[str, object]] = []
+        self._events: _EventRows = []
         self._ledger: _JudgementLedger | None = None
+        self.frozen_boundary: tuple[int, int] | None = None
+        self.frozen_known: Moment | None = None
+        self.frozen_advances = 0
+        self.frozen_invalidations = 0
         self._payload_upper_bytes = 0
         self.memory_used = 0
         self.peak_retained_bytes = 0
@@ -825,17 +969,136 @@ class _TrendJudgementState:
         self.deep_budget_walks = 0
         self.budget_rejections = 0
 
+    @staticmethod
+    def _copy_ledger(ledger: _JudgementLedger | None) -> _JudgementLedger | None:
+        """检查点复制可变索引，已发布点与证据叶子仍共享不可变版本。"""
+        if ledger is None:
+            return None
+        cloned = copy(ledger)
+        for name, value in vars(ledger).items():
+            if type(value) in (list, FrozenPrefixList):
+                value = value if type(value) is FrozenPrefixList else FrozenPrefixList(value)
+                value.freeze(len(value))
+                setattr(ledger, name, value)
+            elif type(value) in (dict, FrozenPrefixMap):
+                value = value if type(value) is FrozenPrefixMap else FrozenPrefixMap(value.items())
+                value.freeze()
+                setattr(ledger, name, value)
+            if type(value) in (dict, list, FrozenPrefixList, FrozenPrefixMap):
+                setattr(cloned, name, value.copy())
+        return cloned
+
+    def _freeze_prefix(self) -> None:
+        """两个当前关键位中取价格位置较新者，确认到达后才推进固化线。
+
+        来源与输出序列只封存 B 之前的记录，B 本身仍在变化区。索引封存
+        当前可知版本，后续对旧结构追加结束证明仍写入新的变化覆盖层。
+        """
+        upgrade = self._upgrade
+        if upgrade is None or self._ordinary is None or upgrade.prefix_known is None:
+            return
+        markers = [position for position in (upgrade.last_fall_high_position, upgrade.last_rise_low_position)
+                   if position is not None]
+        if not markers:
+            return
+        boundary = max((upgrade.turns[position].index, upgrade.turns[position].ordinal) for position in markers)
+        if boundary == self.frozen_boundary:
+            return
+        if self.frozen_boundary is not None and boundary < self.frozen_boundary:
+            # 冻结整波起点可能重新成为当前攻击 key，不能强行维持更晚的局部 key。
+            # 旧记录仍是不可变版本；新版本允许修订变化区，不借边界删除前史。
+            self.frozen_invalidations += 1
+        self.frozen_boundary, self.frozen_known = boundary, upgrade.prefix_known
+        self.frozen_advances += 1
+
+        def seal_sequence(owner: object, name: str, order: Callable[[object], tuple[int, int]]) -> None:
+            raw = getattr(owner, name)
+            values = raw if type(raw) is FrozenPrefixList else FrozenPrefixList(raw)
+            stop = values.frozen_count
+            while stop < len(values) and order(values[stop]) < boundary:
+                stop += 1
+            values.freeze(stop)
+            setattr(owner, name, values)
+
+        def turn_order(value: object) -> tuple[int, int]:
+            turn = cast(_SourceTurn, value)
+            return turn.index, turn.ordinal
+
+        def point_order(value: object) -> tuple[int, int]:
+            return _order(cast(Mapping[str, object], value))
+
+        for state in (self._ordinary, upgrade):
+            # 这些映射的值为不可变来源／候选；覆盖用尾部版本表达。
+            for name, value in list(vars(state).items()):
+                if type(value) in (dict, FrozenPrefixMap) and name not in (
+                        'keys_by_kind', 'origins_by_kind', 'recent', 'updated_merged'):
+                    index = value if type(value) is FrozenPrefixMap else FrozenPrefixMap(value.items())
+                    index.freeze()
+                    setattr(state, name, index)
+            seal_sequence(state, 'turns', turn_order)
+        ordinary = self._ordinary
+        for name in ('highs', 'lows'):
+            seal_sequence(ordinary, name, lambda position: turn_order(ordinary.turns[cast(int, position)]))
+        seal_sequence(ordinary, 'selected', point_order)
+        seal_sequence(self, '_events', point_order)
+        upgrade.event_sink = self._events
+        seal_sequence(upgrade, 'regular', turn_order)
+        for name in ('orders', 'merged_order'):
+            seal_sequence(upgrade, name, lambda value: cast(tuple[int, int], cast(tuple[object, ...], value)[:2]))
+        for tree in [*upgrade.keys_by_kind.values(), *upgrade.origins_by_kind.values()]:
+            tree.points.freeze()
+        if self._ledger is not None:
+            ledger = self._ledger
+            buckets = ledger.buckets
+            if type(buckets) is not FrozenPrefixMap:
+                buckets = FrozenPrefixMap(buckets.items())
+            buckets.freeze()
+            ledger.buckets = buckets
+            for name in ('orders', 'geometry_orders'):
+                seal_sequence(ledger, name, lambda value: cast(tuple[int, int], value))
+            for name in ('geometry', 'points'):
+                seal_sequence(ledger, name, point_order)
+            seal_sequence(ledger, 'candidates', point_order)
+            offsets = ledger.candidate_offsets
+            if type(offsets) is not FrozenPrefixList:
+                offsets = FrozenPrefixList(offsets)
+            offsets.freeze(max(offsets.frozen_count, bisect_left(ledger.orders, boundary)))
+            ledger.candidate_offsets = offsets
+            counts = ledger.counts
+            if type(counts) is not FrozenPrefixList:
+                counts = FrozenPrefixList(counts)
+            counts.freeze(max(counts.frozen_count, bisect_left(ledger.geometry_orders, boundary)))
+            ledger.counts = counts
+
+    @staticmethod
+    def _ledger_containers(ledger: _JudgementLedger | None) -> list[object]:
+        if ledger is None:
+            return []
+        containers: list[object] = [ledger, vars(ledger), *vars(ledger).values()]
+        return containers
+
     def _save_tail(self) -> None:
         if self._ordinary is None or self._upgrade is None:
             return
+        self._events = _seal_checkpoint_records(self._ordinary, self._upgrade, self._events)
+        if self._ledger is not None:
+            buckets = self._ledger.buckets
+            if type(buckets) is not FrozenPrefixMap:
+                buckets = FrozenPrefixMap(buckets.items())
+            buckets.freeze()
+            self._ledger.buckets = buckets
         ordinary, upgrade, events = _copy_append_states(self._ordinary, self._upgrade, self._events)
+        ledger = self._copy_ledger(self._ledger)
         copied = _append_state_containers(ordinary, upgrade, events)
+        copied.extend(self._ledger_containers(ledger))
         # 回退仅保留一代可变容器。避免每次追加都序列化整段历史和证明树；
         # 证据叶子共享且只读，完整对象图仍受 calculate 的同一内存上限约束。
         if sum(getsizeof(container) for container in copied) <= min(4 * 1024 * 1024, self._limit // 2):
             self._checkpoint = self._source_keys, self._regular_keys, ordinary, upgrade, events
+            self._checkpoint_ledger = ledger
         else:
             self._checkpoint = None
+            self._checkpoint_ledger = None
 
     def remember_source_flip(self) -> None:
         """保存首次可知翻向之后的状态；包括旧关键位、证明及全局来源位置。
@@ -847,13 +1110,25 @@ class _TrendJudgementState:
             return
         if self._flip_checkpoint is not None and self._flip_checkpoint[0] == self._source_keys:
             return
+        self._events = _seal_checkpoint_records(self._ordinary, self._upgrade, self._events)
         ordinary, upgrade, events = _copy_append_states(self._ordinary, self._upgrade, self._events)
         self._flip_checkpoint = self._source_keys, self._regular_keys, ordinary, upgrade, events
-        measured = self._owned_bytes()
-        self.deep_budget_walks += 1
+        self._flip_checkpoint_ledger = self._copy_ledger(self._ledger)
+        # 检查点只新增浅复制容器，证据叶子已在负载上界内；仅上界触及
+        # 预算时遍历对象图校准，避免每次翻向都重新读取全部历史证明。
+        measured = self._payload_upper_bytes + self._container_bytes() + 4096
+        if measured > self._limit:
+            measured = self._owned_bytes()
+            self.deep_budget_walks += 1
         if measured > self._limit:
             self._flip_checkpoint = None
+            self._flip_checkpoint_ledger = None
             measured = self._owned_bytes()
+            self.deep_budget_walks += 1
+        if measured > self._limit:
+            self.budget_rejections += 1
+            self.clear()
+            return
         self.memory_used = measured
         self.peak_retained_bytes = max(self.peak_retained_bytes, measured)
         self._payload_upper_bytes = max(0, measured - self._container_bytes())
@@ -864,11 +1139,16 @@ class _TrendJudgementState:
                 or certified[:len(saved[0])] != saved[0]):
             return False
         self._ordinary, self._upgrade, self._events = _copy_append_states(*saved[2:])
-        self._ledger = None
+        # 判定状态和发布账本必须恢复同一来源版本；丢掉账本会让每天的尾点
+        # 修订重建所有历史桶，并把整份旧证据再次加入增量内存计费。
+        self._ledger = self._copy_ledger(self._flip_checkpoint_ledger if flip else self._checkpoint_ledger)
         self._source_version = None
         self._source_keys, self._regular_keys = saved[:2]
+        # 恢复的是旧知识版本；下一次按恢复后的真实关键位重新决定固化线。
+        self.frozen_boundary = self.frozen_known = None
         if flip:
             self._checkpoint = None
+            self._checkpoint_ledger = None
         # 检查点已计入当前预算。恢复只复制索引容器，证据叶子是原对象图的
         # 子集；沿用其保守负载上界，不能每次尾点修订重新遍历全部历史证据。
         measured = self._payload_upper_bytes + self._container_bytes() + 4096
@@ -889,6 +1169,8 @@ class _TrendJudgementState:
     def clear(self) -> None:
         self._checkpoint = None
         self._flip_checkpoint = None
+        self._checkpoint_ledger = None
+        self._flip_checkpoint_ledger = None
         self._source_keys = ()
         self._source_version = None
         self._regular_keys = ()
@@ -896,6 +1178,7 @@ class _TrendJudgementState:
         self._upgrade = None
         self._events = []
         self._ledger = None
+        self.frozen_boundary = self.frozen_known = None
         self._payload_upper_bytes = 0
         self.memory_used = 0
 
@@ -910,7 +1193,8 @@ class _TrendJudgementState:
         size = 0
         state_types = (_TrendJudgementState, _TrendReversalState, _TrendUpgradeState,
                        _PointRange, _SourceTurn, LinePoint, ReversalPoint,
-                       _JudgementLedger, _CandidateBucket)
+                       _JudgementLedger, _CandidateBucket, FrozenPrefixList, FrozenPrefixMap, _IndexArchive,
+                       _IndexNode, _SequenceNode)
         while pending:
             value = pending.pop()
             if id(value) in seen:
@@ -924,7 +1208,7 @@ class _TrendJudgementState:
                 pending.extend(attributes.keys())
                 diagnostics = ('memory_used', 'peak_retained_bytes', 'peak_observed_bytes',
                                '_payload_upper_bytes', 'cold_runs', 'append_runs', 'deep_budget_walks', 'budget_rejections',
-                               'tail_restores', 'flip_restores')
+                               'tail_restores', 'flip_restores', 'frozen_advances', 'frozen_invalidations')
                 pending.extend(item for key, item in attributes.items() if key not in diagnostics)
                 # 计数字段自身不能令计数结果变化；为所有计数器分别预留
                 # 64 位正整数的完整对象大小，覆盖受支持主机的地址空间。
@@ -932,6 +1216,8 @@ class _TrendJudgementState:
             elif type(value) is _FrozenPoint:
                 # slots 快照没有 __dict__；证据与导出模板都属于预算。
                 pending.extend((value.data, value.json_template))
+            elif type(value) in (_SequenceNode, _IndexNode):
+                pending.extend(_node_children(value))
             elif type(value) in state_types:
                 pending.append(vars(value))
             elif type(value) is MappingProxyType:
@@ -948,10 +1234,8 @@ class _TrendJudgementState:
         """可变索引只计当前容量，历史证据对象由冷计数或追加准入单独计费。"""
         containers: list[object] = [vars(self), self._source_keys, self._regular_keys]
         containers.extend(_append_state_containers(self._ordinary, self._upgrade, self._events))
-        if self._ledger is not None:
-            containers.extend((self._ledger, vars(self._ledger), *vars(self._ledger).values()))
-            for bucket in self._ledger.buckets.values():
-                containers.extend((bucket, vars(bucket), bucket.ordinary, bucket.events, bucket.merged))
+        for ledger in (self._ledger, self._checkpoint_ledger, self._flip_checkpoint_ledger):
+            containers.extend(self._ledger_containers(ledger))
         for checkpoint in (self._checkpoint, self._flip_checkpoint):
             if checkpoint is not None:
                 containers.extend((checkpoint, checkpoint[0], checkpoint[1]))
@@ -962,16 +1246,20 @@ class _TrendJudgementState:
             if id(container) not in seen:
                 seen.add(id(container))
                 size += getsizeof(container)
+                if type(container) in (FrozenPrefixList, FrozenPrefixMap):
+                    size += container.storage_bytes
+        # 已发布桶只读，随 changed_objects 计入不可变载荷；这里只统计
+        # 可变顶层索引。检查点共享旧桶，不重复遍历或重复扣除其容器费用。
         return size
 
     def calculate(self, source: Sequence[Mapping[str, object]], positions: Sequence[int],
                   *, _validated_turns: list[_SourceTurn] | None = None,
                   _certified_standard: bool = False, _source_revision: _SourceVersion | None = None) -> tuple[
-        list[dict[str, object]], list[dict[str, object]], list[dict[str, object]],
+        list[dict[str, object]], list[dict[str, object]], _EventRows,
     ]:
         if get_ident() != self._thread:
             ordinary = trend_reversals(source, trend_level=self.trend_level)
-            events: list[dict[str, object]] = []
+            events: _EventRows = []
             merged = promote_trend_key_breaks(source, ordinary, trend_level=self.trend_level, event_sink=events,
                 ordinary_trend_completion_enabled=self.ordinary_trend_completion_enabled)
             return ordinary, merged, events
@@ -981,10 +1269,7 @@ class _TrendJudgementState:
         # 公共入口仍独立认证。可知来源解析、逐点全文键和修订门禁始终执行。
         finite = _certified_standard or _geometry_signature(source) is not None
         if finite and not _certified_standard:
-            try:
-                json.dumps(source, allow_nan=False)
-            except (TypeError, ValueError):
-                finite = False
+            finite = finite_evidence(source)
         # 每次仍完整执行共同来源校验；价格位置、真实结束时钟与原位置都认证。
         source_keys = (_source_revision.certificates if _source_revision is not None else
                        tuple(_geometry_signature((position, point)) for position, point in zip(positions, source)))
@@ -1056,12 +1341,13 @@ class _TrendJudgementState:
         else:
             self.append_runs += 1
         assert self._upgrade is not None
-        merged = self._upgrade.advance()
+        calculated_upgrade = self._upgrade
+        merged = calculated_upgrade.advance(_snapshot=False)
         events = self._events
         certified_regular = cast(tuple[bytes, ...], regular_keys)
         if appendable:
-            self._source_keys = (*self._source_keys, *certified[len(self._source_keys):])
-            self._regular_keys = (*self._regular_keys, *certified_regular[len(self._regular_keys):])
+            self._source_keys = certified
+            self._regular_keys = certified_regular
             assert self._ordinary is not None
             upgrade = self._upgrade
             new_orders = upgrade.orders[previous_orders_count:]
@@ -1105,10 +1391,12 @@ class _TrendJudgementState:
             self.memory_used = observed_bytes
             self.peak_retained_bytes = max(self.peak_retained_bytes, observed_bytes)
             self._source_version = _source_revision.token if _source_revision is not None else None
+        if self._upgrade is None:
+            merged = calculated_upgrade.snapshot()
         return ordinary, merged, events
 
     def finalize(self, ordinary: Sequence[Mapping[str, object]], merged: Sequence[Mapping[str, object]],
-                 events: list[dict[str, object]], positions: Sequence[int]) -> TrendJudgement:
+                 events: _EventRows, positions: Sequence[int]) -> TrendJudgement:
         if self._ordinary is None or self._upgrade is None or get_ident() != self._thread:
             return _finalize_judgement(ordinary, merged, events, positions, self.trend_level)
         initial = self._ledger is None
@@ -1116,6 +1404,7 @@ class _TrendJudgementState:
             self._ledger = _JudgementLedger()
         result, changed = self._ledger.update(self._ordinary, self._upgrade, events, positions,
                                               initial=initial, level=self.trend_level)
+        self._freeze_prefix()
         self._payload_upper_bytes += self._owned_value_bytes(changed)
         # 账本含共享来源与可变桶；预留固定对象头余量，临近上限再精确校准。
         observed = self._payload_upper_bytes + self._container_bytes() + 4096
@@ -1153,25 +1442,326 @@ def _finalize_judgement(
                           tuple(_frozen_point(point, frozen_memo) for point in candidates))
 
 
-def _with_formal_key_breaks(
-    source: Sequence[Mapping[str, object]], result: TrendJudgement, *, asof: Moment | None = None,
-) -> TrendJudgement:
-    """在普通闭合判断之外复用严格突破状态，不让开放下级参与普通四点定义。"""
-    level = result.trend_level
-    if level == 1 or not any(point.get('upgrade_evidence') for point in source):
-        return result
-    turns = _source_turns(mutable_points(source), level - 1, formal_key_attacks=True)
-    if asof is not None:
-        turns = [turn for turn in turns if _later_moment(turn.available_at, asof) == asof]
-    has_early_attack = False
+class _FormalKeyBreakState:
+    """严格突破旁路的单路径状态；原始来源和普通候选均须保持完整证据前缀。
+
+    普通来源状态只消费已结束波，不能直接拿它的 turns 替代正式开放端点。
+    本状态独立保留正式来源投影；变化尾部重验相邻边界，旧候选迟知、删除、
+    证明修订或追加门禁失败均重新执行原严格状态机，不裁掉冻结关键位。
+    """
+
+    def __init__(self, trend_level: int, *, memory_bytes: int = 8 * 1024 * 1024) -> None:
+        if type(trend_level) is not int or trend_level not in (2, 3):
+            raise ValueError('formal key break level must be 2 or 3')
+        if type(memory_bytes) is not int or memory_bytes <= 0:
+            raise ValueError('formal key break memory_bytes must be a positive integer')
+        self.trend_level = trend_level
+        self._limit = memory_bytes
+        self._thread = get_ident()
+        self.clear()
+
+    def clear(self) -> None:
+        self._checkpoint: _FormalKeyBreakState | None = None
+        self._source_keys: tuple[bytes, ...] = ()
+        self._candidate_keys: tuple[str, ...] = ()
+        self._turns: list[_SourceTurn] = []
+        self._candidates: list[dict[str, object]] = []
+        self._regular: list[_SourceTurn] = []
+        self._upgrade: _TrendUpgradeState | None = None
+        self._events: _EventRows = []
+        self._payload_upper_bytes = 0
+        self.memory_used = 0
+        self._ledger: _JudgementLedger | None = None
+        self._base_points: Sequence[Mapping[str, object]] = ()
+        self._base_token: object | None = None
+        self._source_token: object | None = None
+        self._early_attack: int | None = None
+
+    @staticmethod
+    def _value_bytes(roots: Sequence[object]) -> int:
+        # 入场已拒绝未知审计值；只遍历本地状态和标准容器，不追踪类／函数全局。
+        pending = list(roots)
+        seen: set[int] = set()
+        size = 0
+        while pending:
+            value = pending.pop()
+            identity = id(value)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            size += getsizeof(value)
+            if type(value) is dict:
+                pending.extend(cast(dict[object, object], value).keys())
+                pending.extend(cast(dict[object, object], value).values())
+            elif type(value) in (list, tuple, set, frozenset):
+                pending.extend(cast(Sequence[object], value))
+            elif type(value) is _FrozenPoint:
+                pending.extend((value.data, value.json_template))
+            elif type(value) in (_SequenceNode, _IndexNode):
+                pending.extend(_node_children(value))
+            elif type(value) is MappingProxyType:
+                pending.extend(get_referents(value))
+            elif type(value) in (_TrendUpgradeState, _PointRange, _SourceTurn, ReversalPoint, LinePoint,
+                                FrozenPrefixList, FrozenPrefixMap, _IndexArchive, _IndexNode, _SequenceNode,
+                                _JudgementLedger, _CandidateBucket):
+                pending.append(vars(value))
+        return size
+
+    def _containers(self) -> list[object]:
+        containers: list[object] = [self._source_keys, self._candidate_keys, self._turns,
+            self._candidates, self._regular, *_append_state_containers(None, self._upgrade, self._events)]
+        containers.extend((self._base_points, *_TrendJudgementState._ledger_containers(self._ledger)))
+        if self._checkpoint is not None:
+            containers.extend((self._checkpoint, vars(self._checkpoint)))
+            containers.extend(self._checkpoint._containers())
+        return containers
+
+    def _copy_checkpoint(self) -> '_FormalKeyBreakState':
+        if self._upgrade is not None:
+            self._events = _seal_checkpoint_records(None, self._upgrade, self._events)
+        for name in ('_turns', '_candidates', '_regular'):
+            raw = getattr(self, name)
+            records = raw if type(raw) is FrozenPrefixList else FrozenPrefixList(raw)
+            records.freeze(len(records))
+            setattr(self, name, records)
+        saved = copy(self)
+        saved._checkpoint = None
+        saved._ledger = _TrendJudgementState._copy_ledger(self._ledger)
+        saved._turns, saved._candidates, saved._regular = (
+            self._turns.copy(), self._candidates.copy(), self._regular.copy())
+        saved._events = self._events.copy()
+        if self._upgrade is not None:
+            upgrade = saved._upgrade = copy(self._upgrade)
+            for name, value in vars(self._upgrade).items():
+                if type(value) in (dict, list, FrozenPrefixList, FrozenPrefixMap):
+                    setattr(upgrade, name, value.copy())
+            for name in ('keys_by_kind', 'origins_by_kind'):
+                trees: dict[str, _PointRange] = {}
+                for kind, tree in getattr(self._upgrade, name).items():
+                    cloned = copy(tree)
+                    cloned.points = tree.points.copy()
+                    trees[kind] = cloned
+                setattr(upgrade, name, trees)
+            upgrade.recent = {kind: points.copy() for kind, points in self._upgrade.recent.items()}
+            upgrade.event_sink = saved._events
+        return saved
+
+    def _resume_checkpoint(self, source_keys: tuple[bytes, ...], candidate_keys: tuple[str, ...],
+                           source: Sequence[Mapping[str, object]], result: TrendJudgement) -> None:
+        def extends(state: '_FormalKeyBreakState') -> bool:
+            source_append = (type(source) is CertifiedSource and source.owner is current_evidence()
+                and (source.token is state._source_token or source.parent is state._source_token
+                     and source.changed_from >= len(state._source_keys)))
+            candidate_append = (result._delta is not None and result._delta.parent is state._base_token
+                                and result._delta.candidates_from >= len(state._candidate_keys))
+            return ((source_append or source_keys[:len(state._source_keys)] == state._source_keys)
+                    and (candidate_append or candidate_keys[:len(state._candidate_keys)] == state._candidate_keys))
+        if extends(self):
+            if self._source_keys and (source_keys != self._source_keys or candidate_keys != self._candidate_keys):
+                self._checkpoint = self._copy_checkpoint()
+        elif self._checkpoint is not None and extends(self._checkpoint):
+            checkpoint = self._checkpoint
+            restored = checkpoint._copy_checkpoint()
+            self.__dict__.update(vars(restored))
+            self._checkpoint = checkpoint
+
+    def _retain(self, *, appended: bool, added: Sequence[object]) -> None:
+        containers = self._containers()
+        container_size = sum(getsizeof(value) + (value.storage_bytes
+            if type(value) in (FrozenPrefixList, FrozenPrefixMap) else 0)
+            for value in {id(value): value for value in containers}.values())
+        if appended:
+            # 只为新来源、候选、事件和索引项计费；重复引用形成保守上界。
+            self._payload_upper_bytes += self._value_bytes(added)
+            observed = self._payload_upper_bytes + container_size
+        else:
+            observed = self._value_bytes(containers)
+            self._payload_upper_bytes = max(0, observed - container_size)
+        if appended and observed > self._limit:
+            observed = self._value_bytes(containers)
+            self._payload_upper_bytes = max(0, observed - container_size)
+        if observed > self._limit and self._checkpoint is not None:
+            self._checkpoint = None
+            containers = self._containers()
+            container_size = sum(getsizeof(value) + (value.storage_bytes
+                if type(value) in (FrozenPrefixList, FrozenPrefixMap) else 0)
+                for value in {id(value): value for value in containers}.values())
+            observed = self._value_bytes(containers)
+            self._payload_upper_bytes = max(0, observed - container_size)
+        if observed > self._limit:
+            self.clear()
+        else:
+            self.memory_used = observed
+
+    def calculate(self, source: Sequence[Mapping[str, object]], result: TrendJudgement,
+                  *, _certified_keys: tuple[bytes, ...] | None = None) -> TrendJudgement | None:
+        if get_ident() != self._thread or result.trend_level != self.trend_level:
+            self.clear()
+            return None
+        if type(source) not in (list, tuple) and not (type(source) is CertifiedSource
+                and source.owner is current_evidence() and _certified_keys is source.keys):
+            self.clear()
+            return None
+        source_keys: list[bytes] = []
+        if _certified_keys is not None:
+            if len(_certified_keys) != len(source):
+                raise ValueError('formal source certificates must cover the complete source')
+        else:
+            for point in source:
+                signature = _geometry_signature(point) if type(point) is dict else None
+                if signature is None:
+                    self.clear()
+                    return None
+                source_keys.append(signature)
+        candidate_start = (result._delta.candidates_from if result._delta is not None
+                           and result._delta.parent is self._base_token else 0)
+        candidate_keys: list[str] = list(self._candidate_keys[:candidate_start])
+        for point in result.candidates[candidate_start:]:
+            if type(point) is not _FrozenPoint or point.json_template is None:
+                self.clear()
+                return None
+            candidate_keys.append(point.json_template)
+        try:
+            certified_source = _certified_keys if _certified_keys is not None else tuple(source_keys)
+            certified_candidates = tuple(candidate_keys)
+            self._resume_checkpoint(certified_source, certified_candidates, source, result)
+            return self._calculate(source, result, certified_source, certified_candidates)
+        except Exception:
+            # 解析或状态推进抛错后不可再复用部分修改的状态；原异常仍向外传播。
+            self.clear()
+            raise
+
+    def _calculate(
+        self, source: Sequence[Mapping[str, object]], result: TrendJudgement,
+        source_keys: tuple[bytes, ...], candidate_keys: tuple[str, ...],
+    ) -> TrendJudgement:
+        source_common = (source.changed_from if type(source) is CertifiedSource
+            and source.owner is current_evidence() and source.parent is self._source_token else
+            len(source) if type(source) is CertifiedSource and source.token is self._source_token else 0)
+        while (source_common < min(len(source_keys), len(self._source_keys))
+                and source_keys[source_common] == self._source_keys[source_common]):
+            source_common += 1
+        candidate_common = (result._delta.candidates_from if result._delta is not None
+                            and result._delta.parent is self._base_token else 0)
+        while (candidate_common < min(len(candidate_keys), len(self._candidate_keys))
+                and candidate_keys[candidate_common] == self._candidate_keys[candidate_common]):
+            candidate_common += 1
+        source_appended = source_common == len(self._source_keys)
+        candidates_appended = candidate_common == len(self._candidate_keys)
+        old_turn_count, old_regular_count = len(self._turns), len(self._regular)
+        old_event_count = len(self._events)
+        previous_candidates = self._candidates
+        previous_points = self._base_points
+        old_order_count = len(self._upgrade.orders) if self._upgrade is not None else 0
+        source_tail: list[_SourceTurn] = []
+        if source_common != len(source_keys) or source_common != len(self._source_keys):
+            # 前一正式点验证跨边界的坐标与时钟；此前跳过的 seed 等已由证书覆盖。
+            boundary = max(0, bisect_left(self._turns, source_common, key=lambda turn: turn.position) - 1)
+            start = min(source_common, self._turns[boundary].position) if self._turns else 0
+            source_tail = _source_turns(mutable_points(source[start:]), self.trend_level - 1,
+                formal_key_attacks=True, _position_offset=start)
+            self._turns = [*self._turns[:boundary], *source_tail]
+            if self._early_attack is None or self._early_attack >= boundary:
+                self._early_attack = next((position for position in range(boundary, len(self._turns))
+                    if _has_early_formal_attack((self._turns[position],))), None)
+        if self._early_attack is None:
+            previously_empty = self._upgrade is None and not self._candidates
+            self._source_keys = source_keys
+            self._candidate_keys = ()
+            self._candidates = []
+            self._regular = []
+            self._upgrade = None
+            self._events = []
+            self._ledger = None
+            self._base_points, self._base_token = (), None
+            self._source_token = source.token if type(source) is CertifiedSource else None
+            self._retain(appended=source_appended and previously_empty,
+                         added=[*source_tail, *source_keys[source_common:]])
+            return result
+        new_candidates = mutable_points(result.candidates[candidate_common:])
+        self._candidates = [*self._candidates[:candidate_common], *new_candidates]
+        regular_tail = [turn for candidate in new_candidates for turn in _source_turns([candidate], self.trend_level,
+            retain_geometry=True, accept_direction_facts=True)]
+        if candidates_appended:
+            self._regular.extend(regular_tail)
+        else:
+            # 一个候选可能被投影门禁过滤，不能用原候选数量切片解析后的 regular。
+            self._regular = [turn for candidate in self._candidates for turn in _source_turns([candidate],
+                self.trend_level, retain_geometry=True, accept_direction_facts=True)]
+        appended = (self._upgrade is not None and source_appended and candidates_appended
+                    and self._upgrade.append(self._turns[old_turn_count:], self._regular[old_regular_count:]))
+        if not appended:
+            self._events = []
+            self._upgrade = _TrendUpgradeState(self._turns, self._regular, trend_level=self.trend_level,
+                                               event_sink=self._events, strict_only=True)
+            self._ledger = None
+        assert self._upgrade is not None
+        self._upgrade.advance(_snapshot=False)
+        changed: list[object] = []
+        output = result
+        if self._events:
+            if self._ledger is None:
+                self._ledger = _JudgementLedger()
+                previous_candidates, previous_points = (), ()
+                candidate_common = point_common = 0
+            elif result._delta is not None and result._delta.parent is self._base_token:
+                point_common = result._delta.points_from
+            else:
+                point_common = 0
+                while (point_common < min(len(previous_points), len(result.points))
+                        and previous_points[point_common] is result.points[point_common]):
+                    point_common += 1
+            output, changed = self._ledger.reconcile_formal(previous_candidates, self._candidates, candidate_common,
+                previous_points, result.points, point_common, self._upgrade, self._events,
+                range(len(source)), self.trend_level)
+        retained_points = result.points[point_common:] if self._events else ()
+        self._base_points = result.points if self._events else ()
+        self._base_token = result._delta.token if result._delta is not None else None
+        self._source_token = source.token if type(source) is CertifiedSource else None
+        self._source_keys, self._candidate_keys = source_keys, candidate_keys
+        upgrade = self._upgrade
+        new_orders = upgrade.orders[old_order_count:] if appended else ()
+        self._retain(appended=appended, added=[*changed, *retained_points, *source_tail, *new_candidates, *regular_tail,
+            *source_keys[source_common:], *candidate_keys[candidate_common:], *self._events[old_event_count:],
+            *upgrade.updated_merged.values(), *upgrade.updated_merged, *upgrade.new_merged_keys, *new_orders,
+            *(upgrade.positions[order] for order in new_orders), *(upgrade.source_positions[order] for order in new_orders),
+            upgrade.processed_count, upgrade.regular_cursor, upgrade.prefix_known, upgrade.owned_direction,
+            upgrade.last_fall_high_position, upgrade.last_rise_low_position,
+            *(tree.size for tree in [*upgrade.keys_by_kind.values(), *upgrade.origins_by_kind.values()])])
+        return output
+
+
+def _has_early_formal_attack(turns: Sequence[_SourceTurn]) -> bool:
     for turn in turns:
         proof, completed = turn.source.get('upgrade_evidence'), turn.source.get('wave_completed_at')
         if (turn.source.get('wave_identity_state') == 'owned' and isinstance(proof, Mapping)
                 and proof.get('role') == 'endpoint'
                 and (completed is None or _later_moment(turn.available_at, cast(Moment, completed)) != turn.available_at)):
-            has_early_attack = True
-            break
-    if not has_early_attack:
+            return True
+    return False
+
+
+def _with_formal_key_breaks(
+    source: Sequence[Mapping[str, object]], result: TrendJudgement, *, asof: Moment | None = None,
+    _append_state: _FormalKeyBreakState | None = None,
+    _certified_keys: tuple[bytes, ...] | None = None,
+) -> TrendJudgement:
+    """在普通闭合判断之外复用严格突破状态，不让开放下级参与普通四点定义。"""
+    level = result.trend_level
+    if level == 1 or not any(point.get('upgrade_evidence') for point in source):
+        if _append_state is not None:
+            _append_state.clear()
+        return result
+    if _append_state is not None and asof is None:
+        reused = _append_state.calculate(source, result, _certified_keys=_certified_keys)
+        if reused is not None:
+            return reused
+    elif _append_state is not None:
+        _append_state.clear()
+    turns = _source_turns(mutable_points(source), level - 1, formal_key_attacks=True)
+    if asof is not None:
+        turns = [turn for turn in turns if _later_moment(turn.available_at, asof) == asof]
+    if not _has_early_formal_attack(turns):
         return result
     # 本级候选先恢复原始来源坐标；后续严格状态使用相同原位置，不重排知识日。
     candidates = mutable_points(result.candidates)
@@ -1237,7 +1827,7 @@ def judge_trend(
                                             _validated_turns=validated_turns, _owned_source=_owned_source)
         if _append_state is None:
             ordinary = trend_reversals(source, trend_level=trend_level)
-            upgrade_events: list[dict[str, object]] = []
+            upgrade_events: _EventRows = []
             merged = promote_trend_key_breaks(source, ordinary, trend_level=trend_level, event_sink=upgrade_events,
                 ordinary_trend_completion_enabled=ordinary_enabled)
         else:

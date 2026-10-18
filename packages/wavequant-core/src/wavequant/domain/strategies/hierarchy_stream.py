@@ -16,7 +16,7 @@ from ..market_structure.trend_lines import (
     _TrendCandidateCache, _TrendJudgementCache, _legacy_pending_bull_n, polyline_turns, qualify_trend_structure,
 )
 from ..market_structure.n_trend_confirmation import _NPermissionProofs, _reuse_n_permissions
-from ..market_structure.trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
+from ..market_structure.trend_market_index import _MarketPrefixIndex, _MarketRangeIndex, market_prefix
 from ..models.model import Bar
 from .hierarchical_entry import _HistoryPoint, _identity, _decline_starts
 
@@ -242,9 +242,11 @@ class HierarchyHistoryStream:
             self.points.clear()
             self._polyline_signature = None
             self._polyline_version = None
-            self.caches = {level: _TrendJudgementCache(tail_reuse=True) for level in (1, 2, 3)}
+            # 与日线流使用相同状态额度，避免长历史在分钟冷恢复时反复丢弃尾部状态。
+            self.caches = {level: _TrendJudgementCache(tail_reuse=True, state_memory_bytes=32 * 1024 * 1024)
+                           for level in (1, 2, 3)}
             self._candidate_caches = {level: _TrendCandidateCache() for level in (1, 2, 3)}
-        market = self.bars[:index + 1]
+        market = market_prefix(self.bars, index + 1)
         prefix = _MarketPrefixIndex(self.market_index, market) if self.market_index is not None else None
         source: Sequence[Mapping[str, object]] = self._freeze(
             polyline_turns(raw, source_path=f'lecture-{epoch}'), 0, index)

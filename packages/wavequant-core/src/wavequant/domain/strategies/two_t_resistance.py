@@ -6,7 +6,7 @@ from math import isfinite
 
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from ..models.model import Bar
-from ..market_state.volume_candle import is_volume_bearish
+from ..market_state.volume_candle import bearish_body_engulfs, is_volume_bearish
 from .event_history import EventHistoryStream
 
 
@@ -23,11 +23,9 @@ def _body_volume_reversal(
         return None
     bar, previous = bars[index], bars[index - 1]
     bearish = bars[bearish_index] if bearish_index is not None and 0 <= bearish_index < index else None
-    top, bottom = max(previous.open, previous.close), min(previous.open, previous.close)
     above_previous = previous.volume > 0 and bar.volume > previous.volume
     above_bearish = bearish is not None and bearish.volume > 0 and bar.volume > bearish.volume
-    if (not is_volume_bearish(bar, previous, bearish) or top == bottom or bar.open < top or bar.close > bottom
-            or (bar.open == top and bar.close == bottom)):
+    if not is_volume_bearish(bar, previous, bearish) or not bearish_body_engulfs(bar, previous):
         return None
     return dict(
         observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,

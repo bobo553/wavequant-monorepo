@@ -51,12 +51,14 @@ class _CompletionProjectionCache:
 
     def project(self, raw: Mapping[str, object],
                 validate: Callable[[Mapping[str, object]], dict[str, object] | None]) -> dict[str, object] | None:
+        from .owned_evidence import owned_signature
+
         if type(raw) is not dict:
             return validate(raw)
         slot = tuple(raw.get(field) for field in ('trend_level', 'source_path', 'index', 'ordinal', 'kind'))
         if any(type(value) not in (int, str, type(None)) for value in slot):
             return validate(raw)
-        signature = _geometry_signature(raw)
+        signature = owned_signature(raw)
         if signature is None:
             return validate(raw)
         previous = self._points.get(slot)

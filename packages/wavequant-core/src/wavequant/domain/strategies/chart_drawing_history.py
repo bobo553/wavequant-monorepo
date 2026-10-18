@@ -9,6 +9,7 @@ from typing import Self, cast
 
 from ..market_structure.trend_staging import TrendStageRows
 from ..market_structure.trend_lines import _OwnedPolylineTurns, polyline_high_low_points
+from ..market_structure.owned_evidence import CertifiedSource, current_evidence, owned_signature
 
 
 @dataclass(slots=True)
@@ -31,26 +32,51 @@ class _OwnedDrawingProjection:
         self._closed: list[Mapping[str, object]] = []
         self._points: list[dict[str, object]] = []
         self._active = _OwnedPolylineTurns()
+        self._version: CertifiedSource | None = None
 
     def project(self, frame: ChartDrawingFrame) -> list[dict[str, object]]:
         strokes = cast(list[Mapping[str, object]], frame.drawing['strokes'])
         active = strokes[-1:] if len(frame.raw) > 1 else []
         closed = strokes[:-1] if active else strokes
+        previous_closed = len(self._points)
+        same_closed = len(closed) == len(self._closed)
         if (len(closed) < len(self._closed)
                 or any(path is not previous for path, previous in zip(closed, self._closed))):
             self._closed.clear()
             self._points.clear()
+            self._version = None
+            previous_closed = 0
         for path in closed[len(self._closed):]:
             points = cast(Sequence[Mapping[str, object]], path['points'])
             caps = [point.get('source_path_end_index') for point in points]
             if not caps or any(type(cap) is not int or not 0 <= cap <= frame.epoch for cap in caps):
                 self._closed.clear()
                 self._points.clear()
+                self._version = None
                 return polyline_high_low_points(frame.drawing)
             self._points.extend(polyline_high_low_points(dict(strokes=[path])))
             self._closed.append(path)
         turns = self._active.project(frame.raw, source_path=f'lecture-{frame.epoch}')
-        return [*self._points, *turns]
+        points = [*self._points, *turns]
+        owner = current_evidence()
+        if owner is None:
+            self._version = None
+            return points
+        if self._version is not None and self._version.owner is not owner:
+            self._version = None
+        changed = (len(self._points) + self._active.changed_from if same_closed else previous_closed)
+        changed = min(changed, len(self._version), len(points)) if self._version is not None else 0
+        keys = tuple(owned_signature(point) for point in points[changed:])
+        if any(key is None for key in keys):
+            self._version = None
+            return points
+        version = CertifiedSource(points, (*(self._version.keys[:changed] if self._version is not None else ()),
+            *cast(tuple[bytes, ...], keys)), owner, self._version, _changed_from=changed)
+        if version.signature_bytes + len(version) * 256 > 8 * 1024 * 1024:
+            self._version = None
+            return points
+        self._version = version
+        return version
 
 
 def _change(value: object) -> dict[str, object]:

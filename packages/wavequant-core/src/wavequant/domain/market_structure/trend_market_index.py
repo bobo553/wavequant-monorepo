@@ -10,6 +10,19 @@ from zoneinfo import ZoneInfo
 
 from ..models.model import Bar
 from .hierarchical_confirmation import session_date
+from .trend_prefix_view import _PrefixView
+
+
+def market_prefix(bars: Sequence[Bar], stop: int) -> Sequence[Bar]:
+    """私有 frozen tuple 的窗口只移动边界；外部可变序列保留原切片。"""
+    if type(bars) is tuple:
+        return _PrefixView(bars, range(len(bars))[:stop])
+    return bars[:stop]
+
+
+def is_owned_market_prefix(bars: Sequence[Bar], owner: tuple[Bar, ...]) -> bool:
+    return (type(bars) is _PrefixView and bars.source is owner
+            and bars.positions == range(len(bars)) and len(bars) <= len(owner))
 
 
 class _MarketRangeIndex:
@@ -190,9 +203,11 @@ class _MarketRangeIndex:
 @dataclass(frozen=True, slots=True)
 class _MarketPrefixIndex:
     owner: _MarketRangeIndex
-    bars: tuple[Bar, ...]
+    bars: Sequence[Bar]
 
     def __post_init__(self) -> None:
+        if is_owned_market_prefix(self.bars, self.owner.bars):
+            return
         if (type(self.bars) is not tuple or len(self.bars) > len(self.owner.bars)
                 or any(bar is not self.owner.bars[index] for index, bar in enumerate(self.bars))):
             raise ValueError('a market index prefix must contain the original Bar objects')

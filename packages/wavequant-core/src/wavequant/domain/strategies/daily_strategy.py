@@ -131,8 +131,13 @@ def daily_signals(
             state.emitted_waves.clear()
             state.emitted_secondary_reclaims.clear()
             state.emitted_secondary_pullbacks.clear()
+            # 图表检查点持有已发布的因果历史；换交易窗口仍由其完整来源、
+            # 资格前缀及攻击证据校验续接，不能随窗口内形态缓存退回历史起点。
+            chart_checkpoint = cache.get('chart')
             cache.clear()
             cache['source_bars'] = tuple(market)
+            if chart_checkpoint is not None:
+                cache['chart'] = chart_checkpoint
         state.trading_active = eligible
         state.window_scopes = scopes
         if eligible:
@@ -171,10 +176,11 @@ def daily_signals(
             if stage is not None:
                 stage(f'同日联动：折线 → 一级 → 二级 → 三级 → B/S及账户 · '
                     f'已处理{index + 1}/{len(market)}个交易日 · 截至{market[index].timestamp.date().isoformat()} · '
-                    f'累计耗时：折线趋势 {market_seconds:.1f}秒，'
+                    f'累计耗时：行情计算 {market_seconds:.1f}秒，'
                     f'交易结构确认 {state.hierarchy_seconds:.1f}秒，'
                     f'买卖规则 {max(0.0, decision_seconds - state.hierarchy_seconds):.1f}秒，'
                     f'账户/分钟/快照 {account_seconds:.1f}秒；'
+                    f'{analysis.calculations.timing.progress_text() + "；" if analysis.calculations is not None else ""}'
                     f'最近一日 {monotonic() - last_finished:.3f}秒，'
                     f'平均每交易日 {(market_seconds + decision_seconds + account_seconds) / (index + 1):.3f}秒')
             if progress is not None:

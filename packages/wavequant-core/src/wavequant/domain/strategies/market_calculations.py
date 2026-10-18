@@ -5,6 +5,7 @@ from bisect import bisect_left
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
+from time import monotonic
 from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
@@ -13,10 +14,12 @@ if TYPE_CHECKING:
 
 from ..market_structure.polyline_lifecycle import polyline_lifecycle_rows
 from ..market_structure.trend_history_changes import TrendChangeRows
+from ..market_structure.trend_market_index import market_prefix
 from ..market_structure.trend_lifecycle import TrendLifecycle
 from ..market_structure.bull_alternation_confirmation import AlternationPolicy
 from ..models.model import Bar
 from .chart_drawing_history import ChartDrawingFrame, ChartDrawingHistory
+from .market_timing import MarketTiming
 from .trading_intervals import TradingEligibility, TradingInterval
 
 
@@ -86,6 +89,7 @@ class MarketCalculations:
         self._shared_buy_level: int | None = None
         self._shared_permission_days: dict[int, tuple[dict[str, object], ...]] = {}
         self._live_lifecycle_days: dict[int, TrendLifecycle] = {}
+        self.timing = MarketTiming()
 
     def _require_open(self) -> None:
         if self._frames.closed:
@@ -134,7 +138,7 @@ class MarketCalculations:
         from ..market_structure.trend_lines import attach_trend_permissions, high_low_points_from_strokes
 
         assert self._shared_hierarchy is not None
-        market = self._bars[:day.frame.index + 1]
+        market = market_prefix(self._bars, day.frame.index + 1)
         cache = self._permission_cache_for(market)
         n_enabled = self._shared_hierarchy.n_enabled
         hierarchy_only = (not n_enabled and self._shared_buy_level is not None
@@ -260,13 +264,17 @@ class MarketCalculations:
             tuple(event for level in (1, 2, 3) for event in self._daily_events.get(level, ())),
             (self._eligibility[1].active, self._eligibility[2].active, self._eligibility[3].active))
         if self._on_day is not None:
+            snapshot_started = monotonic()
             self._live_lifecycle_days[frame.index] = TrendLifecycle.combine(
                 tuple(self._lifecycles[number] for number in (0, 1, 2, 3) if number in self._lifecycles))
             for index in tuple(self._live_lifecycle_days):
                 if index < frame.index - 1:
                     del self._live_lifecycle_days[index]
+            self.timing.publication += monotonic() - snapshot_started
         if self._shared_hierarchy is not None:
+            permissions_started = monotonic()
             self._shared_hierarchy.advance_market_day(day, self._publish_shared_permissions(day))
+            self.timing.permissions += monotonic() - permissions_started
         if self._on_day is not None:
             self._on_day(day)
         self._published_index = frame.index

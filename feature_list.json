@@ -14,6 +14,12 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+                "2026-10-19继续按固化前缀＋变化尾部方案消除重复历史工作：检查点采用持久块树与压缩哈希树，旧版本分叉不枚举固化索引；折线投影、级间投影及升级许可传递来源版本和变化位置；正式突破接受内部证书并复用共用候选归并账本；几何标注、日期索引、发展极值、结构腿、历史别名和块写入按变化范围更新。业务B仍按各级/路径当前末跌高与末升低较新价格位置独立维护，确认时钟独立，资格/交易继续逐日演进。v153隔离历史缓存；结果和性能待提交验证，不能把存储快照当业务完成，也不能把旧冻结回放数字用作本轮证据。",
+                "2026-10-18固化前缀方案已实现待提交验证：各级/路径取当前末跌高和末升低中价格位置较新者，边界点留在变化区，确认时钟独立；真实旧key重新生效或早期来源修订显式失效。共享历史/变化尾部及版本索引进入普通与正式突破检查点，活检查点之外的索引版本回收；长期无新key仍可共享已消费记录。候选/几何变化位置接入内部点导出和持久历史块，旧日期不可被新标注改写，图表历史v152。test_trend_frozen_prefix.py仅编写未运行；完整差分、后段耗时、资源与类型构建待提交阶段，不宣称彻底解决或达到120秒。",
+                "2026-10-18全局性能续作已实现待验证：共用三级入口接入请求内有界只读证据池、生产者来源版本/最早变化位置、开放点数组32点持久分块树、升级证明复用及不可变行情前缀/惰性日期映射。历史读取仍恢复完整普通容器并保留共享别名；旧点/知识日修订、截短再增长、未知对象和预算拒绝保留冷路径。新增test_owned_evidence_history.py尚未运行；不得把先前冻结版本成绩当成本轮提速或等价证据，不宣称已彻底解决或达到120秒。",
+                "2026-10-18 sz.300562原任务闭合极值异常：新严格波用已消费来源区间极值替代直接attack覆盖，保留真实攻击证据/知识、三级多空共用及原递归校验，历史v150。现有日志确认异常但具体坏点未回放，真实根因对应和回测恢复待提交阶段验证；用户明确仅代码阅读修改。",
+                "2026-10-18新华传媒8/28与12/18放量阴线禁买：共用实体/量判断覆盖日线候选、资格跳空、N分钟及账户新买加仓；高开收阴不豁免。用户补充高开低走不买，分钟和无分钟开盘模拟显式使用full_session_candle_filter并记录15:00可知，不宣称早盘因果条件。全部股票与三级共用，v114；用户当棒报价与合成前棒回归已编写，真实历史及提交检查待验证。",
+                "2026-10-18性能修复必须保留完整证据与因果时钟：按收敛轮次隔离缓存、恢复同版本发布账本、六态先按索引定位尾部、交易窗口重开保留合法chart检查点。以同源完整账户和计算明细摘要验收，不能用短样本成绩宣称全部长样本达到120秒；详情见本轮verification。",
                 "2026-10-18 · MONOREPO-330 华瓷首五分钟涨停漏成交根因修复：intraday_entry.py提取_minute_buy_permissions供资格跳空与原N分钟入口共用，新入口累计截至决策棒的高低与量，并传递非一字事实、下一分钟原始开盘。账户仍决定是否启用假设、限制成交价与记录fill_assumption。共用函数保留原价格规则并一致尊重raw_is_st/raw_trading_active；不改资格、趋势、时钟、风控参数或前端。关闭选项、整段一字、无成交量、ST、停牌、超涨停仍拒绝，后续量价不能反向解锁之前决策。",
                 "2026-10-18 西点2026-07-16低开误买修复：全局突破当棒要求开盘不低于前收，并满足开盘严格高于昨日最高或现有中大阳标准（实体至少开盘2%、至少全天振幅一半）。折线末跌高的弱势影线突破不得永久解除买入限制；以后需当日再次严格突破且强势。日线正N及独立补充候选共用同一强势函数，仍保留原成交量、涨幅和资格门禁；一二三级和所有股票一致，不改几何、六态及交易区间。",
                 "2026-10-18用户收敛跳空买入规则：交易资格区间内，当日开盘严格高于昨日最高；有同源分钟数据时，已完成5分钟收盘高于开盘且此前未跌破开盘，用下一根分钟开盘执行；缺少分钟数据/覆盖时直接按当日开盘模拟，无需新N或另一次全天放量确认。用户明确接受资格确认日整天可买的回测假设，成交证据标记confirmation_day_full_session，不能宣传为开盘时已经知道资格。资格级别仍由原一/二/三级区间决定；沿用该区间低点止损、翻多高目标与账户资金/仓位/涨停/盈亏比约束。有分钟但不高开高走不退回开盘买。",
@@ -81,9 +87,110 @@
                 "前台与后台自选回测、对比方案和保存设置支持一级/二级/三级，缺省二级；第24步先按用户所选级别找到空翻多高点之后已确认空多交替结束至后续多翻空低点之后已确认多空交替结束的区间，再在区间内扫描B/S。多翻空出现不提前关闭区间，旧交易上下文不收缩全局区间；终点当日仅允许S，开放尾段保留至当前截止日，源失效单独记录。账户资金与持仓风控连续。",
                 "三级共用因果六态，交替确认后才能收盘再突破转多/转空；候选跳空/放量与确认分开，双向区间、失效、源修订、部分日线和检查点恢复均保留知识边界。",
                 "选股及首次打开自选股直接读取或更新回测，不等待全历史行情和完整趋势快照；结果文件失效自动重算一次，同参数运行任务复用，过期选股响应不得覆盖当前股票。",
-                "图表一级只消费折线来源变化，二/三级只消费直接下级变化；发展尾点同向移动不得触发相同已确认来源重算。折线尾部变更与趋势版本保留真实知识日、修订和路径关闭，逐日还原须与原全前缀基线一致；六态和交易价格条件继续按行情日期推进。"
+                "图表一级只消费折线来源变化，二/三级只消费直接下级变化；发展尾点同向移动不得触发相同已确认来源重算。折线尾部变更与趋势版本保留真实知识日、修订和路径关闭，逐日还原须与原全前缀基线一致；六态和交易价格条件继续按行情日期推进。",
+                "分钟仅用于实际买卖候选或执行需求；000678分钟核验复用因果日线历史，同输入完整账户与审计不变。"
             ],
             "verification": [
+                {
+                    "command": "2026-10-19 提交检查：pnpm --filter @wavequant/core python -m pytest tests/test_trend_delta_pipeline.py tests/test_trend_frozen_prefix.py tests/test_trend_append_state.py tests/test_trend_active_key_indices.py tests/test_owned_evidence_history.py tests/test_source_version_budget.py tests/test_trend_change_history.py tests/test_trend_history_performance_reuse.py tests/test_chart_staging_resources.py tests/test_backtest_history_reuse.py -q --tb=short",
+                    "status": "failed",
+                    "summary": "用户明确要求提交推送所有代码后执行：443 passed，21 failed，53.85秒。固化逐前缀六例的冷算结果比较通过但tail_restores仍为0；另有来源键身份复用失败、逐日source_strokes差异、生命周期检查点差异、旧prepare_trend_lines/json私有入口引用失效、资源spy不接受payload_cache_bytes、历史认证未复用与预期n_completed事件缺失。未通过调整业务逻辑或放宽断言消除失败，也未全部区分既有与新增原因。当前只能保存工作分支，禁止据此宣称等价、性能达标或合入main。"
+                },
+                {
+                    "command": "2026-10-19：packages/wavequant-core/.venv/Scripts/python.exe -m mypy src/wavequant/domain/market_structure/trend_frozen_state.py src/wavequant/domain/market_structure/trend_source_stream.py src/wavequant/domain/market_structure/owned_evidence.py src/wavequant/domain/market_structure/prepared_point_history.py --follow-imports=silent（core目录）",
+                    "status": "failed",
+                    "summary": "4个新增模块报告11处类型错误：联合节点未收窄、实例__init__调用、Pickler override返回注解、递归成本字段未注解、Iterator.close类型、bytes/str变量复用和Optional赋值。既定4文件typecheck通过不覆盖这些错误；修复和复核完成之前不合并main。"
+                },
+                {
+                    "command": "2026-10-19：pnpm --filter @wavequant/core typecheck; pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "项目既定4个源码文件strict检查通过，sdist和wheel构建成功。没有执行全仓检查、浏览器、完整长历史账户/计算明细差分或性能回放，不能据此视为功能验收完成。用户要求提交推送全部当前分支改动，保留MONOREPO-330为唯一in-progress，以未完成快照提交至feat-三级趋势统一；不修改main、不发布、不主动重启。"
+                },
+                {
+                    "command": "提交阶段：python -m pytest tests/test_trend_delta_pipeline.py tests/test_trend_frozen_prefix.py tests/test_trend_append_state.py tests/test_trend_active_key_indices.py tests/test_owned_evidence_history.py tests/test_source_version_budget.py tests/test_trend_change_history.py tests/test_trend_history_performance_reuse.py tests/test_chart_staging_resources.py tests/test_backtest_history_reuse.py -q；相关类型及打包；同冻结长日线、分钟和参数的完整输出差分及分段耗时/内存采样",
+                    "status": "not-run",
+                    "summary": "本轮仅阅读、编辑和维护记录。替换会在检查点分叉全拷贝的容器，接通内部分级来源增量，修复CertifiedSource被正式突破缓存拒绝，正式补算改为共用桶账本；标注/日期/发展尾部范围摘要、线段构建和历史块/别名增量接入。新增分叉禁止枚举、碰撞/顺序、旧版本隔离、来源签名工作量、日期迟到/撤回、正式证书入口、投影、长期发展尾部、许可撤回和别名/线段块回归，未运行。完整数组外壳物化、升级许可收敛账本遍历、真实早期修订和预算冷回退仍存在；不宣称全链路O(变化量)、结果已等价或已彻底解决。MONOREPO-330保持in-progress；未运行测试/探针/计时/类型/构建/Git检查/浏览器，未提交/合并/推送/主动重启。"
+                },
+                {
+                    "command": "提交阶段：python -m pytest tests/test_trend_frozen_prefix.py tests/test_trend_append_state.py tests/test_trend_active_key_indices.py tests/test_owned_evidence_history.py tests/test_source_version_budget.py tests/test_trend_change_history.py tests/test_trend_history_performance_reuse.py tests/test_chart_staging_resources.py tests/test_backtest_history_reuse.py -q；同冻结日线/分钟/参数的完整回测、calculation_rows/信号/账户/审计差分与等长区间耗时/字节及RSS采样；相关类型与打包检查",
+                    "status": "not-run",
+                    "summary": "用户已确认执行固化前缀方案，继续feat-三级趋势统一。现已写入共同关键位边界/独立知识时钟、共享历史和变化覆盖、普通与正式突破检查点、活版本回收、候选后缀账本、内部精确变化位置和历史块增量；v152隔离旧图表消费缓存。新增容器隔离/回收、三级逐前缀冷算、边界退回、长尾共享、旧历史和级联不变性用例但未运行。公开全数组、外部输入认证、正式升级合并及早期修订仍有成本，完整等价性和长历史性能待实际提交阶段验证；此前冻结成绩不能作为本轮证据。MONOREPO-330保持in-progress，保留既有失败和其他修改；未执行测试、类型、lint、格式、构建、Git检查、计时、探针或浏览器，未提交/合并/推送/主动重启。"
+                },
+                {
+                    "command": "python -m pytest tests/test_trend_level_upgrades.py tests/test_trend_phase_identity.py tests/test_trend_wave_completion.py tests/test_trend_body_reversal.py -q; sz.300562 original-parameter cached replay",
+                    "status": "not-run",
+                    "summary": "用户明确只读代码并修改，验证留到提交时。新增整波极值保留的合成边界回归未运行；静态确认新严格波直接attack覆盖的缺陷，尚未获取失败任务具体坏点，不能宣称300562已复现并恢复。现有失败任务1a45e27b-447e-4485-baf4-0a0f1f4bc7d7为本次异常证据。"
+                },
+                {
+                    "command": "python .codex-runtime/growth-fix-20261018/replay.py baseline; python .codex-runtime/growth-fix-20261018/replay.py publish; python .codex-runtime/growth-fix-20261018/compare.py publish",
+                    "status": "passed",
+                    "summary": "用户授权离线完整回放；同冻结000678的2112根日线/分钟/参数，928.775794→842.547982秒，generated/account全字段精确相同。passed只指冻结版本结果等价，不代表性能目标通过。后段211日仍121.45秒，1–2分钟目标未达成；未比较全部图表calculation_rows，未覆盖后续并行策略改动。完整证据见主目录.codex-runtime/growth-fix-20261018。"
+                },
+                {
+                    "command": "python -m pytest test_prepared_encoding.py tests/test_growth_incremental.py tests/test_trend_checkpoint_ledger.py plus formal_attack_reuse/source_version_budget/backtest_prefix_cost/trend_cascade_rounds/minute_prepared_history/trend_staging_payload_cache -q --tb=short -p no:cacheprovider",
+                    "status": "passed",
+                    "summary": "冻结publish-src定向141 passed/56.06秒；移除新增测试跨模块导入后相关三文件50 passed/4.28秒。检查点写时复制仍验证旧快照不可变、预算回退与冷重放等价；包含三层双向/时钟/早期修订。历史drawing/prepare资源两个失败在冻结原版同样复现，未掩盖。未运行全量、类型、构建或浏览器。5源码及3测试已写入当前分支并核对哈希；并行策略文件未覆盖。"
+                },
+                {
+                    "command": "continued end-to-end incremental performance acceptance",
+                    "status": "not-run",
+                    "summary": "尚未满足验收：来源完整认证、级联收敛、资格/六态完整前缀及开放历史行仍随历史增长；继续in-progress。不得把本轮局部提速解释为彻底解决或所有股票1–2分钟。"
+                },
+                {
+                    "command": "python -m pytest tests/test_volume_bearish_entry.py tests/test_breakout_candle_quality.py tests/test_qualified_gap_entry.py tests/test_close_entry.py -q; affected type/build checks; 600825 historical replay",
+                    "status": "not-run",
+                    "summary": "本轮开发不运行验证。新增全局放量阴线、反包、高开收阴禁买与全天形态筛选证据，测试前棒为合成边界；真实2023-08-28及2023-12-18端到端账户结果待提交时验证，不能沿用旧测试结论。"
+                },
+                {
+                    "command": "python .codex-runtime/profile_growth.py; python .codex-runtime/summarize_growth.py",
+                    "status": "passed",
+                    "summary": "用户要求先定位持续变慢根因。冻结当前分支源码和000678的2112根日线，直接运行daily_signals，不进入分钟或账户撮合。完整诊断耗时699.58秒；每200根耗时从2.33秒增至第1801–2000根的118.64秒。一级写入次数123→127，对应原始序列化字节11394450→366313180。根因是变化边界只进入部分核心判定，来源全文签名/前缀比较、完整派生标注、开放历史pickle压缩、账本检查点复制及计费仍重复处理累积前缀；资格链也有全前缀处理。已定位调用栈与增长数据，不能用翻向索引已存在推导整个链路已增量。采样含诊断开销，非多轮统计基准；不是本轮策略等价测试。未修改产品算法或重启服务，未提交推送。 “passed”仅指完成根因采样，不代表性能目标通过。"
+                },
+                {
+                    "command": "source SHA256 comparison; GET /api/backtest-jobs",
+                    "status": "passed",
+                    "summary": "2026-10-18用户明确授权落地修复并重启；六个源码文件和新增用例与离线验证候选一致。共享API自动重启，新监听进程27040，接口HTTP 200。未再次发起完整回测；离线差分证据见后续记录。"
+                },
+                {
+                    "command": "python diagnose.py; python diagnose_final32.py; python compare_frozen.py",
+                    "status": "passed",
+                    "summary": "同一冻结日线2112根、同一冻结分钟输入、同参数完整账户回放：原版2234.093秒，候选970.658秒；一次分钟核验1441.132秒降至170.929秒，图表恢复起点0改为2101。全部generated和account逐字段完全相同，含94信号、96订单、26笔交易、3708审计，期末权益102036.33297308997。此为共享机器负载下单次诊断测量，不是统计基准；未录制全部calculation_rows。与原服务缓存相比交易/净值一致，但冻结loader可用开始日期2026-08-11与服务2026-08-13不同，所以不声称服务缓存审计元信息完全相同；同输入原版/候选的完整审计一致。长样本仍超过120秒，MONOREPO-330保持in-progress。"
+                },
+                {
+                    "command": "python -m pytest test_minute_prepared.py -q --tb=short",
+                    "status": "passed",
+                    "summary": "用户已授权开发阶段离线验证。python -m pytest test_minute_prepared.py -q --tb=short：11 passed/40.62秒，覆盖N开关、交易窗口、当天修订、完整历史不匹配、稀疏核验、无交易禁止分钟、完整持仓日禁止分钟和进度转发；此前相关组合27 passed/6 subtests。python compare_frozen.py：generated/account严格比较均无差异。未运行浏览器、lint、类型或构建，待提交时验证；未提交、合并或推送。"
+                },
+                {
+                    "command": "frozen offline streaming_benchmark.py --sizes all --hash-only --timeout 1200 --compare",
+                    "status": "passed",
+                    "summary": "最终v6冻结源码0600828eca18bcf08a9a0ccf921c179da3c2e20406b3a128b90369adf894665b。同参数华瓷1174日：公平基线392.30秒/CPU381.83秒，最终117.74秒/CPU111.88秒，耗时下降70.0%，计算峰值RSS150.98MiB。calculation_rows、generated_research、result、minute_provenance四组完整摘要相同；策略参数与冻结日线、分钟数据相同。国芳2120日最终514.98秒/CPU493.81秒、计算峰值RSS304.95MiB，与v3完整643.77秒的四组摘要相同。原公平基线1200秒截止仍未完成，不能声称与原基线完成了全账户差分。其已提交388个chunk完整展开后共2353行、966546946字节与v3逐字节相同，变化日期也相同：折线至2022-05-23、一级至2024-10-25、二级至2023-12-15；未落盘尾部、三级、六态、资格和账户无旧基线证据。最终长样本仍超过120秒，不能宣传所有股票已达到1–2分钟。v6在2026-09-18的必要冷重放为14.39秒，v5同日43.77秒；保留原审计失效和刷新条件，读取优化减少这次停顿约67%，并未取消重放。最终日线主循环513.67秒，分段累计：折线0.1、投影4.9、趋势归并239.6、六态38.5、历史保存96.2、交易资格90.0秒；外围买卖规则35.0、账户/分钟/快照2.5秒。分段与总时长边界不同，不声称精确相加。 证据位于主工作目录.codex-runtime/trend-performance-20261018（忽略，不提交产物）。完整驱动为.codex-runtime/perf-prefix-20261017/streaming_benchmark.py，显式--source-root candidate-v6-src、--fixture、--minutes、--sizes all、--timeout 1200、--hash-only和--compare；Huaci比较baseline-common-huaci，Guofang比较candidate-v5-guofang。任务与源文件在运行前后冻结校验，禁止网络，保留计算步骤录制；wall/CPU仅计实际账户计算，随后完整导出用于精确校验，不计入性能成绩。一次采样测量不是多次统计分布。分钟输入采用已冻结样本和原缺失数据回退，两次保持一致；华瓷仅目标日48条分钟，不将同参数全账户回放说成全时段分钟数据完整覆盖。测量带0.05秒间隔栈采样。fair baseline是在d3c1eed归档上覆盖本轮开始前已存在的3个低开策略文件，确保策略版本一致。v3/v4/v5中间成绩与最终v6区分保留，不拿中间源码结果冒充最终成绩。"
+                },
+                {
+                    "command": "python -m pytest tests/test_trend_cascade_rounds.py tests/test_trend_closed_rounds.py tests/test_formal_attack_reuse.py tests/test_source_version_budget.py tests/test_lifecycle_polyline_tail.py tests/test_causal_projection_cost.py tests/test_trend_checkpoint_ledger.py tests/test_confirmation_scalar_reuse.py tests/test_confirmation_context_prefix_reuse.py tests/test_streaming_backtest.py tests/test_daily_chart_window_cache.py tests/test_trend_date_cursor.py -q --tb=short -p no:cacheprovider --basetemp=<runtime>/pytest-targeted-final-v6",
+                    "status": "passed",
+                    "summary": "用户明确授权本轮离线采样、定向回归和完整账户回测。python -m pytest tests/test_trend_cascade_rounds.py tests/test_trend_closed_rounds.py tests/test_formal_attack_reuse.py tests/test_source_version_budget.py tests/test_lifecycle_polyline_tail.py tests/test_causal_projection_cost.py tests/test_trend_checkpoint_ledger.py tests/test_confirmation_scalar_reuse.py tests/test_confirmation_context_prefix_reuse.py tests/test_streaming_backtest.py tests/test_daily_chart_window_cache.py tests/test_trend_date_cursor.py -q --tb=short -p no:cacheprovider --basetemp=<runtime>/pytest-targeted-final-v6：268 passed/20.50秒，日志targeted-final-v6.txt。最终v6重跑flow组合仍8 failed/65 passed，失败节点与flow-base.txt完全相同。更广历史回归有既有失败：flow组合8项、lifecycle相邻5项、wave_completion80项以及公共permission旧导入用例，均在独立冻结基线复现相同失败；不修改原断言、不宣称全套通过。本轮未运行lint、格式化、类型、构建、Harness或浏览器；提交门禁仍待实际提交时执行。"
+                },
+                {
+                    "command": "broader regression: compare current and independently frozen common baseline",
+                    "status": "failed",
+                    "summary": "flow组合8项、lifecycle相邻5项、wave_completion80项及旧公共permission导入用例均与冻结基线同样失败。未改旧断言，相关旧问题仍未解决；不宣称全套回归通过。"
+                },
+                {
+                    "command": "all-stock 120-second performance target",
+                    "status": "failed",
+                    "summary": "华瓷已完成117.74秒；国芳实测514.98秒仍超过120秒，目标未全部满足。根因是翻向索引外围仍有重复全量工作：同一缓存被收敛前后证明版本交替覆盖；尾部检查点恢复时丢失发布账本；六态先投影整段折线再截取窗口；交易窗口重开时cache.clear删除chart因果检查点。长样本2026-09-18观察到47.47秒单日旧历史重放；保留chart后实测该日仍需冷重放，不能据静态清理逻辑宣称已根治这次停顿。已按前三轮隔离判定状态，额外轮次只保留活动路径，闭合模板按轮次共享原8MiB预算；超额轮次及无法认证来源仍冷算。额外状态最终沿用单份32MiB预算，避免本轮中间版8MiB在858日后反复拒绝和清空；不是提高原策略阈值。恢复同版本账本及浅容器检查点；翻向内存先按保守上界计费，超额才完整核算，真实超额仍丢弃可选检查点或清空。二三级正式攻击复用完整认证前缀，修订/删除/过滤恢复/同K不同ordinal保留冷退化；六态二分定位后再解析尾部，未来知识时钟仍逐日过滤；资格复用不可变证明字节，保留原精确pickle键与每日资格判断。新交易窗口只保留经过原完整门禁校验的chart检查点，其余交易形态状态照旧清理。真实新窗口N审计前缀变更仍必须冷重放；新增请求内单行cursor只定位目标前驱、不解码gap或未来，复用同版本并绕过跨读取池重复整图计费，几何读取延迟到原刷新门禁内。新增折线构建、峰谷投影、趋势归并、六态、历史保存、交易资格分段计时。所有缓存只活在请求内；判定状态额度、formal载荷计费、source owner证书准入各自有边界，不代表整个对象图或进程总堆上限。未改策略条件、截断证据或减少历史输出。"
+                },
+                {
+                    "command": "complete original-baseline Guofang account comparison; commit lint/type/build gates",
+                    "status": "not-run",
+                    "summary": "原基线国芳1200秒超时无完整账户，只做已落盘前缀对照。类型/构建等留实际提交阶段；未运行浏览器、Harness或服务重启，未提交/合并/推送。"
+                },
+                {
+                    "command": "development edit: double-volume bullish close breakout low-open exception; checks pending",
+                    "status": "not-run",
+                    "summary": "按用户新口径增加低开豁免：当日量至少昨日正成交量2倍，满足共用中大阳（实体>=开盘2%且>=振幅一半），收盘严格超过昨日高点；折线门禁额外要求收盘严格超过已知末跌高。通过共用bullish_breakout_rejection覆盖折线及V3日线候选，不借候选N前低量基准豁免，不改资格、分钟跳空执行、涨停成交或账户风控。profile升v113，新增真实国芳4/3、倍量等值/不足、影线突破收盘未越位、非中大阳及折线门禁用例；保留西点7/16拒绝。开发阶段未运行验证，待提交时验证；未提交推送。"
+                },
                 {
                     "command": "chart viewport targeted node tests; Web lint, typecheck, build; git diff --check",
                     "status": "passed",

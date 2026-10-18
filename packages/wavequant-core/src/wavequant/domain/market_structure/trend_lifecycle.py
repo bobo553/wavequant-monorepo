@@ -10,7 +10,7 @@ from bisect import bisect_left
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from math import isfinite
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from ..models.model import Bar
 from .bull_alternation_confirmation import AlternationPolicy, confirm_bull_alternation
@@ -20,6 +20,9 @@ from .failed_breakout_exit import FailedBreakoutState, prepare_failed_breakout, 
 from .source_bear_exit import (
     SOURCE_BEAR_EVENT, _BearStructureCandidate, _prepare_bearish_structure, source_bearish_exits,
 )
+
+if TYPE_CHECKING:
+    from .trend_lines import _OwnedPolylineTurns
 
 
 LIFECYCLE_VERSION = 'six_state_extended_counter_v27'
@@ -313,6 +316,7 @@ class TrendLifecycle:
         self._checkpoint_seen: dict[
             tuple[int, str], tuple[frozenset[_Fact], tuple[tuple[object, ...], ...]]
         ] = {}
+        self._source_turns: '_OwnedPolylineTurns | None' = None
 
     @staticmethod
     def _needs_bull_confirmation(cycle: _Cycle) -> bool:
@@ -539,6 +543,7 @@ class TrendLifecycle:
         self._last_index = now
         if not _owned_structure:
             self._structure_facts.clear()
+            self._source_turns = None
         events: list[dict[str, object]] = []
         present: set[tuple[int, str]] = set()
         for level in levels:
@@ -591,12 +596,23 @@ class TrendLifecycle:
                 point_set = parsed_set if needs_points else frozenset()
                 source_points: tuple[_Pivot, ...] = ()
                 if needs_points and polyline and (polyline_path is None or path.endswith(polyline_path)):
-                    from .trend_lines import polyline_turns
-                    source_points = tuple(point for raw in polyline_turns(polyline, source_path=path)
+                    from .trend_lines import _OwnedPolylineTurns, polyline_turns
+
+                    start = (cycle.impulse.index if cycle is not None and cycle.up
+                             and cycle.impulse is not None else max(0, now - confirmation_policy.structure_window))
+                    if _owned_structure:
+                        if self._source_turns is None:
+                            self._source_turns = _OwnedPolylineTurns()
+                        # 仅受控尾部写入借用投影；先按翻向窗口定位，再解析知识时钟。
+                        # path 只参与来源匹配，不属于这里消费的价格/确认事实。
+                        turns = self._source_turns.project(polyline, source_path=polyline_path or '',
+                            _borrow_readonly=True, _start_index=start)
+                    else:
+                        turns = polyline_turns(polyline, source_path=path)
+                    source_points = tuple(point for raw in turns
                         if raw.get('source_kind') == raw.get('kind')
                         and (point := _pivot(raw, dates, now)) is not None
-                        and point.index >= (cycle.impulse.index if cycle is not None and cycle.up
-                            and cycle.impulse is not None else max(0, now - confirmation_policy.structure_window)))
+                        and point.index >= start)
                     prior_clocks = self._polyline_known.get(key, {})
                     source_points = tuple(replace(point, known=max(point.known,
                         prior_clocks.get((point.index, point.ordinal, point.kind, point.price), now)))

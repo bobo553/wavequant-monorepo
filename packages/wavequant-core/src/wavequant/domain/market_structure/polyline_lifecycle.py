@@ -210,7 +210,7 @@ class PolylineBuyGate:
         # 确认当日不能用此前未知的关键位解释当日影线；收盘后才能用于后续判断。
         rejection = 'polyline_last_fall_high_not_broken'
         if known_at < index and bar.high > key.value:
-            candle_rejection = bullish_breakout_rejection(bar, previous_bar)
+            candle_rejection = bullish_breakout_rejection(bar, previous_bar, breakout_level=key.value)
             if candle_rejection is None:
                 self.released.add(identity)
                 return

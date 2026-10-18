@@ -5,18 +5,19 @@
 """
 
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from bisect import bisect_left, bisect_right
 from copy import deepcopy
 from contextlib import nullcontext
 from dataclasses import dataclass
 from math import isfinite
 from io import BytesIO
+from hashlib import sha256
 import pickle
-import json
 from sys import getsizeof
 from uuid import uuid4
 from typing import Protocol, TypedDict, cast
+from types import NotImplementedType
 
 from ..models.model import Bar
 from .hierarchical_confirmation import session_date
@@ -25,13 +26,15 @@ from .n_trend_reversals import n_target_reversals
 from .n_trend_confirmation import _NPermissionProofs, _reuse_n_permissions
 from .trend_judgement import TrendJudgement, _TrendJudgementState, _owned_mutable_points, judge_trend, mutable_points
 from .trend_judgement import _OwnedPointAdmission, _SourceVersionOwner
-from .trend_judgement import _FrozenPoint
-from .trend_readonly_cache import _ReadonlySnapshotCache
-from .trend_evidence_reuse import _geometry_signature
-from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
+from .trend_judgement import _FrozenPoint, _JudgementDelta, _moment_key
+from .trend_readonly_cache import _ReadonlySnapshotCache, _builtin_size
+from .trend_evidence_reuse import _UncacheableGeometry
+from .owned_evidence import CertifiedSource, current_evidence, finite_evidence, owned_signature as _geometry_signature
+from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex, is_owned_market_prefix, market_prefix
+from .trend_prefix_view import _PrefixView
 from .trend_body_reversal import with_price_bodies
 from .trend_confirmation import _PrefixSessions
-from .trend_judgement import _with_formal_key_breaks
+from .trend_judgement import _FormalKeyBreakState, _with_formal_key_breaks
 from .trend_levels import formal_key_attack_points
 from .trend_levels import Moment, _completed_source_point, _later_moment, _strip_source_license, completed_source_points
 from .trend_landmarks import (
@@ -40,6 +43,8 @@ from .trend_landmarks import (
 from .trend_publication import confirmed_trend_legs, publish_uptrends
 from .trend_structure import _trend_level
 from .trend_options import ordinary_completion_enabled
+from .prepared_point_history import PreparedPointHistory, PreparedPointReference
+from .trend_source_stream import PromotionSource, SourceExtremes, SourceProjection
 
 STRUCTURAL_LEG_POLICY = 'high_low_point_frozen_wave_key_v119'
 STRUCTURAL_RULE = 'point_first_recursive_frozen_wave_key_v119'
@@ -66,9 +71,7 @@ class _FiniteEvidenceCertificates:
         if signature in self._points:
             return True
         # 必须先 exact builtin 认证，C JSON 不接触未知对象或其序列化钩子。
-        try:
-            json.dumps(value, allow_nan=False)
-        except (TypeError, ValueError):
+        if not finite_evidence(value):
             return False
         added = len(signature) + 128
         if self._bytes + added <= 8 * 1024 * 1024:
@@ -84,31 +87,132 @@ class _FiniteEvidenceCertificates:
 class _TrendJudgementCache:
     """单次阶段流每条路径仅保留最近来源及其不可变判定，不保存逐日末态。"""
 
-    def __init__(self, *, tail_reuse: bool = False, state_memory_bytes: int = 8 * 1024 * 1024) -> None:
+    def __init__(self, *, tail_reuse: bool = False, state_memory_bytes: int = 8 * 1024 * 1024,
+                 _max_paths: int | None = None) -> None:
         if type(state_memory_bytes) is not int or state_memory_bytes <= 0:
             raise ValueError('state_memory_bytes must be a positive integer')
+        if _max_paths is not None and (type(_max_paths) is not int or _max_paths <= 0):
+            raise ValueError('max_paths must be a positive integer')
         self._paths: dict[tuple[int, str], tuple[bytes, TrendJudgement]] = {}
         self._states: dict[tuple[int, str], _TrendJudgementState] = {}
+        self._formal_states: dict[tuple[int, str], _FormalKeyBreakState] = {}
         self._complete_cutoffs: dict[tuple[int, str], int] = {}
         self._finite = _FiniteEvidenceCertificates()
         self._tail_reuse = tail_reuse
         self._ordinary_completion = ordinary_completion_enabled()
         self._state_memory_bytes = state_memory_bytes
+        self._max_paths = _max_paths
+        self._path_order: dict[tuple[int, str], None] = {}
         self._source_owners: dict[tuple[int, str], _SourceVersionOwner] = {}
         self._version_results: dict[tuple[int, str], tuple[object, TrendJudgement]] = {}
+        self._annotations: dict[tuple[int, str], _GeometryAnnotations] = {}
+        self._inputs = _OwnedSourceInputs()
+        self._projection = SourceProjection()
+        self._promotion_source = PromotionSource()
+        self._exports: dict[tuple[int, str, str], tuple[object | None,
+            Sequence[Mapping[str, object]], list[dict[str, object]], list[int]]] = {}
+        self._export_hints: dict[int, tuple[list[dict[str, object]], list[dict[str, object]] | None, int]] = {}
+        self._export_deltas: dict[tuple[int, str, str], _JudgementDelta] = {}
+        self._source_arrays: dict[tuple[int, str], tuple[object, list[dict[str, object]]]] = {}
+        self._tail_extremes: dict[tuple[int, str], SourceExtremes] = {}
+        self._legs: dict[tuple[int, str], tuple[list[dict[str, object]], list[dict[str, object]]]] = {}
         self._point_exports = _ReadonlySnapshotCache[dict[str, object]](
             memory_bytes=16 * 1024 * 1024, max_entries=4096, evict=False)
 
-    def export_owned(self, points: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+    def bounded_sibling(self, *, state_memory_bytes: int = 8 * 1024 * 1024) -> '_TrendJudgementCache':
+        """同一请求的收敛轮次独立保留一个活动路径，共享有界只读导出。
+
+        state_memory_bytes 是单路径状态预算，不能冒充整个 Python 堆上限。
+        旧闭合路径由 prepared 缓存服务；额外轮次不再累积所有历史路径。
+        """
+        sibling = _TrendJudgementCache(tail_reuse=self._tail_reuse,
+            state_memory_bytes=state_memory_bytes, _max_paths=1)
+        sibling._finite, sibling._point_exports = self._finite, self._point_exports
+        return sibling
+
+    def _forget_path(self, key: tuple[int, str]) -> None:
+        self._paths.pop(key, None)
+        self._states.pop(key, None)
+        self._formal_states.pop(key, None)
+        self._complete_cutoffs.pop(key, None)
+        self._source_owners.pop(key, None)
+        self._version_results.pop(key, None)
+        self._path_order.pop(key, None)
+        self._annotations.pop(key, None)
+        self._source_arrays.pop(key, None)
+        self._tail_extremes.pop(key, None)
+        self._legs.pop(key, None)
+        for channel in tuple(self._exports):
+            if channel[:2] == key:
+                removed = self._exports.pop(channel)
+                self._export_deltas.pop(channel, None)
+                self._export_hints.pop(id(removed[2]), None)
+
+    def clear(self) -> None:
+        """释放路径版本及检查点，不清除其他轮次仍借用的只读导出。"""
+        self._paths.clear()
+        self._states.clear()
+        self._formal_states.clear()
+        self._complete_cutoffs.clear()
+        self._source_owners.clear()
+        self._version_results.clear()
+        self._annotations.clear()
+        self._path_order.clear()
+        self._inputs.clear()
+        self._projection.clear()
+        self._promotion_source.clear()
+        self._exports.clear()
+        self._export_hints.clear()
+        self._export_deltas.clear()
+        self._source_arrays.clear()
+        self._tail_extremes.clear()
+        self._legs.clear()
+
+    def structural_legs(self, points: list[dict[str, object]], key: tuple[int, str],
+                        paths: '_ClosedPreparedPaths | None' = None) -> list[dict[str, object]]:
+        previous = self._legs.get(key)
+        hint = self._export_hints.get(id(points))
+        start = (max(0, hint[2] - 1) if previous is not None and hint is not None
+                 and hint[0] is points and hint[1] is previous[0] else 0)
+        result = [*(previous[1][:start] if previous is not None else ()), *_structural_legs(points[start:])]
+        if len(result) * 2048 <= 8 * 1024 * 1024:
+            self._legs[key] = points, result
+            if paths is not None:
+                paths.trust_points(result, previous[1] if previous is not None else None, start)
+        else:
+            self._legs.pop(key, None)
+        return result
+
+    def export_owned(self, points: Sequence[Mapping[str, object]], *,
+                     channel: tuple[int, str, str] | None = None,
+                     delta: _JudgementDelta | None = None) -> list[dict[str, object]]:
         """内部标注只改点外壳；完整冻结证明按内容解码一次，只读借用。
 
         公共 mutable_points 仍逐次独立导出，未知对象不进入共享边界。
         拒绝超额新项，避免顺序历史扫描造成 LRU 全量抖动。
         """
-        result: list[dict[str, object]] = []
-        for point in points:
+        previous = self._exports.get(channel) if channel is not None else None
+        start = 0
+        if previous is not None:
+            if delta is not None and previous[0] is delta.token:
+                start = len(points)
+            elif delta is not None and previous[0] is delta.parent:
+                start = delta.points_from if channel is not None and channel[2] == 'points' else delta.candidates_from
+            elif (delta is not None and channel is not None and delta.parent is not None
+                    and (saved_delta := self._export_deltas.get(channel)) is not None
+                    and saved_delta.parent is delta.parent):
+                start = (min(delta.points_from, saved_delta.points_from) if channel[2] == 'points' else
+                         min(delta.candidates_from, saved_delta.candidates_from))
+            else:
+                while start < min(len(previous[1]), len(points)) and previous[1][start] is points[start]:
+                    start += 1
+        result = previous[2][:start] if previous is not None else []
+        costs = previous[3][:start + 1] if previous is not None else [0]
+        reusable = True
+        for point in points[start:]:
             if type(point) is not _FrozenPoint or point.json_template is None:
                 result.extend(mutable_points((point,)))
+                reusable = False
                 continue
             template = point.json_template
             cached = self._point_exports.get(template, None)
@@ -117,8 +221,34 @@ class _TrendJudgementCache:
                 self._point_exports.put(template, None, exported)
             else:
                 exported = cached[0]
+            evidence = current_evidence()
+            if evidence is not None:
+                # 缓存拥有的导出模板从不写入；标注只修改下面的顶层副本。
+                evidence.publish(exported)
             result.append(dict(exported))
+            costs.append(costs[-1] + len(template.encode('utf-8')) * 4 + 2048)
+        if channel is not None:
+            if previous is not None:
+                self._export_hints.pop(id(previous[2]), None)
+            # 只保留当前路径版本；拒绝超预算新版本，完整导出仍按原协议返回。
+            retained = sum(value[3][-1] for key, value in self._exports.items() if key != channel)
+            if reusable and retained + costs[-1] <= 16 * 1024 * 1024:
+                self._exports[channel] = delta.token if delta is not None else None, points, result, costs
+                if delta is not None:
+                    self._export_deltas[channel] = delta
+                else:
+                    self._export_deltas.pop(channel, None)
+                self._export_hints[id(result)] = result, previous[2] if previous is not None else None, start
+            else:
+                self._exports.pop(channel, None)
+                self._export_deltas.pop(channel, None)
         return result
+
+    def remember_export(self, points: list[dict[str, object]], paths: '_ClosedPreparedPaths',
+                        *, changed_from: int | None = None) -> None:
+        hint = self._export_hints.get(id(points))
+        if hint is not None and hint[0] is points:
+            paths.trust_points(points, hint[1], min(hint[2], changed_from) if changed_from is not None else hint[2])
 
     def remember_source_flip(self, trend_level: int, path: str) -> None:
         """下级翻向首次可知时保存本级状态，不截断仍被关键位引用的前史。"""
@@ -127,11 +257,23 @@ class _TrendJudgementCache:
             state.remember_source_flip()
 
     def judge(self, source: Sequence[Mapping[str, object]], *, path: str, trend_level: int,
-              asof: Moment | None = None, _owned_source: bool = False) -> TrendJudgement:
+              asof: Moment | None = None, _owned_source: bool = False,
+              _closed_source: bool = False) -> TrendJudgement:
         if self._ordinary_completion != ordinary_completion_enabled():
             # 同一实例切换规则时连来源版本、增量状态和翻向检查点一起失效。
-            self.__init__(tail_reuse=self._tail_reuse, state_memory_bytes=self._state_memory_bytes)
+            self.clear()
+            self._ordinary_completion = ordinary_completion_enabled()
         _trend_level(trend_level)
+        if self._max_paths is not None:
+            key = trend_level, path
+            if _closed_source:
+                # 闭合版本未命中时仍按原规则冷算，不能逐日淘汰另一条活动路径。
+                self._forget_path(key)
+                return judge_trend(source, trend_level=trend_level, asof=asof, _owned_source=_owned_source)
+            self._path_order.pop(key, None)
+            while len(self._path_order) >= self._max_paths:
+                self._forget_path(next(iter(self._path_order)))
+            self._path_order[key] = None
         if _owned_source and asof is None:
             key = trend_level, path
             owner = self._source_owners.get(key)
@@ -149,7 +291,13 @@ class _TrendJudgementCache:
                             _tail_reuse=self._tail_reuse, memory_bytes=self._state_memory_bytes)
                     ordinary, merged, events = state.calculate(version.source, version.positions,
                         _validated_turns=version.turns, _certified_standard=True, _source_revision=version)
-                    result = _with_formal_key_breaks(source, state.finalize(ordinary, merged, events, version.positions))
+                    formal = self._formal_states.get(key)
+                    if trend_level > 1 and formal is None:
+                        formal = self._formal_states[key] = _FormalKeyBreakState(trend_level,
+                            memory_bytes=self._state_memory_bytes)
+                    result = _with_formal_key_breaks(source,
+                        state.finalize(ordinary, merged, events, version.positions), _append_state=formal,
+                        _certified_keys=owner.keys)
                     self._version_results[key] = version.token, result
                     self._paths.pop(key, None)
                     self._complete_cutoffs.pop(key, None)
@@ -158,11 +306,13 @@ class _TrendJudgementCache:
                 self._source_owners.pop(key, None)
                 self._version_results.pop(key, None)
                 self._states.pop(key, None)
+                self._formal_states.pop(key, None)
                 self._paths.pop(key, None)
                 self._complete_cutoffs.pop(key, None)
                 raise
         self._source_owners.pop((trend_level, path), None)
         self._version_results.pop((trend_level, path), None)
+        self._formal_states.pop((trend_level, path), None)
         # 原判断会物化全部来源；忽略点上的未知审计值也必须保留其旧复制行为。
         # 先认证整个容器，不能在未知 Mapping／state 上额外调用 get 或相等比较。
         key = trend_level, path
@@ -243,6 +393,36 @@ class _PreparedPathReference:
     index: int
 
 
+class _PreparedPickler(pickle.Pickler):
+    def persistent_id(self, value: object) -> int | None:
+        owner = current_evidence()
+        return owner.reference(value) if owner is not None else None
+
+    def reducer_override(self, value: object) -> tuple[object, ...] | NotImplementedType:
+        if type(value) is _PreparedPathReference:
+            return _PreparedPathReference, (value.owner, value.index)
+        if value is _PreparedPathReference:
+            return NotImplemented
+        if type(value) is PreparedPointReference:
+            return PreparedPointReference, (value.owner, value.root, value.capacity, value.length)
+        if value is PreparedPointReference:
+            return NotImplemented
+        raise _UncacheableGeometry
+
+
+def _prepared_payload(prepared: dict[str, object]) -> bytes | None:
+    """同一份内部编码同时用于版本比较和历史写入，未知审计值仍冷回退。"""
+    output = BytesIO()
+    try:
+        owner = current_evidence()
+        if owner is not None:
+            return owner.dumps(prepared, writer=lambda stream: _PreparedPickler(stream, protocol=5))
+        _PreparedPickler(output, protocol=5).dump(prepared)
+    except _UncacheableGeometry:
+        return None
+    return output.getvalue()
+
+
 @dataclass(slots=True)
 class _ClosedPreparedPath:
     signature: bytes
@@ -256,22 +436,30 @@ class _ClosedPreparedPath:
 class _ClosedPreparedPaths:
     """阶段流内共享已闭合证据；历史行只保存其首次闭合后才有的引用。
 
-    同请求共享有界的只读字节模板，读取各日期时独立物化证据容器。旧行
-    在闭合之前仍保存自己的证据，不能被后来的闭合模板替换。
+    同请求的前三轮各保存首次闭合版本，共享一个字节预算；后续真实修订
+    不累积版本。读取各日期时独立物化，旧行引用不能被新证明版本替换。
     """
 
     _fields = ('source_strokes', 'candidate_strokes', 'structure_strokes', 'strokes', 'developing_strokes')
 
-    def __init__(self, *, memory_bytes: int = 8 * 1024 * 1024) -> None:
+    def __init__(self, *, memory_bytes: int = 8 * 1024 * 1024, _owned_history: bool = False) -> None:
         if type(memory_bytes) is not int or memory_bytes <= 0:
             raise ValueError('closed path memory_bytes must be a positive integer')
         self._owner = uuid4().hex
+        self._evidence = current_evidence()
+        self._point_history = (PreparedPointHistory(self._evidence)
+            if _owned_history and self._evidence is not None else None)
+        self._pending_read: tuple[dict[int, object], dict[int, object]] | None = None
         self._memory_bytes = memory_bytes
         self._memory_used = 0
-        self._paths: dict[tuple[int, str, str], _ClosedPreparedPath] = {}
+        self._paths: dict[tuple[int, str, str, int], _ClosedPreparedPath] = {}
         self._objects: list[bytes] = []
         self._references: dict[int, _PreparedPathReference] = {}
         self._pending: list[dict[str, object]] = []
+        self._point_hints: dict[int, tuple[list[dict[str, object]], list[dict[str, object]] | None, int]] = {}
+        self._alias_arrays: dict[tuple[str, str], list[dict[str, object]]] = {}
+        self._alias_counts: Counter[int] = Counter()
+        self._unpublished_aliases: dict[int, dict[str, object]] = {}
         self._finite = _FiniteEvidenceCertificates()
         self._decoded = _ReadonlySnapshotCache[dict[str, object]](
             memory_bytes=8 * 1024 * 1024, max_entries=2048, evict=False)
@@ -279,11 +467,19 @@ class _ClosedPreparedPaths:
     def begin_row(self) -> None:
         self._references.clear()
         self._pending.clear()
+        self._point_hints.clear()
+
+    def trust_points(self, points: list[dict[str, object]], previous: list[dict[str, object]] | None,
+                     changed_from: int) -> None:
+        """只有内部只读几何生产者可以提交精确的变化后缀。"""
+        if self._point_history is not None:
+            self._point_hints[id(points)] = points, previous, changed_from
 
     def _restore(self, index: int, *, borrow: bool = False) -> dict[str, object]:
         # 公共读取独立解码；私有阶段只读借用已认证的不可变版本。
         cached = self._decoded.get(index, None) if borrow else None
-        value: object = cached[0] if cached is not None else pickle.loads(self._objects[index])
+        value: object = (cached[0] if cached is not None else
+            self._evidence.loads(self._objects[index]) if self._evidence is not None else pickle.loads(self._objects[index]))
         if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
             raise ValueError('a closed path template requires a mapping')
         result = cast(dict[str, object], value)
@@ -301,8 +497,10 @@ class _ClosedPreparedPaths:
                 self._restore(saved.developing, borrow=borrow) if saved.developing is not None else None)
 
     def get(self, level: int, path: str, source: Sequence[Mapping[str, object]],
-            cutoff: int | None, *, symbol: str = 'STRUCTURE') -> _ClosedPreparedPath | None:
-        previous = self._paths.get((level, path, symbol))
+            cutoff: int | None, *, symbol: str = 'STRUCTURE', _round_slot: int | None = 0) -> _ClosedPreparedPath | None:
+        if type(_round_slot) is not int or _round_slot not in (0, 1, 2):
+            return None
+        previous = self._paths.get((level, path, symbol, _round_slot))
         if previous is None or previous.cutoff != cutoff:
             return None
         signature = _geometry_signature(source)
@@ -312,9 +510,12 @@ class _ClosedPreparedPaths:
     def put(self, level: int, path: str, source: Sequence[Mapping[str, object]], cutoff: int,
             source_stroke: dict[str, object], candidate: dict[str, object],
             stroke: dict[str, object] | None, developing: dict[str, object] | None,
-            *, symbol: str = 'STRUCTURE') -> None:
-        # 每路径只intern首次闭合版本；后来真实修订独立写spool，不累计版本。
-        if (level, path, symbol) in self._paths:
+            *, symbol: str = 'STRUCTURE', _round_slot: int | None = 0) -> None:
+        # 每轮只 intern 首次闭合版本；超额轮次及后续修订独立写 spool。
+        if type(_round_slot) is not int or _round_slot not in (0, 1, 2):
+            return
+        key = level, path, symbol, _round_slot
+        if key in self._paths:
             return
         signature = _geometry_signature(source)
         if signature is None or not self._finite.known_points(source):
@@ -341,21 +542,99 @@ class _ClosedPreparedPaths:
             indices.append(index)
         saved = _ClosedPreparedPath(signature, cutoff, cast(int, indices[0]), cast(int, indices[1]),
                                     indices[2], indices[3])
-        self._paths[(level, path, symbol)] = saved
+        self._paths[key] = saved
         self._memory_used += added
 
     def encode(self, prepared: dict[str, object]) -> dict[str, object]:
         result = dict(prepared)
+        # 同一当前 stroke 或数组的重复字段必须复用同一个传输引用。
+        packed: dict[int, object] = {}
+        sequences: dict[int, PreparedPointReference] = {}
+        if self._point_history is not None and self._evidence is not None:
+            arrays: dict[tuple[str, str], list[dict[str, object]]] = {}
+            seen_arrays: set[int] = set()
+            for field in self._fields:
+                for stroke in cast(list[dict[str, object]], prepared[field]):
+                    for column in ('points', 'structural_legs'):
+                        points = stroke.get(column)
+                        if type(points) is list and id(points) not in seen_arrays:
+                            channel = field if column == 'points' else field + '.' + column
+                            arrays[channel, str(stroke.get('id', ''))] = cast(list[dict[str, object]], points)
+                            seen_arrays.add(id(points))
+            touched: dict[int, dict[str, object]] = {}
+            for channel in self._alias_arrays.keys() | arrays.keys():
+                old, new = self._alias_arrays.get(channel, []), arrays.get(channel, [])
+                if old is new:
+                    continue
+                hint = self._point_hints.get(id(new))
+                start = hint[2] if hint is not None and hint[0] is new and hint[1] is old else 0
+                for point in old[start:]:
+                    identity = id(point)
+                    self._alias_counts[identity] -= 1
+                    if self._alias_counts[identity] == 0:
+                        del self._alias_counts[identity]
+                for point in new[start:]:
+                    identity = id(point)
+                    self._alias_counts[identity] += 1
+                    touched[identity] = point
+            for identity, point in touched.items():
+                if self._alias_counts[identity] > 1:
+                    self._evidence.publish(point)
+                    if self._evidence.reference(point) is None:
+                        self._unpublished_aliases[identity] = point
+            for identity in tuple(self._unpublished_aliases):
+                if self._alias_counts[identity] < 2 or self._evidence.reference(self._unpublished_aliases[identity]) is not None:
+                    del self._unpublished_aliases[identity]
+            self._alias_arrays = arrays
+            can_pack = bool(arrays) and not self._unpublished_aliases
+            # 仅缓存当前行的别名索引，超额时回退完整行，不能持有无界历史版本。
+            if sum(len(points) for points in arrays.values()) * 128 > self._memory_bytes:
+                self._alias_arrays = {}
+                self._alias_counts.clear()
+                self._unpublished_aliases.clear()
+                can_pack = False
+        else:
+            can_pack = False
         for field in self._fields:
             strokes = cast(list[dict[str, object]], prepared[field])
-            result[field] = [self._references.get(id(stroke), stroke) for stroke in strokes]
+            values: list[object] = []
+            for stroke in strokes:
+                previous = packed.get(id(stroke))
+                if previous is not None:
+                    values.append(previous)
+                    continue
+                reference = self._references.get(id(stroke))
+                value: object = reference if reference is not None else stroke
+                if reference is None and can_pack and self._point_history is not None:
+                    for column in ('points', 'structural_legs'):
+                        points = stroke.get(column)
+                        if type(points) is not list or len(points) < 64:
+                            continue
+                        sequence = sequences.get(id(points))
+                        if sequence is None:
+                            hint = self._point_hints.get(id(points))
+                            channel = field if column == 'points' else field + '.' + column
+                            sequence = self._point_history.pack((channel, str(stroke.get('id', ''))),
+                                cast(list[dict[str, object]], points),
+                                _owned_previous=hint[1] if hint is not None and hint[0] is points else None,
+                                _changed_from=hint[2] if hint is not None and hint[0] is points else None)
+                        if sequence is not None:
+                            sequences[id(points)] = sequence
+                            value = dict(cast(Mapping[str, object], value), **{column: sequence})
+                packed[id(stroke)] = value
+                values.append(value)
+            result[field] = values
         self.begin_row()
         return result
 
     def decode(self, value: object) -> dict[str, object]:
+        pending, self._pending_read = self._pending_read, None
         if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
             raise ValueError('a prepared stage requires a mapping')
         result = dict(cast(Mapping[str, object], value))
+        sequences: dict[int, list[dict[str, object]]] = {}
+        references, copies = pending if pending is not None else ({}, {})
+        strokes: dict[int, Mapping[str, object]] = {}
         for field in self._fields:
             rows = result.get(field)
             if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)):
@@ -367,12 +646,53 @@ class _ClosedPreparedPaths:
                         raise ValueError('prepared path references must belong to this stage')
                     restored.append(self._restore(row.index))
                 elif isinstance(row, Mapping) and all(isinstance(key, str) for key in row):
-                    restored.append(cast(Mapping[str, object], row))
+                    current = strokes.get(id(row))
+                    if current is None:
+                        current = cast(Mapping[str, object], row)
+                        for column in ('points', 'structural_legs'):
+                            points = row.get(column)
+                            if type(points) is PreparedPointReference:
+                                if self._point_history is None:
+                                    raise ValueError('point references require their owned history')
+                                if id(points) not in sequences:
+                                    sequences[id(points)] = self._point_history.unpack(points,
+                                        references=references, copies=copies)
+                                current = dict(current, **{column: sequences[id(points)]})
+                        strokes[id(row)] = current
+                    restored.append(current)
                 else:
                     raise ValueError('a prepared stage requires path mappings')
             result[field] = restored
         self.begin_row()
         return result
+
+    def load_encoded(self, payload: bytes) -> object:
+        references: dict[int, object] = {}
+        copies: dict[int, object] = {}
+        value = (self._evidence.loads(payload, references=references, copies=copies)
+                 if self._evidence is not None else pickle.loads(payload))
+        self._pending_read = references, copies
+        return value
+
+    def close(self) -> None:
+        if self._point_history is not None:
+            self._point_history.close()
+        self._decoded.clear()
+        self._objects.clear()
+        self._paths.clear()
+        self._memory_used = 0
+        self._finite = _FiniteEvidenceCertificates()
+        self._pending_read = None
+        self._alias_arrays.clear()
+        self._alias_counts.clear()
+        self._unpublished_aliases.clear()
+        self.begin_row()
+
+    def __enter__(self) -> '_ClosedPreparedPaths':
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
 
 
 @dataclass(slots=True)
@@ -497,6 +817,8 @@ class _TrendPermissionCache:
         return signature
 
     def covers(self, bars: Sequence[Bar]) -> bool:
+        if bars is self._bars or is_owned_market_prefix(bars, self._bars):
+            return True
         return len(bars) <= len(self._bars) and all(bar is self._bars[index] for index, bar in enumerate(bars))
 
     def prefix(self, bars: Sequence[Bar]) -> _VerifiedMarketPrefix | None:
@@ -561,6 +883,50 @@ class _TrendPermissionCache:
 class _DefinitionAnnotator(Protocol):
     def __call__(self, points: list[dict[str, object]], symbol: str, dates: Mapping[object, int],
                  *, trend_level: int) -> None: ...
+
+
+class _PermissionDates(Mapping[object, int]):
+    """同一行情窗口的日期与整数知识时钟，不逐日分配全窗字典。"""
+
+    def __init__(self, sessions: Mapping[str, int], length: int) -> None:
+        self.sessions, self.length = sessions, length
+
+    def __getitem__(self, key: object) -> int:
+        if type(key) in (int, float, bool):
+            number = cast(int | float, key)
+            if 0 <= number < self.length and int(number) == number:
+                return int(number)
+        if isinstance(key, str):
+            return self.sessions[key]
+        raise KeyError(key)
+
+    def __iter__(self) -> Iterator[object]:
+        yield from self.sessions
+        yield from range(self.length)
+
+    def __len__(self) -> int:
+        return len(self.sessions) + self.length
+
+
+class _DateOverrides(Mapping[object, int]):
+    """局部整数时钟补充不复制基础日期表，也不改写其他段的上下文。"""
+
+    def __init__(self, base: Mapping[object, int]) -> None:
+        self.base = base
+        self.overrides: dict[object, int] = {}
+
+    def __getitem__(self, key: object) -> int:
+        return self.overrides[key] if key in self.overrides else self.base[key]
+
+    def __setitem__(self, key: object, value: int) -> None:
+        self.overrides[key] = value
+
+    def __iter__(self) -> Iterator[object]:
+        yield from self.base
+        yield from (key for key in self.overrides if key not in self.base)
+
+    def __len__(self) -> int:
+        return len(self.base) + sum(key not in self.base for key in self.overrides)
 
 
 class _OwnedCandidateOptions(TypedDict, total=False):
@@ -717,8 +1083,12 @@ class _OwnedPolylineTurns:
         self._compact: list[dict[str, object]] = []
         self._turn_positions: list[int] = []
         self._turns: list[dict[str, object]] = []
+        self._turn_indices: list[int] = []
+        self._ordered_turn_count = 0
+        self.changed_from = 0
 
-    def project(self, points: Sequence[Mapping[str, object]], *, source_path: str) -> list[dict[str, object]]:
+    def project(self, points: Sequence[Mapping[str, object]], *, source_path: str,
+                _borrow_readonly: bool = False, _start_index: int | None = None) -> list[dict[str, object]]:
         retained = (self._path == source_path and len(points) >= self._length
             and (self._length < 2 or points[self._length - 2] is self._anchor))
         start = self._tail_start if retained else 0
@@ -728,8 +1098,11 @@ class _OwnedPolylineTurns:
         # 原最后保留点的右邻改变；它之前的转折保持原对象与知识日期。
         affected = self._positions[-1] if self._positions else 0
         turn_keep = bisect_left(self._turn_positions, affected) if retained else 0
+        self.changed_from = turn_keep
         del self._turn_positions[turn_keep:]
         del self._turns[turn_keep:]
+        del self._turn_indices[turn_keep:]
+        self._ordered_turn_count = min(self._ordered_turn_count, turn_keep)
         suffix = points[start:]
         counts = Counter(str(point['time']) for point in suffix)
         ranks: Counter[str] = Counter()
@@ -744,15 +1117,26 @@ class _OwnedPolylineTurns:
             left, point, right = self._compact[position-1:position+2]
             turn = _polyline_turn(left, point, right, source_path=source_path)
             if turn is not None:
+                index = turn.get('index')
+                if (self._ordered_turn_count == len(self._turns) and type(index) is int
+                        and (not self._turn_indices or self._turn_indices[-1] <= index)):
+                    self._ordered_turn_count += 1
                 self._turn_positions.append(self._positions[position])
                 self._turns.append(turn)
+                self._turn_indices.append(index if type(index) is int else 0)
         self._path, self._length = source_path, len(points)
         self._anchor = points[-2] if len(points) > 1 else None
         tail_start = len(points) - 1
         while tail_start > 0 and str(points[tail_start-1]['time']) == str(points[-1]['time']):
             tail_start -= 1
         self._tail_start = max(0, tail_start)
-        return list(self._turns)
+        # 非标准时钟及乱序输入仍交付原顺序，消费者继续执行原过滤语义。
+        # 同日 ordinal 不影响按交易日划定的闭区间，重复 index 必须全部保留。
+        if _start_index is not None and self._ordered_turn_count == len(self._turns):
+            start_turn = bisect_left(self._turn_indices, _start_index)
+            if start_turn:
+                return self._turns[start_turn:]
+        return self._turns if _borrow_readonly else list(self._turns)
 
 
 def _source_groups(points: Sequence[Mapping[str, object]]) -> dict[str, list[dict[str, object]]]:
@@ -767,6 +1151,106 @@ def _source_groups(points: Sequence[Mapping[str, object]]) -> dict[str, list[dic
             raise ValueError('source_path must be a nonempty string')
         groups.setdefault(path, []).append(dict(point))
     return groups
+
+
+class _OwnedSourceInputs:
+    """来源及行情实体只在版本变化时转换；保留每路径的最早变化位置。"""
+
+    def __init__(self) -> None:
+        self._entries: dict[tuple[str, int], tuple[bytes, object, dict[str, object]]] = {}
+        self._groups: dict[str, CertifiedSource] = {}
+        self._slots: list[tuple[str, int]] = []
+        self._costs: list[int] = [0]
+        self._token: object | None = None
+        self._bars: tuple[Bar, ...] | None = None
+        self._bar_count = 0
+        self._unpriced: int | None = None
+
+    def clear(self) -> None:
+        self._entries.clear()
+        self._groups.clear()
+        self._slots.clear()
+        self._costs = [0]
+        self._token = None
+        self._bars = None
+        self._bar_count = 0
+        self._unpriced = None
+
+    def prepare(self, points: Sequence[Mapping[str, object]], bars: Sequence[Bar]) -> dict[str, list[dict[str, object]]]:
+        owner = current_evidence()
+        if owner is None:
+            return _source_groups(with_price_bodies(points, bars) if bars else points)
+        market = (bars if type(bars) is tuple else bars.source if type(bars) is _PrefixView
+                  and type(bars.source) is tuple and is_owned_market_prefix(bars, bars.source) else None)
+        certified = type(points) is CertifiedSource and points.owner is owner
+        start = (len(points) if certified and points.token is self._token else
+                 points.changed_from if certified and points.parent is self._token else 0)
+        if market is None or market is not self._bars or len(bars) < self._bar_count:
+            start = 0
+        if self._unpriced is not None and len(bars) != self._bar_count:
+            start = min(start, self._unpriced)
+        start = min(start, len(self._slots))
+        cuts: dict[str, int] = {}
+        old_entries = {}
+        for slot in self._slots[start:]:
+            path, position = slot
+            cuts[path] = min(cuts.get(path, position), position)
+            old_entries[slot] = self._entries.pop(slot)
+        del self._slots[start:]
+        del self._costs[start + 1:]
+        groups = {path: list(group[:cuts.get(path, len(group))]) for path, group in self._groups.items()
+                  if cuts.get(path, len(group))}
+        keys = {path: list(self._groups[path].keys[:len(group)]) for path, group in groups.items()}
+        kept = {path: len(group) for path, group in groups.items()}
+        entries = self._entries
+        entry_bytes = self._costs[-1]
+        if self._unpriced is not None and start <= self._unpriced:
+            self._unpriced = None
+        for position, point in enumerate(points[start:], start):
+            path = point.get('source_path', 'path-0')
+            if type(path) is not str or not path:
+                self.clear()
+                return _source_groups(with_price_bodies(points, bars) if bars else points)
+            signature = points.keys[position] if certified else _geometry_signature(point)
+            if signature is None or not owner.finite(point):
+                self.clear()
+                return _source_groups(with_price_bodies(points, bars) if bars else points)
+            group = groups.setdefault(path, [])
+            slot = path, len(group)
+            index = point.get('index')
+            body = bars[index] if type(index) is int and 0 <= index < len(bars) else None
+            if type(index) is int and index >= len(bars) and self._unpriced is None:
+                self._unpriced = position
+            previous = old_entries.get(slot)
+            if previous is not None and previous[0] == signature and previous[1] is body:
+                transformed = previous[2]
+            else:
+                transformed = with_price_bodies((point,), bars)[0] if bars else dict(point)
+                owner.publish(transformed)
+            key = _geometry_signature(transformed)
+            if key is None:
+                self.clear()
+                return _source_groups(with_price_bodies(points, bars) if bars else points)
+            group.append(transformed)
+            keys.setdefault(path, []).append(key)
+            entries[slot] = signature, body, transformed
+            entry_bytes += len(signature) + len(key) + 512
+            self._slots.append(slot)
+            self._costs.append(entry_bytes)
+            if entry_bytes > 8 * 1024 * 1024:
+                # 超额来源继续完整校验，不为输入适配器保留另一棵无界证据图。
+                self.clear()
+                return _source_groups(with_price_bodies(points, bars) if bars else points)
+        versions: dict[str, CertifiedSource] = {}
+        for path, group in groups.items():
+            certificates = tuple(keys[path])
+            previous_group = self._groups.get(path)
+            versions[path] = (previous_group if previous_group is not None and previous_group.keys == certificates else
+                CertifiedSource(group, certificates, owner, previous_group, _changed_from=kept.get(path, 0)))
+        self._entries, self._groups = entries, versions
+        self._token = points.token if certified else None
+        self._bars, self._bar_count = market, len(bars)
+        return dict(versions)
 
 
 def _definition_dates(points: Sequence[Mapping[str, object]]) -> dict[object, int]:
@@ -829,11 +1313,150 @@ def _restore_annotation_references(
     return value
 
 
+def _annotation_signature(shadow: Mapping[str, object]) -> bytes | None:
+    signature = _geometry_signature(shadow)
+    return sha256(signature).digest() if signature is not None else None
+
+
+class _GeometryAnnotations:
+    """保存一条活动路径的标注前缀；早期修订使该点及其后全部失效。"""
+
+    def __init__(self) -> None:
+        self.keys: list[tuple[bytes | None, object, int]] = []
+        self.shadows: list[dict[str, object]] = []
+        self.checkpoints: list[object] = []
+        self.fields: list[dict[str, object]] = []
+        self.costs: list[int] = [0]
+        self.context: tuple[str, int] | None = None
+        self.points: list[dict[str, object]] | None = None
+        self.originals: dict[tuple[int, int], Mapping[str, object]] = {}
+        self.own_points: dict[tuple[int, int], dict[str, object]] = {}
+        self.clock = _DefinitionClock()
+
+    def clear(self, *, _clock: bool = True) -> None:
+        self.keys.clear()
+        self.shadows.clear()
+        self.checkpoints.clear()
+        self.fields.clear()
+        self.costs = [0]
+        self.context = None
+        self.points = None
+        self.originals.clear()
+        self.own_points.clear()
+        if _clock:
+            self.clock.clear()
+
+
+class _DefinitionClock(Mapping[object, int]):
+    """维护来源坐标的展示时钟；追加只更新日期索引后缀，历史修订明确失效。
+
+    每个知识日保留来源和输出的最后贡献，优先级与原先两数组拼接完全相同。
+    日期索引仍取所有价格位置的前缀最大值，不用行情日历替换原定义。
+    """
+
+    def __init__(self) -> None:
+        self.clear()
+
+    def clear(self) -> None:
+        self.inputs: list[Sequence[Mapping[str, object]]] = [(), ()]
+        self.token: object | None = None
+        self.counts: Counter[tuple[str, int]] = Counter()
+        self.orders: list[tuple[str, int]] = []
+        self.maximum: list[int] = []
+        self.known: list[dict[object, list[tuple[int, int]]]] = [{}, {}]
+
+    @staticmethod
+    def visible(point: Mapping[str, object], channel: int) -> bool:
+        return channel == 1 or (point.get('state') not in ('seed', 'developing')
+                               and point.get('display_only') is not True)
+
+    def update(self, source: Sequence[Mapping[str, object]], points: list[dict[str, object]],
+               point_start: int | None) -> str | None:
+        certified = type(source) is CertifiedSource and source.owner is current_evidence()
+        source_start = (len(source) if certified and source.token is self.token else
+            source.changed_from if certified and source.parent is self.token else 0)
+        starts = (source_start, point_start if point_start is not None else 0)
+        changed: Counter[tuple[str, int]] = Counter()
+        affected: str | None = None
+        for channel, (new, start) in enumerate(zip((source, points), starts)):
+            old = self.inputs[channel]
+            start = min(start, len(old), len(new))
+            for position in range(len(old) - 1, start - 1, -1):
+                point = old[position]
+                if not self.visible(point, channel):
+                    continue
+                moment = point['available_at']
+                records = self.known[channel][moment]
+                records.pop()
+                if not records:
+                    del self.known[channel][moment]
+                changed[str(point['time']), cast(int, point['index'])] -= 1
+            for position in range(start, len(new)):
+                point = new[position]
+                if not self.visible(point, channel):
+                    continue
+                moment = point['available_at']
+                self.known[channel].setdefault(moment, []).append((position, cast(int, point['index'])))
+                changed[str(point['time']), cast(int, point['index'])] += 1
+            self.inputs[channel] = new
+        earliest = len(self.orders)
+        for order, count in changed.items():
+            if not count:
+                continue
+            previous = self.counts[order]
+            current = previous + count
+            if current < 0:
+                raise ValueError('definition clock source revision must match its prior version')
+            if current:
+                self.counts[order] = current
+            else:
+                del self.counts[order]
+            if bool(previous) == bool(current):
+                continue
+            position = bisect_left(self.orders, order)
+            earliest = min(earliest, position)
+            if current:
+                self.orders.insert(position, order)
+            else:
+                del self.orders[position]
+            affected = order[0] if affected is None else min(affected, order[0])
+        del self.maximum[earliest:]
+        for _, index in self.orders[earliest:]:
+            self.maximum.append(max(index, self.maximum[-1] if self.maximum else index))
+        self.token = source.token if certified else None
+        return affected
+
+    def __getitem__(self, moment: object) -> int:
+        records = self.known[1].get(moment) or self.known[0].get(moment)
+        if not records:
+            raise KeyError(moment)
+        if type(moment) is int:
+            return moment
+        if isinstance(moment, str) and moment.isdecimal():
+            return int(moment)
+        if not isinstance(moment, str):
+            raise ValueError('a confirmed point requires a knowledge index or date')
+        # 第二字段为浮点正无穷只参与比较，绝不写入价格或日期结果。
+        position = bisect_right(self.orders, (moment, float('inf'))) - 1
+        return max(records[-1][1], self.maximum[position] if position >= 0 else 0)
+
+    def __iter__(self) -> Iterator[object]:
+        yield from self.known[0]
+        yield from (moment for moment in self.known[1] if moment not in self.known[0])
+
+    def __len__(self) -> int:
+        return len(self.known[0].keys() | self.known[1].keys())
+
+
+
 def _annotate_geometry(
     points: list[dict[str, object]], symbol: str, dates: Mapping[object, int], *, trend_level: int,
     _reference_originals: Mapping[tuple[int, int], Mapping[str, object]] | None = None,
     _reference_labels: Mapping[tuple[int, int], str] | None = None,
-) -> None:
+    _cache: _GeometryAnnotations | None = None,
+    _reuse_points: bool = False,
+    _changed_from: int | None = None,
+) -> int:
     """为几何附加定义注释，原事实时钟与完整上下文时钟各自保留。
 
     按价格顺序选出的节点可能先有较晚可知的 H，再有较早可知的 L。
@@ -847,10 +1470,21 @@ def _annotate_geometry(
     倒填事件，也不能把累计上下文日期冒充下一层来源的自身可知日。
     坐标顺序、交替种类及非零腿仍由原标注器严格校验，不放宽其公共契约。
     """
-    shadows: list[dict[str, object]] = []
-    originals: dict[tuple[int, int], Mapping[str, object]] = {}
-    context_known: Moment | None = None
-    for point in points:
+    cache = _cache if _reference_originals is None and _reference_labels is None else None
+    if cache is not None and cache.context != (symbol, trend_level):
+        cache.clear(_clock=dates is not cache.clock)
+        cache.context = symbol, trend_level
+    trusted = min(_changed_from, len(points), len(cache.shadows)) if (
+        _changed_from is not None and cache is not None and cache.context == (symbol, trend_level)) else 0
+    shadows: list[dict[str, object]] = cache.shadows[:trusted] if cache is not None else []
+    originals: dict[tuple[int, int], Mapping[str, object]] = cache.originals if cache is not None else {}
+    if cache is not None:
+        for old in cache.shadows[trusted:]:
+            order = cast(int, old['index']), cast(int, old['ordinal'])
+            originals.pop(order, None)
+            cache.own_points.pop(order, None)
+    context_known: Moment | None = cast(Moment, shadows[-1]['available_at']) if shadows else None
+    for point in points[trusted:]:
         own_known = cast(Moment, point['available_at'])
         context_known = own_known if context_known is None else _later_moment(context_known, own_known)
         shadow = dict({field: point[field] for field in ('index', 'ordinal', 'time', 'kind', 'value')},
@@ -864,15 +1498,66 @@ def _annotate_geometry(
             ) if field in point})
         shadows.append(shadow)
         originals[(cast(int, point['index']), cast(int, point['ordinal']))] = point
-    annotate = cast(_DefinitionAnnotator, _annotate)
-    annotate(shadows, symbol, dates, trend_level=trend_level)
-    # 必须等整个影子序列通过原校验才回写，失败时原几何和所有证明保持原样。
-    for point, shadow in zip(points, shadows):
+    keys = ([*cache.keys[:trusted], *((_annotation_signature(shadow), point['available_at'], dates[shadow['available_at']])
+            for point, shadow in zip(points[trusted:], shadows[trusted:]))] if cache is not None else [])
+    prefix = trusted
+    if cache is not None:
+        if any(key[0] is None for key in keys[trusted:]):
+            cache.clear(_clock=False)
+            return _annotate_geometry(points, symbol, dates, trend_level=trend_level, _reuse_points=_reuse_points)
+        else:
+            while prefix < min(len(keys), len(cache.keys)) and keys[prefix] == cache.keys[prefix]:
+                prefix += 1
+        shadows[:prefix] = cache.shadows[:prefix]
+        checkpoints = cache.checkpoints[:prefix]
+        try:
+            # 普通缓存匹配仍可能延长前缀；只把新增匹配段纳入查找表。
+            for shadow in shadows[trusted:prefix]:
+                cache.own_points[cast(int, shadow['index']), cast(int, shadow['ordinal'])] = shadow
+            _annotate(shadows, symbol, dates, trend_level=trend_level, _checkpoints=checkpoints,
+                      _own_points=cache.own_points)
+        except Exception:
+            cache.clear()
+            raise
+    else:
+        annotate = cast(_DefinitionAnnotator, _annotate)
+        annotate(shadows, symbol, dates, trend_level=trend_level)
+        checkpoints = []
+    # 整个后缀通过原校验之后才回写；历史派生字段也只在内部只读借用。
+    fields = cache.fields[:prefix] if cache is not None else []
+    for position in range(trusted, prefix):
+        point, annotation = points[position], fields[position]
+        if any(point.get(field) is not value for field, value in annotation.items()):
+            if _reuse_points:
+                point = points[position] = dict(point)
+            point.update(annotation)
+    for position in range(prefix, len(points)):
+        point, shadow = dict(points[position]) if _reuse_points else points[position], shadows[position]
+        points[position] = point
+        annotation: dict[str, object] = {}
         for field in _GEOMETRY_ANNOTATION_FIELDS:
             if field in shadow:
-                point[field] = _restore_annotation_references(shadow[field],
-                    originals if _reference_originals is None else _reference_originals,
-                    labels=_reference_labels)
+                value = _restore_annotation_references(shadow[field],
+                    originals if _reference_originals is None else _reference_originals, labels=_reference_labels)
+                point[field] = annotation[field] = value
+        fields.append(annotation)
+    if cache is not None:
+        # 通过校验的前缀只参与后续标注上下文，不再作为待校验攻击点。
+        # 不保留整棵祖先证明；当前输入仍由全文证书检查，修订会重放后缀。
+        for shadow in shadows[prefix:]:
+            shadow.pop('upgrade_evidence', None)
+        costs = cache.costs[:prefix+1]
+        for key, shadow, annotation in zip(keys[prefix:], shadows[prefix:], fields[prefix:]):
+            size = _builtin_size((key, shadow, annotation), 8 * 1024 * 1024 - costs[-1] - 4096)
+            if size is None:
+                cache.clear()
+                break
+            costs.append(costs[-1] + size + 4096)
+        else:
+            cache.keys, cache.shadows, cache.checkpoints = keys, shadows, checkpoints
+            cache.fields, cache.costs, cache.context = fields, costs, (symbol, trend_level)
+            cache.points = points
+    return prefix
 
 
 def _permission_leg(left: Mapping[str, object], right: Mapping[str, object]) -> bool:
@@ -1004,7 +1689,7 @@ def _annotate_permissions(
                         point.pop(field, None)
             return
     derived: list[tuple[dict[str, object], dict[str, object]]] = []
-    context_dates = dict(dates)
+    context_dates = _DateOverrides(dates)
     for run, origin in runs:
         contexts = [*([origin] if origin is not None else []), *run]
         # 同一坐标可以有公开几何事实与稍晚成立的本波起点证明。引用属于
@@ -1169,7 +1854,7 @@ def _structural_legs(points: Sequence[Mapping[str, object]]) -> list[dict[str, o
 
 
 def _structural_tail(source: Sequence[Mapping[str, object]], points: Sequence[Mapping[str, object]],
-                     *, path: str, trend_level: int) -> dict[str, object] | None:
+                     *, path: str, trend_level: int, _index: SourceExtremes | None = None) -> dict[str, object] | None:
     """已知下级极值延伸当前结构尾部，未闭合端点只供显示，不能递归升级。
 
     各级完全共用同一个极值选择，不等待行情证书。相等极值取早；两个端点
@@ -1180,17 +1865,19 @@ def _structural_tail(source: Sequence[Mapping[str, object]], points: Sequence[Ma
     anchor = points[-1]
     kind = 'H' if anchor['kind'] == 'L' else 'L'
     sign = 1 if kind == 'H' else -1
-    eligible = [point for point in source if point.get('state') not in ('seed', 'developing')
+    indexed, extreme = _index.extreme(source, anchor) if _index is not None else (False, None)
+    eligible = [] if indexed else [point for point in source if point.get('state') not in ('seed', 'developing')
         and point.get('display_only') is not True and point['kind'] == kind
         and (cast(int, point['index']), cast(int, point.get('ordinal', 0))) >
             (cast(int, anchor['index']), cast(int, anchor.get('ordinal', 0)))
         and sign * (cast(float, point['value']) - cast(float, anchor['value'])) > 0]
-    if not eligible:
+    if not indexed and eligible:
+        extreme = eligible[0]
+        for point in eligible[1:]:
+            if sign * (cast(float, point['value']) - cast(float, extreme['value'])) > 0:
+                extreme = point
+    if extreme is None:
         return None
-    extreme = eligible[0]
-    for point in eligible[1:]:
-        if sign * (cast(float, point['value']) - cast(float, extreme['value'])) > 0:
-            extreme = point
     endpoint = dict(_strip_source_license(extreme), trend_level=trend_level, source_level=trend_level-1,
         state='developing', display_only=True, label=f'{kind}·发展', source_reversal_available_at=extreme['available_at'],
         available_at=_later_moment(cast(Moment, anchor['available_at']), cast(Moment, extreme['available_at'])))
@@ -1208,6 +1895,8 @@ def prepare_trend_lines(
     _judgement_cache: _TrendJudgementCache | None = None,
     _closed_paths: _ClosedPreparedPaths | None = None,
     _owned_source: bool = False,
+    _closed_slot: int | None = 0,
+    _versioned_source: bool = False,
 ) -> dict[str, object]:
     """完成本级全部路径的结构判断，结果可直接供下一级准备阶段读取。
 
@@ -1225,7 +1914,9 @@ def prepare_trend_lines(
     工作集只能读取，公共可变导出仍在导出边界逐点独立物化。
     """
     source_level = _trend_level(trend_level)
-    groups = _source_groups(with_price_bodies(high_low_points, bars) if bars else high_low_points)
+    groups = (_judgement_cache._inputs.prepare(high_low_points, bars)
+        if _versioned_source and _judgement_cache is not None else
+        _source_groups(with_price_bodies(high_low_points, bars) if bars else high_low_points))
     strokes: list[dict[str, object]] = []
     developing_strokes: list[dict[str, object]] = []
     candidates: list[dict[str, object]] = []
@@ -1243,7 +1934,7 @@ def prepare_trend_lines(
                 or (cutoff is not None and (type(cutoff) is not int or cutoff < 0))):
             raise ValueError('source_path_end_index must be a nonnegative index')
         path_market_end_indices[path] = cutoff
-        cached_path = (_closed_paths.get(trend_level, path, raw_source, cutoff, symbol=symbol)
+        cached_path = (_closed_paths.get(trend_level, path, raw_source, cutoff, symbol=symbol, _round_slot=_closed_slot)
                        if _closed_paths is not None else None)
         if cached_path is not None and _closed_paths is not None:
             cached_source, cached_candidate, cached_stroke, cached_developing = _closed_paths.restore(
@@ -1258,18 +1949,33 @@ def prepare_trend_lines(
         # 历史阶段可移交其独立恢复的私有来源；其他调用保持公共深复制。
         source = (raw_source if _owned_source and _judgement_cache is not None else
                   _owned_mutable_points(raw_source, _owned_source))
-        source_stroke: dict[str, object] = dict(id=path, points=source)
+        source_points = list(source) if type(source) is CertifiedSource else source
+        if type(source) is CertifiedSource and _judgement_cache is not None and _closed_paths is not None:
+            source_key = trend_level, path
+            previous_source = _judgement_cache._source_arrays.get(source_key)
+            previous_points = previous_source[1] if previous_source is not None else None
+            changed_from = (len(source) if previous_source is not None and previous_source[0] is source.token else
+                source.changed_from if previous_source is not None and previous_source[0] is source.parent else 0)
+            _closed_paths.trust_points(source_points, previous_points, changed_from)
+            _judgement_cache._source_arrays[source_key] = source.token, source_points
+        source_stroke: dict[str, object] = dict(id=path, points=source_points)
         source_strokes.append(source_stroke)
         if _owned_source:
             judgement = (judge_trend(source, trend_level=trend_level, _owned_source=True) if _judgement_cache is None else
-                         _judgement_cache.judge(source, path=path, trend_level=trend_level, _owned_source=True))
+                         _judgement_cache.judge(source, path=path, trend_level=trend_level,
+                                               _owned_source=True, _closed_source=cutoff is not None))
         else:
             judgement = (judge_trend(source, trend_level=trend_level) if _judgement_cache is None else
-                         _judgement_cache.judge(source, path=path, trend_level=trend_level))
-        points = (_judgement_cache.export_owned(judgement.points)
+                         _judgement_cache.judge(source, path=path, trend_level=trend_level,
+                                               _closed_source=cutoff is not None))
+        points = (_judgement_cache.export_owned(judgement.points,
+            channel=(trend_level, path, 'points'), delta=judgement._delta)
             if _owned_source and _judgement_cache is not None else mutable_points(judgement.points))
-        events = (_judgement_cache.export_owned(judgement.candidates)
+        events = (_judgement_cache.export_owned(judgement.candidates,
+            channel=(trend_level, path, 'candidates'), delta=judgement._delta)
             if _owned_source and _judgement_cache is not None else mutable_points(judgement.candidates))
+        if _owned_source and _judgement_cache is not None and _closed_paths is not None:
+            _judgement_cache.remember_export(events, _closed_paths)
         identifier = f'{kind}-{path}'
         candidate: dict[str, object] = dict(id=identifier, source_path=path, trend_level=trend_level, points=events)
         candidates.append(candidate)
@@ -1278,25 +1984,66 @@ def prepare_trend_lines(
         if not points:
             if _closed_paths is not None and cutoff is not None:
                 _closed_paths.put(trend_level, path, raw_source, cutoff, source_stroke, candidate, None, None,
-                                  symbol=symbol)
+                                  symbol=symbol, _round_slot=_closed_slot)
+                if _judgement_cache is not None:
+                    _judgement_cache._forget_path((trend_level, path))
             continue
-        definition_source = [point for point in source if point.get('state') not in ('seed', 'developing')
-                             and point.get('display_only') is not True]
         # 股票名只标识公共定义的结构上下文；确认日始终由来源点映射，
         # 不能因为资格阶段的真实行情日历更密而提前或推迟几何事实。
-        _annotate_geometry(points, symbol, _definition_dates([*definition_source, *points]), trend_level=trend_level)
-        tail = _structural_tail(source, points, path=path, trend_level=trend_level)
+        annotation_cache = None
+        if _owned_source and _judgement_cache is not None and cutoff is None:
+            annotation_key = trend_level, path
+            for old_key in tuple(_judgement_cache._annotations):
+                if old_key[0] == trend_level and old_key != annotation_key:
+                    del _judgement_cache._annotations[old_key]
+            annotation_cache = _judgement_cache._annotations.setdefault(annotation_key, _GeometryAnnotations())
+            if (len(source) + len(points)) * 512 > 8 * 1024 * 1024:
+                annotation_cache.clear()
+                annotation_cache = None
+        annotation_start = None
+        if annotation_cache is not None and _judgement_cache is not None:
+            if annotation_cache.context != (symbol, trend_level):
+                annotation_cache.clear()
+                annotation_cache.context = symbol, trend_level
+            hint = _judgement_cache._export_hints.get(id(points))
+            if hint is not None and hint[0] is points and hint[1] is annotation_cache.points:
+                annotation_start = hint[2]
+            affected = annotation_cache.clock.update(source, points, annotation_start)
+            if annotation_start is not None and affected is not None:
+                # 新价格坐标可能改变旧知识日的展示映射，重放受影响时钟后缀。
+                annotation_start = min(annotation_start, bisect_left(annotation_cache.shadows,
+                    _moment_key(affected), key=lambda point: _moment_key(cast(Moment, point['available_at']))))
+            definition_dates: Mapping[object, int] = annotation_cache.clock
+        else:
+            definition_source = [point for point in source if point.get('state') not in ('seed', 'developing')
+                                 and point.get('display_only') is not True]
+            definition_dates = _definition_dates([*definition_source, *points])
+        annotation_prefix = _annotate_geometry(points, symbol, definition_dates,
+            trend_level=trend_level, _cache=annotation_cache,
+            _reuse_points=_owned_source and _judgement_cache is not None, _changed_from=annotation_start)
+        if _owned_source and _judgement_cache is not None:
+            hint = _judgement_cache._export_hints.get(id(points))
+            if hint is not None and hint[0] is points:
+                _judgement_cache._export_hints[id(points)] = points, hint[1], min(hint[2], annotation_prefix)
+        if _owned_source and _judgement_cache is not None and _closed_paths is not None:
+            _judgement_cache.remember_export(points, _closed_paths, changed_from=annotation_prefix)
+        tail_index = (_judgement_cache._tail_extremes.setdefault((trend_level, path), SourceExtremes())
+                      if _owned_source and _judgement_cache is not None and cutoff is None else None)
+        tail = _structural_tail(source, points, path=path, trend_level=trend_level, _index=tail_index)
         if tail is not None:
             developing_strokes.append(tail)
         stroke: dict[str, object] = dict(id=identifier, source_path=path, source_paths=[path], kind=kind,
             trend_level=trend_level, points=points, input_turn_count=len(source), key_transitions=[],
             confirmation_policy=STRUCTURAL_RULE, leg_confirmation_policy=STRUCTURAL_LEG_POLICY,
             wave_display_policy='structural_points_independent_strategy_permissions_v119',
-            structural_legs=_structural_legs(points), confirmed_legs=[])
+            structural_legs=(_judgement_cache.structural_legs(points, (trend_level, path), _closed_paths)
+                if _owned_source and _judgement_cache is not None else _structural_legs(points)), confirmed_legs=[])
         strokes.append(stroke)
         if _closed_paths is not None and cutoff is not None:
             _closed_paths.put(trend_level, path, raw_source, cutoff, source_stroke, candidate, stroke, tail,
-                              symbol=symbol)
+                              symbol=symbol, _round_slot=_closed_slot)
+            if _judgement_cache is not None:
+                _judgement_cache._forget_path((trend_level, path))
     return dict(name=f'{name}趋势线', trend_level=trend_level, source_level=source_level, strokes=strokes,
         source_strokes=source_strokes, qualified_strokes=[],
         candidate_strokes=candidates, structure_strokes=candidates, developing_strokes=developing_strokes,
@@ -1390,7 +2137,7 @@ def attach_trend_permissions(
     n_targets: list[dict[str, object]] = []
     kind = _KINDS[trend_level]
     verified_prefix = _permission_cache.prefix(bars) if _permission_cache is not None else None
-    full_market_index = (_MarketPrefixIndex(_permission_cache._market_index, _permission_cache._bars[:len(bars)])
+    full_market_index = (_MarketPrefixIndex(_permission_cache._market_index, market_prefix(_permission_cache._bars, len(bars)))
         if verified_prefix is not None and _permission_cache is not None
         and _permission_cache._market_index is not None else None)
     owned_options: _OwnedCandidateOptions = {'_owned_candidates': True} if _owned_candidates else {}
@@ -1402,11 +2149,11 @@ def attach_trend_permissions(
         cutoff = cutoffs[path]
         # 行情索引仍从原股票的第零根起算，只截断尾部；不能把路径子段
         # 切成从零开始的新市场，也不能把后一路径的突破借给前一路径。
-        market = bars if cutoff is None else bars[:cutoff]
+        market = bars if cutoff is None else market_prefix(bars, cutoff)
         market_index = None
         if full_market_index is not None and len(market) <= len(full_market_index.bars):
             market_index = (full_market_index if len(market) == len(full_market_index.bars) else
-                _MarketPrefixIndex(full_market_index.owner, full_market_index.bars[:len(market)]))
+                _MarketPrefixIndex(full_market_index.owner, market_prefix(full_market_index.bars, len(market))))
             market = market_index.bars
         permission_source = [dict(point, label=point.get('label', point.get('kind', ''))) for point in source]
         qualified_source = qualified_groups.get(path, []) if qualified_source_points is not None else None
@@ -1450,10 +2197,9 @@ def attach_trend_permissions(
                 continue
             if permissions and market:
                 # 命名资格附件只写本次许可，不倒写几何首次可知日。
-                permission_dates: dict[object, int] = (
-                    {key: value for key, value in _PrefixSessions(market_index.owner.positions, len(market) - 1).items()}
-                    if market_index is not None else {session_date(bar): i for i, bar in enumerate(market)})
-                permission_dates.update({i: i for i in range(len(market))})
+                permission_dates: Mapping[object, int] = _PermissionDates(
+                    _PrefixSessions(market_index.owner.positions, len(market) - 1)
+                    if market_index is not None else {session_date(bar): i for i, bar in enumerate(market)}, len(market))
                 _annotate_permissions(permissions, market[0].symbol, permission_dates, trend_level=trend_level,
                     _cache=(_permission_cache._annotations
                             if _owned_candidates and _permission_cache is not None else None),
