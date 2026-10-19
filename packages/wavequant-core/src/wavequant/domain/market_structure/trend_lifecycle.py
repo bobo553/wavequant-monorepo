@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from .trend_lines import _OwnedPolylineTurns
 
 
-LIFECYCLE_VERSION = 'six_state_daily_source_market_key_v31'
+LIFECYCLE_VERSION = 'six_state_qualification_research_v32'
 
 
 class LifecycleState(StrEnum):
@@ -78,6 +78,7 @@ class _Cycle:
     structure: tuple[_Pivot, ...] = ()
     confirmation_source: tuple[_Pivot, ...] = ()
     confirmation_gap: tuple[int, float, float, str] | None = None
+    qualification_closed: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -399,7 +400,19 @@ class TrendLifecycle:
     def _needs_bull_confirmation(cycle: _Cycle) -> bool:
         return (cycle.up and cycle.impulse is not None
                 and (cycle.recovery or any(fact.title == '翻空为多' for fact in cycle.evidence))
-                and (cycle.alternated is None or cycle.confirmation_gap is not None))
+                and (cycle.alternated is None or cycle.confirmation_gap is not None
+                     or cycle.qualification_closed is not None))
+
+    def resume_qualification_search(self, level: int, path: str, now: int, bars: Sequence[Bar]) -> None:
+        """资格关闭只重启确认搜索，不撤销仍守住原低点的本级翻多结构。"""
+        if now != self._last_index or not 0 <= now < len(bars):
+            raise ValueError('qualification closure must follow the current lifecycle day')
+        key = level, path
+        cycle = self._cycles.get(key)
+        if (cycle is None or not cycle.up or cycle.impulse is None
+                or bars[now].low < cycle.origin.price):
+            return
+        self._cycles[key] = replace(cycle, qualification_closed=now)
 
     def pending_bull_paths(self, level: int) -> frozenset[str]:
         """仅本级真实空翻多后的未决交替允许按需申请内部 N 证明。"""
@@ -467,7 +480,8 @@ class TrendLifecycle:
                      pivot(cycle.counter), cycle.alternated, cycle.candidate,
                      tuple(sorted((fact(item) for item in cycle.evidence), key=repr)),
                      cycle.recovery, tuple(pivot(item) for item in cycle.structure),
-                     tuple(pivot(item) for item in cycle.confirmation_source), cycle.confirmation_gap) if cycle else None
+                     tuple(pivot(item) for item in cycle.confirmation_source), cycle.confirmation_gap,
+                     cycle.qualification_closed) if cycle else None
             recovery = self._bull_recovery.get(key)
             pending = (fact(recovery.seed), recovery.breach, recovery.consecutive_lower_lows, recovery.recovered) if recovery else None
             source_clocks = tuple((*point, known) for point, known in sorted(self._polyline_known.get(key, {}).items()))
@@ -570,7 +584,8 @@ class TrendLifecycle:
                     integer(recovered) if recovered is not None else None)
             if raw is None:
                 continue
-            state, up, origin, started, impulse, counter, alternated, candidate, evidence, recovery, structure, source, saved_gap = sequence(raw, 13)
+            (state, up, origin, started, impulse, counter, alternated, candidate, evidence,
+             recovery, structure, source, saved_gap, qualification_closed) = sequence(raw, 14)
             parsed_origin = pivot(origin)
             if not isinstance(state, str) or type(up) is not bool or parsed_origin is None:
                 raise ValueError('invalid lifecycle checkpoint cycle')
@@ -599,7 +614,8 @@ class TrendLifecycle:
             restored._cycles[key] = _Cycle(LifecycleState(state), up, parsed_origin, integer(started),
                 pivot(impulse), pivot(counter), integer(alternated) if alternated is not None else None,
                 hint, facts(evidence), recovery, tuple(item for item in parsed_structure if item is not None),
-                tuple(item for item in parsed_source if item is not None), parsed_gap)
+                tuple(item for item in parsed_source if item is not None), parsed_gap,
+                integer(qualification_closed) if qualification_closed is not None else None)
         return restored
 
     def advance(self, levels: Sequence[Mapping[str, object]], bars: Sequence[Bar], now: int,
@@ -900,10 +916,12 @@ class TrendLifecycle:
         if ((fact.point.index, fact.point.ordinal) <= (impulse.index, impulse.ordinal)
                 or fact.known < impulse.known):
             return
+        if cycle.qualification_closed is not None and fact.known <= cycle.qualification_closed:
+            return
         prior_gap = cycle.confirmation_gap
         cycle = replace(cycle, state=alternation_state, impulse=impulse, counter=fact.point,
                         alternated=now, candidate=None, evidence=cycle.evidence.union((fact,)),
-                        confirmation_gap=None, confirmation_source=())
+                        confirmation_gap=None, confirmation_source=(), qualification_closed=None)
         self._cycles[key] = cycle
         events.append(self._event(key, cycle, now, 'trend_lifecycle_state',
                                   source_event=fact.title, source_known_index=fact.known,
@@ -1021,7 +1039,8 @@ class TrendLifecycle:
             points = points[bisect_left(point_orders, (broken.index, broken.ordinal)):]
         proof = confirm_bull_alternation(bars, now, origin=cycle.origin, high=cycle.impulse,
             broken=broken, points=points, polyline=polyline, level=key[0], path=key[1], policy=policy,
-            allow_gap_confirmation=cycle.confirmation_gap is None,
+            allow_gap_confirmation=cycle.confirmation_gap is None or cycle.qualification_closed is not None,
+            after_index=cycle.qualification_closed,
             flip_confirmed_at=(cycle.started if cycle.recovery else
                                min(fact.known for fact in cycle.evidence if fact.title == '翻空为多')),
             _market_index=market_index)
@@ -1034,7 +1053,7 @@ class TrendLifecycle:
         confirmed_impulse = cycle.impulse
         cycle = replace(cycle, state=LifecycleState.BULL_ALTERNATION, counter=point, alternated=now,
             structure=(broken, cycle.origin, cycle.impulse, *trend_sources), confirmation_source=sources,
-            confirmation_gap=confirmation_gap(proof.rule, proof.evidence, now))
+            confirmation_gap=confirmation_gap(proof.rule, proof.evidence, now), qualification_closed=None)
         self._cycles[key] = cycle
         events.append(self._event(key, cycle, now, 'trend_lifecycle_state',
             source_event='短暂跌破后空多交替结束' if cycle.recovery else '空翻多后空多交替结束',

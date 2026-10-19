@@ -269,6 +269,12 @@ class MarketCalculations:
                     event['buy_eligible'] = changed
             events.extend(self._eligibility[level].close_on_confirmation_gap_fill(self._bars, index))
             events.extend(self._eligibility[level].close_on_reversal_low_break(row, self._bars, index, self._dates))
+        # 资格关闭与本级结构失效分开；下一日继续寻找新确认，旧证明不能直接重开。
+        for event in events:
+            if (event.get('buy_eligible') is False and isinstance(event.get('source_path'), str)
+                    and not any(window.source_path == event['source_path']
+                                for window in self._eligibility[level].active_intervals)):
+                lifecycle.resume_qualification_search(level, cast(str, event['source_path']), index, self._bars)
         self._pending_events.setdefault(level, []).extend(events)
         return events
 
