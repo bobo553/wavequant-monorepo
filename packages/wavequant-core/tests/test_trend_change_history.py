@@ -149,27 +149,29 @@ def test_three_trend_levels_equal_batch_geometry_at_every_date_including_empty_p
     with chart._staged_chart_frames(bars, resume_start=0, closed=(), previous_epoch=None,
                                    previous_raw=()) as (frames, levels):
         for day, actual in enumerate(zip(*(level.iter_rows() for level in levels))):
-            source = polyline_high_low_points(baseline[day][3])
-            for level, prepared in enumerate(actual, 1):
-                expected = trend_lines.prepare_trend_lines(source, trend_level=level, symbol='CHANGES')
-                assert prepared == expected, (day, level)
-                source = high_low_points_from_strokes(expected['strokes'])
+            # 冷前缀经过同一收敛规则；不能用旧的逐级单轮入口作升级证明基准。
+            with chart._staged_chart_frames(bars[:day + 1], resume_start=0, closed=(),
+                                           previous_epoch=None, previous_raw=()) as (_, cold_levels):
+                expected = tuple(list(history.iter_rows())[-1] for history in cold_levels)
+                assert actual == expected, day
         assert [frame.raw for frame in frames.iter_rows()] == [row[2] for row in baseline]
 
 
 def test_developing_only_days_do_not_recalculate_any_trend_level(monkeypatch) -> None:
     bars = _bars(tuple(float(i + 10) for i in range(80)))
     counts = Counter()
-    prepare = chart.prepare_trend_lines
+    from wavequant.domain.market_structure import trend_cascade
+    prepare = trend_cascade.prepare_trend_lines
 
     def counted(*args, **kwargs):
         counts[kwargs['trend_level']] += 1
         return prepare(*args, **kwargs)
 
-    monkeypatch.setattr(chart, 'prepare_trend_lines', counted)
+    monkeypatch.setattr(trend_cascade, 'prepare_trend_lines', counted)
     with chart._staged_chart_frames(bars, resume_start=0, closed=(), previous_epoch=None,
                                    previous_raw=()) as (frames, levels):
-        assert counts == {1: 1, 2: 1, 3: 1}
+        # 空种子到开放路径建立是两个不同来源版本，此后 78 天仅发展尾点。
+        assert counts == {1: 2, 2: 2, 3: 2}
         assert all(level.change_count == 1 and level.row_count == 80 for level in levels)
         assert len(list(frames.iter_rows())) == 80
 
@@ -177,7 +179,17 @@ def test_developing_only_days_do_not_recalculate_any_trend_level(monkeypatch) ->
 def test_each_drawing_callback_propagates_before_the_next_market_day_without_history_reads(monkeypatch) -> None:
     bars = _bars((10, 13, 11, 15, 12, 17, 14, 19, 15, 13, 16, 12, 15, 11, 14, 10))
     drawing = chart.lecture_drawing
-    prepare = chart.prepare_trend_lines
+    from wavequant.domain.market_structure import trend_cascade
+    prepare = trend_cascade.prepare_trend_lines
+    publications = []
+    write_change = TrendChangeRows._write_encoded_change
+
+    def publish_change(self, position, payload):
+        assert active_day == position
+        publications.append((id(self), position))
+        return write_change(self, position, payload)
+
+    monkeypatch.setattr(TrendChangeRows, '_write_encoded_change', publish_change)
     active_day = -1
     calls: list[tuple[int, int]] = []
 
@@ -200,14 +212,18 @@ def test_each_drawing_callback_propagates_before_the_next_market_day_without_his
         raise AssertionError('initial cascade must not reread the complete drawing or trend history')
 
     monkeypatch.setattr(chart, 'lecture_drawing', collect_drawing)
-    monkeypatch.setattr(chart, 'prepare_trend_lines', collect_trend)
+    monkeypatch.setattr(trend_cascade, 'prepare_trend_lines', collect_trend)
     monkeypatch.setattr(ChartDrawingHistory, 'iter_rows', forbidden_history_read)
     monkeypatch.setattr(TrendChangeRows, 'iter_rows', forbidden_history_read)
     with chart._staged_chart_frames(bars, resume_start=0, closed=(), previous_epoch=None,
                                    previous_raw=()) as (_, levels):
         assert calls == sorted(calls)
         assert all(level.change_count for level in levels)
-        assert sum(level.change_count for level in levels) == len(calls)
+        # 收敛轮次可以重判，只有最终变化版本进入历史且每级每天最多发布一次。
+        for level in levels:
+            published = [day for owner, day in publications if owner == id(level)]
+            assert len(published) == level.change_count
+            assert published == sorted(set(published))
 
 
 def test_cascade_lifecycle_matches_causal_daily_baseline_and_can_add_levels_lazily() -> None:
@@ -215,27 +231,26 @@ def test_cascade_lifecycle_matches_causal_daily_baseline_and_can_add_levels_lazi
     from wavequant.domain.strategies.market_calculations import market_calculations
 
     bars = _bars((20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 38, 42, 32, 36, 24, 29, 26, 50))
-    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
     expected = {}
     with market_calculations(bars) as calculations:
         calculations.calculate_trend_line(3)
         assert calculations._checkpoints is not None
-        checkpoint_machine = TrendLifecycle()
-        with_rows = zip(*(history.iter_rows() for history in calculations.levels),
-                        calculations._checkpoints.iter_rows())
-        for index, (*rows, saved) in enumerate(with_rows):
-            checkpoint_machine.advance(rows, bars, index, dates)
+        for index, saved in enumerate(calculations._checkpoints.iter_rows()):
             version, _saved_index, contents = saved
             restored = TrendLifecycle.from_checkpoint((version, index, contents))
-            assert restored.checkpoint() == checkpoint_machine.checkpoint()
+            # 检查点包含折线及三级生命周期、直接来源事件和行情证书。
+            # 每个截止日冷算只能看到当日以前的行情，严格比较完整检查点。
+            with market_calculations(bars[:index + 1]) as cold:
+                cold.calculate_trend_line(3)
+                cold_saved = list(cold._checkpoints.iter_rows())[-1]
+                cold_version, _, cold_contents = cold_saved
+                baseline = TrendLifecycle.from_checkpoint((cold_version, index, cold_contents))
+                assert restored.checkpoint() == baseline.checkpoint()
+                for level in (1, 2, 3):
+                    assert tuple(event for event in calculations.history_events(level)
+                                 if event['bar_index'] <= index) == cold.history_events(level)
         for level, history in enumerate(calculations.levels, 1):
-            machine = TrendLifecycle()
-            baseline = [event for index, row in enumerate(history.iter_rows())
-                        for event in machine.advance((row,), bars, index, dates)]
-            recorded = calculations.history_events(level)
-            assert tuple({key: value for key, value in event.items() if key != 'buy_eligible'}
-                         for event in recorded) == tuple(baseline)
-            expected[level] = (list(history.iter_changes()), recorded)
+            expected[level] = (list(history.iter_changes()), calculations.history_events(level))
     with market_calculations(bars) as calculations:
         calculations.calculate_polyline()
         calculations.history_events('折线')

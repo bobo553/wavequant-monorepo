@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from ..market_structure.trend_lines import _TrendPermissionCache
     from .hierarchy_stream import HierarchyHistoryStream
 
-from ..market_structure.polyline_lifecycle import polyline_lifecycle_rows
+from ..market_structure.polyline_lifecycle import PolylineLifecycleSource, polyline_lifecycle_rows
 from ..market_structure.trend_history_changes import TrendChangeRows
 from ..market_structure.trend_market_index import market_prefix
 from ..market_structure.trend_lifecycle import TrendLifecycle
@@ -222,7 +222,8 @@ class MarketCalculations:
         if type(level) is not int or level not in (1, 2, 3):
             raise ValueError('trend level must be 1, 2 or 3; use calculate_polyline() for the polyline')
         if self._cascade is not None:
-            self._cascade(level)
+            # 升级证明在三级之间收敛；首次请求统一完成，后续级别只读同一份结果。
+            self._cascade(3)
             self._drawn = True
             if self._levels[level - 1].closed:
                 raise RuntimeError('trend calculation history has been closed')
@@ -269,6 +270,12 @@ class MarketCalculations:
                     event['buy_eligible'] = changed
             events.extend(self._eligibility[level].close_on_confirmation_gap_fill(self._bars, index))
             events.extend(self._eligibility[level].close_on_reversal_low_break(row, self._bars, index, self._dates))
+        # 资格关闭与本级结构失效分开；下一日继续寻找新确认，旧证明不能直接重开。
+        for event in events:
+            if (event.get('buy_eligible') is False and isinstance(event.get('source_path'), str)
+                    and not any(window.source_path == event['source_path']
+                                for window in self._eligibility[level].active_intervals)):
+                lifecycle.resume_qualification_search(level, cast(str, event['source_path']), index, self._bars)
         self._pending_events.setdefault(level, []).extend(events)
         return events
 
@@ -326,6 +333,17 @@ class MarketCalculations:
         source_by_day: dict[int, list[Mapping[str, object]]] = {}
         for event in self._lifecycle_events.get(level - 1, ()):
             source_by_day.setdefault(cast(int, event['bar_index']), []).append(event)
+        if level == 0:
+            # 折线状态和行情上下文来自同一行，不能同时打开该历史的两个顺序读者。
+            source = PolylineLifecycleSource(self._dates, _owned_tail=True)
+            frames = self._frames.iter_rows(shared=True)
+            try:
+                for frame in frames:
+                    self._advance_lifecycle(0, source.advance(frame), frame.index, frame=frame)
+            finally:
+                frames.close()
+            self._seal_lifecycle(0)
+            return
         rows = self._lifecycle_rows(level)
         frames = self._frames.iter_rows(shared=True)
         try:

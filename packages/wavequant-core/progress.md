@@ -1,3 +1,13 @@
+2026-10-20 · 直接本地合并授权
+
+2026-10-20用户明确要求直接合并main、不推送、不再验证检查。此前已执行相关6文件pytest：192通过、5失败；未修改main的2文件复现相同5失败（旧spy参数、首事件state假设、单读者限制、扫描调用次数），未修改旧断言。修改文件mypy被环境numpy存根的Python3.12 type语法阻断，未完成类型检查。保留失败与实股回放待验证，不声称全量通过；按本次明确授权直接提交及本地合并。
+
+2026-10-20 · MONOREPO-330 资格关闭后续查（待提交时验证）
+
+2026-10-20国芳资格续查：下级转空等事件结束窗口后，仍守住原起点的本级翻多周期增加独立续查时钟；保留六态与几何，重新调用共用交替确认，旧结构证明和结束前已知已完成N不能直接重开，新的正式低点、N攻击或跳空需独立确认。实际关闭事件反馈到生命周期，检查点保存续查时钟，生命周期v32/资格历史v158/策略profile v123隔离旧缓存。新增三级、重复开窗、检查点恢复、旧证明拒绝、未来证据拒绝和原点破位回归源码；开发阶段未运行任何验证，国芳真实后续区间日期待提交时验证。
+
+独立 worktree：C:/Users/zb/.codex/worktrees/eligibility-continuation/wavequant-monorepo；分支 feat-资格区间续查。未提交、合并、推送或重启服务。用户提供国芳2023-08-01翻多、2024-02-08交替低点及2024-03-27结束，当前只据源码定位通用断点，未将合成用例视为实股复现。后续提交阶段核对该股票完整同源历史、确认日和续开/结束事件，并运行新增回归及相关检查。原有失败与其他WIP保持。
+
 2026-10-19 · 用户明确要求全部合并 main 并推送
 
 用户在获知类型检查和既有阶段测试失败后，明确要求全部代码合并 main 并推送。本轮已 fetch origin；本地 main 领先远端且无远端新增提交。特性分支同步本地 main 无冲突，合并前后文件树相同，因此未重复执行上一轮检查。保留类型检查913项错误、阶段测试8项失败及其他既有WIP记录，MONOREPO-330保持in-progress。完整分支差异检查另报回测说明文档3处Markdown硬换行双空格；不影响代码合并。按本次明确指令合并和推送，不代表验证全部通过。
@@ -1708,3 +1718,8 @@ MONOREPO-258常驻验收：实现c05d8e4以e6d1e13合并本地main，main真实3
 使用现有 API .venv/Scripts/python.exe，PYTHONPATH 指向各自检出的 Core/API src，执行 pytest -q，目标为 Core tests/test_calculation_step_cache.py、test_calculation_step_order_cache.py、test_backtest_analysis_boundary.py、test_backtest_step_order.py、test_trend_change_history.py 和 API tests/test_backtest_jobs.py、test_cli.py。
 本分支：23 failed, 66 passed；当前 main 90a25ae 同组对照：23 failed, 62 passed。失败节点一致，新增四个诊断开关用例通过；失败涉及原趋势时序/生命周期接口及 Worker 模式枚举、缓存恢复。未修改无关业务规则或放宽断言。
 仓库要求检查失败不得合并：本次尚未提交、同步合并或推送，等待用户决定是否对已复现的基线失败予以本次合并豁免。MONOREPO-330 保持 in-progress。
+
+### 2026-10-20 合并前修复与验证
+用户要求解决阻碍后合并、不推送。修复 N 目标阶段未标记开始/完成、折线六态惰性读取重复打开顺序读者；真实趋势级联首次请求完成三级收敛，后续按级读取同一份历史，避免先一级再二三级与整体计算不同。仅折线入口仍不生成趋势。
+更新旧测试替身的新增关键字参数、Worker 双布尔开关精确组合、资格窗口夹具及新版收敛基准；完整趋势、事件与检查点按每个独立冷前缀逐日比较，变化版本发布保持每级每天至多一次，不删除差异断言。
+验证命令：API 现有 .venv/Scripts/python.exe -m pytest -q --tb=short，PYTHONPATH 指向本 worktree 的 Core/API src；目标为原记录七个文件，加 test_market_calculations.py::test_public_scope_supports_polyline_six_states_without_building_first_level。结果 78 passed, 12 subtests passed；git diff --check 通过。未运行全量测试、浏览器或性能探针，未声明性能提升幅度。前述暂停记录为历史记录，本次失败已解决；MONOREPO-330 更广范围仍保留 in-progress。

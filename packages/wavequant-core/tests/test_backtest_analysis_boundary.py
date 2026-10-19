@@ -129,7 +129,7 @@ def test_closed_schedule_never_requalifies_chart_trends(monkeypatch):
         assert sorted(events, key=repr) == sorted(analysis.lifecycle_events, key=repr)
 
 
-def test_chart_strategy_work_is_limited_to_open_dates_and_previous_day(monkeypatch):
+def test_chart_strategy_work_is_limited_to_open_dates(monkeypatch):
     bars = _bars()
     with prepare_backtest_analysis(bars, _config()) as analysis:
         analysis.buy_days = tuple(5 <= index < 8 or 13 <= index < 15 for index in range(len(bars)))
@@ -143,8 +143,8 @@ def test_chart_strategy_work_is_limited_to_open_dates_and_previous_day(monkeypat
         monkeypatch.setattr(chart_module, 'attach_trend_permissions', record)
         chart_module.chart_entry_history(bars, _prepared_history=analysis)
         assert dates
-        assert set(dates) <= {4, 5, 6, 7, 12, 13, 14}
-        assert {4, 12} <= set(dates)
+        assert set(dates) == {5, 6, 7, 13, 14}
+        assert len(dates) == 3 * 5
 
 
 def test_minute_replay_keeps_checkpoint_route_without_restarting_daily_analysis(monkeypatch):
