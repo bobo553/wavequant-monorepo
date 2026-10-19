@@ -112,3 +112,54 @@ def test_repeated_resolution_has_one_signal_and_one_evidence_pair() -> None:
     assert len(second.signals) == 1
     assert sum(event['event'] == 'long_signal' for event in second.audit) == 1
     assert sum(event['event'] == 'long_transition_evidence' for event in second.audit) == 1
+
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+@pytest.mark.parametrize('eligible', (False, True))
+@pytest.mark.parametrize('minute_enabled', (False, True))
+def test_daily_coordinator_reaches_low_open_close_entry_and_fills(
+    monkeypatch, level: int, eligible: bool, minute_enabled: bool,
+) -> None:
+    from dataclasses import asdict
+
+    from wavequant.domain.strategies.backtest_analysis import BacktestAnalysis
+    from wavequant.domain.strategies.chart_drawing_history import ChartDrawingFrame, ChartDrawingHistory
+    from wavequant.domain.strategies.integrated_strategy import DailySignalState, SystemResult
+    from wavequant.domain.strategies.market_calculations import MarketDay
+    from wavequant.interfaces.research_tools import streaming_backtest as coordinator
+
+    bars = [replace(bar, close_buyable=True) for bar in guofang_bars()]
+    _, initial, strategy, window = sample(level)
+    # 资格源单独注入，入场解析、调度和账户使用正式实现；不伪称全历史资格复现。
+    def daily(market, config, *, on_day, progress, stage):
+        state = DailySignalState()
+        state.window_start = 0
+        state.audit[:] = initial.audit
+        generated = SystemResult([], list(initial.audit), {})
+        with ChartDrawingHistory(start=0, count=len(market), closed=()) as frames:
+            for index in range(len(market)):
+                frames.append(index, 0, (), None)
+                frame = ChartDrawingFrame(index, 0, [], {'strokes': []})
+                day = MarketDay(frame, ({'strokes': []},) * 3, (), (eligible,) * 3)
+                analysis = BacktestAnalysis(tuple(market[:index + 1]), frames, (), ({}, {}, {}, set()),
+                    trading_intervals=(window,) if eligible else (),
+                    buy_days=(eligible,) * (index + 1), scan_days=(eligible,) * (index + 1))
+                on_day(day, analysis, generated, state)
+        return generated
+
+    def formatted(market, config, execution, generated, *, account_result, entry_fallbacks_override):
+        return dict(orders=account_result.orders)
+
+    monkeypatch.setattr(coordinator, 'daily_signals', daily)
+    monkeypatch.setattr(coordinator, 'single_stock_result', formatted)
+    generated, result = coordinator.streaming_stock_result(bars, asdict(strategy),
+        dict(entry_at_close=False, consolidation_entry_intraday=minute_enabled,
+             net_reward_risk_filter=False, slippage_bps_per_side=0))
+    buys = [order for order in result['orders'] if order['side'] == 'BUY' and order['status'] == 'filled']
+    if eligible:
+        assert len(buys) == 1 and buys[0]['timestamp'].startswith('2025-04-03')
+        assert buys[0]['execution_model'] == 'same_day_close'
+        assert buys[0]['price'] == bars[1].close
+        assert generated.signals[0].reason == QUALIFIED_VOLUME_BREAKOUT_CLOSE
+    else:
+        assert not buys and not generated.signals

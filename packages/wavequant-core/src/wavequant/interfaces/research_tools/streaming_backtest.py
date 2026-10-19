@@ -9,6 +9,7 @@ from wavequant.application.analytics.backtest import AccountDay, BacktestResult,
 from wavequant.application.analytics.intraday_entry import resolve_consolidation_entries
 from wavequant.domain.market_structure.calculation_steps import calculation_steps
 from wavequant.domain.market_structure.calculation_plan import resolve_calculation_plan
+from wavequant.domain.market_state.candle_strength import double_volume_bullish_breakout
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Trade
 from wavequant.domain.strategies.backtest_analysis import BacktestAnalysis
@@ -76,8 +77,10 @@ def streaming_stock_result(
             if progress is not None:
                 progress(min(index * 100 // len(bars), 99), message)
 
+        # 收盘突破可低开，不能让分钟通道的高开预筛选屏蔽它。
         if eligible and (account_config.consolidation_entry_intraday
-                or index > 0 and prefix[-1].open > prefix[-2].close):
+                or index > 0 and (prefix[-1].open > prefix[-2].close
+                    or double_volume_bullish_breakout(prefix[-1], prefix[-2]))):
             resolved, executions, daily_fallbacks = resolve_consolidation_entries(prefix, generated, config,
                 minute_loader, daily_fallback=account_config.missing_minute_daily_fallback,
                 qualified_gap_only=not account_config.consolidation_entry_intraday,
