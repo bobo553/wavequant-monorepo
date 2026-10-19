@@ -113,7 +113,7 @@ def confirm_bull_alternation(
     bars: Sequence[Bar], now: int, *, origin: ConfirmedTurn, high: ConfirmedTurn,
     broken: ConfirmedTurn, points: Sequence[ConfirmedTurn], polyline: Sequence[ConfirmedTurn],
     level: int, path: str, policy: AlternationPolicy = AlternationPolicy(), allow_gap_confirmation: bool = True,
-    flip_confirmed_at: int | None = None,
+    flip_confirmed_at: int | None = None, after_index: int | None = None,
     _market_index: _MarketRangeIndex | None = None,
 ) -> AlternationProof | None:
     """守住已确认翻多起点，再以浅回撤、重突破、N轧空或跳空确认交替。"""
@@ -122,6 +122,8 @@ def confirm_bull_alternation(
         return None
     if flip_confirmed_at is not None and (type(flip_confirmed_at) is not int
             or not 0 <= flip_confirmed_at <= now):
+        return None
+    if after_index is not None and (type(after_index) is not int or not 0 <= after_index < now):
         return None
     if any(point.known > now for point in (origin, high, broken, *points, *polyline)):
         raise ValueError('alternation confirmation requires causal points')
@@ -137,7 +139,8 @@ def confirm_bull_alternation(
         return gap
     # 回调可以继续创新低；首个低点破位后，应由当前已确认的整段最低点
     # 接受原确认门禁。相等保留最早坐标，未确认的新低仍由行情守低校验拒绝。
-    counter = min((point for point in points if point.kind == 'L' and point.index > high.index),
+    counter = min((point for point in points if point.kind == 'L' and point.index > high.index
+                   and (after_index is None or point.known > after_index)),
                   key=lambda point: (point.price, point.index, point.ordinal), default=None)
     counter_defended = (counter is not None and not (
         market.first_extreme(counter.index + 1, now + 1, counter.price, high=False) is not None
@@ -152,7 +155,8 @@ def confirm_bull_alternation(
             landmark = dict(_reference(counter, bars), confirmed_bear_low=_reference(origin, bars),
                             confirmed_flip_high=_reference(high, bars),
                             available_at=bars[known].timestamp.date().isoformat())
-            if filter_duration_landmarks([landmark], bars[:now + 1]):
+            if ((after_index is None or known > after_index)
+                    and filter_duration_landmarks([landmark], bars[:now + 1])):
                 return AlternationProof(counter, 'confirmed_higher_pullback_strictly_below_two_thirds'
                     if ratio < 2 / 3 else 'confirmed_higher_pullback_then_confirmed_flip_high_rebreak',
                     trend_source=(counter, rebreak) if ratio >= 2 / 3 and rebreak is not None else (counter,))
@@ -188,6 +192,9 @@ def confirm_bull_alternation(
         if n.completion is None:
             continue
         attack = n.completion.bar_index + offset
+        # 旧窗口的 N 已消费；续查只接受结束后新完成的攻击，避免旧轧空状态每日重开。
+        if after_index is not None and max(attack, known) <= after_index:
+            continue
         if policy.strict_n_attack_quality:
             control = observe_control_bar(data, setup, timeframe='1d', volume_lookback=policy.volume_lookback,
                                           shadow_policy=ShadowPolicy(policy.shadow_fraction), _prepared_n=n)
