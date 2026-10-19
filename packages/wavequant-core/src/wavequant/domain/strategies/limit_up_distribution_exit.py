@@ -39,12 +39,13 @@ class DistributionExit(TypedDict):
     observed_volume: float
 
 
-def _shrinking_sealed_rise(previous: Bar, current: Bar) -> bool:
+def is_sealed_limit_up(previous: Bar, current: Bar) -> bool:
     # 缺少 ST 专属涨停依据时不扩展到 ST；复权切换日不拿昨日原价猜除权基准。
     if (current.raw_is_st is True or current.raw_trading_active is False
             or current.adjustment_factor != previous.adjustment_factor
             or current.close <= previous.close or current.close < current.open
-            or not 0 < current.volume < previous.volume or current.high != current.close):
+            or current.symbol != previous.symbol or current.timestamp <= previous.timestamp
+            or current.volume <= 0 or current.high != current.close):
         return False
     try:
         rate = a_share_security_spec(current.symbol, current.timestamp.date()).price_limit_rate
@@ -57,6 +58,10 @@ def _shrinking_sealed_rise(previous: Bar, current: Bar) -> bool:
     close_raw = (Decimal(str(current.close)) / factor).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
     upper = (previous_raw * (1 + rate)).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
     return close_raw == upper
+
+
+def _shrinking_sealed_rise(previous: Bar, current: Bar) -> bool:
+    return current.volume < previous.volume and is_sealed_limit_up(previous, current)
 
 
 def observe_limit_up_distribution_exit(bars: Sequence[Bar], index: int) -> DistributionExit | None:

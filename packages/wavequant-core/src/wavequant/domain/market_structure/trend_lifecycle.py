@@ -18,14 +18,15 @@ from .confirmation_gap import confirmation_gap
 from .trend_market_index import _MarketRangeIndex
 from .failed_breakout_exit import FailedBreakoutState, prepare_failed_breakout, STABLE_CLOSE_SESSIONS
 from .source_bear_exit import (
-    SOURCE_BEAR_EVENT, _BearStructureCandidate, _prepare_bearish_structure, source_bearish_exits,
+    SOURCE_BEAR_EVENT, SourceMarketBreaks, _BearStructureCandidate, _prepare_bearish_structure,
+    confirmed_bear_key_break, source_bearish_exits,
 )
 
 if TYPE_CHECKING:
     from .trend_lines import _OwnedPolylineTurns
 
 
-LIFECYCLE_VERSION = 'six_state_extended_counter_v27'
+LIFECYCLE_VERSION = 'six_state_daily_source_market_key_v31'
 
 
 class LifecycleState(StrEnum):
@@ -201,17 +202,20 @@ def _records(value: object) -> tuple[Mapping[str, object], ...]:
     return tuple(row for row in value if isinstance(row, Mapping))
 
 
-def _upgrade_bull_fact(raw: Mapping[str, object], point: _Pivot,
+def _upgrade_flip_fact(raw: Mapping[str, object], point: _Pivot,
                        own_points: Mapping[tuple[int, int], _Pivot],
                        dates: Mapping[str, int], now: int) -> _Fact | None:
-    """把本级已发布的末跌高突破证据接入六态，不依赖展示用observations。
+    """两种方向共用本级冻结关键位与正式攻击的知识链，不依赖展示标签。
 
-    升级证据引用下级坐标，但起点和被突破高点必须实际存在于本级；使用本级
-    的确认时钟，不能把下级较早确认时间冒充本级确认。文字标签不是证明。
+    局部升级不得替换本级冻结关键位；起点、关键位及攻击必须真实属于
+    本级当前前缀。直接来源更早的确认不能冒充本级确认。
     """
     proof = raw.get('upgrade_evidence')
-    if (point.kind != 'H' or not isinstance(proof, Mapping)
-            or proof.get('direction') != 'up' or proof.get('role') != 'endpoint'):
+    up = point.kind == 'H'
+    direction, origin_kind = ('up', 'L') if up else ('down', 'H')
+    sign = 1 if up else -1
+    if (not isinstance(proof, Mapping) or proof.get('direction') != direction
+            or proof.get('role') != 'endpoint'):
         return None
     known = _clock(proof.get('available_at'), dates)
     origin_ref = _pivot(proof.get('origin'), dates, now)
@@ -221,35 +225,35 @@ def _upgrade_bull_fact(raw: Mapping[str, object], point: _Pivot,
         return None
     origin = own_points.get((origin_ref.index, origin_ref.ordinal))
     broken = own_points.get((broken_ref.index, broken_ref.ordinal))
-    if (origin is None or broken is None or origin.kind != 'L' or broken.kind != 'H'
+    if (origin is None or broken is None or origin.kind != origin_kind or broken.kind != point.kind
             or origin.price != origin_ref.price or broken.price != broken_ref.price
-            or confirming.kind != 'H' or confirming.price != point.price
+            or confirming.kind != point.kind or confirming.price != point.price
             or (confirming.index, confirming.ordinal) != (point.index, point.ordinal)
             or not (broken.index, broken.ordinal) < (origin.index, origin.ordinal) < (point.index, point.ordinal)
-            or not origin.price < broken.price < point.price):
+            or sign * (broken.price - origin.price) <= 0 or sign * (point.price - broken.price) <= 0):
         return None
     # 本级关键位状态由几何标注器生成。疑虑可能在更早的低点上，不能只检查
     # 局部上涨起点的 observations；缺失上下文也不能用升级证书推测翻多。
     context = raw.get('lifecycle_context')
-    if not isinstance(context, Mapping) or context.get('direction') != 'up':
+    if not isinstance(context, Mapping) or context.get('direction') != direction:
         return None
     context_known = _clock(context.get('available_at'), dates)
     frozen = _pivot(context.get('key'), dates, now)
-    bearish_origin = _pivot(context.get('origin'), dates, now)
-    if (context_known is None or context_known > now or frozen is None or bearish_origin is None
-            or frozen.kind != 'H' or bearish_origin.kind != 'L'
+    background_origin = _pivot(context.get('origin'), dates, now)
+    if (context_known is None or context_known > now or frozen is None or background_origin is None
+            or frozen.kind != point.kind or background_origin.kind != origin_kind
             or own_points.get((frozen.index, frozen.ordinal)) != frozen
-            or own_points.get((bearish_origin.index, bearish_origin.ordinal)) != bearish_origin
+            or own_points.get((background_origin.index, background_origin.ordinal)) != background_origin
             or (broken.index, broken.ordinal, broken.price) != (frozen.index, frozen.ordinal, frozen.price)
-            or not (frozen.index, frozen.ordinal) < (bearish_origin.index, bearish_origin.ordinal)
+            or not (frozen.index, frozen.ordinal) < (background_origin.index, background_origin.ordinal)
                 <= (origin.index, origin.ordinal)
-            or not bearish_origin.price < frozen.price < point.price):
+            or sign * (frozen.price - background_origin.price) <= 0 or sign * (point.price - frozen.price) <= 0):
         return None
     available = max(known, point.known, origin.known, broken.known, confirming.known,
-                    context_known, bearish_origin.known)
-    if broken.known >= available:
+                    context_known, background_origin.known)
+    if broken.known >= point.index:
         return None
-    return _Fact('翻空为多', point, available, bearish_origin, broken=frozen)
+    return _Fact('翻空为多' if up else '翻多为空', point, available, background_origin, broken=frozen)
 
 
 def _facts(points: object, dates: Mapping[str, int], now: int) -> tuple[_Fact, ...]:
@@ -258,7 +262,7 @@ def _facts(points: object, dates: Mapping[str, int], now: int) -> tuple[_Fact, .
                    if (point := _pivot(raw, dates, now)) is not None)
     own_points = {(point.index, point.ordinal): point for _, point in parsed}
     for raw, point in parsed:
-        ordinary_bull = False
+        ordinary_flip = False
         for observation in _records(raw.get('observations')):
             title = observation.get('title')
             known = _clock(observation.get('available_at'), dates)
@@ -286,10 +290,10 @@ def _facts(points: object, dates: Mapping[str, int], now: int) -> tuple[_Fact, .
             result.append(_Fact(title, point, max(known, point.known,
                 origin.known if origin else 0, impulse.known if impulse else 0,
                 frozen.known if frozen else 0), origin, impulse, frozen))
-            ordinary_bull = ordinary_bull or title == '翻空为多'
+            ordinary_flip = ordinary_flip or title == ('翻空为多' if point.kind == 'H' else '翻多为空')
         # 本级冻结关键位的正式突破优先；没有正式标记才读取升级证明。
-        if not ordinary_bull:
-            upgrade = _upgrade_bull_fact(raw, point, own_points, dates, now)
+        if not ordinary_flip:
+            upgrade = _upgrade_flip_fact(raw, point, own_points, dates, now)
             if upgrade is not None:
                 result.append(upgrade)
     return tuple(sorted(dict.fromkeys(result), key=lambda fact: (
@@ -317,6 +321,7 @@ class TrendLifecycle:
             tuple[int, str], tuple[frozenset[_Fact], tuple[tuple[object, ...], ...]]
         ] = {}
         self._source_turns: '_OwnedPolylineTurns | None' = None
+        self._source_market_breaks = SourceMarketBreaks()
 
     @staticmethod
     def _needs_bull_confirmation(cycle: _Cycle) -> bool:
@@ -698,7 +703,9 @@ class TrendLifecycle:
         self._structure_facts = {key: facts for key, facts in self._structure_facts.items() if key in present}
         self._checkpoint_seen = {key: facts for key, facts in self._checkpoint_seen.items() if key in present}
         # 单级联动借用当日下级事件；整层恢复使用同一次 advance 的下级结果。
-        events.extend(source_bearish_exits(levels, (*source_events, *events), now))
+        market_breaks = self._source_market_breaks.observe(levels, bars, now, dates,
+            owned=_owned_structure, market_index=market_index)
+        events.extend(source_bearish_exits(levels, (*source_events, *events, *market_breaks), now))
         return events
 
     def _expire_confirmation_gap(self, key: tuple[int, str], bars: Sequence[Bar], now: int,
@@ -753,7 +760,18 @@ class TrendLifecycle:
         recovery = self._bull_recovery.get(key)
         if ((up and recovery is not None and recovery.breach is not None)
                 or (cycle is not None and cycle.recovery and cycle.alternated is None)):
-            return
+            # 恢复候选不得屏蔽其后正式跌破冻结末升低的反向事实；裸标签仍不放行。
+            if fact.title != '翻多为空' or fact.origin is None or fact.broken is None:
+                return
+            bearish = _Cycle(LifecycleState.BEAR_FLIP, False, fact.origin, now, fact.point,
+                             evidence=frozenset((fact,)))
+            proof = self._event(key, bearish, now, 'trend_lifecycle_state',
+                source_event=fact.title, source_known_index=fact.known,
+                broken_key_index=fact.broken.index, broken_key_known_index=fact.broken.known,
+                broken_key_price=fact.broken.price)
+            if not confirmed_bear_key_break(proof, now):
+                return
+            self._bull_recovery.pop(key, None)
         flip_state = LifecycleState.BULL_FLIP if up else LifecycleState.BEAR_FLIP
         alternation_state = LifecycleState.BULL_ALTERNATION if up else LifecycleState.BEAR_ALTERNATION
         if fact.title in ('底部疑虑', '头部疑虑', '翻空为多', '翻多为空'):
@@ -761,12 +779,16 @@ class TrendLifecycle:
             origin = fact.origin if is_break else fact.point
             if origin is None or origin.kind != ('L' if up else 'H'):
                 return
+            frozen_proof: dict[str, object] = {}
+            if is_break and fact.broken is not None:
+                frozen_proof = dict(broken_key_index=fact.broken.index,
+                    broken_key_known_index=fact.broken.known, broken_key_price=fact.broken.price)
             if cycle is None or cycle.up != up:
                 cycle = _Cycle(flip_state, up, origin, now, fact.point if is_break else fact.impulse,
                                evidence=frozenset((fact,)))
                 self._cycles[key] = cycle
                 events.append(self._event(key, cycle, now, 'trend_lifecycle_state',
-                                          source_event=fact.title, source_known_index=fact.known))
+                                          source_event=fact.title, source_known_index=fact.known, **frozen_proof))
             elif is_break and cycle.state == flip_state:
                 # 同一未结束周期只能延伸攻击极值；局部反弹不能降低原确认门槛。
                 sign = 1 if up else -1
@@ -777,7 +799,7 @@ class TrendLifecycle:
                                 evidence=cycle.evidence.union((fact,)))
                 self._cycles[key] = cycle
                 events.append(self._event(key, cycle, now, 'trend_lifecycle_anchor',
-                                          source_event=fact.title, source_known_index=fact.known))
+                                          source_event=fact.title, source_known_index=fact.known, **frozen_proof))
             return
         if (cycle is None or cycle.up != up
                 or (cycle.state != flip_state and not (up and cycle.confirmation_gap is not None))):

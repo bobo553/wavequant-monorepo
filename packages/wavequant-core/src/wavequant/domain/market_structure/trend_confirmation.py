@@ -16,7 +16,7 @@ from typing import Literal, cast
 from ..models.model import Bar
 from .hierarchical_confirmation import session_date
 from .n_trend_confirmation import NConfirmationContext, _lazy_n_permissions, prepare_n_confirmation_context, qualify_n_trend
-from .trend_market_index import _MarketPrefixIndex
+from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
 from .trend_prefix_view import _PrefixView, _VisibleReferences
 from .trend_evidence_reuse import _geometry_signature
 
@@ -474,6 +474,20 @@ def _preceding_reference(
     return None
 
 
+def first_strict_market_break(
+    bars: Sequence[Bar], start: int, stop: int, price: float, *, up: bool,
+    market_index: _MarketPrefixIndex | _MarketRangeIndex | None = None,
+) -> int | None:
+    """方向证书与逐日资格共用严格影线突破；stop 为不含端点的因果边界。"""
+    if start >= stop:
+        return None
+    if market_index is not None:
+        return market_index.first_extreme(start, stop, price, high=up)
+    if up:
+        return next((index for index in range(start, stop) if bars[index].high > price), None)
+    return next((index for index in range(start, stop) if bars[index].low < price), None)
+
+
 def _qualify(
     source: Sequence[Mapping[str, object]], origin: Mapping[str, object], source_position: int,
     same_level_key: Mapping[str, object] | None, bars: Sequence[Bar] | None, end_index: int, *, up: bool,
@@ -558,26 +572,19 @@ def _qualify(
     assert base.known is not None
     base_price = float(base.value)
     market_index = prepared.market_index
-    failed_at = (market_index.first_extreme(base.index + 1, end_index + 1, base_price, high=not up)
-              if market_index is not None else next((index for index in range(base.index + 1, end_index + 1)
-                   if sign * ((market[index].low if up else market[index].high) - base_price) < 0),
-                  None))
+    failed_at = first_strict_market_break(market, base.index + 1, end_index + 1,
+                                          base_price, up=not up, market_index=market_index)
     failed: int = end_index + 1 if failed_at is None else failed_at
     proofs: list[tuple[int, dict[str, object]]] = []
     if own_key is not None:
         assert own_key.known is not None
         own_price = float(own_key.value)
         own_start, own_stop = max(base.index + 1, base.known, own_key.known + 1), min(failed, end_index + 1)
-        own_break = (market_index.first_extreme(own_start, own_stop, own_price, high=up)
-                     if market_index is not None and own_start < own_stop else None)
-        indices = ([own_break] if own_break is not None else [] if market_index is not None else
-                   range(own_start, own_stop))
-        for index in indices:
-            extreme = market[index].high if up else market[index].low
-            if sign * (extreme - own_price) > 0:
-                confirmed = _bar_reference(market, index, up, isinstance(base.available, int))
-                proofs.append((index, _certificate(base, own_key, confirmed, up, SAME_LEVEL_KEY_BREAK)))
-                break
+        own_break = first_strict_market_break(market, own_start, own_stop, own_price,
+                                             up=up, market_index=market_index)
+        if own_break is not None:
+            confirmed = _bar_reference(market, own_break, up, isinstance(base.available, int))
+            proofs.append((own_break, _certificate(base, own_key, confirmed, up, SAME_LEVEL_KEY_BREAK)))
     n_proof = (qualify_n_trend(prepared.n_source, prepared.n_source[source_position], source_position,
                               bars, end_index, up=up, context=prepared.n_context)
                if n_target_trend_confirmation_enabled else None)

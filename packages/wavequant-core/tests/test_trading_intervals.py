@@ -35,6 +35,66 @@ def test_eligibility_changes_only_on_confirmation_events_and_keeps_long_open_tai
 
 
 @pytest.mark.parametrize('level', [1, 2, 3])
+def test_same_level_bear_confirmation_closes_and_waits_for_new_qualification(level):
+    eligibility = TradingEligibility(level)
+    eligibility.observe(state(4, '空多交替', level=level))
+    event = dict(event='trend_lifecycle_state', trend_level=level, source_path='p',
+                 bar_index=10, available_index=10, state='转空确认', direction='down',
+                 flip_confirmed=True, origin_index=4, flip_index=6, flip_known_index=7,
+                 counter_index=8, alternation_index=9,
+                 confirmation_rule='strict_close_cross_after_confirmed_alternation',
+                 breakout_level=4.3, previous_close=4.5, confirmation_close=4.21)
+    assert eligibility.observe(dict(event, available_index=11)) is None
+    assert eligibility.active
+    assert eligibility.observe(event) is False
+    assert eligibility.intervals[0].end_index == 10
+    assert eligibility.intervals[0].end_reason == 'same_level_bear_trend_confirmed'
+    assert eligibility.observe(state(11, '空翻多', level=level)) is None
+    assert not eligibility.active
+    assert eligibility.observe(state(14, '空多交替', level=level)) is True
+    assert eligibility.intervals[1].start_index == 14
+
+
+@pytest.mark.parametrize('level', [1, 2, 3])
+def test_formal_last_rise_low_break_closes_without_waiting_for_bear_alternation(level):
+    # 4.30→4.21来自用户报价；索引及确认时钟是合成结构，不代表实股回放。
+    from wavequant.domain.market_structure.trend_lifecycle import TrendLifecycle, _Fact, _Pivot
+
+    book = TradingEligibility(level)
+    book.observe(state(4, '空多交替', level=level))
+    frozen = _Pivot(5, 0, 'L', 4.30, 6)
+    origin = _Pivot(7, 0, 'H', 6.39, 8)
+    attack = _Pivot(10, 0, 'L', 4.21, 10)
+    events = []
+    TrendLifecycle()._consume((level, 'p'), _Fact('翻多为空', attack, 10, origin, broken=frozen), 10, events)
+    assert len(events) == 1
+    assert events[0]['broken_key_price'] == 4.30
+    assert book.observe(events[0]) is False
+    assert book.intervals[0].end_index == 10
+    assert book.intervals[0].end_key_index == 5
+    assert book.intervals[0].end_key_price == 4.30
+    assert book.observe(state(11, '空翻多', level=level)) is None
+    assert not book.active
+    assert book.observe(state(14, '空多交替', level=level)) is True
+
+
+@pytest.mark.parametrize('change', [dict(breakout_level=4.30), dict(broken_key_known_index=10),
+    dict(source_known_index=11), dict(flip_confirmed=False), dict(source_path='other'),
+    dict(trend_level=1), dict(event='trend_lifecycle_candidate'), dict(broken_key_index=None)])
+def test_last_rise_low_exit_rejects_touch_unknown_key_and_unrelated_evidence(change):
+    book = TradingEligibility(2)
+    book.observe(state(4, '空多交替'))
+    event = dict(event='trend_lifecycle_state', state='多翻空', direction='down',
+        source_event='翻多为空', flip_confirmed=True, trend_level=2, source_path='p',
+        bar_index=10, available_index=10, broken_key_index=5, broken_key_known_index=6,
+        broken_key_price=4.30, origin_index=7, flip_index=10, flip_known_index=10,
+        source_known_index=10, breakout_level=4.21)
+    event.update(change)
+    assert book.observe(event) is None
+    assert book.active
+
+
+@pytest.mark.parametrize('level', [1, 2, 3])
 @pytest.mark.parametrize('proof', [None, False, 'true'])
 def test_alternation_without_explicit_flip_proof_cannot_authorize_trading(level, proof):
     event = state(4, '空多交替', level=level)

@@ -24,8 +24,10 @@ from wavequant.domain.strategies.wave_exhaustion_exit import (
     observe_five_top_body_upper_shadow_clear, observe_five_top_gap_volume_clear, observe_wave_exhaustion,
 )
 from wavequant.domain.market_state.volume_candle import volume_bearish_entry_rejection
+from wavequant.domain.strategies.gap_entry_gate import GapEntryGate
 from wavequant.domain.strategies.two_t_resistance import (
-    BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, HoldingResistanceHistory, holding_resistance_history,
+    BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR,
+    HoldingResistanceHistory, holding_resistance_history,
 )
 from wavequant.domain.strategies.limit_up_distribution_exit import (
     LIMIT_UP_DISTRIBUTION_CLEAR, observe_limit_up_distribution_exit,
@@ -34,6 +36,7 @@ from wavequant.domain.strategies.pressure_exit import (
     PressureExitStream, pressure_exit_history, record_high_resistance_history, record_high_massive_resistance_history,
 )
 from wavequant.domain.strategies.trend_flip_exit import TrendFlipExitStream
+from wavequant.domain.strategies.breakout_shadow_exit import BREAKOUT_SHADOW_CLEAR, BREAKOUT_SHADOW_REDUCE
 from wavequant.domain.strategies.mother_child_inverse_n import (
     MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break,
 )
@@ -222,6 +225,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
     if config.staged_exit_intraday and minute_loader is None:
         raise ValueError('五分钟精确减仓需要完整分钟行情来源')
     calendar: dict[datetime, dict[str, tuple[int, Bar]]] = {}
+    gap_buy_gates = {symbol: GapEntryGate() for symbol in grouped}
     for symbol, bars in grouped.items():
         for i, bar in enumerate(bars):
             if bar.symbol != symbol or (i and bar.timestamp <= bars[i-1].timestamp):
@@ -497,6 +501,11 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
 
     def execute_entry(symbol, i, bar, when, signal, execution_price, *, at_close=False, intraday=None):
         nonlocal cash, total_fees, turnover
+        gap_rejection = gap_buy_gates[symbol].advance(grouped[symbol], i)
+        if gap_rejection is not None:
+            log(when, symbol, 'BUY', 'cancelled', gap_rejection['reason'],
+                **{key: value for key, value in gap_rejection.items() if key != 'reason'})
+            return
         rejection = volume_bearish_entry_rejection(grouped[symbol], i)
         if rejection is not None:
             log(when, symbol, 'BUY', 'cancelled', rejection,
@@ -811,6 +820,21 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
             for symbol, (_, bar) in current.items():
                 marks[symbol], mark_times[symbol] = bar.open, when.isoformat()
             # Free cash from eligible exits before sizing new entries at this open.
+            for symbol, pos in positions.items():
+                if symbol not in current:
+                    continue
+                i, bar = current[symbol]
+                risk = trend_flip_risks[symbol].get(i)
+                if (risk is not None and risk['reason'] == BREAKOUT_SHADOW_CLEAR
+                        and pos.entry_index <= risk['breakout_warning_index']):
+                    pending_exit[symbol] = BREAKOUT_SHADOW_CLEAR
+                    exit_evidence[symbol] = dict(
+                        **{key: value for key, value in risk.items() if key != 'reason'},
+                        decision_reason=BREAKOUT_SHADOW_CLEAR,
+                        decision_source='breakout_shadow_lower_open',
+                        signal_timestamp=grouped[symbol][risk['breakout_warning_index']].timestamp.isoformat())
+                    wave_clear_symbols.add(symbol)
+                    pending_entry.pop(symbol, None)
             for symbol in sorted(list(pending_exit)):
                 if symbol not in positions:
                     del pending_exit[symbol]
@@ -1038,7 +1062,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     for signal in signal_map.get(when, [])
                     if signal.symbol == symbol and signal.side == 'EXIT'
                     for reason in signal.reason.split('|')
-                    if reason in (BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR)), None)
+                    if reason in (BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR)), None)
                 if body_clear_reason is not None and (
                         target_risk is None or target_risk['exit_fraction'] < 1.0):
                     # A confirmed global EXIT also wins when replay omits projection metadata.
@@ -1063,6 +1087,9 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     elif wave_exit is None and not pos.wave_reduced:
                         wave_exit = c_equal_risk
                 pressure = trend_flip_risks[symbol].get(i) or pressure_risks[symbol].get(i) or record_high_risks[symbol].get(i)
+                if pressure is not None and pressure['reason'] == BREAKOUT_SHADOW_CLEAR:
+                    # 开盘已经受理；成交受限时沿用账户的待执行全清指令。
+                    pressure = None
                 if (pressure is not None and pressure['reason'].startswith('trend_last_fall_high_')
                         and pos.entry_index > pressure['trend_warning_index']):
                     pressure = None
@@ -1105,7 +1132,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 elif (pos.pressure_warning is not None or pos.record_high_warning is not None) and pressure is not None and pressure['exit_fraction'] < 1:
                     pressure = None
                 if (pressure is not None and pressure['reason'] in (
-                        'record_high_resistance_reduce', 'record_high_massive_resistance_reduce_30')
+                        'record_high_resistance_reduce', 'record_high_massive_resistance_reduce_30',
+                        BREAKOUT_SHADOW_REDUCE)
                         and (hard_reason or volume_inverse or inverse_failure is not None
                              or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
                     pressure = None
@@ -1247,14 +1275,14 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                                 exit_evidence[symbol]['inverse_observed_index'] = signal.bar_index
                                 execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
                             elif any(reason in signal.reason.split('|') for reason in
-                                     (LIMIT_UP_DISTRIBUTION_CLEAR, BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
+                                     (LIMIT_UP_DISTRIBUTION_CLEAR, BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
                                        FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
                                        *FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS,
                                        C_EQUAL_NEAR_VOLUME_CLEAR)):
                                 i, bar = current[symbol]
                                 wave_clear_symbols.add(symbol)
                                 pending_exit[symbol] = next(reason for reason in signal.reason.split('|') if reason in
-                                    (LIMIT_UP_DISTRIBUTION_CLEAR, BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
+                                    (LIMIT_UP_DISTRIBUTION_CLEAR, BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
                                       FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
                                       *FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS,
                                       C_EQUAL_NEAR_VOLUME_CLEAR))

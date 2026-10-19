@@ -7,7 +7,10 @@ from typing import cast
 
 from ..market_structure.trend_lifecycle import _pivot, _records
 from ..market_structure.confirmation_gap import confirmation_gap
-from ..market_structure.source_bear_exit import SOURCE_BEAR_EVENT, SOURCE_BEAR_EXIT, confirmed_source_bear
+from ..market_structure.source_bear_exit import (
+    SOURCE_BEAR_EVENT, SOURCE_BEAR_EXIT, STRUCTURE_BEAR_EVENT, confirmed_source_bear,
+    confirmed_bear_key_break, confirmed_source_market_break,
+)
 from ..models.model import Bar
 
 
@@ -78,6 +81,18 @@ class TradingEligibility:
         if now < self._last_index:
             raise ValueError('trading eligibility requires chronological events')
         self._last_index = now
+        if confirmed_bear_key_break(event, now):
+            return self._close(path, now, 'same_level_last_rise_low_broken',
+                key_index=cast(int, event['broken_key_index']),
+                key_price=float(cast(float, event['broken_key_price'])))
+        # 本级正式空头确认也结束本级资格；不能只把它转发给直接上级。
+        if (event.get('event') == STRUCTURE_BEAR_EVENT
+                or event.get('event') == 'trend_lifecycle_state' and event.get('state') == '转空确认'):
+            if not confirmed_source_bear(event, now):
+                return None
+            return self._close(path, now, 'same_level_bear_trend_confirmed',
+                key_index=cast(int, event['flip_index']),
+                key_price=float(cast(float, event['breakout_level'])))
         if event.get('event') == 'trend_lifecycle_confirmation_revoked' and event.get('reason') == 'confirmation_gap_filled':
             position = self._opened.get(path)
             if position is None:
@@ -103,9 +118,11 @@ class TradingEligibility:
                     or proof.get('source_path') != event.get('direct_source_path')
                     or event.get('available_index') != now or not confirmed_source_bear(proof, now)):
                 return None
-            # 只有资格关闭；不把下级空头写成本级翻空，也不强制清仓。
+            # 下级关键位破位仍沿直接来源传递，终点证据保留被破关键位。
+            key_break = confirmed_bear_key_break(proof, now) or confirmed_source_market_break(proof, now)
             return self._close(path, now, SOURCE_BEAR_EXIT,
-                key_index=cast(int, proof['flip_index']), key_price=float(cast(float, proof['breakout_level'])))
+                key_index=cast(int, proof['broken_key_index' if key_break else 'flip_index']),
+                key_price=float(cast(float, proof['broken_key_price' if key_break else 'breakout_level'])))
         if event.get('event') == 'trading_reversal_low_broken':
             index, price = event.get('reversal_low_index'), event.get('reversal_low_price')
             known, low = event.get('reversal_low_known_index'), event.get('market_low')

@@ -12,6 +12,7 @@ from .event_history import EventHistoryStream
 
 TWO_T_BODY_VOLUME_CLEAR = "wave_two_t_body_volume_clear"
 BODY_VOLUME_CLEAR = "bearish_body_volume_clear"
+VOLUME_SHADOW_MIDPOINT_CLEAR = 'volume_shadow_below_bearish_midpoint_clear'
 TWO_T_VOLUME_BEARISH_REDUCE = "wave_two_t_volume_bearish_reduce"
 
 
@@ -224,6 +225,32 @@ def two_t_resistance_history(
     return TwoTResistanceHistory(bars, reduction_fraction=reduction_fraction).advance(len(bars) - 1, events)
 
 
+def _volume_shadow_midpoint_clear(
+    bars: Sequence[Bar], index: int, previous_volume_bearish: bool,
+) -> dict[str, object] | None:
+    """前一日放量阴线实体中点下方的放量长上影，阳线同样清仓。"""
+    if index < 1 or not previous_volume_bearish:
+        return None
+    previous, bar = bars[index - 1], bars[index]
+    if (previous.symbol != bar.symbol or previous.timestamp >= bar.timestamp
+            or previous.close >= previous.open or previous.volume <= 0 or bar.volume <= previous.volume):
+        return None
+    opened, closed, high, prior_open, prior_close = (
+        Fraction(str(value)) for value in (bar.open, bar.close, bar.high, previous.open, previous.close))
+    upper, body = high - max(opened, closed), abs(closed - opened)
+    midpoint = (prior_open + prior_close) / 2
+    if upper <= body or closed >= midpoint:
+        return None
+    return dict(reason=VOLUME_SHADOW_MIDPOINT_CLEAR, exit_fraction=1.0,
+        execution_model='same_day_close', target_trigger='volume_upper_gt_body_below_previous_volume_bearish_midpoint',
+        bearish_reference_date=previous.timestamp.date().isoformat(), previous_volume_bearish=True,
+        previous_open=previous.open, previous_close=previous.close, previous_volume=previous.volume,
+        bearish_body_midpoint=float(midpoint), upper_shadow=float(upper), candle_body=float(body),
+        observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
+        observed_close=bar.close, observed_volume=bar.volume,
+        decision_timestamp=bar.timestamp.replace(hour=15, minute=0).isoformat())
+
+
 class HoldingResistanceHistory(TwoTResistanceHistory):
     """Shared target risks plus independent close-known body reversal clearance."""
 
@@ -232,14 +259,26 @@ class HoldingResistanceHistory(TwoTResistanceHistory):
         # 资格窗口外不补发交易风险，但最近阴线仍是已知的行情量能基准。
         self.bearish_index = next((index for index in range(self.start_index - 1, -1, -1)
             if self.bars[index].close < self.bars[index].open), None)
+        previous = self.start_index - 1
+        earlier_bearish = next((i for i in range(previous - 1, -1, -1)
+                               if self.bars[i].close < self.bars[i].open), None)
+        self.previous_volume_bearish = previous >= 0 and is_volume_bearish(
+            self.bars[previous], self.bars[previous - 1] if previous > 0 else None,
+            self.bars[earlier_bearish] if earlier_bearish is not None else None)
 
     def _advance_day(self, index: int) -> None:
+        shadow = _volume_shadow_midpoint_clear(self.bars, index, self.previous_volume_bearish)
+        self.previous_volume_bearish = is_volume_bearish(
+            self.bars[index], self.bars[index - 1] if index else None,
+            self.bars[self.bearish_index] if self.bearish_index is not None else None)
         super()._advance_day(index)
         reversal = _body_volume_reversal(self.bars, index, self.previous_bearish[index])
         if reversal is not None and self.history.get(index, {}).get('exit_fraction') != 1.0:
             self.history[index] = dict(reversal, reason=BODY_VOLUME_CLEAR, exit_fraction=1.0,
                 execution_model='same_day_close',
                 target_trigger='bearish_body_engulf_volume_gt_previous_or_last_bearish')
+        if shadow is not None and self.history.get(index, {}).get('exit_fraction') != 1.0:
+            self.history[index] = shadow
 
 
 def holding_resistance_history(

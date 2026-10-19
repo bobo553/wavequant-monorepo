@@ -1,3 +1,11 @@
+2026-10-19 · 自选列表滚动 WIP 提交验证
+
+用户授权全部当前改动按 WIP 提交并推送 feat-三级趋势统一，不合并 main。Web lint 0 错误/6 条环境变量声明警告，typecheck 和 Next.js build 通过；node --test tests/watchlists.test.mjs tests/chart-viewport-height.test.mjs 共 14 项通过。public/styles.css 的 Prettier 检查未通过，保留现状；构建自动生成的 next-env.d.ts 修改已恢复。未运行浏览器/E2E，桌面/窄屏长列表真实滚动仍待验证。Core 同批存在 14 项回归失败，详见 feature_list.json 和 session-handoff.md，不将此 WIP 视为功能验收完成。
+
+2026-10-19 · MONOREPO-330 自选股列表纵向滚动
+
+继续feat-三级趋势统一。自选侧栏改为纵向flex并由父级max-height统一约束，body设置min-height:0并允许收缩；股票列表占用剩余高度，行保持内容高度并启用纵向滚动、稳定滚动条空间及滚动边界隔离。分类、回测操作及说明保持不收缩，窄屏沿用420px侧栏上限，不再由独立vh body高度溢出后被父级裁切。只修改布局，不改变自选排序、交易或回测逻辑。开发阶段未运行测试、lint、类型、构建或浏览器，桌面/窄屏长列表滚动待提交时验证。未提交、合并或推送。
+
 2026-10-18 · 图表首屏布局提交验证
 
 2026-10-18用户要求提交推送所有代码。此前趋势修复及提示组件移除已在5e40a45提交；本次剩余6文件为图表首屏高度及标题间距。pnpm exec node --test tests/chart-viewport-height.test.mjs：4 passed；pnpm --filter wavequant-web lint：0错误、6项既有环境变量声明警告；pnpm --filter wavequant-web typecheck与pnpm --filter wavequant-web build通过，Next.js生成4条静态路由；git diff --check通过。已复核生产源码及用例差异，不含交易逻辑改动。未运行浏览器/E2E，首屏实际视觉仍未验证；不将构建成功等同浏览器验证。本次提交并推送feat-三级趋势统一，不合并main；MONOREPO-330整体保持in-progress。

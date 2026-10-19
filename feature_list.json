@@ -14,6 +14,18 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+                "2026-10-19突破末跌高当笔/次笔放量阴线子线全清：共用is_bearish_inside_child统一完整高低区间包含，非十字母线、阴线子线、一端可相等；突破观察器在窗口内按高于昨日或最近阴线任一量直接收盘全清，原母子线后续破低规则保持，折线及三级共用，无股票/日期特判。保留当笔减仓后的次笔子线观察，profile v120，四层/放量/边界/流式/账户回归仅编写。用户已明确收盘或最高严格高于末跌高，相等不算；合法OHLC中high>key覆盖二者，不要求收盘必须站上，新增四层仅影线越过及收盘越过回归。冻结报价6月1日与4月20日最高价完全相同且收盘未越过，6月2日子线虽符合放量，但不能强制按这组关键位产生清仓；其他层级关键位及实股结果待提交验证。所有验证留至实际提交。",
+                "2026-10-19突破当笔/次笔跳空放量大阴线全清：共用breakout_shadow_days接受开盘严格越出昨日价格区间的上/下跳空，取消此前连续涨停限制，保留大阴线实体>=开盘5%且>=全幅一半、正式已知高点严格突破及收盘知识时钟；同日全清而非减九成，四层共用并沿原账户执行。profile v119，新增边界/前缀/账户和冻结行情回归源码，未运行。冻结行情2月16日已突破2022-01-05高点，2月17日为次笔且成交量低于2月16日；用户明确放量阴线与前一天或前一根阴线比较：保留共用严格大于任一正历史量规则，不改用突破前基准；2月16日本身为阴线，故2月17日不满足放量。新增四层两种量基准独立满足、均不足/相等拒绝和突破阴线更新次笔参照回归源码，未运行。真实生产关键位、资格与清仓日待提交验证，不标完成。",
+                "2026-10-19新华传媒4月16日资格续修：直接来源已结束上涨整波H及左侧L作为冻结末升低，逐日行情首次严格破位即沿直接来源结束上级资格，不再等待攻击低点闭合或反弹交替；先核对关键位提前可知、整波完成与高点未失效，右侧局部低点不得替代。一级至三级共用SourceMarketBreaks及方向证书的严格行情突破原语，独立行情事实不伪造六态状态，生命周期v31及历史缓存v155。新增无攻击端点、三级/分层/恢复及因果边界回归源码；真实冻结行情断言为4月16日结束、2月29日关键位。用户明确本轮只修改代码，所有运行证据留至实际提交，MONOREPO-330保持in-progress。",
+                "2026-10-19首次整波左边界：两高两低首次确认方向时，从已消费直接下级前缀选择相反类真实极值作为起点，四点必须均位于起点之后，二/三级须有实际内部下级拐点。发布带完整四点和组合拓扑的initial_boundary证明并保存whole_origin，后续严格突破复用冻结本级关键位和整波极值，多空镜像及三级共用；不按股票/日期特判。历史缓存v154；新增缩减结构用例未运行，新华传媒2019-03-13→2022-10-28→2024-12-11真实几何与时钟待提交验证。",
+                "2026-10-19全局买入缺口阻挡：上涨开盘落入最近未完全回补的下降开盘缺口且上涨缺口严格更小，策略买点和账户所有买入/加仓拒绝。下降区间为阴线开盘至前日最低且当天未回补，上涨宽度为开盘减前日最高；开盘决定不读取当天高点，后续高点仅影响以后。GapEntryGate请求内增量缺口栈，不逐日重扫全历史，profile v118；合成前序配用户报价边界用例已编写未执行。",
+                "2026-10-19继续修复内部一级末升低破位：共用升级事实解析双向化，直接来源链接受同一个confirmed_bear_key_break完整证明，终点保留broken_key；不再额外等待下级交替二次确认，三级同规则，生命周期v30。新增合成分层/恢复/因果边界回归，真实冻结管线明确要求新华传媒2024-04-16结束且关键位2024-02-29；仅编写未执行，实际日期待提交时验证，既有失败保留。",
+                "2026-10-19末升低破位资格全局修复：正式翻多为空事件携带冻结末升低位置、价格、可知日；共同confirmed_bear_key_break校验关键位在攻击前已知、key<origin<attack、严格破位、正式来源和当前可知时钟。同级同路径资格当确认日结束，无需再等待反弹交替或第二次转空确认，后续正式空多交替才重开。生命周期v29；一至三级和4.30→4.21结构回归已编写未执行，新华传媒真实4月16日事件仍待提交时验证。",
+                "2026-10-19本级正式转空确认或正式下降结构破位必须结束同级同路径交易资格，沿用confirmed_source_bear完整证明与可知时钟，不消费候选或未来确认；结束后等待新的空多交替资格。补充三级共用边界回归，生命周期v28。新华传媒2024-04-16真实触发日期待提交时验证，不能宣称已修复到该日。",
+                "2026-10-19突破当笔或次笔，前面恰有连续1至3日封涨停，开盘严格高于昨日最高、放量阴线实体至少开盘5%且至少振幅一半，同日全清；不要求上影，沿用共享涨停依据和成交约束。profile v117，开发阶段待验证。用户新增新华传媒2024-04-16二级下跌确认应结束资格，正在排查因果生命周期。",
+                "2026-10-19补充：前一交易日为放量阴线，当前放量且上影严格大于实体、收盘严格低于前阴线实体中点，则当日收盘清仓，当前可为阳线，无需突破/目标/此前减仓。放量沿用昨日或最近阴线正量比较；当前的最近阴线就是昨日，故量须严格大于昨日。profile v116；新增真实2月2日报价配合合成前序行情回归，真实前一日报价尚缺，待提交验证。",
+                "2026-10-19自选股列表支持上下滚动：侧栏父级统一高度，股票列表在剩余空间独立滚动且行不压缩，分类/回测操作保留；桌面与窄屏实际滚动待提交时验证，开发阶段未运行检查。",
+                "2026-10-19新华传媒1/9规则：用户确认以已有结构已确认前高/空头抵抗高点为参照，放量沿用大于昨日或最近阴线正成交量，低开指开盘低于警告日收盘。折线及三级共用：最高价严格突破前高的当笔或紧接次笔，阴线且上影严格大于实体，当日收盘累计减仓90%；紧接下一交易日低开按开盘清剩余仓位，相等/高开不延长观察。保持全清优先、原交易资格、T+1/停牌/成交限制，不按股票日期硬编码。profile v115；真实两根报价＋合成中间/次日和确认输入已编写回归，尚未运行或完成真实历史验收。",
                 "2026-10-19继续按固化前缀＋变化尾部方案消除重复历史工作：检查点采用持久块树与压缩哈希树，旧版本分叉不枚举固化索引；折线投影、级间投影及升级许可传递来源版本和变化位置；正式突破接受内部证书并复用共用候选归并账本；几何标注、日期索引、发展极值、结构腿、历史别名和块写入按变化范围更新。业务B仍按各级/路径当前末跌高与末升低较新价格位置独立维护，确认时钟独立，资格/交易继续逐日演进。v153隔离历史缓存；结果和性能待提交验证，不能把存储快照当业务完成，也不能把旧冻结回放数字用作本轮证据。",
                 "2026-10-18固化前缀方案已实现待提交验证：各级/路径取当前末跌高和末升低中价格位置较新者，边界点留在变化区，确认时钟独立；真实旧key重新生效或早期来源修订显式失效。共享历史/变化尾部及版本索引进入普通与正式突破检查点，活检查点之外的索引版本回收；长期无新key仍可共享已消费记录。候选/几何变化位置接入内部点导出和持久历史块，旧日期不可被新标注改写，图表历史v152。test_trend_frozen_prefix.py仅编写未运行；完整差分、后段耗时、资源与类型构建待提交阶段，不宣称彻底解决或达到120秒。",
                 "2026-10-18全局性能续作已实现待验证：共用三级入口接入请求内有界只读证据池、生产者来源版本/最早变化位置、开放点数组32点持久分块树、升级证明复用及不可变行情前缀/惰性日期映射。历史读取仍恢复完整普通容器并保留共享别名；旧点/知识日修订、截短再增长、未知对象和预算拒绝保留冷路径。新增test_owned_evidence_history.py尚未运行；不得把先前冻结版本成绩当成本轮提速或等价证据，不宣称已彻底解决或达到120秒。",
@@ -91,6 +103,61 @@
                 "分钟仅用于实际买卖候选或执行需求；000678分钟核验复用因果日线历史，同输入完整账户与审计不变。"
             ],
             "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core exec node scripts/run-python.mjs -m pytest tests/test_source_bear_key_break.py tests/test_trading_intervals.py tests/test_trend_level_upgrades.py tests/test_trend_unanchored_boundary.py tests/test_breakout_bearish_child_exit.py tests/test_breakout_gap_clear.py tests/test_breakout_shadow_exit.py tests/test_gap_entry_gate.py tests/test_volume_shadow_midpoint_clear.py tests/test_bearish_child_pattern_exit.py tests/test_two_t_body_volume_clear.py tests/test_daily_risk_histories.py -q --tb=short",
+                    "status": "failed",
+                    "summary": "427 passed、14 failed，312.55 秒。失败：无区间策略扫描次数 1 项（20 次而非 1 次）；严格关键位可知日期 6 项（2026-01-16 而非 2026-01-14）；新华传媒完整因果链 1 项（预期 2024-02-08 counter 的确认事件缺失，尚未到 4 月 16 日资格结束断言）；母子线及跳空全清账户 3 项（订单缺 execution_timestamp）；two_t_body_volume_clear 3 项（T+1 与退出原因差异）。未改断言，未作 HEAD 基线对照，不宣称均为既有失败。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core exec node scripts/run-python.mjs -m pytest tests/test_source_bear_key_break.py tests/test_trading_intervals.py tests/test_trend_level_upgrades.py --lf -q --tb=short --maxfail=8",
+                    "status": "failed",
+                    "summary": "长用例输出等待期间单独提取前段错误：7 failed、156 deselected；与上列 14 项重叠，不额外计数。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core typecheck; pnpm --filter @wavequant/core build",
+                    "status": "passed",
+                    "summary": "官方类型脚本所列 4 个文件通过，sdist/wheel 构建成功；不等同全部新增业务模块严格类型检查通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web lint; pnpm --filter wavequant-web typecheck; pnpm --filter wavequant-web build",
+                    "status": "passed",
+                    "summary": "lint 0 错误、6 条环境变量声明警告；类型与 Next.js 构建成功。构建自动改写的 next-env.d.ts 已恢复，不提交产物。未运行浏览器/E2E。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec node --test tests/watchlists.test.mjs tests/chart-viewport-height.test.mjs",
+                    "status": "passed",
+                    "summary": "14 项通过；不等同桌面和窄屏真实滚动视觉验证。"
+                },
+                {
+                    "command": "pnpm exec prettier --check apps/webs/wavequant-web/public/styles.css feature_list.json",
+                    "status": "failed",
+                    "summary": "两个文件均报告格式差异；按 WIP 保存，不进行无关整文件格式化。未运行 Python 格式化或 lint。"
+                },
+                {
+                    "command": "git diff --check; git fetch origin; git rev-list --left-right --count origin/feat-三级趋势统一...HEAD",
+                    "status": "passed",
+                    "summary": "提交前差异空白检查通过，fetch 成功，提交前当前分支与远端为 0/0。用户明确授权带失败记录 WIP 提交并推送当前分支，不合并 main。MONOREPO-330 保持 in-progress。"
+                },
+                {
+                    "command": "用户要求撤回 2026-10-19 13:46 国芳三级线改动；未执行验证",
+                    "status": "not-run",
+                    "summary": "已撤回普通反转冻结 key 调整、新增证据一致性限制及对应回归，缓存恢复 v155；移除该轮待验收项。此前其他修改保持，MONOREPO-330 仍在进行；本项不再等待日期澄清。"
+                },
+                {
+                    "command": "待提交：pytest tests/test_volume_shadow_midpoint_clear.py tests/test_two_t_body_volume_clear.py tests/test_daily_risk_histories.py；相关类型及账户回归",
+                    "status": "not-run",
+                    "summary": "新增独立全清理由，策略/账户共用HoldingResistanceHistory，并将该EXIT接入同日收盘执行列表。上一日放量状态逐日保留，窗口启动从已有历史初始化；严格十进制比较上影与实体及阴线中点。用户仅给2月2日OHLCV，前序行情为合成，不宣称真实日期已全链路验收。未运行开发检查，未提交推送，既有失败保留。"
+                },
+                {
+                    "command": "watchlist long-list desktop/narrow viewport manual verification; affected Web checks at submission",
+                    "status": "not-run",
+                    "summary": "自选股列表纵向滚动布局已修改；遵循开发阶段不验证要求，浏览器须当次明确授权，未执行检查，不沿用历史通过结论。"
+                },
+                {
+                    "command": "待提交：python -m pytest tests/test_breakout_shadow_exit.py tests/test_trend_last_fall_high_exit.py tests/test_trend_flip_exit.py tests/test_pressure_exit.py tests/test_trade_window_ranges.py -q；相关类型与构建；新华传媒完整同源历史回放",
+                    "status": "not-run",
+                    "summary": "用户已确认突破、放量和次日低开口径。新增breakout_shadow_exit共享当笔/次笔观察器，TrendFlipExitStream和批量入口共用，折线快照只保留最近确认高点；账户在开盘处理次日清仓，减少至原始持仓累计90%，全清优先并沿用成交限制。新测试覆盖原始两根报价、三级/折线、量替代、严格影线/突破边界、次笔及超时、前缀/来源修订、累计卖量与不可成交重试。中间行情/次日/确认日期为合成输入，不冒称真实历史已验证。本轮开发未运行测试、类型、构建、Git检查或浏览器，未提交推送；此前21个测试失败和11处类型错误仍未解决。"
+                },
                 {
                     "command": "2026-10-19 提交检查：pnpm --filter @wavequant/core python -m pytest tests/test_trend_delta_pipeline.py tests/test_trend_frozen_prefix.py tests/test_trend_append_state.py tests/test_trend_active_key_indices.py tests/test_owned_evidence_history.py tests/test_source_version_budget.py tests/test_trend_change_history.py tests/test_trend_history_performance_reuse.py tests/test_chart_staging_resources.py tests/test_backtest_history_reuse.py -q --tb=short",
                     "status": "failed",

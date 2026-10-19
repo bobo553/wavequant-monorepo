@@ -848,6 +848,8 @@
     font-variant-numeric: tabular-nums;
 }
 .watchlist-rail {
+    display: flex;
+    flex-direction: column;
     grid-column: 1;
     grid-row: 1 / span 2;
     align-self: start;
@@ -860,6 +862,7 @@
 }
 .watchlist-rail-header {
     display: flex;
+    flex-shrink: 0;
     min-height: 34px;
     align-items: center;
     gap: 7px;
@@ -914,7 +917,8 @@
 }
 .watchlist-rail-body {
     display: flex;
-    max-height: calc(100vh - 78px);
+    min-height: 0;
+    flex: 0 1 auto;
     flex-direction: column;
     margin-top: 8px;
     overflow: hidden;
@@ -922,10 +926,20 @@
 .watchlist-rail-body[hidden] {
     display: none;
 }
+/* 侧栏统一分配可用高度，只有股票列表收缩并负责纵向滚动。 */
+.watchlist-rail-body > :not(.watchlist-stock-list) {
+    flex-shrink: 0;
+}
 .watchlist-rail .watchlist-stock-list {
-    min-height: 80px;
+    min-height: 0;
+    flex: 1 1 auto;
+    grid-auto-rows: max-content;
+    align-content: start;
     margin-inline: -3px;
+    overflow-x: hidden;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
 }
 .watchlist-rail[data-collapsed="true"] {
     padding-inline: 9px;

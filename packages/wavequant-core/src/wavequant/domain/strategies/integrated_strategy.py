@@ -47,6 +47,7 @@ from .combined_a_entry import CombinedAContext, combined_a_entry_history
 from .secondary_reclaim_entry import SecondaryHigh, secondary_reclaim_history
 from .secondary_pullback_entry import SecondaryPullbackCandidate, secondary_pullback_history
 from .attack_quality import squeeze_buy_rejection, squeeze_volume_pass, v3_positive_n_attack_rejection
+from .gap_entry_gate import GapEntryGate
 from ..market_structure.polyline_lifecycle import PolylineBuyGate
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
@@ -273,6 +274,7 @@ class DailySignalState:
     c_equal_events: list[dict[str, object]] = field(default_factory=list)
     has_buy_signal: bool = False
     polyline_buy_gate: PolylineBuyGate = field(default_factory=PolylineBuyGate)
+    gap_buy_gate: GapEntryGate = field(default_factory=GapEntryGate)
     account_risk_required: bool | None = None
     a_wave_stream: 'AWaveHistoryStream | None' = None
     risk_histories: 'DailyRiskHistories | None' = None
@@ -505,6 +507,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                         'reversal_low_broken', 'confirmation_gap_filled', SOURCE_BEAR_EXIT))
     hierarchical = config.entry_policy == 'hierarchical_two_buy_points'
     whole_wave = config.buy_point_definition == 'whole_flip_wave_v3'
+    gap_buy_gate = _daily.gap_buy_gate if _daily is not None else GapEntryGate()
     polyline_buy_gate = _daily.polyline_buy_gate if _daily is not None else PolylineBuyGate()
     if whole_wave:
         # 独立于交易资格推进，不能在资格重开时遗忘尚未突破的折线关键位。
@@ -1587,6 +1590,10 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             return False
         bar = bars[i]
         volume_rejection = volume_bearish_entry_rejection(bars, i) if whole_wave else None
+        gap_rejection = gap_buy_gate.advance(bars, i)
+        if gap_rejection is not None:
+            log(i, 'entry_rejected', candidate_channel='global_gap_resistance', **gap_rejection)
+            return False
         if volume_rejection is not None:
             log(i, 'entry_rejected', reason=volume_rejection,
                 candidate_channel='global_volume_bearish',

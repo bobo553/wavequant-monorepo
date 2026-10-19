@@ -447,6 +447,31 @@ class _TrendUpgradeState:
             if owned_direction is None and current is not None:
                 owned_direction = current
                 whole_extreme = recent['H' if current == 'up' else 'L'][-1]
+                # 首次方向已有完整四点证明，但没有更早的本级波可提供闭合key。
+                # 从已消费直接来源中建立左边界，后续仍由同一整波状态延伸。
+                origin_kind = 'L' if current == 'up' else 'H'
+                origin = origins_by_kind[origin_kind].query(0, positions[_order(whole_extreme)])
+                proof = [*recent['H'], *recent['L']]
+                if origin is not None:
+                    left = source_positions[_order(origin)]
+                    right = source_positions[_order(whole_extreme)]
+                    # 不把一条下级线直接升格，也不借左边界之前的四点拼接本波。
+                    if (all(_order(point) >= _order(origin) for point in proof)
+                            and (source_level == 0 or right - left > 1)):
+                        raw = _ordinary_point(origin, proof, attack, trend_level=trend_level,
+                            direction='down' if current == 'up' else 'up', current=current,
+                            prefix_known=prefix_known, key=None, owned=True)
+                        identity: dict[str, object] = dict(available_at=prefix_known,
+                            origin=_reference(origin), endpoint=_reference(whole_extreme))
+                        if source_level == 0:
+                            identity['basis'] = 'polyline_four_point_definition'
+                        else:
+                            identity['interior'] = _reference(turns[left + 1])
+                        raw['lower_wave_identity_evidence'] = identity
+                        raw['initial_boundary'] = True
+                        _stamp_wave_completion(raw, closed=True)
+                        publish_owned(raw, origin, prefix_known, closed=True)
+                        whole_origin = origin
             if owned_direction is not None:
                 target = 'H' if owned_direction == 'up' else 'L'
                 sign = 1 if owned_direction == 'up' else -1

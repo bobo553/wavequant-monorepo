@@ -138,7 +138,8 @@ def test_xinhua_full_causal_pipeline_confirms_february_low_without_rewriting_ope
     assert confirmation['confirmation_rule'] == 'positive_n_and_squeeze_after_qualified_b'
     assert confirmation['counter_price'] == pytest.approx(3.532767357186747)
     assert confirmation['confirmation_evidence']['attack'] == dates['2024-03-13']
-    assert all(permissions[dates['2024-03-20']:])
+    assert all(permissions[dates['2024-03-20']:dates['2024-04-16']])
+    assert not permissions[dates['2024-04-16']]
     contexts = merge_recovery_entry_history(bars, {}, events)
     assert not contexts[dates['2024-03-19']]
     assert contexts[dates['2024-03-20']][0].alternation_low_index == dates['2024-02-08']
@@ -146,9 +147,14 @@ def test_xinhua_full_causal_pipeline_confirms_february_low_without_rewriting_ope
     assert not any(event.get('counter_index') == dates['2024-02-08']
                    and event.get('state') == '空多交替' and event['bar_index'] < dates['2024-03-20']
                    for event in events)
-    # 旧资格按既有退出契约保持开放；新低点确认不能倒改区间起始日期。
+    # 内部一级末升低破位结束二级资格；确认新低点不能倒改原开窗日。
     assert [(window.start_index, window.end_index) for window in intervals] == [
-        (dates['2023-08-22'], dates['2023-09-14']), (dates['2023-11-21'], None)]
+        (dates['2023-08-22'], dates['2023-09-14']), (dates['2023-11-21'], dates['2024-04-16'])]
+    exit_event = next(event for event in events if event.get('buy_eligible') is False
+                      and event['bar_index'] == dates['2024-04-16'])
+    proof = exit_event.get('source_confirmation', exit_event)
+    assert proof['broken_key_index'] == dates['2024-02-29']
+    assert proof['broken_key_known_index'] < dates['2024-04-16']
 
 
 @pytest.mark.parametrize('invalid', [None, 'future', 'unconfirmed'])

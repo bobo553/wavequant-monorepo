@@ -16,6 +16,14 @@ def is_volume_bearish(bar: Bar, previous: Bar | None, last_bearish: Bar | None) 
                and bar.volume > reference.volume for reference in references)
 
 
+def is_bearish_inside_child(mother: Bar, child: Bar) -> bool:
+    """非十字母线包含阴线子线的完整高低区间；允许一端相等，不接受两端完全相同。"""
+    return (mother.symbol == child.symbol and mother.timestamp < child.timestamp
+            and mother.close != mother.open and child.close < child.open
+            and child.high <= mother.high and child.low >= mother.low
+            and (child.high < mother.high or child.low > mother.low))
+
+
 def bearish_body_engulfs(bar: Bar, previous: Bar) -> bool:
     """实体覆盖昨日非十字实体且至少一边严格越过；影线不参与。"""
     top, bottom = max(previous.open, previous.close), min(previous.open, previous.close)

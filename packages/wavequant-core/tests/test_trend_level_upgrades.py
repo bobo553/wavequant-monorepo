@@ -21,6 +21,35 @@ def source_points(values: Sequence[float], *, level: int, mirror: bool = False) 
             for index, value in enumerate(values)]
 
 
+@pytest.mark.parametrize('level', [1, 2, 3])
+@pytest.mark.parametrize('mirror', [False, True])
+def test_initial_composite_wave_retains_boundary_key_and_full_reverse_origin(level, mirror):
+    # 新华传媒的缩减价格结构；合成日期不证明实际股票确认日。
+    source = source_points([3.28, 8.23, 4.11, 7.40, 3.83, 6.49, 3.35, 9.20],
+                           level=level - 1, mirror=mirror)
+    from wavequant.domain.market_structure.trend_levels import _completed_source_point
+
+    initial = promote_trend_key_breaks(source[:5], [], trend_level=level)
+    boundary = next(point for point in initial if point.get('initial_boundary'))
+    assert boundary['index'] == 1
+    assert boundary['available_at'] == source[4]['available_at']
+    assert _completed_source_point(boundary) is not None
+    events = []
+    promoted = promote_trend_key_breaks(source, [], trend_level=level, event_sink=events)
+    attack = next(point for point in events if point.get('upgrade_evidence', {}).get('role') == 'endpoint')
+    assert attack['index'] == 7
+    assert attack['upgrade_evidence']['broken_key']['index'] == 1
+    assert attack['upgrade_evidence']['origin']['index'] == 6
+    assert {1, 6, 7}.issubset({point['index'] for point in promoted})
+
+
+@pytest.mark.parametrize('mirror', [False, True])
+def test_initial_boundary_does_not_exist_before_both_direction_pairs(mirror):
+    source = source_points([3.28, 8.23, 4.11, 7.40, 3.83], level=2, mirror=mirror)
+    for size in range(1, 5):
+        assert promote_trend_key_breaks(source[:size], [], trend_level=3) == []
+
+
 VALUES = [20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 36, 42, 30, 36, 24, 31, 26, 50]
 
 

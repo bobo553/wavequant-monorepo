@@ -7,6 +7,7 @@ from ..models.model import Bar
 from ..market_structure.observation_window import observation_window_end
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from .history_cursor import HistoryCursor
+from .breakout_shadow_exit import BREAKOUT_SHADOW_CLEAR, breakout_shadow_days
 
 
 def _secondary_wave_setup(levels, known_by):
@@ -333,6 +334,10 @@ class TrendFlipExitStream:
                 self._bars, self._history, start_index=self.start_index,
                 end_index=self.end_index if self._bars else None,
             ), {}),
+            HistoryCursor(breakout_shadow_days(
+                self._bars, self._history, start_index=self.start_index,
+                end_index=self.end_index if self._bars else None,
+            ), {}),
         ))
         self._risks = {}
         self._index = self.start_index - 1
@@ -341,8 +346,16 @@ class TrendFlipExitStream:
     def _row(levels: dict) -> dict:
         # Only these fields participate in this observer; complete trend proofs
         # remain owned by the hierarchy and are not copied into another cache.
-        return {level: tuple({key: point[key] for key in ('kind', 'index', 'value', 'available_at')}
+        result = {level: tuple({key: point[key] for key in
+                             ('kind', 'index', 'value', 'available_at', 'state', 'display_only') if key in point}
                              for point in levels.get(level, ())) for level in (1, 2, 3)}
+        # 新规则只需要折线最近已确认高点，不能为它逐日复制全部折线历史。
+        high = next((point for point in reversed(levels.get(0, ()))
+                     if point.get('kind') == 'H' and point.get('state') not in ('seed', 'developing')
+                     and point.get('display_only') is not True), None)
+        result[0] = (() if high is None else ({key: high[key] for key in
+                     ('kind', 'index', 'value', 'available_at', 'state', 'display_only') if key in high},))
+        return result
 
     def advance(self, index: int, history: dict[int, dict], *, _history_owner: object | None = None) -> dict[int, dict]:
         if self._closed:
@@ -372,6 +385,16 @@ class TrendFlipExitStream:
         for day in range(previous + 1, index + 1):
             risk = next((outcome[day] for outcome in (outcomes[1], outcomes[0], outcomes[2], outcomes[3])
                          if day in outcome), None)
+            shadow = outcomes[4].get(day)
+            if shadow is not None:
+                full_clear = next((outcome[day] for outcome in outcomes[:4]
+                                   if day in outcome and outcome[day]['exit_fraction'] == 1.0), None)
+                if shadow['reason'] == BREAKOUT_SHADOW_CLEAR:
+                    risk = shadow
+                elif full_clear is not None:
+                    risk = full_clear
+                elif risk is None or risk['exit_fraction'] < shadow['exit_fraction']:
+                    risk = shadow
             if risk is not None:
                 self._risks[day] = risk
         self._index, self._owner = index, owner
