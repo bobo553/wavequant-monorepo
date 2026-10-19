@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
-from wavequant.domain.market_state.candle_strength import QUALIFIED_RISING_CLOSE
+from wavequant.domain.market_state.candle_strength import QUALIFIED_CLOSE_ENTRY_REASONS
 from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse
 from wavequant.application.analytics.holding_drawdown import holding_drawdowns, drawdown_metrics, holding_fill_time
 from wavequant.application.analytics.intraday_wave_exit import (
@@ -1388,14 +1388,14 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
             for symbol, (_, bar) in current.items():
                 marks[symbol] = bar.close
-            if config.entry_at_close or any(signal.reason == QUALIFIED_RISING_CLOSE
+            if config.entry_at_close or any(signal.reason in QUALIFIED_CLOSE_ENTRY_REASONS
                                              for signal, _ in pending_entry.values()):
                 # Match only after all close-time exits, using close marks for every
                 # holding. Today's earlier extrema cannot stop out a new close fill.
                 for symbol in sorted(list(pending_entry), key=lambda s: (-(pending_entry[s][0].rvol or 0), s)):
                     signal, created = pending_entry[symbol]
                     if (created != tick or symbol not in current
-                            or not config.entry_at_close and signal.reason != QUALIFIED_RISING_CLOSE):
+                            or not config.entry_at_close and signal.reason not in QUALIFIED_CLOSE_ENTRY_REASONS):
                         continue
                     del pending_entry[symbol]
                     i, bar = current[symbol]
