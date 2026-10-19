@@ -21,14 +21,14 @@ from wavequant.infrastructure.persistence.calculation_step_cache import Calculat
 def test_completed_step_is_durable_and_bound_to_every_bar_field(tmp_path):
     bars = [Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)]
     seen = []
-    recorder = CalculationStepCache(tmp_path, {'engine': 'v1', 'args': 'a'}, seen.append)
+    recorder = CalculationStepCache(tmp_path, {'engine': 'v1', 'args': 'a'}, seen.append, record_details=True)
     with observe_steps(recorder):
         assert calculation_steps(bars) is recorder
         recorder.append(1, {'bar_index': 0, 'points': [{'value': 10, 'available_at': '2026-01-02'}]})
         recorder.complete(1)
     assert calculation_steps(bars) is None
     assert recorder.cache.get('calculation-chunk', recorder.chunks[1][0])[0]['bar_index'] == 0
-    restored = CalculationStepCache(tmp_path, {'engine': 'v1', 'args': 'a'}, seen.append)
+    restored = CalculationStepCache(tmp_path, {'engine': 'v1', 'args': 'a'}, seen.append, record_details=True)
     assert restored.bind(bars)
     assert restored.steps[0]['cache'] == 'available'
     assert restored.steps[0]['status'] == 'pending'
@@ -37,17 +37,17 @@ def test_completed_step_is_durable_and_bound_to_every_bar_field(tmp_path):
     assert restored.steps[0]['cache'] == 'available'
     restored.complete(1)
     assert restored.steps[0]['status'] == 'completed'
-    changed = CalculationStepCache(tmp_path, {'engine': 'v1', 'args': 'a'}, seen.append)
+    changed = CalculationStepCache(tmp_path, {'engine': 'v1', 'args': 'a'}, seen.append, record_details=True)
     changed.bind([replace(bars[0], buyable=False)])
     assert changed.steps[0]['status'] == 'pending'
-    changed_engine = CalculationStepCache(tmp_path, {'engine': 'v2', 'args': 'a'}, seen.append)
+    changed_engine = CalculationStepCache(tmp_path, {'engine': 'v2', 'args': 'a'}, seen.append, record_details=True)
     changed_engine.bind(bars)
     assert changed_engine.steps[0]['status'] == 'pending'
 
 
 def test_empty_lifecycle_is_completed_but_a_failed_step_keeps_only_partial_cache(tmp_path):
     bars = [Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)]
-    recorder = CalculationStepCache(tmp_path, 'a', lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, 'a', lambda snapshot: None, record_details=True)
     recorder.bind(bars)
     recorder.begin(4)
     recorder.complete(4)
@@ -65,7 +65,7 @@ def test_empty_lifecycle_is_completed_but_a_failed_step_keeps_only_partial_cache
 
 
 def test_lifecycle_events_are_routed_by_level_and_state_without_turning_candidates_into_confirmations(tmp_path):
-    recorder = CalculationStepCache(tmp_path, 'a', lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, 'a', lambda snapshot: None, record_details=True)
     recorder.bind([Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)])
     record_lifecycle(recorder, [
         {'trend_level': 2, 'state': '空多交替', 'event': 'trend_lifecycle_candidate', 'bar_index': 0},
@@ -94,7 +94,7 @@ def test_encoded_chunks_match_object_codec_and_isolate_caller_mutations_after_re
         '日期': '2026-01-02', '文本': '折线 📈 "\\\n\b',
         'nested': {'None': 'empty key', 'False': 'boolean key', '2': ['tuple', [3, 4]]},
     }
-    recorder = CalculationStepCache(tmp_path, 'snapshot', lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, 'snapshot', lambda snapshot: None, record_details=True)
     recorder.bind([Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)])
     recorder.append(1, row)
     evidence.values.append('later mutation')
@@ -129,7 +129,7 @@ def test_encoded_chunk_boundary_and_oversized_single_row_match_original_size(tmp
     empty_size = len(json.dumps({'payload': ''}, ensure_ascii=False, allow_nan=False).encode())
     first = {'payload': 'x' * (first_size - empty_size)}
     second = {'tail': '结束'}
-    recorder = CalculationStepCache(tmp_path, 'boundary', lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, 'boundary', lambda snapshot: None, record_details=True)
     recorder.bind([Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)])
     recorder.append(1, first)
     assert len(recorder.chunks.get(1, [])) == (1 if first_size >= 512 * 1024 else 0)
@@ -144,7 +144,7 @@ def test_encoded_chunk_boundary_and_oversized_single_row_match_original_size(tmp
 
 @pytest.mark.parametrize('invalid', [float('nan'), float('inf'), -float('inf'), object()])
 def test_invalid_row_retains_prior_buffer_and_failed_stage_evidence(tmp_path, invalid):
-    recorder = CalculationStepCache(tmp_path, 'invalid', lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, 'invalid', lambda snapshot: None, record_details=True)
     recorder.bind([Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)])
     recorder.append(3, {'valid': [1, True]})
     recorder.append(3, {'invalid': invalid})
@@ -157,7 +157,7 @@ def test_invalid_row_retains_prior_buffer_and_failed_stage_evidence(tmp_path, in
 
 
 def test_encoded_chunk_write_failure_preserves_existing_failure_and_flush_lifecycle(tmp_path):
-    recorder = CalculationStepCache(tmp_path, 'disk-failure', lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, 'disk-failure', lambda snapshot: None, record_details=True)
     recorder.bind([Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)])
     recorder.append(17, {'valid': 'independent result'})
     with patch.object(recorder.cache, '_connect', side_effect=sqlite3.OperationalError('disk full')):
@@ -170,7 +170,7 @@ def test_encoded_chunk_write_failure_preserves_existing_failure_and_flush_lifecy
 
 
 def test_corrupt_encoded_chunk_is_cache_miss_then_can_be_replaced(tmp_path):
-    recorder = CalculationStepCache(tmp_path, 'corruption', lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, 'corruption', lambda snapshot: None, record_details=True)
     recorder.bind([Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)])
     recorder.append(1, {'value': 1.25})
     recorder.complete(1)
@@ -184,7 +184,7 @@ def test_corrupt_encoded_chunk_is_cache_miss_then_can_be_replaced(tmp_path):
 
 
 def test_trend_chunks_reuse_full_evidence_and_restore_independent_versions(tmp_path):
-    recorder = CalculationStepCache(tmp_path, 'trend-refs', lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, 'trend-refs', lambda snapshot: None, record_details=True)
     recorder.bind([Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)])
     point = {'value': 1.0, 'proof': {'values': [True, 1, -0.0, None], 'text': '证据' * 2000}}
     stroke = {'id': 'same-path', 'points': [point]}
@@ -233,7 +233,7 @@ def test_standard_evidence_cache_is_bounded_and_unknown_values_keep_original_cod
 
 
 def test_reference_chunks_bound_expanded_history_despite_high_deduplication(tmp_path):
-    recorder = CalculationStepCache(tmp_path, 'bounded-expanded-chunks', lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, 'bounded-expanded-chunks', lambda snapshot: None, record_details=True)
     recorder.bind([Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)])
     stroke = {'id': 'closed', 'points': [{'value': 1, 'proof': 'x' * (64 * 1024)}]}
     for index in range(80):
@@ -247,7 +247,7 @@ def test_reference_chunks_bound_expanded_history_despite_high_deduplication(tmp_
 
 
 def test_cache_write_failure_stops_remaining_steps_without_repeated_lock_waits(tmp_path):
-    recorder = CalculationStepCache(tmp_path, 'stop-after-write-failure', lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, 'stop-after-write-failure', lambda snapshot: None, record_details=True)
     recorder.bind([Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)])
     recorder.append(3, {'strokes': [{'points': [{'value': 1}]}]})
     recorder.complete(3)
@@ -279,7 +279,7 @@ def test_cache_metrics_measure_encoding_and_write_separately_from_shared_span(tm
 
     current = [100.0]
     with patch('wavequant.infrastructure.persistence.calculation_step_cache.monotonic', side_effect=lambda: current[0]):
-        recorder = CalculationStepCache(tmp_path, 'measured', lambda snapshot: None)
+        recorder = CalculationStepCache(tmp_path, 'measured', lambda snapshot: None, record_details=True)
         recorder.bind([Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)])
 
         def encode(value):
@@ -309,7 +309,7 @@ def test_persistent_point_versions_record_as_complete_independent_json_rows(tmp_
     from wavequant.domain.market_structure.trend_point_version import PointVersion
 
     bars = [Bar(datetime(2026, 1, 2), 'sh.601086', 10, 11, 9, 10, 100)]
-    recorder = CalculationStepCache(tmp_path, {'engine': 'point-version'}, lambda _: None)
+    recorder = CalculationStepCache(tmp_path, {'engine': 'point-version'}, lambda _: None, record_details=True)
     assert recorder.bind(bars)
     point = dict(index=0, value=10., available_at=0, proof={'known_at': 0})
     with owned_evidence_scope() as owner:
@@ -347,3 +347,45 @@ def test_owned_json_encoding_reuses_authenticated_nodes_without_resigning_prefix
         owner.publish(revised)
         assert cache.encode(revised, _encode_json) == _encode_json(revised)
         assert cache.encode(revised, _encode_json) != expected
+
+
+def test_default_summary_never_opens_cache_or_encodes_payloads(tmp_path):
+    bars = [Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)]
+    seen = []
+    module = 'wavequant.infrastructure.persistence.calculation_step_cache'
+    with patch(module + '.ArtifactCache', side_effect=AssertionError('unexpected cache access')), \
+            patch(module + '._encode_json', side_effect=AssertionError('unexpected encoding')), \
+            patch(module + '._json_value', side_effect=AssertionError('unexpected input encoding')):
+        recorder = CalculationStepCache(tmp_path, 'summary', seen.append)
+        assert recorder.bind(bars)
+        assert not recorder.bind([replace(bars[0], close=10.5)])
+        recorder.append(3, {'opaque': object()})
+        recorder.complete(3)
+        recorder.finish({'metrics': {'opaque': object()}})
+    assert recorder.cache is None
+    assert recorder.inputs is None
+    assert not recorder.buffers and not recorder.trend_chunks and not recorder.chunks
+    assert not list(tmp_path.iterdir())
+    row = seen[-1]['steps'][2]
+    assert row['status'] == 'completed'
+    assert row['rows'] == 1
+    assert row['cache'] == 'none'
+    assert row['encoded_bytes'] == row['encoding_seconds'] == row['write_seconds'] == 0
+    assert seen[-1]['steps'][23]['status'] == 'completed'
+
+
+def test_default_summary_preserves_failure_and_unavailable_market_status(tmp_path):
+    bars = [Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)]
+    recorder = CalculationStepCache(tmp_path, 'summary', lambda snapshot: None)
+    recorder.bind(bars)
+    recorder.append(3, {'opaque': object()})
+    recorder.finish(None, ValueError('interrupted'))
+    assert recorder.steps[2]['status'] == 'failed'
+    assert recorder.steps[2]['error'] == 'interrupted'
+    assert recorder.steps[2]['cache'] == 'none'
+    assert recorder.steps[9]['status'] == 'not_recorded'
+    unavailable = CalculationStepCache(tmp_path, 'unavailable', lambda snapshot: None)
+    unavailable.bind(bars)
+    unavailable.finish({'backtest': {'status': 'data_unavailable'}})
+    assert unavailable.steps[23]['status'] == 'failed'
+    assert unavailable.steps[23]['cache'] == 'none'

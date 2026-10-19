@@ -1697,3 +1697,14 @@ MONOREPO-258常驻验收：实现c05d8e4以e6d1e13合并本地main，main真实3
 - 国芳2026-09-04生成结构未解退出；真实复权日线09-07开盘18.0123高于前收17.6223，收盘19.3915。用先前模拟持仓回放到09-07无卖单、持仓保留且无待卖单。
 - 6个相关Core模块142项测试、修改模块mypy及Core源码包/wheel构建通过。`test_add_on_entry.py`中一项既有华瓷08-26买点断言失败，未修改的本地`main`源码复跑也失败；完整Core套件和Web套件未执行，按用户规则未运行Playwright。
 2026-10-17 · 本次提交验证补充：资格与账户相关定向 pytest 165 项、趋势端点 99 项通过，官方 typecheck 与 build 通过；完整套件在长历史用例处停止，2120 日性能仍未验收。MONOREPO-330 保持 in-progress。
+
+## 2026-10-20 回测详细诊断改为按需开启（MONOREPO-330）
+
+- CalculationStepCache 默认仅维护进度、条数与耗时，不打开 ArtifactCache、不编码输入和产物、不写 chunk/manifest；保留真实计算历史及结果。
+- API 启动参数 --record-backtest-diagnostics 经 serve_dashboard / make_server / BacktestJobs 传入记录器；Core 调用使用 record_details=True 显式开启。既有诊断文件不清理。
+- 存储相关用例改为显式开启，新增默认无缓存/编码、失败摘要及 CLI 开关传递回归源码。
+- 开发阶段未运行测试、lint、类型检查、构建或性能探针，待实际提交时验证；不宣称性能提升幅度，既有未验证项与失败不变。
+### 2026-10-20 提交前验证：暂停合并
+使用现有 API .venv/Scripts/python.exe，PYTHONPATH 指向各自检出的 Core/API src，执行 pytest -q，目标为 Core tests/test_calculation_step_cache.py、test_calculation_step_order_cache.py、test_backtest_analysis_boundary.py、test_backtest_step_order.py、test_trend_change_history.py 和 API tests/test_backtest_jobs.py、test_cli.py。
+本分支：23 failed, 66 passed；当前 main 90a25ae 同组对照：23 failed, 62 passed。失败节点一致，新增四个诊断开关用例通过；失败涉及原趋势时序/生命周期接口及 Worker 模式枚举、缓存恢复。未修改无关业务规则或放宽断言。
+仓库要求检查失败不得合并：本次尚未提交、同步合并或推送，等待用户决定是否对已复现的基线失败予以本次合并豁免。MONOREPO-330 保持 in-progress。

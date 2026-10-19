@@ -252,3 +252,15 @@ class AkShareStructureWorkerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_backtest_diagnostics_requires_explicit_cli_opt_in():
+    from unittest.mock import patch
+
+    assert parser().parse_args([]).record_backtest_diagnostics is False
+    assert parser().parse_args(['--record-backtest-diagnostics']).record_backtest_diagnostics is True
+    for options, enabled in (([], False), (['--record-backtest-diagnostics'], True)):
+        with patch('sys.argv', ['wavequant-api', *options]), \
+                patch('wavequant_api.cli.serve_dashboard') as serve:
+            main()
+        assert serve.call_args.kwargs['record_backtest_diagnostics'] is enabled

@@ -305,7 +305,7 @@ def test_drawing_tail_resume_keeps_previous_closed_paths_and_first_new_epoch_bou
 
 def test_persistent_steps_store_reconstructable_drawing_changes_and_sparse_trend_versions(tmp_path) -> None:
     bars = _bars(tuple(float(i + 10) for i in range(20)))
-    recorder = CalculationStepCache(tmp_path, 'change-history', lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, 'change-history', lambda snapshot: None, record_details=True)
     with observe_steps(recorder):
         with chart._staged_chart_frames(bars, resume_start=0, closed=(), previous_epoch=None,
                                        previous_raw=()) as (_, levels):

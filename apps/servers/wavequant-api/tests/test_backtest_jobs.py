@@ -291,3 +291,32 @@ class BacktestJobsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_job_diagnostics_are_opt_in_without_changing_result(tmp_path):
+    from datetime import datetime
+
+    from wavequant.domain.market_structure.calculation_steps import calculation_steps
+    from wavequant.domain.models.model import Bar
+
+    bars = [Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)]
+    observed = []
+
+    def work():
+        recorder = calculation_steps(bars)
+        assert recorder is not None
+        recorder.append(3, {'bar_index': 0, 'strokes': []})
+        recorder.complete(3)
+        observed.append(recorder)
+        return {'metrics': {'trades': 0}}
+
+    for enabled in (False, True):
+        root = tmp_path / str(enabled)
+        options = {'record_backtest_diagnostics': True} if enabled else {}
+        jobs = BacktestJobs(history_path=root / 'history.sqlite', **options)
+        job = jobs.start('diagnostic-job', 'same-input', work)
+        assert job.done.wait(5)
+        recorder = observed[-1]
+        assert recorder.steps[2]['cache'] == ('stored' if enabled else 'none')
+        assert (root / '.calculation-steps').exists() is enabled
+        assert recorder.steps[23]['status'] == 'completed'

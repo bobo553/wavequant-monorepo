@@ -91,7 +91,7 @@ def test_cache_reports_real_execution_order_and_finishes_market_steps_before_str
     order: tuple[int, ...], prefix: tuple[int, ...], tmp_path: Path,
 ) -> None:
     snapshots: list[dict[str, object]] = []
-    recorder = CalculationStepCache(tmp_path, 'step-order-boundary', snapshots.append)
+    recorder = CalculationStepCache(tmp_path, 'step-order-boundary', snapshots.append, record_details=True)
     with using_calculation_order(order) as plan, observe_steps(recorder):
         with prepare_backtest_analysis(_bars(), _config()) as analysis:
             assert recorder.plan == plan

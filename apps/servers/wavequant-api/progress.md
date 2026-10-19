@@ -426,3 +426,14 @@ MONOREPO-282（2026-10-07，Core V99消费方，合并待确认）：共用Core�
 - 完成的有效单股回测将有限的 `max_drawdown` 写入任务摘要与持久化历史，列表刷新后可继续读取；不改回测算法与旧记录。
 - `test_backtest_jobs.py` 定向 7 项通过，覆盖完成结果与重建任务注册表后的持久化摘要。首次检出的全仓快速检查因全局 Python 缺少 `build` 模块停在 Core 构建；本次 API 定向测试使用原项目虚拟环境并显式指向本 worktree 源码。
 2026-10-17 · 本次提交验证补充：预览定向 pytest 7 项通过；API 全套测试收集因环境缺 pandas、pytdx 中断，官方严格类型检查受跨包无 py.typed 及既有类型问题阻塞。MONOREPO-330 保持 in-progress。
+
+## 2026-10-20 回测详细诊断改为按需开启（MONOREPO-330）
+
+- CalculationStepCache 默认仅维护进度、条数与耗时，不打开 ArtifactCache、不编码输入和产物、不写 chunk/manifest；保留真实计算历史及结果。
+- API 启动参数 --record-backtest-diagnostics 经 serve_dashboard / make_server / BacktestJobs 传入记录器；Core 调用使用 record_details=True 显式开启。既有诊断文件不清理。
+- 存储相关用例改为显式开启，新增默认无缓存/编码、失败摘要及 CLI 开关传递回归源码。
+- 开发阶段未运行测试、lint、类型检查、构建或性能探针，待实际提交时验证；不宣称性能提升幅度，既有未验证项与失败不变。
+### 2026-10-20 提交前验证：暂停合并
+使用现有 API .venv/Scripts/python.exe，PYTHONPATH 指向各自检出的 Core/API src，执行 pytest -q，目标为 Core tests/test_calculation_step_cache.py、test_calculation_step_order_cache.py、test_backtest_analysis_boundary.py、test_backtest_step_order.py、test_trend_change_history.py 和 API tests/test_backtest_jobs.py、test_cli.py。
+本分支：23 failed, 66 passed；当前 main 90a25ae 同组对照：23 failed, 62 passed。失败节点一致，新增四个诊断开关用例通过；失败涉及原趋势时序/生命周期接口及 Worker 模式枚举、缓存恢复。未修改无关业务规则或放宽断言。
+仓库要求检查失败不得合并：本次尚未提交、同步合并或推送，等待用户决定是否对已复现的基线失败予以本次合并豁免。MONOREPO-330 保持 in-progress。

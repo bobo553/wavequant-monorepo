@@ -71,7 +71,7 @@ def test_policy_runs_inside_market_scope_and_all_streams_close(monkeypatch, tmp_
     _enable_test_interval(monkeypatch)
     monkeypatch.setattr(MarketDay, 'permits_buy', lambda self, level: self.frame.index >= 1)
     snapshots, retained = [], []
-    recorder = CalculationStepCache(tmp_path, 'daily-boundary', snapshots.append)
+    recorder = CalculationStepCache(tmp_path, 'daily-boundary', snapshots.append, record_details=True)
 
     def policy(bars, config, **kwargs):
         analysis = kwargs['_analysis']

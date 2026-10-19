@@ -15,7 +15,7 @@ GEOMETRY_FIRST = (1, 3, 10, 17, 2, *range(4, 10), *range(11, 17), *range(18, 25)
 
 
 def test_execution_order_metadata_keeps_frontend_and_persisted_step_ids_stable(tmp_path: Path) -> None:
-    recorder = CalculationStepCache(tmp_path, {'engine': 'v1'}, lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, {'engine': 'v1'}, lambda snapshot: None, record_details=True)
     recorder.bind([Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)])
     plan = resolve_calculation_plan(GEOMETRY_FIRST)
     recorder.set_plan(plan)
@@ -44,7 +44,7 @@ def test_execution_order_metadata_keeps_frontend_and_persisted_step_ids_stable(t
 def test_different_execution_order_reuses_artifacts_by_step_id_without_relabeling_data(tmp_path: Path) -> None:
     bars = [Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)]
     identity = {'engine': 'v1', 'symbol': 'sz.000678'}
-    original = CalculationStepCache(tmp_path, identity, lambda snapshot: None)
+    original = CalculationStepCache(tmp_path, identity, lambda snapshot: None, record_details=True)
     original.bind(bars)
     original.set_plan(resolve_calculation_plan(GEOMETRY_FIRST))
     original.append(1, {'kind': 'drawing', 'bar_index': 0})
@@ -52,7 +52,7 @@ def test_different_execution_order_reuses_artifacts_by_step_id_without_relabelin
     original.append(3, {'kind': 'level_one', 'bar_index': 0})
     original.complete(3)
 
-    restored = CalculationStepCache(tmp_path, identity, lambda snapshot: None)
+    restored = CalculationStepCache(tmp_path, identity, lambda snapshot: None, record_details=True)
     restored.bind(bars)
     restored.set_plan(resolve_calculation_plan(tuple(range(1, 25))))
 
@@ -72,7 +72,7 @@ def test_different_execution_order_reuses_artifacts_by_step_id_without_relabelin
 
 
 def test_order_cannot_change_mid_execution_or_mark_pending_steps_completed(tmp_path: Path) -> None:
-    recorder = CalculationStepCache(tmp_path, 'a', lambda snapshot: None)
+    recorder = CalculationStepCache(tmp_path, 'a', lambda snapshot: None, record_details=True)
     recorder.bind([Bar(datetime(2026, 1, 2), 'sz.000678', 10, 11, 9, 10, 100)])
     plan = resolve_calculation_plan(GEOMETRY_FIRST)
     recorder.set_plan(plan)
