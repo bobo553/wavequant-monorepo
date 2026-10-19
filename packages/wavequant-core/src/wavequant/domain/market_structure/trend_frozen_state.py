@@ -130,20 +130,28 @@ class FrozenPrefixList(MutableSequence[T]):
         return self._stop + len(self._tail)
 
     def __iter__(self) -> Iterator[T]:
+        return self.iter_range()
+
+    def iter_range(self, start: int = 0, stop: int | None = None) -> Iterator[T]:
+        """按块访问指定区间；跳过前缀，提前终止也不物化未访问的后缀。"""
+        start, end, _ = slice(start, stop).indices(len(self))
+        frozen_end = min(end, self._stop)
         pending = [(self._archive, self._capacity, 0)]
         while pending:
-            node, capacity, start = pending.pop()
-            if node is None or start * 32 >= self._stop:
+            node, capacity, block_start = pending.pop()
+            left = block_start * 32
+            if node is None or left >= frozen_end or left + capacity * 32 <= start:
                 continue
             if capacity == 1:
-                yield from cast(tuple[T, ...], node.values[:min(32, self._stop - start * 32)])
+                yield from cast(tuple[T, ...], node.values[max(0, start - left):min(32, frozen_end - left)])
             else:
                 half = capacity // 2
-                pending.extend(((node.right, half, start + half), (node.left, half, start)))
-        yield from self._tail
+                pending.extend(((node.right, half, block_start + half), (node.left, half, block_start)))
+        for position in range(max(start, self._stop), end):
+            yield self._tail[position - self._stop]
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, (list, FrozenPrefixList)):
+        if not isinstance(other, (list, tuple, FrozenPrefixList)):
             return False
         return len(self) == len(other) and all(left == right for left, right in zip(self, other))
 
@@ -158,15 +166,7 @@ class FrozenPrefixList(MutableSequence[T]):
             start, stop, step = index.indices(len(self))
             if step != 1:
                 return [self[position] for position in range(start, stop, step)]
-            result: list[T] = []
-            while start < min(stop, self._stop):
-                position, offset = divmod(start, 32)
-                count = min(32 - offset, stop - start, self._stop - start)
-                result.extend(cast(tuple[T, ...], _block(self._archive, self._capacity, position)[offset:offset + count]))
-                start += count
-            if start < stop:
-                result.extend(self._tail[start - self._stop:stop - self._stop])
-            return result
+            return list(self.iter_range(start, stop))
         position = index + len(self) if index < 0 else index
         if position < 0 or position >= len(self):
             raise IndexError('state sequence index out of range')

@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Callable, TypedDict
 
 from wavequant.domain.market_state.volume_candle import volume_bearish_entry_rejection
+from wavequant.domain.market_state.candle_strength import QUALIFIED_RISING_CLOSE, volume_high_open_rising
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.domain.strategies.integrated_strategy import (
     SystemResult,
@@ -177,6 +178,56 @@ def _qualified_gap_entries(
         dict(generated.counts, long_signals=sum(row.side == 'LONG' for row in signals))), executions, fallbacks, gap_days
 
 
+def _qualified_rising_close_entries(
+    bars: list[Bar], generated: SystemResult, strategy: SystemStrategy, *,
+    only_index: int | None, intervals: Sequence[TradingInterval] | None,
+) -> tuple[SystemResult, set[int]]:
+    """已有资格内的非跳空强阳在当日收盘入场；严格跳空仍沿原分钟通道。"""
+    from wavequant.domain.strategies.trading_intervals import confirmed_trading_intervals
+
+    days: set[int] = set()
+    if strategy.buy_point_definition != 'whole_flip_wave_v3':
+        return generated, days
+    if intervals is None:
+        intervals = confirmed_trading_intervals(generated.audit, len(bars), strategy.buy_interval_level)
+    signals, audit = list(generated.signals), list(generated.audit)
+    for i in ([only_index] if only_index is not None else range(1, len(bars))):
+        if i <= 0 or bars[i].open > bars[i - 1].high or not volume_high_open_rising(bars[i], bars[i - 1]):
+            continue
+        window = max((w for w in intervals if w.trend_level == strategy.buy_interval_level
+            and w.start_index <= i and (w.end_index is None or i < w.end_index)),
+            key=lambda w: w.start_index, default=None)
+        if window is None or window.start_low_price is None:
+            continue
+        confirmation = next((row for row in reversed(audit)
+            if row.get('event') == 'trend_lifecycle_state' and row.get('state') == '空多交替'
+            and row.get('trend_level') == strategy.buy_interval_level
+            and row.get('source_path') == window.source_path and row['bar_index'] == window.start_index), None)
+        if confirmation is None:
+            continue
+        bar = bars[i]
+        decision = bar.timestamp.replace(hour=15, minute=0)
+        signal = Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close, window.start_low_price,
+            QUALIFIED_RISING_CLOSE, decision, 0, None, '放量高开高走',
+            confirmation['breakout_level'], strategy.minimum_reward_risk)
+        days.add(i)
+        signals = [row for row in signals if not (row.bar_index == i and row.side == 'LONG')] + [signal]
+        audit = [row for row in audit if not (row['bar_index'] == i
+            and row['event'] in ('long_signal', 'long_transition_evidence'))]
+        for event in ('long_signal', 'long_transition_evidence'):
+            audit.append(dict(event=event, bar_index=i, timestamp=bar.timestamp.isoformat(), symbol=bar.symbol,
+                buy_point_type=QUALIFIED_RISING_CLOSE, stop=signal.invalidation_price, target=signal.target_price,
+                execution_model='same_day_close', decision_source='daily_close',
+                decision_timestamp=decision.isoformat(), qualification_index=window.start_index,
+                trend_level=strategy.buy_interval_level, source_path=window.source_path,
+                observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
+                observed_close=bar.close, observed_volume=bar.volume,
+                previous_close=bars[i - 1].close, previous_high=bars[i - 1].high,
+                previous_volume=bars[i - 1].volume))
+    return SystemResult(sorted(signals, key=lambda row: (row.timestamp, row.side)), audit,
+        dict(generated.counts, long_signals=sum(row.side == 'LONG' for row in signals))), days
+
+
 def resolve_consolidation_entries(
     bars: list[Bar],
     generated: SystemResult,
@@ -201,10 +252,13 @@ def resolve_consolidation_entries(
         if (prepared_analysis.bars != tuple(bars) or only_index is None or only_index != len(bars) - 1
                 or trading_window_start is None):
             raise ValueError('prepared minute replay requires the current daily prefix and window')
+    generated, rising_days = _qualified_rising_close_entries(
+        bars, generated, strategy, only_index=only_index,
+        intervals=prepared_analysis.trading_intervals if prepared_analysis is not None else None)
     generated, gap_executions, gap_fallbacks, gap_days = _qualified_gap_entries(
         bars, generated, strategy, minute_loader, only_index=only_index,
         intervals=prepared_analysis.trading_intervals if prepared_analysis is not None else None)
-    if qualified_gap_only or only_index is not None and only_index in gap_days:
+    if qualified_gap_only or only_index is not None and only_index in (gap_days | rising_days):
         return generated, gap_executions, gap_fallbacks
     minute_scope = None
     if prepared_analysis is not None:

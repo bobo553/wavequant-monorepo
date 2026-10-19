@@ -11,7 +11,7 @@ import pytest
 from wavequant.domain.market_structure import trend_judgement, trend_lines
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
 from wavequant.domain.market_structure.owned_evidence import (
-    current_evidence, owned_evidence_scope, owned_signature,
+    CertifiedSource, current_evidence, owned_evidence_scope, owned_signature,
 )
 from wavequant.domain.market_structure.prepared_point_history import PreparedPointHistory, PreparedPointReference
 from wavequant.domain.market_structure.trend_cascade import _TrendCascadeCache, prepare_trend_cascade
@@ -201,7 +201,11 @@ def test_cold_and_owned_three_level_results_match_for_every_market_prefix() -> N
             actual = prepare_trend_cascade(deepcopy(source), symbol='OWNED', bars=bars[:index + 1],
                 caches=caches, _round_caches=rounds, _owned_source=True)
             assert actual == expected[index], index
-            assert all(type(stroke['points']) is list for row in actual
+            assert all(type(stroke['points']) is CertifiedSource for row in actual
+                for stroke in cast(Sequence[Mapping[str, object]], row['source_strokes']))
+            exported = deepcopy(actual)
+            assert exported == expected[index]
+            assert all(type(stroke['points']) is list for row in exported
                 for stroke in cast(Sequence[Mapping[str, object]], row['source_strokes']))
 
 
@@ -318,3 +322,42 @@ def test_point_block_budget_refuses_without_discarding_saved_history() -> None:
             assert history._used <= 12_000
         finally:
             history.close()
+
+
+def test_exhausted_evidence_uses_complete_graph_without_python_reference_callbacks(monkeypatch):
+    from wavequant.domain.market_structure.trend_lines import _ClosedPreparedPaths, _prepared_payload
+    from wavequant.domain.market_structure.trend_point_version import PointVersion
+
+    point = dict(index=0, proof={'values': [1, 2]})
+    distinct = deepcopy(point)
+    version = PointVersion([point, distinct]).seal()
+    prepared = dict(strokes=[dict(points=version)], candidate_strokes=[dict(points=version)],
+                    proof=point['proof'])
+    with owned_evidence_scope(memory_bytes=0) as evidence:
+        paths = _ClosedPreparedPaths(_owned_history=True)
+        encoded = paths.encode(prepared)
+        monkeypatch.setattr(evidence, 'reference', lambda _: pytest.fail('exhausted pool was retried'))
+        payload = _prepared_payload(encoded)
+        assert payload is not None
+        restored = evidence.loads(payload)
+        points = restored['strokes'][0]['points']
+        assert type(points) is list and points == [point, distinct]
+        assert points is restored['candidate_strokes'][0]['points']
+        assert points[0] is not points[1]
+        assert points[0]['proof'] is restored['proof']
+        restored['proof']['values'].append(99)
+        assert point['proof']['values'] == [1, 2]
+
+
+def test_exhausted_evidence_does_not_invoke_unknown_audit_reducers():
+    from wavequant.domain.market_structure.trend_lines import _ClosedPreparedPaths, _prepared_payload
+    from wavequant.domain.market_structure.trend_point_version import PointVersion
+
+    class Unknown:
+        def __reduce_ex__(self, protocol):
+            pytest.fail('unknown audit reducer was invoked')
+
+    with owned_evidence_scope(memory_bytes=0):
+        paths = _ClosedPreparedPaths(_owned_history=True)
+        prepared = dict(strokes=[dict(points=PointVersion([dict(audit=Unknown())]).seal())])
+        assert _prepared_payload(paths.encode(prepared)) is None

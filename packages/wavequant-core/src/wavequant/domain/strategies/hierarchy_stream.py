@@ -10,6 +10,8 @@ from ..market_structure.trend_body_reversal import with_price_bodies
 from ..market_structure.trend_judgement import (
     TrendJudgement, _FrozenPoint, _FrozenPointCache, _OwnedPointAdmission, _frozen_point_scope, mutable_points,
 )
+from ..market_structure.trend_point_version import PointVersion
+from ..market_structure.trend_frozen_state import FrozenPrefixList
 from ..market_structure.trend_readonly_cache import _ReadonlySnapshotCache
 from ..market_structure.trend_evidence_reuse import _geometry_signature
 from ..market_structure.trend_lines import (
@@ -46,6 +48,15 @@ def _available_structure(judgement: TrendJudgement, index: int) -> bool:
                for point in judgement.points)
 
 
+@dataclass
+class _SharedProjection:
+    source: PointVersion
+    result: PointVersion
+    positions: FrozenPrefixList[int]
+    identities: dict[tuple[int, int, str, float], int]
+    pending: int
+
+
 class HierarchyHistoryStream:
     """Keep knowledge clocks and judgement state across daily strategy calls.
 
@@ -62,7 +73,8 @@ class HierarchyHistoryStream:
         self._dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(self.bars)}
         self.index = -1
         self.epoch: int | None = None
-        self.history: dict[int, dict[int, tuple[dict[str, object], ...]]] = {}
+        self.history: dict[int, dict[int, Sequence[dict[str, object]]]] = {}
+        self._shared_projections: dict[int, _SharedProjection] = {}
         self.epochs: dict[int, int] = {}
         self.declines: dict[int, tuple[DeclineStart, ...]] = {}
         self.previous: dict[int, dict[tuple[int, int, str, float], int]] = {}
@@ -87,6 +99,7 @@ class HierarchyHistoryStream:
         self._point_admission.close()
         self._decoded.clear()
         self._prepared.clear()
+        self._shared_projections.clear()
         self._candidate_caches.clear()
         self._n_proofs.clear()
         self._polyline_signature = None
@@ -166,6 +179,61 @@ class HierarchyHistoryStream:
                 result.extend(cast(Sequence[Mapping[str, object]], stroke['points']))
         return result
 
+    def _project_shared(self, source: PointVersion, level: int, index: int) -> PointVersion | None:
+        previous = self._shared_projections.get(level)
+        start = source.changed_since(previous.source if previous is not None else None)
+        if previous is not None:
+            start = min(start, previous.pending)
+        start = min(start, len(source))
+        if previous is not None and source is previous.source and start == len(source):
+            return previous.result
+        identities = previous.identities if previous is not None else {}
+        suffix_identities: set[tuple[int, int, str, float]] = set()
+        # 重复价格身份会使旧版 first-seen 字典影响更早位置，保留原完整路径。
+        for point in source[start:]:
+            identity = _identity(point)
+            if identity in suffix_identities or identities.get(identity, start) < start:
+                self._shared_projections.pop(level, None)
+                return None
+            suffix_identities.add(identity)
+        known_points = self.previous.setdefault(level, {})
+        old_known: dict[tuple[int, int, str, float], int] = {}
+        if previous is not None:
+            for point in previous.source[start:]:
+                identity = _identity(point)
+                identities.pop(identity, None)
+                if identity in known_points:
+                    old_known[identity] = known_points.pop(identity)
+        else:
+            old_known = known_points.copy()
+            known_points.clear()
+        positions = previous.positions.copy() if previous is not None else FrozenPrefixList([0])
+        retained = positions[start] if previous is not None else 0
+        del positions[start + 1:]
+        result = PointVersion(previous=previous.result if previous is not None else None, start=retained)
+        pending = len(source)
+        for offset in range(start, len(source)):
+            point = source[offset]
+            identity = _identity(point)
+            identities[identity] = offset
+            known = self._known_index(point.get('available_at'))
+            origin = point.get('index')
+            if type(origin) is not int or known is None or not 0 <= origin <= known <= index:
+                if known is not None and known > index:
+                    pending = min(pending, offset)
+                positions.append(len(result))
+                continue
+            known = max(old_known.get(identity, index), known,
+                        cast(int, result[-1]['available_at']) if result else 0)
+            known_points[identity] = known
+            result.append(dict(index=origin, ordinal=point.get('ordinal', 0), kind=point['kind'],
+                               value=point['value'], available_at=known))
+            positions.append(len(result))
+        result.seal()
+        positions.freeze(len(positions))
+        self._shared_projections[level] = _SharedProjection(source, result, positions, identities, pending)
+        return result
+
     def advance_market_day(
         self, day: 'MarketDay', permissions: Sequence[Mapping[str, object]],
     ) -> None:
@@ -184,10 +252,22 @@ class HierarchyHistoryStream:
         if epoch != self.epoch:
             self.previous.clear()
             self.points.clear()
-        levels: dict[int, tuple[dict[str, object], ...]] = {}
+            self._shared_projections.clear()
+        levels: dict[int, Sequence[dict[str, object]]] = {}
         for number, (prepared, view) in enumerate(zip(day.levels, permissions, strict=True), 1):
             if prepared.get('trend_level') != number or prepared.get('source_level') != number - 1:
                 raise ValueError('shared hierarchy requires immediate lower-level geometry')
+            cutoffs = cast(Mapping[str, int | None], prepared['_path_market_end_indices'])
+            active = [stroke for stroke in cast(Sequence[Mapping[str, object]], view['qualified_strokes'])
+                      if cutoffs[cast(str, stroke['source_path'])] is None
+                      or index < cast(int, cutoffs[cast(str, stroke['source_path'])])]
+            raw = active[0]['points'] if len(active) == 1 else None
+            if type(raw) is PointVersion and raw._sealed:
+                projected_version = self._project_shared(raw, number, index)
+                if projected_version is not None:
+                    levels[number] = projected_version
+                    continue
+            self._shared_projections.pop(number, None)
             points: list[Mapping[str, object]] = []
             for point in self._active_points(prepared, view, 'qualified_strokes', index):
                 known = self._known_index(point.get('available_at'))

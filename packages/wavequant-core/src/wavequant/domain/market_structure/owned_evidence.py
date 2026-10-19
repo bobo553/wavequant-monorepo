@@ -1,6 +1,6 @@
 """请求拥有的只读证据图；历史行引用旧节点，公共读取独立恢复整图。"""
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
@@ -10,6 +10,9 @@ import pickle
 from sys import getsizeof
 from typing import cast
 from uuid import uuid4
+
+from .trend_point_version import PointVersion
+from .trend_frozen_state import FrozenPrefixList
 
 
 _MAGIC = b'WQ-owned-evidence-1\x00'
@@ -28,6 +31,10 @@ class _EvidenceWriter(pickle.Pickler):
         # 与普通签名入口一致，在未知对象的 __reduce__ 之前拒绝。
         from .trend_evidence_reuse import _UncacheableGeometry
 
+        if value is list:
+            return NotImplemented
+        if type(value) in (PointVersion, CertifiedSource):
+            return list, (), None, iter(value)
         raise _UncacheableGeometry
 
 
@@ -82,6 +89,10 @@ class OwnedEvidence:
     def memory_used(self) -> int:
         return self._used
 
+    @property
+    def admission_remaining(self) -> int:
+        return max(0, self._limit - self._used)
+
     def finite(self, value: object) -> bool:
         """等价于标准 JSON 的有限值准入，已拥有的节点不再遍历。"""
         pending: list[tuple[object, bool]] = [(value, False)]
@@ -102,7 +113,9 @@ class OwnedEvidence:
                 if not isfinite(cast(float, item)):
                     return False
                 continue
-            if kind not in (dict, list, tuple) or id(item) in active:
+            if kind in (PointVersion, CertifiedSource) and not cast(PointVersion, item)._sealed:
+                return False
+            if kind not in (dict, list, tuple, PointVersion, CertifiedSource) or id(item) in active:
                 return False
             active.add(id(item))
             pending.append((item, True))
@@ -153,24 +166,28 @@ class OwnedEvidence:
                 continue
             seen.add(id(item))
             charged += getsizeof(item) + 384
+            if type(item) in (PointVersion, CertifiedSource):
+                charged += cast(PointVersion, item).storage_bytes
+            if type(item) is CertifiedSource:
+                charged += item.signature_bytes + item.keys.storage_bytes + item._costs.storage_bytes
             if self._used + charged > self._limit:
                 return
             if type(item) is dict:
                 pending_values.extend(child for pair in cast(dict[object, object], item).items() for child in pair)
-            elif type(item) in (list, tuple):
+            elif type(item) in (list, tuple, PointVersion, CertifiedSource):
                 pending_values.extend(cast(list[object] | tuple[object, ...], item))
         self._used += charged
         pending: list[tuple[object, bool]] = [(value, False)]
         while pending:
             item, leaving = pending.pop()
             kind = type(item)
-            if self.reference(item) is not None or kind not in (dict, list, tuple, str):
+            if self.reference(item) is not None or kind not in (dict, list, tuple, str, PointVersion, CertifiedSource):
                 continue
             if not leaving:
                 pending.append((item, True))
                 if kind is dict:
                     pending.extend((child, False) for pair in cast(dict[object, object], item).items() for child in pair)
-                elif kind in (list, tuple):
+                elif kind in (list, tuple, PointVersion, CertifiedSource):
                     pending.extend((child, False) for child in cast(list[object] | tuple[object, ...], item))
                 continue
             reference = len(self._nodes)
@@ -188,26 +205,50 @@ def current_evidence() -> OwnedEvidence | None:
     return _current.get()
 
 
-class CertifiedSource(list[dict[str, object]]):
-    """生产者交付的私有来源版本；公开输出必须物化为普通 list。"""
+class CertifiedSource(PointVersion):
+    """请求内来源和逐点证书共用持久前缀，变化只追加到独立版本。"""
 
-    def __init__(self, points: Sequence[dict[str, object]], keys: tuple[bytes, ...],
+    def __init__(self, points: Sequence[dict[str, object]], keys: Sequence[bytes],
                  owner: OwnedEvidence, previous: 'CertifiedSource | None', *,
                  _changed_from: int | None = None) -> None:
-        super().__init__(points)
-        self.owner, self.keys, self.token = owner, keys, object()
-        self.parent = previous.token if previous is not None else None
+        if len(points) != len(keys):
+            raise ValueError('each source point requires one certificate')
         changed = _changed_from if _changed_from is not None and previous is not None else 0
+        if previous is not None and previous.owner is not owner:
+            previous, changed = None, 0
         if not 0 <= changed <= min(len(keys), len(previous.keys) if previous is not None else 0):
             raise ValueError('certified source delta must cover the changed suffix')
         if previous is not None and _changed_from is None:
             while changed < min(len(previous.keys), len(keys)) and previous.keys[changed] == keys[changed]:
                 changed += 1
-        self.changed_from = changed
-        self._costs = previous._costs[:changed + 1] if previous is not None else [0]
-        for key in keys[changed:]:
+        self._initialize(points[changed:], keys[changed:], owner, previous, changed)
+
+    def _initialize(self, points: Iterable[dict[str, object]], keys: Iterable[bytes],
+                    owner: OwnedEvidence, previous: 'CertifiedSource | None', start: int) -> None:
+        super().__init__(points, previous=previous, start=start)
+        self.owner = owner
+        self.keys = previous.keys.copy() if previous is not None else FrozenPrefixList[bytes]()
+        self._costs = previous._costs.copy() if previous is not None else FrozenPrefixList([0])
+        del self.keys[start:]
+        del self._costs[start + 1:]
+        for key in keys:
+            self.keys.append(key)
             self._costs.append(self._costs[-1] + getsizeof(key))
+        if len(self.keys) != len(self):
+            raise ValueError('each source point requires one certificate')
+        self.keys.freeze(len(self.keys))
+        self._costs.freeze(len(self._costs))
         self.signature_bytes = self._costs[-1]
+        self.seal()
+
+    @classmethod
+    def from_tail(cls, points: Iterable[dict[str, object]], keys: Iterable[bytes],
+                  owner: OwnedEvidence, previous: 'CertifiedSource | None', start: int) -> 'CertifiedSource':
+        if previous is not None and previous.owner is not owner:
+            raise ValueError('a source prefix belongs to one evidence owner')
+        result = cls.__new__(cls)
+        result._initialize(points, keys, owner, previous, start)
+        return result
 
 
 @contextmanager

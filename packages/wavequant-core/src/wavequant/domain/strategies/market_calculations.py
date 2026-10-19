@@ -164,7 +164,25 @@ class MarketCalculations:
         for index in tuple(self._shared_permission_days):
             if index < day.frame.index - 1:
                 del self._shared_permission_days[index]
-        return published
+        # 交易附件保留上面的完整视图；层级历史只接收自身的价格/知识时钟投影。
+        # 有效交易区间内也保持同一投影版本，避免切换模式重新物化冻结前缀。
+        from ..market_structure.trend_point_version import PointVersion
+
+        projected_views: list[dict[str, object]] = []
+        for number, (prepared, view) in enumerate(zip(day.levels, published, strict=True), 1):
+            cutoffs = cast(Mapping[str, int | None], prepared['_path_market_end_indices'])
+            strokes: list[dict[str, object]] = []
+            for stroke in cast(Sequence[Mapping[str, object]], view['qualified_strokes']):
+                path = cast(str, stroke['source_path'])
+                cutoff = cutoffs[path]
+                if cutoff is not None and day.frame.index >= cutoff:
+                    continue
+                points = cast(Sequence[Mapping[str, object]], stroke['points'])
+                projected = (points if type(points) is PointVersion else
+                             cache.hierarchy_projection(number, path, points))
+                strokes.append(dict(source_path=path, points=projected))
+            projected_views.append(dict(trend_level=number, qualified_strokes=strokes))
+        return tuple(projected_views)
 
     def _close_shared_history(self) -> None:
         if self._shared_hierarchy is not None:

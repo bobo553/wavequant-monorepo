@@ -8,6 +8,8 @@ from sys import getsizeof
 from typing import cast
 
 from wavequant.domain.market_structure.trend_evidence_reuse import _geometry_signature
+from wavequant.domain.market_structure.trend_point_version import PointVersion
+from wavequant.domain.market_structure.owned_evidence import CertifiedSource, OwnedEvidence, current_evidence
 
 
 _FORMAT = 'trend_stroke_refs_v1'
@@ -16,7 +18,7 @@ _Encode = Callable[[object], bytes]
 
 
 class EvidenceJsonCache:
-    """仅按完整标准值签名复用 JSON 字节，不按可变对象身份猜测未变化。"""
+    """公开值按全文签名；请求内已认证的不可变节点按稳定引用复用。"""
 
     def __init__(self, *, max_bytes: int = 8 * 1024 * 1024) -> None:
         if type(max_bytes) is not int or max_bytes < 1024:
@@ -25,18 +27,24 @@ class EvidenceJsonCache:
         self.entries: OrderedDict[bytes, bytes] = OrderedDict()
         self.payload_bytes = 0
         self.reused_bytes = 0
+        self._owner: OwnedEvidence | None = None
+        self._owned_entries: dict[int, bytes] = {}
+        self._owned_bytes = 0
 
     @property
     def memory_bytes(self) -> int:
-        return self.payload_bytes + getsizeof(self.entries)
+        return self.payload_bytes + self._owned_bytes + getsizeof(self.entries) + getsizeof(self._owned_entries)
 
     def clear(self) -> None:
         self.entries.clear()
         self.payload_bytes = 0
+        self._owner = None
+        self._owned_entries.clear()
+        self._owned_bytes = 0
 
     def encode(self, value: object, encode: _Encode, *, stroke: bool = False) -> bytes:
         if (stroke and type(value) is dict and all(type(key) is str for key in value)
-                and type(value.get('points')) in (list, tuple)):
+                and type(value.get('points')) in (list, tuple, PointVersion, CertifiedSource)):
             # 路径外壳每日变化；缓存整条路径会挤走其中可复用的历史点，且
             # structural_legs 又重复编码同一批点。只缓存点，外壳逐次重建。
             parts = []
@@ -44,12 +52,36 @@ class EvidenceJsonCache:
                 item = value[key]
                 if key == 'points':
                     encoded = b'[' + b', '.join(self.encode(point, encode) for point in item) + b']'
-                elif key in ('structural_legs', 'confirmed_legs') and type(item) in (list, tuple):
+                elif key in ('structural_legs', 'confirmed_legs') and type(item) in (list, tuple, PointVersion, CertifiedSource):
                     encoded = b'[' + b', '.join(self.encode(leg, encode, stroke=True) for leg in item) + b']'
                 else:
                     encoded = encode(item)
                 parts.append(json.dumps(key, ensure_ascii=False).encode() + b': ' + encoded)
             return b'{' + b', '.join(parts) + b'}'
+        # 请求证据池已认证不可变节点，稳定引用可直接复用编码；不能为每个旧点
+        # 再遍历整份证明生成签名。只准入预算内新项，旧前缀不参与逐日 LRU 抖动。
+        owner = current_evidence()
+        if owner is not self._owner:
+            self._owner = owner
+            self._owned_entries.clear()
+            self._owned_bytes = 0
+        reference = owner.reference(value) if owner is not None else None
+        if reference is not None:
+            previous = self._owned_entries.get(reference)
+            if previous is not None:
+                self.reused_bytes += len(previous)
+                return previous
+            result = encode(value)
+            charged = getsizeof(reference) + getsizeof(result) + 128
+            if charged + self.memory_bytes + 1024 <= self.max_bytes:
+                self._owned_entries[reference] = result
+                self._owned_bytes += charged
+                if self.memory_bytes > self.max_bytes:
+                    del self._owned_entries[reference]
+                    self._owned_bytes -= charged
+                    if self.memory_bytes > self.max_bytes:
+                        self._owned_entries = dict(self._owned_entries)
+            return result
         signature = _geometry_signature(value)
         if signature is None:
             return encode(value)
@@ -93,13 +125,13 @@ class TrendChunk:
 
     def _stroke(self, value: object, cache: EvidenceJsonCache, encode: _Encode) -> tuple[bytes, int]:
         if (type(value) is not dict or any(type(key) is not str for key in value)
-                or type(value.get('points')) not in (list, tuple)):
+                or type(value.get('points')) not in (list, tuple, PointVersion, CertifiedSource)):
             encoded = encode(value)
             return b'{"value":' + encoded + b'}', len(encoded)
         # 证明表在当前块内自包含；每日版本和线段共享同一点的 JSON 内容，
         # 不存跨块／跨请求引用，也不丢掉任何旧版或审计字段。
         nested = {'points'} | {key for key in ('structural_legs', 'confirmed_legs')
-                              if type(value.get(key)) in (list, tuple)}
+                              if type(value.get(key)) in (list, tuple, PointVersion, CertifiedSource)}
         metadata = encode({key: item for key, item in value.items() if key not in nested})
         points = [cache.encode(point, encode) for point in value['points']]
         references = [self._intern(point) for point in points]

@@ -1,6 +1,7 @@
 """跨策略共用的放量阴线定义，不使用相对前收涨跌判断阴阳。"""
 
 from collections.abc import Sequence
+from fractions import Fraction
 
 from ..models.model import Bar
 
@@ -65,3 +66,47 @@ def volume_bearish_entry_rejection(bars: Sequence[Bar], index: int) -> str | Non
     if bar.open > previous.high:
         return 'gap_open_bearish_buy_blocked'
     return None
+
+
+def is_long_upper_shadow(bar: Bar) -> bool:
+    """上影至少占振幅一半且不短于实体，十进制边界不受浮点舍入影响。"""
+    high, low, opened, closed = (Fraction(str(value)) for value in (bar.high, bar.low, bar.open, bar.close))
+    upper = high - max(opened, closed)
+    return high > low and 2 * upper >= high - low and upper >= abs(closed - opened)
+
+
+def volume_upper_shadow_rejection(bar: Bar, previous: Bar | None) -> str | None:
+    """阴阳线共用；只比较已知上一交易日的正成交量。"""
+    if (previous is not None and previous.symbol == bar.symbol
+            and previous.timestamp < bar.timestamp and previous.volume > 0
+            and bar.volume > previous.volume and is_long_upper_shadow(bar)):
+        return 'volume_long_upper_shadow_buy_blocked'
+    return None
+
+
+VOLUME_SHADOW_NEXT_WEAK_CLEAR = 'volume_upper_shadow_next_open_decline_clear'
+
+
+def volume_shadow_next_open_eligible(bars: Sequence[Bar], index: int) -> bool:
+    """仅依赖前两根收盘棒和当日开盘，不能读取当日最终最低价预选分钟风险。"""
+    return (index >= 2 and bars[index].symbol == bars[index - 1].symbol
+            and bars[index].timestamp > bars[index - 1].timestamp
+            and bars[index].open < bars[index - 1].close
+            and volume_upper_shadow_rejection(bars[index - 1], bars[index - 2]) is not None)
+
+
+def volume_shadow_next_decline(
+    bars: Sequence[Bar], index: int, observed: Bar | None = None,
+) -> dict[str, object] | None:
+    """传入部分日线时只用已观察最低价；默认完整日线在收盘确认。"""
+    if not volume_shadow_next_open_eligible(bars, index):
+        return None
+    bar = bars[index] if observed is None else observed
+    if bar.symbol != bars[index].symbol or bar.timestamp != bars[index].timestamp or bar.low >= bars[index].open:
+        return None
+    return dict(reason=VOLUME_SHADOW_NEXT_WEAK_CLEAR, exit_fraction=1.0,
+                execution_model='same_day_close', warning_index=index - 1,
+                warning_date=bars[index - 1].timestamp.date().isoformat(),
+                warning_close=bars[index - 1].close, observed_open=bars[index].open,
+                observed_low=bar.low, observed_close=bar.close,
+                decision_timestamp=bar.timestamp.replace(hour=15, minute=0).isoformat())

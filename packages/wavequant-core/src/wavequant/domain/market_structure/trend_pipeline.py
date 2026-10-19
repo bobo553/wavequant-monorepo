@@ -1,6 +1,7 @@
 """一只股票的完整折线来源与三个趋势级别按阶段计算。"""
 
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from typing import TypedDict, cast
 
 from ..models.model import Bar
@@ -51,5 +52,7 @@ def calculate_trend_hierarchy(
         results[level] = current
         if level < 3:
             qualified_source = high_low_points_from_strokes(current['qualified_strokes'])
-    return TrendHierarchy(lecture_drawing=drawing_result, reversal_trends=results[1],
-                          secondary_trends=results[2], tertiary_trends=results[3])
+    # 内部级联借用持久点版本；公开图表/缓存出口恢复独立的标准容器。
+    # PointVersion 的 pickle 协议不会被 JSON 编码器调用，不能直接泄漏给接口。
+    return deepcopy(TrendHierarchy(lecture_drawing=drawing_result, reversal_trends=results[1],
+                                   secondary_trends=results[2], tertiary_trends=results[3]))

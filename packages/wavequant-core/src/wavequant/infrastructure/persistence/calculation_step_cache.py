@@ -12,6 +12,8 @@ from uuid import uuid4
 from typing import cast
 
 from wavequant.domain.market_structure.calculation_plan import CalculationPlan
+from wavequant.domain.market_structure.trend_point_version import PointVersion
+from wavequant.domain.market_structure.owned_evidence import CertifiedSource
 from wavequant.domain.market_structure.calculation_steps import STEP_TITLES
 from wavequant.domain.models.model import Bar
 from .artifact_cache import ArtifactCache
@@ -27,7 +29,7 @@ def _json_value(value: object) -> object:
         return {field.name: _json_value(getattr(value, field.name)) for field in fields(value)}
     if isinstance(value, Mapping):
         return {str(key): _json_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, (list, tuple)) or type(value) in (PointVersion, CertifiedSource):
         return [_json_value(item) for item in value]
     raise ValueError(f'unsupported calculation artifact: {type(value).__name__}')
 

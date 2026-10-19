@@ -14,6 +14,9 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+                "2026-10-19国芳3月15日：冻结行情显示开盘5.89097高于前收5.85179但低于前高6.09996，旧资格直接入场仅接受open>previous.high。新增非跳空放量高开高走强阳共用通道：open>previous.close、low>=open、volume>previous.volume且正基准，复用实体>=3%、>=振幅60%、上影<=20%；有效所选级别资格内当日收盘生成与执行，原跳空分钟规则保留，不倒填开盘成交。profile v122；新增回归源码待提交验证，未运行实股复现或任何测试，不保证涨停撮合，沿用账户权限与同日退出优先。",
+                "2026-10-19回测系统文档：新增docs/wavequant-backtest-guide.md，按当前源码说明请求、行情、逐日三级趋势、六态与资格、N目标、买卖信号、分钟/日线撮合、资金约束、指标、24步骤产物、缓存与排查路径，并包含Mermaid图。仅静态阅读与文档整理，未运行回测、测试或图形渲染；不改变业务代码，未提交推送，既有未验证修改和WIP失败保留。",
+                "2026-10-19乐心长上影：全局拦截量大于昨日且上影至少半振幅、不短于实体的阴阳线；已持仓次日低开并跌破当日开盘全清，分钟模式用累计已知行情及下一分钟开盘，日线收盘确认。profile v121；源码与回归待提交验证，既有WIP失败未清除。",
                 "2026-10-19突破末跌高当笔/次笔放量阴线子线全清：共用is_bearish_inside_child统一完整高低区间包含，非十字母线、阴线子线、一端可相等；突破观察器在窗口内按高于昨日或最近阴线任一量直接收盘全清，原母子线后续破低规则保持，折线及三级共用，无股票/日期特判。保留当笔减仓后的次笔子线观察，profile v120，四层/放量/边界/流式/账户回归仅编写。用户已明确收盘或最高严格高于末跌高，相等不算；合法OHLC中high>key覆盖二者，不要求收盘必须站上，新增四层仅影线越过及收盘越过回归。冻结报价6月1日与4月20日最高价完全相同且收盘未越过，6月2日子线虽符合放量，但不能强制按这组关键位产生清仓；其他层级关键位及实股结果待提交验证。所有验证留至实际提交。",
                 "2026-10-19突破当笔/次笔跳空放量大阴线全清：共用breakout_shadow_days接受开盘严格越出昨日价格区间的上/下跳空，取消此前连续涨停限制，保留大阴线实体>=开盘5%且>=全幅一半、正式已知高点严格突破及收盘知识时钟；同日全清而非减九成，四层共用并沿原账户执行。profile v119，新增边界/前缀/账户和冻结行情回归源码，未运行。冻结行情2月16日已突破2022-01-05高点，2月17日为次笔且成交量低于2月16日；用户明确放量阴线与前一天或前一根阴线比较：保留共用严格大于任一正历史量规则，不改用突破前基准；2月16日本身为阴线，故2月17日不满足放量。新增四层两种量基准独立满足、均不足/相等拒绝和突破阴线更新次笔参照回归源码，未运行。真实生产关键位、资格与清仓日待提交验证，不标完成。",
                 "2026-10-19新华传媒4月16日资格续修：直接来源已结束上涨整波H及左侧L作为冻结末升低，逐日行情首次严格破位即沿直接来源结束上级资格，不再等待攻击低点闭合或反弹交替；先核对关键位提前可知、整波完成与高点未失效，右侧局部低点不得替代。一级至三级共用SourceMarketBreaks及方向证书的严格行情突破原语，独立行情事实不伪造六态状态，生命周期v31及历史缓存v155。新增无攻击端点、三级/分层/恢复及因果边界回归源码；真实冻结行情断言为4月16日结束、2月29日关键位。用户明确本轮只修改代码，所有运行证据留至实际提交，MONOREPO-330保持in-progress。",
@@ -100,9 +103,11 @@
                 "三级共用因果六态，交替确认后才能收盘再突破转多/转空；候选跳空/放量与确认分开，双向区间、失效、源修订、部分日线和检查点恢复均保留知识边界。",
                 "选股及首次打开自选股直接读取或更新回测，不等待全历史行情和完整趋势快照；结果文件失效自动重算一次，同参数运行任务复用，过期选股响应不得覆盖当前股票。",
                 "图表一级只消费折线来源变化，二/三级只消费直接下级变化；发展尾点同向移动不得触发相同已确认来源重算。折线尾部变更与趋势版本保留真实知识日、修订和路径关闭，逐日还原须与原全前缀基线一致；六态和交易价格条件继续按行情日期推进。",
-                "分钟仅用于实际买卖候选或执行需求；000678分钟核验复用因果日线历史，同输入完整账户与审计不变。"
+                "分钟仅用于实际买卖候选或执行需求；000678分钟核验复用因果日线历史，同输入完整账户与审计不变。",
+                "2026-10-19 外围消费者增量化：来源、候选、许可轻量投影传递不可变版本/父令牌/最早变化位置；分组、来源认证、几何标注、结构腿共享持久前缀；许可来源/候选查找索引只更新后缀；共享层级历史在交易区间内外只更新投影后缀。旧关键位/整波起点只读引用，不删除证据，不以结构冻结代替逐日资格核验；追加、修订、截短、同坐标事实、延迟可知、跨请求失效及公开独立列表导出待提交时验证。"
             ],
             "verification": [
+                {"command": "2026-10-19 submit: pytest tests/test_qualified_rising_close_entry.py tests/test_volume_upper_shadow_entry_exit.py -q --tb=short; mypy --strict <official four files>; python -m build --no-isolation; git diff --check", "status": "failed", "summary": "用户明确要求提交全部代码并推送，沿用已有 WIP 提交方式。两组交易规则测试22 passed；Core官方四文件mypy因导入链报告913 errors in 67 files，未宣称类型通过；wheel/sdist构建成功、差异空白检查通过。本轮扩展性能相关pytest已记录101 passed、8 failed，修改前快照复现相同8项阶段失败。保留既有失败，不合并main；未运行浏览器/E2E、Harness或全套测试。"},
                 {
                     "command": "pnpm --filter @wavequant/core python -m pytest tests/test_trend_initial_wave_boundary.py tests/test_trend_level_upgrades.py tests/test_trend_missing_initial_key.py -q --tb=short",
                     "status": "failed",
@@ -1218,6 +1223,41 @@
                     "command": "六态生命周期、公开信号、区间与检查点代码开发；相关 tests/types/build/performance 待实际提交阶段",
                     "status": "not-run",
                     "summary": "2026-10-13 已接入逐日三层生命周期及标量事件/状态缓存，补转空、关闭无交替转多旁路，v122隔离旧消费/图表缓存。新增双向/完整六态/未来引用/失败/检查点用例但未运行；不是完整24步骤持久化或已验证速度收益。开发仅读写代码，未提交、合并或重启。"
+                },
+                {
+                    "command": "开发阶段仅代码阅读、编辑与回归源码补充；提交时再执行 test_trend_consumer_versions.py 及受影响来源/三层/层级历史差分用例",
+                    "status": "not-run",
+                    "summary": "2026-10-19 在 feat-三级趋势统一 worktree 实现 PointVersion 持久块版本；CertifiedSource/SourceProjection/PromotionSource/_OwnedSourceInputs/_SourceVersionOwner 避免复制冻结前缀；候选整理按变化坐标桶重算；几何标注与结构腿共享前缀；许可来源和 _OriginLookup 按版本维护；许可价格/知识日投影稳定，并贯通到 HierarchyHistoryStream。完整交易附件仍保存原证据，公开 pickle/deepcopy 恢复独立 list。新增回归源码，未运行测试、类型检查、构建、运行探针或性能回测；不宣称加速比例或完整正确性验收。publish_uptrends 仍逐日核验候选，轻量许可结果仍比较本日输出后才确定变化位置，尚非全链路 O(变化量)。保留既有 WIP 与历史未解决项，未提交、合并或推送。"
+                },
+                {
+                    "command": "现有回测服务错误日志阅读；test_trend_public_json_boundary.py 待提交时执行",
+                    "status": "not-run",
+                    "summary": "2026-10-19 多个回测任务实际失败栈指向 adjusted_theory 缓存 JSON 编码：PointVersion 从 reversal_trends.candidate_strokes.points 泄漏。修复 calculate_trend_hierarchy 公开返回和 render_theory 传入几何的物化边界，保留内部增量共享。新增 JSON/ArtifactCache 与隔离回归源码；未运行测试或重新回测，不能把代码修复记作任务恢复验证。"
+                },
+                {
+                    "command": "待本轮授权：隔离源码/冻结行情性能与完整结果对照；test_trend_consumer_versions.py",
+                    "status": "not-run",
+                    "summary": "静态定位并消除持久版本连续读的重复树查找、候选前瞻全后缀物化、未变投影临时字典和缓存逐项清空；添加回归源码。修改前源码保存在 .codex-runtime/consumer-perf-before-20261019/src。未收到开发阶段验证授权，未运行检查或性能对照，不能宣称回测性能问题已经彻底解决。"
+                },
+                {
+                    "command": "python .codex-runtime/perf-20261017/consumer_benchmark.py --source-root <candidate-v2/src|candidate-v7/src> --output <full-v2|full-v7> --sizes all --timeout 600",
+                    "status": "passed",
+                    "summary": "用户本轮明确授权。国芳1777日完整离线冷回放：501.20697→207.71334秒，CPU484.890625→185.453125秒；历史保存343.3→58.6秒。信号/审计/委托/成交/分钟来源哈希完全一致，步骤缓存无错误；原始初始快照的步骤JSON失败不作为正常缓存基线。证据见 .codex-runtime/consumer-perf-20261019/result-summary.json。"
+                },
+                {
+                    "command": "python .codex-runtime/perf-20261017/compare_calculation_rows.py <full-v2/1777/calculation_rows.json> <full-v7/1777/calculation_rows.json> --count 1777 --output <full-calculation-comparison.json>",
+                    "status": "passed",
+                    "summary": "有界流式全量核验，逐日一/二/三级几何及其余步骤全部字段一致，哈希30440583ddfab1c8b62b9fe191ef53d676d9e7aad5eb0c98a816fe8e12a80a54。变化行编码数可不同，不删除或忽略价格/知识日/证据字段。"
+                },
+                {
+                    "command": "python .codex-runtime/perf-20261017/chart_boundary_benchmark.py --source-root <candidate-v7/src> --fixture <guofang-frozen.json> --research <full-v2/1777/generated_research.json> --output <chart-v7>",
+                    "status": "passed",
+                    "summary": "完整1777日最终图表渲染及adjusted_theory严格JSON缓存写入完成，约8.26秒；无浏览器，无网络，无PointVersion序列化异常。"
+                },
+                {
+                    "command": "pytest test_trend_consumer_versions.py test_trend_public_json_boundary.py test_owned_evidence_history.py test_calculation_step_cache.py test_calculation_step_order_cache.py test_hierarchy_stream.py test_lifecycle_frozen_context.py test_staged_trend_pipeline.py test_trend_readonly_cache.py -q --tb=short；修改前快照单独对照test_staged_trend_pipeline.py",
+                    "status": "failed",
+                    "summary": "扩展回归8项阶段断言失败；修改前隔离源码复现相同8项（旧阶段接口/几何数量/许可日期/路径断言）。未修改这些交易断言，其他本轮相关回归无新增失败；保留WIP，不声称全套门禁通过，未提交/合并/推送。"
                 }
             ]
         },

@@ -302,3 +302,48 @@ def test_cache_metrics_measure_encoding_and_write_separately_from_shared_span(tm
     assert row['write_seconds'] == 3
     assert row['elapsed_seconds'] == 25
     assert row['encoded_bytes'] == len(_encode_json({'value': 1}))
+
+
+def test_persistent_point_versions_record_as_complete_independent_json_rows(tmp_path):
+    from wavequant.domain.market_structure.owned_evidence import CertifiedSource, owned_evidence_scope
+    from wavequant.domain.market_structure.trend_point_version import PointVersion
+
+    bars = [Bar(datetime(2026, 1, 2), 'sh.601086', 10, 11, 9, 10, 100)]
+    recorder = CalculationStepCache(tmp_path, {'engine': 'point-version'}, lambda _: None)
+    assert recorder.bind(bars)
+    point = dict(index=0, value=10., available_at=0, proof={'known_at': 0})
+    with owned_evidence_scope() as owner:
+        points = CertifiedSource([point], [b'one'], owner, None)
+        legs = PointVersion([dict(points=[point, point])]).seal()
+        row = dict(bar_index=0, strokes=[dict(id='path', points=points, structural_legs=legs)])
+        recorder.append(3, row)
+        recorder.complete(3)
+    assert recorder.steps[2]['cache'] == 'stored'
+    restored = recorder.cache.get('calculation-chunk', recorder.chunks[3][0])
+    assert restored == [dict(bar_index=0, strokes=[dict(id='path', points=[point],
+                                                    structural_legs=[dict(points=[point, point])])])]
+    restored[0]['strokes'][0]['points'][0]['proof']['known_at'] = 99
+    assert point['proof']['known_at'] == 0
+
+
+def test_owned_json_encoding_reuses_authenticated_nodes_without_resigning_prefix():
+    from wavequant.domain.market_structure.owned_evidence import owned_evidence_scope
+    from wavequant.infrastructure.persistence.calculation_chunk import EvidenceJsonCache
+    from wavequant.infrastructure.persistence.calculation_step_cache import _encode_json
+    from wavequant.infrastructure.persistence import calculation_chunk
+
+    cache = EvidenceJsonCache(max_bytes=32 * 1024)
+    point = dict(index=0, proof={'detail': 'x' * 2048})
+    with owned_evidence_scope() as owner:
+        owner.publish(point)
+        expected = cache.encode(point, _encode_json)
+        with patch.object(calculation_chunk, '_geometry_signature', side_effect=AssertionError('old proof was signed')):
+            with patch('wavequant.infrastructure.persistence.calculation_step_cache._json_value',
+                       side_effect=AssertionError('old proof was traversed')):
+                assert cache.encode(point, _encode_json) == expected
+        assert cache.memory_bytes <= cache.max_bytes
+    with owned_evidence_scope() as owner:
+        revised = dict(index=0, proof={'detail': 'y' * 2048})
+        owner.publish(revised)
+        assert cache.encode(revised, _encode_json) == _encode_json(revised)
+        assert cache.encode(revised, _encode_json) != expected

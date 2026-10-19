@@ -10,6 +10,7 @@ from uuid import uuid4
 from .owned_evidence import OwnedEvidence, owned_signature
 from .trend_staging import TrendStageRows
 from .trend_frozen_state import FrozenPrefixList
+from .trend_point_version import PointVersion
 
 
 _BLOCK = 32
@@ -104,6 +105,12 @@ class PreparedPointHistory:
         previous = self._current.get(channel)
         owned = _changed_from is not None
         parent = self._owned_points.get(channel)
+        if isinstance(points, PointVersion) and points._sealed and previous is not None:
+            if points is parent:
+                return previous[1]
+            if isinstance(parent, PointVersion) and (not owned or parent is not _owned_previous):
+                _owned_previous, _changed_from = parent, points.changed_since(parent)
+                owned = True
         keep = (_changed_from if owned and previous is not None and parent is not None
                 and parent is _owned_previous else 0)
         if keep is None or not 0 <= keep <= min(len(points), len(previous[0]) if previous is not None else 0):

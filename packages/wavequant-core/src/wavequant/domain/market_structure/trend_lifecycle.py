@@ -7,11 +7,14 @@ cycles are retained; price confirmation advances once per market date.
 
 from collections.abc import Mapping, Sequence
 from bisect import bisect_left
+from heapq import heappop, heappush
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from math import isfinite
 from typing import TYPE_CHECKING, cast
 
+from .trend_point_version import PointVersion
+from .owned_evidence import CertifiedSource
 from ..models.model import Bar
 from .bull_alternation_confirmation import AlternationPolicy, confirm_bull_alternation
 from .confirmation_gap import confirmation_gap
@@ -116,7 +119,7 @@ def _next_structure_clock(value: object, dates: Mapping[str, int], now: int) -> 
         current = pending.pop()
         if type(current) in (str, int, float, bool, bytes, type(None)):
             continue
-        if type(current) not in (dict, list, tuple):
+        if type(current) not in (dict, list, tuple, PointVersion, CertifiedSource):
             return False, None
         if id(current) in visited:
             continue
@@ -130,6 +133,72 @@ def _next_structure_clock(value: object, dates: Mapping[str, int], now: int) -> 
         else:
             pending.extend(current)
     return True, following
+
+
+class _StructureClocks:
+    """只扫描变化点的证据；旧点的未来时钟到期时再推进到下一个知识日。
+
+    仅在 _owned_structure 契约内使用，当前点版本持有所有未变点，
+    不按外部可变字典身份认证，也不保留历史版本链或旧证明对象表。
+    """
+
+    def __init__(self) -> None:
+        self.points: Sequence[Mapping[str, object]] | None = None
+        self.dates: Mapping[str, int] | None = None
+        self.future: dict[int, int] = {}
+        self.heap: list[tuple[int, int]] = []
+
+    def advance(self, value: object, dates: Mapping[str, int], now: int) -> tuple[bool, int | None]:
+        if type(value) not in (list, tuple, PointVersion, CertifiedSource):
+            self.__init__()
+            return _next_structure_clock(value, dates, now)
+        points = cast(Sequence[Mapping[str, object]], value)
+        previous = self.points if self.dates is dates else None
+        if previous is None:
+            self.future.clear()
+            self.heap.clear()
+            start = 0
+        elif previous is points:
+            start = len(points)
+        elif isinstance(points, PointVersion) and isinstance(previous, PointVersion):
+            start = points.changed_since(previous)
+        else:
+            start = 0
+            while start < min(len(points), len(previous)) and points[start] is previous[start]:
+                start += 1
+        if previous is not None:
+            for position in range(start, len(previous)):
+                self.future.pop(position, None)
+        for position in range(start, len(points)):
+            standard, following = _next_structure_clock(points[position], dates, now)
+            if not standard:
+                self.__init__()
+                return False, None
+            if following is not None:
+                self.future[position] = following
+                heappush(self.heap, (following, position))
+        self.points, self.dates = points, dates
+        while self.heap:
+            following, position = self.heap[0]
+            if self.future.get(position) != following:
+                heappop(self.heap)
+                continue
+            if following > now:
+                break
+            heappop(self.heap)
+            self.future.pop(position)
+            standard, next_known = _next_structure_clock(points[position], dates, now)
+            if not standard:
+                self.__init__()
+                return False, None
+            if next_known is not None:
+                self.future[position] = next_known
+                heappush(self.heap, (next_known, position))
+        if len(self.heap) > 2 * len(self.future) + 256:
+            self.heap = [(known, position) for position, known in self.future.items()]
+            from heapq import heapify
+            heapify(self.heap)
+        return True, self.heap[0][0] if self.heap else None
 
 
 def advance_bull_recovery(
@@ -196,8 +265,10 @@ def _pivot(value: object, dates: Mapping[str, int], now: int) -> _Pivot | None:
     return _Pivot(index, ordinal, kind, cast(float, price), known)
 
 
-def _records(value: object) -> tuple[Mapping[str, object], ...]:
-    if not isinstance(value, (tuple, list)):
+def _records(value: object) -> Sequence[Mapping[str, object]]:
+    if type(value) in (PointVersion, CertifiedSource) and value._sealed:
+        return value
+    if not isinstance(value, (tuple, list, PointVersion, CertifiedSource)):
         return ()
     return tuple(row for row in value if isinstance(row, Mapping))
 
@@ -317,6 +388,7 @@ class TrendLifecycle:
         self._bear_breaks: dict[tuple[int, str], frozenset[tuple[int, int, int]]] = {}
         self._failed_breakouts: dict[tuple[int, str], FailedBreakoutState] = {}
         self._structure_facts: dict[tuple[int, str], _StructureFacts] = {}
+        self._structure_clocks: dict[tuple[int, str], _StructureClocks] = {}
         self._checkpoint_seen: dict[
             tuple[int, str], tuple[frozenset[_Fact], tuple[tuple[object, ...], ...]]
         ] = {}
@@ -548,6 +620,7 @@ class TrendLifecycle:
         self._last_index = now
         if not _owned_structure:
             self._structure_facts.clear()
+            self._structure_clocks.clear()
             self._source_turns = None
         events: list[dict[str, object]] = []
         present: set[tuple[int, str]] = set()
@@ -567,7 +640,8 @@ class TrendLifecycle:
                 present.add(key)
                 self._expire_confirmation_gap(key, bars, now, events)
                 cached = self._structure_facts.get(key) if _owned_structure else None
-                unchanged = (cached is not None and cached.stroke is stroke
+                unchanged = (cached is not None
+                    and (cached.stroke is stroke or cached.stroke.get('points') is stroke.get('points'))
                     and (cached.next_known is None or now < cached.next_known))
                 if unchanged:
                     assert cached is not None
@@ -585,7 +659,8 @@ class TrendLifecycle:
                     bear_candidate = _prepare_bearish_structure(stroke, now, dates, facts=facts)
                     failed_seed = prepare_failed_breakout(facts, parsed_points)
                     if _owned_structure:
-                        standard, next_known = _next_structure_clock(stroke.get('points'), dates, now)
+                        clocks = self._structure_clocks.setdefault(key, _StructureClocks())
+                        standard, next_known = clocks.advance(stroke.get('points'), dates, now)
                         if standard:
                             self._structure_facts[key] = _StructureFacts(
                                 stroke, facts, parsed_points, point_orders, fact_set, parsed_set, next_known,
@@ -701,6 +776,7 @@ class TrendLifecycle:
         self._bear_breaks = {key: breaks for key, breaks in self._bear_breaks.items() if key in present}
         self._failed_breakouts = {key: state for key, state in self._failed_breakouts.items() if key in present}
         self._structure_facts = {key: facts for key, facts in self._structure_facts.items() if key in present}
+        self._structure_clocks = {key: clocks for key, clocks in self._structure_clocks.items() if key in present}
         self._checkpoint_seen = {key: facts for key, facts in self._checkpoint_seen.items() if key in present}
         # 单级联动借用当日下级事件；整层恢复使用同一次 advance 的下级结果。
         market_breaks = self._source_market_breaks.observe(levels, bars, now, dates,

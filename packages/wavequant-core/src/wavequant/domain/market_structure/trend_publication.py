@@ -1,6 +1,6 @@
 """Publish qualified trend vertices while retaining their whole-wave extremes."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from fractions import Fraction
 import hashlib
 import json
@@ -14,6 +14,7 @@ from .trend_confirmation import (
 from .n_trend_confirmation import N_TARGET_CONFIRMATION, is_n_target_reversal, qualified_n_source
 from .hierarchical_confirmation import session_date
 from .trend_market_index import _MarketPrefixIndex
+from .trend_frozen_state import FrozenPrefixList
 
 Moment: TypeAlias = int | str
 LEG_CONFIRMATION_POLICY = 'two_routes_each_direction_v108'
@@ -122,6 +123,34 @@ class _OriginLookup:
                 self._index = None
                 break
             self._index.setdefault(key, []).append(point)
+
+    def update(self, points: Sequence[Mapping[str, object]]) -> None:
+        from .trend_point_version import PointVersion
+        from .owned_evidence import CertifiedSource
+
+        if points is self.points:
+            return
+        if (type(points) not in (PointVersion, CertifiedSource)
+                or not cast(PointVersion, points)._sealed or self._index is None):
+            self.__init__(points)
+            return
+        previous = self.points if isinstance(self.points, PointVersion) else None
+        start = cast(PointVersion, points).changed_since(previous)
+        suffix = [(self._key(point), point) for point in points[start:]]
+        if any(key is None or 'kind' not in point for key, point in suffix):
+            self.points, self._index = points, None
+            return
+        for point in reversed(self.points[start:]):
+            key = self._key(point)
+            if key is not None:
+                bucket = self._index[key]
+                bucket.pop()
+                if not bucket:
+                    del self._index[key]
+        for key, point in suffix:
+            assert key is not None
+            self._index.setdefault(key, []).append(point)
+        self.points = points
 
     @staticmethod
     def _key(point: Mapping[str, object]) -> tuple[object, ...] | None:
@@ -371,6 +400,16 @@ def confirmed_trend_legs(
     return legs
 
 
+def _candidate_tail(candidates: Sequence[Mapping[str, object]], start: int) -> Iterator[Mapping[str, object]]:
+    if isinstance(candidates, FrozenPrefixList):
+        yield from candidates.iter_range(start)
+    elif type(candidates) in (list, tuple):
+        for position in range(start, len(candidates)):
+            yield candidates[position]
+    else:
+        yield from candidates[start:]
+
+
 def publish_uptrends(
     candidates: Sequence[Mapping[str, object]],
     source: Sequence[Mapping[str, object]],
@@ -380,6 +419,7 @@ def publish_uptrends(
     qualified_source: Sequence[Mapping[str, object]] | None = None,
     n_target_trend_confirmation_enabled: bool = False,
     _market_index: _MarketPrefixIndex | None = None,
+    _origin_lookups: tuple[_OriginLookup, _OriginLookup] | None = None,
 ) -> list[dict[str, object]]:
     """Keep structural candidates private until their rising leg is qualified.
 
@@ -408,8 +448,8 @@ def publish_uptrends(
         (value for item in source for value in (item['index'],item.get('available_at')) if type(value) is int), default=-1)
     position_field = 'source_turn_position' if source_level == 0 else f'source_level{source_level}_position'
     n_source = state.n_source
-    candidate_origins = _OriginLookup(candidates)
-    source_origins = _OriginLookup(source)
+    candidate_origins, source_origins = (_origin_lookups if _origin_lookups is not None else
+                                         (_OriginLookup(candidates), _OriginLookup(source)))
     for offset, candidate in enumerate(candidates):
         if not n_target_trend_confirmation_enabled and is_n_target_reversal(candidate):
             continue
@@ -574,7 +614,7 @@ def publish_uptrends(
             continue
         earliest = _later(_moment(point), _moment(confirmation))
         future_key = key
-        for later_candidate in candidates[offset + 1:]:
+        for later_candidate in _candidate_tail(candidates, offset + 1):
             if not n_target_trend_confirmation_enabled and is_n_target_reversal(later_candidate):
                 continue
             if later_candidate['kind'] == 'H':

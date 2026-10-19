@@ -57,7 +57,7 @@ from .wave_exhaustion_exit import (
     observe_five_top_upper_shadow_clear, observe_five_top_gap_volume_clear,
 )
 from .wave_continuation import wave_confirmation_is_new, wave_confirmation_state
-from ..market_state.volume_candle import volume_bearish_entry_rejection
+from ..market_state.volume_candle import volume_bearish_entry_rejection, volume_upper_shadow_rejection
 from .two_t_resistance import holding_resistance_history
 from .limit_up_distribution_exit import observe_limit_up_distribution_exit
 from .five_top_entry import five_top_entry_history
@@ -1589,14 +1589,15 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             counts['buy_interval_skipped_days'] += 1
             return False
         bar = bars[i]
-        volume_rejection = volume_bearish_entry_rejection(bars, i) if whole_wave else None
+        volume_rejection = (volume_upper_shadow_rejection(bar, bars[i - 1] if i else None)
+                            or (volume_bearish_entry_rejection(bars, i) if whole_wave else None))
         gap_rejection = gap_buy_gate.advance(bars, i)
         if gap_rejection is not None:
             log(i, 'entry_rejected', candidate_channel='global_gap_resistance', **gap_rejection)
             return False
         if volume_rejection is not None:
             log(i, 'entry_rejected', reason=volume_rejection,
-                candidate_channel='global_volume_bearish',
+                candidate_channel='global_volume_candle',
                 observed_open=bar.open, observed_close=bar.close, observed_volume=bar.volume)
             return False
         def candle_rejection_for(attack: int | None) -> str | None:

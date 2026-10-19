@@ -7,12 +7,14 @@ from typing import cast
 
 from .owned_evidence import CertifiedSource, current_evidence, owned_signature
 from .trend_levels import _source_turns
+from .trend_point_version import PointVersion
+from .trend_frozen_state import FrozenPrefixList
 
 
 @dataclass
 class _ProjectedPath:
-    points: list[dict[str, object]]
-    positions: list[int]
+    points: Sequence[dict[str, object]]
+    positions: FrozenPrefixList[int]
     source: CertifiedSource
 
 
@@ -28,7 +30,7 @@ class SourceProjection:
         self.order = []
 
     def project(self, strokes: Sequence[Mapping[str, object]], hints: Mapping[int,
-                tuple[list[dict[str, object]], list[dict[str, object]] | None, int]]) -> CertifiedSource | None:
+                tuple[Sequence[dict[str, object]], Sequence[dict[str, object]] | None, int]]) -> CertifiedSource | None:
         owner = current_evidence()
         if owner is None:
             self.clear()
@@ -36,24 +38,25 @@ class SourceProjection:
         if self.joined is not None and self.joined.owner is not owner:
             self.clear()
         next_paths: dict[str, _ProjectedPath] = {}
-        output: list[dict[str, object]] = []
-        keys: list[bytes] = []
+        total = 0
         changed = 0
         unchanged = True
-        for path_position, stroke in enumerate(strokes):
+        for stroke in strokes:
             if stroke.get('display_only') is True:
                 continue
             path = stroke.get('id')
             raw = stroke.get('points')
-            if type(path) is not str or type(raw) is not list or path in next_paths:
+            if type(path) is not str or type(raw) not in (list, PointVersion) or path in next_paths:
                 self.clear()
                 return None
-            points = cast(list[dict[str, object]], raw)
+            points = cast(Sequence[dict[str, object]], raw)
             previous = self.paths.get(path)
             hint = hints.get(id(points))
             start = len(points) if previous is not None and points is previous.points else (
                 hint[2] if previous is not None and hint is not None and hint[0] is points
-                and hint[1] is previous.points else 0)
+                and hint[1] is previous.points else
+                points.changed_since(previous.points) if previous is not None
+                and isinstance(points, PointVersion) and isinstance(previous.points, PointVersion) else 0)
             if previous is not None and start == len(points) == len(previous.points):
                 saved = _ProjectedPath(points, previous.positions, previous.source)
             else:
@@ -71,12 +74,14 @@ class SourceProjection:
                 if any(key is None for key in signatures):
                     self.clear()
                     return None
-                source = CertifiedSource([*(previous.source[:keep] if previous is not None else ()), *values],
-                    (*(previous.source.keys[:keep] if previous is not None else ()),
-                     *cast(tuple[bytes, ...], signatures)), owner,
-                    previous.source if previous is not None else None, _changed_from=keep)
-                saved = _ProjectedPath(points,
-                    [*(previous.positions[:keep] if previous is not None else ()), *(turn.position for turn in turns)], source)
+                source = CertifiedSource.from_tail(values, cast(tuple[bytes, ...], signatures), owner,
+                    previous.source if previous is not None else None, keep)
+                positions = previous.positions.copy() if previous is not None else FrozenPrefixList[int]()
+                del positions[keep:]
+                positions.extend(turn.position for turn in turns)
+                positions.freeze(len(positions))
+                saved = _ProjectedPath(points, positions, source)
+            path_position = len(next_paths)
             next_paths[path] = saved
             if unchanged:
                 if (path_position < len(self.order) and self.order[path_position] == path and previous is not None):
@@ -84,17 +89,26 @@ class SourceProjection:
                     unchanged = saved.source is previous.source
                 else:
                     unchanged = False
-            output.extend(saved.source)
-            keys.extend(saved.source.keys)
+            total += len(saved.source)
         # 证书和引用只保留当前三层版本；拒绝超额工作集，原入口继续完整校验。
         if sum(path.source.signature_bytes + len(path.source) * 256 for path in next_paths.values()) > 8 * 1024 * 1024:
             self.clear()
             return None
-        if self.joined is not None and unchanged and len(output) == len(self.joined):
+        if self.joined is not None and unchanged and total == len(self.joined):
             self.paths = next_paths
             self.order = list(next_paths)
             return self.joined
-        joined = CertifiedSource(output, tuple(keys), owner, self.joined, _changed_from=changed)
+        changed = min(changed, total, len(self.joined) if self.joined is not None else 0)
+
+        tail_points: list[dict[str, object]] = []
+        tail_keys: list[bytes] = []
+        offset = 0
+        for saved in next_paths.values():
+            begin = max(0, changed - offset)
+            tail_points.extend(saved.source[begin:])
+            tail_keys.extend(saved.source.keys[begin:])
+            offset += len(saved.source)
+        joined = CertifiedSource.from_tail(tail_points, tail_keys, owner, self.joined, changed)
         self.paths, self.order, self.joined = next_paths, list(next_paths), joined
         return joined
 
@@ -153,8 +167,8 @@ class PromotionSource:
         if old is None or old.owner is not owner:
             start = 0
         start = min(start, len(old) if old is not None else 0)
-        values = list(old[:start]) if old is not None else []
-        keys = list(old.keys[:start]) if old is not None else []
+        values: list[dict[str, object]] = []
+        keys: list[bytes] = []
         for position in range(start, len(source)):
             point = source[position]
             additions = indexed.get((str(point.get('source_path', 'path-0')), self.order(point)))
@@ -166,7 +180,7 @@ class PromotionSource:
             values.append(value)
             keys.append(signature)
         output = (old if old is not None and start == len(old) == len(source) else
-                  CertifiedSource(values, tuple(keys), owner, old, _changed_from=start))
+                  CertifiedSource.from_tail(values, keys, owner, old, start))
         if output.signature_bytes + len(output) * 512 > 8 * 1024 * 1024:
             self.clear()
             return None

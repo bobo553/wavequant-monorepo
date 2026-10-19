@@ -50,3 +50,14 @@ def strong_bullish_candle(bar: Bar) -> bool:
                 and body >= opening * Fraction(3, 100)
                 and body >= span * Fraction(3, 5)
                 and high - close <= span * Fraction(1, 5))
+
+
+QUALIFIED_RISING_CLOSE = 'qualified_volume_high_open_rising_close'
+
+
+def volume_high_open_rising(bar: Bar, previous: Bar) -> bool:
+    """高开相对前收；放量强阳且全天守住开盘，收盘后才能确认。"""
+    return (bar.symbol == previous.symbol and previous.timestamp < bar.timestamp
+            and previous.volume > 0 and bar.volume > previous.volume
+            and bar.open > previous.close and bar.low >= bar.open
+            and strong_bullish_candle(bar))

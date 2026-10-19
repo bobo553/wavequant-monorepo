@@ -7,6 +7,7 @@ Theory is computed from that prefix, not by hiding future candles afterwards.
 
 from wavequant.domain.market_structure.trend_options import ordinary_completion_enabled, with_trend_options, with_strategy_trend_options
 
+from copy import deepcopy
 from dataclasses import asdict
 from datetime import date, datetime
 from functools import lru_cache
@@ -1032,6 +1033,10 @@ class ChartRepository:
             # 与缓存入口共用四个完整阶段，图表不能另写一条逐棒/逐路径递归链。
             geometry = calculate_trend_hierarchy(bars,
                 n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
+        else:
+            # 已计算几何可能仍含内部持久点版本；仅在公开图表出口物化，
+            # 同时防止展示附件改写回测仍在借用的只读证据。
+            geometry = deepcopy(geometry)
         from ...domain.market_structure.squeeze_alternation import squeeze_landmarks
         from ...domain.market_structure.alternation_breakout import promote_alternation_segments
         geometry = dict(geometry)

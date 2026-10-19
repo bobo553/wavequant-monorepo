@@ -506,10 +506,10 @@ class _SourceVersion:
     token: object
     parent: object | None
     changed_from: int
-    source: list[dict[str, object]]
-    positions: tuple[int, ...]
-    turns: list[_SourceTurn]
-    certificates: tuple[bytes, ...]
+    source: FrozenPrefixList[dict[str, object]]
+    positions: FrozenPrefixList[int]
+    turns: FrozenPrefixList[_SourceTurn]
+    certificates: FrozenPrefixList[bytes]
 
 
 class _SourceVersionOwner:
@@ -522,7 +522,7 @@ class _SourceVersionOwner:
 
     def __init__(self, level: int, limit: int) -> None:
         self.level, self.limit = level, limit
-        self.keys: tuple[bytes, ...] = ()
+        self.keys: Sequence[bytes] = ()
         self.current: _SourceVersion | None = None
         self._certificate_prefix_bytes: list[int] = [0]
         self._input_version: object | None = None
@@ -582,12 +582,21 @@ class _SourceVersionOwner:
         for certificate in certificates:
             certificate_bytes += getsizeof(certificate)
             tail_prefix_bytes.append(certificate_bytes)
+        visible = previous.source.copy() if previous is not None else FrozenPrefixList[dict[str, object]]()
+        source_positions = previous.positions.copy() if previous is not None else FrozenPrefixList[int]()
+        source_turns = previous.turns.copy() if previous is not None else FrozenPrefixList[_SourceTurn]()
+        source_certificates = previous.certificates.copy() if previous is not None else FrozenPrefixList[bytes]()
+        for buffer in (visible, source_positions, source_turns, source_certificates):
+            del buffer[boundary:]
+        visible.extend(tail)
+        source_positions.extend(positions)
+        source_turns.extend(turns)
+        source_certificates.extend(cast(tuple[bytes, ...], certificates))
+        for buffer in (visible, source_positions, source_turns, source_certificates):
+            buffer.freeze(len(buffer))
         version = _SourceVersion(object(), previous.token if previous is not None else None,
             bisect_left(previous.positions, changed) if previous is not None else 0,
-            [*(previous.source[:boundary] if previous is not None else ()), *tail],
-            (*(previous.positions[:boundary] if previous is not None else ()), *positions),
-            [*(previous.turns[:boundary] if previous is not None else ()), *turns],
-            (*(previous.certificates[:boundary] if previous is not None else ()), *cast(tuple[bytes, ...], certificates)))
+            visible, source_positions, source_turns, source_certificates)
         # 不保留版本链；容量不足时调用原公共校验，不截断历史。
         if (signature_bytes + certificate_bytes) * 4 > self.limit:
             self.clear()
@@ -1253,7 +1262,7 @@ class _TrendJudgementState:
         return size
 
     def calculate(self, source: Sequence[Mapping[str, object]], positions: Sequence[int],
-                  *, _validated_turns: list[_SourceTurn] | None = None,
+                  *, _validated_turns: Sequence[_SourceTurn] | None = None,
                   _certified_standard: bool = False, _source_revision: _SourceVersion | None = None) -> tuple[
         list[dict[str, object]], list[dict[str, object]], _EventRows,
     ]:
@@ -1273,7 +1282,7 @@ class _TrendJudgementState:
         # 每次仍完整执行共同来源校验；价格位置、真实结束时钟与原位置都认证。
         source_keys = (_source_revision.certificates if _source_revision is not None else
                        tuple(_geometry_signature((position, point)) for position, point in zip(positions, source)))
-        if not finite or any(key is None for key in source_keys):
+        if not finite or (_source_revision is None and any(key is None for key in source_keys)):
             self.clear()
             ordinary = trend_reversals(source, trend_level=self.trend_level)
             events = []

@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
+from wavequant.domain.market_state.candle_strength import QUALIFIED_RISING_CLOSE
 from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse
 from wavequant.application.analytics.holding_drawdown import holding_drawdowns, drawdown_metrics, holding_fill_time
 from wavequant.application.analytics.intraday_wave_exit import (
@@ -23,7 +24,10 @@ from wavequant.domain.strategies.wave_exhaustion_exit import (
     observe_five_top_child_volume_clear, observe_five_top_gap_upper_shadow_clear,
     observe_five_top_body_upper_shadow_clear, observe_five_top_gap_volume_clear, observe_wave_exhaustion,
 )
-from wavequant.domain.market_state.volume_candle import volume_bearish_entry_rejection
+from wavequant.domain.market_state.volume_candle import (
+    volume_bearish_entry_rejection, volume_upper_shadow_rejection,
+    volume_shadow_next_open_eligible, volume_shadow_next_decline, VOLUME_SHADOW_NEXT_WEAK_CLEAR,
+)
 from wavequant.domain.strategies.gap_entry_gate import GapEntryGate
 from wavequant.domain.strategies.two_t_resistance import (
     BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR,
@@ -513,6 +517,12 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 candle_filter_model='full_session_candle_filter',
                 candle_filter_known_at=when.replace(hour=15).isoformat())
             return
+        if at_close:
+            shadow_rejection = volume_upper_shadow_rejection(bar, grouped[symbol][i - 1] if i else None)
+            if shadow_rejection is not None:
+                log(when, symbol, 'BUY', 'cancelled', shadow_rejection,
+                    signal_timestamp=signal.timestamp.isoformat(), decision_source='daily_close')
+                return
         existing = positions.get(symbol)
         price = execution_price * (1+slip)
         buyable = bar.close_buyable if at_close and bar.close_buyable is not None else bar.buyable
@@ -881,6 +891,9 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 wave_eligible = (config.wave_exhaustion_exit and (not live or day is not None and day.trading_eligible)
                                  and (pos is not None or entry is not None)
                                  and five_top_intraday_eligible(grouped[symbol], i, events))
+                shadow_eligible = (pos is not None and pos.entry_index < i
+                                   and volume_shadow_next_open_eligible(grouped[symbol], i))
+                wave_eligible = wave_eligible or shadow_eligible
                 staged_eligible = False
                 if pos is not None and symbol not in pending_exit:
                     state = pos.staged_exit
@@ -903,7 +916,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     evidence = dict(symbol=symbol, date=bar.timestamp.date().isoformat(),
                                     reason=exc.coverage.get('reason', 'minute_history_missing'), coverage=exc.coverage,
                                     execution_model='same_day_close',
-                                    purpose='five_top_upper_shadow_exit' if wave_eligible else 'staged_exit')
+                                    purpose=('volume_upper_shadow_next_decline' if shadow_eligible else
+                                             'five_top_upper_shadow_exit' if wave_eligible else 'staged_exit'))
                     daily_fallback[symbol] = evidence
                     minute_fallbacks.append(evidence)
                     continue
@@ -927,8 +941,15 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 if wave_eligible:
                     risk = intraday_wave_risks.get(symbol)
                     if risk is None:
-                        risk = observe_intraday_five_top_exit(grouped[symbol], i, session_candle,
-                                                             (wave_events or {}).get(symbol, []))
+                        risk = (volume_shadow_next_decline(grouped[symbol], i, session_candle.bar)
+                                if pos is not None and pos.entry_index < i else None)
+                        if risk is not None:
+                            risk = dict(risk, execution_model='intraday_5m_next_open',
+                                        decision_timestamp=session_candle.decision_at.isoformat(),
+                                        decision_source='completed_five_minute_bar')
+                        elif config.wave_exhaustion_exit:
+                            risk = observe_intraday_five_top_exit(grouped[symbol], i, session_candle,
+                                                                 (wave_events or {}).get(symbol, []))
                         if risk is not None:
                             intraday_wave_risks[symbol] = risk
                             wave_clear_symbols.add(symbol)
@@ -945,7 +966,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                                 signal_timestamp=risk['decision_timestamp'],
                                 **{key: value for key, value in risk.items() if key != 'reason'},
                                 decision_reason=risk['reason'])
-                        if pending_exit.get(symbol) in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS or prior_pending_full:
+                        if (pending_exit.get(symbol) in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS
+                                or pending_exit.get(symbol) == VOLUME_SHADOW_NEXT_WEAK_CLEAR or prior_pending_full):
                             if not prior_pending_full and exit_evidence[symbol].get('execution_model') == 'next_open':
                                 continue
                             filled = execute_exit(symbol, i, bar, stamp, session_candle.next_open_raw * bar.adjustment_factor,
@@ -1038,7 +1060,11 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     if pattern_exit is not None and (
                             volume_exit is None or pattern_exit['exit_fraction'] > volume_exit['exit_fraction']):
                         volume_exit = pattern_exit
-                volume_source = ('bearish_child_pattern' if volume_exit is not None
+                shadow_exit = volume_shadow_next_decline(grouped[symbol], i) if pos.entry_index < i else None
+                if shadow_exit is not None:
+                    volume_exit = shadow_exit
+                volume_source = ('volume_upper_shadow_next_decline' if shadow_exit is not None else
+                                 'bearish_child_pattern' if volume_exit is not None
                                  and volume_exit['reason'].startswith('bearish_mother_child_') else 'volume_down_exit')
                 # Evaluate close-known N risk only after intraday execution. It may
                 # supersede daily partial orders, never erase earlier minute fills.
@@ -1181,7 +1207,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                         observed_low=bar.low, observed_close=bar.close,
                         observed_volume=bar.volume, previous_volume=grouped[symbol][i - 1].volume,
                         **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}))
-                elif volume_exit is not None and volume_exit['exit_fraction'] == 1 and inverse_failure is None:
+                elif (volume_exit is not None and volume_exit['exit_fraction'] == 1
+                      and (inverse_failure is None or shadow_exit is not None)):
                     pending_exit[symbol] = volume_exit['reason']
                     exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
                         **{key: value for key, value in volume_exit.items()
@@ -1236,7 +1263,10 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 if signal.side == 'LONG' and (symbol, signal.bar_index) in entry_executions:
                     continue
                 if signal.side == 'LONG':
-                    rejection = volume_bearish_entry_rejection(grouped[symbol], current[symbol][0])
+                    index = current[symbol][0]
+                    rejection = (volume_upper_shadow_rejection(grouped[symbol][index],
+                                 grouped[symbol][index - 1] if index else None)
+                                 or volume_bearish_entry_rejection(grouped[symbol], index))
                     if rejection is not None:
                         log(when, symbol, 'BUY', 'cancelled', rejection,
                             signal_timestamp=signal.timestamp.isoformat(), decision_source='daily_close')
@@ -1358,12 +1388,14 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
             for symbol, (_, bar) in current.items():
                 marks[symbol] = bar.close
-            if config.entry_at_close:
+            if config.entry_at_close or any(signal.reason == QUALIFIED_RISING_CLOSE
+                                             for signal, _ in pending_entry.values()):
                 # Match only after all close-time exits, using close marks for every
                 # holding. Today's earlier extrema cannot stop out a new close fill.
                 for symbol in sorted(list(pending_entry), key=lambda s: (-(pending_entry[s][0].rvol or 0), s)):
                     signal, created = pending_entry[symbol]
-                    if created != tick or symbol not in current:
+                    if (created != tick or symbol not in current
+                            or not config.entry_at_close and signal.reason != QUALIFIED_RISING_CLOSE):
                         continue
                     del pending_entry[symbol]
                     i, bar = current[symbol]

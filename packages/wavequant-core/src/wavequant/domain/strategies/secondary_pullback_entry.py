@@ -6,6 +6,8 @@ from fractions import Fraction
 from math import isfinite
 from typing import cast
 
+from ..market_structure.trend_point_version import PointVersion
+from ..market_structure.owned_evidence import CertifiedSource
 from ..market_structure.hierarchical_confirmation import session_date
 from ..market_structure.trend_market_index import _MarketRangeIndex
 from ..models.model import Bar
@@ -65,7 +67,7 @@ def _mapping(value: object) -> Mapping[str, object] | None:
 
 
 def _sequence(value: object) -> Sequence[object]:
-    return cast(Sequence[object], value) if isinstance(value, (list, tuple)) else ()
+    return cast(Sequence[object], value) if isinstance(value, (list, tuple, PointVersion, CertifiedSource)) else ()
 
 
 def _point(raw: object, bars: Sequence[Bar], dates: Mapping[str, int], now: int) -> _Point | None:

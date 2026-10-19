@@ -9,6 +9,9 @@ replace them with locally selected market highs.
 
 from zoneinfo import ZoneInfo
 from bisect import bisect_right
+from .trend_point_version import PointVersion
+from .owned_evidence import CertifiedSource
+
 from collections.abc import Mapping, Sequence
 from math import isfinite
 from typing import cast
@@ -693,7 +696,7 @@ def bearish_turn_signals(strokes: Sequence[Mapping[str, object]], bars: Sequence
     signals: list[dict[str, object]] = []
     for stroke in strokes:
         points = stroke.get('points')
-        if not isinstance(points, (list, tuple)):
+        if not isinstance(points, (list, tuple, PointVersion, CertifiedSource)):
             continue
         flip: Mapping[str, object] | None = None
         flip_known: int | None = None

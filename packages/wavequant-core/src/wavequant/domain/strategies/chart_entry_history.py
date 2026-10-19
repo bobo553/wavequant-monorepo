@@ -11,6 +11,9 @@ from math import isfinite
 from time import monotonic
 from typing import TYPE_CHECKING, cast
 
+from ..market_structure.trend_point_version import PointVersion
+from ..market_structure.owned_evidence import CertifiedSource
+
 if TYPE_CHECKING:
     from .backtest_analysis import BacktestAnalysis
 
@@ -502,7 +505,7 @@ def _confirmed_descent_pressures(
         if path.get("display_only"):
             continue
         vertices = path.get("points")
-        if not isinstance(vertices, (list, tuple)):
+        if not isinstance(vertices, (list, tuple, PointVersion, CertifiedSource)):
             continue
         for raw_point in vertices:
             if not isinstance(raw_point, Mapping):
@@ -569,7 +572,7 @@ def _has_confirmation_price_cross(
                         continue
                     path = cast(Mapping[str, object], raw_path)
                     vertices = path.get("points")
-                    if isinstance(vertices, (list, tuple)):
+                    if isinstance(vertices, (list, tuple, PointVersion, CertifiedSource)):
                         points.extend(vertices)
     known_anchor_count = 0
     for raw_point in points:

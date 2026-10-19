@@ -6,7 +6,9 @@ from math import isfinite
 
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from ..models.model import Bar
-from ..market_state.volume_candle import bearish_body_engulfs, is_volume_bearish
+from ..market_state.volume_candle import (
+    bearish_body_engulfs, is_volume_bearish, is_long_upper_shadow, volume_shadow_next_decline,
+)
 from .event_history import EventHistoryStream
 
 
@@ -41,10 +43,7 @@ def _body_volume_reversal(
 
 
 def _long_upper_shadow(bar: Bar) -> bool:
-    high, low, opened, closed = (Fraction(str(value)) for value in (bar.high, bar.low, bar.open, bar.close))
-    upper = high - max(opened, closed)
-    # Decimal prices that give an equal wick/body must not fail through binary rounding.
-    return high > low and 2 * upper >= high - low and upper >= abs(closed - opened)
+    return is_long_upper_shadow(bar)
 
 
 def _upper_shadow_over_forty_percent(bar: Bar) -> bool:
@@ -267,7 +266,8 @@ class HoldingResistanceHistory(TwoTResistanceHistory):
             self.bars[earlier_bearish] if earlier_bearish is not None else None)
 
     def _advance_day(self, index: int) -> None:
-        shadow = _volume_shadow_midpoint_clear(self.bars, index, self.previous_volume_bearish)
+        shadow = (volume_shadow_next_decline(self.bars, index)
+                  or _volume_shadow_midpoint_clear(self.bars, index, self.previous_volume_bearish))
         self.previous_volume_bearish = is_volume_bearish(
             self.bars[index], self.bars[index - 1] if index else None,
             self.bars[self.bearish_index] if self.bearish_index is not None else None)
