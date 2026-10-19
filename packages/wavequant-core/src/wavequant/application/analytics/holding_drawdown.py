@@ -3,6 +3,9 @@
 The denominator is the then-current average fill cost, never a floating profit
 peak. Partial sells keep that cost; add-ons update it causally. Prices and units
 share the engine's adjusted basis. Fees remain in account equity metrics.
+Live qualification windows observe only their active sessions and closing day;
+excluded sessions neither update MAE nor imply missing price coverage. Actual
+fills always define the holding cycle, including a failed closing-day exit.
 """
 from __future__ import annotations
 
@@ -10,13 +13,13 @@ import math
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from datetime import datetime, time, timedelta
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Collection, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from wavequant.domain.models.model import Bar
 from wavequant.infrastructure.market_data.minute import MinuteBar
 
-METRIC_VERSION = 'holding_entry_cost_mae_cycle_v2'
+METRIC_VERSION = 'holding_entry_cost_mae_cycle_v3'
 _SHANGHAI = ZoneInfo('Asia/Shanghai')
 
 
@@ -35,12 +38,19 @@ def holding_fill_time(order: dict[str, Any]) -> datetime:
 def holding_drawdowns(
     grouped: dict[str, list[Bar]], orders: Sequence[dict[str, Any]], end: str | None = None,
     minute_loader: Callable[[Bar], list[MinuteBar]] | None = None,
+    *, observed_dates: Mapping[str, Collection[str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Scan disjoint cost/quantity segments in O(B + F log F + F log B).
 
     Daily input is the engine's validated, sorted daily history. Only boundary
     sessions need verified minutes. Missing coverage returns an explicit lower
     bound; it cannot be reported as the complete maximum loss.
+
+    None observes the full holding cycle. An explicit mapping limits price
+    observations to those ISO dates; absent symbols have no allowed dates.
+    Filled orders must belong to allowed dates, so the filter cannot hide a
+    contradictory execution. Results distinguish excluded from missing sessions
+    and retain the actual open/closed status regardless of the observation scope.
     """
     fills: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for order in orders:
@@ -50,6 +60,7 @@ def holding_drawdowns(
     for symbol in sorted(fills):
         bars = grouped.get(symbol, [])
         days = [b.timestamp.date().isoformat() for b in bars]
+        allowed = frozenset(observed_dates.get(symbol, ())) if observed_dates is not None else None
         minute_cache: dict[str, list[MinuteBar]] = {}
         active: dict[str, Any] | None = None
         segments: list[dict[str, Any]] = []
@@ -60,6 +71,8 @@ def holding_drawdowns(
             when = holding_fill_time(order)
             if end is not None and when.date().isoformat() > end:
                 continue
+            if allowed is not None and when.date().isoformat() not in allowed:
+                raise ValueError('filled holding order is outside observed dates')
             amount, price = float(order['quantity']), float(order['price'])
             if not math.isfinite(amount) or amount <= 0 or not math.isfinite(price) or price <= 0:
                 raise ValueError('invalid filled holding order')
@@ -82,19 +95,20 @@ def holding_drawdowns(
                 if quantity < 1e-8:
                     quantity = 0.0
                     active['exit_time'] = when.isoformat()
-                    episodes.append(_measure(active, segments, bars, days, end, minute_loader, minute_cache))
+                    episodes.append(_measure(active, segments, bars, days, end, minute_loader, minute_cache, allowed))
                     active = None
                     cost = 0.0
             if active is not None:
                 segments.append(dict(start=when, start_price=price, cost=cost, cost_time=cost_time, quantity=quantity))
         if active is not None:
-            episodes.append(_measure(active, segments, bars, days, end, minute_loader, minute_cache))
+            episodes.append(_measure(active, segments, bars, days, end, minute_loader, minute_cache, allowed))
     return episodes
 
 
 def _measure(
     episode: dict[str, Any], segments: list[dict[str, Any]], bars: list[Bar], days: list[str], end: str | None,
     minute_loader: Callable[[Bar], list[MinuteBar]] | None, minute_cache: dict[str, list[MinuteBar]],
+    allowed: frozenset[str] | None,
 ) -> dict[str, Any]:
     entered = datetime.fromisoformat(episode['entry_time'])
     exited = datetime.fromisoformat(episode['exit_time']) if episode['exit_time'] else None
@@ -107,6 +121,7 @@ def _measure(
     loss_amount = 0.0
     low_source = 'entry_fill'
     missing: set[str] = set()
+    excluded: set[str] = set()
     missing_from: str | None = None
     resolutions: set[str] = set()
     points: list[dict[str, Any]] = []
@@ -148,6 +163,9 @@ def _measure(
         observe(segment['start_price'], begin.isoformat(), 'fill', segment)
         for bar in bars[first:last]:
             day = bar.timestamp.date().isoformat()
+            if allowed is not None and day not in allowed:
+                excluded.add(day)
+                continue
             opening = datetime.combine(bar.timestamp.date(), time(9, 30))
             closing = datetime.combine(bar.timestamp.date(), time(15))
             lower, upper = max(begin, opening), min(finish, closing)
@@ -199,6 +217,8 @@ def _measure(
                 cost_price=basis, low_price=low, cost_time=basis_time, low_time=low_time,
                 loss_amount=loss_amount, low_source=low_source,
                 coverage='complete' if complete else 'incomplete', missing_sessions=sorted(missing),
+                observation_scope='qualified_sessions' if allowed is not None else 'full_holding_cycle',
+                excluded_sessions=len(excluded), observed_through=points[-1]['timestamp'] if points else None,
                 resolutions=sorted(resolutions), drawdown_curve=points,
                 quantity=0.0 if exited else segments[-1]['quantity'])
 
@@ -226,14 +246,18 @@ def _validate_minutes(minute: list[MinuteBar], daily: Bar) -> None:
 
 
 def drawdown_metrics(episodes: list[dict[str, Any]]) -> dict[str, Any]:
-    """Report the worst completed cycle; the live accumulator resets at zero."""
+    """Report completed cycles under their explicit observation scope."""
     closed = [e for e in episodes if e['status'] == 'closed']
     active = [e for e in episodes if e['status'] == 'open']
     worst = min(closed, key=lambda e: (e['observed_max_drawdown'], e['entry_time'], e['symbol'])) if closed else None
     current = min(active, key=lambda e: (e['observed_max_drawdown'], e['entry_time'], e['symbol'])) if active else None
     complete = all(e['coverage'] == 'complete' for e in closed)
     current_complete = all(e['coverage'] == 'complete' for e in active)
+    scopes = {episode.get('observation_scope', 'full_holding_cycle') for episode in episodes}
     return dict(holding_drawdown_version=METRIC_VERSION,
+                holding_drawdown_observation_scope=next(iter(scopes)) if len(scopes) == 1 else
+                    'mixed' if scopes else 'full_holding_cycle',
+                holding_drawdown_excluded_sessions=sum(episode.get('excluded_sessions', 0) for episode in episodes),
                 holding_max_drawdown=worst['max_drawdown'] if worst and complete else None,
                 holding_drawdown_status=('no_entry_fills' if not episodes else 'no_closed_cycles' if not closed
                                          else 'complete' if complete else 'incomplete'),

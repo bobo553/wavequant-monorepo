@@ -159,15 +159,19 @@ def test_daily_history_higher_level_uses_complete_lower_level_geometry_independe
                             state="developing", ordinal=1 if index == 0 else 0))
             on_step(index, 0, raw)
 
+    original_judge = hierarchical_entry._TrendJudgementCache.judge
+
     def observe_judgement(
-        points: Sequence[Mapping[str, object]], *, trend_level: int = 1, asof: Moment | None = None,
+        self: hierarchical_entry._TrendJudgementCache, points: Sequence[Mapping[str, object]], *,
+        path: str, trend_level: int = 1, asof: Moment | None = None, _owned_source: bool = False,
     ) -> TrendJudgement:
         assert type(asof) is int
         seen[(asof, trend_level)] = _coordinates(points)
-        return judge_trend(points, trend_level=trend_level, asof=asof)
+        return original_judge(self, points, path=path, trend_level=trend_level, asof=asof,
+                              _owned_source=_owned_source)
 
     monkeypatch.setattr(hierarchical_entry, "lecture_drawing", drawing)
-    monkeypatch.setattr(hierarchical_entry, "judge_trend", observe_judgement)
+    monkeypatch.setattr(hierarchical_entry._TrendJudgementCache, "judge", observe_judgement)
     structures: dict[int, dict[int, tuple[dict[str, object], ...]]] = {}
     history, epochs = hierarchical_entry.hierarchical_history(bars, structure_sink=structures)
     for now in range(len(bars)):

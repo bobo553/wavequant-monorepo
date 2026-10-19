@@ -6,15 +6,20 @@
 等待 future holding 点。几何首次出现、下级结束和本级方向是三个独立事实。
 """
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, MutableSequence, Sequence
+from bisect import insort
 from copy import deepcopy
+from typing import cast
 
 from .trend_levels import (
     Moment, _SourceTurn, _candidate_from_source, _later_moment, _reference, _source_turns,
     _stamp_wave_completion, _ordinary_point, _preceding_sources, WaveDirection,
 )
 
-from .trend_structure import StructuralTrend, classify_trend_prices
+from .trend_structure import StructuralTrend, classify_trend_prices, preceding_turn
+from .trend_body_reversal import BODY_REVERSAL_RULE, body_reference, rejects_wick_extension
+from .trend_promotion_scope import source_promotions, validate_promotion
+from .trend_frozen_state import FrozenPrefixMap
 
 __all__ = ['promote_trend_key_breaks']
 
@@ -60,7 +65,8 @@ class _PointRange:
         self.size = 1
         while self.size < count:
             self.size *= 2
-        self.points: list[_SourceTurn | None] = [None] * (2 * self.size)
+        # 路径检查点共享已固化的树节点；一次更新仅改 O(log n) 个尾部覆盖。
+        self.points: FrozenPrefixMap[int, _SourceTurn | None] = FrozenPrefixMap()
         self.choose = choose
 
     def _combine(self, left: _SourceTurn | None, right: _SourceTurn | None) -> _SourceTurn | None:
@@ -75,19 +81,32 @@ class _PointRange:
         self.points[cursor] = point
         cursor //= 2
         while cursor:
-            self.points[cursor] = self._combine(self.points[2 * cursor], self.points[2 * cursor + 1])
+            self.points[cursor] = self._combine(self.points.get(2 * cursor), self.points.get(2 * cursor + 1))
             cursor //= 2
+
+    def ensure_size(self, count: int) -> None:
+        if count <= self.size:
+            return
+        previous_size, previous = self.size, self.points
+        while self.size < count:
+            self.size *= 2
+        self.points = FrozenPrefixMap((self.size + position, previous[previous_size + position])
+            for position in range(previous_size) if previous_size + position in previous)
+        for cursor in range(self.size - 1, 0, -1):
+            combined = self._combine(self.points.get(2 * cursor), self.points.get(2 * cursor + 1))
+            if combined is not None:
+                self.points[cursor] = combined
 
     def query(self, start: int, end: int) -> _SourceTurn | None:
         left, right = self.size + start, self.size + end
         result: _SourceTurn | None = None
         while left < right:
             if left % 2:
-                result = self._combine(result, self.points[left])
+                result = self._combine(result, self.points.get(left))
                 left += 1
             if right % 2:
                 right -= 1
-                result = self._combine(result, self.points[right])
+                result = self._combine(result, self.points.get(right))
             left //= 2
             right //= 2
         return result
@@ -156,15 +175,464 @@ def _promoted_point(
     return result
 
 
+class _TrendUpgradeState:
+    """相同只追加来源的整波状态；新的旧知识候选必须回退完整批量判断。"""
+
+    def __init__(self, turns: Sequence[_SourceTurn], regular: Sequence[_SourceTurn], *, trend_level: int,
+                 event_sink: MutableSequence[dict[str, object]] | None = None,
+                 ordinary_trend_completion_enabled: bool = False, strict_only: bool = False) -> None:
+        if type(trend_level) is not int or trend_level not in (1, 2, 3):
+            raise ValueError('trend_level must be 1, 2 or 3')
+        self.trend_level = trend_level
+        self.strict_only = strict_only
+        if type(ordinary_trend_completion_enabled) is not bool:
+            raise ValueError('ordinary_trend_completion_enabled must be a boolean')
+        self.ordinary_trend_completion_enabled = ordinary_trend_completion_enabled
+        self.turns = list(turns)
+        self.promotions = source_promotions(turns, trend_level)
+        self.regular = list(regular)
+        self.event_sink = event_sink
+        self.merged: dict[tuple[int, int, str, float], _SourceTurn] = {}
+        self.merged_order: list[tuple[int, int, str, float]] = []
+        self.updated_merged: dict[tuple[int, int, str, float], _SourceTurn] = {}
+        self.new_merged_keys: list[tuple[int, int, str, float]] = []
+        self.orders = sorted({_order(point) for point in [*turns, *regular]})
+        self.positions = {order: position for position, order in enumerate(self.orders)}
+        self.source_by_order = {_order(point): point for point in turns}
+        self.source_by_reversal = {point.reversal: point for point in turns}
+        self.latest_sources: dict[str, _SourceTurn] = {}
+        for point in turns:
+            self.latest_sources[point.kind] = point
+        self.keys_by_kind = {kind: _PointRange(len(self.orders), _latest_key) for kind in ('H', 'L')}
+        self.origins_by_kind = {'H': _PointRange(len(self.orders), _highest_origin),
+                               'L': _PointRange(len(self.orders), _lowest_origin)}
+        self.numeric_clock = bool(turns and isinstance(turns[0].available_at, str)
+                                  and turns[0].available_at.isdecimal())
+        for point in regular:
+            if turns:
+                _known_by(point.available_at, turns[0].available_at)
+        self.regular.sort(key=lambda point: int(point.available_at) if self.numeric_clock else point.available_at)
+        self.regular_cursor = 0
+        self.prefix_known: Moment | None = None
+        self.owned_direction: WaveDirection | None = None
+        self.whole_origin: _SourceTurn | None = None
+        self.whole_extreme: _SourceTurn | None = None
+        # 首段价格上下文尚非 owned 波；不能进入闭合 key 或向上递归。
+        self.pending_origin: _SourceTurn | None = None
+        self.pending_extreme: _SourceTurn | None = None
+        # 每个 level/path 只有这两个当前关键位标记，值为完整来源序列的位置。
+        # 历史 key 树继续保留审计及修订恢复资料；普通最新 H/L 不更新标记。
+        self.last_fall_high_position: int | None = None
+        self.last_rise_low_position: int | None = None
+        self.recent: dict[str, list[_SourceTurn]] = {'H': [], 'L': []}
+        self.source_positions = {_order(point): position for position, point in enumerate(turns)}
+        self.preceding_sources = _preceding_sources(turns)
+        self.processed_count = 0
+        self.body_rejection: tuple[_SourceTurn, _SourceTurn, _SourceTurn] | None = None
+
+    def append(self, turns: Sequence[_SourceTurn], regular: Sequence[_SourceTurn]) -> bool:
+        # 此门禁必须在写入任何状态前完成；同日新普通事实可能属于已经处理的
+        # attack，不能将它补到历史循环末端。调用者同时核对旧来源／候选全文。
+        if self.processed_count != len(self.turns) or self.regular_cursor != len(self.regular):
+            return False
+        if len(self.orders) != len(self.source_by_order):
+            return False
+        reversals = {point.reversal for point in turns}
+        if len(reversals) != len(turns) or any(reversal in self.source_by_reversal for reversal in reversals):
+            return False
+        if self.turns and any(_order(point) <= _order(self.turns[-1]) for point in turns):
+            return False
+        if self.prefix_known is not None and any(_known_by(point.available_at, self.prefix_known)
+                                                for point in regular):
+            return False
+        appended_orders = {_order(point) for point in turns}
+        if any(_order(point) not in self.source_by_order and _order(point) not in appended_orders for point in regular):
+            return False
+        for point in regular:
+            if self.turns:
+                _known_by(point.available_at, self.turns[0].available_at)
+        start = len(self.turns)
+        if not self.turns and turns:
+            self.numeric_clock = isinstance(turns[0].available_at, str) and turns[0].available_at.isdecimal()
+        self.turns.extend(turns)
+        if any('_higher_trend_promotions' in point.source for point in turns):
+            self.promotions = source_promotions(self.turns, self.trend_level)
+        for position, point in enumerate(turns, start):
+            order = _order(point)
+            self.positions[order] = len(self.orders)
+            self.orders.append(order)
+            self.source_by_order[order] = point
+            self.source_positions[order] = position
+            opposite = self.latest_sources.get('L' if point.kind == 'H' else 'H')
+            neighbors = (point.reversal,) if opposite is None else (opposite.reversal, point.reversal)
+            prior = preceding_turn(neighbors, point.reversal)
+            self.preceding_sources[point.reversal] = self.source_by_reversal.get(prior) if prior is not None else None
+            self.source_by_reversal[point.reversal] = point
+            self.latest_sources[point.kind] = point
+        for tree in [*self.keys_by_kind.values(), *self.origins_by_kind.values()]:
+            tree.ensure_size(len(self.orders))
+        # 已消费普通事实不晚于 prefix_known；门禁保证新增事实严格更晚，
+        # 因此只对本批排序，旧账本和前驱映射无需重新扫描。
+        self.regular.extend(sorted(regular,
+            key=lambda point: int(point.available_at) if self.numeric_clock else point.available_at))
+        return True
+
+    def _store_merged(self, point: _SourceTurn) -> None:
+        identity = _identity(point)
+        if identity not in self.merged:
+            # 来源价格坐标严格唯一，候选也已核对 actual identity；因此完整
+            # identity 顺序与原 (index, ordinal) 稳定顺序相同，不新增同坐标仲裁。
+            insort(self.merged_order, identity)
+            self.new_merged_keys.append(identity)
+        self.merged[identity] = point
+        self.updated_merged[identity] = point
+
+    def _attack_key(self, attack: _SourceTurn, *, direction: WaveDirection | None,
+                    origin: _SourceTurn | None) -> _SourceTurn | None:
+        """从本级当前末跌高／末升低位置续查，反向攻击优先使用冻结整波起点。"""
+        tree = self.keys_by_kind[attack.kind]
+        attack_position = self.positions[_order(attack)]
+        attack_direction = 'up' if attack.kind == 'H' else 'down'
+        key: _SourceTurn | None = None
+        if direction is not None and direction != attack_direction and origin is not None and origin.kind == attack.kind:
+            origin_position = self.positions[_order(origin)]
+            if origin_position < attack_position:
+                key = tree.query(origin_position, origin_position + 1)
+        if key is None:
+            marker = self.last_fall_high_position if attack.kind == 'H' else self.last_rise_low_position
+            start = self.positions[_order(self.turns[marker])] if marker is not None else 0
+            # 迟知来源可能提前把右侧 key 加入树；它不能遮住当前攻击左侧
+            # 的合法关键位。检查点或冷重建仍保留原完整历史查询的边界。
+            if start >= attack_position:
+                start = 0
+            key = tree.query(start, attack_position)
+        if key is not None and _key_known_before_price(key, attack):
+            position = self.source_positions[_order(key)]
+            if attack.kind == 'H':
+                self.last_fall_high_position = position
+            else:
+                self.last_rise_low_position = position
+        return key
+
+    def _released_promotion(self, origin: _SourceTurn | None, extreme: _SourceTurn,
+                            attack: _SourceTurn, known: Moment) -> Mapping[str, object] | None:
+        if origin is None:
+            return None
+        for record in reversed(self.promotions):
+            proof, released = validate_promotion(record, self.trend_level)
+            if not _known_by(released, known):
+                continue
+            start = cast(Mapping[str, object], proof['origin'])
+            end = cast(Mapping[str, object], proof['confirmed_by'])
+            start_order = cast(int, start['index']), cast(int, start.get('ordinal', 0))
+            end_order = cast(int, end['index']), cast(int, end.get('ordinal', 0))
+            if (_order(extreme) < end_order or not (
+                    _order(origin) == start_order and _order(extreme) == end_order
+                    or _order(origin) >= end_order)):
+                continue
+            # 越过已升级段的任一边界后，旧许可证不能在回撤时复活；新延伸
+            # 必须重新取得上级升级证明。区间树只含当时已处理的直接来源。
+            first, last = self.positions[end_order], self.positions[_order(attack)] + 1
+            high = self.origins_by_kind['H'].query(first, last)
+            low = self.origins_by_kind['L'].query(first, last)
+            ceiling = max(cast(float, start['value']), cast(float, end['value']))
+            floor = min(cast(float, start['value']), cast(float, end['value']))
+            if high is not None and high.value > ceiling or low is not None and low.value < floor:
+                continue
+            return record
+        return None
+
+    def advance(self, *, _snapshot: bool = True) -> list[dict[str, object]]:
+        self.updated_merged = {}
+        self.new_merged_keys = []
+        turns, regular, trend_level, event_sink = self.turns, self.regular, self.trend_level, self.event_sink
+        source_level = trend_level - 1
+        merged, positions, source_by_order = self.merged, self.positions, self.source_by_order
+        keys_by_kind, origins_by_kind = self.keys_by_kind, self.origins_by_kind
+        regular_cursor, prefix_known = self.regular_cursor, self.prefix_known
+        owned_direction, whole_origin, whole_extreme = self.owned_direction, self.whole_origin, self.whole_extreme
+        recent, source_positions, preceding_sources = self.recent, self.source_positions, self.preceding_sources
+        body_rejection = self.body_rejection
+        pending_origin, pending_extreme = self.pending_origin, self.pending_extreme
+
+        def publish_owned(raw: dict[str, object], actual: _SourceTurn, known: Moment, *, closed: bool) -> None:
+            event = _SourceTurn(raw, actual.position, actual.index, actual.ordinal, actual.kind,
+                                actual.value, actual.time, known, actual.reversal)
+            existing = merged.get(_identity(event))
+            if existing is None or not _known_by(existing.available_at, known):
+                self._store_merged(event)
+            if closed:
+                _store_closed_key(keys_by_kind[event.kind], positions[_order(event)], event)
+            if event_sink is not None:
+                event_sink.append(deepcopy(raw))
+
+        for attack in turns[self.processed_count:]:
+            prefix_known = attack.available_at if prefix_known is None else _later_moment(prefix_known, attack.available_at)
+            while regular_cursor < len(regular) and _known_by(regular[regular_cursor].available_at, prefix_known):
+                point = regular[regular_cursor]
+                regular_cursor += 1
+                actual = source_by_order.get(_order(point))
+                # closure14 不能替 geometry10 掩盖来源11才知的越级先出现；结束
+                # 投影与本级几何首次出现都必须满足同一个真实下级来源边界。
+                geometry_known = point.source.get('source_geometry_available_at', point.source.get('available_at'))
+                if (actual is None or _identity(actual) != _identity(point) or actual.time != point.time
+                        or not (type(geometry_known) is int or isinstance(geometry_known, str) and geometry_known)
+                        or not _known_by(actual.available_at, geometry_known)
+                        or not _known_by(actual.available_at, point.available_at)):
+                    raise ValueError('a current-level candidate must retain its actual confirmed source provenance')
+                # 普通方向账本没有整波身份，不可进入 key 树。旧裸 confirmed
+                # 候选的声明契约仍兼容；有生成标记的候选必须由本次共同状态重建。
+                legacy_candidate = point.source.get('wave_completion_policy') is None
+                if legacy_candidate or point.source.get('wave_identity_state') == 'owned':
+                    identity = _identity(point)
+                    if identity not in merged or _known_by(point.available_at, merged[identity].available_at):
+                        self._store_merged(point)
+                    _store_closed_key(keys_by_kind[point.kind], positions[_order(point)], point)
+                    # 已校验 owned 候选可补充闭合 key，但正常来源扫描仍掌握
+                    # whole phase；晚外部证明不得重置极值或把 whole origin 拉退。
+                    if legacy_candidate and _order(point) < _order(attack):
+                        owned_direction = 'down' if point.kind == 'H' else 'up'
+                        whole_origin = actual
+                        whole_extreme = None
+            previous_extreme = whole_extreme
+            attack_position = positions[_order(attack)]
+            origins_by_kind[attack.kind].update(attack_position, attack)
+            recent[attack.kind].append(attack)
+            recent[attack.kind] = recent[attack.kind][-2:]
+            if not self.strict_only and owned_direction is None and not merged:
+                if pending_origin is None or pending_extreme is None:
+                    previous = preceding_sources[attack.reversal]
+                    if previous is not None:
+                        pending_origin, pending_extreme = previous, attack
+                else:
+                    price_sign = 1 if attack.kind == 'H' else -1
+                    if attack.kind == pending_extreme.kind:
+                        if price_sign * (attack.value - pending_extreme.value) > 0:
+                            pending_extreme = attack
+                    elif price_sign * (attack.value - pending_origin.value) > 0:
+                        # 只有严格越过首段边界才换方向；波内局部四点不能
+                        # 把未突破旧高/低的反弹起点抢先发布为本级起点。
+                        pending_origin, pending_extreme = pending_extreme, attack
+            # 已结束的下级翻空之后，最高价创新高但收盘未超过原高点当日收盘，不能
+            # 覆盖该高点。随后再破翻空低点才确认组合下降波，保留真实四点。
+            if (not self.strict_only and source_level > 0 and owned_direction == 'up'
+                    and whole_extreme is not None and attack.kind == 'H'):
+                counter = recent['L'][-1] if recent['L'] else None
+                if (counter is not None and _order(whole_extreme) < _order(counter) < _order(attack)
+                        and rejects_wick_extension(whole_extreme.source, counter.source, attack.source)):
+                    body_rejection = whole_extreme, counter, attack
+                    continue
+            if body_rejection is not None:
+                anchor, counter, rebound = body_rejection
+                if owned_direction != 'up':
+                    body_rejection = None
+                elif attack.kind == 'H':
+                    if attack.value > anchor.value:
+                        if not rejects_wick_extension(anchor.source, counter.source, attack.source):
+                            body_rejection = None
+                        else:
+                            body_rejection = anchor, counter, attack
+                            continue
+                elif _order(attack) > _order(rebound) and attack.value < counter.value:
+                    reversal_proof = dict(available_at=prefix_known, anchor=body_reference(anchor.source),
+                                          counter=body_reference(counter.source), rebound=body_reference(rebound.source),
+                                          endpoint=body_reference(attack.source))
+                    for actual, endpoint in ((anchor, False), (attack, True)):
+                        raw = _candidate_from_source(actual)
+                        raw.update(trend_level=trend_level, source_level=source_level, available_at=prefix_known,
+                            confirmation_rule=BODY_REVERSAL_RULE, confirmed_by=_reference(attack),
+                            wave_direction_before='down' if endpoint else 'up', wave_direction_after='down',
+                            body_reversal_evidence=deepcopy(reversal_proof))
+                        if source_level == 0:
+                            raw.update(source_turn_position=actual.position, confirmed_on_turn=attack.position)
+                        else:
+                            raw.update({f'source_level{source_level}_position': actual.position,
+                                        f'confirmed_on_level{source_level}': attack.position})
+                        _stamp_wave_completion(raw, closed=not endpoint)
+                        publish_owned(raw, actual, prefix_known, closed=not endpoint)
+                    whole_origin, whole_extreme, owned_direction = anchor, attack, 'down'
+                    body_rejection = None
+                    continue
+                if body_rejection is not None:
+                    # 交替尚未破位时，不能再让包含该影线的普通四点比较
+                    # 生成另一份“最高价极值”结束证明；只等破低或新高的收盘超过原收盘。
+                    continue
+            classification = classify_trend_prices([point.value for point in recent['H']],
+                                                   [point.value for point in recent['L']], trend_level=trend_level)
+            current: WaveDirection | None = (None if self.strict_only else
+                'up' if classification == StructuralTrend.BULL else
+                'down' if classification == StructuralTrend.BEAR else None)
+            if owned_direction is None and current is not None:
+                target = 'H' if current == 'up' else 'L'
+                if not merged:
+                    origin, extreme = pending_origin, pending_extreme
+                else:
+                    extreme = recent[target][-1]
+                    origin = origins_by_kind['L' if current == 'up' else 'H'].query(0, positions[_order(extreme)])
+                proof = [*recent['H'], *recent['L']]
+                if origin is not None and extreme is not None and extreme.kind == target:
+                    left = source_positions[_order(origin)]
+                    right = source_positions[_order(extreme)]
+                    # 证据仍含起点左侧旧拐点时继续等待；后续每次补齐证据
+                    # 都可建立同一个边界，不因首次四点不合格而永久丢失。
+                    if (all(_order(point) >= _order(origin) for point in proof)
+                            and (source_level == 0 or right - left > 1)):
+                        raw = _ordinary_point(origin, proof, attack, trend_level=trend_level,
+                            direction='down' if current == 'up' else 'up', current=current,
+                            prefix_known=prefix_known, key=None, owned=True)
+                        initial_identity: dict[str, object] = dict(available_at=prefix_known,
+                            origin=_reference(origin), endpoint=_reference(extreme))
+                        if source_level == 0:
+                            initial_identity['basis'] = 'polyline_four_point_definition'
+                        else:
+                            initial_identity['interior'] = _reference(turns[left + 1])
+                        raw['lower_wave_identity_evidence'] = initial_identity
+                        raw['initial_boundary'] = True
+                        _stamp_wave_completion(raw, closed=True)
+                        publish_owned(raw, origin, prefix_known, closed=True)
+                        owned_direction, whole_origin, whole_extreme = current, origin, extreme
+                        pending_origin = pending_extreme = None
+            if owned_direction is not None:
+                target = 'H' if owned_direction == 'up' else 'L'
+                sign = 1 if owned_direction == 'up' else -1
+                if attack.kind == target and (whole_extreme is None or sign * (attack.value - whole_extreme.value) > 0):
+                    whole_extreme = attack
+                if current is not None and current != owned_direction and whole_extreme is not None:
+                    counter_kind = 'H' if current == 'up' else 'L'
+                    counter = origins_by_kind[counter_kind].query(positions[_order(whole_extreme)] + 1,
+                                                                  attack_position + 1)
+                    if counter is not None:
+                        left, right = source_positions[_order(whole_extreme)], source_positions[_order(counter)]
+                        opposite = preceding_sources[whole_extreme.reversal]
+                        reversal_sign = 1 if current == 'up' else -1
+                        # 只有实际被上级严格升级接管的波段，才解除其下级旧key门槛。
+                        # 四点定义、拓扑、范围和可知时间仍独立满足；普通未升级波不豁免。
+                        proof = [*recent['H'], *recent['L']]
+                        promotion = self._released_promotion(whole_origin, whole_extreme, attack, prefix_known)
+                        local_definition = (promotion is not None
+                            and all(_order(point) >= _order(whole_extreme) for point in proof))
+                        ordinary_reversal = (
+                            opposite is not None
+                            and _key_known_before_price(opposite, counter)
+                            and reversal_sign * (counter.value - opposite.value) > 0
+                        )
+                        # 递归趋势线必须包含实际内部下级拐点，单 child 只能等待
+                        # 组合波或严格破旧 key。零级折线只提供价格反转，不是待升格
+                        # 的下级趋势线；否则第一条折线腿已是区间极值时，即便以后
+                        # 多次出现严格LL/LH或HH/HL，一级也会被永远锁在旧方向。
+                        if ((local_definition or ordinary_reversal or self.ordinary_trend_completion_enabled)
+                                and (source_level == 0 or right - left > 1)):
+                            raw = _ordinary_point(whole_extreme, proof, attack, trend_level=trend_level,
+                                direction=owned_direction, current=current, prefix_known=prefix_known,
+                                key=_reference(opposite) if opposite is not None else None, owned=True)
+                            identity_proof: dict[str, object] = dict(available_at=prefix_known,
+                                origin=_reference(whole_extreme), endpoint=_reference(counter))
+                            if local_definition:
+                                identity_proof['local_definition_boundary'] = _reference(whole_extreme)
+                                identity_proof['higher_trend_promotion'] = deepcopy(promotion)
+                            if ordinary_reversal:
+                                assert opposite is not None
+                                identity_proof['reversal_key'] = _reference(opposite)
+                            if source_level == 0:
+                                identity_proof['basis'] = 'polyline_four_point_definition'
+                            else:
+                                identity_proof['interior'] = _reference(turns[left + 1])
+                            if whole_origin is not None:
+                                # 严格突破较小旧 key 可以先开启新波；四点比较仍可能
+                                # 含上一个波的更高H/更低L。保留真正整波起点作为极值
+                                # 校验边界，不能改取最新局部回调来排除本波反例。
+                                identity_proof['wave_origin'] = _reference(whole_origin)
+                            raw['lower_wave_identity_evidence'] = identity_proof
+                            _stamp_wave_completion(raw, closed=True)
+                            publish_owned(raw, whole_extreme, prefix_known, closed=True)
+                            whole_origin, whole_extreme, owned_direction = whole_extreme, counter, current
+            # 反向严格升级使用当前整波起点已经闭合的本级关键位。波内较晚的
+            # 局部 key 不能把冻结末跌高／末升低降格；普通组合波仍由上面的
+            # 共同四点定义独立确认，不借六态或交易资格增删几何。
+            attack_direction: WaveDirection = 'up' if attack.kind == 'H' else 'down'
+            key = self._attack_key(attack, direction=owned_direction, origin=whole_origin)
+            if key is None:
+                continue
+            rising = attack.kind == 'H'
+            sign = 1 if rising else -1
+            if sign * (attack.value - key.value) <= 0 or not _key_known_before_price(key, attack):
+                continue
+            origin_kind = 'L' if rising else 'H'
+            # 当前整波由 owned 状态决定，不能被 pending 普通方向点重置。严格
+            # 同向攻击始终保留原 whole origin；反向攻击必须关闭真实整波极值。
+            continuing = owned_direction == attack_direction and whole_origin is not None
+            origin = (whole_origin if continuing else whole_extreme
+                      if owned_direction is not None and owned_direction != attack_direction and whole_extreme is not None
+                      else origins_by_kind[origin_kind].query(positions[_order(key)] + 1, attack_position))
+            if origin is None:
+                continue
+            if (continuing and previous_extreme is not None and previous_extreme.kind == attack.kind
+                    and sign * (attack.value - previous_extreme.value) <= 0):
+                # 再次越过同一个旧 key 却没有延伸既有整波极值，只是波内回调。
+                # 不能把 H50 的活跃极值改成后来 H48，再用 H48 关闭整波。
+                continue
+            # 新反向整波必须从旧 key 另一侧起波；已经由真实反转建立的同向
+            # 整波可能因跳空或多步抬高整体位于旧 key 以上／以下，此时再强求
+            # 起波 cross 会丢掉合法极值延伸。方向已成立仍不等于端点已闭合。
+            # 局部 key 可被既有同向波突破，但不能倒过来证明其左侧起点闭合。
+            # 反向新波需要真实的 key→origin→attack 顺序，缺失时保留旧整波。
+            closes_origin = (_order(key) < _order(origin) < _order(attack)
+                             and sign * (key.value - origin.value) > 0)
+            if not continuing and not closes_origin:
+                continue
+            known = _later_moment(prefix_known, _later_moment(key.available_at, origin.available_at))
+            # 同向只新增攻击端点几何；独立 origin 证明仍保留在审计账本，但
+            # origin 固定为已有整波起点，绝不改取局部回调 L3/H3，也不重置 key
+            # 知识。这样 ordinary14@18 与 laterstrict14@20 均保留，而 H2→L3
+            # 的假反向线不会被制造。反向突破才发布整个旧波的真实极值 origin。
+            if continuing and event_sink is not None and closes_origin:
+                event_sink.append(deepcopy(_promoted_point(origin, attack=attack, origin=origin, key=key,
+                                                           trend_level=trend_level, known=known, endpoint=False)))
+            promoted_points = ((attack, True),) if continuing else ((origin, False), (attack, True))
+            for source_point, endpoint in promoted_points:
+                raw = _promoted_point(source_point, attack=attack, origin=origin, key=key,
+                                      trend_level=trend_level, known=known, endpoint=endpoint)
+                publish_owned(raw, source_point, known, closed=not endpoint)
+            if not continuing:
+                whole_origin = origin
+                # 关键位可能迟于波内更强的价格点才可用于突破；真实攻击点
+                # 负责升级证明，但不能覆盖新起点之后已经观察到的整波极值。
+                # 树仅包含当前及此前已消费来源，相等价格仍保留最早坐标。
+                whole_extreme = origins_by_kind[attack.kind].query(
+                    positions[_order(origin)] + 1, attack_position + 1)
+                assert whole_extreme is not None  # 当前 attack 已写入且严格位于 origin 右侧。
+            else:
+                whole_extreme = attack
+            owned_direction = attack_direction
+        self.regular_cursor, self.prefix_known = regular_cursor, prefix_known
+        self.owned_direction, self.whole_origin, self.whole_extreme = owned_direction, whole_origin, whole_extreme
+        self.body_rejection = body_rejection
+        self.pending_origin, self.pending_extreme = pending_origin, pending_extreme
+        self.processed_count = len(turns)
+        return self.snapshot() if _snapshot else []
+
+    def snapshot(self) -> list[dict[str, object]]:
+        """只有公共批量输出或状态预算回退需要物化完整 merged 账本。"""
+        return [dict(self.merged[identity].source) for identity in self.merged_order]
+
+
 def promote_trend_key_breaks(
     source: Sequence[Mapping[str, object]], candidates: Sequence[Mapping[str, object]], *, trend_level: int,
-    event_sink: list[dict[str, object]] | None = None,
+    event_sink: MutableSequence[dict[str, object]] | None = None,
+    ordinary_trend_completion_enabled: bool = False,
 ) -> list[dict[str, object]]:
     """统一推进本级整波身份和严格升级，方向账本与整波状态各自保留。
 
     ``source`` 只能来自完整结束的直接下级：一级消费折线，二级消费一级，
     三级消费二级；开放升级点和显示尾端由共同来源校验排除。``candidates`` 是
     共同定义的方向账本，只有取得 owned 身份的闭合点才可成为本级 key。
+    只有实际升级到更高级别的波段，才允许其下级在升级可知后凭独立
+    HH/HL 或 LL/LH 确认局部反向结构。未升级、异路径或越界后的旧证明
+    不豁免旧关键位；显式普通结束选项继续保持独立用户配置。
+    首段先保存独立的待确认价格边界，局部四点与该方向一致、且完整位于
+    边界内部后才发布 owned 起点；证据不足时保留边界等待后续补齐。
+    待确认边界只有严格价格越界才切换，不能作为闭合 key 向上消费。
+    严格升级的突破日必须晚于关键位可知日。
     普通相反方向若整波退化为一条直接下级趋势波，保持 pending，不改变既有
     owned 方向、起点或极值。以后反向波包含真实内部下级拐点成为组合波，
     或严格突破旧本级 key，才在实际身份可知日关闭和切换本级整波。
@@ -205,158 +673,5 @@ def promote_trend_key_breaks(
     regular = _source_turns(candidates, trend_level, retain_geometry=True, accept_direction_facts=True)
     if not turns:
         return []
-    merged: dict[tuple[int, int, str, float], _SourceTurn] = {}
-    orders = sorted({_order(point) for point in [*turns, *regular]})
-    positions = {order: position for position, order in enumerate(orders)}
-    source_by_order = {_order(point): point for point in turns}
-    keys_by_kind = {kind: _PointRange(len(orders), _latest_key) for kind in ('H', 'L')}
-    origins_by_kind = {'H': _PointRange(len(orders), _highest_origin),
-                       'L': _PointRange(len(orders), _lowest_origin)}
-    # 先按知识日期排好本级候选，只在首次已知时入树一次；价格位置仍单独
-    # 限定在攻击点左侧，延迟确认不能让未来价格坐标成为旧关键位。
-    numeric_clock = isinstance(turns[0].available_at, str) and turns[0].available_at.isdecimal()
-    for point in regular:
-        _known_by(point.available_at, turns[0].available_at)
-    regular.sort(key=lambda point: int(point.available_at) if numeric_clock else point.available_at)
-    regular_cursor = 0
-    prefix_known: Moment | None = None
-    # 方向事实与本级整波身份分别推进。pending 的单条下级反向波不会切换
-    # owned 方向，故其后来局部回调也不能被当作新的本级起点或 closed key。
-    owned_direction: WaveDirection | None = None
-    whole_origin: _SourceTurn | None = None
-    whole_extreme: _SourceTurn | None = None
-    recent: dict[str, list[_SourceTurn]] = {'H': [], 'L': []}
-    source_positions = {_order(point): position for position, point in enumerate(turns)}
-    preceding_sources = _preceding_sources(turns)
-
-    def publish_owned(raw: dict[str, object], actual: _SourceTurn, known: Moment, *, closed: bool) -> None:
-        event = _SourceTurn(raw, actual.position, actual.index, actual.ordinal, actual.kind,
-                            actual.value, actual.time, known, actual.reversal)
-        existing = merged.get(_identity(event))
-        if existing is None or not _known_by(existing.available_at, known):
-            merged[_identity(event)] = event
-        if closed:
-            _store_closed_key(keys_by_kind[event.kind], positions[_order(event)], event)
-        if event_sink is not None:
-            event_sink.append(deepcopy(raw))
-
-    for attack in turns:
-        prefix_known = attack.available_at if prefix_known is None else _later_moment(prefix_known, attack.available_at)
-        while regular_cursor < len(regular) and _known_by(regular[regular_cursor].available_at, prefix_known):
-            point = regular[regular_cursor]
-            regular_cursor += 1
-            actual = source_by_order.get(_order(point))
-            # closure14 不能替 geometry10 掩盖来源11才知的越级先出现；结束
-            # 投影与本级几何首次出现都必须满足同一个真实下级来源边界。
-            geometry_known = point.source.get('source_geometry_available_at', point.source.get('available_at'))
-            if (actual is None or _identity(actual) != _identity(point) or actual.time != point.time
-                    or not (type(geometry_known) is int or isinstance(geometry_known, str) and geometry_known)
-                    or not _known_by(actual.available_at, geometry_known)
-                    or not _known_by(actual.available_at, point.available_at)):
-                raise ValueError('a current-level candidate must retain its actual confirmed source provenance')
-            # 普通方向账本没有整波身份，不可进入 key 树。旧裸 confirmed
-            # 候选的声明契约仍兼容；有生成标记的候选必须由本次共同状态重建。
-            legacy_candidate = point.source.get('wave_completion_policy') is None
-            if legacy_candidate or point.source.get('wave_identity_state') == 'owned':
-                identity = _identity(point)
-                if identity not in merged or _known_by(point.available_at, merged[identity].available_at):
-                    merged[identity] = point
-                _store_closed_key(keys_by_kind[point.kind], positions[_order(point)], point)
-                # 已校验 owned 候选可补充闭合 key，但正常来源扫描仍掌握
-                # whole phase；晚外部证明不得重置极值或把 whole origin 拉退。
-                if legacy_candidate and _order(point) < _order(attack):
-                    owned_direction = 'down' if point.kind == 'H' else 'up'
-                    whole_origin = actual
-                    whole_extreme = None
-        previous_extreme = whole_extreme
-        attack_position = positions[_order(attack)]
-        origins_by_kind[attack.kind].update(attack_position, attack)
-        recent[attack.kind].append(attack)
-        recent[attack.kind] = recent[attack.kind][-2:]
-        classification = classify_trend_prices([point.value for point in recent['H']],
-                                               [point.value for point in recent['L']], trend_level=trend_level)
-        current: WaveDirection | None = ('up' if classification == StructuralTrend.BULL else
-                                         'down' if classification == StructuralTrend.BEAR else None)
-        if owned_direction is None and current is not None:
-            owned_direction = current
-            whole_extreme = recent['H' if current == 'up' else 'L'][-1]
-        if owned_direction is not None:
-            target = 'H' if owned_direction == 'up' else 'L'
-            sign = 1 if owned_direction == 'up' else -1
-            if attack.kind == target and (whole_extreme is None or sign * (attack.value - whole_extreme.value) > 0):
-                whole_extreme = attack
-            if current is not None and current != owned_direction and whole_extreme is not None:
-                counter_kind = 'H' if current == 'up' else 'L'
-                counter = origins_by_kind[counter_kind].query(positions[_order(whole_extreme)] + 1,
-                                                              attack_position + 1)
-                if counter is not None:
-                    left, right = source_positions[_order(whole_extreme)], source_positions[_order(counter)]
-                    # 递归趋势线必须包含实际内部下级拐点，单 child 只能等待
-                    # 组合波或严格破旧 key。零级折线只提供价格反转，不是待升格
-                    # 的下级趋势线；否则第一条折线腿已是区间极值时，即便以后
-                    # 多次出现严格LL/LH或HH/HL，一级也会被永远锁在旧方向。
-                    if source_level == 0 or right - left > 1:
-                        opposite = preceding_sources[whole_extreme.reversal]
-                        proof = [*recent['H'], *recent['L']]
-                        raw = _ordinary_point(whole_extreme, proof, attack, trend_level=trend_level,
-                            direction=owned_direction, current=current, prefix_known=prefix_known,
-                            key=_reference(opposite) if opposite is not None else None, owned=True)
-                        identity_proof: dict[str, object] = dict(available_at=prefix_known,
-                            origin=_reference(whole_extreme), endpoint=_reference(counter))
-                        if source_level == 0:
-                            identity_proof['basis'] = 'polyline_four_point_definition'
-                        else:
-                            identity_proof['interior'] = _reference(turns[left + 1])
-                        if whole_origin is not None:
-                            # 严格突破较小旧 key 可以先开启新波；四点比较仍可能
-                            # 含上一个波的更高H/更低L。保留真正整波起点作为极值
-                            # 校验边界，不能改取最新局部回调来排除本波反例。
-                            identity_proof['wave_origin'] = _reference(whole_origin)
-                        raw['lower_wave_identity_evidence'] = identity_proof
-                        _stamp_wave_completion(raw, closed=True)
-                        publish_owned(raw, whole_extreme, prefix_known, closed=True)
-                        whole_origin, whole_extreme, owned_direction = whole_extreme, counter, current
-        key = keys_by_kind[attack.kind].query(0, attack_position)
-        if key is None:
-            continue
-        rising = attack.kind == 'H'
-        sign = 1 if rising else -1
-        if sign * (attack.value - key.value) <= 0 or not _key_known_before_price(key, attack):
-            continue
-        origin_kind = 'L' if rising else 'H'
-        # 当前整波由 owned 状态决定，不能被 pending 普通方向点重置。严格
-        # 同向攻击始终保留原 whole origin；反向攻击必须关闭真实整波极值。
-        attack_direction: WaveDirection = 'up' if rising else 'down'
-        continuing = owned_direction == attack_direction and whole_origin is not None
-        origin = (whole_origin if continuing else whole_extreme
-                  if owned_direction is not None and owned_direction != attack_direction and whole_extreme is not None
-                  else origins_by_kind[origin_kind].query(positions[_order(key)] + 1, attack_position))
-        if origin is None:
-            continue
-        if (continuing and previous_extreme is not None and previous_extreme.kind == attack.kind
-                and sign * (attack.value - previous_extreme.value) <= 0):
-            # 再次越过同一个旧 key 却没有延伸既有整波极值，只是波内回调。
-            # 不能把 H50 的活跃极值改成后来 H48，再用 H48 关闭整波。
-            continue
-        # 新反向整波必须从旧 key 另一侧起波；已经由真实反转建立的同向
-        # 整波可能因跳空或多步抬高整体位于旧 key 以上／以下，此时再强求
-        # 起波 cross 会丢掉合法极值延伸。方向已成立仍不等于端点已闭合。
-        if not continuing and sign * (key.value - origin.value) <= 0:
-            continue
-        known = _later_moment(prefix_known, _later_moment(key.available_at, origin.available_at))
-        # 同向只新增攻击端点几何；独立 origin 证明仍保留在审计账本，但
-        # origin 固定为已有整波起点，绝不改取局部回调 L3/H3，也不重置 key
-        # 知识。这样 ordinary14@18 与 laterstrict14@20 均保留，而 H2→L3
-        # 的假反向线不会被制造。反向突破才发布整个旧波的真实极值 origin。
-        if continuing and event_sink is not None and sign * (key.value - origin.value) > 0:
-            event_sink.append(deepcopy(_promoted_point(origin, attack=attack, origin=origin, key=key,
-                                                       trend_level=trend_level, known=known, endpoint=False)))
-        promoted_points = ((attack, True),) if continuing else ((origin, False), (attack, True))
-        for source_point, endpoint in promoted_points:
-            raw = _promoted_point(source_point, attack=attack, origin=origin, key=key,
-                                  trend_level=trend_level, known=known, endpoint=endpoint)
-            publish_owned(raw, source_point, known, closed=not endpoint)
-        if not continuing:
-            whole_origin = origin
-        whole_extreme, owned_direction = attack, attack_direction
-    return [dict(point.source) for point in sorted(merged.values(), key=_order)]
+    return _TrendUpgradeState(turns, regular, trend_level=trend_level, event_sink=event_sink,
+        ordinary_trend_completion_enabled=ordinary_trend_completion_enabled).advance()

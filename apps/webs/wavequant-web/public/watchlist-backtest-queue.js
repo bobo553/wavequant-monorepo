@@ -5,10 +5,13 @@ const DEFAULT_VERSION_REFRESH_MS = 30_000;
 const FAILURE_RETRY_DELAYS_MS = [5_000, 15_000, 45_000];
 
 export function backtestArgumentsKey(path, params) {
+    const normalized = ["/api/akshare-backtest", "/api/tdx-backtest"].includes(path)
+        ? { buy_interval_level: "2", ordinary_trend_completion_enabled: "false", ...params }
+        : params;
     return JSON.stringify([
         path,
-        Object.entries(params)
-            .filter(([key]) => key !== "backtest_job")
+        Object.entries(normalized)
+            .filter(([key]) => key !== "backtest_job" && key !== "strategy_version")
             .sort(([left], [right]) => left.localeCompare(right))
             .map(([key, value]) => [key, String(value)]),
     ]);
@@ -25,6 +28,8 @@ export function watchlistBacktestRequest(member, context) {
         net_reward_risk_filter: context.net_reward_risk_filter,
         shallow_base_breakout_enabled: context.shallow_base_breakout_enabled,
         n_target_trend_confirmation_enabled: context.n_target_trend_confirmation_enabled ?? "false",
+        ordinary_trend_completion_enabled: context.ordinary_trend_completion_enabled ?? "false",
+        buy_interval_level: context.buy_interval_level ?? "2",
         initial_capital: context.initial_capital,
         max_position_weight: context.max_position_weight,
         symbol: member.symbol,

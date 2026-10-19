@@ -1,4 +1,14 @@
+import { backtestArgumentsKey } from "./watchlist-backtest-queue.js";
+
 export const BACKTEST_STATUS_STALE_MS = 15_000;
+
+export function selectedBacktestStatus({ fallback = "pending", requestStatus, taskStatus, unavailable = false }) {
+    if (requestStatus === "failed" || taskStatus === "failed") return "failed";
+    if (taskStatus === "running") return unavailable ? "unknown" : "running";
+    if (requestStatus === "updating") return "updating";
+    if (requestStatus === "completed" && taskStatus === "completed") return "completed";
+    return fallback;
+}
 
 export function selectedBacktestAction({ historical, canBacktest, autoBacktest, completed = false }) {
     return {
@@ -15,6 +25,7 @@ export function selectedBacktestButton(status, showingCompletedResult) {
             {
                 pending: "待回测 · 运行当前股票回测",
                 running: "回测中",
+                updating: "正在更新当前股票…",
                 unknown: "状态待确认",
                 completed: "已完成 · 重新回测",
                 historical: "已回测 · 待更新",
@@ -26,6 +37,17 @@ export function selectedBacktestButton(status, showingCompletedResult) {
 }
 
 export const backtestRecordMatchesSource = (record, source) => !source || record?.path === `/api/${source}-backtest`;
+
+export function selectedRunningBacktestJob(jobs, symbol, source, task = null) {
+    if (!symbol || !source) return null;
+    if (task && task.status !== "running") return null;
+    return (jobs || []).find((job) => job.status === "running"
+        && (job.symbol || job.params?.symbol) === symbol
+        && (task?.waitingForJob === job.job || (backtestRecordMatchesSource(job, source)
+            && (!task || task.params.backtest_job === job.job || (task.version === job.version
+                && backtestArgumentsKey(task.path, task.params)
+                    === backtestArgumentsKey(job.path, job.params || {})))))) || null;
+}
 
 export function historicalBacktestStatuses(statuses, recent, source = null) {
     const merged = { ...statuses };
@@ -107,4 +129,39 @@ export function formatBacktestElapsed(seconds) {
 
 export function formatBacktestProgress(percent) {
     return Number.isInteger(percent) && percent >= 0 && percent <= 99 ? `${percent}%` : "";
+}
+
+export function backtestProgress(job) {
+    if (Number.isSafeInteger(job?.processed_sessions) && Number.isSafeInteger(job?.total_sessions)
+        && job.total_sessions > 0 && job.processed_sessions >= 0 && job.processed_sessions <= job.total_sessions) {
+        const percent = job.processed_sessions === job.total_sessions ? 100
+            : Math.min(99.9, Math.round(job.processed_sessions * 1000 / job.total_sessions) / 10);
+        return { percent, scope: "sessions" };
+    }
+    const stage = typeof job?.progress_stage === "string" ? job.progress_stage : "";
+    // 兼容正在运行的服务：日期计数已由后端上报，不能再套用总任务的阶段权重。
+    const sessions = stage.match(/已处理\s*(\d+)\s*\/\s*(\d+)\s*个交易日/);
+    if (sessions) {
+        const processed = Number(sessions[1]);
+        const total = Number(sessions[2]);
+        if (!Number.isSafeInteger(processed) || !Number.isSafeInteger(total) || total <= 0 || processed > total)
+            return null;
+        const percent = processed === total ? 100 : Math.min(99.9, Math.round(processed * 1000 / total) / 10);
+        return { percent, scope: "sessions" };
+    }
+    return formatBacktestProgress(job?.progress_percent) ? { percent: job.progress_percent, scope: "overall" } : null;
+}
+
+export function formatBacktestJobProgress(job) {
+    const progress = backtestProgress(job);
+    return progress ? `${progress.percent}%` : "";
+}
+
+export function formatBacktestStage(job) {
+    const stage = Number.isSafeInteger(job?.processed_sessions) && job.total_sessions > 0
+        ? `同日联动：折线 → 一级 → 二级 → 三级 → B/S及账户 · 已处理${job.processed_sessions}/${job.total_sessions}个交易日 · 截至${job.processed_asof}`
+        : typeof job?.progress_stage === "string" ? job.progress_stage.trim() : "";
+    const progress = backtestProgress(job);
+    const percent = progress ? `${progress.scope === "sessions" ? "交易日进度 " : ""}${progress.percent}%` : "";
+    return [stage ? `当前步骤：${stage}` : "", percent].filter(Boolean).join(" · ");
 }

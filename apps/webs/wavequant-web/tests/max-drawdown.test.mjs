@@ -99,6 +99,17 @@ test("holding MAE uses only current metric version and never substitutes account
     assert.match(holdingDrawdownNote({ ...metrics, holding_drawdown_status: "no_entry_fills" }), /无买入成交/);
     assert.match(holdingDrawdownNote({ ...metrics, holding_drawdown_status: "incomplete" }), /无法确认/);
     assert.match(holdingDrawdownNote({ ...metrics, holding_drawdown_status: "no_closed_cycles" }), /暂无完全卖出/);
+    assert.equal(holdingDrawdownValue({ ...metrics, holding_drawdown_version: "holding_entry_cost_mae_cycle_v2" }), null);
+});
+
+test("qualified holding losses explain excluded gap sessions and last observation", () => {
+    const note = holdingDrawdownNote({ ...metrics, holding_drawdown_observation_scope: "qualified_sessions" });
+    assert.match(note, /仅观察有效资格日和结束日，区间外冻结/);
+    const lines = holdingDrawdownLines({ ...episode, observation_scope: "qualified_sessions",
+        excluded_sessions: 2, observed_through: "2024-01-19T15:00:00" });
+    assert.match(lines[0], /^资格日持仓最大亏损/);
+    assert.match(lines[2], /跳过 2 个区间外交易日/);
+    assert.match(lines[2], /最后观察 2024-01-19T15:00:00/);
 });
 
 test("holding loss chart clears at each liquidation and carries no previous cycle loss", () => {

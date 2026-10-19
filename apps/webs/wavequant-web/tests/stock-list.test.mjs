@@ -55,21 +55,20 @@ test("backtest polling updates stock badges without replacing focused rows", () 
         row.focus();
 
         subject.setBacktestStatuses({ "sh.600519": "running" }, [
-            { symbol: "sh.600519", status: "running", elapsed_seconds: 63 },
+            { symbol: "sh.600519", status: "running", elapsed_seconds: 63, progress_percent: 35 },
         ]);
         assert.equal(list.querySelector('.stock-item[data-symbol="sh.600519"]'), row);
         assert.equal(document.activeElement, row);
-        assert.equal(row.querySelector(".stock-backtest-badge").textContent, "回测中");
-        assert.match(row.getAttribute("aria-label"), /回测中/);
-        const duration = row.querySelector(".stock-backtest-elapsed");
-        assert.equal(duration.textContent, "已运行 1 分钟");
+        assert.equal(row.querySelector(".stock-backtest-badge").textContent, "回测 35%");
+        assert.match(row.getAttribute("aria-label"), /回测 35%/);
+        assert.equal(row.querySelector(".stock-backtest-elapsed"), null);
 
         subject.setBacktestStatuses({ "sh.600519": "running" }, [
-            { symbol: "sh.600519", status: "running", elapsed_seconds: 120 },
+            { symbol: "sh.600519", status: "running", elapsed_seconds: 120, progress_percent: 46 },
         ]);
         assert.equal(list.querySelector('.stock-item[data-symbol="sh.600519"]'), row);
-        assert.equal(row.querySelector(".stock-backtest-elapsed"), duration);
-        assert.equal(duration.textContent, "已运行 2 分钟");
+        assert.equal(row.querySelector(".stock-backtest-elapsed"), null);
+        assert.equal(row.querySelector(".stock-backtest-badge").textContent, "回测 46%");
 
         subject.setBacktestStatuses({ "sh.600519": "completed" });
         assert.equal(list.querySelector('.stock-item[data-symbol="sh.600519"]'), row);

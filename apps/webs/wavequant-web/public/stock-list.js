@@ -1,4 +1,4 @@
-import { formatBacktestElapsed } from "./backtest-job-status.js";
+import { formatBacktestJobProgress } from "./backtest-job-status.js";
 import { names } from "./labels.js";
 
 export function stockInfo(stock) {
@@ -72,10 +72,9 @@ export class StockList {
         const baseLabel = `${stock.name} ${stock.code} ${stock.exchange}`;
         const status = this.backtestStatuses[stock.symbol];
         let badge = button.querySelector(".stock-backtest-badge");
-        let duration = button.querySelector(".stock-backtest-elapsed");
+        button.querySelector(".stock-backtest-elapsed")?.remove();
         if (!status) {
             badge?.remove();
-            duration?.remove();
             if (button.getAttribute("aria-label") !== baseLabel) button.setAttribute("aria-label", baseLabel);
             return;
         }
@@ -84,9 +83,14 @@ export class StockList {
             badge.className = "stock-backtest-badge";
             button.append(badge);
         }
+        const runningJob =
+            status === "running"
+                ? this.backtestJobs.find((job) => job.symbol === stock.symbol && job.status === "running")
+                : null;
+        const percent = formatBacktestJobProgress(runningJob);
         const badgeText =
             status === "running"
-                ? "回测中"
+                ? percent ? `回测 ${percent}` : "回测中"
                 : status === "completed"
                   ? "已回测"
                   : status === "unknown"
@@ -94,20 +98,7 @@ export class StockList {
                     : "回测失败";
         if (badge.dataset.status !== status) badge.dataset.status = status;
         if (badge.textContent !== badgeText) badge.textContent = badgeText;
-        const runningJob =
-            status === "running"
-                ? this.backtestJobs.find((job) => job.symbol === stock.symbol && job.status === "running")
-                : null;
-        const elapsed = formatBacktestElapsed(runningJob?.elapsed_seconds);
-        if (elapsed) {
-            if (!duration) {
-                duration = document.createElement("small");
-                duration.className = "stock-backtest-elapsed";
-                button.append(duration);
-            }
-            if (duration.textContent !== elapsed) duration.textContent = elapsed;
-        } else duration?.remove();
-        const label = `${baseLabel} ${badgeText}${elapsed ? ` ${elapsed}` : ""}`;
+        const label = `${baseLabel} ${badgeText}`;
         if (button.getAttribute("aria-label") !== label) button.setAttribute("aria-label", label);
     }
     render() {

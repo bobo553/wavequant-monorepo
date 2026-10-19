@@ -66,13 +66,16 @@ class BuyScanner:
 
     def start(self,params):
         expected={'run','variant','scenario','source','asof','start','lookback'}
-        optional={'symbol','n_target_trend_confirmation_enabled'}
+        optional={'symbol','n_target_trend_confirmation_enabled','ordinary_trend_completion_enabled'}
         if not expected <= set(params) <= expected | optional:
             raise ValueError('invalid screening arguments')
         from wavequant.interfaces.charts.visualization import VARIANTS,SCENARIOS
         if self.engine_hashes()!=self.engine: raise ValueError('策略代码已变更，请重启服务后再扫描')
         p=dict(params);repo=self.repository;repo._run(p['run'])
         p.setdefault('n_target_trend_confirmation_enabled',False)
+        p.setdefault('ordinary_trend_completion_enabled', False)
+        if type(p['ordinary_trend_completion_enabled']) is not bool:
+            raise ValueError('ordinary_trend_completion_enabled must be a boolean')
         if type(p['n_target_trend_confirmation_enabled']) is not bool:
             raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         if p['variant'] not in VARIANTS or p['scenario'] not in SCENARIOS or p['source'] not in ('tdx','snapshot','akshare'):
@@ -84,7 +87,7 @@ class BuyScanner:
             if not isinstance(p[key],str) or date.fromisoformat(p[key]).isoformat()!=p[key]: raise ValueError('invalid date')
         if p['start']>p['asof']: raise ValueError('回测起点不能晚于回放日期')
         config=repo.strategy_config(p['run'],p['variant'],
-            n_target_trend_confirmation_enabled=p['n_target_trend_confirmation_enabled'])
+            n_target_trend_confirmation_enabled=p['n_target_trend_confirmation_enabled'], ordinary_trend_completion_enabled=p['ordinary_trend_completion_enabled'])
         if config['strategy'].get('entry_policy','transitioned_squeeze') not in ('transitioned_squeeze','hierarchical_two_buy_points'):
             raise ValueError('买点筛选仅支持趋势交替后的轧空策略')
         skipped: Counter[str]=Counter();stocks=[];versions={};action_hash=None
@@ -154,13 +157,13 @@ class BuyScanner:
                     elif p['source']=='snapshot':
                         end=repo.bars(p['run'])[symbol][-1].timestamp.date().isoformat()
                         view=repo.stock_view(p['run'],p['variant'],symbol,min(end,p['asof']),p['scenario'],
-                            n_target_trend_confirmation_enabled=p['n_target_trend_confirmation_enabled'])
+                            n_target_trend_confirmation_enabled=p['n_target_trend_confirmation_enabled'], ordinary_trend_completion_enabled=p['ordinary_trend_completion_enabled'])
                         match,skip=buy_match(view,p['asof'],p['lookback'])
                         gates=funnel(view,p['lookback'])
                     else:
                         view=repo.akshare_signal_view(
                             p['run'],p['variant'],symbol,p['asof'],p['scenario'],p['start'],
-                            n_target_trend_confirmation_enabled=p['n_target_trend_confirmation_enabled'])
+                            n_target_trend_confirmation_enabled=p['n_target_trend_confirmation_enabled'], ordinary_trend_completion_enabled=p['ordinary_trend_completion_enabled'])
                         match,skip=buy_match(view,p['asof'],p['lookback'])
                         gates=funnel(view,p['lookback'])
                     with self.lock:

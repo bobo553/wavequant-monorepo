@@ -12,6 +12,22 @@ export function formatPivotPrice(value) {
     return Number.isFinite(price) ? pivotPriceFormatter.format(price) : "";
 }
 
+/** 读取后端发布的观察状态，不在鼠标移动时重算趋势或推断翻向。 */
+export function bullishObservationLabels(theory, time) {
+    if (!theory?.asof || !time || time > theory.asof) return [];
+    return [[2, "secondary_trends"], [3, "tertiary_trends"]].flatMap(([level, field]) => {
+        const observing = (theory[field]?.observation_strokes || []).find((stroke) =>
+            stroke.state === "多头疑虑" && stroke.confirmed === false &&
+            stroke.available_at <= theory.asof && stroke.points?.[0]?.time <= time &&
+            time <= stroke.points.at(-1)?.time);
+        if (!observing) return [];
+        const reason = observing.reason === "source_level_bull_flip_unconfirmed" && Number.isFinite(observing.source_key?.value)
+            ? `${observing.source_level}级末跌高 ${formatPivotPrice(observing.source_key.value)} 尚未确认突破`
+            : "尚未确认本级上涨趋势";
+        return [`${level === 2 ? "二级" : "三级"} · 多头疑虑（${reason}）`];
+    });
+}
+
 /** 各版本都保持服务端的路径归属，前端连接不能补造上一级来源或策略资格。 */
 export function usesCausalTrendConfirmation(stroke) {
     return [
@@ -329,7 +345,8 @@ export function connectedTrendStrokes(strokes, connections) {
     for (let index = 1; index < paths.length; index++) {
         const previous = paths[index - 1],
             next = paths[index],
-            link = [previous, next].some(usesCausalTrendConfirmation) ? null : links.get(`${previous.id}→${next.id}`);
+            link = [previous, next].some((stroke) => stroke.prevent_display_bridge || usesCausalTrendConfirmation(stroke))
+                ? null : links.get(`${previous.id}→${next.id}`);
         if (!link) {
             result.push(current);
             current = {
@@ -426,7 +443,7 @@ function trendConnections(strokes, sourceStrokes, level) {
             a = left.points.at(-1),
             b = right.points[0];
         // 新版路径边界由服务端确认规则决定，几何衔接不能补回被拒绝的趋势边。
-        if ([left, right].some(usesCausalTrendConfirmation)) continue;
+        if ([left, right].some((stroke) => stroke.prevent_display_bridge || usesCausalTrendConfirmation(stroke))) continue;
         if (order(a, b) >= 0) continue;
         const known = a.available_at > b.available_at ? a.available_at : b.available_at;
         const candidates = raw.filter(

@@ -10,11 +10,31 @@ import {
     createWatchlistGroup,
     deleteWatchlistGroup,
     firstAvailableWatchlistSymbol,
+    initialWatchlistSymbol,
     normalizeWatchlistSnapshot,
     removeWatchlistMember,
     renameWatchlistGroup,
     reorderWatchlistMembers,
 } from "../public/watchlists.js";
+
+test("startup uses the first displayed watchlist stock before a link to the last stock", () => {
+    const state = {
+        memberships: [
+            { groupId: "focus", symbol: "sh.603096", position: 2 },
+            { groupId: "focus", symbol: "sh.600812", position: 0 },
+            { groupId: "focus", symbol: "sz.002242", position: 1 },
+        ],
+    };
+    const universe = [{ symbol: "sh.603096" }, { symbol: "sz.002242" }, { symbol: "sh.600812" }];
+    assert.equal(initialWatchlistSymbol(state, "focus", universe, "sh.603096"), "sh.600812");
+    assert.equal(initialWatchlistSymbol(state, "focus", universe), "sh.600812");
+    assert.equal(initialWatchlistSymbol(state, "empty", universe, "sz.002242"), "sz.002242");
+    assert.equal(initialWatchlistSymbol(state, "empty", universe, "missing"), "sh.603096");
+    assert.equal(initialWatchlistSymbol(state, "focus", []), "");
+    assert.equal(initialWatchlistSymbol(state, "focus", universe.map((stock) =>
+        ({ ...stock, has_data: stock.symbol !== "sh.600812" })), "sh.603096"), "sz.002242");
+    assert.equal(state.memberships[0].symbol, "sh.603096");
+});
 
 test("dragging from the stock button reorders the row without activating its click", async () => {
     const dom = new JSDOM(`
@@ -155,9 +175,9 @@ test("a running watchlist row shows its own server progress and clears it after 
         backtestFailures: {},
     };
     Watchlists.prototype.renderBacktestStatus.call(watchlists, row, "sz.300154");
-    assert.equal(badge.textContent, "回测中 · 46%");
-    assert.equal(badge.title, "回测中 · 46% · 模拟成交");
-    assert.match(open["aria-label"], /回测中 · 46%/);
+    assert.equal(badge.textContent, "回测 46%");
+    assert.equal(badge.title, "回测 46% · 模拟成交");
+    assert.match(open["aria-label"], /回测 46%/);
 
     watchlists.backtestStatuses["sz.300154"] = "completed";
     watchlists.backtestJobs = [];

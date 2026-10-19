@@ -1,13 +1,15 @@
 """一只股票的完整折线来源与三个趋势级别按阶段计算。"""
 
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from typing import TypedDict, cast
 
 from ..models.model import Bar
 from .lecture_drawing import lecture_drawing
+from .trend_cascade import prepare_trend_cascade
 from .trend_lines import (
     attach_trend_permissions, high_low_points_from_strokes,
-    polyline_high_low_points, prepare_trend_lines,
+    polyline_high_low_points,
 )
 
 
@@ -28,8 +30,8 @@ def calculate_trend_hierarchy(
     不能在某条路径或某根K线内提前跨级。各级仍调用同一个judge_trend，
     prepare只保留来源、结构点和各自可知日，严格高低点突破升级规则不变。
 
-    bars应当已截到请求日期。N、K线和交替证书只在三个几何阶段完成后
-    附加；无证书的高低点也参与递归，发展尾部仍由正式点适配器排除。
+    bars应当已截到请求日期。来源点的当日实体只供翻空后影线反弹判断；
+    N和交易交替证书仍在几何之外附加，发展尾部由正式点适配器排除。
     中间结果由本次调用独立拥有，各级只读前级来源，不维护共享全局状态。
     """
     if type(n_target_trend_confirmation_enabled) is not bool:
@@ -39,13 +41,7 @@ def calculate_trend_hierarchy(
     drawing_result = draw(bars) if drawing is None else drawing
     source = polyline_high_low_points(drawing_result)
     symbol = bars[0].symbol if bars else 'STRUCTURE'
-    prepared: dict[int, dict[str, object]] = {}
-    for level in (1, 2, 3):
-        current = prepare_trend_lines(source, trend_level=level, symbol=symbol)
-        prepared[level] = current
-        if level < 3:
-            # 只在确有下一级时投影已结束来源；三级完成后不创建不存在的四级输入。
-            source = high_low_points_from_strokes(current['strokes'])
+    prepared = dict(enumerate(prepare_trend_cascade(source, symbol=symbol, bars=bars), 1))
 
     results: dict[int, dict[str, object]] = {}
     qualified_source = None
@@ -56,5 +52,7 @@ def calculate_trend_hierarchy(
         results[level] = current
         if level < 3:
             qualified_source = high_low_points_from_strokes(current['qualified_strokes'])
-    return TrendHierarchy(lecture_drawing=drawing_result, reversal_trends=results[1],
-                          secondary_trends=results[2], tertiary_trends=results[3])
+    # 内部级联借用持久点版本；公开图表/缓存出口恢复独立的标准容器。
+    # PointVersion 的 pickle 协议不会被 JSON 编码器调用，不能直接泄漏给接口。
+    return deepcopy(TrendHierarchy(lecture_drawing=drawing_result, reversal_trends=results[1],
+                                   secondary_trends=results[2], tertiary_trends=results[3]))

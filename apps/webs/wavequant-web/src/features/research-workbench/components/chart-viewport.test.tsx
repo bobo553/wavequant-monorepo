@@ -5,7 +5,7 @@ import { ChartViewNavigation } from "./chart-view-navigation";
 import { ChartViewport } from "./chart-viewport";
 
 describe("chart keyboard entry and existing navigation controls", () => {
-    it("exposes a keyboard focus target, help text and all existing runtime mounting points", () => {
+    it("exposes a keyboard focus target and existing runtime mounting points without the help paragraph", () => {
         const host = document.createElement("div");
         host.innerHTML = renderToStaticMarkup(
             <>
@@ -17,8 +17,8 @@ describe("chart keyboard entry and existing navigation controls", () => {
         expect(chart?.tabIndex).toBe(0);
         expect(chart?.getAttribute("role")).toBe("region");
         expect(chart?.getAttribute("aria-keyshortcuts")).toBe("ArrowUp ArrowDown ArrowLeft ArrowRight");
-        expect(chart?.getAttribute("aria-describedby")).toBe("chart-keyboard-help");
-        expect(host.querySelector("#chart-keyboard-help")?.textContent).toContain("↑ 放大 · ↓ 缩小 · ← → 移动");
+        expect(chart?.hasAttribute("aria-describedby")).toBe(false);
+        expect(host.querySelector("#chart-keyboard-help")).toBeNull();
         for (const id of [
             "chart-pan-left",
             "chart-pan-right",

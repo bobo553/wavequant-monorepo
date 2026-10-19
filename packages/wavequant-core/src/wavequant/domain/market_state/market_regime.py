@@ -14,7 +14,7 @@ from enum import Enum
 from typing import Sequence
 
 from ..models.model import Bar
-from ..market_structure.n_shape import MilestoneBasis, NSetup, NStatus, observe_n
+from ..market_structure.n_shape import MilestoneBasis, NObservation, NSetup, NStatus, observe_n
 from ..market_structure.price_action import Direction, ResistanceEvidence, ShadowPolicy, observe_resistance
 from .candle_strength import strong_bullish_candle
 
@@ -106,7 +106,9 @@ class RegimeObservation:
 
 def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
                           policy: RegimePolicy,
-                          asof_index: int | None = None) -> RegimeObservation:
+                          asof_index: int | None = None,
+                          measurement_start: int | None = None,
+                          _prepared_n: NObservation | None = None) -> RegimeObservation:
     """Return immutable attack-to-asof frames using closed bars only.
 
     A confirmation is an event, not a label carried blindly onto later bars.
@@ -115,8 +117,16 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     """
     if not isinstance(policy, RegimePolicy):
         raise ValueError('explicit RegimePolicy required')
-    n = observe_n(bars, setup, timeframe=timeframe,
-                  milestone_basis=MilestoneBasis.CLOSE, asof_index=asof_index)
+    end = len(bars) - 1 if asof_index is None else asof_index
+    if measurement_start is not None and (type(measurement_start) is not int
+            or not 0 <= measurement_start <= end):
+        raise ValueError('regime measurement start must be available')
+    n = (_prepared_n if _prepared_n is not None else
+         observe_n(bars, setup, timeframe=timeframe, milestone_basis=MilestoneBasis.CLOSE,
+                   asof_index=asof_index, measurement_start=measurement_start))
+    if _prepared_n is not None and (timeframe != setup.timeframe
+            or n.asof_index != (len(bars) - 1 if asof_index is None else asof_index)):
+        raise ValueError('prepared N must belong to this market prefix')
     if n.completion is None:
         return RegimeObservation(n.asof_index, n.status, policy)
     assert n.anchors is not None
@@ -133,7 +143,8 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     resistance_window = policy.local_resistance_failure and up
     attack_resistance = (
         observe_resistance(bars[attack - 1], bars[attack], attack_direction=setup.direction,
-                           shadow_policy=policy.shadow_policy) if resistance_window else None
+                           shadow_policy=policy.shadow_policy) if resistance_window
+        and (measurement_start is None or attack >= measurement_start) else None
     )
     first_resistance = attack if attack_resistance is not None and attack_resistance.detected is True else None
     first_defense = first_wave = None
@@ -146,8 +157,10 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         ResistanceOutcome.PENDING if first_resistance is not None else ResistanceOutcome.NOT_OBSERVED,
         first_resistance, unknown, None, None,
         record, False, defense, None, True, None, None)]
-    for i in range(attack + 1, n.asof_index + 1):
+    for i in range(max(attack + 1, measurement_start or 0), n.asof_index + 1):
         bar, prev = bars[i], bars[i - 1]
+        first_available = measurement_start == i
+        observed_adverse = bar.close if first_available else adverse(bar)
         resistance = observe_resistance(prev, bar, attack_direction=setup.direction,
                                          shadow_policy=policy.shadow_policy)
         resistance_eligible = not resistance_window or i == attack + 1
@@ -155,12 +168,12 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             first_resistance = i
         if resistance_eligible:
             unknown |= resistance.detected is None
-        if first_defense is None and sign * (adverse(bar) - defense) < 0:
+        if first_defense is None and sign * (observed_adverse - defense) < 0:
             first_defense = i
-        if first_wave is None and sign * (adverse(bar) - boundary) < 0:
+        if first_wave is None and sign * (observed_adverse - boundary) < 0:
             first_wave = i
         rolling = virtual(prev, bars[i - 2])
-        rolling_held = sign * (adverse(bar) - rolling) >= 0
+        rolling_held = sign * (observed_adverse - rolling) >= 0
         rolling_all_held &= rolling_held
         uninterrupted &= sign * (bar.close - prev.close) > 0
         continuation = sign * (bar.close - record) > 0
@@ -216,7 +229,9 @@ def observe_market_regime(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             i, bar.timestamp, phase, regime, resistance, outcome, first_resistance,
             unknown, first_defense, first_wave, record, continuation, rolling,
             rolling_held, uninterrupted, last_regime, last_index))
-        if sign * (forward(bar) - record) > 0:
-            record = forward(bar)
+        observed_forward = bar.close if first_available else forward(bar)
+        if sign * (observed_forward - record) > 0:
+            record = observed_forward
     return RegimeObservation(n.asof_index, n.status, policy, attack, defense,
-                             boundary, tuple(frames))
+                             boundary, tuple(frame for frame in frames
+                                             if measurement_start is None or frame.bar_index >= measurement_start))

@@ -70,6 +70,95 @@ class ArtifactTests(unittest.TestCase):
         self.assertTrue(self.cache.put('interactive',{},dict(valid=True)))
         self.assertEqual(self.cache.get('interactive',{}),dict(valid=True))
 
+    def test_first_writer_initialization_obeys_disposable_write_budget(self):
+        locked = sqlite3.connect(self.cache.path, timeout=1, isolation_level=None)
+        self.addCleanup(locked.close)
+        locked.execute('PRAGMA journal_mode=WAL')
+        locked.execute('BEGIN IMMEDIATE')
+        started = time.perf_counter()
+        with self.assertLogs(level='WARNING'):
+            self.assertFalse(self.cache.put('first-write', {}, dict(valid=True)))
+        self.assertLess(time.perf_counter() - started, 2)
+        self.assertFalse(self.cache.ready)
+        locked.execute('ROLLBACK')
+        self.assertTrue(self.cache.put('first-write', {}, dict(valid=True)))
+        self.assertEqual(self.cache.get('first-write', {}), dict(valid=True))
+
+    def assert_usage_matches_artifacts(self):
+        with closing(sqlite3.connect(self.cache.path)) as db:
+            actual = db.execute('SELECT COALESCE(SUM(size),0) FROM artifacts').fetchone()[0]
+            self.assertEqual(db.execute('SELECT total_bytes FROM artifact_usage WHERE id=1').fetchone()[0], actual)
+            self.assertEqual(db.execute('SELECT key,size FROM artifact_sizes ORDER BY key').fetchall(),
+                             db.execute('SELECT key,size FROM artifacts ORDER BY key').fetchall())
+
+    def test_legacy_database_initializes_usage_once_and_restart_writes_do_not_sum(self):
+        with closing(sqlite3.connect(self.cache.path)) as db, db:
+            db.execute('CREATE TABLE artifacts (key TEXT PRIMARY KEY, namespace TEXT NOT NULL, '
+                       'payload BLOB NOT NULL, digest TEXT NOT NULL, size INTEGER NOT NULL, created REAL NOT NULL)')
+            db.execute('INSERT INTO artifacts VALUES (?,?,?,?,?,?)', ('old', 'geometry', b'old', 'digest', 3, 0))
+        self.assertTrue(self.cache.put('test', 0, dict(value=0)))
+        self.assert_usage_matches_artifacts()
+        statements = []
+        real_connect = sqlite3.connect
+
+        def traced_connect(*args, **kwargs):
+            db = real_connect(*args, **kwargs)
+            db.set_trace_callback(statements.append)
+            return db
+
+        with patch('wavequant.infrastructure.persistence.artifact_cache.sqlite3.connect', side_effect=traced_connect):
+            restarted = ArtifactCache(self.tmp.name)
+            self.assertTrue(restarted.put('test', 1, dict(value=1)))
+            self.assertTrue(restarted.put('test', 1, dict(value=list(range(50)))))
+        self.assertFalse(any('SUM(' in statement.upper() for statement in statements), statements)
+        self.assertEqual(restarted.get('test', 1), dict(value=list(range(50))))
+        self.assert_usage_matches_artifacts()
+
+    def test_usage_tracks_legacy_replace_update_delete_and_rollback(self):
+        self.assertTrue(self.cache.put('seed', 0, dict(ok=True)))
+        for recursive in (0, 1):
+            with self.subTest(recursive_triggers=recursive):
+                with closing(sqlite3.connect(self.cache.path)) as db:
+                    db.execute(f'PRAGMA recursive_triggers={recursive}')
+                    for size in (20, 35, 7):
+                        with db:
+                            db.execute('INSERT OR REPLACE INTO artifacts VALUES (?,?,?,?,?,?)',
+                                       ('legacy', 'test', b'x' * size, 'digest', size, 0))
+                        self.assert_usage_matches_artifacts()
+                    with db:
+                        db.execute('UPDATE artifacts SET size=11 WHERE key=?', ('legacy',))
+                    self.assert_usage_matches_artifacts()
+                    db.execute('INSERT OR REPLACE INTO artifacts VALUES (?,?,?,?,?,?)',
+                               ('legacy', 'test', b'changed', 'digest', 100, 0))
+                    db.rollback()
+                    self.assert_usage_matches_artifacts()
+                    with db:
+                        db.execute('DELETE FROM artifacts WHERE key=?', ('legacy',))
+                    self.assert_usage_matches_artifacts()
+
+    def test_usage_remains_exact_across_engine_cleanup_and_eviction(self):
+        self.assertTrue(self.cache.put('backtest', 0, dict(old=True)))
+        self.assertTrue(self.cache.put('geometry', 0, dict(points=[1, 2, 3])))
+        self.assertEqual(self.cache.clear_backtests_for_engine('new-engine'), 1)
+        self.assert_usage_matches_artifacts()
+        self.assertEqual(self.cache.get('geometry', 0), dict(points=[1, 2, 3]))
+        limited = ArtifactCache(self.tmp.name, max_bytes=250)
+        for index in range(10):
+            self.assertTrue(limited.put('test', index, dict(value=index)))
+            self.assert_usage_matches_artifacts()
+            with closing(sqlite3.connect(self.cache.path)) as db:
+                self.assertLessEqual(db.execute('SELECT total_bytes FROM artifact_usage WHERE id=1').fetchone()[0], 250)
+        self.assertEqual(limited.get('test', 9), dict(value=9))
+
+    def test_usage_is_shared_across_concurrent_cache_instances(self):
+        def task(index):
+            cache = ArtifactCache(self.tmp.name)
+            return cache.put('shared', index % 4, dict(value=index))
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            self.assertTrue(all(pool.map(task, range(24))))
+        self.assert_usage_matches_artifacts()
+
 
 class ValidatedBarsTests(unittest.TestCase):
     def test_immutable_safe_slices_and_invalid_inputs(self):

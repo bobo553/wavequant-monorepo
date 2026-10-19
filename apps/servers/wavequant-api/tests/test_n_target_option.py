@@ -98,6 +98,29 @@ def test_timeframe_snapshot_etag_and_backtest_job_signature_separate_modes(api):
     assert {item["params"][FIELD] for item in recent} == {"true", "false"}
 
 
+@pytest.mark.parametrize('source', ('tdx', 'akshare'))
+def test_backtest_interval_level_is_forwarded_and_separates_job_identity(api, source):
+    request, calls = api
+    base = (f'/api/{source}-backtest?run=example&variant=lecture_v3&symbol=sz.000678'
+            '&asof=2026-09-25&scenario=base&start=2018-01-01')
+    job = f'interval-default-{source}'
+    assert request(base + f'&backtest_job={job}')[0] == 200
+    assert calls[-1][1]['buy_interval_level'] == 2
+    assert request(base + f'&backtest_job={job}&buy_interval_level=2')[0] == 200
+    before = len(calls)
+    assert request(base + f'&backtest_job={job}&buy_interval_level=1')[0] == 409
+    assert len(calls) == before
+    for level in (1, 3):
+        assert request(base + f'&backtest_job=interval-{source}-{level}&buy_interval_level={level}')[0] == 200
+        assert calls[-1][1]['buy_interval_level'] == level
+    before = len(calls)
+    for value in ('0', '4', 'true', '1&buy_interval_level=3'):
+        assert request(base + '&buy_interval_level=' + value)[0] == 400
+    assert len(calls) == before
+    recent = request('/api/backtest-jobs')[1]['recent']
+    assert {item['params']['buy_interval_level'] for item in recent} == {'1', '2', '3'}
+
+
 @pytest.mark.parametrize("path,service", [
     ("/api/structure-signals?run=example&variant=lecture_v1&source=akshare&asof=2026-09-25&lookback=5&signal_type=any&trend_level=0", "StructureSnapshotService"),
     ("/api/buy-signals?run=example&variant=lecture_v2&scenario=base&source=akshare&symbol=sz.000678&asof=2026-09-25&start=2018-01-01&lookback=5", "BuySignalSnapshotService"),

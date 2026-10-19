@@ -6,6 +6,7 @@ from decimal import Decimal
 from math import isfinite
 
 from ..models.model import Bar
+from .event_history import EventHistoryStream
 
 
 FIVE_TOP_ENTRY_TOO_CLOSE = "wave_five_top_entry_too_close"
@@ -25,9 +26,7 @@ class _Goal:
     defense: Decimal
 
 
-def five_top_entry_history(
-    bars: Sequence[Bar], events: Sequence[Mapping[str, object]],
-) -> dict[int, dict[str, object]]:
+class FiveTopEntryHistory(EventHistoryStream):
     """Use the previous session's goal, including on its first reach day.
 
     A same-day advance to ten-full cannot erase the five-top approached by that
@@ -35,21 +34,21 @@ def five_top_entry_history(
     All entry channels share this gate; optional reward/risk settings do not
     change the minimum remaining space of one original N box.
     """
-    dated: list[tuple[int, Mapping[str, object]]] = []
-    for event in events:
-        known = event.get("bar_index")
-        if type(known) is int and 0 <= known < len(bars):
-            dated.append((known, event))
-    dated.sort(key=lambda row: (row[0], row[1].get("event") == "wave_projection_target_reached",
-                               row[1].get("event") == "wave_projection_invalidated"))
-    active: dict[tuple[int, int], _Goal] = {}
-    invalidated: set[tuple[int, int]] = set()
-    risks: dict[int, dict[str, object]] = {}
-    cursor = 0
-    for index, bar in enumerate(bars):
-        while cursor < len(dated) and dated[cursor][0] < index:
-            known, event = dated[cursor]
-            cursor += 1
+    def _effective_index(self, event: Mapping[str, object]) -> int:
+        return super()._effective_index(event) + 1
+
+    def _reset_state(self) -> None:
+        self.active: dict[tuple[int, int], _Goal] = {}
+        self.invalidated: set[tuple[int, int]] = set()
+
+    def _advance_day(self, index: int) -> None:
+        bars, active, invalidated = self.bars, self.active, self.invalidated
+        bar = bars[index]
+        known = index - 1
+        dated = sorted(self.dated.get(known, ()), key=lambda event: (
+            event.get('event') == 'wave_projection_target_reached',
+            event.get('event') == 'wave_projection_invalidated'))
+        for event in dated:
             attack, origin = event.get("attack"), event.get("origin_index")
             if type(attack) is not int or type(origin) is not int:
                 continue
@@ -74,9 +73,9 @@ def five_top_entry_history(
                 active.pop(key)
         near = [(key, goal) for key, goal in active.items() if goal.target - close <= goal.box]
         if not near:
-            continue
+            return
         (attack, origin), goal = min(near, key=lambda item: (item[1].target, -item[0][0]))
-        risks[index] = dict(
+        self.history[index] = dict(
             reason=FIVE_TOP_ENTRY_TOO_CLOSE, attack=attack,
             wave_n_date=bars[attack].timestamp.date().isoformat(),
             wave_n_origin_date=bars[origin].timestamp.date().isoformat(),
@@ -85,4 +84,10 @@ def five_top_entry_history(
             wave_remaining_boxes=float((goal.target - close) / goal.box),
             wave_target_known_date=bars[goal.known_index].timestamp.date().isoformat(),
         )
-    return risks
+
+
+def five_top_entry_history(
+    bars: Sequence[Bar], events: Sequence[Mapping[str, object]],
+) -> dict[int, dict[str, object]]:
+    """Batch compatibility uses the same dated reducer as the daily stream."""
+    return FiveTopEntryHistory(bars).advance(len(bars) - 1, events)

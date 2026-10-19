@@ -34,9 +34,6 @@ export function ResearchMetrics(): JSX.Element {
                     </article>
                 ))}
             </section>
-            <p className="comparison">
-                同比 / 环比 N/A：独立历史实验。通过成本场景比较相同日期区间，不将不同实验当作连续运营指标。
-            </p>
         </>
     );
 }

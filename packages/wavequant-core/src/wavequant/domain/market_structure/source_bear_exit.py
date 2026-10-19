@@ -1,0 +1,356 @@
+"""直接来源确认空头后生成本级资格结束事实，不改写本级趋势状态。"""
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from math import isfinite
+from typing import TYPE_CHECKING, cast
+
+from ..models.model import Bar
+from .trend_market_index import _MarketRangeIndex
+from .failed_breakout_exit import FAILED_BREAKOUT_EVENT, confirmed_failed_breakout
+
+if TYPE_CHECKING:
+    from .trend_lifecycle import _Fact, _Pivot
+
+
+SOURCE_BEAR_EVENT = 'trading_source_bear_confirmed'
+SOURCE_BEAR_EXIT = 'source_bear_trend_confirmed'
+STRUCTURE_BEAR_EVENT = 'trend_bear_structure_low_broken'
+STRUCTURE_BEAR_RULE = 'confirmed_bear_flip_then_bear_structure_low_break'
+SOURCE_MARKET_BREAK_EVENT = 'trend_source_market_key_broken'
+
+
+def confirmed_source_market_break(event: Mapping[str, object], now: int) -> bool:
+    """行情确认独立于未来反转端点；不能冒充一个已闭合低点或六态交替。"""
+    from .trend_confirmation import SAME_LEVEL_KEY_BREAK
+
+    if (event.get('event') != SOURCE_MARKET_BREAK_EVENT or event.get('direction') != 'down'
+            or event.get('confirmation_rule') != SAME_LEVEL_KEY_BREAK
+            or event.get('bar_index') != now or event.get('available_index') != now):
+        return False
+    fields = ('broken_key_index', 'broken_key_known_index', 'origin_index',
+              'origin_known_index', 'confirmation_index')
+    indices = [event.get(field) for field in fields]
+    if any(type(value) is not int for value in indices):
+        return False
+    key, known, origin, origin_known, confirmed = cast(list[int], indices)
+    if not (0 <= key < origin < confirmed == now and key <= known < now
+            and origin <= origin_known <= now):
+        return False
+    values = [event.get(field) for field in ('broken_key_price', 'origin_price', 'market_low')]
+    if any(type(value) not in (int, float) or not isfinite(cast(float, value)) for value in values):
+        return False
+    threshold, high, low = cast(list[float], values)
+    return 0 < low < threshold < high
+
+
+@dataclass(frozen=True, slots=True)
+class _SourceMarketKey:
+    origin: '_Pivot'
+    key: '_Pivot'
+
+    def observe(self, level: int, path: str, bars: Sequence[Bar], now: int,
+                market_index: _MarketRangeIndex | None) -> dict[str, object] | None:
+        from .trend_confirmation import SAME_LEVEL_KEY_BREAK, first_strict_market_break
+
+        origin, key = self.origin, self.key
+        if key.known >= now or origin.known > now or bars[now].low >= key.price:
+            return None
+        invalidated = first_strict_market_break(bars, origin.index + 1, now + 1,
+            origin.price, up=True, market_index=market_index)
+        start = max(origin.index + 1, origin.known, key.known + 1)
+        attack = first_strict_market_break(bars, start,
+            now + 1 if invalidated is None else invalidated, key.price,
+            up=False, market_index=market_index)
+        # 只在首次合法破位日发出事实。迟到结构不回填过去，反复跌破不重开关窗。
+        if attack != now:
+            return None
+        return dict(event=SOURCE_MARKET_BREAK_EVENT, bar_index=now, available_index=now,
+            trend_level=level, source_path=path, direction='down',
+            confirmation_rule=SAME_LEVEL_KEY_BREAK, confirmation_index=now,
+            origin_index=origin.index, origin_known_index=origin.known, origin_price=origin.price,
+            broken_key_index=key.index, broken_key_known_index=key.known,
+            broken_key_price=key.price, market_low=bars[now].low)
+
+
+def _prepare_source_market_key(points: object, dates: Mapping[str, int], now: int) -> _SourceMarketKey | None:
+    from .trend_lifecycle import _pivot, _records
+    from .trend_levels import _completed_source_point
+
+    records = _records(points)
+    parsed = [(raw, point) for raw in records if (point := _pivot(raw, dates, now)) is not None]
+    if any((left.index, left.ordinal) >= (right.index, right.ordinal)
+           for (_, left), (_, right) in zip(parsed, parsed[1:])):
+        return None
+    # 选已结束的直接来源上涨整波；末升低固定为该 H 左侧的 L，右侧新低不能替换。
+    high_position = next((index for index in range(len(parsed) - 1, -1, -1)
+                          if parsed[index][1].kind == 'H'), None)
+    if high_position is None or high_position == 0:
+        return None
+    origin_raw, _ = parsed[high_position]
+    key_raw, _ = parsed[high_position - 1]
+    try:
+        origin = _pivot(_completed_source_point(origin_raw), dates, now)
+        key = _pivot(_completed_source_point(key_raw), dates, now)
+    except ValueError:
+        return None
+    if (origin is None or key is None or key.kind != 'L' or not key.index < origin.index
+            or not 0 < key.price < origin.price):
+        return None
+    return _SourceMarketKey(origin, key)
+
+
+class SourceMarketBreaks:
+    """按直接来源版本准备关键位；价格每日推进，缓存不属于持久化领域状态。"""
+
+    def __init__(self) -> None:
+        self._prepared: dict[tuple[int, str], tuple[object, int | None, _SourceMarketKey | None]] = {}
+
+    def observe(self, levels: Sequence[Mapping[str, object]], bars: Sequence[Bar], now: int,
+                dates: Mapping[str, int], *, owned: bool = False,
+                market_index: _MarketRangeIndex | None = None) -> list[dict[str, object]]:
+        from .trend_lifecycle import _next_structure_clock, _records
+
+        if not owned:
+            self._prepared.clear()
+        present: set[tuple[int, str]] = set()
+        result: list[dict[str, object]] = []
+        for row in levels:
+            level = row.get('trend_level')
+            if type(level) is not int or level not in (1, 2, 3):
+                continue
+            paths = {stroke.get('source_path') for stroke in _records(row.get('strokes'))
+                     if isinstance(stroke.get('source_path'), str)}
+            cutoffs = row.get('_path_market_end_indices')
+            for source in _records(row.get('source_strokes')):
+                path, points = source.get('id'), source.get('points')
+                if not isinstance(path, str) or path not in paths:
+                    continue
+                cutoff = cutoffs.get(path) if isinstance(cutoffs, Mapping) else None
+                if type(cutoff) is int and cutoff <= now:
+                    continue
+                identity = level, path
+                present.add(identity)
+                cached = self._prepared.get(identity)
+                if cached is not None and cached[0] is points and (cached[1] is None or now < cached[1]):
+                    candidate = cached[2]
+                else:
+                    candidate = _prepare_source_market_key(points, dates, now)
+                    standard, following = _next_structure_clock(points, dates, now) if owned else (False, None)
+                    if standard:
+                        self._prepared[identity] = points, following, candidate
+                    else:
+                        self._prepared.pop(identity, None)
+                event = candidate.observe(level - 1, path, bars, now, market_index) if candidate else None
+                if event is not None:
+                    result.append(event)
+        self._prepared = {key: value for key, value in self._prepared.items() if key in present}
+        return result
+
+
+def confirmed_bear_key_break(event: Mapping[str, object], now: int) -> bool:
+    """本级正式翻空已突破冻结末升低，无需再等待反弹交替。"""
+    if (event.get('event') not in ('trend_lifecycle_state', 'trend_lifecycle_anchor')
+            or event.get('state') != '多翻空' or event.get('direction') != 'down'
+            or event.get('source_event') != '翻多为空' or event.get('flip_confirmed') is not True
+            or event.get('bar_index') != now or event.get('available_index') != now):
+        return False
+    fields = ('broken_key_index', 'broken_key_known_index', 'origin_index',
+              'flip_index', 'flip_known_index', 'source_known_index')
+    values = [event.get(field) for field in fields]
+    if any(type(value) is not int for value in values):
+        return False
+    key, known, origin, attack, attack_known, source_known = cast(list[int], values)
+    if not (0 <= key < origin < attack <= attack_known <= now
+            and key <= known < attack and attack_known <= source_known <= now):
+        return False
+    threshold, price = event.get('broken_key_price'), event.get('breakout_level')
+    return (type(threshold) in (int, float) and type(price) in (int, float)
+            and isfinite(cast(float, threshold)) and isfinite(cast(float, price))
+            and 0 < cast(float, price) < cast(float, threshold))
+
+
+def _confirmed_structure_break(event: Mapping[str, object], now: int) -> bool:
+    if (event.get('event') != STRUCTURE_BEAR_EVENT or event.get('direction') != 'down'
+            or event.get('confirmation_rule') != STRUCTURE_BEAR_RULE
+            or event.get('flip_confirmed') is not True
+            or event.get('bar_index') != now or event.get('available_index') != now):
+        return False
+    fields = ('prior_flip_origin_index', 'prior_flip_index', 'prior_flip_known_index',
+              'origin_index', 'origin_known_index', 'flip_index', 'flip_known_index')
+    indices = [event.get(field) for field in fields]
+    if any(type(value) is not int for value in indices):
+        return False
+    prior_origin, prior_flip, prior_known, origin, origin_known, key, known = cast(list[int], indices)
+    if not (0 <= prior_origin < prior_flip <= prior_known < origin < key <= known < now
+            and origin <= origin_known <= now):
+        return False
+    values = [event.get(field) for field in ('breakout_level', 'previous_low', 'market_low')]
+    if any(type(value) not in (int, float) or not isfinite(cast(float, value)) for value in values):
+        return False
+    threshold, previous, low = cast(list[float], values)
+    return 0 < low < threshold <= previous
+
+
+@dataclass(frozen=True, slots=True)
+class _BearStructureCandidate:
+    """一个已解析的结构版本；每日只检查价格，不再次遍历整条趋势。"""
+
+    path: str
+    flip: '_Fact'
+    rebound: '_Pivot'
+    key: '_Pivot'
+    rebound_source: Mapping[str, object]
+
+    def observe(self, level: int, bars: Sequence[Bar], now: int,
+                dates: Mapping[str, int], *,
+                _market_index: _MarketRangeIndex | None = None) -> list[dict[str, object]]:
+        flip, rebound, key = self.flip, self.rebound, self.key
+        if (now == 0 or flip.known >= now or key.known >= now
+                or not bars[now].low < key.price <= bars[now - 1].low):
+            return []
+        invalidated = (_market_index.first_extreme(rebound.index + 1, now + 1, rebound.price, high=True) is not None
+                       if _market_index is not None and bars is _market_index.bars
+                       and _market_index.supports_price(rebound.price)
+                       else any(bars[index].high > rebound.price for index in range(rebound.index + 1, now + 1)))
+        if invalidated:
+            return []
+        # 完整结束证明只在价格满足破位时核验，不能为缓存把重证据工作提前到每次几何变化。
+        from .trend_lifecycle import _pivot
+        from .trend_levels import _completed_source_point
+
+        try:
+            completed = _completed_source_point(self.rebound_source)
+        except ValueError:
+            return []
+        origin = _pivot(completed, dates, now)
+        if origin is None:
+            return []
+        assert flip.origin is not None
+        return [dict(event=STRUCTURE_BEAR_EVENT, bar_index=now, available_index=now,
+            trend_level=level, source_path=self.path, direction='down', flip_confirmed=True,
+            confirmation_rule=STRUCTURE_BEAR_RULE, prior_flip_origin_index=flip.origin.index,
+            prior_flip_index=flip.point.index, prior_flip_known_index=flip.known,
+            origin_index=rebound.index, origin_known_index=origin.known,
+            flip_index=key.index, flip_known_index=key.known, breakout_level=key.price,
+            previous_low=bars[now - 1].low, market_low=bars[now].low)]
+
+
+def _prepare_bearish_structure(
+    stroke: Mapping[str, object], now: int, dates: Mapping[str, int],
+    *, facts: Sequence['_Fact'] | None = None,
+) -> _BearStructureCandidate | None:
+    """结构或知识时钟变化时准备；六态防守失效不抹掉结构事实。
+
+    仅消费本级正式节点与共用整波完成证明。高点影线越过原翻空高点时，
+    复用既有实体拒绝规则；后续更高的反弹不能把旧翻空无限沿用。
+    """
+    from .trend_lifecycle import _facts, _pivot, _records
+    from .trend_body_reversal import rejects_wick_extension
+
+    path = stroke.get('id')
+    if not isinstance(path, str):
+        return None
+    raw_points = _records(stroke.get('points'))
+    known_facts = _facts(raw_points, dates, now) if facts is None else facts
+    flip = next((fact for fact in reversed(known_facts) if fact.title == '翻多为空'), None)
+    if flip is None or flip.origin is None or flip.broken is None:
+        return None
+    points = [(raw, point) for raw in raw_points if (point := _pivot(raw, dates, now)) is not None]
+    own = {(p.index, p.ordinal): (raw, p) for raw, p in points}
+    # 最近的正式翻空决定当前上下文；不从更早周期中挑选一个可用的标签。
+    anchor = own.get((flip.origin.index, flip.origin.ordinal))
+    counter = own.get((flip.point.index, flip.point.ordinal))
+    if (anchor is None or counter is None or anchor[1] != flip.origin or counter[1] != flip.point
+            or not flip.origin.index < flip.point.index):
+        return None
+    following = [(raw, p) for raw, p in points
+                 if (p.index, p.ordinal) > (flip.point.index, flip.point.ordinal)]
+    if len(following) < 2:
+        return None
+    rebound_raw, rebound = following[0]
+    _, key = following[1]
+    if rebound.kind != 'H' or key.kind != 'L' or not flip.known < rebound.index < key.index:
+        return None
+    if rebound.price > flip.origin.price and not rejects_wick_extension(anchor[0], counter[0], rebound_raw):
+        return None
+    completion = rebound_raw.get('wave_completion_evidence')
+    if not isinstance(completion, Mapping) or completion.get('wave_direction_after') != 'down':
+        return None
+    return _BearStructureCandidate(path, flip, rebound, key, rebound_raw)
+
+
+def bearish_structure_breaks(
+    stroke: Mapping[str, object], level: int, bars: Sequence[Bar], now: int, dates: Mapping[str, int],
+    *, facts: Sequence['_Fact'] | None = None,
+) -> list[dict[str, object]]:
+    """公开输入每次解析；请求内受控结构由生命周期按版本复用候选。"""
+    if now == 0:
+        return []
+    candidate = _prepare_bearish_structure(stroke, now, dates, facts=facts)
+    return candidate.observe(level, bars, now, dates) if candidate is not None else []
+
+
+def confirmed_source_bear(event: Mapping[str, object], now: int) -> bool:
+    """接受冻结关键位正式翻空、完整六态确认或后续破位，拒绝候选及未来证据。"""
+    # 严格跌破已冻结末升低已经是正式方向事实；不能再等下级反弹及二次确认。
+    if confirmed_bear_key_break(event, now) or confirmed_source_market_break(event, now):
+        return True
+    if event.get('event') == FAILED_BREAKOUT_EVENT:
+        return confirmed_failed_breakout(event, now)
+    if event.get('event') == STRUCTURE_BEAR_EVENT:
+        return _confirmed_structure_break(event, now)
+    if (event.get('event') != 'trend_lifecycle_state' or event.get('state') != '转空确认'
+            or event.get('direction') != 'down' or event.get('flip_confirmed') is not True
+            or event.get('bar_index') != now or event.get('available_index') != now
+            or event.get('confirmation_rule') != 'strict_close_cross_after_confirmed_alternation'):
+        return False
+    origin, flip, known = event.get('origin_index'), event.get('flip_index'), event.get('flip_known_index')
+    counter, alternated = event.get('counter_index'), event.get('alternation_index')
+    if (type(origin) is not int or type(flip) is not int or type(known) is not int
+            or type(counter) is not int or type(alternated) is not int
+            or not 0 <= origin < flip <= known <= alternated < now
+            or not flip < counter <= alternated):
+        return False
+    threshold, previous, close = (event.get('breakout_level'), event.get('previous_close'),
+                                  event.get('confirmation_close'))
+    if (type(threshold) not in (int, float) or type(previous) not in (int, float)
+            or type(close) not in (int, float)):
+        return False
+    threshold, previous, close = (float(cast(float, value)) for value in (threshold, previous, close))
+    return all(isfinite(value) for value in (threshold, previous, close)) and 0 < close < threshold <= previous
+
+
+def source_bearish_exits(
+    levels: Sequence[Mapping[str, object]], events: Sequence[Mapping[str, object]], now: int,
+) -> list[dict[str, object]]:
+    """只沿当天本级几何的直接来源关联；时间复杂度为当日事件数加路径数。"""
+    confirmed: dict[tuple[int, str], Mapping[str, object]] = {}
+    for event in events:
+        level, path = event.get('trend_level'), event.get('source_path')
+        if (type(level) is int and level in (0, 1, 2) and isinstance(path, str)
+                and confirmed_source_bear(event, now)):
+            confirmed[level, path] = event
+    if not confirmed:
+        return []
+    result: list[dict[str, object]] = []
+    for row in levels:
+        level, strokes = row.get('trend_level'), row.get('strokes')
+        if type(level) is not int or level not in (1, 2, 3) or not isinstance(strokes, (tuple, list)):
+            continue
+        cutoffs = row.get('_path_market_end_indices')
+        for stroke in strokes:
+            if not isinstance(stroke, Mapping):
+                continue
+            path, source = stroke.get('id'), stroke.get('source_path')
+            if not isinstance(path, str) or not isinstance(source, str):
+                continue
+            cutoff = cutoffs.get(source) if isinstance(cutoffs, Mapping) else None
+            if type(cutoff) is int and cutoff <= now:
+                continue
+            proof = confirmed.get((level - 1, source))
+            if proof is not None:
+                result.append(dict(event=SOURCE_BEAR_EVENT, bar_index=now, available_index=now,
+                    trend_level=level, source_path=path, direct_source_path=source,
+                    reason=SOURCE_BEAR_EXIT, source_confirmation=dict(proof)))
+    return result

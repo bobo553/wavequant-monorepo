@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from wavequant.domain.market_structure.trend_options import ordinary_completion_enabled, with_trend_options
+
 from collections import OrderedDict
 from datetime import date, datetime, time as wall_time, timedelta
 import hashlib
@@ -13,9 +15,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
-from wavequant.domain.market_structure.lecture_trend import reversal_trends
-from wavequant.domain.market_structure.secondary_trend import secondary_trends
-from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
+from wavequant.domain.market_structure.trend_pipeline import calculate_trend_hierarchy
 from wavequant.domain.models.model import Bar
 from wavequant.infrastructure.market_data.akshare import AkShareProvider, AkShareUnavailable
 from wavequant.infrastructure.market_data.io import _validate_bar
@@ -362,24 +362,23 @@ class AkShareBrowser:
             evidence="AkShare 在线原始不复权日线，仅用于行情与讲义绘图；未执行回测，除权缺口可能影响形态。",
         )
 
+    @with_trend_options
     def theory(self, symbol: str, asof: str, *,
-               n_target_trend_confirmation_enabled: bool = False) -> dict[str, Any]:
+               n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None) -> dict[str, Any]:
         if type(n_target_trend_confirmation_enabled) is not bool:
             raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         bars, _ = self.bars(symbol, asof)
         payload = [[bar.timestamp.date().isoformat(), bar.open, bar.high, bar.low, bar.close, bar.volume] for bar in bars]
         digest = hashlib.sha256(json.dumps(payload, separators=(",", ":")).encode()).hexdigest()
-        key = f"{symbol}:{bars[-1].timestamp.date().isoformat()}:{digest}:{n_target_trend_confirmation_enabled}"
+        key = f"{symbol}:{bars[-1].timestamp.date().isoformat()}:{digest}:{n_target_trend_confirmation_enabled}:{ordinary_completion_enabled()}"
         with self._lock:
             cached = self._theory.get(key)
             if cached is not None:
                 self._theory.move_to_end(key)
                 return cached
         drawing = lecture_drawing(bars)  # type: ignore[no-untyped-call]
-        first = reversal_trends(
-            drawing, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
-        second = secondary_trends(
-            first, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        hierarchy = calculate_trend_hierarchy(bars, drawing=drawing,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         result = dict(
             asof=bars[-1].timestamp.date().isoformat(),
             points=[],
@@ -387,11 +386,7 @@ class AkShareBrowser:
             events=[],
             shapes=[],
             counts={},
-            lecture_drawing=drawing,
-            reversal_trends=first,
-            secondary_trends=second,
-            tertiary_trends=tertiary_trends(
-                second, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled),
+            **hierarchy,
             n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
             interrupted=False,
             computed_from="akshare_raw_prefix_display_only",

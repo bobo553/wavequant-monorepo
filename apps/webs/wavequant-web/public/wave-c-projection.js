@@ -7,8 +7,15 @@ import { ordinaryCWaveLevels, ordinaryCWaveProjections } from "./ordinary-c-wave
 import { structuralCWaveProjections } from "./structural-c-wave.js";
 import { targetLevelGuide } from "./target-level-guides.js";
 
+function usesQualifiedWindows(theory, events = theory?.events || []) {
+    if (theory?.trading_observation_policy) return theory.trading_observation_policy !== "legacy_v1";
+    return events.some((event) => Number.isInteger(event.window_start) ||
+        event.event === "trading_interval_opened" || event.event === "trading_interval_closed");
+}
+
 // A selected candle fixes A. Only later, already visible candles may supply B.
 export function waveCProjection(bars, events, selectedTime) {
+    if (usesQualifiedWindows(undefined, events || [])) return null;
     const highIndex = bars.findIndex((bar) => bar.time === selectedTime);
     if (highIndex < 0 || highIndex >= bars.length - 1) return null;
     const highBar = bars[highIndex];
@@ -160,6 +167,9 @@ function historicalHighs(theory, asof) {
 export function waveCProjectionsFromStructure(bars, theory) {
     const asof = theory?.asof || bars.at(-1)?.time;
     const visibleBars = bars.filter((bar) => bar.time <= asof);
+    // 有资格但尚无 Core A/B 事实时保持空白，不能从完整几何补算空档交易目标。
+    if (usesQualifiedWindows(theory))
+        return aWaveCProjections(visibleBars, theory).sort((left, right) => left.aTime.localeCompare(right.aTime));
     const byTime = new Map(visibleBars.map((bar, index) => [bar.time, { bar, index }]));
     const highs = historicalHighs(theory, asof);
     // 当前版本只消费 Core 的底部启动资格，浏览器不再拼出额外测幅 N。
@@ -313,7 +323,12 @@ export function waveCProjectionFromStructure(bars, theory) {
     return waveCProjectionsFromStructure(bars, theory).at(-1) || null;
 }
 
-export function waveCProjectionForSelection(bars, events, selectedTime, structuralProjection) {
+export function waveCProjectionForSelection(bars, events, selectedTime, structuralProjection, theory) {
+    if (usesQualifiedWindows(theory, events || [])) {
+        const candidates = aWaveCProjections(bars, { ...theory, events }).filter((item) => item.aTime === selectedTime);
+        return candidates.find((item) => item.sourceNId === structuralProjection?.sourceNId &&
+            item.anchorVersion === structuralProjection?.anchorVersion) || candidates.at(-1) || null;
+    }
     return structuralProjection?.aTime === selectedTime
         ? structuralProjection
         : waveCProjection(bars, events, selectedTime);
@@ -344,7 +359,7 @@ export function waveCProjectionAnnotation(projection, bars = [], asof) {
         title: "B / C",
         description:
             (projection.projectionSource === "one_p_confirmed_a"
-                ? `正 N 一饱突破确认 A：${projection.aConfirmedAt} 突破 ${num(projection.oneP, 4)} 元；${projection.strongAt ? `${projection.strongAt} 达二吐 ${num(projection.twoT, 4)} 元升级强势 A；` : "普通 A；"}A 起点 ${projection.originTime} ${num(projection.origin, 4)} 元，A 顶 ${projection.aTime} ${num(projection.aHigh, 4)} 元。B 低 ${projection.bTime} ${num(projection.bLow, 4)} 元，C 观察位为 ${num(projection.target0618, 4)} / ${num(projection.target, 4)} 元。${projection.invalidatedAt ? `${projection.invalidatedAt} A 起点失守，原组后续 C 作废。` : "A 起点守住，保留 C 观察。"}不因内部 N 防守或目标退役撤销已确认 A。`
+                ? `正 N 一饱突破确认 A：${projection.aConfirmedAt} 突破 ${num(projection.oneP, 4)} 元；${projection.strongAt ? `${projection.strongAt} 达二吐 ${num(projection.twoT, 4)} 元升级强势 A；` : "普通 A；"}A 起点 ${projection.originTime} ${num(projection.origin, 4)} 元，A 顶 ${projection.aTime} ${num(projection.aHigh, 4)} 元。B 低 ${projection.bTime} ${num(projection.bLow, 4)} 元，C 观察位为 ${num(projection.target0618, 4)} / ${num(projection.target, 4)} 元。${projection.tradingWindowClosedAt ? `${projection.tradingWindowClosedAt} 交易资格结束，目标观察截至 ${projection.targetValidUntil}，保留区间内历史事实。` : projection.invalidatedAt ? `${projection.invalidatedAt} A 起点失守，原组后续 C 作废。` : "A 起点守住，保留 C 观察。"}不因内部 N 防守或普通目标退役撤销已确认 A。`
                 : parent
                   ? `整段 A 结构观察：A 起点 ${projection.originTime} ${num(projection.origin, 4)} 元，A 顶 ${projection.aTime} ${num(projection.aHigh, 4)} 元，于 ${projection.aKnownAt} 按二级结构确认。内部正 N ${projection.nTime} 的起点为 ${projection.nOriginTime} ${num(projection.nOrigin, 4)} 元；${ordinary ? `A 顶达到一饱 ${num(projection.oneP, 4)}、未达二吐 ${num(projection.twoT, 4)}，属于普通 A。` : `A 顶已达二吐 ${num(projection.twoT, 4)}，属于强势 A。`}内部正 N 不替换整段 A 起点。B 低 ${projection.bTime} ${num(projection.bLow, 4)} 元，于 ${projection.bKnownAt} 按同路径一级端点确认；突破 A 顶前持续跟踪更低的 B，锚点版本 ${projection.anchorVersion}。A 幅度 = A 高 − A 起点；C 目标 0.618×A / 1×A 为 ${num(projection.target0618, 4)} / ${num(projection.target, 4)} 元，生效 ${projection.confirmedAt}。${extension ? (ordinary ? `普通 A 同时观察 1.618×A 目标 ${num(extension.price, 4)} 元。` : `${extension.available_at} 已满足等浪，增加 1.618×A 目标 ${num(extension.price, 4)} 元。`) : ""}${completed ? `C 顶 ${projection.cTime} ${num(projection.cHigh, 4)} 元，于 ${projection.cKnownAt} 确认，原段目标截至 C 顶。` : ""}${projection.invalidatedAt ? `${projection.invalidatedAt} 最低价严格跌破 A 起点，原组 C 目标作废；保留历史标识。` : ""}仅为结构与测幅观察，不产生买卖信号。`
                   : ordinary

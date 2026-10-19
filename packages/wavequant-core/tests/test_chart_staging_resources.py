@@ -8,6 +8,7 @@ import pytest
 
 import wavequant.domain.strategies.chart_entry_history as chart_module
 import wavequant.domain.strategies.hierarchical_entry as hierarchy_module
+import wavequant.domain.market_structure.trend_lines as lines_module
 from wavequant.domain.market_structure.trend_staging import TrendStageRows
 from wavequant.domain.models.model import Bar
 
@@ -58,6 +59,23 @@ def test_stage_decoder_failure_closes_owned_tempfile() -> None:
             stage.write('incorrect internal row')
             list(stage.iter_rows())
     assert stage.closed
+
+
+def test_large_stage_compression_preserves_types_aliases_and_independent_reads() -> None:
+    shared = [1, True, -0., ('tuple', 3)]
+    row = dict(padding='proof field ' * 20000, first=shared, second=shared)
+    with TrendStageRows(_identity, memory_bytes=64) as stage:
+        stage.write(row)
+        assert stage.stored_bytes < stage.raw_bytes / 10
+        first = list(stage.iter_rows())[0]
+        second = list(stage.iter_rows())[0]
+        assert first == second == row
+        assert isinstance(first, dict) and isinstance(second, dict)
+        assert first['first'] is first['second']
+        assert first['first'] is not second['first']
+        assert isinstance(first['first'][3], tuple)
+        first['first'].clear()
+        assert list(stage.iter_rows())[0] == row
 
 
 def test_stage_rejects_concurrent_readers_without_corrupting_its_cursor() -> None:
@@ -129,7 +147,7 @@ def test_hierarchy_closes_owned_stage_files_after_success_or_judgement_failure(
         raise RuntimeError('hierarchy stage failed')
 
     if failure:
-        monkeypatch.setattr(hierarchy_module, 'judge_trend', fail)
+        monkeypatch.setattr(lines_module, 'judge_trend', fail)
         with pytest.raises(RuntimeError, match='hierarchy stage failed'):
             hierarchy_module.hierarchical_history(_bars())
     else:

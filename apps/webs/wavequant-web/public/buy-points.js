@@ -1,6 +1,6 @@
 import { label, num, symbolName } from "./labels.js";
 
-/** @typedef {{run:string,variant:string,scenario:string,source:'tdx'|'snapshot'|'akshare',symbol?:string,asof:string,start:string,lookback:number,n_target_trend_confirmation_enabled?:boolean}} ScanParams */
+/** @typedef {{run:string,variant:string,scenario:string,source:'tdx'|'snapshot'|'akshare',symbol?:string,asof:string,start:string,lookback:number,n_target_trend_confirmation_enabled?:boolean,ordinary_trend_completion_enabled?:boolean}} ScanParams */
 /** @typedef {{id:string,revision:number,params:ScanParams,status:string,total:number,processed:number,failed:number,stale:number,skipped:number,results:Array<object>,errors:Array<object>,error:string|null,performance?:{cache_hits:number,recomputed:number,elapsed_seconds:number}}} ScanJob */
 const statusNames = {
     awaiting_next_open: "当日新信号 · 待次开盘验证",
@@ -72,6 +72,7 @@ export const scanContextKey = (p) =>
         p.start,
         p.lookback,
         p.n_target_trend_confirmation_enabled ?? false,
+        p.ordinary_trend_completion_enabled ?? false,
     ]);
 export function sortedMatches(rows) {
     return [...rows].sort(

@@ -278,7 +278,7 @@ def test_real_secondary_wave_preserves_its_same_path_peak_and_independent_descen
     august_source = next(p for p in polyline_high_low_points(drawing)
                          if p['time'] == '2022-08-02' and p['kind'] == 'H')
     assert (august_source['value'], august_source['available_at'], august_source['source_path']) == (
-        10.66, '2022-08-03', 'lecture-738')
+        10.66, '2022-08-03', source_stroke['source_path'])
     first_peak = next(p for p in mappings(source_stroke['points']) if p['time'] == '2022-08-02')
     assert (first_peak['available_at'], first_peak['wave_completed_at']) == ('2022-08-03', '2022-08-09')
     second_peak = next(p for p in mappings(geometry['points']) if p['time'] == '2022-08-02')

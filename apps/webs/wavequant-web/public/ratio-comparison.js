@@ -2,14 +2,14 @@ import { num, pct } from "./labels.js";
 import { holdingDrawdownText } from "./max-drawdown.js";
 
 export const ratioPlans = [
-    ["lecture_v3", "二/三级交替后 N 轧空 / ≤1/3"],
-    ["lecture_v3_c50", "二/三级交替后 N 轧空 / <1/2"],
+    ["lecture_v3", "所选级别交替后 N 轧空 / ≤1/3"],
+    ["lecture_v3_c50", "所选级别交替后 N 轧空 / <1/2"],
     ["lecture_v3_d67_c33", ">2/3 / ≤1/3"],
     ["lecture_v3_d50_c50", ">1/2 / ≤1/2"],
     ["lecture_v3_d67_c50", ">2/3 / ≤1/2"],
     ["lecture_v3_close_d50_c50", "收盘 >1/2 / 收盘 <1/2"],
 ];
-/** @typedef {{run:string,symbol:string,asof:string,start:string,scenario:string,volume_filter:boolean,net_reward_risk_filter:boolean,shallow_base_breakout_enabled:boolean,n_target_trend_confirmation_enabled?:boolean,initial_capital?:number,max_position_weight?:number,local:boolean,source?:string}} RatioContext */
+/** @typedef {{run:string,symbol:string,asof:string,start:string,scenario:string,volume_filter:boolean,net_reward_risk_filter:boolean,shallow_base_breakout_enabled:boolean,n_target_trend_confirmation_enabled?:boolean,ordinary_trend_completion_enabled?:boolean,buy_interval_level?:number,initial_capital?:number,max_position_weight?:number,local:boolean,source?:string}} RatioContext */
 export const ratioContextKey = (p) =>
     JSON.stringify([
         p.run,
@@ -21,6 +21,8 @@ export const ratioContextKey = (p) =>
         p.net_reward_risk_filter ?? false,
         p.shallow_base_breakout_enabled ?? true,
         p.n_target_trend_confirmation_enabled ?? false,
+        p.ordinary_trend_completion_enabled ?? false,
+        p.buy_interval_level ?? 2,
         p.initial_capital,
         p.max_position_weight,
         p.local,
@@ -89,6 +91,8 @@ export class RatioComparison {
                     net_reward_risk_filter = false,
                     shallow_base_breakout_enabled = true,
                     n_target_trend_confirmation_enabled = false,
+                    ordinary_trend_completion_enabled = false,
+                    buy_interval_level = 2,
                     ...params
                 } = p;
                 const view = await this.api(
@@ -99,6 +103,8 @@ export class RatioComparison {
                         net_reward_risk_filter: String(net_reward_risk_filter),
                         shallow_base_breakout_enabled: String(shallow_base_breakout_enabled),
                         n_target_trend_confirmation_enabled: String(n_target_trend_confirmation_enabled),
+                        ordinary_trend_completion_enabled: String(ordinary_trend_completion_enabled),
+                        buy_interval_level: String(buy_interval_level),
                         variant,
                     },
                     this.controller.signal,

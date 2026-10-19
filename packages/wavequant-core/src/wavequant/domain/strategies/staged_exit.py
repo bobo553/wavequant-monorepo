@@ -7,6 +7,8 @@ import math
 from zoneinfo import ZoneInfo
 
 from ..models.model import Bar
+from ..market_state.volume_candle import is_bearish_inside_child
+from .limit_up_distribution_exit import observe_limit_up_distribution_exit
 from ..market_structure.polyline import observe_bar_relations
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 
@@ -412,9 +414,7 @@ def _bearish_mother_child_pattern(bars: list[Bar], index: int) -> dict[str, floa
     if index < 1:
         return None
     mother, child = bars[index - 1], bars[index]
-    if (mother.close == mother.open or child.close >= child.open
-            or child.high > mother.high or child.low < mother.low
-            or (child.high == mother.high and child.low == mother.low)):
+    if not is_bearish_inside_child(mother, child):
         return None
     return dict(mother_date=mother.timestamp.date().isoformat(),
                 mother_high=mother.high, mother_low=mother.low,
@@ -460,6 +460,9 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     """Freeze confirmed support and escalate cumulative reduction without future N bars."""
     if index < 1:
         return None
+    distribution = observe_limit_up_distribution_exit(bars, index)
+    if distribution is not None:
+        return dict(distribution)
     mother_warning = state.bearish_child_mother_warning_index
     if mother_warning is not None and index == mother_warning + 1:
         mother, bar = bars[mother_warning], bars[index]

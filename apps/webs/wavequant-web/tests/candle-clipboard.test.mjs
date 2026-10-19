@@ -8,6 +8,7 @@ import { JSDOM } from "jsdom";
 
 import { bindCandleClipboard } from "../public/candle-clipboard.js";
 import { candleCopyText, previousCandleClose } from "../public/candle-details.js";
+import { chartMarketBars } from "../public/chart-market-bars.js";
 
 const bar = Object.freeze({ time: "2026-10-10", open: 10, high: 12, low: 9, close: 11, volume: 100 });
 const appSource = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
@@ -536,6 +537,7 @@ function installApplicationCopy(
         symbolName: () => "测试股票",
         candleCopyText,
         previousCandleClose,
+        chartMarketBars,
         bindCandleClipboard,
         activateHeaderStockSearch: () => {},
         requestAnimationFrame: (callback) => callback(),
@@ -624,6 +626,53 @@ for (const region of ["containerHovered", "tooltipHovered"]) {
         });
     }
 }
+
+for (const completed of [false, true]) {
+    test(`visible market candles remain copyable with a ${completed ? "completed" : "partial"} backtest prefix`, async (t) => {
+        const h = harness(t, { bind: false });
+        const context = installApplicationCopy(h);
+        const previous = { time: "2026-10-09", close: 10 };
+        context.state.view.market_bars = [previous, bar];
+        context.state.view.bars = completed ? [{ ...previous }, { ...bar }] : [{ ...previous }];
+        context.state.view.asof = completed ? bar.time : previous.time;
+        h.document.getElementById("result-scope").value = "akshare-backtest";
+        h.containerHovered = true;
+
+        assert.equal(h.key(h.document.activeElement).defaultPrevented, true);
+        await setImmediate();
+        const expected = candleCopyText(bar, "测试股票（sh.600000）", previous.close);
+        assert.deepEqual(h.asyncWrites, [expected]);
+        assert.equal(h.copy(h.cardButton).defaultPrevented, true);
+        assert.deepEqual(h.nativeWrites, [["text/plain", expected]]);
+        h.topButton.click();
+        await setImmediate();
+        assert.deepEqual(h.asyncWrites, [expected, expected]);
+        assert.equal(h.topButton.textContent, "已复制");
+
+        // 同股快照替换行情对象后，只能复制新画面里的对象和价格。
+        const updated = { ...bar, close: 11.5, volume: 150 };
+        context.state.view = { ...context.state.view, market_bars: [{ ...previous }, updated] };
+        h.chart.data = context.state.view;
+        assert.equal(h.key(h.cardButton).defaultPrevented, false);
+        context.currentCandle = updated;
+        assert.equal(h.key(h.cardButton).defaultPrevented, true);
+        await setImmediate();
+        assert.equal(h.asyncWrites.at(-1), candleCopyText(updated, "测试股票（sh.600000）", previous.close));
+    });
+}
+
+test("a backtest-prefix candle outside the visible market data is not copied", async (t) => {
+    const h = harness(t, { bind: false });
+    const context = installApplicationCopy(h);
+    context.state.view.market_bars = [{ time: "2026-10-09", close: 10 }];
+    h.containerHovered = true;
+    assert.equal(h.key(h.cardButton).defaultPrevented, false);
+    assert.equal(h.copy(h.cardButton).defaultPrevented, false);
+    h.topButton.click();
+    await setImmediate();
+    assert.deepEqual(h.asyncWrites, []);
+    assert.deepEqual(h.nativeWrites, []);
+});
 
 for (const status of ["loading", "error"]) {
     test(`application copies the same visible stock during background ${status} through all copy entries`, async (t) => {

@@ -7,10 +7,16 @@ export function tradeReasonItems(item) {
     const reasons = (item.decision_reason || item.reason || "").split("|").filter(Boolean).map(reasonText);
     const evidence = item.decision_evidence || [];
     const targetReason = item.decision_reason || item.reason;
-    if (targetReason === "wave_two_t_body_volume_clear" && item.wave_reached_date && item.bearish_reference_date)
+    if ((targetReason || "").split("|").includes("limit_up_distribution_midpoint_clear")
+        && Number.isFinite(item.distribution_body_midpoint))
         reasons.push(
-            `${item.wave_n_date} 正 N 在 ${item.wave_reached_date} 已达到二饱（二吐/2T）${num(item.wave_reached_price, 4)} 元。`,
-            `本日阴线实体反包 ${item.engulfed_date} 阳线实体：开盘 ${num(item.observed_open, 4)} ≥ 前收 ${num(item.previous_close, 4)}，收盘 ${num(item.observed_close, 4)} ≤ 前开 ${num(item.previous_open, 4)}，至少一端严格越过；成交量 ${num(item.observed_volume, 0)} 股 > 此前最近阴线 ${item.bearish_reference_date} 的 ${num(item.bearish_reference_volume, 0)} 股，当日收盘清空余仓。`,
+            `缩量封板参考日：${(item.distribution_quiet_dates || []).join("、")}，均量 ${num(item.distribution_volume_mean, 0)} 股；此后 ${item.distribution_turnover_dates?.join("、") || "—"} 巨量上涨，量至少为参考均量 ${item.distribution_volume_multiple} 倍，不要求连续放量。`,
+            `本轮上涨 ${pct(item.distribution_rally_gain)}；前日阳线实体中点 ${num(item.distribution_body_midpoint, 4)} 元，开盘允许上限 ${num(item.distribution_open_ceiling, 4)} 元。当天开盘 ${num(item.observed_open, 4)} 元、收盘 ${num(item.observed_close, 4)} 元，收阴且严格跌破中点，按当日收盘清仓规则处理。`,
+        );
+    if ((targetReason || "").split("|").includes("wave_two_t_body_volume_clear") && item.wave_reached_date)
+        reasons.push(
+            `${item.wave_n_date} 正 N 在 ${item.wave_reached_date} 已达到二吐（2T）${num(item.wave_reached_price, 4)} 元。`,
+            `本日阴线实体反包 ${item.engulfed_date} 前日实体：开盘 ${num(item.observed_open, 4)} ≥ 前日实体上沿 ${num(Math.max(item.previous_open, item.previous_close), 4)}，收盘 ${num(item.observed_close, 4)} ≤ 前日实体下沿 ${num(Math.min(item.previous_open, item.previous_close), 4)}，至少一端严格越过；成交量 ${num(item.observed_volume, 0)} 股，大于前一交易日 ${num(item.previous_volume, 0)} 股或此前最近阴线${item.bearish_reference_date ? ` ${item.bearish_reference_date} 的 ${num(item.bearish_reference_volume, 0)} 股` : "（无可比阴线时只比前一交易日）"}，当日收盘清空余仓。`,
         );
     if (targetReason === "wave_five_top_child_volume_clear" && item.wave_reached_date && item.child_date)
         reasons.push(

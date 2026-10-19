@@ -6,8 +6,12 @@ from fractions import Fraction
 from math import isfinite
 from typing import cast
 
+from ..market_structure.trend_point_version import PointVersion
+from ..market_structure.owned_evidence import CertifiedSource
 from ..market_structure.hierarchical_confirmation import session_date
+from ..market_structure.trend_market_index import _MarketRangeIndex
 from ..models.model import Bar
+from .buy_intervals import require_entry_days
 
 
 DIRECT_PROMOTION_RULE = "level1_confirmed_high_breaks_known_level2_last_fall_high"
@@ -63,7 +67,7 @@ def _mapping(value: object) -> Mapping[str, object] | None:
 
 
 def _sequence(value: object) -> Sequence[object]:
-    return cast(Sequence[object], value) if isinstance(value, (list, tuple)) else ()
+    return cast(Sequence[object], value) if isinstance(value, (list, tuple, PointVersion, CertifiedSource)) else ()
 
 
 def _point(raw: object, bars: Sequence[Bar], dates: Mapping[str, int], now: int) -> _Point | None:
@@ -86,6 +90,7 @@ def _point(raw: object, bars: Sequence[Bar], dates: Mapping[str, int], now: int)
 def secondary_pullback_candidates(
     bars: Sequence[Bar], drawing: Mapping[str, object], second: Mapping[str, object],
     dates: Mapping[str, int], now: int, *, first: Mapping[str, object],
+    _market_index: _MarketRangeIndex | None = None,
 ) -> tuple[SecondaryPullbackCandidate, ...]:
     """Freeze known H -> L evidence using only prices in the requested prefix.
 
@@ -95,6 +100,8 @@ def secondary_pullback_candidates(
     """
     if not 0 <= now < len(bars):
         return ()
+    if _market_index is not None and (_market_index.bars is not bars or not _market_index.exact_prices):
+        _market_index = None
     candidates: list[SecondaryPullbackCandidate] = []
     first_paths = [_mapping(raw) for raw in _sequence(first.get("strokes"))]
     for raw_path in _sequence(second.get("strokes")):
@@ -127,11 +134,18 @@ def secondary_pullback_candidates(
                            (endpoint.index, endpoint.kind, endpoint.price) for point in source_points)
                        for endpoint in (origin, high)):
                 continue
-            if min(bars[index].low for index in range(origin.index + 1, now + 1)) < origin.price:
-                continue
-            if max(bars[index].high for index in range(high.index + 1, now + 1)) > high.price:
-                continue
-            bottom = min(range(high.index + 1, now + 1), key=lambda index: (bars[index].low, index))
+            if _market_index is not None:
+                # A 起点失守或出现新高即关闭本次回调窗口，不进入折线 B/H 全路径搜索。
+                if (_market_index.first_extreme(origin.index + 1, now + 1, origin.price, high=False) is not None
+                        or _market_index.first_extreme(high.index + 1, now + 1, high.price, high=True) is not None):
+                    continue
+                bottom = _market_index.extreme_position(high.index + 1, now + 1, high=False)
+            else:
+                if min(bars[index].low for index in range(origin.index + 1, now + 1)) < origin.price:
+                    continue
+                if max(bars[index].high for index in range(high.index + 1, now + 1)) > high.price:
+                    continue
+                bottom = min(range(high.index + 1, now + 1), key=lambda index: (bars[index].low, index))
             amplitude = Fraction(str(high.price)) - Fraction(str(origin.price))
             retraced = Fraction(str(high.price)) - Fraction(str(bars[bottom].low))
             if not amplitude * Fraction(2, 3) <= retraced < amplitude:
@@ -189,6 +203,7 @@ def _evidence(candidate: SecondaryPullbackCandidate, bars: Sequence[Bar]) -> dic
 
 def secondary_pullback_history(
     bars: Sequence[Bar], candidates: Mapping[int, Sequence[SecondaryPullbackCandidate]],
+    *, entry_days: Sequence[bool] | None = None,
 ) -> tuple[list[dict[str, object]], dict[int, dict[str, object]]]:
     """Publish dated recovery proofs, leaving actual entry permission to trading.
 
@@ -196,8 +211,12 @@ def secondary_pullback_history(
     replaced by a newly known deeper B while A's origin holds. A proof does not
     consume A: global risks can reject it, and only an actual LONG retires it.
     """
+    require_entry_days(entry_days, len(bars))
     events: list[dict[str, object]] = []
     proofs: dict[int, dict[str, object]] = {}
+    market_index = _MarketRangeIndex.build(tuple(bars))
+    if market_index is not None and not market_index.exact_prices:
+        market_index = None
     retired: set[tuple[str, int, float, int, float]] = set()
     observed: set[tuple[str, int, float, int, float, int, float]] = set()
     invalidated_observations: set[tuple[str, int, float, int, float, int, float]] = set()
@@ -220,18 +239,26 @@ def secondary_pullback_history(
                     continue
                 if bar.high >= candidate.high_price:
                     continue
+                if entry_days is not None and not entry_days[now]:
+                    continue
                 previous = bars[now - 1]
-                ceiling_index = max(range(candidate.resistance_index, now), key=lambda index: bars[index].high)
-                ceiling = max(candidate.resistance_price, bars[ceiling_index].high)
+                if previous.volume <= 0 or bar.volume <= previous.volume or bar.close <= candidate.low_price:
+                    continue
                 body = Fraction(str(bar.close)) - Fraction(str(bar.open))
                 opening = Fraction(str(bar.open))
                 span = Fraction(str(bar.high)) - Fraction(str(bar.low))
                 unfilled_gap = bar.open > previous.high and bar.low > previous.high
                 body_reclaim = body > opening * Fraction(2, 100) and body >= span / 2
-                gap_reclaim = (unfilled_gap and bar.open > ceiling
-                               and body >= opening * Fraction(3, 100) and body >= span * Fraction(3, 5))
-                if (previous.volume <= 0 or bar.volume <= previous.volume or bar.close <= ceiling
-                        or not (body_reclaim or gap_reclaim) or bar.close <= candidate.low_price):
+                gap_body = unfilled_gap and body >= opening * Fraction(3, 100) and body >= span * Fraction(3, 5)
+                if not body_reclaim and not gap_body:
+                    continue
+                # 普通回调日只推进失效状态；有放量反攻形态时才查询整个阻力区间。
+                ceiling_index = (market_index.extreme_position(candidate.resistance_index, now, high=True)
+                                 if market_index is not None and 0 <= candidate.resistance_index < now else
+                                 max(range(candidate.resistance_index, now), key=lambda index: bars[index].high))
+                ceiling = max(candidate.resistance_price, bars[ceiling_index].high)
+                gap_reclaim = gap_body and bar.open > ceiling
+                if bar.close <= ceiling or not (body_reclaim or gap_reclaim):
                     continue
                 proof = dict(_evidence(candidate, bars), bar_index=now,
                              reclaim_type="gap" if gap_reclaim else "body", confirmation_close=bar.close,

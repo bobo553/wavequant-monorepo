@@ -1,3 +1,1058 @@
+2026-10-19 · 用户明确要求全部合并 main 并推送
+
+用户在获知类型检查和既有阶段测试失败后，明确要求全部代码合并 main 并推送。本轮已 fetch origin；本地 main 领先远端且无远端新增提交。特性分支同步本地 main 无冲突，合并前后文件树相同，因此未重复执行上一轮检查。保留类型检查913项错误、阶段测试8项失败及其他既有WIP记录，MONOREPO-330保持in-progress。完整分支差异检查另报回测说明文档3处Markdown硬换行双空格；不影响代码合并。按本次明确指令合并和推送，不代表验证全部通过。
+
+2026-10-19 · MONOREPO-330 全量 WIP 提交与推送
+
+用户明确要求提交全部代码并推送，沿用已有 WIP 提交方式。两组交易规则测试22 passed；Core官方四文件mypy因导入链报告913 errors in 67 files，未宣称类型通过；wheel/sdist构建成功、差异空白检查通过。本轮扩展性能相关pytest已记录101 passed、8 failed，修改前快照复现相同8项阶段失败。保留既有失败，不合并main；未运行浏览器/E2E、Harness或全套测试。
+
+实际命令：API既有虚拟环境 python -m pytest packages/wavequant-core/tests/test_qualified_rising_close_entry.py packages/wavequant-core/tests/test_volume_upper_shadow_entry_exit.py -q --tb=short；Core目录 python -m mypy --strict src/wavequant/infrastructure/filesystem/project_paths.py src/wavequant/infrastructure/market_data/akshare.py src/wavequant/interfaces/charts/akshare_browser.py src/wavequant/interfaces/charts/market_data_repository.py；python -m build --no-isolation；git diff --check。MONOREPO-330保持in-progress。
+
+2026-10-19 · MONOREPO-330 完整历史性能退化修复与本轮授权验证
+
+用户已明确允许本轮定向性能与一致性验证（不使用浏览器、不提交）。本轮确认真正主因是请求证据池约24MiB耗尽：分块准入持续拒绝，代码仍遍历/认证大后缀，最终又以逐对象Python persistent_id回调编码全图。跨级联中间版本只认直接父令牌，使变化位置进一步退回零。短窗口的小优化不足，曾实测后撤销逐节点时钟备忘方案，停止仍退化的 v5/v6 隔离回放；没有把它们记作成功。
+
+修复：受控不可变点身份贯通跨轮次前缀；版本从首块分块、同版本直接复用；证据池耗尽时停止必败准入，完整原始图走同一未知类型白名单下的C编码，保留类型/字段顺序/所有跨字段别名，不混用分块引用与内嵌图，不扩大证据池；只在输出边界恢复普通数组。许可顺序遍历不反复查树，前瞻不切出完整剩余候选；六态按变化点和未来知识日到期推进。步骤JSON入口支持 PointVersion/CertifiedSource，已认证证据按请求内引用复用JSON字节，仍保持容量/跨请求隔离。普通外部可变值继续全文认证，未知reduce钩子仍拒绝。
+
+完整国芳 sh.601086 冻结1777日（2018-01-02—2025-04-30），同设置/行情/分钟输入、隔离源码、离线单次冷回放：有效缓存基线501.20697秒、CPU484.890625秒；最终207.71334秒、CPU185.453125秒，墙钟减少58.56%，约2.41倍。历史保存累计343.3秒降到58.6秒。最终来源哈希0bc5b474de2e86d3a44859e11da4acf24a2c59454cc00617981e4d6ffffe06bc与当前src完全相同；证据预算未扩大。
+
+generated_research/result/minute_provenance 全部哈希相同，包含7信号、970审计、3委托、1成交；约1.25GB步骤产物以有界流式差分核验，三个级别每个市场日的完整几何及其余步骤全部字段相同，规范化哈希30440583ddfab1c8b62b9fe191ef53d676d9e7aad5eb0c98a816fe8e12a80a54。变化行数量因内部编码身份改变，比较恢复逐日状态而非忽略字段。完整1777日最终图表及adjusted_theory严格JSON写入完成，输出12,561,351字节，未再出现PointVersion序列化错误。
+
+扩展定向pytest仍有test_staged_trend_pipeline.py的8项失败（旧阶段接口/几何数量/许可日期及路径断言）；同一测试文件在修改前源码快照也复现同8项，未改业务断言或为性能修复改变交易规则。本轮版本、JSON、预算耗尽、公开隔离、只读、层级历史和时钟回归未出现新增失败。未运行全套、浏览器/E2E、格式/lint/构建；未提交、合并或推送，MONOREPO-330因其他WIP和上述阶段失败保持in-progress。
+
+可复核证据：本worktree .codex-runtime/consumer-perf-20261019/result-summary.json、full-v2/1777/measurement.json、full-v7/1777/measurement.json、full-calculation-comparison.json及chart-v7/measurement.json。完整源码快照before/candidate-v2/candidate-v7与输入哈希已保留。预算耗尽时仍保留完整图冷编码，不能宣称全链路O(变化量)或所有股票固定提速。
+
+2026-10-19 · MONOREPO-330 持久版本消费者反向优化排查（待本轮验证授权）
+
+用户要求彻底解决前轮改造后的速度下降。已发送异步问题：此前规则禁止开发阶段测试/性能探针，本轮是否允许同份冻结行情的性能与完整结果对照；截至记录时未收到答复，不执行验证，也不宣称总体提速。
+
+静态确认：hierarchy_projection 每个旧点用 previous[start] 从树根查找并创建临时五字段 dict；publish_uptrends 的循环内 candidates[offset+1:] 即使马上 break 也已复制全部剩余候选；FrozenPrefixList 连续切片逐叶重走树路径；_GeometryAnnotations.clear 通过 MutableSequence.clear 逐项删除持久序列。改为剪枝块区间迭代 iter_range、许可前缀顺序比较且只为变化后缀创建 dict、许可前瞻惰性读取、标注缓存直接释放当前根。保留未知 Sequence 原切片行为、JSON 出口独立物化、逐日资格核验、知识日及价格规则。
+
+修改前 Core 源码快照保存在本 worktree 的 .codex-runtime/consumer-perf-before-20261019/src，勿覆盖。新增区间切片语义、前瞻禁止切出完整后缀、许可比较禁止随机树查找的回归源码。尚未测量上述成本在整次回测中的占比；未确认是否仍有版本失联/全量归一化、许可上下文或输出深复制占主导。收到本轮明确许可后，用隔离源码与同一冻结行情比较端到端结果与分阶段耗时，必要时沿实际热点继续修复。未提交/合并/推送，MONOREPO-330 保持 in-progress。
+
+2026-10-19 · MONOREPO-330 回测失败：PointVersion 泄漏 JSON 边界（待提交时验证）
+
+用户报告 601086 国芳集团及全部回测失败、页面反复显示状态查询重试。读取现有服务日志 E:/WorkSpace/work/wavequant-monorepo/.codex-runtime/restart-three-level-20261017/231206.err.log，多个任务栈均为 akshare_backtest → cache.put(adjusted_theory) → canonical/json.dumps → TypeError: Object of type PointVersion is not JSON serializable；路径 data.reversal_trends.candidate_strokes[0].points。进程命令与错误栈指向 feat-三级趋势统一 worktree。前端该提示来自 stock-backtest-runner 的通用 onRetry，不能据此判断只是网络错误。
+
+根因是上轮版本容器改造只实现 pickle/deepcopy 转 list，公开 calculate_trend_hierarchy 及 render_theory 的传入几何分支仍泄漏内部版本；JSON 不调用 __reduce_ex__。现已在完整层级公共返回边界 deepcopy 成独立标准容器；render_theory 复用传入几何时也先 deepcopy，兼容从内部工作集传入的 PointVersion/CertifiedSource/结构腿版本，避免显示侧写入原只读证据。没有修改严格 JSON 编码器、吞掉错误、放宽重试或撤回增量共享。
+
+新增 tests/test_trend_public_json_boundary.py，覆盖 N 开关的真实层级结果 JSON/ArtifactCache 往返，以及传入内部版本的图表结果、来源/候选/结构腿物化与读者修改隔离。按用户开发节奏未执行测试、类型检查、构建、验证探针或重跑回测，不宣称线上任务已重新完成。未提交/推送/合并；失败任务需用户重新发起，MONOREPO-330 保持 in-progress。
+
+2026-10-19 · MONOREPO-330 外围消费者版本与变化位置贯通（待提交时验证）
+
+继续使用 feat-三级趋势统一 的既有 worktree。新增 PointVersion：版本令牌、父令牌与 changed_from 随只读点序列流转，基于 FrozenPrefixList 块树共享前缀，公开序列化/deepcopy 恢复普通独立列表。CertifiedSource 的点、证书与累计费用共用持久前缀；来源分组、级联来源投影、升级许可附加及核心来源认证只拼变化后缀。候选整理回到变化坐标桶以保留早事实/晚完成证据；几何标注检查点及结构腿也不再切片复制历史前缀。
+
+许可来源保持稳定身份，发布器的来源/候选 _OriginLookup 增量维护，旧关键位及整波起点继续通过索引只读查询。许可价格/知识时钟投影稳定后，HierarchyHistoryStream 按变化位置更新并共享旧日轻量历史；交易区间内外统一投影，完整交易附件另留原视图。知识日尚未到达、重复身份、版本失联、路径切换及 epoch 改变分别保留重放/失效边界，不能因为结构冻结而忽略新行情对旧候选的资格确认。
+
+新增 tests/test_trend_consumer_versions.py 回归源码：追加/修订/截短、禁止增量消费者完整迭代版本、同坐标归并、旧关键位重复引用、跨请求拒绝、公开导出隔离、许可延迟知识日与未来点到期。按用户开发节奏没有运行测试、lint、类型检查、格式化、构建或验证探针，没有性能测量结论。资格发布器仍逐日核验候选，许可投影仍比较当前轻量结果以确定变化边界；本轮不宣称全回测已变为 O(变化量)。待实际提交时做最小充分差分与性能验证，MONOREPO-330 保持 in-progress；未提交、合并或推送，历史 WIP 未解决项保留。
+
+2026-10-19 · MONOREPO-330 高开高走当日入场（待提交验证）
+
+2026-10-19国芳3月15日：冻结行情显示开盘5.89097高于前收5.85179但低于前高6.09996，旧资格直接入场仅接受open>previous.high。新增非跳空放量高开高走强阳共用通道：open>previous.close、low>=open、volume>previous.volume且正基准，复用实体>=3%、>=振幅60%、上影<=20%；有效所选级别资格内当日收盘生成与执行，原跳空分钟规则保留，不倒填开盘成交。profile v122；新增回归源码待提交验证，未运行实股复现或任何测试，不保证涨停撮合，沿用账户权限与同日退出优先。
+
+2026-10-19 · MONOREPO-330 回测系统文档
+
+2026-10-19回测系统文档：新增docs/wavequant-backtest-guide.md，按当前源码说明请求、行情、逐日三级趋势、六态与资格、N目标、买卖信号、分钟/日线撮合、资金约束、指标、24步骤产物、缓存与排查路径，并包含Mermaid图。仅静态阅读与文档整理，未运行回测、测试或图形渲染；不改变业务代码，未提交推送，既有未验证修改和WIP失败保留。
+
+2026-10-19 · MONOREPO-330 放量长上影禁买及次日走弱清仓（待提交验证）
+
+2026-10-19乐心长上影：全局拦截量大于昨日且上影至少半振幅、不短于实体的阴阳线；已持仓次日低开并跌破当日开盘全清，分钟模式用累计已知行情及下一分钟开盘，日线收盘确认。profile v121；源码与回归待提交验证，既有WIP失败未清除。
+开发阶段未运行测试、类型、构建、lint、格式或结果探针；未提交推送。用户报价仅含当日，前日量与次日走势未据实股复核。
+
+2026-10-19 · MONOREPO-330 国芳首段提交验证及 2025-04-03 资格分析
+
+用户要求提交推送，继续 feat-三级趋势统一，沿用此前带失败记录 WIP 推送、不合并 main 的授权。首段 pending 修复已完成；提交检查额外发现初始化证明字典 identity 与元组查找键重名，改为 initial_identity，变更模块 mypy 通过。新增实股回归最初仅截取 1492 根至 2024-02-27，早于 L2021-02-08 的闭合知识日 2024-03-21，因此扩大到既有冻结行情完整范围，保留端点断言、不倒填知识日期。当前批量行情实际三级几何为 H2018-02-01 → L2021-02-08，不含 L2019-11-18 起点。
+
+首轮三模块 pytest 为 182 passed、7 failed（194.66 秒）：新增实股历史范围 1 项及此前 WIP 已记录的关键位可知日期 6 项。修正历史范围后 test_trend_initial_wave_boundary.py 最终 40 passed（0.96 秒）；这与首轮有重复，不累加通过数。剩余 6 项仍要求 2026-01-14，但实际 2026-01-16，未改断言、未宣称全部验证通过。Core 官方 typecheck 四个文件通过；变更模块 mypy --follow-imports=silent 通过；最终 wheel/sdist 构建通过；git diff --check 通过。未运行全套、Python 格式/lint、浏览器/E2E或 Harness。前次 WIP 的其他失败与格式问题没有重跑或清除，MONOREPO-330 保持 in-progress。
+
+新增用户分析：使用本地冻结 1759 根行情截至 2025-04-03，经 market_calculations 首次三级逐日联动计算；当日一/二/三级 buy_eligible 均为 false。二级仅有窗口 2024-02-27（1491）至 2024-03-28（1513），因 source_bear_trend_confirmed 结束，关键位为 2024-03-21（1508）低点 6.4395768587。2025-04-03 实际事件仍为旧二级周期的 trend_lifecycle_candidate，state=空多交替、origin_index=755、flip_index=1354、alternation_index=1491、counter_index=1484、breakout_level=11.0243465897、pending_condition=strict_close_cross、confirmed=false；没有新交替开窗事件。不是旧审计 v10 所说的从未确认交替，当前 v31 是旧交替已有确认但资格已关闭，之后没有重开。
+
+当天量 20135200/6428999=3.1319 倍，volume_attack=true；最高/收盘 7.1583804899 突破局部 2025-03-17 高点 7.0490922382，但未突破仍冻结的 2023-08-01 高点 11.0243465897。开盘 6.4480068535 低于昨日收盘 6.5026509794，gap=false，也不满足实体跳空分支。局部组合 A 及买点抵抗门禁不等于资格开窗；本轮仅分析，没有擅自改变资格策略。运行证据保存于忽略目录 .codex-runtime/guofang-apr03-current-lifecycle.json 和 guofang-apr03-current-geometry.json；可复现输入为既有 perf-20261017/guofang-frozen.json。后续若要求修复该日资格，应针对旧窗口结束后的本级新周期/交替重建定位，不能直接强制开窗。
+
+2026-10-19 · MONOREPO-330 国芳三级首段边界续修（待提交验证）
+
+用户明确三级应为 2018-02-01 → 2021-02-08，不应从 2019-11-18 起画。静态根因：首次局部四点直接取得 owned 方向，可丢失未被突破的更早边界；首次四点含边界左侧旧点时虽拒绝发布，却已设置方向，后续不再补建。共用 _TrendUpgradeState 新增独立 pending_origin/pending_extreme，严格越界才切换初始上下文，四点方向一致且拓扑完整后才发布 owned 起点。待确认状态不进入闭合 key；已成立波段的普通反转关键位、校验器和交易规则保持原逻辑。缓存 v157 隔离旧结果，没有重引入已撤回的全局普通反转冻结 key 修改。
+
+新增多空镜像/三级共用、相等不突破、起点证据延后补齐、增量与批量、strict-only 及国芳完整冻结行情端点回归源码；原初始边界合成用例的首低点从 3.28 改为 4.20，使原断言所依赖的反向波具备真实跌破边界，未改断言。以上均未运行，不宣称实股端点已重算验收。此前 WIP 的 14 项测试失败及格式问题保留，未借本轮修复。按用户节奏只修改代码与记录，待实际提交时验证；未提交、推送或合并，MONOREPO-330 保持 in-progress。
+
+2026-10-19 · MONOREPO-330 全部当前改动 WIP 提交验证
+
+用户明确要求提交全部代码并推送，随后在获知测试失败后选择“按 WIP 提交并推送，不合并 main”。本轮仅提交准备与验证，不修改产品行为、交易规则、测试断言或重新引入已撤回的 13:46 国芳调整。范围包括当前分支趋势资格/内部末升低、初始趋势边界、缺口禁买、突破上影/跳空/阴线子线清仓、阴线中点下方长上影全清以及 Web 自选列表滚动样式。MONOREPO-330 保持 in-progress。
+
+Core 定向 pytest：427 passed、14 failed，耗时 312.55 秒。失败分类：无区间扫描次数 1 项；关键位可知日期 6 项；新华传媒预期确认事件缺失 1 项（未到 2024-04-16 结束断言，实股验收未通过）；账户缺 execution_timestamp 3 项；二吐全清的 T+1/退出原因 3 项。长回放期间提取的 --lf 7 项是同一批失败，不另计。没有修改断言或做 HEAD 对照，不把失败一概称为既有问题。
+
+Core 官方 typecheck（4 个声明文件）与 wheel/sdist 构建通过。Web lint 0 错误、6 条环境变量声明警告，类型检查、Next.js 构建和 14 项 Node 自选列表/布局回归通过。CSS 与 feature_list.json 的 Prettier 检查均失败，保留 WIP；git diff --check 通过。构建自动改写的 next-env.d.ts 已精确恢复。未运行完整套件、Python 格式化/lint、浏览器/E2E；完整严格类型与真实界面视觉仍未验收。具体命令见 feature_list.json 本轮 verification。
+
+按明确授权将所有当前源码、回归和记录作为 WIP 提交到 feat-三级趋势统一 并推送同名远端；不合并 main、不标记功能完成。后续修复须先解释上述行为差异，保持当前回归断言，尤其核对新华传媒确认事件与 4 月 16 日资格结束的真实证据。
+
+2026-10-19 · MONOREPO-330 撤回 13:46 国芳三级线改动
+
+按用户要求撤回本轮国芳集团 2019-11-18 三级线调整：恢复普通反转关键位选择和原完成证据校验，缓存恢复 v155，移除本轮新增回归与验收记录。此前新华传媒资格结束、跳空阴线和母子线清仓等修改保留。本项不再继续修复或等待日期澄清；未运行测试或结果探针，未提交、合并或推送。
+
+2026-10-19 · MONOREPO-330 突破末跌高的放量阴线子线全清（严格突破口径已确认；待提交验证）
+
+继续 feat-三级趋势统一。用户要求突破折线或任意趋势级别末跌高后，当笔/次笔出现放量母子线且子线阴线直接清仓。现有 observe_bearish_child_pattern_exit 只记录母子线后等待后续放量破低；breakout_shadow_days 没有子线直接清仓分支。新增共用 is_bearish_inside_child：非十字母线完整高低区间包含阴线子线，允许一端相等、两端完全相同不算；原后续破低规则复用该原语保持原边界。
+
+共用突破观察器新增 BREAKOUT_CHILD_CLEAR，在已知高点严格突破当笔/次笔检测阴线子线，使用既有 is_volume_bearish（高于昨日或最近阴线任一正值量），收盘 exit_fraction=1 全清，无需后续破低、长上影或大实体。独立保留二棒子线观察，避免当笔长上影减仓取消次笔全清。折线与三级统一执行，账户沿既有 TrendFlipExitStream 全清链路；profile v120。新增边界、四层、两种放量基准、当笔减仓次笔全清、前缀/流、账户全数量退出回归源码，未运行。
+
+冻结报价明确：2022-06-01 与 2022-04-20 的最高价均为 4.440102732190837，未经四舍五入也完全相同，是触及；6 月 2 日为阴线子线，低点与母线相同，量 18562023 低于母线 28870663 但高于最近阴线 5 月 26 日量 6515095，符合用户既定放量定义。用户明确回复“收盘价高于或者最高高于”：以末跌高价格为基准严格越过，相等不算。合法 OHLC 的最高价不低于收盘价，既有 high > key 检查覆盖两种突破，不能额外要求收盘站上。6 月 1 日相对所给 4 月 20 日最高价既未最高越过也未收盘越过，因此不从这组关键位强制产生清仓；是否存在其他合格层级关键位待提交时完整计算。已补四层收盘越过/仅影线越过皆有效的回归及冻结报价相等边界，未执行。
+
+突破边界待办已关闭。实际提交时验证 test_breakout_bearish_child_exit.py、test_bearish_child_pattern_exit.py 及受影响的突破上影/跳空与账户回归；目前均未执行。遵循用户开发节奏，未运行测试、类型、lint、构建、浏览器、Git 状态/差异检查或结果探针，未提交/合并/推送。MONOREPO-330 保持 in-progress，前序待验证事项保留。
+
+2026-10-19 · MONOREPO-330 突破当笔/次笔跳空大阴线全清（放量口径已确认，验证留至提交）
+
+继续 feat-三级趋势统一。用户要求新华传媒突破二级 2022-01-05 末跌高后，当笔/次笔出现跳空放量大阴线直接清空。静态读取既有冻结行情发现：2023-02-16 高 5.420274 已超过旧 H 4.993857，2 月 17 日为突破次笔；2 月 16 日开 5.420274、收 5.077091、量 172540091，2 月 17 日开 4.844938、低 4.572410、收 4.592598、量 118048356，低于突破当日量；2 月 15 日量 66587654。
+
+现有 breakout_shadow_days 将全清限制为向上跳空且此前连续一至三根封板，次笔向下跳空会被排除。共用规则改为开盘严格高于昨日最高或低于昨日最低，取消连续涨停前提，保留阴线实体至少开盘 5% 且至少全幅一半、当笔/次笔、已知高点严格突破及收盘知识边界；满足后 exit_fraction=1，无累计减仓比例，继续由既有 TrendFlipExitStream 与账户全清执行。折线/一级/二级/三级同入口，无股票日期特判；其余长上影减九成及次日开盘全清保持。策略配置版本 v119。
+
+用户已明确回复“阴线同前一天或者和前一个阴线比较”。保持共用 is_volume_bearish：收盘低于开盘，量严格大于昨日或最近阴线任一正值历史量，不冻结为突破前一日。2 月 16 日本身符合报价形态，若当时已有旧 H 和持仓应当笔清仓；2 月 16 日本身也是阴线，故 2 月 17 日的昨日与最近阴线都为 2 月 16 日，不满足放量，不强制在该日生成此规则清仓。补充昨日单独满足、最近阴线单独满足、均不足、相等，以及阴线突破当日更新次笔参照的四层回归源码。完整生产链关键位、资格与真实成交日仍待提交阶段验证。
+
+新增 test_breakout_gap_clear.py 覆盖四层、当笔向上/次笔向下跳空、严格边界、未来/发展关键位拒绝、前缀与增量一致、账户全数量收盘退出及冻结报价；冻结报价测试只将已知旧 H 作为显式边界输入，不等同真实趋势计算验收。所有回归仅编写未运行。按用户此前明确要求，本轮未运行测试、类型、lint、构建、浏览器、Git 状态/差异检查或结果探针；未提交/合并/推送。MONOREPO-330 保持 in-progress；放量口径待办已关闭，剩余验证统一在实际提交时执行；前序 2024-04-16 待验收事项保留。
+
+2026-10-19 · MONOREPO-330 内部末升低逐日行情确认（待提交验证）
+
+本轮用户反馈 4 月 16 日仍未结束资格，继续使用 feat-三级趋势统一。静态定位到此前消费端修复仍依赖已发布攻击端点/六态事实；本级守低仅看本级 strokes，未检查 source_strokes 的直接来源末升低。新增 SourceMarketBreaks：已知且通过整波完成门禁的直接来源 H 与左侧 L 构成冻结关键位，右侧局部低点不得替换；每天用原始行情确认首次严格跌破，先检查 H 后未创新高，key 必须攻击日前已知。方向证书和逐日入口共用 first_strict_market_break，行情事件独立于反转端点和六态状态，只沿直接来源传递资格结束，结束证据保留被破关键位。三级同函数，无股票/日期特判；几何版本缓存不保存到检查点，恢复后按来源和价格重新推导，首次破位日防重复，生命周期 v31、历史资格缓存 v155 隔离旧结果。
+
+新增回归源码覆盖无攻击端点、右侧低点不替换冻结 key、三级及整层/分层、日期时钟、copy/checkpoint/combine 恢复、严格相等/未来/未结束/异路径/创新高拒绝、公开输入修订与多空共用价格原语。保留新华传媒冻结行情要求 2024-04-16 关闭、2024-02-29 关键位的断言；这些是待执行验收条件，不是本轮运行证据。
+
+用户明确选择“仍只修改代码，提交时验证”。本轮未运行复现、测试、类型、lint、构建、浏览器、Git 状态/差异检查或结果探针，未提交/合并/推送。真实该日来源 H/L 完成知识、实际终点、旧区间保持及新增回归均待实际提交时验证，不能宣称该股票结果已经验证。MONOREPO-330 保持 in-progress，前序记录和未解决项保留。
+
+2026-10-19 · MONOREPO-330 直接来源冻结末升低破位传递（待提交验证）
+
+源码根因：_facts仅向上读取无展示标签的升级凭据，向下正式攻击缺入口；confirmed_source_bear又未接受本级已认可的confirmed_bear_key_break，内部一级破位不能传给二级，二级同级补丁因此不足。将升级事实解析统一为双向同函数，仍核对本级冻结context、真实坐标/价格及攻击日前已知key；直接来源结束链复用同一严格破位门禁，终点保存broken_key而非攻击低点。一级至三级只改变直接来源，生命周期v30隔离旧检查点。未完成特殊翻多恢复不再屏蔽随后合法的正式翻空，仍须经过同一个冻结key完整校验；新增三级及恢复检查点回归，未执行。
+
+新增test_source_bear_key_break.py覆盖合成4.30→4.21、三级直接来源、整层/分层、恢复、整数/日期时钟、延迟确认不回填、关键位/路径/候选/相等拒绝及重新开窗；现有真实冻结xinhua_2024_alternation管线用例改为要求4月16日关窗、2月29日关键位，不放宽原开窗和确认断言。全部只编写未执行，真实该日是否具备完整正式事件仍待实际提交时验证，不能宣称已通过。未运行测试、lint、类型、构建、浏览器或结果探针；未提交、合并或推送。MONOREPO-330保持in-progress，既有失败与其他待办保留。
+
+2026-10-19 · MONOREPO-330 初始整波左边界补齐（待验证）
+
+_TrendUpgradeState初次方向成立此前只赋owned_direction/whole_extreme，没有whole_origin和可用于严格反向升级的边界key。新增首次方向四点证明的左边界建立：区间树查询已知相反极值，四点必须在边界之后，递归层保留真实内部下级点，用既有ordinary identity/完成证据发布边界，之后继续共用整波延伸及严格突破。initial_boundary只标记起始来源；知识日期为完整证据可知日，不能回填端点日期。多空镜像及1/2/3共用，查询O(log n)，不重扫全历史。历史缓存v154。新增缩减价格结构8.23→3.35→9.20和确认前无边界用例，未执行；这不是实股日期验证，也未确认最终三级标签。按用户要求提交时验证，未提交推送。此前资格结束问题实际日期仍待验证。
+
+2026-10-19 · MONOREPO-330 上涨小缺口撞下降缺口禁买（待验证）
+
+新增GapEntryGate共同门禁，策略evaluate_buy和账户execute_entry均接入，覆盖分钟成交和加仓。最近未全回补下降阴线开盘缺口[开盘,前低)，上涨开盘进入且开盘减昨日最高严格小于旧缺口原始宽度则拒绝；相等不拒绝，今日稍后回补不能反改开盘。按日推进缺口栈，每个缺口进出一次，DailySignalState复用状态。profile v118；记录拒绝原因与缺口日期、上下界、宽度和时钟。新增边界与前缀用例未运行，1月25日前序为合成，不能宣称已验证新华传媒真实回测。未提交推送。此前资格结束真实日期问题仍待提交验证，未宣称解决。
+
+2026-10-19 · MONOREPO-330 正式跌破末升低即结束本级资格（待验证）
+
+进一步定位到阶段错配：v28只消费反弹交替后的转空确认，未消费已突破冻结末升低的正式翻空。TrendLifecycle._consume在正式翻向与攻击延伸事件传递broken_key位置/价格/可知日；source_bear_exit新增confirmed_bear_key_break集中校验正式来源、当前可知时钟、key<origin<attack及严格破位，本级TradingEligibility共用关窗，不扩展直接下级结束规则、不修改几何或强制伪造转空确认状态。一级至三级相同；仅新增固定大小证据与常数检查，不扫历史。生命周期v29。新增事件生产到资格消费、4.30→4.21、相等/未来/候选/跨路径/跨级拒绝和重开回归，未执行。真实2月29日末升低在4月16日的可知性与正式翻空事件尚未回放，不能声称实际终点已验证；按开发规则留至提交阶段，未提交推送。
+
+2026-10-19 · MONOREPO-330 本级转空结束交易资格（待验证）
+
+TradingEligibility此前忽略本级转空确认和trend_bear_structure_low_broken，仅消费交替、直接来源转空等结束事件；新增同级同路径完整空头证明关窗，复用confirmed_source_bear校验知识时钟、结构与严格破位。结束原因same_level_bear_trend_confirmed；只有后续正式空多交替可开新窗。生命周期v28隔离旧结果。补充一至三级共用、未来证据拒绝、等待再确认回归，未执行。新华传媒4月16日是否已有合格事件及真实区间终点仍待提交阶段完整行情验证；未提交推送，旧失败未解决。
+
+2026-10-19 · MONOREPO-330 连板后突破跳空大阴线全清（待验证）
+
+突破当笔／次笔新增连续1至3日封涨停后的跳空放量大阴线全清；开盘严格高于昨日最高，实体至少开盘5%且至少振幅一半，不要求上影。抽取共享封板函数，保留原缩量封板额外量约束；最多检查四根历史棒，第四板排除。profile v117。未运行验证，未提交推送；真实3月25日前序行情和突破时钟待核实。继续处理用户4月16日二级下跌确认应结束资格的反馈。
+
+2026-10-19 · MONOREPO-330 放量上影收于前阴线中点下全清（待验证）
+
+按用户补充加入独立全清规则：昨日为放量阴线，今日量严格大于昨日、上影严格长于实体、收盘严格低于昨日实体中点，当日收盘清仓；今日允许阳线，不需突破、目标或先减仓。共用HoldingResistanceHistory逐日保存昨日放量状态，窗口恢复初始化历史量基准，策略EXIT及账户同日执行列表均接入，保留原交易资格与成交约束。profile v116。新增test_volume_shadow_midpoint_clear.py覆盖严格边界、最近阴线量替代、逐日前缀与窗口恢复、换股票和账户当日全清。2月2日用户报价上影0.42、实体0.13；未提供真实前一日OHLCV，测试前序数据显式合成。未运行测试/类型/构建/Git检查或浏览器，未提交推送；既有21测试失败和11类型错误仍待修复。
+
+2026-10-19 · MONOREPO-330 突破放量阴线上影减九成（待提交验证）
+
+用户给出新华传媒2023-12-18高5.63和2024-01-09开5.44/高5.69/低5.16/收5.25/量155973716，确认参照已有结构确认前高或空头抵抗高点、量大于昨日或最近阴线、低开比较警告日收盘。新增breakout_shadow_exit.py，折线及三级最近确认高点使用同一条件：最高价严格突破，当笔或紧接次笔为放量阴线且上影严格大于实体，当日收盘累计减仓90%；紧接下一交易日低开清仓，等开/高开不延长该观察期。真实已知时间来自前一日结构，发生日和确认日不混用，阴阳不用涨跌幅或混入原始收盘价。
+
+TrendFlipExitStream与批量入口复用同一观察器；新增折线字段仅保留最近确认高点，不每日复制全部折线。历史来源修订沿用流回放，突破次笔保留当笔已知参照。账户开盘阶段先处理清仓并撤买单，未成交仍由现有待单机制重试；累计90%由原始持仓和已卖量计算，既有更强全清保持优先，资格外停算及T+1/停牌/流动性约束不变。profile升v115。
+
+新增test_breakout_shadow_exit.py，包含用户两根报价＋合成中间/次日行情和确认结构、0/1/2/3级与换股票、严格相等边界、次笔/超时、未来确认拒绝、前缀/冷算与修订、账户90%后开盘清仓及不可成交重试。没有运行测试、类型、构建、Git检查或浏览器，待实际提交阶段验证；不能宣称真实1/9已重算。此前21个测试失败、11处类型错误及长回测性能问题仍保留，MONOREPO-330继续in-progress。没有提交、推送或主动重启。
+
+2026-10-19 · MONOREPO-330 提交验证未通过，保存工作分支
+
+用户明确要求提交推送所有代码，进入实际提交阶段。当前未提交范围为Core源码、回归及状态文档；主工作区干净。既定typecheck的4个文件与sdist/wheel构建通过，但10个趋势/历史/资源回归文件实际443 passed、21 failed（53.85秒）；新增4个模块的mypy报告11处错误。精确命令与失败类别在feature_list.json顶部verification，不将旧记录当作本轮通过证据。
+
+失败包括六个固化回归tail_restores为0、来源键身份未复用、逐日source_strokes和生命周期检查点差异、失效的私有spy/构造参数以及历史认证/事件预期差异。尚未全部区分既有和新增原因。没有修改交易判定或放宽断言以通过提交检查；全部代码以未完成快照保存在feat-三级趋势统一，按用户授权推送该分支。检查未通过，不合并main，MONOREPO-330仍in-progress。长历史完整输出差分及性能验收待完成；未运行浏览器、全仓验证或主动重启服务。
+
+2026-10-19 · MONOREPO-330 固化方案的计算与存储增量续修（待提交验证）
+
+继续 feat-三级趋势统一，按用户再次确认的五项方案实施。上一轮只有共享前缀，旧检查点分叉仍全拷贝、下游仍全量处理，不能视为已经解决。此次 FrozenPrefixList 改为 32 项叶块的持久树；FrozenPrefixMap 改为压缩二进制哈希树，独立键序列保留插入顺序。旧版本分叉只改节点路径，无父版本链；长时间没有新业务边界也能共享知识版本检查点。节点纳入已有内存预算；不把物理存储封存混同业务B或交易完成。
+
+折线写入者提供版本证书及变化位置，SourceProjection 在直接下级变化点左侧保留真实校验锚点，PromotionSource 把许可新增/撤回转成来源变化；各级与收敛轮次独立拥有版本。OwnedSourceInputs 只为变化来源附加实体和签名；行情所有者变更、窗口回退和此前缺少实体的点重新进入变化范围。级联内部版本身份不再通过整份来源序列化生成。外部可变输入和无法认证的工作集继续完整校验。
+
+正式突破入口此前因 exact list/tuple 限制拒绝 CertifiedSource，现要求同请求 owner 和确切证书后接受；补算沿用同一 _JudgementLedger，只更新变化普通输入、正式点、升级和事件所在桶，不再每次调用完整 _finalize_judgement。保留升级优先级、去重顺序、原始位置映射、冷回退与检查点隔离。共同父版本的尾部反复修订向导出阶段传递保守变化范围。
+
+几何标注复用未变前缀的影子点、上下文和引用索引；增量日期索引保留原全量排序映射语义，新增价格坐标影响旧知识日时失效相应后缀。发展尾部使用按来源版本推进的高低极值索引，长期没有新关键位不再每天扫描整个发展区。结构腿按相邻点受影响范围生成，点、来源及结构腿数组都可进入历史块协议。别名索引更新替换片段，历史键预算使用累计费用和共享块树；公开读取仍还原普通list/dict并隔离历史版本。历史缓存身份 v153。
+
+新增 test_trend_delta_pipeline.py，保留并适配 test_trend_frozen_prefix.py 的存储内部断言，未放宽冷算结果或因果断言。用例涵盖旧检查点分叉禁止枚举、哈希碰撞/插入顺序、块共享、来源签名工作量、日期迟到与撤回、正式缓存证书入口、级间投影、长期发展尾部/早期修订、许可撤回及跨字段别名/线段块读取。
+
+本轮没有执行测试、运行探针、计时、格式、lint、类型、构建、Git状态/差异检查或浏览器；没有提交、合并、推送或主动重启。MONOREPO-330仍为唯一in-progress。尚存完整公开数组外壳物化、升级许可收敛账本遍历、真实早期知识修订引起的后缀重放，以及预算不足冷回退；不宣称全链路O(变化量)或已经达到120秒。实际提交时先运行新增与相邻回归，再对同一冻结日线/分钟/参数的完整calculation_rows、信号、账户和审计做差分，并按等长区间采集各阶段耗时、工作量和RSS，确认剩余热点与运行服务实际加载版本。旧冻结成绩仅为旧版本记录。
+
+2026-10-18 · MONOREPO-330 固化前缀与变化尾部（待提交验证）
+
+继续 feat-三级趋势统一。按用户确认的方案，在统一 _TrendJudgementState 中为每个 level/path 保留当前末跌高、末升低中价格位置较新的边界，边界点属于变化区，frozen_known 单独记录本次确认时钟。当前整波旧关键位可能重新取代更晚局部关键位，因此边界回退明确计入 frozen_invalidations，不强行锁住错误边界；来源更早修订仍由全文证书和检查点匹配拒绝复用。三级判定、直接来源和交易规则未另起算法。
+
+新增 trend_frozen_state.py：FrozenPrefixList 用有可见长度的共享历史与独立尾部保存来源、事件、候选和几何状态；FrozenPrefixMap 用确认版本和变化覆盖保存来源、关键位树及账本索引。检查点复制变化部分，旧快照不能看见未来追加或后来的覆盖；从旧版本分叉保留其可见历史。索引仅保留每个活检查点需要的值，弱引用视图及时清理，避免长期保留一个旧翻向检查点时积累所有中间版本。现有状态预算继续包含这些容器与历史记录，超额仍回退原完整判定。
+
+业务固化线与可恢复的知识版本分别维护：即使长期没有新关键位，已消费来源和事件也能共享检查点记录，变化区仍可修订，不能把快照存储误当结构完成。普通与正式突破检查点接入共同容器；共用升级器在内部账本路径跳过未使用的完整 merged 导出，公共批量与预算回退仍完整物化。候选偏移账本仅替换受影响后缀，_JudgementDelta 向下游交付精确变化位置；该私有信息不进入公开计算结果。
+
+内部点导出按路径/级别复用未变化前缀，标注需要更新时替换点外壳，保留旧日期对象。受控导出向 ClosedPreparedPaths/PreparedPointHistory 交付父数组和最早变化位置；历史编码跳过已认证前缀的逐点签名与证据准入，只改变化块，并从首次编码起保留根点引用以保护后来跨块共享别名。父版本不匹配、未知对象或预算不足回原完整路径。图表历史缓存身份更新为 source_causal_frozen_prefix_v152。
+
+新增 test_trend_frozen_prefix.py，包含容器分叉/未来隔离、活检查点版本回收、三级边界与知识时间、逐前缀及尾部/早期审计修订冷算对照、长期无新边界的检查点共享、历史块增量写入和三级级联旧日期不变性。仅编写用例，未运行。未执行测试、类型、lint、格式、构建、Git检查、回测计时、运行探针或浏览器，也未提交、合并、推送或主动重启服务。
+
+MONOREPO-330 保持 in-progress。提交阶段需要验证新增用例与既有 append/active-key/history/resource 回归，再对同源全窗 calculation_rows、信号、账户和分钟来源做完整差分，并测等长前/后段处理量、耗时与内存。公开完整数组物化、外部可变来源认证、正式升级合并及跨固化线修订仍可能有全量成本；当前代码未测，不能宣称全部退化已消除或达到 120 秒目标。此前性能数字仅对应各自冻结源码。
+
+2026-10-18 · MONOREPO-330 全链路历史数据搬运优化（待提交验证）
+
+继续同一feat-三级趋势统一和worktree。新增owned_evidence.py：同次计算显式移交不再修改的标准有限证据，24MiB有界池为其提供请求内引用；编码跳过旧子树，公开解码使用单次读取的共享memo独立复制并保留别名，命名空间隔离不同请求。池关闭后拒绝读取；未知、非有限、循环和预算不足不准入。来源适配器按路径复用未变的实体投影，交付CertifiedSource与最早修订位置，SourceVersionOwner只重验相邻边界和变化后缀；外部可变来源仍全文认证。三级仍共用原趋势核心，收敛轮次、正式证明、知识日和来源顺序规则保持原实现。
+
+新增prepared_point_history.py：开放路径点数组按32点一块保存在请求临时流，更新只写变化后缀块及对数级树索引，旧日保留不可变根；截短用真实长度隔离旧尾部，后续增长覆盖对应块，读取完整点数组。ClosedPreparedPaths仅在内部只读移交模式启用分块，默认公共模式保持原协议；跨字段/跨块共享节点使用同一读取memo，公开输出为普通list/dict，未知输入和状态预算不足回退完整行。已接入ExitStack关闭；历史检查点身份v151，引用不进入公开计算明细或持久回测结果。
+
+共用升级证明增加有界验证复用；完成点投影复用同请求证据签名。不可变Bar tuple的行情窗口使用现有_PrefixView，范围索引和资格缓存通过来源绑定认证窗口，保留可变列表的逐根核验。日线资格、层级流、截止窗口和日期/整数知识时钟映射不再逐日复制完整行情与日期字典；每天行情及资格仍推进，未缓存等待中的交易结论。没有增加并发、扩大超时、修改交易规则、删证据或截断前史。
+
+新增test_owned_evidence_history.py，覆盖编码体积/块写入工作量、来源追加/早期知识修订/截短、三级冷算对照、历史版本与公开读取独立性、跨字段别名、请求隔离、未来窗口、未知对象及预算拒绝。按当前开发规则，本轮仅代码搜索、阅读、编辑及状态记录；未执行测试、回测计时、探针、lint、类型、格式、构建、Git检查或浏览器，未提交/合并/推送/主动重启。旧928→842秒等记录只属于原冻结版本，不能用作本轮结果。
+
+MONOREPO-330仍in-progress。实际提交时先执行新增与来源/历史/资源回归，再用相同冻结日线、分钟和参数比对完整calculation_rows、信号、账户、审计及分钟来源，记录等长区间耗时/写入字节和RSS；公共完整读取及早期真实修订仍有必要成本，必须实测后才能判断持续退化和120秒目标是否解决。既有失败及其他并行策略修改全部保留。
+
+2026-10-18 · MONOREPO-330 sz.300562 回测闭合极值异常
+
+用户要求修复300562回测失败，继续feat-三级趋势统一。只读现有8766/api/backtest-jobs及服务日志确认任务1a45e27b-447e-4485-baf4-0a0f1f4bc7d7失败：2018-01-01至2026-10-16，lecture_v3，二级买入资格，ordinary_trend_completion_enabled=false、n_target_trend_confirmation_enabled=false。异常为ordinary completion must retain its true whole-wave extreme；调用链为prepare_trend_cascade → high_low_points_from_strokes → formal_key_attack_points → _validate_completed_source_point。日志位于主工作目录.codex-runtime/restart-three-level-20261017/231206.err.log。未触发新服务回测，也未停止用户已在运行的任务。
+
+静态定位到共同_TrendUpgradeState的缺陷：新严格反向波直接将attack赋为whole_extreme；当旧key较晚才满足知识条件，起点与本次合法攻击之间可能已有更强同类点，直接赋值会遗忘本波真实极值。修复为新波使用既有已消费来源区间树，在真实origin右侧至当次attack范围内取最高H/最低L，相等保留最早坐标；正式突破证据仍保留真正attack及可知日，不提前升级较早极值，不改变严格key和闭合校验。所有级别及多空镜像共用；同向延伸继续沿原门禁。历史检查点版本v150，避免复用旧极值状态。
+
+新增合成状态边界回归，覆盖三级、多空、整数/日期时钟、先前更强/等值/较弱点、真实攻击证明及后续普通闭合递归校验；不是300562真实行情复现。用户明确答复“只读代码并修改，验证留到提交时”，因此未执行测试、运行探针、类型、构建、浏览器或完整回测。现有日志只能确认异常发生位置，尚无现场坏点载荷证明该股票必由所修路径触发；不得宣称真实回测已恢复成功。提交时先用原参数缓存行情定位坏点并回放，再执行新增与既有phase_identity/wave_completion/body_reversal回归。MONOREPO-330保持in-progress，保留并行修改和既有失败；未提交、合并、推送或主动重启。
+
+2026-10-18 · MONOREPO-330 持续变慢的重复历史处理修复
+
+已写入 feat-三级趋势统一 的 5 个生产模块：候选账本写时复制并按不可变桶计费；几何定义标注从最早修订点续算，检查点不保留旧祖先证明；严格关键位突破保留有界尾部检查点并复用同次已认证来源；历史变化识别与存储共用一次编码，仍保留完整开放路径和公共独立读取。原标注循环 AST 与冻结基线一致。三个趋势级别仍共用算法；没有修改买卖条件、截断策略前史或增加分钟调用。
+
+经用户明确授权离线采样/回归/完整回放：同一冻结 000678 的 2112 根日线、分钟输入和参数，基线 928.775794 秒，最终 842.547982 秒。generated（信号/审计）与 account 全字段精确比较相同，规范化 SHA256 为 32e3095c30f3be9f189f911d8c59a21296f4050ba7efc388039613ae97626525。未比较全部图表 calculation_rows；共享机器单次测量不能当作统计提速承诺。10%→20% 同样 211 日为 11.70→9.71 秒，80%→90% 为 140.20→121.45 秒，后段成本仍增长，1–2 分钟目标没有达成，MONOREPO-330 继续 in-progress。
+
+当前分支另有并行策略修改，全部保留；本轮等价证据只适用于 baseline-src/publish-src 冻结版本，不冒充并行改动合并后的完整账户验证。5 个落地源码和 3 个测试文件已按 SHA256 核对；用户已授权落地触发的共享 API 自动重启。未提交、合并、推送或启动浏览器。
+
+定向证据：publish-tests.log 为 141 passed / 56.06 秒，包含标注、检查点、预算、严格攻击、级联、分钟历史与存储；新增用例移除跨测试模块导入后，三文件组合 50 passed / 4.28 秒（本轮工具输出）。既有 drawing/prepare 资源用例的两个失败在冻结原版同样复现，未放宽断言。未运行 lint、类型、构建或全量测试，待实际提交阶段按风险执行。
+
+剩余根因：SourceVersionOwner 和级联收敛仍认证完整来源；资格及部分六态仍处理完整前缀；历史开放路径虽然少一次编码，仍按完整行保存。下一步须贯通生产者不可变版本和最早变化位置，并将开放路径历史按共享前缀/变化后缀保存；保留未知对象、早期修订与预算不足的冷回退。不能宣称已根治全链路增长。
+
+完整证据位于主工作目录 .codex-runtime/growth-fix-20261018：fix-report.md、final-evidence.json、publish-comparison.json、baseline.log、publish.log、publish-tests.log、final-source.diff、landing.json。未采用的导出缓存/共享 pickle 图实验没有写入生产源码。
+
+2026-10-18 · MONOREPO-330 新华传媒放量阴线全局禁买
+
+继续使用 feat-三级趋势统一。用户提供600825在2023-08-28及2023-12-18的当日OHLCV，要求放量阴线、实体反包禁止买入，并补充“高开低走的不要买入”。共用volume_candle新增买入拒绝函数：阴阳按同口径close/open，量严格大于昨日或最近阴线的正量；实体反包复用严格一边越过的非十字实体覆盖函数，卖出仍使用原条件。严格跳空高开后收阴即使缩量也不走跳空豁免。日线所有V3候选、折线强势判断、资格跳空、普通N分钟入口及账户新买/加仓消费同一规则，保留原资格和目标。不按股票、日期或趋势级别特判。
+
+按本轮补充口径，分钟及缺分钟开盘模拟也先做全天形态过滤；这是显式事后筛选假设，不是早盘已知的交易条件。执行证据标记candle_filter_model=full_session_candle_filter及15:00可知时间；通过分钟观察后全天收阴也会拒绝该日模拟买入。profile升v114，源码指纹自然区分缓存；不改写已有结果。新增用户当棒报价＋合成前棒边界、换股票/价格尺度、最近阴线量、实体与影线、等量/十字、三级资格、分钟/无分钟及账户加仓回归。合成前棒不是已核验真实前一交易日行情。
+
+本轮仅阅读、编辑及维护记录，未运行测试、回测、类型、lint、构建或浏览器；两个真实日期全链路结果待提交时验证。没有本轮通过结论；MONOREPO-330维持in-progress，既有失败和性能事项保留。未提交、合并、推送或主动重启。
+
+2026-10-18 · MONOREPO-330 日线持续退化根因诊断
+
+用户要求先定位持续变慢根因。冻结当前分支源码和000678的2112根日线，直接运行daily_signals，不进入分钟或账户撮合。完整诊断耗时699.58秒；每200根耗时从2.33秒增至第1801–2000根的118.64秒。一级写入次数123→127，对应原始序列化字节11394450→366313180。根因是变化边界只进入部分核心判定，来源全文签名/前缀比较、完整派生标注、开放历史pickle压缩、账本检查点复制及计费仍重复处理累积前缀；资格链也有全前缀处理。已定位调用栈与增长数据，不能用翻向索引已存在推导整个链路已增量。采样含诊断开销，非多轮统计基准；不是本轮策略等价测试。未修改产品算法或重启服务，未提交推送。
+
+证据：主工作目录.codex-runtime/growth-root-20261018/root-cause.md、samples.jsonl、profile.json、source-hashes.json，以及.codex-runtime/growth-profile.log。下一步先贯通不可变来源版本/最早变化位置，再将冻结前缀与变化后缀分开保存、增量维护标注及检查点计费；每日资格仍消费当日行情，保留策略、因果时钟和完整历史输出。功能继续in-progress，单股1–2分钟未达成。
+
+2026-10-18 · MONOREPO-330 襄阳轴承99%分钟核验退化
+
+落地复核：六个源码文件SHA256及新增测试与候选一致；共享API自动重启，端口8766由新进程27040监听，GET /api/backtest-jobs返回HTTP 200，未发起新的回测。
+
+000678 在第2102根日线（2026-09-24）的实际盘中买入候选触发分钟核验，旧路径再次计算全部层级历史和全部图表趋势。改为分钟首次历史恢复使用现有增量流，稀疏核验日从上次未完成日续接，图表只借用昨天以前的日线历史并重算当天；独立层级流每级状态额度与日线保持32MiB，避免8MiB反复淘汰。进度转发分钟核验阶段。用户确认只有实际买卖候选或执行需求才使用分钟；普通分析、空仓无候选和完整持仓日不读取分钟，未改变策略或借用未来日线。
+
+同一冻结日线2112根、同一冻结分钟输入、同参数完整账户回放：原版2234.093秒，候选970.658秒；一次分钟核验1441.132秒降至170.929秒，图表恢复起点0改为2101。全部generated和account逐字段完全相同，含94信号、96订单、26笔交易、3708审计，期末权益102036.33297308997。此为共享机器负载下单次诊断测量，不是统计基准；未录制全部calculation_rows。与原服务缓存相比交易/净值一致，但冻结loader可用开始日期2026-08-11与服务2026-08-13不同，所以不声称服务缓存审计元信息完全相同；同输入原版/候选的完整审计一致。长样本仍超过120秒，MONOREPO-330保持in-progress。
+
+用户已授权开发阶段离线验证。python -m pytest test_minute_prepared.py -q --tb=short：11 passed/40.62秒，覆盖N开关、交易窗口、当天修订、完整历史不匹配、稀疏核验、无交易禁止分钟、完整持仓日禁止分钟和进度转发；此前相关组合27 passed/6 subtests。python compare_frozen.py：generated/account严格比较均无差异。未运行浏览器、lint、类型或构建，待提交时验证；未提交、合并或推送。
+
+修复已写入feat-三级趋势统一；用户另行授权写入所触发的共享服务自动重启。离线证据与完整补丁在主工作目录.codex-runtime/xiangyang-99-20261018，comparison-frozen.json、minute-final-tests.log、diagnose.log、final32.log。下一步仍需优化日线趋势归并和资格成本，不能宣称所有股票已达1–2分钟。
+
+2026-10-18 · MONOREPO-330 回测退化根因与分轮缓存修复
+
+根因是翻向索引外围仍有重复全量工作：同一缓存被收敛前后证明版本交替覆盖；尾部检查点恢复时丢失发布账本；六态先投影整段折线再截取窗口；交易窗口重开时cache.clear删除chart因果检查点。长样本2026-09-18观察到47.47秒单日旧历史重放；保留chart后实测该日仍需冷重放，不能据静态清理逻辑宣称已根治这次停顿。已按前三轮隔离判定状态，额外轮次只保留活动路径，闭合模板按轮次共享原8MiB预算；超额轮次及无法认证来源仍冷算。额外状态最终沿用单份32MiB预算，避免本轮中间版8MiB在858日后反复拒绝和清空；不是提高原策略阈值。恢复同版本账本及浅容器检查点；翻向内存先按保守上界计费，超额才完整核算，真实超额仍丢弃可选检查点或清空。二三级正式攻击复用完整认证前缀，修订/删除/过滤恢复/同K不同ordinal保留冷退化；六态二分定位后再解析尾部，未来知识时钟仍逐日过滤；资格复用不可变证明字节，保留原精确pickle键与每日资格判断。新交易窗口只保留经过原完整门禁校验的chart检查点，其余交易形态状态照旧清理。真实新窗口N审计前缀变更仍必须冷重放；新增请求内单行cursor只定位目标前驱、不解码gap或未来，复用同版本并绕过跨读取池重复整图计费，几何读取延迟到原刷新门禁内。新增折线构建、峰谷投影、趋势归并、六态、历史保存、交易资格分段计时。所有缓存只活在请求内；判定状态额度、formal载荷计费、source owner证书准入各自有边界，不代表整个对象图或进程总堆上限。未改策略条件、截断证据或减少历史输出。
+
+最终v6冻结源码0600828eca18bcf08a9a0ccf921c179da3c2e20406b3a128b90369adf894665b。同参数华瓷1174日：公平基线392.30秒/CPU381.83秒，最终117.74秒/CPU111.88秒，耗时下降70.0%，计算峰值RSS150.98MiB。calculation_rows、generated_research、result、minute_provenance四组完整摘要相同；策略参数与冻结日线、分钟数据相同。国芳2120日最终514.98秒/CPU493.81秒、计算峰值RSS304.95MiB，与v3完整643.77秒的四组摘要相同。原公平基线1200秒截止仍未完成，不能声称与原基线完成了全账户差分。其已提交388个chunk完整展开后共2353行、966546946字节与v3逐字节相同，变化日期也相同：折线至2022-05-23、一级至2024-10-25、二级至2023-12-15；未落盘尾部、三级、六态、资格和账户无旧基线证据。最终长样本仍超过120秒，不能宣传所有股票已达到1–2分钟。v6在2026-09-18的必要冷重放为14.39秒，v5同日43.77秒；保留原审计失效和刷新条件，读取优化减少这次停顿约67%，并未取消重放。最终日线主循环513.67秒，分段累计：折线0.1、投影4.9、趋势归并239.6、六态38.5、历史保存96.2、交易资格90.0秒；外围买卖规则35.0、账户/分钟/快照2.5秒。分段与总时长边界不同，不声称精确相加。
+
+用户明确授权本轮离线采样、定向回归和完整账户回测。python -m pytest tests/test_trend_cascade_rounds.py tests/test_trend_closed_rounds.py tests/test_formal_attack_reuse.py tests/test_source_version_budget.py tests/test_lifecycle_polyline_tail.py tests/test_causal_projection_cost.py tests/test_trend_checkpoint_ledger.py tests/test_confirmation_scalar_reuse.py tests/test_confirmation_context_prefix_reuse.py tests/test_streaming_backtest.py tests/test_daily_chart_window_cache.py tests/test_trend_date_cursor.py -q --tb=short -p no:cacheprovider --basetemp=<runtime>/pytest-targeted-final-v6：268 passed/20.50秒，日志targeted-final-v6.txt。最终v6重跑flow组合仍8 failed/65 passed，失败节点与flow-base.txt完全相同。更广历史回归有既有失败：flow组合8项、lifecycle相邻5项、wave_completion80项以及公共permission旧导入用例，均在独立冻结基线复现相同失败；不修改原断言、不宣称全套通过。本轮未运行lint、格式化、类型、构建、Harness或浏览器；提交门禁仍待实际提交时执行。
+
+证据位于主工作目录.codex-runtime/trend-performance-20261018（忽略，不提交产物）。完整驱动为.codex-runtime/perf-prefix-20261017/streaming_benchmark.py，显式--source-root candidate-v6-src、--fixture、--minutes、--sizes all、--timeout 1200、--hash-only和--compare；Huaci比较baseline-common-huaci，Guofang比较candidate-v5-guofang。任务与源文件在运行前后冻结校验，禁止网络，保留计算步骤录制；wall/CPU仅计实际账户计算，随后完整导出用于精确校验，不计入性能成绩。一次采样测量不是多次统计分布。分钟输入采用已冻结样本和原缺失数据回退，两次保持一致；华瓷仅目标日48条分钟，不将同参数全账户回放说成全时段分钟数据完整覆盖。测量带0.05秒间隔栈采样。fair baseline是在d3c1eed归档上覆盖本轮开始前已存在的3个低开策略文件，确保策略版本一致。v3/v4/v5中间成绩与最终v6区分保留，不拿中间源码结果冒充最终成绩。
+
+v5长样本180–260.8秒的1170份栈样本中，完整变化识别签名、历史pickle及level1压缩合计约16.8%，source版本全文认证和收敛轮enriched全文签名另约8.5%；资格约13.8%，步骤JSON编码约0.26%，没有实测依据将512项JSON LRU视为本轮根因。下一阶段优先贯通开放路径历史的版本共享：chart_entry_history变化识别先完整签名，随后TrendStageRows再次完整pickle/zlib；闭合路径已有引用，开放路径旧前缀仍重复编码。应保留完整公开输出，在读取边界展开共享历史，不能直接截断翻向前的证明。这部分尚未实现；后段每新增日成本仍增长，但不凭有限采样断言所有函数都是二次复杂度。
+
+继续feat-三级趋势统一，保留既有低开规则及其测试改动。未提交、合并、推送或重启共享服务。MONOREPO-330保持唯一in-progress：长样本120秒目标、旧失败、完整旧基线账户差分和提交门禁尚未全部完成。
+
+2026-10-18 · MONOREPO-330 倍量中大阳收盘突破豁免低开
+
+按用户新口径增加低开豁免：当日量至少昨日正成交量2倍，满足共用中大阳（实体>=开盘2%且>=振幅一半），收盘严格超过昨日高点；折线门禁额外要求收盘严格超过已知末跌高。通过共用bullish_breakout_rejection覆盖折线及V3日线候选，不借候选N前低量基准豁免，不改资格、分钟跳空执行、涨停成交或账户风控。profile升v113，新增真实国芳4/3、倍量等值/不足、影线突破收盘未越位、非中大阳及折线门禁用例；保留西点7/16拒绝。开发阶段未运行验证，待提交时验证；未提交推送。
+
+2026-10-18 · MONOREPO-330 全部改动提交验证
+
+用户明确要求提交所有代码并推送当前 feat-三级趋势统一。范围包括趋势反向攻击与深回撤确认、因果投影性能优化、突破当棒强势门禁、华瓷资格跳空首五分钟封板执行，以及对应测试和记录。
+
+本轮提交验证：python -m pytest tests/test_gap_limit_execution.py tests/test_qualified_gap_entry.py tests/test_close_entry.py tests/test_breakout_candle_quality.py tests/test_polyline_buy_gate.py tests/test_squeeze_buy_quality.py tests/test_v3_attack_quality.py tests/test_causal_projection_cost.py tests/test_trend_counter_extension.py tests/test_lifecycle_frozen_context.py tests/test_trend_missing_initial_key.py tests/test_trend_unanchored_boundary.py tests/test_streaming_backtest.py::test_daily_coordinator_publishes_fills_before_advancing_market -k "not causal_three_level_pipeline and not xinhua_full" -q --tb=short -p no:cacheprovider：212 passed、1 failed、2 deselected，239.52秒。唯一失败 test_v3_rejection_prevents_completed_n_evidence_even_when_optional_volume_filter_is_off 在 git archive HEAD(a1e1b66) 的独立基线再次执行同样失败；不放宽断言，不宣称全绿。首次测试与打包并行遇到临时sdist目录消失导致收集失败，已在打包结束后重跑得到上述结果。
+
+13个变更生产模块运行 python -m mypy --follow-imports=silent --no-incremental：当前与a1e1b66独立基线均43条错误；去除行号逐条比较，新增0、消失0，历史类型问题未解决。python -m build --no-isolation 成功；wheel在独立venv安装成功，python -I 导入分钟执行、趋势投影、历史投影和强势函数、加载Asia/Shanghai成功，确认来自site-packages。验证证据位于主工作目录 .codex-runtime/all-submit-20261018（忽略，不提交运行产物）。
+
+未运行浏览器、完整账户历史、全量Core测试或Python格式/lint；不冒充已验证。已复核源码与测试差异，保留历史失败并维持MONOREPO-330为in-progress。按用户要求提交推送特性分支；门禁尚非全绿，不合并main。
+
+2026-10-18 · MONOREPO-330 华瓷首五分钟涨停漏成交根因修复
+
+真实本地3004回测产物akshare-backtest/a278f5dd33cc9b9a02b343c8bdf0724eb2222d6134f9d2fcfee6ce154ada5f5a显示：09-15资格与qualified_gap_open均已产生，原订单在09:35以not_buyable_intraday取消。第一根5分钟原始O=L=15.23、H=C=16.43、量1938300，下一根锁16.43且有量；实际nonflat_limit_close_fill=True。旧N分钟路径会提供observed_nonflat_limit_buyable，新资格跳空路径漏传该事实，因此统一账户无法执行用户已选择的非一字成交假设。不是资格遗漏、浮点误差、缺分钟或旧代码缓存。上轮用例只覆盖缺分钟回退，遗漏了首五分钟封板情形。
+
+intraday_entry.py提取_minute_buy_permissions供资格跳空与原N分钟入口共用，新入口累计截至决策棒的高低与量，并传递非一字事实、下一分钟原始开盘。账户仍决定是否启用假设、限制成交价与记录fill_assumption。共用函数保留原价格规则并一致尊重raw_is_st/raw_trading_active；不改资格、趋势、时钟、风控参数或前端。关闭选项、整段一字、无成交量、ST、停牌、超涨停仍拒绝，后续量价不能反向解锁之前决策。
+
+沿用用户本会话明确授权的离线回放/定向回归，读取而不改写真实SQLite产物，冻结1174根原始Bar与48根分钟和实际策略/资金设置。replay-huaci-observed-gap.py before/after重放相同公共resolver和单日账户边界：修改前开关True/False均not_buyable_intraday；修改后True在北京时间09:35成交100原始股，复权价18.325578885854114、原始价16.43、应用滑点0，fill_assumption=observed_nonflat_limit_intraday_without_queue_verification；False仍拒绝。该回放从无持仓账户验证目标日，未重新运行完整账户历史或浏览器。证据主目录.codex-runtime/huaci-gap-observed-input.json、huaci-gap-limit-before.json、huaci-gap-limit-after.json。另有真实daily_signals的1194日资格链回放确认09-15开窗与缺分钟分支正常，其默认参数结果仅作辅助排除，不冒充实际用户参数的全历史账户结果（gap-live-input/result-before.json）。
+
+python -m pytest tests/test_gap_limit_execution.py tests/test_qualified_gap_entry.py tests/test_close_entry.py tests/test_streaming_backtest.py::test_daily_coordinator_publishes_fills_before_advancing_market -q --tb=short -p no:cacheprovider：授权定向执行32 passed/0.51s，证据.codex-runtime/gap-limit-targeted.txt；之后只补新测试类型标注，没有改变断言或执行逻辑。新增测试冻结真实价格、因子、初始10万资金、0.5%风险与费用，覆盖开关和交易限制。旧test_intraday_entry的_minute_scope替身签名既有失败未改且本轮未重复运行；不声称全Core通过。
+
+本轮保持开发修复范围，除启动时确认分支和已有改动外，未运行类型、格式、lint、构建、提交阶段Git检查、浏览器或完整账户回测，未提交推送/合并/主动重启。Core源码指纹参与结果缓存身份，开发服务监听源码重载；下一次回测重新计算，已有历史订单不改写。其他并发趋势/性能/强势门禁改动与此前未解决项全部保留；MONOREPO-330继续in-progress。提交阶段再执行必要门禁。
+
+2026-10-18 · MONOREPO-330 突破当棒强势门禁与低开拒绝
+
+2026-10-18 西点2026-07-16低开误买修复：全局突破当棒要求开盘不低于前收，并满足开盘严格高于昨日最高或现有中大阳标准（实体至少开盘2%、至少全天振幅一半）。折线末跌高的弱势影线突破不得永久解除买入限制；以后需当日再次严格突破且强势。日线正N及独立补充候选共用同一强势函数，仍保留原成交量、涨幅和资格门禁；一二三级和所有股票一致，不改几何、六态及交易区间。
+
+本轮静态读取冻结行情：西点7/15前收26.976394491570908，7/16开盘26.935019653393653，虽涨幅超过2%且放量，仍属低开；旧squeeze门禁和仅看影线的折线释放缺少这一条件。新增bullish_breakout_rejection供折线释放和全部V3日线买入候选复用，medium_bullish_body移至candle_strength且原导入路径保留；polyline记录前棒、弱突破原因与OHLC审计，profile版本v112。补真实冻结报价、异股票/价格尺度、低开大阳、严格跳空、等值、长下影、弱突破不释放/后续强再突破及历史拒绝不重写用例；原影线边界测试改用合格强棒，量基准测试改用合格形状以保留各自断言职责。依开发节奏未执行本次测试、回放、类型、lint、格式、构建、Git检查、浏览器或完整账户；待提交时验证，不沿用上一轮测试结论。保留并行资格跳空分钟/开盘执行改动，该路径原已要求严格跳空，不新增全天收盘过滤。未提交、合并、推送或主动重启；MONOREPO-330保持in-progress。
+
+待提交时执行最小回归：tests/test_breakout_candle_quality.py、tests/test_polyline_buy_gate.py、tests/test_squeeze_buy_quality.py、tests/test_v3_attack_quality.py及受影响的既有资格跳空用例；完整账户和浏览器仍按用户当次授权安排。
+
+2026-10-18 · MONOREPO-330 资格区间跳空直接买入（最终口径）
+
+2026-10-18用户收敛跳空买入规则：交易资格区间内，当日开盘严格高于昨日最高；有同源分钟数据时，已完成5分钟收盘高于开盘且此前未跌破开盘，用下一根分钟开盘执行；缺少分钟数据/覆盖时直接按当日开盘模拟，无需新N或另一次全天放量确认。用户明确接受资格确认日整天可买的回测假设，成交证据标记confirmation_day_full_session，不能宣传为开盘时已经知道资格。资格级别仍由原一/二/三级区间决定；沿用该区间低点止损、翻多高目标与账户资金/仓位/涨停/盈亏比约束。有分钟但不高开高走不退回开盘买。
+
+本次业务改动仅含intraday_entry.py公共资格跳空执行、streaming_backtest.py统一接入及trade_evidence.py成交条件说明，补充test_qualified_gap_entry.py；普通N分钟开关关闭仍可执行资格跳空。沿用原资格、止损目标及账户风控，不改趋势、策略配置或前端。
+
+python -m pytest tests/test_qualified_gap_entry.py tests/test_close_entry.py tests/test_streaming_backtest.py::test_daily_coordinator_publishes_fills_before_advancing_market -q --tb=short -p no:cacheprovider：2026-10-18提交阶段，以db3502d归档加本次3个业务文件及新测试组成隔离候选；最终23 passed/0.43s。真实1194日华瓷行情用例消费此前已发布并冻结的09-15资格，单日账户09:30按开盘成交，零滑点价格16.987131249638352。不代表本轮重算全历史趋势或账户回测；默认滑点和费用仍生效。证据.codex-runtime/gap-submit-20261018/tests-final.txt。
+
+python -m mypy --follow-imports=silent --no-incremental src/wavequant/application/analytics/intraday_entry.py src/wavequant/application/analytics/trade_evidence.py src/wavequant/interfaces/research_tools/streaming_backtest.py：隔离HEAD同范围与最终候选均为Success: no issues found in 3 source files。提交阶段补齐容器/函数类型及既有校验后的参数收窄，未改业务规则。证据同目录mypy-baseline.txt、mypy-final.txt。
+
+python -m build --no-isolation；独立安装检查：隔离候选成功构建wheel和sdist；新建独立venv安装wheel及声明的Windows tzdata依赖，python -I导入三个相关模块并检查新增入口参数和Asia/Shanghai时区成功。证据同目录build.txt、wheel-install.txt、wheel-smoke.txt。
+
+用户要求仅提交并推送当前feat-三级趋势统一；其他性能和趋势未提交修改保留，不纳入本次暂存，不合并main。MONOREPO-330仍in-progress。此前旧test_intraday_entry.py的3项替身签名不接受_minute_scope，已与HEAD原实现对照为相同失败，证据.codex-runtime/simple-gap-intraday-baseline.txt；本次未改旧断言。前序ordinary_trend_completion=True的连续H空min异常仍为独立未解决项。本轮未运行完整Core、全历史账户回测、浏览器/E2E；按Python规则未运行lint/格式工具，未重启服务。
+
+2026-10-18 · MONOREPO-330 西点二级翻向与深回调交易区间修复
+
+继续 feat-三级趋势统一，保留现有性能及其他未提交改动。用户明确授权本轮离线因果回放及相关定向回归，不包含浏览器、完整账户回测、类型或构建。既有冻结 xidian_2026_deep_squeeze.json 为1093根日线，2022-03-23至2026-09-21，四个报价与用户给出的关键位一致。
+
+根因对照：原实现二级交易区间为空；2025-08-01的临时翻多高在8月4日出现，但8月11日高点于8月12日替换它后，只生成“翻空观察失效”，未生成新的“翻空为多”。旧下跌未完成交替时，共用 _annotate 的失效分支直接清空 attack，吞掉了反向突破旧背景极值这一正式翻向。现于同一时点保留旧观察失效并产生新翻向，起点取旧攻击整段极值、key取旧背景冻结极值；要求真实点顺序及旧key在攻击日前已知，不借局部升级证书的较弱key。三级与多空镜像共用。另修正 confirm_bull_alternation 只取首个回调低点的缺口：首低破位后改用当前前缀整段最低正式低点接受原守低、深浅及再突破门禁，相等保早。只修首低选择仍不能恢复本实股区间，反向翻向事件缺失为直接主因。
+
+最终冻结行情：2024-02-08低15.339983→2025-08-11高38.057615于2025-08-12记录二级空翻多，key为2023-08-11高36.331540；2026-07-21低22.632036于2026-08-07由 body_gap_volume_bullish_breakout_after_defended_low 确认空多交替，当天开放二级交易区间。8月19日正N与轧空提供独立确认并替代缺口依据；既有直接来源空头退出规则于8月21日关闭窗口，8月25日六态另记转多确认，未改退出判定。此前回调产生的区间为2025-11-24至12月16日、2026-07-07至7月21日，均保留实际结束原因。不会把7月21日价格发生日回填为资格日。
+
+独立截止2026-08-07的完整因果计算，其全部二级事件和变化快照与完整历史截至同日部分逐项一致；截止当日最后区间开放，后续8月21日终点不提前泄露。修复前后所有二级几何变化的坐标、价格、available_at与wave_completed_at完全一致；三个级别只额外核对了末日冷算结构一致，不声称全历史三层几何比较。证据主目录 .codex-runtime/xidian-alternation-{before,after,final}.json、xidian-alternation-prefix-20260807.json、xidian-snapshot{,-final}.json、xidian-verification.json；after是仅首低修正的中间对照，final才是最终双修复。
+
+新增 test_trend_counter_extension.py 覆盖三级及多空镜像、触及不破、迟知key拒绝、旧低破位/新低未确认/深回调再突破、相等低保早、六态和检查点续接、旧缓存拒绝；实股用例固化8月12日与8月7日时钟。定向执行范围和结果见feature_list命令级证据；实股pytest入口未另行重复执行，同一生产入口已由完整及独立前缀诊断回放。相邻 test_recovery_alternation_confirmation 的N轧空及盘整缺口断言在本轮前后同样失败，未修改原断言或扩大交易规则。另一个国芳1492日全链路回归长时间未结束后主动中止，没有完成结论；其缩减背景及冻结key用例另行执行。以上不能写成全Core验证完成。
+
+生命周期v27与资格历史v149隔离旧结果。未运行浏览器、完整账户回测、lint、类型、格式、构建或本轮提交门禁；未提交、合并、推送或手动重启服务。MONOREPO-330保持in-progress，先前失败和未完成任务不覆盖。
+
+2026-10-18 · MONOREPO-330 华瓷九月跳空买入时钟待澄清
+
+用户提出2026-09-15确认资格后的跳空应开盘买入。本轮仅诊断，未修改买入或趋势规则，未提交推送。当前专属worktree另有本轮未写入的trend_cascade.py、chart_drawing_history.py、chart_entry_history.py改动，已询问是否有并发任务，保留不覆盖。隔离已提交db3502d源码，以既有huaci_2024_key_break上市前缀和huaci_wave_continuation冻结行情进行已授权离线资格回放（无账户回测）。默认ordinary_trend_completion=False时，2026-09-14一级/二级仍未确认交替、二级交易资格False；09-15通过body_gap_volume_bullish_breakout_after_defended_low确认，二级start_index1193，交替低点index1157/14.4440807408。资格证据用09-15收盘18.3255788859严格突破18.2586565040、全天量4584900大于前日2029500及阳实体，不能将这一收盘资格回填至09-15开盘16.9871312496。用户所指成交日需澄清为09-15或资格确认后下一交易日。另有待回复问题：已有资格跳空独立成买点，还是保留具体买点只修正执行时机；两者涉及现有结构止损/目标约束，尚未擅自放宽。
+
+ordinary_trend_completion=True的独立prepare_backtest_analysis回放在2024-09-26抛ValueError: min() iterable argument is empty，已在db3502d隔离副本复现。trend_levels._TrendReversalState.extend收到连续H（2024-01-24高23.5810后H14.5444），candidate12之后无L，tail_start6==len(lows)，不能以旧L冒充后续极值。此异常尚未修复。证据主目录.codex-runtime/gap-permission/{dates-False.json,days.json}、gap-dates-log.txt、gap-permission-log.txt、huaci-september-gap-before.txt及diagnose-gap-{permission,dates}.py。原始完整信号回放亦因上述异常中断，未取得09-15具体交易拒绝审计；不得宣称已定位全部漏买原因或完成修复。未运行浏览器、E2E、类型、构建或完整账户回测。下一步收到成交日/规则范围回复后，以开盘前已知资格与历史目标构造开盘分支，并保持资金、仓位、价格限制及前缀一致性。
+
+2026-10-18 · MONOREPO-330 折线及层级传播重复开销优化（待验证）
+
+继续 feat-三级趋势统一。静态阅读确认翻向索引只覆盖状态推进，外围仍重复进行全路径峰谷投影、逐点匹配全部升级证明、无结构变化日整树签名和最近两日的全历史深复制。当前进度文案“计算折线及变化触发的各级趋势、六态”包含整条同步链，不能把该阶段的耗时全部归于K线转折线，也不能把旧版本profile当成本轮测量。
+
+实现：trend_lines 的 _OwnedPolylineTurns 仅在讲义尾点替换/追加协议内重投影旧尾日期组及其左邻；同日计数、等值保早、可知日与批量入口共用同一峰谷函数。chart_drawing_history 复用关闭路径投影，并为最近两天只冻结可变列表；公开输入/读取仍隔离嵌套值。PolylineLifecycleSource 仅阶段私有调用启用尾部投影，外部入口保留全量路径及校验。trend_cascade 以路径/端点索引匹配升级证明，以父路径表替代反复扫描；保留证明顺序、起点存在性、首个同名父路径及原收敛规则。chart_entry_history 在没有新结构版本时跳过整树编码，行情/六态仍每天推进。
+
+新增 tests/test_causal_projection_cost.py：旧证明匹配实现差分、来源与证明访问量线性预算、尾部三点判别访问量预算、逐日冷投影和六态对照、同日多点/等价/确认/尾点修订/回退/断路及近期快照公开隔离。只编写用例，未执行测试、类型、构建、格式、浏览器或运行探针；没有本轮速度数字及全账户等价结论。策略阈值、升级许可、翻转/交替时钟、买卖条件未调整。
+
+复杂度边界：尾部投影判别按实际变化后缀工作，完整列表交付仍为O(输出点数)；单轮证明连接从点数×证明数降为点数＋证明数＋匹配输出。_SourceVersionOwner 入场认证、变化日的几何标注/序列化仍可能随完整历史增长，不能宣称系统已完全增量化。提交阶段需运行新增用例与折线/升级/前缀/缓存回归，同源冻结行情按500/1000/2000棒分段profile并比较完整结构、六态、资格、信号和账户结果。MONOREPO-330保持in-progress，前序失败不覆盖；未提交、合并、推送或重启服务。
+
+2026-10-18 · MONOREPO-330 升级豁免与回测修复提交验证
+
+2026-10-18用户要求提交并推送feat-三级趋势统一。本轮提交包含已升级波段的有限下级豁免、共同层级调度及华瓷严格闭合顺序异常修复。提交检查仅修正trend_cascade局部变量名复用、chart_entry_history可空结果类型标注和测试未使用导入，不改变业务判定或断言。Core .venv pytest tests/test_trend_level_upgrades.py tests/test_local_trend_definition.py tests/test_formal_key_attacks.py -q --tb=short -p no:cacheprovider：143 passed、6 failed（162.34秒）。隔离HEAD 7097c00同一strict_known_key_break用例仍为相同6失败，预期2026-01-14而实际2026-01-16，既有差异不顺带修改。11个变更模块mypy --follow-imports=silent --no-incremental初检20条错误，消除本次新增4条诊断后剩余16条；与隔离HEAD的9个原有模块错误正文逐项一致，新模块无剩余类型错误。python -m build --no-isolation成功；独立venv安装最终wheel及声明的Windows tzdata依赖后，-I导入新调度/趋势入口/历史版本冒烟成功。第一次--no-deps安装缺tzdata导致导入失败，补齐pyproject已声明依赖后恢复，不涉及项目依赖变更。git diff --check通过。证据主目录.codex-runtime/promotion-submit-{tests,tests-baseline,mypy-final,mypy-baseline,build-final,wheel-smoke}.txt。未执行浏览器/E2E或完整账户回测。按用户要求提交推送特性分支；既有测试与类型门禁失败，故不合并main，MONOREPO-330保留in-progress。
+
+2026-10-18 · MONOREPO-330 华瓷回测严格闭合顺序异常
+
+2026-10-18华瓷回测ValueError修复：日志定位到strict completion must retain key-origin-attack source order。在原有huaci_wave_continuation行情（2021-11-16至2026-09-21）启用ordinary_trend_completion后，以修复前advance逻辑内存对照复现同一异常；非法二级闭合证据将2023-07-31 key用于关闭2022-05-24 origin，attack为2024-01-24。共同_TrendUpgradeState对新增严格闭合同时要求key<origin<attack和原跨价条件；同向延伸保留原起点与正式攻击端点，但不补造顺序非法的起点闭合；反向缺失合法旧key时保留旧整波，不能用局部key替代。资格校验未放宽，不吞ValueError，不修改用户参数；历史缓存升为source_causal_strict_origin_order_v148。
+
+沿用用户此前明确授权的离线回放和定向回归。本轮新增三级、多空、日期/整数时钟及同向/反向24个边界用例，修复前全部复现相同异常；修复后Core .venv执行pytest tests/test_trend_level_upgrades.py tests/test_local_trend_definition.py tests/test_formal_key_attacks.py -q --tb=short：141 passed、6 failed（156.96秒）。6个失败均为既有test_strict_known_key_break_promotes_whole_wave_without_a_later_holding_turn，预期2026-01-14而实际2026-01-16，与既存huaci-baseline-tests.txt相同，保留原断言。新增实股普通完成开/关、直接与回测缓存资格对照：pytest tests/test_formal_key_attacks.py -q -k huaci_ordinary_completion --tb=short，2 passed（5.06秒）；修复前开选项复现原异常，修复后两种选项均完成资格发布。本轮包含华瓷二级破低/破高及前缀对照，没有据此宣称完整账户回测成功。修复后diagnose-huaci-failure.py --full --shared离线逐日回放完成1198根行情（2021-10-19至2026-09-21），绑定真实回测共享层级、闭合投影与资格缓存，未再抛异常；证据huaci-failure-full-after.txt，未执行账户交易及浏览器。证据在主目录.codex-runtime/{strict-order-before,strict-order-after,huaci-window-before,huaci-window-after,huaci-permission-regression}.txt。未运行浏览器/E2E、完整账户回测、类型、构建、格式或Git检查；未提交、合并、推送或手动重启服务。MONOREPO-330保持in-progress。
+
+2026-10-18 · MONOREPO-330 仅已升级波段豁免旧关键位
+
+2026-10-18用户进一步限定：只有末跌高→低点或末升低→高点实际由一级升二/三级、二级升三级后，下级后续独立两高两低才可豁免被升级段旧key；普通未升级趋势不得全局放宽。此规则覆盖上一条无升级证明即可独立确认的实现。新增trend_promotion_scope校验实际严格升级、目标层级、同源路径、真实起止坐标及可知日；_TrendUpgradeState只在升级段范围内允许local_definition，突破任一边界后旧证明不复活。结束证据保留higher_trend_promotion并再次校验；下级豁免元数据在生成上级新点时清除，不继承为上级许可。
+
+共用trend_cascade先取得真实升级证明，再以新增证明版本重新判断受影响层级；相同来源/证明版本本轮复用，收敛后才发布逐日六态/历史，原上级关键位保持独立。全层图表、市场数据/TDX/Akshare入口与逐日行情流接入共同调度。回归覆盖1→2、1→3、2→3及多空/时钟镜像、无升级不豁免、单边/相等不确认、异路径/发展点/未来证明拒绝、闭合证据不得删除升级依据；华瓷实股与前缀/缓存对照使用共同调度。历史缓存v147。
+
+本轮按开发规则仅阅读、编辑和编写回归，未执行测试、运行探针、类型、构建、格式或浏览器验证；没有实际日期、收敛性能或全套一致性验证结论，不能沿用前一提交的通过记录。提交阶段需验证新增test_local_trend_definition.py、test_formal_key_attacks.py及受影响缓存/阶段/六态回归，重点核对华瓷一级后续确认与二级旧高突破时间、路径回退和性能。未提交、推送或重启服务；MONOREPO-330保持in-progress，既有失败保留。
+
+2026-10-18 · MONOREPO-330 本级普通趋势独立确认
+
+2026-10-18用户明确补充：2024-01-24→2024-02-08升级二级后，后续一级高点抬高＋低点抬高即可确认上涨，直到突破二级末跌高才形成二级翻向。共用整波状态区分本级独立四点结构与旧关键位严格突破：已建立整波极值起向右的完整反向四点可以结束本级波，不再被极值左侧旧key锁住；四点跨旧波时维持原门禁。规则不依赖股票、日期或级别，不回传上级未来知识；直接下级来源与组合波拓扑仍校验，六态冻结key不由普通结构替换。新增local_definition_boundary证据并校验四点边界；历史缓存v146。本轮仅代码阅读、编辑和回归编写，实际华瓷日期、三级多空镜像、前缀/缓存及原严格突破回归待提交阶段验证；未运行测试、类型、构建或浏览器，未提交推送。
+
+2026-10-18 · MONOREPO-330 华瓷修复提交验证
+
+2026-10-18华瓷提交验证：用户要求提交并推送feat-三级趋势统一。移除本轮两处冗余cast后，Core .venv执行pytest tests/test_formal_key_attacks.py -q --tb=short -p no:cacheprovider：41 passed/29.67s。11个变更模块mypy --follow-imports=silent --no-incremental报告17处错误，与隔离HEAD 2e2cbf1同配置的错误正文逐项一致，无新增；既有扩展回归失败继续保留。python -m build --no-isolation成功，git diff --check通过。证据主目录.codex-runtime/huaci-submit-{tests,mypy,baseline-mypy,build}.txt。本轮未运行浏览器/E2E或完整账户回测；按用户要求提交推送特性分支，因既有门禁失败不合并main，330保持in-progress。
+
+2026-10-18 · MONOREPO-330 华瓷双向严格升级与二级空翻多
+
+继续 feat-三级趋势统一，独立 worktree C:/Users/zb/.codex/worktrees/three-level-trend/wavequant-monorepo。共用趋势核心新增正式严格攻击来源：具有完整严格升级证明的下级端点按自身可知日攻击本级旧关键位，普通四点路线仍须下级整波结束；不将开放端点伪造为已结束，不接受发展/显示尾点。直接层级、真实坐标、方向、严格价差与知识链统一校验。缓存优化入口、二/三级、分阶段及逐日入口使用同一规则。稀疏本级六态从实际存在的严格起点和旧关键位取得背景，并识别反向攻击上一翻向起点；已有有效冻结上下文不被局部攻击替换。
+
+华瓷真实逐日结果：2024-01-24高23.581034907277935至2024-02-08低10.194964125114888，严格跌破2022-04-27低10.88，2024-02-19产生二级下降/翻空。此低点至2025-11-24高26.835505065126593严格突破2024-01-24二级高点；首次二级空翻多高点为2025-11-19，于11-20可知，11-24新高于11-25延伸。没有把发生日当可知日。独立截止日重算与逐日缓存快照对照覆盖关键前后日期。
+
+新增 tests/test_formal_key_attacks.py 与 fixtures/huaci_2024_key_break.json；冻结1022日行情来自仓库原有两份华瓷fixture，2021-11-16起仅取huaci_wave_continuation，之前补上市前缀，不混接重叠价格。覆盖二/三级、多空镜像、相等不破、开放严格端点、完成日期不提前、未来/伪造证明拒绝、只读输入、缓存和阶段投影。六态版本six_state_strict_key_background_v26，历史版本source_causal_formal_key_attacks_v145。
+
+2026-10-18用户明确授权离线回放和定向回归。Core .venv pytest tests/test_formal_key_attacks.py tests/test_trend_unanchored_boundary.py tests/test_trend_missing_initial_key.py tests/test_lifecycle_frozen_context.py tests/test_trend_rebound_without_flip.py -q --tb=short -p no:cacheprovider：156 passed/168.85s，包含华瓷完整逐日回放、独立前缀与缓存对照。扩展升级组27 failed/104 passed，隔离HEAD 2e2cbf1同27失败；扩展边界组103 failed/153 passed，隔离HEAD原四文件同103失败，不能宣称所有回归通过。新正式开放端点规则替换旧一组拒绝断言，发展/显示尾端仍拒绝。证据主目录.codex-runtime/huaci-{final-tests.txt,causal-key-break.json,related-tests.txt,baseline-tests.txt,boundary-final.txt}。未运行lint/类型/构建/格式、浏览器/E2E或完整账户回测；未提交、合并、推送、重启服务，330保持in-progress。
+
+2026-10-18 · MONOREPO-330 新华传媒修复提交验证
+
+用户要求提交并推送feat-三级趋势统一，本轮仅复核和记录，未追加业务改动。Core .venv执行pytest tests/test_trend_unanchored_boundary.py tests/test_trading_intervals.py -q --tb=short -p no:cacheprovider：59 passed/1 failed/72.22秒。失败为test_no_selected_interval_skips_policy_scan旧调用次数断言，前一轮已在4c70014隔离源码复现，不修改断言。六个变更模块mypy --follow-imports=silent --no-incremental报告24处错误；同配置隔离4c70014源码同24处，错误正文无新增。日志位于主目录.codex-runtime/submit-xinhua-20261018/{current,baseline}-mypy.txt。首次沙箱执行类型/打包遇到权限错误，正常权限重试后sdist/wheel构建成功，git diff --check通过。
+
+门禁并非全部通过，MONOREPO-330保留in-progress及既有失败。按用户要求提交推送特性分支，不合并main，不重启服务，无浏览器/E2E或完整账户回测。
+
+2026-10-18 · MONOREPO-330 新华传媒交替低点漏识别修复
+
+继续 feat-三级趋势统一，worktree C:/Users/zb/.codex/worktrees/three-level-trend/wavequant-monorepo。用户明确授权本轮离线诊断及定向回归，不含浏览器。本地 xinhua-research-captured.json 的2018-01-02至2026-09-30共2113日冻结行情，2021-05-17、2023-05-16、2024-02-08的复权OHLCV与用户输入吻合。
+
+三个公共断点：一、lecture_trend初始空头背景错误地一直占用无前驱的2018-10-19路径首低，导致后续末跌高、翻多及资格均为空；新增_initial_context_key，仅在极值为无前驱首端时排除该首点，从其后全部已知结构取得背景，不替换已有有效冻结关键位。二、2024-01-23跌破较早交替回调低点时，TrendLifecycle._price清除了仍守住2022-10-28起点的整个翻多周期；现在保留有效翻向依据，清除已失效回调证明，重新等待共同确认。原起点破位仍失效，普通及特殊、多空镜像共用；confirm_bull_alternation拒绝已经被行情跌破的旧同级低点，防止重复复活。三、merge_recovery_entry_history只消费资格首次开窗，遗漏同一开放区间内的新交替；现在通过confirmed_alternation_event复用资格事实门禁，更新同周期当前日起的策略上下文，历史记录及区间起止不回写。
+
+真实因果回放：2021-05-17末跌高6.4940278055852385，2022-10-28翻多起点3.3510821788171428，2023-05-16翻多高6.803100567839622于2023-05-30可知；2024-02-08交替低点3.532767357186747于2024-03-20按positive_n_and_squeeze_after_qualified_b确认，N攻击日2024-03-13。策略上下文同日消费02-08低点，03-19无该上下文；Node纯函数图表投影同样显示02-08低点/03-20可知，不启动浏览器、不用显示补丁。
+
+资格规则保持原契约：2023-08-22开窗，2023-09-14缺口回补关闭；2023-11-21再次开窗，完整冻结行情截至2026-09-30仍开放。较早局部回调防线破位不等于本级资格自动关闭，不能为迎合02-08日期改写成新窗口。2024-10-30严格收盘突破产生转多确认。原2024-04-30前缀与延伸完整历史的全部保存事件及二级结构快照一致；修改前后二级几何、节点自身可知/完成日期一致，不宣称三级逐日全量哈希或完整账户验收。
+
+本轮授权验证：最终初始化/生命周期五文件153 passed/133.50s；随后消费端补修的新用例和资格回归59 passed/1 deselected/63.71s，包含真实K线至三级/六态/资格/策略上下文链。扩展组107 passed/5 failed；隔离4c70014修改前源码按明确PYTHONPATH复现全部5项同错误（一次调用旧断言、三种级别N轧空和盘整跳空旧fixture），未改旧断言或无关业务。被排除的一项就是已单独复现的调用次数失败；不能宣称全套门禁通过。完整2113日趋势与资格回放122.30秒，仅用于功能确认，不是完整账户性能数据。
+
+版本：six_state_anchored_background_bootstrap_v25 / source_causal_anchored_background_bootstrap_v144，旧结果不复用。新增tests/test_trend_unanchored_boundary.py和fixtures/xinhua_2024_alternation.json覆盖三级、多空镜像、严格突破、知识日、起点失效、检查点、旧低点拒绝、开放区间消费及实股因果链。证据位于主目录.codex-runtime/diagnose-xinhua-alternation-20261018.py、xinhua-alternation-{before,after,final,full}-20261018.json、xinhua-alternation-baseline-src。开发阶段未运行lint/类型/格式/构建、浏览器/E2E或完整账户回测，未提交、合并、推送或重启服务；MONOREPO-330保持in-progress，前序失败保留。
+
+2026-10-18 · MONOREPO-330 放量阴线与折线买入限制提交验证
+
+用户要求提交并推送feat-三级趋势统一。本轮仅复核和记录，没有追加业务规则改动。Core .venv执行pytest tests/test_two_t_volume_bearish.py tests/test_polyline_buy_gate.py tests/test_body_volume_clear.py tests/test_squeeze_buy_quality.py -q --tb=short -p no:cacheprovider：59 passed/0.55秒。python -m build --no-isolation成功生成sdist/wheel；git diff --check通过。
+
+mypy --follow-imports=silent检查volume_candle、polyline_lifecycle、two_t_resistance、wave_exhaustion_exit、integrated_strategy共5模块，报告27处错误（polyline_lifecycle原校验2处、integrated_strategy25处）。HEAD 1ee6c62隔离归档中同配置检查已有4模块，复现同样27错误，本轮无新增类型错误但整体门禁未通过。基线日志位于主目录.codex-runtime/submit-rules-20261018/baseline-mypy.txt，构建日志submit-rules-20261018-build.txt。未修改既有类型问题或放宽断言。
+
+国芳2024-09-24正N至2024-10-08二吐的真实测幅、2025-01-09至2025-03-17实际折线关键位完整回放仍待验证；新增真实K线用例显式注入目标，仅证明消费规则，不能代替全链结果。未运行浏览器/E2E或完整套件。按用户要求提交推送特性分支，不合并main；MONOREPO-330保持in-progress，前序失败和未验证项保留。
+
+2026-10-18 · MONOREPO-330 折线末跌高突破前禁止买入（待提交验证）
+
+继续feat-三级趋势统一，保留前序未提交放量阴线及二吐规则。用户指出国芳2025-01-09折线末跌高需至2025-03-17突破后才可找买点。按其最高价7.05突破7.02而收盘6.87未越过的口径，突破采用high严格大于key，不要求收盘站上，触及不算。突破仅解除限制，之后仍过买入K线、量能、资格及卖出优先规则。
+
+新增polyline_lifecycle.PolylineBuyGate，直接复用_PolylineStructure的确认折线末跌高判定，不另建趋势公式。消费既有ReversalPoint与其确认日；增量续接，源修订重建，epoch切换隔离。关键位与空头锚点都需早于突破日已知；未突破日记录key索引/价格/可知日。局部反弹不会自动放行；正常新低对末跌高的更新沿现有共享定义。已经真实突破的同一身份不因后来回落重新上锁。策略DailySignalState保留门禁，资格重开不遗忘；补齐空档市场状态而不补发交易。evaluate_buy在所有主/补充候选之前统一阻止，收盘观察不会倒推当天早盘许可，profile规则身份更新缓存。
+
+新增test_polyline_buy_gate.py：严格突破与触及、影线突破但收盘未越位、局部反弹、迟知锚点、源修订、分段及历史拒绝记录不改写。未运行测试/实股回放/类型/lint/格式/构建/Git检查/浏览器，遵循开发阶段规则。国芳真实1月9日至3月17日的完整折线关键位身份与解除日期待提交验证，不以示例或新增源码宣称已复现。CodeGraph explore仍unable to open database file，使用源码检索。未提交合并推送或重启服务；MONOREPO-330保持in-progress，前序失败及待验证项保留。
+
+2026-10-17 · MONOREPO-330 全局放量阴线与二吐卖出（待提交验证）
+
+继续feat-三级趋势统一，前序1ee6c62已提交推送，本轮是新增未提交开发。新增market_state.volume_candle.is_volume_bearish：close < open且成交量大于昨日正值量或最近阴线正值量，要求同股票和历史日期；调用方维护最近阴线，逐日路径不扫描旧K线。反包清仓、二吐抵抗后双破清仓、十满放量阴线复用定义。保留各自价格/目标条件，其他带明确倍数的专用规则不擅自改阈值。
+
+原二吐路径偏重长上影、宽幅反转/大实体及反包，遗漏高开但实体向下的小阴线。TwoTResistanceHistory新增已到二吐且有效期间的放量阴线减仓，含目标到达当天，不受旧两日上影观察窗口限制；支持projection_ready和明确二吐target_reached事件。独立形态使用wave_two_t_volume_bearish_reduce、配置累计减仓比例；原全仓退出仍优先。策略已有共享风险阻止买点；账户同日收盘信号入口同时拦截新买和加仓，减仓记入wave_reduced，T+1/成交限制保留，不改趋势资格。持仓目标观察也消费共用函数；profile包含新定义以区分缓存。
+
+冻结国芳2024-10-08开6.7212274829、收6.5163120109、量43775910，前日量35545935，日涨约5.07%不影响阴线身份。新增test_two_t_volume_bearish.py：量能二选一/严格等量/零量、十字阳线拒绝、二吐当天、未来与失效拒绝、批量逐日一致、账户减仓与禁买。实股K线用例显式注入已知二吐目标以隔离消费路径，没有声称真实2024-09-24正N完整测幅已重跑。依开发规则未运行测试、回放、类型、lint、格式、构建、Git检查或浏览器，全部待提交验证；未提交推送或重启服务。CodeGraph仍报unable to open database file，继续源码检索。MONOREPO-330保持in-progress，前序已知失败保留。
+
+2026-10-17 · MONOREPO-330 趋势与交易规则提交验证
+
+用户明确要求提交并推送feat-三级趋势统一。本次提交覆盖普通升降整波结束默认关闭选项及Web/API/contracts传递、缺失初始关键位重建、独立实体反包放量清仓、轧空买入价格门槛和候选正N突破前量二选一。未改变既有失败相关业务逻辑。
+
+Core定向pytest：test_body_volume_clear.py、test_squeeze_buy_quality.py、test_trend_missing_initial_key.py、test_trend_rebound_without_flip.py、test_lifecycle_frozen_context.py，116 passed/71.37秒，含真实国芳三级因果回归。API首次用系统Python收集因缺redis失败，改用项目现有API .venv后test_ordinary_trend_option.py为2 passed/4 subtests。Web两文件node测试首次2项fixture遗漏已有buy_interval_level默认值，补齐明确默认2并保留deepEqual完整断言后10项通过；无产品逻辑变更。pnpm --filter @repo/contracts build、pnpm --filter wavequant-web typecheck成功；Web lint为0错误/6项环境变量警告。Core python -m build --no-isolation成功生成sdist/wheel，git diff --check无错误。
+
+定向mypy --follow-imports=silent检查attack_quality、two_t_resistance、daily_risk_histories、integrated_strategy、trend_options、trend_level_upgrades、lecture_trend共7文件，integrated_strategy仍有25处类型错误。将HEAD 6258955源码隔离归档至主目录.codex-runtime/submit-trend-rules-20261017/baseline，同配置检查已有6文件复现同样25处错误，未新增类型错误但门禁未全通过。保留此前生命周期相邻测试失败记录，本轮不重复当作已通过。不合并main；按用户指令提交并推送特性分支。未运行Web完整构建、浏览器/E2E或完整测试套件，未重启服务。MONOREPO-330保持in-progress。
+
+2026-10-17 · MONOREPO-330 轧空量能二选一（待提交验证）
+
+继续feat-三级趋势统一。用户将轧空放量改为大于昨天量或大于形成正N突破前的量；实现以当前候选attack前一根K线为第二基准，必须严格大于正值、历史已知基准。共用squeeze_volume_pass与squeeze_buy_rejection支持候选前N量；evaluate_buy从全日预先拒绝改为逐候选判断，候选之间不共享放行。record_squeeze、attack_bar_squeeze和后续可选量能过滤同步复用结果；涨幅严格大于2%、实体不小于上影或开盘高于昨日最高价的价格条件不变。无正N关联的独立补充买点只比较昨天量，不借其他候选。轧空识别和交易资格不修改。
+
+成功/拒绝审计记录候选attack、pre_n_date/pre_n_volume，成功证据另记录两个比较分支，rvol仍明确为当日/昨天的比值，不能用rvol小于1否认已通过的第二分支。策略profile更新规则身份。新增定向测试源码覆盖两条价格路线与量能二选一、相等/零量/未来参考拒绝、候选隔离和量能不能绕过实体；未运行。依开发规则未测试、回放、lint、类型、格式、构建、Git检查或浏览器，待提交时验证。CodeGraph explore失败unable to open database file后用源码检索；未提交合并推送，MONOREPO-330保持in-progress。
+
+2026-10-17 · MONOREPO-330 轧空与买入K线门槛分离（待提交验证）
+
+继续feat-三级趋势统一。用户指出2024-02-27可为轧空但不满足买入。新增squeeze_buy_rejection：成交量严格大于前一交易日正值成交量为共同必需条件；路径一为收盘较前收涨幅严格大于2%、阳线实体不小于上影；路径二为开盘严格高于前日最高价，不附加第一条的实体条件。Fraction按报价比较边界。全波策略evaluate_buy共用入口强制门控，覆盖主候选与补充买点，不受可选volume_filter或strict_n_attack_quality绕过；拒绝事件保留当日和前日量价。不修改轧空识别、生命周期、资格或卖出判断。
+
+静态冻结样本2024-02-27：实体0.2743024625、上影0.3134885286；开盘5.6819795812低于前日最高5.8909719336，成交量24000987大于17074900，涨幅约3.87%。因此两条买入路径均不成立；这不否定前序2024-02-27资格确认。策略profile新增规则身份，既有源码指纹缓存同步变化。
+
+新增test_squeeze_buy_quality.py覆盖真实行情、涨幅等于2%拒绝、实体等于上影允许、量能相等/不足拒绝、跳空严格边界和缺少量能参考。未运行本轮测试或真实回放，未运行lint/类型/格式/构建/Git检查/浏览器；待提交时验证，不能沿用前序通过结果。CodeGraph explore报unable to open database file后继续源码检索。未提交合并推送。MONOREPO-330保持in-progress，既有失败与未验证项保留。
+
+2026-10-17 · MONOREPO-330 独立阴线实体反包清仓（待提交验证）
+
+继续 feat-三级趋势统一。现有_body_volume_reversal已支持实体覆盖且至少一端严格、前日量或最近阴线量二选一，但此前仅在有效正N已经到达二吐目标后产生全退。新增HoldingResistanceHistory复用该判定，独立生成bearish_body_volume_clear；保留既有二吐专属入口，策略/账户的批量与逐日生产入口统一消费扩展风险。无目标也可全退，全退优先减仓，收盘执行并禁止同日重入；交易资格门控、全波风险开关、T+1与成交权限不改变，不关闭趋势资格。窗口开始仅读取此前最近阴线作为量能基准，不补发窗口外风险；缓存沿既有全包源码指纹和新增策略profile规则身份失效。
+
+静态读取guofang_2025_five_top_low_open.json：2025-01-03开盘8.46983951100258等于前日收盘，收盘7.827771031942707低于前日开盘7.855093094881425；成交量77049749高于前日61793000及最近阴线2024-12-30的57477873，原始收盘5.73。没有运行本轮实股回放，不能宣称实际持仓订单已验证。
+
+新增test_body_volume_clear.py，覆盖无目标、量能严格二选一、无前阴、零量、十字、实体边界、资格窗口、冻结实股及账户清仓/禁止再入。开发阶段未运行测试、回放、lint、类型、格式、构建、Git检查或浏览器；待提交时执行相关验证。CodeGraph explore失败unable to open database file，已用源码检索继续。未提交、合并、推送或服务重启；MONOREPO-330保持in-progress，前序失败与未验证项保留。
+
+2026-10-17 · MONOREPO-330 国芳2024二级资格漏识别修复（已授权定向验证）
+
+继续 feat-三级趋势统一，保留前序未提交修改。根因是 lecture_trend._annotate 初始背景引用整窗首点极值，缺少左侧关键位，却持续按旧方向寻找前驱；后续已成立空头背景不能初始化，导致几何存在而生命周期翻向事实全部缺失。仅在 key 缺失时允许已成立方向重新取得完整上下文；有效关键位继续冻结。三级与多空镜像共享此逻辑，普通升降整波结束选项保持默认关闭。生命周期缓存升级v24，资格历史缓存升级v143，拒绝复用旧结果。
+
+冻结国芳行情完整因果回放：修复前没有二级资格，修复后2023-08-01高点于2023-10-24确认翻多，冻结2020-08-14末跌高与2021-02-08起点；2024-02-08为交替低点，2024-02-27通过positive_n_and_squeeze_after_qualified_b开放资格，至回放截止2024-04-22仍有效。不得将该结果外推到截止日之后。四个采样日三级几何、available_at与wave_completed_at一致，仅为采样比较，不声称全日几何哈希对照。旧版本2024-03-15记录不能替代当前完整链路确认日；显式结构fixture回归按其自带可知时钟仍在3月15日确认。
+
+用户明确授权本轮离线回放和相关定向验证。最终命令（Core目录，PYTHONPATH=src）：python -m pytest tests/test_trend_missing_initial_key.py tests/test_lifecycle_frozen_context.py tests/test_trend_rebound_without_flip.py -q --tb=short -p no:cacheprovider，77 passed/65.22秒，包含真实行情从K线逐日构建三级的回归。此前扩展五文件组合120 passed/18 failed；进程内恢复修改前_annotate并重跑frozen_bull_origin和lifecycle_impulse_defense，18项同样失败，另44 passed，证明这18项不是本轮初始化修复引入，未修改旧断言。显式结构named_flip定向回归9 passed。未运行lint、类型、格式、构建、浏览器或E2E，未提交、合并、推送或重启服务。
+
+证据：主目录 .codex-runtime/diagnose_guofang_qualification.py、guofang-qualification-before-20261017.json、guofang-qualification-after-20261017.json。MONOREPO-330保持in-progress；相邻既有失败、新华传媒真实两段样本和前端选项链待后续验证，不宣称全部门禁通过。以下保留前序记录。
+
+2026-10-17 · MONOREPO-330 普通升降整波结束选项（待提交验证）
+
+默认不以局部 HH/HL 或 LL/LH 单独授予整波结束身份，普通翻向必须严格突破整波极值左侧、攻击日前已知的反向关键位；普通升降先结束整波作为 ordinary_trend_completion_enabled 显式选项，默认 false，三级共享。保留特殊/严格突破路径及直接下级已结束来源门禁；结构点日期不替代结束确认日或交易资格日。新增翻向关键位证明校验，冷算/追加状态和判断缓存按选项隔离；同步策略入口用请求作用域，进程阶段显式传参。新增多空镜像、三级、相等/未破/迟知关键位、选项开启与关闭、缓存切换和嵌套作用域回归源码，未运行。
+
+本轮按开发规则只阅读、编辑与记录，未运行测试、lint、类型、格式、构建、运行探针或浏览器；未提交/合并/推送。新华传媒2020-11-05至2020-11-23升级与2021-12-09所在资格区间的真实行情回放仍待提交时验证，不能以本轮代码修改宣称样本已验证。MONOREPO-330保持in-progress，既有失败记录保留。
+
+2026-10-17 · MONOREPO-330 提交与推送检查记录
+
+用户明确要求提交并推送 feat-三级趋势统一。首轮16文件pytest为562通过、8失败、23临时目录权限错误；三个文件提权重跑为36通过、2失败，已排除权限错误。82d17af归档隔离对照为67通过、7失败，当前8项失败中7项为基线问题；新增共享许可复用用例失败：测试强制无资格日可买入并禁止完整附件回退，与按需附件行为冲突，保留未解决项且不改断言。类型标注修正后三个直接相关文件重跑为65通过、2项基线失败。mypy针对15个变更源码及新增测试报38处/6文件错误，基线39处，归一化对照无新增错误。构建sdist/wheel成功，git diff --check无空白错误。
+
+仅补全Generator、数值窄化与测试容器类型，没有改动功能或交易结果。检查未全部通过，因此不合并main；按用户指令提交推送特性分支。MONOREPO-330继续in-progress，两分钟目标未达到。日志和基线归档位于主仓.codex-runtime/submit-prefix-20261017；具体命令见feature_list.json及日志。430.587秒为下文冻结功能版本实测，本次类型标注后未重跑完整性能；没有浏览器E2E、lint或格式化。
+
+2026-10-17 · MONOREPO-330 趋势660秒续修及完整差分
+
+继续feat-三级趋势统一。沿用用户授权，完成768日前缀cProfile定位和三轮同输入2120日生产流式回测（24步证据全部持久化、串行离线）。完整计算662.017→544.054→488.319→430.587秒，最终趋势393.3秒、买卖规则33.9秒；本次续修墙钟减少35.0%、趋势减少36.5%。相对原始82d17aff的930.356秒，整批减少53.7%。最后一版CPU404.234秒、计算峰值RSS225,579,008字节。
+
+翻向索引之外仍有重复工作：取消闭合门禁为命中缓存而编码整棵证明；合并候选准入认证、只读借用证据；内存预算尾部恢复采用保守上界、满额缓存提前拒绝；派生注解按实际标量和知识映射复用，引用恢复一次。步骤编码改成自包含块内完整点引用，保留旧格式读取及独立公开还原；最终步骤编码21.667秒、写入30.236秒、SQLite84,656,128字节，原版为77.324秒、54.192秒和250,560,512字节。关闭N时跳过无效下级许可点适配，无买入资格日期仅生成层级历史所需资格；结束日/旧日确需交易附件时按原日期补齐，N开启保留完整路径。
+
+最终research、account、分钟来源和24步全部行规范JSON哈希与662秒版及原始基线一致，信号/审计/订单/成交均保留。源码f37a04c3与冻结版本逐文件相同；所有诊断进程已结束。Web3004/API8766已加载改动，页面刷新及健康读取正常。详情、命令和边界见docs/backtest-performance.md及feature_list.json，诊断位于主仓.codex-runtime/perf-prefix-20261017。
+
+剩余热点是临时历史压缩写入、对象图预算核算及逐日资格发布，后段尚有规模成本，未达到两分钟目标，330保持in-progress。新增边界用例仅编写，未运行pytest/lint/类型/格式/构建/E2E；未提交、合并或推送。以下为前序阶段记录，不能代替本段最新实测。
+
+2026-10-17 · MONOREPO-330 授权采样、完整回测与历史补读修复
+
+用户明确授权本轮性能采样和完整回测，并要求重启页面与服务。feat-三级趋势统一 的 Web3004/API8766 已恢复并重新加载页面。固定先锋2120日、原参数、真实同源分钟缓存，串行离线执行生产流式回测和24步证据记录。实测发现资格缺口补算先解码三级历史再判资格、六态状态顺序恢复，首轮1861日至1867日出现约131秒进度空档。改为趋势按需要的日期二分定位、同日共享许可直接消费，六态事件仍逐日推进，仅在确需状态时读取检查点；没有裁掉历史或改交易规则。
+
+修改前82d17aff完整930.356秒/CPU891.516秒，第一轮索引优化版849.151秒/CPU801.953秒，加入历史读取修复后662.017秒/CPU623.719秒；整批改动墙钟减少28.8%，单独历史读取修复减少22.0%。三版完整research、account、分钟来源、24步全部行哈希一致，包含31信号、1296审计、25订单、8交易。历史读取修复前后买卖规则阶段229.0→40.1秒，折线趋势约620秒没有降低。当前源码与最终验证的冻结源码逐文件相同，页面再次刷新及服务健康检查正常。证据和适用范围见docs/backtest-performance.md；仍有候选资格、全文证据认证及序列化成本，330保持in-progress，不宣称彻底解决或两分钟达标。
+
+新增日期读取边界回归仅编写；本轮没有pytest、lint、类型、格式、构建或浏览器E2E，没有提交/合并/推送。普通门禁待提交时验证。
+
+2026-10-17 · MONOREPO-330 先锋后段回测历史成本续修（待验证）
+
+继续 feat-三级趋势统一，保留启动时 trend_lines.py / hierarchy_stream.py 的未提交修改。用户报告先锋新材1090/2120日约2分钟、1555/2120日约8分钟；源码确认最后翻向索引没有覆盖历史确认前缀分配、命名事件行情回扫、证据解码和检查点选择。没有本次任务分项profile，不能认定各项耗时占比。
+
+新增 trend_prefix_view 的只读行情及可见来源窗口，确认截止投影不再复制累计行情和等长None来源；同类前驱查询按位置逆向访问，避免先复制整个前缀。尾部修订优先恢复最近匹配的尾/翻向检查点，前缀修订仍拒绝不匹配状态。行情树补收盘极值树；转多、转空、末跌高迁移、短浅回调时长/守低复用该索引，保持相等不越位、失效日先于同日信号、首个真实确认和当日截止。交替地标在一次资格发布中只生成一次，首段高点/转多消费同份结果。
+
+私有准备阶段按冻结JSON内容复用解码证明，只复制将被标注的点外壳；闭合路径私有读取借用已解码版本，公共读取独立物化。每级点缓存16MiB、闭合路径缓存8MiB，均拒绝超额新项而不扩大已有趋势状态预算；未知对象和公开可变输入沿原复制/认证路径。完整历史、来源审计、三层共同规则保留。
+
+新增 test_backtest_prefix_cost.py，覆盖窗口访问成本、每个历史截止完整证书、三层恢复、转多/转空/时长门禁、公共输出隔离；仅编写未运行。所有运行检查、真实2120日分段性能与完整信号/审计/账户差分待用户当次授权或实际提交阶段执行；未提交、合并、推送或重启。完整快照签名、候选遍历和历史输出仍有累计成本，不宣称全链路O(D)或两分钟达标。MONOREPO-330保持in-progress。
+
+2026-10-17 · MONOREPO-330 假突破规则提交验证
+
+用户要求提交并推送当前 feat-三级趋势统一。本轮 pytest 执行 test_failed_breakout_exit、test_source_bear_structure_exit、test_source_bear_exit、test_trend_lifecycle、test_trading_intervals、test_trend_body_reversal、test_lifecycle_market_ranges、test_lifecycle_key_windows：217通过、1失败（48.91秒）。新增规则及截至9月9日/11月30日真实因果前缀均确认先锋资格结束2020-09-09；原11月26日破前低规则仍保留。失败 test_no_selected_interval_skips_policy_scan 的旧调用次数断言在HEAD 2464998独立归档src/tests中复现相同失败，未放宽断言或修改无关业务。
+
+定向mypy四个变更源码模块报告13处错误，HEAD 2464998同配置检查原有三个模块复现同样13处既有错误；新增模块未报告错误，整体类型门禁未通过。python -m build --no-isolation成功生成sdist/wheel；git diff --check无错误；feature_list.json有效且唯一in-progress为330。具体命令及证据写入feature_list.json。既有失败不在本轮功能范围，后续另行修复；不合并main。无浏览器/E2E或服务重启，构建及基线归档产物保持忽略。下方“待提交验证”文字为开发时历史记录，本段是本轮实际验证结果。
+
+2026-10-17 · MONOREPO-330 假突破提前结束资格（待提交验证）
+
+保留此前直接下级转空确认及已翻空下降破前低策略，新增共用 failed_breakout_exit：正式多翻空后最高价突破末升高点，再收盘严格跌回该高点K线收盘价，量至少为本次首次突破前20根均量2倍、阴线实体跌幅至少3%，同日关闭直接上级资格。用户最终确认站稳以连续3根收盘严格高于末升高点K线收盘价为准（不是高点最高价，也不是超过3根）；站稳即排除本规则，相等重置连续计数。首次收回不满足量价条件则结束该次尝试，后续突破另记量能基准；同一翻空满足站稳或已触发后不重复退出。
+
+状态按日追加，结构种子按受控版本缓存；复制、分级合并、检查点恢复和来源修订/结束均保存或清理对应状态。资格沿原来源路由关闭，详细审计记录原高点收盘、突破日/最高价、冻结均量、连续站稳计数和当日量价，不改趋势几何或六态。规则版本v23、历史缓存v142。先锋新材目标为2020-04-28资格段在2020-09-09结束，比较2020-08-11收盘5.48与当日5.18；不读取2020-09-10低点或后续完成证明。11月26日破4.29规则及其独立用例保留，组合资格取更早结束日。
+
+新增/调整回归源码覆盖三级同判、连续2/3根与相等边界、2倍量和3%实体、未来/缺失证据、来源修订/结束、复制/检查点/合并、同路径不重复，以及截至9月9日和11月30日的真实因果前缀。按用户开发节奏未执行测试或其他验证，实际运行结果待提交时验证；未提交、合并、推送或手动重启服务。
+
+2026-10-17 · MONOREPO-330 提交阶段代码复核与检查
+
+用户要求提交推送，并要求 CR 不改变功能逻辑。复核修复冻结点 slots 预算崩溃；账本新坐标、计数和几何顺序纳入上界，临界上限精确校准。修改旧故障注入测试以命中新 ledger.finalize，预算断言保守上界。定向测试先发现内存预算漏计并修复；随后新增/相关路径共 444 个通过，兴旺2019-02-13 首买测试和 MarketCalculations 旧六态替身测试失败，两者用分支原 HEAD 归档独立复现为既有失败。另 hierarchy/chart 17 项及6子用例通过。mypy src tests 报1211处/151文件错误，未通过；python -m build 构建 sdist 和 wheel 成功；git diff --check 无空白错误。基线失败未修复，不得宣称全量门禁通过；按规则不合并 main。仅可推送本次特性分支，main 本地比远端超前52提交，不代推其他任务提交。
+2026-10-17 · MONOREPO-330 回测冻结点预算崩溃修复（待提交验证）
+
+用户反馈300163状态查询重试。读取已有服务日志，发现回测反复在trend_judgement._owned_value_bytes调用vars(_FrozenPoint)时抛TypeError；该内部快照为slots对象，无__dict__。已显式遍历data及json_template并保留identity去重，不跳过证据预算。新增嵌套证据、模板和重复引用计数回归源码，未执行。前端提交与查询共用重试文案，提示本身不能证明是查询接口故障；此次修复已定位的计算崩溃，实际恢复仍待验证。未运行测试/检查/探针/回测，未手动重启、提交、合并或推送。
+2026-10-17 · MONOREPO-330 来源版本、结果账本与行情极值续改（待提交验证）
+
+继续 feat-三级趋势统一。逐点签名原用于识别旧点同长度修订和结束/知识证明变化；受控来源现在由 _SourceVersionOwner 交付 token/parent/changed_from、已解析来源与证书，追加只解析新增及一个真实前驱，状态消费版本证书而不再重复序列化全来源。公共或未知输入、asof筛选沿原校验；修订走既有尾/翻向检查点或冷重建。上游仍交付完整快照，因此入场逐点签名比较及阶段门禁尚未消除，不声称全链路只读新点。
+
+_JudgementLedger 按坐标追加普通/升级候选及审计，旧坐标更新只重整该桶；几何从最早受影响坐标之前的保留端点重放，避免遗漏被同类极值隐藏的历史点。候选及几何冻结结果复用，检查点回退重建账本，预算包含新账本；完整输出仍物化引用。DailySignalState 对信号、已发布决定、关闭窗口档案只排序新增项，活跃准备允许修订并单独稳定归并，保留重复行与原同值顺序。六态恢复守低、交替守低、空头反弹失效、实体跳空最低点/最高阻力/最低收盘接入共用行情树，查询到now+1为止，异源/非精确价格回退。
+
+新增 test_controlled_trend_versions.py、test_incremental_result_order.py、test_lifecycle_market_ranges.py，更新生命周期窗口夹具；仅编写未执行。本轮未测试/类型/lint/格式/构建/运行探针，未提交/合并/推送。入场快照比较、活跃准备、展示标注和完整输出仍有累计成本，2130日实股一致性与1–2分钟目标待提交验证；330保持唯一in-progress。
+
+2026-10-17 · MONOREPO-330 每级最后有效末跌高／末升低索引（待提交验证）
+
+按用户澄清保留全部历史，每级每路径维护 last_fall_high_position / last_rise_low_position 两个完整来源位置。正式闭合且攻击日前可知的实际关键位更新标记，反向攻击直接查询冻结整波起点；普通局部H/L不能替代。关键位区间查询从标记开始，普通翻向用H/L位置索引定位有效尾部。六态按结构版本缓存坐标索引，同腿延伸只读关键位附近三点，交替从冻结末跌高开始，特殊恢复保留破位前一必要边界。迟知、同坐标证据修订、历史修订、重复/乱序和检查点恢复保留原有语义与回退。历史来源、审计、关键位树及最终图表数据不删除。
+
+新增 test_trend_active_key_indices.py 与 test_lifecycle_key_windows.py，仅编写未执行；静态交叉审阅不能替代运行验证。继续 feat-三级趋势统一，MONOREPO-330 仍 in-progress；未运行测试、检查或回测，未提交、合并、推送。完整同源结果与1–2分钟目标待实际提交阶段验证。
+
+2026-10-17 · MONOREPO-330 国芳长回测累计历史开销（待提交验证）
+
+继续 feat-三级趋势统一。用户提供国芳集团1302/2130日、约5分钟截面；本轮源码确认同日折线→一级→二级→三级→B/S账户顺序成立，但共用趋势追加仍重建历史索引/排序，洗盘N组合先全量两两枚举后过滤，多级挤压逐帧重扫层级事件，实时策略重复解码生命周期检查点。这些是随历史增长的重复工作，未采集当前任务栈或耗时占比。
+
+共用趋势追加现维护来源/前驱/合并结果索引，仅解析新增普通候选及必要旧边界，内存计费处理本次更新；历史来源修改仍回退完整计算。策略按方向/epoch/规则窗口先缩小洗盘组合，阻力索引复用攻击时可知选择，复用请求已有行情树，信号/拒绝计数仅累计当日决定。实时消费者直接复制当前/前日领域状态，旧间隔仍按日志恢复；事件读取二分后缀，hierarchy_stream轻量投影仅新建变化点字典，仍按点比较。折线与三级受控结构共用六态候选缓存，破位仍逐日确认；未新增facts时检查点复用标量编码。
+
+新增因果前缀、三层/时钟镜像、来源修订、旧候选不重遍历、当前/前日恢复隔离、未来知识和阻力稳定顺序回归，仅编写未执行。仅代码阅读、编辑及静态交叉复核，未运行测试、lint、类型、格式、构建、运行探针或浏览器。完整来源认证、结果物化、必要旧日回放及缓存编码仍有历史成本，不宣称严格线性；国芳2130日、先锋完整窗口的完整输出差分及1–2分钟目标待实际提交阶段验证。详见 docs/backtest-performance.md。330仍唯一in-progress，未提交/合并/推送或主动重启服务。
+
+2026-10-17 · MONOREPO-330 按直接来源共享与资格窗口收紧计算（待提交验证）
+
+继续 feat-三级趋势统一。MarketCalculations 持有唯一市场趋势链，策略/账户通过共享历史适配读取，不再逐日另建一二三级。资格内部 N/轧空仅在对应级别真实空翻多后按需启用，已确认的授权证明复用；同一 N 在控制柱/轧空中共用，不生成交易一饱二吐。
+
+交易侧使用本日 buy_days（关闭日不允许）门控，移除 has_buy_signal/持仓/evidence-only 绕过。交易 N 按路径与资格起点隔离；A 波、底部归属、重组成形、目标和二吐/五顶/十满风险按窗口起点创建，迟到与修订也不越过起点。资格关闭后冻结已发布事实并停止目标观察，重开不补算空档；首日只用收盘判断目标。按用户最终选择，资格结束当天只平仓并取消未成交委托，随后区间外停止账户撮合、持仓和止损处理，图表沿用账户快照。结束日受真实交易限制未成交则如实记录，空档不补卖；下一资格才恢复处理。交易波浪退出及分钟交易继承资格边界。
+
+重叠资格按来源退出归档，N身份包含连续窗口与具体资格来源，重组成形和五顶/十满图示同样有截止；账户显式读取当前有效N，不能沿用已结束来源。整波策略即使收到预计算信号也统一走同日账户，图表不再先生成一份信号。持仓回撤v3只观察有效资格日与结束日，展示被排除日期数与最后观察日。图表窗口策略仅展示Core已发布A/C事实，禁止用全历史K线重新推演交易目标。
+
+该口径覆盖下方旧记录中“无资格仍推进目标/evidence-only”的方案。新增回归仅编写，未运行测试、lint、类型、格式、构建、探针或浏览器；共享适配时钟、分钟部分行情、资格重开、最终 audit/交易产物与先锋新材完整2120日速度均待提交阶段验证。分钟首次仍可能冷构建市场几何，部分行情的交易观察仅在当前资格窗口内重建，尚不能声称每分钟只计算末根行情。没有新的1–2分钟性能结论。330保持唯一in-progress；未提交/合并/推送、未主动重启服务。
+
+2026-10-17 · MONOREPO-330 长回测增量状态与统一核心（代码已修改，待验证）
+
+继续 feat-三级趋势统一。A 波、底部 N 两种归属、重新成形、波浪目标、二吐/五顶/十满、压力/历史高点/趋势退出与二级压力使用请求内持久状态；正常追加只推进新日，完整事实修订、删除与迟到按规则重建。成交事实按 N 生命周期共享，再映射 LONG owner；转折观察复用固定输入和背景日期索引。账户反馈实际持仓/待单，空仓无资格只停止买卖判定，市场触达/失效、bottom_hits 和 audit 仍逐日维护；异常取消释放游标。
+
+趋势未变候选/facts按受控版本复用，各级仍每日消费价格与六态。严格升级使用整波冻结旧关键位，显示仅追加观察metadata；规则和相关缓存版本隔离。步骤缓存自包含引用编码、失败后本轮停止写入、共享等待预算；Core/API/Web/contracts 增加编码/写入时间与字节，旧耗时标为共享跨度、趋势条数标变化版本。API节流保留并减少账户JSON往返。详见 docs/backtest-performance.md 最新实现段。
+
+新增回归源码已编写，源码接口/边界复核完成；按开发验证节奏未运行测试、lint、类型、格式、构建、探针或浏览器。本轮没有实测速度或完整产物差分，2120日1–2分钟、国芳真实下级前缀及完整账户仍待提交阶段验证。既有失败保留，330保持唯一in-progress；未提交/合并/推送，未主动重启服务。
+
+2026-10-17 · MONOREPO-330 先锋新材长回测静态审查
+
+继续 feat-三级趋势统一 / a80f02a。针对用户报告 2,120 日回测在约 1,922 日已耗时 36 分钟，完成源码和已有日志审查，未修改算法。确认同日传播及部分缓存存在，但每日交易入口仍重建 A 波、two-T、five-top、ten-full 等前缀历史；账户风险准备亦有重复。资格发布、生命周期 facts 和快照证据处理仍有累计历史成本。has_buy_signal 持续启用重路径不能直接清零，需保留实际持仓与待单风控。
+
+24 项秒数是共同墙钟跨度；1,207/248/39 是变化版本数，不能据此判断顶点数或各级耗时。现有日志有 SQLite 锁竞争，但没有任务归属或分项时长，不认定其解释全部 36 分钟。trend_display 的 level == 3 专用重组仍违反最新统一核心/显示不改结构规则，迁移尚未完成。具体证据与修正边界见 docs/backtest-performance.md 的本轮静态审查。
+
+本轮未运行采样、回测、测试、lint、类型或构建；没有新的性能或正确性验收结果，待实际提交阶段验证。仅更新审查、功能和交接记录，330 保持唯一 in-progress；未提交、合并、推送或重启服务。
+
+2026-10-17 · MONOREPO-330 先锋新材下级空头结构破前低结束资格
+
+服务/页面：已重启本分支后台进程（Web3004、API8766），Web首页HTTP200、API基础设施健康接口HTTP200；已刷新原Chrome页面，先锋新材因策略版本变化自动重新回测。未以页面完整回测完成作为本轮验收，也未运行浏览器E2E。
+
+继续 feat-三级趋势统一。source_bear_exit 的共用规则补充“已有正式多翻空，后续已确认下降结构跌破自身前低”的直接来源结束事实，仍复用既有影线新高收盘拒绝和整波证书核验；不改写六态/趋势几何，不按股票、日期或级别修线。TrendLifecycle 检查点保存破位去重账本，规则版本v20、chart history缓存v139，避免恢复后重复关闭新窗口。类型收窄只使用原校验后的值。
+
+实股离线行情夹具为本机AKShare原始价格研究的2018-01-02至2020-11-30前缀。完整逐日重算确认：二级2020-04-28结构起点的资格于2020-11-26结束，基准2020-09-10低点4.29，当前最低4.25；e0d7697独立旧源相同前缀仍未结束。冻结最终图的少量几何只用于证据解析负例，不作为因果历史回归输入。
+
+提交前验证：source_bear_structure_exit/source_bear_exit/trading_intervals/trend_body_reversal/trend_lifecycle 定向139 passed，1 deselected，27.62秒；排除的 test_no_selected_interval_skips_policy_scan 在e0d7697旧源同样失败（20次扫描对预期1次）。三个改动相关Python文件mypy通过，Core wheel/sdist通过。完整Core/Web套件、浏览器E2E、全历史账户结果待验证，既有失败记录保留。MONOREPO-330继续唯一in-progress；不合并main、不推送。
+
+2026-10-17 · MONOREPO-330 保持策略的回测计算复用
+
+继续 feat-三级趋势统一，以 a2e9522 为冻结旧源。HierarchyHistoryStream 复用本请求已认证且未变的候选/几何及直接下级实体来源，一级全文核验、知识/完成时钟和三级逐日资格保留；epoch和结束清理。证据准入认证跨日有界复用；阶段行只编码一次，保留原512KiB分块、完整字段与错误语义；内部生命周期检查点使用既有只读借用，恢复状态独立。
+
+真实独立冷计算各一次、禁网络、24步记录：2018起512日61.341→41.129秒（CPU32.203→29.281），2023起512日29.092→21.551秒（CPU23.328→16.109）；research/account/分钟来源/所有步骤行完整差分相同。128日1.926→2.787秒未提速。三窗均0信号/订单/交易，未实际消费分钟或触发回退，不能外推有成交或全历史；旧源768日240秒诊断超时，最后可见进度690/768，未得到完整比较。
+
+相同真实512日折线帧的层级热点：24.369→16.931秒（CPU24.141→16.859），judge1536→978、freeze2048→1004、readonly_points3072→984；qualify仍1536。完整history/epochs/declines哈希相同，三级累计点15286/3090/216、下降记录10723。细节、源码摘要、复测命令及限制见 docs/backtest-performance.md；原始证据留在忽略目录.codex-runtime/perf-20261017。
+
+提交准备：316定向及8子用例通过、1项排除；排除项 test_consumer_error_stops_before_the_next_market_date 在冻结旧源同样因[0,25]与[25]的进度断言失败，未改该断言或生产进度。四个本轮源mypy通过；chart_entry_history的14条错误与冻结旧源逐条相同，仍未通过。Core wheel/sdist构建成功，两名agent最终只读复核无阻断。未运行完整套件、Python格式/lint、浏览器/E2E、Harness或完整交易账户差分，不主动重启/清缓存/推送，不合并main。330继续唯一in-progress；已有34测试失败和68类型错误记录不作整体通过处理。
+
+下一步仍需处理既有失败，取得含成交的同源完整账户基线，并按新增/修订证据定位长历史的每日资格发布与恢复成本；不能强行合并图表/策略的不同知识时钟，也不恢复已无净收益或结果不符的旧前缀/传输试验。
+
+2026-10-17 · 提交验证与分支保存（仍有失败）
+
+本轮用户要求提交并推送 feat-三级趋势统一，继续遵守不合并 main。保存累计趋势、资格、性能、预览及复制修复；MONOREPO-330 保持 in-progress。提交验证发现的失败如实记录，本次推送不代表功能已通过完整验收。
+
+failed: Core: python -m pytest tests/test_source_bear_exit.py tests/test_frozen_bull_origin.py tests/test_lifecycle_impulse_defense.py tests/test_recovery_alternation_confirmation.py tests/test_trading_intervals.py tests/test_trend_body_reversal.py tests/test_trend_change_history.py tests/test_trend_staging_payload_cache.py tests/test_chart_live_permission_reuse.py tests/test_directional_doji_cache_versions.py tests/test_hierarchy_stream.py tests/test_trend_display.py tests/test_trend_readonly_cache.py -q --tb=short
+2026-10-17 提交验证：215 passed、34 failed、2 subtests passed，13.55秒。失败涉及普通N及跳空交替确认、特殊N夹具、策略扫描次数、历史几何/检查点、缓存版本和显示投影断言；未逐项证实基线，不能称全部既有失败。直接来源转空结束资格的新用例通过，但未做国芳真实全历史验收。
+
+failed: python -m mypy --follow-imports=silent <24个改动/新增Python源码文件>
+2026-10-17 提交验证：9个文件68条错误，包含动态字段类型收窄、Iterator.close标注、可空上下文、变量类型复用等。未做基线差分，保留为待修复，不视为类型检查通过。
+
+passed: python -m build --no-isolation --outdir <ignored-output> packages/wavequant-core; python -m build --no-isolation --outdir <ignored-output> apps/servers/wavequant-api
+2026-10-17 提交验证：Core和API的wheel/sdist均构建成功，产物不提交。
+
+not-run: NOT RUN: full suites, real-stock replay, Playwright/E2E, Harness
+仅按用户要求保存并推送当前特性分支。完整实股、性能与浏览器验收未运行；不合并main，不标记功能done，不把分支推送当作验收通过。
+
+2026-10-17 · MONOREPO-330 直接来源空头确认结束资格（实现待验证）
+
+国芳二级资格在一级已完成多翻空、多空交替并转空确认后仍延续：TradingEligibility仅接收本级事件，MarketCalculations也只把每级事件送给自身资格，一级空头确认没有对应二级资格结束事实。此前只有同级多空交替、同级已知翻转低点跌破、确认缺口回补及来源失效等结束条件。
+
+新增共用source_bearish_exits，沿当前本级stroke.source_path精确匹配直接下级的stroke.id；一、二、三级分别读取折线、一级、二级已算出的六态。只接受真实多翻空证明、已确认多空交替和其后严格收盘下破翻空低点的转空确认；候选、单独翻空/交替、未来证据、非直接级别、无关/已结束路径不触发。生成归属本级的trading_source_bear_confirmed事件，保持下级确认原证据；只结束资格，不修改本级趋势，不自动强制清仓。
+
+同日级联显式传递当日下级事件，分阶段历史读取按交易日归组的已完成下级事件；合并/部分恢复在同一TrendLifecycle调用内使用下级结果。检查点保留折线六态，使一级资格的直接来源规则在恢复时一致。TradingEligibility统一关闭，N来源/买点上下文/完整区间回放均消费相同事件；图表及复制沿已有trading_interval_closed，新增结束原因包含结束日显示，但该日不再允许新增买点。六态v19与chart历史v138隔离旧缓存，不重算下级趋势、不额外扫描完整历史。
+
+新增test_source_bear_exit.py覆盖三个级别、候选/路径/时钟拒绝、结束日停止入场、独立/合并及检查点恢复一致、实时资格和N/交易上下文结束、用户2020-09-04日期的缩减事件夹具。该夹具不代表已对真实行情验证一级首次确认日；完整601086回测及页面实际终点待验证。遵循开发不检查，未执行测试、类型、格式、构建、Git检查、浏览器或运行探针，未新建回测、主动清缓存或手动重启。未提交推送合并，330仍in-progress，保留此前全部改动与待验证项。
+
+2026-10-17 · MONOREPO-330 冻结空翻多起点与统一交替确认（实现待验证）
+
+用户最终明确：空翻多低点是末跌高之后的最低点，不是最近一轮局部上涨腿的起点。国芳2020段的正式事实已指向2019-08-28末跌高、2019-11-18低点和2020-03-20高点；但lecture_trend的attack.origin另取2020-03-13局部低点，后续测幅与正式翻多不一致。2020-04-28回撤比例由约144%纠正为约99.4%，仍属于深回撤，需要原有后续确认，不能把该低点日期直接当资格确认日。普通六态此前只额外观察实体跳空，完整N/轧空确认仅在特殊分支内，造成普通周期缺少资格之前的确认入口。
+
+普通翻多的测幅和攻击高点延伸现保持冻结最低点；六态Fact保存真实突破的末跌高，不能在确认时另取最近局部高点。confirm_bull_alternation统一普通/特殊的浅回撤、深回撤后突破、N/轧空及跳空条件，保留原阈值、知识时钟和特殊翻多前提。确认事件保存起点/关键位/趋势及折线来源，来源修订关闭资格；merge_recovery_entry_history同时消费普通确认，确认N可按既有规则在确认当日进入买点选择，不倒填此前买点。原缺口结束、确认接替和同周期攻击极值约束保留。
+
+六态v18（Fact新增关键位，旧检查点不可恢复）、结构v118、chart历史v137、hierarchy历史v123、完整图v125。新增test_frozen_bull_origin，更新起点守低、真实行情一致性和普通/特殊交易上下文回归；此前v17“紧邻上涨腿起点守低、2024整段无资格”的断言由最新定义替代，旧通过记录只作历史，不作为本轮验证。
+
+遵循用户开发不检查：本轮仅修改代码/用例/记录，未运行测试、静态检查、构建、格式、Git检查、浏览器或新诊断回测；未主动清缓存、手动重启、提交、推送或合并。实际完整601086回测、最早资格确认日、B/S及其他股票影响待验证，MONOREPO-330保持in-progress。原三级显示投影统一迁移及性能问题未在本次扩展处理。
+
+2026-10-17 · MONOREPO-330 三级连续路径与发展尾线修复（实现待验证）
+
+根因继续来自上一轮显示投影：二级豁免后，三级仍按“整条上涨腿落在本级/来源翻多窗口内”决定去留，没有确认记录、已翻空或窗口起点不同便删线；flush 拆成多个新 ID，后续下降线和发展尾部仍挂在被删高点，产生断线与错接。这是显示过滤错误，不是缺行情或要扩大交易资格。
+
+trend_display 更新为 continuous_paths_frozen_key_observation_v3。正常二/三级结构不再根据审计窗口删段，窗口仅提供状态/既有例外依据。三级仅在相同路径、完全对应的源顶点明确仍受未破冻结末跌高约束，且无有效既有普通/特殊翻多时，归并局部反弹；无上下文、来源不匹配或未来关键位都不能凭空判成无效。归并按同一路径真实同类极值推进，相等保留较早点，后续有效反转与保留极值连续连接，不制造不同路径间的桥。
+
+主线和唯一匹配的原发展尾部合并处理后再分回输出，尾线起点与最后保留主线点一致，保留原 ID；新下降极值可作为发展端点，拒绝反弹不留下其后的孤立下降线。原结构边的附件保留，改接后的显示边不继承旧确认；特殊分支、原始递归、六态和交易资格均不改。完整图/API 预览共用，源文件指纹按既有机制使旧版本产物失效，不主动清缓存。
+
+重写错误的“无翻多必须删三级线”用例并补充正常状态不删线、明确冻结关键位的连续归并、较高/相等低点、有效普通/特殊历史与来源撤销、未来证据、国芳11.50反例、改接边附件、主尾衔接、不同路径及API推进快照隔离。只编写未运行；按用户开发不检查要求，没有测试、格式、lint、类型、构建、Git检查、运行探针、浏览器、新回测或手动重启，实股图形/策略结果仍待验证。未提交推送合并，330继续in-progress；此前“三级普遍按窗口隐藏段”由本条取代。
+
+2026-10-17 · MONOREPO-330 二级结构连续性回归修复（实现待验证）
+
+用户反馈多处二级线不衔接。根因是上一轮 trend_display 的 split 把“没有本级翻多确认”当作删除二级结构上涨腿的条件，flush 后又禁止前端桥接，连续原路径因此断开；此限制超出了“二级未真实翻多不能升级三级”的要求。
+
+publish_trend_display 更新为 continuous_structure_guarded_third_level_v2：二级只附加 observation_strokes/多头疑虑，原 strokes、发展尾部、路径 ID、结构和确认附件及计数完整保留；确认、翻空、证据修订或交易资格结束不再通过显示投影删线。真实来源边界保持，不人为合并不同路径。三级仍保留本级及直接二级真实普通/特殊翻多限制、冻结末跌高否决和隐藏段禁桥接；恢复二级显示不产生任何翻多事件、资格或三级升级证明。底层递归与交易算法未变，实时预览和完整图共享此入口。
+
+调整既有错误期望并补充二级全路径/附件/尾部连续性、跨来源边界、状态变化和三级不得借二级恢复而错误升级的 Core/API 用例，仅编写未执行。源码全包指纹包含本模块，新服务版本不会复用旧版本回测产物；未主动清缓存或重跑。遵循开发不检查，没有测试、格式、lint、类型、构建、Git 检查、浏览器、新回测或手动重启；当前实股/页面待验证，未提交、推送或合并。以下上一轮二级“正式路径拆段”描述已由本条修正。
+
+2026-10-17 · MONOREPO-330 本级疑虑与正式趋势发布（实现待验证）
+
+用户最终明确：601086 的 2018-10-19 至 2019-04-03 未突破二级 2018-05-28 末跌高 11.50，不能因较近局部高点抬高而画三级上涨；二、三级自身未确认时属于多头疑虑。唯一特殊恢复沿原状态机：先有真实普通翻多，再破起涨低、满足既有连续创新低限制与恢复/同级再突破条件。本轮不改变该分支或三日计数阈值，也不把交易资格当趋势证据。
+
+新增 trend_display.publish_trend_display：正式图表发布按本级 stroke.id 关联既有六态确认；三级另按几何 source_path 找到直接二级 stroke.id，核对其正常或特殊翻多。普通事件对应高点未超过其 lifecycle_context 冻结末跌高时拒绝，特殊翻多复用原已确认事件；孤立交替不能制造翻多。按日期/路径分隔确认范围，未来突破不追认更早高点，价格后续失效保留此前事实、来源修订撤回当前确认。候选上涨保存在 observation_strokes/多头疑虑；发展尾部同样处理。正式路径拆段并标记 prevent_display_bridge，保留可对应的原确认附件。
+
+这是正式趋势发布投影：底层候选几何仍用于后续递归及六态观察，不把筛选后的图形倒灌成计算输入，不另跑逐日行情。完整图 render_theory 与 API 已完成日预览复用同一入口，窗口查询采用合并区间/二分。Core 新增冻结关键位、来源路径、特殊例外、未来知识、失效和尾部用例，仅编写未执行；API/Web 配套回归亦未运行。旧诊断缓存仅支持根因分析，不代表当前完整实股验证；尚待确认国芳目标区间、其他已成立趋势及策略结果。遵循开发不检查，未提交、推送、合并或手动重启。
+
+2026-10-17 · MONOREPO-330 国芳本级上涨腿资格隔离
+
+旧记录在2024-03-15以2021-02-08的3.811046背景低点作为跳空守低起点，但2023-08-01攻击高点所属上涨腿实际从2022-10-31的4.437288起步，2024-02-08低点4.219033已破坏该腿。原跳空函数错用背景锚点，因而允许局部反弹重新开窗；同周期翻向/交替入口也未拒绝降低攻击极值。
+
+普通跳空现从同级同路径相邻L→H取真实腿起点，缺失/未来/失守均不确认；确认后保存该L/H证据，修订会关闭窗口。背景低点仍用于原趋势上下文，合法跳空和N规则保留。翻向与交替标签两入口均要求保持原攻击点或严格同向延伸，允许同坐标引用较晚可知。六态v17、chart历史v136拒绝旧检查点/消费缓存；未改变其他会话正在调整的影线收盘或显示语义。
+
+最终6模块164项定向通过（新增30项）；国芳fixture为已有来源1707根真实日线至2025-01-13及缩减已发布结构/折线，含来源SHA，不是完整几何重建或账户回测。四个整段/检查点回放在旧v16隔离模块全部失败、修复后通过。Core wheel/sdist构建通过，产物及前后mypy报告在ignored .codex-runtime/guofang-trading-leg-20261017。
+
+扩展3模块11失败36通过，在修改前生命周期同样复现：旧人工事件缺翻向确认字段6项、N/轧空夹具4项、扫描调用次数1项。旧裸导入已改tests包路径以恢复收集，原断言保留。strict mypy两个文件前后均43条，规范化行号后完全相同；类型门禁未通过，不提交或合并。未运行Harness、Python格式/lint、浏览器或完整Web套件，完整实股几何/账户及页面结果待验证。保留feat-三级趋势统一及全部原有未提交改动，不推送。
+
+2026-10-17 · MONOREPO-330 国芳9月特殊二级线的收盘基准修复
+
+按本次用户给定反例更新口径，覆盖下方历史“close与原high比较”的描述：2022-09-21的high 5.69与close 5.45均高于09-14的high 5.46与close 5.39，不满足影线例外。rejects_wick_extension现校验两日行情并比较close与close；pending续接和递归闭合共用此判别，缺失或错配原收盘不进入特殊分支，开盘仍不参与阈值，收盘相等仍可保留观察。修正同一函数内proof字典/列表重名造成的类型错误。
+
+新缩减三日用例在旧实现复现失败。已有一级来源与同源AKShare/Sina行情固定回放再次确认：旧规则在10-11取得09-26下级闭合事实后错误发布09-14→09-26，新规则没有该段。旧fixture未保存12-12原高点收盘，现从guofang_2025_five_top_low_open.json补09-14/21/26、12-12及01-03精确OHLC，各点极值一致；2024-07-25→12-12→2025-01-13及1月22日可知边界仍通过。
+
+验证：pnpm --filter @wavequant/core exec node scripts/run-python.mjs -m pytest -q tests/test_trend_body_reversal.py tests/test_directional_doji_cache_versions.py tests/test_trend_level_upgrades.py tests/test_trend_lifecycle.py tests/test_hierarchy_stream.py，129通过、2子用例通过，10.64秒；类型修正后body_reversal及level_upgrades两组86通过（重叠不相加）。同执行器 -m mypy --follow-imports=silent 检查trend_body_reversal.py与trend_level_upgrades.py通过；git diff --check通过。
+
+结构v117、hierarchy历史v122、完整图v124隔离旧结果；本轮六态/chart历史v16/v135已被同工作树其他改动继续升为v17/v136，保留更高版本及其独立业务改动。没有浏览器/E2E、完整Core/Web套件、完整账户回测、包构建或手动重启。既有和工作期间新增的其他改动均保留；因混合未提交状态及尚未完整验收，未提交/合并/推送，MONOREPO-330仍in-progress。
+
+2026-10-17 · MONOREPO-330 国芳影线例外的证据衔接（实现待验证）
+
+只读既有 guofang-level1-2025.json：12月12日高点保存普通反转闭合，12月25日低点顶层 upgrade_evidence 保存严格翻空，旧规则只查询高点闭合证明因此漏判。共用函数现支持高点 origin 或对应低点 endpoint 证明，核对同级、路径、坐标、严格旧低突破与此前可知时间；仍只在最高价创新高但收盘未突破原高时保留交替。body_reference、私有层级投影保留低点证据；实时 HierarchyHistoryStream 补齐各级收盘输入，与图表和批量入口一致，保留上一轮性能改动。
+
+结构 v116、六态 v15、chart 历史 v134、hierarchy 历史 v121、完整图表 v123 隔离旧缓存。新增已有一级来源 fixture，目标为二级 2024-07-25→2024-12-12→2025-01-13；低点价格日为1月13日，下级闭合知识日为1月22日，不能倒填。增加证据分散、递归、时钟、错误来源、收盘输入和缓存隔离用例，仅编写未运行。未执行测试、格式、类型、构建、Harness、浏览器或新诊断回测；完整实股结果待验证，未提交、推送或合并。
+
+按用户中途重启请求，隐藏启动当前分支启动器 PID 9700，current-branch-20261017-010218 日志确认 Web 3004 Ready、首页200及 API 8766 启动。页面打开请求已交给 Codex；后续源码由既有监听器自动重载。功能保持 in-progress。
+
+2026-10-17 · MONOREPO-330 国芳回测热点与只读解码复用（实现待验证）
+
+只读观察旧任务826ac138：用户截图1495/2130、9分钟后，任务已到1667/2130、715秒，正在计算2024-11-19，只有1个活动回测，并非停在3月1日。该时点总耗时/已处理日约0.429秒，包含加载等开销，不能当成每个交易日固定用时。对已有API进程35692进行15秒50Hz非阻塞py-spy采样，原始.codex-runtime/guofang-slow-20261017.raw：606有效栈、157读取错误，其中560回测线程栈；394栈在策略主调用、205栈在内部三级确认、87栈在chart_entry_history，这些为包含关系不能相加。叶热点_geometry_signature74、JSON恢复41、JSON编码41、暂存pickle恢复32/解压5。只是采样窗口占比，不是全程耗时或完整性能基准。
+
+实现：HierarchyHistoryStream按内部不可变JSON模板复用未变化的单点解码，尾点更新只解码新增/修订点。请求内8MiB/最多2048项，满容量拒绝新项以避免顺序历史扫描LRU抖动，epoch切换和close清理；普通外部Mapping/未知审计对象仍独立复制。TrendStageRows另设4MiB/最多两行解码缓存，仅chart_entry_history显式只读借用跨日复用；先读取校验原行头/内容再命中，公开读取仍逐次loads/decode，其他默认shared读取不跨读取器共享。保留每天三级资格、行情/N/买卖规则及账户执行，不合并图表与策略两套不同口径。
+
+BacktestJobs保存最近累计耗时，预览和日内阶段更新不再覆盖；daily_signals附加最近已完成一日及平均每交易日用时。新增/扩充单点尾部修订、容量、未知对象、公开输出隔离、行内容变化/截断、可知前缀、N双模式与逐日许可、冷读取对照、进度跨任务隔离用例，仅写未执行。
+
+源码变化按既有规则自动终止旧引擎并重新加载；只读新任务b0a69bfa显示647个已发布交易日/2130、53.5秒，内部正在第658日，累计折线趋势47.7秒、结构确认0.0秒、买卖规则0.0秒、账户/分钟/快照0.7秒，最近一日0.012秒、平均0.076秒。证实耗时文案已由常驻服务输出；尚未进入旧样本对应后期策略重段，不能据此宣称整体提速比例或问题彻底验收。
+
+未运行测试、类型/格式/lint/构建/Harness、浏览器或新建诊断回测；未提交本轮性能改动、未合并main。提交阶段待跑新增定向回归，并在同源完整行情上比较趋势、B/S、审计、成交和权益及总耗时。87b1f4c已按用户明确授权推送到bobo553/wavequant-monorepo的feat-三级趋势统一，仅指本轮优化前的40文件提交。功能继续in-progress；旧完整套件53失败证据保留。
+
+2026-10-17 · 提交阶段定向验证
+
+当前worktree虚拟环境执行python -m pytest：tests/test_bull_recovery.py、test_trend_lifecycle.py、test_chart_live_permission_reuse.py、test_confirmation_gap_expiry.py、test_lifecycle_frozen_context.py、test_strategy_history_cache.py、test_trend_body_reversal.py、test_trend_staging_payload_cache.py，加API两个开发重载模块，185通过，4.02秒。包含收盘例外、前三连低、本级冻结资格、检查点/缺口、缓存和进程替换边界。日志.codex-runtime/commit-targeted-20261017.log。未跑完整Core套件、Python全量类型/构建或实股回测；历史完整套件53失败记录仍保留，不能声称整体验收通过。MONOREPO-330仍in-progress，本轮仅按用户要求提交推送特性分支，不合并main。
+
+2026-10-16 · MONOREPO-330 特殊交替仅比较收盘与原最高价（实现待验证）
+
+用户最新澄清覆盖下文实体高口径。仅在此前已有下级严格多翻空、当前最高价超过原高点时读取收盘判别：close <= 原high保留特殊交替，close > 原high恢复普通延伸。开盘高于原high不会误杀，原收盘不是阈值；未创新高的内部反弹不读取收盘、不丢失待确认分支。继续等严格跌破翻空低点才发布组合下降结束证据，知识时间不回填。结构v115、生命周期v14、历史v133；补开盘突破但收盘未破、原收盘较低、等高不触发、后续收盘突破退出等用例，仅编写未运行。未执行检查、测试、新回测、重启、提交或合并；实股结果仍待验证。
+
+2026-10-16 · MONOREPO-330 下级翻空后的影线反弹边界（实现待验证）
+
+用户更正601086目标波段为2024-07-25→2024-12-12及2024-12-12→2025-01-13。只读62dfa7ef已完成缓存：一级12月12日H在12月26日因12月25日L严格破位结束，1月3日H影线9.316823高于前高8.906993，但实体高max(open,close)约8.47未突破；原二级只比较影线，将上涨高点继续延伸到1月3日，最终到5月29日，丢掉前波边界。来源1月13日L的下级整波结束知识为1月22日，不能按价格日期倒填确认。
+
+新增trend_body_reversal.py：只附加来源点当日实体；必须有原高点的下级严格翻空结束证据，影线更高而实体高未突破才阻止延伸。后续严格跌破翻空低点确认组合下降波；未破位保持观察，实体真突破恢复普通延伸，缺实体/缺翻空证据沿用原高低价规则。_TrendUpgradeState保留候选边界及真实坐标；闭合原H、发布开放L，递归门禁核对四点、来源级别、下级闭合、实体绑定和知识日，不让开放下降尾端提前进入三级。主图/阶段/策略串行入口同用来源实体，阶段紧凑来源保留该字段，避免双链行为不同。
+
+结构v114、生命周期v13、历史缓存v132隔离旧结果。新增test_trend_body_reversal.py覆盖二三级、实体等值、缺证/真突破、持有交替、伪造/未来证据、增量追加。遵循用户开发不检查，只编写未运行；无新回测、测速、浏览器、重启、提交推送合并。完整国芳坐标、普通波段相邻回归与B/S结果影响待验证，MONOREPO-330保持in-progress。
+
+2026-10-16 · MONOREPO-330 特殊恢复限制改按连续日最低价（实现待验证）
+
+用户确认“最多连续3个交易日，当日最低价低于前一交易日最低价；第4天仍创新低则特殊情况失效”。advance_bull_recovery从跌破原低点开始观察，使用前日low做O(1)计数；持平/抬高重置，收盘低于原低点的天数不再作为限制。保留严格收盘收回原低点、后续同级突破、守新起涨低点及既有交替结束条件；不把三天条件单独作为资格确认。四连低即使收盘已收回也失效（尚在特殊恢复观察阶段）。
+
+0至3级共享状态字段consecutive_lower_lows，检查点与审计同步；生命周期v12/历史v131隔离旧计数语义。test_bull_recovery.py补四天收盘但未四连低可恢复、四连低失效、持平/抬高重置与三连低检查点恢复；升级夹具补本级冻结上下文。仅编写未运行，遵循开发不检查，不运行测试/格式/构建/浏览器/新回测，未重启/提交/推送/合并。完整结果待验证，MONOREPO-330保持in-progress。
+
+2026-10-16 · MONOREPO-330 国芳局部突破误开二级资格（实现待验证）
+
+只读已完成c07cdd2d回测及缓存：2021-04-27二级底部疑虑冻结2020-08-14高点8.97474528141774；2021-07-28局部起点没有疑虑标签，后续突破2021-06-21局部高点4.38001922825172，被_upgrade_bull_fact误认为二级翻多，2021-11-22等跳空条件因此开启错误资格。保护只检查局部起点，未沿用整级冻结关键位；不是前端颜色或进度的问题。
+
+_annotate直接输出逐点lifecycle_context，复用已有背景、key、anchor，无另建状态机或新增历史扫描。_annotate_geometry/_annotate_permissions白名单传递并清除继承状态；升级回退要求本级上下文已知、关键位身份一致且严格突破，返回本级空头低点。缺少上下文不猜翻多；普通正式标记和特殊恢复逻辑不变。生命周期v11、历史缓存v130隔离旧错误资格，保留00:31缺口语义及检查点变量修复。
+
+新增test_lifecycle_frozen_context.py覆盖三层局部起点无疑虑、早期冻结关键位仍生效、触及不算突破、真实突破、缺失/未来/反向上下文；旧反例补真实上下文。只编写，按用户要求未执行测试、检查、格式、类型、构建、浏览器、新回测或测速；未重启/提交/推送/合并。完整国芳新结果与特殊600812回归待验证，MONOREPO-330仍in-progress。
+
+2026-10-16 · MONOREPO-330 批量回测检查点恢复失败（实现待验证）
+
+读取现有8766任务：版本306f4194下12股均失败，统一错误invalid lifecycle checkpoint shape。from_checkpoint先读取周期确认缺口gap，后读取candidate时将同名gap覆盖为bool，再sequence(gap,4)抛错；无候选的既有用例未覆盖。分别命名saved_gap/candidate_gap，保留13字段及原00:31资格/买卖语义，不引入后续已回退功能。补0至3级、有无确认缺口及无候选/放量候选/跳空候选恢复一致性与缺口触发用例，仅编写未运行。开发阶段不执行测试、格式、类型、构建或浏览器；真实完整股票恢复待验证。
+
+2026-10-16 · MONOREPO-330 回补缺口只撤销跳空交替确认（实现待验证）
+
+只读既有600825缓存及TDX日线：实际跳空放量交替确认在2026-02-10，原价实体缺口下沿6.92，2月11日最低6.87已回补；缓存复权下沿7.020914233370532。用户所述2月9日实际原价开收均6.92；不写死日期，按确认来源判定。旧资格只处理翻转低点、反向交替等边界，没有持续跟踪开启资格的缺口。
+
+按用户最后澄清，回补只撤销跳空这项空多交替结束确认，不取消空翻多结构，不无条件关闭由其他规则确认的资格。confirmation_gap统一读取实体跳空/防守N整理跳空的证据；TrendLifecycle保存缺口并在后续最低价触及下沿时发布confirmation_revoked、回到原翻多周期等待确认，普通结构交替或特殊分支的非缺口确认可接替缺口。TradingEligibility仅关闭仍依赖该缺口的窗口；生命周期先被其他价格规则结束时仍跟踪残留缺口窗口，事件回放、实时N与资格掩码复用同一事件。审计终点包含回补日，买入当天关闭，原账户退出规则保留。恢复/复制检查点带缺口状态，版本v10/history v129隔离旧数据。
+
+新增test_confirmation_gap_expiry.py覆盖三层、实体/完整缺口、下沿触及、路径隔离、其他确认接替、检查点及再次确认、事件回放与资格掩码。只编写未运行；未执行任何测试、格式、lint、类型、构建、Git检查、浏览器、新回测或测速，未重启、提交、推送、合并。完整600825新结果和页面终点仍待验证，MONOREPO-330继续in-progress，原失败记录保留。
+
+2026-10-15 · MONOREPO-330 保持策略口径的请求内性能优化（实现待验证）
+
+继续 feat-三级趋势统一。按用户要求保持现有买卖条件、资格、知识时钟、N确认、成交和账户规则；没有合并主趋势链与策略独立确认链，没有省略持仓风险检查。本次只修改重复历史工作及缓存生命周期。
+
+1. strategy_history_cache：固定 Bar 来源内缓存逆N新低风险和整理跳空两种纯观察，键包含日期和完整相关参数，包含 None，结果副本隔离；两张表各最多8192项。正N失效按起点/攻击/防守参数记录已扫描截止日及首次失效，只补扫新增的已认证行情。部分尾K线独立判断不写入封闭结果，历史修订拒绝绑定，缩短回放不返回未来失效。洗盘候选升序/降序各排序一次，顺序和首次命中规则不变。
+2. MarketCalculations 请求内保留 _TrendPermissionCache，跨日复用已关闭路径的许可模板及行情索引，仍逐日限定查询上界。Bar身份不匹配、分钟尾部修订独立建立缓存；正常和异常结束释放请求缓存。
+3. chart_entry_history 在同一 live owner、已观察资格前缀、精确行情前缀、参数和完整旧攻击证书一致时支持跨多日恢复；仍从旧未完成日重放后缀。证据变化走原冷路径，不用日期相同代替完整证据相同。
+4. TrendStageRows 只缓存最近两行不可变压缩/原始字节，总预算2 MiB；每次仍读取并验证行载荷、执行 loads 和领域 decode，避免重复解压同时保留可变输出独立性、别名和解码钩子。超预算绕过，关闭即释放。
+
+新增 test_strategy_history_cache.py、test_chart_live_permission_reuse.py、test_trend_staging_payload_cache.py，覆盖追加/回放缩短、修订回退、参数/owner隔离、分钟尾行情、None、容量、解码失败及输出隔离。只编写未运行；未执行测试、格式、lint、类型、构建、Git检查、运行探针、新回测或测速；未提交、推送、合并或重启服务。没有实测提速倍数，完整B/S、审计、成交/权益冷温差分及实股耗时仍待提交阶段验证；原有失败事实保留，MONOREPO-330继续in-progress。
+
+2026-10-15 · 提交阶段验证与分支保存（未通过全部回归）
+
+用户要求提交并推送 feat-三级趋势统一，明确不合并 main。本次保存累计实现及已知失败，MONOREPO-330 保持 in-progress；不代表完整验收通过。此前“未运行”的记录是各开发阶段历史，本段为最新提交验证结果。
+
+2026-10-15：1016 passed、53 failed、49 subtests passed，344.47 秒。包含阶段串行旧预期、测试替身参数未同步、历史复用及信号/账户断言失败；不能把全部失败归因于旧测试，仍需逐项排查。未执行完整实股回测验收。
+
+2026-10-15 · MONOREPO-330 国芳集团错误资格前置条件（实现待验证）
+
+只读现有任务0573cb50-0350-415d-b951-abb6b80547e1预览，保存到忽略目录.codex-runtime/601086-eligibility-diagnostic.json。二级2019-01-23底部疑虑冻结末跌高为index95/11.50；2019-02-11升级局部高点index262/6.680981595091979，局部被突破高点index211/6.1343558282208175，随后实体跳空分支授权，从2019-02-01低点绘制至2019-03-14。2019-03-15来源修订关闭。不是复制按钮计算出的资格，也不是特殊恢复；源码把局部升级直接转换成普通翻多，并把疑虑直接当作翻向。
+
+共用六态修复：普通正式同级关键位突破优先于升级证书；升级起涨低点存在本级底部疑虑冻结key时，必须匹配并严格突破该key，不能用较近局部高替换。疑虑仅发布trend_lifecycle_suspicion，不开启翻向周期；交替要求真实翻向证据。生命周期事件增加flip_confirmed，TradingEligibility开窗强制要求明确true；特殊恢复保留原0至3根收盘规则及既有交替结束规则。折线及一二三级共用；生命周期v9、历史v128隔离旧结果与检查点。
+
+新增疑虑加孤立交替拒绝、国芳冻结11.50与局部6.13/6.68缩减反例、多级检查点及缺翻多证明拒绝用例；同步原夹具的确认时钟/证明。只编写未运行，国芳新版完整回测、600812特殊恢复及账户结果待验证。没有运行任何检查、测试、格式、lint、类型、构建、Git检查或浏览器验证，无提交/合并/推送。
+
+2026-10-15 · MONOREPO-330 缩量封板后巨量上涨转弱清仓（代码已修改，待验证）
+
+用户明确：开盘允许接近前日阳线实体中点，收盘严格跌破；不要求连续放量上涨，缩量封板之后出现一次即可。新增 observe_limit_up_distribution_exit 共用纯观察器，接入 whole-wave evaluate_sell 和持仓 observe_volume_down_exit，两路共用证据。账户 EXIT 同收盘清仓白名单、证据和部分退出优先级同步，保持 T+1、可成交和无持仓不制造成交，不依赖 N 达标或当前买入资格。
+
+量化默认：最多回看20个交易日，巨量阳线相对缩量封板前低点累计涨幅至少30%；历史最近一对连续缩量封板提供均量基准，巨量上涨日成交量至少2倍，允许中间普通日且不再要求连续放量，期间不得跌破该缩量对低点；随后阴线开盘低于前收且不高于前日实体中点加实体长度2%，收盘严格低于中点。只消费当日前缀、固定有界窗口；按证券板块/历史日期及原价分位识别封板，ST与复权切换窗口安全跳过，不猜IPO无涨跌幅状态。策略说明记录v2规则，全包源码哈希覆盖新模块以隔离旧结果。
+
+只读取 D:/TDX/vipdoc/sz/lday/sz000678.day 的2022-07-19至08-02历史，未执行策略：7/26、7/27量19074994/3649241，7/28量5098423略增但仍封板；7/29、8/1量137379465/123141952。8/1实体中点10.165、开盘允许上限10.1844，8/2开10.18收9.91。此前规则要求巨量反包/严格低开中点或旧高点条件，这条形态可能被漏；不能把该静态条件分析写成已验证实际清仓。
+
+Web共享卖出原因增加规则名称、缩量日期与均量、巨量日、涨幅、中点、容差及实测开收，成交复制与复盘共用。新增合成前置和本地实股片段用例，覆盖非连续放量、价格/量/守低边界、未来后缀、信号及持仓两条清仓路径，只编写未运行。按用户要求未运行测试、检查、格式、lint、类型、构建、Git检查、浏览器、测速或新回测。未重启、提交、合并或推送。MONOREPO-330保持in-progress，正式账户/分钟/T+1联动及实股结果待验证；需重启后端并更新回测才使用新策略。
+
+2026-10-15 · MONOREPO-330 二吐后反包清仓与实体跳空确认（实现待验证）
+
+two_t_resistance的共用反包条件放宽为阴线实体覆盖前日非十字实体（允许一边相等、至少一边越过），成交量严格大于最近阴线或前一交易日；无此前阴线仍能比前日。二吐必须此前已达且来源仍有效，evaluate_sell沿用100%退出与禁止当日重入，账户仍遵循T+1/可成交约束。补充两种量基准及前日阴线用例，未运行。
+
+新增confirm_body_gap_alternation：已有真实空翻多后，守住起涨低点、回撤低点必须为当时已确认折线点；开盘严格高于前日实体上沿、量严格增大、实体至少开盘2%且至少半振幅、收盘突破回撤低点至昨日最高价。保留短浅回撤限制；不要求整根K线跳空，也不依赖未来N。特殊和普通周期及折线/三级共用，资格确认与低点日期分开，普通分支接入现有交易上下文，不制造N或B点。生命周期v8、交易历史v127隔离旧缓存。补写边界/各级资格用例，旧N专用夹具避免与新独立分支混淆。
+
+按用户要求未运行任何检查、测试、格式、类型、构建、Git检查、浏览器、新回测；未提交/合并/推送/重启。600812的2019-08-19确认和2019-09-23清仓仍需新版实股回测验证；没有宣称成交已发生。MONOREPO-330保持in-progress。
+
+2026-10-14 · MONOREPO-330 特殊守低统一复用交替结束规则（实现待验证）
+
+按用户明确要求，特殊空翻多后的守新起涨低点改为必要条件，删除“同级回撤低点确认即结束交替”的旁路。新增confirm_recovery_alternation，共用浅回撤严格小于2/3、较深回撤后已确认重突破、原短浅回撤时间限制、折线正N加轧空/强轧空/恢复、正N防守整理跳空等条件。原N成立、攻击质量、量价及B段空间时间规则保留；普通规则不改。
+
+未完成特殊周期在资格之前观察有界折线N，不产生订单；确认当天发布六态事件后，资格与N来源按原同日链路更新。新增recovery_entry_history适配确认事实到买点上下文，精确引用确认N，禁止向过去补许可；整理跳空仅为已经取得对应确认的折线N接入既有交易通道。市场、批量及部分行情入口传入折线和当前策略确认参数，缓存键纳入参数。检查点保存首次可知时钟和N点证据，来源修订继续撤销。生命周期v7、交易历史v126隔离旧规则。Web提示显示命中的确认规则。
+
+补写test_recovery_alternation_confirmation.py及调整test_bull_recovery.py深回撤预期；仅编写未运行。未执行检查、测试、格式、类型、构建、Git检查、浏览器、新回测或测速，未提交、合并、推送、手动重启。600812的2019-08-06结构低点、新许可日及8月买点待实股验证，不保证8/12或8/19买入；完整账户、检查点恢复、分钟续接和性能仍待验证。下列v6/更早记录是历史证据，本节覆盖旧的守低即确认规则。MONOREPO-330保持in-progress。
+
+2026-10-14 · MONOREPO-330 0至3根收盘恢复、同腿延续及跨日点缓存（实现待验证）
+
+用户已确认包含0天：最低价跌破原低点、当日收盘收回也成立。advance_bull_recovery现以low严格跌破触发，再按连续close低于计数，0至3根后严格收回有效，第4根失效；等价触及不触发、等价收盘不确认。新增trend_lifecycle_recovered审计记录原低、首次破位、收回时钟、连续收盘根数及价格。折线和三级共用入口。版本升six_state_intraday_recovery_continuity_v6，旧检查点不续接。
+
+进一步修复特殊周期延续：_continued_bull_impulse仅在原种子事实仍存在、被突破高点与新起涨低点完全不变、本级相邻H/L/H仍同腿、延伸高点位置/价格/知识日不后退且交替尚未完成时，更新高点与structure，发anchor事件，保留started及recovery。不同基准或低点修订继续失效。避免2019-03初已识别的特殊突破因高点发展到2019-04-11而丢失特殊属性。补写与生产升级证据相同的0天+高点发展+检查点+三级区间夹具，目标2019-08-06结构起点/2019-10-09交易确认，无日期硬编码；未执行。
+
+处理上轮现场栈定位的一个耗时来源：HierarchyHistoryStream拥有请求级16MiB有界_FrozenPointCache，逐日通过_frozen_point_scope借用，不再每天销毁。作用域仍恢复ContextVar并每天清理可变来源admission，完整点签名及原有线程隔离/容量拒绝逻辑保持；普通自有scope仍自行关闭。daily_signals在正常完成或异常finally关闭stream缓存，close不清理已发布历史，关闭后不可推进。补写跨scope命中、变化证据不混用、异常恢复外层、所有者释放和关闭后拒绝用例，未执行。未宣称全引擎已增量或两分钟目标完成。
+
+未运行测试、检查、格式、类型、构建、Git检查、新回测或浏览器；未提交/合并/推送/手动重启。新v6实股资格区间、前端实际显示、账户差分、速度幅度均待运行验证，不能把旧v5现场数据或新夹具当作通过。MONOREPO-330保持in-progress，历史失败/分钟N/性能待办保留。
+2026-10-14 · MONOREPO-330 当前v5现场资格诊断（规则澄清待答，未改算法）
+
+只读查询3004对应8766现有任务bb47e655-6d27-4ba3-994c-3598a1229474：版本84e37fff158f00b4231fd622db28ecbd579a7d77cd72632c212ca6bd92dea03a。首次541.7秒、1263/2119、2023-03-29；后743.8秒、1509/2119、2024-04-03，仍在推进。读取现有preview保存到.codex-runtime/current-branch-services/20261012-202019/600812-qualification-diagnostic.json，无新回测。审计明确six_state_upgrade_bull_recovery_v5，2018-08-07已识别2018-07-26翻多高点；实际区间仍为2019-10-31低点/2019-12-31确认至2020-10-26破位，非旧版本或前端丢失起点。
+
+关键原因：原翻多低点2018-06-22为3.95；当前同源复权日线2018-10-19最低3.898401727861721但收盘4.05874730021593，附近收盘均高于3.95。当前恢复计数必须先close<3.95才设置breach，因此未触发。用户此前明确最多连续3根收盘低于后收回；此实股实际是盘中跌破当天收回，收盘跌破0根。已提出必需业务澄清：是否扩为最低价跌破且连续收盘跌破0至3天（包括当天收回），或保留1至3根则本样例不适用。未获答前不擅自放宽。另须处理特殊翻多发展高点被同腿后续高点替换时structure严格集合校验导致特殊周期失效且恢复种子已被pop的问题；当前审计显示2019-03多次source_evidence_revised，修改时应保留有效起涨低点和突破证明，不能简单忽略所有来源修订。
+
+运行时只读py-spy dump：supervisor中的29968是启动进程，不可直接采样；其Python子进程10204采样成功。活动线程在daily_strategy→integrated_strategy→HierarchyHistoryStream.advance→judge_trend→_finalize_judgement→_FrozenPointCache.intern→_frozen_owned_bytes递归统计。源码HierarchyHistoryStream.advance每个交易日with _frozen_point_scope()重新建/销毁缓存，导致跨日旧点冻结和计量无法复用。只是一次栈采样，无耗时占比/完整基准结论。另backtest_jobs.update_preview覆盖progress_stage去掉累计耗时，阶段总elapsed不能代表各阶段CPU用时。
+
+本轮至此只读取运行状态、已有preview/源码及一次成功进程栈，记录诊断；没有测试、格式、lint、类型、构建、Git检查、新回测、提交/合并/推送或手动重启。先解决0天规则歧义再修复特殊周期的延续；速度优化需请求级复用缓存并显式释放，保留线程和内存边界。330继续in-progress。
+2026-10-14 · MONOREPO-330 补齐升级突破到特殊资格的真实来源（实现待验证）
+
+用户反馈600812特殊资格仍未从2019-08-06开始。本轮只读既有.calculation-steps/artifacts-v1.sqlite，未运行新回测。manifest 206d7b2b861ec7cd762cfed72bf46b9ac2e0dcc04e899be0cb11705ad0517ab5属于600812、二级、AKShare、2018-01-01至2026-10-14；其旧六态记录版本为v3。二级历史行145已记录2018-07-26高点/2018-08-07确认；行321记录2019-04-11高点/2019-04-30确认；行427记录2019-08-06低点/2019-10-09确认。这两处高点observations为空，upgrade_evidence却有完整的up/endpoint、broken_key、origin和confirmed_by。先前只看展示观察标签，遗漏2018初始真突破，导致特殊恢复根本无种子。前期怀疑相邻点限制，但真实来源证据指向适配遗漏；本轮不放宽相邻/知识时间要求。
+
+新增_upgrade_bull_fact在共同_facts入口接收升级证明。起涨低点与被突破高点按坐标/价格匹配本级已确认点，确认高点须匹配本级终点，严格突破且证据时钟已到；使用本级时钟，不能用下级较早known代替。本级真实升级事实优先于同高点的展示注释，去重且避免旧远端低点覆盖起涨低点。一级到三级使用相同解析器，折线保留既有观察证据入口。生命周期版本改为six_state_upgrade_bull_recovery_v5，旧检查点不能续接；现有代码指纹缓存失效机制继续使用。
+
+补写与实际缓存形状一致的空observations/完整upgrade_evidence缩减用例：三级参数化、2019-08-06结构起点与2019-10-09确认日、缺证据/非本级点/价格不一致拒绝、低级时钟不能提前、重复注释去重及检查点恢复，未运行。无股票或日期硬编码；资格审计、N和图表继续消费同一counter_index/start_low_index。说明文档更新packages/wavequant-core/docs/bull-recovery.md。
+
+只读取源码和已有产物、编写代码/测试/记录；没有执行测试、检查、格式、类型、构建、Git检查、浏览器、服务探针或新回测，没有提交/合并/推送/手动重启。旧缓存证据不等于新算法验证，新版实股完整区间、前端实际更新及账户差分仍待验证。330保持in-progress，原性能/分钟N/失败项不变。
+2026-10-14 · MONOREPO-330 短暂收盘跌破后同级再次空翻多（实现待验证）
+
+用户明确：最多连续3根收盘低于原低点，随后收盘严格收回原低点之上。600812二级后续突破2018-11-22高点，应以2019-01-04为新空翻多防守低点，再观察2019-08-06回撤低点。该日期替代上一轮2019-10-31结构起点预期，但均未运行实股确认。
+
+根因源码：六态按最低价跌破即清除周期，不保存短暂收盘跌破的观察；普通交替67%回撤限制也不能表达本次“守住新起涨低点”的特殊分支。新增advance_bull_recovery保存连续交易日收盘计数，第四根低于失效，相等中断连续计数但不确认收回。TrendLifecycle._advance_bull_recovery统一用于折线及一二三级：真实空翻多种子→短暂跌破→收回→本级确认H/L/H严格突破→新起涨低点未破→本级回撤低点确认；特殊分支不套67%上限，普通规则不变。只用本级已知点，旧高在突破日前已确认，结构起点与许可确认日分离，无日期/股票硬编码。
+
+观察与新结构进入不可变检查点/复制恢复，版本升为six_state_short_close_break_recovery_v4，来源修订或路径关闭清理。pending撤销旧买入资格，完成事件复用现有资格/N/B/S链路；已有资格的翻转低点破位退出不增加三天宽限。普通交替完成后不再保留未触发的旧恢复种子。补写折线/三级、1至3根、4根、仅影线、等价触及、严格突破、新低点破位、来源修订、检查点及前缀因果用例，均未运行。规则说明见packages/wavequant-core/docs/bull-recovery.md。
+
+按用户要求未执行检查、测试、格式、类型、构建、Git检查、浏览器或实股回测，未提交/合并/推送/重启。实际600812是否精确得到2019-08-06结构起点、资格终点及账户差分仍待验证。MONOREPO-330保持in-progress；历史性能、分钟N和失败项保留。
+2026-10-14 · MONOREPO-330 资格区间低点起点与翻转低点破位终点（实现待验证）
+
+用户给出sh.600812二级区间2019-12-31—2023-09-13错误，期望2019-10-31交替低点至2020-10-26最低价11.27跌破2020-09-17二级翻转低11.53。源码确认：TradingInterval保存start_low_index但审计只发布start_index确认日，前端用事件timestamp着色；TradingEligibility只在多空交替完成/来源失效关闭，没有本级翻转低点价格破位入口。未读取实时股票产物或运行重放，不能断言这几个日期在当前因果几何中的确认日已核实。
+
+修改全局一二三级规则：MarketCalculations同日六态之后由TradingEligibility读取本级当前因果strokes，在当前活动路径中选择不早于交替低点、当日前已确认的最近L翻转点；当日最低价严格小于其同口径价格时发布trading_reversal_low_broken，资格立即关闭。过滤seed/developing/display_only、未来确认点、其他级别/路径；相等触及不关闭。确认事件复用到EligiblePolylineN及批量interval_days，关闭日禁止新买、允许退出；不改变账户强制平仓规则。多空交替完成/来源失效仍可提前关闭未关闭窗口。
+
+审计补充交替低点日期/价格、资格确认索引及终点翻转低点日期/价格。前端结构背景确认后从交替低点绘制，破位日作为结构终点包含；真实买入资格仍从确认日开始且破位日关闭，不把未来确认倒灌到2019-10-31。旧审计没有新字段时继续按旧确认日与终点排除处理。提示文字明确结构背景不等于确认前可以买入。原始行情及趋势几何不改；量化代码指纹变化后原账户缓存按现有机制失效，需新版本结果。
+
+补写使用报告日期/价格的缩减结构夹具（不是该股票完整历史回测）、一二三级参数化、最低价破位但收盘仍高于阈值、等价批量事件重放、同日/未来确认点不能替代旧阈值、触及/其他路径/级别过滤、MarketCalculations资格及Web前缀着色回归，均未运行。按要求未运行检查、测试、格式、类型、构建、Git检查、浏览器、服务探针或回测；未提交/合并/推送/重启。实际600812是否精确返回2019-10-31—2020-10-26、其他股票区间/账户差分、性能仍待验证；MONOREPO-330保持in-progress，已有性能/分钟N待办不变。
+2026-10-14 · MONOREPO-330 连续交易确认历史与最终图缓存（实现待验证）
+
+一次现有 API 进程栈显示根日线 daily_strategy 每次进入 _generate_system_signals 都调用批量 hierarchical_history。该函数恢复时深复制累计历史、重新创建判定缓存，只接续昨天/前天；资格跳过一段后可能全历史回放。新增 HierarchyHistoryStream：根日线请求持续持有行情索引、各级判断器、点首次/重新可知时钟及最小历史，只补未处理日期；不复制旧历史，不临时落盘再读三级中间行。下降证据提取与批量入口共用。保留逐日前缀规则与独立交易确认，不把图表几何点直接冒充策略许可；公开批量与分钟兼容入口继续原逻辑。
+
+进度记录折线趋势、交易结构确认、买卖规则、账户/分钟/快照分类累计耗时，并在阶段内刷新当前处理内容，完成交易日才推进预览和完成计数。AKShare 最终 render_theory 结果也持久缓存；两源图表缓存键纳入策略和执行配置，价格/数据来源及截止日继续参与键，adjusted_theory 纳入引擎变更清理。
+
+新增流式各前缀与批量确认/下降证据一致、两个N模式、历史不改写及行情索引仅构建一次回归，均未执行。按用户要求无检查、测试、格式、类型、构建、Git检查、浏览器或新完整测速；未提交/合并/推送/手动重启。其他形态观察器仍存在前缀扫描；分钟N来源统一、账户全量差分、固定股票完整回测两分钟目标及此前失败项仍待验证，330保持in-progress。
+
+2026-10-14 · MONOREPO-330 同日交易与账户快照（代码已修改，待验证）
+
+根因：旧主入口先完整 prepare_backtest_analysis，再运行完整策略与账户；旧实时预览只发布市场日并把信号/订单置空，因此趋势领先回测，B/S 在预览刷新时消失。
+
+新增 daily_signals / streaming_stock_result：同一交易日内推进折线、三级趋势及六态、所选级别资格和折线 N，再调用既有买卖判断、当日分钟核验、持续账户撮合；账户完成才发布同日期快照与进度。通达信与 AKShare 当前 whole_flip_wave_v3 主入口均已接入；完整结果缓存直接返回，单独信号缓存不能冒充已完成账户。不再等待整段市场历史完成才开始交易决策，不在末尾再次回放账户。旧策略/显式已有信号的兼容入口继续保留。
+
+portfolio_days 复用原账户循环，跨日保存现金、持仓、待买/待卖、T+1、手续费、加仓与分钟状态。新波浪退出事实持续更新已有持仓；无买入资格时跳过入场扫描，已有买入后的退出观察继续。分钟核验通过 only_index 消费当前日，错误中断当天，不发布假完成；终点指标和成交证据只整理同一账户。
+
+准备历史支持借用当前前缀且恢复写游标，明确拒绝读写交错；趋势变化按偏移定位，折线只额外保留最近两天以续接，避免每次从头解码旧证明。第 2 项保存 N/波浪产物后完成；第 24 项随每日信号/订单/权益追加，并保存最终汇总后完成。计划在步骤开始前固定，异常保持资源关闭。
+
+重要边界：辅助形态/压力/波浪规则仍有“截至当日的可知前缀评估”，并非所有观察器已改为常量开销的增量状态机；整段历史性能、完整账户差分及冷/温成本尚未验证。原分钟子回放沿用检查点路径，其 N 来源与新根日线资格低点口径的统一仍属既有独立待办，不能宣称所有分钟规则已完成改写。
+
+新增/修改回归覆盖策略在市场流内部执行、消费者失败不前进、临时流可续写/异常关闭、后缀读取不解码旧状态、连续账户的次日成交与同日收盘成交、同日分钟调度及快照日期。仅编写未运行。
+
+遵守用户要求，本轮仅阅读和修改源码、编写回归用例与维护记录；未运行测试、检查、格式、lint、类型、构建、Git 检查、浏览器、服务探针或测速。未提交、合并、推送或手动重启。MONOREPO-330 保持 in-progress，既有失败记录不变；不能用旧版通过结果代表当前改造。
+
+2026-10-14 · MONOREPO-330 实际进度、非遮挡预览及刷新保持视图（实现待验证）
+
+prepare_backtest_analysis增加真实市场日进度回调及ContextVar市场预览观察端口，在当天趋势/N目标处理后发布MarketDay。API可节流复制几何，Core不依赖HTTP。根信号入口分配市场准备/策略阶段进度；stock_backtest进度百分比更新保留当前详细阶段，不再长期固定35%或被通用文字覆盖。
+
+新增市场阶段进度与策略阶段边界回归，仅编写未执行。完整B/S流式迁移、分钟N口径仍保留既有待办，不宣称第24步已取消或实际提速。按用户要求未运行检查、测试、格式、类型、构建、Git检查、浏览器或测速；未提交、合并、推送或手动重启，330保持in-progress。
+
+2026-10-14 · MONOREPO-330 三级联动进度统一展示（实现待验证）
+
+用户反馈日期持续推进但始终显示一级。根因是 chart_entry_history.advance 将一秒节流放在每级循环内部，三级共享 last_report，一级首先满足时间条件并重置计时后，二、三级提示经常被节流，不代表它们没有执行。
+
+改为当天所请求级别、检查点及 MarketDay 消费完成后统一上报，显示“折线 → 一级 → 二级 → 三级（含六态）”、实际处理交易日数、各级 change_count 和日期。首日与末日强制上报，中间保留一秒节流，不增加逐日三次服务端写入。补级只列本次实际计算层级，结束消息也保留各级更新计数。趋势、六态及资格规则不变；无来源变化仍不计为趋势更新。
+
+按用户要求未运行检查、测试、类型、构建、格式、浏览器或测速，实际前端轮询展示待验证；未提交、合并、推送或手动重启。MONOREPO-330 保持 in-progress，完整 B/S 流式迁移待办不变。
+
+2026-10-14 · MONOREPO-330 买卖规则分离与同日调度（代码已修改，待验证）
+
+integrated_strategy 将原 consume_signal_day 中完整买点规则抽为 evaluate_buy(context)，完整策略退出规则抽为 evaluate_sell(context)。二者在同次策略运行内共享既有候选、证明、去重和审计状态，TradeDecisionContext 传入当天索引、资格、目标来源及风险缓存，不重新生成折线、趋势或 N 历史。原 N 延续、洗盘再攻、交替突破、波浪、组合 A、二级收复/回踩及浅平台等买点通道和原退出规则保留。
+
+消费顺序为更新当天目标命中→构造当天上下文→卖出判断→有资格才判断买点；同日退出优先。修正原 scan_days 直接返回会连退出风险一起跳过的问题：首次买入信号之前且区间外仍快速跳过；产生过买入信号后，区间关闭只禁止新买入，继续观察退出。信号层不把退出信号当作已经成交，实际持仓、T+1、撮合和持仓专属退出仍归账户引擎。辅助买点的同日重复判断只读取本日新增信号，不再扫描全部历史信号。
+
+新增 test_trade_rule_dispatch.py，覆盖开放窗口信号保持、禁止买入、关窗后退出、同日退出优先、从未有资格时跳过；仅编写未运行。按用户要求未运行测试、检查、格式、类型、构建、Git检查、浏览器、测速；未提交、合并、推送或手动重启。MONOREPO-330 保持 in-progress，原失败和未验证记录保留。
+
+范围边界：两个规则函数已接回现有策略入口，但完整候选/波段/辅助事实准备仍在原批量阶段，SignalClock 尚未接入第一步 MarketDay，独立第24步尚未取消。分钟 N 来源与资格低点新口径的统一仍待完成；不得宣称完整流式改造完成或实际速度已改善。
+
+2026-10-14 · MONOREPO-330 有资格交替低点之后的折线 N（整体 B/S 改造未完成）
+
+本轮用户继续要求完成同日 B/S 改造，并明确新增规则：N 从所选级别取得交易资格的空多交替低点之后开始，只使用折线顶点；异步确认保留原有收盘价＋高低价突破确认规则。继续 feat-三级趋势统一，不提交、不合并、不推送、不手动重启。
+
+已新增 EligiblePolylineN：按真实当天资格事件开关窗口，保存低点 index/ordinal，只消费该低点之后当时已经确认的折线三点；新窗口可读取此前形成的点，但 known_at 不能早于资格开启。持续窗口只重新处理变化涉及的三点，关闭路径停止产生新来源。TradingInterval 增加 start_low_index/start_low_ordinal/start_low_price，生命周期事件补充 counter_ordinal，版本 v3 隔离旧生命周期检查点。
+
+已新增 PolylineTargetStream 并接入 prepare_backtest_analysis 的 MarketDay 回调：LecturePivotState 同日接受折线；N 形成阶段沿原 observe_n 规则读取受 structure_window/pattern_ttl 约束的行情片段；完成后冻结 N，不重新识别，逐日仅推进里程碑和防守/起点失效。未凭空生成五顶/十满，其波浪前提仍待旧策略消费者完成。删除原 _observe_polyline_targets 全历史阶段；第2步缓存保留到策略结束，避免后续波浪记录被 completed 状态丢弃。根日线 integrated_strategy 的候选改用 analysis.n_sources，不再混入高层趋势或 folded N；其他策略过滤保留。
+
+还未完成：完整 B/S 决策仍在原批量入口运行；hierarchical_history、正N重组、A/B/C、辅助通道和 SignalClock 尚未全部接入同日 MarketDay。分钟子回放仍走原检查点入口，尚未同步新的资格低点 N 来源规则，必须继续处理此差异，不能宣称整体完成或实际提速。BottomNTargetState 已提取同一日转换体供原批量函数共用，尚未接到根流中的全部波浪策略。
+
+新增窗口起点/同日 ordinal/来源修订/关窗/未来点拒绝及完成 N 增量与原前缀观察对照用例；仅编写，未运行。按用户要求没有测试、检查、格式、类型、构建、Git检查、浏览器、测速。新增实现和原有失败均仍待验证，MONOREPO-330 保持 in-progress。
+
+2026-10-14 · MONOREPO-330 折线同日B/S接入准备（尚未完成切换）
+
+用户要求取消独立第24步，在第一步折线推进时按已确认资格计算B/S。本轮拆出SignalClock和consume_signal_day：原完整入场、退出、候选排序、去重、目标命中及各开关判断保留在同一闭包，日期消费有序且每次一次；跳日/重复/递归推进拒绝，失败状态不重用，未推进到末日不能声明完成。当前生产入口仍在原策略事实准备完成后驱动该时钟，未声称已经取消独立第24步。
+
+MarketCalculations新增MarketDay/on_day接口。初次完整三级联动中，每日折线→三级几何/六态→资格更新完成后、下一个交易日之前直接发布当天借用证据和三个级别的资格，不读取尚在写入的历史文件。订阅只允许首次完整三级联动，禁止延迟补级或后缀当作完整流；资格读取不扫描历史、不使用未来终点。没有把旧generate_system_signals整段函数放进每日回调，避免逐日重算全策略。
+
+剩余：N候选/目标达成、波段投射、策略上下文及辅助通道仍依赖原整段事实准备；需要逐项转为持久的增量观察状态，再将SignalClock真正接入MarketDay。此接线尚未完成，当前独立策略阶段、执行计划24编号及原进度保持真实，不能仅改显示声称已合并。取消资格仍沿用多空交替结束，用户本轮未要求更改。
+
+新增时钟顺序/重复/异常/完成边界、同日回调时序与三层同步用例，仅编写未运行。未运行检查、测试、格式、类型、构建、Git检查、浏览器或测速；未提交/合并/推送/手动重启。完整策略结果、运行与速度待验证，330继续in-progress。
+
+2026-10-14 · MONOREPO-330 第24步事件资格与窗口调度（部分完成，待澄清/验证）
+
+TradingEligibility消费确认事件并保存区间，MarketCalculations在各级六态确认时同步推进资格，开启/撤销附加buy_eligible写入原事件缓存。prepare_backtest_analysis只读取所选级别已经生成的区间，默认二级及一/三级选项保持，不再在24步重新推导资格。
+
+chart_entry_history移除逐日permissions worker map和sidecars证明树跨进程派发。根日线只在有效买入窗口和一日前置形态预热日运行策略结构许可/候选准备；来源变化或真实行情跨价才刷新策略许可，区间外跳过来源签名、许可、组合A及回踩候选计算。前一日预热不授予交易资格，六态记录/账户原风控继续保留。第24步仍读取日期历史适配现有策略，hierarchical_history的多级N策略历史准备仍含逐日扫描，不能宣称整个24步已完全事件化。窗口掩码加入chart检查点版本，禁止裁剪历史作为旧全历史分钟检查点；分钟分支没有本次掩码，可能冷回退，性能待验证。
+
+用户两次写“空翻多＋空多交替结束开启，发展到空翻多或空多交替取消”，开关方向冲突。已发异步问题区分“多翻空出现取消”和“多空交替结束取消”，尚未收到回答；取消边界暂保留之前明确的多空交替结束，不自行改成反向首次翻转。待回答后统一区间策略、分钟分支及相关边界用例。
+
+新增/调整资格长尾、路径失效、只读缓存、区间外不计算策略资格、窗口前一日预热、原六态证据一致用例，仅编写未运行。遵守用户要求没有检查、测试、类型、格式、构建、Git检查、浏览器、测速或手动重启；未提交/合并/推送，不宣称实际提速。330保持in-progress，历史失败证据保留。
+
+2026-10-14 · MONOREPO-330 变化联动趋势与内部六态（待验证）
+
+按用户最新要求取消“折线全历史→一级全历史→二级全历史→三级全历史”的阶段屏障。calculate_trend_line(3)一次建立所需状态，lecture_drawing每次回调立即传递当天有效来源变化，一级用折线、二级用一级、三级用二级；相同来源不计算，新点/确认修订/路径切换继续传播。六个独立状态函数及publish_lifecycle_state调度已删除，六态在各级内部当日推进并归档；无几何变化时保留行情收盘/候选判定。
+
+最近下级空翻多/多翻空首次可知时保存本级来源检查点。正常新增继续追加，尾部修订优先从最近翻向状态恢复，重放之后来源；前缀证据变更、迟知插入、内存不足保留受影响路径冷回退，不能硬裁掉关键位前史。检查点不把未来翻向回填到过去。来源校验与证明/注释导出仍会读取历史，未宣称所有算法只读后缀或常数时间。
+
+交易适配器消费已保存六态事件与稀疏检查点，不重新计算六态；部分日线沿原检查点处理未计算后缀。24编号保留为缓存产物，六态不再是独立执行任务，旧排序配置仅保留审计且不能拆开传播链；进度报告联动级别/交易日/更新次数/日期，持久输入schema=3隔离旧产物。N测幅仍在市场联动流之后、策略之前。新增/修改联动即时性、无整段历史回读、逐日前缀、六态只算一次、延后请求级别、部分行情与翻向检查点修订回归，仅编写未运行。
+
+遵守用户要求未运行开发检查、测试、类型、格式、构建、Git检查、浏览器、主动探针或测速；无提交/合并/推送/手动重启。实际完整回测、账户等价、资源与检查点恢复、速度待验证。MONOREPO-330保持唯一in-progress；此前失败和未验证记录保留。
+
+2026-10-13 · MONOREPO-330 分步缓存容量热点修复（待验证）
+
+用户询问第3步慢，现有sh.600812任务928a5824…第1步14.9秒、第2步10.6秒，第3步194.9秒/227变化继续到338.3秒/318变化。对现有API进程29908做5秒非阻塞采样，238样本0错误，235在分步缓存链、228落ArtifactCache.put的全库SUM(size)，几何2、临时写1。仅代表此窗口，不推断整个回测占比；没有启动新回测或开发验证。原始证据见ignored .codex-runtime/current-branch-services/20261012-202019/600812-stage3-928a5824.raw。
+
+按用户“为什么要这一步、怎么解决”修改artifact_cache.py：容量用于限制压缩缓存总量并淘汰旧结果，常规put改为读取单行持久总量；每键大小账本与SQLite触发器同事务维护新增/覆盖/更新/删除，兼容旧连接REPLACE、recursive_triggers开关、引擎清理与回滚。旧库只初始化一次账本，迁移标记与触发器原子提交，后续新实例只读确认；超限清理改为覆盖索引顺序读取256条批次，保留本次结果与原4GiB逻辑容量口径。暂未更改分步结果编码格式或趋势判点，避免同时修改多个性能变量。
+
+新增旧库迁移/重启不求和、旧写入覆盖/更新/删除/回滚、引擎清理/淘汰及并发账本用例，仅编写未运行。未运行测试、类型、格式、构建、Git检查、浏览器或新测速，无提交合并推送或手动重启；实际迁移与提速待验证，330继续in-progress。用户同时要求详细解释一级流程，按源码说明折线变化、公共峰谷投影、四点方向、严格关键位升级、结构标注与两层历史保存的边界。
+
+2026-10-13 · MONOREPO-330 折线独立入口与六态级别（待验证）
+
+按用户更正，将折线计算恢复为独立calculate_polyline()，内部仍调用原lecture_drawing；第1步调度和按需依赖均使用独立入口，calculate_trend_line(level)仅接受1/2/3。用户再次明确六态level支持折线：locate_bull_flip、locate_bull_alternation、confirm_bull_trend、locate_bear_flip、locate_bear_alternation、confirm_bear_trend均保留“折线”/“polyline”/0及1/2/3；history_events同样保留。折线六态从calculate_polyline结果适配，不经一级归并，同请求折线和每级六态仍各计算一次。
+
+更新调用文档及相应用例，仅编辑未运行。无开发检查/测试/格式/类型/构建/Git检查/浏览器，无提交合并推送或手动重启；运行待验证，330继续in-progress。
+
+2026-10-13 · MONOREPO-330 折线级别与公开六态函数（代码已改，待验证）
+
+新增domain/strategies/market_calculations.py：market_calculations资源作用域提供calculate_trend_line、locate_bull_flip、locate_bull_alternation、confirm_bull_trend、locate_bear_flip、locate_bear_alternation、confirm_bear_trend。所有level统一支持“折线”/“polyline”/0和1/2/3，非法值拒绝。几何按需沿折线→一级→二级→三级补齐，每级六态只回放一次；各函数返回独立事件副本并附带撤销，history_events读取完整历史。几何及内部事件只在资源作用域内借用，不完整历史拒绝六态计算。
+
+polyline_lifecycle直接消费当时折线峰谷，通过现有polyline_turns处理包含点、严格关键位突破和retracement_evidence生成本级结构观察，不先算一级再改标签。确认时间按首次可知日冻结，发展尾不作事实，epoch断开停止旧源；价格/跳空/量能继续由统一TrendLifecycle处理，后者支持0级和检查点。原24步流水线也调用这组公开函数，默认编号、前端项目和交易级别选项仍为原范围；折线六态按需请求内缓存，未新增持久阶段恢复。
+
+新增test_market_calculations.py与test_polyline_lifecycle.py，仅编写未运行；更新调用说明docs/backtest-calculation-order.md。按用户要求未运行检查/测试/类型/构建/格式/Git检查/浏览器/探针/测速，未提交合并推送或手动重启。实际六态、原三级结果等价及性能待验证，330继续唯一in-progress。
+
+2026-10-13 · MONOREPO-330 后端可配置步骤顺序（代码已改，待验证）
+
+按用户仅在后端调整执行顺序的要求，新增calculation_plan.BACKTEST_STEP_ORDER与请求内using_calculation_order覆盖。默认原1至24顺序，可写优先前缀；计划按固定依赖先补折线和下级几何，每步一次，拒绝重复/非整数/越界。根日线prepare_backtest_analysis不再把N和六态绑定在几何完成回调里，可先算三级几何再算N和各级六态；第24步仍等待全部市场产物，分钟子回放保留原路径。
+
+同级六态在最先请求的状态步骤共算一次，后续步骤复用原事件并通过only_step独立提取缓存。市场日期顺序、首次可知日、三级几何数据来源不变；公开生命周期事件仍按原级别及观察顺序交付。缓存稳定编号保留，manifest记录计划，前端既有title/note和当前stage显示实际执行序号，无前端配置/API契约改动。运行时顺序不加入分步输入键，修改默认常量的源码版本仍按原规则隔离；未新增跨请求阶段恢复或宣称提速。
+
+新增调度/非法输入/上下文隔离/缓存编号/换序产物一致/资源释放用例，仅编写未运行。配置说明见docs/backtest-calculation-order.md。按用户要求未运行检查、测试、类型、构建、格式、Git检查、浏览器或性能测量；未提交合并推送或手动重启。实际运行与完整账户差分待验证，330保持唯一in-progress。
+
+2026-10-13 · MONOREPO-330 折线变化驱动趋势历史（代码已改，待验证）
+
+一级改为读取折线来源变化，二/三级读取直接下级变化后按完整来源证据去重；发展尾点同向移动且不改变已确认峰谷/同日投影计数时不触发公共投影与趋势计算。PolylineSourceGate仅用于lecture_drawing尾点替换/追加协议，包含关系确认、锚点替换、价格相对方向变化和epoch切换均重新投影。TrendSourceChanges保存最长未变前缀之后的替换；确认知识、真实路径截止改变也生成事件，不能从最终折线倒裁历史。
+
+ChartDrawingHistory将原每日整条折线复制/压缩改为尾部变更日志，路径关闭副本只写一次；TrendChangeRows保存来源变化时的完整趋势版本，逐日六态/交易消费者显式借用只读版本，默认读取仍返回独立副本。图表纯几何不再跨日期派发worker，使用同一有界32MiB判定状态与32MiB冻结池，保留现有追加/尾部恢复及复杂修订冷回退。第1步持久数据改为drawing_tail_changes_v1，3/10/17为trend_changes_v1；包含开始/覆盖末日，输入缓存schema=2隔离旧格式。阶段状态增加已处理变化次数和日期，35%总体阶段比例未改成伪造的股票完成率。
+
+新增test_trend_change_history.py覆盖逐日前缀几何对照、折线还原、确认/路径修订、同日投影、只读共享与外部所有权、断点续接和纯发展段不重算。只写未运行；未执行开发检查/测试/格式/类型/构建/Git检查/浏览器/探针，未提交合并推送或手动重启。变化版本仍处理完整证明，第24步旧交易资格历史/每日价格推进仍有开销；实际收益、账户完整差分、运行UI与冷耗时待验证，不宣称达标。330继续in-progress。
+
+2026-10-13 · MONOREPO-330 所选级别交替结束区间（待验证）
+
+用户纠正第24步：先按buy_interval_level（默认二级，可选一级/二级/三级）找到空翻多高点后的空多交替结束，到后续多翻空低点后的多空交替结束的区间，再在区间内扫描B/S。trading_intervals.py按确认日与同级同路径建立区间，候选/翻空初现/价格止损均不作为正常终点；源修订与路径断开另记失效。起点日可买，终点日只留卖点，尚无终点的尾段截至当前回测末日，不能要求未来终点才授权过去买点。持仓风控与资金不按区间重置。
+
+backtest_analysis先积累六态事实，第24步开始即生成并缓存所选级别区间和B/S日掩码；无区间不进入旧策略扫描、不做分钟入场核验。integrated_strategy主信号循环在区间外跳过B/S判断，专属买点扫描使用新掩码；保留区间之前的N/趋势等共享证据和必要状态推进，不按日期硬切断因果前史。buy_intervals的六态分支取消与旧EntryContext取交集，旧legacy策略适配保持原规则。TrendLifecycle新增翻转锚点/可知日；价格止损后路径结束仍发布失效，版本与图表检查点升级，避免旧事件缺字段误授权。
+
+新增test_trading_intervals.py并更新边界用例，覆盖用户选级别、等候多空交替结束、终点仅S、开放尾段前缀一致、跨路径隔离、候选/未来知识拒绝与空区间跳过。全部只写未运行；无开发检查/测试/格式/类型/构建/Git检查/浏览器/探针，无提交/合并/推送。实际策略与账户回归、冷耗时待验证，330保持in-progress。
+
+2026-10-13 · MONOREPO-330 市场分析与第24步策略边界（待验证）
+
+根因是hierarchical_history在各级几何循环内调用qualify_trend_structure，generate_system_signals又把24步开始标记放到最终信号循环之前，导致交易筛选在较早的趋势进度下执行。新增backtest_analysis.py与generate_system_signals公开入口编排：当前whole_flip_wave_v3日线根调用先完成折线、折线正N及条件五顶十满测幅、一级几何与六态、二级几何与六态、三级几何与六态，再调用原策略函数；六态仍按日期同轮推进，候选不等于确认。第24步包含原有交易资格、策略专属N筛选、多级协同与入场退出判断，旧“独立资格历史”改为明确的交易条件进度。
+
+准备阶段N测幅不受交易量能/盈亏比入场过滤，是市场事实；保留setup知识日、局部观测offset、各目标达成日期，五顶/十满沿用条件转浪观察器，不造无条件倍数。策略已有N筛选与账户规则保留。仅同请求且完整Bar相同可读取已保存折线/三级图表几何；复用原有有界临时流，最多128份N与市场状态、8份条件投影memo，超出淘汰只影响复用。旧策略层级许可适配仍有自身归并工作，六态在策略检查点路径仍推进；不能宣称已消除所有重复计算或实现性能目标。分钟子回放保留检查点路径，不每分钟重跑全日线准备。
+
+新增test_backtest_analysis_boundary.py，覆盖阶段次序、策略启动前禁止交易资格调用、准备结果与旧图表资格消费等价、分钟分流及异常资源释放。仅写未运行，开发检查/测试/格式/类型/构建/Git检查/浏览器/探针均未执行；未提交、合并或推送。完整结果等价性、N测幅边界和实际耗时待验证。330保持in-progress；持久中间产物仍未接入跨请求逐步断点续算。
+
+2026-10-13 · MONOREPO-330 24步骤记录与持久缓存（待验证）
+
+增加domain/market_structure/calculation_steps.py的请求隔离观察端口，通过ContextVar只绑定当前Job与完整Bar内容；分钟部分前缀不混入日线记录。integrated_strategy记录N目标事件和信号，chart_entry_history在现有折线/三级纯几何/逐日六态消费处记录各自产出，不改变几何来源、信号判定及知识时钟。24项是逻辑产物清单，六态仍同轮逐日推进，并非已重排为24个串行算法；未执行/不适用/旧结果未提供的数据如实标记。
+
+infrastructure/persistence/calculation_step_cache.py以现有ArtifactCache存储安全JSON：512KiB目标分块（单行可更大），4GiB既有容量边界，键包含schema、请求参数/引擎及全部Bar字段摘要。每步完成发布manifest，失败保留前序完整数据及当前部分数据，记录存储失败；快照只返回状态/数量/耗时，chunk索引留服务器。步骤1为各日期折线，3/10/17为各日期几何strokes，18项六态为含候选/失效与知识日期的事件，2为N/测幅事件，24为信号与最终账户数据。命中相同清单标“已有对应缓存”，不将分钟数据未核验的24步直接复用，不从后验完整趋势裁历史。
+
+这些文件用于结果保存/复查，尚未作为逐步断点恢复输入，不宣称减少实际计算或提速。历史完整回测缓存继续原逻辑。补充缓存持久读取、行情许可字段/版本隔离、空事件完成、部分失败和六态归档用例，只写未运行；未执行开发检查/测试/格式/类型/构建/Git检查/浏览器/主动探针，未提交合并推送。330保持in-progress。
+
+2026-10-13 · MONOREPO-330 三级六态生命周期（代码已修改，待验证）
+
+用户要求统一一二三级六态。新增 domain/market_structure/trend_lifecycle.py，请求自身的 TrendLifecycle 每日消费当时的三级纯几何，初次转折（底/头疑虑，或无先行疑虑时首次严格翻向）、交替确认、交替之后的严格收盘再突破分别记录。旧几何的翻空为多/翻多为空标签保持原语义；新六态事件明确区分初次转折与原严格关键位突破。跳空采用整根价格区间跳空、放量攻击采用量大于前一根且实体/收盘同向，只输出候选依据和已知阈值，不预言未来结束日、不替代已确认交替。失守防线、来源证据修订、路径结束撤销活跃区间，已发布历史事实保留。
+
+Chart逐日 accept 无论旧资格刷新 gate 是否触发都推进一次生命周期；三个级别共用同一状态机。状态与候选事件进入原 audit/history，默认二级/可选一三级买点门禁同时要求既有交易上下文和六态区间，区间外风控退出保留。提供对称卖点搜索日表，但不新增做空订单或以卖点区间限制强制止损。新增 bearish_turn_signals 公共输出，bullish_turn_signals 删除未确认交替的直接转多旁路。原明确断言该旁路的用例按本次新规则改为拒绝；其他既有失败记录不变。
+
+生命周期只保留标量事实、活跃周期和候选变化，不复制完整多层证明树；copy 与 builtin-only checkpoint 支持原分钟日志，未扩大 pickle 允许类型。Chart检查点v122，含转向输出的图表artifact policy v122隔离旧结果；纯Hierarchy几何v120不变。当前是请求内检查点/最终结果审计复用，尚不是24步骤全部独立持久缓存，也未证明回测提速。
+
+新增 test_trend_lifecycle.py：三个级别双向与完整六态、等值/过早突破拒绝、候选不代替交替、未来引用守护、防线/路径/来源修订失效、部分日线恢复和真实限制Pickler保存、空头公开输出。所有新增/修改测试、类型、包构建、性能与真实回测均待验证。遵守开发阶段只读写代码，本轮未执行检查、测试、格式、Git检查、运行探针、浏览器或基准；未提交、合并、推送或重启服务，当前页面不宣称已加载本轮代码。330继续唯一in-progress。
+
+2026-10-12 现场性能诊断 · MONOREPO-330 仍未达标
+
+用户询问当前股票速度与卡点，仅读当前分支任务8af82a06…及已有进程。新华传媒sh.600825，2018-01-01至2026-10-12，V3/默认二级：145.5秒为35%一级趋势独立资格；269.8秒为35%图表一级几何；449秒为35%逐日图表资格。35覆盖多个子阶段，不据此认定停止执行；成交模拟尚未进入。两个独立5秒非阻塞py-spy：主进程483有效/38读取失败，其中447回测线程样本，264落在trend_staging.py:80解压/pickle.loads；worker77有效/10失败，31为_geometry_signature。样本只定位当时热点，不当全窗计时或主从累计百分比。5.032秒CPU窗口，本API5.109秒、六worker合计1.845秒；主目录旧API同时5.062秒CPU，旧sz.000678任务5368.4秒仍65%模拟成交。串行恢复/认证/传递历史证据是当前阶段明确热点，六worker存在不能消除生产者瓶颈；买点区间过滤在这些全历史之后，不能减少此前趋势/图表开销。
+
+最新状态、两个raw及CPU窗口保存在ignored .codex-runtime/current-branch-services/20261012-202019/600825-live-diagnostic.json。首次CPU采集脚本KeyCollection绑定失败，修采集脚本后才保存成功窗口；没有运行生产代码测试、触发新回测或停止/重启服务。没有当前完整结果和同源同选项未优化基线，不能回答提速倍数或宣称两分钟目标完成；330继续in-progress。后续优化应优先减少历史证据整树恢复/编码及重复趋势流水线，保留类型/别名/知识时钟/未知值拒绝，不能靠更多worker或只剪末端买点掩盖热点。用户本轮只要求诊断，未修改生产实现或合并。
+
+2026-10-12 最新运行状态 · 用户取消合并，启动当前分支
+
+用户明确“不合并，启动当前分支的前端和后端”。合并准备阶段只读取了Git状态、分支/差异、workspace清单及配置，没有执行提交、同步main、测试或合并。现已从feat-三级趋势统一的worktree启动独立服务：Web http://127.0.0.1:3004，API http://127.0.0.1:8766。前端代理指向8766；后端日志确认Core与API源码都来自本worktree。Next.js Ready，首页和代理/api/catalog为HTTP200，只记录启动可用，不当作回测或代码验收。
+
+后台supervisor PID14636；Web启动器26196，API虚拟环境启动器19804，Windows/Python可能另有解释器子进程。运行入口、PID记录和stdout/stderr位于忽略目录.codex-runtime/current-branch-services/20261012-202019；关闭时应按该记录只处理本次进程树。结果状态独立，通过SQLite只读backup复制operations journal及封存runs，没有复制旧自选队列。现有main 3003/8765不受本次启动影响。依赖复用主目录API虚拟环境，PYTHONPATH明确先加载本worktree Core/API；只为页面启动生成contracts ESM/CJS和vendor静态资源，无类型/单测/lint/格式/正式构建/Harness/浏览器E2E。
+
+MONOREPO-330仍唯一in-progress；回测完整性能、候选剪枝及级别选项的代码验证继续待执行，本次启动不声明提速达标。未提交、合并、推送或清除主目录缓存。浏览器新端口与独立后端使用本地独立自选状态；主服务数据保持原样。
+
+2026-10-12 最新开发 · MONOREPO-330 买点区间级别已明确（覆盖下方“用户未回复级别”记录）
+
+用户指定可选一级/二级/三级，默认二级。SystemStrategy增加buy_interval_level=2，校验真实整数1/2/3；分级双买点及整波策略只在所选级别已确认空多交替的有效上下文中寻找买点。一级可显式授权，不能继续由原二或三级OR补位。四类入场历史在更新候选失效/状态后用entry_days跳过闭区间证明，最终买点排序与入场前跳过闭区间；逐日趋势、正倒N与目标、退出和止损保留。
+
+Chart发布hierarchy_bear_flip：翻多为空在破位点观察上，使用观察累计上下文可知日并在首次实际消费日记录，不使用头部高点价格日或点自身较早的来源时钟；未来/发展/显示尾证据不能关闭。已发布身份从现有事件账本恢复并去重，避免重复刷新重关区间。闭区间不因旧轧空上下文仍存在而重开，必须有翻空之后的新空多交替。Chart消费缓存升级v121以隔离缺少翻空时钟的旧检查点，Hierarchy与纯趋势几何保持v120。有效策略与复用证书已包含所选级别。
+
+新增test_buy_intervals.py及相关闭区间/接口消费用例，覆盖默认2、一级授权、所选级别独立、可知时钟/未来边界、保留上下文翻空关闭和新交替开放；均只写未运行。遵守用户开发阶段只开发代码要求，本轮没有测试/类型/lint/构建/格式/Git检查/浏览器/测速，未提交、合并、重启、清缓存或推送。
+
+待实际提交准备：补充最小相关类型/定向检查和Chart冷/暖/部分日线事件一致性；为新默认2及选项1/3先冻结同口径未优化基线，再比较完整research/account/minute和无分析器512/2107日计时。新口径允许与旧OR账户不同，不能删旧断言或拿Q39.0935秒当当前成绩。必要区间剪枝尚未证明解决全窗一级116.6秒开销，120秒目标仍未验收，330保持唯一in-progress。
+
+2026-10-12 最新开发（覆盖下方“当前恢复Q”描述）：MONOREPO-330在Q上接入因果候选区间剪枝，当前源码尚未验证，不能使用Q39.0935秒/326定向通过等历史结果代表当前实现。用户未回复筛选级别选项时按现有各策略级别要求推进，不统一强制三级共振，不改变既有B/S规则。
+
+组合A：N之后还未严格超过一饱的区间跳过局部ABC搜索；极值/首次突破用原请求行情树查询。组合A入场防线优先推进，严格二分之三收盘防线使用Fraction；只有满足时长、量能和实体/跳空必要条件的日期才提取底点和生成证明。二级回调：起点失守/创新高关闭候选窗口；每日失效继续处理，非放量反攻日跳过全区间阻力搜索。整波入场：真实活跃上下文仍作区间门禁，最高价/最低收盘/起点守护查询索引化，同日排序与最终判断复用，含拒绝结果且本地表逐日清空。
+
+市场索引增加收盘最小值树、极值最早位置和严格Fraction收盘破位查询；串行Chart复用原permission_cache行情树，worker复用原self.market。查询截止当前日期；所有数据仍逐日推进折线、I/II/III状态和N目标，区间外不跳过状态/硬风控。非精确整数、非标准价格和不同tuple来源走原扫描。新增test_trade_window_ranges.py，扩展combined_a/secondary_pullback测试，覆盖等值首点、未来破位、必要价位前拒绝、失效审计及与原扫描的对照。
+
+本轮开发只读写代码，未运行任何检查/测试/类型/构建/格式/Git检查/浏览器/回测探针；未提交、合并、重启服务、清缓存或推送。MONOREPO-330仍唯一in-progress。提交准备时需先对7个改动源及3个相关测试作必要类型/定向检查，再用冻结真实512和完整2107日做同Q/v120窗口完整research/account/minute差分与无分析器计时；全窗120秒仍是目标。当前剪枝集中于候选与区间扫描，未证明解决完整一级阶段116.6秒的全部开销。新的私有_market_index参数可能需要现有监测包装器转交，不改原业务断言。旧330/331失败事实保留。
+
+2026-10-12 最新回退（覆盖下方历史候选说明）：T/U/W/X/Y没有证明完整2107日净速度目标，均已撤回。X51245.2536秒、Y51242.3124秒，正式完整research/account/minute来源与Q/v120一致，但不优于Q39.0935；X/Y完整2107都120秒仍一级，来源准备至一级起始分别36.5847/21.9678秒，峰181809152/195506176B。X9源类型通过，435通过6旧资源spy签名失败；包装器同步后14资源测试通过，原6项已修。Y9源类型及37直接相关用例通过。没有把这些实验写成性能通过。
+
+当前生产恢复到已验证Q候选：从final330q-cow-terminal-src恢复本轮改动的 judgement/lines/stage_work/staging/hierarchical_entry/chart_entry_history/trend_workers七文件；删除本轮自建snapshot_transport/snapshot_rows两个模块、两个专用测试和模板解冻测试。保留Q状态容器快照/终止拒绝/标量解析/私有层级源投影、先前330并行/检查点优化，保留旧监测私有参数适配、明确来源中断fixture及其原路径隔离断言。未保留GC调整、R发布前缀、S输入压缩、T资格gate或T-Y增量证据/对象身份方案。它们只在ignored冻结实验中可复盘。
+
+任务未完成：MONOREPO-330继续唯一in-progress。完整2107日120秒目标及全窗账户差分没有通过，不能提交/合并/宣称网页已经提速；当前API仍旧主目录服务，本轮未重启、清缓存、推送或部署。当前没有自有运行测试/基准进程。下一步需对完整一级阶段做独立CPU/对象分配剖析，区分来源生成、来源复制/合法性核验、普通/升级、资格发布、阶段/检查点编码；现有512 profiler聚合含进程池线程等待及交错caller，不能据混合调用栈直接下结论。不要继续叠加未量化净收益的缓存。开发只写代码，检查仍仅在实际准备提交阶段运行。
+
+2026-10-12 最新继续实现（MONOREPO-330，未完成）：当前为 X 阶段增量暂存候选，不再只有 Q 草案。T 私有只读模板把完整一级结束由 Q116.6339 降至101.8016秒，但2107全窗仍超120；U点引用传输一级99.6240秒仍未完成。T/U/W512冷分别41.6051/41.4904/41.6100秒，与Q/v120完整research/account/minute来源正式一致，但不优于Q39.0935；不能当净收益。资格gate仅跳25/512日且增时，已撤回。关闭GC的V仅冻结诊断，39.9091，生产没有改GC策略。U cProfile512 51.668秒仅诊断序列化/还原/认证；不得当正式速度。
+
+X 将点引用协议延伸到请求自身阶段暂存，避免传回增量后又每天写/读整树：新增 infrastructure/computation/trend_snapshot_transport.py / trend_snapshot_rows.py；TrendStageRows 的私有 StageRowCodec 端口默认关闭，标准已知行使用8MiB字典，超限传原文、未知/非有限/闭合模板句柄回原协议；支持重新读取、finally关文件及清字典。私有只读模板16MiB、请求池和因果/字段/type/首可知守护保留，公共输出仍独立。没有恢复R错误的发布前缀缓存。
+
+验证只在明确提交准备阶段进行：W425定向及7源类型通过；X9源类型通过、435通过6失败(资源record_init旧签名不接受_codec)，已同步包装器且保留原资源关闭断言，6项修复后待验证。旧staged四个断点断言由明确空来源epoch夹具恢复覆盖，仍真实生成两段、保留完整原断言；不再让外包十字星的旧断点假设影响隔离测试。当前X冻结 .codex-runtime/backtest-performance/final330x-sparse-stage-src；真实512差分session86106进行中，尚无X净性能结论。2107全窗120秒目标、全窗账户/分钟证据、最终类型/构建/提交/本地合并/实际服务加载均待验证。API此前PID14008仍旧主目录代码，没有在此轮停止、重启、部署、推送或清缓存。
+
+
+
+2026-10-12 最终保留候选修正：随后单独验证 Q 的 512 日冷回测，39.0935 秒/CPU35.640625，完整 research/account 摘要 fd45c25c…/89e53b78…及分钟来源与 v120 基线正式对照一致，比较器退出0。已恢复 Q 的状态容器快照、终止事实、解析及历史源投影；Q 已有326定向及5源类型通过，完整2107仍在120秒到二级而未完成。R的后加发布前缀复用造成差异且无净收益，保持撤回。S的输入无损压缩虽322定向/4源类型及512全字段通过，却43.1378秒/CPU39.0625，未优于P/Q，也已撤回。当前只保留字段一致且有收益的Q；没有提交、本地合并、部署、推送或重启共享旧服务，330仍唯一in-progress。后续重点是每日证据的重复解冻、编码与恢复：研究私有不可变证明引用，使当前日期只物化新增/修订部分；此结构需保持未知值回退、公开输出隔离、完整来源版本和全区间账户对照，不能将草案描述为实现。
+
+
+2026-10-12 后续提交准备：Q/R 方案未通过，已撤回。Q 的 326 项定向及 5 源类型通过，但完整 2107 日在 120 秒到二级，未达标；R 的 207 项定向及 6 源类型通过，但 512 日信号/账户与同 v120 基线不同，且全窗仍超时。差分定位到 2019-03-26 正式压力缺失、2019-04-24 压力延至 5/15；未改原断言掩盖差异。比较器因对照窗口/模式不同退出，已直接读取完整字段确认变化，不计比较器通过。所有 Q/R 新增前缀发布、状态容器快照、历史源字段投影、终止拒绝与解析复用均撤回；当前恢复 P 的结果一致候选（清理未使用试验代码保留）。本轮没有提交、合并、部署、推送或重启共享旧服务；330 继续唯一 in-progress。开发阶段不运行检查；上述命令仅在实际提交准备阶段运行，失败后退回开发，不再追加检查。下一步须针对完整长区间的每日证据恢复/编码开销做单一改动及对应完整差分，不能叠加未证明语义等价的缓存。
+2026-10-12 · MONOREPO-330 请求内并行候选（仍在进行，未提交/合并）：原串行512冷69.8576秒，最新冻结final330p-capacity-view-src的512冷41.4024秒/CPU37.078125、cached39.6029秒/CPU35.625；两者完整research/account/minute provenance与串行基线同字段/类型，摘要fd45c25c…/89e53b78…。完整2107两分钟目标仍未完成，g/k/l/m/n/o均120秒仍一级，最新p完整基准session69702正在执行。不能把局部收益或主进程RSS当完整验收/聚合内存。
+
+新增请求级spawn进程池（6 worker/24MiB队列/8MiB单输入），日期FIFO汇总与层级屏障保留，N/未知元数据/变化行情/分钟前缀守护不删。临时行逐行压缩，阶段进度接AKShare/TDX。实测4MiB冻结证据容量耗尽导致大量放弃；状态和冻结缓存各扩展到32MiB，尾部检查点仍按完整历史签名核对。N关闭时仅传消费所需5许可字段/下降事实，下一层继续用完整几何；许可工作进程在传输前完成与父消费器相同的资格视图转换；组合A/回调仅传原strokes全文与其实际读取的N事实，公开审计与证明保持原文。latest-slot/value-key试验无净收益，目前停用（尚在源码，待删除本轮试验代码）。
+
+最新回归分组：57/4/26/240/127/113/34/68/35通过，重叠不合计。旧spy修正到Cache入口、closed资源样本明确路径闭合边界，原断言保留；长真实wave_continuation流水线组停止，不能称整组通过。9和6源类型通过；误选未改system_research.py的19类型错误、旧Provider fixture的12类型错误保留为未通过事实。最新投影视图的最终类型/构建待实际提交准备阶段。未运行Harness、Prettier、浏览器或完整套件，开发阶段未执行Git diff/status/staged检查（仅最初status）。
+
+只读现场证据：API PID14008从主工作目录运行，未加载worktree优化；86a3b93c…任务9118.3秒仍65%，观察池刷新同时占资源。未停止/重启共享服务或清缓存。restart-wavequant.ps1强制main；完成330、按流程提交合并后再重启生效。未推送。下一步先收回session69702的完整结果；若仍失败按其last_computation定位，不能扩大超时冒充通过。移除本轮停用的latest/value试验（O/M冻结源保留复盘），保留最小充分检查和明确待验证。
+
+MONOREPO-330（2026-10-12，继续进行）：本轮实际提交准备阶段才运行定向检查；341项首批、修改相关类型及新168项守价边界通过。128日v120完整账户与before-export逐字段/类型一致，CPU基线4.5625、bulk3.0、facts3.546875秒；两版2107日120秒仍信号生成，无账户输出。扩展220/2旧入口/旧closed样本失败、434/1签名末尾None问题已修后12通过，均保留原始失败事实，不标记全部通过。新final330f-ranges2的512日完整冷69.8576秒/CPU69.046875秒，信号69.7138、模拟0.1437秒、峰79585280B，未作512基线差分。新增阶段证据确认层级23/图表几何22/图表资格24秒，不能把短样本或内存收益当两分钟完整验收。生产源bce3f7a6…，v120前本轮基线31e57643…；三个固定输入不变。正在设计请求级、有界日期快照进程计算，按日期顺序汇总、各级全部完成后才进入上层，未知输入保留串行复制/因果门禁。6物理核/12线程，收益和聚合内存待实测；未提交/合并，线上仍不会自动读取worktree候选。
+
 MONOREPO-332（2026-10-12，完成，准备独立提交）：用户明确“基础折线处理包含关系，一级用折线、二级用一级、三级用二级”。三级判别原本符合此边界；真正根因是基础lecture_drawing在2018-05-23、2020-11-16、2021-02-09外包十字星对向越锚后清空来源路径。已按已知来向单极值归并修复，不生成对向反转、不刷新等值知识日；seed、未知方向、跨epoch及未来/已结束端点守护保留，严格研究折线仍暂停。此前分支共识只作诊断，不是本次实现协议。限定4文件相关141项/36子用例、类型和独立边界复核通过；三缓存升级v120，拒绝v119/v118同源旧检查点及持久旧图缓存的4项和新测试strict类型通过。
 
 真实年度纯行情已取得1997-01-06至2021-04-30完整5507根，AkShare/Sina 1.18.94、raw_unadjusted，同data_version 957cf040…；四报价全部匹配，与旧样本重叠791根OHLCV/factor逐字段一致。该完整前缀纯几何实测约1.512秒，三断点消失、全程lecture-0；一级/二级/三级748/115/10。完整1997前缀的二级有2018-04-27 H7.06（6/4可知且完成），说明截短至2018起初始化会改变高层结果，不能据短样本宣称二级为空。完整源25项在候选及纯main隔离源分别70.48/127.15秒通过，连同原六文件145项合计170 distinct cases/36子用例。已运行相关类型、sdist/wheel/离线安装149源码逐字节及-I -S导入通过，新fixture未改变生产源码；最终manifest e2551efc…，wheel106b34ad…。332完成并准备独立提交，330恢复唯一in-progress待继续，不把缺线正确性修复当作完整回测提速验收。用户已禁用Harness，并要求Prettier/types/build只在实际提交阶段执行，不再开发阶段反复运行。
@@ -641,3 +1696,4 @@ MONOREPO-258常驻验收：实现c05d8e4以e6d1e13合并本地main，main真实3
 - 全局持仓执行对单独的 `strict_structure_unresolved` 待卖单增加下一交易日观察：开盘高于昨收时暂停卖出；收盘仍高于昨收则撤销旧退出，继续等待新卖出信号；收盘不高于昨收则按当日收盘模拟卖出。混合退出、止损及当天新风险优先。
 - 国芳2026-09-04生成结构未解退出；真实复权日线09-07开盘18.0123高于前收17.6223，收盘19.3915。用先前模拟持仓回放到09-07无卖单、持仓保留且无待卖单。
 - 6个相关Core模块142项测试、修改模块mypy及Core源码包/wheel构建通过。`test_add_on_entry.py`中一项既有华瓷08-26买点断言失败，未修改的本地`main`源码复跑也失败；完整Core套件和Web套件未执行，按用户规则未运行Playwright。
+2026-10-17 · 本次提交验证补充：资格与账户相关定向 pytest 165 项、趋势端点 99 项通过，官方 typecheck 与 build 通过；完整套件在长历史用例处停止，2120 日性能仍未验收。MONOREPO-330 保持 in-progress。

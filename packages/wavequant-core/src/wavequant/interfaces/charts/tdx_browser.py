@@ -1,4 +1,6 @@
 """Read-only local A-share browser; separate from sealed backtest universes."""
+
+from wavequant.domain.market_structure.trend_options import ordinary_completion_enabled, with_trend_options
 from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -8,9 +10,7 @@ import time
 from wavequant.infrastructure.market_data.tdx import RECORD, read_day
 from wavequant.domain.models.model import Bar
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
-from wavequant.domain.market_structure.lecture_trend import reversal_trends
-from wavequant.domain.market_structure.secondary_trend import secondary_trends
-from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
+from wavequant.domain.market_structure.trend_pipeline import calculate_trend_hierarchy
 from wavequant.infrastructure.market_data.data import fingerprint
 from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
 from wavequant.infrastructure.filesystem.project_paths import project_path
@@ -124,19 +124,20 @@ class TdxBrowser:
                     markers=[],signals=[],orders=[],trades=[],curve=[],metrics=None,
                     evidence='通达信原始不复权日线，仅行情与讲义绘图；未执行回测，除权缺口可能影响形态。')
 
-    def theory(self,symbol,asof,*,n_target_trend_confirmation_enabled: bool = False):
+    @with_trend_options
+    def theory(self,symbol,asof,*,n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None):
         if type(n_target_trend_confirmation_enabled) is not bool:
             raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         from wavequant.interfaces.research_tools.tdx_backtest import TdxBacktester
         path=self._path(symbol);digest=fingerprint(path)
         engine=TdxBacktester._engine_hashes()
         if engine!=self.engine: raise ValueError('画线代码已变更，请重启服务后重试')
-        key=dict(symbol=symbol,asof=asof,day_sha256=digest,engine=engine,price_basis='raw_unadjusted',
+        key=dict(ordinary_trend_completion_enabled=ordinary_completion_enabled(),symbol=symbol,asof=asof,day_sha256=digest,engine=engine,price_basis='raw_unadjusted',
                  n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         with self.artifacts.lock(self.artifacts.key('raw_theory',key)):
             result=self.artifacts.get('raw_theory',key)
             if result is None:
-                result=self._theory(symbol,asof,digest,n_target_trend_confirmation_enabled)
+                result=self._theory(symbol,asof,digest,n_target_trend_confirmation_enabled, ordinary_trend_completion_enabled=ordinary_completion_enabled())
                 if fingerprint(path)!=digest or TdxBacktester._engine_hashes()!=engine:
                     self._theory.cache_clear()
                     raise ValueError('行情或代码正在更新，请重启后重试')
@@ -146,14 +147,13 @@ class TdxBrowser:
             return result
 
     @lru_cache(maxsize=8)
-    def _theory(self,symbol,asof,digest,n_target_trend_confirmation_enabled: bool = False):
+    @with_trend_options
+    def _theory(self,symbol,asof,digest,n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None):
         bars=self.bars(symbol,asof); drawing=lecture_drawing(bars)
-        first=reversal_trends(drawing,bars,n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
-        second=secondary_trends(first,bars,n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        hierarchy=calculate_trend_hierarchy(bars,drawing=drawing,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         return dict(asof=asof,points=[],polyline_segments=[],events=[],shapes=[],counts={},
-                    lecture_drawing=drawing,reversal_trends=first,secondary_trends=second,
-                    tertiary_trends=tertiary_trends(second,bars,
-                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled),interrupted=False,
+                    **hierarchy,interrupted=False,
                     n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                     computed_from='tdx_raw_prefix_display_only',price_basis='raw_unadjusted')
 

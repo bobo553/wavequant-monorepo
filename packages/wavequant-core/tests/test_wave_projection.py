@@ -28,6 +28,47 @@ def bars_with(*extra: tuple[float, float, float, float]) -> list[Bar]:
 SETUP = WaveProjectionSetup(0, 3, 5, 8, 12.6, 21.8, 10.4)
 
 
+@pytest.mark.parametrize('policy', ['named_stages', 'nearest_box'])
+def test_incremental_projection_matches_prefixes_and_retirement_rewind(policy):
+    from wavequant.domain.strategies.wave_projection_stream import WaveProjectionHistory
+    bars = bars_with((21, 21.5, 18, 19), (19, 20, 17, 18), (18, 22, 17.5, 21),
+                     (21, 31, 20, 30.8), (20, 21, 7, 8))
+    stream = WaveProjectionHistory(bars)
+    try:
+        for end in [*range(len(bars)), 8, 10, 11]:
+            assert stream.advance(SETUP, end, target_policy=policy) == wave_projection_history(
+                bars[:end + 1], SETUP, target_policy=policy)
+        assert stream.advance(SETUP, 6)[0].event == 'wave_projection_ready'
+        assert stream.advance(SETUP, 9)[-1].target == 30.8
+        assert stream.advance(SETUP, 11)[-1].event == 'wave_projection_invalidated'
+    finally:
+        stream.close()
+
+
+def test_many_projection_sources_do_not_evict_each_other_between_closes(monkeypatch):
+    from wavequant.domain.strategies import wave_projection_stream as module
+    bars = bars_with((21.8, 24, 21, 23))
+    original = module._wave_projection_days
+    starts = []
+
+    def counted(market, setup, **options):
+        starts.append((setup, options['target_policy']))
+        yield from original(market, setup, **options)
+
+    monkeypatch.setattr(module, '_wave_projection_days', counted)
+    stream = module.WaveProjectionHistory(bars)
+    setups = [replace(SETUP, defense=10.4 + index / 1000) for index in range(130)]
+    try:
+        for end in (6, 7):
+            for setup in setups:
+                for policy in ('named_stages', 'nearest_box'):
+                    events = stream.advance(setup, end, target_policy=policy)
+                    assert events[0].bar_index == 6
+        assert len(starts) == len(setups) * 2
+    finally:
+        stream.close()
+
+
 def test_two_t_reaches_ready_but_does_not_immediately_assert_extension():
     assert not wave_projection_history(bars_with()[:6], SETUP)
     events = wave_projection_history(bars_with(), SETUP)

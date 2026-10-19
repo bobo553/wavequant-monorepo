@@ -1,12 +1,14 @@
 """用同一高低点定义递归观察一级、二级和三级趋势。
 
-一级来源为已确认折线反转；二级来源为已结束一级整波点；三级来源为已结束二级整波点。
+一级来源为已确认折线反转；普通递归只使用直接下级已结束整波点。
+严格关键位通道另可读取直接下级具有完整突破证明的正式端点，不伪造其结束。
 正／负反转描述局部折线转向，多／空趋势要求两类同向严格抬高或降低。
 本模块产生整波趋势方向证据；突破已知本级高低点的立即升级是独立通道，
 普通方向变化不能冒充翻空为多、翻多为空或其他严格关键位突破事件。
 """
 
 from collections.abc import Mapping, Sequence
+from bisect import bisect_right
 from copy import deepcopy
 from dataclasses import dataclass
 from math import isfinite
@@ -18,7 +20,7 @@ from .trend_structure import StructuralTrend, classify_trend_prices, preceding_t
 Moment: TypeAlias = int | str
 WaveDirection: TypeAlias = Literal['up', 'down']
 
-__all__ = ['completed_source_points', 'trend_reversals']
+__all__ = ['completed_source_points', 'formal_key_attack_points', 'trend_reversals']
 
 _WAVE_COMPLETION_POLICY = 'whole_wave_v117'
 
@@ -58,7 +60,7 @@ def _completion_evidence(point: Mapping[str, object]) -> dict[str, object]:
     """
     fields = ('index', 'ordinal', 'kind', 'value', 'time', 'available_at',
               'wave_direction_before', 'wave_direction_after', 'confirmation_rule',
-              'definition_evidence', 'upgrade_evidence', 'lower_wave_identity_evidence')
+              'definition_evidence', 'upgrade_evidence', 'lower_wave_identity_evidence', 'body_reversal_evidence')
     return {field: deepcopy(point[field]) for field in fields if field in point}
 
 
@@ -72,6 +74,12 @@ def _stamp_wave_completion(point: dict[str, object], *, closed: bool, owned: boo
 
 
 def _completed_source_point(raw: Mapping[str, object]) -> dict[str, object] | None:
+    # 门禁只读取当前点的闭合证明；对整棵继承证据做缓存签名比重新核验更贵，
+    # 且会随历史增长。直接核验保留迟到修订、未知审计对象和原字段引用语义。
+    return _validate_completed_source_point(raw)
+
+
+def _validate_completed_source_point(raw: Mapping[str, object]) -> dict[str, object] | None:
     """把本级几何知识投影成直接上级可消费的整波结束知识，不修改原节点。
 
     旧的人工 confirmed/reversal 输入没有生成标记，继续作为已确认来源。
@@ -175,10 +183,85 @@ def _completed_source_point(raw: Mapping[str, object]) -> dict[str, object] | No
         sign = 1 if after == 'up' else -1
         if sign * (cast(float, identity_endpoint.get('value', 0)) - cast(float, identity_origin.get('value', 0))) <= 0:
             raise ValueError('whole-wave identity requires a real opposite lower leg')
+        local_boundary = identity_proof.get('local_definition_boundary')
+        if local_boundary is not None:
+            if (not isinstance(local_boundary, Mapping) or wave_origin is None
+                    or any(local_boundary.get(field, 0) != identity_origin.get(field, 0)
+                           for field in ('index', 'ordinal', 'kind', 'value', 'time', 'available_at'))
+                    or not isinstance(definition, Sequence)
+                    or any(not isinstance(ref, Mapping) or _proof_order(ref) < _proof_order(identity_origin)
+                           for ref in definition)):
+                raise ValueError('local definition requires all four sources from its whole-wave extreme')
+            from .trend_promotion_scope import validate_promotion
+            promotion = identity_proof.get('higher_trend_promotion')
+            if not isinstance(promotion, Mapping):
+                raise ValueError('local definition requires higher-level promotion evidence')
+            promoted, released = validate_promotion(promotion, cast(int, raw['trend_level']))
+            if (_later_moment(released, completed_clock) != completed_clock
+                    or _proof_order(cast(Mapping[str, object], promoted['confirmed_by'])) > _proof_order(identity_origin)):
+                raise ValueError('local completion cannot precede its higher promotion')
+            promoted_origin = cast(Mapping[str, object], promoted['origin'])
+            promoted_end = cast(Mapping[str, object], promoted['confirmed_by'])
+            assert wave_origin is not None
+            within_wave = (_proof_order(wave_origin) == _proof_order(promoted_origin)
+                and _proof_order(identity_origin) == _proof_order(promoted_end)
+                or _proof_order(wave_origin) >= _proof_order(promoted_end))
+            floor = min(cast(float, promoted_origin['value']), cast(float, promoted_end['value']))
+            ceiling = max(cast(float, promoted_origin['value']), cast(float, promoted_end['value']))
+            if (promotion.get('_promotion_target_level') != raw['trend_level'] or not within_wave
+                    or any(not floor <= cast(float, ref['value']) <= ceiling for ref in references)):
+                raise ValueError('local completion must remain within its promoted wave scope')
+        reversal_key = identity_proof.get('reversal_key')
+        if reversal_key is not None:
+            if not isinstance(reversal_key, Mapping):
+                raise ValueError('ordinary reversal key requires a source reference')
+            key_price = reversal_key.get('value')
+            if (type(key_price) not in (int, float) or not isfinite(cast(float, key_price))
+                    or cast(float, key_price) <= 0
+                    or reversal_key.get('kind') != identity_endpoint.get('kind')
+                    or not _proof_order(reversal_key) < _proof_order(identity_origin)
+                    or sign * (cast(float, identity_endpoint['value']) - cast(float, key_price)) <= 0):
+                raise ValueError('ordinary reversal requires a strict break of its frozen key')
+            key_known = _proof_known(reversal_key)
+            attack_time = cast(str, identity_endpoint['time'])
+            known_before = (key_known < cast(int, identity_endpoint['index']) if isinstance(key_known, int) else
+                            int(key_known) < int(attack_time) if key_known.isdecimal() and attack_time.isdecimal()
+                            else key_known < attack_time)
+            if not known_before or _later_moment(key_known, completed_clock) != completed_clock:
+                raise ValueError('ordinary reversal key must be known before its attack')
     if definition is not None and identity_proof is None:
         raise ValueError('ordinary owned completion requires lower-wave identity evidence')
     upgrade = evidence.get('upgrade_evidence')
-    if definition is not None:
+    body_reversal = evidence.get('body_reversal_evidence')
+    if body_reversal is not None:
+        from .trend_body_reversal import BODY_REVERSAL_RULE, rejects_wick_extension
+
+        if (not isinstance(body_reversal, Mapping) or evidence.get('confirmation_rule') != BODY_REVERSAL_RULE
+                or body_reversal.get('available_at') != completed or expected != ('up', 'down')):
+            raise ValueError('body rejection completion requires its own bearish reversal proof')
+        body_refs = [body_reversal.get(field) for field in ('anchor', 'counter', 'rebound', 'endpoint')]
+        if not all(isinstance(ref, Mapping) for ref in body_refs):
+            raise ValueError('body rejection requires four real lower-level points')
+        anchor, counter, rebound, endpoint = cast(list[Mapping[str, object]], body_refs)
+        if (not _proof_order(anchor) < _proof_order(counter) < _proof_order(rebound) < _proof_order(endpoint)
+                or endpoint.get('kind') != 'L' or not rejects_wick_extension(anchor, counter, rebound)
+                or any(anchor.get(field, 0) != raw.get(field, 0)
+                       for field in ('index', 'ordinal', 'kind', 'value', 'time'))):
+            raise ValueError('body rejection must retain the original high and actual lower topology')
+        source_level = raw.get('source_level')
+        if (type(source_level) is not int or source_level < 1 or raw.get('trend_level') != source_level + 1
+                or any(ref.get('trend_level') != source_level for ref in (anchor, counter, rebound, endpoint))):
+            raise ValueError('body rejection must use the direct lower trend level')
+        for ref in (anchor, counter, rebound, endpoint):
+            value = ref.get('value')
+            if (type(value) not in (int, float) or not isfinite(cast(float, value)) or cast(float, value) <= 0
+                    or _later_moment(_proof_known(ref), completed_clock) != completed_clock):
+                raise ValueError('body rejection cannot borrow future or invalid lower prices')
+            if _validate_completed_source_point(ref) is None:
+                raise ValueError('body rejection requires completed lower waves')
+        if cast(float, endpoint['value']) >= cast(float, counter['value']):
+            raise ValueError('body rejection requires a strict break of the counter low')
+    elif definition is not None:
         if not isinstance(definition, Sequence) or isinstance(definition, (str, bytes)) or len(definition) != 4:
             raise ValueError('ordinary wave completion requires two highs and two lows')
         refs: list[Mapping[str, object]] = []
@@ -272,6 +355,77 @@ def _completed_source_point(raw: Mapping[str, object]) -> dict[str, object] | No
     return result
 
 
+def _formal_key_attack_point(raw: Mapping[str, object]) -> dict[str, object] | None:
+    """正式端点可证明本级价格突破；开放身份不能作为普通组合波结束证明。
+
+    已闭合普通点仍使用真实结束日。严格升级端点使用自身几何可知日，
+    独立校验其起点、旧关键位、攻击坐标及知识链，不伪造 wave_completed_at。
+    """
+    completed = _validate_completed_source_point(raw)
+    upgrade = raw.get('upgrade_evidence')
+    if raw.get('wave_identity_state') != 'owned' or not isinstance(upgrade, Mapping):
+        return completed
+    if upgrade.get('role') != 'endpoint':
+        return completed
+    level = raw.get('trend_level')
+    direction = upgrade.get('direction')
+    attack, origin = upgrade.get('confirmed_by'), upgrade.get('origin')
+    if (type(level) is not int or level not in (1, 2, 3) or raw.get('source_level') != level - 1
+            or direction not in ('up', 'down') or not isinstance(attack, Mapping)
+            or not isinstance(origin, Mapping)):
+        raise ValueError('formal key attack requires its direct-level strict proof')
+    rising = direction == 'up'
+    rule = (f'level{level - 1}_confirmed_' + ('high' if rising else 'low')
+            + f'_breaks_known_level{level}_' + ('last_fall_high' if rising else 'last_rise_low'))
+    if (upgrade.get('confirmation_rule') != rule or raw.get('confirmation_rule') != rule
+            or any(attack.get(field, 0 if field == 'ordinal' else None)
+                   != raw.get(field, 0 if field == 'ordinal' else None)
+                   for field in ('index', 'ordinal', 'kind', 'value', 'time'))
+            or origin.get('kind') != ('L' if rising else 'H')
+            or raw.get('wave_direction_after') != direction
+            or raw.get('wave_direction_before') != direction):
+        raise ValueError('formal key attack must retain its actual endpoint and direction')
+    known = _proof_known(raw)
+    proof_known = upgrade.get('available_at')
+    if not (type(proof_known) is int or isinstance(proof_known, str) and proof_known):
+        raise ValueError('formal key attack requires a proof clock')
+    if _later_moment(proof_known, known) != known:
+        raise ValueError('formal key attack cannot borrow future proof')
+    key = upgrade.get('broken_key')
+    if not isinstance(key, Mapping) or key.get('kind') != attack.get('kind'):
+        raise ValueError('formal key attack requires a matching old key')
+    sign = 1 if rising else -1
+    for ref in (origin, attack, key):
+        price = ref.get('value')
+        if (type(price) not in (int, float) or not isfinite(cast(float, price)) or cast(float, price) <= 0
+                or _later_moment(_proof_known(ref), proof_known) != proof_known):
+            raise ValueError('formal key attack requires finite known references')
+    # 延伸波的原起点可能已经在旧 key 的突破一侧，不能强加新反向起波的跨价条件。
+    # 但真实方向、旧关键位、攻击日前可知与原起点均必须保留。
+    if (sign * (cast(float, attack['value']) - cast(float, key['value'])) <= 0
+            or sign * (cast(float, attack['value']) - cast(float, origin['value'])) <= 0
+            or not _proof_order(key) < _proof_order(attack)
+            or not _proof_order(origin) < _proof_order(attack)):
+        raise ValueError('formal key attack requires a strict directional break')
+    key_known = _proof_known(key)
+    attack_time = cast(str, attack['time'])
+    earlier = (key_known < cast(int, attack['index']) if isinstance(key_known, int) else
+               int(key_known) < int(attack_time) if key_known.isdecimal() and attack_time.isdecimal() else
+               key_known < attack_time)
+    if not earlier:
+        raise ValueError('formal key attack requires a key known before its price date')
+    return dict(raw)
+
+
+def formal_key_attack_points(
+    points: Sequence[Mapping[str, object]], *, source_level: int,
+) -> list[dict[str, object]]:
+    """普通已结束来源加正式严格攻击端点；仅供独立突破路线消费。"""
+    if type(source_level) is not int or source_level not in (0, 1, 2, 3):
+        raise ValueError('source_level must be 0, 1, 2 or 3')
+    return [dict(turn.source) for turn in _source_turns(points, source_level, formal_key_attacks=True)]
+
+
 def completed_source_points(
     points: Sequence[Mapping[str, object]], *, source_level: int,
 ) -> list[dict[str, object]]:
@@ -299,17 +453,19 @@ class _SourceTurn:
 
 def _source_turns(
     points: Sequence[Mapping[str, object]], source_level: int, *, retain_geometry: bool = False,
-    accept_direction_facts: bool = False,
+    accept_direction_facts: bool = False, _position_offset: int = 0,
+    formal_key_attacks: bool = False,
 ) -> list[_SourceTurn]:
     """统一校验直接下级结束来源；原始位置包含开放点以保持来源可追溯。
 
     retain_geometry 仅供本级候选的 key 索引保留原事件外壳，解析时钟仍
     遵守完成门禁；普通递归及适配器返回的 source 则是同一个结束投影。
+    私有追加账本解析尾部时传入原始位置偏移，并包含上一已校验点以核对边界。
     """
     turns: list[_SourceTurn] = []
     clock: Literal['index', 'numeric_string', 'date_string'] | None = None
     previous_order: tuple[int, int] | None = None
-    for position, raw in enumerate(points):
+    for position, raw in enumerate(points, _position_offset):
         if not isinstance(raw, Mapping):
             raise ValueError('trend source points must be mappings')
         level = raw.get('trend_level')
@@ -318,7 +474,7 @@ def _source_turns(
         if raw.get('state') in ('seed', 'developing') or raw.get('display_only') is True:
             continue
         geometry = raw
-        projected = _completed_source_point(raw)
+        projected = _formal_key_attack_point(raw) if formal_key_attacks else _completed_source_point(raw)
         if accept_direction_facts and raw.get('wave_identity_state') == 'direction_only':
             # 内部方向账本可以参与审计解析，但也必须先经过共同policy/身份
             # 校验；删除policy的direction_only不能降级成legacy closed key。
@@ -390,7 +546,7 @@ def _strip_source_license(source: Mapping[str, object]) -> dict[str, object]:
         'wave_display_policy', 'confirmation_policy', 'n_target_trend_confirmation_enabled',
         'structural_confirmation_rule', 'definition_evidence', 'direction_definition', 'upgrade_evidence',
         'wave_completion_policy', 'wave_completed_at', 'wave_completion_evidence', 'source_geometry_available_at',
-        'wave_identity_state', 'lower_wave_identity_evidence',
+        'wave_identity_state', 'lower_wave_identity_evidence', 'body_reversal_evidence', '_higher_trend_promotions',
     ):
         result.pop(field, None)
     # 来源的确认链只用于说明这个下级点为何已存在，不能供本级 publisher 授权。
@@ -459,6 +615,95 @@ def _ordinary_point(
     return result
 
 
+class _TrendReversalState:
+    """同一已校验、只追加来源的普通定义状态；批量入口也使用此循环。"""
+
+    def __init__(self, trend_level: int) -> None:
+        if type(trend_level) is not int or trend_level not in (1, 2, 3):
+            raise ValueError('trend_level must be 1, 2 or 3')
+        self.trend_level = trend_level
+        self.turns: list[_SourceTurn] = []
+        self.highs: list[int] = []
+        self.lows: list[int] = []
+        self.direction: WaveDirection | None = None
+        self.candidate: int | None = None
+        self.selected: list[dict[str, object]] = []
+        self.prefix_known: Moment | None = None
+        self._latest_sources: dict[str, _SourceTurn] = {}
+        self._sources_by_reversal: dict[ReversalPoint, _SourceTurn] = {}
+        self._preceding_sources: dict[ReversalPoint, _SourceTurn | None] = {}
+
+    def extend(self, appended: Sequence[_SourceTurn], *, _snapshot: bool = True) -> list[dict[str, object]]:
+        reversals = {point.reversal for point in appended}
+        if self.turns and (len(reversals) != len(appended)
+                           or any(reversal in self._sources_by_reversal for reversal in reversals)):
+            # 重复 ReversalPoint key 可能改变过去的 preceding 映射；保留
+            # 全前缀批量行为，不把此修订当作纯追加。
+            combined = [*self.turns, *appended]
+            _TrendReversalState.__init__(self, self.trend_level)
+            return self.extend(combined, _snapshot=_snapshot)
+        start = len(self.turns)
+        if not self.turns:
+            self._preceding_sources = _preceding_sources(appended)
+            self._sources_by_reversal = {point.reversal: point for point in appended}
+            for point in appended:
+                self._latest_sources[point.kind] = point
+        else:
+            for point in appended:
+                opposite = self._latest_sources.get('L' if point.kind == 'H' else 'H')
+                neighbors = (point.reversal,) if opposite is None else (opposite.reversal, point.reversal)
+                prior = preceding_turn(neighbors, point.reversal)
+                self._preceding_sources[point.reversal] = self._sources_by_reversal.get(prior) if prior is not None else None
+                self._sources_by_reversal[point.reversal] = point
+                self._latest_sources[point.kind] = point
+        self.turns.extend(appended)
+        turns, highs, lows = self.turns, self.highs, self.lows
+        direction, candidate, prefix_known = self.direction, self.candidate, self.prefix_known
+        for position, point in enumerate(appended, start):
+            prefix_known = point.available_at if prefix_known is None else _later_moment(prefix_known, point.available_at)
+            (highs if point.kind == 'H' else lows).append(position)
+            current_trend = classify_trend_prices(
+                [turns[index].value for index in highs[-2:]],
+                [turns[index].value for index in lows[-2:]],
+                trend_level=self.trend_level,
+            )
+            current: WaveDirection | None = (
+                'up' if current_trend == StructuralTrend.BULL else
+                'down' if current_trend == StructuralTrend.BEAR else None
+            )
+            if direction is None:
+                if current is None:
+                    continue
+                direction = current
+                candidate = (highs if direction == 'up' else lows)[-1]
+                continue
+            assert candidate is not None
+            target = 'H' if direction == 'up' else 'L'
+            sign = 1 if direction == 'up' else -1
+            if point.kind == target and sign * (point.value - turns[candidate].value) > 0:
+                candidate = position
+            if current is None or current == direction:
+                continue
+            extreme = turns[candidate]
+            evidence = [turns[index] for index in [*highs[-2:], *lows[-2:]]]
+            preceding = self._preceding_sources[extreme.reversal]
+            key = _reference(preceding) if preceding is not None else None
+            result = _ordinary_point(extreme, evidence, point, trend_level=self.trend_level,
+                direction=direction, current=current, prefix_known=prefix_known, key=key)
+            self.selected.append(result)
+            direction = current
+            pool = highs if direction == 'up' else lows
+            tail_start = bisect_right(pool, candidate)
+            # 只访问整波极值之后的异类来源索引；历史原点、同类点和价格
+            # 坐标仍完整保留，等价极值继续选择原来源顺序中的第一个。
+            selected = (max if direction == 'up' else min)(range(tail_start, len(pool)),
+                key=lambda offset: turns[pool[offset]].value)
+            candidate = pool[selected]
+        self.direction, self.candidate, self.prefix_known = direction, candidate, prefix_known
+        # 同一判定器内部只读借用追加账本；外部调用仍得到独立列表。
+        return list(self.selected) if _snapshot else self.selected
+
+
 def trend_reversals(
     points: Sequence[Mapping[str, object]], *, trend_level: int,
 ) -> list[dict[str, object]]:
@@ -489,52 +734,4 @@ def trend_reversals(
         raise ValueError('trend source points must be a sequence of mappings')
     source_level = trend_level - 1
     turns = _source_turns(points, source_level)
-    highs: list[int] = []
-    lows: list[int] = []
-    direction: WaveDirection | None = None
-    candidate: int | None = None
-    selected: list[dict[str, object]] = []
-    prefix_known: Moment | None = None
-    preceding_sources = _preceding_sources(turns)
-    for position, point in enumerate(turns):
-        prefix_known = point.available_at if prefix_known is None else _later_moment(prefix_known, point.available_at)
-        (highs if point.kind == 'H' else lows).append(position)
-        current_trend = classify_trend_prices(
-            [turns[index].value for index in highs[-2:]],
-            [turns[index].value for index in lows[-2:]],
-            trend_level=trend_level,
-        )
-        current: WaveDirection | None = (
-            'up' if current_trend == StructuralTrend.BULL else
-            'down' if current_trend == StructuralTrend.BEAR else None
-        )
-        if direction is None:
-            if current is None:
-                continue
-            direction = current
-            # 方向确立前的历史不属于新整波，避免导入较早但无本波证据的极值。
-            candidate = (highs if direction == 'up' else lows)[-1]
-            continue
-        assert candidate is not None
-        target = 'H' if direction == 'up' else 'L'
-        sign = 1 if direction == 'up' else -1
-        if point.kind == target and sign * (point.value - turns[candidate].value) > 0:
-            candidate = position
-        # 方向只由两类已确认极值共同决定。旧代码还要求最后证据与旧整波
-        # 极值同类，导致先抬低、后创新高的多头要等待另一低点才被接纳。
-        # point 已通过来源可知校验；无论最后补齐的是 H 还是 L，都在真实
-        # 可知日确认，既不等待未来 holding 点，也不把单边突破冒充趋势。
-        if current is None or current == direction:
-            continue
-        extreme = turns[candidate]
-        evidence = [turns[index] for index in [*highs[-2:], *lows[-2:]]]
-        preceding = preceding_sources[extreme.reversal]
-        key = _reference(preceding) if preceding is not None else None
-        result = _ordinary_point(extreme, evidence, point, trend_level=trend_level,
-                                 direction=direction, current=current, prefix_known=prefix_known, key=key)
-        selected.append(result)
-        direction = current
-        pool = [index for index in range(candidate + 1, position + 1)
-                if turns[index].kind == ('H' if direction == 'up' else 'L')]
-        candidate = (max if direction == 'up' else min)(pool, key=lambda index: turns[index].value)
-    return selected
+    return _TrendReversalState(trend_level).extend(turns)

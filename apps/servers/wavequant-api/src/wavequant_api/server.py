@@ -39,11 +39,27 @@ DEFAULT_WEB_ROOT = WEB_WORKSPACE_ROOT / "out"
 BACKTEST_JOB_ID = re.compile(r"[A-Za-z0-9_-]{8,128}\Z")
 
 
+def buy_interval_level_option(query: dict[str, list[str]]) -> int:
+    """买点区间级别缺省为二级；拒绝重复或未支持的级别。"""
+    values = query.get('buy_interval_level', ['2'])
+    if len(values) != 1 or values[0] not in ('1', '2', '3'):
+        raise ValueError('buy_interval_level must be 1, 2 or 3 and provided once')
+    return int(values[0])
+
+
 def n_target_option(query: dict[str, list[str]]) -> bool:
     """Keep the optional N route disabled unless explicitly selected."""
     values = query.get("n_target_trend_confirmation_enabled", ["false"])
     if len(values) != 1 or values[0] not in {"true", "false"}:
         raise ValueError("n_target_trend_confirmation_enabled must be true or false and provided once")
+    return values[0] == "true"
+
+
+def ordinary_completion_option(query: dict[str, list[str]]) -> bool:
+    """默认关闭普通升降整波确认，只接受一个明确的布尔选项。"""
+    values = query.get("ordinary_trend_completion_enabled", ["false"])
+    if len(values) != 1 or values[0] not in {"true", "false"}:
+        raise ValueError("ordinary_trend_completion_enabled must be true or false and provided once")
     return values[0] == "true"
 
 
@@ -61,6 +77,8 @@ def backtest_positive_number(query: dict[str, list[str]], name: str, default: fl
 
 def backtest_job_error(error: Exception) -> tuple[int, str]:
     """Expose a stable status without relaying raw Core or provider exceptions."""
+    if isinstance(error, ValueError) and '策略代码已变更' in str(error):
+        return 503, '策略服务正在更新，等待重新连接后使用新版本回测'
     if isinstance(error, (BuySignalSnapshotUnavailable, StructureSnapshotUnavailable, AkShareUnavailable, LookupError)):
         return 503, "行情服务暂不可用，请稍后重试"
     if isinstance(error, (ValueError, KeyError, FileNotFoundError)):
@@ -145,8 +163,8 @@ def make_server(
     market_bars = MarketBarsService(market_timeframes) if market_timeframes is not None else None
 
     def log_backtest_job_error(job_id: str, error: Exception) -> None:
-        if backtest_job_error(error)[0] == 500:
-            logging.error("backtest job %s failed", job_id, exc_info=(type(error), error, error.__traceback__))
+        # Core validation failures need a traceback too; public errors remain sanitized.
+        logging.error("backtest job %s failed", job_id, exc_info=(type(error), error, error.__traceback__))
 
     history_root = getattr(repository, "root", None)
     engine = getattr(repository, "backtest_engine", None)
@@ -167,9 +185,12 @@ def make_server(
             "net_reward_risk_filter",
             "shallow_base_breakout_enabled",
             "n_target_trend_confirmation_enabled",
+            "ordinary_trend_completion_enabled",
+            "buy_interval_level",
             "initial_capital",
             "max_position_weight",
             "backtest_job",
+            "strategy_version",
         }
         if not required <= set(q) or set(q) - required - optional:
             raise ValueError("invalid TDX backtest arguments")
@@ -192,7 +213,8 @@ def make_server(
             volume_filter=volume_filter == "true",
             net_reward_risk_filter=risk_values[0] == "true",
             shallow_base_breakout_enabled=shallow_values[0] == "true",
-            n_target_trend_confirmation_enabled=n_target_option(q),
+            n_target_trend_confirmation_enabled=n_target_option(q), ordinary_trend_completion_enabled=ordinary_completion_option(q),
+            buy_interval_level=buy_interval_level_option(q),
             initial_capital=initial_capital,
             max_position_weight=max_position_weight,
         )
@@ -201,7 +223,6 @@ def make_server(
         )
         job_id = q.get("backtest_job", [None])[0] or str(uuid4())
         validate_backtest_job_id(job_id)
-        signature = json.dumps([path, backtest_args, options], sort_keys=True, allow_nan=False)
         normalized_params = dict(
             zip(("run", "variant", "symbol", "asof", "scenario", "start"), backtest_args)
         )
@@ -210,6 +231,8 @@ def make_server(
             net_reward_risk_filter=risk_values[0],
             shallow_base_breakout_enabled=shallow_values[0],
             n_target_trend_confirmation_enabled=str(options["n_target_trend_confirmation_enabled"]).lower(),
+            ordinary_trend_completion_enabled=str(options["ordinary_trend_completion_enabled"]).lower(),
+            buy_interval_level=str(options["buy_interval_level"]),
             initial_capital=str(int(initial_capital))
             if initial_capital.is_integer()
             else str(initial_capital),
@@ -217,10 +240,11 @@ def make_server(
             if max_position_weight.is_integer()
             else str(max_position_weight),
         )
-        try:
-            strategy_version = repository.backtest_version(backtest_args[0], backtest_args[1])["version"]
-        except (KeyError, ValueError):
-            strategy_version = None
+        strategy_version = repository.backtest_version(backtest_args[0], backtest_args[1])["version"]
+        expected_version = q.get("strategy_version", [strategy_version])
+        if expected_version != [strategy_version]:
+            raise ValueError("策略代码已变更，请重新读取当前版本后回测")
+        signature = json.dumps([strategy_version, path, backtest_args, options], sort_keys=True, allow_nan=False)
         return backtest_jobs.start(
             job_id,
             signature,
@@ -413,6 +437,19 @@ def make_server(
                         raise ValueError("one run and variant required for backtest version")
                     self.send(200, repository.backtest_version(q["run"][0], q["variant"][0]))
                     return
+                if url.path == "/api/backtest-preview":
+                    if set(q) != {"job", "after"} or len(q["job"]) != 1 or len(q["after"]) != 1:
+                        raise ValueError("one job ID and preview revision required")
+                    job_id = validate_backtest_job_id(q["job"][0])
+                    after = int(q["after"][0])
+                    if after < 0:
+                        raise ValueError("preview revision must be nonnegative")
+                    job = backtest_jobs.get(job_id)
+                    if job is None:
+                        self.send(404, {"error": "backtest job not found"})
+                        return
+                    self.send(200, dict(job=job_id, **backtest_jobs.preview(job, after)))
+                    return
                 if url.path == "/api/backtest-job":
                     if set(q) != {"job"}:
                         raise ValueError("one backtest job ID required")
@@ -432,9 +469,12 @@ def make_server(
                         )
                     elif error is not None:
                         status, message = backtest_job_error(error)
-                        self.send(200, {"status": "failed", "error": message, "http_status": status})
+                        self.send(200, {"status": "failed", "error": message, "http_status": status,
+                                        **({'code': 'BACKTEST_VERSION_CHANGED'}
+                                           if isinstance(error, ValueError) and '策略代码已变更' in str(error) else {}),
+                                        **backtest_jobs.progress(job)})
                     else:
-                        self.send(200, {"status": "completed", "result": result})
+                        self.send(200, {"status": "completed", "result": result, **backtest_jobs.progress(job)})
                     return
                 if url.path == "/api/backtest-jobs":
                     if q:
@@ -465,7 +505,7 @@ def make_server(
                     return
                 if url.path == "/api/market-timeframe":
                     expected = {"source", "symbol", "asof", "timeframe"}
-                    if set(q) - {"n_target_trend_confirmation_enabled"} != expected:
+                    if set(q) - {"n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"} != expected:
                         raise ValueError("invalid market timeframe arguments")
                     source = q["source"][0]
                     if source not in {"tdx", "akshare"}:
@@ -481,19 +521,20 @@ def make_server(
                         q["symbol"][0],
                         q["asof"][0],
                         q["timeframe"][0],
-                        n_target_trend_confirmation_enabled=n_target_option(q),
+                        n_target_trend_confirmation_enabled=n_target_option(q), ordinary_trend_completion_enabled=ordinary_completion_option(q),
                     )
                     self.send_versioned_payload(bundle, bundle["snapshot_id"])
                     return
                 if url.path == "/api/structure-signals":
                     expected = {"run", "variant", "source", "asof", "lookback", "signal_type", "trend_level"}
-                    optional = {"symbol", "markets", "n_target_trend_confirmation_enabled"}
+                    optional = {"symbol", "markets", "n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"}
                     if not expected.issubset(q) or not set(q).issubset(expected | optional):
                         raise ValueError("invalid precomputed structure query")
                     params = {key: q[key][0] for key in set(q)}
                     params["lookback"] = int(params["lookback"])
                     params["trend_level"] = int(params["trend_level"])
                     params["n_target_trend_confirmation_enabled"] = n_target_option(q)
+                    params["ordinary_trend_completion_enabled"] = ordinary_completion_option(q)
                     if "symbol" in q and params["source"] != "akshare":
                         raise ValueError("symbol is only accepted for legacy AkShare clients")
                     if structure_snapshots is None:
@@ -503,12 +544,13 @@ def make_server(
                 if url.path == "/api/buy-signals":
                     expected = {"run", "variant", "scenario", "source", "asof", "start", "lookback"}
                     online_expected = expected | {"symbol"}
-                    query_keys = set(q) - {"n_target_trend_confirmation_enabled"}
+                    query_keys = set(q) - {"n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"}
                     if query_keys not in (expected, online_expected):
                         raise ValueError("invalid precomputed buy signal query")
                     params = {key: q[key][0] for key in set(q)}
                     params["lookback"] = int(params["lookback"])
                     params["n_target_trend_confirmation_enabled"] = n_target_option(q)
+                    params["ordinary_trend_completion_enabled"] = ordinary_completion_option(q)
                     if (params["source"] == "akshare") != (query_keys == online_expected):
                         raise ValueError("AkShare buy query requires one symbol")
                     if buy_snapshots is None:
@@ -516,7 +558,7 @@ def make_server(
                     self.send(200, buy_snapshots.query(params))
                     return
                 if url.path in ("/api/tdx-view", "/api/tdx-theory"):
-                    theory_options = {"n_target_trend_confirmation_enabled"} if url.path.endswith("-theory") else set()
+                    theory_options = {"n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"} if url.path.endswith("-theory") else set()
                     if set(q) - theory_options not in ({"symbol", "asof"}, {"symbol", "asof", "timeframe"}):
                         raise ValueError("invalid TDX arguments")
                     if repository.tdx is None:
@@ -524,11 +566,11 @@ def make_server(
                     if market_timeframes is None:
                         raise ValueError("行情仓库未配置")
                     method = market_timeframes.view if url.path == "/api/tdx-view" else market_timeframes.theory
-                    options = {"n_target_trend_confirmation_enabled": n_target_option(q)} if theory_options else {}
+                    options = {"n_target_trend_confirmation_enabled": n_target_option(q), "ordinary_trend_completion_enabled": ordinary_completion_option(q)} if theory_options else {}
                     self.send(200, method("tdx", q["symbol"][0], q["asof"][0], q.get("timeframe", ["1d"])[0], **options))
                     return
                 if url.path in ("/api/akshare-view", "/api/akshare-theory"):
-                    theory_options = {"n_target_trend_confirmation_enabled"} if url.path.endswith("-theory") else set()
+                    theory_options = {"n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"} if url.path.endswith("-theory") else set()
                     if set(q) - theory_options not in ({"symbol", "asof"}, {"symbol", "asof", "timeframe"}):
                         raise ValueError("invalid AkShare arguments")
                     if repository.akshare is None:
@@ -536,7 +578,7 @@ def make_server(
                     if market_timeframes is None:
                         raise ValueError("行情仓库未配置")
                     method = market_timeframes.view if url.path == "/api/akshare-view" else market_timeframes.theory
-                    options = {"n_target_trend_confirmation_enabled": n_target_option(q)} if theory_options else {}
+                    options = {"n_target_trend_confirmation_enabled": n_target_option(q), "ordinary_trend_completion_enabled": ordinary_completion_option(q)} if theory_options else {}
                     self.send(200, method("akshare", q["symbol"][0], q["asof"][0], q.get("timeframe", ["1d"])[0], **options))
                     return
                 if url.path == "/api/health":
@@ -563,16 +605,16 @@ def make_server(
                     self.send(404, {"error": "not found"})
                     return
                 expected = {"run", "variant", "symbol", "asof"} | ({"scenario"} if url.path != "/api/theory" else set())
-                optional = {"n_target_trend_confirmation_enabled"} if url.path in ("/api/theory", "/api/stock-view") else set()
+                optional = {"n_target_trend_confirmation_enabled", "ordinary_trend_completion_enabled"} if url.path in ("/api/theory", "/api/stock-view") else set()
                 if set(q) - optional != expected:
                     raise ValueError("invalid query arguments")
                 args = [q[k][0] for k in ("run", "variant", "symbol", "asof")]
                 result = (
                     repository.view(*args, q["scenario"][0])
                     if url.path == "/api/view"
-                    else repository.stock_view(*args, q["scenario"][0], n_target_trend_confirmation_enabled=n_target_option(q))
+                    else repository.stock_view(*args, q["scenario"][0], n_target_trend_confirmation_enabled=n_target_option(q), ordinary_trend_completion_enabled=ordinary_completion_option(q))
                     if url.path == "/api/stock-view"
-                    else repository.theory(*args, n_target_trend_confirmation_enabled=n_target_option(q))
+                    else repository.theory(*args, n_target_trend_confirmation_enabled=n_target_option(q), ordinary_trend_completion_enabled=ordinary_completion_option(q))
                 )
                 self.send(200, result)
             except MarketBarsVersionChanged as exc:
@@ -595,7 +637,12 @@ def make_server(
             except BacktestJobCapacity as exc:
                 self.send(503, {"error": str(exc), "code": "BACKTEST_CAPACITY", **exc.snapshot})
             except (ValueError, KeyError, FileNotFoundError) as exc:
-                self.send(400, {"error": str(exc) if isinstance(exc, ValueError) else "required result unavailable"})
+                if isinstance(exc, ValueError) and '策略代码已变更' in str(exc):
+                    code = 'BACKTEST_ENGINE_RELOADING' if '重启' in str(exc) else 'BACKTEST_VERSION_CHANGED'
+                    self.send(503 if code == 'BACKTEST_ENGINE_RELOADING' else 409,
+                              {"error": str(exc), "code": code})
+                else:
+                    self.send(400, {"error": str(exc) if isinstance(exc, ValueError) else "required result unavailable"})
             except Exception:
                 logging.exception("chart service request failed")
                 self.send(500, {"error": "chart service error; check server logs"})

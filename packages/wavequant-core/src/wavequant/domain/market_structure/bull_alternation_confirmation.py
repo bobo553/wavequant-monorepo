@@ -1,0 +1,248 @@
+"""Confirm an ordinary or recovery pullback using the same alternation rules.
+
+This observer produces structural evidence before trading permission exists.
+It never generates an order or promotes a polyline low into a trend vertex.
+"""
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Protocol
+
+from ..models.model import Bar
+from ..market_state.control_bar import observe_control_bar
+from ..market_state.market_regime import MarketRegime, RegimePolicy, WaveBoundary, observe_market_regime
+from ..market_state.squeeze_state import observe_squeeze_resumption
+from ..market_state.volume_reversal import volume_reversal_squeeze
+from ..strategies.attack_quality import medium_bullish_body, v3_positive_n_attack_rejection
+from ..strategies.n_consolidation import consolidation_gap
+from .alternation_duration import filter_duration_landmarks, short_shallow_pullback
+from .n_shape import BoxAnchorMode, MilestoneBasis, NSetup, PivotRef, observe_n
+from .price_action import Direction, ShadowPolicy, teaching_inside
+from .squeeze_alternation import squeeze_alternations
+from .trend_market_index import _MarketRangeIndex
+
+
+class ConfirmedTurn(Protocol):
+    @property
+    def index(self) -> int: ...
+    @property
+    def ordinal(self) -> int: ...
+    @property
+    def kind(self) -> str: ...
+    @property
+    def price(self) -> float: ...
+    @property
+    def known(self) -> int: ...
+
+
+@dataclass(frozen=True)
+class AlternationPolicy:
+    structure_window: int = 120
+    pattern_ttl: int = 60
+    volume_lookback: int = 20
+    shadow_fraction: float = .5
+    strict_n_attack_quality: bool = True
+    squeeze_pullback_entries: bool = True
+
+
+@dataclass(frozen=True)
+class AlternationProof:
+    low: ConfirmedTurn
+    rule: str
+    source: tuple[ConfirmedTurn, ...] = ()
+    evidence: dict[str, object] | None = None
+    trend_source: tuple[ConfirmedTurn, ...] = ()
+
+
+def _reference(point: ConfirmedTurn, bars: Sequence[Bar]) -> dict[str, object]:
+    return dict(index=point.index, ordinal=point.ordinal, kind=point.kind, value=point.price,
+                time=bars[point.index].timestamp.date().isoformat(), label=point.kind,
+                available_at=bars[point.known].timestamp.date().isoformat())
+
+
+def confirm_body_gap_alternation(
+    bars: Sequence[Bar], now: int, *, origin: ConfirmedTurn, high: ConfirmedTurn,
+    polyline: Sequence[ConfirmedTurn], _market_index: _MarketRangeIndex | None = None,
+) -> AlternationProof | None:
+    """守低后的实体跳空放量中大阳，收盘突破回撤低点以来的已知阻力。"""
+    if not 0 <= origin.index < high.index < now < len(bars) or max(origin.known, high.known) > now:
+        return None
+    bar, previous = bars[now], bars[now - 1]
+    if (not medium_bullish_body(bar) or previous.volume <= 0 or bar.volume <= previous.volume
+            or bar.open <= max(previous.open, previous.close)):
+        return None
+    market = (_market_index if _market_index is not None and bars is _market_index.bars
+              and _market_index.exact_prices else None)
+    broken = (market.first_extreme(origin.index + 1, now + 1, origin.price, high=False) is not None
+              if market is not None and market.supports_price(origin.price)
+              else min(item.low for item in bars[origin.index + 1:now + 1]) < origin.price)
+    if broken:
+        return None
+    low_index = (market.extreme_position(high.index + 1, now, high=False)
+                 if market is not None and high.index + 1 < now else
+                 min(range(high.index + 1, now), key=lambda index: (bars[index].low, index), default=None))
+    low = next((point for point in polyline if point.kind == 'L' and point.index == low_index
+                and point.known <= now and point.price == bars[point.index].low), None)
+    if low is None or not origin.price < low.price < high.price:
+        return None
+    resistance = (bars[market.extreme_position(low.index, now, high=True)].high if market is not None
+                  else max(item.high for item in bars[low.index:now]))
+    if bar.close <= resistance:
+        return None
+    minimum_close = (bars[market.lowest_close_position(high.index + 1, low.index + 1)].close if market is not None
+                     else min(item.close for item in bars[high.index + 1:low.index + 1]))
+    if (short_shallow_pullback(origin.price, high.price, minimum_close,
+                              high.index - origin.index, low.index - high.index)
+            and bar.close <= high.price):
+        return None
+    return AlternationProof(low, 'body_gap_volume_bullish_breakout_after_defended_low', (low,), dict(
+        confirmation_source='body_gap_volume_bullish_breakout', candidate_index=now,
+        a_origin_index=origin.index, a_origin_price=origin.price,
+        a_high_index=high.index, a_high_price=high.price,
+        b_low_index=low.index, b_low_price=low.price, b_minimum_close=minimum_close,
+        a_duration=high.index - origin.index, b_duration=low.index - high.index,
+        gap_previous_body_high=max(previous.open, previous.close), gap_open=bar.open,
+        breakout_resistance=resistance, confirmation_close=bar.close,
+        volume=bar.volume, previous_volume=previous.volume,
+        body_fraction=(bar.close - bar.open) / bar.open,
+        body_range_fraction=(bar.close - bar.open) / (bar.high - bar.low),
+    ))
+
+
+def confirm_bull_alternation(
+    bars: Sequence[Bar], now: int, *, origin: ConfirmedTurn, high: ConfirmedTurn,
+    broken: ConfirmedTurn, points: Sequence[ConfirmedTurn], polyline: Sequence[ConfirmedTurn],
+    level: int, path: str, policy: AlternationPolicy = AlternationPolicy(), allow_gap_confirmation: bool = True,
+    flip_confirmed_at: int | None = None,
+    _market_index: _MarketRangeIndex | None = None,
+) -> AlternationProof | None:
+    """守住已确认翻多起点，再以浅回撤、重突破、N轧空或跳空确认交替。"""
+    if (type(level) is not int or level not in (0, 1, 2, 3) or not path
+            or not (origin.index < high.index <= now < len(bars))):
+        return None
+    if flip_confirmed_at is not None and (type(flip_confirmed_at) is not int
+            or not 0 <= flip_confirmed_at <= now):
+        return None
+    if any(point.known > now for point in (origin, high, broken, *points, *polyline)):
+        raise ValueError('alternation confirmation requires causal points')
+    market = _market_index if _market_index is not None and bars is _market_index.bars else None
+    broken_origin = (market.first_extreme(origin.index + 1, now + 1, origin.price, high=False) is not None
+                     if market is not None and market.supports_price(origin.price)
+                     else min(bar.low for bar in bars[origin.index + 1:now + 1]) < origin.price)
+    if broken_origin:
+        return None
+    gap = (confirm_body_gap_alternation(bars, now, origin=origin, high=high, polyline=polyline, _market_index=market)
+           if allow_gap_confirmation else None)
+    if gap is not None:
+        return gap
+    # 回调可以继续创新低；首个低点破位后，应由当前已确认的整段最低点
+    # 接受原确认门禁。相等保留最早坐标，未确认的新低仍由行情守低校验拒绝。
+    counter = min((point for point in points if point.kind == 'L' and point.index > high.index),
+                  key=lambda point: (point.price, point.index, point.ordinal), default=None)
+    counter_defended = (counter is not None and not (
+        market.first_extreme(counter.index + 1, now + 1, counter.price, high=False) is not None
+        if market is not None and market.supports_price(counter.price)
+        else any(bar.low < counter.price for bar in bars[counter.index + 1:now + 1])))
+    if counter is not None and counter_defended and origin.price < counter.price < high.price:
+        ratio = (high.price - counter.price) / (high.price - origin.price)
+        rebreak = next((point for point in points if point.kind == 'H'
+                       and point.index > counter.index and point.price > high.price), None)
+        if ratio < 2 / 3 or rebreak is not None:
+            known = max(high.known, counter.known, rebreak.known if ratio >= 2 / 3 and rebreak else 0)
+            landmark = dict(_reference(counter, bars), confirmed_bear_low=_reference(origin, bars),
+                            confirmed_flip_high=_reference(high, bars),
+                            available_at=bars[known].timestamp.date().isoformat())
+            if filter_duration_landmarks([landmark], bars[:now + 1]):
+                return AlternationProof(counter, 'confirmed_higher_pullback_strictly_below_two_thirds'
+                    if ratio < 2 / 3 else 'confirmed_higher_pullback_then_confirmed_flip_high_rebreak',
+                    trend_source=(counter, rebreak) if ratio >= 2 / 3 and rebreak is not None else (counter,))
+
+    # Ordinary and special flips both observe these bounded N candidates.
+    # Their vertices come from the current causal polyline, never future trend lows.
+    anchor = dict(origin=_reference(origin, bars), high=_reference(high, bars),
+                  key=_reference(broken, bars), source_path=path, trend_level=level,
+                  known_index=max(origin.known, high.known, broken.known))
+    for a, b, c in zip(polyline, polyline[1:], polyline[2:]):
+        known = max(a.known, b.known, c.known)
+        if (a.kind, b.kind, c.kind) != ('L', 'H', 'L') or a.index <= high.index:
+            continue
+        if now - a.index > policy.structure_window or now > known + policy.pattern_ttl:
+            continue
+        mother = a.index == b.index < c.index and a.ordinal < b.ordinal
+        same_bar = a.index < b.index == c.index and b.ordinal < c.ordinal
+        if not (a.index < b.index < c.index or mother or same_bar):
+            continue
+        inside = same_bar and b.index > 0 and teaching_inside(bars[b.index - 1], bars[b.index])
+        offset = max(0, a.index - policy.volume_lookback)
+        data = bars[offset:now + 1]
+        setup = NSetup(bars[0].symbol, '1d', Direction.UP,
+            PivotRef(a.index - offset, a.known - offset), PivotRef(b.index - offset, b.known - offset),
+            PivotRef(c.index - offset, c.known - offset), 'lecture_causal', BoxAnchorMode.ATTACK_VIRTUAL_EXTREME,
+            allow_confirmation_bar=True, allow_outside_close=True, allow_mother_impulse=mother,
+            staged_defense=True, allow_mother_pullback=same_bar and not inside, allow_inside_pullback=inside)
+        try:
+            n = observe_n(data, setup, timeframe='1d', milestone_basis=MilestoneBasis.EXTREME,
+                          measure_targets=False)
+        except ValueError:
+            continue
+        if n.completion is None:
+            continue
+        attack = n.completion.bar_index + offset
+        if policy.strict_n_attack_quality:
+            control = observe_control_bar(data, setup, timeframe='1d', volume_lookback=policy.volume_lookback,
+                                          shadow_policy=ShadowPolicy(policy.shadow_fraction), _prepared_n=n)
+            if v3_positive_n_attack_rejection(bars[attack], control.volume):
+                continue
+        positive = dict(event='n_completed', direction='up', bar_index=attack, known_at=known,
+                        origin=a.index, neckline=b.index, pullback=c.index,
+                        outside_close_confirmed=c.index == attack)
+
+        def confirmed_proof(triggers: Sequence[dict[str, object]]) -> AlternationProof | None:
+            confirmed = squeeze_alternations(bars[:now + 1], [positive, *triggers], {attack: [anchor]})
+            for event in confirmed:
+                if event['event'] != 'squeeze_alternation_confirmed' or event['bar_index'] != now:
+                    continue
+                low = next((point for point in polyline if point.kind == 'L'
+                            and point.index == event['b_low_index'] and point.price == event['b_low_price']), None)
+                if low is not None:
+                    rule = ('positive_n_consolidation_gap_after_qualified_b'
+                            if event.get('confirmation_source') == 'defended_n_consolidation_gap'
+                            else 'positive_n_and_squeeze_after_qualified_b')
+                    return AlternationProof(low, rule, tuple(dict.fromkeys((low, a, b, c))), dict(event))
+            return None
+
+        triggers: list[dict[str, object]] = []
+        gap = (consolidation_gap(bars, attack=attack, now=now, defense=n.completion.defense)
+               if allow_gap_confirmation else None)
+        if gap is not None:
+            triggers.append(dict(gap, event='n_consolidation_gap_confirmed', bar_index=now, attack=attack))
+            proof = confirmed_proof(triggers)
+            if proof is not None:
+                return proof
+        # A completed gap proof needs no second regime replay; ordinary N
+        # confirmation shares the same formation with its downstream observers.
+        regime = observe_market_regime(data, setup, timeframe='1d',
+            policy=RegimePolicy(ShadowPolicy(policy.shadow_fraction), WaveBoundary.ORIGIN,
+                                local_resistance_failure=True), _prepared_n=n)
+        frame = regime.latest
+        if frame is not None:
+            reversal = (volume_reversal_squeeze(bars, attack=attack, now=now, origin_low=n.anchors.origin,
+                attack_defense=n.completion.defense, frame=frame, offset=offset) if n.anchors is not None else None)
+            if frame.regime in (MarketRegime.BULL, MarketRegime.STRONG_BULL) or reversal is not None:
+                confirmed_regime = MarketRegime.BULL if reversal is not None else frame.regime
+                assert confirmed_regime is not None
+                triggers.append(dict(event='regime_confirmation', regime=confirmed_regime.value,
+                                     bar_index=now, attack=attack))
+            elif policy.squeeze_pullback_entries and observe_squeeze_resumption(bars, now,
+                    frame=frame, offset=offset, attack_index=attack, defense=n.completion.defense) is not None:
+                triggers.append(dict(event='squeeze_resumption_observed', bar_index=now, attack=attack))
+        if not triggers:
+            continue
+        proof = confirmed_proof(triggers)
+        if proof is not None:
+            return proof
+    return None
+
+
+# 保留旧调用名，普通与特殊分支使用同一个确认实现。
+confirm_recovery_alternation = confirm_bull_alternation

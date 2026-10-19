@@ -5,11 +5,13 @@ import math
 import statistics
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
-from typing import Callable
+from typing import TYPE_CHECKING, Callable, Generator, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
+from wavequant.domain.market_state.candle_strength import QUALIFIED_RISING_CLOSE
+from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse
 from wavequant.application.analytics.holding_drawdown import holding_drawdowns, drawdown_metrics, holding_fill_time
 from wavequant.application.analytics.intraday_wave_exit import (
     PartialSessionCandle, five_top_intraday_eligible, minute_sellable, observe_intraday_five_top_exit,
@@ -22,10 +24,23 @@ from wavequant.domain.strategies.wave_exhaustion_exit import (
     observe_five_top_child_volume_clear, observe_five_top_gap_upper_shadow_clear,
     observe_five_top_body_upper_shadow_clear, observe_five_top_gap_volume_clear, observe_wave_exhaustion,
 )
-from wavequant.domain.strategies.two_t_resistance import TWO_T_BODY_VOLUME_CLEAR, two_t_resistance_history
-from wavequant.domain.strategies.pressure_exit import (
-    pressure_exit_history, record_high_resistance_history, record_high_massive_resistance_history,
+from wavequant.domain.market_state.volume_candle import (
+    volume_bearish_entry_rejection, volume_upper_shadow_rejection,
+    volume_shadow_next_open_eligible, volume_shadow_next_decline, VOLUME_SHADOW_NEXT_WEAK_CLEAR,
 )
+from wavequant.domain.strategies.gap_entry_gate import GapEntryGate
+from wavequant.domain.strategies.two_t_resistance import (
+    BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR,
+    HoldingResistanceHistory, holding_resistance_history,
+)
+from wavequant.domain.strategies.limit_up_distribution_exit import (
+    LIMIT_UP_DISTRIBUTION_CLEAR, observe_limit_up_distribution_exit,
+)
+from wavequant.domain.strategies.pressure_exit import (
+    PressureExitStream, pressure_exit_history, record_high_resistance_history, record_high_massive_resistance_history,
+)
+from wavequant.domain.strategies.trend_flip_exit import TrendFlipExitStream
+from wavequant.domain.strategies.breakout_shadow_exit import BREAKOUT_SHADOW_CLEAR, BREAKOUT_SHADOW_REDUCE
 from wavequant.domain.strategies.mother_child_inverse_n import (
     MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break,
 )
@@ -37,6 +52,9 @@ from wavequant.domain.strategies.staged_exit import (
 from wavequant.infrastructure.market_data.minute import MinuteBar
 from wavequant.infrastructure.market_data.data import lower_limit_price
 from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageError
+
+if TYPE_CHECKING:
+    from wavequant.domain.strategies.daily_risk_histories import DailyRiskHistories
 
 
 def _staged_session_candles(daily: Bar, minutes: list[MinuteBar]) -> list[PartialSessionCandle]:
@@ -94,6 +112,7 @@ class _Position:
     exit_fees: float = 0.0
     realized_pnl: float = 0.0
     wave_events: list[dict] = field(default_factory=list)
+    wave_triggers: set[datetime] = field(default_factory=set)
     wave_reduced: bool = False
     signal_index: int | None = None
     pressure_warning: dict | None = None
@@ -142,6 +161,23 @@ def run_backtest(bars: list[Bar], signals: list[Signal], config: StrategyConfig)
     return run_portfolio({bars[0].symbol: bars} if bars else {}, signals, config)
 
 
+@dataclass
+class AccountDay:
+    index: int
+    signals: list[Signal]
+    positive_n_bars: dict[int, int]
+    wave_events: list[dict]
+    hierarchy: dict
+    entry_executions: dict
+    hierarchy_owner: object | None = None
+    risk_required: bool = False
+    risk_histories: DailyRiskHistories | None = None
+    trading_eligible: bool = True
+    trading_window_start: int = 0
+    eligibility_closed: bool = False
+    positive_n_authoritative: bool = False
+
+
 def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: StrategyConfig,
                   start: str | None = None, end: str | None = None,
                   minute_loader: Callable[[Bar], list[MinuteBar]] | None = None,
@@ -149,7 +185,34 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                   wave_events: dict[str, list[dict]] | None = None,
                   entry_executions: dict | None = None,
                   progress: Callable[[int], None] | None = None, *,
+                  stage: Callable[[str], None] | None = None,
+                  history_reuse: Mapping[str, BacktestHistoryReuse] | None = None,
                   n_target_trend_confirmation_enabled: bool = False) -> BacktestResult:
+    runner = portfolio_days(grouped, signals, config, start, end, minute_loader,
+        positive_n_bars, wave_events, entry_executions, progress, stage=stage,
+        history_reuse=history_reuse, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+    try:
+        while True:
+            next(runner)
+    except StopIteration as completed:
+        return completed.value
+    finally:
+        runner.close()
+
+
+def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config: StrategyConfig,
+                  start: str | None = None, end: str | None = None,
+                  minute_loader: Callable[[Bar], list[MinuteBar]] | None = None,
+                  positive_n_bars: dict[str, dict[int, int]] | None = None,
+                  wave_events: dict[str, list[dict]] | None = None,
+                  entry_executions: dict | None = None,
+                  progress: Callable[[int], None] | None = None, *,
+                  stage: Callable[[str], None] | None = None,
+                  history_reuse: Mapping[str, BacktestHistoryReuse] | None = None,
+                  n_target_trend_confirmation_enabled: bool = False,
+                  live: bool = False,
+                  on_day: Callable[[int, Sequence[dict], Sequence[Trade], Sequence[dict]], None] | None = None,
+                  ) -> Generator[None, AccountDay | None, BacktestResult]:
     """Entries use explicit next-open or same-close simulation; exits retain their model.
 
     Volume capacity is a prior-bar estimate, not an auction fill guarantee. Adjusted
@@ -160,10 +223,13 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
     if type(n_target_trend_confirmation_enabled) is not bool:
         raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
     config.validate()
+    if live and (len(grouped) != 1 or start is not None or end is not None or signals):
+        raise ValueError('a live account requires one full stock history and daily signal delivery')
     entry_executions = entry_executions or {}
     if config.staged_exit_intraday and minute_loader is None:
         raise ValueError('五分钟精确减仓需要完整分钟行情来源')
     calendar: dict[datetime, dict[str, tuple[int, Bar]]] = {}
+    gap_buy_gates = {symbol: GapEntryGate() for symbol in grouped}
     for symbol, bars in grouped.items():
         for i, bar in enumerate(bars):
             if bar.symbol != symbol or (i and bar.timestamp <= bars[i-1].timestamp):
@@ -188,25 +254,36 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 if candle.low < defense or (j in known and any(b.low < defense for b in history[active:j])):
                     active = None
             n_context[symbol].append(active)
+    if stage is not None: stage('准备压力与量价退出风险')
     pressure_risks = {symbol: pressure_exit_history(history, n_context[symbol], config)
-                      if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
+                      if config.pressure_adverse_exit and not live else {} for symbol, history in grouped.items()}
     record_high_risks = {symbol: record_high_resistance_history(history, config)
-                         if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
+                         if config.pressure_adverse_exit and not live else {} for symbol, history in grouped.items()}
     record_volume_risks = {symbol: record_high_massive_resistance_history(history, config)
-                           if config.pressure_adverse_exit else {} for symbol, history in grouped.items()}
+                           if config.pressure_adverse_exit and not live else {} for symbol, history in grouped.items()}
     trend_flip_risks: dict[str, dict[int, dict]] = {symbol: {} for symbol in grouped}
-    if config.trend_flip_adverse_exit:
+    pressure_streams = {symbol: PressureExitStream(history, config) for symbol, history in grouped.items()
+                        if live and config.pressure_adverse_exit}
+    trend_risk_streams = {symbol: TrendFlipExitStream(history, reduction_fraction=config.wave_exhaustion_reduction)
+                          for symbol, history in grouped.items() if live and config.trend_flip_adverse_exit}
+    target_streams: dict[str, HoldingResistanceHistory] = {}
+    if config.trend_flip_adverse_exit and not live:
+        if stage is not None: stage('准备三级趋势退出历史')
         from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
         from wavequant.domain.strategies.trend_flip_exit import trend_flip_exit_history
-        trend_flip_risks = {symbol: trend_flip_exit_history(
-            history, hierarchical_history(history,
-                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)[0],
-            reduction_fraction=config.wave_exhaustion_reduction)
-                            for symbol, history in grouped.items()}
+        for symbol, history in grouped.items():
+            reuse = history_reuse.get(symbol) if history_reuse is not None else None
+            levels = reuse.hierarchy(history,
+                n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled) if reuse is not None else None
+            if levels is None:
+                levels = hierarchical_history(history,
+                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+            trend_flip_risks[symbol] = trend_flip_exit_history(
+                history, levels[0], reduction_fraction=config.wave_exhaustion_reduction)
     wave_lookup: dict[str, dict[datetime, list[dict]]] = {symbol: {} for symbol in grouped}
-    target_resistance = {symbol: two_t_resistance_history(
+    target_resistance = {symbol: holding_resistance_history(
         history, (wave_events or {}).get(symbol, []), reduction_fraction=config.wave_exhaustion_reduction)
-        if config.wave_exhaustion_exit else {} for symbol, history in grouped.items()}
+        if config.wave_exhaustion_exit and not live else {} for symbol, history in grouped.items()}
     c_equal_events = {symbol: [event for event in (wave_events or {}).get(symbol, [])
                                if event.get('event') == 'wave_c_equal_target'] for symbol in grouped}
     wave_signal_lookup: dict[str, dict[int, list[dict]]] = {symbol: {} for symbol in grouped}
@@ -223,7 +300,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
             else:
                 wave_lookup[symbol].setdefault(history[attack].timestamp, []).append(event)
     signal_map: dict[datetime, list[Signal]] = {}
-    for signal in signals:
+    def accept_signal(signal: Signal) -> None:
         bars = grouped.get(signal.symbol, [])
         if (signal.side not in ('LONG', 'EXIT') or signal.bar_index < 0 or signal.bar_index >= len(bars)
                 or bars[signal.bar_index].timestamp != signal.timestamp
@@ -236,6 +313,9 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 or (signal.minimum_reward_risk > 0 and signal.target_price is None)):
             raise ValueError('invalid signal target/reward-risk')
         signal_map.setdefault(signal.timestamp, []).append(signal)
+    for signal in signals:
+        accept_signal(signal)
+    if stage is not None: stage('逐日模拟撮合')
     cash = config.initial_capital
     positions: dict[str, _Position] = {}
     pending_entry: dict[str, tuple[Signal, int]] = {}
@@ -249,6 +329,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
     curve: list[dict] = []
     orders: list[dict] = []
     minute_fallbacks = []
+    observed_holding_dates: dict[str, set[str]] | None = {symbol: set() for symbol in grouped} if live else None
     total_fees = turnover = 0.0
     slip = config.slippage_bps_per_side / 10000
 
@@ -409,6 +490,7 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                                         'wave_upper_rejection_reduce', 'wave_target_upper_shadow_reduce',
                                         'wave_ordinary_equal_upper_shadow_reduce', 'wave_c_0618_upper_shadow_reduce',
                                         'wave_target_bearish_reduce', 'wave_two_t_resistance_reduce',
+                                        'wave_two_t_volume_bearish_reduce',
                                         C_EQUAL_NEAR_RESISTANCE_REDUCE):
                 pos.wave_reduced = True
             if pending_exit[symbol] == 'trend_last_fall_high_upper_shadow_reduce':
@@ -423,6 +505,24 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
 
     def execute_entry(symbol, i, bar, when, signal, execution_price, *, at_close=False, intraday=None):
         nonlocal cash, total_fees, turnover
+        gap_rejection = gap_buy_gates[symbol].advance(grouped[symbol], i)
+        if gap_rejection is not None:
+            log(when, symbol, 'BUY', 'cancelled', gap_rejection['reason'],
+                **{key: value for key, value in gap_rejection.items() if key != 'reason'})
+            return
+        rejection = volume_bearish_entry_rejection(grouped[symbol], i)
+        if rejection is not None:
+            log(when, symbol, 'BUY', 'cancelled', rejection,
+                signal_timestamp=signal.timestamp.isoformat(),
+                candle_filter_model='full_session_candle_filter',
+                candle_filter_known_at=when.replace(hour=15).isoformat())
+            return
+        if at_close:
+            shadow_rejection = volume_upper_shadow_rejection(bar, grouped[symbol][i - 1] if i else None)
+            if shadow_rejection is not None:
+                log(when, symbol, 'BUY', 'cancelled', shadow_rejection,
+                    signal_timestamp=signal.timestamp.isoformat(), decision_source='daily_close')
+                return
         existing = positions.get(symbol)
         price = execution_price * (1+slip)
         buyable = bar.close_buyable if at_close and bar.close_buyable is not None else bar.buyable
@@ -431,6 +531,8 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                       execution_timestamp=when.replace(hour=15).isoformat()) if at_close else {}
         if intraday is not None:
             buyable, timing = intraday['buyable'], intraday['timing']
+        timing = dict(timing, candle_filter_model='full_session_candle_filter',
+                      candle_filter_known_at=when.replace(hour=15).isoformat())
         observed_nonflat = (timing.get('observed_nonflat_limit_buyable') is True if intraday is not None else
                             at_close and bar.nonflat_close_buyable is True and bar.volume > 0 and bar.high > bar.low)
         if not buyable and config.nonflat_limit_close_fill and observed_nonflat:
@@ -561,542 +663,762 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                 for event in wave_lookup[symbol].get(signal.trigger_timestamp, []):
                     if event not in existing.wave_events:
                         existing.wave_events.append(event)
+        positions[symbol].wave_triggers.add(signal.trigger_timestamp)
         log(when, symbol, 'BUY', 'filled', signal.reason, **detail)
 
-    timeline = sorted(calendar)
-    last_progress = -1
-    for tick, when in enumerate(timeline):
-        percent = tick * 100 // len(timeline)
-        if progress is not None and percent != last_progress:
-            progress(percent)
-            last_progress = percent
-        sold_today.clear()
-        bought_today.clear()
-        current = calendar[when]
-        daily_fallback = {}
-        wave_clear_symbols = set()
-        observing_structure_exits: dict[str, dict] = {}
-        for symbol, (_, bar) in current.items():
-            marks[symbol], mark_times[symbol] = bar.open, when.isoformat()
-        # Free cash from eligible exits before sizing new entries at this open.
-        for symbol in sorted(list(pending_exit)):
-            if symbol not in positions:
-                del pending_exit[symbol]
-                continue
-            if symbol not in current:
-                continue
-            i, bar = current[symbol]
-            if (pending_exit[symbol] == 'strict_structure_unresolved' and i > 0
-                    and bar.open > grouped[symbol][i - 1].close
-                    and exit_evidence.get(symbol, {}).get('execution_model') not in
-                    ('same_day_close', 'intraday_5m_next_open')):
-                # A gap above the prior close disputes an ambiguous structural exit.
-                # Remove it for today so independent risk controls can still act.
-                observing_structure_exits[symbol] = exit_evidence.pop(symbol, {})
-                del pending_exit[symbol]
-                continue
-            if exit_evidence.get(symbol, {}).get('execution_model') not in ('same_day_close', 'intraday_5m_next_open'):
-                execute_exit(symbol, i, bar, when, bar.open, 'next_open')
-        ranked = sorted(pending_entry, key=lambda s: (-(pending_entry[s][0].rvol or 0), s))
-        for symbol in ranked:
-            signal, created = pending_entry[symbol]
-            if tick-created > config.entry_ttl_bars:
-                log(when, symbol, 'BUY', 'cancelled', 'expired', signal_timestamp=signal.timestamp.isoformat())
-                del pending_entry[symbol]
-                continue
-            if symbol not in current:
-                continue
-            del pending_entry[symbol]
-            i, bar = current[symbol]
-            execute_entry(symbol, i, bar, when, signal, bar.open)
-        # Only intraday actions share this local clock. Neither an early buy nor
-        # a morning liquidation may use a later entry or later released cash.
-        actions: list[tuple[datetime, int, str, dict | None, PartialSessionCandle | None, bool, bool]] = []
-        for symbol, (i, bar) in current.items():
-            entry = entry_executions.get((symbol, i))
-            if entry is not None:
-                stamp = datetime.fromisoformat(entry['timing']['execution_timestamp'])
-                stamp = stamp.replace(tzinfo=ZoneInfo('Asia/Shanghai')) if stamp.tzinfo is None else stamp
-                actions.append((stamp, 1, symbol, entry, None, False, False))
-            if not config.staged_exit_intraday:
-                continue
-            pos = positions.get(symbol)
-            events = (wave_events or {}).get(symbol, [])
-            wave_eligible = (config.wave_exhaustion_exit and (pos is not None or entry is not None)
-                             and five_top_intraday_eligible(grouped[symbol], i, events))
-            staged_eligible = False
-            if pos is not None and symbol not in pending_exit:
-                state = pos.staged_exit
-                if not state.recovered and not state.exit_requested and state.reduction_target < 0.65:
-                    support = state.support_index
-                    if support is None:
-                        support = next((j for j in range(i - 2, 0, -1)
-                                        if grouped[symbol][j].low < min(grouped[symbol][j - 1].low,
-                                                                          grouped[symbol][j + 1].low)), None)
-                    staged_eligible = support is not None and bar.low < grouped[symbol][support].low
-            if not wave_eligible and not staged_eligible:
-                continue
-            assert minute_loader is not None
-            try:
-                minute = minute_loader(bar)
-                candles = list(partial_session_candles(bar, minute)) if wave_eligible else _staged_session_candles(bar, minute)
-            except MinuteCoverageError as exc:
-                if not config.missing_minute_daily_fallback:
-                    raise
-                evidence = dict(symbol=symbol, date=bar.timestamp.date().isoformat(),
-                                reason=exc.coverage.get('reason', 'minute_history_missing'), coverage=exc.coverage,
-                                execution_model='same_day_close',
-                                purpose='five_top_upper_shadow_exit' if wave_eligible else 'staged_exit')
-                daily_fallback[symbol] = evidence
-                minute_fallbacks.append(evidence)
-                continue
-            actions.extend((candle.execution_at, 0, symbol, None, candle, staged_eligible, wave_eligible)
-                           for candle in candles)
-        intraday_wave_risks: dict[str, dict] = {}
-        for stamp, _priority, symbol, entry, session_candle, staged_eligible, wave_eligible in sorted(
-                actions, key=lambda action: (action[0], action[1], action[2])):
-            i, bar = current[symbol]
-            if entry is not None:
-                pending_entry.pop(symbol, None)
-                if symbol in wave_clear_symbols:
-                    log(when, symbol, 'BUY', 'cancelled', 'same_day_exit_priority',
-                        signal_timestamp=entry['signal'].timestamp.isoformat(), **entry['timing'])
+    try:
+        timeline = sorted(calendar)
+        last_progress = -1
+        for tick, when in enumerate(timeline):
+            day = yield
+            if live:
+                if len(grouped) != 1 or day is None or day.index != tick:
+                    raise ValueError('a live account requires one stock and consecutive completed market days')
+                symbol = next(iter(grouped))
+                if observed_holding_dates is not None and (day.trading_eligible or day.eligibility_closed):
+                    observed_holding_dates[symbol].add(when.date().isoformat())
+                if not day.trading_eligible:
+                    # 结束日只清仓、撤单；空档保留账户快照，不撮合或推进持仓风险。
+                    candle = grouped[symbol][tick]
+                    sold_today.clear()
+                    bought_today.clear()
+                    if day.eligibility_closed:
+                        entry = pending_entry.pop(symbol, None)
+                        if entry is not None:
+                            log(when, symbol, 'BUY', 'cancelled', 'trading_eligibility_closed',
+                                signal_timestamp=entry[0].timestamp.isoformat())
+                        if symbol in pending_exit:
+                            log(when, symbol, 'SELL', 'cancelled', 'trading_eligibility_closed')
+                        pending_exit.pop(symbol, None)
+                        exit_evidence.pop(symbol, None)
+                        if symbol in positions:
+                            positions[symbol].wave_events = []
+                            pending_exit[symbol] = 'trading_eligibility_closed'
+                            exit_evidence[symbol] = dict(exit_fraction=1.0, execution_model='same_day_close',
+                                decision_source='trading_eligibility_closed',
+                                decision_timestamp=when.replace(hour=15).isoformat(),
+                                execution_timestamp=when.replace(hour=15).isoformat())
+                            execute_exit(symbol, tick, candle, when, candle.close, 'same_day_close')
+                            if symbol in pending_exit:
+                                # 停牌/T+1/流动性约束不能伪造成交；空档内不重试。
+                                exit_evidence[symbol]['execution_model'] = 'next_open'
+                        marks[symbol], mark_times[symbol] = candle.close, when.isoformat()
+                    for streams in (pressure_streams, trend_risk_streams):
+                        cursor = streams.pop(symbol, None)
+                        if cursor is not None:
+                            cursor.close()
+                    target_streams.pop(symbol, None)
+                    n_context[symbol][tick] = None
+                    if day.eligibility_closed:
+                        market_value = sum(pos.quantity * marks[name] for name, pos in positions.items())
+                        equity = cash + market_value
+                        if cash < -1e-6 or equity <= 0:
+                            raise ArithmeticError('portfolio cash/equity invariant failed')
+                        snapshot = dict(cash=cash, market_value=market_value, equity=equity,
+                            exposure=market_value/equity, positions=len(positions))
+                    elif curve:
+                        snapshot = {key: value for key, value in curve[-1].items() if key != 'timestamp'}
+                    else:
+                        snapshot = dict(cash=cash, market_value=0.0, equity=cash, exposure=0.0, positions=0)
+                    curve.append(dict(snapshot, timestamp=when.isoformat()))
+                    day.risk_required = False
+                    if on_day is not None:
+                        on_day(tick, orders, trades, curve)
                     continue
-                marks[symbol] = entry['price']
-                execute_entry(symbol, i, bar, when, entry['signal'], entry['price'], intraday=entry)
-                continue
-            assert session_candle is not None
-            pos = positions.get(symbol)
-            if wave_eligible:
-                risk = intraday_wave_risks.get(symbol)
-                if risk is None:
-                    risk = observe_intraday_five_top_exit(grouped[symbol], i, session_candle,
-                                                         (wave_events or {}).get(symbol, []))
-                    if risk is not None:
-                        intraday_wave_risks[symbol] = risk
-                        wave_clear_symbols.add(symbol)
-                        pending_entry.pop(symbol, None)
-                if risk is not None and pos is not None:
-                    existing = exit_evidence.get(symbol, {})
-                    known_at = existing.get('signal_timestamp', existing.get('decision_timestamp'))
-                    prior_pending_full = (symbol in pending_exit and existing.get('exit_fraction', 1) == 1
-                                          and isinstance(known_at, str)
-                                          and known_at[:10] < bar.timestamp.date().isoformat())
-                    if symbol not in pending_exit or existing.get('exit_fraction', 1) < 1:
-                        pending_exit[symbol] = risk['reason']
-                        exit_evidence[symbol] = dict(
-                            signal_timestamp=risk['decision_timestamp'],
-                            **{key: value for key, value in risk.items() if key != 'reason'},
-                            decision_reason=risk['reason'])
-                    if pending_exit.get(symbol) in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS or prior_pending_full:
-                        if not prior_pending_full and exit_evidence[symbol].get('execution_model') == 'next_open':
-                            continue
-                        filled = execute_exit(symbol, i, bar, stamp, session_candle.next_open_raw * bar.adjustment_factor,
-                                     'intraday_5m_next_open',
-                                     execution_sellable=minute_sellable(bar, grouped[symbol][i - 1], session_candle.next_open_raw),
-                                     timing=dict(execution_timestamp=stamp.isoformat(),
-                                                 minute_next_open_raw=session_candle.next_open_raw,
-                                                 execution_permission_timestamp=session_candle.decision_at.isoformat(),
-                                                 execution_observed_high=session_candle.bar.high,
-                                                 execution_observed_low=session_candle.bar.low,
-                                                 execution_observed_volume=session_candle.bar.volume,
-                                                 **({'execution_trigger_reason': risk['reason']}
-                                                    if prior_pending_full else {}),
-                                                 observed_nonflat_limit_sellable=observed_nonflat_minute_sellable(
-                                                     bar, grouped[symbol][i - 1], session_candle)))
-                        if not filled and orders[-1]['reason'] in ('T+1', 'liquidity_capacity'):
-                            exit_evidence[symbol]['execution_model'] = 'next_open'
+                prefix = grouped[symbol][:tick + 1]
+                candle = prefix[-1]
+                if any(type(available) is not int or type(attack) is not int
+                        or not 0 <= attack <= available <= tick for available, attack in day.positive_n_bars.items()):
+                    raise ValueError('invalid live positive N availability')
+                if day.positive_n_authoritative:
+                    latest_n = max(day.positive_n_bars, default=None)
+                    active_n = day.positive_n_bars[latest_n] if latest_n is not None else None
+                else:
+                    active_n = day.positive_n_bars.get(tick, n_context[symbol][tick - 1] if tick else None)
+                if active_n is not None and not day.positive_n_authoritative:
+                    defense = min(prefix[active_n].low, prefix[active_n - 1].close) if active_n else prefix[0].low
+                    observed = candle.close if tick in day.positive_n_bars else candle.low
+                    if observed < defense or (tick in day.positive_n_bars
+                            and any(bar.low < defense
+                                for bar in prefix[max(active_n, day.trading_window_start):tick])):
+                        active_n = None
+                n_context[symbol][tick] = active_n
+                needs_risk = bool(positions or pending_entry or day.signals)
+                if config.pressure_adverse_exit and needs_risk:
+                    pressure_stream = pressure_streams.get(symbol)
+                    if pressure_stream is None or pressure_stream.start_index != day.trading_window_start:
+                        if pressure_stream is not None:
+                            pressure_stream.close()
+                        pressure_stream = PressureExitStream(grouped[symbol], config,
+                            start_index=day.trading_window_start)
+                        pressure_streams[symbol] = pressure_stream
+                    pressure_risks[symbol], record_high_risks[symbol], record_volume_risks[symbol] = (
+                        pressure_stream.advance(tick, n_context[symbol][:tick + 1]))
+                if config.trend_flip_adverse_exit and needs_risk and day.trading_eligible:
+                    trend_stream = trend_risk_streams.get(symbol)
+                    if trend_stream is None or trend_stream.start_index != day.trading_window_start:
+                        if trend_stream is not None:
+                            trend_stream.close()
+                        trend_stream = TrendFlipExitStream(grouped[symbol],
+                            reduction_fraction=config.wave_exhaustion_reduction,
+                            start_index=day.trading_window_start)
+                        trend_risk_streams[symbol] = trend_stream
+                    trend_flip_risks[symbol] = trend_stream.advance(
+                        tick, day.hierarchy, _history_owner=day.hierarchy_owner)
+                elif not day.trading_eligible:
+                    trend_flip_risks[symbol] = {}
+                    trend_stream = trend_risk_streams.pop(symbol, None)
+                    if trend_stream is not None:
+                        trend_stream.close()
+                if config.wave_exhaustion_exit and needs_risk and day.trading_eligible:
+                    if day.risk_histories is not None:
+                        target_resistance[symbol] = day.risk_histories.two_t(tick, day.wave_events,
+                            reduction_fraction=config.wave_exhaustion_reduction, channel='account')
+                    else:
+                        stream = target_streams.get(symbol)
+                        if stream is None or stream.start_index != day.trading_window_start:
+                            stream = target_streams[symbol] = HoldingResistanceHistory(grouped[symbol],
+                                reduction_fraction=config.wave_exhaustion_reduction,
+                                start_index=day.trading_window_start)
+                        target_resistance[symbol] = stream.advance(tick, day.wave_events)
+                elif not day.trading_eligible:
+                    target_resistance[symbol] = {}
+                    target_streams.pop(symbol, None)
+                c_equal_events[symbol] = [row for row in day.wave_events if row.get('event') == 'wave_c_equal_target']
+                wave_events = {symbol: day.wave_events}
+                wave_lookup[symbol] = {}
+                wave_signal_lookup[symbol] = {}
+                for event in day.wave_events:
+                    attack, known = event['attack'], event['bar_index']
+                    if type(attack) is not int or type(known) is not int or not 0 <= attack <= known <= tick:
+                        raise ValueError('invalid live wave event availability')
+                    owner = event.get('owner_signal_index')
+                    if owner is not None:
+                        if type(owner) is not int or not 0 <= owner <= tick:
+                            raise ValueError('invalid live wave event owner')
+                        wave_signal_lookup[symbol].setdefault(owner, []).append(event)
+                    else:
+                        wave_lookup[symbol].setdefault(prefix[event['attack']].timestamp, []).append(event)
+                position = positions.get(symbol)
+                if position is not None:
+                    if not day.trading_eligible:
+                        position.wave_events = []
+                    owned = wave_signal_lookup[symbol].get(position.signal_index)
+                    if owned is not None:
+                        position.wave_events = list(owned)
+                    elif not any(event['event'] == 'wave_segment_start' for event in position.wave_events):
+                        for trigger in sorted(position.wave_triggers):
+                            for event in wave_lookup[symbol].get(trigger, ()):
+                                if event not in position.wave_events:
+                                    position.wave_events.append(event)
+                if any(signal.bar_index != tick or signal.timestamp != when or signal.symbol != symbol for signal in day.signals):
+                    raise ValueError('live signals must belong to the current account day')
+                signal_map[when] = []
+                for signal in day.signals:
+                    accept_signal(signal)
+                entry_executions.update(day.entry_executions)
+            percent = tick * 100 // len(timeline)
+            if progress is not None and percent != last_progress:
+                progress(percent)
+                last_progress = percent
+            sold_today.clear()
+            bought_today.clear()
+            current = calendar[when]
+            daily_fallback = {}
+            wave_clear_symbols = set()
+            observing_structure_exits: dict[str, dict] = {}
+            for symbol, (_, bar) in current.items():
+                marks[symbol], mark_times[symbol] = bar.open, when.isoformat()
+            # Free cash from eligible exits before sizing new entries at this open.
+            for symbol, pos in positions.items():
+                if symbol not in current:
                     continue
-            if not staged_eligible or pos is None or symbol in pending_exit:
-                continue
-            if pos.entry_index == i and (symbol, i) in entry_executions:
-                continue
-            state = pos.staged_exit
-            if state.recovered or state.exit_requested or state.reduction_target >= 0.65:
-                continue
-            if not time(14, 30) <= session_candle.decision_at.time() < time(15):
-                continue
-            previous_target = state.reduction_target
-            decision = observe_intraday_staged_exit(grouped[symbol], i, state, session_candle.bar.low, session_candle.bar.close)
-            if decision is None:
-                continue
-            pending_exit[symbol] = decision['reason']
-            exit_evidence[symbol] = dict(
-                signal_timestamp=session_candle.decision_at.isoformat(),
-                decision_timestamp=session_candle.decision_at.isoformat(), execution_timestamp=stamp.isoformat(),
-                **{key: value for key, value in decision.items() if key != 'reason'},
-                decision_reason=decision['reason'], stop_price=pos.stop, target_price=pos.target,
-                observed_low=session_candle.bar.low, observed_high=session_candle.bar.high, observed_close=session_candle.bar.close,
-                minute_next_open_raw=session_candle.next_open_raw, decision_source='completed_five_minute_bar',
-                execution_model='intraday_5m_next_open',
-            )
-            filled = execute_exit(symbol, i, bar, stamp, session_candle.next_open_raw * bar.adjustment_factor,
-                                  'intraday_5m_next_open',
-                                  execution_sellable=minute_sellable(bar, grouped[symbol][i - 1], session_candle.next_open_raw),
-                                  timing=dict(execution_timestamp=stamp.isoformat(),
-                                              minute_next_open_raw=session_candle.next_open_raw,
-                                              execution_permission_timestamp=session_candle.decision_at.isoformat(),
-                                              **(dict(execution_observed_high=session_candle.bar.high,
-                                                      execution_observed_low=session_candle.bar.low,
-                                                      execution_observed_volume=session_candle.bar.volume)
-                                                 if bar.raw_is_st is not None and bar.raw_trading_active is True else {}),
-                                              observed_nonflat_limit_sellable=observed_nonflat_minute_sellable(
-                                                  bar, grouped[symbol][i - 1], session_candle)))
-            if not filled and exit_evidence.get(symbol, {}).get('execution_model') != 'next_open':
-                state.reduction_target = previous_target
-            if exit_evidence.get(symbol, {}).get('execution_model') == 'intraday_5m_next_open':
-                pending_exit.pop(symbol, None)
-                exit_evidence.pop(symbol, None)
-        for symbol in intraday_wave_risks:
-            if symbol in pending_exit and exit_evidence.get(symbol, {}).get('execution_model') == 'intraday_5m_next_open':
-                # A full close-known risk survives a locked last interval.
-                exit_evidence[symbol]['execution_model'] = 'next_open'
-        # Old stop applies to today's bar. Newly observed trailing levels apply tomorrow.
-        for symbol, pos in positions.items():
-            if symbol not in current or (symbol in pending_exit and
-                (exit_evidence[symbol].get('exit_fraction', 1) == 1 or
-                 'exit_quantity_remaining' in exit_evidence[symbol])):
-                continue
-            i, bar = current[symbol]
-            hard_reason = None
-            entry = entry_executions.get((symbol, i)) if pos.last_buy_date == when.date() else None
-            risk_low = entry['remaining_low'] if entry else bar.low
-            risk_high = entry['remaining_high'] if entry else bar.high
-            if ((pos.intraday_add_on_date == when.date() and pos.intraday_add_on_prior_stop is not None
-                 and bar.low <= pos.intraday_add_on_prior_stop) or risk_low <= pos.stop):
-                hard_reason = 'structural_stop_observed'
-            elif config.exit_on_target and risk_high >= pos.target:
-                hard_reason = 'target_observed'
-            elif i-pos.entry_index >= config.max_hold_bars:
-                hard_reason = 'time_exit'
-            inverse_failure = (observe_inverse_resistance_exit(grouped[symbol], i, pos.staged_exit)
-                               if config.inverse_n_close_reduce else None)
-            volume_exit = (observe_volume_down_exit(grouped[symbol], i, pos.staged_exit,
-                               positive_n_index=n_context[symbol][i] if config.small_n_reduction else None,
-                               small_body_max_fraction=config.small_body_max_fraction,
-                               small_body_lookback=config.small_body_lookback)
-                           if config.volume_down_exit else None)
-            if config.volume_down_exit:
-                pattern_exit = observe_bearish_child_pattern_exit(grouped[symbol], i, pos.staged_exit)
-                if pattern_exit is not None and (
-                        volume_exit is None or pattern_exit['exit_fraction'] > volume_exit['exit_fraction']):
-                    volume_exit = pattern_exit
-            volume_source = ('bearish_child_pattern' if volume_exit is not None
-                             and volume_exit['reason'].startswith('bearish_mother_child_') else 'volume_down_exit')
-            # Evaluate close-known N risk only after intraday execution. It may
-            # supersede daily partial orders, never erase earlier minute fills.
-            volume_inverse = (config.volume_inverse_n_clear and i > 0
-                and bar.volume > grouped[symbol][i - 1].volume
-                and any(signal.symbol == symbol and signal.side == 'EXIT'
-                        and 'inverse_n_risk_exit' in signal.reason.split('|')
-                        for signal in signal_map.get(when, [])))
-            mother_child_inverse = (
-                mother_child_inverse_n_break(grouped[symbol], i)
-                if any(signal.symbol == symbol and signal.side == 'EXIT'
-                       and MOTHER_CHILD_INVERSE_N_LOW_BREAK in signal.reason.split('|')
-                       for signal in signal_map.get(when, [])) else None
-            )
-            wave_exit = (observe_wave_exhaustion(grouped[symbol], i, pos.wave_events, config,
-                                                reduced=pos.wave_reduced, entry_index=pos.entry_index,
-                                                signal_index=pos.signal_index)
-                         if config.wave_exhaustion_exit else None)
-            target_risk = target_resistance[symbol].get(i)
-            if target_risk is None and any(
-                signal.symbol == symbol and signal.side == 'EXIT'
-                and TWO_T_BODY_VOLUME_CLEAR in signal.reason.split('|')
-                for signal in signal_map.get(when, [])
-            ):
-                # A confirmed global EXIT also wins when replay omits projection metadata.
-                target_risk = dict(reason=TWO_T_BODY_VOLUME_CLEAR, exit_fraction=1.0,
-                                   execution_model='same_day_close')
-            if target_risk is not None:
-                if target_risk['exit_fraction'] == 1.0 and (
-                        wave_exit is None or wave_exit['exit_fraction'] < 1.0
-                        or wave_exit['reason'] in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS):
-                    wave_exit = target_risk
-                elif wave_exit is None and not pos.wave_reduced:
-                    wave_exit = target_risk
-            c_equal_risk = (observe_c_equal_near_risk(
-                grouped[symbol], i, c_equal_events[symbol],
-                reduction_fraction=config.wave_exhaustion_reduction)
-                if config.wave_exhaustion_exit else None)
-            if c_equal_risk is not None:
-                if c_equal_risk['exit_fraction'] == 1.0 and (
-                        wave_exit is None or wave_exit['exit_fraction'] < 1.0
-                        or wave_exit['reason'] in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS):
-                    wave_exit = c_equal_risk
-                elif wave_exit is None and not pos.wave_reduced:
-                    wave_exit = c_equal_risk
-            pressure = trend_flip_risks[symbol].get(i) or pressure_risks[symbol].get(i) or record_high_risks[symbol].get(i)
-            if (pressure is not None and pressure['reason'].startswith('trend_last_fall_high_')
-                    and pos.entry_index > pressure['trend_warning_index']):
-                pressure = None
-            if (pressure is not None and pressure['reason'] == 'trend_last_fall_high_upper_shadow_reduce'
-                    and pos.trend_last_fall_high_reduced):
-                pressure = None
-            if (pressure is not None and pressure['reason'] == 'pressure_breakout_adverse_clear'
-                    and pos.entry_index > pressure['pressure_breakout_index']):
-                pressure = None
-            if (pressure is not None and pressure['reason'] == 'record_high_resistance_reduce'
-                    and pos.entry_index >= pressure['record_breakout_index']):
-                pressure = None
-            record_volume = record_volume_risks[symbol].get(i)
-            if record_volume is not None and pos.entry_index > record_volume['record_warning_index']:
-                record_volume = None
-            if record_volume is not None and (
-                    pressure is None or record_volume['exit_fraction'] > pressure['exit_fraction']):
-                pressure = record_volume
-            if pos.pressure_warning is not None and i > 0 and bar.close < grouped[symbol][i - 1].close:
-                pressure = dict(
-                    reason='pressure_reduced_lower_close_clear', exit_fraction=1.0,
-                    execution_model='same_day_close', **pos.pressure_warning,
-                    pressure_adverse_patterns=['close_below_previous'],
-                    observed_close=bar.close, previous_close=grouped[symbol][i - 1].close,
-                )
-            elif pos.record_high_warning is not None and i > 0 and bar.close < grouped[symbol][i - 1].close:
-                warning = pos.record_high_warning
-                history = grouped[symbol]
-                resisted = [history[j].timestamp.date().isoformat()
-                            for j in range(warning['record_breakout_index'], i)
-                            if observe_resistance(history[j - 1], history[j], attack_direction=Direction.UP,
-                                                  shadow_policy=ShadowPolicy(0.5)).detected is True]
-                pressure = dict(
-                    reason='record_high_lower_close_clear', exit_fraction=1.0,
-                    execution_model='same_day_close', **warning,
-                    record_resistance_dates=resisted,
-                    record_adverse_patterns=['close_below_previous'],
-                    observed_close=bar.close, previous_close=history[i - 1].close,
-                )
-            elif (pos.pressure_warning is not None or pos.record_high_warning is not None) and pressure is not None and pressure['exit_fraction'] < 1:
-                pressure = None
-            if (pressure is not None and pressure['reason'] in (
-                    'record_high_resistance_reduce', 'record_high_massive_resistance_reduce_30')
-                    and (hard_reason or volume_inverse or inverse_failure is not None
-                         or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
-                pressure = None
-            if (pressure is not None and pressure['exit_fraction'] < 1
-                    and volume_exit is not None
-                    and volume_exit['reason'] == 'volume_bullish_gap_bearish_clear'):
-                pressure = None
-            if (wave_exit is not None and wave_exit['reason'] in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS
-                    and (mother_child_inverse is not None or hard_reason or volume_inverse
-                         or inverse_failure is not None
-                         or (pressure is not None and pressure['exit_fraction'] == 1)
-                         or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
-                wave_exit = None
-            if mother_child_inverse is not None:
-                pending_exit[symbol] = MOTHER_CHILD_INVERSE_N_LOW_BREAK
-                exit_evidence[symbol] = dict(
-                    signal_timestamp=when.isoformat(), **mother_child_inverse,
-                    decision_reason=MOTHER_CHILD_INVERSE_N_LOW_BREAK,
-                    decision_source='strategy_exit_signal', execution_model='same_day_close',
-                    exit_fraction=1.0,
-                    **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}),
-                )
-            elif wave_exit is not None and wave_exit['exit_fraction'] == 1:
-                wave_clear_symbols.add(symbol)
-                pending_exit[symbol] = wave_exit['reason']
-                exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
-                    **{key: value for key, value in wave_exit.items() if key != 'reason'},
-                    decision_reason=wave_exit['reason'], decision_source='wave_exhaustion_risk',
-                    **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}))
-            elif pressure is not None:
-                pending_exit[symbol] = pressure['reason']
-                exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
-                    **{key: value for key, value in pressure.items() if key != 'reason'},
-                    decision_reason=pressure['reason'], decision_source='overhead_pressure_risk',
-                    **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}))
-            elif volume_inverse:
-                pending_exit[symbol] = 'volume_inverse_n_clear'
-                exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
-                    decision_reason='volume_inverse_n_clear', decision_source='strategy_exit_signal',
-                    execution_model='same_day_close', exit_fraction=1.0,
-                    observed_low=bar.low, observed_close=bar.close,
-                    observed_volume=bar.volume, previous_volume=grouped[symbol][i - 1].volume,
-                    **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}))
-            elif volume_exit is not None and volume_exit['exit_fraction'] == 1 and inverse_failure is None:
-                pending_exit[symbol] = volume_exit['reason']
-                exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
-                    **{key: value for key, value in volume_exit.items()
-                       if key not in ('reason', 'observed_low', 'observed_close')},
-                    decision_reason=volume_exit['reason'], decision_source=volume_source,
-                    observed_low=bar.low, observed_close=bar.close,
-                    **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback
-                       and volume_exit['execution_model'] == 'same_day_close' else {}))
-            elif hard_reason:
-                pending_exit[symbol] = hard_reason
-                exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
-                    decision_reason=pending_exit[symbol], stop_price=pos.stop, target_price=pos.target,
-                    observed_low=bar.low, observed_high=bar.high, observed_close=bar.close,
-                    bars_held=i-pos.entry_index, decision_source='close_observed_risk_control')
-            elif inverse_failure is not None:
-                pending_exit[symbol] = inverse_failure['reason']
-                exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
-                    **{key: value for key, value in inverse_failure.items() if key != 'reason'},
-                    decision_reason=inverse_failure['reason'], decision_source='inverse_n_resistance_failure',
-                    observed_close=bar.close)
-            elif wave_exit is not None:
-                pending_exit[symbol] = wave_exit['reason']
-                exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
-                    **{key: value for key, value in wave_exit.items() if key != 'reason'},
-                    decision_reason=wave_exit['reason'], decision_source='wave_exhaustion_risk')
-            elif volume_exit is not None:
-                pending_exit[symbol] = volume_exit['reason']
-                exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
-                    **{key: value for key, value in volume_exit.items() if key != 'reason'},
-                    decision_reason=volume_exit['reason'], decision_source=volume_source,
-                    observed_low=bar.low, observed_close=bar.close)
-            elif config.staged_exit_enabled:
-                decision = observe_staged_exit(grouped[symbol], i, pos.staged_exit, config.initial_reduction_fraction,
-                    tiered=symbol in daily_fallback or (config.staged_exit_same_day and not config.staged_exit_intraday)) if (
-                        symbol in daily_fallback or not config.staged_exit_intraday or pos.staged_exit.breakdown_index is not None) else None
-                if decision is not None:
-                    pending_exit[symbol] = decision['reason']
-                    exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
-                        **{key: value for key, value in decision.items() if key != 'reason'},
-                        decision_reason=decision['reason'], stop_price=pos.stop, target_price=pos.target,
-                        observed_low=bar.low, observed_high=bar.high, observed_close=bar.close,
-                        decision_source='staged_support_break',
-                        execution_model='same_day_close' if config.staged_exit_same_day or symbol in daily_fallback else 'next_open',
-                        **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}))
-        # Daily close matching is explicit; it does not reconstruct a 14:30 quote.
-        for symbol in sorted(list(pending_exit)):
-            if symbol in positions and symbol in current and exit_evidence.get(symbol, {}).get('execution_model') == 'same_day_close':
                 i, bar = current[symbol]
-                execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
-        for signal in signal_map.get(when, []):
-            symbol = signal.symbol
-            if signal.side == 'LONG' and (symbol, signal.bar_index) in entry_executions:
-                continue
-            if signal.side == 'LONG' and current[symbol][0] in target_resistance[symbol]:
-                risk = target_resistance[symbol][current[symbol][0]]
-                log(when, symbol, 'BUY', 'cancelled', str(risk['reason']),
-                    signal_timestamp=signal.timestamp.isoformat(), **{key: value for key, value in risk.items() if key != 'reason'})
-                continue
-            if signal.side == 'EXIT':
-                pending_entry.pop(symbol, None)
-                if symbol in positions:
-                    if symbol not in pending_exit or exit_evidence[symbol].get('exit_fraction', 1) < 1:
-                        pos = positions[symbol]
-                        inverse_reduction = ((config.inverse_n_close_reduce or (config.inverse_n_after_reduction
-                            and pos.staged_exit.breakdown_index is not None
-                            and pos.quantity < pos.initial_quantity - 1e-8))
-                            and signal.reason == 'inverse_n_risk_exit')
-                        if inverse_reduction:
-                            lot = config.lot_size / current[symbol][1].adjustment_factor
-                            remaining_to_sell = pos.initial_quantity * 0.9 - (pos.initial_quantity - pos.quantity)
-                            if math.floor(remaining_to_sell / lot + 1e-9) <= 0:
-                                continue
-                        pending_exit[symbol] = (('inverse_n_close_reduce_90' if config.inverse_n_close_reduce
-                                                else 'inverse_n_after_reduction_90') if inverse_reduction else signal.reason)
-                        exit_evidence[symbol] = dict(signal_timestamp=signal.timestamp.isoformat(),
-                            decision_reason=signal.reason, stop_price=positions[symbol].stop,
-                            target_price=positions[symbol].target, observed_close=signal.reference_price,
-                            decision_source='strategy_exit_signal',
-                            **(dict(exit_fraction=0.9, exit_target_fraction=0.9,
-                                    original_signal_reason=signal.reason) if inverse_reduction else {}))
-                        if inverse_reduction and config.inverse_n_close_reduce:
-                            i, bar = current[symbol]
-                            exit_evidence[symbol]['execution_model'] = 'same_day_close'
-                            exit_evidence[symbol]['inverse_observed_index'] = signal.bar_index
-                            execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
-                        elif any(reason in signal.reason.split('|') for reason in
-                                 (TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
-                                   FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
-                                   *FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS,
-                                   C_EQUAL_NEAR_VOLUME_CLEAR)):
-                            i, bar = current[symbol]
-                            wave_clear_symbols.add(symbol)
-                            pending_exit[symbol] = next(reason for reason in signal.reason.split('|') if reason in
-                                (TWO_T_BODY_VOLUME_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
-                                  FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
-                                  *FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS,
-                                  C_EQUAL_NEAR_VOLUME_CLEAR))
-                            if pending_exit[symbol] == FIVE_TOP_CHILD_VOLUME_CLEAR:
-                                known_events = sorted((wave_events or {}).get(symbol, []),
-                                                      key=lambda event: event['bar_index'])
-                                five_top_evidence = observe_five_top_child_volume_clear(grouped[symbol], i, known_events)
-                                if five_top_evidence is not None:
-                                    exit_evidence[symbol].update(five_top_evidence)
-                            elif pending_exit[symbol] == FIVE_TOP_GAP_VOLUME_CLEAR:
-                                known_events = sorted((wave_events or {}).get(symbol, []),
-                                                      key=lambda event: event['bar_index'])
-                                five_top_evidence = observe_five_top_gap_volume_clear(
-                                    grouped[symbol], i, known_events)
-                                if five_top_evidence is not None:
-                                    exit_evidence[symbol].update(
-                                        {key: value for key, value in five_top_evidence.items() if key != 'reason'})
-                            elif pending_exit[symbol] in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS:
-                                observer = (observe_five_top_body_upper_shadow_clear
-                                            if pending_exit[symbol] == FIVE_TOP_BODY_UPPER_SHADOW_CLEAR
-                                            else observe_five_top_gap_upper_shadow_clear)
-                                five_top_evidence = observer(
-                                    grouped[symbol], i, (wave_events or {}).get(symbol, []))
-                                if five_top_evidence is not None:
-                                    exit_evidence[symbol].update(
-                                        {key: value for key, value in five_top_evidence.items() if key != 'reason'})
-                                if symbol in daily_fallback:
-                                    exit_evidence[symbol]['minute_fallback'] = daily_fallback[symbol]
-                            elif pending_exit[symbol] == C_EQUAL_NEAR_VOLUME_CLEAR:
-                                c_equal_evidence = observe_c_equal_near_risk(
-                                    grouped[symbol], i, c_equal_events[symbol],
-                                    reduction_fraction=config.wave_exhaustion_reduction)
-                                if c_equal_evidence is not None:
-                                    exit_evidence[symbol].update(
-                                        {key: value for key, value in c_equal_evidence.items()
-                                         if key != 'reason'})
-                            exit_evidence[symbol].update(execution_model='same_day_close', exit_fraction=1.0)
-                            execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
-            elif symbol in positions:
-                pos = positions[symbol]
-                if pos.stop < signal.invalidation_price < current[symbol][1].close:
-                    pos.stop = signal.invalidation_price
-                if (config.allow_add_on and symbol not in pending_exit and symbol not in sold_today and
-                    current[symbol][0] not in pressure_risks[symbol] and
-                    current[symbol][0] not in trend_flip_risks[symbol] and
-                    symbol not in wave_clear_symbols):
-                    pending_entry[symbol] = (signal, tick)
-            elif (current[symbol][0] not in pressure_risks[symbol]
-                  and current[symbol][0] not in trend_flip_risks[symbol] and symbol not in wave_clear_symbols):
-                pending_entry[symbol] = (signal, tick)
-        for symbol, evidence in observing_structure_exits.items():
-            if symbol not in positions or symbol in pending_exit or symbol in sold_today:
-                continue
-            i, bar = current[symbol]
-            previous_close = grouped[symbol][i - 1].close
-            if bar.close > previous_close:
-                continue
-            # Only a weak close confirms the unresolved structure; act at that
-            # observed close, after any stronger same-day exit has had priority.
-            pending_entry.pop(symbol, None)
-            pending_exit[symbol] = 'strict_structure_unresolved'
-            exit_evidence[symbol] = dict(
-                evidence, execution_model='same_day_close', decision_source='gap_observed_structure_exit',
-                previous_close=previous_close, observed_open=bar.open, observed_close=bar.close,
-            )
-            execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
-        for symbol, (_, bar) in current.items():
-            marks[symbol] = bar.close
-        if config.entry_at_close:
-            # Match only after all close-time exits, using close marks for every
-            # holding. Today's earlier extrema cannot stop out a new close fill.
-            for symbol in sorted(list(pending_entry), key=lambda s: (-(pending_entry[s][0].rvol or 0), s)):
+                risk = trend_flip_risks[symbol].get(i)
+                if (risk is not None and risk['reason'] == BREAKOUT_SHADOW_CLEAR
+                        and pos.entry_index <= risk['breakout_warning_index']):
+                    pending_exit[symbol] = BREAKOUT_SHADOW_CLEAR
+                    exit_evidence[symbol] = dict(
+                        **{key: value for key, value in risk.items() if key != 'reason'},
+                        decision_reason=BREAKOUT_SHADOW_CLEAR,
+                        decision_source='breakout_shadow_lower_open',
+                        signal_timestamp=grouped[symbol][risk['breakout_warning_index']].timestamp.isoformat())
+                    wave_clear_symbols.add(symbol)
+                    pending_entry.pop(symbol, None)
+            for symbol in sorted(list(pending_exit)):
+                if symbol not in positions:
+                    del pending_exit[symbol]
+                    continue
+                if symbol not in current:
+                    continue
+                i, bar = current[symbol]
+                if (pending_exit[symbol] == 'strict_structure_unresolved' and i > 0
+                        and bar.open > grouped[symbol][i - 1].close
+                        and exit_evidence.get(symbol, {}).get('execution_model') not in
+                        ('same_day_close', 'intraday_5m_next_open')):
+                    # A gap above the prior close disputes an ambiguous structural exit.
+                    # Remove it for today so independent risk controls can still act.
+                    observing_structure_exits[symbol] = exit_evidence.pop(symbol, {})
+                    del pending_exit[symbol]
+                    continue
+                if exit_evidence.get(symbol, {}).get('execution_model') not in ('same_day_close', 'intraday_5m_next_open'):
+                    execute_exit(symbol, i, bar, when, bar.open, 'next_open')
+            ranked = sorted(pending_entry, key=lambda s: (-(pending_entry[s][0].rvol or 0), s))
+            for symbol in ranked:
                 signal, created = pending_entry[symbol]
-                if created != tick or symbol not in current:
+                if tick-created > config.entry_ttl_bars:
+                    log(when, symbol, 'BUY', 'cancelled', 'expired', signal_timestamp=signal.timestamp.isoformat())
+                    del pending_entry[symbol]
+                    continue
+                if symbol not in current:
                     continue
                 del pending_entry[symbol]
                 i, bar = current[symbol]
-                if any(s.symbol == symbol and s.side == 'EXIT' for s in signal_map.get(when, [])):
-                    log(when, symbol, 'BUY', 'cancelled', 'same_day_exit_priority',
-                        signal_timestamp=signal.timestamp.isoformat(), execution_model='same_day_close')
+                execute_entry(symbol, i, bar, when, signal, bar.open)
+            # Only intraday actions share this local clock. Neither an early buy nor
+            # a morning liquidation may use a later entry or later released cash.
+            actions: list[tuple[datetime, int, str, dict | None, PartialSessionCandle | None, bool, bool]] = []
+            for symbol, (i, bar) in current.items():
+                entry = entry_executions.get((symbol, i))
+                if entry is not None:
+                    stamp = datetime.fromisoformat(entry['timing']['execution_timestamp'])
+                    stamp = stamp.replace(tzinfo=ZoneInfo('Asia/Shanghai')) if stamp.tzinfo is None else stamp
+                    actions.append((stamp, 1, symbol, entry, None, False, False))
+                if not config.staged_exit_intraday:
                     continue
-                execute_entry(symbol, i, bar, when, signal, bar.close, at_close=True)
-        market_value = sum(p.quantity*marks[s] for s, p in positions.items())
-        equity = cash+market_value
-        if cash < -1e-6 or equity <= 0:
-            raise ArithmeticError('portfolio cash/equity invariant failed')
-        curve.append(dict(timestamp=when.isoformat(), cash=cash, market_value=market_value,
-                          equity=equity, exposure=market_value/equity, positions=len(positions)))
+                pos = positions.get(symbol)
+                events = (wave_events or {}).get(symbol, [])
+                wave_eligible = (config.wave_exhaustion_exit and (not live or day is not None and day.trading_eligible)
+                                 and (pos is not None or entry is not None)
+                                 and five_top_intraday_eligible(grouped[symbol], i, events))
+                shadow_eligible = (pos is not None and pos.entry_index < i
+                                   and volume_shadow_next_open_eligible(grouped[symbol], i))
+                wave_eligible = wave_eligible or shadow_eligible
+                staged_eligible = False
+                if pos is not None and symbol not in pending_exit:
+                    state = pos.staged_exit
+                    if not state.recovered and not state.exit_requested and state.reduction_target < 0.65:
+                        support = state.support_index
+                        if support is None:
+                            support = next((j for j in range(i - 2, 0, -1)
+                                            if grouped[symbol][j].low < min(grouped[symbol][j - 1].low,
+                                                                              grouped[symbol][j + 1].low)), None)
+                        staged_eligible = support is not None and bar.low < grouped[symbol][support].low
+                if not wave_eligible and not staged_eligible:
+                    continue
+                assert minute_loader is not None
+                try:
+                    minute = minute_loader(bar)
+                    candles = list(partial_session_candles(bar, minute)) if wave_eligible else _staged_session_candles(bar, minute)
+                except MinuteCoverageError as exc:
+                    if not config.missing_minute_daily_fallback:
+                        raise
+                    evidence = dict(symbol=symbol, date=bar.timestamp.date().isoformat(),
+                                    reason=exc.coverage.get('reason', 'minute_history_missing'), coverage=exc.coverage,
+                                    execution_model='same_day_close',
+                                    purpose=('volume_upper_shadow_next_decline' if shadow_eligible else
+                                             'five_top_upper_shadow_exit' if wave_eligible else 'staged_exit'))
+                    daily_fallback[symbol] = evidence
+                    minute_fallbacks.append(evidence)
+                    continue
+                actions.extend((candle.execution_at, 0, symbol, None, candle, staged_eligible, wave_eligible)
+                               for candle in candles)
+            intraday_wave_risks: dict[str, dict] = {}
+            for stamp, _priority, symbol, entry, session_candle, staged_eligible, wave_eligible in sorted(
+                    actions, key=lambda action: (action[0], action[1], action[2])):
+                i, bar = current[symbol]
+                if entry is not None:
+                    pending_entry.pop(symbol, None)
+                    if symbol in wave_clear_symbols:
+                        log(when, symbol, 'BUY', 'cancelled', 'same_day_exit_priority',
+                            signal_timestamp=entry['signal'].timestamp.isoformat(), **entry['timing'])
+                        continue
+                    marks[symbol] = entry['price']
+                    execute_entry(symbol, i, bar, when, entry['signal'], entry['price'], intraday=entry)
+                    continue
+                assert session_candle is not None
+                pos = positions.get(symbol)
+                if wave_eligible:
+                    risk = intraday_wave_risks.get(symbol)
+                    if risk is None:
+                        risk = (volume_shadow_next_decline(grouped[symbol], i, session_candle.bar)
+                                if pos is not None and pos.entry_index < i else None)
+                        if risk is not None:
+                            risk = dict(risk, execution_model='intraday_5m_next_open',
+                                        decision_timestamp=session_candle.decision_at.isoformat(),
+                                        decision_source='completed_five_minute_bar')
+                        elif config.wave_exhaustion_exit:
+                            risk = observe_intraday_five_top_exit(grouped[symbol], i, session_candle,
+                                                                 (wave_events or {}).get(symbol, []))
+                        if risk is not None:
+                            intraday_wave_risks[symbol] = risk
+                            wave_clear_symbols.add(symbol)
+                            pending_entry.pop(symbol, None)
+                    if risk is not None and pos is not None:
+                        existing = exit_evidence.get(symbol, {})
+                        known_at = existing.get('signal_timestamp', existing.get('decision_timestamp'))
+                        prior_pending_full = (symbol in pending_exit and existing.get('exit_fraction', 1) == 1
+                                              and isinstance(known_at, str)
+                                              and known_at[:10] < bar.timestamp.date().isoformat())
+                        if symbol not in pending_exit or existing.get('exit_fraction', 1) < 1:
+                            pending_exit[symbol] = risk['reason']
+                            exit_evidence[symbol] = dict(
+                                signal_timestamp=risk['decision_timestamp'],
+                                **{key: value for key, value in risk.items() if key != 'reason'},
+                                decision_reason=risk['reason'])
+                        if (pending_exit.get(symbol) in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS
+                                or pending_exit.get(symbol) == VOLUME_SHADOW_NEXT_WEAK_CLEAR or prior_pending_full):
+                            if not prior_pending_full and exit_evidence[symbol].get('execution_model') == 'next_open':
+                                continue
+                            filled = execute_exit(symbol, i, bar, stamp, session_candle.next_open_raw * bar.adjustment_factor,
+                                         'intraday_5m_next_open',
+                                         execution_sellable=minute_sellable(bar, grouped[symbol][i - 1], session_candle.next_open_raw),
+                                         timing=dict(execution_timestamp=stamp.isoformat(),
+                                                     minute_next_open_raw=session_candle.next_open_raw,
+                                                     execution_permission_timestamp=session_candle.decision_at.isoformat(),
+                                                     execution_observed_high=session_candle.bar.high,
+                                                     execution_observed_low=session_candle.bar.low,
+                                                     execution_observed_volume=session_candle.bar.volume,
+                                                     **({'execution_trigger_reason': risk['reason']}
+                                                        if prior_pending_full else {}),
+                                                     observed_nonflat_limit_sellable=observed_nonflat_minute_sellable(
+                                                         bar, grouped[symbol][i - 1], session_candle)))
+                            if not filled and orders[-1]['reason'] in ('T+1', 'liquidity_capacity'):
+                                exit_evidence[symbol]['execution_model'] = 'next_open'
+                        continue
+                if not staged_eligible or pos is None or symbol in pending_exit:
+                    continue
+                if pos.entry_index == i and (symbol, i) in entry_executions:
+                    continue
+                state = pos.staged_exit
+                if state.recovered or state.exit_requested or state.reduction_target >= 0.65:
+                    continue
+                if not time(14, 30) <= session_candle.decision_at.time() < time(15):
+                    continue
+                previous_target = state.reduction_target
+                decision = observe_intraday_staged_exit(grouped[symbol], i, state, session_candle.bar.low, session_candle.bar.close)
+                if decision is None:
+                    continue
+                pending_exit[symbol] = decision['reason']
+                exit_evidence[symbol] = dict(
+                    signal_timestamp=session_candle.decision_at.isoformat(),
+                    decision_timestamp=session_candle.decision_at.isoformat(), execution_timestamp=stamp.isoformat(),
+                    **{key: value for key, value in decision.items() if key != 'reason'},
+                    decision_reason=decision['reason'], stop_price=pos.stop, target_price=pos.target,
+                    observed_low=session_candle.bar.low, observed_high=session_candle.bar.high, observed_close=session_candle.bar.close,
+                    minute_next_open_raw=session_candle.next_open_raw, decision_source='completed_five_minute_bar',
+                    execution_model='intraday_5m_next_open',
+                )
+                filled = execute_exit(symbol, i, bar, stamp, session_candle.next_open_raw * bar.adjustment_factor,
+                                      'intraday_5m_next_open',
+                                      execution_sellable=minute_sellable(bar, grouped[symbol][i - 1], session_candle.next_open_raw),
+                                      timing=dict(execution_timestamp=stamp.isoformat(),
+                                                  minute_next_open_raw=session_candle.next_open_raw,
+                                                  execution_permission_timestamp=session_candle.decision_at.isoformat(),
+                                                  **(dict(execution_observed_high=session_candle.bar.high,
+                                                          execution_observed_low=session_candle.bar.low,
+                                                          execution_observed_volume=session_candle.bar.volume)
+                                                     if bar.raw_is_st is not None and bar.raw_trading_active is True else {}),
+                                                  observed_nonflat_limit_sellable=observed_nonflat_minute_sellable(
+                                                      bar, grouped[symbol][i - 1], session_candle)))
+                if not filled and exit_evidence.get(symbol, {}).get('execution_model') != 'next_open':
+                    state.reduction_target = previous_target
+                if exit_evidence.get(symbol, {}).get('execution_model') == 'intraday_5m_next_open':
+                    pending_exit.pop(symbol, None)
+                    exit_evidence.pop(symbol, None)
+            for symbol in intraday_wave_risks:
+                if symbol in pending_exit and exit_evidence.get(symbol, {}).get('execution_model') == 'intraday_5m_next_open':
+                    # A full close-known risk survives a locked last interval.
+                    exit_evidence[symbol]['execution_model'] = 'next_open'
+            # Old stop applies to today's bar. Newly observed trailing levels apply tomorrow.
+            for symbol, pos in positions.items():
+                if symbol not in current or (symbol in pending_exit and
+                    (exit_evidence[symbol].get('exit_fraction', 1) == 1 or
+                     'exit_quantity_remaining' in exit_evidence[symbol])):
+                    continue
+                i, bar = current[symbol]
+                hard_reason = None
+                entry = entry_executions.get((symbol, i)) if pos.last_buy_date == when.date() else None
+                risk_low = entry['remaining_low'] if entry else bar.low
+                risk_high = entry['remaining_high'] if entry else bar.high
+                if ((pos.intraday_add_on_date == when.date() and pos.intraday_add_on_prior_stop is not None
+                     and bar.low <= pos.intraday_add_on_prior_stop) or risk_low <= pos.stop):
+                    hard_reason = 'structural_stop_observed'
+                elif config.exit_on_target and (not live or day is not None and day.trading_eligible) and risk_high >= pos.target:
+                    hard_reason = 'target_observed'
+                elif i-pos.entry_index >= config.max_hold_bars:
+                    hard_reason = 'time_exit'
+                inverse_failure = (observe_inverse_resistance_exit(grouped[symbol], i, pos.staged_exit)
+                                   if config.inverse_n_close_reduce else None)
+                volume_exit = (observe_volume_down_exit(grouped[symbol], i, pos.staged_exit,
+                                   positive_n_index=n_context[symbol][i] if config.small_n_reduction else None,
+                                   small_body_max_fraction=config.small_body_max_fraction,
+                                   small_body_lookback=config.small_body_lookback)
+                               if config.volume_down_exit else None)
+                if config.volume_down_exit:
+                    pattern_exit = observe_bearish_child_pattern_exit(grouped[symbol], i, pos.staged_exit)
+                    if pattern_exit is not None and (
+                            volume_exit is None or pattern_exit['exit_fraction'] > volume_exit['exit_fraction']):
+                        volume_exit = pattern_exit
+                shadow_exit = volume_shadow_next_decline(grouped[symbol], i) if pos.entry_index < i else None
+                if shadow_exit is not None:
+                    volume_exit = shadow_exit
+                volume_source = ('volume_upper_shadow_next_decline' if shadow_exit is not None else
+                                 'bearish_child_pattern' if volume_exit is not None
+                                 and volume_exit['reason'].startswith('bearish_mother_child_') else 'volume_down_exit')
+                # Evaluate close-known N risk only after intraday execution. It may
+                # supersede daily partial orders, never erase earlier minute fills.
+                volume_inverse = (config.volume_inverse_n_clear and i > 0
+                    and bar.volume > grouped[symbol][i - 1].volume
+                    and any(signal.symbol == symbol and signal.side == 'EXIT'
+                            and 'inverse_n_risk_exit' in signal.reason.split('|')
+                            for signal in signal_map.get(when, [])))
+                mother_child_inverse = (
+                    mother_child_inverse_n_break(grouped[symbol], i)
+                    if any(signal.symbol == symbol and signal.side == 'EXIT'
+                           and MOTHER_CHILD_INVERSE_N_LOW_BREAK in signal.reason.split('|')
+                           for signal in signal_map.get(when, [])) else None
+                )
+                wave_exit = (observe_wave_exhaustion(grouped[symbol], i, pos.wave_events, config,
+                                                    reduced=pos.wave_reduced, entry_index=pos.entry_index,
+                                                    signal_index=pos.signal_index)
+                             if config.wave_exhaustion_exit and (not live or day is not None and day.trading_eligible) else None)
+                target_risk = target_resistance[symbol].get(i)
+                body_clear_reason = next((reason
+                    for signal in signal_map.get(when, [])
+                    if signal.symbol == symbol and signal.side == 'EXIT'
+                    for reason in signal.reason.split('|')
+                    if reason in (BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR)), None)
+                if body_clear_reason is not None and (
+                        target_risk is None or target_risk['exit_fraction'] < 1.0):
+                    # A confirmed global EXIT also wins when replay omits projection metadata.
+                    target_risk = dict(reason=body_clear_reason, exit_fraction=1.0,
+                                       execution_model='same_day_close')
+                if target_risk is not None:
+                    if target_risk['exit_fraction'] == 1.0 and (
+                            wave_exit is None or wave_exit['exit_fraction'] < 1.0
+                            or wave_exit['reason'] in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS):
+                        wave_exit = target_risk
+                    elif wave_exit is None and not pos.wave_reduced:
+                        wave_exit = target_risk
+                c_equal_risk = (observe_c_equal_near_risk(
+                    grouped[symbol], i, c_equal_events[symbol],
+                    reduction_fraction=config.wave_exhaustion_reduction)
+                    if config.wave_exhaustion_exit and (not live or day is not None and day.trading_eligible) else None)
+                if c_equal_risk is not None:
+                    if c_equal_risk['exit_fraction'] == 1.0 and (
+                            wave_exit is None or wave_exit['exit_fraction'] < 1.0
+                            or wave_exit['reason'] in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS):
+                        wave_exit = c_equal_risk
+                    elif wave_exit is None and not pos.wave_reduced:
+                        wave_exit = c_equal_risk
+                pressure = trend_flip_risks[symbol].get(i) or pressure_risks[symbol].get(i) or record_high_risks[symbol].get(i)
+                if pressure is not None and pressure['reason'] == BREAKOUT_SHADOW_CLEAR:
+                    # 开盘已经受理；成交受限时沿用账户的待执行全清指令。
+                    pressure = None
+                if (pressure is not None and pressure['reason'].startswith('trend_last_fall_high_')
+                        and pos.entry_index > pressure['trend_warning_index']):
+                    pressure = None
+                if (pressure is not None and pressure['reason'] == 'trend_last_fall_high_upper_shadow_reduce'
+                        and pos.trend_last_fall_high_reduced):
+                    pressure = None
+                if (pressure is not None and pressure['reason'] == 'pressure_breakout_adverse_clear'
+                        and pos.entry_index > pressure['pressure_breakout_index']):
+                    pressure = None
+                if (pressure is not None and pressure['reason'] == 'record_high_resistance_reduce'
+                        and pos.entry_index >= pressure['record_breakout_index']):
+                    pressure = None
+                record_volume = record_volume_risks[symbol].get(i)
+                if record_volume is not None and pos.entry_index > record_volume['record_warning_index']:
+                    record_volume = None
+                if record_volume is not None and (
+                        pressure is None or record_volume['exit_fraction'] > pressure['exit_fraction']):
+                    pressure = record_volume
+                if pos.pressure_warning is not None and i > 0 and bar.close < grouped[symbol][i - 1].close:
+                    pressure = dict(
+                        reason='pressure_reduced_lower_close_clear', exit_fraction=1.0,
+                        execution_model='same_day_close', **pos.pressure_warning,
+                        pressure_adverse_patterns=['close_below_previous'],
+                        observed_close=bar.close, previous_close=grouped[symbol][i - 1].close,
+                    )
+                elif pos.record_high_warning is not None and i > 0 and bar.close < grouped[symbol][i - 1].close:
+                    warning = pos.record_high_warning
+                    history = grouped[symbol]
+                    resisted = [history[j].timestamp.date().isoformat()
+                                for j in range(warning['record_breakout_index'], i)
+                                if observe_resistance(history[j - 1], history[j], attack_direction=Direction.UP,
+                                                      shadow_policy=ShadowPolicy(0.5)).detected is True]
+                    pressure = dict(
+                        reason='record_high_lower_close_clear', exit_fraction=1.0,
+                        execution_model='same_day_close', **warning,
+                        record_resistance_dates=resisted,
+                        record_adverse_patterns=['close_below_previous'],
+                        observed_close=bar.close, previous_close=history[i - 1].close,
+                    )
+                elif (pos.pressure_warning is not None or pos.record_high_warning is not None) and pressure is not None and pressure['exit_fraction'] < 1:
+                    pressure = None
+                if (pressure is not None and pressure['reason'] in (
+                        'record_high_resistance_reduce', 'record_high_massive_resistance_reduce_30',
+                        BREAKOUT_SHADOW_REDUCE)
+                        and (hard_reason or volume_inverse or inverse_failure is not None
+                             or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
+                    pressure = None
+                if (pressure is not None and pressure['exit_fraction'] < 1
+                        and volume_exit is not None
+                        and volume_exit['reason'] == LIMIT_UP_DISTRIBUTION_CLEAR):
+                    pressure = None
+                if (pressure is not None and pressure['exit_fraction'] < 1
+                        and volume_exit is not None
+                        and volume_exit['reason'] == 'volume_bullish_gap_bearish_clear'):
+                    pressure = None
+                if (wave_exit is not None and wave_exit['reason'] in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS
+                        and (mother_child_inverse is not None or hard_reason or volume_inverse
+                             or inverse_failure is not None
+                             or (pressure is not None and pressure['exit_fraction'] == 1)
+                             or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
+                    wave_exit = None
+                if mother_child_inverse is not None:
+                    pending_exit[symbol] = MOTHER_CHILD_INVERSE_N_LOW_BREAK
+                    exit_evidence[symbol] = dict(
+                        signal_timestamp=when.isoformat(), **mother_child_inverse,
+                        decision_reason=MOTHER_CHILD_INVERSE_N_LOW_BREAK,
+                        decision_source='strategy_exit_signal', execution_model='same_day_close',
+                        exit_fraction=1.0,
+                        **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}),
+                    )
+                elif wave_exit is not None and wave_exit['exit_fraction'] == 1:
+                    wave_clear_symbols.add(symbol)
+                    pending_exit[symbol] = wave_exit['reason']
+                    exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
+                        **{key: value for key, value in wave_exit.items() if key != 'reason'},
+                        decision_reason=wave_exit['reason'], decision_source='wave_exhaustion_risk',
+                        **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}))
+                elif pressure is not None:
+                    pending_exit[symbol] = pressure['reason']
+                    exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
+                        **{key: value for key, value in pressure.items() if key != 'reason'},
+                        decision_reason=pressure['reason'], decision_source='overhead_pressure_risk',
+                        **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}))
+                elif volume_inverse:
+                    pending_exit[symbol] = 'volume_inverse_n_clear'
+                    exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
+                        decision_reason='volume_inverse_n_clear', decision_source='strategy_exit_signal',
+                        execution_model='same_day_close', exit_fraction=1.0,
+                        observed_low=bar.low, observed_close=bar.close,
+                        observed_volume=bar.volume, previous_volume=grouped[symbol][i - 1].volume,
+                        **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}))
+                elif (volume_exit is not None and volume_exit['exit_fraction'] == 1
+                      and (inverse_failure is None or shadow_exit is not None)):
+                    pending_exit[symbol] = volume_exit['reason']
+                    exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
+                        **{key: value for key, value in volume_exit.items()
+                           if key not in ('reason', 'observed_low', 'observed_close')},
+                        decision_reason=volume_exit['reason'], decision_source=volume_source,
+                        observed_low=bar.low, observed_close=bar.close,
+                        **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback
+                           and volume_exit['execution_model'] == 'same_day_close' else {}))
+                elif hard_reason:
+                    pending_exit[symbol] = hard_reason
+                    exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
+                        decision_reason=pending_exit[symbol], stop_price=pos.stop, target_price=pos.target,
+                        observed_low=bar.low, observed_high=bar.high, observed_close=bar.close,
+                        bars_held=i-pos.entry_index, decision_source='close_observed_risk_control')
+                elif inverse_failure is not None:
+                    pending_exit[symbol] = inverse_failure['reason']
+                    exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
+                        **{key: value for key, value in inverse_failure.items() if key != 'reason'},
+                        decision_reason=inverse_failure['reason'], decision_source='inverse_n_resistance_failure',
+                        observed_close=bar.close)
+                elif wave_exit is not None:
+                    pending_exit[symbol] = wave_exit['reason']
+                    exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
+                        **{key: value for key, value in wave_exit.items() if key != 'reason'},
+                        decision_reason=wave_exit['reason'], decision_source='wave_exhaustion_risk')
+                elif volume_exit is not None:
+                    pending_exit[symbol] = volume_exit['reason']
+                    exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
+                        **{key: value for key, value in volume_exit.items() if key != 'reason'},
+                        decision_reason=volume_exit['reason'], decision_source=volume_source,
+                        observed_low=bar.low, observed_close=bar.close)
+                elif config.staged_exit_enabled:
+                    decision = observe_staged_exit(grouped[symbol], i, pos.staged_exit, config.initial_reduction_fraction,
+                        tiered=symbol in daily_fallback or (config.staged_exit_same_day and not config.staged_exit_intraday)) if (
+                            symbol in daily_fallback or not config.staged_exit_intraday or pos.staged_exit.breakdown_index is not None) else None
+                    if decision is not None:
+                        pending_exit[symbol] = decision['reason']
+                        exit_evidence[symbol] = dict(signal_timestamp=when.isoformat(),
+                            **{key: value for key, value in decision.items() if key != 'reason'},
+                            decision_reason=decision['reason'], stop_price=pos.stop, target_price=pos.target,
+                            observed_low=bar.low, observed_high=bar.high, observed_close=bar.close,
+                            decision_source='staged_support_break',
+                            execution_model='same_day_close' if config.staged_exit_same_day or symbol in daily_fallback else 'next_open',
+                            **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}))
+            # Daily close matching is explicit; it does not reconstruct a 14:30 quote.
+            for symbol in sorted(list(pending_exit)):
+                if symbol in positions and symbol in current and exit_evidence.get(symbol, {}).get('execution_model') == 'same_day_close':
+                    i, bar = current[symbol]
+                    execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
+            for signal in signal_map.get(when, []):
+                symbol = signal.symbol
+                if signal.side == 'LONG' and (symbol, signal.bar_index) in entry_executions:
+                    continue
+                if signal.side == 'LONG':
+                    index = current[symbol][0]
+                    rejection = (volume_upper_shadow_rejection(grouped[symbol][index],
+                                 grouped[symbol][index - 1] if index else None)
+                                 or volume_bearish_entry_rejection(grouped[symbol], index))
+                    if rejection is not None:
+                        log(when, symbol, 'BUY', 'cancelled', rejection,
+                            signal_timestamp=signal.timestamp.isoformat(), decision_source='daily_close')
+                        pending_entry.pop(symbol, None)
+                        continue
+                if signal.side == 'LONG' and current[symbol][0] in target_resistance[symbol]:
+                    risk = target_resistance[symbol][current[symbol][0]]
+                    log(when, symbol, 'BUY', 'cancelled', str(risk['reason']),
+                        signal_timestamp=signal.timestamp.isoformat(), **{key: value for key, value in risk.items() if key != 'reason'})
+                    continue
+                if signal.side == 'EXIT':
+                    pending_entry.pop(symbol, None)
+                    if symbol in positions:
+                        if symbol not in pending_exit or exit_evidence[symbol].get('exit_fraction', 1) < 1:
+                            pos = positions[symbol]
+                            inverse_reduction = ((config.inverse_n_close_reduce or (config.inverse_n_after_reduction
+                                and pos.staged_exit.breakdown_index is not None
+                                and pos.quantity < pos.initial_quantity - 1e-8))
+                                and signal.reason == 'inverse_n_risk_exit')
+                            if inverse_reduction:
+                                lot = config.lot_size / current[symbol][1].adjustment_factor
+                                remaining_to_sell = pos.initial_quantity * 0.9 - (pos.initial_quantity - pos.quantity)
+                                if math.floor(remaining_to_sell / lot + 1e-9) <= 0:
+                                    continue
+                            pending_exit[symbol] = (('inverse_n_close_reduce_90' if config.inverse_n_close_reduce
+                                                    else 'inverse_n_after_reduction_90') if inverse_reduction else signal.reason)
+                            exit_evidence[symbol] = dict(signal_timestamp=signal.timestamp.isoformat(),
+                                decision_reason=signal.reason, stop_price=positions[symbol].stop,
+                                target_price=positions[symbol].target, observed_close=signal.reference_price,
+                                decision_source='strategy_exit_signal',
+                                **(dict(exit_fraction=0.9, exit_target_fraction=0.9,
+                                        original_signal_reason=signal.reason) if inverse_reduction else {}))
+                            if inverse_reduction and config.inverse_n_close_reduce:
+                                i, bar = current[symbol]
+                                exit_evidence[symbol]['execution_model'] = 'same_day_close'
+                                exit_evidence[symbol]['inverse_observed_index'] = signal.bar_index
+                                execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
+                            elif any(reason in signal.reason.split('|') for reason in
+                                     (LIMIT_UP_DISTRIBUTION_CLEAR, BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
+                                       FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
+                                       *FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS,
+                                       C_EQUAL_NEAR_VOLUME_CLEAR)):
+                                i, bar = current[symbol]
+                                wave_clear_symbols.add(symbol)
+                                pending_exit[symbol] = next(reason for reason in signal.reason.split('|') if reason in
+                                    (LIMIT_UP_DISTRIBUTION_CLEAR, BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR, 'wave_two_t_resistance_volume_clear', 'wave_two_t_next_volume_clear',
+                                      FIVE_TOP_CHILD_VOLUME_CLEAR, FIVE_TOP_GAP_VOLUME_CLEAR,
+                                      *FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS,
+                                      C_EQUAL_NEAR_VOLUME_CLEAR))
+                                if pending_exit[symbol] == LIMIT_UP_DISTRIBUTION_CLEAR:
+                                    distribution = observe_limit_up_distribution_exit(grouped[symbol], i)
+                                    if distribution is not None:
+                                        exit_evidence[symbol].update(
+                                            {key: value for key, value in distribution.items() if key != 'reason'})
+                                elif pending_exit[symbol] == FIVE_TOP_CHILD_VOLUME_CLEAR:
+                                    known_events = sorted((wave_events or {}).get(symbol, []),
+                                                          key=lambda event: event['bar_index'])
+                                    five_top_evidence = observe_five_top_child_volume_clear(grouped[symbol], i, known_events)
+                                    if five_top_evidence is not None:
+                                        exit_evidence[symbol].update(five_top_evidence)
+                                elif pending_exit[symbol] == FIVE_TOP_GAP_VOLUME_CLEAR:
+                                    known_events = sorted((wave_events or {}).get(symbol, []),
+                                                          key=lambda event: event['bar_index'])
+                                    five_top_evidence = observe_five_top_gap_volume_clear(
+                                        grouped[symbol], i, known_events)
+                                    if five_top_evidence is not None:
+                                        exit_evidence[symbol].update(
+                                            {key: value for key, value in five_top_evidence.items() if key != 'reason'})
+                                elif pending_exit[symbol] in FIVE_TOP_UPPER_SHADOW_CLEAR_REASONS:
+                                    observer = (observe_five_top_body_upper_shadow_clear
+                                                if pending_exit[symbol] == FIVE_TOP_BODY_UPPER_SHADOW_CLEAR
+                                                else observe_five_top_gap_upper_shadow_clear)
+                                    five_top_evidence = observer(
+                                        grouped[symbol], i, (wave_events or {}).get(symbol, []))
+                                    if five_top_evidence is not None:
+                                        exit_evidence[symbol].update(
+                                            {key: value for key, value in five_top_evidence.items() if key != 'reason'})
+                                    if symbol in daily_fallback:
+                                        exit_evidence[symbol]['minute_fallback'] = daily_fallback[symbol]
+                                elif pending_exit[symbol] == C_EQUAL_NEAR_VOLUME_CLEAR:
+                                    c_equal_evidence = observe_c_equal_near_risk(
+                                        grouped[symbol], i, c_equal_events[symbol],
+                                        reduction_fraction=config.wave_exhaustion_reduction)
+                                    if c_equal_evidence is not None:
+                                        exit_evidence[symbol].update(
+                                            {key: value for key, value in c_equal_evidence.items()
+                                             if key != 'reason'})
+                                exit_evidence[symbol].update(execution_model='same_day_close', exit_fraction=1.0)
+                                execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
+                elif symbol in positions:
+                    pos = positions[symbol]
+                    if pos.stop < signal.invalidation_price < current[symbol][1].close:
+                        pos.stop = signal.invalidation_price
+                    if (config.allow_add_on and symbol not in pending_exit and symbol not in sold_today and
+                        current[symbol][0] not in pressure_risks[symbol] and
+                        current[symbol][0] not in trend_flip_risks[symbol] and
+                        current[symbol][0] not in target_resistance[symbol] and
+                        symbol not in wave_clear_symbols):
+                        pending_entry[symbol] = (signal, tick)
+                elif (current[symbol][0] not in pressure_risks[symbol]
+                      and current[symbol][0] not in target_resistance[symbol]
+                      and current[symbol][0] not in trend_flip_risks[symbol] and symbol not in wave_clear_symbols):
+                    pending_entry[symbol] = (signal, tick)
+            for symbol, evidence in observing_structure_exits.items():
+                if symbol not in positions or symbol in pending_exit or symbol in sold_today:
+                    continue
+                i, bar = current[symbol]
+                previous_close = grouped[symbol][i - 1].close
+                if bar.close > previous_close:
+                    continue
+                # Only a weak close confirms the unresolved structure; act at that
+                # observed close, after any stronger same-day exit has had priority.
+                pending_entry.pop(symbol, None)
+                pending_exit[symbol] = 'strict_structure_unresolved'
+                exit_evidence[symbol] = dict(
+                    evidence, execution_model='same_day_close', decision_source='gap_observed_structure_exit',
+                    previous_close=previous_close, observed_open=bar.open, observed_close=bar.close,
+                )
+                execute_exit(symbol, i, bar, when, bar.close, 'same_day_close')
+            for symbol, (_, bar) in current.items():
+                marks[symbol] = bar.close
+            if config.entry_at_close or any(signal.reason == QUALIFIED_RISING_CLOSE
+                                             for signal, _ in pending_entry.values()):
+                # Match only after all close-time exits, using close marks for every
+                # holding. Today's earlier extrema cannot stop out a new close fill.
+                for symbol in sorted(list(pending_entry), key=lambda s: (-(pending_entry[s][0].rvol or 0), s)):
+                    signal, created = pending_entry[symbol]
+                    if (created != tick or symbol not in current
+                            or not config.entry_at_close and signal.reason != QUALIFIED_RISING_CLOSE):
+                        continue
+                    del pending_entry[symbol]
+                    i, bar = current[symbol]
+                    if any(s.symbol == symbol and s.side == 'EXIT' for s in signal_map.get(when, [])):
+                        log(when, symbol, 'BUY', 'cancelled', 'same_day_exit_priority',
+                            signal_timestamp=signal.timestamp.isoformat(), execution_model='same_day_close')
+                        continue
+                    execute_entry(symbol, i, bar, when, signal, bar.close, at_close=True)
+            market_value = sum(p.quantity*marks[s] for s, p in positions.items())
+            equity = cash+market_value
+            if cash < -1e-6 or equity <= 0:
+                raise ArithmeticError('portfolio cash/equity invariant failed')
+            curve.append(dict(timestamp=when.isoformat(), cash=cash, market_value=market_value,
+                              equity=equity, exposure=market_value/equity, positions=len(positions)))
+            if live and day is not None:
+                day.risk_required = bool(positions or pending_entry or pending_exit)
+            if on_day is not None:
+                on_day(tick, orders, trades, curve)
+    finally:
+        for risk_stream in pressure_streams.values():
+            risk_stream.close()
+        for trend_risk_stream in trend_risk_streams.values():
+            trend_risk_stream.close()
     opened: list[dict] = [dict(symbol=s, entry_time=p.entry_time.isoformat(), entry_price=p.entry_price,
                    quantity=p.quantity, mark=marks[s], mark_time=mark_times[s],
                    unrealized_pnl=p.quantity*(marks[s]-p.entry_price)-p.entry_fee,
@@ -1108,8 +1430,10 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                    pending_exit=pending_exit.get(s)) for s, p in sorted(positions.items())]
     metrics = equity_metrics(curve, config.initial_capital)
     metrics['account_max_drawdown'] = metrics['max_drawdown']
-    holding_losses = holding_drawdowns(grouped, orders, end, minute_loader)
+    holding_losses = holding_drawdowns(grouped, orders, end, minute_loader, observed_dates=observed_holding_dates)
     metrics.update(drawdown_metrics(holding_losses))
+    if live:
+        metrics['holding_drawdown_observation_scope'] = 'qualified_sessions'
     open_losses = {e['symbol']: e for e in holding_losses if e['status'] == 'open'}
     closed_losses = {(e['symbol'], e['exit_time']): e for e in holding_losses if e['status'] == 'closed'}
     for position in opened:

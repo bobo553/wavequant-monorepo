@@ -18,6 +18,23 @@ test("watchlist N target option defaults off and enabled jobs cannot reuse disab
     assert.notEqual(backtestArgumentsKey(off.path, off.params), backtestArgumentsKey(on.path, on.params));
 });
 
+test("watchlist buy intervals default to level two and isolate each level in request identity", () => {
+    const member = { symbol: "sz.000678", asof: "2026-09-25" };
+    for (const source of ["akshare", "tdx"]) {
+        const context = { run: "example", variant: "lecture_v3", source };
+        const defaultRequest = watchlistBacktestRequest(member, context);
+        const requests = ["1", "2", "3"].map((buy_interval_level) =>
+            watchlistBacktestRequest(member, { ...context, buy_interval_level }),
+        );
+        assert.equal(defaultRequest.params.buy_interval_level, "2");
+        assert.deepEqual(defaultRequest, requests[1]);
+        const keys = requests.map(({ path, params }) => backtestArgumentsKey(path, params));
+        assert.equal(new Set(keys).size, 3);
+        const { buy_interval_level, ...oldParams } = defaultRequest.params;
+        assert.equal(backtestArgumentsKey(defaultRequest.path, oldParams), keys[1]);
+    }
+});
+
 const result = (member) => ({
     symbol: member.symbol,
     asof: member.asof,
@@ -165,7 +182,7 @@ test("a matching completed stock task updates the watchlist without running it a
             total_return: 0.125,
             total_pnl: 12500,
             max_drawdown: -0.01,
-            holding_drawdown_version: "holding_entry_cost_mae_cycle_v2",
+            holding_drawdown_version: "holding_entry_cost_mae_cycle_v3",
             holding_max_drawdown: -0.083,
         },
     };
@@ -195,7 +212,7 @@ test("completed return summaries follow the current backtest context", async () 
                 total_return: member.symbol === "sz.000002" ? 0.125 : -0.075,
                 total_pnl: member.symbol === "sz.000002" ? 12500 : -7500,
                 max_drawdown: -0.01,
-                holding_drawdown_version: "holding_entry_cost_mae_cycle_v2",
+                holding_drawdown_version: "holding_entry_cost_mae_cycle_v3",
                 holding_max_drawdown: member.symbol === "sz.000002" ? -0.083 : -0.154,
             },
         }),
@@ -247,7 +264,7 @@ test("server completion restores a watchlist badge after reload without a local 
         total_return: -0.075,
         total_pnl: -7500,
         max_drawdown: -0.01,
-        holding_drawdown_version: "holding_entry_cost_mae_cycle_v2",
+        holding_drawdown_version: "holding_entry_cost_mae_cycle_v3",
         holding_max_drawdown: -0.154,
     };
     assert.equal(subject.controller.adoptServerStatus(record), true);

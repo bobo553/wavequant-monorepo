@@ -5,6 +5,7 @@ from fractions import Fraction
 
 from ..models.config import StrategyConfig
 from ..models.model import Bar
+from ..market_state.volume_candle import is_volume_bearish
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 
 
@@ -523,17 +524,26 @@ def _observe_target_candle(
                 resistance_date=previous.timestamp.date().isoformat(),
                 resistance_virtual_low=virtual_low,
             )
-    if stage == "ten_full" and body > 0 and bar.high >= reached["reached_target"]:
+    prior_bearish: Bar | None = None
+    volume_bearish = False
+    if stage in ("two_t", "ten_full") and body > 0:
         prior_bearish = next((bars[j] for j in range(index - 1, -1, -1)
                               if bars[j].close < bars[j].open), None)
-        if prior_bearish is not None and bar.volume > prior_bearish.volume:
+        volume_bearish = is_volume_bearish(bar, previous, prior_bearish)
+    if stage == "ten_full" and body > 0 and bar.high >= reached["reached_target"]:
+        if volume_bearish:
             return dict(
                 evidence,
                 reason="wave_ten_full_bearish_volume_clear",
                 exit_fraction=1.0,
-                bearish_reference_date=prior_bearish.timestamp.date().isoformat(),
-                bearish_reference_volume=prior_bearish.volume,
+                bearish_reference_date=prior_bearish.timestamp.date().isoformat() if prior_bearish is not None else None,
+                bearish_reference_volume=prior_bearish.volume if prior_bearish is not None else None,
             )
+    if stage == 'two_t' and body > 0 and volume_bearish and not reduced:
+        return dict(evidence, reason='wave_two_t_volume_bearish_reduce',
+            exit_fraction=config.wave_exhaustion_reduction, exit_target_fraction=config.wave_exhaustion_reduction,
+            bearish_reference_date=prior_bearish.timestamp.date().isoformat() if prior_bearish is not None else None,
+            bearish_reference_volume=prior_bearish.volume if prior_bearish is not None else None)
     if stage in ("five_top", "ten_full") and body > 0 and not reduced:
         return dict(
             evidence,

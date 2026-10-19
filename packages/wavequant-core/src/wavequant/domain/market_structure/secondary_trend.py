@@ -4,6 +4,7 @@
 不调用这些独立循环。所有级别都由 judge_trend 判别，资格视图只核验策略。
 """
 from copy import deepcopy
+from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from zoneinfo import ZoneInfo
 
@@ -12,6 +13,7 @@ from .lecture_trend import _ref
 from .trend_publication import publish_uptrends
 from .n_trend_reversals import n_target_reversals
 from .trend_level_upgrades import promote_trend_key_breaks
+from .trend_market_index import _MarketPrefixIndex
 
 
 def _bar_date(bar):
@@ -27,7 +29,8 @@ def _bar_date(bar):
     return timestamp.date().isoformat()
 
 
-def _first_close_break_below(bars,low):
+def _first_close_break_below(bars,low,*,_session_dates=None,_ordered_dates=False,
+                           _market_index: _MarketPrefixIndex | None = None):
     """Find the first causal close crossing below an already-known trend low.
 
     A lower intraday wick is intentionally insufficient.  The previous close
@@ -36,8 +39,15 @@ def _first_close_break_below(bars,low):
     from rewriting an earlier chart prefix.
     """
     known=max(low['time'],low['available_at'])
-    for index,(previous,current) in enumerate(zip(bars,bars[1:]),1):
-        time=_bar_date(current)
+    start=max(1,bisect_left(_session_dates,known,hi=len(bars))) if _session_dates is not None and _ordered_dates else 1
+    indices: Sequence[int] = range(start,len(bars))
+    if (_market_index is not None and _ordered_dates and start < len(bars)
+            and _market_index.owner.supports_price(low['value'])):
+        crossing = _market_index.first_close_turn(start, len(bars), low['value'], up=False)
+        indices = () if crossing is None else (crossing,)
+    for index in indices:
+        previous,current=bars[index-1],bars[index]
+        time=_session_dates[index] if _session_dates is not None else _bar_date(current)
         if time<known or previous.close<low['value'] or current.close>=low['value']:
             continue
         return dict(index=index,time=time,available_at=time,kind='K',label='收盘跌破 K线',
@@ -46,7 +56,7 @@ def _first_close_break_below(bars,low):
     return None
 
 
-def last_fall_high_reanchors(points,bars,*,trend_level=2):
+def last_fall_high_reanchors(points,bars,*,trend_level=2, _market_index: _MarketPrefixIndex | None = None):
     """Describe causal last-fall-high moves after an older low is invalidated.
 
     The lowest confirmed point remains the structural anchor while price stays
@@ -64,10 +74,17 @@ def last_fall_high_reanchors(points,bars,*,trend_level=2):
     that makes the replacement key knowable.
     """
     events=[]
+    if _market_index is not None and not _market_index.matches(bars):
+        raise ValueError('reanchor market index must match its immutable Bar prefix')
+    session_dates=(_market_index.owner.session_dates if _market_index is not None else
+                   tuple(_bar_date(bar) for bar in bars))
+    ordered_dates=(_market_index.owner.ordered_sessions if _market_index is not None else
+                   all(left<=right for left,right in zip(session_dates,session_dates[1:])))
     for position,broken_low in enumerate(points):
         if broken_low['kind']!='L':
             continue
-        broken_at=_first_close_break_below(bars,broken_low)
+        broken_at=_first_close_break_below(bars,broken_low,
+            _session_dates=session_dates,_ordered_dates=ordered_dates,_market_index=_market_index)
         if broken_at is None:
             continue
         previous_key=next((point for point in reversed(points[:position]) if point['kind']=='H'),None)
@@ -246,7 +263,7 @@ def secondary_trends(level1: Mapping[str, object], bars: Sequence[Bar], *,
     """
     from .trend_lines import high_low_points_from_strokes, trend_lines
 
-    points = high_low_points_from_strokes(level1.get('strokes'))
+    points = high_low_points_from_strokes(level1.get('strokes'), include_key_break_attacks=True)
     qualified = high_low_points_from_strokes(level1.get('qualified_strokes', level1.get('strokes')))
     return trend_lines(points, bars, trend_level=2, qualified_source_points=qualified,
                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)

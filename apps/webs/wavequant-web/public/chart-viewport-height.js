@@ -1,12 +1,8 @@
 const MIN_CHART_HEIGHT = 200;
 const VIEWPORT_BOTTOM_GAP = 16;
-const CHART_HEIGHT_INCREASE = 100;
 
 export function chartViewportHeight(viewportHeight, chartTop, footerHeight) {
-    return (
-        Math.max(MIN_CHART_HEIGHT, Math.floor(viewportHeight - chartTop - footerHeight - VIEWPORT_BOTTOM_GAP)) +
-        CHART_HEIGHT_INCREASE
-    );
+    return Math.max(MIN_CHART_HEIGHT, Math.floor(viewportHeight - chartTop - footerHeight - VIEWPORT_BOTTOM_GAP));
 }
 
 /** 使用文档起点预留进度区，滚动页面不会使图表重新膨胀。 */

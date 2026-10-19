@@ -23,7 +23,7 @@ export function ResearchControls(): JSX.Element {
                 <label>
                     策略 / 幅度方案
                     <select id="variant-select" aria-label="策略版本" defaultValue="lecture_v3">
-                        <option value="lecture_v3">V3 · 二/三级交替后 N 轧空</option>
+                        <option value="lecture_v3">V3 · 所选级别交替后 N 轧空</option>
                         <option value="lecture_v3_d67_c33">V3 · 第一类 &gt;2/3 / 第二类 ≤1/3</option>
                         <option value="lecture_v3_d50_c50">V3 · 第一类 &gt;1/2 / 第二类 ≤1/2</option>
                         <option value="lecture_v3_d67_c50">V3 · 第一类 &gt;2/3 / 第二类 ≤1/2</option>
@@ -58,8 +58,27 @@ export function ResearchControls(): JSX.Element {
                 </div>
             </div>
             <div className="backtest-toolbar panel">
+                <label
+                    id="buy-interval-level-field"
+                    title="分级趋势策略在所选级别空多交替确认后寻找买点，确认多翻空时停止搜索；止损和退出风控继续逐日执行。"
+                >
+                    买点筛选级别
+                    <select id="backtest-buy-interval-level" aria-label="买点筛选级别" defaultValue="2">
+                        <option value="1">一级空多交替后</option>
+                        <option value="2">二级空多交替后（默认）</option>
+                        <option value="3">三级空多交替后</option>
+                    </select>
+                </label>
                 <label>
-                    回测起点 <input type="date" id="backtest-start" defaultValue="2018-01-01" aria-label="回测起点" />
+                    回测起点{" "}
+                    <input
+                        type="date"
+                        id="backtest-start"
+                        defaultValue="2018-01-01"
+                        readOnly
+                        disabled
+                        aria-label="回测起点固定为2018年1月1日"
+                    />
                 </label>
                 <label title="回测账户的起始资金；仅影响当前股票回测与幅度方案对比，不修改封存组合。">
                     初始资金（万）
@@ -117,6 +136,13 @@ export function ResearchControls(): JSX.Element {
                     <input type="checkbox" id="n-target-trend-confirmation" />
                     正/倒 N 超一饱确认趋势
                 </label>
+                <label
+                    className="backtest-volume-filter"
+                    title="默认关闭。勾选后，允许两高两低同时抬高或降低确认普通整波结束；未勾选时仍需真实翻向确认。统一作用于一级、二级和三级趋势。"
+                >
+                    <input type="checkbox" id="ordinary-trend-completion" />
+                    普通高低点升降确认整波结束
+                </label>
                 <button id="run-stock-backtest">运行当前股票回测</button>
                 <div
                     id="stock-backtest-status"
@@ -127,14 +153,20 @@ export function ResearchControls(): JSX.Element {
                 >
                     <span className="stock-backtest-indicator" aria-hidden="true" />
                     <span id="stock-backtest-status-text" />
+                    <progress id="stock-backtest-progress" max={100} aria-label="回测进度" hidden />
                     <span id="stock-backtest-other" className="stock-backtest-other" />
                 </div>
                 <button id="download-backtest" disabled>
                     导出回测账本
                 </button>
+                <details id="stock-backtest-pipeline" className="stock-backtest-pipeline" open hidden>
+                    <summary>24 步计算与缓存</summary>
+                    <p />
+                    <ol aria-label="回测计算步骤" />
+                </details>
                 <span id="backtest-sizing-help">
-                    买入比例为单股仓位上限，实际成交仍受风险预算、流动性、现金和整手限制。终点为回放日期 · 沪深京普通 A
-                    股按板块规则回测 · ST / 退市暂不生成成交
+                    买入比例为单股仓位上限，实际成交仍受风险预算、流动性、现金和整手限制。回测区间固定为 2018-01-01
+                    至该股票最新交易日 · 沪深京普通 A 股按板块规则回测 · ST / 退市暂不生成成交
                 </span>
             </div>
             <div id="error" className="message error" role="alert" hidden />

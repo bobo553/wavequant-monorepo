@@ -1,10 +1,13 @@
-"""Replay defended-N gap entries using only completed same-source minute bars."""
+"""Resolve qualified-session gaps and defended-N minute entries."""
 
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
-from typing import Callable, TypedDict
+from typing import TYPE_CHECKING, Callable, TypedDict
 
+from wavequant.domain.market_state.volume_candle import volume_bearish_entry_rejection
+from wavequant.domain.market_state.candle_strength import QUALIFIED_RISING_CLOSE, volume_high_open_rising
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.domain.strategies.integrated_strategy import (
     SystemResult,
@@ -13,7 +16,9 @@ from wavequant.domain.strategies.integrated_strategy import (
     pivot_history,
 )
 from wavequant.domain.strategies.n_consolidation import consolidation_gap
+from wavequant.domain.strategies.trading_intervals import TradingInterval
 from wavequant.domain.strategies.hierarchical_entry import EntryContext
+from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse, MinuteTradingScope
 from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
     wave_confirmation_state,
@@ -26,6 +31,9 @@ from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageE
 from wavequant.infrastructure.market_data.data import opening_permissions
 from wavequant.infrastructure.market_data.minute import MinuteBar
 
+if TYPE_CHECKING:
+    from wavequant.domain.strategies.backtest_analysis import BacktestAnalysis
+
 
 class EntryExecution(TypedDict):
     signal: Signal
@@ -36,6 +44,190 @@ class EntryExecution(TypedDict):
     remaining_high: float
 
 
+def _minute_buy_permissions(
+    bar: Bar, previous: Bar, following: MinuteBar, *,
+    observed_low: float, observed_high: float, observed_volume: float,
+) -> tuple[bool, bool]:
+    """分钟买点共用价格权限；非一字事实只取决策时已观察的量价。
+
+    第二个返回值不是成交许可，账户仍须显式启用非一字涨停成交假设。
+    """
+    permission = dict(date=bar.timestamp.date().isoformat(),
+        isST='1' if bar.raw_is_st else '0',
+        tradestatus='1' if bar.raw_trading_active is not False and following.volume > 0 else '0',
+        preclose=str(previous.close / bar.adjustment_factor))
+    buyable, _ = opening_permissions(dict(permission, open=str(following.open)), bar.symbol)
+    below_limit, _ = opening_permissions(
+        dict(permission, open=str(observed_low / bar.adjustment_factor)), bar.symbol)
+    previous_tick_buyable, _ = opening_permissions(
+        dict(permission, open=str(Decimal(str(following.open)) - Decimal('0.01'))), bar.symbol)
+    observed_nonflat = (not buyable and previous_tick_buyable and below_limit
+        and observed_high > observed_low and observed_volume > 0)
+    return buyable, observed_nonflat
+
+
+def _qualified_gap_entries(
+    bars: list[Bar], generated: SystemResult, strategy: SystemStrategy,
+    minute_loader: Callable[[Bar], list[MinuteBar]] | None, *, only_index: int | None,
+    intervals: Sequence[TradingInterval] | None,
+) -> tuple[SystemResult, dict[tuple[str, int], EntryExecution], list[dict[str, object]], set[int]]:
+    """消费现有资格区间；用户指定确认日整天可买，缺分钟则开盘模拟。
+
+    不重算资格或要求 N；按用户约定先做全天阴线过滤。分钟定价只消费已完成的观察棒，
+    资金、仓位、止损、目标和价格限制继续交给同一账户撮合入口。
+    """
+    from wavequant.domain.strategies.trading_intervals import confirmed_trading_intervals
+
+    executions: dict[tuple[str, int], EntryExecution] = {}
+    fallbacks: list[dict[str, object]] = []
+    gap_days: set[int] = set()
+    if strategy.buy_point_definition != 'whole_flip_wave_v3':
+        return generated, executions, fallbacks, gap_days
+    if intervals is None:
+        intervals = confirmed_trading_intervals(generated.audit, len(bars), strategy.buy_interval_level)
+    signals, audit = list(generated.signals), list(generated.audit)
+    for i in ([only_index] if only_index is not None else range(1, len(bars))):
+        if i <= 0 or bars[i].open <= bars[i - 1].high:
+            continue
+        active = [window for window in intervals if window.start_index <= i
+            and (window.end_index is None or i < window.end_index)]
+        window = max(active, key=lambda value: value.start_index, default=None)
+        if window is None:
+            continue
+        bar = bars[i]
+        confirmation = next((row for row in reversed(audit)
+            if row.get('event') == 'trend_lifecycle_state' and row.get('state') == '空多交替'
+            and row.get('trend_level') == strategy.buy_interval_level
+            and row.get('source_path') == window.source_path and row['bar_index'] == window.start_index), None)
+        if confirmation is None or window.start_low_price is None:
+            continue
+        gap_days.add(i)
+        rejection = volume_bearish_entry_rejection(bars, i)
+        if rejection is not None:
+            signals = [row for row in signals if not (row.bar_index == i and row.side == 'LONG')]
+            audit = [row for row in audit if not (row['bar_index'] == i
+                and row['event'] in ('long_signal', 'long_transition_evidence'))]
+            audit.append(dict(event='entry_rejected', bar_index=i, symbol=bar.symbol,
+                timestamp=bar.timestamp.isoformat(), reason=rejection,
+                candidate_channel='qualified_gap_open',
+                candle_filter_model='full_session_candle_filter',
+                candle_filter_known_at=bar.timestamp.replace(hour=15).isoformat()))
+            continue
+        fallback = None
+        try:
+            minute = minute_loader(bar) if minute_loader is not None else []
+        except MinuteCoverageError as exc:
+            minute = []
+            fallback = exc.coverage
+        timing: dict[str, object] = dict(qualification_model='confirmation_day_full_session',
+            candle_filter_model='full_session_candle_filter',
+            candle_filter_known_at=bar.timestamp.replace(hour=15).isoformat(),
+            qualification_index=window.start_index, trend_level=strategy.buy_interval_level,
+            source_path=window.source_path, gap_open=bar.open, previous_high=bars[i - 1].high)
+        if not minute:
+            decision = execution_at = bar.timestamp.replace(hour=9, minute=30)
+            price, buyable = bar.open, bar.buyable
+            remaining_low, remaining_high = bar.low, bar.high
+            timing.update(execution_model='same_day_open', decision_source='qualified_gap_open_no_minutes',
+                minute_fallback=True, coverage=fallback)
+            fallbacks.append(dict(symbol=bar.symbol, date=bar.timestamp.date().isoformat(),
+                purpose='qualified_gap_entry', reason='minute_history_missing',
+                execution_model='same_day_open', coverage=fallback))
+        else:
+            # 高开高走：至观察时未跌破开盘，完整五分钟收盘严格高于开盘。
+            observed_low = float('inf')
+            observed_high = observed_volume = 0.0
+            for offset, observed in enumerate(minute[:-1]):
+                observed_low = min(observed_low, observed.low * bar.adjustment_factor)
+                observed_high = max(observed_high, observed.high * bar.adjustment_factor)
+                observed_volume += observed.volume
+                if observed_low < bar.open:
+                    break
+                if observed.close * bar.adjustment_factor <= bar.open:
+                    continue
+                following = minute[offset + 1]
+                decision = observed.timestamp
+                execution_at = following.timestamp - timedelta(minutes=5)
+                price = following.open * bar.adjustment_factor
+                buyable, observed_nonflat = _minute_buy_permissions(bar, bars[i - 1], following,
+                    observed_low=observed_low, observed_high=observed_high, observed_volume=observed_volume)
+                remaining_low = min(row.low for row in minute[offset + 1:]) * bar.adjustment_factor
+                remaining_high = max(row.high for row in minute[offset + 1:]) * bar.adjustment_factor
+                timing.update(execution_model='intraday_5m_next_open', decision_source='qualified_gap_rising_minute',
+                    observed_low=observed_low, observed_high=observed_high, observed_volume=observed_volume,
+                    observed_close=observed.close * bar.adjustment_factor, minute_next_open_raw=following.open,
+                    observed_nonflat_limit_buyable=observed_nonflat)
+                break
+            else:
+                continue
+            if observed_low < bar.open:
+                continue
+        timing.update(decision_timestamp=decision.isoformat(), execution_timestamp=execution_at.isoformat())
+        signal = Signal(bar.timestamp, bar.symbol, i, 'LONG', price, window.start_low_price,
+            '资格区间跳空买入', decision, 0, None, '跳空高开', confirmation['breakout_level'],
+            strategy.minimum_reward_risk)
+        executions[bar.symbol, i] = dict(signal=signal, price=price, buyable=buyable, timing=timing,
+            remaining_low=remaining_low, remaining_high=remaining_high)
+        signals = [row for row in signals if not (row.bar_index == i and row.side == 'LONG')] + [signal]
+        audit = [row for row in audit if not (row['bar_index'] == i
+            and row['event'] in ('long_signal', 'long_transition_evidence'))]
+        for event in ('long_signal', 'long_transition_evidence'):
+            audit.append(dict(event=event, bar_index=i, timestamp=bar.timestamp.isoformat(), symbol=bar.symbol,
+                buy_point_type='qualified_gap_open', stop=signal.invalidation_price, target=signal.target_price, **timing))
+    return SystemResult(sorted(signals, key=lambda row: (row.timestamp, row.side)), audit,
+        dict(generated.counts, long_signals=sum(row.side == 'LONG' for row in signals))), executions, fallbacks, gap_days
+
+
+def _qualified_rising_close_entries(
+    bars: list[Bar], generated: SystemResult, strategy: SystemStrategy, *,
+    only_index: int | None, intervals: Sequence[TradingInterval] | None,
+) -> tuple[SystemResult, set[int]]:
+    """已有资格内的非跳空强阳在当日收盘入场；严格跳空仍沿原分钟通道。"""
+    from wavequant.domain.strategies.trading_intervals import confirmed_trading_intervals
+
+    days: set[int] = set()
+    if strategy.buy_point_definition != 'whole_flip_wave_v3':
+        return generated, days
+    if intervals is None:
+        intervals = confirmed_trading_intervals(generated.audit, len(bars), strategy.buy_interval_level)
+    signals, audit = list(generated.signals), list(generated.audit)
+    for i in ([only_index] if only_index is not None else range(1, len(bars))):
+        if i <= 0 or bars[i].open > bars[i - 1].high or not volume_high_open_rising(bars[i], bars[i - 1]):
+            continue
+        window = max((w for w in intervals if w.trend_level == strategy.buy_interval_level
+            and w.start_index <= i and (w.end_index is None or i < w.end_index)),
+            key=lambda w: w.start_index, default=None)
+        if window is None or window.start_low_price is None:
+            continue
+        confirmation = next((row for row in reversed(audit)
+            if row.get('event') == 'trend_lifecycle_state' and row.get('state') == '空多交替'
+            and row.get('trend_level') == strategy.buy_interval_level
+            and row.get('source_path') == window.source_path and row['bar_index'] == window.start_index), None)
+        if confirmation is None:
+            continue
+        bar = bars[i]
+        decision = bar.timestamp.replace(hour=15, minute=0)
+        signal = Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close, window.start_low_price,
+            QUALIFIED_RISING_CLOSE, decision, 0, None, '放量高开高走',
+            confirmation['breakout_level'], strategy.minimum_reward_risk)
+        days.add(i)
+        signals = [row for row in signals if not (row.bar_index == i and row.side == 'LONG')] + [signal]
+        audit = [row for row in audit if not (row['bar_index'] == i
+            and row['event'] in ('long_signal', 'long_transition_evidence'))]
+        for event in ('long_signal', 'long_transition_evidence'):
+            audit.append(dict(event=event, bar_index=i, timestamp=bar.timestamp.isoformat(), symbol=bar.symbol,
+                buy_point_type=QUALIFIED_RISING_CLOSE, stop=signal.invalidation_price, target=signal.target_price,
+                execution_model='same_day_close', decision_source='daily_close',
+                decision_timestamp=decision.isoformat(), qualification_index=window.start_index,
+                trend_level=strategy.buy_interval_level, source_path=window.source_path,
+                observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
+                observed_close=bar.close, observed_volume=bar.volume,
+                previous_close=bars[i - 1].close, previous_high=bars[i - 1].high,
+                previous_volume=bars[i - 1].volume))
+    return SystemResult(sorted(signals, key=lambda row: (row.timestamp, row.side)), audit,
+        dict(generated.counts, long_signals=sum(row.side == 'LONG' for row in signals))), days
+
+
 def resolve_consolidation_entries(
     bars: list[Bar],
     generated: SystemResult,
@@ -43,14 +235,46 @@ def resolve_consolidation_entries(
     minute_loader: Callable[[Bar], list[MinuteBar]] | None,
     *,
     daily_fallback: bool,
+    qualified_gap_only: bool = False,
+    stage: Callable[[str], None] | None = None,
+    history_reuse: BacktestHistoryReuse | None = None,
+    only_index: int | None = None,
+    session_cache: dict | None = None,
+    prepared_pivots: tuple | None = None,
+    prepared_contexts: dict[int, tuple[EntryContext, ...]] | None = None,
+    prepared_analysis: 'BacktestAnalysis | None' = None,
+    trading_window_start: int | None = None,
 ) -> tuple[SystemResult, dict[tuple[str, int], EntryExecution], list[dict[str, object]]]:
-    """Keep daily-close candidates when no earlier fully verified minute decision exists."""
+    """Resolve qualified gaps first; keep the existing N minute path for other sessions."""
+    if history_reuse is not None:
+        history_reuse.require_input(bars, strategy)
+    if prepared_analysis is not None:
+        if (prepared_analysis.bars != tuple(bars) or only_index is None or only_index != len(bars) - 1
+                or trading_window_start is None):
+            raise ValueError('prepared minute replay requires the current daily prefix and window')
+    generated, rising_days = _qualified_rising_close_entries(
+        bars, generated, strategy, only_index=only_index,
+        intervals=prepared_analysis.trading_intervals if prepared_analysis is not None else None)
+    generated, gap_executions, gap_fallbacks, gap_days = _qualified_gap_entries(
+        bars, generated, strategy, minute_loader, only_index=only_index,
+        intervals=prepared_analysis.trading_intervals if prepared_analysis is not None else None)
+    if qualified_gap_only or only_index is not None and only_index in (gap_days | rising_days):
+        return generated, gap_executions, gap_fallbacks
+    minute_scope = None
+    if prepared_analysis is not None:
+        assert only_index is not None and trading_window_start is not None
+        minute_scope = MinuteTradingScope.from_analysis(prepared_analysis,
+            index=only_index, window_start=trading_window_start)
+        # A close-confirmed new qualification cannot authorize earlier minutes.
+        if minute_scope is None:
+            return generated, gap_executions, gap_fallbacks
     signals = list(generated.signals)
     audit = list(generated.audit)
-    executions: dict[tuple[str, int], EntryExecution] = {}
-    fallbacks: list[dict[str, object]] = []
+    executions: dict[tuple[str, int], EntryExecution] = gap_executions
+    fallbacks: list[dict[str, object]] = gap_fallbacks
     candidates = [
         e for e in audit if e["event"] == "n_completed" and e.get("direction") == "up" and e.get("n_level", 0) >= 1
+        and (minute_scope is None or minute_scope.window_start <= e.get('known_at', e['bar_index']) < minute_scope.index)
     ]
     wave_candidates = [
         (
@@ -60,21 +284,72 @@ def resolve_consolidation_entries(
         )
         for e in audit
         if e["event"] == "wave_continuation_ready"
+        and (minute_scope is None or minute_scope.window_start <= e['bar_index'] < minute_scope.index)
     ]
-    snapshots, epochs = pivot_history(bars, strategy)[:2] if wave_candidates else ({}, {})
+    snapshots, epochs = {}, {}
+    if wave_candidates:
+        pivots = prepared_pivots if prepared_pivots is not None else (
+            history_reuse.pivot(bars, strategy) if history_reuse is not None else None)
+        if pivots is None:
+            pivots = pivot_history(bars, strategy)
+            if history_reuse is not None:
+                history_reuse.save_pivot(bars, strategy, pivots)
+        snapshots, epochs = pivots[:2]
     wave_context_history: dict[int, tuple[EntryContext, ...]] = {}
-    if wave_candidates and strategy.buy_point_definition == "whole_flip_wave_v3":
+    if prepared_contexts is not None:
+        wave_context_history = prepared_contexts
+    elif wave_candidates and strategy.buy_point_definition == "whole_flip_wave_v3":
         from wavequant.domain.strategies.chart_entry_history import chart_entry_history
 
-        wave_context_history = chart_entry_history(bars, audit=audit,
-            n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)[0]
+        if history_reuse is not None and history_reuse.hierarchy(
+                bars, n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled) is None:
+            from wavequant.domain.strategies.hierarchical_entry import hierarchical_history
+
+            daily_levels = hierarchical_history(
+                bars, decline_sink={}, _checkpoint_reuse=history_reuse,
+                n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)
+            history_reuse.save_hierarchy(bars, strategy, daily_levels)
+
+        contexts = history_reuse.chart(bars, strategy, audit) if history_reuse is not None else None
+        if contexts is None and history_reuse is not None:
+            contexts = history_reuse.refresh_chart(bars, strategy, audit)
+        if contexts is None:
+            contexts = (chart_entry_history(bars, audit=audit,
+                n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled)
+                if history_reuse is None else chart_entry_history(bars, audit=audit,
+                    n_target_trend_confirmation_enabled=strategy.n_target_trend_confirmation_enabled,
+                    shallow_candidate_sink={} if strategy.shallow_base_breakout_enabled else None,
+                    combined_candidate_sink={} if strategy.combined_a_entry_enabled else None,
+                    secondary_pullback_sink={} if strategy.secondary_pullback_entry_enabled else None,
+                    _history_reuse=history_reuse))
+            if history_reuse is not None:
+                history_reuse.save_chart(bars, strategy, audit, contexts)
+        wave_context_history = contexts[0]
     daily_waves = {e["bar_index"]: e for e in audit if e["event"] == "long_signal" and e.get("wave_entry_path")}
-    consumed_waves: dict[tuple[int, int, int], tuple[str, float]] = {}
+    consumed_waves: dict[tuple[int, int, int], tuple[str, float]] = (
+        session_cache.setdefault('consumed_waves', {}) if session_cache is not None else {})
     # Every minute prefix takes all earlier bars from this fixed full-history
     # input. The strategy may therefore reuse observations ending before the
     # current session across later sessions as well as later minutes.
-    chart_history_cache: dict = {"source_bars": tuple(bars)}
+    chart_history_cache: dict = (session_cache.setdefault('chart', {"source_bars": tuple(bars)})
+        if session_cache is not None else {"source_bars": tuple(bars)})
+    if stage is not None: stage('核验分钟入场')
     for i, bar in enumerate(bars):
+        if i in gap_days:
+            continue
+        if only_index is not None and i != only_index:
+            continue
+        rejection = volume_bearish_entry_rejection(bars, i)
+        if rejection is not None:
+            signals = [row for row in signals if not (row.bar_index == i and row.side == 'LONG')]
+            audit = [row for row in audit if not (row['bar_index'] == i
+                and row['event'] in ('long_signal', 'long_transition_evidence'))]
+            audit.append(dict(event='entry_rejected', bar_index=i, symbol=bar.symbol,
+                timestamp=bar.timestamp.isoformat(), reason=rejection,
+                candidate_channel='global_minute_entry',
+                candle_filter_model='full_session_candle_filter',
+                candle_filter_known_at=bar.timestamp.replace(hour=15).isoformat()))
+            continue
         preceding_daily = daily_waves.get(i - 1)
         if preceding_daily is not None:
             key = (preceding_daily["attack"], preceding_daily["wave_a_high_index"], preceding_daily["wave_b_low_index"])
@@ -171,6 +446,7 @@ def resolve_consolidation_entries(
                     wave_eligible.append(setup)
         if not eligible and not wave_eligible:
             continue
+        if stage is not None: stage(f'核验分钟入场 · {bar.timestamp.date().isoformat()}')
         try:
             minute = minute_loader(bar) if minute_loader is not None else None
             if minute is None:
@@ -226,10 +502,14 @@ def resolve_consolidation_entries(
             if observation in attempted:
                 continue
             attempted.add(observation)
+            if stage is not None:
+                stage(f'核验分钟入场 · {bar.timestamp.date().isoformat()} · {offset + 1}/{len(minute) - 1}')
             replay = (
-                generate_system_signals(prefix, strategy, chart_history_cache=chart_history_cache)
+                generate_system_signals(prefix, strategy, chart_history_cache=chart_history_cache,
+                    _minute_history_reuse=history_reuse, _minute_scope=minute_scope,
+                    _minute_analysis=prepared_analysis)
                 if strategy.buy_point_definition == "whole_flip_wave_v3"
-                else generate_system_signals(prefix, strategy)
+                else generate_system_signals(prefix, strategy, _minute_scope=minute_scope)
             )
             proof = next(
                 (
@@ -256,31 +536,12 @@ def resolve_consolidation_entries(
             signal = next(s for s in replay.signals if s.bar_index == i and s.side == "LONG")
             following = minute[offset + 1]
             execution_at = following.timestamp - timedelta(minutes=5)
-            reference = bars[i - 1].close / bar.adjustment_factor
-            buyable, _ = opening_permissions(
-                dict(
-                    date=bar.timestamp.date().isoformat(),
-                    isST="0",
-                    tradestatus="1" if following.volume > 0 else "0",
-                    preclose=str(reference),
-                    open=str(following.open),
-                ),
-                bar.symbol,
-            )
-            permission_row = dict(
-                date=bar.timestamp.date().isoformat(),
-                isST="0",
-                tradestatus="1" if following.volume > 0 else "0",
-                preclose=str(reference),
-            )
-            below_limit, _ = opening_permissions(
-                dict(permission_row, open=str(low / bar.adjustment_factor)), bar.symbol
-            )
-            previous_tick_buyable, _ = opening_permissions(
-                dict(permission_row, open=str(Decimal(str(following.open)) - Decimal("0.01"))), bar.symbol
-            )
+            buyable, observed_nonflat = _minute_buy_permissions(bar, bars[i - 1], following,
+                observed_low=low, observed_high=high, observed_volume=volume)
             timing: dict[str, object] = dict(
                 execution_model="intraday_5m_next_open",
+                candle_filter_model="full_session_candle_filter",
+                candle_filter_known_at=bar.timestamp.replace(hour=15).isoformat(),
                 decision_source="completed_five_minute_bar",
                 decision_timestamp=observed.timestamp.isoformat(),
                 execution_timestamp=execution_at.isoformat(),
@@ -290,9 +551,7 @@ def resolve_consolidation_entries(
                 observed_low=low,
                 observed_close=partial.close,
                 minute_next_open_raw=following.open,
-                observed_nonflat_limit_buyable=bool(
-                    not buyable and previous_tick_buyable and below_limit and high > low and volume > 0
-                ),
+                observed_nonflat_limit_buyable=observed_nonflat,
             )
             executions[bar.symbol, i] = dict(
                 signal=signal,

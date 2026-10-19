@@ -1,4 +1,37 @@
 // Only server-confirmed anchors define the wave; viewport candle extrema must not reprice it.
+export function hoveredTrendThirds(theory, bars, time, level = 2) {
+    if (!time || !bars?.length || ![1, 2, 3].includes(level)) return [];
+    const asof = theory?.asof || bars.at(-1).time;
+    if (time > asof) return [];
+    const source = theory?.[["", "reversal_trends", "secondary_trends", "tertiary_trends"][level]];
+    const segments = [];
+    for (const stroke of source?.strokes || []) {
+        if (stroke.display_only) continue;
+        for (let index = 1; index < (stroke.points?.length || 0); index++) {
+            const first = stroke.points[index - 1], last = stroke.points[index];
+            if (first.kind === last.kind || ![first.value, last.value].every(Number.isFinite) ||
+                first.time >= last.time || first.time > time || last.time < time || last.time > asof ||
+                [first, last].some((point) => point.display_only || point.state === "developing" ||
+                    !point.available_at || point.available_at > asof)) continue;
+            segments.push({ first, last, id: stroke.id || "" });
+        }
+    }
+    const segment = segments.sort((a, b) => b.first.time.localeCompare(a.first.time) ||
+        a.last.time.localeCompare(b.last.time) || a.id.localeCompare(b.id))[0];
+    if (!segment) return [];
+    const { first, last } = segment;
+    const high = first.kind === "H" ? first : last;
+    const low = first.kind === "L" ? first : last;
+    if (high.value <= low.value) return [];
+    const start = first.time < bars[0].time ? bars[0].time : first.time;
+    if (start >= last.time) return [];
+    return [1, 2].map((thirds) => ({
+        title: `${["", "Ⅰ", "Ⅱ", "Ⅲ"][level]} 三分力道 ${thirds}/3`,
+        price: high.value - (high.value - low.value) * thirds / 3,
+        start, end: last.time, low, high,
+    }));
+}
+
 export function tertiaryRetracementGuides(theory, bars, windowEnd) {
     if (!bars?.length) return [];
     const asof = theory?.asof || bars.at(-1).time;

@@ -6,7 +6,7 @@ weakness and a later local close breakout are explicit pullback/reattack proxies
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from math import isfinite
@@ -14,6 +14,7 @@ from typing import Literal
 
 from ..models.model import Bar
 from .a_wave_rules import a_origin_broken
+from .observation_window import observation_window_end
 
 
 def _price(value: float) -> Decimal:
@@ -89,7 +90,6 @@ def wave_projection_history(
     end = len(bars) - 1 if asof_index is None else asof_index
     if target_policy not in ("named_stages", "nearest_box"):
         raise ValueError("explicit supported target policy required")
-    named = target_policy == "named_stages"
     if type(end) is not int or not 0 <= end < len(bars):
         raise ValueError("as-of bar is unavailable")
     if setup.attack_index > end:
@@ -104,9 +104,28 @@ def wave_projection_history(
             if i:
                 _ordered_pair(bars[i - 1], bars[i])
 
+    for boundary, events in _wave_projection_days(bars, setup, target_policy=target_policy):
+        if boundary > end:
+            return tuple(events)
+    return ()
+
+
+def _wave_projection_days(
+    bars: Sequence[Bar], setup: WaveProjectionSetup, *,
+    target_policy: Literal["named_stages", "nearest_box"],
+    start_index: int = 0, end_index: int | None = None,
+) -> Iterator[tuple[int, list[WaveProjectionEvent]]]:
+    """The next date is a boundary; suspension never reads that date's candle."""
+    end = observation_window_end(len(bars), start_index, end_index)
+    first = max(setup.attack_index, start_index)
+    if first > end:
+        yield end + 1, []
+        return
+    named = target_policy == "named_stages"
     if any(a_origin_broken(bar.low, setup.origin)
-           for bar in bars[setup.origin_index + 1:setup.attack_index + 1]):
-        return ()
+           for bar in bars[max(setup.origin_index + 1, start_index):setup.attack_index + 1]):
+        yield end + 1, []
+        return
 
     box = _price(setup.box_anchor) - _price(setup.origin)
     peak, peak_index = bars[setup.attack_index].high, setup.attack_index
@@ -145,9 +164,11 @@ def wave_projection_history(
             )
         )
 
-    for i in range(setup.attack_index, end + 1):
+    for i in range(first, end + 1):
+        yield i, events
         bar = bars[i]
-        if i > setup.attack_index and a_origin_broken(bar.low, setup.origin):
+        adverse = bar.close if i == first and start_index > setup.attack_index else bar.low
+        if i > setup.attack_index and a_origin_broken(adverse, setup.origin):
             if state != "await_two_t":
                 state, target = "invalidated", None
                 emit(i, "wave_projection_invalidated")
@@ -155,7 +176,7 @@ def wave_projection_history(
         previous_peak = peak
         if bar.high > peak:
             peak, peak_index = bar.high, i
-        observed = bar.close if i == setup.attack_index else bar.high
+        observed = bar.close if i == first else bar.high
         reached |= observed >= setup.two_t
         if state == "await_two_t":
             if not reached or i < setup.squeeze_index:
@@ -229,4 +250,4 @@ def wave_projection_history(
             b_low, b_index = None, None
             state = "stacking"
             emit(i, "wave_projection_target_reached", hit, hit_stage)
-    return tuple(events)
+    yield end + 1, events

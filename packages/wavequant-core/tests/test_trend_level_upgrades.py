@@ -21,7 +21,67 @@ def source_points(values: Sequence[float], *, level: int, mirror: bool = False) 
             for index, value in enumerate(values)]
 
 
+@pytest.mark.parametrize('level', [1, 2, 3])
+@pytest.mark.parametrize('mirror', [False, True])
+def test_initial_composite_wave_retains_boundary_key_and_full_reverse_origin(level, mirror):
+    # 合成初始低点 4.20 被 4.11 严格跌破；该结构不证明实际股票确认日。
+    source = source_points([4.20, 8.23, 4.11, 7.40, 3.83, 6.49, 3.35, 9.20],
+                           level=level - 1, mirror=mirror)
+    from wavequant.domain.market_structure.trend_levels import _completed_source_point
+
+    initial = promote_trend_key_breaks(source[:5], [], trend_level=level)
+    boundary = next(point for point in initial if point.get('initial_boundary'))
+    assert boundary['index'] == 1
+    assert boundary['available_at'] == source[4]['available_at']
+    assert _completed_source_point(boundary) is not None
+    events = []
+    promoted = promote_trend_key_breaks(source, [], trend_level=level, event_sink=events)
+    attack = next(point for point in events if point.get('upgrade_evidence', {}).get('role') == 'endpoint')
+    assert attack['index'] == 7
+    assert attack['upgrade_evidence']['broken_key']['index'] == 1
+    assert attack['upgrade_evidence']['origin']['index'] == 6
+    assert {1, 6, 7}.issubset({point['index'] for point in promoted})
+
+
+@pytest.mark.parametrize('mirror', [False, True])
+def test_initial_boundary_does_not_exist_before_both_direction_pairs(mirror):
+    source = source_points([4.20, 8.23, 4.11, 7.40, 3.83], level=2, mirror=mirror)
+    for size in range(1, 5):
+        assert promote_trend_key_breaks(source[:size], [], trend_level=3) == []
+
+
 VALUES = [20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 36, 42, 30, 36, 24, 31, 26, 50]
+
+
+@pytest.mark.parametrize('level', [1, 2, 3])
+@pytest.mark.parametrize('mirror', [False, True])
+@pytest.mark.parametrize('attack_price', [6.96, 11.50, 12.0])
+def test_reverse_upgrade_keeps_the_known_whole_wave_key_instead_of_a_local_key(level, mirror, attack_price):
+    from wavequant.domain.market_structure.trend_level_upgrades import _TrendUpgradeState
+    from wavequant.domain.market_structure.trend_levels import _source_turns
+
+    source = source_points([10, 11.50, 4.91, 6.13, 5.06, attack_price], level=level - 1, mirror=mirror)
+    turns = _source_turns(source, level - 1)
+    # 直接构造已经处理完旧日期的合法状态边界，隔离“选择哪个已闭合 key”
+    # 与普通四点组合波。两份 key 均已知，但当前整波从 11.50 开始。
+    closed = _source_turns([dict(source[position], trend_level=level) for position in (1, 3)], level)
+    events = []
+    state = _TrendUpgradeState(turns, [], trend_level=level, event_sink=events)
+    state.processed_count = len(turns) - 1
+    state.prefix_known = turns[-2].available_at
+    state.owned_direction = 'up' if mirror else 'down'
+    state.whole_origin, state.whole_extreme = turns[1], turns[2]
+    for point in closed:
+        state.keys_by_kind[point.kind].update(state.positions[(point.index, point.ordinal)], point)
+    state.advance()
+    if attack_price <= 11.50:
+        assert events == []
+    else:
+        endpoints = [event for event in events if event['upgrade_evidence']['role'] == 'endpoint']
+        assert len(endpoints) == 1
+        assert endpoints[0]['upgrade_evidence']['broken_key']['index'] == 1
+        assert endpoints[0]['upgrade_evidence']['origin']['index'] == 2
+        assert endpoints[0]['available_at'] == source[-1]['available_at']
 
 
 @pytest.mark.parametrize('level', [1, 2, 3])
@@ -261,3 +321,113 @@ def test_lower_level_publication_certificate_cannot_authorize_an_upper_leg(level
     published = publish_uptrends(candidates, source, bars, source_level=level - 1)
 
     assert confirmed_trend_legs(published) == []
+
+
+@pytest.mark.parametrize('level', [1, 2, 3])
+@pytest.mark.parametrize('mirror', [False, True])
+@pytest.mark.parametrize('integer_clock', [False, True])
+@pytest.mark.parametrize('continuing', [False, True])
+def test_later_key_cannot_reclose_an_earlier_whole_wave_origin(
+    level: int, mirror: bool, integer_clock: bool, continuing: bool,
+) -> None:
+    from wavequant.domain.market_structure.trend_level_upgrades import _TrendUpgradeState
+    from wavequant.domain.market_structure.trend_levels import (
+        _formal_key_attack_point, _source_turns, _validate_completed_source_point,
+    )
+
+    source = source_points([10, 20, 12, 30, 18, 40], level=level - 1, mirror=mirror)
+    if integer_clock:
+        for index, point in enumerate(source):
+            point['available_at'] = index + 1
+    turns = _source_turns(source, level - 1)
+    events = []
+    state = _TrendUpgradeState(turns, [], trend_level=level, event_sink=events, strict_only=True)
+    state.processed_count = len(turns) - 1
+    state.prefix_known = turns[-2].available_at
+    direction = 'down' if mirror else 'up'
+    state.owned_direction = direction if continuing else ('up' if mirror else 'down')
+    state.whole_origin = turns[0] if continuing else turns[1]
+    state.whole_extreme = turns[3] if continuing else turns[2]
+    # 同向突破可延伸原波；但晚于起点的局部 key 不能补造更早的反向闭合证明。
+    key_index = 1 if continuing else 3
+    key = _source_turns([dict(source[key_index], trend_level=level)], level)[0]
+    state.keys_by_kind[key.kind].update(state.positions[(key.index, key.ordinal)], key)
+
+    state.advance()
+
+    for event in events:
+        _validate_completed_source_point(event)
+        _formal_key_attack_point(event)
+    if continuing:
+        assert len(events) == 1
+        assert events[0]['index'] == 5
+        assert events[0]['upgrade_evidence']['role'] == 'endpoint'
+        assert events[0]['upgrade_evidence']['origin']['index'] == 0
+        assert 'wave_completed_at' not in events[0]
+        assert state.whole_origin == turns[0]
+        assert state.whole_extreme == turns[5]
+    else:
+        assert events == []
+        assert state.whole_origin == turns[1]
+        assert state.whole_extreme == turns[2]
+
+
+@pytest.mark.parametrize('level', [1, 2, 3])
+@pytest.mark.parametrize('mirror', [False, True])
+@pytest.mark.parametrize('integer_clock', [False, True])
+@pytest.mark.parametrize('earlier_price', [30, 27, 26])
+def test_new_strict_phase_preserves_already_known_extreme_for_later_completion(
+    level: int, mirror: bool, integer_clock: bool, earlier_price: float,
+) -> None:
+    from wavequant.domain.market_structure.trend_level_upgrades import _TrendUpgradeState
+    from wavequant.domain.market_structure.trend_levels import (
+        _formal_key_attack_point, _source_turns, _validate_completed_source_point,
+    )
+
+    # 合成已知状态边界：H3尚不能使用迟知旧key；H5才是合法攻击。
+    # 实际新波从L2开始，H3仍属于它，不能因H5取得升级资格而遗忘。
+    source = source_points([10, 20, 8, earlier_price, 10, 27, 7, 26, 6],
+        level=level - 1, mirror=mirror)
+    if integer_clock:
+        for index, point in enumerate(source):
+            point['available_at'] = index + 1
+    turns = _source_turns(source, level - 1)
+    events = []
+    state = _TrendUpgradeState(turns[:6], [], trend_level=level, event_sink=events, strict_only=True)
+    state.processed_count = 5
+    state.prefix_known = turns[4].available_at
+    state.owned_direction = 'up' if mirror else 'down'
+    state.whole_origin, state.whole_extreme = turns[1], turns[2]
+    for turn in turns[:5]:
+        state.origins_by_kind[turn.kind].update(state.positions[(turn.index, turn.ordinal)], turn)
+        state.recent[turn.kind].append(turn)
+        state.recent[turn.kind] = state.recent[turn.kind][-2:]
+    key_raw = dict(source[1], trend_level=level, available_at=source[3]['available_at'])
+    key = _source_turns([key_raw], level)[0]
+    state.keys_by_kind[key.kind].update(state.positions[(key.index, key.ordinal)], key)
+
+    state.advance()
+
+    expected = 3 if earlier_price >= 27 else 5
+    assert state.whole_origin == turns[2]
+    assert state.whole_extreme == turns[expected]
+    attack = next(event for event in events if event.get('upgrade_evidence', {}).get('role') == 'endpoint')
+    assert attack['index'] == 5
+    assert attack['upgrade_evidence']['confirmed_by']['index'] == 5
+    assert attack['available_at'] == source[5]['available_at']
+    assert 'wave_completed_at' not in attack
+    for event in events:
+        _formal_key_attack_point(event)
+
+    # 后续普通四点闭合仍须经过真实极值、组合下级及来源知识校验。
+    # 仅此用例显式开启普通结束，以隔离旧关键位是否允许反转的独立规则。
+    state.strict_only = False
+    state.ordinary_trend_completion_enabled = True
+    assert state.append(turns[6:], [])
+    state.advance()
+    closures = [event for event in events if event.get('definition_evidence')
+                and event['index'] == expected]
+    assert closures
+    for event in closures:
+        assert event['value'] == source[expected]['value']
+        assert _validate_completed_source_point(event) is not None

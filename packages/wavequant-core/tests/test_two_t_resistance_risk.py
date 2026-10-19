@@ -50,8 +50,9 @@ def test_under_half_shadow_allows_qualified_entry_and_live_target_next_day_clear
                         lambda *args, **kwargs: ([], {5: proof}))
     # Publish a live, already known target to test risk independently of source
     # retirement in the full history. Use the real June price/volume sequence.
-    monkeypatch.setattr("wavequant.domain.strategies.integrated_strategy.two_t_resistance_history",
-                        lambda visible, audit: two_t_resistance_history(visible, [event]))
+    monkeypatch.setattr("wavequant.domain.strategies.daily_risk_histories.DailyRiskHistories.two_t",
+                        lambda stream, index, _audit, **_options:
+                            two_t_resistance_history(stream.bars[:index + 1], [event]))
     result = generate_system_signals(bars[:7], config)
     assert any(s.side == "LONG" and s.bar_index == 5 for s in result.signals)
     assert not any(e["event"] == "target_resistance_observed" and e["bar_index"] == 5 for e in result.audit)

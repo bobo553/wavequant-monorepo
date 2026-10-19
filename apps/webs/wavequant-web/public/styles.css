@@ -20,6 +20,7 @@
     --research-accent-border: color-mix(in srgb, var(--cyan) 42%, var(--border));
     --research-warning-soft: color-mix(in srgb, var(--amber) 14%, var(--panel));
     --research-danger-soft: color-mix(in srgb, var(--red) 13%, var(--panel));
+    --research-summary-blue: light-dark(#1d4ed8, #60a5fa);
 }
 .stock-tabs {
     display: grid;
@@ -74,6 +75,7 @@
 #stock-picker-feedback[hidden],
 #trade-nodes-tab[hidden],
 #selected-stock-summary[hidden],
+#selected-stock-summary-row[hidden],
 .trade-nodes-panel[hidden],
 .trade-nodes-view-panel[hidden],
 .trade-node-item[hidden],
@@ -846,6 +848,8 @@
     font-variant-numeric: tabular-nums;
 }
 .watchlist-rail {
+    display: flex;
+    flex-direction: column;
     grid-column: 1;
     grid-row: 1 / span 2;
     align-self: start;
@@ -858,6 +862,7 @@
 }
 .watchlist-rail-header {
     display: flex;
+    flex-shrink: 0;
     min-height: 34px;
     align-items: center;
     gap: 7px;
@@ -912,7 +917,8 @@
 }
 .watchlist-rail-body {
     display: flex;
-    max-height: calc(100vh - 78px);
+    min-height: 0;
+    flex: 0 1 auto;
     flex-direction: column;
     margin-top: 8px;
     overflow: hidden;
@@ -920,10 +926,20 @@
 .watchlist-rail-body[hidden] {
     display: none;
 }
+/* 侧栏统一分配可用高度，只有股票列表收缩并负责纵向滚动。 */
+.watchlist-rail-body > :not(.watchlist-stock-list) {
+    flex-shrink: 0;
+}
 .watchlist-rail .watchlist-stock-list {
-    min-height: 80px;
+    min-height: 0;
+    flex: 1 1 auto;
+    grid-auto-rows: max-content;
+    align-content: start;
     margin-inline: -3px;
+    overflow-x: hidden;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
 }
 .watchlist-rail[data-collapsed="true"] {
     padding-inline: 9px;
@@ -1006,8 +1022,10 @@
     font-size: 11px;
     flex-shrink: 0;
 }
-.workspace-grid .selected-stock-summary {
+.workspace-grid .selected-stock-summary-row {
     flex-shrink: 0;
+}
+.workspace-grid .selected-stock-summary {
     max-height: 100px;
     overflow: auto;
 }
@@ -1124,6 +1142,55 @@
     font-size: 12px;
     text-align: center;
 }
+.selected-stock-summary-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 12px;
+    min-width: 0;
+}
+.selected-stock-summary-row .selected-stock-summary {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+}
+.selected-stock-copy-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    flex-shrink: 0;
+    max-width: 105px;
+}
+#copy-eligibility-ranges-summary {
+    color: #3b82f6;
+    border-color: #3b82f6;
+}
+#eligibility-summary-copy-feedback {
+    font-size: 10px;
+    color: var(--research-text-soft);
+}
+[data-current-eligibility-action][hidden],
+#copy-current-eligibility-range[hidden] {
+    display: none;
+}
+#copy-current-eligibility-range {
+    width: 100%;
+    white-space: normal;
+    color: #3b82f6;
+    border-color: #3b82f6;
+}
+#current-eligibility-copy-feedback {
+    font-size: 10px;
+    color: var(--research-text-soft);
+}
+.backtest-progress-copy {
+    flex-shrink: 0;
+    min-width: 64px;
+    padding: 4px 8px;
+    font-size: 11px;
+    white-space: nowrap;
+}
 .selected-stock-summary {
     margin-top: 12px;
     font-size: 11px;
@@ -1175,6 +1242,32 @@
 .stock-backtest-other {
     margin-left: auto;
     white-space: nowrap;
+}
+#stock-backtest-progress {
+    width: 160px;
+    max-width: 100%;
+    flex-shrink: 0;
+    accent-color: var(--cyan);
+}
+.stock-backtest-pipeline {
+    flex-basis: 100%;
+    font-size: 12px;
+    line-height: 1.7;
+}
+.stock-backtest-pipeline ol {
+    padding-left: 2em;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 4px 24px;
+}
+.stock-backtest-pipeline li[data-status="running"] { color: var(--cyan); font-weight: 600; }
+.stock-backtest-pipeline li[data-status="failed"] { color: #ffa9b3; }
+.watchlist-backtest-badge[data-status="running"] {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.stock-backtest-status {
+    flex-wrap: wrap;
 }
 .stock-item .stock-backtest-badge {
     grid-column: 1 / -1;
@@ -1455,8 +1548,8 @@ body {
     align-items: center;
 }
 .heading.research-heading {
-    padding: 10px 0 12px;
-    gap: 12px;
+    padding: 4px 0 6px;
+    gap: 8px;
 }
 .eyebrow {
     font-size: 9px;
@@ -1662,11 +1755,6 @@ body {
 }
 .performance-card-header .drawdown-range-jump {
     margin-left: auto;
-}
-.comparison {
-    font-size: 9px;
-    color: #5c718a;
-    margin: 10px 0 18px;
 }
 .workspace-grid {
     display: grid;
@@ -1903,7 +1991,6 @@ body {
         .chart-navigation,
         .trade-playback-navigation,
         #price-chart,
-        .chart-keyboard-help,
         .chart-position,
         #chart-loading-overlay,
         .replay
@@ -2456,8 +2543,8 @@ body {
 }
 .price-chart {
     flex: 0 0 auto;
-    min-height: 300px;
-    height: var(--chart-viewport-height, max(300px, calc(100svh - 380px)));
+    min-height: 200px;
+    height: var(--chart-viewport-height, max(200px, calc(100svh - 480px)));
     width: 100%;
 }
 .chart-navigation,
@@ -2513,12 +2600,6 @@ body {
     border-top: 1px solid var(--border);
     background: var(--panel);
 }
-.chart-keyboard-help {
-    margin: 0;
-    padding: 6px 16px;
-    color: var(--research-text-soft);
-    font-size: 11px;
-}
 .chart-position-heading {
     display: flex;
     justify-content: space-between;
@@ -2533,9 +2614,115 @@ body {
 .chart-position input {
     display: block;
     width: 100%;
-    margin: 12px 0 3px;
-    accent-color: var(--cyan);
+    height: 28px;
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    position: relative;
+    z-index: 1;
     cursor: pointer;
+}
+.chart-position-track {
+    position: relative;
+    margin-top: 5px;
+}
+.chart-position-rail {
+    position: absolute;
+    inset: 9px 9px auto;
+    height: 10px;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: 4px;
+}
+.chart-backtest-track {
+    height: 6px;
+    background: var(--border);
+}
+.chart-backtest-track > span {
+    display: block;
+    width: var(--chart-backtest-progress, 0%);
+    height: 100%;
+    background: #3b82f6;
+}
+.chart-eligibility-track {
+    position: relative;
+    height: 4px;
+    background: var(--border);
+}
+.chart-eligibility-track > span {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    background: #ef7180;
+}
+.chart-position input::-webkit-slider-runnable-track {
+    height: 10px;
+    background: transparent;
+}
+.chart-position input::-moz-range-track {
+    height: 10px;
+    background: transparent;
+}
+.chart-position input::-moz-range-progress {
+    background: transparent;
+}
+.chart-position input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    margin-top: -4px;
+    border: 2px solid var(--panel);
+    border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 0 1px var(--border);
+}
+.chart-position input::-moz-range-thumb {
+    box-sizing: border-box;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--panel);
+    border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 0 1px var(--border);
+}
+.chart-position-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    color: var(--research-text-soft);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+.chart-position-legend > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.chart-position-legend i {
+    width: 12px;
+    height: 5px;
+    border-radius: 2px;
+}
+.chart-progress-key { background: #3b82f6; }
+.chart-pending-key { background: var(--border); }
+.chart-eligibility-key { background: #ef7180; }
+#copy-eligibility-ranges,
+#copy-current-eligibility-range-timeline {
+    padding: 1px 6px;
+    min-height: 22px;
+    font-size: 10px;
+    line-height: 1.4;
+    color: #3b82f6;
+}
+#copy-eligibility-ranges:disabled,
+#copy-current-eligibility-range-timeline:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+#eligibility-copy-feedback,
+#current-eligibility-timeline-copy-feedback {
+    color: var(--research-text-soft);
 }
 .chart-position input:disabled {
     opacity: 0.45;
@@ -2593,6 +2780,23 @@ body {
     .trade-playback-controls {
         margin-left: 0;
     }
+}
+.chart-preparing-state:not([hidden]) {
+    display: flex;
+    min-height: 260px;
+    padding: 32px 24px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+    color: var(--cyan);
+    background: color-mix(in srgb, var(--cyan) 6%, transparent);
+}
+.chart-preparing-state p {
+    margin: 0;
+    line-height: 1.7;
+}
+#price-chart[hidden] {
+    display: none;
 }
 .replay-title {
     display: flex;
@@ -3187,7 +3391,6 @@ tbody tr:hover {
     background: var(--research-accent-soft);
 }
 [data-wavequant-react-workbench] .stock-item span,
-[data-wavequant-react-workbench] .selected-stock-summary,
 [data-wavequant-react-workbench] .sdk-badge,
 [data-wavequant-react-workbench] .filter-context,
 [data-wavequant-react-workbench] .metric > span,
@@ -3203,6 +3406,12 @@ tbody tr:hover {
 [data-wavequant-react-workbench] .trend-summary {
     color: var(--research-text-soft);
 }
+[data-wavequant-react-workbench] .selected-stock-summary {
+    color: var(--research-summary-blue);
+}
+[data-wavequant-react-workbench] .selected-stock-summary[data-backtest-status="failed"] {
+    color: var(--red);
+}
 [data-wavequant-react-workbench] .nav-label,
 [data-wavequant-react-workbench] .nav-item,
 [data-wavequant-react-workbench] .sidebar-bottom,
@@ -3210,7 +3419,6 @@ tbody tr:hover {
 [data-wavequant-react-workbench] .sidebar-bottom a,
 [data-wavequant-react-workbench] .metric small,
 [data-wavequant-react-workbench] .metric p,
-[data-wavequant-react-workbench] .comparison,
 [data-wavequant-react-workbench] .chart-legend > span,
 [data-wavequant-react-workbench] .replay-title,
 [data-wavequant-react-workbench] .replay p,
@@ -3417,9 +3625,6 @@ tbody tr:hover {
     .ohlc {
         font-size: 9px;
         padding-left: 12px;
-    }
-    .comparison {
-        line-height: 1.6;
     }
     .card-header small {
         display: none;

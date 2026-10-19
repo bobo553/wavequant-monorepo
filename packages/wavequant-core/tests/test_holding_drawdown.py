@@ -1,11 +1,14 @@
 """Independent entry-cost MAE checks, including executable holding boundaries."""
+from dataclasses import replace
 from datetime import datetime, time
 import random
 
 import pytest
 
 from wavequant.application.analytics.holding_drawdown import holding_drawdowns, drawdown_metrics
-from wavequant.domain.models.model import Bar
+from wavequant.application.analytics.backtest import AccountDay, portfolio_days
+from wavequant.domain.models.config import StrategyConfig
+from wavequant.domain.models.model import Bar, Signal
 from wavequant.infrastructure.market_data.minute import MinuteBar
 
 
@@ -226,3 +229,93 @@ def test_unliquidated_loss_is_excluded_from_final_maximum_drawdown():
     assert only_open['holding_max_drawdown'] is None
     assert only_open['holding_drawdown_status'] == 'no_closed_cycles'
     assert only_open['holding_current_max_drawdown'] == pytest.approx(-.9)
+
+
+def test_qualified_observations_freeze_failed_close_without_faking_liquidation():
+    bars = [bar(1, low=1, close=10), bar(2, low=8, close=9),
+            bar(3, low=1, close=5), bar(4, low=2, close=4)]
+    orders = [fill(1, model='same_day_close'),
+              dict(fill(2, 'SELL', price=9, model='same_day_close'), status='deferred')]
+    allowed = {'TEST': {'2026-01-01', '2026-01-02'}}
+    episode = measure(bars, orders, observed_dates=allowed)[0]
+    assert episode['status'] == 'open'
+    assert episode['quantity'] == 100
+    assert episode['exit_time'] is None
+    assert episode['max_drawdown'] == pytest.approx(-.2)
+    assert episode['coverage'] == 'complete'
+    assert episode['missing_sessions'] == []
+    assert episode['observation_scope'] == 'qualified_sessions'
+    assert episode['excluded_sessions'] == 2
+    assert episode['asof'] == '2026-01-04T15:00:00'
+    assert episode['observed_through'] == '2026-01-02T15:00:00'
+    assert {point['timestamp'][:10] for point in episode['drawdown_curve']} == allowed['TEST']
+    metrics = drawdown_metrics([episode])
+    assert metrics['holding_current_max_drawdown'] == pytest.approx(-.2)
+    assert metrics['holding_drawdown_observation_scope'] == 'qualified_sessions'
+    assert metrics['holding_drawdown_excluded_sessions'] == 2
+    assert measure(bars, orders)[0]['max_drawdown'] == pytest.approx(-.9), 'unscoped batch retains all dates'
+
+
+def test_qualified_observations_resume_at_real_reopening_fill_and_deduplicate_gap_dates():
+    bars = [bar(1, low=9), bar(2, low=8, close=9), bar(3, low=1), bar(4, low=2), bar(5, opening=9)]
+    orders = [fill(1), fill(2, 'SELL', price=9, quantity=50, model='same_day_close'),
+              fill(5, 'SELL', price=9, quantity=50)]
+    episode = measure(bars, orders, observed_dates={'TEST': {'2026-01-01', '2026-01-02', '2026-01-05'}})[0]
+    assert episode['status'] == 'closed'
+    assert episode['exit_time'] == '2026-01-05T09:30:00'
+    assert episode['max_drawdown'] == pytest.approx(-.2)
+    assert episode['excluded_sessions'] == 2
+    assert episode['drawdown_curve'][-1] == dict(timestamp='2026-01-05T09:30:00', value=0, quantity=0)
+    assert not any(point['timestamp'][:10] in ('2026-01-03', '2026-01-04')
+                   for point in episode['drawdown_curve'])
+
+
+def test_qualified_observations_keep_missing_allowed_boundary_explicit():
+    order = fill(1, model='intraday_5m_next_open', execution_timestamp='2026-01-01T14:00:00')
+    loaded = []
+
+    def missing_minutes(candle):
+        loaded.append(candle.timestamp.date().isoformat())
+        return []
+
+    episode = measure([bar(1, low=1, close=9), bar(2, low=.5)], [order],
+                      observed_dates={'TEST': {'2026-01-01'}}, minute_loader=missing_minutes)[0]
+    assert loaded == ['2026-01-01']
+    assert episode['coverage'] == 'incomplete'
+    assert episode['max_drawdown'] is None
+    assert episode['missing_sessions'] == ['2026-01-01']
+    assert episode['excluded_sessions'] == 1
+
+
+def test_observation_filter_cannot_hide_an_out_of_scope_fill():
+    with pytest.raises(ValueError, match='outside observed dates'):
+        measure([bar(1), bar(2)], [fill(1), fill(2, 'SELL')],
+                observed_dates={'TEST': {'2026-01-01'}})
+
+
+def test_live_account_passes_only_qualified_and_closing_dates_to_holding_metrics():
+    bars = [bar(1, high=11, low=9.5, close=10.2), bar(2, high=11, low=9.5, close=10.2),
+            replace(bar(3, high=11, low=8, close=10.2), sellable=False),
+            bar(4, high=11, low=1, close=2), bar(5, high=11, low=2, close=3)]
+    buy = Signal(bars[1].timestamp, 'TEST', 1, 'LONG', 10.2, 9, 'entry', bars[0].timestamp, 0, 2, 'B', 15)
+    runner = portfolio_days({'TEST': bars}, [], StrategyConfig(entry_at_close=True,
+        net_reward_risk_filter=False, slippage_bps_per_side=0, max_participation=1), live=True)
+    next(runner)
+    result = None
+    try:
+        for index in range(len(bars)):
+            try:
+                runner.send(AccountDay(index, [buy] if index == 1 else [], {}, [], {}, {},
+                    trading_eligible=index == 1, eligibility_closed=index == 2, trading_window_start=1))
+            except StopIteration as completed:
+                result = completed.value
+    finally:
+        runner.close()
+    assert result is not None
+    assert len(result.open_positions) == 1
+    assert result.metrics['holding_drawdown_observation_scope'] == 'qualified_sessions'
+    assert result.metrics['holding_current_max_drawdown'] == pytest.approx(8 / 10.2 - 1)
+    episode = result.holding_drawdowns[0]
+    assert episode['observed_through'] == '2026-01-03T15:00:00'
+    assert episode['excluded_sessions'] == 2
+    assert episode['status'] == 'open'

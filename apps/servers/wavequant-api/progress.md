@@ -1,3 +1,175 @@
+2026-10-17 · MONOREPO-330 趋势与交易规则提交验证
+
+用户明确要求提交并推送feat-三级趋势统一。本次提交覆盖普通升降整波结束默认关闭选项及Web/API/contracts传递、缺失初始关键位重建、独立实体反包放量清仓、轧空买入价格门槛和候选正N突破前量二选一。未改变既有失败相关业务逻辑。
+
+Core定向pytest：test_body_volume_clear.py、test_squeeze_buy_quality.py、test_trend_missing_initial_key.py、test_trend_rebound_without_flip.py、test_lifecycle_frozen_context.py，116 passed/71.37秒，含真实国芳三级因果回归。API首次用系统Python收集因缺redis失败，改用项目现有API .venv后test_ordinary_trend_option.py为2 passed/4 subtests。Web两文件node测试首次2项fixture遗漏已有buy_interval_level默认值，补齐明确默认2并保留deepEqual完整断言后10项通过；无产品逻辑变更。pnpm --filter @repo/contracts build、pnpm --filter wavequant-web typecheck成功；Web lint为0错误/6项环境变量警告。Core python -m build --no-isolation成功生成sdist/wheel，git diff --check无错误。
+
+定向mypy --follow-imports=silent检查attack_quality、two_t_resistance、daily_risk_histories、integrated_strategy、trend_options、trend_level_upgrades、lecture_trend共7文件，integrated_strategy仍有25处类型错误。将HEAD 6258955源码隔离归档至主目录.codex-runtime/submit-trend-rules-20261017/baseline，同配置检查已有6文件复现同样25处错误，未新增类型错误但门禁未全通过。保留此前生命周期相邻测试失败记录，本轮不重复当作已通过。不合并main；按用户指令提交并推送特性分支。未运行Web完整构建、浏览器/E2E或完整测试套件，未重启服务。MONOREPO-330保持in-progress。
+
+2026-10-17 · MONOREPO-330 普通升降整波结束选项（待提交验证）
+
+API严格解析普通升降整波结束布尔参数并归入后台任务身份；周期、结构与买点快照按选项区分，历史结构回退按选项过滤。CLI新增 --ordinary-trend-completion-enabled；未指定时串行预计算两种模式，与N模式组合，前台默认依然false。自选设置补默认false；新增解析和设置回归源码，未运行。
+
+本轮按开发规则只阅读、编辑与记录，未运行测试、lint、类型、格式、构建、运行探针或浏览器；未提交/合并/推送。新华传媒2020-11-05至2020-11-23升级与2021-12-09所在资格区间的真实行情回放仍待提交时验证，不能以本轮代码修改宣称样本已验证。MONOREPO-330保持in-progress，既有失败记录保留。
+
+2026-10-17 · MONOREPO-330 长回测预览复制（代码已修改，待验证）
+
+BacktestPreviewPublisher保留三秒节流和同日账户完成边界，标准JSON值改为发布时一次独立复制，不再先全文编码字符串再解析；未知容器和标量子类保留原JSON回退。补充深层隔离、日期拒绝及节流回归源码。配合Core请求内增量计算与缓存计时，不把预览认定为36分钟的最大瓶颈。
+
+本轮未运行测试、lint、类型、构建、格式或运行探针；待提交时验证。未主动重启服务，不宣称页面已经加载新实现；既有失败保留，MONOREPO-330继续in-progress。
+
+2026-10-17 · 提交验证与分支保存（仍有失败）
+
+本轮用户要求提交并推送 feat-三级趋势统一，继续遵守不合并 main。保存累计趋势、资格、性能、预览及复制修复；MONOREPO-330 保持 in-progress。提交验证发现的失败如实记录，本次推送不代表功能已通过完整验收。
+
+passed: API: python -m pytest tests/test_backtest_jobs.py tests/test_backtest_preview.py -q --tb=short
+2026-10-17 提交验证：13 passed，涵盖预览发布、趋势展示和耗时进度保留。
+
+failed: python -m mypy --follow-imports=silent <24个改动/新增Python源码文件>
+2026-10-17 提交验证：9个文件68条错误，包含动态字段类型收窄、Iterator.close标注、可空上下文、变量类型复用等。未做基线差分，保留为待修复，不视为类型检查通过。
+
+passed: python -m build --no-isolation --outdir <ignored-output> packages/wavequant-core; python -m build --no-isolation --outdir <ignored-output> apps/servers/wavequant-api
+2026-10-17 提交验证：Core和API的wheel/sdist均构建成功，产物不提交。
+
+not-run: NOT RUN: full suites, real-stock replay, Playwright/E2E, Harness
+仅按用户要求保存并推送当前特性分支。完整实股、性能与浏览器验收未运行；不合并main，不标记功能done，不把分支推送当作验收通过。
+
+2026-10-17 · MONOREPO-330 预览三级连续性与主尾锚点（实现待验证）
+
+共用 Core 发布投影已取消三级按翻多区间普遍删段。明确冻结末跌高未破的局部反弹改为同路径极值归并，主线和发展尾部一起确定端点，保留 ID；没有审计确认不能导致普通几何消失。BacktestPreviewPublisher 保持原发布调用及同日原始二级来源，不改协议、账户或进度。
+
+调整原只靠“没有来源审计”就期望删除三级线的用例，改为明确冻结末跌高的反例及既有特殊恢复；补连续两个交易日的主线/发展尾部共享端点、与完成图投影一致、先前快照不变用例。仅编写未执行。没有测试、检查、构建、运行探针、新回测或手动重启，当前服务及实股页面待验证；未提交推送合并。
+
+2026-10-17 · MONOREPO-330 预览二级趋势断线修复（实现待验证）
+
+共用 Core 发布投影恢复二级完整结构，仅附加疑虑状态，不再把未确认翻多的二级上涨腿删除/拆段。BacktestPreviewPublisher 和完整图沿原同一入口生效，三级仍使用未过滤的原始二级来源及有效翻多事件，连续二级图形不能充当三级升级许可。
+
+扩充 test_backtest_preview.py：确认前后原二级路径及点序列一致、预览与完整投影一致、后续确认不改写旧快照；另覆盖二级恢复显示时三级缺少来源确认仍不发布，真实来源确认后再发布。仅编写未运行。未改 API 协议、策略、账户与进度，也未运行任何开发检查/新回测或手动重启；当前服务、实股和页面待验证，未提交推送合并。
+
+2026-10-17 · MONOREPO-330 预览趋势与完整图统一发布（实现待验证）
+
+BacktestPreviewPublisher 在已有账户审计序列化后，二级及三级调用 Core publish_trend_display；三级同步提供同日原始二级来源。只对已完成日的快照分离正式上涨和多头疑虑，不更改 MarketDay 原始候选、账户、B/S 或 K 线。六态 source_path 是本级 stroke.id，递归几何 source_path 是下级 stroke.id，两类身份分开匹配，发展尾部复用其所属正式路径确认。
+
+新增预览/完整投影一致、无翻多为疑虑、后续确认不改写已发布快照用例，仅编写未执行。遵循用户开发不检查；无测试、构建、运行探针或手动重启，不声称当前页面/实股已验收。源代码变化沿已有开发监督器处理，实际重载未观察。本轮不提交推送合并。
+
+2026-10-17 · MONOREPO-330 国芳回测热点与只读解码复用（实现待验证）
+
+只读观察旧任务826ac138：用户截图1495/2130、9分钟后，任务已到1667/2130、715秒，正在计算2024-11-19，只有1个活动回测，并非停在3月1日。该时点总耗时/已处理日约0.429秒，包含加载等开销，不能当成每个交易日固定用时。对已有API进程35692进行15秒50Hz非阻塞py-spy采样，原始.codex-runtime/guofang-slow-20261017.raw：606有效栈、157读取错误，其中560回测线程栈；394栈在策略主调用、205栈在内部三级确认、87栈在chart_entry_history，这些为包含关系不能相加。叶热点_geometry_signature74、JSON恢复41、JSON编码41、暂存pickle恢复32/解压5。只是采样窗口占比，不是全程耗时或完整性能基准。
+
+实现：HierarchyHistoryStream按内部不可变JSON模板复用未变化的单点解码，尾点更新只解码新增/修订点。请求内8MiB/最多2048项，满容量拒绝新项以避免顺序历史扫描LRU抖动，epoch切换和close清理；普通外部Mapping/未知审计对象仍独立复制。TrendStageRows另设4MiB/最多两行解码缓存，仅chart_entry_history显式只读借用跨日复用；先读取校验原行头/内容再命中，公开读取仍逐次loads/decode，其他默认shared读取不跨读取器共享。保留每天三级资格、行情/N/买卖规则及账户执行，不合并图表与策略两套不同口径。
+
+BacktestJobs保存最近累计耗时，预览和日内阶段更新不再覆盖；daily_signals附加最近已完成一日及平均每交易日用时。新增/扩充单点尾部修订、容量、未知对象、公开输出隔离、行内容变化/截断、可知前缀、N双模式与逐日许可、冷读取对照、进度跨任务隔离用例，仅写未执行。
+
+源码变化按既有规则自动终止旧引擎并重新加载；只读新任务b0a69bfa显示647个已发布交易日/2130、53.5秒，内部正在第658日，累计折线趋势47.7秒、结构确认0.0秒、买卖规则0.0秒、账户/分钟/快照0.7秒，最近一日0.012秒、平均0.076秒。证实耗时文案已由常驻服务输出；尚未进入旧样本对应后期策略重段，不能据此宣称整体提速比例或问题彻底验收。
+
+未运行测试、类型/格式/lint/构建/Harness、浏览器或新建诊断回测；未提交本轮性能改动、未合并main。提交阶段待跑新增定向回归，并在同源完整行情上比较趋势、B/S、审计、成交和权益及总耗时。87b1f4c已按用户明确授权推送到bobo553/wavequant-monorepo的feat-三级趋势统一，仅指本轮优化前的40文件提交。功能继续in-progress；旧完整套件53失败证据保留。
+
+2026-10-17 · 提交阶段验证
+
+python -m pytest定向运行Core八个修改模块及API tests/test_dev_reload.py、tests/test_dev_reload_restart.py，合计185通过（4.02秒），PYTHONPATH明确指向当前worktree的Core/API源码和Core测试目录。日志.codex-runtime/commit-targeted-20261017.log。没有运行全量API、Python类型/打包或实股回测，旧完整回归问题保留；本次提交推送当前特性分支，不合并main。
+
+2026-10-17 · MONOREPO-330 策略变更终止旧回测（实现待验证）
+
+已按授权终止当前分支旧服务树并重新启动启动器（PID10280）；current-branch-20261017-000821日志显示API8766已启动，Web3004 Ready。只完成运行部署，不等同自动重载回归通过；下一次真实修改待观察。
+
+wavequant_api.dev移除active_backtests空闲门槛和相关HTTP查询，源码稳定2秒后终止本启动器所属API进程树，再启新解释器。Windows停止失败且旧进程仍在时拒绝启第二套引擎；POSIX子进程独立会话并按进程组停止。磁盘/加载引擎版本保护保留，新代码未就绪不能返回成功版本。原等待空闲测试替换为先停后启和停止失败拒绝并跑用例，仅编写未运行；Web新引擎就绪后刷新一次。未运行检查/测试/格式/类型/构建，本轮运行启动器需替换才加载新规则。持久缓存按原版本隔离，不清除行情，不改变买卖规则。
+
+2026-10-16 · MONOREPO-330 失败任务日志（实现待验证）
+
+现有12股统一报invalid lifecycle checkpoint shape，Core修正检查点候选布尔值覆盖确认缺口元组。API任务错误原仅500记录日志，改为全部异常保留内部堆栈，HTTP脱敏文案不变。未发起测试或额外回测；自动空闲重载后实际任务恢复待观察。
+
+2026-10-15 · 提交阶段验证与分支保存（未通过全部回归）
+
+用户要求提交并推送 feat-三级趋势统一，明确不合并 main。本次保存累计实现及已知失败，MONOREPO-330 保持 in-progress；不代表完整验收通过。此前“未运行”的记录是各开发阶段历史，本段为最新提交验证结果。
+
+2026-10-15：70 passed、3 failed、10 subtests passed。test_server 中完成/失败响应增加进度元数据导致精确对象断言不符；版本冲突实际 409 与旧 400 断言不符。首次跨 workspace 合跑有同名 tests 包导入冲突，已分开工作区运行取得本结果。
+
+2026-10-15 · MONOREPO-330 策略修改打断任务与图幅跳动（实现待验证）
+
+原因：当前开发监督器源码稳定2秒即杀API子进程；用户运行中本轮资格修复触发重载，原任务丢失。前端又有任务丢失重提、版本错误递归loadView和版本通知loadView三条自动重开入口。准备行情阶段先显示完整缓存，再被最新年度第一页覆盖；完整快照回来又扩展，造成历史轴/价格轴跳动。
+
+Web：移除跟随中的任务丢失自动重提，通用等待默认不重提；版本错误保留图表并提示手动重新回测，版本通知仅通知及失效缓存，不中断当前订阅/清图/前台重开。后台自选原有策略更新逻辑保留，不能把通知误称为新计算进度。年度准备分页在同股同源同周期下只接受覆盖原行情两端的范围，完整market_bars同截止日直接复用；结构辅助折线不参与价格轴autoscale。新增分页范围缩短与任务丢失不重提回归，仅编写未运行。
+
+API dev监督器：源变动等待active==0才重载，有任务或查询失败/格式不合法则延后，不强杀已运行任务；原磁盘版本保护继续拒绝旧引擎接新版本请求。补任务计数和忙碌/未知/空闲重载顺序用例，仅编写未运行。运行中的旧监督器自身不会因API子进程重载而换代码，安全重载逻辑需下一次重启启动器生效；本轮没有手动重启，避免再打断当前计算。前端需要刷新载入本轮JS。
+
+未运行测试、检查、构建、格式、类型、Git检查或浏览器验证，无提交/合并/推送。实际图窗稳定性、服务空闲重载及资格新版完整回测均待验证；MONOREPO-330保持in-progress。
+
+2026-10-15 · MONOREPO-330 策略改动后的开发服务重载与版本恢复
+
+根因：现有 Python API 长驻进程只在启动时加载模块，前次修改策略后并未重启；ChartRepository.backtest_version/TdxBacktester 比较磁盘全包哈希与已加载引擎，拒绝把旧算法输出标成新版本。旧启动器没有源码重载，loadView又直接请求版本接口，因此持续显示股票加载/回测失败，调整参数不能修复。
+
+新增 wavequant_api.dev 开发专用监督进程，限定 --api-only，监视实际 API/Core 源目录的新增/删除/mtime/size，稳定2秒后终止所持有的 API 子进程树并启动全新解释器，源码失败不无休止重启，等待下一次修改。正常 CLI/后台结构 Worker 不变。Web dev.mjs 的 API 分支及本会话忽略目录中的当前分支启动器切换该入口，版本保护保留，未采用模块热重载或覆盖旧引擎哈希。
+
+API区分引擎更新503 BACKTEST_ENGINE_RELOADING和旧请求版本409 BACKTEST_VERSION_CHANGED；运行中版本变化不再误报参数/股票数据无效。前端版本读取有界等待重连（含取消），版本不符不原样反复提交，当前选择最多两次重新获取版本后接续。后台自选版本读取同样等待；旧任务和旧缓存不能冒充当前版本。补源码新增/变更/删除、版本错误分类、版本接口重连回归，仅编写未运行。
+
+运行操作：核实23668属于当前分支启动器后，taskkill /PID 23668 /T /F停止其前后端进程树，使用隐藏窗口启动当前分支监督进程23020。API supervisor5024、API子进程25512、Web12108（Windows解释器/Next可能另有实际监听子进程）。日志 .codex-runtime/current-branch-20261015-101629.stdout.log/.stderr.log。前端显示 Ready，API启动8766；只读 GET /api/catalog成功，通过3004代理读取 /api/backtest-version?run=acceptance_20260908_verified&variant=lecture_v3成功，version=35eba4e5d4749b00fd05c5beac7f38cd26cd8c99b4ec382ad6c02e7c85ddd4a9，engine=9673253b7dbf7a786293686766cab7a1f6b36f2dd3505510a64a8dedcb79fffc，当前版本报错已消除。重启期间旧浏览器曾记录Failed to fetch，新前端恢复逻辑需刷新加载。
+
+按用户要求未运行测试、检查、类型、构建、格式、Git检查、浏览器端到端或主动新回测；仅源码阅读修改、服务重启及版本接口恢复确认。不把HTTP恢复等同于自动重载/完整回测验证；MONOREPO-330仍in-progress，无提交合并推送。真实源码再次变化重载、长回测中断恢复、国芳集团账户结果待验证。
+
+2026-10-15 · MONOREPO-330 完整行情底图与回测进度分离（代码已修改，待验证）
+
+BacktestPreviewPublisher 从同一任务的行情源一次生成 market_bars/market_asof，节流快照同时交付完整行情和 bars 已完成前缀；asof、processed、theory 与账户权益继续对齐真实完成日。完整行情仅供显示，不传入策略、N、资格或六态计算。共享预览契约及 legacy 入口校验总长度、顺序、末日和前缀所有价格/成交量/复权字段一致，旧快照兼容。
+
+PriceChart 通过 chartMarketBars 让 K 线、成交量、鼠标行情、导航和视窗采用完整行情；结构/资格/N/目标仍读取已完成 bars 与 asof。进度增加不再缩短 K 线或把视图拉回进度日；完成结果接管保持日期范围。准备阶段行情按年补到 2018，实时快照接管后停止，迟到响应不能覆盖结果；缓存预览清除旧 market_bars，避免切设置混用。进度文案区分 K 线数量和回测截止日，复制 K 线涨跌使用完整行情前收盘。
+
+新增/扩展 API 发布完整行情但不提前账户、前缀口径不一致/未来成交拒绝、完整行情视窗与连续折线/B/S 更新的回归用例，仅编写未运行。按用户要求未运行测试、检查、格式、lint、类型、构建、Git 检查、浏览器或测速，无提交/合并/推送。本轮未重启正在运行的服务；API 无自动重载，需重启后端并刷新页面才使用新协议。MONOREPO-330 保持 in-progress，实际界面及新回测待验证；既有失败和未完成事项保留。
+
+2026-10-14 · MONOREPO-330 策略版本与单股任务身份（实现待验证）
+
+后端已有 _active_symbols 在同一锁内约束跨数据源同股单任务，继续作为最终防线；此次接入前端同股单链路后，切设置不会各自创建长时间等待/提交链。start_backtest 必须取得有效策略版本，版本错误不再被吞掉；可选 strategy_version 与当前引擎版本不符时拒绝启动，版本纳入任务签名，旧任务号不能返回新策略结果。
+
+只读 /api/backtest-jobs 观察到新华传媒 c3ba4cdf 截至2026-10-12仍在计算，1809→1815/2116，累计1866.4→1908.6秒；另有 b282455d 截至2026-10-13的已完成有效记录。此前界面按同股选进度导致混显，不是同一份完整图表还未完成。一次 py-spy dump --pid 21000 显示两股票线程均进入 hierarchical_history 的 judge/qualify 路径，属于计算热点证据，不是耗时占比或性能基准。
+
+新增旧策略请求拒绝、跨版本任务号隔离，以及 AKShare 图表缓存命中/执行参数隔离用例，适配相关版本桩；仅编写未运行。按用户要求未运行开发检查、测试、格式、类型、构建、Git检查或浏览器；无新完整回测/测速、未提交/合并/推送/手动重启。现有20%准备阶段细分与330性能目标仍待验证。
+
+2026-10-14 · MONOREPO-330 同日交易与账户快照（代码已修改，待验证）
+
+预览发布点改为账户完成当天之后。BacktestPreviewPublisher 忽略仅有 MarketDay 的旧市场准备回调；发布时复制真实 signals/orders/trades/audit/equity，复用 result_markers 生成信号与成交标记。强制权益数量及尾日与 K 线前缀一致，拒绝未来交易记录；继续首末日/3 秒节流，避免每个交易日序列化全量数据。
+
+任务列表及单任务进度均提供 processed_sessions/total_sessions/processed_asof，与 preview_revision 来自锁内同一快照。完整结果不受运行预览替代；任务结束释放预览本体。补充市场未完成账户拒绝发布、真实 B/S、快照独立性与节流回归，仅编写未运行。
+
+遵守用户要求，本轮仅阅读和修改源码、编写回归用例与维护记录；未运行测试、检查、格式、lint、类型、构建、Git 检查、浏览器、服务探针或测速。未提交、合并、推送或手动重启。MONOREPO-330 保持 in-progress，既有失败记录不变；不能用旧版通过结果代表当前改造。
+
+2026-10-14 · MONOREPO-330 实际进度、非遮挡预览及刷新保持视图（实现待验证）
+
+BacktestPreviewPublisher通过上下文观察真实完成的MarketDay，首日/末日及最多每3秒发布一个K线前缀和折线/三级趋势几何快照，复制可变几何而不传整棵证明。BacktestJobs按任务锁保存最新快照，轻量任务状态只暴露revision，新增/api/backtest-preview按job/after读取；结束释放预览本体。没有重复计算趋势，没有伪造交易信号或成交。
+
+补充发布节流/首末日/几何独立性回归，只编写未运行。接口实际联调、完整回测、内存及序列化耗时待验证；按用户要求未运行开发检查、测试、浏览器、构建、格式或性能探针。未提交、合并、推送或手动重启，330保持in-progress。
+
+2026-10-13 · MONOREPO-330 24步进度协议（待验证）
+
+BacktestJobs为每个任务设置隔离的CalculationStepCache，存储根为任务history_path同目录.calculation-steps/artifacts-v1.sqlite。已有/api/backtest-jobs活动/历史元数据及/api/backtest-job各状态返回pipeline清单，包含24项状态/缓存/数量/耗时和因果执行说明，避免3秒轮询传输历史数据本体。任务失败也保留前序完成状态，记录异常不替代原业务错误；没有生产数据库迁移或缓存清除。Core/Python修改沿用当前分支自动重载。
+
+调整既有单调进度断言以兼容新增pipeline字段；新增Core/Web回归仅写未运行。未执行测试、格式、类型、构建、Git检查、浏览器或主动HTTP请求，无本轮完整回测验证；未提交/合并/推送，330继续in-progress。
+
+2026-10-13 · MONOREPO-330 分支引擎重载恢复
+
+用户持续“已回测 · 待更新”。既有stderr日志反复记录saved watchlist refresh failed，backtest_version抛出“策略代码已变更，请重启图表服务后再运行”，实际卡在引擎版本读取，尚未进入新回测。当前分支临时启动器绕过python-dev-restart.mjs，修改Core后Python仍持有旧引擎；未删除版本保护或将旧引擎标成新版本。
+
+修改ignored .codex-runtime/current-branch-services/20261012-202019/start-services.mjs复用createPythonSupervisor与显式Core/API源码根，保留同一results。依据CIM命令行确认旧守护14636属于该启动器后结束其子树并重启，新守护10528、API父15640、Web父24980，日志reload-20261013.stdout.log/stderr.log显示8766/3004启动就绪及行情读取。重启会结束旧进程内未完成任务，已有持久结果不清除；main 3003/8765未操作。后续Python源码修改会自动重载所属引擎，public脚本修改由source-runtime.mjs通知开发页刷新。
+
+本轮不改API/Core业务算法，不执行检查、测试、格式、构建、Git命令、浏览器或主动HTTP探针；没有完整回测完成/提速证据，相关验证仍待授权阶段。未提交/合并/推送，330仍in-progress。
+
+2026-10-12 现场性能诊断 · MONOREPO-330 仍未达标
+
+用户询问当前股票速度与卡点，仅读当前分支任务8af82a06…及已有进程。新华传媒sh.600825，2018-01-01至2026-10-12，V3/默认二级：145.5秒为35%一级趋势独立资格；269.8秒为35%图表一级几何；449秒为35%逐日图表资格。35覆盖多个子阶段，不据此认定停止执行；成交模拟尚未进入。两个独立5秒非阻塞py-spy：主进程483有效/38读取失败，其中447回测线程样本，264落在trend_staging.py:80解压/pickle.loads；worker77有效/10失败，31为_geometry_signature。样本只定位当时热点，不当全窗计时或主从累计百分比。5.032秒CPU窗口，本API5.109秒、六worker合计1.845秒；主目录旧API同时5.062秒CPU，旧sz.000678任务5368.4秒仍65%模拟成交。串行恢复/认证/传递历史证据是当前阶段明确热点，六worker存在不能消除生产者瓶颈；买点区间过滤在这些全历史之后，不能减少此前趋势/图表开销。
+
+最新状态、两个raw及CPU窗口保存在ignored .codex-runtime/current-branch-services/20261012-202019/600825-live-diagnostic.json。首次CPU采集脚本KeyCollection绑定失败，修采集脚本后才保存成功窗口；没有运行生产代码测试、触发新回测或停止/重启服务。没有当前完整结果和同源同选项未优化基线，不能回答提速倍数或宣称两分钟目标完成；330继续in-progress。后续优化应优先减少历史证据整树恢复/编码及重复趋势流水线，保留类型/别名/知识时钟/未知值拒绝，不能靠更多worker或只剪末端买点掩盖热点。用户本轮只要求诊断，未修改生产实现或合并。
+
+2026-10-12 最新运行状态 · 用户取消合并，启动当前分支
+
+用户明确“不合并，启动当前分支的前端和后端”。合并准备阶段只读取了Git状态、分支/差异、workspace清单及配置，没有执行提交、同步main、测试或合并。现已从feat-三级趋势统一的worktree启动独立服务：Web http://127.0.0.1:3004，API http://127.0.0.1:8766。前端代理指向8766；后端日志确认Core与API源码都来自本worktree。Next.js Ready，首页和代理/api/catalog为HTTP200，只记录启动可用，不当作回测或代码验收。
+
+后台supervisor PID14636；Web启动器26196，API虚拟环境启动器19804，Windows/Python可能另有解释器子进程。运行入口、PID记录和stdout/stderr位于忽略目录.codex-runtime/current-branch-services/20261012-202019；关闭时应按该记录只处理本次进程树。结果状态独立，通过SQLite只读backup复制operations journal及封存runs，没有复制旧自选队列。现有main 3003/8765不受本次启动影响。依赖复用主目录API虚拟环境，PYTHONPATH明确先加载本worktree Core/API；只为页面启动生成contracts ESM/CJS和vendor静态资源，无类型/单测/lint/格式/正式构建/Harness/浏览器E2E。
+
+MONOREPO-330仍唯一in-progress；回测完整性能、候选剪枝及级别选项的代码验证继续待执行，本次启动不声明提速达标。未提交、合并、推送或清除主目录缓存。浏览器新端口与独立后端使用本地独立自选状态；主服务数据保持原样。
+
+2026-10-12 最新开发 · MONOREPO-330 买点区间级别选项
+
+TDX/AkShare回测接收buy_interval_level，缺省2，只接受单个1/2/3；转为整数传递Core，后台任务签名和公开params保存级别。自选设置保存字符串级别，旧记录缺字段默认2，后台回测沿用已保存值。未改常驻服务、数据源或分钟覆盖。
+
+新增test_buy_interval_option.py，扩展现有HTTP用例覆盖默认/三选项/非法重复值、调用传递、同job不同级别409和记录参数隔离；只写未执行。开发阶段未运行检查、HTTP探针、浏览器或测速，未提交/合并/重启/清缓存/推送。实际服务加载、新级别完整回测与类型/打包待提交准备，不能引用旧API验收代表新实现。
+
 MONOREPO-326/327（2026-10-11，常驻验收）：main合并3bcf3f3后managed PID28088/API8765/Web3003轻量重启，signals off。真实2026年度183bars/25654B/8.548秒，后页2025 243bars/33933B/87ms，同version、304/409与共享schema通过。2010完整2995bars 200/38.131秒，最新完整6823bars重试200/43.689秒/43579450B，3/25高7.98及3/26/3/30因果时钟相同。服务实际algorithm f838a9b1与隔离解释器不同，以HTTP内容确认为准。最新第一次44秒超时单独记329，未做阶段profile；不归咎已知active1或网络，不手工清缓存/队列，不启动浏览器。
 
 MONOREPO-327（2026-10-11）：消费Core v119，API周期9项/20子用例、版本与来源消费者4项、Core引擎2项及API12源码严格类型通过。全Core149源码指纹覆盖新等值helper，周期算法绑定全引擎；新候选engine d4300fd1、APIalgorithm ee5a4772。OHLC年度ETag保持独立，完整geometry只可本次200/304验证。实际常驻服务必须重启才换已加载字节码和启动期algorithm，不以旧热进程响应验新代码。完整服务验收随本地合并后的HTTP记录。
@@ -253,3 +425,4 @@ MONOREPO-282（2026-10-07，Core V99消费方，合并待确认）：共用Core�
 
 - 完成的有效单股回测将有限的 `max_drawdown` 写入任务摘要与持久化历史，列表刷新后可继续读取；不改回测算法与旧记录。
 - `test_backtest_jobs.py` 定向 7 项通过，覆盖完成结果与重建任务注册表后的持久化摘要。首次检出的全仓快速检查因全局 Python 缺少 `build` 模块停在 Core 构建；本次 API 定向测试使用原项目虚拟环境并显式指向本 worktree 源码。
+2026-10-17 · 本次提交验证补充：预览定向 pytest 7 项通过；API 全套测试收集因环境缺 pandas、pytdx 中断，官方严格类型检查受跨包无 py.typed 及既有类型问题阻塞。MONOREPO-330 保持 in-progress。

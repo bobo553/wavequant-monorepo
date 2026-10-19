@@ -8,6 +8,17 @@ replace them with locally selected market highs.
 """
 
 from zoneinfo import ZoneInfo
+from bisect import bisect_right
+from .trend_point_version import PointVersion
+from .owned_evidence import CertifiedSource
+
+from collections.abc import Mapping, Sequence
+from math import isfinite
+from typing import cast
+
+from ..models.model import Bar
+from .trend_confirmation import _PrefixSessions
+from .trend_market_index import _MarketPrefixIndex
 
 
 def _reference(point):
@@ -308,7 +319,8 @@ def bear_to_bull_highs(strokes, *, trend_level):
     )
 
 
-def bear_bull_alternation_lows(strokes, *, trend_level, source_strokes=(), bars=None):
+def bear_bull_alternation_lows(strokes, *, trend_level, source_strokes=(), bars=None,
+                             _market_index: _MarketPrefixIndex | None = None):
     """Return same-level lows that formally completed bear/bull alternation.
 
     Read explicit ``空多交替`` observations or the confirmed source pullback
@@ -467,12 +479,12 @@ def bear_bull_alternation_lows(strokes, *, trend_level, source_strokes=(), bars=
         existing.add((path, _point_order(high)))
     from .alternation_duration import filter_duration_landmarks
     return sorted(
-        filter_duration_landmarks(landmarks, bars),
+        filter_duration_landmarks(landmarks, bars, _market_index=_market_index),
         key=lambda item: (item["index"], item.get("ordinal", 0), item["available_at"], item["source_path"]),
     )
 
 
-def post_alternation_bull_highs(strokes, *, trend_level, source_strokes=(), bars=None):
+def post_alternation_bull_highs(strokes, *, trend_level, source_strokes=(), bars=None, _alternation_lows=None):
     """Return the confirmed high ending the first bull leg after alternation.
 
     One confirmed ``空多交替`` low changes the same-level background to bull.
@@ -482,7 +494,8 @@ def post_alternation_bull_highs(strokes, *, trend_level, source_strokes=(), bars
     function never skips an invalid next vertex to select a later convenient
     high and never searches raw bars or a consumer's current chart window.
     """
-    alternation_lows = bear_bull_alternation_lows(strokes, trend_level=trend_level, source_strokes=source_strokes, bars=bars)
+    alternation_lows = (_alternation_lows if _alternation_lows is not None else
+        bear_bull_alternation_lows(strokes, trend_level=trend_level, source_strokes=source_strokes, bars=bars))
     lows_by_path = {}
     for low in alternation_lows:
         lows_by_path.setdefault(low["source_path"], []).append(low)
@@ -541,23 +554,33 @@ def post_alternation_bull_highs(strokes, *, trend_level, source_strokes=(), bars
     )
 
 
-def bullish_turn_signals(strokes, bars, *, trend_level, source_strokes=()):
-    """Return the first causal strict-close re-break of each bull-flip high.
+def _first_bullish_cross(
+    bars: Sequence[Bar], known: object, price: object, market_index: _MarketPrefixIndex | None,
+) -> int | None:
+    if (market_index is not None and isinstance(known, str)
+            and market_index.owner.ordered_sessions and market_index.owner.supports_price(price)):
+        start = max(1, bisect_right(market_index.owner.session_dates, known, hi=len(bars)))
+        return (market_index.first_close_turn(start, len(bars), cast(float, price), up=True)
+                if start < len(bars) else None)
+    for index in range(1, len(bars)):
+        if (_bar_date(bars[index]) > cast(str, known)
+                and bars[index - 1].close <= cast(float, price) < bars[index].close):
+            return index
+    return None
 
-    A confirmed same-level alternation remains the preferred starting point.
-    Some formal higher-level highs, however, become knowable from a confirmed
-    lower-level pullback that has not completed either alternation proof route.
-    The already-confirmed ``翻空为多`` high is still real evidence, so its first
-    later close cross is published without inventing an alternation low.
-    Intraday highs, equality and crosses before the selected evidence became
-    knowable never qualify.
+
+def bullish_turn_signals(strokes, bars, *, trend_level, source_strokes=(),
+                         _alternation_lows=None, _market_index: _MarketPrefixIndex | None = None):
+    """A strict close re-break requires a previously confirmed alternation.
+
+    A known flip high alone is an unfinished cycle, not a confirmed bull state.
+    Candidate breakouts remain separate from the six-state confirmation ledger.
     """
-    alternation_lows = bear_bull_alternation_lows(strokes, trend_level=trend_level, source_strokes=source_strokes, bars=bars)
-    flip_highs = bear_to_bull_highs(strokes, trend_level=trend_level)
-    alternated_highs = {
-        (low["source_path"], _point_order(low.get("confirmed_flip_high")))
-        for low in alternation_lows
-    }
+    if _market_index is not None and not _market_index.matches(bars):
+        raise ValueError('landmark market index must match its immutable Bar prefix')
+    alternation_lows = (_alternation_lows if _alternation_lows is not None else
+        bear_bull_alternation_lows(strokes, trend_level=trend_level, source_strokes=source_strokes,
+                                  bars=bars, _market_index=_market_index))
     contexts = [
         {
             "anchor": low,
@@ -567,17 +590,9 @@ def bullish_turn_signals(strokes, bars, *, trend_level, source_strokes=()):
         }
         for low in alternation_lows
     ]
-    contexts.extend(
-        {
-            "anchor": high,
-            "flip_high": high,
-            "known_at": high["available_at"],
-            "alternation_low": None,
-        }
-        for high in flip_highs
-        if (high["source_path"], _point_order(high)) not in alternated_highs
-    )
-    market = [(_bar_date(bar), index, bar) for index, bar in enumerate(bars)]
+    # 未提供受控索引的公共入口保持原日期物化和异常边界。
+    market = ([(_bar_date(bar), index, bar) for index, bar in enumerate(bars)]
+              if _market_index is None else None)
     landmarks = []
     for context in contexts:
         anchor = context["anchor"]
@@ -587,16 +602,22 @@ def bullish_turn_signals(strokes, bars, *, trend_level, source_strokes=()):
             continue
         try:
             breakout_level = flip_high["value"]
-            candidate = next(
-                (date, index, previous, current)
-                for (date, index, current), (_, _, previous) in zip(market[1:], market)
-                if date > context["known_at"]
-                and previous.close <= breakout_level < current.close
-            )
-        except (KeyError, TypeError, StopIteration):
+            if market is not None:
+                candidate = next(((date, index, previous, current)
+                    for (date, index, current), (_, _, previous) in zip(market[1:], market)
+                    if date > context['known_at'] and previous.close <= breakout_level < current.close), None)
+                if candidate is None:
+                    continue
+                date, index, previous, current = candidate
+            else:
+                crossing_index = _first_bullish_cross(bars, context['known_at'], breakout_level, _market_index)
+                if crossing_index is None:
+                    continue
+                index = crossing_index
+                previous, current = bars[index - 1], bars[index]
+                date = _bar_date(current)
+        except (KeyError, TypeError):
             continue
-
-        date, index, previous, current = candidate
         landmarks.append(
             dict(
                 id=(
@@ -650,3 +671,101 @@ def bullish_turn_signals(strokes, bars, *, trend_level, source_strokes=()):
         landmarks,
         key=lambda item: (item["index"], item["available_at"], item["source_path"], item["id"]),
     )
+
+
+def bearish_turn_signals(strokes: Sequence[Mapping[str, object]], bars: Sequence[Bar],
+                         *, trend_level: int, _market_index: _MarketPrefixIndex | None = None) -> list[dict[str, object]]:
+    """Expose the bearish mirror: confirmed alternation, then strict close break.
+
+    This is a dated observation, not an instruction to open a short position.
+    The frozen low comes from the same path's preceding bear flip. Equality,
+    pre-confirmation crossings and a rebound above the counter high are rejected.
+    """
+    if type(trend_level) is not int or trend_level not in (1, 2, 3):
+        raise ValueError('trend level must be 1, 2 or 3')
+    if _market_index is not None and not _market_index.matches(bars):
+        raise ValueError('landmark market index must match its immutable Bar prefix')
+    dates: Mapping[str, int] = (_PrefixSessions(_market_index.owner.positions, len(bars) - 1)
+        if _market_index is not None else {_bar_date(bar): index for index, bar in enumerate(bars)})
+
+    def clock(value: object) -> int | None:
+        if type(value) is int:
+            return value if 0 <= value < len(bars) else None
+        return dates.get(value) if isinstance(value, str) else None
+
+    signals: list[dict[str, object]] = []
+    for stroke in strokes:
+        points = stroke.get('points')
+        if not isinstance(points, (list, tuple, PointVersion, CertifiedSource)):
+            continue
+        flip: Mapping[str, object] | None = None
+        flip_known: int | None = None
+        for point in points:
+            if not isinstance(point, Mapping) or not _complete_reference(point, kind=point.get('kind')):
+                continue
+            if point.get('state') in ('seed', 'developing') or point.get('display_only'):
+                continue
+            point_known = clock(point.get('available_at'))
+            observations = point.get('observations', ())
+            if point_known is None or not isinstance(observations, (tuple, list)):
+                continue
+            for observation in observations:
+                if not isinstance(observation, Mapping):
+                    continue
+                known = clock(observation.get('available_at'))
+                if known is None:
+                    continue
+                known = max(known, point_known)
+                title = observation.get('title')
+                if title == '翻空为多':
+                    flip = None
+                    flip_known = None
+                elif title == '翻多为空' and point.get('kind') == 'L':
+                    key, origin = observation.get('key'), observation.get('confirmed_high')
+                    if (not isinstance(key, Mapping) or not isinstance(origin, Mapping)
+                            or not _complete_reference(key, kind='L') or not _complete_reference(origin, kind='H')):
+                        continue
+                    key_known, origin_known = clock(key.get('available_at')), clock(origin.get('available_at'))
+                    price, key_price, origin_price = point.get('value'), key.get('value'), origin.get('value')
+                    if (key_known is None or origin_known is None
+                            or type(price) not in (int, float) or type(key_price) not in (int, float)
+                            or type(origin_price) not in (int, float)
+                            or not all(isfinite(value) for value in (price, key_price, origin_price))
+                            or not price < key_price or not price < origin_price):
+                        continue
+                    flip, flip_known = point, max(known, key_known, origin_known)
+                elif (title == '多空交替' and point.get('kind') == 'H'
+                      and flip is not None and flip_known is not None):
+                    if _point_order(point) <= _point_order(flip):
+                        continue
+                    threshold, defense = flip.get('value'), point.get('value')
+                    if (type(threshold) not in (int, float) or type(defense) not in (int, float)
+                            or not isfinite(threshold) or not isfinite(defense) or defense <= threshold):
+                        continue
+                    start = max(known, flip_known) + 1
+                    indices: Sequence[int] = range(start, len(bars))
+                    if (_market_index is not None and start < len(bars)
+                            and _market_index.owner.supports_price(threshold)
+                            and _market_index.owner.supports_price(defense)):
+                        failed = _market_index.first_extreme(start, len(bars), cast(float, defense), high=True)
+                        stop = failed if failed is not None else len(bars)
+                        crossing = (_market_index.first_close_turn(start, stop, cast(float, threshold), up=False)
+                                    if start < stop else None)
+                        indices = () if crossing is None else (crossing,)
+                    for index in indices:
+                        previous, current = bars[index - 1], bars[index]
+                        if current.high > defense:
+                            break
+                        if previous.close >= threshold > current.close:
+                            date = _bar_date(current)
+                            signals.append(dict(
+                                id=f'level{trend_level}-bearish-turn-{stroke.get("id")}-{flip["index"]}-{index}',
+                                index=index, ordinal=0, time=date, available_at=date, kind='K',
+                                value=current.close, close=current.close, previous_close=previous.close,
+                                label=f'K{index + 1}·转空', flip='转空信号', trend_level=trend_level,
+                                source_level=trend_level, source_path=stroke.get('id'),
+                                breakout_level=threshold, confirmed_flip_low=_reference(flip),
+                                confirmed_alternation_high=_reference(point),
+                                confirmation_rule='first_strict_close_cross_below_flip_low_after_confirmed_alternation'))
+                            break
+    return sorted(signals, key=lambda item: (cast(int, item['index']), str(item['source_path'])))

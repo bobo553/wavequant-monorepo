@@ -1,6 +1,6 @@
 """整只股票按折线、一级、二级、三级完成阶段，日期前缀仍独立可知。"""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
@@ -16,7 +16,7 @@ from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
 from wavequant.domain.market_structure.lecture_trend import reversal_trends
 from wavequant.domain.market_structure.secondary_trend import secondary_trends
 from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
-from wavequant.domain.market_structure.trend_judgement import TrendJudgement
+from wavequant.domain.market_structure.trend_judgement import TrendJudgement, _TrendJudgementState
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies import hierarchical_entry
 
@@ -82,13 +82,45 @@ def _assert_completed_definition_sources(
 
 def _multiple_path_bars(*, count: int | None = None) -> list[Bar]:
     first = _nested_bars()[:count]
-    # 无阴阳顺序的十字星母子关系形成真实断点，不可借前一路径确认后一条。
+    # 此标记由下方来源中断夹具消费，价格本身不再使已知方向的折线断路。
     bridge = Bar(START + timedelta(days=len(first)), 'NESTED', 1055, 2100, 10, 1055, 1000)
     offset = len(first) + 1
     second = [replace(bar, timestamp=START + timedelta(days=offset + index), open=bar.open + 100,
                       high=bar.high + 100, low=bar.low + 100, close=bar.close + 100)
               for index, bar in enumerate(first)]
     return [*first, bridge, *second]
+
+
+def _interrupted_drawing(
+    bars: Sequence[Bar], *, on_step: Callable[[int, int, Sequence[Mapping[str, object]]], None] | None = None,
+) -> dict[str, object]:
+    """真实绘图器构建两段，夹具显式注入空来源 epoch 来验证路径隔离。
+
+    已知方向的外包十字星不会再使路径断路，不能继续用旧价格假设代替
+    来源中断。这里的中断是测试输入契约；各段内部仍执行真实折线归并。
+    """
+    boundary = next((index for index, bar in enumerate(bars)
+                     if bar.high == 2100 and bar.low == 10 and bar.open == bar.close == 1055), None)
+    if boundary is None:
+        return cast(dict[str, object], lecture_drawing(bars, **({'on_step': on_step} if on_step else {})))
+    first = cast(dict[str, object], lecture_drawing(bars[:boundary], **({'on_step': on_step} if on_step else {})))
+    if on_step is not None:
+        on_step(boundary, boundary, ())
+    offset = boundary + 1
+
+    def collect(index: int, epoch: int, raw: Sequence[Mapping[str, object]]) -> None:
+        if on_step is not None:
+            on_step(index+offset, epoch+offset, [dict(point, index=cast(int, point['index'])+offset) for point in raw])
+
+    second = cast(dict[str, object], lecture_drawing(bars[offset:], on_step=collect))
+    paths: list[dict[str, object]] = []
+    for path in cast(Sequence[Mapping[str, object]], first['strokes']):
+        paths.append(dict(path, points=[dict(point, source_path_end_index=boundary)
+            for point in cast(Sequence[Mapping[str, object]], path['points'])]))
+    for path in cast(Sequence[Mapping[str, object]], second['strokes']):
+        paths.append(dict(path, id=f'lecture-{offset}', points=[dict(point, index=cast(int, point['index'])+offset)
+            for point in cast(Sequence[Mapping[str, object]], path['points'])]))
+    return dict(first, strokes=paths, issues=[{'index': boundary}])
 
 
 def _assert_stages(trace: Sequence[StageEvent], expected_levels: tuple[int, ...]) -> None:
@@ -103,7 +135,7 @@ def _observe_hierarchy(
 ) -> tuple[object, StructureHistory, list[StageEvent]]:
     trace: list[StageEvent] = []
     structures: StructureHistory = {}
-    real_judge = hierarchical_entry.judge_trend
+    real_judge = trend_lines_module.judge_trend
     real_turns = hierarchical_entry.polyline_turns
 
     def observe_turns(points: Sequence[Mapping[str, object]], *, source_path: str = 'polyline') -> list[dict[str, object]]:
@@ -112,14 +144,17 @@ def _observe_hierarchy(
         return result
 
     def observe_judge(points: Sequence[Mapping[str, object]], *, trend_level: int = 1,
-                      asof: int | str | None = None) -> TrendJudgement:
-        result = real_judge(points, trend_level=trend_level, asof=asof)
+                      asof: int | str | None = None, _append_state: _TrendJudgementState | None = None,
+                      _owned_source: bool = False, _certified_standard: bool = False) -> TrendJudgement:
+        result = real_judge(points, trend_level=trend_level, asof=asof, _append_state=_append_state,
+                            _owned_source=_owned_source, _certified_standard=_certified_standard)
         trace.append(StageEvent(trend_level, len(points), len(result.points), asof))
         return result
 
     # spy 调用真实函数，既不替换折线、证书，也不预造高层结构。
-    with patch.object(hierarchical_entry, 'polyline_turns', side_effect=observe_turns), patch.object(
-            hierarchical_entry, 'judge_trend', side_effect=observe_judge):
+    with patch.object(hierarchical_entry, 'lecture_drawing', side_effect=_interrupted_drawing), patch.object(
+            hierarchical_entry, 'polyline_turns', side_effect=observe_turns), patch.object(
+            trend_lines_module, 'judge_trend', side_effect=observe_judge):
         result = hierarchical_entry.hierarchical_history(bars, structure_sink=structures, prefix_cache=prefix_cache)
     return result, structures, trace
 
@@ -138,13 +173,16 @@ def _observe_chart(
         return result
 
     def observe(points: Sequence[Mapping[str, object]], *, trend_level: int = 1,
-                asof: int | str | None = None) -> TrendJudgement:
-        result = real_judge(points, trend_level=trend_level, asof=asof)
+                asof: int | str | None = None, _append_state: _TrendJudgementState | None = None,
+                _owned_source: bool = False, _certified_standard: bool = False) -> TrendJudgement:
+        result = real_judge(points, trend_level=trend_level, asof=asof, _append_state=_append_state,
+                            _owned_source=_owned_source, _certified_standard=_certified_standard)
         trace.append(StageEvent(trend_level, len(points), len(result.points), asof))
         geometry[trend_level] = result.points
         return result
 
-    with patch.object(chart_entry, 'polyline_high_low_points', side_effect=polyline), patch.object(
+    with patch.object(chart_entry, 'lecture_drawing', side_effect=_interrupted_drawing), patch.object(
+            chart_entry, 'polyline_high_low_points', side_effect=polyline), patch.object(
             trend_lines_module, 'judge_trend', side_effect=observe):
         result = chart_entry.chart_entry_history(bars, prefix_cache=prefix_cache)
     return result, geometry, trace
@@ -193,7 +231,7 @@ def test_chart_entry_history_completes_every_date_of_a_level_before_judging_the_
 @pytest.mark.parametrize('enabled', (False, True))
 def test_complete_stock_pipeline_matches_all_adapter_fields_and_finishes_geometry_before_permissions(enabled: bool) -> None:
     bars = _multiple_path_bars()
-    drawing = cast(Mapping[str, object], lecture_drawing(bars))
+    drawing = _interrupted_drawing(bars)
     before = deepcopy(drawing)
     first = reversal_trends(drawing, bars, n_target_trend_confirmation_enabled=enabled)
     second = secondary_trends(first, bars, n_target_trend_confirmation_enabled=enabled)

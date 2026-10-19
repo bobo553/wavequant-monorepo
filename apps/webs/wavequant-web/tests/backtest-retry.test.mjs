@@ -77,7 +77,7 @@ test("a timed-out cold backtest switches to its job instead of repeating the lon
     assert.equal(polls, 1);
 });
 
-test("a lost job resubmits the same request once and resumes polling", async () => {
+test("an explicitly enabled missing-job retry is bounded", async () => {
     let polls = 0;
     let resubmits = 0;
     const view = await waitForBacktestJob(
@@ -90,7 +90,7 @@ test("a lost job resubmits the same request once and resumes polling", async () 
             resubmits++;
             throw Object.assign(new Error("still computing"), { code: "BACKTEST_TIMEOUT" });
         },
-        { sleep: async () => {} },
+        { maxMissingResubmits: 1, sleep: async () => {} },
     );
     assert.deepEqual(view, { run_id: "restored" });
     assert.equal(polls, 2);
@@ -108,6 +108,16 @@ test("a lost job resubmits the same request once and resumes polling", async () 
         ),
         { code: "BACKTEST_JOB_MISSING" },
     );
+});
+
+test("a lost job does not silently restart by default", async () => {
+    let submissions = 0;
+    await assert.rejects(waitForBacktestJob(
+        async () => { throw Object.assign(new Error("gone"), { httpStatus: 404 }); },
+        async () => { submissions++; },
+        { sleep: async () => {} },
+    ), { code: "BACKTEST_JOB_MISSING" });
+    assert.equal(submissions, 0);
 });
 
 test("a failed job terminates with the server's safe error", async () => {
@@ -196,4 +206,22 @@ test("retry is bounded and switching stocks cancels the waiting request", async 
         { name: "AbortError" },
     );
     assert.equal(requests, 1);
+});
+
+
+test("version reads wait for a fresh server but never retry old version arguments", async () => {
+    const { readBacktestVersion } = await import("../public/backtest-retry.js");
+    let calls = 0;
+    const delays = [];
+    const result = await readBacktestVersion(async () => {
+        calls++;
+        if (calls === 1) throw Object.assign(new Error("策略代码已变更"), { code: "BACKTEST_ENGINE_RELOADING", httpStatus: 503 });
+        if (calls === 2) throw new TypeError("Failed to fetch");
+        return { version: "fresh-engine" };
+    }, { sleep: async (delay) => { delays.push(delay); } });
+    assert.deepEqual(result, { version: "fresh-engine" });
+    assert.deepEqual(delays, [1000, 2000]);
+    assert.equal(isRecoverableBacktestError(Object.assign(new Error("策略代码已变更"), {
+        code: "BACKTEST_VERSION_CHANGED", httpStatus: 409,
+    })), false);
 });

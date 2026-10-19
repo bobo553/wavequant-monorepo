@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from dataclasses import asdict
 from fractions import Fraction
 from .hierarchical_entry import EntryContext
+from ..market_structure.trend_market_index import _MarketRangeIndex
 
 
 def price(value):
@@ -30,9 +31,17 @@ def wave_entry_contexts(current: Sequence[EntryContext], at_attack: Sequence[Ent
 
 def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
                       deep_ratio=.5, shallow_ratio=1/3, first_basis='alternation_low',
-                      second_inclusive=True, allow_confirming_n=False, allow_same_bar_pullback=False, **unused):
+                      second_inclusive=True, allow_confirming_n=False, allow_same_bar_pullback=False,
+                      _market_index: _MarketRangeIndex | None = None, buy_interval_level: int | None = None, **unused):
     if not (0 <= low_index <= attack <= asof < len(bars) and (low_index < attack or allow_same_bar_pullback)):
         return None, 'wave_invalid_n_sequence'
+    if _market_index is not None and (_market_index.bars is not bars or not _market_index.exact_prices):
+        _market_index = None
+    if buy_interval_level is not None:
+        if type(buy_interval_level) is not int or buy_interval_level not in (1, 2, 3):
+            raise ValueError('buy interval level must be 1, 2 or 3')
+        current = tuple(context for context in current if context.trend_level == buy_interval_level)
+        at_attack = tuple(context for context in at_attack if context.trend_level == buy_interval_level)
     live = {c.episode:c for c in current}; eligible=[]; reasons=[]
     at_attack = wave_entry_contexts(current, at_attack, attack=attack, asof=asof,
                                    allow_confirming_n=allow_confirming_n)
@@ -48,7 +57,11 @@ def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
         l0,h0=price(ctx.origin_price),price(ctx.flip_high_price)
         if h0 <= l0:
             reasons.append('wave_invalid_flip_amplitude');continue
-        if min(price(b.low) for b in bars[ctx.origin_index:asof+1]) < l0:
+        origin_broken = (_market_index.first_extreme(ctx.origin_index, asof + 1, ctx.origin_price, high=False) is not None
+                         if _market_index is not None and _market_index.supports_price(ctx.origin_price)
+                         and 0 <= ctx.origin_index <= asof else
+                         min(price(b.low) for b in bars[ctx.origin_index:asof+1]) < l0)
+        if origin_broken:
             reasons.append('wave_flip_origin_broken');continue
         common=dict(asdict(ctx),definition='whole_flip_wave_v3',
                     counter_filter_applied=True,flip_origin_price=float(l0),
@@ -57,7 +70,7 @@ def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
                     joint_alternation_confirmation=joint)
         # Maturation on the attack bar does not retroactively change its class.
         if ctx.maturity_index is None or ctx.maturity_index >= attack:
-            if ctx.trend_level not in (2, 3):
+            if ctx.trend_level not in (2, 3) and buy_interval_level != 1:
                 reasons.append('first_buy_requires_level_two_or_three');continue
             a=price(ctx.alternation_low_price)
             if not l0 <= a < h0:
@@ -69,8 +82,9 @@ def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
                     reasons.append('wave_alternation_not_before_n');continue
                 # Freeze the first decline at the confirmed alternation pivot;
                 # later closes cannot retroactively qualify that episode.
-                close_index=min(range(ctx.flip_high_index,ctx.alternation_low_index+1),
-                                key=lambda j:bars[j].close)
+                close_index=(_market_index.lowest_close_position(ctx.flip_high_index, ctx.alternation_low_index + 1)
+                             if _market_index is not None else
+                             min(range(ctx.flip_high_index,ctx.alternation_low_index+1), key=lambda j:bars[j].close))
                 counter=price(bars[close_index].close)
             r=(h0-counter)/(h0-l0)
             if deep_ratio is not None and not r > threshold(deep_ratio):
@@ -85,13 +99,17 @@ def select_wave_entry(current, at_attack, *, bars, attack, low_index, asof,
                 **({'minimum_close_index':close_index} if close_index is not None else {})))
             continue
         # The known pre-attack peak must follow the close-confirmed breakout.
-        peak_index=max(range(ctx.maturity_index,attack),key=lambda j:bars[j].high)
+        peak_index=(_market_index.extreme_position(ctx.maturity_index, attack, high=True)
+                    if _market_index is not None and 0 <= ctx.maturity_index < attack else
+                    max(range(ctx.maturity_index,attack),key=lambda j:bars[j].high))
         peak=price(bars[peak_index].high)
         if peak <= h0 or not ctx.alternation_index < ctx.maturity_index <= peak_index < low_index < attack:
             reasons.append('wave_second_peak_pullback_sequence');continue
         # Include the peak bar close: a long upper wick is not a shallow close
         # retracement merely because the high/low intrabar order is unknown.
-        close_index=min(range(peak_index,asof+1),key=lambda j:bars[j].close)
+        close_index=(_market_index.lowest_close_position(peak_index, asof + 1)
+                     if _market_index is not None and 0 <= peak_index <= asof else
+                     min(range(peak_index,asof+1),key=lambda j:bars[j].close))
         close=price(bars[close_index].close)
         r=max(Fraction(0),peak-close)/(peak-l0)
         limit=threshold(shallow_ratio)

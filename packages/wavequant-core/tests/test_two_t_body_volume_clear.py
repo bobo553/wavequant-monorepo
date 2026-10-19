@@ -97,6 +97,31 @@ def test_invalid_volume_shape_or_target_cannot_clear(invalid):
     assert two_t_resistance_history(bars, events).get(5, {}).get("reason") != REASON
 
 
+@pytest.mark.parametrize('previous_bearish', [False, True])
+def test_previous_session_volume_is_an_independent_alternative_and_body_color_is_unrestricted(previous_bearish):
+    bars, event = sample()
+    bars[0] = replace(bars[0], volume=2000)
+    if previous_bearish:
+        bars[4] = replace(bars[4], open=5.60, close=5.50)
+    bars[5] = replace(bars[5], volume=901)
+    clear = two_t_resistance_history(bars, [event])[5]
+    assert clear['reason'] == REASON and clear['exit_fraction'] == 1.0
+    assert clear['volume_above_previous'] is True
+    if not previous_bearish:
+        assert clear['volume_above_last_bearish'] is False
+    bars[5] = replace(bars[5], volume=900)
+    assert two_t_resistance_history(bars, [event]).get(5, {}).get('reason') != REASON
+
+
+def test_no_earlier_bearish_session_can_still_compare_yesterday_volume():
+    bars, event = sample()
+    bars[0] = replace(bars[0], open=5.0)
+    bars[5] = replace(bars[5], volume=901)
+    clear = two_t_resistance_history(bars, [event])[5]
+    assert clear['bearish_reference_date'] is None
+    assert clear['volume_above_previous'] is True
+
+
 def test_latest_live_target_wins_and_future_invalidation_does_not_rewrite_prefix():
     bars, event = sample()
     later = dict(event, attack=2, bar_index=4, two_t=5.7)

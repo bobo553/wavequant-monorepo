@@ -217,22 +217,32 @@ def project_n_targets(origin: float, neckline: float, pullback: float, *,
 
 
 def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
-              milestone_basis: MilestoneBasis, asof_index: int | None = None) -> NObservation:
+              milestone_basis: MilestoneBasis, asof_index: int | None = None,
+              measurement_start: int | None = None, measure_targets: bool = True) -> NObservation:
     """Earliest same-bar real+virtual completion, never backdated to unknown pivots.
 
     A/C are lows and B a high for positive N, symmetric for inverse N. Real
     threshold is B-bar close; virtual threshold is B-bar extreme (figure 003).
     Completion-bar targets are credited only by its CLOSE, because earlier high/
     low may predate formation. Later-bar extrema are allowed only if requested.
+    measurement_start preserves historical geometry but starts trading target
+    observations at that close. measure_targets=False returns only formation
+    evidence for a pending structural confirmation, without projecting targets.
     """
     if not isinstance(setup,NSetup) or timeframe != setup.timeframe:
         raise ValueError('NSetup with matching timeframe required')
     if not isinstance(milestone_basis,MilestoneBasis):
         raise ValueError('milestone_basis must be explicit')
+    if type(measure_targets) is not bool:
+        raise ValueError('target measurement policy must be boolean')
     end = len(bars)-1 if asof_index is None else asof_index
     _index(end,'asof_index')
     if end >= len(bars):
         raise ValueError('as-of bar is unavailable')
+    if measurement_start is not None:
+        _index(measurement_start, 'measurement start')
+        if measurement_start > end:
+            raise ValueError('measurement start must be available')
     # Only inspect the visible prefix, never validate against future prices.
     from ..models.validated_bars import ValidatedBars
     if isinstance(bars, ValidatedBars) and bars[0].symbol != setup.symbol:
@@ -274,7 +284,15 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     b = bb.high if up else bb.low
     c = bars[setup.pullback.index].low if up else bars[setup.pullback.index].high
     # Validate the explicit standard A-B-C geometry; no arbitrary 1/2 filter.
-    project_n_targets(a,b,c,box_anchor=b,direction=setup.direction,domain=ValueDomain.PRICE)
+    if measure_targets:
+        project_n_targets(a,b,c,box_anchor=b,direction=setup.direction,domain=ValueDomain.PRICE)
+    else:
+        for value in (a, b, c):
+            _finite(value, 'N anchor')
+            if value <= 0:
+                raise ValueError('price anchors must be positive')
+        if not 0 < sign * (c - a) < sign * (b - a):
+            raise ValueError('standard N requires a positive impulse and a partial retracement')
     anchors = NAnchors(a,b,bb.close,c,known,(b-c)/(b-a))
     kind = LevelKind.RESISTANCE if up else LevelKind.SUPPORT
     # B can already be known when today's close confirms a historical C.
@@ -370,6 +388,9 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         return NObservation(NStatus.FORMING,end,when,anchors,
                             real_break_now=sign*(bar.close-bb.close)>0,
                             virtual_break_now=sign*((bar.high if up else bar.low)-b)>0)
+    if not measure_targets:
+        # Qualification needs a completed N and its defense, not trading goals.
+        return NObservation(NStatus.COMPLETED, end, when, anchors, completion=completion)
     box = ((completion.virtual_high if up else completion.virtual_low)
            if setup.box_anchor_mode == BoxAnchorMode.ATTACK_VIRTUAL_EXTREME else b)
     targets = project_n_targets(a,b,c,box_anchor=box,direction=setup.direction,domain=ValueDomain.PRICE)
@@ -377,13 +398,14 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
     defense_breach: int | None = None
     origin_breach: int | None = None
     names = ('equal_wave','one_p','two_t')
-    for i in range(completion.bar_index,end+1):
+    for i in range(max(completion.bar_index, measurement_start or 0),end+1):
         bar = bars[i]
         formation_bar = i == completion.bar_index
+        first_available = measurement_start is not None and i == measurement_start
         # Do not compare the newly created defense with an earlier low/high on
         # the formation bar. Future defense breaches are observations, not exits.
         if not formation_bar:
-            adverse = bar.low if up else bar.high
+            adverse = bar.close if first_available else bar.low if up else bar.high
             if defense_breach is None and sign*(adverse-completion.defense)<0:
                 defense_breach = i
             if origin_breach is None and sign*(adverse-a)<0:
@@ -392,7 +414,9 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
         # A same-day target wick cannot outrank failure or revive the old N.
         if origin_breach is not None or (up and defense_breach is not None):
             continue
-        use_close = formation_bar or milestone_basis == MilestoneBasis.CLOSE
+        # Anchors retain their real clocks. A newly eligible trading window
+        # cannot inherit target touches from dates before it was allowed to run.
+        use_close = formation_bar or first_available or milestone_basis == MilestoneBasis.CLOSE
         price = bar.close if use_close else bar.high if up else bar.low
         while len(hit)<3:
             name = names[len(hit)]
@@ -400,7 +424,7 @@ def observe_n(bars: Sequence[Bar], setup: NSetup, *, timeframe: str,
             if target is None or sign*(price-target)<0:
                 break
             hit.append(Milestone(name,target,i,bar.timestamp,
-                       'completion_close' if formation_bar else milestone_basis.value,
+                       'completion_close' if formation_bar else 'eligibility_close' if first_available else milestone_basis.value,
                        bool(hit and hit[-1].bar_index==i)))
     return NObservation(NStatus.COMPLETED,end,when,anchors,completion=completion,targets=targets,
                         milestones=tuple(hit),next_target=names[len(hit)] if len(hit)<3 else None,

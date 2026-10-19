@@ -392,7 +392,7 @@ class TrendLandmarkTests(unittest.TestCase):
         self.assertEqual(landmarks[0]["confirmed_low"]["value"], 3.99)
         self.assertEqual(landmarks[0]["available_at"], "2026-08-26")
 
-    def test_confirmed_flip_without_alternation_marks_first_later_close_breakout(self):
+    def test_confirmed_flip_without_alternation_does_not_confirm_bull_state(self):
         old_level_three_key = point(1, "H", 9.24, "2021-03-15")
         confirmed_bear_low = point(2, "L", 3.99, "2025-03-07")
         flip_high = point(
@@ -420,11 +420,9 @@ class TrendLandmarkTests(unittest.TestCase):
             trend_level=3,
         )
 
-        self.assertEqual([(item["time"], item["value"]) for item in signals], [("2026-09-14", 13.74)])
-        self.assertEqual(signals[0]["breakout_level"], 13.35)
-        self.assertIsNone(signals[0]["confirmed_alternation_low"])
-        self.assertEqual(signals[0]["confirmed_flip_high"]["value"], 13.35)
-        self.assertEqual(signals[0]["confirmation_rule"], "first_strict_close_cross_above_confirmed_flip_high")
+        # The six-state contract requires an observed alternation before this
+        # later crossing. A confirmed flip alone remains an unfinished cycle.
+        self.assertEqual(signals, [])
 
     def test_level_one_uses_the_real_key_break_observation(self):
         frozen_key = point(3, "H", 30, "2026-01-05")

@@ -1,7 +1,7 @@
 """Single-source online research with honest unavailable-minute results."""
 
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime
 import hashlib
 import json
 from pathlib import Path
@@ -10,13 +10,15 @@ from typing import Any, Callable
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.a_share_security import a_share_security_spec
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, SystemResult, generate_system_signals
-from wavequant.domain.models.model import Bar
+from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse
+from wavequant.infrastructure.computation.trend_workers import stock_stage_runner
+from wavequant.domain.models.model import Bar, Signal
 from wavequant.interfaces.charts.akshare_browser import AkShareBrowser
 from wavequant.infrastructure.market_data.akshare_history import AkShareMinuteSource, MinuteCoverageError, sina_factors
 from wavequant.infrastructure.market_data.data import BAR_PERMISSION_SCHEMA, close_sell_permissions, opening_permissions
 from wavequant.infrastructure.persistence.artifact_cache import ArtifactCache
 from wavequant.application.analytics.trade_evidence import result_markers
-from .stock_backtest import single_stock_result
+from .stock_backtest import simulation_progress_callbacks, single_stock_result
 from .tdx_backtest import TdxBacktester, decode_research, encode_research
 
 
@@ -98,6 +100,8 @@ class AkShareBacktester:
             previous = bar.close
         if not bars:
             raise ValueError("所选区间没有同源日线")
+        from wavequant.domain.market_structure.calculation_steps import calculation_steps
+        calculation_steps(bars)
         if progress is not None: progress(30, '生成信号')
         config = SystemStrategy(**strategy)
         config.validate()  # Legacy strategy boundary.
@@ -126,39 +130,73 @@ class AkShareBacktester:
         )
         identity = self.artifacts.key("akshare-backtest", inputs)  # Content address.
         signal_inputs = {name: value for name, value in inputs.items() if name != "execution"}
-        with self.artifacts.lock(identity):  # Per-input single flight.
+        with self.artifacts.lock(identity), BacktestHistoryReuse(
+                bars, config, stage_runner_factory=stock_stage_runner) as history_reuse:
             cached = self.artifacts.get("akshare-backtest", inputs)  # Legacy cache boundary.
+            if cached is not None:
+                research = cached.get('research')
+                if research is not None:
+                    bars, generated = decode_research(research)
+                else:
+                    view = cached['view']
+                    signals = [Signal(**{
+                        key: datetime.fromisoformat(row[key]) if key in ('timestamp', 'trigger_timestamp') else row[key]
+                        for key in Signal.__dataclass_fields__
+                    }) for row in view['signals']]
+                    generated = SystemResult(signals, view['audit'], view['backtest']['counts'])
+                self._verify_engine()
+                if progress is not None: progress(95, '读取完整回测缓存')
+                return bars, generated, cached['view']
+            streaming = config.buy_point_definition == 'whole_flip_wave_v3'
             signal_key = self.artifacts.key("akshare-signals", signal_inputs)
             with self.artifacts.lock(signal_key):  # Share work across sizing plans.
                 research = self.artifacts.get("akshare-signals", signal_inputs)
-                if research is None:
-                    generated = (generate_system_signals(bars, config)
-                                 if progress is None else generate_system_signals(
-                                     bars, config,
-                                     progress=lambda percent: progress(35+percent*25//100, '生成信号')))
+                if streaming:
+                    generated = None
+                elif research is None:
+                    from .stock_backtest import signal_progress_callbacks
+                    signal_progress, signal_stage = signal_progress_callbacks(progress)
+                    if config.buy_point_definition == 'whole_flip_wave_v3':
+                        generated = (generate_system_signals(bars, config, history_reuse=history_reuse)
+                                     if progress is None else generate_system_signals(
+                                         bars, config, history_reuse=history_reuse,
+                                         progress=signal_progress, stage=signal_stage))
+                    else:
+                        generated = (generate_system_signals(bars, config)
+                                     if progress is None else generate_system_signals(
+                                         bars, config,
+                                         progress=signal_progress, stage=signal_stage))
                     research = encode_research(bars, generated)
                     self._verify_engine()
                     self.artifacts.put("akshare-signals", signal_inputs, research)
                 else:
                     bars, generated = decode_research(research)
                     if progress is not None: progress(60, '读取信号缓存')
-            if cached is not None:
-                self._verify_engine()
-                if progress is not None: progress(95, '读取缓存')
-                return bars, generated, cached["view"]
             coverage = None
             try:
-                if progress is not None: progress(65, '模拟成交')
-                result = single_stock_result(  # Existing simulation boundary.
-                    bars,
-                    strategy,
-                    execution,
-                    generated,
-                    minute_loader=minute.get if execution["staged_exit_intraday"] or execution.get("consolidation_entry_intraday") else None,
-                    **({'progress': lambda percent: progress(65+percent*25//100, '模拟成交')}
-                       if progress is not None else {}),
-                )
+                if streaming:
+                    from .streaming_backtest import streaming_stock_result
+                    generated, result = streaming_stock_result(bars, strategy, execution,
+                        minute_loader=minute.get if execution['staged_exit_intraday'] or execution.get('consolidation_entry_intraday') else None,
+                        progress=progress)
+                    research = encode_research(bars, generated)
+                    self._verify_engine()
+                    self.artifacts.put('akshare-signals', signal_inputs, research)
+                else:
+                    if progress is not None: progress(65, '模拟成交')
+                    simulation_progress, simulation_stage = simulation_progress_callbacks(progress)
+                    result = single_stock_result(  # Existing simulation boundary.
+                        bars,
+                        strategy,
+                        execution,
+                        generated,
+                        minute_loader=minute.get if execution["staged_exit_intraday"] or execution.get("consolidation_entry_intraday") else None,
+                        progress=simulation_progress, stage=simulation_stage, history_reuse=history_reuse,
+                    )
             except MinuteCoverageError as exc:
+                if streaming:
+                    # 当日未完成不得发布成功截面或继续消耗下一日。
+                    raise
                 # Discard partial simulation, but preserve the valid daily theory.
                 coverage = dict(exc.coverage, message=str(exc))
                 result = dict(
@@ -232,7 +270,7 @@ class AkShareBacktester:
             if coverage is None:
                 self._verify_engine()
                 self.artifacts.put(  # Disposable; valid result survives cache failure.
-                    "akshare-backtest", inputs, dict(view=view)
+                    "akshare-backtest", inputs, dict(view=view, research=encode_research(bars, generated))
                 )
             else:
                 self._verify_engine()

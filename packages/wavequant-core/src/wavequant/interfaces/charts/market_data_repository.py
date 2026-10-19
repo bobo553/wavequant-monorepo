@@ -8,6 +8,8 @@ validated :class:`Bar` objects and one stable read-model contract.
 
 from __future__ import annotations
 
+from wavequant.domain.market_structure.trend_options import ordinary_completion_enabled, with_trend_options
+
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -17,9 +19,7 @@ from threading import Lock
 from typing import Any, Protocol, Sequence, cast
 
 from wavequant.domain.market_structure.lecture_drawing import lecture_drawing
-from wavequant.domain.market_structure.lecture_trend import reversal_trends
-from wavequant.domain.market_structure.secondary_trend import secondary_trends
-from wavequant.domain.market_structure.tertiary_trend import tertiary_trends
+from wavequant.domain.market_structure.trend_pipeline import calculate_trend_hierarchy
 from wavequant.domain.models.model import Bar
 
 
@@ -229,15 +229,16 @@ class MarketDataRepository:
             "evidence": self._evidence(window),
         }
 
+    @with_trend_options
     def theory(self, source: str | None, symbol: str, asof: str, *,
-               n_target_trend_confirmation_enabled: bool = False) -> dict[str, Any]:
+               n_target_trend_confirmation_enabled: bool = False, ordinary_trend_completion_enabled: bool | None = None) -> dict[str, Any]:
         """Run the same domain theory regardless of the selected provider."""
 
         if type(n_target_trend_confirmation_enabled) is not bool:
             raise ValueError('n_target_trend_confirmation_enabled must be a boolean')
         window = self.window(source, symbol, asof)
         digest = self._bars_digest(window.bars)
-        key = f"{window.requested_source}:{symbol}:{window.asof}:{digest}:{n_target_trend_confirmation_enabled}"
+        key = f"{window.requested_source}:{symbol}:{window.asof}:{digest}:{n_target_trend_confirmation_enabled}:{ordinary_completion_enabled()}"
         with self._lock:
             cached = self._theory.get(key)
             if cached is not None:
@@ -246,10 +247,8 @@ class MarketDataRepository:
         bars = list(window.bars)
         # These legacy market-structure builders have no typed boundary yet.
         drawing = lecture_drawing(bars)  # type: ignore[no-untyped-call]
-        first = reversal_trends(
-            drawing, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
-        second = secondary_trends(
-            first, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        hierarchy = calculate_trend_hierarchy(bars, drawing=drawing,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         result = {
             "asof": window.asof,
             "requested_asof": window.requested_asof,
@@ -265,12 +264,9 @@ class MarketDataRepository:
             "events": [],
             "shapes": [],
             "counts": {},
-            "lecture_drawing": drawing,
-            "reversal_trends": first,
-            "secondary_trends": second,
-            "tertiary_trends": tertiary_trends(
-                second, bars, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled),
+            **hierarchy,
             "n_target_trend_confirmation_enabled": n_target_trend_confirmation_enabled,
+            "ordinary_trend_completion_enabled": ordinary_completion_enabled(),
             "interrupted": False,
             "computed_from": "canonical_market_data_repository",
             "price_basis": "raw_unadjusted",

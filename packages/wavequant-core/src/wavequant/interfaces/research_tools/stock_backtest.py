@@ -1,116 +1,113 @@
 """Independent single-security diagnostic accounts, never live orders."""
+
+from wavequant.domain.market_structure.trend_options import with_strategy_trend_options
 from dataclasses import asdict
 from datetime import datetime
+from typing import Callable
 import json
 from pathlib import Path
 
 from wavequant.application.analytics.backtest import run_portfolio
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
+from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse
 from wavequant.application.analytics.execution_diagnostics import execution_diagnostics
 from wavequant.application.analytics.trade_evidence import enrich_ledger
 
 
 def _post_b_wave_exit_events(bars, audit, signal_row):
-    """Measure C-segment Ns and the parent N of a strong A continuation."""
-    b_index = signal_row['wave_b_low_index']
-    owner = signal_row['bar_index']
-    events = [dict(event='wave_segment_start', attack=owner, bar_index=owner,
-                   origin_index=b_index, owner_signal_index=owner)]
-    for row in audit:
-        if (row.get('event') != 'n_completed' or row.get('direction') != 'up'
-                or row.get('target_eligible') is False
-                or row['origin'] < b_index or row['bar_index'] <= b_index):
-            continue
-        attack = row['bar_index']
-        known = max(attack, row['known_at'])
-        origin_price = bars[row['origin']].low
-        defense = row.get('defense', origin_price)
-        reached = set()
-        retired = next((e['bar_index'] for e in audit
-                        if e['event'] == 'n_target_source_retired' and e['attack'] == attack
-                        and row.get('target_primary', True)), len(bars))
-        if row.get('n_id') is not None:
-            retired = min(retired, next((e['bar_index'] for e in audit
-                if e['event'] == 'n_invalidated' and e['n_id'] == row['n_id']), len(bars)))
-        for j in range(known, len(bars)):
-            if j >= retired:
-                events.append(dict(event='wave_projection_invalidated', attack=attack,
-                                   origin_index=row['origin'], bar_index=j, owner_signal_index=owner,
-                                   n_id=row.get('n_id')))
-                break
-            if j > attack and bars[j].low < defense:
-                events.append(dict(event='wave_projection_invalidated', attack=attack,
-                                   origin_index=row['origin'], bar_index=j,
-                                   owner_signal_index=owner, n_id=row.get('n_id')))
-                break
-            # A target first known on this bar can only use its close. Later
-            # bars may use their high, matching the causal N milestone rule.
-            observed = bars[j].close if j == known else bars[j].high
-            for stage in ('one_p', 'two_t'):
-                target = row[stage]
-                if target is not None and stage not in reached and observed >= target:
-                    events.append(dict(event='wave_n_target_reached', attack=attack,
-                                       origin_index=row['origin'], bar_index=j,
-                                       reached_stage=stage, reached_target=target,
-                                       owner_signal_index=owner, n_id=row.get('n_id')))
-                    reached.add(stage)
-    for row in audit:
-        if (row.get('event', '').startswith('wave_projection_')
-                and row.get('origin_index', -1) >= b_index
-                and row['attack'] > b_index):
-            events.append(dict(row, owner_signal_index=owner))
-        elif (signal_row.get('wave_entry_path') == 'two_t_strong_a_resistance_rebreak'
-              and row.get('event', '').startswith('wave_projection_')
-              and row['attack'] == signal_row['attack']):
-            # The strong A continuation trades the same parent N whose five-top
-            # and ten-full milestones are drawn on its entry chart.
-            events.append(dict(row, owner_signal_index=owner))
-    return events
+    """Measure C-segment Ns with the same lifetime reducer used by live accounts."""
+    from .signal_execution_stream import post_b_wave_exit_events
+    return post_b_wave_exit_events(bars, audit, signal_row)
 
 
-def single_stock_result(bars, strategy, execution, signal_result=None, *, minute_loader=None, progress=None):
+def signal_progress_callbacks(
+    callback: Callable[[int, str], None] | None,
+) -> tuple[Callable[[int], None] | None, Callable[[str], None] | None]:
+    if callback is None:
+        return None, None
+    current = 35
+    current_stage = '生成信号'
+
+    def advance(percent: int) -> None:
+        nonlocal current
+        current = max(current, 35 + percent * 25 // 100)
+        callback(current, current_stage)
+
+    def stage(name: str) -> None:
+        nonlocal current_stage
+        current_stage = name
+        callback(current, name)
+
+    return advance, stage
+
+
+def simulation_progress_callbacks(
+    callback: Callable[[int, str], None] | None,
+) -> tuple[Callable[[int], None] | None, Callable[[str], None] | None]:
+    """Report real simulation boundaries without moving its percentage backwards."""
+    if callback is None:
+        return None, None
+    current = 65
+
+    def advance(percent: int) -> None:
+        nonlocal current
+        current = max(current, 65 + percent * 25 // 100)
+        callback(current, '模拟成交')
+
+    def stage(name: str) -> None:
+        callback(current, name)
+
+    return advance, stage
+
+
+def signal_execution_facts(bars, signal_result):
+    from .signal_execution_stream import SignalExecutionFactsStream
+    return SignalExecutionFactsStream(bars).advance(len(bars) - 1, getattr(signal_result, 'audit', []))
+
+
+@with_strategy_trend_options("strategy")
+def single_stock_result(bars, strategy, execution, signal_result=None, *, minute_loader=None, progress=None,
+                        stage: Callable[[str], None] | None = None,
+                        history_reuse: BacktestHistoryReuse | None = None,
+                        account_result=None, entry_fallbacks_override=None):
     if not bars or len({b.symbol for b in bars})!=1:
         raise ValueError('exactly one nonempty security history required')
     effective_strategy=SystemStrategy(**strategy); effective_strategy.validate()
-    if signal_result is None: signal_result=generate_system_signals(bars,effective_strategy)
+    if account_result is None and effective_strategy.buy_point_definition == 'whole_flip_wave_v3':
+        # 预计算信号没有账户逐日资格边界；整波策略统一重新走同日协调器。
+        from .streaming_backtest import streaming_stock_result
+        def daily_progress(percent, message):
+            if stage is not None: stage(message)
+            if progress is not None: progress(percent)
+        return streaming_stock_result(bars,strategy,execution,minute_loader=minute_loader,
+                                      progress=daily_progress)[1]
+    if history_reuse is not None: history_reuse.require_input(bars, effective_strategy)
+    if signal_result is None:
+        signal_result=generate_system_signals(bars,effective_strategy,history_reuse=history_reuse)
     config=StrategyConfig(**execution); config.validate()
     entry_executions: dict = {}
     entry_fallbacks: list[dict] = []
-    if config.consolidation_entry_intraday:
+    if account_result is None and config.consolidation_entry_intraday and signal_result.counts.get('trading_interval_count') != 0:
         from wavequant.application.analytics.intraday_entry import resolve_consolidation_entries
+        if stage is not None: stage('准备分钟入场历史')
         signal_result, entry_executions, entry_fallbacks = resolve_consolidation_entries(
             bars, signal_result, effective_strategy, minute_loader,
-            daily_fallback=config.missing_minute_daily_fallback)
-    n_bars: dict[int, int] = {}
-    for row in getattr(signal_result, 'audit', []):
-        if row.get('event') == 'n_completed' and row.get('direction') == 'up':
-            attack = row['bar_index']
-            available = max(attack, row.get('known_at', attack))
-            n_bars[available] = max(attack, n_bars.get(available, -1))
-    audit_rows = getattr(signal_result, 'audit', [])
-    wave_events=[row for row in audit_rows if row.get('event', '').startswith('wave_projection_')
-                 or row.get('event') == 'wave_c_equal_target']
-    for row in audit_rows:
-        if row.get('event') == 'long_signal' and row.get('channel') == 'wave_push_gap' and isinstance(row.get('wave_b_low_index'), int):
-            wave_events.extend(_post_b_wave_exit_events(bars, audit_rows, row))
-        if row.get('event') == 'long_signal' and row.get('wave_a_class') == 'ordinary':
-            wave_events.append(dict(event='wave_ordinary_entry', attack=row['attack'],
-                bar_index=row['bar_index'], owner_signal_index=row['bar_index'], target=row['wave_equal_target'],
-                target_0618=row['wave_c_0618_target'],
-                one_p=row['wave_entry_one_p'], two_t=row['wave_entry_two_t'],
-                a_origin=row['wave_a_origin'], a_high=row['wave_a_high'],
-                a_high_index=row['wave_a_high_index'], b_low=row['wave_b_low'],
-                b_low_index=row['wave_b_low_index']))
-    result=run_portfolio({bars[0].symbol:bars},signal_result.signals,config,minute_loader=minute_loader,positive_n_bars={bars[0].symbol:n_bars},entry_executions=entry_executions,
-        wave_events={bars[0].symbol:wave_events},progress=progress,
+            daily_fallback=config.missing_minute_daily_fallback, stage=stage, history_reuse=history_reuse)
+    n_bars, wave_events = signal_execution_facts(bars, signal_result) if account_result is None else ({}, [])
+    result=account_result if account_result is not None else run_portfolio({bars[0].symbol:bars},signal_result.signals,config,minute_loader=minute_loader,positive_n_bars={bars[0].symbol:n_bars},entry_executions=entry_executions,
+        wave_events={bars[0].symbol:wave_events},progress=progress, stage=stage,
+        history_reuse={bars[0].symbol:history_reuse} if history_reuse is not None else None,
         n_target_trend_confirmation_enabled=effective_strategy.n_target_trend_confirmation_enabled)
+    if entry_fallbacks_override is not None:
+        entry_fallbacks = entry_fallbacks_override
     result.minute_fallbacks.extend(entry_fallbacks)
     for order in result.orders:
         if order['side'] == 'BUY' and order.get('execution_model') == 'same_day_close':
             fallback = next((f for f in entry_fallbacks if f['date'] == order['timestamp'][:10]), None)
             if fallback is not None:
                 order['minute_fallback'] = fallback
+    if stage is not None: stage('整理成交证据')
     screening=enrich_ledger(bars,result,signal_result,strategy)
     def serial(value):
         return json.loads(json.dumps(value,default=lambda obj:obj.isoformat() if isinstance(obj,datetime) else str(obj)))

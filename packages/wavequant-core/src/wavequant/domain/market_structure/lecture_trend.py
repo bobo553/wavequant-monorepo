@@ -1,11 +1,12 @@
 """基础折线适配及共享定义展示；生产趋势判断统一进入 point-first judge。"""
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from typing import NotRequired, TypedDict, cast
 
 from ..models.model import Bar
 from .polyline import LinePoint, PointKind, ReversalPoint
 from .price_action import Direction
-from .trend_levels import trend_reversals
+from .trend_levels import Moment, _formal_key_attack_point, _later_moment, trend_reversals
 from .trend_primitives import last_fall_high, last_rise_low, negative_reversal, positive_reversal
 from .trend_structure import (
     StructuralTrend, TrendPriceState, observe_structure, preceding_turn, retracement_evidence,
@@ -35,6 +36,19 @@ def _context_key(points, bull, *, symbol, dates, trend_level):
          last_fall_high(context,trend_level=trend_level))
     previous=preceding_turn(typed,anchor) if key is not None else None
     return points[typed.index(anchor)],points[typed.index(previous)] if previous is not None else None
+
+
+def _initial_context_key(points, bull, *, symbol, dates, trend_level):
+    """已成立方向的首端极值没有前驱时，从首端之后的完整背景取证。
+
+    路径首低可能属于更早多头，首高可能属于更早空头。它们没有左侧
+    关键位，不能永久占据后来反向背景的极值；只排除这个无前驱首端，
+    保留其后的全部已知点。有效关键位不走此回退，后续继续严格冻结。
+    """
+    anchor, key = _context_key(points, bull, symbol=symbol, dates=dates, trend_level=trend_level)
+    if key is None and len(points) >= 4 and anchor is points[0]:
+        anchor, key = _context_key(points[1:], bull, symbol=symbol, dates=dates, trend_level=trend_level)
+    return anchor, key
 
 
 class _WaveTurn(TypedDict):
@@ -188,7 +202,51 @@ def _connect_reversal_strokes(strokes,source_strokes):
     return merged
 
 
-def _annotate(points, symbol, dates, *, trend_level=1):
+def _strict_upgrade_context(
+    point: Mapping[str, object], own: Mapping[tuple[int, int], dict[str, object]],
+) -> tuple[dict[str, object], dict[str, object], bool] | None:
+    """稀疏本级结构可用真实严格突破初始化背景，不等待额外两高两低。
+
+    起点与关键位必须都存在于同一本级已知前缀；升级标签及下级较早坐标
+    不能代替本级身份，也不能据此改写已有有效冻结关键位。
+    """
+    proof = point.get('upgrade_evidence')
+    if (point.get('wave_identity_state') != 'owned' or not isinstance(proof, Mapping)
+            or proof.get('role') != 'endpoint'):
+        return None
+    _formal_key_attack_point(point)
+    refs = [proof.get('origin'), proof.get('broken_key')]
+    actual: list[dict[str, object]] = []
+    for ref in refs:
+        if not isinstance(ref, Mapping):
+            return None
+        index, ordinal = ref.get('index'), ref.get('ordinal', 0)
+        if type(index) is not int or type(ordinal) is not int:
+            return None
+        current = own.get((index, ordinal))
+        if (current is None or any(current.get(field) != ref.get(field) for field in ('kind', 'value', 'time'))
+                or _later_moment(cast(Moment, current['available_at']),
+                                 cast(Moment, point['available_at'])) != point['available_at']):
+            return None
+        actual.append(current)
+    origin, key = actual
+    if not _point_order(key) < _point_order(origin) < _point_order(point):
+        return None
+    rising = proof.get('direction') == 'up'
+    sign = 1 if rising else -1
+    if (origin['kind'] != ('L' if rising else 'H') or key['kind'] != point['kind']
+            or sign * (cast(float, point['value']) - cast(float, key['value'])) <= 0
+            or sign * (cast(float, key['value']) - cast(float, origin['value'])) <= 0):
+        return None
+    key_known = cast(Moment, key['available_at'])
+    attack_time = cast(str, point['time'])
+    earlier = (key_known < cast(int, point['index']) if isinstance(key_known, int) else
+               int(key_known) < int(attack_time) if key_known.isdecimal() and attack_time.isdecimal() else
+               key_known < attack_time)
+    return (origin, key, rising) if earlier else None
+
+
+def _annotate(points, symbol, dates, *, trend_level=1, _checkpoints=None, _own_points=None):
     """为本级已确认点附加公共定义及独立关键位事件的展示证据。
 
     TrendPriceState同步给出最近两组的局部方向与整个路径的严格方向；
@@ -200,87 +258,145 @@ def _annotate(points, symbol, dates, *, trend_level=1):
     previous_known=None
     high_count=low_count=0
     background=None; anchor=key=attack=None; suspicion=False
-    for j,p in enumerate(points):
-        if p['kind']=='H': high_count+=1; p['label']=f'H{high_count}'
-        else: low_count+=1; p['label']=f'L{low_count}'
-        p['trend_level']=trend_level
-        p['source_level']=trend_level-1
-        p['observations']=[]; p['levels']=[]
-        previous=points[j-1] if j else None
-        if previous:
-            name='末升低' if p['kind']=='H' else '末跌高'
-            p['preceding_turn']=_ref(previous)
-            p['levels'].append(dict(name=f'{p["label"]} 的{name}',price=previous['value']))
-        current=ReversalPoint(LinePoint(p['index'],p['ordinal'],PointKind(p['kind']),p['value']),
-                              dates[p['available_at']],'lecture_geometric_turn_not_strategy')
-        p['reversal']=('正反转' if positive_reversal(current,asof_index=current.confirmed_index,trend_level=trend_level)
-                       else '负反转' if negative_reversal(current,asof_index=current.confirmed_index,trend_level=trend_level)
-                       else None)
-        if previous_known:
-            if ((current.point.index,current.point.ordinal)<=
-                    (previous_known.point.index,previous_known.point.ordinal)
-                    or current.point.kind==previous_known.point.kind
-                    or current.confirmed_index<previous_known.confirmed_index):
-                raise ValueError('ordered alternating causally confirmed points required')
-            if ((current.point.kind==PointKind.HIGH and current.point.price<=previous_known.point.price)
-                    or (current.point.kind==PointKind.LOW and current.point.price>=previous_known.point.price)):
-                raise ValueError('nonzero alternating high/low legs required')
-        price_state.append(current.point.kind,current.point.price)
-        previous_known=current
-        trend=price_state.trend
-        window_trend=price_state.window_trend
-        p['trend']=trend.value
-        p['window_trend']=window_trend.value
+    start = len(_checkpoints) if _checkpoints is not None else 0
+    if start:
+        (saved_price, previous_known, high_count, low_count, background,
+         anchor, key, saved_attack, suspicion) = _checkpoints[-1]
+        price_state = deepcopy(saved_price)
+        attack = saved_attack.copy() if saved_attack is not None else None
+    own_points: dict[tuple[int, int], dict[str, object]] = (_own_points if _own_points is not None else {
+        _point_order(point): point for point in points[:start]})
+    for j in range(start, len(points)):
+        p = points[j]
+        try:
+            if p['kind']=='H': high_count+=1; p['label']=f'H{high_count}'
+            else: low_count+=1; p['label']=f'L{low_count}'
+            p['trend_level']=trend_level
+            p['source_level']=trend_level-1
+            p['observations']=[]; p['levels']=[]; p['lifecycle_context']=None
+            previous=points[j-1] if j else None
+            if previous:
+                name='末升低' if p['kind']=='H' else '末跌高'
+                p['preceding_turn']=_ref(previous)
+                p['levels'].append(dict(name=f'{p["label"]} 的{name}',price=previous['value']))
+            current=ReversalPoint(LinePoint(p['index'],p['ordinal'],PointKind(p['kind']),p['value']),
+                                  dates[p['available_at']],'lecture_geometric_turn_not_strategy')
+            p['reversal']=('正反转' if positive_reversal(current,asof_index=current.confirmed_index,trend_level=trend_level)
+                           else '负反转' if negative_reversal(current,asof_index=current.confirmed_index,trend_level=trend_level)
+                           else None)
+            if previous_known:
+                if ((current.point.index,current.point.ordinal)<=
+                        (previous_known.point.index,previous_known.point.ordinal)
+                        or current.point.kind==previous_known.point.kind
+                        or current.confirmed_index<previous_known.confirmed_index):
+                    raise ValueError('ordered alternating causally confirmed points required')
+                if ((current.point.kind==PointKind.HIGH and current.point.price<=previous_known.point.price)
+                        or (current.point.kind==PointKind.LOW and current.point.price>=previous_known.point.price)):
+                    raise ValueError('nonzero alternating high/low legs required')
+            price_state.append(current.point.kind,current.point.price)
+            previous_known=current
+            trend=price_state.trend
+            window_trend=price_state.window_trend
+            p['trend']=trend.value
+            p['window_trend']=window_trend.value
 
-        def observation(title, **extra):
-            p['observations'].append(dict(title=title,available_at=p['available_at'],
-                                          basis='confirmed_polyline_extreme',**extra))
-            if extra.get('key'):
-                ref=extra['key']
-                p['levels'].append(dict(name='转换依据：'+('末跌高' if ref['kind']=='H' else '末升低'),price=ref['value']))
+            def observation(title, **extra):
+                p['observations'].append(dict(title=title,available_at=p['available_at'],
+                                              basis='confirmed_polyline_extreme',**extra))
+                if extra.get('key'):
+                    ref=extra['key']
+                    p['levels'].append(dict(name='转换依据：'+('末跌高' if ref['kind']=='H' else '末升低'),price=ref['value']))
 
-        if background is None:
-            if trend in (StructuralTrend.BULL,StructuralTrend.BEAR):
-                background=trend
-                anchor,key=_context_key(points[:j+1],background==StructuralTrend.BULL,symbol=symbol,dates=dates,trend_level=trend_level)
-            continue
-        if key is None:
-            anchor,key=_context_key(points[:j+1],background==StructuralTrend.BULL,symbol=symbol,dates=dates,trend_level=trend_level)
-            continue
-        assert anchor is not None
-        up=background==StructuralTrend.BEAR
-        extreme_kind='H' if up else 'L'
-        sign=1 if up else -1
-        if attack is None:
-            # Refresh a continuing trend's extreme and its immediate predecessor.
-            if p['kind']==anchor['kind'] and previous is not None and sign*(p['value']-anchor['value'])<0:
-                anchor,key=p,previous; suspicion=False
-            elif p['kind']==anchor['kind'] and previous and key is not None and sign*(p['value']-anchor['value'])>=0 and sign*(previous['value']-key['value'])<0:
-                if not suspicion:
-                    observation('底部疑虑' if up else '头部疑虑',key=_ref(key)); suspicion=True
-            if p['kind']==extreme_kind and key is not None and sign*(p['value']-key['value'])>0 and previous:
-                attack=dict(origin=previous,extreme=p,anchor=anchor,key=key,checked=False)
-                confirmed_extreme={'confirmed_low':_ref(anchor)} if up else {'confirmed_high':_ref(anchor)}
-                observation('翻空为多' if up else '翻多为空',key=_ref(key),
-                            formation='底部成形' if up else '头部成形',**confirmed_extreme)
-        elif p['kind']!=extreme_kind and not attack['checked']:
-            ratio=retracement_evidence(attack['origin']['value'],attack['extreme']['value'],p['value'],
-                                       direction=Direction.UP if up else Direction.DOWN)
-            attack['checked']=True
-            if ratio.partial and ratio.below_67_percent:
-                observation('空多交替' if up else '多空交替',ratio=ratio.ratio,
-                            weak_countermove=ratio.below_33_percent,abc_confirmed=False,
-                            **(dict(flip_high=_ref(attack['extreme']),confirmed_bear_low=_ref(attack['anchor']),
-                                    broken_key=_ref(attack['key']),origin=_ref(attack['origin'])) if up else {}))
-                background=StructuralTrend.BULL if up else StructuralTrend.BEAR
-                anchor,key=attack['extreme'],attack['origin']; attack=None; suspicion=False
-            else:
-                observation('回档未通过交替条件' if up else '反弹未通过交替条件',ratio=ratio.ratio)
-        elif p['kind']==extreme_kind and sign*(p['value']-attack['extreme']['value'])>0:
-            attack.update(origin=previous,extreme=p,checked=False)
-        if attack and p['kind']==attack['anchor']['kind'] and sign*(p['value']-attack['anchor']['value'])<0:
-            observation('翻多观察失效' if up else '翻空观察失效')
-            anchor,key=p,previous; attack=None; suspicion=False
+            strict = _strict_upgrade_context(p, own_points)
+            own_points[_point_order(p)] = p
+            if strict is not None:
+                strict_origin, strict_key, strict_up = strict
+                # 相反严格攻击跌破/突破上一翻向的真实起点时，新背景来自本级
+                # 极值与旧关键位；同向延伸或局部较弱 key 不重置现有冻结上下文。
+                reverses_pending = (attack is not None
+                    and p['kind'] != attack['extreme']['kind']
+                    and _point_order(strict_key) == _point_order(attack['origin']))
+                if background is None or key is None or reverses_pending:
+                    background = StructuralTrend.BEAR if strict_up else StructuralTrend.BULL
+                    anchor, key, attack, suspicion = strict_origin, strict_key, None, False
+            if background is None:
+                if trend in (StructuralTrend.BULL,StructuralTrend.BEAR):
+                    background=trend
+                    anchor,key=_initial_context_key(points[:j+1],background==StructuralTrend.BULL,symbol=symbol,dates=dates,trend_level=trend_level)
+                continue
+            if key is None:
+                # 路径首点可能恰是整窗最高/最低点，却没有左侧关键位。此时背景
+                # 尚未获得完整身份；后续相反方向成立时必须允许重新初始化，
+                # 否则会永远查询缺失的前驱，吞掉多年后的真实末跌高突破。
+                selected = trend if trend in (StructuralTrend.BULL, StructuralTrend.BEAR) else background
+                candidate_anchor,candidate_key=_initial_context_key(points[:j+1],selected==StructuralTrend.BULL,
+                    symbol=symbol,dates=dates,trend_level=trend_level)
+                if candidate_key is not None:
+                    background,anchor,key=selected,candidate_anchor,candidate_key
+                continue
+            assert anchor is not None
+            up=background==StructuralTrend.BEAR
+            # 资格入口复用本级冻结关键位；局部升级证书不能另选末跌高。
+            # 逐点重新写入，避免将下级或旧路径上下文带入当前级别。
+            p['lifecycle_context']=dict(direction='up' if up else 'down',
+                                        key=_ref(key),origin=_ref(anchor),available_at=p['available_at'])
+            extreme_kind='H' if up else 'L'
+            sign=1 if up else -1
+            if attack is None:
+                # Refresh a continuing trend's extreme and its immediate predecessor.
+                if p['kind']==anchor['kind'] and previous is not None and sign*(p['value']-anchor['value'])<0:
+                    anchor,key=p,previous; suspicion=False
+                elif p['kind']==anchor['kind'] and previous and key is not None and sign*(p['value']-anchor['value'])>=0 and sign*(previous['value']-key['value'])<0:
+                    if not suspicion:
+                        observation('底部疑虑' if up else '头部疑虑',key=_ref(key)); suspicion=True
+                if p['kind']==extreme_kind and key is not None and sign*(p['value']-key['value'])>0 and previous:
+                    # 翻多起点是冻结末跌高之后的最低点，局部反弹低点不能另换测幅基准。
+                    attack=dict(origin=anchor if up else previous,extreme=p,anchor=anchor,key=key,checked=False)
+                    confirmed_extreme={'confirmed_low':_ref(anchor)} if up else {'confirmed_high':_ref(anchor)}
+                    observation('翻空为多' if up else '翻多为空',key=_ref(key),
+                                formation='底部成形' if up else '头部成形',**confirmed_extreme)
+            elif p['kind']!=extreme_kind and not attack['checked']:
+                ratio=retracement_evidence(attack['origin']['value'],attack['extreme']['value'],p['value'],
+                                           direction=Direction.UP if up else Direction.DOWN)
+                attack['checked']=True
+                if ratio.partial and ratio.below_67_percent:
+                    observation('空多交替' if up else '多空交替',ratio=ratio.ratio,
+                                weak_countermove=ratio.below_33_percent,abc_confirmed=False,
+                                **(dict(flip_high=_ref(attack['extreme']),confirmed_bear_low=_ref(attack['anchor']),
+                                        broken_key=_ref(attack['key']),origin=_ref(attack['origin'])) if up else {}))
+                    background=StructuralTrend.BULL if up else StructuralTrend.BEAR
+                    anchor,key=attack['extreme'],attack['origin']; attack=None; suspicion=False
+                else:
+                    observation('回档未通过交替条件' if up else '反弹未通过交替条件',ratio=ratio.ratio)
+            elif p['kind']==extreme_kind and sign*(p['value']-attack['extreme']['value'])>0:
+                attack.update(origin=attack['origin'] if up else previous,extreme=p,checked=False)
+            if attack and p['kind']==attack['anchor']['kind'] and sign*(p['value']-attack['anchor']['value'])<0:
+                observation('翻多观察失效' if up else '翻空观察失效')
+                # 未完成交替的旧翻向被反向突破时，失败本身不能吞掉新的翻向。
+                # 新波从旧攻击整段极值起算，突破的是旧背景冻结极值；局部反弹
+                # 的升级 key 或最近前驱都不能替代它们。必须在攻击日前已知旧 key。
+                reverse_origin,reverse_key=attack['extreme'],attack['anchor']
+                if (_point_order(reverse_key)<_point_order(reverse_origin)<_point_order(p)
+                        and dates[reverse_key['available_at']]<p['index']):
+                    reverse_up=not up
+                    background=StructuralTrend.BEAR if reverse_up else StructuralTrend.BULL
+                    anchor,key=reverse_origin,reverse_key
+                    attack=dict(origin=anchor,extreme=p,anchor=anchor,key=key,checked=False)
+                    suspicion=False
+                    p['lifecycle_context']=dict(direction='up' if reverse_up else 'down',
+                        key=_ref(key),origin=_ref(anchor),available_at=p['available_at'])
+                    confirmed_extreme=({'confirmed_low':_ref(anchor)} if reverse_up else
+                                       {'confirmed_high':_ref(anchor)})
+                    observation('翻空为多' if reverse_up else '翻多为空',key=_ref(key),
+                        formation='底部成形' if reverse_up else '头部成形',**confirmed_extreme)
+                else:
+                    anchor,key=p,previous; attack=None; suspicion=False
+        finally:
+            if _checkpoints is not None:
+                # 价格摘要固定大小；已标注前缀只读，攻击状态修改前独立复制。
+                _checkpoints.append((deepcopy(price_state), previous_known, high_count, low_count,
+                    background, anchor, key, attack.copy() if attack is not None else None, suspicion))
+
 
 
 def reversal_trends(drawing: Mapping[str, object], bars: Sequence[Bar], *,
