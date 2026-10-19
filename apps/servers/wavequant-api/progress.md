@@ -442,3 +442,5 @@ MONOREPO-282（2026-10-07，Core V99消费方，合并待确认）：共用Core�
 用户要求解决阻碍后合并、不推送。修复 N 目标阶段未标记开始/完成、折线六态惰性读取重复打开顺序读者；真实趋势级联首次请求完成三级收敛，后续按级读取同一份历史，避免先一级再二三级与整体计算不同。仅折线入口仍不生成趋势。
 更新旧测试替身的新增关键字参数、Worker 双布尔开关精确组合、资格窗口夹具及新版收敛基准；完整趋势、事件与检查点按每个独立冷前缀逐日比较，变化版本发布保持每级每天至多一次，不删除差异断言。
 验证命令：API 现有 .venv/Scripts/python.exe -m pytest -q --tb=short，PYTHONPATH 指向本 worktree 的 Core/API src；目标为原记录七个文件，加 test_market_calculations.py::test_public_scope_supports_polyline_six_states_without_building_first_level。结果 78 passed, 12 subtests passed；git diff --check 通过。未运行全量测试、浏览器或性能探针，未声明性能提升幅度。前述暂停记录为历史记录，本次失败已解决；MONOREPO-330 更广范围仍保留 in-progress。
+
+2026-10-20 最终同步本地 main c1c675a 后，按上述同一命令重验：78 passed、12 subtests passed（13.72s），git diff --check 通过。双方 feature/progress/handoff 记录均保留，未推送；准备本地 --no-ff 合并。
