@@ -104,6 +104,31 @@
             ],
             "verification": [
                 {
+                    "command": "pnpm --filter @wavequant/core python -m pytest tests/test_trend_initial_wave_boundary.py tests/test_trend_level_upgrades.py tests/test_trend_missing_initial_key.py -q --tb=short",
+                    "status": "failed",
+                    "summary": "首轮 182 passed、7 failed，194.66 秒；新增实股用例截取范围问题已修复并单独通过，剩余 6 项为此前记录的 1 月 14/16 日关键位知识时钟差异，断言未改。不是全部通过。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core python -m pytest tests/test_trend_initial_wave_boundary.py -q --tb=short",
+                    "status": "passed",
+                    "summary": "最终 40 passed，0.96 秒；覆盖三级及镜像、严格相等、待确认边界延后补齐、追加/复制、strict-only 与完整冻结国芳 H2018-02-01→L2021-02-08，禁止2019-11-18→2021-02-08。与首轮重复，不累加。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core typecheck; pnpm --filter @wavequant/core python -m mypy --follow-imports=silent src/wavequant/domain/market_structure/trend_level_upgrades.py; pnpm --filter @wavequant/core build; git diff --check",
+                    "status": "passed",
+                    "summary": "官方4文件类型检查通过；证明字典重名修复后变更模块类型检查通过；最终 wheel/sdist 成功；差异空白检查通过。未执行 Python 格式/lint、浏览器/E2E、Harness 或完整套件。"
+                },
+                {
+                    "command": "pnpm --filter @wavequant/core python E:/WorkSpace/work/wavequant-monorepo/.codex-runtime/guofang_apr03_lifecycle.py; analyze_guofang_apr03.py",
+                    "status": "passed",
+                    "summary": "当前冻结1759棒因果回放：2025-04-03二级资格false；旧窗口2024-02-27→2024-03-28已因直接下级转空结束。当天仍旧周期候选，量3.1319倍但门槛11.0243465897，收盘7.1583804899，未生成新交替开窗。实体跳空也不满足。仅分析，未改变资格策略。"
+                },
+                {
+                    "command": "pending: pytest tests/test_trend_initial_wave_boundary.py tests/test_trend_level_upgrades.py; affected causal hierarchy regressions",
+                    "status": "not-run",
+                    "summary": "2026-10-19 · MONOREPO-330 国芳三级首段边界续修（待提交验证）\n\n用户明确三级应为 2018-02-01 → 2021-02-08，不应从 2019-11-18 起画。静态根因：首次局部四点直接取得 owned 方向，可丢失未被突破的更早边界；首次四点含边界左侧旧点时虽拒绝发布，却已设置方向，后续不再补建。共用 _TrendUpgradeState 新增独立 pending_origin/pending_extreme，严格越界才切换初始上下文，四点方向一致且拓扑完整后才发布 owned 起点。待确认状态不进入闭合 key；已成立波段的普通反转关键位、校验器和交易规则保持原逻辑。缓存 v157 隔离旧结果，没有重引入已撤回的全局普通反转冻结 key 修改。\n\n新增多空镜像/三级共用、相等不突破、起点证据延后补齐、增量与批量、strict-only 及国芳完整冻结行情端点回归源码；原初始边界合成用例的首低点从 3.28 改为 4.20，使原断言所依赖的反向波具备真实跌破边界，未改断言。以上均未运行，不宣称实股端点已重算验收。此前 WIP 的 14 项测试失败及格式问题保留，未借本轮修复。按用户节奏只修改代码与记录，待实际提交时验证；未提交、推送或合并，MONOREPO-330 保持 in-progress。"
+                },
+                {
                     "command": "pnpm --filter @wavequant/core exec node scripts/run-python.mjs -m pytest tests/test_source_bear_key_break.py tests/test_trading_intervals.py tests/test_trend_level_upgrades.py tests/test_trend_unanchored_boundary.py tests/test_breakout_bearish_child_exit.py tests/test_breakout_gap_clear.py tests/test_breakout_shadow_exit.py tests/test_gap_entry_gate.py tests/test_volume_shadow_midpoint_clear.py tests/test_bearish_child_pattern_exit.py tests/test_two_t_body_volume_clear.py tests/test_daily_risk_histories.py -q --tb=short",
                     "status": "failed",
                     "summary": "427 passed、14 failed，312.55 秒。失败：无区间策略扫描次数 1 项（20 次而非 1 次）；严格关键位可知日期 6 项（2026-01-16 而非 2026-01-14）；新华传媒完整因果链 1 项（预期 2024-02-08 counter 的确认事件缺失，尚未到 4 月 16 日资格结束断言）；母子线及跳空全清账户 3 项（订单缺 execution_timestamp）；two_t_body_volume_clear 3 项（T+1 与退出原因差异）。未改断言，未作 HEAD 基线对照，不宣称均为既有失败。"

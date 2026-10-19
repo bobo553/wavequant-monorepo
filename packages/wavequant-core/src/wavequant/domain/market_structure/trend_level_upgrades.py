@@ -217,6 +217,9 @@ class _TrendUpgradeState:
         self.owned_direction: WaveDirection | None = None
         self.whole_origin: _SourceTurn | None = None
         self.whole_extreme: _SourceTurn | None = None
+        # 首段价格上下文尚非 owned 波；不能进入闭合 key 或向上递归。
+        self.pending_origin: _SourceTurn | None = None
+        self.pending_extreme: _SourceTurn | None = None
         # 每个 level/path 只有这两个当前关键位标记，值为完整来源序列的位置。
         # 历史 key 树继续保留审计及修订恢复资料；普通最新 H/L 不更新标记。
         self.last_fall_high_position: int | None = None
@@ -350,6 +353,7 @@ class _TrendUpgradeState:
         owned_direction, whole_origin, whole_extreme = self.owned_direction, self.whole_origin, self.whole_extreme
         recent, source_positions, preceding_sources = self.recent, self.source_positions, self.preceding_sources
         body_rejection = self.body_rejection
+        pending_origin, pending_extreme = self.pending_origin, self.pending_extreme
 
         def publish_owned(raw: dict[str, object], actual: _SourceTurn, known: Moment, *, closed: bool) -> None:
             event = _SourceTurn(raw, actual.position, actual.index, actual.ordinal, actual.kind,
@@ -395,6 +399,20 @@ class _TrendUpgradeState:
             origins_by_kind[attack.kind].update(attack_position, attack)
             recent[attack.kind].append(attack)
             recent[attack.kind] = recent[attack.kind][-2:]
+            if not self.strict_only and owned_direction is None and not merged:
+                if pending_origin is None or pending_extreme is None:
+                    previous = preceding_sources[attack.reversal]
+                    if previous is not None:
+                        pending_origin, pending_extreme = previous, attack
+                else:
+                    price_sign = 1 if attack.kind == 'H' else -1
+                    if attack.kind == pending_extreme.kind:
+                        if price_sign * (attack.value - pending_extreme.value) > 0:
+                            pending_extreme = attack
+                    elif price_sign * (attack.value - pending_origin.value) > 0:
+                        # 只有严格越过首段边界才换方向；波内局部四点不能
+                        # 把未突破旧高/低的反弹起点抢先发布为本级起点。
+                        pending_origin, pending_extreme = pending_extreme, attack
             # 已结束的下级翻空之后，最高价创新高但收盘未超过原高点当日收盘，不能
             # 覆盖该高点。随后再破翻空低点才确认组合下降波，保留真实四点。
             if (not self.strict_only and source_level > 0 and owned_direction == 'up'
@@ -445,33 +463,35 @@ class _TrendUpgradeState:
                 'up' if classification == StructuralTrend.BULL else
                 'down' if classification == StructuralTrend.BEAR else None)
             if owned_direction is None and current is not None:
-                owned_direction = current
-                whole_extreme = recent['H' if current == 'up' else 'L'][-1]
-                # 首次方向已有完整四点证明，但没有更早的本级波可提供闭合key。
-                # 从已消费直接来源中建立左边界，后续仍由同一整波状态延伸。
-                origin_kind = 'L' if current == 'up' else 'H'
-                origin = origins_by_kind[origin_kind].query(0, positions[_order(whole_extreme)])
+                target = 'H' if current == 'up' else 'L'
+                if not merged:
+                    origin, extreme = pending_origin, pending_extreme
+                else:
+                    extreme = recent[target][-1]
+                    origin = origins_by_kind['L' if current == 'up' else 'H'].query(0, positions[_order(extreme)])
                 proof = [*recent['H'], *recent['L']]
-                if origin is not None:
+                if origin is not None and extreme is not None and extreme.kind == target:
                     left = source_positions[_order(origin)]
-                    right = source_positions[_order(whole_extreme)]
-                    # 不把一条下级线直接升格，也不借左边界之前的四点拼接本波。
+                    right = source_positions[_order(extreme)]
+                    # 证据仍含起点左侧旧拐点时继续等待；后续每次补齐证据
+                    # 都可建立同一个边界，不因首次四点不合格而永久丢失。
                     if (all(_order(point) >= _order(origin) for point in proof)
                             and (source_level == 0 or right - left > 1)):
                         raw = _ordinary_point(origin, proof, attack, trend_level=trend_level,
                             direction='down' if current == 'up' else 'up', current=current,
                             prefix_known=prefix_known, key=None, owned=True)
-                        identity: dict[str, object] = dict(available_at=prefix_known,
-                            origin=_reference(origin), endpoint=_reference(whole_extreme))
+                        initial_identity: dict[str, object] = dict(available_at=prefix_known,
+                            origin=_reference(origin), endpoint=_reference(extreme))
                         if source_level == 0:
-                            identity['basis'] = 'polyline_four_point_definition'
+                            initial_identity['basis'] = 'polyline_four_point_definition'
                         else:
-                            identity['interior'] = _reference(turns[left + 1])
-                        raw['lower_wave_identity_evidence'] = identity
+                            initial_identity['interior'] = _reference(turns[left + 1])
+                        raw['lower_wave_identity_evidence'] = initial_identity
                         raw['initial_boundary'] = True
                         _stamp_wave_completion(raw, closed=True)
                         publish_owned(raw, origin, prefix_known, closed=True)
-                        whole_origin = origin
+                        owned_direction, whole_origin, whole_extreme = current, origin, extreme
+                        pending_origin = pending_extreme = None
             if owned_direction is not None:
                 target = 'H' if owned_direction == 'up' else 'L'
                 sign = 1 if owned_direction == 'up' else -1
@@ -587,6 +607,7 @@ class _TrendUpgradeState:
         self.regular_cursor, self.prefix_known = regular_cursor, prefix_known
         self.owned_direction, self.whole_origin, self.whole_extreme = owned_direction, whole_origin, whole_extreme
         self.body_rejection = body_rejection
+        self.pending_origin, self.pending_extreme = pending_origin, pending_extreme
         self.processed_count = len(turns)
         return self.snapshot() if _snapshot else []
 
@@ -608,6 +629,9 @@ def promote_trend_key_breaks(
     只有实际升级到更高级别的波段，才允许其下级在升级可知后凭独立
     HH/HL 或 LL/LH 确认局部反向结构。未升级、异路径或越界后的旧证明
     不豁免旧关键位；显式普通结束选项继续保持独立用户配置。
+    首段先保存独立的待确认价格边界，局部四点与该方向一致、且完整位于
+    边界内部后才发布 owned 起点；证据不足时保留边界等待后续补齐。
+    待确认边界只有严格价格越界才切换，不能作为闭合 key 向上消费。
     严格升级的突破日必须晚于关键位可知日。
     普通相反方向若整波退化为一条直接下级趋势波，保持 pending，不改变既有
     owned 方向、起点或极值。以后反向波包含真实内部下级拐点成为组合波，

@@ -24,8 +24,8 @@ def source_points(values: Sequence[float], *, level: int, mirror: bool = False) 
 @pytest.mark.parametrize('level', [1, 2, 3])
 @pytest.mark.parametrize('mirror', [False, True])
 def test_initial_composite_wave_retains_boundary_key_and_full_reverse_origin(level, mirror):
-    # 新华传媒的缩减价格结构；合成日期不证明实际股票确认日。
-    source = source_points([3.28, 8.23, 4.11, 7.40, 3.83, 6.49, 3.35, 9.20],
+    # 合成初始低点 4.20 被 4.11 严格跌破；该结构不证明实际股票确认日。
+    source = source_points([4.20, 8.23, 4.11, 7.40, 3.83, 6.49, 3.35, 9.20],
                            level=level - 1, mirror=mirror)
     from wavequant.domain.market_structure.trend_levels import _completed_source_point
 
@@ -45,7 +45,7 @@ def test_initial_composite_wave_retains_boundary_key_and_full_reverse_origin(lev
 
 @pytest.mark.parametrize('mirror', [False, True])
 def test_initial_boundary_does_not_exist_before_both_direction_pairs(mirror):
-    source = source_points([3.28, 8.23, 4.11, 7.40, 3.83], level=2, mirror=mirror)
+    source = source_points([4.20, 8.23, 4.11, 7.40, 3.83], level=2, mirror=mirror)
     for size in range(1, 5):
         assert promote_trend_key_breaks(source[:size], [], trend_level=3) == []
 
