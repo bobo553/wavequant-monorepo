@@ -7,7 +7,10 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Callable, TypedDict
 
 from wavequant.domain.market_state.volume_candle import volume_bearish_entry_rejection
-from wavequant.domain.market_state.candle_strength import QUALIFIED_RISING_CLOSE, volume_high_open_rising
+from wavequant.domain.market_state.candle_strength import (
+    QUALIFIED_RISING_CLOSE, QUALIFIED_VOLUME_BREAKOUT_CLOSE,
+    double_volume_bullish_breakout, volume_high_open_rising,
+)
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.domain.strategies.integrated_strategy import (
     SystemResult,
@@ -182,7 +185,7 @@ def _qualified_rising_close_entries(
     bars: list[Bar], generated: SystemResult, strategy: SystemStrategy, *,
     only_index: int | None, intervals: Sequence[TradingInterval] | None,
 ) -> tuple[SystemResult, set[int]]:
-    """已有资格内的非跳空强阳在当日收盘入场；严格跳空仍沿原分钟通道。"""
+    """已有资格内高开强阳或倍量突破在收盘入场；严格跳空仍沿原分钟通道。"""
     from wavequant.domain.strategies.trading_intervals import confirmed_trading_intervals
 
     days: set[int] = set()
@@ -192,7 +195,10 @@ def _qualified_rising_close_entries(
         intervals = confirmed_trading_intervals(generated.audit, len(bars), strategy.buy_interval_level)
     signals, audit = list(generated.signals), list(generated.audit)
     for i in ([only_index] if only_index is not None else range(1, len(bars))):
-        if i <= 0 or bars[i].open > bars[i - 1].high or not volume_high_open_rising(bars[i], bars[i - 1]):
+        if i <= 0 or bars[i].open > bars[i - 1].high:
+            continue
+        breakout = double_volume_bullish_breakout(bars[i], bars[i - 1])
+        if not breakout and not volume_high_open_rising(bars[i], bars[i - 1]):
             continue
         window = max((w for w in intervals if w.trend_level == strategy.buy_interval_level
             and w.start_index <= i and (w.end_index is None or i < w.end_index)),
@@ -207,8 +213,10 @@ def _qualified_rising_close_entries(
             continue
         bar = bars[i]
         decision = bar.timestamp.replace(hour=15, minute=0)
+        reason = QUALIFIED_VOLUME_BREAKOUT_CLOSE if breakout else QUALIFIED_RISING_CLOSE
         signal = Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close, window.start_low_price,
-            QUALIFIED_RISING_CLOSE, decision, 0, None, '放量高开高走',
+            reason, decision, 0, bar.volume / bars[i - 1].volume if breakout else None,
+            '倍量中大阳高位收盘突破' if breakout else '放量高开高走',
             confirmation['breakout_level'], strategy.minimum_reward_risk)
         days.add(i)
         signals = [row for row in signals if not (row.bar_index == i and row.side == 'LONG')] + [signal]
@@ -216,14 +224,17 @@ def _qualified_rising_close_entries(
             and row['event'] in ('long_signal', 'long_transition_evidence'))]
         for event in ('long_signal', 'long_transition_evidence'):
             audit.append(dict(event=event, bar_index=i, timestamp=bar.timestamp.isoformat(), symbol=bar.symbol,
-                buy_point_type=QUALIFIED_RISING_CLOSE, stop=signal.invalidation_price, target=signal.target_price,
+                buy_point_type=reason, stop=signal.invalidation_price, target=signal.target_price,
                 execution_model='same_day_close', decision_source='daily_close',
                 decision_timestamp=decision.isoformat(), qualification_index=window.start_index,
                 trend_level=strategy.buy_interval_level, source_path=window.source_path,
                 observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
                 observed_close=bar.close, observed_volume=bar.volume,
                 previous_close=bars[i - 1].close, previous_high=bars[i - 1].high,
-                previous_volume=bars[i - 1].volume))
+                previous_volume=bars[i - 1].volume,
+                volume_multiple=bar.volume / bars[i - 1].volume,
+                breakout_reference=bars[i - 1].high if breakout else None,
+                breakout_reference_index=i - 1 if breakout else None))
     return SystemResult(sorted(signals, key=lambda row: (row.timestamp, row.side)), audit,
         dict(generated.counts, long_signals=sum(row.side == 'LONG' for row in signals))), days
 
@@ -335,7 +346,7 @@ def resolve_consolidation_entries(
         if session_cache is not None else {"source_bars": tuple(bars)})
     if stage is not None: stage('核验分钟入场')
     for i, bar in enumerate(bars):
-        if i in gap_days:
+        if i in gap_days or i in rising_days:
             continue
         if only_index is not None and i != only_index:
             continue

@@ -61,3 +61,17 @@ def volume_high_open_rising(bar: Bar, previous: Bar) -> bool:
             and previous.volume > 0 and bar.volume > previous.volume
             and bar.open > previous.close and bar.low >= bar.open
             and strong_bullish_candle(bar))
+
+
+QUALIFIED_VOLUME_BREAKOUT_CLOSE = 'qualified_double_volume_breakout_close'
+QUALIFIED_CLOSE_ENTRY_REASONS = frozenset((QUALIFIED_RISING_CLOSE, QUALIFIED_VOLUME_BREAKOUT_CLOSE))
+
+
+def double_volume_bullish_breakout(bar: Bar, previous: Bar) -> bool:
+    """倍量中大阳收在振幅顶部20%且收盘突破前高；不要求高开或无下影。"""
+    if (bar.symbol != previous.symbol or previous.timestamp >= bar.timestamp
+            or previous.volume <= 0 or not medium_bullish_body(bar)):
+        return False
+    high, low, close = (Fraction(str(value)) for value in (bar.high, bar.low, bar.close))
+    return (high > low and Fraction(str(bar.volume)) >= 2 * Fraction(str(previous.volume))
+            and high - close <= (high - low) / 5 and close > Fraction(str(previous.high)))
