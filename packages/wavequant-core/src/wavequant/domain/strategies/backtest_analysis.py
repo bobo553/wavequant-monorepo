@@ -95,6 +95,8 @@ def prepare_backtest_analysis(
 
     def calculate_n_targets() -> None:
         current = require_analysis()
+        if steps is not None:
+            steps.begin(2)
         report(2, '保存随折线更新的 N 目标')
         # Episode endings are metadata, never permission to inspect a future bar.
         end = len(market) - 1
@@ -105,6 +107,8 @@ def prepare_backtest_analysis(
         targets.finish()
         current.n_observations = targets.observations
         current.scoped_n_observations = targets.scoped_observations
+        if steps is not None:
+            steps.complete(2)
 
     def prepare_strategy_inputs() -> None:
         current = require_analysis()

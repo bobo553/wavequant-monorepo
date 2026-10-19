@@ -131,6 +131,7 @@ def make_server(
     allowed_origins=(),
     web_url=None,
     limit_up_ladder=None,
+    record_backtest_diagnostics: bool = False,
 ):
     if host not in ("127.0.0.1", "localhost"):
         raise ValueError("dashboard binds to loopback only")
@@ -176,6 +177,7 @@ def make_server(
         on_error=log_backtest_job_error,
         history_path=Path(history_root) / ".backtest-history.sqlite" if history_root is not None else None,
         engine_version=engine_version,
+        record_backtest_diagnostics=record_backtest_diagnostics,
     )
 
     def start_backtest(path, q):
@@ -732,6 +734,7 @@ def serve_dashboard(
     web_url: str | None = None,
     akshare_enabled: bool = True,
     akshare_timeout: float = 30.0,
+    record_backtest_diagnostics: bool = False,
 ) -> None:
     repository = ChartRepository(
         root,
@@ -750,6 +753,7 @@ def serve_dashboard(
         serve_static=serve_static,
         allowed_origins=allowed_origins,
         web_url=web_url,
+        record_backtest_diagnostics=record_backtest_diagnostics,
     )
     print(f"WaveQuant read-only dashboard: http://127.0.0.1:{server.server_port}", flush=True)
     try:

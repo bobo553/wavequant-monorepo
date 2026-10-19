@@ -161,3 +161,15 @@ $env:WAVEQUANT_DATABASE_URL = "postgresql+psycopg://wavequant:<password>@127.0.0
 响应包含 date、source、fetched_at、status、notice 和 stocks。价格及金额使用上游的元单位，缺失数值返回 null；按连板数降序、首次封板时间排序。缓存以日期隔离，最多128日；当日/空池60秒、历史非空池1小时。刷新失败返回503，不以其他日期或演示数据补齐。
 
 上游不保证任意历史日期可查询。空池只表示未返回记录（休市、尚未发布、超出历史范围等），不等于全市场零涨停。覆盖口径见 [AkShare官方实现](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ztb_em.py)，不包含ST、科创板及未开板新股。当天返回抓取时快照，不提供历史日内回放。
+
+### 按需记录回测诊断
+
+默认仅保留 24 项进度摘要（状态、条数、耗时），不读取或生成详细诊断 chunk/manifest，不进行诊断 JSON 编码、压缩和落盘。趋势计算所需的历史、图表预览、交易结果和任务历史保留。
+
+仅在需要排查历史趋势版本、六态事件或进行差分诊断时，在 API 启动命令后加上 `--record-backtest-diagnostics`：
+
+~~~powershell
+pnpm --filter wavequant-api python -- -m wavequant_api.cli --record-backtest-diagnostics
+~~~
+
+该开关对当前 API 进程处理的回测生效，详细产物位于结果根目录下的 `.calculation-steps`；可能显著增加耗时和磁盘占用。诊断结束后，去掉参数重启 API 即恢复默认。结果缓存命中的请求不会为了诊断而强制重算。已有诊断文件不会自动删除。嵌入调用可显式传入 `record_backtest_diagnostics=True`，直接使用 Core 记录器时传入 `record_details=True`。

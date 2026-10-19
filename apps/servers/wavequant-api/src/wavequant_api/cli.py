@@ -48,6 +48,8 @@ def parser() -> argparse.ArgumentParser:
     """Build the API command-line contract."""
     value = argparse.ArgumentParser(description="WaveQuant local read-only HTTP API")
     value.add_argument("--root", type=Path, default=default_results_root())
+    value.add_argument('--record-backtest-diagnostics', action='store_true',
+        help='record detailed backtest diagnostic artifacts (disabled by default)')
     value.add_argument("--port", type=int, default=8765)
     value.add_argument("--tdx-root", type=Path, default=Path("D:/TDX"))
     value.add_argument("--disable-akshare", action="store_true", help="disable the optional AkShare market-data source")
@@ -521,6 +523,7 @@ def main() -> None:
         serve_static=not args.api_only,
         allowed_origins=tuple(args.allow_origin),
         web_url=args.web_url,
+        record_backtest_diagnostics=args.record_backtest_diagnostics,
         akshare_enabled=not args.disable_akshare,
         akshare_timeout=args.akshare_timeout,
     )

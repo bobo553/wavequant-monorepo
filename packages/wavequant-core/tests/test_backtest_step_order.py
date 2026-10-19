@@ -57,13 +57,28 @@ def test_reordered_preparation_preserves_all_facts_and_advances_each_level_once(
     order: tuple[int, ...], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bars = _bars()
+    from wavequant.domain.strategies.eligible_polyline_n import EligiblePolylineN
+    from wavequant.domain.strategies.market_calculations import MarketDay
+
+    # 调度用例显式给出已确认窗口，避免几何夹具偶然未取得资格而不覆盖 N 目标。
+    source_advance = EligiblePolylineN.advance
+
+    def eligible_sources(self, now, points, events):
+        opening = (dict(event='trend_lifecycle_state', bar_index=now, trend_level=2,
+            source_path='test-window', state='空多交替', flip_confirmed=True,
+            flip_index=0, flip_known_index=1, counter_index=0, counter_ordinal=0,
+            counter_price=9.8, alternation_index=now),) if now == 2 else ()
+        return source_advance(self, now, points, opening)
+
+    monkeypatch.setattr(EligiblePolylineN, 'advance', eligible_sources)
+    monkeypatch.setattr(MarketDay, 'permits_buy', lambda self, level: self.frame.index >= 2)
     clocks: dict[TrendLifecycle, list[int]] = {}
     advance = TrendLifecycle.advance
 
     def counted_advance(self: TrendLifecycle, levels: Sequence[Mapping[str, object]], market: Sequence[Bar],
-                        now: int, dates: Mapping[str, int]) -> list[dict[str, object]]:
+                        now: int, dates: Mapping[str, int], **kwargs) -> list[dict[str, object]]:
         clocks.setdefault(self, []).append(now)
-        return advance(self, levels, market, now, dates)
+        return advance(self, levels, market, now, dates, **kwargs)
 
     monkeypatch.setattr(TrendLifecycle, 'advance', counted_advance)
     with using_calculation_order(tuple(range(1, 25))), prepare_backtest_analysis(bars, _config()) as analysis:
@@ -91,7 +106,7 @@ def test_cache_reports_real_execution_order_and_finishes_market_steps_before_str
     order: tuple[int, ...], prefix: tuple[int, ...], tmp_path: Path,
 ) -> None:
     snapshots: list[dict[str, object]] = []
-    recorder = CalculationStepCache(tmp_path, 'step-order-boundary', snapshots.append)
+    recorder = CalculationStepCache(tmp_path, 'step-order-boundary', snapshots.append, record_details=True)
     with using_calculation_order(order) as plan, observe_steps(recorder):
         with prepare_backtest_analysis(_bars(), _config()) as analysis:
             assert recorder.plan == plan
@@ -141,8 +156,8 @@ def test_preparation_failure_after_geometry_closes_every_allocated_stream(monkey
     initialize = TrendStageRows.__init__
 
     def retained_initialize(self: TrendStageRows[object], decode: Callable[[object], object], *,
-                            memory_bytes: int = _STAGE_MEMORY_BYTES) -> None:
-        initialize(self, decode, memory_bytes=memory_bytes)
+                            memory_bytes: int = _STAGE_MEMORY_BYTES, **kwargs) -> None:
+        initialize(self, decode, memory_bytes=memory_bytes, **kwargs)
         streams.append(self)
 
     def fail_at_n_measurement(message: str) -> None:
