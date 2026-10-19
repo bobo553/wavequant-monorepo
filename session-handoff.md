@@ -1701,3 +1701,21 @@ Web信号、成交详情和复制共用完整组合proof，扫描列表已补独
 2026-10-18 · MONOREPO-330 折线与层级传播性能续作
 
 继续使用 C:/Users/zb/.codex/worktrees/three-level-trend/wavequant-monorepo / feat-三级趋势统一。本轮新增尾部峰谷投影、关闭路径投影复用、升级证明/父路径索引、无变化日跳过整树签名及近期快照容器冻结，详情见Core progress.md和feature_list.json最新not-run证据。新增test_causal_projection_cost.py尚未运行；没有本轮提速或账户等价结论。开发规则禁止运行验证，本轮没有测试/计时/浏览器、提交/合并/推送/服务重启。来源认证和变化日完整证据发布仍为后续profile重点，不能宣称彻底解决。提交阶段按同源冻结行情做分段耗时与完整结果差分，保留已有测试/类型失败。
+
+## 2026-10-20 回测详细诊断改为按需开启（MONOREPO-330）
+
+- CalculationStepCache 默认仅维护进度、条数与耗时，不打开 ArtifactCache、不编码输入和产物、不写 chunk/manifest；保留真实计算历史及结果。
+- API 启动参数 --record-backtest-diagnostics 经 serve_dashboard / make_server / BacktestJobs 传入记录器；Core 调用使用 record_details=True 显式开启。既有诊断文件不清理。
+- 存储相关用例改为显式开启，新增默认无缓存/编码、失败摘要及 CLI 开关传递回归源码。
+- 开发阶段未运行测试、lint、类型检查、构建或性能探针，待实际提交时验证；不宣称性能提升幅度，既有未验证项与失败不变。
+### 2026-10-20 提交前验证：暂停合并
+使用现有 API .venv/Scripts/python.exe，PYTHONPATH 指向各自检出的 Core/API src，执行 pytest -q，目标为 Core tests/test_calculation_step_cache.py、test_calculation_step_order_cache.py、test_backtest_analysis_boundary.py、test_backtest_step_order.py、test_trend_change_history.py 和 API tests/test_backtest_jobs.py、test_cli.py。
+本分支：23 failed, 66 passed；当前 main 90a25ae 同组对照：23 failed, 62 passed。失败节点一致，新增四个诊断开关用例通过；失败涉及原趋势时序/生命周期接口及 Worker 模式枚举、缓存恢复。未修改无关业务规则或放宽断言。
+仓库要求检查失败不得合并：本次尚未提交、同步合并或推送，等待用户决定是否对已复现的基线失败予以本次合并豁免。MONOREPO-330 保持 in-progress。
+
+### 2026-10-20 合并前修复与验证
+用户要求解决阻碍后合并、不推送。修复 N 目标阶段未标记开始/完成、折线六态惰性读取重复打开顺序读者；真实趋势级联首次请求完成三级收敛，后续按级读取同一份历史，避免先一级再二三级与整体计算不同。仅折线入口仍不生成趋势。
+更新旧测试替身的新增关键字参数、Worker 双布尔开关精确组合、资格窗口夹具及新版收敛基准；完整趋势、事件与检查点按每个独立冷前缀逐日比较，变化版本发布保持每级每天至多一次，不删除差异断言。
+验证命令：API 现有 .venv/Scripts/python.exe -m pytest -q --tb=short，PYTHONPATH 指向本 worktree 的 Core/API src；目标为原记录七个文件，加 test_market_calculations.py::test_public_scope_supports_polyline_six_states_without_building_first_level。结果 78 passed, 12 subtests passed；git diff --check 通过。未运行全量测试、浏览器或性能探针，未声明性能提升幅度。前述暂停记录为历史记录，本次失败已解决；MONOREPO-330 更广范围仍保留 in-progress。
+
+2026-10-20 最终同步本地 main c1c675a 后，按上述同一命令重验：78 passed、12 subtests passed（13.72s），git diff --check 通过。双方 feature/progress/handoff 记录均保留，未推送；准备本地 --no-ff 合并。

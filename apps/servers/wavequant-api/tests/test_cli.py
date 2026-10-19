@@ -65,7 +65,11 @@ class AkShareStructureWorkerTests(unittest.TestCase):
                         "wavequant_api.cli.ChartRepository", return_value=object()
                     ), patch(f"wavequant_api.cli.{target}", return_value={"status": "current"}) as refresh, redirect_stdout(StringIO()):
                         main()
-                    self.assertEqual([call.kwargs["n_target_trend_confirmation_enabled"] for call in refresh.call_args_list], expected)
+                    self.assertEqual(
+                        [(call.kwargs["n_target_trend_confirmation_enabled"],
+                          call.kwargs["ordinary_trend_completion_enabled"]) for call in refresh.call_args_list],
+                        [(n_enabled, ordinary) for n_enabled in expected for ordinary in (False, True)],
+                    )
                     self.assertTrue(all(call.kwargs.get("shard_count", 1) == 1 for call in refresh.call_args_list))
 
     def test_market_latest_date_is_not_downgraded_to_the_first_stock_session(self) -> None:
@@ -74,7 +78,7 @@ class AkShareStructureWorkerTests(unittest.TestCase):
         class Service:
             algorithm_version = "a" * 64
 
-            def algorithm_version_for(self, enabled: bool) -> str:
+            def algorithm_version_for(self, enabled: bool, ordinary_enabled: bool) -> str:
                 return self.algorithm_version
 
             def refresh(self, run: str, variant: str, **kwargs: object) -> dict[str, object]:
@@ -154,7 +158,7 @@ class AkShareStructureWorkerTests(unittest.TestCase):
         class Service:
             algorithm_version = "a" * 64
 
-            def algorithm_version_for(self, enabled: bool) -> str:
+            def algorithm_version_for(self, enabled: bool, ordinary_enabled: bool) -> str:
                 return self.algorithm_version
 
             def refresh(self, run: str, variant: str, **kwargs: object) -> dict[str, object]:
@@ -252,3 +256,15 @@ class AkShareStructureWorkerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_backtest_diagnostics_requires_explicit_cli_opt_in():
+    from unittest.mock import patch
+
+    assert parser().parse_args([]).record_backtest_diagnostics is False
+    assert parser().parse_args(['--record-backtest-diagnostics']).record_backtest_diagnostics is True
+    for options, enabled in (([], False), (['--record-backtest-diagnostics'], True)):
+        with patch('sys.argv', ['wavequant-api', *options]), \
+                patch('wavequant_api.cli.serve_dashboard') as serve:
+            main()
+        assert serve.call_args.kwargs['record_backtest_diagnostics'] is enabled

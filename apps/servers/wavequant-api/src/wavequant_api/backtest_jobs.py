@@ -77,6 +77,7 @@ class BacktestJobs:
         history_ttl_seconds: float = 7 * 86_400,
         history_path: Path | None = None,
         engine_version: str | None = None,
+        record_backtest_diagnostics: bool = False,
         clock: Callable[[], float] = monotonic,
         history_clock: Callable[[], float] = time,
         on_error: Callable[[str, Exception], None] | None = None,
@@ -96,6 +97,7 @@ class BacktestJobs:
         self.history_ttl_seconds = history_ttl_seconds
         self.history_path = Path(history_path) if history_path is not None else None
         self.engine_version = engine_version
+        self.record_backtest_diagnostics = record_backtest_diagnostics
         self.clock = clock
         self.history_clock = history_clock
         self.on_error = on_error
@@ -236,6 +238,7 @@ class BacktestJobs:
             self.history_path.parent / '.calculation-steps' if self.history_path is not None else None,
             dict(engine=self.engine_version, signature=job.signature),
             lambda snapshot: self.update_pipeline(job_id, snapshot),
+            record_details=self.record_backtest_diagnostics,
         )
         try:
             preview = BacktestPreviewPublisher(lambda revision, value: self.update_preview(job_id, revision, value))

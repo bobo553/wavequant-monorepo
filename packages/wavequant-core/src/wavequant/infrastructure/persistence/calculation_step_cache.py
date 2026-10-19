@@ -41,14 +41,19 @@ def _encode_json(value: object) -> bytes:
 class CalculationStepCache:
     """Stage data is inspectable JSON, never an executable pickle or a future-prefix substitute.
 
+    Detailed recording requires explicit opt-in; the default publishes summaries only.
     Chunks have a 512 KiB target (a single row can exceed it); the shared artifact
     cache enforces its 4 GiB cap. Only sealed stages are advertised as stored.
     A manifest is published after every stage, so later failures retain earlier work.
     """
 
-    def __init__(self, root: Path | None, identity: object, publish: Callable[[dict[str, object]], None]) -> None:
+    def __init__(
+        self, root: Path | None, identity: object, publish: Callable[[dict[str, object]], None],
+        *, record_details: bool = False,
+    ) -> None:
+        self.record_details = record_details
         self.cache = (ArtifactCache(root, read_timeout_seconds=ArtifactCache.WRITE_TIMEOUT_SECONDS)
-                      if root is not None else None)
+                      if record_details and root is not None else None)
         self.identity = identity
         self.publish = publish
         self.attempt = uuid4().hex
@@ -88,6 +93,8 @@ class CalculationStepCache:
                 '第24项记录同日交易产物，不在全历史趋势之后另行回放。'
                 '清单保留24种缓存产物编号，不能按已完成项数推算处理进度。'
                 '趋势条数为变化版本，六态条数为事件；共享跨度不能相加，编码和写入为实际累计耗时。')
+        if not self.record_details:
+            note += ' 当前仅记录进度摘要，详细诊断记录未开启，不编码或写入诊断缓存。'
         return dict(schema_version=1, steps=[dict(row, elapsed_seconds=round(now - self.started[cast(int, row['id'])], 1))
             if row['status'] == 'running' else row for row in rows],
             note=note)
@@ -111,6 +118,9 @@ class CalculationStepCache:
         if not bars:
             return False
         self.bars = tuple(bars)
+        if not self.record_details:
+            self._emit()
+            return True
         digest = sha256()
         for bar in bars:
             digest.update(json.dumps(_json_value(bar), sort_keys=True, allow_nan=False).encode())
@@ -137,7 +147,7 @@ class CalculationStepCache:
         if row['status'] != 'pending':
             return
         row.update(status='running')
-        if row['cache'] != 'available':
+        if self.record_details and row['cache'] != 'available':
             row['cache'] = 'partial' if self.cache_disabled else 'buffering'
             if self.cache_disabled:
                 row['cache_error'] = '缓存写入中断，本轮已停止缓存；分析继续'
@@ -151,7 +161,7 @@ class CalculationStepCache:
         self.begin(step)
         if self.steps[step - 1]['cache'] == 'available':
             return
-        if self.cache_disabled:
+        if not self.record_details or self.cache_disabled:
             self.steps[step - 1]['rows'] = cast(int, self.steps[step - 1]['rows']) + 1
             self._emit(force=False)
             return
@@ -219,13 +229,13 @@ class CalculationStepCache:
         self._flush(step)
         row.update(status='completed', elapsed_seconds=round(monotonic() - self.started[step], 1),
             chunks=self.chunks.get(step, []))
-        if row['cache'] not in ('failed', 'available', 'partial'):
+        if self.record_details and row['cache'] not in ('failed', 'available', 'partial'):
             row['cache'] = 'stored' if self.cache is not None else 'failed'
         self._save()
         self._emit()
 
     def _save(self) -> bool:
-        if self.cache_disabled:
+        if not self.record_details or self.cache_disabled:
             return False
         if self.cache is not None and self.inputs is not None:
             rows = [dict(row, cache='stored') if row['cache'] == 'available' else dict(row) for row in self.steps]
@@ -242,7 +252,7 @@ class CalculationStepCache:
         return False
 
     def finish(self, result: object, error: Exception | None = None) -> None:
-        if error is None and isinstance(result, dict) and self.inputs is not None:
+        if error is None and isinstance(result, dict) and self.bars is not None:
             self.append(24, {key: result[key] for key in ('signals', 'audit', 'orders', 'trades', 'curve', 'metrics', 'backtest')
                 if key in result})
             self.complete(24)
@@ -255,7 +265,7 @@ class CalculationStepCache:
                 row.update(status='failed', error=str(error) if error else '步骤未完成',
                     elapsed_seconds=round(monotonic() - self.started[cast(int, row['id'])], 1),
                     chunks=self.chunks.get(cast(int, row['id']), []))
-                if row['cache'] not in ('failed', 'available', 'partial'):
+                if self.record_details and row['cache'] not in ('failed', 'available', 'partial'):
                     row['cache'] = 'partial' if self.chunks.get(cast(int, row['id'])) else 'none'
             elif row['status'] == 'pending':
                 if error is None and row['cache'] == 'available':
