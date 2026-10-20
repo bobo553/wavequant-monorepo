@@ -987,7 +987,7 @@ class ChartRepository:
                     dict(name="轧空低" if up else "杀多高", price=r["defense"]),
                 ]
                 for key, title in (("equal_wave", "等浪投影"), ("one_p", "1P 投影"), ("two_t", "2T 投影")):
-                    if up and r.get('target_eligible') is False and key != 'equal_wave':
+                    if up and r.get('target_eligible') is False:
                         continue
                     price = getattr(targets, key)
                     if price is None:

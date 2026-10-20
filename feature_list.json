@@ -14,6 +14,7 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+                "2026-10-20 底部N测量规则：同一一级趋势仅底部有效主N测量；普通与重成形N统一竞争floor，以完整N身份发布唯一测量来源，其余保留结构但无测量，前端交易区间不得将拒绝或未知资格提升为测量；策略v126及测量v3隔离旧结果。补充内部/重成形/无下降/失效接替/同日竞争/前缀及前端堆叠回归源码。待提交时验证，未运行任何检查或浏览器。",
                 "2026-10-20国芳倍量突破仍未买入续修：上轮只接通内部解析器，streaming_stock_result.consume在分钟入场关闭时仍用open>previous.close预筛选，低开2025-04-03无法到达新规则。逐日协调器改为高开或共用double_volume_bullish_breakout均可调用，仍要求当日所选级别资格；不改变六态、成交权限、账户风险或同日退出优先。profile v125隔离旧结果。新增三级×资格开关×分钟开关的逐日协调器回归源码：只注入资格来源与输出格式，真实resolver和portfolio撮合贯通；冻结4/2–4/3量价、合成可成交权限，不冒充全历史实股复现。未执行测试、类型、回测、构建、Git状态差异检查；实际资格和涨停撮合仍待提交时验证。",
                 "2026-10-20按用户要求解决合并阻碍：诊断默认关闭；修复N目标阶段进度遗漏、折线六态重复顺序读取及分级调用不一致，首次趋势请求统一三级收敛后复用。更新过时接口替身、Worker双开关组合与资格夹具，逐日完整冷前缀比较结构/事件/检查点；原七文件及仅折线入口共78 passed、12 subtests passed，diff检查通过。未运行全量、浏览器和性能探针，整体功能保持in-progress，不推送。",
                 "2026-10-20诊断按需记录提交前验证：同组7个测试文件本分支23 failed/66 passed，main 90a25ae为23 failed/62 passed，失败节点一致；新增四个诊断开关用例通过。按检查失败不合并规则暂停，尚未提交合并推送，待基线失败处理或用户明确豁免。",
@@ -133,8 +134,16 @@
                     "status": "not-run",
                     "summary": "2026-10-20国芳资格续查：下级转空等事件结束窗口后，仍守住原起点的本级翻多周期增加独立续查时钟；保留六态与几何，重新调用共用交替确认，旧结构证明和结束前已知已完成N不能直接重开，新的正式低点、N攻击或跳空需独立确认。实际关闭事件反馈到生命周期，检查点保存续查时钟，生命周期v32/资格历史v158/策略profile v123隔离旧缓存。新增三级、重复开窗、检查点恢复、旧证明拒绝、未来证据拒绝和原点破位回归源码；开发阶段未运行任何验证，国芳真实后续区间日期待提交时验证。"
                 },
-                {"command": "2026-10-19 git fetch origin; git merge main; git diff HEAD^1 HEAD; git diff --check main...HEAD", "status": "failed", "summary": "用户明确要求全部合并main并推送，覆盖本次失败门禁下不合并的默认流程。同步main无冲突、文件树无变化；完整差异检查报文档3处Markdown硬换行尾空格。既有类型及阶段测试失败保留，未重复运行，功能保持in-progress。"},
-                {"command": "2026-10-19 submit: pytest tests/test_qualified_rising_close_entry.py tests/test_volume_upper_shadow_entry_exit.py -q --tb=short; mypy --strict <official four files>; python -m build --no-isolation; git diff --check", "status": "failed", "summary": "用户明确要求提交全部代码并推送，沿用已有 WIP 提交方式。两组交易规则测试22 passed；Core官方四文件mypy因导入链报告913 errors in 67 files，未宣称类型通过；wheel/sdist构建成功、差异空白检查通过。本轮扩展性能相关pytest已记录101 passed、8 failed，修改前快照复现相同8项阶段失败。保留既有失败，不合并main；未运行浏览器/E2E、Harness或全套测试。"},
+                {
+                    "command": "2026-10-19 git fetch origin; git merge main; git diff HEAD^1 HEAD; git diff --check main...HEAD",
+                    "status": "failed",
+                    "summary": "用户明确要求全部合并main并推送，覆盖本次失败门禁下不合并的默认流程。同步main无冲突、文件树无变化；完整差异检查报文档3处Markdown硬换行尾空格。既有类型及阶段测试失败保留，未重复运行，功能保持in-progress。"
+                },
+                {
+                    "command": "2026-10-19 submit: pytest tests/test_qualified_rising_close_entry.py tests/test_volume_upper_shadow_entry_exit.py -q --tb=short; mypy --strict <official four files>; python -m build --no-isolation; git diff --check",
+                    "status": "failed",
+                    "summary": "用户明确要求提交全部代码并推送，沿用已有 WIP 提交方式。两组交易规则测试22 passed；Core官方四文件mypy因导入链报告913 errors in 67 files，未宣称类型通过；wheel/sdist构建成功、差异空白检查通过。本轮扩展性能相关pytest已记录101 passed、8 failed，修改前快照复现相同8项阶段失败。保留既有失败，不合并main；未运行浏览器/E2E、Harness或全套测试。"
+                },
                 {
                     "command": "pnpm --filter @wavequant/core python -m pytest tests/test_trend_initial_wave_boundary.py tests/test_trend_level_upgrades.py tests/test_trend_missing_initial_key.py -q --tb=short",
                     "status": "failed",
@@ -1285,6 +1294,16 @@
                     "command": "pytest test_trend_consumer_versions.py test_trend_public_json_boundary.py test_owned_evidence_history.py test_calculation_step_cache.py test_calculation_step_order_cache.py test_hierarchy_stream.py test_lifecycle_frozen_context.py test_staged_trend_pipeline.py test_trend_readonly_cache.py -q --tb=short；修改前快照单独对照test_staged_trend_pipeline.py",
                     "status": "failed",
                     "summary": "扩展回归8项阶段断言失败；修改前隔离源码复现相同8项（旧阶段接口/几何数量/许可日期/路径断言）。未修改这些交易断言，其他本轮相关回归无新增失败；保留WIP，不声称全套门禁通过，未提交/合并/推送。"
+                },
+                {
+                    "command": "提交时执行底部N与重成形定向pytest、Web目标展示Node回归及相关类型检查",
+                    "status": "not-run",
+                    "summary": "2026-10-20 底部N测量规则：同一一级趋势仅底部有效主N测量；普通与重成形N统一竞争floor，以完整N身份发布唯一测量来源，其余保留结构但无测量，前端交易区间不得将拒绝或未知资格提升为测量；策略v126及测量v3隔离旧结果。补充内部/重成形/无下降/失效接替/同日竞争/前缀及前端堆叠回归源码。待提交时验证，未运行任何检查或浏览器。"
+                },
+                {
+                    "command": "2026-10-20 底部N提交前定向pytest、Node、局部mypy及main对照历史用例",
+                    "status": "failed",
+                    "summary": "2026-10-20 底部N提交验证：Core pytest test_bottom_n_targets.py、test_positive_n_reformation.py -k \"not pipeline\"：35 passed/2 deselected；Web pnpm exec node --test tests/eligibility-n-targets.test.mjs tests/bottom-n-targets.test.mjs：17 passed；mypy --follow-imports=skip 状态机及其测试2文件通过；git diff --check通过。历史图表用例在本分支与未修改main 1370da2均于同一断言缺少2024-07-31 N而KeyError（分别196.36s/197.12s），未修改该旧断言。初始3文件组合运行中断，剩余历史/完整套件未完成。follow-imports=silent类型检查被NumPy存根Python3.12语法与项目3.11配置冲突阻断；局部skip通过不代表完整类型通过。未运行浏览器/Harness/构建。按AGENTS检查失败不合并规则，提交后等待用户明确豁免既有失败；不推送。"
                 }
             ]
         },

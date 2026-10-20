@@ -1,3 +1,11 @@
+2026-10-20 底部N提交验证：Core pytest test_bottom_n_targets.py、test_positive_n_reformation.py -k "not pipeline"：35 passed/2 deselected；Web pnpm exec node --test tests/eligibility-n-targets.test.mjs tests/bottom-n-targets.test.mjs：17 passed；mypy --follow-imports=skip 状态机及其测试2文件通过；git diff --check通过。历史图表用例在本分支与未修改main 1370da2均于同一断言缺少2024-07-31 N而KeyError（分别196.36s/197.12s），未修改该旧断言。初始3文件组合运行中断，剩余历史/完整套件未完成。follow-imports=silent类型检查被NumPy存根Python3.12语法与项目3.11配置冲突阻断；局部skip通过不代表完整类型通过。未运行浏览器/Harness/构建。按AGENTS检查失败不合并规则，提交后等待用户明确豁免既有失败；不推送。
+
+2026-10-20 · MONOREPO-330 一级趋势底部 N 独占测量（待提交时验证）
+
+2026-10-20 底部N测量规则：同一一级趋势仅底部有效主N测量；普通与重成形N统一竞争floor，以完整N身份发布唯一测量来源，其余保留结构但无测量，前端交易区间不得将拒绝或未知资格提升为测量；策略v126及测量v3隔离旧结果。补充内部/重成形/无下降/失效接替/同日竞争/前缀及前端堆叠回归源码。待提交时验证，未运行任何检查或浏览器。
+
+独立 worktree：C:/Users/zb/.codex/worktrees/lowest-valid-n/wavequant-monorepo；分支 feat-底部N测量规则。本轮未提交、合并或推送；未重算运行页面，截图视觉与真实行情待验证。
+
 2026-10-19 · 自选列表滚动 WIP 提交验证
 
 用户授权全部当前改动按 WIP 提交并推送 feat-三级趋势统一，不合并 main。Web lint 0 错误/6 条环境变量声明警告，typecheck 和 Next.js build 通过；node --test tests/watchlists.test.mjs tests/chart-viewport-height.test.mjs 共 14 项通过。public/styles.css 的 Prettier 检查未通过，保留现状；构建自动生成的 next-env.d.ts 修改已恢复。未运行浏览器/E2E，桌面/窄屏长列表真实滚动仍待验证。Core 同批存在 14 项回归失败，详见 feature_list.json 和 session-handoff.md，不将此 WIP 视为功能验收完成。

@@ -2,10 +2,10 @@ const STAGES = ["one_p", "two_t", "five_top", "ten_full"];
 const day = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}(?:T|$)/.test(value) ? value.slice(0, 10) : null;
 
 export function isEligibilityNTargetSource(event) {
-    return event?.event === "n_completed" && event.direction === "up" && event.display_target_eligible === true;
+    return event?.event === "n_completed" && event.direction === "up" && event.display_target_eligible === true && event.target_eligible === true;
 }
 
-/** 展示资格独立于策略的底部首 N 筛选；只投影已发布的 N，不识别新 N 或补交易。 */
+/** 交易区间只约束展示时间，不能替代 Core 的一级趋势底部 N 测量资格。 */
 export function withEligibilityNTargets(view, theory) {
     if (!theory || !view?.bars?.length || !Array.isArray(view.audit) || (view.timeframe || "1d") !== "1d") return theory;
     const bars = view.bars;
@@ -75,6 +75,8 @@ export function withEligibilityNTargets(view, theory) {
         const id = row.n_id || `up:${row.origin}:${row.neckline}:${row.pullback}:${row.bar_index}`;
         const position = positions.get(id);
         const original = position === undefined ? null : events[position];
+        // 缺失资格也不能由前端猜测；完整理论中的明确拒绝优先于审计副本。
+        if ((original?.target_eligible ?? row.target_eligible) !== true) continue;
         const shape = original?.shape || vertices.map((bar, index) => ({ time: bar.time, value: index % 2 ? bar.high : bar.low }));
         const anchor = Number.isFinite(row.box_anchor) ? row.box_anchor : Math.max(attack.high, at(row.bar_index - 1)?.close ?? attack.high);
         const a = shape[0]?.value;

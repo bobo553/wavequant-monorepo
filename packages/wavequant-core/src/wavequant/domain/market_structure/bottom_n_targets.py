@@ -1,4 +1,4 @@
-"""Choose the causal daily entry source; independent reformed Ns keep own boxes."""
+"""Choose one causal floor N per level-one trend; reformation grants no exemption."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from .observation_window import observation_window_end
 from .trend_evidence_reuse import _geometry_signature
 
 
-BOTTOM_N_TARGET_POLICY = "decline_floor_n_with_independent_defense_reformations_v2"
+BOTTOM_N_TARGET_POLICY = "level_one_floor_n_exclusive_v3"
 
 
 @dataclass(frozen=True)
@@ -118,10 +118,8 @@ class BottomNTargetState:
                 continue
             selected[n.attack] = n
             identity = (current.index, n.origin) if current is not None else None
-            if n.reformed:
-                active = n
-                reason = "defense_reformed_n"
-            elif active is not None:
+            # 重新成形只说明结构成立，不能越过同一一级趋势的底部归属。
+            if active is not None:
                 reason = "existing_bottom_launch"
             elif current is None or bottom is None:
                 reason = "confirmed_decline_unavailable"
@@ -217,7 +215,7 @@ def bottom_n_target_history(
 
     A later confirmed decline or strict origin/defense break ends the old box.
     Equal lows hold the earliest bottom. A separately confirmed defense reformation
-    can restart measurement from a surviving origin. The minimum queue is O(bars + inputs),
+    can restart measurement only if its origin is still this trend's floor. The minimum queue is O(bars + inputs),
     apart from sorting dated inputs, and never validates or scans a future bar.
     """
     starts, arrivals = _target_arrivals(len(bars), declines, completions)

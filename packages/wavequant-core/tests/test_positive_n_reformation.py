@@ -168,7 +168,7 @@ def pipeline(xiangyang):
     return bars, config, result
 
 
-def test_pipeline_and_chart_keep_both_targets_and_hide_invalid_shapes(pipeline):
+def test_pipeline_and_chart_keep_shapes_but_only_publish_qualified_floor_targets(pipeline):
     bars, config, result = pipeline
     theory = ChartRepository.render_theory(None, bars, config, result, "2024-08-20", geometry={"tertiary_trends": {}})
     positive = [e for e in theory["events"] if e["event"] == "n_completed" and e["direction"] == "up"]
@@ -177,9 +177,17 @@ def test_pipeline_and_chart_keep_both_targets_and_hide_invalid_shapes(pipeline):
     assert old["2024-08-15"]["n_invalidated_at"] == "2024-08-20"
     formed = [e for e in positive if e["time"] == "2024-08-20"]
     assert len(formed) == len({e["id"] for e in formed}) == 2
-    assert all(e["target_eligible"] for e in formed)
-    assert [[level["price"] for level in e["levels"] if level.get("stage") in ("one_p", "two_t")]
-            for e in formed] == [[4.83, 5.52], [4.63, 5.12]]
+    qualified = [event for event in formed if event["target_eligible"]]
+    assert len(qualified) <= 1
+    for event in formed:
+        targets = [level["price"] for level in event["levels"] if level.get("stage") in ("one_p", "two_t")]
+        if event["target_eligible"]:
+            assert event["target_primary"]
+            assert event["origin"] == event["target_bottom_index"]
+            assert targets == ([4.83, 5.52] if event["reformed_from_date"] == "2024-07-31" else [4.63, 5.12])
+        else:
+            assert targets == []
+            assert event["one_p"] is None and event["two_t"] is None
     assert [e["reformed_from_date"] for e in formed] == ["2024-07-31", "2024-08-15"]
     assert not any(shape["attack_time"] in old for shape in theory["shapes"])
     assert len([shape for shape in theory["shapes"] if shape["attack_time"] == "2024-08-20"]) == 2
