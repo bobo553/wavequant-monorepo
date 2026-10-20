@@ -1,6 +1,7 @@
 """Publish qualified trend vertices while retaining their whole-wave extremes."""
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, MutableSequence, Sequence
+from copy import deepcopy
 from fractions import Fraction
 import hashlib
 import json
@@ -15,6 +16,7 @@ from .n_trend_confirmation import N_TARGET_CONFIRMATION, is_n_target_reversal, q
 from .hierarchical_confirmation import session_date
 from .trend_market_index import _MarketPrefixIndex
 from .trend_frozen_state import FrozenPrefixList
+from .trend_publication_cache import _PublicationCache, _PublicationCheckpoint
 
 Moment: TypeAlias = int | str
 LEG_CONFIRMATION_POLICY = 'two_routes_each_direction_v108'
@@ -420,6 +422,7 @@ def publish_uptrends(
     n_target_trend_confirmation_enabled: bool = False,
     _market_index: _MarketPrefixIndex | None = None,
     _origin_lookups: tuple[_OriginLookup, _OriginLookup] | None = None,
+    _publication_cache: _PublicationCache | None = None,
 ) -> list[dict[str, object]]:
     """Keep structural candidates private until their rising leg is qualified.
 
@@ -435,7 +438,7 @@ def publish_uptrends(
     identifies the independent earlier market extreme. Without bars, holding
     cannot be verified and the original local-origin behavior remains.
     """
-    result: list[dict[str, object]] = []
+    result: MutableSequence[dict[str, object]] = []
     pressure: Mapping[str, object] | None = None
     pending_origin: Mapping[str, object] | None = None
     pending_down_origin: Mapping[str, object] | None = None
@@ -450,7 +453,30 @@ def publish_uptrends(
     n_source = state.n_source
     candidate_origins, source_origins = (_origin_lookups if _origin_lookups is not None else
                                          (_OriginLookup(candidates), _OriginLookup(source)))
-    for offset, candidate in enumerate(candidates):
+    cache = _publication_cache if not n_target_trend_confirmation_enabled else None
+    incremental = cache is not None and cache.admit(candidates, source, _market_index, source_level)
+    saved = cache.checkpoint if incremental and cache is not None else None
+    start = saved.offset if saved is not None else 0
+    if incremental:
+        result = saved.result.copy() if saved is not None else FrozenPrefixList()
+        if saved is not None:
+            pressure, pending_origin = saved.pressure, saved.pending_origin
+            pending_down_origin, last_low = saved.pending_down_origin, saved.last_low
+            state.active, state.extreme = saved.active, saved.extreme
+    stable = incremental
+    checkpoint = saved
+
+    def capture(offset: int) -> _PublicationCheckpoint:
+        assert isinstance(result, FrozenPrefixList)
+        result.freeze(len(result))
+        return _PublicationCheckpoint(offset, end_index, result.copy(), pressure, pending_origin,
+                                     pending_down_origin, last_low, state.active, state.extreme)
+
+    for offset, candidate in enumerate(_candidate_tail(candidates, start), start):
+        # Capture before the next candidate so every continue follows the same
+        # frontier rule; an unresolved predecessor blocks all later promotion.
+        if stable and offset > start:
+            checkpoint = capture(offset)
         if not n_target_trend_confirmation_enabled and is_n_target_reversal(candidate):
             continue
         point = dict(candidate)
@@ -562,6 +588,9 @@ def publish_uptrends(
                         outgoing = qualify_uptrend(source, source[position], position, pressure, market, end_index,
                             context=state.confirmation_context(end_index),
                             n_source=n_source, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+                        if outgoing is None and incremental:
+                            assert _market_index is not None
+                            stable = stable and _PublicationCache.rejected_forever(source[position], _market_index)
                         if outgoing is not None:
                             point['trend_confirmation'] = outgoing
                             point['trend_confirmation_route'] = outgoing['confirmation_rule']
@@ -609,6 +638,9 @@ def publish_uptrends(
                                        context=context, n_source=n_source,
                                        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
         if confirmation is None:
+            if incremental:
+                assert _market_index is not None
+                stable = stable and _PublicationCache.rejected_forever(origin, _market_index)
             if result and result[-1]['kind'] == 'H':
                 state.annotate(point, result[-1], last_low)
             continue
@@ -671,4 +703,12 @@ def publish_uptrends(
         result.append(point)
         last_low = point
         pending_origin = None
-    return result
+    if incremental:
+        assert cache is not None
+        if stable and len(candidates) > start:
+            checkpoint = capture(len(candidates))
+        cache.save(checkpoint)
+        # Downstream annotation mutates its own points. It must never mutate a
+        # checkpoint or a previously returned day's evidence.
+        return deepcopy(list(result))
+    return list(result)
