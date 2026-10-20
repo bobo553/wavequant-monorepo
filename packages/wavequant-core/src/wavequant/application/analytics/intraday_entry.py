@@ -321,6 +321,8 @@ def resolve_consolidation_entries(
         if (prepared_analysis.bars != tuple(bars) or only_index is None or only_index != len(bars) - 1
                 or trading_window_start is None):
             raise ValueError('prepared minute replay requires the current daily prefix and window')
+    if prepared_pivots is None and history_reuse is not None:
+        prepared_pivots = history_reuse.pivot(bars, strategy)
     gate = _entry_polyline_gate(bars, strategy, prepared_pivots=prepared_pivots,
                                 prepared_gate=prepared_polyline_gate)
     generated, rising_days = _qualified_rising_close_entries(

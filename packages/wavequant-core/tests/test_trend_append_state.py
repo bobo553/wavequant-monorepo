@@ -502,6 +502,7 @@ def test_append_ownership_upper_bound_covers_tree_growth_replaced_keys_and_proof
         previous_source_keys = state._source_keys
     assert state.append_runs == 129
     assert state.deep_budget_walks == state.cold_runs == 1
+    assert state.cold_runs == 1
     assert state.budget_rejections == 0
 
 
@@ -583,3 +584,29 @@ def test_tail_checkpoint_copies_mutable_containers_without_serializing_history(
     assert mutable_points(observed.points) == mutable_points(expected.points)
     assert mutable_points(observed.candidates) == mutable_points(expected.candidates)
     assert state.tail_restores > 0 and state.memory_used >= state._owned_bytes()
+
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+def test_ordinary_budget_does_not_build_per_object_ownership_records(level):
+    source = _points((20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 38, 42, 32, 36, 24, 29),
+                     level=level - 1, clock='integer')
+    state = _TrendJudgementState(level, _tail_reuse=True)
+
+    assert not hasattr(state, '_budget')
+
+    for end in range(1, len(source) + 1):
+        current = deepcopy(source[:end])
+        actual = judge_trend(current, trend_level=level, _append_state=state)
+        expected = judge_trend(current, trend_level=level)
+        assert mutable_points(actual.points) == mutable_points(expected.points)
+        assert mutable_points(actual.candidates) == mutable_points(expected.candidates)
+        current[-1]['value'] = cast(int, current[-1]['value']) + 1
+        revised = judge_trend(current, trend_level=level, _append_state=state)
+        cold = judge_trend(current, trend_level=level)
+        assert mutable_points(revised.points) == mutable_points(cold.points)
+        assert mutable_points(revised.candidates) == mutable_points(cold.candidates)
+        assert state.memory_used <= state._limit
+    assert state.memory_used >= state._owned_bytes()
+    assert state.budget_rejections == 0
+    state.clear()
+    assert state.memory_used == state._payload_upper_bytes == 0

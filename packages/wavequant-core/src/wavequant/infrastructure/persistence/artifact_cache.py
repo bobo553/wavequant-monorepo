@@ -8,11 +8,13 @@ import json
 import logging
 from pathlib import Path
 import sqlite3
-from threading import RLock
+from threading import RLock, Thread, current_thread
 from weakref import WeakValueDictionary
 import time
 import zlib
-from contextlib import closing
+from contextlib import closing, contextmanager
+from collections.abc import Iterator
+from os import getpid
 
 
 def canonical(value):
@@ -46,6 +48,69 @@ class ArtifactCache:
         self.locks_guard = RLock()
         self.ready = False
         self.init_lock = RLock()
+        self._write_owner: tuple[int, Thread] | None = None
+        self._write_db: sqlite3.Connection | None = None
+
+    def start_write_session(self) -> None:
+        """Opt in on a request-owned instance; the owner must close in finally."""
+        if self._write_owner is not None:
+            raise RuntimeError('artifact write session is already active')
+        self._write_owner = getpid(), current_thread()
+
+    def _owns_write_session(self) -> bool:
+        owner = self._write_owner
+        return owner is not None and owner[0] == getpid() and owner[1] is current_thread()
+
+    def _discard_write_connection(self) -> None:
+        db, self._write_db = self._write_db, None
+        if db is not None:
+            try:
+                db.close()
+            except sqlite3.Error as exc:
+                logging.warning('Research cache connection close failed: %s', exc)
+
+    def close_write_session(self) -> None:
+        """Release the owner connection without committing pending work."""
+        if self._write_owner is None:
+            return
+        if not self._owns_write_session():
+            raise RuntimeError('artifact write session must close on its owner thread')
+        try:
+            self._discard_write_connection()
+        finally:
+            self._write_owner = None
+
+    @contextmanager
+    def write_session(self) -> Iterator['ArtifactCache']:
+        """Reuse one lazy writer across independently committed writes."""
+        self.start_write_session()
+        try:
+            yield self
+        finally:
+            self.close_write_session()
+
+    @contextmanager
+    def _write_transaction(self) -> Iterator[sqlite3.Connection]:
+        if not self._owns_write_session():
+            with closing(self._connect(timeout_seconds=self.WRITE_TIMEOUT_SECONDS)) as db, db:
+                yield db
+            return
+        try:
+            db = self._write_db
+            if db is None:
+                db = self._connect(timeout_seconds=self.WRITE_TIMEOUT_SECONDS)
+                self._write_db = db
+            else:
+                # Initialization may have consumed part of the first timeout.
+                # Subsequent blocks get the original bounded write wait budget.
+                db.execute(f'PRAGMA busy_timeout={max(0, int(self.WRITE_TIMEOUT_SECONDS * 1000))}')
+            with db:
+                yield db
+        except BaseException:
+            # A failed statement/commit rolls back via the transaction context.
+            # Discard even after cancellation; never reuse an uncertain handle.
+            self._discard_write_connection()
+            raise
 
     def key(self, namespace, inputs):
         return hashlib.sha256(canonical([self.SCHEMA, namespace, inputs]).encode()).hexdigest()
@@ -217,7 +282,7 @@ class ArtifactCache:
         if len(packed) > self.max_bytes:
             return False
         try:
-            with closing(self._connect(timeout_seconds=self.WRITE_TIMEOUT_SECONDS)) as db, db:
+            with self._write_transaction() as db:
                 db.execute('INSERT OR REPLACE INTO artifacts VALUES (?,?,?,?,?,?)',
                            (key, namespace, packed, hashlib.sha256(packed).hexdigest(), len(packed), time.time()))
                 self._evict_over_budget(db, key, len(packed))

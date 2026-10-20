@@ -30,7 +30,7 @@ def _json_value(value: object) -> object:
     if isinstance(value, Mapping):
         return {str(key): _json_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)) or type(value) in (PointVersion, CertifiedSource):
-        return [_json_value(item) for item in value]
+        return [_json_value(item) for item in cast(Sequence[object], value)]
     raise ValueError(f'unsupported calculation artifact: {type(value).__name__}')
 
 
@@ -71,6 +71,17 @@ class CalculationStepCache:
         self.started: dict[int, float] = {}
         self.last_publish = 0.0
         self._emit()
+
+    def start_write_session(self) -> None:
+        """The worker opts in only when its finally path guarantees finish."""
+        if self.cache is not None:
+            self.cache.start_write_session()
+
+    def close(self) -> None:
+        """Release request-owned resources; do not publish unfinished stages."""
+        if self.cache is not None:
+            self.cache.close_write_session()
+        self.evidence_json.clear()
 
     def snapshot(self) -> dict[str, object]:
         now = monotonic()
@@ -195,6 +206,7 @@ class CalculationStepCache:
     def _stop_cache(self) -> None:
         """缓存可丢弃；一次写失败后让本轮计算继续，避免每个 chunk 再等写锁。"""
         self.cache_disabled = True
+        self.close()
         self.buffers.clear()
         self.sizes.clear()
         self.trend_chunks.clear()
@@ -252,6 +264,12 @@ class CalculationStepCache:
         return False
 
     def finish(self, result: object, error: Exception | None = None) -> None:
+        try:
+            self._finish(result, error)
+        finally:
+            self.close()
+
+    def _finish(self, result: object, error: Exception | None = None) -> None:
         if error is None and isinstance(result, dict) and self.bars is not None:
             self.append(24, {key: result[key] for key in ('signals', 'audit', 'orders', 'trades', 'curve', 'metrics', 'backtest')
                 if key in result})

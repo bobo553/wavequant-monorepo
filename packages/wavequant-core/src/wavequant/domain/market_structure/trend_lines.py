@@ -17,7 +17,6 @@ import pickle
 from sys import getsizeof
 from uuid import uuid4
 from typing import Protocol, TypedDict, cast
-from types import NotImplementedType
 
 from ..models.model import Bar
 from .hierarchical_confirmation import session_date
@@ -419,11 +418,14 @@ class _PreparedPickler(pickle.Pickler):
     def persistent_id(self, value: object) -> int | None:
         return self._reference(value) if self._reference is not None else None
 
-    def reducer_override(self, value: object) -> tuple[object, ...] | NotImplementedType:
+    def reducer_override(self, value: object) -> (
+        tuple[Callable[..., object], tuple[object, ...]]
+        | tuple[Callable[..., object], tuple[object, ...], None, Iterator[dict[str, object]]]
+    ):
         if value is list:
             return NotImplemented
         if type(value) in (PointVersion, CertifiedSource):
-            return list, (), None, iter(value)
+            return list, (), None, iter(cast(PointVersion, value))
         if type(value) is _PreparedPathReference:
             return _PreparedPathReference, (value.owner, value.index)
         if value is _PreparedPathReference:
@@ -608,8 +610,8 @@ class _ClosedPreparedPaths:
                             arrays[channel, str(stroke.get('id', ''))] = cast(Sequence[dict[str, object]], points)
                             seen_arrays.add(id(points))
             touched: dict[int, dict[str, object]] = {}
-            for channel in self._alias_arrays.keys() | arrays.keys():
-                old, new = self._alias_arrays.get(channel, []), arrays.get(channel, [])
+            for array_channel in self._alias_arrays.keys() | arrays.keys():
+                old, new = self._alias_arrays.get(array_channel, []), arrays.get(array_channel, [])
                 if old is new:
                     continue
                 hint = self._point_hints.get(id(new))
@@ -842,7 +844,7 @@ class _TrendPermissionCache:
     def source_projection(self, level: int, path: str,
                           source: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
         previous = self._sources.get(level)
-        if (type(source) not in (PointVersion, CertifiedSource) or not source._sealed
+        if (type(source) not in (PointVersion, CertifiedSource) or not cast(PointVersion, source)._sealed
                 or type(source) is CertifiedSource and source.owner is not current_evidence()):
             self._sources.pop(level, None)
             return [dict(point, label=point.get('label', point.get('kind', ''))) for point in source]
@@ -850,12 +852,12 @@ class _TrendPermissionCache:
             previous = None
         if previous is not None and previous[1] is source:
             return previous[2]
-        start = source.changed_since(previous[1] if previous is not None else None)
+        start = cast(PointVersion, source).changed_since(previous[1] if previous is not None else None)
         result = PointVersion((dict(point, label=point.get('label', point.get('kind', '')))
                                for point in source[start:]),
                               previous=previous[2] if previous is not None else None, start=start).seal()
         if len(result) * 512 <= self._memory_bytes:
-            self._sources[level] = path, source, result
+            self._sources[level] = path, cast(PointVersion, source), result
         else:
             self._sources.pop(level, None)
         return result
@@ -1043,6 +1045,8 @@ class _OwnedCandidateOptions(TypedDict, total=False):
     _owned_candidates: bool
     _candidate_cache: '_TrendCandidateCache'
     _publication_cache: _PublicationCache
+    _hierarchy_only: bool
+    _annotation_token_out: list[object]
 
 
 def high_low_points_from_strokes(
@@ -1291,14 +1295,14 @@ class _OwnedSourceInputs:
         owner = current_evidence()
         if owner is None:
             self.clear()
-            return _source_groups(with_price_bodies(points, bars) if bars else points)
+            return dict(_source_groups(with_price_bodies(points, bars) if bars else points))
         if any(group.owner is not owner for group in self._groups.values()):
             self.clear()
         market = (bars if type(bars) is tuple else bars.source if type(bars) is _PrefixView
                   and type(bars.source) is tuple and is_owned_market_prefix(bars, bars.source) else None)
         certified = type(points) is CertifiedSource and points.owner is owner
-        start = (len(points) if certified and points.token is self._token else
-                 points.changed_from if certified and points.parent is self._token else 0)
+        start = (len(points) if certified and cast(CertifiedSource, points).token is self._token else
+                 cast(CertifiedSource, points).changed_from if certified and cast(CertifiedSource, points).parent is self._token else 0)
         if market is None or market is not self._bars or len(bars) < self._bar_count:
             start = 0
         if self._unpriced is not None and len(bars) != self._bar_count:
@@ -1322,14 +1326,15 @@ class _OwnedSourceInputs:
             self._unpriced = None
         for position in range(start, len(points)):
             point = points[position]
-            path = point.get('source_path', 'path-0')
-            if type(path) is not str or not path:
+            raw_path = point.get('source_path', 'path-0')
+            if type(raw_path) is not str or not raw_path:
                 self.clear()
-                return _source_groups(with_price_bodies(points, bars) if bars else points)
-            signature = points.keys[position] if certified else _geometry_signature(point)
+                return dict(_source_groups(with_price_bodies(points, bars) if bars else points))
+            path = raw_path
+            signature = cast(CertifiedSource, points).keys[position] if certified else _geometry_signature(point)
             if signature is None or not owner.finite(point):
                 self.clear()
-                return _source_groups(with_price_bodies(points, bars) if bars else points)
+                return dict(_source_groups(with_price_bodies(points, bars) if bars else points))
             tail = tails.setdefault(path, [])
             slot = path, kept.get(path, 0) + len(tail)
             index = point.get('index')
@@ -1345,7 +1350,7 @@ class _OwnedSourceInputs:
             key = _geometry_signature(transformed)
             if key is None:
                 self.clear()
-                return _source_groups(with_price_bodies(points, bars) if bars else points)
+                return dict(_source_groups(with_price_bodies(points, bars) if bars else points))
             tail.append(transformed)
             tail_keys.setdefault(path, []).append(key)
             entries[slot] = signature, body, transformed
@@ -1354,20 +1359,21 @@ class _OwnedSourceInputs:
             self._costs.append(entry_bytes)
             if entry_bytes > 8 * 1024 * 1024:
                 self.clear()
-                return _source_groups(with_price_bodies(points, bars) if bars else points)
+                return dict(_source_groups(with_price_bodies(points, bars) if bars else points))
         versions: dict[str, CertifiedSource] = {}
         for path in dict.fromkeys((*(path for path, count in kept.items() if count), *tails)):
-            previous = self._groups.get(path)
+            previous_group = self._groups.get(path)
             count = kept.get(path, 0)
             tail = tails.get(path, [])
             keys = tail_keys.get(path, [])
             if not count and not tail:
                 continue
-            unchanged = (previous is not None and count + len(tail) == len(previous)
-                         and all(previous.keys[count + offset] == key for offset, key in enumerate(keys)))
-            versions[path] = previous if unchanged else CertifiedSource.from_tail(tail, keys, owner, previous, count)
+            unchanged = (previous_group is not None and count + len(tail) == len(previous_group)
+                         and all(previous_group.keys[count + offset] == key for offset, key in enumerate(keys)))
+            versions[path] = (previous_group if unchanged and previous_group is not None else
+                              CertifiedSource.from_tail(tail, keys, owner, previous_group, count))
         self._entries, self._groups = entries, versions
-        self._token = points.token if certified else None
+        self._token = cast(CertifiedSource, points).token if certified else None
         self._bars, self._bar_count = market, len(bars)
         return dict(versions)
 
@@ -1492,8 +1498,8 @@ class _DefinitionClock(Mapping[object, int]):
     def update(self, source: Sequence[Mapping[str, object]], points: Sequence[dict[str, object]],
                point_start: int | None) -> str | None:
         certified = type(source) is CertifiedSource and source.owner is current_evidence()
-        source_start = (len(source) if certified and source.token is self.token else
-            source.changed_from if certified and source.parent is self.token else 0)
+        source_start = (len(source) if certified and cast(CertifiedSource, source).token is self.token else
+            cast(CertifiedSource, source).changed_from if certified and cast(CertifiedSource, source).parent is self.token else 0)
         starts = (source_start, point_start if point_start is not None else 0)
         changed: Counter[tuple[str, int]] = Counter()
         affected: str | None = None
@@ -1542,7 +1548,7 @@ class _DefinitionClock(Mapping[object, int]):
         del self.maximum[earliest:]
         for _, index in self.orders[earliest:]:
             self.maximum.append(max(index, self.maximum[-1] if self.maximum else index))
-        self.token = source.token if certified else None
+        self.token = cast(CertifiedSource, source).token if certified else None
         return affected
 
     def __getitem__(self, moment: object) -> int:
@@ -1652,11 +1658,11 @@ def _annotate_geometry(
     fields = cache.fields.copy() if cache is not None else FrozenPrefixList[dict[str, object]]()
     del fields[prefix:]
     for position in range(trusted, prefix):
-        point, annotation = points[position], fields[position]
-        if any(point.get(field) is not value for field, value in annotation.items()):
+        point, saved_annotation = points[position], fields[position]
+        if any(point.get(field) is not value for field, value in saved_annotation.items()):
             if _reuse_points:
                 point = points[position] = dict(point)
-            point.update(annotation)
+            point.update(saved_annotation)
     for position in range(prefix, len(points)):
         point, shadow = dict(points[position]) if _reuse_points else points[position], shadows[position]
         points[position] = point
@@ -1717,7 +1723,7 @@ def _legacy_pending_bull_n(
                  if (known := _clock(point.get('available_at'), dates)) is not None and known <= now]
     if not available:
         return False
-    annotation_dates: dict[object, int] = dict(dates)
+    annotation_dates: dict[object, int] = {key: value for key, value in dates.items()}
     annotation_dates.update({index: index for index in range(len(bars))})
     annotation_dates.update({str(index): index for index in range(len(bars))})
     _annotate_geometry(available, bars[0].symbol, annotation_dates, trend_level=trend_level)
@@ -1768,6 +1774,7 @@ def _annotate_permissions(
     points: list[dict[str, object]], symbol: str, dates: Mapping[object, int], *, trend_level: int,
     _cache: _ReadonlySnapshotCache[list[dict[str, object]]] | None = None,
     _cache_key: tuple[int, str] | None = None,
+    _version_token: object | None = None,
 ) -> None:
     """按合法波段标注策略许可，不能把独立压力点强行拼成一条几何折线。
 
@@ -1782,6 +1789,18 @@ def _annotate_permissions(
     H/L 编号连续，局部段不会重复命名；清理缺失的派生字段，防止继承的
     preceding_turn 把旧压力伪装成新波起点。源几何仍由严格入口单独校验。
     """
+    version_key = (_cache_key, symbol, trend_level)
+    if _version_token is not None and _cache is not None and _cache_key is not None:
+        cached_version = _cache.get(version_key, _version_token)
+        if cached_version is not None:
+            # Published results remain independent even for nested annotations.
+            for point, fields in zip(points, deepcopy(cached_version[0]), strict=True):
+                for field in _GEOMETRY_ANNOTATION_FIELDS:
+                    if field in fields:
+                        point[field] = fields[field]
+                    else:
+                        point.pop(field, None)
+            return
     runs: list[tuple[list[dict[str, object]], dict[str, object] | None]] = []
     labels: dict[tuple[int, int], str] = {}
     counts: Counter[str] = Counter()
@@ -1808,14 +1827,16 @@ def _annotate_permissions(
             clocks = [[dates.get(point.get('available_at')) for point in run] for run in inputs]
             signature = _geometry_signature((symbol, trend_level, inputs, clocks, labels,
                                               [origin is not None for _, origin in runs]))
-        cached = _cache.get(_cache_key, signature) if signature is not None else None
+        cached = _cache.get(version_key, signature) if signature is not None else None
         if cached is not None:
-            for point, fields in zip(points, cached[0], strict=True):
+            for point, fields in zip(points, deepcopy(cached[0]), strict=True):
                 for field in _GEOMETRY_ANNOTATION_FIELDS:
                     if field in fields:
                         point[field] = fields[field]
                     else:
                         point.pop(field, None)
+            if _version_token is not None and signature is not None:
+                _cache.rebind_identity(version_key, signature, _version_token)
             return
     derived: list[tuple[dict[str, object], dict[str, object]]] = []
     context_dates = _DateOverrides(dates)
@@ -1852,8 +1873,12 @@ def _annotate_permissions(
                 point[field] = fields[field]
             else:
                 point.pop(field, None)
-    if _cache is not None and _cache_key is not None and signature is not None:
-        _cache.put(_cache_key, signature, [fields for _, fields in derived])
+    if _cache is not None and _cache_key is not None:
+        if _version_token is not None:
+            _cache.put(version_key, _version_token, deepcopy([fields for _, fields in derived]),
+                       _identity_token=True, _fallback_token=signature)
+        elif signature is not None:
+            _cache.put(version_key, signature, deepcopy([fields for _, fields in derived]))
 
 
 def _qualification_candidates(
@@ -1946,7 +1971,7 @@ class _TrendCandidateCache:
             return self._prepared
         versioned = type(candidates) is PointVersion and candidates._sealed
         previous = self._source if type(self._source) is PointVersion else None
-        start = candidates.changed_since(previous) if versioned else 0
+        start = cast(PointVersion, candidates).changed_since(previous) if versioned else 0
         start = min(start, len(candidates), len(previous) if previous is not None else 0)
         # 同一坐标可以有早升级和晚完成证据，两者必须一起重新归并。
         orders = [self._order(values[start]) for values in (previous, candidates)
@@ -1963,7 +1988,7 @@ class _TrendCandidateCache:
             self._admission.certify(point) for point in tail)
         ordered = all(self._order(left) <= self._order(right) for left, right in zip(tail, tail[1:]))
         if not versioned or not standard or not ordered:
-            prepared = _prepare_qualification_candidates(candidates, owned=False,
+            prepared: PointVersion | list[dict[str, object]] = _prepare_qualification_candidates(candidates, owned=False,
                 _certified_standard=standard and start == 0)
             self._source, self._prepared = (candidates, prepared) if standard else (None, [])
             self._orders = FrozenPrefixList(self._order(point) for point in prepared)
@@ -1990,12 +2015,16 @@ def qualify_trend_structure(
     _owned_candidates: bool = False,
     _candidate_cache: _TrendCandidateCache | None = None,
     _publication_cache: _PublicationCache | None = None,
+    _hierarchy_only: bool = False,
+    _annotation_token_out: list[object] | None = None,
 ) -> list[dict[str, object]]:
     """原发布器只建立策略许可，返回值不能再成为趋势线或下一层的输入。
 
     N 的行情达标证明只追加到这个独立视图。每份许可证仍用本级真实来源、
     知识日及行情前缀重新核验，下级证书不授予上级交易资格。
     """
+    if _annotation_token_out is not None:
+        _annotation_token_out.clear()
     source_level = _trend_level(trend_level)
     if not bars:
         return []
@@ -2011,7 +2040,9 @@ def qualify_trend_structure(
         published = publish_uptrends(qualified, source, bars, source_level=source_level,
             qualified_source=qualified_source, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
             _market_index=_market_index, _origin_lookups=origin_lookups,
-            _publication_cache=_publication_cache)
+            _publication_cache=_publication_cache, _hierarchy_only=_hierarchy_only,
+            _versioned_hierarchy=_hierarchy_only and _publication_cache is not None,
+            _annotation_token_out=_annotation_token_out)
     elif _market_index is None:
         published = publish_uptrends(qualified, source, bars, source_level=source_level,
             qualified_source=qualified_source, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
@@ -2019,6 +2050,10 @@ def qualify_trend_structure(
         published = publish_uptrends(qualified, source, bars, source_level=source_level,
             qualified_source=qualified_source, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
             _market_index=_market_index)
+    if _hierarchy_only and type(published) is PointVersion:
+        # Only admitted publication versions use this branch: all source clocks
+        # and generated confirmation dates are within this exact market prefix.
+        return cast(list[dict[str, object]], published)
     sessions: Mapping[str, int] = (_PrefixSessions(_market_index.owner.positions, len(bars) - 1)
         if _market_index is not None else {session_date(bar): i for i, bar in enumerate(bars)})
     result: list[dict[str, object]] = []
@@ -2030,6 +2065,8 @@ def qualify_trend_structure(
         # 超过本路径行情截止的未知压力不能进入策略视图或借下一路径日历。
         if 0 <= cast(int, point['index']) <= known_index < len(bars):
             result.append(point)
+    if _annotation_token_out is not None and len(result) != len(published):
+        _annotation_token_out.clear()
     return result
 
 
@@ -2377,10 +2414,14 @@ def attach_trend_permissions(
             candidate_cache = (_permission_cache.candidates(trend_level)
                 if cutoff is None and _permission_cache is not None and _owned_candidates else None)
             candidate_options = owned_options.copy()
+            annotation_tokens: list[object] = []
+            if _hierarchy_only:
+                candidate_options['_hierarchy_only'] = True
             if candidate_cache is not None:
                 candidate_options['_candidate_cache'] = candidate_cache
                 if not n_target_trend_confirmation_enabled and _permission_cache is not None:
                     candidate_options['_publication_cache'] = _permission_cache.publication(trend_level, path)
+                    candidate_options['_annotation_token_out'] = annotation_tokens
             n_scope = (_reuse_n_permissions(
                 _permission_cache.n_permissions(trend_level, path)
                     if _permission_cache is not None and verified_prefix is not None
@@ -2399,7 +2440,8 @@ def attach_trend_permissions(
                         n_target_sink=path_targets, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
                         _market_index=market_index, **candidate_options)
             if _hierarchy_only:
-                projected = (_permission_cache.hierarchy_projection(trend_level, path, permissions)
+                projected = (permissions if type(permissions) is PointVersion else
+                    _permission_cache.hierarchy_projection(trend_level, path, permissions)
                     if _owned_candidates and _permission_cache is not None and cutoff is None else permissions)
                 if projected:
                     qualified_strokes.append(dict(id=f'{kind}-{path}', source_path=path,
@@ -2413,7 +2455,8 @@ def attach_trend_permissions(
                 _annotate_permissions(permissions, market[0].symbol, permission_dates, trend_level=trend_level,
                     _cache=(_permission_cache._annotations
                             if _owned_candidates and _permission_cache is not None else None),
-                    _cache_key=(trend_level, path))
+                    _cache_key=(trend_level, path),
+                    _version_token=annotation_tokens[0] if annotation_tokens else None)
             legs = confirmed_trend_legs(permissions, trend_level=trend_level, source_path=path)
             transitions: list[dict[str, object]] = []
             if permissions:

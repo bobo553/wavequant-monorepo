@@ -1,12 +1,13 @@
 """Request-local publication checkpoints for immutable, causal input versions."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isfinite
 from typing import cast
 
 from .owned_evidence import CertifiedSource, current_evidence
 from .trend_frozen_state import FrozenPrefixList
+from .trend_confirmation_version import _ConfirmationVersionCache
 from .trend_market_index import _MarketPrefixIndex
 from .trend_point_version import PointVersion
 from .trend_readonly_cache import _builtin_size
@@ -23,6 +24,7 @@ class _PublicationCheckpoint:
     last_low: Mapping[str, object] | None
     active: Mapping[str, object] | None
     extreme: Mapping[str, object] | None
+    _token: object = field(default_factory=object, init=False, repr=False, compare=False)
 
 
 class _PublicationCache:
@@ -35,6 +37,9 @@ class _PublicationCache:
 
     def __init__(self, *, memory_bytes: int = 8 * 1024 * 1024) -> None:
         self.limit = memory_bytes
+        self._hierarchy: PointVersion | None = None
+        self._hierarchy_token: object | None = None
+        self.confirmations = _ConfirmationVersionCache(memory_bytes=min(memory_bytes, 2 * 1024 * 1024))
         self.checkpoint: _PublicationCheckpoint | None = None
         self._candidates: PointVersion | None = None
         self._source: PointVersion | None = None
@@ -44,8 +49,12 @@ class _PublicationCache:
         self._input_bytes = 0
         self._version_bytes = 0
         self._checkpoint_bytes = 0
+        self._checkpoint_payload_bytes = 0
 
     def clear(self) -> None:
+        self._hierarchy = None
+        self._hierarchy_token = None
+        self.confirmations.clear()
         self.checkpoint = None
         self._candidates = self._source = None
         self._owner = None
@@ -53,6 +62,7 @@ class _PublicationCache:
         self._input_bytes = 0
         self._version_bytes = 0
         self._checkpoint_bytes = 0
+        self._checkpoint_payload_bytes = 0
 
     @staticmethod
     def _version(points: Sequence[Mapping[str, object]]) -> PointVersion | None:
@@ -150,6 +160,7 @@ class _PublicationCache:
             return False
         self._candidates, self._source = candidate_version, source_version
         self._owner, self._level, self._end = market.owner, source_level, end
+        self._fit_confirmation_budget()
         return True
 
     @staticmethod
@@ -165,12 +176,73 @@ class _PublicationCache:
     def save(self, checkpoint: _PublicationCheckpoint | None) -> None:
         if checkpoint is None or checkpoint is self.checkpoint:
             return
-        payload = (list(checkpoint.result), checkpoint.pressure, checkpoint.pending_origin,
-                   checkpoint.pending_down_origin, checkpoint.last_low, checkpoint.active, checkpoint.extreme)
+        self._retain(checkpoint, self._hierarchy)
+
+    def _retain(self, checkpoint: _PublicationCheckpoint, hierarchy: PointVersion | None) -> bool:
         remaining = self.limit - self._input_bytes - self._version_bytes
-        size = _builtin_size(payload, remaining)
-        if size is None or size + checkpoint.result.storage_bytes > remaining:
+        base_size = self._checkpoint_payload_bytes if checkpoint is self.checkpoint else 0
+        if not base_size:
+            payload = (list(checkpoint.result), checkpoint.pressure, checkpoint.pending_origin,
+                       checkpoint.pending_down_origin, checkpoint.last_low, checkpoint.active,
+                       checkpoint.extreme, checkpoint.offset, checkpoint.horizon)
+            measured = _builtin_size(payload, remaining)
+            if measured is None:
+                self.clear()
+                return False
+            base_size = measured + checkpoint.result.storage_bytes + 4096
+        # save() and hierarchy() retain the same immutable checkpoint. Reusing
+        # its scalar charge avoids measuring its evidence twice on each day.
+        hierarchy_size = _builtin_size(list(hierarchy), remaining - base_size) if hierarchy is not None else 0
+        if hierarchy_size is None:
             self.clear()
-            return
-        self._checkpoint_bytes = size + checkpoint.result.storage_bytes
+            return False
+        size = base_size + hierarchy_size + (hierarchy.storage_bytes if hierarchy is not None else 0)
+        if size > remaining:
+            self.clear()
+            return False
+        self._checkpoint_payload_bytes = base_size
+        self._checkpoint_bytes = size
         self.checkpoint = checkpoint
+        self._fit_confirmation_budget()
+        return True
+
+    def hierarchy(self, result: FrozenPrefixList[dict[str, object]],
+                  previous_checkpoint: _PublicationCheckpoint | None) -> PointVersion:
+        """Private scalar output; only a certified publication prefix may be shared.
+
+        Unresolved candidates still run every day. Only the saved checkpoint's
+        output is reused; its inputs were all known within its old market prefix.
+        """
+        previous = (self._hierarchy if previous_checkpoint is not None
+                    and previous_checkpoint._token is self._hierarchy_token else None)
+        checkpoint = self.checkpoint
+        if checkpoint is None:
+            return self._project_hierarchy(result, None, None)
+        # The unresolved suffix may replace the last output after capture().
+        # Project the checkpoint itself before deriving today's working result.
+        stable = self._project_hierarchy(checkpoint.result,
+            previous_checkpoint.result if previous_checkpoint is not None else None, previous)
+        output = self._project_hierarchy(result, checkpoint.result, stable)
+        if self._retain(checkpoint, stable):
+            self._hierarchy = stable
+            self._hierarchy_token = checkpoint._token
+        return output
+
+    @staticmethod
+    def _project_hierarchy(result: FrozenPrefixList[dict[str, object]],
+                           previous_result: FrozenPrefixList[dict[str, object]] | None,
+                           previous: PointVersion | None) -> PointVersion:
+        start = len(previous_result) if previous is not None and previous_result is not None else 0
+        # Resuming can replace the last H/L, but never edits an earlier record.
+        if start and previous_result is not None and result[start - 1] is not previous_result[start - 1]:
+            start -= 1
+        fields = ('index', 'ordinal', 'kind', 'value', 'available_at')
+        tail = [{name: point.get(name, 0) for name in fields} for point in result.iter_range(start)]
+        return (previous if previous is not None and not tail and start == len(previous) else
+                PointVersion(tail, previous=previous, start=start).seal())
+
+    def _fit_confirmation_budget(self) -> None:
+        # Static parsing shares the existing publication budget; the stable
+        # checkpoint has priority over this optional acceleration.
+        remaining = max(0, self.limit - self._input_bytes - self._version_bytes - self._checkpoint_bytes)
+        self.confirmations.set_limit(min(2 * 1024 * 1024, remaining))

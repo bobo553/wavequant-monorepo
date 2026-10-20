@@ -3,7 +3,9 @@
 from wavequant.domain.market_structure.trend_options import with_strategy_trend_options
 
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from time import monotonic
+from typing import cast
 
 from ..models.model import Bar
 from ..market_structure.polyline import ReversalPoint
@@ -11,6 +13,7 @@ from ..market_structure.calculation_steps import calculation_steps
 from ..market_structure.calculation_plan import resolve_calculation_plan
 from ..models.validated_bars import ValidatedBars
 from .backtest_analysis import BacktestAnalysis, prepare_backtest_analysis
+from .backtest_history_reuse import BacktestHistoryReuse, HierarchyHistory
 from .integrated_strategy import DailySignalState, SystemResult, SystemStrategy
 from . import integrated_strategy as policy
 from .market_calculations import MarketDay
@@ -29,6 +32,7 @@ def daily_signals(
     progress: Callable[[int], None] | None = None,
     stage: Callable[[str], None] | None = None,
     minor_points: Sequence[ReversalPoint] | None = None,
+    history_reuse: BacktestHistoryReuse | None = None,
 ) -> SystemResult:
     """Run decisions once per close, using only the market prefix available then.
 
@@ -36,6 +40,9 @@ def daily_signals(
     They are not permitted to consume future candles or replay trading decisions.
     """
     market = ValidatedBars(bars)
+    if history_reuse is not None:
+        history_reuse.require_input(market, config)
+    requested_hierarchy: dict[int, dict[int, tuple[dict[str, object], ...]]] = {}
     state = DailySignalState()
     cache: dict = {'source_bars': tuple(market)}
     result = SystemResult([], [], {})
@@ -55,6 +62,21 @@ def daily_signals(
         nonlocal result, last_percent, last_finished, last_report
         nonlocal market_seconds, decision_seconds, account_seconds
         index = day.frame.index
+        if (history_reuse is not None and config.n_target_trend_confirmation_enabled
+                and analysis.calculations is not None and analysis.hierarchy is not None):
+            # 旧完整历史保留发布证书的确认日；共享日线历史另有首次观察日。
+            # 从当天已有许可投影五字段，不能把两种知识时钟混作同一缓存。
+            views = analysis.calculations._shared_permissions_at(index, n_enabled=True)
+            if views is None:
+                raise RuntimeError('requested N history requires the existing same-day permissions')
+            dated: dict[int, tuple[dict[str, object], ...]] = {}
+            for level, (prepared, view) in enumerate(zip(day.levels, views, strict=True), 1):
+                points = analysis.hierarchy._active_points(prepared, view, 'qualified_strokes', index)
+                dated[level] = tuple(dict(index=point['index'], ordinal=point.get('ordinal', 0),
+                    kind=point['kind'], value=point['value'],
+                    available_at=analysis.hierarchy._known_index(point.get('available_at')))
+                    for point in points)
+            requested_hierarchy[index] = dated
         started = monotonic()
         market_seconds += started - last_finished
 
@@ -146,7 +168,7 @@ def daily_signals(
                 chart_history_cache=cache, _analysis=analysis, _daily=state, stage=report_phase)
         else:
             events = [dict(row,
-                timestamp=market[int(row['bar_index'])].timestamp.isoformat(), symbol=market[0].symbol)
+                timestamp=market[cast(int, row['bar_index'])].timestamp.isoformat(), symbol=market[0].symbol)
                 for row in day.lifecycle_events]
             for interval in analysis.trading_intervals:
                 if interval.end_index == index:
@@ -190,8 +212,26 @@ def daily_signals(
         last_finished = monotonic()
 
     try:
-        with prepare_backtest_analysis(market, config, on_day=advance):
-            pass
+        with prepare_backtest_analysis(market, config, on_day=advance) as analysis:
+            if history_reuse is not None:
+                # 显式完整历史消费者只在收尾捕获一次；日线默认路径不增加
+                # 每日复制。读取已有逐日几何，不能重新运行三级趋势判定。
+                history_reuse.save_pivot(market, config, analysis.pivots)
+                if analysis.hierarchy is not None:
+                    stream = analysis.hierarchy
+                    levels = (requested_hierarchy if config.n_target_trend_confirmation_enabled else
+                        {day: {level: tuple(dict(point) for point in points)
+                               for level, points in row.items()}
+                         for day, row in stream.history.items()})
+                    history_reuse.save_hierarchy(market, config,
+                        cast(HierarchyHistory, (levels, stream.epochs)))
+                from .chart_entry_history import chart_entry_history
+
+                complete = replace(analysis, buy_days=(True,) * len(market))
+                chart = chart_entry_history(market, audit=result.audit,
+                    _prepared_history=complete, _history_reuse=history_reuse,
+                    n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
+                history_reuse.save_chart(market, config, result.audit, chart)
     finally:
         if state.projection_history is not None:
             state.projection_history.close()
