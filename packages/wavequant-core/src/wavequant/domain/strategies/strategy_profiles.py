@@ -83,7 +83,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'configurable_n_target_trend_confirmation_v128_' + variant
+    config['profile_version'] = 'configurable_n_target_trend_confirmation_v129_' + variant
     config['definition']['trend_confirmation_routes'] = 'same_level_key_break_or_lower_key_break_alternation_turn'
     config['definition']['n_target_trend_confirmation_enabled'] = False
     config['definition']['optional_trend_confirmation_route'] = 'source_n_strict_one_p_target'
@@ -196,6 +196,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         squeeze_invalidation='later_inverse_n_ends_local_bounce_larger_defense_can_wait_for_fresh_volume_gap',
         qualified_rising_entry='shared_polyline_gate_selected_level_active_interval_high_open_strong_close_or_next_session_volume_gap_defended_above_breakout_high_same_day_close_all_account_guards',
         qualified_gap_entry='unfilled_gap_completed_minute_close_above_open_next_open_execution_or_double_volume_medium_large_bullish_close_fallback_no_backdating_daily_structural_release',
+        qualified_interval_target='qualification_breakout_is_evidence_not_profit_target_account_r_multiple_with_existing_net_reward_risk_and_position_guards',
         signal_timing='consolidation_and_c_wave_gap_intraday_completed_5m_other_entries_close',
         entry_execution='defended_n_and_c_wave_gap_completed_5m_next_interval_missing_minutes_explicit_daily_close',
         reward_risk_policy='execution_price_gate_only_not_signal_preflight',

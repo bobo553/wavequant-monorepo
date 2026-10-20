@@ -249,9 +249,14 @@ class PolylineBuyGate:
             if (previous_identity not in self.released and (self._pending_breakout is None
                     or previous_key.value > self._pending_breakout[0].value)):
                 self._pending_breakout = previous_key, previous_known
-        candidates = [self._pending_breakout] if self._pending_breakout is not None else []
         current_key = self.structure._key if self.structure._bull is False else None
         anchor = self.structure._anchor
+        # 新一轮已确认下降已有自己的末跌高；旧轮次的未放行门槛不跨轮累积。
+        # 局部反弹、结构翻多本身不替换它，必须由折线结构实际确认新的下降关键位。
+        if (self._pending_breakout is not None and current_key is not None
+                and current_key.order > self._pending_breakout[0].order):
+            self._pending_breakout = None
+        candidates = [self._pending_breakout] if self._pending_breakout is not None else []
         if current_key is not None:
             candidates.append((current_key, max(current_key.known, anchor.known
                                                 if anchor is not None else current_key.known)))

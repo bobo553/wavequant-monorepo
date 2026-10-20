@@ -68,7 +68,10 @@ def test_april_breakout_and_next_session_follow_through_use_close_execution(froz
     _, generated, strategy, window = sample(level)
     breakout, following = dates['2025-04-03'], dates['2025-04-07']
     assert following == breakout + 1
-    assert gate.breakouts[breakout]['polyline_key_index'] == dates['2025-01-09']
+    # 3月后段已确认新下降，当前末跌高是3/27；2/27、3/14仍受当时1/09门槛约束。
+    assert gate.breakouts[breakout]['polyline_key_index'] == dates['2025-03-27']
+    assert gate.breakouts[breakout]['polyline_key_price'] == bars[dates['2025-03-27']].high
+    assert bars[breakout].close > bars[dates['2025-01-09']].high
     first, _ = _qualified_rising_close_entries(bars, generated, strategy, only_index=breakout,
                                               intervals=[window], polyline_gate=gate)
     second, _ = _qualified_rising_close_entries(bars, first, strategy, only_index=following,
