@@ -8,7 +8,7 @@ import {
     IconStarFilled,
 } from "@tabler/icons-react";
 
-/** 分类自选股独立侧栏；运行时负责 IndexedDB 数据和折叠状态。 */
+/** 分类自选股独立侧栏；运行时负责服务器数据和折叠状态。 */
 export function WatchlistRail(): JSX.Element {
     return (
         <aside id="watchlist-rail" className="panel watchlist-rail" aria-label="自选股列表">
@@ -92,7 +92,13 @@ export function WatchlistRail(): JSX.Element {
                     <progress id="watchlist-backtest-progress" max={1} value={0} aria-label="自选股回测进度" />
                     <small>服务器按自选顺序回测全部分类；关闭页面后继续，策略更新后自动重跑。</small>
                 </section>
-                <div id="watchlist-stock-list" className="watchlist-stock-list">
+                <div
+                    id="watchlist-stock-list"
+                    className="watchlist-stock-list"
+                    tabIndex={0}
+                    role="region"
+                    aria-label="滚动浏览自选股"
+                >
                     <p className="stock-empty">自选股加载中…</p>
                 </div>
                 <p className="scan-note">

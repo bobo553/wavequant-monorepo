@@ -11,7 +11,7 @@ import pytest
 
 from wavequant_api.backtest_jobs import BacktestJob, BacktestJobs
 from wavequant_api.server import make_server
-from wavequant_api.watchlists import DEFAULT_GROUP, WatchlistConflict, WatchlistStore, snapshot, settings
+from wavequant_api.watchlists import DEFAULT_GROUP, WatchlistConflict, WatchlistStore, record, snapshot, settings
 from wavequant_api.watchlist_refresh import WatchlistRefresh
 
 
@@ -55,7 +55,10 @@ def test_restart_order_settings_and_conflicting_saves(tmp_path: Path) -> None:
     doc = store.save(0, saved(("sz.000678", "sh.600001")))
     store.save(doc["revision"], configured(False), field="settings")
     restored = WatchlistStore(store.path).load()
-    assert restored["settings"] == configured(False)
+    expected = configured(False)
+    expected["context"] = {**record(expected["context"]),
+                           "ordinary_trend_completion_enabled": "false", "buy_interval_level": "2"}
+    assert restored["settings"] == expected
     assert restored["snapshot"] == snapshot(saved(("sz.000678", "sh.600001")))
     with pytest.raises(WatchlistConflict):
         store.save(0, saved(()))
@@ -250,10 +253,47 @@ def test_http_persistence_origin_body_conflict_and_read_only_other_routes(tmp_pa
         assert status == 200 and document["revision"] == 1
         assert request("POST", {"action": "save", "revision": 0, "snapshot": saved(())})[0] == 409
         assert request("GET")[1] == document
+        addition = {"action": "add", "groupId": "default", "stocks": [{"symbol": "sh.600519", "name": "贵州茅台"}]}
+        assert request("POST", addition, {"Origin": "https://evil.test"})[0] == 403
+        status, added = request("POST", addition, {"Origin": "http://127.0.0.1:3003"})
+        assert status == 200
+        assert len(added["snapshot"]["memberships"]) == 2
+        assert request("POST", addition)[1] == added
+        status, removed = request("POST", {**addition, "action": "remove"})
+        assert status == 200 and removed["snapshot"] == document["snapshot"]
         assert request("POST", {}, path="/api/akshare-backtest")[0] == 405
         assert request("PUT", {})[0] == 405
     finally:
         server.shutdown(); server.server_close(); thread.join(5)
+
+
+def test_member_operations_merge_concurrent_pages_and_preserve_settings(tmp_path: Path) -> None:
+    store = WatchlistStore(tmp_path / "members.sqlite")
+    doc = store.save(0, configured(), field="settings")
+    def add(index: int) -> dict[str, object]:
+        return store.update_members("default", [{"symbol": f"sz.{index:06d}", "name": f"股票{index}"}])
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(add, range(12)))
+    current = store.load()
+    assert current["settings"] == doc["settings"]
+    members = record(current["snapshot"])["memberships"]
+    assert isinstance(members, list) and len(members) == 12
+    assert add(0) == current
+    with pytest.raises(ValueError):
+        store.update_members("missing", [{"symbol": "sh.600519"}])
+    with pytest.raises(ValueError):
+        store.update_members("default", [{"symbol": "invalid"}])
+    assert store.load() == current
+
+
+def test_member_count_has_no_per_group_or_total_quota(tmp_path: Path) -> None:
+    store = WatchlistStore(tmp_path / "large.sqlite")
+    stocks = [{"symbol": f"sz.{index:06d}", "name": "股票"} for index in range(20_001)]
+    added = store.update_members("default", stocks)
+    members = record(added["snapshot"])["memberships"]
+    assert isinstance(members, list) and len(members) == 20_001
+    assert WatchlistStore(store.path).load() == added
+    assert store.update_members("default", stocks) == added
 
 
 @pytest.mark.parametrize("n_target_enabled", [False, True])

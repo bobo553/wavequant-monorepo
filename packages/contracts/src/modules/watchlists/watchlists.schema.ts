@@ -16,16 +16,14 @@ export const WatchlistSnapshotSchema = z.object({
         )
         .min(1)
         .max(20),
-    memberships: z
-        .array(
-            z.object({
-                groupId: z.string().min(1).max(64),
-                symbol: z.string().regex(/^(?:sh|sz|bj)\.\d{6}$/),
-                name: z.string().max(80),
-                position: z.number().int().nonnegative(),
-            }),
-        )
-        .max(20_000),
+    memberships: z.array(
+        z.object({
+            groupId: z.string().min(1).max(64),
+            symbol: z.string().regex(/^(?:sh|sz|bj)\.\d{6}$/),
+            name: z.string().max(80),
+            position: z.number().int().nonnegative(),
+        }),
+    ),
 });
 
 export const WatchlistSettingsSchema = z.object({
@@ -60,3 +58,17 @@ export const WatchlistDocumentSchema = z.object({
 export type TWatchlistSnapshot = z.infer<typeof WatchlistSnapshotSchema>;
 export type TWatchlistSettings = z.infer<typeof WatchlistSettingsSchema>;
 export type TWatchlistDocument = z.infer<typeof WatchlistDocumentSchema>;
+
+export const WatchlistMembersMutationSchema = z.object({
+    action: z.enum(["add", "remove"]),
+    groupId: z.string().min(1).max(64),
+    stocks: z
+        .array(
+            z.object({
+                symbol: z.string().regex(/^(?:sh|sz|bj)\.\d{6}$/),
+                name: z.string().max(80).optional(),
+            }),
+        )
+        .min(1),
+});
+export type TWatchlistMembersMutation = z.infer<typeof WatchlistMembersMutationSchema>;

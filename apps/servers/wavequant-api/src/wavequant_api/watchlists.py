@@ -38,8 +38,8 @@ def snapshot(value: object) -> dict[str, object]:
     groups, members = data.get("groups"), data.get("memberships")
     if data.get("schemaVersion") != 1 or not isinstance(groups, list) or not isinstance(members, list):
         raise ValueError("自选数据版本无效")
-    if not 1 <= len(groups) <= 20 or len(members) > 20_000:
-        raise ValueError("自选数量超出限制")
+    if not 1 <= len(groups) <= 20:
+        raise ValueError("自选分类数量超出限制")
     ids: set[str] = set()
     names: set[str] = set()
     normalized_groups: list[dict[str, object]] = []
@@ -65,8 +65,6 @@ def snapshot(value: object) -> dict[str, object]:
         if not isinstance(member_name, str) or len(member_name) > 80 or (group_id, symbol) in keys:
             raise ValueError("自选股票名称无效或重复")
         keys.add((group_id, symbol))
-        if positions[group_id] >= 1000:
-            raise ValueError("每个分类最多保存1000只股票")
         normalized_members.append({"groupId": group_id, "symbol": symbol, "name": member_name,
                                    "position": positions[group_id]})
         positions[group_id] += 1
@@ -152,6 +150,48 @@ class WatchlistStore:
                 connection.execute("UPDATE watchlist_document SET revision=?, payload=? WHERE id=1",
                                    (current_revision, json.dumps(current, ensure_ascii=False)))
         return {"revision": current_revision, **current}
+
+    def update_members(self, group_id: object, stocks: object, *, remove: bool = False) -> dict[str, object]:
+        """在事务内合并成员操作，避免多页面收藏互相覆盖或因旧版本失败。"""
+        selected_group = text(group_id, 64)
+        if not isinstance(stocks, list) or not stocks:
+            raise ValueError("请选择自选股票")
+        candidates = [record(stock) for stock in stocks]
+        for stock in candidates:
+            symbol = text(stock.get("symbol"), 9)
+            name = stock.get("name", "")
+            if re.fullmatch(r"(?:sh|sz|bj)\.\d{6}", symbol) is None:
+                raise ValueError("自选股票代码无效")
+            if not isinstance(name, str) or len(name) > 80:
+                raise ValueError("自选股票名称无效")
+        with closing(self.connect()) as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            revision, payload = connection.execute(
+                "SELECT revision, payload FROM watchlist_document WHERE id=1").fetchone()
+            current = record(json.loads(payload))
+            saved = record(current["snapshot"])
+            groups = [record(group) for group in cast(list[object], saved["groups"])]
+            if not any(group["id"] == selected_group for group in groups):
+                raise ValueError("自选分类不存在")
+            members = [record(member) for member in cast(list[object], saved["memberships"])]
+            symbols = {text(stock.get("symbol"), 9) for stock in candidates}
+            if remove:
+                members = [member for member in members
+                           if member["groupId"] != selected_group or member["symbol"] not in symbols]
+            else:
+                existing = {str(member["symbol"]) for member in members if member["groupId"] == selected_group}
+                for stock in candidates:
+                    symbol = text(stock.get("symbol"), 9)
+                    if symbol not in existing:
+                        members.append({"groupId": selected_group, "symbol": symbol, "name": stock.get("name", "")})
+                        existing.add(symbol)
+            updated = snapshot({"schemaVersion": 1, "groups": groups, "memberships": members})
+            if updated != saved:
+                current["snapshot"] = updated
+                revision += 1
+                connection.execute("UPDATE watchlist_document SET revision=?, payload=? WHERE id=1",
+                                   (revision, json.dumps(current, ensure_ascii=False)))
+        return {"revision": revision, **current}
 
     def import_legacy(self, token: object, value: object) -> dict[str, object]:
         import_id = text(token, 64)

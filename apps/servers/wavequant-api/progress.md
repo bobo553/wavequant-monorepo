@@ -1,3 +1,7 @@
+2026-10-20 · MONOREPO-334 提交合并验证
+
+用户要求合并本地main，不推送。Node24.16.0/pnpm10.26.2；Web Vitest6项与Node28项通过，Hook整理后3项重跑通过；lint无错误（保留6条既有环境变量警告），typecheck和生产build通过，共享contracts及基础配置构建通过。API自选文件首次24通过/1失败；旧测试遗漏main已有的两个默认字段，补齐完整预期后该项通过；自选事务模块mypy通过。首次Web类型/构建缺共享playwright配置产物，补建后通过，没有启动浏览器或运行E2E。浏览器与在线3003效果待验收，未重启共享服务。
+
 2026-10-17 · MONOREPO-330 趋势与交易规则提交验证
 
 用户明确要求提交并推送feat-三级趋势统一。本次提交覆盖普通升降整波结束默认关闭选项及Web/API/contracts传递、缺失初始关键位重建、独立实体反包放量清仓、轧空买入价格门槛和候选正N突破前量二选一。未改变既有失败相关业务逻辑。
@@ -444,3 +448,6 @@ MONOREPO-282（2026-10-07，Core V99消费方，合并待确认）：共用Core�
 验证命令：API 现有 .venv/Scripts/python.exe -m pytest -q --tb=short，PYTHONPATH 指向本 worktree 的 Core/API src；目标为原记录七个文件，加 test_market_calculations.py::test_public_scope_supports_polyline_six_states_without_building_first_level。结果 78 passed, 12 subtests passed；git diff --check 通过。未运行全量测试、浏览器或性能探针，未声明性能提升幅度。前述暂停记录为历史记录，本次失败已解决；MONOREPO-330 更广范围仍保留 in-progress。
 
 2026-10-20 最终同步本地 main c1c675a 后，按上述同一命令重验：78 passed、12 subtests passed（13.72s），git diff --check 通过。双方 feature/progress/handoff 记录均保留，未推送；准备本地 --no-ff 合并。
+2026-10-20 · MONOREPO-334 自选成员原子增量保存（待提交时验证）
+
+/api/watchlists新增add/remove成员操作，SQLite BEGIN IMMEDIATE内读取最新文档并合并，保留其他分类、成员与设置，重复添加或移除幂等。取消每组1000只和总计20000只股票配额，继续保留20分类、字段/重复合法性、来源检查和请求体大小保护。新增并发、超旧配额和HTTP用例源码；按规则未运行测试、类型、构建或运行探针。与Web和contracts同时交付，未提交或重启服务。

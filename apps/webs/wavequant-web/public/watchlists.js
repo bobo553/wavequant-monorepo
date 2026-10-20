@@ -8,7 +8,6 @@ const MEMBERSHIP_STORE = "watchlist-memberships";
 const SELECTED_GROUP_KEY = "wavequant.watchlists.selected.v1";
 const COLLAPSED_RAIL_KEY = "wavequant.watchlists.rail-collapsed.v1";
 const MAX_GROUPS = 20;
-const MAX_MEMBERS_PER_GROUP = 1000;
 const SYMBOL_PATTERN = /^(?:sh|sz|bj)\.\d{6}$/;
 
 export const DEFAULT_WATCHLIST_GROUP = Object.freeze({
@@ -193,8 +192,6 @@ export function addWatchlistMembers(state, groupId, stocks) {
             position: currentCount + candidates.length,
         });
     }
-    if (currentCount + candidates.length > MAX_MEMBERS_PER_GROUP)
-        throw new Error(`每个分类最多保存 ${MAX_MEMBERS_PER_GROUP} 只股票`);
     const alphabetical = [...groupMembers].sort((left, right) =>
         (left.name || left.symbol).localeCompare(right.name || right.symbol, "zh-CN"),
     );
@@ -259,6 +256,8 @@ export function firstAvailableWatchlistSymbol(state, groupId, universe) {
 }
 
 export function initialWatchlistSymbol(state, groupId, universe, linkedSymbol = "") {
+    const linked = universe.find((stock) => stock.symbol === linkedSymbol && stock.has_data !== false);
+    if (linked) return linked.symbol;
     const first = firstAvailableWatchlistSymbol(state, groupId, universe);
     if (first) return first;
     const available = universe.filter((stock) => stock.has_data !== false);
@@ -569,11 +568,15 @@ export class Watchlists {
         );
     }
 
-    async commit(nextState, message, beforeRender) {
-        if (this.saving) return false;
+    async commit(nextState, message, beforeRender, save = () => this.storage.save(nextState)) {
+        if (this.saving) {
+            this.announce("正在保存自选股，请稍候重试");
+            return false;
+        }
         this.saving = true;
+        this.$("watchlist-toggle-current").disabled = true;
         try {
-            const saved = await this.storage.save(nextState);
+            const saved = await save();
             this.state = normalizeWatchlistSnapshot(saved || nextState);
             this.available = true;
             if (beforeRender) await beforeRender;
@@ -590,6 +593,7 @@ export class Watchlists {
             return false;
         } finally {
             this.saving = false;
+            this.render();
         }
     }
 
@@ -618,12 +622,20 @@ export class Watchlists {
         const saved = await this.commit(
             result.state,
             `已将 ${result.added} 只股票加入“${this.selectedGroup.name}”${result.duplicates ? `，跳过 ${result.duplicates} 只重复股票` : ""}`,
+            undefined,
+            this.storage.addStocks ? () => this.storage.addStocks(this.selectedGroup.id, stocks) : undefined,
         );
         return saved ? result : { added: 0, duplicates: stocks.length };
     }
 
     async remove(symbol) {
-        await this.commit(removeWatchlistMember(this.state, this.selectedGroup.id, symbol), "已从当前分类移除股票");
+        const groupId = this.selectedGroup.id;
+        await this.commit(
+            removeWatchlistMember(this.state, groupId, symbol),
+            "已从当前分类移除股票",
+            undefined,
+            this.storage.removeStock ? () => this.storage.removeStock(groupId, symbol) : undefined,
+        );
     }
 
     async saveOrder(symbols, focusSymbol = "") {
@@ -926,7 +938,7 @@ export class Watchlists {
         const currentStock = this.universe.find((item) => item.symbol === this.selectedSymbol);
         const alreadyAdded = currentStock ? this.has(currentStock.symbol) : false;
         const star = this.$("watchlist-toggle-current");
-        star.disabled = !this.available || !currentStock;
+        star.disabled = !this.available || !currentStock || this.saving;
         star.setAttribute("aria-pressed", String(alreadyAdded));
         star.setAttribute(
             "aria-label",
@@ -941,6 +953,7 @@ export class Watchlists {
         this.$("watchlist-count").textContent = `${members.length} 只`;
         this.renderRailState();
         const list = this.$("watchlist-stock-list");
+        const scrollTop = list.scrollTop;
         list.replaceChildren();
         if (!members.length) {
             const empty = document.createElement("p");
@@ -1006,5 +1019,6 @@ export class Watchlists {
             this.renderBacktestStatus(row, member.symbol);
             list.append(row);
         }
+        list.scrollTop = scrollTop;
     }
 }

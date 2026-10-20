@@ -1,3 +1,7 @@
+2026-10-20 · MONOREPO-334 提交合并验证
+
+用户要求合并本地main，不推送。Node24.16.0/pnpm10.26.2；Web Vitest6项与Node28项通过，Hook整理后3项重跑通过；lint无错误（保留6条既有环境变量警告），typecheck和生产build通过，共享contracts及基础配置构建通过。API自选文件首次24通过/1失败；旧测试遗漏main已有的两个默认字段，补齐完整预期后该项通过；自选事务模块mypy通过。首次Web类型/构建缺共享playwright配置产物，补建后通过，没有启动浏览器或运行E2E。浏览器与在线3003效果待验收，未重启共享服务。
+
 2026-10-20 底部N合并前问题已解决：真实1593日资格核对确认二级最后窗口于2024-01-24关闭，7/31、8/15、8/20 buy/scan均False；旧图表用例错误要求区间外交易N，修正为真实策略不补造N，并以独立形态→底部资格→图表契约严格断言两形态只发布底部4.83/5.52，保留来源、形状和未完成K线/前缀限制。最终pytest test_bottom_n_targets.py test_positive_n_reformation.py：38 passed(215.62s)；类型断言与图表接收者修订后重成形12项再次通过（重叠不合计）。Web两文件Node17项通过且生产代码未再变化。状态机及两测试3文件mypy通过，使用项目3.11配置与follow-imports=silent，临时仅对宿主不兼容的numpy/numpy.*外部存根设置follow_imports=skip、follow_imports_for_stubs=true；未改项目依赖或全局配置，不宣称全仓类型通过。早先历史KeyError和测试可空类型错误已解决；先前失败记录保留作历史。完整Core/Web套件、另一个历史pipeline文件、浏览器与构建未运行或未完成，不作为通过。用户要求解决后合并main、不推送。
 
 2026-10-20 底部N提交验证：Core pytest test_bottom_n_targets.py、test_positive_n_reformation.py -k "not pipeline"：35 passed/2 deselected；Web pnpm exec node --test tests/eligibility-n-targets.test.mjs tests/bottom-n-targets.test.mjs：17 passed；mypy --follow-imports=skip 状态机及其测试2文件通过；git diff --check通过。历史图表用例在本分支与未修改main 1370da2均于同一断言缺少2024-07-31 N而KeyError（分别196.36s/197.12s），未修改该旧断言。初始3文件组合运行中断，剩余历史/完整套件未完成。follow-imports=silent类型检查被NumPy存根Python3.12语法与项目3.11配置冲突阻断；局部skip通过不代表完整类型通过。未运行浏览器/Harness/构建。按AGENTS检查失败不合并规则，提交后等待用户明确豁免既有失败；不推送。
@@ -1287,3 +1291,8 @@ MONOREPO-258常驻验收：c05d8e4经e6d1e13本地合并，main真实3项拓扑�
 - Web lint（6条既有警告）、typecheck、生产build、相关格式/语法/差异和Harness通过；完整Web单测、实际浏览器和Playwright未运行，待独立验证。未改API或Core。
 - 首次检出依赖安装完成，init.ps1 quick因无关Core系统Python缺少build模块失败；相关Web门禁已单独通过。宿主Node24.14.1与.nvmrc24.16.0存在既有差异，未扩大修复。
 2026-10-17 · 本次提交验证补充：定向 Node 42 项、拓扑 Vitest 18 项以及 lint、typecheck、build 通过；全量单测中旧年度加载流程 12 项失败，未运行浏览器测试。MONOREPO-330 保持 in-progress。
+2026-10-20 · MONOREPO-334 行情跳转与自选收藏（待提交时验证）
+
+显式股票链接现在优先于当前自选首股，并保留历史日期和数据源。涨停卡片右上角增加独立收藏星标，使用服务器“我的自选”，保存成功后更新状态，失败允许重试。研究页新增和移除成员改用服务器原子增量接口，避免多页面整份列表版本冲突；保存中禁用当前星标并给出反馈。移除浏览器每组1000只限制。侧栏明确高度、常驻纵向滚动条与窄屏溢出兜底，列表可键盘聚焦并保留刷新前滚动位置。新增回归源码，未运行任何验证或浏览器，待提交时验证。
+
+分支feat-行情收藏修复；worktree C:/Users/zb/.codex/worktrees/market-watchlist-7364/wavequant-monorepo。前后端与contracts需一起提交并在main运行，当前3003服务尚未加载本次独立worktree改动。未提交、合并或推送。

@@ -4,6 +4,39 @@
     "activeFeature": "MONOREPO-330",
     "features": [
         {
+            "id": "MONOREPO-334",
+            "name": "market-navigation-and-watchlist-favorites",
+            "title": "行情跳转与自选收藏滚动修复",
+            "status": "done",
+            "dependencies": ["MONOREPO-298"],
+            "description": "修复市场股票链接被默认自选覆盖，涨停卡片添加服务器收藏星标，自选成员原子保存并取消股票数量配额。",
+            "scope": "Web行情链接、涨停卡片星标、自选滚动和成员保存；API成员事务与共享契约。交易、趋势、自动回测规则不在本次范围。",
+            "acceptanceCriteria": [
+                "显式股票链接优先于默认自选，保留股票、日期及数据源；无链接时继续选择当前分类首只可用股票。",
+                "涨停卡片右上角星标支持加入和移出我的自选，服务器确认后显示状态；收藏按钮不触发导航，失败可重试。",
+                "新增和删除成员在服务器事务内合并，不因其他页面的旧列表版本覆盖或丢失自选；重复添加幂等。",
+                "移除每组1000只及总计20000只股票配额，保留分类、字段合法性和单请求体积保护。",
+                "自选列表提供纵向滚动条、键盘聚焦及刷新后的滚动位置保持，窄屏和长列表待浏览器验收。"
+            ],
+            "verification": [
+                {
+                    "command": "Node24.16.0/pnpm10.26.2: contracts build; Web lint/typecheck/build; vitest 3 targeted files; node --test watchlists/server-watchlists/research-link; API pytest test_watchlists.py and corrected failing node; mypy watchlists.py",
+                    "status": "passed",
+                    "summary": "2026-10-20提交验证：Web Vitest6项及Node28项通过；API首次24通过/1失败，旧预期漏main已有ordinary_trend_completion_enabled=false与buy_interval_level=2，补齐完整默认字段后该用例通过。自选事务模块mypy通过。Web lint无错误，本次3条警告整理后新Hook lint通过，保留6条既有环境变量警告。初次类型/构建缺共享playwright配置产物，补建后typecheck及生产构建通过；只构建配置，未启动浏览器。最终Hook3项重跑通过。"
+                },
+                {
+                    "command": "browser/Playwright E2E and online 3003 acceptance",
+                    "status": "not-run",
+                    "summary": "用户未要求浏览器/E2E，本轮未运行；长列表实际视觉及在线服务效果待验收。未主动重启共享服务，不将构建等同在线验收。"
+                },
+                {
+                    "command": "开发阶段仅代码阅读、编辑及回归源码编写",
+                    "status": "not-run",
+                    "summary": "2026-10-20独立worktree feat-行情收藏修复。补充显式链接优先、超过旧配额、星标按钮独立、收藏失败重试、成员增量请求、SQLite并发幂等及HTTP操作用例。按用户规则未运行测试、lint、类型、格式、构建、浏览器或Git状态差异检查；待提交时验证。未提交、合并、推送或重启当前3003服务。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-330",
             "name": "causal-backtest-computation-performance",
             "title": "回测因果计算与复用性能优化",

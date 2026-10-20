@@ -1,3 +1,7 @@
+2026-10-20 · MONOREPO-334 提交合并验证
+
+用户要求合并本地main，不推送。Node24.16.0/pnpm10.26.2；Web Vitest6项与Node28项通过，Hook整理后3项重跑通过；lint无错误（保留6条既有环境变量警告），typecheck和生产build通过，共享contracts及基础配置构建通过。API自选文件首次24通过/1失败；旧测试遗漏main已有的两个默认字段，补齐完整预期后该项通过；自选事务模块mypy通过。首次Web类型/构建缺共享playwright配置产物，补建后通过，没有启动浏览器或运行E2E。浏览器与在线3003效果待验收，未重启共享服务。
+
 2026-10-20 底部N合并前问题已解决：真实1593日资格核对确认二级最后窗口于2024-01-24关闭，7/31、8/15、8/20 buy/scan均False；旧图表用例错误要求区间外交易N，修正为真实策略不补造N，并以独立形态→底部资格→图表契约严格断言两形态只发布底部4.83/5.52，保留来源、形状和未完成K线/前缀限制。最终pytest test_bottom_n_targets.py test_positive_n_reformation.py：38 passed(215.62s)；类型断言与图表接收者修订后重成形12项再次通过（重叠不合计）。Web两文件Node17项通过且生产代码未再变化。状态机及两测试3文件mypy通过，使用项目3.11配置与follow-imports=silent，临时仅对宿主不兼容的numpy/numpy.*外部存根设置follow_imports=skip、follow_imports_for_stubs=true；未改项目依赖或全局配置，不宣称全仓类型通过。早先历史KeyError和测试可空类型错误已解决；先前失败记录保留作历史。完整Core/Web套件、另一个历史pipeline文件、浏览器与构建未运行或未完成，不作为通过。用户要求解决后合并main、不推送。
 
 2026-10-20 底部N提交验证：Core pytest test_bottom_n_targets.py、test_positive_n_reformation.py -k "not pipeline"：35 passed/2 deselected；Web pnpm exec node --test tests/eligibility-n-targets.test.mjs tests/bottom-n-targets.test.mjs：17 passed；mypy --follow-imports=skip 状态机及其测试2文件通过；git diff --check通过。历史图表用例在本分支与未修改main 1370da2均于同一断言缺少2024-07-31 N而KeyError（分别196.36s/197.12s），未修改该旧断言。初始3文件组合运行中断，剩余历史/完整套件未完成。follow-imports=silent类型检查被NumPy存根Python3.12语法与项目3.11配置冲突阻断；局部skip通过不代表完整类型通过。未运行浏览器/Harness/构建。按AGENTS检查失败不合并规则，提交后等待用户明确豁免既有失败；不推送。
@@ -1747,3 +1751,10 @@ Web信号、成交详情和复制共用完整组合proof，扫描列表已补独
 
 
 2026-10-20同步main 4a31de1后复验：相同五文件pytest -q --tb=no为98 passed/9 errors（3.73s），9项仍为已明确豁免的基线夹具错误，无新增失败；git diff --check main通过，最终差异限定7个本任务文件。优化提交09937ab，同步提交b965bd6；准备按授权本地no-ff合并，不推送。
+2026-10-20 · MONOREPO-334 行情收藏修复交接
+
+分支feat-行情收藏修复，独立worktree C:/Users/zb/.codex/worktrees/market-watchlist-7364/wavequant-monorepo。334提交验证完成，恢复330为唯一活动功能并保留其历史记录。
+
+已实现显式股票链接优先、涨停卡片右上角服务器收藏、成员事务增量合并、取消股票数量配额、侧栏纵向滚动和滚动位置保持。关键文件：Web public/app.js、watchlists.js、server-watchlists.js、styles.css；market-dashboard的ladder-board、use-market-watchlist、watchlist-api；API watchlists.py/server.py；contracts watchlists.schema.ts。API继续保留来源与请求体大小保护，未修改交易、趋势或后台回测规则。
+
+回归源码已补充但未执行。下一步在用户实际要求提交时构建contracts，运行相关Web单元/组件、API自选SQLite/HTTP用例及必要类型检查；当前3003来自main，尚未加载本worktree修改，不能宣称在线故障已验收。浏览器/E2E仍需用户当次明确要求。未运行检查、未提交、合并、推送或重启共享服务。

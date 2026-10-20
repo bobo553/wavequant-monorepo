@@ -1,3 +1,7 @@
+2026-10-20 · MONOREPO-334 提交合并验证
+
+用户要求合并本地main，不推送。Node24.16.0/pnpm10.26.2；Web Vitest6项与Node28项通过，Hook整理后3项重跑通过；lint无错误（保留6条既有环境变量警告），typecheck和生产build通过，共享contracts及基础配置构建通过。API自选文件首次24通过/1失败；旧测试遗漏main已有的两个默认字段，补齐完整预期后该项通过；自选事务模块mypy通过。首次Web类型/构建缺共享playwright配置产物，补建后通过，没有启动浏览器或运行E2E。浏览器与在线3003效果待验收，未重启共享服务。
+
 2026-10-17 · MONOREPO-330 趋势与交易规则提交验证
 
 用户明确要求提交并推送feat-三级趋势统一。本次提交覆盖普通升降整波结束默认关闭选项及Web/API/contracts传递、缺失初始关键位重建、独立实体反包放量清仓、轧空买入价格门槛和候选正N突破前量二选一。未改变既有失败相关业务逻辑。
@@ -80,3 +84,6 @@ MONOREPO-298（2026-10-08）：新增WatchlistSnapshotSchema、WatchlistSettings
 
 - MONOREPO-153：新增LimitUpStockSchema/LimitUpLadderSchema及推导类型，Web复用验证API响应的日期、来源、连板数和可空数值。包构建和消费者Web类型/构建、真实接口浏览器解析通过。
 2026-10-17 · 本次提交验证补充：contracts build 通过；功能随 MONOREPO-330 保持 in-progress，端到端资格表现和 2120 日性能待验收。
+2026-10-20 · MONOREPO-334 自选成员增量契约（待提交时验证）
+
+移除WatchlistSnapshotSchema总计20000条成员配额，添加WatchlistMembersMutationSchema统一add/remove、groupId与股票输入。保留股票格式、名称长度及分类数量校验。Web/API增量操作和契约超旧配额回归源码已补充；未运行构建、类型或测试，提交阶段需先构建contracts再验证消费者。
