@@ -1,3 +1,5 @@
+2026-10-20 合并阻碍修复完成：用户授权解决后合并。修复只读序列类型、变量遮蔽与Pickler返回声明；公共输入完整认证后复用相同签名前缀。共享_SourceTurn及COW候选桶独立计费，消除52点合成案例实际约1.34MiB却计费8.6MiB的跨块重复计费，不扩大预算。旧标注测试显式接纳既有lifecycle_context并严格断言上下文10/引用4、5知识日；本级突破投影严格白名单、完整来源不外泄；级联按序列内容比较。最终Core指定13文件pytest -q --tb=short：518 passed/52.12s；13个生产模块mypy --follow-imports=silent通过；API使用自身.venv执行test_backtest_jobs.py和test_backtest_preview.py：16 passed/1.22s（先误用Core环境缺redis，已用API环境解决）。git diff --check通过。此前73失败及类型错误已修复，本轮不豁免、不放宽业务断言。完整套件、浏览器、构建、真实行情性能未运行。准备提交并同步最新main后复核受影响检查；不推送。
+
 2026-10-17 · MONOREPO-330 趋势与交易规则提交验证
 
 用户明确要求提交并推送feat-三级趋势统一。本次提交覆盖普通升降整波结束默认关闭选项及Web/API/contracts传递、缺失初始关键位重建、独立实体反包放量清仓、轧空买入价格门槛和候选正N突破前量二选一。未改变既有失败相关业务逻辑。
@@ -444,3 +446,10 @@ MONOREPO-282（2026-10-07，Core V99消费方，合并待确认）：共用Core�
 验证命令：API 现有 .venv/Scripts/python.exe -m pytest -q --tb=short，PYTHONPATH 指向本 worktree 的 Core/API src；目标为原记录七个文件，加 test_market_calculations.py::test_public_scope_supports_polyline_six_states_without_building_first_level。结果 78 passed, 12 subtests passed；git diff --check 通过。未运行全量测试、浏览器或性能探针，未声明性能提升幅度。前述暂停记录为历史记录，本次失败已解决；MONOREPO-330 更广范围仍保留 in-progress。
 
 2026-10-20 最终同步本地 main c1c675a 后，按上述同一命令重验：78 passed、12 subtests passed（13.72s），git diff --check 通过。双方 feature/progress/handoff 记录均保留，未推送；准备本地 --no-ff 合并。
+
+
+## 2026-10-20 缓存请求专属写连接
+
+2026-10-20诊断缓存请求写连接复用：ArtifactCache新增显式start_write_session/close_write_session及上下文入口，连接按请求所属进程和线程惰性建立；共享实例默认仍短连接，其他线程使用独立短连接。_put_payload压缩继续在事务外，各块仍单独提交，首次建连沿原总等待预算、复用写入恢复0.5秒busy timeout；任何事务异常/取消丢弃连接，写失败仍返回False不影响有效计算。CalculationStepCache仅由Worker显式开启复用，_stop_cache立即释放，finish以finally关闭（包含发布回调失败），默认不记录诊断仍不创建缓存。新增test_artifact_write_session.py覆盖连接次数、逐块可见/无空闲写锁、失败回滚及重连、跨线程隔离、锁超时、取消、超大拒绝和记录器关闭。开发阶段未运行测试/类型/基准；本轮仅减少逐块开关连接成本，压缩与提交仍同步，未引入异步队列或批量事务，不宣称全部阻塞消除或实测提速。批量写入会改变逐块可见和失败恢复语义，留到同源计时后再评估；MONOREPO-330保持in-progress。
+
+本会话继续使用feat-回测诊断按需记录 / C:/Users/zb/.codex/worktrees/backtest-diagnostics/wavequant-monorepo。本轮涉及artifact_cache.py、calculation_step_cache.py、API backtest_jobs.py及新增回归；前一内存账本优化仍保留未提交、待验证，未覆盖其修改或套用此前任务测试/豁免。本轮未提交、合并或推送。

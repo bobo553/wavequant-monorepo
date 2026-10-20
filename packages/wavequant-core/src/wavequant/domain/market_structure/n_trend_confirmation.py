@@ -405,12 +405,12 @@ def qualify_n_trend(
     key = (source_position, up, sha256(identity).digest()) if identity is not None else None
     saved = scope.proofs.proofs.get(key) if key is not None else None
     if saved is not None:
-        known, certificate, proof, targets = saved
-        if (known <= end_index and scope.signature(source, known) == certificate
+        known, saved_certificate, saved_proof, saved_targets = saved
+        if (known <= end_index and scope.signature(source, known) == saved_certificate
                 and scope.is_ordered(source, bars, end_index)):
             if target_sink is not None:
-                target_sink.extend(deepcopy(targets))
-            return deepcopy(proof)
+                target_sink.extend(deepcopy(saved_targets))
+            return deepcopy(saved_proof)
     if not scope.allow_new:
         return None
     targets: list[dict[str, object]] = []
@@ -479,7 +479,8 @@ def _qualify_n_trend(
             continue
         first_completed: tuple[_Anchor, NObservation] | None = None
         completion_end = search_end
-        for c in references[b_position + 1:]:
+        for c_position in range(b_position + 1, len(references)):
+            c = references[c_position]
             if c is None:
                 continue
             if c.known > completion_end:
