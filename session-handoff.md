@@ -1,3 +1,7 @@
+2026-10-21 · 国芳8/28在线买入验收
+
+2026-10-21在线验收完成：代码81f1094已通过e46bdd1本地no-ff合并main，未推送。3303自动启动同参数国芳任务b693a261-789c-4ef2-8299-4caf0591f74d，完整2018-01-02至2026-10-20共2132个交易日已completed，策略configurable_n_target_trend_confirmation_v129_lecture_v3。2026-08-28 15:00 BUY filled，原因qualified_double_volume_breakout_close，原始8.34元/200股、复权11.618168141671974；目标17.078985781402686。返回图表markers包含同日成交买点，账本资格、收盘量价、时刻及止损/目标条件均为true，费用后盈亏比过滤关闭项为null。沿用原nonflat_limit_close_without_queue_verification模拟假设，不代表真实排队成交或早盘分钟验证。最终服务结果保存在本worktree .codex-runtime/gap-20260828/live-updated-result.json及live-summary.json。本次缺买点问题已完成；MONOREPO-330其他未完成事项和旧失败记录保留。此次仅补录证据，不更改产品代码，不重复运行测试或浏览器。
+
 2026-10-21 · MONOREPO-330 最后技术折线门槛与独立买点目标续修
 
 2026-10-21续修真实国芳8/28：用户明确门槛为最后技术折线2026-06-24高10.239033074495085，不要求一级趋势末跌高。3303任务a66932c9已是v128；实盘式审计实际仍被旧冻结index1989高12.282936拒绝。修复PolylineBuyGate在新一轮确认下降关键位形成时替换旧轮待放行门槛，局部反弹仍不降门槛，三级几何不变。第二阻挡为资格翻多高11.024346被误作盈利目标，产生target_exhausted_at_close；独立资格买点不再携带该伪目标，账户沿用已有take_profit_r=2风险倍数且继续检查净盈亏比、仓位及涨停权限。普通结构信号缺目标校验不变。账本修正独立收盘量价证据和分钟守缺口文案，profile v129。
