@@ -1,3 +1,7 @@
+2026-10-20 · MONOREPO-334 合并前最终记录
+
+修复提交99a1d27已通过7517560同步main cae59b0；仅session-handoff.md文档冲突，双方记录完整保留，Web/API/contracts生产代码未被同步改变。同步后pytest test_watchlists.py：25 passed（15.14s），git diff --check main通过，工作树干净。Web先前最终6项Vitest/28项Node、Hook重验、lint/类型及生产构建证据有效且未改源码，不重复运行；浏览器/E2E和在线视觉未运行。按用户授权本地no-ff合并，不推送。334完成，330保持原有in-progress。
+
 2026-10-20 · MONOREPO-334 提交合并验证
 
 用户要求合并本地main，不推送。Node24.16.0/pnpm10.26.2；Web Vitest6项与Node28项通过，Hook整理后3项重跑通过；lint无错误（保留6条既有环境变量警告），typecheck和生产build通过，共享contracts及基础配置构建通过。API自选文件首次24通过/1失败；旧测试遗漏main已有的两个默认字段，补齐完整预期后该项通过；自选事务模块mypy通过。首次Web类型/构建缺共享playwright配置产物，补建后通过，没有启动浏览器或运行E2E。浏览器与在线3003效果待验收，未重启共享服务。
