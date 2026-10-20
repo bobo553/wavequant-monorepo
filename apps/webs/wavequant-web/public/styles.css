@@ -857,6 +857,8 @@
     top: 12px;
     min-width: 0;
     max-height: calc(100vh - 24px);
+    height: max(360px, calc(100dvh - 24px));
+    min-height: 360px;
     padding: 10px;
     overflow: hidden;
 }
@@ -918,10 +920,10 @@
 .watchlist-rail-body {
     display: flex;
     min-height: 0;
-    flex: 0 1 auto;
+    flex: 1 1 auto;
     flex-direction: column;
     margin-top: 8px;
-    overflow: hidden;
+    overflow: auto;
 }
 .watchlist-rail-body[hidden] {
     display: none;
@@ -931,17 +933,21 @@
     flex-shrink: 0;
 }
 .watchlist-rail .watchlist-stock-list {
-    min-height: 0;
+    min-height: 120px;
     flex: 1 1 auto;
     grid-auto-rows: max-content;
     align-content: start;
     margin-inline: -3px;
     overflow-x: hidden;
-    overflow-y: auto;
+    overflow-y: scroll;
     overscroll-behavior-y: contain;
     scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--research-text-faint) transparent;
 }
 .watchlist-rail[data-collapsed="true"] {
+    height: auto;
+    min-height: 0;
     padding-inline: 9px;
 }
 .watchlist-rail[data-collapsed="true"] .watchlist-rail-header {
@@ -1035,6 +1041,10 @@
         grid-row: auto;
         position: static;
         max-height: 420px;
+        height: 420px;
+    }
+    .workspace-grid > .watchlist-rail[data-collapsed="true"] {
+        height: auto;
     }
     .workspace-grid > .stock-browser {
         grid-column: 1;

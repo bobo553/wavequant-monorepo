@@ -88,6 +88,14 @@ export function createServerWatchlistStorage({
             await mutate({ action: "save", snapshot: normalize(value) });
             return normalize(document.snapshot);
         },
+        async addStocks(groupId, stocks) {
+            await mutate({ action: "add", groupId, stocks });
+            return normalize(document.snapshot);
+        },
+        async removeStock(groupId, symbol) {
+            await mutate({ action: "remove", groupId, stocks: [{ symbol }] });
+            return normalize(document.snapshot);
+        },
         async refresh() {
             await pending.catch(() => {});
             const previous = document?.revision;

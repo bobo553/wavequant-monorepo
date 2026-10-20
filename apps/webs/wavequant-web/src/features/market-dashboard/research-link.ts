@@ -1,5 +1,5 @@
 /** Document links remount the legacy chart runtime; symbols include their exchange. */
-export function stockResearchHref(code: string, date: string): string {
+export function stockResearchSymbol(code: string): string {
     const exchange = /^(60|68)\d{4}$/.test(code)
         ? "sh"
         : /^(00|30)\d{4}$/.test(code)
@@ -8,5 +8,9 @@ export function stockResearchHref(code: string, date: string): string {
             ? "bj"
             : null;
     if (!exchange) throw new Error("不支持的 A 股代码");
-    return `/research?${new URLSearchParams({ page: "workspace", symbol: `${exchange}.${code}`, asof: date, source: "akshare" })}`;
+    return `${exchange}.${code}`;
+}
+
+export function stockResearchHref(code: string, date: string): string {
+    return `/research?${new URLSearchParams({ page: "workspace", symbol: stockResearchSymbol(code), asof: date, source: "akshare" })}`;
 }

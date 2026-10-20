@@ -1,3 +1,11 @@
+2026-10-20 · MONOREPO-334 合并前最终记录
+
+修复提交99a1d27已通过7517560同步main cae59b0；仅session-handoff.md文档冲突，双方记录完整保留，Web/API/contracts生产代码未被同步改变。同步后pytest test_watchlists.py：25 passed（15.14s），git diff --check main通过，工作树干净。Web先前最终6项Vitest/28项Node、Hook重验、lint/类型及生产构建证据有效且未改源码，不重复运行；浏览器/E2E和在线视觉未运行。按用户授权本地no-ff合并，不推送。334完成，330保持原有in-progress。
+
+2026-10-20 · MONOREPO-334 提交合并验证
+
+用户要求合并本地main，不推送。Node24.16.0/pnpm10.26.2；Web Vitest6项与Node28项通过，Hook整理后3项重跑通过；lint无错误（保留6条既有环境变量警告），typecheck和生产build通过，共享contracts及基础配置构建通过。API自选文件首次24通过/1失败；旧测试遗漏main已有的两个默认字段，补齐完整预期后该项通过；自选事务模块mypy通过。首次Web类型/构建缺共享playwright配置产物，补建后通过，没有启动浏览器或运行E2E。浏览器与在线3003效果待验收，未重启共享服务。
+
 2026-10-20 · MONOREPO-330 末跌高买入修复合并前复核完成
 
 修复提交de54eb6（fix: 修复末跌高突破买入）已同步本地main 4efc1b5；生产代码无冲突，feature_list.json冲突已保留双方全部验收与验证记录，进度/交接自动合并。同步后pytest本次8文件加test_trend_publication_frontier.py：167 passed（10.57s）；12个修改文件mypy通过，环境隔离方式与前述一致；git diff --check main通过，最终差异限定本任务15文件，main发布优化文件无差异。代码复核完成，按用户批准的70项既有趋势注释失败例外执行本地no-ff合并；不推送、不改远端、不重启共享服务，最终提交身份以Git记录为准。
@@ -1774,3 +1782,10 @@ Web信号、成交详情和复制共用完整组合proof，扫描列表已补独
 
 
 2026-10-20同步main 4a31de1后复验：相同五文件pytest -q --tb=no为98 passed/9 errors（3.73s），9项仍为已明确豁免的基线夹具错误，无新增失败；git diff --check main通过，最终差异限定7个本任务文件。优化提交09937ab，同步提交b965bd6；准备按授权本地no-ff合并，不推送。
+2026-10-20 · MONOREPO-334 行情收藏修复交接
+
+分支feat-行情收藏修复，独立worktree C:/Users/zb/.codex/worktrees/market-watchlist-7364/wavequant-monorepo。334提交验证完成，恢复330为唯一活动功能并保留其历史记录。
+
+已实现显式股票链接优先、涨停卡片右上角服务器收藏、成员事务增量合并、取消股票数量配额、侧栏纵向滚动和滚动位置保持。关键文件：Web public/app.js、watchlists.js、server-watchlists.js、styles.css；market-dashboard的ladder-board、use-market-watchlist、watchlist-api；API watchlists.py/server.py；contracts watchlists.schema.ts。API继续保留来源与请求体大小保护，未修改交易、趋势或后台回测规则。
+
+回归源码已补充但未执行。下一步在用户实际要求提交时构建contracts，运行相关Web单元/组件、API自选SQLite/HTTP用例及必要类型检查；当前3003来自main，尚未加载本worktree修改，不能宣称在线故障已验收。浏览器/E2E仍需用户当次明确要求。未运行检查、未提交、合并、推送或重启共享服务。

@@ -29,6 +29,36 @@ const snapshot = (symbols = []) =>
 const document = (symbols = []) => ({ revision: 0, snapshot: snapshot(symbols), settings: null });
 const cleanDocument = (value) => WatchlistDocumentSchema.parse(value);
 
+test("member operations send incremental intent instead of a stale full snapshot", async () => {
+    const calls = [];
+    const subject = createServerWatchlistStorage({
+        normalize: normalizeWatchlistSnapshot,
+        legacy: { load: async () => snapshot() },
+        parse: cleanDocument,
+        preferences: null,
+        request: async (body) => {
+            calls.push(body);
+            return document(body?.action === "add" ? ["sz.000678", "sh.600519"] : ["sz.000678"]);
+        },
+    });
+    await subject.load();
+    const added = await subject.addStocks("default", [{ symbol: "sh.600519", name: "贵州茅台" }]);
+    assert.equal(added.memberships.length, 2);
+    assert.deepEqual(calls[1], {
+        action: "add",
+        groupId: "default",
+        stocks: [{ symbol: "sh.600519", name: "贵州茅台" }],
+        revision: 0,
+    });
+    const removed = await subject.removeStock("default", "sh.600519");
+    assert.deepEqual(
+        removed.memberships.map((member) => member.symbol),
+        ["sz.000678"],
+    );
+    assert.equal(calls[2].action, "remove");
+    assert.equal(Object.hasOwn(calls[2], "snapshot"), false);
+});
+
 function fixture({ old = snapshot(["sz.000678"]), doc = document(), request } = {}) {
     const preferences = new Map();
     const calls = [];
@@ -129,14 +159,18 @@ test("persisted buy intervals default to level two and accept only the three can
     assert.equal(parsed.settings.context.buy_interval_level, "2");
     for (const buy_interval_level of ["1", "2", "3"]) {
         const selected = cleanDocument({
-            ...document(), settings: { enabled: true, context: { ...context, buy_interval_level } },
+            ...document(),
+            settings: { enabled: true, context: { ...context, buy_interval_level } },
         });
         assert.equal(selected.settings.context.buy_interval_level, buy_interval_level);
     }
     for (const buy_interval_level of [1, 2, 3, "0", "4", "2.0", null, true])
-        assert.throws(() => cleanDocument({
-            ...document(), settings: { enabled: true, context: { ...context, buy_interval_level } },
-        }));
+        assert.throws(() =>
+            cleanDocument({
+                ...document(),
+                settings: { enabled: true, context: { ...context, buy_interval_level } },
+            }),
+        );
 });
 
 test("changing the saved interval level persists it and an omitted choice restores the default", async () => {
@@ -149,8 +183,10 @@ test("changing the saved interval level persists it and an omitted choice restor
     assert.equal(subject.document.settings.context.buy_interval_level, "2");
     await subject.configure({ ...context, buy_interval_level: "3" }, true);
     assert.equal(subject.document.settings.context.buy_interval_level, "3");
-    assert.deepEqual(calls.filter((body) => body?.action === "settings")
-        .map((body) => body.settings.context.buy_interval_level), ["1", "2", "3"]);
+    assert.deepEqual(
+        calls.filter((body) => body?.action === "settings").map((body) => body.settings.context.buy_interval_level),
+        ["1", "2", "3"],
+    );
 });
 
 test("watchlist option survives a server reload and both flag transitions are persisted", async () => {
