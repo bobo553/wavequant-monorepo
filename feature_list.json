@@ -20,6 +20,16 @@
             ],
             "verification": [
                 {
+                    "command": "post-main-sync: pytest 21 Core files -q --tb=short; mypy --follow-imports=silent 13 production modules; API pytest test_backtest_jobs.py test_backtest_preview.py; git diff --check main",
+                    "status": "passed",
+                    "summary": "2026-10-20 合并最终验证：ec93ee2实现，经0dd39ee同步main 34d09fa，四份状态文档冲突保留双方记录，生产代码无冲突。同步后Core本任务13文件加新基线相邻8文件共665 passed/56.63s；13个变更生产模块mypy --follow-imports=silent通过；API两个文件16 passed/0.94s；git diff --check main通过，31文件最终差异已复核。此前测试/类型失败均已修复，无失败例外。仅记录本轮定向验证，不宣称全套、浏览器或真实行情提速；MONOREPO-330其他工作继续in-progress。准备从已同步分支no-ff合并本地main，不推送。"
+                },
+                {
+                    "command": "Core pytest 13 files -q --tb=short; mypy --follow-imports=silent 13 production modules; API pytest test_backtest_jobs.py test_backtest_preview.py; git diff --check",
+                    "status": "passed",
+                    "summary": "2026-10-20 ec93ee2：Core 518 passed/52.12s，13生产模块类型通过；API 16 passed/1.22s，空白检查通过。修复原73项失败及既有类型问题；不使用失败豁免。同步main 34d09fa仅状态记录冲突，保留双方全部记录，待同步后复验。完整套件、浏览器、实股性能未运行。"
+                },
+                {
                     "command": "Node24.16.0/pnpm10.26.2: contracts build; Web lint/typecheck/build; vitest 3 targeted files; node --test watchlists/server-watchlists/research-link; API pytest test_watchlists.py and corrected failing node; mypy watchlists.py",
                     "status": "passed",
                     "summary": "2026-10-20提交验证：Web Vitest6项及Node28项通过；API首次24通过/1失败，旧预期漏main已有ordinary_trend_completion_enabled=false与buy_interval_level=2，补齐完整默认字段后该用例通过。自选事务模块mypy通过。Web lint无错误，本次3条警告整理后新Hook lint通过，保留6条既有环境变量警告。初次类型/构建缺共享playwright配置产物，补建后typecheck及生产构建通过；只构建配置，未启动浏览器。最终Hook3项重跑通过。修复提交99a1d27经7517560同步main cae59b0后，自选API全文件25项通过（15.14s）；仅交接文档冲突保留双方记录，最终差异检查通过。"
@@ -47,6 +57,10 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+                "2026-10-20 合并阻碍修复完成：用户授权解决后合并。修复只读序列类型、变量遮蔽与Pickler返回声明；公共输入完整认证后复用相同签名前缀。共享_SourceTurn及COW候选桶独立计费，消除52点合成案例实际约1.34MiB却计费8.6MiB的跨块重复计费，不扩大预算。旧标注测试显式接纳既有lifecycle_context并严格断言上下文10/引用4、5知识日；本级突破投影严格白名单、完整来源不外泄；级联按序列内容比较。最终Core指定13文件pytest -q --tb=short：518 passed/52.12s；13个生产模块mypy --follow-imports=silent通过；API使用自身.venv执行test_backtest_jobs.py和test_backtest_preview.py：16 passed/1.22s（先误用Core环境缺redis，已用API环境解决）。git diff --check通过。此前73失败及类型错误已修复，本轮不豁免、不放宽业务断言。完整套件、浏览器、构建、真实行情性能未运行。准备提交并同步最新main后复核受影响检查；不推送。",
+                "2026-10-20 合并准备受基线门禁阻挡：分支feat-回测诊断按需记录基于4efc1b5，本地main为34d09fa。首次13文件pytest为73 failed/442 passed（65.51s）；main对照三个失败文件为72 failed/259 passed（26.60s）。修复新增类型收窄错误及已取消全图校准的过时次数断言，保留冷结果/容量断言；受影响五文件复查为1 failed/288 passed（39.35s），唯一剩余来源签名身份断言在main同样失败。其余基线失败为标注lifecycle_context字段断言及级联FrozenPrefixList可哈希假设，不改业务/不放宽断言。生产13模块mypy剩43项，main对应11模块50项，归一化文件行号和诊断内行号后无分支独有错误，不宣称类型通过。git diff --check通过。基线日志在主目录.codex-runtime/merge-cache-main-tests.txt、merge-cache-main-types.txt，分支类型与复查日志merge-cache-branch-types.txt、merge-cache-recheck.txt。按检查失败不合并规则，未提交、未同步合并main、未推送；等待明确豁免既有失败或授权修复基线。未运行浏览器、全套、构建或性能剖析。",
+                "2026-10-20 标注缓存重绑定优化：新增rebind_identity，只接受匹配的已准入内容签名与不透明令牌，复用快照及容量；签名单标识升级仅增加令牌固定大小，已有身份替换不累加费用，预算不足保留原签名缓存。标注签名命中不再put递归计费。补充禁用全文计费时的重绑定、重复替换、签名失效/clear及预算不足回归源码，并增强三级标注命中用例。未运行测试、类型、性能探针或Git检查，待提交时验证；未提交、合并或推送，MONOREPO-330保持in-progress。",
+                "2026-10-20 CR两项修复：共享账本按释放旧根后的最终保留量判断预算，过渡期新增计费仍有界，最终超限清空；标注版本令牌未命中恢复内容签名查询，单条快照保存身份与签名并计入原预算，签名命中重绑定新令牌，所有公开回填独立深复制。补充近预算替换/真实超限、三级新令牌同内容复用及嵌套隔离、单条缓存签名失效/预算回归源码。未执行测试、类型、性能探针或Git检查，待提交时验证；未提交、合并或推送，MONOREPO-330保持in-progress。",
                 "2026-10-20国芳末跌高突破买入：收盘直入与跳空直入复用普通策略PolylineBuyGate，阻止2/27、3/14未越过1/09末跌高的局部倍量反弹；三级共用新增守低后倍量中大阳高位收盘严格突破冻结折线末跌高的交替确认，已有实体跳空确认同样尊重冻结关键位。4/03首次突破在收盘确认并生成入场，下一交易日4/07放量跳空全天守住前高且收盘不低于开盘作为独立守稳入场；不要求平开收K线有阳线实体，不倒填开盘成交。普通趋势几何及已有影线突破定义保持，未添加股票、日期、级别特判；生命周期v33、资格缓存v159、策略v127。新增冻结量价门禁、三级合成资格链、前缀/边界/关闭/收盘执行回归源码；开发阶段未执行任何验证，完整实股资格与真实涨停撮合待提交时验证。",
                 "2026-10-20 底部N测量规则：同一一级趋势仅底部有效主N测量；普通与重成形N统一竞争floor，以完整N身份发布唯一测量来源，其余保留结构但无测量，前端交易区间不得将拒绝或未知资格提升为测量；策略v126及测量v3隔离旧结果。补充内部/重成形/无下降/失效接替/同日竞争/前缀及前端堆叠回归源码。待提交时验证，未运行任何检查或浏览器。",
                 "2026-10-20国芳倍量突破仍未买入续修：上轮只接通内部解析器，streaming_stock_result.consume在分钟入场关闭时仍用open>previous.close预筛选，低开2025-04-03无法到达新规则。逐日协调器改为高开或共用double_volume_bullish_breakout均可调用，仍要求当日所选级别资格；不改变六态、成交权限、账户风险或同日退出优先。profile v125隔离旧结果。新增三级×资格开关×分钟开关的逐日协调器回归源码：只注入资格来源与输出格式，真实resolver和portfolio撮合贯通；冻结4/2–4/3量价、合成可成交权限，不冒充全历史实股复现。未执行测试、类型、回测、构建、Git状态差异检查；实际资格和涨停撮合仍待提交时验证。",
@@ -148,6 +162,36 @@
                 "2026-10-19 外围消费者增量化：来源、候选、许可轻量投影传递不可变版本/父令牌/最早变化位置；分组、来源认证、几何标注、结构腿共享持久前缀；许可来源/候选查找索引只更新后缀；共享层级历史在交易区间内外只更新投影后缀。旧关键位/整波起点只读引用，不删除证据，不以结构冻结代替逐日资格核验；追加、修订、截短、同坐标事实、延迟可知、跨请求失效及公开独立列表导出待提交时验证。"
             ],
             "verification": [
+                {
+                    "command": "pending: test_reanchor_positions.py, test_secondary_trend.py, test_trend_annotation_clock.py, test_trend_publication_frontier.py and readonly-cache regressions; scoped typing and frozen-input comparison",
+                    "status": "not-run",
+                    "summary": "2026-10-20第2/3项性能优化：last_fall_high_reanchors在首次实际破位后为标准列表/元组构建前高位置表和按available_at排序的低点前缀最大位置表；每次取破位时已知的最右后续低点，保留非单调知识日、同日并列、开放尾部下级confirmed_by及原事件顺序，点选择由最坏平方扫描降为构建O(n log n)+单次O(log n)，行情破位查询原样。未知Mapping/时钟保留旧访问路径。交易标注由发布器经私有sink传递完全匹配稳定检查点的身份令牌，过滤改变结果时清除；版本命中在分段/编号/签名前返回缓存派生字段，按股票/级别/路径隔离，新增不透明令牌计费支持，沿用8MiB标注缓存。标注缓存与公开字段独立深复制，避免读者改写缓存；仍保留必须的逐点字段回写。仅完整稳定版本优化，变化结果、N路径、未准入或预算失败仍原计算，未宣称所有变化后缀都已增量。新增test_reanchor_positions.py及三级多时钟标注完整字段/嵌套修改隔离、版本hint变化/修订、预算回退回归源码。开发阶段未执行测试、类型、性能探针或Git检查，待提交时验证；未提交/合并/推送，无实测提速或零副作用结论，MONOREPO-330保持in-progress。"
+                },
+                {
+                    "command": "pending: test_trend_confirmation_version.py and publication frontier/shared-output regressions; scoped typing and fixed-input rejection-cost comparison",
+                    "status": "not-run",
+                    "summary": "2026-10-20仅处理第一个剩余热点：_ConfirmationVersionCache增加单条_RejectedVersion拒绝元数据，持有版本令牌、长度、预算、截止日和市场弱引用，不保留失败来源或行情图。同版本或保留全部旧点的直接追加后继，在同市场、日期不回退、预算不增加时O(1)跳过失败的缓存构建并沿原prepare_confirmation_context解析；修订、截短、未知祖先、市场更换、日期回退、预算增加及clear均允许重试。size准入失败和明确预算超限记录拒绝，未来不可知/有序性/非标量等日期解析失败不记录；发布预算缩小时通过set_limit把已缓存超限状态转为拒绝，避免释放后立即重建。保留4096字节逐点保守计费与原容量，不以缩小计费声称内存优化。补充拒绝重复构建、直接追加、七类失效条件、预算缩小/恢复、弱引用释放及原路径当前/历史上下文一致回归源码。开发阶段未执行测试/类型/性能探针/Git检查，待提交时验证；未提交/合并/推送，不宣称零副作用或实测加速。第二三项未改动，MONOREPO-330保持in-progress。"
+                },
+                {
+                    "command": "pending: test_publication_shared_outputs.py, test_trend_publication_frontier.py, test_promotion_endpoint_index.py, test_trend_cascade_rounds.py, test_n_trend_confirmation.py; scoped typing and fixed-input full-result/performance comparison",
+                    "status": "not-run",
+                    "summary": "2026-10-20剩余重复遍历优化：发布检查点save改用_ImmutableBlockLedger按共享序列块计费，拒绝未知对象前不调用sizeof钩子，计入账本与管理余量，超预算clear；内部层级资格出口增加私有版本传递，仅已准入的来源使用，分别投影稳定检查点与当日工作结果，复用旧标量前缀并检测末端替换，未确认后缀不能污染稳定投影；公共完整/直接轻量调用保持独立列表。投影与上下文共用原发布预算。级联新增单次收敛有界端点位置索引（最多2MiB），同一sealed PointVersion不再全量扫描；新版本、可变输入和预算拒绝仍原序扫描，不跨日保存升级授权，跨日首扫仍存在。N的B/C搜索内层改按索引惰性读取，消除尾段复制但不改变搜索、break及首次证书选择，不宣称消除组合复杂度。新增test_publication_shared_outputs.py、test_promotion_endpoint_index.py及三级逐日/回退、级联冷对照、N首证书回归源码。开发阶段未运行测试、类型、性能探针或Git检查，无实测加速/零副作用结论；待提交时验证，未提交/合并/推送。关闭路径反序列化、完整交易附件和N上下文/组合搜索仍为后续热点，未冒险改变消费者所有权或首次确认语义。MONOREPO-330保持in-progress。"
+                },
+                {
+                    "command": "pending: test_trend_confirmation_version.py, test_trend_publication_frontier.py, test_trend_append_state.py, related memory and confirmation regressions; scoped type checks and fixed-input comparison",
+                    "status": "not-run",
+                    "summary": "2026-10-20前三项剩余性能优化：普通_TrendJudgementState使用不可变块引用账本，封存已有写时复制记录，可变根仍重计，取消生产路径完整对象图校准；层级历史私有入口只导出index/ordinal/kind/value/available_at，避免深复制完整证书，公共完整结果仍独立复制；新增_ConfirmationVersionCache，仅已封存、全部已知、单调且唯一交易日的来源复用解析/可见性/摘要前缀，变化后缀重建，每天重新绑定行情截止日。N模式、未知/未来来源、日期回退与预算不足保留冷路径，非同一N来源身份不复用。解析缓存最多2MiB且占用原发布缓存剩余预算，不扩大总上限。新增三级普通预算不调用全图计数/修订对照、轻量输出隔离，以及静态上下文追加、修订、截短、时钟回退、市场更换、未来可知与预算拒绝回归源码。开发阶段未运行验证或性能剖析，不能据静态复核保证零副作用或实测提速；待实际提交阶段验证，未提交/合并/推送，MONOREPO-330保持in-progress。"
+                },
+                {
+                    "command": "pending: test_artifact_write_session.py, test_artifact_cache.py, calculation_step_cache/order_cache and API test_backtest_jobs.py; scoped type checks and write benchmark",
+                    "status": "not-run",
+                    "summary": "2026-10-20诊断缓存请求写连接复用：ArtifactCache新增显式start_write_session/close_write_session及上下文入口，连接按请求所属进程和线程惰性建立；共享实例默认仍短连接，其他线程使用独立短连接。_put_payload压缩继续在事务外，各块仍单独提交，首次建连沿原总等待预算、复用写入恢复0.5秒busy timeout；任何事务异常/取消丢弃连接，写失败仍返回False不影响有效计算。CalculationStepCache仅由Worker显式开启复用，_stop_cache立即释放，finish以finally关闭（包含发布回调失败），默认不记录诊断仍不创建缓存。新增test_artifact_write_session.py覆盖连接次数、逐块可见/无空闲写锁、失败回滚及重连、跨线程隔离、锁超时、取消、超大拒绝和记录器关闭。开发阶段未运行测试/类型/基准；本轮仅减少逐块开关连接成本，压缩与提交仍同步，未引入异步队列或批量事务，不宣称全部阻塞消除或实测提速。批量写入会改变逐块可见和失败恢复语义，留到同源计时后再评估；MONOREPO-330保持in-progress。"
+                },
+                {
+                    "command": "pending: test_trend_memory_ledger.py, test_formal_attack_reuse.py, related frozen-prefix regressions; mypy; fixed-input accounting benchmark",
+                    "status": "not-run",
+                    "summary": "2026-10-20正式突破预算计费优化：针对_FormalKeyBreakState._retain以不可变块引用账本替换累计追加上界和超预算完整校准。持久序列/索引节点及安全冻结点按存活引用计费，新根先获取再释放旧根，保持共享子树；来源/候选修订保留未变块，封存记录沿原写时复制契约。可变容器每次重计，块内按身份去重、跨块非块叶子保守重复计费，账本条目/容量/节点存储纳入预算；超预算先丢检查点再回退，异常和clear释放账本，回退不携带未来证据。范围仅用户指定正式突破计费路径，普通_TrendJudgementState的独立预算路径尚未改动。新增共享版本回收、旧块不遍历、可变证据增长、索引修订、预算拒绝与正式二三级冷结果对照回归源码；开发阶段未运行测试/类型/性能探针，性能与结果待提交时验证，本轮不宣称提速倍数；MONOREPO-330保持in-progress。"
+                },
                 {
                     "command": "post-main-sync pytest eight entry/confirmation files + tests/test_trend_publication_frontier.py -q; mypy twelve changed files; git diff --check main",
                     "status": "passed",

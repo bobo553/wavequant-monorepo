@@ -501,11 +501,12 @@ def test_append_ownership_upper_bound_covers_tree_growth_replaced_keys_and_proof
         assert all(old is new for old, new in zip(previous_source_keys, state._source_keys))
         previous_source_keys = state._source_keys
     assert state.append_runs == 129
-    assert state.deep_budget_walks == state.cold_runs == 1
+    assert state.deep_budget_walks == 0
+    assert state.cold_runs == 1
     assert state.budget_rejections == 0
 
 
-def test_ownership_budget_rechecks_a_conservative_bound_before_rejecting_real_heap() -> None:
+def test_ownership_budget_ignores_obsolete_cumulative_bound() -> None:
     source = _points((20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 38, 42, 32, 36, 24, 29, 26, 50),
                      level=0, clock='integer')
     state = _TrendJudgementState(1)
@@ -513,7 +514,7 @@ def test_ownership_budget_rechecks_a_conservative_bound_before_rejecting_real_he
     state._payload_upper_bytes = state._limit
     observed = judge_trend(source, _append_state=state)
     assert mutable_points(observed.candidates) == mutable_points(judge_trend(source).candidates)
-    assert state.deep_budget_walks == 2 and state.budget_rejections == 0
+    assert state.deep_budget_walks == 0 and state.budget_rejections == 0
     assert state.memory_used >= state._owned_bytes()
 
 
@@ -583,3 +584,30 @@ def test_tail_checkpoint_copies_mutable_containers_without_serializing_history(
     assert mutable_points(observed.points) == mutable_points(expected.points)
     assert mutable_points(observed.candidates) == mutable_points(expected.candidates)
     assert state.tail_restores > 0 and state.memory_used >= state._owned_bytes()
+
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+def test_ordinary_budget_uses_block_ledger_without_full_graph_calibration(monkeypatch, level):
+    source = _points((20, 30, 10, 20, 14, 26, 18, 35, 28, 45, 38, 42, 32, 36, 24, 29),
+                     level=level - 1, clock='integer')
+    state = _TrendJudgementState(level, _tail_reuse=True)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('ordinary budget walked the whole object graph')
+
+    monkeypatch.setattr(state, '_owned_value_bytes', forbidden)
+    for end in range(1, len(source) + 1):
+        current = deepcopy(source[:end])
+        actual = judge_trend(current, trend_level=level, _append_state=state)
+        expected = judge_trend(current, trend_level=level)
+        assert mutable_points(actual.points) == mutable_points(expected.points)
+        assert mutable_points(actual.candidates) == mutable_points(expected.candidates)
+        current[-1]['value'] = cast(int, current[-1]['value']) + 1
+        revised = judge_trend(current, trend_level=level, _append_state=state)
+        cold = judge_trend(current, trend_level=level)
+        assert mutable_points(revised.points) == mutable_points(cold.points)
+        assert mutable_points(revised.candidates) == mutable_points(cold.candidates)
+        assert state.memory_used <= state._limit
+    assert state._budget.memory_used > 0
+    state.clear()
+    assert state._budget.memory_used == 0

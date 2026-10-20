@@ -15,7 +15,7 @@ from wavequant.domain.market_structure.trend_levels import Moment
 Clock = Literal['index', 'numeric', 'date']
 START = date(2026, 1, 1)
 DERIVED_FIELDS = frozenset(('label', 'trend_level', 'source_level', 'trend', 'window_trend',
-                           'reversal', 'observations', 'levels', 'preceding_turn'))
+                           'reversal', 'observations', 'levels', 'preceding_turn', 'lifecycle_context'))
 REFERENCE_FIELDS = frozenset(('index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'label'))
 
 
@@ -137,8 +137,13 @@ def test_annotation_projection_cannot_write_back_coordinates_or_independent_proo
     real_annotate = cast(module._DefinitionAnnotator, _annotate)
 
     def annotate(shadows: list[dict[str, object]], symbol: str, dates: Mapping[object, int], *, trend_level: int) -> None:
-        # 旧标注器的适配边界只接收最小坐标投影，完整账本不进入该边界。
-        assert all('source_confirmation' not in point and 'upgrade_evidence' not in point for point in shadows)
+        # 投影可携带本级突破证明，但不得带入完整来源或祖先账本。
+        allowed = {'index', 'ordinal', 'time', 'kind', 'value', 'available_at',
+                   'upgrade_evidence', 'confirmation_rule', 'wave_identity_state',
+                   'wave_completion_policy', 'wave_direction_before', 'wave_direction_after'}
+        assert all(set(point) <= allowed for point in shadows)
+        assert [point['upgrade_evidence'] for point in shadows] == [
+            point['upgrade_evidence'] for point in original]
         real_annotate(shadows, symbol, dates, trend_level=trend_level)
         for point in shadows:
             point.update(value=-1, available_at=999, available_index=999, confirmation_rule='changed',
@@ -357,3 +362,118 @@ def test_independent_origin_reference_keeps_its_own_later_date_at_an_existing_pu
     assert points[-1]['observations'] == []
     assert [{key: value for key, value in point.items() if key not in DERIVED_FIELDS} for point in points] == [
         {key: value for key, value in point.items() if key not in DERIVED_FIELDS} for point in before]
+
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+@pytest.mark.parametrize('mirror', (False, True))
+@pytest.mark.parametrize('clock', ('index', 'numeric', 'date'))
+def test_stable_publication_annotation_hit_skips_segmentation_and_signature(monkeypatch, level, mirror, clock):
+    from wavequant.domain.market_structure.trend_readonly_cache import _ReadonlySnapshotCache
+
+    source, origin = _permission_break(level, mirror, clock)
+    dates = module._definition_dates([*source, origin])
+    expected = deepcopy(source)
+    module._annotate_permissions(expected, 'TEST', dates, trend_level=level)
+    cache = _ReadonlySnapshotCache(memory_bytes=16 * 1024 * 1024, max_entries=4)
+    token = object()
+    first = deepcopy(source)
+    module._annotate_permissions(first, 'TEST', dates, trend_level=level,
+        _cache=cache, _cache_key=(level, 'path'), _version_token=token)
+    assert first == expected
+    first[-1]['levels'].clear()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('unchanged published annotations were segmented or hashed again')
+
+    monkeypatch.setattr(module, '_permission_leg', forbidden)
+    monkeypatch.setattr(module, '_geometry_signature', forbidden)
+    second = deepcopy(source)
+    module._annotate_permissions(second, 'TEST', dates, trend_level=level,
+        _cache=cache, _cache_key=(level, 'path'), _version_token=token)
+    assert second == expected
+    second[-1]['levels'].clear()
+    third = deepcopy(source)
+    module._annotate_permissions(third, 'TEST', dates, trend_level=level,
+        _cache=cache, _cache_key=(level, 'path'), _version_token=token)
+    assert third == expected
+
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+def test_revised_permission_version_and_budget_fallback_match_cold_annotation(level):
+    from wavequant.domain.market_structure.trend_readonly_cache import _ReadonlySnapshotCache
+
+    for budget in (64, 16 * 1024 * 1024):
+        cache = _ReadonlySnapshotCache(memory_bytes=budget, max_entries=4)
+        for mirror in (False, True):
+            points, origin = _permission_break(level, mirror, 'date')
+            dates = module._definition_dates([*points, origin])
+            expected = deepcopy(points)
+            module._annotate_permissions(expected, 'TEST', dates, trend_level=level)
+            module._annotate_permissions(points, 'TEST', dates, trend_level=level,
+                _cache=cache, _cache_key=(level, 'path'), _version_token=object())
+            assert points == expected
+
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+def test_new_publication_token_reuses_annotation_signature_and_rebinds_identity(monkeypatch, level):
+    from wavequant.domain.market_structure.trend_readonly_cache import _ReadonlySnapshotCache
+
+    source, origin = _permission_break(level, False, 'date')
+    dates = module._definition_dates([*source, origin])
+    expected = deepcopy(source)
+    module._annotate_permissions(expected, 'TEST', dates, trend_level=level)
+    cache = _ReadonlySnapshotCache(memory_bytes=16 * 1024 * 1024, max_entries=1)
+    first = deepcopy(source)
+    module._annotate_permissions(first, 'TEST', dates, trend_level=level,
+        _cache=cache, _cache_key=(level, 'path'), _version_token=object())
+    first[-1]['levels'].clear()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('unchanged annotation dependencies were recomputed')
+
+    monkeypatch.setattr(module, '_annotate_geometry', forbidden)
+    monkeypatch.setattr(
+        'wavequant.domain.market_structure.trend_readonly_cache._builtin_size', forbidden)
+    token = object()
+    second = deepcopy(source)
+    module._annotate_permissions(second, 'TEST', dates, trend_level=level,
+        _cache=cache, _cache_key=(level, 'path'), _version_token=token)
+    assert second == expected
+    assert len(cache._entries) == 1
+    second[-1]['levels'].clear()
+
+    monkeypatch.setattr(module, '_permission_leg', forbidden)
+    monkeypatch.setattr(module, '_geometry_signature', forbidden)
+    third = deepcopy(source)
+    module._annotate_permissions(third, 'TEST', dates, trend_level=level,
+        _cache=cache, _cache_key=(level, 'path'), _version_token=token)
+    assert third == expected
+
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+def test_annotation_lifecycle_context_is_an_explicit_derived_field(level):
+    points = _points(level)
+    shadows = [{key: point[key] for key in
+                ('index', 'ordinal', 'time', 'kind', 'value', 'available_at')} for point in points]
+    dates = module._definition_dates(points)
+    known = 0
+    for shadow in shadows:
+        known = max(known, cast(int, shadow['available_at']))
+        shadow['available_at'] = known
+    annotate = cast(module._DefinitionAnnotator, _annotate)
+    annotate(shadows, 'TEST', dates, trend_level=level)
+    module._annotate_geometry(points, 'TEST', dates, trend_level=level)
+    assert 'lifecycle_context' in DERIVED_FIELDS
+    expected = deepcopy([shadow['lifecycle_context'] for shadow in shadows])
+    own_dates = {point['index']: point['available_at'] for point in _points(level)}
+    for context in expected:
+        if isinstance(context, dict):
+            for field in ('key', 'origin'):
+                reference = context.get(field)
+                if isinstance(reference, dict):
+                    reference['available_at'] = own_dates[reference['index']]
+    assert [point['lifecycle_context'] for point in points] == expected
+    context = cast(Mapping[str, object], points[4]['lifecycle_context'])
+    assert context['available_at'] == 10
+    assert cast(Mapping[str, object], context['key'])['available_at'] == 4
+    assert cast(Mapping[str, object], context['origin'])['available_at'] == 5

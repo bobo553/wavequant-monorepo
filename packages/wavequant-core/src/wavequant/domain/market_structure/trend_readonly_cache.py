@@ -50,7 +50,7 @@ class _ReadonlySnapshotCache(Generic[_Value]):
         self._limit = memory_bytes
         self._max_entries = max_entries
         self._evict = evict
-        self._entries: OrderedDict[Hashable, tuple[object, _Value, int]] = OrderedDict()
+        self._entries: OrderedDict[Hashable, tuple[object, _Value, int, bytes | None]] = OrderedDict()
         self._bytes = 0
 
     @property
@@ -59,12 +59,49 @@ class _ReadonlySnapshotCache(Generic[_Value]):
 
     def get(self, key: Hashable, token: object) -> tuple[_Value] | None:
         saved = self._entries.get(key)
-        if saved is None or saved[0] != token:
+        if saved is None or (saved[0] != token and (saved[3] is None or saved[3] != token)):
             return None
         self._entries.move_to_end(key)
         return (saved[1],)
 
-    def put(self, key: Hashable, token: object, value: _Value) -> None:
+    def rebind_identity(self, key: Hashable, signature: bytes, token: object) -> bool:
+        """Attach an identity to an admitted signature without rescanning its value.
+
+        A signature-only entry retains the same signature and gains one opaque
+        token. Existing identity entries only replace a fixed-size token. On
+        insufficient space, preserve the signature entry for future lookups.
+        """
+        if type(signature) is not bytes or type(token) is not object:
+            raise ValueError('rebinding requires exact bytes and an opaque identity')
+        saved = self._entries.get(key)
+        if saved is None:
+            return False
+        previous, value, charged, fallback = saved
+        if type(previous) is object and fallback is not None:
+            if fallback != signature:
+                return False
+            extra = 0
+            retained_signature = fallback
+        elif type(previous) is bytes and fallback is None:
+            if previous != signature:
+                return False
+            extra = getsizeof(token)
+            retained_signature = previous
+        else:
+            return False
+        if self._bytes + extra + 4096 > self._limit:
+            return False
+        self._entries[key] = token, value, charged + extra, retained_signature
+        self._bytes += extra
+        self._entries.move_to_end(key)
+        return True
+
+    def put(self, key: Hashable, token: object, value: _Value, *, _identity_token: bool = False,
+            _fallback_token: bytes | None = None) -> None:
+        if _identity_token and type(token) is not object:
+            raise ValueError("identity tokens must be opaque objects")
+        if _fallback_token is not None and (not _identity_token or type(_fallback_token) is not bytes):
+            raise ValueError('fallback signatures require an identity token and exact bytes')
         previous = self._entries.pop(key, None)
         if previous is not None:
             self._bytes -= previous[2]
@@ -73,7 +110,10 @@ class _ReadonlySnapshotCache(Generic[_Value]):
         remaining = self._limit - 4096 - 512 - (self._bytes if not self._evict else 0)
         if remaining <= 0:
             return
-        size = _builtin_size((key, token, value), remaining)
+        token_bytes = getsizeof(token) if _identity_token else 0
+        size = _builtin_size((key, None if _identity_token else token, value, _fallback_token), remaining - token_bytes)
+        if size is not None:
+            size += token_bytes
         if size is None:
             return
         charged = size + 512
@@ -85,7 +125,7 @@ class _ReadonlySnapshotCache(Generic[_Value]):
                 or self._bytes + charged + 4096 > self._limit):
             _, removed = self._entries.popitem(last=False)
             self._bytes -= removed[2]
-        self._entries[key] = token, value, charged
+        self._entries[key] = token, value, charged, _fallback_token
         self._bytes += charged
 
     def clear(self) -> None:
