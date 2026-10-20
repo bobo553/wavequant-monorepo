@@ -43,6 +43,7 @@ from .trend_landmarks import (
     bear_bull_alternation_lows, bear_to_bull_highs, bullish_turn_signals, bearish_turn_signals, post_alternation_bull_highs,
 )
 from .trend_publication import _OriginLookup, confirmed_trend_legs, publish_uptrends
+from .trend_publication_cache import _PublicationCache
 from .trend_structure import _trend_level
 from .trend_options import ordinary_completion_enabled
 from .prepared_point_history import PreparedPointHistory, PreparedPointReference
@@ -819,7 +820,7 @@ class _VerifiedMarketPrefix:
 
 
 class _TrendPermissionCache:
-    """一次历史回放只复用已关闭路径的相同证据，公开许可仍独立复制。"""
+    """关闭路径复用完整证据；开放路径复用安全发布前缀，公开许可独立复制。"""
 
     def __init__(self, bars: Sequence[Bar], *, memory_bytes: int = 16 * 1024 * 1024) -> None:
         if type(memory_bytes) is not int or memory_bytes <= 0:
@@ -831,6 +832,7 @@ class _TrendPermissionCache:
         self._memory_bytes = memory_bytes
         self._payload_bytes = 0
         self._active_candidates: dict[int, _TrendCandidateCache] = {}
+        self._publications: dict[int, tuple[str, _PublicationCache]] = {}
         self._sources: dict[int, tuple[str, PointVersion, PointVersion]] = {}
         self._permission_versions: dict[int, tuple[str, PointVersion]] = {}
         self._n_permissions: dict[tuple[int, str], _NPermissionProofs] = {}
@@ -892,6 +894,14 @@ class _TrendPermissionCache:
         if key not in self._n_permissions:
             self._n_permissions[key] = _NPermissionProofs()
         return self._n_permissions[key]
+
+    def publication(self, level: int, path: str) -> _PublicationCache:
+        """Each level owns only its current path's publication frontier."""
+        saved = self._publications.get(level)
+        if saved is None or saved[0] != path:
+            saved = path, _PublicationCache(memory_bytes=min(self._memory_bytes, 8 * 1024 * 1024))
+            self._publications[level] = saved
+        return saved[1]
 
     def candidates(self, level: int) -> '_TrendCandidateCache':
         """每级只保存开放路径的当前只读候选版本，不缓存每日行情结论。"""
@@ -1032,6 +1042,7 @@ class _DateOverrides(Mapping[object, int]):
 class _OwnedCandidateOptions(TypedDict, total=False):
     _owned_candidates: bool
     _candidate_cache: '_TrendCandidateCache'
+    _publication_cache: _PublicationCache
 
 
 def high_low_points_from_strokes(
@@ -1978,6 +1989,7 @@ def qualify_trend_structure(
     _market_index: _MarketPrefixIndex | None = None,
     _owned_candidates: bool = False,
     _candidate_cache: _TrendCandidateCache | None = None,
+    _publication_cache: _PublicationCache | None = None,
 ) -> list[dict[str, object]]:
     """原发布器只建立策略许可，返回值不能再成为趋势线或下一层的输入。
 
@@ -1998,7 +2010,8 @@ def qualify_trend_structure(
     if origin_lookups is not None:
         published = publish_uptrends(qualified, source, bars, source_level=source_level,
             qualified_source=qualified_source, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
-            _market_index=_market_index, _origin_lookups=origin_lookups)
+            _market_index=_market_index, _origin_lookups=origin_lookups,
+            _publication_cache=_publication_cache)
     elif _market_index is None:
         published = publish_uptrends(qualified, source, bars, source_level=source_level,
             qualified_source=qualified_source, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
@@ -2366,6 +2379,8 @@ def attach_trend_permissions(
             candidate_options = owned_options.copy()
             if candidate_cache is not None:
                 candidate_options['_candidate_cache'] = candidate_cache
+                if not n_target_trend_confirmation_enabled and _permission_cache is not None:
+                    candidate_options['_publication_cache'] = _permission_cache.publication(trend_level, path)
             n_scope = (_reuse_n_permissions(
                 _permission_cache.n_permissions(trend_level, path)
                     if _permission_cache is not None and verified_prefix is not None

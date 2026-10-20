@@ -1747,3 +1747,21 @@ MONOREPO-258常驻验收：实现c05d8e4以e6d1e13合并本地main，main真实3
 验证命令：API 现有 .venv/Scripts/python.exe -m pytest -q --tb=short，PYTHONPATH 指向本 worktree 的 Core/API src；目标为原记录七个文件，加 test_market_calculations.py::test_public_scope_supports_polyline_six_states_without_building_first_level。结果 78 passed, 12 subtests passed；git diff --check 通过。未运行全量测试、浏览器或性能探针，未声明性能提升幅度。前述暂停记录为历史记录，本次失败已解决；MONOREPO-330 更广范围仍保留 in-progress。
 
 2026-10-20 最终同步本地 main c1c675a 后，按上述同一命令重验：78 passed、12 subtests passed（13.72s），git diff --check 通过。双方 feature/progress/handoff 记录均保留，未推送；准备本地 --no-ff 合并。
+
+
+## 2026-10-20 普通资格发布稳定前缀（MONOREPO-330）
+
+2026-10-20普通资格发布增量前缀：按请求、级别及当前路径保存一个有界发布检查点，复用已确认或原点已破坏且无早期证书的稳定候选前缀，首个未决候选及其后缀继续按原规则逐日计算；保存压力位、待定原点、整波证书和极值。候选前缀修订、知识范围内依赖修订、回退日期、换行情来源、非认证输入或超预算均回退完整发布；N确认沿用完整路径。缓存输出深复制隔离下游标注，每级仅当前路径一份检查点，默认8MiB预算包括输入和状态容器。新增三级逐日冷路径对照、旧候选不再遍历、迟到/修订/截短/回退、ISO日期、原点破坏及输出隔离回归源码；尚未运行测试或性能探针，未提交合并，不宣称实测提速。未决后缀与完整公开结果复制仍有成本，MONOREPO-330保持in-progress。
+
+工作区：C:/Users/zb/.codex/worktrees/backtest-diagnostics/wavequant-monorepo，分支 feat-回测诊断按需记录，基于本地 main 1370da2。变更集中于 trend_publication_cache.py、trend_publication.py、trend_lines.py 及 test_trend_publication_frontier.py。后续实际提交时先运行新用例与相关发布/历史完整证据对照，失败先修复；完整回测耗时目标仍需同源输入实测，不能使用先前诊断开关任务的测试结果替代。
+
+
+### 稳定发布前缀合并检查：基线失败阻挡
+
+2026-10-20本次合并前验证：五文件定向pytest（test_trend_publication_frontier、test_publication_market_ranges、test_trend_down_upgrade_publication、test_trend_leg_confirmation、test_trend_change_history）98 passed/9 errors。9项均为test_trend_leg_confirmation夹具的二级直接来源投影不等，当前main 4a31de1同文件22 passed/9 errors，相同节点和断言。三变更源码mypy初始34错误，其中新增isfinite参数已显式cast修复，新缓存模块mypy通过；另33项在main两原文件同样复现。git diff --check通过。隔离合成600已确定候选、60逐日日期、3轮含初始化且每轮独立行情索引：完整发布1.952259/1.853075/1.981563秒，增量0.066541/0.064990/0.064103秒，中位30.04倍，全部逐日输出相同；仅证明稳定前缀场景，非真实全账户回测倍数。仓库规定失败不得合并，因此尚未提交/同步main/合并/推送，等待明确处理或本次豁免既有9项测试及33项类型问题；不修改无关业务、不放宽断言。
+
+
+2026-10-20用户明确授权继续合并：本次豁免已在main复现的9项夹具错误和33项原有类型错误，保留失败事实，不视为已修复。新增发布前缀20项回归通过（0.46s），新缓存模块mypy通过；按既有性能证据继续提交并同步最新main，只本地合并、不推送。
+
+
+2026-10-20同步main 4a31de1后复验：相同五文件pytest -q --tb=no为98 passed/9 errors（3.73s），9项仍为已明确豁免的基线夹具错误，无新增失败；git diff --check main通过，最终差异限定7个本任务文件。优化提交09937ab，同步提交b965bd6；准备按授权本地no-ff合并，不推送。
