@@ -86,16 +86,23 @@ def streaming_stock_result(
                 qualified_gap_only=not account_config.consolidation_entry_intraday,
                 only_index=index, session_cache=minute_cache, stage=minute_stage,
                 prepared_pivots=analysis.pivots, prepared_contexts=state.permissions,
+                prepared_polyline_gate=state.polyline_buy_gate,
                 prepared_analysis=analysis, trading_window_start=state.window_start)
             generated.signals = resolved.signals
             generated.audit = resolved.audit
             generated.counts = resolved.counts
             state.signals[:] = resolved.signals
             state.has_buy_signal = state.has_buy_signal or any(signal.side == 'LONG' for signal in resolved.signals)
-            state.audit[:] = [row for row in state.audit if not (row['bar_index'] == index
-                and row['event'] in ('long_signal', 'long_transition_evidence', 'exit_signal'))]
-            state.audit.extend(row for row in resolved.audit if row['bar_index'] == index
-                and row['event'] in ('long_signal', 'long_transition_evidence', 'exit_signal'))
+            def resolved_entry_row(row: dict[str, object]) -> bool:
+                return row['bar_index'] == index and (row['event'] in (
+                    'long_signal', 'long_transition_evidence', 'exit_signal')
+                    or row.get('candidate_channel') == 'global_polyline_last_fall_high')
+
+            state.audit[:] = [row for row in state.audit if not resolved_entry_row(row)]
+            state.audit.extend(row for row in resolved.audit if resolved_entry_row(row))
+            # 同日替换可能长度不变，旧排序缓存仍会保存被拒绝/替换的买点。
+            state._ordered_signals.clear()
+            state._ordered_decisions.clear()
             fallbacks.extend(daily_fallbacks)
         current_result = generated
         if eligible:

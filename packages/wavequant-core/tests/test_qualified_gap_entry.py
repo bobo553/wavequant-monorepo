@@ -98,19 +98,16 @@ def test_available_minutes_without_high_open_rise_do_not_fall_back_to_open(chang
 @pytest.mark.parametrize('change', ['equal', 'no_permission', 'closed', 'wrong_level'])
 def test_outside_permission_or_non_strict_gap_does_not_request_minutes(change):
     bars, generated, strategy = sample()
-    kwargs = {}
-    if change == 'equal': bars[-1] = replace(bars[-1], open=bars[-2].high)
+    if change == 'equal': bars[-1] = replace(bars[-1], open=bars[-2].high, low=bars[-2].high)
     elif change == 'no_permission': generated.audit.clear()
     elif change == 'wrong_level': strategy = replace(strategy, buy_interval_level=3)
     else:
-        kwargs = dict(prepared_analysis=SimpleNamespace(bars=tuple(bars),
-            trading_intervals=(TradingInterval(2, 'trend', 3, 1, end_index=4, start_low_price=9),)),
-            trading_window_start=3)
+        intervals = (TradingInterval(2, 'trend', 3, 1, end_index=4, start_low_price=9),)
         # No remaining eligible day: test the shared resolver without the causal N minute continuation.
         from wavequant.application.analytics.intraday_entry import _qualified_gap_entries
         result = _qualified_gap_entries(bars, generated, strategy,
             lambda _: pytest.fail('closed interval must not load minutes'), only_index=4,
-            intervals=kwargs['prepared_analysis'].trading_intervals)
+            intervals=intervals)
         assert not result[1] and not result[3]
         return
     result, executions, fallbacks = resolve(bars, generated, strategy,
@@ -146,6 +143,7 @@ def test_huaci_september15_existing_published_qualification_gets_open_fill():
         flip_known_index=996, flip_index=995, counter_index=1157, alternation_index=i,
         counter_price=14.444080740828408, breakout_level=26.835505065126593)
     strategy = SystemStrategy(pivot_mode='lecture_causal', entry_policy='hierarchical_two_buy_points', buy_point_definition='whole_flip_wave_v3')
+    assert isinstance(event['source_path'], str) and isinstance(event['counter_price'], float)
     window = TradingInterval(2, event['source_path'], i, 995,
         start_low_index=1157, start_low_price=event['counter_price'])
     result, executions, _ = resolve(bars, SystemResult([], [event], {}), strategy,

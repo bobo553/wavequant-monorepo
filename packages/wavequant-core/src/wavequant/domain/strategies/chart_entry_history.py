@@ -3,7 +3,7 @@
 from wavequant.domain.market_structure.trend_options import ordinary_completion_enabled
 
 from dataclasses import asdict, replace
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager, nullcontext
 from copy import deepcopy
 from hashlib import sha256
@@ -47,7 +47,7 @@ from .market_calculations import MarketCalculations, MarketDay
 
 
 # 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "source_causal_qualification_research_v158"
+_CONFIRMATION_CACHE_VERSION = "source_causal_polyline_volume_breakout_v159"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -356,7 +356,7 @@ def _chart_calculation_scope(
                             for frame in reader:
                                 advance(frame)
                         finally:
-                            reader.close()
+                            cast(Generator[_ChartDrawingFrame, None, None], reader).close()
                 if full_history and first == 1 and not lower_cached:
                     calculations._seal_lifecycle(0)
                 for number in range(first, level + 1):
@@ -379,7 +379,7 @@ def _chart_calculation_scope(
             finally:
                 on_frame = None
                 if base_rows is not None:
-                    base_rows.close()
+                    cast(Generator[dict[str, object], None, None], base_rows).close()
 
         calculations = MarketCalculations(bars, frames, prepared, draw=calculate_polyline,
             trend=calculate_trend_line, cascade=calculate_trend_line, on_day=_on_day)
@@ -915,10 +915,10 @@ def chart_entry_history(
                          for stroke in _permission_records(level["strokes"], 'strokes')}
                 for flip in _confirmed_bear_flip_events(paths, trend_level=cast(int, level['trend_level']),
                                                        dates=dates, asof_index=i):
-                    identity = (flip['trend_level'], flip['source_path'], flip['pivot_index'],
-                                flip['pivot_ordinal'], flip['available_at'])
-                    if identity not in seen_bear_flips:
-                        seen_bear_flips.add(identity)
+                    bear_identity = (flip['trend_level'], flip['source_path'], flip['pivot_index'],
+                                     flip['pivot_ordinal'], flip['available_at'])
+                    if bear_identity not in seen_bear_flips:
+                        seen_bear_flips.add(bear_identity)
                         events.append(flip)
                 for low in _permission_records(level["bear_bull_alternation_lows"], 'alternation lows'):
                     if any(
@@ -1063,7 +1063,7 @@ def chart_entry_history(
                 daily_events.sort(key=lambda event: event.get('reason') == 'source_path_ended')
             with ExitStack() as prior_readers:
                 prior_frames = _minute_analysis.frames.iter_rows(shared=True, start_index=resume_start)
-                prior_readers.callback(prior_frames.close)
+                prior_readers.callback(cast(Generator[_ChartDrawingFrame, None, None], prior_frames).close)
                 cursors = [prior_readers.enter_context(history._readonly_cursor())
                            for history in _minute_analysis.levels]
                 for frame in prior_frames:
@@ -1078,8 +1078,7 @@ def chart_entry_history(
     frame_source = (nullcontext((_prepared_history.frames, _prepared_history.levels))
         if _prepared_history is not None else _staged_chart_frames(bars, resume_start=resume_start, closed=closed,
             previous_epoch=previous_epoch, previous_raw=previous_raw,
-            _on_ready=bind_market_calculation,
-            **({'_stage': _stage} if _stage is not None else {})))
+            _on_ready=bind_market_calculation, _stage=_stage))
     with frame_source as (frames, prepared), ExitStack() as readers:
         if market_calculation is not None and market_calculation._checkpoints is not None:
             cached_lifecycle = {}
@@ -1094,7 +1093,7 @@ def chart_entry_history(
         if steps is not None and cached_lifecycle is None:
             for step_number in LIFECYCLE_STEPS: steps.begin(step_number)
         drawing_reader = frames.iter_rows(shared=True, start_index=resume_start)
-        readers.callback(drawing_reader.close)
+        readers.callback(cast(Generator[_ChartDrawingFrame, None, None], drawing_reader).close)
         if cached_lifecycle is not None and live_owner is not None:
             trend_cursors = [readers.enter_context(stage._readonly_cursor()) for stage in prepared]
             for frame in drawing_reader:
@@ -1112,7 +1111,7 @@ def chart_entry_history(
             trend_readers = [stage.iter_rows(shared=True, start_position=resume_start - frames.start,
                                             _reuse_shared=True) for stage in prepared]
             for reader in trend_readers:
-                readers.callback(reader.close)
+                readers.callback(cast(Generator[dict[str, object], None, None], reader).close)
             for frame, first, second, third in zip(drawing_reader, *trend_readers):
                 accept(frame, (first, second, third))
         if steps is not None and cached_lifecycle is None:

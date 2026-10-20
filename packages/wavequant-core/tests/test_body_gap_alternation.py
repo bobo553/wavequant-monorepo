@@ -57,7 +57,8 @@ def test_all_levels_publish_permission_on_the_confirmation_day_only(level, speci
         confirmation_rule='body_gap_volume_bullish_breakout_after_defended_low',
         cycle_started_index=1, origin_index=0, origin_price=3.96,
         recovery_key_index=0 if special else None, recovery_key_price=4.09 if special else None,
-        flip_index=1, breakout_level=5.78, counter_index=2, counter_price=4,
+        flip_index=1, flip_confirmed=True, flip_known_index=1,
+        breakout_level=5.78, counter_index=2, counter_price=4,
         alternation_index=5, confirmation_evidence=dict(key_index=0, key_price=4.09))
     history = merge_recovery_entry_history(bars, {}, [event])
     assert all(not history[index] for index in range(5))
