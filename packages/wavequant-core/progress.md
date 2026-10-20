@@ -1,3 +1,13 @@
+2026-10-20 底部N合并前问题已解决：真实1593日资格核对确认二级最后窗口于2024-01-24关闭，7/31、8/15、8/20 buy/scan均False；旧图表用例错误要求区间外交易N，修正为真实策略不补造N，并以独立形态→底部资格→图表契约严格断言两形态只发布底部4.83/5.52，保留来源、形状和未完成K线/前缀限制。最终pytest test_bottom_n_targets.py test_positive_n_reformation.py：38 passed(215.62s)；类型断言与图表接收者修订后重成形12项再次通过（重叠不合计）。Web两文件Node17项通过且生产代码未再变化。状态机及两测试3文件mypy通过，使用项目3.11配置与follow-imports=silent，临时仅对宿主不兼容的numpy/numpy.*外部存根设置follow_imports=skip、follow_imports_for_stubs=true；未改项目依赖或全局配置，不宣称全仓类型通过。早先历史KeyError和测试可空类型错误已解决；先前失败记录保留作历史。完整Core/Web套件、另一个历史pipeline文件、浏览器与构建未运行或未完成，不作为通过。用户要求解决后合并main、不推送。
+
+2026-10-20 底部N提交验证：Core pytest test_bottom_n_targets.py、test_positive_n_reformation.py -k "not pipeline"：35 passed/2 deselected；Web pnpm exec node --test tests/eligibility-n-targets.test.mjs tests/bottom-n-targets.test.mjs：17 passed；mypy --follow-imports=skip 状态机及其测试2文件通过；git diff --check通过。历史图表用例在本分支与未修改main 1370da2均于同一断言缺少2024-07-31 N而KeyError（分别196.36s/197.12s），未修改该旧断言。初始3文件组合运行中断，剩余历史/完整套件未完成。follow-imports=silent类型检查被NumPy存根Python3.12语法与项目3.11配置冲突阻断；局部skip通过不代表完整类型通过。未运行浏览器/Harness/构建。按AGENTS检查失败不合并规则，提交后等待用户明确豁免既有失败；不推送。
+
+2026-10-20 · MONOREPO-330 一级趋势底部 N 独占测量（待提交时验证）
+
+2026-10-20 底部N测量规则：同一一级趋势仅底部有效主N测量；普通与重成形N统一竞争floor，以完整N身份发布唯一测量来源，其余保留结构但无测量，前端交易区间不得将拒绝或未知资格提升为测量；策略v126及测量v3隔离旧结果。补充内部/重成形/无下降/失效接替/同日竞争/前缀及前端堆叠回归源码。待提交时验证，未运行任何检查或浏览器。
+
+独立 worktree：C:/Users/zb/.codex/worktrees/lowest-valid-n/wavequant-monorepo；分支 feat-底部N测量规则。本轮未提交、合并或推送；未重算运行页面，截图视觉与真实行情待验证。
+
 2026-10-20 · MONOREPO-330 低开倍量买点调度入口（待提交时验证）
 
 2026-10-20国芳倍量突破仍未买入续修：上轮只接通内部解析器，streaming_stock_result.consume在分钟入场关闭时仍用open>previous.close预筛选，低开2025-04-03无法到达新规则。逐日协调器改为高开或共用double_volume_bullish_breakout均可调用，仍要求当日所选级别资格；不改变六态、成交权限、账户风险或同日退出优先。profile v125隔离旧结果。新增三级×资格开关×分钟开关的逐日协调器回归源码：只注入资格来源与输出格式，真实resolver和portfolio撮合贯通；冻结4/2–4/3量价、合成可成交权限，不冒充全历史实股复现。未执行测试、类型、回测、构建、Git状态差异检查；实际资格和涨停撮合仍待提交时验证。

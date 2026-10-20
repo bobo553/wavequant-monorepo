@@ -64,7 +64,7 @@ def test_target_streams_own_market_source_and_do_not_share_reformed_eligibility(
     completion = [PositiveNCompletion(6, 8, 8)]
     assert ordinary.advance(8, decline, completion) == bottom_n_target_history(original, decline, completion)
     reformed_completion = [replace(completion[0], reformed=True)]
-    assert reformed.advance(8, decline, reformed_completion).qualifications[8].eligible
+    assert not reformed.advance(8, decline, reformed_completion).qualifications[8].eligible
     assert not ordinary.advance(8, decline, completion).qualifications[8].eligible
 
 
@@ -189,3 +189,49 @@ def test_post_b_exit_observes_source_retirement_before_future_target_hits():
     events = _post_b_wave_exit_events(history, [root, retirement], dict(wave_b_low_index=0, bar_index=1))
     assert not any(e["event"] == "wave_n_target_reached" for e in events)
     assert next(e for e in events if e["event"] == "wave_projection_invalidated")["bar_index"] == 3
+
+
+@pytest.mark.parametrize("reformed", [False, True])
+def test_internal_n_cannot_replace_live_floor_even_after_reformation(reformed):
+    history = bars([10, 5, 6, 7, 8, 9, 10])
+    result = bottom_n_target_history(history, [DeclineStart(0, 1)], [
+        PositiveNCompletion(1, 3, 3, 5), PositiveNCompletion(4, 6, 6, 8, reformed),
+    ])
+    assert result.qualifications[3].eligible
+    assert not result.qualifications[6].eligible
+    assert result.qualifications[6].reason == "existing_bottom_launch"
+    assert result.source_at[3:] == (3, 3, 3, 3)
+    assert result.retirements == ()
+
+
+def test_reformation_cannot_create_measurement_without_first_level_decline():
+    result = bottom_n_target_history(bars([5, 6, 7]), [], [PositiveNCompletion(0, 2, 2, 5, True)])
+    assert not result.qualifications[2].eligible
+    assert result.qualifications[2].reason == "confirmed_decline_unavailable"
+    assert result.source_at == (None, None, None)
+
+
+def test_failed_floor_releases_only_to_a_new_valid_n_at_the_same_floor():
+    history = bars([10, 5, 6, 8, 6, 7, 9])
+    arrivals = [PositiveNCompletion(1, 3, 3, 7), PositiveNCompletion(4, 5, 5, 6, True),
+                PositiveNCompletion(1, 6, 6, 6, True)]
+    result = bottom_n_target_history(history, [DeclineStart(0, 1)], arrivals)
+    assert result.source_at == (None, None, None, 3, None, None, 6)
+    assert not result.qualifications[5].eligible
+    assert result.qualifications[5].reason == "origin_is_not_decline_floor"
+    assert result.qualifications[6].eligible
+    assert [(row.attack, row.bar_index) for row in result.retirements] == [(3, 4)]
+    for end in range(len(history)):
+        prefix = bottom_n_target_history(history[:end + 1], [DeclineStart(0, 1)] if end >= 1 else [],
+                                         [row for row in arrivals if row.known_at <= end])
+        assert prefix.source_at == result.source_at[:end + 1]
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_same_day_reformed_internal_n_cannot_steal_floor_candidate(reverse):
+    candidates = [PositiveNCompletion(2, 4, 4, 6, True), PositiveNCompletion(1, 4, 4, 5)]
+    result = bottom_n_target_history(bars([10, 5, 6, 7, 8]), [DeclineStart(0, 1)],
+                                     list(reversed(candidates)) if reverse else candidates)
+    assert result.completions[4].origin == 1
+    assert result.qualifications[4].eligible
+    assert result.source_at[-1] == 4

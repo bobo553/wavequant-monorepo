@@ -83,7 +83,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'configurable_n_target_trend_confirmation_v125_' + variant
+    config['profile_version'] = 'configurable_n_target_trend_confirmation_v126_' + variant
     config['definition']['trend_confirmation_routes'] = 'same_level_key_break_or_lower_key_break_alternation_turn'
     config['definition']['n_target_trend_confirmation_enabled'] = False
     config['definition']['optional_trend_confirmation_route'] = 'source_n_strict_one_p_target'
@@ -95,9 +95,9 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         'explicit_lecture_mother_child_order_is_not_observed_intrabar_path',
         'same_day_vertices_require_explicit_positive_lecture_geometry', 'no_profitability_claim',
     ]
-    config['definition']['n_target_source'] = 'decline_floor_launch_and_independent_defense_reformations'
+    config['definition']['n_target_source'] = 'level_one_floor_n_exclusive_v3'
     config['definition']['n_invalidation'] = 'strict_low_break_of_frozen_squeeze_defense__hide_failed_n'
-    config['definition']['n_reformation'] = 'surviving_origin_actual_top_fresh_pullback_joint_attack__independent_same_day_boxes'
+    config['definition']['n_reformation'] = 'surviving_origin_actual_top_fresh_pullback_joint_attack__requires_same_floor_qualification'
     config['definition']['a_wave_classification'] = 'strict_one_p_break_confirms_independent_a__strong_two_t_inclusive'
     config['definition']['a_wave_confirmation'] = 'independent_of_b_c_second_level_flip_or_squeeze__developing_top_may_extend'
     config['definition']['a_wave_invalidation'] = 'strict_low_break_of_a_origin__no_later_c_until_new_a'
