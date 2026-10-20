@@ -17,7 +17,7 @@ import {
     reorderWatchlistMembers,
 } from "../public/watchlists.js";
 
-test("startup uses the first displayed watchlist stock before a link to the last stock", () => {
+test("explicit stock links win over watchlist defaults without changing its order", () => {
     const state = {
         memberships: [
             { groupId: "focus", symbol: "sh.603096", position: 2 },
@@ -26,14 +26,34 @@ test("startup uses the first displayed watchlist stock before a link to the last
         ],
     };
     const universe = [{ symbol: "sh.603096" }, { symbol: "sz.002242" }, { symbol: "sh.600812" }];
-    assert.equal(initialWatchlistSymbol(state, "focus", universe, "sh.603096"), "sh.600812");
+    assert.equal(initialWatchlistSymbol(state, "focus", universe, "sh.603096"), "sh.603096");
     assert.equal(initialWatchlistSymbol(state, "focus", universe), "sh.600812");
     assert.equal(initialWatchlistSymbol(state, "empty", universe, "sz.002242"), "sz.002242");
     assert.equal(initialWatchlistSymbol(state, "empty", universe, "missing"), "sh.603096");
     assert.equal(initialWatchlistSymbol(state, "focus", []), "");
-    assert.equal(initialWatchlistSymbol(state, "focus", universe.map((stock) =>
-        ({ ...stock, has_data: stock.symbol !== "sh.600812" })), "sh.603096"), "sz.002242");
+    assert.equal(
+        initialWatchlistSymbol(
+            state,
+            "focus",
+            universe.map((stock) => ({ ...stock, has_data: stock.symbol !== "sh.600812" })),
+            "sh.603096",
+        ),
+        "sh.603096",
+    );
     assert.equal(state.memberships[0].symbol, "sh.603096");
+});
+
+test("watchlists retain more than 1000 stocks and deduplicate additions", () => {
+    const stocks = Array.from({ length: 1205 }, (_, index) => ({
+        symbol: `sz.${String(index).padStart(6, "0")}`,
+        name: `股票${index}`,
+    }));
+    const result = addWatchlistMembers(normalizeWatchlistSnapshot(null), "default", stocks);
+    assert.equal(result.added, 1205);
+    assert.equal(normalizeWatchlistSnapshot(result.state).memberships.length, 1205);
+    const duplicate = addWatchlistMembers(result.state, "default", stocks);
+    assert.equal(duplicate.added, 0);
+    assert.equal(duplicate.state.memberships.length, 1205);
 });
 
 test("dragging from the stock button reorders the row without activating its click", async () => {

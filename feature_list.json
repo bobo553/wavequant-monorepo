@@ -4,6 +4,44 @@
     "activeFeature": "MONOREPO-330",
     "features": [
         {
+            "id": "MONOREPO-334",
+            "name": "market-navigation-and-watchlist-favorites",
+            "title": "行情跳转与自选收藏滚动修复",
+            "status": "done",
+            "dependencies": ["MONOREPO-298"],
+            "description": "修复市场股票链接被默认自选覆盖，涨停卡片添加服务器收藏星标，自选成员原子保存并取消股票数量配额。",
+            "scope": "Web行情链接、涨停卡片星标、自选滚动和成员保存；API成员事务与共享契约。交易、趋势、自动回测规则不在本次范围。",
+            "acceptanceCriteria": [
+                "显式股票链接优先于默认自选，保留股票、日期及数据源；无链接时继续选择当前分类首只可用股票。",
+                "涨停卡片右上角星标支持加入和移出我的自选，服务器确认后显示状态；收藏按钮不触发导航，失败可重试。",
+                "新增和删除成员在服务器事务内合并，不因其他页面的旧列表版本覆盖或丢失自选；重复添加幂等。",
+                "移除每组1000只及总计20000只股票配额，保留分类、字段合法性和单请求体积保护。",
+                "自选列表提供纵向滚动条、键盘聚焦及刷新后的滚动位置保持，窄屏和长列表待浏览器验收。"
+            ],
+            "verification": [
+                {
+                    "command": "Core pytest 13 files -q --tb=short; mypy --follow-imports=silent 13 production modules; API pytest test_backtest_jobs.py test_backtest_preview.py; git diff --check",
+                    "status": "passed",
+                    "summary": "2026-10-20 ec93ee2：Core 518 passed/52.12s，13生产模块类型通过；API 16 passed/1.22s，空白检查通过。修复原73项失败及既有类型问题；不使用失败豁免。同步main 34d09fa仅状态记录冲突，保留双方全部记录，待同步后复验。完整套件、浏览器、实股性能未运行。"
+                },
+                {
+                    "command": "Node24.16.0/pnpm10.26.2: contracts build; Web lint/typecheck/build; vitest 3 targeted files; node --test watchlists/server-watchlists/research-link; API pytest test_watchlists.py and corrected failing node; mypy watchlists.py",
+                    "status": "passed",
+                    "summary": "2026-10-20提交验证：Web Vitest6项及Node28项通过；API首次24通过/1失败，旧预期漏main已有ordinary_trend_completion_enabled=false与buy_interval_level=2，补齐完整默认字段后该用例通过。自选事务模块mypy通过。Web lint无错误，本次3条警告整理后新Hook lint通过，保留6条既有环境变量警告。初次类型/构建缺共享playwright配置产物，补建后typecheck及生产构建通过；只构建配置，未启动浏览器。最终Hook3项重跑通过。修复提交99a1d27经7517560同步main cae59b0后，自选API全文件25项通过（15.14s）；仅交接文档冲突保留双方记录，最终差异检查通过。"
+                },
+                {
+                    "command": "browser/Playwright E2E and online 3003 acceptance",
+                    "status": "not-run",
+                    "summary": "用户未要求浏览器/E2E，本轮未运行；长列表实际视觉及在线服务效果待验收。未主动重启共享服务，不将构建等同在线验收。"
+                },
+                {
+                    "command": "开发阶段仅代码阅读、编辑及回归源码编写",
+                    "status": "not-run",
+                    "summary": "2026-10-20独立worktree feat-行情收藏修复。补充显式链接优先、超过旧配额、星标按钮独立、收藏失败重试、成员增量请求、SQLite并发幂等及HTTP操作用例。按用户规则未运行测试、lint、类型、格式、构建、浏览器或Git状态差异检查；待提交时验证。未提交、合并、推送或重启当前3003服务。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-330",
             "name": "causal-backtest-computation-performance",
             "title": "回测因果计算与复用性能优化",
@@ -18,6 +56,7 @@
                 "2026-10-20 合并准备受基线门禁阻挡：分支feat-回测诊断按需记录基于4efc1b5，本地main为34d09fa。首次13文件pytest为73 failed/442 passed（65.51s）；main对照三个失败文件为72 failed/259 passed（26.60s）。修复新增类型收窄错误及已取消全图校准的过时次数断言，保留冷结果/容量断言；受影响五文件复查为1 failed/288 passed（39.35s），唯一剩余来源签名身份断言在main同样失败。其余基线失败为标注lifecycle_context字段断言及级联FrozenPrefixList可哈希假设，不改业务/不放宽断言。生产13模块mypy剩43项，main对应11模块50项，归一化文件行号和诊断内行号后无分支独有错误，不宣称类型通过。git diff --check通过。基线日志在主目录.codex-runtime/merge-cache-main-tests.txt、merge-cache-main-types.txt，分支类型与复查日志merge-cache-branch-types.txt、merge-cache-recheck.txt。按检查失败不合并规则，未提交、未同步合并main、未推送；等待明确豁免既有失败或授权修复基线。未运行浏览器、全套、构建或性能剖析。",
                 "2026-10-20 标注缓存重绑定优化：新增rebind_identity，只接受匹配的已准入内容签名与不透明令牌，复用快照及容量；签名单标识升级仅增加令牌固定大小，已有身份替换不累加费用，预算不足保留原签名缓存。标注签名命中不再put递归计费。补充禁用全文计费时的重绑定、重复替换、签名失效/clear及预算不足回归源码，并增强三级标注命中用例。未运行测试、类型、性能探针或Git检查，待提交时验证；未提交、合并或推送，MONOREPO-330保持in-progress。",
                 "2026-10-20 CR两项修复：共享账本按释放旧根后的最终保留量判断预算，过渡期新增计费仍有界，最终超限清空；标注版本令牌未命中恢复内容签名查询，单条快照保存身份与签名并计入原预算，签名命中重绑定新令牌，所有公开回填独立深复制。补充近预算替换/真实超限、三级新令牌同内容复用及嵌套隔离、单条缓存签名失效/预算回归源码。未执行测试、类型、性能探针或Git检查，待提交时验证；未提交、合并或推送，MONOREPO-330保持in-progress。",
+                "2026-10-20国芳末跌高突破买入：收盘直入与跳空直入复用普通策略PolylineBuyGate，阻止2/27、3/14未越过1/09末跌高的局部倍量反弹；三级共用新增守低后倍量中大阳高位收盘严格突破冻结折线末跌高的交替确认，已有实体跳空确认同样尊重冻结关键位。4/03首次突破在收盘确认并生成入场，下一交易日4/07放量跳空全天守住前高且收盘不低于开盘作为独立守稳入场；不要求平开收K线有阳线实体，不倒填开盘成交。普通趋势几何及已有影线突破定义保持，未添加股票、日期、级别特判；生命周期v33、资格缓存v159、策略v127。新增冻结量价门禁、三级合成资格链、前缀/边界/关闭/收盘执行回归源码；开发阶段未执行任何验证，完整实股资格与真实涨停撮合待提交时验证。",
                 "2026-10-20 底部N测量规则：同一一级趋势仅底部有效主N测量；普通与重成形N统一竞争floor，以完整N身份发布唯一测量来源，其余保留结构但无测量，前端交易区间不得将拒绝或未知资格提升为测量；策略v126及测量v3隔离旧结果。补充内部/重成形/无下降/失效接替/同日竞争/前缀及前端堆叠回归源码。待提交时验证，未运行任何检查或浏览器。",
                 "2026-10-20国芳倍量突破仍未买入续修：上轮只接通内部解析器，streaming_stock_result.consume在分钟入场关闭时仍用open>previous.close预筛选，低开2025-04-03无法到达新规则。逐日协调器改为高开或共用double_volume_bullish_breakout均可调用，仍要求当日所选级别资格；不改变六态、成交权限、账户风险或同日退出优先。profile v125隔离旧结果。新增三级×资格开关×分钟开关的逐日协调器回归源码：只注入资格来源与输出格式，真实resolver和portfolio撮合贯通；冻结4/2–4/3量价、合成可成交权限，不冒充全历史实股复现。未执行测试、类型、回测、构建、Git状态差异检查；实际资格和涨停撮合仍待提交时验证。",
                 "2026-10-20按用户要求解决合并阻碍：诊断默认关闭；修复N目标阶段进度遗漏、折线六态重复顺序读取及分级调用不一致，首次趋势请求统一三级收敛后复用。更新过时接口替身、Worker双开关组合与资格夹具，逐日完整冷前缀比较结构/事件/检查点；原七文件及仅折线入口共78 passed、12 subtests passed，diff检查通过。未运行全量、浏览器和性能探针，整体功能保持in-progress，不推送。",
@@ -147,6 +186,36 @@
                     "command": "pending: test_trend_memory_ledger.py, test_formal_attack_reuse.py, related frozen-prefix regressions; mypy; fixed-input accounting benchmark",
                     "status": "not-run",
                     "summary": "2026-10-20正式突破预算计费优化：针对_FormalKeyBreakState._retain以不可变块引用账本替换累计追加上界和超预算完整校准。持久序列/索引节点及安全冻结点按存活引用计费，新根先获取再释放旧根，保持共享子树；来源/候选修订保留未变块，封存记录沿原写时复制契约。可变容器每次重计，块内按身份去重、跨块非块叶子保守重复计费，账本条目/容量/节点存储纳入预算；超预算先丢检查点再回退，异常和clear释放账本，回退不携带未来证据。范围仅用户指定正式突破计费路径，普通_TrendJudgementState的独立预算路径尚未改动。新增共享版本回收、旧块不遍历、可变证据增长、索引修订、预算拒绝与正式二三级冷结果对照回归源码；开发阶段未运行测试/类型/性能探针，性能与结果待提交时验证，本轮不宣称提速倍数；MONOREPO-330保持in-progress。"
+                },
+                {
+                    "command": "post-main-sync pytest eight entry/confirmation files + tests/test_trend_publication_frontier.py -q; mypy twelve changed files; git diff --check main",
+                    "status": "passed",
+                    "summary": "2026-10-20修复提交de54eb6同步本地main 4efc1b5后：167 passed（10.57s），12个变更文件mypy通过（临时仅隔离外部NumPy存根）；git diff --check main通过，生产无冲突，功能记录保留双方全部验收和验证项。最终15文件差异已复核；遵照用户批准的70项趋势注释既有失败例外执行本地no-ff合并、不推送。MONOREPO-330其他未完成工作保留，不声称完整国芳账户回放通过。"
+                },
+                {
+                    "command": "用户明确批准既有失败例外：继续提交并合并到本地main，不推送",
+                    "status": "passed",
+                    "summary": "2026-10-20用户回复“允许基线例外，继续本地合并（推荐）”。例外仅针对main/特性分支完全相同的test_trend_annotation_clock.py 70失败；该测试仍记failed，不改断言或相关业务规则。147项直接回归、12文件类型、构建及临时wheel环境导入通过；同步main后复核并最小验证。"
+                },
+                {
+                    "command": "pytest tests/test_polyline_breakout_entry_routes.py tests/test_polyline_buy_gate.py tests/test_breakout_candle_quality.py tests/test_double_volume_breakout_entry.py tests/test_qualified_gap_entry.py tests/test_qualified_rising_close_entry.py tests/test_body_gap_alternation.py tests/test_qualification_search_continuation.py -q",
+                    "status": "passed",
+                    "summary": "2026-10-20提交阶段：147通过。冻结国芳真实折线证据：2/27和3/14受1/09门槛拦截，4/03有效突破，4/07放量跳空守稳；资格与撮合用合成前提单独验证，不冒充2018起全历史账户回放。补充结构翻多但K线未确认时保留旧买入门槛、epoch清理和普通资格跳空路径回归。"
+                },
+                {
+                    "command": "mypy --config-file .mypy-merge-check.toml --follow-imports=silent（8个修改生产文件、4个测试文件）；python -m build --no-isolation；git diff --check",
+                    "status": "passed",
+                    "summary": "2026-10-20：12文件类型通过，wheel/sdist构建成功，空白检查通过；临时干净环境安装wheel及声明的tzdata后入口导入通过。临时配置继承pyproject的Python3.11并仅跳过不兼容的外部NumPy存根，未提交该配置。修复变更文件中类型收窄和变量混用，不改变交易规则。"
+                },
+                {
+                    "command": "pytest tests/test_trend_annotation_clock.py -q（特性分支与干净main基线对照）",
+                    "status": "failed",
+                    "summary": "2026-10-20：分支及main均70失败、28通过，失败节点集合完全一致，属既有趋势注释测试问题。原147项直接回归仍通过；不放宽断言、不改无关注释规则。遵守AGENTS失败不合并，当前保留未提交改动，待用户允许基线例外或授权修复后再同步main/复核/提交/本地合并，不推送。"
+                },
+                {
+                    "command": "待提交时：pytest tests/test_polyline_breakout_entry_routes.py tests/test_double_volume_breakout_entry.py tests/test_qualified_gap_entry.py tests/test_qualified_rising_close_entry.py tests/test_body_gap_alternation.py tests/test_qualification_search_continuation.py；变更文件 mypy；完整同源国芳资格与账户回放",
+                    "status": "not-run",
+                    "summary": "2026-10-20本轮仅阅读/修改源码和回归、维护记录，未执行测试、类型、lint、格式、构建、Git状态差异或回测探针。已接通直接入场的共用折线门禁、三级倍量结构突破确认、次日放量守稳收盘入场及同日流式信号缓存同步；回归源码包含冻结行情价格门禁与独立合成资格链，均未运行，不视为实股全链路通过。实际涨停撮合仍依账户权限，未启动/重启服务、提交、合并、推送；MONOREPO-330保持in-progress，旧失败记录不覆盖。"
                 },
                 {
                     "command": "post-main-sync pytest five files; git diff --check main",

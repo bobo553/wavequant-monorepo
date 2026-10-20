@@ -13,6 +13,7 @@ from ..market_state.control_bar import observe_control_bar
 from ..market_state.market_regime import MarketRegime, RegimePolicy, WaveBoundary, observe_market_regime
 from ..market_state.squeeze_state import observe_squeeze_resumption
 from ..market_state.volume_reversal import volume_reversal_squeeze
+from ..market_state.candle_strength import double_volume_bullish_breakout, volume_high_open_rising
 from ..strategies.attack_quality import medium_bullish_body, v3_positive_n_attack_rejection
 from ..strategies.n_consolidation import consolidation_gap
 from .alternation_duration import filter_duration_landmarks, short_shallow_pullback
@@ -60,6 +61,73 @@ def _reference(point: ConfirmedTurn, bars: Sequence[Bar]) -> dict[str, object]:
                 available_at=bars[point.known].timestamp.date().isoformat())
 
 
+def _polyline_last_fall_pair(
+    polyline: Sequence[ConfirmedTurn],
+) -> tuple[ConfirmedTurn, ConfirmedTurn, int] | None:
+    from .polyline import LinePoint, PointKind, ReversalPoint
+    from .polyline_lifecycle import polyline_last_fall_pair
+
+    pair = polyline_last_fall_pair(tuple(ReversalPoint(
+        LinePoint(point.index, point.ordinal, PointKind(point.kind), point.price), point.known,
+        'causal_alternation_polyline') for point in polyline))
+    if pair is None:
+        return None
+    key, low = pair
+    return (
+        next(point for point in polyline if (point.index, point.ordinal) == (key.point.index, key.point.ordinal)),
+        next(point for point in polyline if (point.index, point.ordinal) == (low.point.index, low.point.ordinal)),
+        max(key.confirmed_index, low.confirmed_index),
+    )
+
+
+def confirm_volume_breakout_alternation(
+    bars: Sequence[Bar], now: int, *, origin: ConfirmedTurn, high: ConfirmedTurn,
+    polyline: Sequence[ConfirmedTurn], _market_index: _MarketRangeIndex | None = None,
+) -> AlternationProof | None:
+    """倍量强阳突破冻结折线末跌高，独立确认已有翻多背景的回撤结束。"""
+    if (not 0 <= origin.index < high.index < now < len(bars)
+            or max(origin.known, high.known) > now or any(point.known > now for point in polyline)):
+        return None
+    bar, previous = bars[now], bars[now - 1]
+    doubled = double_volume_bullish_breakout(bar, previous)
+    if not doubled and not volume_high_open_rising(bar, previous):
+        return None
+    pair = _polyline_last_fall_pair(polyline)
+    if pair is None:
+        return None
+    key, low, known = pair
+    if (known >= now or not high.index <= key.index < low.index < now
+            or not origin.price < low.price < high.price or bar.close <= key.price):
+        return None
+    market = (_market_index if _market_index is not None and bars is _market_index.bars
+              and _market_index.exact_prices else None)
+    for point in (origin, low):
+        broken = (market.first_extreme(point.index + 1, now + 1, point.price, high=False) is not None
+                  if market is not None and market.supports_price(point.price) else
+                  any(row.low < point.price for row in bars[point.index + 1:now + 1]))
+        if broken:
+            return None
+    resistance = max(key.price,
+        bars[market.extreme_position(low.index, now, high=True)].high if market is not None
+        else max(row.high for row in bars[low.index:now]))
+    if bar.close <= resistance:
+        return None
+    minimum_close = (bars[market.lowest_close_position(high.index + 1, low.index + 1)].close
+                     if market is not None else min(row.close for row in bars[high.index + 1:low.index + 1]))
+    if (short_shallow_pullback(origin.price, high.price, minimum_close,
+                              high.index - origin.index, low.index - high.index)
+            and bar.close <= high.price):
+        return None
+    return AlternationProof(low, 'volume_bullish_polyline_last_fall_high_breakout', (key, low), dict(
+        confirmation_source='double_volume_bullish_breakout' if doubled else 'volume_high_open_rising',
+        candidate_index=now, polyline_key_index=key.index, polyline_key_price=key.price,
+        polyline_key_known_index=known,
+        b_low_index=low.index, b_low_price=low.price, b_minimum_close=minimum_close,
+        breakout_resistance=resistance, confirmation_close=bar.close,
+        volume=bar.volume, previous_volume=previous.volume, volume_multiple=bar.volume / previous.volume,
+    ))
+
+
 def confirm_body_gap_alternation(
     bars: Sequence[Bar], now: int, *, origin: ConfirmedTurn, high: ConfirmedTurn,
     polyline: Sequence[ConfirmedTurn], _market_index: _MarketRangeIndex | None = None,
@@ -87,6 +155,12 @@ def confirm_body_gap_alternation(
         return None
     resistance = (bars[market.extreme_position(low.index, now, high=True)].high if market is not None
                   else max(item.high for item in bars[low.index:now]))
+    pair = _polyline_last_fall_pair(polyline)
+    if pair is not None:
+        key, _, known = pair
+        if known >= now:
+            return None
+        resistance = max(resistance, key.price)
     if bar.close <= resistance:
         return None
     minimum_close = (bars[market.lowest_close_position(high.index + 1, low.index + 1)].close if market is not None
@@ -133,10 +207,14 @@ def confirm_bull_alternation(
                      else min(bar.low for bar in bars[origin.index + 1:now + 1]) < origin.price)
     if broken_origin:
         return None
-    gap = (confirm_body_gap_alternation(bars, now, origin=origin, high=high, polyline=polyline, _market_index=market)
-           if allow_gap_confirmation else None)
-    if gap is not None:
-        return gap
+    structural_breakout = confirm_volume_breakout_alternation(
+        bars, now, origin=origin, high=high, polyline=polyline, _market_index=market)
+    if structural_breakout is not None:
+        return structural_breakout
+    gap_proof = (confirm_body_gap_alternation(bars, now, origin=origin, high=high, polyline=polyline, _market_index=market)
+                 if allow_gap_confirmation else None)
+    if gap_proof is not None:
+        return gap_proof
     # 回调可以继续创新低；首个低点破位后，应由当前已确认的整段最低点
     # 接受原确认门禁。相等保留最早坐标，未确认的新低仍由行情守低校验拒绝。
     counter = min((point for point in points if point.kind == 'L' and point.index > high.index

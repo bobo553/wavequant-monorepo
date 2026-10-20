@@ -3863,9 +3863,8 @@ async function start() {
         let sourceError = !state[restoredSource].with_daily
             ? `${restoredSource === "akshare" ? "AkShare" : "通达信"}目录暂无可用行情，请重新选择或稍后重试。`
             : "";
-        const firstWatchlistSymbol = watchlists.firstAvailableSymbol(universe());
         let linkedStock = null;
-        if (!sourceError && requestedStock && !firstWatchlistSymbol) {
+        if (!sourceError && requestedStock) {
             try {
                 linkedStock = resolveResearchLink(requestedStock, { [initialSource]: state[initialSource] });
             } catch (error) {
@@ -3890,7 +3889,7 @@ async function start() {
         void syncSavedWatchlists();
         if (requestedPage && Object.hasOwn(titles, requestedPage)) showPage(requestedPage);
         watchlistBacktests.start();
-        // 默认选择只解析一次；链接和历史选择不能覆盖当前分类的第一只自选。
+        // 显式股票链接优先；没有链接时才使用当前分类的第一只自选。
         const initialLoad = initialSymbol
             ? chooseSymbol(initialSymbol, false, true, linkedStock?.asof || null)
             : loadView();

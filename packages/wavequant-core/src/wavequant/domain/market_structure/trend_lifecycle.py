@@ -5,7 +5,7 @@ trimmed backwards to manufacture this history. Only compact facts and active
 cycles are retained; price confirmation advances once per market date.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from bisect import bisect_left
 from heapq import heappop, heappush
 from dataclasses import dataclass, replace
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from .trend_lines import _OwnedPolylineTurns
 
 
-LIFECYCLE_VERSION = 'six_state_qualification_research_v32'
+LIFECYCLE_VERSION = 'six_state_polyline_volume_breakout_v33'
 
 
 class LifecycleState(StrEnum):
@@ -132,7 +132,7 @@ def _next_structure_clock(value: object, dates: Mapping[str, int], now: int) -> 
                     following = known if following is None else min(following, known)
             pending.extend(current.values())
         else:
-            pending.extend(current)
+            pending.extend(cast(Iterable[object], current))
     return True, following
 
 
@@ -151,7 +151,7 @@ class _StructureClocks:
 
     def advance(self, value: object, dates: Mapping[str, int], now: int) -> tuple[bool, int | None]:
         if type(value) not in (list, tuple, PointVersion, CertifiedSource):
-            self.__init__()
+            _StructureClocks.__init__(self)
             return _next_structure_clock(value, dates, now)
         points = cast(Sequence[Mapping[str, object]], value)
         previous = self.points if self.dates is dates else None
@@ -173,7 +173,7 @@ class _StructureClocks:
         for position in range(start, len(points)):
             standard, following = _next_structure_clock(points[position], dates, now)
             if not standard:
-                self.__init__()
+                _StructureClocks.__init__(self)
                 return False, None
             if following is not None:
                 self.future[position] = following
@@ -190,7 +190,7 @@ class _StructureClocks:
             self.future.pop(position)
             standard, next_known = _next_structure_clock(points[position], dates, now)
             if not standard:
-                self.__init__()
+                _StructureClocks.__init__(self)
                 return False, None
             if next_known is not None:
                 self.future[position] = next_known
@@ -267,8 +267,10 @@ def _pivot(value: object, dates: Mapping[str, int], now: int) -> _Pivot | None:
 
 
 def _records(value: object) -> Sequence[Mapping[str, object]]:
-    if type(value) in (PointVersion, CertifiedSource) and value._sealed:
-        return value
+    if type(value) in (PointVersion, CertifiedSource):
+        owned = cast(PointVersion | CertifiedSource, value)
+        if owned._sealed:
+            return owned
     if not isinstance(value, (tuple, list, PointVersion, CertifiedSource)):
         return ()
     return tuple(row for row in value if isinstance(row, Mapping))

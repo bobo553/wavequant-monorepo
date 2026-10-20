@@ -7,7 +7,7 @@
 """
 
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import isfinite
 from typing import Protocol, cast
 
@@ -15,7 +15,7 @@ from .price_action import Direction
 from .trend_history_changes import PolylineSourceGate
 from .trend_lines import _OwnedPolylineTurns, polyline_turns
 from .trend_structure import retracement_evidence
-from .polyline import ReversalPoint
+from .polyline import LinePoint, PointKind, ReversalPoint
 from ..market_state.candle_strength import bullish_breakout_rejection
 from ..models.model import Bar
 
@@ -67,7 +67,7 @@ def _validate_raw(points: Sequence[Mapping[str, object]], dates: Mapping[str, in
         index, ordinal, value = point.get('index'), point.get('ordinal', 0), point.get('value')
         known = _clock(point.get('available_at'), dates)
         if (type(index) is not int or type(ordinal) is not int or not 0 <= index <= known <= now
-                or ordinal < 0 or type(value) not in (int, float) or not isfinite(value) or value <= 0
+                or ordinal < 0 or type(value) not in (int, float) or not isfinite(cast(float, value)) or cast(float, value) <= 0
                 or point.get('kind') not in ('H', 'L') or not isinstance(point.get('time'), str)
                 or point.get('state') not in ('seed', 'developing', 'confirmed', 'teaching', 'reversal')
                 or 'trend_level' in point and (type(point['trend_level']) is not int or point['trend_level'] != 0)):
@@ -165,6 +165,36 @@ class _PolylineStructure:
             self._attack, self._suspicion = None, False
 
 
+def polyline_last_fall_pair(
+    points: Sequence[ReversalPoint],
+) -> tuple[ReversalPoint, ReversalPoint] | None:
+    """复用买入门禁的冻结关键位，不拿最近局部反弹高点替换末跌高。"""
+    structure = _PolylineStructure()
+    compact: list[ReversalPoint] = []
+    for point in points:
+        # 几何接缝过滤后可能留下连续同类点，沿用 LecturePivotState 的极值选择。
+        if compact and point.point.kind == compact[-1].point.kind:
+            sign = 1 if point.point.kind == PointKind.HIGH else -1
+            if sign * (point.point.price - compact[-1].point.price) <= 0:
+                continue
+            compact.pop()
+        if compact and point.confirmed_index < compact[-1].confirmed_index:
+            point = replace(point, confirmed_index=compact[-1].confirmed_index)
+        compact.append(point)
+    for point in compact:
+        structure.append(_Point(point.point.index, point.point.ordinal, point.point.kind.value,
+                                point.point.price, point.confirmed_index))
+    if structure._bull is not False or structure._key is None or structure._anchor is None:
+        return None
+    key, low = structure._key, structure._anchor
+    return (
+        ReversalPoint(LinePoint(key.index, key.ordinal, PointKind.HIGH, key.value), key.known,
+                      'confirmed_polyline_last_fall_high'),
+        ReversalPoint(LinePoint(low.index, low.ordinal, PointKind.LOW, low.value), low.known,
+                      'confirmed_polyline_defended_low'),
+    )
+
+
 class PolylineBuyGate:
     """消费已确认折线末跌高；突破当棒同时强势才解除买入限制。"""
 
@@ -175,7 +205,10 @@ class PolylineBuyGate:
         self.previous: tuple[ReversalPoint, ...] = ()
         self.released: set[tuple[int, int, float, int]] = set()
         self._previous_bar: Bar | None = None
+        self._pending_breakout: tuple[_Point, int] | None = None
         self.restrictions: dict[int, dict[str, object]] = {}
+        self.breakouts: dict[int, dict[str, object]] = {}
+        self.source_epochs: dict[int, int] = {}
 
     def advance(
         self, index: int, bar: Bar, points: Sequence[ReversalPoint], epoch: int,
@@ -184,13 +217,22 @@ class PolylineBuyGate:
             raise ValueError('polyline buy gate requires consecutive dates')
         previous_bar, self._previous_bar = self._previous_bar, bar
         self.index = index
+        self.source_epochs[index] = epoch
         if epoch != self.epoch:
             self.epoch = epoch
             self.structure = _PolylineStructure()
             self.previous = ()
             self.released.clear()
+            self._pending_breakout = None
+        previous_key = self.structure._key if self.structure._bull is False else None
+        previous_anchor = self.structure._anchor
         known = tuple(point for point in points if point.confirmed_index <= index)
         if known != self.previous:
+            if self._pending_breakout is not None:
+                pending = self._pending_breakout[0]
+                if not any((point.point.index, point.point.ordinal, point.point.price) ==
+                           (pending.index, pending.ordinal, pending.value) for point in known):
+                    self._pending_breakout = None
             if known[:len(self.previous)] != self.previous:
                 self.structure = _PolylineStructure()
                 self.previous = ()
@@ -199,20 +241,36 @@ class PolylineBuyGate:
                 self.structure.append(_Point(point.point.index, point.point.ordinal, point.point.kind.value,
                     point.point.price, point.confirmed_index))
             self.previous = known
-        key = self.structure._key if self.structure._bull is False else None
-        if key is None:
-            return
+        # 结构翻多不等于强势突破买入确认；尚未放行的旧门槛须继续约束后续局部结构。
+        if previous_key is not None and self.structure._bull is True:
+            previous_known = max(previous_key.known, previous_anchor.known
+                                 if previous_anchor is not None else previous_key.known)
+            previous_identity = previous_key.index, previous_key.ordinal, previous_key.value, previous_known
+            if (previous_identity not in self.released and (self._pending_breakout is None
+                    or previous_key.value > self._pending_breakout[0].value)):
+                self._pending_breakout = previous_key, previous_known
+        candidates = [self._pending_breakout] if self._pending_breakout is not None else []
+        current_key = self.structure._key if self.structure._bull is False else None
         anchor = self.structure._anchor
-        known_at = max(key.known, anchor.known if anchor is not None else key.known)
-        identity = key.index, key.ordinal, key.value, known_at
-        if identity in self.released:
+        if current_key is not None:
+            candidates.append((current_key, max(current_key.known, anchor.known
+                                                if anchor is not None else current_key.known)))
+        candidates = [(point, clock) for point, clock in candidates
+                      if (point.index, point.ordinal, point.value, clock) not in self.released]
+        if not candidates:
             return
+        key, known_at = max(candidates, key=lambda pair: (pair[0].value, pair[1]))
         # 确认当日不能用此前未知的关键位解释当日影线；收盘后才能用于后续判断。
         rejection = 'polyline_last_fall_high_not_broken'
         if known_at < index and bar.high > key.value:
             candle_rejection = bullish_breakout_rejection(bar, previous_bar, breakout_level=key.value)
             if candle_rejection is None:
-                self.released.add(identity)
+                self.released.update((point.index, point.ordinal, point.value, clock)
+                    for point, clock in candidates if clock < index and bar.high > point.value)
+                self._pending_breakout = None
+                self.breakouts[index] = dict(polyline_key_index=key.index, polyline_key_price=key.value,
+                    polyline_key_known_index=known_at, polyline_breakout_index=index,
+                    source_path=f'lecture-{epoch}')
                 return
             rejection = candle_rejection
         self.restrictions[index] = dict(reason=rejection,

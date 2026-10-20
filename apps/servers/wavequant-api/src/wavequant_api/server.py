@@ -679,6 +679,9 @@ def make_server(
                 action = body.get("action")
                 if action == "save":
                     result = watchlist_store.save(body.get("revision"), body.get("snapshot"))
+                elif action in ("add", "remove"):
+                    result = watchlist_store.update_members(
+                        body.get("groupId"), body.get("stocks"), remove=action == "remove")
                 elif action == "import":
                     result = watchlist_store.import_legacy(body.get("token"), body.get("snapshot"))
                 elif action == "settings":
