@@ -20,6 +20,11 @@
             ],
             "verification": [
                 {
+                    "command": "post-main-sync: pytest 21 Core files -q --tb=short; mypy --follow-imports=silent 13 production modules; API pytest test_backtest_jobs.py test_backtest_preview.py; git diff --check main",
+                    "status": "passed",
+                    "summary": "2026-10-20 合并最终验证：ec93ee2实现，经0dd39ee同步main 34d09fa，四份状态文档冲突保留双方记录，生产代码无冲突。同步后Core本任务13文件加新基线相邻8文件共665 passed/56.63s；13个变更生产模块mypy --follow-imports=silent通过；API两个文件16 passed/0.94s；git diff --check main通过，31文件最终差异已复核。此前测试/类型失败均已修复，无失败例外。仅记录本轮定向验证，不宣称全套、浏览器或真实行情提速；MONOREPO-330其他工作继续in-progress。准备从已同步分支no-ff合并本地main，不推送。"
+                },
+                {
                     "command": "Core pytest 13 files -q --tb=short; mypy --follow-imports=silent 13 production modules; API pytest test_backtest_jobs.py test_backtest_preview.py; git diff --check",
                     "status": "passed",
                     "summary": "2026-10-20 ec93ee2：Core 518 passed/52.12s，13生产模块类型通过；API 16 passed/1.22s，空白检查通过。修复原73项失败及既有类型问题；不使用失败豁免。同步main 34d09fa仅状态记录冲突，保留双方全部记录，待同步后复验。完整套件、浏览器、实股性能未运行。"
