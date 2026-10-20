@@ -14,6 +14,7 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
             "acceptanceCriteria": [
+                "2026-10-20国芳末跌高突破买入：收盘直入与跳空直入复用普通策略PolylineBuyGate，阻止2/27、3/14未越过1/09末跌高的局部倍量反弹；三级共用新增守低后倍量中大阳高位收盘严格突破冻结折线末跌高的交替确认，已有实体跳空确认同样尊重冻结关键位。4/03首次突破在收盘确认并生成入场，下一交易日4/07放量跳空全天守住前高且收盘不低于开盘作为独立守稳入场；不要求平开收K线有阳线实体，不倒填开盘成交。普通趋势几何及已有影线突破定义保持，未添加股票、日期、级别特判；生命周期v33、资格缓存v159、策略v127。新增冻结量价门禁、三级合成资格链、前缀/边界/关闭/收盘执行回归源码；开发阶段未执行任何验证，完整实股资格与真实涨停撮合待提交时验证。",
                 "2026-10-20 底部N测量规则：同一一级趋势仅底部有效主N测量；普通与重成形N统一竞争floor，以完整N身份发布唯一测量来源，其余保留结构但无测量，前端交易区间不得将拒绝或未知资格提升为测量；策略v126及测量v3隔离旧结果。补充内部/重成形/无下降/失效接替/同日竞争/前缀及前端堆叠回归源码。待提交时验证，未运行任何检查或浏览器。",
                 "2026-10-20国芳倍量突破仍未买入续修：上轮只接通内部解析器，streaming_stock_result.consume在分钟入场关闭时仍用open>previous.close预筛选，低开2025-04-03无法到达新规则。逐日协调器改为高开或共用double_volume_bullish_breakout均可调用，仍要求当日所选级别资格；不改变六态、成交权限、账户风险或同日退出优先。profile v125隔离旧结果。新增三级×资格开关×分钟开关的逐日协调器回归源码：只注入资格来源与输出格式，真实resolver和portfolio撮合贯通；冻结4/2–4/3量价、合成可成交权限，不冒充全历史实股复现。未执行测试、类型、回测、构建、Git状态差异检查；实际资格和涨停撮合仍待提交时验证。",
                 "2026-10-20按用户要求解决合并阻碍：诊断默认关闭；修复N目标阶段进度遗漏、折线六态重复顺序读取及分级调用不一致，首次趋势请求统一三级收敛后复用。更新过时接口替身、Worker双开关组合与资格夹具，逐日完整冷前缀比较结构/事件/检查点；原七文件及仅折线入口共78 passed、12 subtests passed，diff检查通过。未运行全量、浏览器和性能探针，整体功能保持in-progress，不推送。",
@@ -114,6 +115,31 @@
                 "2026-10-19 外围消费者增量化：来源、候选、许可轻量投影传递不可变版本/父令牌/最早变化位置；分组、来源认证、几何标注、结构腿共享持久前缀；许可来源/候选查找索引只更新后缀；共享层级历史在交易区间内外只更新投影后缀。旧关键位/整波起点只读引用，不删除证据，不以结构冻结代替逐日资格核验；追加、修订、截短、同坐标事实、延迟可知、跨请求失效及公开独立列表导出待提交时验证。"
             ],
             "verification": [
+                {
+                    "command": "用户明确批准既有失败例外：继续提交并合并到本地main，不推送",
+                    "status": "passed",
+                    "summary": "2026-10-20用户回复“允许基线例外，继续本地合并（推荐）”。例外仅针对main/特性分支完全相同的test_trend_annotation_clock.py 70失败；该测试仍记failed，不改断言或相关业务规则。147项直接回归、12文件类型、构建及临时wheel环境导入通过；同步main后复核并最小验证。"
+                },
+                {
+                    "command": "pytest tests/test_polyline_breakout_entry_routes.py tests/test_polyline_buy_gate.py tests/test_breakout_candle_quality.py tests/test_double_volume_breakout_entry.py tests/test_qualified_gap_entry.py tests/test_qualified_rising_close_entry.py tests/test_body_gap_alternation.py tests/test_qualification_search_continuation.py -q",
+                    "status": "passed",
+                    "summary": "2026-10-20提交阶段：147通过。冻结国芳真实折线证据：2/27和3/14受1/09门槛拦截，4/03有效突破，4/07放量跳空守稳；资格与撮合用合成前提单独验证，不冒充2018起全历史账户回放。补充结构翻多但K线未确认时保留旧买入门槛、epoch清理和普通资格跳空路径回归。"
+                },
+                {
+                    "command": "mypy --config-file .mypy-merge-check.toml --follow-imports=silent（8个修改生产文件、4个测试文件）；python -m build --no-isolation；git diff --check",
+                    "status": "passed",
+                    "summary": "2026-10-20：12文件类型通过，wheel/sdist构建成功，空白检查通过；临时干净环境安装wheel及声明的tzdata后入口导入通过。临时配置继承pyproject的Python3.11并仅跳过不兼容的外部NumPy存根，未提交该配置。修复变更文件中类型收窄和变量混用，不改变交易规则。"
+                },
+                {
+                    "command": "pytest tests/test_trend_annotation_clock.py -q（特性分支与干净main基线对照）",
+                    "status": "failed",
+                    "summary": "2026-10-20：分支及main均70失败、28通过，失败节点集合完全一致，属既有趋势注释测试问题。原147项直接回归仍通过；不放宽断言、不改无关注释规则。遵守AGENTS失败不合并，当前保留未提交改动，待用户允许基线例外或授权修复后再同步main/复核/提交/本地合并，不推送。"
+                },
+                {
+                    "command": "待提交时：pytest tests/test_polyline_breakout_entry_routes.py tests/test_double_volume_breakout_entry.py tests/test_qualified_gap_entry.py tests/test_qualified_rising_close_entry.py tests/test_body_gap_alternation.py tests/test_qualification_search_continuation.py；变更文件 mypy；完整同源国芳资格与账户回放",
+                    "status": "not-run",
+                    "summary": "2026-10-20本轮仅阅读/修改源码和回归、维护记录，未执行测试、类型、lint、格式、构建、Git状态差异或回测探针。已接通直接入场的共用折线门禁、三级倍量结构突破确认、次日放量守稳收盘入场及同日流式信号缓存同步；回归源码包含冻结行情价格门禁与独立合成资格链，均未运行，不视为实股全链路通过。实际涨停撮合仍依账户权限，未启动/重启服务、提交、合并、推送；MONOREPO-330保持in-progress，旧失败记录不覆盖。"
+                },
                 {
                     "command": "daily coordinator low-open double-volume entry regression and real-stock replay",
                     "status": "not-run",

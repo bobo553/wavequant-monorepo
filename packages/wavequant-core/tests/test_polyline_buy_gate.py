@@ -73,3 +73,21 @@ def test_source_revision_rebuilds_current_context_and_epoch_does_not_reuse_relea
     gate.advance(6, bar(6), (), 6)
     assert 6 not in gate.restrictions
     assert 3 in gate.restrictions
+
+
+@pytest.mark.parametrize('release', (False, True))
+def test_structural_flip_does_not_erase_an_unconfirmed_candle_breakout(release: bool) -> None:
+    points = bearish_points() + [point(4, PointKind.HIGH, 9.2), point(5, PointKind.LOW, 8.5)]
+    gate = PolylineBuyGate()
+    for index in range(6):
+        gate.advance(index, bar(index, 9.2 if index == 4 else 8.8), points, 0)
+    assert gate.structure._bull is True
+    assert gate.restrictions[5]['polyline_key_index'] == 2
+    if release:
+        gate.advance(6, breakout_bar(6, 9.1), points, 0)
+        assert gate.breakouts[6]['polyline_key_index'] == 2
+        gate.advance(7, bar(7), points, 0)
+        assert 7 not in gate.restrictions
+    else:
+        gate.advance(6, bar(6), (), 6)
+        assert 6 not in gate.restrictions

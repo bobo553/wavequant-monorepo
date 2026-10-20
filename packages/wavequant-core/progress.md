@@ -1,3 +1,24 @@
+2026-10-20 · MONOREPO-330 用户批准历史失败例外，继续本地合并
+
+用户已明确批准：将干净main与本分支完全一致的test_trend_annotation_clock.py 70项失败作为本次合并例外，继续提交并合并到本地main，不推送。例外仅覆盖该既有失败集合；本次147项直接回归、12文件类型、wheel/sdist构建及临时环境导入已通过，相关证据见下文。保留历史失败记录，不将其改写为通过。当前开始提交本次末跌高门禁/突破确认修复，随后同步最新main、处理仅记录文件的预期冲突并重验受影响范围；MONOREPO-330的其他未完成任务保持in-progress。
+
+2026-10-20 · MONOREPO-330 末跌高买入修复提交检查（本地合并待决）
+
+本轮按“合并到main，不推送”进入提交阶段。实股回归发现3月结构翻多曾清除未获强势K线确认的1/09门槛；现由买入门禁单独保留该门槛，后续局部结构不能降低它，直到强势突破放行。折线几何不变，来源epoch变更清理旧门槛。4/03突破证据指向1/09，4/07按下一交易日放量跳空守稳生成收盘信号；未形成收盘信号的普通资格跳空仍保留原开盘路径。两个旧测试补齐合法OHLC和正式翻多确认字段，原断言保留。相关文件类型收窄、生成器关闭声明和身份变量改名不改变运行规则。
+
+验证：pytest test_polyline_breakout_entry_routes.py test_polyline_buy_gate.py test_breakout_candle_quality.py test_double_volume_breakout_entry.py test_qualified_gap_entry.py test_qualified_rising_close_entry.py test_body_gap_alternation.py test_qualification_search_continuation.py：147通过；后续含趋势注释扩展检查中这147项仍通过。12个修改代码/测试文件mypy通过（项目Python3.11配置，follow-imports=silent；临时配置仅跳过宿主不兼容的numpy/numpy.*外部存根，未修改依赖或项目配置）。python -m build --no-isolation成功生成wheel和sdist；新建临时虚拟环境离线安装该wheel，补装pyproject已声明的tzdata后，正式生命周期、门禁与入场入口导入通过；最初未安装时区依赖的导入失败已解决。git diff --check通过。未运行浏览器/E2E、Python格式/lint、Harness、全仓完整套件或2018起完整国芳账户回放；真实涨停成交仍受账户权限限制。
+
+合并阻碍：额外test_trend_annotation_clock.py得到70失败、28通过，干净本地main同文件同样70失败、28通过，失败节点集合完全相同。失败涉及既有趋势注释证明字段/独立来源预期；本次未改该测试或趋势注释业务规则。遵守AGENTS“检查未通过时先修复，无法通过时说明原因，不合并”，先保留改动，需用户明确允许将该既有失败作为本次合并例外，或另行授权处理此历史问题。当前未提交、未同步或合并main，未推送。main已前进到4efc1b5，生产变更不重叠，后续合并需保留双方feature/progress/handoff记录并重验受影响范围。MONOREPO-330仍in-progress；不得以本次定向通过覆盖既有未完成事项。
+
+2026-10-20 · MONOREPO-330 折线末跌高统一买入门禁与倍量确认（待提交时验证）
+
+本轮用户要求国芳2025-02-27、2025-03-14未突破2025-01-09末跌高时不买；2025-04-03倍量中大阳突破应确认并买入，下一交易日再次放量守稳可进一步确认。冻结同源行情明确下一交易日为2025-04-07，当日开盘等于收盘、盘中低于开盘，但最低价高于4/03最高价且量继续增加，按放量跳空守稳处理，不虚称有大阳实体。
+
+已修改：收盘直入和跳空直入复用PolylineBuyGate，流式协调器传递现有实例，独立解析从既有因果折线历史补建；未破冻结关键位拒绝生成/保留LONG并记录结构价位。原有普通影线突破规则不变。三级共用确认器新增守住本级原低点与当前折线低点后，倍量中大阳顶部20%收盘严格越过冻结末跌高及低点后阻力的确认；新确认在收盘开放资格，旧实体跳空确认也尊重同一冻结价位，不新增趋势几何。记录末跌高、首次可知时间、突破日，下一交易日同来源放量跳空、全天守前高、收盘不低于开盘可生成守稳收盘买点，不由缺分钟分支覆盖为开盘成交。同日解析替换信号时同步拒绝审计并清除旧排序缓存，防止已拒绝买点残留。生命周期v33、资格缓存v159、策略v127隔离旧结果。
+
+新增 tests/test_polyline_breakout_entry_routes.py：冻结2023-01-03至2025-04-10行情用于真实折线门禁/日期/量价回归；另用合成三级翻多几何验证共享确认→资格账本→解析器。覆盖两次提前买点拒绝、首次收盘入场、4/07守稳、门禁前不加载分钟、资格关闭、来源epoch变化、未来关键位、守低破坏和量价边界。合成资格和合成成交权限均明确标注，不冒充2018起完整国芳资格或涨停成交复现。
+
+开发阶段未运行任何测试、类型、lint、格式、构建、Git状态/差异或结果探针；没有本轮验证通过结论。待实际提交时运行新回归与相关买入/资格用例、变更文件类型检查，并核对完整同源国芳资格与真实撮合。MONOREPO-330保留in-progress，既有失败不覆盖。工作分支feat-末跌高突破买入，worktree C:/Users/zb/.codex/worktrees/last-fall-high-entry/wavequant-monorepo；本轮未提交、合并、推送或重启运行服务。CodeGraph主索引提示自动同步停用，独立worktree虽存在.codegraph目录但MCP无法识别，已按工具提示改用源码阅读。
 2026-10-20 底部N合并前问题已解决：真实1593日资格核对确认二级最后窗口于2024-01-24关闭，7/31、8/15、8/20 buy/scan均False；旧图表用例错误要求区间外交易N，修正为真实策略不补造N，并以独立形态→底部资格→图表契约严格断言两形态只发布底部4.83/5.52，保留来源、形状和未完成K线/前缀限制。最终pytest test_bottom_n_targets.py test_positive_n_reformation.py：38 passed(215.62s)；类型断言与图表接收者修订后重成形12项再次通过（重叠不合计）。Web两文件Node17项通过且生产代码未再变化。状态机及两测试3文件mypy通过，使用项目3.11配置与follow-imports=silent，临时仅对宿主不兼容的numpy/numpy.*外部存根设置follow_imports=skip、follow_imports_for_stubs=true；未改项目依赖或全局配置，不宣称全仓类型通过。早先历史KeyError和测试可空类型错误已解决；先前失败记录保留作历史。完整Core/Web套件、另一个历史pipeline文件、浏览器与构建未运行或未完成，不作为通过。用户要求解决后合并main、不推送。
 
 2026-10-20 底部N提交验证：Core pytest test_bottom_n_targets.py、test_positive_n_reformation.py -k "not pipeline"：35 passed/2 deselected；Web pnpm exec node --test tests/eligibility-n-targets.test.mjs tests/bottom-n-targets.test.mjs：17 passed；mypy --follow-imports=skip 状态机及其测试2文件通过；git diff --check通过。历史图表用例在本分支与未修改main 1370da2均于同一断言缺少2024-07-31 N而KeyError（分别196.36s/197.12s），未修改该旧断言。初始3文件组合运行中断，剩余历史/完整套件未完成。follow-imports=silent类型检查被NumPy存根Python3.12语法与项目3.11配置冲突阻断；局部skip通过不代表完整类型通过。未运行浏览器/Harness/构建。按AGENTS检查失败不合并规则，提交后等待用户明确豁免既有失败；不推送。
