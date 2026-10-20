@@ -64,7 +64,21 @@ def volume_high_open_rising(bar: Bar, previous: Bar) -> bool:
 
 
 QUALIFIED_VOLUME_BREAKOUT_CLOSE = 'qualified_double_volume_breakout_close'
-QUALIFIED_CLOSE_ENTRY_REASONS = frozenset((QUALIFIED_RISING_CLOSE, QUALIFIED_VOLUME_BREAKOUT_CLOSE))
+QUALIFIED_FOLLOW_THROUGH_CLOSE = 'qualified_volume_gap_follow_through_close'
+QUALIFIED_CLOSE_ENTRY_REASONS = frozenset((
+    QUALIFIED_RISING_CLOSE, QUALIFIED_VOLUME_BREAKOUT_CLOSE, QUALIFIED_FOLLOW_THROUGH_CLOSE,
+))
+
+
+def volume_gap_follow_through(bar: Bar, previous: Bar) -> bool:
+    """突破次日放量跳空并全天守住前高；平开收的强势守稳也可确认。"""
+    if (bar.symbol != previous.symbol or previous.timestamp >= bar.timestamp
+            or previous.volume <= 0 or bar.volume <= previous.volume):
+        return False
+    opening, high, low, close, resistance = (Fraction(str(value)) for value in
+        (bar.open, bar.high, bar.low, bar.close, previous.high))
+    return (opening > resistance and low > resistance and close >= opening
+            and high > low and high - close <= (high - low) / 5)
 
 
 def double_volume_bullish_breakout(bar: Bar, previous: Bar) -> bool:

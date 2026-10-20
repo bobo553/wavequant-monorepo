@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING, Callable, TypedDict
 
 from wavequant.domain.market_state.volume_candle import volume_bearish_entry_rejection
 from wavequant.domain.market_state.candle_strength import (
-    QUALIFIED_RISING_CLOSE, QUALIFIED_VOLUME_BREAKOUT_CLOSE,
-    double_volume_bullish_breakout, volume_high_open_rising,
+    QUALIFIED_CLOSE_ENTRY_REASONS, QUALIFIED_FOLLOW_THROUGH_CLOSE, QUALIFIED_RISING_CLOSE,
+    QUALIFIED_VOLUME_BREAKOUT_CLOSE,
+    double_volume_bullish_breakout, volume_gap_follow_through, volume_high_open_rising,
 )
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.domain.strategies.integrated_strategy import (
@@ -30,6 +31,7 @@ from wavequant.domain.strategies.wave_continuation import (
 )
 from wavequant.domain.market_structure.wave_projection import WaveProjectionSetup
 from wavequant.domain.market_structure.polyline import PointKind
+from wavequant.domain.market_structure.polyline_lifecycle import PolylineBuyGate
 from wavequant.infrastructure.market_data.akshare_history import MinuteCoverageError
 from wavequant.infrastructure.market_data.data import opening_permissions
 from wavequant.infrastructure.market_data.minute import MinuteBar
@@ -69,10 +71,43 @@ def _minute_buy_permissions(
     return buyable, observed_nonflat
 
 
+def _entry_polyline_gate(
+    bars: list[Bar], strategy: SystemStrategy, *, prepared_pivots: tuple | None = None,
+    prepared_gate: PolylineBuyGate | None = None,
+) -> PolylineBuyGate:
+    """逐日执行复用策略门禁；独立解析只从同一因果折线历史补建一次。"""
+    if prepared_gate is not None and prepared_gate.index == len(bars) - 1:
+        return prepared_gate
+    gate = PolylineBuyGate()
+    if strategy.buy_point_definition != 'whole_flip_wave_v3':
+        return gate
+    snapshots, epochs, _, _ = prepared_pivots if prepared_pivots is not None else pivot_history(bars, strategy)
+    for index, bar in enumerate(bars):
+        gate.advance(index, bar, snapshots.get(index, ()), epochs.get(index, 0))
+    return gate
+
+
+def _reject_polyline_entry(
+    bars: list[Bar], index: int, gate: PolylineBuyGate, signals: list[Signal], audit: list[dict[str, object]],
+) -> bool:
+    rejection = gate.restrictions.get(index)
+    if rejection is None:
+        return False
+    signals[:] = [row for row in signals if not (row.bar_index == index and row.side == 'LONG')]
+    audit[:] = [row for row in audit if not (row['bar_index'] == index
+        and (row['event'] in ('long_signal', 'long_transition_evidence')
+             or row.get('candidate_channel') == 'global_polyline_last_fall_high'))]
+    audit.append(dict(event='entry_rejected', bar_index=index, symbol=bars[index].symbol,
+        timestamp=bars[index].timestamp.isoformat(), candidate_channel='global_polyline_last_fall_high',
+        **rejection))
+    return True
+
+
 def _qualified_gap_entries(
     bars: list[Bar], generated: SystemResult, strategy: SystemStrategy,
     minute_loader: Callable[[Bar], list[MinuteBar]] | None, *, only_index: int | None,
     intervals: Sequence[TradingInterval] | None,
+    polyline_gate: PolylineBuyGate | None = None,
 ) -> tuple[SystemResult, dict[tuple[str, int], EntryExecution], list[dict[str, object]], set[int]]:
     """消费现有资格区间；用户指定确认日整天可买，缺分钟则开盘模拟。
 
@@ -88,6 +123,7 @@ def _qualified_gap_entries(
         return generated, executions, fallbacks, gap_days
     if intervals is None:
         intervals = confirmed_trading_intervals(generated.audit, len(bars), strategy.buy_interval_level)
+    gate = polyline_gate if polyline_gate is not None else _entry_polyline_gate(bars, strategy)
     signals, audit = list(generated.signals), list(generated.audit)
     for i in ([only_index] if only_index is not None else range(1, len(bars))):
         if i <= 0 or bars[i].open <= bars[i - 1].high:
@@ -103,6 +139,12 @@ def _qualified_gap_entries(
             and row.get('trend_level') == strategy.buy_interval_level
             and row.get('source_path') == window.source_path and row['bar_index'] == window.start_index), None)
         if confirmation is None or window.start_low_price is None:
+            continue
+        if _reject_polyline_entry(bars, i, gate, signals, audit):
+            gap_days.add(i)
+            continue
+        # 当日首次突破只有收盘证据；后续守稳收盘信号也不能被开盘模拟覆盖。
+        if any(row.bar_index == i and row.reason in QUALIFIED_CLOSE_ENTRY_REASONS for row in signals):
             continue
         gap_days.add(i)
         rejection = volume_bearish_entry_rejection(bars, i)
@@ -184,6 +226,7 @@ def _qualified_gap_entries(
 def _qualified_rising_close_entries(
     bars: list[Bar], generated: SystemResult, strategy: SystemStrategy, *,
     only_index: int | None, intervals: Sequence[TradingInterval] | None,
+    polyline_gate: PolylineBuyGate | None = None,
 ) -> tuple[SystemResult, set[int]]:
     """已有资格内高开强阳或倍量突破在收盘入场；严格跳空仍沿原分钟通道。"""
     from wavequant.domain.strategies.trading_intervals import confirmed_trading_intervals
@@ -193,12 +236,17 @@ def _qualified_rising_close_entries(
         return generated, days
     if intervals is None:
         intervals = confirmed_trading_intervals(generated.audit, len(bars), strategy.buy_interval_level)
+    gate = polyline_gate if polyline_gate is not None else _entry_polyline_gate(bars, strategy)
     signals, audit = list(generated.signals), list(generated.audit)
     for i in ([only_index] if only_index is not None else range(1, len(bars))):
-        if i <= 0 or bars[i].open > bars[i - 1].high:
+        if i <= 0:
+            continue
+        follow_through = (i - 1 in gate.breakouts and gate.source_epochs.get(i) == gate.source_epochs.get(i - 1)
+                          and volume_gap_follow_through(bars[i], bars[i - 1]))
+        if bars[i].open > bars[i - 1].high and i not in gate.breakouts and not follow_through:
             continue
         breakout = double_volume_bullish_breakout(bars[i], bars[i - 1])
-        if not breakout and not volume_high_open_rising(bars[i], bars[i - 1]):
+        if not breakout and not follow_through and not volume_high_open_rising(bars[i], bars[i - 1]):
             continue
         window = max((w for w in intervals if w.trend_level == strategy.buy_interval_level
             and w.start_index <= i and (w.end_index is None or i < w.end_index)),
@@ -211,11 +259,17 @@ def _qualified_rising_close_entries(
             and row.get('source_path') == window.source_path and row['bar_index'] == window.start_index), None)
         if confirmation is None:
             continue
+        if _reject_polyline_entry(bars, i, gate, signals, audit):
+            days.add(i)
+            continue
         bar = bars[i]
         decision = bar.timestamp.replace(hour=15, minute=0)
-        reason = QUALIFIED_VOLUME_BREAKOUT_CLOSE if breakout else QUALIFIED_RISING_CLOSE
+        reason = (QUALIFIED_FOLLOW_THROUGH_CLOSE if follow_through else
+                  QUALIFIED_VOLUME_BREAKOUT_CLOSE if breakout else QUALIFIED_RISING_CLOSE)
+        structural_breakout = gate.breakouts.get(i - 1 if follow_through else i, {})
         signal = Signal(bar.timestamp, bar.symbol, i, 'LONG', bar.close, window.start_low_price,
             reason, decision, 0, bar.volume / bars[i - 1].volume if breakout else None,
+            '突破次日放量跳空守稳' if follow_through else
             '倍量中大阳高位收盘突破' if breakout else '放量高开高走',
             confirmation['breakout_level'], strategy.minimum_reward_risk)
         days.add(i)
@@ -233,8 +287,11 @@ def _qualified_rising_close_entries(
                 previous_close=bars[i - 1].close, previous_high=bars[i - 1].high,
                 previous_volume=bars[i - 1].volume,
                 volume_multiple=bar.volume / bars[i - 1].volume,
-                breakout_reference=bars[i - 1].high if breakout else None,
-                breakout_reference_index=i - 1 if breakout else None))
+                breakout_reference=structural_breakout.get('polyline_key_price', bars[i - 1].high)
+                    if breakout or follow_through else None,
+                breakout_reference_index=structural_breakout.get('polyline_key_index', i - 1)
+                    if breakout or follow_through else None,
+                polyline_breakout_evidence=dict(structural_breakout)))
     return SystemResult(sorted(signals, key=lambda row: (row.timestamp, row.side)), audit,
         dict(generated.counts, long_signals=sum(row.side == 'LONG' for row in signals))), days
 
@@ -252,6 +309,7 @@ def resolve_consolidation_entries(
     only_index: int | None = None,
     session_cache: dict | None = None,
     prepared_pivots: tuple | None = None,
+    prepared_polyline_gate: PolylineBuyGate | None = None,
     prepared_contexts: dict[int, tuple[EntryContext, ...]] | None = None,
     prepared_analysis: 'BacktestAnalysis | None' = None,
     trading_window_start: int | None = None,
@@ -263,12 +321,16 @@ def resolve_consolidation_entries(
         if (prepared_analysis.bars != tuple(bars) or only_index is None or only_index != len(bars) - 1
                 or trading_window_start is None):
             raise ValueError('prepared minute replay requires the current daily prefix and window')
+    gate = _entry_polyline_gate(bars, strategy, prepared_pivots=prepared_pivots,
+                                prepared_gate=prepared_polyline_gate)
     generated, rising_days = _qualified_rising_close_entries(
         bars, generated, strategy, only_index=only_index,
-        intervals=prepared_analysis.trading_intervals if prepared_analysis is not None else None)
+        intervals=prepared_analysis.trading_intervals if prepared_analysis is not None else None,
+        polyline_gate=gate)
     generated, gap_executions, gap_fallbacks, gap_days = _qualified_gap_entries(
         bars, generated, strategy, minute_loader, only_index=only_index,
-        intervals=prepared_analysis.trading_intervals if prepared_analysis is not None else None)
+        intervals=prepared_analysis.trading_intervals if prepared_analysis is not None else None,
+        polyline_gate=gate)
     if qualified_gap_only or only_index is not None and only_index in (gap_days | rising_days):
         return generated, gap_executions, gap_fallbacks
     minute_scope = None
