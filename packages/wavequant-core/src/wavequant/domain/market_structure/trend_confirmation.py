@@ -126,9 +126,9 @@ class ConfirmationContext:
     n_context: NConfirmationContext | None
     n_target_trend_confirmation_enabled: bool
     market_index: _MarketPrefixIndex | None = None
-    _prefix_visibility: Sequence[int] | None = field(default=None, repr=False, compare=False)
-    _proof_prefixes: Sequence[bytes] | None = field(default=None, repr=False, compare=False)
-    _reference_stops: Sequence[int] | None = field(default=None, repr=False, compare=False)
+    _prefix_visibility: tuple[int, ...] | None = field(default=None, repr=False, compare=False)
+    _proof_prefixes: tuple[bytes, ...] | None = field(default=None, repr=False, compare=False)
+    _reference_stops: tuple[int, ...] | None = field(default=None, repr=False, compare=False)
     _visible_stop: int | None = field(default=None, repr=False, compare=False)
     _projected: bool = field(default=False, repr=False, compare=False)
 

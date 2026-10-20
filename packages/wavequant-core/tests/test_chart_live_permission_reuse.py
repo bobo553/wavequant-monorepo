@@ -11,33 +11,15 @@ import wavequant.domain.strategies.chart_entry_history as chart_module
 from wavequant.domain.market_structure.trend_staging import TrendStageRows
 from wavequant.domain.market_structure.trend_history_changes import TrendChangeRows
 from wavequant.domain.market_structure.trend_lifecycle import TrendLifecycle
-from wavequant.domain.market_structure.trend_lines import (
-    _TrendPermissionCache, attach_trend_permissions, polyline_high_low_points, prepare_trend_lines,
-)
+from wavequant.domain.market_structure.trend_lines import _TrendPermissionCache, attach_trend_permissions
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.backtest_analysis import BacktestAnalysis, prepare_backtest_analysis
 from wavequant.domain.strategies.chart_drawing_history import ChartDrawingFrame, ChartDrawingHistory
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy
 from wavequant.domain.strategies.market_calculations import MarketCalculations, MarketDay
 
-from .test_chart_owned_transfer import _typed as _snapshot
-from wavequant.domain.market_structure.trend_point_version import PointVersion
-from wavequant.domain.market_structure.owned_evidence import CertifiedSource
+from .test_chart_owned_transfer import _typed
 from .test_staged_trend_pipeline import _multiple_path_bars
-
-
-def _typed(value: object) -> bytes:
-    # 私有版本在公开序列化边界是数组；保留所有字段和标量类型再比较。
-    def arrays(item: object) -> object:
-        if type(item) is dict:
-            return {key: arrays(child) for key, child in cast(dict, item).items()}
-        if type(item) in (list, PointVersion, CertifiedSource):
-            return [arrays(child) for child in cast(Sequence[object], item)]
-        if type(item) is tuple:
-            return tuple(arrays(child) for child in cast(tuple[object, ...], item))
-        return item
-
-    return _snapshot(arrays(value))
 
 
 def _strategy() -> SystemStrategy:
@@ -205,9 +187,9 @@ def test_public_permission_outputs_cannot_mutate_next_read_of_request_cache() ->
         owner = analysis.calculations
         assert owner is not None
         cache = owner._permission_cache_for(analysis.bars)
-        source = polyline_high_low_points(day.frame.drawing)
+        source = chart_module.polyline_high_low_points(day.frame.drawing)
         source = [dict(point, source_path_end_index=len(bars)) for point in source]
-        prepared = prepare_trend_lines(source, trend_level=1)
+        prepared = chart_module.prepare_trend_lines(source, trend_level=1)
         first = attach_trend_permissions(prepared, analysis.bars, _permission_cache=cache)
         expected = _typed(first)
         # 只有资格输出允许修改；接口约定几何、来源和候选数组为只读借用。
@@ -288,48 +270,3 @@ def test_consecutive_live_days_reuse_lifecycle_without_reading_or_decoding_the_j
         pass
     assert owner is not None
     assert owner._live_lifecycle_days == {}
-
-
-@pytest.mark.parametrize('revision', ('window', 'removed', 'added', 'old_proof', 'budget'))
-@pytest.mark.parametrize('enabled', (False, True))
-def test_new_window_repairs_only_n_attachment_using_original_dated_geometry(
-    revision: str, enabled: bool, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from wavequant.domain.strategies.combined_a_replay import CombinedAReplay
-
-    bars = _multiple_path_bars(count=12)
-    starts = _record_starts(monkeypatch)
-    cache: dict[str, object] = {}
-    first_count, second_count = 9, 20
-    resumes: list[int | None] = []
-    attack = dict(event='n_completed', direction='up', bar_index=5, known_at=5,
-        origin=0, neckline=2, pullback=4, one_p=1500., two_t=1800., proof={'version': 1})
-
-    def consume(_day: MarketDay, analysis: BacktestAnalysis) -> None:
-        count = len(analysis.bars)
-        if count not in (first_count, second_count):
-            return
-        audit = deepcopy([attack])
-        if count == second_count:
-            if revision == 'window':
-                audit[0].update(known_at=second_count - 1, one_p=None, two_t=None, window_start=second_count - 1)
-            elif revision == 'removed':
-                audit.clear()
-            elif revision == 'added':
-                audit.append(dict(attack, bar_index=6, known_at=second_count - 1))
-            elif revision == 'old_proof':
-                audit[0]['proof'] = {'version': 2}
-            elif revision == 'budget':
-                audit[0]['known_at'] = second_count - 1
-                cache['_combined_replay'] = CombinedAReplay(memory_bytes=0)
-        current = replace(analysis, buy_days=(True,) * count)
-        before = len(starts)
-        warm = _read(current, cache, audit, enabled=enabled)
-        resumes.extend(starts[before:])
-        cold = _read(current, None, audit, enabled=enabled)
-        assert _typed(warm) == _typed(cold)
-
-    with prepare_backtest_analysis(bars, _strategy(), on_day=consume):
-        pass
-    expected = first_count - 1 if revision in ('window', 'removed') else 0
-    assert resumes == [0, expected]

@@ -1,12 +1,5 @@
-2026-10-20 直接合并完成：修复e9c2039，经cd36678同步main回退基线，解决13处冲突后文件树与已验证修复提交完全一致；本地main已no-ff合并为913aff1，未推送。原13项回归失败已修，20相关文件627 passed/84.93s，19生产模块mypy使用workspace配置通过，API16 passed/1.04s。后台固定CPU核心4、1777日同一冻结行情main/候选/main夹测已全部完成：main 249.864/240.251秒，均值245.057秒；合并版本213.206秒，降低13.00%；最后177日88.418→70.964秒，降低19.74%。完整研究及账户JSON哈希三次一致；提交后源码仅行尾规范化，与性能快照逐文件规范化内容一致。单一冻结样本不外推全市场，不宣称内存降低或本轮新增逐日结构哈希。报告主目录.codex-runtime/fix-cr-performance-20261020/report.json。扩展17项旧stage接口用例及10项分钟/波段失败仍未修复；用户知悉后要求直接合并，不将失败写成通过。MONOREPO-330保持in-progress，后续处理这些剩余项；当前无本轮后台性能任务在运行。仅补充本条记录，不改生产代码。
+2026-10-20按用户要求撤回14:07（UTC+9）之后main合并：经main第一父链及reflog核实，仅14:17的adf4888（chore: 合并趋势缓存性能优化）符合。使用git revert -m 1，不重置或改写历史，不推送。添加审计记录前，撤回暂存树与14:07前34d09fa逐文件完全一致，git diff --cached --check通过；未重新运行含已知基线失败的旧测试，不宣称其已通过。既有行情收藏、末跌高买入、底部N及更早合并均保留。此前665项正确性回归不构成性能验收：同冻结输入前1100日，合并前73.10秒、合并后219.37秒，新增账本107.46秒、冷算24增至124，完整证据在.codex-runtime/backtest-growth-current-20261020/root-cause.md和comparison.json。后续优化仅在独立分支；必须确认同输入完整结果一致及分段/全程性能有实际提升，再考虑重新合并，禁止自动重新合入已撤回提交。MONOREPO-330保持in-progress。
 
-2026-10-20 用户在获知扩展失败后明确要求“直接合并”。按本次指示提交并同步最新本地main，保留已审查的回退修复及旧N附件优化最终树，再以no-ff合并；不推送。已完成：相关20文件627 passed/84.93s，19生产模块mypy使用workspace配置通过，API16 passed/1.04s，原13回归失败和原类型问题已修。未完成：扩展17项旧stage测试引用失效及10项分钟交易失败（main同样10 failed/3 passed）不作已修或通过处理；本次不继续改变其交易判定。固定核心1777日main/候选/main性能夹测仍在运行，日志保留主目录.codex-runtime/fix-cr-performance-20261020，不把未完成夹测表述为最终性能验收。MONOREPO-330继续in-progress，后续修复仍复用本会话分支。
-
-2026-10-20 MONOREPO-330 合并前CR：请求内写连接与finally释放静态复核；API自身环境执行test_backtest_jobs.py和test_backtest_preview.py，16 passed/1.01s。Core相关回归13项失败和类型13处错误在当前main均复现；按检查失败不合并规则，未提交合并推送，未改API生产代码或测试。完整记录见主目录.codex-runtime/cr-main-20261020.json。
-
-2026-10-20 合并最终验证：ec93ee2实现，经0dd39ee同步main 34d09fa，四份状态文档冲突保留双方记录，生产代码无冲突。同步后Core本任务13文件加新基线相邻8文件共665 passed/56.63s；13个变更生产模块mypy --follow-imports=silent通过；API两个文件16 passed/0.94s；git diff --check main通过，31文件最终差异已复核。此前测试/类型失败均已修复，无失败例外。仅记录本轮定向验证，不宣称全套、浏览器或真实行情提速；MONOREPO-330其他工作继续in-progress。准备从已同步分支no-ff合并本地main，不推送。
-
-2026-10-20 合并阻碍修复完成：用户授权解决后合并。修复只读序列类型、变量遮蔽与Pickler返回声明；公共输入完整认证后复用相同签名前缀。共享_SourceTurn及COW候选桶独立计费，消除52点合成案例实际约1.34MiB却计费8.6MiB的跨块重复计费，不扩大预算。旧标注测试显式接纳既有lifecycle_context并严格断言上下文10/引用4、5知识日；本级突破投影严格白名单、完整来源不外泄；级联按序列内容比较。最终Core指定13文件pytest -q --tb=short：518 passed/52.12s；13个生产模块mypy --follow-imports=silent通过；API使用自身.venv执行test_backtest_jobs.py和test_backtest_preview.py：16 passed/1.22s（先误用Core环境缺redis，已用API环境解决）。git diff --check通过。此前73失败及类型错误已修复，本轮不豁免、不放宽业务断言。完整套件、浏览器、构建、真实行情性能未运行。准备提交并同步最新main后复核受影响检查；不推送。
 2026-10-20 · MONOREPO-334 合并前最终记录
 
 修复提交99a1d27已通过7517560同步main cae59b0；仅session-handoff.md文档冲突，双方记录完整保留，Web/API/contracts生产代码未被同步改变。同步后pytest test_watchlists.py：25 passed（15.14s），git diff --check main通过，工作树干净。Web先前最终6项Vitest/28项Node、Hook重验、lint/类型及生产构建证据有效且未改源码，不重复运行；浏览器/E2E和在线视觉未运行。按用户授权本地no-ff合并，不推送。334完成，330保持原有in-progress。
@@ -461,13 +454,6 @@ MONOREPO-282（2026-10-07，Core V99消费方，合并待确认）：共用Core�
 验证命令：API 现有 .venv/Scripts/python.exe -m pytest -q --tb=short，PYTHONPATH 指向本 worktree 的 Core/API src；目标为原记录七个文件，加 test_market_calculations.py::test_public_scope_supports_polyline_six_states_without_building_first_level。结果 78 passed, 12 subtests passed；git diff --check 通过。未运行全量测试、浏览器或性能探针，未声明性能提升幅度。前述暂停记录为历史记录，本次失败已解决；MONOREPO-330 更广范围仍保留 in-progress。
 
 2026-10-20 最终同步本地 main c1c675a 后，按上述同一命令重验：78 passed、12 subtests passed（13.72s），git diff --check 通过。双方 feature/progress/handoff 记录均保留，未推送；准备本地 --no-ff 合并。
-
-
-## 2026-10-20 缓存请求专属写连接
-
-2026-10-20诊断缓存请求写连接复用：ArtifactCache新增显式start_write_session/close_write_session及上下文入口，连接按请求所属进程和线程惰性建立；共享实例默认仍短连接，其他线程使用独立短连接。_put_payload压缩继续在事务外，各块仍单独提交，首次建连沿原总等待预算、复用写入恢复0.5秒busy timeout；任何事务异常/取消丢弃连接，写失败仍返回False不影响有效计算。CalculationStepCache仅由Worker显式开启复用，_stop_cache立即释放，finish以finally关闭（包含发布回调失败），默认不记录诊断仍不创建缓存。新增test_artifact_write_session.py覆盖连接次数、逐块可见/无空闲写锁、失败回滚及重连、跨线程隔离、锁超时、取消、超大拒绝和记录器关闭。开发阶段未运行测试/类型/基准；本轮仅减少逐块开关连接成本，压缩与提交仍同步，未引入异步队列或批量事务，不宣称全部阻塞消除或实测提速。批量写入会改变逐块可见和失败恢复语义，留到同源计时后再评估；MONOREPO-330保持in-progress。
-
-本会话继续使用feat-回测诊断按需记录 / C:/Users/zb/.codex/worktrees/backtest-diagnostics/wavequant-monorepo。本轮涉及artifact_cache.py、calculation_step_cache.py、API backtest_jobs.py及新增回归；前一内存账本优化仍保留未提交、待验证，未覆盖其修改或套用此前任务测试/豁免。本轮未提交、合并或推送。
 2026-10-20 · MONOREPO-334 自选成员原子增量保存（待提交时验证）
 
 /api/watchlists新增add/remove成员操作，SQLite BEGIN IMMEDIATE内读取最新文档并合并，保留其他分类、成员与设置，重复添加或移除幂等。取消每组1000只和总计20000只股票配额，继续保留20分类、字段/重复合法性、来源检查和请求体大小保护。新增并发、超旧配额和HTTP用例源码；按规则未运行测试、类型、构建或运行探针。与Web和contracts同时交付，未提交或重启服务。

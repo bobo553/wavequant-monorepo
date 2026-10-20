@@ -4,10 +4,9 @@
 不调用这些独立循环。所有级别都由 judge_trend 判别，资格视图只核验策略。
 """
 from copy import deepcopy
-from bisect import bisect_left, bisect_right
+from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from zoneinfo import ZoneInfo
-from typing import cast
 
 from ..models.model import Bar
 from .lecture_trend import _ref
@@ -57,46 +56,6 @@ def _first_close_break_below(bars,low,*,_session_dates=None,_ordered_dates=False
     return None
 
 
-
-class _ReanchorPositions:
-    """Select the rightmost low known at a cutoff, without assuming clock order."""
-
-    def __init__(self, points: Sequence[Mapping[str, object]]) -> None:
-        self.previous_high: list[int | None] = []
-        high: int | None = None
-        lows: list[tuple[str, int]] = []
-        for position, point in enumerate(points):
-            self.previous_high.append(high)
-            if point['kind'] == 'H':
-                high = position
-            elif point['kind'] == 'L':
-                lows.append((cast(str, point['available_at']), position))
-        lows.sort()
-        self.dates: list[str] = []
-        self.rightmost: list[int] = []
-        latest = -1
-        for known, position in lows:
-            latest = max(latest, position)
-            self.dates.append(known)
-            self.rightmost.append(latest)
-
-    @classmethod
-    def build(cls, points: object) -> '_ReanchorPositions | None':
-        # Custom mappings and clocks retain the original lazy access behavior.
-        if type(points) not in (list, tuple):
-            return None
-        values = cast(Sequence[Mapping[str, object]], points)
-        if any(type(point) is not dict or type(point.get('kind')) is not str
-               or point.get('kind') == 'L' and type(point.get('available_at')) is not str for point in values):
-            return None
-        return cls(values)
-
-    def last_low(self, after: int, known: str) -> int | None:
-        stop = bisect_right(self.dates, known)
-        position = self.rightmost[stop - 1] if stop else -1
-        return position if position > after else None
-
-
 def last_fall_high_reanchors(points,bars,*,trend_level=2, _market_index: _MarketPrefixIndex | None = None):
     """Describe causal last-fall-high moves after an older low is invalidated.
 
@@ -121,8 +80,6 @@ def last_fall_high_reanchors(points,bars,*,trend_level=2, _market_index: _Market
                    tuple(_bar_date(bar) for bar in bars))
     ordered_dates=(_market_index.owner.ordered_sessions if _market_index is not None else
                    all(left<=right for left,right in zip(session_dates,session_dates[1:])))
-    positions = None
-    indexed = False
     for position,broken_low in enumerate(points):
         if broken_low['kind']!='L':
             continue
@@ -130,14 +87,7 @@ def last_fall_high_reanchors(points,bars,*,trend_level=2, _market_index: _Market
             _session_dates=session_dates,_ordered_dates=ordered_dates,_market_index=_market_index)
         if broken_at is None:
             continue
-        if not indexed:
-            positions = _ReanchorPositions.build(points)
-            indexed = True
-        if positions is not None:
-            high_position = positions.previous_high[position]
-            previous_key = points[high_position] if high_position is not None else None
-        else:
-            previous_key=next((point for point in reversed(points[:position]) if point['kind']=='H'),None)
+        previous_key=next((point for point in reversed(points[:position]) if point['kind']=='H'),None)
         if previous_key is None:
             continue
 
@@ -145,21 +95,13 @@ def last_fall_high_reanchors(points,bars,*,trend_level=2, _market_index: _Market
         # only a low already known at the break is allowed to move the segment.
         # This keeps historical events stable and confines the fallback below
         # to the one genuinely open tail at the end of the confirmed sequence.
-        if positions is not None:
-            low_position = positions.last_low(position, broken_at['time'])
-            formal_low = (low_position, points[low_position]) if low_position is not None else None
-        else:
-            later_lows=[(index,point) for index,point in enumerate(points[position+1:],position+1)
-                        if point['kind']=='L']
-            known_lows=[item for item in later_lows if item[1]['available_at']<=broken_at['time']]
-            formal_low=known_lows[-1] if known_lows else None
+        later_lows=[(index,point) for index,point in enumerate(points[position+1:],position+1)
+                    if point['kind']=='L']
+        known_lows=[item for item in later_lows if item[1]['available_at']<=broken_at['time']]
+        formal_low=known_lows[-1] if known_lows else None
         if formal_low:
             active_position,active_low=formal_low
-            if positions is not None:
-                high_position = positions.previous_high[active_position]
-                new_key = points[high_position] if high_position is not None else None
-            else:
-                new_key=next((point for point in reversed(points[:active_position]) if point['kind']=='H'),None)
+            new_key=next((point for point in reversed(points[:active_position]) if point['kind']=='H'),None)
             active_low_source_level=trend_level
         else:
             # A last H can be fully confirmed by a lower source-level L while

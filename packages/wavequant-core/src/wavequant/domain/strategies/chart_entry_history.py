@@ -731,8 +731,6 @@ def chart_entry_history(
             else:
                 prefix_cache.update(seed)
             cached_key = prefix_cache['key']
-    from .combined_a_replay import CombinedAReplay, attack_certificates, later_attack_revision
-    revised_combined = None
     saved_entry_days = prefix_cache.get('_entry_days') if prefix_cache is not None else None
     same_live_prefix = (live_owner is None or prefix_cache is not None
         and prefix_cache.get('_live_owner') is live_owner
@@ -773,40 +771,12 @@ def chart_entry_history(
         resume_start = len(cached_key[0])
     else:
         resume_start = 0
-        # 新资格窗口只重新解释 N。主趋势、生命周期、浅底和回调不依赖
-        # audit；只在完整旧前缀及攻击子集可证时，用当时实际几何重算组合 A。
-        if (live_owner is not None and market_calculation is not None
-                and same_live_prefix and past_attack_certificate is not None
-                and isinstance(cached_key, tuple) and len(cached_key) == len(prefix_key)
-                and isinstance(cached_key[0], tuple) and 0 < len(cached_key[0]) <= last
-                and cached_key[0] == bars[:len(cached_key[0])]
-                and frozenset(i for i in attacks if i < len(cached_key[0])).issubset(cached_key[1])
-                and cached_key[2:7] == prefix_key[2:7] and cached_key[7] is not None
-                and prefix_cache is not None and prefix_cache.get('_attack_key') is cached_key
-                and later_attack_revision(audit, prefix_cache.get('_attack_rows'), len(cached_key[0]))):
-            replay = prefix_cache.get('_combined_replay')
-            if combined_candidate_sink is None:
-                resume_start = len(cached_key[0])
-            elif isinstance(replay, CombinedAReplay) and entry_days is not None:
-                revised_combined = replay.recompute(bars, dates, entry_days, len(cached_key[0]), audit,
-                    market_calculation._permission_cache_for(bars)._market_index)
-                if revised_combined is not None:
-                    resume_start = len(cached_key[0])
-    combined_replay = prefix_cache.get('_combined_replay') if prefix_cache is not None else None
-    if live_owner is not None and prefix_cache is not None and combined_candidate_sink is not None:
-        if not resume_start or not isinstance(combined_replay, CombinedAReplay):
-            combined_replay = prefix_cache['_combined_replay'] = CombinedAReplay()
-    else:
-        combined_replay = None
     if resume_start:
         (
             history, events, active, first_seen, retired, closed, previous_epoch,
             previous_raw, signature, landmarks, invalidated, levels,
             shallow_candidate, resistance_key, anchors_at_attack, lifecycle, prior_shallow, prior_combined, prior_pullback,
         ) = _copy_replay_state(prefix_cache["checkpoint"])
-        if revised_combined is not None:
-            prior_combined = revised_combined
-        anchors_at_attack = {index: value for index, value in anchors_at_attack.items() if index in attacks}
         if shallow_candidate_sink is not None:
             shallow_candidate_sink.update(prior_shallow)
         if combined_candidate_sink is not None:
@@ -970,8 +940,6 @@ def chart_entry_history(
             drawing = frame.drawing
             second, first = levels[0]
             third, _ = levels[1]
-            if isinstance(combined_replay, CombinedAReplay):
-                combined_replay.remember(i, (drawing, first, second, third))
             combined_candidate_sink[i] = combined_a_contexts_from_geometry(
                 bars, cast(GeometryLevel, drawing), cast(GeometryLevel, first),
                 cast(GeometryLevel, second), cast(GeometryLevel, third), dates, i, audit,
@@ -1056,9 +1024,7 @@ def chart_entry_history(
                     ), certificate)
         if (prefix_cache is not None and past_attack_certificate is not None
                 and resume_start != last and i == last - 1):
-            prefix_cache['_attack_rows'] = attack_certificates(audit, last - 1)
             prefix_cache["key"] = prefix_key
-            prefix_cache['_attack_key'] = prefix_key
             prefix_cache['_live_owner'] = live_owner
             prefix_cache['_entry_days'] = tuple(entry_days) if entry_days is not None else None
             prefix_cache["checkpoint"] = _copy_replay_state((

@@ -361,25 +361,3 @@ def test_exhausted_evidence_does_not_invoke_unknown_audit_reducers():
         paths = _ClosedPreparedPaths(_owned_history=True)
         prepared = dict(strokes=[dict(points=PointVersion([dict(audit=Unknown())]).seal())])
         assert _prepared_payload(paths.encode(prepared)) is None
-
-
-def test_signature_direct_dispatch_keeps_reference_bytes_and_root_exclusion() -> None:
-    from wavequant.domain.market_structure.owned_evidence import _EvidenceWriter, _SignatureWriter
-
-    class ReferenceSignatureWriter(_EvidenceWriter):
-        def persistent_id(self, value: object) -> int | None:
-            if type(value) is str:
-                return None
-            return super().persistent_id(value)
-
-    proof = {'values': [1, 2, 3]}
-    data = {'left': proof, 'right': proof, 'value': 7}
-    with owned_evidence_scope() as owner:
-        owner.publish(data)
-        expected = owner.dumps(data, writer=lambda stream: ReferenceSignatureWriter(stream, owner, root=data))
-        actual = owner.dumps(data, writer=lambda stream: _SignatureWriter(stream, owner, root=data))
-        assert actual == expected
-        restored = owner.loads(actual)
-        assert restored == data
-        assert restored['left'] is restored['right']
-        assert restored['left'] is not proof

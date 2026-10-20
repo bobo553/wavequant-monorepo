@@ -143,8 +143,7 @@ class FrozenPrefixList(MutableSequence[T]):
             if node is None or left >= frozen_end or left + capacity * 32 <= start:
                 continue
             if capacity == 1:
-                # 类型只供静态检查，避免遍历每块时重新构造运行时泛型。
-                yield from cast('tuple[T, ...]', node.values[max(0, start - left):min(32, frozen_end - left)])
+                yield from cast(tuple[T, ...], node.values[max(0, start - left):min(32, frozen_end - left)])
             else:
                 half = capacity // 2
                 pending.extend(((node.right, half, block_start + half), (node.left, half, block_start)))
@@ -186,14 +185,14 @@ class FrozenPrefixList(MutableSequence[T]):
             start, stop, step = index.indices(len(self))
             if step != 1:
                 positions = list(range(start, stop, step))
-                values = list(cast('Iterable[T]', value))
+                values = list(cast(Iterable[T], value))
                 if len(positions) != len(values):
                     raise ValueError('extended slice size mismatch')
                 for position, item in zip(positions, values):
                     self[position] = item
                 return
             self._detach(start)
-            self._tail[start - self._stop:max(start, stop) - self._stop] = cast('Iterable[T]', value)
+            self._tail[start - self._stop:max(start, stop) - self._stop] = cast(Iterable[T], value)
             return
         position = index + len(self) if index < 0 else index
         self[position]
@@ -258,8 +257,7 @@ def _branch(bit: int, left: _IndexNode, right: _IndexNode) -> _IndexNode:
 def _node_children(node: _SequenceNode | _IndexNode) -> tuple[object, ...]:
     if type(node) is _SequenceNode:
         return node.values, node.left, node.right, node.size
-    indexed = cast(_IndexNode, node)
-    return indexed.entries, indexed.left, indexed.right, indexed.key_hash, indexed.bit, indexed.size
+    return node.entries, node.left, node.right, node.key_hash, node.bit, node.size
 
 
 def _index_set(node: _IndexNode | None, key_hash: int, key: object, value: object) -> _IndexNode:
@@ -346,7 +344,7 @@ class FrozenPrefixMap(MutableMapping[K, V]):
         # 不引入会隐藏未来分支的共享 tombstone。
         values = dict(self.items())
         del values[key]
-        FrozenPrefixMap.__init__(self, values.items())
+        self.__init__(values.items())
 
     def __iter__(self) -> Iterator[K]:
         return iter(self._keys)
