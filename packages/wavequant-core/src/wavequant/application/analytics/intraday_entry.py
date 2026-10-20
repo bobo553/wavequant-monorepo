@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable, TypedDict
 
 from wavequant.domain.market_state.volume_candle import volume_bearish_entry_rejection
 from wavequant.domain.market_state.candle_strength import (
-    QUALIFIED_CLOSE_ENTRY_REASONS, QUALIFIED_FOLLOW_THROUGH_CLOSE, QUALIFIED_RISING_CLOSE,
+    QUALIFIED_CLOSE_ENTRY_REASONS, QUALIFIED_FOLLOW_THROUGH_CLOSE, QUALIFIED_GAP_ENTRY, QUALIFIED_RISING_CLOSE,
     QUALIFIED_VOLUME_BREAKOUT_CLOSE,
     double_volume_bullish_breakout, volume_gap_follow_through, volume_high_open_rising,
 )
@@ -215,7 +215,7 @@ def _qualified_gap_entries(
                 continue
         timing.update(decision_timestamp=decision.isoformat(), execution_timestamp=execution_at.isoformat())
         signal = Signal(bar.timestamp, bar.symbol, i, 'LONG', price, window.start_low_price,
-            '资格区间跳空买入', decision, 0, None, '跳空高开', confirmation['breakout_level'],
+            QUALIFIED_GAP_ENTRY, decision, 0, None, '跳空高开', None,
             strategy.minimum_reward_risk)
         executions[bar.symbol, i] = dict(signal=signal, price=price, buyable=buyable, timing=timing,
             remaining_low=remaining_low, remaining_high=remaining_high)
@@ -224,7 +224,9 @@ def _qualified_gap_entries(
             and row['event'] in ('long_signal', 'long_transition_evidence'))]
         for event in ('long_signal', 'long_transition_evidence'):
             audit.append(dict(event=event, bar_index=i, timestamp=bar.timestamp.isoformat(), symbol=bar.symbol,
-                buy_point_type='qualified_gap_open', stop=signal.invalidation_price, target=signal.target_price, **timing))
+                buy_point_type='qualified_gap_open', stop=signal.invalidation_price, target=signal.target_price,
+                qualification_breakout_level=confirmation['breakout_level'], target_policy='account_r_multiple',
+                **timing))
     return SystemResult(sorted(signals, key=lambda row: (row.timestamp, row.side)), audit,
         dict(generated.counts, long_signals=sum(row.side == 'LONG' for row in signals))), executions, fallbacks, gap_days
 
@@ -278,7 +280,7 @@ def _qualified_rising_close_entries(
             reason, decision, 0, bar.volume / bars[i - 1].volume if breakout else None,
             '突破次日放量跳空守稳' if follow_through else
             '倍量中大阳高位收盘突破' if breakout else '放量高开高走',
-            confirmation['breakout_level'], strategy.minimum_reward_risk)
+            None, strategy.minimum_reward_risk)
         days.add(i)
         signals = [row for row in signals if not (row.bar_index == i and row.side == 'LONG')] + [signal]
         audit = [row for row in audit if not (row['bar_index'] == i
@@ -286,6 +288,7 @@ def _qualified_rising_close_entries(
         for event in ('long_signal', 'long_transition_evidence'):
             audit.append(dict(event=event, bar_index=i, timestamp=bar.timestamp.isoformat(), symbol=bar.symbol,
                 buy_point_type=reason, stop=signal.invalidation_price, target=signal.target_price,
+                qualification_breakout_level=confirmation['breakout_level'], target_policy='account_r_multiple',
                 execution_model='same_day_close', decision_source='daily_close',
                 decision_timestamp=decision.isoformat(), qualification_index=window.start_index,
                 trend_level=strategy.buy_interval_level, source_path=window.source_path,

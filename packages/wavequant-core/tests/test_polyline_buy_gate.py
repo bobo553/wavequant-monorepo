@@ -91,3 +91,20 @@ def test_structural_flip_does_not_erase_an_unconfirmed_candle_breakout(release: 
     else:
         gate.advance(6, bar(6), (), 6)
         assert 6 not in gate.restrictions
+
+
+def test_new_confirmed_decline_replaces_prior_cycle_pending_key() -> None:
+    points = bearish_points() + [
+        point(4, PointKind.HIGH, 9.2), point(5, PointKind.LOW, 8.5),
+        point(6, PointKind.HIGH, 9.3), point(7, PointKind.LOW, 6.5),
+        point(8, PointKind.HIGH, 7.5), point(9, PointKind.LOW, 6),
+    ]
+    gate = PolylineBuyGate()
+    for index in range(10):
+        gate.advance(index, bar(index), points, 0)
+    assert gate.restrictions[5]['polyline_key_price'] == 9
+    assert gate.restrictions[9]['polyline_key_price'] == 7.5
+    assert gate.restrictions[9]['polyline_key_index'] == 8
+    gate.advance(10, breakout_bar(10, 8.5), points, 0)
+    assert 10 not in gate.restrictions
+    assert gate.breakouts[10]['polyline_key_price'] == 7.5

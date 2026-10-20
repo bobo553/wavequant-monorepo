@@ -5,12 +5,14 @@ import math
 import statistics
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
-from typing import TYPE_CHECKING, Callable, Generator, Mapping, Sequence
+from typing import TYPE_CHECKING, Callable, Generator, Mapping, Sequence, cast
 from zoneinfo import ZoneInfo
 
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal, Trade
-from wavequant.domain.market_state.candle_strength import QUALIFIED_CLOSE_ENTRY_REASONS
+from wavequant.domain.market_state.candle_strength import (
+    QUALIFIED_CLOSE_ENTRY_REASONS, QUALIFIED_INTERVAL_ENTRY_REASONS,
+)
 from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse
 from wavequant.application.analytics.holding_drawdown import holding_drawdowns, drawdown_metrics, holding_fill_time
 from wavequant.application.analytics.intraday_wave_exit import (
@@ -234,8 +236,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
         for i, bar in enumerate(bars):
             if bar.symbol != symbol or (i and bar.timestamp <= bars[i-1].timestamp):
                 raise ValueError('bars must have matching symbols and strictly increasing timestamps')
-            day = bar.timestamp.date().isoformat()
-            if (start is None or day >= start) and (end is None or day <= end):
+            session_date = bar.timestamp.date().isoformat()
+            if (start is None or session_date >= start) and (end is None or session_date <= end):
                 calendar.setdefault(bar.timestamp, {})[symbol] = (i, bar)
     # Map availability to source candle; each prefix sees only then-confirmed N bars.
     n_context: dict[str, list[int | None]] = {}
@@ -310,7 +312,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 or not math.isfinite(signal.minimum_reward_risk) or signal.minimum_reward_risk < 0
                 or (signal.target_price is not None and
                     (not math.isfinite(signal.target_price) or signal.target_price <= 0))
-                or (signal.minimum_reward_risk > 0 and signal.target_price is None)):
+                or (signal.minimum_reward_risk > 0 and signal.target_price is None
+                    and signal.reason not in QUALIFIED_INTERVAL_ENTRY_REASONS)):
             raise ValueError('invalid signal target/reward-risk')
         signal_map.setdefault(signal.timestamp, []).append(signal)
     for signal in signals:
@@ -507,7 +510,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
         nonlocal cash, total_fees, turnover
         gap_rejection = gap_buy_gates[symbol].advance(grouped[symbol], i)
         if gap_rejection is not None:
-            log(when, symbol, 'BUY', 'cancelled', gap_rejection['reason'],
+            log(when, symbol, 'BUY', 'cancelled', cast(str, gap_rejection['reason']),
                 **{key: value for key, value in gap_rejection.items() if key != 'reason'})
             return
         rejection = volume_bearish_entry_rejection(grouped[symbol], i)
@@ -560,6 +563,9 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
         existing_risk = max(0.0, existing.entry_price-effective_stop)*existing_quantity if existing else 0.0
         remaining_risk_budget = max(0.0, equity*config.risk_fraction-existing_risk)
         target = signal.target_price if signal.target_price is not None else price+config.take_profit_r*risk
+        # 资格突破位是入场门槛，不是盈利测量；无结构目标的独立买点沿用账户风险倍数。
+        if signal.reason in QUALIFIED_INTERVAL_ENTRY_REASONS and signal.target_price is None:
+            timing = dict(timing, target_policy='account_r_multiple', target_r_multiple=config.take_profit_r)
         detail = dict(signal_timestamp=signal.timestamp.isoformat(), reference_price=signal.reference_price,
             price=price, stop_price=signal.invalidation_price, target_price=target,
             gross_reward_risk=(target-price)/risk, required_reward_risk=signal.minimum_reward_risk,
@@ -666,6 +672,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
         positions[symbol].wave_triggers.add(signal.trigger_timestamp)
         log(when, symbol, 'BUY', 'filled', signal.reason, **detail)
 
+    pos: _Position | None
     try:
         timeline = sorted(calendar)
         last_progress = -1
@@ -683,10 +690,10 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     sold_today.clear()
                     bought_today.clear()
                     if day.eligibility_closed:
-                        entry = pending_entry.pop(symbol, None)
-                        if entry is not None:
+                        pending_order = pending_entry.pop(symbol, None)
+                        if pending_order is not None:
                             log(when, symbol, 'BUY', 'cancelled', 'trading_eligibility_closed',
-                                signal_timestamp=entry[0].timestamp.isoformat())
+                                signal_timestamp=pending_order[0].timestamp.isoformat())
                         if symbol in pending_exit:
                             log(when, symbol, 'SELL', 'cancelled', 'trading_eligibility_closed')
                         pending_exit.pop(symbol, None)
@@ -803,7 +810,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 if position is not None:
                     if not day.trading_eligible:
                         position.wave_events = []
-                    owned = wave_signal_lookup[symbol].get(position.signal_index)
+                    owned = (wave_signal_lookup[symbol].get(position.signal_index)
+                             if position.signal_index is not None else None)
                     if owned is not None:
                         position.wave_events = list(owned)
                     elif not any(event['event'] == 'wave_segment_start' for event in position.wave_events):
@@ -1090,7 +1098,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     for reason in signal.reason.split('|')
                     if reason in (BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR)), None)
                 if body_clear_reason is not None and (
-                        target_risk is None or target_risk['exit_fraction'] < 1.0):
+                        target_risk is None or cast(float, target_risk['exit_fraction']) < 1.0):
                     # A confirmed global EXIT also wins when replay omits projection metadata.
                     target_risk = dict(reason=body_clear_reason, exit_fraction=1.0,
                                        execution_model='same_day_close')
@@ -1436,8 +1444,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
         metrics['holding_drawdown_observation_scope'] = 'qualified_sessions'
     open_losses = {e['symbol']: e for e in holding_losses if e['status'] == 'open'}
     closed_losses = {(e['symbol'], e['exit_time']): e for e in holding_losses if e['status'] == 'closed'}
-    for position in opened:
-        position['holding_drawdown'] = open_losses.get(position['symbol'])
+    for opened_position in opened:
+        opened_position['holding_drawdown'] = open_losses.get(opened_position['symbol'])
     for order in orders:
         if order['side'] == 'SELL' and order['status'] == 'filled' and order.get('position_closed'):
             order['holding_drawdown'] = closed_losses.get((order['symbol'], holding_fill_time(order).isoformat()))
