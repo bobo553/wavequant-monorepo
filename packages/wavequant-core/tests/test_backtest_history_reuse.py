@@ -222,11 +222,11 @@ def test_explicit_account_reuses_certified_generation_and_preserves_nonempty_led
                    'reuse_regression', bars[20].timestamp, 0, 2, '轧空', bar.close * 1.5)
     generated = SystemResult([*generated.signals, entry], [*generated.audit, ready], generated.counts)
     if revised_audit:
-        positive = next(row for row in generated.audit
-                        if row['event'] == 'n_completed' and row.get('direction') == 'up')
+        # 本例验证证书变化后的账户复用，不要求资格窗口额外生成一个 N。
+        # 使用本例已有波段观察中的攻击日；真实 N 的刷新由独立样本覆盖。
         generated.audit.append(dict(event='regime_confirmation', bar_index=len(bars)-2,
             timestamp=bars[-2].timestamp.isoformat(), symbol=bars[-2].symbol,
-            regime=MarketRegime.BULL.value, attack=positive['bar_index'],
+            regime=MarketRegime.BULL.value, attack=ready['attack_index'],
             confirmation_source='multilevel_record_break'))
         assert reuse.chart(bars, strategy, generated.audit) is None
     execution = StrategyConfig(consolidation_entry_intraday=True, staged_exit_intraday=False,
@@ -325,19 +325,20 @@ def test_base_refresh_rejects_changed_complete_attack_evidence(change: str) -> N
 
 
 def test_real_chart_capture_refresh_matches_cold_after_added_bull_trigger() -> None:
-    bars = history(18, 80)
+    bars, audit, _ = squeeze_fixture()
     strategy = _strategy()
     reuse = BacktestHistoryReuse(bars, strategy)
-    generated = generate_system_signals(bars, strategy, history_reuse=reuse)
-    positive = next(row for row in generated.audit if row['event'] == 'n_completed' and row.get('direction') == 'up')
-    revised = [*generated.audit, dict(event='regime_confirmation', bar_index=len(bars)-1,
+    original = chart_entry_history(bars, audit=audit, _history_reuse=reuse)
+    reuse.save_chart(bars, strategy, audit, original)
+    positive = next(row for row in audit if row['event'] == 'n_completed' and row.get('direction') == 'up')
+    revised = [*audit, dict(event='regime_confirmation', bar_index=len(bars)-1,
         timestamp=bars[-1].timestamp.isoformat(), symbol=bars[-1].symbol,
         regime=MarketRegime.BULL.value, attack=positive['bar_index'], confirmation_source='multilevel_record_break')]
     assert reuse.chart(bars, strategy, revised) is None
     refreshed = reuse.refresh_chart(bars, strategy, revised)
     assert refreshed is not None
     assert refreshed == chart_entry_history(bars, audit=revised)
-    assert reuse.refresh_chart(bars, strategy, generated.audit) == chart_entry_history(bars, audit=generated.audit)
+    assert reuse.refresh_chart(bars, strategy, audit) == chart_entry_history(bars, audit=audit)
 
 
 def test_unknown_mutable_audit_metadata_takes_uncached_path_without_object_hooks() -> None:
@@ -392,3 +393,36 @@ def test_nested_builtin_sets_have_stable_isolated_audit_certificates() -> None:
     assert reuse.chart(bars, strategy, deepcopy(audit)) == value
     tags.add(('revision', 2))
     assert reuse.chart(bars, strategy, audit) is None
+
+
+def test_daily_requested_history_reads_existing_market_without_a_second_trend_pass(monkeypatch) -> None:
+    import wavequant.domain.strategies.chart_entry_history as chart_module
+
+    bars, strategy = history(18, 35), _strategy()
+    original = chart_module._staged_chart_frames
+    passes = []
+
+    def record(*args, **kwargs):
+        passes.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(chart_module, '_staged_chart_frames', record)
+    expected = generate_system_signals(bars, strategy)
+    assert len(passes) == 1
+    passes.clear()
+    with BacktestHistoryReuse(bars, strategy) as reuse:
+        actual = generate_system_signals(bars, strategy, history_reuse=reuse)
+        assert actual == expected
+        assert len(passes) == 1
+        assert reuse.pivot(bars, strategy) is not None
+        assert reuse.chart(bars, strategy, actual.audit) is not None
+
+
+def test_unrequested_daily_history_does_not_capture_full_snapshots(monkeypatch) -> None:
+    def forbidden(*args, **kwargs):
+        raise AssertionError('default daily generation captured unrequested complete histories')
+
+    monkeypatch.setattr(BacktestHistoryReuse, 'save_pivot', forbidden)
+    monkeypatch.setattr(BacktestHistoryReuse, 'save_hierarchy', forbidden)
+    monkeypatch.setattr(BacktestHistoryReuse, 'save_chart', forbidden)
+    generate_system_signals(history(18, 35), _strategy())

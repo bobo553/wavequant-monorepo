@@ -10,9 +10,11 @@ from bisect import bisect_left, bisect_right, insort_right
 from heapq import merge
 from dataclasses import dataclass, field, replace
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence, TypedDict, NotRequired, cast
 
 if TYPE_CHECKING:
+    from ..market_structure.n_shape import NObservation, NCompletion
+    from ..market_structure.wave_projection import WaveProjectionEvent
     from .backtest_analysis import BacktestAnalysis
     from .eligible_polyline_n import EligibleNSource
     from .hierarchy_stream import HierarchyHistoryStream
@@ -39,7 +41,7 @@ from .bull_eligibility import bull_permission_history
 from ..market_structure.source_bear_exit import SOURCE_BEAR_EXIT
 from .hierarchical_entry import EntryContext
 from .buy_intervals import confirmed_buy_interval_days
-from .backtest_history_reuse import BacktestHistoryReuse, MinuteTradingScope
+from .backtest_history_reuse import BacktestHistoryReuse, HierarchyHistory, MinuteTradingScope
 from .signal_clock import SignalClock
 from .strategy_history_cache import StrategyHistoryCache, StrategyHistoryView, first_positive_n_invalidation
 from .shallow_base_breakout import ShallowAlternationCandidate
@@ -257,6 +259,16 @@ class _HistoryStageOptions(TypedDict, total=False):
     _stage: Callable[[str], None]
 
 
+class _MeasurementCandidate(TypedDict):
+    setup: NSetup
+    attack: int
+    known_at: int
+    n: 'NObservation'
+    start: int
+    n_id: str
+    entry_wave_projection: NotRequired[tuple['WaveProjectionEvent', ...]]
+
+
 @dataclass
 class DailySignalState:
     """交易决策只消费一次；兼容形态观察器不得重写已经发布的交易日。"""
@@ -348,11 +360,11 @@ def _handoff_n_owners(state: DailySignalState, owners: Mapping[int, str],
     for key in list(state.emitted_waves):
         if key[0] in departed:
             del state.emitted_waves[key]
-    for key, identities in list(state.emitted_nested_owners.items()):
+    for nested_identity, identities in list(state.emitted_nested_owners.items()):
         identities.difference_update(departed_ids)
         if not identities:
-            state.emitted_nested.discard(key)
-            del state.emitted_nested_owners[key]
+            state.emitted_nested.discard(nested_identity)
+            del state.emitted_nested_owners[nested_identity]
     state.c_equal_events[:] = [row for row in state.c_equal_events if row.get('n_id') not in departed_ids]
     state.canonical_n_owners = dict(owners)
 
@@ -377,7 +389,8 @@ def generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                   and (chart_history_cache is None or 'source_bars' not in chart_history_cache))
     if bars and root_daily and config.buy_point_definition == 'whole_flip_wave_v3':
         from .daily_strategy import daily_signals
-        return daily_signals(bars, config, progress=progress, stage=stage, minor_points=minor_points)
+        return daily_signals(bars, config, progress=progress, stage=stage, minor_points=minor_points,
+            history_reuse=history_reuse)
     if _minute_scope is not None:
         _minute_scope.require_input(bars)
         from ..market_structure.a_wave import AWaveHistoryStream
@@ -460,12 +473,12 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
     consolidation_events, consolidation_proofs = defaultdict(list), {}
     reversal_proofs = {}
     reconfirmation_proofs = {}
-    event_sources = {}
+    event_sources: dict[int, dict[str, object]] = {}
     def log(i, kind, **fields):
         if (kind.startswith(('n_', 'wave_')) or kind in ('regime_confirmation',
                 'volume_reversal_squeeze_confirmed', 'squeeze_resumption_observed',
                 'nested_alternation_breakout_confirmed', 'multilevel_squeeze_confirmed')):
-            fields = {**event_sources.get(fields.get('attack'), {}), **fields}
+            fields = {**event_sources.get(cast(int, fields.get('attack')), {}), **fields}
         audit.append(dict(timestamp=bars[i].timestamp.isoformat(), symbol=bars[i].symbol,
                           bar_index=i, event=kind, **fields))
     def n_identity(origin, neckline, pullback, attack, owner):
@@ -554,7 +567,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 **stage_options,
                 n_target_trend_confirmation_enabled=config.n_target_trend_confirmation_enabled)
         if history_reuse is not None:
-            history_reuse.save_hierarchy(bars, config, (secondary_levels, secondary_epochs))
+            history_reuse.save_hierarchy(bars, config, cast(HierarchyHistory, (secondary_levels, secondary_epochs)))
         if _analysis is None and _minute_scope is None:
             larger = hierarchical_n_candidates(bars, history=secondary_levels)
             for i in range(len(bars)):
@@ -599,7 +612,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         if fixed_source:
             history_cache = chart_history_cache.get('strategy_history_observations')
             if not isinstance(history_cache, StrategyHistoryCache) or history_cache.source is not source_bars:
-                history_cache = StrategyHistoryCache(source_bars)
+                history_cache = StrategyHistoryCache(cast('tuple[Bar, ...]', source_bars))
                 chart_history_cache['strategy_history_observations'] = history_cache
             history_observations = history_cache.bind(bars)
     washout_observations = chart_history_cache['washout_observations'] if chart_history_cache is not None else None
@@ -771,7 +784,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             **({'inside_pullback_confirmed': True} if inside_pullback else {}),
             **({'outside_close_confirmed': True} if whole_wave and setup.allow_outside_close and setup.pullback.index == t else {}))
     bottom_targets = None
-    measurement_candidates = {}
+    measurement_candidates: dict[int, _MeasurementCandidate] = {}
     target_retired_at = {}
     a_confirmations = {}
     if whole_wave and secondary_levels is not None:
@@ -814,7 +827,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 canonical_candidates.append(candidate)
                 canonical_attacks.add(key)
         candidates = canonical_candidates
-        source_fields_by_attack = {candidate['attack']: {name: candidate[name]
+        source_fields_by_attack: dict[int, dict[str, object]] = {candidate['attack']: {name: candidate[name]
             for name in ('window_start', 'source_path', 'qualification_window_start') if name in candidate}
             for candidate in candidates if candidate['setup'].direction == Direction.UP}
         counts['completed_up_n'] = sum(c['setup'].direction == Direction.UP for c in candidates)
@@ -881,13 +894,13 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             if (bottom_targets.qualifications[measured['attack']].eligible
                     and measured['setup'].origin.index == chosen.origin
                     and max(measured['attack'], measured['known_at']) == chosen.known_at):
-                measurement_candidates.setdefault(measured['attack'], measured)
+                measurement_candidates.setdefault(measured['attack'], cast(_MeasurementCandidate, measured))
         for row in audit:
             if row['event'] != 'n_completed' or row['direction'] != 'up':
                 continue
             qualification = bottom_targets.qualifications[row['bar_index']]
-            measured = measurement_candidates.get(row['bar_index'])
-            eligible = (measured is not None and measured['n_id'] == n_identity(
+            selected_measurement = measurement_candidates.get(row['bar_index'])
+            eligible = (selected_measurement is not None and selected_measurement['n_id'] == n_identity(
                 row['origin'], row['neckline'], row['pullback'], row['bar_index'], row))
             row.update(target_eligible=eligible,
                        target_source_attack=qualification.source_attack,
@@ -911,8 +924,8 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                           n.completion.bar_index, source_fields_by_attack.get(reformed.root_attack, {})) in existing_ns:
                 continue
             qualification = bottom_targets.qualifications[n.completion.bar_index]
-            measured = measurement_candidates.get(n.completion.bar_index)
-            eligible = (measured is not None and measured['n_id'] == n_identity(
+            selected_measurement = measurement_candidates.get(n.completion.bar_index)
+            eligible = (selected_measurement is not None and selected_measurement['n_id'] == n_identity(
                 setup.origin.index, setup.neckline.index, setup.pullback.index,
                 n.completion.bar_index, source_fields_by_attack.get(reformed.root_attack, {})))
             log(n.completion.bar_index, 'n_completed', direction='up', origin=setup.origin.index,
@@ -974,7 +987,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         ) for row in positive_events if row['target_eligible']]
         turns = { (point.index, point.known_at) for highs in confirmed_declines.values() for point in highs }
         known_turns = [AWaveTurn(*turn) for turn in sorted(turns)]
-        fields_by_identity = {row['n_id']: {name: row[name]
+        fields_by_identity: dict[str, dict[str, object]] = {row['n_id']: {name: row[name]
             for name in ('window_start', 'source_path', 'qualification_window_start') if name in row}
             for row in positive_events}
         a_history = (_daily.a_wave_stream.advance(len(bars) - 1, seeds, known_turns)
@@ -1013,9 +1026,9 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         regime = candidate['regime']
         full_frames = regime.frames
         if whole_wave and direction == Direction.UP:
-            invalidation = next(((known, attack) for known, attack in inverse_known if attack > t), None)
-            if invalidation is not None:
-                known, inverse_attack = invalidation
+            inverse_invalidation = next(((known, attack) for known, attack in inverse_known if attack > t), None)
+            if inverse_invalidation is not None:
+                known, inverse_attack = inverse_invalidation
                 regime = replace(regime, frames=tuple(f for f in regime.frames if offset + f.bar_index < known))
                 candidate['regime'] = regime
                 log(known, 'n_squeeze_invalidated', attack=t, inverse_attack=inverse_attack,
@@ -1050,10 +1063,10 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 j = offset + f.bar_index
                 if candidate['n_level'] < 1 and (t, j) not in recovery_gap_confirmations:
                     continue
-                proof = (consolidation_gap(bars, attack=t, now=j, defense=n.completion.defense)
+                proof = (consolidation_gap(bars, attack=t, now=j, defense=cast('NCompletion', n.completion).defense)
                     if history_observations is None else history_observations.observe(
                         'consolidation_gap', j, (t, n.completion.defense),
-                        lambda: consolidation_gap(bars, attack=t, now=j, defense=n.completion.defense)))
+                        lambda: consolidation_gap(bars, attack=t, now=j, defense=cast('NCompletion', n.completion).defense)))
                 if proof is not None:
                     consolidation_events[j].append((candidate, f))
                     consolidation_proofs[t, j] = proof
@@ -1177,7 +1190,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             log(j, kind, **row); counts[kind] += 1
     if whole_wave and config.secondary_reclaim_entry_enabled:
         assert secondary_levels is not None
-        secondary_highs = {now: [SecondaryHigh(point['index'], point['value'], point['available_at'])
+        secondary_highs = {now: [SecondaryHigh(cast(int, point['index']), cast(float, point['value']), cast(int, point['available_at']))
                                 for point in levels[2] if point['kind'] == 'H']
                            for now, levels in secondary_levels.items()}
         reclaim_events, secondary_reclaim_proofs = secondary_reclaim_history(bars, secondary_highs, entry_days=entry_days)
@@ -1281,12 +1294,14 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             projection_setup = WaveProjectionSetup(
                 candidate['setup'].origin.index, candidate['attack'], squeeze,
                 n.anchors.origin, n.targets.box_anchor, n.targets.two_t, n.completion.defense)
-            projection_source = dict(n_id=identity, **{name: candidate[name]
-                for name in ('window_start', 'source_path', 'qualification_window_start') if name in candidate})
+            projection_owner: dict[str, object] = {name: candidate[name]
+                for name in ('window_start', 'source_path', 'qualification_window_start') if name in candidate}
+            projection_source = dict(n_id=identity, **projection_owner)
             log(max(squeeze, candidate['known_at']), 'wave_continuation_ready', wave_epoch=candidate['epoch'],
                 **asdict(projection_setup), **projection_source)
             prepared_projection = (_analysis.projections.get((projection_setup, retirement))
                                    if _analysis is not None and 'source_path' not in candidate else None)
+            projection_history: tuple['WaveProjectionEvent', ...]
             if squeeze >= retirement:
                 projection_history = ()
             elif prepared_projection is not None:
@@ -1680,7 +1695,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             return ((proof or {}).get('priority', 0), not supplemental, c['attack'])
         for c, frame in sorted(choices, key=entry_priority, reverse=True):
             nested = nested_proofs.get((c['attack'], i))
-            nested_key = (nested['secondary_low_index'], nested['primary_low_index']) if nested else None
+            nested_key = (cast(int, nested['secondary_low_index']), cast(int, nested['primary_low_index'])) if nested else None
             if nested_key in emitted_nested:
                 continue
             consolidation = consolidation_proofs.get((c['attack'], i))
@@ -1818,7 +1833,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             stages: tuple[str, ...] = ('equal_wave', 'one_p', 'two_t')
             if bottom_targets is not None:
                 source = live_target_source
-                measurement = bottom_candidates.get(source, c)
+                measurement = cast(dict, bottom_candidates.get(cast(int, source), c))
                 if source is None:
                     stages = ('equal_wave',)
             measured_n = measurement['n']
@@ -2043,8 +2058,8 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 reclaimed_peak = cast(float, reclaim['secondary_observed_peak'])
                 reclaim_targets: list[float] = []
                 if secondary_levels is not None:
-                    reclaim_targets.extend(point['value'] for point in secondary_levels.get(i - 1, {}).get(2, ())
-                        if point['kind'] == 'H' and point['available_at'] < i and point['value'] > reclaimed_peak)
+                    reclaim_targets.extend(cast(float, point['value']) for point in secondary_levels.get(i - 1, {}).get(2, ())
+                        if point['kind'] == 'H' and cast(int, point['available_at']) < i and cast(float, point['value']) > reclaimed_peak)
                 reclaim_measurement = bottom_candidates.get(live_target_source) if live_target_source is not None else None
                 if reclaim_measurement is not None:
                     assert live_target_source is not None

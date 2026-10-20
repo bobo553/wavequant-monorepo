@@ -207,3 +207,20 @@ def test_identity_rebind_preserves_signature_when_token_does_not_fit():
     assert cache.get('path', token) is None
     cache.clear()
     assert not cache.rebind_identity('path', b'v1', token)
+
+
+def test_shared_and_cyclic_builtin_graph_keeps_exact_capacity_boundary() -> None:
+    from sys import getsizeof
+    from wavequant.domain.market_structure.trend_readonly_cache import _builtin_size
+    from wavequant.domain.market_structure.trend_judgement import _FormalKeyBreakState, _TrendJudgementState
+
+    leaf = [123456789, b'ab' * 512]
+    root = {'left': leaf, 'right': leaf, 'loop': None}
+    root['loop'] = root
+    objects = [root, *root.keys(), leaf, *leaf]
+    expected = sum(getsizeof(value) for value in {id(value): value for value in objects}.values())
+    assert _builtin_size(root, expected) == expected
+    assert _builtin_size(root, expected - 1) is None
+    assert _FormalKeyBreakState._value_bytes([root]) == expected
+    state = _TrendJudgementState(1)
+    assert state._owned_value_bytes([root]) == expected

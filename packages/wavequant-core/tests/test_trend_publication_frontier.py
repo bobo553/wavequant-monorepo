@@ -327,3 +327,24 @@ def test_annotation_hint_changes_with_snapshot_and_clears_on_revision():
         _market_index=_MarketPrefixIndex(owner, market), _owned_candidates=True,
         _candidate_cache=candidate_cache, _publication_cache=cache, _annotation_token_out=hints)
     assert hints == []
+
+
+def test_retaining_same_checkpoint_does_not_measure_its_evidence_twice(monkeypatch):
+    from wavequant.domain.market_structure import trend_publication_cache as cache_module
+
+    owner = _MarketRangeIndex(_bars())
+    source, candidates = _versions()
+    cache = _PublicationCache()
+    _publish(cache, owner, 4, source, candidates)
+    checkpoint = cache.checkpoint
+    assert checkpoint is not None
+    charged = cache._checkpoint_bytes
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('unchanged checkpoint evidence was measured twice')
+
+    monkeypatch.setattr(cache_module, '_builtin_size', forbidden)
+    assert cache._retain(checkpoint, None)
+    assert cache._checkpoint_bytes == charged
+    cache.clear()
+    assert cache._checkpoint_payload_bytes == cache._checkpoint_bytes == 0

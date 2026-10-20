@@ -16,22 +16,23 @@ def _builtin_size(value: object, limit: int) -> int | None:
     total = 0
     while pending:
         current = pending.pop()
-        if id(current) in seen:
+        identity = id(current)
+        if identity in seen:
             continue
         kind = type(current)
         if kind not in (dict, list, tuple, str, bytes, int, float, bool, type(None)):
             return None
-        seen.add(id(current))
+        seen.add(identity)
         total += getsizeof(current)
         if total > limit:
             return None
-        if kind is dict:
-            mapping = cast(dict[object, object], current)
-            pending.extend(mapping.keys())
-            pending.extend(mapping.values())
-        elif kind in (list, tuple):
-            pending.extend(cast(list[object] | tuple[object, ...], current))
+        if type(current) is dict:
+            pending.extend(current)
+            pending.extend(current.values())
+        elif type(current) is list or type(current) is tuple:
+            pending.extend(current)
     return total
+
 
 
 class _ReadonlySnapshotCache(Generic[_Value]):

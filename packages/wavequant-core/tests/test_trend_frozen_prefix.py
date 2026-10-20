@@ -128,6 +128,9 @@ def test_every_prefix_and_tail_revision_match_cold_and_keep_earlier_snapshots(le
         expected = judge_trend(current, trend_level=level)
         assert mutable_points(revised.points) == mutable_points(expected.points)
         assert mutable_points(revised.candidates) == mutable_points(expected.candidates)
+        # 已知的审计修订随下一天保留；撤回它会改变旧前缀，必须冷算，
+        # 无法用来验证“旧前缀不变、仅当天尾点变化”的恢复契约。
+        source[end - 1]['audit'] = deepcopy(current[-1]['audit'])
     for actual, points, candidates in saved:
         assert mutable_points(actual.points) == points
         assert mutable_points(actual.candidates) == candidates
@@ -208,3 +211,20 @@ def test_owned_three_level_outputs_match_cold_and_never_mutate_previous_dates(mi
             saved.append((actual, deepcopy(actual)))
         for actual, expected in saved:
             assert actual == expected
+
+
+@pytest.mark.parametrize('level', (1, 2, 3))
+def test_withdrawn_old_audit_rebuilds_instead_of_restoring_a_stale_prefix(level: int) -> None:
+    source = _source(level)
+    state = _TrendJudgementState(level, _tail_reuse=True, memory_bytes=32 * 1024 * 1024)
+    source[0]['audit'] = {'version': 1}
+    for end in range(1, 9):
+        judge_trend(deepcopy(source[:end]), trend_level=level, _append_state=state)
+    before = state.cold_runs
+    withdrawn = deepcopy(source[:9])
+    withdrawn[0].pop('audit')
+    actual = judge_trend(withdrawn, trend_level=level, _append_state=state)
+    expected = judge_trend(withdrawn, trend_level=level)
+    assert mutable_points(actual.points) == mutable_points(expected.points)
+    assert mutable_points(actual.candidates) == mutable_points(expected.candidates)
+    assert state.cold_runs == before + 1

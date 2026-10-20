@@ -17,28 +17,33 @@ def _checkpoint(points):
     return _PublicationCheckpoint(len(points), 200, points.copy(), None, None, None, None, None, None)
 
 
-def test_new_checkpoint_does_not_rewalk_unchanged_blocks(monkeypatch):
+def test_same_checkpoint_reuses_charge_and_new_checkpoint_counts_growth(monkeypatch):
+    from wavequant.domain.market_structure import trend_publication_cache as cache_module
+
     cache = _PublicationCache()
     records = FrozenPrefixList(_point(i) for i in range(96))
     first = _checkpoint(records)
     cache.save(first)
-    old_evidence = {id(point['evidence']) for point in records}
-    original = cache._budget._children
+    calls = []
+    original = cache_module._builtin_size
 
-    def children(value):
-        assert id(value) not in old_evidence, 'old sealed evidence was traversed again'
-        return original(value)
+    def measure(value, limit):
+        calls.append(value)
+        return original(value, limit)
 
-    monkeypatch.setattr(cache._budget, '_children', children)
+    monkeypatch.setattr(cache_module, '_builtin_size', measure)
+    assert cache._retain(first, None)
+    assert calls == []
     records.append(_point(96))
     second = _checkpoint(records)
     cache.save(second)
+    assert len(calls) == 1
     assert cache.checkpoint is second
     assert cache._checkpoint_bytes >= _builtin_size(list(records), cache.limit)
     assert cache._checkpoint_bytes <= cache.limit
     assert len(first.result) == 96
     cache.clear()
-    assert cache._budget.memory_used == 0
+    assert cache._checkpoint_bytes == cache._checkpoint_payload_bytes == 0
 
 
 def test_unknown_checkpoint_does_not_call_custom_size_hook():
@@ -50,7 +55,7 @@ def test_unknown_checkpoint_does_not_call_custom_size_hook():
     records = FrozenPrefixList([dict(_point(0), evidence=Unknown())])
     cache.save(_checkpoint(records))
     assert cache.checkpoint is None
-    assert cache._budget.memory_used == 0
+    assert cache._checkpoint_bytes == cache._checkpoint_payload_bytes == 0
 
 
 def test_budget_rejection_releases_checkpoint_and_projection():
@@ -58,7 +63,7 @@ def test_budget_rejection_releases_checkpoint_and_projection():
     cache.save(_checkpoint(FrozenPrefixList([_point(0)])))
     assert cache.checkpoint is None
     assert cache._hierarchy is None
-    assert cache._budget.memory_used == 0
+    assert cache._checkpoint_bytes == cache._checkpoint_payload_bytes == 0
 
 
 def test_projection_reuses_prefix_and_rebuilds_replaced_endpoint():

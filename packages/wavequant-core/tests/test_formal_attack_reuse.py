@@ -201,7 +201,7 @@ def test_a_new_same_bar_ordinal_inside_a_filtered_gap_matches_cold_evidence() ->
 
 
 @pytest.mark.parametrize('level', (2, 3))
-def test_formal_block_budget_preserves_cold_results_through_rewind(level: int) -> None:
+def test_formal_budget_preserves_cold_results_through_rewind(level: int) -> None:
     source = _formal_source(level)
     cache = _FormalKeyBreakState(level)
     for stop in (18, 20, 22, 19, 23, 25):
@@ -215,17 +215,14 @@ def test_formal_block_budget_preserves_cold_results_through_rewind(level: int) -
         assert cache.memory_used >= cache._value_bytes(cache._containers())
     cache.clear()
     assert cache.memory_used == 0
-    assert cache._budget.memory_used == 0
+    assert cache._payload_upper_bytes == 0
 
 
-def test_formal_retain_no_longer_uses_full_calibration(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_formal_budget_does_not_retain_an_ownership_graph() -> None:
     source = _formal_source(2)
     cache = _FormalKeyBreakState(2)
 
-    def forbidden(roots: Sequence[object]) -> int:
-        raise AssertionError('full graph recalibration was called')
-
-    monkeypatch.setattr(cache, '_value_bytes', forbidden)
+    assert not hasattr(cache, '_budget')
     for stop in (18, 20, 22, 24):
         prefix = source[:stop]
         base = judge_trend(prefix, trend_level=2)

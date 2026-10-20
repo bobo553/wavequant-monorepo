@@ -115,6 +115,13 @@ class _ConfirmationVersionCache:
         charged = costs[-1]
         previous = references[-1] if references else None
         for point in version.iter_range(start):
+            # This cache accelerates scalar parsing only. Nested evidence makes
+            # admission more expensive than the original parser, and retaining
+            # it here duplicates the publication budget's ownership work.
+            if (type(point) is not dict or len(point) > 64
+                    or any(type(value) not in (str, int, float, bool, type(None)) for value in point.values())):
+                self._reject(version, market.owner, end)
+                return None
             # Charge the retained input too; nested extension fields can be
             # larger than the scalar reference used by qualification.
             size = _builtin_size(point, self.limit - charged)

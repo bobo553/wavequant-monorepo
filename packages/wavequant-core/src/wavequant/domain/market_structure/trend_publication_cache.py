@@ -6,8 +6,7 @@ from math import isfinite
 from typing import cast
 
 from .owned_evidence import CertifiedSource, current_evidence
-from .trend_frozen_state import FrozenPrefixList, _SequenceNode
-from .trend_memory_ledger import _ImmutableBlockLedger
+from .trend_frozen_state import FrozenPrefixList
 from .trend_confirmation_version import _ConfirmationVersionCache
 from .trend_market_index import _MarketPrefixIndex
 from .trend_point_version import PointVersion
@@ -28,33 +27,6 @@ class _PublicationCheckpoint:
     _token: object = field(default_factory=object, init=False, repr=False, compare=False)
 
 
-class _UnsupportedCheckpoint(Exception):
-    pass
-
-
-def _checkpoint_block(value: object) -> bool:
-    # The ledger calls this before getsizeof: unknown hooks must not run.
-    if type(value) not in (dict, list, tuple, str, bytes, int, float, bool, type(None),
-                           FrozenPrefixList, PointVersion, _SequenceNode):
-        raise _UnsupportedCheckpoint
-    return type(value) is _SequenceNode
-
-
-def _checkpoint_children(value: object) -> Sequence[object]:
-    if type(value) is _SequenceNode:
-        return value.values, value.left, value.right, value.size
-    if type(value) in (FrozenPrefixList, PointVersion):
-        # Version tokens are opaque identity markers, not evidence graphs.
-        records = cast(FrozenPrefixList[object], value)
-        return records._archive, records._tail, records._capacity, records._stop
-    if type(value) is dict:
-        mapping = cast(dict[object, object], value)
-        return (*mapping.keys(), *mapping.values())
-    if type(value) in (list, tuple):
-        return cast(Sequence[object], value)
-    return ()
-
-
 class _PublicationCache:
     """Freeze only a prefix whose decisions cannot change on later market dates.
 
@@ -65,7 +37,6 @@ class _PublicationCache:
 
     def __init__(self, *, memory_bytes: int = 8 * 1024 * 1024) -> None:
         self.limit = memory_bytes
-        self._budget = _ImmutableBlockLedger(_checkpoint_children, _checkpoint_block, limit=memory_bytes)
         self._hierarchy: PointVersion | None = None
         self._hierarchy_token: object | None = None
         self.confirmations = _ConfirmationVersionCache(memory_bytes=min(memory_bytes, 2 * 1024 * 1024))
@@ -78,9 +49,9 @@ class _PublicationCache:
         self._input_bytes = 0
         self._version_bytes = 0
         self._checkpoint_bytes = 0
+        self._checkpoint_payload_bytes = 0
 
     def clear(self) -> None:
-        self._budget.clear()
         self._hierarchy = None
         self._hierarchy_token = None
         self.confirmations.clear()
@@ -91,6 +62,7 @@ class _PublicationCache:
         self._input_bytes = 0
         self._version_bytes = 0
         self._checkpoint_bytes = 0
+        self._checkpoint_payload_bytes = 0
 
     @staticmethod
     def _version(points: Sequence[Mapping[str, object]]) -> PointVersion | None:
@@ -207,19 +179,28 @@ class _PublicationCache:
         self._retain(checkpoint, self._hierarchy)
 
     def _retain(self, checkpoint: _PublicationCheckpoint, hierarchy: PointVersion | None) -> bool:
-        roots = [checkpoint.result, checkpoint.pressure, checkpoint.pending_origin,
-                 checkpoint.pending_down_origin, checkpoint.last_low, checkpoint.active, checkpoint.extreme,
-                 hierarchy, checkpoint.offset, checkpoint.horizon]
         remaining = self.limit - self._input_bytes - self._version_bytes
-        try:
-            # Covers container dictionaries, checkpoint metadata and version tokens.
-            size = self._budget.measure(roots) + 4096
-        except _UnsupportedCheckpoint:
+        base_size = self._checkpoint_payload_bytes if checkpoint is self.checkpoint else 0
+        if not base_size:
+            payload = (list(checkpoint.result), checkpoint.pressure, checkpoint.pending_origin,
+                       checkpoint.pending_down_origin, checkpoint.last_low, checkpoint.active,
+                       checkpoint.extreme, checkpoint.offset, checkpoint.horizon)
+            measured = _builtin_size(payload, remaining)
+            if measured is None:
+                self.clear()
+                return False
+            base_size = measured + checkpoint.result.storage_bytes + 4096
+        # save() and hierarchy() retain the same immutable checkpoint. Reusing
+        # its scalar charge avoids measuring its evidence twice on each day.
+        hierarchy_size = _builtin_size(list(hierarchy), remaining - base_size) if hierarchy is not None else 0
+        if hierarchy_size is None:
             self.clear()
             return False
+        size = base_size + hierarchy_size + (hierarchy.storage_bytes if hierarchy is not None else 0)
         if size > remaining:
             self.clear()
             return False
+        self._checkpoint_payload_bytes = base_size
         self._checkpoint_bytes = size
         self.checkpoint = checkpoint
         self._fit_confirmation_budget()

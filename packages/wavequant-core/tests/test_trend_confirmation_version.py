@@ -247,3 +247,23 @@ def test_clock_dependent_rejection_is_retried_when_future_point_becomes_known():
     assert cache.prepare(source, bars, _MarketPrefixIndex(owner, bars)) is None
     assert cache._rejected is None
     _context(cache, owner, source, 7)
+
+
+def test_nested_evidence_is_rejected_before_recursive_sizing(monkeypatch):
+    owner, cache = _owner(), _ConfirmationVersionCache()
+    point = dict(_point(0), evidence={'proof': ['large' * 10000]})
+    source = PointVersion([point]).seal()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('scalar parser cache traversed nested evidence')
+
+    monkeypatch.setattr(version_module, '_builtin_size', forbidden)
+    bars = market_prefix(owner.bars, 4)
+    assert cache.prepare(source, bars, _MarketPrefixIndex(owner, bars)) is None
+    assert cache.source is None and cache.memory_used == 0
+    assert cache._rejected is not None
+    appended = PointVersion([_point(1)], previous=source, start=1).seal()
+    assert cache.prepare(appended, bars, _MarketPrefixIndex(owner, bars)) is None
+    expected = prepare_confirmation_context(source, bars, 3, _market_index=_MarketPrefixIndex(owner, bars))
+    assert len(expected.references) == 1
+    assert source[0]['evidence'] is point['evidence']
