@@ -8,11 +8,24 @@ from pathlib import Path
 import pytest
 
 from wavequant.domain.market_structure.bottom_n_targets import DeclineStart, PositiveNCompletion, bottom_n_target_history
-from wavequant.domain.market_structure.positive_n_reformation import PositiveNSeed, positive_n_reformations
+from wavequant.domain.market_structure.positive_n_reformation import PositiveNSeed, ReformedPositiveN, positive_n_reformations
+from wavequant.domain.market_structure.n_shape import NCompletion, NTargets
 from wavequant.domain.models.model import Bar
-from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
+from wavequant.domain.strategies.integrated_strategy import SystemResult, SystemStrategy, generate_system_signals
 from wavequant.interfaces.charts.visualization import ChartRepository
 from wavequant.interfaces.research_tools.stock_backtest import _post_b_wave_exit_events
+
+
+def completion_of(item: ReformedPositiveN) -> NCompletion:
+    completion = item.observation.completion
+    assert completion is not None, "重成形结果必须包含已完成N"
+    return completion
+
+
+def targets_of(item: ReformedPositiveN) -> NTargets:
+    targets = item.observation.targets
+    assert targets is not None, "完成结构必须有测幅几何，发布资格另行筛选"
+    return targets
 
 
 @pytest.fixture(scope="module")
@@ -32,9 +45,9 @@ def test_two_independent_origins_complete_on_august20_and_freeze_separate_target
     reforms = positive_n_reformations(bars, seeds)
     assert len(reforms) == 2
     assert [n.previous_attack for n in reforms] == [dates["2024-07-31"], dates["2024-08-15"]]
-    assert [n.observation.completion.bar_index for n in reforms] == [dates["2024-08-20"]] * 2
-    assert [(n.observation.targets.one_p, n.observation.targets.two_t) for n in reforms] == [(4.83, 5.52), (4.63, 5.12)]
-    assert [n.observation.completion.defense for n in reforms] == [3.66, 3.66]
+    assert [completion_of(n).bar_index for n in reforms] == [dates["2024-08-20"]] * 2
+    assert [(targets_of(n).one_p, targets_of(n).two_t) for n in reforms] == [(4.83, 5.52), (4.63, 5.12)]
+    assert [completion_of(n).defense for n in reforms] == [3.66, 3.66]
     assert [n.setup.neckline.index for n in reforms] == [dates["2024-08-01"], dates["2024-08-16"]]
     assert reforms[1].setup.pullback.index == dates["2024-08-20"]
 
@@ -45,7 +58,7 @@ def test_every_visible_prefix_and_later_extension_preserves_known_reformations(x
     for end in range(dates["2024-07-31"], len(bars)):
         known_seeds = [seed for seed in seeds if seed.known_at <= end]
         assert positive_n_reformations(bars[:end + 1], known_seeds) == tuple(
-            n for n in full if n.observation.completion.bar_index <= end)
+            n for n in full if completion_of(n).bar_index <= end)
     next_bar = replace(bars[-1], timestamp=datetime(2024, 8, 21), high=4.40, low=3.66, close=4.35)
     assert positive_n_reformations([*bars, next_bar], seeds) == full
 
@@ -92,7 +105,7 @@ def test_reformation_stream_advances_each_family_only_once_and_preserves_full_pr
         assert actual == positive_n_reformations(bars[:end + 1], known)
         assert stream.advance(end, known) == actual
     assert len(actual) == 2
-    assert [value.observation.targets.one_p for value in actual] == [4.83, 4.63]
+    assert [targets_of(value).one_p for value in actual] == [4.83, 4.63]
     assert stream.processed_days == sum(len(bars) - 1 - seed.attack for seed in seeds)
 
 
@@ -168,43 +181,74 @@ def pipeline(xiangyang):
     return bars, config, result
 
 
-def test_pipeline_and_chart_keep_shapes_but_only_publish_qualified_floor_targets(pipeline):
+def test_daily_pipeline_does_not_restore_old_ns_outside_the_actual_qualified_window(pipeline):
     bars, config, result = pipeline
-    theory = ChartRepository.render_theory(None, bars, config, result, "2024-08-20", geometry={"tertiary_trends": {}})
-    positive = [e for e in theory["events"] if e["event"] == "n_completed" and e["direction"] == "up"]
-    old = {e["time"]: e for e in positive if e["time"] in ("2024-07-31", "2024-08-15")}
-    assert old["2024-07-31"]["n_invalidated_at"] == "2024-08-05"
-    assert old["2024-08-15"]["n_invalidated_at"] == "2024-08-20"
-    formed = [e for e in positive if e["time"] == "2024-08-20"]
-    assert len(formed) == len({e["id"] for e in formed}) == 2
-    qualified = [event for event in formed if event["target_eligible"]]
-    assert len(qualified) <= 1
-    for event in formed:
-        targets = [level["price"] for level in event["levels"] if level.get("stage") in ("one_p", "two_t")]
-        if event["target_eligible"]:
-            assert event["target_primary"]
-            assert event["origin"] == event["target_bottom_index"]
-            assert targets == ([4.83, 5.52] if event["reformed_from_date"] == "2024-07-31" else [4.63, 5.12])
-        else:
-            assert targets == []
-            assert event["one_p"] is None and event["two_t"] is None
-    assert [e["reformed_from_date"] for e in formed] == ["2024-07-31", "2024-08-15"]
-    assert not any(shape["attack_time"] in old for shape in theory["shapes"])
+    # 旧用例把无资格期间的独立形态误当成交易输出；保留真实1593日完整输入核对边界。
+    closed = [row for row in result.audit if row["event"] == "trading_interval_closed"]
+    assert closed and closed[-1]["timestamp"][:10] == "2024-01-24"
+    assert not any(row["event"] == "trading_interval_opened" and row["timestamp"][:10] >= "2024-07-25"
+                   for row in result.audit)
+    assert not any(row["event"] == "n_completed" and row["timestamp"][:10] >= "2024-07-25"
+                   for row in result.audit)
+    theory = ChartRepository.render_theory(object.__new__(ChartRepository), bars, config, result, "2024-08-20",
+                                          geometry={"tertiary_trends": {}})
+    assert not any(event["event"] == "n_completed" and event["time"] >= "2024-07-25"
+                   for event in theory["events"])
+
+
+def measurement_contract(bars, seeds, decline):
+    """独立形态→底部资格→图表的契约夹具，不冒充真实账户已开放交易资格。"""
+    reforms = positive_n_reformations(bars, seeds)
+    completions = [PositiveNCompletion(seed.origin, seed.attack, seed.known_at, seed.defense) for seed in seeds]
+    completions.extend(PositiveNCompletion(item.setup.origin.index, completion_of(item).bar_index,
+        item.setup.pullback.confirmed_index, completion_of(item).defense, True) for item in reforms)
+    history = bottom_n_target_history(bars, [decline], completions)
+    rows = []
+    for item in reforms:
+        setup, n = item.setup, item.observation
+        assert n.completion is not None and n.targets is not None
+        attack = n.completion.bar_index
+        chosen = history.completions[attack]
+        eligible = history.qualifications[attack].eligible and chosen.origin == setup.origin.index
+        rows.append(dict(event="n_completed", direction="up", origin=setup.origin.index,
+            neckline=setup.neckline.index, pullback=setup.pullback.index, bar_index=attack,
+            timestamp=bars[attack].timestamp.isoformat(), known_at=setup.pullback.confirmed_index,
+            n_id=f"up:{setup.origin.index}:{setup.neckline.index}:{setup.pullback.index}:{attack}",
+            defense=n.completion.defense, n_level=item.level, box_anchor=n.targets.box_anchor,
+            one_p=n.targets.one_p if eligible else None, two_t=n.targets.two_t if eligible else None,
+            target_eligible=eligible, target_primary=eligible,
+            target_bottom_index=history.qualifications[attack].bottom_index,
+            reformed_from=item.previous_attack, reformed_root=item.root_attack))
+    return SystemResult([], rows, {})
+
+
+def test_real_reformation_geometry_keeps_two_shapes_but_exactly_one_floor_measurement(xiangyang):
+    bars, dates, seeds = xiangyang
+    result = measurement_contract(bars, seeds, DeclineStart(dates["2024-07-12"], dates["2024-07-25"]))
+    config = SystemStrategy(pivot_mode="lecture_causal", buy_point_definition="whole_flip_wave_v3")
+    theory = ChartRepository.render_theory(object.__new__(ChartRepository), bars, config, result, "2024-08-20",
+                                          geometry={"tertiary_trends": {}})
+    formed = [event for event in theory["events"] if event["event"] == "n_completed"]
+    assert len(formed) == len({event["id"] for event in formed}) == 2
+    assert [event["target_eligible"] for event in formed] == [True, False]
+    assert [event["reformed_from_date"] for event in formed] == ["2024-07-31", "2024-08-15"]
+    assert [[level["price"] for level in event["levels"] if level.get("stage") in ("one_p", "two_t")]
+            for event in formed] == [[4.83, 5.52], []]
+    assert formed[0]["origin"] == formed[0]["target_bottom_index"] == dates["2024-07-25"]
+    assert formed[1]["one_p"] is None and formed[1]["two_t"] is None
     assert len([shape for shape in theory["shapes"] if shape["attack_time"] == "2024-08-20"]) == 2
-    historical = ChartRepository.render_theory(None, bars[:-1], config, result, "2024-08-19", geometry={"tertiary_trends": {}})
-    before = next(e for e in historical["events"] if e["event"] == "n_completed" and e["time"] == "2024-08-15")
-    assert "n_invalidated_at" not in before
-    assert not any(e.get("reformed_from_date") for e in historical["events"] if e["time"] == "2024-08-20")
+    historical = ChartRepository.render_theory(object.__new__(ChartRepository), bars[:-1], config, result, "2024-08-19",
+                                               geometry={"tertiary_trends": {}})
+    assert not any(event["event"] == "n_completed" for event in historical["events"])
 
 
-def test_pipeline_prefix_and_incomplete_replay_do_not_borrow_future_reformations(pipeline):
-    bars, config, full = pipeline
-    end = len(bars) - 2
-    prefix = generate_system_signals(bars[:end + 1], config)
-    assert prefix.audit == [row for row in full.audit if row["bar_index"] <= end]
-    assert prefix.signals == [signal for signal in full.signals if signal.bar_index <= end]
+def test_measurement_prefix_and_partial_bar_do_not_borrow_future_reformations(xiangyang):
+    bars, dates, seeds = xiangyang
+    decline = DeclineStart(dates["2024-07-12"], dates["2024-07-25"])
+    full = measurement_contract(bars, seeds, decline)
+    assert len(full.audit) == 2 and sum(row["target_eligible"] for row in full.audit) == 1
+    prefix = measurement_contract(bars[:-1], seeds, decline)
+    assert prefix.audit == [row for row in full.audit if row["bar_index"] < len(bars) - 1] == []
     partial = [*bars[:-1], replace(bars[-1], high=bars[-1].open, low=bars[-1].open,
                                  close=bars[-1].open, volume=bars[-1].volume / 10)]
-    replay = generate_system_signals(partial, config, chart_history_cache={"source_bars": tuple(bars)})
-    assert not any(row["event"] == "n_completed" and row["bar_index"] == len(bars)-1
-                   and row.get("reformed_from") is not None for row in replay.audit)
+    assert measurement_contract(partial, seeds, decline).audit == []
