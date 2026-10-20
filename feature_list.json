@@ -114,6 +114,21 @@
             ],
             "verification": [
                 {
+                    "command": "user authorization to merge with reproduced baseline failures",
+                    "status": "not-run",
+                    "summary": "2026-10-20用户明确授权继续合并：本次豁免已在main复现的9项夹具错误和33项原有类型错误，保留失败事实，不视为已修复。新增发布前缀20项回归通过（0.46s），新缓存模块mypy通过；按既有性能证据继续提交并同步最新main，只本地合并、不推送。"
+                },
+                {
+                    "command": "targeted pytest five files; main baseline pytest/mypy; new cache mypy; isolated 600-candidate 60-date benchmark; git diff --check",
+                    "status": "failed",
+                    "summary": "2026-10-20本次合并前验证：五文件定向pytest（test_trend_publication_frontier、test_publication_market_ranges、test_trend_down_upgrade_publication、test_trend_leg_confirmation、test_trend_change_history）98 passed/9 errors。9项均为test_trend_leg_confirmation夹具的二级直接来源投影不等，当前main 4a31de1同文件22 passed/9 errors，相同节点和断言。三变更源码mypy初始34错误，其中新增isfinite参数已显式cast修复，新缓存模块mypy通过；另33项在main两原文件同样复现。git diff --check通过。隔离合成600已确定候选、60逐日日期、3轮含初始化且每轮独立行情索引：完整发布1.952259/1.853075/1.981563秒，增量0.066541/0.064990/0.064103秒，中位30.04倍，全部逐日输出相同；仅证明稳定前缀场景，非真实全账户回测倍数。仓库规定失败不得合并，因此尚未提交/同步main/合并/推送，等待明确处理或本次豁免既有9项测试及33项类型问题；不修改无关业务、不放宽断言。"
+                },
+                {
+                    "command": "pytest tests/test_trend_publication_frontier.py and related publication/history equivalence suites; frozen-input performance comparison",
+                    "status": "not-run",
+                    "summary": "2026-10-20普通资格发布增量前缀：按请求、级别及当前路径保存一个有界发布检查点，复用已确认或原点已破坏且无早期证书的稳定候选前缀，首个未决候选及其后缀继续按原规则逐日计算；保存压力位、待定原点、整波证书和极值。候选前缀修订、知识范围内依赖修订、回退日期、换行情来源、非认证输入或超预算均回退完整发布；N确认沿用完整路径。缓存输出深复制隔离下游标注，每级仅当前路径一份检查点，默认8MiB预算包括输入和状态容器。新增三级逐日冷路径对照、旧候选不再遍历、迟到/修订/截短/回退、ISO日期、原点破坏及输出隔离回归源码；尚未运行测试或性能探针，未提交合并，不宣称实测提速。未决后缀与完整公开结果复制仍有成本，MONOREPO-330保持in-progress。"
+                },
+                {
                     "command": "daily coordinator low-open double-volume entry regression and real-stock replay",
                     "status": "not-run",
                     "summary": "2026-10-20国芳倍量突破仍未买入续修：上轮只接通内部解析器，streaming_stock_result.consume在分钟入场关闭时仍用open>previous.close预筛选，低开2025-04-03无法到达新规则。逐日协调器改为高开或共用double_volume_bullish_breakout均可调用，仍要求当日所选级别资格；不改变六态、成交权限、账户风险或同日退出优先。profile v125隔离旧结果。新增三级×资格开关×分钟开关的逐日协调器回归源码：只注入资格来源与输出格式，真实resolver和portfolio撮合贯通；冻结4/2–4/3量价、合成可成交权限，不冒充全历史实股复现。未执行测试、类型、回测、构建、Git状态差异检查；实际资格和涨停撮合仍待提交时验证。"
