@@ -771,6 +771,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             **({'inside_pullback_confirmed': True} if inside_pullback else {}),
             **({'outside_close_confirmed': True} if whole_wave and setup.allow_outside_close and setup.pullback.index == t else {}))
     bottom_targets = None
+    measurement_candidates = {}
     target_retired_at = {}
     a_confirmations = {}
     if whole_wave and secondary_levels is not None:
@@ -850,31 +851,55 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             candidate['reformed'] = (candidate['setup'].direction == Direction.UP
                 and n_identity(candidate['setup'].origin.index, candidate['setup'].neckline.index,
                     candidate['setup'].pullback.index, candidate['attack'], candidate) in reformed_by_source)
-        # Entry selection keeps its canonical daily candidate; independently
-        # measured Ns on the same candle retain their own audit identities.
+        # 结构重成形不授予测量资格；所有主候选重新通过同一个底部归属入口。
         reformed_completions = [
             PositiveNCompletion(c['setup'].origin.index, c['attack'], max(c['attack'], c['known_at']),
                                 c['n'].completion.defense, c['reformed'])
             for c in candidates if c['setup'].direction == Direction.UP
         ]
+        # 所有重成形来源与普通来源一起竞争；攻击日相同仍以真实底点优先。
+        reformed_measurements = []
+        for reformed in reforms:
+            n = reformed.observation
+            assert n.completion is not None
+            attack = n.completion.bar_index
+            known = max(attack, reformed.setup.pullback.confirmed_index)
+            owner = source_fields_by_attack.get(reformed.root_attack, {})
+            reformed_completions.append(PositiveNCompletion(
+                reformed.setup.origin.index, attack, known, n.completion.defense, True))
+            reformed_measurements.append(dict(setup=reformed.setup, attack=attack,
+                known_at=known, n=n, start=0,
+                n_id=n_identity(reformed.setup.origin.index, reformed.setup.neckline.index,
+                    reformed.setup.pullback.index, attack, owner), **owner))
         bottom_targets = (_daily.reformed_target_history.advance(len(bars) - 1, declines, reformed_completions)
                           if _daily is not None and _daily.reformed_target_history is not None else
                           bottom_n_target_history(bars, declines, reformed_completions))
+        for measured in [*candidates, *reformed_measurements]:
+            if measured['setup'].direction != Direction.UP:
+                continue
+            chosen = bottom_targets.completions[measured['attack']]
+            if (bottom_targets.qualifications[measured['attack']].eligible
+                    and measured['setup'].origin.index == chosen.origin
+                    and max(measured['attack'], measured['known_at']) == chosen.known_at):
+                measurement_candidates.setdefault(measured['attack'], measured)
         for row in audit:
             if row['event'] != 'n_completed' or row['direction'] != 'up':
                 continue
             qualification = bottom_targets.qualifications[row['bar_index']]
-            row.update(target_eligible=qualification.eligible,
+            measured = measurement_candidates.get(row['bar_index'])
+            eligible = (measured is not None and measured['n_id'] == n_identity(
+                row['origin'], row['neckline'], row['pullback'], row['bar_index'], row))
+            row.update(target_eligible=eligible,
                        target_source_attack=qualification.source_attack,
                        target_decline_index=qualification.decline_index,
                        target_bottom_index=qualification.bottom_index,
-                       target_qualification_reason=qualification.reason, target_primary=True)
+                       target_qualification_reason=(qualification.reason if eligible or not qualification.eligible
+                                                    else 'non_primary_n'), target_primary=True)
             row_reformed = reformed_by_source.get(n_identity(
                 row['origin'], row['neckline'], row['pullback'], row['bar_index'], row))
             if row_reformed is not None:
-                row.update(reformed_from=row_reformed.previous_attack, reformed_root=row_reformed.root_attack,
-                           target_bottom_index=row['origin'])
-            if not qualification.eligible:
+                row.update(reformed_from=row_reformed.previous_attack, reformed_root=row_reformed.root_attack)
+            if not eligible:
                 row.update(one_p=None, two_t=None)
         existing_ns = {n_identity(row['origin'], row['neckline'], row['pullback'], row['bar_index'], row) for row in audit
                        if row['event'] == 'n_completed' and row['direction'] == 'up'}
@@ -885,20 +910,30 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             if n_identity(setup.origin.index, setup.neckline.index, setup.pullback.index,
                           n.completion.bar_index, source_fields_by_attack.get(reformed.root_attack, {})) in existing_ns:
                 continue
+            qualification = bottom_targets.qualifications[n.completion.bar_index]
+            measured = measurement_candidates.get(n.completion.bar_index)
+            eligible = (measured is not None and measured['n_id'] == n_identity(
+                setup.origin.index, setup.neckline.index, setup.pullback.index,
+                n.completion.bar_index, source_fields_by_attack.get(reformed.root_attack, {})))
             log(n.completion.bar_index, 'n_completed', direction='up', origin=setup.origin.index,
                 neckline=setup.neckline.index, pullback=setup.pullback.index,
                 known_at=setup.pullback.confirmed_index, defense=n.completion.defense,
                 counter_ratio=n.anchors.retracement_ratio, n_level=reformed.level,
-                box_anchor=n.targets.box_anchor, one_p=n.targets.one_p, two_t=n.targets.two_t,
-                target_eligible=True, target_primary=False, target_source_attack=n.completion.bar_index,
-                target_bottom_index=setup.origin.index, target_qualification_reason='defense_reformed_n',
+                box_anchor=n.targets.box_anchor,
+                one_p=n.targets.one_p if eligible else None, two_t=n.targets.two_t if eligible else None,
+                target_eligible=eligible, target_primary=eligible,
+                target_source_attack=qualification.source_attack,
+                target_decline_index=qualification.decline_index,
+                target_bottom_index=qualification.bottom_index,
+                target_qualification_reason=qualification.reason if eligible else 'non_primary_reformed_n',
                 reformed_from=reformed.previous_attack, reformed_root=reformed.root_attack,
                 **source_fields_by_attack.get(reformed.root_attack, {}))
             counts['completed_up_n'] += 1
         retirement_sources = {}
         for row in audit:
             if row['event'] == 'n_completed' and row['direction'] == 'up':
-                retirement_sources.setdefault(row['bar_index'], row)
+                if row['target_eligible']:
+                    retirement_sources[row['bar_index']] = row
         for retired_source in bottom_targets.retirements:
             target_retired_at[retired_source.attack] = retired_source.bar_index
             retired_row = retirement_sources.get(retired_source.attack)
@@ -906,7 +941,8 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
                 reason=retired_source.reason,
                 n_id=(n_identity(retired_row['origin'], retired_row['neckline'], retired_row['pullback'],
                                  retired_source.attack, retired_row) if retired_row is not None else None),
-                **source_fields_by_attack.get(retired_source.attack, {}))
+                **({name: retired_row[name] for name in ('window_start', 'source_path', 'qualification_window_start')
+                    if name in retired_row} if retired_row is not None else {}))
         positive_events = [row for row in audit if row['event'] == 'n_completed' and row['direction'] == 'up']
         for row in positive_events:
             identity = n_identity(row['origin'], row['neckline'], row['pullback'], row['bar_index'], row)
@@ -961,10 +997,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             counts[kind] += 1
             if kind == 'a_wave_confirmed':
                 a_confirmations[observation.source_id] = now
-    bottom_candidates = {c['attack']: c for c in candidates
-                         if bottom_targets is not None
-                         and c['setup'].direction == Direction.UP
-                         and bottom_targets.qualifications[c['attack']].eligible}
+    bottom_candidates = measurement_candidates
     # A later confirmed inverse N terminates ordinary local-bounce entries.
     # Use its availability, not a pivot source date, to preserve prior signals.
     inverse_known = sorted((max(c['attack'], c['known_at']), c['attack']) for c in candidates
