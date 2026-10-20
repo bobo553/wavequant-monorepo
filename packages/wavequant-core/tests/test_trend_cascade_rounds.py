@@ -119,7 +119,7 @@ def test_source_flip_freezes_each_round_own_version_without_sharing_checkpoints(
         for state in states:
             assert state._flip_checkpoint is not None
             assert state._flip_checkpoint[0] == state._source_keys
-        assert len({tuple(state._source_keys) for state in states}) == 3
+        assert len({state._source_keys for state in states}) == 3
 
 
 def test_rule_switch_invalidates_each_round_without_losing_shared_export_budget() -> None:
@@ -135,16 +135,3 @@ def test_rule_switch_invalidates_each_round_without_losing_shared_export_budget(
                 assert sibling._finite is base._finite
                 assert sibling._point_exports is base._point_exports
                 assert sibling._max_paths == 1
-
-
-@pytest.mark.parametrize('mirror', (False, True))
-def test_owned_candidate_endpoint_index_preserves_cold_cascade(mirror):
-    workers = [_TrendJudgementCache(tail_reuse=True) for _ in range(3)]
-    source = _source(mirror=mirror)
-    with _TrendCascadeCache(workers) as rounds:
-        for stop in (8, 12, len(source), 10, len(source)):
-            prefix = deepcopy(source[:stop])
-            expected = prepare_trend_cascade(prefix, symbol='INDEX')
-            actual = prepare_trend_cascade(deepcopy(prefix), symbol='INDEX', caches=workers,
-                _round_caches=rounds, _owned_source=True)
-            assert actual == expected

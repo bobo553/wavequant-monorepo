@@ -1,12 +1,4 @@
-2026-10-20 合并最终验证：ec93ee2实现，经0dd39ee同步main 34d09fa，四份状态文档冲突保留双方记录，生产代码无冲突。同步后Core本任务13文件加新基线相邻8文件共665 passed/56.63s；13个变更生产模块mypy --follow-imports=silent通过；API两个文件16 passed/0.94s；git diff --check main通过，31文件最终差异已复核。此前测试/类型失败均已修复，无失败例外。仅记录本轮定向验证，不宣称全套、浏览器或真实行情提速；MONOREPO-330其他工作继续in-progress。准备从已同步分支no-ff合并本地main，不推送。
-
-2026-10-20 合并阻碍修复完成：用户授权解决后合并。修复只读序列类型、变量遮蔽与Pickler返回声明；公共输入完整认证后复用相同签名前缀。共享_SourceTurn及COW候选桶独立计费，消除52点合成案例实际约1.34MiB却计费8.6MiB的跨块重复计费，不扩大预算。旧标注测试显式接纳既有lifecycle_context并严格断言上下文10/引用4、5知识日；本级突破投影严格白名单、完整来源不外泄；级联按序列内容比较。最终Core指定13文件pytest -q --tb=short：518 passed/52.12s；13个生产模块mypy --follow-imports=silent通过；API使用自身.venv执行test_backtest_jobs.py和test_backtest_preview.py：16 passed/1.22s（先误用Core环境缺redis，已用API环境解决）。git diff --check通过。此前73失败及类型错误已修复，本轮不豁免、不放宽业务断言。完整套件、浏览器、构建、真实行情性能未运行。准备提交并同步最新main后复核受影响检查；不推送。
-
-2026-10-20 合并准备受基线门禁阻挡：分支feat-回测诊断按需记录基于4efc1b5，本地main为34d09fa。首次13文件pytest为73 failed/442 passed（65.51s）；main对照三个失败文件为72 failed/259 passed（26.60s）。修复新增类型收窄错误及已取消全图校准的过时次数断言，保留冷结果/容量断言；受影响五文件复查为1 failed/288 passed（39.35s），唯一剩余来源签名身份断言在main同样失败。其余基线失败为标注lifecycle_context字段断言及级联FrozenPrefixList可哈希假设，不改业务/不放宽断言。生产13模块mypy剩43项，main对应11模块50项，归一化文件行号和诊断内行号后无分支独有错误，不宣称类型通过。git diff --check通过。基线日志在主目录.codex-runtime/merge-cache-main-tests.txt、merge-cache-main-types.txt，分支类型与复查日志merge-cache-branch-types.txt、merge-cache-recheck.txt。按检查失败不合并规则，未提交、未同步合并main、未推送；等待明确豁免既有失败或授权修复基线。未运行浏览器、全套、构建或性能剖析。
-
-2026-10-20 标注缓存重绑定优化：新增rebind_identity，只接受匹配的已准入内容签名与不透明令牌，复用快照及容量；签名单标识升级仅增加令牌固定大小，已有身份替换不累加费用，预算不足保留原签名缓存。标注签名命中不再put递归计费。补充禁用全文计费时的重绑定、重复替换、签名失效/clear及预算不足回归源码，并增强三级标注命中用例。未运行测试、类型、性能探针或Git检查，待提交时验证；未提交、合并或推送，MONOREPO-330保持in-progress。
-
-2026-10-20 CR两项修复：共享账本按释放旧根后的最终保留量判断预算，过渡期新增计费仍有界，最终超限清空；标注版本令牌未命中恢复内容签名查询，单条快照保存身份与签名并计入原预算，签名命中重绑定新令牌，所有公开回填独立深复制。补充近预算替换/真实超限、三级新令牌同内容复用及嵌套隔离、单条缓存签名失效/预算回归源码。未执行测试、类型、性能探针或Git检查，待提交时验证；未提交、合并或推送，MONOREPO-330保持in-progress。
+2026-10-20按用户要求撤回14:07（UTC+9）之后main合并：经main第一父链及reflog核实，仅14:17的adf4888（chore: 合并趋势缓存性能优化）符合。使用git revert -m 1，不重置或改写历史，不推送。添加审计记录前，撤回暂存树与14:07前34d09fa逐文件完全一致，git diff --cached --check通过；未重新运行含已知基线失败的旧测试，不宣称其已通过。既有行情收藏、末跌高买入、底部N及更早合并均保留。此前665项正确性回归不构成性能验收：同冻结输入前1100日，合并前73.10秒、合并后219.37秒，新增账本107.46秒、冷算24增至124，完整证据在.codex-runtime/backtest-growth-current-20261020/root-cause.md和comparison.json。后续优化仅在独立分支；必须确认同输入完整结果一致及分段/全程性能有实际提升，再考虑重新合并，禁止自动重新合入已撤回提交。MONOREPO-330保持in-progress。
 
 2026-10-20 · MONOREPO-334 合并前最终记录
 
@@ -44,30 +36,6 @@
 
 开发阶段未运行任何测试、类型、lint、格式、构建、Git状态/差异或结果探针；没有本轮验证通过结论。待实际提交时运行新回归与相关买入/资格用例、变更文件类型检查，并核对完整同源国芳资格与真实撮合。MONOREPO-330保留in-progress，既有失败不覆盖。工作分支feat-末跌高突破买入，worktree C:/Users/zb/.codex/worktrees/last-fall-high-entry/wavequant-monorepo；本轮未提交、合并、推送或重启运行服务。CodeGraph主索引提示自动同步停用，独立worktree虽存在.codegraph目录但MCP无法识别，已按工具提示改用源码阅读。
 2026-10-20 底部N合并前问题已解决：真实1593日资格核对确认二级最后窗口于2024-01-24关闭，7/31、8/15、8/20 buy/scan均False；旧图表用例错误要求区间外交易N，修正为真实策略不补造N，并以独立形态→底部资格→图表契约严格断言两形态只发布底部4.83/5.52，保留来源、形状和未完成K线/前缀限制。最终pytest test_bottom_n_targets.py test_positive_n_reformation.py：38 passed(215.62s)；类型断言与图表接收者修订后重成形12项再次通过（重叠不合计）。Web两文件Node17项通过且生产代码未再变化。状态机及两测试3文件mypy通过，使用项目3.11配置与follow-imports=silent，临时仅对宿主不兼容的numpy/numpy.*外部存根设置follow_imports=skip、follow_imports_for_stubs=true；未改项目依赖或全局配置，不宣称全仓类型通过。早先历史KeyError和测试可空类型错误已解决；先前失败记录保留作历史。完整Core/Web套件、另一个历史pipeline文件、浏览器与构建未运行或未完成，不作为通过。用户要求解决后合并main、不推送。
-
-2026-10-20 · MONOREPO-330 末跌高迁移查询与稳定交易标注（待提交时验证）
-
-2026-10-20第2/3项性能优化：last_fall_high_reanchors在首次实际破位后为标准列表/元组构建前高位置表和按available_at排序的低点前缀最大位置表；每次取破位时已知的最右后续低点，保留非单调知识日、同日并列、开放尾部下级confirmed_by及原事件顺序，点选择由最坏平方扫描降为构建O(n log n)+单次O(log n)，行情破位查询原样。未知Mapping/时钟保留旧访问路径。交易标注由发布器经私有sink传递完全匹配稳定检查点的身份令牌，过滤改变结果时清除；版本命中在分段/编号/签名前返回缓存派生字段，按股票/级别/路径隔离，新增不透明令牌计费支持，沿用8MiB标注缓存。标注缓存与公开字段独立深复制，避免读者改写缓存；仍保留必须的逐点字段回写。仅完整稳定版本优化，变化结果、N路径、未准入或预算失败仍原计算，未宣称所有变化后缀都已增量。新增test_reanchor_positions.py及三级多时钟标注完整字段/嵌套修改隔离、版本hint变化/修订、预算回退回归源码。开发阶段未执行测试、类型、性能探针或Git检查，待提交时验证；未提交/合并/推送，无实测提速或零副作用结论，MONOREPO-330保持in-progress。
-
-
-2026-10-20 · MONOREPO-330 上下文缓存拒绝复用（待提交时验证）
-
-2026-10-20仅处理第一个剩余热点：_ConfirmationVersionCache增加单条_RejectedVersion拒绝元数据，持有版本令牌、长度、预算、截止日和市场弱引用，不保留失败来源或行情图。同版本或保留全部旧点的直接追加后继，在同市场、日期不回退、预算不增加时O(1)跳过失败的缓存构建并沿原prepare_confirmation_context解析；修订、截短、未知祖先、市场更换、日期回退、预算增加及clear均允许重试。size准入失败和明确预算超限记录拒绝，未来不可知/有序性/非标量等日期解析失败不记录；发布预算缩小时通过set_limit把已缓存超限状态转为拒绝，避免释放后立即重建。保留4096字节逐点保守计费与原容量，不以缩小计费声称内存优化。补充拒绝重复构建、直接追加、七类失效条件、预算缩小/恢复、弱引用释放及原路径当前/历史上下文一致回归源码。开发阶段未执行测试/类型/性能探针/Git检查，待提交时验证；未提交/合并/推送，不宣称零副作用或实测加速。第二三项未改动，MONOREPO-330保持in-progress。
-
-
-2026-10-20 · MONOREPO-330 发布与级联剩余重复遍历（待提交时验证）
-
-2026-10-20剩余重复遍历优化：发布检查点save改用_ImmutableBlockLedger按共享序列块计费，拒绝未知对象前不调用sizeof钩子，计入账本与管理余量，超预算clear；内部层级资格出口增加私有版本传递，仅已准入的来源使用，分别投影稳定检查点与当日工作结果，复用旧标量前缀并检测末端替换，未确认后缀不能污染稳定投影；公共完整/直接轻量调用保持独立列表。投影与上下文共用原发布预算。级联新增单次收敛有界端点位置索引（最多2MiB），同一sealed PointVersion不再全量扫描；新版本、可变输入和预算拒绝仍原序扫描，不跨日保存升级授权，跨日首扫仍存在。N的B/C搜索内层改按索引惰性读取，消除尾段复制但不改变搜索、break及首次证书选择，不宣称消除组合复杂度。新增test_publication_shared_outputs.py、test_promotion_endpoint_index.py及三级逐日/回退、级联冷对照、N首证书回归源码。开发阶段未运行测试、类型、性能探针或Git检查，无实测加速/零副作用结论；待提交时验证，未提交/合并/推送。关闭路径反序列化、完整交易附件和N上下文/组合搜索仍为后续热点，未冒险改变消费者所有权或首次确认语义。MONOREPO-330保持in-progress。
-
-沿用 feat-回测诊断按需记录 / C:/Users/zb/.codex/worktrees/backtest-diagnostics/wavequant-monorepo，保留此前未提交的普通/正式趋势账本、确认版本缓存及诊断写连接修改。后续提交阶段优先核对：稳定检查点末端被后缀替换时旧版本不污染；日期回退/来源修订清缓存；完整公开输出与轻量版本字段一致；N首次证书日期与目标列表不变；预算拒绝仍正确冷算。当前只有源码级审阅，未使用旧验证结果冒充本轮证据。
-
-
-2026-10-20 · MONOREPO-330 普通预算、层级导出与静态资格上下文优化（待提交时验证）
-
-2026-10-20前三项剩余性能优化：普通_TrendJudgementState使用不可变块引用账本，封存已有写时复制记录，可变根仍重计，取消生产路径完整对象图校准；层级历史私有入口只导出index/ordinal/kind/value/available_at，避免深复制完整证书，公共完整结果仍独立复制；新增_ConfirmationVersionCache，仅已封存、全部已知、单调且唯一交易日的来源复用解析/可见性/摘要前缀，变化后缀重建，每天重新绑定行情截止日。N模式、未知/未来来源、日期回退与预算不足保留冷路径，非同一N来源身份不复用。解析缓存最多2MiB且占用原发布缓存剩余预算，不扩大总上限。新增三级普通预算不调用全图计数/修订对照、轻量输出隔离，以及静态上下文追加、修订、截短、时钟回退、市场更换、未来可知与预算拒绝回归源码。开发阶段未运行验证或性能剖析，不能据静态复核保证零副作用或实测提速；待实际提交阶段验证，未提交/合并/推送，MONOREPO-330保持in-progress。
-
-沿用 C:/Users/zb/.codex/worktrees/backtest-diagnostics/wavequant-monorepo，分支 feat-回测诊断按需记录。此前正式突破内存账本及诊断请求写连接改动仍保留；本轮未执行测试、类型、构建、性能探针或 Git 状态/差异检查。提交前重点验证写时复制旧快照、冷/热逐日全字段一致与预算回退；公共完整导出和未准入上下文仍存在全量成本，不宣称全链路只与变化量相关。
-
 
 2026-10-20 底部N提交验证：Core pytest test_bottom_n_targets.py、test_positive_n_reformation.py -k "not pipeline"：35 passed/2 deselected；Web pnpm exec node --test tests/eligibility-n-targets.test.mjs tests/bottom-n-targets.test.mjs：17 passed；mypy --follow-imports=skip 状态机及其测试2文件通过；git diff --check通过。历史图表用例在本分支与未修改main 1370da2均于同一断言缺少2024-07-31 N而KeyError（分别196.36s/197.12s），未修改该旧断言。初始3文件组合运行中断，剩余历史/完整套件未完成。follow-imports=silent类型检查被NumPy存根Python3.12语法与项目3.11配置冲突阻断；局部skip通过不代表完整类型通过。未运行浏览器/Harness/构建。按AGENTS检查失败不合并规则，提交后等待用户明确豁免既有失败；不推送。
 
@@ -1816,20 +1784,6 @@ Web信号、成交详情和复制共用完整组合proof，扫描列表已补独
 
 
 2026-10-20同步main 4a31de1后复验：相同五文件pytest -q --tb=no为98 passed/9 errors（3.73s），9项仍为已明确豁免的基线夹具错误，无新增失败；git diff --check main通过，最终差异限定7个本任务文件。优化提交09937ab，同步提交b965bd6；准备按授权本地no-ff合并，不推送。
-
-
-## 2026-10-20 正式突破内存计费增量账本
-
-2026-10-20正式突破预算计费优化：针对_FormalKeyBreakState._retain以不可变块引用账本替换累计追加上界和超预算完整校准。持久序列/索引节点及安全冻结点按存活引用计费，新根先获取再释放旧根，保持共享子树；来源/候选修订保留未变块，封存记录沿原写时复制契约。可变容器每次重计，块内按身份去重、跨块非块叶子保守重复计费，账本条目/容量/节点存储纳入预算；超预算先丢检查点再回退，异常和clear释放账本，回退不携带未来证据。范围仅用户指定正式突破计费路径，普通_TrendJudgementState的独立预算路径尚未改动。新增共享版本回收、旧块不遍历、可变证据增长、索引修订、预算拒绝与正式二三级冷结果对照回归源码；开发阶段未运行测试/类型/性能探针，性能与结果待提交时验证，本轮不宣称提速倍数；MONOREPO-330保持in-progress。
-
-继续使用 feat-回测诊断按需记录 / C:/Users/zb/.codex/worktrees/backtest-diagnostics/wavequant-monorepo，本轮起点main 4efc1b5。主要文件trend_memory_ledger.py、trend_judgement.py和上述两测试；尚未提交/合并/推送，前一发布前缀任务的豁免和性能数字不能视作本次验证。
-
-
-## 2026-10-20 缓存请求专属写连接
-
-2026-10-20诊断缓存请求写连接复用：ArtifactCache新增显式start_write_session/close_write_session及上下文入口，连接按请求所属进程和线程惰性建立；共享实例默认仍短连接，其他线程使用独立短连接。_put_payload压缩继续在事务外，各块仍单独提交，首次建连沿原总等待预算、复用写入恢复0.5秒busy timeout；任何事务异常/取消丢弃连接，写失败仍返回False不影响有效计算。CalculationStepCache仅由Worker显式开启复用，_stop_cache立即释放，finish以finally关闭（包含发布回调失败），默认不记录诊断仍不创建缓存。新增test_artifact_write_session.py覆盖连接次数、逐块可见/无空闲写锁、失败回滚及重连、跨线程隔离、锁超时、取消、超大拒绝和记录器关闭。开发阶段未运行测试/类型/基准；本轮仅减少逐块开关连接成本，压缩与提交仍同步，未引入异步队列或批量事务，不宣称全部阻塞消除或实测提速。批量写入会改变逐块可见和失败恢复语义，留到同源计时后再评估；MONOREPO-330保持in-progress。
-
-本会话继续使用feat-回测诊断按需记录 / C:/Users/zb/.codex/worktrees/backtest-diagnostics/wavequant-monorepo。本轮涉及artifact_cache.py、calculation_step_cache.py、API backtest_jobs.py及新增回归；前一内存账本优化仍保留未提交、待验证，未覆盖其修改或套用此前任务测试/豁免。本轮未提交、合并或推送。
 2026-10-20 · MONOREPO-334 行情收藏修复交接
 
 分支feat-行情收藏修复，独立worktree C:/Users/zb/.codex/worktrees/market-watchlist-7364/wavequant-monorepo。334提交验证完成，恢复330为唯一活动功能并保留其历史记录。

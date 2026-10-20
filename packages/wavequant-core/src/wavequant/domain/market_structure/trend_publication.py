@@ -16,7 +16,6 @@ from .n_trend_confirmation import N_TARGET_CONFIRMATION, is_n_target_reversal, q
 from .hierarchical_confirmation import session_date
 from .trend_market_index import _MarketPrefixIndex
 from .trend_frozen_state import FrozenPrefixList
-from .trend_confirmation_version import _ConfirmationVersionCache
 from .trend_publication_cache import _PublicationCache, _PublicationCheckpoint
 
 Moment: TypeAlias = int | str
@@ -135,7 +134,7 @@ class _OriginLookup:
             return
         if (type(points) not in (PointVersion, CertifiedSource)
                 or not cast(PointVersion, points)._sealed or self._index is None):
-            _OriginLookup.__init__(self, points)
+            self.__init__(points)
             return
         previous = self.points if isinstance(self.points, PointVersion) else None
         start = cast(PointVersion, points).changed_since(previous)
@@ -210,7 +209,6 @@ class _PublishedTrendState:
             {session_date(bar): index for index, bar in enumerate(bars)})
         self.position_field = 'source_turn_position' if source_level == 0 else f'source_level{source_level}_position'
         self.parsed_context: ConfirmationContext | None = None
-        self._context_cache: _ConfirmationVersionCache | None = None
         self.context: ConfirmationContext | None = None
         self.active: Mapping[str, object] | None = None
         self.extreme: Mapping[str, object] | None = None
@@ -237,14 +235,11 @@ class _PublishedTrendState:
         if self.parsed_context is None:
             market = self.bars or None
             snapshot_end = len(self.bars) - 1 if self.bars else cutoff
-            self.parsed_context = (self._context_cache.prepare(self.source, self.bars, self.market_index)
-                                   if self._context_cache is not None and self.n_source is self.source else None)
-            if self.parsed_context is None:
-                self.parsed_context = prepare_confirmation_context(
-                    self.source, market, snapshot_end, n_source=self.n_source,
-                    n_target_trend_confirmation_enabled=self.n_enabled,
-                    _market_index=self.market_index,
-                )
+            self.parsed_context = prepare_confirmation_context(
+                self.source, market, snapshot_end, n_source=self.n_source,
+                n_target_trend_confirmation_enabled=self.n_enabled,
+                _market_index=self.market_index,
+            )
         if self.parsed_context.end_index == cutoff:
             return self.parsed_context
         if self.context is None or self.context.end_index != cutoff:
@@ -428,9 +423,6 @@ def publish_uptrends(
     _market_index: _MarketPrefixIndex | None = None,
     _origin_lookups: tuple[_OriginLookup, _OriginLookup] | None = None,
     _publication_cache: _PublicationCache | None = None,
-    _hierarchy_only: bool = False,
-    _versioned_hierarchy: bool = False,
-    _annotation_token_out: list[object] | None = None,
 ) -> list[dict[str, object]]:
     """Keep structural candidates private until their rising leg is qualified.
 
@@ -446,8 +438,6 @@ def publish_uptrends(
     identifies the independent earlier market extreme. Without bars, holding
     cannot be verified and the original local-origin behavior remains.
     """
-    if _annotation_token_out is not None:
-        _annotation_token_out.clear()
     result: MutableSequence[dict[str, object]] = []
     pressure: Mapping[str, object] | None = None
     pending_origin: Mapping[str, object] | None = None
@@ -468,8 +458,6 @@ def publish_uptrends(
     saved = cache.checkpoint if incremental and cache is not None else None
     start = saved.offset if saved is not None else 0
     if incremental:
-        assert cache is not None
-        state._context_cache = cache.confirmations
         result = saved.result.copy() if saved is not None else FrozenPrefixList()
         if saved is not None:
             pressure, pending_origin = saved.pressure, saved.pending_origin
@@ -720,22 +708,7 @@ def publish_uptrends(
         if stable and len(candidates) > start:
             checkpoint = capture(len(candidates))
         cache.save(checkpoint)
-        if _hierarchy_only and _versioned_hierarchy:
-            assert isinstance(result, FrozenPrefixList)
-            return cast(list[dict[str, object]], cache.hierarchy(result, saved))
         # Downstream annotation mutates its own points. It must never mutate a
         # checkpoint or a previously returned day's evidence.
-        if not _hierarchy_only:
-            retained = cache.checkpoint
-            if (_annotation_token_out is not None and retained is not None
-                    and isinstance(result, FrozenPrefixList) and not result._tail
-                    and result._archive is retained.result._archive
-                    and result._stop == retained.result._stop):
-                # Only the complete unchanged snapshot grants this hint. An
-                # unresolved or replaced endpoint takes the normal annotation path.
-                _annotation_token_out.append(retained._token)
-            return deepcopy(list(result))
-    if _hierarchy_only:
-        return [{field: point.get(field, 0) for field in
-                 ('index', 'ordinal', 'kind', 'value', 'available_at')} for point in result]
+        return deepcopy(list(result))
     return list(result)

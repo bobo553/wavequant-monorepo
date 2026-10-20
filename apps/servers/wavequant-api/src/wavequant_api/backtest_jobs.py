@@ -241,7 +241,6 @@ class BacktestJobs:
             record_details=self.record_backtest_diagnostics,
         )
         try:
-            recorder.start_write_session()
             preview = BacktestPreviewPublisher(lambda revision, value: self.update_preview(job_id, revision, value))
             with observe_steps(recorder), observe_market_preview(preview.observe):
                 result = work()

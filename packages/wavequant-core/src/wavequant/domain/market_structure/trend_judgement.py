@@ -24,7 +24,6 @@ from typing import cast
 
 from .owned_evidence import CertifiedSource, current_evidence, finite_evidence, owned_signature as _geometry_signature
 from .trend_frozen_state import FrozenPrefixList, FrozenPrefixMap, _IndexArchive, _IndexNode, _SequenceNode, _node_children
-from .trend_memory_ledger import _ImmutableBlockLedger
 from .trend_options import ordinary_completion_enabled
 from .polyline import LinePoint, ReversalPoint
 from .trend_level_upgrades import _PointRange, _TrendUpgradeState, promote_trend_key_breaks
@@ -749,8 +748,8 @@ class _JudgementLedger:
         for point in events[self.event_count:]:
             bucket(point).events.append(point)
         for turn in (upgrade.merged.values() if initial else upgrade.updated_merged.values()):
-            merged_point = turn.source
-            bucket(merged_point).merged[turn.index, turn.ordinal, turn.kind, turn.value] = merged_point
+            point = turn.source
+            bucket(point).merged[turn.index, turn.ordinal, turn.kind, turn.value] = point
         self.ordinary_count, self.event_count = len(ordinary.selected), len(events)
         return self._finish(dirty, positions, level, changed_objects)
 
@@ -971,8 +970,6 @@ class _TrendJudgementState:
         self.frozen_advances = 0
         self.frozen_invalidations = 0
         self._payload_upper_bytes = 0
-        self._budget = _ImmutableBlockLedger(self._budget_children, _FormalKeyBreakState._budget_block,
-                                             limit=self._limit)
         self.memory_used = 0
         self.peak_retained_bytes = 0
         self.peak_observed_bytes = 0
@@ -1126,18 +1123,24 @@ class _TrendJudgementState:
         ordinary, upgrade, events = _copy_append_states(self._ordinary, self._upgrade, self._events)
         self._flip_checkpoint = self._source_keys, self._regular_keys, ordinary, upgrade, events
         self._flip_checkpoint_ledger = self._copy_ledger(self._ledger)
-        measured = self._retained_bytes()
+        # 检查点只新增浅复制容器，证据叶子已在负载上界内；仅上界触及
+        # 预算时遍历对象图校准，避免每次翻向都重新读取全部历史证明。
+        measured = self._payload_upper_bytes + self._container_bytes() + 4096
+        if measured > self._limit:
+            measured = self._owned_bytes()
+            self.deep_budget_walks += 1
         if measured > self._limit:
             self._flip_checkpoint = None
             self._flip_checkpoint_ledger = None
-            measured = self._retained_bytes()
+            measured = self._owned_bytes()
+            self.deep_budget_walks += 1
         if measured > self._limit:
             self.budget_rejections += 1
             self.clear()
             return
         self.memory_used = measured
         self.peak_retained_bytes = max(self.peak_retained_bytes, measured)
-        self._payload_upper_bytes = 0
+        self._payload_upper_bytes = max(0, measured - self._container_bytes())
 
     def _restore_tail(self, certified: tuple[bytes, ...], *, flip: bool = False) -> bool:
         saved = self._flip_checkpoint if flip else self._checkpoint
@@ -1155,12 +1158,17 @@ class _TrendJudgementState:
         if flip:
             self._checkpoint = None
             self._checkpoint_ledger = None
-        measured = self._retained_bytes()
+        # 检查点已计入当前预算。恢复只复制索引容器，证据叶子是原对象图的
+        # 子集；沿用其保守负载上界，不能每次尾点修订重新遍历全部历史证据。
+        measured = self._payload_upper_bytes + self._container_bytes() + 4096
+        if measured > self._limit:
+            self.deep_budget_walks += 1
+            measured = self._owned_bytes()
         if measured > self._limit:
             self.clear()
             return False
         self.memory_used = measured
-        self._payload_upper_bytes = 0
+        self._payload_upper_bytes = max(0, measured - self._container_bytes())
         if flip:
             self.flip_restores += 1
         else:
@@ -1181,35 +1189,7 @@ class _TrendJudgementState:
         self._ledger = None
         self.frozen_boundary = self.frozen_known = None
         self._payload_upper_bytes = 0
-        self._budget.clear()
         self.memory_used = 0
-
-    @staticmethod
-    def _budget_children(value: object) -> Sequence[object]:
-        if type(value) is _TrendReversalState:
-            return (vars(value),)
-        return _FormalKeyBreakState._budget_children(value)
-
-    def _retained_bytes(self) -> int:
-        # Sealing shares records, not business decisions: revisions still
-        # replace nodes and can restore either checkpoint.
-        if self._upgrade is not None:
-            self._events = _seal_checkpoint_records(self._ordinary, self._upgrade, self._events)
-        if self._ledger is not None:
-            for name, value in list(vars(self._ledger).items()):
-                if type(value) in (list, FrozenPrefixList):
-                    records = value if type(value) is FrozenPrefixList else FrozenPrefixList(value)
-                    records.freeze(len(records))
-                    setattr(self._ledger, name, records)
-                elif type(value) in (dict, FrozenPrefixMap):
-                    index = value if type(value) is FrozenPrefixMap else FrozenPrefixMap(value.items())
-                    index.freeze()
-                    setattr(self._ledger, name, index)
-        roots: list[object] = [self._source_keys, self._regular_keys, self._ordinary, self._upgrade,
-            self._events, self._ledger, self._checkpoint, self._flip_checkpoint,
-            self._checkpoint_ledger, self._flip_checkpoint_ledger, self._source_version,
-            self.frozen_boundary, self.frozen_known]
-        return self._budget.measure(roots) + getsizeof(self) + getsizeof(vars(self)) + 4096
 
     def _owned_bytes(self) -> int:
         return self._owned_value_bytes([self])
@@ -1246,7 +1226,7 @@ class _TrendJudgementState:
                 # slots 快照没有 __dict__；证据与导出模板都属于预算。
                 pending.extend((value.data, value.json_template))
             elif type(value) in (_SequenceNode, _IndexNode):
-                pending.extend(_node_children(cast(_SequenceNode | _IndexNode, value)))
+                pending.extend(_node_children(value))
             elif type(value) in state_types:
                 pending.append(vars(value))
             elif type(value) is MappingProxyType:
@@ -1276,7 +1256,7 @@ class _TrendJudgementState:
                 seen.add(id(container))
                 size += getsizeof(container)
                 if type(container) in (FrozenPrefixList, FrozenPrefixMap):
-                    size += cast(FrozenPrefixList[object] | FrozenPrefixMap[object, object], container).storage_bytes
+                    size += container.storage_bytes
         # 已发布桶只读，随 changed_objects 计入不可变载荷；这里只统计
         # 可变顶层索引。检查点共享旧桶，不重复遍历或重复扣除其容器费用。
         return size
@@ -1317,9 +1297,6 @@ class _TrendJudgementState:
         appendable = (self._ordinary is not None and self._upgrade is not None
                       and len(certified) >= len(self._source_keys)
                       and (version_append or certified[:len(self._source_keys)] == self._source_keys))
-        if appendable and _source_revision is None:
-            # Public inputs are fully re-certified; retain equal old key objects.
-            certified = (*self._source_keys, *certified[len(self._source_keys):])
         restored = False
         if not appendable and self._tail_reuse:
             # 翻向点可能距今很远；选最近仍完全匹配的检查点，避免优先回退
@@ -1337,7 +1314,12 @@ class _TrendJudgementState:
             self._save_tail()
         if appendable:
             assert self._ordinary is not None and self._upgrade is not None
+            previous_source_count = len(self._ordinary.turns)
             previous_ordinary_count = len(self._ordinary.selected)
+            previous_regular_count = len(self._regular_keys)
+            previous_orders_count = len(self._upgrade.orders)
+            previous_high_count, previous_low_count = len(self._ordinary.highs), len(self._ordinary.lows)
+            previous_event_count = len(self._events)
             appended = turns[len(self._ordinary.turns):]
             # 公共前驱映射的 key 不能被新来源覆盖；同 K ordinal 保留原规则。
             reversals = {turn.reversal for turn in appended}
@@ -1372,9 +1354,43 @@ class _TrendJudgementState:
         merged = calculated_upgrade.advance(_snapshot=False)
         events = self._events
         certified_regular = cast(tuple[bytes, ...], regular_keys)
-        self._source_keys = certified
-        self._regular_keys = certified_regular
-        observed_bytes = self._retained_bytes()
+        if appendable:
+            self._source_keys = certified
+            self._regular_keys = certified_regular
+            assert self._ordinary is not None
+            upgrade = self._upgrade
+            new_orders = upgrade.orders[previous_orders_count:]
+            roots: list[object] = [
+                *self._ordinary.turns[previous_source_count:],
+                *self._ordinary.selected[previous_ordinary_count:],
+                *upgrade.regular[previous_regular_count:], *events[previous_event_count:],
+                *self._source_keys[previous_source_count:], *self._regular_keys[previous_regular_count:],
+                *self._ordinary.highs[previous_high_count:], *self._ordinary.lows[previous_low_count:],
+                *new_orders, *(upgrade.positions[order] for order in new_orders),
+                *(upgrade.source_positions[order] for order in new_orders),
+                upgrade.regular_cursor, upgrade.processed_count, upgrade.prefix_known, upgrade.owned_direction,
+                upgrade.last_fall_high_position, upgrade.last_rise_low_position,
+                self._ordinary.direction, self._ordinary.candidate, self._ordinary.prefix_known,
+                *(tree.size for tree in [*upgrade.keys_by_kind.values(), *upgrade.origins_by_kind.values()]),
+            ]
+            roots.extend(upgrade.updated_merged.values())
+            roots.extend(upgrade.updated_merged)
+            roots.extend(upgrade.new_merged_keys)
+            # 新证据可引用旧子树，逐批重复计费形成保守上界；不持有逐日版本、
+            # object-id memo 或已被替换的证据。可变顶层容器使用其当前真实容量。
+            self._payload_upper_bytes += self._owned_value_bytes(roots)
+            observed_bytes = self._payload_upper_bytes + self._container_bytes()
+        else:
+            self._source_keys = certified
+            self._regular_keys = certified_regular
+            observed_bytes = self._owned_bytes()
+            self.deep_budget_walks += 1
+            self._payload_upper_bytes = observed_bytes - self._container_bytes()
+        if appendable and observed_bytes > self._limit:
+            # 保守上界靠近预算时重新校准当前完整对象图，避免重复计费误拒绝。
+            observed_bytes = self._owned_bytes()
+            self.deep_budget_walks += 1
+            self._payload_upper_bytes = observed_bytes - self._container_bytes()
         # 一条路径仅保留最近状态，超预算的完整证明沿用冷判定，不保留逐日版本。
         self.peak_observed_bytes = max(self.peak_observed_bytes, observed_bytes)
         if observed_bytes > self._limit:
@@ -1395,10 +1411,16 @@ class _TrendJudgementState:
         initial = self._ledger is None
         if self._ledger is None:
             self._ledger = _JudgementLedger()
-        result, _ = self._ledger.update(self._ordinary, self._upgrade, events, positions,
+        result, changed = self._ledger.update(self._ordinary, self._upgrade, events, positions,
                                               initial=initial, level=self.trend_level)
         self._freeze_prefix()
-        observed = self._retained_bytes()
+        self._payload_upper_bytes += self._owned_value_bytes(changed)
+        # 账本含共享来源与可变桶；预留固定对象头余量，临近上限再精确校准。
+        observed = self._payload_upper_bytes + self._container_bytes() + 4096
+        if observed > self._limit:
+            self.deep_budget_walks += 1
+            observed = self._owned_bytes()
+            self._payload_upper_bytes = max(0, observed - self._container_bytes())
         self.peak_observed_bytes = max(self.peak_observed_bytes, observed)
         if observed > self._limit:
             self.budget_rejections += 1
@@ -1449,46 +1471,20 @@ class _FormalKeyBreakState:
 
     def clear(self) -> None:
         self._checkpoint: _FormalKeyBreakState | None = None
-        self._source_keys: Sequence[bytes] = ()
+        self._source_keys: tuple[bytes, ...] = ()
         self._candidate_keys: tuple[str, ...] = ()
-        self._turns: list[_SourceTurn] | FrozenPrefixList[_SourceTurn] = []
-        self._candidates: list[dict[str, object]] | FrozenPrefixList[dict[str, object]] = []
-        self._regular: list[_SourceTurn] | FrozenPrefixList[_SourceTurn] = []
+        self._turns: list[_SourceTurn] = []
+        self._candidates: list[dict[str, object]] = []
+        self._regular: list[_SourceTurn] = []
         self._upgrade: _TrendUpgradeState | None = None
         self._events: _EventRows = []
-        self._budget = _ImmutableBlockLedger(self._budget_children, self._budget_block, limit=self._limit)
+        self._payload_upper_bytes = 0
         self.memory_used = 0
         self._ledger: _JudgementLedger | None = None
         self._base_points: Sequence[Mapping[str, object]] = ()
         self._base_token: object | None = None
         self._source_token: object | None = None
         self._early_attack: int | None = None
-
-    @staticmethod
-    def _budget_block(value: object) -> bool:
-        # Source turns are immutable and published candidate buckets use copy-on-write.
-        # Count their shared evidence once across persistent tree leaves; mutable
-        # working tails stay outside nodes. Public points require JSON admission.
-        return (type(value) in (_SequenceNode, _IndexNode, _SourceTurn, _CandidateBucket)
-                or type(value) is _FrozenPoint and value.json_template is not None)
-
-    @staticmethod
-    def _budget_children(value: object) -> Sequence[object]:
-        if type(value) is dict:
-            mapping = cast(dict[object, object], value)
-            return (*mapping.keys(), *mapping.values())
-        if type(value) in (list, tuple, set, frozenset):
-            return tuple(cast(Sequence[object], value))
-        if type(value) is _FrozenPoint:
-            return value.data, value.json_template
-        if type(value) in (_SequenceNode, _IndexNode):
-            return _node_children(cast(_SequenceNode | _IndexNode, value))
-        if type(value) is MappingProxyType:
-            return get_referents(value)
-        if type(value) in (_TrendUpgradeState, _PointRange, _SourceTurn, ReversalPoint, LinePoint,
-                           FrozenPrefixList, FrozenPrefixMap, _IndexArchive, _JudgementLedger, _CandidateBucket):
-            return (vars(value),)
-        return ()
 
     @staticmethod
     def _value_bytes(roots: Sequence[object]) -> int:
@@ -1511,7 +1507,7 @@ class _FormalKeyBreakState:
             elif type(value) is _FrozenPoint:
                 pending.extend((value.data, value.json_template))
             elif type(value) in (_SequenceNode, _IndexNode):
-                pending.extend(_node_children(cast(_SequenceNode | _IndexNode, value)))
+                pending.extend(_node_children(value))
             elif type(value) is MappingProxyType:
                 pending.extend(get_referents(value))
             elif type(value) in (_TrendUpgradeState, _PointRange, _SourceTurn, ReversalPoint, LinePoint,
@@ -1525,9 +1521,7 @@ class _FormalKeyBreakState:
             self._candidates, self._regular, *_append_state_containers(None, self._upgrade, self._events)]
         containers.extend((self._base_points, *_TrendJudgementState._ledger_containers(self._ledger)))
         if self._checkpoint is not None:
-            attributes = vars(self._checkpoint)
-            containers.extend((self._checkpoint, {key: value for key, value in attributes.items()
-                                                   if key != '_budget'}))
+            containers.extend((self._checkpoint, vars(self._checkpoint)))
             containers.extend(self._checkpoint._containers())
         return containers
 
@@ -1541,7 +1535,6 @@ class _FormalKeyBreakState:
             setattr(self, name, records)
         saved = copy(self)
         saved._checkpoint = None
-        saved._budget = _ImmutableBlockLedger(self._budget_children, self._budget_block, limit=self._limit)
         saved._ledger = _TrendJudgementState._copy_ledger(self._ledger)
         saved._turns, saved._candidates, saved._regular = (
             self._turns.copy(), self._candidates.copy(), self._regular.copy())
@@ -1562,7 +1555,7 @@ class _FormalKeyBreakState:
             upgrade.event_sink = saved._events
         return saved
 
-    def _resume_checkpoint(self, source_keys: Sequence[bytes], candidate_keys: tuple[str, ...],
+    def _resume_checkpoint(self, source_keys: tuple[bytes, ...], candidate_keys: tuple[str, ...],
                            source: Sequence[Mapping[str, object]], result: TrendJudgement) -> None:
         def extends(state: '_FormalKeyBreakState') -> bool:
             source_append = (type(source) is CertifiedSource and source.owner is current_evidence()
@@ -1578,35 +1571,39 @@ class _FormalKeyBreakState:
         elif self._checkpoint is not None and extends(self._checkpoint):
             checkpoint = self._checkpoint
             restored = checkpoint._copy_checkpoint()
-            budget = self._budget
             self.__dict__.update(vars(restored))
-            self._budget = budget
             self._checkpoint = checkpoint
 
     def _retain(self, *, appended: bool, added: Sequence[object]) -> None:
-        # Preserve block identities on the next append or tail revision. These
-        # records already follow the checkpoint copy-on-write ownership contract.
-        if self._upgrade is not None:
-            self._events = _seal_checkpoint_records(None, self._upgrade, self._events)
-        for name in ('_turns', '_candidates', '_regular'):
-            raw = getattr(self, name)
-            records = raw if type(raw) is FrozenPrefixList else FrozenPrefixList(raw)
-            records.freeze(len(records))
-            setattr(self, name, records)
-        # Measure current mutable capacity and adjust immutable root ownership.
-        # No cumulative per-append upper bound, and no whole-graph calibration
-        # when an unchanged state merely sits near the budget.
-        observed = self._budget.measure(self._containers())
+        containers = self._containers()
+        container_size = sum(getsizeof(value) + (value.storage_bytes
+            if type(value) in (FrozenPrefixList, FrozenPrefixMap) else 0)
+            for value in {id(value): value for value in containers}.values())
+        if appended:
+            # 只为新来源、候选、事件和索引项计费；重复引用形成保守上界。
+            self._payload_upper_bytes += self._value_bytes(added)
+            observed = self._payload_upper_bytes + container_size
+        else:
+            observed = self._value_bytes(containers)
+            self._payload_upper_bytes = max(0, observed - container_size)
+        if appended and observed > self._limit:
+            observed = self._value_bytes(containers)
+            self._payload_upper_bytes = max(0, observed - container_size)
         if observed > self._limit and self._checkpoint is not None:
             self._checkpoint = None
-            observed = self._budget.measure(self._containers())
+            containers = self._containers()
+            container_size = sum(getsizeof(value) + (value.storage_bytes
+                if type(value) in (FrozenPrefixList, FrozenPrefixMap) else 0)
+                for value in {id(value): value for value in containers}.values())
+            observed = self._value_bytes(containers)
+            self._payload_upper_bytes = max(0, observed - container_size)
         if observed > self._limit:
             self.clear()
         else:
             self.memory_used = observed
 
     def calculate(self, source: Sequence[Mapping[str, object]], result: TrendJudgement,
-                  *, _certified_keys: Sequence[bytes] | None = None) -> TrendJudgement | None:
+                  *, _certified_keys: tuple[bytes, ...] | None = None) -> TrendJudgement | None:
         if get_ident() != self._thread or result.trend_level != self.trend_level:
             self.clear()
             return None
@@ -1645,7 +1642,7 @@ class _FormalKeyBreakState:
 
     def _calculate(
         self, source: Sequence[Mapping[str, object]], result: TrendJudgement,
-        source_keys: Sequence[bytes], candidate_keys: tuple[str, ...],
+        source_keys: tuple[bytes, ...], candidate_keys: tuple[str, ...],
     ) -> TrendJudgement:
         source_common = (source.changed_from if type(source) is CertifiedSource
             and source.owner is current_evidence() and source.parent is self._source_token else
@@ -1672,11 +1669,7 @@ class _FormalKeyBreakState:
             start = min(source_common, self._turns[boundary].position) if self._turns else 0
             source_tail = _source_turns(mutable_points(source[start:]), self.trend_level - 1,
                 formal_key_attacks=True, _position_offset=start)
-            turns = (self._turns.copy() if type(self._turns) is FrozenPrefixList
-                     else FrozenPrefixList(self._turns))
-            del turns[boundary:]
-            turns.extend(source_tail)
-            self._turns = turns
+            self._turns = [*self._turns[:boundary], *source_tail]
             if self._early_attack is None or self._early_attack >= boundary:
                 self._early_attack = next((position for position in range(boundary, len(self._turns))
                     if _has_early_formal_attack((self._turns[position],))), None)
@@ -1695,11 +1688,7 @@ class _FormalKeyBreakState:
                          added=[*source_tail, *source_keys[source_common:]])
             return result
         new_candidates = mutable_points(result.candidates[candidate_common:])
-        candidates = (self._candidates.copy() if type(self._candidates) is FrozenPrefixList
-                      else FrozenPrefixList(self._candidates))
-        del candidates[candidate_common:]
-        candidates.extend(new_candidates)
-        self._candidates = candidates
+        self._candidates = [*self._candidates[:candidate_common], *new_candidates]
         regular_tail = [turn for candidate in new_candidates for turn in _source_turns([candidate], self.trend_level,
             retain_geometry=True, accept_direction_facts=True)]
         if candidates_appended:
@@ -1722,7 +1711,7 @@ class _FormalKeyBreakState:
         if self._events:
             if self._ledger is None:
                 self._ledger = _JudgementLedger()
-                previous_candidates, previous_points = [], ()
+                previous_candidates, previous_points = (), ()
                 candidate_common = point_common = 0
             elif result._delta is not None and result._delta.parent is self._base_token:
                 point_common = result._delta.points_from
@@ -1764,7 +1753,7 @@ def _has_early_formal_attack(turns: Sequence[_SourceTurn]) -> bool:
 def _with_formal_key_breaks(
     source: Sequence[Mapping[str, object]], result: TrendJudgement, *, asof: Moment | None = None,
     _append_state: _FormalKeyBreakState | None = None,
-    _certified_keys: Sequence[bytes] | None = None,
+    _certified_keys: tuple[bytes, ...] | None = None,
 ) -> TrendJudgement:
     """在普通闭合判断之外复用严格突破状态，不让开放下级参与普通四点定义。"""
     level = result.trend_level

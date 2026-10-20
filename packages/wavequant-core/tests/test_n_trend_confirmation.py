@@ -165,19 +165,3 @@ def test_prepared_n_context_cannot_borrow_another_source_market_or_clock(binding
         cutoff = 9
     with pytest.raises(ValueError, match="context"):
         qualify_n_trend(source, source[1], 1, bars, cutoff, up=True, context=context)
-
-
-@pytest.mark.parametrize('up', (False, True))
-@pytest.mark.parametrize('dates', (False, True))
-def test_n_candidate_search_preserves_first_proof_without_copying_suffix(up, dates):
-    class NoSlices(tuple):
-        def __getitem__(self, key):
-            assert not isinstance(key, slice), 'N search copied the remaining candidates'
-            return super().__getitem__(key)
-
-    bars, source = sample(dates=dates, up=up)
-    for end in range(6, len(bars)):
-        context = prepare_n_confirmation_context(source, bars, end)
-        expected = qualify_n_trend(source, source[1], 1, bars, end, up=up, context=context)
-        indexed = replace(context, references=NoSlices(context.references))
-        assert qualify_n_trend(source, source[1], 1, bars, end, up=up, context=indexed) == expected

@@ -1,7 +1,6 @@
 """层级依赖调度：正式升级证明改变下级规则输入，仍只调用共同趋势核心。"""
 
-from collections.abc import Iterator, Mapping, Sequence
-from sys import getsizeof
+from collections.abc import Mapping, Sequence
 from types import TracebackType
 from typing import cast
 
@@ -13,45 +12,6 @@ from .trend_lines import (
 )
 from .trend_promotion_scope import PROMOTION_FIELD, promotion_point, validate_promotion
 from .trend_readonly_cache import _builtin_size
-from .trend_point_version import PointVersion
-
-
-class _PromotionEndpoints:
-    """Memoize endpoint positions only within one cascade convergence call.
-
-    Source versions are immutable and already retained by the convergence
-    results. The index never keeps a cross-day promotion authorization.
-    """
-
-    def __init__(self, *, memory_bytes: int = 2 * 1024 * 1024) -> None:
-        self.limit = memory_bytes
-        self.used = 0
-        self.entries: dict[int, tuple[PointVersion, tuple[int, ...]]] = {}
-
-    def points(self, values: Sequence[Mapping[str, object]]) -> Iterator[Mapping[str, object]]:
-        saved = self.entries.get(id(values))
-        if saved is not None and saved[0] is values:
-            for position in saved[1]:
-                yield values[position]
-            return
-        versioned = type(values) is PointVersion and values._sealed
-        positions: list[int] = []
-        charge = 512
-        for position, point in enumerate(values):
-            proof = point.get('upgrade_evidence')
-            if not isinstance(proof, Mapping) or proof.get('role') != 'endpoint':
-                continue
-            if versioned:
-                charge += getsizeof(position) + 8
-                if self.used + charge <= self.limit:
-                    positions.append(position)
-                else:
-                    versioned = False
-                    positions.clear()
-            yield point
-        if versioned and self.used + charge <= self.limit:
-            self.entries[id(values)] = cast(PointVersion, values), tuple(positions)
-            self.used += charge
 
 
 class _TrendCascadeCache:
@@ -144,7 +104,7 @@ def _enrich_promotions(
     source: Sequence[Mapping[str, object]],
     allowed: Mapping[str, Mapping[bytes, dict[str, object]]],
     *, _owned: bool = False,
-) -> Sequence[dict[str, object]]:
+) -> list[dict[str, object]]:
     """按路径和端点定位证明；保持原插入顺序及真实起点存在性门禁。"""
     if _owned and type(source) is CertifiedSource and source.owner is current_evidence() and not any(allowed.values()):
         return source
@@ -197,10 +157,9 @@ def prepare_trend_cascade(
     releases: dict[int, dict[str, dict[bytes, dict[str, object]]]] = {level: {} for level in levels}
     seen: dict[tuple[int, object], dict[str, object]] = {}
     # 同一轮收敛中 prepared 是只读版本；相同版本只展开一次直接下级。
-    projections: dict[int, tuple[dict[str, object], Sequence[dict[str, object]]]] = {}
+    projections: dict[int, tuple[dict[str, object], list[dict[str, object]]]] = {}
     prepared: dict[int, dict[str, object]] = {}
     round_index = 0
-    endpoints = _PromotionEndpoints()
     while True:
         round_workers = _round_caches.workers_for(round_index) if _round_caches is not None else workers
         current_source = source
@@ -245,7 +204,10 @@ def prepare_trend_cascade(
             parents[lower] = paths
         for upper in range(first + 1, last + 1):
             for stroke in _prepared_strokes(prepared[upper], 'candidate_strokes'):
-                for point in endpoints.points(_prepared_points(stroke)):
+                for point in _prepared_points(stroke):
+                    proof = point.get('upgrade_evidence')
+                    if not isinstance(proof, Mapping) or proof.get('role') != 'endpoint':
+                        continue
                     if _owned_source and _round_caches is not None:
                         record, signature = _round_caches.promotion(point, upper - 1)
                     else:
