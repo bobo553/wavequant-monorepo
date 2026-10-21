@@ -195,6 +195,11 @@
             ],
             "verification": [
                 {
+                    "command": "2026-10-22用户在已获知1项main既有失败后明确要求合并到main",
+                    "status": "not-run",
+                    "summary": "本次用户明确批准继续本地合并，例外仅覆盖test_folded_n.py::test_guofang_july29_n_survives_internal_smaller_swings在候选与未修改main c962e03同样缺2026-07-29 N的1项既有失败；保留原failed记录，不改断言，不视为通过。修复98579c6、35项不同用例及局部类型结果不变，分支与main均无新增未提交内容，未重复运行未变生产代码的检查。随后按no-ff本地合并，不推送、不重启服务；1/13结构确认仍不绕过目标空间门禁，MONOREPO-330其他未完成工作保留。"
+                },
+                {
                     "command": "pytest tests/test_eligible_folded_n.py tests/test_eligible_polyline_n.py tests/test_folded_n.py tests/test_qualified_n_windows.py tests/test_polyline_target_stream.py -q; corrected test_eligible_folded_n.py; mypy --follow-imports=skip four changed Python files",
                     "status": "passed",
                     "summary": "2026-10-22提交阶段：首轮34通过/2失败，新用例先因其他买点缺attack字段异常；随后真实审计确认1/09 N、1/13强轧空已识别，但该N非一级下降底部、不获1P/2T，等幅38.52134357588946已低于收盘38.80473759063575，按原风控no_live_structural_risk_reward拒买。纠正新用例额外假设的必买断言为严格结构及风险拒绝断言，不改生产风控或旧断言；新模块14通过87.23秒，连同首轮未变模块合计35个不同用例通过，另1个既有失败单列。完整2018起行情及1/09、1/13前缀一致，四修改Python局部mypy及最终测试文件复查通过，Git差异空白与唯一in-progress330状态检查通过。"
