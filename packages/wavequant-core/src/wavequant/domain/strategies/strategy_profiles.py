@@ -83,7 +83,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'configurable_n_target_trend_confirmation_v142_' + variant
+    config['profile_version'] = 'configurable_n_target_trend_confirmation_v143_' + variant
     config['definition']['eligible_n_candidates'] = (
         'confirmed_polyline_adjacent_and_folded_envelopes_same_selected_window_original_vertex_clocks')
     config['definition']['squeeze_n_round'] = (
@@ -232,6 +232,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         pressure_adverse_exit='positive_n_retests_supply_adverse_unfilled_gap_higher_close_half_reduce_first_lower_close_clear_other_adverse_full_clear',
         breakout_bearish_child_exit='known_polyline_or_any_trend_high_strict_break_attack_or_next_session_nondoji_mother_contains_bearish_child_allow_one_equal_extreme_volume_gt_previous_or_last_bearish_same_close_full_clear',
         breakout_limit_open_exit='known_high_attack_or_next_session_bearish_touched_limit_closed_below_volume_ge_2x_key_or_previous_or_last_bearish_no_shadow_or_body_threshold_same_close_at_least_cumulative_90_round_up_lot_full_clear_priority',
+        breakout_double_volume_fade_exit='known_polyline_or_trend_high_strict_break_bullish_volume_ge_2x_previous_then_next_session_bearish_close_lt_breakout_close_no_response_volume_or_body_threshold_same_close_at_least_cumulative_90_round_up_lot_full_clear_priority',
         breakout_bearish_shadow_exit='known_polyline_or_trend_high_intraday_strict_break_attack_or_next_session_volume_bearish_upper_gt_body_same_close_cumulative_90_next_session_open_lt_warning_close_full_clear',
         volume_shadow_midpoint_exit='previous_session_volume_bearish_current_volume_gt_previous_upper_strictly_gt_body_close_strictly_below_previous_body_midpoint_same_close_full_clear_any_candle_color',
         breakout_gap_bearish_exit='known_high_break_attack_or_next_session_open_strictly_outside_previous_range_bearish_volume_gt_previous_or_last_bearish_body_ge_5pct_open_and_half_range_no_limit_up_prerequisite_same_close_full_clear',

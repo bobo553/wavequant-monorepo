@@ -43,7 +43,7 @@ from wavequant.domain.strategies.pressure_exit import (
 )
 from wavequant.domain.strategies.trend_flip_exit import TrendFlipExitStream
 from wavequant.domain.strategies.breakout_shadow_exit import (
-    BREAKOUT_LIMIT_OPEN_REDUCE, BREAKOUT_SHADOW_CLEAR, BREAKOUT_SHADOW_REDUCE,
+    BREAKOUT_DOUBLE_VOLUME_FADE_REDUCE, BREAKOUT_LIMIT_OPEN_REDUCE, BREAKOUT_SHADOW_CLEAR, BREAKOUT_SHADOW_REDUCE,
 )
 from wavequant.domain.strategies.mother_child_inverse_n import (
     MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break,
@@ -374,7 +374,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
         elif 'exit_target_fraction' in evidence:
             desired = pos.initial_quantity * evidence['exit_target_fraction']
             already_sold = pos.initial_quantity - pos.quantity
-            if pending_exit[symbol] == BREAKOUT_LIMIT_OPEN_REDUCE:
+            if pending_exit[symbol] in (BREAKOUT_LIMIT_OPEN_REDUCE, BREAKOUT_DOUBLE_VOLUME_FADE_REDUCE):
                 # 至少减九成：向上取整且不超持仓，T+1与可卖门禁仍在下方执行。
                 quantity = min(pos.quantity, max(0.0, math.ceil((desired - already_sold) / lot - 1e-9) * lot))
             else:
@@ -1183,7 +1183,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     pressure = None
                 if (pressure is not None and pressure['reason'] in (
                         'record_high_resistance_reduce', 'record_high_massive_resistance_reduce_30',
-                        BREAKOUT_SHADOW_REDUCE, BREAKOUT_LIMIT_OPEN_REDUCE)
+                        BREAKOUT_SHADOW_REDUCE, BREAKOUT_LIMIT_OPEN_REDUCE, BREAKOUT_DOUBLE_VOLUME_FADE_REDUCE)
                         and (hard_reason or volume_inverse or inverse_failure is not None
                              or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
                     pressure = None
