@@ -42,7 +42,9 @@ from wavequant.domain.strategies.pressure_exit import (
     PressureExitStream, pressure_exit_history, record_high_resistance_history, record_high_massive_resistance_history,
 )
 from wavequant.domain.strategies.trend_flip_exit import TrendFlipExitStream
-from wavequant.domain.strategies.breakout_shadow_exit import BREAKOUT_SHADOW_CLEAR, BREAKOUT_SHADOW_REDUCE
+from wavequant.domain.strategies.breakout_shadow_exit import (
+    BREAKOUT_LIMIT_OPEN_REDUCE, BREAKOUT_SHADOW_CLEAR, BREAKOUT_SHADOW_REDUCE,
+)
 from wavequant.domain.strategies.mother_child_inverse_n import (
     MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break,
 )
@@ -361,6 +363,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
             evidence.update(timing)
         elif execution_model == 'next_open':
             evidence['execution_timestamp'] = when.replace(hour=9, minute=30).isoformat()
+        elif execution_model == 'same_day_close':
+            evidence['execution_timestamp'] = when.replace(hour=15, minute=0).isoformat()
         fraction = evidence.get('exit_fraction', 1.0)
         lot = config.lot_size / bar.adjustment_factor
         quantity = pos.quantity if fraction == 1 else math.floor(pos.quantity * fraction / lot) * lot
@@ -369,7 +373,11 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
         elif 'exit_target_fraction' in evidence:
             desired = pos.initial_quantity * evidence['exit_target_fraction']
             already_sold = pos.initial_quantity - pos.quantity
-            quantity = max(0.0, math.floor((desired - already_sold) / lot + 1e-9) * lot)
+            if pending_exit[symbol] == BREAKOUT_LIMIT_OPEN_REDUCE:
+                # 至少减九成：向上取整且不超持仓，T+1与可卖门禁仍在下方执行。
+                quantity = min(pos.quantity, max(0.0, math.ceil((desired - already_sold) / lot - 1e-9) * lot))
+            else:
+                quantity = max(0.0, math.floor((desired - already_sold) / lot + 1e-9) * lot)
         # A holding smaller than two sale lots cannot be split as requested.
         if quantity <= 0:
             if 'exit_target_fraction' in evidence or pending_exit[symbol] in (
@@ -1167,7 +1175,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     pressure = None
                 if (pressure is not None and pressure['reason'] in (
                         'record_high_resistance_reduce', 'record_high_massive_resistance_reduce_30',
-                        BREAKOUT_SHADOW_REDUCE)
+                        BREAKOUT_SHADOW_REDUCE, BREAKOUT_LIMIT_OPEN_REDUCE)
                         and (hard_reason or volume_inverse or inverse_failure is not None
                              or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
                     pressure = None
