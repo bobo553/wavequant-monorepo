@@ -1,3 +1,17 @@
+2026-10-21 · MONOREPO-335 提交验证，合并受既有失败阻碍
+
+用户要求合并main。成交量/提示/剪贴板/行情准备四文件111项通过，四个修改生产JS语法通过；新模块、提示模块及两测试Prettier整理，git diff --check通过。Node24.16.0/pnpm10.26.2。public JS被现有lint/TS配置排除，未用无关检查充当验证，未运行构建或浏览器。
+chart-series-lifecycle.test.mjs候选与未修改main c552319均13通过/5失败，位置126、151、172、189、341，分别为视窗null、左边界13.139333对13.25、首快照不可见、右边界null及N目标2对4；未修无关产品行为或放宽断言。
+按AGENTS“检查未通过不合并”规则，提交保留成果后等待用户明确豁免这5项既有失败，或授权另行修复。335标记blocked，330恢复原in-progress。未推送、重启服务；不能称已合并。
+
+2026-10-21 · MONOREPO-335 日线成交量分级（待提交时验证）
+
+独立worktree C:/Users/zb/.codex/worktrees/volume-levels/wavequant-monorepo，分支feat-成交量分级。从本地main建立。
+按相邻交易日日成交量原始比值显示B2/B3/B5/B10+，文字和颜色区分等级，柱色沿用原涨跌色；成交量图层绑定柱顶坐标，随更新/隐藏切换。Tooltip与复制统一万股、较前日倍数、放量等级，异常基数显示—；分钟等非日线不使用前日分级。
+相关文件：public/volume-expansion.js、candle-details.js、charts.js、app.js；更新成交量复制预期并新增边界和图层数据用例。
+本轮只编辑代码和记录；测试、lint、类型、构建、浏览器及Git状态/差异检查均未执行，待实际提交时验证。未提交、合并、推送或重启当前服务。高密度标记的实际视觉仍待验收；数据未提供可靠盘中完成状态，本次不推断“截至当前”。
+此分支activeFeature为335，330仅在本分支暂列backlog保留原证据；后续合并需协调其他会话活动状态。CodeGraph独立worktree不可查询，已按工具提示使用源码阅读。
+
 2026-10-20 · MONOREPO-334 合并前最终记录
 
 修复提交99a1d27已通过7517560同步main cae59b0；仅session-handoff.md文档冲突，双方记录完整保留，Web/API/contracts生产代码未被同步改变。同步后pytest test_watchlists.py：25 passed（15.14s），git diff --check main通过，工作树干净。Web先前最终6项Vitest/28项Node、Hook重验、lint/类型及生产构建证据有效且未改源码，不重复运行；浏览器/E2E和在线视觉未运行。按用户授权本地no-ff合并，不推送。334完成，330保持原有in-progress。

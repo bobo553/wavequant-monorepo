@@ -19,7 +19,7 @@ test("copied K-line details include the stock name and both code forms", () => {
 
     assert.match(text, /^股票：600519 贵州茅台（sh\.600519）\n日期：2026-09-18\n/);
     assert.match(text, /收盘：103\.00 元/);
-    assert.match(text, /成交量：1,200 股/);
+    assert.match(text, /成交量：0\.12 万股/);
 });
 
 test("K-line change uses the previous trading bar's close in the displayed price series", () => {

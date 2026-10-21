@@ -1,3 +1,4 @@
+import { VolumeExpansionOverlay } from "./volume-expansion.js";
 import { aWaveAnnotations, aWaveLegs, aWaveObservations } from "./a-wave-observations.js";
 import {
     avoidLabelCollisions,
@@ -200,6 +201,8 @@ export class PriceChart {
             priceScaleId: "volume",
         });
         this.volume.priceScale().applyOptions({ scaleMargins: { top: 0.83, bottom: 0 } });
+        this.volumeExpansionOverlay = new VolumeExpansionOverlay(container);
+        this.volume.attachPrimitive(this.volumeExpansionOverlay);
         this.markers = L.createSeriesMarkers(this.candles, []);
         // 普通规则仍使用库标记；真实成交只由顶层文字图层绘制，避免箭头缩成圆点。
         this.lines = [];
@@ -378,7 +381,7 @@ export class PriceChart {
                 this.tooltip.append(eligibility);
             }
             const previousClose = barIndex > 0 ? marketBars[barIndex - 1].close : undefined;
-            for (const [label, value] of candleDetails(bar, previousClose).slice(1)) {
+            for (const [label, value] of candleDetails(bar, previousClose, marketBars[barIndex - 1]?.volume, this.data.timeframe || "1d").slice(1)) {
                 const line = document.createElement("div");
                 line.className = "chart-tooltip-price";
                 const name = document.createElement("span");
@@ -511,6 +514,7 @@ export class PriceChart {
         this.clearTheory();
         this.clearLevels();
         this.candles.setData(bars.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
+        this.volumeExpansionOverlay.setData(bars, this.volumeVisible && (data.timeframe || "1d") === "1d");
         this.buyEligibilityOverlay.setData(data);
         this.eligibilityBoundaryOverlay.setData(data);
         this.setVolume(options.volume !== false);
@@ -554,6 +558,7 @@ export class PriceChart {
             this.candles.setData(bars.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
             this.setVolume(this.volumeVisible);
         }
+        this.volumeExpansionOverlay.setData(bars, this.volumeVisible && (data.timeframe || "1d") === "1d");
         this.buyEligibilityOverlay.setData(data);
         this.eligibilityBoundaryOverlay.setData(data);
         this.annotations = buildAnnotations(data, this.theory);
@@ -600,6 +605,7 @@ export class PriceChart {
     setVolume(show) {
         this.volumeVisible = show;
         if (!this.data) return;
+        this.volumeExpansionOverlay.setData(chartMarketBars(this.data), show && (this.data.timeframe || "1d") === "1d");
         this.volume.setData(
             show
                 ? chartMarketBars(this.data).map((b) => ({

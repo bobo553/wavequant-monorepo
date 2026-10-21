@@ -4,6 +4,35 @@
     "activeFeature": "MONOREPO-330",
     "features": [
         {
+            "id": "MONOREPO-335",
+            "name": "daily-volume-expansion-levels",
+            "title": "日线成交量分级标识与提示",
+            "status": "blocked",
+            "dependencies": [],
+            "description": "按前一交易日成交量分级，柱顶标识B2/B3/B5/B10+，提示与复制统一万股、较前日倍数及等级。",
+            "scope": "仅Web行情显示与复制，不改变趋势、策略或交易规则。独立worktree实现；335因既有图表测试失败暂缓合并，330恢复原活动状态，原历史证据不变。",
+            "acceptanceCriteria": [
+                "R<2无标记；2≤R<3 B2；3≤R<5 B3；5≤R<10 B5；R≥10 B10+，按原始比值判定。",
+                "成交量显示万股并保留两位小数；日线Tooltip及复制显示较前日倍数和放量等级。",
+                "前值缺失或非正、当前值无效时显示—且不标记；非日线不套用前日规则。",
+                "加载、更新、切股及隐藏成交量时标识同步；缩放时锚定成交量柱顶。",
+                "提交阶段执行相关最小充分验证，浏览器验收须当次明确授权。"
+            ],
+            "verification": [{
+                "command": "Node24.16.0/pnpm10.26.2 node --test volume-expansion,candle-details,candle-clipboard,chart-market-preparation; node --check four changed public modules; prettier; git diff --check",
+                "status": "passed",
+                "summary": "2026-10-21提交阶段：四个相关测试文件111项通过，四个生产JS模块语法通过；新增模块、提示模块及两测试格式已整理，差异空白检查通过。public JS被现有ESLint/tsconfig排除，因此不以无关Web lint/typecheck充当验证；无依赖、TS或打包配置改动，未运行生产构建。"
+            }, {
+                "command": "pnpm exec node --test apps/webs/wavequant-web/tests/chart-series-lifecycle.test.mjs; same command on untouched main c552319",
+                "status": "failed",
+                "summary": "候选和未修改main均13通过/5失败，失败位置126、151、172、189、341：视窗null、13.139333对13.25、首快照不可见、右边界null、N目标2对4。均为相同既有失败，未修改源码行为或放宽断言。按仓库失败不合并规则，等待用户明确允许带这5项既有失败合并，或另行授权修复。"
+            }, {
+                "command": "browser/Playwright E2E; production build",
+                "status": "not-run",
+                "summary": "用户未授权浏览器E2E，密集柱顶标记实际视觉待验收。未重启服务、推送或合并。"
+            }]
+        },
+        {
             "id": "MONOREPO-334",
             "name": "market-navigation-and-watchlist-favorites",
             "title": "行情跳转与自选收藏滚动修复",
