@@ -1,17 +1,3 @@
-2026-10-21 · MONOREPO-335 提交验证，合并受既有失败阻碍
-
-用户要求合并main。成交量/提示/剪贴板/行情准备四文件111项通过，四个修改生产JS语法通过；新模块、提示模块及两测试Prettier整理，git diff --check通过。Node24.16.0/pnpm10.26.2。public JS被现有lint/TS配置排除，未用无关检查充当验证，未运行构建或浏览器。
-chart-series-lifecycle.test.mjs候选与未修改main c552319均13通过/5失败，位置126、151、172、189、341，分别为视窗null、左边界13.139333对13.25、首快照不可见、右边界null及N目标2对4；未修无关产品行为或放宽断言。
-按AGENTS“检查未通过不合并”规则，提交保留成果后等待用户明确豁免这5项既有失败，或授权另行修复。335标记blocked，330恢复原in-progress。未推送、重启服务；不能称已合并。
-
-2026-10-21 · MONOREPO-335 日线成交量分级（待提交时验证）
-
-独立worktree C:/Users/zb/.codex/worktrees/volume-levels/wavequant-monorepo，分支feat-成交量分级。从本地main建立。
-按相邻交易日日成交量原始比值显示B2/B3/B5/B10+，文字和颜色区分等级，柱色沿用原涨跌色；成交量图层绑定柱顶坐标，随更新/隐藏切换。Tooltip与复制统一万股、较前日倍数、放量等级，异常基数显示—；分钟等非日线不使用前日分级。
-相关文件：public/volume-expansion.js、candle-details.js、charts.js、app.js；更新成交量复制预期并新增边界和图层数据用例。
-本轮只编辑代码和记录；测试、lint、类型、构建、浏览器及Git状态/差异检查均未执行，待实际提交时验证。未提交、合并、推送或重启当前服务。高密度标记的实际视觉仍待验收；数据未提供可靠盘中完成状态，本次不推断“截至当前”。
-此分支activeFeature为335，330仅在本分支暂列backlog保留原证据；后续合并需协调其他会话活动状态。CodeGraph独立worktree不可查询，已按工具提示使用源码阅读。
-
 2026-10-21 · 国芳8/28在线买入验收
 
 2026-10-21在线验收完成：代码81f1094已通过e46bdd1本地no-ff合并main，未推送。3303自动启动同参数国芳任务b693a261-789c-4ef2-8299-4caf0591f74d，完整2018-01-02至2026-10-20共2132个交易日已completed，策略configurable_n_target_trend_confirmation_v129_lecture_v3。2026-08-28 15:00 BUY filled，原因qualified_double_volume_breakout_close，原始8.34元/200股、复权11.618168141671974；目标17.078985781402686。返回图表markers包含同日成交买点，账本资格、收盘量价、时刻及止损/目标条件均为true，费用后盈亏比过滤关闭项为null。沿用原nonflat_limit_close_without_queue_verification模拟假设，不代表真实排队成交或早盘分钟验证。最终服务结果保存在本worktree .codex-runtime/gap-20260828/live-updated-result.json及live-summary.json。本次缺买点问题已完成；MONOREPO-330其他未完成事项和旧失败记录保留。此次仅补录证据，不更改产品代码，不重复运行测试或浏览器。
