@@ -17,7 +17,8 @@ from wavequant.domain.strategies.attack_quality import squeeze_buy_rejection
     (10.0, 10.61, 10.3, 101, False),
     (10.0, 10.6, 10.3, 100, False),
     (10.0, 10.6, 10.3, 99, False),
-    (10.6, 10.9, 10.55, 101, True),  # Gap route does not require a bullish body.
+    (10.6, 10.9, 10.61, 101, True),  # Gap route does not require a medium bullish body.
+    (10.6, 10.9, 10.55, 101, False),  # Increased volume never waives bearish rejection.
     (10.6, 10.9, 10.55, 100, False),
     (10.5, 10.9, 10.55, 101, False),  # Opening at yesterday's high is not a gap.
 ])
@@ -60,8 +61,22 @@ def test_each_price_route_accepts_either_candidate_volume_reference(
     before_attack = replace(previous, timestamp=datetime(2024, 2, 20), volume=pre_n_volume)
     bar = Bar(datetime(2024, 2, 27), previous.symbol,
               10.6 if gap else 10, 10.9 if gap else 10.6, 10.0,
-              10.55 if gap else 10.3, current_volume)
+              10.61 if gap else 10.3, current_volume)
     assert (squeeze_buy_rejection(bar, previous, before_attack) is None) is accepted
+
+
+@pytest.mark.parametrize('previous_volume,pre_n_volume,reason', [
+    (200, 100, 'gap_open_bearish_buy_blocked'),
+    (100, 200, 'volume_bearish_buy_blocked'),
+    (0, 100, 'gap_open_bearish_buy_blocked'),
+])
+def test_either_volume_reference_cannot_waive_gap_bearish_rejection(
+    previous_volume: float, pre_n_volume: float, reason: str,
+) -> None:
+    previous = Bar(datetime(2024, 2, 26), 'sh.601086', 10, 10.5, 9.8, 10, previous_volume)
+    before_attack = replace(previous, timestamp=datetime(2024, 2, 20), volume=pre_n_volume)
+    current = Bar(datetime(2024, 2, 27), previous.symbol, 10.6, 10.9, 10, 10.55, 150)
+    assert squeeze_buy_rejection(current, previous, before_attack) == reason
 
 
 def test_pre_n_reference_is_candidate_local_and_cannot_come_from_future() -> None:

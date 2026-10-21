@@ -188,6 +188,16 @@
             ],
             "verification": [
                 {
+                    "command": "pytest squeeze_low_open_confirmation, breakout_candle_quality, squeeze_buy_quality; baseline main old test; revised module; mypy five files; diff and state review",
+                    "status": "passed",
+                    "summary": "2026-10-21提交：初54通过/4失败，未修改main同4旧阴线放行期望失败。修正量能矩阵为小阳并新增原阴线精确拒绝，模块28通过，合计62 distinct cases。真实1677棒确认11/27正N、11/29轧空及15:00非一字涨停收盘模拟买入。5修改Python文件局部mypy通过，系统缺工具及单文件搜索路径问题已解决；生产未再变。diff及状态复核完成，未运行完整套件/浏览器/构建，未验证在线页面或真实排队。准备提交同步main后本地合并，不推送；330其他事项保留。"
+                },
+                {
+                    "command": "2026-10-21 low-open squeeze confirmation development; checks deferred",
+                    "status": "not-run",
+                    "summary": "旧保存审计确认国芳11/27正N与11/29轧空，被breakout_low_open的前日倍量条件拦截。轧空候选改为已有放量且低开中大阳收盘越前高可通过K线门槛，独立突破/末跌高仍保留原规则；profile v133。新增2018起同源截止11/29真实权限fixture与信号/收盘成交回归源码及量价边界，未运行测试、类型、回测、Git检查或浏览器，待提交时验证其他门禁与最终成交。feat-轧空确认买入独立worktree，未提交合并推送。"
+                },
+                {
                     "command": "2026-10-21等实体反包提交定向pytest五文件、mypy六文件follow-imports=skip、git diff --check及复核",
                     "status": "failed",
                     "summary": "2026-10-21等实体反包提交验证：pytest test_equal_body_volume_clear.py、test_body_volume_clear.py、test_volume_bearish_entry.py、test_doji_volume_low_break_clear.py、test_two_t_body_volume_clear.py为86 passed/3 failed（21.65s）。新增冻结8/19–8/24行情、等值边界、严格量能、十字星隔离、流式及账户15:00全清用例通过；三失败与本会话此前main独立复现且用户明确“继续合并”授权的节点/断言相同，仍为T+1预期及两项清仓原因名称，不作为已修复或通过。遵循会话授权持续有效原则沿用用户对同三项已知失败的确认；此前开发记录“不自动延续”不作为新增用户约束。六修改Python文件mypy --config-file packages/wavequant-core/pyproject.toml --follow-imports=skip通过（局部类型），git diff --check及源码/断言复核完成。当前main为5b0868e且工作区干净，分支无落后；仅实体完整覆盖等值规则与profile v132变化，保留严格放量和十字星专用规则。未运行完整套件、浏览器或构建，未声称完整实股资格回放；按用户请求本地提交/no-ff合并，不推送。"

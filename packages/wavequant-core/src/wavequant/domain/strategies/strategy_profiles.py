@@ -83,7 +83,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'configurable_n_target_trend_confirmation_v132_' + variant
+    config['profile_version'] = 'configurable_n_target_trend_confirmation_v133_' + variant
     config['definition']['trend_confirmation_routes'] = 'same_level_key_break_or_lower_key_break_alternation_turn'
     config['definition']['n_target_trend_confirmation_enabled'] = False
     config['definition']['optional_trend_confirmation_route'] = 'source_n_strict_one_p_target'
@@ -192,7 +192,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         wave_upper_rejection_exit='post_b_new_n_one_p_or_later_volume_gt_previous_new_high_bearish_upper_ge_body_lower_le_20pct_range_ge_8pct_cumulative_80_same_close',
         polyline_buy_gate='shared_confirmed_polyline_bearish_last_fall_high_known_before_strict_high_break_same_bar_open_ge_previous_close_and_gap_or_medium_bullish_body_weak_break_never_releases_all_buy_channels_keep_candle_and_exit_rules',
         low_open_exception='volume_ge_twice_positive_previous_session_and_medium_bullish_body_and_close_strictly_above_previous_high_and_active_polyline_key_when_present',
-        squeeze_buy_candle='mandatory_volume_gt_positive_previous_or_candidate_pre_n_attack_session_and_open_ge_previous_close_and_either_strict_gap_above_previous_high_or_close_gain_strictly_gt_2pct_medium_bullish_body_independent_of_optional_volume_filter',
+        squeeze_buy_candle='mandatory_volume_gt_positive_previous_or_candidate_pre_n_attack_session_and_either_strict_gap_or_close_gain_gt_2pct_medium_bullish_body__low_open_requires_close_above_previous_high_not_double_volume__independent_of_optional_volume_filter',
         weak_n_confirmation='uninterrupted_strong_squeeze_or_defense_held_volume_gt_previous_close_above_episode_record_squeeze',
         squeeze_invalidation='later_inverse_n_ends_local_bounce_larger_defense_can_wait_for_fresh_volume_gap',
         qualified_rising_entry='shared_polyline_gate_selected_level_active_interval_high_open_strong_close_or_next_session_volume_gap_defended_above_breakout_high_same_day_close_all_account_guards',
