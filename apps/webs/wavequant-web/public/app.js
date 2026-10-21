@@ -4,6 +4,7 @@ import {
     backtestRecordMatchesSource,
     expiredBacktestSnapshot,
     formatBacktestElapsed,
+    completedBacktestElapsed,
     backtestProgress,
     formatBacktestStage,
     runningBacktestStatuses,
@@ -445,6 +446,10 @@ function renderSelectedStockSummary() {
         text = `${symbolName(symbol)} · ${waiting}${stage || current?.message || "正在等待服务器进度…"}${elapsed ? ` · ${elapsed}` : ""}`;
         status = unavailable ? "unknown" : "running";
     }
+    if (!running && status === "completed") {
+        const elapsed = completedBacktestElapsed(current, serverBacktestSnapshot.recent);
+        if (elapsed) text = `${text} · ${elapsed}`;
+    }
     if (text == null) return;
     const summary = $("selected-stock-summary");
     if (status) summary.dataset.backtestStatus = status;
@@ -528,6 +533,10 @@ function renderStockBacktestStatus() {
         void refreshBacktestPreview(currentServerJob);
     const completedJob = current && serverBacktestSnapshot.recent?.find((job) => job.job === current.params.backtest_job
         && backtestRecordMatchesSource(job, source));
+    if (current?.status === "completed" && completedJob?.status === "completed"
+        && Number.isFinite(completedJob.elapsed_seconds) && completedJob.elapsed_seconds >= 0)
+        current.elapsedSeconds = completedJob.elapsed_seconds;
+    const completedElapsed = completedBacktestElapsed(current, serverBacktestSnapshot.recent);
     renderBacktestPipeline($("stock-backtest-pipeline"), currentServerJob?.pipeline || completedJob?.pipeline);
     const status = $("stock-backtest-status");
     status.hidden = !current && !others && !currentServerJob;
@@ -553,7 +562,7 @@ function renderStockBacktestStatus() {
         running
             ? `${name} · ${stage || current?.message || "正在等待服务器进度…"} ${serverStatus}可继续查看或切换股票。`
             : current?.status === "completed"
-              ? `${name} · 回测已完成，结果已显示在当前股票。`
+              ? `${name} · 回测已完成${completedElapsed ? ` · ${completedElapsed}` : ""}，结果已显示在当前股票。`
               : current?.status === "failed"
                 ? `${name} · 回测失败：${current.error?.message || "未知错误"}。可修改设置后重试。`
                 : "";

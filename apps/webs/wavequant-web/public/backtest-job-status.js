@@ -165,3 +165,21 @@ export function formatBacktestStage(job) {
     const percent = progress ? `${progress.scope === "sessions" ? "交易日进度 " : ""}${progress.percent}%` : "";
     return [stage ? `当前步骤：${stage}` : "", percent].filter(Boolean).join(" · ");
 }
+
+export function formatCompletedBacktestElapsed(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return "";
+    const total = Math.floor(seconds);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const remainder = total % 60;
+    return `回测耗时 ${hours ? `${hours} 小时 ` : ""}${minutes ? `${minutes} 分钟 ` : ""}${remainder} 秒`;
+}
+
+export function completedBacktestElapsed(task, recent) {
+    if (task?.status !== "completed") return "";
+    const record = recent?.find((item) => item.status === "completed"
+        && item.job === task.params.backtest_job && item.path === task.path
+        && item.symbol === task.symbol && item.version === task.version
+        && backtestArgumentsKey(item.path, item.params || {}) === backtestArgumentsKey(task.path, task.params));
+    return formatCompletedBacktestElapsed(record?.elapsed_seconds ?? task.elapsedSeconds);
+}
