@@ -180,13 +180,30 @@ def test_xingwang_production_pipeline_retains_earlier_n_and_squeeze() -> None:
     assert bars[confirmed].close > equal_target
     rejection = next(event for event in full.audit if event['event'] == 'entry_rejected'
                      and event.get('attack') == attack and event['bar_index'] == confirmed)
-    assert rejection['reason'] == 'no_live_structural_risk_reward'
+    # 本轮首 N 已在 1/10 发出买点；后续结构继续识别，但不能另开轧空轮次。
+    assert rejection['reason'] == 'first_n_squeeze_already_emitted'
     assert not any(signal.side == 'LONG' and signal.bar_index == confirmed
                    and signal.trigger_timestamp == bars[attack].timestamp for signal in full.signals)
-    for cutoff in (attack, confirmed):
+    bought, repeated = dates['2020-01-10'], dates['2020-01-20']
+    first_buy = next(signal for signal in full.signals if signal.side == 'LONG' and signal.bar_index == bought)
+    assert first_buy.reason == 'system_multilevel_breakout_squeeze'
+    first_entry = next(row for row in full.audit if row['event'] == 'long_signal' and row['bar_index'] == bought)
+    assert first_entry['squeeze_owner_attack'] == first_entry['attack'] == dates['2019-12-06']
+    assert first_entry['squeeze_owner_defense'] == pytest.approx(32.91419056983502)
+    assert not any(signal.side == 'LONG' and signal.bar_index == repeated for signal in full.signals)
+    denied = next(row for row in full.audit if row['event'] == 'entry_rejected'
+                  and row['bar_index'] == repeated and row.get('attack') == dates['2020-01-15'])
+    assert denied['reason'] == 'first_n_squeeze_already_emitted'
+    assert denied['squeeze_owner_attack'] == first_entry['attack']
+    assert denied['squeeze_owner_emitted_at'] == bought
+    assert denied['squeeze_owner_defense'] == first_entry['squeeze_owner_defense']
+    assert min(bar.low for bar in bars[bought + 1:repeated + 1]) > float(first_entry['squeeze_owner_defense'])
+    for cutoff in (attack, bought, confirmed, repeated):
         prefix = generate_system_signals(bars[:cutoff + 1], config)
         assert n in prefix.audit
         if cutoff == confirmed:
             assert squeeze in prefix.audit
             assert rejection in prefix.audit
+        if cutoff == repeated:
+            assert denied in prefix.audit
         assert prefix.signals == [signal for signal in full.signals if signal.bar_index <= cutoff]

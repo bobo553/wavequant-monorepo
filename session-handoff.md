@@ -1,3 +1,17 @@
+2026-10-22 · 首 N 去重按用户要求直接合并
+
+主回归四文件34通过153.14秒，星网1/10信号保留、1/20无LONG且四个历史截断一致；9修改Python局部类型通过。初轮发现1/20绕行secondary_resistance_reclaim，已将该补充入口纳入消费轮次门禁，保留无LONG断言。主策略原有9类型错误在main复现，仅作类型/命名/None默认值整理。扩展旧test_secondary_reclaim_entry.py:117在未修改main cad0610同样缺proofs[1719]，457.30秒KeyError；不改旧断言或三级趋势。
+
+用户获知上述结果及剩余长回归仍在等待后，明确“直接合并到main”。按本次授权接受已报告旧失败，定向结束本任务未完成pytest进程，secondary_reclaim_strategy剩余部分标未完成，不作为通过。提交首N轮次修复并no-ff本地合并，不推送、不重启服务；保留feat-正N轧空识别修复与worktree。此前待验证记录为历史，当前以本段及feature_list最新证据为准；MONOREPO-330其他未完成事项不变。
+
+2026-10-22 · 首 N 轧空重复买点续修（开发完成，待提交验证）
+
+复用C:/Users/zb/.codex/worktrees/positive-n-squeeze/wavequant-monorepo，feat-正N轧空识别修复，开始前已快进main cad0610。用户新要求1/10买后1/20不应换N再买：首N防守未破持续归属，破低才重找N。新增squeeze_n_round.py，integrated_strategy所有N轧空入口共用首N冻结/一次信号消费；保留独立A/B/C路径，未消费候选在资格关闭时失效，已消费轮次仅严格破低释放。新N攻击必须晚于破低、回撤不得早于破低。daily_strategy非资格日继续观察；MinuteTradingScope及intraday_entry继承前日审计快照，避免借用最终收盘破低。profile v142。
+
+旧保存审计用于定位，非新验证：1/10买点使用12/06 N、防守32.91419056983502；1/20使用1/15 N。新增状态边界回归，test_eligible_folded_n真实管线新增1/10保留、1/20无LONG及前缀一致断言，1/13原目标约束继续保留，但新增首N门禁会更早拒绝；test_minute_trading_scope补充已消费轮次继承。
+
+本轮未运行测试、类型、格式、lint、构建、Git状态/差异、浏览器或回测。提交时按feature_list新not-run项执行定向pytest、修改Python局部mypy和必要差异复核；不把上一轮35项或旧基线豁免当本轮结果。特别核对完整2018起资格切换对首N选择的历史影响、账户撮合及分钟行为。未提交合并推送或重启服务；MONOREPO-330其余工作保留。
+
 2026-10-22 · 正N识别修复获准本地合并
 
 用户在获知候选与未修改main c962e03均有国芳2026-07-29 N旧回归失败后明确回复“合并到main”，本次仅豁免该1项，保留failed记录，不修改旧断言、不记为通过。修复提交98579c6已同步main，35项不同用例及局部类型结果不变；未变生产代码不重复测试。按no-ff合入本地main，不推送或重启服务。星网1/09 N、1/13强轧空已识别，1/13仍受既有目标空间门禁拒买；账户成交与线上页面不作已验收。MONOREPO-330其余工作保留。
