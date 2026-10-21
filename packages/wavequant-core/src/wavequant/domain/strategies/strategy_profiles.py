@@ -83,7 +83,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'configurable_n_target_trend_confirmation_v134_' + variant
+    config['profile_version'] = 'configurable_n_target_trend_confirmation_v137_' + variant
     config['definition']['trend_confirmation_routes'] = 'same_level_key_break_or_lower_key_break_alternation_turn'
     config['definition']['n_target_trend_confirmation_enabled'] = False
     config['definition']['optional_trend_confirmation_route'] = 'source_n_strict_one_p_target'
@@ -219,6 +219,9 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             'when_previous_volume_ge_2x_earlier_bull_volume_gt_earlier_bull_'
             'next_open_lt_bull_body_midpoint_bearish_close_'
             'volume_gt_last_bearish_before_bull_same_close_full_clear'),
+        double_volume_bearish_shadow_exit='volume_ge_2_times_positive_previous_session_close_lt_open_upper_shadow_ge_half_range_and_ge_body_same_close_cumulative_70_percent_initial_holding_higher_reductions_and_full_clear_priority',
+        extreme_volume_exit='volume_strictly_gt_10_times_positive_previous_session_any_candle_color_same_close_cumulative_at_least_90_percent_initial_holding_round_up_lot_full_clear_priority',
+        previous_triple_volume_gap_exit='previous_volume_strictly_gt_3x_positive_before_previous_volume_current_open_lt_previous_close_bear_body_ge_5pct_open_close_lt_previous_low_shared_volume_bearish_same_close_full_clear',
         massive_gap_reversal_exit='volume_strict_record_of_previous_10_and_ge_2_times_previous_10_mean_open_gt_previous_high_close_lt_previous_low_bear_body_ge_5pct_open_same_close_full_clear_before_partial',
         limit_up_distribution_exit='past_20_sessions_rise_ge_30pct_two_shrinking_sealed_limit_rises_then_later_bullish_volume_ge_2_times_quiet_mean_no_consecutive_volume_requirement_quiet_low_defended_next_bearish_open_le_previous_body_midpoint_plus_2pct_body_close_strictly_below_midpoint_same_close_clear_v2',
         secondary_c_wave_reversal_exit='known_level2_low_to_confirmed_source_a_high_then_known_b_low_intraday_high_break_two_resisted_sessions_equal_c_target_with_both_shadows_ge_30pct_next_bear_close_below_shadow_low_same_close_full_clear',

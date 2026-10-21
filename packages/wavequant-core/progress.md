@@ -1885,3 +1885,34 @@ MONOREPO-258常驻验收：实现c05d8e4以e6d1e13合并本地main，main真实3
 ### 倒N全清已获本次基线失败合并例外
 
 2026-10-21用户明确“继续合并”：仅本次豁免已在未修改main 20571e6复现的9项既有失败，保留失败事实，不记为通过。新增7项回归和三个修改Python文件局部类型检查通过；最新main仍为20571e6且主工作区干净，候选已同步，无源码变化，不重复测试。按授权提交倒N阴线最近阴线量基准修复及profile v134，再本地no-ff合并，不推送。完整结构历史回放、完整套件及浏览器仍待验证，MONOREPO-330其他未完成事项保持。
+
+
+## 2026-10-21 昨日巨量次日低开大阴线破低清仓（MONOREPO-330）
+
+2026-10-21吉大正元2022-01-26清仓：昨日成交量严格大于前日3倍；今日开盘严格低于昨日收盘、阴线实体至少为开盘价5%、收盘严格低于昨日最低价，且成交量大于昨日或最近阴线任一正量基准，收盘直接全清。共用observe_volume_down_exit接入，优先于部分减仓，无需此前减仓，不改变T+1/可卖/流动性门禁。profile v135隔离旧结果；当日报价来自用户，前序行情显式合成，完整实股历史触发待验证。
+
+独立worktree：C:/Users/zb/.codex/worktrees/volume-gap-clear/wavequant-monorepo；分支feat-巨量次日低开清仓。变更为staged_exit.py、strategy_profiles.py及新增test_previous_triple_volume_gap_clear.py。保持330唯一in-progress；本轮未执行任何验证、未提交合并推送或重启服务。下一步按用户提交安排运行新增及相邻量价退出回归、局部类型检查，合并前协调最新main的策略版本。不得将合成前序行情用例视为003029真实完整历史复现。
+
+
+### 巨量次日清仓合并准备：一项main既有失败待决定
+
+2026-10-21合并准备：五文件pytest为57 passed/1 failed，新增17项全部通过；失败为test_massive_gap_reversal_exit.py::test_guofang_massive_gap_reversal_clears_instead_of_partial_wave_exit第52行，期望wave_gap_reversal_reduce但实际wave_two_t_volume_bearish_reduce。在未修改main 33df64e单独复现相同失败，未改旧断言或无关规则。三个修改Python文件mypy --follow-imports=skip通过，git diff --check和生产差异复核完成。分支无落后main，主工作区干净。按AGENTS检查失败不得合并，等待用户本次明确豁免该既有失败；未提交合并推送。完整实股历史、浏览器、全量套件及构建未验证。
+
+
+## 2026-10-21 十倍量收盘累计减九成（MONOREPO-330）
+
+2026-10-21新增通用十倍量减仓：当日量严格大于前一交易日正成交量10倍，不限制阴阳线，收盘累计至少减掉初始持仓90%，整手向上取整且不超持仓；重复触发不反复卖出剩余仓位90%。原量价观察器继续推进状态，已有全清优先；账户较轻压力/波段减仓不能压过此九成目标，T+1/可卖/流动性门禁不变。策略v136。吉大正元1/25用户OHLC 26.19/27.40/25.66/27.40、量28549200及1/26报价纳入新回归，前序行情显式合成；完整实股历史仍待核实。
+
+复用feat-巨量次日低开清仓 / C:/Users/zb/.codex/worktrees/volume-gap-clear/wavequant-monorepo。新增test_extreme_volume_reduce.py，修改staged_exit.py、backtest.py与strategy_profiles.py。本轮开发未运行测试/类型/构建/浏览器/Git检查；先前v135验证不能当作v136证据。下一步实际提交时验证严格10倍、阴阳通用、全清优先、整手与累计目标、1/25减仓及1/26全清、不可卖和因果前缀。此前main既有wave原因断言失败的合并例外尚未获用户确认，未提交合并推送。
+
+
+## 2026-10-21 倍量长上影阴线减七成（MONOREPO-330）
+
+2026-10-21新增倍量长上影阴线减七成：当日close<open，成交量>=前一交易日正成交量2倍，上影>=振幅一半且>=实体，复用is_long_upper_shadow，收盘累计减初始持仓70%，沿用既有七成整手取整。无需趋势目标或突破条件；全清、十倍量九成及其他更高减仓优先，账户较轻压力/波段退出不能覆盖该七成目标。策略v137；吉大正元2023-11-15用户OHLC 24.22/25.30/23.97/24.13和量20624900纳入用例，前序行情明确合成。
+
+复用feat-巨量次日低开清仓及volume-gap-clear独立worktree，新增test_double_volume_bearish_shadow.py并更新staged_exit.py、backtest.py、strategy_profiles.py。本轮未执行验证，之前v135检查不能替代v137；下一步提交时验证本分支三项新量价规则及相邻账户风险和类型。完整实股回放待验证，main既有wave退出原因断言失败合并例外仍未确认，未提交合并推送或重启服务。
+
+
+### 三项量价规则提交与本次既有失败合并例外
+
+2026-10-21用户在获知既有失败阻碍后再次明确要求合并到main，按本次继续合并授权处理同一已知失败。v137七文件pytest为79 passed/1 failed，三项新规则用例全部通过；唯一失败仍为test_massive_gap_reversal_exit.py:52的wave_gap_reversal_reduce与wave_two_t_volume_bearish_reduce原因断言，同一未修改main 33df64e此前已单独复现，未修改旧断言，不记作通过。六修改Python文件mypy --follow-imports=skip通过，git diff --check与生产/回归源码复核完成；仅随后手动换行导入列表，无行为变化。main未前进、主目录干净；范围为巨量次日低开破低清仓、十倍量累计九成、倍量长上影阴线累计七成及缓存v137。不运行浏览器、完整套件或构建，完整实股结构行情回放待验证。按授权本地提交及no-ff合并，不推送。
