@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from ..market_structure.polyline import ReversalPoint
+from .folded_n import folded_inverse_n_candidates, folded_positive_n_candidates
 from .trading_intervals import TradingEligibility
 
 
@@ -28,10 +29,15 @@ class EligiblePolylineN:
     An opening window can expose earlier vertices, but their N becomes a
     strategy input only at this close. Subsequent changes revisit the affected
     triples, preserving the original confirmation dates and same-bar order.
+    V3 opts into bounded folded envelopes; both observers consume the same
+    source rows, while sealed legacy profiles retain adjacent triples only.
     """
 
-    def __init__(self, level: int) -> None:
+    def __init__(self, level: int, *, folded_window: int | None = None) -> None:
+        if folded_window is not None and (type(folded_window) is not int or folded_window <= 0):
+            raise ValueError('folded N window must be a positive integer')
         self.eligibility = TradingEligibility(level)
+        self.folded_window = folded_window
         self._previous: dict[tuple[str, int], tuple[ReversalPoint, ...]] = {}
         self._seen: dict[tuple[str, int], set[tuple[ReversalPoint, ...]]] = {}
         self._last = -1
@@ -61,8 +67,14 @@ class EligiblePolylineN:
             while common < min(len(prior), len(suffix)) and prior[common] == suffix[common]:
                 common += 1
             seen = self._seen.setdefault(key, set())
-            for end in range(max(2, common), len(suffix)):
-                triple = suffix[end - 2:end + 1]
+            triples = [suffix[end - 2:end + 1] for end in range(max(2, common), len(suffix))]
+            if self.folded_window is not None and suffix != prior:
+                # 内部小反弹不能替换仍有效的外层颈线。只组合本窗口已确认的
+                # 原始折线点，不生成趋势顶点，也不回填窗口开放前的知识日。
+                earliest = max(window.start_low_index, now - self.folded_window)
+                triples.extend(refs for refs, _ in folded_positive_n_candidates(suffix, earliest=earliest))
+                triples.extend(refs for refs, _ in folded_inverse_n_candidates(suffix, earliest=earliest))
+            for triple in triples:
                 if triple in seen:
                     continue
                 seen.add(triple)

@@ -74,7 +74,10 @@ def prepare_backtest_analysis(
     analysis: BacktestAnalysis | None = None
     calculations: MarketCalculations | None = None
     pivot_state = LecturePivotState()
-    n_sources = EligiblePolylineN(config.buy_interval_level)
+    n_sources = EligiblePolylineN(config.buy_interval_level,
+        folded_window=(config.structure_window
+            if config.buy_point_definition == 'whole_flip_wave_v3' and config.pivot_mode == 'lecture_causal'
+            else None))
     targets = PolylineTargetStream(bars, config,
         publish=(lambda row: steps.append(2, row)) if steps is not None else None)
     last_progress = -1

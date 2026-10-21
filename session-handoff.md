@@ -1,3 +1,21 @@
+2026-10-22 · 正N识别修复获准本地合并
+
+用户在获知候选与未修改main c962e03均有国芳2026-07-29 N旧回归失败后明确回复“合并到main”，本次仅豁免该1项，保留failed记录，不修改旧断言、不记为通过。修复提交98579c6已同步main，35项不同用例及局部类型结果不变；未变生产代码不重复测试。按no-ff合入本地main，不推送或重启服务。星网1/09 N、1/13强轧空已识别，1/13仍受既有目标空间门禁拒买；账户成交与线上页面不作已验收。MONOREPO-330其余工作保留。
+
+## 2026-10-22 正N识别合并门禁
+
+2026-10-22 · 正N识别提交验证完成，1项main既有失败待合并豁免
+
+星网完整2018起真实行情确认1/09正N（1/03颈线、1/08回撤）及1/13强轧空；1/09和1/13逐前缀信号/证据与1/22终点一致。新用例最初把结构确认误写为必买，并直接索引其他买点缺失的attack字段；审计说明1/13因原有目标空间门禁拒绝：N起点12/30不属于1/03下降后的底部，不授予1P/2T；等幅38.52134357588946已低于收盘38.80473759063575。新断言明确要求真实结构、target_eligible=false、origin_is_not_decline_floor及no_live_structural_risk_reward，不放宽旧断言或改动生产风控；不是承诺1/13新增成交。
+
+五模块首轮34通过/2失败；纠正新用例后test_eligible_folded_n.py完整14通过（87.23秒），35个不同用例通过。剩余国芳test_folded_n.py:47在未修改main c962e03同样StopIteration缺2026-07-29 N（15.93秒），保留失败证据。四修改Python局部mypy通过，最终测试单文件复查通过；git diff --check和状态JSON唯一活动330通过。未运行完整套件、浏览器、构建或真实账户。当前修复可提交，但AGENTS禁止失败未解决直接合并，等待用户对这1项main既有失败明确豁免；不自动继承其他会话豁免，不推送、不重启服务。
+
+## 本轮正 N 轧空识别：代码已编写，待提交时验证
+
+专属目录C:/Users/zb/.codex/worktrees/positive-n-squeeze/wavequant-monorepo，分支feat-正N轧空识别修复。源码缺口为eligible_polyline_n仅枚举相邻三点，正式_analysis未使用既有folded_n。已在V3来源接入共用正倒N包络，保留确认日、同窗口去重、关闭重开及期限边界；backtest_analysis接通配置，strategy_profiles v141隔离旧结果。三级趋势核心、量价与账户门禁不改。test_eligible_folded_n.py复用完整2018起星网fixture，断言目标1/09正N（颈线1/03、回撤1/08）、1/13轧空及买点；旧1/20成交不是本轮验证证据。
+
+未执行测试、类型、lint、格式、构建、Git状态/差异、回测探针或浏览器；未提交合并推送或重启服务。用户安排实际提交时，运行feature_list本轮定向用例及局部类型检查；若真实管线仍有独立阻挡，继续追溯共用逻辑，不绕过门禁或放宽断言。还需核对完整账户成交及历史影响，不能把N/六态识别视为订单验证。同步main需协调profile版本及三份记录，保留其他会话改动与旧失败。主目录CodeGraph已定位；专属worktree有.codegraph但MCP无法识别，后续使用源码阅读，未重建索引。MONOREPO-330仍为唯一活动功能，其余未完成事项保留。
+
 ## 倒N全清合并准备：待基线失败豁免
 
 2026-10-21合并准备：已快进同步main 20571e6，保留双方feature/handoff记录解决冲突，profile升至v134避免复用main的v133缓存。四文件pytest（test_inverse_bearish_volume_clear、test_staged_exit、test_mother_child_inverse_exit、test_pressure_exit）97 passed/9 failed；未修改main同后三文件90 passed/9 failed，相同9节点与断言，新增7项全部通过。失败为staged_exit的历史倒N信号及T+1样本无买入2项、mother_child_inverse_exit的既有信号缺失3项、pressure_exit的原因/禁买预期4项；未修改旧断言或无关规则。三个修改Python文件mypy --config-file packages/wavequant-core/pyproject.toml --follow-imports=skip（MYPYPATH指向本worktree src）通过，git diff --check及暂存差异检查、功能JSON与唯一活动330检查通过。完整套件、浏览器、构建与真实完整结构回放未执行。按AGENTS检查失败不得合并，等待用户本次明确豁免这9项main既有失败；尚未提交合并推送。同步前stash因冲突由Git保留，改动已完整恢复；不自动删除该备份。
