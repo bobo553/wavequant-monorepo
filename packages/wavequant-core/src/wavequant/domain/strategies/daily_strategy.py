@@ -102,6 +102,13 @@ def daily_signals(
             state.preparation_audit = ([] if ended_window else [row for row in state.preparation_audit
                 if (row.get('source_path'), row.get('qualification_window_start')) not in departed_scopes])
         if ended_window:
+            # 未成交的信号也已消费轧空机会；关闭资格不能把它变成新一轮。
+            retired_round = state.squeeze_round.close_unemitted()
+            if retired_round is not None:
+                event = dict(event='squeeze_round_changed', bar_index=index,
+                    timestamp=market[index].timestamp.isoformat(), symbol=market[index].symbol, **retired_round)
+                state.audit.append(event)
+                closed_targets.append(event)
             if state.projection_history is not None:
                 state.projection_history.close()
             if state.secondary_resistance_history is not None:
@@ -148,6 +155,12 @@ def daily_signals(
             events = [dict(row,
                 timestamp=market[int(row['bar_index'])].timestamp.isoformat(), symbol=market[0].symbol)
                 for row in day.lifecycle_events]
+            broken = state.squeeze_round.observe_low(index, market[index].low)
+            if broken is not None:
+                event = dict(event='squeeze_round_changed', bar_index=index,
+                    timestamp=market[index].timestamp.isoformat(), symbol=market[index].symbol, **broken)
+                state.audit.append(event)
+                events.append(event)
             for interval in analysis.trading_intervals:
                 if interval.end_index == index:
                     events.append(dict(event='trading_interval_closed', bar_index=index,

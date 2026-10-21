@@ -25,6 +25,7 @@ from wavequant.domain.market_structure.trend_evidence_reuse import _geometry_sig
 from wavequant.domain.market_structure.trend_stage_work import TrendStageRunner
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.hierarchical_entry import EntryContext
+from wavequant.domain.strategies.squeeze_n_round import SqueezeRoundState
 
 if TYPE_CHECKING:
     from wavequant.domain.strategies.backtest_analysis import BacktestAnalysis
@@ -60,10 +61,12 @@ class MinuteTradingScope:
     buy_days: tuple[bool, ...]
     scan_days: tuple[bool, ...]
     source_bars: tuple[Bar, ...]
+    squeeze_checkpoint: SqueezeRoundState | None = None
 
     @classmethod
     def from_analysis(cls, analysis: 'BacktestAnalysis', *, index: int,
-                      window_start: int) -> 'MinuteTradingScope | None':
+                      window_start: int,
+                      squeeze_checkpoint: SqueezeRoundState | None = None) -> 'MinuteTradingScope | None':
         if (type(index) is not int or index != len(analysis.bars) - 1
                 or type(window_start) is not int or not 0 <= window_start <= index):
             raise ValueError('minute scope requires this completed daily prefix and its window')
@@ -80,7 +83,7 @@ class MinuteTradingScope:
             if source.scope in scopes and window_start <= source.known_at < index
             and all(point.confirmed_index < index for point in source.points))
         days = tuple(window_start <= day and analysis.buy_days[day] for day in range(index + 1))
-        return cls(index, window_start, scopes, sources, days, days, tuple(analysis.bars))
+        return cls(index, window_start, scopes, sources, days, days, tuple(analysis.bars), squeeze_checkpoint)
 
     def require_input(self, bars: Sequence[Bar]) -> None:
         if len(bars) != self.index + 1 or tuple(bars[:-1]) != self.source_bars[:-1]:

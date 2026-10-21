@@ -14,6 +14,17 @@ from wavequant.domain.strategies.chart_drawing_history import ChartDrawingHistor
 from wavequant.domain.strategies import integrated_strategy
 from wavequant.domain.strategies.integrated_strategy import SystemResult, SystemStrategy
 from wavequant.domain.strategies.trading_intervals import TradingInterval
+from wavequant.domain.strategies.squeeze_n_round import SqueezeN, SqueezeRoundState
+
+
+def test_minute_scope_retains_consumed_first_n_from_previous_window():
+    analysis = prepared()
+    checkpoint = SqueezeRoundState(SqueezeN(0, 1, 2, 3, 3, 10.0), selected_at=3, emitted_at=4)
+    scope = MinuteTradingScope.from_analysis(analysis, index=6, window_start=4,
+        squeeze_checkpoint=checkpoint)
+    assert scope is not None
+    assert scope.squeeze_checkpoint == checkpoint
+    assert scope.sources == (source(4),)
 
 
 def prepared(start: int = 4) -> BacktestAnalysis:

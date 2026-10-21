@@ -23,6 +23,7 @@ from wavequant.domain.strategies.n_consolidation import consolidation_gap
 from wavequant.domain.strategies.trading_intervals import TradingInterval
 from wavequant.domain.strategies.hierarchical_entry import EntryContext
 from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse, MinuteTradingScope
+from wavequant.domain.strategies.squeeze_n_round import SqueezeRoundState
 from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
     wave_confirmation_state,
@@ -347,7 +348,8 @@ def resolve_consolidation_entries(
     if prepared_analysis is not None:
         assert only_index is not None and trading_window_start is not None
         minute_scope = MinuteTradingScope.from_analysis(prepared_analysis,
-            index=only_index, window_start=trading_window_start)
+            index=only_index, window_start=trading_window_start,
+            squeeze_checkpoint=SqueezeRoundState.before(generated.audit, only_index))
         # A close-confirmed new qualification cannot authorize earlier minutes.
         if minute_scope is None:
             return generated, gap_executions, gap_fallbacks
