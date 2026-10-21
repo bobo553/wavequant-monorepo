@@ -27,6 +27,11 @@ def squeeze_buy_rejection(
     if previous is None:
         return 'squeeze_buy_previous_price_unavailable'
     rejection = bullish_breakout_rejection(bar, previous)
+    # 轧空已有候选自身的放量证据；低开后中大阳收复前高不沿用独立突破的倍量门槛。
+    # 这里只判买入K线质量，资格、正N/轧空和末跌高仍由调用方分别约束。
+    if (rejection == 'breakout_low_open' and medium_bullish_body(bar)
+            and _price(bar.close) > _price(previous.high)):
+        rejection = None
     if rejection is not None:
         return rejection
     opening, closing, high = _price(bar.open), _price(bar.close), _price(bar.high)

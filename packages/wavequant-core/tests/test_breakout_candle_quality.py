@@ -33,11 +33,12 @@ def test_same_bar_strength_boundaries(
 
 
 @pytest.mark.parametrize('pre_n_volume', [50, 500])
-def test_pre_n_volume_cannot_replace_double_previous_volume_for_low_open(pre_n_volume: float) -> None:
+def test_squeeze_volume_does_not_inherit_independent_breakout_double_volume(pre_n_volume: float) -> None:
     previous = Bar(datetime(2026, 7, 15), 'sh.600000', 10, 10.5, 9.8, 10, 100)
     current = Bar(datetime(2026, 7, 16), previous.symbol, 9.99, 10.8, 9.99, 10.7, 199)
     before_attack = replace(previous, timestamp=previous.timestamp - timedelta(days=2), volume=pre_n_volume)
-    assert squeeze_buy_rejection(current, previous, before_attack) == 'breakout_low_open'
+    assert bullish_breakout_rejection(current, previous) == 'breakout_low_open'
+    assert squeeze_buy_rejection(current, previous, before_attack) is None
 
 
 def test_missing_or_non_prior_candle_cannot_supply_strength() -> None:
@@ -47,7 +48,7 @@ def test_missing_or_non_prior_candle_cannot_supply_strength() -> None:
 
 
 @pytest.mark.parametrize('symbol,scale', [('sz.301130', 1.0), ('sh.600000', 10.0)])
-def test_frozen_xidian_july16_is_rejected_without_stock_specific_rules(symbol: str, scale: float) -> None:
+def test_low_open_squeeze_quality_is_shared_across_symbols_and_scales(symbol: str, scale: float) -> None:
     raw = json.loads((Path(__file__).parent / 'fixtures/xidian_2026_deep_squeeze.json').read_text(encoding='utf-8'))
     previous, current = [Bar(datetime.fromisoformat(row[0]), symbol,
         *(float(price) * scale for price in row[1:5]), float(row[5]))
@@ -56,7 +57,7 @@ def test_frozen_xidian_july16_is_rejected_without_stock_specific_rules(symbol: s
     assert current.close > previous.close * 1.02 and current.volume > previous.volume
     assert current.open < previous.close
     assert bullish_breakout_rejection(current, previous) == 'breakout_low_open'
-    assert squeeze_buy_rejection(current, previous) == 'breakout_low_open'
+    assert squeeze_buy_rejection(current, previous) is None
 
 
 @pytest.mark.parametrize('low_open', [False, True])
@@ -96,7 +97,8 @@ def test_released_polyline_still_leaves_current_candidate_candle_gate_active() -
     current = replace(bar(5, 9.5), open=strong.close - 0.01, close=9.4, low=8.8, volume=199)
     gate.advance(5, current, points, 0)
     assert 5 not in gate.restrictions
-    assert squeeze_buy_rejection(current, strong) == 'breakout_low_open'
+    assert squeeze_buy_rejection(current, strong) is None
+    assert squeeze_buy_rejection(replace(current, volume=strong.volume), strong) is not None
 
 
 @pytest.mark.parametrize('volume,close,low,key,accepted', [
