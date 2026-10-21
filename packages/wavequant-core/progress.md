@@ -1843,3 +1843,17 @@ MONOREPO-258常驻验收：实现c05d8e4以e6d1e13合并本地main，main真实3
 ### 2026-10-21 已获三项基线失败合并例外
 
 2026-10-21用户明确回复“继续合并”，本次仅豁免已在未修改main c552319复现的test_two_t_body_volume_clear.py三项既有失败（T+1预期及两项清仓原因名称），保留失败事实，不计为通过。本轮六文件143个不同回归用例及六Python文件局部mypy已通过，最终生产差异已复核；当前main无新增提交、工作区干净，无需重复同一测试。按授权提交倍量涨停开板至少减九成、放量阴线覆盖十字星收盘破低全清，以及收盘卖出时刻证据，策略v131；随后本地no-ff合并，不推送。完整实股历史、浏览器和完整套件未验证，MONOREPO-330其他未完成事项保持。
+
+
+## 2026-10-21 等实体反包放量阴线清仓（MONOREPO-330，待提交时验证）
+
+2026-10-21先锋新材2021-08-24等实体反包：用户明确上下相等也算反包，阴线放量为大于前日或前一根阴线，不要求倍量。冻结xianfeng_2026_strong_squeeze.json记录8/23实体4.22→4.31量28,040,400，8/24实体4.31→4.22量25,759,884，前一阴线8/19量23,596,117，与用户万股显示及补充报价一致；当日量低于前日但大于前阴线。共用bearish_body_engulfs移除至少一边严格越过门槛，保留阴线、非十字前实体、完整覆盖、同股与时间条件，量能仍严格大于正量基准。普通持仓、二吐风险和买入拦截复用同一定义；十字星仍沿用独立收盘破低条件，profile v132隔离旧结果。
+
+新增test_equal_body_volume_clear.py覆盖冻结4个交易日、前阴线量基准、完全等值/部分覆盖/量能相等拒绝、十字星边界、逐日前缀与账户全清；账户仅注入8/20持仓信号，不声称完整趋势资格复现。按用户新定义更新test_body_volume_clear.py、test_two_t_body_volume_clear.py、test_volume_bearish_entry.py原等值断言，其余旧断言保留。
+
+复用feat-倍量开板减仓及C:/Users/zb/.codex/worktrees/bearish-limit-reduction/wavequant-monorepo，开始修改前已快进同步main 5b0868e。未运行任何开发验证，未提交/合并/推送；此前合并测试结果不能作本轮验证，三项旧失败豁免也不自动延续。实际提交时按受影响范围执行相关回归及类型，完整历史和页面结果待验证。
+
+
+### 2026-10-21 等实体反包提交与已知失败记录
+
+2026-10-21等实体反包提交验证：pytest test_equal_body_volume_clear.py、test_body_volume_clear.py、test_volume_bearish_entry.py、test_doji_volume_low_break_clear.py、test_two_t_body_volume_clear.py为86 passed/3 failed（21.65s）。新增冻结8/19–8/24行情、等值边界、严格量能、十字星隔离、流式及账户15:00全清用例通过；三失败与本会话此前main独立复现且用户明确“继续合并”授权的节点/断言相同，仍为T+1预期及两项清仓原因名称，不作为已修复或通过。遵循会话授权持续有效原则沿用用户对同三项已知失败的确认；此前开发记录“不自动延续”不作为新增用户约束。六修改Python文件mypy --config-file packages/wavequant-core/pyproject.toml --follow-imports=skip通过（局部类型），git diff --check及源码/断言复核完成。当前main为5b0868e且工作区干净，分支无落后；仅实体完整覆盖等值规则与profile v132变化，保留严格放量和十字星专用规则。未运行完整套件、浏览器或构建，未声称完整实股资格回放；按用户请求本地提交/no-ff合并，不推送。

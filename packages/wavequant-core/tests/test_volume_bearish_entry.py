@@ -49,7 +49,7 @@ def test_latest_bearish_volume_and_body_edges_do_not_use_future_or_wicks():
         Bar(start + timedelta(days=4), 'sh.600825', 5.63, 5.63, 5.28, 5.32, 200)]
     assert volume_bearish_entry_rejection(bars, 2) == 'volume_bearish_body_engulfing_buy_blocked'
     assert bearish_body_engulfs(bars[2], bars[1])  # Previous wicks extend beyond today's body.
-    assert not bearish_body_engulfs(replace(bars[2], open=5.57, close=5.4), bars[1])
+    assert bearish_body_engulfs(replace(bars[2], open=5.57, close=5.4), bars[1])
     assert volume_bearish_entry_rejection([*bars, replace(bars[2], volume=1)], 2) == volume_bearish_entry_rejection(bars, 2)
     assert volume_bearish_entry_rejection([*bars[:2], replace(bars[2], volume=100)], 2) is None
     assert volume_bearish_entry_rejection([*bars[:2], replace(bars[2], close=5.63)], 2) is None

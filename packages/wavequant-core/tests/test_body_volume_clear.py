@@ -35,10 +35,10 @@ def test_no_target_needed_and_volume_alternatives_are_strict(volume: float, qual
 
 
 @pytest.mark.parametrize('opened,closed,qualifies', [
-    (8.47, 7.83, True), (8.48, 7.9, True), (8.47, 7.9, False),
+    (8.47, 7.83, True), (8.48, 7.9, True), (8.47, 7.9, True),
     (8.46, 7.83, False), (8.48, 7.91, False), (7.83, 8.47, False),
 ])
-def test_body_coverage_ignores_wicks_but_requires_one_strict_edge(
+def test_body_coverage_ignores_wicks_and_includes_both_equal_edges(
     opened: float, closed: float, qualifies: bool,
 ) -> None:
     bars = sample()

@@ -26,12 +26,11 @@ def is_bearish_inside_child(mother: Bar, child: Bar) -> bool:
 
 
 def bearish_body_engulfs(bar: Bar, previous: Bar) -> bool:
-    """实体覆盖昨日非十字实体且至少一边严格越过；影线不参与。"""
+    """阴线实体完整覆盖昨日非十字实体；上下沿均可相等，影线不参与。"""
     top, bottom = max(previous.open, previous.close), min(previous.open, previous.close)
     return (bar.symbol == previous.symbol and previous.timestamp < bar.timestamp
             and bar.close < bar.open and top > bottom
-            and bar.open >= top and bar.close <= bottom
-            and (bar.open > top or bar.close < bottom))
+            and bar.open >= top and bar.close <= bottom)
 
 
 def volume_bearish_buy_rejection(
