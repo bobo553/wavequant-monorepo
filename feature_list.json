@@ -14355,6 +14355,36 @@
                     "summary": "启动与验证规则明确Prettier/类型检查/包构建/Git暂存区检查全部禁用开发节点，必要检查只在实际提交时一次执行；开发阶段只按风险运行必要lint/定向测试，不使用quick触发类型。已运行证据保留，用户新指令之后未自动追加这些开发检查。"
                 }
             ]
+        },
+        {
+            "id": "MONOREPO-352",
+            "name": "stock-completed-backtest-elapsed",
+            "title": "股票下方显示最终回测耗时",
+            "status": "done",
+            "dependencies": [],
+            "description": "股票下方摘要及完成状态显示服务器固定保存的本次回测总耗时。",
+            "scope": "API完成历史固定elapsed_seconds，Web当前股票摘要及完成状态展示对应任务总耗时。",
+            "acceptanceCriteria": [
+                "成功完成后显示服务器最终耗时，精确到秒。",
+                "按job、股票、数据源、版本及参数匹配，旧记录缺少耗时不伪造计时。"
+            ],
+            "verification": [
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/backtest-job-status.test.mjs; node --check apps/webs/wavequant-web/public/app.js",
+                    "status": "passed",
+                    "summary": "19项通过；覆盖时分秒、无效耗时、精确任务匹配与历史淘汰后的本地保留；app语法通过。"
+                },
+                {
+                    "command": "API .venv python -m pytest apps/servers/wavequant-api/tests/test_backtest_jobs.py -q; mypy --config-file apps/servers/wavequant-api/pyproject.toml --follow-imports=skip apps/servers/wavequant-api/src/wavequant_api/backtest_jobs.py",
+                    "status": "passed",
+                    "summary": "10项通过，包括完成时间冻结及SQLite恢复。MYPYPATH指定当前Core/API源码后修改文件类型通过；首次因解析已安装包缺py.typed失败，未改依赖或忽略诊断。"
+                },
+                {
+                    "command": "git diff --check; review production diff",
+                    "status": "passed",
+                    "summary": "限定三生产文件，无交易规则改动。Web修改为现有ESLint排除的public JS，语法及定向Node验证；无TS与打包配置变更，未扩大执行全仓lint、类型或构建。未运行浏览器/E2E与完整套件。"
+                }
+            ]
         }
     ]
 }

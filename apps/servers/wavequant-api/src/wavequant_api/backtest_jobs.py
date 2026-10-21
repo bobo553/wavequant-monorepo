@@ -268,6 +268,7 @@ class BacktestJobs:
                 job.preview = None
                 item = dict(job.details)
                 item.update(job=job_id, status="failed" if recorded_error is not None else "completed")
+                item['elapsed_seconds'] = round(max(0.0, job.completed_at - job.started_at), 1)
                 item['pipeline'] = job.pipeline
                 if isinstance(result, dict):
                     backtest = result.get("backtest")

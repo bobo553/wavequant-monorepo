@@ -320,3 +320,19 @@ def test_job_diagnostics_are_opt_in_without_changing_result(tmp_path):
         assert recorder.steps[2]['cache'] == ('stored' if enabled else 'none')
         assert (root / '.calculation-steps').exists() is enabled
         assert recorder.steps[23]['status'] == 'completed'
+
+def test_completed_elapsed_is_frozen_and_restored_from_history(tmp_path):
+    now = [100.0]
+    history_path = tmp_path / "elapsed-history.sqlite"
+    jobs = BacktestJobs(history_path=history_path, clock=lambda: now[0])
+
+    def calculate():
+        now[0] = 255.4
+        return {"result_scope": "stock", "backtest": {"status": "completed"}}
+
+    job = jobs.start("elapsed-job", "elapsed-signature", calculate)
+    assert job.done.wait(5)
+    now[0] = 900.0
+    assert jobs.snapshot()["recent"][0]["elapsed_seconds"] == 155.4
+    restored = BacktestJobs(history_path=history_path)
+    assert restored.snapshot()["recent"][0]["elapsed_seconds"] == 155.4
