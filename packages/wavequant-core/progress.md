@@ -1,3 +1,13 @@
+2026-10-22 · 真实K线突破减仓提交验证
+
+按用户“直接合并到main”进入提交阶段：pytest test_double_volume_fade_exit、test_breakout_shadow_exit、test_breakout_limit_open_exit、test_breakout_gap_clear、test_breakout_bearish_child_exit五文件139通过（0.97秒）；六变更Python文件mypy --follow-imports=skip通过，git diff --check通过。星网真实10/09—10/22行情自动识别10/15高点；空hierarchy且关闭趋势风险的账户验证10/21收盘减九成，覆盖严格突破/次日边界、全清优先和不可卖。完整2018起实股回放、页面结果与此前未定位扩展失败未复验，不纳入本轮通过结论。复核仅本任务文件，版本v144，本地no-ff合并，不推送、不重启；MONOREPO-330其他未完成事项保持原状态。
+
+2026-10-22 · 倍量突破高点改用真实K线证据（待提交验证）
+
+用户反馈星网10/21未卖出，并最终明确仍要求突破：10/20倍量阳线突破10/15高点。旧实现额外依赖趋势history中的已知高点，旧用例人工提供高点，只证明该输入下能减仓，未覆盖正式高点缺失。现改为独立double_volume_fade_exit直接读取攻击前K线：最近未被后续高点突破、左侧不高于本根且右侧已严格回落的高点，等高平台取最后一根；攻击最高严格越过该高点才有资格，保持至少前日两倍量阳线和紧邻次日阴线收低。没有突破仍不减仓，不生成或修改趋势线。
+
+账户在已有volume_down_exit开关下直接观察，V3已启用该开关；移除TrendFlipExitStream中的重复观察及正式趋势依赖，保留交易区间、T+1、可卖/流动性门禁和全清优先，九成整手累计目标不变。profile升v144。新test_double_volume_fade_exit.py从真实10/09—10/22行情识别10/15高点，账户传空hierarchy、关闭趋势风险，覆盖不能突破/等高/已突破/无回落、次日边界、前缀、全清优先和不可卖；替换旧人工高点测试。没有本次页面订单日志，不能声称已确认唯一漏卖原因或已完成实股回放。仅阅读、编辑与记录，未运行测试/类型/格式/构建/Git检查/运行探针或浏览器，待提交验证；未提交合并、推送、重启。
+
 2026-10-22 · 倍量突破次日减仓按要求直接合并
 
 本轮pytest tests/test_breakout_double_volume_fade_exit.py -q：29通过，0.45秒；涵盖星网六日行情配显式关键位、三级与折线共用规则、因果前缀及账户次日收盘减九成。五变更Python文件mypy --follow-imports=skip通过；初次trend_flip_exit的11个类型错误在未修改main ee9ac10同样复现，本次仅补充TypedDict和风险字典类型，不改变原有状态推进。Git差异空白检查通过。

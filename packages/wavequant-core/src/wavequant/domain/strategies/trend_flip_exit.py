@@ -8,7 +8,7 @@ from ..models.model import Bar
 from ..market_structure.observation_window import observation_window_end
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from .history_cursor import HistoryCursor
-from .breakout_shadow_exit import BREAKOUT_SHADOW_CLEAR, breakout_double_volume_fade_days, breakout_shadow_days
+from .breakout_shadow_exit import BREAKOUT_SHADOW_CLEAR, breakout_shadow_days
 
 
 class _SecondaryWaveState(TypedDict):
@@ -346,10 +346,6 @@ class TrendFlipExitStream:
                 self._bars, self._history, start_index=self.start_index,
                 end_index=self.end_index if self._bars else None,
             ), {}),
-            HistoryCursor(breakout_double_volume_fade_days(
-                self._bars, self._history, start_index=self.start_index,
-                end_index=self.end_index if self._bars else None,
-            ), {}),
         ))
         self._risks = {}
         self._index = self.start_index - 1
@@ -407,14 +403,6 @@ class TrendFlipExitStream:
                     risk = full_clear
                 elif risk is None or risk['exit_fraction'] < shadow['exit_fraction']:
                     risk = shadow
-            fade = outcomes[5].get(day)
-            if fade is not None:
-                full_clear = next((outcome[day] for outcome in outcomes[:5]
-                                   if day in outcome and outcome[day]['exit_fraction'] == 1.0), None)
-                if full_clear is not None and (risk is None or risk['exit_fraction'] < 1.0):
-                    risk = full_clear
-                elif risk is None or risk['exit_fraction'] < fade['exit_fraction']:
-                    risk = fade
             if risk is not None:
                 self._risks[day] = risk
         self._index, self._owner = index, owner
