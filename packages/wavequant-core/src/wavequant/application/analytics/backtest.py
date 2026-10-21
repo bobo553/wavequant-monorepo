@@ -50,7 +50,7 @@ from wavequant.domain.strategies.mother_child_inverse_n import (
 )
 from wavequant.domain.market_structure.price_action import Direction, ShadowPolicy, observe_resistance
 from wavequant.domain.strategies.staged_exit import (
-    DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE, EXTREME_VOLUME_LIMIT_NEXT_CLEAR, EXTREME_VOLUME_REDUCE, StagedExitState,
+    DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE, EXTREME_VOLUME_LIMIT_NEXT_CLEAR, EXTREME_VOLUME_CLEAR, StagedExitState,
     observe_bearish_child_pattern_exit, observe_intraday_staged_exit,
     observe_staged_exit, observe_inverse_resistance_exit, observe_volume_down_exit,
 )
@@ -374,7 +374,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
         elif 'exit_target_fraction' in evidence:
             desired = pos.initial_quantity * evidence['exit_target_fraction']
             already_sold = pos.initial_quantity - pos.quantity
-            if pending_exit[symbol] in (BREAKOUT_LIMIT_OPEN_REDUCE, EXTREME_VOLUME_REDUCE):
+            if pending_exit[symbol] == BREAKOUT_LIMIT_OPEN_REDUCE:
                 # 至少减九成：向上取整且不超持仓，T+1与可卖门禁仍在下方执行。
                 quantity = min(pos.quantity, max(0.0, math.ceil((desired - already_sold) / lot - 1e-9) * lot))
             else:
@@ -1202,7 +1202,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                              or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
                     wave_exit = None
                 if volume_exit is not None and volume_exit['reason'] in (
-                        EXTREME_VOLUME_REDUCE, DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE, EXTREME_VOLUME_LIMIT_NEXT_CLEAR):
+                        EXTREME_VOLUME_CLEAR, DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE, EXTREME_VOLUME_LIMIT_NEXT_CLEAR):
                     # 新量价风险只覆盖较轻减仓，已有全清和更高减仓目标保持优先。
                     if pressure is not None and pressure['exit_fraction'] < volume_exit['exit_fraction']:
                         pressure = None

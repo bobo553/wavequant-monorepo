@@ -616,15 +616,22 @@ def _observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitStat
     return None
 
 
-EXTREME_VOLUME_REDUCE = 'volume_over_tenfold_reduce_90'
+EXTREME_VOLUME_CLEAR = 'volume_over_tenfold_clear'
 EXTREME_VOLUME_LIMIT_NEXT_CLEAR = 'volume_over_tenfold_limit_next_lower_clear'
 DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE = 'volume_double_bearish_long_upper_shadow_reduce_70'
+
+
+def _extreme_volume_open_sealed(previous: Bar, current: Bar) -> bool:
+    """十倍量仅在开收均为同一涨停价时豁免；允许盘中开板后回封。"""
+    return (previous.volume > 0
+            and Fraction(str(current.volume)) > 10 * Fraction(str(previous.volume))
+            and current.open == current.close and is_sealed_limit_up(previous, current))
 
 
 def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState, *,
                              positive_n_index: int | None = None, small_body_max_fraction: float = .01,
                              small_body_lookback: int = 10) -> dict | None:
-    """极端量封板暂不减仓、次日收低全清；其余量价风险按较高目标退出。"""
+    """十倍量当日全清，仅开收均封涨停豁免；保留次日收低及其他风险。"""
     decision = _observe_volume_down_exit(
         bars, index, state, positive_n_index=positive_n_index,
         small_body_max_fraction=small_body_max_fraction, small_body_lookback=small_body_lookback)
@@ -634,9 +641,7 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
     # 只看紧邻上一交易日的已收盘事实，不需要持仓曾执行减仓，也不延长观察窗。
     if index >= 2:
         before = bars[index - 2]
-        if (before.volume > 0
-                and Fraction(str(previous.volume)) > 10 * Fraction(str(before.volume))
-                and is_sealed_limit_up(before, previous)
+        if (_extreme_volume_open_sealed(before, previous)
                 and bar.symbol == previous.symbol and bar.timestamp > previous.timestamp
                 and bar.adjustment_factor == previous.adjustment_factor
                 and bar.close < previous.close):
@@ -646,22 +651,20 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
                         warning_close=previous.close, warning_volume=previous.volume,
                         warning_volume_baseline=before.volume,
                         warning_volume_multiple=previous.volume / before.volume)
-    if decision is not None and decision['exit_fraction'] >= .9:
-        return decision
     if previous.volume <= 0:
         return decision
     current_volume, previous_volume = Fraction(str(bar.volume)), Fraction(str(previous.volume))
     if current_volume > 10 * previous_volume:
-        if is_sealed_limit_up(previous, bar):
+        if _extreme_volume_open_sealed(previous, bar):
             return decision
-        reason, target = EXTREME_VOLUME_REDUCE, .9
+        reason, target = EXTREME_VOLUME_CLEAR, 1.0
     elif (current_volume >= 2 * previous_volume and bar.close < bar.open
           and is_long_upper_shadow(bar)
           and (decision is None or decision['exit_fraction'] <= .7)):
         reason, target = DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE, .7
     else:
         return decision
-    return dict(reason=reason, exit_fraction=target, exit_target_fraction=target,
+    evidence = dict(reason=reason, exit_fraction=target,
                 execution_model='same_day_close', trigger_volume=bar.volume,
                 previous_volume=previous.volume, volume_multiple=bar.volume / previous.volume,
                 volume_trigger_date=bar.timestamp.date().isoformat(),
@@ -669,3 +672,6 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
                 observed_open=bar.open, observed_high=bar.high,
                 upper_shadow=bar.high - max(bar.open, bar.close),
                 candle_range=bar.high - bar.low, body_size=abs(bar.open - bar.close))
+    if target < 1:
+        evidence['exit_target_fraction'] = target
+    return evidence

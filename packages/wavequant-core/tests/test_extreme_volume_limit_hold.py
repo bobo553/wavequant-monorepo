@@ -9,7 +9,7 @@ from wavequant.application.analytics.backtest import run_portfolio
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.domain.strategies.staged_exit import (
-    EXTREME_VOLUME_LIMIT_NEXT_CLEAR, EXTREME_VOLUME_REDUCE,
+    EXTREME_VOLUME_LIMIT_NEXT_CLEAR, EXTREME_VOLUME_CLEAR,
     StagedExitState, observe_volume_down_exit,
 )
 
@@ -70,7 +70,7 @@ def test_warning_requires_prior_extreme_volume_and_valid_sealed_limit(case: str)
     assert decision is None or decision['reason'] != EXTREME_VOLUME_LIMIT_NEXT_CLEAR
     if case in ('open_board', 'changed_factor'):
         decision = observe_volume_down_exit(bars, 2, StagedExitState())
-        assert decision is not None and decision['reason'] == EXTREME_VOLUME_REDUCE
+        assert decision is not None and decision['reason'] == EXTREME_VOLUME_CLEAR
 
 
 def test_one_price_limit_and_twenty_percent_board_are_supported() -> None:
@@ -79,15 +79,17 @@ def test_one_price_limit_and_twenty_percent_board_are_supported() -> None:
     assert observe_volume_down_exit(bars, 2, StagedExitState()) is None
     pair = [
         Bar(datetime(2026, 9, 2), 'sz.300001', 9.8, 10.0, 9.7, 10.0, 100.0),
-        Bar(datetime(2026, 9, 3), 'sz.300001', 11.0, 12.0, 11.0, 12.0, 1001.0),
+        Bar(datetime(2026, 9, 3), 'sz.300001', 12.0, 12.0, 11.0, 12.0, 1001.0),
     ]
     assert observe_volume_down_exit(pair, 1, StagedExitState()) is None
 
 
 @pytest.mark.parametrize('sellable', [True, False])
-def test_account_no_limit_day_reduction_then_next_close_full_clear(sellable: bool) -> None:
+@pytest.mark.parametrize('opened', [16.8, 17.01, 17.1])
+def test_account_lower_close_exit_regardless_of_open(sellable: bool, opened: float) -> None:
     bars = scenario()
-    bars[3] = replace(bars[3], close_sellable=sellable, sellable=sellable)
+    bars[3] = replace(bars[3], open=opened, high=17.1,
+                      close_sellable=sellable, sellable=sellable)
     entry = bars[1]
     signal = Signal(entry.timestamp, entry.symbol, 1, 'LONG', entry.close, 12.0,
                     'system_wave_push_gap', entry.timestamp, 0, None, 'fixture', 30.0)
@@ -100,12 +102,38 @@ def test_account_no_limit_day_reduction_then_next_close_full_clear(sellable: boo
     assert not any(order['timestamp'][:10] == '2026-09-03' for order in sells)
     if sellable:
         filled = [order for order in sells if order['status'] == 'filled']
-        assert len(filled) == 1 and filled[0]['reason'] == EXTREME_VOLUME_LIMIT_NEXT_CLEAR
+        assert len(filled) == 1
+        assert filled[0]['reason'] == EXTREME_VOLUME_LIMIT_NEXT_CLEAR
         assert filled[0]['quantity'] == buys[0]['quantity']
         assert filled[0]['remaining_quantity'] == 0
         assert filled[0]['execution_timestamp'] == '2026-09-04T15:00:00'
+        assert filled[0]['price'] == pytest.approx(bars[3].close)
     else:
         assert not any(order['status'] == 'filled' for order in sells)
         assert any(order['reason'] == 'not_sellable' and order['exit_fraction'] == 1.0 for order in sells)
     prefix = run_portfolio({entry.symbol: bars[:3]}, [signal], config)
     assert prefix.orders == [order for order in result.orders if order['timestamp'][:10] < '2026-09-04']
+
+
+@pytest.mark.parametrize('closed', [17.01, 17.1])
+def test_lower_open_recovery_does_not_sell(closed: float) -> None:
+    bars = scenario()
+    bars[3] = replace(bars[3], open=16.8, high=17.1, close=closed)
+    entry = bars[1]
+    signal = Signal(entry.timestamp, entry.symbol, 1, 'LONG', entry.close, 12.0,
+                    'system_wave_push_gap', entry.timestamp, 0, None, 'fixture', 30.0)
+    config = StrategyConfig(volume_down_exit=True, entry_at_close=True, exit_on_target=False,
+                            max_hold_bars=100, slippage_bps_per_side=0, max_participation=1)
+    result = run_portfolio({entry.symbol: bars}, [signal], config)
+    assert any(order['side'] == 'BUY' and order['status'] == 'filled' for order in result.orders)
+    assert not any(order['side'] == 'SELL' for order in result.orders)
+
+
+def test_late_seal_clears_same_day_and_cannot_arm_next_close_exception() -> None:
+    bars = scenario()
+    bars[2] = replace(bars[2], open=16.8)
+    decision = observe_volume_down_exit(bars, 2, StagedExitState())
+    assert decision is not None and decision['reason'] == EXTREME_VOLUME_CLEAR
+    assert decision['exit_fraction'] == 1.0
+    following = observe_volume_down_exit(bars, 3, StagedExitState())
+    assert following is None or following['reason'] != EXTREME_VOLUME_LIMIT_NEXT_CLEAR

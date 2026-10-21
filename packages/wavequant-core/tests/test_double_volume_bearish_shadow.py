@@ -10,7 +10,7 @@ from wavequant.application.analytics.backtest import run_portfolio
 from wavequant.domain.models.config import StrategyConfig
 from wavequant.domain.models.model import Bar, Signal
 from wavequant.domain.strategies.staged_exit import (
-    DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE, EXTREME_VOLUME_REDUCE,
+    DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE, EXTREME_VOLUME_CLEAR,
     StagedExitState, observe_volume_down_exit,
 )
 
@@ -65,8 +65,8 @@ def test_tenfold_and_existing_full_clear_win() -> None:
     bars = scenario()
     bars[2] = replace(bars[2], volume=bars[1].volume * 11)
     decision = observe_volume_down_exit(bars, 2, StagedExitState())
-    assert decision is not None and decision['reason'] == EXTREME_VOLUME_REDUCE
-    assert decision['exit_target_fraction'] == .9
+    assert decision is not None and decision['reason'] == EXTREME_VOLUME_CLEAR
+    assert decision['exit_fraction'] == 1.0
     bars = scenario()
     state = StagedExitState(volume_trigger_index=1, volume_support_index=0, volume_reduction_target=.7)
     bars[2] = replace(bars[2], low=23.4)
