@@ -1906,3 +1906,20 @@ Web信号、成交详情和复制共用完整组合proof，扫描列表已补独
 ### 三项量价规则提交与本次既有失败合并例外
 
 2026-10-21用户在获知既有失败阻碍后再次明确要求合并到main，按本次继续合并授权处理同一已知失败。v137七文件pytest为79 passed/1 failed，三项新规则用例全部通过；唯一失败仍为test_massive_gap_reversal_exit.py:52的wave_gap_reversal_reduce与wave_two_t_volume_bearish_reduce原因断言，同一未修改main 33df64e此前已单独复现，未修改旧断言，不记作通过。六修改Python文件mypy --follow-imports=skip通过，git diff --check与生产/回归源码复核完成；仅随后手动换行导入列表，无行为变化。main未前进、主目录干净；范围为巨量次日低开破低清仓、十倍量累计九成、倍量长上影阴线累计七成及缓存v137。不运行浏览器、完整套件或构建，完整实股结构行情回放待验证。按授权本地提交及no-ff合并，不推送。
+
+
+## 2026-10-21 十倍量封板豁免及次日收低全清（MONOREPO-330）
+
+2026-10-21优化十倍量：严格超过前日10倍且当日收盘封住涨停时，豁免该项九成减仓；紧邻下一交易日收盘严格低于封板日收盘则收盘全清，无需低开、阴线或放量，不延长观察窗。复用is_sealed_limit_up证券日期/同复权因子/原始价分位判定，不把盘中触板收盘开板算封板；保留既有ST及复权切换拒绝边界和独立全清风险，次日全清优先于部分减仓。profile v138。国芳2026-09-03用户OHLC 17.01/17.01/16.67/17.01、量58420300及原始收盘12.21纳入回归，前后行情明确合成；吉大此前封板报价同步改为豁免，原九成用例显式改成开板行情。
+
+继续复用feat-巨量次日低开清仓 / C:/Users/zb/.codex/worktrees/volume-gap-clear/wavequant-monorepo，修改前已从上轮合并main 0655d08快进同步。变更staged_exit.py、backtest.py、strategy_profiles.py、test_extreme_volume_reduce.py，新增test_extreme_volume_limit_hold.py。本轮只开发和编写用例，未执行验证、未提交合并推送或重启服务；实际提交时运行本轮相关回归与局部类型，完整实股回放待核实，历史v137测试结果不作本轮证明。
+
+
+### v138封板优化合并准备：两项main既有失败待决定
+
+2026-10-21 v138合并准备：五文件pytest为61 passed/2 failed，封板豁免及次日收低新用例通过；五修改Python文件mypy --follow-imports=skip通过，git diff --check和生产差异复核完成。两失败为test_limit_up_distribution_exit.py::test_signal_and_held_position_paths_clear_at_same_close_and_keep_evidence[True/False]第112行无filled SELL导致StopIteration；在main 0655d08同节点独立复现相同失败，未改旧断言或无关逻辑。这是不同于此前wave原因断言的新基线失败，按AGENTS等待本次明确合并例外，未提交合并推送。main存在config/contracts/design-system未提交删除，未触碰或暂存；任务分支无落后main。完整套件、浏览器、构建和完整实股回放未验证。
+
+
+### v138已获两项既有失败合并例外
+
+2026-10-21用户明确回复“合并”，本次豁免已在main 0655d08复现的limit_up_distribution账户用例True/False两项既有StopIteration失败，保留失败事实，不记为通过。候选源码未变化，沿用本轮61 passed/2 failed及五文件局部mypy通过，不重复验证。main无新增提交；主目录config/contracts/design-system未暂存删除与本任务路径不重叠，保留原状不纳入提交。按授权提交v138十倍量封板豁免和次日收低全清，再本地no-ff合并，不推送。完整实股回放/全套/浏览器/构建仍未验证。

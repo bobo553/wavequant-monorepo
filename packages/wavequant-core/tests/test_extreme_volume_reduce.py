@@ -26,8 +26,10 @@ def scenario() -> list[Bar]:
             for day, opened, high, low, close, volume in rows]
 
 
-def test_user_bullish_limit_quote_reduces_ninety_percent() -> None:
+def test_nonsealed_bullish_quote_reduces_ninety_percent() -> None:
     bars = scenario()
+    # 新封板豁免下，九成减仓用例显式改为收盘开板。
+    bars[2] = replace(bars[2], close=27.39)
     decision = observe_volume_down_exit(bars, 2, StagedExitState())
     assert decision is not None and decision['reason'] == EXTREME_VOLUME_REDUCE
     assert decision['exit_target_fraction'] == .9
@@ -45,13 +47,13 @@ def test_strict_tenfold_positive_previous_volume(previous_volume: float, current
                                                 expected: bool) -> None:
     bars = scenario()[1:3]
     bars[0] = replace(bars[0], volume=previous_volume)
-    bars[1] = replace(bars[1], volume=current_volume)
+    bars[1] = replace(bars[1], volume=current_volume, close=27.39)
     decision = observe_volume_down_exit(bars, 1, StagedExitState())
     assert (decision is not None and decision['reason'] == EXTREME_VOLUME_REDUCE) is expected
     assert observe_volume_down_exit(bars[:1], 0, StagedExitState()) is None
 
 
-@pytest.mark.parametrize('close', [27.4, 26.19, 26.0])
+@pytest.mark.parametrize('close', [27.39, 26.19, 26.0])
 def test_candle_color_does_not_restrict_extreme_volume(close: float) -> None:
     bars = scenario()
     bars[2] = replace(bars[2], close=close)
@@ -70,6 +72,7 @@ def test_full_clear_wins_even_when_today_exceeds_tenfold() -> None:
 
 def test_account_reduces_at_close_then_clears_remaining_next_day() -> None:
     bars = scenario()
+    bars[2] = replace(bars[2], close=27.39)
     entry = bars[1]
     signal = Signal(entry.timestamp, entry.symbol, 1, 'LONG', entry.close, 20.0,
                     'system_wave_push_gap', entry.timestamp, 0, None, 'fixture', 50.0)
@@ -103,3 +106,11 @@ def test_account_reduces_at_close_then_clears_remaining_next_day() -> None:
     assert not any(order['side'] == 'SELL' and order['status'] == 'filled' for order in blocked_result.orders)
     assert any(order['reason'] == 'not_sellable' and order['exit_target_fraction'] == .9
                for order in blocked_result.orders)
+
+
+def test_jida_sealed_limit_quote_is_now_exempt_from_tenfold_reduction() -> None:
+    bars = scenario()
+    decision = observe_volume_down_exit(bars, 2, StagedExitState())
+    assert decision is None or decision['reason'] != EXTREME_VOLUME_REDUCE
+    decision = observe_volume_down_exit(bars, 3, StagedExitState())
+    assert decision is not None and decision['exit_fraction'] == 1.0
