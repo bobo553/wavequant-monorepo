@@ -7,7 +7,7 @@ import math
 from zoneinfo import ZoneInfo
 
 from ..models.model import Bar
-from ..market_state.volume_candle import is_bearish_inside_child
+from ..market_state.volume_candle import is_bearish_inside_child, is_long_upper_shadow, is_volume_bearish
 from .limit_up_distribution_exit import observe_limit_up_distribution_exit
 from ..market_structure.polyline import observe_bar_relations
 from ..market_structure.price_action import Direction, ShadowPolicy, observe_resistance
@@ -251,6 +251,37 @@ def observe_inverse_resistance_exit(bars: list[Bar], index: int, state: StagedEx
                 execution_model='same_day_close')
 
 
+def _previous_triple_volume_gap_clear(bars: list[Bar], index: int) -> dict[str, float | str] | None:
+    """昨日巨量后的低开大阴线收盘破低；量能沿用共用阴线口径。"""
+    if index < 2:
+        return None
+    bar, previous, before = bars[index], bars[index - 1], bars[index - 2]
+    if (bar.open <= 0 or before.volume <= 0
+            or Fraction(str(previous.volume)) <= 3 * Fraction(str(before.volume))
+            or bar.open >= previous.close or bar.close >= previous.low
+            or Fraction(str(bar.open)) - Fraction(str(bar.close)) < Fraction(str(bar.open)) / 20):
+        return None
+    reference = next((prior for prior in range(index - 1, -1, -1)
+                      if bars[prior].close < bars[prior].open), None)
+    bearish = bars[reference] if reference is not None else None
+    if not is_volume_bearish(bar, previous, bearish):
+        return None
+    evidence: dict[str, float | str] = dict(
+        reason='volume_previous_triple_gap_bearish_clear', exit_fraction=1.0,
+        execution_model='same_day_close',
+        previous_date=previous.timestamp.date().isoformat(),
+        previous_volume=previous.volume, previous_close=previous.close, previous_low=previous.low,
+        previous_volume_benchmark_date=before.timestamp.date().isoformat(),
+        previous_volume_benchmark=before.volume,
+        previous_volume_multiple=previous.volume / before.volume,
+        bearish_body_fraction=(bar.open - bar.close) / bar.open,
+        observed_open=bar.open, observed_close=bar.close, observed_volume=bar.volume)
+    if bearish is not None:
+        evidence.update(bearish_reference_date=bearish.timestamp.date().isoformat(),
+                        bearish_reference_volume=bearish.volume)
+    return evidence
+
+
 def _massive_gap_reversal(bars: list[Bar], index: int) -> dict | None:
     """A record-volume bearish gap that closes below the entire prior candle."""
     window = 10
@@ -454,7 +485,7 @@ def observe_bearish_child_pattern_exit(
     return None
 
 
-def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState, *,
+def _observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState, *,
                              positive_n_index: int | None = None, small_body_max_fraction: float = .01,
                              small_body_lookback: int = 10) -> dict | None:
     """Freeze confirmed support and escalate cumulative reduction without future N bars."""
@@ -493,6 +524,9 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
                         child_date=child.timestamp.date().isoformat(),
                         child_low=child.low, child_close=child.close,
                         observed_low=bar.low, observed_close=bar.close)
+    triple_gap = _previous_triple_volume_gap_clear(bars, index)
+    if triple_gap is not None:
+        return triple_gap
     massive_reversal = _massive_gap_reversal(bars, index)
     if massive_reversal is not None:
         return massive_reversal
@@ -580,3 +614,38 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
                     exit_fraction=target, exit_target_fraction=target,
                     execution_model='next_open' if small_inside else 'same_day_close')
     return None
+
+
+EXTREME_VOLUME_REDUCE = 'volume_over_tenfold_reduce_90'
+DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE = 'volume_double_bearish_long_upper_shadow_reduce_70'
+
+
+def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState, *,
+                             positive_n_index: int | None = None, small_body_max_fraction: float = .01,
+                             small_body_lookback: int = 10) -> dict | None:
+    """倍量长上影阴线减七成、极端量减九成；保留原状态推进与全清优先。"""
+    decision = _observe_volume_down_exit(
+        bars, index, state, positive_n_index=positive_n_index,
+        small_body_max_fraction=small_body_max_fraction, small_body_lookback=small_body_lookback)
+    if index < 1 or (decision is not None and decision['exit_fraction'] >= .9):
+        return decision
+    bar, previous = bars[index], bars[index - 1]
+    if previous.volume <= 0:
+        return decision
+    current_volume, previous_volume = Fraction(str(bar.volume)), Fraction(str(previous.volume))
+    if current_volume > 10 * previous_volume:
+        reason, target = EXTREME_VOLUME_REDUCE, .9
+    elif (current_volume >= 2 * previous_volume and bar.close < bar.open
+          and is_long_upper_shadow(bar)
+          and (decision is None or decision['exit_fraction'] <= .7)):
+        reason, target = DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE, .7
+    else:
+        return decision
+    return dict(reason=reason, exit_fraction=target, exit_target_fraction=target,
+                execution_model='same_day_close', trigger_volume=bar.volume,
+                previous_volume=previous.volume, volume_multiple=bar.volume / previous.volume,
+                volume_trigger_date=bar.timestamp.date().isoformat(),
+                previous_volume_date=previous.timestamp.date().isoformat(),
+                observed_open=bar.open, observed_high=bar.high,
+                upper_shadow=bar.high - max(bar.open, bar.close),
+                candle_range=bar.high - bar.low, body_size=abs(bar.open - bar.close))
