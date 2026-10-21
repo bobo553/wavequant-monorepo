@@ -188,6 +188,16 @@
             ],
             "verification": [
                 {
+                    "command": "2026-10-21 user-approved local merge exception for nine unchanged main failures",
+                    "status": "failed",
+                    "summary": "2026-10-21用户明确“继续合并”：仅本次豁免已在未修改main 20571e6复现的9项既有失败，保留失败事实，不记为通过。新增7项回归和三个修改Python文件局部类型检查通过；最新main仍为20571e6且主工作区干净，候选已同步，无源码变化，不重复测试。按授权提交倒N阴线最近阴线量基准修复及profile v134，再本地no-ff合并，不推送。完整结构历史回放、完整套件及浏览器仍待验证，MONOREPO-330其他未完成事项保持。"
+                },
+                {
+                    "command": "2026-10-21 pytest four exit modules; unchanged main three modules; mypy three files; diff/state review",
+                    "status": "failed",
+                    "summary": "2026-10-21合并准备：已快进同步main 20571e6，保留双方feature/handoff记录解决冲突，profile升至v134避免复用main的v133缓存。四文件pytest（test_inverse_bearish_volume_clear、test_staged_exit、test_mother_child_inverse_exit、test_pressure_exit）97 passed/9 failed；未修改main同后三文件90 passed/9 failed，相同9节点与断言，新增7项全部通过。失败为staged_exit的历史倒N信号及T+1样本无买入2项、mother_child_inverse_exit的既有信号缺失3项、pressure_exit的原因/禁买预期4项；未修改旧断言或无关规则。三个修改Python文件mypy --config-file packages/wavequant-core/pyproject.toml --follow-imports=skip（MYPYPATH指向本worktree src）通过，git diff --check及暂存差异检查、功能JSON与唯一活动330检查通过。完整套件、浏览器、构建与真实完整结构回放未执行。按AGENTS检查失败不得合并，等待用户本次明确豁免这9项main既有失败；尚未提交合并推送。同步前stash因冲突由Git保留，改动已完整恢复；不自动删除该备份。"
+                },
+                {
                     "command": "pytest squeeze_low_open_confirmation, breakout_candle_quality, squeeze_buy_quality; baseline main old test; revised module; mypy five files; diff and state review",
                     "status": "passed",
                     "summary": "2026-10-21提交：初54通过/4失败，未修改main同4旧阴线放行期望失败。修正量能矩阵为小阳并新增原阴线精确拒绝，模块28通过，合计62 distinct cases。真实1677棒确认11/27正N、11/29轧空及15:00非一字涨停收盘模拟买入。5修改Python文件局部mypy通过，系统缺工具及单文件搜索路径问题已解决；生产未再变。diff及状态复核完成，未运行完整套件/浏览器/构建，未验证在线页面或真实排队。准备提交同步main后本地合并，不推送；330其他事项保留。"
@@ -196,6 +206,11 @@
                     "command": "2026-10-21 low-open squeeze confirmation development; checks deferred",
                     "status": "not-run",
                     "summary": "旧保存审计确认国芳11/27正N与11/29轧空，被breakout_low_open的前日倍量条件拦截。轧空候选改为已有放量且低开中大阳收盘越前高可通过K线门槛，独立突破/末跌高仍保留原规则；profile v133。新增2018起同源截止11/29真实权限fixture与信号/收盘成交回归源码及量价边界，未运行测试、类型、回测、Git检查或浏览器，待提交时验证其他门禁与最终成交。feat-轧空确认买入独立worktree，未提交合并推送。"
+                },
+                {
+                    "command": "待提交时运行test_inverse_bearish_volume_clear及相邻倒N清仓回归/局部类型",
+                    "status": "not-run",
+                    "summary": "2026-10-21襄阳轴承2022-09-23倒N放量全清：backtest原volume_inverse_n_clear仅比较前日量，补充阴线复用is_volume_bearish最近阴线基准，保留原前日放量路径和已确认inverse_n_risk_exit前提；全清优先于部分退出，证据增加参考阴线日期/成交量。冻结行情当日34885667股，前日41116026股，最近阴线9/15为18416582股；当日实体完全低于前日实体，最低6.94回补9/20缺口下沿6.95。缺口回补为本例背景，不新增对现有放量倒N全清的限制。profile v133隔离旧结果，不修改趋势/倒N生成、T+1或可卖流动性门禁。 新增回归仅编写未运行，显式注入信号不冒充完整趋势回放；开发阶段未执行任何验证，未提交合并推送。"
                 },
                 {
                     "command": "2026-10-21等实体反包提交定向pytest五文件、mypy六文件follow-imports=skip、git diff --check及复核",

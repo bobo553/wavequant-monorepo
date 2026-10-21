@@ -27,7 +27,7 @@ from wavequant.domain.strategies.wave_exhaustion_exit import (
     observe_five_top_body_upper_shadow_clear, observe_five_top_gap_volume_clear, observe_wave_exhaustion,
 )
 from wavequant.domain.market_state.volume_candle import (
-    volume_bearish_entry_rejection, volume_upper_shadow_rejection,
+    is_volume_bearish, volume_bearish_entry_rejection, volume_upper_shadow_rejection,
     volume_shadow_next_open_eligible, volume_shadow_next_decline, VOLUME_SHADOW_NEXT_WEAK_CLEAR,
 )
 from wavequant.domain.strategies.gap_entry_gate import GapEntryGate
@@ -1085,10 +1085,17 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 # Evaluate close-known N risk only after intraday execution. It may
                 # supersede daily partial orders, never erase earlier minute fills.
                 volume_inverse = (config.volume_inverse_n_clear and i > 0
-                    and bar.volume > grouped[symbol][i - 1].volume
                     and any(signal.symbol == symbol and signal.side == 'EXIT'
                             and 'inverse_n_risk_exit' in signal.reason.split('|')
                             for signal in signal_map.get(when, [])))
+                inverse_bearish_reference = None
+                if volume_inverse:
+                    inverse_bearish_reference = next((grouped[symbol][prior] for prior in range(i - 1, -1, -1)
+                        if grouped[symbol][prior].symbol == symbol
+                        and grouped[symbol][prior].close < grouped[symbol][prior].open), None)
+                    # 保留原倒 N 前日放量规则；阴线同时复用最近阴线量基准。
+                    volume_inverse = (bar.volume > grouped[symbol][i - 1].volume
+                        or is_volume_bearish(bar, grouped[symbol][i - 1], inverse_bearish_reference))
                 mother_child_inverse = (
                     mother_child_inverse_n_break(grouped[symbol], i)
                     if any(signal.symbol == symbol and signal.side == 'EXIT'
@@ -1222,6 +1229,10 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                         execution_model='same_day_close', exit_fraction=1.0,
                         observed_low=bar.low, observed_close=bar.close,
                         observed_volume=bar.volume, previous_volume=grouped[symbol][i - 1].volume,
+                        bearish_reference_date=(inverse_bearish_reference.timestamp.date().isoformat()
+                            if inverse_bearish_reference is not None else None),
+                        bearish_reference_volume=(inverse_bearish_reference.volume
+                            if inverse_bearish_reference is not None else None),
                         **({'minute_fallback': daily_fallback[symbol]} if symbol in daily_fallback else {}))
                 elif (volume_exit is not None and volume_exit['exit_fraction'] == 1
                       and (inverse_failure is None or shadow_exit is not None)):

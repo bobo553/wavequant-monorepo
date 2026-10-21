@@ -83,7 +83,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'configurable_n_target_trend_confirmation_v133_' + variant
+    config['profile_version'] = 'configurable_n_target_trend_confirmation_v134_' + variant
     config['definition']['trend_confirmation_routes'] = 'same_level_key_break_or_lower_key_break_alternation_turn'
     config['definition']['n_target_trend_confirmation_enabled'] = False
     config['definition']['optional_trend_confirmation_route'] = 'source_n_strict_one_p_target'
@@ -231,7 +231,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         pressure_breakout_exit='held_position_supply_high_resisted_intraday_break_after_20pct_rise_from_post_supply_low_then_first_later_adverse_full_clear',
         record_high_resistance_exit='held_position_intraday_break_of_clean_bullish_120_session_high_at_least_20_sessions_old_resisted_and_adverse_close_at_or_below_high_half_reduce_after_fill_first_lower_close_full_clear',
         record_high_massive_resistance_exit='old_120_session_high_at_least_20_sessions_old_attack_or_next_session_massive_bearish_resistance_pre_attack_20_mean_times_pressure_volume_ratio_cumulative_30_same_close_next_session_massive_bearish_lower_close_full_clear_without_prior_fill',
-        volume_inverse_n_clear='confirmed_inverse_n_and_volume_gt_previous_same_day_full_clear_before_partial_exits',
+        volume_inverse_n_clear='confirmed_inverse_n_and_volume_gt_previous_or_bearish_volume_gt_last_bearish_same_day_full_clear_before_partial_exits',
         mother_child_inverse_n_exit='bullish_child_inside_non_doji_mother_child_low_and_close_strict_break_same_close_full_clear',
         inverse_n_remaining_exit='bull_resistance_next_close_below_virtual_low_same_day_clear',
         inverse_n_close_reduce='confirmed_inverse_n_same_day_close_cumulative_90_without_prior_reduction',
