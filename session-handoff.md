@@ -1,3 +1,7 @@
+## 倒N全清合并准备：待基线失败豁免
+
+2026-10-21合并准备：已快进同步main 20571e6，保留双方feature/handoff记录解决冲突，profile升至v134避免复用main的v133缓存。四文件pytest（test_inverse_bearish_volume_clear、test_staged_exit、test_mother_child_inverse_exit、test_pressure_exit）97 passed/9 failed；未修改main同后三文件90 passed/9 failed，相同9节点与断言，新增7项全部通过。失败为staged_exit的历史倒N信号及T+1样本无买入2项、mother_child_inverse_exit的既有信号缺失3项、pressure_exit的原因/禁买预期4项；未修改旧断言或无关规则。三个修改Python文件mypy --config-file packages/wavequant-core/pyproject.toml --follow-imports=skip（MYPYPATH指向本worktree src）通过，git diff --check及暂存差异检查、功能JSON与唯一活动330检查通过。完整套件、浏览器、构建与真实完整结构回放未执行。按AGENTS检查失败不得合并，等待用户本次明确豁免这9项main既有失败；尚未提交合并推送。同步前stash因冲突由Git保留，改动已完整恢复；不自动删除该备份。
+
 2026-10-21 · 轧空放量修复提交检查完成
 
 本次生产修复及回归已完成：轧空放量不要求倍量，低开中大阳收盘越前高可通过K线门槛；独立突破/末跌高及阴线禁买保持。首次三文件pytest为54通过/4失败（165.26秒）；4项在未修改main 80b819c同样失败，根因为旧放量测试使用跳空收阴样本却期待可买。量能矩阵改为小阳线并保留原阴线新增精确拒绝断言，修订模块28通过；共62个不同用例完成，无未解决失败。真实2018起1677棒用例确认11/27正N、11/29轧空并生成LONG，当日15:00非一字涨停模型模拟成交，价格等于真实复权收盘；不代表实盘排队或完整账户历史验收。
@@ -9,6 +13,13 @@
 国芳601086旧保存research明确11/27 n_completed、11/29 regime_confirmation轧空，但候选1674被global_squeeze_buy_candle以breakout_low_open拒绝。11/29开6.598278低于前收6.666583，量27540132/18565619=1.483倍；中大阳收7.335974越过前高。原轧空K线过滤误沿用独立突破低开必须倍量条件。现squeeze_buy_rejection在已有候选本地放量通过后，允许低开中大阳收盘严格越过前高，继续检查前收涨幅、实体/影线；不改独立突破、末跌高、资格、N测量和账户门禁。profile v133隔离旧缓存。
 
 新增完整2018-01-02至2024-11-29同源输入及历史信号/15:00非一字涨停模拟成交回归源码，保留真实成交权限。新增量相等/不足、未收复前高、弱实体、非历史基准拒绝；更新与新轧空口径直接冲突的旧低开断言，同时保留独立突破拒绝。仅修改共用K线质量，不保证后续其他门禁已放行。未执行测试、类型、构建、格式、Git状态差异、浏览器或回测；完整链路及当前页面待提交时验证，不把旧账本当本轮验证。独立分支feat-轧空确认买入，worktree C:/Users/zb/.codex/worktrees/squeeze-confirmation-entry/wavequant-monorepo。未提交合并推送。
+
+## 2026-10-21 倒N放量全清续修（待提交时验证）
+
+2026-10-21襄阳轴承2022-09-23倒N放量全清：backtest原volume_inverse_n_clear仅比较前日量，补充阴线复用is_volume_bearish最近阴线基准，保留原前日放量路径和已确认inverse_n_risk_exit前提；全清优先于部分退出，证据增加参考阴线日期/成交量。冻结行情当日34885667股，前日41116026股，最近阴线9/15为18416582股；当日实体完全低于前日实体，最低6.94回补9/20缺口下沿6.95。缺口回补为本例背景，不新增对现有放量倒N全清的限制。profile v133隔离旧结果，不修改趋势/倒N生成、T+1或可卖流动性门禁。
+
+新增test_inverse_bearish_volume_clear.py使用冻结真实行情并显式注入买入/倒N信号，覆盖收盘全清、参考量证据、相等/缩量/阳线/无倒N/开关关闭及未来数据隔离；不代表完整实股结构与资格管线复现。独立worktree C:/Users/zb/.codex/worktrees/gap-liquidation/wavequant-monorepo，分支feat-倒N放量清仓。开发阶段未运行测试、lint、类型、构建、浏览器、Git状态差异或回测探针；待实际提交时验证，未提交合并推送，未重启服务。
+
 ### 2026-10-21 等实体反包提交与已知失败记录
 
 2026-10-21等实体反包提交验证：pytest test_equal_body_volume_clear.py、test_body_volume_clear.py、test_volume_bearish_entry.py、test_doji_volume_low_break_clear.py、test_two_t_body_volume_clear.py为86 passed/3 failed（21.65s）。新增冻结8/19–8/24行情、等值边界、严格量能、十字星隔离、流式及账户15:00全清用例通过；三失败与本会话此前main独立复现且用户明确“继续合并”授权的节点/断言相同，仍为T+1预期及两项清仓原因名称，不作为已修复或通过。遵循会话授权持续有效原则沿用用户对同三项已知失败的确认；此前开发记录“不自动延续”不作为新增用户约束。六修改Python文件mypy --config-file packages/wavequant-core/pyproject.toml --follow-imports=skip通过（局部类型），git diff --check及源码/断言复核完成。当前main为5b0868e且工作区干净，分支无落后；仅实体完整覆盖等值规则与profile v132变化，保留严格放量和十字星专用规则。未运行完整套件、浏览器或构建，未声称完整实股资格回放；按用户请求本地提交/no-ff合并，不推送。
@@ -1859,3 +1870,8 @@ Web信号、成交详情和复制共用完整组合proof，扫描列表已补独
 已实现显式股票链接优先、涨停卡片右上角服务器收藏、成员事务增量合并、取消股票数量配额、侧栏纵向滚动和滚动位置保持。关键文件：Web public/app.js、watchlists.js、server-watchlists.js、styles.css；market-dashboard的ladder-board、use-market-watchlist、watchlist-api；API watchlists.py/server.py；contracts watchlists.schema.ts。API继续保留来源与请求体大小保护，未修改交易、趋势或后台回测规则。
 
 回归源码已补充但未执行。下一步在用户实际要求提交时构建contracts，运行相关Web单元/组件、API自选SQLite/HTTP用例及必要类型检查；当前3003来自main，尚未加载本worktree修改，不能宣称在线故障已验收。浏览器/E2E仍需用户当次明确要求。未运行检查、未提交、合并、推送或重启共享服务。
+
+
+### 倒N全清已获本次基线失败合并例外
+
+2026-10-21用户明确“继续合并”：仅本次豁免已在未修改main 20571e6复现的9项既有失败，保留失败事实，不记为通过。新增7项回归和三个修改Python文件局部类型检查通过；最新main仍为20571e6且主工作区干净，候选已同步，无源码变化，不重复测试。按授权提交倒N阴线最近阴线量基准修复及profile v134，再本地no-ff合并，不推送。完整结构历史回放、完整套件及浏览器仍待验证，MONOREPO-330其他未完成事项保持。
