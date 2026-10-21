@@ -43,7 +43,10 @@ from wavequant.domain.strategies.pressure_exit import (
 )
 from wavequant.domain.strategies.trend_flip_exit import TrendFlipExitStream
 from wavequant.domain.strategies.breakout_shadow_exit import (
-    BREAKOUT_DOUBLE_VOLUME_FADE_REDUCE, BREAKOUT_LIMIT_OPEN_REDUCE, BREAKOUT_SHADOW_CLEAR, BREAKOUT_SHADOW_REDUCE,
+    BREAKOUT_LIMIT_OPEN_REDUCE, BREAKOUT_SHADOW_CLEAR, BREAKOUT_SHADOW_REDUCE,
+)
+from wavequant.domain.strategies.double_volume_fade_exit import (
+    DOUBLE_VOLUME_BULLISH_FADE_REDUCE, observe_double_volume_fade,
 )
 from wavequant.domain.strategies.mother_child_inverse_n import (
     MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break,
@@ -374,7 +377,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
         elif 'exit_target_fraction' in evidence:
             desired = pos.initial_quantity * evidence['exit_target_fraction']
             already_sold = pos.initial_quantity - pos.quantity
-            if pending_exit[symbol] in (BREAKOUT_LIMIT_OPEN_REDUCE, BREAKOUT_DOUBLE_VOLUME_FADE_REDUCE):
+            if pending_exit[symbol] in (BREAKOUT_LIMIT_OPEN_REDUCE, DOUBLE_VOLUME_BULLISH_FADE_REDUCE):
                 # 至少减九成：向上取整且不超持仓，T+1与可卖门禁仍在下方执行。
                 quantity = min(pos.quantity, max(0.0, math.ceil((desired - already_sold) / lot - 1e-9) * lot))
             else:
@@ -1083,6 +1086,11 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                 volume_source = ('volume_upper_shadow_next_decline' if shadow_exit is not None else
                                  'bearish_child_pattern' if volume_exit is not None
                                  and volume_exit['reason'].startswith('bearish_mother_child_') else 'volume_down_exit')
+                # 突破证据直接来自此前K线，不能被正式趋势高点缺失挡住。
+                fade_exit = observe_double_volume_fade(grouped[symbol], i) if config.volume_down_exit else None
+                if fade_exit is not None and (volume_exit is None or volume_exit['exit_fraction'] < .9):
+                    volume_exit = fade_exit
+                    volume_source = 'double_volume_bullish_fade'
                 # Evaluate close-known N risk only after intraday execution. It may
                 # supersede daily partial orders, never erase earlier minute fills.
                 volume_inverse = (config.volume_inverse_n_clear and i > 0
@@ -1183,7 +1191,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     pressure = None
                 if (pressure is not None and pressure['reason'] in (
                         'record_high_resistance_reduce', 'record_high_massive_resistance_reduce_30',
-                        BREAKOUT_SHADOW_REDUCE, BREAKOUT_LIMIT_OPEN_REDUCE, BREAKOUT_DOUBLE_VOLUME_FADE_REDUCE)
+                        BREAKOUT_SHADOW_REDUCE, BREAKOUT_LIMIT_OPEN_REDUCE)
                         and (hard_reason or volume_inverse or inverse_failure is not None
                              or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
                     pressure = None
@@ -1202,7 +1210,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                              or (volume_exit is not None and volume_exit['exit_fraction'] == 1))):
                     wave_exit = None
                 if volume_exit is not None and volume_exit['reason'] in (
-                        EXTREME_VOLUME_CLEAR, DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE, EXTREME_VOLUME_LIMIT_NEXT_CLEAR):
+                        EXTREME_VOLUME_CLEAR, DOUBLE_VOLUME_BEARISH_SHADOW_REDUCE, EXTREME_VOLUME_LIMIT_NEXT_CLEAR,
+                        DOUBLE_VOLUME_BULLISH_FADE_REDUCE):
                     # 新量价风险只覆盖较轻减仓，已有全清和更高减仓目标保持优先。
                     if pressure is not None and pressure['exit_fraction'] < volume_exit['exit_fraction']:
                         pressure = None

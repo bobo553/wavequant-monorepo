@@ -1,4 +1,4 @@
-"""已知前高突破当笔／次笔的阴线风险与倍量突破衰退。"""
+"""已知前高突破当笔／次笔的放量阴线上影风险。"""
 
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -17,7 +17,6 @@ BREAKOUT_SHADOW_CLEAR = 'breakout_volume_bearish_shadow_next_lower_open_clear'
 BREAKOUT_GAP_BEARISH_CLEAR = 'breakout_gap_volume_large_bearish_clear'
 BREAKOUT_CHILD_CLEAR = 'breakout_volume_bearish_inside_child_clear'
 BREAKOUT_LIMIT_OPEN_REDUCE = 'breakout_double_volume_bearish_limit_open_reduce_90'
-BREAKOUT_DOUBLE_VOLUME_FADE_REDUCE = 'breakout_double_volume_next_bearish_lower_close_reduce_90'
 
 
 @dataclass(frozen=True)
@@ -41,63 +40,6 @@ def _latest_highs(levels: Mapping[int, Sequence[Mapping[str, object]]], index: i
             result.append(_High(level, source, float(price), known))
             break
     return result
-
-
-def breakout_double_volume_fade_days(
-    bars: Sequence[Bar], history: Mapping[int, Mapping[int, Sequence[Mapping[str, object]]]],
-    *, start_index: int = 0, end_index: int | None = None,
-) -> Iterator[tuple[int, dict[int, dict[str, object]]]]:
-    """倍量阳线突破已知末跌高，紧邻次日阴线收低即累计减九成。
-
-    只冻结突破前已知的关键位与前日量；次日不要求放量、长上影或大实体。
-    只提供收盘风险，不派生第三日开盘清仓，也不在观察窗口外补找突破。
-    """
-    end = observation_window_end(len(bars), start_index, end_index)
-    risks: dict[int, dict[str, object]] = {}
-    pending: tuple[int, _High] | None = None
-    for index in range(start_index, end + 1):
-        yield index, risks
-        bar = bars[index]
-        previous = bars[index - 1] if index else None
-        if pending is not None:
-            attack, high = pending
-            pending = None
-            breakout = bars[attack]
-            if (index == attack + 1 and bar.symbol == breakout.symbol
-                    and bar.timestamp > breakout.timestamp and bar.raw_trading_active is not False
-                    and bar.adjustment_factor == breakout.adjustment_factor
-                    and bar.close < bar.open and bar.close < breakout.close):
-                reference = bars[attack - 1]
-                risks[index] = dict(
-                    reason=BREAKOUT_DOUBLE_VOLUME_FADE_REDUCE,
-                    exit_fraction=.9, exit_target_fraction=.9, execution_model='same_day_close',
-                    trend_level=high.level, breakout_key_index=high.index,
-                    breakout_key_date=bars[high.index].timestamp.date().isoformat(),
-                    breakout_key_high=high.price, breakout_key_known_index=high.known,
-                    breakout_attack_index=attack, breakout_attack_date=breakout.timestamp.date().isoformat(),
-                    breakout_attack_open=breakout.open, breakout_attack_high=breakout.high,
-                    breakout_attack_close=breakout.close, breakout_attack_volume=breakout.volume,
-                    breakout_double_volume_source='previous',
-                    breakout_double_volume_date=reference.timestamp.date().isoformat(),
-                    breakout_double_volume_reference=reference.volume,
-                    breakout_double_volume_ratio=breakout.volume / reference.volume,
-                    breakout_resistance_phase='response', breakout_warning_index=index,
-                    breakout_warning_date=bar.timestamp.date().isoformat(), breakout_warning_close=bar.close,
-                    observed_open=bar.open, observed_high=bar.high, observed_low=bar.low,
-                    observed_close=bar.close, observed_volume=bar.volume, previous_close=breakout.close,
-                    decision_timestamp=bar.timestamp.replace(hour=15, minute=0).isoformat(),
-                )
-        if (previous is None or bar.symbol != previous.symbol or bar.timestamp <= previous.timestamp
-                or bar.raw_trading_active is False or previous.raw_trading_active is False
-                or bar.adjustment_factor != previous.adjustment_factor or bar.close <= bar.open
-                or not isfinite(previous.volume) or previous.volume <= 0 or not isfinite(bar.volume)
-                or Fraction(str(bar.volume)) < 2 * Fraction(str(previous.volume))):
-            continue
-        crossed = [high for high in _latest_highs(history.get(index - 1, {}), index)
-                   if previous.high <= high.price < bar.high]
-        if crossed:
-            pending = index, max(crossed, key=lambda high: (high.price, high.index, high.level))
-    yield end + 1, risks
 
 
 def _limit_open_evidence(
