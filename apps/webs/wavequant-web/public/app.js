@@ -1243,6 +1243,8 @@ function currentCandleCopyText(bar) {
         bar,
         symbol ? `${symbolName(symbol)}（${symbol}）` : "",
         previousCandleClose(chartMarketBars(state.view), bar),
+        chartMarketBars(state.view)[chartMarketBars(state.view).findIndex((candidate) => candidate.time === bar.time) - 1]?.volume,
+        state.view?.timeframe || "1d",
     );
 }
 function copyableRenderedCandle(bar) {
