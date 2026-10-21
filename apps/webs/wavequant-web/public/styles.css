@@ -3647,3 +3647,29 @@ tbody tr:hover {
         display: block;
     }
 }
+
+.completed-backtest-elapsed {
+    color: var(--research-text);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.completed-backtest-elapsed[hidden] {
+    display: none;
+}
+
+.selected-stock-copy-actions:has(.completed-backtest-elapsed:not([hidden])) {
+    max-width: 280px;
+    flex-shrink: 1;
+}
+.eligibility-copy-with-elapsed {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.eligibility-copy-with-elapsed .completed-backtest-elapsed {
+    flex: 1;
+    min-width: 90px;
+}

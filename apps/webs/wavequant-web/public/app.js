@@ -446,10 +446,11 @@ function renderSelectedStockSummary() {
         text = `${symbolName(symbol)} · ${waiting}${stage || current?.message || "正在等待服务器进度…"}${elapsed ? ` · ${elapsed}` : ""}`;
         status = unavailable ? "unknown" : "running";
     }
-    if (!running && status === "completed") {
-        const elapsed = completedBacktestElapsed(current, serverBacktestSnapshot.recent);
-        if (elapsed) text = `${text} · ${elapsed}`;
-    }
+    const completedElapsed = !running && status === "completed"
+        ? completedBacktestElapsed(current, serverBacktestSnapshot.recent) : "";
+    const elapsedLabel = $("completed-backtest-elapsed");
+    elapsedLabel.textContent = completedElapsed;
+    elapsedLabel.hidden = !completedElapsed;
     if (text == null) return;
     const summary = $("selected-stock-summary");
     if (status) summary.dataset.backtestStatus = status;
@@ -1347,7 +1348,8 @@ for (const button of document.querySelectorAll("[data-copy-eligibility]")) butto
     }
 });
 $("copy-backtest-progress").addEventListener("click", async () => {
-    const text = $("selected-stock-summary").textContent.trim();
+    const text = [$("selected-stock-summary").textContent.trim(),
+        $("completed-backtest-elapsed").textContent.trim()].filter(Boolean).join(" · ");
     if (!text) return;
     const button = $("copy-backtest-progress");
     const sequence = state.sequence;

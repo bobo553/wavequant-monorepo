@@ -273,18 +273,26 @@ export function StockBrowser(): JSX.Element {
                     >
                         复制
                     </button>
-                    <button
-                        id="copy-eligibility-ranges-summary"
-                        type="button"
-                        className="backtest-progress-copy"
-                        data-copy-eligibility=""
-                        data-feedback-id="eligibility-summary-copy-feedback"
-                        disabled
-                        aria-label="复制当前股票的全部已显示资格区间"
-                        title="复制资格区间及确认、结束日期"
-                    >
-                        复制资格区间
-                    </button>
+                    <div className="eligibility-copy-with-elapsed">
+                        <button
+                            id="copy-eligibility-ranges-summary"
+                            type="button"
+                            className="backtest-progress-copy"
+                            data-copy-eligibility=""
+                            data-feedback-id="eligibility-summary-copy-feedback"
+                            disabled
+                            aria-label="复制当前股票的全部已显示资格区间"
+                            title="复制资格区间及确认、结束日期"
+                        >
+                            复制资格区间
+                        </button>
+                        <span
+                            id="completed-backtest-elapsed"
+                            className="completed-backtest-elapsed"
+                            role="status"
+                            hidden
+                        />
+                    </div>
                     <span id="eligibility-summary-copy-feedback" role="status" aria-live="polite" />
                     <div data-current-eligibility-action="" hidden>
                         <button

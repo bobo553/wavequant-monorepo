@@ -14369,6 +14369,7 @@
                 "按job、股票、数据源、版本及参数匹配，旧记录缺少耗时不伪造计时。"
             ],
             "verification": [
+                {"command": "node --test backtest-job-status.test.mjs; node --check app.js; tsc --ignoreConfig --noEmit --strict --skipLibCheck --jsx react-jsx --module esnext --moduleResolution bundler --target es2022 stock-browser.tsx; eslint stock-browser.tsx; git diff --check", "status": "passed", "summary": "2026-10-21最终耗时独立显示在复制资格区间按钮右侧，窄屏换行；19项状态测试、JS语法、局部TSX类型及lint通过。补齐既有共享ESLint构建产物并修正目标文件格式后lint通过。未运行浏览器、全量类型或Web构建；以下为先前版本证据。"},
                 {
                     "command": "node --test apps/webs/wavequant-web/tests/backtest-job-status.test.mjs; node --check apps/webs/wavequant-web/public/app.js",
                     "status": "passed",
