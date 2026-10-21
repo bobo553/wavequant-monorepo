@@ -74,6 +74,12 @@ export function ChartViewport(): JSX.Element {
                             >
                                 复制
                             </button>
+                            <span
+                                id="completed-backtest-elapsed"
+                                className="completed-backtest-elapsed"
+                                role="status"
+                                hidden
+                            />
                             <span data-current-eligibility-action="" hidden>
                                 <button
                                     id="copy-current-eligibility-range-timeline"
