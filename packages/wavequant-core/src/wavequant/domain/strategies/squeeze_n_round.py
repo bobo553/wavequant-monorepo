@@ -2,9 +2,6 @@
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
-from typing import cast
-
-from .trading_intervals import confirmed_alternation_event
 
 
 @dataclass(frozen=True)
@@ -19,30 +16,6 @@ class SqueezeN:
     @property
     def identity(self) -> tuple[int, int, int, int]:
         return self.origin, self.neckline, self.pullback, self.attack
-
-
-def joint_squeeze_confirmations(
-    events: Iterable[Mapping[str, object]], level: int,
-) -> set[tuple[str, int, tuple[int, int, int, int]]]:
-    """只有已发布交替证据中的原 N 可跨越自身资格起点，不能借用别的路径或 N。"""
-    result: set[tuple[str, int, tuple[int, int, int, int]]] = set()
-    for event in events:
-        path, now, proof = event.get('source_path'), event.get('bar_index'), event.get('confirmation_evidence')
-        if (event.get('trend_level') != level or event.get('state') != '空多交替'
-                or event.get('confirmation_rule') != 'positive_n_and_squeeze_after_qualified_b'
-                or not confirmed_alternation_event(event) or not isinstance(path, str)
-                or type(now) is not int or not isinstance(proof, Mapping)):
-            continue
-        coordinates = tuple(proof.get(name) for name in ('n_origin', 'n_neckline', 'n_pullback', 'attack'))
-        if any(type(value) is not int for value in coordinates):
-            continue
-        identity = cast(tuple[int, int, int, int], coordinates)
-        origin, neckline, pullback, attack = identity
-        if (0 <= origin <= neckline <= pullback <= attack <= now and origin < pullback
-                and proof.get('source_path') == path and proof.get('trend_level') == level
-                and proof.get('bar_index') == now and proof.get('candidate_index') == now):
-            result.add((path, now, identity))
-    return result
 
 
 @dataclass(frozen=True)

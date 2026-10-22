@@ -5,8 +5,6 @@ a confirmed source pivot following a formal bullish reversal. This does not
 promote it into a formal trend vertex. Each attack receives its own prefix.
 """
 
-from ..market_state.candle_strength import medium_bullish_body
-from ..strategies.attack_quality import squeeze_buy_rejection
 from .abc_candidate import AbcAnchor, tertiary_abc_observations
 
 
@@ -59,7 +57,7 @@ def squeeze_anchors(level, dates, source_level):
         )
     # A later source-confirmed high extends the same A; do not simultaneously
     # reuse its older interior high as another A for the very same B/N.
-    latest: dict[int, dict] = {}
+    latest = {}
     for item in anchors.values():
         origin = item["origin"]["index"]
         if origin not in latest or item["high"]["index"] > latest[origin]["high"]["index"]:
@@ -70,8 +68,7 @@ def squeeze_anchors(level, dates, source_level):
 def squeeze_alternations(bars, audit, anchors_at_attack):
     """Preserve dated confirmation, breakout and failure instead of repainting."""
     positive = {e["bar_index"]: e for e in audit if e["event"] == "n_completed" and e.get("direction") == "up"}
-    observations, used = [], set()
-    occupied: dict[tuple[int, int, int], int] = {}
+    observations, occupied, used = [], {}, set()
     for trigger in sorted(audit, key=lambda e: e["bar_index"]):
         gap_confirmation = trigger["event"] == "n_consolidation_gap_confirmed"
         if gap_confirmation:
@@ -105,23 +102,14 @@ def squeeze_alternations(bars, audit, anchors_at_attack):
             proof = events[0]
             if short_shallow_pullback(proof['a_origin_price'], proof['a_high_price'],
                                       proof['b_minimum_close'], proof['a_duration'], proof['b_duration']):
-                # 正 N 自身的轧空及放量中大阳可以确认 B，不能再强制等突破整个 A。
-                # 缺口替代确认、轧空回补及弱 K 仍沿用原来的时间不足约束。
-                volume_squeeze = (not gap_confirmation and trigger['event'] == 'regime_confirmation'
-                    and 0 < attack < now and bars[now].close > bars[attack].close
-                    and medium_bullish_body(bars[now])
-                    and squeeze_buy_rejection(bars[now], bars[now - 1], bars[attack - 1]) is None)
-                if volume_squeeze:
-                    events = [dict(event, duration_confirmation='volume_bullish_n_squeeze') for event in events]
-                else:
-                    breakout = next((e for e in events if e['event'] == 'tertiary_c_breakout'), None)
-                    if breakout is None:
-                        continue
-                    confirmed = breakout['bar_index']
-                    events = [dict(proof, bar_index=confirmed, candidate_index=confirmed,
-                                   duration_confirmation='close_above_a_high_after_short_pullback'),
-                              dict(breakout, candidate_index=confirmed,
-                                   duration_confirmation='close_above_a_high_after_short_pullback')]
+                breakout = next((e for e in events if e['event'] == 'tertiary_c_breakout'), None)
+                if breakout is None:
+                    continue
+                confirmed = breakout['bar_index']
+                events = [dict(proof, bar_index=confirmed, candidate_index=confirmed,
+                               duration_confirmation='close_above_a_high_after_short_pullback'),
+                          dict(breakout, candidate_index=confirmed,
+                               duration_confirmation='close_above_a_high_after_short_pullback')]
             used.add((*identity, events[0]["b_low_index"]))
             occupied[identity] = len(bars)
             for event in events:
@@ -134,7 +122,6 @@ def squeeze_alternations(bars, audit, anchors_at_attack):
                     dict(
                         event,
                         event=kind,
-                        n_neckline=positive[attack].get('neckline'),
                         trend_level=item["trend_level"],
                         anchor_known_index=item["known_index"],
                         key_source_index=item["key"]["index"],
