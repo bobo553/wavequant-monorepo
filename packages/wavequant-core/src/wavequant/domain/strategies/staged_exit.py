@@ -1,6 +1,6 @@
 """Observe a held position's first support break and a failed rebound causally."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, time
 from fractions import Fraction
 import math
@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from ..models.model import Bar
 from ..market_state.volume_candle import is_bearish_inside_child, is_long_upper_shadow, is_volume_bearish
+from .double_bullish_shadow_exit import DoubleVolumeBullishShadowExit
 from .gap_bearish_exit import observe_gap_bearish_exit
 from .limit_up_distribution_exit import is_sealed_limit_up, observe_limit_up_distribution_exit
 from ..market_structure.polyline import observe_bar_relations
@@ -105,6 +106,7 @@ class StagedExitState:
     bearish_mother_child_warning_index: int | None = None
     bearish_child_pattern_warning_index: int | None = None
     bearish_child_mother_warning_index: int | None = None
+    double_bullish_shadow: DoubleVolumeBullishShadowExit = field(default_factory=DoubleVolumeBullishShadowExit)
 
 
 def observe_intraday_staged_exit(
@@ -633,11 +635,14 @@ def observe_volume_down_exit(bars: list[Bar], index: int, state: StagedExitState
                              positive_n_index: int | None = None, small_body_max_fraction: float = .01,
                              small_body_lookback: int = 10) -> dict | None:
     """十倍量当日全清，仅开收均封涨停豁免；保留次日收低及其他风险。"""
+    bullish_shadow = state.double_bullish_shadow.advance(bars, index)
     decision = _observe_volume_down_exit(
         bars, index, state, positive_n_index=positive_n_index,
         small_body_max_fraction=small_body_max_fraction, small_body_lookback=small_body_lookback)
     if index < 1 or (decision is not None and decision['exit_fraction'] == 1):
         return decision
+    if bullish_shadow is not None:
+        return bullish_shadow
     gap_bearish = observe_gap_bearish_exit(bars, index)
     if gap_bearish is not None:
         return gap_bearish
