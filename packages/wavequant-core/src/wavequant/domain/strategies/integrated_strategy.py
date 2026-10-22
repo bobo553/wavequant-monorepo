@@ -1520,8 +1520,9 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         for c in candidates if whole_wave and c['setup'].direction == Direction.UP}
     joint_confirmations = (joint_squeeze_confirmations(hierarchy_events, config.buy_interval_level)
                            if whole_wave and hierarchical else set())
+    # 倒 N 没有正 N 身份；共同确认只读取已进入轧空来源的正 N 候选。
     joint_squeeze_windows = {c['n_id']: c['qualification_window_start'] for c in candidates
-        if c['n_id'] in squeeze_sources
+        if whole_wave and c['setup'].direction == Direction.UP and c['n_id'] in squeeze_sources
         and (c.get('source_path'), c.get('qualification_window_start'),
              squeeze_sources[c['n_id']].identity) in joint_confirmations}
     squeeze_candidates = [(c, squeeze_sources[c['n_id']]) for c in candidates
