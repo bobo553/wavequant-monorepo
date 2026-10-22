@@ -19,6 +19,11 @@
             ],
             "verification": [
                 {
+                    "command": "pytest tests/test_two_t_entry_gate.py tests/test_qualified_gap_entry.py tests/test_qualified_rising_close_entry.py tests/test_streaming_backtest.py tests/test_signal_execution_stream.py tests/test_squeeze_n_round.py tests/test_alternation_duration.py tests/test_squeeze_alternation.py -q -p no:cacheprovider --tb=short; mypy --follow-imports=skip <8 modified Python files>; git diff --check",
+                    "status": "passed",
+                    "summary": "2026-10-22 同步最新本地main 6ecced6后，保留其轧空同日资格规则；冲突仅在profile与进度/交接，双方记录保留，profile协调为v150_two_t_entry。最终8模块112通过，8个修改文件局部类型及差异空白检查通过；最终相对main仍仅11个本任务文件。未将此前停止的其他任务实股回归记为本次通过。"
+                },
+                {
                     "command": "pytest tests/test_two_t_entry_gate.py tests/test_signal_execution_stream.py tests/test_qualified_gap_entry.py tests/test_streaming_backtest.py -q -p no:cacheprovider --tb=short; pytest tests/test_two_t_entry_gate.py tests/test_streaming_backtest.py -q -p no:cacheprovider --tb=short",
                     "status": "passed",
                     "summary": "2026-10-22 用户要求合并后进入提交阶段。事件流契约修正后四模块54通过；新增加仓边界及持久审计后两模块29通过（重叠不累计）。此前资格收盘及来源所有权相邻用例通过。初次账户缺attack及混入波段事件的失败已通过独立entry_target_events修复，不放宽原断言。冻结桂林OHLCV配合显式N/资格，不冒充完整在线趋势与账户重算。"
@@ -119,6 +124,7 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。统一三级六态及确认时钟与请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。2026-10-22按用户截图删除内部审计的蓝紫圆点、仅观察用途的跳空/放量候选计算及状态；精简图表事件投影，保留实际交易确认、资格、N与目标线消费者。",
             "acceptanceCriteria": [
+                "2026-10-22海洋王续修最终口径：5/26完成正N不提前开放资格，5/31真实轧空且放量中大阳时同日收盘确认资格并判断买入，不等6/1突破A高或倍量。共同确认N须同级同源同窗口同四坐标，倒N在读取身份前隔离，保留原防守与一次消费。未来A高突破不得占用更早的合格轧空；三级共用规则无股票日期特判。重新加入真实AkShare截面及收盘回归；此前海洋王目标用例通过；国芳旧失败已诊断为恢复规则新增后旧预期过期。用户本次明确直接合并，国芳新结构/资格分离回归及最新main组合复测已中止，后续待验证；profile v149。",
                 "截图圆点清理：内部生命周期及未登记的审计事件不再生成图表圆点，旧缓存前端亦不回退显示；后端在构造日期/价格/层级前排除无展示消费者的事件，逐日生命周期不再计算或保存观察候选。折线及三级共用正式确认、防守与交易资格规则不变，N和目标线继续使用原事件；相关回归和性能收益待提交时验证。",
                 "2026-10-22最新S/S2：S到400日停止，全部capture因内部GenericAlias元数据拒绝，无完整结果。修复后的S2完整334.3987951秒/CPU331.546875，账户/研究SHA同control；day2007.7278626、day2000279.7190763、day2133循环334.2044606，末133日54.4853843秒；geometry157.5362125/permissions77.8396969/history32.717318/lifecycle24.4908148秒。formal攻击33823对R2的48678减少约30.5%，但987次source_revision清检查点，2668次capture累计admitted_bytes约4.10GB（累计遍历计费，非同时驻留），整体退步，S2不作优化完成。S3正在按实际依赖原始来源前缀保留未受影响快照，未完整验证。独立T仅R2+许可最后活动run增量标注正在测量，不含S2/S3，未宣称通过；trend_lines.py:_annotate_geometry显式external引用签名模式，_annotate_permissions只维护活动末段，原8MiB分2MiB闭合+6MiB共享三个当前尾段。所有测试未运行，P仍最快完整生产候选；增长/60秒未解决，330保持in-progress，未提交合并推送重启，main未应用。",
                 "2026-10-22 R2历史完整结果：确认缓存拒绝路径修复后2133日完整290.36723140001413秒/CPU288.375，账户/研究SHA均同control。day200=5.8284324、day2000=242.3200587、day2133循环=290.2022331，末133日47.8821744秒，末段日均/首段约12.35；geometry109.1954061/permissions79.7137182/history33.4735736/lifecycle24.3436283/projection4.7544789/drawing0.0843598秒，ordinary_attacks64503、formal_attacks48678。收回R部分退步但未胜过P282.7993405秒，增长和60秒仍未解决。producer稳定ID贯穿历史根方案仅静态评估，不强持全历史、保留alias/因果回读，不放宽预算或微调压缩级别。所有pytest/类型待实际提交，330仍in-progress，未提交合并推送重启，main尚未应用。",
@@ -243,6 +249,31 @@
                 "2026-10-19 外围消费者增量化：来源、候选、许可轻量投影传递不可变版本/父令牌/最早变化位置；分组、来源认证、几何标注、结构腿共享持久前缀；许可来源/候选查找索引只更新后缀；共享层级历史在交易区间内外只更新投影后缀。旧关键位/整波起点只读引用，不删除证据，不以结构冻结代替逐日资格核验；追加、修订、截短、同坐标事实、延迟可知、跨请求失效及公开独立列表导出待提交时验证。"
             ],
             "verification": [
+                {
+                    "command": "用户要求直接合并：pytest test_squeeze_low_open_confirmation.py test_same_level_recovery.py test_haiyangwang_squeeze_entry.py 已中止；10修改文件局部mypy已通过；必要Git复核",
+                    "status": "not-run",
+                    "summary": "2026-10-22 按用户要求直接合并轧空同日资格与买入\n\n用户重新要求合并main，并在提交检查运行期间明确要求“直接合并”。本次按最新指令停止正在运行的pytest，不追加回归、类型、格式、lint、构建或运行探针；停止时日志无完整结果，不能宣称新国芳用例或本轮海洋王复测通过。已完成的10个修改Python文件局部mypy（--config-file packages/wavequant-core/pyproject.toml --follow-imports=skip --no-incremental）结果为Success: no issues found in 10 source files；JSON读取、唯一活动功能与Git空白/冲突及范围复核已完成。原失败和后续诊断记录保留，不记作被测试消除。\n\n本分支先快进同步main aa75bfe，保留低开阴线和倍量长上影破位清仓，进度冲突保留双方记录；profile协调为v149，lifecycle v35、chart history v162。交付海洋王放量中大阳轧空当日资格确认及原正N买入衔接，并将国芳过期成交预期按现行同级恢复规则拆为结构成立与资格阻断回归。国芳新回归和最新main组合后的实股完整验证仍待后续执行。仅本地提交/no-ff合并，禁用提交钩子，不推送或重启服务；MONOREPO-330保持in-progress，分支/worktree与冲突时保留的stash均保留。"
+                },
+                {
+                    "command": "用户授权国芳冻结行情定向诊断；待提交：pytest test_squeeze_low_open_confirmation.py test_same_level_recovery.py；修改测试局部mypy",
+                    "status": "not-run",
+                    "summary": "2026-10-22 国芳旧回归与同级恢复规则对齐（待提交验证）\n\n用户要求暂不合并、先修复国芳失败，并明确授权冻结行情定向诊断。原5文件提交检查的国芳失败仍是事实，未豁免或标记通过。诊断使用guofang_2024_squeeze_confirmation.json完整2018起行情：2024-11-27真实折线保留1671L/1673H/1674L，但11/14—11/29交易资格均false，没有新交易N来源。补充同次问题的上游诊断发现2024-02-06触发trading_same_level_recovery_required：跌破2022-10-31末升低4.437287627806584，冻结2023-08-01末跌高11.024346589744814；截至11/29未解除恢复门槛。\n\n进度历史已记载后来新增的同级恢复业务要求：破末升低后跨窗口保留末跌高门槛，突破只解除禁开，随后仍需新翻多和交替；三级一致。国芳旧测试早于这项规则，继续期待11/29交易N/买入/账户成交，属于过期的集成预期，不能以放宽恢复门槛恢复旧买点。此次没有更改任何生产交易规则或冻结行情。\n\n将test_squeeze_low_open_confirmation.py的旧成交预期拆为明确职责：真实因果折线生成11/27正N，11/29轧空和低开放量中大阳仍合格；完整策略必须保留2/6冻结关键位，未突破前不得恢复资格或发出LONG，无资格时不扫描交易N。保留原有量价边界断言，并加入攻击日前不得完成N的断言。删除已不符合现行资格规则的模拟成交断言，属于有证据的业务契约对齐，不把失败改为skip/xfail，也不注入资格或修改行情来制造交易。\n\n新回归仅编辑和静态复核，未运行pytest、类型、lint、格式、构建或Git检查；用户当前安排为暂不合并，本轮不进入提交阶段。后续准备提交时需运行test_squeeze_low_open_confirmation.py及test_same_level_recovery.py并检查修改测试类型；此前海洋王运行结果不能替代本轮新增回归验证。诊断记录为本worktree .codex-runtime/guofang-missing-n-diagnosis.json、guofang-missing-qualification.json；上游诊断首次因误用不存在的上下文函数导入失败，改用ordinary_trend_completion(False)完成。未提交、合并、推送或重启，MONOREPO-330继续in-progress。"
+                },
+                {
+                    "command": "国芳集团基线失败修复：静态追踪及用户授权冻结行情定向诊断",
+                    "status": "not-run",
+                    "summary": "2026-10-22用户拒绝豁免旧失败，要求暂不合并并先修复国芳问题，随后明确允许一次定向诊断。继续复用本会话worktree；海洋王改动与上轮验证证据保留。追踪2024-11-27外包收盘正N来源、资格窗口及观察缓存，不修改冻结行情或放宽原测试断言；修复尚在进行，未提交合并。"
+                },
+                {
+                    "command": "pytest 五个轧空相关文件；新增合成边界单例复测；main 614e841 国芳旧用例对照；mypy --follow-imports=skip --no-incremental 修改9文件",
+                    "status": "failed",
+                    "summary": "2026-10-22 海洋王同日资格与买入：提交检查\n\n本次按用户“合并到main”进入提交阶段，先同步main 614e841，保留低开阴线清仓及内部观察事件清理；profile v148、lifecycle v35、chart history v162。源码及12文件范围已复核，无股票日期特判。\n\n执行5文件pytest（test_haiyangwang_squeeze_entry、test_squeeze_n_round、test_alternation_duration、test_squeeze_alternation、test_squeeze_low_open_confirmation，-q -p no:cacheprovider --tb=short）：60 passed、2 failed。新增合成样本低开收盘恰等前高，不符合既有收复前高约束；仅将其close从15改为15.2（仍低于A高16），断言未放宽，单例复测1 passed。另一失败为既有国芳集团test_full_history_emits_and_executes_on_squeeze_confirmation_close第59行缺少2024-11-27正N事件；未修改main 614e841上同命令同断言复现失败，125.08秒。最终本次执行范围61项通过、1项基线失败，不能宣称全绿。海洋王5/31资格、买入与日线收盘模拟成交、5/26和5/28不提前开资格、6/1原N不重复、三级边界用例通过；模拟账户显式使用收盘成交参数，不代表线上或分钟成交验收。\n\nmypy --config-file packages/wavequant-core/pyproject.toml --follow-imports=skip --no-incremental检查6生产及3测试文件：Success: no issues found in 9 source files。两处生命周期既有类型诊断已在main复现；本次以等价type(self).__init__(self)与cast消除，未改变趋势判定。未运行全仓检查、格式/lint/构建、浏览器、在线回测或服务重启。日志位于本worktree .codex-runtime/squeeze-merge-v148.log/xml。因AGENTS规定失败时不合并，已请求用户明确是否豁免这一基线失败；当前尚未提交合并，MONOREPO-330保持in-progress。"
+                },
+                {
+                    "command": "待实际提交：pytest tests/test_haiyangwang_squeeze_entry.py tests/test_squeeze_n_round.py tests/test_alternation_duration.py tests/test_squeeze_alternation.py tests/test_squeeze_low_open_confirmation.py；本轮修改Python局部类型与最终差异复核",
+                    "status": "not-run",
+                    "summary": "2026-10-22用户重新要求修复并明确资格也应5/31确认。复用feat-轧空当日买入，快进main e7ed83c后实现共同确认与买入衔接；先隔离正N方向再读n_id，保留后续倒N异常用例。完整历史弱触发等待未来A高不得抢占中间更早的放量轧空；锚点采用精确TypedDict。profile v148、lifecycle v35、chart history v162隔离旧缓存。冻结826根AkShare行情未改，新增5/31资格开启及N窗口同日、5/26和5/28不得提前许可、前缀/完整及三级边界回归。仅编辑源码，未运行本轮测试/类型/检查/探针/浏览器，未提交合并推送重启；旧诊断与旧失败不冒充本轮证据，5/31最终成交仍待验证。"
+                },
                 {
                     "command": "pnpm --filter @wavequant/core exec node scripts/run-python.mjs -m pytest -q tests/test_chart_event_projection.py tests/test_trend_lifecycle.py tests/test_confirmation_gap_expiry.py tests/test_lifecycle_impulse_defense.py tests/test_chart_target_windows.py tests/test_wave_projection.py tests/test_trading_intervals.py --tb=short",
                     "status": "failed",
