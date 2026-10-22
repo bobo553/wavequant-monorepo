@@ -33,6 +33,7 @@ from wavequant.domain.market_state.volume_candle import (
 from wavequant.domain.strategies.double_bullish_shadow_exit import DOUBLE_VOLUME_BULLISH_SHADOW_CLEAR
 from wavequant.domain.strategies.gap_bearish_exit import GAP_VOLUME_BEARISH_CLEAR
 from wavequant.domain.strategies.gap_entry_gate import GapEntryGate
+from wavequant.domain.strategies.two_t_entry_gate import entry_target_from_events, two_t_entry_rejection
 from wavequant.domain.strategies.two_t_resistance import (
     BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR,
     HoldingResistanceHistory, holding_resistance_history,
@@ -186,6 +187,7 @@ class AccountDay:
     trading_window_start: int = 0
     eligibility_closed: bool = False
     positive_n_authoritative: bool = False
+    entry_target_events: list[dict[str, object]] = field(default_factory=list)
 
 
 def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: StrategyConfig,
@@ -197,10 +199,12 @@ def run_portfolio(grouped: dict[str, list[Bar]], signals: list[Signal], config: 
                   progress: Callable[[int], None] | None = None, *,
                   stage: Callable[[str], None] | None = None,
                   history_reuse: Mapping[str, BacktestHistoryReuse] | None = None,
-                  n_target_trend_confirmation_enabled: bool = False) -> BacktestResult:
+                  n_target_trend_confirmation_enabled: bool = False,
+                  entry_target_events: Mapping[str, Sequence[Mapping[str, object]]] | None = None) -> BacktestResult:
     runner = portfolio_days(grouped, signals, config, start, end, minute_loader,
         positive_n_bars, wave_events, entry_executions, progress, stage=stage,
-        history_reuse=history_reuse, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        history_reuse=history_reuse, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
+        entry_target_events=entry_target_events)
     try:
         while True:
             next(runner)
@@ -220,6 +224,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                   stage: Callable[[str], None] | None = None,
                   history_reuse: Mapping[str, BacktestHistoryReuse] | None = None,
                   n_target_trend_confirmation_enabled: bool = False,
+                  entry_target_events: Mapping[str, Sequence[Mapping[str, object]]] | None = None,
                   live: bool = False,
                   on_day: Callable[[int, Sequence[dict], Sequence[Trade], Sequence[dict]], None] | None = None,
                   ) -> Generator[None, AccountDay | None, BacktestResult]:
@@ -522,6 +527,22 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
 
     def execute_entry(symbol, i, bar, when, signal, execution_price, *, at_close=False, intraday=None):
         nonlocal cash, total_fees, turnover
+        target_source = entry_target_from_events((entry_target_events or {}).get(symbol, []), i, at_close=at_close)
+        # 开盘只知道开盘价，分钟只知道累计高点；成交开盘跳过目标也不追买。
+        target_high = bar.high if at_close else execution_price
+        target_close = bar.close if at_close else execution_price
+        target_time = when.replace(hour=15 if at_close else 9, minute=0 if at_close else 30).isoformat()
+        if intraday is not None:
+            target_high = max(execution_price, intraday['timing'].get('observed_high', execution_price))
+            target_close = intraday['timing'].get('observed_close', execution_price)
+            target_time = intraday['timing']['execution_timestamp']
+        target_rejection = two_t_entry_rejection(grouped[symbol], i, target_source,
+            observed_high=target_high, observed_close=target_close, at_close=at_close)
+        if target_rejection is not None:
+            log(when, symbol, 'BUY', 'cancelled', str(target_rejection['reason']),
+                signal_timestamp=signal.timestamp.isoformat(), decision_timestamp=target_time,
+                **{key: value for key, value in target_rejection.items() if key != 'reason'})
+            return
         gap_rejection = gap_buy_gates[symbol].advance(grouped[symbol], i)
         if gap_rejection is not None:
             log(when, symbol, 'BUY', 'cancelled', cast(str, gap_rejection['reason']),
@@ -807,6 +828,7 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
                     target_streams.pop(symbol, None)
                 c_equal_events[symbol] = [row for row in day.wave_events if row.get('event') == 'wave_c_equal_target']
                 wave_events = {symbol: day.wave_events}
+                entry_target_events = {symbol: day.entry_target_events}
                 wave_lookup[symbol] = {}
                 wave_signal_lookup[symbol] = {}
                 for event in day.wave_events:

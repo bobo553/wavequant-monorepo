@@ -97,6 +97,7 @@ def single_stock_result(bars, strategy, execution, signal_result=None, *, minute
     n_bars, wave_events = signal_execution_facts(bars, signal_result) if account_result is None else ({}, [])
     result=account_result if account_result is not None else run_portfolio({bars[0].symbol:bars},signal_result.signals,config,minute_loader=minute_loader,positive_n_bars={bars[0].symbol:n_bars},entry_executions=entry_executions,
         wave_events={bars[0].symbol:wave_events},progress=progress, stage=stage,
+        entry_target_events={bars[0].symbol: signal_result.audit},
         history_reuse={bars[0].symbol:history_reuse} if history_reuse is not None else None,
         n_target_trend_confirmation_enabled=effective_strategy.n_target_trend_confirmation_enabled)
     if entry_fallbacks_override is not None:

@@ -83,7 +83,11 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'configurable_n_target_trend_confirmation_v148_bullish_shadow_' + variant
+    config['profile_version'] = 'configurable_n_target_trend_confirmation_v149_two_t_entry_' + variant
+    config['definition']['two_t_entry_guard'] = (
+        'live_positive_n_first_observed_two_t_touch_inclusive_blocks_all_entries_and_additions_'
+        'close_uses_session_high_minutes_use_observed_prefix_no_gap_exemption_'
+        'first_known_session_close_only_prior_reached_sources_keep_existing_c_wave_rules')
     config['definition']['same_level_eligibility_recovery'] = (
         'broken_last_rise_low_blocks_until_strict_last_fall_high_break_confirmed_decline_can_replace_key')
     config['definition']['eligible_n_candidates'] = (

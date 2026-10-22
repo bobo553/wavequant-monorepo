@@ -24,6 +24,9 @@ from wavequant.domain.strategies.trading_intervals import TradingInterval
 from wavequant.domain.strategies.hierarchical_entry import EntryContext
 from wavequant.domain.strategies.backtest_history_reuse import BacktestHistoryReuse, MinuteTradingScope
 from wavequant.domain.strategies.squeeze_n_round import SqueezeRoundState
+from wavequant.domain.strategies.two_t_entry_gate import (
+    TwoTEntryTarget, entry_target_from_events, two_t_entry_rejection,
+)
 from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
     wave_confirmation_state,
@@ -104,6 +107,24 @@ def _reject_polyline_entry(
     return True
 
 
+def _reject_two_t_entry(
+    bars: list[Bar], index: int, target: TwoTEntryTarget | None,
+    signals: list[Signal], audit: list[dict[str, object]], *,
+    observed_high: float, observed_close: float, at_close: bool, decision_timestamp: str,
+) -> bool:
+    rejection = two_t_entry_rejection(bars, index, target,
+        observed_high=observed_high, observed_close=observed_close, at_close=at_close)
+    if rejection is None:
+        return False
+    signals[:] = [row for row in signals if not (row.bar_index == index and row.side == 'LONG')]
+    audit[:] = [row for row in audit if not (row['bar_index'] == index
+        and row['event'] in ('long_signal', 'long_transition_evidence'))]
+    audit.append(dict(event='entry_rejected', bar_index=index, symbol=bars[index].symbol,
+        timestamp=bars[index].timestamp.isoformat(), candidate_channel='global_two_t_entry_guard',
+        decision_timestamp=decision_timestamp, **rejection))
+    return True
+
+
 def _qualified_gap_entries(
     bars: list[Bar], generated: SystemResult, strategy: SystemStrategy,
     minute_loader: Callable[[Bar], list[MinuteBar]] | None, *, only_index: int | None,
@@ -164,6 +185,7 @@ def _qualified_gap_entries(
                 candle_filter_known_at=bar.timestamp.replace(hour=15).isoformat()))
             continue
         fallback = None
+        target = entry_target_from_events(audit, i, at_close=False)
         try:
             minute = minute_loader(bar) if minute_loader is not None else []
         except MinuteCoverageError as exc:
@@ -178,6 +200,10 @@ def _qualified_gap_entries(
             if close_signal is not None:
                 continue
             decision = execution_at = bar.timestamp.replace(hour=9, minute=30)
+            if _reject_two_t_entry(bars, i, target, signals, audit,
+                    observed_high=bar.open, observed_close=bar.open, at_close=False,
+                    decision_timestamp=decision.isoformat()):
+                continue
             price, buyable = bar.open, bar.buyable
             remaining_low, remaining_high = bar.low, bar.high
             timing.update(execution_model='same_day_open', decision_source='qualified_gap_open_no_minutes',
@@ -189,10 +215,16 @@ def _qualified_gap_entries(
             # 开盘价附近的回踩不等于回补缺口；只消费已完成分钟，收盘须重新站上开盘。
             observed_low = float('inf')
             observed_high = observed_volume = 0.0
+            target_blocked = False
             for offset, observed in enumerate(minute[:-1]):
                 observed_low = min(observed_low, observed.low * bar.adjustment_factor)
                 observed_high = max(observed_high, observed.high * bar.adjustment_factor)
                 observed_volume += observed.volume
+                target_blocked = _reject_two_t_entry(bars, i, target, signals, audit,
+                    observed_high=observed_high, observed_close=observed.close * bar.adjustment_factor,
+                    at_close=False, decision_timestamp=observed.timestamp.isoformat())
+                if target_blocked:
+                    break
                 if observed_low <= bars[i - 1].high:
                     break
                 if observed.close * bar.adjustment_factor <= bar.open:
@@ -212,7 +244,7 @@ def _qualified_gap_entries(
                 break
             else:
                 continue
-            if observed_low <= bars[i - 1].high:
+            if target_blocked or observed_low <= bars[i - 1].high:
                 continue
         timing.update(decision_timestamp=decision.isoformat(), execution_timestamp=execution_at.isoformat())
         signal = Signal(bar.timestamp, bar.symbol, i, 'LONG', price, window.start_low_price,
@@ -274,6 +306,11 @@ def _qualified_rising_close_entries(
             continue
         bar = bars[i]
         decision = bar.timestamp.replace(hour=15, minute=0)
+        if _reject_two_t_entry(bars, i, entry_target_from_events(audit, i, at_close=True), signals, audit,
+                observed_high=bar.high, observed_close=bar.close, at_close=True,
+                decision_timestamp=decision.isoformat()):
+            days.add(i)
+            continue
         reason = (QUALIFIED_FOLLOW_THROUGH_CLOSE if follow_through else
                   QUALIFIED_VOLUME_BREAKOUT_CLOSE if breakout else QUALIFIED_RISING_CLOSE)
         structural_breakout = gate.breakouts.get(i - 1 if follow_through else i, {})

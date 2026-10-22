@@ -49,6 +49,7 @@ from .secondary_reclaim_entry import SecondaryHigh, secondary_reclaim_history
 from .secondary_pullback_entry import SecondaryPullbackCandidate, secondary_pullback_history
 from .attack_quality import squeeze_buy_rejection, squeeze_volume_pass, v3_positive_n_attack_rejection
 from .gap_entry_gate import GapEntryGate
+from .two_t_entry_gate import TwoTEntryTarget, two_t_entry_rejection
 from ..market_structure.polyline_lifecycle import PolylineBuyGate
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
@@ -190,6 +191,7 @@ class TradeDecisionContext:
     scan_allowed: bool
     buy_allowed: bool
     live_target_source: int | None
+    target_entry_risk: Mapping[str, object] | None
     target_risk: Mapping[str, object] | None
     five_top_entry_risk: Mapping[str, object] | None
     ten_full_entry_risk: Mapping[str, object] | None
@@ -1637,6 +1639,9 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             counts['buy_interval_skipped_days'] += 1
             return False
         bar = bars[i]
+        if context.target_entry_risk is not None:
+            log(i, 'entry_rejected', candidate_channel='global_two_t_entry_guard', **context.target_entry_risk)
+            return False
         volume_rejection = (volume_upper_shadow_rejection(bar, bars[i - 1] if i else None)
                             or (volume_bearish_entry_rejection(bars, i) if whole_wave else None))
         gap_rejection = gap_buy_gate.advance(bars, i)
@@ -2125,24 +2130,31 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             log(i, 'long_transition_evidence', **special)
         return any(s.side == 'LONG' for s in signals[context.signal_start:])
 
-    def observe_target_day(i: int) -> int | None:
+    def observe_target_day(i: int) -> tuple[int | None, dict[str, object] | None]:
         """交易目标只在当前资格窗口内观察，首次可用日只消费收盘价。"""
         bar = bars[i]
         live_target_source = bottom_targets.source_at[i] if bottom_targets is not None else None
+        entry_risk = None
         if live_target_source is not None:
             measured = bottom_candidates[live_target_source]
             known = max(measured['attack'], measured['known_at'])
             observed = bar.close if i == known else bar.high
             reached = bottom_hits.setdefault(live_target_source, set())
+            targets = measured['n'].targets
+            if targets.one_p is not None and targets.two_t is not None:
+                entry_risk = two_t_entry_rejection(bars, i,
+                    TwoTEntryTarget(live_target_source, known, targets.one_p, targets.two_t, measured['n_id']),
+                    observed_high=bar.high, observed_close=bar.close,
+                    at_close=_minute_scope is None)
             for target_stage in ('equal_wave', 'one_p', 'two_t'):
                 target = getattr(measured['n'].targets, target_stage)
                 if target is not None and observed >= target:
                     reached.add(target_stage)
-        return live_target_source
+        return live_target_source, entry_risk
 
     def consume_signal_day(i: int) -> None:
         nonlocal last_progress, has_buy_signal, squeeze_window_start
-        live_target_source = observe_target_day(i)
+        live_target_source, target_entry_risk = observe_target_day(i)
         bar = bars[i]
         if whole_wave:
             if (_minute_scope is not None and i == _minute_scope.index
@@ -2176,6 +2188,7 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
             scan_allowed=scan_days is None or scan_days[i],
             buy_allowed=entry_days is None or entry_days[i],
             live_target_source=live_target_source,
+            target_entry_risk=target_entry_risk,
             target_risk=target_resistance.get(i),
             five_top_entry_risk=five_top_entry_risks.get(i),
             ten_full_entry_risk=ten_full_entry_risks.get(i),
