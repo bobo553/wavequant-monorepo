@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from bisect import bisect_left
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from time import monotonic
@@ -84,6 +84,7 @@ class MarketCalculations:
         self._eligibility = {level: TradingEligibility(level) for level in (1, 2, 3)}
         self._checkpoints: TrendChangeRows[tuple[object, ...]] | None = None
         self._chart_prefix_owner = object()
+        self._strategy_resources = ExitStack()
         self._strategy_permission_cache: '_TrendPermissionCache | None' = None
         self._shared_hierarchy: 'HierarchyHistoryStream | None' = None
         self._shared_buy_level: int | None = None
@@ -185,6 +186,7 @@ class MarketCalculations:
         return tuple(projected_views)
 
     def _close_shared_history(self) -> None:
+        self._strategy_resources.close()
         if self._shared_hierarchy is not None:
             self._shared_hierarchy.close()
         self._shared_permission_days.clear()

@@ -423,6 +423,7 @@ def publish_uptrends(
     _market_index: _MarketPrefixIndex | None = None,
     _origin_lookups: tuple[_OriginLookup, _OriginLookup] | None = None,
     _publication_cache: _PublicationCache | None = None,
+    _readonly_result: bool = False,
 ) -> list[dict[str, object]]:
     """Keep structural candidates private until their rising leg is qualified.
 
@@ -708,7 +709,7 @@ def publish_uptrends(
         if stable and len(candidates) > start:
             checkpoint = capture(len(candidates))
         cache.save(checkpoint)
-        # Downstream annotation mutates its own points. It must never mutate a
-        # checkpoint or a previously returned day's evidence.
-        return deepcopy(list(result))
+        # 层级投影只读五个标量字段，立即产生独立轻量结果；无需复制旧证明。
+        # 完整许可标注和公共调用仍独立复制，不能修改缓存或旧日期的证据。
+        return list(result) if _readonly_result else deepcopy(list(result))
     return list(result)

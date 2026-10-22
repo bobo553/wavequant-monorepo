@@ -198,3 +198,33 @@ def test_a_new_same_bar_ordinal_inside_a_filtered_gap_matches_cold_evidence() ->
     assert mutable_points(direct.candidates) == mutable_points(expected.candidates)
     assert mutable_points(observed.points) == mutable_points(base.points)
     assert mutable_points(observed.candidates) == mutable_points(base.candidates)
+
+@pytest.mark.parametrize('level', (2, 3))
+def test_certified_formal_source_borrows_proof_and_public_source_stays_isolated(level: int) -> None:
+    from wavequant.domain.market_structure.owned_evidence import CertifiedSource, owned_evidence_scope
+    from wavequant.domain.market_structure.trend_evidence_reuse import _geometry_signature
+
+    source = _formal_source(level)[:18]
+    proof = {'observations': [1, 2, 3]}
+    source[0]['audit_note'] = proof
+    base = judge_trend(source, trend_level=level)
+    before = deepcopy(source)
+    public_state = _FormalKeyBreakState(level)
+    expected = public_state.calculate(source, base)
+    assert public_state._turns[0].source['audit_note'] == proof
+    assert public_state._turns[0].source['audit_note'] is not proof
+    with owned_evidence_scope() as owner:
+        keys = [_geometry_signature(point) for point in source]
+        assert all(key is not None for key in keys)
+        certified = CertifiedSource(source, cast(list[bytes], keys), owner, None)
+        state = _FormalKeyBreakState(level)
+        actual = state.calculate(certified, base, _certified_keys=certified.keys)
+        assert state._turns[0].source['audit_note'] is proof
+        assert actual == expected
+        assert source == before
+        assert actual is not None
+        exported = mutable_points(actual.candidates)
+        for point in exported:
+            if 'audit_note' in point:
+                cast(dict[str, object], point['audit_note'])['observations'] = []
+        assert source == before

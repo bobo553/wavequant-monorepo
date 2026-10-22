@@ -956,6 +956,10 @@ class _TrendJudgementState:
                                      _TrendUpgradeState, _EventRows] | None = None
         self._checkpoint_ledger: _JudgementLedger | None = None
         self._flip_checkpoint_ledger: _JudgementLedger | None = None
+        self._checkpoint_payload_upper_bytes = 0
+        self._flip_payload_upper_bytes = 0
+        self._flip_budget_token: object = object()
+        self._checkpoint_flip_token: object | None = None
         self.tail_restores = 0
         self.flip_restores = 0
         self._source_keys: tuple[bytes, ...] = ()
@@ -1105,9 +1109,13 @@ class _TrendJudgementState:
         if sum(getsizeof(container) for container in copied) <= min(4 * 1024 * 1024, self._limit // 2):
             self._checkpoint = self._source_keys, self._regular_keys, ordinary, upgrade, events
             self._checkpoint_ledger = ledger
+            self._checkpoint_payload_upper_bytes = self._payload_upper_bytes
+            self._checkpoint_flip_token = self._flip_budget_token
         else:
             self._checkpoint = None
             self._checkpoint_ledger = None
+            self._checkpoint_payload_upper_bytes = 0
+            self._checkpoint_flip_token = None
 
     def remember_source_flip(self) -> None:
         """保存首次可知翻向之后的状态；包括旧关键位、证明及全局来源位置。
@@ -1123,6 +1131,7 @@ class _TrendJudgementState:
         ordinary, upgrade, events = _copy_append_states(self._ordinary, self._upgrade, self._events)
         self._flip_checkpoint = self._source_keys, self._regular_keys, ordinary, upgrade, events
         self._flip_checkpoint_ledger = self._copy_ledger(self._ledger)
+        self._flip_budget_token = object()
         # 检查点只新增浅复制容器，证据叶子已在负载上界内；仅上界触及
         # 预算时遍历对象图校准，避免每次翻向都重新读取全部历史证明。
         measured = self._payload_upper_bytes + self._container_bytes() + 4096
@@ -1141,12 +1150,16 @@ class _TrendJudgementState:
         self.memory_used = measured
         self.peak_retained_bytes = max(self.peak_retained_bytes, measured)
         self._payload_upper_bytes = max(0, measured - self._container_bytes())
+        self._flip_payload_upper_bytes = self._payload_upper_bytes
 
     def _restore_tail(self, certified: tuple[bytes, ...], *, flip: bool = False) -> bool:
         saved = self._flip_checkpoint if flip else self._checkpoint
         if (saved is None or len(certified) < len(saved[0])
                 or certified[:len(saved[0])] != saved[0]):
             return False
+        restored_payload = (self._flip_payload_upper_bytes if flip else
+            self._checkpoint_payload_upper_bytes if self._checkpoint_flip_token is self._flip_budget_token
+            else self._payload_upper_bytes)
         self._ordinary, self._upgrade, self._events = _copy_append_states(*saved[2:])
         # 判定状态和发布账本必须恢复同一来源版本；丢掉账本会让每天的尾点
         # 修订重建所有历史桶，并把整份旧证据再次加入增量内存计费。
@@ -1158,17 +1171,20 @@ class _TrendJudgementState:
         if flip:
             self._checkpoint = None
             self._checkpoint_ledger = None
-        # 检查点已计入当前预算。恢复只复制索引容器，证据叶子是原对象图的
-        # 子集；沿用其保守负载上界，不能每次尾点修订重新遍历全部历史证据。
+        # 恢复状态也恢复同版本的容量上界，撤销已丢弃尾部的费用。另一个翻向
+        # 检查点发生变化时仍沿用当前保守上界，避免漏计后来保留的证据。
+        self._payload_upper_bytes = restored_payload
         measured = self._payload_upper_bytes + self._container_bytes() + 4096
-        if measured > self._limit:
+        calibrated = measured > self._limit
+        if calibrated:
             self.deep_budget_walks += 1
             measured = self._owned_bytes()
         if measured > self._limit:
             self.clear()
             return False
         self.memory_used = measured
-        self._payload_upper_bytes = max(0, measured - self._container_bytes())
+        if calibrated:
+            self._payload_upper_bytes = max(0, measured - self._container_bytes())
         if flip:
             self.flip_restores += 1
         else:
@@ -1180,6 +1196,9 @@ class _TrendJudgementState:
         self._flip_checkpoint = None
         self._checkpoint_ledger = None
         self._flip_checkpoint_ledger = None
+        self._checkpoint_payload_upper_bytes = self._flip_payload_upper_bytes = 0
+        self._flip_budget_token = object()
+        self._checkpoint_flip_token = None
         self._source_keys = ()
         self._source_version = None
         self._regular_keys = ()
@@ -1216,7 +1235,8 @@ class _TrendJudgementState:
                 size += getsizeof(attributes)
                 pending.extend(attributes.keys())
                 diagnostics = ('memory_used', 'peak_retained_bytes', 'peak_observed_bytes',
-                               '_payload_upper_bytes', 'cold_runs', 'append_runs', 'deep_budget_walks', 'budget_rejections',
+                               '_payload_upper_bytes', '_checkpoint_payload_upper_bytes', '_flip_payload_upper_bytes',
+                               'cold_runs', 'append_runs', 'deep_budget_walks', 'budget_rejections',
                                'tail_restores', 'flip_restores', 'frozen_advances', 'frozen_invalidations')
                 pending.extend(item for key, item in attributes.items() if key not in diagnostics)
                 # 计数字段自身不能令计数结果变化；为所有计数器分别预留
@@ -1667,7 +1687,9 @@ class _FormalKeyBreakState:
             # 前一正式点验证跨边界的坐标与时钟；此前跳过的 seed 等已由证书覆盖。
             boundary = max(0, bisect_left(self._turns, source_common, key=lambda turn: turn.position) - 1)
             start = min(source_common, self._turns[boundary].position) if self._turns else 0
-            source_tail = _source_turns(mutable_points(source[start:]), self.trend_level - 1,
+            # 请求拥有的来源保持只读；投影只改外壳，无须再次复制整棵旧证明。
+            owned = type(source) is CertifiedSource and source.owner is current_evidence()
+            source_tail = _source_turns(_owned_mutable_points(source[start:], owned), self.trend_level - 1,
                 formal_key_attacks=True, _position_offset=start)
             self._turns = [*self._turns[:boundary], *source_tail]
             if self._early_attack is None or self._early_attack >= boundary:

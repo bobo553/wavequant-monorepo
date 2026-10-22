@@ -16,6 +16,8 @@ from .trend_readonly_cache import _ReadonlySnapshotCache
 _Row = TypeVar('_Row')
 _STAGE_MEMORY_BYTES = 2 * 1024 * 1024
 _HEADER = Struct('>BQ')
+_BLOCK_HEADER = Struct('>II')
+_BLOCK_BYTES = 64 * 1024
 _COMPRESS_AFTER = 64 * 1024
 _PAYLOAD_CACHE_BYTES = 2 * 1024 * 1024
 
@@ -24,8 +26,9 @@ class TrendStageRows(Generic[_Row]):
     """保存有界证据流；日内消费者可读取已写前缀，再继续追加。
 
     每个阶段最多在内存保存 2 MiB 序列化内容，超过后由标准库自动移到
-    本请求的临时文件。另以最多 2 MiB 保存最近两行的压缩及原始字节，
-    避免同一前驱版本跨日反复解压。显式私有只读借用另有 4 MiB 解码缓存，
+    本请求的临时文件。另以最多 2 MiB 分摊给重复块的压缩缓存和最近两行的
+    原始字节缓存，避免旧字节反复压缩或同一前驱版本反复解压。
+    显式私有只读借用另有 4 MiB 解码缓存，
     默认读取仍恢复独立可变对象。阶段数固定，
     空间由固定缓冲上限及单行直接来源规模限定。
 
@@ -50,10 +53,53 @@ class TrendStageRows(Generic[_Row]):
         self._reading = False
         self.raw_bytes = 0
         self.stored_bytes = 0
-        self._payload_cache_limit = payload_cache_bytes
+        self._compression_limit = payload_cache_bytes // 4
+        self._compression_cache: OrderedDict[bytes, bytes] = OrderedDict()
+        self._compression_bytes = 0
+        self._payload_cache_limit = payload_cache_bytes - 2 * self._compression_limit
         self._payload_cache: OrderedDict[int, tuple[bytes, bytes]] = OrderedDict()
         self._payload_cache_size = 0
         self._readonly_cache = _ReadonlySnapshotCache[_Row](memory_bytes=4 * 1024 * 1024, max_entries=2)
+
+    def _compress_blocks(self, payload: bytes) -> bytes:
+        """复用前一行的字节前缀；长行顺序扫描不能把待复用的前缀逐出缓存。"""
+        blocks: list[bytes] = []
+        following: OrderedDict[bytes, bytes] = OrderedDict()
+        following_bytes = 0
+        for start in range(0, len(payload), _BLOCK_BYTES):
+            block = payload[start:start + _BLOCK_BYTES]
+            packed = self._compression_cache.get(block)
+            if packed is None:
+                packed = following.get(block)
+            if packed is None:
+                packed = compress(block, level=1)
+            charged = getsizeof(block) + getsizeof(packed) + 256
+            if block not in following and following_bytes + charged <= self._compression_limit:
+                following[block] = packed
+                following_bytes += charged
+            blocks.extend((_BLOCK_HEADER.pack(len(block), len(packed)), packed))
+        # 新旧压缩表同时存活的峰值也纳入原有字节缓存额度。
+        self._compression_cache = following
+        self._compression_bytes = following_bytes
+        return b''.join(blocks)
+
+    @staticmethod
+    def _decompress_blocks(payload: bytes) -> bytes:
+        blocks: list[bytes] = []
+        offset = 0
+        while offset < len(payload):
+            if offset + _BLOCK_HEADER.size > len(payload):
+                raise ValueError('owned trend stage has an incomplete block header')
+            raw_length, packed_length = _BLOCK_HEADER.unpack_from(payload, offset)
+            offset += _BLOCK_HEADER.size
+            if not 0 < raw_length <= _BLOCK_BYTES or offset + packed_length > len(payload):
+                raise ValueError('owned trend stage has an invalid block length')
+            block = decompress(payload[offset:offset + packed_length])
+            if len(block) != raw_length:
+                raise ValueError('owned trend stage has an invalid decoded block')
+            blocks.append(block)
+            offset += packed_length
+        return b''.join(blocks)
 
     def _remember_payload(self, row: int, stored: bytes, payload: bytes) -> None:
         # 字节不可变，公开读取仍执行 loads/decode，保留每次还原的类型、
@@ -86,8 +132,8 @@ class TrendStageRows(Generic[_Row]):
             raise ValueError('a trend stage cannot append while a reader is active')
         payload = dumps(row, protocol=HIGHEST_PROTOCOL)
         self.raw_bytes += len(payload)
-        compressed = compress(payload, level=1) if len(payload) >= _COMPRESS_AFTER else payload
-        packed = len(compressed) < len(payload) * .85
+        compressed = self._compress_blocks(payload) if len(payload) >= _COMPRESS_AFTER else payload
+        packed = 2 if len(compressed) < len(payload) * .85 else 0
         stored = compressed if packed else payload
         # 逐行压缩保留完整 pickle 类型与别名；一次写入避免大证据的多次文件回调。
         self._offsets.append(self._stream.tell())
@@ -116,7 +162,7 @@ class TrendStageRows(Generic[_Row]):
                     raise ValueError('owned trend stage has an incomplete row header')
                 packed, length = _HEADER.unpack(header)
                 payload = self._stream.read(length)
-                if len(payload) != length or packed not in (0, 1):
+                if len(payload) != length or packed not in (0, 1, 2):
                     raise ValueError('owned trend stage has an incomplete row payload')
                 # 仍读取并校验真实行，缓存不能掩盖截断或内容变化。
                 token = header + payload if _borrow_readonly else b''
@@ -130,7 +176,7 @@ class TrendStageRows(Generic[_Row]):
                         self._payload_cache.move_to_end(row)
                         payload = cached[1]
                     else:
-                        unpacked = decompress(payload)
+                        unpacked = self._decompress_blocks(payload) if packed == 2 else decompress(payload)
                         self._remember_payload(row, payload, unpacked)
                         payload = unpacked
                 value: object = loads(payload)
@@ -147,6 +193,8 @@ class TrendStageRows(Generic[_Row]):
         self._offsets.clear()
         self._payload_cache.clear()
         self._payload_cache_size = 0
+        self._compression_cache.clear()
+        self._compression_bytes = 0
         self._readonly_cache.clear()
         self._stream.close()
 

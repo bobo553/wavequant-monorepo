@@ -150,6 +150,38 @@ class FrozenPrefixList(MutableSequence[T]):
         for position in range(max(start, self._stop), end):
             yield self._tail[position - self._stop]
 
+    def shared_prefix(self, other: 'FrozenPrefixList[T]') -> int:
+        """按共享树块跳过旧前缀；只在不同叶块和可变尾部比较记录身份。"""
+        stop = min(self._stop, other._stop)
+        left, right = self._archive, other._archive
+        capacity, other_capacity = self._capacity, other._capacity
+        while capacity > other_capacity:
+            left = left.left if left is not None else None
+            capacity //= 2
+        while other_capacity > capacity:
+            right = right.left if right is not None else None
+            other_capacity //= 2
+        pending = [(left, right, capacity, 0)]
+        while pending:
+            left, right, width, start = pending.pop()
+            if start >= stop or left is right:
+                continue
+            if left is None or right is None:
+                return start
+            if width == 1:
+                for offset in range(min(32, stop - start)):
+                    if left.values[offset] is not right.values[offset]:
+                        return start + offset
+            else:
+                half = width // 2
+                pending.append((left.right, right.right, half, start + half * 32))
+                pending.append((left.left, right.left, half, start))
+        end = min(len(self), len(other))
+        for position in range(stop, end):
+            if self[position] is not other[position]:
+                return position
+        return end
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, (list, tuple, FrozenPrefixList)):
             return False

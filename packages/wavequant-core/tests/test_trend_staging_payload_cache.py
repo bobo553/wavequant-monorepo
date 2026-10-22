@@ -140,3 +140,58 @@ def test_readonly_cache_checks_same_length_payload_revisions() -> None:
         second = list(stage.iter_rows(seal=False, _borrow_readonly=True))[0]
         assert first == {'value': 1}
         assert second == {'value': 2}
+
+
+def test_unchanged_serialized_blocks_are_not_compressed_again(monkeypatch):
+    calls = []
+    original = staging.compress
+
+    def record(payload, **kwargs):
+        calls.append(payload)
+        return original(payload, **kwargs)
+
+    monkeypatch.setattr(staging, 'compress', record)
+    shared = [1, ('clock', 2), -0.0]
+    first = dict(padding=b'x' * (staging._BLOCK_BYTES * 4), first=shared, second=shared, tail=1)
+    second = dict(first, tail=2)
+    with staging.TrendStageRows(_identity, memory_bytes=1) as stage:
+        stage.write(first)
+        prior_calls = len(calls)
+        stage.write(second)
+        assert len(calls) - prior_calls < 4
+        actual = cast(list[dict[str, object]], list(stage.iter_rows()))
+        assert actual == [first, second]
+        assert actual[0]['first'] is actual[0]['second']
+        assert actual[0]['first'] is not actual[1]['first']
+        assert stage._compression_bytes <= stage._compression_limit
+        assert stage._compression_bytes + stage._payload_cache_size <= staging._PAYLOAD_CACHE_BYTES
+    assert not stage._compression_cache
+    assert stage._compression_bytes == 0
+
+
+@pytest.mark.parametrize('payload', (b'x', staging._BLOCK_HEADER.pack(65537, 1) + b'x'))
+def test_invalid_compressed_block_records_are_rejected(payload):
+    with pytest.raises(ValueError, match='block'):
+        staging.TrendStageRows._decompress_blocks(payload)
+
+
+def test_long_row_scan_retains_compression_prefix_instead_of_thrashing(monkeypatch):
+    blocks = [bytes([i]) * staging._BLOCK_BYTES for i in range(20)]
+    calls = []
+    original = staging.compress
+
+    def record(payload, **kwargs):
+        calls.append(payload)
+        return original(payload, **kwargs)
+
+    monkeypatch.setattr(staging, 'compress', record)
+    with staging.TrendStageRows(_identity, payload_cache_bytes=512 * 1024) as stage:
+        first = b''.join(blocks)
+        encoded = stage._compress_blocks(first)
+        assert stage._decompress_blocks(encoded) == first
+        calls.clear()
+        following = b''.join([*blocks[:-1], b'z' * staging._BLOCK_BYTES])
+        encoded = stage._compress_blocks(following)
+        assert stage._decompress_blocks(encoded) == following
+        assert blocks[0] not in calls
+        assert 2 * stage._compression_bytes + stage._payload_cache_size <= 512 * 1024

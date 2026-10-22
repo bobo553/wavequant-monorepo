@@ -1041,6 +1041,7 @@ class _DateOverrides(Mapping[object, int]):
 
 class _OwnedCandidateOptions(TypedDict, total=False):
     _owned_candidates: bool
+    _readonly_publication: bool
     _candidate_cache: '_TrendCandidateCache'
     _publication_cache: _PublicationCache
 
@@ -1990,6 +1991,7 @@ def qualify_trend_structure(
     _owned_candidates: bool = False,
     _candidate_cache: _TrendCandidateCache | None = None,
     _publication_cache: _PublicationCache | None = None,
+    _readonly_publication: bool = False,
 ) -> list[dict[str, object]]:
     """原发布器只建立策略许可，返回值不能再成为趋势线或下一层的输入。
 
@@ -2011,7 +2013,7 @@ def qualify_trend_structure(
         published = publish_uptrends(qualified, source, bars, source_level=source_level,
             qualified_source=qualified_source, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled,
             _market_index=_market_index, _origin_lookups=origin_lookups,
-            _publication_cache=_publication_cache)
+            _publication_cache=_publication_cache, _readonly_result=owned and _readonly_publication)
     elif _market_index is None:
         published = publish_uptrends(qualified, source, bars, source_level=source_level,
             qualified_source=qualified_source, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
@@ -2377,6 +2379,8 @@ def attach_trend_permissions(
             candidate_cache = (_permission_cache.candidates(trend_level)
                 if cutoff is None and _permission_cache is not None and _owned_candidates else None)
             candidate_options = owned_options.copy()
+            if _hierarchy_only and _owned_candidates:
+                candidate_options['_readonly_publication'] = True
             if candidate_cache is not None:
                 candidate_options['_candidate_cache'] = candidate_cache
                 if not n_target_trend_confirmation_enabled and _permission_cache is not None:

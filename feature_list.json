@@ -153,6 +153,7 @@
                 "2026-10-19 外围消费者增量化：来源、候选、许可轻量投影传递不可变版本/父令牌/最早变化位置；分组、来源认证、几何标注、结构腿共享持久前缀；许可来源/候选查找索引只更新后缀；共享层级历史在交易区间内外只更新投影后缀。旧关键位/整波起点只读引用，不删除证据，不以结构冻结代替逐日资格核验；追加、修订、截短、同坐标事实、延迟可知、跨请求失效及公开独立列表导出待提交时验证。"
             ],
             "verification": [
+            {"command": "2026-10-21 isolated frozen 2132-day sh.601086 sampling; pytest tests/test_combined_a_replay.py; final minimal-fix comparison pending", "status": "not-run", "summary": "定位并修复 CombinedAReplay 容量拒绝后冷重放重新建档；该局部用例已验证，修复版完整对照仍在运行。合并版339.06秒/合并前393.72秒完整研究与账户哈希相同，未复现国芳核心计算变慢，不能宣称现场问题完全解决。3003 main API 已异常退出并等待源码变化；根因堆栈缺失。仅独立分支局部修复，未恢复其他已撤回优化，未提交合并推送。"},
                 {
                     "command": "post-main-sync pytest eight entry/confirmation files + tests/test_trend_publication_frontier.py -q; mypy twelve changed files; git diff --check main",
                     "status": "passed",

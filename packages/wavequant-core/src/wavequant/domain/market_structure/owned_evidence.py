@@ -165,7 +165,10 @@ class OwnedEvidence:
             if self.reference(item) is not None or id(item) in seen:
                 continue
             seen.add(id(item))
-            charged += getsizeof(item) + 384
+            # 只有进入对象表的节点才分配引用索引；数值/布尔/None 由其父容器
+            # 持有，只计自身大小。给每个标量再收索引费用会提前耗尽共享池。
+            indexed = type(item) in (dict, list, tuple, str, PointVersion, CertifiedSource)
+            charged += getsizeof(item) + (384 if indexed else 0)
             if type(item) in (PointVersion, CertifiedSource):
                 charged += cast(PointVersion, item).storage_bytes
             if type(item) is CertifiedSource:

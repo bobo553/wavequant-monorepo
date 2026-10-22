@@ -107,8 +107,9 @@ def test_chart_closes_all_stages_on_success_and_on_every_failure_boundary(
     original_init = TrendStageRows.__init__
 
     def record_init(self: TrendStageRows[object], decode: Callable[[object], object],
-                    *, memory_bytes: int = 2 * 1024 * 1024) -> None:
-        original_init(self, decode, memory_bytes=16)
+                    *, memory_bytes: int = 2 * 1024 * 1024,
+                    payload_cache_bytes: int = 2 * 1024 * 1024) -> None:
+        original_init(self, decode, memory_bytes=16, payload_cache_bytes=payload_cache_bytes)
         stages.append(self)
 
     monkeypatch.setattr(TrendStageRows, '__init__', record_init)
@@ -116,7 +117,7 @@ def test_chart_closes_all_stages_on_success_and_on_every_failure_boundary(
     def fail(*args: object, **kwargs: object) -> object:
         raise RuntimeError('staging boundary failed')
 
-    target = {'drawing': 'lecture_drawing', 'prepare': 'prepare_trend_lines',
+    target = {'drawing': 'lecture_drawing', 'prepare': 'prepare_trend_cascade',
               'permissions': 'attach_trend_permissions'}
     if failure is not None:
         monkeypatch.setattr(chart_module, target[failure], fail)
@@ -124,8 +125,8 @@ def test_chart_closes_all_stages_on_success_and_on_every_failure_boundary(
             chart_module.chart_entry_history(_bars())
     else:
         chart_module.chart_entry_history(_bars())
-    expected = {'drawing': 2, 'prepare': 3}.get(failure, 5) if failure is not None else 5
-    assert len(stages) == expected
+    # 级联在消费首个绘图帧前建立绘图、检查点和三级各两份历史资源。
+    assert len(stages) == 2 + 3 * 2
     assert all(stage.closed for stage in stages)
 
 
@@ -137,7 +138,8 @@ def test_hierarchy_closes_owned_stage_files_after_success_or_judgement_failure(
     original_init = TrendStageRows.__init__
 
     def record_init(self: TrendStageRows[object], decode: Callable[[object], object],
-                    *, memory_bytes: int = 2 * 1024 * 1024) -> None:
+                    *, memory_bytes: int = 2 * 1024 * 1024,
+                    payload_cache_bytes: int = 2 * 1024 * 1024) -> None:
         original_init(self, decode, memory_bytes=1)
         stages.append(self)
 
