@@ -256,7 +256,8 @@ def confirm_bull_alternation(
             continue
         inside = same_bar and b.index > 0 and teaching_inside(bars[b.index - 1], bars[b.index])
         offset = max(0, a.index - policy.volume_lookback)
-        data = bars[offset:now + 1]
+        validated = market.validated_window(offset, now + 1) if market is not None else None
+        data = validated if validated is not None else bars[offset:now + 1]
         setup = NSetup(bars[0].symbol, '1d', Direction.UP,
             PivotRef(a.index - offset, a.known - offset), PivotRef(b.index - offset, b.known - offset),
             PivotRef(c.index - offset, c.known - offset), 'lecture_causal', BoxAnchorMode.ATTACK_VIRTUAL_EXTREME,

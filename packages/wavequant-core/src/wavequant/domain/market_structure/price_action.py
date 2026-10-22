@@ -162,6 +162,11 @@ def _validate_bar(bar: Bar) -> None:
 def _ordered_pair(previous: Bar, current: Bar) -> None:
     _validate_bar(previous)
     _validate_bar(current)
+    _validate_bar_order(previous, current)
+
+
+def _validate_bar_order(previous: Bar, current: Bar) -> None:
+    """Only compare the ordering of bars already validated in this call."""
     if previous.symbol != current.symbol:
         raise ValueError('bars must belong to the same symbol')
     if (previous.timestamp.tzinfo is None) != (current.timestamp.tzinfo is None):

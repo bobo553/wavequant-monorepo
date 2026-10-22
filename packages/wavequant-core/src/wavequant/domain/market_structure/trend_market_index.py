@@ -9,6 +9,7 @@ from types import MappingProxyType
 from zoneinfo import ZoneInfo
 
 from ..models.model import Bar
+from ..models.validated_bars import ValidatedBars, _ValidatedBarWindows
 from .hierarchical_confirmation import session_date
 from .trend_prefix_view import _PrefixView
 
@@ -79,6 +80,14 @@ class _MarketRangeIndex:
                                 for bar in bars for price in (bar.low, bar.high, bar.close))
         self.confirmation_reuse: object | None = None
         self.reference_reuse: object | None = None
+        self._validated_windows: _ValidatedBarWindows | None = None
+
+    def validated_window(self, start: int, stop: int) -> ValidatedBars | None:
+        """仅认证消费方实际请求的范围；失败时保留原调用方校验路径。"""
+        self._range_bounds(start, stop)
+        if self._validated_windows is None:
+            self._validated_windows = _ValidatedBarWindows(self.bars)
+        return self._validated_windows.window(start, stop)
 
     @classmethod
     def build(cls, bars: tuple[Bar, ...]) -> '_MarketRangeIndex | None':

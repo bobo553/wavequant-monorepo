@@ -146,17 +146,26 @@ def test_certified_source_skips_old_point_encoding_but_revises_earlier_knowledge
         assert owner.prepare(first) is not None
         appended = inputs.prepare(source, ())['path-0']
         original = trend_judgement._geometry_signature
-        encoded = 0
+        admitted_positions: list[int] = []
+        certified_positions: list[int] = []
 
         def counted(value: object) -> bytes | None:
-            nonlocal encoded
-            encoded += 1
+            if type(value) is dict:
+                admitted_positions.append(cast(int, value['index']))
+            else:
+                assert type(value) is tuple and len(value) == 2
+                position, point = value
+                assert type(position) is int and type(point) is dict
+                certified_positions.append(position)
             return original(value)
 
         monkeypatch.setattr(trend_judgement, '_geometry_signature', counted)
         version = owner.prepare(appended)
-        assert version is not None and encoded <= 2
-        assert owner.prepare(appended) is version and encoded <= 2
+        assert version is not None
+        # 标准点准入与带位置的来源证书分别编码；两者只准读取旧尾点及新增点。
+        assert admitted_positions == certified_positions == [78, 79]
+        assert owner.prepare(appended) is version
+        assert admitted_positions == certified_positions == [78, 79]
         revised = [dict(point) for point in source]
         revised[4]['available_at'] = 6
         revision = owner.prepare(inputs.prepare(revised, ())['path-0'])
@@ -324,7 +333,9 @@ def test_point_block_budget_refuses_without_discarding_saved_history() -> None:
             history.close()
 
 
-def test_exhausted_evidence_uses_complete_graph_without_python_reference_callbacks(monkeypatch):
+def test_exhausted_evidence_uses_complete_graph_without_python_reference_callbacks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from wavequant.domain.market_structure.trend_lines import _ClosedPreparedPaths, _prepared_payload
     from wavequant.domain.market_structure.trend_point_version import PointVersion
 
@@ -333,20 +344,23 @@ def test_exhausted_evidence_uses_complete_graph_without_python_reference_callbac
     version = PointVersion([point, distinct]).seal()
     prepared = dict(strokes=[dict(points=version)], candidate_strokes=[dict(points=version)],
                     proof=point['proof'])
-    with owned_evidence_scope(memory_bytes=0) as evidence:
-        paths = _ClosedPreparedPaths(_owned_history=True)
-        encoded = paths.encode(prepared)
+    with owned_evidence_scope(memory_bytes=0) as evidence, _ClosedPreparedPaths(_owned_history=True) as paths:
         monkeypatch.setattr(evidence, 'reference', lambda _: pytest.fail('exhausted pool was retried'))
+        encoded = paths.encode(prepared)
         payload = _prepared_payload(encoded)
         assert payload is not None
-        restored = evidence.loads(payload)
-        points = restored['strokes'][0]['points']
+        restored = cast(dict[str, object], paths.load_encoded(payload))
+        strokes = cast(list[dict[str, object]], restored['strokes'])
+        candidates = cast(list[dict[str, object]], restored['candidate_strokes'])
+        points = cast(list[dict[str, object]], strokes[0]['points'])
+        proof = cast(dict[str, object], restored['proof'])
         assert type(points) is list and points == [point, distinct]
-        assert points is restored['candidate_strokes'][0]['points']
+        assert points is candidates[0]['points']
         assert points[0] is not points[1]
-        assert points[0]['proof'] is restored['proof']
-        restored['proof']['values'].append(99)
+        assert points[0]['proof'] is proof
+        cast(list[int], proof['values']).append(99)
         assert point['proof']['values'] == [1, 2]
+        assert paths.load_encoded(payload) == prepared
 
 
 def test_exhausted_evidence_does_not_invoke_unknown_audit_reducers():

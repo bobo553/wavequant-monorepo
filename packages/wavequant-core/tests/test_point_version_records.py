@@ -180,7 +180,7 @@ def test_scope_budget_failure_never_falls_back_to_full_history_encoding():
         assert old is not None and store.materialize(old.reference) == list(first)
 
 
-def test_cloned_field_uses_its_copy_domain_but_a_cloned_dictionary_root_is_rejected():
+def test_cloned_field_and_dictionary_root_keep_independent_copy_domains():
     with OwnedEvidenceRecords(cache_bytes=0) as store:
         first = PointVersion(_points(1)).seal()
         with producer_record_scope(store) as scope:
@@ -198,11 +198,36 @@ def test_cloned_field_uses_its_copy_domain_but_a_cloned_dictionary_root_is_rejec
         actual = store.materialize(root.reference)
         assert actual[0]['proof'] == actual[1]['proof'] and actual[0]['proof'] is not actual[1]['proof']
         copied_point = deepcopy(first[0])
-        copied_version = PointVersion([copied_point]).seal()
+        copied_version = PointVersion([copied_point], previous=first, start=1).seal()
         with producer_record_scope(store) as scope:
             scope.bind_clone(copied_point, first[0], record.reference)
+            copied_root = record_point_version(copied_version, scope)
+        assert copied_root is not None
+        copied = store.materialize(copied_root.reference)
+        assert copied == [first[0], first[0]]
+        assert copied[0] is not copied[1]
+        assert copied[0]['proof'] is not copied[1]['proof']
+        assert copied[0]['proof']['steps'] is not copied[1]['proof']['steps']
+        copied[1]['proof']['steps'].append(4)
+        assert copied[0]['proof']['steps'] == [1, 2, 3]
+        assert store.materialize(copied_root.reference) == [first[0], first[0]]
+        assert copied_version.point_records[1].matches(copied_point)
+
+
+def test_a_cloned_non_dictionary_reference_cannot_be_bound_as_a_point_root():
+    with OwnedEvidenceRecords(cache_bytes=0) as store:
+        original = _points(1)[0]
+        copied_point = deepcopy(original)
+        copied_version = PointVersion([copied_point]).seal()
+        non_dictionary = store.capture_new([original])
+        with producer_record_scope(store) as scope:
+            # 非字典根的错误绑定必须在建立点载体前被拒绝。
+            scope.bind_clone(copied_point, original, non_dictionary)
             with pytest.raises(ValueError, match='dictionary record'):
                 record_point_version(copied_version, scope)
+            assert scope.lookup(copied_point) is None
+        assert copied_version.evidence_sequence is None
+        assert copied_version.point_records == ()
 
 
 def test_public_export_and_missing_scope_keep_plain_dictionary_behavior():

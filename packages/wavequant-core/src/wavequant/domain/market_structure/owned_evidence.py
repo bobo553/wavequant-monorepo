@@ -8,6 +8,7 @@ from io import BytesIO
 from math import isfinite
 import pickle
 from sys import getsizeof
+from types import NotImplementedType
 from typing import cast
 from uuid import uuid4
 
@@ -19,6 +20,8 @@ from .finite_source_receipts import FiniteSourceReceipts
 
 _MAGIC = b'WQ-owned-evidence-1\x00'
 _current: ContextVar['OwnedEvidence | None'] = ContextVar('owned_trend_evidence', default=None)
+# publish 只为容器和字符串分配引用；这些 exact 标量仍计费，但永不进入对象表。
+_UNINDEXED_SCALAR_TYPES = (int, float, bool, type(None))
 
 
 class _EvidenceWriter(pickle.Pickler):
@@ -27,16 +30,18 @@ class _EvidenceWriter(pickle.Pickler):
         self.owner, self.root = owner, root
 
     def persistent_id(self, value: object) -> int | None:
-        return None if value is self.root else self.owner.reference(value)
+        return None if value is self.root or type(value) in _UNINDEXED_SCALAR_TYPES else self.owner.reference(value)
 
-    def reducer_override(self, value: object) -> object:
+    def reducer_override(self, value: object) -> (
+        tuple[type[list[dict[str, object]]], tuple[()], None, Iterator[dict[str, object]]] | NotImplementedType
+    ):
         # 与普通签名入口一致，在未知对象的 __reduce__ 之前拒绝。
         from .trend_evidence_reuse import _UncacheableGeometry
 
         if value is list:
             return NotImplemented
         if type(value) in (PointVersion, CertifiedSource):
-            return list, (), None, iter(value)
+            return list, (), None, iter(cast(PointVersion, value))
         raise _UncacheableGeometry
 
 
@@ -59,9 +64,10 @@ class _SignatureWriter(_EvidenceWriter):
     """外壳按内容比较，字符串身份不影响来源版本；子树仍绑定原只读节点。"""
 
     def persistent_id(self, value: object) -> int | None:
-        if type(value) is str:
+        kind = type(value)
+        if kind is str or kind in _UNINDEXED_SCALAR_TYPES:
             return None
-        return super().persistent_id(value)
+        return None if value is self.root else self.owner.reference(value)
 
 
 class OwnedEvidence:
@@ -125,7 +131,7 @@ class OwnedEvidence:
                 active.remove(id(item))
                 checked.add(id(item))
                 continue
-            if self.reference(item) is not None or id(item) in checked:
+            if (kind not in _UNINDEXED_SCALAR_TYPES and self.reference(item) is not None or id(item) in checked):
                 continue
             if (receipts is not None and kind in (dict, list, tuple, PointVersion, CertifiedSource)
                     and receipts.knows(item, self)):
@@ -178,7 +184,8 @@ class OwnedEvidence:
         """单遍验证并计费新图；整图准入成功后才公开任何节点引用。"""
         if self._closed:
             raise ValueError('owned evidence is closed')
-        if not self.admission_remaining or self.reference(value) is not None:
+        if (not self.admission_remaining
+                or type(value) not in _UNINDEXED_SCALAR_TYPES and self.reference(value) is not None):
             return
         # 新根会持有完整子图，不能只收外壳费用。验证、计费、后序登记计划
         # 共用一次遍历；额度不足立即拒绝，避免拒绝前仍扫描整段历史证明。
@@ -195,9 +202,9 @@ class OwnedEvidence:
                 seen.add(identity)
                 admitted.append(item)
                 continue
-            if self.reference(item) is not None or identity in seen:
-                continue
             kind = type(item)
+            if kind not in _UNINDEXED_SCALAR_TYPES and self.reference(item) is not None or identity in seen:
+                continue
             if kind is float and not isfinite(cast(float, item)):
                 return
             if kind in (PointVersion, CertifiedSource) and not cast(PointVersion, item)._sealed:
@@ -257,6 +264,11 @@ def current_evidence() -> OwnedEvidence | None:
 
 class CertifiedSource(PointVersion):
     """请求内来源和逐点证书共用持久前缀，变化只追加到独立版本。"""
+
+    owner: OwnedEvidence
+    keys: FrozenPrefixList[bytes]
+    _costs: FrozenPrefixList[int]
+    signature_bytes: int
 
     def __init__(self, points: Sequence[dict[str, object]], keys: Sequence[bytes],
                  owner: OwnedEvidence, previous: 'CertifiedSource | None', *,
