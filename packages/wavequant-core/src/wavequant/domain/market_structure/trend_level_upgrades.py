@@ -172,10 +172,10 @@ def _promoted_point(
         result.update(flip='翻空为多' if rising else '翻多为空',
                       wave_direction_before='down' if rising else 'up',
                       wave_direction_after='up' if rising else 'down')
+    _stamp_wave_completion(result, closed=not endpoint, _record_new=True)
     scope = current_producer_records()
     if scope is not None:
-        scope.record_point(result)
-    _stamp_wave_completion(result, closed=not endpoint)
+        scope.ensure_record(result)
     return result
 
 

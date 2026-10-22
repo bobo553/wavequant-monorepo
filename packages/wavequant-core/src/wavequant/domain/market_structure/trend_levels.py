@@ -53,7 +53,7 @@ def _proof_known(reference: Mapping[str, object]) -> Moment:
     raise ValueError('wave completion source requires a knowledge clock')
 
 
-def _completion_evidence(point: Mapping[str, object]) -> dict[str, object]:
+def _completion_evidence(point: Mapping[str, object], *, _record_fields: bool = False) -> dict[str, object]:
     """保存本级整波结束的独立事实，不复制已经继承的下级结束许可证。
 
     几何端点可以更早出现；本证据的日期表示真正反向趋势首次成立的日期。
@@ -65,29 +65,29 @@ def _completion_evidence(point: Mapping[str, object]) -> dict[str, object]:
               'definition_evidence', 'upgrade_evidence', 'lower_wave_identity_evidence', 'body_reversal_evidence')
     result = {field: deepcopy(point[field]) for field in fields if field in point}
     scope = current_producer_records()
-    record = scope.lookup(point) if scope is not None else None
-    if scope is not None and record is not None:
+    if scope is not None and (_record_fields or scope.lookup(point) is not None):
         # 原逻辑逐字段 deepcopy；各可变字段必须分别进入独立复制域。
         for field, value in result.items():
-            reference = record.field_reference(field)
-            if reference is not None:
-                scope.bind_clone(value, point[field], reference)
-        scope.record_point(result)
+            reference = scope.ensure_value(point[field])
+            scope.bind_clone(value, point[field], reference)
+        scope.ensure_record(result)
     return result
 
 
-def _stamp_wave_completion(point: dict[str, object], *, closed: bool, owned: bool = True) -> None:
+def _stamp_wave_completion(point: dict[str, object], *, closed: bool, owned: bool = True,
+                           _record_new: bool = False) -> None:
     """本级重建结束标记；开放端点只保留几何资格，不取得递归来源资格。"""
     point['wave_completion_policy'] = _WAVE_COMPLETION_POLICY
     point['wave_identity_state'] = 'owned' if owned else 'direction_only'
     scope = current_producer_records()
+    # 校验器也会临时构造闭合点；ambient scope 不得把它变成新生产物，
+    # 尤其不能让记录容量错误混入其领域校验的 ValueError 分支。
+    recording = scope is not None and (scope.tracks(point) or _record_new)
     if closed and owned:
         point['wave_completed_at'] = point['available_at']
-        if scope is not None and scope.tracks(point):
-            scope.record_point(point)
-        point['wave_completion_evidence'] = _completion_evidence(point)
+        point['wave_completion_evidence'] = _completion_evidence(point, _record_fields=recording)
     if scope is not None and scope.tracks(point):
-        scope.record_point(point)
+        scope.ensure_record(point)
 
 
 def _completed_source_point(raw: Mapping[str, object]) -> dict[str, object] | None:
@@ -482,7 +482,7 @@ def _source_record_reference(source: Mapping[str, object]) -> tuple[bytes, int] 
     scope = current_producer_records()
     if scope is None or type(source) is not dict:
         return None
-    record = scope.record_point(cast(dict[str, object], source))
+    record = scope.ensure_record(cast(dict[str, object], source))
     return record.reference.namespace, record.reference.offset
 
 
@@ -499,8 +499,7 @@ def _bind_source_record(turn: _SourceTurn) -> None:
     reference = RecordRef(namespace, offset)
     source = cast(dict[str, object], turn.source)
     refs = scope.owner.dictionary_refs(reference)
-    fields = tuple((key, pair[1]) for key, pair in zip(source, refs))
-    scope.bind(PointRecord(source, reference, fields, scope.owner))
+    scope.bind(PointRecord._from_producer(source, reference, refs, scope.owner))
 
 
 def _source_turns(
@@ -610,7 +609,6 @@ def _strip_source_license(source: Mapping[str, object]) -> dict[str, object]:
         reference = record.field_reference('confirmed_by') if record is not None else None
         if reference is not None:
             scope.bind_clone(result['source_confirmation'], source.get('confirmed_by'), reference)
-        scope.record_point(result)
     return result
 
 
@@ -619,9 +617,6 @@ def _candidate_from_source(turn: _SourceTurn) -> dict[str, object]:
     _bind_source_record(turn)
     result = _strip_source_license(turn.source)
     result.update(_reference(turn))
-    scope = current_producer_records()
-    if scope is not None:
-        scope.record_point(result)
     return result
 
 
@@ -675,10 +670,10 @@ def _ordinary_point(
                       **{f'source_level{source_level}_available_at': extreme.available_at,
                          f'source_level{source_level}_position': extreme.position,
                          f'confirmed_on_level{source_level}': point.position})
+    _stamp_wave_completion(result, closed=owned, owned=owned, _record_new=True)
     scope = current_producer_records()
     if scope is not None:
-        scope.record_point(result)
-    _stamp_wave_completion(result, closed=owned, owned=owned)
+        scope.ensure_record(result)
     return result
 
 

@@ -365,7 +365,7 @@ class _TrendJudgementCache:
                     previous_changed = previous_delta.points_from if index == 1 else previous_delta.candidates_from
                     start = min(changed, previous_changed)
             start = min(start, len(values), prior.length if prior is not None else 0)
-            references = [scope.record_point(point).reference
+            references = [scope.ensure_record(point).reference
                           for point in cast(Sequence[dict[str, object]], values[start:])]
             versions.append(derive_evidence_sequence(scope.owner, references, previous=prior, start=start))
         self._record_results[key] = result, versions[0], versions[1]

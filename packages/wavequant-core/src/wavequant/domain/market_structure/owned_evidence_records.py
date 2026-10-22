@@ -875,8 +875,8 @@ class _NewGraphWriter:
                 or reference.offset < 0 or reference.offset % _INDEX.size
                 or reference.offset >= self.store._index_end):
             raise ValueError('record batch reference must belong to an earlier record in its request')
-        if reference.offset < self._start_index:
-            return self.store._validate_ref(reference)
+        # 单写者事务内提交边界固定；上面已完整验证命名空间和当前边界。
+        # 旧偏移自然位于已提交区间，无须再次调用相同的公开引用校验。
         return reference.offset
 
     def _header(self, offset: int) -> _RecordHeader:
