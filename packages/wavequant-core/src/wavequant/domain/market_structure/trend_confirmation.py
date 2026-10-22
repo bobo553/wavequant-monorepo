@@ -333,6 +333,7 @@ class _ConfirmationVersion:
     prefixes: FrozenPrefixList[bytes]
     hashes: FrozenPrefixList[_ReferenceDigest]
     costs: FrozenPrefixList[int]
+    retained_budget: int = 0
 
     @property
     def size(self) -> int:
@@ -356,12 +357,82 @@ class _ReferenceParsingCache:
 
     @property
     def version_bytes(self) -> int:
-        return sum(version.size for version in self.versions.values())
+        return sum(version.size for version in self.versions.values()) + 2 * getsizeof(vars(self.versions)['data'])
+
+    @staticmethod
+    def _prefix_version(version: _ConfirmationVersion, length: int) -> _ConfirmationVersion:
+        """只截取持久块树，不重新解析或重编码已认证的标量前缀。"""
+        references, visibility = version.references.copy(), version.visibility.copy()
+        stops, prefixes = version.stops.copy(), version.prefixes.copy()
+        hashes, costs = version.hashes.copy(), version.costs.copy()
+        del references[length:]
+        del visibility[length:]
+        del stops[length + 1:]
+        del prefixes[length + 1:]
+        del hashes[length // 32 + 1:]
+        del costs[length + 1:]
+        for sequence in (references, visibility, stops, prefixes, hashes, costs):
+            sequence.freeze(len(sequence))
+        return replace(version, references=references, visibility=visibility, stops=stops,
+                       prefixes=prefixes, hashes=hashes, costs=costs)
+
+    def _retain_prefix(self, channel: object, version: _ConfirmationVersion,
+                       previous: _ConfirmationVersion | None, unchanged: int) -> None:
+        """完整上下文归本次调用；跨日只保留原额度容纳的稳定前缀。"""
+        # 和完整版本一样，版本前缀优先于逐点内容键；clear 也释放字典空槽。
+        self.entries.clear()
+        self.memory_bytes = 0
+        if previous is not None:
+            available = (_REFERENCE_DATA_BYTES - self.version_bytes + previous.size
+                         - 2 * getsizeof(self.entries))
+            length = min(len(previous.references), len(version.references))
+            candidate_prefix = (replace(previous, source=version.source, token=version.token, end=version.end)
+                                if unchanged >= length == len(previous.references) else
+                                self._prefix_version(version, length))
+            # 原前缀在同一额度下已经最大化；稳定日只更新身份，不再二分复制六棵树。
+            # 容量释放或修订释放了足够费用时仍重试扩大，完整版本准入已在外层先执行。
+            next_charge = (version.costs[length + 1] - version.costs[length]
+                           if length < len(version.references) else 0)
+            stable_capacity = (unchanged > length == len(previous.references)
+                               and available <= previous.retained_budget)
+            if (candidate_prefix.size <= available and (stable_capacity
+                    or length == len(version.references) or available - candidate_prefix.size < next_charge)):
+                self.versions[channel] = replace(candidate_prefix, retained_budget=available)
+                return
+            self.versions.pop(channel, None)
+        previous_length = len(version.references)
+        while previous_length:
+            available = _REFERENCE_DATA_BYTES - self.version_bytes - 2 * getsizeof(self.entries)
+            low, high = 0, previous_length
+            retained: _ConfirmationVersion | None = None
+            while low < high:
+                length = (low + high + 1) // 2
+                candidate = self._prefix_version(version, length)
+                if candidate.size <= available:
+                    low, retained = length, replace(candidate, retained_budget=available)
+                else:
+                    high = length - 1
+            if not low:
+                # 被拒的新通道不能留下扩容后的空表槽，挤占其他活跃前缀。
+                self.versions = WeakKeyDictionary(self.versions)
+                return
+            assert retained is not None and len(retained.references) == low
+            self.versions[channel] = retained
+            if self.version_bytes + 2 * getsizeof(self.entries) <= _REFERENCE_DATA_BYTES:
+                return
+            # WeakKeyDictionary 插入可能扩容；以实际表容量重新计算可留前缀。
+            self.versions.pop(channel, None)
+            previous_length = low - 1
+        self.versions = WeakKeyDictionary(self.versions)
 
     def _reject_version(self, channel: object, source: PointVersion, market: _MarketPrefixIndex,
-                        end: int, reference_bytes: int) -> None:
+                        end: int, reference_bytes: int, retained: _ConfirmationVersion | None = None) -> None:
         # 拒绝后的旧检查点不能停在某天，让下一次失败尝试重放更长的后缀。
-        self.versions.pop(channel, None)
+        if retained is None:
+            self.versions.pop(channel, None)
+            self.versions = WeakKeyDictionary(self.versions)
+        else:
+            self.versions[channel] = retained
         self.rejections.pop(channel, None)
         while len(self.rejections) >= _REJECTION_LIMIT:
             self.rejections.pop(next(iter(self.rejections)))
@@ -371,12 +442,15 @@ class _ReferenceParsingCache:
     def version(
         self, channel: object, source: Sequence[Mapping[str, object]], market: _MarketPrefixIndex,
         sessions: Mapping[str, int], end_index: int,
+        *, allow_transient: bool = False,
     ) -> _ConfirmationVersion | None:
         """内部来源仅解析实际修订后缀；未到知识日的输入保留原逐日路径。
 
         不把早日的 None 缓存为永久无效。版本只保存标量，不持有源证明图；
         所有版本和既有单点缓存共用原 4 MiB 额度。摘要仍逐字节接续原协议，
         每 32 点保存哈希状态，较早修订最多额外重放 31 个标量签名。
+        allow_transient 只供本次上下文消费完整解析；超额时缓存仅留下可容纳
+        的前缀，不把临时尾部或源证明图保留到下一日。
         """
         from .owned_evidence import CertifiedSource, current_evidence
 
@@ -400,7 +474,8 @@ class _ReferenceParsingCache:
                          version.changed_since(rejected.source()))
             if unchanged >= rejected.length and len(version) >= rejected.length:
                 reference_bytes = rejected.reference_bytes
-        if _minimum_version_bytes(len(version), reference_bytes) + other_bytes > _REFERENCE_DATA_BYTES:
+        if (not allow_transient
+                and _minimum_version_bytes(len(version), reference_bytes) + other_bytes > _REFERENCE_DATA_BYTES):
             self._reject_version(channel, version, market, end_index, reference_bytes)
             return None
         # 容量释放、截短、旧字段修订或日期回退均重新尝试；不是按时间退避。
@@ -408,6 +483,7 @@ class _ReferenceParsingCache:
         start = (len(version) if previous is not None and version.token is previous.token else
                  version.changed_from if previous is not None and version.parent is previous.token else
                  version.changed_since(previous.source()) if previous is not None else 0)
+        unchanged = start
         if previous is not None:
             start = min(start, len(previous.references), len(version))
             if start == len(version) == len(previous.references):
@@ -482,16 +558,28 @@ class _ReferenceParsingCache:
                                        references, visibility, stops, prefixes, hashes, costs)
         other_bytes = self.version_bytes - (previous.size if previous is not None else 0)
         if current.size + other_bytes > _REFERENCE_DATA_BYTES:
-            self._reject_version(channel, version, market, end_index, costs[-1])
+            self._reject_version(channel, version, market, end_index, costs[-1], previous if allow_transient else None)
+            if allow_transient:
+                self._retain_prefix(channel, current, previous, unchanged)
+                return current
             return None
         # 版本前缀比逐点内容键更直接；在同一总额度内让出旧标量键空间。
         while self.entries and self.memory_bytes + 2 * getsizeof(self.entries) + other_bytes + current.size > _REFERENCE_DATA_BYTES:
             removed = self.entries.pop(next(iter(self.entries)))
             self.memory_bytes -= removed[1]
         if self.memory_bytes + 2 * getsizeof(self.entries) + other_bytes + current.size > _REFERENCE_DATA_BYTES:
-            self._reject_version(channel, version, market, end_index, costs[-1])
+            self._reject_version(channel, version, market, end_index, costs[-1], previous if allow_transient else None)
+            if allow_transient:
+                self._retain_prefix(channel, current, previous, unchanged)
+                return current
             return None
         self.versions[channel] = current
+        if self.memory_bytes + 2 * getsizeof(self.entries) + self.version_bytes > _REFERENCE_DATA_BYTES:
+            self._reject_version(channel, version, market, end_index, costs[-1], previous if allow_transient else None)
+            if allow_transient:
+                self._retain_prefix(channel, current, previous, unchanged)
+                return current
+            return None
         return current
 
     def parse(
@@ -527,6 +615,10 @@ class _ReferenceParsingCache:
                 if self.memory_bytes + added + 2 * getsizeof(self.entries) + self.version_bytes <= _REFERENCE_DATA_BYTES:
                     self.entries[key] = reference, added
                     self.memory_bytes += added
+                    if self.memory_bytes + 2 * getsizeof(self.entries) + self.version_bytes > _REFERENCE_DATA_BYTES:
+                        self.entries.pop(key)
+                        self.memory_bytes -= added
+                        self.entries = dict(self.entries)
         return reference
 
 
@@ -601,7 +693,7 @@ def prepare_confirmation_context(
                 _market_index.owner.reference_reuse = _ReferenceParsingCache()
             if type(_market_index.owner.reference_reuse) is _ReferenceParsingCache:
                 parsing = _market_index.owner.reference_reuse
-        version = (parsing.version(_reference_channel, source, _market_index, sessions, end_index)
+        version = (parsing.version(_reference_channel, source, _market_index, sessions, end_index, allow_transient=True)
                    if parsing is not None and _reference_channel is not None
                    and _market_index is not None and sessions is not None else None)
         if version is not None:

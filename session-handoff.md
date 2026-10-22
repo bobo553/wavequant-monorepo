@@ -1,3 +1,19 @@
+2026-10-23 · MONOREPO-330 并行优化合并协调
+
+我方三项优化已提交11d86ee；合并前main并行推进到f2c8814并包含重叠优化。已在本分支协调：确认解析沿用main精确标量费用和slots，补我方预算超限稳定前缀及单次消费；私有解析统一_retain=False；行情仅保留main按消费范围认证的窗口机制，补完全包含窗口快速复用；保留生产者PointVersion直交、真实后缀历史登记，并与main数值叶免查合并。没有叠两套缓存、增加预算或改变交易规则。
+
+按用户最新“直接合并”要求，不追加组合版本回测/类型/测试；双方历史测量和失败完整保留，各自旧结果不代表本次组合已经验证。原我方2133日CPU399.33→284.19秒及调用417/530/5726仅适用于冻结e2d3ad5业务候选。整体P0继续in-progress，末段增长和已记录失败仍需后续处理。同步后直接本地no-ff合并main，不推送。
+
+2026-10-23 · MONOREPO-330 三项优化交付与剩余P0
+
+用户明确三项解决后合并main，并在提交检查后再次要求直接合并。复用feat-回测增量计算根治及C:/Users/zb/.codex/worktrees/backtest-linear-growth/wavequant-monorepo，同步main c367f4f后本地提交/no-ff合并，不推送。当前13文件仅三项优化、相关回归及状态记录；保留旧v5和本轮合并前备份stash e9a3cd87a4a1b08e98327eaeeea8f2410ad3a264。
+
+固定e2d3ad5业务同输入对照：后段parse42511→417、签名45136→530、行情校验86415→5726；完整2133日CPU399.328125→284.1875秒，账户/研究逐字节一致。记录通道仍关闭。性能产物与冻结源码在.codex-runtime/backtest-linear-growth/growth-e2d3ad5，报告ordered-fixes-report.md；不是合入后新业务main的全段重测。
+
+提交阶段相关回归327通过4失败，4项在未修改main全部复现且未改断言。silent局部类型候选53/main51诊断，新增两处类型边界已修正但用户要求直接合并后未重跑；不要将整组检查写成通过。具体命令和失败原因见feature_list.json。
+
+后续仍须根治增长：末133日/首200日日均CPU仍7.227倍。确认417次中包含预算未保留尾部，不能都称真实新增；普通/正式整图预算重复校准、来源修订重建仍是下一轮重点。不要恢复旧失败v5或扩大预算掩盖问题；330保持唯一in-progress。下文为历史阶段记录。
+
 2026-10-23 · MONOREPO-330 本轮性能改造提交与直接合并安排
 
 2026-10-23 用户要求改造后合并main，随后明确“直接合并”。提交前13个修改Python模块mypy通过；24个相关测试文件395 passed、1 failed（13.75秒），完整命令及输出见本worktree .codex-runtime/confirmation-benchmark/submission-checks.json。剩余失败为 test_backtest_incremental_costs.py::test_checkpoint_save_does_not_size_frozen_prefix_again，cache.checkpoint为None；未继续诊断或确认其基线表现，不标记为已修复。此前四处失败已按既有契约修复测试：两层签名分别仅访问[78,79]、历史payload走所属解码入口、候选前全局拒绝计数、合法clone字典根复制域隔离；另补齐绘图mock连续日期，保留非法引用拒绝断言。生产类型修正不改变交易判定。本轮代码和差异已复核；按最新直接合并指令不再追加测试/类型/构建或合并组合回放，不执行浏览器、lint/格式或钩子。将保留最新本地main新增策略消费者与本轮增量pivot衔接，无远端推送。3.83%耗时/5.10%CPU改善是合并前固定基线的单次无采样对照，不能代表最新main组合版本已测速；MONOREPO-330继续in-progress，剩余检查点失败、证据图计费和弱版本释放重建留作后续。
@@ -52,6 +68,11 @@
 当前worktree C:/Users/zb/.codex/worktrees/single-bottom-n/wavequant-monorepo，分支feat-一级趋势唯一底部N，基于main e2d3ad5。用户用国芳集团2024-03-12截图要求每个一级趋势最多一个底部成功N及目标。已修结构N领域归属、图表唯一投影及前端所有目标入口；详细边界见两个workspace progress.md。成功沿用共用N核心突破定义，第一成功事实锁定，失效不重发名额，交易规则保持原有。
 
 新增test_structural_n_ownership.py、test_guofang_single_bottom_n.py与Web single-bottom-n.test.mjs等回归源码。国芳复用guofang_2024_squeeze_confirmation.json，不重复新增大行情文件。开发阶段严格未运行任何验证或Git状态/差异；下一步按用户提交安排做相关Python/Node回归与必要局部类型、范围复核，再提交本地合并。未推送、清缓存或重启，当前运行页面尚未应用本分支。358唯一in-progress，330仅在本分支暂置backlog并保留原未完成事实。CodeGraph新worktree索引不可用，已改用源码阅读；未重建主目录索引。以下为历史记录。
+2026-10-23 · MONOREPO-330 后段增长续修
+
+当前worktree C:/Users/zb/.codex/worktrees/backtest-linear-growth/wavequant-monorepo，feat-回测增量计算根治已同步main e2d3ad5。当前基线2133日wall429.2894秒/CPU399.3281秒、末133日日均CPU/首200日11.452倍，尚未根治。证据在.codex-runtime/backtest-linear-growth/growth-e2d3ad5，后续必须比较同目录冻结源码/账户/研究输出。记录通道仍关闭，网络禁止。
+
+进行中的代码：候选PointVersion由计算生产者直接发布，防止历史引用失效造成全候选重新导出；确认上下文预算拒绝时复用本次已解析结果，保留可用前缀；行情窗口只认证新增和接缝。单元/类型尚未运行，当前仅授权性能诊断与同输入比较，未开始新提交。后段预算少量调用但每次图规模暴涨仍未解决；保持330唯一in-progress，不恢复旧失败v5 stash，不以局部调用减少宣称完成。
 
 2026-10-23 · MONOREPO-330 紫色圆点提交合并记录
 

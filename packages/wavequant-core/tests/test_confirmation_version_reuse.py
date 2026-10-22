@@ -82,6 +82,50 @@ def test_append_and_unchanged_days_only_parse_new_references(
     assert len(first.references) == 64 and first.references[-1] is not None
 
 
+@pytest.mark.parametrize('date_clock', (False, True))
+def test_versioned_suffix_skips_content_lookup_and_admission_but_public_input_still_validates(
+    date_clock: bool, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bars = _bars(8)
+    owner = _MarketRangeIndex.build(bars)
+    assert owner is not None
+    cache, channel = confirmation._ReferenceParsingCache(), _Channel()
+    market = _MarketPrefixIndex(owner, bars)
+    sessions = confirmation._PrefixSessions(owner.positions, 7)
+    signature = confirmation._geometry_signature
+    encoded: list[object] = []
+
+    def counted(value: object) -> bytes | None:
+        encoded.append(value)
+        return signature(value)
+
+    monkeypatch.setattr(confirmation, '_geometry_signature', counted)
+    source = PointVersion(_point(index, date_clock=date_clock) for index in range(4)).seal()
+    first = cache.version(channel, source, market, sessions, 7)
+    assert first is not None
+    proofs = [value for value in encoded if type(value) is dict]
+    assert len(proofs) == 4 and all('state' not in value for value in proofs)
+    assert cache.entries == {} and cache.memory_bytes == 0
+    encoded.clear()
+    appended = PointVersion([_point(4, date_clock=date_clock)], previous=source, start=4).seal()
+    following = cache.version(channel, appended, market, sessions, 7)
+    assert following is not None and following.references[-1] is not None
+    latest = following.references[-1]
+    assert latest is not None
+    assert [value for value in encoded if type(value) is dict] == [dict(latest.raw)]
+    assert latest._proof_signature == signature(dict(latest.raw))
+    assert cache.entries == {} and cache.memory_bytes == 0
+
+    # 公共可变点仍先生成完整内容键；改写同一个字典不能借用版本资格。
+    encoded.clear()
+    raw = _point(0, date_clock=date_clock)
+    assert cache.parse(raw, sessions, 7) is not None
+    assert any(type(value) is dict and 'state' in value for value in encoded)
+    assert len(cache.entries) == 1
+    raw['index'] = True
+    assert cache.parse(raw, sessions, 7) is None
+
+
 @pytest.mark.parametrize('start', (0, 31, 32, 33, 63, 64))
 def test_revision_and_truncation_preserve_every_digest_and_old_snapshot(start: int) -> None:
     bars = _bars(72)

@@ -1,4 +1,5 @@
 """Provide an immutable, once-validated bar sequence for domain observers."""
+from bisect import bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -78,6 +79,9 @@ class _ValidatedBarWindows:
             raise ValueError('validated windows require a real half-open market interval')
         if start == stop:
             return ValidatedBars._from_validated(())
+        position = bisect_right(self._ranges, (start, len(self.source) + 1)) - 1
+        if position >= 0 and self._ranges[position][1] >= stop:
+            return ValidatedBars._from_validated(self.source[start:stop])
         cursor = start
         for left, right in self._ranges:
             if right <= start:

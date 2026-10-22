@@ -34,6 +34,7 @@ from .trend_levels import (
     Moment, _SourceTurn, _TrendReversalState, _later_moment, _source_record_reference, _source_turns, trend_reversals,
 )
 from .trend_point_records import PointRecordView
+from .trend_point_version import PointVersion
 from .trend_upgrade_checkpoint import _UpgradeConsumptionCache
 
 __all__ = ['TrendJudgement', 'judge_trend', 'mutable_points']
@@ -57,14 +58,14 @@ class TrendJudgement:
 
     ``points`` 是当前交替几何，可原样作为下一次 ``judge_trend`` 的首参数。
     ``candidates`` 是本快照普通归并及严格升级的完整候选并集；同向端点被
-    更高 H／更低 L 延伸后，原事件仍在这里保留。两个元组的字典及嵌套证据
-    容器递归冻结，调用方需要 JSON 或可变工作副本时使用 ``mutable_points``。
+    更高 H／更低 L 延伸后，原事件仍在这里保留。公开结果的两个元组及其
+    嵌套证据递归冻结，调用方需要可变工作副本时使用 ``mutable_points``。
     """
 
     trend_level: int
     source_level: int
     points: tuple[Mapping[str, object], ...]
-    candidates: tuple[Mapping[str, object], ...]
+    candidates: Sequence[Mapping[str, object]]
     _delta: _JudgementDelta | None = field(default=None, compare=False, repr=False)
 
 
@@ -74,6 +75,7 @@ class _OwnedTrendJudgement(TrendJudgement):
 
     每个点拥有独立可替换外壳；点及嵌套证明发布后不再原位修改。
     内部消费者只复制外壳，公共消费者仍通过 mutable_points 独立导出。
+    候选不参与几何标注，生产者可以直接移交其封存 PointVersion。
     此标记说明复制边界，不提供缓存准入或内存费用豁免。
     """
 
@@ -810,7 +812,8 @@ class _JudgementLedger:
         self.geometry_orders: MutableSequence[tuple[int, int]] = []
         self.points: MutableSequence[Mapping[str, object]] = []
         self.counts: MutableSequence[tuple[int, int]] = [(0, 0)]
-        self.candidates: MutableSequence[Mapping[str, object]] = []
+        self.candidates: MutableSequence[Mapping[str, object]] | PointVersion = (
+            PointVersion().seal() if _owned_result else [])
         self.candidate_offsets: MutableSequence[int] = [0]
         self.revision: object | None = None
 
@@ -863,10 +866,19 @@ class _JudgementLedger:
         if dirty:
             first = bisect_left(self.orders, min(dirty))
             candidate_change = self.candidate_offsets[first]
-            del self.candidates[candidate_change:]
+            if type(self.candidates) is PointVersion:
+                # 账本和检查点共同拥有已发布前缀；真正变化的后缀另开版本。
+                # 候选没有标注写入，不必再复制全部点壳才能交给准备阶段。
+                self.candidates = PointVersion(previous=self.candidates, start=candidate_change)
+            else:
+                del self.candidates[candidate_change:]
             del self.candidate_offsets[first + 1:]
             for order in self.orders[first:]:
-                self.candidates.extend(self.buckets[order].candidates)
+                bucket_candidates = self.buckets[order].candidates
+                if type(self.candidates) is PointVersion:
+                    self.candidates.extend(cast(tuple[dict[str, object], ...], bucket_candidates))
+                else:
+                    cast(MutableSequence[Mapping[str, object]], self.candidates).extend(bucket_candidates)
                 self.candidate_offsets.append(len(self.candidates))
             changed_objects.extend(self.candidate_offsets[first + 1:])
             # 新插入点可能拆开此前被同类极值合并的区间，须从前一已保留端点重放。
@@ -910,7 +922,9 @@ class _JudgementLedger:
         delta = _JudgementDelta(object(), self.revision, point_change, candidate_change)
         self.revision = delta.token
         result_type = _OwnedTrendJudgement if self._owned_result else TrendJudgement
-        return result_type(level, level - 1, tuple(self.points), tuple(self.candidates), delta), changed_objects
+        candidate_version = (self.candidates.seal() if type(self.candidates) is PointVersion
+                             else tuple(self.candidates))
+        return result_type(level, level - 1, tuple(self.points), candidate_version, delta), changed_objects
 
     def reconcile_formal(self, previous_candidates: Sequence[Mapping[str, object]],
                          candidates: Sequence[Mapping[str, object]], candidate_from: int,
@@ -1170,7 +1184,8 @@ class _TrendJudgementState:
                 seal_sequence(ledger, name, lambda value: cast(tuple[int, int], value))
             for name in ('geometry', 'points'):
                 seal_sequence(ledger, name, point_order)
-            seal_sequence(ledger, 'candidates', point_order)
+            if type(ledger.candidates) is not PointVersion:
+                seal_sequence(ledger, 'candidates', point_order)
             offsets = ledger.candidate_offsets
             if type(offsets) is not FrozenPrefixList:
                 offsets = FrozenPrefixList(offsets)
@@ -1367,6 +1382,14 @@ class _TrendJudgementState:
                 if value._budget_upper_bytes is not None:
                     size += getsizeof(value._budget_upper_bytes)
                 pending.extend((value.data, value.json_template))
+            elif type(value) is PointVersion:
+                # 生产者候选版本拥有树与点，记录存储仅借用常量根元数据。
+                attributes = vars(value)
+                seen.add(id(attributes))
+                size += getsizeof(attributes) + value.record_metadata_bytes
+                pending.extend(attributes.keys())
+                pending.extend(item for key, item in attributes.items()
+                               if key not in ('_record_store', '_record_sequence', '_record_prefix'))
             elif type(value) is _SequenceNode or type(value) is _IndexNode:
                 pending.extend(_node_children(value))
             elif type(value) in state_types:
@@ -1397,8 +1420,11 @@ class _TrendJudgementState:
             if id(container) not in seen:
                 seen.add(id(container))
                 size += getsizeof(container)
-                if type(container) is FrozenPrefixList or type(container) is FrozenPrefixMap:
+                if (type(container) is FrozenPrefixList or type(container) is FrozenPrefixMap
+                        or type(container) is PointVersion):
                     size += container.storage_bytes
+                    if type(container) is PointVersion:
+                        size += container.record_metadata_bytes
         # 已发布桶只读，随 changed_objects 计入不可变载荷；这里只统计
         # 可变顶层索引。检查点共享旧桶，不重复遍历或重复扣除其容器费用。
         return size
@@ -1600,7 +1626,7 @@ def _finalize_judgement(
         point.update(state='reversal', label=f'{kind}{counts[kind]}')
     if _owned_result:
         return _OwnedTrendJudgement(trend_level, source_level,
-                                    tuple(dict(point) for point in points), tuple(candidates))
+                                    tuple(dict(point) for point in points), PointVersion(candidates).seal())
     frozen_memo: dict[int, tuple[object, object]] = {}
     return TrendJudgement(trend_level, source_level,
                           tuple(_frozen_point(point, frozen_memo) for point in points),
@@ -1686,6 +1712,13 @@ class _FormalKeyBreakState:
                 if value._budget_upper_bytes is not None:
                     size += getsizeof(value._budget_upper_bytes)
                 pending.extend((value.data, value.json_template))
+            elif type(value) is PointVersion:
+                attributes = vars(value)
+                seen.add(id(attributes))
+                size += getsizeof(attributes) + value.record_metadata_bytes
+                pending.extend(attributes.keys())
+                pending.extend(item for key, item in attributes.items()
+                               if key not in ('_record_store', '_record_sequence', '_record_prefix'))
             elif type(value) is _SequenceNode or type(value) is _IndexNode:
                 pending.extend(_node_children(value))
             elif type(value) is MappingProxyType:
@@ -1761,7 +1794,8 @@ class _FormalKeyBreakState:
     def _retain(self, *, appended: bool, added: Sequence[object]) -> None:
         containers = self._containers()
         container_size = sum(getsizeof(value) + (value.storage_bytes
-            if type(value) is FrozenPrefixList or type(value) is FrozenPrefixMap else 0)
+            if type(value) is FrozenPrefixList or type(value) is FrozenPrefixMap or type(value) is PointVersion else 0)
+            + (value.record_metadata_bytes if type(value) is PointVersion else 0)
             for value in {id(value): value for value in containers}.values())
         if appended:
             # 只为新来源、候选、事件和索引项计费；重复引用形成保守上界。
@@ -1783,7 +1817,8 @@ class _FormalKeyBreakState:
             self._consumption.disable_for_budget()
             containers = self._containers()
             container_size = sum(getsizeof(value) + (value.storage_bytes
-                if type(value) is FrozenPrefixList or type(value) is FrozenPrefixMap else 0)
+                if type(value) is FrozenPrefixList or type(value) is FrozenPrefixMap or type(value) is PointVersion else 0)
+                + (value.record_metadata_bytes if type(value) is PointVersion else 0)
                 for value in {id(value): value for value in containers}.values())
             current = self._value_bytes(containers)
             self._payload_upper_bytes = max(0, current - container_size)
@@ -1792,7 +1827,8 @@ class _FormalKeyBreakState:
             self._checkpoint = None
             containers = self._containers()
             container_size = sum(getsizeof(value) + (value.storage_bytes
-                if type(value) is FrozenPrefixList or type(value) is FrozenPrefixMap else 0)
+                if type(value) is FrozenPrefixList or type(value) is FrozenPrefixMap or type(value) is PointVersion else 0)
+                + (value.record_metadata_bytes if type(value) is PointVersion else 0)
                 for value in {id(value): value for value in containers}.values())
             current = self._value_bytes(containers)
             self._payload_upper_bytes = max(0, current - container_size)
