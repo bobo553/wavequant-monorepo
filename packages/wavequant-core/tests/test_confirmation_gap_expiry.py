@@ -53,16 +53,15 @@ def lifecycle(level=2):
 
 
 @pytest.mark.parametrize('level', (0, 1, 2, 3))
-@pytest.mark.parametrize('candidate', (None, (False, True, 8.0), (True, False, 8.0)))
 @pytest.mark.parametrize('confirmed_gap', (None, (4, 6.92, 6.97, 'body')))
-def test_checkpoint_keeps_candidate_gap_separate_from_confirmed_gap(level, candidate, confirmed_gap):
+def test_checkpoint_keeps_confirmed_gap_without_observation_candidate(level, confirmed_gap):
     observer = lifecycle(level)
     observer._cycles[level, 'p'] = replace(observer._cycles[level, 'p'],
-        candidate=candidate, confirmation_gap=confirmed_gap)
+        confirmation_gap=confirmed_gap)
     checkpoint = observer.checkpoint()
     restored = TrendLifecycle.from_checkpoint(checkpoint)
     assert restored.checkpoint() == checkpoint
-    assert restored._cycles[level, 'p'].candidate == candidate
+    assert not hasattr(restored._cycles[level, 'p'], 'candidate')
     assert restored._cycles[level, 'p'].confirmation_gap == confirmed_gap
     events = []
     restored._expire_confirmation_gap((level, 'p'), bars(), 5, events)

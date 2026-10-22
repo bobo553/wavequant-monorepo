@@ -85,8 +85,9 @@
                 "MONOREPO-327"
             ],
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
-            "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。 统一三级六态事件、候选/确认时钟及请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。",
+            "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。统一三级六态及确认时钟与请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。2026-10-22按用户截图删除内部审计的蓝紫圆点、仅观察用途的跳空/放量候选计算及状态；精简图表事件投影，保留实际交易确认、资格、N与目标线消费者。",
             "acceptanceCriteria": [
+                "截图圆点清理：内部生命周期及未登记的审计事件不再生成图表圆点，旧缓存前端亦不回退显示；后端在构造日期/价格/层级前排除无展示消费者的事件，逐日生命周期不再计算或保存观察候选。折线及三级共用正式确认、防守与交易资格规则不变，N和目标线继续使用原事件；相关回归和性能收益待提交时验证。",
                 "2026-10-22最新S/S2：S到400日停止，全部capture因内部GenericAlias元数据拒绝，无完整结果。修复后的S2完整334.3987951秒/CPU331.546875，账户/研究SHA同control；day2007.7278626、day2000279.7190763、day2133循环334.2044606，末133日54.4853843秒；geometry157.5362125/permissions77.8396969/history32.717318/lifecycle24.4908148秒。formal攻击33823对R2的48678减少约30.5%，但987次source_revision清检查点，2668次capture累计admitted_bytes约4.10GB（累计遍历计费，非同时驻留），整体退步，S2不作优化完成。S3正在按实际依赖原始来源前缀保留未受影响快照，未完整验证。独立T仅R2+许可最后活动run增量标注正在测量，不含S2/S3，未宣称通过；trend_lines.py:_annotate_geometry显式external引用签名模式，_annotate_permissions只维护活动末段，原8MiB分2MiB闭合+6MiB共享三个当前尾段。所有测试未运行，P仍最快完整生产候选；增长/60秒未解决，330保持in-progress，未提交合并推送重启，main未应用。",
                 "2026-10-22 R2历史完整结果：确认缓存拒绝路径修复后2133日完整290.36723140001413秒/CPU288.375，账户/研究SHA均同control。day200=5.8284324、day2000=242.3200587、day2133循环=290.2022331，末133日47.8821744秒，末段日均/首段约12.35；geometry109.1954061/permissions79.7137182/history33.4735736/lifecycle24.3436283/projection4.7544789/drawing0.0843598秒，ordinary_attacks64503、formal_attacks48678。收回R部分退步但未胜过P282.7993405秒，增长和60秒仍未解决。producer稳定ID贯穿历史根方案仅静态评估，不强持全历史、保留alias/因果回读，不放宽预算或微调压缩级别。所有pytest/类型待实际提交，330仍in-progress，未提交合并推送重启，main尚未应用。",
                 "2026-10-22 Q/R历史记录（当前见R2）：Q候选offset完整2133日286.5311958秒/CPU284.921875，账户/研究哈希同control，单项未证明总收益。P冻结源码的diagnostic-retain-current-exports仅harness强持有每channel最新导出、clear/forget释放，277.1122621秒/CPU275.34375，exported_points1257419→99535、missing_previous7622→18；末段及总耗时未根治，历史节点/拒绝不变，未放入生产。R组合Q、确认来源版本增量解析和分段许可标注，完整exit0为305.8082065000199秒/CPU303.75，账户/研究哈希同control；day200=5.8785613、day2000=242.261175、day2133循环=305.639302，末133日63.378127秒，permissions96.1473119高于P77.6634229。R是失败候选，不作生产验收或单项归因。growth_loop_audit代码证据发现确认缓存满后保留旧checkpoint，每日重放更长suffix再拒绝再全量parse；该拒绝路径现已修复并完成R2，不增加预算。仍需生产证明稳定身份/历史协议、逐日一致性、增长斜率和60秒验收，不回退他人正在修改的文件。",
@@ -210,6 +211,26 @@
                 "2026-10-19 外围消费者增量化：来源、候选、许可轻量投影传递不可变版本/父令牌/最早变化位置；分组、来源认证、几何标注、结构腿共享持久前缀；许可来源/候选查找索引只更新后缀；共享层级历史在交易区间内外只更新投影后缀。旧关键位/整波起点只读引用，不删除证据，不以结构冻结代替逐日资格核验；追加、修订、截短、同坐标事实、延迟可知、跨请求失效及公开独立列表导出待提交时验证。"
             ],
             "verification": [
+                {
+                    "command": "pnpm --filter @wavequant/core exec node scripts/run-python.mjs -m pytest -q tests/test_chart_event_projection.py tests/test_trend_lifecycle.py tests/test_confirmation_gap_expiry.py tests/test_lifecycle_impulse_defense.py tests/test_chart_target_windows.py tests/test_wave_projection.py tests/test_trading_intervals.py --tb=short",
+                    "status": "failed",
+                    "summary": "2026-10-22 圆点清理提交阶段：7个模块收集时均因ModuleNotFoundError: No module named wavequant失败，未进入测试执行。用户随后明确要求不要验证直接合并，停止追加验证与环境修复；不能记为Core验证通过。"
+                },
+                {
+                    "command": "pnpm --filter wavequant-web exec node --test --test-reporter=dot tests/annotations.test.mjs tests/a-wave-confirmation.test.mjs tests/a-wave-lifecycle.test.mjs tests/bottom-n-targets.test.mjs tests/buy-n-targets.test.mjs tests/eligibility-n-targets.test.mjs tests/lifecycle-landmarks.test.mjs tests/wave-c-projection.test.mjs",
+                    "status": "failed",
+                    "summary": "2026-10-22 验证进程在用户停止要求到达前已结束。两项失败：annotations.test.mjs:39期望二饱文案而实际为二吐；wave-c-projection.test.mjs:243期望undefined而实际为2020-05-29。未做基线复测，不宣称已经证明为既有失败；没有放宽断言或顺带修改业务。用户最新要求不要验证直接合并，本次保留失败记录，不再运行测试、类型、构建或性能测量。"
+                },
+                {
+                    "command": "用户明确要求：不要验证直接合并",
+                    "status": "skipped",
+                    "summary": "2026-10-22 按用户最新指令直接提交圆点清理并合并本地main，不追加验证、不执行Git钩子、不推送。未验证的历史性能实验不纳入提交；60秒与后段增长目标仍未完成，330保持in-progress。"
+                },
+                {
+                    "command": "待提交：Core test_chart_event_projection.py、test_trend_lifecycle.py、test_confirmation_gap_expiry.py、test_lifecycle_impulse_defense.py、test_chart_target_windows.py、test_wave_projection.py；Web annotations.test.mjs及相关目标线回归",
+                    "status": "not-run",
+                    "summary": "2026-10-22 用户要求移除截图蓝色圆点及多余后端计算。本轮在专属worktree同步main后仅编辑代码：前端标记改为已登记规则；后端显式发布图表消费者所需事件，不重复投影内部生命周期审计；删除逐日跳空/量能候选提示、candidate状态及其检查点字段。生命周期v34、历史v161和图表事件缓存策略隔离旧结果；新增/调整回归源码保留三层正式确认与缺口资格断言。未运行测试、类型、构建、探针或浏览器，未提交合并推送；没有本轮提速数据，不宣称一分钟或后段增长问题解决。"
+                },
                 {
                     "command": "local main delivery from candidate-growth-ab-finite-source",
                     "status": "skipped",

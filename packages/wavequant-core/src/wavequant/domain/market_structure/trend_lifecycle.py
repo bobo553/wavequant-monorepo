@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from .trend_lines import _OwnedPolylineTurns
 
 
-LIFECYCLE_VERSION = 'six_state_polyline_volume_breakout_v33'
+LIFECYCLE_VERSION = 'six_state_without_observation_candidates_v34'
 
 
 class LifecycleState(StrEnum):
@@ -73,7 +73,6 @@ class _Cycle:
     impulse: _Pivot | None = None
     counter: _Pivot | None = None
     alternated: int | None = None
-    candidate: tuple[bool, bool, float] | None = None
     evidence: frozenset[_Fact] = frozenset()
     recovery: bool = False
     structure: tuple[_Pivot, ...] = ()
@@ -242,7 +241,7 @@ def _continued_bull_impulse(cycle: _Cycle, points: tuple[_Pivot, ...],
                 or (high.index, high.ordinal) < (previous.index, previous.ordinal)
                 or high.price < previous.price or high.known < previous.known):
             continue
-        return replace(cycle, impulse=high, structure=(key, low, high), candidate=None)
+        return replace(cycle, impulse=high, structure=(key, low, high))
     return None
 
 
@@ -533,7 +532,7 @@ class TrendLifecycle:
                 self._checkpoint_seen[key] = seen, saved_seen
             cycle = self._cycles.get(key)
             saved = (cycle.state.value, cycle.up, pivot(cycle.origin), cycle.started, pivot(cycle.impulse),
-                     pivot(cycle.counter), cycle.alternated, cycle.candidate,
+                     pivot(cycle.counter), cycle.alternated,
                      tuple(sorted((fact(item) for item in cycle.evidence), key=repr)),
                      cycle.recovery, tuple(pivot(item) for item in cycle.structure),
                      tuple(pivot(item) for item in cycle.confirmation_source), cycle.confirmation_gap,
@@ -640,17 +639,11 @@ class TrendLifecycle:
                     integer(recovered) if recovered is not None else None)
             if raw is None:
                 continue
-            (state, up, origin, started, impulse, counter, alternated, candidate, evidence,
-             recovery, structure, source, saved_gap, qualification_closed) = sequence(raw, 14)
+            (state, up, origin, started, impulse, counter, alternated, evidence,
+             recovery, structure, source, saved_gap, qualification_closed) = sequence(raw, 13)
             parsed_origin = pivot(origin)
             if not isinstance(state, str) or type(up) is not bool or parsed_origin is None:
                 raise ValueError('invalid lifecycle checkpoint cycle')
-            hint: tuple[bool, bool, float] | None = None
-            if candidate is not None:
-                candidate_gap, volume, price = sequence(candidate, 3)
-                if type(candidate_gap) is not bool or type(volume) is not bool or type(price) not in (int, float) or not isfinite(cast(float, price)):
-                    raise ValueError('invalid lifecycle checkpoint candidate')
-                hint = candidate_gap, volume, cast(float, price)
             if type(recovery) is not bool or not isinstance(structure, tuple) or not isinstance(source, tuple):
                 raise ValueError('invalid lifecycle structure checkpoint')
             parsed_structure = tuple(pivot(item) for item in structure)
@@ -669,7 +662,7 @@ class TrendLifecycle:
                 parsed_gap = gap_clock, float(cast(float, lower)), float(cast(float, upper)), kind
             restored._cycles[key] = _Cycle(LifecycleState(state), up, parsed_origin, integer(started),
                 pivot(impulse), pivot(counter), integer(alternated) if alternated is not None else None,
-                hint, facts(evidence), recovery, tuple(item for item in parsed_structure if item is not None),
+                facts(evidence), recovery, tuple(item for item in parsed_structure if item is not None),
                 tuple(item for item in parsed_source if item is not None), parsed_gap,
                 integer(qualification_closed) if qualification_closed is not None else None)
         return restored
@@ -886,7 +879,7 @@ class TrendLifecycle:
             confirmation_gap_index=index, confirmation_gap_lower=lower,
             confirmation_gap_upper=upper, confirmation_gap_kind=kind, market_low=bars[now].low))
         self._cycles[key] = replace(cycle, state=LifecycleState.BULL_FLIP, counter=None,
-            alternated=None, candidate=None, confirmation_source=(), confirmation_gap=None,
+            alternated=None, confirmation_source=(), confirmation_gap=None,
             structure=cycle.structure[:3] if cycle.recovery else ())
 
     @staticmethod
@@ -959,7 +952,7 @@ class TrendLifecycle:
                 if cycle.impulse is not None and (sign * (fact.point.price - cycle.impulse.price) <= 0
                         or (fact.point.index, fact.point.ordinal) <= (cycle.impulse.index, cycle.impulse.ordinal)):
                     return
-                cycle = replace(cycle, impulse=fact.point, candidate=None,
+                cycle = replace(cycle, impulse=fact.point,
                                 evidence=cycle.evidence.union((fact,)))
                 self._cycles[key] = cycle
                 events.append(self._event(key, cycle, now, 'trend_lifecycle_anchor',
@@ -992,7 +985,7 @@ class TrendLifecycle:
             return
         prior_gap = cycle.confirmation_gap
         cycle = replace(cycle, state=alternation_state, impulse=impulse, counter=fact.point,
-                        alternated=now, candidate=None, evidence=cycle.evidence.union((fact,)),
+                        alternated=now, evidence=cycle.evidence.union((fact,)),
                         confirmation_gap=None, confirmation_source=(), qualification_closed=None)
         self._cycles[key] = cycle
         events.append(self._event(key, cycle, now, 'trend_lifecycle_state',
@@ -1157,7 +1150,7 @@ class TrendLifecycle:
                     and (flips or cycle.recovery)):
                 pending = replace(cycle,
                     state=LifecycleState.BULL_FLIP if cycle.up else LifecycleState.BEAR_FLIP,
-                    counter=None, alternated=None, candidate=None,
+                    counter=None, alternated=None,
                     evidence=cycle.evidence if cycle.recovery else flips,
                     structure=cycle.structure[:3] if cycle.recovery else (),
                     confirmation_source=(), confirmation_gap=None)
@@ -1173,24 +1166,11 @@ class TrendLifecycle:
         threshold = cycle.impulse.price
         if (cycle.alternated is not None and now > cycle.alternated
                 and sign * (previous.close - threshold) <= 0 < sign * (bar.close - threshold)):
-            cycle = replace(cycle, state=confirmed, candidate=None)
+            cycle = replace(cycle, state=confirmed)
             self._cycles[key] = cycle
             events.append(self._event(key, cycle, now, 'trend_lifecycle_state',
                                       confirmation_rule='strict_close_cross_after_confirmed_alternation',
                                       confirmation_close=bar.close, previous_close=previous.close))
-            return
-        gap = bar.low > previous.high if cycle.up else bar.high < previous.low
-        volume_attack = (bar.volume > previous.volume and sign * (bar.close - bar.open) > 0
-                         and sign * (bar.close - previous.close) > 0)
-        candidate = (gap, volume_attack, threshold) if gap or volume_attack else None
-        if candidate != cycle.candidate:
-            self._cycles[key] = replace(cycle, candidate=candidate)
-            events.append(self._event(key, cycle, now,
-                'trend_lifecycle_candidate' if candidate else 'trend_lifecycle_candidate_expired',
-                gap=gap, volume_attack=volume_attack, confirmed=False,
-                volume=bar.volume, previous_volume=previous.volume,
-                pending_condition=('confirmed_alternation_then_strict_close_cross'
-                                   if cycle.alternated is None else 'strict_close_cross')))
 
 
 def lifecycle_interval_days(events: Sequence[Mapping[str, object]], size: int, level: int,

@@ -46,8 +46,8 @@ from .chart_drawing_history import _OwnedDrawingProjection
 from .market_calculations import MarketCalculations, MarketDay
 
 
-# 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "source_causal_polyline_volume_breakout_v160"
+# 生命周期检查点已移除观察候选字段，旧布局不能继续恢复。
+_CONFIRMATION_CACHE_VERSION = "source_causal_without_observation_candidates_v161"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:

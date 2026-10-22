@@ -583,6 +583,23 @@ const theory = {
         { id: "r3", event: "entry_rejected", time: "2026-01-03", available_at: "2026-01-03", price: 11 },
     ],
 };
+test("internal audit events never create fallback circles, including cached lifecycle candidates", () => {
+    const eventTypes = [
+        "trend_lifecycle_state", "trend_lifecycle_anchor", "trend_lifecycle_suspicion",
+        "trend_lifecycle_candidate", "trend_lifecycle_candidate_expired", "trend_lifecycle_invalidated",
+        "trading_interval_opened", "trading_interval_closed", "wave_projection_ready",
+        "a_wave_confirmed", "future_internal_event",
+    ];
+    const events = eventTypes.flatMap((event) => [0, 1, 2, 3].map((trend_level) => ({
+        id: `${event}:${trend_level}`, event, trend_level,
+        time: "2026-01-02", available_at: "2026-01-02", price: 10.1,
+        get levels() { throw new Error("internal audit must not be prepared for marker display"); },
+    })));
+    const baseline = buildAnnotations(view, theory);
+    const items = buildAnnotations(view, { ...theory, events: [...events, ...theory.events] });
+    assert.deepEqual(items, baseline);
+    assert.deepEqual(markerGroups(items, options), markerGroups(baseline, options));
+});
 test("LONG and EXIT visible, no future SELL", () => {
     const items = buildAnnotations(view, theory);
     assert.equal(items.find((i) => i.id === "s2").title, "退出信号");
