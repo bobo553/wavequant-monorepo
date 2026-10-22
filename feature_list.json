@@ -1,16 +1,16 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-355",
+    "activeFeature": "MONOREPO-330",
     "features": [
         {
             "id": "MONOREPO-355",
             "name": "global-two-t-touch-entry-guard",
             "title": "正N首次触及二吐当日全局禁买",
-            "status": "in-progress",
+            "status": "done",
             "dependencies": [],
             "description": "桂林旅游2021-09-10从8/16正N一饱二吐区间上攻，当日已观察高点触及二吐不应买入；用户确认采用已观察高点而非涨停价预测。",
-            "scope": "所有正N、补充收盘、跳空及账户入场共用目标门禁；同时检查尚未失效的原N测幅，新下降段交接主测幅不解除旧目标风险，首次到二吐当日禁止新买和加仓。真实破位或资格关闭终止来源，不按股票日期修补，不变更趋势或退出规则。本轮续修已验证，待用户提交/合并安排。",
+            "scope": "所有正N、补充收盘、跳空及账户入场共用目标门禁；同时检查尚未失效的原N测幅，新下降段交接主测幅不解除旧目标风险，首次到二吐当日禁止新买和加仓。真实破位或资格关闭终止来源，不按股票日期修补，不变更趋势或退出规则。本轮续修已完成提交验证，按用户要求本地合并main。",
             "acceptanceCriteria": [
                 "当前有效正N首次触及二吐包含等值，收盘未到二吐同样禁买，跳空无豁免。",
                 "日线收盘用全天高点；盘中只用已观察高点及成交开盘价，后续高点不倒改早盘成交；缺分钟的原开盘模型只读开盘。",
@@ -18,6 +18,11 @@
                 "桂林2018起完整冻结行情经真实趋势/资格/逐日账户验证9/10无LONG或BUY成交且8/16正常成交保留；来源交接后覆盖三个资格级别、跳空、分钟、账户和加仓。线上服务和完整区间回测另行验证。"
             ],
             "verification": [
+                {
+                    "command": "pytest tests/test_two_t_entry_gate.py tests/test_guilin_two_t_entry.py tests/test_qualified_gap_entry.py tests/test_qualified_rising_close_entry.py tests/test_streaming_backtest.py tests/test_bottom_n_targets.py -q -p no:cacheprovider --tb=short; mypy --follow-imports=skip <7 modified Python files>; git diff --cached --check",
+                    "status": "passed",
+                    "summary": "2026-10-22 用户要求合并main。提交bd840d3后同步b6ebc35，保留整波翻多资格修复及双方记录，profile协调为v152_two_t_source_lifetime。同步后92 passed in 40.93s、7文件局部类型通过，最终11文件范围及差异复核完成；桂林9/10无买入信号/成交且8/16正常成交保留。355完成后330恢复唯一in-progress；330原验证未完成记录继续保留，不作为本次通过。不推送、不重启服务；全仓及浏览器/线上完整重算未执行。"
+                },
                 {
                     "command": "streaming_stock_result(901 original frozen bars from 2018-01-02 to 2021-09-13, cached strategy/execution, explicit unavailable historical minutes)",
                     "status": "passed",
@@ -137,13 +142,14 @@
             "id": "MONOREPO-330",
             "name": "causal-backtest-computation-performance",
             "title": "回测因果计算与复用性能优化",
-            "status": "backlog",
+            "status": "in-progress",
             "dependencies": [
                 "MONOREPO-327"
             ],
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。统一三级六态及确认时钟与请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。2026-10-22按用户截图删除内部审计的蓝紫圆点、仅观察用途的跳空/放量候选计算及状态；精简图表事件投影，保留实际交易确认、资格、N与目标线消费者。",
             "acceptanceCriteria": [
+                "2026-10-22 国芳长期空翻多：恢复门槛与正式六态共同防守2021-02-08整波起点，不把2022-10-31局部L替换为该波末升低；2024-02-08交替低点在真实确认日开放资格，严格破整波起点仍阻断。三级同规则、当前路径/知识时钟/事件重放一致；完整行情结果待提交验证。",
                 "2026-10-22海洋王续修最终口径：5/26完成正N不提前开放资格，5/31真实轧空且放量中大阳时同日收盘确认资格并判断买入，不等6/1突破A高或倍量。共同确认N须同级同源同窗口同四坐标，倒N在读取身份前隔离，保留原防守与一次消费。未来A高突破不得占用更早的合格轧空；三级共用规则无股票日期特判。重新加入真实AkShare截面及收盘回归；此前海洋王目标用例通过；国芳旧失败已诊断为恢复规则新增后旧预期过期。用户本次明确直接合并，国芳新结构/资格分离回归及最新main组合复测已中止，后续待验证；profile v149。",
                 "截图圆点清理：内部生命周期及未登记的审计事件不再生成图表圆点，旧缓存前端亦不回退显示；后端在构造日期/价格/层级前排除无展示消费者的事件，逐日生命周期不再计算或保存观察候选。折线及三级共用正式确认、防守与交易资格规则不变，N和目标线继续使用原事件；相关回归和性能收益待提交时验证。",
                 "2026-10-22最新S/S2：S到400日停止，全部capture因内部GenericAlias元数据拒绝，无完整结果。修复后的S2完整334.3987951秒/CPU331.546875，账户/研究SHA同control；day2007.7278626、day2000279.7190763、day2133循环334.2044606，末133日54.4853843秒；geometry157.5362125/permissions77.8396969/history32.717318/lifecycle24.4908148秒。formal攻击33823对R2的48678减少约30.5%，但987次source_revision清检查点，2668次capture累计admitted_bytes约4.10GB（累计遍历计费，非同时驻留），整体退步，S2不作优化完成。S3正在按实际依赖原始来源前缀保留未受影响快照，未完整验证。独立T仅R2+许可最后活动run增量标注正在测量，不含S2/S3，未宣称通过；trend_lines.py:_annotate_geometry显式external引用签名模式，_annotate_permissions只维护活动末段，原8MiB分2MiB闭合+6MiB共享三个当前尾段。所有测试未运行，P仍最快完整生产候选；增长/60秒未解决，330保持in-progress，未提交合并推送重启，main未应用。",
@@ -269,6 +275,16 @@
                 "2026-10-19 外围消费者增量化：来源、候选、许可轻量投影传递不可变版本/父令牌/最早变化位置；分组、来源认证、几何标注、结构腿共享持久前缀；许可来源/候选查找索引只更新后缀；共享层级历史在交易区间内外只更新投影后缀。旧关键位/整波起点只读引用，不删除证据，不以结构冻结代替逐日资格核验；追加、修订、截短、同坐标事实、延迟可知、跨请求失效及公开独立列表导出待提交时验证。"
             ],
             "verification": [
+                {
+                    "command": "三文件pytest已按直接合并指令停止，出现失败标记/exit 1；五文件局部mypy已通过；必要Git同步与复核",
+                    "status": "failed",
+                    "summary": "2026-10-22 按用户要求直接合并国芳整波资格修复\n\n本轮用户先要求合并main，提交准备已将分支快进到b5073ec，保留二吐禁买规则，版本冲突协调为profile v151_frozen_flip_origin、chart history v163。八个任务文件范围和源码/回归差异已复核，git diff HEAD --check通过，feature_list读取确认MONOREPO-330为唯一in-progress。\n\n已完成五个修改Python文件局部mypy（--config-file packages/wavequant-core/pyproject.toml --follow-imports=skip --no-incremental）：Success: no issues found in 5 source files。已启动三文件pytest -q -p no:cacheprovider --tb=short：test_same_level_recovery.py、test_squeeze_low_open_confirmation.py、test_lifecycle_impulse_defense.py；用户随后明确“直接合并”，按指令停止运行，不追加验证。停止回收输出已有失败标记且进程exit 1，没有完整失败报告或最终统计，不能把本轮回归记为通过，也不能断言这些失败属于基线。待后续明确验证安排排查，保留失败事实。\n\n按最新直接合并指令提交本轮整波防守点修复并本地no-ff合并，禁用提交钩子，不推送、不重启服务。冻结结构与完整行情回归验收仍未完成，不标记功能done；原记录、stash及分支保留。"
+                },
+                {
+                    "command": "待提交：pytest test_same_level_recovery.py test_squeeze_low_open_confirmation.py test_lifecycle_impulse_defense.py；修改Python文件局部mypy",
+                    "status": "not-run",
+                    "summary": "2026-10-22 国芳长期空翻多资格防守点修复（待提交验证）\n\n用户指出国芳集团2020-08-14末跌高、2021-02-08至2023-08-01空翻多及2024-02-08交替低点后的资格遗漏。恢复本会话已归档工作树，复用feat-趋势破位资格恢复并快进至本地main 6ecced6。只读取代码与既有冻结证据，不沿用其他会话的诊断执行授权。\n\n静态证据：same_level_recovery._keys原先总取最新H左侧紧邻L；guofang_2024_impulse_defense.json的正式翻多观察明确以2020-08-14 H为key、2021-02-08 L为confirmed_low、2023-08-01 H为攻击，但紧邻L是2022-10-31。此前其他任务的冻结行情诊断已记录2024-02-06误以该局部L触发恢复门槛，旧集成测试随后将这一阻断写成了预期。该历史诊断不是本轮运行结果。\n\n本轮恢复门槛复用六态的_point_facts解析普通/升级正式翻多证据；只在关键位和起点均属于当前同级路径、价格严格突破、知识时钟有效且起点一致时，用正式整波起点替换紧邻低点。缺失、未来、跨路径、价格修订或未严格突破的证明不放宽门槛。真实跌破整波起点继续冻结对应末跌高；乐心旧高未破的三段错误区间仍由原门槛约束。三个级别共用，不加股票/日期特判、不重判几何。\n\n补充合成边界（内部低点破位、整波起点触及/严格破位、无效证据）、既有国芳完整日线+冻结结构的三级回放、事件重放和策略上下文衔接；冻结结构用例沿用原有2024-03-15确认预期，不能将2024-02-08结构低点当成资格确认日。原完整行情集成用例改为要求2021起点/2023高点/2024低点对应确认与实际资格开窗一致，并明确不得在2/6产生旧局部低点门槛；这是本次用户要求的行为修复，旧阻断预期被取代，不代表已执行验证或保证11月某日买入。profile v150、chart history v163隔离旧资格缓存。\n\n开发阶段未运行测试、类型、格式、lint、构建、Git状态/差异检查或运行探针；新代码与回归均待提交时验证，未提交、合并、推送或重启。后续实际提交按风险运行test_same_level_recovery.py、test_squeeze_low_open_confirmation.py、test_lifecycle_impulse_defense.py及修改文件局部mypy；必要时诊断完整行情中首次确认日及独立退出原因。MONOREPO-330保持唯一in-progress，历史未通过证据保留，不标记done。"
+                },
                 {
                     "command": "用户要求直接合并：pytest test_squeeze_low_open_confirmation.py test_same_level_recovery.py test_haiyangwang_squeeze_entry.py 已中止；10修改文件局部mypy已通过；必要Git复核",
                     "status": "not-run",
