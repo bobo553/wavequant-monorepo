@@ -4,6 +4,43 @@
     "activeFeature": "MONOREPO-330",
     "features": [
         {
+            "id": "MONOREPO-357",
+            "name": "double-volume-next-lower-close-clear",
+            "title": "倍量后次日放量收低全清仓",
+            "status": "backlog",
+            "dependencies": [],
+            "description": "海洋王2021-12-01倍量后12-02仅继续放量且收低，应当日清空，而非只累计减仓。",
+            "scope": "在共用量价退出入口新增独立相邻三日规则：前日量>=再前日正量2倍，今日量>前日且收盘<前收；不要求今日倍量、阴阳、跳空、实体幅度、前高突破或N目标。账户全清优先于部分减仓，保留已有全清、开关、T+1和可卖/流动性限制；同步成交原因和profile版本。",
+            "acceptanceCriteria": [
+                "复用海洋王真实冻结行情11/30、12/1、12/2报价，12/2放量约1.34倍即可在收盘清空剩余可卖仓位。",
+                "前日倍量含等值，今日放量与收低均严格；仅观察紧邻交易日，不跨停牌、来源股票或复权基准差异比较，不使用未来数据。",
+                "部分减仓不得压过本规则全清，已存在全清原因保留；不可卖或T+1不得伪造成交，关闭volume_down_exit不启用新增条件。",
+                "新增规则、实际账户和成交解释回归；按开发节奏待实际提交时执行最小必要检查。"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_double_volume_lower_close_exit.py tests/test_gap_bearish_exit.py tests/test_double_bullish_shadow_exit.py tests/test_double_volume_fade_exit.py tests/test_triple_volume_breakout_clear.py tests/test_staged_exit.py tests/test_extreme_volume_limit_hold.py -q -p no:cacheprovider --tb=short",
+                    "status": "failed",
+                    "summary": "2026-10-23 首轮201通过39失败。新增余仓用例从index0入场，无此前成交量基准导致liquidity_below_one_lot而未建仓，该测试夹具问题尚未修复；其余38项在未修改main上对照同样失败（88通过38失败），含旧测试替身缺audit及未建仓。真实海洋王12/2账户全清和不可卖用例在本轮通过，不将扩展集写成全绿。"
+                },
+                {
+                    "command": "mypy --follow-imports=skip <4 modified production files and new test>; pnpm exec node --test tests/double-volume-lower-close-reason.test.mjs tests/trade-reasons.test.mjs",
+                    "status": "failed",
+                    "summary": "5文件局部mypy通过；新增Node原因用例通过，trade-reasons旧套件因本worktree缺jsdom未启动。未补依赖或重新运行。"
+                },
+                {
+                    "command": "user-requested direct local merge without further checks",
+                    "status": "not-run",
+                    "summary": "用户随后明确要求直接合并不要检查，停止追加验证；仅记录已返回结果并执行必要Git提交与本地no-ff合并，不改断言或无关逻辑，不推送。357保持backlog待处理新增夹具问题及未完成验收，330恢复唯一in-progress。以下保留开发阶段记录。"
+                },
+                {
+                    "command": "pytest tests/test_double_volume_lower_close_exit.py and adjacent volume-exit regressions; modified-file mypy; node --test tests/double-volume-lower-close-reason.test.mjs",
+                    "status": "not-run",
+                    "summary": "2026-10-23 开发阶段仅源码阅读、编辑及记录；已编写真实报价、边界、因果、账户全清优先级、余仓、开关和可卖/T+1回归，未运行测试、类型、lint、格式、构建、Git检查、运行探针或浏览器。357唯一in-progress，330暂置backlog保留旧失败；未提交、合并或推送。用户已确认此前N现在显示，356不再追加产品修改。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-356",
             "name": "confirmed-polyline-positive-n",
             "title": "确认折线正N结构与目标独立发布",

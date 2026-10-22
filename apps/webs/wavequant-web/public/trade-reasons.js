@@ -7,6 +7,11 @@ export function tradeReasonItems(item) {
     const reasons = (item.decision_reason || item.reason || "").split("|").filter(Boolean).map(reasonText);
     const evidence = item.decision_evidence || [];
     const targetReason = item.decision_reason || item.reason;
+    if (targetReason === "volume_after_double_lower_close_clear" && item.previous_date)
+        reasons.push(
+            `${item.previous_date} 成交量 ${num(item.previous_volume, 0)} 股，为 ${item.double_volume_reference_date} 的 ${num(item.double_volume_reference, 0)} 股的 ${num(item.previous_volume_multiple, 2)} 倍。`,
+            `当日成交量 ${num(item.observed_volume, 0)} 股，较前日 ${num(item.response_volume_multiple, 2)} 倍；收盘 ${num(item.observed_close, 4)} < 前收 ${num(item.previous_close, 4)} 元，收盘清空剩余可卖仓位。`,
+        );
     if ((targetReason || "").split("|").includes("limit_up_distribution_midpoint_clear")
         && Number.isFinite(item.distribution_body_midpoint))
         reasons.push(

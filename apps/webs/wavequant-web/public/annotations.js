@@ -76,6 +76,7 @@ const REASONS = {
     inverse_n_bull_resistance_failed_exit: "倒 N 减仓后多头抵抗失败，收盘跌破抵抗 K 虚拟低，当日清仓",
     volume_down_small_n_reduce_30: "放量回落但小实体仍在正 N 突破 K 范围内，次日累计减仓 30%",
     volume_down_reduce_70: "放量下跌且收盘低于前收，当日收盘累计减仓原持仓 70%",
+    volume_after_double_lower_close_clear: "前一交易日倍量后，次日成交量继续放大且收盘低于前收，当日收盘清空剩余可卖仓位",
     volume_bearish_outside_clear: "连续阳线后放量阴线反包前日整根 K 线，当日清仓",
     volume_bullish_gap_bearish_clear: "前日放量大阳线后低开跌过实体中点、收阴且量超此前最近阴线，当日收盘清仓",
     volume_bearish_child_mother_reduce_70: "子母线阴母反包，母线量高于此前最近阴线，当日累计减仓 70%",

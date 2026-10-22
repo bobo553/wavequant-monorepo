@@ -83,7 +83,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'configurable_n_target_trend_confirmation_v153_polyline_n_scope_' + variant
+    config['profile_version'] = 'configurable_n_target_trend_confirmation_v154_double_volume_lower_close_' + variant
     config['definition']['two_t_entry_guard'] = (
         'live_positive_n_first_observed_two_t_touch_inclusive_blocks_all_entries_and_additions_'
         'close_uses_session_high_minutes_use_observed_prefix_no_gap_exemption_'
@@ -219,6 +219,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         small_n_reduction='body_le_1pct_and_lt_previous_10_mean_inside_latest_valid_confirmed_n_candle_then_cumulative_30',
         double_bullish_shadow_exit='latest_bullish_volume_ge_2x_previous_upper_gt_body_then_later_volume_bearish_close_strictly_below_warning_close_clear_remaining_once',
         gap_volume_bearish_exit='open_below_previous_close_medium_bearish_body_2pct_half_range_volume_gt_previous_or_last_bearish_same_close_clear_remaining',
+        double_volume_lower_close_exit='previous_volume_ge_2x_positive_before_previous_then_next_volume_gt_previous_close_lt_previous_close_same_close_clear_remaining_no_candle_color_gap_breakout_or_target_requirement',
         volume_down_exit='volume_gt_previous_bearish_close_below_previous_same_close_cumulative_70_next_session_gap_fade_or_bearish_close_below_warning_low_or_frozen_support_low_break_close_clear',
         bearish_mother_child_pattern_exit='non_doji_mother_contains_bearish_child_one_strict_edge_no_pattern_reduction_any_later_low_and_close_strict_break_volume_gt_positive_child_or_last_bearish_volume_same_close_full_clear',
         volume_bearish_child_mother_exit='later_bearish_mother_inclusive_engulfing_one_strict_edge_volume_gt_positive_last_bearish_before_mother_cumulative_70_same_close_next_session_low_and_close_strict_break_mother_same_close_full_clear',
