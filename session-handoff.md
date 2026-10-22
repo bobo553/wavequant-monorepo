@@ -2484,3 +2484,7 @@ Web信号、成交详情和复制共用完整组合proof，扫描列表已补独
 
 ## MONOREPO-360 海洋王2026优化买点
 独立worktree haiyangwang-entry，分支feat-空翻多回调买点。共用bull_alternation_confirmation新增整段回撤<=2/3且倍量正N后阳线轧空资格入口；新增test_double_n_whole_flip.py。未运行任何验证、未提交合并。下一步按用户提交安排验证完整2026同源行情、三级生命周期接线及实际账户买入；现存海洋王fixture为2021，不能替代本次2026证据。
+
+
+## 2026-10-23 MONOREPO-360 同N共同确认接线修复
+上轮已合并main 6bf5e9a，本轮复用原分支并快进同步。发现新资格规则未获joint_squeeze_confirmations识别，且证明缺n_origin/n_neckline/n_pullback/source_path/trend_level；原N在开窗前会被squeeze_candidates排除。补齐真实N坐标和路径级别，允许新规则进入既有同N共同确认门禁，保持时钟、身份及一次消费约束，更新缓存v165/profile v158。扩展轮次回归至两种规则。未运行检测、未提交本轮更改；完整2026-10-16信号和账户成交仍待验证。

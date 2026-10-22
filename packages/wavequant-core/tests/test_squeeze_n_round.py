@@ -139,8 +139,13 @@ def joint_confirmation() -> dict[str, object]:
             n_origin=0, n_neckline=1, n_pullback=2, attack=3))
 
 
-def test_joint_confirmation_only_admits_exact_n_in_its_own_window() -> None:
-    windows = joint_squeeze_confirmations([joint_confirmation()], 2)
+@pytest.mark.parametrize('rule', [
+    'positive_n_and_squeeze_after_qualified_b',
+    'double_volume_positive_n_squeeze_whole_flip_pullback',
+])
+def test_joint_confirmation_only_admits_exact_n_in_its_own_window(rule: str) -> None:
+    row = dict(joint_confirmation(), confirmation_rule=rule)
+    windows = joint_squeeze_confirmations([row], 2)
     first = replace(first_n(), known_at=5)
     assert ('original-path', 5, first.identity) in windows
     assert ('other-path', 5, first.identity) not in windows
@@ -183,8 +188,12 @@ def test_joint_confirmation_rejects_unconfirmed_future_and_unrelated_evidence(fi
     ('n_neckline', None), ('n_origin', -1), ('n_pullback', 0), ('attack', 6),
     ('bar_index', 6), ('candidate_index', 4), ('trend_level', 3), ('source_path', 'other-path'),
 ])
-def test_joint_confirmation_requires_complete_causal_coordinates(field: str, value: object) -> None:
-    row = joint_confirmation()
+@pytest.mark.parametrize('rule', [
+    'positive_n_and_squeeze_after_qualified_b',
+    'double_volume_positive_n_squeeze_whole_flip_pullback',
+])
+def test_joint_confirmation_requires_complete_causal_coordinates(field: str, value: object, rule: str) -> None:
+    row = dict(joint_confirmation(), confirmation_rule=rule)
     proof = row['confirmation_evidence']
     assert isinstance(proof, dict)
     proof[field] = value
