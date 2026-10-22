@@ -1,23 +1,43 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-330",
+    "activeFeature": "MONOREPO-355",
     "features": [
         {
             "id": "MONOREPO-355",
             "name": "global-two-t-touch-entry-guard",
             "title": "正N首次触及二吐当日全局禁买",
-            "status": "done",
+            "status": "in-progress",
             "dependencies": [],
             "description": "桂林旅游2021-09-10从8/16正N一饱二吐区间上攻，当日已观察高点触及二吐不应买入；用户确认采用已观察高点而非涨停价预测。",
-            "scope": "所有正N、补充收盘、跳空及账户入场共用目标门禁；使用有效测幅来源及决策时可知价格，首次到二吐当日禁止新买和加仓，不按股票日期修补，不变更趋势或退出规则。",
+            "scope": "所有正N、补充收盘、跳空及账户入场共用目标门禁；同时检查尚未失效的原N测幅，新下降段交接主测幅不解除旧目标风险，首次到二吐当日禁止新买和加仓。真实破位或资格关闭终止来源，不按股票日期修补，不变更趋势或退出规则。本轮续修已验证，待用户提交/合并安排。",
             "acceptanceCriteria": [
                 "当前有效正N首次触及二吐包含等值，收盘未到二吐同样禁买，跳空无豁免。",
                 "日线收盘用全天高点；盘中只用已观察高点及成交开盘价，后续高点不倒改早盘成交；缺分钟的原开盘模型只读开盘。",
-                "目标首次可知日只消费收盘；未来、非主测幅、退休与失效来源不能制造禁买；此前已达二吐不永久阻止后续独立C浪。",
-                "冻结桂林行情与显式N/资格回归覆盖共用规则、三个资格级别、跳空、分钟、账户和来源转交；完整在线回测另行验证。"
+                "目标首次可知日只消费收盘；未来、未获得测幅资格、已破位及资格关闭的来源不能制造禁买。new_confirmed_decline仅交接主测幅，仍有效原N继续约束入场；此前已达二吐不永久阻止后续独立C浪。",
+                "桂林2018起完整冻结行情经真实趋势/资格/逐日账户验证9/10无LONG或BUY成交且8/16正常成交保留；来源交接后覆盖三个资格级别、跳空、分钟、账户和加仓。线上服务和完整区间回测另行验证。"
             ],
             "verification": [
+                {
+                    "command": "streaming_stock_result(901 original frozen bars from 2018-01-02 to 2021-09-13, cached strategy/execution, explicit unavailable historical minutes)",
+                    "status": "passed",
+                    "summary": "2026-10-22 用户本轮明确授权定向回放及相关回归。修改前真实逐日账户复现9/10 qualified_double_volume_breakout_close成交；原8/16二吐6.959472101于9/6仅因新下降段退休，新9/8二吐7.669832419覆盖了旧风险。缓存two_t_entry_gate和intraday_entry哈希与上轮修复一致。首次调用遗漏分钟来源被既有参数约束拒绝，改为明确MinuteCoverageError并按原配置日线降级，不修改执行配置或伪造分钟。"
+                },
+                {
+                    "command": "pytest tests/test_two_t_entry_gate.py tests/test_guilin_two_t_entry.py tests/test_qualified_gap_entry.py tests/test_qualified_rising_close_entry.py tests/test_streaming_backtest.py tests/test_bottom_n_targets.py -q -p no:cacheprovider --tb=short",
+                    "status": "passed",
+                    "summary": "2026-10-22 本轮92 passed in 40.06s。新增真实完整历史回归无N/资格注入：8/16目标及9/6测幅退休、9/8新来源均由实际引擎生成，9/10拒绝证据指向原N，信号与账户均无买入，8/16正常成交保留。共用门禁覆盖测幅交接、真实破位/资格关闭、三个资格级别、分钟/开盘因果边界和账户加仓；bottom_n_targets既有测幅归属保持。"
+                },
+                {
+                    "command": "mypy --config-file pyproject.toml --follow-imports=skip --cache-dir=E:/WorkSpace/work/wavequant-monorepo/.codex-runtime/two-t-entry-mypy src/wavequant/domain/strategies/two_t_entry_gate.py src/wavequant/domain/strategies/integrated_strategy.py src/wavequant/domain/strategies/strategy_profiles.py src/wavequant/application/analytics/intraday_entry.py src/wavequant/application/analytics/backtest.py tests/test_two_t_entry_gate.py tests/test_guilin_two_t_entry.py",
+                    "status": "passed",
+                    "summary": "2026-10-22 本轮7个修改Python文件局部类型检查通过；人工复核所有生产调用已改为多来源风险入口，未修改主测幅、趋势、退出及分钟观察时钟。profile更新为v151_two_t_source_lifetime。"
+                },
+                {
+                    "command": "本轮Git提交/差异检查、全仓测试/构建、浏览器/E2E、线上服务重启及完整2018—2026在线重算",
+                    "status": "not-run",
+                    "summary": "本轮为修复及用户单独授权的定向回放/回归，尚未提交、再次合并main或推送，未重启服务或清缓存。355保持唯一in-progress等待提交安排，330暂置backlog并保留其历史范围。以下验证为上轮历史证据，不能替代本轮真实数据验收。"
+                },
                 {
                     "command": "pytest tests/test_two_t_entry_gate.py tests/test_qualified_gap_entry.py tests/test_qualified_rising_close_entry.py tests/test_streaming_backtest.py tests/test_signal_execution_stream.py tests/test_squeeze_n_round.py tests/test_alternation_duration.py tests/test_squeeze_alternation.py -q -p no:cacheprovider --tb=short; mypy --follow-imports=skip <8 modified Python files>; git diff --check",
                     "status": "passed",
@@ -117,7 +137,7 @@
             "id": "MONOREPO-330",
             "name": "causal-backtest-computation-performance",
             "title": "回测因果计算与复用性能优化",
-            "status": "in-progress",
+            "status": "backlog",
             "dependencies": [
                 "MONOREPO-327"
             ],

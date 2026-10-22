@@ -17,7 +17,7 @@ from wavequant.domain.models.model import Bar, Signal
 from wavequant.domain.strategies.integrated_strategy import SystemResult, SystemStrategy
 from wavequant.domain.strategies.trading_intervals import TradingInterval
 from wavequant.domain.strategies.two_t_entry_gate import (
-    TWO_T_ENTRY_REACHED, TwoTEntryTarget, entry_target_from_events, two_t_entry_rejection,
+    TWO_T_ENTRY_REACHED, TwoTEntryTarget, entry_targets_from_events, two_t_entry_rejection,
 )
 from wavequant.infrastructure.market_data.minute import MinuteBar
 from wavequant.interfaces.research_tools.signal_execution_stream import SignalExecutionFactsStream
@@ -42,19 +42,26 @@ def guilin() -> tuple[list[Bar], TwoTEntryTarget, dict[str, object]]:
 
 def rejection(bars: list[Bar], source: TwoTEntryTarget, *, high: float | None = None,
               close: float | None = None, at_close: bool = True) -> dict[str, object] | None:
-    return two_t_entry_rejection(bars, len(bars) - 1, source,
+    return two_t_entry_rejection(bars, len(bars) - 1, (source,),
         observed_high=bars[-1].high if high is None else high,
         observed_close=bars[-1].close if close is None else close, at_close=at_close)
 
 
-def qualified(level: int = 2) -> tuple[list[Bar], TwoTEntryTarget, SystemResult, SystemStrategy, TradingInterval]:
+def handoff_events(source: TwoTEntryTarget, event: dict[str, object], index: int) -> list[dict[str, object]]:
+    return [event, dict(event='n_target_source_retired', bar_index=index - 3,
+        attack=source.attack, n_id=source.source_id, reason='new_confirmed_decline'),
+        dict(event, bar_index=index - 2, known_at=index - 2, n_id='new-floor', one_p=7.12, two_t=7.67)]
+
+
+def qualified(level: int = 2, *, handoff: bool = False) -> tuple[list[Bar], TwoTEntryTarget, SystemResult, SystemStrategy, TradingInterval]:
     bars, source, event = guilin()
     window = TradingInterval(level, 'fixture', source.attack, 1, start_low_price=bars[3].low)
     confirmation = dict(event='trend_lifecycle_state', state='空多交替', bar_index=source.attack,
         trend_level=level, source_path='fixture', breakout_level=bars[1].high)
     strategy = SystemStrategy(pivot_mode='lecture_causal', entry_policy='hierarchical_two_buy_points',
         buy_point_definition='whole_flip_wave_v3', buy_interval_level=level)
-    return bars, source, SystemResult([], [event, confirmation], {}), strategy, window
+    events = handoff_events(source, event, len(bars) - 1) if handoff else [event]
+    return bars, source, SystemResult([], [*events, confirmation], {}), strategy, window
 
 
 def test_guilin_reported_prices_and_first_two_t_touch_reject_even_with_close_below_target() -> None:
@@ -103,25 +110,60 @@ def test_event_selection_ignores_future_child_and_preserves_retirement_clock() -
     index = len(bars) - 1
     future = dict(event, bar_index=index + 1, known_at=index + 1, n_id='future')
     child = dict(event, bar_index=index, target_eligible=False, n_id='child')
-    assert entry_target_from_events([event, future, child], index, at_close=True) == source
+    assert entry_targets_from_events([event, future, child], index, at_close=True) == (source,)
     retired = dict(event='n_target_source_retired', bar_index=index, attack=source.attack, n_id=source.source_id)
-    assert entry_target_from_events([event, retired], index, at_close=True) is None
-    assert entry_target_from_events([event, retired], index, at_close=False) == source
+    assert entry_targets_from_events([event, retired], index, at_close=True) == ()
+    assert entry_targets_from_events([event, retired], index, at_close=False) == (source,)
     replacement = dict(event, bar_index=index - 1, known_at=index - 1, n_id='replacement')
     retired['n_id'] = 'replacement'
-    assert entry_target_from_events([event, replacement, retired], index, at_close=True) is None
+    # 旧来源从未失效，较新来源的退休不应使其丢失，也不复活已失效来源。
+    assert entry_targets_from_events([event, replacement, retired], index, at_close=True) == (source,)
+
+
+@pytest.mark.parametrize('replacement_live', [False, True])
+def test_new_decline_keeps_original_target_risk_even_with_a_higher_new_target(replacement_live: bool) -> None:
+    bars, source, event = guilin()
+    index = len(bars) - 1
+    retired = dict(event='n_target_source_retired', bar_index=index - 3,
+        attack=source.attack, n_id=source.source_id, reason='new_confirmed_decline')
+    events = [event, retired]
+    if replacement_live:
+        events.append(dict(event, bar_index=index - 2, known_at=index - 2,
+            n_id='new-floor', one_p=7.12, two_t=7.67))
+    targets = entry_targets_from_events(events, index, at_close=True)
+    proof = two_t_entry_rejection(bars, index, targets,
+        observed_high=bars[-1].high, observed_close=bars[-1].close, at_close=True)
+    assert proof is not None and proof['target_source_id'] == source.source_id
+
+
+@pytest.mark.parametrize('event_kind, reason', [
+    ('n_invalidated', 'squeeze_defense_broken'),
+    ('n_target_source_retired', 'launch_origin_broken'),
+    ('n_target_source_retired', 'trading_eligibility_closed'),
+])
+def test_original_risk_ends_on_price_invalidation_or_qualification_close(event_kind: str, reason: str) -> None:
+    bars, source, event = guilin()
+    index = len(bars) - 1
+    events = [event,
+        dict(event='n_target_source_retired', bar_index=index - 3, attack=source.attack,
+             n_id=source.source_id, reason='new_confirmed_decline'),
+        dict(event=event_kind, bar_index=index, attack=source.attack,
+             n_id=source.source_id, reason=reason)]
+    assert entry_targets_from_events(events, index, at_close=True) == ()
+    assert entry_targets_from_events(events, index, at_close=False) == (source,)
 
 
 @pytest.mark.parametrize('level', [1, 2, 3])
-def test_all_qualification_levels_reject_guilin_close_supplement(level: int) -> None:
-    bars, _, generated, strategy, window = qualified(level)
+@pytest.mark.parametrize('handoff', [False, True])
+def test_all_qualification_levels_reject_guilin_close_supplement(level: int, handoff: bool) -> None:
+    bars, _, generated, strategy, window = qualified(level, handoff=handoff)
     resolved, days = _qualified_rising_close_entries(bars, generated, strategy,
         only_index=len(bars) - 1, intervals=[window], polyline_gate=PolylineBuyGate())
     assert days == {len(bars) - 1}
     assert not resolved.signals
     assert any(row.get('reason') == TWO_T_ENTRY_REACHED for row in resolved.audit)
     # 同行情去除目标事实应仍走原买入规则，防止测试因其他门禁拒绝而虚假成功。
-    unbound = SystemResult([], generated.audit[1:], {})
+    unbound = SystemResult([], [row for row in generated.audit if row['event'] == 'trend_lifecycle_state'], {})
     control, _ = _qualified_rising_close_entries(bars, unbound, strategy,
         only_index=len(bars) - 1, intervals=[window], polyline_gate=PolylineBuyGate())
     assert any(signal.side == 'LONG' for signal in control.signals)
@@ -129,7 +171,7 @@ def test_all_qualification_levels_reject_guilin_close_supplement(level: int) -> 
 
 @pytest.mark.parametrize('early', [False, True])
 def test_gap_minute_uses_only_observed_high(early: bool) -> None:
-    bars, source, generated, strategy, window = qualified()
+    bars, source, generated, strategy, window = qualified(handoff=True)
     bar = replace(bars[-1], open=6.6, low=6.6)
     bars[-1] = bar
     first_high = 6.8 if early else source.two_t
@@ -144,7 +186,7 @@ def test_gap_minute_uses_only_observed_high(early: bool) -> None:
 
 
 def test_gap_without_minutes_uses_open_not_final_high_and_gap_over_target_is_blocked() -> None:
-    bars, source, generated, strategy, window = qualified()
+    bars, source, generated, strategy, window = qualified(handoff=True)
     bars[-1] = replace(bars[-1], open=6.6, low=6.6)
     _, executions, _, _ = _qualified_gap_entries(bars, generated, strategy, None,
         only_index=len(bars) - 1, intervals=[window], polyline_gate=PolylineBuyGate())
@@ -157,14 +199,15 @@ def test_gap_without_minutes_uses_open_not_final_high_and_gap_over_target_is_blo
 
 
 def test_execution_facts_preserve_live_target_and_account_rejects_close_buy() -> None:
-    bars, _, event = guilin()
+    bars, source, event = guilin()
     index, bar = len(bars) - 1, bars[-1]
     _, facts = SignalExecutionFactsStream(bars).advance(index, [event])
     assert facts == [], 'entry targets must not alter the existing wave-exit event contract'
     signal = Signal(bar.timestamp, bar.symbol, index, 'LONG', bar.close, 4.7,
         'fixture', bar.timestamp, 0, None, 'fixture', 10)
     config = StrategyConfig(entry_at_close=True, net_reward_risk_filter=False, slippage_bps_per_side=0)
-    account = run_portfolio({bar.symbol: bars}, [signal], config, entry_target_events={bar.symbol: [event]})
+    account = run_portfolio({bar.symbol: bars}, [signal], config,
+        entry_target_events={bar.symbol: handoff_events(source, event, index)})
     assert any(row['side'] == 'BUY' and row['status'] == 'cancelled'
                and row['reason'] == TWO_T_ENTRY_REACHED for row in account.orders)
     assert not any(row['side'] == 'BUY' and row['status'] == 'filled' for row in account.orders)
@@ -196,7 +239,7 @@ def test_other_symbols_and_price_scales_share_the_rule() -> None:
 
 
 def test_first_two_t_touch_blocks_add_on_without_creating_an_exit() -> None:
-    bars, _, event = guilin()
+    bars, source, event = guilin()
     index = len(bars) - 1
     prior, bar = bars[-2:]
     initial = Signal(prior.timestamp, prior.symbol, index - 1, 'LONG', prior.close, 4.7,
@@ -205,7 +248,8 @@ def test_first_two_t_touch_blocks_add_on_without_creating_an_exit() -> None:
         reference_price=bar.close, trigger_timestamp=bar.timestamp)
     account = run_portfolio({bar.symbol: bars}, [initial, addition],
         StrategyConfig(entry_at_close=True, allow_add_on=True, net_reward_risk_filter=False,
-            slippage_bps_per_side=0, exit_on_target=False), entry_target_events={bar.symbol: [event]})
+            slippage_bps_per_side=0, exit_on_target=False),
+        entry_target_events={bar.symbol: handoff_events(source, event, index)})
     assert len([row for row in account.orders if row['side'] == 'BUY' and row['status'] == 'filled']) == 1
     assert any(row['reason'] == TWO_T_ENTRY_REACHED for row in account.orders)
     assert not any(row['side'] == 'SELL' for row in account.orders)
