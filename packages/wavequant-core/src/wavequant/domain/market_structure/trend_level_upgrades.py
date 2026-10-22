@@ -11,8 +11,9 @@ from bisect import insort
 from copy import deepcopy
 from typing import cast
 
+from .owned_evidence_producer import current_producer_records
 from .trend_levels import (
-    Moment, _SourceTurn, _candidate_from_source, _later_moment, _reference, _source_turns,
+    Moment, _SourceTurn, _candidate_from_source, _later_moment, _reference, _source_record_reference, _source_turns,
     _stamp_wave_completion, _ordinary_point, _preceding_sources, WaveDirection,
 )
 
@@ -171,6 +172,9 @@ def _promoted_point(
         result.update(flip='翻空为多' if rising else '翻多为空',
                       wave_direction_before='down' if rising else 'up',
                       wave_direction_after='up' if rising else 'down')
+    scope = current_producer_records()
+    if scope is not None:
+        scope.record_point(result)
     _stamp_wave_completion(result, closed=not endpoint)
     return result
 
@@ -228,6 +232,7 @@ class _TrendUpgradeState:
         self.source_positions = {_order(point): position for position, point in enumerate(turns)}
         self.preceding_sources = _preceding_sources(turns)
         self.processed_count = 0
+        self._consumed_source_count = 0
         self.body_rejection: tuple[_SourceTurn, _SourceTurn, _SourceTurn] | None = None
 
     def append(self, turns: Sequence[_SourceTurn], regular: Sequence[_SourceTurn]) -> bool:
@@ -342,7 +347,8 @@ class _TrendUpgradeState:
             return record
         return None
 
-    def advance(self, *, _snapshot: bool = True) -> list[dict[str, object]]:
+    def advance(self, *, _snapshot: bool = True,
+                _checkpoint: Callable[['_TrendUpgradeState'], None] | None = None) -> list[dict[str, object]]:
         self.updated_merged = {}
         self.new_merged_keys = []
         turns, regular, trend_level, event_sink = self.turns, self.regular, self.trend_level, self.event_sink
@@ -353,11 +359,12 @@ class _TrendUpgradeState:
         owned_direction, whole_origin, whole_extreme = self.owned_direction, self.whole_origin, self.whole_extreme
         recent, source_positions, preceding_sources = self.recent, self.source_positions, self.preceding_sources
         body_rejection = self.body_rejection
+        consumed_source_count = self._consumed_source_count
         pending_origin, pending_extreme = self.pending_origin, self.pending_extreme
 
         def publish_owned(raw: dict[str, object], actual: _SourceTurn, known: Moment, *, closed: bool) -> None:
             event = _SourceTurn(raw, actual.position, actual.index, actual.ordinal, actual.kind,
-                                actual.value, actual.time, known, actual.reversal)
+                                actual.value, actual.time, known, actual.reversal, _source_record_reference(raw))
             existing = merged.get(_identity(event))
             if existing is None or not _known_by(existing.available_at, known):
                 self._store_merged(event)
@@ -366,7 +373,20 @@ class _TrendUpgradeState:
             if event_sink is not None:
                 event_sink.append(deepcopy(raw))
 
-        for attack in turns[self.processed_count:]:
+        for cursor in range(self.processed_count, len(turns)):
+            # 在消费下一条 attack 之前记录同一个状态机的完整运行态；continue
+            # 分支也会落到下一消费边界，不能靠输出点位置推测已经消费的知识。
+            if _checkpoint is not None and cursor % 32 == 0:
+                self.regular_cursor, self.prefix_known = regular_cursor, prefix_known
+                self.owned_direction, self.whole_origin, self.whole_extreme = owned_direction, whole_origin, whole_extreme
+                self.body_rejection = body_rejection
+                self.pending_origin, self.pending_extreme = pending_origin, pending_extreme
+                self.processed_count = cursor
+                self._consumed_source_count = consumed_source_count
+                _checkpoint(self)
+            attack = turns[cursor]
+            if self.strict_only:
+                consumed_source_count = max(consumed_source_count, attack.position + 1)
             prefix_known = attack.available_at if prefix_known is None else _later_moment(prefix_known, attack.available_at)
             while regular_cursor < len(regular) and _known_by(regular[regular_cursor].available_at, prefix_known):
                 point = regular[regular_cursor]
@@ -380,6 +400,10 @@ class _TrendUpgradeState:
                         or not _known_by(actual.available_at, geometry_known)
                         or not _known_by(actual.available_at, point.available_at)):
                     raise ValueError('a current-level candidate must retain its actual confirmed source provenance')
+                if self.strict_only:
+                    # regular 可在很早的 attack 消费右侧 actual；该来源也是
+                    # 已完成状态的依赖，不能只按攻击坐标选择修订恢复边界。
+                    consumed_source_count = max(consumed_source_count, actual.position + 1)
                 # 普通方向账本没有整波身份，不可进入 key 树。旧裸 confirmed
                 # 候选的声明契约仍兼容；有生成标记的候选必须由本次共同状态重建。
                 legacy_candidate = point.source.get('wave_completion_policy') is None
@@ -609,6 +633,9 @@ class _TrendUpgradeState:
         self.body_rejection = body_rejection
         self.pending_origin, self.pending_extreme = pending_origin, pending_extreme
         self.processed_count = len(turns)
+        self._consumed_source_count = consumed_source_count
+        if _checkpoint is not None:
+            _checkpoint(self)
         return self.snapshot() if _snapshot else []
 
     def snapshot(self) -> list[dict[str, object]]:

@@ -1,14 +1,58 @@
 """内部级联的来源投影，只重建变化点及其左侧校验锚点。"""
 
 from bisect import bisect_left, bisect_right
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import cast
 
 from .owned_evidence import CertifiedSource, current_evidence, owned_signature
+from .owned_evidence_producer import PointRecord, ProducerRecordScope, current_producer_records, producer_record_scope
+from .owned_evidence_records import RecordRef
 from .trend_levels import _source_turns
-from .trend_point_version import PointVersion
+from .trend_point_version import PointVersion, record_point_version
+from .trend_point_records import PointRecordView
 from .trend_frozen_state import FrozenPrefixList
+
+
+@contextmanager
+def _source_record_scope() -> Iterator[ProducerRecordScope | None]:
+    owner = current_evidence()
+    if owner is None or not owner.record_history_enabled:
+        yield None
+        return
+    scope = current_producer_records()
+    store = owner.record_store()
+    if scope is not None:
+        if scope.owner is not store:
+            raise ValueError('source production requires its request record owner')
+        yield scope
+    else:
+        with producer_record_scope(store) as opened:
+            yield opened
+
+
+def _record_view(points: Sequence[Mapping[str, object]], scope: ProducerRecordScope) -> PointRecordView:
+    if type(points) not in (PointVersion, CertifiedSource):
+        raise ValueError('source production requires a complete same-owner point record version')
+    version = cast(PointVersion, points)
+    if not version._sealed or version.evidence_sequence is None or version.record_store is not scope.owner:
+        raise ValueError('source production requires a complete same-owner point record version')
+    return cast(PointRecordView, version.point_records)
+
+
+def _bind_promotion_record(point: dict[str, object], reference: tuple[bytes, int] | None,
+                           scope: ProducerRecordScope) -> None:
+    if reference is not None and reference[0] != scope.owner.namespace:
+        raise ValueError('source promotion records require their original request owner')
+    if scope.lookup(point) is not None:
+        return
+    if reference is None:
+        raise ValueError('source promotion requires its actual recorded dictionary root')
+    root = RecordRef(*reference)
+    refs = scope.owner.dictionary_refs(root)
+    fields = tuple((key, pair[1]) for key, pair in zip(point, refs))
+    scope.bind(PointRecord(point, root, fields, scope.owner))
 
 
 @dataclass
@@ -31,12 +75,20 @@ class SourceProjection:
 
     def project(self, strokes: Sequence[Mapping[str, object]], hints: Mapping[int,
                 tuple[Sequence[dict[str, object]], Sequence[dict[str, object]] | None, int]]) -> CertifiedSource | None:
+        with _source_record_scope() as scope:
+            return self._project(strokes, hints, scope)
+
+    def _project(self, strokes: Sequence[Mapping[str, object]], hints: Mapping[int,
+                 tuple[Sequence[dict[str, object]], Sequence[dict[str, object]] | None, int]],
+                 scope: ProducerRecordScope | None) -> CertifiedSource | None:
         owner = current_evidence()
         if owner is None:
             self.clear()
             return None
         if self.joined is not None and self.joined.owner is not owner:
             self.clear()
+        if scope is not None and self.joined is not None:
+            _record_view(self.joined, scope)
         next_paths: dict[str, _ProjectedPath] = {}
         total = 0
         changed = 0
@@ -48,9 +100,14 @@ class SourceProjection:
             raw = stroke.get('points')
             if type(path) is not str or type(raw) not in (list, PointVersion) or path in next_paths:
                 self.clear()
+                if scope is not None:
+                    raise ValueError('recorded source projection requires distinct recorded point paths')
                 return None
             points = cast(Sequence[dict[str, object]], raw)
+            records = _record_view(points, scope) if scope is not None else None
             previous = self.paths.get(path)
+            if scope is not None and previous is not None:
+                _record_view(previous.source, scope)
             hint = hints.get(id(points))
             start = len(points) if previous is not None and points is previous.points else (
                 hint[2] if previous is not None and hint is not None and hint[0] is points
@@ -63,19 +120,52 @@ class SourceProjection:
                 keep = max(0, bisect_left(previous.positions, start) - 1) if previous is not None else 0
                 # 投影可能滤掉未闭合点，必须回到上一个实际来源，而非固定回退一项。
                 begin = min(start, previous.positions[keep]) if previous is not None and previous.positions else 0
+                if records is not None and scope is not None:
+                    for record in records.iter_range(begin):
+                        scope.bind(record)
                 tail = [dict(point, source_path=path) for point in points[begin:]]
                 level = points[0].get('trend_level', 0) if points else 0
                 if type(level) is not int or level not in (1, 2, 3):
                     self.clear()
                     return None
                 turns = _source_turns(tail, level, formal_key_attacks=True, _position_offset=begin)
-                values = [dict(turn.source) for turn in turns]
-                signatures = tuple(owned_signature(point) for point in values)
+                values: list[dict[str, object]] = []
+                signatures: list[bytes | None] = []
+                stable_inputs = (type(points) is PointVersion and points._sealed
+                    and previous is not None and type(previous.points) is PointVersion and previous.points._sealed
+                    and bool(previous.points) and previous.points[0].get('trend_level', 0) == level)
+                for turn in turns:
+                    prior = bisect_left(previous.positions, turn.position) if previous is not None else 0
+                    if (stable_inputs and previous is not None and prior < len(previous.positions)
+                            and previous.positions[prior] == turn.position
+                            and turn.position < len(previous.points)
+                            and points[turn.position] is previous.points[turn.position]):
+                        # 边界锚点仍由共同投影校验；同一只读原点的投影没有变化，
+                        # 证据池满后也可沿用它已有的完整证书，不重新编码旧证明。
+                        if scope is not None:
+                            scope.bind(_record_view(previous.source, scope)[prior])
+                        values.append(previous.source[prior])
+                        signatures.append(previous.source.keys[prior])
+                    else:
+                        value = dict(turn.source)
+                        values.append(value)
+                        signatures.append(owned_signature(value))
                 if any(key is None for key in signatures):
                     self.clear()
+                    if scope is not None:
+                        raise ValueError('recorded source projection requires finite signatures')
                     return None
-                source = CertifiedSource.from_tail(values, cast(tuple[bytes, ...], signatures), owner,
-                    previous.source if previous is not None else None, keep)
+                retained = 0
+                if previous is not None:
+                    while (retained < len(values) and keep + retained < len(previous.source)
+                            and values[retained] is previous.source[keep + retained]):
+                        retained += 1
+                source = (previous.source if previous is not None and retained == len(values)
+                    and keep + retained == len(previous.source) else
+                    CertifiedSource.from_tail(values[retained:], cast(list[bytes], signatures[retained:]), owner,
+                        previous.source if previous is not None else None, keep + retained))
+                if scope is not None:
+                    record_point_version(source, scope)
                 positions = previous.positions.copy() if previous is not None else FrozenPrefixList[int]()
                 del positions[keep:]
                 positions.extend(turn.position for turn in turns)
@@ -91,8 +181,13 @@ class SourceProjection:
                     unchanged = False
             total += len(saved.source)
         # 证书和引用只保留当前三层版本；拒绝超额工作集，原入口继续完整校验。
-        if sum(path.source.signature_bytes + len(path.source) * 256 for path in next_paths.values()) > 8 * 1024 * 1024:
+        projected_bytes = sum(path.source.signature_bytes + len(path.source) * 256 + path.source.record_metadata_bytes
+            + (path.points.record_metadata_bytes if isinstance(path.points, PointVersion) else 0)
+            for path in next_paths.values())
+        if projected_bytes + (self.joined.record_metadata_bytes if self.joined is not None else 0) > 8 * 1024 * 1024:
             self.clear()
+            if scope is not None:
+                raise ValueError('recorded source projection exceeds its memory limit')
             return None
         if self.joined is not None and unchanged and total == len(self.joined):
             self.paths = next_paths
@@ -105,10 +200,20 @@ class SourceProjection:
         offset = 0
         for saved in next_paths.values():
             begin = max(0, changed - offset)
+            if scope is not None:
+                for record in _record_view(saved.source, scope).iter_range(begin):
+                    scope.bind(record)
             tail_points.extend(saved.source[begin:])
             tail_keys.extend(saved.source.keys[begin:])
             offset += len(saved.source)
         joined = CertifiedSource.from_tail(tail_points, tail_keys, owner, self.joined, changed)
+        if scope is not None:
+            record_point_version(joined, scope)
+        if projected_bytes + joined.record_metadata_bytes > 8 * 1024 * 1024:
+            self.clear()
+            if scope is not None:
+                raise ValueError('recorded source projection exceeds its memory limit')
+            return None
         self.paths, self.order, self.joined = next_paths, list(next_paths), joined
         return joined
 
@@ -130,11 +235,22 @@ class PromotionSource:
         return cast(int, point['index']), cast(int, point.get('ordinal', 0))
 
     def enrich(self, source: Sequence[Mapping[str, object]],
-               allowed: Mapping[str, Mapping[bytes, dict[str, object]]], field: str) -> CertifiedSource | None:
+               allowed: Mapping[str, Mapping[bytes, dict[str, object]]], field: str, *,
+               _record_references: Mapping[int, tuple[bytes, int]] | None = None) -> CertifiedSource | None:
+        with _source_record_scope() as scope:
+            return self._enrich(source, allowed, field, scope, _record_references)
+
+    def _enrich(self, source: Sequence[Mapping[str, object]],
+                allowed: Mapping[str, Mapping[bytes, dict[str, object]]], field: str,
+                scope: ProducerRecordScope | None,
+                references: Mapping[int, tuple[bytes, int]] | None) -> CertifiedSource | None:
         owner = current_evidence()
         if type(source) is not CertifiedSource or source.owner is not owner or owner is None:
             self.clear()
+            if scope is not None:
+                raise ValueError('recorded promotion sources require a certified request version')
             return None
+        input_records = _record_view(source, scope) if scope is not None else None
         previous = self.source
         start = (len(source) if previous is source else source.changed_from
                  if previous is not None and source.parent is previous.token else 0)
@@ -166,23 +282,36 @@ class PromotionSource:
         old = self.output
         if old is None or old.owner is not owner:
             start = 0
+        elif scope is not None:
+            _record_view(old, scope)
         start = min(start, len(old) if old is not None else 0)
         values: list[dict[str, object]] = []
         keys: list[bytes] = []
         for position in range(start, len(source)):
             point = source[position]
             additions = indexed.get((str(point.get('source_path', 'path-0')), self.order(point)))
+            if scope is not None and input_records is not None:
+                scope.bind(input_records[position])
+                for addition in additions or ():
+                    reference = references.get(id(addition)) if references is not None else None
+                    _bind_promotion_record(addition, reference, scope)
             value = dict(point, **{field: list(additions)}) if additions else point
             signature = owned_signature(value) if additions else source.keys[position]
             if signature is None:
                 self.clear()
+                if scope is not None:
+                    raise ValueError('recorded promotion sources require finite signatures')
                 return None
             values.append(value)
             keys.append(signature)
         output = (old if old is not None and start == len(old) == len(source) else
                   CertifiedSource.from_tail(values, keys, owner, old, start))
-        if output.signature_bytes + len(output) * 512 > 8 * 1024 * 1024:
+        if scope is not None:
+            record_point_version(output, scope)
+        if output.signature_bytes + len(output) * 512 + output.record_metadata_bytes > 8 * 1024 * 1024:
             self.clear()
+            if scope is not None:
+                raise ValueError('recorded promotion source exceeds its memory limit')
             return None
         self.source, self.output, self.records = source, output, versions
         return output

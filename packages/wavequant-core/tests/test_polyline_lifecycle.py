@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from wavequant.domain.market_structure.polyline_lifecycle import polyline_lifecycle_rows
+from wavequant.domain.market_structure.polyline_lifecycle import PolylineLifecycleSource, polyline_lifecycle_rows
+from wavequant.domain.market_structure.trend_point_version import PointVersion
 from wavequant.domain.market_structure.trend_lifecycle import TrendLifecycle
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.chart_drawing_history import ChartDrawingFrame
@@ -51,6 +52,59 @@ def _replay(bars, dates, frames):
         rows.append(row)
         events.extend(lifecycle.advance([row], bars, now, dates))
     return lifecycle, events, rows
+
+
+@pytest.mark.parametrize('mirrored', [False, True])
+def test_owned_polyline_versions_preserve_public_facts_and_append_prefix(mirrored):
+    bars, dates, frames = _scenario(mirrored=mirrored)
+    owned, public = PolylineLifecycleSource(dates, _owned_tail=True), PolylineLifecycleSource(dates)
+    incremental, full = TrendLifecycle(), TrendLifecycle()
+    previous = None
+    previous_values = None
+    for frame in frames:
+        actual, expected = owned.advance(frame), public.advance(frame)
+        assert actual == expected
+        assert incremental.advance([actual], bars, frame.index, dates, _owned_structure=True) == full.advance(
+            [expected], bars, frame.index, dates)
+        assert incremental.checkpoint() == full.checkpoint()
+        if previous is not None:
+            assert list(previous) == previous_values
+        if actual['strokes']:
+            version = actual['strokes'][0]['points']
+            assert type(version) is PointVersion and version._sealed
+            if previous is not None and version.parent is previous.token:
+                assert version.changed_from == len(previous)
+                assert all(version[position] is point for position, point in enumerate(previous))
+            previous, previous_values = version, deepcopy(list(version))
+
+
+def test_owned_polyline_path_change_has_no_retained_point_version():
+    _, dates, frames = _scenario()
+    source = PolylineLifecycleSource(dates, _owned_tail=True)
+    for frame in frames[:8]:
+        source.advance(frame)
+    previous = source._point_version
+    assert previous is not None and len(previous)
+    assert source.advance(ChartDrawingFrame(8, 8, [], {}))['strokes'] == []
+    assert source._point_version is None or source._point_version.parent is None
+
+
+def test_owned_polyline_truncation_then_append_rebuilds_only_a_new_version():
+    _, dates, frames = _scenario()
+    owned, public = PolylineLifecycleSource(dates, _owned_tail=True), PolylineLifecycleSource(dates)
+    for frame in frames[:8]:
+        assert owned.advance(frame) == public.advance(frame)
+    previous = owned._point_version
+    assert previous is not None and len(previous)
+    saved = deepcopy(list(previous))
+    shortened = ChartDrawingFrame(8, 0, deepcopy(frames[7].raw[:-3]), {})
+    assert owned.advance(shortened) == public.advance(shortened)
+    revised = owned._point_version
+    assert revised is not None and revised.parent is None and revised.changed_from == 0
+    assert len(revised) < len(previous) and list(previous) == saved
+    for frame in frames[9:]:
+        assert owned.advance(frame) == public.advance(frame)
+        assert list(previous) == saved
 
 
 @pytest.mark.parametrize('mirrored', [False, True])

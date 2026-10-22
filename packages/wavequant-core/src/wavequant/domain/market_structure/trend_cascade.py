@@ -1,17 +1,67 @@
 """层级依赖调度：正式升级证明改变下级规则输入，仍只调用共同趋势核心。"""
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from sys import getsizeof
 from types import TracebackType
 from typing import cast
+from weakref import ReferenceType, ref
 
 from ..models.model import Bar
-from .owned_evidence import CertifiedSource, current_evidence, owned_signature as _geometry_signature
+from .owned_evidence import CertifiedSource, OwnedEvidence, current_evidence, owned_signature as _geometry_signature
+from .owned_evidence_producer import PointRecord, ProducerRecordScope, producer_record_scope
+from .owned_evidence_records import OwnedEvidenceRecords, RecordRef
 from .trend_lines import (
     _ClosedPreparedPaths, _TrendJudgementCache, _prepared_points, _prepared_strokes,
     high_low_points_from_strokes, prepare_trend_lines,
 )
 from .trend_promotion_scope import PROMOTION_FIELD, promotion_point, validate_promotion
+from .trend_point_version import PointVersion
 from .trend_readonly_cache import _builtin_size
+
+
+_Promotion = tuple[dict[str, object], bytes]
+_PromotionReference = tuple[bytes, int]
+_PROMOTION_MEMORY_BYTES = 8 * 1024 * 1024
+
+
+def _promotion_carrier(point: dict[str, object], reference: _PromotionReference,
+                       store: OwnedEvidenceRecords) -> PointRecord:
+    """仅恢复同请求、生产后未修改的promotion外壳，不展开其证明。"""
+    root = RecordRef(*reference)
+    refs = store.dictionary_refs(root)
+    fields = tuple((key, pair[1]) for key, pair in zip(point, refs))
+    return PointRecord(point, root, fields, store)
+
+
+def _promotion_source_record(points: Sequence[Mapping[str, object]], position: int,
+                             owner: OwnedEvidence) -> PointRecord:
+    if (type(points) is not PointVersion or not points._sealed
+            or points.record_store is not owner.record_store()):
+        raise ValueError('recorded promotions require their complete owned source version')
+    return points.point_records[position]
+
+
+def _record_targeted_promotion(record: dict[str, object], reference: _PromotionReference, *,
+                               level: int, path: str, owner: OwnedEvidence) -> tuple[
+    dict[str, object], _PromotionReference,
+]:
+    store = owner.record_store()
+    source = _promotion_carrier(record, reference, store)
+    with producer_record_scope(store, inputs=(source,)) as scope:
+        targeted = dict(record, _promotion_target_level=level, _promotion_target_path=path)
+        carrier = scope.record_point(targeted)
+    return targeted, (carrier.reference.namespace, carrier.reference.offset)
+
+
+@dataclass(frozen=True)
+class _PromotionVersion:
+    points: ReferenceType[PointVersion]
+    owner: ReferenceType[OwnedEvidence]
+    published_nodes: int
+    # None 表示非升级点，False 表示未获预算准入、下次仍须完整校验。
+    entries: tuple[_Promotion | None | bool, ...]
+    size: int
 
 
 class _TrendCascadeCache:
@@ -35,24 +85,124 @@ class _TrendCascadeCache:
         self._state_memory_bytes = state_memory_bytes
         self._closed = False
         self._promotions: dict[tuple[int, bytes], tuple[dict[str, object], bytes]] = {}
+        self._promotion_records: dict[int, _PromotionReference] = {}
         self._promotion_bytes = 0
+        self._promotion_versions: dict[tuple[int, int, str], _PromotionVersion] = {}
+        self._promotion_version_bytes = 0
 
     def promotion(self, point: Mapping[str, object], source_level: int) -> tuple[dict[str, object], bytes]:
+        owner = current_evidence()
+        if owner is not None and owner.record_history_enabled:
+            raise ValueError('recorded promotions require their owned source version')
+        return self._promotion(point, source_level)[0]
+
+    def _promotion(self, point: Mapping[str, object], source_level: int, *,
+                   _record_scope: ProducerRecordScope | None = None,
+                   _record_references: dict[int, _PromotionReference] | None = None) -> tuple[_Promotion, bool]:
         key = _geometry_signature(point)
         saved = self._promotions.get((source_level, key)) if key is not None else None
         if saved is not None:
-            return saved
+            if _record_scope is not None and _record_references is not None:
+                root = self._promotion_records.get(id(saved[0]))
+                if root is None:
+                    raise ValueError('recorded promotion cache requires its production reference')
+                _record_scope.owner._validate_ref(RecordRef(*root))
+                _record_references[id(saved[0])] = root
+            return saved, True
         validate_promotion(point, source_level)
         record = promotion_point(point)
         signature = _geometry_signature(record)
         if signature is None:
             raise ValueError('strict promotion must have finite serializable evidence')
-        remaining = 8 * 1024 * 1024 - self._promotion_bytes
-        size = _builtin_size((key, record, signature), remaining - 512) if remaining > 512 else None
+        reference: _PromotionReference | None = None
+        reference_bytes = 0
+        if _record_scope is not None and _record_references is not None:
+            carrier = _record_scope.record_point(record)
+            reference = carrier.reference.namespace, carrier.reference.offset
+            _record_references[id(record)] = reference
+            reference_bytes = 768 + getsizeof(reference) + sum(getsizeof(part) for part in reference)
+        remaining = _PROMOTION_MEMORY_BYTES - self._promotion_bytes - self._promotion_version_bytes
+        overhead = 512 + reference_bytes
+        size = _builtin_size((key, record, signature), remaining - overhead) if remaining > overhead else None
+        result = record, signature
         if key is not None and size is not None:
-            self._promotions[source_level, key] = record, signature
-            self._promotion_bytes += size + 512
-        return record, signature
+            self._promotions[source_level, key] = result
+            if reference is not None:
+                self._promotion_records[id(record)] = reference
+            self._promotion_bytes += size + overhead
+            return result, True
+        return result, False
+
+    def promotion_rows(self, points: Sequence[Mapping[str, object]], source_level: int,
+                       *, round_index: int, path: str,
+                       _record_references: dict[int, _PromotionReference] | None = None) -> list[_Promotion]:
+        """只读版本的已校验前缀复用记录；新点与未知容器保持完整证明校验。"""
+        owner = current_evidence()
+        recording = owner is not None and owner.record_history_enabled
+        if recording and _record_references is None:
+            _record_references = {}
+        versioned = (type(points) is PointVersion and points._sealed and owner is not None
+                     and not owner._closed and round_index < self._max_rounds and type(path) is str)
+        channel = source_level, round_index, path
+        previous = self._promotion_versions.get(channel) if versioned else None
+        # 签名字节包含证据池引用；池新增节点时同一图可能改用引用编码，
+        # 必须重新取完整签名，不能用旧字节改变本轮升级证明的去重语义。
+        prior_points = (previous.points() if previous is not None and previous.owner() is owner
+                        and owner is not None and previous.published_nodes == len(owner._nodes) else None)
+        start = points.changed_since(prior_points) if versioned else 0
+        entries: list[_Promotion | None | bool] = []
+        result: list[_Promotion] = []
+        for index, point in enumerate(points):
+            entry = previous.entries[index] if previous is not None and index < start else False
+            if entry is False:
+                proof = point.get('upgrade_evidence')
+                if not isinstance(proof, Mapping) or proof.get('role') != 'endpoint':
+                    entry = None
+                else:
+                    if recording:
+                        assert owner is not None
+                        source_record = _promotion_source_record(points, index, owner)
+                        with producer_record_scope(owner.record_store(), inputs=(source_record,)) as scope:
+                            promotion, retained = self._promotion(point, source_level,
+                                _record_scope=scope, _record_references=_record_references)
+                    else:
+                        promotion, retained = self._promotion(point, source_level)
+                    result.append(promotion)
+                    entries.append(promotion if retained else False)
+                    continue
+            elif entry is not None:
+                promotion = cast(_Promotion, entry)
+                if recording:
+                    assert owner is not None and _record_references is not None
+                    root = self._promotion_records.get(id(promotion[0]))
+                    if root is None:
+                        raise ValueError('recorded promotion version requires its production reference')
+                    owner.record_store()._validate_ref(RecordRef(*root))
+                    _record_references[id(promotion[0])] = root
+                result.append(promotion)
+            entries.append(entry)
+        if versioned:
+            assert owner is not None and type(points) is PointVersion
+            self._remember_promotion_version(channel, points, owner, tuple(entries))
+        return result
+
+    def _remember_promotion_version(self, channel: tuple[int, int, str], points: PointVersion,
+                                    owner: OwnedEvidence,
+                                    entries: tuple[_Promotion | None | bool, ...]) -> None:
+        previous = self._promotion_versions.pop(channel, None)
+        if previous is not None:
+            self._promotion_version_bytes -= previous.size
+        # 记录只引用原 8 MiB 账本已持有的值；另计元数据，不保留点版本或祖先链。
+        size = getsizeof(entries) + getsizeof(channel) + getsizeof(channel[2]) + 512
+        remaining = _PROMOTION_MEMORY_BYTES - self._promotion_bytes
+        if size > remaining:
+            return
+        while self._promotion_versions and (len(self._promotion_versions) >= 32
+                or self._promotion_version_bytes + size > remaining):
+            oldest = next(iter(self._promotion_versions))
+            self._promotion_version_bytes -= self._promotion_versions.pop(oldest).size
+        self._promotion_versions[channel] = _PromotionVersion(ref(points), ref(owner), len(owner._nodes), entries, size)
+        self._promotion_version_bytes += size
 
     def workers_for(self, round_index: int) -> tuple[_TrendJudgementCache, ...] | None:
         if self._closed:
@@ -83,7 +233,10 @@ class _TrendCascadeCache:
                     worker.clear()
         self._rounds.clear()
         self._promotions.clear()
+        self._promotion_records.clear()
         self._promotion_bytes = 0
+        self._promotion_versions.clear()
+        self._promotion_version_bytes = 0
         self._closed = True
 
     def __enter__(self) -> '_TrendCascadeCache':
@@ -154,6 +307,10 @@ def prepare_trend_cascade(
         raise ValueError('trend cascade caches must match requested levels')
     if _round_caches is not None and _round_caches.workers_for(0) != tuple(workers):
         raise ValueError('trend cascade round caches must own the requested workers')
+    record_owner = current_evidence() if _owned_source else None
+    recording = record_owner is not None and record_owner.record_history_enabled
+    release_references: dict[int, _PromotionReference] | None = {} if recording else None
+    release_reference_bytes = 0
     releases: dict[int, dict[str, dict[bytes, dict[str, object]]]] = {level: {} for level in levels}
     seen: dict[tuple[int, object], dict[str, object]] = {}
     # 同一轮收敛中 prepared 是只读版本；相同版本只展开一次直接下级。
@@ -167,8 +324,10 @@ def prepare_trend_cascade(
             # 每个证明只附到同路径真实端点，strip_source_license 会在向上
             # 生成新点时清除它，不能继承成其他层的豁免。
             worker = round_workers[level-first] if round_workers is not None else None
-            versioned = (worker._promotion_source.enrich(current_source, releases[level], PROMOTION_FIELD)
-                         if _owned_source and worker is not None else None)
+            versioned = (worker._promotion_source.enrich(current_source, releases[level], PROMOTION_FIELD,
+                _record_references=release_references) if recording and worker is not None else
+                worker._promotion_source.enrich(current_source, releases[level], PROMOTION_FIELD)
+                if _owned_source and worker is not None else None)
             enriched = versioned if versioned is not None else _enrich_promotions(
                 current_source, releases[level], _owned=_owned_source)
             signature = (enriched.token if type(enriched) is CertifiedSource
@@ -204,18 +363,36 @@ def prepare_trend_cascade(
             parents[lower] = paths
         for upper in range(first + 1, last + 1):
             for stroke in _prepared_strokes(prepared[upper], 'candidate_strokes'):
-                for point in _prepared_points(stroke):
-                    proof = point.get('upgrade_evidence')
-                    if not isinstance(proof, Mapping) or proof.get('role') != 'endpoint':
-                        continue
-                    if _owned_source and _round_caches is not None:
-                        record, signature = _round_caches.promotion(point, upper - 1)
-                    else:
-                        validate_promotion(point, upper - 1)
-                        record = promotion_point(point)
+                points = _prepared_points(stroke)
+                promotion_references: dict[int, _PromotionReference] | None = {} if recording else None
+                if _owned_source and _round_caches is not None:
+                    promotions = (_round_caches.promotion_rows(points, upper - 1,
+                        round_index=round_index, path=cast(str, stroke['id']),
+                        _record_references=promotion_references) if recording else
+                        _round_caches.promotion_rows(points, upper - 1,
+                            round_index=round_index, path=cast(str, stroke['id'])))
+                else:
+                    promotions = []
+                    for position, point in enumerate(points):
+                        proof = point.get('upgrade_evidence')
+                        if not isinstance(proof, Mapping) or proof.get('role') != 'endpoint':
+                            continue
+                        if recording:
+                            assert record_owner is not None and promotion_references is not None
+                            source_record = _promotion_source_record(points, position, record_owner)
+                            with producer_record_scope(record_owner.record_store(), inputs=(source_record,)) as scope:
+                                validate_promotion(point, upper - 1)
+                                record = promotion_point(point)
+                                carrier = scope.record_point(record)
+                                promotion_references[id(record)] = carrier.reference.namespace, carrier.reference.offset
+                        else:
+                            validate_promotion(point, upper - 1)
+                            record = promotion_point(point)
                         signature = _geometry_signature(record)
                         if signature is None:
                             raise ValueError('strict promotion must have finite serializable evidence')
+                        promotions.append((record, signature))
+                for record, signature in promotions:
                     parent_path = stroke['source_path']
                     # 路径ID由每一级真实来源串接，逐级回溯，绝不按股票日期
                     # 或字符串前缀猜测跨级归属。三级可同时接管一级与二级。
@@ -226,8 +403,24 @@ def prepare_trend_cascade(
                         parent_path = parent_stroke['source_path']
                         records = releases[lower].setdefault(cast(str, parent_path), {})
                         if signature not in records:
-                            records[signature] = dict(record, _promotion_target_level=lower,
-                                                      _promotion_target_path=parent_path)
+                            if recording:
+                                assert (record_owner is not None and promotion_references is not None
+                                        and release_references is not None)
+                                source_reference = promotion_references.get(id(record))
+                                if source_reference is None:
+                                    raise ValueError('targeted promotion requires its exact production reference')
+                                targeted, reference = _record_targeted_promotion(record, source_reference,
+                                    level=lower, path=cast(str, parent_path), owner=record_owner)
+                                # 本次收敛的并行表只持有常量根，按实际条目计费并随调用释放。
+                                charged = 768 + getsizeof(reference) + sum(getsizeof(part) for part in reference)
+                                if release_reference_bytes + charged > _PROMOTION_MEMORY_BYTES:
+                                    raise ValueError('promotion release references exceed their scoped memory limit')
+                                release_reference_bytes += charged
+                                release_references[id(targeted)] = reference
+                            else:
+                                targeted = dict(record, _promotion_target_level=lower,
+                                                _promotion_target_path=parent_path)
+                            records[signature] = targeted
                             added = True
         if not added:
             return [prepared[level] for level in levels]

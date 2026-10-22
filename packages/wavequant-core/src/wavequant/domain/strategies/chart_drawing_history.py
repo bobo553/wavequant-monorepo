@@ -10,6 +10,9 @@ from typing import Self, cast
 from ..market_structure.trend_staging import TrendStageRows
 from ..market_structure.trend_lines import _OwnedPolylineTurns, polyline_high_low_points
 from ..market_structure.owned_evidence import CertifiedSource, current_evidence, owned_signature
+from ..market_structure.owned_evidence_producer import ProducerRecordScope
+from ..market_structure.trend_point_version import record_point_version
+from ..market_structure.trend_source_stream import _record_view, _source_record_scope
 
 
 @dataclass(slots=True)
@@ -34,7 +37,12 @@ class _OwnedDrawingProjection:
         self._active = _OwnedPolylineTurns()
         self._version: CertifiedSource | None = None
 
-    def project(self, frame: ChartDrawingFrame) -> list[dict[str, object]]:
+    def project(self, frame: ChartDrawingFrame) -> Sequence[dict[str, object]]:
+        with _source_record_scope() as scope:
+            return self._project(frame, scope)
+
+    def _project(self, frame: ChartDrawingFrame,
+                 scope: ProducerRecordScope | None) -> Sequence[dict[str, object]]:
         strokes = cast(list[Mapping[str, object]], frame.drawing['strokes'])
         active = strokes[-1:] if len(frame.raw) > 1 else []
         closed = strokes[:-1] if active else strokes
@@ -53,28 +61,43 @@ class _OwnedDrawingProjection:
                 self._closed.clear()
                 self._points.clear()
                 self._version = None
+                if scope is not None:
+                    raise ValueError('recorded drawing projection requires its owned closed paths')
                 return polyline_high_low_points(frame.drawing)
             self._points.extend(polyline_high_low_points(dict(strokes=[path])))
             self._closed.append(path)
-        turns = self._active.project(frame.raw, source_path=f'lecture-{frame.epoch}')
-        points = [*self._points, *turns]
+        turns = self._active.project(frame.raw, source_path=f'lecture-{frame.epoch}', _borrow_readonly=True)
         owner = current_evidence()
         if owner is None:
             self._version = None
-            return points
+            return [*self._points, *turns]
         if self._version is not None and self._version.owner is not owner:
             self._version = None
+        if scope is not None and self._version is not None:
+            _record_view(self._version, scope)
         changed = (len(self._points) + self._active.changed_from if same_closed else previous_closed)
-        changed = min(changed, len(self._version), len(points)) if self._version is not None else 0
-        keys = tuple(owned_signature(point) for point in points[changed:])
+        changed = min(changed, len(self._version), len(self._points) + len(turns)) if self._version is not None else 0
+        tail = ([*self._points[changed:], *turns] if changed < len(self._points)
+                else turns[changed - len(self._points):])
+        if scope is not None and self._version is not None:
+            # 折线适配器是原始点的生产者；只借用被替换尾部及相邻锚点的
+            # 已有字段身份，新生峰谷在本作用域首次记录，旧前缀沿持久根继承。
+            for record in _record_view(self._version, scope).iter_range(max(0, changed - 1)):
+                scope.bind(record)
+        keys = tuple(owned_signature(point) for point in tail)
         if any(key is None for key in keys):
             self._version = None
-            return points
-        version = CertifiedSource(points, (*(self._version.keys[:changed] if self._version is not None else ()),
-            *cast(tuple[bytes, ...], keys)), owner, self._version, _changed_from=changed)
-        if version.signature_bytes + len(version) * 256 > 8 * 1024 * 1024:
+            if scope is not None:
+                raise ValueError('recorded drawing projection requires builtin point evidence')
+            return [*self._points, *turns]
+        version = CertifiedSource.from_tail(tail, cast(tuple[bytes, ...], keys), owner, self._version, changed)
+        if scope is not None:
+            record_point_version(version, scope)
+        if version.signature_bytes + len(version) * 256 + version.record_metadata_bytes > 8 * 1024 * 1024:
             self._version = None
-            return points
+            if scope is not None:
+                raise ValueError('recorded drawing projection exceeds its source budget')
+            return [*self._points, *turns]
         self._version = version
         return version
 

@@ -46,8 +46,8 @@ from .chart_drawing_history import _OwnedDrawingProjection
 from .market_calculations import MarketCalculations, MarketDay
 
 
-# 六态状态与候选时钟进入检查点；旧元组缺少生命周期，不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "source_causal_polyline_volume_breakout_v160"
+# 生命周期检查点已移除观察候选字段，旧布局不能继续恢复。
+_CONFIRMATION_CACHE_VERSION = "source_causal_without_observation_candidates_v161"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -439,6 +439,19 @@ def _strategy_permission_view(level: Mapping[str, object]) -> dict[str, object]:
         raise ValueError('qualified_strokes must be an explicit sequence of strategy permissions')
     result['strokes'] = qualified
     return result
+
+
+def _checkpoint_permission_levels(levels: Sequence[tuple[Mapping[str, object], Mapping[str, object]]]
+                                  ) -> tuple[tuple[dict[str, object], dict[str, object]], ...]:
+    """磁盘/分钟检查点只保存原业务视图，私有归档提示留在 live 内存边界。"""
+    copies: dict[int, dict[str, object]] = {}
+
+    def public(level: Mapping[str, object]) -> dict[str, object]:
+        if id(level) not in copies:
+            copies[id(level)] = {key: value for key, value in level.items() if key != '_combined_a_geometry'}
+        return copies[id(level)]
+
+    return tuple((public(left), public(right)) for left, right in levels)
 
 
 def _permission_records(value: object, field: str) -> tuple[Mapping[str, object], ...]:
@@ -975,7 +988,10 @@ def chart_entry_history(
             second, first = levels[0]
             third, _ = levels[1]
             if isinstance(combined_replay, CombinedAReplay):
-                combined_replay.remember(i, (drawing, first, second, third))
+                combined_replay.remember(i, (drawing, first, second, third),
+                    _fixed_day=live_owner is not None and not n_target_trend_confirmation_enabled and i < last,
+                    _drawing_epoch=(frame.epoch if live_owner is not None
+                                    and not n_target_trend_confirmation_enabled else None))
             combined_candidate_sink[i] = combined_a_contexts_from_geometry(
                 bars, cast(GeometryLevel, drawing), cast(GeometryLevel, first),
                 cast(GeometryLevel, second), cast(GeometryLevel, third), dates, i, audit,
@@ -1055,7 +1071,7 @@ def chart_entry_history(
                 if certificate is not None:
                     checkpoint_channel.state(0, i, (
                         active, first_seen, retired, closed, previous_epoch, previous_raw,
-                        signature, landmarks, invalidated, levels, shallow_candidate,
+                        signature, landmarks, invalidated, _checkpoint_permission_levels(levels), shallow_candidate,
                         resistance_key, anchors_at_attack, lifecycle.checkpoint(),
                     ), certificate)
         if (prefix_cache is not None and past_attack_certificate is not None
