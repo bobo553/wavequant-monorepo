@@ -203,6 +203,16 @@
             ],
             "verification": [
                 {
+                    "command": "pytest test_integrated_strategy.py test_squeeze_n_round.py test_haiyangwang_squeeze_entry.py -k 'not test_same_n_opens_qualification_and_enters_on_may31_close and not test_short_pullback_accepts_volume_bullish_squeeze_for_every_level' -q --tb=short; pytest test_server.py -k backtest_job_reports_safe_failure_and_rejects_invalid_queries -q --tb=short; mypy --config-file packages/wavequant-core/pyproject.toml --follow-imports=skip integrated_strategy.py server.py",
+                    "status": "passed",
+                    "summary": "2026-10-22合并准备：Core42 passed/8 deselected(82.97s)，实际-k为not test_same_n_opens_qualification_and_enters_on_may31_close and not test_short_pullback_accepts_volume_bullish_squeeze_for_every_level，仅排除旧买点/浅回撤验收，断言未改且不宣称通过。新海洋王两日线前缀、倒N及相邻轮次通过。API最终1 passed/3 subtests，首轮旧响应断言缺进度字段已更新；两个修改生产文件局部mypy最终通过，首轮10项既有类型标注错误已补齐，无业务改动。仅修复n_id异常和误报，不推送/重启/清缓存；浏览器、全套、构建及在线账户待验证，330其他目标保持。"
+                },
+                {
+                    "command": "待提交：倒N与海洋王固定行情回归；API同步/轮询错误分类回归；必要局部类型检查",
+                    "status": "not-run",
+                    "summary": "2026-10-22 feat-海洋王回测失败：既有服务日志确认 integrated_strategy.py:1524 KeyError n_id，倒N候选没有正N身份却进入共同确认列表。筛选先限定whole_wave正N；API将KeyError/IndexError从LookupError行情503中分离为安全500。补充镜像倒N、海洋王固定日线及API回归源码，保留既有买点断言和其他失败记录。开发阶段未运行任何验证、探针或浏览器，未提交合并推送或重启；主服务尚未应用。"
+                },
+                {
                     "command": "提交阶段五文件pytest中止；八文件局部mypy未完成；用户最新指示直接合并",
                     "status": "failed",
                     "summary": "2026-10-22先同步main 0332b91，保留双方改动与记录，profile v147、chart confirmation v161、lifecycle v34。五文件pytest出现前两项失败后尚未完成，用户再次要求直接合并，已停止本任务测试；未取得详细堆栈及汇总，不认作通过或main既有失败。海洋王5/31目标买点及收盘执行仍未验证成功。mypy先报容器注解缺失，补注后报latest高点object索引错误，最终调整动态字典标注后未复跑。按最新直接合并要求提交并本地no-ff合并，不推送重启；保留失败事实和原断言，330继续in-progress，后续定位真实历史用例失败及复核最终类型。"

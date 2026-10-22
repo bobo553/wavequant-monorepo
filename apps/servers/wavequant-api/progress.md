@@ -1,3 +1,17 @@
+2026-10-22 · 海洋王回测异常提交验证完成
+
+用户要求合并到本地 main，不推送。分支 feat-海洋王回测失败 基于 main 2a8c0d6。生产修复将共同确认候选限定为 whole_wave 正 N，防止倒 N 读取不存在的 n_id；API 将 KeyError/IndexError 明确归类为安全 500，不再误报行情 503。提交类型检查暴露 server.py 既有类型标注缺失，补齐 Handler.server、recent 和 params 类型，不改变运行行为。
+
+Core定向pytest：test_integrated_strategy.py、test_squeeze_n_round.py、test_haiyangwang_squeeze_entry.py 中新回测崩溃回归，42 passed、8 deselected，82.97秒。排除的8项是既有特定买点/浅回撤规则验收，不属于此次异常修复，不声称已通过；旧断言保持。固定海洋王行情运行完整至5/31和6/1两个前缀，包含正倒N且轧空轮次仍只归属正N。API错误分类用例最终1 passed/3 subtests：同步请求与轮询的参数400、行情503、计算500均保持安全响应。首轮因旧断言缺已有进度/pipeline字段失败，更新完整状态字段断言并保留pipeline schema检查后通过，未更改产品响应。两个生产文件mypy --follow-imports=skip按Core项目配置最终通过；首轮10项server.py旧标注错误已修正。
+
+生产差异只涉及本次候选筛选、错误分类和无行为类型标注；未修改趋势、资格或交易判定，未删除旧失败证据。完整测试、浏览器/E2E、构建及在线主服务回测未运行。无需包构建的Python源码修复按定向回归和局部类型完成提交门禁；不宣称完整实股账户或旧买点问题已验收。同步最新main、复核最终差异后提交及no-ff本地合并；不推送、重启或清缓存，分支/worktree保留。MONOREPO-330其他未完成目标继续in-progress。以下为开发阶段历史记录。
+2026-10-22 · 海洋王回测 KeyError 修复（待提交验证）
+
+本会话分支 feat-海洋王回测失败，独立 worktree C:/Users/zb/.codex/worktrees/market-backtest-fix/wavequant-monorepo，基于创建时本地 main。阅读既有 .codex-runtime/wavequant-dev-20261022-103018.stderr.log，任务 2d9bb9db-6d56-4642-b969-40c678d098f3 的原始异常为 integrated_strategy.py:1524 KeyError: n_id。候选生成仅给正 N 分配 n_id，新共同确认列表却遍历所有候选；倒 N 因此中断回测。API 将 LookupError 映射为行情不可用，误将其子类 KeyError 归为上游故障。
+
+共同确认筛选增加 whole_wave 与 Direction.UP 前置条件，保留既有正 N 身份、来源及资格匹配；不为倒 N 伪造身份，不修改趋势或交易规则。API 将 KeyError/IndexError 明确归为安全的 500 计算失败，保留真实行情不可用 503 和参数错误 400。补充镜像倒 N、海洋王固定日线含正倒 N 的日线入口回归，以及同步任务请求和轮询错误分类测试；旧海洋王买点断言保持。
+
+本轮只阅读日志/源码、编辑代码和维护记录，未运行测试、类型、格式、lint、构建、Git状态/差异检查、运行探针或浏览器。未提交、合并、推送、重启或清缓存；运行中的主服务尚未应用本分支。待提交时运行新回归、test_integrated_strategy.py、test_squeeze_n_round.py、test_haiyangwang_squeeze_entry.py 和 test_server.py 对应错误分类用例及必要局部类型检查。历史海洋王买点失败另有记录，不能将此次异常修复当作买点验收。MONOREPO-330 保持唯一 in-progress；主目录 CodeGraph 已用于追踪，专属 worktree 的 .codegraph 存在但 MCP 报未索引，后续采用源码阅读。
 2026-10-20按用户要求撤回14:07（UTC+9）之后main合并：经main第一父链及reflog核实，仅14:17的adf4888（chore: 合并趋势缓存性能优化）符合。使用git revert -m 1，不重置或改写历史，不推送。添加审计记录前，撤回暂存树与14:07前34d09fa逐文件完全一致，git diff --cached --check通过；未重新运行含已知基线失败的旧测试，不宣称其已通过。既有行情收藏、末跌高买入、底部N及更早合并均保留。此前665项正确性回归不构成性能验收：同冻结输入前1100日，合并前73.10秒、合并后219.37秒，新增账本107.46秒、冷算24增至124，完整证据在.codex-runtime/backtest-growth-current-20261020/root-cause.md和comparison.json。后续优化仅在独立分支；必须确认同输入完整结果一致及分段/全程性能有实际提升，再考虑重新合并，禁止自动重新合入已撤回提交。MONOREPO-330保持in-progress。
 
 2026-10-20 · MONOREPO-334 合并前最终记录

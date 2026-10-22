@@ -660,10 +660,14 @@ class VisualizationTests(unittest.TestCase):
               patch.object(self.repo, "akshare_backtest", side_effect=ValueError("回测区间无数据"))):
             status, body = request(base + "&backtest_job=backtest-invalid-0001")
             self.assertEqual((status, body["error"]), (400, "回测参数或行情数据无效，请检查输入后重试"))
-            self.assertEqual(
-                request("/api/backtest-job?job=backtest-invalid-0001"),
-                (200, {"status": "failed", "error": "回测参数或行情数据无效，请检查输入后重试", "http_status": 400}),
-            )
+            status, body = request("/api/backtest-job?job=backtest-invalid-0001")
+            self.assertEqual(status, 200)
+            self.assertEqual(body.pop("pipeline")["schema_version"], 1)
+            self.assertEqual(body, {
+                "status": "failed", "error": "回测参数或行情数据无效，请检查输入后重试", "http_status": 400,
+                "progress_percent": 0, "progress_stage": "准备回测", "preview_revision": 0,
+                "processed_sessions": None, "total_sessions": None, "processed_asof": None,
+            })
         with (patch.object(self.repo, "backtest_version", return_value={"version": "fixture-v1"}),
               patch.object(self.repo, "akshare_backtest", side_effect=AkShareUnavailable("secret provider detail"))):
             status, body = request(base + "&backtest_job=backtest-unavailable-0002")
@@ -672,16 +676,18 @@ class VisualizationTests(unittest.TestCase):
             status, body = request("/api/backtest-job?job=backtest-unavailable-0002")
             self.assertEqual((status, body["status"], body["http_status"]), (200, "failed", 503))
             self.assertNotIn("secret", body["error"])
-        with self.assertLogs(level="ERROR") as captured:
-            with (patch.object(self.repo, "backtest_version", return_value={"version": "fixture-v1"}),
-                  patch.object(self.repo, "akshare_backtest", side_effect=RuntimeError("secret internal path"))):
-                status, body = request(base + "&backtest_job=backtest-failure-0002")
-                self.assertEqual(status, 500)
-                self.assertNotIn("secret", body["error"])
-                status, body = request("/api/backtest-job?job=backtest-failure-0002")
-                self.assertEqual((status, body["status"], body["http_status"]), (200, "failed", 500))
-                self.assertNotIn("secret", body["error"])
-        self.assertEqual(len(captured.output), 1)
+        for index, error in enumerate((RuntimeError("secret internal path"), KeyError("n_id"),
+                                       IndexError("secret internal index"))):
+            job_id = f"backtest-failure-{index:04d}"
+            with self.subTest(error=type(error).__name__), self.assertLogs(level="ERROR") as captured:
+                with (patch.object(self.repo, "backtest_version", return_value={"version": "fixture-v1"}),
+                      patch.object(self.repo, "akshare_backtest", side_effect=error)):
+                    status, body = request(base + f"&backtest_job={job_id}")
+                    self.assertEqual((status, body["error"]), (500, "回测计算失败，请稍后重试"))
+                    status, body = request(f"/api/backtest-job?job={job_id}")
+                    self.assertEqual((status, body["status"], body["http_status"]), (200, "failed", 500))
+                    self.assertEqual(body["error"], "回测计算失败，请稍后重试")
+            self.assertEqual(len(captured.output), 1)
 
     def test_backtest_rejects_stale_strategy_before_starting_and_versions_job_identity(self):
         server = self.http_server()
