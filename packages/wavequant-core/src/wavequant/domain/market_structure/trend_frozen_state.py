@@ -5,8 +5,10 @@
 追加的条目。更早修订仍能恢复原值，不能以固化为由丢弃真实修订。
 """
 
+from bisect import bisect_left
 from collections.abc import Iterable, Iterator, MutableMapping, MutableSequence
 from dataclasses import dataclass
+from itertools import chain, islice
 from sys import getsizeof
 from typing import Generic, TypeVar, cast, overload
 
@@ -134,6 +136,11 @@ class FrozenPrefixList(MutableSequence[T]):
 
     def iter_range(self, start: int = 0, stop: int | None = None) -> Iterator[T]:
         """按块访问指定区间；跳过前缀，提前终止也不物化未访问的后缀。"""
+        # pickle/版本投影从 C 迭代器读取叶块，避免每个历史点都恢复一次
+        # Python 生成器；仍按需访问块，保留切片边界与对象身份。
+        return chain.from_iterable(self._iter_blocks(start, stop))
+
+    def _iter_blocks(self, start: int, stop: int | None) -> Iterator[Iterable[T]]:
         start, end, _ = slice(start, stop).indices(len(self))
         frozen_end = min(end, self._stop)
         pending = [(self._archive, self._capacity, 0)]
@@ -143,12 +150,12 @@ class FrozenPrefixList(MutableSequence[T]):
             if node is None or left >= frozen_end or left + capacity * 32 <= start:
                 continue
             if capacity == 1:
-                yield from cast(tuple[T, ...], node.values[max(0, start - left):min(32, frozen_end - left)])
+                yield cast(tuple[T, ...], node.values[max(0, start - left):min(32, frozen_end - left)])
             else:
                 half = capacity // 2
                 pending.extend(((node.right, half, block_start + half), (node.left, half, block_start)))
-        for position in range(max(start, self._stop), end):
-            yield self._tail[position - self._stop]
+        if end > max(start, self._stop):
+            yield islice(self._tail, max(start - self._stop, 0), end - self._stop)
 
     def shared_prefix(self, other: 'FrozenPrefixList[T]') -> int:
         """按共享树块跳过旧前缀；只在不同叶块和可变尾部比较记录身份。"""
@@ -300,18 +307,89 @@ def _index_set(node: _IndexNode | None, key_hash: int, key: object, value: objec
         added = _leaf(key_hash, ((key, value),))
         return _branch(differing, node, added) if key_hash & (1 << differing) else _branch(differing, added, node)
     if node.bit < 0:
-        entries = list(node.entries)
-        for position, (existing, _) in enumerate(entries):
+        for position, (existing, previous) in enumerate(node.entries):
             if existing == key:
+                if previous is value:
+                    return node
+                entries = list(node.entries)
                 entries[position] = existing, value
                 break
         else:
+            entries = list(node.entries)
             entries.append((key, value))
         return _leaf(key_hash, tuple(entries))
     assert node.left is not None and node.right is not None
     if key_hash & (1 << node.bit):
-        return _branch(node.bit, node.left, _index_set(node.right, key_hash, key, value))
-    return _branch(node.bit, _index_set(node.left, key_hash, key, value), node.right)
+        right = _index_set(node.right, key_hash, key, value)
+        return node if right is node.right else _branch(node.bit, node.left, right)
+    left = _index_set(node.left, key_hash, key, value)
+    return node if left is node.left else _branch(node.bit, left, node.right)
+
+
+def _index_leaf_updates(node: _IndexNode | None, updates: list[tuple[int, object, object]],
+                        start: int, stop: int) -> _IndexNode:
+    if stop == start + 1:
+        key_hash, key, value = updates[start]
+        return _index_set(node, key_hash, key, value)
+    entries: list[tuple[object, object]] | None = None
+    previous = node.entries if node is not None else ()
+    for offset in range(start, stop):
+        _, key, value = updates[offset]
+        for position, (existing, current) in enumerate(previous if entries is None else entries):
+            if existing == key:
+                if current is not value:
+                    if entries is None:
+                        entries = list(previous)
+                    entries[position] = existing, value
+                break
+        else:
+            if entries is None:
+                entries = list(previous)
+            entries.append((key, value))
+    if entries is None:
+        assert node is not None
+        return node
+    return _leaf(updates[start][0], tuple(entries))
+
+
+def _index_merge(node: _IndexNode | None, updates: list[tuple[int, object, object]],
+                 hashes: list[int], start: int, stop: int) -> _IndexNode | None:
+    """每个受影响分支只合并一次；没有更新的旧子树直接沿用。"""
+    if start == stop:
+        return node
+    first = hashes[start]
+    bit = (first ^ hashes[stop - 1]).bit_length() - 1
+    if node is not None:
+        bit = max(bit, node.bit, (first ^ node.key_hash).bit_length() - 1)
+    if bit < 0:
+        return _index_leaf_updates(node, updates, start, stop)
+    mask = 1 << bit
+    split_hash = (first & ~((mask << 1) - 1)) | mask
+    middle = bisect_left(hashes, split_hash, start, stop)
+    left: _IndexNode | None = None
+    right: _IndexNode | None = None
+    if node is not None:
+        if node.bit == bit:
+            left, right = node.left, node.right
+        elif node.key_hash & mask:
+            right = node
+        else:
+            left = node
+    merged_left = _index_merge(left, updates, hashes, start, middle)
+    merged_right = _index_merge(right, updates, hashes, middle, stop)
+    assert merged_left is not None and merged_right is not None
+    if node is not None and node.bit == bit and merged_left is left and merged_right is right:
+        return node
+    return _branch(bit, merged_left, merged_right)
+
+
+def _index_batch(node: _IndexNode | None, values: Iterable[tuple[object, object]]) -> _IndexNode | None:
+    # 稳定排序保持同 hash 碰撞桶的逐项覆盖顺序；值只比较身份，不调用相等钩子。
+    # 临时索引只覆盖变化尾部，旧树不展开，也不保留本次排序数组。
+    updates = [(hash(key) & ((1 << 64) - 1), key, value) for key, value in values]
+    updates.sort(key=lambda item: item[0])
+    hashes = [item[0] for item in updates]
+    return _index_merge(node, updates, hashes, 0, len(updates))
 
 
 class _IndexArchive(Generic[K, V]):
@@ -346,10 +424,14 @@ class FrozenPrefixMap(MutableMapping[K, V]):
 
     def freeze(self) -> None:
         root = self._archive.root
-        for key, value in self._tail.items():
+        if len(self._tail) == 1:
+            key, value = next(iter(self._tail.items()))
             root = _index_set(root, hash(key) & ((1 << 64) - 1), key, value)
+        elif self._tail:
+            root = _index_batch(root, self._tail.items())
         if self._tail:
-            self._archive = _IndexArchive(root)
+            if root is not self._archive.root:
+                self._archive = _IndexArchive(root)
             self._tail = {}
         self._keys.freeze(len(self._keys))
 

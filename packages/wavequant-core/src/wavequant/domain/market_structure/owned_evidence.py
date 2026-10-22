@@ -13,6 +13,8 @@ from uuid import uuid4
 
 from .trend_point_version import PointVersion
 from .trend_frozen_state import FrozenPrefixList
+from .owned_evidence_records import OwnedEvidenceRecords
+from .finite_source_receipts import FiniteSourceReceipts
 
 
 _MAGIC = b'WQ-owned-evidence-1\x00'
@@ -79,7 +81,22 @@ class OwnedEvidence:
         self._used = 0
         self._objects: dict[int, tuple[object, int]] = {}
         self._nodes: list[object] = []
+        self._records: OwnedEvidenceRecords | None = None
+        self._record_cache_reserved = 0
+        # 生产者到历史根的完整接线仍在隔离测量；旧调用默认不进入实验通路。
+        self.record_history_enabled = False
         self._closed = False
+
+    def record_store(self) -> OwnedEvidenceRecords:
+        """实验通道从原池划拨读缓存和追加页，两个拥有者不重复使用预算。"""
+        if self._closed:
+            raise ValueError('owned evidence is closed')
+        if self._records is None:
+            reserved = min(1024 * 1024, self.admission_remaining) if self.record_history_enabled else 0
+            records = OwnedEvidenceRecords(cache_bytes=reserved,
+                page_bytes=64 * 1024 if reserved >= 256 * 1024 else 0)
+            self._records, self._record_cache_reserved = records, reserved
+        return self._records
 
     def reference(self, value: object) -> int | None:
         entry = self._objects.get(id(value))
@@ -87,14 +104,17 @@ class OwnedEvidence:
 
     @property
     def memory_used(self) -> int:
-        return self._used
+        # 缓存可随读取重新填满，clear_cache只清当前内容，不释放已划拨额度。
+        # 按整笔预留计费，避免旧池占用缓存暂时未使用的容量。
+        return self._used + self._record_cache_reserved
 
     @property
     def admission_remaining(self) -> int:
-        return max(0, self._limit - self._used)
+        return max(0, self._limit - self.memory_used)
 
-    def finite(self, value: object) -> bool:
+    def finite(self, value: object, *, _receipts: FiniteSourceReceipts | None = None) -> bool:
         """等价于标准 JSON 的有限值准入，已拥有的节点不再遍历。"""
+        receipts = _receipts if type(_receipts) is FiniteSourceReceipts and _receipts.owner is self else None
         pending: list[tuple[object, bool]] = [(value, False)]
         active: set[int] = set()
         checked: set[int] = set()
@@ -106,6 +126,10 @@ class OwnedEvidence:
                 checked.add(id(item))
                 continue
             if self.reference(item) is not None or id(item) in checked:
+                continue
+            if (receipts is not None and kind in (dict, list, tuple, PointVersion, CertifiedSource)
+                    and receipts.knows(item, self)):
+                receipts.stats['root_hits' if item is value else 'subtree_skips'] += 1
                 continue
             if kind in (str, int, bool, type(None)):
                 continue
@@ -151,48 +175,66 @@ class OwnedEvidence:
             references if references is not None else {}, copies if copies is not None else {}).load()
 
     def publish(self, value: object) -> None:
-        """移交不可变导出模板；只编码此前没有移交的节点。"""
+        """单遍验证并计费新图；整图准入成功后才公开任何节点引用。"""
         if self._closed:
             raise ValueError('owned evidence is closed')
-        if self._used >= self._limit or self.reference(value) is not None or not self.finite(value):
+        if not self.admission_remaining or self.reference(value) is not None:
             return
-        # 新根可能持有尚未准入的整个子树，不能只按外壳大小计费。
-        pending_values = [value]
-        seen: set[int] = set()
-        charged = 0
-        while pending_values:
-            item = pending_values.pop()
-            if self.reference(item) is not None or id(item) in seen:
-                continue
-            seen.add(id(item))
-            # 只有进入对象表的节点才分配引用索引；数值/布尔/None 由其父容器
-            # 持有，只计自身大小。给每个标量再收索引费用会提前耗尽共享池。
-            indexed = type(item) in (dict, list, tuple, str, PointVersion, CertifiedSource)
-            charged += getsizeof(item) + (384 if indexed else 0)
-            if type(item) in (PointVersion, CertifiedSource):
-                charged += cast(PointVersion, item).storage_bytes
-            if type(item) is CertifiedSource:
-                charged += item.signature_bytes + item.keys.storage_bytes + item._costs.storage_bytes
-            if self._used + charged > self._limit:
-                return
-            if type(item) is dict:
-                pending_values.extend(child for pair in cast(dict[object, object], item).items() for child in pair)
-            elif type(item) in (list, tuple, PointVersion, CertifiedSource):
-                pending_values.extend(cast(list[object] | tuple[object, ...], item))
-        self._used += charged
+        # 新根会持有完整子图，不能只收外壳费用。验证、计费、后序登记计划
+        # 共用一次遍历；额度不足立即拒绝，避免拒绝前仍扫描整段历史证明。
         pending: list[tuple[object, bool]] = [(value, False)]
+        active: set[int] = set()
+        seen: set[int] = set()
+        admitted: list[object] = []
+        charged = 0
         while pending:
             item, leaving = pending.pop()
+            identity = id(item)
+            if leaving:
+                active.remove(identity)
+                seen.add(identity)
+                admitted.append(item)
+                continue
+            if self.reference(item) is not None or identity in seen:
+                continue
             kind = type(item)
-            if self.reference(item) is not None or kind not in (dict, list, tuple, str, PointVersion, CertifiedSource):
+            if kind is float and not isfinite(cast(float, item)):
+                return
+            if kind in (PointVersion, CertifiedSource) and not cast(PointVersion, item)._sealed:
+                return
+            if kind not in (dict, list, tuple, str, int, float, bool, type(None), PointVersion, CertifiedSource):
+                return
+            if identity in active:
+                return
+            # 只有进入对象表的节点才分配引用索引；数值/布尔/None 由其父容器
+            # 持有，只计自身大小。给每个标量再收索引费用会提前耗尽共享池。
+            indexed = kind in (dict, list, tuple, str, PointVersion, CertifiedSource)
+            charged += getsizeof(item) + (384 if indexed else 0)
+            if kind in (PointVersion, CertifiedSource):
+                charged += cast(PointVersion, item).storage_bytes
+            if kind is CertifiedSource:
+                source = cast(CertifiedSource, item)
+                charged += source.signature_bytes + source.keys.storage_bytes + source._costs.storage_bytes
+                charged += len(source._costs) * getsizeof(source.signature_bytes)
+            if charged > self.admission_remaining:
+                return
+            if kind in (str, int, float, bool, type(None)):
+                seen.add(identity)
+                if indexed:
+                    admitted.append(item)
                 continue
-            if not leaving:
-                pending.append((item, True))
-                if kind is dict:
-                    pending.extend((child, False) for pair in cast(dict[object, object], item).items() for child in pair)
-                elif kind in (list, tuple, PointVersion, CertifiedSource):
-                    pending.extend((child, False) for child in cast(list[object] | tuple[object, ...], item))
-                continue
+            active.add(identity)
+            pending.append((item, True))
+            if kind is dict:
+                mapping = cast(dict[object, object], item)
+                if any(type(key) not in (str, int, float, bool, type(None))
+                       or type(key) is float and not isfinite(key) for key in mapping):
+                    return
+                pending.extend((child, False) for pair in mapping.items() for child in pair)
+            else:
+                pending.extend((child, False) for child in cast(Sequence[object], item))
+        self._used += charged
+        for item in admitted:
             reference = len(self._nodes)
             self._nodes.append(item)
             self._objects[id(item)] = item, reference
@@ -202,6 +244,11 @@ class OwnedEvidence:
         self._nodes.clear()
         self._used = 0
         self._closed = True
+        try:
+            if self._records is not None:
+                self._records.close()
+        finally:
+            self._record_cache_reserved = 0
 
 
 def current_evidence() -> OwnedEvidence | None:

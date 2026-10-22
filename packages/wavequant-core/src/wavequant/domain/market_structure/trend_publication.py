@@ -7,6 +7,7 @@ import hashlib
 import json
 from math import isfinite
 from typing import TypeAlias, cast
+from weakref import ref
 
 from ..models.model import Bar
 from .trend_confirmation import (
@@ -16,6 +17,7 @@ from .n_trend_confirmation import N_TARGET_CONFIRMATION, is_n_target_reversal, q
 from .hierarchical_confirmation import session_date
 from .trend_market_index import _MarketPrefixIndex
 from .trend_frozen_state import FrozenPrefixList
+from .trend_point_version import PointVersion
 from .trend_publication_cache import _PublicationCache, _PublicationCheckpoint
 
 Moment: TypeAlias = int | str
@@ -195,7 +197,8 @@ class _PublishedTrendState:
     def __init__(self, source: Sequence[Mapping[str, object]], bars: Sequence[Bar], source_level: int,
                  *, qualified_source: Sequence[Mapping[str, object]] | None = None,
                  n_target_trend_confirmation_enabled: bool = False,
-                 _market_index: _MarketPrefixIndex | None = None) -> None:
+                 _market_index: _MarketPrefixIndex | None = None,
+                 _reference_channel: object | None = None) -> None:
         self.source = source
         self.n_enabled = n_target_trend_confirmation_enabled
         self.n_source = (qualified_n_source(source, qualified_source)
@@ -204,6 +207,7 @@ class _PublishedTrendState:
         if _market_index is not None and not _market_index.matches(bars):
             raise ValueError('a market index must match its immutable Bar prefix')
         self.market_index = _market_index
+        self.reference_channel = _reference_channel
         self.sessions: Mapping[str, int] = (
             _PrefixSessions(_market_index.owner.positions, len(bars) - 1) if _market_index is not None else
             {session_date(bar): index for index, bar in enumerate(bars)})
@@ -212,6 +216,12 @@ class _PublishedTrendState:
         self.context: ConfirmationContext | None = None
         self.active: Mapping[str, object] | None = None
         self.extreme: Mapping[str, object] | None = None
+        self.publication: _PublicationCache | None = None
+
+    def source_point(self, position: int) -> Mapping[str, object]:
+        if self.publication is not None:
+            self.publication.source_read(position)
+        return self.source[position]
 
     def confirmation_context(self, cutoff: int) -> ConfirmationContext:
         """同次路径发布共享静态解析，各方向证书仍使用自身真实截止前缀。
@@ -239,6 +249,7 @@ class _PublishedTrendState:
                 self.source, market, snapshot_end, n_source=self.n_source,
                 n_target_trend_confirmation_enabled=self.n_enabled,
                 _market_index=self.market_index,
+                _reference_channel=self.reference_channel,
             )
         if self.parsed_context.end_index == cutoff:
             return self.parsed_context
@@ -262,10 +273,12 @@ class _PublishedTrendState:
                 active, self.bars, point, _market_index=self.market_index):
             return None
         position = point.get(self.position_field)
+        if self.publication is not None and type(position) is int and position >= 0:
+            self.publication.source_read(position)
         if (type(position) is not int or not 0 <= position < len(self.source)
-                or not _same_origin(dict(origin=self.source[position]), point)):
+                or not _same_origin(dict(origin=self.source_point(position)), point)):
             return None
-        source_point = self.source[position]
+        source_point = self.source_point(position)
         if (source_point.get('state') in ('seed', 'developing')
                 or _later(_moment(source_point), _moment(point)) != _moment(point)):
             return None
@@ -284,14 +297,18 @@ class _PublishedTrendState:
         if direction == 'down':
             point.pop('incoming_trend_confirmation', None)
             position = origin.get(self.position_field)
+            if self.publication is not None and type(position) is int and position >= 0:
+                self.publication.source_read(position)
             known = _moment(point)
             cutoff = self.sessions.get(known, -1) if isinstance(known, str) else known
             if (self.bars and previous['kind'] == 'H' and point['kind'] == 'L'
                     and type(position) is int and 0 <= position < len(self.source) and 0 <= cutoff < len(self.bars)
                     and all(origin.get(field, 0 if field == 'ordinal' else None)
-                            == self.source[position].get(field, 0 if field == 'ordinal' else None)
+                            == self.source_point(position).get(field, 0 if field == 'ordinal' else None)
                             for field in ('index', 'ordinal', 'kind', 'value'))):
-                proof = qualify_downtrend(self.source, self.source[position], position, key, self.bars,
+                if self.publication is not None:
+                    self.publication.fixed_query(cutoff)
+                proof = qualify_downtrend(self.source, self.source_point(position), position, key, self.bars,
                                           cutoff, context=self.confirmation_context(cutoff), n_source=self.n_source,
                                           n_target_trend_confirmation_enabled=self.n_enabled)
         if not _known_leg_proof(proof, point, direction, origin):
@@ -303,8 +320,10 @@ class _PublishedTrendState:
             active, extreme = self.active, self.extreme
             if direction == 'down' and active is not None and active['direction'] == 'up' and extreme is not None:
                 wave_position = extreme.get(self.position_field)
+                if self.publication is not None and type(wave_position) is int and wave_position >= 0:
+                    self.publication.source_read(wave_position)
                 if type(wave_position) is int and 0 <= wave_position < len(self.source):
-                    wave_origin = self.source[wave_position]
+                    wave_origin = self.source_point(wave_position)
                     if (not _same_origin(dict(origin=extreme), origin) and _same_origin(dict(origin=wave_origin), extreme)
                             and _later(_moment(wave_origin), _moment(proof)) == _moment(proof)
                             and _wave_holds(dict(proof, wave_origin=wave_origin), self.bars,
@@ -424,7 +443,7 @@ def publish_uptrends(
     _origin_lookups: tuple[_OriginLookup, _OriginLookup] | None = None,
     _publication_cache: _PublicationCache | None = None,
     _readonly_result: bool = False,
-) -> list[dict[str, object]]:
+) -> list[dict[str, object]] | FrozenPrefixList[dict[str, object]]:
     """Keep structural candidates private until their rising leg is qualified.
 
     A first confirmed descending H supplies the initial frozen pressure key.
@@ -445,7 +464,8 @@ def publish_uptrends(
     pending_down_origin: Mapping[str, object] | None = None
     context: ConfirmationContext | None = None
     state = _PublishedTrendState(source, bars, source_level, qualified_source=qualified_source,
-        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled, _market_index=_market_index)
+        n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled, _market_index=_market_index,
+        _reference_channel=_publication_cache if _readonly_result and not n_target_trend_confirmation_enabled else None)
     last_low: Mapping[str, object] | None = None
     market = bars or None
     end_index = len(bars) - 1 if bars else max(
@@ -454,8 +474,19 @@ def publish_uptrends(
     n_source = state.n_source
     candidate_origins, source_origins = (_origin_lookups if _origin_lookups is not None else
                                          (_OriginLookup(candidates), _OriginLookup(source)))
-    cache = _publication_cache if not n_target_trend_confirmation_enabled else None
+    cache = _publication_cache if _readonly_result and not n_target_trend_confirmation_enabled else None
+    # 失效撤帧可能释放旧根。只在本次调用暂留它来证明输出前缀，跨日仅存
+    # token 和原检查点的弱引用，不把旧证书版本挂成长祖先链。
+    previous_output = cache._output_root() if cache is not None and cache._output_root is not None else None
+    previous_token = cache._output_token if cache is not None else None
     incremental = cache is not None and cache.admit(candidates, source, _market_index, source_level)
+    if incremental:
+        assert cache is not None and _market_index is not None
+        cache.resume(source, _market_index, lambda position, key: qualify_uptrend(
+            source, source[position], position, key, market, end_index,
+            context=state.confirmation_context(end_index), n_source=n_source,
+            n_target_trend_confirmation_enabled=False))
+        state.publication = cache
     saved = cache.checkpoint if incremental and cache is not None else None
     start = saved.offset if saved is not None else 0
     if incremental:
@@ -464,8 +495,16 @@ def publish_uptrends(
             pressure, pending_origin = saved.pressure, saved.pending_origin
             pending_down_origin, last_low = saved.pending_down_origin, saved.last_low
             state.active, state.extreme = saved.active, saved.extreme
-    stable = incremental
-    checkpoint = saved
+
+    def uptrend(position: int, key: Mapping[str, object] | None,
+                prepared: ConfirmationContext | None) -> dict[str, object] | None:
+        proof = qualify_uptrend(source, state.source_point(position), position, key, market, end_index,
+            context=prepared, n_source=n_source,
+            n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        if incremental:
+            assert cache is not None and _market_index is not None
+            cache.query(position, key, proof, source, _market_index)
+        return proof
 
     def capture(offset: int) -> _PublicationCheckpoint:
         assert isinstance(result, FrozenPrefixList)
@@ -474,10 +513,13 @@ def publish_uptrends(
                                      pending_down_origin, last_low, state.active, state.extreme)
 
     for offset, candidate in enumerate(_candidate_tail(candidates, start), start):
-        # Capture before the next candidate so every continue follows the same
-        # frontier rule; an unresolved predecessor blocks all later promotion.
-        if stable and offset > start:
-            checkpoint = capture(offset)
+        # 在下一候选之前保存，使所有 continue 都经过同一状态边界。未决
+        # 资格单独记录，不再阻止其后已处理历史共享持久结果和方向状态。
+        if incremental:
+            assert cache is not None
+            if offset > start:
+                cache.save(capture(offset))
+            cache.begin(offset)
         if not n_target_trend_confirmation_enabled and is_n_target_reversal(candidate):
             continue
         point = dict(candidate)
@@ -498,7 +540,7 @@ def publish_uptrends(
                 # 等配对低点获得独立下降证书后再决定公开的整波起点。
                 position = point.get(position_field)
                 if (type(position) is not int or not 0 <= position < len(source)
-                        or not _same_origin(dict(origin=source[position]), point)):
+                        or not _same_origin(dict(origin=state.source_point(position)), point)):
                     raise ValueError('a trend upgrade must identify its actual source origin')
                 pending_down_origin = point
             # A causally confirmed descending pressure anchor is independent
@@ -541,7 +583,7 @@ def publish_uptrends(
         position = point.get(position_field)
         if type(position) is not int or not 0 <= position < len(source):
             raise ValueError('a trend candidate must identify its actual source origin')
-        origin = source[position]
+        origin = state.source_point(position)
         identity = ('index', 'ordinal', 'kind', 'value')
         if tuple(point.get(field, 0 if field == 'ordinal' else None) for field in identity) != tuple(
                 origin.get(field, 0 if field == 'ordinal' else None) for field in identity):
@@ -564,6 +606,9 @@ def publish_uptrends(
                 paired = pending_down_origin
                 if isinstance(reference, Mapping) and (paired is None
                         or not _same_origin(dict(origin=reference), paired)):
+                    if incremental:
+                        assert cache is not None
+                        cache.lookup(reference, candidates=True)
                     paired = candidate_origins.find(reference, kind='H')
                 if (paired is not None and isinstance(reference, Mapping)
                         and _same_origin(dict(origin=reference), paired)
@@ -571,6 +616,10 @@ def publish_uptrends(
                     # 本级旧低点可已由共同定义确认，却因后续上涨尚未达标而未
                     # 进入公开上升链。只接受本次候选集合中真实已知的本级L，
                     # 不把任意下级低点或伪造的升级字段当作本级突破证据。
+                    if incremental:
+                        assert cache is not None
+                        cache.lookup(upgraded_key, candidates=True)
+                        cache.lookup(upgraded_key, candidates=False)
                     known_key = candidate_origins.find(upgraded_key, kind='L', known_point=upgraded_key)
                     source_key = source_origins.find(upgraded_key)
                     if (known_key is not None and source_key is not None
@@ -586,12 +635,7 @@ def publish_uptrends(
                         # 用当前整体截止重新取证，下降仍按本端点自己的截止
                         # 取证；两份证书各自保留日期，不能让下降分支的continue
                         # 吞掉后来合法上涨，也不能把后来上涨借给此前下降。
-                        outgoing = qualify_uptrend(source, source[position], position, pressure, market, end_index,
-                            context=state.confirmation_context(end_index),
-                            n_source=n_source, n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
-                        if outgoing is None and incremental:
-                            assert _market_index is not None
-                            stable = stable and _PublicationCache.rejected_forever(source[position], _market_index)
+                        outgoing = uptrend(position, pressure, state.confirmation_context(end_index))
                         if outgoing is not None:
                             point['trend_confirmation'] = outgoing
                             point['trend_confirmation_route'] = outgoing['confirmation_rule']
@@ -635,19 +679,17 @@ def publish_uptrends(
                                                             _market_index=_market_index)
                     or cast(float, point['value']) < cast(float, pending_origin['value'])):
                 pending_origin = point
-        confirmation = qualify_uptrend(source, origin, position, key, market, end_index,
-                                       context=context, n_source=n_source,
-                                       n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+        confirmation = uptrend(position, key, context)
         if confirmation is None:
-            if incremental:
-                assert _market_index is not None
-                stable = stable and _PublicationCache.rejected_forever(origin, _market_index)
             if result and result[-1]['kind'] == 'H':
                 state.annotate(point, result[-1], last_low)
             continue
         earliest = _later(_moment(point), _moment(confirmation))
         future_key = key
-        for later_candidate in _candidate_tail(candidates, offset + 1):
+        for later_offset, later_candidate in enumerate(_candidate_tail(candidates, offset + 1), offset + 1):
+            if incremental:
+                assert cache is not None
+                cache.candidate_read(later_offset)
             if not n_target_trend_confirmation_enabled and is_n_target_reversal(later_candidate):
                 continue
             if later_candidate['kind'] == 'H':
@@ -661,13 +703,11 @@ def publish_uptrends(
             later_position = later_candidate.get(position_field)
             if type(later_position) is not int or not 0 <= later_position < len(source):
                 raise ValueError('a trend candidate must identify its actual source origin')
-            later_origin = source[later_position]
+            later_origin = state.source_point(later_position)
             if tuple(later_candidate.get(field, 0 if field == 'ordinal' else None) for field in identity) != tuple(
                     later_origin.get(field, 0 if field == 'ordinal' else None) for field in identity):
                 raise ValueError('a trend candidate must match its actual source origin')
-            local = qualify_uptrend(source, later_origin, later_position, future_key, market, end_index,
-                                    context=context, n_source=n_source,
-                                    n_target_trend_confirmation_enabled=n_target_trend_confirmation_enabled)
+            local = uptrend(later_position, future_key, context)
             if local is None:
                 continue
             local_trigger = cast(Mapping[str, object], local['confirmed_by'])
@@ -677,6 +717,10 @@ def publish_uptrends(
                     and _held_wave_floor(pending_origin, bars, cast(int, local_trigger['index']),
                                          _market_index=_market_index)):
                 point, confirmation, earliest = dict(later_candidate), local, local_known
+        else:
+            if incremental:
+                assert cache is not None
+                cache.candidate_read(len(candidates))
         candidate_known = _moment(point)
         trigger = cast(Mapping[str, object], confirmation['confirmed_by'])
         if (pending_origin is not None and pending_origin is not point
@@ -684,10 +728,11 @@ def publish_uptrends(
                                      _market_index=_market_index)):
             point = dict(pending_origin)
             wave_position = cast(int, point[position_field])
+            wave_origin = state.source_point(wave_position)
             confirmation = dict(confirmation, wave_origin={
-                field: source[wave_position][field]
+                field: wave_origin[field]
                 for field in ('index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'label')
-                if field in source[wave_position]
+                if field in wave_origin
             })
         point['available_at'] = _later(_later(_moment(point), candidate_known), _moment(confirmation))
         if result:
@@ -706,10 +751,22 @@ def publish_uptrends(
         pending_origin = None
     if incremental:
         assert cache is not None
-        if stable and len(candidates) > start:
-            checkpoint = capture(len(candidates))
-        cache.save(checkpoint)
-        # 层级投影只读五个标量字段，立即产生独立轻量结果；无需复制旧证明。
-        # 完整许可标注和公共调用仍独立复制，不能修改缓存或旧日期的证据。
-        return list(result) if _readonly_result else deepcopy(list(result))
+        if len(candidates) > start:
+            cache.save(capture(len(candidates)))
+        # 私有标量生产者需要真实共享前缀；借用仍由检查点保活的冻结根，
+        # 不能先转 list 丢失变化边界。完整标注在调用方复制顶层后再写入。
+        if _readonly_result:
+            result.freeze(len(result))
+            checkpoint = cache.checkpoint
+            if (checkpoint is not None and checkpoint.offset == len(candidates)
+                    and checkpoint.result.shared_prefix(result) == len(result) == len(checkpoint.result)):
+                result = checkpoint.result
+            version = PointVersion()
+            version._archive, version._capacity, version._stop = result._archive, result._capacity, result._stop
+            version.parent = previous_token
+            version.changed_from = result.shared_prefix(previous_output) if previous_output is not None else 0
+            version.seal()
+            cache._output_token, cache._output_root = version.token, ref(result)
+            return version
+        return deepcopy(list(result))
     return list(result)

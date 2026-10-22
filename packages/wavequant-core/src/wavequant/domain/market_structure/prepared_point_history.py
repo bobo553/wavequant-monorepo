@@ -216,9 +216,13 @@ class PreparedPointHistory:
         return result[:reference.length]
 
     def close(self) -> None:
+        self.release_current()
+        self._rows.close()
+
+    def release_current(self) -> None:
+        """移交当前版本预算，保留临时流以读取此前的所有点数组版本。"""
         self._current.clear()
         self._key_costs.clear()
         self._owned_points.clear()
         self._cache.clear()
         self._cache_bytes = self._used = 0
-        self._rows.close()

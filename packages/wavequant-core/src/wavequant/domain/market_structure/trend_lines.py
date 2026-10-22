@@ -5,7 +5,7 @@
 """
 
 from collections import Counter
-from collections.abc import Callable, Iterator, Mapping, MutableSequence, Sequence
+from collections.abc import Callable, Iterator, Mapping, MutableMapping, MutableSequence, Sequence
 from bisect import bisect_left, bisect_right
 from copy import deepcopy
 from contextlib import nullcontext
@@ -18,6 +18,7 @@ from sys import getsizeof
 from uuid import uuid4
 from typing import Protocol, TypedDict, cast
 from types import NotImplementedType
+from weakref import ReferenceType, ref
 
 from ..models.model import Bar
 from .hierarchical_confirmation import session_date
@@ -25,14 +26,21 @@ from .lecture_trend import _annotate
 from .n_trend_reversals import n_target_reversals
 from .n_trend_confirmation import _NPermissionProofs, _reuse_n_permissions
 from .trend_judgement import TrendJudgement, _TrendJudgementState, _owned_mutable_points, judge_trend, mutable_points
-from .trend_judgement import _OwnedPointAdmission, _SourceVersionOwner
+from .trend_judgement import _OwnedPointAdmission, _OwnedTrendJudgement, _SourceVersionOwner
 from .trend_judgement import _FrozenPoint, _JudgementDelta, _moment_key
 from .trend_readonly_cache import _ReadonlySnapshotCache, _builtin_size
 from .trend_evidence_reuse import _UncacheableGeometry
 from .owned_evidence import CertifiedSource, current_evidence, finite_evidence, owned_signature as _geometry_signature
+from .finite_source_receipts import FiniteSourceReceipts
 from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex, is_owned_market_prefix, market_prefix
 from .trend_prefix_view import _PrefixView
-from .trend_point_version import PointVersion
+from .trend_point_version import PointVersion, record_point_version
+from .strategy_geometry_version import (
+    PermissionGeometryVersions, StrategyGeometry, StrategyGeometryStroke, permission_label,
+)
+from .owned_evidence_producer import current_producer_records, producer_record_scope, PointRecord, ProducerRecordScope
+from .evidence_record_sequence import EvidenceSequence, derive_evidence_sequence
+from .trend_point_records import PointRecordView
 from .trend_frozen_state import FrozenPrefixList
 from .trend_body_reversal import with_price_bodies
 from .trend_confirmation import _PrefixSessions
@@ -47,7 +55,9 @@ from .trend_publication_cache import _PublicationCache
 from .trend_structure import _trend_level
 from .trend_options import ordinary_completion_enabled
 from .prepared_point_history import PreparedPointHistory, PreparedPointReference
-from .trend_source_stream import PromotionSource, SourceExtremes, SourceProjection
+from .prepared_graph_history import PreparedGraphHistory
+from .owned_record_prepared_history import RecordedPreparedPath
+from .trend_source_stream import PromotionSource, SourceExtremes, SourceProjection, _record_view, _source_record_scope
 
 STRUCTURAL_LEG_POLICY = 'high_low_point_frozen_wave_key_v119'
 STRUCTURAL_RULE = 'point_first_recursive_frozen_wave_key_v119'
@@ -87,6 +97,52 @@ class _FiniteEvidenceCertificates:
         return all(self.certify(point) for point in source)
 
 
+class _WeakExportHints(MutableMapping[int, tuple[Sequence[dict[str, object]],
+                        Sequence[dict[str, object]] | None, int]]):
+    """提示只借用仍活着的导出版本，不延长当前或前驱证明的生命周期。"""
+
+    def __init__(self) -> None:
+        self._values: dict[int, tuple[ReferenceType[PointVersion], ReferenceType[PointVersion] | None, int]] = {}
+
+    def __getitem__(self, key: int) -> tuple[Sequence[dict[str, object]], Sequence[dict[str, object]] | None, int]:
+        current_ref, previous_ref, start = self._values[key]
+        current = current_ref()
+        if current is None:
+            del self._values[key]
+            raise KeyError(key)
+        previous = previous_ref() if previous_ref is not None else None
+        return current, previous, start if previous is not None else 0
+
+    def __setitem__(self, key: int, value: tuple[Sequence[dict[str, object]],
+                    Sequence[dict[str, object]] | None, int]) -> None:
+        current, previous, start = value
+        if type(current) is not PointVersion or previous is not None and type(previous) is not PointVersion:
+            raise TypeError('export hints require internally owned point versions')
+        if key != id(current):
+            raise ValueError('an export hint must identify its live current version')
+        hints_ref = ref(self)
+
+        def discard(dead: ReferenceType[PointVersion]) -> None:
+            hints = hints_ref()
+            saved = hints._values.get(key) if hints is not None else None
+            if hints is not None and saved is not None and saved[0] is dead:
+                del hints._values[key]
+
+        self._values[key] = ref(current, discard), ref(previous) if previous is not None else None, start
+
+    def __delitem__(self, key: int) -> None:
+        del self._values[key]
+
+    def __iter__(self) -> Iterator[int]:
+        return iter(tuple(self._values))
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    def clear(self) -> None:
+        self._values.clear()
+
+
 class _TrendJudgementCache:
     """单次阶段流每条路径仅保留最近来源及其不可变判定，不保存逐日末态。"""
 
@@ -103,18 +159,19 @@ class _TrendJudgementCache:
         self._finite = _FiniteEvidenceCertificates()
         self._tail_reuse = tail_reuse
         self._ordinary_completion = ordinary_completion_enabled()
+        self._output_owned: bool | None = None
         self._state_memory_bytes = state_memory_bytes
         self._max_paths = _max_paths
         self._path_order: dict[tuple[int, str], None] = {}
         self._source_owners: dict[tuple[int, str], _SourceVersionOwner] = {}
         self._version_results: dict[tuple[int, str], tuple[object, TrendJudgement]] = {}
+        self._record_results: dict[tuple[int, str], tuple[TrendJudgement, EvidenceSequence, EvidenceSequence]] = {}
         self._annotations: dict[tuple[int, str], _GeometryAnnotations] = {}
         self._inputs = _OwnedSourceInputs()
         self._projection = SourceProjection()
         self._promotion_source = PromotionSource()
-        self._exports: dict[tuple[int, str, str], tuple[object | None,
-            Sequence[Mapping[str, object]], PointVersion, FrozenPrefixList[int]]] = {}
-        self._export_hints: dict[int, tuple[Sequence[dict[str, object]], Sequence[dict[str, object]] | None, int]] = {}
+        self._exports: dict[tuple[int, str, str], tuple[object | None, ReferenceType[PointVersion]]] = {}
+        self._export_hints = _WeakExportHints()
         self._export_deltas: dict[tuple[int, str, str], _JudgementDelta] = {}
         self._source_arrays: dict[tuple[int, str], tuple[object, Sequence[dict[str, object]]]] = {}
         self._tail_extremes: dict[tuple[int, str], SourceExtremes] = {}
@@ -140,6 +197,7 @@ class _TrendJudgementCache:
         self._complete_cutoffs.pop(key, None)
         self._source_owners.pop(key, None)
         self._version_results.pop(key, None)
+        self._record_results.pop(key, None)
         self._path_order.pop(key, None)
         self._annotations.pop(key, None)
         self._source_arrays.pop(key, None)
@@ -149,7 +207,9 @@ class _TrendJudgementCache:
             if channel[:2] == key:
                 removed = self._exports.pop(channel)
                 self._export_deltas.pop(channel, None)
-                self._export_hints.pop(id(removed[2]), None)
+                version = removed[1]()
+                if version is not None:
+                    self._export_hints.pop(id(version), None)
 
     def clear(self) -> None:
         """释放路径版本及检查点，不清除其他轮次仍借用的只读导出。"""
@@ -159,6 +219,7 @@ class _TrendJudgementCache:
         self._complete_cutoffs.clear()
         self._source_owners.clear()
         self._version_results.clear()
+        self._record_results.clear()
         self._annotations.clear()
         self._path_order.clear()
         self._inputs.clear()
@@ -170,6 +231,7 @@ class _TrendJudgementCache:
         self._source_arrays.clear()
         self._tail_extremes.clear()
         self._legs.clear()
+        self._output_owned = None
 
     def structural_legs(self, points: Sequence[dict[str, object]], key: tuple[int, str],
                         paths: '_ClosedPreparedPaths | None' = None) -> PointVersion:
@@ -190,76 +252,123 @@ class _TrendJudgementCache:
             self._legs.pop(key, None)
         return result
 
+    def _save_export(self, channel: tuple[int, str, str], version: PointVersion,
+                     delta: _JudgementDelta | None) -> None:
+        cache_ref = ref(self)
+
+        def discard(dead: ReferenceType[PointVersion]) -> None:
+            cache = cache_ref()
+            saved = cache._exports.get(channel) if cache is not None else None
+            if cache is not None and saved is not None and saved[1] is dead:
+                del cache._exports[channel]
+                cache._export_deltas.pop(channel, None)
+
+        self._exports[channel] = delta.token if delta is not None else None, ref(version, discard)
+        if delta is not None:
+            self._export_deltas[channel] = delta
+        else:
+            self._export_deltas.pop(channel, None)
+
     def export_owned(self, points: Sequence[Mapping[str, object]], *,
                      channel: tuple[int, str, str] | None = None,
-                     delta: _JudgementDelta | None = None) -> PointVersion:
+                     delta: _JudgementDelta | None = None,
+                     _owned_result: bool = False) -> PointVersion:
         """内部标注只改点外壳；完整冻结证明按内容解码一次，只读借用。
 
         公共 mutable_points 仍逐次独立导出，未知对象不进入共享边界。
-        拒绝超额新项，避免顺序历史扫描造成 LRU 全量抖动。
+        解码缓存仍拒绝超额新项；增量提示仅弱借用领域管线仍持有的版本，
+        不因历史窗口超过解码预算丢弃变化边界，也不额外持有旧证明。
         """
-        previous = self._exports.get(channel) if channel is not None else None
+        saved = self._exports.get(channel) if channel is not None else None
+        previous = saved[1]() if saved is not None else None
         start = 0
-        if previous is not None:
-            if delta is not None and previous[0] is delta.token:
+        if previous is not None and saved is not None:
+            if delta is not None and saved[0] is delta.token:
                 start = len(points)
-            elif delta is not None and previous[0] is delta.parent:
+            elif delta is not None and saved[0] is delta.parent:
                 start = delta.points_from if channel is not None and channel[2] == 'points' else delta.candidates_from
             elif (delta is not None and channel is not None and delta.parent is not None
                     and (saved_delta := self._export_deltas.get(channel)) is not None
                     and saved_delta.parent is delta.parent):
                 start = (min(delta.points_from, saved_delta.points_from) if channel[2] == 'points' else
                          min(delta.candidates_from, saved_delta.candidates_from))
-            else:
-                while start < min(len(previous[1]), len(points)) and previous[1][start] is points[start]:
-                    start += 1
-        start = min(start, len(points), len(previous[2]) if previous is not None else 0)
-        if previous is not None and start == len(points) == len(previous[2]):
+        start = min(start, len(points), len(previous) if previous is not None else 0)
+        if previous is not None and start == len(points) == len(previous):
             if channel is not None:
-                self._exports[channel] = delta.token if delta is not None else None, points, previous[2], previous[3]
-                if delta is not None:
-                    self._export_deltas[channel] = delta
-                self._export_hints[id(previous[2])] = previous[2], previous[2], start
-            return previous[2]
-        result = PointVersion(previous=previous[2] if previous is not None else None, start=start)
-        costs = previous[3].copy() if previous is not None else FrozenPrefixList([0])
-        del costs[start + 1:]
+                self._save_export(channel, previous, delta)
+                self._export_hints[id(previous)] = previous, previous, start
+            return previous
+        result = PointVersion(previous=previous, start=start)
+        record_scope = current_producer_records()
+        recorded = self._record_results.get(channel[:2]) if channel is not None and record_scope is not None else None
+        source_records = (PointRecordView(cast(Sequence[dict[str, object]],
+                          recorded[0].points if channel[2] == 'points' else recorded[0].candidates), record_scope.owner,
+                          recorded[1 if channel[2] == 'points' else 2], len(points))
+                          if recorded is not None and channel is not None and record_scope is not None else ())
         reusable = True
-        for point in points[start:]:
-            if type(point) is not _FrozenPoint or point.json_template is None:
+        for position, point in enumerate(points[start:], start):
+            if record_scope is not None and position < len(source_records):
+                record = source_records[position]
+                if record.value is not point:
+                    raise ValueError('recorded judgement export must retain its exact source point')
+                record_scope.bind(record)
+            if _owned_result and type(point) is dict:
+                exported = cast(dict[str, object], point)
+            elif type(point) is not _FrozenPoint or point.json_template is None:
                 result.extend(mutable_points((point,)))
                 reusable = False
                 continue
-            template = point.json_template
-            cached = self._point_exports.get(template, None)
-            if cached is None:
-                exported = mutable_points((point,))[0]
-                self._point_exports.put(template, None, exported)
             else:
-                exported = cached[0]
+                template = point.json_template
+                cached = self._point_exports.get(template, None)
+                if cached is None:
+                    exported = mutable_points((point,))[0]
+                    self._point_exports.put(template, None, exported)
+                else:
+                    exported = cached[0]
             evidence = current_evidence()
             if evidence is not None:
                 # 缓存拥有的导出模板从不写入；标注只修改下面的顶层副本。
                 evidence.publish(exported)
             result.append(dict(exported))
-            costs.append(costs[-1] + len(template.encode('utf-8')) * 4 + 2048)
-        costs.freeze(len(costs))
         if channel is not None:
             if previous is not None:
-                self._export_hints.pop(id(previous[2]), None)
-            # 只保留当前路径版本；拒绝超预算新版本，完整导出仍按原协议返回。
-            retained = sum(value[3][-1] for key, value in self._exports.items() if key != channel)
-            if reusable and retained + costs[-1] <= 16 * 1024 * 1024:
-                self._exports[channel] = delta.token if delta is not None else None, points, result, costs
-                if delta is not None:
-                    self._export_deltas[channel] = delta
-                else:
-                    self._export_deltas.pop(channel, None)
-                self._export_hints[id(result)] = result, previous[2] if previous is not None else None, start
+                self._export_hints.pop(id(previous), None)
+            if reusable:
+                self._save_export(channel, result, delta)
+                self._export_hints[id(result)] = result, previous, start
             else:
                 self._exports.pop(channel, None)
                 self._export_deltas.pop(channel, None)
         return result
+
+    def record_result(self, key: tuple[int, str], result: TrendJudgement, scope: ProducerRecordScope) -> None:
+        """当前判定保留常量序列根；导出时只读取对应点的字段引用。"""
+        if type(result) is not _OwnedTrendJudgement:
+            raise TypeError('recorded judgement requires privately owned exact dictionaries')
+        previous = self._record_results.get(key)
+        if previous is not None and previous[0] is result:
+            return
+        delta = result._delta
+        previous_delta = previous[0]._delta if previous is not None else None
+        versions = []
+        for index, values in enumerate((result.points, result.candidates), 1):
+            prior = previous[index] if previous is not None else None
+            start = 0
+            if delta is not None and previous_delta is not None:
+                changed = delta.points_from if index == 1 else delta.candidates_from
+                if delta.token is previous_delta.token:
+                    start = len(values)
+                elif delta.parent is previous_delta.token:
+                    start = changed
+                elif delta.parent is not None and delta.parent is previous_delta.parent:
+                    previous_changed = previous_delta.points_from if index == 1 else previous_delta.candidates_from
+                    start = min(changed, previous_changed)
+            start = min(start, len(values), prior.length if prior is not None else 0)
+            references = [scope.record_point(point).reference
+                          for point in cast(Sequence[dict[str, object]], values[start:])]
+            versions.append(derive_evidence_sequence(scope.owner, references, previous=prior, start=start))
+        self._record_results[key] = result, versions[0], versions[1]
 
     def remember_export(self, points: Sequence[dict[str, object]], paths: '_ClosedPreparedPaths',
                         *, changed_from: int | None = None) -> None:
@@ -276,10 +385,13 @@ class _TrendJudgementCache:
     def judge(self, source: Sequence[Mapping[str, object]], *, path: str, trend_level: int,
               asof: Moment | None = None, _owned_source: bool = False,
               _closed_source: bool = False) -> TrendJudgement:
+        if self._output_owned is not None and self._output_owned != _owned_source:
+            self.clear()
         if self._ordinary_completion != ordinary_completion_enabled():
             # 同一实例切换规则时连来源版本、增量状态和翻向检查点一起失效。
             self.clear()
             self._ordinary_completion = ordinary_completion_enabled()
+        self._output_owned = _owned_source
         _trend_level(trend_level)
         if self._max_paths is not None:
             key = trend_level, path
@@ -313,8 +425,10 @@ class _TrendJudgementCache:
                         formal = self._formal_states[key] = _FormalKeyBreakState(trend_level,
                             memory_bytes=self._state_memory_bytes)
                     result = _with_formal_key_breaks(source,
-                        state.finalize(ordinary, merged, events, version.positions), _append_state=formal,
-                        _certified_keys=owner.keys)
+                        state.finalize(ordinary, merged, events, version.positions,
+                            _owned_result=version.owned_result), _append_state=formal,
+                        _certified_keys=source.keys if type(source) is CertifiedSource
+                            and source.owner is current_evidence() else owner.keys)
                     self._version_results[key] = version.token, result
                     self._paths.pop(key, None)
                     self._complete_cutoffs.pop(key, None)
@@ -378,7 +492,8 @@ class _TrendJudgementCache:
             try:
                 if _owned_source:
                     judgement = judge_trend(source, trend_level=trend_level, asof=asof,
-                                            _append_state=state, _owned_source=True, _certified_standard=True)
+                                            _append_state=state, _owned_source=True, _certified_standard=True,
+                                            _owned_result=True)
                 else:
                     judgement = judge_trend(source, trend_level=trend_level, asof=asof,
                                             _append_state=state, _certified_standard=True)
@@ -439,6 +554,14 @@ class _NativePrepared(dict[str, object]):
     """证据池满时交付完整原始图；不能混入分块引用后再丢失跨块别名。"""
 
 
+class _StoredPrepared(dict[str, object]):
+    """内部历史交付已保存的图根；公开读取仍返回普通字典。"""
+
+    def __init__(self, payload: bytes) -> None:
+        super().__init__()
+        self.payload = payload
+
+
 class _NativePreparedPickler(pickle.Pickler):
     # 精确内建容器由 C 编码；自定义类型仍先经过同一白名单，未知审计钩子不执行。
     reducer_override = _PreparedPickler.reducer_override
@@ -446,6 +569,8 @@ class _NativePreparedPickler(pickle.Pickler):
 
 def _prepared_payload(prepared: dict[str, object]) -> bytes | None:
     """同一份内部编码同时用于版本比较和历史写入，未知审计值仍冷回退。"""
+    if type(prepared) is _StoredPrepared:
+        return prepared.payload
     output = BytesIO()
     try:
         if type(prepared) is _NativePrepared:
@@ -470,6 +595,17 @@ class _ClosedPreparedPath:
     developing: int | None
 
 
+@dataclass(slots=True)
+class _PendingRecordedPath:
+    signature: bytes
+    cutoff: int
+    source: dict[str, object]
+    candidate: dict[str, object]
+    stroke: dict[str, object] | None
+    developing: dict[str, object] | None
+    charged: int
+
+
 class _ClosedPreparedPaths:
     """阶段流内共享已闭合证据；历史行只保存其首次闭合后才有的引用。
 
@@ -480,12 +616,25 @@ class _ClosedPreparedPaths:
     _fields = ('source_strokes', 'candidate_strokes', 'structure_strokes', 'strokes', 'developing_strokes')
 
     def __init__(self, *, memory_bytes: int = 8 * 1024 * 1024, _owned_history: bool = False) -> None:
+        from .owned_record_prepared_history import OwnedRecordPreparedHistory
+
         if type(memory_bytes) is not int or memory_bytes <= 0:
             raise ValueError('closed path memory_bytes must be a positive integer')
         self._owner = uuid4().hex
         self._evidence = current_evidence()
+        self._record_history = (OwnedRecordPreparedHistory(self._evidence.record_store(), memory_bytes=memory_bytes)
+            if _owned_history and self._evidence is not None and self._evidence.record_history_enabled else None)
+        self._pending_record_read: dict[str, object] | None = None
+        self._record_points: dict[int, PointRecord] = {}
+        self._record_saved: dict[int, RecordedPreparedPath] = {}
+        self._record_pending_paths: dict[tuple[int, str, str, int], _PendingRecordedPath] = {}
+        self._record_pending_bytes = 0
         self._point_history = (PreparedPointHistory(self._evidence)
-            if _owned_history and self._evidence is not None else None)
+            if _owned_history and self._evidence is not None and self._record_history is None else None)
+        self._graph_history: PreparedGraphHistory | None = None
+        self._graph_retry_delay = 0
+        self._graph_retry_remaining = 0
+        self.graph_skipped_captures = 0
         self._pending_read: tuple[dict[int, object], dict[int, object]] | None = None
         self._memory_bytes = memory_bytes
         self._memory_used = 0
@@ -498,13 +647,30 @@ class _ClosedPreparedPaths:
         self._alias_counts: Counter[int] = Counter()
         self._unpublished_aliases: dict[int, dict[str, object]] = {}
         self._finite = _FiniteEvidenceCertificates()
-        self._decoded = _ReadonlySnapshotCache[dict[str, object]](
+        self._decoded = _ReadonlySnapshotCache[
+            dict[str, object] | tuple[dict[str, object], RecordedPreparedPath]](
             memory_bytes=8 * 1024 * 1024, max_entries=2048, evict=False)
 
     def begin_row(self) -> None:
+        self._record_pending_paths.clear()
+        self._record_pending_bytes = 0
+        self._record_points.clear()
         self._references.clear()
         self._pending.clear()
         self._point_hints.clear()
+
+    def trust_point_record(self, record: PointRecord) -> None:
+        """只转交当前行独立点外壳；不索引已在版本根内的整段历史。"""
+        if self._record_history is None:
+            return
+        if (type(record) is not PointRecord or record.owner is not self._record_history.store
+                or not record.matches(record.value)):
+            raise ValueError('prepared point carrier requires this request and its final dictionary')
+        self._record_points[id(record.value)] = record
+
+    def _lookup_point_record(self, value: object) -> PointRecord | None:
+        record = self._record_points.get(id(value))
+        return record if record is not None and record.matches(value) else None
 
     def trust_points(self, points: Sequence[dict[str, object]], previous: Sequence[dict[str, object]] | None,
                      changed_from: int) -> None:
@@ -529,6 +695,39 @@ class _ClosedPreparedPaths:
     def restore(self, saved: _ClosedPreparedPath, *, borrow: bool = False) -> tuple[
         dict[str, object], dict[str, object], dict[str, object] | None, dict[str, object] | None,
     ]:
+        if self._record_history is not None:
+            descriptor = self._record_saved.get(saved.source_stroke)
+            if descriptor is None:
+                raise ValueError('recorded closed path requires its retained descriptor')
+            cache_key = ('record-path', saved.source_stroke)
+            cached = self._decoded.get(cache_key, None) if borrow else None
+            if cached is not None:
+                if type(cached[0]) is not tuple:
+                    raise ValueError('recorded closed path cache requires its read domain')
+                row, descriptor = cast(tuple[dict[str, object], RecordedPreparedPath], cached[0])
+            else:
+                row, descriptor = self._record_history.restore_path(descriptor)
+                remaining = self._decoded._limit - 4096 - 512 - self._decoded._bytes
+                plain_size = (_builtin_size((cache_key, None, row), remaining)
+                              if borrow and remaining > 0 else None)
+                version_bytes = self._record_history.attach_path_versions(row, descriptor)
+                # 通用put拒绝PointVersion。首次builtin物化时按原规则计费，
+                # 再加版本树/根元数据；保守保留已替换plain list的原费用。
+                # 使用同一8MiB、条数和不驱逐账本，不另开未计费只读缓存。
+                if plain_size is not None:
+                    retained = row, descriptor
+                    charged = plain_size + version_bytes + descriptor.metadata_bytes + getsizeof(retained) + 512
+                    if (len(self._decoded._entries) < self._decoded._max_entries
+                            and self._decoded._bytes + charged + 4096 <= self._decoded._limit):
+                        self._decoded._entries[cache_key] = None, retained, charged
+                        self._decoded._bytes += charged
+            for record in self._record_history.path_point_records(row, descriptor):
+                self.trust_point_record(record)
+            sources = cast(list[dict[str, object]], row['source_strokes'])
+            candidates = cast(list[dict[str, object]], row['candidate_strokes'])
+            strokes = cast(list[dict[str, object]], row['strokes'])
+            developing = cast(list[dict[str, object]], row['developing_strokes'])
+            return sources[0], candidates[0], strokes[0] if strokes else None, developing[0] if developing else None
         return (self._restore(saved.source_stroke, borrow=borrow), self._restore(saved.candidate, borrow=borrow),
                 self._restore(saved.stroke, borrow=borrow) if saved.stroke is not None else None,
                 self._restore(saved.developing, borrow=borrow) if saved.developing is not None else None)
@@ -552,12 +751,23 @@ class _ClosedPreparedPaths:
         if type(_round_slot) is not int or _round_slot not in (0, 1, 2):
             return
         key = level, path, symbol, _round_slot
-        if key in self._paths:
+        if key in self._paths or key in self._record_pending_paths:
             return
         signature = _geometry_signature(source)
         if signature is None or not self._finite.known_points(source):
             return
         items = (source_stroke, candidate, stroke, developing)
+        if self._record_history is not None:
+            # 当日外壳尚会被最终标注/封存；这里只保留有预算的待提交项。
+            # 不为四外壳分别pickle，更不在此反向解析任何旧证明。
+            charged = (getsizeof(signature) + getsizeof(key) + sum(getsizeof(part) for part in key)
+                       + sum(getsizeof(item) for item in items if item is not None) + 2048)
+            if self._memory_used + self._record_pending_bytes + charged > self._memory_bytes:
+                return
+            self._record_pending_paths[key] = _PendingRecordedPath(
+                signature, cutoff, source_stroke, candidate, stroke, developing, charged)
+            self._record_pending_bytes += charged
+            return
         encoded = [_geometry_signature(item) if item is not None else None for item in items]
         if any(item is not None and value is None for item, value in zip(items, encoded)):
             return
@@ -582,15 +792,68 @@ class _ClosedPreparedPaths:
         self._paths[key] = saved
         self._memory_used += added
 
+    def finish_recorded_paths(self) -> None:
+        """prepare完成生产根后提交闭合模板；未保留模板不改变当日结果。"""
+        if self._record_history is None:
+            return
+        try:
+            for key in tuple(self._record_pending_paths):
+                pending = self._record_pending_paths.pop(key)
+                self._record_pending_bytes -= pending.charged
+                descriptor = self._record_history.capture_path(pending.source, pending.candidate,
+                    pending.stroke, pending.developing, point_lookup=self._lookup_point_record)
+                if descriptor is None:
+                    raise ValueError('recorded closed path rejected after final sealing: '
+                                     + str(self._record_history.last_rejection))
+                added = (descriptor.metadata_bytes + getsizeof(pending.signature) + getsizeof(key)
+                         + sum(getsizeof(part) for part in key) + 1024)
+                if self._memory_used + self._record_pending_bytes + added > self._memory_bytes:
+                    continue
+                index = len(self._record_saved)
+                self._record_saved[index] = descriptor
+                self._paths[key] = _ClosedPreparedPath(pending.signature, pending.cutoff, index, index,
+                    index if pending.stroke is not None else None, index if pending.developing is not None else None)
+                self._memory_used += added
+        finally:
+            self._record_pending_paths.clear()
+            self._record_pending_bytes = 0
+
     def encode(self, prepared: dict[str, object]) -> dict[str, object]:
-        if self._evidence is not None and self._evidence.admission_remaining < 4096:
-            # 预算耗尽后 pack 不可能准入新证明；重复尝试会先遍历整个后缀，
-            # 再因别名无法发布而退回带逐对象 Python 回调的全图编码。
-            # 完整图走受限 C 编码，保留类型/顺序/别名，旧分块仍可独立读取。
+        if self._record_history is not None:
+            try:
+                payload = self._record_history.capture(prepared, point_lookup=self._lookup_point_record)
+                if payload is None:
+                    raise ValueError('owned record prepared history rejected: '
+                                     + str(self._record_history.last_rejection))
+                return _StoredPrepared(payload)
+            finally:
+                self.begin_row()
+        exhausted = self._evidence is not None and self._evidence.admission_remaining < 4096
+        if self._graph_history is not None or exhausted:
+            if self._graph_history is None and self._point_history is not None:
+                # 原点通道的当前索引预算移交给图身份表；旧点树仍在流中可读。
+                # 点池耗尽后尝试按当前图复用；图索引仍受同一预算约束。
+                self._point_history.release_current()
+                self._graph_history = PreparedGraphHistory(memory_bytes=self._memory_bytes)
             self._alias_arrays.clear()
             self._alias_counts.clear()
             self._unpublished_aliases.clear()
             self.begin_row()
+            if self._graph_history is not None:
+                if self._graph_retry_remaining:
+                    self._graph_retry_remaining -= 1
+                    self.graph_skipped_captures += 1
+                    return _NativePrepared(prepared)
+                payload = self._graph_history.capture(prepared)
+                if payload is not None:
+                    self._graph_retry_delay = 0
+                    return _StoredPrepared(payload)
+                self._graph_history.release_current()
+                # 非标准审计或图索引超预算均会回退完整行；限制重复准入
+                # 尝试的频率，后续能容纳的标准图仍可恢复增量存储。
+                self._graph_retry_delay = min(32, max(1, self._graph_retry_delay * 2))
+                self._graph_retry_remaining = self._graph_retry_delay - 1
+            # 回退保留完整值及别名，缓存容量不能改变历史结果。
             return _NativePrepared(prepared)
         result = dict(prepared)
         # 同一当前 stroke 或数组的重复字段必须复用同一个传输引用。
@@ -677,6 +940,12 @@ class _ClosedPreparedPaths:
         return result
 
     def decode(self, value: object) -> dict[str, object]:
+        recorded, self._pending_record_read = self._pending_record_read, None
+        if recorded is not None and recorded is value:
+            # 新协议已经以同一memo恢复整行；重新逐字段装list会拆开数组别名。
+            self._pending_read = None
+            self.begin_row()
+            return recorded
         pending, self._pending_read = self._pending_read, None
         if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
             raise ValueError('a prepared stage requires a mapping')
@@ -716,6 +985,21 @@ class _ClosedPreparedPaths:
         return result
 
     def load_encoded(self, payload: bytes) -> object:
+        from .owned_record_prepared_history import OwnedRecordPreparedHistory
+
+        self._pending_record_read = None
+        if OwnedRecordPreparedHistory.is_payload(payload):
+            if self._record_history is None:
+                raise ValueError('owned record prepared payload requires its request history')
+            self._pending_read = None
+            restored = self._record_history.restore(payload)
+            self._pending_record_read = restored
+            return restored
+        if PreparedGraphHistory.is_payload(payload):
+            if self._graph_history is None:
+                raise ValueError('prepared graph requires its owned history')
+            self._pending_read = None
+            return self._graph_history.restore(payload)
         references: dict[int, object] = {}
         copies: dict[int, object] = {}
         value = (self._evidence.loads(payload, references=references, copies=copies)
@@ -724,6 +1008,12 @@ class _ClosedPreparedPaths:
         return value
 
     def close(self) -> None:
+        if self._record_history is not None:
+            self._record_history.close()
+        self._pending_record_read = None
+        self._record_saved.clear()
+        if self._graph_history is not None:
+            self._graph_history.close()
         if self._point_history is not None:
             self._point_history.close()
         self._decoded.clear()
@@ -838,6 +1128,8 @@ class _TrendPermissionCache:
         self._n_permissions: dict[tuple[int, str], _NPermissionProofs] = {}
         self._annotations = _ReadonlySnapshotCache[list[dict[str, object]]](
             memory_bytes=8 * 1024 * 1024, max_entries=256)
+        # 九标量只使用原命名预算的实际余额；命名需要空间时先撤可选版本。
+        self._strategy_geometry = PermissionGeometryVersions(8 * 1024 * 1024)
 
     def source_projection(self, level: int, path: str,
                           source: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:
@@ -1269,7 +1561,9 @@ class _OwnedSourceInputs:
     """来源及行情实体只在版本变化时转换；保留每路径的最早变化位置。"""
 
     def __init__(self) -> None:
-        self._entries: dict[tuple[str, int], tuple[bytes, object, dict[str, object]]] = {}
+        self._entries: dict[
+            tuple[str, int], tuple[bytes, object, dict[str, object], bytes, Mapping[str, object], object | None]
+        ] = {}
         self._groups: dict[str, CertifiedSource] = {}
         self._slots: list[tuple[str, int]] = []
         self._costs: list[int] = [0]
@@ -1277,6 +1571,8 @@ class _OwnedSourceInputs:
         self._bars: tuple[Bar, ...] | None = None
         self._bar_count = 0
         self._unpriced: int | None = None
+        self._finite_receipts: FiniteSourceReceipts | None = None
+        self._finite_receipts_blocked = False
 
     def clear(self) -> None:
         self._entries.clear()
@@ -1287,8 +1583,17 @@ class _OwnedSourceInputs:
         self._bars = None
         self._bar_count = 0
         self._unpriced = None
+        if self._finite_receipts is not None:
+            self._finite_receipts.clear()
+        self._finite_receipts = None
+        self._finite_receipts_blocked = False
 
     def prepare(self, points: Sequence[Mapping[str, object]], bars: Sequence[Bar]) -> dict[str, Sequence[dict[str, object]]]:
+        with _source_record_scope() as scope:
+            return self._prepare(points, bars, scope)
+
+    def _prepare(self, points: Sequence[Mapping[str, object]], bars: Sequence[Bar],
+                 scope: ProducerRecordScope | None) -> dict[str, Sequence[dict[str, object]]]:
         owner = current_evidence()
         if owner is None:
             self.clear()
@@ -1297,7 +1602,20 @@ class _OwnedSourceInputs:
             self.clear()
         market = (bars if type(bars) is tuple else bars.source if type(bars) is _PrefixView
                   and type(bars.source) is tuple and is_owned_market_prefix(bars, bars.source) else None)
-        certified = type(points) is CertifiedSource and points.owner is owner
+        certified = type(points) is CertifiedSource and points.owner is owner and points._sealed
+        if not certified:
+            if self._finite_receipts is not None:
+                self._finite_receipts.clear()
+            self._finite_receipts = None
+            self._finite_receipts_blocked = False
+        elif (not self._finite_receipts_blocked
+              and (self._finite_receipts is None or self._finite_receipts.owner is not owner)):
+            self._finite_receipts = FiniteSourceReceipts(owner)
+        receipts = self._finite_receipts
+        input_records = _record_view(points, scope) if scope is not None else None
+        if scope is not None:
+            for group in self._groups.values():
+                _record_view(group, scope)
         start = (len(points) if certified and points.token is self._token else
                  points.changed_from if certified and points.parent is self._token else 0)
         if market is None or market is not self._bars or len(bars) < self._bar_count:
@@ -1323,13 +1641,19 @@ class _OwnedSourceInputs:
             self._unpriced = None
         for position in range(start, len(points)):
             point = points[position]
+            if input_records is not None and scope is not None:
+                scope.bind(input_records[position])
             path = point.get('source_path', 'path-0')
             if type(path) is not str or not path:
                 self.clear()
+                if scope is not None:
+                    raise ValueError('recorded source inputs require named source paths')
                 return _source_groups(with_price_bodies(points, bars) if bars else points)
             signature = points.keys[position] if certified else _geometry_signature(point)
-            if signature is None or not owner.finite(point):
+            if signature is None:
                 self.clear()
+                if scope is not None:
+                    raise ValueError('recorded source inputs require builtin source evidence')
                 return _source_groups(with_price_bodies(points, bars) if bars else points)
             tail = tails.setdefault(path, [])
             slot = path, kept.get(path, 0) + len(tail)
@@ -1338,24 +1662,49 @@ class _OwnedSourceInputs:
             if type(index) is int and index >= len(bars) and self._unpriced is None:
                 self._unpriced = position
             previous = old_entries.get(slot)
-            if previous is not None and previous[0] == signature and previous[1] is body:
-                transformed = previous[2]
+            validated = (certified and previous is not None and previous[0] == signature
+                         and previous[4] is point)
+            if not validated and not (receipts.check(cast(CertifiedSource, points), position)
+                                      if receipts is not None else owner.finite(point)):
+                self.clear()
+                if scope is not None:
+                    raise ValueError('recorded source inputs require finite source evidence')
+                return _source_groups(with_price_bodies(points, bars) if bars else points)
+            if (previous is not None and previous[0] == signature and previous[1] is body
+                    and previous[4] is point):
+                # 同一来源证书及行情实体已验证并拥有转换结果；池的准入容量
+                # 不影响该证明有效性，也不要求再签名嵌套的全部历史证据。
+                transformed, key = previous[2], previous[3]
+                if scope is not None:
+                    scope.bind(_record_view(self._groups[path], scope)[slot[1]])
             else:
                 transformed = with_price_bodies((point,), bars)[0] if bars else dict(point)
                 owner.publish(transformed)
-            key = _geometry_signature(transformed)
+                key = _geometry_signature(transformed)
             if key is None:
                 self.clear()
+                if scope is not None:
+                    raise ValueError('recorded source inputs require builtin transformed evidence')
                 return _source_groups(with_price_bodies(points, bars) if bars else points)
             tail.append(transformed)
             tail_keys.setdefault(path, []).append(key)
-            entries[slot] = signature, body, transformed
             entry_bytes += len(signature) + len(key) + 512
             self._slots.append(slot)
             self._costs.append(entry_bytes)
             if entry_bytes > 8 * 1024 * 1024:
                 self.clear()
+                if scope is not None:
+                    raise ValueError('recorded source inputs exceed their source budget')
                 return _source_groups(with_price_bodies(points, bars) if bars else points)
+            receipt = None
+            if receipts is not None:
+                if receipts.fit(8 * 1024 * 1024 - entry_bytes):
+                    receipt = receipts.retain(cast(CertifiedSource, points), position,
+                                              limit=8 * 1024 * 1024 - entry_bytes)
+                else:
+                    self._finite_receipts = receipts = None
+                    self._finite_receipts_blocked = True
+            entries[slot] = signature, body, transformed, key, point, receipt
         versions: dict[str, CertifiedSource] = {}
         for path in dict.fromkeys((*(path for path, count in kept.items() if count), *tails)):
             previous = self._groups.get(path)
@@ -1367,6 +1716,19 @@ class _OwnedSourceInputs:
             unchanged = (previous is not None and count + len(tail) == len(previous)
                          and all(previous.keys[count + offset] == key for offset, key in enumerate(keys)))
             versions[path] = previous if unchanged else CertifiedSource.from_tail(tail, keys, owner, previous, count)
+            if scope is not None:
+                record_point_version(versions[path], scope)
+        if scope is not None and entry_bytes + sum(version.record_metadata_bytes for version in versions.values()) > 8 * 1024 * 1024:
+            self.clear()
+            raise ValueError('recorded source inputs exceed their source budget')
+        if receipts is not None:
+            # 新尾可引用刚撤销的旧尾证明；新尾检查完成后才撤销旧登记。
+            for previous in old_entries.values():
+                receipts.release(previous[4], previous[5])
+            record_bytes = sum(version.record_metadata_bytes for version in versions.values()) if scope is not None else 0
+            if not receipts.fit(8 * 1024 * 1024 - entry_bytes - record_bytes):
+                self._finite_receipts = None
+                self._finite_receipts_blocked = True
         self._entries, self._groups = entries, versions
         self._token = points.token if certified else None
         self._bars, self._bar_count = market, len(bars)
@@ -1789,39 +2151,38 @@ def _annotate_permissions(
     for point in points:
         identity = cast(int, point['index']), cast(int, point['ordinal'])
         kind = cast(str, point['kind'])
-        counts[kind] += 1
-        labels[identity] = f'{kind}{counts[kind]}'
+        labels[identity] = permission_label(kind, counts)
         if runs and _permission_leg(runs[-1][0][-1], point):
             runs[-1][0].append(point)
         else:
             origin = _permission_origin(point, dates) if runs else None
             runs.append(([point], origin))
-    signature: bytes | None = None
-    if _cache is not None and _cache_key is not None:
-        # 标注只依赖七个点字段、分段边界、全路径编号及这些知识日的映射；
-        # incoming 证明仍在上面的起点门禁逐日核验，不缓存任何市场许可证。
-        inputs = [[{field: point[field] for field in _ANNOTATION_REFERENCE_FIELDS if field in point}
-                   for point in [*([origin] if origin is not None else []), *run]] for run, origin in runs]
-        standard = all(type(value) in (str, int, float, bool, type(None))
-            and (type(value) is not float or isfinite(value))
-            for run in inputs for point in run for value in point.values())
-        if standard:
-            clocks = [[dates.get(point.get('available_at')) for point in run] for run in inputs]
-            signature = _geometry_signature((symbol, trend_level, inputs, clocks, labels,
-                                              [origin is not None for _, origin in runs]))
-        cached = _cache.get(_cache_key, signature) if signature is not None else None
-        if cached is not None:
-            for point, fields in zip(points, cached[0], strict=True):
-                for field in _GEOMETRY_ANNOTATION_FIELDS:
-                    if field in fields:
-                        point[field] = fields[field]
-                    else:
-                        point.pop(field, None)
-            return
     derived: list[tuple[dict[str, object], dict[str, object]]] = []
+    pending: list[tuple[tuple[tuple[int, str] | None, int], bytes, list[dict[str, object]]]] = []
     context_dates = _DateOverrides(dates)
-    for run, origin in runs:
+    for run_index, (run, origin) in enumerate(runs):
         contexts = [*([origin] if origin is not None else []), *run]
+        signature: bytes | None = None
+        cache_key = (_cache_key, run_index)
+        if _cache is not None and _cache_key is not None:
+            # 每段独立标注，尾段的延伸不能令全部已结束段重新执行命名算法。
+            # 全路径编号只投影本段实际引用的坐标；前段修订导致编号改变时，
+            # 这些标签仍会使后段失效。incoming 起点每次经过上面的原门禁。
+            inputs = [{field: point[field] for field in _ANNOTATION_REFERENCE_FIELDS if field in point}
+                      for point in contexts]
+            standard = all(type(value) in (str, int, float, bool, type(None))
+                and (type(value) is not float or isfinite(value))
+                for point in inputs for value in point.values())
+            if standard:
+                clocks = [dates.get(point.get('available_at')) for point in inputs]
+                run_labels = {(cast(int, point['index']), cast(int, point['ordinal'])):
+                    labels.get((cast(int, point['index']), cast(int, point['ordinal']))) for point in contexts}
+                signature = _geometry_signature((symbol, trend_level, inputs, clocks, run_labels,
+                                                  origin is not None))
+            cached = _cache.get(cache_key, signature) if signature is not None else None
+            if cached is not None:
+                derived.extend(zip(run, cached[0], strict=True))
+                continue
         # 同一坐标可以有公开几何事实与稍晚成立的本波起点证明。引用属于
         # 本段真实上下文，不能被别段同坐标的早日期覆盖；标签仍用全路径表。
         originals: dict[tuple[int, int], Mapping[str, object]] = {
@@ -1834,6 +2195,7 @@ def _annotate_permissions(
                 context_dates[known] = int(known)
         _annotate_geometry(shadows, symbol, context_dates, trend_level=trend_level,
             _reference_originals=originals, _reference_labels=labels)
+        run_fields: list[dict[str, object]] = []
         for point, shadow in zip(run, shadows[1:] if origin is not None else shadows):
             identity = cast(int, point['index']), cast(int, point['ordinal'])
             local_label, label = cast(str, shadow['label']), labels[identity]
@@ -1846,6 +2208,9 @@ def _annotate_permissions(
                 if cast(str, level['name']).startswith(local_label + ' 的') else dict(level)
                 for level in cast(Sequence[Mapping[str, object]], fields['levels'])]
             derived.append((point, fields))
+            run_fields.append(fields)
+        if _cache is not None and _cache_key is not None and signature is not None:
+            pending.append((cache_key, signature, run_fields))
     # 所有段校验完毕才写回，绝不把许可证字段或未知扩展字段随 dict delta 带入。
     for point, fields in derived:
         for field in _GEOMETRY_ANNOTATION_FIELDS:
@@ -1853,8 +2218,9 @@ def _annotate_permissions(
                 point[field] = fields[field]
             else:
                 point.pop(field, None)
-    if _cache is not None and _cache_key is not None and signature is not None:
-        _cache.put(_cache_key, signature, [fields for _, fields in derived])
+    if _cache is not None:
+        for cache_key, signature, run_fields in pending:
+            _cache.put(cache_key, signature, run_fields)
 
 
 def _qualification_candidates(
@@ -1992,7 +2358,7 @@ def qualify_trend_structure(
     _candidate_cache: _TrendCandidateCache | None = None,
     _publication_cache: _PublicationCache | None = None,
     _readonly_publication: bool = False,
-) -> list[dict[str, object]]:
+) -> list[dict[str, object]] | FrozenPrefixList[dict[str, object]]:
     """原发布器只建立策略许可，返回值不能再成为趋势线或下一层的输入。
 
     N 的行情达标证明只追加到这个独立视图。每份许可证仍用本级真实来源、
@@ -2032,6 +2398,11 @@ def qualify_trend_structure(
         # 超过本路径行情截止的未知压力不能进入策略视图或借下一路径日历。
         if 0 <= cast(int, point['index']) <= known_index < len(bars):
             result.append(point)
+    # 可见过滤也属于资格时钟。只有没有删除任何点时才转交原冻结根；
+    # 仍不可见的旧压力以后可能入列，不能给它们虚假的稳定前缀。
+    if (owned and _readonly_publication and type(published) in (FrozenPrefixList, PointVersion)
+            and len(result) == len(published)):
+        return published
     return result
 
 
@@ -2066,6 +2437,19 @@ def _structural_tail(source: Sequence[Mapping[str, object]], points: Sequence[Ma
                 extreme = point
     if extreme is None:
         return None
+    records = current_producer_records()
+    if records is not None:
+        if type(points) not in (PointVersion, CertifiedSource) or len(cast(PointVersion, points).point_records) != len(points):
+            raise ValueError('recorded developing tail requires its anchor version')
+        records.bind(cast(PointVersion, points).point_records[-1])
+        if type(source) not in (PointVersion, CertifiedSource) or len(cast(PointVersion, source).point_records) != len(source):
+            raise ValueError('recorded developing tail requires its source version')
+        order = cast(int, extreme['index']), cast(int, extreme.get('ordinal', 0))
+        position = bisect_left(source, order, key=lambda point:
+            (cast(int, point['index']), cast(int, point.get('ordinal', 0))))
+        if position >= len(source) or source[position] is not extreme:
+            raise ValueError('recorded developing extreme must belong to its source version')
+        records.bind(cast(PointVersion, source).point_records[position])
     endpoint = dict(_strip_source_license(extreme), trend_level=trend_level, source_level=trend_level-1,
         state='developing', display_only=True, label=f'{kind}·发展', source_reversal_available_at=extreme['available_at'],
         available_at=_later_moment(cast(Moment, anchor['available_at']), cast(Moment, extreme['available_at'])))
@@ -2101,6 +2485,17 @@ def prepare_trend_lines(
     私有 _owned_source 仅用于阶段流移交其独立恢复的工作集；移交后该
     工作集只能读取，公共可变导出仍在导出边界逐点独立物化。
     """
+    evidence = current_evidence()
+    if (_owned_source and evidence is not None and evidence.record_history_enabled
+            and current_producer_records() is None):
+        with producer_record_scope(evidence.record_store()) as scope:
+            prepared = prepare_trend_lines(high_low_points, trend_level=trend_level, symbol=symbol, bars=bars,
+                _judgement_cache=_judgement_cache, _closed_paths=_closed_paths,
+                _owned_source=_owned_source, _closed_slot=_closed_slot, _versioned_source=_versioned_source)
+            _record_prepared_versions(prepared, scope, _closed_paths)
+            if _closed_paths is not None:
+                _closed_paths.finish_recorded_paths()
+            return prepared
     source_level = _trend_level(trend_level)
     groups = (_judgement_cache._inputs.prepare(high_low_points, bars)
         if _versioned_source and _judgement_cache is not None else
@@ -2138,6 +2533,9 @@ def prepare_trend_lines(
         source = (raw_source if _owned_source and _judgement_cache is not None else
                   _owned_mutable_points(raw_source, _owned_source))
         source_points = source
+        records = current_producer_records()
+        if records is not None and type(source) in (PointVersion, CertifiedSource):
+            record_point_version(cast(PointVersion, source), records)
         if type(source) is CertifiedSource and _judgement_cache is not None and _closed_paths is not None:
             source_key = trend_level, path
             previous_source = _judgement_cache._source_arrays.get(source_key)
@@ -2156,11 +2554,15 @@ def prepare_trend_lines(
             judgement = (judge_trend(source, trend_level=trend_level) if _judgement_cache is None else
                          _judgement_cache.judge(source, path=path, trend_level=trend_level,
                                                _closed_source=cutoff is not None))
+        if records is not None and _judgement_cache is not None:
+            _judgement_cache.record_result((trend_level, path), judgement, records)
         points = (_judgement_cache.export_owned(judgement.points,
-            channel=(trend_level, path, 'points'), delta=judgement._delta)
+            channel=(trend_level, path, 'points'), delta=judgement._delta,
+            _owned_result=type(judgement) is _OwnedTrendJudgement)
             if _owned_source and _judgement_cache is not None else mutable_points(judgement.points))
         events = (_judgement_cache.export_owned(judgement.candidates,
-            channel=(trend_level, path, 'candidates'), delta=judgement._delta)
+            channel=(trend_level, path, 'candidates'), delta=judgement._delta,
+            _owned_result=type(judgement) is _OwnedTrendJudgement)
             if _owned_source and _judgement_cache is not None else mutable_points(judgement.candidates))
         if _owned_source and _judgement_cache is not None and _closed_paths is not None:
             _judgement_cache.remember_export(events, _closed_paths)
@@ -2217,8 +2619,9 @@ def prepare_trend_lines(
             if _judgement_cache is not None:
                 channel = trend_level, path, 'points'
                 saved = _judgement_cache._exports.get(channel)
-                if saved is not None and saved[2] is original_points:
-                    _judgement_cache._exports[channel] = saved[0], saved[1], points, saved[3]
+                if saved is not None and saved[1]() is original_points:
+                    _judgement_cache._save_export(channel, points, _judgement_cache._export_deltas.get(channel))
+                    _judgement_cache._export_hints.pop(id(original_points), None)
                     _judgement_cache._export_hints[id(points)] = points, original_points, annotation_start or 0
         annotation_prefix = _annotate_geometry(points, symbol, definition_dates,
             trend_level=trend_level, _cache=annotation_cache,
@@ -2231,6 +2634,9 @@ def prepare_trend_lines(
             _judgement_cache.remember_export(points, _closed_paths, changed_from=annotation_prefix)
         if type(points) is PointVersion:
             points.seal()
+            records = current_producer_records()
+            if records is not None:
+                record_point_version(points, records)
         tail_index = (_judgement_cache._tail_extremes.setdefault((trend_level, path), SourceExtremes())
                       if _owned_source and _judgement_cache is not None and cutoff is None else None)
         tail = _structural_tail(source, points, path=path, trend_level=trend_level, _index=tail_index)
@@ -2263,6 +2669,38 @@ def prepare_trend_lines(
         note='统一 judge_trend 的首参数为高低点：一级用折线，二级用一级输出，三级用二级输出；'
              '六定义和严格高低点突破升级只读取这个来源。相等不升级，不等待攻击之后的回调。'
              'K线突破、交替和可选N证书只提供策略资格，不筛掉趋势线结构点；路径断点各级一致保留。')
+
+
+def _record_prepared_versions(prepared: dict[str, object], scope: ProducerRecordScope,
+                              paths: _ClosedPreparedPaths | None) -> None:
+    """封存内部最终外壳；同一数组在多个字段出现时只建立一个版本根。"""
+    versions: dict[int, PointVersion] = {}
+    for field in _ClosedPreparedPaths._fields:
+        for stroke in cast(list[dict[str, object]], prepared[field]):
+            for column in ('points', 'structural_legs'):
+                values = stroke.get(column)
+                if values is None:
+                    continue
+                version = versions.get(id(values))
+                if version is None:
+                    if type(values) in (PointVersion, CertifiedSource):
+                        version = cast(PointVersion, values)
+                    elif type(values) is list:
+                        version = PointVersion(cast(list[dict[str, object]], values)).seal()
+                    else:
+                        raise TypeError('recorded internal point arrays require exact owned versions')
+                    record_point_version(version, scope)
+                    versions[id(values)] = version
+                    versions[id(version)] = version
+                stroke[column] = version
+            anchor = stroke.get('confirmed_anchor')
+            if type(anchor) is dict:
+                prior_record = paths._lookup_point_record(anchor) if paths is not None else None
+                if prior_record is not None:
+                    scope.bind(prior_record)
+                record = scope.record_point(cast(dict[str, object], anchor))
+                if paths is not None:
+                    paths.trust_point_record(record)
 
 
 def _prepared_strokes(prepared: Mapping[str, object], field: str) -> list[Mapping[str, object]]:
@@ -2306,8 +2744,8 @@ def attach_trend_permissions(
     授予上级交易资格。没有行情或尚未可知的压力点不能进入策略视图。
 
     返回值复制顶层、路径外壳及资格数组，几何点、候选和来源数组只读共享。
-    每条路径需要修改的许可点由资格发布器独立复制，避免为三级历史反复
-    深复制全部几何证据。调用者不得通过返回的几何数组修改准备阶段结果；
+    每条路径需要修改的许可点保留独立外壳；私有只读消费者共享已冻结的
+    嵌套证明，公共调用仍独立复制。调用者不得通过返回的几何数组修改准备阶段结果；
     需要可变导出时应在导出边界另行复制。私有截止表不进入公开结果。
     私有 _owned_candidates 同样只允许阶段工作集的只读移交；N、未知
     审计值及需要归一化的容器仍沿用原公共复制，公共调用默认不移交。
@@ -2339,6 +2777,7 @@ def attach_trend_permissions(
     candidates_by_path = {stroke['source_path']: _prepared_points(stroke) for stroke in candidate_strokes}
     qualified_groups = _source_groups(qualified_source_points) if qualified_source_points is not None else {}
     qualified_strokes: list[dict[str, object]] = []
+    replay_strokes: list[StrategyGeometryStroke] = []
     legs_by_path: dict[str, list[dict[str, object]]] = {}
     n_targets: list[dict[str, object]] = []
     kind = _KINDS[trend_level]
@@ -2348,6 +2787,7 @@ def attach_trend_permissions(
         and _permission_cache._market_index is not None else None)
     owned_options: _OwnedCandidateOptions = {'_owned_candidates': True} if _owned_candidates else {}
     for source_stroke in source_strokes:
+        replay_points: PointVersion | None = None
         path = source_stroke.get('id')
         if not isinstance(path, str) or path not in cutoffs or path not in candidates_by_path:
             raise ValueError('prepared source paths require matching candidates and cutoffs')
@@ -2379,7 +2819,7 @@ def attach_trend_permissions(
             candidate_cache = (_permission_cache.candidates(trend_level)
                 if cutoff is None and _permission_cache is not None and _owned_candidates else None)
             candidate_options = owned_options.copy()
-            if _hierarchy_only and _owned_candidates:
+            if _owned_candidates:
                 candidate_options['_readonly_publication'] = True
             if candidate_cache is not None:
                 candidate_options['_candidate_cache'] = candidate_cache
@@ -2409,6 +2849,14 @@ def attach_trend_permissions(
                     qualified_strokes.append(dict(id=f'{kind}-{path}', source_path=path,
                         trend_level=trend_level, kind=kind, points=projected))
                 continue
+            if _owned_candidates and not n_target_trend_confirmation_enabled:
+                if _permission_cache is not None:
+                    _permission_cache._strategy_geometry.limit = max(
+                        0, 8 * 1024 * 1024 - _permission_cache._annotations.memory_used)
+                    replay_points = _permission_cache._strategy_geometry.project(trend_level, path, permissions)
+                # 命名标注只改顶层字段，不能写入发布检查点。嵌套证明在
+                # 内部工作集只读共享；公开可变导出仍通过原复制边界。
+                permissions = [dict(point) for point in permissions]
             if permissions and market:
                 # 命名资格附件只写本次许可，不倒写几何首次可知日。
                 permission_dates: Mapping[object, int] = _PermissionDates(
@@ -2418,6 +2866,10 @@ def attach_trend_permissions(
                     _cache=(_permission_cache._annotations
                             if _owned_candidates and _permission_cache is not None else None),
                     _cache_key=(trend_level, path))
+                if (_permission_cache is not None and _permission_cache._annotations.memory_used
+                        + _permission_cache._strategy_geometry.memory_used > 8 * 1024 * 1024):
+                    _permission_cache._strategy_geometry.discard_optional()
+                    replay_points = None
             legs = confirmed_trend_legs(permissions, trend_level=trend_level, source_path=path)
             transitions: list[dict[str, object]] = []
             if permissions:
@@ -2439,6 +2891,9 @@ def attach_trend_permissions(
         n_targets.extend(path_targets)
         legs_by_path[path] = legs
         if permissions:
+            if replay_points is not None:
+                replay_strokes.append(StrategyGeometryStroke(
+                    (('id', f'{kind}-{path}'), ('source_path', path)), replay_points))
             qualified_strokes.append(dict(id=f'{kind}-{path}', source_path=path, trend_level=trend_level,
                 kind=kind, points=permissions, confirmed_legs=legs, key_transitions=transitions,
                 view='strategy_permissions'))
@@ -2457,6 +2912,7 @@ def attach_trend_permissions(
     alternation_lows = lows(qualified_strokes, trend_level=trend_level, source_strokes=source_shells,
                            bars=landmark_market, _market_index=full_market_index)
     result = dict(prepared)
+    result.pop('_combined_a_geometry', None)
     result.pop('_path_market_end_indices')
     result.update(strokes=strokes, source_strokes=source_shells, qualified_strokes=qualified_strokes,
         candidate_strokes=candidate_shells, structure_strokes=candidate_shells,
@@ -2472,6 +2928,8 @@ def attach_trend_permissions(
             source_strokes=source_shells, _alternation_lows=alternation_lows, _market_index=full_market_index),
         bearish_turn_signals=bearish_turn_signals(qualified_strokes, landmark_market, trend_level=trend_level,
             _market_index=full_market_index))
+    if _owned_candidates and not n_target_trend_confirmation_enabled and not _hierarchy_only:
+        result['_combined_a_geometry'] = StrategyGeometry(tuple(replay_strokes))
     return result
 
 

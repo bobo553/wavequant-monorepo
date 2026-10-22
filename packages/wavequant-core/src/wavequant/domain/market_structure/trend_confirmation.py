@@ -11,7 +11,8 @@ from math import isfinite
 from hashlib import sha256
 from sys import getsizeof
 from types import MappingProxyType
-from typing import Literal, cast
+from typing import Literal, Protocol, cast
+from weakref import ReferenceType, WeakKeyDictionary, ref
 
 from ..models.model import Bar
 from .hierarchical_confirmation import session_date
@@ -19,6 +20,8 @@ from .n_trend_confirmation import NConfirmationContext, _lazy_n_permissions, pre
 from .trend_market_index import _MarketPrefixIndex, _MarketRangeIndex
 from .trend_prefix_view import _PrefixView, _VisibleReferences
 from .trend_evidence_reuse import _geometry_signature
+from .trend_frozen_state import FrozenPrefixList
+from .trend_point_version import PointVersion
 
 
 SAME_LEVEL_KEY_BREAK = "strict_same_level_market_key_break"
@@ -126,9 +129,9 @@ class ConfirmationContext:
     n_context: NConfirmationContext | None
     n_target_trend_confirmation_enabled: bool
     market_index: _MarketPrefixIndex | None = None
-    _prefix_visibility: tuple[int, ...] | None = field(default=None, repr=False, compare=False)
-    _proof_prefixes: tuple[bytes, ...] | None = field(default=None, repr=False, compare=False)
-    _reference_stops: tuple[int, ...] | None = field(default=None, repr=False, compare=False)
+    _prefix_visibility: Sequence[int] | None = field(default=None, repr=False, compare=False)
+    _proof_prefixes: Sequence[bytes] | None = field(default=None, repr=False, compare=False)
+    _reference_stops: Sequence[int] | None = field(default=None, repr=False, compare=False)
     _visible_stop: int | None = field(default=None, repr=False, compare=False)
     _projected: bool = field(default=False, repr=False, compare=False)
 
@@ -267,6 +270,60 @@ def _reference_at_cutoff(
     return reference if known == reference.known else replace(reference, known=known)
 
 
+class _ReferenceDigest(Protocol):
+    def copy(self) -> '_ReferenceDigest': ...
+    def update(self, value: bytes, /) -> None: ...
+    def digest(self) -> bytes: ...
+
+
+_REFERENCE_CACHE_BYTES = 4 * 1024 * 1024
+_REJECTION_LIMIT = 32
+# 弱键、标量拒绝记录及表容量从原预算内预留，不借拒绝记录扩大缓存。
+_REFERENCE_DATA_BYTES = _REFERENCE_CACHE_BYTES - _REJECTION_LIMIT * 1024
+
+
+def _minimum_version_bytes(length: int, reference_bytes: int) -> int:
+    """只使用必然持有的费用；不把一次分配的空槽当作未来版本的下界。"""
+    hashes = length // 32 + 1
+    total = reference_bytes + 4096 + hashes * 512
+    for count in (length, length, length + 1, length + 1, hashes, length + 1):
+        blocks = (count + 31) // 32
+        nodes = max(0, 2 * blocks - 1)
+        total += (getsizeof({}) + getsizeof([]) + nodes * (128 + getsizeof(()))
+                  + count * (getsizeof((None,)) - getsizeof(())))
+    return total
+
+
+@dataclass(frozen=True, slots=True)
+class _RejectedConfirmationVersion:
+    source: ReferenceType[PointVersion]
+    token: object
+    owner: _MarketRangeIndex
+    end: int
+    length: int
+    reference_bytes: int
+
+
+@dataclass(frozen=True)
+class _ConfirmationVersion:
+    source: ReferenceType[PointVersion]
+    token: object
+    owner: _MarketRangeIndex
+    end: int
+    references: FrozenPrefixList[_Reference | None]
+    visibility: FrozenPrefixList[int]
+    stops: FrozenPrefixList[int]
+    prefixes: FrozenPrefixList[bytes]
+    hashes: FrozenPrefixList[_ReferenceDigest]
+    costs: FrozenPrefixList[int]
+
+    @property
+    def size(self) -> int:
+        return (self.costs[-1] + 4096 + len(self.hashes) * 512
+                + sum(values.storage_bytes for values in (
+                    self.references, self.visibility, self.stops, self.prefixes, self.hashes, self.costs)))
+
+
 class _ReferenceParsingCache:
     """同一只读行情上的标量解析缓存；每次仍按当前知识日过滤。
 
@@ -277,6 +334,143 @@ class _ReferenceParsingCache:
     def __init__(self) -> None:
         self.entries: dict[bytes, tuple[_Reference, int]] = {}
         self.memory_bytes = 0
+        self.versions: WeakKeyDictionary[object, _ConfirmationVersion] = WeakKeyDictionary()
+        self.rejections: WeakKeyDictionary[object, _RejectedConfirmationVersion] = WeakKeyDictionary()
+
+    @property
+    def version_bytes(self) -> int:
+        return sum(version.size for version in self.versions.values())
+
+    def _reject_version(self, channel: object, source: PointVersion, market: _MarketPrefixIndex,
+                        end: int, reference_bytes: int) -> None:
+        # 拒绝后的旧检查点不能停在某天，让下一次失败尝试重放更长的后缀。
+        self.versions.pop(channel, None)
+        self.rejections.pop(channel, None)
+        while len(self.rejections) >= _REJECTION_LIMIT:
+            self.rejections.pop(next(iter(self.rejections)))
+        self.rejections[channel] = _RejectedConfirmationVersion(
+            ref(source), source.token, market.owner, end, len(source), reference_bytes)
+
+    def version(
+        self, channel: object, source: Sequence[Mapping[str, object]], market: _MarketPrefixIndex,
+        sessions: Mapping[str, int], end_index: int,
+    ) -> _ConfirmationVersion | None:
+        """内部来源仅解析实际修订后缀；未到知识日的输入保留原逐日路径。
+
+        不把早日的 None 缓存为永久无效。版本只保存标量，不持有源证明图；
+        所有版本和既有单点缓存共用原 4 MiB 额度。摘要仍逐字节接续原协议，
+        每 32 点保存哈希状态，较早修订最多额外重放 31 个标量签名。
+        """
+        from .owned_evidence import CertifiedSource, current_evidence
+
+        if (type(source) not in (PointVersion, CertifiedSource) or not cast(PointVersion, source)._sealed
+                or type(source) is CertifiedSource and cast(CertifiedSource, source).owner is not current_evidence()):
+            return None
+        version = cast(PointVersion, source)
+        try:
+            previous = self.versions.get(channel)
+            rejected = self.rejections.get(channel)
+        except TypeError:
+            return None
+        if previous is not None and (previous.owner is not market.owner or end_index < previous.end):
+            return None
+        other_bytes = self.version_bytes - (previous.size if previous is not None else 0)
+        reference_bytes = len(version) * 256
+        if rejected is not None and rejected.owner is market.owner and end_index >= rejected.end:
+            unchanged = (len(version) if version.token is rejected.token else
+                         version.changed_from if version.parent is rejected.token else
+                         version.changed_since(rejected.source()))
+            if unchanged >= rejected.length and len(version) >= rejected.length:
+                reference_bytes = rejected.reference_bytes + (len(version) - rejected.length) * 256
+        if _minimum_version_bytes(len(version), reference_bytes) + other_bytes > _REFERENCE_DATA_BYTES:
+            self._reject_version(channel, version, market, end_index, reference_bytes)
+            return None
+        # 容量释放、截短、旧字段修订或日期回退均重新尝试；不是按时间退避。
+        self.rejections.pop(channel, None)
+        start = (len(version) if previous is not None and version.token is previous.token else
+                 version.changed_from if previous is not None and version.parent is previous.token else
+                 version.changed_since(previous.source()) if previous is not None else 0)
+        if previous is not None:
+            start = min(start, len(previous.references), len(version))
+            if start == len(version) == len(previous.references):
+                current = replace(previous, source=ref(version), token=version.token, end=end_index)
+                self.versions[channel] = current
+                return current
+        references = previous.references.copy() if previous is not None else FrozenPrefixList[_Reference | None]()
+        visibility = previous.visibility.copy() if previous is not None else FrozenPrefixList[int]()
+        stops = previous.stops.copy() if previous is not None else FrozenPrefixList([0])
+        prefixes = previous.prefixes.copy() if previous is not None else FrozenPrefixList([sha256().digest()])
+        costs = previous.costs.copy() if previous is not None else FrozenPrefixList([0])
+        block = start // 32
+        hashes = previous.hashes.copy() if previous is not None else FrozenPrefixList[_ReferenceDigest]([sha256()])
+        digest = hashes[block].copy()
+        del hashes[block + 1:]
+        del references[start:]
+        del visibility[start:]
+        del stops[start + 1:]
+        del prefixes[start + 1:]
+        del costs[start + 1:]
+        null_signature = _geometry_signature(None)
+        assert null_signature is not None
+        for point in references.iter_range(block * 32, start):
+            signature = point._proof_signature if point is not None else null_signature
+            assert signature is not None
+            digest.update(len(signature).to_bytes(8, 'big'))
+            digest.update(signature)
+        last_reference = references[stops[-1] - 1] if stops[-1] else None
+        latest = visibility[-1] if visibility else -1
+        fields = ('index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'label', 'state', 'display_only')
+        for position, raw in enumerate(version.iter_range(start), start):
+            if type(raw) is not dict:
+                return None
+            scalar_values = [raw[field] for field in fields if field in raw]
+            if any(type(value) not in (str, int, float, bool, type(None))
+                   or type(value) is float and not isfinite(value) for value in scalar_values):
+                return None
+            index, available = raw.get('index'), raw.get('available_at')
+            known = (available if type(available) is int else
+                     market.owner.positions.get(available, ())[-1]
+                     if type(available) is str and market.owner.positions.get(available) else None)
+            if (type(index) is int and index > end_index or type(known) is int and known > end_index):
+                return None
+            point = self.parse(raw, sessions, end_index)
+            if point is not None:
+                if (last_reference is not None and (last_reference.order >= point.order
+                        or cast(int, last_reference.known) > cast(int, point.known))):
+                    return None
+                latest = max(latest, point.index, cast(int, point.known))
+                last_reference = point
+            signature = point._proof_signature if point is not None else null_signature
+            if signature is None:
+                return None
+            digest.update(len(signature).to_bytes(8, 'big'))
+            digest.update(signature)
+            references.append(point)
+            visibility.append(latest)
+            stops.append(position + 1 if point is not None else stops[-1])
+            prefixes.append(digest.digest())
+            charged = (2048 + getsizeof(signature) + sum(getsizeof(value) for value in point.raw.values())
+                       if point is not None else 256)
+            costs.append(costs[-1] + charged)
+            if (position + 1) % 32 == 0:
+                hashes.append(digest.copy())
+        for sequence in (references, visibility, stops, prefixes, hashes, costs):
+            sequence.freeze(len(sequence))
+        current = _ConfirmationVersion(ref(version), version.token, market.owner, end_index,
+                                       references, visibility, stops, prefixes, hashes, costs)
+        other_bytes = self.version_bytes - (previous.size if previous is not None else 0)
+        if current.size + other_bytes > _REFERENCE_DATA_BYTES:
+            self._reject_version(channel, version, market, end_index, costs[-1])
+            return None
+        # 版本前缀比逐点内容键更直接；在同一总额度内让出旧标量键空间。
+        while self.entries and self.memory_bytes + 2 * getsizeof(self.entries) + other_bytes + current.size > _REFERENCE_DATA_BYTES:
+            removed = self.entries.pop(next(iter(self.entries)))
+            self.memory_bytes -= removed[1]
+        if self.memory_bytes + 2 * getsizeof(self.entries) + other_bytes + current.size > _REFERENCE_DATA_BYTES:
+            self._reject_version(channel, version, market, end_index, costs[-1])
+            return None
+        self.versions[channel] = current
+        return current
 
     def parse(self, raw: Mapping[str, object], sessions: Mapping[str, int], end_index: int) -> _Reference | None:
         if type(raw) is not dict:
@@ -301,7 +495,7 @@ class _ReferenceParsingCache:
             reference = replace(reference, _proof_signature=signature)
             # 保存的 raw 只有不可变标量；保守计入字典、Fraction 和字符串开销。
             added = getsizeof(key) + getsizeof(signature) + 2048 + sum(getsizeof(value) for value in reference.raw.values())
-            if self.memory_bytes + added + 2 * getsizeof(self.entries) <= 4 * 1024 * 1024:
+            if self.memory_bytes + added + 2 * getsizeof(self.entries) + self.version_bytes <= _REFERENCE_DATA_BYTES:
                 self.entries[key] = reference, added
                 self.memory_bytes += added
         return reference
@@ -313,6 +507,7 @@ def prepare_confirmation_context(
     n_target_trend_confirmation_enabled: bool = False,
     parsed_context: ConfirmationContext | None = None,
     _market_index: _MarketPrefixIndex | None = None,
+    _reference_channel: object | None = None,
 ) -> ConfirmationContext:
     """建立当前截止位置的证书上下文，可复用同次发布的静态解析快照。
 
@@ -377,6 +572,13 @@ def prepare_confirmation_context(
                 _market_index.owner.reference_reuse = _ReferenceParsingCache()
             if type(_market_index.owner.reference_reuse) is _ReferenceParsingCache:
                 parsing = _market_index.owner.reference_reuse
+        version = (parsing.version(_reference_channel, source, _market_index, sessions, end_index)
+                   if parsing is not None and _reference_channel is not None
+                   and _market_index is not None and sessions is not None else None)
+        if version is not None:
+            return ConfirmationContext(id(source), id(bars), end_index, market, sessions,
+                version.references, True, n_points, None, False, _market_index,
+                version.visibility, version.prefixes, version.stops, version.stops[-1], False)
         references = (tuple(parsing.parse(point, cast(Mapping[str, int], sessions), end_index) for point in source)
                       if parsing is not None else
                       tuple(_reference(point, sessions, end_index) for point in source) if parsed_context is None else
