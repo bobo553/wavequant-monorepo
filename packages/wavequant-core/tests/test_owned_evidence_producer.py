@@ -3,6 +3,7 @@
 from copy import deepcopy
 from gc import get_referrers
 from typing import Never, cast
+from unittest.mock import patch
 
 import pytest
 
@@ -126,8 +127,8 @@ def test_source_license_stripping_reuses_retained_fields_and_clones_confirmation
     with OwnedEvidenceRecords() as owner, producer_record_scope(owner) as scope:
         first = scope.record_point(point)
         result = _strip_source_license(point)
-        record = scope.lookup(result)
-        assert record is not None
+        assert scope.lookup(result) is None
+        record = scope.ensure_record(result)
         assert result == expected
         assert record.field_reference('audit') == first.field_reference('audit')
         restored = _mapping(owner.materialize(record.reference))
@@ -147,8 +148,17 @@ def test_ordinary_production_preserves_original_result_and_definition_aliases(le
         for point in points:
             scope.record_point(point)
         turns = _source_turns(points, level - 1)
-        result = _ordinary_point(turns[2], turns[2:6], turns[5], trend_level=level,
-                                 direction='down', current='up', prefix_known=6, key=None, owned=True)
+        captured: list[object] = []
+        original_capture = scope._capture
+
+        def capture(root: object) -> object:
+            captured.append(root)
+            return original_capture(root)
+
+        with patch.object(scope, '_capture', side_effect=capture):
+            result = _ordinary_point(turns[2], turns[2:6], turns[5], trend_level=level,
+                                     direction='down', current='up', prefix_known=6, key=None, owned=True)
+        assert sum(root is result for root in captured) == 1
         record = scope.lookup(result)
         assert record is not None and type(result) is dict
         restored = _mapping(owner.materialize(record.reference))
@@ -169,8 +179,17 @@ def test_promotion_keeps_shared_attack_and_distinct_equal_key_references(level: 
         for point in points:
             scope.record_point(point)
         turns = _source_turns(points, level - 1)
-        result = _promoted_point(turns[2], attack=turns[5], origin=turns[2], key=turns[1],
-                                 trend_level=level, known=6, endpoint=False)
+        captured: list[object] = []
+        original_capture = scope._capture
+
+        def capture(root: object) -> object:
+            captured.append(root)
+            return original_capture(root)
+
+        with patch.object(scope, '_capture', side_effect=capture):
+            result = _promoted_point(turns[2], attack=turns[5], origin=turns[2], key=turns[1],
+                                     trend_level=level, known=6, endpoint=False)
+        assert sum(root is result for root in captured) == 1
         record = scope.lookup(result)
         assert record is not None and type(result) is dict
         restored = _mapping(owner.materialize(record.reference))

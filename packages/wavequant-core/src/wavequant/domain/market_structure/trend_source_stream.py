@@ -51,8 +51,7 @@ def _bind_promotion_record(point: dict[str, object], reference: tuple[bytes, int
         raise ValueError('source promotion requires its actual recorded dictionary root')
     root = RecordRef(*reference)
     refs = scope.owner.dictionary_refs(root)
-    fields = tuple((key, pair[1]) for key, pair in zip(point, refs))
-    scope.bind(PointRecord(point, root, fields, scope.owner))
+    scope.bind(PointRecord._from_producer(point, root, refs, scope.owner))
 
 
 @dataclass

@@ -1,3 +1,11 @@
+2026-10-23 · MONOREPO-330 record_point 单独交付
+
+用户要求先合并record_point优化，最新指令为“直接合并”。分支feat-回测增量计算根治（worktree C:/Users/zb/.codex/worktrees/backtest-linear-growth/wavequant-monorepo）已同步main 5d3882b，本次仅提交8个记录通道生产文件、5个相关测试文件和三份状态记录，安排本地no-ff合并，不推送。默认记录通道仍关闭。中间候选壳不再重复捕获，最终快照及字段复用生产者引用；临时审计点保持无记录副作用。
+
+最终三文件定向pytest 53 passed。此前扩展集剩余7项失败和局部mypy 55个错误均在未修改最新main复现，具体命令与范围见feature_list.json；不得称整体检查通过。原e7ed83c同输入100日record v2 CPU中位数下降约37.3%、账户/研究输出一致，但早于最终审计边界修复及最新main业务更新，最终合并版本没有重新测速。用户直接合并后停止追加验证。
+
+整体回测后段持续变慢尚未解决，MONOREPO-330继续in-progress。未验收的全链路增量实验安全保存在stash 8b013d28961befa88a8c468950d02bac0b607c43（record提交前保留未验收增量实验）；不要直接应用到main或覆盖本次最终修复。后续在同一任务分支同步main后按差异恢复实验，并重新确认容量核算、真实修订后缀和旧节点遍历。运行证据保留在本worktree .codex-runtime/backtest-linear-growth/，含record-v2-repeated-100-comparison.json、record-point-results.md、latest-main-existing-*.txt及receipt-v5-200-comparison.json。v5完整200日无守卫CPU仍比旧main约慢1.76倍，不能宣称根治完成。
+
 2026-10-23 · MONOREPO-356 提交并本地合并
 
 用户要求合并main。本次正N结构目标使用红色资格背景的固定起点，区间内不更新。最终差异复核完成，提交阶段8个修改生产文件局部mypy通过，git diff --check通过；本任务最终两例逐日到图表回归12通过、前端目标相关36通过。扩展回归旧兴网买点失败在未修改main同一位置复现并保留记录，不更改其断言或交易行为。356置done，330恢复唯一in-progress；保留feat-二吐目标禁买分支。仅本地提交及no-ff合并，不推送；未运行浏览器、全仓检查、线上重算、服务重启或清缓存。以下为历史阶段记录。
