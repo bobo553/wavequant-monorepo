@@ -74,6 +74,25 @@ VARIANTS.update(
 )
 SCENARIOS = {"base": "原费用", "cost_2x": "2 倍成本", "cost_3x": "3 倍成本", "capacity_half": "半容量"}
 
+# 图表只发布有展示消费者的事件。六态及资格原始证据仍由 audit 提供，
+# 不再为它们重复构造日期、价格层级和通用规则圆点。
+CHART_EVENT_POLICY = 'explicit_chart_events_v1'
+_CHART_EVENT_TYPES = frozenset((
+    'squeeze_alternation_confirmed', 'squeeze_alternation_breakout', 'squeeze_alternation_invalidated',
+    'tertiary_c_candidate', 'tertiary_c_breakout', 'tertiary_c_invalidated',
+    'hierarchy_alternation_ready', 'hierarchy_bull_matured', 'hierarchy_context_invalidated',
+    'shallow_alternation_candidate', 'n_completed', 'bear_to_bull_flip', 'bear_bull_alternation',
+    'bullish_entry_permission_confirmed', 'regime_confirmation', 'squeeze_resumption_observed',
+    'washout_reattack', 'turn_confirmed', 'turn_observation', 'bull_permission_revoked',
+    'bearish_context_frozen', 'strict_structure_interrupted', 'entry_rejected',
+    'entry_preflight_rejected', 'n_geometry_rejected', 'long_signal', 'exit_signal',
+    'long_transition_evidence',
+    # 这些事件只驱动目标线、A/B/C 波及旧版资格识别，不生成独立圆点。
+    'n_invalidated', 'n_target_source_retired', 'trading_interval_opened', 'trading_interval_closed',
+    'a_wave_confirmed', 'a_wave_upgraded', 'a_wave_extended', 'a_wave_top_confirmed', 'a_wave_invalidated',
+    'b_wave_updated', 'c_wave_started', 'c_wave_extended', 'c_wave_completed',
+))
+
 
 def day(value):
     stamp = datetime.fromisoformat(value)
@@ -738,6 +757,7 @@ class ChartRepository:
             strategy=strategy,
             execution=execution,
             price_basis=view["price_basis"],
+            chart_events=CHART_EVENT_POLICY,
         )
         with cache.lock(cache.key("adjusted_theory", key)):
             theory = cache.get("adjusted_theory", key)
@@ -820,7 +840,8 @@ class ChartRepository:
         )
         cache = self.akshare_backtester.artifacts
         theory_key = dict(source=view['backtest']['source'], symbol=symbol, start=start, asof=asof,
-            strategy=strategy, execution=execution, price_basis=view['price_basis'])
+            strategy=strategy, execution=execution, price_basis=view['price_basis'],
+            chart_events=CHART_EVENT_POLICY)
         with cache.lock(cache.key('adjusted_theory', theory_key)):
             theory = cache.get('adjusted_theory', theory_key)
             if theory is None:
@@ -917,6 +938,8 @@ class ChartRepository:
             elif stage in levels and row['state'] in ('pullback', 'invalidated'):
                 levels[stage]['status'] = '回调暂停' if row['state'] == 'pullback' else '已失效'
         for r in result.audit:
+            if r['event'] not in _CHART_EVENT_TYPES:
+                continue
             available = max(r["bar_index"], r.get("known_at", r["bar_index"]))
             if available > i:
                 continue

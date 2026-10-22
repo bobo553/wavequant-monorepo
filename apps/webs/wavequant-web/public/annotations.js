@@ -848,11 +848,8 @@ export function buildAnnotations(view, theory) {
         };
     });
     for (const event of theory?.events || []) {
-        if (
-            ["n_invalidated", "n_target_source_retired"].includes(event.event) ||
-            (theory.a_wave_policy && /^(a_wave_|b_wave_|c_wave_)/.test(event.event))
-        )
-            continue;
+        // 内部审计和目标计算事件没有独立图表标记；旧缓存也不能兜底画成圆点。
+        if (!Object.hasOwn(RULES, event.event)) continue;
         const asof = theory.asof && theory.asof < view.asof ? theory.asof : view.asof;
         if (
             event.event === "n_completed" &&

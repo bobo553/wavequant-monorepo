@@ -186,14 +186,15 @@ def test_formal_same_level_flip_precedes_local_upgrade_metadata():
 
 
 @pytest.mark.parametrize('up', [True, False])
-def test_gap_volume_candidates_never_replace_missing_alternation(up):
-    bars, geometry = scenario(up=up)
+@pytest.mark.parametrize('level', [0, 1, 2, 3])
+def test_gap_volume_observations_emit_no_candidates_or_replace_missing_alternation(up, level):
+    bars, geometry = scenario(level=level, up=up)
     geometry['strokes'][0]['points'].pop()
     _, events = replay(bars, geometry)
-    assert any(row['event'] == 'trend_lifecycle_candidate' for row in events)
-    assert all(row['confirmed'] is False for row in events if row['event'] == 'trend_lifecycle_candidate')
+    assert not any(row['event'].startswith('trend_lifecycle_candidate') for row in events)
+    assert any(row['event'] == 'trend_lifecycle_state' for row in events)
     assert not any(row.get('state') in ('转多确认', '转空确认') for row in events)
-    assert not any(lifecycle_interval_days(events, len(bars), 2, up=up))
+    assert not any(lifecycle_interval_days(events, len(bars), level, up=up))
 
 
 @pytest.mark.parametrize('up', [True, False])
