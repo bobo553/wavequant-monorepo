@@ -86,6 +86,7 @@
 
                 "2026-10-22海洋王次日倍量阴线全清：前日阳线且收盘上涨，成交量至少为再前日3倍，最高严格突破攻击前已知且未被突破的K线回落高点；紧邻下一交易日成交量至少为突破日2倍且close<open时收盘全清，不要求close<前收、反包、破前低或长上影。复用double_volume_fade_exit的突破来源及账户volume_down_exit入口，全清优先于较轻量价/压力/波段减仓；原次日阴线收低九成规则保持，T+1及可卖/流动性门禁保持。profile v145隔离旧结果，无股票/日期特判。2022-02-28和03-01报价来自用户，此前高点和基准量显式合成，完整实股历史与账户待提交时验证。",
 
+                "2026-10-22海洋王AkShare轧空当日买入：正N完成并守住原防守后，当天真实轧空且放量中大阳、收盘高于N攻击日收盘时，短时浅回撤可当天确认交替，不再等收盘突破A高；弱K、回补或缺口替代确认保留原限制。共同确认资格的N精确匹配已发布事实的级别、来源、资格起点及四个结构坐标，当天进入首N轮次，不放行其他旧N或重置已消费轮次。三级共用实现，无股票日期特判。冻结2018起826根同源行情及复权成交权限，目标5/26 N在5/31收盘买入；前缀和6/1不重复，修复后待提交验证。",
                 "2026-10-22用户最终澄清倍量次日减九成仍须突破：10/20倍量阳线突破10/15高点，10/21阴线收低。直接从攻击前真实K线找最近未被突破的回落高点（左侧不高于它、右侧严格回落，平台取最后一根），不等待正式趋势高点。攻击最高必须严格越过高点，成交量至少前日两倍，紧邻次日阴线收盘严格低于攻击日收盘则累计减至最多一成；没有突破仍不触发。V3已有volume_down_exit直接调用，移除趋势风险流依赖，不改趋势算法；保留全清优先、交易区间、T+1、可卖/流动性门禁及整手累计取整。真实K线自行识别10/15、空趋势账户测试待提交验证。",
                 "2026-10-22首N轧空轮次：有效资格内首个新完成N冻结结构与轧空低；后续N继续识别但不能替换该轮入场依据。一次轧空信号消费后，卖出、候选修订/过期和资格重开均不能重置；仅后续最低价严格跌破原低后，等待攻击晚于破低日且回撤包含破低后低点的新N。未消费候选随资格关闭，独立A/B/C推进不套用N轧空轮次。日线与分钟使用同一状态，分钟不得借当日最终收盘状态。星网真实2018起回归要求保留1/10信号、拒绝1/20重复N买点，待提交时验证。",
                 "本轮正N识别修复：V3有效资格同时发布相邻三点与共用折叠包络候选，保留折线点、ordinal及首次可知日；内部小反弹不替换外层颈线。各级资格共用来源，正倒N镜像、关闭重开、修订及期限不越界。星网完整2018起行情目标为2020-01-09突破1/03形成N、1/13轧空并使用1/08候选本地量能；真实管线及账户待提交时验证，不按股票日期特判，不改三级趋势算法。",
@@ -202,6 +203,11 @@
             ],
             "verification": [
                 {
+                    "command": "提交阶段五文件pytest中止；八文件局部mypy未完成；用户最新指示直接合并",
+                    "status": "failed",
+                    "summary": "2026-10-22先同步main 0332b91，保留双方改动与记录，profile v147、chart confirmation v161、lifecycle v34。五文件pytest出现前两项失败后尚未完成，用户再次要求直接合并，已停止本任务测试；未取得详细堆栈及汇总，不认作通过或main既有失败。海洋王5/31目标买点及收盘执行仍未验证成功。mypy先报容器注解缺失，补注后报latest高点object索引错误，最终调整动态字典标注后未复跑。按最新直接合并要求提交并本地no-ff合并，不推送重启；保留失败事实和原断言，330继续in-progress，后续定位真实历史用例失败及复核最终类型。"
+                },
+                {
                     "command": "pytest tests/test_triple_volume_breakout_clear.py tests/test_double_volume_fade_exit.py tests/test_breakout_shadow_exit.py tests/test_breakout_limit_open_exit.py tests/test_breakout_gap_clear.py tests/test_breakout_bearish_child_exit.py -q -p no:cacheprovider",
                     "status": "passed",
                     "summary": "2026-10-22用户要求合并main后，先同步最新本地main 994554c，保留双方新增记录与资格恢复定义，profile从冲突的v145升v146。六文件178项通过（2.84秒），含本次39项：上涨但收阴全清、3倍/2倍精确阈值、缺失突破拒绝、因果前缀、旧九成规则、账户全清/剩余仓位/不可卖和部分退出优先级。用户两日报价前的三根K线显式合成，不是完整实股回放。"
@@ -227,6 +233,16 @@
                     "summary": "2026-10-22海洋王三倍量上涨突破次日倍量阴线全清开发完成：复用既有真实K线高点观察器，阴阳由close/open判断，高开收阴但仍较前收上涨也触发，优先于部分减仓；原九成规则和账户门禁保持。profile v145。新增报价回归、精确边界/无突破/未来隔离/旧九成回退/账户全清与不可卖/优先级用例仅编写未执行。2/28、3/1来自用户，此前高点和基准量显式合成，不证明完整实股资格或已在页面成交。开发阶段未测试、类型、格式、构建、Git状态差异、探针或浏览器；未提交合并推送/重启，待用户安排提交后验证。独立feat-突破次日倍量阴线清仓，330其他事项及旧证据保留。"
                 },
 
+                {
+                    "command": "$env:PYTHONPATH = (Join-Path (Get-Location) 'packages/wavequant-core/src'); & E:/WorkSpace/work/wavequant-monorepo/apps/servers/wavequant-api/.venv/Scripts/python.exe .codex-runtime/diagnose_haiyangwang.py",
+                    "status": "passed",
+                    "summary": "用户明确允许AkShare海洋王定向诊断。本条仅为修复前诊断完成，不是修复验证。stock_zh_a_daily原始行情及hfq-factor按正式适配器口径构造2018起826根，保留5/28因子切换。v144日线审计5/31未开放二级资格，6/1才由倍量中大阳突破开放；5/26 N亦到6/1才发布。源码结合A55/B9日及最低收盘定位短时浅回撤需重破A高限制；首N轮次另排除资格前完成的共同确认N。最初完整账户入口因缺分钟源立即失败，同次诊断改为generate_system_signals完成，不宣称完整账户成交。证据在独立worktree .codex-runtime/haiyangwang-*。"
+                },
+                {
+                    "command": "待实际提交：pytest tests/test_haiyangwang_squeeze_entry.py tests/test_squeeze_n_round.py tests/test_alternation_duration.py tests/test_squeeze_alternation.py tests/test_squeeze_low_open_confirmation.py；修改文件局部类型及最终差异复核",
+                    "status": "not-run",
+                    "summary": "feat-轧空当日买入已编写共用放量中大阳N轧空确认和同源同窗确认N轮次接线，保留一次消费与破低约束；profile v145、lifecycle v34、chart confirmation v160隔离旧缓存。真实826根夹具、5/31截面及6/1不重复、收盘账户、三级缩放、弱K破低和来源因果边界回归仅为源码，未运行修复后回放、测试、类型、lint、格式、构建、浏览器或Git状态差异检查，未提交合并推送/重启。330保持in-progress，不宣称5/31成交已验证。"
+                },
                 {"command": "2026-10-21 isolated frozen 2132-day sh.601086 sampling; pytest tests/test_combined_a_replay.py; final minimal-fix comparison pending", "status": "not-run", "summary": "定位并修复 CombinedAReplay 容量拒绝后冷重放重新建档；该局部用例已验证，修复版完整对照仍在运行。合并版339.06秒/合并前393.72秒完整研究与账户哈希相同，未复现国芳核心计算变慢，不能宣称现场问题完全解决。3003 main API 已异常退出并等待源码变化；根因堆栈缺失。仅独立分支局部修复，未恢复其他已撤回优化，未提交合并推送。"},
                 {
                     "command": "pytest tests/test_same_level_recovery.py tests/test_trading_intervals.py tests/test_market_calculations.py tests/test_source_bear_key_break.py; modified-file mypy; real recovery-date/prefix replay",
