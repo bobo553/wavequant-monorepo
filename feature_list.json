@@ -4,6 +4,53 @@
     "activeFeature": "MONOREPO-330",
     "features": [
         {
+            "id": "MONOREPO-356",
+            "name": "confirmed-polyline-positive-n",
+            "title": "确认折线正N结构与目标独立发布",
+            "status": "done",
+            "dependencies": [],
+            "description": "桂林2022-05-11等低点正N及海洋王2021-11-02同日低高点正N漏识别。用户确认结构按折线低高低、等低点允许、后续最高价严格突破；交易资格单独判断。",
+            "scope": "共用N观察核心支持明确折线结构口径；每日消费同一已确认折线。最新用户截图指定起点与红色资格背景一致，直接复用资格窗口start_low_index/ordinal并在窗口内固定，不取每天最近低点。结构事实和目标独立发布，资格前形成日与窗口可知日分开；保留买入门禁及三级共用趋势规则，不按股票日期修补。",
+            "acceptanceCriteria": [
+                "两例真实冻结行情无需注入N或资格即可识别目标，已确认同日点保留ordinal。",
+                "等高未突破、低点破坏、未确认锚点和未来行情不制造正N；收盘未突破不抹去结构事实。",
+                "资格建立后显示红色背景固定起点以来的结构目标；历史悬停按形成日和有效区间读取，资格未建立时不泄漏未来窗口，不自动生成买入。",
+                "两例定向诊断和相关回归已获用户当次授权；未运行项目保持待验证。"
+            ],
+            "verification": [
+                {
+                    "command": "pytest tests/test_structural_positive_n.py tests/test_chart_target_windows.py -q -p no:cacheprovider --tb=short",
+                    "status": "passed",
+                    "summary": "2026-10-23 用户授权两例定向诊断及相关回归。最终12 passed in 113.50s；两例从2018起原始冻结Bar，经实际折线、三级趋势/资格、daily_signals和图表序列化，无N/资格注入。桂林5/11目标6.763865637/7.535996417，海洋王11/2目标21.378473916/22.579655355；形成日与窗口首次可知日独立，源起点等于红色背景记录，早于资格截面无未来N，原日期无LONG。图表同源去重保留交易引用。此前缺失测试图表外壳与错误读取完整分析对象的窗口字段导致失败，已修正测试装配为真实逐日入口，未弱化业务断言。"
+                },
+                {
+                    "command": "pnpm exec node --test tests/n-target-focus.test.mjs tests/bottom-n-targets.test.mjs tests/target-level-guides.test.mjs tests/buy-eligibility-overlay.test.mjs",
+                    "status": "passed",
+                    "summary": "2026-10-23 最终36通过，覆盖红色背景固定起点、资格前N的历史回看、实际测量日与可知日分离、失效边界、未来标记/目标不可见以及原目标归属。pnpm沙箱首次EPERM切换工具目录失败，已授权提升后执行Node单元测试，无浏览器。"
+                },
+                {
+                    "command": "pytest tests/test_structural_positive_n.py tests/test_eligible_polyline_n.py tests/test_eligible_folded_n.py tests/test_polyline_target_stream.py tests/test_guilin_two_t_entry.py tests/test_two_t_entry_gate.py tests/test_streaming_backtest.py -q -p no:cacheprovider --tb=short; pytest tests/test_chart_target_windows.py tests/test_streaming_backtest.py -q -p no:cacheprovider --tb=short",
+                    "status": "failed",
+                    "summary": "扩展回归65通过4失败（171.11s）：三条streaming测试替身缺少新增structural_n_events字段，补齐替身后相关13条通过（5.30s）；剩余兴网test_eligible_folded_n.py:188期待2020-01-10 LONG但不存在，同一测试在未修改主工作目录同一行复现。未放宽断言或更改无关买点，不将扩展集写成全部通过。桂林2021-09-10二吐禁买真实账户回归及相关门禁在该轮通过。"
+                },
+                {
+                    "command": "E:/WorkSpace/work/wavequant-monorepo/packages/wavequant-core: pytest tests/test_eligible_folded_n.py::test_xingwang_production_pipeline_retains_earlier_n_and_squeeze -q -p no:cacheprovider --tb=short",
+                    "status": "failed",
+                    "summary": "2026-10-23 使用未修改主工作目录src与tests对照：同一188行StopIteration，1 failed in 34.52s。该旧买点失败独立记录，未纳入本次N目标修复。"
+                },
+                {
+                    "command": "mypy --follow-imports=skip --cache-dir=<writable-runtime>/structural-n-mypy <8 modified production files>; subsequent affected 3-file check",
+                    "status": "passed",
+                    "summary": "本轮8个生产文件局部类型检查通过；后续图表去重补充TypedDict及可选ID边界，受影响structural_n_stream/backtest_analysis/visualization三文件最终通过。提交阶段再次检查全部8个修改生产文件，Success: no issues found in 8 source files。Git diff --check通过，最终差异已复核。不运行Python lint或格式化；全依赖类型、前端lint/构建、浏览器/E2E未运行。"
+                },
+                {
+                    "command": "browser E2E / online recomputation / push",
+                    "status": "not-run",
+                    "summary": "用户已要求合并main，提交阶段已复核本次24文件范围并完成局部类型及差异检查，沿用本任务最终定向回归证据。356完成，330恢复in-progress并保留其未完成验证；扩展集旧兴网失败在未修改main复现，不宣称全部回归通过。不推送、重启、清缓存或线上全区间重算。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-355",
             "name": "global-two-t-touch-entry-guard",
             "title": "正N首次触及二吐当日全局禁买",

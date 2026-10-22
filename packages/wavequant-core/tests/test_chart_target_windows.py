@@ -45,6 +45,24 @@ def target_levels(row):
             if level.get('stage') in ('one_p', 'two_t', 'five_top', 'ten_full')}
 
 
+def test_matching_structural_fact_keeps_one_chart_n_and_trading_source_identity():
+    bars = market()
+    trade = positive_n(bars)
+    structure = dict(trade, event='n_structure_completed', n_id='polyline:separate',
+        structural_target=True, target_eligible=False, scope_low_index=0, scope_low_ordinal=0,
+        real_break=True, virtual_break=True, box_anchor=12.6, equal_wave=14, one_p=17.2, two_t=21.8)
+    invalid = dict(event='n_structure_invalidated', bar_index=7, known_at=7,
+        timestamp=bars[7].timestamp.isoformat(), n_id=structure['n_id'], reason='defense_breached')
+    rows = render(bars, [trade, structure, invalid])
+    assert list(rows) == [trade['n_id']]
+    row = rows[trade['n_id']]
+    assert row['target_eligible'] is True
+    assert row['structural_target'] is True
+    assert row['n_invalidated_at'] == '2026-01-08'
+    assert target_levels(row)['two_t']['price'] == 21.8
+    assert target_levels(row)['two_t']['valid_until'] == '2026-01-07'
+
+
 def test_reformed_n_targets_stop_at_qualification_close_not_primary_source_retirement():
     bars = market()
     row = positive_n(bars, primary=False)

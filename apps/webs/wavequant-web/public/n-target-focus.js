@@ -1,4 +1,4 @@
-import { bottomNTargetCaption, isBottomNTargetSource } from "./bottom-n-targets.js";
+import { bottomNTargetCaption, isBottomNTargetSource, isStructuralNTargetSource } from "./bottom-n-targets.js";
 import { targetLevelGuide } from "./target-level-guides.js";
 import { isEligibilityNTargetSource } from "./eligibility-n-targets.js";
 
@@ -45,7 +45,8 @@ export function nTargetGuide(item, level, bars, asof) {
 
 export function isPositiveNTarget(item, asof) {
     return (
-        (isBottomNTargetSource(item?.raw, undefined, asof) || isEligibilityNTargetSource(item?.raw)) &&
+        (isBottomNTargetSource(item?.raw, undefined, asof) || isEligibilityNTargetSource(item?.raw) ||
+            isStructuralNTargetSource(item?.raw)) &&
         ["one_p", "two_t"].every((stage) =>
             item.levels?.some((level) => level.stage === stage && Number.isFinite(level.price) && level.anchor_at),
         )

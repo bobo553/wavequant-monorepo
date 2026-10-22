@@ -4,8 +4,10 @@ const C_STAGES = new Set(["c_0618", "c_equal", "c_1618"]);
 /** 目标从结构锚点画到首次突破；未突破时只在锚点上方标示短线。 */
 export function targetLevelGuide(item, level, bars, asof) {
     if (!TARGET_STAGES.has(level.stage) || !level.anchor_at || !Number.isFinite(level.price)) return null;
-    const knownAt = level.available_at || item.signal_time || item.time;
+    const availableAt = level.available_at || item.signal_time || item.time;
+    const knownAt = item.raw?.structural_target && level.measurement_at ? level.measurement_at : availableAt;
     const requestedEnd = asof || bars.at(-1)?.time;
+    if (!requestedEnd || availableAt > requestedEnd) return null;
     const end = level.valid_until && level.valid_until < requestedEnd ? level.valid_until : requestedEnd;
     if (!end || knownAt > end || !bars.some((bar) => bar.time === level.anchor_at && bar.time <= end)) return null;
     // 确认当日的上影可能先于目标成立，只有收盘可以证明当日已经突破。

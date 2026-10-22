@@ -33,11 +33,12 @@ class EligiblePolylineN:
     source rows, while sealed legacy profiles retain adjacent triples only.
     """
 
-    def __init__(self, level: int, *, folded_window: int | None = None) -> None:
+    def __init__(self, level: int, *, folded_window: int | None = None, structural: bool = False) -> None:
         if folded_window is not None and (type(folded_window) is not int or folded_window <= 0):
             raise ValueError('folded N window must be a positive integer')
         self.eligibility = TradingEligibility(level)
         self.folded_window = folded_window
+        self.structural = structural
         self._previous: dict[tuple[str, int], tuple[ReversalPoint, ...]] = {}
         self._seen: dict[tuple[str, int], set[tuple[ReversalPoint, ...]]] = {}
         self._last = -1
@@ -71,8 +72,10 @@ class EligiblePolylineN:
             if self.folded_window is not None and suffix != prior:
                 # 内部小反弹不能替换仍有效的外层颈线。只组合本窗口已确认的
                 # 原始折线点，不生成趋势顶点，也不回填窗口开放前的知识日。
-                earliest = max(window.start_low_index, now - self.folded_window)
-                triples.extend(refs for refs, _ in folded_positive_n_candidates(suffix, earliest=earliest))
+                earliest = (window.start_low_index if self.structural else
+                            max(window.start_low_index, now - self.folded_window))
+                triples.extend(refs for refs, _ in folded_positive_n_candidates(
+                    suffix, earliest=earliest, allow_equal_origin=self.structural))
                 triples.extend(refs for refs, _ in folded_inverse_n_candidates(suffix, earliest=earliest))
             for triple in triples:
                 if triple in seen:
