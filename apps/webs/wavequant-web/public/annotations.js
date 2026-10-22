@@ -1,5 +1,5 @@
 // Presentation-only mappings. Strategy conditions remain in the Python engine.
-import { bottomNTargetCaption, isBottomNTargetSource, isStructuralNTargetSource } from "./bottom-n-targets.js";
+import { bottomNTargetCaption, isBottomNTargetSource, isSelectedStructuralNSource, isStructuralNTargetSource } from "./bottom-n-targets.js";
 import { buyNTargetLevels } from "./buy-n-targets.js";
 import { isEligibilityNTargetSource } from "./eligibility-n-targets.js";
 import { cWaveExtensionLevel } from "./c-wave-extension.js";
@@ -812,6 +812,7 @@ export function buildAnnotations(view, theory) {
     for (const event of theory?.events || []) {
         // 只保留目标载体、诊断和独立地标；旧缓存中的普通规则也不再加工成紫色圆点。
         if (!Object.hasOwn(RULES, event.event)) continue;
+        if (event.event === "n_completed" && event.direction === "up" && !isSelectedStructuralNSource(event, theory)) continue;
         const asof = theory.asof && theory.asof < view.asof ? theory.asof : view.asof;
         if (isStructuralNTargetSource(event) && (!event.available_at || event.available_at > asof)) continue;
         if (
@@ -872,7 +873,9 @@ export function buildAnnotations(view, theory) {
                     : candidateRejection
                       ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${fiveTopRisk}${tenFullRisk}未产生买入信号，也未提交买单。`
                       : isStructuralNTargetSource(event)
-                        ? `已确认折线低—高—低，最高价严格突破中间高点形成正 N。计算起点与红色资格背景一致，区间内固定；本组结构于 ${event.time} 形成，于 ${event.available_at} 纳入该资格区间观察。买入资格另行判断。`
+                        ? event.structural_target_selected === true
+                            ? `这是该一级趋势唯一的底部成功正 N，一饱、二吐沿用本组目标。本组结构于 ${event.time} 形成，于 ${event.available_at} 可知；同趋势内其它 N 不再另画结构和目标。买入资格另行判断。`
+                            : `已确认折线低—高—低，最高价严格突破中间高点形成正 N。计算起点与红色资格背景一致，区间内固定；本组结构于 ${event.time} 形成，于 ${event.available_at} 纳入该资格区间观察。买入资格另行判断。`
                       : isEligibilityNTargetSource(event)
                         ? `${spec?.[1] || "已确认正 N。"}${bottomNTargetCaption(event)}，N 于 ${event.n_confirmed_at || event.available_at} 可知，资格于 ${event.display_target_confirmed_at} 确认。展示一饱、二吐及五顶、十满；未正式确认的远端目标标注预估叠箱，不改变策略测幅资格或交易结果。`
                       : event.event === "n_completed" && event.direction === "up" && event.target_eligible !== undefined

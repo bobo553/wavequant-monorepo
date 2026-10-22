@@ -1,3 +1,13 @@
+2026-10-23 · MONOREPO-358 提交合并验证记录
+
+用户要求合到main。Python相关四文件32项通过，Web两文件13项通过，Core五个修改生产文件局部mypy通过；补齐visualization两个字典类型。差异与源码复核完成。358标记done，330恢复唯一in-progress。准备提交feat-一级趋势唯一底部N并本地no-ff合并；不推送或重启，未运行浏览器/E2E或完整构建。以下为历史记录。
+
+2026-10-23 · MONOREPO-358 一级趋势唯一底部成功N（未提交）
+
+当前worktree C:/Users/zb/.codex/worktrees/single-bottom-n/wavequant-monorepo，分支feat-一级趋势唯一底部N，基于main e2d3ad5。用户用国芳集团2024-03-12截图要求每个一级趋势最多一个底部成功N及目标。已修结构N领域归属、图表唯一投影及前端所有目标入口；详细边界见两个workspace progress.md。成功沿用共用N核心突破定义，第一成功事实锁定，失效不重发名额，交易规则保持原有。
+
+新增test_structural_n_ownership.py、test_guofang_single_bottom_n.py与Web single-bottom-n.test.mjs等回归源码。国芳复用guofang_2024_squeeze_confirmation.json，不重复新增大行情文件。开发阶段严格未运行任何验证或Git状态/差异；下一步按用户提交安排做相关Python/Node回归与必要局部类型、范围复核，再提交本地合并。未推送、清缓存或重启，当前运行页面尚未应用本分支。358唯一in-progress，330仅在本分支暂置backlog并保留原未完成事实。CodeGraph新worktree索引不可用，已改用源码阅读；未重建主目录索引。以下为历史记录。
+
 2026-10-23 · MONOREPO-330 紫色圆点提交合并记录
 
 最新用户安排为合并main。本分支feat-回测增量计算根治已同步b2450f0，保留倍量收低退出与其他任务记录，三份文档冲突已协调。紫点两生产文件及相关回归、四份状态记录共10文件；Core18通过、修改生产文件局部mypy通过、Web四文件最终49通过。Web旧二饱断言在未修改main复现，仅将测试用词校正为产品既有二吐，不改业务或弱化其它断言。最终源码/差异复核、空白检查完成，按指令提交并本地no-ff合并；不推送或重启，未运行浏览器、全仓门禁或测速。

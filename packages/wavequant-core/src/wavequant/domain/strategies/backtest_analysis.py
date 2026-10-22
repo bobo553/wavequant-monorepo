@@ -82,7 +82,8 @@ def prepare_backtest_analysis(
             else None))
     targets = PolylineTargetStream(bars, config,
         publish=(lambda row: steps.append(2, row)) if steps is not None else None)
-    structures = StructuralNStream(bars, pattern_ttl=config.pattern_ttl)
+    structures = StructuralNStream(bars, pattern_ttl=config.pattern_ttl,
+        exclusive_targets=config.buy_point_definition == 'whole_flip_wave_v3')
     structural_sources = EligiblePolylineN(config.buy_interval_level,
         folded_window=config.structure_window, structural=True)
     last_progress = -1
@@ -157,7 +158,9 @@ def prepare_backtest_analysis(
         active_scopes = {(window.source_path, window.start_index)
                          for window in n_sources.eligibility.active_intervals}
         structures.advance(frame.index, structure_sources, active_scopes=active_scopes,
-                           interrupted=frame.index in pivot_state.blocked)
+                           interrupted=frame.index in pivot_state.blocked,
+                           declines=current.hierarchy.declines.get(frame.index, ()) if current.hierarchy else (),
+                           epoch=frame.epoch)
         current.structural_n_events = structures.events
         for window in n_sources.eligibility.intervals:
             if window.end_index is not None:
