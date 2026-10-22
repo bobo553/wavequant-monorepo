@@ -64,9 +64,9 @@ def test_append_and_unchanged_days_only_parse_new_references(
     parsed: list[Mapping[str, object]] = []
 
     def counted(self: confirmation._ReferenceParsingCache, raw: Mapping[str, object],
-                sessions: Mapping[str, int], end: int) -> confirmation._Reference | None:
+                sessions: Mapping[str, int], end: int, *, _retain: bool = True) -> confirmation._Reference | None:
         parsed.append(raw)
-        return original(self, raw, sessions, end)
+        return original(self, raw, sessions, end, _retain=_retain)
 
     monkeypatch.setattr(confirmation._ReferenceParsingCache, 'parse', counted)
     first = _context(source, bars, owner, 63, channel)

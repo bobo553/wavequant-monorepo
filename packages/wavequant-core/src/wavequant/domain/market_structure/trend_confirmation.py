@@ -56,7 +56,7 @@ def _market_sessions(market: Sequence[Bar]) -> _PrefixSessions:
     return _PrefixSessions(MappingProxyType({key: tuple(value) for key, value in positions.items()}), len(market) - 1)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _Reference:
     raw: Mapping[str, object]
     index: int
@@ -282,6 +282,23 @@ _REJECTION_LIMIT = 32
 _REFERENCE_DATA_BYTES = _REFERENCE_CACHE_BYTES - _REJECTION_LIMIT * 1024
 
 
+def _reference_storage_bytes(point: _Reference | None) -> int:
+    """只计版本实际持有的标量，不以单点内容缓存的固定预留代替存储量。
+
+    raw 的键来自固定字段表；值及 Fraction 分子分母均计入，单点内相同
+    对象只计一次。MappingProxy 不包含底层字典大小，必须单独计入。
+    跨点共享不抵扣，避免容量依赖来源对象的存活时间。
+    """
+    if point is None:
+        return getsizeof(None)
+    values = (*point.raw.values(), point.index, point.ordinal, point.kind, point.available,
+              point.known, point.value, point.value.numerator, point.value.denominator,
+              point._proof_signature)
+    unique = {id(value): value for value in values}
+    return (getsizeof(point) + getsizeof(point.raw) + getsizeof(dict(point.raw))
+            + sum(getsizeof(value) for value in unique.values()))
+
+
 def _minimum_version_bytes(length: int, reference_bytes: int) -> int:
     """只使用必然持有的费用；不把一次分配的空槽当作未来版本的下界。"""
     hashes = length // 32 + 1
@@ -304,7 +321,7 @@ class _RejectedConfirmationVersion:
     reference_bytes: int
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _ConfirmationVersion:
     source: ReferenceType[PointVersion]
     token: object
@@ -364,7 +381,7 @@ class _ReferenceParsingCache:
         from .owned_evidence import CertifiedSource, current_evidence
 
         if (type(source) not in (PointVersion, CertifiedSource) or not cast(PointVersion, source)._sealed
-                or type(source) is CertifiedSource and cast(CertifiedSource, source).owner is not current_evidence()):
+                or type(source) is CertifiedSource and source.owner is not current_evidence()):
             return None
         version = cast(PointVersion, source)
         try:
@@ -375,13 +392,14 @@ class _ReferenceParsingCache:
         if previous is not None and (previous.owner is not market.owner or end_index < previous.end):
             return None
         other_bytes = self.version_bytes - (previous.size if previous is not None else 0)
-        reference_bytes = len(version) * 256
+        # 未解析点可能全部无效；不能用有效点的费用作为拒绝下界。
+        reference_bytes = 0
         if rejected is not None and rejected.owner is market.owner and end_index >= rejected.end:
             unchanged = (len(version) if version.token is rejected.token else
                          version.changed_from if version.parent is rejected.token else
                          version.changed_since(rejected.source()))
             if unchanged >= rejected.length and len(version) >= rejected.length:
-                reference_bytes = rejected.reference_bytes + (len(version) - rejected.length) * 256
+                reference_bytes = rejected.reference_bytes
         if _minimum_version_bytes(len(version), reference_bytes) + other_bytes > _REFERENCE_DATA_BYTES:
             self._reject_version(channel, version, market, end_index, reference_bytes)
             return None
@@ -433,7 +451,7 @@ class _ReferenceParsingCache:
                      if type(available) is str and market.owner.positions.get(available) else None)
             if (type(index) is int and index > end_index or type(known) is int and known > end_index):
                 return None
-            point = self.parse(raw, sessions, end_index)
+            point = self.parse(raw, sessions, end_index, _retain=False)
             if point is not None:
                 if (last_reference is not None and (last_reference.order >= point.order
                         or cast(int, last_reference.known) > cast(int, point.known))):
@@ -449,9 +467,13 @@ class _ReferenceParsingCache:
             visibility.append(latest)
             stops.append(position + 1 if point is not None else stops[-1])
             prefixes.append(digest.digest())
-            charged = (2048 + getsizeof(signature) + sum(getsizeof(value) for value in point.raw.values())
-                       if point is not None else 256)
-            costs.append(costs[-1] + charged)
+            # 持久序列只计容器，所持 digest/int 在此逐后缀累计；不能漏算
+            # 日期可知位置或 Fraction，也不重扫旧前缀做内存核算。
+            charged = (_reference_storage_bytes(point) + getsizeof(latest)
+                       + getsizeof(stops[-1]) + getsizeof(prefixes[-1]))
+            cumulative = costs[-1] + charged
+            # 累计费用整数也由版本持有，包含加上自身大小时跨位宽的情况。
+            costs.append(cumulative + getsizeof(cumulative + getsizeof(cumulative)))
             if (position + 1) % 32 == 0:
                 hashes.append(digest.copy())
         for sequence in (references, visibility, stops, prefixes, hashes, costs):
@@ -472,7 +494,10 @@ class _ReferenceParsingCache:
         self.versions[channel] = current
         return current
 
-    def parse(self, raw: Mapping[str, object], sessions: Mapping[str, int], end_index: int) -> _Reference | None:
+    def parse(
+        self, raw: Mapping[str, object], sessions: Mapping[str, int], end_index: int,
+        *, _retain: bool = True,
+    ) -> _Reference | None:
         if type(raw) is not dict:
             return _reference(raw, sessions, end_index)
         fields = ('index', 'ordinal', 'time', 'kind', 'value', 'available_at', 'label', 'state', 'display_only')
@@ -481,10 +506,12 @@ class _ReferenceParsingCache:
                or type(value) is float and not isfinite(value) for value in values.values()):
             return _reference(raw, sessions, end_index)
         # 保留原编码对字段存在性、精确类型、负零及字符串别名的认证。
-        key = _geometry_signature(values)
-        if key is None:
+        # 版本已通过不可变来源令牌定位后缀，无须再编码内容键并保存第二份
+        # 单点缓存。公共可变来源仍逐次按完整内容键核验。
+        key = _geometry_signature(values) if _retain else None
+        if _retain and key is None:
             return _reference(raw, sessions, end_index)
-        saved = self.entries.get(key)
+        saved = self.entries.get(key) if key is not None else None
         if saved is not None:
             return _reference_at_cutoff(saved[0], sessions, end_index)
         reference = _reference(raw, sessions, end_index)
@@ -493,11 +520,13 @@ class _ReferenceParsingCache:
             # 行情截止变化；实际可见位置和市场资格仍由当天上下文独立计算。
             signature = _geometry_signature(dict(reference.raw))
             reference = replace(reference, _proof_signature=signature)
-            # 保存的 raw 只有不可变标量；保守计入字典、Fraction 和字符串开销。
-            added = getsizeof(key) + getsizeof(signature) + 2048 + sum(getsizeof(value) for value in reference.raw.values())
-            if self.memory_bytes + added + 2 * getsizeof(self.entries) + self.version_bytes <= _REFERENCE_DATA_BYTES:
-                self.entries[key] = reference, added
-                self.memory_bytes += added
+            if key is not None:
+                # 公共逐点缓存继续保留原费用与拒绝边界。
+                added = (getsizeof(key) + getsizeof(signature) + 2048
+                         + sum(getsizeof(value) for value in reference.raw.values()))
+                if self.memory_bytes + added + 2 * getsizeof(self.entries) + self.version_bytes <= _REFERENCE_DATA_BYTES:
+                    self.entries[key] = reference, added
+                    self.memory_bytes += added
         return reference
 
 

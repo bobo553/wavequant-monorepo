@@ -298,6 +298,8 @@
             "description": "襄阳轴承2018起和先锋新材全历史回测耗时过长；消除重复趋势与前缀证明计算，按用户最终口径共享直接下级数据，默认二级、可选一二三级资格门控。交易分析及账户只在有效资格内推进，结束当天平仓撤单，区间外停止；完整性能与结果待验证。",
             "scope": "Core热点算法、同次回测历史复用、必要区间剪枝、阶段进度和可重复差分基准；Web/API/共享设置契约接通买点筛选级别，默认二级，可选一二三级空多交替结束确认后至后续多空交替结束确认。区间外跳过交易N、A波、各档目标及买卖扫描；趋势及资格按对应级别直接来源推进，行情、复权与知识时钟继续；资格结束当天只平仓并取消未成交委托，随后区间外不处理委托、持仓风险或止损，不扩大超时或删除证明字段。统一三级六态及确认时钟与请求内检查点，补齐转空公开信号并去除未交替的转多旁路；几何不受生命周期反馈。2026-10-22按用户截图删除内部审计的蓝紫圆点、仅观察用途的跳空/放量候选计算及状态；精简图表事件投影，保留实际交易确认、资格、N与目标线消费者。",
             "acceptanceCriteria": [
+                "2026-10-23 高频卡点：行情消费窗口复用完整认证、可信拐点版本只重判变化三点组、历史图分块连续写和数值叶免无效查表；公开校验、首次可知日、精确预算和历史恢复语义保持。不得把采样调用减少当整体提速，须单列无采样同输入回放及完整账户/研究字节对照。",
+                "2026-10-23确认上下文容量退化修复：保持同请求4MiB总预算，以slots引用和实际标量/Fraction/摘要/序列元素费用替代每点2048固定预留；不可变版本后缀不再同时生成单点内容键或写第二份解析缓存。2125点主源及两个较短来源连续20日只解析新增/真实修订后缀，历史截止、旧快照、前缀摘要、未来知识和超限回退语义保持；新增回归与真实后段CPU对照待提交时验证。",
                 "2026-10-23 紫色圆点续清理：移除正N圆点（含同日多来源的其它配色）及普通紫色规则观察点，不再统计同日N圆点或单独堆叠；保留正N结构/目标/配色载体、倒N绿色、灰色诊断、候选拒绝、橙色ABC及真实B/S/信号。后端在图表审计入口排除17类只供这些规则点展示的事件，不为其转换日期/参考价/levels；图表缓存策略升v2。原始策略审计和N/资格/波段计算有独立消费者，不因删除标记而改变交易判定。回归源码已补，运行与性能收益待提交时验证，不能以圆点数量断言重复计算或P0已根治。",
                 "2026-10-22 国芳长期空翻多：恢复门槛与正式六态共同防守2021-02-08整波起点，不把2022-10-31局部L替换为该波末升低；2024-02-08交替低点在真实确认日开放资格，严格破整波起点仍阻断。三级同规则、当前路径/知识时钟/事件重放一致；完整行情结果待提交验证。",
                 "2026-10-22海洋王续修最终口径：5/26完成正N不提前开放资格，5/31真实轧空且放量中大阳时同日收盘确认资格并判断买入，不等6/1突破A高或倍量。共同确认N须同级同源同窗口同四坐标，倒N在读取身份前隔离，保留原防守与一次消费。未来A高突破不得占用更早的合格轧空；三级共用规则无股票日期特判。重新加入真实AkShare截面及收盘回归；此前海洋王目标用例通过；国芳旧失败已诊断为恢复规则新增后旧预期过期。用户本次明确直接合并，国芳新结构/资格分离回归及最新main组合复测已中止，后续待验证；profile v149。",
@@ -425,6 +427,36 @@
                 "2026-10-19 外围消费者增量化：来源、候选、许可轻量投影传递不可变版本/父令牌/最早变化位置；分组、来源认证、几何标注、结构腿共享持久前缀；许可来源/候选查找索引只更新后缀；共享层级历史在交易区间内外只更新投影后缀。旧关键位/整波起点只读引用，不删除证据，不以结构冻结代替逐日资格核验；追加、修订、截短、同坐标事实、延迟可知、跨请求失效及公开独立列表导出待提交时验证。"
             ],
             "verification": [
+                {
+                    "command": "submission_checks.py：13模块mypy及24文件pytest；用户随后要求直接合并，停止追加验证",
+                    "status": "failed",
+                    "summary": "2026-10-23 用户要求改造后合并main，随后明确“直接合并”。提交前13个修改Python模块mypy通过；24个相关测试文件395 passed、1 failed（13.75秒），完整命令及输出见本worktree .codex-runtime/confirmation-benchmark/submission-checks.json。剩余失败为 test_backtest_incremental_costs.py::test_checkpoint_save_does_not_size_frozen_prefix_again，cache.checkpoint为None；未继续诊断或确认其基线表现，不标记为已修复。此前四处失败已按既有契约修复测试：两层签名分别仅访问[78,79]、历史payload走所属解码入口、候选前全局拒绝计数、合法clone字典根复制域隔离；另补齐绘图mock连续日期，保留非法引用拒绝断言。生产类型修正不改变交易判定。本轮代码和差异已复核；按最新直接合并指令不再追加测试/类型/构建或合并组合回放，不执行浏览器、lint/格式或钩子。将保留最新本地main新增策略消费者与本轮增量pivot衔接，无远端推送。3.83%耗时/5.10%CPU改善是合并前固定基线的单次无采样对照，不能代表最新main组合版本已测速；MONOREPO-330继续in-progress，剩余检查点失败、证据图计费和弱版本释放重建留作后续。"
+                },
+                {
+                    "command": "hotspots.py --profile（固定基线/候选）；run_clean_hotspots.py（候选→基线，无CPU采样）；compare_hotspots.py",
+                    "status": "passed",
+                    "summary": "2026-10-23 高频重复工作优化。同2133日星网冻结行情、分钟、策略和执行参数；基线为上一轮确认缓存修复版，候选固定源码见hotspots-candidate-source，均PYTHONHASHSEED=0。四窗口带CPU采样只用于调用归因；随后反序运行无采样候选→基线：墙钟321.996→309.653秒（减少3.83%），CPU318.719→302.469秒（减少5.10%）。不是多轮统计结论。末20日_validate_bar 86415→5686，_same_frozen_pivot 26557→33，点字段生成器758683→0；第800日后20日seek 24976→30。请求内懒行情窗口仅认证消费空隙及连接；公共输入仍完整校验。内部拐点只撤销重算变化三点组，重复key保留全重放。历史图标量随父记录准入，64KiB连续写保留磁盘偏移/回滚；证据引用跳过不可能命中的exact数值，字段键仍完整exact str验证。未改交易规则/确认日期/预算上限。四次完整账户SHA8bdde9dd3557c22e371d6d8cd53a74dbc85bfbeb301e075d7d40fb56d27e6e30及研究SHA11f19af8369c43d051d4b35d3ac1d8d01d72b131c4dc65adbf268f1953e29122一致，分钟证据一致。报告.codex-runtime/confirmation-benchmark/HOTSPOTS-REPORT.md，逐函数计数/源文件哈希/命令见同目录hotspots-*。剩余优先项：正式判定的证据图计费（1400日采样11次累计1.95秒）、导出弱版本释放后重建（后段export_owned216次/弱引用回收72次）；本轮降低其子过程开销，没有根治弱版本失效。后续需生产者直接发布可复用持久点版本并保持所有权与预算，不能强持有旧证明掩盖。"
+                },
+                {
+                    "command": "本worktree Core venv -m pytest -q -p no:cacheprovider（两组相关文件）；固定after源码逐项复现四失败，完整命令见hotspots-checks.json",
+                    "status": "failed",
+                    "summary": "2026-10-23 本轮必要性能/差分回归：第一组10文件157 passed/2 failed（7.26s）；第二组6文件46 passed/2 failed（5.30s），有重叠不合计。四失败均在本轮修改前固定after源码逐项同样复现：旧来源编码计数4>2、旧历史payload直送owner.loads报invalidW、旧讲义entry_candidate_evaluations 0!=6、旧cloned dictionary root未抛ValueError。未改失败断言。新增长前缀/真实逐日拐点/重复key确认时钟/窗口接缝及未来坏值/逐字节签名/精确预算/分块写第1和第2批失败回滚用例均已执行。独立源码复核无剩余已确认缺陷。完整命令见hotspots-checks.json；mypy、完整套件、lint/格式/构建、浏览器及Git状态差异未运行。仍未提交、合并、推送或重启；MONOREPO-330保持in-progress，实际提交门禁待用户安排。"
+                },
+                {
+                    "command": "用户授权测速：固定b2450f0基线，仅trend_confirmation.py不同；.codex-runtime/confirmation-benchmark/run.py与summarize.py，2133日两组顺序A/B",
+                    "status": "failed",
+                    "summary": "2026-10-23 测速执行完成但整体提速验收未达标。星网2018-01-02至2026-10-21同源2133日，输入SHA6dba25b5…、分钟545f8965…，禁联网、原分钟缺失回退。第一组带计数：第2000日发布后至2020日发布后的20日版本拒绝20→0、parse42511→40、确认上下文1.0732665→0.0133643秒；完整墙钟391.559→434.943秒。第二组反序且关闭逐点计数：目标窗口3.4876174→1.9625049秒（快43.73%），CPU3.359375→1.9375秒；完整墙钟399.2298984→405.3122052秒（慢1.52%），CPU375.171875→379.953125秒（慢1.27%）。不混合两组计时、不将局部改善当整次回测提速；系统负载有波动，没有统计显著结论。四次完整账户SHA8bdde9dd…、研究SHA11f19af8…及分钟证据一致。报告与源码清单在本worktree .codex-runtime/confirmation-benchmark/REPORT.md和sources/results/comparison.json；不提交合并重启，330仍in-progress。"
+                },
+                {
+                    "command": "PYTHONPATH=本worktree/packages/wavequant-core/src；主仓库Core .venv/Scripts/python.exe -m pytest -q -p no:cacheprovider tests/test_confirmation_long_prefix_reuse.py tests/test_confirmation_storage_budget.py tests/test_confirmation_version_reuse.py tests/test_confirmation_scalar_reuse.py tests/test_confirmation_context_prefix_reuse.py --tb=short",
+                    "status": "passed",
+                    "summary": "2026-10-23 用户明确授权测速后执行确认缓存相关正确性回归，161 passed in 10.36s；源码来自本任务worktree。没有执行类型/格式/lint/构建/浏览器/全仓测试或Git状态差异，完整性能目标未完成；此前未运行记录保留为历史事实。"
+                },
+                {
+                    "command": "待提交时执行 test_confirmation_long_prefix_reuse.py、test_confirmation_storage_budget.py、test_confirmation_version_reuse.py、test_confirmation_scalar_reuse.py、test_confirmation_context_prefix_reuse.py 及修改文件局部类型；同源后段20日CPU/完整结果差分待执行",
+                    "status": "not-run",
+                    "summary": "2026-10-23 本会话feat-确认上下文缓存提速只开发确认缓存退化修复。版本缓存不再重复保存内容键，按受控持有对象与摘要/int元素累计空间，拒绝初筛不再将256字节当无效点下界；公共可变输入单点缓存、4MiB上限和确认规则保持。按用户开发节奏未运行测试、类型、格式、lint、构建、Git状态/差异或性能探针；42511解析/20次拒绝为用户提供旧证据，不作为本轮测量。未提交、合并、推送或重启；330继续in-progress。"
+                },
                 {
                     "command": "Core cwd: .venv/Scripts/python.exe -m pytest -q tests/test_chart_event_projection.py tests/test_chart_target_windows.py tests/test_abc_candidate.py --tb=short；.venv/Scripts/python.exe -m mypy --follow-imports=skip src/wavequant/interfaces/charts/visualization.py；Web cwd: pnpm exec node --test tests/annotations.test.mjs tests/abc-annotations.test.mjs tests/positive-n-reformation.test.mjs tests/n-target-focus.test.mjs；git diff HEAD --check",
                     "status": "passed",

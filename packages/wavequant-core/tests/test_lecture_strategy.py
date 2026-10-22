@@ -43,8 +43,14 @@ class LectureStrategyTests(unittest.TestCase):
                 short=generate_system_signals(bars[:i+1],c)
                 self.assertEqual(short.signals,[s for s in full.signals if s.bar_index<=i],(seed,i))
                 self.assertEqual(pivot_history(bars[:i+1],c)[0][i],snapshots[i])
-            self.assertEqual(full.counts['entry_candidate_evaluations'] if 'entry_candidate_evaluations' in full.counts else 0,
-                full.counts['entry_candidate_rejections']+full.counts['long_signals'])
+            rejected = [row for row in full.audit
+                if row['event'] in ('entry_rejected', 'entry_preflight_rejected')]
+            # legacy_v2 的全局门禁在候选循环前运行，仍计入完整拒绝审计。
+            global_rejections = sum(row.get('candidate_channel') in (
+                'global_gap_resistance', 'global_volume_candle') for row in rejected)
+            self.assertEqual(full.counts['entry_candidate_rejections'], len(rejected))
+            self.assertEqual(full.counts.get('entry_candidate_evaluations', 0) + global_rejections,
+                full.counts['entry_candidate_rejections'] + full.counts['long_signals'])
 
     def test_do_not_mutate_legacy_profile_or_lower_filters(self):
         old={'strategy':{'pivot_mode':'strict_polyline'},'folds':[{'old_result':True}],

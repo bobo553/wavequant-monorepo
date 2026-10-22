@@ -6,7 +6,7 @@ from typing import Sequence
 
 from ..models.model import Bar
 from ..market_structure.polyline import PointKind, ReversalPoint
-from ..market_structure.price_action import Direction, _index, _positive, _validate_bar, _ordered_pair
+from ..market_structure.price_action import Direction, _index, _positive, _validate_bar, _validate_bar_order
 
 
 class StrengthScale(str, Enum):
@@ -101,7 +101,7 @@ def validate_prefix(bars: Sequence[Bar], *, symbol: str, end: int):
         if bars[i].symbol != symbol:
             raise ValueError('symbol mismatch')
         if i:
-            _ordered_pair(bars[i-1], bars[i])
+            _validate_bar_order(bars[i-1], bars[i])
 
 
 def validate_pivot_prices(bars, points, end):

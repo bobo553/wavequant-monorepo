@@ -68,7 +68,7 @@ def prepare_backtest_analysis(
     on_day: Callable[[MarketDay, BacktestAnalysis], None] | None = None,
 ) -> Iterator[BacktestAnalysis]:
     from .chart_entry_history import _staged_chart_frames
-    from .lecture_strategy import LecturePivotState
+    from .lecture_strategy import LecturePivotState, _OwnedLecturePivotVersions
 
     market = tuple(bars)
     plan = resolve_calculation_plan()
@@ -78,6 +78,7 @@ def prepare_backtest_analysis(
     analysis: BacktestAnalysis | None = None
     calculations: MarketCalculations | None = None
     pivot_state = LecturePivotState()
+    pivot_versions = _OwnedLecturePivotVersions()
     n_sources = EligiblePolylineN(config.buy_interval_level,
         folded_window=(config.structure_window
             if config.buy_point_definition == 'whole_flip_wave_v3' and config.pivot_mode == 'lecture_causal'
@@ -154,7 +155,8 @@ def prepare_backtest_analysis(
         nonlocal last_progress
         current = require_analysis()
         frame = day.frame
-        points = pivot_state.advance(frame.index, frame.epoch, frame.raw)
+        points = pivot_state.advance(frame.index, frame.epoch,
+            pivot_versions.publish(frame.epoch, frame.raw))
         sources = n_sources.advance(frame.index, points, day.lifecycle_events)
         structure_sources = structural_sources.advance(frame.index, points, day.lifecycle_events)
         eligible = day.permits_buy(config.buy_interval_level)
