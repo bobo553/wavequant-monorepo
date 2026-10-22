@@ -7,39 +7,10 @@ import { combinedAEntryEvidence } from "./combined-a-entry-evidence.js";
 import { label, num, pct } from "./labels.js";
 
 const RULES = {
-    squeeze_alternation_confirmed: ["空多交替确认 · 正 N 轧空", "回调合格后，正 N 与轧空或强轧空确认 b 低点。", 168],
-    squeeze_alternation_breakout: [
-        "空多交替后突破 a 高点",
-        "最高价严格突破 a 高点，确认多头并解除突破前的 b 低点失效条件。",
-        169,
-    ],
-    squeeze_alternation_invalidated: ["空多交替低点失效", "尚未突破 a 高点，最低价先跌破 b 低点。", 169],
     tertiary_c_candidate: ["Ⅲ c 段启动候选", "正 N 与轧空确认后的三级结构观察。", 168],
     tertiary_c_breakout: ["Ⅲ c 突破 a 高点", "收盘严格突破 a 段高点。", 169],
     tertiary_c_invalidated: ["Ⅲ c 候选失效", "最低价跌破原 b 段低点。", 169],
-    hierarchy_alternation_ready: ["分级空多交替", "一级及以上的翻多后确认更高低点；V2 不使用交替回撤比例过滤。", 94],
-    hierarchy_bull_matured: ["分级完整多头", "交替已知后的后续最高价超过冻结翻多高点，之后按浅回撤买点筛选。", 93],
-    hierarchy_context_invalidated: ["分级多头失效", "结构防守被破坏，原分级入场依据失效。", 80],
-    shallow_alternation_candidate: [
-        "0.618 浅回撤交替待选",
-        "来源级低点已确认，但尚非正式二/三级交替；需等待守低横盘与放量突破。",
-        92,
-    ],
     n_completed: ["N 字完成", "实过与虚过（或实破与虚破）完成；防守点取攻击棒虚拟低／高。", 100],
-    bear_to_bull_flip: ["翻空为多", "收盘突破此前冻结的末跌高；只是趋势转换的第一步。", 95],
-    bear_bull_alternation: ["空多交替", "翻多后确认更高回档低点，并通过浅回档或随后确认高点再次突破的结构判定。", 94],
-    bullish_entry_permission_confirmed: [
-        "多头趋势确认",
-        "翻多、交替及高低点多头结构成立；之后的新 N 字才有入场资格。",
-        93,
-    ],
-    regime_confirmation: ["盘态确认", "攻击后的抵抗及后续确认由六大盘态引擎判定，不等于成交。", 90],
-    squeeze_resumption_observed: ["轧空回压恢复", "压回之后重新恢复上涨，仍须通过趋势、量能和风险收益条件。", 89],
-    washout_reattack: ["洗盘再攻击", "已知洗盘结构后的新 N 字攻击，不单独构成买入指令。", 85],
-    turn_confirmed: ["盘势扭转确认", "波段力道与次级连线条件满足当前引擎的扭转判定。", 84],
-    turn_observation: ["盘势扭转疑虑", "观察阶段，尚不能等同于完整扭转确认。", 60],
-    bull_permission_revoked: ["多头许可撤销", "原多头链条失效；在新链条成立之前不能沿用旧入场资格。", 80],
-    bearish_context_frozen: ["冻结末跌高", "使用当时已确认的空头结构冻结参考压力与波段低点。", 65],
     strict_structure_interrupted: [
         "严格折线未解",
         "缺少次级路径时不猜测高低先后，停止沿用该段结构。",
@@ -634,8 +605,6 @@ export function bullishTurnSignalAnnotations(levelLandmarks, from, to) {
 }
 export function ruleTitle(e) {
     if (e.event === "n_completed") return e.direction === "up" ? "正 N · 突破" : "倒 N · 跌破";
-    if (e.event === "regime_confirmation") return e.regime || "盘态确认";
-    if (e.event === "turn_confirmed") return e.direction === "up" ? "正扭转确认" : "负扭转确认";
     return RULES[e.event]?.[0] || label(e.event);
 }
 function squeezeConditionText(event) {
@@ -658,19 +627,11 @@ function squeezeConditionText(event) {
 function abcDescription(event, view) {
     const date = (index) => view.bars[index]?.time || "—";
     const outcome =
-        event.event === "squeeze_alternation_confirmed"
-            ? event.deep_price_path
-                ? "b 低点确认为空多交替低点；本次 N 突破抵抗阶段高点后，可同时检验 V3 入场资格及成交约束。"
-                : "b 低点确认为空多交替低点；此 N 只用于确认交替，须等待后续合格正 N 才能筛选买点。"
-            : event.event === "squeeze_alternation_breakout"
-              ? "最高价已严格突破 a 高点，解除突破前先跌破 b 的交替失效条件。"
-              : event.event === "squeeze_alternation_invalidated"
-                ? "尚未突破 a 高点就先跌破 b 低点，本次交替低点失效，撤销其入场许可。"
-                : event.event === "tertiary_c_candidate"
-                  ? "b 回调可能结束、c 段可能启动，尚不保证突破 a 高点。"
-                  : event.event === "tertiary_c_breakout"
-                    ? "当前收盘已严格突破 a 高点，c 段突破得到确认。"
-                    : "当前最低价已跌破原 b 低点，这次 c 启动候选失效。";
+        event.event === "tertiary_c_candidate"
+            ? "b 回调可能结束、c 段可能启动，尚不保证突破 a 高点。"
+            : event.event === "tertiary_c_breakout"
+              ? "当前收盘已严格突破 a 高点，c 段突破得到确认。"
+              : "当前最低价已跌破原 b 低点，这次 c 启动候选失效。";
     return `a：${date(event.a_origin_index)} ${num(event.a_origin_price)} → ${date(event.a_high_index)} ${num(event.a_high_price)}；b 低点：${date(event.b_low_index)} ${num(event.b_low_price)}。${squeezeConditionText(event)}时间按交易 K 线间隔计算，b 截止低点，不含等待 N 的时间。${date(event.attack)} 正 N，${date(event.candidate_index)} ${event.regime}确认。${outcome}结构、策略买入信号与实际成交分别判断。`;
 }
 
@@ -849,7 +810,7 @@ export function buildAnnotations(view, theory) {
         };
     });
     for (const event of theory?.events || []) {
-        // 内部审计和目标计算事件没有独立图表标记；旧缓存也不能兜底画成圆点。
+        // 只保留目标载体、诊断和独立地标；旧缓存中的普通规则也不再加工成紫色圆点。
         if (!Object.hasOwn(RULES, event.event)) continue;
         const asof = theory.asof && theory.asof < view.asof ? theory.asof : view.asof;
         if (isStructuralNTargetSource(event) && (!event.available_at || event.available_at > asof)) continue;
@@ -862,7 +823,6 @@ export function buildAnnotations(view, theory) {
             continue;
         const spec = RULES[event.event];
         const abc = ["tertiary_c_candidate", "tertiary_c_breakout", "tertiary_c_invalidated"].includes(event.event);
-        const squeezeAlternation = event.event.startsWith("squeeze_alternation_");
         const candidateRejection = event.event === "entry_rejected" || event.event === "entry_preflight_rejected";
         const eventLevels = (event.levels || [])
             .filter(
@@ -907,7 +867,7 @@ export function buildAnnotations(view, theory) {
                   ? `正 N · 重算自 ${event.reformed_from_date}`
                   : ruleTitle(event),
             description:
-                abc || squeezeAlternation
+                abc
                     ? abcDescription(event, view)
                     : candidateRejection
                       ? `当日入场候选未通过策略筛选：${reasonText(event.reason)}。${attackDate ? `对应 N 字攻击 ${attackDate}。` : ""}${riskRatio}${fiveTopRisk}${tenFullRisk}未产生买入信号，也未提交买单。`
@@ -1006,13 +966,14 @@ export function markerGroups(items, options, span = 140) {
     const groups = [];
     const rules = new Map();
     const candidates = new Map();
-    const visible = visibleAnnotations(items, options);
-    const nCounts = new Map();
-    for (const item of visible.filter(isPositiveNAnnotation)) nCounts.set(item.time, (nCounts.get(item.time) || 0) + 1);
+    // 正 N 仍供悬停目标与结构线使用，但没有独立圆点；规则标记仅保留倒 N 和灰色诊断。
+    const visible = visibleAnnotations(items, options).filter(
+        (item) =>
+            item.kind !== "rule" || item.category === "diagnostic" ||
+            (item.raw?.event === "n_completed" && item.side === "down"),
+    );
     for (const item of visible) {
-        const independentN =
-            isPositiveNAnnotation(item) && (nCounts.get(item.time) > 1 || (item.color && item.color !== "#b69af5"));
-        if ((item.kind === "rule" && !independentN) || item.category === "entry-rejections") {
+        if (item.kind === "rule" || item.category === "entry-rejections") {
             const grouped = item.category === "entry-rejections" ? candidates : rules;
             if (!grouped.has(item.time)) grouped.set(item.time, []);
             grouped.get(item.time).push(item);
@@ -1079,11 +1040,7 @@ export function markerGroups(items, options, span = 140) {
                               : isRule
                                 ? item.category === "diagnostic"
                                     ? "#8292a9"
-                                    : item.color
-                                      ? item.color
-                                      : item.raw?.event === "n_completed" && item.side === "down"
-                                        ? "#40d6a3"
-                                        : "#b69af5"
+                                    : "#40d6a3"
                                 : item.kind === "order"
                                   ? "#8292a9"
                                   : buy
@@ -1101,10 +1058,7 @@ export function markerGroups(items, options, span = 140) {
                               ? "circle"
                               : "circle",
                     text:
-                        isRule &&
-                        !(isPositiveNAnnotation(item) && nCounts.get(item.time) > 1) &&
-                        span > 70 &&
-                        index % Math.ceil(span / 70) !== 0
+                        isRule && span > 70 && index % Math.ceil(span / 70) !== 0
                             ? ""
                             : text,
                     size: isFill
@@ -1136,7 +1090,7 @@ export function avoidLabelCollisions(groups, timeToX) {
     }
     for (const g of groups.filter((g) => g.items[0].kind === "fill")) {
         const box = bounds(g);
-        if (box) occupied.push({ box, nTime: null });
+        if (box) occupied.push(box);
     }
     const ranked = groups
         .filter((g) => g.items[0].kind !== "fill")
@@ -1145,16 +1099,9 @@ export function avoidLabelCollisions(groups, timeToX) {
         if (!g.marker.text) continue;
         const box = bounds(g);
         if (!box) continue;
-        const nTime = isPositiveNAnnotation(g.items[0]) ? g.time : null;
-        // 同日独立 N 由 SDK 在 K 线上方纵向排列，两个来源文字可同时保留。
-        if (
-            occupied.some(
-                ({ box: other, nTime: otherTime }) =>
-                    !(nTime && nTime === otherTime) && box[0] < other[1] + 8 && box[1] > other[0] - 8,
-            )
-        )
+        if (occupied.some((other) => box[0] < other[1] + 8 && box[1] > other[0] - 8))
             g.marker.text = "";
-        else occupied.push({ box, nTime });
+        else occupied.push(box);
     }
     return groups;
 }

@@ -36,7 +36,7 @@ test("sizing rejection and structural cutoff have explicit Chinese explanations"
         /五顶或十满.*低开.*收盘不高于开盘.*上影.*50%.*全仓退出/,
     );
     assert.equal(reasonText("not_sellable"), "当日不满足可卖条件，退出延期");
-    assert.match(reasonText("wave_two_t_body_volume_clear"), /二饱到位后.*实体反包.*此前最近阴线.*当日收盘清空余仓/);
+    assert.match(reasonText("wave_two_t_body_volume_clear"), /二吐到位后.*实体反包.*此前最近阴线.*当日收盘清空余仓/);
     assert.match(reasonText("mother_child_inverse_n_low_break"), /阳子线低点与收盘均被严格跌破.*当日收盘清仓/);
     assert.match(reasonText("inverse_n_new_low_requires_observation"), /跌破昨低.*倒 N.*观望.*禁止新买入或加仓/);
     assert.match(reasonText("volume_bearish_child_reduce_70"), /阴子线.*减仓 70%/);
@@ -609,29 +609,29 @@ test("LONG and EXIT visible, no future SELL", () => {
     );
     assert.equal(items.filter((i) => i.category === "fills").length, 1);
 });
-test("rules are dated at availability, not their historical pivot", () => {
-    const item = buildAnnotations(view, theory).find((i) => i.id === "r1");
+test("retained inverse N markers are dated at availability, not their historical pivot", () => {
+    const [item] = buildAnnotations({ ...view, markers: [] }, {
+        events: [{ ...theory.events[0], event: "n_completed", direction: "down" }],
+    });
     assert.equal(item.time, "2026-01-02");
     assert.equal(item.sourceTime, "2026-01-01");
 });
-test("squeeze confirmation tooltip does not promise a buy from the confirming N", () => {
-    const event = {
-        id: "squeeze-confirmed",
-        event: "squeeze_alternation_confirmed",
-        time: "2026-01-01",
-        available_at: "2026-01-02",
-        price: 10.1,
-        a_origin_index: 0,
-        a_high_index: 1,
-        b_low_index: 0,
-        attack: 1,
-        candidate_index: 1,
-        regime: "轧空",
-    };
-    const item = buildAnnotations({ ...view, markers: [] }, { events: [event] }).find((entry) => entry.id === event.id);
-    assert.match(item.description, /此 N 只用于确认交替/);
-    assert.match(item.description, /后续合格正 N/);
-    assert.doesNotMatch(item.description, /此 N 可进入买点筛选/);
+test("ordinary purple rule events are discarded before preparing descriptions or levels", () => {
+    const events = [
+        "squeeze_alternation_confirmed", "squeeze_alternation_breakout", "squeeze_alternation_invalidated",
+        "hierarchy_alternation_ready", "hierarchy_bull_matured", "hierarchy_context_invalidated",
+        "shallow_alternation_candidate", "bear_to_bull_flip", "bear_bull_alternation",
+        "bullish_entry_permission_confirmed", "regime_confirmation", "squeeze_resumption_observed",
+        "washout_reattack", "turn_confirmed", "turn_observation", "bull_permission_revoked",
+        "bearish_context_frozen",
+    ].map((event) => ({
+        id: event, event, time: "2026-01-01", available_at: "2026-01-02", price: 10.1,
+        get levels() { throw new Error("removed rule levels must not be prepared"); },
+        get regime() { throw new Error("removed rule descriptions must not be prepared"); },
+    }));
+    const baseline = buildAnnotations(view, null);
+    assert.deepEqual(buildAnnotations(view, { events }), baseline);
+    assert.deepEqual(markerGroups(buildAnnotations(view, { events }), options), markerGroups(baseline, options));
 });
 test("actual fill markers use compact B and S labels at exact execution prices", () => {
     const groups = markerGroups(buildAnnotations(view, theory), options);
@@ -840,14 +840,19 @@ test("ten-full entry pause explains A-to-B depth and duration", () => {
     assert.match(item.description, /未提交买单/);
 });
 
-test("same-day rules grouped, no evidence lost", () => {
-    const rules = markerGroups(buildAnnotations(view, theory), options).filter((g) => g.items[0].kind === "rule");
+test("same-day retained diagnostics keep their gray group and evidence", () => {
+    const diagnosticTheory = { events: theory.events.slice(0, 2).map((event, index) => ({
+        ...event, event: index ? "n_geometry_rejected" : "strict_structure_interrupted",
+    })) };
+    const rules = markerGroups(buildAnnotations(view, diagnosticTheory), { ...options, diagnostics: true })
+        .filter((g) => g.items[0].kind === "rule");
     assert.equal(rules.length, 1);
     assert.equal(rules[0].items.length, 2);
     assert.equal(rules[0].marker.shape, "circle");
+    assert.equal(rules[0].marker.color, "#8292a9");
     assert.match(rules[0].marker.text, /\+1/);
 });
-test("inverse N completion uses a green circle without recoloring positive N or other rules", () => {
+test("inverse N keeps its green circle while positive N and ordinary purple rules have no markers", () => {
     const ruleView = { ...view, markers: [] };
     const ruleTheory = {
         events: [
@@ -876,19 +881,21 @@ test("inverse N completion uses a green circle without recoloring positive N or 
             },
         ],
     };
-    const groups = markerGroups(buildAnnotations(ruleView, ruleTheory), options);
+    const items = buildAnnotations(ruleView, ruleTheory);
+    const groups = markerGroups(items, options);
     const inverseN = groups.find((group) => group.id === "down-n");
     assert.equal(inverseN.marker.color, "#40d6a3");
     assert.equal(inverseN.marker.shape, "circle");
     assert.equal(inverseN.marker.position, "aboveBar");
     assert.match(inverseN.marker.text, /倒 N/);
-    assert.equal(groups.find((group) => group.id === "up-n").marker.color, "#b69af5");
-    assert.equal(groups.find((group) => group.id === "other-rule").marker.color, "#b69af5");
+    assert.deepEqual(groups.map((group) => group.id), ["down-n"]);
+    assert.equal(items.find((item) => item.id === "up-n").color, "#b69af5");
+    assert.equal(items.some((item) => item.id === "other-rule"), false);
     assert.equal(markerGroups(buildAnnotations(ruleView, ruleTheory), { ...options, rules: false }).length, 0);
 });
-test("all six regimes retain their exact names", () => {
-    for (const regime of ["轧空", "强轧空", "盘坚", "盘跌", "追杀", "强追杀"])
-        assert.equal(ruleTitle({ event: "regime_confirmation", regime }), regime);
+test("retained N target carriers and inverse N markers keep their explicit titles", () => {
+    assert.equal(ruleTitle({ event: "n_completed", direction: "up" }), "正 N · 突破");
+    assert.equal(ruleTitle({ event: "n_completed", direction: "down" }), "倒 N · 跌破");
 });
 test("signal, fill, rule and diagnostic filters independent", () => {
     const items = buildAnnotations(view, theory);
