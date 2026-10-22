@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from .trend_lines import _OwnedPolylineTurns
 
 
-LIFECYCLE_VERSION = 'six_state_polyline_volume_breakout_v33'
+LIFECYCLE_VERSION = 'six_state_volume_n_squeeze_v34'
 
 
 class LifecycleState(StrEnum):

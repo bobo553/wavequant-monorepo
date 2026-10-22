@@ -83,13 +83,13 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
             primary_filters=['first_buy_level_2_or_3_alternation','squeeze_regime','type2_whole_wave_ratio',
                              'rvol_1_2','gross_rr_1_5','next_open_net_rr_1_5'])
     config['strategy']['minimum_rvol'] = 1.0
-    config['profile_version'] = 'configurable_n_target_trend_confirmation_v146_' + variant
+    config['profile_version'] = 'configurable_n_target_trend_confirmation_v147_' + variant
     config['definition']['same_level_eligibility_recovery'] = (
         'broken_last_rise_low_blocks_until_strict_last_fall_high_break_confirmed_decline_can_replace_key')
     config['definition']['eligible_n_candidates'] = (
         'confirmed_polyline_adjacent_and_folded_envelopes_same_selected_window_original_vertex_clocks')
     config['definition']['squeeze_n_round'] = (
-        'first_qualified_n_frozen_defense_one_signal_until_strict_low_break_then_fresh_n')
+        'first_qualified_or_same_path_joint_confirming_n_frozen_defense_one_signal_until_strict_low_break_then_fresh_n')
     config['definition']['trend_confirmation_routes'] = 'same_level_key_break_or_lower_key_break_alternation_turn'
     config['definition']['n_target_trend_confirmation_enabled'] = False
     config['definition']['optional_trend_confirmation_route'] = 'source_n_strict_one_p_target'
@@ -143,7 +143,7 @@ def whole_wave_profile(legacy: dict[str, Any], variant: str = 'lecture_v3') -> d
         positive_n_resistance_window='attack_session_or_next_session_only_later_candle_facts_do_not_extend_original_n_resistance_record_confirmation_keeps_original_defense',
         resistance_attack_bar_break='window_resistance_original_defense_intact_from_third_bar_bullish_close_gt_previous_and_original_attack_close_high_gt_original_attack_high',
         resistance_attack_bar_candle='bullish_body_ge_3pct_open_and_ge_60pct_range_upper_shadow_le_20pct_range_no_next_session_confirmation',
-        alternation_short_pullback='minimum_close_above_two_thirds_and_b_duration_lt_half_a_requires_later_close_above_a_high',
+        alternation_short_pullback='short_shallow_requires_close_above_a_high_or_defended_positive_n_volume_medium_bullish_squeeze_close_above_attack',
         shallow_base_breakout='switchable_default_on_pending_level2_or_3_0_618_to_below_2_3_pullback_then_40_to_120_sessions_held_low_40_bar_narrow_base_close_break_above_all_base_highs_volume_ge_2x_20_mean_bull_body_ge_5pct_nearest_formal_high_rr_ge_1_5',
         daily_limit_fill='nonflat_limit_up_close_simulated_fill_without_queue_verification_flat_limit_up_rejected',
         secondary_breakout='latest_confirmed_level2_high_resisted_attack_or_response_requires_later_clean_bullish_record_close_with_original_defense_held',

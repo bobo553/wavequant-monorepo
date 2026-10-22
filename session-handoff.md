@@ -1,3 +1,18 @@
+2026-10-22 · 海洋王轧空买入按最新指示直接合并
+
+用户在提交检查运行期间再次要求“直接合并”，按最新指示停止等待，不追加回归。已同步本地main 0332b91，保留资格恢复/卖出规则及双方记录；策略v147、chart confirmation v161、lifecycle v34。五文件pytest进度出现前两项失败，随后仍运行；已中止本任务测试，未取得失败堆栈及最终汇总，不把剩余检查算通过，也未证明属于main既有失败。海洋王5/31买点及收盘成交尚未验证成功。局部mypy先报两个容器缺少类型标注；补注后报latest高点object索引错误，最后按现有动态字典边界调整标注，未再执行类型检查，不能宣称通过。生产差异已复核，首次差异空白检查通过，最终提交差异检查另执行。
+
+按用户最新直接合并要求提交本任务并本地no-ff合并，不推送/重启；保留分支、worktree及同步时Git保留的stash备份。MONOREPO-330继续in-progress，新增真实历史回归失败原因与最终局部类型仍待后续处理；没有修改断言掩盖失败。以下开发阶段待验证和其他会话记录保留。
+2026-10-22 · MONOREPO-330 海洋王正N轧空当日买入（待提交验证）
+
+本会话 worktree：`C:/Users/zb/.codex/worktrees/positive-n-squeeze-entry/wavequant-monorepo`；分支 `feat-轧空当日买入`，基线本地 main `0faa6b3c`。用户确认AkShare并授权一次定向诊断，未要求提交合并或开发期测试。以下其他会话合并授权不适用于本会话。
+
+修复前诊断采用AkShare/新浪stock_zh_a_daily原始行情及hfq-factor，正式适配器口径构造2018起至2021-06-01的826根（保留5/28除权切换）。v144审计5/31无二级资格、6/1才以倍量突破开放；5/26 N也到资格开放才发布，轮次另拒绝资格前N。结合源码A/B为55/9日定位短时浅回撤需重破A高的限制，1.91倍量不是要求倍量的问题。完整账户入口最初因缺分钟源立即拒绝，同次诊断改用日线generate_system_signals完成；没有完整账户成交证据。脚本`.codex-runtime/diagnose_haiyangwang.py`，输入/旧审计/日志`.codex-runtime/haiyangwang-*`，不可当修复后结果。
+
+共用squeeze_alternations新增正N完成后真实轧空、放量中大阳且收盘高于攻击日的短时浅回撤确认；保留A/B、防守及深回撤约束，弱K、回补和缺口替代仍走原门槛。附带N颈线坐标；squeeze_n_round/integrated_strategy只接纳已发布证据中同级、同来源、同资格起点、同四坐标的确认N跨资格起点参与轮次，保留消费/破低规则。三级共用，无股票日期特判。profile v145、生命周期v34、chart confirmation v160，提交合并时协调最新main版本。
+
+新增`tests/fixtures/haiyangwang_2021_squeeze.json`、`test_haiyangwang_squeeze_entry.py`，扩展`test_squeeze_n_round.py`，覆盖真实截面/截至6/1、原N不重复、收盘账户、三级/缩放及弱K/破低/来源因果边界，均未运行。下一步按实际提交安排运行新增及相邻轧空/短回撤回归和局部类型；完整流式账户还需同源分钟。未执行修复后探针、测试、lint、格式、类型、构建、浏览器、Git状态/差异检查，未提交合并推送或重启，330保持in-progress。保留以下其他会话记录。
+
 2026-10-22 · 三倍量突破次日倍量阴线清仓提交验证完成
 
 按用户“合并到main”进入提交阶段，独立feat-突破次日倍量阴线清仓已同步最新本地main 994554c。保留并行资格恢复改动及双方进度/交接记录，策略版本升v146，避免复用main已使用的v145缓存。六文件pytest（test_triple_volume_breakout_clear、test_double_volume_fade_exit及四组相邻突破退出）178 passed，2.84秒；四修改Python文件mypy --follow-imports=skip通过。首次NUL缓存配置触发mypy内部错误，换本任务可写目录并禁用增量后通过，未改依赖或忽略诊断。冲突解决后差异空白检查通过。
