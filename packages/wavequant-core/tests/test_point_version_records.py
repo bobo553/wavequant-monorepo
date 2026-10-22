@@ -33,13 +33,13 @@ def test_append_records_only_new_points_and_preserves_shared_proofs_across_block
         assert extended.evidence_sequence is None
         visited = []
         with producer_record_scope(store, inputs=(first.point_records[64],)) as scope:
-            capture = scope.record_point
+            capture = scope.ensure_record
 
             def record(point):
                 visited.append(point)
                 return capture(point)
 
-            with patch.object(scope, 'record_point', side_effect=record):
+            with patch.object(scope, 'ensure_record', side_effect=record):
                 root = record_point_version(extended, scope)
         assert visited == [new_point]
         assert root is not None and extended.record_store is store
@@ -81,13 +81,13 @@ def test_mutation_before_final_seal_rewrites_the_exact_uncertified_suffix(operat
         changed.seal()
         visited = []
         with producer_record_scope(store) as scope:
-            capture = scope.record_point
+            capture = scope.ensure_record
 
             def record(point):
                 visited.append(point)
                 return capture(point)
 
-            with patch.object(scope, 'record_point', side_effect=record):
+            with patch.object(scope, 'ensure_record', side_effect=record):
                 root = record_point_version(changed, scope)
         assert visited == list(changed.iter_range(start))
         assert root is not None and store.materialize(root.reference) == list(changed)
@@ -144,7 +144,7 @@ def test_truncation_changes_only_visible_root_without_recapturing_points():
             old = record_point_version(first, scope)
         short = PointVersion(previous=first, start=31).seal()
         with producer_record_scope(store) as scope, patch.object(
-            scope, 'record_point', side_effect=AssertionError('truncation captured old points'),
+            scope, 'ensure_record', side_effect=AssertionError('truncation captured old points'),
         ):
             root = record_point_version(short, scope)
         assert old is not None and root is not None
@@ -222,7 +222,7 @@ def test_empty_and_unchanged_versions_have_complete_constant_roots():
         assert sequence is not None and store.materialize(sequence.reference) == []
         assert len(version.point_records) == 0
         with producer_record_scope(store) as scope, patch.object(
-            scope, 'record_point', side_effect=AssertionError('unchanged points were captured'),
+            scope, 'ensure_record', side_effect=AssertionError('unchanged points were captured'),
         ):
             count = store.record_count
             assert record_point_version(version, scope) is sequence

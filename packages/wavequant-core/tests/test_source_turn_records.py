@@ -45,11 +45,15 @@ def test_old_source_turn_rebinds_only_field_roots_after_its_scope_closes(level: 
             # 新 candidate 没有新 list；旧 audit 列表必须止于已知字段根。
             with patch.object(store, 'write_list', side_effect=AssertionError('historical proof was re-encoded')):
                 candidate = _candidate_from_source(turn)
+                assert second.lookup(candidate) is None
+                captured = second.ensure_record(candidate)
             restored = second.lookup(turn.source)
-            captured = second.lookup(candidate)
             assert restored is not None and captured is not None
             assert captured.reference != restored.reference
             assert captured.field_reference('audit') == restored.field_reference('audit')
+            count = store.record_count
+            assert second.ensure_record(candidate) is captured
+            assert store.record_count == count
             root = store.write_list([restored.reference, captured.reference])
         values = cast(list[dict[str, object]], store.materialize(root))
         assert values[0]['audit'] is values[1]['audit']
@@ -68,8 +72,9 @@ def test_true_deepcopy_drops_the_old_root_and_preserves_an_independent_alias_dom
         with producer_record_scope(store) as scope:
             original_candidate = _candidate_from_source(turn)
             copied_candidate = _candidate_from_source(copied)
-            original_record = scope.lookup(original_candidate)
-            copied_record = scope.lookup(copied_candidate)
+            assert scope.lookup(original_candidate) is None and scope.lookup(copied_candidate) is None
+            original_record = scope.ensure_record(original_candidate)
+            copied_record = scope.ensure_record(copied_candidate)
             assert original_record is not None and copied_record is not None
             root = store.write_list([_reference(turn), original_record.reference, copied_record.reference])
         values = cast(list[dict[str, object]], store.materialize(root))
@@ -111,7 +116,8 @@ def test_owned_upgrade_state_records_the_published_shell_instead_of_its_source_r
             # 旧 merged 状态关闭原 scope 后依旧能成为下次候选来源。
             for point in state.merged.values():
                 candidate = _candidate_from_source(point)
-                record = scope.lookup(candidate)
+                assert scope.lookup(candidate) is None
+                record = scope.ensure_record(candidate)
                 assert record is not None and store.materialize(record.reference) == candidate
 
 

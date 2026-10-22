@@ -1,3 +1,5 @@
+2026-10-23 合并协调：同步main最新record_point提交，双方进度与失败记录完整保留；按用户直接合并要求，同步后不追加验证。
+
 2026-10-23 · MONOREPO-357 按用户要求直接本地合并
 
 用户先要求合并，检查已返回后进一步明确“直接合并不要检查”，已停止所有追加检查，仅执行记录、提交及本地no-ff合并，不推送。首轮相关pytest为201通过39失败；新增余仓测试index0入场缺此前成交量基准而未建仓，夹具问题未修复；其余38项在未修改main对照同样失败（88通过38失败）。真实海洋王12/2账户全清/不可卖用例本轮通过。5文件局部mypy通过，新增Node文案用例通过，旧trade-reasons套件缺jsdom未启动。未追加验证或补依赖，不能宣称检查全部通过；357保持backlog待验收，330恢复唯一in-progress。以下为此前阶段记录。
@@ -7,6 +9,13 @@
 继续使用feat-二吐目标禁买独立worktree，已同步上轮main合并5d3882b。用户已确认海洋王11/2正N现在显示，相关只读诊断已结束、未进一步改N代码。新任务：12/1倍量、12/2继续放量收低即当日清空。已新增double_volume_lower_close_exit.py共用规则，接入staged_exit和账户全清优先级；strategy_profiles升v154，Web增加原因及量价证据。
 
 新增test_double_volume_lower_close_exit.py使用既有真实行情夹具并以显式入场隔离实际账户退出；Web新增double-volume-lower-close-reason.test.mjs。按AGENTS开发节奏本轮未执行验证、Git状态/差异、提交合并或推送。357唯一in-progress，330暂置backlog保留旧证据；下一步实际提交时运行相关量价回归、修改文件局部类型与Node文案检查，复核后按用户安排提交。此前兴网旧买点失败仍保留，不纳入本次修复。以下为历史记录。
+2026-10-23 · MONOREPO-330 record_point 单独交付
+
+用户要求先合并record_point优化，最新指令为“直接合并”。分支feat-回测增量计算根治（worktree C:/Users/zb/.codex/worktrees/backtest-linear-growth/wavequant-monorepo）已同步main 5d3882b，本次仅提交8个记录通道生产文件、5个相关测试文件和三份状态记录，安排本地no-ff合并，不推送。默认记录通道仍关闭。中间候选壳不再重复捕获，最终快照及字段复用生产者引用；临时审计点保持无记录副作用。
+
+最终三文件定向pytest 53 passed。此前扩展集剩余7项失败和局部mypy 55个错误均在未修改最新main复现，具体命令与范围见feature_list.json；不得称整体检查通过。原e7ed83c同输入100日record v2 CPU中位数下降约37.3%、账户/研究输出一致，但早于最终审计边界修复及最新main业务更新，最终合并版本没有重新测速。用户直接合并后停止追加验证。
+
+整体回测后段持续变慢尚未解决，MONOREPO-330继续in-progress。未验收的全链路增量实验安全保存在stash 8b013d28961befa88a8c468950d02bac0b607c43（record提交前保留未验收增量实验）；不要直接应用到main或覆盖本次最终修复。后续在同一任务分支同步main后按差异恢复实验，并重新确认容量核算、真实修订后缀和旧节点遍历。运行证据保留在本worktree .codex-runtime/backtest-linear-growth/，含record-v2-repeated-100-comparison.json、record-point-results.md、latest-main-existing-*.txt及receipt-v5-200-comparison.json。v5完整200日无守卫CPU仍比旧main约慢1.76倍，不能宣称根治完成。
 
 2026-10-23 · MONOREPO-356 提交并本地合并
 

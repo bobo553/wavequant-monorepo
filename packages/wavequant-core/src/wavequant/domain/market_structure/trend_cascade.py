@@ -30,8 +30,7 @@ def _promotion_carrier(point: dict[str, object], reference: _PromotionReference,
     """仅恢复同请求、生产后未修改的promotion外壳，不展开其证明。"""
     root = RecordRef(*reference)
     refs = store.dictionary_refs(root)
-    fields = tuple((key, pair[1]) for key, pair in zip(point, refs))
-    return PointRecord(point, root, fields, store)
+    return PointRecord._from_producer(point, root, refs, store)
 
 
 def _promotion_source_record(points: Sequence[Mapping[str, object]], position: int,

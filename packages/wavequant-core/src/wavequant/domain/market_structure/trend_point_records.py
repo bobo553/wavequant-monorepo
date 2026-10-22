@@ -27,8 +27,8 @@ class PointRecordView(Sequence[PointRecord]):
     def _point(self, position: int, reference: RecordRef) -> PointRecord:
         value = self._version[position]
         refs = self._store.dictionary_refs(reference)
-        fields = tuple((key, pair[1]) for key, pair in zip(value, refs))
-        return PointRecord(value, reference, fields, self._store)
+        # sequence 给出该位置的真实根；刚解析的字段无需再由构造器读一遍。
+        return PointRecord._from_producer(value, reference, refs, self._store)
 
     @overload
     def __getitem__(self, index: int) -> PointRecord: ...
@@ -99,7 +99,7 @@ def record_point_version(version: 'PointVersion', scope: ProducerRecordScope | N
         return previous
     references: list[RecordRef] = []
     for point in version.iter_range(start):
-        record = scope.record_point(point)
+        record = scope.ensure_record(point)
         if record.value is not point or record.owner is not scope.owner:
             raise ValueError('recorded point must retain its exact version dictionary')
         references.append(record.reference)

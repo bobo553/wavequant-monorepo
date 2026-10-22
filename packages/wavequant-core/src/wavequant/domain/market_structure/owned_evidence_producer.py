@@ -33,6 +33,28 @@ class PointRecord:
         object.__setattr__(self, '_values', tuple(self.value.values()))
         object.__setattr__(self, '_keys', tuple(key for key, _ in refs))
 
+    @classmethod
+    def _from_producer(cls, value: dict[str, object], reference: RecordRef,
+                       refs: tuple[tuple[RecordRef, RecordRef], ...],
+                       owner: OwnedEvidenceRecords) -> 'PointRecord':
+        """移交刚写完或从同一根解析的字段引用；不把私有收据重新读回验证。
+
+        调用方必须已经完成该根事务，或刚通过 dictionary_refs 解析该根。
+        外部传入字段仍走公开构造器，不能用此入口认证任意 RecordRef。
+        """
+        if type(value) is not dict or any(type(key) is not str for key in value):
+            raise TypeError('point records require an exact dictionary with string keys')
+        if len(refs) != len(value):
+            raise ValueError('point record fields must match its dictionary root')
+        result = object.__new__(cls)
+        object.__setattr__(result, 'value', value)
+        object.__setattr__(result, 'reference', reference)
+        object.__setattr__(result, 'fields', tuple((key, pair[1]) for key, pair in zip(value, refs)))
+        object.__setattr__(result, 'owner', owner)
+        object.__setattr__(result, '_values', tuple(value.values()))
+        object.__setattr__(result, '_keys', tuple(key for key, _ in refs))
+        return result
+
     def matches(self, point: object) -> bool:
         """最终浅标注可能改字段；仅同一外壳及同序字段身份可沿用整个根。"""
         return (point is self.value and len(self.value) == len(self.fields)
@@ -62,7 +84,12 @@ class ProducerRecordScope:
         self._binding_bytes: dict[int, int] = {}
         self._clone_bytes: dict[int, int] = {}
         self._outputs: dict[int, None] = {}
-        self.memory_used = 2048
+        self.stats = dict(record_point_requests=0, ensure_record_requests=0, ensure_value_requests=0,
+                          captures=0, new_nodes=0, known_root_reuses=0, field_decodes=0,
+                          capture_node_visits=0, container_expansions=0, known_node_skips=0)
+        # 计数也占原作用域额度，不建立第二份业务对象索引或扩大预算。
+        self.memory_used = 2048 + getsizeof(self.stats) + sum(
+            getsizeof(key) + getsizeof(value) + 32 for key, value in self.stats.items())
         self.peak_bytes = self.memory_used
         self._closed = False
 
@@ -173,15 +200,42 @@ class ProducerRecordScope:
         binding = self._bindings.get(id(value))
         return binding[1] if binding is not None and binding[0] is value else None
 
-    def _capture(self, root: dict[str, object]) -> tuple[RecordRef, dict[int, tuple[object, RecordRef]]]:
+    def reference_of(self, value: object) -> RecordRef | None:
+        """仅查询本作用域已有证明；可变点壳仍须匹配原字段身份。"""
+        self._require_open()
+        return self._reference(value)
+
+    def ensure_value(self, value: object) -> RecordRef:
+        """新字段只捕获一次；既有字段连接原引用，不先记录半成品点。"""
+        self._require_open()
+        self.stats['ensure_value_requests'] += 1
+        known = self._reference(value)
+        if known is not None:
+            self.stats['known_root_reuses'] += 1
+            return known
+        tracked = self._points.get(id(value))
+        if tracked is not None and tracked.value is value:
+            # 已登记的可变点壳变更后，不能留下旧快照遮住刚写的新绑定。
+            # 它原本就是严格点类型，仍沿同一字段身份校验更新其载体。
+            return self.ensure_record(cast(dict[str, object], value)).reference
+        reference, bindings, _ = self._capture(value)
+        self._commit(bindings)
+        return reference
+
+    def _capture(self, root: object) -> tuple[
+        RecordRef, dict[int, tuple[object, RecordRef]], tuple[tuple[RecordRef, RecordRef], ...] | None,
+    ]:
         # memo 只覆盖本次新图。已有引用从不展开，因此缓存淘汰不触发旧图重写。
         known = self._reference(root)
         if known is not None:
-            return known, {}
+            self.stats['known_root_reuses'] += 1
+            return known, {}, None
         memo: dict[int, tuple[object, RecordRef]] = {}
         active: set[int] = set()
         pending: list[tuple[object, tuple[object, ...] | None]] = [(root, None)]
         charged = 0
+        root_pairs: tuple[tuple[RecordRef, RecordRef], ...] | None = None
+        self.stats['captures'] += 1
 
         def reference(item: object) -> RecordRef:
             entry = memo.get(id(item))
@@ -199,6 +253,7 @@ class ProducerRecordScope:
                     value, children = pending.pop()
                     identity = id(value)
                     if identity in memo or self._reference(value) is not None:
+                        self.stats['known_node_skips'] += 1
                         continue
                     kind = type(value)
                     if children is None:
@@ -211,13 +266,16 @@ class ProducerRecordScope:
                         charged += 1536 + getsizeof(value) * 4 + size * (256 if kind is dict else 128)
                         if self.memory_used + charged + writer.memory_used > self.memory_bytes:
                             raise ValueError('new producer evidence exceeds its scoped memory limit')
+                        self.stats['capture_node_visits'] += 1
                         if kind is dict:
                             mapping = cast(dict[object, object], value)
                             if any(type(key) not in (type(None), bool, int, float, str, bytes) for key in mapping):
                                 raise TypeError('producer evidence keys require builtin scalars')
                             children = tuple(child for item in mapping.items() for child in item)
+                            self.stats['container_expansions'] += 1
                         elif kind in (list, tuple):
                             children = tuple(cast(list[object] | tuple[object, ...], value))
+                            self.stats['container_expansions'] += 1
                         else:
                             memo[identity] = value, writer.write_scalar(cast(Scalar, value))
                             continue
@@ -227,14 +285,20 @@ class ProducerRecordScope:
                     else:
                         references = [reference(child) for child in children]
                         if kind is dict:
-                            stored = writer.write_dict(list(zip(references[::2], references[1::2])))
+                            pairs = tuple(zip(references[::2], references[1::2]))
+                            stored = writer.write_dict(pairs)
+                            if value is root:
+                                root_pairs = pairs
                         elif kind is list:
                             stored = writer.write_list(references)
                         else:
                             stored = writer.write_tuple(references)
                         active.remove(identity)
                         memo[identity] = value, stored
-                return reference(root), memo
+                result = reference(root)
+            # 退出写者事务之后才交出根和字段证明，异常不会发布未提交引用。
+            self.stats['new_nodes'] += len(memo)
+            return result, memo, root_pairs
         except BaseException:
             # 新图批次失败时存储回滚全部新增记录，本次身份桥也不能发布残根。
             memo.clear()
@@ -244,16 +308,30 @@ class ProducerRecordScope:
             pending.clear()
 
     def record_point(self, point: dict[str, object]) -> PointRecord:
+        """兼容入口；已认证根与 ensure_record 共用实际复用路径。"""
+        self.stats['record_point_requests'] += 1
+        return self._ensure_record(point)
+
+    def ensure_record(self, point: dict[str, object]) -> PointRecord:
+        """返回仍有效的原载体；命中时不捕获、不写入、不解析字段引用。"""
+        self.stats['ensure_record_requests'] += 1
+        return self._ensure_record(point)
+
+    def _ensure_record(self, point: dict[str, object]) -> PointRecord:
         self._require_open()
         if type(point) is not dict or any(type(key) is not str for key in point):
             raise TypeError('producer points require an exact dictionary with string keys')
         previous = self.lookup(point)
         if previous is not None:
+            self.stats['known_root_reuses'] += 1
             return previous
-        reference, new_bindings = self._capture(point)
-        refs = self.owner.dictionary_refs(reference)
-        fields = tuple((key, pair[1]) for key, pair in zip(point, refs))
-        record = PointRecord(point, reference, fields, self.owner)
+        reference, new_bindings, refs = self._capture(point)
+        if refs is None:
+            # ensure_value/bind_clone 可以先登记裸 dict 根；首次需要点载体
+            # 时只解析这一层。正常新点直接消费写者交回的引用，无读回。
+            refs = self.owner.dictionary_refs(reference)
+            self.stats['field_decodes'] += 1
+        record = PointRecord._from_producer(point, reference, refs, self.owner)
         bindings = dict(new_bindings)
         bindings[id(point)] = point, reference
         for (key, field_ref), key_ref, value in zip(record.fields, record._keys, record._values):
