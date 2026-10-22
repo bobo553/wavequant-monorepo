@@ -35,6 +35,7 @@ from wavequant.domain.strategies.double_volume_lower_close_exit import DOUBLE_VO
 from wavequant.domain.strategies.gap_bearish_exit import GAP_VOLUME_BEARISH_CLEAR
 from wavequant.domain.strategies.gap_entry_gate import GapEntryGate
 from wavequant.domain.strategies.two_t_entry_gate import entry_targets_from_events, two_t_entry_rejection
+from wavequant.domain.strategies.one_p_breakout_entry import one_p_breakout_entry_rejection
 from wavequant.domain.strategies.two_t_resistance import (
     BODY_VOLUME_CLEAR, TWO_T_BODY_VOLUME_CLEAR, VOLUME_SHADOW_MIDPOINT_CLEAR,
     HoldingResistanceHistory, holding_resistance_history,
@@ -539,6 +540,8 @@ def portfolio_days(grouped: dict[str, list[Bar]], signals: list[Signal], config:
             target_time = intraday['timing']['execution_timestamp']
         target_rejection = two_t_entry_rejection(grouped[symbol], i, target_source,
             observed_high=target_high, observed_close=target_close, at_close=at_close)
+        target_rejection = target_rejection or one_p_breakout_entry_rejection(
+            (entry_target_events or {}).get(symbol, ()), i, observed_high=target_high)
         if target_rejection is not None:
             log(when, symbol, 'BUY', 'cancelled', str(target_rejection['reason']),
                 signal_timestamp=signal.timestamp.isoformat(), decision_timestamp=target_time,

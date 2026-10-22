@@ -7,6 +7,11 @@ export function tradeReasonItems(item) {
     const reasons = (item.decision_reason || item.reason || "").split("|").filter(Boolean).map(reasonText);
     const evidence = item.decision_evidence || [];
     const targetReason = item.decision_reason || item.reason;
+    if ((targetReason || "").split("|").includes("one_p_before_last_fall_high_breakout_no_entry") && item.breakout_date)
+        reasons.push(
+            `${item.n_date} 正 N 于 ${item.one_p_reached_date} 达到一饱 ${num(item.one_p, 4)} 元；${item.breakout_date} 突破 ${item.key_date} 末跌高 ${num(item.key_price, 4)} 元。`,
+            `当前为突破观察第 ${item.observation_day} 个交易日。突破当日及随后两个交易日禁止买入和加仓，观察空头抵抗；期满后仍须满足原有买入条件。`,
+        );
     if (targetReason === "volume_after_double_lower_close_clear" && item.previous_date)
         reasons.push(
             `${item.previous_date} 成交量 ${num(item.previous_volume, 0)} 股，为 ${item.double_volume_reference_date} 的 ${num(item.double_volume_reference, 0)} 股的 ${num(item.previous_volume_multiple, 2)} 倍。`,

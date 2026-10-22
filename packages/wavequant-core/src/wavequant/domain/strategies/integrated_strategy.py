@@ -50,6 +50,7 @@ from .secondary_pullback_entry import SecondaryPullbackCandidate, secondary_pull
 from .attack_quality import squeeze_buy_rejection, squeeze_volume_pass, v3_positive_n_attack_rejection
 from .gap_entry_gate import GapEntryGate
 from .two_t_entry_gate import entry_targets_from_events, two_t_entry_rejection
+from .one_p_breakout_entry import one_p_breakout_entry_rejection
 from ..market_structure.polyline_lifecycle import PolylineBuyGate
 from .completed_wave_recovery import secondary_wave_recovery, inverse_wave_recovery
 from .mother_child_inverse_n import MOTHER_CHILD_INVERSE_N_LOW_BREAK, mother_child_inverse_n_break
@@ -1648,6 +1649,13 @@ def _generate_system_signals(bars: Sequence[Bar], config: SystemStrategy, *,
         bar = bars[i]
         if context.target_entry_risk is not None:
             log(i, 'entry_rejected', candidate_channel='global_two_t_entry_guard', **context.target_entry_risk)
+            return False
+        breakout_analysis = _analysis if _analysis is not None else _minute_analysis
+        breakout_rejection = one_p_breakout_entry_rejection(
+            breakout_analysis.one_p_breakout_events if breakout_analysis is not None else (),
+            i, observed_high=bar.high)
+        if whole_wave and breakout_rejection is not None:
+            log(i, 'entry_rejected', candidate_channel='global_one_p_breakout_guard', **breakout_rejection)
             return False
         volume_rejection = (volume_upper_shadow_rejection(bar, bars[i - 1] if i else None)
                             or (volume_bearish_entry_rejection(bars, i) if whole_wave else None))

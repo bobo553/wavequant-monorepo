@@ -96,7 +96,8 @@ def streaming_stock_result(
             def resolved_entry_row(row: dict[str, object]) -> bool:
                 return row['bar_index'] == index and (row['event'] in (
                     'long_signal', 'long_transition_evidence', 'exit_signal')
-                    or row.get('candidate_channel') in ('global_polyline_last_fall_high', 'global_two_t_entry_guard'))
+                    or row.get('candidate_channel') in ('global_polyline_last_fall_high', 'global_two_t_entry_guard',
+                        'global_one_p_breakout_guard'))
 
             state.audit[:] = [row for row in state.audit if not resolved_entry_row(row)]
             state.audit.extend(row for row in resolved.audit if resolved_entry_row(row))
@@ -120,7 +121,7 @@ def streaming_stock_result(
             trading_eligible=eligible, trading_window_start=state.window_start,
             positive_n_authoritative=True,
             entry_target_events=[row for row in generated.audit if row.get('event') in (
-                'n_completed', 'n_target_source_retired', 'n_invalidated')] if eligible else [],
+                'n_completed', 'n_target_source_retired', 'n_invalidated', 'one_p_breakout_watch')] if eligible else [],
             eligibility_closed=(not eligible and len(analysis.buy_days) > 1 and analysis.buy_days[-2]))
         try:
             runner.send(account_day)

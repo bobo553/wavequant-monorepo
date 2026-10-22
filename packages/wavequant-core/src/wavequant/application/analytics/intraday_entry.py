@@ -27,6 +27,7 @@ from wavequant.domain.strategies.squeeze_n_round import SqueezeRoundState
 from wavequant.domain.strategies.two_t_entry_gate import (
     TwoTEntryTarget, entry_targets_from_events, two_t_entry_rejection,
 )
+from wavequant.domain.strategies.one_p_breakout_entry import one_p_breakout_entry_rejection
 from wavequant.domain.strategies.wave_continuation import (
     wave_confirmation_is_new,
     wave_confirmation_state,
@@ -112,7 +113,8 @@ def _reject_two_t_entry(
     signals: list[Signal], audit: list[dict[str, object]], *,
     observed_high: float, observed_close: float, at_close: bool, decision_timestamp: str,
 ) -> bool:
-    rejection = two_t_entry_rejection(bars, index, target,
+    breakout_rejection = one_p_breakout_entry_rejection(audit, index, observed_high=observed_high)
+    rejection = breakout_rejection or two_t_entry_rejection(bars, index, target,
         observed_high=observed_high, observed_close=observed_close, at_close=at_close)
     if rejection is None:
         return False
@@ -120,7 +122,8 @@ def _reject_two_t_entry(
     audit[:] = [row for row in audit if not (row['bar_index'] == index
         and row['event'] in ('long_signal', 'long_transition_evidence'))]
     audit.append(dict(event='entry_rejected', bar_index=index, symbol=bars[index].symbol,
-        timestamp=bars[index].timestamp.isoformat(), candidate_channel='global_two_t_entry_guard',
+        timestamp=bars[index].timestamp.isoformat(),
+        candidate_channel='global_one_p_breakout_guard' if breakout_rejection else 'global_two_t_entry_guard',
         decision_timestamp=decision_timestamp, **rejection))
     return True
 
@@ -233,6 +236,11 @@ def _qualified_gap_entries(
                 decision = observed.timestamp
                 execution_at = following.timestamp - timedelta(minutes=5)
                 price = following.open * bar.adjustment_factor
+                target_blocked = _reject_two_t_entry(bars, i, target, signals, audit,
+                    observed_high=max(observed_high, price), observed_close=price,
+                    at_close=False, decision_timestamp=execution_at.isoformat())
+                if target_blocked:
+                    break
                 buyable, observed_nonflat = _minute_buy_permissions(bar, bars[i - 1], following,
                     observed_low=observed_low, observed_high=observed_high, observed_volume=observed_volume)
                 remaining_low = min(row.low for row in minute[offset + 1:]) * bar.adjustment_factor
@@ -658,6 +666,11 @@ def resolve_consolidation_entries(
             signal = next(s for s in replay.signals if s.bar_index == i and s.side == "LONG")
             following = minute[offset + 1]
             execution_at = following.timestamp - timedelta(minutes=5)
+            if _reject_two_t_entry(bars, i, entry_targets_from_events(audit, i, at_close=False),
+                    signals, audit, observed_high=max(high, following.open * bar.adjustment_factor),
+                    observed_close=partial.close, at_close=False,
+                    decision_timestamp=execution_at.isoformat()):
+                break
             buyable, observed_nonflat = _minute_buy_permissions(bar, bars[i - 1], following,
                 observed_low=low, observed_high=high, observed_volume=volume)
             timing: dict[str, object] = dict(

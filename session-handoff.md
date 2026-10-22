@@ -1,3 +1,19 @@
+2026-10-23 · MONOREPO-359 按用户要求直接合并
+
+用户明确直接合并、不再回测。同步main c3e4387，保留唯一底部N，profile协调为v156。此前定向回归38通过1失败：桂林真实用例缺预期拒买证据；7文件局部类型与新增文案检查通过。同步后不追加验证，失败未解决、不标记done。仅本地提交合并，不推送。
+
+2026-10-23 · MONOREPO-359 一饱突破三日禁买（待提交验证）
+
+本会话worktree为C:/Users/zb/.codex/worktrees/saturation-breakout-entry/wavequant-monorepo，分支feat-一饱突破禁买，从本地main建立，CodeGraph已初始化。用户确认突破当日算第1天，连同随后2个交易日禁买；第4日仅解除本门禁，不自动买入。358唯一in-progress，330在本分支暂置backlog并保留旧证据。
+
+新增one_p_breakout_entry.py消费已发布三级冻结末跌高和结构N目标，生成one_p_breakout_watch。backtest_analysis保存事件，daily_strategy附审计，integrated_strategy、intraday_entry和backtest账户共用拒绝函数，streaming_backtest传递同一事件与拒绝渠道；profile v155_one_p_breakout_wait。结构N target_eligible仍为false，不修改趋势或卖出，无股票/日期特判。Web增加原因和日期证据。
+
+合成及通道回归在test_one_p_breakout_entry.py；test_guilin_one_p_breakout_entry.py读取2018起positive_n夹具和2022_hierarchy后续行情，要求重叠OHLCV一致再拼接到7/4，不注入N/资格。尾段夹具缺完整成交权限，故此真实用例只覆盖实际趋势/资格/策略和门禁，不能宣称账户或分钟验收。完整账户、实际线上重算仍待验证。
+
+下一步按用户实际提交安排执行新增规则、桂林回归、相邻入场回归及局部类型/文案检查，复核最终范围后再提交。开发阶段未运行测试、类型、lint、格式、构建、Git状态/差异检查、运行探针或浏览器；未提交、合并、推送、重启或清缓存。新增回归源码不能作为6/30实际回测已修复的运行证据。
+
+以下为保留的历史任务记录，不代表本会话提交或验证授权。
+
 2026-10-23 · MONOREPO-358 提交合并验证记录
 
 用户要求合到main。Python相关四文件32项通过，Web两文件13项通过，Core五个修改生产文件局部mypy通过；补齐visualization两个字典类型。差异与源码复核完成。358标记done，330恢复唯一in-progress。准备提交feat-一级趋势唯一底部N并本地no-ff合并；不推送或重启，未运行浏览器/E2E或完整构建。以下为历史记录。

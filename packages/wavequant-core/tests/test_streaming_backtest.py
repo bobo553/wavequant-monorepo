@@ -170,7 +170,7 @@ def _stub_daily_market(monkeypatch, scan_days, signals):
             day = MarketDay(frame, ({'strokes': []},) * 3, (), (scan_days[index],) * 3)
             analysis = SimpleNamespace(bars=market[:index + 1], buy_days=scan_days[:index + 1],
                 scan_days=scan_days[:index + 1], hierarchy=None, trading_intervals=(), calculations=None,
-                pivots=({}, {}, {}, set()), structural_n_events=[])
+                pivots=({}, {}, {}, set()), structural_n_events=[], one_p_breakout_events=[])
             on_day(day, analysis)
         yield analysis
 
