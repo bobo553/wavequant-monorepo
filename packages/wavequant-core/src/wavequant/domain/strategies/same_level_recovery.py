@@ -7,7 +7,7 @@ from typing import cast
 
 from ..market_structure.trend_confirmation import first_strict_market_break
 from ..market_structure.trend_levels import _completed_source_point
-from ..market_structure.trend_lifecycle import _Pivot, _StructureClocks, _pivot, _records
+from ..market_structure.trend_lifecycle import _Pivot, _StructureClocks, _pivot, _point_facts, _records
 from ..market_structure.trend_market_index import _MarketRangeIndex
 from ..models.model import Bar
 
@@ -30,6 +30,25 @@ class _Keys:
     decline_low: _Pivot | None
 
 
+def _flip_origin(raw: Mapping[str, object], high: _Pivot, own: Mapping[tuple[int, int], _Pivot],
+                 dates: Mapping[str, int], now: int) -> _Pivot | None:
+    """复用正式翻多事实的整波起点，不把内部反弹的前驱低点当作末升低。"""
+    origins: set[_Pivot] = set()
+    for fact in _point_facts(raw, high, own, dates, now):
+        origin, broken = fact.origin, fact.broken
+        if (fact.title != '翻空为多' or origin is None or broken is None
+                or fact.known > now or origin.kind != 'L' or broken.kind != 'H'
+                or own.get((origin.index, origin.ordinal)) != origin
+                or own.get((broken.index, broken.ordinal)) != broken
+                or not broken.index < origin.index < high.index
+                or broken.known >= high.index
+                or not 0 < origin.price < broken.price < high.price):
+            continue
+        origins.add(origin)
+    # 缺失、跨路径、未来或互相矛盾的证明不能放宽原来的防守门槛。
+    return next(iter(origins)) if len(origins) == 1 else None
+
+
 def _keys(value: object, dates: Mapping[str, int], now: int) -> _Keys | None:
     points = [(raw, point) for raw in _records(value)
               if raw.get('wave_identity_state') != 'direction_only'
@@ -43,6 +62,10 @@ def _keys(value: object, dates: Mapping[str, int], now: int) -> _Keys | None:
     low, high = points[position - 1][1], points[position][1]
     if low.kind != 'L' or not low.index < high.index or not 0 < low.price < high.price:
         return None
+    own = {(point.index, point.ordinal): point for _, point in points}
+    frozen_origin = _flip_origin(points[position][0], high, own, dates, now)
+    if frozen_origin is not None:
+        low = frozen_origin
     decline_low = None
     if position + 1 < len(points):
         # 高点须已结束、随后本级正式低点须破前低；不等待下降腿再向上结束。
