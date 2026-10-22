@@ -4,6 +4,71 @@
     "activeFeature": "MONOREPO-330",
     "features": [
         {
+            "id": "MONOREPO-359",
+            "name": "one-p-before-breakout-entry-wait",
+            "title": "正N一饱后突破末跌高三日禁买",
+            "status": "backlog",
+            "dependencies": [
+                "MONOREPO-356"
+            ],
+            "description": "桂林旅游2022-05-11正N先达一饱，2022-06-29突破2022-04-13末跌高，2022-06-30不应买入。用户确认突破当日与随后两个交易日禁买。",
+            "scope": "逐日消费既有各级冻结末跌高及结构N目标，严格先一饱后突破时建立三交易日买入限制；主策略、独立放量收盘、跳空分钟及账户共用事实。保持趋势、N目标、资格和卖出规则，不按股票日期特判。",
+            "acceptanceCriteria": [
+                "一饱含等值，末跌高严格突破；一饱须在突破日前已知并到达，同日到一饱不推断先后。",
+                "首次价格越位启动当日及后两个交易日观察，强势放行日不替代首次突破；持续高于或重过同一关键位不重置计时，第4日起仅解除本门禁。",
+                "三个趋势级别共用规则，读取已计算的冻结关键位；结构N风险不授予交易资格，未知或失效来源不能事后制造禁买。",
+                "盘中仅消费已观察高点及成交开盘，后续日内高点不取消早先成交；新买和加仓均复核。",
+                "补充桂林原始行情、三日边界及各入口回归源码，实际执行按提交安排；拒买原因可追溯N、一饱、关键位与突破日期。"
+            ],
+            "verification": [
+                {
+                    "command": "targeted pytest; modified-file mypy; Node reason test",
+                    "status": "failed",
+                    "summary": "38 passed, 1 failed: 桂林真实用例未取得预期拒买证据；7文件类型及新增Node文案通过。用户随后明确直接合并、不再回测；同步main后不追加验证，失败保留，不能宣称6/30已修复。"
+                },
+                {
+                    "command": "待提交执行一饱突破门禁、桂林真实回归、相邻入场回归及修改文件局部类型和文案检查",
+                    "status": "not-run",
+                    "summary": "2026-10-23 开发阶段只阅读、编辑及维护记录；未执行测试、类型、lint、格式、构建、Git状态或差异检查、运行探针、浏览器。独立worktree与feat-一饱突破禁买分支；358唯一in-progress，330暂置backlog保留全部历史证据；未提交合并或推送。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-358",
+            "name": "single-successful-bottom-n-per-level-one-trend",
+            "title": "一级趋势唯一底部成功N及目标",
+            "status": "done",
+            "dependencies": [
+                "MONOREPO-356"
+            ],
+            "description": "国芳集团2024-03-12图表显示多组相同二吐；结构N分支绕过一级趋势底部归属，前端同日展开、审计补绘与成交携带目标进一步叠加。",
+            "scope": "结构N消费共享一级下降证明，以epoch和下降起点冻结唯一底部成功N；窗口重开、内部折叠N和后续破位不重新发放名额。图表与前端消费显式归属，保留交易候选、买卖规则和三级趋势算法。",
+            "acceptanceCriteria": [
+                "每个已确认一级趋势最多一个底部成功正N，等低保留最早底点，缺少下降证明不猜测归属。",
+                "同日候选按形成时间及真实顶点确定顺序，跨source和资格窗口保留同一所有权；新趋势独立分配。",
+                "晚开窗历史N使用其起点之前的已知下降证明，所有权与目标不借用未来行情或回填过去截面。",
+                "前端形状、悬停、审计补绘和成交附带目标统一读取Core归属，非选中N不发布目标，单个来源每阶段只绘制一次。",
+                "国芳真实行情、领域边界、图表投影和前端回归编写，实际提交时完成最小充分验证。"
+            ],
+            "verification": [
+                {
+                    "command": "PYTHONPATH=packages/wavequant-core/src python -m pytest test_structural_n_ownership.py test_guofang_single_bottom_n.py test_chart_target_windows.py test_structural_positive_n.py -q",
+                    "status": "passed",
+                    "summary": "32 passed；首次缺少源码路径导致收集失败，指定源码路径后通过。"
+                },
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/single-bottom-n.test.mjs apps/webs/wavequant-web/tests/positive-n-reformation.test.mjs",
+                    "status": "passed",
+                    "summary": "13 passed。"
+                },
+                {
+                    "command": "Core .venv python -m mypy --follow-imports=skip (5 modified source files); git diff --check; source review",
+                    "status": "passed",
+                    "summary": "系统Python无mypy，改用现有Core虚拟环境；补充两个字典类型后5文件通过。无浏览器、全仓构建或E2E；不推送或重启。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-357",
             "name": "double-volume-next-lower-close-clear",
             "title": "倍量后次日放量收低全清仓",
@@ -235,6 +300,7 @@
             "acceptanceCriteria": [
                 "2026-10-23 高频卡点：行情消费窗口复用完整认证、可信拐点版本只重判变化三点组、历史图分块连续写和数值叶免无效查表；公开校验、首次可知日、精确预算和历史恢复语义保持。不得把采样调用减少当整体提速，须单列无采样同输入回放及完整账户/研究字节对照。",
                 "2026-10-23确认上下文容量退化修复：保持同请求4MiB总预算，以slots引用和实际标量/Fraction/摘要/序列元素费用替代每点2048固定预留；不可变版本后缀不再同时生成单点内容键或写第二份解析缓存。2125点主源及两个较短来源连续20日只解析新增/真实修订后缀，历史截止、旧快照、前缀摘要、未来知识和超限回退语义保持；新增回归与真实后段CPU对照待提交时验证。",
+                "2026-10-23 紫色圆点续清理：移除正N圆点（含同日多来源的其它配色）及普通紫色规则观察点，不再统计同日N圆点或单独堆叠；保留正N结构/目标/配色载体、倒N绿色、灰色诊断、候选拒绝、橙色ABC及真实B/S/信号。后端在图表审计入口排除17类只供这些规则点展示的事件，不为其转换日期/参考价/levels；图表缓存策略升v2。原始策略审计和N/资格/波段计算有独立消费者，不因删除标记而改变交易判定。回归源码已补，运行与性能收益待提交时验证，不能以圆点数量断言重复计算或P0已根治。",
                 "2026-10-22 国芳长期空翻多：恢复门槛与正式六态共同防守2021-02-08整波起点，不把2022-10-31局部L替换为该波末升低；2024-02-08交替低点在真实确认日开放资格，严格破整波起点仍阻断。三级同规则、当前路径/知识时钟/事件重放一致；完整行情结果待提交验证。",
                 "2026-10-22海洋王续修最终口径：5/26完成正N不提前开放资格，5/31真实轧空且放量中大阳时同日收盘确认资格并判断买入，不等6/1突破A高或倍量。共同确认N须同级同源同窗口同四坐标，倒N在读取身份前隔离，保留原防守与一次消费。未来A高突破不得占用更早的合格轧空；三级共用规则无股票日期特判。重新加入真实AkShare截面及收盘回归；此前海洋王目标用例通过；国芳旧失败已诊断为恢复规则新增后旧预期过期。用户本次明确直接合并，国芳新结构/资格分离回归及最新main组合复测已中止，后续待验证；profile v149。",
                 "截图圆点清理：内部生命周期及未登记的审计事件不再生成图表圆点，旧缓存前端亦不回退显示；后端在构造日期/价格/层级前排除无展示消费者的事件，逐日生命周期不再计算或保存观察候选。折线及三级共用正式确认、防守与交易资格规则不变，N和目标线继续使用原事件；相关回归和性能收益待提交时验证。",
@@ -390,6 +456,11 @@
                     "command": "待提交时执行 test_confirmation_long_prefix_reuse.py、test_confirmation_storage_budget.py、test_confirmation_version_reuse.py、test_confirmation_scalar_reuse.py、test_confirmation_context_prefix_reuse.py 及修改文件局部类型；同源后段20日CPU/完整结果差分待执行",
                     "status": "not-run",
                     "summary": "2026-10-23 本会话feat-确认上下文缓存提速只开发确认缓存退化修复。版本缓存不再重复保存内容键，按受控持有对象与摘要/int元素累计空间，拒绝初筛不再将256字节当无效点下界；公共可变输入单点缓存、4MiB上限和确认规则保持。按用户开发节奏未运行测试、类型、格式、lint、构建、Git状态/差异或性能探针；42511解析/20次拒绝为用户提供旧证据，不作为本轮测量。未提交、合并、推送或重启；330继续in-progress。"
+                },
+                {
+                    "command": "Core cwd: .venv/Scripts/python.exe -m pytest -q tests/test_chart_event_projection.py tests/test_chart_target_windows.py tests/test_abc_candidate.py --tb=short；.venv/Scripts/python.exe -m mypy --follow-imports=skip src/wavequant/interfaces/charts/visualization.py；Web cwd: pnpm exec node --test tests/annotations.test.mjs tests/abc-annotations.test.mjs tests/positive-n-reformation.test.mjs tests/n-target-focus.test.mjs；git diff HEAD --check",
+                    "status": "passed",
+                    "summary": "2026-10-23 按用户合并main指令进入提交阶段，分支已同步main b2450f0并保留倍量收低退出改动。Core三个文件18 passed in 1.51s，修改生产文件局部mypy通过。Web首轮48通过1失败：旧测试期待二饱而产品已称二吐；在未修改main同一用例复现，随后仅校正测试用词为二吐，保留实体反包、量能及清仓断言，四文件重跑49通过。差异复核及空白检查完成，三份状态文档冲突保留双方记录。仅两个生产文件改变圆点生成/图表投影及缓存v2，N结构、目标线、无marker ID悬停、来源配色、倒N/诊断/ABC/交易标记及原始审计保留。公共JS与mjs不在项目eslint/tsc覆盖范围，未运行无关全仓lint/typecheck/build、浏览器或测速；不宣称P0根治。按指令提交并本地no-ff合并，不推送或重启，330仍in-progress。"
                 },
                 {
                     "command": "packages/wavequant-core/.venv/Scripts/python.exe -m pytest -q tests/test_producer_record_handoff.py tests/test_owned_evidence_producer.py tests/test_source_turn_records.py --tb=short（cwd: packages/wavequant-core）",

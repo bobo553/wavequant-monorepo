@@ -26,6 +26,7 @@ from .market_calculations import MarketCalculations, MarketDay
 from .eligible_polyline_n import EligibleNSource, EligiblePolylineN
 from .polyline_target_stream import PolylineTargetStream
 from .structural_n_stream import StructuralNStream
+from .one_p_breakout_entry import OnePBreakoutStream
 from .market_preview import publish_market_preview
 
 if TYPE_CHECKING:
@@ -55,6 +56,7 @@ class BacktestAnalysis:
     scoped_n_observations: dict[tuple[EligibleNSource, int], NObservation] = field(default_factory=dict)
     hierarchy: 'HierarchyHistoryStream | None' = None
     structural_n_events: list[dict[str, object]] = field(default_factory=list)
+    one_p_breakout_events: list[dict[str, object]] = field(default_factory=list)
 
 
 @contextmanager
@@ -83,7 +85,9 @@ def prepare_backtest_analysis(
             else None))
     targets = PolylineTargetStream(bars, config,
         publish=(lambda row: steps.append(2, row)) if steps is not None else None)
-    structures = StructuralNStream(bars, pattern_ttl=config.pattern_ttl)
+    structures = StructuralNStream(bars, pattern_ttl=config.pattern_ttl,
+        exclusive_targets=config.buy_point_definition == 'whole_flip_wave_v3')
+    breakout_entries = OnePBreakoutStream(bars)
     structural_sources = EligiblePolylineN(config.buy_interval_level,
         folded_window=config.structure_window, structural=True)
     last_progress = -1
@@ -159,8 +163,13 @@ def prepare_backtest_analysis(
         active_scopes = {(window.source_path, window.start_index)
                          for window in n_sources.eligibility.active_intervals}
         structures.advance(frame.index, structure_sources, active_scopes=active_scopes,
-                           interrupted=frame.index in pivot_state.blocked)
+                           interrupted=frame.index in pivot_state.blocked,
+                           declines=current.hierarchy.declines.get(frame.index, ()) if current.hierarchy else (),
+                           epoch=frame.epoch)
         current.structural_n_events = structures.events
+        if config.buy_point_definition == 'whole_flip_wave_v3':
+            breakout_entries.advance(frame.index, day.levels, structures.events)
+            current.one_p_breakout_events = breakout_entries.events
         for window in n_sources.eligibility.intervals:
             if window.end_index is not None:
                 current.n_window_ends[window.source_path, window.start_index] = window.end_index

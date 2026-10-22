@@ -40,6 +40,8 @@ test("ABC markers explain the corrected strict close inequality without claiming
     assert.match(items[0].sourceLabel, /非成交/);
     assert.equal(items[0].kind, "trend-key");
     const groups = markerGroups(items, { tertiaryAbc: true }, 500);
+    assert.equal(groups.length, 2);
+    assert.ok(groups.every((group) => group.marker.color === "#ffad72" && group.marker.shape === "circle"));
     assert.equal(groups[0].marker.text, "Ⅲ c 段启动候选");
     assert.equal(groups[0].marker.price, 13);
     assert.deepEqual(visibleAnnotations(items, { rules: true, tertiaryAbc: false }), []);

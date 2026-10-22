@@ -1,4 +1,4 @@
-import { bottomNTargetCaption, isBottomNTargetSource } from "./bottom-n-targets.js";
+import { bottomNTargetCaption, isBottomNTargetSource, matchesNTargetSourceId } from "./bottom-n-targets.js";
 
 /** 买点优先绑定 C 启动时已确认的正 N；原 A 的 N 不冒充新 C 的 N。 */
 export function buyNTargetLevels(marker, wave, view, theory) {
@@ -34,10 +34,10 @@ export function buyNTargetLevels(marker, wave, view, theory) {
     // 原攻击棒抵抗失败的目标属于原 N；成交日恰好出现的新 N 不改写此测幅。
     const originalAttack = proof?.squeeze_confirmation === "resistance_attack_bar_break";
     const source =
-        proof && Object.hasOwn(proof, "target_source_date")
+        proof && (Object.hasOwn(proof, "target_source_id") || Object.hasOwn(proof, "target_source_date"))
             ? events.find((event) =>
                   proof.target_source_id
-                      ? event.n_id === proof.target_source_id
+                      ? matchesNTargetSourceId(event, proof.target_source_id)
                       : event.time === proof.target_source_date && event.target_primary !== false,
               )
             : originalAttack

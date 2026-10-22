@@ -16,6 +16,12 @@ import {
 import { chartMarketBars } from "./chart-market-bars.js";
 import { candleDetails } from "./candle-details.js";
 import { BuyEligibilityOverlay } from "./buy-eligibility-overlay.js";
+import {
+    isSelectedStructuralNShape,
+    isSelectedStructuralNSource,
+    matchesNTargetSourceId,
+    STRUCTURAL_N_POLICY,
+} from "./bottom-n-targets.js";
 import { withEligibilityNTargets } from "./eligibility-n-targets.js";
 import { createLifecycleLandmarkReader, mergeLifecycleLandmarks } from "./lifecycle-landmarks.js";
 import { bindChartKeyboardNavigation } from "./chart-keyboard-navigation.js";
@@ -704,7 +710,7 @@ export class PriceChart {
         if (isPositiveNTarget(this.selected)) return this.selected.id;
         const level = this.selected?.levels?.find((level) => level.stage === "one_p");
         const source = level?.n_id;
-        if (source) return this.nTargetObservations?.find(({ item }) => item.raw?.n_id === source)?.item.id;
+        if (source) return this.nTargetObservations?.find(({ item }) => matchesNTargetSourceId(item.raw, source))?.item.id;
         const date = level?.n_date;
         return this.nTargetObservations?.find(({ item }) => item.time === date)?.item.id;
     }
@@ -1251,6 +1257,7 @@ export class PriceChart {
         const blockedCandidate = item?.kind === "candidate";
         if (!this.data || !this.options.levels) return;
         const asof = this.theory?.asof && this.theory.asof < this.data.asof ? this.theory.asof : this.data.asof;
+        const uniqueNPolicy = this.theory?.structural_n_policy === STRUCTURAL_N_POLICY;
         const focusedNs = nTargetGroup(this.nTargetObservations || [], focusedN, asof);
         this.nStructureOverlay?.setStructures(focusedNs, asof);
         const primaryVisible =
@@ -1272,7 +1279,10 @@ export class PriceChart {
             if (source !== item) levels.push(...nTargetLevels(source, asof).map((level) => ({ item: source, level })));
         const targetGuides = [];
         const seenN = new Set();
-        for (const [i, { item, level }] of levels.entries()) {
+        for (const [i, entry] of levels.entries()) {
+            let { item, level } = entry;
+            if (item.raw?.event === "n_completed" && item.raw.direction === "up" &&
+                !isSelectedStructuralNSource(item.raw, this.theory)) continue;
             if (!Number.isFinite(level.price)) continue;
             if (level.available_at && level.available_at > asof) continue;
             if (isPositiveNTarget(item) && isNTargetStage(level.stage) && !nTargetLevels(item, asof).includes(level))
@@ -1287,9 +1297,18 @@ export class PriceChart {
                 nSource = isPositiveNTarget(item)
                     ? item
                     : this.nTargetObservations?.find(
-                          ({ item: source }) => source.raw?.n_id === sourceId || source.id === sourceId,
+                          ({ item: source }) => source.id === sourceId || matchesNTargetSourceId(source.raw, sourceId),
                       )?.item;
-                const identity = `${sourceId}:${level.stage}:${level.price}`;
+                if (uniqueNPolicy && (!nSource || !isSelectedStructuralNSource(nSource.raw, this.theory))) continue;
+                if (uniqueNPolicy) {
+                    const published = nTargetLevels(nSource, asof).find((candidate) => candidate.stage === level.stage);
+                    if (!published) continue;
+                    // 成交携带的旧价、预估价也只能指向已发布来源，不能成为第二套图表目标。
+                    item = nSource;
+                    level = published;
+                }
+                const owner = nSource?.raw.structural_target_owner;
+                const identity = owner ? `${owner}:${level.stage}` : `${sourceId}:${level.stage}:${level.price}`;
                 if (seenN.has(identity)) continue;
                 seenN.add(identity);
             }
@@ -1623,7 +1642,7 @@ export class PriceChart {
                 .map((item) => [item.raw.n_id, item.color]),
         );
         const nConnections = selectWaveConnections(
-            theory.shapes.flatMap((shape) =>
+            theory.shapes.filter((shape) => isSelectedStructuralNShape(shape, theory)).flatMap((shape) =>
                 shape.points.slice(1).map((point, index) => ({
                     group: `n:${shape.n_id || `${shape.trend_level || 1}:${shape.direction}`}`,
                     color: shape.direction === "up" ? nShapeColors.get(shape.n_id) || "#60cfc3" : "#cba271",

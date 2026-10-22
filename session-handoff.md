@@ -27,6 +27,46 @@
 新增test_confirmation_long_prefix_reuse.py及test_confirmation_storage_budget.py，旧version测试计数wrapper适配_retain关键字。开发阶段未运行任何验证、Git状态/差异、提交合并或服务重启；没有本轮性能成绩。下一步按用户提交安排执行feature_list.json列出的确认缓存定向回归和局部类型，并用同源后段窗口对照实际parse/拒绝次数、CPU及结果。真实全回测提速仍未验收，330保持in-progress，历史失败证据保留。独立worktree CodeGraph初始化因SQLite unable to open database file失败，使用主仓库索引定位后直接读写源码继续。
 
 以下为历史记录。
+2026-10-23 · MONOREPO-359 按用户要求直接合并
+
+用户明确直接合并、不再回测。同步main c3e4387，保留唯一底部N，profile协调为v156。此前定向回归38通过1失败：桂林真实用例缺预期拒买证据；7文件局部类型与新增文案检查通过。同步后不追加验证，失败未解决、不标记done。仅本地提交合并，不推送。
+
+2026-10-23 · MONOREPO-359 一饱突破三日禁买（待提交验证）
+
+本会话worktree为C:/Users/zb/.codex/worktrees/saturation-breakout-entry/wavequant-monorepo，分支feat-一饱突破禁买，从本地main建立，CodeGraph已初始化。用户确认突破当日算第1天，连同随后2个交易日禁买；第4日仅解除本门禁，不自动买入。358唯一in-progress，330在本分支暂置backlog并保留旧证据。
+
+新增one_p_breakout_entry.py消费已发布三级冻结末跌高和结构N目标，生成one_p_breakout_watch。backtest_analysis保存事件，daily_strategy附审计，integrated_strategy、intraday_entry和backtest账户共用拒绝函数，streaming_backtest传递同一事件与拒绝渠道；profile v155_one_p_breakout_wait。结构N target_eligible仍为false，不修改趋势或卖出，无股票/日期特判。Web增加原因和日期证据。
+
+合成及通道回归在test_one_p_breakout_entry.py；test_guilin_one_p_breakout_entry.py读取2018起positive_n夹具和2022_hierarchy后续行情，要求重叠OHLCV一致再拼接到7/4，不注入N/资格。尾段夹具缺完整成交权限，故此真实用例只覆盖实际趋势/资格/策略和门禁，不能宣称账户或分钟验收。完整账户、实际线上重算仍待验证。
+
+下一步按用户实际提交安排执行新增规则、桂林回归、相邻入场回归及局部类型/文案检查，复核最终范围后再提交。开发阶段未运行测试、类型、lint、格式、构建、Git状态/差异检查、运行探针或浏览器；未提交、合并、推送、重启或清缓存。新增回归源码不能作为6/30实际回测已修复的运行证据。
+
+以下为保留的历史任务记录，不代表本会话提交或验证授权。
+
+2026-10-23 · MONOREPO-358 提交合并验证记录
+
+用户要求合到main。Python相关四文件32项通过，Web两文件13项通过，Core五个修改生产文件局部mypy通过；补齐visualization两个字典类型。差异与源码复核完成。358标记done，330恢复唯一in-progress。准备提交feat-一级趋势唯一底部N并本地no-ff合并；不推送或重启，未运行浏览器/E2E或完整构建。以下为历史记录。
+
+2026-10-23 · MONOREPO-358 一级趋势唯一底部成功N（未提交）
+
+当前worktree C:/Users/zb/.codex/worktrees/single-bottom-n/wavequant-monorepo，分支feat-一级趋势唯一底部N，基于main e2d3ad5。用户用国芳集团2024-03-12截图要求每个一级趋势最多一个底部成功N及目标。已修结构N领域归属、图表唯一投影及前端所有目标入口；详细边界见两个workspace progress.md。成功沿用共用N核心突破定义，第一成功事实锁定，失效不重发名额，交易规则保持原有。
+
+新增test_structural_n_ownership.py、test_guofang_single_bottom_n.py与Web single-bottom-n.test.mjs等回归源码。国芳复用guofang_2024_squeeze_confirmation.json，不重复新增大行情文件。开发阶段严格未运行任何验证或Git状态/差异；下一步按用户提交安排做相关Python/Node回归与必要局部类型、范围复核，再提交本地合并。未推送、清缓存或重启，当前运行页面尚未应用本分支。358唯一in-progress，330仅在本分支暂置backlog并保留原未完成事实。CodeGraph新worktree索引不可用，已改用源码阅读；未重建主目录索引。以下为历史记录。
+
+2026-10-23 · MONOREPO-330 紫色圆点提交合并记录
+
+最新用户安排为合并main。本分支feat-回测增量计算根治已同步b2450f0，保留倍量收低退出与其他任务记录，三份文档冲突已协调。紫点两生产文件及相关回归、四份状态记录共10文件；Core18通过、修改生产文件局部mypy通过、Web四文件最终49通过。Web旧二饱断言在未修改main复现，仅将测试用词校正为产品既有二吐，不改业务或弱化其它断言。最终源码/差异复核、空白检查完成，按指令提交并本地no-ff合并；不推送或重启，未运行浏览器、全仓门禁或测速。
+
+本次交付移除正N/普通紫色规则点及17类无用图表投影；N目标、结构、配色、无圆点悬停与其它标记继续保留。整体P0仍未完成，330保持in-progress；原增量实验stash 8b013d28961befa88a8c468950d02bac0b607c43保留，不自动恢复。下文未提交/待验证表述为开发阶段历史，以本条及feature_list.json的提交阶段证据为准。
+
+2026-10-23 · MONOREPO-330 紫色圆点清理续作（未提交）
+
+用户截图要求删除大量紫色点及对应后端计算，随后要求继续。当前分支feat-回测增量计算根治、worktree C:/Users/zb/.codex/worktrees/backtest-linear-growth/wavequant-monorepo 已同步main f096d40。前端annotations.js移除17类普通紫色规则annotation生成，正N仍作为结构/目标载体但不生成任何配色的圆点；删除同日多N标记计数、拆分和文字碰撞例外，保留来源配色用于目标线。倒N绿色、diagnostic灰色、候选拒绝、ABC和真实B/S/信号保留。
+
+Core visualization.py在chart_audit入口筛选实际展示消费者，不再对这17类事件做日期、参考价、层级转换；CHART_EVENT_POLICY已升explicit_chart_events_without_purple_rules_v2以隔离旧图表缓存。策略审计及共用N/资格/波段计算仍有交易或目标消费者，未删除或改变。前后端相关回归源码已同步，尚未运行测试、类型、lint、构建、浏览器、探针、Git状态/差异；没有本轮性能数字，也没有本轮提交/合并。下一步按用户提交安排执行最小必要验证，再提交合并。本轮删除标记不代表整体后段变慢P0已解决。
+
+此前record_point已经提交f071a4f并合并本地main f096d40，未推送；未验收增量实验stash 8b013d28961befa88a8c468950d02bac0b607c43继续保留，不自动应用。以下为历史记录。
+
 
 2026-10-23 合并协调：同步main最新record_point提交，双方进度与失败记录完整保留；按用户直接合并要求，同步后不追加验证。
 
