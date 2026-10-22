@@ -8,6 +8,7 @@ from ..models.model import Bar
 
 
 DOUBLE_VOLUME_BULLISH_FADE_REDUCE = 'double_volume_bullish_breakout_next_bearish_lower_close_reduce_90'
+TRIPLE_VOLUME_BREAKOUT_DOUBLE_BEARISH_CLEAR = 'triple_volume_bullish_breakout_next_double_volume_bearish_clear'
 
 
 def _prior_candle_high(bars: Sequence[Bar], attack: int) -> int | None:
@@ -33,7 +34,7 @@ def _prior_candle_high(bars: Sequence[Bar], attack: int) -> int | None:
 
 
 def observe_double_volume_fade(bars: Sequence[Bar], index: int) -> dict[str, object] | None:
-    """前日倍量阳线突破已有K线高点，今日阴线收低则收盘累计减九成。"""
+    """突破次日阴线收低减九成；三倍量上涨突破后次日倍量阴线优先全清。"""
     if not 4 <= index < len(bars):
         return None
     reference, bullish, current = bars[index - 2:index + 1]
@@ -44,15 +45,20 @@ def observe_double_volume_fade(bars: Sequence[Bar], index: int) -> dict[str, obj
             or not all(isfinite(value) and value > 0 for value in (
                 reference.volume, bullish.volume, bullish.open, bullish.close, current.open, current.close))
             or bullish.close <= bullish.open or current.close >= current.open
-            or current.close >= bullish.close
             or Fraction(str(bullish.volume)) < 2 * Fraction(str(reference.volume))):
         return None
+    # 高开阴线可以仍高于前收；连续量能放大时不等待收低、反包或破前低。
+    clear = (isfinite(reference.close) and reference.close > 0 and bullish.close > reference.close
+             and isfinite(current.volume) and current.volume > 0
+             and Fraction(str(bullish.volume)) >= 3 * Fraction(str(reference.volume))
+             and Fraction(str(current.volume)) >= 2 * Fraction(str(bullish.volume)))
+    if not clear and current.close >= bullish.close:
+        return None
     key_index = _prior_candle_high(bars, index - 1)
-    if key_index is None or not bullish.high > bars[key_index].high:
+    if key_index is None or not isfinite(bullish.high) or not bullish.high > bars[key_index].high:
         return None
     key = bars[key_index]
-    return dict(
-        reason=DOUBLE_VOLUME_BULLISH_FADE_REDUCE, exit_fraction=.9, exit_target_fraction=.9,
+    evidence: dict[str, object] = dict(
         execution_model='same_day_close',
         bullish_index=index - 1, bullish_date=bullish.timestamp.date().isoformat(),
         bullish_open=bullish.open, bullish_close=bullish.close, bullish_volume=bullish.volume,
@@ -66,3 +72,9 @@ def observe_double_volume_fade(bars: Sequence[Bar], index: int) -> dict[str, obj
         previous_close=bullish.close,
         decision_timestamp=current.timestamp.replace(hour=15, minute=0).isoformat(),
     )
+    if clear:
+        return dict(evidence, reason=TRIPLE_VOLUME_BREAKOUT_DOUBLE_BEARISH_CLEAR, exit_fraction=1.0,
+                    bullish_previous_close=reference.close, observed_close=current.close,
+                    response_volume_ratio=current.volume / bullish.volume,
+                    bullish_volume_min_multiple=3, response_volume_min_multiple=2)
+    return dict(evidence, reason=DOUBLE_VOLUME_BULLISH_FADE_REDUCE, exit_fraction=.9, exit_target_fraction=.9)
