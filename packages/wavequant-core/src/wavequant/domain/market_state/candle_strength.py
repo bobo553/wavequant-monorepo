@@ -13,6 +13,13 @@ def medium_bullish_body(bar: Bar) -> bool:
     return body > 0 and body >= opening / 50 and body >= (high - low) / 2
 
 
+def medium_bearish_body(bar: Bar) -> bool:
+    """中大阴沿用中大阳的对称门槛：实体至少开盘价2%，至少占振幅一半。"""
+    opening, high, low, close = (Fraction(str(value)) for value in (bar.open, bar.high, bar.low, bar.close))
+    body = opening - close
+    return body > 0 and body >= opening / 50 and body >= (high - low) / 2
+
+
 def bullish_breakout_rejection(
     bar: Bar, previous: Bar | None, *, breakout_level: float | None = None,
 ) -> str | None:
