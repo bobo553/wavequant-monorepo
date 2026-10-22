@@ -15114,6 +15114,11 @@
                     "command": "待提交：test_double_n_whole_flip.py及交替确认、海洋王和策略回归",
                     "status": "not-run",
                     "summary": "仅代码编辑和合成边界用例；未运行检查，无完整2026行情回放结论。"
+                },
+                {
+                    "command": "待提交：test_squeeze_n_round.py和整段回调/生命周期/实际行情回归",
+                    "status": "not-run",
+                    "summary": "2026-10-23继续修复：新资格证明缺N三点、路径和级别，joint_squeeze_confirmations仅认旧规则，导致开窗前原N未纳入轮次。补齐身份并允许新规则，保留精确匹配与一次消费；未运行验证。"
                 }
             ]
         }

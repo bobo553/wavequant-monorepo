@@ -29,7 +29,9 @@ def joint_squeeze_confirmations(
     for event in events:
         path, now, proof = event.get('source_path'), event.get('bar_index'), event.get('confirmation_evidence')
         if (event.get('trend_level') != level or event.get('state') != '空多交替'
-                or event.get('confirmation_rule') != 'positive_n_and_squeeze_after_qualified_b'
+                or event.get('confirmation_rule') not in (
+                    'positive_n_and_squeeze_after_qualified_b',
+                    'double_volume_positive_n_squeeze_whole_flip_pullback')
                 or not confirmed_alternation_event(event) or not isinstance(path, str)
                 or type(now) is not int or not isinstance(proof, Mapping)):
             continue

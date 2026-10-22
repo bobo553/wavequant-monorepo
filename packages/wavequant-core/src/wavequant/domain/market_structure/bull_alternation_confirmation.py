@@ -363,7 +363,9 @@ def confirm_bull_alternation(
                     bars, now, attack=attack, origin=origin, high=high, polyline=polyline)
                 if whole_flip is not None:
                     return AlternationProof(whole_flip.low, whole_flip.rule,
-                        tuple(dict.fromkeys((whole_flip.low, a, b, c))), whole_flip.evidence)
+                        tuple(dict.fromkeys((whole_flip.low, a, b, c))),
+                        dict(whole_flip.evidence or {}, n_origin=a.index, n_neckline=b.index,
+                             n_pullback=c.index, source_path=path, trend_level=level))
                 triggers.append(dict(event='regime_confirmation', regime=confirmed_regime.value,
                                      bar_index=now, attack=attack))
             elif policy.squeeze_pullback_entries and observe_squeeze_resumption(bars, now,
