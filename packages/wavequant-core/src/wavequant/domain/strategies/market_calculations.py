@@ -1,6 +1,6 @@
 """可按需调用的请求级折线、趋势线及六态计算，共享本次历史与事件缓存。"""
 
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from bisect import bisect_left
 from contextlib import ExitStack, contextmanager
 from copy import deepcopy
@@ -264,9 +264,14 @@ class MarketCalculations:
             _owned_structure=True,
             _market_index=(self._permission_cache_for(self._bars)._market_index
                            if type(self._bars) is tuple else None))
+        if level in self._eligibility:
+            recovery_events = self._eligibility[level].advance_recovery(row, self._bars, index, self._dates,
+                owned=True, market_index=(self._permission_cache_for(self._bars)._market_index
+                                         if type(self._bars) is tuple else None))
+            events = [*recovery_events, *events]
         self._daily_events[level] = events
         if level in self._eligibility:
-            for event in events:
+            for event in events[len(recovery_events):]:
                 changed = self._eligibility[level].observe(event)
                 if changed is not None:
                     event['buy_eligible'] = changed
@@ -379,7 +384,7 @@ class MarketCalculations:
         start = bisect_left(rows, index, key=lambda event: cast(int, event['bar_index']))
         return tuple(rows[start:])
 
-    def _lifecycle_rows(self, level: int) -> Iterator[tuple[int, dict[str, object]]]:
+    def _lifecycle_rows(self, level: int) -> Generator[tuple[int, dict[str, object]], None, None]:
         if level == 0:
             frames = self._frames.iter_rows(shared=True)
             try:
