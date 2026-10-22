@@ -1,3 +1,15 @@
+2026-10-23 · MONOREPO-358 提交合并验证记录
+
+用户要求合到main。Python相关四文件32项通过，Web两文件13项通过，Core五个修改生产文件局部mypy通过；补齐visualization两个字典类型。差异与源码复核完成。358标记done，330恢复唯一in-progress。准备提交feat-一级趋势唯一底部N并本地no-ff合并；不推送或重启，未运行浏览器/E2E或完整构建。以下为历史记录。
+
+2026-10-23 · MONOREPO-358 一级趋势唯一底部成功N展示（待提交验证）
+
+新structural_n_policy仅接受Core显式structural_target_selected=true的正N；annotations、独立N折线和目标共用该门禁。新策略withEligibilityNTargets直接保留理论，不从audit补N或重新推算目标。悬停只展开当前N；成交附带目标映射回已发布来源，以owner+stage去重，不按价格选择N，也不改变成交事实。
+
+同几何来源合并后使用Core明确发布的structural_target_aliases衔接原交易n_id；仅身份匹配，不依据相同日期、价格或相邻形态为新策略补选来源。
+
+新增single-bottom-n.test.mjs覆盖重复7.798二吐、旧资格/结构标志旁路、缺少选中标志、audit补回、形状副本及成交旧目标；positive-n-reformation旧同日四线交互按本轮要求改为分别选择各自两线。未运行任何测试、lint、类型、格式、构建、浏览器或运行探针，待实际提交验证。未提交合并、推送、重启或清缓存；独立worktree和后端边界见Core progress及feature_list MONOREPO-358。
+
 2026-10-23 · MONOREPO-330 紫色圆点提交合并记录
 
 用户要求合并main。已同步b2450f0，保留倍量收低退出原因及双方进度；本次只删除紫点专用展示加工，N结构/目标及其它标记不变。提交阶段四文件Node回归最终49通过，覆盖无marker ID的同日双N四条目标。首轮旧二饱文案断言在未修改main复现，仅将该测试用词校正为既有产品文案二吐，未改交易逻辑或放宽其它断言。源码和最终差异已复核，Core相关回归及局部类型证据见feature_list.json。public JS和mjs不在本项目eslint/tsc覆盖范围，不运行无关全仓门禁、浏览器或测速。按用户安排提交并本地no-ff合并，不推送或重启；330继续in-progress。以下为开发阶段记录。

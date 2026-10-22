@@ -63,6 +63,41 @@ def test_matching_structural_fact_keeps_one_chart_n_and_trading_source_identity(
     assert target_levels(row)['two_t']['valid_until'] == '2026-01-07'
 
 
+def test_exclusive_structure_keeps_one_owner_across_trade_aliases_without_mutating_audit():
+    from copy import deepcopy
+
+    bars = market()
+    trade = positive_n(bars)
+    later_trade = positive_n(bars, window_start=4)
+    structure = dict(trade, event='n_structure_completed', n_id='polyline:selected',
+        structural_target=True, target_eligible=False, scope_low_index=0, scope_low_ordinal=0,
+        real_break=True, virtual_break=True, box_anchor=12.6, equal_wave=14, one_p=17.2, two_t=21.8,
+        structural_target_selected=True, structural_target_owner='polyline:selected',
+        structural_trend_id='level-one:0:decline')
+    duplicate = dict(structure, n_id='polyline:other-window', qualification_window_start=4,
+                     known_at=4, structural_target_selected=False)
+    audit = [trade, later_trade, structure, duplicate]
+    original = deepcopy(audit)
+    config = SystemStrategy(buy_point_definition='whole_flip_wave_v3')
+    result = SystemResult([], audit, {})
+    chart = ChartRepository.render_theory(None, bars, config, result,
+        bars[-1].timestamp.date().isoformat(), geometry={'tertiary_trends': {}})
+    rows = [row for row in chart['events'] if row['event'] == 'n_completed']
+    selected = [row for row in rows if row['structural_target_selected']]
+    assert len(selected) == 1 and selected[0]['n_id'] == trade['n_id']
+    assert selected[0]['structural_target_owner'] == structure['n_id']
+    assert set(selected[0]['structural_target_aliases']) == {row['n_id'] for row in audit}
+    assert target_levels(selected[0])['two_t']['price'] == 21.8
+    assert all(not target_levels(row) for row in rows if not row['structural_target_selected'])
+    assert len(chart['shapes']) == 1 and chart['shapes'][0]['structural_target_selected'] is True
+    assert audit == original
+
+    early = ChartRepository.render_theory(None, bars[:4], config, result,
+        bars[3].timestamp.date().isoformat(), geometry={'tertiary_trends': {}})
+    early_selected = next(row for row in early['events'] if row.get('structural_target_selected'))
+    assert set(early_selected['structural_target_aliases']) == {trade['n_id'], structure['n_id']}
+
+
 def test_reformed_n_targets_stop_at_qualification_close_not_primary_source_retirement():
     bars = market()
     row = positive_n(bars, primary=False)

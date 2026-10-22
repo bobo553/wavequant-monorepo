@@ -4,6 +4,41 @@
     "activeFeature": "MONOREPO-330",
     "features": [
         {
+            "id": "MONOREPO-358",
+            "name": "single-successful-bottom-n-per-level-one-trend",
+            "title": "一级趋势唯一底部成功N及目标",
+            "status": "done",
+            "dependencies": [
+                "MONOREPO-356"
+            ],
+            "description": "国芳集团2024-03-12图表显示多组相同二吐；结构N分支绕过一级趋势底部归属，前端同日展开、审计补绘与成交携带目标进一步叠加。",
+            "scope": "结构N消费共享一级下降证明，以epoch和下降起点冻结唯一底部成功N；窗口重开、内部折叠N和后续破位不重新发放名额。图表与前端消费显式归属，保留交易候选、买卖规则和三级趋势算法。",
+            "acceptanceCriteria": [
+                "每个已确认一级趋势最多一个底部成功正N，等低保留最早底点，缺少下降证明不猜测归属。",
+                "同日候选按形成时间及真实顶点确定顺序，跨source和资格窗口保留同一所有权；新趋势独立分配。",
+                "晚开窗历史N使用其起点之前的已知下降证明，所有权与目标不借用未来行情或回填过去截面。",
+                "前端形状、悬停、审计补绘和成交附带目标统一读取Core归属，非选中N不发布目标，单个来源每阶段只绘制一次。",
+                "国芳真实行情、领域边界、图表投影和前端回归编写，实际提交时完成最小充分验证。"
+            ],
+            "verification": [
+                {
+                    "command": "PYTHONPATH=packages/wavequant-core/src python -m pytest test_structural_n_ownership.py test_guofang_single_bottom_n.py test_chart_target_windows.py test_structural_positive_n.py -q",
+                    "status": "passed",
+                    "summary": "32 passed；首次缺少源码路径导致收集失败，指定源码路径后通过。"
+                },
+                {
+                    "command": "node --test apps/webs/wavequant-web/tests/single-bottom-n.test.mjs apps/webs/wavequant-web/tests/positive-n-reformation.test.mjs",
+                    "status": "passed",
+                    "summary": "13 passed。"
+                },
+                {
+                    "command": "Core .venv python -m mypy --follow-imports=skip (5 modified source files); git diff --check; source review",
+                    "status": "passed",
+                    "summary": "系统Python无mypy，改用现有Core虚拟环境；补充两个字典类型后5文件通过。无浏览器、全仓构建或E2E；不推送或重启。"
+                }
+            ]
+        },
+        {
             "id": "MONOREPO-357",
             "name": "double-volume-next-lower-close-clear",
             "title": "倍量后次日放量收低全清仓",

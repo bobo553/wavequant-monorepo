@@ -53,12 +53,10 @@ export function isPositiveNTarget(item, asof) {
     );
 }
 
-/** 同一完成日的独立来源一起显示；来源 ID 决定归属，价格相等仍保留。 */
-export function nTargetGroup(observations, focused, asof) {
+/** 只展示当前聚焦来源；同日的其它趋势和同 owner 的副本都不能扩成另一套目标。 */
+export function nTargetGroup(_observations, focused, asof) {
     if (!isPositiveNTarget(focused, asof)) return [];
-    return observations
-        .filter(({ item }) => item.time === focused.time && isPositiveNTarget(item, asof))
-        .map(({ item }) => item);
+    return [focused];
 }
 
 /** 范围在理论更新时冻结；悬停只查询已发布目标，不重算测幅或扫描全部历史。 */

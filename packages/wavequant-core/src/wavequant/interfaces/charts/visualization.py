@@ -26,6 +26,7 @@ from wavequant.infrastructure.persistence.operational_store import run_states, a
 from wavequant.application.governance.operations import verify_run
 from wavequant.domain.market_structure.n_shape import project_n_targets, ValueDomain
 from wavequant.domain.market_structure.bottom_n_targets import BOTTOM_N_TARGET_POLICY
+from wavequant.domain.market_structure.structural_n_ownership import STRUCTURAL_N_POLICY
 from wavequant.domain.market_structure.a_wave import A_WAVE_POLICY
 from wavequant.domain.market_structure.price_action import Direction
 from wavequant.infrastructure.filesystem.project_paths import project_path
@@ -76,7 +77,7 @@ SCENARIOS = {"base": "原费用", "cost_2x": "2 倍成本", "cost_3x": "3 倍成
 
 # 图表只发布有展示消费者的事件；普通规则紫点不再独立投影。
 # N、资格和波段的原始事实仍供策略使用，N 展示事件同时承载结构与目标线。
-CHART_EVENT_POLICY = 'explicit_chart_events_without_purple_rules_v2'
+CHART_EVENT_POLICY = 'explicit_chart_events_single_bottom_n_v3'
 _CHART_EVENT_TYPES = frozenset((
     'tertiary_c_candidate', 'tertiary_c_breakout', 'tertiary_c_invalidated',
     'n_completed', 'strict_structure_interrupted', 'entry_rejected',
@@ -864,24 +865,42 @@ class ChartRepository:
     @with_strategy_trend_options("config")
     def render_theory(self, bars, config, result, asof, *, geometry=None):
         # 结构与交易事实保持独立；只在展示适配层复用 N 的绘图契约。
+        exclusive_targets = config.buy_point_definition == 'whole_flip_wave_v3'
         structural_types = {'n_structure_completed': 'n_completed', 'n_structure_invalidated': 'n_invalidated'}
         chart_audit = [dict(row, event=structural_types[row['event']])
                        if row['event'] in structural_types else row for row in result.audit
                        if row['event'] in structural_types or row['event'] in _CHART_EVENT_TYPES]
         def structure_key(row):
-            return tuple(row.get(key) for key in ('origin', 'neckline', 'pullback', 'bar_index',
-                                                  'qualification_window_start', 'source_path'))
+            fields: tuple[str, ...] = ('origin', 'neckline', 'pullback', 'bar_index')
+            if not exclusive_targets:
+                fields += ('qualification_window_start', 'source_path')
+            return tuple(row.get(key) for key in fields)
 
-        # 同窗口、同三点、同完成日只发布一个图形，保留交易来源 ID 供已有目标引用。
-        trading = {structure_key(row): position for position, row in enumerate(chart_audit)
-                   if row['event'] == 'n_completed' and not row.get('structural_target')}
+        # 只绑定领域层已选中的结构事实，不在图表根据价格、窗口或日期另选 N。
+        trading: dict[tuple[object, ...], int] = {}
+        source_aliases: dict[tuple[object, ...], set[str]] = {}
+        for position, row in enumerate(chart_audit):
+            if (row['event'] == 'n_completed' and row.get('direction') == 'up' and row.get('n_id')
+                    and max(row['bar_index'], row.get('known_at', row['bar_index'])) < len(bars)):
+                source_aliases.setdefault(structure_key(row), set()).add(row['n_id'])
+            if row['event'] == 'n_completed' and not row.get('structural_target'):
+                if max(row['bar_index'], row.get('known_at', row['bar_index'])) >= len(bars):
+                    continue
+                trading.setdefault(structure_key(row), position)
+                if exclusive_targets and row.get('direction') == 'up':
+                    chart_audit[position] = dict(row, structural_target_selected=False)
         aliases = {}
         duplicates = set()
         for position, row in enumerate(chart_audit):
             if row['event'] != 'n_completed' or not row.get('structural_target'):
                 continue
+            if exclusive_targets and row.get('structural_target_selected') is not True:
+                continue
             if max(row['bar_index'], row.get('known_at', row['bar_index'])) >= len(bars):
                 continue
+            if exclusive_targets:
+                row = dict(row, structural_target_aliases=sorted(source_aliases.get(structure_key(row), ())))
+                chart_audit[position] = row
             prior_position = trading.get(structure_key(row))
             if prior_position is None:
                 continue
@@ -890,10 +909,13 @@ class ChartRepository:
                 continue
             aliases[row['n_id']] = prior['n_id']
             chart_audit[prior_position] = dict(prior, structural_target=True,
+                known_at=max(prior.get('known_at', prior['bar_index']), row.get('known_at', row['bar_index'])),
                 equal_wave=row['equal_wave'], one_p=row['one_p'], two_t=row['two_t'],
                 box_anchor=row['box_anchor'], scope_low_index=row['scope_low_index'],
                 scope_low_ordinal=row['scope_low_ordinal'], real_break=row['real_break'],
-                virtual_break=row['virtual_break'])
+                virtual_break=row['virtual_break'],
+                **{key: value for key, value in row.items()
+                   if key.startswith('structural_') and key != 'structural_target'})
             duplicates.add(position)
         chart_audit = [dict(row, n_id=aliases[row['n_id']]) if row.get('n_id') in aliases else row
                        for position, row in enumerate(chart_audit) if position not in duplicates]
@@ -1003,6 +1025,8 @@ class ChartRepository:
             events.append(event)
             if r["event"] == "n_completed":
                 up = r["direction"] == "up"
+                if exclusive_targets and up:
+                    event['structural_target_selected'] = r.get('structural_target_selected') is True
                 if r.get('n_id'):
                     event['id'] = f"n:{r['n_id']}"
                 identity = r.get('n_id')
@@ -1037,7 +1061,8 @@ class ChartRepository:
                 previous = bars[r["bar_index"] - 1]
                 box = max(attack.high, previous.close) if up else min(attack.low, previous.close)
                 # 结构目标消费当日已冻结结果，不在 hover 或图表重算 N。
-                targets = (None if r.get('structural_target') else project_n_targets(
+                selected_target = not exclusive_targets or not up or event['structural_target_selected']
+                targets = (None if r.get('structural_target') or not selected_target else project_n_targets(
                     *(p["value"] for p in coords[:3]), box_anchor=box,
                     direction=Direction.UP if up else Direction.DOWN, domain=ValueDomain.PRICE))
                 event["levels"] += [
@@ -1046,6 +1071,8 @@ class ChartRepository:
                     dict(name="轧空低" if up else "杀多高", price=r["defense"]),
                 ]
                 for key, title in (("equal_wave", "等浪投影"), ("one_p", "1P 投影"), ("two_t", "2T 投影")):
+                    if not selected_target:
+                        continue
                     if up and r.get('target_eligible') is False and not r.get('structural_target'):
                         continue
                     price = r.get(key) if targets is None else getattr(targets, key)
@@ -1065,6 +1092,8 @@ class ChartRepository:
                     event["levels"].append(target_level)
                 for extension_level in (extension_levels.get(target_scope(r), {}).values()
                                         if r.get('target_primary', True) else ()):
+                    if not selected_target:
+                        continue
                     if up and r.get('target_eligible') is False:
                         continue
                     title = '五顶' if extension_level['stage'] == 'five_top' else '十满'
@@ -1072,7 +1101,7 @@ class ChartRepository:
                     if valid_until is not None:
                         extension_guide['valid_until'] = valid_until
                     event['levels'].append(extension_guide)
-                if invalidation is not None:
+                if invalidation is not None or not selected_target:
                     continue
                 shapes.append(
                     dict(
@@ -1082,6 +1111,7 @@ class ChartRepository:
                         defense=r["defense"],
                         attack_time=event["time"],
                         n_id=r.get('n_id'),
+                        **{key: value for key, value in event.items() if key.startswith('structural_')},
                     )
                 )
         # Only the last few objects are needed for legible chart overlays; all
@@ -1166,7 +1196,7 @@ class ChartRepository:
         return dict(
             asof=asof,
             trading_observation_policy='qualified_windows_v1' if qualified_windows else 'legacy_v1',
-            structural_n_policy='confirmed_polyline_fixed_eligibility_origin_v1',
+            structural_n_policy=STRUCTURAL_N_POLICY if exclusive_targets else 'confirmed_polyline_fixed_eligibility_origin_v1',
             points=points,
             polyline_segments=segments,
             **geometry,

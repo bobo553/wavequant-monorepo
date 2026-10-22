@@ -2,12 +2,15 @@ const STAGES = ["one_p", "two_t", "five_top", "ten_full"];
 const day = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}(?:T|$)/.test(value) ? value.slice(0, 10) : null;
 
 export function isEligibilityNTargetSource(event) {
-    return event?.event === "n_completed" && event.direction === "up" && event.display_target_eligible === true && event.target_eligible === true;
+    return event?.event === "n_completed" && event.direction === "up" && event.display_target_eligible === true &&
+        event.target_eligible === true && isSelectedStructuralNSource(event);
 }
 
 /** 交易区间只约束展示时间，不能替代 Core 的一级趋势底部 N 测量资格。 */
 export function withEligibilityNTargets(view, theory) {
     if (!theory || !view?.bars?.length || !Array.isArray(view.audit) || (view.timeframe || "1d") !== "1d") return theory;
+    // 唯一来源及目标已由 Core 完整发布，审计副本不能恢复被淘汰的 N 或另算目标。
+    if (theory.structural_n_policy === STRUCTURAL_N_POLICY) return theory;
     const bars = view.bars;
     const asof = [view.asof, theory.asof, bars.at(-1).time].filter(Boolean).sort()[0];
     const dates = new Map(bars.map((bar, index) => [bar.time, index]));
@@ -75,6 +78,7 @@ export function withEligibilityNTargets(view, theory) {
         const id = row.n_id || `up:${row.origin}:${row.neckline}:${row.pullback}:${row.bar_index}`;
         const position = positions.get(id);
         const original = position === undefined ? null : events[position];
+        if (!isSelectedStructuralNSource({ ...row, ...original }, theory)) continue;
         // 缺失资格也不能由前端猜测；完整理论中的明确拒绝优先于审计副本。
         if ((original?.target_eligible ?? row.target_eligible) !== true) continue;
         const shape = original?.shape || vertices.map((bar, index) => ({ time: bar.time, value: index % 2 ? bar.high : bar.low }));
@@ -117,3 +121,4 @@ export function withEligibilityNTargets(view, theory) {
     }
     return { ...theory, events };
 }
+import { isSelectedStructuralNSource, STRUCTURAL_N_POLICY } from "./bottom-n-targets.js";

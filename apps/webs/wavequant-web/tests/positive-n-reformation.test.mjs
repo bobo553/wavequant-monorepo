@@ -85,23 +85,24 @@ test("actual failed July31/August15 Ns disappear while August20 retains two inde
     }
 });
 
-test("hovering either August20 N shows both target groups without deduplication by price", () => {
+test("hovering either legacy August20 N shows only its own targets without choosing by price", () => {
     const observations = nTargetObservations(items, view.bars, view.asof);
     assert.equal(observations.length, 2);
     const candleFocus = nTargetAt(observations, view.asof);
     const candleTargets = nTargetGroup(observations, candleFocus, view.asof);
-    assert.equal(candleTargets.length, 2);
+    assert.deepEqual(candleTargets, [candleFocus]);
     assert.deepEqual(
         candleTargets.flatMap((item) => nTargetLevels(item, view.asof).map((level) => level.price)).sort(),
-        [4.63, 4.83, 5.12, 5.52],
+        nTargetLevels(candleFocus, view.asof).map((level) => level.price).sort(),
     );
     for (const item of items) {
         const focus = nTargetAt(observations, view.asof, item.id);
         assert.equal(focus, item);
-        assert.equal(nTargetGroup(observations, focus, view.asof).length, 2);
+        assert.deepEqual(nTargetGroup(observations, focus, view.asof), [item]);
     }
     const equalPrice = { ...items[1], levels: items[0].levels };
-    assert.equal(nTargetGroup([{ item: items[0] }, { item: equalPrice }], items[0], view.asof).length, 2);
+    assert.deepEqual(nTargetGroup([{ item: items[0] }, { item: equalPrice }], items[0], view.asof), [items[0]]);
+    assert.deepEqual(nTargetGroup([{ item: items[0] }, { item: equalPrice }], equalPrice, view.asof), [equalPrice]);
 });
 
 test("historical asof precedes failure and never exposes either future reformation", () => {
@@ -179,7 +180,7 @@ test("Canvas draws both original bounds and labels their separate sources", () =
     assert.ok(labels.some((label) => label.includes("3.6500") && label.includes("2024-08-15")));
 });
 
-test("actual chart drawLevels displays four independent guides even when two prices match", async () => {
+test("actual chart drawLevels isolates the focused legacy source even when another N shares its date or price", async () => {
     globalThis.window = { LightweightCharts: { LineSeries: Symbol("line") } };
     globalThis.MutationObserver = class {
         observe() {}
@@ -228,8 +229,8 @@ test("actual chart drawLevels displays four independent guides even when two pri
             displayedWaveProjection: PriceChart.prototype.displayedWaveProjection,
         };
         PriceChart.prototype.drawLevels.call(fake);
-        assert.equal(fake.targetGuideOverlay.guides.length, 4);
-        assert.equal(fake.nStructureOverlay.items.length, 2);
+        assert.equal(fake.targetGuideOverlay.guides.length, 2);
+        assert.deepEqual(fake.nStructureOverlay.items, [sources[0]]);
         for (const guide of fake.targetGuideOverlay.guides) {
             const source = sources.find((source) => guide.name.includes(source.raw.reformed_from_date));
             assert.ok(source);
@@ -241,7 +242,7 @@ test("actual chart drawLevels displays four independent guides even when two pri
         }
         assert.deepEqual(
             fake.targetGuideOverlay.guides.map((guide) => guide.price).sort(),
-            sources.flatMap((source) => nTargetLevels(source, view.asof).map((level) => level.price)).sort(),
+            nTargetLevels(sources[0], view.asof).map((level) => level.price).sort(),
         );
         for (const source of sources) {
             fake.focusedNTarget = null;
