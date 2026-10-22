@@ -12,6 +12,8 @@ from ..market_structure.source_bear_exit import (
     confirmed_bear_key_break, confirmed_source_market_break,
 )
 from ..models.model import Bar
+from ..market_structure.trend_market_index import _MarketRangeIndex
+from .same_level_recovery import RECOVERY_REQUIRED, RECOVERY_CLEARED, SameLevelRecovery
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,7 @@ class TradingEligibility:
         self._intervals: list[TradingInterval] = []
         self._opened: dict[str, int] = {}
         self._last_index = -1
+        self._recovery = SameLevelRecovery()
 
     @property
     def intervals(self) -> tuple[TradingInterval, ...]:
@@ -81,6 +84,15 @@ class TradingEligibility:
         if now < self._last_index:
             raise ValueError('trading eligibility requires chronological events')
         self._last_index = now
+        recovery_changed = self._recovery.observe(event, now, path)
+        if event.get('event') == RECOVERY_REQUIRED:
+            if not recovery_changed:
+                return None
+            broken_low = cast(Mapping[str, object], event['broken_low'])
+            return self._close(path, now, 'same_level_last_rise_low_broken',
+                key_index=cast(int, broken_low['index']), key_price=float(cast(float, broken_low['value'])))
+        if event.get('event') == RECOVERY_CLEARED:
+            return None
         if confirmed_bear_key_break(event, now):
             return self._close(path, now, 'same_level_last_rise_low_broken',
                 key_index=cast(int, event['broken_key_index']),
@@ -107,8 +119,8 @@ class TradingEligibility:
                     or event.get('confirmation_gap_lower') != window.confirmation_gap_lower
                     or event.get('confirmation_gap_upper') != window.confirmation_gap_upper
                     or event.get('confirmation_gap_kind') != window.confirmation_gap_kind
-                    or type(low) not in (int, float) or not isfinite(low)
-                    or not 0 < low <= window.confirmation_gap_lower):
+                    or type(low) not in (int, float) or not isfinite(cast(float, low))
+                    or not 0 < cast(float, low) <= window.confirmation_gap_lower):
                 return None
             return self._close(path, now, 'confirmation_gap_filled')
         if event.get('event') == SOURCE_BEAR_EVENT:
@@ -127,10 +139,10 @@ class TradingEligibility:
             index, price = event.get('reversal_low_index'), event.get('reversal_low_price')
             known, low = event.get('reversal_low_known_index'), event.get('market_low')
             if (type(index) is not int or type(known) is not int or not 0 <= index <= known < now
-                    or type(price) not in (int, float) or not isfinite(price) or price <= 0
-                    or type(low) not in (int, float) or not isfinite(low) or low >= price):
+                    or type(price) not in (int, float) or not isfinite(cast(float, price)) or cast(float, price) <= 0
+                    or type(low) not in (int, float) or not isfinite(cast(float, low)) or cast(float, low) >= cast(float, price)):
                 return None
-            return self._close(path, now, 'reversal_low_broken', key_index=index, key_price=float(price))
+            return self._close(path, now, 'reversal_low_broken', key_index=index, key_price=float(cast(float, price)))
         if (event.get('event') == 'trend_lifecycle_invalidated'
                 and event.get('reason') in ('source_evidence_revised', 'source_path_ended',
                                             'bull_recovery_pending', 'special_bull_origin_broken')):
@@ -141,6 +153,8 @@ class TradingEligibility:
         if state not in ('空多交替', '多空交替'):
             return None
         # 开窗与开放区间内的上下文更新必须消费相同的正式确认事实。
+        if state == '空多交替' and not self._recovery.permits(path, event):
+            return None
         if not confirmed_alternation_event(event):
             return None
         flip, counter = cast(int, event['flip_index']), cast(int, event['counter_index'])
@@ -161,7 +175,7 @@ class TradingEligibility:
             self._opened[path] = len(self._intervals)
             self._intervals.append(TradingInterval(self.level, path, now, flip,
                 start_low_index=counter, start_low_ordinal=ordinal,
-                start_low_price=float(price) if type(price) in (int, float) and isfinite(price) and price > 0 else None,
+                start_low_price=float(cast(float, price)) if type(price) in (int, float) and isfinite(cast(float, price)) and cast(float, price) > 0 else None,
                 confirmation_gap_index=gap[0] if gap else None,
                 confirmation_gap_lower=gap[1] if gap else None,
                 confirmation_gap_upper=gap[2] if gap else None,
@@ -170,6 +184,20 @@ class TradingEligibility:
         if state == '多空交替':
             return self._close(path, now, 'bear_alternation_completed', flip)
         return None
+
+    def advance_recovery(
+        self, row: Mapping[str, object], bars: Sequence[Bar], now: int, dates: Mapping[str, int], *,
+        owned: bool = False, market_index: _MarketRangeIndex | None = None,
+    ) -> list[dict[str, object]]:
+        """先处理本级破位与恢复，再接收当天交替；没有开放区间也持续保留门槛。"""
+        if row.get('trend_level') != self.level:
+            return []
+        events = self._recovery.advance(row, bars, now, dates, owned=owned, market_index=market_index)
+        for event in events:
+            changed = self.observe(event)
+            if changed is not None:
+                event['buy_eligible'] = changed
+        return events
 
     def close_on_confirmation_gap_fill(self, bars: Sequence[Bar], now: int) -> list[dict[str, object]]:
         """周期因其他价格规则退出后，仍需收尾仅依赖跳空的资格窗口。"""
