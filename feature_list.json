@@ -1,7 +1,7 @@
 {
     "$schema": "./feature-list.schema.json",
     "schemaVersion": 1,
-    "activeFeature": "MONOREPO-330",
+    "activeFeature": "MONOREPO-360",
     "features": [
         {
             "id": "MONOREPO-359",
@@ -291,7 +291,7 @@
             "id": "MONOREPO-330",
             "name": "causal-backtest-computation-performance",
             "title": "回测因果计算与复用性能优化",
-            "status": "in-progress",
+            "status": "backlog",
             "dependencies": [
                 "MONOREPO-327"
             ],
@@ -15092,6 +15092,28 @@
                     "command": "待提交执行 test_double_bullish_shadow_exit.py 及相邻量价退出回归和必要局部类型",
                     "status": "not-run",
                     "summary": "2026-10-22 用户追加要求合并到main，沿用本会话不用检测直接合并的偏好；本次只进行必要Git同步、范围复核、提交和本地no-ff合并，不运行测试/类型/lint/格式/构建/探针或浏览器。新增回归仍待验证，354保持backlog，330恢复唯一in-progress；不推送或重启。"
+                }
+            ]
+        },
+        {
+            "id": "MONOREPO-360",
+            "name": "double-n-whole-flip-pullback",
+            "title": "倍量正N轧空整段回调买点",
+            "status": "in-progress",
+            "dependencies": [],
+            "description": "海洋王2026案例：整段空翻多回撤不超过2/3后倍量正N及阳线轧空确认。",
+            "scope": "共用交替确认入口，保持原趋势算法、成交和风险门禁。",
+            "acceptanceCriteria": [
+                "整个翻多波段最低价回撤不超过2/3，等值允许。",
+                "正N攻击日倍量、后续阳线轧空确认，不要求轧空日倍量。",
+                "确认日前不开放资格，三级共用，不按股票日期特判。",
+                "实际完整2026行情信号和成交待提交阶段验证。"
+            ],
+            "verification": [
+                {
+                    "command": "待提交：test_double_n_whole_flip.py及交替确认、海洋王和策略回归",
+                    "status": "not-run",
+                    "summary": "仅代码编辑和合成边界用例；未运行检查，无完整2026行情回放结论。"
                 }
             ]
         }
