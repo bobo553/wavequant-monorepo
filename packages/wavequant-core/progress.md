@@ -1,3 +1,40 @@
+## 2026-10-22 按用户要求直接合并轧空同日资格与买入
+
+用户重新要求合并main，并在提交检查运行期间明确要求“直接合并”。本次按最新指令停止正在运行的pytest，不追加回归、类型、格式、lint、构建或运行探针；停止时日志无完整结果，不能宣称新国芳用例或本轮海洋王复测通过。已完成的10个修改Python文件局部mypy（--config-file packages/wavequant-core/pyproject.toml --follow-imports=skip --no-incremental）结果为Success: no issues found in 10 source files；JSON读取、唯一活动功能与Git空白/冲突及范围复核已完成。原失败和后续诊断记录保留，不记作被测试消除。
+
+本分支先快进同步main aa75bfe，保留低开阴线和倍量长上影破位清仓，进度冲突保留双方记录；profile协调为v149，lifecycle v35、chart history v162。交付海洋王放量中大阳轧空当日资格确认及原正N买入衔接，并将国芳过期成交预期按现行同级恢复规则拆为结构成立与资格阻断回归。国芳新回归和最新main组合后的实股完整验证仍待后续执行。仅本地提交/no-ff合并，禁用提交钩子，不推送或重启服务；MONOREPO-330保持in-progress，分支/worktree与冲突时保留的stash均保留。
+
+## 2026-10-22 国芳旧回归与同级恢复规则对齐（待提交验证）
+
+用户要求暂不合并、先修复国芳失败，并明确授权冻结行情定向诊断。原5文件提交检查的国芳失败仍是事实，未豁免或标记通过。诊断使用guofang_2024_squeeze_confirmation.json完整2018起行情：2024-11-27真实折线保留1671L/1673H/1674L，但11/14—11/29交易资格均false，没有新交易N来源。补充同次问题的上游诊断发现2024-02-06触发trading_same_level_recovery_required：跌破2022-10-31末升低4.437287627806584，冻结2023-08-01末跌高11.024346589744814；截至11/29未解除恢复门槛。
+
+进度历史已记载后来新增的同级恢复业务要求：破末升低后跨窗口保留末跌高门槛，突破只解除禁开，随后仍需新翻多和交替；三级一致。国芳旧测试早于这项规则，继续期待11/29交易N/买入/账户成交，属于过期的集成预期，不能以放宽恢复门槛恢复旧买点。此次没有更改任何生产交易规则或冻结行情。
+
+将test_squeeze_low_open_confirmation.py的旧成交预期拆为明确职责：真实因果折线生成11/27正N，11/29轧空和低开放量中大阳仍合格；完整策略必须保留2/6冻结关键位，未突破前不得恢复资格或发出LONG，无资格时不扫描交易N。保留原有量价边界断言，并加入攻击日前不得完成N的断言。删除已不符合现行资格规则的模拟成交断言，属于有证据的业务契约对齐，不把失败改为skip/xfail，也不注入资格或修改行情来制造交易。
+
+新回归仅编辑和静态复核，未运行pytest、类型、lint、格式、构建或Git检查；用户当前安排为暂不合并，本轮不进入提交阶段。后续准备提交时需运行test_squeeze_low_open_confirmation.py及test_same_level_recovery.py并检查修改测试类型；此前海洋王运行结果不能替代本轮新增回归验证。诊断记录为本worktree .codex-runtime/guofang-missing-n-diagnosis.json、guofang-missing-qualification.json；上游诊断首次因误用不存在的上下文函数导入失败，改用ordinary_trend_completion(False)完成。未提交、合并、推送或重启，MONOREPO-330继续in-progress。
+
+## 2026-10-22 国芳集团基线失败续修
+
+用户选择暂不合并，先修复国芳集团问题，并单独授权冻结行情定向诊断。当前追踪2024-11-27外包收盘正N缺失；保留海洋王实现和此前验证证据，不豁免失败、不放宽断言，MONOREPO-330仍为唯一in-progress。
+
+## 2026-10-22 海洋王同日资格与买入：提交检查
+
+本次按用户“合并到main”进入提交阶段，先同步main 614e841，保留低开阴线清仓及内部观察事件清理；profile v148、lifecycle v35、chart history v162。源码及12文件范围已复核，无股票日期特判。
+
+执行5文件pytest（test_haiyangwang_squeeze_entry、test_squeeze_n_round、test_alternation_duration、test_squeeze_alternation、test_squeeze_low_open_confirmation，-q -p no:cacheprovider --tb=short）：60 passed、2 failed。新增合成样本低开收盘恰等前高，不符合既有收复前高约束；仅将其close从15改为15.2（仍低于A高16），断言未放宽，单例复测1 passed。另一失败为既有国芳集团test_full_history_emits_and_executes_on_squeeze_confirmation_close第59行缺少2024-11-27正N事件；未修改main 614e841上同命令同断言复现失败，125.08秒。最终本次执行范围61项通过、1项基线失败，不能宣称全绿。海洋王5/31资格、买入与日线收盘模拟成交、5/26和5/28不提前开资格、6/1原N不重复、三级边界用例通过；模拟账户显式使用收盘成交参数，不代表线上或分钟成交验收。
+
+mypy --config-file packages/wavequant-core/pyproject.toml --follow-imports=skip --no-incremental检查6生产及3测试文件：Success: no issues found in 9 source files。两处生命周期既有类型诊断已在main复现；本次以等价type(self).__init__(self)与cast消除，未改变趋势判定。未运行全仓检查、格式/lint/构建、浏览器、在线回测或服务重启。日志位于本worktree .codex-runtime/squeeze-merge-v148.log/xml。因AGENTS规定失败时不合并，已请求用户明确是否豁免这一基线失败；当前尚未提交合并，MONOREPO-330保持in-progress。
+
+## 2026-10-22 海洋王5月31日轧空同日资格与买入续修（待提交验证）
+
+用户重新要求修复，并明确“2021-05-31资格确认应该也在轧空这一天”。复用feat-轧空当日买入及positive-n-squeeze-entry独立worktree，先快进到main e7ed83c；本轮只开发，不继承此前直接合并或诊断授权。沿用既有AkShare/新浪2018起826根冻结行情；原诊断属旧v144，本轮未运行新诊断。
+
+共用squeeze_alternations接入正N完成后真实轧空、放量中大阳且收盘超过攻击日的短时浅回撤确认，当日发布资格，不能回填N完成日，也无需等重破整个A高。弱K、回补与缺口替代仍走原约束。完整历史中早先弱触发所等待的未来A高突破不得占用中间更早的合格轧空，保留实际确认时钟；A/B防守和深回撤规则继续使用原观察器。增加精确锚点容器类型，避免此前latest/occupied类型缺口。
+
+首N轮次只接收已发布资格证明中同级、同源、同窗口、同四坐标的确认N；先判断whole_wave及正N方向后才读取n_id，保留后来修复的倒N身份隔离。已消费轮次、防守破低、失效和账户风险规则保持。三个级别共用，无股票日期特判。新profile v148、lifecycle v35、chart history v162，与撤回前的v147及最新观察圆点清理缓存均隔离；不恢复已删除的内部观察事件。
+
+保留后续test_daily_backtest_keeps_inverse_n_without_positive_identity，重新加入海洋王5/31资格/入场/收盘账户和6/1不重复断言、5/26与5/28截面不得提前开资格、三级缩放/弱K/破低/身份窗口回归；短时浅回撤补充完整历史与前缀确认日一致用例。仅编写，未执行任何测试、类型、lint、格式、构建、Git状态/差异检查、回测探针或浏览器。没有重新提交、合并、推送或重启，main继续保持原撤回状态；待用户实际提交安排运行本轮相关回归及类型，不能沿用旧运行结果作为本轮证据。MONOREPO-330保持in-progress，其他事项不变。
 2026-10-22 · 倍量长上影阳线破收盘规则本地合并
 
 用户在开发完成后要求“合并到main”，沿用本会话“不用检测、直接合并”的偏好。已同步本地main 614e841，仅提交本次八个代码/测试/记录文件，使用no-ff合并；不运行测试、类型、格式、lint、构建、运行探针或钩子，不推送、不重启服务、不清缓存。新增回归及完整实股账户仍待验证，不记为通过；MONOREPO-354暂留backlog，330恢复唯一in-progress。分支feat-低开阴线清仓与worktree继续保留。以下为此前开发记录。
@@ -27,6 +64,7 @@ staged_exit接入持仓状态，全清覆盖部分减仓；backtest确保新规�
 新增test_gap_bearish_exit.py，复用真实桂林行情覆盖规则与显式入场账户；合成边界覆盖2%/半振幅等值、等量、最近阴线、前缀、跨股日期缩放、部分减仓优先级、剩余仓位、关闭开关、不可卖延期。真实夹具仅OHLCV，账户权限显式注入，不代表跌停排队实际成交或完整策略买点回放。新增及相邻测试、类型检查和完整账户回放均待实际提交时验证；本轮未运行测试、类型、格式、lint、构建、Git状态/差异、运行探针或浏览器。
 
 本分支唯一活动功能为MONOREPO-353；仅在本worktree将继承的MONOREPO-330置backlog，原范围与全部历史证据保留，主目录状态未改。未提交、合并、推送、重启或清缓存。主目录CodeGraph用于初始定位；专属worktree存在.codegraph但MCP报告未索引，后续采用源码阅读。待提交执行新回归、test_previous_triple_volume_gap_clear.py、test_triple_volume_breakout_clear.py、test_volume_down_exit.py（按实际现有文件名选择相邻量价回归）及必要修改文件局部类型；不继承其他会话验证结论。
+
 ## 2026-10-22 圆点清理按用户要求直接合并
 
 用户明确要求“不要验证直接合并”。此前已启动的提交前pytest在7个模块收集时因无法导入wavequant结束，未执行用例；停止追加验证和环境修复。Web已返回两项断言失败，细节见feature_list.json。本次按最新指令提交并合并本地main，不执行钩子、不推送、不重启服务；不混入此前未跟踪的性能实验。没有本轮性能结果，330保持in-progress。

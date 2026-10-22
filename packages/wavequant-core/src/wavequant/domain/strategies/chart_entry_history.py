@@ -47,7 +47,7 @@ from .market_calculations import MarketCalculations, MarketDay
 
 
 # 生命周期检查点已移除观察候选字段，旧布局不能继续恢复。
-_CONFIRMATION_CACHE_VERSION = "source_causal_without_observation_candidates_v161"
+_CONFIRMATION_CACHE_VERSION = "source_causal_volume_n_squeeze_same_close_v162"
 
 
 def _combined_a_facts(audit: Sequence[Mapping[str, object]]) -> Sequence[Mapping[str, object]]:

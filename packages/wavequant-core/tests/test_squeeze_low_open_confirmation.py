@@ -7,12 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from wavequant.application.analytics.backtest import run_portfolio
 from wavequant.domain.market_state.candle_strength import bullish_breakout_rejection
-from wavequant.domain.models.config import StrategyConfig
+from wavequant.domain.market_state.market_regime import MarketRegime, RegimePolicy, WaveBoundary, observe_market_regime
+from wavequant.domain.market_structure.n_shape import BoxAnchorMode, MilestoneBasis, NSetup, PivotRef, observe_n
+from wavequant.domain.market_structure.price_action import Direction, ShadowPolicy
 from wavequant.domain.models.model import Bar
 from wavequant.domain.strategies.attack_quality import squeeze_buy_rejection
 from wavequant.domain.strategies.integrated_strategy import SystemStrategy, generate_system_signals
+from wavequant.domain.strategies.lecture_strategy import lecture_pivot_history
+from wavequant.domain.strategies.same_level_recovery import RECOVERY_CLEARED, RECOVERY_REQUIRED
 
 
 def frozen_input() -> tuple[list[Bar], SystemStrategy]:
@@ -50,24 +53,56 @@ def test_low_open_exception_keeps_volume_shape_and_price_boundaries(change: str)
     assert squeeze_buy_rejection(current, previous) is not None
 
 
-def test_full_history_emits_and_executes_on_squeeze_confirmation_close() -> None:
-    # 保留2018起真实资格历史和成交权限，不注入正N、趋势或买入信号。
+def test_actual_polyline_n_and_low_open_squeeze_remain_valid_structure() -> None:
+    # 结构观察不依赖交易资格；顶点来自截至攻击日的真实折线，不注入买点。
+    bars, strategy = frozen_input()
+    attack = len(bars) - 3
+    snapshots, _, _, _ = lecture_pivot_history(bars[:attack + 1])
+    origin, neckline, pullback = snapshots[attack][-3:]
+    assert [bars[point.point.index].timestamp.date().isoformat() for point in (origin, neckline, pullback)] == [
+        '2024-11-22', '2024-11-26', '2024-11-27']
+    setup = NSetup(bars[0].symbol, '1d', Direction.UP,
+        PivotRef(origin.point.index, origin.confirmed_index),
+        PivotRef(neckline.point.index, neckline.confirmed_index),
+        PivotRef(pullback.point.index, pullback.confirmed_index),
+        strategy.pivot_mode, BoxAnchorMode.ATTACK_VIRTUAL_EXTREME,
+        allow_confirmation_bar=True, allow_outside_close=True, staged_defense=True)
+    n = observe_n(bars, setup, timeframe='1d', milestone_basis=MilestoneBasis.EXTREME)
+    assert n.completion is not None and n.completion.bar_index == attack
+    before = observe_n(bars[:attack], setup, timeframe='1d', milestone_basis=MilestoneBasis.EXTREME)
+    assert before.completion is None
+    regime = observe_market_regime(bars, setup, timeframe='1d', _prepared_n=n,
+        policy=RegimePolicy(ShadowPolicy(strategy.shadow_fraction), WaveBoundary.ORIGIN,
+                            local_resistance_failure=True))
+    assert regime.attack_index == attack
+    assert regime.latest is not None and regime.latest.bar_index == len(bars) - 1
+    assert regime.latest.regime == MarketRegime.BULL
+    assert regime.latest.last_confirmed_index == len(bars) - 1
+    assert squeeze_buy_rejection(bars[-1], bars[-2], bars[attack - 1]) is None
+
+
+def test_full_history_recovery_barrier_blocks_otherwise_valid_squeeze() -> None:
+    # 同级末升低破位后的恢复规则优先于局部轧空，不能沿用新增规则前的买入预期。
     bars, strategy = frozen_input()
     result = generate_system_signals(bars, strategy)
-    n_index = len(bars) - 3
-    assert bars[n_index].timestamp.date().isoformat() == '2024-11-27'
-    assert any(row['event'] == 'n_completed' and row['bar_index'] == n_index
-               and row.get('direction') == 'up' for row in result.audit)
-    assert any(row['event'] == 'regime_confirmation' and row['bar_index'] == len(bars) - 1
-               and row.get('attack') == n_index and row.get('regime') == '轧空' for row in result.audit)
-    entries = [signal for signal in result.signals if signal.side == 'LONG'
-               and signal.timestamp == bars[-1].timestamp]
-    assert entries, '11/29已有正N轧空确认和放量中大阳，应在当天生成买入'
-    account = run_portfolio({bars[0].symbol: bars}, entries, StrategyConfig(
-        entry_at_close=True, nonflat_limit_close_fill=True, net_reward_risk_filter=False,
-        slippage_bps_per_side=0))
-    filled = [order for order in account.orders if order['side'] == 'BUY' and order['status'] == 'filled']
-    assert len(filled) == 1
-    assert filled[0]['execution_timestamp'] == '2024-11-29T15:00:00'
-    assert filled[0]['price'] == bars[-1].close
-    assert filled[0]['fill_assumption'] == 'nonflat_limit_close_without_queue_verification'
+    dates = {bar.timestamp.date().isoformat(): index for index, bar in enumerate(bars)}
+    blocked_at = dates['2024-02-06']
+    recovery_high = dates['2023-08-01']
+    broken_low = dates['2022-10-31']
+    barrier = next(row for row in result.audit if row['event'] == RECOVERY_REQUIRED
+                   and row['trend_level'] == 2 and row['bar_index'] == blocked_at)
+    assert barrier['recovery_high']['index'] == recovery_high
+    assert barrier['recovery_high']['value'] == bars[recovery_high].high
+    assert barrier['broken_low']['index'] == broken_low
+    assert barrier['broken_low']['value'] == bars[broken_low].low
+    assert bars[blocked_at].low < bars[broken_low].low
+    assert max(bar.high for bar in bars[blocked_at:]) < bars[recovery_high].high
+    path = barrier['source_path']
+    assert not any(row['event'] == RECOVERY_CLEARED and row['trend_level'] == 2
+                   and row['source_path'] == path and row['bar_index'] >= blocked_at for row in result.audit)
+    assert not any(row['event'] == 'trading_interval_opened' and row['trend_level'] == 2
+                   and row['bar_index'] >= blocked_at for row in result.audit)
+    assert not any(signal.side == 'LONG' and signal.bar_index >= blocked_at for signal in result.signals)
+    # 无资格期间不运行交易N扫描；独立结构证据由上一个用例保留。
+    assert not any(row['event'] == 'n_completed' and row.get('direction') == 'up'
+                   and row['bar_index'] == dates['2024-11-27'] for row in result.audit)

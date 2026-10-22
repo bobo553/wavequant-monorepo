@@ -5,7 +5,9 @@ from dataclasses import replace
 import pytest
 
 from wavequant.domain.strategies.integrated_strategy import DailySignalState, _handoff_n_owners
-from wavequant.domain.strategies.squeeze_n_round import SqueezeN, SqueezeNRound, SqueezeRoundState
+from wavequant.domain.strategies.squeeze_n_round import (
+    SqueezeN, SqueezeNRound, SqueezeRoundState, joint_squeeze_confirmations,
+)
 
 
 def first_n() -> SqueezeN:
@@ -127,3 +129,63 @@ def test_same_day_selection_and_emission_restore_last_published_state() -> None:
     assert SqueezeRoundState.before(rows, 4) == daily.state
     with pytest.raises(ValueError, match='unconsumed first N'):
         daily.consume(later_n(), 8)
+
+
+def joint_confirmation() -> dict[str, object]:
+    return dict(event='trend_lifecycle_state', state='空多交替', trend_level=2, source_path='original-path',
+        bar_index=5, alternation_index=5, flip_index=0, flip_known_index=1, counter_index=2, flip_confirmed=True,
+        confirmation_rule='positive_n_and_squeeze_after_qualified_b',
+        confirmation_evidence=dict(source_path='original-path', trend_level=2, bar_index=5, candidate_index=5,
+            n_origin=0, n_neckline=1, n_pullback=2, attack=3))
+
+
+def test_joint_confirmation_only_admits_exact_n_in_its_own_window() -> None:
+    windows = joint_squeeze_confirmations([joint_confirmation()], 2)
+    first = replace(first_n(), known_at=5)
+    assert ('original-path', 5, first.identity) in windows
+    assert ('other-path', 5, first.identity) not in windows
+    assert ('original-path', 6, first.identity) not in windows
+    for coordinate in ('origin', 'neckline', 'pullback', 'attack'):
+        other = replace(first, **{coordinate: getattr(first, coordinate) + 1})
+        assert ('original-path', 5, other.identity) not in windows
+    assert not joint_squeeze_confirmations([joint_confirmation()], 1)
+    assert not joint_squeeze_confirmations([joint_confirmation()], 3)
+    round_state = SqueezeNRound()
+    assert round_state.select(4, (first,)) is None
+    assert round_state.select(5, (first,)) is not None
+    round_state.consume(first, 5)
+    assert round_state.close_unemitted() is None
+    assert round_state.select(6, (later_n(),)) is None
+    assert round_state.rejection(first) == 'first_n_squeeze_already_emitted'
+
+
+@pytest.mark.parametrize('neckline,pullback', [(0, 2), (1, 1), (1, 3)])
+def test_joint_confirmation_preserves_explicit_shared_edge_n(neckline: int, pullback: int) -> None:
+    row = joint_confirmation()
+    proof = row['confirmation_evidence']
+    assert isinstance(proof, dict)
+    proof.update(n_neckline=neckline, n_pullback=pullback)
+    assert ('original-path', 5, (0, neckline, pullback, 3)) in joint_squeeze_confirmations([row], 2)
+
+
+@pytest.mark.parametrize('field,value', [
+    ('flip_confirmed', False), ('flip_known_index', 6), ('alternation_index', 4),
+    ('state', '转多确认'), ('confirmation_rule', 'volume_bullish_polyline_last_fall_high_breakout'),
+    ('source_path', 'other-path'), ('confirmation_evidence', None),
+])
+def test_joint_confirmation_rejects_unconfirmed_future_and_unrelated_evidence(field: str, value: object) -> None:
+    row = joint_confirmation()
+    row[field] = value
+    assert not joint_squeeze_confirmations([row], 2)
+
+
+@pytest.mark.parametrize('field,value', [
+    ('n_neckline', None), ('n_origin', -1), ('n_pullback', 0), ('attack', 6),
+    ('bar_index', 6), ('candidate_index', 4), ('trend_level', 3), ('source_path', 'other-path'),
+])
+def test_joint_confirmation_requires_complete_causal_coordinates(field: str, value: object) -> None:
+    row = joint_confirmation()
+    proof = row['confirmation_evidence']
+    assert isinstance(proof, dict)
+    proof[field] = value
+    assert not joint_squeeze_confirmations([row], 2)
